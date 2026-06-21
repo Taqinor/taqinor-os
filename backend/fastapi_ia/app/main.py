@@ -2,7 +2,7 @@ import os
 
 from fastapi import Depends, FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from app.api.endpoints import ocr, sql_agent, transcription
+from app.api.endpoints import ocr, sql_agent, transcription, voice
 from app.core.database import create_tables
 from app.core.security import verify_token
 
@@ -70,5 +70,14 @@ app.include_router(
     transcription.router,
     prefix="/chat",
     tags=["Transcription"],
+    dependencies=[Depends(verify_token)],
+)
+# AG10 — Transcription vocale de l'assistant (Groq Whisper). Montee sous le meme
+# prefixe /sql-agent que l'agent (chemin public /api/django/fastapi/sql-agent/
+# transcribe) ; distincte du /chat/transcribe self-heberge S10.
+app.include_router(
+    voice.router,
+    prefix="/sql-agent",
+    tags=["Voice"],
     dependencies=[Depends(verify_token)],
 )
