@@ -4677,6 +4677,12 @@ textarea.form-control {
   font-family: inherit;
   font-size: 0.7rem;
 }
+/* I134 — puce de raccourci alignée à droite sur une ligne d'action. */
+.cmdk-item-kbd {
+  flex: 0 0 auto;
+  margin-left: auto;
+  color: var(--muted-foreground, #94a3b8);
+}
 
 /* ===== migrated from src/pages/parametres/parametres.css (P67) ===== */
 /* Barre d'onglets (J48) : le primitif <TabsList> est rendu défilable
