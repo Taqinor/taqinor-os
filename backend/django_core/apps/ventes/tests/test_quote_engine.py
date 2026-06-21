@@ -1278,3 +1278,43 @@ class TestResidentialRenderer(TestCase):
         self.assertIn('MAD/mois', html)
         self.assertIn('CO', html)        # CO₂ impact strip
         self.assertIn('arbres', html)
+
+    def test_equipment_lines_deep_link_to_fiche_pages(self):
+        """Panels/inverters/battery/meter/dongle link to their /produits/<slug>
+        fiche-technique page (slugs match docs/WEB_PLAN.md W119–W123); TAQINOR's
+        own lines (structures, socles, installation…) stay plain text."""
+        html, _ = self._html_and_doc()
+        for slug in ('canadian-solar-710', 'onduleur-huawei-reseau',
+                     'onduleur-deye-hybride', 'batterie-deye',
+                     'smart-meter-huawei', 'wifi-dongle-huawei'):
+            self.assertIn(f'/produits/{slug}', html)
+        # an own-component line is not turned into a datasheet link
+        self.assertNotIn('produits/structures', html)
+
+    def test_fiche_slug_mapping(self):
+        from apps.ventes.quote_engine.residential import theme
+        self.assertEqual(theme.fiche_slug('Panneau Canadien Solar 710W'),
+                         'canadian-solar-710')
+        self.assertEqual(theme.fiche_slug('Panneau Jinko 710W'), 'jinko-710')
+        self.assertEqual(theme.fiche_slug('Onduleur hybride Deye 10kW'),
+                         'onduleur-deye-hybride')
+        self.assertEqual(theme.fiche_slug('Onduleur réseau Huawei 10kW'),
+                         'onduleur-huawei-reseau')
+        self.assertEqual(theme.fiche_slug('Batterie Deyness 10 kWh'),
+                         'batterie-deye')
+        self.assertEqual(theme.fiche_slug('Structures acier'), '')
+        self.assertEqual(theme.fiche_slug('Installation'), '')
+
+    def test_scan_to_sign_qr_when_segno_available(self):
+        """The scan-to-sign QR renders on page 3 (segno is a pinned dep). The
+        renderer guards the import so a missing wheel degrades to the text link
+        rather than breaking the PDF — so only assert when segno is importable."""
+        html, _ = self._html_and_doc()
+        # The textual sign link is ALWAYS present.
+        self.assertIn('Signez en ligne', html)
+        try:
+            import segno  # noqa: F401
+        except Exception:
+            self.skipTest('segno not installed in this environment')
+        self.assertIn('Scannez', html)
+        self.assertIn('data:image/svg+xml', html)

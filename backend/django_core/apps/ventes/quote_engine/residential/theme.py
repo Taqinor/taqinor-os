@@ -151,6 +151,42 @@ def join_meta(*parts, sep=" · ") -> str:
     return sep.join(c for c in clean if c)
 
 
+def fiche_slug(designation, marque="") -> str:
+    """Map an equipment line to its fiche-technique page slug on taqinor.ma.
+
+    Keyword-classified on the designation + brand, EXACTLY mirroring the slugs
+    built by docs/WEB_PLAN.md W119–W123 (the /produits/<slug> pages), so a quote
+    link always points at a real datasheet page. Returns '' when no datasheet is
+    known (TAQINOR's own structures/socles/installation/transport/services)."""
+    blob = f"{designation} {marque}".lower()
+    if "panneau" in blob or "panel" in blob:
+        return "jinko-710" if "jinko" in blob else "canadian-solar-710"
+    if "onduleur" in blob or "inverter" in blob:
+        if "hybride" in blob or "hybrid" in blob:
+            return "onduleur-deye-hybride"
+        if "réseau" in blob or "reseau" in blob or "injection" in blob:
+            return "onduleur-huawei-reseau"
+        return "onduleur-huawei-reseau"
+    if "batterie" in blob or "battery" in blob:
+        return "batterie-deye"
+    if "smart meter" in blob or "compteur" in blob:
+        return "smart-meter-huawei"
+    if "dongle" in blob or "wifi" in blob:
+        return "wifi-dongle-huawei"
+    return ""
+
+
+def fiche_href(designation, marque="", produits_base="taqinor.ma/produits") -> str:
+    """Full https URL of a line's fiche-technique page, or '' if none."""
+    slug = fiche_slug(designation, marque)
+    if not slug:
+        return ""
+    base = (produits_base or "taqinor.ma/produits").strip().rstrip("/")
+    if not base.startswith("http"):
+        base = "https://" + base
+    return f"{base}/{slug}"
+
+
 def base_css() -> str:
     """Page frame + design tokens shared by all three pages."""
     return f"""

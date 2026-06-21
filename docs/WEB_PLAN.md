@@ -607,6 +607,88 @@ plumbing + a beautiful client-facing surface.*
 
 ---
 
+### W119–W123 — FICHES TECHNIQUES LIBRARY (host product datasheets on taqinor.ma; founder request 2026-06-21)
+
+*Goal: the equipment in every quote (panels, inverters, batteries, smart meter,
+dongle…) gets a real **fiche technique** that lives on taqinor.ma — so the
+quote PDF/web proposal can link `taqinor.ma/produits/<slug>` and the client
+downloads the datasheet from OUR site, not a manufacturer's. The quote engine
+already links to `taqinor.ma/produits`; these tasks build that destination.*
+
+> **Source datasheets (official manufacturer PDFs — host a copy + cite the
+> source on each page).** Catalogue products map to these public datasheets:
+> - **Panneau Canadian Solar 710W** (TOPBiHiKu7, CS7N-685…715TB-AG) →
+>   `https://static.csisolar.com/wp-content/uploads/2022/12/12090125/CS-Datasheet-TOPBiHiKu7-TOPCon_CS7N-TB-AG_v1.62C3_EN.pdf`
+> - **Panneau Jinko 710W** (Tiger Neo 66HL5-BDV 710–735W) → hub
+>   `https://www.jinkosolar.com/en/site/tigerneo` (datasheet via ENF
+>   `https://www.enfsolar.com/pv/panel-datasheet/crystalline/68315`)
+> - **Onduleurs réseau Huawei 5/10/12kW** (SUN2000-3-10KTL-M1/M0) →
+>   `https://solar.huawei.com/-/media/Solar/attachment/pdf/apac/datasheet/SUN2000-5-10KTL-M0-M1.pdf`
+> - **Onduleur réseau Huawei 100kW** (SUN2000-100KTL) →
+>   `https://solar.huawei.com/-/media/Solar/attachment/pdf/in/datasheet/SUN2000-100KTL-INM0.pdf`
+> - **Onduleurs hybrides Deye 5–12kW** (SUN-5/6/8/10/12K-SG04LP3-EU) →
+>   `https://www.deyeinverter.com/deyeinverter/2024/10/21/datasheet_sun-5-12k-sg04lp3_241021_en.pdf`
+> - **Batterie Deyness/Deye 5–10kWh** (SE-G5.1 Pro LFP) →
+>   `https://deyeess.com/wp-content/uploads_old/2023/08/SE-G5.1-Pro-SE-G5.3.pdf`
+> - **Smart Meter Huawei** (DTSU666-H Smart Power Sensor) →
+>   `https://solar.huawei.com/~/media/Solar/attachment/pdf/es/datasheet/SmartPowerSensor.pdf`
+> - **Wifi Dongle Huawei** (Smart Dongle-WLAN-FE, SDongleA-05, region MEA) →
+>   `https://solar.huawei.com/-/media/Solar/attachment/pdf/mea/datasheet/SmartDongle-WLAN-FE.pdf`
+> - Structures acier/alu, Socles, Tableau AC/DC, Accessoires, Installation,
+>   Transport, Suivi = **TAQINOR's own** components/prestations — no manufacturer
+>   datasheet; author a short in-house spec card (founder supplies copy) or omit.
+> Quote-engine slugs (must match these pages so the PDF links resolve):
+> `canadian-solar-710`, `jinko-710`, `onduleur-huawei-reseau`,
+> `onduleur-deye-hybride`, `batterie-deye`, `smart-meter-huawei`,
+> `wifi-dongle-huawei`.
+
+- [ ] W119 — **Host the datasheet PDFs on taqinor.ma.** Download each official PDF
+  above into `apps/web/public/fiches/<slug>.pdf` (one per slug; panels/inverters/
+  battery/meter/dongle) so they are served from `taqinor.ma/fiches/<slug>.pdf` —
+  no hotlinking a manufacturer URL at runtime. Keep a small
+  `apps/web/src/data/fiches.ts` manifest (slug → {nom, marque, modèle, catégorie,
+  pdf path, source URL, key specs}) as the single source of truth. **Done =** each
+  PDF is reachable under `/fiches/<slug>.pdf`; the manifest lists every catalogue
+  product with a datasheet; vitest asserts every manifest `pdf` file exists.
+  Files: `apps/web/public/fiches/*.pdf`, `apps/web/src/data/fiches.ts`.
+
+- [ ] W120 — **Fiches library hub `/produits`.** A premium, mobile-first public page
+  listing every product from the W119 manifest grouped by catégorie (Panneaux,
+  Onduleurs réseau, Onduleurs hybrides, Batteries, Accessoires), each card showing
+  marque/modèle + key specs + a "Fiche technique (PDF) ›" download and a link to its
+  detail page (W121). Brand-filterable. Mirrors the site's navy/gold + DM Serif/DM
+  Sans language. This IS the destination the quote engine already links to
+  (`taqinor.ma/produits`). **Done =** `/produits` renders the full grid responsively
+  (Lighthouse mobile ≥ 90); each card downloads the right PDF. Files: new
+  `apps/web/src/pages/produits/index.astro` + a card component, reads `fiches.ts`.
+
+- [ ] W121 — **Per-product fiche pages `/produits/<slug>`.** A detail route generated
+  from the W119 manifest (`getStaticPaths`) for each slug: hero (marque/modèle/
+  catégorie), a clean key-spec table, the embedded/downloadable datasheet, the
+  TAQINOR garanties for that family, and a "Demander un devis" CTA. Add JSON-LD
+  `Product` structured data (keep `/faq` the sole FAQPage owner — see W98). **Done =**
+  every slug renders with specs + PDF + valid Product JSON-LD; included in the
+  sitemap; vitest covers one panel + one inverter slug. Files: new
+  `apps/web/src/pages/produits/[slug].astro`, reuse SEO head partial.
+
+- [ ] W122 — **Wire the funnel: link fiches from the web proposal (W116) + nav.** On
+  the client web proposal (W116), make each equipment line link to its
+  `/produits/<slug>` page (match by the same slug map above; unmatched lines stay
+  plain text). Add "Produits / Fiches techniques" to the site nav + footer so the
+  library is discoverable. **Done =** proposal equipment rows deep-link to the right
+  fiche; nav/footer expose `/produits`; vitest asserts the slug map resolves the
+  catalogue's panel/inverter/battery names. Files: `proposition/[token].astro`
+  (W116), nav/footer components, shared slug map in `fiches.ts`.
+
+- [ ] W123 — **Sitemap + SEO for the library.** Ensure `/produits` and every
+  `/produits/<slug>` are in the sitemap (W100), have unique titles/descriptions
+  (W99), and that the PDFs are crawlable but not duplicated as canonical pages.
+  **Done =** sitemap includes the library; per-page head is unique; Vitest SEO
+  invariants (W104) extended to cover `/produits`. Files: sitemap config,
+  `produits/*` heads, SEO tests.
+
+---
+
 ## GATED — needs the founder's decision before building (agent does NOT auto-build)
 
 - **WG1 — Promote a preview to the live site.** Moving any `/preview/*` tool onto the public
