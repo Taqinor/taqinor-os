@@ -14,13 +14,15 @@ from rest_framework.permissions import AllowAny
 from rest_framework.response import Response
 
 from authentication.mixins import TenantMixin
-from authentication.permissions import IsAnyRole
+from authentication.permissions import IsAdminRole, IsAnyRole
 
 from .models import (
-    EventType, Notification, NotificationPreference, PushSubscription,
+    EventType, Notification, NotificationPreference, NotificationRoutingRule,
+    PushSubscription,
 )
 from .serializers import (
-    NotificationPreferenceSerializer, NotificationSerializer,
+    NotificationPreferenceSerializer, NotificationRoutingRuleSerializer,
+    NotificationSerializer,
 )
 from .services import merged_preferences, resolve_vapid_keys
 
@@ -110,6 +112,35 @@ class NotificationPreferenceViewSet(TenantMixin, viewsets.ViewSet):
                 pref.__dict__[field] = bool(data[field])
         pref.save()
         return Response(NotificationPreferenceSerializer(pref).data)
+
+
+class NotificationRoutingRuleViewSet(TenantMixin, viewsets.ModelViewSet):
+    """FG4 — CRUD des règles de routage de notifications (admin uniquement).
+
+    Lecture : tout rôle (l'UI des paramètres de notification est accessible
+    à tous). Écriture : admin seulement (créer/modifier/supprimer les règles).
+    Tout est scopé à la société (TenantMixin). company est posée côté serveur."""
+    queryset = NotificationRoutingRule.objects.all()
+    serializer_class = NotificationRoutingRuleSerializer
+    READ_ACTIONS = ['list', 'retrieve']
+
+    def get_permissions(self):
+        if self.action in self.READ_ACTIONS:
+            return [IsAnyRole()]
+        return [IsAdminRole()]
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        event_type = self.request.query_params.get('event_type')
+        if event_type:
+            qs = qs.filter(event_type=event_type)
+        enabled = self.request.query_params.get('enabled')
+        if enabled in ('0', '1', 'true', 'false'):
+            qs = qs.filter(enabled=enabled in ('1', 'true'))
+        return qs
+
+    def perform_create(self, serializer):
+        serializer.save(company=self.request.user.company)
 
 
 # ─────────────────────────────────────────────────────────────────────────────

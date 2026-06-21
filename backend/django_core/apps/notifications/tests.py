@@ -7,8 +7,8 @@ from rest_framework.test import APIClient
 
 from authentication.models import Company
 
-from .models import EventType, Notification, NotificationPreference
-from .services import merged_preferences, notify
+from .models import EventType, Notification, NotificationPreference, NotificationRoutingRule
+from .services import merged_preferences, notify, notify_many, resolve_recipients
 
 User = get_user_model()
 
@@ -598,3 +598,133 @@ class SweepTaskTests(TestCase):
             Notification.objects.filter(
                 recipient=self.manager,
                 event_type=EventType.SAV_TICKET_BREACHING).count(), 0)
+
+
+class RoutingRuleTests(TestCase):
+    """FG4 — Règles de routage des notifications."""
+
+    def setUp(self):
+        self.company = _make_company('RoutingCo')
+        # Un manager (admin) et un responsable.
+        self.admin = _make_user(self.company, username='admin_r')
+        self.admin.role_legacy = 'admin'
+        self.admin.save(update_fields=['role_legacy'])
+        self.resp = _make_user(self.company, username='resp_r')
+        self.resp.role_legacy = 'responsable'
+        self.resp.save(update_fields=['role_legacy'])
+        self.normal = _make_user(self.company, username='normal_r')
+        # self.normal garde role_legacy='normal' (défaut)
+
+    def test_resolve_recipients_default_returns_managers(self):
+        """Sans règle configurée → admins + responsables (comportement historique)."""
+        recipients = list(resolve_recipients(self.company, EventType.FACTURE_OVERDUE))
+        pks = {u.pk for u in recipients}
+        self.assertIn(self.admin.pk, pks)
+        self.assertIn(self.resp.pk, pks)
+        self.assertNotIn(self.normal.pk, pks)
+
+    def test_resolve_recipients_with_role_rule(self):
+        """Règle ciblant le rôle 'admin' → seuls les admins."""
+        NotificationRoutingRule.objects.create(
+            company=self.company,
+            event_type=EventType.FACTURE_OVERDUE,
+            target_role='admin')
+        recipients = list(resolve_recipients(self.company, EventType.FACTURE_OVERDUE))
+        pks = {u.pk for u in recipients}
+        self.assertIn(self.admin.pk, pks)
+        self.assertNotIn(self.resp.pk, pks)
+        self.assertNotIn(self.normal.pk, pks)
+
+    def test_resolve_recipients_with_user_rule(self):
+        """Règle ciblant un utilisateur précis → uniquement cet utilisateur."""
+        NotificationRoutingRule.objects.create(
+            company=self.company,
+            event_type=EventType.STOCK_LOW,
+            target_user=self.normal)
+        recipients = list(resolve_recipients(self.company, EventType.STOCK_LOW))
+        pks = {u.pk for u in recipients}
+        self.assertIn(self.normal.pk, pks)
+        self.assertNotIn(self.admin.pk, pks)
+
+    def test_disabled_rule_is_ignored(self):
+        """Une règle désactivée n'est pas consultée → retour aux défauts."""
+        NotificationRoutingRule.objects.create(
+            company=self.company,
+            event_type=EventType.CHANTIER_DUE,
+            target_role='admin', enabled=False)
+        recipients = list(resolve_recipients(self.company, EventType.CHANTIER_DUE))
+        # Règle désactivée → comportement par défaut : admins + responsables.
+        pks = {u.pk for u in recipients}
+        self.assertIn(self.admin.pk, pks)
+        self.assertIn(self.resp.pk, pks)
+
+    def test_resolve_recipients_scoped_per_company(self):
+        """Les règles d'une société n'affectent pas une autre."""
+        other = _make_company('OtherRoutingCo')
+        other_admin = _make_user(other, username='other_admin_r')
+        other_admin.role_legacy = 'admin'
+        other_admin.save(update_fields=['role_legacy'])
+        # Règle pour other : cibler uniquement other_admin.
+        NotificationRoutingRule.objects.create(
+            company=other,
+            event_type=EventType.FACTURE_OVERDUE,
+            target_role='admin')
+        # Pour self.company, aucune règle → défaut.
+        recipients = list(resolve_recipients(self.company, EventType.FACTURE_OVERDUE))
+        pks = {u.pk for u in recipients}
+        self.assertIn(self.admin.pk, pks)
+        self.assertNotIn(other_admin.pk, pks)
+
+    def test_notify_many_delivers_to_all_recipients(self):
+        """notify_many() émet une notification vers chaque utilisateur fourni."""
+        recipients = [self.admin, self.resp]
+        created = notify_many(
+            recipients, EventType.STOCK_LOW,
+            'Stock bas', 'Un produit est sous le seuil.',
+            company=self.company)
+        self.assertEqual(len(created), 2)
+        pks_notified = {n.recipient_id for n in created}
+        self.assertIn(self.admin.pk, pks_notified)
+        self.assertIn(self.resp.pk, pks_notified)
+
+    def test_routing_rule_api_crud(self):
+        """L'API CRUD des règles de routage est accessible à l'admin."""
+        api = APIClient()
+        api.force_authenticate(self.admin)
+        # Création.
+        res = api.post(
+            '/api/django/notifications/routing-rules/',
+            {'event_type': EventType.FACTURE_OVERDUE, 'target_role': 'admin'},
+            format='json')
+        self.assertEqual(res.status_code, 201, res.data)
+        rule_id = res.data['id']
+        self.assertEqual(
+            NotificationRoutingRule.objects.get(pk=rule_id).company, self.company)
+        # Liste.
+        res = api.get('/api/django/notifications/routing-rules/')
+        self.assertEqual(res.status_code, 200)
+        results = res.data['results'] if 'results' in res.data else res.data
+        self.assertEqual(len(results), 1)
+        # Suppression.
+        res = api.delete(f'/api/django/notifications/routing-rules/{rule_id}/')
+        self.assertEqual(res.status_code, 204)
+
+    def test_routing_rule_api_normal_user_cannot_write(self):
+        """Un utilisateur normal ne peut pas créer de règle de routage."""
+        api = APIClient()
+        api.force_authenticate(self.normal)
+        res = api.post(
+            '/api/django/notifications/routing-rules/',
+            {'event_type': EventType.FACTURE_OVERDUE, 'target_role': 'admin'},
+            format='json')
+        self.assertEqual(res.status_code, 403)
+
+    def test_routing_rule_requires_role_or_user(self):
+        """Créer une règle sans target_role ni target_user renvoie 400."""
+        api = APIClient()
+        api.force_authenticate(self.admin)
+        res = api.post(
+            '/api/django/notifications/routing-rules/',
+            {'event_type': EventType.FACTURE_OVERDUE},
+            format='json')
+        self.assertEqual(res.status_code, 400)
