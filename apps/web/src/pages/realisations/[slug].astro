@@ -141,12 +141,13 @@ const galleryPhotos = rest;
     <section class="border-y border-white/10 px-4 py-14 sm:py-16">
       <dl class="mx-auto grid max-w-6xl gap-x-6 gap-y-10 sm:grid-cols-2 lg:grid-cols-4" data-stagger>
         <div class="v2-rise" style="--v2-i:0">
-          <dd class="fig lum whitespace-nowrap text-3xl sm:text-4xl" data-tally>{r.kwc}</dd>
+          {/* W211 — whitespace-nowrap retiré (ex. « 21 406 kWh/an » peut déborder à 320 px) */}
+          <dd class="fig lum text-3xl sm:text-4xl" data-tally>{r.kwc}</dd>
           <dt class="tech-label mt-2 text-lune-faint">Puissance installée</dt>
         </div>
         {r.production && (
           <div class="v2-rise" style="--v2-i:1">
-            <dd class="fig lum whitespace-nowrap text-3xl sm:text-4xl" data-tally>{r.production}</dd>
+            <dd class="fig lum text-3xl sm:text-4xl" data-tally>{r.production}</dd>
             <dt class="tech-label mt-2 text-lune-faint">Production mesurée — Deye Cloud</dt>
           </div>
         )}

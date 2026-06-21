@@ -103,19 +103,20 @@ const heroPhoto = inCity[0]?.photos[0] ?? neutralHero;
         </div>
         <dl class="grid grid-cols-2 gap-x-6 gap-y-10 border-l-2 border-brass-400/60 pl-6 sm:pl-10" data-stagger>
           <div class="v2-rise" style="--v2-i:0">
-            <dd class="fig lum whitespace-nowrap text-3xl sm:text-4xl" data-tally>60–90 %</dd>
+            {/* W211 — whitespace-nowrap retiré : peut déborder à 320 px dans grid-cols-2 */}
+            <dd class="fig lum text-3xl sm:text-4xl" data-tally>60–90 %</dd>
             <dt class="tech-label mt-2 text-lune-faint">De la facture couverte</dt>
           </div>
           <div class="v2-rise" style="--v2-i:1">
-            <dd class="fig lum whitespace-nowrap text-3xl sm:text-4xl" data-tally>3–7 ans</dd>
+            <dd class="fig lum text-3xl sm:text-4xl" data-tally>3–7 ans</dd>
             <dt class="tech-label mt-2 text-lune-faint">Retour sur investissement</dt>
           </div>
           <div class="v2-rise" style="--v2-i:2">
-            <dd class="fig lum whitespace-nowrap text-3xl sm:text-4xl" data-tally>25 ans</dd>
+            <dd class="fig lum text-3xl sm:text-4xl" data-tally>25 ans</dd>
             <dt class="tech-label mt-2 text-lune-faint">Garantie de performance</dt>
           </div>
           <div class="v2-rise" style="--v2-i:3">
-            <dd class="fig lum whitespace-nowrap text-3xl sm:text-4xl" data-tally>&lt; 11 kW</dd>
+            <dd class="fig lum text-3xl sm:text-4xl" data-tally>&lt; 11 kW</dd>
             <dt class="tech-label mt-2 text-lune-faint">Simple déclaration loi 82-21</dt>
           </div>
         </dl>

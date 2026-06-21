@@ -178,25 +178,28 @@ const solutionIcons: Record<string, string> = {
     <div class="seam-soft" aria-hidden="true"></div>
     {/* W156 — Bande de confiance : quatre chiffres monumentaux, cohérents */}
     <section class="px-4 py-16 sm:py-20">
+      {/* W211 — whitespace-nowrap retiré des fig-lg de la bande de confiance :
+          à 320 px « Deye Cloud » et « 43,48 kWc » débordaient en portrait.
+          Les chiffres enveloppent naturellement sur les très petits écrans. */}
       <dl class="mx-auto grid max-w-6xl gap-x-6 gap-y-10 sm:grid-cols-2 lg:grid-cols-4" data-stagger>
         <div class="v2-rise" style="--v2-i:0">
           {/* W156 — fig-lg + lum pour cohérence monumental avec les 3 autres */}
-          <dd class="fig fig-lg lum whitespace-nowrap">3</dd>
+          <dd class="fig fig-lg lum">3</dd>
           <dt class="tech-label mt-2 text-lune-faint">Chantiers visitables<span class="sr-only"> — Casablanca, El Jadida, Nouaceur</span></dt>
           <p class="mt-1 text-sm leading-snug text-lune-soft">Installations réelles à voir sur demande — Casablanca, El Jadida, Nouaceur</p>
         </div>
         <div class="v2-rise" style="--v2-i:1">
-          <dd class="fig fig-lg lum whitespace-nowrap" data-tally>43,48 kWc</dd>
+          <dd class="fig fig-lg lum" data-tally>43,48 kWc</dd>
           <dt class="tech-label mt-2 text-lune-faint">Installés</dt>
           <p class="mt-1 text-sm leading-snug text-lune-soft">Casablanca, El Jadida, Nouaceur</p>
         </div>
         <div class="v2-rise" style="--v2-i:2">
-          <dd class="fig fig-lg lum whitespace-nowrap">10+ ans</dd>
+          <dd class="fig fig-lg lum">10+ ans</dd>
           <dt class="tech-label mt-2 text-lune-faint">Docteur-ingénieur</dt>
           <p class="mt-1 text-sm leading-snug text-lune-soft">Expertise R&D — chaque étude validée par le fondateur</p>
         </div>
         <div class="v2-rise" style="--v2-i:3">
-          <dd class="fig fig-lg lum whitespace-nowrap">Deye Cloud</dd>
+          <dd class="fig fig-lg lum">Deye Cloud</dd>
           <dt class="tech-label mt-2 text-lune-faint">Production mesurée</dt>
           <p class="mt-1 text-sm leading-snug text-lune-soft">Monitoring sur chaque installation, accès client inclus</p>
         </div>
@@ -219,19 +222,20 @@ const solutionIcons: Record<string, string> = {
       {/* W162 — Halo brass sous la colonne de chiffres */}
       <dl class="grid grid-cols-2 gap-x-6 gap-y-12 rounded-sm border-l-2 border-brass-400/60 pl-6 sm:pl-10 [background:radial-gradient(ellipse_80%_80%_at_10%_50%,rgb(232_181_74/0.06),transparent_70%)]" data-stagger>
         <div class="v2-rise" style="--v2-i:0">
-          <dd class="fig lum whitespace-nowrap text-3xl sm:text-5xl xl:text-6xl" data-tally>60–90 %</dd>
+          {/* W211 — whitespace-nowrap retiré : à 320 px « 60–90 % » peut déborder dans la col de 2 */}
+          <dd class="fig lum text-3xl sm:text-5xl xl:text-6xl" data-tally>60–90 %</dd>
           <dt class="tech-label mt-2 text-lune-faint">De la facture couverte</dt>
         </div>
         <div class="v2-rise" style="--v2-i:1">
-          <dd class="fig lum whitespace-nowrap text-3xl sm:text-5xl xl:text-6xl" data-tally>3–7 ans</dd>
+          <dd class="fig lum text-3xl sm:text-5xl xl:text-6xl" data-tally>3–7 ans</dd>
           <dt class="tech-label mt-2 text-lune-faint">Retour sur investissement</dt>
         </div>
         <div class="v2-rise" style="--v2-i:2">
-          <dd class="fig lum whitespace-nowrap text-3xl sm:text-5xl xl:text-6xl" data-tally>25 ans</dd>
+          <dd class="fig lum text-3xl sm:text-5xl xl:text-6xl" data-tally>25 ans</dd>
           <dt class="tech-label mt-2 text-lune-faint">Garantie de performance</dt>
         </div>
         <div class="v2-rise" style="--v2-i:3">
-          <dd class="fig lum whitespace-nowrap text-3xl sm:text-5xl xl:text-6xl" data-tally>0 MAD</dd>
+          <dd class="fig lum text-3xl sm:text-5xl xl:text-6xl" data-tally>0 MAD</dd>
           <dt class="tech-label mt-2 text-lune-faint">L'étude et le diagnostic</dt>
         </div>
       </dl>

@@ -112,19 +112,20 @@ const heroPhotoAlt = inCity[0] ? cardAlt(inCity[0]) : '';
         </div>
         <dl class="grid grid-cols-2 gap-x-6 gap-y-10 border-l-2 border-brass-400/60 pl-6 sm:pl-10" data-stagger>
           <div class="v2-rise" style="--v2-i:0">
-            <dd class="fig lum whitespace-nowrap text-3xl sm:text-4xl" data-tally>60–90 %</dd>
+            {/* W211 — whitespace-nowrap removed: can overflow at 320 px in grid-cols-2 */}
+            <dd class="fig lum text-3xl sm:text-4xl" data-tally>60–90 %</dd>
             <dt class="tech-label mt-2 text-lune-faint">Of the bill covered</dt>
           </div>
           <div class="v2-rise" style="--v2-i:1">
-            <dd class="fig lum whitespace-nowrap text-3xl sm:text-4xl" data-tally>3–7 years</dd>
+            <dd class="fig lum text-3xl sm:text-4xl" data-tally>3–7 years</dd>
             <dt class="tech-label mt-2 text-lune-faint">Return on investment</dt>
           </div>
           <div class="v2-rise" style="--v2-i:2">
-            <dd class="fig lum whitespace-nowrap text-3xl sm:text-4xl" data-tally>25 years</dd>
+            <dd class="fig lum text-3xl sm:text-4xl" data-tally>25 years</dd>
             <dt class="tech-label mt-2 text-lune-faint">Performance warranty</dt>
           </div>
           <div class="v2-rise" style="--v2-i:3">
-            <dd class="fig lum whitespace-nowrap text-3xl sm:text-4xl" data-tally>&lt; 11 kW</dd>
+            <dd class="fig lum text-3xl sm:text-4xl" data-tally>&lt; 11 kW</dd>
             <dt class="tech-label mt-2 text-lune-faint">Simple Law 82-21 declaration</dt>
           </div>
         </dl>
