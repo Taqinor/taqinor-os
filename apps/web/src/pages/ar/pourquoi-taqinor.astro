@@ -82,7 +82,7 @@ const piliers = [
             <p class="fig lum text-3xl" dir="ltr">{p.k}</p>
             <h2 class="display mt-2 text-2xl text-white">{p.title}</h2>
             <p class="mt-3 flex-1 text-sm leading-relaxed text-lune-soft">{p.body}</p>
-            <a href={L(p.href)} class="mt-5 inline-block border-b-2 border-brass-400 pb-0.5 text-sm font-bold text-brass-300 transition-colors hover:text-brass-200">{p.link} →</a>
+            <a href={L(p.href)} class="mt-5 inline-block border-b-2 border-brass-400 pb-0.5 text-sm font-bold text-brass-300 transition-colors hover:text-brass-200">{p.link} <span class="inline-block rtl:-scale-x-100">→</span></a>
           </div>
         ))}
       </div>
@@ -100,7 +100,7 @@ const piliers = [
           </p>
           <div class="mt-8 flex flex-wrap gap-3">
             <a href={L('/realisations')} class="inline-block bg-brass-400 px-7 py-3.5 text-base font-bold text-azur-950 transition-colors hover:bg-brass-300">انظر إنجازاتنا</a>
-            <a href={L('/à-propos')} class="inline-block border border-white/40 px-7 py-3.5 text-base font-bold text-white transition-colors hover:border-white hover:bg-white/10">المؤسّس والمنهج →</a>
+            <a href={L('/à-propos')} class="inline-block border border-white/40 px-7 py-3.5 text-base font-bold text-white transition-colors hover:border-white hover:bg-white/10">المؤسّس والمنهج <span class="inline-block rtl:-scale-x-100">→</span></a>
           </div>
         </div>
         <dl class="grid grid-cols-2 gap-x-6 gap-y-10 border-s-2 border-brass-400/60 ps-6 sm:ps-10" data-stagger>

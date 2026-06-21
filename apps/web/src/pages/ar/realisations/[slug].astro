@@ -157,7 +157,7 @@ const articleJsonLd = {
         </div>
         <p class="mt-5 text-sm text-lune-soft">
           علامات من الفئة الأولى مُورَّدة عبر موزّعين رسميين بالمغرب — ضمانات محلية قابلة للتفعيل.
-          <a href={L('/équipement')} class="border-b border-brass-400 pb-0.5 font-semibold text-brass-300 transition-colors hover:text-brass-200">اطّلع على كل العتاد →</a>
+          <a href={L('/équipement')} class="border-b border-brass-400 pb-0.5 font-semibold text-brass-300 transition-colors hover:text-brass-200">اطّلع على كل العتاد <span class="inline-block rtl:-scale-x-100">→</span></a>
         </p>
       </div>
     </section>
@@ -185,14 +185,14 @@ const articleJsonLd = {
       <div class="mx-auto flex max-w-6xl flex-wrap gap-3">
         {cityLink && (
           <a href={L(cityLink.href)} class="border border-white/40 px-5 py-3 text-sm font-bold text-white transition-colors hover:border-white hover:bg-white/10">
-            {cityLink.label} →
+            {cityLink.label} <span class="inline-block rtl:-scale-x-100">→</span>
           </a>
         )}
         <a href={L(segmentHref)} class="border border-white/40 px-5 py-3 text-sm font-bold text-white transition-colors hover:border-white hover:bg-white/10">
-          طاقة شمسية {segmentLabel} →
+          طاقة شمسية {segmentLabel} <span class="inline-block rtl:-scale-x-100">→</span>
         </a>
         <a href={L('/realisations')} class="border border-white/40 px-5 py-3 text-sm font-bold text-white transition-colors hover:border-white hover:bg-white/10">
-          كل إنجازاتنا →
+          كل إنجازاتنا <span class="inline-block rtl:-scale-x-100">→</span>
         </a>
       </div>
     </section>
