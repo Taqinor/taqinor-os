@@ -73,6 +73,7 @@ import {
   type PitchedMarginAxis,
 } from '../lib/estimatorBrainV8';
 import { isSimplePolygon, roofAreaLabel, type LngLat } from '../lib/roof';
+import { inferZoneFacingAmong } from '../lib/roofAdjacency';
 import { obstacleRing, type Obstacle } from '../lib/obstacles';
 import { areaLabel } from '../lib/roofAreas';
 import { buildSatelliteStyle } from '../lib/roofConfig';
@@ -193,6 +194,7 @@ export function initRoofToolPro8(opts: InitOptions): void {
   const pitchRangeEl = $<HTMLInputElement>('rp9-pitch-range');
   const pitchValueEl = $('rp9-pitch-value');
   const pitchedNoteEl = $('rp9-pitched-note');
+  const facingNoteEl = $('rp9-facing-note'); // W106 — note « face auto-orientée / réglée à la main »
   // W50 — Fenêtre « Production estimée » (Année / Mois / Jour). Tous facultatifs :
   // l'outil fonctionne sans elle (repli gracieux).
   const prodWindowEl = $('rp9-prod-window');
@@ -305,6 +307,13 @@ export function initRoofToolPro8(opts: InitOptions): void {
   let roofType: RoofType = 'flat';
   let pitchDeg = 22;
   let facingAzimuthDeg = 180;
+  // W106 — la face d'un pan a-t-elle été FIXÉE À LA MAIN (boutons « Face du pan »
+  // ou azimut fin) ? Si oui, l'inférence d'adjacence à l'ajout d'une zone NE
+  // l'écrase JAMAIS (le choix manuel gagne, par zone, persisté dans l'enregistrement).
+  let facingManual = false;
+  // W106 — la face courante vient-elle d'être AUTO-déduite d'un pan voisin (vs réglée
+  // à la main / par défaut sud) ? Pilote la note « face auto-orientée » sous les contrôles.
+  let facingAutoInferred = false;
   let pitchedRec: PitchedRecommendation | null = null;
   const pinned = new Set<'family' | 'tilt' | 'orient' | 'azimuth' | 'margin'>();
 
@@ -447,6 +456,7 @@ export function initRoofToolPro8(opts: InitOptions): void {
       roofType: 'flat',
       pitchDeg: 22,
       facingAzimuthDeg: 180,
+      facingManual: false,
       neededPanels: 0,
       neededAuto: true,
       result: null,
@@ -582,6 +592,12 @@ export function initRoofToolPro8(opts: InitOptions): void {
     },
     set facingAzimuthDeg(v) {
       facingAzimuthDeg = v;
+    },
+    get facingManual() {
+      return facingManual;
+    },
+    set facingManual(v) {
+      facingManual = v;
     },
     get neededPanels() {
       return neededPanels;
@@ -1249,6 +1265,7 @@ export function initRoofToolPro8(opts: InitOptions): void {
     // en mode plat. Le tableau comparatif est repeuplé selon le mode (plat ou pente).
     if (optimumCard && t !== 'flat') optimumCard.hidden = true;
     syncRoofTypeChips();
+    syncFacingNote(); // W106 — la note de face apparaît/disparaît avec le mode pente
     if (optimumNoteEl) {
       optimumNoteEl.textContent = t === 'pitched'
         ? 'Optimum vivant (pente) : pose et marge calées au mieux ; inclinaison et azimut imposés par le toit.'
@@ -1329,6 +1346,28 @@ export function initRoofToolPro8(opts: InitOptions): void {
   }
 
   // — Fermeture du tracé —
+  /** W106 — Sur un toit EN PENTE, déduit la face (`facingAzimuthDeg`) du pan qu'on vient
+   *  de fermer à partir des AUTRES zones déjà tracées (faîtière commune) plutôt que de
+   *  retomber sur le sud (180°). Pignon → face ~opposée à la faîtière partagée ; mono-pente
+   *  → copie la face du voisin. N'agit QUE si : toit en pente, override manuel ABSENT, une
+   *  adjacence est trouvée (`connected`) avec une confiance raisonnable. Sinon laisse
+   *  180°/le choix utilisateur. Lit la lib PURE roofAdjacency ; n'écrit rien d'autre que
+   *  `facingAzimuthDeg` + les drapeaux d'état (manual/auto). */
+  function autoInferFacing() {
+    facingAutoInferred = false;
+    if (roofType !== 'pitched' || facingManual || vertices.length < 3) return;
+    const ring: LngLat[] = [...vertices];
+    const others = areas.filter((a) => a.id !== activeAreaId && a.vertices.length >= 3);
+    if (others.length === 0) return;
+    const neighbours = others.map((a) => [...a.vertices] as LngLat[]);
+    // Un voisin n'apporte sa face connue à la mono-pente que s'il est lui-même en pente.
+    const neighbourFacings = others.map((a) => (a.roofType === 'pitched' ? a.facingAzimuthDeg : undefined));
+    const res = inferZoneFacingAmong(ring, neighbours, neighbourFacings);
+    if (!res.connected || res.confidence < 0.2) return;
+    facingAzimuthDeg = res.facingAzimuthDeg;
+    facingAutoInferred = true;
+  }
+
   function close() {
     if (closed || vertices.length < 3) return;
     // W76 — refuse de fermer un contour qui se croise (nœud papillon) : l'aire géodésique
@@ -1364,6 +1403,10 @@ export function initRoofToolPro8(opts: InitOptions): void {
     if (configPanel) configPanel.hidden = false;
     go3DView();
     syncRoofTypeChips();
+    // W106 — pan en pente adjacent à un autre : auto-oriente sa face vers la faîtière
+    // commune (sauf override manuel). Les puces « Face du pan » reflètent la valeur déduite.
+    autoInferFacing();
+    syncFacingChips();
     recalc();
   }
 
@@ -1404,6 +1447,11 @@ export function initRoofToolPro8(opts: InitOptions): void {
     if (needNoteEl) needNoteEl.textContent = '';
     useRecommended = true;
     sel = { family: 'south', tilt: 'reco', orient: 'auto', azimuth: 'south', margin: 'keep' };
+    // W106 — nouveau tracé : l'override manuel de face repart à zéro pour que la nouvelle
+    // zone puisse s'auto-orienter vers une faîtière voisine à la fermeture.
+    facingManual = false;
+    facingAutoInferred = false;
+    syncFacingNote();
     srcOf('rp9-line')?.setData(empty as never);
     srcOf('rp9-pts')?.setData(empty as never);
     clearPreview();
@@ -1481,6 +1529,8 @@ export function initRoofToolPro8(opts: InitOptions): void {
     roofType = a.roofType;
     pitchDeg = a.pitchDeg;
     facingAzimuthDeg = a.facingAzimuthDeg;
+    facingManual = a.facingManual ?? false; // W106 — restaure l'override manuel par zone
+    facingAutoInferred = false; // note d'inférence repart propre à la sélection de zone
     neededPanels = a.neededPanels;
     neededAuto = a.neededAuto;
     closed = a.vertices.length >= 3;
@@ -2025,16 +2075,33 @@ export function initRoofToolPro8(opts: InitOptions): void {
       b.addEventListener('click', () => setRoofType(b.dataset.rooftype as RoofType));
     });
   }
-  const syncPitchChips = () => {
+  function syncPitchChips() {
     document.querySelectorAll<HTMLButtonElement>('[data-pitch]').forEach((b) => {
       b.setAttribute('aria-pressed', String(Number(b.dataset.pitch) === Math.round(pitchDeg)));
     });
-  };
-  const syncFacingChips = () => {
+  }
+  function syncFacingChips() {
     document.querySelectorAll<HTMLButtonElement>('[data-facing]').forEach((b) => {
       b.setAttribute('aria-pressed', String(Number(b.dataset.facing) === Math.round(facingAzimuthDeg)));
     });
-  };
+    syncFacingNote();
+  }
+  /** W106 — note honnête sous « Face du pan » : auto-orientée vers une faîtière voisine,
+   *  réglée à la main, ou défaut (sud / pan isolé). Vide en mode plat. */
+  function syncFacingNote() {
+    if (!facingNoteEl) return;
+    if (roofType !== 'pitched') {
+      facingNoteEl.textContent = '';
+      return;
+    }
+    if (facingManual) {
+      facingNoteEl.textContent = 'Face réglée à la main (votre choix est tenu pour cette zone).';
+    } else if (facingAutoInferred) {
+      facingNoteEl.textContent = 'Face auto-orientée vers la faîtière commune avec une zone voisine — cliquez « Face du pan » pour la corriger.';
+    } else {
+      facingNoteEl.textContent = '';
+    }
+  }
   document.querySelectorAll<HTMLButtonElement>('[data-pitch]').forEach((b) => {
     b.addEventListener('click', () => {
       pitchDeg = Number(b.dataset.pitch);
@@ -2055,6 +2122,12 @@ export function initRoofToolPro8(opts: InitOptions): void {
   document.querySelectorAll<HTMLButtonElement>('[data-facing]').forEach((b) => {
     b.addEventListener('click', () => {
       facingAzimuthDeg = Number(b.dataset.facing);
+      // W106 — choix manuel : il GAGNE et est PER-ZONE (persisté via snapshotActiveAreaGeometry) ;
+      // l'auto-inférence d'adjacence ne l'écrasera plus pour cette zone.
+      facingManual = true;
+      facingAutoInferred = false;
+      const a = activeArea();
+      if (a) a.facingManual = true;
       syncFacingChips();
       if (roofType === 'pitched' && closed) pitchedRecompute();
     });

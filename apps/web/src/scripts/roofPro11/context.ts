@@ -122,6 +122,8 @@ export interface Ctx {
   roofType: RoofType;
   pitchDeg: number;
   facingAzimuthDeg: number;
+  /** W106 — la face du pan actif a-t-elle été fixée À LA MAIN (override par zone) ? */
+  facingManual: boolean;
 
   // — Besoin « panneaux nécessaires » de la zone active (mutable) —
   neededPanels: number;

@@ -361,6 +361,9 @@ const chipClass =
                   <button type="button" data-facing="90" class={chipClass} aria-pressed="false">Est</button>
                   <button type="button" data-facing="270" class={chipClass} aria-pressed="false">Ouest</button>
                 </div>
+                <!-- W106 — note : la face d'un pan adjacent à une autre zone est AUTO-orientée
+                     vers la faîtière commune ; un clic « Face du pan » la corrige (par zone). -->
+                <p id="rp9-facing-note" class="min-h-[1rem] text-xs leading-relaxed text-lune-faint" aria-live="polite"></p>
                 <p class="border border-white/10 bg-nuit-900/40 p-3 text-xs leading-relaxed text-lune-faint">
                   Pose affleurante (panneaux à plat sur les tuiles, sans rangées espacées).
                   <span class="text-lune-soft">Inclinaison = pente du toit · Azimut = face du pan</span>
