@@ -121,6 +121,17 @@ repo yet, the rule still applies to any future integration.
   Caddy block). `taqinor-web.taqinor.workers.dev` 301-redirects to
   `https://taqinor.ma` (wrapper in `apps/web/worker/`, installed at build by
   the `workersDevRedirect` hook in `apps/web/astro.config.mjs`).
+- **ERP backend/frontend deploy — `scripts/deploy-prod.ps1` (NOT auto on merge).**
+  Unlike the website, the ERP itself (Django + React on the Hetzner prod server,
+  `api.taqinor.ma`) does **not** auto-deploy when `main` merges — a merge alone
+  changes nothing the user sees in the ERP. Bring `main` live by running
+  `powershell -File scripts/deploy-prod.ps1` (SSHes in with
+  `~/.ssh/taqinor_hetzner`, `git reset --hard origin/main`, rebuilds the compose
+  images, runs migrations + `init_roles`, restarts nginx, reloads Caddy, warms the
+  PDF engine). **Claude SHOULD run this when asked to deploy, or after a merge that
+  needs to reach the ERP** — it is the canonical ERP deploy and is not "the
+  founder's job." (Only the public website auto-deploys, via Cloudflare; never run
+  `wrangler` for that.)
 - **Public contact form is PARKED (off by default).** The landing-page contact
   form is disabled: the `apps/contact` endpoint (`/api/django/contact/`) returns
   404 and sends no email when off, and the landing CTAs route to `/login`
@@ -334,7 +345,9 @@ Anything typed after the command is extra detail for that run.
 - When the run stops, **fold every worktree branch into one `dev` branch**, get the
   four required CI checks green over the whole batch, then self-merge `dev` → `main`
   exactly once (a single merge commit, no per-agent PR, no per-task merge). This
-  merge auto-deploys to api.taqinor.ma; never run a deploy command.
+  merge auto-deploys only the **website** (Cloudflare). The ERP backend does NOT
+  auto-deploy — when a run needs to reach the live ERP, deploy it with
+  `scripts/deploy-prod.ps1` (see Repo facts); never run `wrangler` for the website.
 - **Sync-safe single merge — OS and web runs may run at the same time on this one
   `main`.** The two commands own different folders so their code never collides,
   but both land on the same `main` and both may touch shared files (`CLAUDE.md`,
