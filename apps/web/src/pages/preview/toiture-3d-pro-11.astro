@@ -590,6 +590,12 @@ const chipClass =
           </div>
         </div>
 
+        <!-- Diagnostic « une page » (pro-11) : contact SIMPLE juste sous le bloc
+             résultat/CTA — le visiteur ne tape que Nom/Téléphone/Adresse, le reste
+             (facture/toit/surface/orientation/kWc) est pré-rempli par le simulateur.
+             `#rp9-cta` continue de défiler vers `#simulateur` (id de ce formulaire). -->
+        <DiagnosticFormEnriched heading="Recevez votre étude détaillée" singleStep={true} />
+
         <!-- ZONES — « Plusieurs zones de panneaux ». Chaque zone est dimensionnée par
              l'optimiseur existant (best-fit) puis ajustable au panneau près ; le total
              SOMME panneaux / kWc / production / économies sur TOUTES les zones. La 3D et
@@ -935,8 +941,6 @@ const chipClass =
         </p>
       </div>
     </section>
-
-    <DiagnosticFormEnriched heading="Recevez votre étude détaillée" />
   </div>
 </Layout>
 

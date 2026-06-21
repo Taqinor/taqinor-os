@@ -19,8 +19,16 @@ import { SUPPLY_TYPES, ORIENTATIONS } from '../lib/enrichment';
 
 interface Props {
   heading?: string;
+  /**
+   * Mode « une page » (opt-in, pro-11) : tous les champs sur une seule page, sans
+   * pagination 3 étapes (indicateur de progression + boutons Précédent/Suivant
+   * masqués, bouton d'envoi toujours visible). ADDITIF : absent/false reproduit
+   * EXACTEMENT le comportement actuel (wizard 3 étapes), payload + endpoint
+   * inchangés. Le simulateur pré-remplit alors facture/toit/surface/orientation/kWc.
+   */
+  singleStep?: boolean;
 }
-const { heading = 'Diagnostic solaire — 60 secondes' } = Astro.props;
+const { heading = 'Diagnostic solaire — 60 secondes', singleStep = false } = Astro.props;
 
 // Aide à la saisie : grandes villes/communes — la saisie libre reste acceptée
 const VILLES = [
@@ -53,7 +61,7 @@ const inputClass =
       <p id="diag-progress" class="tech-label mt-2 text-encre-faint" aria-live="polite">Étape 1 sur 3</p>
     </div>
 
-    <form id="lead-form" class="p-6 sm:p-8" novalidate>
+    <form id="lead-form" class="p-6 sm:p-8" novalidate data-single-step={singleStep ? 'true' : undefined}>
       <!-- Étape 1 — la question de diagnostic, zéro donnée personnelle -->
       <fieldset data-step="1" class="flex flex-col gap-4 border-0 p-0">
         <legend class="display mb-1 text-lg">Votre étude commence ici</legend>
@@ -77,7 +85,7 @@ const inputClass =
       <fieldset data-step="2" class="hidden flex-col gap-4 border-0 p-0">
         <legend class="display mb-1 text-lg">Votre commune</legend>
         <div>
-          <label for="lf-city" class="mb-1 block text-sm font-semibold">Ville / commune *</label>
+          <label for="lf-city" class="mb-1 block text-sm font-semibold">{singleStep ? 'Adresse / ville *' : 'Ville / commune *'}</label>
           <input id="lf-city" name="city" required autocomplete="address-level2" list="lf-villes" class={inputClass} />
           <datalist id="lf-villes">
             {VILLES.map((v) => <option value={v} />)}
@@ -243,6 +251,11 @@ const inputClass =
     }
   }
 
+  // Mode « une page » (opt-in, pro-11) : tous les champs visibles, sans wizard.
+  // Le simulateur pré-remplit facture/toit/surface/orientation/kWc — le visiteur ne
+  // tape que Nom/Téléphone/Adresse. Absent ailleurs → wizard 3 étapes inchangé.
+  const singleStep = form?.dataset.singleStep === 'true';
+
   // --- Progression 3 étapes (état partiel = abandon silencieux, rien n'est envoyé) ---
   let step: 1 | 2 | 3 = 1;
 
@@ -281,31 +294,50 @@ const inputClass =
     }
   }
 
-  nextBtn.addEventListener('click', () => {
-    const s = readState();
-    const check = validateStep(step as 1 | 2, s);
-    if (!check.ok) {
-      errEl.textContent = String(Object.values(check.errors)[0]);
-      errEl.classList.remove('hidden');
-      return;
+  // Mode « une page » : montre TOUS les fieldsets, masque l'indicateur de progression
+  // et les boutons Précédent/Suivant, force le bouton d'envoi visible — et n'arme PAS
+  // le wizard. Le gestionnaire de soumission reste rigoureusement identique.
+  function renderSingleStep() {
+    for (const fs of form!.querySelectorAll<HTMLFieldSetElement>('fieldset[data-step]')) {
+      fs.classList.remove('hidden');
+      fs.classList.add('flex');
     }
-    step = nextStep(step, s);
-    renderStep(true);
-  });
+    progressEl.classList.add('hidden');
+    document.querySelectorAll<HTMLElement>('[data-seg]').forEach((seg) => seg.classList.add('hidden'));
+    nextBtn.classList.add('hidden');
+    backBtn.classList.add('hidden');
+    submitBtn.classList.remove('hidden');
+    errEl.classList.add('hidden');
+  }
 
-  backBtn.addEventListener('click', () => {
-    if (step > 1) step = (step - 1) as 1 | 2;
-    renderStep(true);
-  });
+  if (!singleStep) {
+    nextBtn.addEventListener('click', () => {
+      const s = readState();
+      const check = validateStep(step as 1 | 2, s);
+      if (!check.ok) {
+        errEl.textContent = String(Object.values(check.errors)[0]);
+        errEl.classList.remove('hidden');
+        return;
+      }
+      step = nextStep(step, s);
+      renderStep(true);
+    });
 
-  // Signal préliminaire en direct à l'étape 2
+    backBtn.addEventListener('click', () => {
+      if (step > 1) step = (step - 1) as 1 | 2;
+      renderStep(true);
+    });
+  }
+
+  // Signal préliminaire en direct (étape 2 du wizard, ou champ adresse en une page)
   document.getElementById('lf-city')?.addEventListener('input', (e) => {
     const signal = sunshineSignal((e.target as HTMLInputElement).value);
     sunEl.textContent = signal;
     sunEl.classList.toggle('hidden', !signal);
   });
 
-  renderStep();
+  if (singleStep) renderSingleStep();
+  else renderStep();
 
   // --- Soumission : miroir de /api/simulate + champs FACULTATIFS ride-along.
   //     Les champs facultatifs ne sont ajoutés au payload que s'ils sont
