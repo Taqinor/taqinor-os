@@ -1,6 +1,6 @@
 import { useSelector, useDispatch } from 'react-redux'
 import { useLocation, useNavigate } from 'react-router-dom'
-import { Menu, Search, LogOut, User as UserIcon, Settings } from 'lucide-react'
+import { Menu, Search, LogOut, User as UserIcon, Settings, Zap } from 'lucide-react'
 import {
   Avatar, AvatarFallback, initials,
   DropdownMenu, DropdownMenuTrigger, DropdownMenuContent,
@@ -47,6 +47,14 @@ export default function Header({ onMenu }) {
                 aria-label="Ouvrir le menu">
           <Menu size={22} aria-hidden="true" />
         </button>
+        {/* I136 — repère de marque cliquable : pastille « éclair » qui ramène au
+            tableau de bord (affordance d'accueil cohérente avec la sidebar). */}
+        <button type="button" className="header-brand" onClick={() => navigate('/dashboard')}
+                aria-label="Accueil — Taqinor" title="Accueil">
+          <span className="header-brand-bolt" aria-hidden="true">
+            <Zap size={14} strokeWidth={2.4} />
+          </span>
+        </button>
         <div className="header-heading">
           <Breadcrumbs pathname={location.pathname} />
           {/* Titre de page en élément non-heading : évite la collision de rôle
@@ -64,7 +72,7 @@ export default function Header({ onMenu }) {
         <button type="button" className="header-cmdk" onClick={fireCommandPalette}
                 aria-label="Recherche et commandes (⌘K)" title="Recherche et commandes (⌘K)">
           <Search size={16} aria-hidden="true" />
-          <span className="header-cmdk-kbd">⌘K</span>
+          <kbd className="header-cmdk-kbd">⌘K</kbd>
         </button>
 
         <div className="header-user">

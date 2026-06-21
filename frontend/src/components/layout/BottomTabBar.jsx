@@ -13,10 +13,16 @@ const TABS = [
   { to: '/activites',     label: 'Activités',  Icon: CalendarClock },
 ]
 
+// M156 — Plafond DUR de 5 onglets atteignables au pouce : au plus 4 raccourcis
+// directs + l'onglet « Plus » (qui ouvre tout le menu). Au-delà, le 5e raccourci
+// serait hors zone de pouce confortable et écraserait « Plus ».
+const MAX_DIRECT_TABS = 4
+const PRIMARY_TABS = TABS.slice(0, MAX_DIRECT_TABS)
+
 export default function BottomTabBar({ onMore }) {
   return (
     <nav className="bottom-tabbar" aria-label="Navigation principale">
-      {TABS.map((tab) => (
+      {PRIMARY_TABS.map((tab) => (
         <NavLink
           key={tab.to}
           to={tab.to}
