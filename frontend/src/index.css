@@ -71,6 +71,47 @@ textarea:focus-visible,
 }
 
 /* ============================================================================
+   M155 — Passe tactile + zones sûres
+   ----------------------------------------------------------------------------
+   • On supprime le flash bleu/gris du tap iOS/Android sur TOUT élément
+     interactif (`-webkit-tap-highlight-color: transparent`) : le retour visuel
+     vient d'un état `:active` propre, pas du surlignage natif.
+   • Un état `:active` discret (légère mise à l'échelle) remplace ce flash, en
+     n'animant que `transform` (cheap, jamais de reflow). Respecte reduced-motion
+     via le catch-all plus haut.
+   • Sur écrans TACTILES (pointer: coarse) uniquement — donc zéro régression
+     bureau — les contrôles porteurs d'action atteignent une cible ≥ 44 px et les
+     champs un texte ≥ 16 px (pas de zoom auto iOS). La nav basse et les actions
+     collantes reçoivent les insets de zone sûre.
+   ========================================================================== */
+a, button, [role="button"], input, select, textarea, label, summary {
+  -webkit-tap-highlight-color: transparent;
+}
+button:active, [role="button"]:active, a.btn:active,
+.btn:active, .btn-sm:active {
+  transform: scale(0.985);
+}
+
+@media (pointer: coarse) {
+  /* Cibles tactiles confortables : ≥ 44 px de haut sur tout ce qui agit. */
+  button, [role="button"], .btn, .btn-sm,
+  .form-select, .form-control, select, input[type="checkbox"],
+  input[type="radio"], a.btn {
+    min-height: 44px;
+  }
+  /* Champs de saisie : ≥ 16 px pour ne jamais déclencher le zoom auto iOS. */
+  input, select, textarea, .form-control, .form-select { font-size: 16px; }
+
+  /* Zones sûres : les barres d'actions collantes dégagent l'inset bas
+     (indicateur d'accueil iOS). La nav basse (.bottom-tabbar) gère déjà son
+     propre inset dans la media query mobile — on ne la redéclare pas ici pour
+     garder sa règle de base (display:none bureau) en tête de fichier. */
+  .sticky-actions, .page-header-actions[data-sticky] {
+    padding-bottom: max(12px, env(safe-area-inset-bottom));
+  }
+}
+
+/* ============================================================================
    N64 — Redimensionnement du texte à 200 % & orientation
    ----------------------------------------------------------------------------
    Durcissement conservateur (CSS) : les contrôles porteurs de texte utilisent
