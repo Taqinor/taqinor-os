@@ -33,11 +33,32 @@ def _disp(url: str) -> str:
     return url
 
 
+def _qr_data_uri(url: str, dark: str) -> str:
+    """An SVG data-URI QR code for `url` (scan-to-sign). Uses `segno` (pure
+    Python, no native deps); returns '' if segno isn't installed so the proposal
+    still renders — the textual 'Signez en ligne' link is always there too."""
+    target = _link(url)
+    if not target or target == "#":
+        return ""
+    try:
+        import segno
+    except Exception:
+        return ""
+    try:
+        return segno.make(target, error="m").svg_data_uri(
+            dark=dark, light=None, scale=10, border=0)
+    except Exception:
+        return ""
+
+
 def build(ctx) -> str:
+    from . import theme
+
     d = ctx["d"]
     C = ctx["C"]
 
-    client_full = d.get("client_full") or d.get("client_name") or "Le client"
+    client_full = (theme.titlecase_name(
+        d.get("client_full") or d.get("client_name")) or "Le client")
     validity_days = d.get("validity_days", 30)
     site_url = d.get("site_url", "taqinor.ma")
     links = d.get("links", {}) or {}
@@ -125,6 +146,12 @@ def build(ctx) -> str:
         f'<div class="p3-step-s">{s}</div></div>'
         for n, t, s in steps
     )
+
+    # Scan-to-sign QR (degrades to the text link if segno is unavailable).
+    qr_uri = _qr_data_uri(l_sign, C["navy"])
+    qr_html = (
+        f'<div class="p3-cta-qr"><img src="{qr_uri}" alt="QR — signer en ligne">'
+        f'<span>Scannez<br>pour signer</span></div>' if qr_uri else "")
 
     return f"""
 <style>
@@ -215,14 +242,21 @@ def build(ctx) -> str:
 
 /* CTA */
 .p3-cta {{ margin-top:14px; background:{C['gold']}; border-radius:11px;
-  padding:13px 18px; display:flex; align-items:center;
+  padding:13px 18px; display:flex; align-items:center; gap:18px;
   justify-content:space-between; }}
-.p3-cta-t {{ color:{C['navy']}; font-size:10.5pt; font-weight:700; }}
+.p3-cta-l {{ flex:1 1 auto; min-width:0; }}
+.p3-cta-t {{ color:{C['navy']}; font-size:11pt; font-weight:700; }}
 .p3-cta-s {{ color:{C['navy']}; font-size:8pt; opacity:.78; margin-top:1px; }}
-.p3-cta-btn {{ background:{C['navy']}; color:#fff; font-size:9.5pt;
-  font-weight:700; padding:8px 16px; border-radius:8px; white-space:nowrap;
-  text-decoration:none; }}
+.p3-cta-btn {{ display:inline-block; margin-top:9px; background:{C['navy']};
+  color:#fff; font-size:9.5pt; font-weight:700; padding:8px 16px;
+  border-radius:8px; white-space:nowrap; text-decoration:none; }}
 .p3-cta-btn span {{ color:{C['gold']}; }}
+.p3-cta-qr {{ flex:0 0 auto; display:flex; align-items:center; gap:9px;
+  padding-left:16px; border-left:1.5px solid rgba(26,43,74,.22); }}
+.p3-cta-qr img {{ width:18mm; height:18mm; display:block; background:#fff;
+  border-radius:7px; padding:4px; }}
+.p3-cta-qr span {{ font-size:8.6pt; font-weight:700; color:{C['navy']};
+  line-height:1.15; }}
 </style>
 
 <div class="p3-wrap">
@@ -276,11 +310,12 @@ def build(ctx) -> str:
   </div>
 
   <div class="p3-cta">
-    <div>
+    <div class="p3-cta-l">
       <div class="p3-cta-t">Prêt à passer au solaire ?</div>
       <div class="p3-cta-s">Validez votre devis en quelques clics, sans vous déplacer.</div>
+      <a class="p3-cta-btn" href="{_link(l_sign)}">Signez en ligne <span>&rarr;</span> {_disp(l_sign)}</a>
     </div>
-    <a class="p3-cta-btn" href="{_link(l_sign)}">Signez en ligne <span>&rarr;</span> {_disp(l_sign)}</a>
+    {qr_html}
   </div>
 </div>
 """
