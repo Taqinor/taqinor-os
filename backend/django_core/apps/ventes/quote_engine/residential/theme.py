@@ -72,10 +72,19 @@ def logo_color_b64() -> str:
 _RESID_ASSETS = Path(__file__).resolve().parent / "assets"
 
 
-def hero_image_b64(name: str = "hero.jpg") -> str:
-    """Base64 JPEG of the page-1 hero photo (real installation). Swap the file
-    at quote_engine/residential/assets/hero.jpg. Empty string -> flat navy."""
-    p = _RESID_ASSETS / name
+def hero_image_b64(kwc=None, mode: str = "residentiel") -> str:
+    """Base64 JPEG of the page-1 hero photo (real installation), chosen by
+    NEAREST power (kWc) from the shared installation-photo library
+    (quote_engine/assets/installations/) instead of a single fixed image. Falls
+    back to this package's bundled hero.jpg, then "" (flat navy)."""
+    try:
+        from .. import installations          # Django: quote_engine.installations
+    except ImportError:                        # standalone dev harness
+        import installations
+    b = installations.pick_b64(kwc, mode)
+    if b:
+        return b
+    p = _RESID_ASSETS / "hero.jpg"
     return base64.b64encode(p.read_bytes()).decode() if p.exists() else ""
 
 

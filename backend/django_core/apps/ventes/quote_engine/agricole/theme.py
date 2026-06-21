@@ -83,8 +83,18 @@ def logo_color_b64() -> str:
 _AGRI_ASSETS = Path(__file__).resolve().parent / "assets"
 
 
-def hero_image_b64(name: str = "hero.jpg") -> str:
-    p = _AGRI_ASSETS / name
+def hero_image_b64(kwc=None, mode="agricole") -> str:
+    """Hero photo for the cover: nearest-power installation photo from the shared
+    library (agricole falls back to residential/industriel of similar kWc), else
+    this package's own bundled hero.jpg, else "" (flat navy)."""
+    try:
+        from .. import installations          # Django: quote_engine.installations
+    except ImportError:                        # standalone dev harness
+        import installations
+    b = installations.pick_b64(kwc, mode)
+    if b:
+        return b
+    p = _AGRI_ASSETS / "hero.jpg"
     return base64.b64encode(p.read_bytes()).decode() if p.exists() else ""
 
 

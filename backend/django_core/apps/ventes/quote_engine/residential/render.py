@@ -18,7 +18,7 @@ def build_ctx(data: dict) -> dict:
                   "sans": theme.FONT_SANS},
         "logo_dark": theme.logo_dark_b64(),
         "logo_color": theme.logo_color_b64(),
-        "hero_img": theme.hero_image_b64(),
+        "hero_img": theme.hero_image_b64(data.get("puissance_kwc"), "residentiel"),
         "charts": charts_mod.build_all(data),
     }
 

@@ -110,7 +110,8 @@ def build(ctx) -> str:
   background:radial-gradient(ellipse at 75% 18%,rgba(245,166,35,0.34) 0%,transparent 64%);}}
 .a1-hero-top{{display:flex;align-items:flex-start;justify-content:space-between;
   position:relative;z-index:1;}}
-.a1-logo{{height:9mm;width:auto;object-fit:contain;display:block;}}
+.a1-logo{{height:15mm;width:auto;object-fit:contain;display:block;
+  filter:drop-shadow(0 1px 4px rgba(0,0,0,.35));}}
 .a1-meta{{text-align:right;color:#fff;text-shadow:0 1px 4px rgba(0,0,0,.45);}}
 .a1-meta .l{{font-size:6.5pt;letter-spacing:1.5px;text-transform:uppercase;color:{muted_2};}}
 .a1-meta .v{{font-size:11.5pt;font-weight:700;color:#fff;margin-top:1px;}}

@@ -142,6 +142,28 @@ class TestAgricoleRender(SimpleTestCase):
             self.assertIn("a1-root", self._html(key))
 
 
+class TestInstallationPhotoSelector(SimpleTestCase):
+    def test_nearest_kwc_same_mode_wins(self):
+        from apps.ventes.quote_engine import installations as inst
+        near = inst._score({"mode": "residentiel", "kwc": 5}, 6, "residentiel")
+        far = inst._score({"mode": "residentiel", "kwc": 15}, 6, "residentiel")
+        self.assertLess(near, far)
+
+    def test_agricole_prefers_real_photo_over_universal(self):
+        from apps.ventes.quote_engine import installations as inst
+        resid = inst._score({"mode": "residentiel", "kwc": 6}, 6, "agricole")
+        univ = inst._score({"mode": None, "kwc": None}, 6, "agricole")
+        self.assertLess(resid, univ)
+
+    def test_seed_photo_available(self):
+        from apps.ventes.quote_engine import installations as inst
+        self.assertTrue(inst.pick_b64(7.1, "agricole"))   # default.jpg seed
+
+    def test_cover_embeds_hero_photo(self):
+        html = render.build_html(renderer._augment(sample_data.build("agrumes")))
+        self.assertIn("data:image/jpeg;base64,", html)    # installation photo hero
+
+
 @tag("weasyprint")
 class TestAgricolePageCount(SimpleTestCase):
     """Real PDF render — exactly 4 A4 pages (WeasyPrint, CI/Docker)."""
