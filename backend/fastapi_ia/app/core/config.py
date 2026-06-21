@@ -50,6 +50,23 @@ REDIS_CHAT_URL = f"redis://{_REDIS_HOST}:{_REDIS_PORT}/2"
 CHAT_HISTORY_TTL = 86400   # 24h en secondes
 CHAT_HISTORY_MAX = 20      # nb max de messages conserves
 
+# AG2 — Propositions d'action en attente de confirmation (Redis db 2, meme
+# instance que l'historique chat). Une action `outward`/`irreversible` n'est
+# JAMAIS executee directement : l'agent renvoie une proposition signee (HMAC,
+# inviolable) stockee sous un jeton avec un TTL court. L'endpoint /confirm la
+# rejoue par jeton apres re-validation des entrees contre le catalogue.
+REDIS_PROPOSAL_URL = f"redis://{_REDIS_HOST}:{_REDIS_PORT}/2"
+# TTL court (5 min) : une proposition expiree doit etre re-demandee.
+ACTION_PROPOSAL_TTL = int(os.environ.get("ACTION_PROPOSAL_TTL", "300"))
+# Cle de signature des propositions. On reutilise la cle Django (deja partagee
+# avec FastAPI pour le JWT) afin de ne PAS introduire de nouveau secret : la
+# proposition est signee HMAC-SHA256 et verifiee avant tout rejouage.
+ACTION_PROPOSAL_SECRET = (
+    os.environ.get("ACTION_PROPOSAL_SECRET")
+    or os.environ.get("DJANGO_SECRET_KEY", "")
+    or FASTAPI_SECRET_KEY
+)
+
 # Database
 DB_NAME = os.environ.get("DB_NAME", "erp_db")
 DB_USER = os.environ.get("DB_USER", "erp_user")

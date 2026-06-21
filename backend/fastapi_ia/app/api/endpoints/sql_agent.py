@@ -106,3 +106,61 @@ def clear_history(token_payload: dict = Depends(verify_token)):
 async def get_schema(token_payload: dict = Depends(verify_token)):
     """Retourne les tables disponibles et le provider LLM actif."""
     return await sql_agent_service.get_schema_summary()
+
+
+# ── AG2 — Confirmation d'une action proposee ──────────────────────────────────
+
+
+class ConfirmRequest(BaseModel):
+    # Jeton opaque renvoye par une proposition d'action (outward/irreversible).
+    token: str
+
+
+class ConfirmResponse(BaseModel):
+    ok: bool
+    action_key: str = ""
+    detail: str = ""
+    data: dict | list | None = None
+
+
+@router.post("/confirm", response_model=ConfirmResponse)
+async def confirm_action(
+    request: ConfirmRequest,
+    token_payload: dict = Depends(verify_token),
+    raw_token: str = Depends(get_raw_token),
+):
+    """AG2 — Execute une action SENSIBLE precedemment PROPOSEE, par jeton.
+
+    Une action `outward`/`irreversible` n'est jamais executee a la volee :
+    l'agent renvoie une proposition signee, stashee en Redis (TTL court). Cet
+    endpoint la rejoue APRES :
+      - verification de la signature (rejet si alteree / expiree) ;
+      - controle que la societe du jeton == societe de l'appelant ;
+      - re-recuperation du catalogue de l'appelant (l'action doit toujours y
+        figurer) et RE-VALIDATION des entrees contre le JSON-Schema courant
+        (les entrees hors catalogue sont rejetees) ;
+      - relais JWT a Django, qui re-tranche permission + societe.
+    """
+    if not request.token or not request.token.strip():
+        raise HTTPException(status_code=400, detail="Jeton de confirmation requis.")
+
+    company_id = _require_company_id(token_payload)
+    action_ctx = ActionContext(
+        company_id=company_id,
+        role=token_payload.get("role", ""),
+        permissions=token_payload.get("permissions") or [],
+        token=raw_token,
+        is_superuser=bool(token_payload.get("is_superuser", False)),
+    )
+
+    result = await sql_agent_service.confirm_action(action_ctx, request.token.strip())
+    if not result.get("ok"):
+        return ConfirmResponse(
+            ok=False, detail=result.get("error", "L'action n'a pas pu etre executee."))
+    data = result.get("data")
+    return ConfirmResponse(
+        ok=True,
+        action_key=result.get("action_key", ""),
+        data=data if isinstance(data, (dict, list)) else None,
+        detail="Action executee.",
+    )
