@@ -31,12 +31,12 @@ const cas = [
   {
     k: 'Sans stockage',
     title: 'Consommation principalement diurne',
-    body: 'Quand l'essentiel de votre consommation tombe en journée, le meilleur kWh est celui que vos panneaux alimentent à l'instant même — sans détour par une batterie, sans pertes de charge ni de décharge. C'est le cas des foyers actifs en journée et des sites dont l'activité suit le soleil : pompe, froid, machines, climatisation.',
+    body: "Quand l'essentiel de votre consommation tombe en journée, le meilleur kWh est celui que vos panneaux alimentent à l'instant même — sans détour par une batterie, sans pertes de charge ni de décharge. C'est le cas des foyers actifs en journée et des sites dont l'activité suit le soleil : pompe, froid, machines, climatisation.",
   },
   {
     k: 'Avec stockage',
     title: 'Consommation nocturne ou continuité de service',
-    body: 'La batterie devient utile quand votre pic de consommation arrive une fois le soleil couché, ou quand une coupure ne doit rien arrêter. Le surplus produit à midi est mis de côté et restitué le soir, à l'heure où le réseau, lui, se facture au prix fort.',
+    body: "La batterie devient utile quand votre pic de consommation arrive une fois le soleil couché, ou quand une coupure ne doit rien arrêter. Le surplus produit à midi est mis de côté et restitué le soir, à l'heure où le réseau, lui, se facture au prix fort.",
   },
 ];
 
@@ -51,24 +51,24 @@ const installs = [
 // schema={false} → /faq reste l'unique page portant le FAQPage JSON-LD.
 const faqItems = [
   {
-    q: 'Ai-je vraiment besoin d'une batterie avec mes panneaux solaires ?',
-    a: 'Pas nécessairement. Si vous consommez l'essentiel de votre électricité en journée — appareils de froid, pompe, climatisation, machines — vos panneaux alimentent directement vos charges et une batterie n'ajouterait qu'un coût et des pertes de conversion. Elle devient utile si votre pic de consommation tombe le soir, ou si vous avez besoin de continuité de service lors des coupures. Nous analysons votre courbe de consommation heure par heure avant toute recommandation.',
+    q: "Ai-je vraiment besoin d'une batterie avec mes panneaux solaires ?",
+    a: "Pas nécessairement. Si vous consommez l'essentiel de votre électricité en journée — appareils de froid, pompe, climatisation, machines — vos panneaux alimentent directement vos charges et une batterie n'ajouterait qu'un coût et des pertes de conversion. Elle devient utile si votre pic de consommation tombe le soir, ou si vous avez besoin de continuité de service lors des coupures. Nous analysons votre courbe de consommation heure par heure avant toute recommandation.",
   },
   {
-    q: 'Quelle est la durée de vie d'une batterie LFP ?',
-    a: 'Une batterie lithium-fer-phosphate (LFP) comme les Dyness que nous posons encaisse 6 000 cycles ou plus à 90 % de profondeur de décharge, avec une garantie de 10 ans. À raison d'un cycle par jour, cela représente plus de 16 ans de cycles. En pratique, c'est souvent le vieillissement calendaire — environ 1 à 2 % de perte de capacité par an même au repos — qui fixe la durée de vie réelle, soit 12 à 15 ans dans les conditions marocaines. Pour préserver cette longévité : installez-la à l'ombre, ventilée, entre 15 et 35 °C.',
+    q: "Quelle est la durée de vie d'une batterie LFP ?",
+    a: "Une batterie lithium-fer-phosphate (LFP) comme les Dyness que nous posons encaisse 6 000 cycles ou plus à 90 % de profondeur de décharge, avec une garantie de 10 ans. À raison d'un cycle par jour, cela représente plus de 16 ans de cycles. En pratique, c'est souvent le vieillissement calendaire — environ 1 à 2 % de perte de capacité par an même au repos — qui fixe la durée de vie réelle, soit 12 à 15 ans dans les conditions marocaines. Pour préserver cette longévité : installez-la à l'ombre, ventilée, entre 15 et 35 °C.",
   },
   {
-    q: 'Quelle taille de batterie choisir ? (5–10 kWh, 10–20 kWh ou 20 kWh+)',
-    a: 'Les paliers correspondent à des besoins distincts. 5 à 10 kWh : secours nocturne basique ou recharge de quelques appareils essentiels lors d'une coupure. 10 à 20 kWh : autoconsommation du soir complète pour un foyer moyen — le surplus solaire de la journée couvre la majorité de la consommation nocturne. 20 kWh et plus : quasi-autonomie, sites éloignés ou besoin de 2 à 3 jours d'autonomie sans soleil. Nos modules Dyness s'empilent par tranches de 5 kWh — on cale la capacité sur le creux du soir à couvrir, pas sur un palier commercial. Un guide dédié détaille la méthode de calcul.',
+    q: "Quelle taille de batterie choisir ? (5–10 kWh, 10–20 kWh ou 20 kWh+)",
+    a: "Les paliers correspondent à des besoins distincts. 5 à 10 kWh : secours nocturne basique ou recharge de quelques appareils essentiels lors d'une coupure. 10 à 20 kWh : autoconsommation du soir complète pour un foyer moyen — le surplus solaire de la journée couvre la majorité de la consommation nocturne. 20 kWh et plus : quasi-autonomie, sites éloignés ou besoin de 2 à 3 jours d'autonomie sans soleil. Nos modules Dyness s'empilent par tranches de 5 kWh — on cale la capacité sur le creux du soir à couvrir, pas sur un palier commercial. Un guide dédié détaille la méthode de calcul.",
   },
   {
-    q: 'La batterie me protège-t-elle des coupures de courant ?',
-    a: 'Oui, si l'onduleur hybride est configuré en mode EPS (Emergency Power Supply). Les onduleurs Deye SG-series assurent un basculement quasi instantané (environ 4 ms) sans boîtier supplémentaire — comparable à un onduleur UPS. La puissance disponible pendant une coupure dépend de la capacité installée et des charges raccordées sur le circuit de secours. À ne pas confondre avec un simple onduleur réseau (« on-grid ») qui coupe lui aussi lors d'une coupure, par sécurité.',
+    q: "La batterie me protège-t-elle des coupures de courant ?",
+    a: "Oui, si l'onduleur hybride est configuré en mode EPS (Emergency Power Supply). Les onduleurs Deye SG-series assurent un basculement quasi instantané (environ 4 ms) sans boîtier supplémentaire — comparable à un onduleur UPS. La puissance disponible pendant une coupure dépend de la capacité installée et des charges raccordées sur le circuit de secours. À ne pas confondre avec un simple onduleur réseau (« on-grid ») qui coupe lui aussi lors d'une coupure, par sécurité.",
   },
   {
-    q: 'Vaut-il mieux stocker son surplus ou le revendre au réseau au Maroc ?',
-    a: 'Au Maroc, la loi 82-21 (en vigueur depuis juin 2026) plafonne l'injection à 20 % de la production annuelle, et le tarif de rachat ANRE est de 0,18 à 0,21 DH/kWh selon l'heure. Or, un kWh acheté sur le réseau vous coûte entre 0,90 DH (première tranche) et 1,66 DH (forte consommation). Autrement dit, un kWh stocké et autoconsommé le soir vaut 4 à 9 fois plus qu'un kWh vendu au réseau. L'ordre de priorité est donc : (1) consommer directement en journée, (2) stocker pour le soir, (3) exporter le solde plafonné à 20 %. Ne surdimensionnez pas vos batteries pour exporter davantage — ce n'est pas rentable.',
+    q: "Vaut-il mieux stocker son surplus ou le revendre au réseau au Maroc ?",
+    a: "Au Maroc, la loi 82-21 (en vigueur depuis juin 2026) plafonne l'injection à 20 % de la production annuelle, et le tarif de rachat ANRE est de 0,18 à 0,21 DH/kWh selon l'heure. Or, un kWh acheté sur le réseau vous coûte entre 0,90 DH (première tranche) et 1,66 DH (forte consommation). Autrement dit, un kWh stocké et autoconsommé le soir vaut 4 à 9 fois plus qu'un kWh vendu au réseau. L'ordre de priorité est donc : (1) consommer directement en journée, (2) stocker pour le soir, (3) exporter le solde plafonné à 20 %. Ne surdimensionnez pas vos batteries pour exporter davantage — ce n'est pas rentable.",
   },
 ];
 
