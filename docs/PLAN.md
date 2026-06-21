@@ -485,9 +485,9 @@ first run that ticks any `FG*` task refreshes CODEMAP §10 + `--write` in that c
 - [x] FG112 — **Lettrage & rapprochement client/fournisseur** — apparier factures et règlements au niveau compte (lettré/non-lettré) pour un encours exact. (SCHEMA)  [DONE 2026-06-21]
 - [x] FG113 — **Compte de Produits et Charges (CPC / P&L marocain)** — état de résultat au format CGNC depuis le grand livre. (SCHEMA)  [DONE 2026-06-21]
 - [x] FG114 — **Bilan comptable (format CGNC)** — actif/passif depuis les soldes du grand livre. (SCHEMA)  [DONE 2026-06-21]
-- [ ] FG115 — **Clôture & verrouillage de période comptable** — figer un mois/exercice (écritures + factures immuables) pour l'audit. (SCHEMA)
-- [ ] FG116 — **Écritures de régularisation / OD manuelles** — saisie d'écritures sans document source (provisions, amortissements, corrections). (SCHEMA)
-- [ ] FG117 — **À-nouveaux / réouverture d'exercice** — report des soldes de bilan dans le nouvel exercice. (SCHEMA)
+- [x] FG115 — **Clôture & verrouillage de période comptable** — figer un mois/exercice (écritures + factures immuables) pour l'audit. (SCHEMA)
+- [x] FG116 — **Écritures de régularisation / OD manuelles** — saisie d'écritures sans document source (provisions, amortissements, corrections). (SCHEMA)
+- [x] FG117 — **À-nouveaux / réouverture d'exercice** — report des soldes de bilan dans le nouvel exercice. (SCHEMA)
 - [ ] FG118 — **Registre des immobilisations** — actifs (camionnettes, outillage, matériel) avec coût/date/catégorie/TVA. (SCHEMA)
 - [ ] FG119 — **Plan d'amortissement (linéaire/dégressif)** — dotations par actif aux taux marocains, postées au grand livre (impacte l'IS). (SCHEMA)
 - [ ] FG120 — **Cession / mise au rebut d'immobilisation** — plus/moins-value + écritures associées. (SCHEMA)
@@ -625,10 +625,10 @@ first run that ticks any `FG*` task refreshes CODEMAP §10 + `--write` in that c
 ### Vertical solaire (conception, simulation, réglementaire, O&M)
 
 - [ ] FG245 — **Éditeur de calepinage toiture (placement panneaux)** — placer/orienter les modules (surface, retraits) pour figer un nombre réaliste de panneaux. (ARCH)
-- [ ] FG246 — **Calcul de chaînes (string design) & vérif ratio DC/AC** — répartir N panneaux par MPPT, contrôler Vmp/Voc à froid vs plage onduleur. (ROUTINE)
-- [ ] FG247 — **Appariement module–onduleur depuis le catalogue** — proposer l'onduleur compatible avec la config panneaux (mots-clés alignés `builder.py`). (ROUTINE)
+- [x] FG246 — **Calcul de chaînes (string design) & vérif ratio DC/AC** — répartir N panneaux par MPPT, contrôler Vmp/Voc à froid vs plage onduleur. (ROUTINE)
+- [x] FG247 — **Appariement module–onduleur depuis le catalogue** — proposer l'onduleur compatible avec la config panneaux (mots-clés alignés `builder.py`). (ROUTINE)
 - [ ] FG248 — **Pont 3D toiture web → ERP** — importer la config du builder 3D `apps/web/roof-tool-pro` (surface/pans/orientation/kWc) dans un devis/chantier. (ARCH)
-- [ ] FG249 — **Optimisation inclinaison/azimut** — balayer tilt/azimut autour du site (via PVGIS existant) → orientation optimale. (ROUTINE)
+- [x] FG249 — **Optimisation inclinaison/azimut** — balayer tilt/azimut autour du site (via PVGIS existant) → orientation optimale. (ROUTINE)
 - [ ] FG250 — **Analyse d'ombrage & profil d'horizon** — obstacles + horizon → perte d'ombrage mensuelle (l'ombrage qualitatif du lead devient un chiffre). (DECISION)
 - [ ] FG251 — **Générateur de nomenclature électrique (BOQ)** — déduit câbles DC/AC, disjoncteurs, parafoudres, coffrets, terre, structure depuis le design. (ROUTINE)
 - [ ] FG252 — **Brouillon de schéma unifilaire (SVG)** — auto-générer le schéma (panneaux→strings→onduleur→comptage→ONEE) pour le dossier technique. (ROUTINE)
@@ -675,12 +675,12 @@ first run that ticks any `FG*` task refreshes CODEMAP §10 + `--write` in that c
 
 - [ ] FG291 — **Programme / Projet multi-chantiers** — `Projet` regroupant chantiers + devis + tickets d'un même client/site (ferme à 4 forages, toiture par tranches). (ARCH)
 - [ ] FG292 — **Tâches & sous-tâches de projet avec dépendances** — `ProjetTache` (assigné/échéance/prédécesseur) au-delà de la checklist figée. (ARCH)
-- [ ] FG293 — **Jalons & phases de projet** — étude/appro/pose/MES/réception avec dates cibles/réelles. (SCHEMA)
+- [x] FG293 — **Jalons & phases de projet** — étude/appro/pose/MES/réception avec dates cibles/réelles. (SCHEMA)
 - [ ] FG294 — **Budget projet vs réel (engagé/dépensé)** — agrège devis + BCF/factures fournisseur + main-d'œuvre vs budget, alerte de dépassement. (ARCH)
 - [ ] FG295 — **P&L de projet consolidé** — résultat par `Projet` (marge tous chantiers, sous-traitance et imports inclus). (ARCH)
-- [ ] FG296 — **Modèles de projet (templates de chantier-type)** — patron pré-créant tâches/jalons/BoM type à la signature. (SCHEMA)
+- [x] FG296 — **Modèles de projet (templates de chantier-type)** — patron pré-créant tâches/jalons/BoM type à la signature. (SCHEMA)
 - [ ] FG297 — **Contrôle documentaire de projet (plans & révisions)** — registre versionné (schéma unifilaire, calepinage, note de calcul). (ARCH)
-- [ ] FG298 — **Comptes-rendus de réunion de chantier** — `ReunionChantier` (ordre du jour/présents/décisions/actions) horodaté. (SCHEMA)
+- [x] FG298 — **Comptes-rendus de réunion de chantier** — `ReunionChantier` (ordre du jour/présents/décisions/actions) horodaté. (SCHEMA)
 - [ ] FG299 — **Plan de charge des équipes (capacité vs affecté)** — jours dispo vs affectés par technicien/équipe pour éviter la sur-réservation. (ROUTINE)
 - [ ] FG300 — **Détection de conflits d'affectation** — alerte si technicien/camionnette affecté deux fois sur le même créneau. (ROUTINE)
 - [ ] FG301 — **Nivellement de charge (resource levelling)** — proposition de rééquilibrage des interventions surchargées. (ROUTINE)
@@ -926,9 +926,9 @@ these overlap and SUPERSEDE the domain-list FG items as the module-organized hom
 
 ### Module GED — gestion documentaire (`apps/ged`) · GED1–GED38
 **But :** DMS multi-tenant transformant les fichiers épars (`records.Attachment`) en référentiel gouverné : arborescence, métadonnées/tags, versionnage, recherche plein-texte+OCR (pgvector), liaison polymorphe, ACL + partage tokenisé, cycle de vie/approbation, rétention/archivage, modèles, scan-to-DMS, journal d'accès. **Réutilise** records.storage/OCR/WeasyPrint/notifications. Étend FG10.
-- [ ] GED1 — Squelette de l'app `apps/ged` (services/selectors, scoping société). (ARCH)
-- [ ] GED2 — Cabinet + Folder arborescent (path matérialisé). (SCHEMA)
-- [ ] GED3 — Document + DocumentVersion (file_key MinIO, checksum/dedupe). (SCHEMA)
+- [x] GED1 — Squelette de l'app `apps/ged` (services/selectors, scoping société). (ARCH)
+- [x] GED2 — Cabinet + Folder arborescent (path matérialisé). (SCHEMA)
+- [x] GED3 — Document + DocumentVersion (file_key MinIO, checksum/dedupe). (SCHEMA)
 - [ ] GED4 — CRUD dossiers/documents + déplacement (scopé société). (ROUTINE)
 - [ ] GED5 — Navigateur arborescent FR (frontend). (ROUTINE)
 - [ ] GED6 — Liaison polymorphe Document↔objet métier (étend `records.ALLOWED_TARGETS`). (SCHEMA+DECISION)
@@ -967,10 +967,10 @@ these overlap and SUPERSEDE the domain-list FG items as the module-organized hom
 
 ### Module Gestion de flotte (`apps/flotte`) · FLOTTE1–FLOTTE35
 **But :** référentiel et opérations de tout ce qui roule (camionnettes, nacelles, groupes électrogènes) : immatriculation/compteurs, conducteurs+permis, carburant, entretien, échéances réglementaires marocaines (TSAV/assurance/visite technique), sinistres, télématique, trajets imputés chantier, TCO. Recouvre FG334–FG342.
-- [ ] FLOTTE1 — Nouvelle app `apps/flotte` (squelette multi-tenant). (ARCH)
-- [ ] FLOTTE2 — Modèle `Vehicule` (immat/marque/énergie/km/valeur/statut). (SCHEMA)
+- [x] FLOTTE1 — Nouvelle app `apps/flotte` (squelette multi-tenant). (ARCH)
+- [x] FLOTTE2 — Modèle `Vehicule` (immat/marque/énergie/km/valeur/statut). (SCHEMA)
 - [ ] FLOTTE3 — Lien `Vehicule.emplacement_stock` ↔ `stock.EmplacementStock` (via selector). (DEP)
-- [ ] FLOTTE4 — `EnginRoulant` (compteur d'heures, nacelle/groupe/chariot). (SCHEMA)
+- [x] FLOTTE4 — `EnginRoulant` (compteur d'heures, nacelle/groupe/chariot). (SCHEMA)
 - [ ] FLOTTE5 — Référence d'actif commune (Vehicule|Engin) pour entretien/sinistre/doc. (DECISION)
 - [ ] FLOTTE6 — Référentiels listes (type véhicule/engin, énergie, catégorie permis). (SCHEMA)
 - [ ] FLOTTE7 — `Conducteur` + permis (lien `authentication.User`). (SCHEMA)
@@ -1427,3 +1427,8 @@ Tracked here so they aren't lost:
 - 2026-06-21 — SAV/monitoring: FG81 server-side ticket SLA, FG82 maintenance checklist, FG83 warranty-claim/RMA, FG84 production history chart+CSV, FG85 equipment QR labels + scan, FG87 SAV knowledge base, FG89 spare-parts forecast, FG90 chronic-failure flag.
 - 2026-06-21 — Reporting/customfields: FG91 SavedReport UI+pin, FG92 MoM/YoY comparison, FG93 sales leaderboard, FG94 custom-field reporting, FG95 branded report PDF, FG97 audit-log analytics, FG98 cohort/seasonality, FG99 profitability by segment, FG100 custom fields for Devis/Chantier/Ticket, FG101 report drill-down links.
 - 2026-06-21 — Comptabilité (new module apps/compta, founder-ungated ARCH): FG107 plan comptable CGNC, FG108 journaux + écritures partie double, FG109 auto-écritures (default-OFF), FG110 grand livre, FG111 balance générale, FG112 lettrage, FG113 CPC, FG114 bilan, FG121 comptes de trésorerie. 32 tests.
+- 2026-06-21 — Comptabilité (apps/compta): FG115 clôture & verrouillage de période (ExerciceComptable + PeriodeComptable, immutabilité des écritures/lignes en période verrouillée, garde-facture côté valeur), FG116 écritures OD manuelles (équilibrées, refusées si période verrouillée), FG117 à-nouveaux/réouverture d'exercice (report des soldes bilan, idempotent). 2 tables additives, 1 migration additive (0002), 32 nouveaux tests. Aucune dépendance/charge nouvelle, aucun changement d'auth.
+- 2026-06-21 — Ventes (apps/ventes): FG246 calcul de chaînes/string design + vérif ratio DC/AC (Vmp/Voc à froid vs fenêtre onduleur), FG247 appariement module–onduleur depuis le catalogue (mots-clés alignés builder.py, jamais d'onduleur sans prix), FG249 optimisation inclinaison/azimut (balayage via PVGIS existant). Module purement additif `solar_design.py` + 22 tests. Aucune nouvelle route PDF (/proposal reste l'unique chemin).
+- 2026-06-21 — Installations (apps/installations): FG293 JalonProjet (phases étude/appro/pose/MES/réception, dates cibles/réelles), FG296 ModeleProjet (+ jalons/BoM-type, service instantiate_modele_projet idempotent), FG298 ReunionChantier (comptes-rendus horodatés). Modèles additifs (migration 0013), 17 tests, FK produit en string-FK.
+- 2026-06-21 — NOUVELLE APP apps/flotte (composant architectural nouveau, ARCH founder-ungated): FLOTTE1 squelette multi-tenant + enregistrement (INSTALLED_APPS, urls), FLOTTE2 modèle Vehicule (immat/marque/énergie/km/valeur/statut), FLOTTE4 EnginRoulant (compteur d'heures nacelle/groupe/chariot). ViewSets company-scoped (company forcée serveur), 2 migrations additives, 9 tests. Aucune dépendance externe/payante, aucun changement d'auth.
+- 2026-06-21 — NOUVELLE APP apps/ged (composant architectural nouveau, ARCH founder-ungated): GED1 squelette DMS multi-tenant + enregistrement, GED2 Cabinet + Folder arborescent (chemin matérialisé, déplacement sûr anti-cycle), GED3 Document + DocumentVersion (file_key MinIO réutilisant records.storage, checksum SHA-256 dédup, version auto). ViewSets company-scoped, 1 migration additive, 22 tests. Aucune dépendance externe/payante, aucun changement d'auth.
