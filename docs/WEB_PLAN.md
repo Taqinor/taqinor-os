@@ -548,7 +548,17 @@ plumbing + a beautiful client-facing surface.*
 > Note: exposing a `/preview/*` tool publicly is normally WG1-GATED; W112 is a NEW,
 > deliberately minimal *capture* surface (no design shown), which the founder authorized.
 
-- [ ] W112 — **Client "où est votre toit ?" capture (public, panels HIDDEN).** A new
+> **BLOCKED 2026-06-21 (whole W112–W118 lane).** These are the `apps/web` halves of a
+> pipeline whose backend (`docs/PLAN2.md` Group Q — Q1 `Devis.roof_layout` storage, Q2 client
+> pin capture, Q3 `build_devis_from_layout`, Q4 render storage, Q5 quote-data feed, Q6 tokenized
+> proposal endpoint, Q7 e-sign) **is all still unchecked `[ ]` and unbuilt** — there is no
+> `roof_layout` / proposal-token / e-sign code in the backend today. With the request/response
+> contract undefined and unimplemented, every web task here would ship a dead-end public route
+> (`/devis/mon-toit`, `/proposition/[token]`), an auth-gated internal route, and lead-creating
+> proxies pointed at a phantom backend — exactly the brand-new architecture + lead-data-flow
+> stop-and-ask in the STANDING RULES. Build PLAN2 Group Q first (OS plan), then re-fire.
+
+- [BLOCKED: backend PLAN2 Q1–Q7 unbuilt] W112 — **Client "où est votre toit ?" capture (public, panels HIDDEN).** A new
   minimal public route (e.g. `/devis/mon-toit`) that reuses roofPro11's MapTiler address
   search + satellite map, lets the client **drop a pin on their roof** (drawing the
   outline is OPTIONAL, not required), and enter contact + bill, then submits the
@@ -559,7 +569,7 @@ plumbing + a beautiful client-facing surface.*
   pin reaches the backend. Files: new `apps/web/src/pages/devis/mon-toit.astro`,
   `roof-tool-pro11.ts` (captureOnly branch), reuse `roofPro11/mapDraw.ts`.
 
-- [ ] W113 — **Layout serialize + hydrate (the linchpin).** Add serialize/deserialize of
+- [BLOCKED: backend PLAN2 Q1–Q7 unbuilt] W113 — **Layout serialize + hydrate (the linchpin).** Add serialize/deserialize of
   the tool state (`AreaRecord[]`, and the lighter pin/outline) and extend
   `initRoofToolPro8` boot to **hydrate from the backend** via a token URL param
   (`?lead=<token>` for the client's pin, `?devis=<id>` for a saved layout), fetching from
@@ -568,7 +578,7 @@ plumbing + a beautiful client-facing surface.*
   Files: `roofPro11/prefill.ts` (load fns), `roof-tool-pro11.ts` (boot hydration),
   `apps/web/src/pages/api/roof-layout.ts` (proxy).
 
-- [ ] W114 — **Meriem design + finalize (where the panels appear, privately).** An
+- [BLOCKED: backend PLAN2 Q1–Q7 unbuilt] W114 — **Meriem design + finalize (where the panels appear, privately).** An
   internal/gated route that boots the FULL tool **hydrated with the client's pin** (W113);
   Meriem draws the outline if the client didn't, runs the existing auto-fill/optimizer,
   edits, then a **"Valider & générer le devis"** action serializes the finalized layout +
@@ -577,13 +587,13 @@ plumbing + a beautiful client-facing surface.*
   layout saved. Files: `apps/web/src/pages/internal/devis-design.astro` (or reuse the
   preview route gated), `roof-tool-pro11.ts` (finalize action), api proxy.
 
-- [ ] W115 — **3D snapshot export.** Wire `renderer.domElement.toDataURL('image/png')`
+- [BLOCKED: backend PLAN2 Q1–Q7 unbuilt] W115 — **3D snapshot export.** Wire `renderer.domElement.toDataURL('image/png')`
   (`roofPro11/scene3d.ts`) to capture the finished roof-with-panels render and upload it
   to the backend (Q4) on finalize (W114). **Done =** finalizing produces + stores a clean
   PNG of the 3D roof; vitest/asserts the data-URL is produced. Files:
   `roofPro11/scene3d.ts` (snapshot fn), W114 finalize wiring.
 
-- [ ] W116 — **Client web proposal page (the "much better UI" link we send).** A premium,
+- [BLOCKED: backend PLAN2 Q1–Q7 unbuilt] W116 — **Client web proposal page (the "much better UI" link we send).** A premium,
   mobile-first **public** route (e.g. `/proposition/<token>`) that fetches the quote data
   (Q6) and renders the proposal as a beautiful web page — NOT just a PDF: a hero with the
   roof render, the facture **avant → après** + couverture %, the two options, the
@@ -592,13 +602,13 @@ plumbing + a beautiful client-facing surface.*
   proposal responsively on phone + desktop; Lighthouse mobile ≥ 90. Files: new
   `apps/web/src/pages/proposition/[token].astro` + components + the Q6 fetch.
 
-- [ ] W117 — **In-page e-signature.** On the web proposal, a "Signer en ligne" flow: pick
+- [BLOCKED: backend PLAN2 Q1–Q7 unbuilt] W117 — **In-page e-signature.** On the web proposal, a "Signer en ligne" flow: pick
   an option, type name + check "Bon pour accord" → POST to Q7 → success state ("Devis
   accepté ✓"), with the signed PDF offered as a download. **Done =** signing flips the
   Devis to *accepté* and shows confirmation; invalid/expired token handled. Files:
   `proposition/[token].astro` signature component, `apps/web/src/pages/api/` proxy.
 
-- [ ] W118 — **Delivery: send the proposal link (email / WhatsApp).** On finalize (W114),
+- [BLOCKED: backend PLAN2 Q1–Q7 unbuilt] W118 — **Delivery: send the proposal link (email / WhatsApp).** On finalize (W114),
   generate the tokenized proposal URL and surface it for sending — prefilled email (reuse
   the existing SendGrid path) and a WhatsApp deep link (`wa.me` with the client's number +
   a French message + the link). **Done =** Meriem gets a one-click "Envoyer par email" and
@@ -656,7 +666,7 @@ EV from your own midday surplus is worth more in Morocco than in net-metering ma
   `CONTENT_SEO_NOTES.md` (no file conflict; can run in parallel) and its locked figures feed every
   content task below.
 
-- [ ] W140 — **Research-and-lock the open figures + refresh the volatile ones (the agent searches,
+- [x] W140 — **Research-and-lock the open figures + refresh the volatile ones (the agent searches,
   never the founder).** Before/while the content tasks run, lock every `LOCK-FIRST` figure in
   `CONTENT_SEO_NOTES.md` from a PRIMARY source and promote it (or leave a labelled range if a primary
   source genuinely can't be reached — never a founder ask): (1) the current ONEE BT residential grid
@@ -676,7 +686,7 @@ EV from your own midday surplus is worth more in Morocco than in net-metering ma
   locked-with-source or an explicitly labelled range, the EV-prime correction is applied, no founder
   ask anywhere. File: `apps/web/CONTENT_SEO_NOTES.md` (notes only — runs first, conflict-free).
 
-- [ ] W119 — **Expand the public FAQ (`/faq`) to ~24 questions across solar, EV-charging & battery.**
+- [x] W119 — **Expand the public FAQ (`/faq`) to ~24 questions across solar, EV-charging & battery.**
   Today `faq.astro` renders ~13 Q grounded in site facts. Add ~11 more, grouped, keeping the single
   `Faq` component / single `FAQPage` schema (it auto-aligns to the rendered array). Add the
   high-value EVERGREEN questions the research found (general-fact, publishable now, no founder number
@@ -694,7 +704,7 @@ EV from your own midday surplus is worth more in Morocco than in net-metering ma
   figure, FR copy in the existing voice. Files: `apps/web/src/pages/faq.astro` (FR only; `/en/faq` +
   `/ar/faq` mirror is a flagged follow-up, not required to land).
 
-- [ ] W120 — **New EV-charging-with-solar PILLAR page `/recharge-voiture-electrique-solaire` (the
+- [x] W120 — **New EV-charging-with-solar PILLAR page `/recharge-voiture-electrique-solaire` (the
   biggest content gap).** No page covers charging an electric car from solar today. Build a
   top-level public page (same Layout/`v2` design language, `Breadcrumb`, `CtaBand`, `StickyCta` as
   the service pages) answering the cluster the research found, in clearly-titled H2 sections: *peut-on
@@ -718,7 +728,7 @@ EV from your own midday surplus is worth more in Morocco than in net-metering ma
   Files: new `apps/web/src/pages/recharge-voiture-electrique-solaire.astro` (+ contextual links from
   `nos-solutions.astro` / `guides/index.astro` handled in W129).
 
-- [ ] W121 — **Guide: « Combien de panneaux et quelle puissance (kWc) pour ma maison ? »** New guide
+- [x] W121 — **Guide: « Combien de panneaux et quelle puissance (kWc) pour ma maison ? »** New guide
   page following the existing `/guides/*` pattern (Layout, Breadcrumb, `Article` JSON-LD, CtaBand,
   StickyCta). Explains the sizing METHOD from the ONEE/Lydec bill → annual kWh → kWc → panel count
   (m²/panel geometry, ~1,7–2 m²/panel are general facts), the high-Morocco-irradiation note kept
@@ -726,40 +736,40 @@ EV from your own midday surplus is worth more in Morocco than in net-metering ma
   kWh/kWc from `CONTENT_SEO_NOTES.md` §3, cited). Accept: clean Article page, single canonical, no invented number,
   internal-linked, listed by W129. File: `apps/web/src/pages/guides/combien-de-panneaux-pour-ma-maison.astro`.
 
-- [ ] W122 — **Guide: « On-grid, off-grid ou hybride : que se passe-t-il pendant une coupure ? »**
+- [x] W122 — **Guide: « On-grid, off-grid ou hybride : que se passe-t-il pendant une coupure ? »**
   New guide complementing the existing `onduleur-hybride-ou-reseau` guide: when each system type
   fits (grid-tied = best ROI for ONEE-connected urban homes, off-grid = remote/no-grid, hybrid =
   backup), and the safety fact that a standard grid-tied system disconnects in a blackout
   (anti-îlotage) so backup needs a hybrid + battery. `Article` JSON-LD, no invented number. Accept:
   as W121. File: `apps/web/src/pages/guides/on-grid-off-grid-ou-hybride.astro`.
 
-- [ ] W123 — **Guide: « Entretien, nettoyage et durée de vie des panneaux au Maroc ».** New guide on
+- [x] W123 — **Guide: « Entretien, nettoyage et durée de vie des panneaux au Maroc ».** New guide on
   the strong local differentiator: dust/sand cleaning cadence, rain self-cleaning, heat de-rating
   (~0,3–0,5 %/°C above 25 °C — general fact), lifespan & degradation tied to the published warranty
   (84,8 % à 25 ans, ~0,5 %/an). `Article` JSON-LD. Accept: as W121. File:
   `apps/web/src/pages/guides/entretien-et-duree-de-vie-des-panneaux.astro`.
 
-- [ ] W124 — **Guide: « Orientation, inclinaison et ombrage : maximiser la production sur un toit
+- [x] W124 — **Guide: « Orientation, inclinaison et ombrage : maximiser la production sur un toit
   marocain ».** New guide: plein sud optimal, E/O ne perd que ~10–15 %, inclinaison ≈ latitude
   (~30°), impact disproportionné de l'ombre sur une chaîne (cheminée, mur voisin, palmier) et la
   mitigation (optimiseurs/micro-onduleurs). General facts only. `Article` JSON-LD. Accept: as W121.
   File: `apps/web/src/pages/guides/orientation-inclinaison-ombrage.astro`.
 
-- [ ] W125 — **Guide: « Monocristallin ou polycristallin ? + onduleur string vs micro-onduleurs ».**
+- [x] W125 — **Guide: « Monocristallin ou polycristallin ? + onduleur string vs micro-onduleurs ».**
   New equipment-choice guide: mono (rendement 19–22 %, meilleur sous la chaleur, moins de surface)
   vs poly; onduleur string (moins cher, une chaîne pénalisée par l'ombre) vs micro/optimiseurs
   (suivi par panneau). General facts; tie equipment names only to what `/équipement` already
   publishes. `Article` JSON-LD. Accept: as W121. File:
   `apps/web/src/pages/guides/monocristallin-ou-polycristallin.astro`.
 
-- [ ] W126 — **Guide: « Batterie solaire : lithium LiFePO4 (LFP) vs GEL/plomb (et NMC) ».** New
+- [x] W126 — **Guide: « Batterie solaire : lithium LiFePO4 (LFP) vs GEL/plomb (et NMC) ».** New
   battery-chemistry guide complementing the existing `faut-il-des-batteries`: LFP wins on durée de
   vie (3 000–6 000 cycles / 10–15 ans vs 3–5 ans plomb), profondeur de décharge utile (~90 % vs
   ~50 %), rendement et tolérance à la chaleur (atout au Maroc), and LFP safety vs NMC. Anchor brand
   claims on the published Dyness LFP / 10-ans warranty only; no invented price. `Article` JSON-LD.
   Accept: as W121. File: `apps/web/src/pages/guides/batterie-lithium-ou-gel.astro`.
 
-- [ ] W127 — **Guide: « Quelle taille de batterie (kWh) pour ma maison ? Stocker ou revendre ? »**
+- [x] W127 — **Guide: « Quelle taille de batterie (kWh) pour ma maison ? Stocker ou revendre ? »**
   New battery-sizing guide: tiers (secours seul ~5–10 kWh, autoconsommation du soir ~10–20 kWh,
   quasi-autonomie 20 kWh+), usable-vs-nameplate kWh (DoD), and the Morocco economics — with export
   capped at 20 % and bought back below retail (loi 82-21, live 9 juin 2026), self-shifting a kWh to
@@ -767,13 +777,13 @@ EV from your own midday surplus is worth more in Morocco than in net-metering ma
   exporter les 20 %. Method only; client kWh from the bill stays qualitative. `Article` JSON-LD.
   Accept: as W121. File: `apps/web/src/pages/guides/quelle-taille-de-batterie.astro`.
 
-- [ ] W128 — **Guide: « Garder l'électricité pendant les coupures : EPS, onduleur hybride et
+- [x] W128 — **Guide: « Garder l'électricité pendant les coupures : EPS, onduleur hybride et
   batterie ».** New guide: backup ≠ off-grid (the key myth-buster), EPS/secours circuits on a
   Deye/Huawei hybrid, switchover behaviour, and why a standard grid-tie dies in an outage. General
   facts + published brand names only. `Article` JSON-LD. Accept: as W121. File:
   `apps/web/src/pages/guides/electricite-pendant-les-coupures.astro`.
 
-- [ ] W129 — **Update the `/guides` hub to list every new guide, grouped.** Today `guides/index.astro`
+- [x] W129 — **Update the `/guides` hub to list every new guide, grouped.** Today `guides/index.astro`
   lists 3 guides flat. Re-group into clear sections — **Solaire** (sizing W121, système/coupure W122,
   entretien W123, orientation W124, matériel W125, + the existing loi-82-21 & onduleur guides),
   **Batteries** (existing faut-il-des-batteries + chemistry W126 + sizing W127 + coupures W128),
@@ -785,7 +795,7 @@ EV from your own midday surplus is worth more in Morocco than in net-metering ma
   EV link). FR hub only; `/en/guides` + `/ar/guides` keep listing the 3 translated guides (correct —
   the new guides are FR-only).
 
-- [ ] W130 — **Enrich the public `/batteries-stockage` page with an SEO content + visual-FAQ block.**
+- [x] W130 — **Enrich the public `/batteries-stockage` page with an SEO content + visual-FAQ block.**
   Add a question-led content section answering the top battery queries (do I need one, lifespan,
   sizing tiers, backup-during-outage, store-vs-sell Morocco angle) using the `Faq` component with
   **`schema={false}`** (so `/faq` stays the single `FAQPage` owner), plus internal links to the new
@@ -794,7 +804,7 @@ EV from your own midday surplus is worth more in Morocco than in net-metering ma
   number; `/en` + `/ar` mirrors left for the FR-first follow-up. File:
   `apps/web/src/pages/batteries-stockage.astro`.
 
-- [ ] W131 — **Tests for the content-expansion invariants.** Extend the `apps/web` Vitest suite
+- [x] W131 — **Tests for the content-expansion invariants.** Extend the `apps/web` Vitest suite
   (build on `tests/seoInvariantsW104.test.ts`): `/faq` is still the ONLY route emitting a `FAQPage`
   (the EV page + `/batteries-stockage` render the `Faq` component with `schema={false}` → no second
   `FAQPage`); every NEW page (W120–W128) has exactly one self-referencing canonical and carries
@@ -832,7 +842,7 @@ fuel) — published as cited, dated, labelled ranges.*
 > before the posts; W133–W138 are independent Markdown files (parallel once W132 exists); W139
 > (tests) sequences last. (All in the `apps/web` lane → built in listed order.)
 
-- [ ] W132 — **Blog architecture (content collection + routes + RSS + nav), dependency-free.** Add a
+- [x] W132 — **Blog architecture (content collection + routes + RSS + nav), dependency-free.** Add a
   `blog` content collection: `apps/web/src/content.config.ts` defining `defineCollection({ loader:
   glob({ pattern: '**/*.md', base: './src/content/blog' }), schema })` with a Zod schema
   (`title`, `description`, `pubDate`, optional `updatedDate`, `tags: string[]`, `author` default
@@ -853,7 +863,7 @@ fuel) — published as cited, dated, labelled ranges.*
   `apps/web/src/layouts/Layout.astro` (RSS link), `apps/web/src/components/Header.astro` (nav),
   `apps/web/src/content/blog/` (seed).
 
-- [ ] W133 — **Post: « Combien coûte une installation solaire au Maroc en 2026 ? » (cost pillar).**
+- [x] W133 — **Post: « Combien coûte une installation solaire au Maroc en 2026 ? » (cost pillar).**
   Markdown post using `CONTENT_SEO_NOTES.md` §5: turnkey **fourchettes indicatives** by size
   (3 kWc ~28–42 k, 5 kWc ~45–65 k, 10 kWc ~85–120 k MAD) and **~10 000–14 000 DH/kWc** turnkey —
   explicitly debunk the "4 700 DH/kWc" anchor as kit-only; equipment ranges, roof surcharges, the
@@ -863,7 +873,7 @@ fuel) — published as cited, dated, labelled ranges.*
   Cross-link the sizing guide (W121) + ROI post (W134). Accept: dated post renders with cited ranges,
   no false precision, `BlogPosting` schema. File: `apps/web/src/content/blog/prix-installation-solaire-maroc-2026.md`.
 
-- [ ] W134 — **Post: « Rentabilité et retour sur investissement du solaire par ville marocaine ».**
+- [x] W134 — **Post: « Rentabilité et retour sur investissement du solaire par ville marocaine ».**
   Uses `CONTENT_SEO_NOTES.md` §3+§2: the **kWh/kWc/yr by city** table (Casablanca 1 500–1 600,
   Marrakech ~1 779, Ouarzazate ~1 850–1 950, etc., cited PVGIS/Solargis), the **"sélective" tranche
   mechanism** (above 150 kWh/mo you pay the high marginal rate on everything — what solar removes),
@@ -874,7 +884,7 @@ fuel) — published as cited, dated, labelled ranges.*
   city/yield table + payback, freshness-flagged tariffs. File:
   `apps/web/src/content/blog/rentabilite-solaire-par-ville-maroc.md`.
 
-- [ ] W135 — **Post: « Loi 82-21 : ce qui change depuis le 9 juin 2026 (autoproduction, plafond
+- [x] W135 — **Post: « Loi 82-21 : ce qui change depuis le 9 juin 2026 (autoproduction, plafond
   20 %, rachat 0,18–0,21 DH) ».** Regulatory deep-dive from `CONTENT_SEO_NOTES.md` §1: the three
   regimes + thresholds (≤11 kW déclaration / 11 kW–5 MW accord / >5 MW autorisation), the **9 June
   2026** entry into force, the **20 % surplus cap**, the **net-billing (not net-metering)** fact and
@@ -884,7 +894,7 @@ fuel) — published as cited, dated, labelled ranges.*
   Accept: accurate cited regulatory post with the honest self-consumption conclusion. File:
   `apps/web/src/content/blog/loi-82-21-autoproduction-2026.md`.
 
-- [ ] W136 — **Post: « Recharger sa voiture électrique au solaire : combien ça coûte vraiment au
+- [x] W136 — **Post: « Recharger sa voiture électrique au solaire : combien ça coûte vraiment au
   Maroc ? »** Economics piece from `CONTENT_SEO_NOTES.md` §6: the **cost-per-100 km** comparison —
   petrol ~93 MAD vs EV-on-grid ~23 MAD (¼) vs EV-on-solar ~0–13 MAD — **with the assumptions stated
   inline** (petrol 6,5 L/100 km, essence 14,27 MAD/L mid-Jun-2026, EV 15 kWh/100 km +10 %, grid
@@ -893,7 +903,7 @@ fuel) — published as cited, dated, labelled ranges.*
   service page (link both ways). Accept: cited, assumption-transparent EV-vs-petrol economics. File:
   `apps/web/src/content/blog/recharger-voiture-electrique-solaire-cout-maroc.md`.
 
-- [ ] W137 — **Post: « Batterie solaire : stocker ou revendre ? L'économie de l'autoconsommation au
+- [x] W137 — **Post: « Batterie solaire : stocker ou revendre ? L'économie de l'autoconsommation au
   Maroc ».** From `CONTENT_SEO_NOTES.md` §1+§7: with export capped at 20 % and bought back at
   0,18–0,21 DH while you buy at 0,90–1,66 DH, a **stored-and-self-used kWh beats an exported one**;
   the **order of value** (consommer en journée → stocker le soir → exporter les 20 %), generic LFP
@@ -902,7 +912,7 @@ fuel) — published as cited, dated, labelled ranges.*
   store-vs-sell economics, honestly framed, cited ranges. File:
   `apps/web/src/content/blog/batterie-stocker-ou-revendre-maroc.md`.
 
-- [ ] W138 — **Post: « Quelle batterie LFP choisir : la gamme Dyness, et Deye vs Huawei pour le
+- [x] W138 — **Post: « Quelle batterie LFP choisir : la gamme Dyness, et Deye vs Huawei pour le
   secours ».** Product/spec deep-dive from `CONTENT_SEO_NOTES.md` §7: the **Dyness LFP lineup** (B4850
   2,4 kWh, PowerDepot H5B 5,12 kWh w/ built-in heating, Tower T7/T10/T14, PowerBrick 14,34 kWh — LFP,
   ≥6 000 cycles, 10-yr/70 % warranty) and the **backup differentiator** — **Deye SG-series near-seamless
@@ -913,7 +923,7 @@ fuel) — published as cited, dated, labelled ranges.*
   Complements the chemistry guide (W126). Accept: accurate cited product/backup post. File:
   `apps/web/src/content/blog/batterie-lfp-dyness-deye-huawei.md`.
 
-- [ ] W139 — **Tests for the blog.** Add `apps/web` Vitest coverage: the blog collection schema parses
+- [x] W139 — **Tests for the blog.** Add `apps/web` Vitest coverage: the blog collection schema parses
   the seed posts; `/rss.xml` emits valid RSS 2.0 (well-formed XML, item count = published posts);
   a `draft:true` fixture post is **excluded** from the index, the sitemap and RSS; each post route has
   exactly one self-referencing canonical and carries `BlogPosting` + `BreadcrumbList` JSON-LD and NO
@@ -1007,7 +1017,7 @@ already links to `taqinor.ma/produits`; these tasks build that destination.*
   invariants (W104) extended to cover `/produits`. Files: sitemap config,
   `produits/*` heads, SEO tests.
 
-- [ ] W146 — **Self-host the actual datasheet PDFs on taqinor.ma (no manufacturer
+- [x] W146 — **Self-host the actual datasheet PDFs on taqinor.ma (no manufacturer
   hotlink).** For every fiche in `src/lib/fiches.ts`, fetch the official PDF from
   its `datasheet` URL and save it under `apps/web/public/fiches/<slug>.pdf`, then
   set the manifest `pdf` field to `/fiches/<slug>.pdf` so `ficheDownloadHref`
@@ -1023,7 +1033,7 @@ already links to `taqinor.ma/produits`; these tasks build that destination.*
   `apps/web/public`. Files: `apps/web/public/fiches/*.pdf`,
   `apps/web/src/lib/fiches.ts`, `apps/web/tests/fiches.test.ts`.
 
-- [ ] W147 — **Embed the datasheet inline on each `/produits/<slug>` page.** Beyond
+- [x] W147 — **Embed the datasheet inline on each `/produits/<slug>` page.** Beyond
   the download button, render the self-hosted PDF inline (a lazy `<object>`/
   `<iframe>` preview with a graceful "Télécharger la fiche (PDF)" fallback for
   mobile/no-PDF-viewer), so the fiche is truly *integrated* in the page, not just
@@ -1156,3 +1166,17 @@ already links to `taqinor.ma/produits`; these tasks build that destination.*
 - 2026-06-21 — W111: added tests/multiZoneFacingW106.test.ts, tests/overhangSolveW109.test.ts,
   tests/contactPrefillW110.test.ts and extended the pro-11 runtime test (contact prefill + re-asserted
   no-lead-POST guard); full apps/web suite 76 files / 2480 tests green.
+
+- 2026-06-21 — W140: targeted research pass locked the residual figures in CONTENT_SEO_NOTES.md (201–300 kWh tranche ≈1,18 DH, BT VAT resolved as TTC-stable, distributors confirmed = ONEE grid proxy, live wallbox ~12–25k / battery ~2,7–3,8k DH/kWh ranges), date-stamped the volatile figures (fuel/tariffs) 2026-06-21, EV-prime correction kept intact — no founder ask.
+- 2026-06-21 — W119: /faq expanded to 24 grouped questions (solar night/clouds, heat/winter, orientation, shade, cleaning, degradation, mono/poly, outage, EV charging ×2, LFP lifespan) — still exactly one FAQPage aligned to the rendered list, no fabricated figure.
+- 2026-06-21 — W120: new EV-charging-with-solar pillar page /recharge-voiture-electrique-solaire (Service+BreadcrumbList JSON-LD, one canonical, Faq schema=false, EV economics as labelled ranges, no EV-prime), tied to the loi 82-21 self-consumption angle.
+- 2026-06-21 — W121–W128: eight new evergreen guides (sizing, on/off-grid/hybride, orientation/ombrage, entretien/durée de vie, mono/poly+onduleurs, batterie LFP vs GEL/NMC, taille de batterie, électricité pendant les coupures) — all method/general-fact, Article JSON-LD, one canonical, FR voice mirroring the existing guide template.
+- 2026-06-21 — W129: /guides hub regrouped into Solaire / Batteries / Voiture électrique with all new guides + the EV pillar, CollectionPage hasPart updated; one contextual EV link added to /nos-solutions.
+- 2026-06-21 — W130: /batteries-stockage enriched with a question-led visual-FAQ block (Faq schema=false → no 2nd FAQPage) + links to the new battery guides and /garanties; lead form untouched.
+- 2026-06-21 — W132: dependency-free blog shipped — core Astro content collection (glob+Zod), /blog index + /blog/[slug] (BlogPosting+BreadcrumbList, one canonical), hand-rolled /rss.xml (RSS 2.0, drafts excluded), RSS <link> in Layout, Blog entry in the Ressources nav, one seed post.
+- 2026-06-21 — W133–W138: six dated, cited blog posts (coût 2026, rentabilité par ville, loi 82-21, recharge VE coût, batterie stocker-ou-revendre, gamme Dyness/Deye vs Huawei) — every figure a labelled/dated « fourchette indicative » sourced from CONTENT_SEO_NOTES.md.
+- 2026-06-21 — W131: content-expansion invariant tests (single FAQPage, one canonical per new page, Article/Service+Breadcrumb JSON-LD, new routes in sitemap / preview excluded, volatile figures labelled).
+- 2026-06-21 — W139: blog invariant tests (collection schema, frontmatter validity, RSS 2.0 + draft exclusion via a draft fixture, BlogPosting+BreadcrumbList, one canonical, /blog in sitemap) — verified the draft fixture is absent from build/sitemap/RSS.
+- 2026-06-21 — W146: self-hosted all 7 datasheet PDFs under /fiches/<slug>.pdf (browser-UA fetch; Jinko datasheet located + recompressed to 1,3 MB), manifest pdf fields flipped, fiches.test.ts asserts every hosted PDF exists on disk.
+- 2026-06-21 — W147: /produits/<slug> now embeds the self-hosted datasheet inline (lazy iframe on desktop, clean download fallback on mobile, height reserved → zero CLS), guarded by fiche.pdf; fiches.test.ts covers the embed-vs-fallback branch.
+- 2026-06-21 — W112–W118 BLOCKED: the devis-pipeline web halves depend on unbuilt backend endpoints (PLAN2 Group Q1–Q7); skipped per STANDING RULES and listed in GATED-style note above.
