@@ -147,6 +147,87 @@ class TestCommitHardening(ImportBase):
         self.assertIn('volumineux', resp.data['detail'].lower())
 
 
+class TestFournisseursImport(ImportBase):
+    """FG14 — import de fournisseurs."""
+
+    def test_creates_fournisseur(self):
+        from apps.stock.models import Fournisseur
+        f = self._csv('Nom,Email,Telephone\nFournisseur A,fa@x.ma,0600000001\n')
+        resp = self.api.post('/api/django/imports/commit/',
+                             {'file': f, 'target': 'fournisseurs'}, format='multipart')
+        self.assertEqual(resp.status_code, 200, resp.data)
+        self.assertEqual(resp.data['created'], 1)
+        self.assertTrue(
+            Fournisseur.objects.filter(company=self.company, nom='Fournisseur A').exists())
+
+    def test_skips_duplicate_nom(self):
+        from apps.stock.models import Fournisseur
+        Fournisseur.objects.create(company=self.company, nom='Dup Four')
+        f = self._csv('Nom\nDup Four\n')
+        resp = self.api.post('/api/django/imports/commit/',
+                             {'file': f, 'target': 'fournisseurs'}, format='multipart')
+        self.assertEqual(resp.data['created'], 0)
+        self.assertEqual(len(resp.data['skipped']), 1)
+
+    def test_skips_missing_nom(self):
+        f = self._csv('Email\nsome@x.ma\n')
+        resp = self.api.post('/api/django/imports/commit/',
+                             {'file': f, 'target': 'fournisseurs'}, format='multipart')
+        self.assertEqual(resp.data['created'], 0)
+
+
+class TestEquipementsImport(ImportBase):
+    """FG14 — import d'équipements (résolution produit/installation)."""
+
+    def setUp(self):
+        super().setUp()
+        from apps.crm.models import Client
+        from apps.stock.models import Produit
+        from apps.installations.models import Installation
+        self.produit = Produit.objects.create(
+            company=self.company, nom='Panneau Test', sku='SKU-EQ1', prix_vente=0)
+        self.client_inst = Client.objects.create(
+            company=self.company, nom='Client EQ')
+        self.installation = Installation.objects.create(
+            company=self.company, reference='CHANT-EQ1',
+            client=self.client_inst,
+        )
+
+    def test_creates_equipement(self):
+        from apps.sav.models import Equipement
+        f = self._csv(
+            'SKU,Chantier,Serie\n'
+            f'SKU-EQ1,CHANT-EQ1,SN-001\n')
+        resp = self.api.post('/api/django/imports/commit/',
+                             {'file': f, 'target': 'equipements'}, format='multipart')
+        self.assertEqual(resp.status_code, 200, resp.data)
+        self.assertEqual(resp.data['created'], 1)
+        self.assertTrue(
+            Equipement.objects.filter(
+                company=self.company, numero_serie='SN-001').exists())
+
+    def test_skips_unknown_sku(self):
+        f = self._csv('SKU,Chantier\nSKU-UNKNOWN,CHANT-EQ1\n')
+        resp = self.api.post('/api/django/imports/commit/',
+                             {'file': f, 'target': 'equipements'}, format='multipart')
+        self.assertEqual(resp.data['created'], 0)
+        self.assertEqual(len(resp.data['skipped']), 1)
+        self.assertIn('produit SKU inconnu', resp.data['skipped'][0]['raison'])
+
+    def test_skips_unknown_installation(self):
+        f = self._csv('SKU,Chantier\nSKU-EQ1,CHANT-BOGUS\n')
+        resp = self.api.post('/api/django/imports/commit/',
+                             {'file': f, 'target': 'equipements'}, format='multipart')
+        self.assertEqual(resp.data['created'], 0)
+        self.assertIn('installation inconnue', resp.data['skipped'][0]['raison'])
+
+    def test_skips_missing_produit_sku(self):
+        f = self._csv('Chantier\nCHANT-EQ1\n')
+        resp = self.api.post('/api/django/imports/commit/',
+                             {'file': f, 'target': 'equipements'}, format='multipart')
+        self.assertEqual(resp.data['created'], 0)
+
+
 class TestGenericExport(ImportBase):
     def test_export_devis_xlsx(self):
         c = Client.objects.create(company=self.company, nom='C')
