@@ -445,8 +445,8 @@ class DevisViewSet(viewsets.ModelViewSet):
             if 'include_etude' in request.query_params:
                 raw['include_etude'] = request.query_params['include_etude'] in ('1', 'true')
             # ERR74 — /proposal is a safe GET: render + stream, but do NOT
-            # persist fichier_pdf on every call (persist=False). The async
-            # generate-pdf task remains the path that records the key.
+            # persist fichier_pdf on every call (persist=False). The single
+            # engine picks the residential (redesigned) or legacy renderer.
             key = generate_premium_devis_pdf(
                 devis.id, clean_pdf_options(raw), persist=False)
             pdf_bytes = download_pdf(key)
