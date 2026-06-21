@@ -80,6 +80,7 @@ export default function ActivityFeedWidget({ limit = 5 }) {
 
   useEffect(() => {
     let cancelled = false
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- load-on-mount loading state
     setLoading(true)
     recordsApi.getMyActivities()
       .then(res => {

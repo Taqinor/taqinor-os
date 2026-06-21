@@ -54,7 +54,9 @@ export default function TagChipInput({ model, id, readOnly = false }) {
     } catch { /* ignore */ }
   }, [])
 
+  // eslint-disable-next-line react-hooks/set-state-in-effect -- load-on-mount
   useEffect(() => { loadApplied() }, [loadApplied])
+  // eslint-disable-next-line react-hooks/set-state-in-effect -- load vocab when opened
   useEffect(() => { if (open) loadVocab(search) }, [open, search, loadVocab])
 
   async function handleAdd(tag) {

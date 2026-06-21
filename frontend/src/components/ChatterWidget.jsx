@@ -60,6 +60,7 @@ export default function ChatterWidget({ model, id, readOnly = false }) {
     }
   }, [model, id])
 
+  // eslint-disable-next-line react-hooks/set-state-in-effect -- load-on-mount
   useEffect(() => { load() }, [load])
 
   async function handleSubmit(e) {

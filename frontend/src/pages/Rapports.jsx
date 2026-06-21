@@ -180,7 +180,7 @@ function SavedReportForm({ initial, onSave, onCancel }) {
     try {
       await onSave({ name: name.trim(), target_kind: kind, schedule, recipients, pinned })
     } catch {
-      setErr('Erreur lors de l'enregistrement.')
+      setErr("Erreur lors de l'enregistrement.")
     } finally {
       setSaving(false)
     }
@@ -257,6 +257,7 @@ function MesRapports() {
       .finally(() => setLoading(false))
   }, [])
 
+  // eslint-disable-next-line react-hooks/set-state-in-effect -- load-on-mount
   useEffect(() => { load() }, [load])
 
   const handleCreate = async (payload) => {
