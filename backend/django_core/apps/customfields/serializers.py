@@ -74,6 +74,16 @@ def _module_model(module):
     if module == 'produit':
         from apps.stock.models import Produit
         return Produit
+    # FG100 — modules opérationnels (custom_data ajouté par migration additive).
+    if module == 'devis':
+        from apps.ventes.models import Devis
+        return Devis
+    if module == 'installation':
+        from apps.installations.models import Installation
+        return Installation
+    if module == 'ticket':
+        from apps.sav.models import Ticket
+        return Ticket
     return None
 
 
