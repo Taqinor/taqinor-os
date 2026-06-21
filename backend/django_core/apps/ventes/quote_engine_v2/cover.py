@@ -23,6 +23,7 @@ def build(ctx):
     fonts = ctx["fonts"]
     logo_dark = ctx["logo_dark"]
     charts = ctx["charts"]
+    hero_img = ctx.get("hero_img", "")
 
     # ── tokens ──────────────────────────────────────────────────────────────
     navy = C["navy"]
@@ -87,6 +88,19 @@ def build(ctx):
             f'<li>{check}<span>{b}</span></li>' for b in items
         )
 
+    # ── Hero background: real installation photo + navy gradient overlay so
+    # the logo, ref and "Bonjour …" stay readable. No photo -> flat navy. ─────
+    if hero_img:
+        hero_bg = (
+            "linear-gradient(180deg,rgba(15,30,53,0.70) 0%,"
+            "rgba(15,30,53,0.32) 42%,rgba(15,30,53,0.90) 100%),"
+            "linear-gradient(100deg,rgba(15,30,53,0.85) 0%,"
+            "rgba(15,30,53,0.38) 58%,rgba(15,30,53,0.12) 100%),"
+            f"url('data:image/jpeg;base64,{hero_img}') center 38%/cover no-repeat"
+        )
+    else:
+        hero_bg = navy_900
+
     # ── CSS (all classes prefixed c1-) ──────────────────────────────────────
     css = f"""
 <style>
@@ -98,7 +112,7 @@ def build(ctx):
 .c1-kicker{{font-size:7pt;letter-spacing:2.6px;font-weight:700;text-transform:uppercase;}}
 
 /* ── HERO ──────────────────────────────────────────────────────────────── */
-.c1-hero{{position:relative;background:{navy_900};height:53mm;overflow:hidden;
+.c1-hero{{position:relative;background:{hero_bg};height:56mm;overflow:hidden;
   padding:9mm 14mm 0 14mm;}}
 .c1-hero-glow{{position:absolute;top:-30px;right:-40px;width:300px;height:210px;
   background:radial-gradient(ellipse at 75% 18%,rgba(245,166,35,0.30) 0%,transparent 64%);
@@ -106,7 +120,7 @@ def build(ctx):
 .c1-hero-top{{display:flex;align-items:flex-start;justify-content:space-between;
   position:relative;z-index:1;}}
 .c1-logo{{height:9mm;width:auto;object-fit:contain;display:block;}}
-.c1-hero-meta{{text-align:right;color:#fff;}}
+.c1-hero-meta{{text-align:right;color:#fff;text-shadow:0 1px 4px rgba(0,0,0,0.45);}}
 .c1-hero-meta .c1-ref-l{{font-size:6.5pt;letter-spacing:1.5px;text-transform:uppercase;
   color:{muted_2};}}
 .c1-hero-meta .c1-ref-v{{font-size:11.5pt;font-weight:700;color:#fff;margin-top:1px;
@@ -114,7 +128,8 @@ def build(ctx):
 .c1-hero-meta .c1-date{{font-size:8pt;color:rgba(255,255,255,0.72);margin-top:3px;}}
 .c1-pill-gold{{display:inline-block;margin-top:6px;background:{gold};color:{navy_900};
   border-radius:20px;padding:3px 11px;font-size:7pt;font-weight:700;letter-spacing:.3px;}}
-.c1-hero-body{{position:absolute;left:14mm;right:14mm;bottom:7mm;z-index:1;}}
+.c1-hero-body{{position:absolute;left:14mm;right:14mm;bottom:7mm;z-index:1;
+  text-shadow:0 1px 6px rgba(0,0,0,0.40);}}
 .c1-hero-kicker{{color:{gold};margin-bottom:6px;}}
 .c1-hello{{font-size:30pt;color:#fff;line-height:1.0;letter-spacing:-0.5px;}}
 .c1-sub{{font-size:11pt;color:rgba(255,255,255,0.82);margin-top:7px;font-weight:400;}}

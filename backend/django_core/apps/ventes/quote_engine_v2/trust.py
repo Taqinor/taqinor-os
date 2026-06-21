@@ -145,7 +145,7 @@ def build(ctx) -> str:
 /* Section heading */
 .p3-h {{ font-family:{ctx['fonts']['serif']}; font-weight:700; font-size:11.5pt;
   color:{C['navy']}; margin:0 0 7px; }}
-.p3-block {{ margin-bottom:15px; }}
+.p3-block {{ margin-bottom:20px; }}
 
 /* Garantie badges */
 .p3-badges {{ display:flex; gap:8px; }}
@@ -175,13 +175,13 @@ def build(ctx) -> str:
 .p3-col {{ flex:1; }}
 .p3-card {{ border:1px solid {C['line']}; border-radius:10px;
   background:{C['paper']}; padding:10px 12px; height:100%; }}
-.p3-cond-row {{ display:flex; gap:10px;
-  padding:5px 0; border-bottom:1px dashed {C['line_soft']}; }}
+.p3-cond-row {{ padding:7px 0; border-bottom:1px dashed {C['line_soft']}; }}
 .p3-cond-row:last-child {{ border-bottom:none; }}
-.p3-cond-k {{ flex:0 0 38mm; font-size:8pt; color:{C['muted']}; font-weight:600;
-  line-height:1.25; padding-right:8px; }}
-.p3-cond-v {{ flex:1 1 0; min-width:0; font-size:8pt; color:{C['ink']};
-  font-weight:500; text-align:right; line-height:1.25; }}
+.p3-cond-k {{ display:block; font-size:7pt; letter-spacing:.1em;
+  text-transform:uppercase; color:{C['muted_2']}; font-weight:700;
+  margin-bottom:2px; }}
+.p3-cond-v {{ display:block; font-size:8.4pt; color:{C['ink']};
+  font-weight:500; line-height:1.3; }}
 
 .p3-steps {{ display:flex; flex-direction:column; gap:9px; }}
 .p3-step {{ display:flex; align-items:baseline; gap:8px; }}

@@ -67,6 +67,17 @@ def logo_color_b64() -> str:
     return base64.b64encode(p.read_bytes()).decode()
 
 
+# v2's own bundled assets (self-contained, like the live engine).
+_V2_ASSETS = Path(__file__).resolve().parent / "assets"
+
+
+def hero_image_b64(name: str = "hero.jpg") -> str:
+    """Base64 JPEG of the page-1 hero photo (real installation). Swap the file
+    at quote_engine_v2/assets/hero.jpg to change it. Empty string -> flat navy."""
+    p = _V2_ASSETS / name
+    return base64.b64encode(p.read_bytes()).decode() if p.exists() else ""
+
+
 def font_face_css() -> str:
     faces = [
         ("DM Serif Display", 400, "DMSerifDisplay-400.woff2"),
