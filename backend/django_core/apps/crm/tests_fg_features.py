@@ -7,7 +7,6 @@ from django.contrib.auth import get_user_model
 
 from authentication.models import Company
 from apps.crm.models import Client, Lead, LeadActivity, MessageTemplate
-from apps.crm import stages
 
 User = get_user_model()
 

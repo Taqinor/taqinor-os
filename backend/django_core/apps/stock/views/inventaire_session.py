@@ -15,7 +15,7 @@ from rest_framework.decorators import action
 from rest_framework.response import Response
 from authentication.mixins import TenantMixin
 from apps.ventes.utils.references import create_with_reference
-from ..models import InventaireSession, LigneInventaire
+from ..models import InventaireSession
 from ..serializers import InventaireSessionSerializer
 from authentication.permissions import IsAdminRole
 

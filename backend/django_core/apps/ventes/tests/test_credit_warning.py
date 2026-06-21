@@ -9,8 +9,7 @@ from rest_framework_simplejwt.tokens import AccessToken
 
 from authentication.models import Company
 from apps.crm.models import Client
-from apps.stock.models import Produit
-from apps.ventes.models import Facture, LigneFacture, Paiement
+from apps.ventes.models import Facture, Paiement
 
 User = get_user_model()
 MONTH = timezone.now().strftime('%Y%m')

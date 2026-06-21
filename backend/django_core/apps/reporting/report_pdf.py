@@ -11,7 +11,6 @@ Usage interne :
 import base64
 import logging
 from datetime import date
-from io import BytesIO
 
 import weasyprint
 from django.http import HttpResponse

@@ -5,7 +5,6 @@ le champ `comparaison_options` est ajouté au DevisSerializer. Pour un devis
 mono-option le champ vaut None ; pour un devis à deux options il expose
 {nb_options, sans, avec, roi}.
 """
-from decimal import Decimal
 
 from django.contrib.auth import get_user_model
 from django.test import TestCase

@@ -40,6 +40,8 @@ _CANAL_SCORES: dict[str, int] = {
 }
 
 # ── Scores par montant de facture hiver (MAD/mois) ───────────────────────────
+
+
 def _bill_score(facture: Decimal | None) -> int:
     if facture is None:
         return 0

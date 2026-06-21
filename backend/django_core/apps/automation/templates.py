@@ -18,11 +18,11 @@ Les libellés sont en FRANÇAIS ; les clés techniques suivent le modèle EN.
 AUTOMATION_TEMPLATES = [
     {
         'id': 'whatsapp_on_devis_accepte',
-        'nom': 'Lien WhatsApp à l'acceptation d'un devis',
+        'nom': "Lien WhatsApp à l'acceptation d'un devis",
         'description': (
-            'Prépare un lien WhatsApp vers le client dès qu'un devis est '
-            'accepté (le lien s'ouvre dans WhatsApp Web — pas d'envoi '
-            'automatique).'
+            "Prépare un lien WhatsApp vers le client dès qu'un devis est "
+            "accepté (le lien s'ouvre dans WhatsApp Web — pas d'envoi "
+            "automatique)."
         ),
         'trigger_type': 'devis_accepted',
         'trigger_config': {},
@@ -37,7 +37,7 @@ AUTOMATION_TEMPLATES = [
         'id': 'assign_lead_on_new',
         'nom': 'Assigner un nouveau lead au responsable par défaut',
         'description': (
-            'Assigne automatiquement un lead qui vient de passer à l'étape '
+            "Assigne automatiquement un lead qui vient de passer à l'étape "
             'NEW au premier responsable disponible de la société.'
         ),
         'trigger_type': 'lead_stage_change',
@@ -50,8 +50,8 @@ AUTOMATION_TEMPLATES = [
         'id': 'activity_on_devis_signe',
         'nom': 'Créer une activité de suivi à la signature',
         'description': (
-            'Crée une activité « Préparer la commande matériel » quand un '
-            'lead passe à l'étape SIGNED.'
+            "Crée une activité « Préparer la commande matériel » quand un "
+            "lead passe à l'étape SIGNED."
         ),
         'trigger_type': 'lead_stage_change',
         'trigger_config': {'stage': 'SIGNED'},
@@ -75,7 +75,7 @@ AUTOMATION_TEMPLATES = [
                 'Bonjour {client_nom},\n\n'
                 'Votre facture {reference} est en attente de règlement.\n\n'
                 'Merci de procéder au paiement dans les meilleurs délais.\n\n'
-                'Cordialement,\nL'équipe Taqinor'
+                "Cordialement,\nL'équipe Taqinor"
             ),
         },
         'requires_approval': False,
@@ -84,7 +84,7 @@ AUTOMATION_TEMPLATES = [
         'id': 'ticket_sav_on_warranty_expiring',
         'nom': 'Créer un ticket SAV préventif avant expiration de garantie',
         'description': (
-            'Crée un ticket SAV de type préventif quand la garantie d'un '
+            "Crée un ticket SAV de type préventif quand la garantie d'un "
             'équipement expire dans les 90 prochains jours.'
         ),
         'trigger_type': 'warranty_expiring',
@@ -116,14 +116,14 @@ AUTOMATION_TEMPLATES = [
         'id': 'alert_on_stock_low',
         'nom': 'Alerte stock bas',
         'description': (
-            'Crée une activité « Commander du stock » quand un produit '
-            'passe sous son seuil d'alerte.'
+            "Crée une activité « Commander du stock » quand un produit "
+            "passe sous son seuil d'alerte."
         ),
         'trigger_type': 'stock_below_threshold',
         'trigger_config': {},
         'action_type': 'create_activity',
         'action_config': {
-            'body': 'Commander du stock : le produit est sous le seuil d'alerte.',
+            'body': "Commander du stock : le produit est sous le seuil d'alerte.",
         },
         'requires_approval': False,
     },

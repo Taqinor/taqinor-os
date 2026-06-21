@@ -1335,7 +1335,6 @@ class InterventionViewSet(TenantMixin, viewsets.ModelViewSet):
         Params : date_from, date_to (YYYY-MM-DD). Renvoie une liste de
         techniciens avec leurs interventions prévues sur la plage. Les
         interventions sans technicien sont groupées sous la clé `non_assigne`."""
-        from django.db.models import Prefetch
         from django.contrib.auth import get_user_model
         User = get_user_model()
         company = request.user.company
@@ -1416,7 +1415,6 @@ class InterventionViewSet(TenantMixin, viewsets.ModelViewSet):
         ordonnées géographiquement (plus proche voisin depuis le dépôt /
         position actuelle). Chaque arrêt inclut un lien « Itinéraire » Google Maps.
         Param optionnel : date (YYYY-MM-DD, défaut=aujourd'hui)."""
-        import math
         from django.utils.timezone import localdate
         company = request.user.company
         jour = request.query_params.get('date') or str(localdate())

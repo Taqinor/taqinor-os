@@ -129,7 +129,7 @@ def dashboard_quote_to_cash(request):
     periode_fac = Q(company=company) & (
         Q(date_emission__range=[
             request.query_params.get('start', (timezone.now().date()
-                                                - __import__('datetime').timedelta(days=365)).isoformat()),
+                                               - __import__('datetime').timedelta(days=365)).isoformat()),
             request.query_params.get('end', timezone.now().date().isoformat()),
         ])
         if (request.query_params.get('start') and request.query_params.get('end'))
@@ -233,27 +233,27 @@ def dashboard_quote_to_cash(request):
 
     return Response({
         'devis': {
-            'total':    agg_devis['total'],
-            'envoyes':  n_envoyes,
+            'total': agg_devis['total'],
+            'envoyes': n_envoyes,
             'acceptes': n_acceptes,
-            'refuses':  agg_devis['refuses'],
-            'expires':  agg_devis['expires'],
+            'refuses': agg_devis['refuses'],
+            'expires': agg_devis['expires'],
             'taux_acceptation_pct': _pct(n_acceptes, n_envoyes),
             'valeur_pipeline': str(round(valeur_pipeline, 2)),
         },
         'factures': {
-            'total':     agg_fac['total'],
-            'emises':    agg_fac['emises'],
-            'payees':    agg_fac['payees'],
+            'total': agg_fac['total'],
+            'emises': agg_fac['emises'],
+            'payees': agg_fac['payees'],
             'en_retard': agg_fac['en_retard'],
-            'annulees':  agg_fac['annulees'],
-            'montant_facture':  str(round(montant_facture, 2)),
+            'annulees': agg_fac['annulees'],
+            'montant_facture': str(round(montant_facture, 2)),
             'montant_encaisse': str(round(montant_encaisse, 2)),
         },
         'conversion': {
-            'devis_envoye_vers_accepte_pct':  _pct(n_acceptes, n_envoyes),
+            'devis_envoye_vers_accepte_pct': _pct(n_acceptes, n_envoyes),
             'devis_accepte_vers_facture_pct': _pct(devis_avec_facture, n_acceptes),
-            'devis_envoye_vers_facture_pct':  _pct(devis_avec_facture, n_envoyes),
+            'devis_envoye_vers_facture_pct': _pct(devis_avec_facture, n_envoyes),
         },
         'dso_jours': dso,
         'cycle_moyen_jours': cycle_moyen,

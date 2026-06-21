@@ -1031,7 +1031,7 @@ def rotation_report(company, jours=180):
     # Trier : immobiles en premier, puis ralentis, puis actifs
     order = {'immobile': 0, 'ralenti': 1, 'actif': 2}
     result.sort(key=lambda x: (order[x['bucket']],
-                                -(x['jours_sans_mouvement'] or 999999)))
+                               -(x['jours_sans_mouvement'] or 999999)))
     return result
 
 
@@ -1088,7 +1088,7 @@ def supplier_performance(company, fournisseur):
     """Scorecard performance fournisseur : délai moyen, taux de remplissage,
     taux de retour, dépenses totales. INTERNE."""
     from decimal import Decimal
-    from .models import BonCommandeFournisseur, RetourFournisseur, PrixFournisseur
+    from .models import BonCommandeFournisseur, RetourFournisseur
 
     bons = (BonCommandeFournisseur.objects
             .filter(company=company, fournisseur=fournisseur)
@@ -1142,7 +1142,6 @@ def suggestions_reappro_emplacement(company):
     avec une suggestion de transfert depuis le dépôt principal.
     INTERNE — admin uniquement."""
     from .models import StockEmplacement, EmplacementStock
-    from django.db.models import Q
 
     qs = (StockEmplacement.objects
           .filter(company=company)

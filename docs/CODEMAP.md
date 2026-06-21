@@ -1,8 +1,8 @@
 # CODEMAP — TAQINOR OS
 
-Generated from commit `HEAD` on 2026-06-21 (modularity + account-security run — structural surface: `core/mixins.py` (`TenantMixin`) + `core/scoping.py` now hold the shared primitives with `authentication/{mixins,scoping}.py` as re-export shims (M5); `core/events.py` Django-signal event bus with `ventes` emitting `devis_accepted` and `apps/crm/receivers.py` subscribing via `CrmConfig.ready` (M6); `installations`/`ventes`/`stock` `views.py` → `views/` packages and `installations/models.py` → `models_chantier/_field/_installation/_intervention.py` (M7, re-exported, no migration); `authentication.UserSession` (migration 0012) + `must_change_password`/`password_changed_at` with `auth/sessions/` list+`<id>/revoke/` and `auth/change-password/` endpoints (N96); cross-app calls rerouted through new `selectors.py` in crm/ventes/stock/installations + new stock/sav services (M2); a `lint-imports` import-linter step in the backend-lint CI job (M3). PRIOR (parallel build run) — additive structural surface: supplier procurement `stock.ReceptionFournisseur`/`LigneReceptionFournisseur` + `FactureFournisseur`/`LigneFactureFournisseur`/`PaiementFournisseur` (migration stock/0021) with endpoints `receptions-fournisseur`/`factures-fournisseur`/`comptes-a-payer`/`paiements-fournisseur` and routes `/stock/receptions-fournisseur`, `/stock/factures-fournisseur`; `crm.Lead.langue_preferee` (crm/0019); `notifications.EventType.DIGEST` + `notifications.PushSubscription` (notifications/0002,0003) with push subscribe/unsubscribe/vapid-public-key endpoints + `notifications/digests.py` beat jobs; `reporting.SavedReport` (reporting/0001) with `saved-reports` CRUD + `reporting/scheduled_reports.py` email beat job; `authentication.CustomUser` TOTP 2FA fields (authentication/0011) with `auth/2fa/*` endpoints; `installations` energy-report `@action` `chantiers/<id>/rapport-energie/`; new `celery_beat` process in docker-compose. Prior: refinement-queue batch — stock.Categorie.type_equipement, sav.Equipement serial constraint, /ventes/paiements, shared apps/records/xlsx.py. Error-plan drain 2026-06-20 — additive structural deltas only: `stock.StockEmplacement` company in `unique_together` + non-negative `quantite` CheckConstraint (migration stock/0022); `crm.Lead.gps_lat`/`gps_lng` range validators (migration crm/0020); `ventes.Devis.tva_par_taux` per-rate quantized property; `notifications` business-event producers wired via `AppConfig.ready()` (`notifications/signals.py`); `publicapi` SSRF allowlist (`publicapi/validators.py`); `installations.tool_return` now accepts POST; FastAPI `sqlparse` pinned. No new models/endpoints/routes.).
-Structure fingerprint: 62e49ce2e9f2d8e47f68821546567dee4a1d295d42f99bebe6d47c3326dd15d0
-Plan fingerprint: 73af0b653b8d04f5e9284de5eb324e90e19b15362b7303a55d0f949b08dfc1bd
+Generated from commit `HEAD` on 2026-06-21 (FG feature-gap build run — 82 tasks across 8 parallel worktree lanes + a brand-new accounting module. NEW APP `apps/compta` (migration 0001, wired into INSTALLED_APPS + `/api/django/compta/`): `PlanComptable`/`CompteComptable` (CGNC chart of accounts), `Journal`/`EcritureComptable`/`LigneEcriture` (balanced double-entry), `CompteTresorerie`, with endpoints plan-comptable/journaux/ecritures/grand-livre/balance/lettrage/cpc/bilan/comptes-tresorerie — auto-écriture generation is default-OFF behind `COMPTA_AUTO_ECRITURES`. ADDITIVE deltas: crm (`Lead.first_contacted_at`, `LeadActivity` Appel/Email kinds + `outcome`, `crm.MessageTemplate`, `CompanyProfile.lead_sla_hours`; scoring/sla-breach/relances/roi-sources/log-interaction/client-match actions — added to `LeadViewSet.get_permissions`); ventes (`Devis.motif_refus`/`echeancier`/`acompte_*`, refuser/dashboard/cash-flow/bulk + two-option comparison, `ContratMaintenance.facturation_*`, `ventes.services.creer_facture_contrat`); stock (`Produit.quantite_reappro_cible`, `LigneReceptionFournisseur.numeros_serie`/`numero_lot`/`date_peremption`, `StockEmplacement.seuil_min`/`seuil_max`, `InventaireSession`/`LigneInventaire`, reorder/rotation/forecast/supplier-PDF endpoints); installations (`Intervention.signature_client`/`rdv_*`, `Installation` multi-day fields, `TypeInterventionPlan`, `ChecklistEtapeModele.photo_obligatoire`, `Outillage` calibration fields, calendrier/gantt/ma-tournee endpoints); sav (`Ticket` SLA fields, `SavSlaSettings`, `MaintenanceChecklistTemplate`/`Item`+`TicketChecklistItem`, `WarrantyClaim`, `KbArticle`, `Equipement.equipement_token`, monitoring history endpoint); reporting (`SavedReport.pinned`, audit/cohorts/profitability/leaderboard insights, custom-field reporting); customfields (`CustomFieldDef` DEVIS/INSTALLATION/TICKET modules + `custom_data` JSONFields on Devis/Installation/Ticket); records (`Comment`, `Tag`/`TaggedItem`); notifications (`NotificationRoutingRule`, dead-EventType beat sweeps); automation (rule templates). Merge migrations reconcile the cross-app custom_data leaves: ventes/0023, sav/0008, crm/0023, installations/0012, records/0006, notifications/0006.)
+Structure fingerprint: c179f4f131fd811366f23e788d3b13d167e57fd5b8bd67669765bd2e0e407265
+Plan fingerprint: 730070e7b698bcd38743c929295d087866ee3064a60642edf9f86d4b324e558a
 
 > This file is **regenerated by the build pipeline**. It is derived by reading the
 > actual source (models, urls, serializers, settings, docker-compose, requirements,
@@ -607,11 +607,7 @@ functional-domain expansion audit, **PAIE*/COMPTA*/PROJ*/GED*/FLOTTE*/QHSE*/CONT
 new-module deep-dive backlogs, **DC*** data-connectivity / single-source-of-truth audit),
 `docs/PLAN2.md` (A*, B*, C*, D*, E*), and `docs/ERROR_PLAN.md` (ERR* bug backlog) — read from their
 BUILD QUEUE task boxes and cross-checked against `main`; completed tasks are archived verbatim in
-`docs/DONE.md`. Generated from `HEAD` on 2026-06-21 (planning-only run: appended FG1–FG399 (module
-feature-gap + functional-domain expansion audit), nine new-module deep-dive backlogs
-(PAIE/COMPTA/PROJ/GED/FLOTTE/QHSE/CONTRAT/KB/LITIGE) and DC1–DC42 (single-source-of-truth /
-data-connectivity audit) to `docs/PLAN.md`, then integrated the latest `origin/main` — docs-only on
-this run's side, so the structure surface is `main`'s). This section is guarded by the
+`docs/DONE.md`. Generated from `HEAD` on 2026-06-21 (FG feature-gap build run: ticked FG1–FG14, FG27–FG48, FG54–FG65, FG68–FG90, FG91–FG101, FG107–FG121 — 82 tasks built across 8 parallel worktree lanes, integrated onto the latest `origin/main`). This section is guarded by the
 `Plan fingerprint:` header at the top of the file: the required `stage-names` CI job runs
 `scripts/codemap_fingerprint.py --check`, which recomputes a SHA-256 over every task's
 `(file, id, done/open/blocked)` state — so ticking, adding, or removing a plan task without
@@ -619,7 +615,7 @@ refreshing this section fails CI, exactly like the structure fingerprint guards 
 Done/Open/Blocked lists below are produced verbatim by `python scripts/codemap_fingerprint.py
 --print-plan-status`; regenerate them and re-run `--write` whenever task states change.
 
-**Totals: 912 tasks — 129 done · 777 open · 6 blocked.** (2026-06-21: integrated origin/main; added Group Q (Q1–Q7) Devis↔Toiture-3D pipeline backend to PLAN2; web tasks W112–W118 in WEB_PLAN, outside the plan-fingerprint surface.) (2026-06-21: added 52 UI/UX look-and-feel tasks F120–P171 to PLAN2 Groups F–P — world-class "best-looking ERP" backlog; no task built, done/blocked unchanged.)
+**Totals: 912 tasks — 211 done · 695 open · 6 blocked.** (2026-06-21: FG feature-gap build run — ticked 82 FG tasks across 8 parallel lanes + the new `apps/compta` accounting module; no tasks added/removed, so the total is unchanged and 82 moved open→done.)
 added the FG1–FG399 feature-gap + functional-domain backlog, 275 new-module deep-dive tasks across
 nine modules (PAIE/COMPTA/PROJ/GED/FLOTTE/QHSE/CONTRAT/KB/LITIGE), and DC1–DC42 data-connectivity
 tasks to `docs/PLAN.md`. No task was built or ticked — backlog additions only; done/blocked counts
@@ -630,7 +626,7 @@ are unchanged from the prior batch.)
 > plan" run, branch-collision risk). **N100/N101/N102** are deferred post-V1 by Reda's review.
 > **M4** stays blocked (its load-time back-edge doesn't exist on main).
 
-**Done (129)**
+**Done (211)**
 
 - `ERR1` — [FastAPI] NL→SQL agent has no SELECT-only enforcement in code…
 - `ERR2` — [FastAPI] NL→SQL tenant isolation is defeatable four ways…
@@ -745,6 +741,88 @@ are unchanged from the prior batch.)
 - `ERR111` — [web] The CAPI relay receives un-hashed phone/city PII…
 - `ERR112` — [web] The public lead endpoint has no rate limit/CAPTCHA…
 - `ERR113` — [web] `roof.ts`'s `annualSavingsBandMad` uses a flat 1.4 MAD/kWh tariff with no bill…
+- `FG1` — Activate the dead notification EventTypes via Celery-Beat sweeps
+- `FG2` — Wire the automation engine's time-based triggers
+- `FG3` — Automation rule template library (no-code presets)
+- `FG4` — Admin-configurable notification routing rules
+- `FG7` — Generic comments + @mentions across all records
+- `FG8` — Unified, role-scoped cross-record activity feed ("Fil d'activité")
+- `FG9` — Shared cross-module tag taxonomy
+- `FG10` — Tenant-wide document/attachment center
+- `FG11` — Generalize saved filters/views to all list screens
+- `FG12` — Wire the existing dark-mode/theme toggle into the app shell
+- `FG13` — Surface a push-notification opt-in toggle in settings
+- `FG14` — Bulk import for more entities
+- `FG27` — Lead scoring
+- `FG28` — First-response SLA + "lead non contacté" alert
+- `FG29` — Time-in-stage age + funnel-velocity analytics
+- `FG30` — Unified communication log (calls/emails) in the chatter
+- `FG31` — "File de relance du jour" consolidated queue
+- `FG32` — Client segmentation (RFM / dormant / top)
+- `FG33` — Bulk WhatsApp outreach
+- `FG34` — Source/campaign ROI analytics
+- `FG35` — "Lead express" quick capture
+- `FG36` — Reusable WhatsApp message templates in CRM
+- `FG37` — Lead pipeline map view
+- `FG38` — Lead↔Client duplicate match at creation
+- `FG40` — Recurring maintenance-contract billing
+- `FG41` — Client credit limit / encours gate
+- `FG42` — Bank-statement payment import & reconciliation
+- `FG43` — Invoice bulk operations
+- `FG44` — Quote refusal with motif
+- `FG45` — Ventes quote-to-cash finance dashboard
+- `FG46` — Flexible échéancier + stored acompte
+- `FG47` — Cash-flow / receivables forecast
+- `FG48` — On-screen two-option quote comparison
+- `FG54` — Reorder-point auto-PO suggestions
+- `FG55` — Supplier-invoice PDF (facture fournisseur)
+- `FG56` — "Facturer cette réception" line-driven supplier invoice
+- `FG57` — Dead-stock / rotation aging report
+- `FG58` — Supplier price-list comparison UI
+- `FG59` — Supplier performance scorecard
+- `FG60` — Stock-movement filters + xlsx export
+- `FG61` — Serial/lot capture at goods-in
+- `FG62` — Per-location min/max + van replenishment
+- `FG63` — Inventory-count session workflow
+- `FG64` — Battery/sealant expiry tracking
+- `FG65` — Demand forecasting reorder quantities
+- `FG68` — Crew dispatch calendar + technician capacity for interventions
+- `FG69` — Captured client signature (sign-off) on compte-rendu / PV de réception
+- `FG72` — Multi-day chantier planning
+- `FG73` — Technician day route/itinerary
+- `FG74` — Cross-chantier Gantt / milestone timeline
+- `FG75` — Roof/drone site-survey attachment surface on the chantier
+- `FG76` — Photo-required gate on chantier checklist steps
+- `FG78` — Intervention RDV confirmation + reschedule/no-show tracking
+- `FG79` — Auto-scaffold the standard intervention chain from chantier type
+- `FG80` — Outillage calibration/inspection tracking
+- `FG81` — Server-side ticket SLA (response/resolution clocks + breach)
+- `FG82` — Maintenance-visit checklist / structured visit report
+- `FG83` — Supplier warranty-claim (RMA) workflow
+- `FG84` — Per-system production history chart + expected-vs-actual + CSV
+- `FG85` — Equipment QR labels + scan-to-equipment/ticket
+- `FG87` — SAV knowledge base (resolution playbooks)
+- `FG89` — Spare-parts forecasting from PieceConsommee history
+- `FG90` — Chronic/repeat-failure equipment flag
+- `FG91` — SavedReport frontend (CRUD + schedule + optional dashboard pin)
+- `FG92` — Period comparison (MoM/YoY) on dashboard & reports
+- `FG93` — Sales-rep leaderboard
+- `FG94` — Activate custom-field reporting
+- `FG95` — PDF export for reports (branded)
+- `FG97` — Audit-log analytics
+- `FG98` — Cohort / seasonality conversion analysis
+- `FG99` — Profitability by segment
+- `FG100` — Custom fields for Devis / Chantier / Ticket
+- `FG101` — Drill-down from report rows/charts to filtered lists
+- `FG107` — Plan comptable CGNC
+- `FG108` — Journaux + écritures (comptabilité en partie double)
+- `FG109` — Auto-génération des écritures depuis factures/paiements/avoirs/factures fournisseur
+- `FG110` — Grand livre
+- `FG111` — Balance générale (trial balance)
+- `FG112` — Lettrage & rapprochement client/fournisseur
+- `FG113` — Compte de Produits et Charges (CPC / P&L marocain)
+- `FG114` — Bilan comptable (format CGNC)
+- `FG121` — Référentiel comptes bancaires & caisses
 - `G5` — Supplier procurement module (a dedicated multi-session module): bons de commande…
 - `M1` — Replace every load-time cross-app model import in the core apps with Django string FK…
 - `M2` — Make `services.py` / `selectors.py` the only cross-app entry point: route cross-app…
@@ -762,7 +840,7 @@ are unchanged from the prior batch.)
 - `N110` — Admin cannot change a user's role manually (Administration → Utilisateurs → edit…
 - `G10` — Lead-source capture (G10 first half): (1) add nullable fields to the lead model —…
 
-**Open — to build (777)**
+**Open — to build (695)**
 
 - `COMPTA1` — Plan comptable CGNC paramétrable + `seed_plan_comptable` idempotent
 - `COMPTA2` — Mapping document→compte par société (familles/TVA/modes de paiement → comptes)
@@ -881,20 +959,8 @@ are unchanged from the prior batch.)
 - `DC40` — Décision modèle `Equipe`
 - `DC41` — Permis & habilitations : un seul foyer
 - `DC42` — Personnes dans QHSE/Paie/Projet
-- `FG1` — Activate the dead notification EventTypes via Celery-Beat sweeps
-- `FG2` — Wire the automation engine's time-based triggers
-- `FG3` — Automation rule template library (no-code presets)
-- `FG4` — Admin-configurable notification routing rules
 - `FG5` — Working-hours + Moroccan public-holiday calendar feeding planning/relance
 - `FG6` — ICS/iCal calendar feed per user
-- `FG7` — Generic comments + @mentions across all records
-- `FG8` — Unified, role-scoped cross-record activity feed ("Fil d'activité")
-- `FG9` — Shared cross-module tag taxonomy
-- `FG10` — Tenant-wide document/attachment center
-- `FG11` — Generalize saved filters/views to all list screens
-- `FG12` — Wire the existing dark-mode/theme toggle into the app shell
-- `FG13` — Surface a push-notification opt-in toggle in settings
-- `FG14` — Bulk import for more entities
 - `FG15` — Broaden audit-trail coverage + a generic soft-delete/restore standard
 - `FG16` — In-app onboarding / setup checklist + contextual help
 - `FG17` — Email template management (parity with WhatsApp templates)
@@ -907,101 +973,31 @@ are unchanged from the prior batch.)
 - `FG24` — Settings config export/import between companies
 - `FG25` — Configurable approval workflows beyond discount
 - `FG26` — Data-retention / GDPR tooling
-- `FG27` — Lead scoring
-- `FG28` — First-response SLA + "lead non contacté" alert
-- `FG29` — Time-in-stage age + funnel-velocity analytics
-- `FG30` — Unified communication log (calls/emails) in the chatter
-- `FG31` — "File de relance du jour" consolidated queue
-- `FG32` — Client segmentation (RFM / dormant / top)
-- `FG33` — Bulk WhatsApp outreach
-- `FG34` — Source/campaign ROI analytics
-- `FG35` — "Lead express" quick capture
-- `FG36` — Reusable WhatsApp message templates in CRM
-- `FG37` — Lead pipeline map view
-- `FG38` — Lead↔Client duplicate match at creation
 - `FG39` — Sales objectives & KPI targets vs actuals
-- `FG40` — Recurring maintenance-contract billing
-- `FG41` — Client credit limit / encours gate
-- `FG42` — Bank-statement payment import & reconciliation
-- `FG43` — Invoice bulk operations
-- `FG44` — Quote refusal with motif
-- `FG45` — Ventes quote-to-cash finance dashboard
-- `FG46` — Flexible échéancier + stored acompte
-- `FG47` — Cash-flow / receivables forecast
-- `FG48` — On-screen two-option quote comparison
 - `FG49` — Account-coded accounting export (PCG/Sage layout)
 - `FG50` — Acompte transfer/refund on invoice cancel
 - `FG51` — Proof-of-delivery gate before invoicing
 - `FG52` — Multi-currency quoting/invoicing
 - `FG53` — E-payment "Payer en ligne" link
-- `FG54` — Reorder-point auto-PO suggestions
-- `FG55` — Supplier-invoice PDF (facture fournisseur)
-- `FG56` — "Facturer cette réception" line-driven supplier invoice
-- `FG57` — Dead-stock / rotation aging report
-- `FG58` — Supplier price-list comparison UI
-- `FG59` — Supplier performance scorecard
-- `FG60` — Stock-movement filters + xlsx export
-- `FG61` — Serial/lot capture at goods-in
-- `FG62` — Per-location min/max + van replenishment
-- `FG63` — Inventory-count session workflow
-- `FG64` — Battery/sealant expiry tracking
-- `FG65` — Demand forecasting reorder quantities
 - `FG66` — Kit/BOM as a sellable catalogue product
 - `FG67` — FIFO / landed-cost valuation option
-- `FG68` — Crew dispatch calendar + technician capacity for interventions
-- `FG69` — Captured client signature (sign-off) on compte-rendu / PV de réception
 - `FG70` — Auto warranty handover at RECEPTIONNE
 - `FG71` — Per-chantier job-costing roll-up
-- `FG72` — Multi-day chantier planning
-- `FG73` — Technician day route/itinerary
-- `FG74` — Cross-chantier Gantt / milestone timeline
-- `FG75` — Roof/drone site-survey attachment surface on the chantier
-- `FG76` — Photo-required gate on chantier checklist steps
 - `FG77` — Pre-pose readiness check
-- `FG78` — Intervention RDV confirmation + reschedule/no-show tracking
-- `FG79` — Auto-scaffold the standard intervention chain from chantier type
-- `FG80` — Outillage calibration/inspection tracking
-- `FG81` — Server-side ticket SLA (response/resolution clocks + breach)
-- `FG82` — Maintenance-visit checklist / structured visit report
-- `FG83` — Supplier warranty-claim (RMA) workflow
-- `FG84` — Per-system production history chart + expected-vs-actual + CSV
-- `FG85` — Equipment QR labels + scan-to-equipment/ticket
 - `FG86` — Public tokenized "track your SAV request" link
-- `FG87` — SAV knowledge base (resolution playbooks)
 - `FG88` — Maintenance route/day planning for preventive visits
-- `FG89` — Spare-parts forecasting from PieceConsommee history
-- `FG90` — Chronic/repeat-failure equipment flag
-- `FG91` — SavedReport frontend (CRUD + schedule + optional dashboard pin)
-- `FG92` — Period comparison (MoM/YoY) on dashboard & reports
-- `FG93` — Sales-rep leaderboard
-- `FG94` — Activate custom-field reporting
-- `FG95` — PDF export for reports (branded)
 - `FG96` — Configurable / per-role dashboard
-- `FG97` — Audit-log analytics
-- `FG98` — Cohort / seasonality conversion analysis
-- `FG99` — Profitability by segment
-- `FG100` — Custom fields for Devis / Chantier / Ticket
-- `FG101` — Drill-down from report rows/charts to filtered lists
 - `FG102` — Webhook delivery log + retry/replay + test ping UI
 - `FG103` — More webhook events
 - `FG104` — Public API filtering, ordering & incremental sync
 - `FG105` — Public API documentation page
 - `FG106` — OCR → draft lead / draft devis action
-- `FG107` — Plan comptable CGNC
-- `FG108` — Journaux + écritures (comptabilité en partie double)
-- `FG109` — Auto-génération des écritures depuis factures/paiements/avoirs/factures fournisseur
-- `FG110` — Grand livre
-- `FG111` — Balance générale (trial balance)
-- `FG112` — Lettrage & rapprochement client/fournisseur
-- `FG113` — Compte de Produits et Charges (CPC / P&L marocain)
-- `FG114` — Bilan comptable (format CGNC)
 - `FG115` — Clôture & verrouillage de période comptable
 - `FG116` — Écritures de régularisation / OD manuelles
 - `FG117` — À-nouveaux / réouverture d'exercice
 - `FG118` — Registre des immobilisations
 - `FG119` — Plan d'amortissement (linéaire/dégressif)
 - `FG120` — Cession / mise au rebut d'immobilisation
-- `FG121` — Référentiel comptes bancaires & caisses
 - `FG122` — Position de trésorerie consolidée + projection
 - `FG123` — Rapprochement bancaire (relevé ↔ écritures)
 - `FG124` — Caisse / petty cash (journal d'espèces)

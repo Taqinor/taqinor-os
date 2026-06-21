@@ -630,7 +630,7 @@ class FactureViewSet(viewsets.ModelViewSet):
         Renvoie un dict par id : ``{id: {ok: bool, detail: str}}``.
         Les erreurs par facture n'interrompent pas le batch.
         """
-        company = request.user.company
+        request.user.company
         action_name = (request.data.get('action') or '').strip()
         ids = request.data.get('ids') or []
 

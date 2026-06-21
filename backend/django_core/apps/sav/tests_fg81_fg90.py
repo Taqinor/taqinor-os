@@ -10,7 +10,6 @@ from decimal import Decimal
 
 from django.contrib.auth import get_user_model
 from django.test import TestCase
-from django.utils import timezone
 from rest_framework.test import APIClient
 from rest_framework_simplejwt.tokens import AccessToken
 
@@ -71,6 +70,7 @@ def make_equipement(company, user, produit, installation, serie='SN-FG-1'):
 def make_ticket(company, user, client, installation, equipement=None,
                 priorite='normale', statut='nouveau'):
     from apps.ventes.utils.references import create_with_reference
+
     def _create(ref):
         return Ticket.objects.create(
             company=company, reference=ref, client=client,
@@ -551,6 +551,7 @@ class TestFg90NbTickets12m(TestCase):
     def test_nb_tickets_12m_excludes_preventif(self):
         """FG90 — Les tickets préventifs ne comptent pas."""
         from apps.ventes.utils.references import create_with_reference
+
         def _create(ref):
             return Ticket.objects.create(
                 company=self.co, reference=ref, client=self.client,

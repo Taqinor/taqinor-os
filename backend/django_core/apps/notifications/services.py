@@ -247,7 +247,6 @@ def resolve_recipients(company, event_type):
     Retourne un QuerySet d'utilisateurs (peut être vide). Best-effort :
     toute erreur renvoie un QuerySet vide plutôt que de propager l'exception."""
     try:
-        from django.conf import settings
         from django.contrib.auth import get_user_model
         User = get_user_model()
 

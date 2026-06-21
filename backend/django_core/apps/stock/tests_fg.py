@@ -23,11 +23,10 @@ from rest_framework.test import APIClient
 from rest_framework_simplejwt.tokens import AccessToken
 
 from apps.stock.models import (
-    Produit, Categorie, Fournisseur, MouvementStock,
-    PrixFournisseur,
-    BonCommandeFournisseur, LigneBonCommandeFournisseur,
-    ReceptionFournisseur, LigneReceptionFournisseur,
-    FactureFournisseur, LigneFactureFournisseur,
+    Produit, Fournisseur, MouvementStock, PrixFournisseur,
+    BonCommandeFournisseur,
+    LigneBonCommandeFournisseur, ReceptionFournisseur,
+    LigneReceptionFournisseur, FactureFournisseur,
     EmplacementStock, StockEmplacement,
     InventaireSession, LigneInventaire,
 )

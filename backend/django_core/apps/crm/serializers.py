@@ -182,14 +182,14 @@ class LeadSerializer(serializers.ModelSerializer):
         try:
             from django.utils import timezone
             from .models import LeadActivity
-            last_stage_change = (
+            last_change = (
                 LeadActivity.objects
                 .filter(lead=obj, kind=LeadActivity.Kind.MODIFICATION, field='stage')
                 .order_by('-created_at')
                 .first()
             )
-            if last_stage_change:
-                ref = last_stage_change.created_at
+            if last_change:
+                ref = last_change.created_at
             else:
                 ref = obj.date_creation
             if ref is None:

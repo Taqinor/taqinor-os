@@ -317,13 +317,13 @@ def commit(file_bytes, filename, company, user):
             # Race: facture payée entre le match et l'atomic.
             skipped += 1
             results.append({'ligne': i + 2, 'statut': 'deja_regle',
-                             'facture': facture.reference})
+                            'facture': facture.reference})
         except Exception as exc:  # noqa: BLE001
             errors += 1
             logger.warning('Import paiement ligne %d : %s', i + 2, exc,
                            exc_info=True)
             results.append({'ligne': i + 2, 'statut': 'erreur',
-                             'detail': str(exc)})
+                            'detail': str(exc)})
 
     return {
         'created': created, 'skipped': skipped, 'errors': errors,

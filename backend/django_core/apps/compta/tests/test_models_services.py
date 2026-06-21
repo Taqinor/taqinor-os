@@ -222,6 +222,7 @@ class AutoGenerationTests(TestCase):
 
 class EtatsTests(TestCase):
     """Grand livre / balance / lettrage / CPC / bilan (FG110-114)."""
+
     def setUp(self):
         self.co = make_company('compta-etats', 'Compta Etats')
         services.seed_plan_comptable(self.co)

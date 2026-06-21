@@ -128,7 +128,6 @@ def funnel_velocity(request):
     l'entrée dans l'étape et la sortie (basé sur LeadActivity stage changes).
     Inclut aussi les leads actuellement dans chaque étape (stalled).
     """
-    from django.utils import timezone
     co = _co_filter(request.user)
     if co is None:
         return Response({'detail': 'Accès refusé.'}, status=403)

@@ -508,7 +508,7 @@ class TestComments(TestCase):
 
     def test_mention_notifies_user(self):
         """@mention dans un commentaire → notification in-app pour l'utilisateur mentionné."""
-        from apps.notifications.models import EventType, Notification
+        from apps.notifications.models import Notification
         # L'admin s'appelle 'cmt_admin'. Le responsable le mentionne.
         res = self.api.post('/api/django/records/comments/', {
             'model': 'crm.lead', 'id': self.lead.id,

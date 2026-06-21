@@ -9,7 +9,7 @@ from rest_framework_simplejwt.tokens import AccessToken
 
 from authentication.models import Company
 from apps.crm.models import Client
-from apps.ventes.models import Devis, LigneDevis, Facture, LigneFacture, Paiement
+from apps.ventes.models import Devis, LigneDevis, Facture, Paiement
 
 User = get_user_model()
 URL = '/api/django/ventes/dashboard/'

@@ -641,7 +641,6 @@ class LeadViewSet(TenantMixin, viewsets.ModelViewSet):
           win_rate (%), signed_value_ttc (somme des devis acceptés TTC).
         Filtres : ?from=YYYY-MM-DD &to=YYYY-MM-DD &canal=<key>
         """
-        from django.db.models import Count, Q, Sum
         import datetime
 
         qs = self.get_queryset().filter(is_archived=False)
@@ -651,14 +650,12 @@ class LeadViewSet(TenantMixin, viewsets.ModelViewSet):
         to_ = request.query_params.get('to')
         if from_:
             try:
-                qs = qs.filter(date_creation__date__gte=
-                               datetime.date.fromisoformat(from_))
+                qs = qs.filter(date_creation__date__gte=datetime.date.fromisoformat(from_))
             except ValueError:
                 pass
         if to_:
             try:
-                qs = qs.filter(date_creation__date__lte=
-                               datetime.date.fromisoformat(to_))
+                qs = qs.filter(date_creation__date__lte=datetime.date.fromisoformat(to_))
             except ValueError:
                 pass
         canal_filter = request.query_params.get('canal')
@@ -666,10 +663,9 @@ class LeadViewSet(TenantMixin, viewsets.ModelViewSet):
             qs = qs.filter(canal=canal_filter)
 
         # Grouper par canal puis par campagne
-        from .stages import STAGE_LABELS
         result = []
         for canal_key in (qs.values_list('canal', flat=True)
-                           .order_by('canal').distinct()):
+                          .order_by('canal').distinct()):
             canal_qs = qs.filter(canal=canal_key)
             # Par campagne UTM (None = pas de campagne)
             campaigns = (canal_qs.values_list('utm_campaign', flat=True)
@@ -694,8 +690,8 @@ class LeadViewSet(TenantMixin, viewsets.ModelViewSet):
                     'signed_count': signed_count,
                     'win_rate': round(signed_count / lead_count * 100, 1)
                               if lead_count else 0,
-                    'signed_value_ttc': round(signed_value, 2),
-                })
+                              'signed_value_ttc': round(signed_value, 2),
+                              })
         return Response(result)
 
     # ── FG38 — Correspondance Lead↔Client (doublon retour client) ────────────

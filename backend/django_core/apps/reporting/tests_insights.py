@@ -299,8 +299,8 @@ class TestSalesLeaderboard(InsightsBase):
     """FG93 — classement commerciaux : CA HT, taux victoire, deal moyen, kWc."""
 
     def _make_devis_with_ligne(self, company, reference, client, produit,
-                                lead=None, statut='accepte',
-                                date_acceptation=None):
+                               lead=None, statut='accepte',
+                               date_acceptation=None):
         """Crée un devis avec une ligne (total_ht calculé dynamiquement)."""
         from datetime import date
         from apps.ventes.models import Devis, LigneDevis
@@ -315,7 +315,6 @@ class TestSalesLeaderboard(InsightsBase):
 
     def test_leaderboard_shape_and_scope(self):
         """CA HT calculé depuis les lignes ; classement borné à la société."""
-        from datetime import date
         from apps.crm.models import Client
         # Crée un commercial avec un lead et un devis signé.
         owner = User.objects.create_user(

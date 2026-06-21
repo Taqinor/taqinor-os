@@ -18,16 +18,15 @@ from apps.ventes.utils.references import create_with_reference
 from . import activity
 from .models import (
     Equipement, Ticket, PieceConsommee,
-    SavSlaSettings, MaintenanceChecklistTemplate, MaintenanceChecklistItem,
-    TicketChecklistItem, WarrantyClaim, KbArticle,
+    SavSlaSettings, MaintenanceChecklistTemplate, TicketChecklistItem,
+    WarrantyClaim, KbArticle,
 )
 from .pdf import rapport_intervention_pdf
 from .serializers import (
     EquipementSerializer, TicketSerializer, TicketActivitySerializer,
     PieceConsommeeSerializer, EXPIRING_SOON_DAYS,
     SavSlaSettingsSerializer,
-    MaintenanceChecklistTemplateSerializer, MaintenanceChecklistItemSerializer,
-    TicketChecklistItemSerializer,
+    MaintenanceChecklistTemplateSerializer, TicketChecklistItemSerializer,
     WarrantyClaimSerializer,
     KbArticleSerializer,
 )
@@ -733,7 +732,6 @@ def sav_parts_forecast(request):
     consommation mensuelle moyenne et suggère une quantité de réapprovisionnement.
     Interne uniquement — aucun prix d'achat n'est exposé.
     """
-    from rest_framework.request import Request as DRFRequest
     from apps.sav.models import PieceConsommee
     from django.db.models import Sum
 

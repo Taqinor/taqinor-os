@@ -11,8 +11,7 @@ from rest_framework_simplejwt.tokens import AccessToken
 
 from authentication.models import Company
 from apps.crm.models import Client
-from apps.stock.models import Produit
-from apps.ventes.models import Facture, LigneFacture, Paiement
+from apps.ventes.models import Facture, Paiement
 
 User = get_user_model()
 MONTH = timezone.now().strftime('%Y%m')
@@ -123,7 +122,7 @@ class TestReleveImport(TestCase):
     def test_dry_run_exposes_columns(self):
         """Dry-run renvoie le mapping colonnes reconnues + non reconnues."""
         csv_bytes = _make_csv([{'date': '2026-06-20', 'reference': 'X',
-                                 'montant': '100', 'unknown_col': 'x'}],
+                                'montant': '100', 'unknown_col': 'x'}],
                               headers=['date', 'reference', 'montant', 'unknown_col'])
         r = self.api.post(
             self.DRY_URL, {'file': io.BytesIO(csv_bytes)}, format='multipart')

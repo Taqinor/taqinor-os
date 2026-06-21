@@ -31,7 +31,7 @@ from apps.crm.models import Client, Lead
 from apps.ventes.models import Devis
 from apps.installations.models import (
     Installation, Intervention, TypeInterventionPlan,
-    ChecklistEtapeModele, ChantierChecklistItem,
+    ChecklistEtapeModele,
 )
 from apps.installations.services import create_installation_from_devis
 from apps.outillage.models import Outillage

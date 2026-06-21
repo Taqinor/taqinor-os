@@ -856,7 +856,7 @@ def cohorts(request):
     })
 
     for lead in qs.only('id', 'stage', 'date_creation', 'canal',
-                         'date_modification').iterator():
+                        'date_modification').iterator():
         month_key = lead.date_creation.strftime('%Y-%m') if lead.date_creation else 'inconnu'
         dim_key = month_key
         if group_by in valid_group_by:
@@ -937,7 +937,7 @@ def profitability(request):
         return Response({'detail': 'Accès refusé.'}, status=403)
 
     from apps.installations.models import Installation
-    from apps.ventes.models import Devis, Facture
+    from apps.ventes.models import Facture
 
     segment_field = request.query_params.get('segment', 'type_installation')
     allowed = {'type_installation', 'canal'}
