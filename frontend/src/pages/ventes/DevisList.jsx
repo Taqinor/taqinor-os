@@ -16,6 +16,7 @@ import importApi, { downloadXlsx } from '../../api/importApi'
 import DevisForm from './DevisForm'
 import {
   Button, Badge, StatusPill, Card, EmptyState, Spinner,
+  Skeleton, SkeletonTableRow,
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter,
   AlertDialog, AlertDialogTrigger, AlertDialogContent, AlertDialogHeader,
   AlertDialogTitle, AlertDialogDescription, AlertDialogFooter,
@@ -25,6 +26,38 @@ import {
 import { formatMAD } from '../../lib/format'
 import { proposalParams, pdfBlob } from '../../features/ventes/previewPdf'
 import { useSavedViews } from '../../hooks/useSavedViews'
+import { useDelayedLoading } from '../../hooks/useDelayedLoading'
+
+// J141 — Squelette de la liste : reprend les 8 colonnes du vrai tableau pour que
+// la mise en page ne saute pas à l'arrivée des données. Affiché dans la même
+// carte que le tableau réel, en gardant l'en-tête de page visible.
+function DevisTableSkeleton() {
+  return (
+    <Card className="mt-4 overflow-hidden">
+      <div className="overflow-x-auto">
+        <table className="data-table">
+          <thead>
+            <tr>
+              <th className="w-8" />
+              <th>Référence</th>
+              <th>Client</th>
+              <th>Créé le</th>
+              <th>Validité</th>
+              <th className="ta-right">Total TTC</th>
+              <th>Statut</th>
+              <th>Actions</th>
+            </tr>
+          </thead>
+          <tbody>
+            {Array.from({ length: 6 }).map((unused, i) => (
+              <SkeletonTableRow key={i} columns={8} />
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </Card>
+  )
+}
 
 const DL_SAVED_VIEWS_KEY = 'taqinor.ventes.devis.savedViews'
 
@@ -92,6 +125,8 @@ export default function DevisList() {
   const { devis, loading, error } = useSelector(s => s.ventes)
   const role = useSelector(s => s.auth.role)
   const canDelete = role === 'admin'  // règle existante : destroy = admin
+  // J141 — chargement différé anti-scintillement : spinner discret puis squelette.
+  const { showSpinner, showSkeleton } = useDelayedLoading(loading)
 
   const [showForm, setShowForm]       = useState(false)
   const [editDevis, setEditDevis]     = useState(null)
@@ -487,17 +522,53 @@ export default function DevisList() {
       : [...new Set([...prev, ...filteredDevis.map(d => d.id)])]
   ))
 
+  // J141 — l'en-tête de page reste TOUJOURS visible (chargement, erreur, données)
+  // pour éviter le saut de mise en page. Le contenu interne varie selon l'état.
+  const pageHeader = (
+    <div className="page-header">
+      <h2>Devis</h2>
+      <div className="flex flex-wrap items-center gap-2">
+        <Button size="sm" variant="outline" disabled={loading || !!error}
+                onClick={() => importApi.exportList('devis', devis.map(d => d.id))
+                  .then(r => downloadXlsx(r.data, 'devis.xlsx')).catch(() => {})}>
+          <Download /> Exporter Excel
+        </Button>
+        <Button onClick={openNew}><Plus /> Nouveau devis</Button>
+      </div>
+    </div>
+  )
+
   if (loading) {
     return (
-      <div className="flex items-center justify-center gap-2 py-12 text-sm text-muted-foreground">
-        <Spinner /> Chargement des devis…
+      <div className="page">
+        {pageHeader}
+        {showSpinner && (
+          <div className="mt-4 flex items-center justify-center gap-2 py-12 text-sm text-muted-foreground">
+            <Spinner /> Chargement des devis…
+          </div>
+        )}
+        {showSkeleton && (
+          <>
+            {/* Bandeau de résumé squelette (5 cartes statut). */}
+            <div className="mt-4 grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-5">
+              {Array.from({ length: 5 }).map((unused, i) => (
+                <div key={i} className="rounded-lg border border-border bg-card p-3">
+                  <Skeleton className="h-4 w-20" />
+                  <Skeleton className="mt-2 h-3 w-16" />
+                </div>
+              ))}
+            </div>
+            <DevisTableSkeleton />
+          </>
+        )}
       </div>
     )
   }
   if (error) {
     return (
       <div className="page">
-        <EmptyState icon={FileStack} title="Erreur de chargement"
+        {pageHeader}
+        <EmptyState className="mt-4" icon={FileStack} title="Erreur de chargement"
                     description={typeof error === 'string' ? error : JSON.stringify(error)} />
       </div>
     )
@@ -505,17 +576,7 @@ export default function DevisList() {
 
   return (
     <div className="page">
-      <div className="page-header">
-        <h2>Devis</h2>
-        <div className="flex flex-wrap items-center gap-2">
-          <Button size="sm" variant="outline"
-                  onClick={() => importApi.exportList('devis', devis.map(d => d.id))
-                    .then(r => downloadXlsx(r.data, 'devis.xlsx')).catch(() => {})}>
-            <Download /> Exporter Excel
-          </Button>
-          <Button onClick={openNew}><Plus /> Nouveau devis</Button>
-        </div>
-      </div>
+      {pageHeader}
 
       {showForm && (
         <DevisForm devis={editDevis} onClose={closeForm} onSaved={onSaved} />
