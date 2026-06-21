@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 # flake8: noqa
 """
-quote_engine_v2 — PAGE 1 (cover + financial hook).
+quote_engine residential — PAGE 1 (cover + financial hook).
 
 `build(ctx) -> str` returns the INNER HTML of one A4 page (210mm × 297mm).
 NO `<div class="page">` wrapper, NO `<html>`, NO footer — the harness paints a

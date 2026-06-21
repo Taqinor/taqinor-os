@@ -1,16 +1,16 @@
 # flake8: noqa
-"""TAQINOR quote engine — v2 PROTOTYPE (parallel copy, NOT wired into /proposal).
+"""TAQINOR quote engine — RESIDENTIAL renderer (brand tokens + shared CSS).
 
-Brand tokens + shared CSS + asset/font loaders. Reuses the live engine's
-bundled fonts/logo (read-only) so v2 is a visual evolution, not a new brand.
-Nothing here touches the working engine.
+The redesigned 3-page residential proposal. Part of the single quote engine
+(`apps/ventes/quote_engine`); selected for `mode_installation == residentiel`
+by `residential.renderer`. Reuses the engine's bundled fonts/logo.
 """
 from __future__ import annotations
 import base64
 from pathlib import Path
 
-# Read-only reference to the LIVE engine's assets (never written).
-_LIVE_ASSETS = Path(__file__).resolve().parent.parent / "quote_engine" / "assets"
+# Engine assets (fonts + logo), one level up at quote_engine/assets.
+_LIVE_ASSETS = Path(__file__).resolve().parent.parent / "assets"
 _FONT_DIR = _LIVE_ASSETS / "fonts"
 
 # ── Brand palette (extracted from the live engine) ──────────────────────────
@@ -68,14 +68,14 @@ def logo_color_b64() -> str:
     return base64.b64encode(p.read_bytes()).decode()
 
 
-# v2's own bundled assets (self-contained, like the live engine).
-_V2_ASSETS = Path(__file__).resolve().parent / "assets"
+# This renderer's own bundled assets (the page-1 hero photo).
+_RESID_ASSETS = Path(__file__).resolve().parent / "assets"
 
 
 def hero_image_b64(name: str = "hero.jpg") -> str:
     """Base64 JPEG of the page-1 hero photo (real installation). Swap the file
-    at quote_engine_v2/assets/hero.jpg to change it. Empty string -> flat navy."""
-    p = _V2_ASSETS / name
+    at quote_engine/residential/assets/hero.jpg. Empty string -> flat navy."""
+    p = _RESID_ASSETS / name
     return base64.b64encode(p.read_bytes()).decode() if p.exists() else ""
 
 
