@@ -126,6 +126,19 @@ class Intervention(models.Model):
         max_digits=9, decimal_places=6, null=True, blank=True)
     retour_depot_le = models.DateTimeField(null=True, blank=True)
 
+    # ── FG69 — signature client sur le compte-rendu / PV ─────────────────────
+    # Data-URL PNG (ou SVG strokes JSON) de la signature. Stocké en base car
+    # la taille d'une signature PNG compressée est typiquement < 20 Ko.
+    signature_client = models.TextField(blank=True, null=True)
+    signataire_nom = models.CharField(max_length=120, blank=True, null=True)
+    signe_le = models.DateTimeField(null=True, blank=True)
+
+    # ── FG78 — RDV confirmation + historique reschedule ───────────────────────
+    # Métadonnées RDV, orthogonales à la machine à états statut.
+    rdv_confirme = models.BooleanField(default=False)
+    rdv_confirme_le = models.DateTimeField(null=True, blank=True)
+    rdv_reschedule_count = models.PositiveIntegerField(default=0)
+
     created_by = models.ForeignKey(
         settings.AUTH_USER_MODEL, on_delete=models.SET_NULL,
         null=True, related_name='interventions_creees',
@@ -215,3 +228,36 @@ class InstallationActivity(models.Model):
 
     def __str__(self):
         return f"{self.installation_id} {self.kind} {self.field or ''}".strip()
+
+
+# ── FG79 — Plan d'interventions standard par type d'installation ─────────────
+
+class TypeInterventionPlan(models.Model):
+    """FG79 — plan de la chaîne d'interventions STANDARD pour un type
+    d'installation donné (résidentiel/industriel/agricole). Chaque ligne
+    indique un type d'intervention (clé TypeIntervention), son ordre, et un
+    libellé de contexte. L'action `creer-interventions-standard` matérialise
+    ce plan en Interventions réelles sur le chantier (idempotent : ne recrée
+    pas les types déjà présents). Additif — company-scopé."""
+
+    company = models.ForeignKey(
+        'authentication.Company', on_delete=models.CASCADE,
+        null=True, blank=True, related_name='type_intervention_plans')
+    # Type d'installation auquel ce plan s'applique.
+    type_installation = models.CharField(
+        max_length=20, choices=Installation.TypeInstallation.choices)
+    # Clé du TypeIntervention (références texte : pas de FK rigide pour permettre
+    # la création avant que les types d'intervention soient créés).
+    type_intervention_cle = models.CharField(max_length=40)
+    libelle_contexte = models.CharField(max_length=120, blank=True, default='')
+    ordre = models.PositiveIntegerField(default=0)
+
+    class Meta:
+        ordering = ['type_installation', 'ordre']
+        unique_together = [('company', 'type_installation', 'type_intervention_cle')]
+        verbose_name = "Plan d'intervention standard"
+        verbose_name_plural = "Plans d'intervention standard"
+
+    def __str__(self):
+        return (f'{self.get_type_installation_display()} — '
+                f'{self.type_intervention_cle} (#{self.ordre})')

@@ -139,6 +139,13 @@ class InterventionViewSet(TenantMixin, viewsets.ModelViewSet):
             qs = qs.filter(statut=statut)
         if type_interv:
             qs = qs.filter(type_intervention=type_interv)
+        # FG68 — filtre plage de dates sur date_prevue (calendrier dispatch).
+        date_from = params.get('date_from')
+        date_to = params.get('date_to')
+        if date_from:
+            qs = qs.filter(date_prevue__gte=date_from)
+        if date_to:
+            qs = qs.filter(date_prevue__lte=date_to)
         return qs
 
     def get_permissions(self):
@@ -148,6 +155,12 @@ class InterventionViewSet(TenantMixin, viewsets.ModelViewSet):
             'serials', 'consommation', 'memos', 'reserves', 'tool_return',
             'safety', 'crew_time', 'compte_rendu', 'overage_review', 'code',
             'photo_qa',
+            # FG68 — vue calendrier dispatch techniciens.
+            'calendrier',
+            # FG73 — tournée journalière du technicien.
+            'ma_tournee',
+            # FG69 — signature client.
+            'signer_client',
         ]:
             return [IsAnyRole()]
         elif self.action in WRITE_ACTIONS + [
@@ -163,6 +176,8 @@ class InterventionViewSet(TenantMixin, viewsets.ModelViewSet):
             'ajouter_reserve', 'modifier_reserve', 'resoudre_reserve',
             'cocher_tool_return', 'confirmer_tool_return',
             'cocher_safety', 'signer_safety',
+            # FG78 — confirmation RDV.
+            'confirmer_rdv',
         ]:
             return [IsResponsableOrAdmin()]
         elif self.action == 'destroy':
@@ -1284,3 +1299,168 @@ class InterventionViewSet(TenantMixin, viewsets.ModelViewSet):
             'actif': swappable.photo_qa_active(interv.company),
             'signalements': flags,
         })
+
+    # ── FG78 — confirmation RDV + reschedule tracking ───────────────────────
+    @action(detail=True, methods=['post'], url_path='confirmer-rdv',
+            permission_classes=[IsResponsableOrAdmin])
+    def confirmer_rdv(self, request, pk=None):
+        """FG78 — marque le RDV client comme confirmé (ou le déconfirme si
+        `confirme=false`). Incrémente `rdv_reschedule_count` quand une nouvelle
+        date est fournie avec `date_prevue` (reschedule). Métadonnées only —
+        ne touche JAMAIS le statut de l'intervention."""
+        interv = self.get_object()
+        confirme = bool(request.data.get('confirme', True))
+        new_date = request.data.get('date_prevue')
+        fields = ['rdv_confirme', 'rdv_confirme_le']
+        interv.rdv_confirme = confirme
+        interv.rdv_confirme_le = timezone.now() if confirme else None
+        if new_date and new_date != str(interv.date_prevue or ''):
+            interv.date_prevue = new_date
+            interv.rdv_reschedule_count = (interv.rdv_reschedule_count or 0) + 1
+            fields += ['date_prevue', 'rdv_reschedule_count']
+        interv.save(update_fields=fields)
+        msg = ("RDV confirmé." if confirme
+               else "Confirmation RDV annulée.")
+        if 'date_prevue' in fields:
+            msg += f" Reporté au {new_date} (reschedule #{interv.rdv_reschedule_count})."
+        intervention_activity.log_note(interv, request.user, msg)
+        return Response(InterventionSerializer(
+            interv, context={'request': request}).data)
+
+    # ── FG68 — calendrier dispatch techniciens ───────────────────────────────
+    @action(detail=False, methods=['get'], url_path='calendrier',
+            permission_classes=[IsAnyRole])
+    def calendrier(self, request):
+        """FG68 — vue calendrier des interventions groupées par technicien.
+        Params : date_from, date_to (YYYY-MM-DD). Renvoie une liste de
+        techniciens avec leurs interventions prévues sur la plage. Les
+        interventions sans technicien sont groupées sous la clé `non_assigne`."""
+        from django.db.models import Prefetch
+        from django.contrib.auth import get_user_model
+        User = get_user_model()
+        company = request.user.company
+        params = request.query_params
+        date_from = params.get('date_from')
+        date_to = params.get('date_to')
+        qs = Intervention.objects.filter(company=company)
+        if date_from:
+            qs = qs.filter(date_prevue__gte=date_from)
+        if date_to:
+            qs = qs.filter(date_prevue__lte=date_to)
+        qs = qs.select_related(
+            'technicien', 'installation', 'installation__client',
+            'camionnette',
+        ).order_by('date_prevue', 'id')
+        # Regrouper par technicien
+        from collections import defaultdict
+        by_tech = defaultdict(list)
+        for interv in qs:
+            key = interv.technicien_id or 'non_assigne'
+            by_tech[key].append(interv)
+        result = []
+        # Techniciens assignés
+        tech_ids = [k for k in by_tech if k != 'non_assigne']
+        if tech_ids:
+            techs = {u.id: u for u in User.objects.filter(id__in=tech_ids)}
+        else:
+            techs = {}
+        for tech_id, intervs in by_tech.items():
+            if tech_id == 'non_assigne':
+                tech_data = {'id': None, 'nom': 'Non assigné'}
+            else:
+                u = techs.get(tech_id)
+                tech_data = {
+                    'id': tech_id,
+                    'nom': getattr(u, 'get_full_name', lambda: '')() or getattr(u, 'username', str(tech_id)),
+                }
+            result.append({
+                'technicien': tech_data,
+                'interventions': InterventionSerializer(
+                    intervs, many=True, context={'request': request}).data,
+            })
+        # Trier : techniciens assignés d'abord (par nom), puis non assigné
+        result.sort(key=lambda x: (x['technicien']['id'] is None,
+                                   x['technicien'].get('nom', '')))
+        return Response(result)
+
+    # ── FG69 — signature client sur compte-rendu ─────────────────────────────
+    @action(detail=True, methods=['post'], url_path='signer-client',
+            permission_classes=[IsAnyRole])
+    def signer_client(self, request, pk=None):
+        """FG69 — enregistre la signature client sur une intervention.
+        Corps : {"signature_client": <data_url_ou_vecteur>, "signataire_nom": <str>}.
+        Pose `signe_le` côté serveur."""
+        interv = self.get_object()
+        sig = request.data.get('signature_client', '').strip()
+        nom = request.data.get('signataire_nom', '').strip()
+        if not sig:
+            return Response({'signature_client': 'Signature vide.'},
+                            status=status.HTTP_400_BAD_REQUEST)
+        interv.signature_client = sig
+        if nom:
+            interv.signataire_nom = nom
+        interv.signe_le = timezone.now()
+        fields = ['signature_client', 'signataire_nom', 'signe_le']
+        interv.save(update_fields=fields)
+        intervention_activity.log_note(
+            interv, request.user,
+            f"Signature client enregistrée ({nom or 'anonyme'}).")
+        return Response(InterventionSerializer(
+            interv, context={'request': request}).data)
+
+    # ── FG73 — tournée journalière du technicien (ordre géographique) ─────────
+    @action(detail=False, methods=['get'], url_path='ma-tournee',
+            permission_classes=[IsAnyRole])
+    def ma_tournee(self, request):
+        """FG73 — interventions de la journée du technicien authentifié,
+        ordonnées géographiquement (plus proche voisin depuis le dépôt /
+        position actuelle). Chaque arrêt inclut un lien « Itinéraire » Google Maps.
+        Param optionnel : date (YYYY-MM-DD, défaut=aujourd'hui)."""
+        import math
+        from django.utils.timezone import localdate
+        company = request.user.company
+        jour = request.query_params.get('date') or str(localdate())
+        qs = (Intervention.objects
+              .filter(company=company, technicien=request.user, date_prevue=jour)
+              .select_related('installation', 'installation__client',
+                              'technicien', 'camionnette')
+              .prefetch_related('equipe'))
+        intervs = list(qs)
+        if not intervs:
+            return Response({'date': jour, 'stops': []})
+        # Nearest-neighbour depuis (0,0) si aucun dépôt GPS connu (dépôt = départ
+        # du premier point disponible — on part de coordonnées nulles).
+        depot_lat, depot_lng = 0.0, 0.0
+        ordered = []
+        remaining = intervs[:]
+        current_lat, current_lng = depot_lat, depot_lng
+        while remaining:
+            best = None
+            best_d = float('inf')
+            for iv in remaining:
+                lat = float(iv.installation.gps_lat or 0)
+                lng = float(iv.installation.gps_lng or 0)
+                d = field_services.haversine_km(
+                    current_lat, current_lng, lat, lng) or 0
+                if d < best_d:
+                    best_d = d
+                    best = iv
+            ordered.append(best)
+            current_lat = float(best.installation.gps_lat or 0)
+            current_lng = float(best.installation.gps_lng or 0)
+            remaining.remove(best)
+        stops = []
+        for iv in ordered:
+            lat = iv.installation.gps_lat
+            lng = iv.installation.gps_lng
+            maps_link = None
+            if lat and lng:
+                maps_link = (
+                    f'https://www.google.com/maps/dir/?api=1&destination='
+                    f'{lat},{lng}')
+            stops.append({
+                **InterventionSerializer(
+                    iv, context={'request': request}).data,
+                'itineraire_url': maps_link,
+            })
+        return Response({'date': jour, 'stops': stops})
