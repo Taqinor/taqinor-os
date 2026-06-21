@@ -17,6 +17,7 @@ import BulkActionBar from './BulkActionBar'
 import ViewSwitcher from './ViewSwitcher'
 import DoublonsPanel from './DoublonsPanel'
 import SigneDialog from './SigneDialog'
+import LeadExpressModal from './LeadExpressModal'
 import KanbanView from './views/KanbanView'
 import ListView from './views/ListView'
 import CalendarView from './views/CalendarView'
@@ -127,6 +128,8 @@ export default function LeadsPage() {
   useEffect(() => { refreshDoublonsCount() }, [])
   // Import CSV/XLSX (T9).
   const [showImport, setShowImport] = useState(false)
+  // FG35 — Lead express quick capture modal.
+  const [showExpressModal, setShowExpressModal] = useState(false)
 
   // Export Excel de la liste filtrée courante (T9) — respecte les filtres.
   const exportFiltered = async () => {
@@ -363,6 +366,11 @@ export default function LeadsPage() {
         </h2>
         <div className="page-header-actions lp-header-actions">
           <Button onClick={openNew}>+ Nouveau lead</Button>
+          <Button
+            variant="outline"
+            title="Saisie express : nom + téléphone + canal"
+            onClick={() => setShowExpressModal(true)}
+          >⚡ Express</Button>
           <Button variant="outline" onClick={() => setShowDoublons(true)}>
             🔀 Doublons
             {doublonsCount > 0 && (
@@ -486,6 +494,14 @@ export default function LeadsPage() {
           lead={signeLead}
           onClose={() => { setSigneLead(null); refetch() }}
           onConfirmed={() => { setSigneLead(null); refetch() }}
+        />
+      )}
+
+      {/* FG35 — Lead express quick capture */}
+      {showExpressModal && (
+        <LeadExpressModal
+          onClose={() => setShowExpressModal(false)}
+          onSaved={() => { setShowExpressModal(false); refetch() }}
         />
       )}
     </div>
