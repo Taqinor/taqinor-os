@@ -959,10 +959,10 @@ already links to `taqinor.ma/produits`; these tasks build that destination.*
 - [x] W141 — **Host the datasheet PDFs on taqinor.ma.** *(2026-06-21: `fiches.ts`
   manifest shipped (7 products, Dyness corrected) + `ficheDownloadHref` uses the
   self-hosted `/fiches/<slug>.pdf` when present, else the official source — so the
-  download always works. The PDF binaries still need a MANUAL drop into
-  `apps/web/public/fiches/`: the manufacturer URLs returned HTTP 403 to
-  programmatic fetch from the build env, and self-hosting copyrighted datasheets
-  is the founder's call.)* Download each official PDF
+  download always works today. Actually fetching + self-hosting the PDF binaries
+  is split out into **W146** (a normal build task — NOT a founder chore), because a
+  bare programmatic GET hit HTTP 403 on at least one manufacturer; W146 fetches
+  them with a real browser UA / mirror and flips the `pdf` fields.)* Download each official PDF
   above into `apps/web/public/fiches/<slug>.pdf` (one per slug; panels/inverters/
   battery/meter/dongle) so they are served from `taqinor.ma/fiches/<slug>.pdf` —
   no hotlinking a manufacturer URL at runtime. Keep a small
@@ -1006,6 +1006,32 @@ already links to `taqinor.ma/produits`; these tasks build that destination.*
   **Done =** sitemap includes the library; per-page head is unique; Vitest SEO
   invariants (W104) extended to cover `/produits`. Files: sitemap config,
   `produits/*` heads, SEO tests.
+
+- [ ] W146 — **Self-host the actual datasheet PDFs on taqinor.ma (no manufacturer
+  hotlink).** For every fiche in `src/lib/fiches.ts`, fetch the official PDF from
+  its `datasheet` URL and save it under `apps/web/public/fiches/<slug>.pdf`, then
+  set the manifest `pdf` field to `/fiches/<slug>.pdf` so `ficheDownloadHref`
+  serves the file from OUR domain (the source URL stays the automatic fallback, so
+  the link is never dead). Some manufacturer URLs return **HTTP 403 to a bare
+  programmatic GET** (seen on Canadian Solar from the build env): fetch with a
+  normal browser `User-Agent`/`Referer`, or pull the same datasheet from the
+  manufacturer's product page / official mirror — **research it, do not leave it as
+  a founder chore**; only the genuinely unreachable ones stay on the source-URL
+  fallback with a one-line note. Keep file sizes sane (these are ~1–3 MB each).
+  **Done =** every reachable fiche serves a self-hosted `/fiches/<slug>.pdf`;
+  `fiches.test.ts` asserts that any non-null `pdf` path exists on disk under
+  `apps/web/public`. Files: `apps/web/public/fiches/*.pdf`,
+  `apps/web/src/lib/fiches.ts`, `apps/web/tests/fiches.test.ts`.
+
+- [ ] W147 — **Embed the datasheet inline on each `/produits/<slug>` page.** Beyond
+  the download button, render the self-hosted PDF inline (a lazy `<object>`/
+  `<iframe>` preview with a graceful "Télécharger la fiche (PDF)" fallback for
+  mobile/no-PDF-viewer), so the fiche is truly *integrated* in the page, not just
+  linked out. Respect reduced-motion and keep CLS at zero (reserve the box). Skip
+  the embed (download-only) when a fiche has no self-hosted `pdf` yet (W146). **Done
+  =** a slug with a hosted PDF shows an inline preview on desktop + a clean download
+  fallback on mobile; Lighthouse stays ≥ 95; Vitest covers the embed-vs-fallback
+  branch. Files: `apps/web/src/pages/produits/[slug].astro`, `tests/fiches.test.ts`.
 
 ---
 
