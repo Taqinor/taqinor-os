@@ -183,24 +183,8 @@ class DevisViewSet(viewsets.ModelViewSet):
         chatter du devis et avance le funnel CRM (→ SIGNED). C'est le
         déclencheur explicite de la création d'un chantier."""
         from datetime import date as _date
-        from .. import activity
-        from core.events import devis_accepted
+        from ..services import accept_devis, AcceptError
         devis = self.get_object()
-        # ERR33 — garde de statut : seul un devis « en cours » (brouillon /
-        # envoyé) peut être accepté. Un devis refusé, expiré ou déjà accepté
-        # ne se ré-accepte pas (sinon on ressusciterait un devis mort et on
-        # ferait avancer le funnel / déclencherait l'échéancier à tort).
-        if devis.statut not in (
-            Devis.Statut.BROUILLON, Devis.Statut.ENVOYE,
-        ):
-            return Response(
-                {'detail': (
-                    'Seul un devis en cours (brouillon ou envoyé) peut être '
-                    f'accepté ; statut actuel : '
-                    f'« {devis.get_statut_display()} ».'
-                )},
-                status=status.HTTP_409_CONFLICT,
-            )
         nom = (request.data.get('nom') or '').strip()
         date_str = (request.data.get('date') or '').strip()
         try:
@@ -209,29 +193,21 @@ class DevisViewSet(viewsets.ModelViewSet):
         except ValueError:
             return Response({'detail': 'Date invalide (attendu AAAA-MM-JJ).'},
                             status=status.HTTP_400_BAD_REQUEST)
-        # A1 — option retenue (« Sans batterie » / « Avec batterie »). Pour un
-        # devis à deux options, l'option est obligatoire ; pour un devis à
-        # option unique, elle est déduite du scénario du document.
-        option, err = self._resolve_accepted_option(devis, request.data)
-        if err is not None:
-            return Response({'detail': err},
-                            status=status.HTTP_400_BAD_REQUEST)
-        ancien = devis.statut
-        devis.statut = Devis.Statut.ACCEPTE
-        devis.date_acceptation = date_acc
-        devis.accepte_par_nom = nom[:150]
-        devis.option_acceptee = option
-        devis.save(update_fields=[
-            'statut', 'date_acceptation', 'accepte_par_nom', 'option_acceptee'])
-        activity.log_devis_acceptance(
-            devis, request.user, nom, date_acc, option)
-        # M6 — découplage par événement : au lieu d'appeler directement
-        # crm.services, on émet l'événement métier « devis accepté ». Le CRM y
-        # est abonné (apps/crm/receivers.py) et avance l'étape du lead (→ SIGNED)
-        # — comportement identique, mais ventes n'appelle plus crm au site
-        # d'acceptation.
-        devis_accepted.send(
-            sender=Devis, devis=devis, user=request.user, ancien_statut=ancien)
+        # A1 — option retenue (« Sans batterie » / « Avec batterie »). La
+        # résolution (deux options → choix explicite obligatoire ; mono-option
+        # → déduit du scénario) et le tampon d'acceptation passent désormais
+        # par le service unique accept_devis (réutilisé par la proposition web
+        # tokenisée Q7), préservant 1:1 la chaîne bon-commande/facture (règle #4).
+        option = (request.data.get('option') or '').strip()
+        try:
+            accept_devis(
+                devis=devis, user=request.user, nom=nom,
+                date_acceptation=date_acc, option=option)
+        except AcceptError as exc:
+            return Response(
+                {'detail': exc.message},
+                status=(status.HTTP_409_CONFLICT if exc.conflict
+                        else status.HTTP_400_BAD_REQUEST))
         return Response(
             DevisSerializer(devis, context={'request': request}).data)
 

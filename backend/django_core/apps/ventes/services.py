@@ -179,6 +179,90 @@ def build_devis_from_layout(*, layout, user, company, lead=None, client=None,
     return devis
 
 
+class AcceptError(Exception):
+    """Raised when a devis cannot be accepted (wrong status / bad option)."""
+
+    def __init__(self, message, conflict=False):
+        super().__init__(message)
+        self.message = message
+        self.conflict = conflict  # True → 409, False → 400
+
+
+def accept_devis(*, devis, user, nom='', date_acceptation=None, option='',
+                 ip=None):
+    """Q7 — flip a Devis to « accepté » through the ONE acceptance path.
+
+    Shared by the in-app viewset action (N25) and the tokenized web proposal
+    (Q7): records the stamp (typed name + date [+ IP in the chatter]), sets the
+    accepted option, writes the acceptance activity and emits the
+    ``devis_accepted`` domain event — so the downstream BonCommande/Facture
+    chain is preserved 1:1 (rule #4). The engine only RENDERS elsewhere; this
+    is the single place a quote document changes status to accepté.
+
+    Idempotent: an already-accepted devis is returned unchanged (no second
+    stamp, no second event) so a double e-signature submit is a no-op.
+
+    Raises ``AcceptError`` on a non-acceptable status or an invalid option.
+    """
+    from django.utils import timezone
+    from apps.ventes.models import Devis
+    from apps.ventes import activity
+    from core.events import devis_accepted
+
+    # Idempotence: a re-submit on an already-accepted devis does nothing.
+    if devis.statut == Devis.Statut.ACCEPTE:
+        return devis
+
+    # ERR33 — only a live devis (brouillon / envoyé) can be accepted.
+    if devis.statut not in (Devis.Statut.BROUILLON, Devis.Statut.ENVOYE):
+        raise AcceptError(
+            'Seul un devis en cours (brouillon ou envoyé) peut être accepté ; '
+            f'statut actuel : « {devis.get_statut_display()} ».',
+            conflict=True)
+
+    valid = {c.value for c in Devis.OptionAcceptee}
+    option = (option or '').strip()
+    if option and option not in valid:
+        raise AcceptError(
+            'Option invalide (attendu « sans_batterie » ou « avec_batterie »).')
+
+    # Resolve the option exactly like the viewset (two-option devis require an
+    # explicit choice; single-option devis deduce it from the scenario).
+    try:
+        from apps.ventes.quote_engine.builder import build_quote_data
+        qd = build_quote_data(devis, {'pdf_mode': 'onepage'})
+        nb_options = qd.get('nb_options', 1)
+        scenario = qd.get('scenario', '')
+    except Exception:  # noqa: BLE001 — l'acceptation ne doit jamais casser
+        nb_options, scenario = 1, ''
+    if nb_options == 2 and not option:
+        raise AcceptError(
+            'Ce devis comporte deux options — précisez celle choisie par le '
+            'client (« sans_batterie » ou « avec_batterie »).')
+    if not option:
+        option = (Devis.OptionAcceptee.AVEC_BATTERIE
+                  if scenario == 'Avec batterie'
+                  else Devis.OptionAcceptee.SANS_BATTERIE)
+
+    date_acc = date_acceptation or timezone.now().date()
+    ancien = devis.statut
+    devis.statut = Devis.Statut.ACCEPTE
+    devis.date_acceptation = date_acc
+    devis.accepte_par_nom = (nom or '')[:150]
+    devis.option_acceptee = option
+    devis.save(update_fields=[
+        'statut', 'date_acceptation', 'accepte_par_nom', 'option_acceptee'])
+    activity.log_devis_acceptance(devis, user, nom, date_acc, option)
+    if ip:
+        # Trace the e-signature origin IP in the chatter (Q7) without a new
+        # column — kept beside the acceptance stamp for the audit trail.
+        activity.log_devis_note(
+            devis, user, f'Signature en ligne acceptée — IP {ip}')
+    devis_accepted.send(
+        sender=Devis, devis=devis, user=user, ancien_statut=ancien)
+    return devis
+
+
 def creer_facture_contrat(*, contrat, user, company):
     """FG40 — Crée une Facture de maintenance récurrente depuis un ContratMaintenance.
 

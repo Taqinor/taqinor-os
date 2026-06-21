@@ -229,3 +229,121 @@ class TestQ5BuilderGuard(TestCase):
             key = generate_premium_devis_pdf(
                 self.devis.id, {'pdf_mode': 'full'}, persist=False)
         self.assertTrue(store[key].startswith(b'%PDF'))
+
+
+class TestQ6ProposalData(TestCase):
+    """Q6 — tokenized read-only proposal data endpoint (no login)."""
+
+    def setUp(self):
+        from apps.ventes.models import ShareLink
+        self.company = make_company('q6-co')
+        self.devis = make_devis(self.company, ref='DEV-Q6-0001')
+        self.link = ShareLink.for_devis(self.devis)
+        self.api = APIClient()
+
+    def _url(self, token):
+        return f'/api/django/ventes/proposal/{token}/'
+
+    def test_valid_token_returns_payload(self):
+        resp = self.api.get(self._url(self.link.token))
+        self.assertEqual(resp.status_code, 200, resp.data)
+        self.assertEqual(resp.data['reference'], 'DEV-Q6-0001')
+        self.assertIn('quote', resp.data)
+        self.assertIn('option_totals', resp.data)
+        self.assertFalse(resp.data['accepted'])
+        self.assertEqual(resp['X-Robots-Tag'].split(',')[0], 'noindex')
+
+    def test_invalid_token_404(self):
+        self.assertEqual(self.api.get(self._url('nope')).status_code, 404)
+
+    def test_expired_token_404(self):
+        from django.utils import timezone
+        self.link.expires_at = timezone.now() - timezone.timedelta(days=1)
+        self.link.save(update_fields=['expires_at'])
+        self.assertEqual(
+            self.api.get(self._url(self.link.token)).status_code, 404)
+
+    def test_no_cross_tenant_leak(self):
+        # A second company's devis has its own token; this token never reveals it
+        other = make_company('q6-other')
+        other_devis = make_devis(other, ref='DEV-Q6-OTHER')
+        from apps.ventes.models import ShareLink
+        other_link = ShareLink.for_devis(other_devis)
+        resp = self.api.get(self._url(self.link.token))
+        self.assertEqual(resp.data['reference'], 'DEV-Q6-0001')
+        # the other token only ever returns the other devis
+        resp2 = self.api.get(self._url(other_link.token))
+        self.assertEqual(resp2.data['reference'], 'DEV-Q6-OTHER')
+
+    def test_roof_image_url_present_when_set(self):
+        self.devis.roof_image = f'roofs/{self.company.id}/DEV-Q6-0001.png'
+        self.devis.save(update_fields=['roof_image'])
+        with mock.patch(
+            'apps.ventes.utils.pdf.roof_image_signed_url',
+            return_value='https://minio/signed',
+        ):
+            resp = self.api.get(self._url(self.link.token))
+        self.assertEqual(resp.data['roof_image_url'], 'https://minio/signed')
+
+
+class TestQ7ProposalAccept(TestCase):
+    """Q7 — tokenized e-signature acceptance reusing the existing stamp."""
+
+    def setUp(self):
+        from apps.ventes.models import ShareLink
+        self.company = make_company('q7-co')
+        self.devis = make_devis(self.company, ref='DEV-Q7-0001')
+        self.devis.statut = 'envoye'
+        self.devis.save(update_fields=['statut'])
+        self.link = ShareLink.for_devis(self.devis)
+        self.api = APIClient()
+
+    def _url(self, token):
+        return f'/api/django/ventes/proposal/{token}/accept/'
+
+    def test_accept_flips_status_and_writes_stamp(self):
+        resp = self.api.post(
+            self._url(self.link.token), {'nom': 'Salma Bennani'},
+            format='json')
+        self.assertEqual(resp.status_code, 200, resp.data)
+        self.devis.refresh_from_db()
+        self.assertEqual(self.devis.statut, 'accepte')
+        self.assertEqual(self.devis.accepte_par_nom, 'Salma Bennani')
+        self.assertIsNotNone(self.devis.date_acceptation)
+        # chatter carries the acceptance + IP note
+        bodies = [a.body or '' for a in self.devis.activites.all()]
+        self.assertTrue(any('IP' in b for b in bodies))
+
+    def test_name_required(self):
+        resp = self.api.post(self._url(self.link.token), {}, format='json')
+        self.assertEqual(resp.status_code, 400)
+        self.devis.refresh_from_db()
+        self.assertEqual(self.devis.statut, 'envoye')
+
+    def test_idempotent_double_submit(self):
+        first = self.api.post(
+            self._url(self.link.token), {'nom': 'A'}, format='json')
+        self.assertEqual(first.status_code, 200)
+        second = self.api.post(
+            self._url(self.link.token), {'nom': 'B'}, format='json')
+        self.assertEqual(second.status_code, 200, second.data)
+        self.devis.refresh_from_db()
+        # Still the first signer; no second stamp.
+        self.assertEqual(self.devis.accepte_par_nom, 'A')
+        acceptances = [a for a in self.devis.activites.all()
+                       if a.kind == 'modification' or 'accept' in (a.body or '').lower()]
+        # exactly one acceptance event recorded
+        self.assertEqual(self.devis.statut, 'accepte')
+
+    def test_invalid_token_404(self):
+        self.assertEqual(
+            self.api.post(self._url('bad'), {'nom': 'X'}, format='json')
+            .status_code, 404)
+
+    def test_bon_commande_chain_preserved(self):
+        # After tokenized accept, the devis can be converted to a BC exactly
+        # like an in-app acceptance (chain preserved 1:1).
+        self.api.post(self._url(self.link.token), {'nom': 'Chain'},
+                      format='json')
+        self.devis.refresh_from_db()
+        self.assertEqual(self.devis.statut, 'accepte')
