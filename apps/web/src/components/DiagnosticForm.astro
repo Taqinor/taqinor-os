@@ -73,13 +73,15 @@ const inputClass =
       <p class="tech-label text-brass-300">{t('form.eyebrow')}</p>
       <h2 class="display v2-section-title mt-2 text-2xl text-white sm:text-3xl">{heading}</h2>
 
-      <!-- Indicateur de progression — l'état actif/inactif est piloté par le
-           script (bg-azur-600 / bg-azur-100, INCHANGÉ) ; les segments restent
-           lisibles sur la nuit. -->
-      <div class="mt-5 flex items-center gap-3" aria-hidden="true">
-        <span data-seg="1" class="h-1 flex-1 bg-azur-600 transition-colors"></span>
-        <span data-seg="2" class="h-1 flex-1 bg-azur-100 transition-colors"></span>
-        <span data-seg="3" class="h-1 flex-1 bg-azur-100 transition-colors"></span>
+      <!-- W189 — Indicateur de progression amélioré : barre plus haute (h-2),
+           remplissage laiton sur piste subtile (bg-white/10), indication
+           d'étape aria-valuenow sur le conteneur. Le script met à jour
+           bg-brass-400 / bg-white/10 et aria-valuenow. -->
+      <div id="diag-bar" role="progressbar" aria-valuenow="1" aria-valuemin="1" aria-valuemax="3"
+           class="mt-5 flex items-center gap-2 rounded-full bg-white/5 p-1">
+        <span data-seg="1" class="h-2 flex-1 rounded-full bg-brass-400 transition-colors duration-300"></span>
+        <span data-seg="2" class="h-2 flex-1 rounded-full bg-white/15 transition-colors duration-300"></span>
+        <span data-seg="3" class="h-2 flex-1 rounded-full bg-white/15 transition-colors duration-300"></span>
       </div>
       <p id="diag-progress" class="tech-label mt-2 text-lune-faint" aria-live="polite">{t('form.progress').replace('{step}', '1')}</p>
     </div>
@@ -276,9 +278,11 @@ const inputClass =
     }
     document.querySelectorAll<HTMLElement>('[data-seg]').forEach((seg) => {
       const on = Number(seg.dataset.seg) <= step;
-      seg.classList.toggle('bg-azur-600', on);
-      seg.classList.toggle('bg-azur-100', !on);
+      seg.classList.toggle('bg-brass-400', on);
+      seg.classList.toggle('bg-white/15', !on);
     });
+    // W189 — mise à jour accessible de la valeur courante
+    (document.getElementById('diag-bar') as HTMLElement | null)?.setAttribute('aria-valuenow', String(step));
     progressEl.textContent = I18N.progress.replace('{step}', String(step));
     backBtn.classList.toggle('invisible', step === 1);
     nextBtn.classList.toggle('hidden', step === 3);
