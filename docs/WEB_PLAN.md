@@ -1092,7 +1092,7 @@ supply a photo / official brand SVGs) — flagged inline; build the rest.*
   `apps/web/src/pages/index.astro`, `apps/web/src/pages/realisations/[slug].astro`, `apps/web/src/components/Picture.astro`.
 - [ ] W156 — **Consistent monumental `.fig .lum` trust-band figures** (the four-up row mixes
   one golden `text-4xl` with three plain white `text-xl`). Files: `apps/web/src/pages/index.astro`.
-- [ ] W157 — **Lift `.cine-card`** from near-invisible (`bg-white/0.04`) with faint glass
+- [x] W157 — **Lift `.cine-card`** from near-invisible (`bg-white/0.04`) with faint glass
   blur, a top-edge highlight, and a warm brass hover. Files: `apps/web/src/styles/global.css`.
 - [ ] W158 — **Refine section seams** — replace stacked hard `border-y border-white/10`
   hairlines with occasional gradient/glow transitions. Files: `apps/web/src/pages/index.astro`,
@@ -1128,20 +1128,20 @@ supply a photo / official brand SVGs) — flagged inline; build the rest.*
 
 **— Design system & consistency —**
 
-- [ ] W169 — **Extend the modular scale to body + figure sizes as tokens** (`.fig-xl/lg/md`,
+- [x] W169 — **Extend the modular scale to body + figure sizes as tokens** (`.fig-xl/lg/md`,
   `.v2-body`); 519 ad-hoc `text-*` uses across 40 pages drive drift. Files: `apps/web/src/styles/global.css` + sweep.
 - [x] W170 — **Bring `produits/*` + legal pages onto the `v2-page-title` scale + `V2Enhance`
   engine** (they bypass it and feel like a different site). Files: `apps/web/src/pages/produits/index.astro`,
   `apps/web/src/pages/produits/[slug].astro`, `politique-de-confidentialite.astro`, `mentions-legales.astro`.
 - [ ] W171 — **Extract a `PhotoCaption` scrim component** (duplicated ~30× verbatim with drifting
   padding). Files: new `apps/web/src/components/PhotoCaption.astro` + gallery pages.
-- [ ] W172 — **Tokenize the hero scrim gradient** (mid-stop hand-tuned per page: `/35`, `/45`,
+- [x] W172 — **Tokenize the hero scrim gradient** (mid-stop hand-tuned per page: `/35`, `/45`,
   `/55`…). Files: `apps/web/src/styles/global.css` + heroes.
-- [ ] W173 — **Section vertical-rhythm scale utilities** (`.section`/`.section-lg`/`.section-tight`);
+- [x] W173 — **Section vertical-rhythm scale utilities** (`.section`/`.section-lg`/`.section-tight`);
   121 magic `py-*` values across 40 files. Files: `apps/web/src/styles/global.css` + sweep.
-- [ ] W174 — **Extract the outline-pill link button + the premium drop-shadow into utilities.**
+- [x] W174 — **Extract the outline-pill link button + the premium drop-shadow into utilities.**
   Files: `apps/web/src/styles/global.css` + contextual-link rows site-wide.
-- [ ] W175 — **Resolve the azur-vs-brass light-eyebrow inconsistency + componentize the
+- [x] W175 — **Resolve the azur-vs-brass light-eyebrow inconsistency + componentize the
   "salle blanche" palette-swap with its seam.** Files: `apps/web/src/styles/global.css`, light-section pages.
 - [ ] W176 — **Align off-scale section headings** (`DiagnosticForm`, `Faq`, `CtaBand`) to
   `v2-section-title`. Files: those components.
@@ -1192,9 +1192,9 @@ supply a photo / official brand SVGs) — flagged inline; build the rest.*
 - [ ] W191 — **Submitting spinner + `aria-busy` + fade-in results** (today it's a silent text
   swap and the result pops). Files: `DiagnosticForm.astro`, `DiagnosticFormEnriched.astro`, `RegimeSelector.astro`,
   `apps/web/src/styles/global.css` (one `@keyframes spin`).
-- [ ] W192 — **Estimator chips as a true segmented control + branded range sliders** (active
+- [x] W192 — **Estimator chips as a true segmented control + branded range sliders** (active
   state nearly invisible on dark). Files: `apps/web/src/pages/preview/toiture-3d-pro-11.astro`.
-- [ ] W193 — **WhatsAppMock realism** (delivered/read ticks, "en ligne" dot, bubble polish).
+- [x] W193 — **WhatsAppMock realism** (delivered/read ticks, "en ligne" dot, bubble polish).
   Files: `apps/web/src/components/WhatsAppMock.astro`.
 - [ ] W194 — **Strengthen error/validation styling + placeholder contrast + focus-ring presence.**
   Files: `DiagnosticForm.astro`, `DiagnosticFormEnriched.astro`, `RegimeSelector.astro`.
@@ -1219,13 +1219,13 @@ supply a photo / official brand SVGs) — flagged inline; build the rest.*
 
 - [ ] W202 — **Fix the anchor scroll offset under the sticky header** (`#simulateur` lands hidden);
   add `scroll-padding-top`. Files: `apps/web/src/styles/global.css`.
-- [ ] W203 — **Card-level hover (lift/border) on content + product cards** (many clickable cards
+- [x] W203 — **Card-level hover (lift/border) on content + product cards** (many clickable cards
   have no hover at all). Files: `apps/web/src/styles/global.css` (`.cine-card`) + card wrappers.
 - [ ] W204 — **Hover arrow nudge on gallery/CTA links** (`group-hover:translate-x-1`). Files:
   `apps/web/src/pages/index.astro`, `nos-solutions.astro`, `realisations/index.astro`.
 - [ ] W205 — **Lead with a count-up on the first above-the-fold figure** (the protagonist number
   is static text). Files: `apps/web/src/pages/index.astro`.
-- [ ] W206 — **Extract a `cine-in` stagger token** (literal `animation-delay:120/240/360ms`
+- [x] W206 — **Extract a `cine-in` stagger token** (literal `animation-delay:120/240/360ms`
   repeated across ~40 hero blocks). Files: `apps/web/src/styles/global.css` + heroes.
 - [ ] W207 — **Wire up or remove the orphaned `.reveal`/`.emerge` CSS scroll-timeline reveals**
   (defined, zero usages). Files: `apps/web/src/styles/global.css`, `v3-photo-motion.css`.
@@ -1243,7 +1243,7 @@ supply a photo / official brand SVGs) — flagged inline; build the rest.*
 
 - [ ] W211 — **Verify no 320px horizontal overflow from wide `whitespace-nowrap` figures**
   (`43,48 kWc`, `60–90 %`). Files: `index.astro`, `installation-solaire-[city].astro`, `realisations/[slug].astro` (+ mirrors).
-- [ ] W212 — **Add a middle breakpoint to the 3-col équipement comparison grid** (cramped in the
+- [x] W212 — **Add a middle breakpoint to the 3-col équipement comparison grid** (cramped in the
   md→lg band). Files: `apps/web/src/pages/équipement.astro` (+ `en/`/`ar/` twins).
 
 **— RTL / Arabic —**
@@ -1433,3 +1433,13 @@ supply a photo / official brand SVGs) — flagged inline; build the rest.*
 - 2026-06-21 — W167: LanguageSwitcher given a globe icon, ≥44px tap targets, per-locale aria-labels; links/behaviour unchanged.
 - 2026-06-21 — W168: Logo sun-mark gains a static brass glow (+ reduced-motion-gated pulse); ZelligeDivider motif enlarged 18→28px with raised opacity/stroke and longer flanking rules.
 - 2026-06-21 — W170: produits/index, produits/[slug], politique-de-confidentialite, mentions-legales brought onto the v2-page-title scale + V2Enhance engine (matching nos-solutions pattern); W147 datasheet embed preserved, lead form untouched.
+- 2026-06-21 — W157+W203: .cine-card lifted (stronger glass, top-edge highlight, brass hover lift) + .cine-card-link modifier; reduced-motion gated.
+- 2026-06-21 — W206: .cine-in-1..4 + .cine-in-d stagger utilities (replacing inline animation-delay magic numbers); delays reset to 0 under reduced-motion.
+- 2026-06-21 — W173: .section / .section-lg / .section-tight vertical-rhythm utilities (clamp-based).
+- 2026-06-21 — W174: .btn-pill outline-pill link button + .shadow-premium drop-shadow utilities.
+- 2026-06-21 — W169: figure size tokens .fig-xl/.fig-lg/.fig-md (fluid clamp on .fig) + .v2-body body rank.
+- 2026-06-21 — W172: .hero-scrim layered radial+linear scrim utility + --hero-scrim-strength custom property.
+- 2026-06-21 — W175: .eyebrow-light canonical light-section eyebrow (single accent), composes with .tech-label.
+- 2026-06-21 — W192: estimator chips → true segmented control (clear brass active state + focus-visible) and branded .rp9-range sliders; math/values/prefill untouched, step="any" kept.
+- 2026-06-21 — W193: WhatsAppMock realism — online dot, read double-ticks, bubble tails + WhatsApp radii, date separator; decorative only.
+- 2026-06-21 — W212: équipement comparison grid given a middle breakpoint (1 col <lg, 2 cols ≥lg) across fr/en/ar twins; content unchanged.
