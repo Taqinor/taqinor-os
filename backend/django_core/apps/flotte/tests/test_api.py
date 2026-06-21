@@ -1,8 +1,8 @@
-"""Tests du module Gestion de flotte (FLOTTE2).
+"""Tests du module Gestion de flotte (FLOTTE2 / FLOTTE4).
 
 Couvre : isolation par société (A ne voit/touche pas B), société posée côté
-serveur (jamais lue du corps de requête), filtres et recherche, pour la ressource
-Véhicule.
+serveur (jamais lue du corps de requête), filtres et recherche, pour les deux
+ressources Véhicule et Engin roulant.
 """
 from django.contrib.auth import get_user_model
 from django.test import TestCase
@@ -11,7 +11,7 @@ from rest_framework_simplejwt.tokens import AccessToken
 
 from authentication.models import Company
 
-from apps.flotte.models import Vehicule
+from apps.flotte.models import EnginRoulant, Vehicule
 
 User = get_user_model()
 
@@ -98,3 +98,48 @@ class FlotteVehiculeTests(TestCase):
         self.assertEqual(row['immatriculation'], 'X-99')
         self.assertEqual(row['energie_display'], 'Hybride')
         self.assertEqual(row['statut_display'], 'Actif')
+
+
+class FlotteEnginRoulantTests(TestCase):
+    def setUp(self):
+        self.co_a = make_company('flotte-ea', 'Flotte EA')
+        self.co_b = make_company('flotte-eb', 'Flotte EB')
+        self.admin_a = make_user(self.co_a, 'flotte-eadmin-a', 'admin')
+
+    # ── FLOTTE4 : engins roulants ──
+    def test_create_force_company_server_side(self):
+        api = auth(self.admin_a)
+        resp = api.post('/api/django/flotte/engins/', {
+            'nom': 'Nacelle 12m', 'type_engin': 'nacelle',
+            'compteur_heures': '350.5', 'valeur': '90000.00',
+            'statut': 'actif',
+            'company': self.co_b.id,  # doit être ignoré
+        }, format='json')
+        self.assertEqual(resp.status_code, 201, resp.data)
+        engin = EnginRoulant.objects.get(id=resp.data['id'])
+        self.assertEqual(engin.company_id, self.co_a.id)
+
+    def test_tenant_isolation_list(self):
+        EnginRoulant.objects.create(company=self.co_a, nom='Groupe A')
+        EnginRoulant.objects.create(company=self.co_b, nom='Groupe B')
+        resp = auth(self.admin_a).get('/api/django/flotte/engins/')
+        noms = [r['nom'] for r in rows(resp)]
+        self.assertIn('Groupe A', noms)
+        self.assertNotIn('Groupe B', noms)
+
+    def test_cannot_retrieve_other_company_engin(self):
+        b_engin = EnginRoulant.objects.create(company=self.co_b, nom='Chariot B')
+        resp = auth(self.admin_a).get(
+            f'/api/django/flotte/engins/{b_engin.id}/')
+        self.assertEqual(resp.status_code, 404)
+
+    def test_filter_by_type_and_display(self):
+        EnginRoulant.objects.create(
+            company=self.co_a, nom='Nacelle', type_engin='nacelle')
+        EnginRoulant.objects.create(
+            company=self.co_a, nom='Groupe', type_engin='groupe_electrogene')
+        api = auth(self.admin_a)
+        resp = api.get('/api/django/flotte/engins/?type_engin=groupe_electrogene')
+        immats = rows(resp)
+        self.assertEqual([x['nom'] for x in immats], ['Groupe'])
+        self.assertEqual(immats[0]['type_engin_display'], 'Groupe électrogène')
