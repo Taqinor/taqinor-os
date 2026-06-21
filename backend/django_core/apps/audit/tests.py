@@ -120,3 +120,107 @@ class TestReadApi(AuditBase):
         reprs = {r['object_repr'] for r in resp.data['results']}
         self.assertIn('mine', reprs)
         self.assertNotIn('foreign', reprs)
+
+
+class TestAuditAnalytics(TestCase):
+    """FG97 — audit/analytics/ rollups (top users, action mix, churn, failed logins)."""
+
+    def setUp(self):
+        # Pas de cache.clear() ici (pas de Redis en CI/test local).
+        self.company = Company.objects.create(nom='Analytics Co', slug='analytics-co')
+        self.dir_role = Role.objects.create(
+            company=self.company, nom='Directeur-A97',
+            permissions=DIRECTEUR_PERMISSIONS, est_systeme=True)
+        self.admin_role = Role.objects.create(
+            company=self.company, nom='Admin-A97',
+            permissions=ADMIN_PERMISSIONS, est_systeme=True)
+        self.com_role = Role.objects.create(
+            company=self.company, nom='Commercial-A97',
+            permissions=COMMERCIAL_PERMISSIONS, est_systeme=True)
+        self.directeur = CustomUser.objects.create_user(
+            username='dir_a97', password='Secret@2026', company=self.company,
+            role=self.dir_role, role_legacy='admin')
+        self.admin = CustomUser.objects.create_user(
+            username='adm_a97', password='Secret@2026', company=self.company,
+            role=self.admin_role, role_legacy='admin')
+        self.com = CustomUser.objects.create_user(
+            username='com_a97', password='Secret@2026', company=self.company,
+            role=self.com_role)
+
+    def _seed(self):
+        """Crée quelques entrées de log pour la société de test."""
+        AuditLog.objects.create(
+            company=self.company, user=self.directeur,
+            actor_username='dir_a97', action='create', object_repr='Lead 1')
+        AuditLog.objects.create(
+            company=self.company, user=self.com,
+            actor_username='com_a97', action='update', object_repr='Lead 1')
+        AuditLog.objects.create(
+            company=self.company, actor_username='ghost',
+            action='login_failed', object_repr='')
+        AuditLog.objects.create(
+            company=self.company, actor_username='ghost',
+            action='login_failed', object_repr='')
+
+    def test_analytics_requires_directeur_permission(self):
+        """Les commerciaux/admins ne peuvent pas voir les analytics."""
+        self.assertEqual(
+            auth(self.com).get('/api/django/audit/analytics/').status_code, 403)
+        self.assertEqual(
+            auth(self.admin).get('/api/django/audit/analytics/').status_code, 403)
+
+    def test_analytics_directeur_200(self):
+        """Le Directeur obtient un 200 avec les blocs attendus."""
+        self._seed()
+        resp = auth(self.directeur).get('/api/django/audit/analytics/?days=30')
+        self.assertEqual(resp.status_code, 200)
+        for key in ('top_users', 'action_mix', 'daily_counts',
+                    'failed_logins', 'object_churn', 'total_entries'):
+            self.assertIn(key, resp.data, f'Clé manquante : {key}')
+
+    def test_analytics_top_users_ranked(self):
+        """top_users est trié par count décroissant."""
+        self._seed()
+        resp = auth(self.directeur).get('/api/django/audit/analytics/?days=30')
+        users = resp.data['top_users']
+        self.assertTrue(len(users) >= 1)
+        counts = [u['count'] for u in users]
+        self.assertEqual(counts, sorted(counts, reverse=True))
+
+    def test_analytics_action_mix_has_pct(self):
+        """action_mix contient des entrées avec les clés count/pct/label."""
+        self._seed()
+        resp = auth(self.directeur).get('/api/django/audit/analytics/')
+        self.assertEqual(resp.status_code, 200)
+        mix = resp.data['action_mix']
+        self.assertTrue(len(mix) > 0)
+        for item in mix:
+            self.assertIn('action', item)
+            self.assertIn('count', item)
+            self.assertIn('pct', item)
+            self.assertIn('label', item)
+
+    def test_analytics_failed_logins_counted(self):
+        """Les échecs de connexion sont isolés dans failed_logins."""
+        self._seed()
+        resp = auth(self.directeur).get('/api/django/audit/analytics/?days=30')
+        total_failed = sum(d['count'] for d in resp.data['failed_logins'])
+        self.assertEqual(total_failed, 2)
+
+    def test_analytics_company_scoped(self):
+        """Les logs d'autres sociétés ne contaminent pas les analytics."""
+        other = Company.objects.create(nom='Other97', slug='other-a97')
+        for _ in range(10):
+            AuditLog.objects.create(company=other, actor_username='hacker_a97',
+                                    action='create')
+        self._seed()
+        resp = auth(self.directeur).get('/api/django/audit/analytics/?days=30')
+        usernames = {u['actor_username'] for u in resp.data['top_users']}
+        self.assertNotIn('hacker_a97', usernames)
+
+    def test_analytics_daily_counts_length_matches_days(self):
+        """daily_counts a exactement ?days entrées."""
+        resp = auth(self.directeur).get('/api/django/audit/analytics/?days=7')
+        self.assertEqual(resp.status_code, 200)
+        self.assertEqual(len(resp.data['daily_counts']), 7)
+        self.assertEqual(len(resp.data['failed_logins']), 7)
