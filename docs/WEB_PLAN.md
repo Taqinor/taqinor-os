@@ -1201,16 +1201,16 @@ supply a photo / official brand SVGs) — flagged inline; build the rest.*
 
 **— Content & reading experience —**
 
-- [ ] W195 — **Shared `.prose` article style for guides + blog + a body-vs-lead type rank**
+- [x] W195 — **Shared `.prose` article style for guides + blog + a body-vs-lead type rank**
   (guides set whole bodies at lead size; blog reinvents prose separately). Files: new shared style,
   `apps/web/src/pages/blog/[...slug].astro`, `apps/web/src/pages/guides/*.astro`.
-- [ ] W196 — **Constrain long-form measure to ~65–70ch** (bodies sit in `max-w-3xl`). Files: guides/blog.
-- [ ] W197 — **Reading-time + auto table-of-contents on long articles.** Files: guides/blog.
-- [ ] W198 — **Cover image + hover lift on guide/blog index cards; cover + figure pattern on
+- [x] W196 — **Constrain long-form measure to ~65–70ch** (bodies sit in `max-w-3xl`). Files: guides/blog.
+- [x] W197 — **Reading-time + auto table-of-contents on long articles.** Files: guides/blog.
+- [x] W198 — **Cover image + hover lift on guide/blog index cards; cover + figure pattern on
   articles.** Files: `apps/web/src/pages/guides/index.astro`, `apps/web/src/pages/blog/index.astro`, content schema.
-- [ ] W199 — **Reusable callout / pull-quote / key-figure prose component** so the "numbers are
+- [x] W199 — **Reusable callout / pull-quote / key-figure prose component** so the "numbers are
   the protagonist" identity carries into prose. Files: new component + guides/blog.
-- [ ] W200 — **Branded list markers + table styling + mobile reflow; shared `RelatedLinks`
+- [x] W200 — **Branded list markers + table styling + mobile reflow; shared `RelatedLinks`
   component** for the duplicated internal-link chip rows. Files: shared prose style + new component + content pages.
 - [ ] W201 — **Standardize 2–3 sanctioned hero archetypes** so segment/service/city/guide heroes
   stop drifting. Files: `installation-solaire-[city].astro` + a short design note.
@@ -1451,3 +1451,9 @@ supply a photo / official brand SVGs) — flagged inline; build the rest.*
 - 2026-06-21 — W183: brand-logo row optical-size normalization (per-brand heightMultiplier) + grayscale→colour hover; brands.test.ts updated.
 - 2026-06-21 — W184: before/during/after phased "chantier en phases" section on realisations/[slug] (phase field in data; graceful when absent).
 - 2026-06-21 — W185 NOT DONE (deferred): needs Layout.astro to accept a per-page og:image prop — handled in the CORE Layout slice.
+- 2026-06-21 — W195: new src/styles/prose.css shared article style (.prose + .prose-lead body-vs-lead rank, h2/h3 scroll-margin) applied to guides + blog; global.css untouched.
+- 2026-06-21 — W196: long-form measure constrained to max-w-[68ch] (~65–70ch) across all 11 guides + blog.
+- 2026-06-21 — W197: src/lib/readingTime.ts (reading-time + auto-TOC from headings); blog article shows reading-time badge + TOC (≥3 headings) with sticky-header anchor offset.
+- 2026-06-21 — W198: optional cover field in content schema; graceful cover figure on blog articles; hover lift on guides/blog index cards (reduced-motion gated).
+- 2026-06-21 — W199: reusable Callout / PullQuote / KeyFigure prose components (accessible), wired into a guide as example.
+- 2026-06-21 — W200: RelatedLinks component replacing duplicated internal-link chip rows across 11 guides + blog; branded list/table styling + mobile reflow in prose.css; 73 new tests (proseW195to200).
