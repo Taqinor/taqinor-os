@@ -96,7 +96,7 @@ const warranties = [
 
     <!-- Fiches matériel -->
     <section class="mx-auto max-w-6xl px-4 py-16">
-      <div class="grid gap-6 md:grid-cols-2" data-stagger>
+      <div class="grid gap-6 lg:grid-cols-2" data-stagger>
         {categories.map((c, i) => (
           <div class="v2-rise cine-card" style={`--v2-i:${i}`}>
             <div class="flex items-center justify-between border-b-2 border-brass-400/70 px-6 py-3">
@@ -142,9 +142,9 @@ const warranties = [
           العتاد يتبع الحساب — لا يسبقه.
         </p>
         <div class="mt-8 flex flex-wrap gap-3">
-          <a href={L('/garanties')} class="border border-azur-900/25 px-5 py-3 text-sm font-bold text-encre transition-colors hover:border-azur-600 hover:text-azur-600">ضماناتنا →</a>
-          <a href={L('/résidentiel')} class="border border-azur-900/25 px-5 py-3 text-sm font-bold text-encre transition-colors hover:border-azur-600 hover:text-azur-600">الطاقة الشمسية السكنية →</a>
-          <a href={L('/professionnel')} class="border border-azur-900/25 px-5 py-3 text-sm font-bold text-encre transition-colors hover:border-azur-600 hover:text-azur-600">الطاقة الشمسية المهنية →</a>
+          <a href={L('/garanties')} class="border border-azur-900/25 px-5 py-3 text-sm font-bold text-encre transition-colors hover:border-azur-600 hover:text-azur-600">ضماناتنا <span class="inline-block rtl:-scale-x-100">→</span></a>
+          <a href={L('/résidentiel')} class="border border-azur-900/25 px-5 py-3 text-sm font-bold text-encre transition-colors hover:border-azur-600 hover:text-azur-600">الطاقة الشمسية السكنية <span class="inline-block rtl:-scale-x-100">→</span></a>
+          <a href={L('/professionnel')} class="border border-azur-900/25 px-5 py-3 text-sm font-bold text-encre transition-colors hover:border-azur-600 hover:text-azur-600">الطاقة الشمسية المهنية <span class="inline-block rtl:-scale-x-100">→</span></a>
         </div>
       </div>
     </section>

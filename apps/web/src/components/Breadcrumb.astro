@@ -4,6 +4,9 @@
  * `items` : du plus général au plus précis. Le dernier élément est la page
  * courante (sans lien). Les `href` relatifs sont résolus en URL absolues pour
  * le JSON-LD (Astro.site).
+ *
+ * W166 — séparateur chevron directionnel : se retourne en RTL via
+ * `[dir=rtl]` (rotate 180°), invisible aux lecteurs d'écran (aria-hidden).
  */
 import { getLocaleFromPath, useTranslations } from '../i18n/utils';
 
@@ -47,8 +50,34 @@ const link = tone === 'dark' ? 'hover:text-encre' : 'hover:text-lune';
         ) : (
           <span aria-current="page">{c.label}</span>
         )}
-        {i < items.length - 1 && <span aria-hidden="true">/</span>}
+        {i < items.length - 1 && (
+          <svg
+            aria-hidden="true"
+            width="10"
+            height="10"
+            viewBox="0 0 10 10"
+            fill="none"
+            class="breadcrumb-sep shrink-0"
+            style="opacity:0.5;"
+          >
+            {/* Chevron pointing right in LTR; CSS flips it in RTL via [dir=rtl] */}
+            <polyline
+              points="3,1 7,5 3,9"
+              stroke="currentColor"
+              stroke-width="1.5"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+            />
+          </svg>
+        )}
       </li>
     ))}
   </ol>
 </nav>
+
+<style>
+  /* Flip the chevron in RTL contexts so it always points "forward" in reading direction */
+  :global([dir="rtl"]) .breadcrumb-sep {
+    transform: scaleX(-1);
+  }
+</style>

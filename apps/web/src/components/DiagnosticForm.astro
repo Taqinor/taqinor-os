@@ -56,28 +56,40 @@ const VILLES = [
 // W51 — Le diagnostic vit désormais dans le système navy+or (champs sombres,
 // texte lune/blanc, accents laiton). Comportement, markup, attributs (hors
 // classes) et script INCHANGÉS.
+// W188 — ≥16 px font-size (prevents iOS zoom-on-focus), min ~44 px tap height.
+// py-3 + text-base + border ≈ 46 px ; placeholder contrast raised to lune-soft.
+// W194 — focus ring boosted to /60 opacity for clear visibility; placeholder
+// bumped to lune-soft (≈8:1 on nuit). aria-invalid styling via <style> below.
 const inputClass =
-  'w-full border border-white/15 bg-nuit-800 px-3 py-2.5 text-sm text-white placeholder:text-lune-faint outline-none transition-colors focus:border-brass-400 focus:ring-2 focus:ring-brass-400/30';
+  'w-full min-h-[44px] border border-white/15 bg-nuit-800 px-3 py-3 text-base text-white placeholder:text-lune-soft outline-none transition-colors focus:border-brass-400 focus:ring-2 focus:ring-brass-400/60';
 ---
 
-<!-- ACTE FINAL — le diagnostic, dans la nuit éclairée d'or (W51). La couture
-     reste une lueur de laiton, mais sur la nuit (le diagnostic n'est plus la
-     « salle blanche » : il fait désormais partie du site navy+or). -->
-<div class="h-20 bg-[radial-gradient(60%_130%_at_50%_100%,rgb(232_181_74/0.16),transparent_70%)]" aria-hidden="true"></div>
-<section id="simulateur" class="scroll-mt-20 border-t border-white/10 bg-nuit px-4 pb-20 pt-12 text-lune sm:pb-24">
+<!-- W148 — Couture lumière (nuit→blanc) : transition dramatique salle obscure→salle blanche -->
+<div class="seam-lumiere" aria-hidden="true"></div>
+<!-- W148 — ACTE FINAL — diagnostic en « salle blanche » : fond lumineux, carte soulevée -->
+<section id="simulateur" class="diag-lumiere scroll-mt-20 px-4 pb-20 pt-12 sm:pb-24">
+  <!-- W148 — Chapeau de l'acte final : titre de section, éclairé en brass -->
+  <div class="mx-auto mb-10 max-w-5xl">
+    <p class="tech-label rule-brass text-brass-300">Votre étude gratuite</p>
+    <h2 class="display mt-4 max-w-lg text-2xl text-white sm:text-3xl">
+      60 secondes pour estimer votre potentiel solaire
+    </h2>
+  </div>
   <div class:list={['mx-auto grid items-start gap-6', Astro.slots.has('aside') ? 'max-w-5xl lg:grid-cols-[1.4fr_1fr]' : 'max-w-2xl']}>
-  <div class="cine-card">
+  <div class="cine-card" style="box-shadow: 0 0 60px -20px rgb(232 181 74 / 0.18), 0 32px 80px -20px rgb(0 0 0 / 0.6), inset 0 1px 0 rgb(255 255 255 / 0.10);">
     <div class="border-b border-white/10 px-6 py-5 sm:px-8">
       <p class="tech-label text-brass-300">{t('form.eyebrow')}</p>
-      <h2 class="display mt-2 text-2xl text-white sm:text-3xl">{heading}</h2>
+      <h2 class="display v2-section-title mt-2 text-2xl text-white sm:text-3xl">{heading}</h2>
 
-      <!-- Indicateur de progression — l'état actif/inactif est piloté par le
-           script (bg-azur-600 / bg-azur-100, INCHANGÉ) ; les segments restent
-           lisibles sur la nuit. -->
-      <div class="mt-5 flex items-center gap-3" aria-hidden="true">
-        <span data-seg="1" class="h-1 flex-1 bg-azur-600 transition-colors"></span>
-        <span data-seg="2" class="h-1 flex-1 bg-azur-100 transition-colors"></span>
-        <span data-seg="3" class="h-1 flex-1 bg-azur-100 transition-colors"></span>
+      <!-- W189 — Indicateur de progression amélioré : barre plus haute (h-2),
+           remplissage laiton sur piste subtile (bg-white/10), indication
+           d'étape aria-valuenow sur le conteneur. Le script met à jour
+           bg-brass-400 / bg-white/10 et aria-valuenow. -->
+      <div id="diag-bar" role="progressbar" aria-valuenow="1" aria-valuemin="1" aria-valuemax="3"
+           class="mt-5 flex items-center gap-2 rounded-full bg-white/5 p-1">
+        <span data-seg="1" class="h-2 flex-1 rounded-full bg-brass-400 transition-colors duration-300"></span>
+        <span data-seg="2" class="h-2 flex-1 rounded-full bg-white/15 transition-colors duration-300"></span>
+        <span data-seg="3" class="h-2 flex-1 rounded-full bg-white/15 transition-colors duration-300"></span>
       </div>
       <p id="diag-progress" class="tech-label mt-2 text-lune-faint" aria-live="polite">{t('form.progress').replace('{step}', '1')}</p>
     </div>
@@ -130,12 +142,12 @@ const inputClass =
             <p id="lf-phone-err" role="alert" class="mt-1 hidden text-xs text-alert-300"></p>
           </div>
         </div>
-        <label class="flex items-start gap-2 text-sm text-lune">
-          <input type="checkbox" name="whatsappOptIn" class="mt-0.5 accent-brass-400" checked />
+        <label class="flex min-h-[44px] cursor-pointer items-center gap-2 text-sm text-lune">
+          <input type="checkbox" name="whatsappOptIn" class="h-5 w-5 shrink-0 cursor-pointer accent-brass-400" checked />
           <span>{t('form.waOptIn')}</span>
         </label>
-        <label class="flex items-start gap-2 text-sm text-lune">
-          <input type="checkbox" name="consent" required class="mt-0.5 accent-brass-400" />
+        <label class="flex min-h-[44px] cursor-pointer items-start gap-2 text-sm text-lune">
+          <input type="checkbox" name="consent" required class="h-5 w-5 shrink-0 mt-0.5 cursor-pointer accent-brass-400" />
           <span>
             {t('form.consent.pre')} <a href={privacyHref} target="_blank" rel="noopener" class="text-lune-faint underline underline-offset-2 hover:text-brass-300">{t('form.consent.link')}</a>
           </span>
@@ -161,34 +173,42 @@ const inputClass =
           class="bg-azur-600 px-6 py-3.5 text-base font-bold text-white transition-colors hover:bg-azur-700">
           {t('form.next')}
         </button>
+        <!-- W191 — spinner hidden by default; shown via JS during submit -->
         <button type="submit" id="lf-submit"
-          class="hidden bg-brass-400 px-7 py-3.5 text-base font-bold text-azur-950 transition-colors hover:bg-brass-300 disabled:opacity-60">
-          {t('form.submit')}
+          class="hidden items-center gap-2 bg-brass-400 px-7 py-3.5 text-base font-bold text-azur-950 transition-colors hover:bg-brass-300 disabled:opacity-60">
+          <span id="lf-spinner" class="spinner hidden" aria-hidden="true"></span>
+          <span id="lf-submit-label">{t('form.submit')}</span>
         </button>
       </div>
     </form>
 
-    <!-- Extrait d'étude — l'état de résultat -->
-    <div id="lf-success" class="hidden p-8">
-      <p class="tech-label rule-brass text-brass-300">{t('form.success.eyebrow')}</p>
-      <div class="mt-6 grid gap-8 sm:grid-cols-2">
-        <div>
-          <p id="lf-kwc" class="fig lum text-4xl sm:text-5xl" dir="ltr"></p>
-          <p class="tech-label mt-2 text-lune-faint">{t('form.success.kwc')}</p>
+    <!-- W190 — Extrait d'étude — carte premium : cine-card + lueur laiton +
+         hiérarchie valeur/label via .fig-lg/.tech-label. Les IDs, la logique
+         de remplissage (kwcEl/roiEl/waEl) et le deeplink restent INCHANGÉS. -->
+    <div id="lf-success" class="hidden">
+      <!-- Seam lumineux au-dessus du payoff -->
+      <div class="h-px bg-[radial-gradient(60%_180%_at_50%_0%,rgb(232_181_74/0.45),transparent_70%)]" aria-hidden="true"></div>
+      <div class="cine-card glow m-4 p-6 sm:m-6 sm:p-8">
+        <p class="tech-label rule-brass text-brass-300">{t('form.success.eyebrow')}</p>
+        <div class="mt-6 grid gap-8 sm:grid-cols-2">
+          <div>
+            <p id="lf-kwc" class="fig fig-lg lum" dir="ltr"></p>
+            <p class="tech-label mt-3 text-lune-faint">{t('form.success.kwc')}</p>
+          </div>
+          <div>
+            <p id="lf-roi" class="fig fig-lg lum" dir="ltr"></p>
+            <p class="tech-label mt-3 text-lune-faint">{t('form.success.roi')}</p>
+          </div>
         </div>
-        <div>
-          <p id="lf-roi" class="fig lum text-4xl sm:text-5xl" dir="ltr"></p>
-          <p class="tech-label mt-2 text-lune-faint">{t('form.success.roi')}</p>
-        </div>
+        <p class="mt-6 border-t border-white/10 pt-5 text-sm leading-relaxed text-lune-soft">
+          {t('form.success.note')}
+        </p>
+        <a id="lf-wa" href="#" rel="noopener"
+          class="mt-6 inline-flex w-full items-center justify-center gap-2 bg-ok-600 px-6 py-4 text-base font-bold text-white transition-opacity hover:opacity-90 sm:w-auto">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 2a10 10 0 0 0-8.6 15.1L2 22l5-1.3A10 10 0 1 0 12 2Zm5.4 14.1c-.2.6-1.3 1.2-1.8 1.2-.5.1-1 .2-3.3-.7-2.8-1.1-4.6-4-4.7-4.2-.1-.2-1.1-1.5-1.1-2.9s.7-2 1-2.3c.2-.3.5-.3.7-.3h.5c.2 0 .4 0 .6.4l.9 2.1c.1.2.1.4 0 .6l-.4.6-.5.5c-.2.2-.3.4-.1.7.2.3.9 1.4 1.9 2.3 1.3 1.1 2.3 1.5 2.6 1.6.3.1.5.1.7-.1l1-1.2c.2-.3.4-.2.7-.1l2 1c.3.1.5.2.6.4 0 .1 0 .7-.3 1.4Z"/></svg>
+          {t('form.submit')}
+        </a>
       </div>
-      <p class="mt-6 border-t border-white/10 pt-5 text-sm leading-relaxed text-lune-soft">
-        {t('form.success.note')}
-      </p>
-      <a id="lf-wa" href="#" rel="noopener"
-        class="mt-6 inline-flex w-full items-center justify-center gap-2 bg-ok-600 px-6 py-4 text-base font-bold text-white transition-opacity hover:opacity-90 sm:w-auto">
-        <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 2a10 10 0 0 0-8.6 15.1L2 22l5-1.3A10 10 0 1 0 12 2Zm5.4 14.1c-.2.6-1.3 1.2-1.8 1.2-.5.1-1 .2-3.3-.7-2.8-1.1-4.6-4-4.7-4.2-.1-.2-1.1-1.5-1.1-2.9s.7-2 1-2.3c.2-.3.5-.3.7-.3h.5c.2 0 .4 0 .6.4l.9 2.1c.1.2.1.4 0 .6l-.4.6-.5.5c-.2.2-.3.4-.1.7.2.3.9 1.4 1.9 2.3 1.3 1.1 2.3 1.5 2.6 1.6.3.1.5.1.7-.1l1-1.2c.2-.3.4-.2.7-.1l2 1c.3.1.5.2.6.4 0 .1 0 .7-.3 1.4Z"/></svg>
-        {t('form.submit')}
-      </a>
     </div>
   </div>
   {Astro.slots.has('aside') && (
@@ -198,6 +218,21 @@ const inputClass =
   )}
   </div>
 </section>
+
+<!-- W194 — validation / error / placeholder / focus-ring styles (Astro-scoped). -->
+<style>
+  /* Champs invalides (aria-invalid posé par le JS de validation) */
+  input[aria-invalid="true"],
+  select[aria-invalid="true"] {
+    border-color: var(--color-alert-300);
+    box-shadow: 0 0 0 2px rgb(244 161 138 / 0.25);
+  }
+  /* Message d'erreur global — plus visible (border pleine, fond plus opaque) */
+  #lf-err:not(.hidden) {
+    border-color: var(--color-alert-300);
+    background-color: rgb(244 161 138 / 0.15);
+  }
+</style>
 
 <script>
   import { normalizeMoroccanPhone } from '../lib/phone';
@@ -215,6 +250,9 @@ const inputClass =
   const backBtn = document.getElementById('diag-back') as HTMLButtonElement;
   const progressEl = document.getElementById('diag-progress')!;
   const sunEl = document.getElementById('diag-sun')!;
+  // W191 — spinner elements (null-safe: absent in old builds)
+  const spinnerEl = document.getElementById('lf-spinner') as HTMLElement | null;
+  const submitLabelEl = document.getElementById('lf-submit-label') as HTMLElement | null;
 
   // Chaînes traduites embarquées par le serveur (libellés VISIBLES uniquement —
   // jamais la charge utile). Repli sur le FR si l'attribut manque.
@@ -274,9 +312,11 @@ const inputClass =
     }
     document.querySelectorAll<HTMLElement>('[data-seg]').forEach((seg) => {
       const on = Number(seg.dataset.seg) <= step;
-      seg.classList.toggle('bg-azur-600', on);
-      seg.classList.toggle('bg-azur-100', !on);
+      seg.classList.toggle('bg-brass-400', on);
+      seg.classList.toggle('bg-white/15', !on);
     });
+    // W189 — mise à jour accessible de la valeur courante
+    (document.getElementById('diag-bar') as HTMLElement | null)?.setAttribute('aria-valuenow', String(step));
     progressEl.textContent = I18N.progress.replace('{step}', String(step));
     backBtn.classList.toggle('invisible', step === 1);
     nextBtn.classList.toggle('hidden', step === 3);
@@ -347,7 +387,12 @@ const inputClass =
     }
 
     submitBtn.disabled = true;
-    submitBtn.textContent = I18N.submitting;
+    // W191 — show spinner + aria-busy; update label text without destroying innerHTML
+    if (submitLabelEl) submitLabelEl.textContent = I18N.submitting;
+    else submitBtn.textContent = I18N.submitting; // fallback if spans absent
+    spinnerEl?.classList.remove('hidden');
+    submitBtn.classList.add('flex');
+    form?.setAttribute('aria-busy', 'true');
     try {
       const res = await fetch('/api/simulate', {
         method: 'POST',
@@ -365,6 +410,8 @@ const inputClass =
       kwcEl.textContent = data.band.kwcLabel;
       roiEl.textContent = data.band.paybackLabel;
       waEl.href = data.whatsappUrl;
+      // W191 — fade-in result (CSS animation gated under no-preference)
+      success.classList.add('result-fade');
       success.classList.remove('hidden');
       success.scrollIntoView({ behavior: 'smooth', block: 'center' });
       // Sur mobile : ouverture automatique de WhatsApp après l'état de remerciement
@@ -378,7 +425,12 @@ const inputClass =
       errEl.classList.remove('hidden');
     } finally {
       submitBtn.disabled = false;
-      submitBtn.textContent = I18N.submit;
+      // W191 — restore button state
+      spinnerEl?.classList.add('hidden');
+      submitBtn.classList.remove('flex');
+      form?.removeAttribute('aria-busy');
+      if (submitLabelEl) submitLabelEl.textContent = I18N.submit;
+      else submitBtn.textContent = I18N.submit;
     }
   });
 </script>

@@ -12,6 +12,12 @@
  *
  * Le formatage français (virgule décimale, espace milliers) est identique à
  * celui du site.
+ *
+ * W220 — anti-CLS : les éléments count-up portent `font-variant-numeric:
+ * tabular-nums` (via v2.css) pour que chaque chiffre occupe une largeur
+ * de colonne constante. En JS, `reserveWidth` capture la largeur de la valeur
+ * finale AVANT l'animation et la verrouille comme `min-width` pour que l'élément
+ * ne rétrécisse jamais pendant le roulement 0 → final.
  */
 
 // Espaces admis DANS un nombre : normal (0x20), insécable (0xA0), fine (0x202F).
@@ -80,6 +86,27 @@ export function isCompound(text: string): boolean {
  */
 export function shouldDigitRoll(text: string): boolean {
   return parseTokens(text).length === 1 && !isCompound(text);
+}
+
+/**
+ * W220 — Réserve la largeur d'un élément count-up AVANT l'animation pour
+ * éviter tout micro-CLS pendant le roulement 0 → valeur finale.
+ *
+ * L'élément affiche déjà sa valeur finale dans le DOM (rendu serveur) ;
+ * on mesure la largeur rendue, puis on la verrouille comme `min-width`.
+ * Cela garantit que l'élément ne peut jamais rétrécir pendant l'animation
+ * (quand le texte passe par des valeurs intermédiaires plus courtes, ex.
+ * « 0 kWh/an » au lieu de « 21 406 kWh/an »).
+ *
+ * Note : ne modifie que `min-width` (jamais `width`) pour ne pas bloquer
+ * le redimensionnement responsive. Sans DOM (SSR/tests unitaires), no-op.
+ */
+export function reserveWidth(el: HTMLElement): void {
+  // La valeur finale est dans le texte courant — on mesure avant toute mutation.
+  const rect = el.getBoundingClientRect();
+  if (rect.width > 0) {
+    el.style.minWidth = rect.width + 'px';
+  }
 }
 
 /**

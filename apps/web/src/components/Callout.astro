@@ -1,0 +1,94 @@
+---
+/**
+ * Callout.astro — encadré d'information/avertissement/astuce dans les articles.
+ *
+ * Tokens: --color-brass-*, --color-azur-*, --color-lune/-soft/-faint
+ * Types : 'info' (azur), 'tip' (laiton), 'warning' (orange discret)
+ *
+ * Usage Astro MDX ou inline dans un template :
+ *   <Callout type="tip" title="Le bon réflexe">Texte...</Callout>
+ */
+interface Props {
+  type?: 'info' | 'tip' | 'warning';
+  title?: string;
+}
+
+const { type = 'info', title } = Astro.props;
+---
+
+<aside
+  class:list={['callout', `callout--${type}`]}
+  role="note"
+  aria-label={title ?? (type === 'tip' ? 'Conseil' : type === 'warning' ? 'Attention' : 'Information')}
+>
+  {title && <p class="callout__title">{title}</p>}
+  <div class="callout__body">
+    <slot />
+  </div>
+</aside>
+
+<style>
+  .callout {
+    margin-top: 1.75rem;
+    padding: 1rem 1.25rem;
+    border-left-width: 3px;
+    border-left-style: solid;
+    background: rgb(255 255 255 / 0.04);
+  }
+
+  /* Info — azur */
+  .callout--info {
+    border-color: var(--color-azur-600, #2342b5);
+  }
+  .callout--info .callout__title {
+    color: var(--color-azur-200, #b9c8f0);
+  }
+
+  /* Tip — laiton */
+  .callout--tip {
+    border-color: var(--color-brass-400, #e8b54a);
+    background: rgb(232 181 74 / 0.05);
+  }
+  .callout--tip .callout__title {
+    color: var(--color-brass-300, #f3cc66);
+  }
+
+  /* Warning — alerte douce */
+  .callout--warning {
+    border-color: var(--color-alert-300, #f4a18a);
+    background: rgb(244 161 138 / 0.04);
+  }
+  .callout--warning .callout__title {
+    color: var(--color-alert-300, #f4a18a);
+  }
+
+  /* Titre de l'encadré */
+  .callout__title {
+    font-family: var(--font-display, inherit);
+    font-weight: 700;
+    font-size: 0.875rem;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    margin: 0 0 0.5rem;
+  }
+
+  /* Corps */
+  .callout__body {
+    font-size: 0.9375rem;
+    line-height: 1.7;
+    color: var(--color-lune-soft, #adb5cd);
+  }
+
+  .callout__body :global(p) {
+    margin: 0;
+    color: inherit;
+  }
+
+  .callout__body :global(p + p) {
+    margin-top: 0.5rem;
+  }
+
+  .callout__body :global(strong) {
+    color: var(--color-lune, #d6dbe9);
+  }
+</style>

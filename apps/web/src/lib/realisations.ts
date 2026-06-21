@@ -18,6 +18,10 @@ export interface RealisationPhoto {
   alt: string;
   ratio: number;
   widths: number[];
+  /** W181 — Point focal CSS object-position (ex. 'center top'). Défaut : 'center'. */
+  objectPosition?: string;
+  /** W184 — Rôle dans le diptych avant/pendant/après. */
+  phase?: 'before' | 'during' | 'after';
 }
 
 export interface Realisation {
@@ -65,9 +69,9 @@ export const REALISATIONS: Realisation[] = [
     resume:
       'La plus grande installation résidentielle livrée par Taqinor en 2026 : une toiture de villa d’El Jadida équipée en 24 panneaux, onduleur hybride triphasé et stockage lithium.',
     photos: [
-      { name: 'reflet-468', alt: 'Le soleil se reflète sur la rangée de panneaux pendant la pose, El Jadida', ratio: 3 / 2, widths: [1600, 1024, 640] },
-      { name: 'equipe-trois', alt: 'Équipe Taqinor devant la longue rangée de panneaux en fin de chantier, El Jadida', ratio: 3 / 2, widths: [1600, 1024, 640] },
-      { name: 'detail-cablage', alt: 'Gros plan sur les bornes des batteries Dyness et le coffret de protections, câblage soigné, El Jadida', ratio: 4 / 3, widths: [1600, 1024, 640] },
+      { name: 'reflet-468', alt: 'Le soleil se reflète sur la rangée de panneaux pendant la pose, El Jadida', ratio: 3 / 2, widths: [1600, 1024, 640], phase: 'during' as const },
+      { name: 'equipe-trois', alt: 'Équipe Taqinor devant la longue rangée de panneaux en fin de chantier, El Jadida', ratio: 3 / 2, widths: [1600, 1024, 640], phase: 'after' as const },
+      { name: 'detail-cablage', alt: 'Gros plan sur les bornes des batteries Dyness et le coffret de protections, câblage soigné, El Jadida', ratio: 4 / 3, widths: [1600, 1024, 640], phase: 'after' as const },
     ],
   },
   {
@@ -87,9 +91,9 @@ export const REALISATIONS: Realisation[] = [
     resume:
       'Une villa de Casablanca face à la skyline : 16 panneaux, onduleur hybride Deye et deux batteries Dyness, avec borne de recharge — production suivie sur Deye Cloud.',
     photos: [
-      { name: 'hero-skyline', alt: 'Rangée de panneaux solaires devant la skyline de Casablanca et un minaret, lumière dorée', ratio: 16 / 9, widths: [2000, 1280, 768, 480] },
-      { name: 'portrait-400', alt: "L'ingénieur devant le champ de panneaux, skyline de Casablanca", ratio: 4 / 3, widths: [1600, 1024, 640] },
-      { name: 'mur-technique-dyness', alt: "Mur technique d'une installation Taqinor à Casablanca : onduleur hybride Deye, deux batteries Dyness et borne de recharge", ratio: 4 / 3, widths: [1600, 1024, 640] },
+      { name: 'hero-skyline', alt: 'Rangée de panneaux solaires devant la skyline de Casablanca et un minaret, lumière dorée', ratio: 16 / 9, widths: [2000, 1280, 768, 480], phase: 'after' as const },
+      { name: 'portrait-400', alt: "L'ingénieur devant le champ de panneaux, skyline de Casablanca", ratio: 4 / 3, widths: [1600, 1024, 640], phase: 'after' as const },
+      { name: 'mur-technique-dyness', alt: "Mur technique d'une installation Taqinor à Casablanca : onduleur hybride Deye, deux batteries Dyness et borne de recharge", ratio: 4 / 3, widths: [1600, 1024, 640], phase: 'after' as const },
     ],
   },
   {
@@ -149,9 +153,9 @@ export const REALISATIONS: Realisation[] = [
     resume:
       'Une installation à Nouaceur, dans la périphérie de Casablanca : six panneaux JA Solar posés avec le même soin d’implantation que nos chantiers de plus grande taille.',
     photos: [
-      { name: 'equipe-gilet-taqinor', alt: "Installateur en gilet Taqinor posant les rails d'une structure, Nouaceur", ratio: 1, widths: [1600, 1024, 640] },
-      { name: 'mesure-rails', alt: 'Traçage et mesure au mètre des rails de fixation sur toiture, Nouaceur', ratio: 4 / 3, widths: [1600, 1024, 640] },
-      { name: 'entretien-jet', alt: "Nettoyage au jet d'eau du champ de panneaux, Nouaceur", ratio: 1, widths: [1600, 1024, 640] },
+      { name: 'equipe-gilet-taqinor', alt: "Installateur en gilet Taqinor posant les rails d'une structure, Nouaceur", ratio: 1, widths: [1600, 1024, 640], phase: 'during' as const },
+      { name: 'mesure-rails', alt: 'Traçage et mesure au mètre des rails de fixation sur toiture, Nouaceur', ratio: 4 / 3, widths: [1600, 1024, 640], phase: 'before' as const },
+      { name: 'entretien-jet', alt: "Nettoyage au jet d'eau du champ de panneaux, Nouaceur", ratio: 1, widths: [1600, 1024, 640], phase: 'after' as const },
     ],
   },
 ];

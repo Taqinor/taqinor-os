@@ -132,7 +132,7 @@ const jsonLd = {
             <h2 class="display rule-brass text-2xl text-white">{group.theme}</h2>
             <div class="mt-6 grid gap-6 md:grid-cols-3" data-stagger>
               {group.guides.map((g, i) => (
-                <a href={g.href} class="v2-rise cine-card flex flex-col p-7" style={`--v2-i:${i}`}>
+                <a href={g.href} class="v2-rise cine-card guide-card flex flex-col p-7" style={`--v2-i:${i}`}>
                   <p class="tech-label text-brass-300">{group.theme === 'Voiture électrique' ? 'Pilier' : 'Guide'}</p>
                   <h3 class="display mt-2 text-xl text-white">{g.title}</h3>
                   <p class="mt-3 flex-1 text-sm leading-relaxed text-lune-soft">{g.summary}</p>
@@ -150,3 +150,16 @@ const jsonLd = {
     <StickyCta />
   </div>
 </Layout>
+
+<style>
+  /* W198 — survol : élévation subtile (respecte prefers-reduced-motion) */
+  @media (prefers-reduced-motion: no-preference) {
+    .guide-card {
+      transition: transform 0.2s ease, box-shadow 0.2s ease;
+    }
+    .guide-card:hover {
+      transform: translateY(-4px);
+      box-shadow: 0 28px 64px -28px rgb(0 0 0 / 0.85);
+    }
+  }
+</style>

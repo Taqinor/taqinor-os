@@ -94,3 +94,32 @@
     transform: scale(1.06);
   }
 }
+
+/* ─── W186 — Grade cinématographique sur les photos non-héros ────────────────
+   .photo-grade : filtre subtil qui pousse les non-hero photos vers la palette
+   « Cinéma du chantier » (nuit/laiton). L'effet reste TRÈS discret : légère
+   hausse du contraste (+6 %), légère désaturation (−10 %) et une pointe de
+   teinte chaude via sepia clippé à 15 %. On n'écrase aucun détail.
+
+   HERO / LCP PROTECTION : ne JAMAIS appliquer .photo-grade à une image LCP
+   ou à un conteneur .v2-hero-media. Cette classe est exclusivement pour les
+   photos de contenu (galeries, cartes, sections « mhéros » secondaires).
+   Les pages optent en ajoutant simplement .photo-grade sur le <picture>,
+   <img>, <figure> ou <a> contenant la photo non-hero.
+
+   Exemple d'usage dans une page :
+     <Picture class="... photo-grade" ... />
+   ou sur un conteneur :
+     <figure class="cine-card photo-grade ...">
+
+   Compatibilité : CSS filter est universel (Edge 13+, Safari 9.1+).
+   Interaction avec Ken Burns / v2-rise : le filtre s'applique au même élément
+   ou à un ancêtre → pas de conflit avec transform/opacity des animations.
+   prefers-reduced-motion : pas de transition définie ici → aucun risque de
+   mouvement non voulu. */
+.photo-grade {
+  filter:
+    contrast(1.06)
+    saturate(0.90)
+    sepia(0.15);
+}

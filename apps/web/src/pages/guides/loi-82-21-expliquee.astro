@@ -15,6 +15,7 @@ import Breadcrumb from '../../components/Breadcrumb.astro';
 import CtaBand from '../../components/CtaBand.astro';
 import StickyCta from '../../components/StickyCta.astro';
 import { NAP } from '../../lib/nap';
+import RelatedLinks from '../../components/RelatedLinks.astro';
 
 const url = new URL(Astro.url.pathname, Astro.site).href;
 const jsonLd = {
@@ -59,7 +60,7 @@ const regimes = [
 
     <Breadcrumb items={[{ label: 'Accueil', href: '/' }, { label: 'Guides', href: '/guides' }, { label: 'Loi 82-21 expliquée simplement' }]} />
 
-    <article class="mx-auto max-w-3xl px-4 pb-24 pt-12 sm:pb-28">
+    <article class="mx-auto max-w-[68ch] px-4 pb-24 pt-12 sm:pb-28">
       <p class="tech-label v2-kicker rule-brass text-brass-300">Guide · Loi 82-21</p>
       <h1 class="display v2-page-title mt-5 text-white">Loi 82-21 expliquée simplement</h1>
       <p class="v2-lead mt-6 text-lune-soft">
@@ -92,11 +93,11 @@ const regimes = [
         en situation irrégulière au regard de la loi 82-21, avec les sanctions que cela suppose. Il
         n’y a donc rien à gagner à attendre, et la démarche se lance dès aujourd’hui.
       </p>
-      <div class="mt-8 flex flex-wrap gap-3">
-        <a href="/loi-82-21" class="border border-white/40 px-5 py-3 text-sm font-bold text-white transition-colors hover:border-white hover:bg-white/10">Identifier mon régime en 3 questions →</a>
-        <a href="/regularization-article-33" class="border border-white/40 px-5 py-3 text-sm font-bold text-white transition-colors hover:border-white hover:bg-white/10">Régulariser mon installation →</a>
-        <a href="/guides" class="border border-white/40 px-5 py-3 text-sm font-bold text-white transition-colors hover:border-white hover:bg-white/10">Tous les guides →</a>
-      </div>
+      <RelatedLinks mt="mt-8" links={[
+        { href: '/loi-82-21', label: 'Identifier mon régime en 3 questions' },
+        { href: '/regularization-article-33', label: 'Régulariser mon installation' },
+        { href: '/guides', label: 'Tous les guides' },
+      ]} />
     </article>
 
     <CtaBand title="Un doute sur votre régime ? Nous vérifions gratuitement." buttonLabel="Faire vérifier mon dossier" href="/contact#simulateur" />

@@ -5,6 +5,12 @@
  * elle ne passe qu'une seule locale → le sélecteur ne s'affiche pas. Le FR
  * sans traduction reste donc strictement inchangé.
  *
+ * W167 — tap target ≥44px + discoverabilité améliorée :
+ *   - Icône globe SVG avant les codes de langue
+ *   - Chaque lien a min-height + min-width de 44px (padding étendu)
+ *   - aria-label sur le nav + aria-current sur la locale active
+ *   - Séparateur visuel « · » entre locales (aria-hidden)
+ *
  * Props :
  *   path    — chemin racine sans préfixe de locale (ex. '/contact')
  *   current — locale courante
@@ -24,19 +30,46 @@ const ordered = locales;
 ---
 
 {ordered.length > 1 && (
-  <nav class="flex items-center gap-0.5" aria-label={t('lang.label')}>
-    {ordered.map((loc) => (
-      <a
-        href={localizePath(path, loc)}
-        hreflang={loc}
-        lang={loc}
-        aria-current={loc === current ? 'true' : undefined}
-        title={LOCALE_LABEL[loc]}
-        class:list={[
-          'px-1 py-1 text-xs font-bold uppercase leading-none transition-colors',
-          loc === current ? 'text-brass-300' : 'text-lune-soft hover:text-white',
-        ]}
-      >{LOCALE_SHORT[loc]}</a>
+  <nav class="flex items-center" aria-label={t('lang.label')}>
+    {/* Globe icon — decorative, signals language selection affordance */}
+    <svg
+      aria-hidden="true"
+      focusable="false"
+      width="16"
+      height="16"
+      viewBox="0 0 16 16"
+      fill="none"
+      class="me-1 shrink-0 opacity-60"
+      style="color:inherit;"
+    >
+      <circle cx="8" cy="8" r="6.5" stroke="currentColor" stroke-width="1.25" />
+      <ellipse cx="8" cy="8" rx="2.8" ry="6.5" stroke="currentColor" stroke-width="1.25" />
+      <line x1="1.5" y1="8" x2="14.5" y2="8" stroke="currentColor" stroke-width="1.25" />
+      <line x1="2.5" y1="5" x2="13.5" y2="5" stroke="currentColor" stroke-width="1.25" />
+      <line x1="2.5" y1="11" x2="13.5" y2="11" stroke="currentColor" stroke-width="1.25" />
+    </svg>
+
+    {ordered.map((loc, i) => (
+      <>
+        <a
+          href={localizePath(path, loc)}
+          hreflang={loc}
+          lang={loc}
+          aria-current={loc === current ? 'true' : undefined}
+          title={LOCALE_LABEL[loc]}
+          aria-label={LOCALE_LABEL[loc]}
+          class:list={[
+            /* ≥44px tap target: min 44px block size, horizontal padding gives comfortable width */
+            'inline-flex items-center justify-center',
+            'min-h-[44px] min-w-[44px] px-2',
+            'text-xs font-bold uppercase leading-none transition-colors',
+            loc === current ? 'text-brass-300' : 'text-lune-soft hover:text-white',
+          ]}
+        >{LOCALE_SHORT[loc]}</a>
+        {i < ordered.length - 1 && (
+          <span aria-hidden="true" class="text-lune-faint select-none" style="font-size:0.6rem;">·</span>
+        )}
+      </>
     ))}
   </nav>
 )}

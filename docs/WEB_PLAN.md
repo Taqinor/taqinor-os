@@ -1058,24 +1058,24 @@ supply a photo / official brand SVGs) — flagged inline; build the rest.*
 
 **— Structural / highest-impact —**
 
-- [ ] W148 — **Restore the dark→light "salle blanche" diagnostic climax.** The page
+- [x] W148 — **Restore the dark→light "salle blanche" diagnostic climax.** The page
   now runs one flat navy tone top-to-bottom; the lit final act was removed, so the
   scroll never "arrives." Bring back an illuminated diagnostic act (or a dramatically
   brighter glass-lifted card on a luminous gradient) and wire up the unused
   `.seam-lumiere`. Files: `apps/web/src/components/DiagnosticForm.astro`,
   `apps/web/src/styles/global.css`.
-- [ ] W149 — **Make the hero CTA own the first 3 seconds.** Shorten "Recevez votre
+- [x] W149 — **Make the hero CTA own the first 3 seconds.** Shorten "Recevez votre
   étude sur WhatsApp", give the button a persistent golden halo (the `.glow` resting
   state barely glows today) and a larger size/weight so it's unmistakably the focal
   point. Files: `apps/web/src/pages/index.astro`, `apps/web/src/styles/global.css`.
-- [ ] W150 — **Scroll-reactive header.** It carries the same heavy `bg-nuit/90` slab
+- [x] W150 — **Scroll-reactive header.** It carries the same heavy `bg-nuit/90` slab
   over the cinematic hero as mid-page, with zero scroll JS. Start transparent/borderless
   over the hero → solid + backdrop-blur + condensed height + logo step-down past ~80px
   (reuse the rAF pattern in `StickyCta.astro`). Files: `apps/web/src/components/Header.astro`.
-- [ ] W151 — **Active-page indicator in the desktop nav.** No `aria-current`/active state
+- [x] W151 — **Active-page indicator in the desktop nav.** No `aria-current`/active state
   exists; every link looks identical. Compute the current section from `rootPath` and
   render a brass underline / text on the active item. Files: `apps/web/src/components/Header.astro`.
-- [ ] W152 — **Footer redesign.** It's a flat link grid on bare `bg-nuit` with a 1px top
+- [x] W152 — **Footer redesign.** It's a flat link grid on bare `bg-nuit` with a 1px top
   border — the weakest element on the site. Add a brand block + phone/WhatsApp CTA buttons,
   a golden hairline/seam top edge, and real column hierarchy. Files: `apps/web/src/components/Footer.astro`.
 - [x] W153 — **Ship the founder portrait.** *(Shipped 2026-06-21: founder supplied the photo
@@ -1088,42 +1088,42 @@ supply a photo / official brand SVGs) — flagged inline; build the rest.*
 
 **— Homepage & hero —**
 
-- [ ] W154 — **Richer art-directed hero scrim** (layered radial vignette + text-side
+- [x] W154 — **Richer art-directed hero scrim** (layered radial vignette + text-side
   darkening) so the golden headline always reads over busy photos. Files: `apps/web/src/pages/index.astro`.
-- [ ] W155 — **Portrait-crop hero `<source>` for phones.** One 16:9 landscape is center-punched
+- [x] W155 — **Portrait-crop hero `<source>` for phones.** One 16:9 landscape is center-punched
   on tall screens; add `media="(orientation: portrait)"` with a vertical crop. Files:
   `apps/web/src/pages/index.astro`, `apps/web/src/pages/realisations/[slug].astro`, `apps/web/src/components/Picture.astro`.
-- [ ] W156 — **Consistent monumental `.fig .lum` trust-band figures** (the four-up row mixes
+- [x] W156 — **Consistent monumental `.fig .lum` trust-band figures** (the four-up row mixes
   one golden `text-4xl` with three plain white `text-xl`). Files: `apps/web/src/pages/index.astro`.
-- [ ] W157 — **Lift `.cine-card`** from near-invisible (`bg-white/0.04`) with faint glass
+- [x] W157 — **Lift `.cine-card`** from near-invisible (`bg-white/0.04`) with faint glass
   blur, a top-edge highlight, and a warm brass hover. Files: `apps/web/src/styles/global.css`.
-- [ ] W158 — **Refine section seams** — replace stacked hard `border-y border-white/10`
+- [x] W158 — **Refine section seams** — replace stacked hard `border-y border-white/10`
   hairlines with occasional gradient/glow transitions. Files: `apps/web/src/pages/index.astro`,
   `apps/web/src/styles/global.css`.
-- [ ] W159 — **Vary the repeated eyebrow treatment** (`tech-label + rule-brass` used ~9×
+- [x] W159 — **Vary the repeated eyebrow treatment** (`tech-label + rule-brass` used ~9×
   down the homepage → wallpaper). Files: `apps/web/src/pages/index.astro`.
-- [ ] W160 — **Refine the Article 33 ribbon** so it reads as a premium announcement, not an
+- [x] W160 — **Refine the Article 33 ribbon** so it reads as a premium announcement, not an
   admin bar above the hero. Files: `apps/web/src/components/Article33Ribbon.astro`.
-- [ ] W161 — **Add a hero scroll affordance** (subtle animated chevron / peeking next-section
+- [x] W161 — **Add a hero scroll affordance** (subtle animated chevron / peeking next-section
   edge). Files: `apps/web/src/pages/index.astro`.
-- [ ] W162 — **Warm the austere "L'argument en chiffres" stat column** (faint brass backing /
+- [x] W162 — **Warm the austere "L'argument en chiffres" stat column** (faint brass backing /
   baseline glow). Files: `apps/web/src/pages/index.astro`.
 
 **— Navigation chrome —**
 
-- [ ] W163 — **Rotate dropdown chevrons on open + polish dropdown panels** (rounded, layered
+- [x] W163 — **Rotate dropdown chevrons on open + polish dropdown panels** (rounded, layered
   shadow, brass top accent). Files: `apps/web/src/components/Header.astro`.
-- [ ] W164 — **Upgrade the mobile menu** into an animated panel: replace the emoji 📞 with the
+- [x] W164 — **Upgrade the mobile menu** into an animated panel: replace the emoji 📞 with the
   existing phone SVG, move the language switcher inside it, and add
   `max-h-[calc(100svh-3.5rem)] overflow-y-auto overscroll-contain`. Files: `apps/web/src/components/Header.astro`.
-- [ ] W165 — **Refine the StickyCta pill** (the green WhatsApp button breaks the brass/night
+- [x] W165 — **Refine the StickyCta pill** (the green WhatsApp button breaks the brass/night
   palette; add the glow) and add `env(safe-area-inset-bottom)` padding so notched iPhones don't
   bury it. Files: `apps/web/src/components/StickyCta.astro`.
-- [ ] W166 — **Chevron + RTL-safe breadcrumb separators** (literal `/` doesn't flip for Arabic).
+- [x] W166 — **Chevron + RTL-safe breadcrumb separators** (literal `/` doesn't flip for Arabic).
   Files: `apps/web/src/components/Breadcrumb.astro`.
-- [ ] W167 — **LanguageSwitcher discoverability + ≥44px tap target** (currently `text-xs`, ~24px).
+- [x] W167 — **LanguageSwitcher discoverability + ≥44px tap target** (currently `text-xs`, ~24px).
   Files: `apps/web/src/components/LanguageSwitcher.astro`.
-- [ ] W168 — **Logo sun-mark glow + elevate the ZelligeDivider motif** (currently ~18px, nearly
+- [x] W168 — **Logo sun-mark glow + elevate the ZelligeDivider motif** (currently ~18px, nearly
   invisible). *(Asset available 2026-06-21: official TAQINOR logo pack — main/inverted/monochrome
   SVGs — at `apps/web/public/brand/`; use it instead of the hand-coded inline mark if it reads
   better.)* Files: `apps/web/src/components/Logo.astro`, `apps/web/src/components/ZelligeDivider.astro`,
@@ -1131,48 +1131,48 @@ supply a photo / official brand SVGs) — flagged inline; build the rest.*
 
 **— Design system & consistency —**
 
-- [ ] W169 — **Extend the modular scale to body + figure sizes as tokens** (`.fig-xl/lg/md`,
+- [x] W169 — **Extend the modular scale to body + figure sizes as tokens** (`.fig-xl/lg/md`,
   `.v2-body`); 519 ad-hoc `text-*` uses across 40 pages drive drift. Files: `apps/web/src/styles/global.css` + sweep.
-- [ ] W170 — **Bring `produits/*` + legal pages onto the `v2-page-title` scale + `V2Enhance`
+- [x] W170 — **Bring `produits/*` + legal pages onto the `v2-page-title` scale + `V2Enhance`
   engine** (they bypass it and feel like a different site). Files: `apps/web/src/pages/produits/index.astro`,
   `apps/web/src/pages/produits/[slug].astro`, `politique-de-confidentialite.astro`, `mentions-legales.astro`.
-- [ ] W171 — **Extract a `PhotoCaption` scrim component** (duplicated ~30× verbatim with drifting
+- [x] W171 — **Extract a `PhotoCaption` scrim component** (duplicated ~30× verbatim with drifting
   padding). Files: new `apps/web/src/components/PhotoCaption.astro` + gallery pages.
-- [ ] W172 — **Tokenize the hero scrim gradient** (mid-stop hand-tuned per page: `/35`, `/45`,
+- [x] W172 — **Tokenize the hero scrim gradient** (mid-stop hand-tuned per page: `/35`, `/45`,
   `/55`…). Files: `apps/web/src/styles/global.css` + heroes.
-- [ ] W173 — **Section vertical-rhythm scale utilities** (`.section`/`.section-lg`/`.section-tight`);
+- [x] W173 — **Section vertical-rhythm scale utilities** (`.section`/`.section-lg`/`.section-tight`);
   121 magic `py-*` values across 40 files. Files: `apps/web/src/styles/global.css` + sweep.
-- [ ] W174 — **Extract the outline-pill link button + the premium drop-shadow into utilities.**
+- [x] W174 — **Extract the outline-pill link button + the premium drop-shadow into utilities.**
   Files: `apps/web/src/styles/global.css` + contextual-link rows site-wide.
-- [ ] W175 — **Resolve the azur-vs-brass light-eyebrow inconsistency + componentize the
+- [x] W175 — **Resolve the azur-vs-brass light-eyebrow inconsistency + componentize the
   "salle blanche" palette-swap with its seam.** Files: `apps/web/src/styles/global.css`, light-section pages.
-- [ ] W176 — **Align off-scale section headings** (`DiagnosticForm`, `Faq`, `CtaBand`) to
+- [x] W176 — **Align off-scale section headings** (`DiagnosticForm`, `Faq`, `CtaBand`) to
   `v2-section-title`. Files: those components.
-- [ ] W177 — **Add a design-tokens doc + optional lint** guarding arbitrary `text-[…]`/`shadow-[…]`
+- [x] W177 — **Add a design-tokens doc + optional lint** guarding arbitrary `text-[…]`/`shadow-[…]`
   figure values. Files: `apps/web/STYLE.md` (or new doc), `apps/web/tests/`.
 
 **— Imagery & media —**
 
-- [ ] W178 — **Lightbox / zoom on gallery + case-study photos** (detail shots are never viewable
+- [x] W178 — **Lightbox / zoom on gallery + case-study photos** (detail shots are never viewable
   full-size today). Files: `apps/web/src/pages/realisations/index.astro`, `apps/web/src/pages/realisations/[slug].astro`.
-- [ ] W179 — **Standardize one hover-zoom token** across all clickable photo cards (inconsistent
+- [x] W179 — **Standardize one hover-zoom token** across all clickable photo cards (inconsistent
   `1.02`/`1.04`/none). Files: `apps/web/src/components/VideoChantier.astro` + gallery pages.
-- [ ] W180 — **Fix mixed aspect-ratio crop vs declared `ratio`** (silent crop + slightly wrong
+- [x] W180 — **Fix mixed aspect-ratio crop vs declared `ratio`** (silent crop + slightly wrong
   anti-CLS height). Files: `apps/web/src/pages/index.astro`, `apps/web/src/pages/realisations/[slug].astro`.
-- [ ] W181 — **Add `object-position` focal-point control to `Picture.astro`** (everything is
+- [x] W181 — **Add `object-position` focal-point control to `Picture.astro`** (everything is
   center-cropped). Files: `apps/web/src/components/Picture.astro`, `apps/web/src/lib/realisations.ts`.
-- [ ] W182 — **Style the chantier `<video>`** (default browser chrome clashes with navy/brass;
+- [x] W182 — **Style the chantier `<video>`** (default browser chrome clashes with navy/brass;
   add poster + explicit dims + a save-data/mobile encode). Files: `apps/web/src/components/VideoChantier.astro`.
-- [ ] W183 — **Optical-size-normalize + monochrome the brand-logo row** (per-brand height
+- [x] W183 — **Optical-size-normalize + monochrome the brand-logo row** (per-brand height
   multipliers + grayscale→color hover). Files: `apps/web/src/lib/brands.ts`, `apps/web/src/components/BrandStrip.astro`.
-- [ ] W184 — **Before/during/after diptych or slider on case pages** (source material already
+- [x] W184 — **Before/during/after diptych or slider on case pages** (source material already
   exists). Files: `apps/web/src/pages/realisations/[slug].astro`, `apps/web/src/lib/realisations.ts`.
-- [ ] W185 — **Per-realisation OG card** (each case reuses a generic OG today). Files:
+- [x] W185 — **Per-realisation OG card** (each case reuses a generic OG today). Files:
   `apps/web/src/pages/realisations/[slug].astro`.
-- [ ] W186 — **Optional duotone/grade pass on non-hero photos** so the imagery matches the
+- [x] W186 — **Optional duotone/grade pass on non-hero photos** so the imagery matches the
   "Cinéma du chantier" claim (keep the hero ungraded for LCP). Files: `apps/web/scripts/` or scoped
   `apps/web/src/styles/v3-photo-motion.css`.
-- [ ] W187 — **Source real brand-logo SVGs** (Canadian Solar, Huawei, Deye, Jinko, JA Solar,
+- [BLOCKED: founder must drop 6 official brand SVGs or widen the network egress allowlist] W187 — **Source real brand-logo SVGs** (Canadian Solar, Huawei, Deye, Jinko, JA Solar,
   Dyness, Nexans) to replace the text word-mark fallback. These are THIRD-PARTY *manufacturer*
   logos for the partner trust-strip — distinct from Taqinor's own mark (W168). *(BLOCKED 2026-06-21:
   net-sourcing attempted but this environment's network egress is ALLOWLISTED — only npm-type hosts
@@ -1185,85 +1185,85 @@ supply a photo / official brand SVGs) — flagged inline; build the rest.*
 
 **— Forms & interactive widgets (visual-only; lead mechanics untouched) —**
 
-- [ ] W188 — **16px inputs (kill iOS zoom-on-focus) + ~44px tap targets + sized consent
+- [x] W188 — **16px inputs (kill iOS zoom-on-focus) + ~44px tap targets + sized consent
   checkboxes** (the live `DiagnosticForm` lags the roof tool, which already fixed this). Files:
   `apps/web/src/components/DiagnosticForm.astro`, `DiagnosticFormEnriched.astro`, `RegimeSelector.astro`.
-- [ ] W189 — **Polish the multi-step progress bar** (`bg-azur-100` reads as "complete" on navy;
+- [x] W189 — **Polish the multi-step progress bar** (`bg-azur-100` reads as "complete" on navy;
   4px thin). Files: `apps/web/src/components/DiagnosticForm.astro`.
-- [ ] W190 — **Elevate the "your estimate" result card** into a premium payoff (framing, glow
+- [x] W190 — **Elevate the "your estimate" result card** into a premium payoff (framing, glow
   seam, value-vs-label hierarchy). Files: `apps/web/src/components/DiagnosticForm.astro`.
-- [ ] W191 — **Submitting spinner + `aria-busy` + fade-in results** (today it's a silent text
+- [x] W191 — **Submitting spinner + `aria-busy` + fade-in results** (today it's a silent text
   swap and the result pops). Files: `DiagnosticForm.astro`, `DiagnosticFormEnriched.astro`, `RegimeSelector.astro`,
   `apps/web/src/styles/global.css` (one `@keyframes spin`).
-- [ ] W192 — **Estimator chips as a true segmented control + branded range sliders** (active
+- [x] W192 — **Estimator chips as a true segmented control + branded range sliders** (active
   state nearly invisible on dark). Files: `apps/web/src/pages/preview/toiture-3d-pro-11.astro`.
-- [ ] W193 — **WhatsAppMock realism** (delivered/read ticks, "en ligne" dot, bubble polish).
+- [x] W193 — **WhatsAppMock realism** (delivered/read ticks, "en ligne" dot, bubble polish).
   Files: `apps/web/src/components/WhatsAppMock.astro`.
-- [ ] W194 — **Strengthen error/validation styling + placeholder contrast + focus-ring presence.**
+- [x] W194 — **Strengthen error/validation styling + placeholder contrast + focus-ring presence.**
   Files: `DiagnosticForm.astro`, `DiagnosticFormEnriched.astro`, `RegimeSelector.astro`.
 
 **— Content & reading experience —**
 
-- [ ] W195 — **Shared `.prose` article style for guides + blog + a body-vs-lead type rank**
+- [x] W195 — **Shared `.prose` article style for guides + blog + a body-vs-lead type rank**
   (guides set whole bodies at lead size; blog reinvents prose separately). Files: new shared style,
   `apps/web/src/pages/blog/[...slug].astro`, `apps/web/src/pages/guides/*.astro`.
-- [ ] W196 — **Constrain long-form measure to ~65–70ch** (bodies sit in `max-w-3xl`). Files: guides/blog.
-- [ ] W197 — **Reading-time + auto table-of-contents on long articles.** Files: guides/blog.
-- [ ] W198 — **Cover image + hover lift on guide/blog index cards; cover + figure pattern on
+- [x] W196 — **Constrain long-form measure to ~65–70ch** (bodies sit in `max-w-3xl`). Files: guides/blog.
+- [x] W197 — **Reading-time + auto table-of-contents on long articles.** Files: guides/blog.
+- [x] W198 — **Cover image + hover lift on guide/blog index cards; cover + figure pattern on
   articles.** Files: `apps/web/src/pages/guides/index.astro`, `apps/web/src/pages/blog/index.astro`, content schema.
-- [ ] W199 — **Reusable callout / pull-quote / key-figure prose component** so the "numbers are
+- [x] W199 — **Reusable callout / pull-quote / key-figure prose component** so the "numbers are
   the protagonist" identity carries into prose. Files: new component + guides/blog.
-- [ ] W200 — **Branded list markers + table styling + mobile reflow; shared `RelatedLinks`
+- [x] W200 — **Branded list markers + table styling + mobile reflow; shared `RelatedLinks`
   component** for the duplicated internal-link chip rows. Files: shared prose style + new component + content pages.
-- [ ] W201 — **Standardize 2–3 sanctioned hero archetypes** so segment/service/city/guide heroes
+- [x] W201 — **Standardize 2–3 sanctioned hero archetypes** so segment/service/city/guide heroes
   stop drifting. Files: `installation-solaire-[city].astro` + a short design note.
 
 **— Motion & micro-interactions —**
 
-- [ ] W202 — **Fix the anchor scroll offset under the sticky header** (`#simulateur` lands hidden);
+- [x] W202 — **Fix the anchor scroll offset under the sticky header** (`#simulateur` lands hidden);
   add `scroll-padding-top`. Files: `apps/web/src/styles/global.css`.
-- [ ] W203 — **Card-level hover (lift/border) on content + product cards** (many clickable cards
+- [x] W203 — **Card-level hover (lift/border) on content + product cards** (many clickable cards
   have no hover at all). Files: `apps/web/src/styles/global.css` (`.cine-card`) + card wrappers.
-- [ ] W204 — **Hover arrow nudge on gallery/CTA links** (`group-hover:translate-x-1`). Files:
+- [x] W204 — **Hover arrow nudge on gallery/CTA links** (`group-hover:translate-x-1`). Files:
   `apps/web/src/pages/index.astro`, `nos-solutions.astro`, `realisations/index.astro`.
-- [ ] W205 — **Lead with a count-up on the first above-the-fold figure** (the protagonist number
+- [x] W205 — **Lead with a count-up on the first above-the-fold figure** (the protagonist number
   is static text). Files: `apps/web/src/pages/index.astro`.
-- [ ] W206 — **Extract a `cine-in` stagger token** (literal `animation-delay:120/240/360ms`
+- [x] W206 — **Extract a `cine-in` stagger token** (literal `animation-delay:120/240/360ms`
   repeated across ~40 hero blocks). Files: `apps/web/src/styles/global.css` + heroes.
-- [ ] W207 — **Wire up or remove the orphaned `.reveal`/`.emerge` CSS scroll-timeline reveals**
+- [x] W207 — **Wire up or remove the orphaned `.reveal`/`.emerge` CSS scroll-timeline reveals**
   (defined, zero usages). Files: `apps/web/src/styles/global.css`, `v3-photo-motion.css`.
-- [ ] W208 — **Optional slow shimmer on `.seam-lumiere` + subtle brand-logo/testimonial-card hover.**
+- [x] W208 — **Optional slow shimmer on `.seam-lumiere` + subtle brand-logo/testimonial-card hover.**
   Files: `apps/web/src/styles/global.css`, `v2.css`, `BrandStrip.astro`, `Testimonials.astro`.
 
 **— Shared interaction primitives —**
 
-- [ ] W209 — **Global `focus-visible` brass ring on all interactive elements** (CTAs/nav/card
+- [x] W209 — **Global `focus-visible` brass ring on all interactive elements** (CTAs/nav/card
   links have none; some set `focus:outline-none`). Files: `apps/web/src/styles/global.css` + chrome.
-- [ ] W210 — **Propagate the signature `.glow` to every primary CTA** (header, CtaBand, StickyCta
+- [x] W210 — **Propagate the signature `.glow` to every primary CTA** (header, CtaBand, StickyCta
   are flat `transition-colors`). Files: `Header.astro`, `CtaBand.astro`, `StickyCta.astro`.
 
 **— Mobile & responsive —**
 
-- [ ] W211 — **Verify no 320px horizontal overflow from wide `whitespace-nowrap` figures**
+- [x] W211 — **Verify no 320px horizontal overflow from wide `whitespace-nowrap` figures**
   (`43,48 kWc`, `60–90 %`). Files: `index.astro`, `installation-solaire-[city].astro`, `realisations/[slug].astro` (+ mirrors).
-- [ ] W212 — **Add a middle breakpoint to the 3-col équipement comparison grid** (cramped in the
+- [x] W212 — **Add a middle breakpoint to the 3-col équipement comparison grid** (cramped in the
   md→lg band). Files: `apps/web/src/pages/équipement.astro` (+ `en/`/`ar/` twins).
 
 **— RTL / Arabic —**
 
-- [ ] W213 — **Mirror the ~90 directional `→` arrows across `ar/*`** (direction-aware glyph or
+- [x] W213 — **Mirror the ~90 directional `→` arrows across `ar/*`** (direction-aware glyph or
   SVG flipped via `rtl:-scale-x-100`). Files: `apps/web/src/pages/ar/**`.
-- [ ] W214 — **Add a global `[dir="rtl"]` stylesheet** (accent rails, timeline dots, blockquote
+- [x] W214 — **Add a global `[dir="rtl"]` stylesheet** (accent rails, timeline dots, blockquote
   borders, spec-row alignment), flip the asymmetric two-column hero grids, and guard `tech-label`
   letter-spacing/uppercase off for Arabic. Files: `apps/web/src/styles/global.css`, `apps/web/src/pages/ar/**`.
 
 **— Performance / rendering / accessibility finish —**
 
-- [ ] W215 — **Preload the hero headline font (`archivo-latin.woff2`) + add `size-adjust`
+- [x] W215 — **Preload the hero headline font (`archivo-latin.woff2`) + add `size-adjust`
   metric-matched fallbacks** to kill the FOUT flash and font-swap CLS on the LCP `<h1>`. Files:
   `apps/web/src/layouts/Layout.astro`, `apps/web/src/styles/global.css`.
-- [ ] W216 — **Skip-to-content link + `id` on `<main>`.** Files: `apps/web/src/layouts/Layout.astro`.
-- [ ] W217 — **Set `color-scheme: dark` globally** (fixes light-mode native `<select>` menus on
+- [x] W216 — **Skip-to-content link + `id` on `<main>`.** Files: `apps/web/src/layouts/Layout.astro`.
+- [x] W217 — **Set `color-scheme: dark` globally** (fixes light-mode native `<select>` menus on
   the dark canvas + scrollbar/autofill) + a `::selection` brass color. Files: `apps/web/src/styles/global.css`.
 - [x] W218 — **Complete the favicon/app-icon set** + `site.webmanifest` + `theme-color`.
   *(Shipped 2026-06-21: real brand lockup wired as `apple-touch-icon.png` (256px) + `icon-512.png`
@@ -1274,11 +1274,11 @@ supply a photo / official brand SVGs) — flagged inline; build the rest.*
   icons are `purpose:"any"` not maskable — the wordmark lockup has no maskable safe-zone. Refine later
   if a dedicated icon-only mark is produced.)* Files: `apps/web/public/apple-touch-icon.png`,
   `apps/web/public/icon-512.png`, `apps/web/public/site.webmanifest`, `apps/web/src/layouts/Layout.astro`.
-- [ ] W219 — **Complete the Twitter/X card** (`twitter:title/description/image`) + `og:image:alt/type`.
+- [x] W219 — **Complete the Twitter/X card** (`twitter:title/description/image`) + `og:image:alt/type`.
   Files: `apps/web/src/layouts/Layout.astro`.
-- [ ] W220 — **Reserve count-up width to prevent micro-CLS** during the number animation. Files:
+- [x] W220 — **Reserve count-up width to prevent micro-CLS** during the number animation. Files:
   `apps/web/src/styles/v2.css`, `apps/web/src/lib/countup.ts`.
-- [ ] W221 — **Add `prefers-contrast: more` / `forced-colors` handling** for the faint "lune"
+- [x] W221 — **Add `prefers-contrast: more` / `forced-colors` handling** for the faint "lune"
   inks and brass glow. Files: `apps/web/src/styles/global.css`.
 
 ---
@@ -1443,3 +1443,75 @@ architecture change, or a taste call — it builds and NOTES it. What remains he
 - 2026-06-21 — W146: self-hosted all 7 datasheet PDFs under /fiches/<slug>.pdf (browser-UA fetch; Jinko datasheet located + recompressed to 1,3 MB), manifest pdf fields flipped, fiches.test.ts asserts every hosted PDF exists on disk.
 - 2026-06-21 — W147: /produits/<slug> now embeds the self-hosted datasheet inline (lazy iframe on desktop, clean download fallback on mobile, height reserved → zero CLS), guarded by fiche.pdf; fiches.test.ts covers the embed-vs-fallback branch.
 - 2026-06-21 — W112–W118 BLOCKED: the devis-pipeline web halves depend on unbuilt backend endpoints (PLAN2 Group Q1–Q7); skipped per STANDING RULES and listed in GATED-style note above.
+- 2026-06-21 — W152: Footer redesign — brand block (logo + tagline) + phone & WhatsApp CTA buttons (real NAP/WHATSAPP_LEADS constants, no invented number), brass gradient hairline top seam, clearer column hierarchy; reduced-motion safe.
+- 2026-06-21 — W160: Article 33 ribbon refined to a premium announcement — translucent brass badge with ring, small solar icon, subtle azur-tinted background, brass top hairline; message/link/i18n unchanged.
+- 2026-06-21 — W166: Breadcrumb separator switched from literal "/" to an aria-hidden inline chevron SVG that flips under [dir="rtl"] for Arabic.
+- 2026-06-21 — W167: LanguageSwitcher given a globe icon, ≥44px tap targets, per-locale aria-labels; links/behaviour unchanged.
+- 2026-06-21 — W168: Logo sun-mark gains a static brass glow (+ reduced-motion-gated pulse); ZelligeDivider motif enlarged 18→28px with raised opacity/stroke and longer flanking rules.
+- 2026-06-21 — W170: produits/index, produits/[slug], politique-de-confidentialite, mentions-legales brought onto the v2-page-title scale + V2Enhance engine (matching nos-solutions pattern); W147 datasheet embed preserved, lead form untouched.
+- 2026-06-21 — W157+W203: .cine-card lifted (stronger glass, top-edge highlight, brass hover lift) + .cine-card-link modifier; reduced-motion gated.
+- 2026-06-21 — W206: .cine-in-1..4 + .cine-in-d stagger utilities (replacing inline animation-delay magic numbers); delays reset to 0 under reduced-motion.
+- 2026-06-21 — W173: .section / .section-lg / .section-tight vertical-rhythm utilities (clamp-based).
+- 2026-06-21 — W174: .btn-pill outline-pill link button + .shadow-premium drop-shadow utilities.
+- 2026-06-21 — W169: figure size tokens .fig-xl/.fig-lg/.fig-md (fluid clamp on .fig) + .v2-body body rank.
+- 2026-06-21 — W172: .hero-scrim layered radial+linear scrim utility + --hero-scrim-strength custom property.
+- 2026-06-21 — W175: .eyebrow-light canonical light-section eyebrow (single accent), composes with .tech-label.
+- 2026-06-21 — W192: estimator chips → true segmented control (clear brass active state + focus-visible) and branded .rp9-range sliders; math/values/prefill untouched, step="any" kept.
+- 2026-06-21 — W193: WhatsAppMock realism — online dot, read double-ticks, bubble tails + WhatsApp radii, date separator; decorative only.
+- 2026-06-21 — W212: équipement comparison grid given a middle breakpoint (1 col <lg, 2 cols ≥lg) across fr/en/ar twins; content unchanged.
+- 2026-06-21 — W171: extracted PhotoCaption.astro scrim component; replaced duplicated inline caption scrims on realisations pages.
+- 2026-06-21 — W178: accessible dependency-free lightbox (ESC/arrows/focus-trap/aria) on realisations index gallery + case-study photos.
+- 2026-06-21 — W179: standardized hover-zoom to 1.04 across VideoChantier poster + realisations photo cards; reduced-motion gated.
+- 2026-06-21 — W181: Picture.astro gains optional position/objectPosition prop (default unchanged); realisations data carries optional objectPosition + phase fields.
+- 2026-06-21 — W182: VideoChantier styled (brass frame + glow, poster, explicit dims, preload=none, reserved aspect-ratio → zero CLS).
+- 2026-06-21 — W183: brand-logo row optical-size normalization (per-brand heightMultiplier) + grayscale→colour hover; brands.test.ts updated.
+- 2026-06-21 — W184: before/during/after phased "chantier en phases" section on realisations/[slug] (phase field in data; graceful when absent).
+- 2026-06-21 — W185 NOT DONE (deferred): needs Layout.astro to accept a per-page og:image prop — handled in the CORE Layout slice.
+- 2026-06-21 — W195: new src/styles/prose.css shared article style (.prose + .prose-lead body-vs-lead rank, h2/h3 scroll-margin) applied to guides + blog; global.css untouched.
+- 2026-06-21 — W196: long-form measure constrained to max-w-[68ch] (~65–70ch) across all 11 guides + blog.
+- 2026-06-21 — W197: src/lib/readingTime.ts (reading-time + auto-TOC from headings); blog article shows reading-time badge + TOC (≥3 headings) with sticky-header anchor offset.
+- 2026-06-21 — W198: optional cover field in content schema; graceful cover figure on blog articles; hover lift on guides/blog index cards (reduced-motion gated).
+- 2026-06-21 — W199: reusable Callout / PullQuote / KeyFigure prose components (accessible), wired into a guide as example.
+- 2026-06-21 — W200: RelatedLinks component replacing duplicated internal-link chip rows across 11 guides + blog; branded list/table styling + mobile reflow in prose.css; 73 new tests (proseW195to200).
+- 2026-06-21 — W202: html scroll-padding-top (clamp 4–5.5rem) so sticky-header anchors land below the header.
+- 2026-06-21 — W209: global :focus-visible brass ring on a/button/[role=button]/inputs/select/textarea/summary (overridable).
+- 2026-06-21 — W217: color-scheme: dark globally (native controls/scrollbars) + brass ::selection.
+- 2026-06-21 — W221: prefers-contrast: more remaps faint inks + kills .lum glow; forced-colors neutralizes decorative shadows and defers to system colors.
+- 2026-06-21 — W207: removed dead .reveal/.emerge scroll-timeline CSS (zero usages confirmed by grep), left a note.
+- 2026-06-21 — W177: STYLE.md §7 design-system tokens/utilities doc + tests/styleTokens.test.ts (39 assertions guarding token/utility presence; +dead-class-stays-removed).
+- 2026-06-21 — W150: scroll-reactive header (transparent over hero → solid+blur+condensed+logo step-down past 80px via rAF), zero CLS (sticky, chrome-only), reduced-motion safe.
+- 2026-06-21 — W151: active desktop-nav indicator (brass underline + aria-current) computed from rootPath, incl. dropdown sub-pages.
+- 2026-06-21 — W163: dropdown chevrons rotate on open; panels polished (rounded, layered shadow, brass top accent).
+- 2026-06-21 — W164: mobile menu animated grid-rows panel, emoji 📞 → inline phone SVG, LanguageSwitcher moved inside, scrollable (max-h/overscroll-contain).
+- 2026-06-21 — W165: StickyCta pill restyled to brass/night + .glow + env(safe-area-inset-bottom); WhatsApp deeplink byte-identical.
+- 2026-06-21 — W210: signature .glow propagated to header/mobile/CtaBand/StickyCta primary CTAs; all hrefs unchanged.
+- 2026-06-21 — W176: DiagnosticForm/Faq/CtaBand section headings aligned to v2-section-title.
+- 2026-06-21 — W188: form inputs ≥16px (no iOS zoom) + ~44px tap targets + larger consent checkbox hit-area; field names/required untouched.
+- 2026-06-21 — W189: multi-step progress bar — 8px brass fill on subtle track, role=progressbar + aria-valuenow.
+- 2026-06-21 — W190: estimate result card elevated (cine-card+glow, brass seam, .fig/.fig-lg/.lum value vs .tech-label); computed numbers + deeplink unchanged.
+- 2026-06-21 — W191: submitting spinner + aria-busy + reduced-motion-safe result fade-in; shared @keyframes spin/.spinner in global.css; submit/fetch/threshold logic unchanged.
+- 2026-06-21 — W194: stronger error/validation styling (aria-invalid highlight), higher placeholder contrast, visible focus rings; validation logic unchanged.
+- 2026-06-21 — W148: restored the dark→light "salle blanche" climax — .seam-lumiere + .diag-lumiere lifted card around the diagnostic; form mechanics untouched.
+- 2026-06-21 — W149: hero CTA shortened to "Estimer mon installation →" with a stronger .glow-hero halo + larger size; href unchanged.
+- 2026-06-21 — W154: hero scrim switched to the canonical layered .hero-scrim.
+- 2026-06-21 — W156: trust-band four-up figures unified to monumental .fig .fig-lg .lum + .tech-label labels.
+- 2026-06-21 — W158: hard border hairlines replaced with .seam-soft gradient transitions on homepage seams.
+- 2026-06-21 — W159: varied the repeated eyebrow treatment (section-index prefixes / plain label variants).
+- 2026-06-21 — W161: hero scroll-affordance chevron (bounce gated to no-preference, static under reduced-motion).
+- 2026-06-21 — W162: warmed the "L'argument en chiffres" stat column with a faint brass radial backing.
+- 2026-06-21 — W205: first above-the-fold figure now count-ups (existing countup.ts, width locked → zero CLS, final value instantly under reduced-motion).
+- 2026-06-21 — W216: "Aller au contenu" skip link (focus-revealed, brass) + id="main" on <main>; position:fixed → zero CLS.
+- 2026-06-21 — W219: completed Twitter card (title/description/image) + og:image:type/og:image:alt; values reuse existing meta, nothing invented.
+- 2026-06-21 — W185: Layout gains optional ogImage/ogImageAlt props; realisations/[slug] passes each case's real hero webp + French alt as its per-case OG/Twitter image.
+- 2026-06-21 — W215: preload archivo-latin.woff2 for the LCP <h1> + metric-matched Archivo/Hanken size-adjust fallbacks to cut font-swap CLS.
+- 2026-06-21 — W220: count-up width reserved (tabular-nums + min-width + exported reserveWidth() lock) to prevent micro-CLS.
+- 2026-06-21 — W155: portrait-orientation hero source/crop for tall phones (Picture portraitPosition prop; homepage + realisation heroes); existing callers unchanged.
+- 2026-06-21 — W180: corrected mismatched declared aspect-ratios vs actual crops (homepage feature + realisations/city cards) for accurate anti-CLS height.
+- 2026-06-21 — W204: reduced-motion-safe hover arrow nudge on gallery/CTA "→" links (index, nos-solutions, realisations index).
+- 2026-06-21 — W211: removed whitespace-nowrap from wide figures (kWc/%/years) on homepage + city + realisation pages (+ en/ar twins) → no 320px overflow.
+- 2026-06-21 — W201: documented 3 sanctioned hero archetypes (top-of-file note) and kept installation-solaire-[city] on archetype B.
+- 2026-06-21 — W208: reduced-motion-gated slow shimmer on .seam-lumiere (RTL-aware) + subtle brand-logo lift and testimonial-card hover.
+- 2026-06-21 — W186: subtle .photo-grade duotone utility in v3-photo-motion.css for non-hero photos (hero/LCP excluded; opt-in, documented).
+- 2026-06-21 — W214: comprehensive [dir="rtl"] block in global.css (tech-label tracking off, logical-property border/padding flips, rule-brass reorder, blockquote, grids, shimmer direction) + one scoped ar timeline fix.
+- 2026-06-21 — W213: RTL-mirrored 88 directional → arrows across 22 ar/* pages (Tailwind rtl:-scale-x-100 wrapper); non-directional/comment arrows left alone; text/hrefs unchanged.
+- 2026-06-21 — W187 BLOCKED: 6 of 7 third-party manufacturer brand SVGs unobtainable (network egress allowlist blocks the open web; only Huawei in a reachable npm set). Needs founder to drop the 6 official monochrome SVGs or widen the allowlist. Moved to GATED.
