@@ -545,7 +545,9 @@ def build_quote_data(devis, pdf_options=None) -> dict:
         "show_environmental": opts['show_environmental'],
         "show_schematic": opts['show_schematic'],
         "show_water_yield": opts['show_water_yield'],
-        "_company": getattr(devis, "company", None),
+        # company id only (JSON-serializable — this dict is also returned by the
+        # public proposal-data endpoint; never put the model instance here).
+        "_company_id": getattr(devis, "company_id", None),
         # D2/N60/N67/N59 — surcharges de texte éditables (vide → littéral moteur).
         "doc_texts": doc_texts,
         # N26 — tampon d'acceptation : nom + date posés à l'acceptation du devis

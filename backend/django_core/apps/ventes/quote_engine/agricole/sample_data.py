@@ -171,6 +171,6 @@ def build(key="agrumes") -> dict:
         "validity_days": 30, "site_url": "taqinor.ma",
         "show_subsidy": True, "show_fuel_comparison": True,
         "show_environmental": True, "show_schematic": True, "show_water_yield": True,
-        "_company": None,
+        "_company_id": None,
         "accepte_par_nom": "", "date_acceptation": "",
     }

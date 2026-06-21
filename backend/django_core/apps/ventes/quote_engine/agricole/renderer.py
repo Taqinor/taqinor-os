@@ -50,7 +50,7 @@ def _augment(data: dict) -> dict:
         raise Unsupported("agricole quote has no priced lines")
 
     d = dict(data)
-    eco = economics.compute(d, company=d.get("_company"))
+    eco = economics.compute(d, company_id=d.get("_company_id"))
     d.update(eco)
 
     d.setdefault("client_full", d.get("client_name") or "Client")

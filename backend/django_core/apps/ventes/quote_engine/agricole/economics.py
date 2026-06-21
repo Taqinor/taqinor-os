@@ -21,8 +21,8 @@ def _num(v, default=0.0):
         return default
 
 
-def load_constants(company=None) -> dict:
-    """Constants with optional company-Paramètres overrides.
+def load_constants(company_id=None) -> dict:
+    """Constants with optional company-Paramètres overrides (by company id).
 
     Reads the module defaults, then layers any company override stored under the
     Paramètres ``agricole_economics`` JSON setting (best-effort; a missing table
@@ -46,12 +46,12 @@ def load_constants(company=None) -> dict:
         "fda_subsidy_cap": K.FDA_SUBSIDY_CAP,
         "default_current_fuel": K.DEFAULT_CURRENT_FUEL,
     }
-    if company is None:
+    if not company_id:
         return cfg
     try:
         from apps.parametres.models import Parametre  # type: ignore
         raw = Parametre.objects.filter(
-            company=company, cle="agricole_economics").values_list(
+            company_id=company_id, cle="agricole_economics").values_list(
             "valeur", flat=True).first()
         if isinstance(raw, dict):
             for k, v in raw.items():
@@ -69,9 +69,9 @@ def _monthly(total, weights):
     return [round(total * w / s) for w in weights]
 
 
-def compute(data: dict, company=None) -> dict:
+def compute(data: dict, company_id=None) -> dict:
     """Return the agricole derived figures + chart inputs for ``data``."""
-    cfg = load_constants(company)
+    cfg = load_constants(company_id)
     etude = data.get("etude") or {}
     totaux = data.get("totaux_all") or {}
 
