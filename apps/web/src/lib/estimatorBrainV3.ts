@@ -460,6 +460,14 @@ export interface FlushPack {
   ringENU: [number, number][];
   areaM2: number;
   usableAreaM2: number;
+  /**
+   * Aire VRAIE du pan (m²) = `areaM2` projetée / cos(pente). Un toit en pente vu
+   * du ciel paraît PLUS PETIT (raccourci horizontal) : on rétablit la surface
+   * réelle du versant. `areaM2` reste, lui, la valeur PROJETÉE (plan).
+   */
+  slopeAreaM2: number;
+  /** Aire VRAIE utile du pan (m²) = `usableAreaM2` projetée / cos(pente). */
+  usableSlopeAreaM2: number;
   pitchDeg: number;
   /** Azimut imposé par la toiture (= face du pan), JAMAIS choisi ni balayé. */
   facingAzimuthDeg: number;
@@ -469,6 +477,19 @@ export interface FlushPack {
   portrait: FlushGrid;
   landscape: FlushGrid;
   best: FlushGrid;
+}
+
+/**
+ * Aire VRAIE d'un versant en pente à partir de son aire PROJETÉE (vue du ciel).
+ * Un toit incliné est raccourci horizontalement sur l'imagerie satellite, donc il
+ * paraît plus petit : `aire_réelle = aire_projetée / cos(pente)`. Garde-fous : à
+ * pente 0 l'aire est inchangée ; si cos(pente) ≤ 0 ou non fini (saisie aberrante),
+ * on renvoie l'aire projetée plutôt qu'une valeur infinie/négative.
+ */
+export function slopeAreaM2(projectedAreaM2: number, pitchDeg: number): number {
+  const cos = Math.cos(pitchDeg * DEG2RAD);
+  if (!Number.isFinite(cos) || cos <= 0) return projectedAreaM2;
+  return projectedAreaM2 / cos;
 }
 
 function distToSegment(p: [number, number], a: [number, number], b: [number, number]): number {
@@ -613,6 +634,8 @@ export function packFlushPlane(plane: RoofPlane, opts: { setbackM?: number; clea
       ringENU: [],
       areaM2,
       usableAreaM2,
+      slopeAreaM2: slopeAreaM2(areaM2, pitchDeg),
+      usableSlopeAreaM2: slopeAreaM2(usableAreaM2, pitchDeg),
       pitchDeg,
       facingAzimuthDeg,
       offSouthDeg: off,
@@ -646,6 +669,8 @@ export function packFlushPlane(plane: RoofPlane, opts: { setbackM?: number; clea
     ringENU,
     areaM2,
     usableAreaM2,
+    slopeAreaM2: slopeAreaM2(areaM2, pitchDeg),
+    usableSlopeAreaM2: slopeAreaM2(usableAreaM2, pitchDeg),
     pitchDeg,
     facingAzimuthDeg,
     offSouthDeg: off,
