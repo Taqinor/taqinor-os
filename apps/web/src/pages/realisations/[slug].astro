@@ -110,6 +110,10 @@ const galleryPhotos = rest;
     <!-- ACTE I — la photo de chantier est la lumière -->
     <section class="relative isolate mt-6 overflow-hidden text-white">
       <div class="v2-hero-media absolute inset-0 -z-10">
+        {/* W155 — portraitPosition : recadrage doux vers le haut sur téléphones
+            verticaux (les panneaux sont en haut de la photo de chantier). Si
+            hero.objectPosition est déjà défini, il est gardé en paysage ; le
+            portrait override est center 25% (haut du champ) par défaut. */}
         <Picture
           name={hero.name}
           alt={hero.alt}
@@ -118,7 +122,8 @@ const galleryPhotos = rest;
           sizes="100vw"
           loading="eager"
           fetchpriority="high"
-          style={hero.objectPosition ? `object-position:${hero.objectPosition}` : undefined}
+          position={hero.objectPosition}
+          portraitPosition="center 25%"
           class="h-full w-full object-cover"
         />
         <div class="absolute inset-0 bg-gradient-to-t from-nuit via-nuit/55 to-nuit/20"></div>

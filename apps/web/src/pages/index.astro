@@ -112,14 +112,23 @@ const solutionIcons: Record<string, string> = {
     <!-- ACTE I — la salle obscure : la vidéo EST le héros, parallaxe légère -->
     <section class="relative isolate flex min-h-[92svh] flex-col justify-end overflow-hidden text-white">
       <div class="v2-hero-media absolute inset-0 -z-10">
+        {/* W155 — Portrait-crop : en orientation portrait (téléphone tenu vertical),
+            les sources portrait sont sélectionnées en priorité. Les mêmes images sont
+            servies mais l'objet est recadré vers le haut (center 20%) via le style
+            de l'<img>, ce qui recentre les panneaux et évite la découpe centrale sur
+            les grands écrans verticaux. Reduced-motion non applicable (image fixe). */}
         <picture>
+          <source type="image/avif" media="(orientation: portrait)" sizes="100vw"
+            srcset="/videos/hero-poster-540.avif 540w, /videos/hero-poster-720.avif 720w, /videos/hero-poster-1080.avif 1080w" />
+          <source type="image/webp" media="(orientation: portrait)" sizes="100vw"
+            srcset="/videos/hero-poster-540.webp 540w, /videos/hero-poster-720.webp 720w, /videos/hero-poster-1080.webp 1080w" />
           <source type="image/avif" sizes="100vw"
             srcset="/videos/hero-poster-540.avif 540w, /videos/hero-poster-720.avif 720w, /videos/hero-poster-1080.avif 1080w, /videos/hero-poster-1600.avif 1600w" />
           <source type="image/webp" sizes="100vw"
             srcset="/videos/hero-poster-540.webp 540w, /videos/hero-poster-720.webp 720w, /videos/hero-poster-1080.webp 1080w, /videos/hero-poster-1600.webp 1600w" />
           <img src="/videos/hero-poster-1600.webp" alt="" width="1600" height="900"
             loading="eager" decoding="async" fetchpriority="high"
-            class="h-full w-full object-cover" />
+            class="h-full w-full object-cover hero-portrait-img" />
         </picture>
         <video id="hero-video" muted loop playsinline preload="none" aria-hidden="true" tabindex="-1"
           class="absolute inset-0 h-full w-full object-cover opacity-0 transition-opacity duration-700"></video>
@@ -403,6 +412,17 @@ const solutionIcons: Record<string, string> = {
     <StickyCta />
   </div>
 </Layout>
+
+<style>
+  /* W155 — Portrait-crop héro : recadrage en haut sur téléphones verticaux.
+     Les mêmes images sont servies ; on décale l'object-position vers le haut
+     pour que les panneaux (haut de l'image) restent visibles sur un écran 9:19. */
+  @media (orientation: portrait) {
+    .hero-portrait-img {
+      object-position: center 20%;
+    }
+  }
+</style>
 
 <script>
   // Vidéo héro : différée — première interaction ou 2,8 s après chargement ;

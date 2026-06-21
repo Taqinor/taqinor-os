@@ -9,6 +9,12 @@
  * l'attribut style `object-position` sur l'<img>. Défaut : non défini
  * (laisse le CSS appelant décider, typiquement `object-center`). Tous
  * les appels existants sans ce prop restent inchangés.
+ *
+ * W155 — prop `portraitPosition` optionnel : remplace l'object-position
+ * en mode portrait (orientation:portrait) pour un meilleur cadrage sur
+ * téléphones tenus en portrait. Implémenté via un <style> inline scoped
+ * par data-pid (identifiant unique par instance). Aucun nouveau fichier
+ * image n'est nécessaire — même srcset, cadrage CSS uniquement.
  */
 interface Props {
   name: string;
@@ -24,6 +30,12 @@ interface Props {
   position?: string;
   /** Alias de `position` pour compatibilité avec les noms React-style. */
   objectPosition?: string;
+  /**
+   * W155 — Point focal CSS en mode portrait (prefers orientation:portrait).
+   * Ex. 'center 30%'. Quand défini, remplace `position`/`objectPosition`
+   * en portrait via un <style> inline scoped. Callers existants inchangés.
+   */
+  portraitPosition?: string;
 }
 const {
   name,
@@ -37,6 +49,7 @@ const {
   style: styleProp = '',
   position,
   objectPosition,
+  portraitPosition,
 } = Astro.props;
 
 import { intrinsicHeight, largestWidth, photoSrcset } from '../lib/picture';
@@ -49,6 +62,14 @@ const styleAttr = [
   focalPoint ? `object-position:${focalPoint}` : '',
   styleProp,
 ].filter(Boolean).join(';') || undefined;
+
+// W155 — identifiant unique pour scoper le portrait override
+// On génère un id court et stable (hash du name + portraitPosition).
+let portraitPid: string | undefined;
+if (portraitPosition) {
+  // Simple deterministic id: base the name + first char of portraitPosition
+  portraitPid = 'pp-' + name.replace(/[^a-z0-9]/gi, '').slice(0, 12) + '-' + portraitPosition.replace(/[^a-z0-9]/gi, '').slice(0, 6);
+}
 ---
 
 <picture>
@@ -64,5 +85,9 @@ const styleAttr = [
     fetchpriority={fetchpriority}
     class={className}
     style={styleAttr}
+    data-pid={portraitPid}
   />
 </picture>
+{portraitPid && (
+  <style set:html={`@media (orientation:portrait){[data-pid="${portraitPid}"]{object-position:${portraitPosition}!important}}`} />
+)}
