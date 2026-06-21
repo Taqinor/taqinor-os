@@ -22,9 +22,11 @@ import {
   Card,
   toast,
 } from '../../ui'
+import { useDelayedLoading } from '../../hooks/useDelayedLoading'
 import FilterBar from './FilterBar'
 import ListView from './views/ListView'
 import KanbanView from './views/KanbanView'
+import InstallationsSkeleton from './views/InstallationsSkeleton'
 import InstallationDetail from './InstallationDetail'
 
 const VIEW_KEY = 'taqinor.chantiers.view'
@@ -270,15 +272,31 @@ export default function InstallationsPage() {
   const onClose = () => setSelected(null)
   const onSaved = () => { refetch(); setSelected(null) }
 
-  if (loading) {
+  // J143 — chargement différé anti-scintillement (foundation useDelayedLoading) :
+  // rien sous 300 ms, spinner discret jusqu'à 500 ms, puis squelette calqué sur
+  // la vue active (kanban / liste / calendrier). Le squelette ne s'affiche que
+  // lors d'un PREMIER chargement (aucun chantier déjà à l'écran) — un refetch en
+  // arrière-plan garde le tableau en place.
+  const firstLoad = loading && items.length === 0
+  const { showSpinner, showSkeleton } = useDelayedLoading(firstLoad)
+  if (firstLoad && !showSkeleton) {
+    // Phase imperceptible (rien) ou spinner discret — on ne monte pas encore le
+    // squelette pour ne pas clignoter sur un chargement rapide.
     return (
       <div className="page lp-page">
-        <div className="flex items-center gap-2 py-16 text-sm text-muted-foreground">
-          <Spinner /> Chargement des chantiers…
-        </div>
+        {showSpinner && (
+          <div
+            role="status"
+            aria-live="polite"
+            className="flex items-center gap-2 py-16 text-sm text-muted-foreground"
+          >
+            <Spinner /> Chargement des chantiers…
+          </div>
+        )}
       </div>
     )
   }
+
   // L'erreur ne couvre tout l'écran QUE si rien n'est chargé (échec initial).
   // Avec des chantiers déjà à l'écran, une erreur de fond (ex. écriture refusée)
   // s'affiche en bandeau au-dessus du tableau sans démonter le board, les
@@ -308,7 +326,7 @@ export default function InstallationsPage() {
         </div>
       )}
       <div className="page-header lp-header">
-        <h2 className="flex items-center gap-2">
+        <h2 className="flex flex-wrap items-center gap-2">
           Chantiers
           <Badge tone="primary">{filtered.length}</Badge>
           {aVenir.length > 0 && (
@@ -385,15 +403,23 @@ export default function InstallationsPage() {
       )}
 
       <div className="lp-view-area">
-        {view === 'liste' && (
+        {showSkeleton && (
+          <>
+            <span className="sr-only" role="status" aria-live="polite">
+              Chargement des chantiers…
+            </span>
+            <InstallationsSkeleton view={view} />
+          </>
+        )}
+        {!showSkeleton && view === 'liste' && (
           <ListView items={filtered} onOpen={onOpen} users={users}
                     onChangeStatus={onChangeStatus} onReassign={onReassign} />
         )}
-        {view === 'kanban' && (
+        {!showSkeleton && view === 'kanban' && (
           <KanbanView items={filtered} onOpen={onOpen} onChangeStatus={onChangeStatus}
                       users={users} onReassign={onReassign} />
         )}
-        {view === 'calendrier' && (
+        {!showSkeleton && view === 'calendrier' && (
           filtered.length === 0 ? (
             <Card className="p-0">
               <EmptyState
