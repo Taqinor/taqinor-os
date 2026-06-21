@@ -36,6 +36,7 @@ urlpatterns = [
     path('api/django/installations/', include('apps.installations.urls')),
     path('api/django/sav/', include('apps.sav.urls')),
     path('api/django/outillage/', include('apps.outillage.urls')),
+    path('api/django/ged/', include('apps.ged.urls')),
     path('api/django/records/', include('apps.records.urls')),
     path('api/django/imports/', include('apps.dataimport.urls')),
     path('api/django/custom-fields/', include('apps.customfields.urls')),
