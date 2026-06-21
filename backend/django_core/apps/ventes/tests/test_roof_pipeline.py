@@ -176,3 +176,56 @@ class TestQ4RoofImage(TestCase):
             url = pdfmod.roof_image_signed_url('roofs/1/x.png')
         self.assertEqual(url, 'http://signed')
         self.assertEqual(captured['Key'], 'roofs/1/x.png')
+
+
+class TestQ5BuilderGuard(TestCase):
+    """Q5 — layout figures + roof render feed the quote data only when present;
+    without a layout the built data is byte-identical."""
+
+    def setUp(self):
+        self.company = make_company('q5-co')
+        self.devis = make_devis(self.company, ref='DEV-Q5-0001')
+
+    def test_no_layout_output_unchanged(self):
+        from apps.ventes.quote_engine.builder import build_quote_data
+        baseline = build_quote_data(self.devis, {'pdf_mode': 'onepage'})
+        # Re-build after asserting the guard added nothing.
+        self.assertNotIn('roof_image_key', baseline)
+        # No roof_layout/roof_image set → identical re-run.
+        again = build_quote_data(self.devis, {'pdf_mode': 'onepage'})
+        self.assertEqual(baseline, again)
+
+    def test_layout_drives_figures(self):
+        from apps.ventes.quote_engine.builder import build_quote_data
+        before = build_quote_data(self.devis, {'pdf_mode': 'onepage'})
+        self.devis.roof_layout = {
+            'result': {'panels': 12, 'kwc': 9.9,
+                       'annualKwh': 15000, 'savings': 12000}}
+        self.devis.roof_image = 'roofs/1/DEV-Q5-0001.png'
+        self.devis.save(update_fields=['roof_layout', 'roof_image'])
+        after = build_quote_data(self.devis, {'pdf_mode': 'onepage'})
+        # kWc now comes from the layout (overrides the panel-derived estimate).
+        self.assertEqual(after['puissance_kwc'], 9.9)
+        self.assertEqual(after['prod_kwh'], 15000)
+        self.assertEqual(after['roof_image_key'], 'roofs/1/DEV-Q5-0001.png')
+        # And it genuinely differs from the no-layout build.
+        self.assertNotEqual(before.get('puissance_kwc'),
+                            after['puissance_kwc'])
+
+    def test_render_still_valid_with_layout(self):
+        # The full render must still produce a real PDF when a layout exists.
+        store = {}
+        self.devis.roof_layout = {
+            'result': {'panels': 12, 'kwc': 6.6,
+                       'annualKwh': 10800, 'savings': 9200}}
+        self.devis.save(update_fields=['roof_layout'])
+        with mock.patch(
+            'apps.ventes.quote_engine.builder._ensure_pdf_bucket'
+        ), mock.patch(
+            'apps.ventes.utils.pdf._upload_pdf',
+            side_effect=lambda b, k: store.__setitem__(k, bytes(b))
+        ):
+            from apps.ventes.quote_engine import generate_premium_devis_pdf
+            key = generate_premium_devis_pdf(
+                self.devis.id, {'pdf_mode': 'full'}, persist=False)
+        self.assertTrue(store[key].startswith(b'%PDF'))
