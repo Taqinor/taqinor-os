@@ -6,6 +6,10 @@ os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'erp_agentique.settings.dev')
 
 app = Celery('erp_agentique')
 app.config_from_object('django.conf:settings', namespace='CELERY')
+# `autodiscover_tasks()` enregistre automatiquement le module `tasks` de chaque
+# app installée — dont `apps.ventes.tasks` (PDF) et `apps.chat.tasks` (S11 :
+# `chat.transcribe_voice_attachment`, le pipeline de transcription des mémos
+# vocaux). Aucun enregistrement manuel n'est requis ici.
 app.autodiscover_tasks()
 
 # G9 — Celery Beat. Toute la logique de temps des jobs raisonne en
