@@ -426,8 +426,18 @@ textarea:focus-visible,
   color: #94a3b8;
   margin-bottom: 1px;
 }
-.breadcrumb-segment { display: inline-flex; align-items: center; gap: 0.15rem; }
+.breadcrumb-segment { display: inline-flex; align-items: center; gap: 0.15rem; min-width: 0; }
 .breadcrumb-sep { color: #cbd5e1; flex-shrink: 0; }
+/* I137 — chaque libellé tronque visuellement s'il est trop large (le title
+   restitue le plein libellé). */
+.breadcrumb-link,
+.breadcrumb-current,
+.breadcrumb-text {
+  max-width: 16ch;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
 .breadcrumb-link {
   color: #64748b;
   text-decoration: none;
@@ -437,6 +447,15 @@ textarea:focus-visible,
 .breadcrumb-link:hover { color: #1d4ed8; text-decoration: underline; }
 .breadcrumb-current { color: #64748b; font-weight: 600; }
 .breadcrumb-text { color: #94a3b8; }
+/* I137 — débordement « … » des segments masqués (chemin tronqué au milieu). */
+.breadcrumb-overflow {
+  color: #94a3b8;
+  font-weight: 700;
+  cursor: default;
+  padding: 0 2px;
+  flex-shrink: 0;
+  letter-spacing: 0.05em;
+}
 
 /* I35 — Déclencheur ⌘K (recherche + palette de commandes). */
 .header-cmdk {
