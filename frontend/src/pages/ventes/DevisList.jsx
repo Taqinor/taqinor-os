@@ -182,8 +182,8 @@ export default function DevisList() {
   const openPdfModal = (d) => {
     setBatchPdf(false)
     setPdfTarget(d)
-    // T14 — un devis agricole bascule d'office sur la une page (premium désactivé).
-    setPdfMode(d?.mode_installation === 'agricole' ? 'onepage' : 'full')
+    // Agricole a désormais son propre format premium (4 pages) — défaut « full ».
+    setPdfMode('full')
     setShowMonthly(true)
     setDevisFinal(false)
     setPaymentMode('standard')
@@ -298,7 +298,7 @@ export default function DevisList() {
     setPreviewingId(d.id)
     try {
       const params = proposalParams(
-        d.mode_installation === 'agricole' ? 'onepage' : 'full',
+        'full',
         d.mode_installation === 'industriel'
           && !!(d.etude_params && Object.keys(d.etude_params).length > 0),
       )
@@ -692,16 +692,12 @@ export default function DevisList() {
             <div className="grid gap-2">
               <Label>Format</Label>
               <RadioGroup value={pdfMode} onValueChange={setPdfMode} className="flex flex-col gap-2">
-                <label className="flex items-start gap-2 text-sm aria-disabled:opacity-50" aria-disabled={targetIsAgricole}>
-                  {/* T14 — premium « full » désactivé pour le pompage agricole. */}
-                  <RadioGroupItem value="full" className="mt-0.5" disabled={targetIsAgricole} />
+                <label className="flex items-start gap-2 text-sm">
+                  <RadioGroupItem value="full" className="mt-0.5" />
                   <span>
-                    Devis premium (3 pages — options, analyse, garanties)
-                    {targetIsAgricole && (
-                      <span className="block text-xs text-muted-foreground">
-                        Indisponible pour un devis agricole (pompage) — utilisez la une page.
-                      </span>
-                    )}
+                    {targetIsAgricole
+                      ? 'Devis premium (4 pages — étude, schéma, rentabilité, garanties)'
+                      : 'Devis premium (3 pages — options, analyse, garanties)'}
                   </span>
                 </label>
                 <label className="flex items-start gap-2 text-sm">
@@ -711,14 +707,14 @@ export default function DevisList() {
               </RadioGroup>
             </div>
 
-            {pdfMode === 'full' && (
+            {pdfMode === 'full' && !targetIsAgricole && (
               <label className="flex items-start gap-2 text-sm">
                 <Checkbox checked={showMonthly} onCheckedChange={v => setShowMonthly(!!v)} className="mt-0.5" />
                 <span>Économies mensuelles <span className="text-muted-foreground">(graphique mensuel page 2)</span></span>
               </label>
             )}
 
-            {pdfMode === 'full' && !batchPdf && (
+            {pdfMode === 'full' && !batchPdf && !targetIsAgricole && (
               <label className="flex items-start gap-2 text-sm aria-disabled:opacity-50" aria-disabled={!targetHasEtude}>
                 {/* T13 — case désactivée sans données d'étude (note explicative). */}
                 <Checkbox
