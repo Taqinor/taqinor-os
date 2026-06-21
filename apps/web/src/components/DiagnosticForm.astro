@@ -64,13 +64,19 @@ const inputClass =
   'w-full min-h-[44px] border border-white/15 bg-nuit-800 px-3 py-3 text-base text-white placeholder:text-lune-soft outline-none transition-colors focus:border-brass-400 focus:ring-2 focus:ring-brass-400/60';
 ---
 
-<!-- ACTE FINAL — le diagnostic, dans la nuit éclairée d'or (W51). La couture
-     reste une lueur de laiton, mais sur la nuit (le diagnostic n'est plus la
-     « salle blanche » : il fait désormais partie du site navy+or). -->
-<div class="h-20 bg-[radial-gradient(60%_130%_at_50%_100%,rgb(232_181_74/0.16),transparent_70%)]" aria-hidden="true"></div>
-<section id="simulateur" class="scroll-mt-20 border-t border-white/10 bg-nuit px-4 pb-20 pt-12 text-lune sm:pb-24">
+<!-- W148 — Couture lumière (nuit→blanc) : transition dramatique salle obscure→salle blanche -->
+<div class="seam-lumiere" aria-hidden="true"></div>
+<!-- W148 — ACTE FINAL — diagnostic en « salle blanche » : fond lumineux, carte soulevée -->
+<section id="simulateur" class="diag-lumiere scroll-mt-20 px-4 pb-20 pt-12 sm:pb-24">
+  <!-- W148 — Chapeau de l'acte final : titre de section, éclairé en brass -->
+  <div class="mx-auto mb-10 max-w-5xl">
+    <p class="tech-label rule-brass text-brass-300">Votre étude gratuite</p>
+    <h2 class="display mt-4 max-w-lg text-2xl text-white sm:text-3xl">
+      60 secondes pour estimer votre potentiel solaire
+    </h2>
+  </div>
   <div class:list={['mx-auto grid items-start gap-6', Astro.slots.has('aside') ? 'max-w-5xl lg:grid-cols-[1.4fr_1fr]' : 'max-w-2xl']}>
-  <div class="cine-card">
+  <div class="cine-card" style="box-shadow: 0 0 60px -20px rgb(232 181 74 / 0.18), 0 32px 80px -20px rgb(0 0 0 / 0.6), inset 0 1px 0 rgb(255 255 255 / 0.10);">
     <div class="border-b border-white/10 px-6 py-5 sm:px-8">
       <p class="tech-label text-brass-300">{t('form.eyebrow')}</p>
       <h2 class="display v2-section-title mt-2 text-2xl text-white sm:text-3xl">{heading}</h2>
