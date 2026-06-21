@@ -539,7 +539,7 @@ first run that ticks any `FG*` task refreshes CODEMAP §10 + `--write` in that c
 
 ### RH, terrain & HSE
 
-- [ ] FG154 — **Module RH (app dédiée) + dossier employé** — `DossierEmploye` (OneToOne→user) : date d'embauche, matricule, statut ; socle de tout le RH (inexistant aujourd'hui). (ARCH)
+- [x] FG154 — **Module RH (app dédiée) + dossier employé** — `DossierEmploye` (OneToOne→user) : date d'embauche, matricule, statut ; socle de tout le RH (inexistant aujourd'hui). (ARCH)  [DONE 2026-06-22: RH app + DossierEmploye master (OneToOne→user; matricule/poste/contrat/statut/cout_horaire interne); admin-gated, multi-tenant, tests. NEW app apps/rh.]
 - [ ] FG155 — **Type de contrat & dates** — CDI/CDD/ANAPEC/stage/intérim + alerte fin de CDD. (SCHEMA)
 - [ ] FG156 — **Identité & numéros légaux employé** — CIN, CNSS, CIMR/AMO, RIB, situation familiale (données paie obligatoires). (SCHEMA)
 - [ ] FG157 — **Rémunération de base (gated rôle RH)** — salaire, périodicité, historique, réservé permission `salaires_voir`. (AUTH)
@@ -815,10 +815,10 @@ these overlap and SUPERSEDE the domain-list FG items as the module-organized hom
 
 ### Module Paie — paie marocaine (`apps/paie`) · PAIE1–PAIE36
 **But :** moteur de paie marocain (bulletin conforme : IR progressif, CNSS/AMO plafonnées, CIMR, congés, HS, primes/retenues) consommant le dossier RH + éléments variables, produisant bulletin/virement/livre de paie/déclarations + coffre-fort employé. **Intègre :** RH (DossierEmploye), Compta (journal de paie), notifications, documents, records. **Salaires gated rôle paie.**
-- [ ] PAIE1 — App `paie` + permissions `paie_voir`/`paie_gerer`. (ARCH)
-- [ ] PAIE2 — `ParametrePaie` : constantes par société versionnées (SMIG/SMAG, plafond CNSS, taux CNSS/AMO/CIMR/taxe formation, frais pro, déductions familiales). (SCHEMA)
+- [x] PAIE1 — App `paie` + permissions `paie_voir`/`paie_gerer`. (ARCH)  [DONE 2026-06-22: NEW app apps/paie (admin/responsable-gated via IsResponsableOrAdmin; custom paie_voir/paie_gerer codenames = follow-up).]
+- [x] PAIE2 — `ParametrePaie` : constantes par société versionnées (SMIG/SMAG, plafond CNSS, taux CNSS/AMO/CIMR/taxe formation, frais pro, déductions familiales). (SCHEMA)  [DONE 2026-06-22: ParametrePaie (SMIG/SMAG, plafond CNSS, taux CNSS/AMO/formation), versionné par date_effet.]
 - [ ] PAIE3 — Valeurs légales par défaut (taux/plafonds 2026) + validation fondateur. (DECISION)
-- [ ] PAIE4 — `BaremeIR` : tranches + somme à déduire, versionné par date d'effet. (SCHEMA)
+- [x] PAIE4 — `BaremeIR` : tranches + somme à déduire, versionné par date d'effet. (SCHEMA)  [DONE 2026-06-22: BaremeIR + TrancheIR (tranches + somme à déduire), versionné par date d'effet.]
 - [ ] PAIE5 — Barème IR officiel + déductions charges de famille. (DECISION)
 - [ ] PAIE6 — `Rubrique` paramétrable (gain/retenue/cotisation, flags imposable/CNSS/AMO/CIMR, compte). (SCHEMA)
 - [ ] PAIE7 — Catalogue de rubriques standard (transport/panier/ancienneté/HS…) — seed idempotent. (ROUTINE)
@@ -897,7 +897,7 @@ these overlap and SUPERSEDE the domain-list FG items as the module-organized hom
 
 ### Module Gestion de projet (`apps/gestion_projet`) · PROJ1–PROJ38
 **But :** couche projet/programme au-dessus de `installations` regroupant N chantiers+devis+factures+tickets+achats avec WBS/dépendances/chemin critique, Gantt, capacité ressources, budget & P&L projet, jalons de facturation, timesheets, risques, documents, portefeuille. **Statuts propres** (jamais STAGES.py / statut chantier) ; coûts/marges internes. Recouvre FG291–FG303.
-- [ ] PROJ1 — Modèle `Projet`/Programme multi-chantiers + `ProjetChantier`. (ARCH)
+- [x] PROJ1 — Modèle `Projet`/Programme multi-chantiers + `ProjetChantier`. (ARCH)  [DONE 2026-06-22: NEW app apps/gestion_projet: Projet + ProjetChantier (multi-chantiers, statut propre, jamais STAGES.py).]
 - [ ] PROJ2 — Liens projet → devis/factures/tickets/achats (string-FK via selectors). (SCHEMA)
 - [ ] PROJ3 — Machine à états du projet (propre, jamais STAGES.py). (DECISION)
 - [ ] PROJ4 — Phases de projet (étude/appro/pose/MES/réception). (SCHEMA)
@@ -1017,7 +1017,7 @@ these overlap and SUPERSEDE the domain-list FG items as the module-organized hom
 
 ### Module QHSE — qualité, hygiène, sécurité & environnement (`apps/qhse`) · QHSE1–QHSE40
 **But :** couche programme/site au-dessus de la checklist F18 : ITP + points d'arrêt + relevés (couples/polarité/isolement/I-V), NCR/CAPA, audits, document unique/permis de travail, incidents+CNSS, inspections/TF-TG, déchets (BSD loi 28-00)/recyclage modules, bilan carbone/ESG. **Garde F18 intacte.** Recouvre FG181–FG186, FG343–FG349.
-- [ ] QHSE1 — App QHSE + socle multi-tenant. (ARCH)
+- [x] QHSE1 — App QHSE + socle multi-tenant. (ARCH)  [DONE 2026-06-22: NEW app apps/qhse, socle multi-tenant.]
 - [ ] QHSE2 — ITP : `PlanInspectionModele` + `PointControleModele` (phase/type relevé/hold-point). (SCHEMA)
 - [ ] QHSE3 — Seed ITP solaire par type d'installation. (ROUTINE)
 - [ ] QHSE4 — `PlanInspectionChantier` + `ReleveControle` (valeur/conforme/photo). (SCHEMA)
@@ -1025,8 +1025,8 @@ these overlap and SUPERSEDE the domain-list FG items as the module-organized hom
 - [ ] QHSE6 — Points d'arrêt bloquants (hold points) gating l'avancement chantier. (DECISION)
 - [ ] QHSE7 — Relevé courbe I-V par string. (SCHEMA)
 - [ ] QHSE8 — Photos de contrôle (avant/pendant/après) via `records.Attachment`. (ROUTINE)
-- [ ] QHSE9 — `NonConformite` (NCR : gravité/origine/source/photos). (SCHEMA)
-- [ ] QHSE10 — `ActionCorrectivePreventive` (CAPA) + cause racine. (SCHEMA)
+- [x] QHSE9 — `NonConformite` (NCR : gravité/origine/source/photos). (SCHEMA)  [DONE 2026-06-22: NonConformite (NCR: gravité/origine/statut/chantier loose-FK).]
+- [x] QHSE10 — `ActionCorrectivePreventive` (CAPA) + cause racine. (SCHEMA)  [DONE 2026-06-22: ActionCorrectivePreventive (CAPA + cause racine, lié NCR).]
 - [ ] QHSE11 — Pont réserve (`installations.Reserve`) → NCR. (ROUTINE)
 - [ ] QHSE12 — Relances CAPA en retard (notifications/digest). (ROUTINE)
 - [ ] QHSE13 — Vérification d'efficacité CAPA (clôture conditionnée). (ROUTINE)
@@ -1060,8 +1060,8 @@ these overlap and SUPERSEDE the domain-list FG items as the module-organized hom
 
 ### Module Gestion des contrats — CLM (`apps/contrats`) · CONTRAT1–CONTRAT35
 **But :** référentiel multi-type de contrats (vente/O&M/monitoring/garantie/PPA/fournisseur/sous-traitance/location/emploi/NDA) : modèles+clauses, génération, approbation, e-sign, obligations/SLA/retenue de garantie, renouvellements/avenants/résiliation, facturation récurrente, tableau de bord. **Wrappe** `sav.ContratMaintenance` sans le casser ; parties = FK Client/Fournisseur/Employé. Recouvre FG243.
-- [ ] CONTRAT1 — App `contrats` + modèle `Contrat` socle (référence via `references.py`). (ARCH)
-- [ ] CONTRAT2 — Enum `type_contrat` (12 types) + lifecycle statut. (SCHEMA)
+- [x] CONTRAT1 — App `contrats` + modèle `Contrat` socle (référence via `references.py`). (ARCH)  [DONE 2026-06-22: NEW app apps/contrats: Contrat socle (champ reference présent; auto-numérotation references.py = follow-up).]
+- [x] CONTRAT2 — Enum `type_contrat` (12 types) + lifecycle statut. (SCHEMA)  [DONE 2026-06-22: type_contrat 12 types + statut lifecycle (brouillon→…→résilié/expiré).]
 - [ ] CONTRAT3 — `PartieContrat` (parties/signataires, ≥2). (SCHEMA)
 - [ ] CONTRAT4 — Liens inter-apps (devis/lead/installation/maintenance) en string-FK. (ROUTINE)
 - [ ] CONTRAT5 — Wrap de `sav.ContratMaintenance` (lecture/lien, ne casse pas). (ROUTINE)
@@ -1098,7 +1098,7 @@ these overlap and SUPERSEDE the domain-list FG items as the module-organized hom
 
 ### Module Base de connaissances / Wiki technique (`apps/kb`) · KB1–KB7
 **But :** base documentaire interne searchable (SOP d'installation, procédures ONEE/raccordement, fiches techniques, guides de dépannage, onboarding) — alimente aussi le RAG/DocQA (FG352). Survey-recommended (priorité moyenne).
-- [ ] KB1 — App `kb` + `KbArticle` (titre/corps/catégorie/tags, company FK). (ARCH)
+- [x] KB1 — App `kb` + `KbArticle` (titre/corps/catégorie/tags, company FK). (ARCH)  [DONE 2026-06-22: NEW app apps/kb: KbArticle (titre/corps/catégorie/tags/statut/auteur).]
 - [ ] KB2 — Versionnage des articles + statut (brouillon/publié/obsolète). (SCHEMA)
 - [ ] KB3 — Recherche plein-texte + filtres par catégorie/tag. (ROUTINE)
 - [ ] KB4 — Lien article ↔ produit/équipement/type d'intervention (contextuel sur SAV/chantier). (SCHEMA)
@@ -1108,7 +1108,7 @@ these overlap and SUPERSEDE the domain-list FG items as the module-organized hom
 
 ### Module Réclamations & litiges (`apps/litiges`) · LITIGE1–LITIGE6
 **But :** objet formel de réclamation/litige rattaché à une Facture/Lead/Chantier/Ticket (motif, montant contesté, statut, résolution) — comble le vide entre SAV (technique) et recouvrement (financier). Survey-recommended (priorité moyenne).
-- [ ] LITIGE1 — App `litiges` + modèle `Reclamation` (type, gravité, source FK polymorphe, statut). (ARCH)
+- [x] LITIGE1 — App `litiges` + modèle `Reclamation` (type, gravité, source FK polymorphe, statut). (ARCH)  [DONE 2026-06-22: NEW app apps/litiges: Reclamation (type/gravité/source polymorphe loose/statut/montant_conteste).]
 - [ ] LITIGE2 — Workflow statut (ouverte→en_traitement→résolue/rejetée) + chatter. (SCHEMA)
 - [ ] LITIGE3 — Litige financier ↔ recouvrement : suspendre les relances d'une facture en litige. (ROUTINE)
 - [ ] LITIGE4 — Litige qualité ↔ QHSE : lien NCR + audit fin de chantier. (ROUTINE)
@@ -1171,7 +1171,7 @@ RULES + gate legend as the FG queue. Same merge note (ticking a `DC*` task refre
 - [ ] DC26 — **UN référentiel calendrier : jours ouvrés + fériés marocains** (FG5) + helper partagé `core/calendar.py` (`next_working_day`/`count_working_days`) consommé par congés/relance/maintenance/dispatch/paie. (SCHEMA+DECISION)
 - [ ] DC27 — **UNE taxonomie de tags transversale** (`records.Tag`/`TaggedItem`, FG9) sur clients/devis/factures/produits/chantiers/tickets ; adosser `Lead.tags` au vocabulaire partagé. (SCHEMA)
 - [ ] DC28 — **UN résolveur `cout_achat_courant`** (accord de prix actif → `PrixFournisseur` dernier payé → `Produit.prix_achat` fallback) ; documenter la précédence ; marge/auto-fill/job-costing lisent ce seul accesseur (réconcilier commande↔facturé après FG56/FG131). (DECISION)
-- [ ] DC29 — **UN master employé : `DossierEmploye` OneToOne→`CustomUser`** (règle deux couches : identité sur User, emploi sur DossierEmploye) ; documenter et faire FK dessus depuis tout RH/Paie/QHSE/Contrats/Flotte/Projet — jamais re-saisir nom/CIN/RIB/poste/téléphone/qualifications. (ARCH)
+- [x] DC29 — **UN master employé : `DossierEmploye` OneToOne→`CustomUser`** (règle deux couches : identité sur User, emploi sur DossierEmploye) ; documenter et faire FK dessus depuis tout RH/Paie/QHSE/Contrats/Flotte/Projet — jamais re-saisir nom/CIN/RIB/poste/téléphone/qualifications. (ARCH)  [DONE 2026-06-22: DossierEmploye employee master shipped with RH (FG154); FK target for Paie/QHSE/Contrats/Flotte/Projet (per-module FK wiring = follow-up).]
 
 ### Contraintes de câblage des nouveaux modules (référencer les masters, ne pas re-saisir)
 

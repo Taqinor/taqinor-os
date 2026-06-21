@@ -59,6 +59,14 @@ urlpatterns = [
     path('api/django/agent/', include('apps.agent.urls')),
     # Group S — Messagerie interne d'équipe (« Discuss »).
     path('api/django/chat/', include('apps.chat.urls')),
+    # Modules ERP greenfield (fondations) — internes, admin/responsable.
+    path('api/django/rh/', include('apps.rh.urls')),
+    path('api/django/paie/', include('apps.paie.urls')),
+    path('api/django/gestion-projet/', include('apps.gestion_projet.urls')),
+    path('api/django/contrats/', include('apps.contrats.urls')),
+    path('api/django/qhse/', include('apps.qhse.urls')),
+    path('api/django/kb/', include('apps.kb.urls')),
+    path('api/django/litiges/', include('apps.litiges.urls')),
 ]
 
 # En production (DEBUG off + gunicorn), les statiques (admin Django) sont
