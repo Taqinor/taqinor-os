@@ -1370,6 +1370,14 @@ S/M/L. The cross-app safety rules (#1–#5, multi-tenant, buy-prices-never-clien
   needs a **vision** model — reuse the already-configured Zhipu key, not a new one. **No new paid key
   is required.** FG357 voice and FG361 forecasting aren't LLM-gated at all (free faster-whisper /
   `statsmodels`).
+- **💰 AI running costs (verified in code, 2026-06-21).** The whole AI stack runs **FREE by design** —
+  no paid key required. Groq's free tier powers the chatbot, the Group R assistant, and assistant
+  voice (`whisper-large-v3`, same Groq key); embeddings (`sentence-transformers all-MiniLM-L6-v2`)
+  and chat voice memos (`faster-whisper`) are **local/free**; pgvector is free. The **only
+  externally-billed AI is OCR via Zhipu GLM** (`ZHIPU_API_KEY`, `glm-4.5v`/`glm-4.7`) — usage-billed
+  but very cheap, with free trial credits, and a **pure no-op without a key** (OCR just doesn't run;
+  nothing else is affected). `claude`/`openai` are **optional paid quality upgrades**; `ollama` is a
+  **free self-hosted fallback** if Groq's free rate limits are ever hit.
 - **G12 — Microsoft 365** (Entra ID, Outlook, OneDrive, Teams). Needs an **Entra app registration**
   in your tenant (client id/secret + admin-consented Graph scopes). **MY RECOMMENDATION: confirm
   your team's mail/file stack first — if you live in Google Workspace, skip M365 and prioritise
