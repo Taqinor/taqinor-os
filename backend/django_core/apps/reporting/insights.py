@@ -17,6 +17,7 @@ from collections import defaultdict
 from datetime import date, datetime, timedelta
 from decimal import Decimal
 
+from django.db.models import Count
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.response import Response
 
@@ -609,3 +610,97 @@ def commissions(request):
         'enabled': True, 'mode': mode, 'valeur': str(valeur),
         'base_label': base_label, 'rows': out, 'total': str(total),
     })
+
+
+# ── FG93 — Classement commerciaux ───────────────────────────────────────────
+@api_view(['GET'])
+@permission_classes([IsResponsableOrAdmin])
+def sales_leaderboard(request):
+    """FG93 — Classement commerciaux (CA signé, taux de victoire, deal moyen,
+    kWc par responsable).
+
+    Responsable = owner du lead associé au devis, sinon created_by. Commission
+    et prix d'achat EXCLUS — indicateurs purement commerciaux. Période
+    optionnelle ?from=&to= sur la date d'acceptation du devis.
+    """
+    co = _co(request.user)
+    if co is None:
+        return Response({'detail': 'Accès refusé.'}, status=403)
+    from apps.ventes.models import Devis
+    from apps.crm.models import Lead
+    from apps.installations.models import Installation
+    from decimal import Decimal
+
+    # Devis signés (statut=accepte) bornés à la société.
+    signed = (Devis.objects.filter(**co, statut=Devis.Statut.ACCEPTE)
+              .select_related('lead', 'lead__owner', 'created_by'))
+    start = _qdate(request.query_params.get('from'))
+    end = _qdate(request.query_params.get('to'))
+    if start:
+        signed = signed.filter(date_acceptation__gte=start)
+    if end:
+        signed = signed.filter(date_acceptation__lte=end)
+
+    # kWc installé par devis (chemin devis→chantier).
+    kwc_by_devis = defaultdict(Decimal)
+    insts = (Installation.objects.filter(**co)
+             .exclude(devis__isnull=True)
+             .values_list('devis_id', 'puissance_installee_kwc'))
+    for devis_id, kwc in insts:
+        if kwc:
+            kwc_by_devis[devis_id] += Decimal(kwc)
+
+    # Tous les leads de la société pour calculer le nb total par responsable.
+    leads_qs = Lead.objects.filter(**co, is_archived=False)
+    if start:
+        leads_qs = leads_qs.filter(date_creation__gte=start)
+    if end:
+        leads_qs = leads_qs.filter(date_creation__lte=end)
+    leads_by_owner = defaultdict(int)
+    for row in leads_qs.values('owner_id').annotate(n=Count('id')):
+        leads_by_owner[row['owner_id']] = row['n']
+
+    agg = {}
+    for d in signed:
+        if d.lead_id and d.lead and d.lead.owner_id:
+            owner = d.lead.owner
+        else:
+            owner = d.created_by
+        uid = owner.id if owner else 0
+        slot = agg.setdefault(uid, {
+            'commercial': _username(owner) or '—',
+            'ca_ht': Decimal('0'),
+            'nb_devis': 0,
+            'kwc': Decimal('0'),
+        })
+        slot['ca_ht'] += Decimal(d.total_ht)
+        slot['nb_devis'] += 1
+        slot['kwc'] += kwc_by_devis.get(d.id, Decimal('0'))
+
+    rows = []
+    for uid, slot in agg.items():
+        total_leads = leads_by_owner.get(uid, 0)
+        win_rate = round(slot['nb_devis'] / total_leads * 100, 1) if total_leads else None
+        avg_deal = round(float(slot['ca_ht']) / slot['nb_devis'], 2) if slot['nb_devis'] else 0
+        rows.append({
+            'commercial': slot['commercial'],
+            'ca_ht': str(slot['ca_ht']),
+            'nb_devis_signes': slot['nb_devis'],
+            'avg_deal_ht': str(avg_deal),
+            'kwc': str(slot['kwc']),
+            'win_rate_pct': win_rate,
+        })
+
+    rows.sort(key=lambda r: float(r['ca_ht']), reverse=True)
+
+    x = _maybe_xlsx(
+        request, 'classement-commerciaux.xlsx',
+        ['Commercial', 'CA HT signé', 'Devis signés', 'Deal moyen HT', 'kWc', 'Taux victoire %'],
+        [[r['commercial'], r['ca_ht'], r['nb_devis_signes'],
+          r['avg_deal_ht'], r['kwc'], r['win_rate_pct'] or '—']
+         for r in rows],
+        'Classement commerciaux')
+    if x:
+        return x
+
+    return Response({'rows': rows, 'total_commerciaux': len(rows)})

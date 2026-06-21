@@ -6,6 +6,7 @@ from .pipeline import pipeline
 from .reports import sales_report, stock_report, service_report
 from .insights import (
     recurring_revenue, audit_log, job_costing, analytics, commissions,
+    sales_leaderboard,
 )
 from .archive import archive_client, archive_chantier
 from .calendar import calendar_events, calendar_reschedule
@@ -36,6 +37,9 @@ urlpatterns = [
     path('insights/job-costing/', job_costing, name='insights-job-costing'),
     path('insights/analytics/', analytics, name='insights-analytics'),
     path('insights/commissions/', commissions, name='insights-commissions'),
+    # FG93 — classement commerciaux (CA signé, taux victoire, deal moyen, kWc).
+    path('insights/sales-leaderboard/', sales_leaderboard,
+         name='insights-sales-leaderboard'),
     path('archive/client/<int:pk>/', archive_client,
          name='reporting-archive-client'),
     path('archive/chantier/<int:pk>/', archive_chantier,

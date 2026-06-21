@@ -293,3 +293,82 @@ class TestCommissions(InsightsBase):
             HTTP_AUTHORIZATION=f'Bearer {AccessToken.for_user(resp_user)}')
         resp = api.get(f'{BASE}/commissions/')
         self.assertEqual(resp.status_code, 403)
+
+
+class TestSalesLeaderboard(InsightsBase):
+    """FG93 — classement commerciaux : CA HT, taux victoire, deal moyen, kWc."""
+
+    def _make_devis_with_ligne(self, company, reference, client, produit,
+                                lead=None, statut='accepte',
+                                date_acceptation=None):
+        """Crée un devis avec une ligne (total_ht calculé dynamiquement)."""
+        from datetime import date
+        from apps.ventes.models import Devis, LigneDevis
+        devis = Devis.objects.create(
+            company=company, reference=reference, client=client,
+            lead=lead, statut=statut,
+            date_acceptation=date_acceptation or date.today())
+        LigneDevis.objects.create(
+            devis=devis, produit=produit, designation='Produit test',
+            quantite=Decimal('5'), prix_unitaire=Decimal('10000'))
+        return devis
+
+    def test_leaderboard_shape_and_scope(self):
+        """CA HT calculé depuis les lignes ; classement borné à la société."""
+        from datetime import date
+        from apps.crm.models import Client
+        # Crée un commercial avec un lead et un devis signé.
+        owner = User.objects.create_user(
+            username='lb_comm1', password='x',
+            role_legacy='responsable', company=self.company)
+        client = Client.objects.create(company=self.company, nom='CLI-LB')
+        produit = Produit.objects.create(
+            company=self.company, nom='P-LB', sku='LB-1',
+            prix_vente=Decimal('10000'))
+        lead = Lead.objects.create(
+            company=self.company, nom='Lead LB', stage='SIGNED', owner=owner)
+        self._make_devis_with_ligne(
+            self.company, 'D-LB-1', client, produit, lead=lead)
+
+        resp = self.api.get('/api/django/reporting/insights/sales-leaderboard/')
+        self.assertEqual(resp.status_code, 200)
+        self.assertIn('rows', resp.data)
+        rows = resp.data['rows']
+        self.assertTrue(len(rows) >= 1)
+        row = next((r for r in rows if r['commercial'] == 'lb_comm1'), None)
+        self.assertIsNotNone(row, 'lb_comm1 manquant dans le classement')
+        for key in ('ca_ht', 'nb_devis_signes', 'avg_deal_ht', 'kwc'):
+            self.assertIn(key, row)
+        self.assertEqual(row['nb_devis_signes'], 1)
+        # CA HT = 5 × 10 000 = 50 000
+        self.assertEqual(Decimal(row['ca_ht']), Decimal('50000'))
+
+    def test_other_company_excluded(self):
+        """Données d'une autre société jamais incluses."""
+        from datetime import date
+        from apps.crm.models import Client
+        other_client = Client.objects.create(company=self.other, nom='OtherCli')
+        other_produit = Produit.objects.create(
+            company=self.other, nom='P-OTHER', sku='OTH-1',
+            prix_vente=Decimal('100'))
+        other_user = User.objects.create_user(
+            username='other_lbcom', password='x',
+            role_legacy='responsable', company=self.other)
+        from apps.ventes.models import Devis, LigneDevis
+        devis = Devis.objects.create(
+            company=self.other, reference='D-LB-OTHER', client=other_client,
+            statut=Devis.Statut.ACCEPTE, date_acceptation=date.today())
+        LigneDevis.objects.create(
+            devis=devis, produit=other_produit, designation='P',
+            quantite=Decimal('1'), prix_unitaire=Decimal('9999'))
+        resp = self.api.get('/api/django/reporting/insights/sales-leaderboard/')
+        self.assertEqual(resp.status_code, 200)
+        names = {r['commercial'] for r in resp.data['rows']}
+        self.assertNotIn('other_lbcom', names)
+
+    def test_xlsx_export(self):
+        resp = self.api.get(
+            '/api/django/reporting/insights/sales-leaderboard/?export=xlsx')
+        self.assertEqual(resp.status_code, 200)
+        body = b''.join(resp.streaming_content) if resp.streaming else resp.content
+        self.assertTrue(body.startswith(b'PK'))
