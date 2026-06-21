@@ -63,6 +63,19 @@ const iaApi = {
   confirmAction: (token) =>
     iaApi_instance.post('/sql-agent/confirm', { token }),
 
+  // AG10/AG11 — transcrit un court clip vocal de l'assistant en texte via Groq
+  // Whisper (POST /sql-agent/transcribe, multipart). Réponse : { text, language }
+  // ou { available:false, detail } quand GROQ_API_KEY manque (dégradation
+  // gracieuse, pas une erreur). Le micro de l'assistant (useVoiceChat) l'appelle.
+  transcribeVoice: (blob) => {
+    const formData = new FormData()
+    const filename = (blob && blob.name) || 'audio.webm'
+    formData.append('file', blob, filename)
+    return iaApi_instance.post('/sql-agent/transcribe', formData, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    })
+  },
+
   getSchema: () =>
     iaApi_instance.get('/sql-agent/schema'),
 

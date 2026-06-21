@@ -3,6 +3,7 @@ import { useDispatch, useSelector } from 'react-redux'
 import {
   Bot, MessageSquare, Send, Code2, ChevronDown, CheckCircle2,
   ShieldQuestion, Check, X, FileDown, MessageCircle,
+  Mic, MicOff, Volume2, Loader2, Headphones, Square,
 } from 'lucide-react'
 import {
   Button,
@@ -21,6 +22,8 @@ import {
   queryAgent, loadChatHistory, clearChatHistory,
   confirmAgentAction, dismissProposal,
 } from '../../features/ia/store/iaSlice'
+import useVoiceChat from '../../features/ia/voice/useVoiceChat'
+import { LOOP_STATES } from '../../features/ia/voice/conversationLoop'
 
 const SUGGESTIONS = [
   'Quels produits sont en rupture de stock ?',
@@ -54,6 +57,29 @@ export default function AgentChat() {
   const [input, setInput] = useState('')
   const messagesEndRef = useRef(null)
   const inputRef = useRef(null)
+
+  // AG11/AG12 — voix : micro + transcription + lecture vocale, et mode
+  // conversation mains-libres. Toutes les API navigateur sont gardées (repli
+  // texte si non supportées). La voix NE confirme JAMAIS automatiquement une
+  // action sensible (la boucle attend un « confirmer » explicite — AG3 reste
+  // la seule voie).
+  const {
+    recordingSupported, conversationSupported,
+    recording, transcribing, speaking, voiceError,
+    conversationMode, loopState,
+    toggleRecording, startConversation, stopConversation,
+  } = useVoiceChat()
+
+  // Libellé d'état vocal courant pour l'affichage (et l'a11y).
+  const voiceStatus = recording
+    ? 'Écoute en cours…'
+    : transcribing
+      ? 'Transcription…'
+      : speaking
+        ? 'Lecture de la réponse…'
+        : loopState === LOOP_STATES.AWAITING_CONFIRM
+          ? 'En attente de confirmation — dites « confirmer » ou utilisez le bouton.'
+          : null
 
   // Charge l'historique Redis au montage du composant
   useEffect(() => {
@@ -104,12 +130,61 @@ export default function AgentChat() {
               </p>
             </div>
           </div>
-          {messages.length > 0 && (
-            <Button variant="outline" size="sm" onClick={() => dispatch(clearChatHistory())}>
-              Nouvelle conversation
-            </Button>
-          )}
+          <div className="flex items-center gap-2">
+            {/* AG12 — bascule « Mode conversation » (mains-libres). Visible
+                uniquement si le navigateur le supporte (repli texte sinon). */}
+            {conversationSupported && (
+              conversationMode ? (
+                <Button
+                  variant="destructive"
+                  size="sm"
+                  data-testid="conversation-stop"
+                  onClick={stopConversation}
+                >
+                  <Square className="size-4" aria-hidden="true" />
+                  Arrêter
+                </Button>
+              ) : (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  data-testid="conversation-toggle"
+                  onClick={startConversation}
+                  disabled={agentLoading}
+                >
+                  <Headphones className="size-4" aria-hidden="true" />
+                  Mode conversation
+                </Button>
+              )
+            )}
+            {messages.length > 0 && (
+              <Button variant="outline" size="sm" onClick={() => dispatch(clearChatHistory())}>
+                Nouvelle conversation
+              </Button>
+            )}
+          </div>
         </div>
+
+        {/* AG11/AG12 — bandeau d'état vocal (écoute / transcription / lecture /
+            attente de confirmation) + repli. */}
+        {(voiceStatus || voiceError) && (
+          <div
+            role="status"
+            aria-live="polite"
+            data-testid="voice-status"
+            className={cn(
+              'flex items-center gap-2 rounded-lg border px-3 py-2 text-xs',
+              voiceError
+                ? 'border-destructive/30 bg-destructive/10 text-destructive'
+                : 'border-primary/30 bg-primary/10 text-primary',
+            )}
+          >
+            {recording && <Mic className="size-4 animate-pulse" aria-hidden="true" />}
+            {transcribing && <Loader2 className="size-4 animate-spin" aria-hidden="true" />}
+            {speaking && <Volume2 className="size-4" aria-hidden="true" />}
+            <span>{voiceError || voiceStatus}</span>
+          </div>
+        )}
 
         {/* ── Zone messages ── */}
         <Card className="flex min-h-0 flex-1 flex-col overflow-hidden">
@@ -345,6 +420,25 @@ export default function AgentChat() {
                 autoComplete="off"
                 className="max-h-32 min-h-[var(--control-h)] resize-none py-2.5"
               />
+              {/* AG11 — micro : capture audio → /transcribe → flux question.
+                  Masqué quand le mode conversation pilote déjà le micro, et
+                  caché si le navigateur ne supporte pas l'enregistrement (repli
+                  texte). */}
+              {recordingSupported && !conversationMode && (
+                <SimpleTooltip label={recording ? 'Arrêter l\'enregistrement' : 'Parler'}>
+                  <IconButton
+                    type="button"
+                    variant={recording ? 'destructive' : 'outline'}
+                    label={recording ? 'Arrêter l\'enregistrement' : 'Parler'}
+                    data-testid="mic-button"
+                    aria-pressed={recording}
+                    disabled={agentLoading || transcribing}
+                    onClick={toggleRecording}
+                  >
+                    {recording ? <MicOff /> : <Mic />}
+                  </IconButton>
+                </SimpleTooltip>
+              )}
               <SimpleTooltip label="Envoyer">
                 <IconButton
                   type="submit"
