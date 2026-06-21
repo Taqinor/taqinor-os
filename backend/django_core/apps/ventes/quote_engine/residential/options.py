@@ -28,9 +28,28 @@ def _split_items(sans_items, avec_items):
     return shared, delta_sans, delta_avec
 
 
-def _row(it, fmt):
-    """One <tr> for the shared equipment table."""
+def _produits_href(produits_base):
+    """https URL of the fiches library hub from a bare 'taqinor.ma/produits'."""
+    base = (produits_base or "taqinor.ma/produits").strip().rstrip("/")
+    return base if base.startswith("http") else "https://" + base
+
+
+def _name_html(it, produits_base):
+    """Product name, linked to its fiche-technique page on taqinor.ma when one
+    exists (panels, inverters, batteries, meter, dongle) — a tiny ' ›' marks it
+    clickable; TAQINOR's own lines (structures, socles, installation…) stay
+    plain text."""
+    from . import theme
     desig = it["designation"]
+    href = theme.fiche_href(desig, it.get("marque") or "", produits_base)
+    if not href:
+        return f'<span class="p2-name">{desig}</span>'
+    return (f'<a class="p2-name p2-fiche-lnk" href="{href}">{desig}'
+            f'<span class="p2-fiche-i">&rsaquo;</span></a>')
+
+
+def _row(it, fmt, produits_base="taqinor.ma/produits"):
+    """One <tr> for the shared equipment table."""
     marque = it.get("marque") or ""
     qte = it["quantite"]
     qte_txt = f"{qte:g}"
@@ -40,7 +59,7 @@ def _row(it, fmt):
     marque_html = (f'<span class="p2-mk">{marque}</span>' if marque else "")
     return (
         f'<tr>'
-        f'<td class="p2-d"><span class="p2-name">{desig}</span>{marque_html}</td>'
+        f'<td class="p2-d">{_name_html(it, produits_base)}{marque_html}</td>'
         f'<td class="p2-c">{qte_txt}</td>'
         f'<td class="p2-r">{pu}</td>'
         f'<td class="p2-c p2-tva">{tva}</td>'
@@ -49,7 +68,7 @@ def _row(it, fmt):
     )
 
 
-def _delta_lines(items, fmt):
+def _delta_lines(items, fmt, produits_base="taqinor.ma/produits"):
     """Compact list of the extra products one option adds."""
     out = []
     for it in items:
@@ -57,7 +76,7 @@ def _delta_lines(items, fmt):
         q = f"{qte:g}× " if qte and qte != 1 else ""
         total_ht = fmt(it["prix_unit_ht"] * it["quantite"])
         out.append(
-            f'<li><span class="p2-dl-n">{q}{it["designation"]}</span>'
+            f'<li><span class="p2-dl-n">{q}{_name_html(it, produits_base)}</span>'
             f'<span class="p2-dl-p">{total_ht} HT</span></li>'
         )
     return "".join(out)
@@ -122,11 +141,11 @@ def build(ctx) -> str:
         for v, l in specs
     )
 
-    rows_html = "".join(_row(it, fmt) for it in shared)
-    delta_sans_html = _delta_lines(delta_sans, fmt)
-    delta_avec_html = _delta_lines(delta_avec, fmt)
-
     produits_link = links.get("produits", d.get("site_url", "taqinor.ma"))
+
+    rows_html = "".join(_row(it, fmt, produits_link) for it in shared)
+    delta_sans_html = _delta_lines(delta_sans, fmt, produits_link)
+    delta_avec_html = _delta_lines(delta_avec, fmt, produits_link)
 
     totals_sans = _totals_chain(
         "Option 1 — Sans batterie", C["navy"], d["totaux_sans"], fmt, C
@@ -192,7 +211,9 @@ def build(ctx) -> str:
   .p2-tbl tbody tr:nth-child(even) td {{ background:{C['wash']}; }}
   .p2-tbl tbody td.p2-d {{ padding-left:2.5mm; }}
   .p2-tbl tbody td.p2-tot {{ padding-right:2.5mm; }}
-  .p2-name {{ color:{C['ink']}; font-weight:600; }}
+  .p2-name {{ color:{C['ink']}; font-weight:600; text-decoration:none; }}
+  .p2-fiche-lnk {{ color:{C['navy']}; }}
+  .p2-fiche-i {{ color:{C['gold']}; font-weight:700; margin-left:3px; }}
   .p2-mk {{ color:{C['muted']}; font-size:7.6pt; margin-left:5px; }}
   .p2-tva {{ color:{C['muted']}; font-size:8pt; }}
   .p2-tot {{ font-weight:700; color:{C['navy']}; white-space:nowrap; }}
@@ -213,7 +234,9 @@ def build(ctx) -> str:
     margin-left:6px; }}
 
   .p2-fiche {{ font-size:8pt; color:{C['muted']}; margin-top:2mm; }}
-  .p2-fiche b {{ color:{C['navy']}; font-weight:700; }}
+  .p2-fiche-btn {{ text-decoration:none; color:{C['navy']}; font-weight:700;
+    white-space:nowrap; }}
+  .p2-fiche-i {{ color:{C['gold']}; font-weight:700; }}
 
   /* Totals chains side by side */
   .p2-totals {{ display:flex; gap:5mm; margin-top:3.5mm; }}
@@ -308,8 +331,9 @@ def build(ctx) -> str:
     </div>
   </div>
 
-  <div class="p2-fiche">Fiches techniques complètes des produits →
-    <b>{produits_link}</b></div>
+  <div class="p2-fiche">Chaque équipement renvoie à sa fiche technique complète —
+    bibliothèque&nbsp;: <a class="p2-fiche-btn"
+    href="{_produits_href(produits_link)}">{produits_link}<span class="p2-fiche-i"> &rsaquo;</span></a></div>
 
   <div class="p2-totals">
     {totals_sans}

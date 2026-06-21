@@ -108,6 +108,85 @@ def fmt(n) -> str:
     return f"{n:,.0f}".replace(",", " ")
 
 
+# French name particles that stay lowercase inside a name.
+_NAME_PARTICLES = {"de", "du", "des", "la", "le", "les", "van", "von",
+                   "el", "al", "ben", "bin", "ould", "aït", "ait"}
+
+
+def titlecase_name(name) -> str:
+    """Display-case a person's name: 'meryem hida' -> 'Meryem Hida'.
+
+    Leaves already-mixed-case tokens (e.g. 'McAdam', 'TAQINOR') untouched, keeps
+    French/Arabic particles lowercase mid-name, and splits on spaces/hyphens so
+    'jean-pierre' -> 'Jean-Pierre'. Never raises on odd input.
+    """
+    s = str(name or "").strip()
+    if not s:
+        return ""
+
+    def cap_token(tok, first):
+        if not tok:
+            return tok
+        # Respect intentional internal capitals (McAdam, TAQINOR, d'Or).
+        if tok[1:] != tok[1:].lower():
+            return tok
+        low = tok.lower()
+        if not first and low in _NAME_PARTICLES:
+            return low
+        return low[:1].upper() + low[1:]
+
+    out = []
+    for i, word in enumerate(s.split(" ")):
+        parts = word.split("-")
+        out.append("-".join(
+            cap_token(p, first=(i == 0 and j == 0))
+            for j, p in enumerate(parts)))
+    return " ".join(out)
+
+
+def join_meta(*parts, sep=" · ") -> str:
+    """Join non-empty, stripped meta fragments with `sep` (no dangling commas/dots
+    when a field like the address or city is missing)."""
+    clean = [str(p).strip().strip(",").strip() for p in parts if p and str(p).strip()]
+    return sep.join(c for c in clean if c)
+
+
+def fiche_slug(designation, marque="") -> str:
+    """Map an equipment line to its fiche-technique page slug on taqinor.ma.
+
+    Keyword-classified on the designation + brand, EXACTLY mirroring the slugs
+    built by docs/WEB_PLAN.md W141–W145 (the /produits/<slug> pages), so a quote
+    link always points at a real datasheet page. Returns '' when no datasheet is
+    known (TAQINOR's own structures/socles/installation/transport/services)."""
+    blob = f"{designation} {marque}".lower()
+    if "panneau" in blob or "panel" in blob:
+        return "jinko-710" if "jinko" in blob else "canadian-solar-710"
+    if "onduleur" in blob or "inverter" in blob:
+        if "hybride" in blob or "hybrid" in blob:
+            return "onduleur-deye-hybride"
+        if "réseau" in blob or "reseau" in blob or "injection" in blob:
+            return "onduleur-huawei-reseau"
+        return "onduleur-huawei-reseau"
+    if "batterie" in blob or "battery" in blob:
+        return "batterie-dyness"
+    if "smart meter" in blob or "compteur" in blob:
+        return "smart-meter-huawei"
+    if "dongle" in blob or "wifi" in blob:
+        return "wifi-dongle-huawei"
+    return ""
+
+
+def fiche_href(designation, marque="", produits_base="taqinor.ma/produits") -> str:
+    """Full https URL of a line's fiche-technique page, or '' if none."""
+    slug = fiche_slug(designation, marque)
+    if not slug:
+        return ""
+    base = (produits_base or "taqinor.ma/produits").strip().rstrip("/")
+    if not base.startswith("http"):
+        base = "https://" + base
+    return f"{base}/{slug}"
+
+
 def base_css() -> str:
     """Page frame + design tokens shared by all three pages."""
     return f"""

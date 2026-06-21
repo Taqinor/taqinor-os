@@ -920,6 +920,119 @@ fuel) — published as cited, dated, labelled ranges.*
   second `FAQPage`; `/blog` is present in the sitemap and `/preview/*` still absent. Accept: new
   assertions pass, full suite green, Lighthouse held. Files: `apps/web/tests/*.ts` (+ new files).
 
+### W141–W145 — FICHES TECHNIQUES LIBRARY (host product datasheets on taqinor.ma; founder request 2026-06-21)
+
+*Goal: the equipment in every quote (panels, inverters, batteries, smart meter,
+dongle…) gets a real **fiche technique** that lives on taqinor.ma — so the
+quote PDF/web proposal can link `taqinor.ma/produits/<slug>` and the client
+downloads the datasheet from OUR site, not a manufacturer's. The quote engine
+already links to `taqinor.ma/produits`; these tasks build that destination.*
+
+> **Source datasheets (official manufacturer PDFs — host a copy + cite the
+> source on each page).** Catalogue products map to these public datasheets:
+> - **Panneau Canadian Solar 710W** (TOPBiHiKu7, CS7N-685…715TB-AG) →
+>   `https://static.csisolar.com/wp-content/uploads/2022/12/12090125/CS-Datasheet-TOPBiHiKu7-TOPCon_CS7N-TB-AG_v1.62C3_EN.pdf`
+> - **Panneau Jinko 710W** (Tiger Neo 66HL5-BDV 710–735W) → hub
+>   `https://www.jinkosolar.com/en/site/tigerneo` (datasheet via ENF
+>   `https://www.enfsolar.com/pv/panel-datasheet/crystalline/68315`)
+> - **Onduleurs réseau Huawei 5/10/12kW** (SUN2000-3-10KTL-M1/M0) →
+>   `https://solar.huawei.com/-/media/Solar/attachment/pdf/apac/datasheet/SUN2000-5-10KTL-M0-M1.pdf`
+> - **Onduleur réseau Huawei 100kW** (SUN2000-100KTL) →
+>   `https://solar.huawei.com/-/media/Solar/attachment/pdf/in/datasheet/SUN2000-100KTL-INM0.pdf`
+> - **Onduleurs hybrides Deye 5–12kW** (SUN-5/6/8/10/12K-SG04LP3-EU) →
+>   `https://www.deyeinverter.com/deyeinverter/2024/10/21/datasheet_sun-5-12k-sg04lp3_241021_en.pdf`
+> - **Batterie Dyness** (DL5.0C / DL5.0C PRO, LFP 5,12 kWh) →
+>   `https://www.dyness.com/Public/Uploads/uploadfile/files/20241023/DynessDL5.0CdatasheetEN.pdf`
+>   (the catalogue label "Deyness" is the **Dyness** brand — page Équipement confirms it)
+> - **Smart Meter Huawei** (DTSU666-H Smart Power Sensor) →
+>   `https://solar.huawei.com/~/media/Solar/attachment/pdf/es/datasheet/SmartPowerSensor.pdf`
+> - **Wifi Dongle Huawei** (Smart Dongle-WLAN-FE, SDongleA-05, region MEA) →
+>   `https://solar.huawei.com/-/media/Solar/attachment/pdf/mea/datasheet/SmartDongle-WLAN-FE.pdf`
+> - Structures acier/alu, Socles, Tableau AC/DC, Accessoires, Installation,
+>   Transport, Suivi = **TAQINOR's own** components/prestations — no manufacturer
+>   datasheet; author a short in-house spec card (founder supplies copy) or omit.
+> Quote-engine slugs (must match these pages so the PDF links resolve):
+> `canadian-solar-710`, `jinko-710`, `onduleur-huawei-reseau`,
+> `onduleur-deye-hybride`, `batterie-dyness`, `smart-meter-huawei`,
+> `wifi-dongle-huawei`.
+
+- [x] W141 — **Host the datasheet PDFs on taqinor.ma.** *(2026-06-21: `fiches.ts`
+  manifest shipped (7 products, Dyness corrected) + `ficheDownloadHref` uses the
+  self-hosted `/fiches/<slug>.pdf` when present, else the official source — so the
+  download always works today. Actually fetching + self-hosting the PDF binaries
+  is split out into **W146** (a normal build task — NOT a founder chore), because a
+  bare programmatic GET hit HTTP 403 on at least one manufacturer; W146 fetches
+  them with a real browser UA / mirror and flips the `pdf` fields.)* Download each official PDF
+  above into `apps/web/public/fiches/<slug>.pdf` (one per slug; panels/inverters/
+  battery/meter/dongle) so they are served from `taqinor.ma/fiches/<slug>.pdf` —
+  no hotlinking a manufacturer URL at runtime. Keep a small
+  `apps/web/src/data/fiches.ts` manifest (slug → {nom, marque, modèle, catégorie,
+  pdf path, source URL, key specs}) as the single source of truth. **Done =** each
+  PDF is reachable under `/fiches/<slug>.pdf`; the manifest lists every catalogue
+  product with a datasheet; vitest asserts every manifest `pdf` file exists.
+  Files: `apps/web/public/fiches/*.pdf`, `apps/web/src/data/fiches.ts`.
+
+- [x] W142 — **Fiches library hub `/produits`.** A premium, mobile-first public page
+  listing every product from the W141 manifest grouped by catégorie (Panneaux,
+  Onduleurs réseau, Onduleurs hybrides, Batteries, Accessoires), each card showing
+  marque/modèle + key specs + a "Fiche technique (PDF) ›" download and a link to its
+  detail page (W143). Brand-filterable. Mirrors the site's navy/gold + DM Serif/DM
+  Sans language. This IS the destination the quote engine already links to
+  (`taqinor.ma/produits`). **Done =** `/produits` renders the full grid responsively
+  (Lighthouse mobile ≥ 90); each card downloads the right PDF. Files: new
+  `apps/web/src/pages/produits/index.astro` + a card component, reads `fiches.ts`.
+
+- [x] W143 — **Per-product fiche pages `/produits/<slug>`.** A detail route generated
+  from the W141 manifest (`getStaticPaths`) for each slug: hero (marque/modèle/
+  catégorie), a clean key-spec table, the embedded/downloadable datasheet, the
+  TAQINOR garanties for that family, and a "Demander un devis" CTA. Add JSON-LD
+  `Product` structured data (keep `/faq` the sole FAQPage owner — see W98). **Done =**
+  every slug renders with specs + PDF + valid Product JSON-LD; included in the
+  sitemap; vitest covers one panel + one inverter slug. Files: new
+  `apps/web/src/pages/produits/[slug].astro`, reuse SEO head partial.
+
+- [x] W144 — **Wire the funnel: link fiches from the web proposal (W116) + nav.** *(2026-06-21: nav (Ressources dropdown) + footer now expose `/produits`, and the **devis PDF** already deep-links each equipment line to `/produits/<slug>`. The web-proposal row-linking part waits on W116, which is not built yet.)* On
+  the client web proposal (W116), make each equipment line link to its
+  `/produits/<slug>` page (match by the same slug map above; unmatched lines stay
+  plain text). Add "Produits / Fiches techniques" to the site nav + footer so the
+  library is discoverable. **Done =** proposal equipment rows deep-link to the right
+  fiche; nav/footer expose `/produits`; vitest asserts the slug map resolves the
+  catalogue's panel/inverter/battery names. Files: `proposition/[token].astro`
+  (W116), nav/footer components, shared slug map in `fiches.ts`.
+
+- [x] W145 — **Sitemap + SEO for the library.** Ensure `/produits` and every
+  `/produits/<slug>` are in the sitemap (W100), have unique titles/descriptions
+  (W99), and that the PDFs are crawlable but not duplicated as canonical pages.
+  **Done =** sitemap includes the library; per-page head is unique; Vitest SEO
+  invariants (W104) extended to cover `/produits`. Files: sitemap config,
+  `produits/*` heads, SEO tests.
+
+- [ ] W146 — **Self-host the actual datasheet PDFs on taqinor.ma (no manufacturer
+  hotlink).** For every fiche in `src/lib/fiches.ts`, fetch the official PDF from
+  its `datasheet` URL and save it under `apps/web/public/fiches/<slug>.pdf`, then
+  set the manifest `pdf` field to `/fiches/<slug>.pdf` so `ficheDownloadHref`
+  serves the file from OUR domain (the source URL stays the automatic fallback, so
+  the link is never dead). Some manufacturer URLs return **HTTP 403 to a bare
+  programmatic GET** (seen on Canadian Solar from the build env): fetch with a
+  normal browser `User-Agent`/`Referer`, or pull the same datasheet from the
+  manufacturer's product page / official mirror — **research it, do not leave it as
+  a founder chore**; only the genuinely unreachable ones stay on the source-URL
+  fallback with a one-line note. Keep file sizes sane (these are ~1–3 MB each).
+  **Done =** every reachable fiche serves a self-hosted `/fiches/<slug>.pdf`;
+  `fiches.test.ts` asserts that any non-null `pdf` path exists on disk under
+  `apps/web/public`. Files: `apps/web/public/fiches/*.pdf`,
+  `apps/web/src/lib/fiches.ts`, `apps/web/tests/fiches.test.ts`.
+
+- [ ] W147 — **Embed the datasheet inline on each `/produits/<slug>` page.** Beyond
+  the download button, render the self-hosted PDF inline (a lazy `<object>`/
+  `<iframe>` preview with a graceful "Télécharger la fiche (PDF)" fallback for
+  mobile/no-PDF-viewer), so the fiche is truly *integrated* in the page, not just
+  linked out. Respect reduced-motion and keep CLS at zero (reserve the box). Skip
+  the embed (download-only) when a fiche has no self-hosted `pdf` yet (W146). **Done
+  =** a slug with a hosted PDF shows an inline preview on desktop + a clean download
+  fallback on mobile; Lighthouse stays ≥ 95; Vitest covers the embed-vs-fallback
+  branch. Files: `apps/web/src/pages/produits/[slug].astro`, `tests/fiches.test.ts`.
+
 ---
 
 ## GATED — needs the founder's decision before building (agent does NOT auto-build)
