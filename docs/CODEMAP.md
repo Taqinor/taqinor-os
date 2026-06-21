@@ -1,8 +1,8 @@
 # CODEMAP — TAQINOR OS
 
-Generated from commit `HEAD` on 2026-06-20 (modularity + account-security run — structural surface: `core/mixins.py` (`TenantMixin`) + `core/scoping.py` now hold the shared primitives with `authentication/{mixins,scoping}.py` as re-export shims (M5); `core/events.py` Django-signal event bus with `ventes` emitting `devis_accepted` and `apps/crm/receivers.py` subscribing via `CrmConfig.ready` (M6); `installations`/`ventes`/`stock` `views.py` → `views/` packages and `installations/models.py` → `models_chantier/_field/_installation/_intervention.py` (M7, re-exported, no migration); `authentication.UserSession` (migration 0012) + `must_change_password`/`password_changed_at` with `auth/sessions/` list+`<id>/revoke/` and `auth/change-password/` endpoints (N96); cross-app calls rerouted through new `selectors.py` in crm/ventes/stock/installations + new stock/sav services (M2); a `lint-imports` import-linter step in the backend-lint CI job (M3). PRIOR (parallel build run) — additive structural surface: supplier procurement `stock.ReceptionFournisseur`/`LigneReceptionFournisseur` + `FactureFournisseur`/`LigneFactureFournisseur`/`PaiementFournisseur` (migration stock/0021) with endpoints `receptions-fournisseur`/`factures-fournisseur`/`comptes-a-payer`/`paiements-fournisseur` and routes `/stock/receptions-fournisseur`, `/stock/factures-fournisseur`; `crm.Lead.langue_preferee` (crm/0019); `notifications.EventType.DIGEST` + `notifications.PushSubscription` (notifications/0002,0003) with push subscribe/unsubscribe/vapid-public-key endpoints + `notifications/digests.py` beat jobs; `reporting.SavedReport` (reporting/0001) with `saved-reports` CRUD + `reporting/scheduled_reports.py` email beat job; `authentication.CustomUser` TOTP 2FA fields (authentication/0011) with `auth/2fa/*` endpoints; `installations` energy-report `@action` `chantiers/<id>/rapport-energie/`; new `celery_beat` process in docker-compose. Prior: refinement-queue batch — stock.Categorie.type_equipement, sav.Equipement serial constraint, /ventes/paiements, shared apps/records/xlsx.py. Error-plan drain 2026-06-20 — additive structural deltas only: `stock.StockEmplacement` company in `unique_together` + non-negative `quantite` CheckConstraint (migration stock/0022); `crm.Lead.gps_lat`/`gps_lng` range validators (migration crm/0020); `ventes.Devis.tva_par_taux` per-rate quantized property; `notifications` business-event producers wired via `AppConfig.ready()` (`notifications/signals.py`); `publicapi` SSRF allowlist (`publicapi/validators.py`); `installations.tool_return` now accepts POST; FastAPI `sqlparse` pinned. No new models/endpoints/routes.).
+Generated from commit `HEAD` on 2026-06-21 (modularity + account-security run — structural surface: `core/mixins.py` (`TenantMixin`) + `core/scoping.py` now hold the shared primitives with `authentication/{mixins,scoping}.py` as re-export shims (M5); `core/events.py` Django-signal event bus with `ventes` emitting `devis_accepted` and `apps/crm/receivers.py` subscribing via `CrmConfig.ready` (M6); `installations`/`ventes`/`stock` `views.py` → `views/` packages and `installations/models.py` → `models_chantier/_field/_installation/_intervention.py` (M7, re-exported, no migration); `authentication.UserSession` (migration 0012) + `must_change_password`/`password_changed_at` with `auth/sessions/` list+`<id>/revoke/` and `auth/change-password/` endpoints (N96); cross-app calls rerouted through new `selectors.py` in crm/ventes/stock/installations + new stock/sav services (M2); a `lint-imports` import-linter step in the backend-lint CI job (M3). PRIOR (parallel build run) — additive structural surface: supplier procurement `stock.ReceptionFournisseur`/`LigneReceptionFournisseur` + `FactureFournisseur`/`LigneFactureFournisseur`/`PaiementFournisseur` (migration stock/0021) with endpoints `receptions-fournisseur`/`factures-fournisseur`/`comptes-a-payer`/`paiements-fournisseur` and routes `/stock/receptions-fournisseur`, `/stock/factures-fournisseur`; `crm.Lead.langue_preferee` (crm/0019); `notifications.EventType.DIGEST` + `notifications.PushSubscription` (notifications/0002,0003) with push subscribe/unsubscribe/vapid-public-key endpoints + `notifications/digests.py` beat jobs; `reporting.SavedReport` (reporting/0001) with `saved-reports` CRUD + `reporting/scheduled_reports.py` email beat job; `authentication.CustomUser` TOTP 2FA fields (authentication/0011) with `auth/2fa/*` endpoints; `installations` energy-report `@action` `chantiers/<id>/rapport-energie/`; new `celery_beat` process in docker-compose. Prior: refinement-queue batch — stock.Categorie.type_equipement, sav.Equipement serial constraint, /ventes/paiements, shared apps/records/xlsx.py. Error-plan drain 2026-06-20 — additive structural deltas only: `stock.StockEmplacement` company in `unique_together` + non-negative `quantite` CheckConstraint (migration stock/0022); `crm.Lead.gps_lat`/`gps_lng` range validators (migration crm/0020); `ventes.Devis.tva_par_taux` per-rate quantized property; `notifications` business-event producers wired via `AppConfig.ready()` (`notifications/signals.py`); `publicapi` SSRF allowlist (`publicapi/validators.py`); `installations.tool_return` now accepts POST; FastAPI `sqlparse` pinned. No new models/endpoints/routes.).
 Structure fingerprint: 62e49ce2e9f2d8e47f68821546567dee4a1d295d42f99bebe6d47c3326dd15d0
-Plan fingerprint: 648feb30d3cf9faa82f1de257d16998f613be8c0817e9ab96f1c3b36ddd9a1c2
+Plan fingerprint: 11965997ad8ee9ee68183d693e1f1535dd68db94b7f8f89e18fece4988a27be2
 
 > This file is **regenerated by the build pipeline**. It is derived by reading the
 > actual source (models, urls, serializers, settings, docker-compose, requirements,
@@ -619,7 +619,7 @@ refreshing this section fails CI, exactly like the structure fingerprint guards 
 Done/Open/Blocked lists below are produced verbatim by `python scripts/codemap_fingerprint.py
 --print-plan-status`; regenerate them and re-run `--write` whenever task states change.
 
-**Totals: 853 tasks — 129 done · 718 open · 6 blocked.** (2026-06-21 planning run
+**Totals: 860 tasks — 129 done · 725 open · 6 blocked.** (2026-06-21: integrated origin/main; added Group Q (Q1–Q7) Devis↔Toiture-3D pipeline backend to PLAN2; web tasks W112–W118 in WEB_PLAN, outside the plan-fingerprint surface.)
 added the FG1–FG399 feature-gap + functional-domain backlog, 275 new-module deep-dive tasks across
 nine modules (PAIE/COMPTA/PROJ/GED/FLOTTE/QHSE/CONTRAT/KB/LITIGE), and DC1–DC42 data-connectivity
 tasks to `docs/PLAN.md`. No task was built or ticked — backlog additions only; done/blocked counts
@@ -762,7 +762,7 @@ are unchanged from the prior batch.)
 - `N110` — Admin cannot change a user's role manually (Administration → Utilisateurs → edit…
 - `G10` — Lead-source capture (G10 first half): (1) add nullable fields to the lead model —…
 
-**Open — to build (718)**
+**Open — to build (725)**
 
 - `COMPTA1` — Plan comptable CGNC paramétrable + `seed_plan_comptable` idempotent
 - `COMPTA2` — Mapping document→compte par société (familles/TVA/modes de paiement → comptes)
@@ -1482,6 +1482,13 @@ are unchanged from the prior batch.)
 - `QHSE38` — `ConformiteEnvironnementale` + relances
 - `QHSE39` — `BilanCarbone` interne (scopes 1/2/3)
 - `QHSE40` — `IndicateurESG` + export reporting
+- `Q1` — `Devis.roof_layout` storage + endpoints
+- `Q2` — Client roof-POINT capture on the Lead (pin, not drawing)
+- `Q3` — `build_devis_from_layout()` service (server-side)
+- `Q4` — Roof-render image storage
+- `Q5` — Feed roof render + layout figures into the quote data (additive/guarded)
+- `Q6` — Tokenized web-proposal data endpoint
+- `Q7` — E-signature acceptance (reuse the existing stamp)
 
 **Blocked — awaiting founder decision (6)**
 
