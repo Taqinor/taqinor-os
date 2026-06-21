@@ -1260,11 +1260,15 @@ supply a photo / official brand SVGs) — flagged inline; build the rest.*
 - [ ] W216 — **Skip-to-content link + `id` on `<main>`.** Files: `apps/web/src/layouts/Layout.astro`.
 - [ ] W217 — **Set `color-scheme: dark` globally** (fixes light-mode native `<select>` menus on
   the dark canvas + scrollbar/autofill) + a `::selection` brass color. Files: `apps/web/src/styles/global.css`.
-- [ ] W218 — **Complete the favicon/app-icon set** (ico, 180×180 apple-touch, 512 maskable) +
-  `site.webmanifest` + `theme-color`. *(Asset available 2026-06-21: source favicon + app-icon PNGs
-  (64/128/256/512px) + `taqinor_favicon.svg` from the official logo pack at `apps/web/public/brand/`;
-  derive the icon set from these rather than the placeholder `public/favicon.svg`.)* Files:
-  `apps/web/public/`, `apps/web/public/brand/`, `apps/web/src/layouts/Layout.astro`.
+- [x] W218 — **Complete the favicon/app-icon set** + `site.webmanifest` + `theme-color`.
+  *(Shipped 2026-06-21: real brand lockup wired as `apple-touch-icon.png` (256px) + `icon-512.png`
+  from the official logo pack; added `site.webmanifest` (name/theme `#070b1d`/bg + 256+512 icons) and
+  the `apple-touch-icon`/`manifest` head links; `theme-color` already present; kept the lightweight
+  square sun `favicon.svg` for the 16–32px browser tab because the wordmark is illegible at that size.
+  Deliberate deviations from the original spec: apple-touch is 256 not 180, no `.ico` (SVG-first), and
+  icons are `purpose:"any"` not maskable — the wordmark lockup has no maskable safe-zone. Refine later
+  if a dedicated icon-only mark is produced.)* Files: `apps/web/public/apple-touch-icon.png`,
+  `apps/web/public/icon-512.png`, `apps/web/public/site.webmanifest`, `apps/web/src/layouts/Layout.astro`.
 - [ ] W219 — **Complete the Twitter/X card** (`twitter:title/description/image`) + `og:image:alt/type`.
   Files: `apps/web/src/layouts/Layout.astro`.
 - [ ] W220 — **Reserve count-up width to prevent micro-CLS** during the number animation. Files:
@@ -1306,6 +1310,13 @@ supply a photo / official brand SVGs) — flagged inline; build the rest.*
 
 - *(seeded baseline — see "ALREADY LIVE" above for the full pre-plan state of the site +
   preview lab)*
+- 2026-06-21 — W218: shipped the favicon/app-icon set from the founder's official TAQINOR logo
+  pack (staged under `apps/web/public/brand/`) — real brand lockup as apple-touch (256px) +
+  icon-512, a `site.webmanifest` (name/theme `#070b1d`/bg + 256/512 icons), and the apple-touch +
+  manifest head links; kept the lightweight square sun `favicon.svg` for the tiny browser tab.
+  W153 (founder portrait) and W187 (third-party manufacturer logos) remain ASSET-BLOCKED — neither
+  asset is present (the portrait was pasted in chat but never attached as a file; the logo pack is
+  Taqinor's own mark, not the manufacturer logos W187 needs).
 - 2026-06-20 — W75: pro-11 address `geocode` now takes a module-scoped `geoToken` (ignores stale
   responses) + an `AbortController` (aborts the previous request) and the search-form submit is
   debounced ~300 ms (mirroring the bill debounce) — rapid Enter presses resolve only to the last
