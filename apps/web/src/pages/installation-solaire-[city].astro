@@ -6,6 +6,27 @@
  * voir CITY_PAGES_NOTES.md. Aucun chantier n'est revendiqué là où il n'en
  * existe pas (`hasLocalInstall: false` → cadre honnête « zone couverte +
  * chantiers les plus proches »). Page publique, indexée.
+ *
+ * W201 — ARCHÉTYPES HÉRO CANONIQUES (3 sanctionnés, ne pas en inventer d'autres) :
+ *
+ *   A. VIDÉO-AFFICHE  (index.astro)
+ *      — Plein écran min-h-[92svh], vidéo différée + affiche AVIF/WebP, scrim
+ *        `.hero-scrim` canonique, titre ancré en bas à gauche. Réservé à l'accueil.
+ *
+ *   B. PHOTO-REMPLISSAGE  ← cette page utilise cet archétype
+ *      (installation-solaire-[city].astro, realisations/[slug].astro, et leurs jumeaux)
+ *      — `relative isolate mt-6 overflow-hidden`, photo `absolute inset-0 -z-10`
+ *        via Picture.astro (eager + fetchpriority high), dégradé `from-nuit`, contenu
+ *        texte `pt-24 pb-16 sm:pt-32 sm:pb-20` dans un `max-w-6xl`. Cadence :
+ *        eyebrow tech-label + h1 display v2-page-title + lead v2-lead.
+ *
+ *   C. TEXTE-SEUL  (realisations/index.astro, nos-solutions.astro, guides/…)
+ *      — Pas d'image de fond. Breadcrumb + `pt-16 pb-10 sm:pt-20`, eyebrow +
+ *        h1 display v2-page-title + lead. Fond nuit du Layout, pas de scrim.
+ *
+ * Toute nouvelle page de segment/service/ville/guide DOIT choisir l'un de ces
+ * trois archétypes et ne pas dériver. Pour ajouter un archétype, noter ici et
+ * documenter dans DESIGN_RATIONALE.md.
  */
 import Layout from '../layouts/Layout.astro';
 import V2Enhance from '../components/V2Enhance.astro';
