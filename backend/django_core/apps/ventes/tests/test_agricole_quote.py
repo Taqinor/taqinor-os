@@ -119,7 +119,8 @@ class TestAgricoleRender(SimpleTestCase):
 
     def test_key_content_present(self):
         html = self._html()
-        self.assertIn("0 carburant", html)
+        self.assertIn("carburant", html)              # zero-fuel promise (cover)
+        self.assertIn("Plus de bonbonnes", html)      # zero-fuel headline
         self.assertIn("Subvention FDA", html)
         self.assertIn("bon marché tant qu", html)        # butane punch line
         self.assertIn("Bon pour accord", html)

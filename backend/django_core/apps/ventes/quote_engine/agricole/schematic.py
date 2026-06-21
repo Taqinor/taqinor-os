@@ -298,7 +298,7 @@ def _borehole(cx, params):
         cap_src = {"puits": "Puits", "oued": "Oued", "forage": "Forage",
                    "reseau": "Réseau"}.get(src, "Puits")
     cv = params.get("pump_cv")
-    kw = _dec(params.get("pump_kw"), 2)
+    kw = _dec(params.get("pump_kw"), 1)  # 1 decimal, consistent with cover/study
     cv_txt = "" if _blank(cv) else f"{_esc(cv)} CV"
     power = " ".join(t for t in (cv_txt, f"({kw} kW)" if kw else "") if t)
     return "".join(out), title, (power or None), cap_src
