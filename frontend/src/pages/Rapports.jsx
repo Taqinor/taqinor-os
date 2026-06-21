@@ -94,6 +94,16 @@ function Table({ headers, rows, footer }) {
 // formatées) — base du pied « Total » L882.
 const sumBy = (arr, key) => (arr || []).reduce((s, o) => s + Number(o[key] || 0), 0)
 
+// FG101 — Lien de forage (drill-down) : affiche la valeur + un lien vers la
+// liste filtrée.  Peut être utilisé comme cellule de tableau (Row[0]).
+function DrillLink({ to, children }) {
+  return (
+    <Link to={to} className="font-medium text-info hover:underline">
+      {children}
+    </Link>
+  )
+}
+
 // Sous-titre interne d'une carte.
 function Subhead({ children }) {
   return (
@@ -553,24 +563,44 @@ export function Component() {
         <TabsContent value="ventes">
           {renderReportCard('sales', 'Ventes & pipeline', () => (
             <ReportCard title="Ventes & pipeline" kind="sales" params={periodParams}>
+              {/* FG101 — funnel : clic sur étape → liste leads filtrée par stage */}
               <Table headers={['Étape', 'Leads']}
-                     rows={sales.funnel.map(f => [f.label, fmt(f.count)])}
+                     rows={sales.funnel.map(f => [
+                       <DrillLink to={`/crm/leads?stage=${f.stage}`}>{f.label}</DrillLink>,
+                       fmt(f.count),
+                     ])}
                      footer={['Total', fmt(sumBy(sales.funnel, 'count'))]} />
               {sales.devis_par_statut?.length > 0 && (
                 <>
                   <Subhead>Devis par statut</Subhead>
                   <Table headers={['Statut', 'Nombre']}
-                         rows={sales.devis_par_statut.map(d => [d.label, fmt(d.count)])}
+                         rows={sales.devis_par_statut.map(d => [
+                           <DrillLink to={`/ventes/devis?statut=${d.statut}`}>{d.label}</DrillLink>,
+                           fmt(d.count),
+                         ])}
                          footer={['Total', fmt(sumBy(sales.devis_par_statut, 'count'))]} />
                 </>
               )}
               <Subhead>Par responsable</Subhead>
+              {/* FG101 — clic sur responsable → liste leads filtrée par owner */}
               <Table headers={['Responsable', 'Leads', 'Gagnés']}
-                     rows={sales.par_responsable.map(r => [r.owner__username || '—', fmt(r.count), fmt(r.gagnes)])}
+                     rows={sales.par_responsable.map(r => [
+                       r.owner__username
+                         ? <DrillLink to={`/crm/leads?owner=${encodeURIComponent(r.owner__username)}`}>{r.owner__username}</DrillLink>
+                         : '—',
+                       fmt(r.count), fmt(r.gagnes),
+                     ])}
                      footer={['Total', fmt(sumBy(sales.par_responsable, 'count')), fmt(sumBy(sales.par_responsable, 'gagnes'))]} />
               <Subhead>Pertes par motif</Subhead>
+              {/* FG101 — clic sur motif → liste leads perdus filtrée */}
               <Table headers={['Motif', 'Nombre']}
-                     rows={sales.perdus_par_motif.map(r => [r.motif_perte || 'Non précisé', fmt(r.count)])}
+                     rows={sales.perdus_par_motif.map(r => [
+                       <DrillLink
+                         to={`/crm/leads?perdu=true${r.motif_perte ? `&motif=${encodeURIComponent(r.motif_perte)}` : ''}`}>
+                         {r.motif_perte || 'Non précisé'}
+                       </DrillLink>,
+                       fmt(r.count),
+                     ])}
                      footer={['Total', fmt(sumBy(sales.perdus_par_motif, 'count'))]} />
             </ReportCard>
           ))}
@@ -589,8 +619,14 @@ export function Component() {
                      rows={stock.par_categorie.map(c => [c.categorie__nom || '—', fmt(c.nb), fmt(c.valeur_vente)])}
                      footer={['Total', fmt(sumBy(stock.par_categorie, 'nb')), fmt(sumBy(stock.par_categorie, 'valeur_vente'))]} />
               <Subhead>Stock bas</Subhead>
+              {/* FG101 — clic sur produit → liste stock filtrée par recherche */}
               <Table headers={['Produit', 'SKU', 'Stock', 'Seuil']}
-                     rows={stock.bas_stock.map(p => [p.nom, p.sku || '—', fmt(p.quantite_stock), fmt(p.seuil_alerte)])} />
+                     rows={stock.bas_stock.map(p => [
+                       <DrillLink to={`/stock/produits?search=${encodeURIComponent(p.nom)}`}>{p.nom}</DrillLink>,
+                       p.sku || '—',
+                       fmt(p.quantite_stock),
+                       fmt(p.seuil_alerte),
+                     ])} />
             </ReportCard>
           ))}
         </TabsContent>
@@ -605,8 +641,12 @@ export function Component() {
                 {' · '}garanties expirant ≤90 j : <span className="tabular-nums">{fmt(service.garanties_expirantes_90j)}</span>
               </p>
               <Subhead>Chantiers par statut</Subhead>
+              {/* FG101 — clic sur statut → liste chantiers filtrée */}
               <Table headers={['Statut', 'Nombre']}
-                     rows={service.chantiers_par_statut.map(c => [c.statut, fmt(c.count)])}
+                     rows={service.chantiers_par_statut.map(c => [
+                       <DrillLink to={`/chantiers?statut=${encodeURIComponent(c.statut)}`}>{c.statut}</DrillLink>,
+                       fmt(c.count),
+                     ])}
                      footer={['Total', fmt(sumBy(service.chantiers_par_statut, 'count'))]} />
               <Subhead>Activité technicien</Subhead>
               <Table headers={['Technicien', 'Interventions']}
