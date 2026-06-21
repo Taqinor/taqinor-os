@@ -43,6 +43,20 @@ WHISPER_CACHE_DIR = os.environ.get("WHISPER_CACHE_DIR", "")
 # "ar" couvre la Darija marocaine ; sinon on laisse l'auto-detect actif.
 WHISPER_LANGUAGE_HINT = os.environ.get("WHISPER_LANGUAGE_HINT", "")
 
+# AG10 — Transcription vocale de l'ASSISTANT via Groq Whisper (API OpenAI-
+# compatible). REUTILISE GROQ_API_KEY (deja requise pour l'agent SQL) — AUCUN
+# nouveau service payant. Distinct du chemin self-heberge S10 ci-dessus : ce
+# chemin sert le micro de l'assistant et appelle Groq en REST (whisper-large-v3),
+# FR / AR / Darija. Cle absente => degradation gracieuse (message clair), aucun
+# transcript persiste. Endpoint OpenAI-compatible audio/transcriptions de Groq.
+GROQ_WHISPER_MODEL = os.environ.get("GROQ_WHISPER_MODEL", "whisper-large-v3")
+GROQ_API_BASE_URL = os.environ.get(
+    "GROQ_API_BASE_URL", "https://api.groq.com/openai/v1"
+)
+# Indice de langue facultatif pour Groq (FR/AR/Darija). Vide => auto-detection.
+# "ar" couvre la Darija marocaine.
+GROQ_WHISPER_LANGUAGE_HINT = os.environ.get("GROQ_WHISPER_LANGUAGE_HINT", "")
+
 # Historique chat — Redis db 2 (db0=Celery, db1=Django cache)
 _REDIS_HOST = os.environ.get("REDIS_HOST", "redis")
 _REDIS_PORT = os.environ.get("REDIS_PORT", "6379")
