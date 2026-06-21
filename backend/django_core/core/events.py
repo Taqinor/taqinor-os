@@ -26,3 +26,8 @@ import django.dispatch
 # Émis à l'acceptation d'un devis.
 # Abonné dans ce repo : crm (avance l'étape du lead → SIGNED).
 devis_accepted = django.dispatch.Signal()
+
+# Émis au refus d'un devis (FG44).
+# Arguments : devis, user, motif_refus.
+# Abonné optionnellement par crm pour marquer le lead perdu (→ COLD + perdu).
+devis_refused = django.dispatch.Signal()

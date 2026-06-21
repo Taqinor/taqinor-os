@@ -65,6 +65,13 @@ class Devis(models.Model):
     date_acceptation = models.DateField(null=True, blank=True)
     accepte_par_nom = models.CharField(max_length=150, blank=True, default='')
 
+    # ── Refus explicite (FG44) — additif. Date + motif de refus capturés lors
+    # de l'action « refuser » (symétrique à « accepter »). Le chatter est mis à
+    # jour et, si le devis est lié à un lead, l'événement devis_refused est
+    # émis via core/events.py pour que le CRM puisse marquer le lead perdu.
+    date_refus = models.DateField(null=True, blank=True)
+    motif_refus = models.CharField(max_length=255, blank=True, default='')
+
     # ── Option retenue à l'acceptation (A1) — additif. Pour un devis à deux
     # options (« Sans batterie » / « Avec batterie »), enregistre laquelle le
     # client a choisie ; vide pour un devis à option unique. Cette valeur est
