@@ -435,3 +435,166 @@ class WebPushTests(TestCase):
         from .services import resolve_vapid_keys
         self.assertEqual(resolve_vapid_keys(), ('', ''))
         self.assertEqual(VapidKeyPair.objects.count(), 0)
+
+
+class SweepTaskTests(TestCase):
+    """FG1 — Balayages quotidiens des EventTypes morts."""
+
+    def setUp(self):
+        from authentication.models import Company, CustomUser
+        self.company = Company.objects.create(nom='SweepCo')
+        self.manager = CustomUser.objects.create_user(
+            username='sweepmgr', password='x',
+            company=self.company, role_legacy='admin')
+
+    def test_sweep_daily_noop_without_data(self):
+        """Sans données → 0 notifications, aucune erreur."""
+        from .sweeps import sweep_daily
+        result = sweep_daily()
+        self.assertIsInstance(result, int)
+        self.assertEqual(Notification.objects.count(), 0)
+
+    def test_sweep_warranty_expiring_emits_for_in_service_equipment(self):
+        """Un équipement EN SERVICE dont la garantie expire dans 30 jours
+        → notification WARRANTY_EXPIRING émise vers le manager."""
+        from datetime import date, timedelta
+        from apps.crm.models import Client
+        from apps.installations.models import Installation
+        from apps.sav.models import Equipement
+        from apps.stock.models import Produit
+        from .sweeps import _sweep_warranty_expiring
+
+        client = Client.objects.create(company=self.company, nom='ClientTest')
+        chantier = Installation.objects.create(
+            company=self.company, client=client,
+            reference='CH-SW-1', statut=Installation.Statut.CLOTURE)
+        produit = Produit.objects.create(
+            company=self.company, nom='Onduleur SW', prix_vente=0)
+        Equipement.objects.create(
+            company=self.company, produit=produit, installation=chantier,
+            statut=Equipement.Statut.EN_SERVICE,
+            date_fin_garantie=date.today() + timedelta(days=30))
+
+        count = _sweep_warranty_expiring(self.company)
+        self.assertEqual(count, 1)
+        n = Notification.objects.filter(
+            recipient=self.manager, event_type=EventType.WARRANTY_EXPIRING).first()
+        self.assertIsNotNone(n)
+        self.assertIn('30 jours', n.body)
+
+    def test_sweep_warranty_ignores_expired_or_far_equipment(self):
+        """Équipement dont la garantie est déjà expirée → pas de notification."""
+        from datetime import date, timedelta
+        from apps.crm.models import Client
+        from apps.installations.models import Installation
+        from apps.sav.models import Equipement
+        from apps.stock.models import Produit
+        from .sweeps import _sweep_warranty_expiring
+
+        client = Client.objects.create(company=self.company, nom='ClientOld')
+        chantier = Installation.objects.create(
+            company=self.company, client=client, reference='CH-SW-2',
+            statut=Installation.Statut.CLOTURE)
+        produit = Produit.objects.create(
+            company=self.company, nom='Panneau SW', prix_vente=0)
+        # Garantie déjà expirée (hier).
+        Equipement.objects.create(
+            company=self.company, produit=produit, installation=chantier,
+            statut=Equipement.Statut.EN_SERVICE,
+            date_fin_garantie=date.today() - timedelta(days=1))
+        count = _sweep_warranty_expiring(self.company)
+        self.assertEqual(count, 0)
+        self.assertEqual(Notification.objects.count(), 0)
+
+    def test_sweep_maintenance_due_emits_for_due_contrat(self):
+        """Contrat de maintenance dont is_due() vrai → MAINTENANCE_DUE émise."""
+        from datetime import date, timedelta
+        from apps.crm.models import Client
+        from apps.sav.models import ContratMaintenance
+        from .sweeps import _sweep_maintenance_due
+
+        client = Client.objects.create(company=self.company, nom='ClientM')
+        # date_debut très ancienne (400 jours) → is_due() doit renvoyer True.
+        ContratMaintenance.objects.create(
+            company=self.company, client=client,
+            date_debut=date.today() - timedelta(days=400), actif=True,
+            periodicite='annuel')
+
+        count = _sweep_maintenance_due(self.company)
+        self.assertEqual(count, 1)
+        n = Notification.objects.filter(
+            recipient=self.manager,
+            event_type=EventType.MAINTENANCE_DUE).first()
+        self.assertIsNotNone(n)
+        self.assertIn('ClientM', n.body)
+
+    def test_sweep_sav_breaching_emits_for_old_open_ticket(self):
+        """Ticket ouvert depuis 10 jours → SAV_TICKET_BREACHING émis."""
+        from datetime import date, timedelta
+        from apps.crm.models import Client
+        from apps.sav.models import Ticket
+        from .sweeps import _sweep_sav_breaching
+
+        client = Client.objects.create(company=self.company, nom='ClientSAV')
+        Ticket.objects.create(
+            company=self.company, client=client, reference='T-SW-1',
+            statut=Ticket.Statut.NOUVEAU,
+            date_ouverture=date.today() - timedelta(days=10))
+
+        count = _sweep_sav_breaching(self.company)
+        self.assertEqual(count, 1)
+        n = Notification.objects.filter(
+            recipient=self.manager,
+            event_type=EventType.SAV_TICKET_BREACHING).first()
+        self.assertIsNotNone(n)
+        self.assertIn('T-SW-1', n.body)
+
+    def test_sweep_chantier_due_emits_for_upcoming_chantier(self):
+        """Chantier signé avec date_pose_prevue dans 5 jours → CHANTIER_DUE."""
+        from datetime import date, timedelta
+        from apps.crm.models import Client
+        from apps.installations.models import Installation
+        from .sweeps import _sweep_chantier_due
+
+        client = Client.objects.create(company=self.company, nom='ClientCH')
+        Installation.objects.create(
+            company=self.company, client=client, reference='CH-SW-DUE',
+            statut=Installation.Statut.SIGNE,
+            date_pose_prevue=date.today() + timedelta(days=5))
+
+        count = _sweep_chantier_due(self.company)
+        self.assertEqual(count, 1)
+        n = Notification.objects.filter(
+            recipient=self.manager,
+            event_type=EventType.CHANTIER_DUE).first()
+        self.assertIsNotNone(n)
+        self.assertIn('5 jours', n.body)
+
+    def test_sweep_scoped_per_company(self):
+        """Les notifications d'une sweep ne sortent pas vers une autre société."""
+        from datetime import date, timedelta
+        from authentication.models import Company, CustomUser
+        from apps.crm.models import Client
+        from apps.sav.models import Ticket
+        from .sweeps import _sweep_sav_breaching
+
+        other_co = Company.objects.create(nom='AutreCo')
+        other_mgr = CustomUser.objects.create_user(
+            username='other_sweepmgr', password='x',
+            company=other_co, role_legacy='admin')  # noqa: F841
+
+        # Ticket de l'AUTRE société.
+        other_client = Client.objects.create(company=other_co, nom='OtherClient')
+        Ticket.objects.create(
+            company=other_co, client=other_client, reference='T-OTHER',
+            statut=Ticket.Statut.NOUVEAU,
+            date_ouverture=date.today() - timedelta(days=10))
+
+        # Sweep pour self.company : ne touche pas l'autre société.
+        count = _sweep_sav_breaching(self.company)
+        self.assertEqual(count, 0)
+        # Aucune notification pour notre manager.
+        self.assertEqual(
+            Notification.objects.filter(
+                recipient=self.manager,
+                event_type=EventType.SAV_TICKET_BREACHING).count(), 0)

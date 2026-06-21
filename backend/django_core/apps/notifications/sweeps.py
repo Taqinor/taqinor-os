@@ -1,0 +1,280 @@
+"""FG1 — Balayages quotidiens (Celery Beat) pour les EventTypes « morts ».
+
+`CHANTIER_DUE`, `WARRANTY_EXPIRING`, `MAINTENANCE_DUE`, `SAV_TICKET_BREACHING`
+étaient déclarés dans `models.py` mais jamais émis. Ces tâches idempotentes les
+activent sans rien modifier : elles scannent, notifient, et s'arrêtent là.
+
+Principes :
+  - IDEMPOTENT : ne mute aucune donnée métier ; ré-exécuter ne fait que
+    ré-émettre des notifications (la préférence in-app peut désactiver).
+  - MULTI-TENANT : chaque société est traitée isolément, bornée par company.
+  - DÉFENSIF : chaque section est dans son propre try/except — une société en
+    erreur n'empêche pas les suivantes. Aucune exception ne remonte.
+  - DESTINATAIRE : l'owner/responsable de l'enregistrement si disponible,
+    sinon les gérants/staff de la société (même logique que digests.py).
+"""
+import logging
+from datetime import date, timedelta
+
+from celery import shared_task
+
+from .models import EventType
+from .services import notify
+
+logger = logging.getLogger(__name__)
+
+# ── Seuils (constants défensives) ────────────────────────────────────────────
+WARRANTY_HORIZON_DAYS = 90   # garantie expirant dans les 90 prochains jours
+BREACH_OPEN_DAYS = 7         # ticket ouvert depuis ≥ 7 jours sans résolution
+CHANTIER_DUE_DAYS = 14      # chantier dont date_pose_prevue arrive dans 14 j
+
+
+def _companies():
+    """Toutes les sociétés actives. Vide si erreur."""
+    try:
+        from authentication.models import Company
+        return list(Company.objects.filter(actif=True))
+    except Exception:  # pragma: no cover
+        logger.warning('sweeps: chargement des sociétés impossible', exc_info=True)
+        return []
+
+
+def _managers(company):
+    """Gérants/staff de la société (même logique que digests._recipients)."""
+    try:
+        from authentication.models import CustomUser
+        base = CustomUser.objects.filter(company=company, is_active=True)
+        mgrs = [u for u in base if _is_manager(u)]
+        return mgrs if mgrs else list(base)
+    except Exception:  # pragma: no cover
+        return []
+
+
+def _is_manager(user):
+    try:
+        if getattr(user, 'is_admin_role', False):
+            return True
+        return getattr(user, 'role_tier', None) in ('admin', 'responsable')
+    except Exception:
+        return False
+
+
+def _notify_user_or_managers(user, company, event_type, title, body, link=''):
+    """Notifie `user` s'il est valide, sinon les managers de la société."""
+    if user is not None and getattr(user, 'pk', None):
+        notify(user, event_type, title, body=body, link=link, company=company)
+        return
+    for mgr in _managers(company):
+        notify(mgr, event_type, title, body=body, link=link, company=company)
+
+
+# ── WARRANTY_EXPIRING sweep ───────────────────────────────────────────────────
+
+def _sweep_warranty_expiring(company):
+    """Équipements EN SERVICE dont la garantie expire dans WARRANTY_HORIZON_DAYS.
+
+    Notifie les managers (les équipements n'ont pas d'owner dédié)."""
+    try:
+        from apps.sav.models import Equipement
+        today = date.today()
+        horizon = today + timedelta(days=WARRANTY_HORIZON_DAYS)
+        qs = Equipement.objects.filter(
+            company=company,
+            statut=Equipement.Statut.EN_SERVICE,
+            date_fin_garantie__isnull=False,
+            date_fin_garantie__gte=today,
+            date_fin_garantie__lte=horizon,
+        ).select_related('produit', 'installation')
+        count = 0
+        for eq in qs:
+            try:
+                produit_nom = (
+                    getattr(eq.produit, 'designation', '')
+                    or str(eq.produit_id)
+                )
+                delta = (eq.date_fin_garantie - today).days
+                title = 'Garantie bientôt expirée'
+                body = (
+                    f"L'équipement « {produit_nom} » "
+                    f"(n° série : {eq.numero_serie or '—'}) "
+                    f"voit sa garantie expirer dans {delta} jours "
+                    f"({eq.date_fin_garantie})."
+                )
+                link = f'/sav/equipements/{eq.pk}'
+                for mgr in _managers(company):
+                    notify(mgr, EventType.WARRANTY_EXPIRING, title,
+                           body=body, link=link, company=company)
+                count += 1
+            except Exception:  # pragma: no cover
+                logger.warning('sweeps: warranty eq %s échoué', eq.pk,
+                               exc_info=True)
+        return count
+    except Exception:  # pragma: no cover
+        logger.warning('sweeps: warranty_expiring société %s échouée',
+                       getattr(company, 'pk', None), exc_info=True)
+        return 0
+
+
+# ── MAINTENANCE_DUE sweep ─────────────────────────────────────────────────────
+
+def _sweep_maintenance_due(company):
+    """Contrats de maintenance actifs dont une visite est due aujourd'hui.
+
+    Réutilise ContratMaintenance.is_due() (même oracle que le digest).
+    Notifie les managers (les contrats n'ont pas d'owner dédié)."""
+    try:
+        from apps.sav.models import ContratMaintenance
+        qs = ContratMaintenance.objects.filter(
+            company=company, actif=True).select_related('client')
+        count = 0
+        for contrat in qs:
+            try:
+                if not contrat.is_due():
+                    continue
+                client_nom = (
+                    getattr(contrat.client, 'nom', '')
+                    or str(contrat.client_id)
+                )
+                title = 'Visite de maintenance due'
+                body = (
+                    f"Le contrat de maintenance pour « {client_nom} » "
+                    f"(périodicité : {contrat.get_periodicite_display()}) "
+                    f"a une visite due aujourd'hui."
+                )
+                link = f'/sav/maintenances/{contrat.pk}'
+                for mgr in _managers(company):
+                    notify(mgr, EventType.MAINTENANCE_DUE, title,
+                           body=body, link=link, company=company)
+                count += 1
+            except Exception:  # pragma: no cover
+                logger.warning('sweeps: maintenance contrat %s échoué',
+                               contrat.pk, exc_info=True)
+        return count
+    except Exception:  # pragma: no cover
+        logger.warning('sweeps: maintenance_due société %s échouée',
+                       getattr(company, 'pk', None), exc_info=True)
+        return 0
+
+
+# ── SAV_TICKET_BREACHING sweep ────────────────────────────────────────────────
+
+def _sweep_sav_breaching(company):
+    """Tickets ouverts depuis ≥ BREACH_OPEN_DAYS jours sans résolution.
+
+    Notifie le technicien responsable ou les managers si absent."""
+    try:
+        from apps.sav.models import Ticket
+        today = date.today()
+        breach_date = today - timedelta(days=BREACH_OPEN_DAYS)
+        qs = Ticket.objects.filter(
+            company=company,
+            statut__in=Ticket.OPEN_STATUTS,
+            annule=False,
+            date_ouverture__isnull=False,
+            date_ouverture__lte=breach_date,
+        ).select_related('technicien_responsable', 'client')
+        count = 0
+        for ticket in qs:
+            try:
+                user = ticket.technicien_responsable
+                anciennete = (today - ticket.date_ouverture).days
+                client_nom = (
+                    getattr(ticket.client, 'nom', '')
+                    or str(ticket.client_id)
+                )
+                title = 'Ticket SAV proche de son délai'
+                body = (
+                    f"Le ticket SAV « {ticket.reference} » "
+                    f"({client_nom}) est ouvert depuis {anciennete} jours "
+                    f"sans résolution "
+                    f"(priorité : {ticket.get_priorite_display()})."
+                )
+                link = f'/sav/tickets/{ticket.pk}'
+                _notify_user_or_managers(
+                    user, company, EventType.SAV_TICKET_BREACHING,
+                    title, body, link)
+                count += 1
+            except Exception:  # pragma: no cover
+                logger.warning('sweeps: breach ticket %s échoué', ticket.pk,
+                               exc_info=True)
+        return count
+    except Exception:  # pragma: no cover
+        logger.warning('sweeps: sav_breaching société %s échouée',
+                       getattr(company, 'pk', None), exc_info=True)
+        return 0
+
+
+# ── CHANTIER_DUE sweep ───────────────────────────────────────────────────────
+
+def _sweep_chantier_due(company):
+    """Chantiers dont date_pose_prevue arrive dans CHANTIER_DUE_DAYS jours
+    et dont le statut est encore en préparation (signé / matériel / à planifier).
+
+    Notifie les managers (l'Installation n'a pas d'owner FK dédié)."""
+    try:
+        from apps.installations.models import Installation
+        today = date.today()
+        horizon = today + timedelta(days=CHANTIER_DUE_DAYS)
+        statuts_planif = [
+            Installation.Statut.SIGNE,
+            Installation.Statut.MATERIEL_COMMANDE,
+            Installation.Statut.A_PLANIFIER,
+        ]
+        qs = Installation.objects.filter(
+            company=company,
+            statut__in=statuts_planif,
+            date_pose_prevue__isnull=False,
+            date_pose_prevue__gte=today,
+            date_pose_prevue__lte=horizon,
+        ).select_related('client')
+        count = 0
+        for chantier in qs:
+            try:
+                client_nom = (
+                    getattr(chantier.client, 'nom', '')
+                    or str(chantier.client_id)
+                )
+                delta = (chantier.date_pose_prevue - today).days
+                title = 'Chantier à installer bientôt'
+                body = (
+                    f"Le chantier « {chantier.reference} » "
+                    f"(client : {client_nom}) est prévu dans {delta} jours "
+                    f"({chantier.date_pose_prevue}). "
+                    f"Statut : {chantier.get_statut_display()}."
+                )
+                link = f'/installations/{chantier.pk}'
+                for mgr in _managers(company):
+                    notify(mgr, EventType.CHANTIER_DUE, title,
+                           body=body, link=link, company=company)
+                count += 1
+            except Exception:  # pragma: no cover
+                logger.warning('sweeps: chantier_due %s échoué',
+                               chantier.pk, exc_info=True)
+        return count
+    except Exception:  # pragma: no cover
+        logger.warning('sweeps: chantier_due société %s échouée',
+                       getattr(company, 'pk', None), exc_info=True)
+        return 0
+
+
+# ── Tâche Celery Beat ─────────────────────────────────────────────────────────
+
+@shared_task(name='notifications.sweep_daily')
+def sweep_daily():
+    """Balayage quotidien des EventTypes « morts » (FG1).
+
+    Pour chaque société active : garanties expirantes, maintenances dues,
+    tickets SAV en rupture de délai, chantiers à venir.
+    Best-effort par société ; renvoie le total de notifications émises."""
+    total = 0
+    for company in _companies():
+        try:
+            total += _sweep_warranty_expiring(company)
+            total += _sweep_maintenance_due(company)
+            total += _sweep_sav_breaching(company)
+            total += _sweep_chantier_due(company)
+        except Exception:  # pragma: no cover
+            logger.warning('sweeps: société %s échouée globalement',
+                           getattr(company, 'pk', None), exc_info=True)
+    logger.info('sweep_daily: %s notification(s) émise(s)', total)
+    return total
