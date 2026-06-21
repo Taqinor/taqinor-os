@@ -90,6 +90,10 @@ INSTALLED_APPS = [
     # Expose ce que l'agent peut proposer au caller, filtré par permission +
     # société. Métadonnées seulement ; l'exécution re-vérifie côté endpoint.
     'apps.agent',
+    # Group S — Messagerie interne d'équipe (« Discuss ») : DM + canaux,
+    # pièces jointes/voix, mentions, réactions, partage d'enregistrement.
+    # Multi-tenant strict ; temps réel par polling (pas de WebSocket en v1).
+    'apps.chat',
 ]
 
 MIDDLEWARE = [

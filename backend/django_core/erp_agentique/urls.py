@@ -54,6 +54,8 @@ urlpatterns = [
     path('api/django/compta/', include('apps.compta.urls')),
     # AG1 — Catalogue d'actions agentiques (métadonnées, filtré par caller).
     path('api/django/agent/', include('apps.agent.urls')),
+    # Group S — Messagerie interne d'équipe (« Discuss »).
+    path('api/django/chat/', include('apps.chat.urls')),
 ]
 
 # En production (DEBUG off + gunicorn), les statiques (admin Django) sont
