@@ -33,10 +33,13 @@ const messagesApi = {
 
   // ── Messages ──
   // Page la plus récente d'abord (newest-first) ; `before` = id/curseur pour le
-  // scroll infini inversé (charger les plus anciens).
+  // scroll infini inversé (charger les plus anciens). Le backend liste les
+  // messages via /chat/messages/?conversation=<id> (filtrage par query param).
   listMessages: (conversationId, params) =>
-    api.get(`/chat/conversations/${conversationId}/messages/`, { params }),
-  // data = { conversation, body, mentions?, attachment_ids?, reply_to? }
+    api.get('/chat/messages/', {
+      params: { conversation: conversationId, ...params },
+    }),
+  // data = { conversation, body, mentions?, reply_to?, record_type?, record_id? }
   sendMessage: (data) => api.post('/chat/messages/', data),
   editMessage: (id, data) => api.patch(`/chat/messages/${id}/`, data),
   deleteMessage: (id) => api.delete(`/chat/messages/${id}/`),
@@ -47,38 +50,46 @@ const messagesApi = {
     api.post(`/chat/conversations/${conversationId}/read/`,
       messageId ? { message: messageId } : {}),
   // Total des non-lus toutes conversations confondues → badge d'en-tête.
-  unreadCount: () => api.get('/chat/unread-count/'),
+  // Le backend répond { per_conversation: {id: n}, total } via l'action `unread`.
+  unreadCount: () => api.get('/chat/conversations/unread/'),
 
   // ── Recherche ──
-  search: (q, params) => api.get('/chat/search/', { params: { q, ...params } }),
+  search: (q, params) =>
+    api.get('/chat/conversations/search/', { params: { q, ...params } }),
 
   // ── Réactions (toggle : ajout/retrait du même emoji par le même user) ──
   toggleReaction: (messageId, emoji) =>
-    api.post(`/chat/messages/${messageId}/reactions/`, { emoji }),
+    api.post(`/chat/messages/${messageId}/react/`, { emoji }),
 
   // ── Épingles ──
   pinMessage: (messageId) => api.post(`/chat/messages/${messageId}/pin/`),
-  unpinMessage: (messageId) => api.delete(`/chat/messages/${messageId}/pin/`),
+  unpinMessage: (messageId) => api.post(`/chat/messages/${messageId}/unpin/`),
   listPinned: (conversationId) =>
-    api.get(`/chat/conversations/${conversationId}/pinned/`),
+    api.get('/chat/messages/', {
+      params: { conversation: conversationId, pinned: 1 },
+    }),
 
   // ── Pièces jointes ──
-  // Upload binaire (multipart) → renvoie un id + URL signée. `onUploadProgress`
-  // permet à FileUpload d'afficher une barre de progression.
-  uploadAttachment: (file, onUploadProgress) => {
+  // Upload binaire (multipart) → crée un message portant la pièce jointe.
+  // `onUploadProgress` permet à FileUpload d'afficher une barre de progression.
+  // Le backend attend `conversation` + `file` (et `kind=voice` pour un mémo).
+  uploadAttachment: (conversationId, file, onUploadProgress) => {
     const fd = new FormData()
+    fd.append('conversation', conversationId)
     fd.append('file', file)
-    return api.post('/chat/attachments/', fd, {
+    return api.post('/chat/messages/upload/', fd, {
       headers: { 'Content-Type': 'multipart/form-data' },
       onUploadProgress,
     })
   },
-  // URL de récupération signée d'une pièce jointe (téléchargement).
-  getAttachment: (id) => api.get(`/chat/attachments/${id}/`),
+  // Téléchargement (proxy même-origine) d'une pièce jointe d'un message.
+  getAttachment: (messageId, attachmentId) =>
+    api.get(`/chat/messages/${messageId}/attachments/${attachmentId}/download/`),
 
-  // ── Partage d'enregistrement (lead, devis, facture…) dans une conversation ──
-  // data = { conversation, record_type, record_id, note? }
-  shareRecord: (data) => api.post('/chat/share-record/', data),
+  // ── Partage d'enregistrement (lead, devis, chantier…) dans une conversation ──
+  // Le backend n'a pas de route dédiée : un partage est un message normal portant
+  // record_type/record_id. data = { conversation, record_type, record_id, body? }
+  shareRecord: (data) => api.post('/chat/messages/', data),
 
   // ── Membres de la société (pour @mentions + ajout de membres) ──
   // Réutilise l'endpoint /users/ existant (portée société côté serveur).

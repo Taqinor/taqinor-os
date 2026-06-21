@@ -498,3 +498,139 @@ class S9NotificationTests(TestCase):
             self._notifs(self.carol, 'chat_message').count(), 1)
         self.assertTrue(MessageMention.objects.filter(
             mentioned_user=self.bob).exists())
+
+    def test_mention_ids_persist_and_fire(self):
+        """S16 — les @mentions explicites (liste d'ids) persistent et déclenchent
+        un CHAT_MENTION, en plus de l'analyse du texte."""
+        with patch('apps.notifications.services._dispatch_webpush'), \
+                self.captureOnCommitCallbacks(execute=True):
+            services.create_message(
+                conversation=self.conv, sender=self.alice,
+                company=self.company, body='coucou',
+                mention_ids=[self.bob.id])
+        self.assertTrue(MessageMention.objects.filter(
+            mentioned_user=self.bob).exists())
+        self.assertEqual(
+            self._notifs(self.bob, 'chat_mention').count(), 1)
+
+    def test_mention_ids_via_api(self):
+        api = auth(self.alice)
+        with patch('apps.notifications.services._dispatch_webpush'), \
+                self.captureOnCommitCallbacks(execute=True):
+            r = api.post(
+                f'/api/django/chat/messages/?conversation={self.conv.id}',
+                {'conversation': self.conv.id, 'body': 'hello',
+                 'mentions': [self.bob.id]}, format='json')
+        self.assertEqual(r.status_code, 201, r.data)
+        self.assertTrue(MessageMention.objects.filter(
+            message_id=r.data['id'], mentioned_user=self.bob).exists())
+
+    def test_mention_ids_filtered_to_members(self):
+        """Un id hors conversation est ignoré (jamais de mention fantôme)."""
+        outsider = make_user(self.company, 'dave')
+        services.create_message(
+            conversation=self.conv, sender=self.alice,
+            company=self.company, body='salut',
+            mention_ids=[outsider.id])
+        self.assertFalse(MessageMention.objects.filter(
+            mentioned_user=outsider).exists())
+
+
+class S9MuteEndpointTests(TestCase):
+    def setUp(self):
+        self.company = make_company()
+        self.alice = make_user(self.company, 'alice')
+        self.bob = make_user(self.company, 'bob')
+        self.carol = make_user(self.company, 'carol')  # non-membre
+        self.other_co = make_company(slug='other', nom='Other')
+        self.evil = make_user(self.other_co, 'evil')
+        self.conv = make_channel(self.company, self.alice, members=[self.bob])
+
+    def test_mute_sets_member_flag(self):
+        api = auth(self.bob)
+        r = api.post(f'/api/django/chat/conversations/{self.conv.id}/mute/',
+                     {'muted': True}, format='json')
+        self.assertEqual(r.status_code, 200, r.data)
+        member = ConversationMember.objects.get(
+            conversation=self.conv, user=self.bob)
+        self.assertTrue(member.is_muted)
+        # unmute
+        r2 = api.post(f'/api/django/chat/conversations/{self.conv.id}/mute/',
+                      {'muted': False}, format='json')
+        self.assertEqual(r2.status_code, 200)
+        member.refresh_from_db()
+        self.assertFalse(member.is_muted)
+
+    def test_mute_non_member_404(self):
+        # carol n'est pas membre → la conversation n'est pas dans son queryset.
+        api = auth(self.carol)
+        r = api.post(f'/api/django/chat/conversations/{self.conv.id}/mute/',
+                     {'muted': True}, format='json')
+        self.assertEqual(r.status_code, 404)
+
+    def test_mute_cross_tenant_404(self):
+        api = auth(self.evil)
+        r = api.post(f'/api/django/chat/conversations/{self.conv.id}/mute/',
+                     {'muted': True}, format='json')
+        self.assertEqual(r.status_code, 404)
+
+
+class S20MemberManagementTests(TestCase):
+    def setUp(self):
+        self.company = make_company()
+        self.alice = make_user(self.company, 'alice')   # admin (créateur)
+        self.bob = make_user(self.company, 'bob')       # membre
+        self.dave = make_user(self.company, 'dave')     # à ajouter
+        self.other_co = make_company(slug='other', nom='Other')
+        self.evil = make_user(self.other_co, 'evil')
+        self.conv = make_channel(self.company, self.alice, members=[self.bob])
+
+    def test_admin_adds_members_same_company_only(self):
+        api = auth(self.alice)
+        r = api.post(
+            f'/api/django/chat/conversations/{self.conv.id}/members/',
+            {'member_ids': [self.dave.id, self.evil.id]}, format='json')
+        self.assertEqual(r.status_code, 200, r.data)
+        self.assertTrue(ConversationMember.objects.filter(
+            conversation=self.conv, user=self.dave).exists())
+        # evil (autre société) ignoré
+        self.assertFalse(ConversationMember.objects.filter(
+            conversation=self.conv, user=self.evil).exists())
+
+    def test_non_admin_cannot_add(self):
+        api = auth(self.bob)
+        r = api.post(
+            f'/api/django/chat/conversations/{self.conv.id}/members/',
+            {'member_ids': [self.dave.id]}, format='json')
+        self.assertEqual(r.status_code, 403)
+
+    def test_admin_removes_member(self):
+        api = auth(self.alice)
+        r = api.delete(
+            f'/api/django/chat/conversations/{self.conv.id}'
+            f'/members/{self.bob.id}/')
+        self.assertEqual(r.status_code, 204)
+        self.assertFalse(ConversationMember.objects.filter(
+            conversation=self.conv, user=self.bob).exists())
+
+    def test_non_admin_cannot_remove(self):
+        api = auth(self.bob)
+        r = api.delete(
+            f'/api/django/chat/conversations/{self.conv.id}'
+            f'/members/{self.alice.id}/')
+        self.assertEqual(r.status_code, 403)
+
+    def test_member_can_leave(self):
+        api = auth(self.bob)
+        r = api.post(
+            f'/api/django/chat/conversations/{self.conv.id}/leave/')
+        self.assertEqual(r.status_code, 204)
+        self.assertFalse(ConversationMember.objects.filter(
+            conversation=self.conv, user=self.bob).exists())
+
+    def test_leave_non_member_404(self):
+        carol = make_user(self.company, 'carol')
+        api = auth(carol)
+        r = api.post(
+            f'/api/django/chat/conversations/{self.conv.id}/leave/')
+        self.assertEqual(r.status_code, 404)
