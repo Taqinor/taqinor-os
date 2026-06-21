@@ -77,3 +77,11 @@ class EmplacementStockViewSet(TenantMixin, viewsets.ModelViewSet):
                            'avant de le supprimer.'},
                 status=status.HTTP_409_CONFLICT)
         return super().destroy(request, *args, **kwargs)
+
+    @action(detail=False, methods=['get'], url_path='suggestions-reappro',
+            permission_classes=[IsAdminRole])
+    def suggestions_reappro(self, request):
+        """FG62 — Emplacements non-principaux dont le stock est sous seuil_min,
+        avec suggestion de transfert depuis le dépôt principal. Admin-only."""
+        from ..services import suggestions_reappro_emplacement
+        return Response(suggestions_reappro_emplacement(request.user.company))
