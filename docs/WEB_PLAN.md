@@ -1164,7 +1164,7 @@ supply a photo / official brand SVGs) — flagged inline; build the rest.*
   multipliers + grayscale→color hover). Files: `apps/web/src/lib/brands.ts`, `apps/web/src/components/BrandStrip.astro`.
 - [x] W184 — **Before/during/after diptych or slider on case pages** (source material already
   exists). Files: `apps/web/src/pages/realisations/[slug].astro`, `apps/web/src/lib/realisations.ts`.
-- [ ] W185 — **Per-realisation OG card** (each case reuses a generic OG today). Files:
+- [x] W185 — **Per-realisation OG card** (each case reuses a generic OG today). Files:
   `apps/web/src/pages/realisations/[slug].astro`.
 - [ ] W186 — **Optional duotone/grade pass on non-hero photos** so the imagery matches the
   "Cinéma du chantier" claim (keep the hero ungraded for LCP). Files: `apps/web/scripts/` or scoped
@@ -1256,10 +1256,10 @@ supply a photo / official brand SVGs) — flagged inline; build the rest.*
 
 **— Performance / rendering / accessibility finish —**
 
-- [ ] W215 — **Preload the hero headline font (`archivo-latin.woff2`) + add `size-adjust`
+- [x] W215 — **Preload the hero headline font (`archivo-latin.woff2`) + add `size-adjust`
   metric-matched fallbacks** to kill the FOUT flash and font-swap CLS on the LCP `<h1>`. Files:
   `apps/web/src/layouts/Layout.astro`, `apps/web/src/styles/global.css`.
-- [ ] W216 — **Skip-to-content link + `id` on `<main>`.** Files: `apps/web/src/layouts/Layout.astro`.
+- [x] W216 — **Skip-to-content link + `id` on `<main>`.** Files: `apps/web/src/layouts/Layout.astro`.
 - [x] W217 — **Set `color-scheme: dark` globally** (fixes light-mode native `<select>` menus on
   the dark canvas + scrollbar/autofill) + a `::selection` brass color. Files: `apps/web/src/styles/global.css`.
 - [x] W218 — **Complete the favicon/app-icon set** + `site.webmanifest` + `theme-color`.
@@ -1271,9 +1271,9 @@ supply a photo / official brand SVGs) — flagged inline; build the rest.*
   icons are `purpose:"any"` not maskable — the wordmark lockup has no maskable safe-zone. Refine later
   if a dedicated icon-only mark is produced.)* Files: `apps/web/public/apple-touch-icon.png`,
   `apps/web/public/icon-512.png`, `apps/web/public/site.webmanifest`, `apps/web/src/layouts/Layout.astro`.
-- [ ] W219 — **Complete the Twitter/X card** (`twitter:title/description/image`) + `og:image:alt/type`.
+- [x] W219 — **Complete the Twitter/X card** (`twitter:title/description/image`) + `og:image:alt/type`.
   Files: `apps/web/src/layouts/Layout.astro`.
-- [ ] W220 — **Reserve count-up width to prevent micro-CLS** during the number animation. Files:
+- [x] W220 — **Reserve count-up width to prevent micro-CLS** during the number animation. Files:
   `apps/web/src/styles/v2.css`, `apps/web/src/lib/countup.ts`.
 - [x] W221 — **Add `prefers-contrast: more` / `forced-colors` handling** for the faint "lune"
   inks and brass glow. Files: `apps/web/src/styles/global.css`.
@@ -1484,3 +1484,8 @@ supply a photo / official brand SVGs) — flagged inline; build the rest.*
 - 2026-06-21 — W161: hero scroll-affordance chevron (bounce gated to no-preference, static under reduced-motion).
 - 2026-06-21 — W162: warmed the "L'argument en chiffres" stat column with a faint brass radial backing.
 - 2026-06-21 — W205: first above-the-fold figure now count-ups (existing countup.ts, width locked → zero CLS, final value instantly under reduced-motion).
+- 2026-06-21 — W216: "Aller au contenu" skip link (focus-revealed, brass) + id="main" on <main>; position:fixed → zero CLS.
+- 2026-06-21 — W219: completed Twitter card (title/description/image) + og:image:type/og:image:alt; values reuse existing meta, nothing invented.
+- 2026-06-21 — W185: Layout gains optional ogImage/ogImageAlt props; realisations/[slug] passes each case's real hero webp + French alt as its per-case OG/Twitter image.
+- 2026-06-21 — W215: preload archivo-latin.woff2 for the LCP <h1> + metric-matched Archivo/Hanken size-adjust fallbacks to cut font-swap CLS.
+- 2026-06-21 — W220: count-up width reserved (tabular-nums + min-width + exported reserveWidth() lock) to prevent micro-CLS.
