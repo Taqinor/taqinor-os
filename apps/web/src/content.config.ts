@@ -22,6 +22,9 @@ const blog = defineCollection({
     author: z.string().default('Taqinor'),
     ogSlug: z.string().optional(),
     draft: z.boolean().default(false),
+    /** Image de couverture (W198) — chemin /public relatif ou URL. Optionnel :
+     *  les articles sans cover restent valides et s'affichent sans image. */
+    cover: z.string().optional(),
   }),
 });
 
