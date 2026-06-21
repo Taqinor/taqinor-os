@@ -120,10 +120,22 @@ def payback_curve(total_sans, total_avec, eco_s, eco_a, roi_s, roi_a,
 
 
 def roof_layout(nb_panneaux, w=2.9, h=2.2) -> str:
-    """Clean top-down roof + panel array schematic."""
+    """Clean top-down roof + panel array schematic.
+
+    Picks a tidy array (minimise empty cells, gently landscape) and centres any
+    partial row, so we never leave a lone orphan square in a corner — e.g. 16
+    panels render as a full 4×4, not 5×4 with one stray square.
+    """
     import math
-    cols = max(1, round(math.sqrt(nb_panneaux * 1.7)))
-    rows = max(1, math.ceil(nb_panneaux / cols))
+    n = max(1, int(round(nb_panneaux)))
+    best = None
+    for cols in range(1, n + 1):
+        rows = math.ceil(n / cols)
+        empty = rows * cols - n
+        score = empty * 1.3 + abs(cols / rows - 1.5) + max(0, rows - cols) * 0.5
+        if best is None or score < best[0]:
+            best = (score, cols, rows)
+    cols, rows = best[1], best[2]
     fig, ax = plt.subplots(figsize=(w, h))
     ax.add_patch(FancyBboxPatch((0.03, 0.03), 0.94, 0.94,
                  boxstyle="round,pad=0,rounding_size=0.03",
@@ -131,18 +143,16 @@ def roof_layout(nb_panneaux, w=2.9, h=2.2) -> str:
     pad, gap = 0.10, 0.014
     gw = (0.94 - 2 * pad) / cols
     gh = (0.94 - 2 * pad) / rows
-    placed = 0
     for r in range(rows):
-        for c in range(cols):
-            if placed >= nb_panneaux:
-                break
-            x = pad + 0.03 + c * gw
+        in_row = min(cols, n - r * cols)
+        x_off = (cols - in_row) / 2.0          # centre a partial row
+        for c in range(in_row):
+            x = pad + 0.03 + (c + x_off) * gw
             y = pad + 0.03 + (rows - 1 - r) * gh
             ax.add_patch(FancyBboxPatch((x + gap, y + gap),
                          gw - 2 * gap, gh - 2 * gap,
                          boxstyle="round,pad=0,rounding_size=0.006",
                          linewidth=0.5, edgecolor=GOLD, facecolor=NAVY))
-            placed += 1
     ax.set_xlim(0, 1); ax.set_ylim(0, 1)
     ax.axis("off"); ax.set(aspect="equal")
     return _uri(fig)
