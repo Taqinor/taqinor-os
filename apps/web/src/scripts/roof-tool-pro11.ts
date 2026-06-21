@@ -193,6 +193,9 @@ export function initRoofToolPro8(opts: InitOptions): void {
   const pitchRangeEl = $<HTMLInputElement>('rp9-pitch-range');
   const pitchValueEl = $('rp9-pitch-value');
   const pitchedNoteEl = $('rp9-pitched-note');
+  // Correction FINE du sens de la pente (curseur 0–359° + lecture vivante).
+  const facingRangeEl = $<HTMLInputElement>('rp9-facing-range');
+  const facingValueEl = $('rp9-facing-value');
   // W50 — Fenêtre « Production estimée » (Année / Mois / Jour). Tous facultatifs :
   // l'outil fonctionne sans elle (repli gracieux).
   const prodWindowEl = $('rp9-prod-window');
@@ -1519,6 +1522,10 @@ export function initRoofToolPro8(opts: InitOptions): void {
     redrawObstacles();
     syncObsEdit();
     syncRoofTypeChips();
+    // Sens de pente PROPRE à la zone restaurée : aligne boutons cardinaux + curseur fin
+    // (la pose se re-résout ensuite via recalc → liveResolvePitched).
+    syncFacingChips();
+    syncFacingSlider();
     if (flatOnlyEl) flatOnlyEl.hidden = roofType !== 'flat';
     if (pitchedControlsEl) pitchedControlsEl.hidden = roofType !== 'pitched';
     if (configPanel) configPanel.hidden = !closed;
@@ -2035,6 +2042,20 @@ export function initRoofToolPro8(opts: InitOptions): void {
       b.setAttribute('aria-pressed', String(Number(b.dataset.facing) === Math.round(facingAzimuthDeg)));
     });
   };
+  // Boussole 8 points (FR) : nom cardinal de l'azimut courant pour la lecture vivante.
+  const facingName = (az: number): string => {
+    const names = ['Nord', 'Nord-Est', 'Est', 'Sud-Est', 'Sud', 'Sud-Ouest', 'Ouest', 'Nord-Ouest'];
+    const a = ((az % 360) + 360) % 360;
+    return names[Math.round(a / 45) % 8];
+  };
+  // Aligne le curseur fin + sa lecture sur l'azimut courant (clic bouton, zone
+  // restaurée/sélectionnée, ou réglage cardinal). Changer de zone active montre
+  // ainsi le sens de pente PROPRE à cette zone.
+  const syncFacingSlider = () => {
+    const az = ((facingAzimuthDeg % 360) + 360) % 360;
+    if (facingRangeEl) facingRangeEl.value = String(az);
+    if (facingValueEl) facingValueEl.textContent = `${facingName(az)} · ${Math.round(az)}°`;
+  };
   document.querySelectorAll<HTMLButtonElement>('[data-pitch]').forEach((b) => {
     b.addEventListener('click', () => {
       pitchDeg = Number(b.dataset.pitch);
@@ -2056,9 +2077,22 @@ export function initRoofToolPro8(opts: InitOptions): void {
     b.addEventListener('click', () => {
       facingAzimuthDeg = Number(b.dataset.facing);
       syncFacingChips();
+      syncFacingSlider();
       if (roofType === 'pitched' && closed) pitchedRecompute();
     });
   });
+  // Curseur FIN du sens de la pente (0–359°) : règle n'importe quelle direction,
+  // par zone, sans jamais rejeter le nombre tapé. Normalise dans [0,360) puis
+  // re-résout la pose en pente (zone fermée), exactement comme les boutons cardinaux.
+  facingRangeEl?.addEventListener('input', () => {
+    const v = Number(facingRangeEl.value);
+    if (!Number.isFinite(v)) return;
+    facingAzimuthDeg = ((v % 360) + 360) % 360;
+    if (facingValueEl) facingValueEl.textContent = `${facingName(facingAzimuthDeg)} · ${Math.round(facingAzimuthDeg)}°`;
+    syncFacingChips();
+    if (roofType === 'pitched' && closed) pitchedRecompute();
+  });
+  syncFacingSlider();
 
   // — V2 : curseur d'inclinaison (exploration fine) + bouton « reco » —
   if (tiltRangeEl) {
