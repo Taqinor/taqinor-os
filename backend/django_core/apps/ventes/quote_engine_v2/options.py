@@ -159,8 +159,8 @@ def build(ctx) -> str:
   /* Section header */
   .p2-kick {{ font-size:8.5pt; letter-spacing:.22em; text-transform:uppercase;
     color:{C['gold']}; font-weight:700; }}
-  .p2-title {{ font-family:{fonts['serif']}; font-weight:700; font-size:19pt;
-    color:{C['navy']}; line-height:1.05; margin-top:2mm; }}
+  .p2-title {{ font-family:{fonts['serif']}; font-weight:700; font-size:23pt;
+    color:{C['navy']}; line-height:1.04; margin-top:2mm; letter-spacing:-.3px; }}
 
   /* Top band: roof schematic + spec list */
   .p2-band {{ display:flex; align-items:center; gap:6mm; margin-top:3.5mm;

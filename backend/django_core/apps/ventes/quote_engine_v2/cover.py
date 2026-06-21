@@ -113,8 +113,8 @@ def build(ctx):
 .c1-kicker{{font-size:7pt;letter-spacing:2.6px;font-weight:700;text-transform:uppercase;}}
 
 /* ── HERO ──────────────────────────────────────────────────────────────── */
-.c1-hero{{position:relative;background:{hero_bg};height:56mm;overflow:hidden;
-  padding:9mm 14mm 0 14mm;}}
+.c1-hero{{position:relative;background:{hero_bg};height:58mm;overflow:hidden;
+  padding:9mm 14mm 0 14mm;border-bottom:2.5px solid {gold};}}
 .c1-hero-glow{{position:absolute;top:-30px;right:-40px;width:300px;height:210px;
   background:radial-gradient(ellipse at 75% 18%,rgba(245,166,35,0.30) 0%,transparent 64%);
   pointer-events:none;}}
@@ -132,8 +132,8 @@ def build(ctx):
 .c1-hero-body{{position:absolute;left:14mm;right:14mm;bottom:7mm;z-index:1;
   text-shadow:0 1px 6px rgba(0,0,0,0.40);}}
 .c1-hero-kicker{{color:{gold};margin-bottom:6px;}}
-.c1-hello{{font-size:30pt;color:#fff;line-height:1.0;letter-spacing:-0.5px;}}
-.c1-sub{{font-size:11pt;color:rgba(255,255,255,0.82);margin-top:7px;font-weight:400;}}
+.c1-hello{{font-size:37pt;color:#fff;line-height:0.98;letter-spacing:-0.6px;}}
+.c1-sub{{font-size:11.5pt;color:rgba(255,255,255,0.86);margin-top:7px;font-weight:400;}}
 
 /* ── CLIENT LINE ───────────────────────────────────────────────────────── */
 .c1-client{{display:flex;align-items:center;gap:9px;padding:4.5mm 14mm 0 14mm;
@@ -152,6 +152,14 @@ def build(ctx):
 .c1-hook-head{{display:flex;align-items:center;justify-content:space-between;margin-bottom:9px;}}
 .c1-hook-eyebrow{{color:{muted};font-size:6.5pt;letter-spacing:2px;text-transform:uppercase;
   font-weight:700;}}
+.c1-bigcut{{display:flex;align-items:center;gap:16px;margin-top:7px;}}
+.c1-bigcut-n{{font-family:'{f_display}','{f_serif}',serif;font-size:44pt;color:{gold};
+  line-height:.82;letter-spacing:-1.5px;white-space:nowrap;}}
+.c1-bigcut-n span{{font-size:21pt;vertical-align:top;}}
+.c1-bigcut-t{{font-size:11.5pt;font-weight:700;color:{navy};line-height:1.15;}}
+.c1-bigcut-c{{font-size:9.5pt;color:{muted};margin-top:5px;white-space:nowrap;}}
+.c1-bigcut-c s{{color:{muted_2};text-decoration-thickness:1.5px;}}
+.c1-bigcut-c b{{color:{navy};font-weight:700;}}
 .c1-cut{{background:{gold};color:{navy_900};font-weight:700;font-size:9.5pt;
   padding:3px 11px;border-radius:20px;letter-spacing:.2px;white-space:nowrap;}}
 .c1-cmp{{display:flex;align-items:center;gap:12px;}}
@@ -260,19 +268,13 @@ def build(ctx):
     <!-- MONEY HOOK ─────────────────────────────────────────────────────── -->
     <div class="c1-hook">
       <div class="c1-hook-left">
-        <div class="c1-hook-head">
-          <div class="c1-hook-eyebrow">Ce que le solaire change pour vous</div>
-          <div class="c1-cut">&minus;{pct_cut}&#8201;% sur votre facture</div>
-        </div>
-        <div class="c1-cmp">
-          <div class="c1-cmp-col">
-            <div class="c1-cmp-lab">Votre facture aujourd'hui</div>
-            <div class="c1-cmp-old">≈&nbsp;{fmt(annual_before)}<span class="c1-u">&nbsp;MAD/an</span></div>
-          </div>
-          {arrow}
-          <div class="c1-cmp-col">
-            <div class="c1-cmp-lab">Avec TAQINOR</div>
-            <div class="c1-cmp-new">≈&nbsp;{fmt(annual_after)}<span class="c1-u">&nbsp;MAD/an</span></div>
+        <div class="c1-hook-eyebrow">Ce que le solaire change pour vous</div>
+        <div class="c1-bigcut">
+          <div class="c1-bigcut-n">&minus;{pct_cut}<span>%</span></div>
+          <div class="c1-bigcut-x">
+            <div class="c1-bigcut-t">sur votre facture<br>d'électricité</div>
+            <div class="c1-bigcut-c">≈&nbsp;<s>{fmt(annual_before)} MAD/an</s>
+              &nbsp;&rarr;&nbsp;<b>≈&nbsp;{fmt(annual_after)} MAD/an</b></div>
           </div>
         </div>
       </div>
