@@ -1807,7 +1807,7 @@ textarea.form-control {
     align-items: center;
     justify-content: center;
     gap: 2px;
-    /* Cible tactile confortable au pouce. */
+    /* M156 — cible tactile confortable au pouce (≥ 44 px, ici 52 px). */
     min-height: 52px;
     padding: 6px 2px;
     border: none;
@@ -1815,9 +1815,18 @@ textarea.form-control {
     cursor: pointer;
     color: #64748b;
     text-decoration: none;
-    transition: color var(--motion-fast);
+    transition: color var(--motion-fast) var(--ease-out);
   }
-  .bottom-tab.active { color: #1d4ed8; }
+  /* M156 — onglet actif en BRASS (accent énergie de la marque), pas le bleu vif :
+     repère discret + petit point sous l'icône pour confirmer la position. */
+  .bottom-tab.active { color: #b8860b; font-weight: 600; }
+  .bottom-tab.active::after {
+    content: '';
+    width: 4px;
+    height: 4px;
+    border-radius: 50%;
+    background: #F5C100;
+  }
   .bottom-tab-label {
     font-size: 0.62rem;
     font-weight: 600;
