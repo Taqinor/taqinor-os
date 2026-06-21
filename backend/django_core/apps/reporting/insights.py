@@ -907,3 +907,118 @@ def cohorts(request):
         'group_by': group_by or None,
         'cohorts': result,
     })
+
+
+# ── FG99 — Rentabilité par segment ───────────────────────────────────────────
+
+@api_view(['GET'])
+@permission_classes([IsAdminRole])
+def profitability(request):
+    """FG99 — Rentabilité agrégée par segment (ADMIN uniquement).
+
+    Prix d'achat utilisé UNIQUEMENT en interne (marge).  Jamais exposé dans
+    un export client, jamais dans un PDF.
+
+    Paramètres optionnels :
+      ?segment=type_installation|canal   (défaut : type_installation)
+      ?from=YYYY-MM-DD  &to=YYYY-MM-DD
+      ?export=xlsx
+
+    Retourne pour chaque valeur de segment :
+      - segment_value   : valeur du segment
+      - count           : nombre de chantiers
+      - revenue_ht      : CA facturé HT (somme Factures non annulées)
+      - cost_estimate   : coût matière estimé (HT achat × qté)  [INTERNE]
+      - margin          : marge brute  [INTERNE]
+      - margin_pct      : taux de marge  [INTERNE]
+    """
+    co = _co(request.user)
+    if co is None:
+        return Response({'detail': 'Accès refusé.'}, status=403)
+
+    from apps.installations.models import Installation
+    from apps.ventes.models import Devis, Facture
+
+    segment_field = request.query_params.get('segment', 'type_installation')
+    allowed = {'type_installation', 'canal'}
+    if segment_field not in allowed:
+        return Response(
+            {'detail': f'?segment doit être parmi {sorted(allowed)}.'},
+            status=400)
+
+    start = _qdate(request.query_params.get('from'))
+    end = _qdate(request.query_params.get('to'))
+
+    chantiers_qs = Installation.objects.filter(**co).select_related(
+        'devis', 'lead').prefetch_related('devis__lignes__produit')
+    if start:
+        chantiers_qs = chantiers_qs.filter(date_creation__date__gte=start)
+    if end:
+        chantiers_qs = chantiers_qs.filter(date_creation__date__lte=end)
+
+    # Factures non annulées par devis_id.
+    factures = (Facture.objects.filter(**co)
+                .exclude(statut=Facture.Statut.ANNULEE)
+                .exclude(devis__isnull=True)
+                .prefetch_related('lignes'))
+    invoiced_by_devis = defaultdict(Decimal)
+    for f in factures:
+        invoiced_by_devis[f.devis_id] += Decimal(f.total_ht)
+
+    buckets: dict = defaultdict(lambda: {
+        'count': 0, 'revenue': Decimal('0'), 'cost': Decimal('0')
+    })
+
+    for ch in chantiers_qs:
+        if segment_field == 'type_installation':
+            key = ch.type_installation or '—'
+        else:  # canal
+            key = (ch.lead.canal if ch.lead_id and ch.lead else '') or '—'
+
+        invoiced = (invoiced_by_devis.get(ch.devis_id, Decimal('0'))
+                    if ch.devis_id else Decimal('0'))
+        cost = _devis_cost_estimate(ch.devis) if ch.devis_id else Decimal('0')
+        buckets[key]['count'] += 1
+        buckets[key]['revenue'] += invoiced
+        buckets[key]['cost'] += cost
+
+    rows = []
+    for key in sorted(buckets.keys()):
+        b = buckets[key]
+        margin = b['revenue'] - b['cost']
+        margin_pct = (float(margin / b['revenue'] * 100)
+                      if b['revenue'] else 0.0)
+        rows.append({
+            'segment_value': key,
+            'count': b['count'],
+            'revenue_ht': str(b['revenue']),
+            'cost_estimate': str(b['cost']),    # INTERNE
+            'margin': str(margin),              # INTERNE
+            'margin_pct': round(margin_pct, 1),  # INTERNE
+        })
+    rows.sort(key=lambda r: r['revenue_ht'], reverse=True)
+
+    x = _maybe_xlsx(
+        request, 'rentabilite-INTERNE.xlsx',
+        ['Segment', 'Chantiers', 'CA facturé HT',
+         'Coût estimé (interne)', 'Marge (interne)', 'Marge %'],
+        [[r['segment_value'], r['count'], r['revenue_ht'],
+          r['cost_estimate'], r['margin'], r['margin_pct']]
+         for r in rows],
+        'Rentabilité par segment (interne)')
+    if x:
+        return x
+
+    total_rev = sum((Decimal(r['revenue_ht']) for r in rows), Decimal('0'))
+    total_cost = sum((Decimal(r['cost_estimate']) for r in rows), Decimal('0'))
+
+    return Response({
+        'internal': True,
+        'segment': segment_field,
+        'from': start.isoformat() if start else None,
+        'to': end.isoformat() if end else None,
+        'total_revenue_ht': str(total_rev),
+        'total_cost_estimate': str(total_cost),
+        'total_margin': str(total_rev - total_cost),
+        'rows': rows,
+    })

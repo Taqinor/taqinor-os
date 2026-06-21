@@ -6,7 +6,7 @@ from .pipeline import pipeline
 from .reports import sales_report, stock_report, service_report
 from .insights import (
     recurring_revenue, audit_log, job_costing, analytics, commissions,
-    sales_leaderboard, cf_group_by, cohorts,
+    sales_leaderboard, cf_group_by, cohorts, profitability,
 )
 from .archive import archive_client, archive_chantier
 from .calendar import calendar_events, calendar_reschedule
@@ -45,6 +45,8 @@ urlpatterns = [
     path('insights/cf-group-by/', cf_group_by, name='insights-cf-group-by'),
     # FG98 — cohortes leads par mois d'acquisition (taux signature + délai).
     path('insights/cohorts/', cohorts, name='insights-cohorts'),
+    # FG99 — rentabilité par segment (ADMIN ; prix achat interne, jamais client-facing).
+    path('insights/profitability/', profitability, name='insights-profitability'),
     path('archive/client/<int:pk>/', archive_client,
          name='reporting-archive-client'),
     path('archive/chantier/<int:pk>/', archive_chantier,

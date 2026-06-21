@@ -537,3 +537,78 @@ class TestCohorts(InsightsBase):
         ]
         self.assertTrue(len(keys_with_canal) > 0,
                         'Les cohortes group_by=canal doivent avoir "mois/canal"')
+
+
+class TestProfitability(InsightsBase):
+    """FG99 — rentabilité par segment (ADMIN uniquement, prix achat INTERNE)."""
+
+    def setUp(self):
+        super().setUp()
+        # L'utilisateur InsightsBase a role_legacy='admin' mais IsAdminRole
+        # vérifie le rôle via can_view_activity_log ou role_legacy.
+        # On force role_legacy='admin' déjà fait dans InsightsBase.setUp.
+
+    def test_requires_admin_role(self):
+        """Un responsable non-admin ne peut pas accéder."""
+        User = get_user_model()
+        resp_user = User.objects.create_user(
+            username='resp_p99', password='x', role_legacy='responsable',
+            company=self.company)
+        api = APIClient()
+        api.credentials(
+            HTTP_AUTHORIZATION=f'Bearer {AccessToken.for_user(resp_user)}')
+        resp = api.get('/api/django/reporting/insights/profitability/')
+        self.assertEqual(resp.status_code, 403)
+
+    def test_shape_and_200(self):
+        """L'admin reçoit un 200 avec les clés attendues."""
+        resp = self.api.get('/api/django/reporting/insights/profitability/')
+        self.assertEqual(resp.status_code, 200)
+        for key in ('internal', 'segment', 'rows',
+                    'total_revenue_ht', 'total_cost_estimate', 'total_margin'):
+            self.assertIn(key, resp.data, f'Clé manquante : {key}')
+        self.assertTrue(resp.data['internal'])
+
+    def test_invalid_segment_returns_400(self):
+        """Un segment non supporté retourne 400."""
+        resp = self.api.get(
+            '/api/django/reporting/insights/profitability/?segment=invalid')
+        self.assertEqual(resp.status_code, 400)
+
+    def test_rows_have_margin_fields(self):
+        """Chaque ligne contient revenue_ht, cost_estimate, margin, margin_pct."""
+        from apps.installations.models import Installation
+        from apps.crm.models import Client
+        client = Client.objects.create(company=self.company, nom='ProfCli')
+        Installation.objects.create(
+            company=self.company, client=client, reference='PROF-01',
+            type_installation='residentiel')
+        resp = self.api.get('/api/django/reporting/insights/profitability/')
+        self.assertEqual(resp.status_code, 200)
+        for row in resp.data['rows']:
+            for key in ('segment_value', 'count', 'revenue_ht',
+                        'cost_estimate', 'margin', 'margin_pct'):
+                self.assertIn(key, row, f'Clé manquante dans row: {key}')
+
+    def test_company_scoped(self):
+        """Les chantiers d'une autre société ne sont pas inclus."""
+        from apps.installations.models import Installation
+        from apps.crm.models import Client
+        other_client = Client.objects.create(company=self.other, nom='OtherCli')
+        Installation.objects.create(
+            company=self.other, client=other_client, reference='OTHER-PROF')
+        resp = self.api.get('/api/django/reporting/insights/profitability/')
+        self.assertEqual(resp.status_code, 200)
+        # total count n'inclut que la société courante
+        total = sum(r['count'] for r in resp.data['rows'])
+        from apps.installations.models import Installation as Inst
+        local_count = Inst.objects.filter(company=self.company).count()
+        self.assertEqual(total, local_count)
+
+    def test_xlsx_export(self):
+        """?export=xlsx retourne un fichier xlsx valide."""
+        resp = self.api.get(
+            '/api/django/reporting/insights/profitability/?export=xlsx')
+        self.assertEqual(resp.status_code, 200)
+        body = b''.join(resp.streaming_content) if resp.streaming else resp.content
+        self.assertTrue(body.startswith(b'PK'))
