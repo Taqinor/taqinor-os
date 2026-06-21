@@ -1,0 +1,41 @@
+---
+/**
+ * W171 — Scrim + caption réutilisable pour les cartes photos cliquables.
+ * Remplace la duplication inline de `div.absolute.inset-x-0.bottom-0…`
+ * dans les pages de réalisations.
+ *
+ * Props :
+ *   caption    — texte principal (obligatoire si on veut quelque chose)
+ *   sub        — ligne secondaire optionnelle (ex. puissance + production)
+ *   detail     — ligne tertiaire optionnelle (ex. modèle de panneaux)
+ *   cta        — texte du lien d'action, ex. « Voir l'étude de cas → »
+ *   position   — 'bottom' (défaut) | 'top' — ancrage vertical du scrim
+ */
+interface Props {
+  caption?: string;
+  sub?: string;
+  detail?: string;
+  cta?: string;
+  position?: 'bottom' | 'top';
+}
+
+const {
+  caption,
+  sub,
+  detail,
+  cta,
+  position = 'bottom',
+} = Astro.props;
+---
+
+<div
+  class:list={[
+    'absolute inset-x-0 bg-gradient-to-t from-nuit/95 to-transparent px-5 pb-4 pt-16',
+    position === 'top' ? 'top-0 rotate-180' : 'bottom-0',
+  ]}
+>
+  {caption && <span class="tech-label block text-brass-300">{caption}</span>}
+  {sub && <span class="fig mt-1 block text-2xl text-white">{sub}</span>}
+  {detail && <span class="mt-1 block text-xs text-lune">{detail}</span>}
+  {cta && <span class="mt-2 inline-block border-b-2 border-brass-400 pb-0.5 text-sm font-bold text-white">{cta}</span>}
+</div>

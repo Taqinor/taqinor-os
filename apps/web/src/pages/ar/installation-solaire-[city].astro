@@ -118,19 +118,20 @@ const heroPhoto = inCity[0]?.photos[0] ?? neutralHero;
         </div>
         <dl class="grid grid-cols-2 gap-x-6 gap-y-10 border-l-2 border-brass-400/60 pl-6 sm:pl-10" data-stagger>
           <div class="v2-rise" style="--v2-i:0">
-            <dd class="fig lum whitespace-nowrap text-3xl sm:text-4xl" data-tally>60–90 %</dd>
+            {/* W211 — whitespace-nowrap removed: can overflow at 320 px in grid-cols-2 */}
+            <dd class="fig lum text-3xl sm:text-4xl" data-tally>60–90 %</dd>
             <dt class="tech-label mt-2 text-lune-faint">من الفاتورة مُغطّاة</dt>
           </div>
           <div class="v2-rise" style="--v2-i:1">
-            <dd class="fig lum whitespace-nowrap text-3xl sm:text-4xl" data-tally>3–7 سنوات</dd>
+            <dd class="fig lum text-3xl sm:text-4xl" data-tally>3–7 سنوات</dd>
             <dt class="tech-label mt-2 text-lune-faint">عائد الاستثمار</dt>
           </div>
           <div class="v2-rise" style="--v2-i:2">
-            <dd class="fig lum whitespace-nowrap text-3xl sm:text-4xl" data-tally>25 سنة</dd>
+            <dd class="fig lum text-3xl sm:text-4xl" data-tally>25 سنة</dd>
             <dt class="tech-label mt-2 text-lune-faint">ضمان الأداء</dt>
           </div>
           <div class="v2-rise" style="--v2-i:3">
-            <dd class="fig lum whitespace-nowrap text-3xl sm:text-4xl" data-tally>&lt; 11 kW</dd>
+            <dd class="fig lum text-3xl sm:text-4xl" data-tally>&lt; 11 kW</dd>
             <dt class="tech-label mt-2 text-lune-faint">تصريح بسيط للقانون 82-21</dt>
           </div>
         </dl>
@@ -146,12 +147,13 @@ const heroPhoto = inCity[0]?.photos[0] ?? neutralHero;
           <div class="mt-10 grid gap-6 md:grid-cols-2 lg:grid-cols-3" data-stagger>
             {inCity.map((r, i) => (
               <a href={L(`/realisations/${r!.slug}`)} class="v2-rise cine-card group relative block overflow-hidden" style={`--v2-i:${i}`}>
-                <Picture name={r!.photos[0].name} alt={cardAlt(r!)} widths={r!.photos[0].widths} ratio={r!.photos[0].ratio}
+                {/* W180 — ratio=3/2 aligné sur l'aspect-[3/2] CSS (anti-CLS). */}
+                <Picture name={r!.photos[0].name} alt={cardAlt(r!)} widths={r!.photos[0].widths} ratio={3 / 2}
                   sizes="(min-width: 1024px) 33vw, 50vw" class="aspect-[3/2] w-full object-cover transition-transform duration-700 group-hover:scale-[1.04]" />
                 <div class="absolute inset-x-0 bottom-0 bg-gradient-to-t from-nuit/95 to-transparent px-5 pb-4 pt-16">
                   <span class="fig block text-2xl text-white">{r!.kwc}{r!.production ? ` · ${r!.production}` : ''}</span>
                   <span class="mt-1 block text-xs text-lune">{r!.panneaux}</span>
-                  <span class="mt-2 inline-block border-b-2 border-brass-400 pb-0.5 text-sm font-bold text-white">شاهد دراسة الحالة →</span>
+                  <span class="mt-2 inline-block border-b-2 border-brass-400 pb-0.5 text-sm font-bold text-white">شاهد دراسة الحالة <span class="inline-block rtl:-scale-x-100">→</span></span>
                 </div>
               </a>
             ))}
@@ -168,7 +170,7 @@ const heroPhoto = inCity[0]?.photos[0] ?? neutralHero;
           <div class="mt-8 flex flex-wrap gap-3">
             {nearby.map((r) => (
               <a href={L(`/realisations/${r!.slug}`)} class="border border-white/40 px-5 py-3 text-sm font-bold text-white transition-colors hover:border-white hover:bg-white/10">
-                {r!.ville} · {r!.kwc} →
+                {r!.ville} · {r!.kwc} <span class="inline-block rtl:-scale-x-100">→</span>
               </a>
             ))}
           </div>
@@ -188,11 +190,11 @@ const heroPhoto = inCity[0]?.photos[0] ?? neutralHero;
           <div class="mt-8 flex flex-wrap gap-3">
             {closest.map((r) => (
               <a href={L(`/realisations/${r.slug}`)} class="border border-white/40 px-5 py-3 text-sm font-bold text-white transition-colors hover:border-white hover:bg-white/10">
-                {r.ville} · {r.kwc} →
+                {r.ville} · {r.kwc} <span class="inline-block rtl:-scale-x-100">→</span>
               </a>
             ))}
             <a href={L('/realisations')} class="border border-white/40 px-5 py-3 text-sm font-bold text-white transition-colors hover:border-white hover:bg-white/10">
-              كل إنجازاتنا →
+              كل إنجازاتنا <span class="inline-block rtl:-scale-x-100">→</span>
             </a>
           </div>
         </div>
@@ -216,8 +218,8 @@ const heroPhoto = inCity[0]?.photos[0] ?? neutralHero;
         </div>
       </div>
       <div class="mx-auto mt-10 flex max-w-6xl flex-wrap gap-3">
-        <a href={L('/résidentiel')} class="border border-white/40 px-5 py-3 text-sm font-bold text-white transition-colors hover:border-white hover:bg-white/10">طاقة شمسية سكنية →</a>
-        <a href={L('/professionnel')} class="border border-white/40 px-5 py-3 text-sm font-bold text-white transition-colors hover:border-white hover:bg-white/10">طاقة شمسية مهنية →</a>
+        <a href={L('/résidentiel')} class="border border-white/40 px-5 py-3 text-sm font-bold text-white transition-colors hover:border-white hover:bg-white/10">طاقة شمسية سكنية <span class="inline-block rtl:-scale-x-100">→</span></a>
+        <a href={L('/professionnel')} class="border border-white/40 px-5 py-3 text-sm font-bold text-white transition-colors hover:border-white hover:bg-white/10">طاقة شمسية مهنية <span class="inline-block rtl:-scale-x-100">→</span></a>
       </div>
     </section>
 

@@ -44,9 +44,21 @@
   }
 }
 
-/* Count-up : chiffres tabulaires (largeur de glyphe stable, anti-CLS) */
+/* W220 — Count-up : chiffres tabulaires + largeur réservée (anti-CLS).
+   - font-variant-numeric: tabular-nums : chaque chiffre occupe la même largeur
+     de colonne → le texte ne change pas de largeur pendant le roulement.
+   - display: inline-block + min-width: 1ch : garantit que l'élément ne
+     s'effondre pas à zéro avant que le JS ait posé la valeur finale ; 1ch
+     est le minimum absolu, le JS peut affiner via data-tally-width si besoin.
+   - white-space: nowrap : empêche un saut de ligne parasite pendant l'animation
+     (les valeurs comme « 21 406 kWh/an » contiennent des espaces insécables,
+     mais cette règle couvre aussi les espaces normaux éventuels).
+   Le bloc est identique à la valeur au repos : ZÉRO CLS hors animation. */
 .v2 [data-tally] {
   font-variant-numeric: lining-nums tabular-nums;
+  display: inline-block;
+  min-width: 1ch;
+  white-space: nowrap;
 }
 
 /* ===== Typographie éditoriale — plus grande, plus aérée ================= */

@@ -7,6 +7,9 @@
  * W59 — pilule desktop plus compacte + marge de sécurité au bord, et
  * repli au défilement vers le bas (réapparition au défilement vers le haut)
  * pour ne jamais recouvrir le contenu (cartes, dernière réalisation…).
+ * W165 — WhatsApp restyled to brass/night palette + .glow treatment +
+ *         safe-area-inset-bottom for notched iPhones.
+ * W210 — .glow on the diagnostic CTA button.
  */
 import { WHATSAPP_LEADS } from '../lib/nap';
 import { whatsappLink } from '../lib/whatsapp';
@@ -23,21 +26,24 @@ const wa = whatsappLink(WHATSAPP_LEADS, 'Bonjour, je souhaite une étude pour un
 
 <div
   id="sticky-cta"
-  class="fixed inset-x-0 bottom-0 z-40 hidden border-t border-white/15 bg-nuit/95 px-3 py-2.5 shadow-[0_-8px_30px_-12px_rgb(0_0_0/0.8)] backdrop-blur transition-transform duration-300 ease-out will-change-transform motion-reduce:transition-none sm:inset-x-auto sm:bottom-6 sm:right-6 sm:rounded-full sm:border sm:px-1.5 sm:py-1.5 sm:shadow-[0_14px_40px_-12px_rgb(0_0_0/0.85)]"
+  class="fixed inset-x-0 bottom-0 z-40 hidden border-t border-white/15 bg-nuit/95 px-3 py-2.5 shadow-[0_-8px_30px_-12px_rgb(0_0_0/0.8)] backdrop-blur transition-transform duration-300 ease-out will-change-transform motion-reduce:transition-none sm:inset-x-auto sm:bottom-6 sm:right-6 sm:rounded-full sm:border sm:border-white/15 sm:px-1.5 sm:py-1.5 sm:shadow-[0_14px_40px_-12px_rgb(0_0_0/0.85)]"
+  style="padding-bottom: max(0.625rem, env(safe-area-inset-bottom));"
 >
   <div class="mx-auto flex max-w-md items-center gap-2.5 sm:max-w-none sm:gap-1.5">
+    {/* W165 — WhatsApp: brass/night palette replacing the green, + .glow resting halo */}
     <a
       href={wa}
       rel="noopener"
-      class="flex flex-1 items-center justify-center gap-2 bg-ok-600 px-4 py-2.5 text-sm font-bold text-white transition-opacity hover:opacity-90 sm:flex-none sm:gap-1.5 sm:rounded-full sm:px-3.5 sm:py-2 sm:text-[13px]"
+      class="glow flex flex-1 items-center justify-center gap-2 border border-brass-400/40 bg-nuit px-4 py-2.5 text-sm font-bold text-brass-300 transition-colors hover:border-brass-400/70 hover:bg-white/5 hover:text-brass-200 sm:flex-none sm:gap-1.5 sm:rounded-full sm:px-3.5 sm:py-2 sm:text-[13px]"
     >
       <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true" class="sm:h-[15px] sm:w-[15px]"><path d="M12 2a10 10 0 0 0-8.6 15.1L2 22l5-1.3A10 10 0 1 0 12 2Zm5.4 14.1c-.2.6-1.3 1.2-1.8 1.2-.5.1-1 .2-3.3-.7-2.8-1.1-4.6-4-4.7-4.2-.1-.2-1.1-1.5-1.1-2.9s.7-2 1-2.3c.2-.3.5-.3.7-.3h.5c.2 0 .4 0 .6.4l.9 2.1c.1.2.1.4 0 .6l-.4.6-.5.5c-.2.2-.3.4-.1.7.2.3.9 1.4 1.9 2.3 1.3 1.1 2.3 1.5 2.6 1.6.3.1.5.1.7-.1l1-1.2c.2-.3.4-.2.7-.1l2 1c.3.1.5.2.6.4 0 .1 0 .7-.3 1.4Z"/></svg>
       WhatsApp
     </a>
+    {/* W210 — .glow on the brass diagnostic CTA */}
     <a
       id="sticky-diag"
       href={diagHref}
-      class="flex flex-1 items-center justify-center bg-brass-400 px-4 py-2.5 text-sm font-bold text-azur-950 transition-colors hover:bg-brass-300 sm:flex-none sm:rounded-full sm:px-3.5 sm:py-2 sm:text-[13px]"
+      class="glow flex flex-1 items-center justify-center bg-brass-400 px-4 py-2.5 text-sm font-bold text-azur-950 transition-colors hover:bg-brass-300 sm:flex-none sm:rounded-full sm:px-3.5 sm:py-2 sm:text-[13px]"
     >{t('cta.stickyDiag')}</a>
   </div>
 </div>

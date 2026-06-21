@@ -12,6 +12,10 @@ interface Props {
   description: string;
   /** Nom de fichier OG sans extension, ex. "accueil" → /og/accueil.png */
   ogSlug?: string;
+  /** URL absolue de l'image OG — prend le dessus sur ogSlug quand fournie (W185). */
+  ogImage?: string;
+  /** Texte alternatif de ogImage (W185). */
+  ogImageAlt?: string;
   /** Précharge l'affiche du héros vidéo (élément LCP de l'accueil) */
   preloadHeroPoster?: boolean;
   /** Pages de travail privées : jamais indexées */
@@ -20,7 +24,7 @@ interface Props {
    *  Absent / [fr] → page FR seule : rendu strictement inchangé. */
   locales?: Locale[];
 }
-const { title, description, ogSlug = 'accueil', preloadHeroPoster = false, noindex = false, locales } = Astro.props;
+const { title, description, ogSlug = 'accueil', ogImage: ogImageProp, ogImageAlt, preloadHeroPoster = false, noindex = false, locales } = Astro.props;
 
 // Locale courante (FR par défaut à la racine). Le rendu FR reste identique :
 // lang="fr" et aucun attribut dir (ltr implicite) ; hreflang seulement si la
@@ -38,7 +42,11 @@ const alternates =
     : [];
 
 const canonical = new URL(Astro.url.pathname, Astro.site);
-const ogImage = new URL(`/og/${ogSlug}.png`, Astro.site);
+// W185 — ogImageProp (URL absolue fournie par la page) prend le dessus sur le
+// slug générique ; fallback : /og/<slug>.png construit depuis Astro.site.
+const ogImageUrl = ogImageProp ?? new URL(`/og/${ogSlug}.png`, Astro.site).href;
+// Rétrocompatibilité — la variable `ogImage` reste utilisée par le JSON-LD ci-dessous.
+const ogImage = { href: ogImageUrl };
 
 // LocalBusiness JSON-LD — mode zone de service (pas d'adresse postale),
 // liste de services alignée exactement sur le Google Business Profile.
@@ -83,8 +91,10 @@ const jsonLd = {
     <link rel="manifest" href="/site.webmanifest" />
     <link rel="sitemap" href="/sitemap-index.xml" />
     <link rel="alternate" type="application/rss+xml" title="Taqinor — Blog" href="/rss.xml" />
-    <!-- Pas de preload des fontes : font-display swap suffit, et la bande
-         passante critique (4G lent) doit aller à l'image LCP du héros. -->
+    <!-- W215 — Préchargement de la fonte display du titre (LCP <h1> = Archivo).
+         Réduit le FOUT sur le headline principal sans bloquer la bande passante
+         critique (4G lent). Le subset latin.woff2 couvre le français. -->
+    <link rel="preload" as="font" type="font/woff2" href="/fonts/archivo-latin.woff2" crossorigin />
     {preloadHeroPoster && (
       <link
         rel="preload"
@@ -99,11 +109,17 @@ const jsonLd = {
     <meta property="og:title" content={title} />
     <meta property="og:description" content={description} />
     <meta property="og:url" content={canonical.href} />
-    <meta property="og:image" content={ogImage.href} />
+    <meta property="og:image" content={ogImageUrl} />
     <meta property="og:image:width" content="1200" />
     <meta property="og:image:height" content="630" />
+    <meta property="og:image:type" content="image/png" />
+    {ogImageAlt && <meta property="og:image:alt" content={ogImageAlt} />}
     <meta property="og:locale" content={lang === 'en' ? 'en_US' : lang === 'ar' ? 'ar_MA' : 'fr_MA'} />
+    <!-- W219 — Carte Twitter/X complète -->
     <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content={title} />
+    <meta name="twitter:description" content={description} />
+    <meta name="twitter:image" content={ogImageUrl} />
     <script type="application/ld+json" set:html={JSON.stringify(jsonLd)} />
     <script is:inline>
       // Capture first-touch fbclid + UTM sur toute page d'atterrissage —
@@ -123,8 +139,11 @@ const jsonLd = {
     </script>
   </head>
   <body class="bg-nuit font-sans text-lune antialiased">
+    <!-- W216 — Lien d'évitement accessible : premier élément focusable du corps.
+         Masqué visuellement jusqu'au focus clavier, puis affiché en brass. -->
+    <a href="#main" class="skip-link">Aller au contenu</a>
     <Header />
-    <main>
+    <main id="main">
       <slot />
     </main>
     <Footer />

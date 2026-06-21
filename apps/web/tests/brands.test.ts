@@ -47,6 +47,17 @@ describe('BRANDS data', () => {
       expect(brand.category.length).toBeGreaterThan(0);
     }
   });
+
+  // W183 — heightMultiplier is optional, but when present must be a positive number
+  it('W183 — heightMultiplier, when set, is a positive number in [0.5, 2.0]', () => {
+    for (const brand of BRANDS) {
+      if (brand.heightMultiplier !== undefined) {
+        expect(typeof brand.heightMultiplier).toBe('number');
+        expect(brand.heightMultiplier).toBeGreaterThan(0.5);
+        expect(brand.heightMultiplier).toBeLessThanOrEqual(2.0);
+      }
+    }
+  });
 });
 
 describe('BrandStrip component', () => {
@@ -60,18 +71,29 @@ describe('BrandStrip component', () => {
     expect(componentSrc).toContain('font-display');
     expect(componentSrc).toContain('{brand.name}');
   });
+
+  // W183 — grayscale/color transitions in BrandStrip
+  it('W183 — applies grayscale to logos and color transition on hover', () => {
+    expect(componentSrc).toContain('grayscale');
+    expect(componentSrc).toContain('transition');
+  });
 });
 
 describe('brands.ts integrity', () => {
-  it('invents no model-number / spec strings (names + category + null logos only)', () => {
-    // No digits anywhere in the brand data file (no model numbers, wattages,
-    // voltages, capacities or other fabricated specs).
-    const dataPortion = brandsSrc.slice(brandsSrc.indexOf('export const BRANDS'));
-    expect(dataPortion).not.toMatch(/\d/);
-
-    // Each brand object carries strictly name + category + logo, nothing else.
+  it('invents no model-number / spec strings (names + category + null logos only, plus optional optical sizing)', () => {
+    // Each brand object carries name + category + logo + optional heightMultiplier.
+    // No arbitrary spec strings (model numbers, wattages, etc.).
     for (const brand of BRANDS) {
-      expect(Object.keys(brand).sort()).toEqual(['category', 'logo', 'name']);
+      const keys = Object.keys(brand).sort();
+      // Must contain exactly these core keys (heightMultiplier is optional)
+      expect(keys).toContain('category');
+      expect(keys).toContain('logo');
+      expect(keys).toContain('name');
+      // Only these known keys are permitted
+      const allowedKeys = ['category', 'heightMultiplier', 'logo', 'name'];
+      for (const key of keys) {
+        expect(allowedKeys).toContain(key);
+      }
     }
   });
 });

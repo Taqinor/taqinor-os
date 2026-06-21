@@ -3,6 +3,10 @@
  * Empreinte zellige — LE marqueur de section de « L'Étude ». Une seule
  * étoile à huit pointes en filets (deux carrés superposés à 45°), à
  * l'échelle d'une empreinte digitale. Jamais de fond maillé.
+ *
+ * W168 — présence élevée : motif agrandi (28 px → 4× plus de surface que
+ * l'ancien 18 px), opacité augmentée, filets plus épais, lignes de règle
+ * plus longues pour un meilleur équilibre visuel.
  */
 interface Props {
   /** 'blue' = filets bleus sur fond clair ; 'white' = filets blancs sur fond bleu */
@@ -12,13 +16,13 @@ const { tone = 'blue' } = Astro.props;
 const stroke = tone === 'white' ? '#ffffff' : '#2342b5';
 ---
 
-<div class="flex items-center justify-center gap-4 py-2" aria-hidden="true">
-  <span class="h-px w-10" style={`background:${stroke};opacity:0.3;`}></span>
-  <svg width="18" height="18" viewBox="0 0 18 18" fill="none" opacity="0.55">
-    <g stroke={stroke} stroke-width="1.1">
-      <rect x="3.5" y="3.5" width="11" height="11" />
-      <rect x="3.5" y="3.5" width="11" height="11" transform="rotate(45 9 9)" />
+<div class="flex items-center justify-center gap-4 py-3" aria-hidden="true">
+  <span class="h-px w-16" style={`background:${stroke};opacity:0.45;`}></span>
+  <svg width="28" height="28" viewBox="0 0 28 28" fill="none" opacity="0.80">
+    <g stroke={stroke} stroke-width="1.4">
+      <rect x="5" y="5" width="18" height="18" />
+      <rect x="5" y="5" width="18" height="18" transform="rotate(45 14 14)" />
     </g>
   </svg>
-  <span class="h-px w-10" style={`background:${stroke};opacity:0.3;`}></span>
+  <span class="h-px w-16" style={`background:${stroke};opacity:0.45;`}></span>
 </div>

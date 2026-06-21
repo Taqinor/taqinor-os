@@ -78,7 +78,7 @@ const altOf = (r: typeof REALISATIONS[number]) => caseStudyBySlug(r.slug, locale
               <span class="tech-label block text-brass-300">{r.ville} · {r.date}</span>
               <span class="fig mt-1 block text-2xl text-white">{r.kwc}{r.production ? ` · ${r.production}` : ''}</span>
               <span class="mt-1 block text-xs text-lune">{r.panneaux}</span>
-              <span class="mt-2 inline-block border-b-2 border-brass-400 pb-0.5 text-sm font-bold text-white">شاهد دراسة الحالة →</span>
+              <span class="mt-2 inline-block border-b-2 border-brass-400 pb-0.5 text-sm font-bold text-white">شاهد دراسة الحالة <span class="inline-block rtl:-scale-x-100">→</span></span>
             </div>
           </a>
         ))}

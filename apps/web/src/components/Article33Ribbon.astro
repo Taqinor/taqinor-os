@@ -4,6 +4,8 @@
 // en attente de confirmation juridique). W67 : libellés traduits via le
 // dictionnaire (repli FR → rendu FR inchangé) ; le lien reste vers la page
 // FR /regularization-article-33 (localizeNavHref retombe sur le FR).
+// W160 : traitement visuel premium — accent brass subtil, icône solaire,
+// typographie raffinée, contraste amélioré.
 import { getLocaleFromPath, useTranslations } from '../i18n/utils';
 import { localizeNavHref } from '../i18n/pages';
 
@@ -14,8 +16,87 @@ const href = localizeNavHref('/regularization-article-33', locale);
 
 <a
   href={href}
-  class="block border-b border-white/10 bg-nuit-800 px-4 py-2.5 text-center text-sm font-medium text-lune transition-colors hover:text-white"
+  class="ribbon-link block px-4 py-3 text-center text-sm font-medium text-lune transition-colors hover:text-white"
+  aria-label={`${t('ribbon.badge')} — ${t('ribbon.text')}`}
 >
-  <span class="tech-label me-3 inline-block bg-brass-400 px-2 py-0.5 text-azur-950">{t('ribbon.badge')}</span>
-  {t('ribbon.text')}
+  {/* Brass hairline top edge — réduit-motion safe : pas d'animation, pas de JS */}
+  <span class="ribbon-seam" aria-hidden="true"></span>
+
+  <span class="inline-flex flex-wrap items-center justify-center gap-2.5">
+    {/* Icône solaire — aria-hidden, décoratif */}
+    <svg
+      width="15"
+      height="15"
+      viewBox="0 0 24 24"
+      fill="none"
+      aria-hidden="true"
+      class="ribbon-icon shrink-0 text-brass-300"
+    >
+      <circle cx="12" cy="12" r="4" fill="currentColor" />
+      <g stroke="currentColor" stroke-width="1.8" stroke-linecap="round">
+        <line x1="12" y1="2" x2="12" y2="5" />
+        <line x1="12" y1="19" x2="12" y2="22" />
+        <line x1="2" y1="12" x2="5" y2="12" />
+        <line x1="19" y1="12" x2="22" y2="12" />
+        <line x1="4.93" y1="4.93" x2="7.05" y2="7.05" />
+        <line x1="16.95" y1="16.95" x2="19.07" y2="19.07" />
+        <line x1="19.07" y1="4.93" x2="16.95" y2="7.05" />
+        <line x1="7.05" y1="16.95" x2="4.93" y2="19.07" />
+      </g>
+    </svg>
+
+    {/* Badge loi — tech-label avec fond brass doux */}
+    <span class="tech-label inline-block bg-brass-400/15 px-2 py-0.5 text-brass-300 ring-1 ring-brass-400/30">
+      {t('ribbon.badge')}
+    </span>
+
+    {/* Message principal */}
+    <span class="text-lune-soft">{t('ribbon.text')}</span>
+  </span>
 </a>
+
+<style>
+  /* Liseré doré en haut du ruban — réservé à ce composant uniquement.
+     Pas d'animation : CLS zéro, reduced-motion garanti. */
+  .ribbon-link {
+    position: relative;
+    background: color-mix(in srgb, var(--color-nuit-800) 80%, var(--color-azur-900) 20%);
+    border-bottom: 1px solid rgb(255 255 255 / 0.08);
+  }
+
+  /* Trait laiton gradient en haut : 1 px visible, CLS zéro (height réservée par position). */
+  .ribbon-seam {
+    position: absolute;
+    inset-inline: 0;
+    top: 0;
+    height: 1px;
+    background: linear-gradient(
+      to right,
+      transparent 0%,
+      var(--color-brass-400) 30%,
+      var(--color-brass-300) 50%,
+      var(--color-brass-400) 70%,
+      transparent 100%
+    );
+    opacity: 0.6;
+    pointer-events: none;
+  }
+
+  /* Lueur brass très discrète au survol — réduit-motion safe */
+  @media (prefers-reduced-motion: no-preference) {
+    .ribbon-link {
+      transition:
+        background-color 0.2s ease,
+        color 0.2s ease;
+    }
+    .ribbon-link:hover {
+      background: color-mix(in srgb, var(--color-nuit-800) 70%, var(--color-azur-900) 30%);
+    }
+    .ribbon-seam {
+      transition: opacity 0.2s ease;
+    }
+    .ribbon-link:hover .ribbon-seam {
+      opacity: 0.85;
+    }
+  }
+</style>

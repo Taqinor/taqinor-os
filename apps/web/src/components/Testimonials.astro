@@ -135,3 +135,20 @@ const jsonLd =
     {jsonLd && <script type="application/ld+json" set:html={JSON.stringify(jsonLd)} />}
   </section>
 )}
+
+<style>
+  /*
+   * W208 — Hover lift + bord chaud sur les cartes témoignage.
+   * .cine-card (global.css) fournit déjà un hover lift de base (−3px) ;
+   * ici on renforce légèrement le lift (−4px) et on ajoute un bord chaud
+   * top (brass-300) pour souligner chaque carte quand elle est survolée.
+   * Gated prefers-reduced-motion : statique sinon.
+   * Zéro CLS : transform/border-color seuls, pas de layout.
+   */
+  @media (prefers-reduced-motion: no-preference) {
+    figure.cine-card:hover {
+      transform: translateY(-4px);
+      border-top-color: rgb(243 204 102 / 0.45);
+    }
+  }
+</style>
