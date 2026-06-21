@@ -193,7 +193,7 @@ export default function ChantierPhotos({ installationId }) {
       {/* N4 — visionneuse plein écran in-app (préc/suiv dans la phase). */}
       {viewerAtt && (
         <div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 p-4"
+          className="fixed inset-0 z-[var(--z-overlay)] flex items-center justify-center bg-black/80 p-4"
           role="dialog"
           aria-modal="true"
           onClick={() => setViewer(null)}

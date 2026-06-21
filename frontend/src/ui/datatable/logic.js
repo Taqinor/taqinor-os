@@ -357,6 +357,61 @@ export function selectionState(selected, keys) {
   return 'some'
 }
 
+/* ------------------------------------- Épinglage / largeurs colonnes ----- */
+
+/**
+ * H130 — Décalages CUMULÉS (px) des colonnes épinglées, depuis chaque bord.
+ * Renvoie { left: { [id]: px }, right: { [id]: px } } où chaque valeur est la
+ * distance du bord (left/right) à laquelle figer la colonne, pour que plusieurs
+ * colonnes épinglées du même côté se collent l'une à l'autre sans chevauchement.
+ * `resolvedColumns` est déjà ordonné (gauche → milieu → droite via resolveColumns).
+ * `leadOffset` = largeur de la gouttière de sélection à gauche (case à cocher).
+ * `fallbackWidth` = largeur par défaut d'une colonne sans `width` explicite.
+ * `actionsWidth` = largeur réservée à la colonne actions épinglée à droite.
+ */
+export function pinnedEdgeOffsets(
+  resolvedColumns = [],
+  { leadOffset = 0, fallbackWidth = 160, actionsWidth = 0 } = {},
+) {
+  const left = {}
+  const right = {}
+  let accLeft = leadOffset
+  for (const c of resolvedColumns) {
+    if (c.pinned === 'left') {
+      left[c.id] = accLeft
+      accLeft += c.width ?? fallbackWidth
+    }
+  }
+  // Côté droit : on cumule de la droite vers la gauche (la colonne actions, si
+  // épinglée, occupe le tout premier cran à droite).
+  let accRight = actionsWidth
+  for (let i = resolvedColumns.length - 1; i >= 0; i--) {
+    const c = resolvedColumns[i]
+    if (c.pinned === 'right') {
+      right[c.id] = accRight
+      accRight += c.width ?? fallbackWidth
+    }
+  }
+  return { left, right }
+}
+
+/**
+ * O166 — Variables CSS de largeur de colonne, calculées UNE fois par rendu.
+ * Renvoie { vars, get } : `vars` = objet style (`--dt-col-<id>: 200px`) à poser
+ * sur le conteneur ; `get(id)` = `var(--dt-col-<id>)` pour la cellule. Pousser la
+ * largeur via variable évite de relire/recalculer la taille par cellule à chaque
+ * rendu (redimensionnement fluide ~60 fps). Les colonnes sans largeur explicite
+ * n'émettent pas de variable (largeur auto par le navigateur).
+ */
+export function columnWidthVars(resolvedColumns = []) {
+  const vars = {}
+  for (const c of resolvedColumns) {
+    if (c.width != null) vars[`--dt-col-${c.id}`] = typeof c.width === 'number' ? `${c.width}px` : c.width
+  }
+  const get = (id) => (vars[`--dt-col-${id}`] !== undefined ? `var(--dt-col-${id})` : undefined)
+  return { vars, get }
+}
+
 /* ----------------------------------------- Virtualisation (windowing) ---- */
 
 /**
