@@ -172,27 +172,33 @@ const inputClass =
       </div>
     </form>
 
-    <!-- Extrait d'étude — l'état de résultat -->
-    <div id="lf-success" class="hidden p-8">
-      <p class="tech-label rule-brass text-brass-300">{t('form.success.eyebrow')}</p>
-      <div class="mt-6 grid gap-8 sm:grid-cols-2">
-        <div>
-          <p id="lf-kwc" class="fig lum text-4xl sm:text-5xl" dir="ltr"></p>
-          <p class="tech-label mt-2 text-lune-faint">{t('form.success.kwc')}</p>
+    <!-- W190 — Extrait d'étude — carte premium : cine-card + lueur laiton +
+         hiérarchie valeur/label via .fig-lg/.tech-label. Les IDs, la logique
+         de remplissage (kwcEl/roiEl/waEl) et le deeplink restent INCHANGÉS. -->
+    <div id="lf-success" class="hidden">
+      <!-- Seam lumineux au-dessus du payoff -->
+      <div class="h-px bg-[radial-gradient(60%_180%_at_50%_0%,rgb(232_181_74/0.45),transparent_70%)]" aria-hidden="true"></div>
+      <div class="cine-card glow m-4 p-6 sm:m-6 sm:p-8">
+        <p class="tech-label rule-brass text-brass-300">{t('form.success.eyebrow')}</p>
+        <div class="mt-6 grid gap-8 sm:grid-cols-2">
+          <div>
+            <p id="lf-kwc" class="fig fig-lg lum" dir="ltr"></p>
+            <p class="tech-label mt-3 text-lune-faint">{t('form.success.kwc')}</p>
+          </div>
+          <div>
+            <p id="lf-roi" class="fig fig-lg lum" dir="ltr"></p>
+            <p class="tech-label mt-3 text-lune-faint">{t('form.success.roi')}</p>
+          </div>
         </div>
-        <div>
-          <p id="lf-roi" class="fig lum text-4xl sm:text-5xl" dir="ltr"></p>
-          <p class="tech-label mt-2 text-lune-faint">{t('form.success.roi')}</p>
-        </div>
+        <p class="mt-6 border-t border-white/10 pt-5 text-sm leading-relaxed text-lune-soft">
+          {t('form.success.note')}
+        </p>
+        <a id="lf-wa" href="#" rel="noopener"
+          class="mt-6 inline-flex w-full items-center justify-center gap-2 bg-ok-600 px-6 py-4 text-base font-bold text-white transition-opacity hover:opacity-90 sm:w-auto">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 2a10 10 0 0 0-8.6 15.1L2 22l5-1.3A10 10 0 1 0 12 2Zm5.4 14.1c-.2.6-1.3 1.2-1.8 1.2-.5.1-1 .2-3.3-.7-2.8-1.1-4.6-4-4.7-4.2-.1-.2-1.1-1.5-1.1-2.9s.7-2 1-2.3c.2-.3.5-.3.7-.3h.5c.2 0 .4 0 .6.4l.9 2.1c.1.2.1.4 0 .6l-.4.6-.5.5c-.2.2-.3.4-.1.7.2.3.9 1.4 1.9 2.3 1.3 1.1 2.3 1.5 2.6 1.6.3.1.5.1.7-.1l1-1.2c.2-.3.4-.2.7-.1l2 1c.3.1.5.2.6.4 0 .1 0 .7-.3 1.4Z"/></svg>
+          {t('form.submit')}
+        </a>
       </div>
-      <p class="mt-6 border-t border-white/10 pt-5 text-sm leading-relaxed text-lune-soft">
-        {t('form.success.note')}
-      </p>
-      <a id="lf-wa" href="#" rel="noopener"
-        class="mt-6 inline-flex w-full items-center justify-center gap-2 bg-ok-600 px-6 py-4 text-base font-bold text-white transition-opacity hover:opacity-90 sm:w-auto">
-        <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 2a10 10 0 0 0-8.6 15.1L2 22l5-1.3A10 10 0 1 0 12 2Zm5.4 14.1c-.2.6-1.3 1.2-1.8 1.2-.5.1-1 .2-3.3-.7-2.8-1.1-4.6-4-4.7-4.2-.1-.2-1.1-1.5-1.1-2.9s.7-2 1-2.3c.2-.3.5-.3.7-.3h.5c.2 0 .4 0 .6.4l.9 2.1c.1.2.1.4 0 .6l-.4.6-.5.5c-.2.2-.3.4-.1.7.2.3.9 1.4 1.9 2.3 1.3 1.1 2.3 1.5 2.6 1.6.3.1.5.1.7-.1l1-1.2c.2-.3.4-.2.7-.1l2 1c.3.1.5.2.6.4 0 .1 0 .7-.3 1.4Z"/></svg>
-        {t('form.submit')}
-      </a>
     </div>
   </div>
   {Astro.slots.has('aside') && (
