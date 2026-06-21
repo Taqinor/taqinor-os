@@ -33,6 +33,9 @@ class EventType(models.TextChoices):
     STOCK_LOW = 'stock_low', 'Stock bas'
     SAV_TICKET_OPENED = 'sav_ticket_opened', 'Ticket SAV ouvert'
     SAV_TICKET_BREACHING = 'sav_ticket_breaching', 'Ticket SAV proche de son délai'
+    # Group S — messagerie interne (« Discuss »).
+    CHAT_MESSAGE = 'chat_message', 'Nouveau message'
+    CHAT_MENTION = 'chat_mention', 'Vous avez été mentionné'
     DIGEST = 'digest', 'Récapitulatif'
 
 
