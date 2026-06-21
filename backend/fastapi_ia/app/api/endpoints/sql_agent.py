@@ -41,6 +41,14 @@ class SQLResponse(BaseModel):
     # N86 — True si l'agent a effectue une action d'ecriture (ticket SAV,
     # brouillon de bon de commande, visite). Le frontend affiche un badge.
     action_performed: bool = False
+    # AG2 — proposition d'action SENSIBLE (outward/irreversible) a confirmer :
+    # {action_key, human_preview, confirm_token, inputs?}. Le `confirm_token`
+    # est le MEME jeton signe attendu par /sql-agent/confirm — c'est le seul
+    # chemin pour confirmer. None quand aucune action sensible n'a ete proposee.
+    proposal: dict | None = None
+    # AG2 — resultat d'une action INTERNE deja executee ce tour :
+    # {action_key, reference?, wa_url?, devis_id?, detail?, ...}. None sinon.
+    result: dict | None = None
 
 
 class HistoryMessage(BaseModel):
@@ -85,6 +93,10 @@ async def query_database(
         sql_query="",
         data=result["data"],
         action_performed=bool(result.get("action_performed", False)),
+        # AG2 — surface la proposition signee (avec confirm_token) et/ou le
+        # resultat d'action interne produit ce tour ; None quand absent.
+        proposal=result.get("proposal"),
+        result=result.get("result"),
     )
 
 
