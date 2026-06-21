@@ -1,7 +1,14 @@
 import { useCallback, useEffect, useMemo, useReducer, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import {
-  sortRows, toggleSort, filterRows, paginateRows, pageRange,
+  useReactTable,
+  getCoreRowModel,
+  getSortedRowModel,
+  getFilteredRowModel,
+} from '@tanstack/react-table'
+import {
+  compareValues, toggleSort,
+  globalFilterPredicate, columnFilterPredicate, paginateRows, pageRange,
   initColumnState, columnStateReducer, resolveColumns,
   toggleSelected, setAllSelected, selectionState, summarize,
 } from './logic.js'
@@ -10,15 +17,31 @@ import { encodeState, decodeState } from './urlState.js'
 /* ============================================================================
    H31/H33 — Hook d'orchestration du DataTable (état + persistance URL).
    ----------------------------------------------------------------------------
-   - Tri / filtres / pagination 100 % côté client par défaut (logic.js).
+   P171 — MOTEUR migré sur `@tanstack/react-table` : `useReactTable` détient
+   désormais l'état (tri / filtres / sélection) et exécute le pipeline de lignes
+   (cœur → filtre → tri) via son row-model. Le COMPORTEMENT reste byte-pour-byte
+   identique parce que le tri et les filtres sont branchés sur les fonctions
+   PURES de `logic.js` (`compareValues`, `globalFilterPredicate`,
+   `columnFilterPredicate`) en `sortingFn`/`filterFn`/`globalFilterFn`. La
+   pagination, les sous-totaux, l'état des colonnes et l'identité de ligne
+   continuent d'utiliser les helpers purs de `logic.js`, si bien que l'API
+   PUBLIQUE renvoyée par ce hook (clés + sémantique) est inchangée et que
+   <DataTable> rend exactement le même markup.
+
+   - Tri / filtres / pagination 100 % côté client par défaut.
    - SEAM SERVEUR : `manualSorting`/`manualFiltering`/`manualPagination` court-
      circuitent le calcul local et exposent les callbacks au consommateur, qui
-     fournit alors `rows` déjà triées/filtrées + `rowCount`. Aucun endpoint
-     n'est construit ici (Groupe J branchera de vrais services).
+     fournit alors `rows` déjà triées/filtrées + `rowCount`.
    - Persistance URL optionnelle (`persistToUrl` + `urlKey`) via useSearchParams.
    ========================================================================== */
 
 const ACCESSOR = (row, id) => row?.[id]
+
+/* Filtre par colonne au sens « ensemble » : `columnFilters` est un objet
+   { [id]: valeur } côté API publique. On l'évalue ligne par ligne avec le
+   prédicat pur, branché en `globalFilterFn` (une seule passe sur toutes les
+   colonnes), afin de préserver exactement la sémantique de `columnFilterPredicate`
+   (sous-chaîne repliée + appartenance multi-select). */
 
 export function useDataTable({
   data = [],
@@ -71,16 +94,88 @@ export function useDataTable({
     [globalColumns, columns],
   )
 
-  /* ---- Pipeline de données : filtre → tri → page ---- */
+  /* ---- Définitions de colonnes pour react-table ----
+     Le moteur a besoin d'une définition d'accès par colonne. On mappe l'`id` et
+     l'accessor de chaque colonne métier vers une `accessorFn` qui réutilise le
+     même `accessor(row, id)` que la logique pure, afin que le tri et les filtres
+     voient EXACTEMENT les mêmes valeurs de cellule qu'auparavant. */
+  const tableColumns = useMemo(
+    () =>
+      columns.map((c) => ({
+        id: c.id,
+        accessorFn: (row) => accessor(row, c.id),
+      })),
+    [columns, accessor],
+  )
+
+  /* ---- Tri pur (parité) : comparateur stable basé sur `compareValues` ----
+     react-table appelle `sortingFn(rowA, rowB, columnId)` puis applique le sens
+     desc lui-même ; on renvoie donc toujours l'ordre ASCENDANT. La STABILITÉ et
+     le rejet des vides en fin de liste sont garantis par `compareValues`
+     (vides toujours « après ») et par le tri stable du moteur. */
+  const sortingFns = useMemo(() => ({
+    dtCompare: (rowA, rowB, columnId) =>
+      compareValues(rowA.getValue(columnId), rowB.getValue(columnId)),
+  }), [])
+
+  /* ---- Filtre global pur (parité) ----
+     Évalue le filtre global ET les filtres par colonne en une passe avec les
+     prédicats purs, sur la LIGNE BRUTE (`row.original`) — identité parfaite avec
+     l'ancien `filterRows`. */
+  const globalFilterFn = useCallback(
+    (row) =>
+      globalFilterPredicate(row.original, query, globalIds, accessor) &&
+      columnFilterPredicate(row.original, columnFilters, accessor),
+    [query, globalIds, columnFilters, accessor],
+  )
+
+  // Identité stable du filtre global : ne change que quand `query` ou
+  // `columnFilters` change, pour ne pas recalculer le modèle filtré à chaque
+  // rendu (le moteur mémoïse sur cette valeur). Toujours TRUTHY afin que le
+  // moteur exécute systématiquement `globalFilterFn` (qui décide réellement).
+  const globalFilterValue = useMemo(
+    () => ({ query, columnFilters }),
+    [query, columnFilters],
+  )
+
+  const table = useReactTable({
+    data,
+    columns: tableColumns,
+    state: {
+      sorting,
+      // On encode l'ensemble du filtrage (global + colonnes) dans `globalFilter`
+      // pour le réévaluer dès que l'un ou l'autre change ; la vraie logique vit
+      // dans `globalFilterFn`.
+      globalFilter: globalFilterValue,
+    },
+    manualSorting,
+    manualFiltering,
+    enableSortingRemoval: true,
+    sortDescFirst: false,
+    getRowId: (row, index) => String(getRowId(row, index)),
+    sortingFns,
+    defaultColumn: { sortingFn: 'dtCompare' },
+    globalFilterFn,
+    getCoreRowModel: getCoreRowModel(),
+    getSortedRowModel: manualSorting ? undefined : getSortedRowModel(),
+    getFilteredRowModel: manualFiltering ? undefined : getFilteredRowModel(),
+  })
+
+  /* ---- Pipeline de données : filtre → tri (via react-table) → page ---- */
+  // `filtered` : lignes après filtrage (ou `data` en filtrage manuel).
   const filtered = useMemo(() => {
     if (manualFiltering) return data
-    return filterRows(data, { query, columnFilters, globalColumns: globalIds }, accessor)
-  }, [data, query, columnFilters, globalIds, accessor, manualFiltering])
+    return table.getFilteredRowModel().rows.map((r) => r.original)
+    // dépendances réelles du modèle filtré :
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [table, data, query, columnFilters, globalIds, accessor, manualFiltering])
 
+  // `sorted` : lignes après filtrage + tri (ou `filtered` en tri manuel).
   const sorted = useMemo(() => {
     if (manualSorting) return filtered
-    return sortRows(filtered, sorting, accessor)
-  }, [filtered, sorting, accessor, manualSorting])
+    return table.getSortedRowModel().rows.map((r) => r.original)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [table, filtered, sorting, manualSorting])
 
   const totalCount = manualPagination ? manualRowCount ?? data.length : sorted.length
 
@@ -233,6 +328,8 @@ export function useDataTable({
     keyOf,
     pageOffset,
     accessor,
+    // moteur (P171) : instance react-table sous-jacente, pour usages avancés.
+    table,
   }
 }
 
