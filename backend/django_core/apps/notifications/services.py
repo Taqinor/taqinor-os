@@ -159,6 +159,26 @@ def _is_webpush_configured():
         return False
 
 
+def _vapid_private_for_push(private_key):
+    """Convertit la clé privée VAPID stockée vers une forme acceptée par
+    ``pywebpush.webpush(vapid_private_key=...)``.
+
+    pywebpush attend un CHEMIN de fichier PEM, une chaîne base64(DER), ou un objet
+    ``Vapid``. Il N'accepte PAS le TEXTE d'un PEM passé directement (il le décode
+    en base64 → « Could not deserialize key data / ASN.1 invalid length »). Le
+    singleton auto-généré stocke la clé en PEM : on la charge donc en objet
+    ``Vapid01``. Une clé d'environnement déjà en base64url brut est renvoyée telle
+    quelle. Best-effort : en cas d'échec on renvoie la valeur d'origine."""
+    if not private_key or 'BEGIN' not in private_key:
+        return private_key
+    try:
+        from py_vapid import Vapid01
+        return Vapid01.from_pem(private_key.encode())
+    except Exception as exc:  # pragma: no cover - défensif
+        logger.warning('Chargement de la clé VAPID (PEM) échoué : %s', exc)
+        return private_key
+
+
 def _dispatch_webpush(user, title, body, link=None):
     """Best-effort : envoie un Web Push à TOUS les appareils de l'utilisateur.
 
@@ -201,6 +221,12 @@ def _dispatch_webpush(user, title, body, link=None):
     claims = {'sub': sub}
     # Clé privée résolue (env si fournie, sinon singleton auto-généré).
     _public, private_key = resolve_vapid_keys()
+    # pywebpush n'accepte PAS le TEXTE d'un PEM passé en chaîne : il tente de le
+    # décoder en base64 → « Could not deserialize key data / ASN.1 invalid
+    # length », et CHAQUE push échoue (tous appareils). Le singleton stocke la clé
+    # en PEM → on la charge ici en objet Vapid (forme acceptée). La paire ne
+    # change pas : les abonnements existants restent valides.
+    vapid_private = _vapid_private_for_push(private_key)
 
     sent = 0
     for sub in subs:
@@ -208,7 +234,7 @@ def _dispatch_webpush(user, title, body, link=None):
             webpush(
                 subscription_info=sub.as_subscription_info(),
                 data=payload,
-                vapid_private_key=private_key,
+                vapid_private_key=vapid_private,
                 vapid_claims=dict(claims),
             )
             sent += 1
