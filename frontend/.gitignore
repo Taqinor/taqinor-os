@@ -12,6 +12,9 @@ dist
 dist-ssr
 *.local
 
+# Coverage (généré par `npm run test:coverage` / node --test --coverage)
+/coverage/
+
 # Playwright / E2E
 /test-results/
 /playwright-report/

@@ -62,9 +62,25 @@ les commit sous `e2e/**-snapshots/` pour activer la vraie comparaison pixel.
 ## Smoke e2e vs matrice complète
 
 Le projet Playwright `setup` (connexion réelle) est une **dépendance** des projets
-`chromium`/`mobile`, donc il tourne toujours. Le smoke par-merge cible quelques
-parcours (`--project=chromium devis.spec.js health.spec.js`) ; la matrice complète
-(toutes les specs + mobile) part dans `release-verify`.
+`chromium`/`mobile`, donc il tourne toujours. Le smoke par-merge cible les parcours
+UTILISATEUR critiques (`--project=chromium leads.spec.js devis.spec.js
+health.spec.js`) ; la matrice complète (toutes les specs + mobile) part dans
+`release-verify`.
+
+### Règle permanente : un parcours e2e par fonctionnalité
+Toute nouvelle fonctionnalité ship avec **au moins un test e2e qui la pilote comme
+un utilisateur** (Playwright + les helpers `e2e/helpers.js`). Les parcours
+réellement critiques sont **promus dans le smoke par-merge** (ci.yml) pour attraper
+« ça marchait pas au final » AVANT le merge ; les autres vivent dans la matrice
+complète (`release-verify`). C'est le garde-fou n°1 contre les régressions
+fonctionnelles silencieuses.
+
+## Couverture (un % visible, pas une promesse)
+- Front (logique pure) : `node --test --experimental-test-coverage`.
+- Front (composants/UX) : `npm run test:coverage` (Vitest + v8).
+- Back : `coverage run manage.py test … && coverage report` (config `.coveragerc`).
+Les % s'impriment en CI (informatif, **non bloquant** — on ne fixe pas de seuil
+artificiel). But : rendre l'écart visible, jamais prétendre « 100 % testé ».
 
 ## Déclencher le palier 3
 
@@ -80,9 +96,19 @@ les 2–3 passes de `work on the plan`, avant de livrer.
   promouvoir en e2e que les parcours transverses réels.
 * **Une intention par test.**
 
-## Suites encore hors-CI (pistes)
+## Service FastAPI (IA)
+`backend/fastapi_ia/tests/` (sécurité agent NL→SQL, JWT, OCR, garde-marge) tourne
+désormais dans **`release-verify`** (job `fastapi-tests`, Postgres + Redis +
+requirements complètes) — palier 3 car les dépendances sont lourdes
+(langchain/torch). Les suites se sautent proprement si une dépendance manque.
+Promotion possible en gate par-merge (path-gated sur `backend/fastapi_ia/**`) une
+fois la stabilité confirmée.
 
-* `backend/fastapi_ia/tests/` (sécurité SQL, scoping, OCR) — non câblées au CI
-  Django ; candidates à un job `release-verify` dédié (dépendances FastAPI).
-* Tests service-layer cross-app et garde-fous de règles (#3 Meta `PAUSED`,
-  #4 `/proposal` seul chemin PDF devis) — à étoffer au palier 1/2.
+## Pistes restantes
+* Parcours e2e par fonctionnalité pour les flux encore non couverts (stock,
+  installations, SAV, reporting) — à écrire avec l'app lancée pour des sélecteurs
+  fiables, puis promouvoir les plus critiques dans le smoke.
+* Garde-fous de règles (#3 Meta `PAUSED`, #4 `/proposal` seul chemin PDF devis) —
+  à étoffer au palier 1/2 quand le code correspondant atterrit.
+* Régression visuelle : commiter les baselines générées par `release-verify` pour
+  activer la comparaison pixel.

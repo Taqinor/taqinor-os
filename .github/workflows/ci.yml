@@ -207,9 +207,14 @@ jobs:
       # Palier « par-merge » : tout SAUF les tests lourds étiquetés `pdf`/`slow`
       # (rendu WeasyPrint, golden PDF…). Ceux-ci tournent dans release-verify
       # (manuel + nightly), pour un retour rapide sur chaque merge.
-      - name: Run Django test suite (fast tier — excludes pdf/slow)
+      - name: Run Django test suite (fast tier — excludes pdf/slow) + coverage
         working-directory: backend/django_core
-        run: python manage.py test apps authentication -v 2 --exclude-tag=pdf --exclude-tag=slow
+        # coverage run propage le code de sortie des tests → gate intact ;
+        # `coverage report` imprime un % backend visible (informatif).
+        run: |
+          pip install coverage
+          coverage run manage.py test apps authentication -v 2 --exclude-tag=pdf --exclude-tag=slow
+          coverage report
 
   frontend-lint:
     needs: changes
@@ -232,12 +237,14 @@ jobs:
       # DÉCOUVERTE via glob — tout nouveau *.test.mjs tourne sans liste à tenir.
       - name: Frontend unit tests (node:test — pure logic, auto-discovered)
         working-directory: frontend
-        run: node --test "src/**/*.test.mjs"
+        # --experimental-test-coverage : % visible de la logique pure couverte
+        # (informatif — n'échoue que sur un test rouge, pas sur un seuil).
+        run: node --test --experimental-test-coverage "src/**/*.test.mjs"
       # Couche UX : rendu/interaction (Testing Library) + accessibilité (axe),
-      # exécutée par Vitest (fichiers *.test.jsx, jsdom).
+      # exécutée par Vitest (fichiers *.test.jsx, jsdom) + résumé de couverture.
       - name: Frontend component + a11y tests (Vitest + Testing Library + axe)
         working-directory: frontend
-        run: npm run test:unit
+        run: npm run test:coverage
 
   stage-names:
     # Intentionally UNGATED: this is the fast, broad drift guard. It must run on
@@ -392,11 +399,12 @@ jobs:
             if [ "$i" = "30" ]; then echo "Django indisponible"; exit 1; fi
           done
           cd ../../frontend
-          # Palier « smoke » par-merge : parcours critiques uniquement (lead →
-          # devis → PDF, et santé des pages). Le projet `setup` se connecte via la
-          # dépendance Playwright. La MATRICE e2e complète (toutes les specs +
-          # mobile) tourne dans release-verify.yml (manuel + nightly).
-          npx playwright test --project=chromium devis.spec.js health.spec.js
+          # Palier « smoke » par-merge : parcours UTILISATEUR critiques (CRM lead,
+          # lead → devis → PDF, santé des pages). Specs ÉPROUVÉES uniquement, pour
+          # attraper « ça marchait pas au final » AVANT le merge. Le projet `setup`
+          # se connecte via la dépendance Playwright. La MATRICE e2e complète
+          # (toutes les specs + mobile) tourne dans release-verify.yml.
+          npx playwright test --project=chromium leads.spec.js devis.spec.js health.spec.js
       - name: Upload Playwright report
         if: ${{ !cancelled() }}
         uses: actions/upload-artifact@v4
