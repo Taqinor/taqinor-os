@@ -1,0 +1,47 @@
+---
+/**
+ * RelatedLinks.astro — rangée de liens internes (chips) réutilisable.
+ *
+ * Extrait le motif répété en fin de chaque guide/article :
+ *   <div class="mt-10 flex flex-wrap gap-3">
+ *     <a href="…" class="border border-white/40 …">Texte →</a>
+ *   </div>
+ *
+ * Usage :
+ *   <RelatedLinks links={[
+ *     { href: '/guides', label: 'Tous les guides' },
+ *     { href: '/équipement', label: 'Voir l'équipement' },
+ *   ]} />
+ *
+ * Chaque label est rendu avec une flèche → suffixée automatiquement.
+ * Le composant est autonome (pas de JS, pas de dépendance externe).
+ */
+interface Link {
+  href: string;
+  label: string;
+  /** Si true, ouvre dans un nouvel onglet (liens externes uniquement). */
+  external?: boolean;
+}
+
+interface Props {
+  links: Link[];
+  /** Espace avant le bloc (Tailwind mt-*). Défaut : mt-10. */
+  mt?: string;
+}
+
+const { links, mt = 'mt-10' } = Astro.props;
+---
+
+<nav class={`related-links ${mt} flex flex-wrap gap-3`} aria-label="Liens associés">
+  {
+    links.map((link) => (
+      <a
+        href={link.href}
+        class="related-links__chip border border-white/40 px-5 py-3 text-sm font-bold text-white transition-colors hover:border-white hover:bg-white/10 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brass-300"
+        {...(link.external ? { target: '_blank', rel: 'noopener noreferrer' } : {})}
+      >
+        {link.label} →
+      </a>
+    ))
+  }
+</nav>
