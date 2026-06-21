@@ -65,9 +65,37 @@ button:focus-visible,
 input:focus-visible,
 select:focus-visible,
 textarea:focus-visible,
+summary:focus-visible,
+[role="link"]:focus-visible,
+[role="menuitem"]:focus-visible,
+[role="tab"]:focus-visible,
+[contenteditable]:focus-visible,
 [tabindex]:not([tabindex="-1"]):focus-visible {
+  /* N159 — anneau focus-visible TOUJOURS visible : ≥ 2px, couleur --ring (azur,
+     contraste ≥ 3:1 sur les fonds clairs ET les surfaces), décollé du contrôle.
+     `outline` n'altère pas la mise en page (pas de saut au focus). */
   outline: 2px solid var(--ring);
   outline-offset: 2px;
+}
+
+/* ============================================================================
+   N159 — Focus jamais masqué derrière la coquille collante (WCAG 2.4.11)
+   ----------------------------------------------------------------------------
+   Quand on tabule jusqu'à un élément hors écran, le navigateur le fait défiler
+   dans la vue — mais l'en-tête collant (≈ 52 px) ou la nav basse (mobile)
+   peuvent le RECOUVRIR, masquant l'anneau de focus. On réserve une marge de
+   défilement haute (sous l'en-tête) et, sur mobile, basse (au-dessus de la nez
+   basse) pour TOUT élément focalisable : l'élément focalisé s'arrête toujours
+   dans la zone visible, anneau compris. `scroll-margin` n'affecte que le calcul
+   de scrollIntoView — zéro impact sur la mise en page.
+   ========================================================================== */
+:where(a, button, [role="button"], input, select, textarea,
+       [tabindex]:not([tabindex="-1"]), summary):focus-visible {
+  scroll-margin-top: 4.5rem;     /* en-tête collant (≈ 52 px) + marge */
+  /* Marge basse généreuse : sur mobile elle dégage la nav basse (≈ 52 px +
+     inset) ; sur bureau (nav basse masquée) elle reste inoffensive car
+     scroll-margin n'agit que lors d'un scrollIntoView. */
+  scroll-margin-bottom: 5rem;
 }
 
 /* ============================================================================
