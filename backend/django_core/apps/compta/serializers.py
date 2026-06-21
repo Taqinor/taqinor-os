@@ -9,8 +9,8 @@ from decimal import Decimal
 from rest_framework import serializers
 
 from .models import (
-    CompteComptable, CompteTresorerie, EcritureComptable, Journal,
-    LigneEcriture, PlanComptable,
+    CompteComptable, CompteTresorerie, EcritureComptable, ExerciceComptable,
+    Journal, LigneEcriture, PeriodeComptable, PlanComptable,
 )
 
 
@@ -162,3 +162,51 @@ class CompteTresorerieSerializer(serializers.ModelSerializer):
 
     def validate_compte_comptable(self, value):
         return _meme_societe(self, value, 'Compte comptable')
+
+
+class ExerciceComptableSerializer(serializers.ModelSerializer):
+    statut_display = serializers.CharField(
+        source='get_statut_display', read_only=True)
+
+    class Meta:
+        model = ExerciceComptable
+        fields = [
+            'id', 'libelle', 'date_debut', 'date_fin', 'statut',
+            'statut_display', 'an_reporte', 'date_cloture', 'date_creation',
+        ]
+        read_only_fields = [
+            'statut', 'an_reporte', 'date_cloture', 'date_creation']
+
+    def validate(self, attrs):
+        debut = attrs.get('date_debut')
+        fin = attrs.get('date_fin')
+        if debut and fin and fin < debut:
+            raise serializers.ValidationError(
+                "La date de fin doit être postérieure à la date de début.")
+        return attrs
+
+
+class PeriodeComptableSerializer(serializers.ModelSerializer):
+    type_periode_display = serializers.CharField(
+        source='get_type_periode_display', read_only=True)
+
+    class Meta:
+        model = PeriodeComptable
+        fields = [
+            'id', 'exercice', 'type_periode', 'type_periode_display',
+            'libelle', 'date_debut', 'date_fin', 'verrouillee',
+            'date_verrouillage', 'date_creation',
+        ]
+        read_only_fields = [
+            'verrouillee', 'date_verrouillage', 'date_creation']
+
+    def validate_exercice(self, value):
+        return _meme_societe(self, value, 'Exercice')
+
+    def validate(self, attrs):
+        debut = attrs.get('date_debut')
+        fin = attrs.get('date_fin')
+        if debut and fin and fin < debut:
+            raise serializers.ValidationError(
+                "La date de fin doit être postérieure à la date de début.")
+        return attrs
