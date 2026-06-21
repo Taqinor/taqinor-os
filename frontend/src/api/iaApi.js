@@ -56,6 +56,13 @@ const iaApi = {
   queryAgent: (question) =>
     iaApi_instance.post('/sql-agent/query', { question }),
 
+  // AG3 — exécute une action SENSIBLE précédemment PROPOSÉE par l'agent, via le
+  // jeton opaque (`confirm_token`) renvoyé dans la proposition. Miroir frontend
+  // de POST /sql-agent/confirm (AG2). Le bouton « Confirmer » de la carte de
+  // proposition l'appelle ; « Annuler » se contente d'écarter la carte.
+  confirmAction: (token) =>
+    iaApi_instance.post('/sql-agent/confirm', { token }),
+
   getSchema: () =>
     iaApi_instance.get('/sql-agent/schema'),
 

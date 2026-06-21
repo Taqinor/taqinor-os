@@ -1,6 +1,111 @@
 import { createSlice, createAsyncThunk } from '@reduxjs/toolkit'
 import iaApi from '../../../api/iaApi'
 
+// ── AG3 — normalisation des messages agent (cartes proposition / résultat) ────
+//
+// L'agent (AG2) peut renvoyer, en plus d'une réponse texte :
+//   • une PROPOSITION pour une action sensible (outward/irréversible) —
+//     `{ type:'proposal', action_key, human_preview, confirm_token, inputs }` —
+//     que l'UI rend en carte avec Confirmer (→ POST /sql-agent/confirm avec le
+//     `confirm_token`) / Annuler (écarte la carte) ;
+//   • un RÉSULTAT d'action interne terminée —
+//     `{ type:'result', action_key, ok, data:{ reference, wa_url, devis_id… } }`
+//     — rendu en carte avec n° de référence, lien « Télécharger le devis »
+//     (vers /proposal) et bouton « Ouvrir WhatsApp » (depuis `data.wa_url`).
+//
+// Les noms de champs reflètent EXACTEMENT le contrat AG2 (action_tools.run_
+// catalogue_action + endpoint /sql-agent/confirm). Le payload structuré est lu
+// défensivement : champ dédié sur la réponse s'il existe, sinon objet JSON
+// éventuellement présent dans `answer`. Quand aucun payload structuré n'est
+// présent, le message reste un simple message texte (comportement N86 inchangé).
+
+// Tente d'extraire un objet JSON `{type:'proposal'|'result', …}` d'une chaîne.
+// Renvoie l'objet parsé ou null — ne lève jamais.
+export function parseStructuredPayload(text) {
+  if (!text || typeof text !== 'string') return null
+  const trimmed = text.trim()
+  // Cas direct : la chaîne EST l'objet JSON.
+  const direct = tryParseObject(trimmed)
+  if (direct) return direct
+  // Cas mixte : un objet JSON est encadré par du texte naturel.
+  const start = trimmed.indexOf('{')
+  const end = trimmed.lastIndexOf('}')
+  if (start !== -1 && end > start) {
+    const obj = tryParseObject(trimmed.slice(start, end + 1))
+    if (obj) return obj
+  }
+  return null
+}
+
+function tryParseObject(s) {
+  try {
+    const obj = JSON.parse(s)
+    if (obj && typeof obj === 'object' && !Array.isArray(obj)
+        && (obj.type === 'proposal' || obj.type === 'result')) {
+      return obj
+    }
+  } catch {
+    /* pas du JSON — ignoré */
+  }
+  return null
+}
+
+// Construit le message agent à partir du payload `/sql-agent/query`.
+// Priorité : payload structuré dédié (`proposal`/`result`) > JSON dans `answer`
+// > message texte simple. Renvoie un objet message prêt pour le store.
+export function buildAgentMessage(payload) {
+  const answer = payload?.answer ?? ''
+  const structured =
+    normalizePayload(payload?.proposal, 'proposal')
+    ?? normalizePayload(payload?.result, 'result')
+    ?? normalizePayload(parseStructuredPayload(answer))
+
+  if (structured?.type === 'proposal') {
+    return {
+      role: 'agent',
+      kind: 'proposal',
+      content: answer,
+      action_key: structured.action_key ?? '',
+      human_preview: structured.human_preview ?? '',
+      // Sans Redis le backend renvoie confirm_token=null : carte non confirmable.
+      confirm_token: structured.confirm_token ?? null,
+      sql_query: payload?.sql_query,
+    }
+  }
+  if (structured?.type === 'result') {
+    const data = structured.data ?? {}
+    const devisId = data.devis_id ?? data.devis ?? data.id ?? null
+    return {
+      role: 'agent',
+      kind: 'result',
+      content: answer,
+      action_key: structured.action_key ?? '',
+      reference: data.reference ?? data.numero ?? '',
+      wa_url: data.wa_url ?? '',
+      // Lien client « Télécharger le devis » : SEUL chemin /proposal autorisé.
+      proposal_url: devisId != null
+        ? `/api/django/ventes/devis/${devisId}/proposal/`
+        : '',
+      sql_query: payload?.sql_query,
+    }
+  }
+  // Message texte simple (rétro-compatible N86).
+  return {
+    role: 'agent',
+    content: answer,
+    sql_query: payload?.sql_query,
+    action_performed: payload?.action_performed ?? false,
+  }
+}
+
+// Force `type` quand on lit un champ dédié déjà typé par sa provenance.
+function normalizePayload(obj, forcedType) {
+  if (!obj || typeof obj !== 'object' || Array.isArray(obj)) return null
+  const type = forcedType ?? obj.type
+  if (type !== 'proposal' && type !== 'result') return null
+  return { ...obj, type }
+}
+
 export const queryAgent = createAsyncThunk('ia/queryAgent', async (question, { rejectWithValue }) => {
   try {
     const res = await iaApi.queryAgent(question)
@@ -9,6 +114,25 @@ export const queryAgent = createAsyncThunk('ia/queryAgent', async (question, { r
     return rejectWithValue(err.response?.data ?? err.message)
   }
 })
+
+// AG3 — confirme une action proposée par son `confirm_token` (POST /confirm).
+// Le payload de l'action `arg` porte aussi `index` (position du message
+// proposition dans la liste) pour pouvoir, au succès, remplacer la carte par
+// son résultat. Sur 4xx/erreur on remonte le détail pour l'afficher.
+export const confirmAgentAction = createAsyncThunk(
+  'ia/confirmAgentAction',
+  async ({ token }, { rejectWithValue }) => {
+    try {
+      const res = await iaApi.confirmAction(token)
+      if (res.data && res.data.ok === false) {
+        return rejectWithValue(res.data.detail || 'L\'action n\'a pas pu être exécutée.')
+      }
+      return res.data
+    } catch (err) {
+      return rejectWithValue(err.response?.data?.detail ?? err.response?.data ?? err.message)
+    }
+  },
+)
 
 export const loadChatHistory = createAsyncThunk('ia/loadChatHistory', async (_, { rejectWithValue }) => {
   try {
@@ -79,6 +203,9 @@ const iaSlice = createSlice({
     messages: [],
     agentLoading: false,
     agentError: null,
+    // AG3 — confirmation d'une action proposée (carte Confirmer/Annuler)
+    confirmingIndex: null, // index du message proposition en cours de confirmation
+    confirmError: null,
     // OCR
     ocrResult: null,
     ocrLoading: false,
@@ -100,6 +227,21 @@ const iaSlice = createSlice({
   reducers: {
     clearMessages(state) { state.messages = [] },
     historyLoaded(state, action) { state.messages = action.payload },
+    // AG3 — « Annuler » sur une carte proposition : on l'écarte sans appel API
+    // (le jeton expire seul côté Redis ; usage unique). Le message devient un
+    // simple texte « Proposition annulée ».
+    dismissProposal(state, action) {
+      const i = action.payload
+      const msg = state.messages[i]
+      if (msg && msg.kind === 'proposal') {
+        state.messages[i] = {
+          role: 'agent',
+          content: msg.content,
+          dismissed: true,
+        }
+      }
+      state.confirmError = null
+    },
     clearOcrResult(state) {
       state.ocrResult = null
       state.savedDocumentId = null
@@ -125,18 +267,36 @@ const iaSlice = createSlice({
       })
       .addCase(queryAgent.fulfilled, (state, action) => {
         state.agentLoading = false
-        state.messages.push({
-          role: 'agent',
-          content: action.payload.answer,
-          sql_query: action.payload.sql_query,
-          // N86 — l'agent a effectue une action d'ecriture (ticket SAV,
-          // brouillon de bon de commande, visite) : badge cote UI.
-          action_performed: action.payload.action_performed ?? false,
-        })
+        // AG3 — buildAgentMessage rend une carte proposition / résultat quand le
+        // payload structuré AG2 est présent ; sinon un message texte (N86).
+        state.messages.push(buildAgentMessage(action.payload))
       })
       .addCase(queryAgent.rejected, (state, action) => {
         state.agentLoading = false
         state.agentError = action.payload
+      })
+
+      // AG3 — confirmation d'une action proposée.
+      .addCase(confirmAgentAction.pending, (state, action) => {
+        state.confirmingIndex = action.meta.arg?.index ?? null
+        state.confirmError = null
+      })
+      .addCase(confirmAgentAction.fulfilled, (state, action) => {
+        const i = action.meta.arg?.index
+        state.confirmingIndex = null
+        // Remplace la carte proposition par la carte résultat de l'action.
+        if (typeof i === 'number' && state.messages[i]) {
+          state.messages[i] = buildAgentMessage({
+            answer: action.payload?.detail || state.messages[i].content || '',
+            result: action.payload?.data
+              ? { type: 'result', action_key: action.payload.action_key, data: action.payload.data }
+              : { type: 'result', action_key: action.payload?.action_key, data: {} },
+          })
+        }
+      })
+      .addCase(confirmAgentAction.rejected, (state, action) => {
+        state.confirmingIndex = null
+        state.confirmError = action.payload
       })
 
       .addCase(processOcrStockDocument.pending, (state, action) => {
@@ -211,5 +371,5 @@ const iaSlice = createSlice({
   },
 })
 
-export const { clearMessages, historyLoaded, clearOcrResult, clearStockOcrResult, clearErrors } = iaSlice.actions
+export const { clearMessages, historyLoaded, dismissProposal, clearOcrResult, clearStockOcrResult, clearErrors } = iaSlice.actions
 export default iaSlice.reducer
