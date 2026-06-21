@@ -96,7 +96,7 @@ function squareCorners(side: number, lng0 = -7.62, lat0 = 33.59): [number, numbe
   ];
 }
 
-const ID_INPUTS = ['rp9-bill', 'rp9-address', 'rp9-need-input', 'rp9-obs-length', 'rp9-obs-width'];
+const ID_INPUTS = ['rp9-bill', 'rp9-address', 'rp9-need-input', 'rp9-obs-length', 'rp9-obs-width', 'rp9-overhang-input'];
 const ID_RANGES = ['rp9-tilt-range', 'rp9-pitch-range'];
 const ID_BUTTONS = [
   'rp9-finish', 'rp9-clear', 'rp9-undo-point', 'rp9-need-minus', 'rp9-need-plus', 'rp9-tilt-reco',
@@ -113,7 +113,7 @@ const ID_GENERIC = [
   'rp9-area-value', 'rp9-need-note', 'rp9-tilt-value', 'rp9-obs-edit', 'rp9-obs-dims',
   'rp9-optimum-note', 'rp9-optimum-card', 'rp9-optimum-label', 'rp9-optimum-source', 'rp9-optimum-kwc',
   'rp9-optimum-panels', 'rp9-optimum-prod', 'rp9-optimum-cover', 'rp9-optimum-why',
-  'rp9-flat-controls', 'rp9-flat-only', 'rp9-pitched-controls', 'rp9-pitch-value', 'rp9-pitched-note',
+  'rp9-flat-controls', 'rp9-flat-only', 'rp9-pitched-controls', 'rp9-pitch-value', 'rp9-pitched-note', 'rp9-facing-note',
   'rp9-reco-title', 'rp9-reco-kwc', 'rp9-reco-panels', 'rp9-reco-prod', 'rp9-reco-cover',
   'rp9-reco-savings', 'rp9-reco-why', 'rp9-reco-bifacial', 'rp9-results', 'rp9-maxline', 'rp9-compare-wrap',
   // W50 — fenêtre de production (conteneur, scope, labels, headline, graphe, source, économies).

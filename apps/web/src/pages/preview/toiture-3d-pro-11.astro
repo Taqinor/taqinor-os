@@ -319,6 +319,17 @@ const chipClass =
                   <button type="button" data-margin="keep" class={chipClass} aria-pressed="true">Garder la marge<span class="rp9-reco-badge" hidden> ✓ Recommandé</span></button>
                   <button type="button" data-margin="remove" class={chipClass} aria-pressed="false">Pleine rive<span class="rp9-reco-badge" hidden> ✓ Recommandé</span></button>
                 </div>
+                <!-- W109 — COMMUN — débord panneaux autorisé : combien (m) un panneau peut
+                     déborder de la rive, rails restant sur le toit (fréquent en pente). 0 par
+                     défaut → calepinage inchangé. Change la CAPACITÉ géométrique seulement :
+                     le nombre posé reste plafonné au besoin (facture). step="any" → jamais de snap. -->
+                <div class="flex flex-wrap items-center gap-2">
+                  <label for="rp9-overhang-input" class="tech-label mr-1 text-lune-faint">Débord panneaux autorisé (m)</label>
+                  <input id="rp9-overhang-input" type="number" inputmode="decimal" step="any" min="0"
+                    value="0" autocomplete="off"
+                    class="fig h-9 w-20 border border-white/20 bg-nuit-900 px-2 text-center text-base text-white outline-none focus:border-brass-400" />
+                  <span class="text-xs text-lune-faint">rails sur le toit · capacité seule, jamais au-delà du besoin</span>
+                </div>
               </div><!-- /rp9-flat-controls -->
 
               <!-- Contrôles TOIT EN PENTE / TUILES (masqués en mode plat). La pente

@@ -195,6 +195,7 @@ export function initRoofToolPro8(opts: InitOptions): void {
   const pitchValueEl = $('rp9-pitch-value');
   const pitchedNoteEl = $('rp9-pitched-note');
   const facingNoteEl = $('rp9-facing-note'); // W106 — note « face auto-orientée / réglée à la main »
+  const overhangInputEl = $<HTMLInputElement>('rp9-overhang-input'); // W109 — débord panneaux (m)
   // W50 — Fenêtre « Production estimée » (Année / Mois / Jour). Tous facultatifs :
   // l'outil fonctionne sans elle (repli gracieux).
   const prodWindowEl = $('rp9-prod-window');
@@ -345,6 +346,11 @@ export function initRoofToolPro8(opts: InitOptions): void {
   // W1 — Marge de rive courante (m) déduite du toggle « Marge ». keep = marge de
   // design (PERIMETER_SETBACK_M) ; remove = pleine rive (0).
   const setbackOf = (): number => (sel.margin === 'remove' ? 0 : PERIMETER_SETBACK_M);
+
+  // W109 — débord panneaux autorisé au-delà de la rive (m), saisi dans #rp9-overhang-input.
+  // 0 par défaut → calepinage/solve inchangés. Change la CAPACITÉ géométrique seulement :
+  // posé = min(besoin, ce qui tient) reste plafonné au besoin (cap facture intact).
+  let overhangM = 0;
 
   // W1 — Azimut de FACE pour l'array sud, selon le groupe AZIMUT : « aligné toit »
   // suit les arêtes (rec.roofAlignedAzimuthDeg), sinon plein sud (180).
@@ -598,6 +604,12 @@ export function initRoofToolPro8(opts: InitOptions): void {
     },
     set facingManual(v) {
       facingManual = v;
+    },
+    get overhangM() {
+      return overhangM;
+    },
+    set overhangM(v) {
+      overhangM = v;
     },
     get neededPanels() {
       return neededPanels;
@@ -2131,6 +2143,15 @@ export function initRoofToolPro8(opts: InitOptions): void {
       syncFacingChips();
       if (roofType === 'pitched' && closed) pitchedRecompute();
     });
+  });
+
+  // W109 — débord panneaux autorisé (m) : valeur typée NON snappée (step="any"), bornée ≥ 0
+  // côté logique seulement. Change la CAPACITÉ géométrique (plus de panneaux aux rives) puis
+  // re-résout/re-rend (recalc gère plat ET pente) ; le cap besoin (facture) reste intact.
+  overhangInputEl?.addEventListener('input', () => {
+    const v = Number(overhangInputEl.value);
+    overhangM = Number.isFinite(v) && v > 0 ? v : 0;
+    if (closed) recalc();
   });
 
   // — V2 : curseur d'inclinaison (exploration fine) + bouton « reco » —
