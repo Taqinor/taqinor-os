@@ -92,6 +92,16 @@ Drop a real farm-install photo at
 `backend/django_core/apps/ventes/quote_engine/agricole/assets/hero.jpg`
 (degrades to a navy gradient today).
 
+### AG-Q12 · Add real installation photos to the library  *(content)*
+The cover hero now picks the install photo whose power (kWc) is nearest the
+quote (agricole falls back to residential/industriel of similar size). Today the
+library has only `default.jpg` (the residential hero). Drop real **JPEG** photos
+into `backend/django_core/apps/ventes/quote_engine/assets/installations/` named
+`<mode>-<kwc>.jpg` (e.g. `residentiel-5.4.jpg`, `industriel-30.jpg`,
+`agricole-10.jpg`) — the more you add across the power range, the better each
+quote's hero matches. Pure content; no code change. (Same library powers the
+residential quote hero.)
+
 ### AG-Q11 · CODEMAP refresh before any merge  *(docs)*
 The new `agricole/` package is a structural change → regenerate `docs/CODEMAP.md`
 and re-run `scripts/codemap_fingerprint.py --write` (the `stage-names` CI job
