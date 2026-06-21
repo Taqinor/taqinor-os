@@ -1143,7 +1143,7 @@ supply a photo / official brand SVGs) — flagged inline; build the rest.*
   Files: `apps/web/src/styles/global.css` + contextual-link rows site-wide.
 - [x] W175 — **Resolve the azur-vs-brass light-eyebrow inconsistency + componentize the
   "salle blanche" palette-swap with its seam.** Files: `apps/web/src/styles/global.css`, light-section pages.
-- [ ] W176 — **Align off-scale section headings** (`DiagnosticForm`, `Faq`, `CtaBand`) to
+- [x] W176 — **Align off-scale section headings** (`DiagnosticForm`, `Faq`, `CtaBand`) to
   `v2-section-title`. Files: those components.
 - [x] W177 — **Add a design-tokens doc + optional lint** guarding arbitrary `text-[…]`/`shadow-[…]`
   figure values. Files: `apps/web/STYLE.md` (or new doc), `apps/web/tests/`.
@@ -1182,21 +1182,21 @@ supply a photo / official brand SVGs) — flagged inline; build the rest.*
 
 **— Forms & interactive widgets (visual-only; lead mechanics untouched) —**
 
-- [ ] W188 — **16px inputs (kill iOS zoom-on-focus) + ~44px tap targets + sized consent
+- [x] W188 — **16px inputs (kill iOS zoom-on-focus) + ~44px tap targets + sized consent
   checkboxes** (the live `DiagnosticForm` lags the roof tool, which already fixed this). Files:
   `apps/web/src/components/DiagnosticForm.astro`, `DiagnosticFormEnriched.astro`, `RegimeSelector.astro`.
-- [ ] W189 — **Polish the multi-step progress bar** (`bg-azur-100` reads as "complete" on navy;
+- [x] W189 — **Polish the multi-step progress bar** (`bg-azur-100` reads as "complete" on navy;
   4px thin). Files: `apps/web/src/components/DiagnosticForm.astro`.
-- [ ] W190 — **Elevate the "your estimate" result card** into a premium payoff (framing, glow
+- [x] W190 — **Elevate the "your estimate" result card** into a premium payoff (framing, glow
   seam, value-vs-label hierarchy). Files: `apps/web/src/components/DiagnosticForm.astro`.
-- [ ] W191 — **Submitting spinner + `aria-busy` + fade-in results** (today it's a silent text
+- [x] W191 — **Submitting spinner + `aria-busy` + fade-in results** (today it's a silent text
   swap and the result pops). Files: `DiagnosticForm.astro`, `DiagnosticFormEnriched.astro`, `RegimeSelector.astro`,
   `apps/web/src/styles/global.css` (one `@keyframes spin`).
 - [x] W192 — **Estimator chips as a true segmented control + branded range sliders** (active
   state nearly invisible on dark). Files: `apps/web/src/pages/preview/toiture-3d-pro-11.astro`.
 - [x] W193 — **WhatsAppMock realism** (delivered/read ticks, "en ligne" dot, bubble polish).
   Files: `apps/web/src/components/WhatsAppMock.astro`.
-- [ ] W194 — **Strengthen error/validation styling + placeholder contrast + focus-ring presence.**
+- [x] W194 — **Strengthen error/validation styling + placeholder contrast + focus-ring presence.**
   Files: `DiagnosticForm.astro`, `DiagnosticFormEnriched.astro`, `RegimeSelector.astro`.
 
 **— Content & reading experience —**
@@ -1469,3 +1469,9 @@ supply a photo / official brand SVGs) — flagged inline; build the rest.*
 - 2026-06-21 — W164: mobile menu animated grid-rows panel, emoji 📞 → inline phone SVG, LanguageSwitcher moved inside, scrollable (max-h/overscroll-contain).
 - 2026-06-21 — W165: StickyCta pill restyled to brass/night + .glow + env(safe-area-inset-bottom); WhatsApp deeplink byte-identical.
 - 2026-06-21 — W210: signature .glow propagated to header/mobile/CtaBand/StickyCta primary CTAs; all hrefs unchanged.
+- 2026-06-21 — W176: DiagnosticForm/Faq/CtaBand section headings aligned to v2-section-title.
+- 2026-06-21 — W188: form inputs ≥16px (no iOS zoom) + ~44px tap targets + larger consent checkbox hit-area; field names/required untouched.
+- 2026-06-21 — W189: multi-step progress bar — 8px brass fill on subtle track, role=progressbar + aria-valuenow.
+- 2026-06-21 — W190: estimate result card elevated (cine-card+glow, brass seam, .fig/.fig-lg/.lum value vs .tech-label); computed numbers + deeplink unchanged.
+- 2026-06-21 — W191: submitting spinner + aria-busy + reduced-motion-safe result fade-in; shared @keyframes spin/.spinner in global.css; submit/fetch/threshold logic unchanged.
+- 2026-06-21 — W194: stronger error/validation styling (aria-invalid highlight), higher placeholder contrast, visible focus rings; validation logic unchanged.
