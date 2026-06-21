@@ -1,0 +1,120 @@
+---
+/**
+ * Guide (W122) — On-grid, off-grid ou hybride : que se passe-t-il pendant une coupure ?
+ * Explique en langage clair les trois architectures solaires et le comportement
+ * de chacune lors d'une coupure réseau. AUCUN chiffre inventé.
+ */
+import Layout from '../../layouts/Layout.astro';
+import V2Enhance from '../../components/V2Enhance.astro';
+import Article33Ribbon from '../../components/Article33Ribbon.astro';
+import Breadcrumb from '../../components/Breadcrumb.astro';
+import CtaBand from '../../components/CtaBand.astro';
+import StickyCta from '../../components/StickyCta.astro';
+import { NAP } from '../../lib/nap';
+
+const url = new URL(Astro.url.pathname, Astro.site).href;
+const jsonLd = {
+  '@context': 'https://schema.org',
+  '@type': 'Article',
+  headline: 'On-grid, off-grid ou hybride : que se passe-t-il pendant une coupure ?',
+  description: 'On-grid, off-grid ou hybride : pourquoi un système raccordé réseau se coupe automatiquement lors d'une panne, et ce qu'il faut pour garder le courant.',
+  about: { '@type': 'Thing', name: 'Architecture solaire et continuité de service' },
+  author: { '@type': 'Organization', name: NAP.name, url: NAP.url },
+  publisher: { '@type': 'Organization', name: NAP.name, url: NAP.url },
+  mainEntityOfPage: url,
+};
+---
+
+<Layout
+  title="On-grid, off-grid ou hybride : que se passe-t-il pendant une coupure ? | Taqinor"
+  description="Un système solaire raccordé au réseau se déconnecte automatiquement lors d'une coupure — c'est la loi anti-îlotage. Pour garder le courant, il faut un onduleur hybride avec batterie. Explications claires."
+  ogSlug="accueil"
+>
+  <script type="application/ld+json" set:html={JSON.stringify(jsonLd)} />
+  <div class="v2">
+    <V2Enhance />
+    <Article33Ribbon />
+
+    <Breadcrumb items={[{ label: 'Accueil', href: '/' }, { label: 'Guides', href: '/guides' }, { label: 'On-grid, off-grid ou hybride ?' }]} />
+
+    <article class="mx-auto max-w-3xl px-4 pb-24 pt-12 sm:pb-28">
+      <p class="tech-label v2-kicker rule-brass text-brass-300">Guide · Architecture</p>
+      <h1 class="display v2-page-title mt-5 text-white">On-grid, off-grid ou hybride ?</h1>
+      <p class="v2-lead mt-6 text-lune-soft">
+        Trois architectures, trois comportements radicalement différents lors d'une coupure réseau.
+        Comprendre la distinction — surtout le mécanisme d'anti-îlotage — évite de nombreuses
+        déceptions au moment où l'on en a le plus besoin.
+      </p>
+
+      <h2 class="display v2-section-title mt-12 text-white">Le système on-grid (raccordé réseau)</h2>
+      <p class="v2-lead mt-5 text-lune-soft">
+        Un système <strong class="text-lune">on-grid</strong> — aussi appelé raccordé réseau ou
+        « grid-tied » — produit de l'électricité solaire et la consomme en autoconsommation directe,
+        le réseau ONEE jouant le rôle de « batterie virtuelle » : l'excédent part sur le réseau,
+        le déficit est compensé par celui-ci. C'est l'architecture la plus rentable pour les foyers
+        et les entreprises urbains raccordés à l'ONEE, car aucun stockage physique n'est à amortir.
+      </p>
+      <p class="v2-lead mt-4 text-lune-soft">
+        En revanche, lors d'une coupure réseau, cet onduleur s'arrête <em>immédiatement</em> —
+        même en plein soleil. Ce n'est pas un défaut : c'est une protection obligatoire.
+      </p>
+
+      <h2 class="display v2-section-title mt-12 text-white">Pourquoi l'onduleur se coupe : l'anti-îlotage</h2>
+      <p class="v2-lead mt-5 text-lune-soft">
+        La norme impose à tout onduleur raccordé réseau une fonction dite <strong class="text-lune">anti-îlotage</strong> :
+        dès que le réseau disparaît, l'onduleur détecte l'absence de tension et s'isole en quelques
+        millisecondes. Raison : si l'onduleur continuait d'injecter du courant sur une ligne que les
+        techniciens ONEE croient hors tension, il y aurait un risque mortel pour les équipes
+        d'intervention. L'arrêt automatique protège les personnes — pas l'onduleur.
+      </p>
+      <p class="v2-lead mt-4 text-lune-soft">
+        Conséquence pratique : <strong class="text-lune">avoir des panneaux solaires ne garantit pas
+        d'avoir de l'électricité pendant une coupure</strong> si le système est purement on-grid.
+      </p>
+
+      <h2 class="display v2-section-title mt-12 text-white">Le système off-grid (autonome)</h2>
+      <p class="v2-lead mt-5 text-lune-soft">
+        Un système <strong class="text-lune">off-grid</strong> n'est pas raccordé au réseau du tout.
+        Il produit, stocke dans des batteries et restitue l'énergie de manière totalement autonome.
+        C'est la solution naturelle pour les sites isolés — fermes éloignées, relais de
+        télécommunications, zones rurales non desservies — où il n'existe pas de réseau à rejoindre.
+        En milieu urbain raccordé à l'ONEE, un off-grid pur est rarement justifié économiquement :
+        dimensionner le stockage pour couvrir les nuits et les jours nuageux représente un
+        investissement significatif, sans la flexibilité que le réseau procure gratuitement.
+      </p>
+
+      <h2 class="display v2-section-title mt-12 text-white">Le système hybride : réseau + batterie + secours</h2>
+      <p class="v2-lead mt-5 text-lune-soft">
+        Un système <strong class="text-lune">hybride</strong> combine le meilleur des deux mondes :
+        il est raccordé au réseau pour l'autoconsommation et l'équilibre jour/nuit, et dispose d'une
+        batterie qui peut alimenter des circuits prioritaires (éclairage, réfrigérateur, chargeurs,
+        box internet) lorsque le réseau tombe.
+      </p>
+      <p class="v2-lead mt-4 text-lune-soft">
+        L'onduleur hybride gère la bascule en quelques millisecondes — sans coupure perceptible pour
+        les appareils — et isole les circuits secours du réseau, respectant ainsi l'anti-îlotage
+        tout en maintenant l'alimentation. C'est la seule configuration qui permette à la fois
+        l'autoconsommation quotidienne <em>et</em> la continuité de service lors d'une coupure.
+      </p>
+
+      <h2 class="display v2-section-title mt-12 text-white">En résumé : quelle architecture vous convient ?</h2>
+      <p class="v2-lead mt-5 text-lune-soft">
+        Si vous êtes raccordé à l'ONEE et que les coupures ne sont qu'une gêne passagère,
+        un système on-grid suffit et offre le meilleur retour sur investissement. Si vous êtes
+        sur un site sans réseau, l'off-grid s'impose. Si la continuité de service est un impératif
+        — activité commerciale, équipements médicaux, télétravail intensif — le système hybride
+        avec batterie est la réponse. Ce n'est pas une question de budget a priori, mais d'usage :
+        on part du besoin, pas du catalogue.
+      </p>
+      <div class="mt-10 flex flex-wrap gap-3">
+        <a href="/guides/onduleur-hybride-ou-reseau" class="border border-white/40 px-5 py-3 text-sm font-bold text-white transition-colors hover:border-white hover:bg-white/10">Onduleur hybride ou réseau ? →</a>
+        <a href="/guides/electricite-pendant-les-coupures" class="border border-white/40 px-5 py-3 text-sm font-bold text-white transition-colors hover:border-white hover:bg-white/10">Électricité pendant les coupures →</a>
+        <a href="/guides" class="border border-white/40 px-5 py-3 text-sm font-bold text-white transition-colors hover:border-white hover:bg-white/10">Tous les guides →</a>
+      </div>
+    </article>
+
+    <CtaBand title="On tranche l'architecture qui vous convient dans l'étude gratuite." href="/contact#simulateur" />
+
+    <StickyCta />
+  </div>
+</Layout>
