@@ -5,9 +5,11 @@
 This is the **priority queue**, worked **before** `docs/PLAN.md`. A run drains every `[ ]` task
 in this file FIRST — the same way (verify it isn't already built, build it completely with
 tests, obey every STANDING RULE in `PLAN.md`, then commit it to a worktree branch, tick it `[x]`,
-and append a DONE LOG line as it lands; **partition the unchecked tasks into independent lanes by
-the real files they write and build the lanes in parallel with up to 8 concurrent worktree
-subagents — waves of 8 if there are more — coupled tasks in sequence inside a lane**) — and only
+and append a DONE LOG line as it lands; **run `python scripts/plan_lanes.py docs/PLAN2.md` to get
+the maximally-parallel cross-category wave plan and build those lanes in parallel with concurrent
+worktree subagents up to the session ceiling (default 8, raised as high as the session can sustain
+via `--max-lanes`), continuously refilled (work-stealing), coupled tasks in sequence inside a
+lane**) — and only
 once this file has no pending `[ ]` task left does it fall through to `docs/PLAN.md`. Every
 worktree branch is folded into one `dev`, CI runs once over the whole batch, and the run
 self-merges `dev` → `main` exactly once at the very end — **no per-agent PR, no per-task merge**.
@@ -36,6 +38,93 @@ one-task-at-a-time agent), and the **sync-safe single merge** (integrate the lat
 ### TOP PRIORITY — build first (queued 2026-06-20)
 
 - [x] G10 — Lead-source capture (G10 first half): (1) add nullable fields to the lead model — `fbclid`, `utm_source`, `utm_medium`, `utm_campaign`, `utm_content`, `utm_term` (additive / nullable migration, company FK forced server-side); (2) on the marketing-site contact form (`apps/web/`), capture `fbclid` + the UTM params from the landing URL, persist them across the session, submit them with the lead, and store them on the created lead. The Meta Conversions API SEND (G10 second half) STAYS GATED — pending Reda's Meta pixel access token; only the CAPI send remains after this ships. (Note: the apps/web portion crosses into web-plan territory but is intentionally bundled here per Reda's instruction.) [VERIFIED 2026-06-20: already fully built — Lead has fbclid/utm_* (crm migration 0006), the website webhook maps+stores them (`crm/webhooks.py:_map_payload_to_fields`), `apps/web` captures first-touch fbclid+UTM (`Layout.astro`, `lib/lead.ts`), covered by `crm/tests_webhook.py`.]
+
+### Group Q — Devis ↔ Toiture 3D pipeline (backend; founder request 2026-06-21)
+
+*Goal: weld the existing `roofPro11` 3D tool (in `apps/web`) and the premium quote
+into ONE loop — client points at their roof → Meriem designs it → client receives a
+premium web proposal and e-signs. The expensive engine already exists (3D optimizer,
+PVGIS production via `/api/roof-production`, premium quote engine); Group Q adds only
+the **backend persistence, storage and wiring**. The matching front-end tasks live in
+`docs/WEB_PLAN.md` (W112–W118).*
+
+> **CRITICAL UX RULE (applies to the whole pipeline).** The client does the bare
+> minimum and NEVER sees panels auto-fill. The client is **not obliged to draw** — they
+> just **point** at their roof (drop a pin / pick the building) and give their bill;
+> **Meriem** draws the outline (if needed) and runs the auto-fill/optimizer later,
+> privately — so the client believes TAQINOR drew the whole design for them. Backend
+> therefore stores the client's *pin (+ optional rough outline)* (Q2) separately from
+> the *finalized layout with panels* (Q1); only the finalized layout ever reaches the
+> proposal.
+
+> **Constraints.** All schema additive/nullable, seeded from current defaults; every
+> viewset company-scoped server-side (never trust `company` from the body). The legacy
+> `/proposal` PDF path stays byte-identical (rule #4): Group Q only *adds* a web
+> channel the founder explicitly authorized; the quote document statuses
+> (`brouillon→envoye→accepte…`) are preserved 1:1 (rule #4 status preservation).
+
+- [ ] Q1 — **`Devis.roof_layout` storage + endpoints.** Add a nullable `roof_layout`
+  JSONField to `Devis` (additive migration) holding the *finalized* serialized
+  `AreaRecord[]` (roof vertices, obstacles, roofType, pitch, azimuth, the result
+  `{panels,kwc,annualKwh,savings}`, and `renderPlan`). Add company-scoped DRF
+  endpoints `POST /api/django/ventes/devis/<id>/layout/` (save — company forced in
+  the serializer/`perform_create`, never from body) and `GET …/layout/` (load).
+  **Done =** round-trip save/load test + a cross-tenant isolation test pass. Files:
+  `apps/ventes/models.py` (+migration), `apps/ventes/views.py`/serializers, tests.
+
+- [ ] Q2 — **Client roof-POINT capture on the Lead (pin, not drawing).** Add nullable
+  `roof_point` (lat/lng of the building the client pinned) and `roof_outline` (OPTIONAL
+  rough polygon, usually empty — the client need not draw) JSONFields to the CRM Lead,
+  plus the bill kWh and a secure unguessable per-lead `token` (UUID) for the Meriem
+  hand-off link. First VERIFY the W105–W111 contact-capture work (it may already carry
+  part of this) and EXTEND rather than duplicate; wire the lead intake/webhook
+  (`apps/crm/webhooks.py`) to accept + persist the pin (+ optional outline) with the
+  lead. **Done =** the pin persists on the lead, token resolves the lead, company forced
+  server-side; tests cover it. Files: `apps/crm/models.py` (+migration),
+  `apps/crm/webhooks.py`/views, tests.
+
+- [ ] Q3 — **`build_devis_from_layout()` service (server-side).** A service that turns a
+  finalized layout (kWc, nb panneaux, production, chosen module/onduleur) into Devis
+  lines from the seeded catalogue, reusing the SAME composition rules as the quote
+  generator (`builder.py` réseau/injection/hybride/batterie/panneau keywords) and the
+  reference-numbering util (`apps/ventes/utils/references.py`, never count()+1), with the
+  client resolved via `apps/crm/services.resolve_client_for_lead`. Store the layout's
+  production into `Devis.etude_params`. **Done =** a sample layout produces a coherent,
+  company-scoped Devis with correct kWc/lines/totals and NEVER auto-quotes a price-less
+  product (existing guard); tests cover residential réseau + hybride+batterie. Files:
+  `apps/ventes/services.py`, `apps/crm/services.py`, tests.
+
+- [ ] Q4 — **Roof-render image storage.** Accept the tool's 3D snapshot PNG (from W115)
+  and store it in MinIO reusing the existing PDF bucket/`minio_client` infra, keyed +
+  company-scoped, referenced from a nullable `Devis.roof_image` field (additive).
+  Endpoint `POST /api/django/ventes/devis/<id>/roof-image/`. **Done =** upload + signed
+  retrieval test + company-scoping test pass. Files: `apps/ventes/utils/` (minio),
+  `apps/ventes/models.py` (+migration), views, tests.
+
+- [ ] Q5 — **Feed roof render + layout figures into the quote data (additive/guarded).**
+  Extend the quote-data builder so a quote CAN show the real roof render as the "votre
+  installation" visual and use the layout's kWc/production/savings instead of estimating
+  — **only when a layout/render is present**; with none present the existing PDF output
+  stays byte-identical (back-compat, rule #4). **Done =** with-layout vs without-layout
+  tests both pass and the no-layout render is unchanged. Files: `quote_engine/builder.py`
+  (guarded), tests. *(Additive only — does not alter the legacy path.)*
+
+- [ ] Q6 — **Tokenized web-proposal data endpoint.** A read-only
+  `GET /api/django/ventes/proposal/<token>/` returning the quote data
+  (`build_quote_data` output + roof-image signed URL + option totals) as JSON for the
+  client web proposal (W116) to render — authenticated by the signed token, not a login,
+  company-scoped, expired/invalid tokens rejected. **Done =** valid token returns the
+  payload; invalid/expired rejected; no cross-tenant leakage; tests cover it. Files:
+  `apps/ventes/views.py`/urls, token util, tests.
+
+- [ ] Q7 — **E-signature acceptance (reuse the existing stamp).** A tokenized
+  `POST /api/django/ventes/proposal/<token>/accept/` that records typed name + timestamp
+  + IP into the existing acceptance fields (`accepte_par_nom`/`date_acceptation`, N26) and
+  flips the Devis to `accepte` THROUGH the existing acceptance service so the document
+  chain (bon-commande/facture) is preserved 1:1 (rule #4). **Done =** accept flips status
+  + writes the stamp + is idempotent on double-submit; tests cover it. Files:
+  `apps/ventes/services.py` (reuse the acceptance path), views, tests. *(A legal-grade
+  eIDAS e-sign provider stays a separate GATED decision — v1 reuses the existing stamp.)*
 
 # Taqinor OS — UI/UX overhaul ("prettier than Odoo")
 

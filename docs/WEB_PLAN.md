@@ -22,12 +22,14 @@ relies on the agent's own memory — the file on disk is the memory.
 1. **Read this whole file.**
 2. **Drain the WHOLE BUILD QUEUE — never just one task, with MAXIMUM SAFE PARALLELISM.** Process
    EVERY unchecked `[ ]` task (not `[x]`, not `[SKIP]`, not `[BLOCKED]`); ignore the GATED and
-   MANUAL sections entirely. **At the START, compute the file-ownership + dependency graph from
-   the real `apps/web` code and partition the queue into independent lanes** (a lane shares a
-   file or has a dependency and runs in sequence; different lanes never touch each other's
-   files), then **fan the lanes out to up to 8 concurrent worktree subagents** (`isolation:
-   worktree`, each in its own isolated git worktree so two never edit the same files at once),
-   in **waves of up to 8** when there are more lanes, with fewer agents when there are fewer.
+   MANUAL sections entirely. **At the START, run `python scripts/plan_lanes.py docs/WEB_PLAN.md`**
+   to compute the file-ownership + dependency graph from the real `apps/web` code and emit a
+   **maximally-parallel wave plan** (a lane shares a file or has a dependency and runs in
+   sequence; different lanes never touch each other's files; each wave takes one head per lane,
+   longest lanes first), then **fan each wave's lanes out to concurrent worktree subagents**
+   (`isolation: worktree`, each in its own isolated git worktree so two never edit the same files
+   at once) up to the session's worktree ceiling (default 8, raised as high as the session can
+   sustain via `--max-lanes`), **continuously refilled (work-stealing)** rather than rigid waves.
    Each subagent commits its lane to its own worktree branch as each task lands; the orchestrator
    folds every branch into one `dev` at the end. Scope stays strictly inside `apps/web/**` and
    the `docs/WEB_PLAN*` files. **Default to running this as a dynamic workflow with review** —
@@ -527,6 +529,81 @@ write the shared `roof-tool-pro11.ts` / `roofPro11/scene3d.ts` / the page, so th
   writes `lf-name`/`lf-phone`/`lf-city` AND the preview still never calls `fetch`/POSTs a lead (extend the existing
   no-lead-POST runtime test). Accept: new tests fail before W105–W110 and pass after; full `apps/web` vitest suite
   green. Files: `apps/web/tests/*.ts` (+ new files as needed).
+
+---
+
+### W112–W118 — DEVIS PIPELINE: client points at roof → Meriem designs → premium web proposal + e-sign (founder request 2026-06-21)
+
+*Goal: turn the existing `roofPro11` builder + the premium quote into ONE loop. The
+backend half (storage, Devis build, proposal/e-sign endpoints) is `docs/PLAN2.md` Group
+Q (Q1–Q7); these are the `apps/web` halves. The heavy engine already exists — this is
+plumbing + a beautiful client-facing surface.*
+
+> **CRITICAL UX RULE — the client never sees the panels being placed.** The client is
+> **not obliged to draw**: they just **point** at their roof (drop a pin / pick the
+> building) and give their bill. **Meriem** draws the outline (if needed) and runs the
+> auto-fill/optimizer, privately, so the client believes TAQINOR designed it for them.
+> The client-facing capture mode must therefore instantiate NO optimizer, NO panel
+> layer, NO production cards — only address search + a pin (+ optional rough trace).
+> Note: exposing a `/preview/*` tool publicly is normally WG1-GATED; W112 is a NEW,
+> deliberately minimal *capture* surface (no design shown), which the founder authorized.
+
+- [ ] W112 — **Client "où est votre toit ?" capture (public, panels HIDDEN).** A new
+  minimal public route (e.g. `/devis/mon-toit`) that reuses roofPro11's MapTiler address
+  search + satellite map, lets the client **drop a pin on their roof** (drawing the
+  outline is OPTIONAL, not required), and enter contact + bill, then submits the
+  pin (+ optional outline) + contact to the backend (Q2), creating a Lead. Add a
+  **`captureOnly` flag** to `initRoofToolPro8` that boots map + geocoder + pin/trace ONLY
+  and never instantiates the optimizer/scene-panels/production UI. **Done =** the client
+  can pin + submit on phone & desktop; no panel/optimizer/production UI ever appears; the
+  pin reaches the backend. Files: new `apps/web/src/pages/devis/mon-toit.astro`,
+  `roof-tool-pro11.ts` (captureOnly branch), reuse `roofPro11/mapDraw.ts`.
+
+- [ ] W113 — **Layout serialize + hydrate (the linchpin).** Add serialize/deserialize of
+  the tool state (`AreaRecord[]`, and the lighter pin/outline) and extend
+  `initRoofToolPro8` boot to **hydrate from the backend** via a token URL param
+  (`?lead=<token>` for the client's pin, `?devis=<id>` for a saved layout), fetching from
+  the Q1/Q2 endpoints through a small Astro API proxy. **Done =** a saved pin/outline (and
+  a saved finalized layout) reload into the tool identically; round-trip vitest.
+  Files: `roofPro11/prefill.ts` (load fns), `roof-tool-pro11.ts` (boot hydration),
+  `apps/web/src/pages/api/roof-layout.ts` (proxy).
+
+- [ ] W114 — **Meriem design + finalize (where the panels appear, privately).** An
+  internal/gated route that boots the FULL tool **hydrated with the client's pin** (W113);
+  Meriem draws the outline if the client didn't, runs the existing auto-fill/optimizer,
+  edits, then a **"Valider & générer le devis"** action serializes the finalized layout +
+  kWc/count/production and POSTs it to the backend (Q1) and triggers Devis creation (Q3).
+  **Done =** open a client pin → draw/autofill → finalize → a Devis is created and the
+  layout saved. Files: `apps/web/src/pages/internal/devis-design.astro` (or reuse the
+  preview route gated), `roof-tool-pro11.ts` (finalize action), api proxy.
+
+- [ ] W115 — **3D snapshot export.** Wire `renderer.domElement.toDataURL('image/png')`
+  (`roofPro11/scene3d.ts`) to capture the finished roof-with-panels render and upload it
+  to the backend (Q4) on finalize (W114). **Done =** finalizing produces + stores a clean
+  PNG of the 3D roof; vitest/asserts the data-URL is produced. Files:
+  `roofPro11/scene3d.ts` (snapshot fn), W114 finalize wiring.
+
+- [ ] W116 — **Client web proposal page (the "much better UI" link we send).** A premium,
+  mobile-first **public** route (e.g. `/proposition/<token>`) that fetches the quote data
+  (Q6) and renders the proposal as a beautiful web page — NOT just a PDF: a hero with the
+  roof render, the facture **avant → après** + couverture %, the two options, the
+  equipment, the garanties, and a **sticky "Signer" CTA**. Mirrors the v2 PDF design
+  language (navy/gold, DM Serif/DM Sans). **Done =** the token link renders the full
+  proposal responsively on phone + desktop; Lighthouse mobile ≥ 90. Files: new
+  `apps/web/src/pages/proposition/[token].astro` + components + the Q6 fetch.
+
+- [ ] W117 — **In-page e-signature.** On the web proposal, a "Signer en ligne" flow: pick
+  an option, type name + check "Bon pour accord" → POST to Q7 → success state ("Devis
+  accepté ✓"), with the signed PDF offered as a download. **Done =** signing flips the
+  Devis to *accepté* and shows confirmation; invalid/expired token handled. Files:
+  `proposition/[token].astro` signature component, `apps/web/src/pages/api/` proxy.
+
+- [ ] W118 — **Delivery: send the proposal link (email / WhatsApp).** On finalize (W114),
+  generate the tokenized proposal URL and surface it for sending — prefilled email (reuse
+  the existing SendGrid path) and a WhatsApp deep link (`wa.me` with the client's number +
+  a French message + the link). **Done =** Meriem gets a one-click "Envoyer par email" and
+  "Envoyer par WhatsApp"; degrades to a copyable link when `SENDGRID_API_KEY` is off.
+  Files: W114 finalize UI + a small send action (reuse existing email infra).
 
 ---
 
