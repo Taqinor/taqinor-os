@@ -6,12 +6,19 @@ L'accès est réservé au palier Administrateur/Responsable
 validé comme appartenant à la même société.
 """
 from rest_framework import filters, viewsets
+from rest_framework.decorators import action
+from rest_framework.response import Response
 
 from authentication.mixins import TenantMixin
 from authentication.permissions import IsResponsableOrAdmin
 
-from .models import Projet, ProjetChantier
-from .serializers import ProjetChantierSerializer, ProjetSerializer
+from . import selectors
+from .models import Projet, ProjetChantier, ProjetLien
+from .serializers import (
+    ProjetChantierSerializer,
+    ProjetLienSerializer,
+    ProjetSerializer,
+)
 
 
 class _GestionProjetBaseViewSet(TenantMixin, viewsets.ModelViewSet):
@@ -38,6 +45,17 @@ class ProjetViewSet(_GestionProjetBaseViewSet):
             qs = qs.filter(statut=statut)
         return qs
 
+    @action(detail=True, methods=['get'])
+    def liens(self, request, pk=None):
+        """Liens du projet ENRICHIS via les sélecteurs des apps cibles.
+
+        Pour chaque lien : libellé frais quand l'app cible expose un sélecteur
+        (``source='live'``), sinon le libellé stocké (``source='stored'``). La
+        société est garantie par ``get_object`` (queryset scopé société).
+        """
+        projet = self.get_object()
+        return Response(selectors.liens_enrichis(projet))
+
 
 class ProjetChantierViewSet(_GestionProjetBaseViewSet):
     """Rattachements chantier ↔ projet (liens lâches)."""
@@ -51,4 +69,27 @@ class ProjetChantierViewSet(_GestionProjetBaseViewSet):
         projet = self.request.query_params.get('projet')
         if projet:
             qs = qs.filter(projet_id=projet)
+        return qs
+
+
+class ProjetLienViewSet(_GestionProjetBaseViewSet):
+    """Liens projet → devis / facture / ticket / achat (références lâches).
+
+    ``company`` est posée côté serveur (TenantMixin) ; le ``projet`` reçu est
+    validé même-société par le sérialiseur. Filtre optionnel ``?projet=<id>`` et
+    ``?type_cible=<type>``.
+    """
+    queryset = ProjetLien.objects.select_related('projet').all()
+    serializer_class = ProjetLienSerializer
+    filter_backends = [filters.OrderingFilter]
+    ordering_fields = ['id']
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        projet = self.request.query_params.get('projet')
+        if projet:
+            qs = qs.filter(projet_id=projet)
+        type_cible = self.request.query_params.get('type_cible')
+        if type_cible:
+            qs = qs.filter(type_cible=type_cible)
         return qs
