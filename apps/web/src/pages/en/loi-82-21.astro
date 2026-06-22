@@ -10,6 +10,7 @@
 import Layout from '../../layouts/Layout.astro';
 import V2Enhance from '../../components/V2Enhance.astro';
 import Article33Ribbon from '../../components/Article33Ribbon.astro';
+import Breadcrumb from '../../components/Breadcrumb.astro';
 import RegimeSelector from '../../components/RegimeSelector.astro';
 import CtaBand from '../../components/CtaBand.astro';
 import StickyCta from '../../components/StickyCta.astro';
@@ -32,9 +33,11 @@ const REGIMES = regimesFor(locale);
     <V2Enhance />
     <Article33Ribbon />
 
+    <Breadcrumb items={[{ label: 'Home', href: L('/') }, { label: 'Law 82-21' }]} />
+
     <section class="px-4 py-20 text-white sm:py-28">
       <div class="mx-auto max-w-6xl">
-        <p class="tech-label v2-kicker rule-brass cine-in text-brass-300">Law 82-21 · decree 2-25-100</p>
+        <p class="tech-label v2-kicker rule-brass cine-in text-lune">Law 82-21 · decree 2-25-100</p>
         <h1 class="display v2-page-title cine-in mt-5 max-w-3xl [animation-delay:120ms]">Three regimes, only one is yours</h1>
         <p class="v2-lead cine-in mt-6 max-w-xl text-white/85 [animation-delay:240ms]">
           Since 9 June 2026, Law 82-21 on the self-production of electrical energy and its
@@ -55,7 +58,7 @@ const REGIMES = regimesFor(locale);
     <ZelligeDivider tone="white" />
 
     <section class="mx-auto max-w-4xl px-4 py-16">
-      <p class="tech-label v2-kicker rule-brass text-brass-300">Reference</p>
+      <p class="tech-label v2-kicker rule-brass text-lune">Reference</p>
       <h2 class="display v2-section-title mt-4 text-white">The three regimes in detail</h2>
       <div class="mt-10 grid gap-6" data-stagger>
         {Object.values(REGIMES).map((r, i) => (
@@ -66,7 +69,7 @@ const REGIMES = regimesFor(locale);
               <p class="mt-2 text-sm leading-relaxed text-lune-soft">{r.summary}</p>
               <ul class="mt-4 space-y-2 text-sm text-lune">
                 {r.obligations.map((o) => (
-                  <li class="flex gap-2.5"><span class="mt-1.5 inline-block h-1.5 w-1.5 flex-none rotate-45 border border-brass-400" aria-hidden="true"></span><span>{o}</span></li>
+                  <li class="flex gap-2.5"><span class="mt-1.5 inline-block h-1.5 w-1.5 flex-none rotate-45 border border-lune-faint" aria-hidden="true"></span><span>{o}</span></li>
                 ))}
               </ul>
             </div>

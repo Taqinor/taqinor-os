@@ -3,6 +3,14 @@
  * AR — Maintenance & monitoring (W67, RTL). Faithful Arabic translation of
  * /maintenance-monitoring ; no invented SLA. Internal links via localizeNavHref.
  * FR untouched.
+ *
+ * ÉLÉVATION (W241) — mirrors the FR maintenance-monitoring.astro elevation:
+ *  1. brass discipline: eyebrows text-lune (not text-brass-300) on dark sections;
+ *  2. .section + seam-soft tokens for rhythm;
+ *  3. following link demoted: border-brass-400 → border-lune/40, text-brass-300 → text-lune;
+ *  4. light section eyebrow uses eyebrow-light class;
+ *  5. glow on primary CTA in light section;
+ *  6. RTL-logical border-s-2 for the follow-up note.
  */
 import Layout from '../../layouts/Layout.astro';
 import V2Enhance from '../../components/V2Enhance.astro';
@@ -57,12 +65,12 @@ const jsonLd = {
 
     <Breadcrumb items={[{ label: 'الرئيسية', href: L('/') }, { label: 'الصيانة والمراقبة' }]} />
 
-    <!-- استهلال داكن -->
-    <section class="px-4 pb-10 pt-16 text-white sm:pt-20">
+    {/* ── HÉROS SOMBRE — eyebrow مُخفَّض إلى lune (انضباط النحاس) ── */}
+    <section class="px-4 pb-12 pt-16 text-white sm:pt-20">
       <div class="mx-auto max-w-3xl">
-        <p class="tech-label v2-kicker rule-brass cine-in text-brass-300">بعد التركيب</p>
-        <h1 class="display v2-page-title cine-in mt-5 [animation-delay:120ms]">الصيانة والمراقبة</h1>
-        <p class="v2-lead cine-in mt-6 max-w-xl text-white/85 [animation-delay:240ms]">
+        <p class="tech-label v2-kicker rule-brass cine-in text-lune">بعد التركيب</p>
+        <h1 class="display v2-page-title cine-in cine-in-1 mt-5">الصيانة والمراقبة</h1>
+        <p class="v2-lead cine-in cine-in-2 mt-6 max-w-xl text-white/85">
           يوم تُشغَّل التركيبة، تبدأ في الكلام. على Deye Cloud، كل سطح تاكينور يرفع إنتاجه باستمرار —
           إنتاجك مقروء على هاتفك، وإنتاجنا مُراقب على كامل الأسطول. خلل يُطلق تنبيهاً؛ ننطلق من هناك،
           قبل الشكاية.
@@ -70,12 +78,13 @@ const jsonLd = {
       </div>
     </section>
 
-    <!-- ما تشمله المتابعة -->
-    <section class="px-4 pb-20 sm:pb-24">
+    {/* ── ما تشمله المتابعة — .section + eyebrow lune ── */}
+    <div class="seam-soft" aria-hidden="true"></div>
+    <section class="section px-4">
       <div class="mx-auto max-w-6xl">
-        <p class="tech-label v2-kicker rule-brass text-brass-300">مُضمَّن مع كل تركيبة</p>
+        <p class="tech-label v2-kicker rule-brass text-lune">مُضمَّن مع كل تركيبة</p>
         <h2 class="display v2-section-title mt-5 text-white">ما تشمله المتابعة</h2>
-        <div class="mt-10 grid gap-6 md:grid-cols-3" data-stagger>
+        <div class="mt-12 grid gap-6 md:grid-cols-3" data-stagger>
           {suivi.map((s, i) => (
             <div class="v2-rise cine-card p-7" style={`--v2-i:${i}`}>
               <h3 class="display text-xl text-white">{s.title}</h3>
@@ -83,20 +92,22 @@ const jsonLd = {
             </div>
           ))}
         </div>
-        <p class="mt-10 max-w-xl border-s-4 border-brass-400/60 ps-4 text-sm leading-relaxed text-lune-soft">
+        {/* خط azur، رابط lune */}
+        <p class="v2-rise mt-12 max-w-xl border-s-2 border-azur-200/40 ps-4 text-sm leading-relaxed text-lune-soft">
           من ناحية المعدات، يمرّ رفع البيانات عبر دونݣل WiFi أو Ethernet موصول بالعاكس؛ هو من يرسل كل
           قياس إلى Deye Cloud. التفصيل موجود في بطاقة المعدات.
-          <a href={L('/équipement')} class="border-b border-brass-400 pb-0.5 font-semibold text-brass-300 transition-colors hover:text-brass-200">انظر مراقبة Deye Cloud <span class="inline-block rtl:-scale-x-100">→</span></a>
+          <a href={L('/équipement')} class="border-b border-lune/40 pb-0.5 font-semibold text-lune transition-colors hover:border-lune hover:text-white">انظر مراقبة Deye Cloud <span class="inline-block rtl:-scale-x-100">→</span></a>
         </p>
       </div>
     </section>
 
-    <!-- إنتاج مقيس، لا موعود (خلفية فاتحة) -->
+    {/* ── إنتاج مقيس، لا موعود (خلفية فاتحة) ── */}
     <div class="v2-seam" aria-hidden="true"></div>
-    <section class="bg-blanc-azur px-4 pb-20 pt-10 text-encre sm:pb-24">
+    <section class="bg-blanc-azur px-4 pb-20 pt-12 text-encre sm:pb-24">
       <div class="mx-auto max-w-3xl">
         <div class="v2-rise">
-          <p class="tech-label v2-kicker rule-brass text-azur-600">أرقام مقروءة</p>
+          {/* eyebrow قسم فاتح — accent azur وحيد (انضباط) */}
+          <p class="tech-label v2-kicker rule-brass eyebrow-light">أرقام مقروءة</p>
           <h2 class="display v2-section-title mt-5">ما يقوله العدّاد، لا المطوية</h2>
           <p class="v2-lead mt-5 text-encre-soft">
             الـ kWh التي تعرضها تركيبة تاكينور لا تأتي من منشور: Deye Cloud يقرأها يوماً بعد يوم،
@@ -108,23 +119,24 @@ const jsonLd = {
             يُنتجه سطحك — دون وسيط.
           </p>
           <div class="mt-8 flex flex-wrap gap-3">
-            <a href={L('/garanties')} class="inline-block bg-brass-400 px-7 py-3.5 text-base font-bold text-azur-950 transition-colors hover:bg-brass-300">انظر ضماناتنا المكتوبة</a>
+            {/* CTA أساسي: النحاس الوحيد في هذا القسم الفاتح (انضباط) */}
+            <a href={L('/garanties')} class="glow inline-block bg-brass-400 px-7 py-3.5 text-base font-bold text-azur-950 transition-colors hover:bg-brass-300">انظر ضماناتنا المكتوبة</a>
             <a href={L('/realisations')} class="inline-block border-b-2 border-azur-600 pb-0.5 text-base font-bold text-azur-600 transition-colors hover:text-azur-700">انظر إنجازاتنا <span class="inline-block rtl:-scale-x-100">→</span></a>
           </div>
         </div>
       </div>
     </section>
 
-    <!-- كتلة روابط الختام -->
-    <section class="px-4 py-20 sm:py-28">
+    {/* ── كتلة روابط الختام — eyebrow lune ── */}
+    <section class="section px-4">
       <div class="mx-auto max-w-6xl">
-        <p class="tech-label v2-kicker rule-brass text-brass-300">للمزيد</p>
+        <p class="tech-label v2-kicker rule-brass text-lune">للمزيد</p>
         <h2 class="display v2-section-title mt-5 text-white">المتابعة، بالتفصيل</h2>
-        <p class="mt-5 max-w-xl text-sm leading-relaxed text-lune-soft">
+        <p class="v2-rise mt-5 max-w-xl text-sm leading-relaxed text-lune-soft">
           المراقبة وخدمة ما بعد البيع الاستباقية لا تصمدان إلا لأنهما تستندان إلى معدات مُسمّاة
           وضمانات مكتوبة بالأبيض والأسود. وها هما بالتفصيل.
         </p>
-        <div class="mt-10 flex flex-wrap gap-3">
+        <div class="v2-rise mt-10 flex flex-wrap gap-3">
           <a href={L('/garanties')} class="border border-white/40 px-5 py-3 text-sm font-bold text-white transition-colors hover:border-white hover:bg-white/10">ضماناتنا <span class="inline-block rtl:-scale-x-100">→</span></a>
           <a href={L('/équipement')} class="border border-white/40 px-5 py-3 text-sm font-bold text-white transition-colors hover:border-white hover:bg-white/10">المعدات المركَّبة <span class="inline-block rtl:-scale-x-100">→</span></a>
           <a href={contactSim} class="border border-white/40 px-5 py-3 text-sm font-bold text-white transition-colors hover:border-white hover:bg-white/10">تشخيصي المجاني <span class="inline-block rtl:-scale-x-100">→</span></a>

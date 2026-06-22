@@ -5,6 +5,12 @@
  * verified tax point is preserved EXACTLY: VAT exemption for AGRICULTURAL
  * pumping only — never residential rooftop PV. Internal links via
  * localizeNavHref. FR untouched.
+ *
+ * ELEVATION (W237) — mirrors /pompage-solaire.astro elevation treatment:
+ *  - Eyebrows demoted from text-brass-300 to text-lune (brass discipline);
+ *  - Equipment link: border-azur-200/60 text-azur-200 (not brass);
+ *  - .section-lg hero rhythm + .section / .seam-soft spacing tokens;
+ *  - No photo hero → no cinematic hero, no .v3-grade, no ZelligeSignature.
  */
 import Layout from '../../layouts/Layout.astro';
 import V2Enhance from '../../components/V2Enhance.astro';
@@ -86,11 +92,14 @@ const jsonLd = {
 
     <Breadcrumb items={[{ label: 'Home', href: L('/') }, { label: 'Solar pumping' }]} />
 
-    <section class="px-4 pb-10 pt-16 text-white sm:pt-20">
+    {/* ── EDITORIAL HERO — no photo (zero pumping site installed: no invented image).
+        Brass discipline #2: eyebrow demoted to lune, gold stays for .lum figures
+        and the CTA. Rhythm via .section-lg + space. ── */}
+    <section class="section-lg px-4 pb-10 text-white">
       <div class="mx-auto max-w-3xl">
-        <p class="tech-label v2-kicker rule-brass cine-in text-brass-300">New service</p>
-        <h1 class="display v2-page-title cine-in mt-5 [animation-delay:120ms]">Pump water with the sun, not with diesel</h1>
-        <p class="v2-lead cine-in mt-6 max-w-xl text-white/85 [animation-delay:240ms]">
+        <p class="tech-label v2-kicker rule-brass cine-in text-lune">New service</p>
+        <h1 class="display v2-page-title cine-in cine-in-1 mt-6 max-w-[18ch]">Pump water with the sun, not with diesel</h1>
+        <p class="v2-lead cine-in cine-in-2 mt-6 max-w-xl text-white/85">
           For irrigation, solar pumping replaces the tank of diesel: while the sun is up, the panels
           drive the pump. How many panels, though, depends entirely on your plot — the flow rate you
           are after, the head the pump must overcome, the depth of the borehole and the water the
@@ -100,14 +109,15 @@ const jsonLd = {
     </section>
 
     <!-- How it works -->
-    <section class="px-4 pb-20 sm:pb-24">
+    <section class="section px-4">
       <div class="mx-auto max-w-6xl">
-        <p class="tech-label v2-kicker rule-brass text-brass-300">How it works</p>
+        {/* Eyebrow demoted to lune (brass discipline #2) */}
+        <p class="tech-label v2-kicker rule-brass text-lune">How it works</p>
         <h2 class="display v2-section-title mt-5 text-white">From sun to field, in four stages</h2>
-        <div class="mt-10 grid gap-6 md:grid-cols-2" data-stagger>
+        <div class="mt-12 grid gap-6 md:grid-cols-2" data-stagger>
           {etapes.map((e, i) => (
             <div class="v2-rise cine-card flex flex-col p-7" style={`--v2-i:${i}`}>
-              <p class="fig lum text-3xl" dir="ltr">{e.k}</p>
+              <p class="fig lum text-3xl">{e.k}</p>
               <h3 class="display mt-2 text-2xl text-white">{e.title}</h3>
               <p class="mt-3 flex-1 text-sm leading-relaxed text-lune-soft">{e.body}</p>
             </div>
@@ -116,14 +126,14 @@ const jsonLd = {
         <p class="mx-auto mt-8 max-w-2xl text-sm leading-relaxed text-lune-faint">
           Every order of magnitude depends on your site: before the borehole survey we can walk you
           through the method, but not quote a figure we'd stand behind. The array and the drive, for
-          their part, rely on the same tier-1 brands as our rooftops — <a href={L('/équipement')} class="border-b border-brass-400 pb-0.5 font-semibold text-brass-300 transition-colors hover:text-brass-200">see the equipment →</a>
+          their part, rely on the same tier-1 brands as our rooftops — <a href={L('/équipement')} class="border-b border-azur-200/60 pb-0.5 font-semibold text-azur-200 transition-colors hover:text-white">see the equipment →</a>
         </p>
       </div>
     </section>
 
     <!-- The sizing variables (light background) -->
     <div class="v2-seam" aria-hidden="true"></div>
-    <section class="bg-blanc-azur px-4 pb-20 pt-10 text-encre sm:pb-24">
+    <section class="section bg-blanc-azur px-4 text-encre">
       <div class="mx-auto max-w-6xl">
         <p class="tech-label v2-kicker rule-brass text-azur-600">Four measurements</p>
         <h2 class="display v2-section-title mt-5">What decides the sizing</h2>
@@ -132,7 +142,7 @@ const jsonLd = {
           right answer sits at the intersection of four concrete variables, all measured on site
           before we open a single catalogue.
         </p>
-        <div class="mt-10 grid gap-6 md:grid-cols-2" data-stagger>
+        <div class="mt-12 grid gap-6 md:grid-cols-2" data-stagger>
           {variables.map((v, i) => (
             <div class="v2-rise border-t-2 border-azur-900 bg-blanc p-6" style={`--v2-i:${i}`}>
               <h3 class="display text-xl text-azur-700">{v.title}</h3>
@@ -140,7 +150,7 @@ const jsonLd = {
             </div>
           ))}
         </div>
-        <p class="mx-auto mt-8 max-w-2xl border-s-4 border-azur-600 ps-4 text-sm leading-relaxed text-encre-soft">
+        <p class="mx-auto mt-8 max-w-2xl border-l-4 border-azur-600 pl-4 text-sm leading-relaxed text-encre-soft">
           With these four figures in hand, the system almost designs itself. Without them — when the
           flow rate or the head is missing — we'd be left guessing, and we don't size a pump on
           guesswork. <a href={contactSim} class="border-b border-azur-600 pb-0.5 font-semibold text-azur-600 transition-colors hover:text-azur-700">Request an assessment →</a>
@@ -149,11 +159,12 @@ const jsonLd = {
     </section>
 
     <!-- Tax advantage: VAT exemption (agricultural pumping only) -->
-    <section class="px-4 py-20 sm:py-28">
+    <section class="section px-4">
       <div class="mx-auto max-w-6xl">
         <div class="grid gap-10 lg:grid-cols-[1.1fr_1fr] lg:items-center">
           <div class="v2-rise">
-            <p class="tech-label v2-kicker rule-brass text-brass-300">Verified tax advantage</p>
+            {/* Eyebrow demoted to lune (brass discipline #2) */}
+            <p class="tech-label v2-kicker rule-brass text-lune">Verified tax advantage</p>
             <h2 class="display v2-section-title mt-5 text-white">Agricultural pumping, VAT-exempt</h2>
             <p class="v2-lead mt-5 text-lune-soft">
               In Morocco, solar water-pumping systems are exempt from VAT — and the exemption covers
@@ -176,9 +187,10 @@ const jsonLd = {
     </section>
 
     <!-- Links block / business segment -->
-    <section class="border-t border-white/10 px-4 py-16 sm:py-20">
+    <section class="section border-t border-white/10 px-4">
       <div class="mx-auto max-w-6xl">
-        <p class="tech-label v2-kicker rule-brass text-brass-300">To go further</p>
+        {/* Eyebrow demoted to lune (brass discipline #2) */}
+        <p class="tech-label v2-kicker rule-brass text-lune">To go further</p>
         <h2 class="display v2-section-title mt-5 text-white">Agriculture, a business segment</h2>
         <p class="v2-lead mt-5 max-w-2xl text-lune-soft">
           Solar pumping belongs to the working farm, not to the plug-in kit you wire up yourself.

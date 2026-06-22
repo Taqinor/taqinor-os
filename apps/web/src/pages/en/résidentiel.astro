@@ -8,6 +8,15 @@
  * are reused UNCHANGED — only visible labels are translated. Internal links via
  * localizeNavHref. Shared components (GarantiesTeaser, Testimonials,
  * DiagnosticForm) auto-detect locale. FR untouched.
+ *
+ * ELEVATION (W237) — mirrors /résidentiel.astro elevation treatment:
+ *  1. Cinematic hero (~92svh) full-frame photo, eyebrow text-lune, ONE brass CTA
+ *     + ghost WhatsApp, scroll chevron, hero-scrim-v3, content anchored low;
+ *  2. Brass discipline: gold only on .lum figures and the one primary CTA;
+ *     eyebrows demoted to text-lune;
+ *  3. Warm grade (.v3-grade) on content photos only (never the hero/LCP image);
+ *  4. .section / .section-tight rhythm + .seam-soft seams;
+ *  5. Single motion language .cine-in / .v2-rise.
  */
 import Layout from '../../layouts/Layout.astro';
 import V2Enhance from '../../components/V2Enhance.astro';
@@ -24,9 +33,13 @@ import { BILL_RANGES, localEstimateBand } from '../../lib/billRange';
 import { formatMAD } from '../../lib/format';
 import { getLocaleFromPath } from '../../i18n/utils';
 import { localizeNavHref } from '../../i18n/pages';
+import { WHATSAPP_LEADS } from '../../lib/nap';
+import { whatsappLink } from '../../lib/whatsapp';
 
 const locale = getLocaleFromPath(Astro.url.pathname);
 const L = (href: string) => localizeNavHref(href, locale);
+
+const waDirect = whatsappLink(WHATSAPP_LEADS, 'Hello, I would like a study for a solar installation.');
 
 const PRIX_PAR_KWC = { bas: 10000, haut: 12500 };
 const arrondi5k = (v: number) => Math.round(v / 5000) * 5000;
@@ -61,40 +74,70 @@ const brackets = BILL_RANGES.filter((r) => r.qualifies && r.id !== 'gt10000').ma
 
     <Breadcrumb items={[{ label: 'Home', href: L('/') }, { label: 'Residential' }]} />
 
-    <!-- ACT I — the full-frame dusk: the photo is the light -->
-    <section class="relative isolate overflow-hidden text-white">
+    {/* ── 1 · CINEMATIC HERO (~92svh) — the photo is the protagonist ── */}
+    <section class="relative isolate flex min-h-[92svh] flex-col justify-end overflow-hidden text-white">
       <div class="v2-hero-media absolute inset-0 -z-10">
+        {/* Full-frame hero image (LCP element) — NEVER .v3-grade here
+            (LCP protection): only the raised scrim carries the warmth. */}
         <Picture name="crepuscule-penthouse" alt="" widths={[1600, 1024, 640]} ratio={4 / 3} sizes="100vw"
           loading="eager" fetchpriority="high" class="h-full w-full object-cover object-[65%_40%]" />
-        <div class="absolute inset-0 bg-gradient-to-t from-nuit via-nuit/45 to-transparent"></div>
+        {/* Raised canonical scrim (.hero-scrim-v3 → --hero-scrim-strength 0.52):
+            compensates the warmth of the photo and keeps the headline ≥ AA. */}
+        <div class="hero-scrim hero-scrim-v3 absolute inset-0"></div>
       </div>
-      <div class="mx-auto grid max-w-6xl gap-10 px-4 pb-20 pt-28 sm:pb-24 sm:pt-36 lg:grid-cols-[1.1fr_1fr] lg:items-end">
-        <div>
-          <p class="tech-label v2-kicker rule-brass cine-in text-brass-300">Villas · apartments</p>
-          <h1 class="display v2-page-title cine-in mt-5 max-w-[18ch] [animation-delay:120ms]">Your bill already knows the size of your installation</h1>
-          <p class="v2-lead cine-in mt-6 max-w-xl text-white/85 [animation-delay:240ms]">
-            Sized properly, an installation covers 60 to 90 % of what a villa consumes. Three figures
-            are enough to set the power: your ONEE meter reading, your peak hours and the roof's
-            orientation. We work from those readings, and we tell you plainly the power they call
-            for — never more to pad the bill, never less to dangle a teaser price.
-          </p>
+
+      {/* Scroll-invitation chevron — static under reduced-motion */}
+      <div class="absolute bottom-6 left-1/2 -translate-x-1/2 scroll-chevron" aria-hidden="true">
+        <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <polyline points="6 9 12 15 18 9" />
+        </svg>
+      </div>
+
+      {/* Content anchored LOW — eyebrow demoted to lune (brass discipline) */}
+      <div class="mx-auto w-full max-w-6xl px-4 pb-24 pt-32 sm:pb-32">
+        <p class="tech-label v2-kicker rule-brass cine-in text-lune">Villas · apartments</p>
+        <h1 class="display v2-page-title cine-in cine-in-1 mt-5 max-w-[18ch]">Your bill already knows the size of your installation</h1>
+        <p class="v2-lead cine-in cine-in-2 mt-6 max-w-xl text-white/85">
+          Sized properly, an installation covers 60 to 90 % of what a villa consumes. Three figures
+          are enough to set the power: your ONEE meter reading, your peak hours and the roof's
+          orientation. We work from those readings, and we tell you plainly the power they call
+          for — never more to pad the bill, never less to dangle a teaser price.
+        </p>
+        <div class="cine-in cine-in-3 mt-10 flex flex-wrap items-center gap-3">
+          {/* ONE brass CTA (brass discipline) — gold is authorised here */}
+          <a href="#simulateur" class="glow-hero bg-brass-400 px-8 py-4 text-lg font-bold text-azur-950 transition-all hover:bg-brass-300">
+            Estimate my installation →
+          </a>
+          {/* Ghost WhatsApp — white border, no brass */}
+          <a href={waDirect} rel="noopener" class="inline-flex items-center gap-2 border border-white/40 px-6 py-3.5 text-base font-semibold text-white backdrop-blur-sm transition-colors hover:border-white hover:bg-white/10">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 2a10 10 0 0 0-8.6 15.1L2 22l5-1.3A10 10 0 1 0 12 2Zm5.4 14.1c-.2.6-1.3 1.2-1.8 1.2-.5.1-1 .2-3.3-.7-2.8-1.1-4.6-4-4.7-4.2-.1-.2-1.1-1.5-1.1-2.9s.7-2 1-2.3c.2-.3.5-.3.7-.3h.5c.2 0 .4 0 .6.4l.9 2.1c.1.2.1.4 0 .6l-.4.6-.5.5c-.2.2-.3.4-.1.7.2.3.9 1.4 1.9 2.3 1.3 1.1 2.3 1.5 2.6 1.6.3.1.5.1.7-.1l1-1.2c.2-.3.4-.2.7-.1l2 1c.3.1.5.2.6.4 0 .1 0 .7-.3 1.4Z"/></svg>
+            WhatsApp direct
+          </a>
         </div>
-        <aside class="cine-in border-t-4 border-brass-400 bg-blanc p-6 text-encre shadow-[0_40px_90px_-30px_rgb(0_0_0/0.85)] [animation-delay:360ms]">
-          <p class="tech-label text-brass-600">Study excerpt — ref. 400 · Casablanca · April 2026</p>
-          <div class="mt-5 grid grid-cols-2 gap-x-4 gap-y-6">
-            <div><p class="fig text-3xl text-azur-600 sm:text-4xl">11,36 <span class="text-base">kWc</span></p><p class="tech-label mt-1.5 text-encre-faint">Installed power</p></div>
-            <div><p class="fig text-3xl text-azur-600 sm:text-4xl">14 271 <span class="text-base">kWh/an</span></p><p class="tech-label mt-1.5 text-encre-faint">Measured production</p></div>
-            <div><p class="fig text-3xl text-azur-600 sm:text-4xl">16 <span class="text-base">panels</span></p><p class="tech-label mt-1.5 text-encre-faint">Canadian Solar 710 Wc</p></div>
-            <div><p class="fig text-3xl text-azur-600 sm:text-4xl">10 <span class="text-base">kWh</span></p><p class="tech-label mt-1.5 text-encre-faint">Dyness LFP storage</p></div>
-          </div>
-          <p class="mt-5 border-t border-azur-900/10 pt-3 text-xs text-encre-soft">Production tracked on Deye Cloud — client access included.</p>
-        </aside>
       </div>
     </section>
 
-    <!-- Price transparency — the ledger, figures that tally up -->
-    <section class="mx-auto max-w-4xl px-4 py-24 sm:py-32">
-      <p class="tech-label v2-kicker rule-brass text-brass-300">Price transparency</p>
+    {/* Study excerpt — the "clean room" card breathes full-width
+        below the hero (figures VERBATIM ref. 400). Azur carries the numbers:
+        gold stays reserved for the hero CTA and the .lum ledger figures. */}
+    <div class="seam-soft" aria-hidden="true"></div>
+    <section class="section-tight px-4">
+      <aside class="v2-rise mx-auto max-w-3xl border-t-4 border-brass-400 bg-blanc p-6 text-encre shadow-premium sm:p-8">
+        <p class="tech-label text-brass-600">Study excerpt — ref. 400 · Casablanca · April 2026</p>
+        <div class="mt-5 grid grid-cols-2 gap-x-4 gap-y-6 sm:grid-cols-4">
+          <div><p class="fig text-3xl text-azur-600 sm:text-4xl">11,36 <span class="text-base">kWc</span></p><p class="tech-label mt-1.5 text-encre-faint">Installed power</p></div>
+          <div><p class="fig text-3xl text-azur-600 sm:text-4xl">14 271 <span class="text-base">kWh/an</span></p><p class="tech-label mt-1.5 text-encre-faint">Measured production</p></div>
+          <div><p class="fig text-3xl text-azur-600 sm:text-4xl">16 <span class="text-base">panels</span></p><p class="tech-label mt-1.5 text-encre-faint">Canadian Solar 710 Wc</p></div>
+          <div><p class="fig text-3xl text-azur-600 sm:text-4xl">10 <span class="text-base">kWh</span></p><p class="tech-label mt-1.5 text-encre-faint">Dyness LFP storage</p></div>
+        </div>
+        <p class="mt-5 border-t border-azur-900/10 pt-3 text-xs text-encre-soft">Production tracked on Deye Cloud — client access included.</p>
+      </aside>
+    </section>
+
+    {/* Price transparency — the ledger, figures that tally up.
+        Eyebrow demoted to lune (brass discipline). */}
+    <section class="section mx-auto max-w-4xl px-4">
+      <p class="tech-label v2-kicker rule-brass text-lune">Price transparency</p>
       <h2 class="display v2-section-title mt-5 text-white">Your bill already places you in a range</h2>
       <p class="v2-lead mt-4 max-w-2xl text-lune-soft">
         Here are the orders of magnitude recorded on our residential sites — <strong class="text-lune">never a
@@ -126,11 +169,12 @@ const brackets = BILL_RANGES.filter((r) => r.qualifies && r.id !== 'gt10000').ma
 
     <ZelligeDivider tone="white" />
 
-    <!-- 25-year illustration -->
-    <section class="border-t border-white/10 px-4 py-24 sm:py-32">
+    {/* 25-year illustration — eyebrow demoted to lune (brass discipline) */}
+    <div class="seam-soft" aria-hidden="true"></div>
+    <section class="section px-4">
       <div class="mx-auto grid max-w-6xl gap-12 lg:grid-cols-[1.1fr_1fr] lg:items-center">
         <div class="v2-rise">
-          <p class="tech-label v2-kicker rule-brass text-brass-300">The investment horizon</p>
+          <p class="tech-label v2-kicker rule-brass text-lune">The investment horizon</p>
           <h2 class="display v2-section-title mt-5 text-white">What the 25 years deliver, year by year</h2>
           <p class="v2-lead mt-5 text-lune-soft">
             The manufacturer guarantees panel performance over 25 years. Take a villa with a
@@ -159,7 +203,7 @@ const brackets = BILL_RANGES.filter((r) => r.qualifies && r.id !== 'gt10000').ma
           <figure class="v2-rise cine-card group relative overflow-hidden">
             <Picture name="pose-134" alt="The Taqinor team tilts a panel during the install on a Casablanca villa"
               widths={[1600, 1024, 640]} ratio={4 / 3} sizes="(min-width: 1024px) 40vw, 100vw"
-              class="w-full object-cover transition-transform duration-700 group-hover:scale-[1.04]" />
+              class="v3-grade w-full object-cover transition-transform duration-700 group-hover:scale-[1.04]" />
             <figcaption class="absolute inset-x-0 bottom-0 bg-gradient-to-t from-nuit/95 to-transparent px-4 pb-3 pt-12">
               <span class="tech-label block text-brass-300">Casablanca · 5,68 kWc · 7 135 kWh/an</span>
               <span class="mt-0.5 block text-xs text-lune">Install in progress · 8 × Canadian Solar 710 Wc · March 2026</span>
@@ -168,7 +212,7 @@ const brackets = BILL_RANGES.filter((r) => r.qualifies && r.id !== 'gt10000').ma
           <figure class="v2-rise cine-card group relative overflow-hidden">
             <Picture name="champ-villa" alt="Array of eight panels on a flat villa roof in El Jadida, blue sky"
               widths={[1600, 1024, 640]} ratio={3 / 2} sizes="(min-width: 1024px) 40vw, 100vw"
-              class="w-full object-cover transition-transform duration-700 group-hover:scale-[1.04]" />
+              class="v3-grade w-full object-cover transition-transform duration-700 group-hover:scale-[1.04]" />
             <figcaption class="absolute inset-x-0 bottom-0 bg-gradient-to-t from-nuit/95 to-transparent px-4 pb-3 pt-12">
               <span class="tech-label block text-brass-300">El Jadida · 5,68 kWc · 7 135 kWh/an</span>
               <span class="mt-0.5 block text-xs text-lune">8 × Canadian Solar 710 Wc · Deye 5 kW · measured production Deye Cloud</span>
@@ -178,8 +222,9 @@ const brackets = BILL_RANGES.filter((r) => r.qualifies && r.id !== 'gt10000').ma
       </div>
     </section>
 
-    <!-- Contextual links -->
-    <section class="border-t border-white/10 px-4 py-16">
+    {/* Contextual links */}
+    <div class="seam-soft" aria-hidden="true"></div>
+    <section class="section-tight px-4">
       <div class="mx-auto flex max-w-6xl flex-wrap gap-3">
         <a href={L('/realisations')} class="border border-white/40 px-5 py-3 text-sm font-bold text-white transition-colors hover:border-white hover:bg-white/10">Our residential projects →</a>
         <a href={L('/équipement')} class="border border-white/40 px-5 py-3 text-sm font-bold text-white transition-colors hover:border-white hover:bg-white/10">The equipment we install →</a>
@@ -204,3 +249,11 @@ const brackets = BILL_RANGES.filter((r) => r.qualifies && r.id !== 'gt10000').ma
     <StickyCta />
   </div>
 </Layout>
+
+<style>
+  /* Raised hero scrim for the elevation: compensates the warmth of the
+     full-frame photo and guarantees AA contrast for the white headline (ref. v3). */
+  .hero-scrim-v3 {
+    --hero-scrim-strength: 0.52;
+  }
+</style>

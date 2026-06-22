@@ -230,15 +230,15 @@ then Arabic mirrors**, same treatment.
 - **À-propos (each language) = the FOUNDER/TEAM page:** founder portrait `fondateur-portrait`
   present at a MODEST size (~240px, smaller than the old homepage version), NOT a giant hero.
 
-- [ ] W236 — Elevate EN homepage `apps/web/src/pages/en/index.astro` to mirror the FR index (portrait-free, Loi 82-21 trust card, taller hero, brass discipline, zellige signature, overlap-safe trust band).
-- [ ] W237 — Elevate EN solution pages: `en/résidentiel.astro`, `en/professionnel.astro`, `en/pompage-solaire.astro`, `en/batteries-stockage.astro`, `en/maintenance-monitoring.astro`, `en/regularization-article-33.astro`.
-- [ ] W238 — Elevate EN secondary pages: `en/pourquoi-taqinor.astro`, `en/garanties.astro`, `en/financement.astro`, `en/nos-solutions.astro`, `en/loi-82-21.astro`, `en/marocains-du-monde.astro` (+ any `en/recharge-…` if present).
-- [ ] W239 — Elevate EN `en/à-propos.astro` → founder/team page + modest founder portrait (~240px).
-- [ ] W240 — Elevate AR homepage `apps/web/src/pages/ar/index.astro`; verify the `dir="rtl"` layout holds (hero, trust band, zellige signature, spacing).
-- [ ] W241 — Elevate AR solution pages: `ar/résidentiel.astro`, `ar/professionnel.astro`, `ar/pompage-solaire.astro`, `ar/batteries-stockage.astro`, `ar/maintenance-monitoring.astro`, `ar/regularization-article-33.astro` — RTL-checked.
-- [ ] W242 — Elevate AR secondary pages: `ar/pourquoi-taqinor.astro`, `ar/garanties.astro`, `ar/financement.astro`, `ar/nos-solutions.astro`, `ar/loi-82-21.astro`, `ar/marocains-du-monde.astro` — RTL-checked.
-- [ ] W243 — Elevate AR `ar/à-propos.astro` → founder/team page + modest founder portrait (~240px), RTL-checked.
-- [ ] W244 — Brass-discipline consistency sweep on remaining content pages (FR/EN/AR `faq`, `guides/*`, `realisations/*`): apply ONLY the brass-discipline + spacing pass (no hero rebuild). Coordinate with the concurrent SEO/content session — skip any page it is mid-editing, do the rest.
+- [x] W236 — Elevate EN homepage `apps/web/src/pages/en/index.astro` to mirror the FR index (portrait-free, Loi 82-21 trust card, taller hero, brass discipline, zellige signature, overlap-safe trust band).
+- [x] W237 — Elevate EN solution pages: `en/résidentiel.astro`, `en/professionnel.astro`, `en/pompage-solaire.astro`, `en/batteries-stockage.astro`, `en/maintenance-monitoring.astro`, `en/regularization-article-33.astro`.
+- [x] W238 — Elevate EN secondary pages: `en/pourquoi-taqinor.astro`, `en/garanties.astro`, `en/financement.astro`, `en/nos-solutions.astro`, `en/loi-82-21.astro`, `en/marocains-du-monde.astro` (+ any `en/recharge-…` if present).
+- [x] W239 — Elevate EN `en/à-propos.astro` → founder/team page + modest founder portrait (~240px).
+- [x] W240 — Elevate AR homepage `apps/web/src/pages/ar/index.astro`; verify the `dir="rtl"` layout holds (hero, trust band, zellige signature, spacing).
+- [x] W241 — Elevate AR solution pages: `ar/résidentiel.astro`, `ar/professionnel.astro`, `ar/pompage-solaire.astro`, `ar/batteries-stockage.astro`, `ar/maintenance-monitoring.astro`, `ar/regularization-article-33.astro` — RTL-checked.
+- [x] W242 — Elevate AR secondary pages: `ar/pourquoi-taqinor.astro`, `ar/garanties.astro`, `ar/financement.astro`, `ar/nos-solutions.astro`, `ar/loi-82-21.astro`, `ar/marocains-du-monde.astro` — RTL-checked.
+- [x] W243 — Elevate AR `ar/à-propos.astro` → founder/team page + modest founder portrait (~240px), RTL-checked.
+- [x] W244 — Brass-discipline consistency sweep on remaining content pages (FR/EN/AR `faq`, `guides/*`, `realisations/*`): apply ONLY the brass-discipline + spacing pass (no hero rebuild). Coordinate with the concurrent SEO/content session — skip any page it is mid-editing, do the rest.
 
 ---
 
@@ -1562,3 +1562,12 @@ architecture change, or a taste call — it builds and NOTES it. What remains he
 - 2026-06-22 — W117: in-page e-signature via same-origin `/api/proposition-accept` proxy → `POST Q7 accept/` (status flip THROUGH the existing accept service — rule #4 preserved); idempotent double-submit handled; invalid/expired token → friendly state.
 - 2026-06-22 — W118: finalize surfaces the tokenized proposal URL + `wa.me` deep link + `mailto:` + copy-to-clipboard (degrades to a plain link without phone/email); SendGrid backend send left out of apps/web scope.
 - 2026-06-22 — BACKEND (**NOTE: not apps/web — needs `scripts/deploy-prod.ps1` to go live**): new `POST /api/django/ventes/devis/from-layout/` (wraps the existing `build_devis_from_layout` → Devis `brouillon` + mints a `ShareLink` proposal token), `POST .../devis/<id>/share-link/`, and the Lead serializer now exposes read-only `roof_point`/`roof_outline`/`bill_kwh`. Company forced server-side; no status changes (rule #4).
+- 2026-06-22 — W236: EN homepage `en/index.astro` rebuilt to mirror the elevated FR home — removed the homepage FounderPortrait, replaced the "Doctor-engineer" trust card with "Law 82-21 · Compliance included", ~100svh cinematic hero (count-up + scroll chevron + hero-scrim-v3), ZelligeSignature once, brass discipline, overlap-safe trust band (fig-md/min-w-0/≤2 cols), v3-grade on content photos only. All figures verbatim; DiagnosticForm byte-for-byte unchanged. No new deps.
+- 2026-06-22 — W237: 6 EN solution pages (résidentiel, professionnel, pompage-solaire, batteries-stockage, maintenance-monitoring, regularization-article-33) elevated to match their FR counterparts — cinematic hero where the FR page has one, brass eyebrows demoted to text-lune, v3-grade content photos, .section/seam-soft rhythm. Text + numbers verbatim.
+- 2026-06-22 — W238: 6 EN secondary pages (pourquoi-taqinor, garanties, financement, nos-solutions, loi-82-21, marocains-du-monde) elevated — brass discipline, Breadcrumb added on loi-82-21 + cinematic hero on marocains-du-monde to match FR. No `en/recharge-…` exists (FR-only). Text + numbers verbatim.
+- 2026-06-22 — W239: EN `en/à-propos.astro` made the founder/team page with a modest ~240px fondateur-portrait (not a giant hero), eyebrow demoted; text verbatim.
+- 2026-06-22 — W240: AR homepage `ar/index.astro` rebuilt to mirror the FR home with RTL verified — founder portrait removed, Law 82-21 trust card uses existing Arabic site vocabulary (القانون 82-21 / مطابقة مُدرَجة — no invented claim), overlap-safe trust band, hero count-up + chevron, ZelligeSignature once. Arabic text + numbers verbatim; DiagnosticForm unchanged.
+- 2026-06-22 — W241: 6 AR solution pages elevated to match the FR counterparts, RTL-logical classes preserved/converted (border-s/ps/ms, rtl:-scale-x-100); cinematic heros where FR has them; Arabic text + numbers verbatim.
+- 2026-06-22 — W242: 6 AR secondary pages elevated — brass discipline, Breadcrumb added on loi-82-21, cinematic hero on marocains-du-monde, RTL verified. Arabic text + numbers verbatim.
+- 2026-06-22 — W243: AR `ar/à-propos.astro` made the founder/team page with a modest ~240px fondateur-portrait, RTL verified; Arabic text verbatim.
+- 2026-06-22 — W244: brass-discipline + spacing consistency sweep across FR/EN/AR `faq`, `guides/*`, `realisations/*` — stray brass eyebrows demoted to text-lune and brass link-borders to azur/white; no hero rebuilt, no section reordered, no text/number changed, AR RTL classes preserved. NOTE: no new dependency, no auth change; live lead form + data flow untouched. Built on `wp/webplan-enar-elevation`; `astro build` green; vitest 2970 pass (6 estimator-runtime timeouts are the known Windows jsdom flakes — pass at 30s timeout, unrelated to these page edits).

@@ -43,7 +43,7 @@ const altOf = (r: typeof REALISATIONS[number]) => caseStudyBySlug(r.slug, locale
 
     <section class="px-4 pb-12 pt-16 text-white sm:pt-20">
       <div class="mx-auto max-w-6xl">
-        <p class="tech-label v2-kicker rule-brass cine-in text-brass-300">إنجازات حديثة</p>
+        <p class="tech-label v2-kicker rule-brass cine-in text-lune">إنجازات حديثة</p>
         <h1 class="display v2-page-title cine-in mt-5 max-w-3xl [animation-delay:120ms]">آخر إنجازاتنا</h1>
         <p class="v2-lead cine-in mt-6 max-w-xl text-white/85 [animation-delay:240ms]">
           أوراش حقيقية، يمكن زيارتها عند الطلب — الدار البيضاء، الجديدة، النواصر. كل دراسة حالة تتناول
@@ -75,10 +75,10 @@ const altOf = (r: typeof REALISATIONS[number]) => caseStudyBySlug(r.slug, locale
               sizes="(min-width: 1024px) 33vw, (min-width: 768px) 50vw, 100vw"
               class="aspect-[3/2] w-full object-cover transition-transform duration-700 group-hover:scale-[1.04]" />
             <div class="absolute inset-x-0 bottom-0 bg-gradient-to-t from-nuit/95 to-transparent px-5 pb-4 pt-16">
-              <span class="tech-label block text-brass-300">{r.ville} · {r.date}</span>
+              <span class="tech-label block text-lune">{r.ville} · {r.date}</span>
               <span class="fig mt-1 block text-2xl text-white">{r.kwc}{r.production ? ` · ${r.production}` : ''}</span>
               <span class="mt-1 block text-xs text-lune">{r.panneaux}</span>
-              <span class="mt-2 inline-block border-b-2 border-brass-400 pb-0.5 text-sm font-bold text-white">شاهد دراسة الحالة <span class="inline-block rtl:-scale-x-100">→</span></span>
+              <span class="mt-2 inline-block border-b-2 border-azur-200/60 pb-0.5 text-sm font-bold text-white">شاهد دراسة الحالة <span class="inline-block rtl:-scale-x-100">→</span></span>
             </div>
           </a>
         ))}

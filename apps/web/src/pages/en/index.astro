@@ -1,13 +1,19 @@
 ---
 /**
- * EN — Homepage (W67). Faithful translation of the FR homepage (/) into natural
- * English. No figure, %, year, kWc/kWh, MAD amount, brand name, law number
- * (82-21) or legal line is invented, dropped or altered — Western/Latin digits
- * stay exactly as FR. Every internal link goes through localizeNavHref so it
- * lands on the EN page when one exists, else falls back to the existing FR page
- * (never a dead link). The FR homepage is untouched. The DiagnosticForm and its
- * lead data flow are locale-agnostic (the shared component reads the locale
- * from the URL) — mounted exactly as on the FR home.
+ * EN — Homepage (W67 + W236). Faithful translation of the FR homepage (/) into
+ * natural English, on the FR "elevation" composition (2026-06-22): full-frame
+ * cinematic hero (~100svh) with hero count-up, proof carried by the gallery,
+ * single zellige signature, the complete section set sequenced and aired
+ * (.section / .v2-body / .fig tokens), brass discipline (gold lives on .lum/.fig
+ * key figures and the single primary CTA; eyebrows demoted to lune), "golden
+ * hour" grade (.v3-grade) on content photography — NEVER the hero (LCP). No
+ * figure, %, year, kWc/kWh, MAD amount, brand name, law number (82-21) or legal
+ * line is invented, dropped or altered — Western/Latin digits stay exactly as FR.
+ * Every internal link goes through localizeNavHref so it lands on the EN page
+ * when one exists, else falls back to the existing FR page (never a dead link).
+ * The FR homepage is untouched. The DiagnosticForm and its lead data flow are
+ * locale-agnostic (the shared component reads the locale from the URL) — mounted
+ * exactly as on the FR home.
  */
 import Layout from '../../layouts/Layout.astro';
 import V2Enhance from '../../components/V2Enhance.astro';
@@ -20,8 +26,8 @@ import StickyCta from '../../components/StickyCta.astro';
 import WhatsAppMock from '../../components/WhatsAppMock.astro';
 import GarantiesTeaser from '../../components/GarantiesTeaser.astro';
 import Testimonials from '../../components/Testimonials.astro';
-import FounderPortrait from '../../components/FounderPortrait.astro';
 import BrandStrip from '../../components/BrandStrip.astro';
+import ZelligeSignature from '../../components/ZelligeSignature.astro';
 import { WHATSAPP_LEADS } from '../../lib/nap';
 import { whatsappLink } from '../../lib/whatsapp';
 import { getLocaleFromPath } from '../../i18n/utils';
@@ -29,11 +35,13 @@ import { localizeNavHref } from '../../i18n/pages';
 
 const locale = getLocaleFromPath(Astro.url.pathname);
 const L = (href: string) => localizeNavHref(href, locale);
-const diagHref = '#simulateur';
 
 const waDirect = whatsappLink(WHATSAPP_LEADS, 'Hello, I would like a study for a solar installation.');
 
-const heroTitle = '21 406 kWh a year, produced on a rooftop in El Jadida.';
+// W205 — The protagonist figure of the headline is separated for the count-up.
+// Its width is reserved (tabular-nums + JS-locked min-width) → zero CLS.
+const heroFigure = '21 406';
+const heroTitleSuffix = ' kWh a year, produced on a rooftop in El Jadida.';
 const heroSub =
   'Installation ref. 468 — 17,04 kWc, sized, installed and measured by Taqinor. Yours starts with a 60-second diagnostic.';
 
@@ -92,6 +100,19 @@ const solutionIcons: Record<string, string> = {
   '/maintenance-monitoring': '<path d="M4 18 9 12l3 3 4-6 4 5" /><path d="M4 21h16" /><circle cx="9" cy="12" r="0.6" /><circle cx="16" cy="9" r="0.6" />',
   '/regularization-article-33': '<path d="M7 4h7l4 4v12H7z" /><path d="M14 4v4h4" /><path d="M9.5 14l1.5 1.5 3-3.5" />',
 };
+
+// Why Taqinor / trust — four monumental figures, already-published facts. Founder
+// decision 2026-06-22: the "doctor-engineer" slot is replaced by Law 82-21
+// compliance — a concrete, non-personal trust signal (the founder credit lives on
+// the team page). The three other values (3 visitable worksites, 43,48 kWc
+// installed, Deye Cloud) are unchanged. Gold lives on the .lum figures (brass
+// discipline). No invented claim.
+const trust = [
+  { fig: '3', tally: false, label: 'Worksites you can visit', body: 'Real installations to see on request — Casablanca, El Jadida, Nouaceur' },
+  { fig: '43,48 kWc', tally: true, label: 'Installed', body: 'Casablanca, El Jadida, Nouaceur' },
+  { fig: 'Law 82-21', tally: false, label: 'Compliance included', body: 'Declaration prepared and filed for you by Taqinor' },
+  { fig: 'Deye Cloud', tally: false, label: 'Measured production', body: 'Monitoring on every installation, client access included' },
+];
 ---
 
 <Layout
@@ -104,30 +125,56 @@ const solutionIcons: Record<string, string> = {
     <V2Enhance />
     <Article33Ribbon />
 
-    <!-- ACT I — the dark room: the video IS the hero, light parallax -->
-    <section class="relative isolate flex min-h-[92svh] flex-col justify-end overflow-hidden text-white">
+    {/* ── 1 · CINEMATIC HERO (~100svh) — the photo is the protagonist ── */}
+    <section class="relative isolate flex min-h-[100svh] flex-col justify-end overflow-hidden text-white">
       <div class="v2-hero-media absolute inset-0 -z-10">
+        {/* Full-frame hero poster (LCP element) — Ken Burns inherited from the
+            photo layer. NEVER .v3-grade here (LCP protection): only the scrim,
+            raised on this page, carries the warmth without touching text contrast.
+            W155 — Portrait-crop: in portrait orientation (phone held vertical),
+            portrait sources are picked first; object-position recenters the panels. */}
         <picture>
+          <source type="image/avif" media="(orientation: portrait)" sizes="100vw"
+            srcset="/videos/hero-poster-540.avif 540w, /videos/hero-poster-720.avif 720w, /videos/hero-poster-1080.avif 1080w" />
+          <source type="image/webp" media="(orientation: portrait)" sizes="100vw"
+            srcset="/videos/hero-poster-540.webp 540w, /videos/hero-poster-720.webp 720w, /videos/hero-poster-1080.webp 1080w" />
           <source type="image/avif" sizes="100vw"
             srcset="/videos/hero-poster-540.avif 540w, /videos/hero-poster-720.avif 720w, /videos/hero-poster-1080.avif 1080w, /videos/hero-poster-1600.avif 1600w" />
           <source type="image/webp" sizes="100vw"
             srcset="/videos/hero-poster-540.webp 540w, /videos/hero-poster-720.webp 720w, /videos/hero-poster-1080.webp 1080w, /videos/hero-poster-1600.webp 1600w" />
           <img src="/videos/hero-poster-1600.webp" alt="" width="1600" height="900"
             loading="eager" decoding="async" fetchpriority="high"
-            class="h-full w-full object-cover" />
+            class="h-full w-full object-cover hero-portrait-img" />
         </picture>
         <video id="hero-video" muted loop playsinline preload="none" aria-hidden="true" tabindex="-1"
           class="absolute inset-0 h-full w-full object-cover opacity-0 transition-opacity duration-700"></video>
-        <div class="absolute inset-0 bg-gradient-to-t from-nuit via-nuit/35 to-transparent"></div>
+        {/* Canonical scrim RAISED (--hero-scrim-strength 0.52): compensates for
+            the "golden hour" grade warmth and keeps the headline ≥ AA. */}
+        <div class="hero-scrim hero-scrim-v3 absolute inset-0"></div>
       </div>
-      <div class="mx-auto w-full max-w-6xl px-4 pb-20 pt-32 sm:pb-28">
-        <p class="tech-label v2-kicker rule-brass cine-in text-brass-300">The study first, the worksite second</p>
-        <h1 class="display v2-hero-title cine-in mt-6 max-w-[15ch] [animation-delay:120ms]">{heroTitle}</h1>
-        <p class="v2-lead cine-in mt-6 max-w-xl text-white/85 [animation-delay:240ms]">{heroSub}</p>
-        <div class="cine-in mt-10 flex flex-wrap items-center gap-3 [animation-delay:360ms]">
-          <a href={diagHref} class="glow bg-brass-400 px-7 py-3.5 text-base font-bold text-azur-950 transition-all hover:bg-brass-300">
-            Get your study on WhatsApp
+
+      {/* W161 — Scroll invitation: animated chevron, static under prefers-reduced-motion */}
+      <div class="absolute bottom-6 left-1/2 -translate-x-1/2 scroll-chevron" aria-hidden="true">
+        <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <polyline points="6 9 12 15 18 9" />
+        </svg>
+      </div>
+
+      {/* Content anchored LOW — eyebrow demoted to lune (brass discipline).
+          W205 — Protagonist figure with count-up (width reserved, zero CLS).
+          data-hero-tally: JS hook below, distinct from data-tally. */}
+      <div class="mx-auto w-full max-w-6xl px-4 pb-24 pt-32 sm:pb-32">
+        <p class="tech-label v2-kicker rule-brass cine-in text-lune">The study first, the worksite second</p>
+        <h1 class="display v2-hero-title cine-in cine-in-1 mt-6 max-w-[15ch]">
+          <span data-hero-tally class="font-variant-numeric tabular-nums">{heroFigure}</span>{heroTitleSuffix}
+        </h1>
+        <p class="v2-lead cine-in cine-in-2 mt-6 max-w-xl text-white/85">{heroSub}</p>
+        <div class="cine-in cine-in-3 mt-10 flex flex-wrap items-center gap-3">
+          {/* The single brass CTA (brass discipline) — gold is allowed here */}
+          <a href="#simulateur" class="glow-hero bg-brass-400 px-8 py-4 text-lg font-bold text-azur-950 transition-all hover:bg-brass-300">
+            Estimate my installation →
           </a>
+          {/* Ghost WhatsApp — white outline, no brass */}
           <a href={waDirect} rel="noopener" class="inline-flex items-center gap-2 border border-white/40 px-6 py-3.5 text-base font-semibold text-white backdrop-blur-sm transition-colors hover:border-white hover:bg-white/10">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 2a10 10 0 0 0-8.6 15.1L2 22l5-1.3A10 10 0 1 0 12 2Zm5.4 14.1c-.2.6-1.3 1.2-1.8 1.2-.5.1-1 .2-3.3-.7-2.8-1.1-4.6-4-4.7-4.2-.1-.2-1.1-1.5-1.1-2.9s.7-2 1-2.3c.2-.3.5-.3.7-.3h.5c.2 0 .4 0 .6.4l.9 2.1c.1.2.1.4 0 .6l-.4.6-.5.5c-.2.2-.3.4-.1.7.2.3.9 1.4 1.9 2.3 1.3 1.1 2.3 1.5 2.6 1.6.3.1.5.1.7-.1l1-1.2c.2-.3.4-.2.7-.1l2 1c.3.1.5.2.6.4 0 .1 0 .7-.3 1.4Z"/></svg>
             WhatsApp direct
@@ -136,9 +183,10 @@ const solutionIcons: Record<string, string> = {
       </div>
     </section>
 
-    <!-- Warranty promise up top: a true, strong commitment, taken from
-         /garanties (25-year performance) and the measured Deye Cloud monitoring. -->
-    <section class="border-y border-white/10 bg-brass-400/5 px-4 py-6">
+    {/* Warranty promise up top — a true, strong commitment, taken from
+        /garanties (25-year performance) and the measured Deye Cloud monitoring. */}
+    <div class="seam-soft" aria-hidden="true"></div>
+    <section class="bg-brass-400/5 px-4 py-6">
       <p class="mx-auto flex max-w-6xl flex-wrap items-center justify-center gap-x-3 gap-y-1 text-center text-sm font-semibold text-lune sm:text-base">
         <span class="text-brass-300">25-year performance warranty</span>
         <span class="text-lune-faint" aria-hidden="true">·</span>
@@ -146,131 +194,16 @@ const solutionIcons: Record<string, string> = {
       </p>
     </section>
 
-    <!-- Trust strip — four proofs, revealed in cascade -->
-    <section class="border-y border-white/10 px-4 py-16 sm:py-20">
-      <dl class="mx-auto grid max-w-6xl gap-x-6 gap-y-10 sm:grid-cols-2 lg:grid-cols-4" data-stagger>
-        <div class="v2-rise" style="--v2-i:0">
-          <dd class="font-display text-xl font-bold text-white">Worksites you can visit</dd>
-          <dt class="mt-2 text-sm leading-snug text-lune-soft">Real installations to see on request — Casablanca, El Jadida, Nouaceur</dt>
-        </div>
-        <div class="v2-rise" style="--v2-i:1">
-          <dd class="fig lum whitespace-nowrap text-4xl" data-tally>43,48 kWc</dd>
-          <dt class="mt-2 text-sm leading-snug text-lune-soft">installed — Casablanca, El Jadida, Nouaceur</dt>
-        </div>
-        <div class="v2-rise" style="--v2-i:2">
-          <dd class="font-display text-xl font-bold text-white">Doctor-engineer</dd>
-          <dt class="mt-2 text-sm leading-snug text-lune-soft">10+ years of R&D expertise — every study validated by the founder</dt>
-        </div>
-        <div class="v2-rise" style="--v2-i:3">
-          <dd class="font-display text-xl font-bold text-white">Measured production</dd>
-          <dt class="mt-2 text-sm leading-snug text-lune-soft">Deye Cloud monitoring on every installation, client access included</dt>
-        </div>
-      </dl>
-    </section>
-
-    <!-- The argument in figures — numbers that count up -->
-    <section class="mx-auto grid max-w-6xl gap-12 px-4 py-20 sm:py-28 lg:grid-cols-[1fr_1.1fr] lg:items-center">
-      <div class="v2-rise">
-        <p class="tech-label v2-kicker rule-brass text-brass-300">The argument, in figures</p>
-        <h2 class="display v2-section-title mt-5 max-w-md text-white">The return, worked out before installation</h2>
-        <p class="v2-lead mt-5 max-w-md text-lune-soft">
-          A well-sized installation covers most of your bill for twenty-five years.
-          The calculation starts from your real consumption, and it is the calculation
-          that decides the equipment — never the other way around.
-        </p>
-      </div>
-      <dl class="grid grid-cols-2 gap-x-6 gap-y-12 border-l-2 border-brass-400/60 pl-6 sm:pl-10" data-stagger>
-        <div class="v2-rise" style="--v2-i:0">
-          <dd class="fig lum whitespace-nowrap text-3xl sm:text-5xl xl:text-6xl" data-tally>60–90 %</dd>
-          <dt class="tech-label mt-2 text-lune-faint">Of the bill covered</dt>
-        </div>
-        <div class="v2-rise" style="--v2-i:1">
-          <dd class="fig lum whitespace-nowrap text-3xl sm:text-5xl xl:text-6xl" data-tally>3–7 yrs</dd>
-          <dt class="tech-label mt-2 text-lune-faint">Return on investment</dt>
-        </div>
-        <div class="v2-rise" style="--v2-i:2">
-          <dd class="fig lum whitespace-nowrap text-3xl sm:text-5xl xl:text-6xl" data-tally>25 yrs</dd>
-          <dt class="tech-label mt-2 text-lune-faint">Performance warranty</dt>
-        </div>
-        <div class="v2-rise" style="--v2-i:3">
-          <dd class="fig lum whitespace-nowrap text-3xl sm:text-5xl xl:text-6xl" data-tally>0 MAD</dd>
-          <dt class="tech-label mt-2 text-lune-faint">The study and the diagnostic</dt>
-        </div>
-      </dl>
-    </section>
-
-    <!-- The founder: a strong trust signal, photo-ready component (identical
-         text fallback until Reda Kasri's portrait is dropped in). No invented image. -->
-    <FounderPortrait />
-
-    <!-- ACT II — Two trades: the photos are the light -->
-    <section class="px-4 py-20 sm:py-28">
-      <div class="mx-auto max-w-6xl">
-        <p class="tech-label v2-kicker rule-brass text-brass-300">Two trades</p>
-        <h2 class="display v2-section-title mt-5 max-w-xl text-white">One engineering standard, from the house to the factory</h2>
-        <div class="mt-12 grid gap-6 md:grid-cols-2" data-stagger>
-          <a href={L('/résidentiel')} class="v2-rise group relative block overflow-hidden" style="--v2-i:0">
-            <Picture name="crepuscule-penthouse" alt="Taqinor residential solar installation at dusk, white penthouse and solar water heater"
-              widths={[1600, 1024, 640]} ratio={4 / 3} sizes="(min-width: 768px) 50vw, 100vw"
-              class="aspect-[4/3] w-full object-cover transition-transform duration-700 group-hover:scale-[1.04]" />
-            <div class="absolute inset-x-0 bottom-0 bg-gradient-to-t from-nuit/95 to-transparent px-6 pb-5 pt-16 text-white">
-              <p class="tech-label text-brass-300">Villas · apartments</p>
-              <h3 class="display mt-1 text-2xl">Residential</h3>
-              <span class="mt-2 inline-block border-b-2 border-brass-400 pb-0.5 text-sm font-bold">See residential →</span>
-            </div>
-          </a>
-          <a href={L('/professionnel')} class="v2-rise group relative block overflow-hidden" style="--v2-i:1">
-            <Picture name="industriel-couchant" alt="Taqinor industrial solar worksite at sunset, double row of panels"
-              widths={[2000, 1280, 768, 480]} ratio={16 / 9} sizes="(min-width: 768px) 50vw, 100vw"
-              class="aspect-[4/3] w-full object-cover transition-transform duration-700 group-hover:scale-[1.04]" />
-            <div class="absolute inset-x-0 bottom-0 bg-gradient-to-t from-nuit/95 to-transparent px-6 pb-5 pt-16 text-white">
-              <p class="tech-label text-brass-300">Industry · hotels · clinics</p>
-              <h3 class="display mt-1 text-2xl">Business</h3>
-              <span class="mt-2 inline-block border-b-2 border-brass-400 pb-0.5 text-sm font-bold">See business →</span>
-            </div>
-          </a>
-        </div>
-      </div>
-    </section>
-
-    <!-- Our solutions — the whole offering, beyond the two segments -->
-    <section class="border-t border-white/10 px-4 py-20 sm:py-28">
-      <div class="mx-auto max-w-6xl">
-        <p class="tech-label v2-kicker rule-brass text-brass-300">Our solutions</p>
-        <h2 class="display v2-section-title mt-5 max-w-xl text-white">Everything we install</h2>
-        <p class="v2-lead mt-5 max-w-2xl text-lune-soft">
-          Beyond residential and business: agricultural pumping, storage, production
-          monitoring and bringing into compliance. Every solution starts from your real
-          situation — it is the study that decides.
-        </p>
-        <div class="mt-12 grid gap-6 sm:grid-cols-2 lg:grid-cols-3" data-stagger>
-          {solutions.map((s, i) => (
-            <a href={L(s.href)} class="v2-rise cine-card group flex flex-col p-7" style={`--v2-i:${i}`}>
-              {/* line pictogram, currentColor (brass), no dependency/image */}
-              <svg class="h-9 w-9 text-brass-400 transition-colors group-hover:text-brass-300" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" set:html={solutionIcons[s.href] ?? ''} />
-              <p class="tech-label mt-5 text-brass-300">{s.tag}</p>
-              <h3 class="display mt-2 text-xl text-white">{s.title}</h3>
-              <p class="mt-3 flex-1 text-sm leading-relaxed text-lune-soft">{s.body}</p>
-              <span class="mt-5 inline-block border-b-2 border-brass-400 pb-0.5 text-sm font-bold text-white">Discover →</span>
-            </a>
-          ))}
-        </div>
-        <a href={L('/nos-solutions')} class="v2-rise mt-10 inline-block border border-white/40 px-6 py-3 text-sm font-bold text-white transition-colors hover:border-white hover:bg-white/10">See all our solutions →</a>
-      </div>
-    </section>
-
-    <!-- Tier-1 brand strip → BrandStrip component: official logos when a file
-         exists (public/brands/), styled word-marks as fallback. -->
-    <BrandStrip />
-
-    <!-- Proof gallery: the light comes from the photos. Equal-height grid
-         (uniform 4/3 cards); each card carries city · kWc · measured production
-         (where published) · equipment. -->
-    <section class="px-4 py-20 pb-28 sm:py-28 sm:pb-36">
+    {/* ── 2 · PROOF GALLERY — the light comes from the photos. Equal-height grid
+        (uniform 4/3 cards); each card carries city · kWc · measured production
+        (where published) · equipment. "Golden hour" grade (.v3-grade) on the
+        content photos. Eyebrow demoted to lune. ── */}
+    <div class="seam-soft" aria-hidden="true"></div>
+    <section class="section px-4">
       <div class="mx-auto max-w-6xl">
         <div class="flex flex-wrap items-end justify-between gap-4">
           <div class="v2-rise">
-            <p class="tech-label v2-kicker rule-brass text-brass-300">Recent installations</p>
+            <p class="tech-label text-lune">Recent installations</p>
             <h2 class="display v2-section-title mt-5 text-white">Our latest installations</h2>
           </div>
           <p class="v2-rise max-w-sm text-sm leading-relaxed text-lune-soft">
@@ -281,34 +214,90 @@ const solutionIcons: Record<string, string> = {
         <div class="mt-12 grid gap-5 sm:grid-cols-2 lg:grid-cols-3" data-stagger>
           {gallery.map((g, i) => (
             <a href={L(`/realisations/${g.slug}`)} class="v2-rise cine-card group relative block overflow-hidden" style={`--v2-i:${i % 3}`}>
+              {/* Uniform "golden hour" grade — .v3-grade on the content photo */}
               <Picture name={g.name} alt={g.alt} widths={g.widths} ratio={4 / 3} sizes="(min-width: 1024px) 33vw, (min-width: 640px) 50vw, 100vw"
-                class="aspect-[4/3] w-full object-cover transition-transform duration-700 group-hover:scale-[1.04]" />
+                class="v3-grade aspect-[4/3] w-full object-cover transition-transform duration-700 group-hover:scale-[1.04]" />
               <div class="absolute inset-x-0 bottom-0 bg-gradient-to-t from-nuit/95 to-transparent px-4 pb-3 pt-12">
-                <span class="tech-label block text-brass-300">{g.ville} · {g.kwc}{g.prod ? ` · ${g.prod}` : ''}</span>
-                <span class="mt-0.5 block text-xs text-lune">{g.type}</span>
+                <span class="tech-label block text-lune">{g.ville} · {g.kwc}{g.prod ? ` · ${g.prod}` : ''}</span>
+                <span class="mt-0.5 block text-xs text-lune-soft">{g.type}</span>
               </div>
             </a>
           ))}
         </div>
-        <a href={L('/realisations')} class="v2-rise mt-10 inline-block border border-white/40 px-6 py-3 text-sm font-bold text-white transition-colors hover:border-white hover:bg-white/10">See all our installations →</a>
+        {/* Quiet link to ALL installations — not a solid button */}
+        <a href={L('/realisations')} class="v2-rise group mt-10 inline-flex items-center gap-1 border-b-2 border-white/30 pb-0.5 text-sm font-bold text-white transition-colors hover:border-white">
+          See all our installations <span class="motion-safe:transition-transform motion-safe:duration-200 motion-safe:group-hover:translate-x-1" aria-hidden="true">→</span>
+        </a>
       </div>
     </section>
 
-    <!-- Client reviews: REAL social proof. Empty today (no invented review) →
-         renders nothing until the founder adds real reviews. -->
-    <Testimonials />
+    {/* ── ZELLIGE SIGNATURE — ONCE only, between proof and solutions ── */}
+    <ZelligeSignature />
 
-    <!-- How it works — the complete journey + the WhatsApp preview. The
-         end-to-end timeline (diagnostic → monitoring) replaces the small 3-step
-         list; the two no longer repeat. Facts already published on the site,
-         no invented delay. -->
-    <section class="border-t border-white/10 px-4 py-20 sm:py-28">
+    {/* ── OUR SOLUTIONS (6) — the whole offering, beyond the two segments ── */}
+    <div class="seam-soft" aria-hidden="true"></div>
+    <section class="section px-4">
+      <div class="mx-auto max-w-6xl">
+        {/* Eyebrow demoted to lune + azur number (brass discipline) */}
+        <p class="tech-label v2-kicker rule-brass text-lune"><span class="mr-2 font-display text-xs text-azur-200/80" aria-hidden="true">01</span>Our solutions</p>
+        <h2 class="display v2-section-title mt-5 max-w-xl text-white">Everything we install</h2>
+        <p class="v2-body mt-5 max-w-2xl">
+          Beyond residential and business: agricultural pumping, storage, production
+          monitoring and bringing into compliance. Every solution starts from your real
+          situation — it is the study that decides.
+        </p>
+        <div class="mt-12 grid gap-6 sm:grid-cols-2 lg:grid-cols-3" data-stagger>
+          {solutions.map((s, i) => (
+            <a href={L(s.href)} class="v2-rise cine-card group flex flex-col p-7" style={`--v2-i:${i}`}>
+              {/* line pictogram, currentColor (brass), no dependency/image */}
+              <svg class="h-9 w-9 text-brass-400 transition-colors group-hover:text-brass-300" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" set:html={solutionIcons[s.href] ?? ''} />
+              <p class="tech-label mt-5 text-lune">{s.tag}</p>
+              <h3 class="display mt-2 text-xl text-white">{s.title}</h3>
+              <p class="mt-3 flex-1 text-sm leading-relaxed text-lune-soft">{s.body}</p>
+              <span class="mt-5 inline-flex items-center gap-1 border-b-2 border-white/30 pb-0.5 text-sm font-bold text-white">Discover <span class="motion-safe:transition-transform motion-safe:duration-200 motion-safe:group-hover:translate-x-1" aria-hidden="true">→</span></span>
+            </a>
+          ))}
+        </div>
+        <a href={L('/nos-solutions')} class="v2-rise group mt-10 inline-flex items-center gap-1 border border-white/40 px-6 py-3 text-sm font-bold text-white transition-colors hover:border-white hover:bg-white/10">See all our solutions <span class="motion-safe:transition-transform motion-safe:duration-200 motion-safe:group-hover:translate-x-1" aria-hidden="true">→</span></a>
+      </div>
+    </section>
+
+    {/* ── WHY TAQINOR / TRUST — four monumental figures (gold lives on the .lum
+        figures, brass discipline) — already-published facts ── */}
+    <div class="seam-soft" aria-hidden="true"></div>
+    <section class="section px-4">
+      <div class="mx-auto max-w-6xl">
+        <div class="v2-rise max-w-2xl">
+          <p class="tech-label v2-kicker rule-brass text-lune"><span class="mr-2 font-display text-xs text-azur-200/80" aria-hidden="true">02</span>Why Taqinor</p>
+          <h2 class="display v2-section-title mt-5 text-white">The proof before the promise</h2>
+          <p class="v2-body mt-5">
+            Real installations, visitable, monitored continuously, and a study sized by hand on your
+            real bill. The figure decides the equipment — never the other way around.
+          </p>
+        </div>
+        <dl class="mt-12 grid gap-x-8 gap-y-12 sm:grid-cols-2 lg:grid-cols-2" data-stagger>
+          {trust.map((t, i) => (
+            <div class="v2-rise min-w-0" style={`--v2-i:${i}`}>
+              <dd class="fig fig-md lum break-words" data-tally={t.tally ? '' : undefined}>{t.fig}</dd>
+              <dt class="tech-label mt-2 text-lune-faint">{t.label}</dt>
+              <p class="mt-1 text-sm leading-snug text-lune-soft">{t.body}</p>
+            </div>
+          ))}
+        </dl>
+      </div>
+    </section>
+
+    {/* ── THE JOURNEY (6 steps) + WhatsApp preview. The end-to-end timeline
+        (diagnostic → monitoring) replaces the small 3-step list. Facts already
+        published on the site, no invented delay. ── */}
+    <div class="seam-soft" aria-hidden="true"></div>
+    <section class="section px-4">
       <div class="mx-auto max-w-6xl">
         <div class="grid items-center gap-12 lg:grid-cols-[1.1fr_1fr]">
           <div class="v2-rise">
-            <p class="tech-label v2-kicker rule-brass text-brass-300">How it works</p>
+            <p class="tech-label v2-kicker rule-brass text-lune"><span class="mr-2 font-display text-xs text-azur-200/80" aria-hidden="true">03</span>How it works</p>
             <h2 class="display v2-section-title mt-5 max-w-md text-white">The rest happens on WhatsApp</h2>
-            <p class="v2-lead mt-5 max-w-md text-lune-soft">
+            <p class="v2-body mt-5 max-w-md">
               No call centre, no chasing: your diagnostic arrives on WhatsApp,
               you talk directly with the technical team, roof photos in hand,
               right up to the on-site visit. Sample exchange opposite — anonymised.
@@ -318,11 +307,12 @@ const solutionIcons: Record<string, string> = {
             <WhatsAppMock />
           </div>
         </div>
-        <!-- The real journey timeline — from diagnostic to monitoring -->
+        {/* The real journey timeline — from diagnostic to monitoring */}
         <ol class="mt-14 grid gap-x-6 gap-y-8 sm:grid-cols-2 lg:grid-cols-3" data-stagger>
           {journey.map((s, i) => (
             <li class="v2-rise relative border-t-2 border-white/10 pt-5" style={`--v2-i:${i % 3}`}>
               <span class="absolute -top-px left-0 h-0.5 w-10 bg-brass-400" aria-hidden="true"></span>
+              {/* Step number in .lum: gold here is a key figure (brass discipline) */}
               <span class="fig lum text-2xl">{s.n}</span>
               <h3 class="display mt-2 text-lg text-white">{s.title}</h3>
               <p class="mt-2 text-sm leading-relaxed text-lune-soft">{s.body}</p>
@@ -332,9 +322,18 @@ const solutionIcons: Record<string, string> = {
       </div>
     </section>
 
+    {/* ── CLIENT REVIEWS — REAL social proof. Empty today (no invented review) →
+         renders nothing until the founder adds real reviews. ── */}
+    <Testimonials />
+
+    {/* ── TIER-1 BRANDS → BrandStrip component: official logos when a file
+         exists (public/brands/), styled word-marks as fallback. ── */}
+    <BrandStrip />
+
+    {/* ── WORKSITE FILM ── */}
     <VideoChantier />
 
-    <!-- Reassurance: the written warranties, in brief (links to /garanties) -->
+    {/* ── WARRANTIES (teaser) — the written warranties, in brief (links to /garanties) ── */}
     <GarantiesTeaser />
 
     <!-- FINAL ACT — the diagnostic breathes, in the navy+gold system -->
@@ -361,6 +360,23 @@ const solutionIcons: Record<string, string> = {
   </div>
 </Layout>
 
+<style>
+  /* W155 — Hero portrait-crop: top-anchored on vertical phones. The same images
+     are served; we shift object-position upward so the panels (top of the image)
+     stay visible on a 9:19 screen. */
+  @media (orientation: portrait) {
+    .hero-portrait-img {
+      object-position: center 20%;
+    }
+  }
+
+  /* RAISED hero scrim: compensates for the "golden hour" grade warmth and
+     guarantees the white headline's AA contrast over the photo. */
+  .hero-scrim-v3 {
+    --hero-scrim-strength: 0.52;
+  }
+</style>
+
 <script>
   // Hero video: deferred — first interaction or 2.8 s after load; never under
   // reduced-motion or data-saver (the poster stays the hero).
@@ -382,5 +398,46 @@ const solutionIcons: Record<string, string> = {
     const arm = () => setTimeout(start, 2800);
     if (document.readyState === 'complete') arm();
     else addEventListener('load', arm, { once: true });
+  }
+</script>
+
+<script>
+  // W205 — Count-up on the hero protagonist figure (21 406).
+  // Reduced-motion safe: the final value is shown immediately.
+  // Anti-CLS: the final width is locked BEFORE any animation.
+  import { formatFrame, shouldDigitRoll } from '../../lib/countup';
+
+  const el = document.querySelector<HTMLElement>('[data-hero-tally]');
+  if (el) {
+    const finalText = el.textContent ?? '';
+    // Reserve the width (anti-CLS) before any animation
+    if (getComputedStyle(el).display.startsWith('inline')) {
+      const w = el.getBoundingClientRect().width;
+      el.style.display = 'inline-block';
+      el.style.minWidth = w + 'px';
+    }
+
+    const reduce = matchMedia('(prefers-reduced-motion: reduce)').matches;
+    if (reduce || !shouldDigitRoll(finalText)) {
+      // Reduced-motion or composite value → final value immediately
+      el.textContent = finalText;
+    } else {
+      // Count-up on first view (the element is above-the-fold)
+      const dur = 1400; // slightly slower than the stats for its protagonist status
+      let start: number | null = null;
+      function frame(t: number) {
+        if (start === null) start = t;
+        const p = Math.min(1, (t - start) / dur);
+        const e = 1 - Math.pow(1 - p, 3); // easeOutCubic
+        el!.textContent = formatFrame(finalText, e);
+        if (p < 1) requestAnimationFrame(frame);
+        else el!.textContent = finalText;
+      }
+      // Triggered on load (above-the-fold) with a minimal delay so the browser
+      // paints the poster first.
+      const kick = () => requestAnimationFrame(frame);
+      if (document.readyState === 'complete') kick();
+      else addEventListener('load', kick, { once: true });
+    }
   }
 </script>

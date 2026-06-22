@@ -5,6 +5,12 @@
  * tax point is preserved EXACTLY: VAT exemption for AGRICULTURAL pumping only —
  * never residential rooftop PV. Internal links via localizeNavHref. FR
  * untouched.
+ *
+ * ÉLÉVATION (W241) — mirrors the FR pompage-solaire.astro elevation:
+ *  1. brass discipline: eyebrows text-lune (not text-brass-300) on dark sections;
+ *  2. .section-lg + .section tokens for rhythm;
+ *  3. seam-soft seams;
+ *  4. RTL-logical border-s-4 already present, preserved.
  */
 import Layout from '../../layouts/Layout.astro';
 import V2Enhance from '../../components/V2Enhance.astro';
@@ -86,11 +92,12 @@ const jsonLd = {
 
     <Breadcrumb items={[{ label: 'الرئيسية', href: L('/') }, { label: 'الضخ الشمسي' }]} />
 
-    <section class="px-4 pb-10 pt-16 text-white sm:pt-20">
+    {/* ── HÉROS ÉDITORIAL — eyebrow مُخفَّض إلى lune (انضباط النحاس) ── */}
+    <section class="section-lg px-4 pb-10 text-white">
       <div class="mx-auto max-w-3xl">
-        <p class="tech-label v2-kicker rule-brass cine-in text-brass-300">خدمة جديدة</p>
-        <h1 class="display v2-page-title cine-in mt-5 [animation-delay:120ms]">اضخّ الماء بالشمس، لا بالݣازوال</h1>
-        <p class="v2-lead cine-in mt-6 max-w-xl text-white/85 [animation-delay:240ms]">
+        <p class="tech-label v2-kicker rule-brass cine-in text-lune">خدمة جديدة</p>
+        <h1 class="display v2-page-title cine-in cine-in-1 mt-6 max-w-[18ch]">اضخّ الماء بالشمس، لا بالݣازوال</h1>
+        <p class="v2-lead cine-in cine-in-2 mt-6 max-w-xl text-white/85">
           للسقي، يُنهي الضخ الشمسي تعبئة الݣازوال: ألواح تُحرّك المضخّة ما دامت الشمس تعطي. الحقل لا
           يخرج من كاطالوݣ — بل يُستنتج من أربع قياسات تُؤخذ على قطعتك: الصبيب المستهدف، الارتفاع الواجب
           تجاوزه، مستوى الثقب، والماء الذي يطلبه المحصول.
@@ -99,11 +106,12 @@ const jsonLd = {
     </section>
 
     <!-- كيف يعمل -->
-    <section class="px-4 pb-20 sm:pb-24">
+    <section class="section px-4">
       <div class="mx-auto max-w-6xl">
-        <p class="tech-label v2-kicker rule-brass text-brass-300">كيف يعمل</p>
+        {/* eyebrow مُخفَّض إلى lune */}
+        <p class="tech-label v2-kicker rule-brass text-lune">كيف يعمل</p>
         <h2 class="display v2-section-title mt-5 text-white">من الشمس إلى الحقل، في أربع مراحل</h2>
-        <div class="mt-10 grid gap-6 md:grid-cols-2" data-stagger>
+        <div class="mt-12 grid gap-6 md:grid-cols-2" data-stagger>
           {etapes.map((e, i) => (
             <div class="v2-rise cine-card flex flex-col p-7" style={`--v2-i:${i}`}>
               <p class="fig lum text-3xl" dir="ltr">{e.k}</p>
@@ -114,14 +122,14 @@ const jsonLd = {
         </div>
         <p class="mx-auto mt-8 max-w-2xl text-sm leading-relaxed text-lune-faint">
           أرتاب الحجم تتوقف كلياً على موقعك: ما لم يُقَس الثقب، يوجد منهج لا رقم. الحقل والمغيّر يستندان
-          إلى علامات الصف الأول نفسها التي على أسطحنا — <a href={L('/équipement')} class="border-b border-brass-400 pb-0.5 font-semibold text-brass-300 transition-colors hover:text-brass-200">انظر المعدات <span class="inline-block rtl:-scale-x-100">→</span></a>
+          إلى علامات الصف الأول نفسها التي على أسطحنا — <a href={L('/équipement')} class="border-b border-azur-200/60 pb-0.5 font-semibold text-azur-200 transition-colors hover:text-white">انظر المعدات <span class="inline-block rtl:-scale-x-100">→</span></a>
         </p>
       </div>
     </section>
 
     <!-- متغيرات تحديد المقاس (خلفية فاتحة) -->
     <div class="v2-seam" aria-hidden="true"></div>
-    <section class="bg-blanc-azur px-4 pb-20 pt-10 text-encre sm:pb-24">
+    <section class="section bg-blanc-azur px-4 text-encre">
       <div class="mx-auto max-w-6xl">
         <p class="tech-label v2-kicker rule-brass text-azur-600">أربع قياسات</p>
         <h2 class="display v2-section-title mt-5">ما يقرّر تحديد المقاس</h2>
@@ -129,7 +137,7 @@ const jsonLd = {
           مضخّة مفرطة الحجم تُبدّد الألواح؛ ومضخّة ضيّقة جداً تجفّ في عزّ يوليوز. النقطة الصحيحة توجد
           عند تقاطع أربعة متغيرات ملموسة، تُؤخذ ميدانياً قبل فتح أي كاطالوݣ.
         </p>
-        <div class="mt-10 grid gap-6 md:grid-cols-2" data-stagger>
+        <div class="mt-12 grid gap-6 md:grid-cols-2" data-stagger>
           {variables.map((v, i) => (
             <div class="v2-rise border-t-2 border-azur-900 bg-blanc p-6" style={`--v2-i:${i}`}>
               <h3 class="display text-xl text-azur-700">{v.title}</h3>
@@ -145,11 +153,12 @@ const jsonLd = {
     </section>
 
     <!-- امتياز ضريبي: إعفاء من الضريبة (الضخ الفلاحي فقط) -->
-    <section class="px-4 py-20 sm:py-28">
+    <section class="section px-4">
       <div class="mx-auto max-w-6xl">
         <div class="grid gap-10 lg:grid-cols-[1.1fr_1fr] lg:items-center">
           <div class="v2-rise">
-            <p class="tech-label v2-kicker rule-brass text-brass-300">امتياز ضريبي مؤكَّد</p>
+            {/* eyebrow مُخفَّض إلى lune */}
+            <p class="tech-label v2-kicker rule-brass text-lune">امتياز ضريبي مؤكَّد</p>
             <h2 class="display v2-section-title mt-5 text-white">الضخ الفلاحي مُعفى من الضريبة على القيمة المضافة</h2>
             <p class="v2-lead mt-5 text-lune-soft">
               بالمغرب، أنظمة ضخ الماء بالطاقة الشمسية مُعفاة من الضريبة على القيمة المضافة — ويغطّي
@@ -171,9 +180,10 @@ const jsonLd = {
     </section>
 
     <!-- كتلة روابط / القطاع المهني -->
-    <section class="border-t border-white/10 px-4 py-16 sm:py-20">
+    <section class="section border-t border-white/10 px-4">
       <div class="mx-auto max-w-6xl">
-        <p class="tech-label v2-kicker rule-brass text-brass-300">للمزيد</p>
+        {/* eyebrow مُخفَّض إلى lune */}
+        <p class="tech-label v2-kicker rule-brass text-lune">للمزيد</p>
         <h2 class="display v2-section-title mt-5 text-white">الفلاحة، قطاع مهني</h2>
         <p class="v2-lead mt-5 max-w-2xl text-lune-soft">
           الضخ الشمسي شأن مستغلّين ومهنيين، لا أطقم عامة الجمهور. نقيس الثقب، نحسب، نركّب معدات الصف

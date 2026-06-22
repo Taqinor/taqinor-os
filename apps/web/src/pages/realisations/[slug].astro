@@ -129,7 +129,7 @@ const galleryPhotos = rest;
         <div class="absolute inset-0 bg-gradient-to-t from-nuit via-nuit/55 to-nuit/20"></div>
       </div>
       <div class="mx-auto max-w-6xl px-4 pb-16 pt-24 sm:pb-20 sm:pt-32">
-        <p class="tech-label v2-kicker rule-brass cine-in text-brass-300">Réf. {r.ref} · {r.ville} · {r.date}</p>
+        <p class="tech-label v2-kicker rule-brass cine-in text-lune">Réf. {r.ref} · {r.ville} · {r.date}</p>
         <h1 class="display v2-page-title cine-in mt-5 max-w-[20ch] [animation-delay:120ms]">
           {r.kwc} d'installation solaire {cityPage ? cityPage.intro : `à ${r.ville}`}
         </h1>
@@ -164,7 +164,7 @@ const galleryPhotos = rest;
 
     <!-- Le récit du chantier : situation, dimensionnement, résultat mesuré -->
     <section class="mx-auto max-w-3xl px-4 py-20 sm:py-28">
-      <p class="tech-label v2-kicker rule-brass text-brass-300">Le chantier, raconté</p>
+      <p class="tech-label v2-kicker rule-brass text-lune">Le chantier, raconté</p>
       <h2 class="display v2-section-title mt-5 text-white">Pourquoi {r.kwc}, sur cette toiture</h2>
       <p class="v2-lead mt-5 text-lune-soft">{cs.situation}</p>
       <p class="v2-lead mt-4 text-lune-soft">{cs.sizing}</p>
@@ -175,7 +175,7 @@ const galleryPhotos = rest;
     {hasDiptych && (
       <section class="border-t border-white/10 px-4 py-20 sm:py-24">
         <div class="mx-auto max-w-6xl">
-          <p class="tech-label v2-kicker rule-brass text-brass-300">Le chantier en phases</p>
+          <p class="tech-label v2-kicker rule-brass text-lune">Le chantier en phases</p>
           <h2 class="display v2-section-title mt-5 text-white">Avant · Pendant · Après</h2>
           <div class="mt-10 grid gap-5 sm:grid-cols-2 lg:grid-cols-3" data-stagger>
             {phasedPhotos.map((p, i) => (
@@ -215,10 +215,10 @@ const galleryPhotos = rest;
     <!-- Le matériel posé -->
     <section class="border-t border-white/10 px-4 py-20 sm:py-24">
       <div class="mx-auto max-w-3xl">
-        <p class="tech-label v2-kicker rule-brass text-brass-300">Le matériel posé</p>
+        <p class="tech-label v2-kicker rule-brass text-lune">Le matériel posé</p>
         <h2 class="display v2-section-title mt-5 text-white">Ce qui est réellement sur le toit</h2>
         <p class="v2-lead mt-5 text-lune-soft">{cs.install}</p>
-        <div class="mt-8 border-t-2 border-brass-400/60" data-stagger>
+        <div class="mt-8 border-t-2 border-white/20" data-stagger>
           {equipment.map((e, i) => (
             <div class="v2-rise flex items-baseline justify-between gap-4 border-b border-white/10 py-4" style={`--v2-i:${i}`}>
               <span class="tech-label text-lune-faint">{e.label}</span>
@@ -228,7 +228,7 @@ const galleryPhotos = rest;
         </div>
         <p class="mt-5 text-sm text-lune-soft">
           Marques tier-1 sourcées via des distributeurs officiels au Maroc — garanties locales
-          activables. <a href="/équipement" class="border-b border-brass-400 pb-0.5 font-semibold text-brass-300 transition-colors hover:text-brass-200">Voir tout l'équipement →</a>
+          activables. <a href="/équipement" class="border-b border-azur-200/60 pb-0.5 font-semibold text-azur-200 transition-colors hover:text-white">Voir tout l'équipement →</a>
         </p>
       </div>
     </section>
@@ -237,7 +237,7 @@ const galleryPhotos = rest;
     {galleryPhotos.length > 0 && (
       <section class="px-4 py-20 sm:py-24">
         <div class="mx-auto max-w-6xl">
-          <p class="tech-label v2-kicker rule-brass text-brass-300">Pièces du dossier</p>
+          <p class="tech-label v2-kicker rule-brass text-lune">Pièces du dossier</p>
           <h2 class="display v2-section-title mt-5 text-white">Le chantier, tel quel</h2>
           <div class="mt-10 grid gap-5 sm:grid-cols-2" data-stagger data-lightbox-gallery-slug>
             {galleryPhotos.map((p, i) => (
