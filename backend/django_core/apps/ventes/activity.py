@@ -96,3 +96,49 @@ def log_facture_paiement(facture, user, paiement):
         field='paiement', field_label='Paiement',
         new_value=str(paiement.montant), body=detail + '.',
     )
+
+
+def log_facture_acompte_transfere_sortie(facture, user, cible, montant, nb):
+    """FG50 — chatter de la facture ANNULÉE : l'acompte part vers une autre.
+
+    Tracé sur la facture source (celle qu'on annule) : où va l'acompte et
+    combien. Acteur et société posés côté serveur, jamais lus du corps."""
+    from .models import FactureActivity
+    return FactureActivity.objects.create(
+        company=facture.company, facture=facture, user=user,
+        kind=FactureActivity.Kind.MODIFICATION,
+        field='acompte', field_label='Acompte transféré',
+        old_value=str(montant),
+        body=(f"Acompte de {montant} MAD ({nb} paiement(s)) transféré vers la "
+              f"facture {cible.reference} à l'annulation."),
+    )
+
+
+def log_facture_acompte_transfere_entree(facture, user, source, montant, nb):
+    """FG50 — chatter de la facture CIBLE : elle reçoit l'acompte transféré."""
+    from .models import FactureActivity
+    return FactureActivity.objects.create(
+        company=facture.company, facture=facture, user=user,
+        kind=FactureActivity.Kind.MODIFICATION,
+        field='acompte', field_label='Acompte reçu',
+        new_value=str(montant),
+        body=(f"Acompte de {montant} MAD ({nb} paiement(s)) reçu depuis la "
+              f"facture {source.reference} annulée."),
+    )
+
+
+def log_facture_acompte_rembourse(facture, user, montant):
+    """FG50 — chatter de la facture annulée : l'acompte est remboursable.
+
+    Trace l'écriture d'un paiement négatif (contre-passation) qui solde
+    l'acompte resté sur la facture morte : l'obligation de remboursement est
+    désormais matérialisée et l'acompte n'est plus « coincé »."""
+    from .models import FactureActivity
+    return FactureActivity.objects.create(
+        company=facture.company, facture=facture, user=user,
+        kind=FactureActivity.Kind.MODIFICATION,
+        field='acompte', field_label='Acompte remboursable',
+        old_value=str(montant),
+        body=(f"Acompte de {montant} MAD marqué remboursable à l'annulation "
+              f"(écriture négative de contre-passation)."),
+    )
