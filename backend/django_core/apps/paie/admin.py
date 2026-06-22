@@ -1,6 +1,6 @@
 from django.contrib import admin
 
-from .models import BaremeIR, ParametrePaie, TrancheIR
+from .models import BaremeIR, ParametrePaie, Rubrique, TrancheIR
 
 
 @admin.register(ParametrePaie)
@@ -32,3 +32,13 @@ class TrancheIRAdmin(admin.ModelAdmin):
                     'somme_a_deduire', 'company')
     list_filter = ('bareme',)
     search_fields = ('bareme__libelle',)
+
+
+@admin.register(Rubrique)
+class RubriqueAdmin(admin.ModelAdmin):
+    list_display = ('id', 'code', 'libelle', 'type', 'imposable',
+                    'soumis_cnss', 'soumis_amo', 'soumis_cimr', 'compte',
+                    'ordre', 'actif', 'company')
+    list_filter = ('type', 'imposable', 'soumis_cnss', 'soumis_amo',
+                   'soumis_cimr', 'actif')
+    search_fields = ('code', 'libelle')

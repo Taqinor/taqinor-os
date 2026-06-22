@@ -27,7 +27,7 @@ qu'ils restent à confirmer.
 from datetime import date
 from decimal import Decimal
 
-from .models import BaremeIR, ParametrePaie, TrancheIR
+from .models import BaremeIR, ParametrePaie, Rubrique, TrancheIR
 
 # ── Date d'effet des valeurs légales par défaut ────────────────────────────
 DATE_EFFET_2026 = date(2026, 1, 1)
@@ -179,3 +179,58 @@ def compute_ir(base, bareme, parametre, personnes_a_charge=0):
     if net < 0:
         return Decimal('0.00')
     return net.quantize(Decimal('0.01'))
+
+
+# ── PAIE6 — Rubriques de paie standard (catalogue par défaut) ───────────────
+# Jeu standard de rubriques de bulletin marocain. Chaque entrée :
+# code, libellé, type, (imposable, soumis_cnss, soumis_amo, soumis_cimr),
+# compte comptable, ordre. Valeurs ÉDITABLES — pures défauts.
+RUBRIQUES_DEFAUT = [
+    # code, libelle, type, imposable, cnss, amo, cimr, compte, ordre
+    ('SB', 'Salaire de base', Rubrique.TYPE_GAIN,
+     True, True, True, True, '6411', 10),
+    ('PRIME', 'Prime', Rubrique.TYPE_GAIN,
+     True, True, True, True, '6411', 20),
+    ('HS', 'Heures supplémentaires', Rubrique.TYPE_GAIN,
+     True, True, True, True, '6411', 30),
+    ('CNSS', 'Cotisation CNSS (part salariale)', Rubrique.TYPE_COTISATION,
+     False, False, False, False, '4441', 40),
+    ('AMO', 'Cotisation AMO (part salariale)', Rubrique.TYPE_COTISATION,
+     False, False, False, False, '4441', 50),
+    ('IR', 'Impôt sur le Revenu', Rubrique.TYPE_RETENUE,
+     False, False, False, False, '4452', 60),
+    ('AVANCE', 'Avance / acompte', Rubrique.TYPE_RETENUE,
+     False, False, False, False, '3431', 70),
+]
+
+
+def ensure_rubriques_defaut(company):
+    """Provisionne (idempotent) les rubriques standard pour ``company``.
+
+    Crée, si absentes, les rubriques du catalogue ``RUBRIQUES_DEFAUT`` (clé
+    stable ``(company, code)``). Purement additif : une rubrique déjà présente
+    (éventuellement éditée par le fondateur) n'est jamais modifiée. Retourne le
+    nombre de rubriques créées ::
+
+        {'rubriques': N}
+    """
+    cree = 0
+    for (code, libelle, type_, imposable, cnss, amo, cimr,
+         compte, ordre) in RUBRIQUES_DEFAUT:
+        _, new = Rubrique.objects.get_or_create(
+            company=company,
+            code=code,
+            defaults={
+                'libelle': libelle,
+                'type': type_,
+                'imposable': imposable,
+                'soumis_cnss': cnss,
+                'soumis_amo': amo,
+                'soumis_cimr': cimr,
+                'compte': compte,
+                'ordre': ordre,
+            },
+        )
+        if new:
+            cree += 1
+    return {'rubriques': cree}

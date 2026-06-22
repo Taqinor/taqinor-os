@@ -6,7 +6,7 @@ appartenant à la société de l'utilisateur.
 """
 from rest_framework import serializers
 
-from .models import BaremeIR, ParametrePaie, TrancheIR
+from .models import BaremeIR, ParametrePaie, Rubrique, TrancheIR
 
 
 def _meme_societe(serializer, value, label):
@@ -31,6 +31,42 @@ class ParametrePaieSerializer(serializers.ModelSerializer):
             'actif', 'valide_par_fondateur', 'date_creation',
         ]
         read_only_fields = ['date_creation']
+
+
+class RubriqueSerializer(serializers.ModelSerializer):
+    """Sérialiseur de la rubrique paramétrable (PAIE6).
+
+    ``company`` n'est jamais exposée : posée côté serveur par le
+    ``TenantMixin``. Le couple ``(company, code)`` étant unique, l'unicité du
+    ``code`` est validée à l'enregistrement (DB) ; ``code`` reste éditable.
+    """
+    class Meta:
+        model = Rubrique
+        fields = [
+            'id', 'code', 'libelle', 'type', 'imposable', 'soumis_cnss',
+            'soumis_amo', 'soumis_cimr', 'compte', 'base', 'taux',
+            'montant_fixe', 'ordre', 'actif', 'date_creation',
+        ]
+        read_only_fields = ['date_creation']
+
+    def validate_code(self, value):
+        """``code`` unique par société (``company`` posée côté serveur).
+
+        ``company`` n'étant pas un champ du sérialiseur, DRF n'ajoute pas le
+        ``UniqueTogetherValidator`` automatique : on vérifie l'unicité ici pour
+        renvoyer un 400 propre plutôt qu'une ``IntegrityError`` 500.
+        """
+        request = self.context.get('request')
+        if request is None:
+            return value
+        qs = Rubrique.objects.filter(
+            company=request.user.company_id, code=value)
+        if self.instance is not None:
+            qs = qs.exclude(pk=self.instance.pk)
+        if qs.exists():
+            raise serializers.ValidationError(
+                'Une rubrique avec ce code existe déjà.')
+        return value
 
 
 class TrancheIRSerializer(serializers.ModelSerializer):

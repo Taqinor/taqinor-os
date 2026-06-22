@@ -12,9 +12,13 @@ from rest_framework.response import Response
 from authentication.mixins import TenantMixin
 from authentication.permissions import IsResponsableOrAdmin
 
-from .models import BaremeIR, ParametrePaie
-from .serializers import BaremeIRSerializer, ParametrePaieSerializer
-from .services import ensure_defaults
+from .models import BaremeIR, ParametrePaie, Rubrique
+from .serializers import (
+    BaremeIRSerializer,
+    ParametrePaieSerializer,
+    RubriqueSerializer,
+)
+from .services import ensure_defaults, ensure_rubriques_defaut
 
 
 class _PaieBaseViewSet(TenantMixin, viewsets.ModelViewSet):
@@ -50,3 +54,24 @@ class BaremeIRViewSet(_PaieBaseViewSet):
     filter_backends = [filters.SearchFilter, filters.OrderingFilter]
     search_fields = ['libelle']
     ordering_fields = ['date_effet', 'id']
+
+
+class RubriqueViewSet(_PaieBaseViewSet):
+    """Catalogue des rubriques de paie paramétrables (PAIE6).
+
+    Société scopée, accès Administrateur/Responsable. L'action
+    ``seed-defaults`` provisionne (idempotent, additif) un jeu de rubriques
+    standard (salaire de base, prime, heures sup, CNSS, AMO, IR, avance) pour
+    la société, sans jamais écraser une rubrique déjà éditée.
+    """
+    queryset = Rubrique.objects.all()
+    serializer_class = RubriqueSerializer
+    filter_backends = [filters.SearchFilter, filters.OrderingFilter]
+    search_fields = ['code', 'libelle']
+    ordering_fields = ['ordre', 'code', 'id']
+
+    @action(detail=False, methods=['post'], url_path='seed-defaults')
+    def seed_defaults(self, request):
+        """Provisionne les rubriques standard pour la société (idempotent)."""
+        created = ensure_rubriques_defaut(request.user.company)
+        return Response(created, status=status.HTTP_200_OK)
