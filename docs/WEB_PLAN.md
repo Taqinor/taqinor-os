@@ -561,7 +561,7 @@ plumbing + a beautiful client-facing surface.*
 > buildable — wire them against the live Q1–Q7 endpoints (proxy via `apps/web/src/pages/api/`).
 > The lead-data flow these touch is real now, not a phantom backend.
 
-- [ ] W112 — **Client "où est votre toit ?" capture (public, panels HIDDEN).** A new
+- [x] W112 — **Client "où est votre toit ?" capture (public, panels HIDDEN).** A new
   minimal public route (e.g. `/devis/mon-toit`) that reuses roofPro11's MapTiler address
   search + satellite map, lets the client **drop a pin on their roof** (drawing the
   outline is OPTIONAL, not required), and enter contact + bill, then submits the
@@ -572,7 +572,7 @@ plumbing + a beautiful client-facing surface.*
   pin reaches the backend. Files: new `apps/web/src/pages/devis/mon-toit.astro`,
   `roof-tool-pro11.ts` (captureOnly branch), reuse `roofPro11/mapDraw.ts`.
 
-- [ ] W113 — **Layout serialize + hydrate (the linchpin).** Add serialize/deserialize of
+- [x] W113 — **Layout serialize + hydrate (the linchpin).** Add serialize/deserialize of
   the tool state (`AreaRecord[]`, and the lighter pin/outline) and extend
   `initRoofToolPro8` boot to **hydrate from the backend** via a token URL param
   (`?lead=<token>` for the client's pin, `?devis=<id>` for a saved layout), fetching from
@@ -581,7 +581,7 @@ plumbing + a beautiful client-facing surface.*
   Files: `roofPro11/prefill.ts` (load fns), `roof-tool-pro11.ts` (boot hydration),
   `apps/web/src/pages/api/roof-layout.ts` (proxy).
 
-- [ ] W114 — **Meriem design + finalize (where the panels appear, privately).** An
+- [x] W114 — **Meriem design + finalize (where the panels appear, privately).** An
   internal/gated route that boots the FULL tool **hydrated with the client's pin** (W113);
   Meriem draws the outline if the client didn't, runs the existing auto-fill/optimizer,
   edits, then a **"Valider & générer le devis"** action serializes the finalized layout +
@@ -590,13 +590,13 @@ plumbing + a beautiful client-facing surface.*
   layout saved. Files: `apps/web/src/pages/internal/devis-design.astro` (or reuse the
   preview route gated), `roof-tool-pro11.ts` (finalize action), api proxy.
 
-- [ ] W115 — **3D snapshot export.** Wire `renderer.domElement.toDataURL('image/png')`
+- [x] W115 — **3D snapshot export.** Wire `renderer.domElement.toDataURL('image/png')`
   (`roofPro11/scene3d.ts`) to capture the finished roof-with-panels render and upload it
   to the backend (Q4) on finalize (W114). **Done =** finalizing produces + stores a clean
   PNG of the 3D roof; vitest/asserts the data-URL is produced. Files:
   `roofPro11/scene3d.ts` (snapshot fn), W114 finalize wiring.
 
-- [ ] W116 — **Client web proposal page (the "much better UI" link we send).** A premium,
+- [x] W116 — **Client web proposal page (the "much better UI" link we send).** A premium,
   mobile-first **public** route (e.g. `/proposition/<token>`) that fetches the quote data
   (Q6) and renders the proposal as a beautiful web page — NOT just a PDF: a hero with the
   roof render, the facture **avant → après** + couverture %, the two options, the
@@ -605,13 +605,13 @@ plumbing + a beautiful client-facing surface.*
   proposal responsively on phone + desktop; Lighthouse mobile ≥ 90. Files: new
   `apps/web/src/pages/proposition/[token].astro` + components + the Q6 fetch.
 
-- [ ] W117 — **In-page e-signature.** On the web proposal, a "Signer en ligne" flow: pick
+- [x] W117 — **In-page e-signature.** On the web proposal, a "Signer en ligne" flow: pick
   an option, type name + check "Bon pour accord" → POST to Q7 → success state ("Devis
   accepté ✓"), with the signed PDF offered as a download. **Done =** signing flips the
   Devis to *accepté* and shows confirmation; invalid/expired token handled. Files:
   `proposition/[token].astro` signature component, `apps/web/src/pages/api/` proxy.
 
-- [ ] W118 — **Delivery: send the proposal link (email / WhatsApp).** On finalize (W114),
+- [x] W118 — **Delivery: send the proposal link (email / WhatsApp).** On finalize (W114),
   generate the tokenized proposal URL and surface it for sending — prefilled email (reuse
   the existing SendGrid path) and a WhatsApp deep link (`wa.me` with the client's number +
   a French message + the link). **Done =** Meriem gets a one-click "Envoyer par email" and
@@ -1515,3 +1515,11 @@ architecture change, or a taste call — it builds and NOTES it. What remains he
 - 2026-06-21 — W214: comprehensive [dir="rtl"] block in global.css (tech-label tracking off, logical-property border/padding flips, rule-brass reorder, blockquote, grids, shimmer direction) + one scoped ar timeline fix.
 - 2026-06-21 — W213: RTL-mirrored 88 directional → arrows across 22 ar/* pages (Tailwind rtl:-scale-x-100 wrapper); non-directional/comment arrows left alone; text/hrefs unchanged.
 - 2026-06-21 — W187 BLOCKED: 6 of 7 third-party manufacturer brand SVGs unobtainable (network egress allowlist blocks the open web; only Huawei in a reachable npm set). Needs founder to drop the 6 official monochrome SVGs or widen the allowlist. Moved to GATED.
+- 2026-06-22 — W112: public client capture `/devis/mon-toit` — `captureOnly` boot of roof-tool-pro11 (map+geocoder+pin ONLY, never instantiates optimizer/scene-panels/production); new `/api/capture-lead` mirrors `preview-lead` and attaches `roofPoint`/`roofOutline`/`billKwh`, reuses the EXISTING lead webhook (no new secret). Live lead flow + `DiagnosticFormEnriched` untouched.
+- 2026-06-22 — W113: pure `serializeLayout`/`deserializeLayout` + `hydrateFromLead` in `roofPro11/prefill.ts`; full boot optionally hydrates a lead's pin (round-trip unit-tested).
+- 2026-06-22 — W114: internal Meriem atelier `/internal/devis-design` (noindex) — minimal ERP login (`POST /api/django/token/`, access token in sessionStorage; **NOTE: first authenticated surface in apps/web**) → hydrates the client pin → full builder → « Valider & générer le devis » POSTs the NEW backend `POST /api/django/ventes/devis/from-layout/`, then saves the layout. **NOTE: depends on the backend endpoint shipped this batch → ERP must be deployed via `scripts/deploy-prod.ps1`.**
+- 2026-06-22 — W115: `scene3d.snapshot()` → renderer-canvas `toDataURL` PNG; design page uploads it multipart to `POST .../devis/<id>/roof-image/` on finalize.
+- 2026-06-22 — W116: premium client web proposal `/proposition/<token>` (server-fetch of the public Q6 endpoint, noindex), roof hero + facture avant→après + couverture + options + explicit HT→remise→TVA→TTC chain + sticky « Signer » CTA, v2 design tokens (Majorelle blue, brass only on figures+CTA).
+- 2026-06-22 — W117: in-page e-signature via same-origin `/api/proposition-accept` proxy → `POST Q7 accept/` (status flip THROUGH the existing accept service — rule #4 preserved); idempotent double-submit handled; invalid/expired token → friendly state.
+- 2026-06-22 — W118: finalize surfaces the tokenized proposal URL + `wa.me` deep link + `mailto:` + copy-to-clipboard (degrades to a plain link without phone/email); SendGrid backend send left out of apps/web scope.
+- 2026-06-22 — BACKEND (**NOTE: not apps/web — needs `scripts/deploy-prod.ps1` to go live**): new `POST /api/django/ventes/devis/from-layout/` (wraps the existing `build_devis_from_layout` → Devis `brouillon` + mints a `ShareLink` proposal token), `POST .../devis/<id>/share-link/`, and the Lead serializer now exposes read-only `roof_point`/`roof_outline`/`bill_kwh`. Company forced server-side; no status changes (rule #4).

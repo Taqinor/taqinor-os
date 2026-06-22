@@ -175,9 +175,15 @@ describe('inventaire des routes (sortie construite réelle)', () => {
     }
   });
 
-  it('les routes privées construites sont toutes des /preview/* (hors sitemap)', () => {
+  it('les routes privées construites sont toutes sous un préfixe privé connu (hors sitemap)', () => {
     expect(privatePaths.length).toBeGreaterThan(0);
-    for (const p of privatePaths) expect(p.startsWith('/preview/'), `privée inattendue : ${p}`).toBe(true);
+    // Préfixes privés connus : la zone de revue /preview/* + le tunnel devis↔
+    // toiture-3D (capture client /devis/, atelier interne Meriem /internal/,
+    // proposition client tokenisée /proposition/) — tous noindex et hors
+    // sitemap par conception.
+    const PRIVATE_PREFIXES = ['/preview/', '/devis/', '/internal/', '/proposition/'];
+    for (const p of privatePaths)
+      expect(PRIVATE_PREFIXES.some((pre) => p.startsWith(pre)), `privée inattendue : ${p}`).toBe(true);
     // L'estimateur courant (pro-11) est bien une route privée.
     expect(privatePaths).toContain('/preview/toiture-3d-pro-11/');
   });
