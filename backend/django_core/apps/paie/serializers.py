@@ -27,6 +27,7 @@ class ParametrePaieSerializer(serializers.ModelSerializer):
             'taux_amo_patronal', 'taux_formation_pro',
             'seuil_frais_pro', 'taux_frais_pro_bas', 'plafond_frais_pro_bas',
             'taux_frais_pro_haut', 'plafond_frais_pro_haut',
+            'deduction_par_personne_a_charge', 'plafond_personnes_a_charge',
             'actif', 'valide_par_fondateur', 'date_creation',
         ]
         read_only_fields = ['date_creation']

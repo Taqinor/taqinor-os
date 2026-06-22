@@ -1,4 +1,4 @@
-"""Services de la Paie marocaine — valeurs légales par défaut (PAIE3).
+"""Services de la Paie marocaine — valeurs légales par défaut (PAIE3/PAIE5).
 
 ``ensure_defaults(company)`` provisionne, pour une société, le jeu de
 constantes sociales (``ParametrePaie``) et le barème IR mensuel
@@ -12,10 +12,17 @@ clé stable ``(company, date_effet=2026-01-01)``. Re-jouée, elle ne crée aucun
 doublon et ne touche jamais une ligne existante (une valeur éditée par le
 fondateur survit donc à un re-seed).
 
+PAIE5 — ``compute_ir(...)`` calcule l'Impôt sur le Revenu mensuel : il applique
+le barème par tranche (taux × base − somme à déduire de la tranche couvrante),
+puis retranche la **déduction pour charges de famille** (montant par personne à
+charge × nombre de personnes, plafonné au nombre maximal). L'IR ne descend
+jamais sous zéro.
+
 DÉCISION (consentement permanent du fondateur) : les chiffres ci-dessous sont
-les valeurs couramment citées du cadre social marocain 2026. Ils servent de
-DÉFAUTS éditables — ``valide_par_fondateur=False`` matérialise qu'ils restent
-à confirmer.
+les valeurs couramment citées du cadre social marocain 2026 (y compris la
+déduction pour charges de famille — ≈ 30 MAD/mois et par personne, plafond 6).
+Ils servent de DÉFAUTS éditables — ``valide_par_fondateur=False`` matérialise
+qu'ils restent à confirmer.
 """
 from datetime import date
 from decimal import Decimal
@@ -42,6 +49,10 @@ PARAMETRES_DEFAUT_2026 = {
     'plafond_frais_pro_bas': Decimal('2500'),
     'taux_frais_pro_haut': Decimal('25'),
     'plafond_frais_pro_haut': Decimal('2916.67'),
+    # Déduction pour charges de famille (PAIE5) — déduction directe sur l'IR :
+    # 30 MAD/mois par personne à charge, plafonnée à 6 personnes (→ 360 MAD/mois).
+    'deduction_par_personne_a_charge': Decimal('30'),
+    'plafond_personnes_a_charge': 6,
 }
 
 # ── Barème IR mensuel 2026 (TrancheIR) ──────────────────────────────────────
@@ -103,3 +114,68 @@ def ensure_defaults(company):
             created['tranches'] += 1
 
     return created
+
+
+# ── PAIE5 — Calcul de l'IR + déduction pour charges de famille ──────────────
+
+def _tranche_couvrante(bareme, base):
+    """Renvoie la ``TrancheIR`` de ``bareme`` couvrant ``base`` (ou ``None``).
+
+    Une tranche couvre ``base`` quand ``borne_min <= base`` et
+    (``borne_max is None`` ou ``base <= borne_max``). Les tranches sont
+    parcourues dans l'ordre du barème ; la dernière tranche, sans plafond
+    supérieur, capte tous les revenus élevés.
+    """
+    for tranche in bareme.tranches.order_by('ordre'):
+        if base < tranche.borne_min:
+            continue
+        if tranche.borne_max is None or base <= tranche.borne_max:
+            return tranche
+    return None
+
+
+def ir_bareme(bareme, base):
+    """IR brut (avant charges de famille) pour ``base`` selon ``bareme``.
+
+    Formule par tranche du barème marocain : ``base × taux% −
+    somme_a_deduire`` de la tranche couvrante. Jamais négatif. Sans tranche
+    couvrante (base sous la 1ʳᵉ borne), l'IR est nul.
+    """
+    base = Decimal(base)
+    tranche = _tranche_couvrante(bareme, base)
+    if tranche is None:
+        return Decimal('0.00')
+    impot = base * (tranche.taux / Decimal('100')) - tranche.somme_a_deduire
+    if impot < 0:
+        return Decimal('0.00')
+    return impot.quantize(Decimal('0.01'))
+
+
+def deduction_charges_famille(parametre, personnes_a_charge):
+    """Déduction mensuelle pour charges de famille (PAIE5).
+
+    ``min(personnes_a_charge, plafond) × montant_par_personne``. Le nombre de
+    personnes pris en compte est borné par ``plafond_personnes_a_charge`` du
+    ``parametre`` (un nombre négatif est traité comme 0).
+    """
+    nombre = max(0, int(personnes_a_charge or 0))
+    plafond = int(parametre.plafond_personnes_a_charge or 0)
+    retenu = min(nombre, plafond)
+    montant = parametre.deduction_par_personne_a_charge * Decimal(retenu)
+    return montant.quantize(Decimal('0.01'))
+
+
+def compute_ir(base, bareme, parametre, personnes_a_charge=0):
+    """IR net mensuel = barème(base) − déduction charges de famille.
+
+    Applique le barème par tranche puis retranche la déduction pour charges de
+    famille (plafonnée). L'IR net ne descend jamais sous zéro. ``base`` est le
+    revenu net imposable mensuel ; ``personnes_a_charge`` le nombre de personnes
+    à charge du salarié.
+    """
+    brut = ir_bareme(bareme, base)
+    deduction = deduction_charges_famille(parametre, personnes_a_charge)
+    net = brut - deduction
+    if net < 0:
+        return Decimal('0.00')
+    return net.quantize(Decimal('0.01'))
