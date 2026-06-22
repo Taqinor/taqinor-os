@@ -26,6 +26,10 @@ const DEFAULT_CANAL = 'walk_in'
 // Validation e-mail minimale (le formulaire est noValidate) : « un@deux.trois ».
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
 
+// Site public (taqinor.ma) — base de l'outil de conception 3D de toiture.
+// Meriem ouvre le lead déjà chargé sur le site, sans copier d'ID ni de lien.
+const PUBLIC_SITE_URL = import.meta.env.VITE_PUBLIC_SITE_URL || 'https://taqinor.ma'
+
 const STAGE_LABELS = {
   NEW: 'Nouveau',
   CONTACTED: 'Contacté',
@@ -47,7 +51,7 @@ const TYPES_INSTALLATION = {
   residentiel: 'Résidentiel', commercial: 'Commercial',
   industriel: 'Industriel', agricole: 'Agricole',
 }
-const RACCORDEMENTS = { monophase: 'Monophasé', triphase: 'Triphasé' }
+const RACCORDEMENTS = { monophase: 'Monophasé', triphase: 'Triphasé', inconnu: 'Je ne sais pas' }
 const TYPES_TOITURE = {
   terrasse_beton: 'Terrasse béton', tole_metal: 'Tôle/Métal', tuiles: 'Tuiles',
   bac_acier: 'Bac acier', fibrociment: 'Fibrociment', autre: 'Autre',
@@ -398,6 +402,14 @@ export default function LeadForm({ lead = null, onClose, onSaved, initialDevis =
     setDevisPanel(mode)
   }
 
+  // Ouvre l'outil de conception 3D du site avec le lead déjà chargé (nouvel
+  // onglet) — Meriem n'a aucun ID à copier ni lien à coller.
+  const ouvrirConceptionToiture = () => {
+    if (!lead?.id) return
+    const url = `${PUBLIC_SITE_URL}/internal/devis-design?lead=${lead.id}`
+    window.open(url, '_blank', 'noopener,noreferrer')
+  }
+
   // Après création/édition d'un devis dans le panneau : on recharge le lead
   // (liste des devis à jour) et on prévient le parent (liste/kanban).
   const refreshLead = () => {
@@ -636,6 +648,13 @@ export default function LeadForm({ lead = null, onClose, onSaved, initialDevis =
             </div>
 
             <div className="lead-subbar-devis">
+              {lead?.id && (
+                <Button type="button" size="sm" className="gen-btn-orange"
+                        title="Ouvrir l'outil de conception 3D du site avec ce lead déjà chargé"
+                        onClick={ouvrirConceptionToiture}>
+                  🏠 Concevoir la toiture (3D)
+                </Button>
+              )}
               <Button type="button" size="sm" className="gen-btn-orange"
                       disabled={!devisReady}
                       title={devisReady ? 'Créer le devis automatique (affiché ici)' : devisNotReadyMsg}
@@ -916,6 +935,15 @@ export default function LeadForm({ lead = null, onClose, onSaved, initialDevis =
             {/* ── Devis empilés ── */}
             {isEdit && (
               <Sec id="devis" title={`📄 Devis de ce lead${liveLead?.client_nom ? ` — client : ${liveLead.client_nom}` : ''}`}>
+                {lead?.id && (
+                  <div style={{ margin: '0 0 8px' }}>
+                    <Button type="button" size="sm" className="gen-btn-orange"
+                            title="Ouvrir l'outil de conception 3D du site avec ce lead déjà chargé"
+                            onClick={ouvrirConceptionToiture}>
+                      🏠 Concevoir la toiture (3D)
+                    </Button>
+                  </div>
+                )}
                 {(liveLead?.devis ?? []).length === 0 ? (
                   <p className="gen-hint">Aucun devis pour ce lead.</p>
                 ) : (
