@@ -1,0 +1,103 @@
+---
+/**
+ * ZelligeSignature — empreinte zellige raffinée, signature unique de la page
+ * d'accueil élevée (preview /preview/accueil-v3). UN seul marqueur géométrique :
+ * filet laiton hairline + losange/étoile 8 branches au trait, suivi d'une ligne
+ * éditoriale.
+ *
+ * Discipline « Cinéma du chantier » : le zellige reste réduit à une EMPREINTE,
+ * jamais un motif plein (cohérent avec global.css §9). Le laiton n'apparaît que
+ * sur ce marqueur géométrique et le filet — pas sur le texte courant.
+ *
+ * Reduced-motion safe : la seule animation (apparition très douce du losange)
+ * est gated `prefers-reduced-motion: no-preference` ET `.v2-js` ; sans JS / en
+ * reduced-motion le marqueur est statique et opaque. Zéro CLS : SVG à
+ * dimensions fixes, aucune propriété de reflow animée (opacity/transform seuls).
+ */
+interface Props {
+  /** Ligne éditoriale principale. */
+  line?: string;
+  /** Sous-ligne discrète. */
+  sub?: string;
+}
+const {
+  line = 'Chaque chiffre de ce site est mesuré, pas promis.',
+  sub = "L'étude d'abord. Le chantier ensuite.",
+} = Astro.props;
+---
+
+<section class="section-tight px-4" aria-hidden="false">
+  <div class="zellige-sig mx-auto flex max-w-3xl flex-col items-center text-center">
+    {/* Filet + losange-étoile : l'empreinte zellige unique de la page */}
+    <span class="zellige-mark" aria-hidden="true">
+      <span class="zellige-rule"></span>
+      <svg width="34" height="34" viewBox="0 0 34 34" fill="none" class="zellige-glyph" aria-hidden="true">
+        {/* Étoile 8 branches au trait — deux carrés superposés à 45°, langage zellige */}
+        <rect x="7.5" y="7.5" width="19" height="19" stroke="currentColor" stroke-width="1.25" />
+        <rect x="7.5" y="7.5" width="19" height="19" stroke="currentColor" stroke-width="1.25" transform="rotate(45 17 17)" />
+        <circle cx="17" cy="17" r="2.1" fill="currentColor" />
+      </svg>
+      <span class="zellige-rule"></span>
+    </span>
+
+    <p class="display mt-7 text-balance text-xl text-white sm:text-2xl">{line}</p>
+    <p class="tech-label mt-3 text-lune-faint">{sub}</p>
+  </div>
+</section>
+
+<style>
+  /* Empreinte zellige — filet laiton + glyphe étoile au trait. Le laiton vit
+     UNIQUEMENT sur le marqueur (zellige-glyph + zellige-rule), jamais sur la
+     prose. */
+  .zellige-mark {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 1rem;
+    color: var(--color-brass-400);
+    width: 100%;
+    max-width: 20rem;
+  }
+
+  .zellige-rule {
+    height: 1px;
+    flex: 1 1 auto;
+    background: linear-gradient(
+      to right,
+      transparent 0%,
+      rgb(232 181 74 / 0.4) 60%,
+      rgb(232 181 74 / 0.55) 100%
+    );
+  }
+  /* Le filet de droite est le miroir du gauche (dégradé inversé). */
+  .zellige-rule:last-of-type {
+    background: linear-gradient(
+      to left,
+      transparent 0%,
+      rgb(232 181 74 / 0.4) 60%,
+      rgb(232 181 74 / 0.55) 100%
+    );
+  }
+
+  .zellige-glyph {
+    flex: none;
+    color: var(--color-brass-300);
+    filter: drop-shadow(0 0 12px rgb(232 181 74 / 0.3));
+  }
+
+  /* Apparition très douce du glyphe — opacity/transform seuls (zéro CLS),
+     gated JS + motion. Sans JS / reduced-motion, le glyphe est déjà opaque. */
+  @media (prefers-reduced-motion: no-preference) {
+    :global(.v2-js) .zellige-glyph {
+      opacity: 0;
+      transform: scale(0.82) rotate(-8deg);
+      animation: zelligeReveal 0.9s cubic-bezier(0.2, 0.65, 0.25, 1) forwards;
+    }
+    @keyframes zelligeReveal {
+      to {
+        opacity: 1;
+        transform: none;
+      }
+    }
+  }
+</style>
