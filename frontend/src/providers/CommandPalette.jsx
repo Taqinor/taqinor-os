@@ -51,13 +51,15 @@ export function CommandPalette() {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState(false)
   const [active, setActive] = useState(0)
-  const [recent, setRecent] = useState([])
   const inputRef = useRef(null)
   const listRef = useRef(null)
   const navigate = useNavigate()
 
   const term = q.trim()
   const actions = useMemo(() => filterActions(term), [term])
+  // Récents (entités ouvertes via la palette) relus à chaque ouverture — DÉRIVÉS
+  // via useMemo, donc aucun setState synchrone dans un effet (règle lint).
+  const recent = useMemo(() => (open ? readRecentEntities() : []), [open])
 
   // Sections de rendu + liste APLATIE (indexable clavier) construites en une
   // passe, dans l'ordre d'affichage : Actions → Récents (à vide) → Résultats.
@@ -124,14 +126,11 @@ export function CommandPalette() {
     }
   }, [])
 
-  // À l'ouverture : focus l'input et (re)charge la liste des récents.
+  // À l'ouverture : focus l'input (les récents sont dérivés via useMemo).
   useEffect(() => {
-    if (open) {
-      setRecent(readRecentEntities())
-      const t = setTimeout(() => inputRef.current?.focus(), 30)
-      return () => clearTimeout(t)
-    }
-    return undefined
+    if (!open) return undefined
+    const t = setTimeout(() => inputRef.current?.focus(), 30)
+    return () => clearTimeout(t)
   }, [open])
 
   // ── Recherche débouncée (~250 ms) ───────────────────────────────────────────
@@ -153,10 +152,9 @@ export function CommandPalette() {
     return () => clearTimeout(t)
   }, [q, open]) // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Garde l'index actif dans les bornes quand la liste change.
-  useEffect(() => {
-    setActive((i) => (flat.length ? Math.min(i, flat.length - 1) : 0))
-  }, [flat.length])
+  // L'index actif peut dépasser la liste après un changement de résultats : on le
+  // borne au point d'usage (rendu + Entrée) plutôt que via un setState en effet.
+  const activeClamped = flat.length ? Math.min(active, flat.length - 1) : 0
 
   // Ouvre une cible quelconque de la liste aplatie.
   const activate = useCallback((entry) => {
@@ -185,17 +183,17 @@ export function CommandPalette() {
       setActive((i) => (flat.length ? (i - 1 + flat.length) % flat.length : 0))
     } else if (e.key === 'Enter') {
       e.preventDefault()
-      if (flat[active]) activate(flat[active])
+      if (flat[activeClamped]) activate(flat[activeClamped])
     }
     // Échap est géré par le Dialog (onOpenChange) → close().
-  }, [flat, active, activate])
+  }, [flat, activeClamped, activate])
 
   // Garde l'élément actif visible.
   useEffect(() => {
     if (!open || !listRef.current) return
     const el = listRef.current.querySelector('[data-active="true"]')
     el?.scrollIntoView({ block: 'nearest' })
-  }, [active, open])
+  }, [activeClamped, open])
 
   const showSearchStates = term.length >= 2
 
@@ -251,7 +249,7 @@ export function CommandPalette() {
                       key={`action-${r.id}`}
                       type="button"
                       className="cmdk-item"
-                      data-active={i === active ? 'true' : 'false'}
+                      data-active={i === activeClamped ? 'true' : 'false'}
                       onMouseMove={() => setActive(i)}
                       onClick={() => activate({ kind: 'action', action: r })}
                     >
@@ -266,7 +264,7 @@ export function CommandPalette() {
                       key={`recent-${r.type}-${r.id}`}
                       type="button"
                       className="cmdk-item"
-                      data-active={i === active ? 'true' : 'false'}
+                      data-active={i === activeClamped ? 'true' : 'false'}
                       onMouseMove={() => setActive(i)}
                       onClick={() => activate({ kind: 'recent', entity: r })}
                     >
@@ -281,7 +279,7 @@ export function CommandPalette() {
                     key={`${sec.type}-${r.id}`}
                     type="button"
                     className="cmdk-item"
-                    data-active={i === active ? 'true' : 'false'}
+                    data-active={i === activeClamped ? 'true' : 'false'}
                     onMouseMove={() => setActive(i)}
                     onClick={() => activate({ kind: 'result', type: sec.type, item: r })}
                   >
