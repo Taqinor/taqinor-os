@@ -277,3 +277,291 @@ class TrancheIR(models.Model):
 
     def __str__(self):
         return f'{self.borne_min}–{self.borne_max} @ {self.taux}%'
+
+
+# ── PAIE8 — Profil de paie de l'employé ────────────────────────────────────
+
+class ProfilPaie(models.Model):
+    """Profil de paie d'un employé (PAIE8) — ``OneToOne`` vers le dossier RH.
+
+    Porte les paramètres de paie propres à un collaborateur, distincts de sa
+    fiche RH : le ``type_remuneration`` (mensuel / journalier / forfait /
+    horaire), le ``salaire_base`` (selon le type), les affiliations sociales
+    (CNSS / AMO / CIMR avec leurs numéros) et le ``rib`` de virement.
+
+    Relié au dossier RH par une chaîne de FK (``rh.DossierEmploye``) — la paie
+    ne lit JAMAIS les modèles de ``rh`` directement ; le rapprochement passe par
+    ``apps.rh.selectors``. ``OneToOne`` : un employé n'a qu'un profil de paie.
+
+    Multi-société : ``company`` posée côté serveur. Le ``salaire_base`` est une
+    donnée SENSIBLE (palier paie), jamais exposée côté client.
+    """
+    TYPE_MENSUEL = 'mensuel'
+    TYPE_JOURNALIER = 'journalier'
+    TYPE_FORFAIT = 'forfait'
+    TYPE_HORAIRE = 'horaire'
+    TYPE_REMUNERATION_CHOICES = [
+        (TYPE_MENSUEL, 'Mensuel'),
+        (TYPE_JOURNALIER, 'Journalier'),
+        (TYPE_FORFAIT, 'Forfait'),
+        (TYPE_HORAIRE, 'Horaire'),
+    ]
+
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='paie_profils',
+        verbose_name='Société',
+    )
+    employe = models.OneToOneField(
+        'rh.DossierEmploye',
+        on_delete=models.CASCADE,
+        related_name='profil_paie',
+        verbose_name='Dossier employé',
+    )
+    type_remuneration = models.CharField(
+        max_length=12, choices=TYPE_REMUNERATION_CHOICES, default=TYPE_MENSUEL,
+        verbose_name='Type de rémunération')
+    salaire_base = models.DecimalField(
+        max_digits=14, decimal_places=2, default=Decimal('0'),
+        verbose_name='Salaire de base')
+    # Affiliations sociales (Maroc).
+    affilie_cnss = models.BooleanField(
+        default=True, verbose_name='Affilié CNSS')
+    affilie_amo = models.BooleanField(
+        default=True, verbose_name='Affilié AMO')
+    affilie_cimr = models.BooleanField(
+        default=False, verbose_name='Affilié CIMR')
+    taux_cimr_salarial = models.DecimalField(
+        max_digits=6, decimal_places=3, default=Decimal('0'),
+        verbose_name='Taux CIMR salarial')
+    numero_cnss = models.CharField(
+        max_length=20, blank=True, default='', verbose_name='N° CNSS')
+    numero_amo = models.CharField(
+        max_length=20, blank=True, default='', verbose_name='N° AMO')
+    numero_cimr = models.CharField(
+        max_length=20, blank=True, default='', verbose_name='N° CIMR')
+    rib = models.CharField(
+        max_length=40, blank=True, default='', verbose_name='RIB')
+    banque = models.CharField(
+        max_length=120, blank=True, default='', verbose_name='Banque')
+    actif = models.BooleanField(default=True, verbose_name='Actif')
+    date_creation = models.DateTimeField(
+        auto_now_add=True, verbose_name='Créé le')
+
+    class Meta:
+        verbose_name = 'Profil de paie'
+        verbose_name_plural = 'Profils de paie'
+        ordering = ['-date_creation']
+
+    def __str__(self):
+        return f'Profil paie #{self.employe_id} ({self.type_remuneration})'
+
+
+# ── PAIE9 — Rubriques récurrentes par employé ──────────────────────────────
+
+class RubriqueEmploye(models.Model):
+    """Rubrique RÉCURRENTE rattachée à un profil de paie (PAIE9).
+
+    Une rubrique du catalogue (``Rubrique``) appliquée systématiquement à un
+    employé chaque mois : prime de transport, indemnité de panier, prime
+    d'ancienneté, etc. Porte une surcharge optionnelle du ``montant`` ou du
+    ``taux`` (sinon le calcul retombe sur la définition de la rubrique).
+
+    ``actif`` permet de suspendre une rubrique récurrente sans la supprimer ;
+    ``date_debut`` / ``date_fin`` bornent sa période d'application (facultatif).
+    Multi-société : ``company`` posée côté serveur. Le couple
+    ``(profil, rubrique)`` est unique — une rubrique n'est rattachée qu'une fois
+    par employé.
+    """
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='paie_rubriques_employe',
+        verbose_name='Société',
+    )
+    profil = models.ForeignKey(
+        ProfilPaie,
+        on_delete=models.CASCADE,
+        related_name='rubriques',
+        verbose_name='Profil de paie',
+    )
+    rubrique = models.ForeignKey(
+        Rubrique,
+        on_delete=models.PROTECT,
+        related_name='rattachements',
+        verbose_name='Rubrique',
+    )
+    montant = models.DecimalField(
+        max_digits=14, decimal_places=2, null=True, blank=True,
+        verbose_name='Montant (surcharge)')
+    taux = models.DecimalField(
+        max_digits=8, decimal_places=4, null=True, blank=True,
+        verbose_name='Taux % (surcharge)')
+    date_debut = models.DateField(
+        null=True, blank=True, verbose_name='Date de début')
+    date_fin = models.DateField(
+        null=True, blank=True, verbose_name='Date de fin')
+    actif = models.BooleanField(default=True, verbose_name='Actif')
+    date_creation = models.DateTimeField(
+        auto_now_add=True, verbose_name='Créé le')
+
+    class Meta:
+        verbose_name = 'Rubrique employé'
+        verbose_name_plural = 'Rubriques employé'
+        ordering = ['rubrique__ordre', 'id']
+        unique_together = [('profil', 'rubrique')]
+
+    def __str__(self):
+        return f'{self.rubrique.code} → profil #{self.profil_id}'
+
+
+# ── PAIE10 — Période de paie (run mensuel) ─────────────────────────────────
+
+class PeriodePaie(models.Model):
+    """Run de paie d'un mois donné (PAIE10) — cycle de statuts.
+
+    Une période est un couple ``(annee, mois)`` par société, qui passe par les
+    statuts :
+
+    * ``brouillon`` — ouverte, éléments variables saisissables ;
+    * ``calculee`` — bulletins calculés (snapshot) ;
+    * ``validee`` — validée par le responsable paie ;
+    * ``cloturee`` — figée définitivement (plus aucune modification).
+
+    Le cycle est strictement progressif (``services.changer_statut`` interdit un
+    retour en arrière). Multi-société : ``company`` posée côté serveur. Le couple
+    ``(company, annee, mois)`` est unique.
+    """
+    STATUT_BROUILLON = 'brouillon'
+    STATUT_CALCULEE = 'calculee'
+    STATUT_VALIDEE = 'validee'
+    STATUT_CLOTUREE = 'cloturee'
+    STATUT_CHOICES = [
+        (STATUT_BROUILLON, 'Brouillon'),
+        (STATUT_CALCULEE, 'Calculée'),
+        (STATUT_VALIDEE, 'Validée'),
+        (STATUT_CLOTUREE, 'Clôturée'),
+    ]
+    # Ordre du cycle — un statut ne peut qu'AVANCER.
+    ORDRE_STATUTS = [
+        STATUT_BROUILLON, STATUT_CALCULEE, STATUT_VALIDEE, STATUT_CLOTUREE,
+    ]
+
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='paie_periodes',
+        verbose_name='Société',
+    )
+    annee = models.PositiveIntegerField(verbose_name='Année')
+    mois = models.PositiveSmallIntegerField(verbose_name='Mois')
+    libelle = models.CharField(
+        max_length=120, blank=True, default='', verbose_name='Libellé')
+    statut = models.CharField(
+        max_length=12, choices=STATUT_CHOICES, default=STATUT_BROUILLON,
+        verbose_name='Statut')
+    date_paiement = models.DateField(
+        null=True, blank=True, verbose_name='Date de paiement')
+    date_cloture = models.DateTimeField(
+        null=True, blank=True, verbose_name='Clôturée le')
+    date_creation = models.DateTimeField(
+        auto_now_add=True, verbose_name='Créé le')
+
+    class Meta:
+        verbose_name = 'Période de paie'
+        verbose_name_plural = 'Périodes de paie'
+        ordering = ['-annee', '-mois']
+        unique_together = [('company', 'annee', 'mois')]
+
+    def __str__(self):
+        return f'Paie {self.mois:02d}/{self.annee} ({self.statut})'
+
+
+# ── PAIE11 — Éléments variables du mois ────────────────────────────────────
+
+class ElementVariable(models.Model):
+    """Élément variable d'un employé pour une période (PAIE11).
+
+    Saisie mensuelle qui varie d'un mois à l'autre : heures travaillées, heures
+    supplémentaires, jours d'absence, primes ponctuelles, retenues. Importable
+    depuis RH (heures/HS/absences) via ``services.importer_elements_rh`` — la
+    paie ne lit jamais ``rh.models`` directement, le rapprochement passe par
+    ``apps.rh.selectors``.
+
+    Rattaché à une ``PeriodePaie`` et à un ``ProfilPaie``. ``type`` qualifie la
+    nature de l'élément (heures, HS, absence, prime, retenue) ; ``rubrique`` est
+    la rubrique catalogue associée (facultatif). ``quantite`` et ``montant``
+    portent la valeur. ``source`` trace l'origine (saisie manuelle ou import RH).
+
+    Multi-société : ``company`` posée côté serveur.
+    """
+    TYPE_HEURES = 'heures'
+    TYPE_HS = 'heures_sup'
+    TYPE_ABSENCE = 'absence'
+    TYPE_PRIME = 'prime'
+    TYPE_RETENUE = 'retenue'
+    TYPE_CHOICES = [
+        (TYPE_HEURES, 'Heures travaillées'),
+        (TYPE_HS, 'Heures supplémentaires'),
+        (TYPE_ABSENCE, 'Absence'),
+        (TYPE_PRIME, 'Prime'),
+        (TYPE_RETENUE, 'Retenue'),
+    ]
+
+    SOURCE_MANUEL = 'manuel'
+    SOURCE_RH = 'rh'
+    SOURCE_CHOICES = [
+        (SOURCE_MANUEL, 'Saisie manuelle'),
+        (SOURCE_RH, 'Import RH'),
+    ]
+
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='paie_elements_variables',
+        verbose_name='Société',
+    )
+    periode = models.ForeignKey(
+        PeriodePaie,
+        on_delete=models.CASCADE,
+        related_name='elements_variables',
+        verbose_name='Période',
+    )
+    profil = models.ForeignKey(
+        ProfilPaie,
+        on_delete=models.CASCADE,
+        related_name='elements_variables',
+        verbose_name='Profil de paie',
+    )
+    type = models.CharField(
+        max_length=12, choices=TYPE_CHOICES, default=TYPE_PRIME,
+        verbose_name='Type')
+    rubrique = models.ForeignKey(
+        Rubrique,
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='elements_variables',
+        verbose_name='Rubrique',
+    )
+    libelle = models.CharField(
+        max_length=120, blank=True, default='', verbose_name='Libellé')
+    quantite = models.DecimalField(
+        max_digits=10, decimal_places=2, default=Decimal('0'),
+        verbose_name='Quantité')
+    montant = models.DecimalField(
+        max_digits=14, decimal_places=2, default=Decimal('0'),
+        verbose_name='Montant')
+    source = models.CharField(
+        max_length=10, choices=SOURCE_CHOICES, default=SOURCE_MANUEL,
+        verbose_name='Source')
+    date_creation = models.DateTimeField(
+        auto_now_add=True, verbose_name='Créé le')
+
+    class Meta:
+        verbose_name = 'Élément variable'
+        verbose_name_plural = 'Éléments variables'
+        ordering = ['periode', 'profil', 'id']
+
+    def __str__(self):
+        return f'{self.get_type_display()} {self.quantite} → profil #{self.profil_id}'

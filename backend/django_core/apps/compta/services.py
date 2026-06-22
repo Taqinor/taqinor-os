@@ -29,11 +29,12 @@ from django.db.models import Sum
 from django.utils import timezone
 
 from .models import (
-    Caisse, CessionImmobilisation, ClotureCaisse, CompteComptable,
-    DotationAmortissement, EcritureComptable, ExerciceComptable,
-    Immobilisation, Journal, LigneEcriture, LigneReleve, MouvementCaisse,
+    BordereauRemise, Caisse, CessionImmobilisation, ClotureCaisse,
+    CompteComptable, DotationAmortissement, EcritureComptable, Effet,
+    ExerciceComptable, Immobilisation, Journal, LigneEcriture,
+    LignePrevisionnelTresorerie, LigneReleve, MouvementCaisse,
     PeriodeComptable, PlanAmortissement, PlanComptable, PointageReleve,
-    RapprochementBancaire,
+    RapprochementBancaire, VirementInterne,
 )
 
 
@@ -58,15 +59,20 @@ _COMPTES_CGNC = [
      False, False, 'passif'),
     # Classe 3 — Actif circulant
     ('3421', 'Clients', True, True, 'actif'),
+    ('3425', 'Clients - effets à recevoir', True, True, 'actif'),
     ('3455', 'État - TVA récupérable', False, False, 'actif'),
     ('34552', 'État - TVA récupérable sur charges', False, False, 'actif'),
     # Classe 4 — Passif circulant
     ('4411', 'Fournisseurs', True, True, 'passif'),
+    ('4415', 'Fournisseurs - effets à payer', True, True, 'passif'),
     ('4455', 'État - TVA facturée', False, False, 'passif'),
     ('44552', 'État - TVA due', False, False, 'passif'),
     # Classe 5 — Trésorerie
+    ('5113', 'Effets à encaisser ou à l\'encaissement', False, False, 'actif'),
     ('5141', 'Banque', False, False, 'actif'),
     ('5161', 'Caisse', False, False, 'actif'),
+    ('6147', 'Services bancaires (frais de rejet/effets)', False, False,
+     'charge'),
     # Classe 6 — Charges
     ('6111', 'Achats de marchandises', False, False, 'charge'),
     ('6125', 'Achats de matières et fournitures consommables', False, False,
@@ -760,6 +766,18 @@ def _intitule_compte(numero):
     return f'Compte {numero}'
 
 
+def _sens_compte(numero):
+    """Sens « naturel » du compte ``numero`` (depuis le barème CGNC ou déduit)."""
+    for entry in _COMPTES_CGNC:
+        if entry[0] == numero:
+            return entry[4]
+    classe = numero[0] if numero else ''
+    return {
+        '1': 'passif', '2': 'actif', '3': 'actif', '4': 'passif',
+        '5': 'actif', '6': 'charge', '7': 'produit',
+    }.get(classe, 'charge')
+
+
 def _assurer_compte(company, numero):
     """Renvoie le compte ``numero`` de la société, le créant au besoin (additif).
 
@@ -781,7 +799,7 @@ def _assurer_compte(company, numero):
             'plan': plan,
             'intitule': _intitule_compte(numero),
             'classe': _classe_de(numero),
-            'sens': 'passif' if numero.startswith('28') else 'charge',
+            'sens': _sens_compte(numero),
         },
     )
     return compte

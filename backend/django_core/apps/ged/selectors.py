@@ -4,12 +4,59 @@ Conformément au CLAUDE.md (frontière cross-app), une autre app qui a besoin de
 LIRE la GED passe par ces fonctions plutôt que d'importer `ged.models`.
 Toutes les lectures sont bornées à une société.
 """
-from .models import Cabinet, Document, DocumentLien, DocumentVersion, Folder
+from .models import (
+    Cabinet, Coffre, Document, DocumentLien, DocumentVersion, Folder,
+)
 
 
 def cabinets_for_company(company):
     """Cabinets d'une société (QuerySet, ordonné par nom)."""
     return Cabinet.objects.filter(company=company)
+
+
+def coffres_for_user(user):
+    """GED8 — Coffres-forts qu'un utilisateur peut voir (ACL propriétaire+admin).
+
+    Un admin (ou superuser) voit tous les coffres de sa société ; un employé ne
+    voit que SES coffres (`proprietaire`). Toujours borné à la société de
+    l'utilisateur — jamais de fuite cross-société.
+    """
+    from django.db.models import Q
+    company = getattr(user, 'company', None)
+    if company is None and not user.is_superuser:
+        return Coffre.objects.none()
+    qs = Coffre.objects.all()
+    if user.company_id:
+        qs = qs.filter(company_id=user.company_id)
+    elif not user.is_superuser:
+        return Coffre.objects.none()
+    if getattr(user, 'is_admin_role', False) or user.is_superuser:
+        return qs
+    return qs.filter(proprietaire_id=user.id)
+
+
+def documents_visible_to_user(user):
+    """GED8 — Documents d'une société FILTRÉS par l'ACL coffre-fort.
+
+    Les documents hors coffre (`coffre__isnull`) sont visibles de tout rôle ;
+    ceux dans un coffre ne sont visibles que du propriétaire du coffre et des
+    administrateurs. Borné à la société de l'utilisateur.
+    """
+    from django.db.models import Q
+    if not user.company_id and not user.is_superuser:
+        return Document.objects.none()
+    qs = Document.objects.all()
+    if user.company_id:
+        qs = qs.filter(company_id=user.company_id)
+    if getattr(user, 'is_admin_role', False) or user.is_superuser:
+        return qs
+    # Non-admin : documents hors coffre OU dans un coffre dont il est proprio.
+    return qs.filter(Q(coffre__isnull=True) | Q(coffre__proprietaire_id=user.id))
+
+
+def documents_in_coffre(coffre):
+    """Documents rattachés à un coffre (même société)."""
+    return Document.objects.filter(company=coffre.company, coffre=coffre)
 
 
 def folders_for_company(company):

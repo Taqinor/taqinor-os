@@ -22,7 +22,9 @@ from .serializers import (
     PointControleModeleSerializer, ReleveControleSerializer,
     ReleveCourbeIVSerializer,
 )
-from .selectors import courbes_iv_for_chantier, hold_points_status
+from .selectors import (
+    courbes_iv_for_chantier, hold_points_status, photos_controle_par_phase,
+)
 from .services import instancier_plan_chantier
 
 
@@ -138,6 +140,25 @@ class ReleveControleViewSet(_QhseBaseViewSet):
         serializer.save(
             company=self.request.user.company,
             releve_par=self.request.user)
+
+    @action(detail=True, methods=['get'])
+    def photos(self, request, pk=None):
+        """Photos de contrôle d'un relevé, regroupées par phase (QHSE8).
+
+        Renvoie ``{'avant': [...], 'pendant': [...], 'apres': [...],
+        'autres': [...]}``. Les pièces jointes sont des ``records.Attachment``
+        ciblant ce relevé ; l'upload se fait via l'API records standard
+        (``POST /api/django/records/attachments/`` avec ``model=qhse.relevecontrole``
+        + ``phase``). ``get_object`` est scopé société (TenantMixin) — un relevé
+        d'une autre société renvoie 404. Lecture seule.
+        """
+        from apps.records.serializers import AttachmentSerializer
+        releve = self.get_object()
+        groupes = photos_controle_par_phase(releve)
+        return Response({
+            phase: AttachmentSerializer(atts, many=True).data
+            for phase, atts in groupes.items()
+        })
 
 
 class ReleveCourbeIVViewSet(_QhseBaseViewSet):

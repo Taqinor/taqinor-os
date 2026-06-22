@@ -369,6 +369,22 @@ class BonCommande(models.Model):
     date_creation = models.DateTimeField(auto_now_add=True)
     date_livraison_prevue = models.DateField(null=True, blank=True)
     note = models.TextField(blank=True, null=True)
+    # ── FG51 — Preuve de livraison (PV / signature) ───────────────────────────
+    # Capturée au moment de « marquer livré » : nom du signataire, note libre,
+    # horodatage et, optionnellement, une pièce jointe (PV/bon signé) stockée
+    # dans MinIO via records.storage. Tout est additif et optionnel : un BC
+    # livré sans preuve reste valide (la facturation n'est jamais bloquée), mais
+    # `generer-facture`/`creer-facture` renvoie un avertissement doux quand
+    # aucune preuve n'existe pour la tranche matériel. Forme du JSON :
+    # {signataire, note, file_key, filename, signed_at}.
+    pv_livraison = models.JSONField(null=True, blank=True)
+    date_livraison_reelle = models.DateField(null=True, blank=True)
+
+    @property
+    def has_proof_of_delivery(self):
+        """FG51 — vrai si une preuve de livraison (PV/signature) est consignée."""
+        pv = self.pv_livraison or {}
+        return bool(pv.get('signataire') or pv.get('file_key'))
 
     class Meta:
         verbose_name = 'Bon de Commande'

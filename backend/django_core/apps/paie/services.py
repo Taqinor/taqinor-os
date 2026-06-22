@@ -25,9 +25,19 @@ Ils servent de DÉFAUTS éditables — ``valide_par_fondateur=False`` matériali
 qu'ils restent à confirmer.
 """
 from datetime import date
-from decimal import Decimal
+from decimal import ROUND_HALF_UP, Decimal
 
-from .models import BaremeIR, ParametrePaie, Rubrique, TrancheIR
+from django.db import transaction
+from django.utils import timezone
+
+from .models import (
+    BaremeIR,
+    ElementVariable,
+    ParametrePaie,
+    PeriodePaie,
+    Rubrique,
+    TrancheIR,
+)
 
 # ── Date d'effet des valeurs légales par défaut ────────────────────────────
 DATE_EFFET_2026 = date(2026, 1, 1)
@@ -203,20 +213,43 @@ RUBRIQUES_DEFAUT = [
      False, False, False, False, '3431', 70),
 ]
 
+# ── PAIE7 — Catalogue de rubriques STANDARD additionnelles ──────────────────
+# Rubriques usuelles du bulletin marocain non encore au catalogue de base :
+# indemnités/primes (transport, panier, ancienneté, représentation, logement,
+# responsabilité) avec leur régime fiscal/social usuel, et la cotisation CIMR.
+# Indemnité de transport et de panier sont non imposables et non soumises CNSS
+# dans la limite des plafonds réglementaires (régime simplifié ici : exonérées).
+# Valeurs ÉDITABLES — pures défauts, additif et idempotent.
+RUBRIQUES_STANDARD = [
+    # code, libelle, type, imposable, cnss, amo, cimr, compte, ordre
+    ('TRANSPORT', 'Indemnité de transport', Rubrique.TYPE_GAIN,
+     False, False, False, False, '6411', 22),
+    ('PANIER', 'Indemnité de panier', Rubrique.TYPE_GAIN,
+     False, False, False, False, '6411', 24),
+    ('ANCIENNETE', "Prime d'ancienneté", Rubrique.TYPE_GAIN,
+     True, True, True, True, '6411', 26),
+    ('REPRESENT', 'Indemnité de représentation', Rubrique.TYPE_GAIN,
+     False, False, False, False, '6411', 28),
+    ('LOGEMENT', 'Indemnité de logement', Rubrique.TYPE_GAIN,
+     True, True, True, True, '6411', 29),
+    ('RESPONSAB', 'Prime de responsabilité', Rubrique.TYPE_GAIN,
+     True, True, True, True, '6411', 32),
+    ('RENDEMENT', 'Prime de rendement', Rubrique.TYPE_GAIN,
+     True, True, True, True, '6411', 34),
+    ('CIMR', 'Cotisation CIMR (part salariale)', Rubrique.TYPE_COTISATION,
+     False, False, False, False, '4443', 55),
+]
 
-def ensure_rubriques_defaut(company):
-    """Provisionne (idempotent) les rubriques standard pour ``company``.
 
-    Crée, si absentes, les rubriques du catalogue ``RUBRIQUES_DEFAUT`` (clé
-    stable ``(company, code)``). Purement additif : une rubrique déjà présente
-    (éventuellement éditée par le fondateur) n'est jamais modifiée. Retourne le
-    nombre de rubriques créées ::
+def _ensure_rubriques(company, catalogue):
+    """Crée (idempotent, additif) les rubriques d'un ``catalogue`` pour la société.
 
-        {'rubriques': N}
+    Clé stable ``(company, code)`` : une rubrique déjà présente (éventuellement
+    éditée par le fondateur) n'est jamais modifiée. Retourne le nombre créé.
     """
     cree = 0
     for (code, libelle, type_, imposable, cnss, amo, cimr,
-         compte, ordre) in RUBRIQUES_DEFAUT:
+         compte, ordre) in catalogue:
         _, new = Rubrique.objects.get_or_create(
             company=company,
             code=code,
@@ -233,4 +266,300 @@ def ensure_rubriques_defaut(company):
         )
         if new:
             cree += 1
+    return cree
+
+
+def ensure_rubriques_defaut(company):
+    """Provisionne (idempotent) les rubriques de BASE pour ``company``.
+
+    Crée, si absentes, les rubriques du catalogue ``RUBRIQUES_DEFAUT`` (clé
+    stable ``(company, code)``). Purement additif : une rubrique déjà présente
+    (éventuellement éditée par le fondateur) n'est jamais modifiée. Retourne le
+    nombre de rubriques créées ::
+
+        {'rubriques': N}
+    """
+    return {'rubriques': _ensure_rubriques(company, RUBRIQUES_DEFAUT)}
+
+
+def ensure_rubriques_standard(company):
+    """Provisionne (idempotent) le catalogue de rubriques STANDARD (PAIE7).
+
+    Sème les rubriques usuelles supplémentaires (transport, panier, ancienneté,
+    CIMR…) du catalogue ``RUBRIQUES_STANDARD`` EN PLUS des rubriques de base.
+    Strictement additif et idempotent (clé ``(company, code)``) : une rubrique
+    déjà présente — de base ou éditée — n'est jamais touchée. Retourne ::
+
+        {'rubriques': N}   # nombre total de rubriques créées (base + standard)
+    """
+    cree = _ensure_rubriques(company, RUBRIQUES_DEFAUT)
+    cree += _ensure_rubriques(company, RUBRIQUES_STANDARD)
     return {'rubriques': cree}
+
+
+# ── PAIE10 — Cycle de statuts d'une période de paie ────────────────────────
+
+class TransitionPeriodeInterdite(Exception):
+    """Transition de statut de période non autorisée (retour arrière interdit)."""
+
+
+def changer_statut(periode, nouveau_statut):
+    """Fait AVANCER une ``PeriodePaie`` vers ``nouveau_statut`` (PAIE10).
+
+    Le cycle ``brouillon → calculee → validee → cloturee`` est strictement
+    progressif : on ne peut qu'avancer (ou rester au même statut, no-op). Tout
+    retour en arrière — ou un statut inconnu — lève
+    ``TransitionPeriodeInterdite``. Pose ``date_cloture`` à la clôture. Renvoie
+    la période rafraîchie.
+    """
+    ordre = PeriodePaie.ORDRE_STATUTS
+    if nouveau_statut not in ordre:
+        raise TransitionPeriodeInterdite(
+            f"Statut inconnu : {nouveau_statut!r}.")
+    courant = ordre.index(periode.statut)
+    cible = ordre.index(nouveau_statut)
+    if cible < courant:
+        raise TransitionPeriodeInterdite(
+            f"Retour en arrière interdit : "
+            f"{periode.statut} → {nouveau_statut}.")
+    if cible == courant:
+        return periode
+    periode.statut = nouveau_statut
+    if nouveau_statut == PeriodePaie.STATUT_CLOTUREE:
+        periode.date_cloture = timezone.now()
+    periode.save(update_fields=['statut', 'date_cloture'])
+    return periode
+
+
+# ── PAIE11 — Import des éléments variables depuis RH ───────────────────────
+
+def importer_elements_rh(periode):
+    """Importe les éléments variables RH du mois pour une ``PeriodePaie`` (PAIE11).
+
+    Pour chaque collaborateur ACTIF de la société DISPOSANT d'un profil de paie,
+    matérialise ses éléments variables RH du mois (heures, heures sup, absences,
+    primes) en ``ElementVariable`` de ``source='rh'``. La lecture RH passe par
+    ``apps.rh.selectors`` (jamais ``rh.models`` directement).
+
+    Idempotent par re-jouabilité : les éléments ``source='rh'`` de la période
+    sont d'abord purgés puis recréés à partir de RH, de sorte qu'un ré-import
+    reflète l'état RH courant sans dupliquer. La saisie manuelle
+    (``source='manuel'``) n'est jamais touchée. La période doit être au statut
+    ``brouillon`` (sinon ``TransitionPeriodeInterdite``). Renvoie le nombre
+    d'éléments importés.
+
+    NB : le détail des modèles d'heures/absences RH (FG192) n'étant pas encore
+    posé, l'import s'appuie sur le sélecteur ``apps.rh.selectors`` et reste
+    inerte (0 importé) tant que RH n'expose pas de données — il ne plante jamais.
+    """
+    from apps.rh import selectors as rh_selectors  # import paresseux (cross-app)
+
+    if periode.statut != PeriodePaie.STATUT_BROUILLON:
+        raise TransitionPeriodeInterdite(
+            "L'import RH n'est possible qu'en statut brouillon.")
+
+    from .models import ProfilPaie
+
+    with transaction.atomic():
+        ElementVariable.objects.filter(
+            periode=periode, source=ElementVariable.SOURCE_RH).delete()
+
+        profils = {
+            p.employe_id: p
+            for p in ProfilPaie.objects.filter(
+                company=periode.company, actif=True)
+        }
+        importes = 0
+        for dossier in rh_selectors.dossiers_actifs(periode.company):
+            profil = profils.get(dossier.id)
+            if profil is None:
+                continue
+            elements = _elements_rh_du_dossier(periode, dossier)
+            for type_, libelle, quantite, montant in elements:
+                ElementVariable.objects.create(
+                    company=periode.company,
+                    periode=periode,
+                    profil=profil,
+                    type=type_,
+                    libelle=libelle,
+                    quantite=quantite,
+                    montant=montant,
+                    source=ElementVariable.SOURCE_RH,
+                )
+                importes += 1
+        return importes
+
+
+def _elements_rh_du_dossier(periode, dossier):
+    """Éléments variables RH d'un dossier pour la période — liste de tuples.
+
+    Renvoie ``[(type, libelle, quantite, montant), …]``. Point d'extension de
+    l'import RH (FG192) : tant que RH n'expose pas d'heures/absences du mois, on
+    renvoie une liste vide (import inerte, jamais d'erreur).
+    """
+    return []
+
+
+# ── PAIE12 — Moteur de calcul du bulletin ──────────────────────────────────
+
+_CENT = Decimal('0.01')
+
+
+def _q(montant):
+    """Arrondit un ``Decimal`` au centime (demi-supérieur)."""
+    return Decimal(montant).quantize(_CENT, rounding=ROUND_HALF_UP)
+
+
+def parametre_en_vigueur(company, le_jour):
+    """``ParametrePaie`` en vigueur pour ``company`` au ``le_jour`` (ou None)."""
+    return (
+        ParametrePaie.objects
+        .filter(company=company, date_effet__lte=le_jour)
+        .order_by('-date_effet')
+        .first()
+    )
+
+
+def bareme_en_vigueur(company, le_jour):
+    """``BaremeIR`` en vigueur pour ``company`` au ``le_jour`` (ou None)."""
+    return (
+        BaremeIR.objects
+        .filter(company=company, date_effet__lte=le_jour)
+        .order_by('-date_effet')
+        .first()
+    )
+
+
+def calculer_bulletin(profil, periode, personnes_a_charge=0):
+    """Calcule le bulletin de paie d'un employé pour une période (PAIE12).
+
+    Moteur de calcul conforme au cadre marocain (additif, sans effet de bord —
+    ne crée aucun objet, renvoie un dict) :
+
+    1. **Brut** = salaire de base du profil + gains des éléments variables du
+       mois (primes/HS) − retenues d'éléments (avances/absences saisies en
+       retenue).
+    2. **CNSS** salariale = ``taux_cnss_salarial`` × ``min(brut, plafond_cnss)``
+       si le profil est affilié CNSS.
+    3. **AMO** salariale = ``taux_amo_salarial`` × brut (non plafonnée) si
+       affilié AMO.
+    4. **CIMR** salariale = ``taux_cimr_salarial`` du profil × brut si affilié
+       CIMR.
+    5. **Frais professionnels** : 35 % du brut imposable plafonné (≤ seuil) sinon
+       25 % plafonné — d'après ``ParametrePaie``.
+    6. **Net imposable** = brut imposable − (CNSS + AMO + CIMR + frais pro).
+    7. **IR** = ``compute_ir`` (barème par tranche − déductions charges famille).
+    8. **Net à payer** = brut − CNSS − AMO − CIMR − IR.
+
+    Renvoie un dict détaillé (toutes valeurs ``Decimal`` au centime) prêt à être
+    matérialisé en bulletin (PAIE17) : ::
+
+        {'brut', 'brut_imposable', 'cnss_salariale', 'amo_salariale',
+         'cimr_salariale', 'frais_professionnels', 'net_imposable', 'ir',
+         'net_a_payer', 'lignes': [...]}
+
+    Donnée SENSIBLE (salaires) — usage interne paie uniquement.
+    """
+    le_jour = date(periode.annee, periode.mois, 1)
+    parametre = parametre_en_vigueur(profil.company, le_jour)
+    bareme = bareme_en_vigueur(profil.company, le_jour)
+
+    elements = list(
+        ElementVariable.objects.filter(periode=periode, profil=profil)
+        .select_related('rubrique')
+    )
+
+    salaire_base = Decimal(profil.salaire_base or 0)
+    gains_variables = Decimal('0')
+    retenues_variables = Decimal('0')
+    gains_imposables = Decimal('0')
+    lignes = [{
+        'code': 'SB', 'libelle': 'Salaire de base',
+        'type': Rubrique.TYPE_GAIN, 'montant': _q(salaire_base),
+    }]
+    for el in elements:
+        montant = Decimal(el.montant or 0)
+        imposable = el.rubrique.imposable if el.rubrique_id else True
+        if el.type == ElementVariable.TYPE_RETENUE or \
+                el.type == ElementVariable.TYPE_ABSENCE:
+            retenues_variables += montant
+            lignes.append({
+                'code': el.rubrique.code if el.rubrique_id else el.type,
+                'libelle': el.libelle or el.get_type_display(),
+                'type': Rubrique.TYPE_RETENUE, 'montant': _q(montant),
+            })
+        else:
+            gains_variables += montant
+            if imposable:
+                gains_imposables += montant
+            lignes.append({
+                'code': el.rubrique.code if el.rubrique_id else el.type,
+                'libelle': el.libelle or el.get_type_display(),
+                'type': Rubrique.TYPE_GAIN, 'montant': _q(montant),
+            })
+
+    brut = salaire_base + gains_variables
+    # Le salaire de base est imposable et soumis aux cotisations.
+    brut_imposable = salaire_base + gains_imposables
+
+    # 2. CNSS plafonnée.
+    cnss = Decimal('0')
+    if parametre and profil.affilie_cnss:
+        assiette_cnss = min(brut, Decimal(parametre.plafond_cnss or 0))
+        cnss = assiette_cnss * Decimal(parametre.taux_cnss_salarial) / Decimal('100')
+    cnss = _q(cnss)
+
+    # 3. AMO (non plafonnée).
+    amo = Decimal('0')
+    if parametre and profil.affilie_amo:
+        amo = brut * Decimal(parametre.taux_amo_salarial) / Decimal('100')
+    amo = _q(amo)
+
+    # 4. CIMR (taux propre au profil).
+    cimr = Decimal('0')
+    if profil.affilie_cimr:
+        cimr = brut * Decimal(profil.taux_cimr_salarial or 0) / Decimal('100')
+    cimr = _q(cimr)
+
+    # 5. Frais professionnels.
+    frais_pro = Decimal('0')
+    if parametre:
+        if brut_imposable <= Decimal(parametre.seuil_frais_pro or 0):
+            frais_pro = brut_imposable * Decimal(parametre.taux_frais_pro_bas) / Decimal('100')
+            plafond = Decimal(parametre.plafond_frais_pro_bas or 0)
+        else:
+            frais_pro = brut_imposable * Decimal(parametre.taux_frais_pro_haut) / Decimal('100')
+            plafond = Decimal(parametre.plafond_frais_pro_haut or 0)
+        if plafond and frais_pro > plafond:
+            frais_pro = plafond
+    frais_pro = _q(frais_pro)
+
+    # 6. Net imposable.
+    net_imposable = brut_imposable - cnss - amo - cimr - frais_pro
+    if net_imposable < 0:
+        net_imposable = Decimal('0')
+    net_imposable = _q(net_imposable)
+
+    # 7. IR.
+    ir = Decimal('0')
+    if bareme and parametre:
+        ir = compute_ir(net_imposable, bareme, parametre, personnes_a_charge)
+    ir = _q(ir)
+
+    # 8. Net à payer (− retenues variables type avances).
+    net_a_payer = brut - cnss - amo - cimr - ir - retenues_variables
+    net_a_payer = _q(net_a_payer)
+
+    return {
+        'brut': _q(brut),
+        'brut_imposable': _q(brut_imposable),
+        'cnss_salariale': cnss,
+        'amo_salariale': amo,
+        'cimr_salariale': cimr,
+        'frais_professionnels': frais_pro,
+        'net_imposable': net_imposable,
+        'ir': ir,
+        'retenues': _q(retenues_variables),
+        'net_a_payer': net_a_payer,
+        'lignes': lignes,
+    }

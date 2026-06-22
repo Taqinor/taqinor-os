@@ -9,7 +9,23 @@ import hashlib
 
 from django.db import transaction
 
-from .models import Document, DocumentVersion, Folder
+from .models import Coffre, Document, DocumentVersion, Folder
+
+
+def validate_coffre_owner(proprietaire, client):
+    """GED8 — Un coffre porte EXACTEMENT un propriétaire (employé XOR client).
+
+    Lève ValueError si aucun ou si les deux sont fournis. Sert de garde unique
+    pour la création/mise à jour, côté service comme côté serializer.
+    """
+    has_user = proprietaire is not None
+    has_client = client is not None
+    if has_user and has_client:
+        raise ValueError(
+            "Un coffre-fort a un seul propriétaire : un employé OU un client.")
+    if not has_user and not has_client:
+        raise ValueError(
+            "Un coffre-fort doit avoir un propriétaire (employé ou client).")
 
 
 def compute_checksum(data):

@@ -128,6 +128,68 @@ class Folder(models.Model):
         ).exclude(pk=self.pk)
 
 
+class Coffre(models.Model):
+    """GED8 — Coffre-fort par employé/client (ACL propriétaire + admin).
+
+    Un coffre-fort est un espace documentaire confidentiel rattaché à UN
+    propriétaire : soit un employé (`proprietaire`, un User de la société), soit
+    un client (`client_id`, référence string-FK vers `crm.Client` — jamais un
+    import direct du modèle). Les documents placés dans un coffre (via
+    `Document.coffre`) ne sont visibles QUE de leur propriétaire et des
+    administrateurs de la société : le filtrage ACL est appliqué côté serveur
+    dans les `selectors`/viewsets (jamais lu du corps de requête).
+
+    Company posée côté serveur. Le coffre porte exactement un type de
+    propriétaire : un employé OU un client (jamais les deux, jamais aucun).
+    """
+    company = models.ForeignKey(
+        'authentication.Company', on_delete=models.CASCADE,
+        null=True, blank=True, related_name='ged_coffres')
+    nom = models.CharField(max_length=200)
+    description = models.TextField(blank=True, default='')
+    # Propriétaire employé (User de la société) — exclusif avec `client_id`.
+    proprietaire = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.CASCADE,
+        null=True, blank=True, related_name='ged_coffres')
+    # Propriétaire client — référence string-FK vers crm.Client (cross-app via
+    # selectors, jamais un import du modèle). Exclusif avec `proprietaire`.
+    client = models.ForeignKey(
+        'crm.Client', on_delete=models.CASCADE,
+        null=True, blank=True, related_name='ged_coffres')
+    created_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL,
+        null=True, blank=True, related_name='ged_coffres_crees')
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ['nom', 'id']
+        verbose_name = 'Coffre-fort'
+        verbose_name_plural = 'Coffres-forts'
+        indexes = [
+            models.Index(fields=['company', 'proprietaire']),
+            models.Index(fields=['company', 'client']),
+        ]
+
+    def __str__(self):
+        return self.nom
+
+    def is_accessible_by(self, user):
+        """ACL — True si `user` peut accéder à ce coffre (propriétaire OU admin).
+
+        Un employé voit son propre coffre (`proprietaire`). Un coffre client
+        n'a pas d'utilisateur propriétaire : seuls les admins de la société y
+        accèdent. Les administrateurs voient tous les coffres de leur société.
+        """
+        if user is None or not user.is_authenticated:
+            return False
+        if user.company_id != self.company_id:
+            return False
+        if getattr(user, 'is_admin_role', False) or user.is_superuser:
+            return True
+        return self.proprietaire_id == user.id
+
+
 class Document(models.Model):
     """Document logique vivant dans un dossier (GED3).
 
@@ -141,6 +203,12 @@ class Document(models.Model):
         null=True, blank=True, related_name='ged_documents')
     folder = models.ForeignKey(
         Folder, on_delete=models.CASCADE, related_name='documents')
+    # GED8 — un document peut vivre dans un coffre-fort (ACL propriétaire+admin).
+    # Quand `coffre` est non nul, seuls le propriétaire du coffre et les admins
+    # voient/manipulent ce document (filtrage en `selectors`/viewset).
+    coffre = models.ForeignKey(
+        'Coffre', on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='documents')
     nom = models.CharField(max_length=255)
     description = models.TextField(blank=True, default='')
     created_by = models.ForeignKey(

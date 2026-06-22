@@ -190,6 +190,9 @@ class BonCommandeSerializer(serializers.ModelSerializer):
     client_nom = serializers.CharField(source='client.nom', read_only=True)
     devis_reference = serializers.CharField(source='devis.reference', read_only=True, default=None)
     has_facture = serializers.SerializerMethodField()
+    # FG51 — preuve de livraison (lecture seule : capturée par l'action
+    # « marquer-livre », jamais par un PUT du corps).
+    has_proof_of_delivery = serializers.BooleanField(read_only=True)
     # Totaux du BC dérivés du devis lié (un BC reprend les lignes du devis).
     # Aucun devis → None → l'UI affiche « — ». Affichage seulement.
     total_ht = serializers.SerializerMethodField()
@@ -200,7 +203,10 @@ class BonCommandeSerializer(serializers.ModelSerializer):
         model = BonCommande
         fields = '__all__'
         # company is force-assigned in perform_create — never accept it from the body.
-        read_only_fields = ['reference', 'date_creation', 'company']
+        # FG51 — pv_livraison/date_livraison_reelle ne se posent QUE via
+        # l'action « marquer-livre » (jamais un PUT direct du corps).
+        read_only_fields = ['reference', 'date_creation', 'company',
+                            'pv_livraison', 'date_livraison_reelle']
 
     def get_has_facture(self, obj):
         return Facture.objects.filter(bon_commande=obj).exists()

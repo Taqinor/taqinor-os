@@ -1361,3 +1361,333 @@ class ClotureCaisse(models.Model):
 
     def __str__(self):
         return f'Clôture caisse {self.caisse_id} au {self.date_cloture}'
+
+
+# ── FG125 — Virements internes entre comptes de trésorerie ─────────────────
+
+class VirementInterne(models.Model):
+    """Virement interne entre deux comptes de trésorerie (FG125).
+
+    Transfère un montant d'un ``CompteTresorerie`` SOURCE vers un
+    ``CompteTresorerie`` DESTINATION de la MÊME société (banque↔banque,
+    banque↔caisse, caisse↔caisse). Le posting (``services.poster_virement``)
+    passe une écriture ÉQUILIBRÉE à deux jambes dans le journal OD : débit du
+    compte comptable de la destination (entrée), crédit du compte comptable de
+    la source (sortie). Strictement additif ; ``company`` posée côté serveur,
+    jamais lue du corps de requête.
+    """
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='virements_internes',
+        verbose_name='Société',
+    )
+    compte_source = models.ForeignKey(
+        CompteTresorerie,
+        on_delete=models.PROTECT,
+        related_name='virements_emis',
+        verbose_name='Compte source',
+    )
+    compte_destination = models.ForeignKey(
+        CompteTresorerie,
+        on_delete=models.PROTECT,
+        related_name='virements_recus',
+        verbose_name='Compte destination',
+    )
+    date_virement = models.DateField(verbose_name='Date du virement')
+    montant = models.DecimalField(
+        max_digits=14, decimal_places=2, default=Decimal('0'),
+        verbose_name='Montant')
+    libelle = models.CharField(
+        max_length=255, blank=True, default='', verbose_name='Libellé')
+    reference = models.CharField(
+        max_length=80, blank=True, default='', verbose_name='Référence')
+    posted = models.BooleanField(
+        default=False, verbose_name='Postée au grand livre')
+    ecriture = models.ForeignKey(
+        EcritureComptable,
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='virements_internes',
+        verbose_name='Écriture comptable',
+    )
+    created_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='virements_internes_crees',
+        verbose_name='Saisi par',
+    )
+    date_creation = models.DateTimeField(
+        auto_now_add=True, verbose_name='Créé le')
+
+    class Meta:
+        verbose_name = 'Virement interne'
+        verbose_name_plural = 'Virements internes'
+        ordering = ['-date_virement', '-id']
+
+    def __str__(self):
+        return (f'Virement {self.montant} {self.compte_source_id}'
+                f'→{self.compte_destination_id} ({self.date_virement})')
+
+    def clean(self):
+        super().clean()
+        if self.montant is not None and self.montant <= 0:
+            raise ValidationError(
+                "Le montant d'un virement interne doit être strictement "
+                "positif.")
+        if (self.compte_source_id is not None
+                and self.compte_source_id == self.compte_destination_id):
+            raise ValidationError(
+                "Les comptes source et destination doivent être différents.")
+
+
+# ── FG126 — Prévisionnel de trésorerie roulant 13 semaines ─────────────────
+
+class LignePrevisionnelTresorerie(models.Model):
+    """Ligne prévue d'un prévisionnel de trésorerie roulant (FG126).
+
+    Saisie MANUELLE d'un flux attendu (crédit bancaire, leasing, salaires,
+    acompte d'IS, loyer…) au-dessus de la projection AR/AP automatique. Chaque
+    ligne porte une ``date_prevue`` (qui la range dans l'une des 13 semaines du
+    prévisionnel roulant) et un ``montant`` SIGNÉ : positif = encaissement
+    prévu, négatif = décaissement prévu. ``recurrence`` permet de la dupliquer
+    chaque semaine/mois pour étaler une charge récurrente (informatif côté
+    selector). ``company`` posée côté serveur. Strictement additif.
+    """
+    class Categorie(models.TextChoices):
+        CREDIT = 'credit', 'Crédit / financement'
+        LEASING = 'leasing', 'Leasing'
+        SALAIRE = 'salaire', 'Salaires'
+        IMPOT = 'impot', 'Impôts / acomptes IS'
+        LOYER = 'loyer', 'Loyer'
+        ENCAISSEMENT = 'encaissement', 'Encaissement prévu'
+        DECAISSEMENT = 'decaissement', 'Décaissement prévu'
+        AUTRE = 'autre', 'Autre'
+
+    class Recurrence(models.TextChoices):
+        AUCUNE = 'aucune', 'Ponctuelle'
+        HEBDOMADAIRE = 'hebdomadaire', 'Hebdomadaire'
+        MENSUELLE = 'mensuelle', 'Mensuelle'
+
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='lignes_previsionnel_tresorerie',
+        verbose_name='Société',
+    )
+    libelle = models.CharField(max_length=255, verbose_name='Libellé')
+    categorie = models.CharField(
+        max_length=15, choices=Categorie.choices,
+        default=Categorie.AUTRE, verbose_name='Catégorie')
+    date_prevue = models.DateField(verbose_name='Date prévue')
+    # Montant SIGNÉ : + encaissement prévu, − décaissement prévu.
+    montant = models.DecimalField(
+        max_digits=14, decimal_places=2, default=Decimal('0'),
+        verbose_name='Montant')
+    recurrence = models.CharField(
+        max_length=15, choices=Recurrence.choices,
+        default=Recurrence.AUCUNE, verbose_name='Récurrence')
+    commentaire = models.CharField(
+        max_length=255, blank=True, default='', verbose_name='Commentaire')
+    date_creation = models.DateTimeField(
+        auto_now_add=True, verbose_name='Créé le')
+
+    class Meta:
+        verbose_name = 'Ligne de prévisionnel de trésorerie'
+        verbose_name_plural = 'Lignes de prévisionnel de trésorerie'
+        ordering = ['date_prevue', 'id']
+
+    def __str__(self):
+        return f'{self.date_prevue} — {self.libelle} ({self.montant})'
+
+    def clean(self):
+        super().clean()
+        if self.montant is not None and self.montant == 0:
+            raise ValidationError(
+                "Le montant d'une ligne prévue ne peut être nul.")
+
+
+# ── FG127 / FG128 — Effets (chèques / traites) à recevoir & à payer ────────
+
+class Effet(models.Model):
+    """Effet de commerce : chèque ou traite (LCN) à recevoir OU à payer.
+
+    Modèle marocain OMNIPRÉSENT en B2B : un effet (chèque, traite/LCN, billet à
+    ordre) porte un ``sens`` — ``recevoir`` (client, FG127) ou ``payer``
+    (fournisseur, FG128) — un ``montant``, une ``date_echeance`` (calendrier qui
+    alimente la trésorerie), une ``banque``, et un ``statut`` qui suit son
+    cycle de vie :
+
+    * À recevoir : ``portefeuille`` → ``remis`` (déposé en banque via un
+      ``BordereauRemise``, FG129) → ``encaisse`` → ``impaye`` (rejet, FG130).
+    * À payer : ``portefeuille`` (émis) → ``paye`` → ``impaye`` (rejeté).
+
+    Le tiers (client/fournisseur) est référencé en string-FK (``tiers_type`` /
+    ``tiers_id``) — jamais d'import cross-app de modèle. ``company`` posée côté
+    serveur. Strictement additif.
+    """
+    class Sens(models.TextChoices):
+        RECEVOIR = 'recevoir', 'À recevoir (client)'
+        PAYER = 'payer', 'À payer (fournisseur)'
+
+    class TypeEffet(models.TextChoices):
+        CHEQUE = 'cheque', 'Chèque'
+        TRAITE = 'traite', 'Traite / LCN'
+        BILLET = 'billet', 'Billet à ordre'
+
+    class Statut(models.TextChoices):
+        PORTEFEUILLE = 'portefeuille', 'En portefeuille'
+        REMIS = 'remis', "Remis à l'encaissement"
+        ENCAISSE = 'encaisse', 'Encaissé'
+        PAYE = 'paye', 'Payé'
+        IMPAYE = 'impaye', 'Impayé / rejeté'
+
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='effets',
+        verbose_name='Société',
+    )
+    sens = models.CharField(
+        max_length=10, choices=Sens.choices, verbose_name='Sens')
+    type_effet = models.CharField(
+        max_length=10, choices=TypeEffet.choices,
+        default=TypeEffet.CHEQUE, verbose_name="Type d'effet")
+    numero = models.CharField(
+        max_length=60, blank=True, default='',
+        verbose_name='Numéro (chèque/traite)')
+    montant = models.DecimalField(
+        max_digits=14, decimal_places=2, default=Decimal('0'),
+        verbose_name='Montant')
+    date_emission = models.DateField(verbose_name="Date d'émission")
+    date_echeance = models.DateField(verbose_name="Date d'échéance")
+    banque = models.CharField(
+        max_length=120, blank=True, default='',
+        verbose_name='Banque (tirée/domiciliation)')
+    tireur = models.CharField(
+        max_length=160, blank=True, default='',
+        verbose_name='Tireur / bénéficiaire')
+    statut = models.CharField(
+        max_length=15, choices=Statut.choices,
+        default=Statut.PORTEFEUILLE, verbose_name='Statut')
+    # Tiers (client/fournisseur) en string-FK — jamais d'import cross-app.
+    tiers_type = models.CharField(
+        max_length=20, blank=True, default='', verbose_name='Type de tiers')
+    tiers_id = models.PositiveIntegerField(
+        null=True, blank=True, verbose_name='ID du tiers')
+    # Bordereau de remise (FG129) qui a déposé cet effet, le cas échéant.
+    bordereau = models.ForeignKey(
+        'BordereauRemise',
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='effets',
+        verbose_name='Bordereau de remise',
+    )
+    # Frais de rejet figés en cas d'impayé (FG130).
+    frais_rejet = models.DecimalField(
+        max_digits=14, decimal_places=2, default=Decimal('0'),
+        verbose_name='Frais de rejet')
+    commentaire = models.CharField(
+        max_length=255, blank=True, default='', verbose_name='Commentaire')
+    created_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='effets_crees',
+        verbose_name='Saisi par',
+    )
+    date_creation = models.DateTimeField(
+        auto_now_add=True, verbose_name='Créé le')
+
+    class Meta:
+        verbose_name = 'Effet (chèque / traite)'
+        verbose_name_plural = 'Effets (chèques / traites)'
+        ordering = ['date_echeance', 'id']
+
+    def __str__(self):
+        return (f'{self.get_type_effet_display()} {self.montant} '
+                f'{self.get_sens_display()} — éch. {self.date_echeance}')
+
+    def clean(self):
+        super().clean()
+        if self.montant is not None and self.montant <= 0:
+            raise ValidationError(
+                "Le montant d'un effet doit être strictement positif.")
+        if (self.date_emission and self.date_echeance
+                and self.date_echeance < self.date_emission):
+            raise ValidationError(
+                "L'échéance doit être postérieure ou égale à l'émission.")
+
+    @property
+    def est_solde(self):
+        """Vrai si l'effet est dans un état terminal (encaissé/payé)."""
+        return self.statut in (self.Statut.ENCAISSE, self.Statut.PAYE)
+
+
+# ── FG129 — Bordereau de remise en banque (chèques / effets) ───────────────
+
+class BordereauRemise(models.Model):
+    """Bordereau de remise en banque d'effets à recevoir (FG129).
+
+    Regroupe plusieurs ``Effet`` (à recevoir) pour un DÉPÔT groupé sur un
+    ``CompteTresorerie`` bancaire. Le posting (``services.poster_bordereau``)
+    passe l'écriture de remise (débit « effets à l'encaissement » / crédit
+    « effets à recevoir » par défaut), passe les effets liés en ``remis`` et fige
+    le total. ``company`` posée côté serveur. Strictement additif.
+    """
+    class Statut(models.TextChoices):
+        BROUILLON = 'brouillon', 'Brouillon'
+        REMIS = 'remis', 'Remis en banque'
+
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='bordereaux_remise',
+        verbose_name='Société',
+    )
+    compte_tresorerie = models.ForeignKey(
+        CompteTresorerie,
+        on_delete=models.PROTECT,
+        related_name='bordereaux_remise',
+        verbose_name='Compte de trésorerie (banque)',
+    )
+    reference = models.CharField(
+        max_length=80, blank=True, default='', verbose_name='Référence')
+    date_remise = models.DateField(verbose_name='Date de remise')
+    statut = models.CharField(
+        max_length=12, choices=Statut.choices,
+        default=Statut.BROUILLON, verbose_name='Statut')
+    total = models.DecimalField(
+        max_digits=14, decimal_places=2, default=Decimal('0'),
+        verbose_name='Total remis')
+    posted = models.BooleanField(
+        default=False, verbose_name='Postée au grand livre')
+    ecriture = models.ForeignKey(
+        EcritureComptable,
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='bordereaux_remise',
+        verbose_name='Écriture comptable',
+    )
+    created_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='bordereaux_remise_crees',
+        verbose_name='Créé par',
+    )
+    date_creation = models.DateTimeField(
+        auto_now_add=True, verbose_name='Créé le')
+
+    class Meta:
+        verbose_name = 'Bordereau de remise'
+        verbose_name_plural = 'Bordereaux de remise'
+        ordering = ['-date_remise', '-id']
+
+    def __str__(self):
+        return f'Bordereau {self.reference or self.id} ({self.date_remise})'
+
+    @property
+    def est_remis(self):
+        return self.statut == self.Statut.REMIS

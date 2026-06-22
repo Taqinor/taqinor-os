@@ -116,3 +116,48 @@ def courbes_iv_for_chantier(company, chantier_id):
     """
     return ReleveCourbeIV.objects.filter(
         company=company, chantier_id=chantier_id)
+
+
+# ── QHSE8 — Photos de contrôle (avant / pendant / après) ───────────────────
+
+# Phases de prise de vue d'un relevé de contrôle, alignées sur la galerie
+# groupée de ``records.Attachment`` (champ ``phase``).
+PHASES_PHOTO = ('avant', 'pendant', 'apres')
+
+
+def photos_controle(releve):
+    """Pièces jointes (photos) rattachées à un ``ReleveControle``, scopées société.
+
+    Lit les ``records.Attachment`` ciblant ce relevé via ContentType (records
+    est une app de fondation — pas un import cross-app de domaine) en se bornant
+    à la société du relevé. Renvoie un queryset trié (le plus récent d'abord,
+    via le ``Meta`` du modèle Attachment). Lecture seule.
+    """
+    from django.contrib.contenttypes.models import ContentType
+    from apps.records.models import Attachment
+
+    ct = ContentType.objects.get_for_model(releve.__class__)
+    return Attachment.objects.filter(
+        company=releve.company,
+        content_type=ct,
+        object_id=releve.id,
+    )
+
+
+def photos_controle_par_phase(releve):
+    """Photos d'un relevé de contrôle, regroupées par phase (QHSE8).
+
+    Renvoie un dict ``{'avant': [...], 'pendant': [...], 'apres': [...],
+    'autres': [...]}`` où chaque valeur est la liste ordonnée des
+    ``records.Attachment`` du relevé pour cette phase ; ``autres`` rassemble les
+    pièces sans phase ou hors nomenclature. Lecture seule, scopée société.
+    """
+    groupes = {phase: [] for phase in PHASES_PHOTO}
+    groupes['autres'] = []
+    for att in photos_controle(releve):
+        phase = (att.phase or '').strip().lower()
+        if phase in groupes:
+            groupes[phase].append(att)
+        else:
+            groupes['autres'].append(att)
+    return groupes

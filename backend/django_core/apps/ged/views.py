@@ -16,11 +16,13 @@ from authentication.permissions import IsAnyRole, IsResponsableOrAdmin
 # pour la liaison polymorphe GED6 — on n'invente pas un schéma de FK générique.
 from apps.records.serializers import resolve_target
 
-from . import services
-from .models import Cabinet, Document, DocumentLien, DocumentVersion, Folder
+from . import selectors, services
+from .models import (
+    Cabinet, Coffre, Document, DocumentLien, DocumentVersion, Folder,
+)
 from .serializers import (
-    CabinetSerializer, DocumentLienSerializer, DocumentSerializer,
-    DocumentVersionSerializer, FolderSerializer,
+    CabinetSerializer, CoffreSerializer, DocumentLienSerializer,
+    DocumentSerializer, DocumentVersionSerializer, FolderSerializer,
 )
 
 READ_ACTIONS = ['list', 'retrieve']
@@ -117,9 +119,55 @@ class FolderViewSet(TenantMixin, viewsets.ModelViewSet):
         return Response(data)
 
 
+class CoffreViewSet(TenantMixin, viewsets.ModelViewSet):
+    """GED8 — Coffres-forts par employé/client (ACL propriétaire + admin).
+
+    Liste/lecture : un employé ne voit QUE ses coffres, un admin voit tous ceux
+    de sa société (filtrage `selectors.coffres_for_user`). Écriture (création/
+    modification/suppression) : responsable/admin. `company` et `created_by`
+    posés côté serveur ; le propriétaire est un employé OU un client (jamais les
+    deux). Action `documents` : les documents du coffre (ACL appliquée).
+    """
+    queryset = Coffre.objects.select_related(
+        'proprietaire', 'client', 'created_by').all()
+    serializer_class = CoffreSerializer
+    filter_backends = [filters.SearchFilter, filters.OrderingFilter]
+    search_fields = ['nom', 'description']
+    ordering_fields = ['nom', 'created_at']
+
+    def get_permissions(self):
+        if self.action in READ_ACTIONS or self.action == 'documents':
+            return [IsAnyRole()]
+        return [IsResponsableOrAdmin()]
+
+    def get_queryset(self):
+        # ACL : remplace le filtrage company brut par le filtrage propriétaire.
+        return (selectors.coffres_for_user(self.request.user)
+                .select_related('proprietaire', 'client', 'created_by'))
+
+    def perform_create(self, serializer):
+        serializer.save(
+            company=self.request.user.company, created_by=self.request.user)
+
+    @action(detail=True, methods=['get'], url_path='documents')
+    def documents(self, request, pk=None):
+        """Documents rattachés à ce coffre (l'accès au coffre est déjà filtré
+        par `get_queryset` — un non-propriétaire reçoit un 404 sur le coffre)."""
+        coffre = self.get_object()
+        qs = selectors.documents_in_coffre(coffre)
+        data = DocumentSerializer(
+            qs, many=True, context={'request': request}).data
+        return Response(data)
+
+
 class DocumentViewSet(TenantMixin, viewsets.ModelViewSet):
-    """Documents logiques (conteneurs versionnés) d'une société."""
-    queryset = Document.objects.select_related('folder', 'created_by').all()
+    """Documents logiques (conteneurs versionnés) d'une société.
+
+    GED8 — l'ACL coffre-fort est appliquée en lecture : un document placé dans
+    un coffre n'est visible que de son propriétaire et des admins.
+    """
+    queryset = Document.objects.select_related(
+        'folder', 'coffre', 'created_by').all()
     serializer_class = DocumentSerializer
     filter_backends = [filters.SearchFilter, filters.OrderingFilter]
     search_fields = ['nom', 'description']
@@ -131,10 +179,17 @@ class DocumentViewSet(TenantMixin, viewsets.ModelViewSet):
         return [IsResponsableOrAdmin()]
 
     def get_queryset(self):
-        qs = super().get_queryset()
+        # GED8 — base : documents visibles selon l'ACL coffre-fort.
+        qs = (selectors.documents_visible_to_user(self.request.user)
+              .select_related('folder', 'coffre', 'created_by'))
         folder = self.request.query_params.get('folder')
         if folder:
             qs = qs.filter(folder_id=folder)
+        coffre = self.request.query_params.get('coffre')
+        if coffre == 'null':
+            qs = qs.filter(coffre__isnull=True)
+        elif coffre:
+            qs = qs.filter(coffre_id=coffre)
         return qs
 
     def perform_create(self, serializer):

@@ -10,6 +10,17 @@ cible n'a pas de sélecteur exploitable, on DÉGRADE proprement : on renvoie le
 from .models import DependanceTache, Jalon, ProjetLien, Tache
 
 
+def chemin_critique(projet):
+    """Calcul du chemin critique (CPM) + marges d'un projet (lecture seule).
+
+    Délègue à ``cpm.calculer_cpm`` (import local pour éviter tout cycle). Renvoie
+    un dict ``{duree_projet, has_cycle, chemin_critique, taches}`` — voir
+    ``cpm.calculer_cpm``. La société est portée par le projet.
+    """
+    from . import cpm
+    return cpm.calculer_cpm(projet)
+
+
 def jalons_for_projet(projet):
     """Jalons d'un projet (QuerySet scopé société, ordonné par date prévue).
 

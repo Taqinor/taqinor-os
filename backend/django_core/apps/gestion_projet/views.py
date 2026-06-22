@@ -206,6 +206,18 @@ class ProjetViewSet(_GestionProjetBaseViewSet):
         projet = self.get_object()
         return Response(selectors.arbre_taches(projet))
 
+    @action(detail=True, methods=['get'], url_path='chemin-critique')
+    def chemin_critique(self, request, pk=None):
+        """Chemin critique (CPM) + marges du projet (lecture seule).
+
+        La société est garantie par ``get_object`` (queryset scopé société) :
+        un projet d'une autre société → 404. Délègue au sélecteur
+        ``chemin_critique`` (durées dérivées, ES/EF/LS/LF, marges
+        totale/libre, ensemble des tâches critiques).
+        """
+        projet = self.get_object()
+        return Response(selectors.chemin_critique(projet))
+
     @action(detail=True, methods=['get'], url_path='jalons')
     def jalons(self, request, pk=None):
         """Jalons du projet, ordonnés par date prévue (lecture seule).

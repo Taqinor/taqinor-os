@@ -26,6 +26,10 @@ ALLOWED_TARGETS = {
     ('installations', 'installation'),
     ('sav', 'ticket'),
     ('outillage', 'outillage'),
+    # QHSE8 — photos de contrôle (avant/pendant/après) rattachées à un relevé
+    # de contrôle ITP, et pièces jointes d'une non-conformité (NCR).
+    ('qhse', 'relevecontrole'),
+    ('qhse', 'nonconformite'),
 }
 
 

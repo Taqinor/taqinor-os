@@ -12,13 +12,33 @@ from rest_framework.response import Response
 from authentication.mixins import TenantMixin
 from authentication.permissions import IsResponsableOrAdmin
 
-from .models import BaremeIR, ParametrePaie, Rubrique
+from .models import (
+    BaremeIR,
+    ElementVariable,
+    ParametrePaie,
+    PeriodePaie,
+    ProfilPaie,
+    Rubrique,
+    RubriqueEmploye,
+)
 from .serializers import (
     BaremeIRSerializer,
+    ElementVariableSerializer,
     ParametrePaieSerializer,
+    PeriodePaieSerializer,
+    ProfilPaieSerializer,
+    RubriqueEmployeSerializer,
     RubriqueSerializer,
 )
-from .services import ensure_defaults, ensure_rubriques_defaut
+from .services import (
+    TransitionPeriodeInterdite,
+    calculer_bulletin,
+    changer_statut,
+    ensure_defaults,
+    ensure_rubriques_defaut,
+    ensure_rubriques_standard,
+    importer_elements_rh,
+)
 
 
 class _PaieBaseViewSet(TenantMixin, viewsets.ModelViewSet):
