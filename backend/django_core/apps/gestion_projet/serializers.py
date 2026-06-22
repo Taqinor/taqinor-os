@@ -7,6 +7,8 @@ appartenant à la société de l'utilisateur.
 from rest_framework import serializers
 
 from .models import (
+    BaselinePlanning,
+    BaselineTache,
     CalendrierProjet,
     DependanceTache,
     Jalon,

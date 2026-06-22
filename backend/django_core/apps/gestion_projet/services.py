@@ -8,7 +8,14 @@ from datetime import timedelta
 
 from django.db import transaction
 
-from .models import DependanceTache, PhaseProjet, Projet, Tache
+from .models import (
+    BaselinePlanning,
+    BaselineTache,
+    DependanceTache,
+    PhaseProjet,
+    Projet,
+    Tache,
+)
 
 
 # Décomposition standard d'un projet d'installation solaire (WBS), dans l'ordre
@@ -181,3 +188,43 @@ def reprogrammer_tache(tache, nouvelle_date_debut, nouvelle_date_fin=None):
         t.save(update_fields=['date_debut_prevue', 'date_fin_prevue'])
 
     return [taches[i] for i in ordre_modifies]
+
+
+# ── Baseline de planning (PROJ13) ────────────────────────────────────────────
+
+@transaction.atomic
+def creer_baseline(projet, libelle='', auteur=None):
+    """Crée une BASELINE figée du planning courant d'un ``Projet``.
+
+    Capture, pour CHAQUE tâche du projet, son créneau prévu
+    (``date_debut_prevue`` / ``date_fin_prevue``) et sa ``charge_estimee`` dans
+    des lignes ``BaselineTache`` (libellé/code WBS figés pour survivre à une
+    suppression de tâche). ``company`` est toujours celle du ``projet`` (jamais
+    lue d'un corps de requête) ; ``auteur`` est posé côté serveur. Écritures
+    atomiques. Renvoie la ``BaselinePlanning`` créée.
+    """
+    if not isinstance(projet, Projet):  # pragma: no cover - garde-fou
+        raise TypeError('projet doit être une instance de Projet.')
+    baseline = BaselinePlanning.objects.create(
+        company=projet.company,
+        projet=projet,
+        libelle=libelle or '',
+        auteur=auteur,
+    )
+    taches = Tache.objects.filter(projet=projet, company=projet.company)
+    lignes = [
+        BaselineTache(
+            company=projet.company,
+            baseline=baseline,
+            tache=t,
+            tache_libelle=t.libelle,
+            tache_code_wbs=t.code_wbs,
+            date_debut_prevue=t.date_debut_prevue,
+            date_fin_prevue=t.date_fin_prevue,
+            charge_estimee=t.charge_estimee,
+        )
+        for t in taches
+    ]
+    if lignes:
+        BaselineTache.objects.bulk_create(lignes)
+    return baseline

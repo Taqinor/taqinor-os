@@ -603,6 +603,114 @@ class JourFerie(models.Model):
         return f'{self.date} {self.libelle}'.strip()
 
 
+class BaselinePlanning(models.Model):
+    """Un INSTANTANÉ figé du planning d'un ``Projet`` (PROJ13 — plan vs réel).
+
+    Une baseline mémorise, à un instant donné, le créneau PRÉVU
+    (``date_debut_prevue`` / ``date_fin_prevue``) et la charge estimée de CHAQUE
+    tâche du projet (lignes ``BaselineTache``). Comparée plus tard au planning
+    courant, elle donne l'écart PLAN vs RÉEL (glissement de dates, dérive de
+    charge). Plusieurs baselines peuvent coexister (référence initiale,
+    re-baseline après avenant) ; chaque ligne est figée à la prise de snapshot.
+
+    Tout est multi-société : ``company`` est posée côté serveur, jamais lue du
+    corps de requête. ``auteur`` est posé côté serveur. Modèle entièrement
+    additif.
+    """
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='projet_baselines',
+        verbose_name='Société',
+    )
+    projet = models.ForeignKey(
+        Projet,
+        on_delete=models.CASCADE,
+        related_name='baselines',
+        verbose_name='Projet',
+    )
+    libelle = models.CharField(
+        max_length=200, blank=True, default='', verbose_name='Libellé')
+    auteur = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='projet_baselines',
+        verbose_name='Auteur',
+    )
+    date_creation = models.DateTimeField(
+        auto_now_add=True, verbose_name='Créé le')
+
+    class Meta:
+        verbose_name = 'Baseline de planning'
+        verbose_name_plural = 'Baselines de planning'
+        ordering = ['-date_creation', '-id']
+        indexes = [
+            models.Index(
+                fields=['projet', '-date_creation'],
+                name='gp_baseline_proj_idx'),
+        ]
+
+    def __str__(self):
+        return f'{self.projet.code} — baseline {self.libelle or self.id}'
+
+
+class BaselineTache(models.Model):
+    """Ligne figée d'une ``BaselinePlanning`` : créneau prévu d'UNE tâche.
+
+    Mémorise, au moment du snapshot, le ``date_debut_prevue`` /
+    ``date_fin_prevue`` et la ``charge_estimee`` d'une tâche. Le FK ``tache`` est
+    en ``SET_NULL`` : si la tâche est supprimée plus tard, la ligne de baseline
+    survit (on garde ``tache_libelle`` / ``tache_code_wbs`` figés pour
+    l'affichage). Modèle entièrement additif ; ``company`` posée côté serveur.
+    """
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='projet_baseline_taches',
+        verbose_name='Société',
+    )
+    baseline = models.ForeignKey(
+        BaselinePlanning,
+        on_delete=models.CASCADE,
+        related_name='lignes',
+        verbose_name='Baseline',
+    )
+    tache = models.ForeignKey(
+        Tache,
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='baseline_lignes',
+        verbose_name='Tâche',
+    )
+    # Libellé/code figés au snapshot (survivent à une suppression de la tâche).
+    tache_libelle = models.CharField(
+        max_length=200, blank=True, default='', verbose_name='Libellé figé')
+    tache_code_wbs = models.CharField(
+        max_length=50, blank=True, default='', verbose_name='Code WBS figé')
+    date_debut_prevue = models.DateField(
+        null=True, blank=True, verbose_name='Date de début prévue (figée)')
+    date_fin_prevue = models.DateField(
+        null=True, blank=True, verbose_name='Date de fin prévue (figée)')
+    charge_estimee = models.DecimalField(
+        max_digits=8, decimal_places=2, null=True, blank=True,
+        verbose_name='Charge estimée (figée)')
+    date_creation = models.DateTimeField(
+        auto_now_add=True, verbose_name='Créé le')
+
+    class Meta:
+        verbose_name = 'Ligne de baseline'
+        verbose_name_plural = 'Lignes de baseline'
+        ordering = ['id']
+        indexes = [
+            models.Index(
+                fields=['baseline'], name='gp_baseline_tache_idx'),
+        ]
+
+    def __str__(self):
+        return f'baseline {self.baseline_id} ← {self.tache_libelle}'
+
+
 class ProjetActivity(models.Model):
     """Journal minimal des transitions de statut d'un ``Projet``.
 

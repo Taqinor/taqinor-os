@@ -237,6 +237,19 @@ class DocumentSerializer(serializers.ModelSerializer):
                 raise serializers.ValidationError('Coffre-fort inaccessible.')
         return value
 
+    def validate_custom_data(self, value):
+        """GED10 — Valide les métadonnées typées contre les définitions actives
+        du module « document » de la société (réutilise `customfields`).
+
+        Renvoie le dict nettoyé (clés connues uniquement) ; lève une erreur si un
+        champ obligatoire manque ou si un type est incohérent. Hors requête (cas
+        des écritures de service) on laisse passer tel quel."""
+        request = self.context.get('request')
+        if request is None:
+            return value
+        from apps.customfields.serializers import validate_custom_data
+        return validate_custom_data('document', request.user.company, value)
+
 
 class DocumentLienSerializer(serializers.ModelSerializer):
     """GED6 — Lien polymorphe Document ↔ objet métier.

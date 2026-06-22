@@ -352,6 +352,7 @@ def create_payment_link(*, facture, provider=None):
     Société forcée depuis la facture, jamais lue d'un corps de requête.
     """
     from decimal import Decimal
+    from django.utils import timezone
     from .models import PaymentLink
 
     existing = (PaymentLink.objects
@@ -385,7 +386,8 @@ def record_payment_from_link(*, link, payload=None):
     """
     from decimal import Decimal
     from django.db import transaction
-    from .models import Paiement, PaymentLink
+    from django.utils import timezone
+    from .models import Facture, Paiement, PaymentLink
     from .payments.providers import get_provider
 
     if link.statut == PaymentLink.Statut.PAYE and link.paiement_id:

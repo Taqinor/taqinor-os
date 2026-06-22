@@ -1013,3 +1013,74 @@ class DocumentTagTaxonomyTests(GedBase):
         noms = [r['nom'] for r in rows(resp)]
         self.assertIn('A', noms)
         self.assertNotIn('B', noms)
+
+
+# ── GED10 — Métadonnées typées configurables (réutilise customfields) ─
+class DocumentCustomDataTests(GedBase):
+    """Vérifie que les documents portent des métadonnées typées validées contre
+    les définitions `customfields` du module « document » : champ obligatoire,
+    type cohérent, choix borné, clés inconnues écartées, et isolation société."""
+
+    def setUp(self):
+        super().setUp()
+        from apps.customfields.models import CustomFieldDef
+        self.CFD = CustomFieldDef
+        self.folder_a = Folder.objects.create(
+            company=self.co_a, cabinet=self.cab_a, nom='Racine')
+        # Une définition obligatoire (texte) + une de choix sur le module doc.
+        self.CFD.objects.create(
+            company=self.co_a, module='document', code='reference',
+            libelle='Référence', type='text', obligatoire=True)
+        self.CFD.objects.create(
+            company=self.co_a, module='document', code='confidentialite',
+            libelle='Confidentialité', type='choice',
+            options=['public', 'interne', 'secret'])
+
+    def test_create_document_with_valid_custom_data(self):
+        api = auth(self.admin_a)
+        resp = api.post('/api/django/ged/documents/', {
+            'folder': self.folder_a.id, 'nom': 'Contrat',
+            'custom_data': {'reference': 'DOC-001',
+                            'confidentialite': 'interne'},
+        }, format='json')
+        self.assertEqual(resp.status_code, 201, resp.data)
+        doc = Document.objects.get(id=resp.data['id'])
+        self.assertEqual(doc.custom_data['reference'], 'DOC-001')
+        self.assertEqual(doc.custom_data['confidentialite'], 'interne')
+
+    def test_missing_required_field_rejected(self):
+        api = auth(self.admin_a)
+        resp = api.post('/api/django/ged/documents/', {
+            'folder': self.folder_a.id, 'nom': 'Sans ref',
+            'custom_data': {'confidentialite': 'public'},
+        }, format='json')
+        self.assertEqual(resp.status_code, 400)
+
+    def test_invalid_choice_rejected(self):
+        api = auth(self.admin_a)
+        resp = api.post('/api/django/ged/documents/', {
+            'folder': self.folder_a.id, 'nom': 'Doc',
+            'custom_data': {'reference': 'R', 'confidentialite': 'inconnu'},
+        }, format='json')
+        self.assertEqual(resp.status_code, 400)
+
+    def test_unknown_keys_are_dropped(self):
+        api = auth(self.admin_a)
+        resp = api.post('/api/django/ged/documents/', {
+            'folder': self.folder_a.id, 'nom': 'Doc',
+            'custom_data': {'reference': 'R', 'inexistant': 'x'},
+        }, format='json')
+        self.assertEqual(resp.status_code, 201, resp.data)
+        doc = Document.objects.get(id=resp.data['id'])
+        self.assertNotIn('inexistant', doc.custom_data)
+
+    def test_custom_data_isolated_by_company(self):
+        # Une définition obligatoire de A ne s'applique PAS à B (qui n'en a pas).
+        api = auth(self.admin_b)
+        folder_b = Folder.objects.create(
+            company=self.co_b, cabinet=self.cab_b, nom='Racine B')
+        resp = api.post('/api/django/ged/documents/', {
+            'folder': folder_b.id, 'nom': 'Doc B', 'custom_data': {},
+        }, format='json')
+        # Aucun champ obligatoire pour B → accepté.
+        self.assertEqual(resp.status_code, 201, resp.data)

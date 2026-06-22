@@ -10,12 +10,83 @@ cible n'a pas de sélecteur exploitable, on DÉGRADE proprement : on renvoie le
 from datetime import timedelta
 
 from .models import (
+    BaselinePlanning,
     CalendrierProjet,
     DependanceTache,
     Jalon,
     ProjetLien,
     Tache,
 )
+
+
+def baselines_for_projet(projet):
+    """Baselines d'un projet (QuerySet scopé société, plus récentes d'abord)."""
+    return BaselinePlanning.objects.filter(
+        projet=projet, company=projet.company).order_by(
+            '-date_creation', '-id')
+
+
+def _ecart_jours(reel, baseline):
+    """Écart en jours entre une date réelle et une date baseline (ou None)."""
+    if reel is None or baseline is None:
+        return None
+    return (reel - baseline).days
+
+
+def comparer_baseline(baseline):
+    """Compare une BASELINE au planning COURANT (plan vs réel) — lecture seule.
+
+    Pour chaque ligne figée de la baseline, retrouve la tâche courante (par FK)
+    et calcule l'écart de DÉBUT et de FIN (en jours, positif = glissement vers
+    le futur) ainsi que la dérive de charge. Une tâche supprimée depuis le
+    snapshot apparaît avec ``tache=None`` (le libellé figé est conservé). Renvoie
+    ``{baseline, projet, lignes: [...], glissement_max_fin}`` où
+    ``glissement_max_fin`` est le plus grand retard de fin observé (0 si aucun).
+    """
+    lignes = []
+    glissement_max = 0
+    qs = baseline.lignes.select_related('tache').order_by('id')
+    for ligne in qs:
+        tache = ligne.tache
+        reel_debut = tache.date_debut_prevue if tache else None
+        reel_fin = tache.date_fin_prevue if tache else None
+        reel_charge = tache.charge_estimee if tache else None
+        ecart_debut = _ecart_jours(reel_debut, ligne.date_debut_prevue)
+        ecart_fin = _ecart_jours(reel_fin, ligne.date_fin_prevue)
+        if ecart_fin is not None and ecart_fin > glissement_max:
+            glissement_max = ecart_fin
+        derive_charge = None
+        if reel_charge is not None and ligne.charge_estimee is not None:
+            derive_charge = str(reel_charge - ligne.charge_estimee)
+        lignes.append({
+            'ligne': ligne.id,
+            'tache': ligne.tache_id,
+            'libelle': ligne.tache_libelle,
+            'code_wbs': ligne.tache_code_wbs,
+            'baseline_debut': (
+                ligne.date_debut_prevue.isoformat()
+                if ligne.date_debut_prevue else None),
+            'baseline_fin': (
+                ligne.date_fin_prevue.isoformat()
+                if ligne.date_fin_prevue else None),
+            'baseline_charge': (
+                str(ligne.charge_estimee)
+                if ligne.charge_estimee is not None else None),
+            'reel_debut': reel_debut.isoformat() if reel_debut else None,
+            'reel_fin': reel_fin.isoformat() if reel_fin else None,
+            'reel_charge': (
+                str(reel_charge) if reel_charge is not None else None),
+            'ecart_debut_jours': ecart_debut,
+            'ecart_fin_jours': ecart_fin,
+            'derive_charge': derive_charge,
+            'tache_supprimee': tache is None,
+        })
+    return {
+        'baseline': baseline.id,
+        'projet': baseline.projet_id,
+        'glissement_max_fin': glissement_max,
+        'lignes': lignes,
+    }
 
 
 def calendrier_de_projet(projet):
