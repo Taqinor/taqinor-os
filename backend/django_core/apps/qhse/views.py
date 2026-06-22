@@ -4,19 +4,24 @@ Les viewsets filtrent par ``request.user.company`` (TenantMixin) et posent la
 société côté serveur ; la non-conformité enregistre aussi son signaleur
 (``signale_par``) côté serveur.
 """
-from rest_framework import filters, viewsets
+from django.shortcuts import get_object_or_404
+from rest_framework import filters, status, viewsets
+from rest_framework.decorators import action
+from rest_framework.response import Response
 
 from authentication.mixins import TenantMixin
 from authentication.permissions import IsResponsableOrAdmin
 
 from .models import (
-    ActionCorrectivePreventive, NonConformite, PlanInspectionModele,
-    PointControleModele,
+    ActionCorrectivePreventive, NonConformite, PlanInspectionChantier,
+    PlanInspectionModele, PointControleModele, ReleveControle,
 )
 from .serializers import (
     ActionCorrectivePreventiveSerializer, NonConformiteSerializer,
-    PlanInspectionModeleSerializer, PointControleModeleSerializer,
+    PlanInspectionChantierSerializer, PlanInspectionModeleSerializer,
+    PointControleModeleSerializer, ReleveControleSerializer,
 )
+from .services import instancier_plan_chantier
 
 
 class _QhseBaseViewSet(TenantMixin, viewsets.ModelViewSet):
@@ -64,3 +69,58 @@ class PointControleModeleViewSet(_QhseBaseViewSet):
     filter_backends = [filters.SearchFilter, filters.OrderingFilter]
     search_fields = ['intitule', 'phase', 'description']
     ordering_fields = ['id', 'ordre', 'date_creation']
+
+
+class PlanInspectionChantierViewSet(_QhseBaseViewSet):
+    """Plans d'inspection appliqués à un chantier (ITP instancié — QHSE4).
+
+    ``POST instancier`` ouvre un plan à partir d'un modèle + un ``chantier_id``
+    et matérialise un relevé par point du modèle (idempotent).
+    """
+    queryset = PlanInspectionChantier.objects.select_related('modele').all()
+    serializer_class = PlanInspectionChantierSerializer
+    filter_backends = [filters.OrderingFilter]
+    ordering_fields = ['id', 'date_ouverture', 'date_creation']
+
+    @action(detail=False, methods=['post'])
+    def instancier(self, request):
+        """Ouvre un plan chantier depuis un modèle ITP + un chantier_id.
+
+        Société posée côté serveur ; le modèle doit appartenir à la société
+        de l'utilisateur (sinon 404). Idempotent.
+        """
+        company = request.user.company
+        modele_id = request.data.get('modele')
+        chantier_id = request.data.get('chantier_id')
+        if not modele_id or chantier_id in (None, ''):
+            return Response(
+                {'detail': 'modele et chantier_id sont requis.'},
+                status=status.HTTP_400_BAD_REQUEST)
+        # Scopé société : un modèle d'une autre société renvoie 404.
+        modele = get_object_or_404(
+            PlanInspectionModele, pk=modele_id, company=company)
+        plan = instancier_plan_chantier(
+            modele=modele,
+            chantier_id=chantier_id,
+            company=company,
+            date_ouverture=request.data.get('date_ouverture') or None,
+        )
+        data = self.get_serializer(plan).data
+        return Response(data, status=status.HTTP_201_CREATED)
+
+
+class ReleveControleViewSet(_QhseBaseViewSet):
+    """Relevés de contrôle d'un plan d'inspection chantier (QHSE4).
+
+    À la création/maj d'un relevé, ``releve_par`` est posé côté serveur.
+    """
+    queryset = ReleveControle.objects.select_related(
+        'plan_chantier', 'point').all()
+    serializer_class = ReleveControleSerializer
+    filter_backends = [filters.OrderingFilter]
+    ordering_fields = ['id', 'date_releve', 'date_creation']
+
+    def perform_create(self, serializer):
+        serializer.save(
+            company=self.request.user.company,
+            releve_par=self.request.user)

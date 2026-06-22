@@ -224,3 +224,109 @@ class PointControleModele(models.Model):
 
     def __str__(self):
         return f'{self.intitule} ({self.get_type_releve_display()})'
+
+
+# ── QHSE4 — ITP appliqué : plan chantier + relevés de contrôle ─────────────
+
+class PlanInspectionChantier(models.Model):
+    """Instance APPLIQUÉE d'un modèle ITP (``PlanInspectionModele``) sur un
+    chantier précis.
+
+    C'est l'ouverture concrète d'un plan d'inspection : on copie un gabarit
+    (``modele``) sur un chantier (référence lâche par ``chantier_id`` — jamais
+    un import cross-app de ``installations``) et chaque point du modèle devient
+    un ``ReleveControle`` à renseigner. Cycle de vie via ``statut``
+    (en_cours → clôturé). Multi-société via ``company`` posée côté serveur.
+    """
+    class Statut(models.TextChoices):
+        EN_COURS = 'en_cours', 'En cours'
+        CLOTURE = 'cloture', 'Clôturé'
+
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='qhse_plans_chantier',
+        verbose_name='Société',
+    )
+    modele = models.ForeignKey(
+        PlanInspectionModele,
+        on_delete=models.PROTECT,
+        related_name='instances_chantier',
+        verbose_name="Modèle d'ITP",
+    )
+    # Référence lâche au chantier (installations.Chantier) par id : jamais un
+    # import cross-app de modèle.
+    chantier_id = models.PositiveIntegerField(verbose_name='ID du chantier')
+    date_ouverture = models.DateField(
+        null=True, blank=True, verbose_name="Date d'ouverture")
+    statut = models.CharField(
+        max_length=10, choices=Statut.choices,
+        default=Statut.EN_COURS, verbose_name='Statut')
+    date_creation = models.DateTimeField(
+        auto_now_add=True, verbose_name='Créé le')
+
+    class Meta:
+        verbose_name = "Plan d'inspection chantier"
+        verbose_name_plural = "Plans d'inspection chantier"
+        ordering = ['-id']
+
+    def __str__(self):
+        return f'{self.modele.nom} — chantier {self.chantier_id}'
+
+
+class ReleveControle(models.Model):
+    """Relevé d'un point de contrôle au sein d'un ``PlanInspectionChantier``.
+
+    Né de la copie d'un ``PointControleModele`` du gabarit (on conserve un FK
+    ``point`` vers la source pour l'intitulé/phase/hold_point) et porte le
+    relevé réel : ``valeur`` (texte libre — mesure, doc, observation),
+    ``conforme`` (null = pas encore relevé, True/False), une éventuelle
+    ``photo_key`` (clé objet MinIO, convention ``records.storage``), et la
+    traçabilité (``date_releve`` / ``releve_par``). Multi-société via
+    ``company`` posée côté serveur.
+    """
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='qhse_releves',
+        verbose_name='Société',
+    )
+    plan_chantier = models.ForeignKey(
+        PlanInspectionChantier,
+        on_delete=models.CASCADE,
+        related_name='releves',
+        verbose_name="Plan d'inspection chantier",
+    )
+    point = models.ForeignKey(
+        PointControleModele,
+        on_delete=models.PROTECT,
+        related_name='releves',
+        verbose_name='Point de contrôle (modèle)',
+    )
+    valeur = models.CharField(
+        max_length=500, blank=True, default='', verbose_name='Valeur relevée')
+    conforme = models.BooleanField(
+        null=True, blank=True, verbose_name='Conforme')
+    # Clé objet MinIO (bucket erp-uploads) — le fichier ne quitte jamais le
+    # stockage objet ; rien n'est commité dans le dépôt.
+    photo_key = models.CharField(
+        max_length=500, blank=True, default='', verbose_name='Clé photo')
+    date_releve = models.DateTimeField(
+        null=True, blank=True, verbose_name='Date du relevé')
+    releve_par = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='qhse_releves_effectues',
+        verbose_name='Relevé par',
+    )
+    date_creation = models.DateTimeField(
+        auto_now_add=True, verbose_name='Créé le')
+
+    class Meta:
+        verbose_name = 'Relevé de contrôle'
+        verbose_name_plural = 'Relevés de contrôle'
+        ordering = ['plan_chantier', 'point__ordre', 'id']
+
+    def __str__(self):
+        return f'{self.point.intitule} — {self.plan_chantier_id}'
