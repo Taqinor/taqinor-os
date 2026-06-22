@@ -30,11 +30,15 @@ class DossierEmployeSerializer(serializers.ModelSerializer):
         source='get_type_contrat_display', read_only=True)
     statut_display = serializers.CharField(
         source='get_statut_display', read_only=True)
+    situation_familiale_display = serializers.CharField(
+        source='get_situation_familiale_display', read_only=True)
 
     class Meta:
         model = DossierEmploye
         fields = [
-            'id', 'user', 'matricule', 'nom', 'prenom', 'cin', 'telephone',
+            'id', 'user', 'matricule', 'nom', 'prenom', 'cin',
+            'cnss', 'cimr', 'amo', 'situation_familiale',
+            'situation_familiale_display', 'nombre_enfants', 'telephone',
             'email', 'poste', 'departement', 'date_embauche', 'type_contrat',
             'type_contrat_display', 'contrat_date_debut', 'contrat_date_fin',
             'statut', 'statut_display', 'cout_horaire',

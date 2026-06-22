@@ -120,3 +120,47 @@ class EnginRoulant(models.Model):
 
     def __str__(self):
         return f'{self.nom} ({self.get_type_engin_display()})'
+
+
+# ── FLOTTE6 — Référentiels (listes éditables par société) ──────────────────
+
+class ReferentielFlotte(models.Model):
+    """Entrée d'une liste de référence éditable du parc (lookup générique).
+
+    Référentiel ADDITIF : il fournit des listes éditables par société (type de
+    véhicule, type d'engin, énergie, catégorie de permis…) en PARALLÈLE des
+    ``TextChoices`` figés portés par ``Vehicule``/``EnginRoulant`` — il ne les
+    remplace ni ne les modifie. Chaque entrée est rattachée à une société (FK
+    ``company`` posée côté serveur) et identifiée de façon stable par
+    ``(company, domaine, code)``.
+    """
+
+    class Domaine(models.TextChoices):
+        TYPE_VEHICULE = 'type_vehicule', 'Type de véhicule'
+        TYPE_ENGIN = 'type_engin', "Type d'engin"
+        ENERGIE = 'energie', 'Énergie'
+        CATEGORIE_PERMIS = 'categorie_permis', 'Catégorie de permis'
+
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='referentiels_flotte',
+        verbose_name='Société',
+    )
+    domaine = models.CharField(
+        max_length=30, choices=Domaine.choices, verbose_name='Domaine')
+    code = models.CharField(max_length=40, verbose_name='Code')
+    libelle = models.CharField(max_length=120, verbose_name='Libellé')
+    ordre = models.PositiveIntegerField(default=0, verbose_name='Ordre')
+    actif = models.BooleanField(default=True, verbose_name='Actif')
+    date_creation = models.DateTimeField(
+        auto_now_add=True, verbose_name='Créé le')
+
+    class Meta:
+        verbose_name = 'Référentiel de flotte'
+        verbose_name_plural = 'Référentiels de flotte'
+        unique_together = [('company', 'domaine', 'code')]
+        ordering = ['domaine', 'ordre', 'libelle']
+
+    def __str__(self):
+        return f'{self.get_domaine_display()} — {self.libelle}'

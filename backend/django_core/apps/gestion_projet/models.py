@@ -12,6 +12,7 @@ module est entièrement additif.
 from decimal import Decimal
 
 from django.conf import settings
+from django.core.validators import MaxValueValidator
 from django.db import models
 
 
@@ -21,11 +22,18 @@ class Projet(models.Model):
     Le ``client_id`` référence LÂCHEMENT un ``crm.Client`` (aucun FK dur) ; le
     ``budget_total`` est une donnée INTERNE de pilotage, jamais exposée au
     client final.
+
+    Le cycle de vie ``statut`` est une machine à états PROPRE au projet
+    d'installation solaire — totalement DISTINCTE des étapes du tunnel CRM de
+    ``STAGES.py`` (règle #2) : il ne réutilise NI n'importe AUCUNE clé/étiquette
+    de ``STAGES.py``. Le ``statut`` n'est jamais posé depuis le corps de
+    requête : seules les actions de transition (voir ``views.py``) le déplacent.
     """
     class Statut(models.TextChoices):
-        PROSPECT = 'prospect', 'Prospect'
+        BROUILLON = 'brouillon', 'Brouillon'
+        PLANIFIE = 'planifie', 'Planifié'
         EN_COURS = 'en_cours', 'En cours'
-        SUSPENDU = 'suspendu', 'Suspendu'
+        EN_PAUSE = 'en_pause', 'En pause'
         TERMINE = 'termine', 'Terminé'
         ANNULE = 'annule', 'Annulé'
 
@@ -40,8 +48,8 @@ class Projet(models.Model):
     description = models.TextField(
         blank=True, default='', verbose_name='Description')
     statut = models.CharField(
-        max_length=10, choices=Statut.choices,
-        default=Statut.EN_COURS, verbose_name='Statut')
+        max_length=15, choices=Statut.choices,
+        default=Statut.BROUILLON, verbose_name='Statut')
     # Référence lâche vers crm.Client (aucun FK dur).
     client_id = models.PositiveIntegerField(
         null=True, blank=True, verbose_name='ID du client')
@@ -155,3 +163,120 @@ class ProjetLien(models.Model):
 
     def __str__(self):
         return f'{self.projet.code} → {self.type_cible} #{self.cible_id}'
+
+
+class PhaseProjet(models.Model):
+    """Une phase de la décomposition (WBS) d'un ``Projet``.
+
+    Découpe un projet en étapes de réalisation standard — étude, appro, pose,
+    mise en service, réception — pour suivre l'avancement par phase (statut,
+    dates prévues/réelles, pourcentage). C'est le WBS PROPRE à la gestion de
+    projet : totalement DISTINCT des jalons ``installations.JalonProjet`` — ce
+    module n'importe JAMAIS ``installations`` (référence d'aucune sorte).
+
+    Le ``type_phase`` est un enum PROPRE à ce module : il ne réutilise NI
+    n'importe AUCUNE clé/étiquette de ``STAGES.py`` (règle #2). Tout est
+    multi-société : ``company`` est posée côté serveur, jamais lue du corps de
+    requête. Modèle entièrement additif.
+    """
+    class TypePhase(models.TextChoices):
+        ETUDE = 'etude', 'Étude'
+        APPRO = 'appro', 'Approvisionnement'
+        POSE = 'pose', 'Pose'
+        MES = 'mes', 'Mise en service'
+        RECEPTION = 'reception', 'Réception'
+
+    class Statut(models.TextChoices):
+        A_VENIR = 'a_venir', 'À venir'
+        EN_COURS = 'en_cours', 'En cours'
+        TERMINEE = 'terminee', 'Terminée'
+
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='projet_phases',
+        verbose_name='Société',
+    )
+    projet = models.ForeignKey(
+        Projet,
+        on_delete=models.CASCADE,
+        related_name='phases',
+        verbose_name='Projet',
+    )
+    type_phase = models.CharField(
+        max_length=12, choices=TypePhase.choices,
+        verbose_name='Type de phase')
+    libelle = models.CharField(
+        max_length=200, blank=True, default='', verbose_name='Libellé')
+    ordre = models.PositiveIntegerField(default=0, verbose_name='Ordre')
+    date_debut_prevue = models.DateField(
+        null=True, blank=True, verbose_name='Date de début prévue')
+    date_fin_prevue = models.DateField(
+        null=True, blank=True, verbose_name='Date de fin prévue')
+    date_debut_reelle = models.DateField(
+        null=True, blank=True, verbose_name='Date de début réelle')
+    date_fin_reelle = models.DateField(
+        null=True, blank=True, verbose_name='Date de fin réelle')
+    statut = models.CharField(
+        max_length=10, choices=Statut.choices,
+        default=Statut.A_VENIR, verbose_name='Statut')
+    avancement_pct = models.PositiveSmallIntegerField(
+        default=0, validators=[MaxValueValidator(100)],
+        verbose_name='Avancement (%)')
+    date_creation = models.DateTimeField(
+        auto_now_add=True, verbose_name='Créé le')
+
+    class Meta:
+        verbose_name = 'Phase de projet'
+        verbose_name_plural = 'Phases de projet'
+        ordering = ['projet', 'ordre', 'id']
+        unique_together = [('projet', 'type_phase')]
+
+    def __str__(self):
+        return f'{self.projet.code} — {self.get_type_phase_display()}'
+
+
+class ProjetActivity(models.Model):
+    """Journal minimal des transitions de statut d'un ``Projet``.
+
+    Chaque changement de statut appliqué par une action de transition
+    (``views.py``) y est tracé côté serveur : ancien → nouveau statut, auteur,
+    horodatage. La société et l'auteur sont TOUJOURS posés côté serveur, jamais
+    lus du corps de requête. Modèle entièrement additif.
+    """
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='projet_activites',
+        verbose_name='Société',
+    )
+    projet = models.ForeignKey(
+        Projet,
+        on_delete=models.CASCADE,
+        related_name='activites',
+        verbose_name='Projet',
+    )
+    old_value = models.CharField(
+        max_length=15, blank=True, default='', verbose_name='Ancien statut')
+    new_value = models.CharField(
+        max_length=15, blank=True, default='', verbose_name='Nouveau statut')
+    auteur = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='projet_activites',
+        verbose_name='Auteur',
+    )
+    date_creation = models.DateTimeField(
+        auto_now_add=True, verbose_name='Créé le')
+
+    class Meta:
+        verbose_name = 'Activité projet'
+        verbose_name_plural = 'Activités projet'
+        ordering = ['-date_creation', '-id']
+        indexes = [models.Index(
+            fields=['projet', '-date_creation'],
+            name='gp_proj_activity_idx')]
+
+    def __str__(self):
+        return f'{self.projet_id} {self.old_value}→{self.new_value}'.strip()

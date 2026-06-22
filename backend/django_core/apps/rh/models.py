@@ -61,6 +61,12 @@ class DossierEmploye(models.Model):
         SUSPENDU = 'suspendu', 'Suspendu'
         SORTI = 'sorti', 'Sorti'
 
+    class SituationFamiliale(models.TextChoices):
+        CELIBATAIRE = 'celibataire', 'Célibataire'
+        MARIE = 'marie', 'Marié(e)'
+        DIVORCE = 'divorce', 'Divorcé(e)'
+        VEUF = 'veuf', 'Veuf(ve)'
+
     company = models.ForeignKey(
         'authentication.Company',
         on_delete=models.CASCADE,
@@ -79,6 +85,19 @@ class DossierEmploye(models.Model):
     prenom = models.CharField(max_length=120, verbose_name='Prénom')
     cin = models.CharField(
         max_length=20, blank=True, default='', verbose_name='CIN')
+    # Numéros légaux paie (Maroc) — facultatifs ; pas d'unicité ici (à étudier
+    # en suivi : unicité par société sans piège AddField(unique, default)).
+    cnss = models.CharField(
+        max_length=20, blank=True, default='', verbose_name='N° CNSS')
+    cimr = models.CharField(
+        max_length=20, blank=True, default='', verbose_name='N° CIMR')
+    amo = models.CharField(
+        max_length=20, blank=True, default='', verbose_name='N° AMO')
+    situation_familiale = models.CharField(
+        max_length=12, choices=SituationFamiliale.choices,
+        blank=True, default='', verbose_name='Situation familiale')
+    nombre_enfants = models.PositiveIntegerField(
+        default=0, verbose_name="Nombre d'enfants")
     telephone = models.CharField(
         max_length=30, blank=True, default='', verbose_name='Téléphone')
     email = models.EmailField(blank=True, default='', verbose_name='E-mail')

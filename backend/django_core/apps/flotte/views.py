@@ -9,8 +9,12 @@ from rest_framework import filters, viewsets
 from authentication.mixins import TenantMixin
 from authentication.permissions import IsAnyRole, IsResponsableOrAdmin
 
-from .models import EnginRoulant, Vehicule
-from .serializers import EnginRoulantSerializer, VehiculeSerializer
+from .models import EnginRoulant, ReferentielFlotte, Vehicule
+from .serializers import (
+    EnginRoulantSerializer,
+    ReferentielFlotteSerializer,
+    VehiculeSerializer,
+)
 
 READ_ACTIONS = ['list', 'retrieve']
 
@@ -65,4 +69,26 @@ class EnginRoulantViewSet(_FlotteBaseViewSet):
         type_engin = params.get('type_engin')
         if type_engin:
             qs = qs.filter(type_engin=type_engin)
+        return qs
+
+
+class ReferentielFlotteViewSet(_FlotteBaseViewSet):
+    """Listes de référence éditables du parc (FLOTTE6). Filtrable par
+    ``?domaine=`` (type_vehicule/type_engin/energie/categorie_permis) et par
+    ``?actif=true|false``, recherche par code/libellé."""
+    queryset = ReferentielFlotte.objects.all()
+    serializer_class = ReferentielFlotteSerializer
+    filter_backends = [filters.SearchFilter, filters.OrderingFilter]
+    search_fields = ['code', 'libelle']
+    ordering_fields = ['domaine', 'ordre', 'libelle', 'date_creation']
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        params = self.request.query_params
+        domaine = params.get('domaine')
+        if domaine:
+            qs = qs.filter(domaine=domaine)
+        actif = params.get('actif')
+        if actif is not None:
+            qs = qs.filter(actif=actif.lower() in ('1', 'true', 'vrai', 'oui'))
         return qs
