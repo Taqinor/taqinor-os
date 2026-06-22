@@ -502,7 +502,7 @@ first run that ticks any `FG*` task refreshes CODEMAP §10 + `--write` in that c
 - [x] FG117 — **À-nouveaux / réouverture d'exercice** — report des soldes de bilan dans le nouvel exercice. (SCHEMA)
 - [x] FG118 — **Registre des immobilisations** — actifs (camionnettes, outillage, matériel) avec coût/date/catégorie/TVA. (SCHEMA)
 - [x] FG119 — **Plan d'amortissement (linéaire/dégressif)** — dotations par actif aux taux marocains, postées au grand livre (impacte l'IS). (SCHEMA)
-- [ ] FG120 — **Cession / mise au rebut d'immobilisation** — plus/moins-value + écritures associées. (SCHEMA)
+- [x] FG120 — **Cession / mise au rebut d'immobilisation** — plus/moins-value + écritures associées. (SCHEMA)
 - [x] FG121 — **Référentiel comptes bancaires & caisses** — `CompteTresorerie` (banque/RIB/devise/solde) ; aujourd'hui un seul RIB texte. (SCHEMA)  [DONE 2026-06-21]
 - [ ] FG122 — **Position de trésorerie consolidée + projection** — solde par compte/caisse + total + projection nette AR/AP/paie/impôts (vue la plus demandée). (SCHEMA)
 - [ ] FG123 — **Rapprochement bancaire (relevé ↔ écritures)** — pointer ligne GL vs ligne relevé jusqu'à concordance (≠ FG42 import paiements clients). (SCHEMA)
@@ -900,7 +900,7 @@ these overlap and SUPERSEDE the domain-list FG items as the module-organized hom
 - [x] PROJ1 — Modèle `Projet`/Programme multi-chantiers + `ProjetChantier`. (ARCH)  [DONE 2026-06-22: NEW app apps/gestion_projet: Projet + ProjetChantier (multi-chantiers, statut propre, jamais STAGES.py).]
 - [x] PROJ2 — Liens projet → devis/factures/tickets/achats (string-FK via selectors). (SCHEMA)
 - [x] PROJ3 — Machine à états du projet (propre, jamais STAGES.py). (DECISION)
-- [ ] PROJ4 — Phases de projet (étude/appro/pose/MES/réception). (SCHEMA)
+- [x] PROJ4 — Phases de projet (étude/appro/pose/MES/réception). (SCHEMA)
 - [ ] PROJ5 — Tâches & sous-tâches (WBS). (ARCH)
 - [ ] PROJ6 — Dépendances de tâches FS/SS/FF/SF + lag. (SCHEMA)
 - [ ] PROJ7 — Jalons (+ `facturation_pct`). (SCHEMA)
@@ -984,7 +984,7 @@ these overlap and SUPERSEDE the domain-list FG items as the module-organized hom
 - [x] FLOTTE3 — Lien `Vehicule.emplacement_stock` ↔ `stock.EmplacementStock` (via selector). (DEP)
 - [x] FLOTTE4 — `EnginRoulant` (compteur d'heures, nacelle/groupe/chariot). (SCHEMA)
 - [ ] FLOTTE5 — Référence d'actif commune (Vehicule|Engin) pour entretien/sinistre/doc. (DECISION)
-- [ ] FLOTTE6 — Référentiels listes (type véhicule/engin, énergie, catégorie permis). (SCHEMA)
+- [x] FLOTTE6 — Référentiels listes (type véhicule/engin, énergie, catégorie permis). (SCHEMA)
 - [ ] FLOTTE7 — `Conducteur` + permis (lien `authentication.User`). (SCHEMA)
 - [ ] FLOTTE8 — `AffectationConducteur` (conducteur↔véhicule datée). (ROUTINE)
 - [ ] FLOTTE9 — Contrôle permis valide/catégorie à l'affectation. (ROUTINE)
@@ -1020,7 +1020,7 @@ these overlap and SUPERSEDE the domain-list FG items as the module-organized hom
 - [x] QHSE1 — App QHSE + socle multi-tenant. (ARCH)  [DONE 2026-06-22: NEW app apps/qhse, socle multi-tenant.]
 - [x] QHSE2 — ITP : `PlanInspectionModele` + `PointControleModele` (phase/type relevé/hold-point). (SCHEMA)
 - [x] QHSE3 — Seed ITP solaire par type d'installation. (ROUTINE)
-- [ ] QHSE4 — `PlanInspectionChantier` + `ReleveControle` (valeur/conforme/photo). (SCHEMA)
+- [x] QHSE4 — `PlanInspectionChantier` + `ReleveControle` (valeur/conforme/photo). (SCHEMA)
 - [ ] QHSE5 — Auto-conformité des relevés mesurés (vs min/max attendu). (ROUTINE)
 - [ ] QHSE6 — Points d'arrêt bloquants (hold points) gating l'avancement chantier. (DECISION)
 - [ ] QHSE7 — Relevé courbe I-V par string. (SCHEMA)
@@ -1064,7 +1064,7 @@ these overlap and SUPERSEDE the domain-list FG items as the module-organized hom
 - [x] CONTRAT2 — Enum `type_contrat` (12 types) + lifecycle statut. (SCHEMA)  [DONE 2026-06-22: type_contrat 12 types + statut lifecycle (brouillon→…→résilié/expiré).]
 - [x] CONTRAT3 — `PartieContrat` (parties/signataires, ≥2). (SCHEMA)
 - [x] CONTRAT4 — Liens inter-apps (devis/lead/installation/maintenance) en string-FK. (ROUTINE)
-- [ ] CONTRAT5 — Wrap de `sav.ContratMaintenance` (lecture/lien, ne casse pas). (ROUTINE)
+- [x] CONTRAT5 — Wrap de `sav.ContratMaintenance` (lecture/lien, ne casse pas). (ROUTINE)
 - [ ] CONTRAT6 — Niveaux de confidentialité + droits d'accès par type. (DECISION)
 - [ ] CONTRAT7 — `ModeleContrat` (bibliothèque de modèles). (SCHEMA)
 - [ ] CONTRAT8 — `Clause` (bibliothèque de clauses réutilisables). (SCHEMA)
@@ -1101,7 +1101,7 @@ these overlap and SUPERSEDE the domain-list FG items as the module-organized hom
 - [x] KB1 — App `kb` + `KbArticle` (titre/corps/catégorie/tags, company FK). (ARCH)  [DONE 2026-06-22: NEW app apps/kb: KbArticle (titre/corps/catégorie/tags/statut/auteur).]
 - [x] KB2 — Versionnage des articles + statut (brouillon/publié/obsolète). (SCHEMA)
 - [x] KB3 — Recherche plein-texte + filtres par catégorie/tag. (ROUTINE)
-- [ ] KB4 — Lien article ↔ produit/équipement/type d'intervention (contextuel sur SAV/chantier). (SCHEMA)
+- [x] KB4 — Lien article ↔ produit/équipement/type d'intervention (contextuel sur SAV/chantier). (SCHEMA)
 - [ ] KB5 — Procédures/SOP d'installation & dossiers ONEE/82-21 (gabarits seedés). (ROUTINE)
 - [ ] KB6 — Source de contenu pour le RAG/DocQA (FG352) — indexation pgvector. (DEP)
 - [ ] KB7 — Droits d'accès par rôle + suivi de lecture. (SCHEMA)
@@ -1509,3 +1509,9 @@ Tracked here so they aren't lost:
 - 2026-06-22 — QHSE3 (apps/qhse): management command `seed_itp_solaire` (idempotent, additif, par société ou `--company`) seedant 3 ITP solaires (résidentiel réseau / autoconsommation indus-com / pompage agricole), 7 points chacun, hold-points sur Raccordement + Mise en service. Clés idempotentes company+code / company+plan+ordre (jamais d'écrasement). Aucune migration (modèles QHSE2). 7 tests.
 - 2026-06-22 — PROJ3 (apps/gestion_projet): machine à états du projet INDÉPENDANTE de STAGES.py (rule #2 respectée — aucune clé STAGES réutilisée) — statut brouillon→planifié→en_cours⇄en_pause→terminé, annulé depuis tout état non terminal ; actions planifier/demarrer/mettre-en-pause/reprendre/terminer/annuler (transitions illégales → 400), statut read-only hors actions, log `ProjetActivity` (old→new, auteur+société serveur) + `historique`. 1 migration additive, 25 tests.
 - 2026-06-22 — FG156 (apps/rh): identité & numéros légaux employé sur `DossierEmploye` — `cnss`/`cimr`/`amo` (CIN+RIB déjà présents), `situation_familiale` (célibataire/marié/divorcé/veuf), `nombre_enfants` (déductions IR). Champs optionnels/nullables (lignes existantes valides), pas d'unicité (notée en follow-up pour éviter le piège AddField unique). 1 migration additive, 8 tests.
+- 2026-06-22 — FG120 (apps/compta): cession/mise au rebut d'immobilisation — `CessionImmobilisation` (type vente/rebut, prix, VNC = coût − amortissements cumulés FG119, résultat de cession signé plus/moins-value, posted+écriture). `services.poster_cession` poste l'écriture de sortie équilibrée (reprise amortissements + sortie cl.2 + résultat 6513/7513 + 3481 si vente) via le service compta, RESPECTE le verrou de période, et désactive l'actif. Actions `immobilisations/{id}/ceder`, `cessions/{id}/poster`. 1 migration additive, 19 tests.
+- 2026-06-22 — KB4 (apps/kb): `KbArticleLien` (string-FK produit/equipement/type_intervention, comme ContratLien) + `selectors` enrichissant produit via `stock.selectors.get_produit_scoped` (equipement/type_intervention dégradent), reverse-lookup `article-liens/articles/?type_cible=&cible_id=`. Frontière cross-app + import-linter OK. 1 migration additive, 15 tests.
+- 2026-06-22 — QHSE4 (apps/qhse): instance ITP chantier — `PlanInspectionChantier` (FK modèle QHSE2, `chantier_id` string-FK, statut) + `ReleveControle` (FK point, valeur, conforme NullBool, photo_key MinIO, releve_par serveur). `services.instancier_plan_chantier` copie un relevé par point (idempotent, backfill). ViewSets company-scoped + action `plans-chantier/instancier`. 1 migration additive, 16 tests.
+- 2026-06-22 — PROJ4 (apps/gestion_projet): `PhaseProjet` (type étude/appro/pose/MES/réception — enum propre, jamais STAGES.py ; dates prévues/réelles, statut, avancement 0-100 borné) + `services.instancier_phases_standard` (5 phases ordonnées, idempotent). ViewSet `phases/` + action `projets/{id}/instancier-phases`. 1 migration additive, 18 tests.
+- 2026-06-22 — FLOTTE6 (apps/flotte): `ReferentielFlotte` (listes éditables par société : domaine type_vehicule/type_engin/energie/categorie_permis, code/libellé/ordre/actif, unique company+domaine+code) — ADDITIF, les choices hardcodés Vehicule/EnginRoulant restent intacts. Command idempotente `seed_referentiels_flotte` (énergie/permis/types standards). ViewSet `referentiels/` (?domaine/?actif). 1 migration additive, 19 tests.
+- 2026-06-22 — CONTRAT5 (apps/contrats): champ `Contrat.sav_contrat_maintenance_id` (PositiveInteger nullable, string-id vers `sav.ContratMaintenance`) — purement additif, AUCUN import/édition de sav (sav n'a pas de selectors.py), pas de validation cross-app (notée en follow-up). Ne casse rien. 1 migration additive nullable, 4 tests.
