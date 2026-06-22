@@ -113,7 +113,7 @@ const billRanges = BILL_RANGES;
         <label class="block text-sm text-lune-soft">
           Adresse / ville
           <input id="mt-city" name="city" type="text" autocomplete="address-level2"
-            placeholder="Pré-remplie depuis la carte — modifiable" class={`${inputClass} mt-1`} />
+            placeholder="Lue depuis la carte — modifiable si besoin" class={`${inputClass} mt-1`} />
         </label>
 
         <div class="grid gap-4 sm:grid-cols-2">
@@ -132,6 +132,38 @@ const billRanges = BILL_RANGES;
             </select>
           </label>
         </div>
+
+        <!-- W1 — PROFIL ÉNERGÉTIQUE (miroir du diagnostic ERP). Nombres jamais
+             rejetés (form novalidate, inputs step="any"). -->
+        <p class="tech-label rule-brass text-brass-300 pt-2">Votre consommation</p>
+
+        <div class="grid gap-4 sm:grid-cols-2">
+          <label class="block text-sm text-lune-soft">
+            Facture mensuelle (MAD)
+            <input id="mt-facture-hiver" name="factureHiver" type="number" step="any" inputmode="decimal"
+              placeholder="Montant exact, ex. 1 200" class={`${inputClass} mt-1`} />
+          </label>
+          <label class="block text-sm text-lune-soft">
+            Raccordement
+            <select id="mt-raccordement" name="raccordement" class={`${inputClass} mt-1`}>
+              <option value="">Choisir…</option>
+              <option value="monophase">Monophasé</option>
+              <option value="triphase">Triphasé</option>
+              <option value="inconnu">Je ne sais pas</option>
+            </select>
+          </label>
+        </div>
+
+        <label class="flex items-start gap-3 text-sm text-lune-soft">
+          <input id="mt-ete-differente" name="eteDifferente" type="checkbox" class="mt-1 h-5 w-5 flex-none accent-brass-400" />
+          <span>L'été est différent de l'hiver&nbsp;? (climatisation, pompage…)</span>
+        </label>
+
+        <label id="mt-facture-ete-wrap" hidden class="block text-sm text-lune-soft">
+          Facture été (MAD)
+          <input id="mt-facture-ete" name="factureEte" type="number" step="any" inputmode="decimal"
+            placeholder="Montant en été, ex. 2 500" class={`${inputClass} mt-1`} />
+        </label>
 
         <label class="flex items-start gap-3 text-sm text-lune-soft">
           <input id="mt-consent" name="consent" type="checkbox" class="mt-1 h-5 w-5 flex-none accent-brass-400" />
@@ -167,6 +199,10 @@ const billRanges = BILL_RANGES;
   // Repère/contour courants, tenus à jour par onCaptureChange (jamais posté ici).
   let capturePin: { lat: number; lng: number } | null = null;
   let captureOutline: Array<[number, number]> = [];
+  // W2 — adresse lue DEPUIS la carte (géocodage inverse du repère). Le client peut
+  // la corriger : on ne réécrit le champ que tant qu'il ne l'a pas édité à la main.
+  let cityTouched = false;
+  cityEl?.addEventListener('input', () => { cityTouched = true; });
 
   let started = false;
 
@@ -184,8 +220,14 @@ const billRanges = BILL_RANGES;
         onCaptureChange: (s) => {
           capturePin = s.pin;
           captureOutline = s.outline;
-          // Pré-remplit la ville depuis l'adresse géocodée quand le champ est vide.
-          if (cityEl && !cityEl.value.trim() && addressEl?.value.trim()) cityEl.value = addressEl.value.trim();
+          // W2 — L'ADRESSE EST LUE DEPUIS LA CARTE : le géocodage inverse du repère
+          // remplit le champ adresse (modifiable). On n'écrase JAMAIS une saisie
+          // manuelle du client (cityTouched). Sans adresse inverse encore résolue,
+          // on retombe sur le libellé de la barre de recherche s'il existe.
+          if (cityEl && !cityTouched) {
+            const fromMap = (s.address && s.address.trim()) || addressEl?.value.trim() || '';
+            if (fromMap) cityEl.value = fromMap;
+          }
         },
       });
     } catch {
@@ -218,19 +260,52 @@ const billRanges = BILL_RANGES;
   const submitBtn = document.getElementById('mt-submit') as HTMLButtonElement | null;
   const val = (id: string) => (document.getElementById(id) as HTMLInputElement | HTMLSelectElement | null)?.value ?? '';
 
+  // W1 — toggle « L'été est différent ? » : révèle/masque le champ Facture été.
+  const eteToggle = document.getElementById('mt-ete-differente') as HTMLInputElement | null;
+  const eteWrap = document.getElementById('mt-facture-ete-wrap') as HTMLElement | null;
+  const eteInput = document.getElementById('mt-facture-ete') as HTMLInputElement | null;
+  eteToggle?.addEventListener('change', () => {
+    const on = eteToggle.checked === true;
+    if (eteWrap) eteWrap.hidden = !on;
+    if (!on && eteInput) eteInput.value = ''; // été repassé à « identique » → on oublie la valeur
+  });
+
+  // Convertit une saisie en nombre fini, ou null (form novalidate, jamais de rejet).
+  const num = (id: string): number | null => {
+    const raw = val(id).trim();
+    if (raw === '') return null;
+    const n = Number(raw);
+    return Number.isFinite(n) ? n : null;
+  };
+
   form?.addEventListener('submit', async (e) => {
     e.preventDefault();
     if (errEl) errEl.hidden = true;
     const consent = (document.getElementById('mt-consent') as HTMLInputElement | null)?.checked === true;
+    // W1/W3 — profil énergétique mirroir de l'ERP.
+    const eteDifferente = eteToggle?.checked === true;
+    const adresse = val('mt-city') || addressEl?.value.trim() || '';
     const body: Record<string, unknown> = {
       fullName: val('mt-name'),
       phone: val('mt-phone'),
-      city: val('mt-city') || addressEl?.value.trim() || '',
+      city: adresse,
       billRange: val('mt-bill'),
       roofType: val('mt-roof'),
       consent,
+      // W3 — nouveaux champs énergétiques + adresse/GPS lus depuis la carte.
+      factureHiver: num('mt-facture-hiver'),
+      // été non différent ⇒ factureEte null (jamais la valeur saisie précédemment).
+      factureEte: eteDifferente ? num('mt-facture-ete') : null,
+      eteDifferente,
+      raccordement: val('mt-raccordement'),
+      adresse,
     };
-    if (capturePin) body.roofPoint = capturePin;
+    if (capturePin) {
+      body.roofPoint = capturePin;
+      // W3 — GPS issu du repère sur la carte.
+      body.gpsLat = capturePin.lat;
+      body.gpsLng = capturePin.lng;
+    }
     if (captureOutline.length >= 3) body.roofOutline = captureOutline;
 
     if (submitBtn) submitBtn.disabled = true;

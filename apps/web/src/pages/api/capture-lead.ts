@@ -56,6 +56,30 @@ function cleanRoofOutline(v: unknown): Array<[number, number]> {
   return out.length >= 3 ? out : [];
 }
 
+/** Nombre fini > 0, sinon null (factures : jamais un nombre absurde / négatif). */
+function cleanMoney(v: unknown): number | null {
+  const n = Number(v);
+  return Number.isFinite(n) && n > 0 ? n : null;
+}
+
+/** Nombre fini, sinon null (coordonnées GPS du repère). */
+function cleanCoord(v: unknown): number | null {
+  const n = Number(v);
+  return Number.isFinite(n) ? n : null;
+}
+
+/** Mode de raccordement reconnu (sinon null — on ne devine pas). */
+function cleanRaccordement(v: unknown): 'monophase' | 'triphase' | 'inconnu' | null {
+  return v === 'monophase' || v === 'triphase' || v === 'inconnu' ? v : null;
+}
+
+/** Adresse (chaîne nettoyée bornée), ou null. */
+function cleanAdresse(v: unknown): string | null {
+  if (typeof v !== 'string') return null;
+  const s = v.trim().slice(0, 200);
+  return s.length > 0 ? s : null;
+}
+
 export const POST: APIRoute = async ({ request }) => {
   // Même garde-fou anti-spam que /api/preview-lead (bucket distinct par endpoint).
   const rl = rateLimit(`capture-lead:${clientIpFromRequest(request)}`);
@@ -82,17 +106,38 @@ export const POST: APIRoute = async ({ request }) => {
   const baseRecord = buildLeadRecord(lead, band, new Date(), page);
 
   // Champs supplémentaires acceptés par le récepteur Django : repère, contour,
-  // consommation. Ajoutés UNIQUEMENT s'ils sont valides — sinon l'enregistrement
-  // transmis reste identique à celui de /api/preview-lead.
+  // consommation, PROFIL ÉNERGÉTIQUE (W1/W3) + adresse/GPS lus depuis la carte.
+  // Ajoutés UNIQUEMENT s'ils sont valides — sinon l'enregistrement transmis reste
+  // identique à celui de /api/preview-lead. `factureEte`/`eteDifferente` sont liés :
+  // une seule pièce d'info (été ≠ hiver) avec sa valeur d'été.
   const b = (body ?? {}) as Record<string, unknown>;
   const roofPoint = cleanRoofPoint(b.roofPoint);
   const roofOutline = cleanRoofOutline(b.roofOutline);
   const billKwh = Number(b.billKwh);
+  // W1/W3 — profil énergétique
+  const factureHiver = cleanMoney(b.factureHiver);
+  const eteDifferente = b.eteDifferente === true;
+  // été non différent ⇒ factureEte forcé à null (jamais une valeur résiduelle).
+  const factureEte = eteDifferente ? cleanMoney(b.factureEte) : null;
+  const raccordement = cleanRaccordement(b.raccordement);
+  const adresse = cleanAdresse(b.adresse);
+  // W3 — GPS issu du repère (priorité au repère validé ; sinon les champs gps* bruts).
+  const gpsLat = roofPoint ? roofPoint.lat : cleanCoord(b.gpsLat);
+  const gpsLng = roofPoint ? roofPoint.lng : cleanCoord(b.gpsLng);
   const record = {
     ...baseRecord,
     ...(roofPoint ? { roofPoint } : {}),
     ...(roofOutline.length >= 3 ? { roofOutline } : {}),
     ...(Number.isFinite(billKwh) && billKwh > 0 ? { billKwh } : {}),
+    ...(factureHiver != null ? { factureHiver } : {}),
+    // `factureEte` est explicitement émis (number|null) pour signaler « été identique »
+    // quand eteDifferente est faux — le récepteur peut s'y fier.
+    factureEte,
+    eteDifferente,
+    ...(raccordement ? { raccordement } : {}),
+    ...(adresse ? { adresse } : {}),
+    ...(gpsLat != null ? { gpsLat } : {}),
+    ...(gpsLng != null ? { gpsLng } : {}),
   };
 
   const background = (async () => {

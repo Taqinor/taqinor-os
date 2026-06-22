@@ -32,6 +32,11 @@ export interface MapDraw {
   /** W93 — `autoSelect` (programmatique, ex. initialQuery) vole directement au 1ᵉʳ
    *  résultat ; sinon la liste de suggestions est peuplée et on attend la sélection. */
   geocode: (query: string, autoSelect?: boolean) => Promise<void>;
+  /** W2 — géocodage INVERSE : du couple (lng, lat) du repère vers le libellé d'adresse
+   *  le plus pertinent (`place_name`). Retourne `null` si rien n'est trouvé ou si la
+   *  requête échoue/est annulée. Même clé MapTiler + même garde anti-course (jeton +
+   *  AbortController) que `geocode`. */
+  reverseGeocode: (lng: number, lat: number, opts?: { signal?: AbortSignal }) => Promise<string | null>;
 }
 
 export function createMapDraw(ctx: Ctx, deps: MapDrawDeps): MapDraw {
@@ -203,6 +208,39 @@ export function createMapDraw(ctx: Ctx, deps: MapDrawDeps): MapDraw {
     }
   }
 
+  // W2 — GÉOCODAGE INVERSE : le repère (lng, lat) → libellé d'adresse. Réutilise la clé
+  // MapTiler et le MÊME garde anti-course que `geocode` (jeton `revToken` distinct +
+  // AbortController), plus un `opts.signal` externe optionnel (annulation par l'appelant
+  // si un nouveau repère est posé avant la fin). Endpoint reverse MapTiler :
+  // /geocoding/{lng},{lat}.json — language=fr, country=ma. Retourne le meilleur
+  // `place_name` (premier feature) ou null. NE LÈVE JAMAIS (parité avec geocode).
+  let revToken = 0;
+  let revAbort: AbortController | null = null;
+  async function reverseGeocode(lng: number, lat: number, opts2: { signal?: AbortSignal } = {}): Promise<string | null> {
+    if (!Number.isFinite(lng) || !Number.isFinite(lat)) return null;
+    const myToken = ++revToken;
+    revAbort?.abort();
+    const ctrl = new AbortController();
+    revAbort = ctrl;
+    // Si l'appelant fournit un signal, on relaie son abort vers notre contrôleur.
+    opts2.signal?.addEventListener('abort', () => ctrl.abort(), { once: true });
+    try {
+      const url = `https://api.maptiler.com/geocoding/${encodeURIComponent(lng)},${encodeURIComponent(lat)}.json?key=${encodeURIComponent(opts.maptilerKey)}&language=fr&country=ma`;
+      const res = await fetch(url, { signal: ctrl.signal });
+      if (!res.ok) throw new Error('reverse-geocode');
+      const data = (await res.json()) as { features?: Array<{ place_name?: string; text?: string }> };
+      if (myToken !== revToken) return null; // un appel plus récent l'a emporté
+      // Premier feature exploitable : on préfère son `place_name`, sinon son `text`.
+      const best = (data.features ?? []).find(
+        (f) => (typeof f.place_name === 'string' && f.place_name.length > 0) || (typeof f.text === 'string' && f.text.length > 0),
+      );
+      if (!best) return null;
+      return best.place_name && best.place_name.length > 0 ? best.place_name : best.text ?? null;
+    } catch {
+      return null; // annulée / périmée / réseau : pas d'adresse, on n'écrase rien
+    }
+  }
+
   // W93 — saisie débouncée (~300 ms, comme le débounce billTimer) : peuple la liste au fil
   // de la frappe sans rafale de requêtes.
   let geoInputTimer: ReturnType<typeof setTimeout> | null = null;
@@ -258,5 +296,5 @@ export function createMapDraw(ctx: Ctx, deps: MapDrawDeps): MapDraw {
     void geocode(q, true);
   });
 
-  return { redrawTrace, addVertex, undoLastPoint, geocode };
+  return { redrawTrace, addVertex, undoLastPoint, geocode, reverseGeocode };
 }
