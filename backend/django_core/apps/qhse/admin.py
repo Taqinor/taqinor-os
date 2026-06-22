@@ -2,7 +2,7 @@ from django.contrib import admin
 
 from .models import (
     ActionCorrectivePreventive, NonConformite, PlanInspectionChantier,
-    PlanInspectionModele, PointControleModele, ReleveControle,
+    PlanInspectionModele, PointControleModele, ReleveControle, ReleveCourbeIV,
 )
 
 
@@ -51,3 +51,10 @@ class ReleveControleAdmin(admin.ModelAdmin):
                     'date_releve', 'releve_par', 'company')
     list_filter = ('conforme',)
     search_fields = ('valeur', 'point__intitule')
+
+
+@admin.register(ReleveCourbeIV)
+class ReleveCourbeIVAdmin(admin.ModelAdmin):
+    list_display = ('id', 'string_id', 'chantier_id', 'voc', 'isc',
+                    'pmpp', 'date_releve', 'releve_par', 'company')
+    search_fields = ('string_id', 'notes')

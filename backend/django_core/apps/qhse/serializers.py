@@ -8,7 +8,7 @@ from rest_framework import serializers
 
 from .models import (
     ActionCorrectivePreventive, NonConformite, PlanInspectionChantier,
-    PlanInspectionModele, PointControleModele, ReleveControle,
+    PlanInspectionModele, PointControleModele, ReleveControle, ReleveCourbeIV,
 )
 
 
@@ -149,3 +149,30 @@ class ReleveControleSerializer(serializers.ModelSerializer):
 
     def validate_point(self, value):
         return _meme_societe(self, value, 'Point de contrôle')
+
+
+class ReleveCourbeIVSerializer(serializers.ModelSerializer):
+    """Relevé courbe I-V d'un string PV (QHSE7).
+
+    Expose le facteur de forme ``fill_factor`` calculé côté modèle (lecture
+    seule) ; ``company`` et ``releve_par`` restent posés côté serveur. Le
+    rattachement lâche optionnel ``plan_chantier`` est validé même-société.
+    """
+    fill_factor = serializers.SerializerMethodField()
+
+    class Meta:
+        model = ReleveCourbeIV
+        fields = [
+            'id', 'chantier_id', 'plan_chantier', 'string_id',
+            'voc', 'isc', 'vmpp', 'impp', 'pmpp', 'fill_factor',
+            'irradiance', 'temperature_module', 'courbe_points', 'notes',
+            'date_releve', 'releve_par', 'date_creation',
+        ]
+        read_only_fields = ['releve_par', 'date_creation']
+
+    def get_fill_factor(self, obj):
+        ff = obj.fill_factor()
+        return None if ff is None else str(ff)
+
+    def validate_plan_chantier(self, value):
+        return _meme_societe(self, value, "Plan d'inspection chantier")
