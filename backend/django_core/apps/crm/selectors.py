@@ -92,6 +92,23 @@ def client_credit_warning(client, montant_ttc_nouveau=None):
     }
 
 
+def get_company_lead(company, lead_id):
+    """B1 — Lead borné à la société, ou None. Point d'entrée cross-app pour que
+    ventes résolve un lead par id sans importer ``apps.crm.models`` (un id d'une
+    autre société renvoie None → l'appelant répond 404). Lecture seule."""
+    if not lead_id:
+        return None
+    from .models import Lead
+    return Lead.objects.filter(pk=lead_id, company=company).first()
+
+
+def get_company_client(company, client_id):
+    """B1 — Client borné à la société, ou None (cf. get_company_lead)."""
+    if not client_id:
+        return None
+    return client_base_qs(company).filter(pk=client_id).first()
+
+
 def lead_card(lead_id, company):
     """S8 — fiche-carte LECTURE SEULE d'un lead pour le partage dans la
     messagerie. Scopée société : renvoie None si le lead n'appartient pas à la
