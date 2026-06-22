@@ -9,6 +9,7 @@ import Layout from '../../layouts/Layout.astro';
 import V2Enhance from '../../components/V2Enhance.astro';
 import Article33Ribbon from '../../components/Article33Ribbon.astro';
 import Breadcrumb from '../../components/Breadcrumb.astro';
+import Picture from '../../components/Picture.astro';
 import CtaBand from '../../components/CtaBand.astro';
 import StickyCta from '../../components/StickyCta.astro';
 import { getLocaleFromPath } from '../../i18n/utils';
@@ -54,8 +55,9 @@ const etapes = [
     <Breadcrumb items={[{ label: 'Home', href: L('/') }, { label: 'About' }]} />
 
     <section class="px-4 pb-10 pt-16 text-white sm:pt-20">
-      <div class="mx-auto max-w-3xl">
-        <p class="tech-label v2-kicker rule-brass cine-in text-brass-300">The founder</p>
+      <div class="mx-auto grid max-w-5xl items-start gap-10 lg:grid-cols-[1.5fr_auto] lg:items-center">
+        <div>
+        <p class="tech-label v2-kicker rule-brass cine-in text-lune">The founder</p>
         <h1 class="display v2-page-title cine-in mt-5 [animation-delay:120ms]">A doctor-engineer validates every study, by hand</h1>
         <p class="v2-lead cine-in mt-6 max-w-xl text-white/85 [animation-delay:240ms]">
           Taqinor's founder spent more than ten years in research and development at
@@ -63,6 +65,18 @@ const etapes = [
           world for solar because he saw, everywhere, the same reflex: selling a kit before doing the
           calculation. Here, the order is reversed — and he is the one who signs the calculation.
         </p>
+        </div>
+        <figure class="cine-in mx-auto w-full max-w-[240px] [animation-delay:200ms] lg:mx-0">
+          <Picture
+            name="fondateur-portrait"
+            alt="Reda Kasri, founder and doctor-engineer of Taqinor"
+            widths={[480, 640]}
+            ratio={4 / 5}
+            sizes="(min-width:1024px) 240px, 55vw"
+            class="w-full object-cover shadow-premium"
+          />
+          <figcaption class="tech-label mt-3 text-lune-faint">Reda Kasri · founder, doctor-engineer</figcaption>
+        </figure>
       </div>
     </section>
 

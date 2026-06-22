@@ -3,6 +3,14 @@
  * EN — Maintenance & monitoring (W67). Faithful translation of
  * /maintenance-monitoring ; no invented SLA or "within 24h/48h" claim (none is
  * published). Internal links via localizeNavHref. FR untouched.
+ *
+ * ELEVATION (W237) — mirrors /maintenance-monitoring.astro elevation treatment:
+ *  - Eyebrows demoted from text-brass-300 to text-lune (brass discipline);
+ *  - "Inclus à chaque installation" eyebrow: text-lune;
+ *  - Equipment link: border-lune/40 text-lune (not brass);
+ *  - .section-lg hero + .section / .seam-soft spacing tokens;
+ *  - .v2-rise wrapper on closing block; "To go further" eyebrow: text-lune;
+ *  - No photo content → no .v3-grade, no ZelligeSignature.
  */
 import Layout from '../../layouts/Layout.astro';
 import V2Enhance from '../../components/V2Enhance.astro';
@@ -57,12 +65,12 @@ const jsonLd = {
 
     <Breadcrumb items={[{ label: 'Home', href: L('/') }, { label: 'Maintenance & monitoring' }]} />
 
-    <!-- Dark hero -->
-    <section class="px-4 pb-10 pt-16 text-white sm:pt-20">
+    {/* ── DARK HERO — eyebrow demoted to lune (brass discipline) ── */}
+    <section class="px-4 pb-12 pt-16 text-white sm:pt-20">
       <div class="mx-auto max-w-3xl">
-        <p class="tech-label v2-kicker rule-brass cine-in text-brass-300">After the install</p>
-        <h1 class="display v2-page-title cine-in mt-5 [animation-delay:120ms]">Maintenance &amp; monitoring</h1>
-        <p class="v2-lead cine-in mt-6 max-w-xl text-white/85 [animation-delay:240ms]">
+        <p class="tech-label v2-kicker rule-brass cine-in text-lune">After the install</p>
+        <h1 class="display v2-page-title cine-in cine-in-1 mt-5">Maintenance &amp; monitoring</h1>
+        <p class="v2-lead cine-in cine-in-2 mt-6 max-w-xl text-white/85">
           The day the installation is commissioned, it starts to talk. On Deye Cloud, every Taqinor
           roof reports its production continuously — yours readable on your phone, ours monitored
           across the whole fleet. An anomaly triggers an alert; we start from there, before the
@@ -71,12 +79,13 @@ const jsonLd = {
       </div>
     </section>
 
-    <!-- What the monitoring includes -->
-    <section class="px-4 pb-20 sm:pb-24">
+    {/* ── WHAT THE MONITORING INCLUDES — .section rhythm, eyebrow lune ── */}
+    <div class="seam-soft" aria-hidden="true"></div>
+    <section class="section px-4">
       <div class="mx-auto max-w-6xl">
-        <p class="tech-label v2-kicker rule-brass text-brass-300">Included with every installation</p>
+        <p class="tech-label v2-kicker rule-brass text-lune">Included with every installation</p>
         <h2 class="display v2-section-title mt-5 text-white">What the monitoring includes</h2>
-        <div class="mt-10 grid gap-6 md:grid-cols-3" data-stagger>
+        <div class="mt-12 grid gap-6 md:grid-cols-3" data-stagger>
           {suivi.map((s, i) => (
             <div class="v2-rise cine-card p-7" style={`--v2-i:${i}`}>
               <h3 class="display text-xl text-white">{s.title}</h3>
@@ -84,21 +93,23 @@ const jsonLd = {
             </div>
           ))}
         </div>
-        <p class="mt-10 max-w-xl border-s-4 border-brass-400/60 ps-4 text-sm leading-relaxed text-lune-soft">
+        {/* Filet azur (brass demoted); equipment link in lune (discipline) */}
+        <p class="v2-rise mt-12 max-w-xl border-l-2 border-azur-200/40 pl-4 text-sm leading-relaxed text-lune-soft">
           On the hardware side, the data goes through a WiFi or Ethernet dongle plugged into the
           inverter; it is what sends every measurement to Deye Cloud. The detail is on the equipment
           sheet.
-          <a href={L('/équipement')} class="border-b border-brass-400 pb-0.5 font-semibold text-brass-300 transition-colors hover:text-brass-200">See the Deye Cloud monitoring →</a>
+          <a href={L('/équipement')} class="border-b border-lune/40 pb-0.5 font-semibold text-lune transition-colors hover:border-lune hover:text-white">See the Deye Cloud monitoring →</a>
         </p>
       </div>
     </section>
 
-    <!-- Measured production, not promised (light background) -->
+    {/* ── MEASURED PRODUCTION (clear act, "clean room") ── */}
     <div class="v2-seam" aria-hidden="true"></div>
-    <section class="bg-blanc-azur px-4 pb-20 pt-10 text-encre sm:pb-24">
+    <section class="bg-blanc-azur px-4 pb-20 pt-12 text-encre sm:pb-24">
       <div class="mx-auto max-w-3xl">
         <div class="v2-rise">
-          <p class="tech-label v2-kicker rule-brass text-azur-600">Figures, read off</p>
+          {/* Canonical light-background eyebrow — azur accent (discipline) */}
+          <p class="tech-label v2-kicker rule-brass eyebrow-light">Figures, read off</p>
           <h2 class="display v2-section-title mt-5">What the meter says, not the brochure</h2>
           <p class="v2-lead mt-5 text-encre-soft">
             The kWh a Taqinor installation shows don't come from a leaflet: Deye Cloud reads them day
@@ -110,23 +121,24 @@ const jsonLd = {
             time, what your roof produces — with no intermediary.
           </p>
           <div class="mt-8 flex flex-wrap gap-3">
-            <a href={L('/garanties')} class="inline-block bg-brass-400 px-7 py-3.5 text-base font-bold text-azur-950 transition-colors hover:bg-brass-300">See our written warranties</a>
+            {/* Primary CTA: the only brass in this light section (discipline) */}
+            <a href={L('/garanties')} class="glow inline-block bg-brass-400 px-7 py-3.5 text-base font-bold text-azur-950 transition-colors hover:bg-brass-300">See our written warranties</a>
             <a href={L('/realisations')} class="inline-block border-b-2 border-azur-600 pb-0.5 text-base font-bold text-azur-600 transition-colors hover:text-azur-700">See our projects →</a>
           </div>
         </div>
       </div>
     </section>
 
-    <!-- Closing links block -->
-    <section class="px-4 py-20 sm:py-28">
+    {/* ── CLOSING LINKS BLOCK — eyebrow lune, ghost white links ── */}
+    <section class="section px-4">
       <div class="mx-auto max-w-6xl">
-        <p class="tech-label v2-kicker rule-brass text-brass-300">To go further</p>
+        <p class="tech-label v2-kicker rule-brass text-lune">To go further</p>
         <h2 class="display v2-section-title mt-5 text-white">The monitoring, in detail</h2>
-        <p class="mt-5 max-w-xl text-sm leading-relaxed text-lune-soft">
+        <p class="v2-rise mt-5 max-w-xl text-sm leading-relaxed text-lune-soft">
           Monitoring and proactive after-sales only hold because they rest on named hardware and
           warranties written in black and white. Here they are in detail.
         </p>
-        <div class="mt-10 flex flex-wrap gap-3">
+        <div class="v2-rise mt-10 flex flex-wrap gap-3">
           <a href={L('/garanties')} class="border border-white/40 px-5 py-3 text-sm font-bold text-white transition-colors hover:border-white hover:bg-white/10">Our warranties →</a>
           <a href={L('/équipement')} class="border border-white/40 px-5 py-3 text-sm font-bold text-white transition-colors hover:border-white hover:bg-white/10">The equipment installed →</a>
           <a href={contactSim} class="border border-white/40 px-5 py-3 text-sm font-bold text-white transition-colors hover:border-white hover:bg-white/10">My free assessment →</a>

@@ -57,7 +57,7 @@ const jsonLd = {
 
     <section class="px-4 pb-10 pt-16 text-white sm:pt-20">
       <div class="mx-auto max-w-3xl">
-        <p class="tech-label v2-kicker rule-brass cine-in text-brass-300">أدلّة وموارد</p>
+        <p class="tech-label v2-kicker rule-brass cine-in text-lune">أدلّة وموارد</p>
         <h1 class="display v2-page-title cine-in mt-5 [animation-delay:120ms]">افهم قبل أن توقّع</h1>
         <p class="v2-lead cine-in mt-6 max-w-xl text-white/85 [animation-delay:240ms]">
           ثلاثة أسئلة تتكرّر في كل تبادلاتنا تقريباً. بدل الإجابة عنها هاتفياً، كتبناها هنا، دون
@@ -71,10 +71,10 @@ const jsonLd = {
       <div class="mx-auto grid max-w-6xl gap-6 md:grid-cols-3" data-stagger>
         {guides.map((g, i) => (
           <a href={L(g.href)} class="v2-rise cine-card flex flex-col p-7" style={`--v2-i:${i}`}>
-            <p class="tech-label text-brass-300">دليل</p>
+            <p class="tech-label text-lune">دليل</p>
             <h2 class="display mt-2 text-xl text-white">{g.title}</h2>
             <p class="mt-3 flex-1 text-sm leading-relaxed text-lune-soft">{g.summary}</p>
-            <span class="mt-5 inline-block border-b-2 border-brass-400 pb-0.5 text-sm font-bold text-white">اقرأ الدليل <span class="inline-block rtl:-scale-x-100">→</span></span>
+            <span class="mt-5 inline-block border-b-2 border-azur-200/60 pb-0.5 text-sm font-bold text-white">اقرأ الدليل <span class="inline-block rtl:-scale-x-100">→</span></span>
           </a>
         ))}
       </div>

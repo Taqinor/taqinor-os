@@ -45,22 +45,45 @@ const etapes = [
 
     <Breadcrumb items={[{ label: 'Home', href: L('/') }, { label: 'Moroccans abroad' }]} />
 
-    <section class="relative isolate mt-6 overflow-hidden text-white">
+    {/* ── CINEMATIC HERO (~90svh) — photo is the protagonist. Hero photo stays
+        the LCP element: NEVER .v3-grade here (LCP protection), only the canonical
+        scrim carries AA contrast for the headline. Eyebrow demoted to lune (brass
+        discipline); one brass CTA + one ghost WhatsApp. ── */}
+    <section class="relative isolate mt-4 flex min-h-[90svh] flex-col justify-end overflow-hidden text-white">
       <div class="v2-hero-media absolute inset-0 -z-10">
         <Picture name="crepuscule-penthouse" alt="" widths={[1600, 1024, 640]} ratio={4 / 3} sizes="100vw"
           loading="eager" fetchpriority="high" class="h-full w-full object-cover object-[65%_40%]" />
-        <div class="absolute inset-0 bg-gradient-to-t from-nuit via-nuit/55 to-nuit/25"></div>
+        <div class="hero-scrim absolute inset-0"></div>
       </div>
-      <div class="mx-auto max-w-6xl px-4 pb-16 pt-24 sm:pb-20 sm:pt-32">
-        <p class="tech-label v2-kicker rule-brass cine-in text-brass-300">Moroccans abroad · MRE</p>
-        <h1 class="display v2-page-title cine-in mt-5 max-w-[22ch] [animation-delay:120ms]">
+
+      {/* Scroll invitation — static under prefers-reduced-motion */}
+      <div class="absolute bottom-6 left-1/2 -translate-x-1/2 scroll-chevron" aria-hidden="true">
+        <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <polyline points="6 9 12 15 18 9" />
+        </svg>
+      </div>
+
+      <div class="mx-auto w-full max-w-6xl px-4 pb-24 pt-32 sm:pb-32">
+        <p class="tech-label v2-kicker rule-brass cine-in text-lune">Moroccans abroad · MRE</p>
+        <h1 class="display v2-page-title cine-in cine-in-1 mt-6 max-w-[22ch]">
           Are you a Moroccan living abroad?
         </h1>
-        <p class="v2-lead cine-in mt-6 max-w-2xl text-white/85 [animation-delay:240ms]">
+        <p class="v2-lead cine-in cine-in-2 mt-6 max-w-2xl text-white/85">
           Your roof is in Morocco, you are elsewhere. We take charge of your villa's installation
           from study to production monitoring, and it all runs through a WhatsApp thread
           with a technician — a human who answers, never a switchboard or a queue.
         </p>
+        <div class="cine-in cine-in-3 mt-10 flex flex-wrap items-center gap-3">
+          {/* ONE brass CTA (brass discipline) — gold is authorised here */}
+          <a href={contactSim} class="glow bg-brass-400 px-8 py-4 text-lg font-bold text-azur-950 transition-colors hover:bg-brass-300">
+            Start my remote study →
+          </a>
+          {/* Ghost WhatsApp — white outline, no brass */}
+          <a href={wa} rel="noopener" class="inline-flex items-center gap-2 border border-white/40 px-6 py-3.5 text-base font-semibold text-white backdrop-blur-sm transition-colors hover:border-white hover:bg-white/10">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 2a10 10 0 0 0-8.6 15.1L2 22l5-1.3A10 10 0 1 0 12 2Zm5.4 14.1c-.2.6-1.3 1.2-1.8 1.2-.5.1-1 .2-3.3-.7-2.8-1.1-4.6-4-4.7-4.2-.1-.2-1.1-1.5-1.1-2.9s.7-2 1-2.3c.2-.3.5-.3.7-.3h.5c.2 0 .4 0 .6.4l.9 2.1c.1.2.1.4 0 .6l-.4.6-.5.5c-.2.2-.3.4-.1.7.2.3.9 1.4 1.9 2.3 1.3 1.1 2.3 1.5 2.6 1.6.3.1.5.1.7-.1l1-1.2c.2-.3.4-.2.7-.1l2 1c.3.1.5.2.6.4 0 .1 0 .7-.3 1.4Z"/></svg>
+            WhatsApp direct
+          </a>
+        </div>
       </div>
     </section>
 
@@ -68,7 +91,7 @@ const etapes = [
     <section class="border-y border-white/10 px-4 py-20 sm:py-24">
       <div class="mx-auto grid max-w-6xl items-center gap-12 lg:grid-cols-[1.1fr_1fr]">
         <div class="v2-rise">
-          <p class="tech-label v2-kicker rule-brass text-brass-300">How it works</p>
+          <p class="tech-label v2-kicker rule-brass text-lune">How it works</p>
           <h2 class="display v2-section-title mt-5 max-w-md text-white">The time zone doesn't stop us</h2>
           <p class="v2-lead mt-5 max-w-md text-lune-soft">
             The assessment reaches you on WhatsApp, you talk with the technician whenever it suits
@@ -95,7 +118,7 @@ const etapes = [
     <!-- The real worries when you order from far away -->
     <section class="border-b border-white/10 px-4 py-20 sm:py-24">
       <div class="mx-auto max-w-6xl">
-        <p class="tech-label v2-kicker rule-brass text-brass-300">What holds you back, unspoken</p>
+        <p class="tech-label v2-kicker rule-brass text-lune">What holds you back, unspoken</p>
         <h2 class="display v2-section-title mt-5 max-w-2xl text-white">Three fears nobody says out loud</h2>
         <p class="v2-lead mt-5 max-w-2xl text-lune-soft">
           Entrusting a project you can't watch over yourself, paying a large sum from another
@@ -104,7 +127,7 @@ const etapes = [
         </p>
         <div class="mt-10 grid gap-6 md:grid-cols-3" data-stagger>
           <div class="v2-rise cine-card flex flex-col p-7" style="--v2-i:0">
-            <p class="tech-label text-brass-300">Trust</p>
+            <p class="tech-label text-lune">Trust</p>
             <h3 class="display mt-2 text-xl text-white">&ldquo;I won't be there to check&rdquo;</h3>
             <p class="mt-3 flex-1 text-sm leading-relaxed text-lune-soft">
               It's the most common worry, and the most justified. Our answer isn't a speech, it's
@@ -116,7 +139,7 @@ const etapes = [
             </p>
           </div>
           <div class="v2-rise cine-card flex flex-col p-7" style="--v2-i:1">
-            <p class="tech-label text-brass-300">Payment</p>
+            <p class="tech-label text-lune">Payment</p>
             <h3 class="display mt-2 text-xl text-white">&ldquo;How do I pay from abroad?&rdquo;</h3>
             <p class="mt-3 flex-1 text-sm leading-relaxed text-lune-soft">
               The quote is drawn up in dirhams, the real cost of the work in Morocco — you know
@@ -128,7 +151,7 @@ const etapes = [
             </p>
           </div>
           <div class="v2-rise cine-card flex flex-col p-7" style="--v2-i:2">
-            <p class="tech-label text-brass-300">The house</p>
+            <p class="tech-label text-lune">The house</p>
             <h3 class="display mt-2 text-xl text-white">&ldquo;It's my parents' house&rdquo;</h3>
             <p class="mt-3 flex-1 text-sm leading-relaxed text-lune-soft">
               A villa back home isn't just a roof: it's often the one where the family gathers in
@@ -151,11 +174,11 @@ const etapes = [
         </div>
         <div class="v2-rise" style="--v2-i:1">
           <h3 class="display text-xl text-white">The paperwork, without you</h3>
-          <p class="mt-3 text-sm leading-relaxed text-lune-soft">Declaration or law 82-21 regularization: we read your case, identify the regime and assemble the file — no back-and-forth to the country to plan for you. <a href={L('/loi-82-21')} class="border-b border-brass-400 pb-0.5 font-semibold text-brass-300 transition-colors hover:text-brass-200">See the regimes →</a></p>
+          <p class="mt-3 text-sm leading-relaxed text-lune-soft">Declaration or law 82-21 regularization: we read your case, identify the regime and assemble the file — no back-and-forth to the country to plan for you. <a href={L('/loi-82-21')} class="border-b border-white/40 pb-0.5 font-semibold text-white transition-colors hover:border-white">See the regimes →</a></p>
         </div>
         <div class="v2-rise" style="--v2-i:2">
           <h3 class="display text-xl text-white">From one city to another</h3>
-          <p class="mt-3 text-sm leading-relaxed text-lune-soft">Casablanca, Rabat, Marrakech, Tangier, Agadir — and the rest of the country. Wherever the family home is, we go there. <a href={L('/realisations')} class="border-b border-brass-400 pb-0.5 font-semibold text-brass-300 transition-colors hover:text-brass-200">See our projects →</a></p>
+          <p class="mt-3 text-sm leading-relaxed text-lune-soft">Casablanca, Rabat, Marrakech, Tangier, Agadir — and the rest of the country. Wherever the family home is, we go there. <a href={L('/realisations')} class="border-b border-white/40 pb-0.5 font-semibold text-white transition-colors hover:border-white">See our projects →</a></p>
         </div>
       </div>
       <div class="mx-auto mt-10 flex max-w-6xl flex-wrap gap-3">

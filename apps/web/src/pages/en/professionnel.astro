@@ -7,6 +7,16 @@
  * UNCHANGED — only visible labels translated. Internal links via localizeNavHref.
  * Shared components (GarantiesTeaser, Testimonials, DiagnosticForm) auto-detect
  * locale. FR untouched.
+ *
+ * ELEVATION (W237) — mirrors /professionnel.astro elevation treatment:
+ *  1. Cinematic hero (~92svh) full-frame photo, eyebrow text-lune, ONE brass CTA
+ *     + ghost WhatsApp, scroll chevron, hero-scrim-v3, hero key figures .lum,
+ *     content anchored low;
+ *  2. Brass discipline: gold only on .lum figures and the one primary CTA;
+ *     eyebrows demoted to text-lune;
+ *  3. Warm grade (.v3-grade) on content photos only (never the hero/LCP image);
+ *  4. .section / .section-tight rhythm + .seam-soft seams;
+ *  5. Single motion language .cine-in / .v2-rise.
  */
 import Layout from '../../layouts/Layout.astro';
 import V2Enhance from '../../components/V2Enhance.astro';
@@ -23,9 +33,13 @@ import { localEstimateBand } from '../../lib/billRange';
 import { formatMAD } from '../../lib/format';
 import { getLocaleFromPath } from '../../i18n/utils';
 import { localizeNavHref } from '../../i18n/pages';
+import { WHATSAPP_LEADS } from '../../lib/nap';
+import { whatsappLink } from '../../lib/whatsapp';
 
 const locale = getLocaleFromPath(Astro.url.pathname);
 const L = (href: string) => localizeNavHref(href, locale);
+
+const waDirect = whatsappLink(WHATSAPP_LEADS, 'Hello, I would like a study for a solar installation.');
 
 const segments = [
   { n: '01', title: 'Industry', body: "Every kWh enters the cost price of a manufactured part. A warehouse roof, wide and flat, pays for itself in 3 to 5 years and produces exactly when the machines are running — production lands when demand is there." },
@@ -61,23 +75,48 @@ const proBrackets = (['5000-10000', 'gt10000'] as const).map((id) => {
 
     <Breadcrumb items={[{ label: 'Home', href: L('/') }, { label: 'Business' }]} />
 
-    <!-- ACT I — the full-frame industrial sunset -->
-    <section class="relative isolate overflow-hidden text-white">
+    {/* ── 1 · CINEMATIC HERO (~92svh) — the industrial sunset as protagonist ── */}
+    <section class="relative isolate flex min-h-[92svh] flex-col justify-end overflow-hidden text-white">
       <div class="v2-hero-media absolute inset-0 -z-10">
+        {/* Full-frame hero image (LCP element) — NEVER .v3-grade here
+            (LCP protection): only the raised scrim carries the warmth. */}
         <Picture name="industriel-couchant" alt="" widths={[2000, 1280, 768, 480]} ratio={16 / 9} sizes="100vw"
           loading="eager" fetchpriority="high" class="h-full w-full object-cover object-[70%_30%]" />
-        <div class="absolute inset-0 bg-gradient-to-t from-nuit via-nuit/40 to-transparent"></div>
+        {/* Raised canonical scrim (.hero-scrim-v3 → --hero-scrim-strength 0.52):
+            compensates the warmth of the sunset and keeps the headline ≥ AA. */}
+        <div class="hero-scrim hero-scrim-v3 absolute inset-0"></div>
       </div>
-      <div class="mx-auto max-w-6xl px-4 pb-20 pt-28 sm:pb-24 sm:pt-36">
-        <p class="tech-label v2-kicker rule-brass cine-in text-brass-300">Industry · hotels · clinics</p>
-        <h1 class="display v2-page-title cine-in mt-5 max-w-[20ch] [animation-delay:120ms]">Your electricity cost line — you can steer it instead of enduring it</h1>
-        <p class="v2-lead cine-in mt-6 max-w-xl text-white/85 [animation-delay:240ms]">
+
+      {/* Scroll-invitation chevron — static under reduced-motion */}
+      <div class="absolute bottom-6 left-1/2 -translate-x-1/2 scroll-chevron" aria-hidden="true">
+        <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <polyline points="6 9 12 15 18 9" />
+        </svg>
+      </div>
+
+      {/* Content anchored LOW — eyebrow demoted to lune (brass discipline) */}
+      <div class="mx-auto w-full max-w-6xl px-4 pb-24 pt-32 sm:pb-32">
+        <p class="tech-label v2-kicker rule-brass cine-in text-lune">Industry · hotels · clinics</p>
+        <h1 class="display v2-page-title cine-in cine-in-1 mt-5 max-w-[20ch]">Your electricity cost line — you can steer it instead of enduring it</h1>
+        <p class="v2-lead cine-in cine-in-2 mt-6 max-w-xl text-white/85">
           On a business site, solar isn't a showpiece: it's a production asset, paid back in 3 to
           5 years, that then delivers for more than twenty years. In El Jadida,
           17,04 kWc supply 21 406 kWh a year. The sizing, though, starts from your load
           curves — not from a template.
         </p>
-        <dl class="cine-in mt-10 grid max-w-2xl grid-cols-3 gap-3 border-t border-white/20 pt-6 sm:gap-6 [animation-delay:360ms]">
+        <div class="cine-in cine-in-3 mt-10 flex flex-wrap items-center gap-3">
+          {/* ONE brass CTA (brass discipline) — gold is authorised here */}
+          <a href="#simulateur" class="glow-hero bg-brass-400 px-8 py-4 text-lg font-bold text-azur-950 transition-all hover:bg-brass-300">
+            Estimate my installation →
+          </a>
+          {/* Ghost WhatsApp — white border, no brass */}
+          <a href={waDirect} rel="noopener" class="inline-flex items-center gap-2 border border-white/40 px-6 py-3.5 text-base font-semibold text-white backdrop-blur-sm transition-colors hover:border-white hover:bg-white/10">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 2a10 10 0 0 0-8.6 15.1L2 22l5-1.3A10 10 0 1 0 12 2Zm5.4 14.1c-.2.6-1.3 1.2-1.8 1.2-.5.1-1 .2-3.3-.7-2.8-1.1-4.6-4-4.7-4.2-.1-.2-1.1-1.5-1.1-2.9s.7-2 1-2.3c.2-.3.5-.3.7-.3h.5c.2 0 .4 0 .6.4l.9 2.1c.1.2.1.4 0 .6l-.4.6-.5.5c-.2.2-.3.4-.1.7.2.3.9 1.4 1.9 2.3 1.3 1.1 2.3 1.5 2.6 1.6.3.1.5.1.7-.1l1-1.2c.2-.3.4-.2.7-.1l2 1c.3.1.5.2.6.4 0 .1 0 .7-.3 1.4Z"/></svg>
+            WhatsApp direct
+          </a>
+        </div>
+        {/* Hero key figures — gold lives on the .lum (brass discipline) */}
+        <dl class="cine-in cine-in-4 mt-10 grid max-w-2xl grid-cols-3 gap-3 border-t border-white/20 pt-6 sm:gap-6">
           <div>
             <dd class="fig lum text-base sm:text-4xl" data-tally>3–5 ans</dd>
             <dt class="tech-label mt-2 text-lune">Payback</dt>
@@ -94,8 +133,9 @@ const proBrackets = (['5000-10000', 'gt10000'] as const).map((id) => {
       </div>
     </section>
 
-    <!-- Three segments -->
-    <section class="mx-auto max-w-6xl px-4 py-24 sm:py-32">
+    {/* Three segments */}
+    <div class="seam-soft" aria-hidden="true"></div>
+    <section class="section mx-auto max-w-6xl px-4">
       <div class="grid gap-6 md:grid-cols-3" data-stagger>
         {segments.map((s, i) => (
           <div class="v2-rise border-l-2 border-brass-400/60 pl-6" style={`--v2-i:${i}`}>
@@ -107,10 +147,12 @@ const proBrackets = (['5000-10000', 'gt10000'] as const).map((id) => {
       </div>
     </section>
 
-    <!-- Business orders of magnitude — the ledger, figures that tally up -->
-    <section class="border-y border-white/10 px-4 py-24 sm:py-32">
+    {/* Business orders of magnitude — the ledger, figures that tally up.
+        Eyebrow demoted to lune (brass discipline). */}
+    <div class="seam-soft" aria-hidden="true"></div>
+    <section class="section px-4">
       <div class="mx-auto max-w-4xl">
-        <p class="tech-label v2-kicker rule-brass text-brass-300">Price transparency</p>
+        <p class="tech-label v2-kicker rule-brass text-lune">Price transparency</p>
         <h2 class="display v2-section-title mt-5 text-white">What budget to expect for a business site</h2>
         <p class="v2-lead mt-4 max-w-2xl text-lune-soft">
           Indicative ranges for a business roof — <strong class="text-lune">never a quote</strong>.
@@ -135,13 +177,14 @@ const proBrackets = (['5000-10000', 'gt10000'] as const).map((id) => {
       </div>
     </section>
 
-    <!-- Precision of the work — captioned site photos -->
-    <section class="mx-auto max-w-6xl px-4 py-24 sm:py-32">
+    {/* Precision of the work — captioned site photos */}
+    <div class="seam-soft" aria-hidden="true"></div>
+    <section class="section mx-auto max-w-6xl px-4">
       <div class="grid gap-4 sm:grid-cols-2" data-stagger>
         <figure class="v2-rise cine-card group relative overflow-hidden" style="--v2-i:0">
           <Picture name="mesure-rails" alt="Marking out and measuring the mounting rails on a business roof"
             widths={[1600, 1024, 640]} ratio={4 / 3} sizes="(min-width: 640px) 50vw, 100vw"
-            class="w-full object-cover transition-transform duration-700 group-hover:scale-[1.04]" />
+            class="v3-grade w-full object-cover transition-transform duration-700 group-hover:scale-[1.04]" />
           <figcaption class="absolute inset-x-0 bottom-0 bg-gradient-to-t from-nuit/95 to-transparent px-4 pb-3 pt-12">
             <span class="tech-label block text-brass-300">Nouaceur · 3,72 kWc · layout</span>
             <span class="mt-0.5 block text-xs text-lune">Every rail is marked out and measured before fixing</span>
@@ -150,7 +193,7 @@ const proBrackets = (['5000-10000', 'gt10000'] as const).map((id) => {
         <figure class="v2-rise cine-card group relative overflow-hidden" style="--v2-i:1">
           <Picture name="equipe-trois" alt="Taqinor team in front of a long row of panels at the end of the install"
             widths={[1600, 1024, 640]} ratio={3 / 2} sizes="(min-width: 640px) 50vw, 100vw"
-            class="w-full object-cover transition-transform duration-700 group-hover:scale-[1.04]" />
+            class="v3-grade w-full object-cover transition-transform duration-700 group-hover:scale-[1.04]" />
           <figcaption class="absolute inset-x-0 bottom-0 bg-gradient-to-t from-nuit/95 to-transparent px-4 pb-3 pt-12">
             <span class="tech-label block text-brass-300">El Jadida · 17,04 kWc · 21 406 kWh/an</span>
             <span class="mt-0.5 block text-xs text-lune">End of install · 24 × Canadian Solar 710 Wc · Deye 15 kW three-phase</span>
@@ -161,11 +204,11 @@ const proBrackets = (['5000-10000', 'gt10000'] as const).map((id) => {
 
     <ZelligeDivider tone="white" />
 
-    <!-- Surplus + MV regimes -->
-    <section class="px-4 py-24 sm:py-32">
+    {/* Surplus + MV regimes — eyebrow demoted to lune (brass discipline) */}
+    <section class="section px-4">
       <div class="mx-auto max-w-3xl">
         <div class="v2-rise">
-          <p class="tech-label v2-kicker rule-brass text-brass-300">Law 82-21 · medium voltage</p>
+          <p class="tech-label v2-kicker rule-brass text-lune">Law 82-21 · medium voltage</p>
           <h2 class="display v2-section-title mt-5 text-white">Make every exported kilowatt-hour pay</h2>
           <p class="v2-lead mt-5 text-lune-soft">
             Law 82-21 sets the framework for self-generation and for the surplus sent back to the
@@ -195,8 +238,9 @@ const proBrackets = (['5000-10000', 'gt10000'] as const).map((id) => {
       </div>
     </section>
 
-    <!-- Contextual links -->
-    <section class="border-t border-white/10 px-4 py-16">
+    {/* Contextual links */}
+    <div class="seam-soft" aria-hidden="true"></div>
+    <section class="section-tight px-4">
       <div class="mx-auto flex max-w-6xl flex-wrap gap-3">
         <a href={L('/realisations')} class="border border-white/40 px-5 py-3 text-sm font-bold text-white transition-colors hover:border-white hover:bg-white/10">Our projects →</a>
         <a href={L('/équipement')} class="border border-white/40 px-5 py-3 text-sm font-bold text-white transition-colors hover:border-white hover:bg-white/10">The equipment we install →</a>
@@ -220,3 +264,11 @@ const proBrackets = (['5000-10000', 'gt10000'] as const).map((id) => {
     <StickyCta />
   </div>
 </Layout>
+
+<style>
+  /* Raised hero scrim for the elevation: compensates the warmth of the
+     full-frame sunset and guarantees AA contrast for the white headline (ref. v3). */
+  .hero-scrim-v3 {
+    --hero-scrim-strength: 0.52;
+  }
+</style>

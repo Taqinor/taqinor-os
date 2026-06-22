@@ -5,6 +5,15 @@
  * Article 33, decree 2-25-100, date 9 June 2026 and all amounts kept exact, in
  * Latin digits). Internal links use localizeNavHref (EN/AR if available, else
  * the existing FR page — never a dead link). FR untouched.
+ *
+ * ÉLÉVATION (W241) — mirrors the FR regularization-article-33.astro elevation:
+ *  1. brass discipline: eyebrow text-lune (not text-brass-300);
+ *  2. timeline steps: solid brass discs → fig lum numbers in azur rings (bg-nuit);
+ *  3. timeline rail: border-brass-400/60 → border-white/15;
+ *  4. diamond bullets: border-brass-400 → border-azur-200/70;
+ *  5. .section + seam-soft tokens;
+ *  6. glow on primary CTA WhatsApp button;
+ *  7. RTL structural fixes preserved from original AR page.
  */
 import Layout from '../../layouts/Layout.astro';
 import V2Enhance from '../../components/V2Enhance.astro';
@@ -50,11 +59,12 @@ const sanctions = [
 
     <Breadcrumb items={[{ label: 'الرئيسية', href: L('/') }, { label: 'تسوية المادة 33' }]} />
 
-    <section class="px-4 py-20 text-white sm:py-28">
+    <section class="section px-4 text-white">
       <div class="mx-auto max-w-6xl">
-        <p class="tech-label v2-kicker rule-brass cine-in text-brass-300">القانون 82-21 — المادة 33</p>
-        <h1 class="display v2-page-title cine-in mt-5 max-w-3xl [animation-delay:120ms]">تركيبتك الشمسية قائمة بالفعل؟ سوّها الآن.</h1>
-        <p class="v2-lead cine-in mt-6 max-w-xl text-white/85 [animation-delay:240ms]">
+        {/* eyebrow مُخفَّض إلى lune (انضباط النحاس) */}
+        <p class="tech-label v2-kicker rule-brass cine-in text-lune">القانون 82-21 — المادة 33</p>
+        <h1 class="display v2-page-title cine-in cine-in-1 mt-5 max-w-3xl">تركيبتك الشمسية قائمة بالفعل؟ سوّها الآن.</h1>
+        <p class="v2-lead cine-in cine-in-2 mt-6 max-w-xl text-white/85">
           المرسوم 2-25-100، الذي نُشِر بالجريدة الرسمية في 9 مارس 2026، دخل حيّز التنفيذ في
           9 يونيو 2026، وقرار ANRE يحدّد تعريفة شراء الفائض؛ ومنذ ذلك التاريخ يُطبَّق نظام
           القانون 82-21 على جميع تركيبات الإنتاج الذاتي — حتى تلك المُركّبة قبل صدور النص بزمن.
@@ -62,9 +72,11 @@ const sanctions = [
       </div>
     </section>
 
-    <section class="mx-auto max-w-3xl px-4 py-16">
+    <div class="seam-soft" aria-hidden="true"></div>
+    <section class="section mx-auto max-w-3xl px-4">
       <div class="v2-rise">
-        <p class="tech-label v2-kicker rule-brass text-brass-300">النص</p>
+        {/* eyebrow مُخفَّض إلى lune */}
+        <p class="tech-label v2-kicker rule-brass text-lune">النص</p>
         <h2 class="display v2-section-title mt-4 text-white">ما تقوله المادة 33</h2>
         <p class="v2-lead mt-5 text-lune-soft">
           المادة 33 من القانون 82-21 تمنح مستغلّي التركيبات القائمة
@@ -75,17 +87,19 @@ const sanctions = [
       </div>
 
       <h2 class="display v2-section-title v2-rise mt-14 text-white">من المعني؟</h2>
+      {/* معيّنات بحدود azur (الذهب يبقى للأرقام/CTA) */}
       <ul class="v2-rise mt-5 space-y-2.5 text-sm leading-relaxed text-lune-soft">
-        <li class="flex gap-2.5"><span class="mt-1.5 inline-block h-1.5 w-1.5 flex-none rotate-45 border border-brass-400" aria-hidden="true"></span><span>كل تركيبة شمسية للإنتاج الذاتي شُغّلت قبل دخول النظام حيّز التنفيذ — فيلا، مستودع، فندق، ضيعة فلاحية.</span></li>
-        <li class="flex gap-2.5"><span class="mt-1.5 inline-block h-1.5 w-1.5 flex-none rotate-45 border border-brass-400" aria-hidden="true"></span><span>مربوطة بالشبكة أو في موقع معزول، أياً كانت القدرة.</span></li>
-        <li class="flex gap-2.5"><span class="mt-1.5 inline-block h-1.5 w-1.5 flex-none rotate-45 border border-brass-400" aria-hidden="true"></span><span>دون تصريح، دون اتفاق ربط أو دون ترخيص إزاء النظام المطبَّق.</span></li>
+        <li class="flex gap-2.5"><span class="mt-1.5 inline-block h-1.5 w-1.5 flex-none rotate-45 border border-azur-200/70" aria-hidden="true"></span><span>كل تركيبة شمسية للإنتاج الذاتي شُغّلت قبل دخول النظام حيّز التنفيذ — فيلا، مستودع، فندق، ضيعة فلاحية.</span></li>
+        <li class="flex gap-2.5"><span class="mt-1.5 inline-block h-1.5 w-1.5 flex-none rotate-45 border border-azur-200/70" aria-hidden="true"></span><span>مربوطة بالشبكة أو في موقع معزول، أياً كانت القدرة.</span></li>
+        <li class="flex gap-2.5"><span class="mt-1.5 inline-block h-1.5 w-1.5 flex-none rotate-45 border border-azur-200/70" aria-hidden="true"></span><span>دون تصريح، دون اتفاق ربط أو دون ترخيص إزاء النظام المطبَّق.</span></li>
       </ul>
 
       <h2 class="display v2-section-title v2-rise mt-14 text-white">التسوية في 5 مراحل</h2>
-      <ol class="mt-8 border-l-2 border-brass-400/60 ar-timeline" data-stagger>
+      {/* خط الجدول الزمني خُفِّف؛ أرقام الخطوات .lum في حلقة azur — لا قرص نحاسي */}
+      <ol class="mt-8 border-s-2 border-white/15 ar-timeline" data-stagger>
         {steps.map((s, i) => (
-          <li class="v2-rise relative pb-8 pl-8 last:pb-0" style={`--v2-i:${i}`}>
-            <span class="fig ar-timeline-step absolute -left-5 flex h-10 w-10 items-center justify-center rounded-full bg-brass-400 text-lg text-azur-950">{i + 1}</span>
+          <li class="v2-rise relative pb-8 ps-8 last:pb-0" style={`--v2-i:${i}`}>
+            <span class="fig lum ar-timeline-step absolute flex h-10 w-10 items-center justify-center rounded-full border border-azur-200/40 bg-nuit text-lg">{i + 1}</span>
             <h3 class="display pt-1.5 text-lg text-white">{s.title}</h3>
             <p class="mt-1.5 text-sm leading-relaxed text-lune-soft">{s.body}</p>
           </li>
@@ -137,7 +151,7 @@ const sanctions = [
             </div>
           </div>
           <a id="rg33-go" href={waFallback} rel="noopener"
-            class="mt-6 inline-block bg-brass-400 px-7 py-3.5 text-base font-bold text-azur-950 transition-colors hover:bg-brass-300"
+            class="glow mt-6 inline-block bg-brass-400 px-7 py-3.5 text-base font-bold text-azur-950 transition-colors hover:bg-brass-300"
           >ابدأ على واتساب</a>
         </div>
       </div>
@@ -150,21 +164,24 @@ const sanctions = [
 <style>
   /*
    * W214 — RTL structural fix: timeline dots.
-   * The global [dir="rtl"] block flips border-l-2 → border-inline-start and
-   * pl-8 → padding-inline-start. But the absolute step-circle uses physical
-   * `left: -1.25rem` which must be flipped to `right: -1.25rem` in RTL.
-   * `.ar-timeline` scopes this to this page only, so the FR template is safe.
+   * In RTL, the inline-start side is the RIGHT. The timeline rail uses
+   * border-s-2 (logical = border-inline-start = right in RTL).
+   * The step circle is positioned absolutely at the inline-start edge.
    */
   [dir="rtl"] .ar-timeline {
-    /* border-inline-start already handled by global [dir="rtl"] :where(.border-l-2) */
+    /* border-inline-start already correct via border-s-2 */
   }
   [dir="rtl"] .ar-timeline > li {
-    padding-left: 0;
-    padding-inline-start: 2rem; /* pl-8 = 2rem */
+    padding-inline-start: 2rem; /* ps-8 = 2rem */
   }
   [dir="rtl"] .ar-timeline .ar-timeline-step {
-    left: auto;
-    right: -1.25rem; /* mirrors -left-5 */
+    /* position at inline-start edge (right in RTL), inset -1.25rem */
+    inset-inline-start: -1.25rem;
+    inset-inline-end: auto;
+  }
+  /* LTR fallback */
+  [dir="ltr"] .ar-timeline .ar-timeline-step {
+    left: -1.25rem;
   }
 </style>
 

@@ -5,6 +5,13 @@
  * Article 33, decree 2-25-100, date 9 June 2026 and all amounts kept exact).
  * Internal links use localizeNavHref (EN/AR if available, else the existing FR
  * page — never a dead link). FR untouched.
+ *
+ * ELEVATION (W237) — mirrors /regularization-article-33.astro elevation treatment:
+ *  - Eyebrows demoted from text-brass-300 to text-lune (brass discipline);
+ *  - Bullet diamonds: border-azur-200/70 (not brass);
+ *  - Timeline rail: border-white/15 (not brass);
+ *  - Step numbers: fig lum + azur ring (not filled brass disk);
+ *  - .section rhythm + .seam-soft seams; "The text" section uses seam-soft.
  */
 import Layout from '../../layouts/Layout.astro';
 import V2Enhance from '../../components/V2Enhance.astro';
@@ -50,11 +57,11 @@ const sanctions = [
 
     <Breadcrumb items={[{ label: 'Home', href: L('/') }, { label: 'Article 33 regularization' }]} />
 
-    <section class="px-4 py-20 text-white sm:py-28">
+    <section class="section px-4 text-white">
       <div class="mx-auto max-w-6xl">
-        <p class="tech-label v2-kicker rule-brass cine-in text-brass-300">Law 82-21 — Article 33</p>
-        <h1 class="display v2-page-title cine-in mt-5 max-w-3xl [animation-delay:120ms]">Does your solar installation already exist? Regularize it now.</h1>
-        <p class="v2-lead cine-in mt-6 max-w-xl text-white/85 [animation-delay:240ms]">
+        <p class="tech-label v2-kicker rule-brass cine-in text-lune">Law 82-21 — Article 33</p>
+        <h1 class="display v2-page-title cine-in cine-in-1 mt-5 max-w-3xl">Does your solar installation already exist? Regularize it now.</h1>
+        <p class="v2-lead cine-in cine-in-2 mt-6 max-w-xl text-white/85">
           Decree 2-25-100 was published in the Bulletin Officiel on 9 March 2026 and entered into
           force on 9 June 2026, and the ANRE decision sets the buy-back tariff for the surplus.
           Since that date, the Law 82-21 regime applies to every self-production installation —
@@ -63,9 +70,10 @@ const sanctions = [
       </div>
     </section>
 
-    <section class="mx-auto max-w-3xl px-4 py-16">
+    <div class="seam-soft" aria-hidden="true"></div>
+    <section class="section mx-auto max-w-3xl px-4">
       <div class="v2-rise">
-        <p class="tech-label v2-kicker rule-brass text-brass-300">The text</p>
+        <p class="tech-label v2-kicker rule-brass text-lune">The text</p>
         <h2 class="display v2-section-title mt-4 text-white">What Article 33 says</h2>
         <p class="v2-lead mt-5 text-lune-soft">
           Article 33 of Law 82-21 grants operators of existing installations a
@@ -76,17 +84,20 @@ const sanctions = [
       </div>
 
       <h2 class="display v2-section-title v2-rise mt-14 text-white">Who is concerned?</h2>
+      {/* Bullet diamonds demoted to azur (gold stays on figures/CTA) */}
       <ul class="v2-rise mt-5 space-y-2.5 text-sm leading-relaxed text-lune-soft">
-        <li class="flex gap-2.5"><span class="mt-1.5 inline-block h-1.5 w-1.5 flex-none rotate-45 border border-brass-400" aria-hidden="true"></span><span>Any self-production solar installation commissioned before the regime came into force — villa, warehouse, hotel, farm.</span></li>
-        <li class="flex gap-2.5"><span class="mt-1.5 inline-block h-1.5 w-1.5 flex-none rotate-45 border border-brass-400" aria-hidden="true"></span><span>Grid-connected or off-grid, whatever the power.</span></li>
-        <li class="flex gap-2.5"><span class="mt-1.5 inline-block h-1.5 w-1.5 flex-none rotate-45 border border-brass-400" aria-hidden="true"></span><span>Without a declaration, without a connection agreement or without authorisation under the applicable regime.</span></li>
+        <li class="flex gap-2.5"><span class="mt-1.5 inline-block h-1.5 w-1.5 flex-none rotate-45 border border-azur-200/70" aria-hidden="true"></span><span>Any self-production solar installation commissioned before the regime came into force — villa, warehouse, hotel, farm.</span></li>
+        <li class="flex gap-2.5"><span class="mt-1.5 inline-block h-1.5 w-1.5 flex-none rotate-45 border border-azur-200/70" aria-hidden="true"></span><span>Grid-connected or off-grid, whatever the power.</span></li>
+        <li class="flex gap-2.5"><span class="mt-1.5 inline-block h-1.5 w-1.5 flex-none rotate-45 border border-azur-200/70" aria-hidden="true"></span><span>Without a declaration, without a connection agreement or without authorisation under the applicable regime.</span></li>
       </ul>
 
       <h2 class="display v2-section-title v2-rise mt-14 text-white">Regularization in 5 steps</h2>
-      <ol class="mt-8 border-l-2 border-brass-400/60" data-stagger>
+      {/* Timeline rail demoted to white/15; step numbers as .lum in an azur ring,
+          no more filled brass disk repeated. */}
+      <ol class="mt-8 border-l-2 border-white/15" data-stagger>
         {steps.map((s, i) => (
           <li class="v2-rise relative pb-8 pl-8 last:pb-0" style={`--v2-i:${i}`}>
-            <span class="fig absolute -left-5 flex h-10 w-10 items-center justify-center rounded-full bg-brass-400 text-lg text-azur-950">{i + 1}</span>
+            <span class="fig lum absolute -left-5 flex h-10 w-10 items-center justify-center rounded-full border border-azur-200/40 bg-nuit text-lg">{i + 1}</span>
             <h3 class="display pt-1.5 text-lg text-white">{s.title}</h3>
             <p class="mt-1.5 text-sm leading-relaxed text-lune-soft">{s.body}</p>
           </li>
@@ -110,7 +121,7 @@ const sanctions = [
       </div>
     </section>
 
-    <!-- ACTE FINAL — le dossier se confie en pleine lumière -->
+    <!-- FINAL ACT — the file handed over in full light -->
     <div class="v2-seam" aria-hidden="true"></div>
     <section class="bg-blanc-azur px-4 pb-16 pt-4 text-encre">
       <div class="mx-auto max-w-3xl">
@@ -139,7 +150,7 @@ const sanctions = [
             </div>
           </div>
           <a id="rg33-go" href={waFallback} rel="noopener"
-            class="mt-6 inline-block bg-brass-400 px-7 py-3.5 text-base font-bold text-azur-950 transition-colors hover:bg-brass-300"
+            class="glow mt-6 inline-block bg-brass-400 px-7 py-3.5 text-base font-bold text-azur-950 transition-colors hover:bg-brass-300"
           >Start on WhatsApp</a>
         </div>
       </div>
