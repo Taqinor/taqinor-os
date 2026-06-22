@@ -10,3 +10,8 @@ class AuditConfig(AppConfig):
     def ready(self):
         from . import signals
         signals.connect()
+        # M4 — abonne le satellite audit aux événements métier (core.events) :
+        # journalise un PDF (AuditLog.Action.PDF) sur document_pdf_generated,
+        # sans que ventes importe apps.audit (suppression de l'arête montante
+        # ventes → audit). Voir la « carte des trois couches » dans core/events.
+        from . import receivers  # noqa: F401
