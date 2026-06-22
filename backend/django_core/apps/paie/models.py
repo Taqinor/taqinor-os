@@ -143,6 +143,100 @@ class BaremeIR(models.Model):
         return f'{self.libelle} {self.date_effet}'
 
 
+# ── PAIE6 — Rubrique de paie paramétrable ──────────────────────────────────
+
+class Rubrique(models.Model):
+    """Ligne de bulletin de paie PARAMÉTRABLE (catalogue, scopé société).
+
+    Chaque rubrique est une ligne configurable du bulletin : un ``code`` court,
+    un ``libelle``, un ``type`` (gain / retenue / cotisation) et les drapeaux
+    fiscaux/sociaux qui pilotent l'assiette de calcul :
+
+    * ``imposable`` — entre dans la base de l'IR ;
+    * ``soumis_cnss`` — entre dans l'assiette CNSS ;
+    * ``soumis_amo`` — entre dans l'assiette AMO ;
+    * ``soumis_cimr`` — entre dans l'assiette CIMR.
+
+    Le mode de calcul est laissé ouvert : soit un ``montant_fixe`` (montant
+    constant), soit un couple ``base``/``taux`` (assiette × taux %). ``compte``
+    est le code de compte comptable optionnel pour l'imputation. ``ordre`` fixe
+    l'ordre d'affichage sur le bulletin ; ``actif`` permet d'archiver une
+    rubrique sans la supprimer.
+
+    Multi-société : ``company`` est posée côté serveur. Le couple
+    ``(company, code)`` est unique. Modèle purement additif : aucun calcul de
+    paie existant n'en dépend encore.
+    """
+    TYPE_GAIN = 'gain'
+    TYPE_RETENUE = 'retenue'
+    TYPE_COTISATION = 'cotisation'
+    TYPE_CHOICES = [
+        (TYPE_GAIN, 'Gain'),
+        (TYPE_RETENUE, 'Retenue'),
+        (TYPE_COTISATION, 'Cotisation'),
+    ]
+
+    BASE_BRUT = 'brut'
+    BASE_BRUT_IMPOSABLE = 'brut_imposable'
+    BASE_NET_IMPOSABLE = 'net_imposable'
+    BASE_PLAFONNEE_CNSS = 'plafonnee_cnss'
+    BASE_AUTRE = 'autre'
+    BASE_CHOICES = [
+        (BASE_BRUT, 'Brut'),
+        (BASE_BRUT_IMPOSABLE, 'Brut imposable'),
+        (BASE_NET_IMPOSABLE, 'Net imposable'),
+        (BASE_PLAFONNEE_CNSS, 'Assiette plafonnée CNSS'),
+        (BASE_AUTRE, 'Autre / manuelle'),
+    ]
+
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='paie_rubriques',
+        verbose_name='Société',
+    )
+    code = models.CharField(max_length=30, verbose_name='Code')
+    libelle = models.CharField(max_length=120, verbose_name='Libellé')
+    type = models.CharField(
+        max_length=12, choices=TYPE_CHOICES, default=TYPE_GAIN,
+        verbose_name='Type')
+    imposable = models.BooleanField(
+        default=False, verbose_name='Imposable (IR)')
+    soumis_cnss = models.BooleanField(
+        default=False, verbose_name='Soumis CNSS')
+    soumis_amo = models.BooleanField(
+        default=False, verbose_name='Soumis AMO')
+    soumis_cimr = models.BooleanField(
+        default=False, verbose_name='Soumis CIMR')
+    compte = models.CharField(
+        max_length=30, blank=True, default='',
+        verbose_name='Compte comptable')
+    # Mode de calcul : montant fixe OU base × taux. Les deux peuvent rester nuls
+    # (rubrique à saisie manuelle sur le bulletin).
+    base = models.CharField(
+        max_length=20, choices=BASE_CHOICES, default=BASE_BRUT,
+        verbose_name='Assiette')
+    taux = models.DecimalField(
+        max_digits=8, decimal_places=4, null=True, blank=True,
+        verbose_name='Taux (%)')
+    montant_fixe = models.DecimalField(
+        max_digits=14, decimal_places=2, null=True, blank=True,
+        verbose_name='Montant fixe')
+    ordre = models.PositiveIntegerField(default=0, verbose_name='Ordre')
+    actif = models.BooleanField(default=True, verbose_name='Actif')
+    date_creation = models.DateTimeField(
+        auto_now_add=True, verbose_name='Créé le')
+
+    class Meta:
+        verbose_name = 'Rubrique de paie'
+        verbose_name_plural = 'Rubriques de paie'
+        ordering = ['ordre', 'code']
+        unique_together = [('company', 'code')]
+
+    def __str__(self):
+        return f'{self.code} — {self.libelle}'
+
+
 class TrancheIR(models.Model):
     """Tranche d'un ``BaremeIR`` : intervalle de revenu, taux, somme à déduire.
 
