@@ -100,8 +100,11 @@ services:
 
   frontend:
     build:
-      context: ./frontend
-      dockerfile: Dockerfile.prod
+      # Contexte = racine du repo : la page ERP /devis-design importe (alias Vite)
+      # le builder 3D roofPro11 depuis apps/web/src, qui doit donc être présent
+      # dans le contexte de build (un contexte ./frontend seul casse le build).
+      context: .
+      dockerfile: frontend/Dockerfile.prod
       args:
         VITE_API_URL: ${VITE_API_URL}
         VITE_IA_API_URL: ${VITE_IA_API_URL}

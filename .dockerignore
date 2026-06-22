@@ -1,0 +1,15 @@
+# Build context for the frontend image is the repo root (it needs apps/web/src).
+# Keep the context small + fast: drop installs, VCS, worktrees, build outputs.
+**/node_modules
+**/dist
+.git
+.github
+.claude
+.venv
+**/__pycache__
+**/*.pyc
+**/*.log
+*.md
+docs
+backend
+.env
