@@ -260,3 +260,225 @@ def export_comptable_csv(company, debut, fin):
         f'attachment; filename="export-comptable-{debut.isoformat()}'
         f'_{fin.isoformat()}.csv"')
     return resp
+
+
+# ── FG49 — Export comptable CODÉ PAR COMPTE (grand-livre CGNC / fiduciaire) ──
+# Troisième format : un grand-livre des ventes mappé sur des numéros de compte
+# CGNC marocains, prêt pour un import direct chez le fiduciaire (mise en page
+# type PCG/Sage). Chaque facture/avoir devient un jeu d'écritures ÉQUILIBRÉES :
+#   • DÉBIT  3421 Clients .......... TTC
+#   • CRÉDIT 7111 Ventes ........... HT  (une ligne par taux de TVA)
+#   • CRÉDIT 4455 TVA collectée .... TVA (une ligne par taux non nul)
+# Les avoirs inversent débit/crédit. Lecture seule, borné société. C'est un
+# export AR/ventes : il ne contient QUE des comptes de produit/TVA/créance —
+# jamais d'achat ni de marge.
+#
+# DECISION (codes par défaut) : 7111 = ventes de marchandises (produits),
+# 4455 = État - TVA facturée (collectée), 3421 = clients. Défauts CGNC sains,
+# alignés sur le plan semé par apps/compta. CONFIGURABLES : un override global
+# par ``settings.VENTES_COMPTA_ACCOUNT_CODES`` (dict) et un override par société
+# via ``settings.VENTES_COMPTA_ACCOUNT_CODES_BY_COMPANY`` (clé = slug société).
+
+# Défauts CGNC — surchargeables (voir account_codes_for).
+_DEFAULT_ACCOUNT_CODES = {
+    'ventes': '7111',         # Ventes de marchandises (produit)
+    'tva_collectee': '4455',  # État - TVA facturée (collectée)
+    'clients': '3421',        # Clients (créance / tiers)
+}
+
+# Intitulés CGNC usuels des comptes par défaut (mise en page fiduciaire).
+_ACCOUNT_LABELS = {
+    '7111': 'Ventes de marchandises',
+    '7121': 'Ventes de biens et services produits',
+    '4455': 'État - TVA facturée',
+    '3421': 'Clients',
+}
+
+_GRAND_LIVRE_HEADERS = [
+    'Compte', 'Intitulé', 'Date', 'Journal', 'Pièce', 'Libellé',
+    'Tiers', 'ICE tiers', 'TVA %', 'Débit', 'Crédit',
+]
+
+
+def account_codes_for(company):
+    """Renvoie le mapping seau → numéro de compte CGNC pour ``company``.
+
+    Part des défauts CGNC sains (7111/4455/3421), puis applique, dans l'ordre :
+    un override global ``settings.VENTES_COMPTA_ACCOUNT_CODES`` puis un override
+    par société ``settings.VENTES_COMPTA_ACCOUNT_CODES_BY_COMPANY[slug]``. Seules
+    les clés connues (ventes/tva_collectee/clients) sont prises en compte.
+    """
+    from django.conf import settings
+    codes = dict(_DEFAULT_ACCOUNT_CODES)
+    glob = getattr(settings, 'VENTES_COMPTA_ACCOUNT_CODES', None) or {}
+    for k in codes:
+        if glob.get(k):
+            codes[k] = str(glob[k])
+    by_company = (
+        getattr(settings, 'VENTES_COMPTA_ACCOUNT_CODES_BY_COMPANY', None) or {})
+    slug = getattr(company, 'slug', None)
+    per = by_company.get(slug) if slug else None
+    if isinstance(per, dict):
+        for k in codes:
+            if per.get(k):
+                codes[k] = str(per[k])
+    return codes
+
+
+def _account_label(code):
+    return _ACCOUNT_LABELS.get(str(code), '')
+
+
+def _grand_livre_rows(company, debut, fin):
+    """Construit les écritures du grand-livre des ventes pour [debut, fin[.
+
+    Renvoie (rows, totals) où rows = listes (ordre _GRAND_LIVRE_HEADERS) et
+    totals = (tot_debit, tot_credit) en Decimal. Factures (signe +) et avoirs
+    (signe -) émis sur la période ; ventilation HT par taux, TVA par taux.
+    """
+    from apps.ventes.models import Avoir, Facture
+    codes = account_codes_for(company)
+    c_clients = codes['clients']
+    c_ventes = codes['ventes']
+    c_tva = codes['tva_collectee']
+    journal = 'VTE'
+    rows = []
+    tot_debit = tot_credit = Decimal('0')
+
+    def _emit(debit, credit, compte, taux, date_s, piece, libelle,
+              tiers, ice):
+        nonlocal tot_debit, tot_credit
+        debit = _q2(debit)
+        credit = _q2(credit)
+        rows.append([
+            compte, _account_label(compte), date_s, journal, piece, libelle,
+            tiers, ice, (float(taux) if taux is not None else ''),
+            float(debit), float(credit),
+        ])
+        tot_debit += debit
+        tot_credit += credit
+
+    factures = (Facture.objects
+                .filter(company=company, statut__in=ISSUED_STATUTS,
+                        date_emission__gte=debut, date_emission__lt=fin)
+                .select_related('client').prefetch_related('lignes')
+                .order_by('date_emission', 'reference'))
+    for f in factures:
+        date_s = f.date_emission.isoformat() if f.date_emission else ''
+        nom = getattr(f.client, 'nom', '') or ''
+        ice = getattr(f.client, 'ice', '') or ''
+        piece = f.reference
+        # Ventilation HT/TVA par taux sur les lignes (ou montants figés).
+        par_taux = {}
+        ttc_total = Decimal('0')
+        lignes = list(f.lignes.all())
+        if lignes:
+            for ligne in lignes:
+                ht = _q2(ligne.total_ht)
+                taux = Decimal(ligne.taux_tva_effectif or 0)
+                tva = _q2(ht * taux / Decimal('100'))
+                b = par_taux.setdefault(
+                    taux, {'ht': Decimal('0'), 'tva': Decimal('0')})
+                b['ht'] += ht
+                b['tva'] += tva
+                ttc_total += ht + tva
+        else:
+            ht = _q2(f.total_ht)
+            taux = Decimal(f.taux_tva or 0)
+            tva = _q2(f.total_tva)
+            par_taux[taux] = {'ht': ht, 'tva': tva}
+            ttc_total = _q2(f.total_ttc)
+        # DÉBIT 3421 Clients (TTC) — une ligne par pièce.
+        _emit(ttc_total, Decimal('0'), c_clients, None, date_s, piece,
+              f'Facture {piece}', nom, ice)
+        # CRÉDIT 7111 Ventes (HT) + 4455 TVA (par taux).
+        for taux in sorted(par_taux):
+            b = par_taux[taux]
+            if b['ht']:
+                _emit(Decimal('0'), b['ht'], c_ventes, taux, date_s, piece,
+                      f'Vente {piece}', nom, ice)
+            if b['tva']:
+                _emit(Decimal('0'), b['tva'], c_tva, taux, date_s, piece,
+                      f'TVA {piece}', nom, ice)
+
+    avoirs = (Avoir.objects
+              .filter(company=company, statut=Avoir.Statut.EMISE,
+                      date_emission__gte=debut, date_emission__lt=fin)
+              .select_related('client', 'facture').prefetch_related('lignes')
+              .order_by('date_emission', 'reference'))
+    for a in avoirs:
+        date_s = a.date_emission.isoformat() if a.date_emission else ''
+        nom = getattr(a.client, 'nom', '') or ''
+        ice = getattr(a.client, 'ice', '') or ''
+        piece = a.reference
+        ttc_total = Decimal('0')
+        # Avoir = contre-passation : CRÉDIT 3421 Clients (TTC), DÉBIT
+        # 7111 Ventes (HT) + 4455 TVA (par taux).
+        for b in a.tva_par_taux:
+            taux = Decimal(b['taux'] or 0)
+            ht = _q2(b['base_ht'])
+            tva = _q2(b['montant'])
+            ttc_total += ht + tva
+            if ht:
+                _emit(ht, Decimal('0'), c_ventes, taux, date_s, piece,
+                      f'Avoir {piece} (ventes)', nom, ice)
+            if tva:
+                _emit(tva, Decimal('0'), c_tva, taux, date_s, piece,
+                      f'Avoir {piece} (TVA)', nom, ice)
+        _emit(Decimal('0'), ttc_total, c_clients, None, date_s, piece,
+              f'Avoir {piece}', nom, ice)
+
+    return rows, (tot_debit, tot_credit)
+
+
+def export_grand_livre_xlsx(company, debut, fin):
+    """Classeur .xlsx : grand-livre codé par compte + ligne TOTAL (débit/crédit)."""
+    from openpyxl import Workbook
+    from openpyxl.styles import Font
+
+    rows, (tot_debit, tot_credit) = _grand_livre_rows(company, debut, fin)
+    wb = Workbook()
+    ws = wb.active
+    ws.title = 'Grand-livre ventes'
+    bold = Font(bold=True)
+    ws.append(_GRAND_LIVRE_HEADERS)
+    for c in ws[1]:
+        c.font = bold
+    for r in rows:
+        ws.append(r)
+    ws.append([])
+    total_row = ['TOTAL', '', '', '', '', '', '', '', '',
+                 float(_q2(tot_debit)), float(_q2(tot_credit))]
+    ws.append(total_row)
+    for c in ws[ws.max_row]:
+        c.font = bold
+
+    resp = HttpResponse(content_type=(
+        'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'))
+    resp['Content-Disposition'] = (
+        f'attachment; filename="grand-livre-ventes-{debut.isoformat()}'
+        f'_{fin.isoformat()}.xlsx"')
+    wb.save(resp)
+    return resp
+
+
+def export_grand_livre_csv(company, debut, fin):
+    """Fichier .csv : grand-livre codé par compte (mise en page fiduciaire)."""
+    import csv
+    import io
+
+    rows, (tot_debit, tot_credit) = _grand_livre_rows(company, debut, fin)
+    buf = io.StringIO()
+    writer = csv.writer(buf, delimiter=';')
+    writer.writerow(_GRAND_LIVRE_HEADERS)
+    for r in rows:
+        writer.writerow(r)
+    writer.writerow([])
+    writer.writerow(['TOTAL', '', '', '', '', '', '', '', '',
+                     float(_q2(tot_debit)), float(_q2(tot_credit))])
+    resp = HttpResponse('﻿' + buf.getvalue(),
+                        content_type='text/csv; charset=utf-8')
+    resp['Content-Disposition'] = (
+        f'attachment; filename="grand-livre-ventes-{debut.isoformat()}'
+        f'_{fin.isoformat()}.csv"')
+    return resp

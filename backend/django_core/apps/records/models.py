@@ -13,11 +13,15 @@ from django.contrib.contenttypes.fields import GenericForeignKey
 from django.contrib.contenttypes.models import ContentType
 from django.db import models
 
-# (app_label, model) autorisés comme cibles d'activité / pièce jointe.
+# (app_label, model) autorisés comme cibles d'activité / pièce jointe / lien GED.
+# Registre unique partagé : Activity, Comment, TaggedItem, Attachment (records)
+# ET DocumentLien (GED). GED6 ajoute le bon de commande (`ventes.boncommande`)
+# pour pouvoir rattacher un document GED à toute la chaîne devis→commande→facture.
 ALLOWED_TARGETS = {
     ('crm', 'lead'),
     ('crm', 'client'),
     ('ventes', 'devis'),
+    ('ventes', 'boncommande'),
     ('ventes', 'facture'),
     ('installations', 'installation'),
     ('sav', 'ticket'),

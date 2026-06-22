@@ -13,6 +13,9 @@ Socle du module QHSE :
 Tout est multi-société : chaque modèle porte un FK ``company`` posé côté serveur
 (jamais lu du corps de requête). Entièrement additif.
 """
+import re
+from decimal import Decimal, InvalidOperation
+
 from django.conf import settings
 from django.db import models
 
@@ -210,6 +213,16 @@ class PointControleModele(models.Model):
     type_releve = models.CharField(
         max_length=10, choices=TypeReleve.choices,
         default=TypeReleve.VISUEL, verbose_name='Type de relevé')
+    # Plage attendue d'un relevé MESURÉ (QHSE5) : quand au moins l'une des deux
+    # bornes est renseignée, la conformité d'un ``ReleveControle`` à valeur
+    # numérique est calculée automatiquement (min ≤ valeur ≤ max). Laissées
+    # nulles → aucune auto-conformité (la conformité reste manuelle).
+    valeur_min = models.DecimalField(
+        max_digits=14, decimal_places=4, null=True, blank=True,
+        verbose_name='Valeur min attendue')
+    valeur_max = models.DecimalField(
+        max_digits=14, decimal_places=4, null=True, blank=True,
+        verbose_name='Valeur max attendue')
     hold_point = models.BooleanField(
         default=False, verbose_name="Point d'arrêt")
     description = models.TextField(
@@ -330,3 +343,156 @@ class ReleveControle(models.Model):
 
     def __str__(self):
         return f'{self.point.intitule} — {self.plan_chantier_id}'
+
+    def valeur_numerique(self):
+        """Extrait le premier nombre signé de ``valeur`` (texte libre).
+
+        La ``valeur`` est saisie librement (ex. ``"24.5 N.m"`` ou ``"24,5"``).
+        On lit le premier token numérique (virgule décimale tolérée) et on le
+        renvoie en ``Decimal`` ; ``None`` si rien d'exploitable n'est trouvé.
+        """
+        if not self.valeur:
+            return None
+        match = re.search(r'[-+]?\d+(?:[.,]\d+)?', self.valeur)
+        if not match:
+            return None
+        try:
+            return Decimal(match.group(0).replace(',', '.'))
+        except (InvalidOperation, ValueError):
+            return None
+
+    def conformite_auto(self):
+        """Conformité auto-calculée vs la plage attendue du point, sinon ``None``.
+
+        Renvoie ``True``/``False`` UNIQUEMENT quand le point de contrôle définit
+        une plage numérique (au moins ``valeur_min`` ou ``valeur_max``) ET que
+        la valeur relevée est numérique ; sinon ``None`` (la conformité reste
+        celle posée manuellement). Bornes inclusives.
+        """
+        point = self.point
+        vmin = point.valeur_min
+        vmax = point.valeur_max
+        if vmin is None and vmax is None:
+            return None
+        valeur = self.valeur_numerique()
+        if valeur is None:
+            return None
+        if vmin is not None and valeur < vmin:
+            return False
+        if vmax is not None and valeur > vmax:
+            return False
+        return True
+
+    def save(self, *args, **kwargs):
+        """Auto-conformité (QHSE5) avant l'enregistrement.
+
+        Quand le point porte une plage attendue et que la valeur est numérique,
+        ``conforme`` est dérivé automatiquement (min ≤ valeur ≤ max, inclusif).
+        En l'absence de plage ou de valeur numérique, ``conforme`` n'est pas
+        touché : il reste celui défini manuellement.
+        """
+        auto = self.conformite_auto()
+        if auto is not None:
+            self.conforme = auto
+        super().save(*args, **kwargs)
+
+
+# ── QHSE7 — Relevé courbe I-V par string (mise en service PV) ───────────────
+
+class ReleveCourbeIV(models.Model):
+    """Relevé de courbe I-V (courant-tension) d'un string PV à la mise en service.
+
+    Mesure de commissioning d'un string photovoltaïque : pour un chantier
+    (référence lâche par ``chantier_id`` — jamais un import cross-app de
+    ``installations``) et/ou un ``PlanInspectionChantier`` (ITP appliqué), on
+    consigne les grandeurs caractéristiques relevées au traceur de courbe :
+    ``voc`` (tension circuit ouvert), ``isc`` (courant court-circuit), ``vmpp``,
+    ``impp``, ``pmpp`` (point de puissance maximale), ainsi que les conditions
+    de mesure ``irradiance`` (W/m²) et ``temperature_module`` (°C). La courbe
+    mesurée complète peut être stockée en JSON (liste de points ``{v, i}``).
+
+    Le facteur de forme ``FF = Pmpp / (Voc · Isc)`` est calculé à la volée par
+    :meth:`fill_factor` quand les valeurs nécessaires sont présentes.
+
+    Multi-société via ``company`` posée côté serveur. Entièrement additif.
+    """
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='qhse_courbes_iv',
+        verbose_name='Société',
+    )
+    # Référence lâche au chantier (installations.Chantier) par id : jamais un
+    # import cross-app de modèle.
+    chantier_id = models.PositiveIntegerField(
+        null=True, blank=True, verbose_name='ID du chantier')
+    # Rattachement lâche optionnel à un ITP appliqué (même app QHSE).
+    plan_chantier = models.ForeignKey(
+        PlanInspectionChantier,
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='courbes_iv',
+        verbose_name="Plan d'inspection chantier",
+    )
+    string_id = models.CharField(
+        max_length=120, verbose_name='Identifiant du string')
+    voc = models.DecimalField(
+        max_digits=10, decimal_places=3, null=True, blank=True,
+        verbose_name='Voc — tension circuit ouvert (V)')
+    isc = models.DecimalField(
+        max_digits=10, decimal_places=3, null=True, blank=True,
+        verbose_name='Isc — courant court-circuit (A)')
+    vmpp = models.DecimalField(
+        max_digits=10, decimal_places=3, null=True, blank=True,
+        verbose_name='Vmpp — tension au point de puissance max (V)')
+    impp = models.DecimalField(
+        max_digits=10, decimal_places=3, null=True, blank=True,
+        verbose_name='Impp — courant au point de puissance max (A)')
+    pmpp = models.DecimalField(
+        max_digits=10, decimal_places=3, null=True, blank=True,
+        verbose_name='Pmpp — puissance au point max (W)')
+    irradiance = models.DecimalField(
+        max_digits=8, decimal_places=2, null=True, blank=True,
+        verbose_name='Irradiance (W/m²)')
+    temperature_module = models.DecimalField(
+        max_digits=6, decimal_places=2, null=True, blank=True,
+        verbose_name='Température module (°C)')
+    # Courbe mesurée : liste de points ``[{"v": <float>, "i": <float>}, ...]``.
+    courbe_points = models.JSONField(
+        default=list, blank=True, verbose_name='Points de la courbe (v, i)')
+    notes = models.TextField(
+        blank=True, default='', verbose_name='Notes')
+    date_releve = models.DateTimeField(
+        null=True, blank=True, verbose_name='Date du relevé')
+    releve_par = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='qhse_courbes_iv_relevees',
+        verbose_name='Relevé par',
+    )
+    date_creation = models.DateTimeField(
+        auto_now_add=True, verbose_name='Créé le')
+
+    class Meta:
+        verbose_name = 'Relevé courbe I-V'
+        verbose_name_plural = 'Relevés courbe I-V'
+        ordering = ['-id']
+
+    def __str__(self):
+        return f'String {self.string_id} — chantier {self.chantier_id}'
+
+    def fill_factor(self):
+        """Facteur de forme ``FF = Pmpp / (Voc · Isc)``, sinon ``None``.
+
+        Calculé uniquement quand ``pmpp``, ``voc`` et ``isc`` sont présents et
+        que le dénominateur ``Voc · Isc`` est non nul. Renvoie un ``Decimal``
+        (rapport sans unité, typiquement ≈ 0,7–0,85 pour un string sain) arrondi
+        à 4 décimales ; ``None`` quand le calcul n'est pas possible.
+        """
+        if self.pmpp is None or self.voc is None or self.isc is None:
+            return None
+        denom = self.voc * self.isc
+        if denom == 0:
+            return None
+        return (self.pmpp / denom).quantize(Decimal('0.0001'))

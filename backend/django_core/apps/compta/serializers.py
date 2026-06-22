@@ -9,10 +9,11 @@ from decimal import Decimal
 from rest_framework import serializers
 
 from .models import (
-    CessionImmobilisation, CompteComptable, CompteTresorerie,
-    DotationAmortissement, EcritureComptable, ExerciceComptable,
-    Immobilisation, Journal, LigneEcriture, PeriodeComptable,
-    PlanAmortissement, PlanComptable,
+    Caisse, CessionImmobilisation, ClotureCaisse, CompteComptable,
+    CompteTresorerie, DotationAmortissement, EcritureComptable,
+    ExerciceComptable, Immobilisation, Journal, LigneEcriture, LigneReleve,
+    MouvementCaisse, PeriodeComptable, PlanAmortissement, PlanComptable,
+    RapprochementBancaire,
 )
 
 
@@ -326,5 +327,156 @@ class CessionImmobilisationSerializer(serializers.ModelSerializer):
             'amortissements_cumules', 'valeur_nette_comptable',
             'resultat_cession', 'plus_value', 'moins_value', 'posted',
             'ecriture', 'date_creation',
+        ]
+        read_only_fields = fields
+
+
+class LigneReleveSerializer(serializers.ModelSerializer):
+    """Ligne d'un relevé bancaire (FG123).
+
+    ``company``/``rapprochement`` posés côté serveur. Expose en lecture seule le
+    montant GL pointé, l'écart et le statut de concordance dérivés ; les lignes
+    GL appariées sont restituées en IDs.
+    """
+    statut_display = serializers.CharField(
+        source='get_statut_display', read_only=True)
+    montant_pointe = serializers.DecimalField(
+        max_digits=14, decimal_places=2, read_only=True)
+    ecart = serializers.DecimalField(
+        max_digits=14, decimal_places=2, read_only=True)
+    est_concordante = serializers.BooleanField(read_only=True)
+    lignes_gl = serializers.PrimaryKeyRelatedField(
+        many=True, read_only=True)
+
+    class Meta:
+        model = LigneReleve
+        fields = [
+            'id', 'rapprochement', 'date_operation', 'libelle', 'reference',
+            'montant', 'statut', 'statut_display', 'lignes_gl',
+            'montant_pointe', 'ecart', 'est_concordante', 'date_creation',
+        ]
+        read_only_fields = [
+            'rapprochement', 'statut', 'statut_display', 'lignes_gl',
+            'montant_pointe', 'ecart', 'est_concordante', 'date_creation',
+        ]
+
+
+class RapprochementBancaireSerializer(serializers.ModelSerializer):
+    """Rapprochement bancaire d'un compte de trésorerie (FG123).
+
+    ``company`` posée côté serveur (jamais du corps). ``compte_tresorerie`` est
+    validé comme appartenant à la société. Expose les lignes de relevé imbriquées
+    et l'indicateur ``est_rapproche`` en lecture seule.
+    """
+    statut_display = serializers.CharField(
+        source='get_statut_display', read_only=True)
+    compte_libelle = serializers.CharField(
+        source='compte_tresorerie.libelle', read_only=True)
+    lignes_releve = LigneReleveSerializer(many=True, read_only=True)
+    est_rapproche = serializers.BooleanField(read_only=True)
+
+    class Meta:
+        model = RapprochementBancaire
+        fields = [
+            'id', 'compte_tresorerie', 'compte_libelle', 'libelle',
+            'date_debut', 'date_fin', 'date_releve', 'solde_releve', 'statut',
+            'statut_display', 'date_rapprochement', 'lignes_releve',
+            'est_rapproche', 'date_creation',
+        ]
+        read_only_fields = [
+            'statut', 'statut_display', 'date_rapprochement', 'lignes_releve',
+            'est_rapproche', 'date_creation',
+        ]
+
+    def validate_compte_tresorerie(self, value):
+        return _meme_societe(self, value, 'Compte de trésorerie')
+
+    def validate(self, attrs):
+        debut = attrs.get('date_debut')
+        fin = attrs.get('date_fin')
+        if debut and fin and fin < debut:
+            raise serializers.ValidationError(
+                "La date de fin doit être postérieure à la date de début.")
+        return attrs
+
+
+# ── FG124 — Caisse / petty cash (journal d'espèces) ────────────────────────
+
+class CaisseSerializer(serializers.ModelSerializer):
+    """Caisse d'espèces (petty cash) — FG124.
+
+    ``company`` posée côté serveur. ``compte_tresorerie`` validé comme
+    appartenant à la société ET de type caisse. Expose le solde courant
+    théorique dérivé en lecture seule.
+    """
+    compte_libelle = serializers.CharField(
+        source='compte_tresorerie.libelle', read_only=True)
+    solde_courant = serializers.SerializerMethodField()
+
+    class Meta:
+        model = Caisse
+        fields = [
+            'id', 'compte_tresorerie', 'compte_libelle', 'libelle',
+            'responsable', 'solde_initial', 'solde_courant', 'actif',
+            'date_creation',
+        ]
+        read_only_fields = ['solde_courant', 'date_creation']
+
+    def get_solde_courant(self, obj):
+        from . import selectors
+        return selectors.solde_caisse_a(obj)
+
+    def validate_compte_tresorerie(self, value):
+        value = _meme_societe(self, value, 'Compte de trésorerie')
+        if value is not None and value.type_compte != (
+                CompteTresorerie.Type.CAISSE):
+            raise serializers.ValidationError(
+                "Le compte de trésorerie doit être de type « caisse ».")
+        return value
+
+
+class MouvementCaisseSerializer(serializers.ModelSerializer):
+    """Mouvement d'une caisse : entrée/sortie d'espèces (FG124).
+
+    ``company``/``caisse`` posés côté serveur (via l'action de la caisse). Le
+    montant signé est exposé en lecture seule ; ``posted``/``ecriture`` aussi.
+    """
+    sens_display = serializers.CharField(
+        source='get_sens_display', read_only=True)
+    montant_signe = serializers.DecimalField(
+        max_digits=14, decimal_places=2, read_only=True)
+
+    class Meta:
+        model = MouvementCaisse
+        fields = [
+            'id', 'caisse', 'sens', 'sens_display', 'date_mouvement',
+            'montant', 'montant_signe', 'motif', 'justificatif', 'piece',
+            'compte_contrepartie', 'posted', 'ecriture', 'date_creation',
+        ]
+        read_only_fields = [
+            'caisse', 'montant_signe', 'posted', 'ecriture', 'date_creation']
+
+    def validate_montant(self, value):
+        if value is not None and value <= 0:
+            raise serializers.ValidationError(
+                "Le montant doit être strictement positif.")
+        return value
+
+    def validate_compte_contrepartie(self, value):
+        return _meme_societe(self, value, 'Compte de contrepartie')
+
+
+class ClotureCaisseSerializer(serializers.ModelSerializer):
+    """Clôture de caisse : comptage physique à une date (FG124) — lecture seule.
+
+    Les clôtures sont CALCULÉES par le service (action ``cloturer`` de la
+    caisse) : le solde théorique et l'écart sont figés côté serveur, jamais
+    saisis. Ce sérialiseur ne sert qu'à les restituer.
+    """
+    class Meta:
+        model = ClotureCaisse
+        fields = [
+            'id', 'caisse', 'date_cloture', 'solde_theorique', 'solde_compte',
+            'ecart', 'commentaire', 'cloturee_par', 'date_creation',
         ]
         read_only_fields = fields

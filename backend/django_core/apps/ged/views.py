@@ -11,12 +11,16 @@ from rest_framework.response import Response
 
 from authentication.mixins import TenantMixin
 from authentication.permissions import IsAnyRole, IsResponsableOrAdmin
+# `records` est une app de fondation : son registre de cibles autorisées
+# (ALLOWED_TARGETS) et son validateur `resolve_target` sont réutilisés tels quels
+# pour la liaison polymorphe GED6 — on n'invente pas un schéma de FK générique.
+from apps.records.serializers import resolve_target
 
 from . import services
-from .models import Cabinet, Document, DocumentVersion, Folder
+from .models import Cabinet, Document, DocumentLien, DocumentVersion, Folder
 from .serializers import (
-    CabinetSerializer, DocumentSerializer, DocumentVersionSerializer,
-    FolderSerializer,
+    CabinetSerializer, DocumentLienSerializer, DocumentSerializer,
+    DocumentVersionSerializer, FolderSerializer,
 )
 
 READ_ACTIONS = ['list', 'retrieve']
@@ -205,3 +209,70 @@ class DocumentVersionViewSet(TenantMixin, viewsets.ModelViewSet):
             uploaded_by=self.request.user,
         )
         serializer.instance = instance
+
+
+class DocumentLienViewSet(TenantMixin, viewsets.ModelViewSet):
+    """GED6 — Liens polymorphes Document ↔ objet métier (records.ALLOWED_TARGETS).
+
+    Création : `{"document": <id>, "model": "ventes.devis", "id": <pk>}`. La
+    cible est résolue + validée par `records.resolve_target` (type autorisé ET
+    objet de la société courante) — un type non autorisé ou une cible hors
+    société est rejeté en 400. `document` est borné à la société (404 sinon),
+    `company` est posée côté serveur (cohérente avec le document).
+
+    Reverse lookup — documents rattachés à un objet donné :
+    `GET …/liens/?model=ventes.devis&id=<pk>` filtre les liens sur cette cible.
+    Liste sans filtre : tous les liens de la société.
+    """
+    queryset = DocumentLien.objects.select_related(
+        'document', 'content_type', 'created_by').all()
+    serializer_class = DocumentLienSerializer
+
+    def get_permissions(self):
+        if self.action in READ_ACTIONS:
+            return [IsAnyRole()]
+        return [IsResponsableOrAdmin()]
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        document = self.request.query_params.get('document')
+        if document:
+            qs = qs.filter(document_id=document)
+        # Reverse lookup : tous les documents liés à (model, id).
+        model = self.request.query_params.get('model')
+        oid = self.request.query_params.get('id')
+        if model and oid:
+            try:
+                ct, _ = resolve_target(
+                    model, oid, self.request.user.company)
+            except ValueError:
+                return qs.none()
+            qs = qs.filter(content_type=ct, object_id=oid)
+        return qs
+
+    def create(self, request, *args, **kwargs):
+        company = request.user.company
+        # 1) cible polymorphe : type autorisé + objet de la société.
+        try:
+            ct, _obj = resolve_target(
+                request.data.get('model'), request.data.get('id'), company)
+        except ValueError as exc:
+            return Response({'detail': str(exc)},
+                            status=status.HTTP_400_BAD_REQUEST)
+        # 2) document : borné à la société (jamais lié à un doc d'une autre).
+        doc_id = request.data.get('document')
+        if not doc_id:
+            return Response({'document': 'Document requis.'},
+                            status=status.HTTP_400_BAD_REQUEST)
+        document = Document.objects.filter(
+            company=company, pk=doc_id).first()
+        if document is None:
+            return Response({'document': 'Document inconnu.'},
+                            status=status.HTTP_404_NOT_FOUND)
+        # 3) lien idempotent (un doc ne se lie qu'une fois à un objet donné).
+        lien, created = DocumentLien.objects.get_or_create(
+            document=document, content_type=ct,
+            object_id=request.data.get('id'),
+            defaults={'company': company, 'created_by': request.user})
+        code = status.HTTP_201_CREATED if created else status.HTTP_200_OK
+        return Response(DocumentLienSerializer(lien).data, status=code)

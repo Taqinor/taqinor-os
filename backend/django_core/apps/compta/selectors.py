@@ -8,7 +8,9 @@ from decimal import Decimal
 
 from django.db.models import Sum
 
-from .models import CompteComptable, LigneEcriture
+from .models import (
+    Caisse, CompteComptable, CompteTresorerie, LigneEcriture, MouvementCaisse,
+)
 
 
 def _lignes_qs(company, *, date_debut=None, date_fin=None, validees_seulement=False):
@@ -261,3 +263,314 @@ def comptes_par_classe(company, classe):
     """Comptes d'une classe donnée (lecture seule, scopé société)."""
     return list(CompteComptable.objects.filter(
         company=company, classe=classe).order_by('numero'))
+
+
+# ── FG122 — Position de trésorerie consolidée + projection nette ───────────
+
+# Comptes CGNC dont les soldes alimentent la projection nette. Tout se déduit du
+# grand livre de la compta elle-même (AUCUN import cross-app) : la facturation
+# client/fournisseur, la paie et les impôts laissent leur trace sur ces comptes.
+_COMPTE_CLIENTS = '3421'        # Clients — créances (AR), solde débiteur.
+_COMPTE_FOURNISSEURS = '4411'   # Fournisseurs — dettes (AP), solde créditeur.
+_COMPTES_TVA_DUE = ('4455', '44552')          # TVA collectée à reverser (passif).
+_COMPTES_TVA_RECUP = ('3455', '34552')        # TVA récupérable (actif).
+_COMPTES_PAIE = ('4432', '4441', '4443')      # Rémunérations/organismes/État dus.
+
+
+def _solde_numero(company, numero, *, date_fin=None, validees_seulement=False):
+    """Solde (débit − crédit) d'un compte par son numéro, 0 si compte absent."""
+    compte = CompteComptable.objects.filter(
+        company=company, numero=numero).first()
+    if compte is None:
+        return Decimal('0')
+    return solde_compte(
+        company, compte, date_fin=date_fin,
+        validees_seulement=validees_seulement)
+
+
+def _solde_groupe(company, numeros, *, date_fin=None, validees_seulement=False):
+    """Solde net (Σ débit − Σ crédit) d'un groupe de comptes (par numéros)."""
+    qs = _lignes_qs(company, date_fin=date_fin,
+                    validees_seulement=validees_seulement).filter(
+        compte__numero__in=numeros)
+    agg = qs.aggregate(debit=Sum('debit'), credit=Sum('credit'))
+    return (agg['debit'] or Decimal('0')) - (agg['credit'] or Decimal('0'))
+
+
+def position_tresorerie(company, *, date_fin=None, validees_seulement=False):
+    """Position de trésorerie consolidée : solde par compte/caisse + total.
+
+    Pour chaque ``CompteTresorerie`` actif de la société, le solde courant =
+    ``solde_initial`` + mouvements du grand livre sur son compte comptable
+    (classe 5). Renvoie ``{'comptes': [...], 'total': Decimal}`` où chaque entrée
+    porte ``{'id', 'libelle', 'type_compte', 'banque', 'devise', 'solde_initial',
+    'mouvements', 'solde'}``. Lecture seule, scopée société.
+    """
+    comptes = []
+    total = Decimal('0')
+    treso_qs = CompteTresorerie.objects.filter(
+        company=company, actif=True).select_related('compte_comptable').order_by(
+        'type_compte', 'libelle')
+    for treso in treso_qs:
+        mouvements = solde_compte(
+            company, treso.compte_comptable, date_fin=date_fin,
+            validees_seulement=validees_seulement)
+        solde = (treso.solde_initial or Decimal('0')) + mouvements
+        total += solde
+        comptes.append({
+            'id': treso.id,
+            'libelle': treso.libelle,
+            'type_compte': treso.type_compte,
+            'banque': treso.banque,
+            'devise': treso.devise,
+            'solde_initial': treso.solde_initial or Decimal('0'),
+            'mouvements': mouvements,
+            'solde': solde,
+        })
+    return {'comptes': comptes, 'total': total}
+
+
+def projection_tresorerie(company, *, date_fin=None, validees_seulement=False):
+    """Projection nette de trésorerie : position actuelle ± AR/AP/paie/impôts.
+
+    Estimation pragmatique tirée des seuls soldes du grand livre de la compta
+    (aucun import cross-app) : la trésorerie consolidée actuelle, augmentée des
+    créances clients ouvertes (3421, débit) à encaisser, diminuée des dettes
+    fournisseurs (4411, crédit), des dettes de paie & organismes sociaux/fiscaux
+    (44xx) et de la TVA nette due (TVA collectée − TVA récupérable). Renvoie
+    ``{'tresorerie_actuelle', 'creances_clients', 'dettes_fournisseurs',
+    'dettes_paie', 'tva_nette', 'projection_nette'}``. Lecture seule, scopée
+    société. C'est une PROJECTION indicative, pas une écriture.
+    """
+    position = position_tresorerie(
+        company, date_fin=date_fin, validees_seulement=validees_seulement)
+    tresorerie = position['total']
+
+    # AR : solde débiteur du compte clients (positif = à encaisser).
+    solde_clients = _solde_numero(
+        company, _COMPTE_CLIENTS, date_fin=date_fin,
+        validees_seulement=validees_seulement)
+    creances = solde_clients if solde_clients > 0 else Decimal('0')
+
+    # AP : solde créditeur du compte fournisseurs (positif = à payer).
+    solde_fournisseurs = _solde_groupe(
+        company, [_COMPTE_FOURNISSEURS], date_fin=date_fin,
+        validees_seulement=validees_seulement)
+    dettes_fourn = -solde_fournisseurs if solde_fournisseurs < 0 else Decimal('0')
+
+    # Paie & organismes : soldes créditeurs (dettes) sur les comptes 44xx.
+    solde_paie = _solde_groupe(
+        company, _COMPTES_PAIE, date_fin=date_fin,
+        validees_seulement=validees_seulement)
+    dettes_paie = -solde_paie if solde_paie < 0 else Decimal('0')
+
+    # TVA nette due = TVA collectée (passif) − TVA récupérable (actif).
+    tva_due = _solde_groupe(
+        company, _COMPTES_TVA_DUE, date_fin=date_fin,
+        validees_seulement=validees_seulement)
+    tva_recup = _solde_groupe(
+        company, _COMPTES_TVA_RECUP, date_fin=date_fin,
+        validees_seulement=validees_seulement)
+    # TVA due : passif → solde créditeur (négatif) ; on prend sa valeur absolue.
+    tva_collectee = -tva_due if tva_due < 0 else Decimal('0')
+    # TVA récupérable : actif → solde débiteur (positif).
+    tva_recuperable = tva_recup if tva_recup > 0 else Decimal('0')
+    tva_nette = tva_collectee - tva_recuperable
+    if tva_nette < 0:
+        tva_nette = Decimal('0')
+
+    projection = tresorerie + creances - dettes_fourn - dettes_paie - tva_nette
+    return {
+        'tresorerie_actuelle': tresorerie,
+        'creances_clients': creances,
+        'dettes_fournisseurs': dettes_fourn,
+        'dettes_paie': dettes_paie,
+        'tva_nette': tva_nette,
+        'projection_nette': projection,
+    }
+
+
+# ── FG123 — Rapprochement bancaire (relevé ↔ écritures) ────────────────────
+
+def solde_gl_compte_tresorerie(rapprochement):
+    """Solde GL d'un compte de trésorerie à la fin de la période rapprochée.
+
+    ``solde_initial`` du ``CompteTresorerie`` + mouvements du grand livre sur son
+    compte comptable (classe 5) jusqu'à ``date_fin`` du rapprochement. Lecture
+    seule, scopée société.
+    """
+    treso = rapprochement.compte_tresorerie
+    mouvements = solde_compte(
+        rapprochement.company, treso.compte_comptable,
+        date_fin=rapprochement.date_fin)
+    return (treso.solde_initial or Decimal('0')) + mouvements
+
+
+def lignes_gl_pointables(rapprochement):
+    """Lignes du grand livre du compte de trésorerie sur la période (FG123).
+
+    Restitue les ``LigneEcriture`` du compte comptable (classe 5) du compte de
+    trésorerie dont l'écriture tombe dans ``[date_debut ; date_fin]``, avec un
+    drapeau ``pointee`` indiquant si la ligne est déjà appariée dans CE
+    rapprochement. Sert à présenter le côté GL face au relevé. Lecture seule.
+    """
+    from .models import LigneReleve
+
+    treso = rapprochement.compte_tresorerie
+    qs = LigneEcriture.objects.filter(
+        company=rapprochement.company,
+        compte=treso.compte_comptable,
+        ecriture__date_ecriture__gte=rapprochement.date_debut,
+        ecriture__date_ecriture__lte=rapprochement.date_fin,
+    ).select_related('ecriture', 'ecriture__journal').order_by(
+        'ecriture__date_ecriture', 'id')
+    # IDs des lignes GL déjà pointées dans ce rapprochement.
+    pointees = set(
+        LigneReleve.objects.filter(rapprochement=rapprochement).values_list(
+            'lignes_gl__id', flat=True))
+    resultat = []
+    for ligne in qs:
+        resultat.append({
+            'id': ligne.id,
+            'date': ligne.ecriture.date_ecriture,
+            'journal': ligne.ecriture.journal.code,
+            'reference': ligne.ecriture.reference,
+            'libelle': ligne.libelle or ligne.ecriture.libelle,
+            'debit': ligne.debit,
+            'credit': ligne.credit,
+            'montant': (ligne.debit or Decimal('0')) - (
+                ligne.credit or Decimal('0')),
+            'pointee': ligne.id in pointees,
+        })
+    return resultat
+
+
+def resume_rapprochement(rapprochement):
+    """Synthèse d'un rapprochement : solde relevé vs solde GL vs écart (FG123).
+
+    Renvoie ``{'solde_releve', 'solde_gl', 'ecart', 'lignes_total',
+    'lignes_pointees', 'lignes_non_pointees', 'montant_pointe',
+    'montant_non_pointe', 'statut', 'rapproche'}``. Le ``solde_gl`` se déduit du
+    grand livre, l'``ecart`` global = solde relevé − solde GL ; ``rapproche`` est
+    vrai quand chaque ligne de relevé est concordante (écart nul) et que l'écart
+    global est nul. Lecture seule, scopée société.
+    """
+    lignes = list(
+        rapprochement.lignes_releve.all().prefetch_related('lignes_gl'))
+    solde_gl = solde_gl_compte_tresorerie(rapprochement)
+    solde_releve = rapprochement.solde_releve or Decimal('0')
+    montant_pointe = Decimal('0')
+    montant_non_pointe = Decimal('0')
+    lignes_pointees = 0
+    lignes_non_pointees = 0
+    toutes_concordantes = True
+    for ligne in lignes:
+        if ligne.est_concordante:
+            lignes_pointees += 1
+            montant_pointe += ligne.montant or Decimal('0')
+        else:
+            lignes_non_pointees += 1
+            montant_non_pointe += ligne.montant or Decimal('0')
+            toutes_concordantes = False
+    ecart = solde_releve - solde_gl
+    rapproche = (
+        bool(lignes) and toutes_concordantes and ecart == Decimal('0'))
+    return {
+        'solde_releve': solde_releve,
+        'solde_gl': solde_gl,
+        'ecart': ecart,
+        'lignes_total': len(lignes),
+        'lignes_pointees': lignes_pointees,
+        'lignes_non_pointees': lignes_non_pointees,
+        'montant_pointe': montant_pointe,
+        'montant_non_pointe': montant_non_pointe,
+        'statut': rapprochement.statut,
+        'rapproche': rapproche,
+    }
+
+
+# ── FG124 — Caisse / petty cash (journal d'espèces) ────────────────────────
+
+def solde_caisse_a(caisse, *, date_fin=None):
+    """Solde théorique d'une caisse (solde initial + entrées − sorties).
+
+    = ``solde_initial`` + Σ(entrées) − Σ(sorties) jusqu'à ``date_fin`` (incluse)
+    si fournie. Lecture seule, identique au calcul du service ``solde_caisse``.
+    """
+    qs = MouvementCaisse.objects.filter(caisse=caisse)
+    if date_fin is not None:
+        qs = qs.filter(date_mouvement__lte=date_fin)
+    entrees = qs.filter(sens=MouvementCaisse.Sens.ENTREE).aggregate(
+        s=Sum('montant'))['s'] or Decimal('0')
+    sorties = qs.filter(sens=MouvementCaisse.Sens.SORTIE).aggregate(
+        s=Sum('montant'))['s'] or Decimal('0')
+    return (caisse.solde_initial or Decimal('0')) + entrees - sorties
+
+
+def journal_caisse(caisse, *, date_debut=None, date_fin=None):
+    """Journal d'espèces d'une caisse : mouvements + solde courant cumulé (FG124).
+
+    Renvoie une liste de dicts ordonnée par date puis id, chaque entrée portant
+    ``{'id', 'date', 'sens', 'montant', 'montant_signe', 'motif',
+    'justificatif', 'piece', 'posted', 'solde_courant'}`` où ``solde_courant``
+    est le solde cumulé APRÈS le mouvement (en partant du solde initial). Lecture
+    seule, scopée à la caisse.
+    """
+    qs = MouvementCaisse.objects.filter(caisse=caisse).order_by(
+        'date_mouvement', 'id')
+    if date_debut is not None:
+        qs = qs.filter(date_mouvement__gte=date_debut)
+    if date_fin is not None:
+        qs = qs.filter(date_mouvement__lte=date_fin)
+    solde = caisse.solde_initial or Decimal('0')
+    lignes = []
+    for mvt in qs:
+        solde += mvt.montant_signe
+        lignes.append({
+            'id': mvt.id,
+            'date': mvt.date_mouvement,
+            'sens': mvt.sens,
+            'montant': mvt.montant,
+            'montant_signe': mvt.montant_signe,
+            'motif': mvt.motif,
+            'justificatif': mvt.justificatif,
+            'piece': mvt.piece,
+            'posted': mvt.posted,
+            'solde_courant': solde,
+        })
+    return lignes
+
+
+def resume_caisse(caisse, *, date_fin=None):
+    """Synthèse d'une caisse : solde initial, entrées, sorties, solde courant.
+
+    Renvoie ``{'solde_initial', 'total_entrees', 'total_sorties',
+    'nb_mouvements', 'solde_courant', 'derniere_cloture'}`` jusqu'à ``date_fin``
+    (incluse) si fournie. ``derniere_cloture`` porte la date et l'écart de la
+    dernière clôture (ou None). Lecture seule.
+    """
+    qs = MouvementCaisse.objects.filter(caisse=caisse)
+    if date_fin is not None:
+        qs = qs.filter(date_mouvement__lte=date_fin)
+    total_entrees = qs.filter(sens=MouvementCaisse.Sens.ENTREE).aggregate(
+        s=Sum('montant'))['s'] or Decimal('0')
+    total_sorties = qs.filter(sens=MouvementCaisse.Sens.SORTIE).aggregate(
+        s=Sum('montant'))['s'] or Decimal('0')
+    solde_initial = caisse.solde_initial or Decimal('0')
+    derniere = caisse.clotures.order_by('-date_cloture', '-id').first()
+    return {
+        'solde_initial': solde_initial,
+        'total_entrees': total_entrees,
+        'total_sorties': total_sorties,
+        'nb_mouvements': qs.count(),
+        'solde_courant': solde_initial + total_entrees - total_sorties,
+        'derniere_cloture': (
+            {'date_cloture': derniere.date_cloture, 'ecart': derniere.ecart}
+            if derniere is not None else None),
+    }
+
+
+def caisses_de(company):
+    """Caisses actives d'une société (lecture seule, scopée société)."""
+    return list(Caisse.objects.filter(company=company).select_related(
+        'compte_tresorerie').order_by('libelle'))

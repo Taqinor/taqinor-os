@@ -25,7 +25,8 @@ class ParametrePaie(models.Model):
     """Constantes sociales d'une société à une ``date_effet`` donnée.
 
     Versionné : un jeu par date d'effet (SMIG/SMAG, plafond & taux CNSS/AMO,
-    taux de formation professionnelle). L'historique est immuable — un nouveau
+    taux de formation professionnelle, frais professionnels et — PAIE5 —
+    déduction pour charges de famille). L'historique est immuable — un nouveau
     barème réglementaire crée une nouvelle ligne, jamais une modification.
     """
     company = models.ForeignKey(
@@ -59,7 +60,40 @@ class ParametrePaie(models.Model):
     taux_formation_pro = models.DecimalField(
         max_digits=6, decimal_places=3, default=Decimal('1.6'),
         verbose_name='Taux formation professionnelle')
+    # Frais professionnels (déduction IR) — barème 2026 : 35 % plafonné à
+    # 2 500 MAD/mois quand le brut imposable n'excède pas 6 500 MAD/mois,
+    # sinon 25 % plafonné à 2 916,67 MAD/mois.
+    taux_frais_pro_bas = models.DecimalField(
+        max_digits=6, decimal_places=3, default=Decimal('35'),
+        verbose_name='Taux frais professionnels (brut ≤ seuil)')
+    plafond_frais_pro_bas = models.DecimalField(
+        max_digits=14, decimal_places=2, default=Decimal('2500'),
+        verbose_name='Plafond frais professionnels (brut ≤ seuil)')
+    taux_frais_pro_haut = models.DecimalField(
+        max_digits=6, decimal_places=3, default=Decimal('25'),
+        verbose_name='Taux frais professionnels (brut > seuil)')
+    plafond_frais_pro_haut = models.DecimalField(
+        max_digits=14, decimal_places=2, default=Decimal('2916.67'),
+        verbose_name='Plafond frais professionnels (brut > seuil)')
+    seuil_frais_pro = models.DecimalField(
+        max_digits=14, decimal_places=2, default=Decimal('6500'),
+        verbose_name='Seuil brut frais professionnels')
+    # PAIE5 — Déduction pour charges de famille (déduction sur l'IR).
+    # Cadre social marocain : un montant fixe par personne à charge et par mois,
+    # plafonné à un nombre maximal de personnes (barème courant ≈ 30 MAD/mois et
+    # par personne, plafond 6 → 360 MAD/mois). Valeurs ÉDITABLES par le fondateur.
+    deduction_par_personne_a_charge = models.DecimalField(
+        max_digits=14, decimal_places=2, default=Decimal('30'),
+        verbose_name='Déduction mensuelle par personne à charge')
+    plafond_personnes_a_charge = models.PositiveIntegerField(
+        default=6,
+        verbose_name='Plafond du nombre de personnes à charge')
     actif = models.BooleanField(default=True, verbose_name='Actif')
+    # PAIE3 — Validation fondateur des valeurs légales par défaut. Les valeurs
+    # 2026 sont préremplies par le seed mais restent ÉDITABLES ; tant que le
+    # fondateur ne les a pas confirmées, ce drapeau reste False.
+    valide_par_fondateur = models.BooleanField(
+        default=False, verbose_name='Validé par le fondateur')
     date_creation = models.DateTimeField(
         auto_now_add=True, verbose_name='Créé le')
 
@@ -92,6 +126,10 @@ class BaremeIR(models.Model):
         max_length=120, default='Barème IR', verbose_name='Libellé')
     date_effet = models.DateField(verbose_name="Date d'effet")
     actif = models.BooleanField(default=True, verbose_name='Actif')
+    # PAIE3 — barème officiel 2026 préprovisionné par le seed, éditable, en
+    # attente de confirmation explicite du fondateur.
+    valide_par_fondateur = models.BooleanField(
+        default=False, verbose_name='Validé par le fondateur')
     date_creation = models.DateTimeField(
         auto_now_add=True, verbose_name='Créé le')
 
@@ -103,6 +141,100 @@ class BaremeIR(models.Model):
 
     def __str__(self):
         return f'{self.libelle} {self.date_effet}'
+
+
+# ── PAIE6 — Rubrique de paie paramétrable ──────────────────────────────────
+
+class Rubrique(models.Model):
+    """Ligne de bulletin de paie PARAMÉTRABLE (catalogue, scopé société).
+
+    Chaque rubrique est une ligne configurable du bulletin : un ``code`` court,
+    un ``libelle``, un ``type`` (gain / retenue / cotisation) et les drapeaux
+    fiscaux/sociaux qui pilotent l'assiette de calcul :
+
+    * ``imposable`` — entre dans la base de l'IR ;
+    * ``soumis_cnss`` — entre dans l'assiette CNSS ;
+    * ``soumis_amo`` — entre dans l'assiette AMO ;
+    * ``soumis_cimr`` — entre dans l'assiette CIMR.
+
+    Le mode de calcul est laissé ouvert : soit un ``montant_fixe`` (montant
+    constant), soit un couple ``base``/``taux`` (assiette × taux %). ``compte``
+    est le code de compte comptable optionnel pour l'imputation. ``ordre`` fixe
+    l'ordre d'affichage sur le bulletin ; ``actif`` permet d'archiver une
+    rubrique sans la supprimer.
+
+    Multi-société : ``company`` est posée côté serveur. Le couple
+    ``(company, code)`` est unique. Modèle purement additif : aucun calcul de
+    paie existant n'en dépend encore.
+    """
+    TYPE_GAIN = 'gain'
+    TYPE_RETENUE = 'retenue'
+    TYPE_COTISATION = 'cotisation'
+    TYPE_CHOICES = [
+        (TYPE_GAIN, 'Gain'),
+        (TYPE_RETENUE, 'Retenue'),
+        (TYPE_COTISATION, 'Cotisation'),
+    ]
+
+    BASE_BRUT = 'brut'
+    BASE_BRUT_IMPOSABLE = 'brut_imposable'
+    BASE_NET_IMPOSABLE = 'net_imposable'
+    BASE_PLAFONNEE_CNSS = 'plafonnee_cnss'
+    BASE_AUTRE = 'autre'
+    BASE_CHOICES = [
+        (BASE_BRUT, 'Brut'),
+        (BASE_BRUT_IMPOSABLE, 'Brut imposable'),
+        (BASE_NET_IMPOSABLE, 'Net imposable'),
+        (BASE_PLAFONNEE_CNSS, 'Assiette plafonnée CNSS'),
+        (BASE_AUTRE, 'Autre / manuelle'),
+    ]
+
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='paie_rubriques',
+        verbose_name='Société',
+    )
+    code = models.CharField(max_length=30, verbose_name='Code')
+    libelle = models.CharField(max_length=120, verbose_name='Libellé')
+    type = models.CharField(
+        max_length=12, choices=TYPE_CHOICES, default=TYPE_GAIN,
+        verbose_name='Type')
+    imposable = models.BooleanField(
+        default=False, verbose_name='Imposable (IR)')
+    soumis_cnss = models.BooleanField(
+        default=False, verbose_name='Soumis CNSS')
+    soumis_amo = models.BooleanField(
+        default=False, verbose_name='Soumis AMO')
+    soumis_cimr = models.BooleanField(
+        default=False, verbose_name='Soumis CIMR')
+    compte = models.CharField(
+        max_length=30, blank=True, default='',
+        verbose_name='Compte comptable')
+    # Mode de calcul : montant fixe OU base × taux. Les deux peuvent rester nuls
+    # (rubrique à saisie manuelle sur le bulletin).
+    base = models.CharField(
+        max_length=20, choices=BASE_CHOICES, default=BASE_BRUT,
+        verbose_name='Assiette')
+    taux = models.DecimalField(
+        max_digits=8, decimal_places=4, null=True, blank=True,
+        verbose_name='Taux (%)')
+    montant_fixe = models.DecimalField(
+        max_digits=14, decimal_places=2, null=True, blank=True,
+        verbose_name='Montant fixe')
+    ordre = models.PositiveIntegerField(default=0, verbose_name='Ordre')
+    actif = models.BooleanField(default=True, verbose_name='Actif')
+    date_creation = models.DateTimeField(
+        auto_now_add=True, verbose_name='Créé le')
+
+    class Meta:
+        verbose_name = 'Rubrique de paie'
+        verbose_name_plural = 'Rubriques de paie'
+        ordering = ['ordre', 'code']
+        unique_together = [('company', 'code')]
+
+    def __str__(self):
+        return f'{self.code} — {self.libelle}'
 
 
 class TrancheIR(models.Model):

@@ -261,6 +261,60 @@ _CAT_DELETE = {
 }
 _FULL_CATALOGUE = [_CAT_CREATE, _CAT_PROPOSAL_PDF, _CAT_LEAD_LIST, _CAT_DELETE]
 
+# FG351 — écritures GARDÉES (risk=outward) telles que déclarées dans le
+# catalogue Django (apps/agent/registry.py). Elles doivent renvoyer une
+# PROPOSITION à confirmer, jamais une exécution immédiate.
+_CAT_DEVIS_CREATE_GUARDED = {
+    "key": "ventes.devis.create",
+    "label": "Créer un devis",
+    "description": "Crée un devis (sensible).",
+    "endpoint": "/api/django/ventes/devis/",
+    "method": "POST",
+    "inputs": {"type": "object", "properties": {
+        "client": {"type": "integer"},
+        "lead": {"type": "integer"},
+        "marche": {"type": "string"},
+        "lignes": {"type": "array"},
+    }},
+    "required_permission": "ventes_creer",
+    "risk": "outward",
+    "confirm_summary": "Créer un devis pour ce client/lead.",
+}
+_CAT_CLIENT_CREATE = {
+    "key": "crm.client.create",
+    "label": "Créer un client",
+    "description": "Crée une fiche client (sensible).",
+    "endpoint": "/api/django/crm/clients/",
+    "method": "POST",
+    "inputs": {"type": "object", "properties": {
+        "nom": {"type": "string"},
+        "prenom": {"type": "string"},
+        "email": {"type": "string"},
+        "telephone": {"type": "string"},
+    }, "required": ["nom"]},
+    "required_permission": "crm_creer",
+    "risk": "outward",
+    "confirm_summary": "Créer la fiche client.",
+}
+_CAT_LEAD_CREATE = {
+    "key": "crm.lead.create",
+    "label": "Créer un lead",
+    "description": "Crée un lead (sensible).",
+    "endpoint": "/api/django/crm/leads/",
+    "method": "POST",
+    "inputs": {"type": "object", "properties": {
+        "nom": {"type": "string"},
+        "telephone": {"type": "string"},
+        "ville": {"type": "string"},
+    }, "required": ["nom"]},
+    "required_permission": "crm_creer",
+    "risk": "outward",
+    "confirm_summary": "Créer le lead.",
+}
+_GUARDED_WRITES = [
+    _CAT_DEVIS_CREATE_GUARDED, _CAT_CLIENT_CREATE, _CAT_LEAD_CREATE,
+]
+
 
 def _patch_catalogue(catalogue):
     return mock.patch.object(at, "fetch_catalogue", lambda ctx: list(catalogue))
@@ -627,6 +681,106 @@ class FetchCatalogueTests(unittest.TestCase):
                 mock.patch.object(at, "_django_call",
                                   lambda *a, **k: {"ok": False, "error": "down"}):
             self.assertEqual(at.fetch_catalogue(ctx), [])
+
+
+class GuardedWriteToolsTests(unittest.TestCase):
+    """FG351 — « crée un devis / un lead / un client » sont des écritures
+    GARDÉES : l'outil renvoie une PROPOSITION signée à confirmer (confirm_token)
+    et n'appelle JAMAIS Django à l'exécution directe."""
+
+    def setUp(self):
+        self._sec = mock.patch.object(at, "ACTION_PROPOSAL_SECRET", "test-sig-secret")
+        self._sec.start()
+        self.addCleanup(self._sec.stop)
+        self.fake_redis = _FakeRedis()
+        self._rds = mock.patch.object(at, "_proposal_redis", lambda: self.fake_redis)
+        self._rds.start()
+        self.addCleanup(self._rds.stop)
+
+    def _assert_proposal_not_executed(self, action, inputs):
+        ctx = _ctx(role="admin")
+
+        def _no_exec(*a, **k):
+            raise AssertionError(
+                "Une écriture gardée ne doit PAS s'exécuter sans confirmation.")
+
+        collector: list = []
+        with mock.patch.object(at, "_django_call", _no_exec):
+            out = at.run_catalogue_action(ctx, action, inputs, collector)
+        parsed = json.loads(out)
+        self.assertEqual(parsed["type"], "proposal")
+        self.assertEqual(parsed["action_key"], action["key"])
+        self.assertTrue(parsed["confirm_token"])
+        self.assertIn("human_preview", parsed)
+        # La sortie structurée est aussi remontée au frontend via le collecteur.
+        self.assertEqual(len(collector), 1)
+        self.assertEqual(collector[0]["type"], "proposal")
+        return parsed
+
+    def test_devis_create_returns_proposal(self):
+        self._assert_proposal_not_executed(
+            _CAT_DEVIS_CREATE_GUARDED, {"client": 3, "marche": "residentiel"})
+
+    def test_client_create_returns_proposal(self):
+        parsed = self._assert_proposal_not_executed(
+            _CAT_CLIENT_CREATE, {"nom": "Société X", "telephone": "0612345678"})
+        self.assertEqual(parsed["inputs"]["nom"], "Société X")
+
+    def test_lead_create_returns_proposal(self):
+        self._assert_proposal_not_executed(
+            _CAT_LEAD_CREATE, {"nom": "Prospect Y", "ville": "Casablanca"})
+
+    def test_client_create_requires_nom(self):
+        ctx = _ctx(role="admin")
+        out = at.run_catalogue_action(ctx, _CAT_CLIENT_CREATE, {})
+        self.assertIn("refus", out.lower())  # required nom manquant
+
+    def test_offcatalogue_input_rejected_for_lead_create(self):
+        ctx = _ctx(role="admin")
+        out = at.run_catalogue_action(
+            ctx, _CAT_LEAD_CREATE, {"nom": "Z", "evil": True})
+        self.assertIn("refus", out.lower())
+
+    def test_confirm_executes_guarded_write_via_internal_rest(self):
+        """Après confirmation, la proposition est rejouée vers l'endpoint REST
+        interne (relais JWT), pas en écriture DB directe."""
+        ctx = _ctx(role="admin")
+        prop = self._assert_proposal_not_executed(
+            _CAT_CLIENT_CREATE, {"nom": "Confirmé"})
+        token = prop["confirm_token"]
+        captured = {}
+
+        def fake_call(ctx, path, method="POST", payload=None):
+            captured["path"] = path
+            captured["method"] = method
+            captured["payload"] = payload
+            return {"ok": True, "status": 201, "data": {"id": 42}}
+
+        with mock.patch.object(at, "fetch_catalogue", lambda c: _GUARDED_WRITES), \
+                mock.patch.object(at, "_django_call", fake_call):
+            res = at.confirm_proposal(ctx, token)
+        self.assertTrue(res["ok"])
+        self.assertEqual(captured["path"], "/api/django/crm/clients/")
+        self.assertEqual(captured["method"], "POST")
+        # La société n'est jamais transmise dans le corps : Django l'impose.
+        self.assertNotIn("company", captured["payload"] or {})
+        # usage unique : le jeton est consommé.
+        self.assertIsNone(self.fake_redis.get(at._proposal_key(token)))
+
+    def test_build_tools_warns_guarded_writes(self):
+        try:
+            from langchain_core.tools import StructuredTool  # noqa: F401
+        except Exception:
+            self.skipTest("langchain_core indisponible")
+        ctx = _ctx(role="admin")
+        with _patch_catalogue(_GUARDED_WRITES):
+            tools = {t.name: t for t in at.build_action_tools(ctx)}
+        self.assertEqual(set(tools), {
+            "ventes_devis_create", "crm_client_create", "crm_lead_create"})
+        for tool in tools.values():
+            # outward => la description prévient que l'outil renvoie une
+            # PROPOSITION à confirmer (le LLM ne doit pas la croire exécutée).
+            self.assertIn("PROPOSITION", tool.description)
 
 
 if __name__ == "__main__":

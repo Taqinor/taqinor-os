@@ -145,3 +145,155 @@ class TestJournalExport(TestCase):
             f'/api/django/ventes/export-comptable/?start={start}&end={end}'
             f'&fmt=csv')
         self.assertNotIn('FAC-JR-DRAFT', resp.content.decode('utf-8'))
+
+
+class TestGrandLivreExport(TestCase):
+    """FG49 — grand-livre codé par compte CGNC (3421 / 7111 / 4455)."""
+
+    def setUp(self):
+        self.company = Company.objects.get_or_create(
+            slug='gl-co', defaults={'nom': 'GL Co'})[0]
+        self.user = User.objects.create_user(
+            username='gl_u', password='x', role_legacy='responsable',
+            company=self.company)
+        self.api = APIClient()
+        self.api.credentials(
+            HTTP_AUTHORIZATION=f'Bearer {AccessToken.for_user(self.user)}')
+        self.client_obj = Client.objects.create(
+            company=self.company, nom='GLClient', ice='009988776')
+        p = Produit.objects.create(
+            company=self.company, nom='Panneau', sku='GL-1',
+            prix_vente=Decimal('1000'), quantite_stock=5)
+        fac = Facture.objects.create(
+            company=self.company, reference='FAC-GL-1', client=self.client_obj,
+            statut='emise', taux_tva=Decimal('20'))
+        # 10000 HT @ 10 % → 1000 TVA ; 2000 HT @ 20 % → 400 TVA.
+        LigneFacture.objects.create(
+            facture=fac, produit=p, designation='Panneaux',
+            quantite=Decimal('10'), prix_unitaire=Decimal('1000'),
+            remise=Decimal('0'), taux_tva=Decimal('10'))
+        LigneFacture.objects.create(
+            facture=fac, produit=p, designation='Pose', quantite=Decimal('1'),
+            prix_unitaire=Decimal('2000'), remise=Decimal('0'),
+            taux_tva=Decimal('20'))
+
+    def _params(self):
+        from datetime import timedelta
+        d = date.today()
+        return (d.strftime('%Y-%m-01'),
+                (d + timedelta(days=1)).strftime('%Y-%m-%d'))
+
+    def _gl_rows(self):
+        from datetime import date as _date
+        from apps.ventes.exports import (
+            export_grand_livre_xlsx, period_bounds)
+        from openpyxl import load_workbook
+        from io import BytesIO
+        debut, fin = period_bounds(
+            {'month': _date.today().strftime('%Y-%m')})
+        resp = export_grand_livre_xlsx(self.company, debut, fin)
+        body = (b''.join(resp.streaming_content)
+                if resp.streaming else resp.content)
+        ws = load_workbook(BytesIO(body)).active
+        return [list(r) for r in ws.iter_rows(values_only=True)]
+
+    def test_default_account_codes(self):
+        from apps.ventes.exports import account_codes_for
+        codes = account_codes_for(self.company)
+        self.assertEqual(codes['ventes'], '7111')
+        self.assertEqual(codes['tva_collectee'], '4455')
+        self.assertEqual(codes['clients'], '3421')
+
+    def test_endpoint_returns_xlsx(self):
+        start, end = self._params()
+        resp = self.api.get(
+            f'/api/django/ventes/export-comptable/?start={start}&end={end}'
+            f'&layout=grand-livre&fmt=xlsx')
+        self.assertEqual(resp.status_code, 200)
+        body = (b''.join(resp.streaming_content)
+                if resp.streaming else resp.content)
+        self.assertTrue(body.startswith(b'PK'))
+
+    def test_account_coded_lines_present(self):
+        rows = self._gl_rows()
+        header = rows[0]
+        self.assertEqual(header[0], 'Compte')
+        codes = [str(r[0]) for r in rows[1:] if r[0]]
+        # Les trois comptes CGNC apparaissent.
+        self.assertIn('3421', codes)
+        self.assertIn('7111', codes)
+        self.assertIn('4455', codes)
+
+    def test_entries_balance(self):
+        rows = self._gl_rows()
+        # Colonnes Débit (9) / Crédit (10) ; somme débit == somme crédit.
+        tot_debit = sum(r[9] for r in rows[1:]
+                        if r[0] not in (None, '', 'TOTAL') and r[9])
+        tot_credit = sum(r[10] for r in rows[1:]
+                         if r[0] not in (None, '', 'TOTAL') and r[10])
+        self.assertEqual(round(tot_debit, 2), round(tot_credit, 2))
+        # TTC attendu : 10000 + 2000 + 1000 + 400 = 13400.
+        self.assertEqual(round(tot_debit, 2), 13400.0)
+
+    def test_client_debit_is_ttc(self):
+        rows = self._gl_rows()
+        clients_lines = [r for r in rows[1:] if str(r[0]) == '3421']
+        self.assertEqual(len(clients_lines), 1)
+        # 3421 Clients est en DÉBIT (col 9) pour le TTC, crédit (col 10) nul.
+        self.assertEqual(round(clients_lines[0][9], 2), 13400.0)
+        self.assertFalse(clients_lines[0][10])
+        # ICE du tiers reporté.
+        self.assertEqual(clients_lines[0][7], '009988776')
+
+    def test_configurable_account_codes(self):
+        from django.test import override_settings
+        from apps.ventes.exports import account_codes_for
+        with override_settings(
+                VENTES_COMPTA_ACCOUNT_CODES={'ventes': '7121'}):
+            codes = account_codes_for(self.company)
+            self.assertEqual(codes['ventes'], '7121')
+            # Les autres restent aux défauts.
+            self.assertEqual(codes['clients'], '3421')
+
+    def test_per_company_account_codes(self):
+        from django.test import override_settings
+        from apps.ventes.exports import account_codes_for
+        with override_settings(
+                VENTES_COMPTA_ACCOUNT_CODES_BY_COMPANY={
+                    'gl-co': {'clients': '3424'}}):
+            codes = account_codes_for(self.company)
+            self.assertEqual(codes['clients'], '3424')
+
+    def test_csv_layout_grand_livre(self):
+        start, end = self._params()
+        resp = self.api.get(
+            f'/api/django/ventes/export-comptable/?start={start}&end={end}'
+            f'&layout=grand-livre&fmt=csv')
+        self.assertEqual(resp.status_code, 200)
+        self.assertIn('text/csv', resp['Content-Type'])
+        text = resp.content.decode('utf-8')
+        self.assertIn('3421', text)
+        self.assertIn('7111', text)
+        self.assertIn('4455', text)
+
+    def test_avoir_reverses_signs(self):
+        from apps.ventes.models import Avoir, LigneAvoir
+        fac = Facture.objects.get(reference='FAC-GL-1')
+        avoir = Avoir.objects.create(
+            company=self.company, reference='AVO-GL-1', facture=fac,
+            client=self.client_obj, statut='emise', taux_tva=Decimal('20'))
+        LigneAvoir.objects.create(
+            avoir=avoir, designation='Retour', quantite=Decimal('1'),
+            prix_unitaire=Decimal('2000'), remise=Decimal('0'),
+            taux_tva=Decimal('20'))
+        rows = self._gl_rows()
+        # L'avoir met 3421 Clients en CRÉDIT (col 10) — contre-passation.
+        clients_lines = [r for r in rows[1:] if str(r[0]) == '3421']
+        credit_clients = [r for r in clients_lines if r[10]]
+        self.assertTrue(credit_clients)
+        # Le grand-livre reste équilibré avec l'avoir.
+        tot_debit = sum(r[9] for r in rows[1:]
+                        if r[0] not in (None, '', 'TOTAL') and r[9])
+        tot_credit = sum(r[10] for r in rows[1:]
+                         if r[0] not in (None, '', 'TOTAL') and r[10])
+        self.assertEqual(round(tot_debit, 2), round(tot_credit, 2))
