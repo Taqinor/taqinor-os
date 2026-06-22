@@ -8,13 +8,15 @@ Couvre :
   * Document + DocumentVersion (numérotation auto, checksum/dedup).
 """
 from django.contrib.auth import get_user_model
+from django.contrib.contenttypes.models import ContentType
 from django.test import TestCase
 from rest_framework.test import APIClient
 from rest_framework_simplejwt.tokens import AccessToken
 
 from authentication.models import Company
-from apps.ged import services
-from apps.ged.models import Cabinet, Document, DocumentVersion, Folder
+from apps.crm.models import Client
+from apps.ged import selectors, services
+from apps.ged.models import Cabinet, Document, DocumentLien, DocumentVersion, Folder
 
 User = get_user_model()
 
@@ -504,3 +506,134 @@ class DocumentVersionTests(GedBase):
         resp = api.get(f'/api/django/ged/documents/{self.doc_a.id}/')
         self.assertEqual(resp.data['version_count'], 2)
         self.assertEqual(resp.data['derniere_version'], 2)
+
+
+# ── GED6 — liaison polymorphe Document ↔ objet métier ────────────────
+class DocumentLienTests(GedBase):
+    """Lien polymorphe Document ↔ objet métier autorisé (records.ALLOWED_TARGETS).
+
+    Couvre : lier un document à une cible autorisée, reverse-lookup (documents
+    pour un objet), isolation multi-tenant, et rejet d'un type de cible non
+    autorisé / cible hors société.
+    """
+
+    def setUp(self):
+        super().setUp()
+        self.folder_a = Folder.objects.create(
+            company=self.co_a, cabinet=self.cab_a, nom='Docs A')
+        self.doc_a = Document.objects.create(
+            company=self.co_a, folder=self.folder_a, nom='Contrat')
+        self.client_a = Client.objects.create(company=self.co_a, nom='Client A')
+
+    def test_link_document_to_allowed_target(self):
+        api = auth(self.admin_a)
+        resp = api.post('/api/django/ged/liens/', {
+            'document': self.doc_a.id,
+            'model': 'crm.client', 'id': self.client_a.id,
+            'company': self.co_b.id,  # injection ignorée
+        }, format='json')
+        self.assertEqual(resp.status_code, 201, resp.data)
+        self.assertEqual(resp.data['target_model'], 'crm.client')
+        self.assertEqual(resp.data['target_id'], self.client_a.id)
+        lien = DocumentLien.objects.get(id=resp.data['id'])
+        # company + created_by posés côté serveur.
+        self.assertEqual(lien.company_id, self.co_a.id)
+        self.assertEqual(lien.created_by_id, self.admin_a.id)
+        self.assertEqual(lien.document_id, self.doc_a.id)
+
+    def test_link_is_idempotent(self):
+        api = auth(self.admin_a)
+        payload = {'document': self.doc_a.id,
+                   'model': 'crm.client', 'id': self.client_a.id}
+        r1 = api.post('/api/django/ged/liens/', payload, format='json')
+        self.assertEqual(r1.status_code, 201, r1.data)
+        r2 = api.post('/api/django/ged/liens/', payload, format='json')
+        # Deuxième POST identique : pas de doublon, 200 (lien existant renvoyé).
+        self.assertEqual(r2.status_code, 200, r2.data)
+        self.assertEqual(r1.data['id'], r2.data['id'])
+        self.assertEqual(DocumentLien.objects.filter(
+            document=self.doc_a, object_id=self.client_a.id).count(), 1)
+
+    def test_reverse_lookup_documents_for_object_endpoint(self):
+        DocumentLien.objects.create(
+            company=self.co_a, document=self.doc_a,
+            content_type=ContentType.objects.get_for_model(Client),
+            object_id=self.client_a.id, created_by=self.admin_a)
+        api = auth(self.admin_a)
+        resp = api.get(
+            f'/api/django/ged/liens/?model=crm.client&id={self.client_a.id}')
+        self.assertEqual(resp.status_code, 200, resp.data)
+        data = rows(resp)
+        self.assertEqual(len(data), 1)
+        self.assertEqual(data[0]['document'], self.doc_a.id)
+
+    def test_reverse_lookup_selector(self):
+        DocumentLien.objects.create(
+            company=self.co_a, document=self.doc_a,
+            content_type=ContentType.objects.get_for_model(Client),
+            object_id=self.client_a.id, created_by=self.admin_a)
+        docs = selectors.documents_for_target(self.co_a, self.client_a)
+        self.assertEqual([d.id for d in docs], [self.doc_a.id])
+        liens = selectors.liens_for_target(self.co_a, self.client_a)
+        self.assertEqual(liens.count(), 1)
+        # Une autre société ne voit pas le lien.
+        self.assertEqual(
+            selectors.documents_for_target(self.co_b, self.client_a).count(), 0)
+
+    def test_reject_disallowed_target_type(self):
+        api = auth(self.admin_a)
+        resp = api.post('/api/django/ged/liens/', {
+            'document': self.doc_a.id,
+            # `authentication.company` n'est pas dans ALLOWED_TARGETS.
+            'model': 'authentication.company', 'id': self.co_a.id,
+        }, format='json')
+        self.assertEqual(resp.status_code, 400)
+        self.assertFalse(DocumentLien.objects.exists())
+
+    def test_reject_target_in_other_company(self):
+        client_b = Client.objects.create(company=self.co_b, nom='Client B')
+        api = auth(self.admin_a)
+        resp = api.post('/api/django/ged/liens/', {
+            'document': self.doc_a.id,
+            'model': 'crm.client', 'id': client_b.id,
+        }, format='json')
+        # La cible appartient à B → rejetée côté A (jamais de fuite cross-société).
+        self.assertEqual(resp.status_code, 400)
+        self.assertFalse(DocumentLien.objects.exists())
+
+    def test_reject_other_company_document(self):
+        folder_b = Folder.objects.create(
+            company=self.co_b, cabinet=self.cab_b, nom='Docs B')
+        doc_b = Document.objects.create(
+            company=self.co_b, folder=folder_b, nom='Doc B')
+        api = auth(self.admin_a)
+        resp = api.post('/api/django/ged/liens/', {
+            'document': doc_b.id,
+            'model': 'crm.client', 'id': self.client_a.id,
+        }, format='json')
+        # Le document appartient à B → introuvable côté A → 404.
+        self.assertEqual(resp.status_code, 404)
+        self.assertFalse(DocumentLien.objects.exists())
+
+    def test_list_tenant_isolation(self):
+        # Lien de A.
+        DocumentLien.objects.create(
+            company=self.co_a, document=self.doc_a,
+            content_type=ContentType.objects.get_for_model(Client),
+            object_id=self.client_a.id, created_by=self.admin_a)
+        # Lien de B (autre société).
+        folder_b = Folder.objects.create(
+            company=self.co_b, cabinet=self.cab_b, nom='Docs B')
+        doc_b = Document.objects.create(
+            company=self.co_b, folder=folder_b, nom='Doc B')
+        client_b = Client.objects.create(company=self.co_b, nom='Client B')
+        DocumentLien.objects.create(
+            company=self.co_b, document=doc_b,
+            content_type=ContentType.objects.get_for_model(Client),
+            object_id=client_b.id, created_by=self.admin_b)
+        api = auth(self.admin_a)
+        resp = api.get('/api/django/ged/liens/')
+        ids = [r['document'] for r in rows(resp)]
+        self.assertIn(self.doc_a.id, ids)
+        self.assertNotIn(doc_b.id, ids)
+        self.assertEqual(len(ids), 1)
