@@ -165,6 +165,28 @@ class EtatsComptablesViewSet(viewsets.ViewSet):
             validees_seulement=periode['validees_seulement'])
         return Response(data)
 
+    @action(detail=False, methods=['get'], url_path='position-tresorerie')
+    def position_tresorerie(self, request):
+        """Position de trésorerie consolidée + projection nette (FG122).
+
+        Solde par compte/caisse + total (depuis les comptes de trésorerie et le
+        grand livre), enrichi d'une projection nette indicative (AR/AP/paie/TVA).
+        Lecture seule, scopée société, Admin/Responsable uniquement.
+        """
+        periode = self._periode(request)
+        company = request.user.company
+        position = selectors.position_tresorerie(
+            company, date_fin=periode['date_fin'],
+            validees_seulement=periode['validees_seulement'])
+        projection = selectors.projection_tresorerie(
+            company, date_fin=periode['date_fin'],
+            validees_seulement=periode['validees_seulement'])
+        return Response({
+            'comptes': position['comptes'],
+            'total': position['total'],
+            'projection': projection,
+        })
+
 
 # ── FG115 — Périodes comptables verrouillables ─────────────────────────────
 
