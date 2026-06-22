@@ -8,6 +8,7 @@ from rest_framework import serializers
 
 from .models import (
     DependanceTache,
+    Jalon,
     PhaseProjet,
     Projet,
     ProjetActivity,
@@ -246,4 +247,59 @@ class DependanceTacheSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError(
                 {'successeur': 'Dépendance cyclique : l’arête inverse existe '
                                'déjà.'})
+        return attrs
+
+
+class JalonSerializer(serializers.ModelSerializer):
+    """Jalon (milestone) d'un projet, éventuellement de FACTURATION.
+
+    ``company`` n'est jamais exposée : elle est posée côté serveur. Les FK reçus
+    (``projet``, ``phase``, ``tache``) sont validés comme appartenant à la
+    société de l'utilisateur ; une phase/tâche reçue doit en outre cibler le
+    MÊME projet. Le ``facturation_pct`` est borné à [0, 100] (en plus du
+    validateur du modèle).
+    """
+    projet_code = serializers.CharField(source='projet.code', read_only=True)
+    statut_display = serializers.CharField(
+        source='get_statut_display', read_only=True)
+
+    class Meta:
+        model = Jalon
+        fields = [
+            'id', 'projet', 'projet_code', 'phase', 'tache', 'libelle',
+            'description', 'date_prevue', 'date_reelle', 'statut',
+            'statut_display', 'facturation_pct', 'date_creation',
+        ]
+        read_only_fields = ['date_creation']
+
+    def validate_projet(self, value):
+        return _meme_societe(self, value, 'Projet')
+
+    def validate_phase(self, value):
+        return _meme_societe(self, value, 'Phase')
+
+    def validate_tache(self, value):
+        return _meme_societe(self, value, 'Tâche')
+
+    def validate_facturation_pct(self, value):
+        if value is not None and not (0 <= value <= 100):
+            raise serializers.ValidationError(
+                'Le pourcentage de facturation doit être compris entre 0 et '
+                '100.')
+        return value
+
+    def validate(self, attrs):
+        # ``projet`` peut manquer d'un PATCH partiel : on retombe sur l'instance
+        # courante pour les contrôles de cohérence FK.
+        projet = attrs.get('projet') or getattr(self.instance, 'projet', None)
+        phase = attrs.get('phase', getattr(self.instance, 'phase', None))
+        tache = attrs.get('tache', getattr(self.instance, 'tache', None))
+        if phase is not None and projet is not None \
+                and phase.projet_id != projet.id:
+            raise serializers.ValidationError(
+                {'phase': 'La phase doit appartenir au même projet.'})
+        if tache is not None and projet is not None \
+                and tache.projet_id != projet.id:
+            raise serializers.ValidationError(
+                {'tache': 'La tâche doit appartenir au même projet.'})
         return attrs

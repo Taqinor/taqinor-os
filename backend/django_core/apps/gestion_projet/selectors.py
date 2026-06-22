@@ -7,7 +7,18 @@ les imports cross-app sont fonction-locaux pour éviter les cycles. Quand une ap
 cible n'a pas de sélecteur exploitable, on DÉGRADE proprement : on renvoie le
 ``libelle`` mis en cache et les ids stockés, sans rien importer.
 """
-from .models import DependanceTache, ProjetLien, Tache
+from .models import DependanceTache, Jalon, ProjetLien, Tache
+
+
+def jalons_for_projet(projet):
+    """Jalons d'un projet (QuerySet scopé société, ordonné par date prévue).
+
+    Lecture seule. La société est portée par le projet : on filtre aussi sur
+    ``projet.company`` par sécurité même si le FK ``projet`` la garantit déjà.
+    Ordre : ``date_prevue`` croissante puis ``id`` (échéancier de facturation).
+    """
+    return Jalon.objects.filter(
+        projet=projet, company=projet.company).order_by('date_prevue', 'id')
 
 
 def taches_for_projet(projet):

@@ -12,7 +12,7 @@ module est entièrement additif.
 from decimal import Decimal
 
 from django.conf import settings
-from django.core.validators import MaxValueValidator
+from django.core.validators import MaxValueValidator, MinValueValidator
 from django.db import models
 
 
@@ -426,6 +426,91 @@ class DependanceTache(models.Model):
         if inverse.exists():
             raise ValidationError(
                 'Dépendance cyclique : l’arête inverse existe déjà.')
+
+
+class Jalon(models.Model):
+    """Un jalon (milestone) d'un ``Projet`` — éventuellement de FACTURATION.
+
+    Un jalon marque une étape clé du projet à une ``date_prevue`` ; sa
+    ``date_reelle`` (nullable) est posée quand il est ATTEINT. Il peut, en
+    option, être rattaché à une ``PhaseProjet`` ou à une ``Tache`` du même
+    projet (jalons d'événement de planning) — les deux FK sont nullables.
+
+    Le ``facturation_pct`` (Decimal 0–100) porte le % de la VALEUR du projet à
+    facturer lorsque le jalon est atteint : c'est la brique des JALONS DE
+    FACTURATION (échéancier de paiement adossé à l'avancement). À 0 le jalon est
+    un simple repère de planning sans incidence de facturation.
+
+    Le ``statut`` est une machine d'état PROPRE au jalon
+    (a_venir/atteint/manque) : il ne réutilise NI n'importe AUCUNE clé/étiquette
+    de ``STAGES.py`` (règle #2), et il est DISTINCT des statuts du ``Projet``,
+    de la ``PhaseProjet`` et de la ``Tache``. Tout est multi-société :
+    ``company`` est posée côté serveur, jamais lue du corps de requête. Modèle
+    entièrement additif.
+    """
+    class Statut(models.TextChoices):
+        A_VENIR = 'a_venir', 'À venir'
+        ATTEINT = 'atteint', 'Atteint'
+        MANQUE = 'manque', 'Manqué'
+
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='projet_jalons',
+        verbose_name='Société',
+    )
+    projet = models.ForeignKey(
+        Projet,
+        on_delete=models.CASCADE,
+        related_name='jalons',
+        verbose_name='Projet',
+    )
+    # Rattachement OPTIONNEL à une phase du projet.
+    phase = models.ForeignKey(
+        PhaseProjet,
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='jalons',
+        verbose_name='Phase',
+    )
+    # Rattachement OPTIONNEL à une tâche du projet.
+    tache = models.ForeignKey(
+        Tache,
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='jalons',
+        verbose_name='Tâche',
+    )
+    libelle = models.CharField(max_length=200, verbose_name='Libellé')
+    description = models.TextField(
+        blank=True, default='', verbose_name='Description')
+    date_prevue = models.DateField(verbose_name='Date prévue')
+    date_reelle = models.DateField(
+        null=True, blank=True, verbose_name='Date réelle')
+    statut = models.CharField(
+        max_length=10, choices=Statut.choices,
+        default=Statut.A_VENIR, verbose_name='Statut')
+    # % de la valeur du projet à facturer à l'atteinte du jalon (0–100).
+    facturation_pct = models.DecimalField(
+        max_digits=5, decimal_places=2, default=Decimal('0'),
+        validators=[MinValueValidator(Decimal('0')),
+                    MaxValueValidator(Decimal('100'))],
+        verbose_name='Facturation (%)')
+    date_creation = models.DateTimeField(
+        auto_now_add=True, verbose_name='Créé le')
+
+    class Meta:
+        verbose_name = 'Jalon de projet'
+        verbose_name_plural = 'Jalons de projet'
+        ordering = ['projet', 'date_prevue', 'id']
+        indexes = [
+            models.Index(
+                fields=['projet', 'date_prevue'],
+                name='gp_jalon_proj_date_idx'),
+        ]
+
+    def __str__(self):
+        return f'{self.projet.code} — {self.libelle} ({self.date_prevue})'
 
 
 class ProjetActivity(models.Model):

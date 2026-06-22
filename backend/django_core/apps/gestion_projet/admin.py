@@ -2,6 +2,7 @@ from django.contrib import admin
 
 from .models import (
     DependanceTache,
+    Jalon,
     PhaseProjet,
     Projet,
     ProjetActivity,
@@ -55,6 +56,14 @@ class DependanceTacheAdmin(admin.ModelAdmin):
     list_display = ('id', 'predecesseur', 'successeur', 'type_dependance',
                     'lag', 'company')
     list_filter = ('type_dependance', 'company')
+
+
+@admin.register(Jalon)
+class JalonAdmin(admin.ModelAdmin):
+    list_display = ('id', 'libelle', 'projet', 'date_prevue', 'date_reelle',
+                    'statut', 'facturation_pct', 'company')
+    list_filter = ('statut', 'company')
+    search_fields = ('libelle', 'description')
 
 
 @admin.register(ProjetActivity)
