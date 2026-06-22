@@ -117,3 +117,73 @@ class ForUserFilterTest(TestCase):
             is_authenticated = False
         self.assertEqual(for_user(_Anon()), [])
         self.assertEqual(for_user(None), [])
+
+
+class GuardedWriteActionsTest(TestCase):
+    """FG351 — les écritures en langage naturel (Devis/Lead/Client) sont des
+    actions GARDÉES : risk=outward (=> propose→confirm côté relais) et gatées
+    par une permission ERP (jamais exécutées en lecture seule)."""
+
+    def setUp(self):
+        self.company = Company.objects.create(nom='Write Co', slug='write-co')
+        # Rôle « lecture seule » : crm_voir uniquement (aucun droit d'écriture).
+        self.readonly_role = Role.objects.create(
+            company=self.company, nom='Lecture', permissions=['crm_voir'])
+        self.readonly = User.objects.create_user(
+            username='wro', password='x', role=self.readonly_role,
+            company=self.company)
+        # Rôle « commercial » : crm_creer + ventes_creer → peut proposer toutes
+        # les créations.
+        self.writer_role = Role.objects.create(
+            company=self.company, nom='Commercial',
+            permissions=['crm_creer', 'ventes_creer'])
+        self.writer = User.objects.create_user(
+            username='wwr', password='x', role=self.writer_role,
+            company=self.company)
+
+    def _by_key(self):
+        return {a.key: a for a in all_actions()}
+
+    def test_three_write_actions_registered(self):
+        catalogue = self._by_key()
+        for key in ('ventes.devis.create', 'crm.client.create',
+                    'crm.lead.create'):
+            self.assertIn(key, catalogue)
+
+    def test_write_actions_are_guarded_outward(self):
+        catalogue = self._by_key()
+        for key in ('ventes.devis.create', 'crm.client.create',
+                    'crm.lead.create'):
+            action = catalogue[key]
+            # outward => le relais renvoie une PROPOSITION à confirmer (jamais
+            # une exécution immédiate).
+            self.assertEqual(action.risk, RISK_OUTWARD, key)
+            self.assertEqual(action.method.upper(), 'POST', key)
+            self.assertTrue(action.confirm_summary, key)
+
+    def test_write_actions_gated_by_permission(self):
+        catalogue = self._by_key()
+        self.assertEqual(
+            catalogue['crm.client.create'].required_permission, 'crm_creer')
+        self.assertEqual(
+            catalogue['crm.lead.create'].required_permission, 'crm_creer')
+        self.assertEqual(
+            catalogue['ventes.devis.create'].required_permission,
+            'ventes_creer')
+
+    def test_readonly_cannot_propose_writes(self):
+        keys = {a.key for a in for_user(self.readonly)}
+        self.assertNotIn('crm.client.create', keys)
+        self.assertNotIn('crm.lead.create', keys)
+        self.assertNotIn('ventes.devis.create', keys)
+
+    def test_writer_can_propose_writes(self):
+        keys = {a.key for a in for_user(self.writer)}
+        self.assertIn('crm.client.create', keys)
+        self.assertIn('crm.lead.create', keys)
+        self.assertIn('ventes.devis.create', keys)
+
+    def test_client_and_lead_require_nom(self):
+        catalogue = self._by_key()
+        for key in ('crm.client.create', 'crm.lead.create'):
+            self.assertIn('nom', catalogue[key].inputs.get('required', []), key)
