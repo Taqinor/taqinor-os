@@ -1,10 +1,15 @@
 ---
 /**
- * Page publique — élévation « élégance retenue » : typographie éditoriale,
- * révélations au défilement, chiffres count-up, parallaxe d'en-tête (desktop)
- * + mouvement photo (Ken Burns d'en-tête, montée d'échelle au défilement).
- * Tout le mouvement est désactivé sous prefers-reduced-motion. Le diagnostic
- * et son flux de données restent inchangés (composant partagé DiagnosticForm).
+ * Page publique d'accueil — composition « élévation » promue en production
+ * (2026-06-22) : héros cinématographique plein cadre (~100svh), preuve par
+ * chantier portée par la galerie, signature zellige unique, set complet des
+ * sections séquencé et aéré (tokens .section / .v2-body / .fig), discipline
+ * laiton (l'or vit sur les chiffres .lum et le seul CTA principal ; les
+ * eyebrows sont rétrogradés en lune), grade « heure dorée » (.v3-grade) sur la
+ * photographie de contenu — JAMAIS le héros (protection LCP). Mouvements et
+ * chiffres réutilisent les hooks de l'accueil (count-up héro, Ken Burns,
+ * .cine-in / .v2-rise), tous gated `prefers-reduced-motion`. Le diagnostic et
+ * son flux de données restent inchangés (composant partagé DiagnosticForm).
  * Voir apps/web/DESIGN_RATIONALE.md.
  */
 import Layout from '../layouts/Layout.astro';
@@ -18,8 +23,8 @@ import StickyCta from '../components/StickyCta.astro';
 import WhatsAppMock from '../components/WhatsAppMock.astro';
 import GarantiesTeaser from '../components/GarantiesTeaser.astro';
 import Testimonials from '../components/Testimonials.astro';
-import FounderPortrait from '../components/FounderPortrait.astro';
 import BrandStrip from '../components/BrandStrip.astro';
+import ZelligeSignature from '../components/ZelligeSignature.astro';
 import { WHATSAPP_LEADS } from '../lib/nap';
 import { whatsappLink } from '../lib/whatsapp';
 
@@ -27,8 +32,8 @@ const waDirect = whatsappLink(WHATSAPP_LEADS, 'Bonjour, je souhaite une étude p
 
 // W205 — Le chiffre protagoniste de l’en-tête est séparé pour le count-up.
 // La largeur est réservée (tabular-nums + min-width verrouillée par JS) → zéro CLS.
-const heroFigure = "21 406";
-const heroTitleSuffix = " kWh par an, produits sur un toit d’El Jadida.";
+const heroFigure = "21 406";
+const heroTitleSuffix = " kWh par an, produits sur un toit d’El Jadida.";
 const heroSub =
   'Installation réf. 468 — 17,04 kWc, dimensionnée, posée et mesurée par Taqinor. La vôtre commence par un diagnostic de 60 secondes.';
 
@@ -97,6 +102,20 @@ const solutionIcons: Record<string, string> = {
   '/maintenance-monitoring': '<path d="M4 18 9 12l3 3 4-6 4 5" /><path d="M4 21h16" /><circle cx="9" cy="12" r="0.6" /><circle cx="16" cy="9" r="0.6" />',
   '/regularization-article-33': '<path d="M7 4h7l4 4v12H7z" /><path d="M14 4v4h4" /><path d="M9.5 14l1.5 1.5 3-3.5" />',
 };
+
+// Pourquoi Taqinor / confiance — bande de quatre chiffres monumentaux, faits
+// déjà publiés. Décision fondateur 2026-06-22 : le slot « docteur-ingénieur »
+// est remplacé par la conformité loi 82-21 — un signal de confiance concret et
+// non personnel (le crédit fondateur vivra sur la page équipe). Les trois autres
+// valeurs (3 chantiers visitables, 43,48 kWc installés, Deye Cloud) sont
+// inchangées. L'or vit sur les chiffres .lum (discipline laiton). Aucun claim
+// inventé.
+const trust = [
+  { fig: '3', tally: false, label: 'Chantiers visitables', body: 'Installations réelles à voir sur demande — Casablanca, El Jadida, Nouaceur' },
+  { fig: '43,48 kWc', tally: true, label: 'Installés', body: 'Casablanca, El Jadida, Nouaceur' },
+  { fig: 'Loi 82-21', tally: false, label: 'Conformité incluse', body: 'Déclaration préparée et déposée pour vous par Taqinor' },
+  { fig: 'Deye Cloud', tally: false, label: 'Production mesurée', body: 'Monitoring sur chaque installation, accès client inclus' },
+];
 ---
 
 <Layout
@@ -109,14 +128,15 @@ const solutionIcons: Record<string, string> = {
     <V2Enhance />
     <Article33Ribbon />
 
-    <!-- ACTE I — la salle obscure : la vidéo EST le héros, parallaxe légère -->
-    <section class="relative isolate flex min-h-[92svh] flex-col justify-end overflow-hidden text-white">
+    {/* ── 1 · HÉROS CINÉMATOGRAPHIQUE (~100svh) — la photo est le protagoniste ── */}
+    <section class="relative isolate flex min-h-[100svh] flex-col justify-end overflow-hidden text-white">
       <div class="v2-hero-media absolute inset-0 -z-10">
-        {/* W155 — Portrait-crop : en orientation portrait (téléphone tenu vertical),
-            les sources portrait sont sélectionnées en priorité. Les mêmes images sont
-            servies mais l'objet est recadré vers le haut (center 20%) via le style
-            de l'<img>, ce qui recentre les panneaux et évite la découpe centrale sur
-            les grands écrans verticaux. Reduced-motion non applicable (image fixe). */}
+        {/* Affiche héro plein cadre (élément LCP) — Ken Burns hérité de la couche
+            photo. JAMAIS de .v3-grade ici (protection LCP) : seul le scrim, relevé
+            sur cette page, porte la chaleur sans toucher le contraste du texte.
+            W155 — Portrait-crop : en orientation portrait (téléphone tenu vertical),
+            les sources portrait sont sélectionnées en priorité ; l'object-position
+            recentre les panneaux (center 20%). */}
         <picture>
           <source type="image/avif" media="(orientation: portrait)" sizes="100vw"
             srcset="/videos/hero-poster-540.avif 540w, /videos/hero-poster-720.avif 720w, /videos/hero-poster-1080.avif 1080w" />
@@ -132,29 +152,33 @@ const solutionIcons: Record<string, string> = {
         </picture>
         <video id="hero-video" muted loop playsinline preload="none" aria-hidden="true" tabindex="-1"
           class="absolute inset-0 h-full w-full object-cover opacity-0 transition-opacity duration-700"></video>
-        {/* W154 — Scrim canonique : radial + voile latéral (texte gauche) + ancrage bas */}
-        <div class="hero-scrim absolute inset-0"></div>
+        {/* Scrim canonique RELEVÉ (--hero-scrim-strength 0.52) : compense la
+            chaleur du grade « heure dorée » et garde le headline ≥ AA. */}
+        <div class="hero-scrim hero-scrim-v3 absolute inset-0"></div>
       </div>
+
       {/* W161 — Invitation au défilement : chevron animé, statique sous prefers-reduced-motion */}
       <div class="absolute bottom-6 left-1/2 -translate-x-1/2 scroll-chevron" aria-hidden="true">
         <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
           <polyline points="6 9 12 15 18 9" />
         </svg>
       </div>
-      <div class="mx-auto w-full max-w-6xl px-4 pb-20 pt-32 sm:pb-28">
-        <p class="tech-label v2-kicker rule-brass cine-in text-brass-300">L'étude d'abord, le chantier ensuite</p>
-        {/* W205 — Chiffre protagoniste avec count-up (largeur réservée, zéro CLS).
-            data-hero-tally : hook JS ci-dessous, distinct de data-tally (évite
-            un double-roulement si l'IntersectionObserver de V2Enhance le capte). */}
-        <h1 class="display v2-hero-title cine-in mt-6 max-w-[15ch] [animation-delay:120ms]">
+
+      {/* Contenu ancré BAS — eyebrow rétrogradé en lune (discipline laiton).
+          W205 — Chiffre protagoniste avec count-up (largeur réservée, zéro CLS).
+          data-hero-tally : hook JS ci-dessous, distinct de data-tally. */}
+      <div class="mx-auto w-full max-w-6xl px-4 pb-24 pt-32 sm:pb-32">
+        <p class="tech-label v2-kicker rule-brass cine-in text-lune">L'étude d'abord, le chantier ensuite</p>
+        <h1 class="display v2-hero-title cine-in cine-in-1 mt-6 max-w-[15ch]">
           <span data-hero-tally class="font-variant-numeric tabular-nums">{heroFigure}</span>{heroTitleSuffix}
         </h1>
-        <p class="v2-lead cine-in mt-6 max-w-xl text-white/85 [animation-delay:240ms]">{heroSub}</p>
-        <div class="cine-in mt-10 flex flex-wrap items-center gap-3 [animation-delay:360ms]">
-          {/* W149 — CTA principal : libellé court, halo renforcé, taille monumental */}
+        <p class="v2-lead cine-in cine-in-2 mt-6 max-w-xl text-white/85">{heroSub}</p>
+        <div class="cine-in cine-in-3 mt-10 flex flex-wrap items-center gap-3">
+          {/* UN seul CTA brass (discipline laiton) — l'or est ici autorisé */}
           <a href="#simulateur" class="glow-hero bg-brass-400 px-8 py-4 text-lg font-bold text-azur-950 transition-all hover:bg-brass-300">
             Estimer mon installation →
           </a>
+          {/* Ghost WhatsApp — contour blanc, aucun laiton */}
           <a href={waDirect} rel="noopener" class="inline-flex items-center gap-2 border border-white/40 px-6 py-3.5 text-base font-semibold text-white backdrop-blur-sm transition-colors hover:border-white hover:bg-white/10">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 2a10 10 0 0 0-8.6 15.1L2 22l5-1.3A10 10 0 1 0 12 2Zm5.4 14.1c-.2.6-1.3 1.2-1.8 1.2-.5.1-1 .2-3.3-.7-2.8-1.1-4.6-4-4.7-4.2-.1-.2-1.1-1.5-1.1-2.9s.7-2 1-2.3c.2-.3.5-.3.7-.3h.5c.2 0 .4 0 .6.4l.9 2.1c.1.2.1.4 0 .6l-.4.6-.5.5c-.2.2-.3.4-.1.7.2.3.9 1.4 1.9 2.3 1.3 1.1 2.3 1.5 2.6 1.6.3.1.5.1.7-.1l1-1.2c.2-.3.4-.2.7-.1l2 1c.3.1.5.2.6.4 0 .1 0 .7-.3 1.4Z"/></svg>
             WhatsApp direct
@@ -163,8 +187,8 @@ const solutionIcons: Record<string, string> = {
       </div>
     </section>
 
-    <!-- W63 — Promesse de garantie en tête : engagement vrai et fort, repris de
-         /garanties (25 ans de performance) et du monitoring Deye Cloud mesuré. -->
+    {/* Promesse de garantie en tête — engagement vrai et fort, repris de
+        /garanties (25 ans de performance) et du monitoring Deye Cloud mesuré. */}
     <div class="seam-soft" aria-hidden="true"></div>
     <section class="bg-brass-400/5 px-4 py-6">
       <p class="mx-auto flex max-w-6xl flex-wrap items-center justify-center gap-x-3 gap-y-1 text-center text-sm font-semibold text-lune sm:text-base">
@@ -174,156 +198,15 @@ const solutionIcons: Record<string, string> = {
       </p>
     </section>
 
-    {/* W158 — Couture douce : remplace border-y border-white/10 */}
+    {/* ── 2 · PREUVE PAR CHANTIER — la lumière vient des photos. W53 — grille à
+        hauteurs égales (cartes 4/3 uniformes) ; W54 — chaque carte porte
+        ville · kWc · production mesurée (où publiée) · matériel. Grade « heure
+        dorée » (.v3-grade) sur la photo de contenu. Eyebrow rétrogradé en lune. ── */}
     <div class="seam-soft" aria-hidden="true"></div>
-    {/* W156 — Bande de confiance : quatre chiffres monumentaux, cohérents */}
-    <section class="px-4 py-16 sm:py-20">
-      {/* W211 — whitespace-nowrap retiré des fig-lg de la bande de confiance :
-          à 320 px « Deye Cloud » et « 43,48 kWc » débordaient en portrait.
-          Les chiffres enveloppent naturellement sur les très petits écrans. */}
-      <dl class="mx-auto grid max-w-6xl gap-x-6 gap-y-10 sm:grid-cols-2 lg:grid-cols-4" data-stagger>
-        <div class="v2-rise" style="--v2-i:0">
-          {/* W156 — fig-lg + lum pour cohérence monumental avec les 3 autres */}
-          <dd class="fig fig-lg lum">3</dd>
-          <dt class="tech-label mt-2 text-lune-faint">Chantiers visitables<span class="sr-only"> — Casablanca, El Jadida, Nouaceur</span></dt>
-          <p class="mt-1 text-sm leading-snug text-lune-soft">Installations réelles à voir sur demande — Casablanca, El Jadida, Nouaceur</p>
-        </div>
-        <div class="v2-rise" style="--v2-i:1">
-          <dd class="fig fig-lg lum" data-tally>43,48 kWc</dd>
-          <dt class="tech-label mt-2 text-lune-faint">Installés</dt>
-          <p class="mt-1 text-sm leading-snug text-lune-soft">Casablanca, El Jadida, Nouaceur</p>
-        </div>
-        <div class="v2-rise" style="--v2-i:2">
-          <dd class="fig fig-lg lum">10+ ans</dd>
-          <dt class="tech-label mt-2 text-lune-faint">Docteur-ingénieur</dt>
-          <p class="mt-1 text-sm leading-snug text-lune-soft">Expertise R&D — chaque étude validée par le fondateur</p>
-        </div>
-        <div class="v2-rise" style="--v2-i:3">
-          <dd class="fig fig-lg lum">Deye Cloud</dd>
-          <dt class="tech-label mt-2 text-lune-faint">Production mesurée</dt>
-          <p class="mt-1 text-sm leading-snug text-lune-soft">Monitoring sur chaque installation, accès client inclus</p>
-        </div>
-      </dl>
-    </section>
-    <div class="seam-soft" aria-hidden="true"></div>
-
-    <!-- L'argument en chiffres — chiffres qui s'égrènent -->
-    <section class="mx-auto grid max-w-6xl gap-12 px-4 py-20 sm:py-28 lg:grid-cols-[1fr_1.1fr] lg:items-center">
-      <div class="v2-rise">
-        {/* W159 — Variation : numérotation de section + rule-brass */}
-        <p class="tech-label v2-kicker rule-brass text-brass-300"><span class="mr-2 font-display text-xs text-brass-400/70" aria-hidden="true">01</span>L'argument, en chiffres</p>
-        <h2 class="display v2-section-title mt-5 max-w-md text-white">Le rendement, chiffré avant la pose</h2>
-        <p class="v2-lead mt-5 max-w-md text-lune-soft">
-          Une installation bien dimensionnée couvre l'essentiel de votre facture pendant
-          vingt-cinq ans. Le calcul part de votre consommation réelle, et c'est lui qui décide
-          du matériel, jamais l'inverse.
-        </p>
-      </div>
-      {/* W162 — Halo brass sous la colonne de chiffres */}
-      <dl class="grid grid-cols-2 gap-x-6 gap-y-12 rounded-sm border-l-2 border-brass-400/60 pl-6 sm:pl-10 [background:radial-gradient(ellipse_80%_80%_at_10%_50%,rgb(232_181_74/0.06),transparent_70%)]" data-stagger>
-        <div class="v2-rise" style="--v2-i:0">
-          {/* W211 — whitespace-nowrap retiré : à 320 px « 60–90 % » peut déborder dans la col de 2 */}
-          <dd class="fig lum text-3xl sm:text-5xl xl:text-6xl" data-tally>60–90 %</dd>
-          <dt class="tech-label mt-2 text-lune-faint">De la facture couverte</dt>
-        </div>
-        <div class="v2-rise" style="--v2-i:1">
-          <dd class="fig lum text-3xl sm:text-5xl xl:text-6xl" data-tally>3–7 ans</dd>
-          <dt class="tech-label mt-2 text-lune-faint">Retour sur investissement</dt>
-        </div>
-        <div class="v2-rise" style="--v2-i:2">
-          <dd class="fig lum text-3xl sm:text-5xl xl:text-6xl" data-tally>25 ans</dd>
-          <dt class="tech-label mt-2 text-lune-faint">Garantie de performance</dt>
-        </div>
-        <div class="v2-rise" style="--v2-i:3">
-          <dd class="fig lum text-3xl sm:text-5xl xl:text-6xl" data-tally>0 MAD</dd>
-          <dt class="tech-label mt-2 text-lune-faint">L'étude et le diagnostic</dt>
-        </div>
-      </dl>
-    </section>
-
-    <!-- W55/W64 — Le fondateur : signal de confiance fort, désormais en
-         composant PHOTO-READY (repli texte identique tant que le portrait de
-         Reda Kasri n'est pas déposé sous public/photos/). Aucune image inventée. -->
-    <FounderPortrait />
-
-    <!-- ACTE II — Deux métiers : les photos sont la lumière -->
-    <section class="px-4 py-20 sm:py-28">
-      <div class="mx-auto max-w-6xl">
-        <p class="tech-label v2-kicker rule-brass text-brass-300">Deux métiers</p>
-        <h2 class="display v2-section-title mt-5 max-w-xl text-white">Une exigence d'ingénierie, du pavillon à l'usine</h2>
-        <div class="mt-12 grid gap-6 md:grid-cols-2" data-stagger>
-          <a href="/résidentiel" class="v2-rise group relative block overflow-hidden" style="--v2-i:0">
-            <Picture name="crepuscule-penthouse" alt="Installation solaire résidentielle Taqinor au crépuscule, penthouse blanc et chauffe-eau solaire"
-              widths={[1600, 1024, 640]} ratio={4 / 3} sizes="(min-width: 768px) 50vw, 100vw"
-              class="aspect-[4/3] w-full object-cover transition-transform duration-700 group-hover:scale-[1.04]" />
-            <div class="absolute inset-x-0 bottom-0 bg-gradient-to-t from-nuit/95 to-transparent px-6 pb-5 pt-16 text-white">
-              <p class="tech-label text-brass-300">Villas · appartements</p>
-              <h3 class="display mt-1 text-2xl">Résidentiel</h3>
-              <span class="mt-2 inline-block border-b-2 border-brass-400 pb-0.5 text-sm font-bold">Voir le résidentiel →</span>
-            </div>
-          </a>
-          {/* W180 — ratio corrigé : l'image est rendue en aspect-[4/3] par le CSS ; le
-              ratio intrinsèque déclaré doit correspondre (4/3) pour que width/height
-              attrs réservent la bonne hauteur et évitent tout CLS. L'ancienne valeur
-              16/9 sous-estimait la hauteur réservée sur certains navigateurs. */}
-          <a href="/professionnel" class="v2-rise group relative block overflow-hidden" style="--v2-i:1">
-            <Picture name="industriel-couchant" alt="Chantier solaire industriel Taqinor au couchant, double rangée de panneaux"
-              widths={[2000, 1280, 768, 480]} ratio={4 / 3} sizes="(min-width: 768px) 50vw, 100vw"
-              class="aspect-[4/3] w-full object-cover transition-transform duration-700 group-hover:scale-[1.04]" />
-            <div class="absolute inset-x-0 bottom-0 bg-gradient-to-t from-nuit/95 to-transparent px-6 pb-5 pt-16 text-white">
-              <p class="tech-label text-brass-300">Industriels · hôtels · cliniques</p>
-              <h3 class="display mt-1 text-2xl">Professionnel</h3>
-              <span class="mt-2 inline-block border-b-2 border-brass-400 pb-0.5 text-sm font-bold">Voir le professionnel →</span>
-            </div>
-          </a>
-        </div>
-      </div>
-    </section>
-
-    {/* W158 — Couture douce entre sections */}
-    <div class="seam-soft" aria-hidden="true"></div>
-    <!-- Nos solutions — toute l'offre, au-delà des deux segments -->
-    <section class="px-4 py-20 sm:py-28">
-      <div class="mx-auto max-w-6xl">
-        {/* W159 — Variation : numérotation de section */}
-        <p class="tech-label v2-kicker rule-brass text-brass-300"><span class="mr-2 font-display text-xs text-brass-400/70" aria-hidden="true">02</span>Nos solutions</p>
-        <h2 class="display v2-section-title mt-5 max-w-xl text-white">Tout ce que nous installons</h2>
-        <p class="v2-lead mt-5 max-w-2xl text-lune-soft">
-          Au-delà du résidentiel et du professionnel : pompage agricole, stockage, suivi de
-          production et mise en conformité. Chaque solution part de votre situation réelle —
-          c'est l'étude qui décide.
-        </p>
-        <div class="mt-12 grid gap-6 sm:grid-cols-2 lg:grid-cols-3" data-stagger>
-          {solutions.map((s, i) => (
-            <a href={s.href} class="v2-rise cine-card group flex flex-col p-7" style={`--v2-i:${i}`}>
-              {/* W58 — pictogramme au trait, currentColor (brass), aucune dépendance/image */}
-              <svg class="h-9 w-9 text-brass-400 transition-colors group-hover:text-brass-300" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" set:html={solutionIcons[s.href] ?? ''} />
-              <p class="tech-label mt-5 text-brass-300">{s.tag}</p>
-              <h3 class="display mt-2 text-xl text-white">{s.title}</h3>
-              <p class="mt-3 flex-1 text-sm leading-relaxed text-lune-soft">{s.body}</p>
-              {/* W204 — nudge flèche : inline-block + translate-x gated motion-safe */}
-              <span class="mt-5 inline-flex items-center gap-1 border-b-2 border-brass-400 pb-0.5 text-sm font-bold text-white">Découvrir <span class="motion-safe:transition-transform motion-safe:duration-200 motion-safe:group-hover:translate-x-1" aria-hidden="true">→</span></span>
-            </a>
-          ))}
-        </div>
-        {/* W204 — nudge flèche : group sur le lien, arrow dans un span */}
-        <a href="/nos-solutions" class="v2-rise group mt-10 inline-flex items-center gap-1 border border-white/40 px-6 py-3 text-sm font-bold text-white transition-colors hover:border-white hover:bg-white/10">Voir toutes nos solutions <span class="motion-safe:transition-transform motion-safe:duration-200 motion-safe:group-hover:translate-x-1" aria-hidden="true">→</span></a>
-      </div>
-    </section>
-
-    <!-- W56/W65 — Bande de marques tier-1 → composant BrandStrip : logos
-         officiels quand un fichier existe (public/brands/), mots-marques en
-         repli. Sept marques confirmées par le fondateur (+ Jinko, Huawei, Nexans). -->
-    <BrandStrip />
-
-    <!-- Galerie-preuve : la lumière vient des photos. W53 — grille à hauteurs
-         égales (cartes 4/3 uniformes), plus de masonry décalé ; W54 — chaque
-         carte porte ville · kWc · production mesurée (où publiée) · matériel. -->
-    <section class="px-4 py-20 pb-28 sm:py-28 sm:pb-36">
+    <section class="section px-4">
       <div class="mx-auto max-w-6xl">
         <div class="flex flex-wrap items-end justify-between gap-4">
           <div class="v2-rise">
-            {/* W159 — Variation : eyebrow-light (blanc lumineux) sans rule-brass */}
             <p class="tech-label text-lune">Réalisations récentes</p>
             <h2 class="display v2-section-title mt-5 text-white">Nos dernières réalisations</h2>
           </div>
@@ -335,39 +218,90 @@ const solutionIcons: Record<string, string> = {
         <div class="mt-12 grid gap-5 sm:grid-cols-2 lg:grid-cols-3" data-stagger>
           {gallery.map((g, i) => (
             <a href={`/realisations/${g.slug}`} class="v2-rise cine-card group relative block overflow-hidden" style={`--v2-i:${i % 3}`}>
+              {/* Grade « heure dorée » uniforme — .v3-grade sur la photo de contenu */}
               <Picture name={g.name} alt={g.alt} widths={g.widths} ratio={4 / 3} sizes="(min-width: 1024px) 33vw, (min-width: 640px) 50vw, 100vw"
-                class="aspect-[4/3] w-full object-cover transition-transform duration-700 group-hover:scale-[1.04]" />
+                class="v3-grade aspect-[4/3] w-full object-cover transition-transform duration-700 group-hover:scale-[1.04]" />
               <div class="absolute inset-x-0 bottom-0 bg-gradient-to-t from-nuit/95 to-transparent px-4 pb-3 pt-12">
-                <span class="tech-label block text-brass-300">{g.ville} · {g.kwc}{g.prod ? ` · ${g.prod}` : ''}</span>
-                <span class="mt-0.5 block text-xs text-lune">{g.type}</span>
+                <span class="tech-label block text-lune">{g.ville} · {g.kwc}{g.prod ? ` · ${g.prod}` : ''}</span>
+                <span class="mt-0.5 block text-xs text-lune-soft">{g.type}</span>
               </div>
             </a>
           ))}
         </div>
-        {/* W204 — nudge flèche sur le lien galerie */}
-        <a href="/realisations" class="v2-rise group mt-10 inline-flex items-center gap-1 border border-white/40 px-6 py-3 text-sm font-bold text-white transition-colors hover:border-white hover:bg-white/10">Voir toutes nos réalisations <span class="motion-safe:transition-transform motion-safe:duration-200 motion-safe:group-hover:translate-x-1" aria-hidden="true">→</span></a>
+        {/* Lien discret vers TOUTES les réalisations — pas un bouton plein */}
+        <a href="/realisations" class="v2-rise group mt-10 inline-flex items-center gap-1 border-b-2 border-white/30 pb-0.5 text-sm font-bold text-white transition-colors hover:border-white">
+          Voir toutes les réalisations <span class="motion-safe:transition-transform motion-safe:duration-200 motion-safe:group-hover:translate-x-1" aria-hidden="true">→</span>
+        </a>
       </div>
     </section>
 
-    <!-- W62 — Avis clients : preuve sociale RÉELLE. Vide aujourd'hui (aucun
-         avis inventé) → ne rend rien tant que le fondateur n'ajoute pas de
-         vrais avis dans src/lib/testimonials.ts. -->
-    <Testimonials />
+    {/* ── SIGNATURE ZELLIGE — UNE seule fois, entre preuve et solutions ── */}
+    <ZelligeSignature />
 
-    <!-- Comment ça se passe — le parcours complet + l'aperçu WhatsApp.
-         W57 — la frise de bout en bout (diagnostic → monitoring) remplace le
-         petit <ol> à 3 pas ; les deux ne se répètent plus. Faits déjà publiés
-         sur le site, aucun délai inventé. -->
-    {/* W158 — Couture douce */}
+    {/* ── NOS SOLUTIONS (6) — toute l'offre, au-delà des deux segments ── */}
     <div class="seam-soft" aria-hidden="true"></div>
-    <section class="px-4 py-20 sm:py-28">
+    <section class="section px-4">
+      <div class="mx-auto max-w-6xl">
+        {/* Eyebrow rétrogradé en lune + numéro azur (discipline laiton) */}
+        <p class="tech-label v2-kicker rule-brass text-lune"><span class="mr-2 font-display text-xs text-azur-200/80" aria-hidden="true">01</span>Nos solutions</p>
+        <h2 class="display v2-section-title mt-5 max-w-xl text-white">Tout ce que nous installons</h2>
+        <p class="v2-body mt-5 max-w-2xl">
+          Au-delà du résidentiel et du professionnel : pompage agricole, stockage, suivi de
+          production et mise en conformité. Chaque solution part de votre situation réelle —
+          c'est l'étude qui décide.
+        </p>
+        <div class="mt-12 grid gap-6 sm:grid-cols-2 lg:grid-cols-3" data-stagger>
+          {solutions.map((s, i) => (
+            <a href={s.href} class="v2-rise cine-card group flex flex-col p-7" style={`--v2-i:${i}`}>
+              {/* W58 — pictogramme au trait, currentColor (brass), aucune dépendance/image */}
+              <svg class="h-9 w-9 text-brass-400 transition-colors group-hover:text-brass-300" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" set:html={solutionIcons[s.href] ?? ''} />
+              <p class="tech-label mt-5 text-lune">{s.tag}</p>
+              <h3 class="display mt-2 text-xl text-white">{s.title}</h3>
+              <p class="mt-3 flex-1 text-sm leading-relaxed text-lune-soft">{s.body}</p>
+              <span class="mt-5 inline-flex items-center gap-1 border-b-2 border-white/30 pb-0.5 text-sm font-bold text-white">Découvrir <span class="motion-safe:transition-transform motion-safe:duration-200 motion-safe:group-hover:translate-x-1" aria-hidden="true">→</span></span>
+            </a>
+          ))}
+        </div>
+        <a href="/nos-solutions" class="v2-rise group mt-10 inline-flex items-center gap-1 border border-white/40 px-6 py-3 text-sm font-bold text-white transition-colors hover:border-white hover:bg-white/10">Voir toutes nos solutions <span class="motion-safe:transition-transform motion-safe:duration-200 motion-safe:group-hover:translate-x-1" aria-hidden="true">→</span></a>
+      </div>
+    </section>
+
+    {/* ── POURQUOI TAQINOR / CONFIANCE — quatre chiffres monumentaux (l'or vit
+        sur les chiffres .lum, discipline laiton) — faits déjà publiés ── */}
+    <div class="seam-soft" aria-hidden="true"></div>
+    <section class="section px-4">
+      <div class="mx-auto max-w-6xl">
+        <div class="v2-rise max-w-2xl">
+          <p class="tech-label v2-kicker rule-brass text-lune"><span class="mr-2 font-display text-xs text-azur-200/80" aria-hidden="true">02</span>Pourquoi Taqinor</p>
+          <h2 class="display v2-section-title mt-5 text-white">La preuve avant la promesse</h2>
+          <p class="v2-body mt-5">
+            Des chantiers réels, visitables, supervisés en continu, et une étude dimensionnée à la
+            main sur votre facture réelle. Le chiffre décide du matériel — jamais l'inverse.
+          </p>
+        </div>
+        <dl class="mt-12 grid gap-x-6 gap-y-10 sm:grid-cols-2 lg:grid-cols-4" data-stagger>
+          {trust.map((t, i) => (
+            <div class="v2-rise" style={`--v2-i:${i}`}>
+              <dd class="fig fig-lg lum" data-tally={t.tally ? '' : undefined}>{t.fig}</dd>
+              <dt class="tech-label mt-2 text-lune-faint">{t.label}</dt>
+              <p class="mt-1 text-sm leading-snug text-lune-soft">{t.body}</p>
+            </div>
+          ))}
+        </dl>
+      </div>
+    </section>
+
+    {/* ── LE PARCOURS (6 steps) + aperçu WhatsApp. W57 — la frise de bout en bout
+        (diagnostic → monitoring) remplace le petit <ol> à 3 pas. Faits déjà
+        publiés sur le site, aucun délai inventé. ── */}
+    <div class="seam-soft" aria-hidden="true"></div>
+    <section class="section px-4">
       <div class="mx-auto max-w-6xl">
         <div class="grid items-center gap-12 lg:grid-cols-[1.1fr_1fr]">
           <div class="v2-rise">
-            {/* W159 — Variation : numérotation de section */}
-            <p class="tech-label v2-kicker rule-brass text-brass-300"><span class="mr-2 font-display text-xs text-brass-400/70" aria-hidden="true">03</span>Comment ça se passe</p>
+            <p class="tech-label v2-kicker rule-brass text-lune"><span class="mr-2 font-display text-xs text-azur-200/80" aria-hidden="true">03</span>Comment ça se passe</p>
             <h2 class="display v2-section-title mt-5 max-w-md text-white">La suite se passe sur WhatsApp</h2>
-            <p class="v2-lead mt-5 max-w-md text-lune-soft">
+            <p class="v2-body mt-5 max-w-md">
               Pas de centre d'appels, pas de relances : votre diagnostic arrive sur WhatsApp,
               vous échangez directement avec l'équipe technique, photos de toiture à l'appui,
               jusqu'à la visite sur site. Échange type ci-contre — anonymisé.
@@ -377,11 +311,12 @@ const solutionIcons: Record<string, string> = {
             <WhatsAppMock />
           </div>
         </div>
-        <!-- Frise du parcours réel — du diagnostic au monitoring -->
+        {/* Frise du parcours réel — du diagnostic au monitoring */}
         <ol class="mt-14 grid gap-x-6 gap-y-8 sm:grid-cols-2 lg:grid-cols-3" data-stagger>
           {journey.map((s, i) => (
             <li class="v2-rise relative border-t-2 border-white/10 pt-5" style={`--v2-i:${i % 3}`}>
               <span class="absolute -top-px left-0 h-0.5 w-10 bg-brass-400" aria-hidden="true"></span>
+              {/* Numéro de step en .lum : l'or est ici un chiffre clé (discipline laiton) */}
               <span class="fig lum text-2xl">{s.n}</span>
               <h3 class="display mt-2 text-lg text-white">{s.title}</h3>
               <p class="mt-2 text-sm leading-relaxed text-lune-soft">{s.body}</p>
@@ -391,16 +326,27 @@ const solutionIcons: Record<string, string> = {
       </div>
     </section>
 
+    {/* ── AVIS CLIENTS — preuve sociale RÉELLE. Vide aujourd'hui (aucun avis
+        inventé) → ne rend rien tant que le fondateur n'ajoute pas de vrais avis
+        dans src/lib/testimonials.ts. ── */}
+    <Testimonials />
+
+    {/* ── MARQUES TIER-1 → composant BrandStrip : logos officiels quand un
+        fichier existe (public/brands/), mots-marques en repli. Sept marques
+        confirmées par le fondateur (+ Jinko, Huawei, Nexans). ── */}
+    <BrandStrip />
+
+    {/* ── FILM DE CHANTIER ── */}
     <VideoChantier />
 
-    <!-- W54 — La section « Fiches chantier » a été retirée (les mêmes
-         installations vivaient en double avec la galerie photo ci-dessus, qui
-         porte désormais seule les données par chantier). -->
+    {/* W54 — L'ancien double listing par cartes-données a été retiré : les mêmes
+        installations vivaient en double avec la galerie photo ci-dessus, qui
+        porte désormais seule les données par chantier. ── */}
 
-    <!-- Réassurance : les garanties écrites, en bref (renvoi vers /garanties) -->
+    {/* ── GARANTIES (teaser) — les garanties écrites, en bref (renvoi vers /garanties) ── */}
     <GarantiesTeaser />
 
-    <!-- ACTE FINAL — le diagnostic respire, dans le système navy+or (W51) -->
+    {/* ── ACTE FINAL — le diagnostic respire, dans le système navy+or (W51) ── */}
     <DiagnosticForm>
       <aside slot="aside" class="cine-card border-t-4 border-t-brass-400 p-6">
         <p class="tech-label text-lune-faint">Dernière installation livrée</p>
@@ -416,8 +362,8 @@ const solutionIcons: Record<string, string> = {
       </aside>
     </DiagnosticForm>
 
-    <!-- FAQ courte de l'accueil : accordéon visuel SANS JSON-LD FAQPage —
-         la page dédiée /faq est la seule à porter le FAQPage (hygiène W19). -->
+    {/* FAQ courte de l'accueil : accordéon visuel SANS JSON-LD FAQPage —
+        la page dédiée /faq est la seule à porter le FAQPage (hygiène W19). */}
     <Faq items={faq} schema={false} />
 
     <StickyCta />
@@ -432,6 +378,12 @@ const solutionIcons: Record<string, string> = {
     .hero-portrait-img {
       object-position: center 20%;
     }
+  }
+
+  /* Scrim héro RELEVÉ : compense la chaleur du grade « heure dorée » et
+     garantit le contraste AA du headline blanc sur la photo. */
+  .hero-scrim-v3 {
+    --hero-scrim-strength: 0.52;
   }
 </style>
 
