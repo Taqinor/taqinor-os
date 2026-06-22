@@ -6,6 +6,7 @@ from .views import (
     ProjetChantierViewSet,
     ProjetLienViewSet,
     ProjetViewSet,
+    TacheViewSet,
 )
 
 router = DefaultRouter()
@@ -13,6 +14,7 @@ router.register(r'projets', ProjetViewSet)
 router.register(r'projet-chantiers', ProjetChantierViewSet)
 router.register(r'projet-liens', ProjetLienViewSet)
 router.register(r'phases', PhaseProjetViewSet)
+router.register(r'taches', TacheViewSet)
 
 urlpatterns = [
     path('', include(router.urls)),

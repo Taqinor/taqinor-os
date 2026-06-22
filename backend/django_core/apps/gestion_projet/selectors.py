@@ -7,7 +7,57 @@ les imports cross-app sont fonction-locaux pour éviter les cycles. Quand une ap
 cible n'a pas de sélecteur exploitable, on DÉGRADE proprement : on renvoie le
 ``libelle`` mis en cache et les ids stockés, sans rien importer.
 """
-from .models import ProjetLien
+from .models import ProjetLien, Tache
+
+
+def taches_for_projet(projet):
+    """Tâches d'un projet (QuerySet scopé société, ordonné WBS).
+
+    Lecture seule. La société est portée par le projet : on filtre aussi sur
+    ``projet.company`` par sécurité même si le FK ``projet`` la garantit déjà.
+    """
+    return Tache.objects.filter(
+        projet=projet, company=projet.company).order_by('ordre', 'id')
+
+
+def _serialize_tache(tache, enfants_par_parent):
+    """Construit le dict d'une tâche + ses sous-tâches (récursif, sans requête).
+
+    ``enfants_par_parent`` est un index ``{parent_id: [Tache, ...]}`` calculé une
+    seule fois par ``arbre_taches`` : la récursion ne refait AUCUNE requête.
+    """
+    return {
+        'id': tache.id,
+        'parent': tache.parent_id,
+        'phase': tache.phase_id,
+        'code_wbs': tache.code_wbs,
+        'libelle': tache.libelle,
+        'ordre': tache.ordre,
+        'statut': tache.statut,
+        'avancement_pct': tache.avancement_pct,
+        'charge_estimee': (
+            str(tache.charge_estimee)
+            if tache.charge_estimee is not None else None),
+        'sous_taches': [
+            _serialize_tache(child, enfants_par_parent)
+            for child in enfants_par_parent.get(tache.id, [])
+        ],
+    }
+
+
+def arbre_taches(projet):
+    """Arborescence WBS d'un projet : liste de dicts imbriqués (racines → feuilles).
+
+    Lecture seule, UNE seule requête : on charge toutes les tâches du projet,
+    on les indexe par ``parent_id`` et on déroule la récursion en mémoire. Une
+    racine est une tâche sans ``parent`` ; chaque dict porte ses ``sous_taches``.
+    """
+    taches = list(taches_for_projet(projet))
+    enfants_par_parent = {}
+    for tache in taches:
+        enfants_par_parent.setdefault(tache.parent_id, []).append(tache)
+    racines = enfants_par_parent.get(None, [])
+    return [_serialize_tache(racine, enfants_par_parent) for racine in racines]
 
 
 def liens_for_projet(projet):

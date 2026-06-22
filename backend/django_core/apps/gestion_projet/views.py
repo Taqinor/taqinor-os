@@ -19,6 +19,7 @@ from .models import (
     ProjetActivity,
     ProjetChantier,
     ProjetLien,
+    Tache,
 )
 from .serializers import (
     PhaseProjetSerializer,
@@ -26,6 +27,7 @@ from .serializers import (
     ProjetChantierSerializer,
     ProjetLienSerializer,
     ProjetSerializer,
+    TacheSerializer,
 )
 
 
@@ -190,6 +192,16 @@ class ProjetViewSet(_GestionProjetBaseViewSet):
         phases = services.instancier_phases_standard(projet)
         return Response(PhaseProjetSerializer(phases, many=True).data)
 
+    @action(detail=True, methods=['get'], url_path='taches')
+    def taches(self, request, pk=None):
+        """Arborescence WBS des tâches du projet (racines → sous-tâches).
+
+        La société est garantie par ``get_object`` (queryset scopé société) :
+        chaque dict porte ses ``sous_taches`` (profondeur arbitraire).
+        """
+        projet = self.get_object()
+        return Response(selectors.arbre_taches(projet))
+
 
 class ProjetChantierViewSet(_GestionProjetBaseViewSet):
     """Rattachements chantier ↔ projet (liens lâches)."""
@@ -246,4 +258,37 @@ class PhaseProjetViewSet(_GestionProjetBaseViewSet):
         projet = self.request.query_params.get('projet')
         if projet:
             qs = qs.filter(projet_id=projet)
+        return qs
+
+
+class TacheViewSet(_GestionProjetBaseViewSet):
+    """Tâches & sous-tâches (WBS) d'un projet — CRUD scopé société.
+
+    ``company`` est posée côté serveur (TenantMixin) ; les FK reçus (``projet``,
+    ``phase``, ``parent``) sont validés même-société par le sérialiseur (cible
+    d'une autre société → 400). Filtres optionnels : ``?projet=<id>``,
+    ``?parent=<id>`` (sous-tâches directes), ``?racines=1`` (tâches sans
+    parent), ``?statut=<statut>``. Recherche par libellé / code WBS ; tri par
+    défaut ``ordre`` puis ``id``. L'arborescence complète est servie par
+    ``projets/<id>/taches/``.
+    """
+    queryset = Tache.objects.select_related('projet', 'phase', 'parent').all()
+    serializer_class = TacheSerializer
+    filter_backends = [filters.SearchFilter, filters.OrderingFilter]
+    search_fields = ['libelle', 'code_wbs']
+    ordering_fields = ['ordre', 'code_wbs', 'statut', 'id']
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        projet = self.request.query_params.get('projet')
+        if projet:
+            qs = qs.filter(projet_id=projet)
+        parent = self.request.query_params.get('parent')
+        if parent:
+            qs = qs.filter(parent_id=parent)
+        if self.request.query_params.get('racines') in ('1', 'true', 'True'):
+            qs = qs.filter(parent__isnull=True)
+        statut = self.request.query_params.get('statut')
+        if statut:
+            qs = qs.filter(statut=statut)
         return qs
