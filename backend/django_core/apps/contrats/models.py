@@ -22,7 +22,9 @@ class Contrat(models.Model):
 
     Le ``type_contrat`` qualifie la nature du contrat et le ``statut`` son
     avancement (brouillon → en approbation → signé → actif → suspendu/résilié/
-    expiré). Le client est référencé en lien lâche par ``client_id``.
+    expiré). Le client est référencé en lien lâche par ``client_id`` ; un
+    éventuel contrat de maintenance SAV l'est par ``sav_contrat_maintenance_id``
+    (id seul, sans FK dur ni import de ``apps.sav``).
     """
     class TypeContrat(models.TextChoices):
         VENTE = 'vente', 'Vente'
@@ -66,6 +68,14 @@ class Contrat(models.Model):
     # modèle d'une autre app. NULL = pas de client rattaché.
     client_id = models.PositiveIntegerField(
         null=True, blank=True, verbose_name='ID du client')
+    # Lien LÂCHE vers un contrat de maintenance SAV (``sav.ContratMaintenance``)
+    # par son ID seul — jamais un FK dur ni un import de ``sav.models``. NULL =
+    # aucun contrat de maintenance rattaché. L'app `sav` n'expose PAS de
+    # ``selectors.py`` aujourd'hui : on STOCKE l'id sans le valider ; un futur
+    # sélecteur SAV permettra d'enrichir/valider (voir docstring du sérialiseur).
+    sav_contrat_maintenance_id = models.PositiveIntegerField(
+        null=True, blank=True,
+        verbose_name='ID du contrat de maintenance SAV')
     date_debut = models.DateField(
         null=True, blank=True, verbose_name='Date de début')
     date_fin = models.DateField(
