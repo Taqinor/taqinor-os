@@ -22,6 +22,18 @@ from .quote_engine import clean_pdf_options, generate_premium_devis_pdf
 from .utils.pdf import download_pdf, generate_facture_pdf
 
 
+# ── Profil saisonnier de production solaire au Maroc (T4) ────────────────────
+# Poids mensuels (Jan…Déc) dérivés du GHI moyen marocain (apps/ventes/
+# quote_engine/constants.py:GHI) puis NORMALISÉS pour sommer à 1. Sert UNIQUEMENT
+# à répartir un total annuel RÉEL sur 12 mois quand seul l'annuel est connu —
+# on ne fabrique jamais le total, on le distribue. Plus d'irradiance en été
+# qu'en hiver, d'où des poids estivaux plus élevés.
+_GHI_MONTHLY = [83.99, 96.79, 133.43, 155.30, 175.28, 179.62,
+                179.56, 161.17, 137.03, 111.59, 81.91, 74.61]
+_GHI_SUM = sum(_GHI_MONTHLY)
+MOROCCO_SOLAR_MONTHLY_WEIGHTS = [round(g / _GHI_SUM, 6) for g in _GHI_MONTHLY]
+
+
 # Avis FR clair montré quand le lien est expiré ou introuvable. Aucune donnée
 # interne n'est exposée : le client est simplement invité à demander un lien
 # frais à TAQINOR (L854).
@@ -130,6 +142,54 @@ def _resolve_proposal_link(token):
     return link
 
 
+def _monthly_production(data) -> list:
+    """T4 — production solaire mensuelle (kWh/mois), 12 valeurs.
+
+    Source : production annuelle RÉELLE du devis (``build_quote_data`` →
+    ``prod_kwh``, qui reprend déjà l'étude/PVGIS stockée quand elle existe). On
+    distribue ce total RÉEL via ``MOROCCO_SOLAR_MONTHLY_WEIGHTS`` (profil GHI
+    Maroc normalisé). On ne fabrique jamais le total ; sans annuel → []."""
+    annual = data.get('prod_kwh')
+    try:
+        annual = float(annual)
+    except (TypeError, ValueError):
+        return []
+    if annual <= 0:
+        return []
+    return [round(annual * w) for w in MOROCCO_SOLAR_MONTHLY_WEIGHTS]
+
+
+def _monthly_consumption(devis) -> list:
+    """T4 — consommation mensuelle (kWh/mois) depuis les factures RÉELLES.
+
+    Lit les factures du lead du devis via le sélecteur CRM (cross-app lecture
+    seule, jamais d'import direct de ``apps.crm.models``). Convertit MAD→kWh
+    avec le tarif INTERNE existant du projet (quote_engine.constants.KWH_PRICE),
+    jamais un nouveau tarif codé en dur. Facture d'hiver toute l'année, ou
+    hiver+été quand ``ete_differente`` (été = mois ~Mai→Oct). Sans facture → []
+    (la page masque alors le graphe)."""
+    from apps.crm.selectors import lead_bills_for_devis
+    bills = lead_bills_for_devis(devis)
+    if not bills:
+        return []
+    from .quote_engine.constants import KWH_PRICE
+    if not KWH_PRICE:
+        return []
+    hiver_mad = bills['facture_hiver']
+    ete_mad = bills['facture_ete']
+    # Mois « été » (index 0=Jan) : Mai→Octobre. Le reste = hiver.
+    ete_months = {4, 5, 6, 7, 8, 9}
+    out = []
+    for m in range(12):
+        if (bills['ete_differente'] and ete_mad is not None
+                and m in ete_months):
+            mad = ete_mad
+        else:
+            mad = hiver_mad
+        out.append(round(mad / KWH_PRICE))
+    return out
+
+
 @api_view(['GET'])
 @permission_classes([AllowAny])
 @throttle_classes([PublicLinkRateThrottle])
@@ -171,12 +231,49 @@ def proposal_data(request, token):
             'accepted': devis.statut == 'accepte',
             'accepte_par_nom': data.get('accepte_par_nom') or '',
             'date_acceptation': data.get('date_acceptation') or '',
+            # T4 — séries mensuelles pour le graphe client (additif).
+            # Production : annuel RÉEL réparti par le profil GHI Maroc.
+            'monthly_production': _monthly_production(data),
+            # Consommation : factures RÉELLES du lead (MAD→kWh, tarif interne),
+            # [] sans facture → la page masque le graphe.
+            'monthly_consumption': _monthly_consumption(devis),
         }
     except Exception:  # noqa: BLE001
         return _noindex(Response(
             {'detail': 'Proposition indisponible pour le moment.'},
             status=status.HTTP_404_NOT_FOUND))
     return _noindex(Response(payload))
+
+
+@api_view(['GET'])
+@permission_classes([AllowAny])
+@throttle_classes([PublicLinkRateThrottle])
+def proposal_pdf(request, token):
+    """Flux PDF CLIENT du devis derrière le jeton de proposition (W116).
+
+    Réutilise telle quelle la logique de ``public_document`` (validation du
+    jeton ShareLink via ``_resolve_proposal_link``, rendu premium sans
+    persistance, X-Robots-Tag: noindex, 404 amical sur jeton invalide/expiré).
+    Disposition « inline » pour un affichage direct dans le navigateur ;
+    nom de fichier ``Devis_<reference>.pdf``. Lecture seule : aucun statut de
+    devis n'est touché (règle #4 — le moteur ne fait que rendre)."""
+    link = _resolve_proposal_link(token)
+    if link is None:
+        return _not_found()
+    try:
+        # ERR74 — GET sûr : rendu + flux sans persister fichier_pdf.
+        key = generate_premium_devis_pdf(
+            link.devis_id, clean_pdf_options({}), persist=False)
+        pdf_bytes = download_pdf(key)
+        filename = f'Devis_{link.devis.reference}.pdf'
+    except Exception:  # noqa: BLE001 — jamais de fuite, 404 amical
+        return _noindex(Response(
+            {'detail': 'Document indisponible pour le moment.'},
+            status=status.HTTP_404_NOT_FOUND))
+
+    response = HttpResponse(pdf_bytes, content_type='application/pdf')
+    response['Content-Disposition'] = f'inline; filename="{filename}"'
+    return _noindex(response)
 
 
 @api_view(['POST'])

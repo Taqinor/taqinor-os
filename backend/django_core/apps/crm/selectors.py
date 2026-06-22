@@ -109,6 +109,37 @@ def get_company_client(company, client_id):
     return client_base_qs(company).filter(pk=client_id).first()
 
 
+def lead_bills_for_devis(devis):
+    """Factures électriques RÉELLES (MAD/mois) du lead d'un devis, ou None.
+
+    Point d'entrée cross-app LECTURE SEULE pour que ``ventes`` lise le profil de
+    facture sans importer ``apps.crm.models``. Résolution : le lead lié au devis
+    en priorité, sinon le premier lead rattaché au client du devis. Renvoie un
+    dict ``{'facture_hiver', 'facture_ete', 'ete_differente'}`` (floats/None +
+    bool) quand une facture d'hiver existe, sinon None (la page masque alors le
+    graphe de consommation). Aucune donnée fabriquée."""
+    lead = getattr(devis, 'lead', None)
+    if lead is None:
+        client_id = getattr(devis, 'client_id', None)
+        if client_id:
+            from .models import Lead
+            lead = (
+                Lead.objects
+                .filter(client_id=client_id,
+                        company_id=getattr(devis, 'company_id', None))
+                .order_by('-date_creation')
+                .first()
+            )
+    if lead is None or lead.facture_hiver in (None, ''):
+        return None
+    return {
+        'facture_hiver': float(lead.facture_hiver),
+        'facture_ete': (float(lead.facture_ete)
+                        if lead.facture_ete not in (None, '') else None),
+        'ete_differente': bool(lead.ete_differente),
+    }
+
+
 def lead_card(lead_id, company):
     """S8 — fiche-carte LECTURE SEULE d'un lead pour le partage dans la
     messagerie. Scopée société : renvoie None si le lead n'appartient pas à la

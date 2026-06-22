@@ -70,6 +70,26 @@ def _clean_roof_point(raw):
     return {'lat': lat, 'lng': lng}
 
 
+def _clean_decimal(raw, *, lo=None, hi=None):
+    """Normalise une valeur en float, ou None si non numérique / hors bornes.
+
+    Style tolérant identique au reste du webhook : on ne lève jamais — une
+    valeur invalide est simplement ignorée (skip). Quand ``lo``/``hi`` sont
+    fournis (même garde de bornes que ``_clean_roof_point`` pour lat/lng), une
+    valeur hors plage est rejetée silencieusement."""
+    if raw in (None, ''):
+        return None
+    try:
+        val = float(raw)
+    except (TypeError, ValueError):
+        return None
+    if lo is not None and val < lo:
+        return None
+    if hi is not None and val > hi:
+        return None
+    return val
+
+
 def _clean_roof_outline(raw):
     """Normalise un contour rough optionnel en liste de [lat, lng], ou None.
 
@@ -133,6 +153,37 @@ def _map_payload_to_fields(data: dict) -> dict:
             fields['bill_kwh'] = float(bill_kwh)
         except (TypeError, ValueError):
             pass
+
+    # ── Champs de capture toiture-3D (additifs, optionnels, tolérants) ──
+    # Facture hiver/été (MAD/mois) + toggle été différent ; raccordement ;
+    # adresse ; pin GPS. Toute valeur invalide est ignorée (jamais d'erreur).
+    facture_hiver = _clean_decimal(
+        data.get('factureHiver', data.get('facture_hiver')))
+    if facture_hiver is not None:
+        fields['facture_hiver'] = facture_hiver
+    facture_ete = _clean_decimal(
+        data.get('factureEte', data.get('facture_ete')))
+    if facture_ete is not None:
+        fields['facture_ete'] = facture_ete
+    if 'eteDifferente' in data or 'ete_differente' in data:
+        fields['ete_differente'] = bool(
+            data.get('eteDifferente', data.get('ete_differente')))
+    raccordement = data.get('raccordement')
+    if raccordement in Lead.Raccordement.values:
+        fields['raccordement'] = raccordement
+    adresse = data.get('adresse') or data.get('address')
+    if adresse:
+        fields['adresse'] = str(adresse).strip() or None
+    # GPS : mêmes bornes que _clean_roof_point (lat ∈ [-90,90], lng ∈ [-180,180]).
+    gps_lat = _clean_decimal(
+        data.get('gpsLat', data.get('gps_lat')), lo=-90, hi=90)
+    if gps_lat is not None:
+        fields['gps_lat'] = gps_lat
+    gps_lng = _clean_decimal(
+        data.get('gpsLng', data.get('gps_lng')), lo=-180, hi=180)
+    if gps_lng is not None:
+        fields['gps_lng'] = gps_lng
+
     if fields['whatsapp_opt_in'] and fields['telephone']:
         fields['whatsapp'] = fields['telephone']
     # Sous le seuil (ne devrait pas arriver — le site filtre) : étiqueté.
