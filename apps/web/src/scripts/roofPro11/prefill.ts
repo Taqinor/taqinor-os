@@ -15,7 +15,8 @@
 import { DEG2RAD, WGS84_RADIUS } from './constants';
 import { $ } from './dom';
 import { type Ctx } from './context';
-import { type CardData } from './types';
+import { type AreaRecord, type CardData, type LeadPayload } from './types';
+import { type LngLat } from '../../lib/roof';
 import { BILL_RANGES } from '../../lib/billRange';
 import { ROOF_TYPES } from '../../lib/lead';
 
@@ -160,4 +161,164 @@ export function createPrefill(ctx: Ctx): Prefill {
   }
 
   return { geodesicArea, prefillLead };
+}
+
+// ═══════════ W113 — SÉRIALISATION / HYDRATATION DU LAYOUT (linchpin) ═══════════
+// Le layout sérialisé est un JSON PUR et stable : la liste des zones (géométrie +
+// dimensionnement par zone) + un repère léger (pin/outline) au niveau racine, pour
+// que la capture client (pin seul) et l'étude Meriem (contour complet) parlent le
+// MÊME format. Les champs DÉRIVÉS (résultat optimiseur, plan de rendu 3D, caches
+// PVGIS) sont VOLONTAIREMENT exclus : ils sont recalculés au boot par l'optimiseur,
+// jamais persistés. serializeLayout → deserializeLayout est une IDENTITÉ pour ces
+// champs (garde de test).
+
+/** Une zone sérialisée (sous-ensemble plat et JSON-sûr d'AreaRecord). */
+export interface SerializedZone {
+  id: string;
+  label: string;
+  /** Contour lng/lat [[lng,lat],…]. */
+  vertices: LngLat[];
+  /** Obstacles (zones d'exclusion) — objets plats {id,centerLng,centerLat,lengthM,widthM}. */
+  obstacles: Array<{ id: string; centerLng: number; centerLat: number; lengthM: number; widthM: number }>;
+  roofType: 'flat' | 'pitched';
+  pitchDeg: number;
+  facingAzimuthDeg: number;
+  facingManual: boolean;
+  neededPanels: number;
+  neededAuto: boolean;
+}
+
+/** Layout complet sérialisé : version + zones + repère léger (pin/outline). */
+export interface SerializedLayout {
+  version: 1;
+  /** Pin {lat,lng} (le centroïde du contour, ou le repère client posé), ou null. */
+  pin: { lat: number; lng: number } | null;
+  /** Contour de la zone active en [[lat,lng],…] (vide si pas de tracé fermé). */
+  outline: Array<[number, number]>;
+  /** Consommation annuelle (kWh) issue de la facture, si connue. */
+  billKwh: number | null;
+  zones: SerializedZone[];
+  /** Id de la zone active au moment de la sérialisation. */
+  activeAreaId: string;
+}
+
+/** Centroïde {lat,lng} d'un contour lng/lat, ou null si < 1 sommet. */
+function centroidOf(vertices: LngLat[]): { lat: number; lng: number } | null {
+  if (vertices.length < 1) return null;
+  let lng = 0;
+  let lat = 0;
+  for (const [x, y] of vertices) {
+    lng += x;
+    lat += y;
+  }
+  return { lng: lng / vertices.length, lat: lat / vertices.length };
+}
+
+/**
+ * Sérialise l'état du builder en un JSON PUR (zones + repère léger). Lit `ctx`
+ * (les zones vivent dans ctx.areas + l'état d'édition de la zone active) sans
+ * écrire nulle part. `billKwh` est optionnel (passé par l'appelant — l'outil ne
+ * connaît pas la conversion facture→kWh ici).
+ */
+export function serializeLayout(ctx: Ctx, billKwh: number | null = null): SerializedLayout {
+  // On part des zones figées (ctx.areas) et on superpose l'état d'édition VIVANT de
+  // la zone active (vertices/obstacles/roofType… vivent sur ctx, pas encore re-figés).
+  const zones: SerializedZone[] = ctx.areas.map((a) => {
+    const isActive = a.id === ctx.activeAreaId;
+    const vertices = isActive ? ctx.vertices : a.vertices;
+    const obstacles = isActive ? ctx.obstacles : a.obstacles;
+    return {
+      id: a.id,
+      label: a.label,
+      vertices: vertices.map(([lng, lat]) => [lng, lat] as LngLat),
+      obstacles: obstacles.map((o) => ({
+        id: o.id,
+        centerLng: o.centerLng,
+        centerLat: o.centerLat,
+        lengthM: o.lengthM,
+        widthM: o.widthM,
+      })),
+      roofType: isActive ? ctx.roofType : a.roofType,
+      pitchDeg: isActive ? ctx.pitchDeg : a.pitchDeg,
+      facingAzimuthDeg: isActive ? ctx.facingAzimuthDeg : a.facingAzimuthDeg,
+      facingManual: isActive ? ctx.facingManual : a.facingManual ?? false,
+      neededPanels: isActive ? ctx.neededPanels : a.neededPanels,
+      neededAuto: isActive ? ctx.neededAuto : a.neededAuto,
+    };
+  });
+  const activeVerts = ctx.vertices.length >= 1 ? ctx.vertices : ctx.areas.find((a) => a.id === ctx.activeAreaId)?.vertices ?? [];
+  const outline: Array<[number, number]> =
+    activeVerts.length >= 3 ? activeVerts.map(([lng, lat]) => [lat, lng] as [number, number]) : [];
+  return {
+    version: 1,
+    pin: centroidOf(activeVerts),
+    outline,
+    billKwh: Number.isFinite(billKwh as number) ? billKwh : null,
+    zones,
+    activeAreaId: ctx.activeAreaId,
+  };
+}
+
+/**
+ * Reconstruit la liste d'AreaRecord à partir d'un layout sérialisé. Les champs
+ * dérivés (result/renderPlan) repartent à null — l'optimiseur les recalcule au
+ * boot. C'est l'inverse de serializeLayout : round-trip = identité sur la géométrie
+ * et le dimensionnement.
+ */
+export function deserializeLayout(json: SerializedLayout): AreaRecord[] {
+  const zones = Array.isArray(json?.zones) ? json.zones : [];
+  return zones.map((z) => ({
+    id: z.id,
+    label: z.label,
+    vertices: (z.vertices ?? []).map(([lng, lat]) => [lng, lat] as LngLat),
+    obstacles: (z.obstacles ?? []).map((o) => ({
+      id: o.id,
+      centerLng: o.centerLng,
+      centerLat: o.centerLat,
+      lengthM: o.lengthM,
+      widthM: o.widthM,
+    })),
+    roofType: z.roofType,
+    pitchDeg: z.pitchDeg,
+    facingAzimuthDeg: z.facingAzimuthDeg,
+    facingManual: z.facingManual,
+    neededPanels: z.neededPanels,
+    neededAuto: z.neededAuto,
+    result: null,
+    renderPlan: null,
+  }));
+}
+
+/**
+ * W113 — Sème le contour/pin de la zone active depuis un payload lead. Renvoie le
+ * contour lng/lat à appliquer (vide si seul un pin est disponible) + le centre de
+ * vol. PURE (aucun effet de bord) : le boot consomme le résultat pour poser
+ * vertices/centroid/flyTo. Les coordonnées lead sont en [lat,lng] (convention CRM)
+ * et sont converties en [lng,lat] (convention MapLibre/builder).
+ */
+export function hydrateFromLead(lead: LeadPayload | null | undefined): {
+  vertices: LngLat[];
+  center: LngLat | null;
+  contact: { name?: string; phone?: string; city?: string };
+} {
+  const empty = { vertices: [] as LngLat[], center: null as LngLat | null, contact: {} };
+  if (!lead) return empty;
+  let vertices: LngLat[] = [];
+  let center: LngLat | null = null;
+  if (Array.isArray(lead.roof_outline) && lead.roof_outline.length >= 3) {
+    vertices = lead.roof_outline
+      .filter((p) => Array.isArray(p) && Number.isFinite(p[0]) && Number.isFinite(p[1]))
+      .map(([lat, lng]) => [lng, lat] as LngLat);
+  }
+  const pt = lead.roof_point;
+  if (pt && Number.isFinite(pt.lat) && Number.isFinite(pt.lng)) {
+    center = [pt.lng, pt.lat];
+  } else {
+    center = centroidOf(vertices) ? ([centroidOf(vertices)!.lng, centroidOf(vertices)!.lat] as LngLat) : null;
+  }
+  const contact: { name?: string; phone?: string; city?: string } = {};
+  if (typeof lead.fullName === 'string' && lead.fullName.trim()) contact.name = lead.fullName.trim();
+  if (typeof lead.phone === 'string' && lead.phone.trim()) contact.phone = lead.phone.trim();
+  if (typeof lead.city === 'string' && lead.city.trim()) contact.city = lead.city.trim();
+  return { vertices, center, contact };
 }

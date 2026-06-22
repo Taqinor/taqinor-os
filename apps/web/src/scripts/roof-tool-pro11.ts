@@ -124,12 +124,24 @@ import { createObstaclesUi } from './roofPro11/obstaclesUi';
 import { createMapDraw } from './roofPro11/mapDraw';
 import { createScene3d } from './roofPro11/scene3d';
 import { createOptimizer } from './roofPro11/optimizer';
+import { bootCaptureOnly } from './roofPro11/captureBoot';
+import { hydrateFromLead, serializeLayout } from './roofPro11/prefill';
 
 let booted = false;
 
 export function initRoofToolPro8(opts: InitOptions): void {
   if (booted) return;
   booted = true;
+
+  // W112 — mode CAPTURE CLIENT (/devis/mon-toit) : carte + géocodeur + pin/tracé
+  // SEULEMENT. On dévie AVANT toute construction lourde (createScene3d /
+  // createOptimizer / createMatrix ne sont jamais appelés ici), donc aucun panneau,
+  // aucune 3D, aucune carte de production ne peut apparaître. Le boot complet ci-
+  // dessous reste octet pour octet identique quand le drapeau est absent/false.
+  if (opts.captureOnly) {
+    bootCaptureOnly(opts);
+    return;
+  }
 
   const probe = document.createElement('canvas');
   if (!(probe.getContext('webgl2') || probe.getContext('webgl'))) {
@@ -1179,11 +1191,48 @@ export function initRoofToolPro8(opts: InitOptions): void {
     });
     map.addLayer(customLayer);
     updateCompass();
+    // W113 — HYDRATATION depuis un lead (étude Meriem) : sème le contour/pin du client
+    // + les champs contact AVANT le géocodage, puis ferme le tracé et lance le calcul.
+    // Quand `hydrate` est absent, ce bloc est sauté → boot inchangé.
+    const seeded = opts.hydrate?.lead ? applyHydration(opts.hydrate.lead) : false;
     // W93 — `initialQuery` est programmatique : on auto-sélectionne le 1ᵉʳ résultat (vol
-    // direct), au lieu d'ouvrir la liste de suggestions.
-    if (opts.initialQuery) void geocode(opts.initialQuery, true);
-    else setStatus('Cherchez votre adresse, puis cliquez les coins de votre toit.');
+    // direct), au lieu d'ouvrir la liste de suggestions. On ne géocode pas si on a déjà
+    // hydraté un contour/pin (le vol vers le lead l'emporte).
+    if (!seeded && opts.initialQuery) void geocode(opts.initialQuery, true);
+    else if (!seeded) setStatus('Cherchez votre adresse, puis cliquez les coins de votre toit.');
   });
+
+  /** W113 — applique l'hydratation d'un lead à l'état d'édition (zone active) : sème le
+   *  contour (ou un pin centré), recentre la carte, pré-remplit les champs contact du
+   *  diagnostic, puis ferme + recalc si un vrai contour (≥3 sommets) est fourni. Renvoie
+   *  true si quelque chose a été semé (pour ne pas re-géocoder par-dessus). */
+  function applyHydration(lead: import('./roofPro11/types').LeadPayload): boolean {
+    const h = hydrateFromLead(lead);
+    // Champs contact du diagnostic (handoff, jamais un POST — même garde que prefill).
+    const setIf = (id: string, v?: string) => {
+      const el = $<HTMLInputElement>(id);
+      if (el && v && !el.value.trim()) el.value = v;
+    };
+    setIf('lf-name', h.contact.name);
+    setIf('lf-phone', h.contact.phone);
+    setIf('lf-city', h.contact.city);
+    if (h.vertices.length >= 3) {
+      vertices = [...h.vertices];
+      // fige la géométrie sur la zone active puis ferme (lance l'optimiseur via close()).
+      const a = activeArea();
+      if (a) a.vertices = [...vertices];
+      close();
+      return true;
+    }
+    if (h.center) {
+      const target = { center: h.center, zoom: 19, pitch: 0 } as const;
+      if (opts.reducedMotion) map.jumpTo(target);
+      else map.flyTo({ ...target, essential: true });
+      setStatus('Repère du client chargé — tracez le contour du toit pour lancer le calcul.');
+      return true;
+    }
+    return false;
+  }
 
   const srcOf = (id: string) => map.getSource(id) as maplibregl.GeoJSONSource | undefined;
 
@@ -2243,4 +2292,13 @@ export function initRoofToolPro8(opts: InitOptions): void {
   // — Obstacles : bouton « ajouter »/« effacer » + édition numérique : voir roofPro11/obstaclesUi.ts —
 
   // — Recherche d'adresse (géocodage W75) : voir roofPro11/mapDraw.ts —
+
+  // W114/W115 — expose une petite API à la page de design (étude Meriem) : sérialiser
+  // le layout finalisé (W113) + instantané PNG de la 3D (W115). Boot complet seulement
+  // (jamais en capture). Absent → aucun effet.
+  opts.onApiReady?.({
+    serializeLayout: (billKwh?: number | null) =>
+      serializeLayout(ctx, billKwh ?? (closed && vertices.length >= 3 ? billToAnnualKwh(monthlyBill()) : null)),
+    snapshot: () => scene3d.snapshot(),
+  });
 }
