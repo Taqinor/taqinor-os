@@ -28,8 +28,9 @@ from django.db import transaction
 from django.utils import timezone
 
 from .models import (
-    CompteComptable, EcritureComptable, ExerciceComptable, Journal,
-    LigneEcriture, PeriodeComptable, PlanComptable,
+    CompteComptable, DotationAmortissement, EcritureComptable,
+    ExerciceComptable, Immobilisation, Journal, LigneEcriture,
+    PeriodeComptable, PlanAmortissement, PlanComptable,
 )
 
 
@@ -44,7 +45,14 @@ _COMPTES_CGNC = [
     # Classe 2 — Actif immobilisé
     ('2340', 'Matériel de transport', False, False, 'actif'),
     ('2351', 'Matériel et outillage', False, False, 'actif'),
+    ('2811', 'Amortissements des immobilisations en non-valeurs', False, False,
+     'passif'),
     ('2832', 'Amortissements du matériel de transport', False, False, 'passif'),
+    ('2833', 'Amortissements des installations techniques, matériel et outillage',
+     False, False, 'passif'),
+    ('2834', 'Amortissements du matériel de transport', False, False, 'passif'),
+    ('2835', 'Amortissements du mobilier, matériel de bureau et aménagements',
+     False, False, 'passif'),
     # Classe 3 — Actif circulant
     ('3421', 'Clients', True, True, 'actif'),
     ('3455', 'État - TVA récupérable', False, False, 'actif'),
@@ -62,6 +70,8 @@ _COMPTES_CGNC = [
      'charge'),
     ('6191', 'Dotations d\'exploitation aux amortissements', False, False,
      'charge'),
+    ('6193', 'Dotations d\'exploitation aux amortissements des immobilisations '
+     'corporelles', False, False, 'charge'),
     # Classe 7 — Produits
     ('7111', 'Ventes de marchandises', False, False, 'produit'),
     ('7121', 'Ventes de biens et services produits', False, False, 'produit'),
@@ -573,3 +583,271 @@ def _ecriture_an_existante(company, exercice):
     return EcritureComptable.objects.filter(
         company=company, source_type='a_nouveaux',
         source_id=exercice.id).first()
+
+
+# ── FG119 — Plan d'amortissement & dotations postées au grand livre ─────────
+
+# Comptes d'amortissement (classe 28) par catégorie d'immobilisation (CGNC).
+# Le matériel de transport amortit sur 2834, l'outillage/matériel sur 2833, le
+# mobilier/informatique sur 2835. Défaut prudent : 2833.
+_COMPTE_AMORT_PAR_CATEGORIE = {
+    Immobilisation.Categorie.VEHICULE: '2834',
+    Immobilisation.Categorie.OUTILLAGE: '2833',
+    Immobilisation.Categorie.MATERIEL: '2833',
+    Immobilisation.Categorie.MOBILIER: '2835',
+    Immobilisation.Categorie.INFORMATIQUE: '2835',
+    Immobilisation.Categorie.AUTRE: '2833',
+}
+
+# Coefficients dégressifs fiscaux marocains (CGI) selon la durée d'utilisation :
+# 1,5 pour 3-4 ans, 2 pour 5-6 ans, 3 au-delà de 6 ans. En deçà de 3 ans, pas de
+# régime dégressif → coefficient 1 (équivaut au linéaire).
+def coefficient_degressif_maroc(duree_annees):
+    """Coefficient fiscal dégressif marocain pour une durée donnée (Decimal)."""
+    if duree_annees is None:
+        return Decimal('1')
+    if duree_annees <= 2:
+        return Decimal('1')
+    if duree_annees <= 4:
+        return Decimal('1.5')
+    if duree_annees <= 6:
+        return Decimal('2')
+    return Decimal('3')
+
+
+def _arrondi(montant):
+    return Decimal(montant).quantize(Decimal('0.01'))
+
+
+def _calcul_annuites(base, duree, mode, coefficient):
+    """Renvoie la liste des annuités (Decimal arrondies) pour ``duree`` années.
+
+    * LINÉAIRE : base / durée chaque année ; la dernière année absorbe l'écart
+      d'arrondi pour solder exactement la base.
+    * DÉGRESSIF : taux dégressif = (100/durée) × coefficient, appliqué à la
+      valeur nette résiduelle ; bascule sur le linéaire du résiduel dès que
+      celui-ci devient supérieur ou égal à l'annuité dégressive (règle CGI).
+      La dernière année solde le résiduel.
+    """
+    base = Decimal(base)
+    if duree < 1 or base <= 0:
+        return []
+    annuites = []
+    if mode == PlanAmortissement.Mode.LINEAIRE:
+        annuite = _arrondi(base / Decimal(duree))
+        cumul = Decimal('0')
+        for an in range(duree):
+            if an == duree - 1:
+                montant = base - cumul  # solde exact la dernière année.
+            else:
+                montant = annuite
+            cumul += montant
+            annuites.append(_arrondi(montant))
+        return annuites
+
+    # Dégressif : taux dégressif sur la valeur nette résiduelle.
+    taux_deg = (Decimal('100') / Decimal(duree)) * coefficient / Decimal('100')
+    residuel = base
+    for an in range(duree):
+        annees_restantes = duree - an
+        if an == duree - 1:
+            montant = residuel  # solde exact.
+        else:
+            deg = residuel * taux_deg
+            lineaire_residuel = residuel / Decimal(annees_restantes)
+            # Bascule sur le linéaire du résiduel quand il devient plus avantageux.
+            montant = max(deg, lineaire_residuel)
+            montant = min(montant, residuel)
+        montant = _arrondi(montant)
+        residuel -= montant
+        annuites.append(montant)
+    return annuites
+
+
+@transaction.atomic
+def generer_plan_amortissement(immobilisation, *, mode=None, duree_annees=None,
+                               base_amortissable=None, date_debut=None,
+                               coefficient_degressif=None):
+    """Crée/rafraîchit le plan d'amortissement d'une immobilisation (idempotent).
+
+    Calcule le calendrier de dotations selon le ``mode`` (linéaire ou dégressif
+    au coefficient marocain) et matérialise une ``DotationAmortissement`` par
+    exercice (montant, cumul, valeur nette). RE-GÉNÉRABLE : les dotations DÉJÀ
+    POSTÉES au grand livre sont préservées (ni supprimées ni recalculées) ; seules
+    les dotations non encore postées sont reconstruites. Les paramètres non
+    fournis sont dérivés de l'immobilisation (base = coût HT, date début = date
+    d'acquisition, durée = celle déjà sur le plan si présent). Renvoie le plan.
+    """
+    company = immobilisation.company
+    plan, _ = PlanAmortissement.objects.get_or_create(
+        company=company, immobilisation=immobilisation,
+        defaults={
+            'mode': mode or PlanAmortissement.Mode.LINEAIRE,
+            'duree_annees': duree_annees or 5,
+            'base_amortissable': (
+                base_amortissable if base_amortissable is not None
+                else immobilisation.cout),
+            'date_debut': date_debut or immobilisation.date_acquisition,
+        },
+    )
+    # Mise à jour des paramètres fournis explicitement (re-paramétrage).
+    if mode is not None:
+        plan.mode = mode
+    if duree_annees is not None:
+        plan.duree_annees = duree_annees
+    if base_amortissable is not None:
+        plan.base_amortissable = base_amortissable
+    if date_debut is not None:
+        plan.date_debut = date_debut
+    # Coefficient dégressif figé (explicite ou barème marocain selon la durée).
+    if plan.mode == PlanAmortissement.Mode.DEGRESSIF:
+        plan.coefficient_degressif = (
+            Decimal(coefficient_degressif) if coefficient_degressif is not None
+            else coefficient_degressif_maroc(plan.duree_annees))
+    else:
+        plan.coefficient_degressif = None
+    plan.full_clean()
+    plan.save()
+
+    coefficient = plan.coefficient_degressif or Decimal('1')
+    annuites = _calcul_annuites(
+        plan.base_amortissable, plan.duree_annees, plan.mode, coefficient)
+
+    annee_debut = plan.date_debut.year
+    cumul = Decimal('0')
+    annees_calculees = set()
+    for idx, montant in enumerate(annuites):
+        annee = annee_debut + idx
+        annees_calculees.add(annee)
+        cumul += montant
+        valeur_nette = _arrondi(plan.base_amortissable - cumul)
+        dotation = DotationAmortissement.objects.filter(
+            plan=plan, annee=annee).first()
+        if dotation and dotation.posted:
+            # On NE TOUCHE PAS une dotation déjà postée (immutabilité comptable).
+            continue
+        from datetime import date as _date
+        date_dotation = _date(annee, 12, 31)
+        if dotation is None:
+            DotationAmortissement.objects.create(
+                company=company, plan=plan, annee=annee,
+                date_dotation=date_dotation, montant=montant,
+                cumul=_arrondi(cumul), valeur_nette=valeur_nette)
+        else:
+            dotation.montant = montant
+            dotation.cumul = _arrondi(cumul)
+            dotation.valeur_nette = valeur_nette
+            dotation.date_dotation = date_dotation
+            dotation.save(update_fields=[
+                'montant', 'cumul', 'valeur_nette', 'date_dotation'])
+    # Purge les dotations non postées hors du nouveau calendrier (ex. durée
+    # raccourcie) ; jamais une dotation postée.
+    DotationAmortissement.objects.filter(
+        plan=plan, posted=False).exclude(
+        annee__in=annees_calculees).delete()
+    return plan
+
+
+def _intitule_compte(numero):
+    """Intitulé du compte ``numero`` dans le barème CGNC semé (ou un défaut)."""
+    for entry in _COMPTES_CGNC:
+        if entry[0] == numero:
+            return entry[1]
+    return f'Compte {numero}'
+
+
+def _assurer_compte(company, numero):
+    """Renvoie le compte ``numero`` de la société, le créant au besoin (additif).
+
+    Garantit que les comptes de dotation/amortissement existent même sur une
+    société semée AVANT l'ajout de ces comptes au barème CGNC. Idempotent.
+    """
+    compte = get_compte(company, numero)
+    if compte is not None:
+        return compte
+    plan = PlanComptable.objects.filter(company=company).first()
+    if plan is None:
+        plan = seed_plan_comptable(company)
+        compte = get_compte(company, numero)
+        if compte is not None:
+            return compte
+    compte, _ = CompteComptable.objects.get_or_create(
+        company=company, numero=numero,
+        defaults={
+            'plan': plan,
+            'intitule': _intitule_compte(numero),
+            'classe': _classe_de(numero),
+            'sens': 'passif' if numero.startswith('28') else 'charge',
+        },
+    )
+    return compte
+
+
+def _compte_dotation(company, plan):
+    """Compte de charge (classe 6) de la dotation — celui du plan ou 6193."""
+    if plan.compte_dotation_id:
+        return plan.compte_dotation
+    return _assurer_compte(company, '6193')
+
+
+def _compte_amortissement(company, plan):
+    """Compte d'amortissement (classe 28) — celui du plan ou selon la catégorie."""
+    if plan.compte_amortissement_id:
+        return plan.compte_amortissement
+    numero = _COMPTE_AMORT_PAR_CATEGORIE.get(
+        plan.immobilisation.categorie, '2833')
+    return _assurer_compte(company, numero)
+
+
+@transaction.atomic
+def poster_dotation(dotation, *, user=None):
+    """Poste une dotation au grand livre : débit classe 6 / crédit classe 28.
+
+    Crée une ``EcritureComptable`` ÉQUILIBRÉE (débit du compte de dotation,
+    crédit du compte d'amortissement) datée du 31/12 de l'exercice, dans le
+    journal OD. Idempotent : une dotation déjà postée renvoie son écriture. RESPECTE
+    LE VERROU DE PÉRIODE : si la date de dotation tombe dans une
+    ``PeriodeComptable`` verrouillée, lève ``ValidationError`` (on ne contourne
+    jamais le lock — même garde-fou que ``creer_ecriture_od``). Renvoie l'écriture.
+    """
+    company = dotation.company
+    plan = dotation.plan
+    if dotation.posted and dotation.ecriture_id:
+        return dotation.ecriture
+    montant = Decimal(dotation.montant)
+    if montant <= 0:
+        raise ValidationError(
+            "Impossible de poster une dotation d'amortissement nulle.")
+    # Garde-fou du verrou de période (FG115) — refus explicite, jamais contourné.
+    if PeriodeComptable.date_verrouillee(company.id, dotation.date_dotation):
+        raise ValidationError(
+            "Période comptable clôturée : impossible de poster la dotation "
+            f"d'amortissement du {dotation.date_dotation}.")
+    compte_dot = _compte_dotation(company, plan)
+    compte_amort = _compte_amortissement(company, plan)
+    if compte_dot is None or compte_amort is None:
+        raise ValidationError(
+            "Comptes d'amortissement introuvables : semez le plan comptable.")
+    journal = _journal(company, Journal.Type.OPERATIONS_DIVERSES)
+    if journal is None:
+        seed_journaux(company)
+        journal = _journal(company, Journal.Type.OPERATIONS_DIVERSES)
+    libelle = (
+        f"Dotation amortissement {dotation.annee} — "
+        f"{plan.immobilisation.libelle}")
+    lignes = [
+        {'compte': compte_dot, 'debit': montant, 'credit': Decimal('0'),
+         'libelle': libelle},
+        {'compte': compte_amort, 'debit': Decimal('0'), 'credit': montant,
+         'libelle': libelle},
+    ]
+    ecriture = creer_ecriture(
+        company, journal, dotation.date_dotation, libelle, lignes,
+        reference=f'AMORT-{plan.immobilisation_id}-{dotation.annee}',
+        source_type='dotation_amortissement', source_id=dotation.id,
+        created_by=user, statut=EcritureComptable.Statut.VALIDEE,
+    )
+    dotation.posted = True
+    dotation.ecriture = ecriture
+    dotation.save(update_fields=['posted', 'ecriture'])
+    return ecriture

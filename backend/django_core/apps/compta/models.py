@@ -663,3 +663,159 @@ class Immobilisation(models.Model):
     def cout_ttc(self):
         """Coût TTC = coût HT + TVA dérivée."""
         return (self.cout or Decimal('0')) + self.montant_tva
+
+
+# ── FG119 — Plan d'amortissement & dotations ───────────────────────────────
+
+class PlanAmortissement(models.Model):
+    """Plan d'amortissement d'une ``Immobilisation`` (FG119).
+
+    Capture les paramètres de calcul : mode (linéaire/dégressif), durée en
+    années (→ taux linéaire = 100 / durée), base amortissable (en pratique le
+    coût HT de l'immobilisation) et date de début (généralement la date
+    d'acquisition). Le plan engendre une ``DotationAmortissement`` par exercice
+    via ``services.generer_plan_amortissement`` (idempotent).
+
+    Mode DÉGRESSIF (cadre marocain) : le taux dégressif = taux linéaire ×
+    coefficient fiscal. Les coefficients usuels au Maroc (CGI) sont 1,5 pour une
+    durée de 3-4 ans, 2 pour 5-6 ans et 3 au-delà de 6 ans. La dotation de
+    chaque exercice s'applique à la VALEUR NETTE résiduelle ; lorsque l'annuité
+    dégressive devient inférieure à l'amortissement linéaire du résiduel sur la
+    durée restante, on bascule sur le linéaire (règle classique). Le coefficient
+    retenu est figé sur le plan (``coefficient_degressif``) pour rester
+    reproductible même si le barème évolue.
+    """
+    class Mode(models.TextChoices):
+        LINEAIRE = 'lineaire', 'Linéaire'
+        DEGRESSIF = 'degressif', 'Dégressif'
+
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='plans_amortissement',
+        verbose_name='Société',
+    )
+    immobilisation = models.OneToOneField(
+        Immobilisation,
+        on_delete=models.CASCADE,
+        related_name='plan_amortissement',
+        verbose_name='Immobilisation',
+    )
+    mode = models.CharField(
+        max_length=10, choices=Mode.choices, default=Mode.LINEAIRE,
+        verbose_name="Mode d'amortissement")
+    duree_annees = models.PositiveIntegerField(
+        verbose_name="Durée (années)")
+    base_amortissable = models.DecimalField(
+        max_digits=14, decimal_places=2, default=Decimal('0'),
+        verbose_name='Base amortissable (HT)')
+    date_debut = models.DateField(verbose_name="Date de début")
+    # Coefficient dégressif fiscal figé (None pour un plan linéaire). Stocké pour
+    # la reproductibilité : un même plan recalculé donne toujours le même barème.
+    coefficient_degressif = models.DecimalField(
+        max_digits=4, decimal_places=2, null=True, blank=True,
+        verbose_name='Coefficient dégressif')
+    # Comptes mouvementés par les dotations (classe 6 / classe 28). Optionnels :
+    # par défaut le service utilise 6193 (DEA) et un compte 28xx assorti.
+    compte_dotation = models.ForeignKey(
+        CompteComptable,
+        on_delete=models.PROTECT,
+        null=True, blank=True,
+        related_name='plans_amortissement_dotation',
+        verbose_name='Compte de dotation (classe 6)',
+    )
+    compte_amortissement = models.ForeignKey(
+        CompteComptable,
+        on_delete=models.PROTECT,
+        null=True, blank=True,
+        related_name='plans_amortissement_cumul',
+        verbose_name="Compte d'amortissement (classe 28)",
+    )
+    date_creation = models.DateTimeField(
+        auto_now_add=True, verbose_name='Créé le')
+
+    class Meta:
+        verbose_name = "Plan d'amortissement"
+        verbose_name_plural = "Plans d'amortissement"
+        ordering = ['-date_creation', '-id']
+
+    def __str__(self):
+        return f"Plan {self.get_mode_display()} — {self.immobilisation}"
+
+    def clean(self):
+        super().clean()
+        if self.duree_annees is not None and self.duree_annees < 1:
+            raise ValidationError(
+                "La durée d'amortissement doit être d'au moins 1 an.")
+        if self.base_amortissable is not None and self.base_amortissable < 0:
+            raise ValidationError(
+                "La base amortissable doit être positive.")
+
+    @property
+    def taux_lineaire(self):
+        """Taux linéaire annuel (%) = 100 / durée."""
+        if not self.duree_annees:
+            return Decimal('0')
+        return (Decimal('100') / Decimal(self.duree_annees)).quantize(
+            Decimal('0.0001'))
+
+
+class DotationAmortissement(models.Model):
+    """Dotation d'amortissement d'un exercice pour un plan (FG119).
+
+    Une ligne par exercice/année : montant de la dotation, cumul des dotations
+    jusqu'à cet exercice inclus, valeur nette comptable résiduelle, et — une fois
+    postée au grand livre — un lien vers l'``EcritureComptable`` créée
+    (``posted`` + ``ecriture``). Unicité ``(plan, annee)`` : un exercice ne porte
+    qu'une dotation.
+    """
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='dotations_amortissement',
+        verbose_name='Société',
+    )
+    plan = models.ForeignKey(
+        PlanAmortissement,
+        on_delete=models.CASCADE,
+        related_name='dotations',
+        verbose_name="Plan d'amortissement",
+    )
+    annee = models.PositiveIntegerField(verbose_name='Exercice (année)')
+    # Date imputée à l'écriture postée (31/12 de l'exercice par défaut).
+    date_dotation = models.DateField(verbose_name='Date de dotation')
+    montant = models.DecimalField(
+        max_digits=14, decimal_places=2, default=Decimal('0'),
+        verbose_name='Dotation')
+    cumul = models.DecimalField(
+        max_digits=14, decimal_places=2, default=Decimal('0'),
+        verbose_name='Cumul des amortissements')
+    valeur_nette = models.DecimalField(
+        max_digits=14, decimal_places=2, default=Decimal('0'),
+        verbose_name='Valeur nette comptable')
+    posted = models.BooleanField(
+        default=False, verbose_name='Postée au grand livre')
+    ecriture = models.ForeignKey(
+        EcritureComptable,
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='dotations_amortissement',
+        verbose_name='Écriture comptable',
+    )
+    date_creation = models.DateTimeField(
+        auto_now_add=True, verbose_name='Créé le')
+
+    class Meta:
+        verbose_name = "Dotation d'amortissement"
+        verbose_name_plural = "Dotations d'amortissement"
+        ordering = ['plan_id', 'annee']
+        constraints = [
+            # Un exercice = une seule dotation par plan.
+            models.UniqueConstraint(
+                fields=['plan', 'annee'],
+                name='uniq_dotation_par_plan_annee',
+            ),
+        ]
+
+    def __str__(self):
+        return f"Dotation {self.annee} — {self.montant}"

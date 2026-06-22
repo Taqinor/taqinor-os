@@ -16,13 +16,15 @@ from authentication.permissions import IsResponsableOrAdmin
 
 from . import selectors, services
 from .models import (
-    CompteComptable, CompteTresorerie, EcritureComptable, ExerciceComptable,
-    Immobilisation, Journal, PeriodeComptable, PlanComptable,
+    CompteComptable, CompteTresorerie, DotationAmortissement,
+    EcritureComptable, ExerciceComptable, Immobilisation, Journal,
+    PeriodeComptable, PlanComptable,
 )
 from .serializers import (
     CompteComptableSerializer, CompteTresorerieSerializer,
-    EcritureComptableSerializer, ExerciceComptableSerializer,
-    ImmobilisationSerializer, JournalSerializer, PeriodeComptableSerializer,
+    DotationAmortissementSerializer, EcritureComptableSerializer,
+    ExerciceComptableSerializer, ImmobilisationSerializer, JournalSerializer,
+    PeriodeComptableSerializer, PlanAmortissementSerializer,
     PlanComptableSerializer,
 )
 
@@ -310,3 +312,82 @@ class ImmobilisationViewSet(_ComptaBaseViewSet):
         if categorie:
             qs = qs.filter(categorie=categorie)
         return qs
+
+    @action(detail=True, methods=['get', 'post'], url_path='plan-amortissement')
+    def plan_amortissement(self, request, pk=None):
+        """Plan d'amortissement de l'immobilisation (FG119).
+
+        GET : renvoie le plan + son calendrier de dotations (ou 404 si aucun).
+        POST : (re)génère le plan. Corps : ``{mode, duree_annees,
+        base_amortissable?, date_debut?, coefficient_degressif?}``. Idempotent —
+        les dotations déjà postées sont préservées. La société est posée côté
+        serveur (jamais du corps).
+        """
+        immo = self.get_object()  # déjà scopé société par TenantMixin.
+        if request.method == 'GET':
+            plan = getattr(immo, 'plan_amortissement', None)
+            if plan is None:
+                return Response(
+                    {'detail': "Aucun plan d'amortissement."},
+                    status=status.HTTP_404_NOT_FOUND)
+            return Response(PlanAmortissementSerializer(
+                plan, context={'request': request}).data)
+        data = request.data
+        try:
+            plan = services.generer_plan_amortissement(
+                immo,
+                mode=data.get('mode') or None,
+                duree_annees=data.get('duree_annees') or None,
+                base_amortissable=data.get('base_amortissable'),
+                date_debut=data.get('date_debut') or None,
+                coefficient_degressif=data.get('coefficient_degressif'),
+            )
+        except DjangoValidationError as exc:
+            return Response(
+                {'detail': exc.messages[0] if exc.messages else str(exc)},
+                status=status.HTTP_400_BAD_REQUEST)
+        return Response(
+            PlanAmortissementSerializer(
+                plan, context={'request': request}).data,
+            status=status.HTTP_200_OK)
+
+
+class DotationAmortissementViewSet(_ComptaBaseViewSet):
+    """Dotations d'amortissement (FG119) — lecture seule + action ``poster``.
+
+    Les dotations sont calculées par le service (jamais saisies à la main) ;
+    l'action ``poster`` passe la dotation au grand livre (débit classe 6 / crédit
+    classe 28), refusée si la période est verrouillée. Société scopée.
+    """
+    http_method_names = ['get', 'post', 'head', 'options']
+    queryset = DotationAmortissement.objects.select_related(
+        'plan__immobilisation', 'ecriture').all()
+    serializer_class = DotationAmortissementSerializer
+    filter_backends = [filters.OrderingFilter]
+    ordering_fields = ['annee', 'plan']
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        plan = self.request.query_params.get('plan')
+        if plan:
+            qs = qs.filter(plan_id=plan)
+        immobilisation = self.request.query_params.get('immobilisation')
+        if immobilisation:
+            qs = qs.filter(plan__immobilisation_id=immobilisation)
+        return qs
+
+    @action(detail=True, methods=['post'])
+    def poster(self, request, pk=None):
+        """Poste la dotation au grand livre (FG119). Refusée en période close."""
+        dotation = self.get_object()  # scopée société par TenantMixin.
+        try:
+            ecriture = services.poster_dotation(dotation, user=request.user)
+        except DjangoValidationError as exc:
+            return Response(
+                {'detail': exc.messages[0] if exc.messages else str(exc)},
+                status=status.HTTP_400_BAD_REQUEST)
+        dotation.refresh_from_db()
+        return Response({
+            'dotation': self.get_serializer(dotation).data,
+            'ecriture_id': ecriture.id if ecriture else None,
+        })
