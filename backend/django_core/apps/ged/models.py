@@ -312,3 +312,88 @@ class DocumentLien(models.Model):
 
     def __str__(self):
         return f'{self.document} ↔ {self.content_type.model}:{self.object_id}'
+
+
+class DocumentTag(models.Model):
+    """GED9 — Taxonomie de tags documentaires (vocabulaire HIÉRARCHIQUE).
+
+    Contrairement au tag plat partagé de `records.Tag`, la GED gère une
+    TAXONOMIE : des tags peuvent porter un parent (`parent`, self-FK) pour
+    former une arborescence de catégories (ex. « Juridique » → « Contrats » →
+    « NDA »). Le `slug` est l'identifiant stable par société ; `couleur` un chip
+    UI optionnel. Company posée côté serveur. Un tag est unique par (société,
+    slug). On applique un tag à un document via `DocumentTagAssignment`.
+    """
+    company = models.ForeignKey(
+        'authentication.Company', on_delete=models.CASCADE,
+        null=True, blank=True, related_name='ged_tags')
+    parent = models.ForeignKey(
+        'self', on_delete=models.CASCADE,
+        null=True, blank=True, related_name='enfants')
+    nom = models.CharField(max_length=100)
+    slug = models.SlugField(max_length=110)
+    couleur = models.CharField(max_length=7, blank=True, default='')
+    description = models.TextField(blank=True, default='')
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ['nom', 'id']
+        unique_together = [('company', 'slug')]
+        verbose_name = 'Tag documentaire'
+        verbose_name_plural = 'Tags documentaires'
+        indexes = [
+            models.Index(fields=['company', 'slug']),
+            models.Index(fields=['parent']),
+        ]
+
+    def __str__(self):
+        return self.nom
+
+    def ancetres(self):
+        """Liste des tags ancêtres (du plus proche à la racine).
+
+        Remonte la self-FK `parent` en restant borné à la société. Sert au
+        chemin lisible « Juridique / Contrats / NDA » et à la garde anti-cycle.
+        """
+        chaine = []
+        courant = self.parent
+        seen = set()
+        while courant is not None and courant.pk not in seen:
+            seen.add(courant.pk)
+            chaine.append(courant)
+            courant = courant.parent
+        return chaine
+
+
+class DocumentTagAssignment(models.Model):
+    """GED9 — Application d'un tag de la taxonomie à un document.
+
+    Lien M2M explicite (through) entre `Document` et `DocumentTag` : un document
+    porte N tags, un tag étiquette N documents. Unique par (document, tag).
+    Company posée côté serveur (cohérente avec le document et le tag).
+    """
+    company = models.ForeignKey(
+        'authentication.Company', on_delete=models.CASCADE,
+        null=True, blank=True, related_name='ged_tag_assignments')
+    document = models.ForeignKey(
+        Document, on_delete=models.CASCADE, related_name='tag_assignments')
+    tag = models.ForeignKey(
+        DocumentTag, on_delete=models.CASCADE, related_name='assignments')
+    created_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL,
+        null=True, blank=True, related_name='ged_tag_assignments_crees')
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['-created_at', '-id']
+        unique_together = [('document', 'tag')]
+        verbose_name = 'Affectation de tag'
+        verbose_name_plural = 'Affectations de tag'
+        indexes = [
+            models.Index(fields=['company', 'document']),
+            models.Index(fields=['tag']),
+        ]
+
+    def __str__(self):
+        return f'{self.document} #{self.tag}'

@@ -219,6 +219,17 @@ def rollup_avancement(projet):
     }
 
 
+def planning_gantt(projet):
+    """Planning Gantt d'un projet (lecture seule) — barres + liens de dépendance.
+
+    Délègue à ``gantt.construire_planning`` (import local anti-cycle). Renvoie
+    ``{date_origine, duree_projet, taches: [...], liens: [...]}`` — voir
+    ``gantt.construire_planning``. La société est portée par le projet.
+    """
+    from . import gantt
+    return gantt.construire_planning(projet)
+
+
 def liens_for_projet(projet):
     """Liens d'un projet (QuerySet scopé société, ordonné par id).
 

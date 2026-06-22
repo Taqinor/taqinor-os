@@ -480,3 +480,152 @@ class ClotureCaisseSerializer(serializers.ModelSerializer):
             'ecart', 'commentaire', 'cloturee_par', 'date_creation',
         ]
         read_only_fields = fields
+
+
+# ── FG125 — Virements internes entre comptes de trésorerie ─────────────────
+
+class VirementInterneSerializer(serializers.ModelSerializer):
+    """Virement interne entre deux comptes de trésorerie (FG125).
+
+    ``company`` posée côté serveur. ``compte_source``/``compte_destination``
+    validés comme appartenant à la société et différents. ``posted``/``ecriture``
+    en lecture seule (posés via l'action ``poster``).
+    """
+    source_libelle = serializers.CharField(
+        source='compte_source.libelle', read_only=True)
+    destination_libelle = serializers.CharField(
+        source='compte_destination.libelle', read_only=True)
+
+    class Meta:
+        model = VirementInterne
+        fields = [
+            'id', 'compte_source', 'source_libelle', 'compte_destination',
+            'destination_libelle', 'date_virement', 'montant', 'libelle',
+            'reference', 'posted', 'ecriture', 'date_creation',
+        ]
+        read_only_fields = ['posted', 'ecriture', 'date_creation']
+
+    def validate_compte_source(self, value):
+        return _meme_societe(self, value, 'Compte source')
+
+    def validate_compte_destination(self, value):
+        return _meme_societe(self, value, 'Compte destination')
+
+    def validate_montant(self, value):
+        if value is not None and value <= 0:
+            raise serializers.ValidationError(
+                "Le montant doit être strictement positif.")
+        return value
+
+    def validate(self, attrs):
+        src = attrs.get('compte_source')
+        dst = attrs.get('compte_destination')
+        if src is not None and dst is not None and src.id == dst.id:
+            raise serializers.ValidationError(
+                "Les comptes source et destination doivent être différents.")
+        return attrs
+
+
+# ── FG126 — Prévisionnel de trésorerie roulant 13 semaines ─────────────────
+
+class LignePrevisionnelTresorerieSerializer(serializers.ModelSerializer):
+    """Ligne prévue d'un prévisionnel de trésorerie (FG126).
+
+    ``company`` posée côté serveur. ``montant`` signé (+ encaissement, −
+    décaissement), non nul.
+    """
+    categorie_display = serializers.CharField(
+        source='get_categorie_display', read_only=True)
+    recurrence_display = serializers.CharField(
+        source='get_recurrence_display', read_only=True)
+
+    class Meta:
+        model = LignePrevisionnelTresorerie
+        fields = [
+            'id', 'libelle', 'categorie', 'categorie_display', 'date_prevue',
+            'montant', 'recurrence', 'recurrence_display', 'commentaire',
+            'date_creation',
+        ]
+        read_only_fields = ['date_creation']
+
+    def validate_montant(self, value):
+        if value is not None and value == 0:
+            raise serializers.ValidationError(
+                "Le montant d'une ligne prévue ne peut être nul.")
+        return value
+
+
+# ── FG127 / FG128 — Effets (chèques / traites) ─────────────────────────────
+
+class EffetSerializer(serializers.ModelSerializer):
+    """Effet à recevoir (FG127) ou à payer (FG128).
+
+    ``company`` posée côté serveur ; l'effet naît en ``portefeuille``. Le
+    statut et les frais de rejet évoluent par les actions de service
+    (remise/encaissement/paiement/rejet), jamais par écriture directe du corps.
+    """
+    sens_display = serializers.CharField(
+        source='get_sens_display', read_only=True)
+    type_effet_display = serializers.CharField(
+        source='get_type_effet_display', read_only=True)
+    statut_display = serializers.CharField(
+        source='get_statut_display', read_only=True)
+
+    class Meta:
+        model = Effet
+        fields = [
+            'id', 'sens', 'sens_display', 'type_effet', 'type_effet_display',
+            'numero', 'montant', 'date_emission', 'date_echeance', 'banque',
+            'tireur', 'statut', 'statut_display', 'tiers_type', 'tiers_id',
+            'bordereau', 'frais_rejet', 'commentaire', 'date_creation',
+        ]
+        read_only_fields = [
+            'statut', 'bordereau', 'frais_rejet', 'date_creation']
+
+    def validate_montant(self, value):
+        if value is not None and value <= 0:
+            raise serializers.ValidationError(
+                "Le montant d'un effet doit être strictement positif.")
+        return value
+
+    def validate(self, attrs):
+        emission = attrs.get('date_emission')
+        echeance = attrs.get('date_echeance')
+        if emission and echeance and echeance < emission:
+            raise serializers.ValidationError(
+                "L'échéance doit être postérieure ou égale à l'émission.")
+        return attrs
+
+
+# ── FG129 — Bordereau de remise en banque ──────────────────────────────────
+
+class BordereauRemiseSerializer(serializers.ModelSerializer):
+    """Bordereau de remise en banque d'effets à recevoir (FG129).
+
+    ``company`` posée côté serveur. ``compte_tresorerie`` validé comme banque de
+    la société. Les effets liés et le total sont gérés par le service ; le
+    posting passe les effets en ``remis``.
+    """
+    statut_display = serializers.CharField(
+        source='get_statut_display', read_only=True)
+    compte_libelle = serializers.CharField(
+        source='compte_tresorerie.libelle', read_only=True)
+    effets = EffetSerializer(many=True, read_only=True)
+
+    class Meta:
+        model = BordereauRemise
+        fields = [
+            'id', 'compte_tresorerie', 'compte_libelle', 'reference',
+            'date_remise', 'statut', 'statut_display', 'total', 'posted',
+            'ecriture', 'effets', 'date_creation',
+        ]
+        read_only_fields = [
+            'statut', 'total', 'posted', 'ecriture', 'effets', 'date_creation']
+
+    def validate_compte_tresorerie(self, value):
+        value = _meme_societe(self, value, 'Compte de trésorerie')
+        if value is not None and value.type_compte != (
+                CompteTresorerie.Type.BANQUE):
+            raise serializers.ValidationError(
+                "Un bordereau de remise se dépose sur un compte bancaire.")
+        return value

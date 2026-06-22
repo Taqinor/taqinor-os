@@ -16,19 +16,22 @@ from authentication.permissions import IsResponsableOrAdmin
 
 from . import selectors, services
 from .models import (
-    Caisse, CessionImmobilisation, CompteComptable, CompteTresorerie,
-    DotationAmortissement, EcritureComptable, ExerciceComptable,
-    Immobilisation, Journal, LigneReleve, MouvementCaisse, PeriodeComptable,
-    PlanComptable, RapprochementBancaire,
+    BordereauRemise, Caisse, CessionImmobilisation, CompteComptable,
+    CompteTresorerie, DotationAmortissement, EcritureComptable, Effet,
+    ExerciceComptable, Immobilisation, Journal, LignePrevisionnelTresorerie,
+    LigneReleve, MouvementCaisse, PeriodeComptable, PlanComptable,
+    RapprochementBancaire, VirementInterne,
 )
 from .serializers import (
-    CaisseSerializer, CessionImmobilisationSerializer, ClotureCaisseSerializer,
+    BordereauRemiseSerializer, CaisseSerializer,
+    CessionImmobilisationSerializer, ClotureCaisseSerializer,
     CompteComptableSerializer, CompteTresorerieSerializer,
     DotationAmortissementSerializer, EcritureComptableSerializer,
-    ExerciceComptableSerializer, ImmobilisationSerializer, JournalSerializer,
+    EffetSerializer, ExerciceComptableSerializer, ImmobilisationSerializer,
+    JournalSerializer, LignePrevisionnelTresorerieSerializer,
     LigneReleveSerializer, MouvementCaisseSerializer, PeriodeComptableSerializer,
     PlanAmortissementSerializer, PlanComptableSerializer,
-    RapprochementBancaireSerializer,
+    RapprochementBancaireSerializer, VirementInterneSerializer,
 )
 
 
@@ -189,6 +192,27 @@ class EtatsComptablesViewSet(viewsets.ViewSet):
             'total': position['total'],
             'projection': projection,
         })
+
+    @action(detail=False, methods=['get'], url_path='previsionnel-tresorerie')
+    def previsionnel_tresorerie(self, request):
+        """Prévisionnel de trésorerie roulant 13 semaines (FG126).
+
+        Empile les lignes prévues éditables (crédits, leasing, salaires, IS…) et
+        les effets ouverts (FG127/FG128) au-dessus de la position actuelle, semaine
+        par semaine. Paramètres : ``date_debut`` (défaut aujourd'hui),
+        ``nb_semaines`` (défaut 13). Lecture seule, Admin/Responsable.
+        """
+        company = request.user.company
+        nb = request.query_params.get('nb_semaines')
+        try:
+            nb_semaines = int(nb) if nb else 13
+        except (TypeError, ValueError):
+            nb_semaines = 13
+        data = selectors.previsionnel_tresorerie(
+            company,
+            date_debut=request.query_params.get('date_debut') or None,
+            nb_semaines=max(1, min(nb_semaines, 52)))
+        return Response(data)
 
 
 # ── FG115 — Périodes comptables verrouillables ─────────────────────────────
