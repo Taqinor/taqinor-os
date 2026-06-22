@@ -7,8 +7,8 @@ appartenant à la société de l'utilisateur.
 from rest_framework import serializers
 
 from .models import (
-    ActionCorrectivePreventive, NonConformite, PlanInspectionModele,
-    PointControleModele,
+    ActionCorrectivePreventive, NonConformite, PlanInspectionChantier,
+    PlanInspectionModele, PointControleModele, ReleveControle,
 )
 
 
@@ -79,3 +79,45 @@ class PointControleModeleSerializer(serializers.ModelSerializer):
 
     def validate_plan(self, value):
         return _meme_societe(self, value, "Plan d'inspection")
+
+
+class PlanInspectionChantierSerializer(serializers.ModelSerializer):
+    statut_display = serializers.CharField(
+        source='get_statut_display', read_only=True)
+    modele_nom = serializers.CharField(source='modele.nom', read_only=True)
+    nb_releves = serializers.IntegerField(
+        source='releves.count', read_only=True)
+
+    class Meta:
+        model = PlanInspectionChantier
+        fields = [
+            'id', 'modele', 'modele_nom', 'chantier_id', 'date_ouverture',
+            'statut', 'statut_display', 'nb_releves', 'date_creation',
+        ]
+        read_only_fields = ['date_creation']
+
+    def validate_modele(self, value):
+        return _meme_societe(self, value, "Modèle d'ITP")
+
+
+class ReleveControleSerializer(serializers.ModelSerializer):
+    point_intitule = serializers.CharField(
+        source='point.intitule', read_only=True)
+    point_phase = serializers.CharField(source='point.phase', read_only=True)
+    point_hold_point = serializers.BooleanField(
+        source='point.hold_point', read_only=True)
+
+    class Meta:
+        model = ReleveControle
+        fields = [
+            'id', 'plan_chantier', 'point', 'point_intitule', 'point_phase',
+            'point_hold_point', 'valeur', 'conforme', 'photo_key',
+            'date_releve', 'releve_par', 'date_creation',
+        ]
+        read_only_fields = ['date_creation']
+
+    def validate_plan_chantier(self, value):
+        return _meme_societe(self, value, "Plan d'inspection chantier")
+
+    def validate_point(self, value):
+        return _meme_societe(self, value, 'Point de contrôle')
