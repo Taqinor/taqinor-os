@@ -14,14 +14,15 @@ from authentication.permissions import IsResponsableOrAdmin
 
 from .models import (
     ActionCorrectivePreventive, NonConformite, PlanInspectionChantier,
-    PlanInspectionModele, PointControleModele, ReleveControle,
+    PlanInspectionModele, PointControleModele, ReleveControle, ReleveCourbeIV,
 )
 from .serializers import (
     ActionCorrectivePreventiveSerializer, NonConformiteSerializer,
     PlanInspectionChantierSerializer, PlanInspectionModeleSerializer,
     PointControleModeleSerializer, ReleveControleSerializer,
+    ReleveCourbeIVSerializer,
 )
-from .selectors import hold_points_status
+from .selectors import courbes_iv_for_chantier, hold_points_status
 from .services import instancier_plan_chantier
 
 
@@ -137,3 +138,44 @@ class ReleveControleViewSet(_QhseBaseViewSet):
         serializer.save(
             company=self.request.user.company,
             releve_par=self.request.user)
+
+
+class ReleveCourbeIVViewSet(_QhseBaseViewSet):
+    """Relevés de courbe I-V par string PV à la mise en service (QHSE7).
+
+    À la création, ``releve_par`` est posé côté serveur. Filtre optionnel par
+    ``?chantier_id=`` (référence lâche au chantier). ``releves`` (action) liste
+    les courbes I-V d'un chantier donné via le sélecteur dédié, scopé société.
+    """
+    queryset = ReleveCourbeIV.objects.select_related('plan_chantier').all()
+    serializer_class = ReleveCourbeIVSerializer
+    filter_backends = [filters.SearchFilter, filters.OrderingFilter]
+    search_fields = ['string_id', 'notes']
+    ordering_fields = ['id', 'string_id', 'date_releve', 'date_creation']
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        chantier_id = self.request.query_params.get('chantier_id')
+        if chantier_id not in (None, ''):
+            qs = qs.filter(chantier_id=chantier_id)
+        return qs
+
+    def perform_create(self, serializer):
+        serializer.save(
+            company=self.request.user.company,
+            releve_par=self.request.user)
+
+    @action(detail=False, methods=['get'], url_path='par-chantier')
+    def par_chantier(self, request):
+        """Courbes I-V d'un chantier (``?chantier_id=``), scopées société.
+
+        Lecture seule : délègue au sélecteur ``courbes_iv_for_chantier`` qui ne
+        renvoie que les relevés de la société de l'utilisateur.
+        """
+        chantier_id = request.query_params.get('chantier_id')
+        if chantier_id in (None, ''):
+            return Response(
+                {'detail': 'chantier_id est requis.'},
+                status=status.HTTP_400_BAD_REQUEST)
+        qs = courbes_iv_for_chantier(request.user.company, chantier_id)
+        return Response(self.get_serializer(qs, many=True).data)

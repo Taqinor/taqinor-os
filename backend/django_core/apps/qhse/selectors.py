@@ -20,7 +20,7 @@ interrogeable (``peut_avancer`` + liste des points bloquants, globalement et par
 phase). Le câblage éventuel vers l'avancement chantier de ``installations`` est
 un suivi à part : un appelant consulte cette porte, il ne la franchit pas ici.
 """
-from .models import ReleveControle
+from .models import ReleveControle, ReleveCourbeIV
 
 
 def _bloquant(releve):
@@ -102,3 +102,17 @@ def phase_peut_avancer(plan_chantier, phase):
     """
     status = hold_points_status(plan_chantier)
     return phase not in set(status['phases_bloquees'])
+
+
+# ── QHSE7 — Relevés courbe I-V par string (lecture seule) ──────────────────
+
+def courbes_iv_for_chantier(company, chantier_id):
+    """Relevés de courbe I-V d'un chantier, scopés société.
+
+    Référence lâche au chantier par ``chantier_id`` — aucun import cross-app de
+    ``installations``. Renvoie un queryset (ordonné par le ``Meta`` du modèle,
+    le plus récent d'abord) restreint à ``company`` ; jamais les courbes d'une
+    autre société. Lecture seule, aucune mutation.
+    """
+    return ReleveCourbeIV.objects.filter(
+        company=company, chantier_id=chantier_id)
