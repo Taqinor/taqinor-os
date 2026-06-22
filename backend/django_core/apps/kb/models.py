@@ -98,3 +98,56 @@ class KbArticleVersion(models.Model):
 
     def __str__(self):
         return f'{self.titre} v{self.version}'
+
+
+class KbArticleLien(models.Model):
+    """Lien LÂCHE d'un article vers un objet métier d'une AUTRE app.
+
+    Permet de rattacher un article de la base de connaissances à un produit
+    (``stock``), un équipement (``sav``) ou un type d'intervention SANS aucun
+    FK dur : la cible est désignée par un couple typé ``(type_cible, cible_id)``
+    — jamais un import du modèle d'une autre app. Les écrans SAV / chantier
+    peuvent ainsi remonter les articles contextuels (« quels articles sont liés
+    au produit X »). Le ``libelle`` met en cache un libellé d'affichage ; les
+    sélecteurs (``selectors.py``) l'enrichissent au vol quand l'app cible expose
+    un sélecteur de lecture, et dégradent proprement (libellé stocké seul) sinon.
+    """
+    class TypeCible(models.TextChoices):
+        PRODUIT = 'produit', 'Produit'
+        EQUIPEMENT = 'equipement', 'Équipement'
+        TYPE_INTERVENTION = 'type_intervention', "Type d'intervention"
+
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='kb_app_article_liens',
+        verbose_name='Société',
+    )
+    article = models.ForeignKey(
+        KbArticle,
+        on_delete=models.CASCADE,
+        related_name='liens',
+        verbose_name='Article',
+    )
+    type_cible = models.CharField(
+        max_length=20, choices=TypeCible.choices, verbose_name='Type de cible')
+    # PK de l'objet cible dans son app (référence lâche, aucun FK dur).
+    cible_id = models.PositiveIntegerField(verbose_name='ID de la cible')
+    # Libellé d'affichage mis en cache (fallback quand l'app cible n'a pas de
+    # sélecteur d'enrichissement).
+    libelle = models.CharField(
+        max_length=200, blank=True, default='', verbose_name='Libellé')
+    date_creation = models.DateTimeField(
+        auto_now_add=True, verbose_name='Créé le')
+
+    class Meta:
+        verbose_name = "Lien de l'article"
+        verbose_name_plural = "Liens de l'article"
+        ordering = ['id']
+        unique_together = [('article', 'type_cible', 'cible_id')]
+        indexes = [
+            models.Index(fields=['company', 'type_cible', 'cible_id']),
+        ]
+
+    def __str__(self):
+        return f'{self.article_id} → {self.type_cible} #{self.cible_id}'

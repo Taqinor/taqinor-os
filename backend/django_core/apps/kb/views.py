@@ -12,9 +12,13 @@ from rest_framework.response import Response
 from authentication.mixins import TenantMixin
 from authentication.permissions import IsResponsableOrAdmin
 
-from . import services
-from .models import KbArticle, KbArticleVersion
-from .serializers import KbArticleSerializer, KbArticleVersionSerializer
+from . import selectors, services
+from .models import KbArticle, KbArticleLien, KbArticleVersion
+from .serializers import (
+    KbArticleLienSerializer,
+    KbArticleSerializer,
+    KbArticleVersionSerializer,
+)
 
 
 class _KbBaseViewSet(TenantMixin, viewsets.ModelViewSet):
@@ -105,3 +109,55 @@ class KbArticleVersionViewSet(TenantMixin, viewsets.ReadOnlyModelViewSet):
         if article:
             qs = qs.filter(article_id=article)
         return qs
+
+
+class KbArticleLienViewSet(_KbBaseViewSet):
+    """Liens article → produit / équipement / type d'intervention (refs lâches).
+
+    ``company`` est posée côté serveur (TenantMixin) ; l'``article`` reçu est
+    validé même-société par le sérialiseur. Filtres optionnels ``?article=<id>``
+    et ``?type_cible=<type>``.
+
+    Recherche INVERSE — un écran SAV / chantier demande « quels articles sont
+    liés au produit X » via ``?type_cible=produit&cible_id=<id>`` : quand
+    ``cible_id`` est fourni, la liste est restreinte à cette cible. L'action
+    ``article-liens/articles/?type_cible=&cible_id=`` renvoie directement les
+    articles liés (id/titre/statut), scopés société.
+    """
+    queryset = KbArticleLien.objects.select_related('article').all()
+    serializer_class = KbArticleLienSerializer
+    filter_backends = [filters.OrderingFilter]
+    ordering_fields = ['id']
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        params = self.request.query_params
+        article = params.get('article')
+        if article:
+            qs = qs.filter(article_id=article)
+        type_cible = params.get('type_cible')
+        if type_cible:
+            qs = qs.filter(type_cible=type_cible)
+        cible_id = params.get('cible_id')
+        if cible_id:
+            qs = qs.filter(cible_id=cible_id)
+        return qs
+
+    def perform_create(self, serializer):
+        serializer.save(company=self.request.user.company)
+
+    @action(detail=False, methods=['get'])
+    def articles(self, request):
+        """Recherche inverse : articles liés à une cible (id/titre/statut).
+
+        Attend ``?type_cible=<type>&cible_id=<id>`` ; renvoie la liste des
+        articles de la société rattachés à cette cible via le sélecteur
+        ``articles_pour_cible`` (scopé ``request.user.company``).
+        """
+        type_cible = request.query_params.get('type_cible')
+        cible_id = request.query_params.get('cible_id')
+        if not type_cible or not cible_id:
+            return Response(
+                {'detail': 'type_cible et cible_id sont requis.'}, status=400)
+        return Response(selectors.articles_pour_cible(
+            request.user.company, type_cible, cible_id))
