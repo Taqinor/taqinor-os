@@ -21,6 +21,7 @@ from .serializers import (
     PlanInspectionChantierSerializer, PlanInspectionModeleSerializer,
     PointControleModeleSerializer, ReleveControleSerializer,
 )
+from .selectors import hold_points_status
 from .services import instancier_plan_chantier
 
 
@@ -107,6 +108,18 @@ class PlanInspectionChantierViewSet(_QhseBaseViewSet):
         )
         data = self.get_serializer(plan).data
         return Response(data, status=status.HTTP_201_CREATED)
+
+    @action(detail=True, methods=['get'], url_path='hold-points')
+    def hold_points(self, request, pk=None):
+        """État de gating des points d'arrêt (QHSE6) du plan chantier.
+
+        Renvoie ``peut_avancer`` et la liste des points d'arrêt bloquants (relevé
+        absent ou non conforme). ``get_object`` est scopé société (TenantMixin),
+        donc un plan d'une autre société renvoie 404. Lecture seule : ne mute
+        jamais l'état du chantier — c'est une porte que l'appelant consulte.
+        """
+        plan = self.get_object()
+        return Response(hold_points_status(plan))
 
 
 class ReleveControleViewSet(_QhseBaseViewSet):
