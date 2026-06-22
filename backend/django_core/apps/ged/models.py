@@ -25,6 +25,8 @@ mécanisme ContentType déjà en place pour Activity/Attachment/Comment/TaggedIt
 from django.conf import settings
 from django.contrib.contenttypes.fields import GenericForeignKey
 from django.contrib.contenttypes.models import ContentType
+from django.contrib.postgres.indexes import GinIndex
+from django.contrib.postgres.search import SearchVectorField
 from django.db import models
 
 
@@ -217,6 +219,13 @@ class Document(models.Model):
     # ajouter/retirer une définition ne touche jamais le schéma). Validé contre
     # les définitions actives via `customfields.serializers.validate_custom_data`.
     custom_data = models.JSONField(null=True, blank=True, default=dict)
+    # GED11 — recherche plein-texte Postgres. `search_vector` est un tsvector
+    # maintenu côté serveur (via `services.update_search_vector`) à partir du
+    # nom, de la description, des tags et — quand GED12 l'alimente — du texte
+    # OCR. Un index GIN dessus rend la recherche `@@` rapide. Le `texte_ocr`
+    # est le texte extrait (vide par défaut ; rempli par l'indexation GED12).
+    texte_ocr = models.TextField(blank=True, default='')
+    search_vector = SearchVectorField(null=True, blank=True)
     created_by = models.ForeignKey(
         settings.AUTH_USER_MODEL, on_delete=models.SET_NULL,
         null=True, blank=True, related_name='ged_documents_crees')
@@ -229,6 +238,8 @@ class Document(models.Model):
         verbose_name_plural = 'Documents'
         indexes = [
             models.Index(fields=['company', 'folder']),
+            # GED11 — index GIN sur le tsvector pour la recherche plein-texte.
+            GinIndex(fields=['search_vector'], name='ged_doc_search_gin'),
         ]
 
     def __str__(self):
