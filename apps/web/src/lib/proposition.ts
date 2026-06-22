@@ -87,6 +87,16 @@ export interface ProposalResponse {
   statut: string;
   quote: ProposalQuote;
   roof_image_url: string | null;
+  /**
+   * Production solaire estimée, kWh/mois (12 valeurs, index 0 = janvier). Peut
+   * être absent ou `[]` — le graphe se masque alors gracieusement (P2).
+   */
+  monthly_production?: number[];
+  /**
+   * Consommation électrique du client, kWh/mois (12 valeurs). Peut être absent
+   * ou `[]` — la comparaison se réduit alors à la production seule (P2).
+   */
+  monthly_consumption?: number[];
   option_totals: OptionTotals;
   accepted: boolean;
   accepte_par_nom?: string | null;
@@ -265,6 +275,43 @@ export function acceptEndpoint(apiBase: string, token: string): string {
 export function proposalEndpoint(apiBase: string, token: string): string {
   const base = (apiBase || 'https://api.taqinor.ma').replace(/\/+$/, '');
   return `${base}/api/django/ventes/proposal/${encodeURIComponent(token)}/`;
+}
+
+/**
+ * URL publique du DEVIS PDF premium (même token) : le bouton « Télécharger le
+ * devis » pointe directement vers le backend (nouvel onglet). Le lien est public
+ * et tokenisé — pas d'auth, pas de prix d'achat (le backend ne les rend jamais).
+ */
+export function proposalPdfEndpoint(apiBase: string, token: string): string {
+  const base = (apiBase || 'https://api.taqinor.ma').replace(/\/+$/, '');
+  return `${base}/api/django/ventes/proposal/${encodeURIComponent(token)}/pdf/`;
+}
+
+/**
+ * Lecture défensive d'un tableau mensuel (production/consommation) : renvoie
+ * exactement 12 valeurs finies ≥ 0 si l'entrée est un tableau de 12 éléments avec
+ * au moins une valeur > 0, sinon `null` (tableau vide, taille ≠ 12, ou tout zéro).
+ * Le graphe (proposalChart) refait ce nettoyage, mais l'exposer ici permet à la
+ * page de décider d'AFFICHER ou non le bloc graphe sans dupliquer la règle.
+ */
+export function monthlySeries(arr: number[] | undefined | null): number[] | null {
+  if (!Array.isArray(arr) || arr.length !== 12) return null;
+  let any = false;
+  const out = arr.map((v) => {
+    const n = typeof v === 'number' && Number.isFinite(v) && v > 0 ? v : 0;
+    if (n > 0) any = true;
+    return n;
+  });
+  return any ? out : null;
+}
+
+/**
+ * Vrai si la proposition porte AU MOINS une série de production exploitable —
+ * condition d'affichage du bloc graphe (P2). Sans production, on n'affiche rien
+ * (une conso « solo » ne raconte aucune histoire sur cette page).
+ */
+export function hasProductionSeries(p: ProposalResponse): boolean {
+  return monthlySeries(p.monthly_production) !== null;
 }
 
 /**

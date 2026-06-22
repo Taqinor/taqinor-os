@@ -32,7 +32,10 @@ import {
   defaultSelectedOption,
   isAccepted,
   proposalEndpoint,
+  proposalPdfEndpoint,
+  hasProductionSeries,
 } from '../../lib/proposition';
+import { renderProposalChart, resolveSeries } from '../../lib/proposalChart';
 
 const API_BASE = (import.meta.env.PUBLIC_API_BASE as string | undefined) ?? 'https://api.taqinor.ma';
 const { token } = Astro.params as { token: string };
@@ -125,6 +128,18 @@ const instLabel =
         ? String(q.inst_type)
         : 'Installation solaire';
 
+// ── P2 — Graphe production estimée vs consommation (depuis les tableaux Q6) ──
+// On ne dessine QUE les chiffres backend ; tableaux vides/absents → bloc masqué.
+const chartSeries = ok ? resolveSeries(data?.monthly_production, data?.monthly_consumption) : { mode: 'none' as const, production: null, consumption: null };
+const chartSvg = ok && chartSeries.mode !== 'none'
+  ? renderProposalChart(data?.monthly_production, data?.monthly_consumption)
+  : '';
+const showChart = ok && hasProductionSeries(data!) && chartSvg.length > 0;
+const chartHasConso = chartSeries.mode === 'comparison';
+
+// ── P3 — Lien public du devis PDF premium (même token, nouvel onglet) ────────
+const pdfUrl = ok ? proposalPdfEndpoint(API_BASE, token) : '';
+
 const pageTitle = ok ? `Proposition ${reference} — ${clientName} | Taqinor` : 'Proposition | Taqinor';
 
 // Données passées au script de signature (sérialisées en JSON dans un data-attr).
@@ -165,7 +180,7 @@ const signConfig = ok
         <!-- Scrim pour garantir le contraste AA du texte par-dessus la photo. -->
         <div class="hero-scrim absolute inset-0" aria-hidden="true"></div>
         <div class="relative mx-auto max-w-4xl px-5 pb-12 pt-24 sm:px-8 sm:pb-16 sm:pt-32">
-          <p class="tech-label text-brass-300">Proposition · {instLabel}</p>
+          <p class="tech-label text-brass-300">{roofImg ? 'Votre installation · ' : 'Proposition · '}{instLabel}</p>
           <h1 class="display mt-3 text-4xl text-blanc sm:text-5xl">
             Bonjour {clientName},
           </h1>
@@ -254,6 +269,37 @@ const signConfig = ok
               <p class="tech-label text-lune-faint">Type</p>
               <p class="fig mt-2 text-2xl text-lune">{instLabel}</p>
             </div>
+          </div>
+        </section>
+      )}
+
+      <!-- ── P2 · PRODUCTION ESTIMÉE vs CONSOMMATION (langage pro-11) ──────── -->
+      {showChart && (
+        <section class="mx-auto max-w-4xl px-5 pt-14 sm:px-8">
+          <p class="tech-label rule-brass text-brass-300">
+            {chartHasConso ? 'Production estimée vs votre consommation' : 'Production estimée'}
+          </p>
+          <div class="cine-card mt-5 rounded-2xl p-5 sm:p-6">
+            <div class="chart-svg" set:html={chartSvg}></div>
+            <div class="mt-4 flex flex-wrap items-center gap-x-6 gap-y-2 text-sm">
+              <span class="inline-flex items-center gap-2 text-lune-soft">
+                <span class="inline-block h-3 w-3 rounded-sm" style="background: var(--color-brass-400)" aria-hidden="true"></span>
+                Production solaire estimée
+              </span>
+              {chartHasConso && (
+                <span class="inline-flex items-center gap-2 text-lune-soft">
+                  <span class="inline-block h-3 w-3 rounded-sm" style="background: var(--color-azur-300, #7fb4e8)" aria-hidden="true"></span>
+                  Votre consommation
+                </span>
+              )}
+              <span class="text-lune-faint">kWh par mois</span>
+            </div>
+            {(prodKwh || ecoHero) && (
+              <p class="v2-body mt-4 text-sm text-lune-soft">
+                {prodKwh ? <>Sur l’année, votre installation produit environ <strong class="text-lune">{formatNumber(prodKwh)} kWh</strong>.</> : null}
+                {chartHasConso ? ' Plus la production (laiton) couvre votre consommation (azur), plus vous économisez.' : ''}
+              </p>
+            )}
           </div>
         </section>
       )}
@@ -418,6 +464,23 @@ const signConfig = ok
           </form>
         </div>
 
+        <!-- ── P3 · TÉLÉCHARGER LE DEVIS PDF (même token, nouvel onglet) ───── -->
+        <div class="mt-6 text-center">
+          <a
+            href={pdfUrl}
+            target="_blank"
+            rel="noopener noreferrer"
+            class="btn-pill inline-flex items-center justify-center gap-2"
+          >
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+              <polyline points="7 10 12 15 17 10" />
+              <line x1="12" y1="15" x2="12" y2="3" />
+            </svg>
+            Télécharger le devis (PDF)
+          </a>
+        </div>
+
         <p class="mt-6 text-center text-xs text-lune-faint">
           Proposition Taqinor · réf. {reference}. Document non contractuel sans signature du devis officiel.
         </p>
@@ -567,3 +630,18 @@ const signConfig = ok
     });
   }
 </script>
+
+<style>
+  /* P2 — réserve le ratio du graphe (viewBox 360×150 = 2.4:1) AVANT le rendu du
+     SVG inline pour garantir zéro CLS. Le SVG enfant occupe 100 % de la largeur,
+     hauteur auto ; aucune transition (mouvement réduit respecté par construction). */
+  .chart-svg {
+    width: 100%;
+    aspect-ratio: 360 / 150;
+  }
+  .chart-svg :global(svg) {
+    display: block;
+    width: 100%;
+    height: 100%;
+  }
+</style>
