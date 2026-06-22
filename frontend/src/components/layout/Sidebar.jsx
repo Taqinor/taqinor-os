@@ -6,7 +6,7 @@ import {
   UserPlus, ShoppingCart, Receipt, FileMinus, Wallet, CalendarClock,
   CalendarDays, HardHat, Wrench, Cpu, BarChart3, Search, Bot, UserCog, Shield,
   ScrollText, Settings, DownloadCloud, LogOut, ChevronLeft, ChevronRight, Key,
-  Briefcase, User as UserIcon,
+  Briefcase, User as UserIcon, FolderOpen,
 } from 'lucide-react'
 import { logoutUser } from '../../features/auth/store/authSlice'
 
@@ -64,6 +64,7 @@ const I = {
   production:   mk(BarChart3),
   export:       mk(DownloadCloud),
   cpu:          mk(Cpu),
+  documents:    mk(FolderOpen),
 }
 
 const ROLE_META = {
@@ -133,6 +134,12 @@ const NAV_SECTIONS = [
       { to: '/equipements',          label: 'Équipements',      icon: I.equipements,  roles: ['normal','responsable','admin'] },
       { to: '/sav',                  label: 'Tickets SAV',      icon: I.sav,          roles: ['normal','responsable','admin'] },
       { to: '/sav/contrats',         label: 'Contrats maintenance', icon: I.sav,      roles: ['responsable','admin'] },
+    ],
+  },
+  {
+    label: 'DOCUMENTS',
+    items: [
+      { to: '/ged',                  label: 'Documents (GED)',  icon: I.documents,    roles: ['normal','responsable','admin'] },
     ],
   },
   {

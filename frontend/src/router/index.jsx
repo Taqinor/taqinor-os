@@ -67,6 +67,7 @@ const ArchiveChantierPage = lazy(() => import('../pages/reporting/ArchiveChantie
 // Vitrine interne du système UI (refonte, P68) — référence vivante des primitifs.
 const UIShowcase = lazy(() => import('../pages/ui/UIShowcase'))
 const ChatPage = lazy(() => import('../pages/messaging/ChatPage'))
+const DocumentsPage = lazy(() => import('../pages/ged/DocumentsPage'))
 
 // ── Auth loader ────────────────────────────────────────────────────────────────
 // Verifie la session via le cookie httpOnly — aucun token cote client.
@@ -189,6 +190,9 @@ const router = createBrowserRouter([
   { path: '/parc', loader: authLoader, element: <WithLayout><ParcInstallePage /></WithLayout> },
   { path: '/production', loader: authLoader, element: <WithLayout><ProductionPage /></WithLayout> },
   { path: '/outillage', loader: authLoader, element: <WithLayout><OutillagePage /></WithLayout> },
+
+  // GED — gestion documentaire (navigateur arborescent)
+  { path: '/ged', loader: authLoader, element: <WithLayout><DocumentsPage /></WithLayout> },
 
   // Après-vente : parc d'équipements & tickets SAV
   { path: '/equipements', loader: authLoader, element: <WithLayout><EquipementsPage /></WithLayout> },

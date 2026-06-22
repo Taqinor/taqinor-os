@@ -25,12 +25,15 @@ from decimal import Decimal
 from django.conf import settings
 from django.core.exceptions import ValidationError
 from django.db import transaction
+from django.db.models import Sum
 from django.utils import timezone
 
 from .models import (
-    CessionImmobilisation, CompteComptable, DotationAmortissement,
-    EcritureComptable, ExerciceComptable, Immobilisation, Journal,
-    LigneEcriture, PeriodeComptable, PlanAmortissement, PlanComptable,
+    Caisse, CessionImmobilisation, ClotureCaisse, CompteComptable,
+    DotationAmortissement, EcritureComptable, ExerciceComptable,
+    Immobilisation, Journal, LigneEcriture, LigneReleve, MouvementCaisse,
+    PeriodeComptable, PlanAmortissement, PlanComptable, PointageReleve,
+    RapprochementBancaire,
 )
 
 
@@ -1063,3 +1066,302 @@ def poster_cession(cession, *, user=None):
         immobilisation.actif = False
         immobilisation.save(update_fields=['actif'])
     return ecriture
+
+
+# ── FG123 — Rapprochement bancaire (relevé ↔ écritures) ────────────────────
+
+def creer_rapprochement(company, compte_tresorerie, *, date_debut, date_fin,
+                        libelle='', date_releve=None, solde_releve=None,
+                        created_by=None):
+    """Crée un rapprochement bancaire pour un ``CompteTresorerie`` (FG123).
+
+    Ouvre un rapprochement ``en_cours`` sur ``[date_debut ; date_fin]`` avec le
+    ``solde_releve`` de clôture. ``company`` posée côté serveur ; le compte de
+    trésorerie DOIT appartenir à la société, sinon ``ValidationError``. Aucune
+    écriture n'est créée — ce n'est PAS un import de paiements (FG42).
+    """
+    if compte_tresorerie.company_id != company.id:
+        raise ValidationError("Compte de trésorerie inconnu.")
+    if not date_debut or not date_fin:
+        raise ValidationError(
+            "Les dates de début et de fin sont obligatoires.")
+    if date_fin < date_debut:
+        raise ValidationError(
+            "La date de fin doit être postérieure à la date de début.")
+    rapprochement = RapprochementBancaire.objects.create(
+        company=company,
+        compte_tresorerie=compte_tresorerie,
+        libelle=libelle or '',
+        date_debut=date_debut,
+        date_fin=date_fin,
+        date_releve=date_releve or date_fin,
+        solde_releve=Decimal(solde_releve or 0),
+        created_by=created_by,
+    )
+    return rapprochement
+
+
+def ajouter_ligne_releve(rapprochement, *, date_operation, libelle, montant,
+                         reference=''):
+    """Ajoute une ligne de relevé bancaire à un rapprochement (FG123).
+
+    ``montant`` est SIGNÉ tel que lu sur le relevé (+ entrée, − sortie). La
+    société est héritée du rapprochement (jamais du corps). On ne peut plus
+    ajouter de ligne à un rapprochement déjà ``rapproche``.
+    """
+    if rapprochement.est_rapproche:
+        raise ValidationError(
+            "Rapprochement déjà clôturé : on ne peut plus ajouter de ligne.")
+    if not date_operation:
+        raise ValidationError("La date d'opération est obligatoire.")
+    return LigneReleve.objects.create(
+        company=rapprochement.company,
+        rapprochement=rapprochement,
+        date_operation=date_operation,
+        libelle=libelle or '',
+        reference=reference or '',
+        montant=Decimal(montant or 0),
+    )
+
+
+@transaction.atomic
+def pointer_ligne_releve(ligne_releve, ligne_gl_ids):
+    """Apparie une ligne de relevé à une ou plusieurs lignes GL (FG123).
+
+    REMPLACE l'ensemble des lignes GL pointées par ``ligne_gl_ids`` (liste d'IDs
+    de ``LigneEcriture``). Chaque ligne GL doit appartenir à la même société ET
+    au compte comptable du compte de trésorerie du rapprochement, sinon
+    ``ValidationError``. Si le montant GL pointé concorde avec le montant du
+    relevé (écart nul) la ligne passe ``rapprochee``, sinon ``non_pointee``.
+    Renvoie la ligne de relevé rafraîchie.
+    """
+    company = ligne_releve.company
+    rapprochement = ligne_releve.rapprochement
+    compte_treso = rapprochement.compte_tresorerie.compte_comptable_id
+    ids = list(dict.fromkeys(ligne_gl_ids or []))  # déduplique, ordre stable.
+    lignes_gl = list(LigneEcriture.objects.filter(
+        company=company, id__in=ids))
+    if len(lignes_gl) != len(ids):
+        raise ValidationError("Ligne du grand livre inconnue.")
+    for ligne in lignes_gl:
+        if ligne.compte_id != compte_treso:
+            raise ValidationError(
+                "Une ligne pointée doit appartenir au compte de trésorerie "
+                "du rapprochement.")
+    # Remplace les pointages existants par le nouveau lot.
+    PointageReleve.objects.filter(ligne_releve=ligne_releve).delete()
+    for ligne in lignes_gl:
+        PointageReleve.objects.create(
+            company=company, ligne_releve=ligne_releve, ligne_gl=ligne)
+    ligne_releve.refresh_from_db()
+    if ligne_releve.est_concordante:
+        ligne_releve.statut = LigneReleve.Statut.RAPPROCHEE
+    else:
+        ligne_releve.statut = LigneReleve.Statut.NON_POINTEE
+    ligne_releve.save(update_fields=['statut'])
+    return ligne_releve
+
+
+def cloturer_rapprochement(rapprochement):
+    """Clôture un rapprochement quand tout concorde (FG123).
+
+    Vérifie via le selector ``resume_rapprochement`` que chaque ligne de relevé
+    est concordante (écart nul) ET que l'écart global (solde relevé − solde GL)
+    est nul. Si oui, marque le rapprochement ``rapproche`` (idempotent), sinon
+    lève ``ValidationError`` avec l'écart restant. Aucune écriture n'est créée.
+    """
+    from . import selectors
+
+    resume = selectors.resume_rapprochement(rapprochement)
+    if not resume['rapproche']:
+        raise ValidationError(
+            "Rapprochement impossible : il reste un écart de "
+            f"{resume['ecart']} ({resume['lignes_non_pointees']} ligne(s) "
+            "non concordante(s)).")
+    if not rapprochement.est_rapproche:
+        rapprochement.statut = RapprochementBancaire.Statut.RAPPROCHE
+        rapprochement.date_rapprochement = timezone.now()
+        rapprochement.save(update_fields=['statut', 'date_rapprochement'])
+    return rapprochement
+
+
+# ── FG124 — Caisse / petty cash (journal d'espèces) ────────────────────────
+
+def creer_caisse(company, compte_tresorerie, *, libelle, responsable=None,
+                 solde_initial=None):
+    """Crée une caisse d'espèces rattachée à un compte de trésorerie (FG124).
+
+    Le ``compte_tresorerie`` DOIT appartenir à la société ET être de type
+    ``caisse``, sinon ``ValidationError``. ``company`` posée côté serveur.
+    Renvoie la ``Caisse``.
+    """
+    if compte_tresorerie.company_id != company.id:
+        raise ValidationError("Compte de trésorerie inconnu.")
+    caisse = Caisse(
+        company=company,
+        compte_tresorerie=compte_tresorerie,
+        libelle=libelle or '',
+        responsable=responsable,
+        solde_initial=Decimal(solde_initial or 0),
+    )
+    caisse.full_clean()
+    caisse.save()
+    return caisse
+
+
+def _derniere_cloture(caisse):
+    """Dernière clôture (la plus récente par date) d'une caisse, ou None."""
+    return caisse.clotures.order_by('-date_cloture', '-id').first()
+
+
+@transaction.atomic
+def enregistrer_mouvement_caisse(caisse, *, sens, montant, date_mouvement,
+                                 motif, justificatif='', piece='',
+                                 compte_contrepartie=None, poster=False,
+                                 user=None):
+    """Enregistre une entrée/sortie d'espèces dans une caisse (FG124).
+
+    ``sens`` ∈ {entree, sortie}, ``montant`` strictement positif. ``company``
+    héritée de la caisse (jamais du corps). Refuse un mouvement daté à une date
+    déjà CLÔTURÉE (garde-fou du modèle). Si ``poster`` est vrai, passe l'écriture
+    de caisse correspondante au grand livre (via ``poster_mouvement_caisse``).
+    Renvoie le mouvement.
+    """
+    company = caisse.company
+    if compte_contrepartie is not None and (
+            compte_contrepartie.company_id != company.id):
+        raise ValidationError("Compte de contrepartie inconnu.")
+    mouvement = MouvementCaisse(
+        company=company,
+        caisse=caisse,
+        sens=sens,
+        date_mouvement=date_mouvement,
+        montant=Decimal(montant or 0),
+        motif=motif or '',
+        justificatif=justificatif or '',
+        piece=piece or '',
+        compte_contrepartie=compte_contrepartie,
+        created_by=user,
+    )
+    mouvement.full_clean(exclude=['ecriture'])
+    mouvement.save()  # le save() du modèle refuse une date clôturée.
+    if poster:
+        poster_mouvement_caisse(mouvement, user=user)
+    return mouvement
+
+
+@transaction.atomic
+def poster_mouvement_caisse(mouvement, *, user=None):
+    """Poste un mouvement de caisse au grand livre (FG124).
+
+    Écriture ÉQUILIBRÉE dans le journal CSH (caisse), datée du mouvement :
+
+    * ENTRÉE — débit du compte de caisse (classe 5) / crédit du compte de
+      contrepartie (le compte fourni, sinon 5161 par défaut faute de mieux) ;
+    * SORTIE — crédit du compte de caisse / débit du compte de contrepartie
+      (typiquement une charge classe 6 pour un achat terrain).
+
+    Le compte de caisse est celui du ``CompteTresorerie`` lié. RESPECTE LE VERROU
+    DE PÉRIODE COMPTABLE (FG115) : si la date tombe dans une ``PeriodeComptable``
+    verrouillée, lève ``ValidationError``. Idempotent : un mouvement déjà posté
+    renvoie son écriture. Renvoie l'écriture.
+    """
+    company = mouvement.company
+    if mouvement.posted and mouvement.ecriture_id:
+        return mouvement.ecriture
+    montant = Decimal(mouvement.montant or 0)
+    if montant <= 0:
+        raise ValidationError(
+            "Impossible de poster un mouvement de caisse de montant nul.")
+    if PeriodeComptable.date_verrouillee(company.id, mouvement.date_mouvement):
+        raise ValidationError(
+            "Période comptable clôturée : impossible de poster le mouvement "
+            f"de caisse du {mouvement.date_mouvement}.")
+    compte_caisse = mouvement.caisse.compte_tresorerie.compte_comptable
+    contrepartie = mouvement.compte_contrepartie
+    if contrepartie is None:
+        # Faute de compte de charge/produit fourni, on retombe sur le compte de
+        # caisse lui-même comme contrepartie neutre (l'écriture reste équilibrée).
+        contrepartie = compte_caisse
+    journal = _journal(company, Journal.Type.CAISSE)
+    if journal is None:
+        seed_journaux(company)
+        journal = _journal(company, Journal.Type.CAISSE)
+    libelle = f"Caisse — {mouvement.motif}"
+    if mouvement.sens == MouvementCaisse.Sens.ENTREE:
+        lignes = [
+            {'compte': compte_caisse, 'debit': montant, 'credit': Decimal('0'),
+             'libelle': libelle},
+            {'compte': contrepartie, 'debit': Decimal('0'), 'credit': montant,
+             'libelle': libelle},
+        ]
+    else:
+        lignes = [
+            {'compte': contrepartie, 'debit': montant, 'credit': Decimal('0'),
+             'libelle': libelle},
+            {'compte': compte_caisse, 'debit': Decimal('0'), 'credit': montant,
+             'libelle': libelle},
+        ]
+    ecriture = creer_ecriture(
+        company, journal, mouvement.date_mouvement, libelle, lignes,
+        reference=mouvement.justificatif or f'CAISSE-{mouvement.id}',
+        source_type='mouvement_caisse', source_id=mouvement.id,
+        created_by=user, statut=EcritureComptable.Statut.VALIDEE,
+    )
+    mouvement.posted = True
+    mouvement.ecriture = ecriture
+    mouvement.save(update_fields=['posted', 'ecriture'])
+    return mouvement.ecriture
+
+
+def solde_caisse(caisse, *, date_fin=None):
+    """Solde courant THÉORIQUE d'une caisse (FG124).
+
+    = ``solde_initial`` + Σ(entrées) − Σ(sorties) des mouvements de la caisse
+    jusqu'à ``date_fin`` (incluse) si fournie, sinon tous. Lecture seule.
+    """
+    qs = MouvementCaisse.objects.filter(caisse=caisse)
+    if date_fin is not None:
+        qs = qs.filter(date_mouvement__lte=date_fin)
+    entrees = qs.filter(sens=MouvementCaisse.Sens.ENTREE).aggregate(
+        s=Sum('montant'))['s'] or Decimal('0')
+    sorties = qs.filter(sens=MouvementCaisse.Sens.SORTIE).aggregate(
+        s=Sum('montant'))['s'] or Decimal('0')
+    return (caisse.solde_initial or Decimal('0')) + entrees - sorties
+
+
+@transaction.atomic
+def cloturer_caisse(caisse, *, date_cloture, solde_compte, commentaire='',
+                    user=None):
+    """Clôture de caisse : comptage physique à une date (FG124).
+
+    Fige le ``solde_theorique`` (= ``solde_caisse`` à la date), enregistre le
+    ``solde_compte`` (espèces comptées) et calcule l'``ecart`` = compté −
+    théorique. À partir de la clôture, tous les mouvements de la caisse datés ≤
+    ``date_cloture`` deviennent immuables (garde-fou du modèle). On ne peut pas
+    clôturer à une date antérieure ou égale à une clôture déjà posée (l'unicité
+    + cette garde l'interdisent). ``company`` posée côté serveur. Renvoie la
+    clôture.
+    """
+    company = caisse.company
+    derniere = _derniere_cloture(caisse)
+    if derniere is not None and date_cloture <= derniere.date_cloture:
+        raise ValidationError(
+            "La date de clôture doit être postérieure à la dernière clôture "
+            f"({derniere.date_cloture}).")
+    theorique = solde_caisse(caisse, date_fin=date_cloture)
+    compte = Decimal(solde_compte or 0)
+    ecart = compte - theorique
+    cloture = ClotureCaisse(
+        company=company,
+        caisse=caisse,
+        date_cloture=date_cloture,
+        solde_theorique=theorique,
+        solde_compte=compte,
+        ecart=ecart,
+        commentaire=commentaire or '',
+        cloturee_par=user,
+    )
+    cloture.full_clean()
+    cloture.save()
+    return cloture

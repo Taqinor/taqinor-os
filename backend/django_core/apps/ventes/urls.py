@@ -49,7 +49,8 @@ urlpatterns = [
     # Export comptable : journal des ventes + résumé TVA (.xlsx).
     path('journal-ventes/', journal_ventes, name='journal-ventes'),
     # Export comptable DGI (groundwork) : factures validées d'une plage,
-    # ventilation TVA par ligne + ICE + totaux, en .xlsx OU .csv.
+    # ventilation TVA par ligne + ICE + totaux, en .xlsx OU .csv. FG49 :
+    # ?layout=grand-livre → grand-livre codé par compte CGNC (fiduciaire).
     path('export-comptable/', export_comptable, name='export-comptable'),
     # Audit de la numérotation séquentielle (trous/doublons) — admin.
     path('numerotation-audit/', numerotation_audit, name='numerotation-audit'),

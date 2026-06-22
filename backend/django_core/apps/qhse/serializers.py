@@ -8,7 +8,7 @@ from rest_framework import serializers
 
 from .models import (
     ActionCorrectivePreventive, NonConformite, PlanInspectionChantier,
-    PlanInspectionModele, PointControleModele, ReleveControle,
+    PlanInspectionModele, PointControleModele, ReleveControle, ReleveCourbeIV,
 )
 
 
@@ -73,7 +73,8 @@ class PointControleModeleSerializer(serializers.ModelSerializer):
         model = PointControleModele
         fields = [
             'id', 'plan', 'ordre', 'intitule', 'phase', 'type_releve',
-            'type_releve_display', 'hold_point', 'description', 'date_creation',
+            'type_releve_display', 'valeur_min', 'valeur_max', 'hold_point',
+            'description', 'date_creation',
         ]
         read_only_fields = ['date_creation']
 
@@ -87,14 +88,34 @@ class PlanInspectionChantierSerializer(serializers.ModelSerializer):
     modele_nom = serializers.CharField(source='modele.nom', read_only=True)
     nb_releves = serializers.IntegerField(
         source='releves.count', read_only=True)
+    # QHSE6 — gating points d'arrêt : True si aucun point d'arrêt bloquant
+    # (relevé absent ou non conforme) n'empêche l'avancement chantier.
+    peut_avancer = serializers.SerializerMethodField()
+    nb_hold_points_bloquants = serializers.SerializerMethodField()
 
     class Meta:
         model = PlanInspectionChantier
         fields = [
             'id', 'modele', 'modele_nom', 'chantier_id', 'date_ouverture',
-            'statut', 'statut_display', 'nb_releves', 'date_creation',
+            'statut', 'statut_display', 'nb_releves', 'peut_avancer',
+            'nb_hold_points_bloquants', 'date_creation',
         ]
         read_only_fields = ['date_creation']
+
+    def _hold_points_status(self, obj):
+        # Calcul mémoïsé par instance pour ne pas le refaire deux fois.
+        cache = getattr(obj, '_hold_points_status_cache', None)
+        if cache is None:
+            from .selectors import hold_points_status
+            cache = hold_points_status(obj)
+            obj._hold_points_status_cache = cache
+        return cache
+
+    def get_peut_avancer(self, obj):
+        return self._hold_points_status(obj)['peut_avancer']
+
+    def get_nb_hold_points_bloquants(self, obj):
+        return self._hold_points_status(obj)['nb_bloquants']
 
     def validate_modele(self, value):
         return _meme_societe(self, value, "Modèle d'ITP")
@@ -106,12 +127,19 @@ class ReleveControleSerializer(serializers.ModelSerializer):
     point_phase = serializers.CharField(source='point.phase', read_only=True)
     point_hold_point = serializers.BooleanField(
         source='point.hold_point', read_only=True)
+    point_valeur_min = serializers.DecimalField(
+        source='point.valeur_min', max_digits=14, decimal_places=4,
+        read_only=True)
+    point_valeur_max = serializers.DecimalField(
+        source='point.valeur_max', max_digits=14, decimal_places=4,
+        read_only=True)
 
     class Meta:
         model = ReleveControle
         fields = [
             'id', 'plan_chantier', 'point', 'point_intitule', 'point_phase',
-            'point_hold_point', 'valeur', 'conforme', 'photo_key',
+            'point_hold_point', 'point_valeur_min', 'point_valeur_max',
+            'valeur', 'conforme', 'photo_key',
             'date_releve', 'releve_par', 'date_creation',
         ]
         read_only_fields = ['date_creation']
@@ -121,3 +149,30 @@ class ReleveControleSerializer(serializers.ModelSerializer):
 
     def validate_point(self, value):
         return _meme_societe(self, value, 'Point de contrôle')
+
+
+class ReleveCourbeIVSerializer(serializers.ModelSerializer):
+    """Relevé courbe I-V d'un string PV (QHSE7).
+
+    Expose le facteur de forme ``fill_factor`` calculé côté modèle (lecture
+    seule) ; ``company`` et ``releve_par`` restent posés côté serveur. Le
+    rattachement lâche optionnel ``plan_chantier`` est validé même-société.
+    """
+    fill_factor = serializers.SerializerMethodField()
+
+    class Meta:
+        model = ReleveCourbeIV
+        fields = [
+            'id', 'chantier_id', 'plan_chantier', 'string_id',
+            'voc', 'isc', 'vmpp', 'impp', 'pmpp', 'fill_factor',
+            'irradiance', 'temperature_module', 'courbe_points', 'notes',
+            'date_releve', 'releve_par', 'date_creation',
+        ]
+        read_only_fields = ['releve_par', 'date_creation']
+
+    def get_fill_factor(self, obj):
+        ff = obj.fill_factor()
+        return None if ff is None else str(ff)
+
+    def validate_plan_chantier(self, value):
+        return _meme_societe(self, value, "Plan d'inspection chantier")

@@ -5,6 +5,9 @@ statut via les signaux pendant une requête, non-capture hors requête (ORM
 direct), gating de permission (Directeur uniquement par défaut), et les
 endpoints stats/liste.
 """
+from decimal import Decimal
+from unittest.mock import MagicMock, patch
+
 from django.core.cache import cache
 from django.test import TestCase
 from rest_framework.test import APIClient
@@ -14,7 +17,7 @@ from authentication.models import Company, CustomUser
 from apps.roles.models import (
     Role, DIRECTEUR_PERMISSIONS, COMMERCIAL_PERMISSIONS, ADMIN_PERMISSIONS,
 )
-from apps.crm.models import Lead
+from apps.crm.models import Client, Lead
 from apps.audit.models import AuditLog
 
 
@@ -120,6 +123,52 @@ class TestReadApi(AuditBase):
         reprs = {r['object_repr'] for r in resp.data['results']}
         self.assertIn('mine', reprs)
         self.assertNotIn('foreign', reprs)
+
+
+class TestPdfEventCapture(AuditBase):
+    """M4 — la génération d'un PDF (devis/facture) produit toujours une entrée
+    ``AuditLog.Action.PDF``, désormais via l'événement ``document_pdf_generated``
+    du bus ``core.events`` (ventes n'importe plus ``apps.audit``)."""
+
+    def _client(self):
+        return Client.objects.create(company=self.company, nom='Cli PDF')
+
+    def test_devis_pdf_logs_pdf_audit_row(self):
+        from apps.ventes.models import Devis
+        devis = Devis.objects.create(
+            company=self.company, reference='DEV-AUD-0001',
+            client=self._client(), statut='brouillon',
+            taux_tva=Decimal('20.00'), created_by=self.directeur)
+        with patch('apps.ventes.tasks.task_generate_devis_pdf') as task:
+            task.delay.return_value = MagicMock(id='t1')
+            resp = auth(self.directeur).post(
+                f'/api/django/ventes/devis/{devis.id}/generer-pdf/')
+        self.assertEqual(resp.status_code, 202)
+        entry = AuditLog.objects.filter(
+            action='pdf', object_id=str(devis.id)).first()
+        self.assertIsNotNone(entry)
+        # Acteur, société et détail identiques à l'ancien appel direct.
+        self.assertEqual(entry.user_id, self.directeur.id)
+        self.assertEqual(entry.company_id, self.company.id)
+        self.assertEqual(entry.detail, 'PDF devis généré')
+
+    def test_facture_pdf_logs_pdf_audit_row(self):
+        from apps.ventes.models import Facture
+        facture = Facture.objects.create(
+            company=self.company, reference='FAC-AUD-0001',
+            client=self._client(), statut='emise',
+            taux_tva=Decimal('20.00'), created_by=self.directeur)
+        with patch('apps.ventes.tasks.task_generate_facture_pdf') as task:
+            task.delay.return_value = MagicMock(id='t2')
+            resp = auth(self.directeur).post(
+                f'/api/django/ventes/factures/{facture.id}/generer-pdf/')
+        self.assertEqual(resp.status_code, 202)
+        entry = AuditLog.objects.filter(
+            action='pdf', object_id=str(facture.id)).first()
+        self.assertIsNotNone(entry)
+        self.assertEqual(entry.user_id, self.directeur.id)
+        self.assertEqual(entry.company_id, self.company.id)
+        self.assertEqual(entry.detail, 'PDF facture généré')
 
 
 class TestAuditAnalytics(TestCase):

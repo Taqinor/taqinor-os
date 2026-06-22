@@ -148,13 +148,22 @@ def _register_builtin_actions() -> None:
     ``apps.roles.models.ALL_PERMISSIONS``.
     """
     builtins = [
+        # FG351 — Actions d'ÉCRITURE en langage naturel (« crée un devis pour… »,
+        # « ajoute un lead… », « crée le client… »). Ce sont des écritures
+        # GARDÉES : `risk=RISK_OUTWARD` force le motif propose→confirm côté
+        # relais FastAPI (l'outil renvoie une PROPOSITION signée à confirmer,
+        # il n'exécute JAMAIS directement). Django reste l'autorité finale :
+        # permission ERP + société sont re-vérifiées à l'exécution (la société
+        # est toujours imposée côté serveur via perform_create, jamais lue du
+        # corps fourni par l'agent).
         AgentAction(
             key='ventes.devis.create',
             label='Créer un devis',
             description=(
                 "Crée un nouveau devis pour un client ou un lead. L'agent "
-                "fournit les lignes et le marché ; le serveur calcule les "
-                "totaux et la numérotation."
+                "fournit le client/lead, les lignes et le marché ; le serveur "
+                "calcule les totaux, la numérotation et impose la société. "
+                "Écriture sensible : confirmation requise avant exécution."
             ),
             endpoint='/api/django/ventes/devis/',
             method='POST',
@@ -163,11 +172,67 @@ def _register_builtin_actions() -> None:
                 'properties': {
                     'client': {'type': 'integer'},
                     'lead': {'type': 'integer'},
+                    'marche': {'type': 'string'},
                     'lignes': {'type': 'array', 'items': {'type': 'object'}},
                 },
             },
             required_permission='ventes_creer',
-            risk=RISK_INTERNAL,
+            risk=RISK_OUTWARD,
+            confirm_summary='Créer un devis pour ce client/lead.',
+        ),
+        AgentAction(
+            key='crm.client.create',
+            label='Créer un client',
+            description=(
+                "Crée un nouveau client (fiche contact) pour la société. "
+                "L'agent fournit au moins le nom ; le serveur impose la société "
+                "et trace le créateur. Écriture sensible : confirmation requise "
+                "avant exécution."
+            ),
+            endpoint='/api/django/crm/clients/',
+            method='POST',
+            inputs={
+                'type': 'object',
+                'properties': {
+                    'nom': {'type': 'string'},
+                    'prenom': {'type': 'string'},
+                    'email': {'type': 'string'},
+                    'telephone': {'type': 'string'},
+                    'adresse': {'type': 'string'},
+                    'type_client': {'type': 'string'},
+                },
+                'required': ['nom'],
+            },
+            required_permission='crm_creer',
+            risk=RISK_OUTWARD,
+            confirm_summary='Créer la fiche client.',
+        ),
+        AgentAction(
+            key='crm.lead.create',
+            label='Créer un lead',
+            description=(
+                "Crée un nouveau lead (opportunité) pour la société. L'agent "
+                "fournit au moins le nom ; le serveur impose la société et le "
+                "propriétaire. Écriture sensible : confirmation requise avant "
+                "exécution."
+            ),
+            endpoint='/api/django/crm/leads/',
+            method='POST',
+            inputs={
+                'type': 'object',
+                'properties': {
+                    'nom': {'type': 'string'},
+                    'prenom': {'type': 'string'},
+                    'email': {'type': 'string'},
+                    'telephone': {'type': 'string'},
+                    'ville': {'type': 'string'},
+                    'source': {'type': 'string'},
+                },
+                'required': ['nom'],
+            },
+            required_permission='crm_creer',
+            risk=RISK_OUTWARD,
+            confirm_summary='Créer le lead.',
         ),
         AgentAction(
             key='ventes.devis.proposal_pdf',

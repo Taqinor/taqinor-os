@@ -1,6 +1,6 @@
 from rest_framework import serializers
 
-from .models import Cabinet, Document, DocumentVersion, Folder
+from .models import Cabinet, Document, DocumentLien, DocumentVersion, Folder
 
 
 class CabinetSerializer(serializers.ModelSerializer):
@@ -98,3 +98,44 @@ class DocumentSerializer(serializers.ModelSerializer):
         if request is not None and value.company_id != request.user.company_id:
             raise serializers.ValidationError('Dossier inconnu.')
         return value
+
+
+class DocumentLienSerializer(serializers.ModelSerializer):
+    """GED6 — Lien polymorphe Document ↔ objet métier.
+
+    En lecture, expose la cible de façon lisible (`target_model` = "ventes.devis",
+    `target_label` = nom/référence). `document`, `target_model` et `target_id`
+    (la cible) sont posés/validés côté serveur dans la vue — pas dans le corps du
+    serializer — comme pour les autres modèles polymorphes du dépôt.
+    """
+    document_nom = serializers.CharField(source='document.nom', read_only=True)
+    created_by_nom = serializers.CharField(
+        source='created_by.username', read_only=True, default=None)
+    target_model = serializers.SerializerMethodField()
+    target_id = serializers.IntegerField(source='object_id', read_only=True)
+    target_label = serializers.SerializerMethodField()
+
+    class Meta:
+        model = DocumentLien
+        fields = [
+            'id', 'document', 'document_nom', 'target_model', 'target_id',
+            'target_label', 'created_by', 'created_by_nom', 'created_at',
+        ]
+        read_only_fields = fields
+
+    def get_target_model(self, obj):
+        ct = obj.content_type
+        return f'{ct.app_label}.{ct.model}'
+
+    def get_target_label(self, obj):
+        target = obj.content_object
+        if target is None:
+            return None
+        for attr in ('nom', 'reference', 'numero', 'titre'):
+            val = getattr(target, attr, None)
+            if val:
+                if attr == 'nom':
+                    prenom = getattr(target, 'prenom', '') or ''
+                    return f'{val} {prenom}'.strip()
+                return str(val)
+        return str(target)

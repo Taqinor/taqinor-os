@@ -159,14 +159,176 @@ class FactureViewSet(viewsets.ModelViewSet):
     @action(detail=True, methods=['post'], url_path='annuler',
             permission_classes=[IsAdminRole])
     def annuler(self, request, pk=None):
+        """Annule une facture — admin only.
+
+        FG50 — sort l'acompte de la facture morte. Le corps peut porter une
+        directive ``acompte`` traitant les paiements (acompte) restés sur la
+        facture annulée :
+
+          - ``{"acompte": {"action": "transferer", "facture_cible": <id>}}``
+            re-pointe TOUS les paiements de la facture annulée vers une AUTRE
+            facture (active) du MÊME devis (mêmes société + devis) ; les soldes
+            des deux factures se redérivent automatiquement (``montant_paye`` /
+            ``montant_du`` sont calculés depuis les lignes Paiement).
+          - ``{"acompte": {"action": "rembourser"}}`` écrit un Paiement NÉGATIF
+            de contre-passation sur la facture annulée : son ``montant_paye``
+            net retombe à 0 et l'écriture négative matérialise l'obligation de
+            remboursement (l'acompte n'est plus « coincé » sur une facture
+            morte).
+
+        Sans directive (ou sur une facture sans acompte) : comportement
+        historique strictement inchangé — on bascule seulement le statut.
+        """
+        from decimal import Decimal
         facture = self.get_object()
         if facture.statut == Facture.Statut.PAYEE:
             return Response(
                 {'detail': 'Une facture payée ne peut pas être annulée.'},
                 status=status.HTTP_400_BAD_REQUEST,
             )
-        facture.statut = Facture.Statut.ANNULEE
-        facture.save()
+        if facture.statut == Facture.Statut.ANNULEE:
+            return Response(
+                {'detail': 'Cette facture est déjà annulée.'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        directive = request.data.get('acompte') or {}
+        if not isinstance(directive, dict):
+            return Response(
+                {'detail': 'Directive « acompte » invalide.'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        acompte_action = (directive.get('action') or '').strip()
+
+        # Paiements « bloqués » sur la facture morte (l'acompte versé). On ne
+        # déplace/contre-passe que le NET : si la facture porte déjà des
+        # écritures négatives (remboursement partiel antérieur), elles entrent
+        # dans le total.
+        from .. import activity
+        with transaction.atomic():
+            locked = Facture.objects.select_for_update().get(pk=facture.pk)
+            if locked.statut in (Facture.Statut.PAYEE, Facture.Statut.ANNULEE):
+                return Response(
+                    {'detail': 'Cette facture ne peut plus être annulée.'},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+            paiements = list(locked.paiements.all())
+            net_acompte = sum((p.montant for p in paiements), Decimal('0'))
+
+            if acompte_action == 'transferer':
+                if net_acompte <= 0:
+                    return Response(
+                        {'detail': (
+                            'Aucun acompte à transférer sur cette facture.'
+                        )},
+                        status=status.HTTP_400_BAD_REQUEST,
+                    )
+                cible_id = directive.get('facture_cible')
+                if not cible_id:
+                    return Response(
+                        {'detail': 'La facture cible est requise.'},
+                        status=status.HTTP_400_BAD_REQUEST,
+                    )
+                try:
+                    cible_id = int(cible_id)
+                except (TypeError, ValueError):
+                    return Response(
+                        {'detail': 'Facture cible invalide.'},
+                        status=status.HTTP_400_BAD_REQUEST,
+                    )
+                if cible_id == locked.pk:
+                    return Response(
+                        {'detail': (
+                            "La facture cible doit être différente de celle "
+                            "annulée."
+                        )},
+                        status=status.HTTP_400_BAD_REQUEST,
+                    )
+                # Le devis source doit exister pour relier les deux factures.
+                if locked.devis_id is None:
+                    return Response(
+                        {'detail': (
+                            "Transfert impossible : la facture n'est pas liée "
+                            "à un devis."
+                        )},
+                        status=status.HTTP_400_BAD_REQUEST,
+                    )
+                cible = Facture.objects.select_for_update().filter(
+                    pk=cible_id).first()
+                # Validation multi-tenant + même devis + cible vivante.
+                if cible is None or cible.company_id != locked.company_id:
+                    return Response(
+                        {'detail': 'Facture cible inconnue.'},
+                        status=status.HTTP_400_BAD_REQUEST,
+                    )
+                if cible.devis_id != locked.devis_id:
+                    return Response(
+                        {'detail': (
+                            "La facture cible doit appartenir au même devis."
+                        )},
+                        status=status.HTTP_400_BAD_REQUEST,
+                    )
+                if cible.statut == Facture.Statut.ANNULEE:
+                    return Response(
+                        {'detail': (
+                            "Impossible de transférer vers une facture "
+                            "annulée."
+                        )},
+                        status=status.HTTP_400_BAD_REQUEST,
+                    )
+                # Re-pointe les paiements vers la cible : les soldes des deux
+                # factures se redérivent (propriétés calculées).
+                nb = len(paiements)
+                for p in paiements:
+                    p.facture = cible
+                    p.save(update_fields=['facture'])
+                locked.statut = Facture.Statut.ANNULEE
+                locked.save(update_fields=['statut'])
+                activity.log_facture_acompte_transfere_sortie(
+                    locked, request.user, cible, net_acompte, nb)
+                activity.log_facture_acompte_transfere_entree(
+                    cible, request.user, locked, net_acompte, nb)
+                facture = locked
+
+            elif acompte_action == 'rembourser':
+                if net_acompte <= 0:
+                    return Response(
+                        {'detail': (
+                            'Aucun acompte à rembourser sur cette facture.'
+                        )},
+                        status=status.HTTP_400_BAD_REQUEST,
+                    )
+                # Contre-passation : un Paiement négatif soldant l'acompte. Le
+                # net retombe à 0 → l'acompte n'est plus « coincé » ; la ligne
+                # négative porte l'obligation de remboursement.
+                from django.utils import timezone as _tz
+                Paiement.objects.create(
+                    facture=locked, company=locked.company,
+                    montant=-net_acompte, date_paiement=_tz.now().date(),
+                    mode=Paiement.Mode.AUTRE,
+                    note='Remboursement acompte (annulation facture)',
+                    created_by=request.user,
+                )
+                locked.statut = Facture.Statut.ANNULEE
+                locked.save(update_fields=['statut'])
+                activity.log_facture_acompte_rembourse(
+                    locked, request.user, net_acompte)
+                facture = locked
+
+            elif acompte_action:
+                return Response(
+                    {'detail': (
+                        "Action acompte invalide. Valeurs : « transferer », "
+                        "« rembourser »."
+                    )},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+            else:
+                # Comportement historique : simple bascule de statut.
+                locked.statut = Facture.Statut.ANNULEE
+                locked.save(update_fields=['statut'])
+                facture = locked
+
         return Response(FactureSerializer(facture).data)
 
     @action(detail=True, methods=['get'], url_path='paiements',
@@ -255,10 +417,12 @@ class FactureViewSet(viewsets.ModelViewSet):
         facture = self.get_object()
         from ..tasks import task_generate_facture_pdf
         task = task_generate_facture_pdf.delay(facture.id)
-        from apps.audit.recorder import record
-        from apps.audit.models import AuditLog
-        record(AuditLog.Action.PDF, instance=facture,
-               detail='PDF facture généré')
+        # M4 — événement découplé : ventes émet, le satellite audit journalise
+        # (AuditLog.Action.PDF). ventes n'importe plus apps.audit ; le signal
+        # est synchrone (même requête), donc l'acteur/société restent identiques.
+        from core.events import document_pdf_generated
+        document_pdf_generated.send(
+            sender=Facture, instance=facture, kind='facture')
         return Response(
             {'task_id': task.id, 'detail': 'Génération PDF lancée.'},
             status=status.HTTP_202_ACCEPTED,

@@ -1,8 +1,10 @@
 from django.contrib import admin
 
 from .models import (
-    CompteComptable, CompteTresorerie, EcritureComptable, ExerciceComptable,
-    Immobilisation, Journal, LigneEcriture, PeriodeComptable, PlanComptable,
+    Caisse, ClotureCaisse, CompteComptable, CompteTresorerie,
+    EcritureComptable, ExerciceComptable, Immobilisation, Journal,
+    LigneEcriture, LigneReleve, MouvementCaisse, PeriodeComptable,
+    PlanComptable, RapprochementBancaire,
 )
 
 
@@ -73,3 +75,57 @@ class ImmobilisationAdmin(admin.ModelAdmin):
                     'date_acquisition', 'company', 'actif')
     list_filter = ('categorie', 'actif')
     search_fields = ('libelle', 'reference')
+
+
+class LigneReleveInline(admin.TabularInline):
+    model = LigneReleve
+    extra = 0
+    fields = ('date_operation', 'libelle', 'reference', 'montant', 'statut')
+
+
+@admin.register(RapprochementBancaire)
+class RapprochementBancaireAdmin(admin.ModelAdmin):
+    list_display = ('id', 'compte_tresorerie', 'date_debut', 'date_fin',
+                    'solde_releve', 'statut', 'company')
+    list_filter = ('statut',)
+    search_fields = ('libelle',)
+    inlines = [LigneReleveInline]
+
+
+@admin.register(LigneReleve)
+class LigneReleveAdmin(admin.ModelAdmin):
+    list_display = ('id', 'rapprochement', 'date_operation', 'libelle',
+                    'montant', 'statut', 'company')
+    list_filter = ('statut',)
+    search_fields = ('libelle', 'reference')
+
+
+class MouvementCaisseInline(admin.TabularInline):
+    model = MouvementCaisse
+    extra = 0
+    fields = ('date_mouvement', 'sens', 'montant', 'motif', 'justificatif',
+              'posted')
+
+
+@admin.register(Caisse)
+class CaisseAdmin(admin.ModelAdmin):
+    list_display = ('id', 'libelle', 'compte_tresorerie', 'solde_initial',
+                    'actif', 'company')
+    list_filter = ('actif',)
+    search_fields = ('libelle',)
+    inlines = [MouvementCaisseInline]
+
+
+@admin.register(MouvementCaisse)
+class MouvementCaisseAdmin(admin.ModelAdmin):
+    list_display = ('id', 'caisse', 'date_mouvement', 'sens', 'montant',
+                    'motif', 'posted', 'company')
+    list_filter = ('sens', 'posted')
+    search_fields = ('motif', 'justificatif')
+
+
+@admin.register(ClotureCaisse)
+class ClotureCaisseAdmin(admin.ModelAdmin):
+    list_display = ('id', 'caisse', 'date_cloture', 'solde_theorique',
+                    'solde_compte', 'ecart', 'company')
+    search_fields = ('commentaire',)

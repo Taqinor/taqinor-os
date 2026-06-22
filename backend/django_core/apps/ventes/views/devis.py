@@ -482,9 +482,12 @@ class DevisViewSet(viewsets.ModelViewSet):
         # Format options (simulator parity) — whitelisted server-side.
         pdf_options = clean_pdf_options(request.data)
         task = task_generate_devis_pdf.delay(devis.id, pdf_options)
-        from apps.audit.recorder import record
-        from apps.audit.models import AuditLog
-        record(AuditLog.Action.PDF, instance=devis, detail='PDF devis généré')
+        # M4 — événement découplé : ventes émet, le satellite audit journalise
+        # (AuditLog.Action.PDF). ventes n'importe plus apps.audit ; le signal
+        # est synchrone (même requête), donc l'acteur/société restent identiques.
+        from core.events import document_pdf_generated
+        document_pdf_generated.send(
+            sender=Devis, instance=devis, kind='devis')
         return Response(
             {'task_id': task.id, 'detail': 'Génération PDF lancée.'},
             status=status.HTTP_202_ACCEPTED,
