@@ -17,6 +17,8 @@ class CustomFieldDef(models.Model):
         DEVIS = 'devis', 'Devis'
         INSTALLATION = 'installation', 'Chantier'
         TICKET = 'ticket', 'Ticket SAV'
+        # GED10 — métadonnées typées configurables sur les documents GED.
+        DOCUMENT = 'document', 'Document GED'
 
     class FieldType(models.TextChoices):
         TEXT = 'text', 'Texte'

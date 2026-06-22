@@ -192,6 +192,26 @@ class PeriodePaieSerializer(serializers.ModelSerializer):
         ]
         read_only_fields = ['statut', 'date_cloture', 'date_creation']
 
+    def validate(self, attrs):
+        """Unicité ``(company, annee, mois)`` — ``company`` posée côté serveur.
+
+        ``company`` n'étant pas un champ du sérialiseur, DRF ne pose pas de
+        ``UniqueTogetherValidator`` ; on vérifie ici pour renvoyer un 400 propre
+        plutôt qu'une ``IntegrityError`` 500.
+        """
+        request = self.context.get('request')
+        annee = attrs.get('annee', getattr(self.instance, 'annee', None))
+        mois = attrs.get('mois', getattr(self.instance, 'mois', None))
+        if request is not None and annee is not None and mois is not None:
+            qs = PeriodePaie.objects.filter(
+                company=request.user.company_id, annee=annee, mois=mois)
+            if self.instance is not None:
+                qs = qs.exclude(pk=self.instance.pk)
+            if qs.exists():
+                raise serializers.ValidationError(
+                    'Une période existe déjà pour cette année et ce mois.')
+        return attrs
+
 
 class ElementVariableSerializer(serializers.ModelSerializer):
     """Élément variable du mois (PAIE11).

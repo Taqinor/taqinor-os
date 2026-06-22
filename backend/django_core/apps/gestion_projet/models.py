@@ -513,6 +513,96 @@ class Jalon(models.Model):
         return f'{self.projet.code} — {self.libelle} ({self.date_prevue})'
 
 
+class CalendrierProjet(models.Model):
+    """Calendrier ouvré d'un ``Projet`` : jours travaillés + fériés (PROJ12).
+
+    Définit, pour UN projet, quels jours de la semaine sont OUVRÉS (drapeaux
+    ``lundi``…``dimanche``, par défaut lundi→vendredi) afin que les calculs de
+    planning (PROJ8/PROJ10/PROJ11) puissent sauter les jours non travaillés.
+    Les jours fériés ponctuels sont portés par ``JourFerie`` (FK enfant). Relation
+    1–1 souple avec le projet (un calendrier par projet, garanti
+    ``unique_together``). Aucun comportement existant n'est modifié — modèle
+    entièrement additif. Tout est multi-société : ``company`` est posée côté
+    serveur, jamais lue du corps de requête.
+    """
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='projet_calendriers',
+        verbose_name='Société',
+    )
+    projet = models.OneToOneField(
+        Projet,
+        on_delete=models.CASCADE,
+        related_name='calendrier',
+        verbose_name='Projet',
+    )
+    lundi = models.BooleanField(default=True, verbose_name='Lundi ouvré')
+    mardi = models.BooleanField(default=True, verbose_name='Mardi ouvré')
+    mercredi = models.BooleanField(default=True, verbose_name='Mercredi ouvré')
+    jeudi = models.BooleanField(default=True, verbose_name='Jeudi ouvré')
+    vendredi = models.BooleanField(default=True, verbose_name='Vendredi ouvré')
+    samedi = models.BooleanField(default=False, verbose_name='Samedi ouvré')
+    dimanche = models.BooleanField(default=False, verbose_name='Dimanche ouvré')
+    date_creation = models.DateTimeField(
+        auto_now_add=True, verbose_name='Créé le')
+
+    class Meta:
+        verbose_name = 'Calendrier de projet'
+        verbose_name_plural = 'Calendriers de projet'
+        ordering = ['id']
+
+    def __str__(self):
+        return f'Calendrier {self.projet.code}'
+
+    def jours_ouvres(self):
+        """Liste des indices de jours OUVRÉS (0=lundi … 6=dimanche)."""
+        drapeaux = [
+            self.lundi, self.mardi, self.mercredi, self.jeudi,
+            self.vendredi, self.samedi, self.dimanche,
+        ]
+        return [i for i, ouvre in enumerate(drapeaux) if ouvre]
+
+
+class JourFerie(models.Model):
+    """Un jour FÉRIÉ (chômé) du calendrier d'un projet (PROJ12).
+
+    Une date ponctuelle exclue des jours ouvrés (en plus des week-ends définis
+    par ``CalendrierProjet``). Unique par ``(calendrier, date)``. Modèle
+    entièrement additif ; ``company`` est posée côté serveur.
+    """
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='projet_jours_feries',
+        verbose_name='Société',
+    )
+    calendrier = models.ForeignKey(
+        CalendrierProjet,
+        on_delete=models.CASCADE,
+        related_name='jours_feries',
+        verbose_name='Calendrier',
+    )
+    date = models.DateField(verbose_name='Date')
+    libelle = models.CharField(
+        max_length=120, blank=True, default='', verbose_name='Libellé')
+    date_creation = models.DateTimeField(
+        auto_now_add=True, verbose_name='Créé le')
+
+    class Meta:
+        verbose_name = 'Jour férié'
+        verbose_name_plural = 'Jours fériés'
+        ordering = ['date', 'id']
+        unique_together = [('calendrier', 'date')]
+        indexes = [
+            models.Index(
+                fields=['calendrier', 'date'], name='gp_ferie_cal_date_idx'),
+        ]
+
+    def __str__(self):
+        return f'{self.date} {self.libelle}'.strip()
+
+
 class ProjetActivity(models.Model):
     """Journal minimal des transitions de statut d'un ``Projet``.
 

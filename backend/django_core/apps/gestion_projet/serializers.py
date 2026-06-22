@@ -7,8 +7,10 @@ appartenant à la société de l'utilisateur.
 from rest_framework import serializers
 
 from .models import (
+    CalendrierProjet,
     DependanceTache,
     Jalon,
+    JourFerie,
     PhaseProjet,
     Projet,
     ProjetActivity,

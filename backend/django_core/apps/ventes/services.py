@@ -339,3 +339,105 @@ def creer_facture_contrat(*, contrat, user, company):
         'FG40: facture %s créée pour contrat #%s (company %s)',
         facture.reference, contrat.pk, company.id)
     return facture
+
+
+# ── FG53 — Liens de paiement « Payer en ligne » ──────────────────────────────
+
+def create_payment_link(*, facture, provider=None):
+    """FG53 — crée (ou réutilise) un lien de paiement pour une facture.
+
+    Réutilise un lien encore valide (en attente, non expiré) pour la même
+    facture plutôt que d'en empiler. Le montant est figé au reste à payer à
+    l'instant T. Le fournisseur par défaut est NoOp (page interne, aucun coût).
+    Société forcée depuis la facture, jamais lue d'un corps de requête.
+    """
+    from decimal import Decimal
+    from .models import PaymentLink
+
+    existing = (PaymentLink.objects
+                .filter(facture=facture,
+                        statut=PaymentLink.Statut.EN_ATTENTE,
+                        expires_at__gt=timezone.now())
+                .order_by('-created_at').first())
+    if existing is not None:
+        return existing
+
+    montant = facture.montant_du
+    if montant is None or montant <= Decimal('0'):
+        montant = facture.total_ttc
+    return PaymentLink.objects.create(
+        company=facture.company,
+        facture=facture,
+        provider=(provider or 'noop'),
+        montant=montant,
+    )
+
+
+def record_payment_from_link(*, link, payload=None):
+    """FG53 — enregistre un Paiement quand un lien est confirmé payé (webhook).
+
+    Idempotent : un lien déjà payé renvoie le paiement existant sans en créer un
+    second. Le fournisseur valide d'abord la notification (verify_webhook) ; tant
+    qu'il ne confirme pas, rien n'est écrit. Le montant et le statut de la
+    facture sont mis à jour exactement comme un encaissement manuel.
+
+    Retourne (paiement, message_erreur). En succès message_erreur=None.
+    """
+    from decimal import Decimal
+    from django.db import transaction
+    from .models import Paiement, PaymentLink
+    from .payments.providers import get_provider
+
+    if link.statut == PaymentLink.Statut.PAYE and link.paiement_id:
+        # Déjà encaissé — idempotent.
+        return link.paiement, None
+    if not link.is_valid:
+        return None, 'Lien de paiement expiré ou invalide.'
+
+    provider = get_provider(link.provider)
+    result = provider.verify_webhook(link, payload or {})
+    if not result.get('paid'):
+        return None, 'Paiement non confirmé par le fournisseur.'
+
+    montant = result.get('montant')
+    if montant is None:
+        montant = link.montant
+    montant = Decimal(str(montant))
+
+    with transaction.atomic():
+        locked_link = (PaymentLink.objects.select_for_update()
+                       .get(pk=link.pk))
+        if locked_link.statut == PaymentLink.Statut.PAYE \
+                and locked_link.paiement_id:
+            return locked_link.paiement, None
+        facture = (Facture.objects.select_for_update()
+                   .get(pk=locked_link.facture_id))
+        if facture.statut == Facture.Statut.ANNULEE:
+            return None, 'Facture annulée.'
+        # Borne le montant au reste à payer (jamais de sur-paiement).
+        reste = facture.montant_du
+        if montant > reste:
+            montant = reste
+        if montant <= Decimal('0'):
+            return None, 'Aucun reste à payer sur cette facture.'
+        paiement = Paiement.objects.create(
+            company=facture.company,
+            facture=facture,
+            montant=montant,
+            date_paiement=timezone.localdate(),
+            mode=Paiement.Mode.CARTE,
+            reference=(result.get('provider_ref') or '')[:120],
+            note='Paiement en ligne (lien « Payer en ligne »).',
+        )
+        locked_link.statut = PaymentLink.Statut.PAYE
+        locked_link.paiement = paiement
+        locked_link.provider_ref = (result.get('provider_ref') or '')[:200]
+        locked_link.paid_at = timezone.now()
+        locked_link.save(update_fields=[
+            'statut', 'paiement', 'provider_ref', 'paid_at'])
+        facture.refresh_from_db()
+        if facture.montant_du <= Decimal('0') \
+                and facture.statut != Facture.Statut.ANNULEE:
+            facture.statut = Facture.Statut.PAYEE
+            facture.save(update_fields=['statut'])
+    return paiement, None

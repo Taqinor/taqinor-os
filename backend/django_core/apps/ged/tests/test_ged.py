@@ -18,7 +18,8 @@ from apps.crm.models import Client
 from apps.records.models import Attachment
 from apps.ged import selectors, services
 from apps.ged.models import (
-    Cabinet, Coffre, Document, DocumentLien, DocumentVersion, Folder,
+    Cabinet, Coffre, Document, DocumentLien, DocumentTag,
+    DocumentTagAssignment, DocumentVersion, Folder,
 )
 
 User = get_user_model()

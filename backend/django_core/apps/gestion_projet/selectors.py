@@ -7,7 +7,82 @@ les imports cross-app sont fonction-locaux pour éviter les cycles. Quand une ap
 cible n'a pas de sélecteur exploitable, on DÉGRADE proprement : on renvoie le
 ``libelle`` mis en cache et les ids stockés, sans rien importer.
 """
-from .models import DependanceTache, Jalon, ProjetLien, Tache
+from datetime import timedelta
+
+from .models import (
+    CalendrierProjet,
+    DependanceTache,
+    Jalon,
+    ProjetLien,
+    Tache,
+)
+
+
+def calendrier_de_projet(projet):
+    """Calendrier ouvré d'un projet (ou None s'il n'en a pas) — lecture seule."""
+    return CalendrierProjet.objects.filter(
+        projet=projet, company=projet.company).first()
+
+
+def _jours_ouvres_et_feries(projet):
+    """(set d'indices ouvrés, set de dates fériées) du calendrier — défaut L–V.
+
+    Sans calendrier configuré : lundi→vendredi ouvrés, aucun férié.
+    """
+    cal = calendrier_de_projet(projet)
+    if cal is None:
+        return {0, 1, 2, 3, 4}, set()
+    feries = set(cal.jours_feries.values_list('date', flat=True))
+    return set(cal.jours_ouvres()), feries
+
+
+def est_jour_ouvre(projet, jour):
+    """True si ``jour`` (date) est OUVRÉ selon le calendrier du projet."""
+    ouvres, feries = _jours_ouvres_et_feries(projet)
+    return jour.weekday() in ouvres and jour not in feries
+
+
+def jours_ouvres_entre(projet, debut, fin):
+    """Nombre de jours OUVRÉS dans l'intervalle [debut, fin) (fin exclusive).
+
+    Lecture seule. Respecte les week-ends définis par le calendrier du projet et
+    ses jours fériés. ``debut``/``fin`` sont des dates ; renvoie 0 si
+    ``fin <= debut``.
+    """
+    if fin <= debut:
+        return 0
+    ouvres, feries = _jours_ouvres_et_feries(projet)
+    n = 0
+    cur = debut
+    while cur < fin:
+        if cur.weekday() in ouvres and cur not in feries:
+            n += 1
+        cur += timedelta(days=1)
+    return n
+
+
+def ajouter_jours_ouvres(projet, debut, n_jours_ouvres):
+    """Date obtenue en ajoutant ``n_jours_ouvres`` jours OUVRÉS à ``debut``.
+
+    Lecture seule. ``debut`` est inclus s'il est ouvré : ajouter 0 jour ouvré
+    renvoie le premier jour ouvré ≥ ``debut``. Respecte week-ends et fériés du
+    calendrier projet. Sert à projeter une durée en jours ouvrés sur le
+    calendrier (raffinement de la projection naïve du Gantt PROJ10).
+    """
+    ouvres, feries = _jours_ouvres_et_feries(projet)
+
+    def _ouvre(d):
+        return d.weekday() in ouvres and d not in feries
+
+    cur = debut
+    while not _ouvre(cur):
+        cur += timedelta(days=1)
+    restants = n_jours_ouvres
+    while restants > 0:
+        cur += timedelta(days=1)
+        if _ouvre(cur):
+            restants -= 1
+    return cur
 
 
 def chemin_critique(projet):
