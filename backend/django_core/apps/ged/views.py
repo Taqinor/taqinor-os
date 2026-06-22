@@ -176,7 +176,9 @@ class DocumentViewSet(TenantMixin, viewsets.ModelViewSet):
     ordering_fields = ['nom', 'created_at', 'updated_at']
 
     def get_permissions(self):
-        if self.action in READ_ACTIONS:
+        # `recherche`/`semantique` sont des lectures : tout rôle authentifié.
+        if self.action in READ_ACTIONS or self.action in (
+                'recherche', 'semantique'):
             return [IsAnyRole()]
         return [IsResponsableOrAdmin()]
 
@@ -233,8 +235,34 @@ class DocumentViewSet(TenantMixin, viewsets.ModelViewSet):
 
     def perform_create(self, serializer):
         # company + created_by posés côté serveur.
-        serializer.save(
+        document = serializer.save(
             company=self.request.user.company, created_by=self.request.user)
+        # GED11 — alimente le tsvector plein-texte à la création.
+        services.update_search_vector(document)
+
+    def perform_update(self, serializer):
+        document = serializer.save()
+        # GED11 — réindexe après modification (nom/description/métadonnées).
+        services.update_search_vector(document)
+
+    @action(detail=False, methods=['get'], url_path='recherche')
+    def recherche(self, request):
+        """GED11 — Recherche plein-texte Postgres (SearchVector + GIN).
+
+        `GET …/documents/recherche/?q=<texte>` renvoie les documents visibles
+        (ACL coffre-fort + société) dont le tsvector matche la requête, classés
+        par pertinence. Réutilise `selectors.search_documents`."""
+        query = request.query_params.get('q', '')
+        qs = selectors.search_documents(request.user, query).select_related(
+            'folder', 'coffre', 'created_by')
+        page = self.paginate_queryset(qs)
+        if page is not None:
+            data = DocumentSerializer(
+                page, many=True, context={'request': request}).data
+            return self.get_paginated_response(data)
+        data = DocumentSerializer(
+            qs, many=True, context={'request': request}).data
+        return Response(data)
 
     @action(detail=True, methods=['post'], url_path='deplacer')
     def deplacer(self, request, pk=None):

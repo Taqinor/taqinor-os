@@ -7,9 +7,44 @@ jamais lue d'un corps de requête. Réutilise les conventions de stockage de
 """
 import hashlib
 
+from django.contrib.postgres.search import SearchVector
 from django.db import transaction
+from django.db.models import Value
 
 from .models import Coffre, Document, DocumentVersion, Folder
+
+
+def update_search_vector(document):
+    """GED11 — Recalcule le tsvector plein-texte d'un document.
+
+    Le vecteur agrège le nom (poids A), la description + métadonnées (poids B)
+    et le texte OCR (poids C, alimenté par GED12). Calculé en base via
+    `SearchVector` (config 'french'). Idempotent — à rappeler après toute
+    écriture qui change le contenu indexable.
+    """
+    meta = ''
+    if isinstance(document.custom_data, dict):
+        meta = ' '.join(str(v) for v in document.custom_data.values() if v)
+    Document.objects.filter(pk=document.pk).update(
+        search_vector=(
+            SearchVector('nom', weight='A', config='french')
+            + SearchVector(Value(document.description or ''),
+                           weight='B', config='french')
+            + SearchVector(Value(meta), weight='B', config='french')
+            + SearchVector('texte_ocr', weight='C', config='french')
+        )
+    )
+
+
+def set_ocr_text(document, texte):
+    """GED12/GED11 — Pose le texte OCR d'un document et réindexe le tsvector.
+
+    Sert de point d'entrée unique pour l'indexation OCR : on stocke le texte
+    extrait puis on rafraîchit la recherche plein-texte (GED11)."""
+    Document.objects.filter(pk=document.pk).update(texte_ocr=texte or '')
+    document.texte_ocr = texte or ''
+    update_search_vector(document)
+    return document
 
 
 def validate_coffre_owner(proprietaire, client):

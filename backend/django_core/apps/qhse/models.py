@@ -523,3 +523,75 @@ class ReleveCourbeIV(models.Model):
         if denom == 0:
             return None
         return (self.pmpp / denom).quantize(Decimal('0.0001'))
+
+
+# ── QHSE14 — Chatter QHSE (NCR / CAPA / Incident / Audit) ──────────────────
+
+class QhseChatterEntry(models.Model):
+    """Entrée d'historique « chatter » (style Odoo) d'un objet QHSE.
+
+    Rattachée à une entité QHSE par couple ``(cible_type, cible_id)`` — une
+    référence lâche stable qui couvre déjà la non-conformité (NCR) et l'action
+    corrective/préventive (CAPA) et reste ouverte aux futures entités Incident
+    et Audit, sans coupler ces modèles ni dépendre de ContentType.
+
+    Deux familles d'entrées, comme le chatter CRM :
+
+    * automatiques (``CREATION`` / ``MODIFICATION``) — log d'un champ suivi
+      (``field`` / ``field_label`` / ``old_value`` / ``new_value``), écrit côté
+      serveur, jamais par le navigateur ;
+    * manuelles (``NOTE``) — note libre saisie par un utilisateur.
+
+    L'utilisateur acteur (``user``) et la société (``company``) sont TOUJOURS
+    posés côté serveur. Entièrement additif.
+    """
+    class Cible(models.TextChoices):
+        NCR = 'ncr', 'Non-conformité'
+        CAPA = 'capa', 'Action corrective/préventive'
+        INCIDENT = 'incident', 'Incident'
+        AUDIT = 'audit', 'Audit'
+
+    class Kind(models.TextChoices):
+        CREATION = 'creation', 'Création'
+        MODIFICATION = 'modification', 'Modification'
+        NOTE = 'note', 'Note'
+
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='qhse_chatter',
+        verbose_name='Société',
+    )
+    cible_type = models.CharField(
+        max_length=10, choices=Cible.choices, verbose_name='Type de cible')
+    cible_id = models.PositiveIntegerField(verbose_name="ID de l'objet ciblé")
+    kind = models.CharField(
+        max_length=15, choices=Kind.choices, verbose_name="Type d'entrée")
+    field = models.CharField(
+        max_length=100, blank=True, default='', verbose_name='Champ')
+    field_label = models.CharField(
+        max_length=150, blank=True, default='', verbose_name='Libellé du champ')
+    old_value = models.TextField(
+        blank=True, default='', verbose_name='Ancienne valeur')
+    new_value = models.TextField(
+        blank=True, default='', verbose_name='Nouvelle valeur')
+    body = models.TextField(blank=True, default='', verbose_name='Note')
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='qhse_chatter',
+        verbose_name='Auteur',
+    )
+    created_at = models.DateTimeField(auto_now_add=True, verbose_name='Le')
+
+    class Meta:
+        verbose_name = 'Entrée de chatter QHSE'
+        verbose_name_plural = 'Entrées de chatter QHSE'
+        ordering = ['-created_at', '-id']
+        indexes = [
+            models.Index(fields=['company', 'cible_type', 'cible_id']),
+        ]
+
+    def __str__(self):
+        return f'{self.cible_type}#{self.cible_id} {self.kind}'

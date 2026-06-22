@@ -14,14 +14,16 @@ from authentication.permissions import IsResponsableOrAdmin
 
 from .models import (
     ActionCorrectivePreventive, NonConformite, PlanInspectionChantier,
-    PlanInspectionModele, PointControleModele, ReleveControle, ReleveCourbeIV,
+    PlanInspectionModele, PointControleModele, QhseChatterEntry,
+    ReleveControle, ReleveCourbeIV,
 )
 from .serializers import (
     ActionCorrectivePreventiveSerializer, NonConformiteSerializer,
     PlanInspectionChantierSerializer, PlanInspectionModeleSerializer,
-    PointControleModeleSerializer, ReleveControleSerializer,
-    ReleveCourbeIVSerializer,
+    PointControleModeleSerializer, QhseChatterEntrySerializer,
+    ReleveControleSerializer, ReleveCourbeIVSerializer,
 )
+from . import chatter
 from .selectors import (
     capa_en_retard, courbes_iv_for_chantier, hold_points_status,
     photos_controle_par_phase,
@@ -37,18 +39,81 @@ class _QhseBaseViewSet(TenantMixin, viewsets.ModelViewSet):
     permission_classes = [IsResponsableOrAdmin]
 
 
-class NonConformiteViewSet(_QhseBaseViewSet):
+class _ChatterMixin:
+    """QHSE14 — chatter (historique style Odoo) sur une entité QHSE.
+
+    Ajoute deux actions détail :
+
+    * ``GET …/<id>/historique/`` — l'historique de l'objet (le plus récent
+      d'abord), scopé société ;
+    * ``POST …/<id>/noter/`` — ajoute une note manuelle (``body`` requis).
+
+    Trace aussi automatiquement la création (``perform_create``) et les
+    changements des champs déclarés dans ``CHATTER_FIELDS`` (``perform_update``).
+    """
+    # {nom_attribut: libellé} des champs suivis automatiquement.
+    CHATTER_FIELDS = {}
+
+    def perform_create(self, serializer):
+        obj = serializer.save(company=self.request.user.company)
+        chatter.log_creation(obj, self.request.user)
+        return obj
+
+    def perform_update(self, serializer):
+        before = {
+            field: getattr(serializer.instance, field)
+            for field in self.CHATTER_FIELDS
+        }
+        obj = serializer.save()
+        for field, label in self.CHATTER_FIELDS.items():
+            chatter.log_field_change(
+                obj, self.request.user, field,
+                before.get(field), getattr(obj, field), label=label)
+        return obj
+
+    @action(detail=True, methods=['get'])
+    def historique(self, request, pk=None):
+        obj = self.get_object()
+        entries = chatter.chatter_for(
+            request.user.company,
+            chatter.cible_type_for(obj),
+            obj.id)
+        return Response(QhseChatterEntrySerializer(entries, many=True).data)
+
+    @action(detail=True, methods=['post'])
+    def noter(self, request, pk=None):
+        obj = self.get_object()
+        body = (request.data.get('body') or '').strip()
+        if not body:
+            return Response(
+                {'detail': 'body est requis.'},
+                status=status.HTTP_400_BAD_REQUEST)
+        entry = chatter.log_note(obj, request.user, body)
+        return Response(
+            QhseChatterEntrySerializer(entry).data,
+            status=status.HTTP_201_CREATED)
+
+
+class NonConformiteViewSet(_ChatterMixin, _QhseBaseViewSet):
     """Fiches de non-conformité (QHSE9). Recherche par référence/titre/origine."""
     queryset = NonConformite.objects.all()
     serializer_class = NonConformiteSerializer
     filter_backends = [filters.SearchFilter, filters.OrderingFilter]
     search_fields = ['reference', 'titre', 'origine']
     ordering_fields = ['id', 'date_detection', 'date_creation']
+    # QHSE14 — champs suivis dans le chatter de la NCR.
+    CHATTER_FIELDS = {
+        'statut': 'Statut',
+        'gravite': 'Gravité',
+        'titre': 'Titre',
+    }
 
     def perform_create(self, serializer):
-        serializer.save(
+        obj = serializer.save(
             company=self.request.user.company,
             signale_par=self.request.user)
+        chatter.log_creation(obj, self.request.user)
+        return obj
 
     @action(detail=False, methods=['post'], url_path='depuis-reserve')
     def depuis_reserve(self, request):
@@ -94,7 +159,7 @@ class NonConformiteViewSet(_QhseBaseViewSet):
         return Response(self.get_serializer(ncr).data)
 
 
-class ActionCorrectivePreventiveViewSet(_QhseBaseViewSet):
+class ActionCorrectivePreventiveViewSet(_ChatterMixin, _QhseBaseViewSet):
     """Actions correctives / préventives (CAPA — QHSE10)."""
     queryset = ActionCorrectivePreventive.objects.select_related(
         'non_conformite').all()
@@ -102,6 +167,11 @@ class ActionCorrectivePreventiveViewSet(_QhseBaseViewSet):
     filter_backends = [filters.SearchFilter, filters.OrderingFilter]
     search_fields = ['description', 'cause_racine']
     ordering_fields = ['id', 'echeance', 'date_creation']
+    # QHSE14 — champs suivis dans le chatter de la CAPA.
+    CHATTER_FIELDS = {
+        'statut': 'Statut',
+        'echeance': 'Échéance',
+    }
 
     @action(detail=False, methods=['get'], url_path='en-retard')
     def en_retard(self, request):
@@ -292,3 +362,26 @@ class ReleveCourbeIVViewSet(_QhseBaseViewSet):
                 status=status.HTTP_400_BAD_REQUEST)
         qs = courbes_iv_for_chantier(request.user.company, chantier_id)
         return Response(self.get_serializer(qs, many=True).data)
+
+
+class QhseChatterEntryViewSet(TenantMixin, viewsets.ReadOnlyModelViewSet):
+    """Chatter QHSE en lecture seule (QHSE14).
+
+    Filtre par ``?cible_type=`` (ncr/capa/incident/audit) + ``?cible_id=``. Les
+    écritures passent par les actions ``noter`` / le log auto des viewsets NCR et
+    CAPA — jamais par cet endpoint. Scopé société (TenantMixin), palier
+    Responsable/Admin.
+    """
+    permission_classes = [IsResponsableOrAdmin]
+    queryset = QhseChatterEntry.objects.select_related('user').all()
+    serializer_class = QhseChatterEntrySerializer
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        cible_type = self.request.query_params.get('cible_type')
+        cible_id = self.request.query_params.get('cible_id')
+        if cible_type:
+            qs = qs.filter(cible_type=cible_type)
+        if cible_id not in (None, ''):
+            qs = qs.filter(cible_id=cible_id)
+        return qs

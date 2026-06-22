@@ -92,6 +92,25 @@ def documents_in_coffre(coffre):
     return Document.objects.filter(company=coffre.company, coffre=coffre)
 
 
+def search_documents(user, query):
+    """GED11 — Recherche plein-texte Postgres (SearchVector + GIN) avec ACL.
+
+    Filtre les documents visibles de l'utilisateur (ACL coffre-fort + société)
+    par le tsvector `search_vector` (config 'french'), ordonnés par pertinence
+    (`SearchRank`). Une requête vide renvoie le queryset vide. La recherche
+    couvre nom, description, métadonnées et texte OCR (cf.
+    `services.update_search_vector`).
+    """
+    from django.contrib.postgres.search import SearchQuery, SearchRank
+    base = documents_visible_to_user(user)
+    if not query or not str(query).strip():
+        return base.none()
+    sq = SearchQuery(str(query), config='french', search_type='websearch')
+    return (base.filter(search_vector=sq)
+            .annotate(rank=SearchRank('search_vector', sq))
+            .order_by('-rank', 'nom'))
+
+
 def folders_for_company(company):
     """Dossiers d'une société (QuerySet)."""
     return Folder.objects.filter(company=company)

@@ -14,6 +14,7 @@ from authentication.permissions import IsResponsableOrAdmin
 
 from . import selectors, services
 from .models import (
+    BaselinePlanning,
     CalendrierProjet,
     DependanceTache,
     Jalon,
@@ -26,6 +27,7 @@ from .models import (
     Tache,
 )
 from .serializers import (
+    BaselinePlanningSerializer,
     CalendrierProjetSerializer,
     DependanceTacheSerializer,
     JalonSerializer,
@@ -209,6 +211,31 @@ class ProjetViewSet(_GestionProjetBaseViewSet):
         """
         projet = self.get_object()
         return Response(selectors.arbre_taches(projet))
+
+    @action(detail=True, methods=['post'], url_path='baseline')
+    def baseline(self, request, pk=None):
+        """Fige une BASELINE du planning courant du projet (plan vs réel).
+
+        Corps optionnel : ``libelle``. La société est garantie par
+        ``get_object`` (queryset scopé société) ; ``auteur`` est posé côté
+        serveur. Délègue au service ``creer_baseline`` (snapshot atomique de
+        toutes les tâches). Renvoie la baseline créée.
+        """
+        projet = self.get_object()
+        libelle = request.data.get('libelle', '') or ''
+        baseline = services.creer_baseline(
+            projet, libelle=libelle, auteur=request.user)
+        return Response(
+            BaselinePlanningSerializer(baseline).data,
+            status=status.HTTP_201_CREATED)
+
+    @action(detail=True, methods=['get'], url_path='baselines')
+    def baselines(self, request, pk=None):
+        """Baselines du projet (plus récentes d'abord, lecture seule)."""
+        projet = self.get_object()
+        return Response(
+            BaselinePlanningSerializer(
+                selectors.baselines_for_projet(projet), many=True).data)
 
     @action(detail=True, methods=['get'], url_path='gantt')
     def gantt(self, request, pk=None):
@@ -515,3 +542,43 @@ class JourFerieViewSet(_GestionProjetBaseViewSet):
         if projet:
             qs = qs.filter(calendrier__projet_id=projet)
         return qs
+
+
+class BaselinePlanningViewSet(_GestionProjetBaseViewSet):
+    """Baselines de planning d'un projet (snapshots plan vs réel) — scopé société.
+
+    ``company`` est posée côté serveur (TenantMixin) ; le ``projet`` reçu est
+    validé même-société par le sérialiseur ; ``auteur`` est posé côté serveur.
+    Une baseline se prend de préférence via ``projets/<id>/baseline/`` (snapshot
+    complet) ; ce viewset gère la lecture, l'édition du libellé et la suppression.
+    Filtre optionnel ``?projet=<id>``. L'action ``comparer/`` renvoie l'écart
+    plan vs réel ligne à ligne.
+    """
+    queryset = BaselinePlanning.objects.select_related(
+        'projet', 'auteur').all()
+    serializer_class = BaselinePlanningSerializer
+    filter_backends = [filters.OrderingFilter]
+    ordering_fields = ['date_creation', 'id']
+
+    def perform_create(self, serializer):
+        serializer.save(
+            company=self.request.user.company, auteur=self.request.user)
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        projet = self.request.query_params.get('projet')
+        if projet:
+            qs = qs.filter(projet_id=projet)
+        return qs
+
+    @action(detail=True, methods=['get'], url_path='comparer')
+    def comparer(self, request, pk=None):
+        """Compare la baseline au planning COURANT (plan vs réel, lecture seule).
+
+        La société est garantie par ``get_object`` (queryset scopé société) :
+        une baseline d'une autre société → 404. Délègue au sélecteur
+        ``comparer_baseline`` (écarts de début/fin en jours, dérive de charge,
+        glissement maximal de fin).
+        """
+        baseline = self.get_object()
+        return Response(selectors.comparer_baseline(baseline))

@@ -1084,3 +1084,92 @@ class DocumentCustomDataTests(GedBase):
         }, format='json')
         # Aucun champ obligatoire pour B → accepté.
         self.assertEqual(resp.status_code, 201, resp.data)
+
+
+# ── GED11 — Recherche plein-texte Postgres (SearchVector + GIN) ───────
+class DocumentFullTextSearchTests(GedBase):
+    """Vérifie la recherche plein-texte : le tsvector est alimenté à la
+    création/màj, l'endpoint /recherche matche nom/description/OCR, classe par
+    pertinence, respecte l'ACL coffre-fort et l'isolation société."""
+
+    def setUp(self):
+        super().setUp()
+        self.folder_a = Folder.objects.create(
+            company=self.co_a, cabinet=self.cab_a, nom='Racine')
+
+    def test_search_matches_name(self):
+        api = auth(self.admin_a)
+        api.post('/api/django/ged/documents/', {
+            'folder': self.folder_a.id,
+            'nom': 'Contrat de maintenance photovoltaïque'}, format='json')
+        api.post('/api/django/ged/documents/', {
+            'folder': self.folder_a.id, 'nom': 'Facture eau'}, format='json')
+        resp = api.get('/api/django/ged/documents/recherche/?q=maintenance')
+        noms = [r['nom'] for r in rows(resp)]
+        self.assertIn('Contrat de maintenance photovoltaïque', noms)
+        self.assertNotIn('Facture eau', noms)
+
+    def test_search_matches_description(self):
+        api = auth(self.admin_a)
+        api.post('/api/django/ged/documents/', {
+            'folder': self.folder_a.id, 'nom': 'Doc',
+            'description': 'onduleur Huawei trois phases'}, format='json')
+        resp = api.get('/api/django/ged/documents/recherche/?q=onduleur')
+        self.assertEqual(len(rows(resp)), 1)
+
+    def test_search_matches_ocr_text(self):
+        doc = Document.objects.create(
+            company=self.co_a, folder=self.folder_a, nom='Scan')
+        services.set_ocr_text(doc, 'numéro de série panneau JA Solar 555W')
+        api = auth(self.admin_a)
+        resp = api.get('/api/django/ged/documents/recherche/?q=panneau')
+        ids = [r['id'] for r in rows(resp)]
+        self.assertIn(doc.id, ids)
+
+    def test_empty_query_returns_nothing(self):
+        Document.objects.create(
+            company=self.co_a, folder=self.folder_a, nom='Quelque chose')
+        api = auth(self.admin_a)
+        resp = api.get('/api/django/ged/documents/recherche/?q=')
+        self.assertEqual(rows(resp), [])
+
+    def test_search_respects_company_isolation(self):
+        folder_b = Folder.objects.create(
+            company=self.co_b, cabinet=self.cab_b, nom='Racine B')
+        doc_b = Document.objects.create(
+            company=self.co_b, folder=folder_b, nom='Secret maintenance B')
+        services.update_search_vector(doc_b)
+        api = auth(self.admin_a)
+        resp = api.get('/api/django/ged/documents/recherche/?q=maintenance')
+        ids = [r['id'] for r in rows(resp)]
+        self.assertNotIn(doc_b.id, ids)
+
+    def test_search_respects_coffre_acl(self):
+        emp = make_user(self.co_a, 'ged-fts-emp', 'normal')
+        coffre = Coffre.objects.create(
+            company=self.co_a, nom='Coffre', proprietaire=self.admin_a)
+        secret = Document.objects.create(
+            company=self.co_a, folder=self.folder_a, coffre=coffre,
+            nom='dossier maintenance confidentiel')
+        services.update_search_vector(secret)
+        # L'employé non-propriétaire ne le trouve pas.
+        api = auth(emp)
+        resp = api.get('/api/django/ged/documents/recherche/?q=maintenance')
+        ids = [r['id'] for r in rows(resp)]
+        self.assertNotIn(secret.id, ids)
+        # Le propriétaire (admin) le trouve.
+        api2 = auth(self.admin_a)
+        resp2 = api2.get('/api/django/ged/documents/recherche/?q=maintenance')
+        ids2 = [r['id'] for r in rows(resp2)]
+        self.assertIn(secret.id, ids2)
+
+    def test_update_reindexes(self):
+        api = auth(self.admin_a)
+        resp = api.post('/api/django/ged/documents/', {
+            'folder': self.folder_a.id, 'nom': 'Ancien titre'}, format='json')
+        doc_id = resp.data['id']
+        api.patch(f'/api/django/ged/documents/{doc_id}/',
+                  {'nom': 'Nouveau libellé batterie'}, format='json')
+        resp = api.get('/api/django/ged/documents/recherche/?q=batterie')
+        ids = [r['id'] for r in rows(resp)]
+        self.assertIn(doc_id, ids)

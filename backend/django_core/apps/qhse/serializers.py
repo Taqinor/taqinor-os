@@ -8,7 +8,8 @@ from rest_framework import serializers
 
 from .models import (
     ActionCorrectivePreventive, NonConformite, PlanInspectionChantier,
-    PlanInspectionModele, PointControleModele, ReleveControle, ReleveCourbeIV,
+    PlanInspectionModele, PointControleModele, QhseChatterEntry,
+    ReleveControle, ReleveCourbeIV,
 )
 
 
@@ -181,3 +182,22 @@ class ReleveCourbeIVSerializer(serializers.ModelSerializer):
 
     def validate_plan_chantier(self, value):
         return _meme_societe(self, value, "Plan d'inspection chantier")
+
+
+class QhseChatterEntrySerializer(serializers.ModelSerializer):
+    """Entrée de chatter QHSE (QHSE14, lecture seule via l'API)."""
+    kind_display = serializers.CharField(
+        source='get_kind_display', read_only=True)
+    cible_type_display = serializers.CharField(
+        source='get_cible_type_display', read_only=True)
+    user_nom = serializers.CharField(
+        source='user.username', read_only=True, default=None)
+
+    class Meta:
+        model = QhseChatterEntry
+        fields = [
+            'id', 'cible_type', 'cible_type_display', 'cible_id', 'kind',
+            'kind_display', 'field', 'field_label', 'old_value', 'new_value',
+            'body', 'user', 'user_nom', 'created_at',
+        ]
+        read_only_fields = fields

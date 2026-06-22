@@ -15,7 +15,7 @@ Run :
 from decimal import Decimal
 
 from django.contrib.auth import get_user_model
-from django.test import TestCase
+from django.test import TestCase, override_settings
 from django.utils import timezone
 from rest_framework.test import APIClient
 from rest_framework_simplejwt.tokens import AccessToken
@@ -36,6 +36,10 @@ def make_company(slug='pl-co', nom='PL Co'):
     return company
 
 
+# Le throttle public s'appuie sur le cache (Redis en prod) ; en test on bascule
+# sur un cache LocMem en mémoire pour ne dépendre d'aucun service externe.
+@override_settings(CACHES={'default': {
+    'BACKEND': 'django.core.cache.backends.locmem.LocMemCache'}})
 class PaymentLinkTests(TestCase):
     def setUp(self):
         self.company = make_company()

@@ -349,3 +349,40 @@ class CalendrierProjetSerializer(serializers.ModelSerializer):
 
     def validate_projet(self, value):
         return _meme_societe(self, value, 'Projet')
+
+
+class BaselineTacheSerializer(serializers.ModelSerializer):
+    """Ligne figée d'une baseline (lecture seule — créée par le service)."""
+    class Meta:
+        model = BaselineTache
+        fields = [
+            'id', 'baseline', 'tache', 'tache_libelle', 'tache_code_wbs',
+            'date_debut_prevue', 'date_fin_prevue', 'charge_estimee',
+            'date_creation',
+        ]
+        read_only_fields = fields
+
+
+class BaselinePlanningSerializer(serializers.ModelSerializer):
+    """Baseline de planning d'un projet (snapshot figé).
+
+    ``company`` et ``auteur`` ne sont jamais exposés en écriture (posés côté
+    serveur). Le ``projet`` reçu est validé même-société ; les lignes figées sont
+    exposées en lecture seule (le snapshot est pris par l'action ``baseline``).
+    """
+    projet_code = serializers.CharField(source='projet.code', read_only=True)
+    auteur_nom = serializers.CharField(
+        source='auteur.username', read_only=True, default='')
+    nb_lignes = serializers.IntegerField(
+        source='lignes.count', read_only=True)
+
+    class Meta:
+        model = BaselinePlanning
+        fields = [
+            'id', 'projet', 'projet_code', 'libelle', 'auteur', 'auteur_nom',
+            'nb_lignes', 'date_creation',
+        ]
+        read_only_fields = ['auteur', 'date_creation']
+
+    def validate_projet(self, value):
+        return _meme_societe(self, value, 'Projet')
