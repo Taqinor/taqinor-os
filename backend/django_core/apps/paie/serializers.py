@@ -24,7 +24,10 @@ class ParametrePaieSerializer(serializers.ModelSerializer):
         fields = [
             'id', 'date_effet', 'smig', 'smag', 'plafond_cnss',
             'taux_cnss_salarial', 'taux_cnss_patronal', 'taux_amo_salarial',
-            'taux_amo_patronal', 'taux_formation_pro', 'actif', 'date_creation',
+            'taux_amo_patronal', 'taux_formation_pro',
+            'seuil_frais_pro', 'taux_frais_pro_bas', 'plafond_frais_pro_bas',
+            'taux_frais_pro_haut', 'plafond_frais_pro_haut',
+            'actif', 'valide_par_fondateur', 'date_creation',
         ]
         read_only_fields = ['date_creation']
 
@@ -43,7 +46,8 @@ class BaremeIRSerializer(serializers.ModelSerializer):
     class Meta:
         model = BaremeIR
         fields = [
-            'id', 'libelle', 'date_effet', 'actif', 'tranches', 'date_creation',
+            'id', 'libelle', 'date_effet', 'actif', 'valide_par_fondateur',
+            'tranches', 'date_creation',
         ]
         read_only_fields = ['date_creation']
 

@@ -6,8 +6,8 @@ from .models import BaremeIR, ParametrePaie, TrancheIR
 @admin.register(ParametrePaie)
 class ParametrePaieAdmin(admin.ModelAdmin):
     list_display = ('id', 'date_effet', 'smig', 'smag', 'plafond_cnss',
-                    'company', 'actif')
-    list_filter = ('actif',)
+                    'company', 'actif', 'valide_par_fondateur')
+    list_filter = ('actif', 'valide_par_fondateur')
     search_fields = ('company__nom',)
 
 
@@ -19,8 +19,9 @@ class TrancheIRInline(admin.TabularInline):
 
 @admin.register(BaremeIR)
 class BaremeIRAdmin(admin.ModelAdmin):
-    list_display = ('id', 'libelle', 'date_effet', 'company', 'actif')
-    list_filter = ('actif',)
+    list_display = ('id', 'libelle', 'date_effet', 'company', 'actif',
+                    'valide_par_fondateur')
+    list_filter = ('actif', 'valide_par_fondateur')
     search_fields = ('libelle',)
     inlines = [TrancheIRInline]
 

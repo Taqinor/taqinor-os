@@ -59,7 +59,30 @@ class ParametrePaie(models.Model):
     taux_formation_pro = models.DecimalField(
         max_digits=6, decimal_places=3, default=Decimal('1.6'),
         verbose_name='Taux formation professionnelle')
+    # Frais professionnels (déduction IR) — barème 2026 : 35 % plafonné à
+    # 2 500 MAD/mois quand le brut imposable n'excède pas 6 500 MAD/mois,
+    # sinon 25 % plafonné à 2 916,67 MAD/mois.
+    taux_frais_pro_bas = models.DecimalField(
+        max_digits=6, decimal_places=3, default=Decimal('35'),
+        verbose_name='Taux frais professionnels (brut ≤ seuil)')
+    plafond_frais_pro_bas = models.DecimalField(
+        max_digits=14, decimal_places=2, default=Decimal('2500'),
+        verbose_name='Plafond frais professionnels (brut ≤ seuil)')
+    taux_frais_pro_haut = models.DecimalField(
+        max_digits=6, decimal_places=3, default=Decimal('25'),
+        verbose_name='Taux frais professionnels (brut > seuil)')
+    plafond_frais_pro_haut = models.DecimalField(
+        max_digits=14, decimal_places=2, default=Decimal('2916.67'),
+        verbose_name='Plafond frais professionnels (brut > seuil)')
+    seuil_frais_pro = models.DecimalField(
+        max_digits=14, decimal_places=2, default=Decimal('6500'),
+        verbose_name='Seuil brut frais professionnels')
     actif = models.BooleanField(default=True, verbose_name='Actif')
+    # PAIE3 — Validation fondateur des valeurs légales par défaut. Les valeurs
+    # 2026 sont préremplies par le seed mais restent ÉDITABLES ; tant que le
+    # fondateur ne les a pas confirmées, ce drapeau reste False.
+    valide_par_fondateur = models.BooleanField(
+        default=False, verbose_name='Validé par le fondateur')
     date_creation = models.DateTimeField(
         auto_now_add=True, verbose_name='Créé le')
 
@@ -92,6 +115,10 @@ class BaremeIR(models.Model):
         max_length=120, default='Barème IR', verbose_name='Libellé')
     date_effet = models.DateField(verbose_name="Date d'effet")
     actif = models.BooleanField(default=True, verbose_name='Actif')
+    # PAIE3 — barème officiel 2026 préprovisionné par le seed, éditable, en
+    # attente de confirmation explicite du fondateur.
+    valide_par_fondateur = models.BooleanField(
+        default=False, verbose_name='Validé par le fondateur')
     date_creation = models.DateTimeField(
         auto_now_add=True, verbose_name='Créé le')
 
