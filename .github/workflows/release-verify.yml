@@ -235,14 +235,14 @@ jobs:
         run: npx playwright test --grep @visual --update-snapshots
       - name: Upload Playwright report
         if: ${{ !cancelled() }}
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: playwright-report-full
           path: frontend/playwright-report
           retention-days: 14
       - name: Upload visual baselines (à relire + commiter)
         if: ${{ !cancelled() }}
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: visual-baselines
           path: frontend/e2e/**/*-snapshots/**
@@ -285,7 +285,7 @@ jobs:
             --output=html --output-path=./lighthouse-report.html || true
       - name: Upload Lighthouse report
         if: ${{ !cancelled() }}
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: lighthouse-report
           path: apps/web/lighthouse-report.html
