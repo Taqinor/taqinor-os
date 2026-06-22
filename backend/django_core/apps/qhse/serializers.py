@@ -32,9 +32,10 @@ class NonConformiteSerializer(serializers.ModelSerializer):
         fields = [
             'id', 'reference', 'titre', 'description', 'gravite',
             'gravite_display', 'origine', 'statut', 'statut_display',
-            'chantier_id', 'signale_par', 'date_detection', 'date_creation',
+            'chantier_id', 'reserve', 'signale_par', 'date_detection',
+            'date_creation',
         ]
-        read_only_fields = ['signale_par', 'date_creation']
+        read_only_fields = ['reserve', 'signale_par', 'date_creation']
 
 
 class ActionCorrectivePreventiveSerializer(serializers.ModelSerializer):

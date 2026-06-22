@@ -132,6 +132,93 @@ def arbre_taches(projet):
     return [_serialize_tache(racine, enfants_par_parent) for racine in racines]
 
 
+def _poids_tache(tache):
+    """Poids d'une tâche pour le roll-up — sa ``charge_estimee`` (≥ 0).
+
+    Une charge absente ou nulle vaut 0 : la pondération retombe alors sur une
+    moyenne ÉGALE entre fratries (voir ``_rollup_node``).
+    """
+    charge = tache.charge_estimee
+    if charge is None:
+        return 0.0
+    return max(0.0, float(charge))
+
+
+def _rollup_node(tache, enfants_par_parent):
+    """Roll-up RÉCURSIF de l'avancement d'une tâche pondéré par charge.
+
+    Une tâche FEUILLE porte son ``avancement_pct`` propre et son poids =
+    ``charge_estimee`` (ou 0). Une tâche PARENTE voit son avancement RECALCULÉ
+    comme la moyenne des avancements de ses enfants pondérée par leur charge
+    cumulée ; si la charge cumulée des enfants est nulle, on retombe sur une
+    moyenne ÉGALE (chaque enfant compte pour 1). Renvoie un dict
+    ``{id, libelle, code_wbs, charge, avancement_pct, est_feuille, sous_taches}``
+    où ``avancement_pct`` est la valeur ROLLÉE (arrondie à l'entier) et
+    ``charge`` la charge cumulée de la branche (somme des charges des feuilles,
+    au minimum la charge propre des feuilles).
+    """
+    enfants = enfants_par_parent.get(tache.id, [])
+    if not enfants:
+        poids = _poids_tache(tache)
+        return {
+            'id': tache.id,
+            'libelle': tache.libelle,
+            'code_wbs': tache.code_wbs,
+            'charge': poids,
+            'avancement_pct': int(tache.avancement_pct),
+            'est_feuille': True,
+            'sous_taches': [],
+        }
+    sous = [_rollup_node(child, enfants_par_parent) for child in enfants]
+    charge_cumulee = sum(n['charge'] for n in sous)
+    if charge_cumulee > 0:
+        total = sum(n['avancement_pct'] * n['charge'] for n in sous)
+        avancement = total / charge_cumulee
+    else:
+        # Aucune charge sur la branche : moyenne ÉGALE entre enfants.
+        avancement = sum(n['avancement_pct'] for n in sous) / len(sous)
+    return {
+        'id': tache.id,
+        'libelle': tache.libelle,
+        'code_wbs': tache.code_wbs,
+        'charge': charge_cumulee,
+        'avancement_pct': int(round(avancement)),
+        'est_feuille': False,
+        'sous_taches': sous,
+    }
+
+
+def rollup_avancement(projet):
+    """Roll-up d'avancement pondéré par charge d'un projet (lecture seule).
+
+    Renvoie ``{avancement_pct, charge_totale, taches}`` où ``taches`` est
+    l'arborescence WBS avec, sur chaque nœud parent, l'avancement RECALCULÉ
+    comme moyenne pondérée par la charge de ses enfants (PROJ9). L'avancement
+    GLOBAL du projet est le roll-up de ses tâches RACINES (mêmes règles de
+    pondération). Une seule requête : on charge toutes les tâches puis on
+    déroule la récursion en mémoire. Ne MODIFIE aucune donnée.
+    """
+    taches = list(taches_for_projet(projet))
+    enfants_par_parent = {}
+    for tache in taches:
+        enfants_par_parent.setdefault(tache.parent_id, []).append(tache)
+    racines = enfants_par_parent.get(None, [])
+    arbre = [_rollup_node(racine, enfants_par_parent) for racine in racines]
+    charge_totale = sum(n['charge'] for n in arbre)
+    if charge_totale > 0:
+        avancement = sum(
+            n['avancement_pct'] * n['charge'] for n in arbre) / charge_totale
+    elif arbre:
+        avancement = sum(n['avancement_pct'] for n in arbre) / len(arbre)
+    else:
+        avancement = 0
+    return {
+        'avancement_pct': int(round(avancement)),
+        'charge_totale': charge_totale,
+        'taches': arbre,
+    }
+
+
 def liens_for_projet(projet):
     """Liens d'un projet (QuerySet scopé société, ordonné par id).
 

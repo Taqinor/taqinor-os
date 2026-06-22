@@ -17,7 +17,9 @@ from authentication.models import Company
 from apps.crm.models import Client
 from apps.records.models import Attachment
 from apps.ged import selectors, services
-from apps.ged.models import Cabinet, Document, DocumentLien, DocumentVersion, Folder
+from apps.ged.models import (
+    Cabinet, Coffre, Document, DocumentLien, DocumentVersion, Folder,
+)
 
 User = get_user_model()
 
@@ -775,3 +777,116 @@ class MigrateAttachmentsToGedTests(GedBase):
         self.assertFalse(DocumentLien.objects.exists())
         self.assertFalse(
             Cabinet.objects.filter(company=self.co_a, nom='Importé').exists())
+
+
+# ── GED8 — Coffre-fort par employé/client (ACL propriétaire + admin) ──
+class CoffreAclTests(GedBase):
+    """Vérifie l'ACL du coffre-fort : un employé ne voit QUE son coffre, un
+    admin voit tous ceux de sa société, et un document placé dans un coffre est
+    invisible des autres. Société toujours posée côté serveur."""
+
+    def setUp(self):
+        super().setUp()
+        # Deux employés non-admin de la société A + un client.
+        self.emp1 = make_user(self.co_a, 'ged-emp1', 'normal')
+        self.emp2 = make_user(self.co_a, 'ged-emp2', 'normal')
+        self.client_a = Client.objects.create(
+            company=self.co_a, nom='Client A', email='ca@example.com')
+        self.folder_a = Folder.objects.create(
+            company=self.co_a, cabinet=self.cab_a, nom='Racine')
+        # Coffre de emp1.
+        self.coffre1 = Coffre.objects.create(
+            company=self.co_a, nom='Coffre emp1', proprietaire=self.emp1)
+        # Document dans le coffre de emp1.
+        self.doc_secret = Document.objects.create(
+            company=self.co_a, folder=self.folder_a, coffre=self.coffre1,
+            nom='Bulletin de paie emp1')
+        # Document hors coffre (visible de tous).
+        self.doc_public = Document.objects.create(
+            company=self.co_a, folder=self.folder_a, nom='Note de service')
+
+    def test_owner_sees_own_coffre(self):
+        api = auth(self.emp1)
+        resp = api.get('/api/django/ged/coffres/')
+        ids = [r['id'] for r in rows(resp)]
+        self.assertIn(self.coffre1.id, ids)
+
+    def test_non_owner_employee_cannot_see_coffre(self):
+        api = auth(self.emp2)
+        # emp2 n'est pas propriétaire : ni en liste…
+        resp = api.get('/api/django/ged/coffres/')
+        self.assertEqual(rows(resp), [])
+        # …ni en lecture directe (404, pas dans le queryset).
+        resp = api.get(f'/api/django/ged/coffres/{self.coffre1.id}/')
+        self.assertEqual(resp.status_code, 404)
+
+    def test_admin_sees_all_company_coffres(self):
+        api = auth(self.admin_a)
+        resp = api.get('/api/django/ged/coffres/')
+        ids = [r['id'] for r in rows(resp)]
+        self.assertIn(self.coffre1.id, ids)
+
+    def test_document_in_coffre_hidden_from_non_owner(self):
+        api = auth(self.emp2)
+        resp = api.get('/api/django/ged/documents/')
+        ids = [r['id'] for r in rows(resp)]
+        self.assertNotIn(self.doc_secret.id, ids)
+        self.assertIn(self.doc_public.id, ids)
+        # Lecture directe du doc secret : 404.
+        resp = api.get(f'/api/django/ged/documents/{self.doc_secret.id}/')
+        self.assertEqual(resp.status_code, 404)
+
+    def test_owner_sees_document_in_own_coffre(self):
+        api = auth(self.emp1)
+        resp = api.get('/api/django/ged/documents/')
+        ids = [r['id'] for r in rows(resp)]
+        self.assertIn(self.doc_secret.id, ids)
+
+    def test_admin_sees_document_in_coffre(self):
+        api = auth(self.admin_a)
+        resp = api.get(f'/api/django/ged/documents/{self.doc_secret.id}/')
+        self.assertEqual(resp.status_code, 200)
+
+    def test_cross_company_coffre_isolation(self):
+        # Admin B ne voit aucun coffre de A.
+        api = auth(self.admin_b)
+        resp = api.get('/api/django/ged/coffres/')
+        ids = [r['id'] for r in rows(resp)]
+        self.assertNotIn(self.coffre1.id, ids)
+
+    def test_create_coffre_forces_company_and_owner_xor(self):
+        api = auth(self.admin_a)
+        # Sans propriétaire ni client → 400.
+        resp = api.post('/api/django/ged/coffres/', {
+            'nom': 'Vide', 'company': self.co_b.id}, format='json')
+        self.assertEqual(resp.status_code, 400)
+        # Les deux propriétaires → 400.
+        resp = api.post('/api/django/ged/coffres/', {
+            'nom': 'Deux', 'proprietaire': self.emp1.id,
+            'client': self.client_a.id}, format='json')
+        self.assertEqual(resp.status_code, 400)
+        # Un employé seul → 201, société forcée à A.
+        resp = api.post('/api/django/ged/coffres/', {
+            'nom': 'OK emp', 'proprietaire': self.emp2.id,
+            'company': self.co_b.id}, format='json')
+        self.assertEqual(resp.status_code, 201, resp.data)
+        coffre = Coffre.objects.get(id=resp.data['id'])
+        self.assertEqual(coffre.company_id, self.co_a.id)
+        self.assertEqual(coffre.proprietaire_id, self.emp2.id)
+
+    def test_cannot_drop_document_in_others_coffre(self):
+        # Un responsable (droit d'écrire) qui n'est PAS propriétaire du coffre
+        # de emp1 ne peut pas y déposer un document : rejet ACL en 400.
+        resp_user = make_user(self.co_a, 'ged-resp2', 'responsable')
+        api = auth(resp_user)
+        resp = api.post('/api/django/ged/documents/', {
+            'folder': self.folder_a.id, 'coffre': self.coffre1.id,
+            'nom': 'Intrusion'}, format='json')
+        self.assertEqual(resp.status_code, 400, resp.data)
+
+    def test_coffre_documents_action(self):
+        api = auth(self.emp1)
+        resp = api.get(f'/api/django/ged/coffres/{self.coffre1.id}/documents/')
+        self.assertEqual(resp.status_code, 200)
+        ids = [r['id'] for r in resp.data]
+        self.assertIn(self.doc_secret.id, ids)

@@ -25,7 +25,7 @@ from .serializers import (
 from .selectors import (
     courbes_iv_for_chantier, hold_points_status, photos_controle_par_phase,
 )
-from .services import instancier_plan_chantier
+from .services import creer_ncr_depuis_reserve, instancier_plan_chantier
 
 
 class _QhseBaseViewSet(TenantMixin, viewsets.ModelViewSet):
@@ -45,6 +45,34 @@ class NonConformiteViewSet(_QhseBaseViewSet):
         serializer.save(
             company=self.request.user.company,
             signale_par=self.request.user)
+
+    @action(detail=False, methods=['post'], url_path='depuis-reserve')
+    def depuis_reserve(self, request):
+        """Crée une NCR à partir d'une réserve de chantier (QHSE11).
+
+        Corps : ``reserve`` (id de la ``installations.Reserve``), ``gravite``
+        optionnelle. La réserve est lue via le sélecteur d'``installations``
+        (scopé société) ; ``signale_par`` et ``company`` sont posés côté serveur.
+        Idempotent : une seule NCR par réserve. 404 si la réserve n'appartient
+        pas à la société.
+        """
+        reserve_id = request.data.get('reserve')
+        if reserve_id in (None, ''):
+            return Response(
+                {'detail': 'reserve est requis.'},
+                status=status.HTTP_400_BAD_REQUEST)
+        try:
+            ncr, created = creer_ncr_depuis_reserve(
+                reserve_id=reserve_id,
+                company=request.user.company,
+                signale_par=request.user,
+                gravite=request.data.get('gravite') or None,
+            )
+        except ValueError as exc:
+            return Response(
+                {'detail': str(exc)}, status=status.HTTP_404_NOT_FOUND)
+        code = status.HTTP_201_CREATED if created else status.HTTP_200_OK
+        return Response(self.get_serializer(ncr).data, status=code)
 
 
 class ActionCorrectivePreventiveViewSet(_QhseBaseViewSet):

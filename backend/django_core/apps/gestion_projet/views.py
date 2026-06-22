@@ -206,6 +206,17 @@ class ProjetViewSet(_GestionProjetBaseViewSet):
         projet = self.get_object()
         return Response(selectors.arbre_taches(projet))
 
+    @action(detail=True, methods=['get'], url_path='avancement')
+    def avancement(self, request, pk=None):
+        """Roll-up d'avancement pondéré par charge du projet (lecture seule).
+
+        La société est garantie par ``get_object`` (queryset scopé société) :
+        un projet d'une autre société → 404. Délègue au sélecteur
+        ``rollup_avancement`` (avancement global + arbre WBS recalculé).
+        """
+        projet = self.get_object()
+        return Response(selectors.rollup_avancement(projet))
+
     @action(detail=True, methods=['get'], url_path='chemin-critique')
     def chemin_critique(self, request, pk=None):
         """Chemin critique (CPM) + marges du projet (lecture seule).

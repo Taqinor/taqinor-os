@@ -9,11 +9,11 @@ from decimal import Decimal
 from rest_framework import serializers
 
 from .models import (
-    Caisse, CessionImmobilisation, ClotureCaisse, CompteComptable,
-    CompteTresorerie, DotationAmortissement, EcritureComptable,
-    ExerciceComptable, Immobilisation, Journal, LigneEcriture, LigneReleve,
-    MouvementCaisse, PeriodeComptable, PlanAmortissement, PlanComptable,
-    RapprochementBancaire,
+    BordereauRemise, Caisse, CessionImmobilisation, ClotureCaisse,
+    CompteComptable, CompteTresorerie, DotationAmortissement, EcritureComptable,
+    Effet, ExerciceComptable, Immobilisation, Journal, LigneEcriture,
+    LignePrevisionnelTresorerie, LigneReleve, MouvementCaisse, PeriodeComptable,
+    PlanAmortissement, PlanComptable, RapprochementBancaire, VirementInterne,
 )
 
 

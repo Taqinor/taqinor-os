@@ -1383,3 +1383,426 @@ def cloturer_caisse(caisse, *, date_cloture, solde_compte, commentaire='',
     cloture.full_clean()
     cloture.save()
     return cloture
+
+
+# ── FG125 — Virements internes entre comptes de trésorerie ─────────────────
+
+@transaction.atomic
+def enregistrer_virement(company, *, compte_source, compte_destination,
+                         date_virement, montant, libelle='', reference='',
+                         poster=False, user=None):
+    """Enregistre un virement interne entre deux comptes de trésorerie (FG125).
+
+    Les deux comptes DOIVENT appartenir à la société et être DIFFÉRENTS ;
+    ``montant`` strictement positif. ``company`` posée côté serveur. Si
+    ``poster`` est vrai, l'écriture à deux jambes est passée au grand livre
+    (``poster_virement``). Renvoie le virement.
+    """
+    if compte_source.company_id != company.id:
+        raise ValidationError("Compte source inconnu.")
+    if compte_destination.company_id != company.id:
+        raise ValidationError("Compte destination inconnu.")
+    virement = VirementInterne(
+        company=company,
+        compte_source=compte_source,
+        compte_destination=compte_destination,
+        date_virement=date_virement,
+        montant=Decimal(montant or 0),
+        libelle=libelle or '',
+        reference=reference or '',
+        created_by=user,
+    )
+    virement.full_clean(exclude=['ecriture'])
+    virement.save()
+    if poster:
+        poster_virement(virement, user=user)
+    return virement
+
+
+@transaction.atomic
+def poster_virement(virement, *, user=None):
+    """Poste un virement interne au grand livre : écriture à deux jambes (FG125).
+
+    Débit du compte comptable de la DESTINATION (l'argent arrive), crédit du
+    compte comptable de la SOURCE (l'argent part), dans le journal OD, à la date
+    du virement. RESPECTE LE VERROU DE PÉRIODE (FG115) : refus si la date tombe
+    dans une période verrouillée. Idempotent : un virement déjà posté renvoie son
+    écriture. Renvoie l'écriture.
+    """
+    company = virement.company
+    if virement.posted and virement.ecriture_id:
+        return virement.ecriture
+    montant = Decimal(virement.montant or 0)
+    if montant <= 0:
+        raise ValidationError(
+            "Impossible de poster un virement de montant nul.")
+    if PeriodeComptable.date_verrouillee(company.id, virement.date_virement):
+        raise ValidationError(
+            "Période comptable clôturée : impossible de poster le virement "
+            f"du {virement.date_virement}.")
+    compte_src = virement.compte_source.compte_comptable
+    compte_dst = virement.compte_destination.compte_comptable
+    journal = _journal(company, Journal.Type.OPERATIONS_DIVERSES)
+    if journal is None:
+        seed_journaux(company)
+        journal = _journal(company, Journal.Type.OPERATIONS_DIVERSES)
+    libelle = virement.libelle or (
+        f'Virement {virement.compte_source.libelle} → '
+        f'{virement.compte_destination.libelle}')
+    lignes = [
+        {'compte': compte_dst, 'debit': montant, 'credit': Decimal('0'),
+         'libelle': libelle},
+        {'compte': compte_src, 'debit': Decimal('0'), 'credit': montant,
+         'libelle': libelle},
+    ]
+    ecriture = creer_ecriture(
+        company, journal, virement.date_virement, libelle, lignes,
+        reference=virement.reference or f'VIR-{virement.id}',
+        source_type='virement_interne', source_id=virement.id,
+        created_by=user, statut=EcritureComptable.Statut.VALIDEE,
+    )
+    virement.posted = True
+    virement.ecriture = ecriture
+    virement.save(update_fields=['posted', 'ecriture'])
+    return virement.ecriture
+
+
+# ── FG126 — Prévisionnel de trésorerie roulant 13 semaines ─────────────────
+
+def creer_ligne_previsionnel(company, *, libelle, date_prevue, montant,
+                             categorie=None, recurrence=None, commentaire=''):
+    """Crée une ligne prévue de prévisionnel de trésorerie (FG126).
+
+    ``montant`` SIGNÉ (+ encaissement, − décaissement), non nul. ``company``
+    posée côté serveur. Renvoie la ligne.
+    """
+    ligne = LignePrevisionnelTresorerie(
+        company=company,
+        libelle=libelle or '',
+        categorie=categorie or LignePrevisionnelTresorerie.Categorie.AUTRE,
+        date_prevue=date_prevue,
+        montant=Decimal(montant or 0),
+        recurrence=(
+            recurrence or LignePrevisionnelTresorerie.Recurrence.AUCUNE),
+        commentaire=commentaire or '',
+    )
+    ligne.full_clean()
+    ligne.save()
+    return ligne
+
+
+# ── FG127 / FG128 — Effets (chèques / traites) ─────────────────────────────
+
+def _compte_effets_recevoir(company):
+    return _assurer_compte(company, '3425')
+
+
+def _compte_effets_payer(company):
+    return _assurer_compte(company, '4415')
+
+
+def _compte_effets_encaissement(company):
+    return _assurer_compte(company, '5113')
+
+
+def _compte_frais_bancaires(company):
+    return _assurer_compte(company, '6147')
+
+
+def enregistrer_effet(company, *, sens, montant, date_emission, date_echeance,
+                      type_effet=None, numero='', banque='', tireur='',
+                      tiers_type='', tiers_id=None, commentaire='', user=None):
+    """Enregistre un effet à recevoir (FG127) ou à payer (FG128).
+
+    ``sens`` ∈ {recevoir, payer}, ``montant`` strictement positif, échéance ≥
+    émission. Le tiers est référencé en string-FK. ``company`` posée côté
+    serveur ; l'effet naît en ``portefeuille``. Renvoie l'effet.
+    """
+    effet = Effet(
+        company=company,
+        sens=sens,
+        type_effet=type_effet or Effet.TypeEffet.CHEQUE,
+        numero=numero or '',
+        montant=Decimal(montant or 0),
+        date_emission=date_emission,
+        date_echeance=date_echeance,
+        banque=banque or '',
+        tireur=tireur or '',
+        tiers_type=tiers_type or '',
+        tiers_id=tiers_id,
+        commentaire=commentaire or '',
+        created_by=user,
+    )
+    effet.full_clean(exclude=['bordereau'])
+    effet.save()
+    return effet
+
+
+@transaction.atomic
+def encaisser_effet(effet, *, date_encaissement=None, user=None):
+    """Encaisse un effet à recevoir : remis/portefeuille → encaissé (FG127).
+
+    Passe une écriture banque (débit 5141) / crédit du compte d'attente
+    (5113 si l'effet était remis, sinon 3425 effets à recevoir), dans le journal
+    BNK, à ``date_encaissement`` (défaut : échéance). Refusé en période close.
+    Idempotent : un effet déjà encaissé ne bouge plus. Renvoie l'effet.
+    """
+    if effet.sens != Effet.Sens.RECEVOIR:
+        raise ValidationError(
+            "Seul un effet à recevoir peut être encaissé.")
+    if effet.statut == Effet.Statut.ENCAISSE:
+        return effet
+    if effet.statut not in (Effet.Statut.PORTEFEUILLE, Effet.Statut.REMIS):
+        raise ValidationError(
+            "Cet effet ne peut être encaissé dans son état actuel.")
+    company = effet.company
+    date_enc = date_encaissement or effet.date_echeance
+    if PeriodeComptable.date_verrouillee(company.id, date_enc):
+        raise ValidationError(
+            "Période comptable clôturée : impossible d'encaisser l'effet du "
+            f"{date_enc}.")
+    montant = Decimal(effet.montant or 0)
+    banque = _assurer_compte(company, '5141')
+    if effet.statut == Effet.Statut.REMIS:
+        contrepartie = _compte_effets_encaissement(company)
+    else:
+        contrepartie = _compte_effets_recevoir(company)
+    journal = _journal(company, Journal.Type.BANQUE)
+    if journal is None:
+        seed_journaux(company)
+        journal = _journal(company, Journal.Type.BANQUE)
+    libelle = f'Encaissement effet {effet.numero or effet.id}'
+    lignes = [
+        {'compte': banque, 'debit': montant, 'credit': Decimal('0'),
+         'libelle': libelle},
+        {'compte': contrepartie, 'debit': Decimal('0'), 'credit': montant,
+         'libelle': libelle,
+         'tiers_type': effet.tiers_type, 'tiers_id': effet.tiers_id},
+    ]
+    creer_ecriture(
+        company, journal, date_enc, libelle, lignes,
+        reference=effet.numero or f'EFFET-{effet.id}',
+        source_type='effet_encaissement', source_id=effet.id,
+        created_by=user, statut=EcritureComptable.Statut.VALIDEE)
+    effet.statut = Effet.Statut.ENCAISSE
+    effet.save(update_fields=['statut'])
+    return effet
+
+
+@transaction.atomic
+def payer_effet(effet, *, date_paiement=None, user=None):
+    """Paie un effet à payer fournisseur : portefeuille → payé (FG128).
+
+    Débit 4415 effets à payer / crédit 5141 banque, journal BNK, à
+    ``date_paiement`` (défaut : échéance). Refusé en période close. Idempotent.
+    Renvoie l'effet.
+    """
+    if effet.sens != Effet.Sens.PAYER:
+        raise ValidationError(
+            "Seul un effet à payer peut être réglé.")
+    if effet.statut == Effet.Statut.PAYE:
+        return effet
+    if effet.statut != Effet.Statut.PORTEFEUILLE:
+        raise ValidationError(
+            "Cet effet ne peut être payé dans son état actuel.")
+    company = effet.company
+    date_pmt = date_paiement or effet.date_echeance
+    if PeriodeComptable.date_verrouillee(company.id, date_pmt):
+        raise ValidationError(
+            "Période comptable clôturée : impossible de payer l'effet du "
+            f"{date_pmt}.")
+    montant = Decimal(effet.montant or 0)
+    banque = _assurer_compte(company, '5141')
+    compte_effets = _compte_effets_payer(company)
+    journal = _journal(company, Journal.Type.BANQUE)
+    if journal is None:
+        seed_journaux(company)
+        journal = _journal(company, Journal.Type.BANQUE)
+    libelle = f'Paiement effet {effet.numero or effet.id}'
+    lignes = [
+        {'compte': compte_effets, 'debit': montant, 'credit': Decimal('0'),
+         'libelle': libelle,
+         'tiers_type': effet.tiers_type, 'tiers_id': effet.tiers_id},
+        {'compte': banque, 'debit': Decimal('0'), 'credit': montant,
+         'libelle': libelle},
+    ]
+    creer_ecriture(
+        company, journal, date_pmt, libelle, lignes,
+        reference=effet.numero or f'EFFET-{effet.id}',
+        source_type='effet_paiement', source_id=effet.id,
+        created_by=user, statut=EcritureComptable.Statut.VALIDEE)
+    effet.statut = Effet.Statut.PAYE
+    effet.save(update_fields=['statut'])
+    return effet
+
+
+# ── FG129 — Bordereau de remise en banque ──────────────────────────────────
+
+@transaction.atomic
+def creer_bordereau(company, compte_tresorerie, *, date_remise, effet_ids=None,
+                    reference='', user=None):
+    """Crée un bordereau de remise et y rattache des effets à recevoir (FG129).
+
+    Le ``compte_tresorerie`` DOIT appartenir à la société et être une banque.
+    Chaque effet de ``effet_ids`` doit être à recevoir, en ``portefeuille`` et
+    de la société. Les effets sont rattachés au bordereau (statut inchangé tant
+    que non posté). ``company`` posée côté serveur. Renvoie le bordereau.
+    """
+    if compte_tresorerie.company_id != company.id:
+        raise ValidationError("Compte de trésorerie inconnu.")
+    if compte_tresorerie.type_compte != 'banque':
+        raise ValidationError(
+            "Un bordereau de remise se dépose sur un compte bancaire.")
+    bordereau = BordereauRemise.objects.create(
+        company=company,
+        compte_tresorerie=compte_tresorerie,
+        reference=reference or '',
+        date_remise=date_remise,
+        created_by=user,
+    )
+    ids = list(dict.fromkeys(effet_ids or []))
+    if ids:
+        effets = list(Effet.objects.filter(
+            company=company, id__in=ids, sens=Effet.Sens.RECEVOIR,
+            statut=Effet.Statut.PORTEFEUILLE))
+        if len(effets) != len(ids):
+            raise ValidationError(
+                "Effet inconnu, déjà remis ou non éligible.")
+        for effet in effets:
+            effet.bordereau = bordereau
+            effet.save(update_fields=['bordereau'])
+    _recalc_total_bordereau(bordereau)
+    return bordereau
+
+
+def _recalc_total_bordereau(bordereau):
+    total = bordereau.effets.aggregate(s=Sum('montant'))['s'] or Decimal('0')
+    bordereau.total = total
+    bordereau.save(update_fields=['total'])
+    return total
+
+
+@transaction.atomic
+def poster_bordereau(bordereau, *, user=None):
+    """Poste un bordereau de remise au grand livre (FG129).
+
+    Écriture de remise dans le journal OD : débit 5113 « effets à
+    l'encaissement » / crédit 3425 « effets à recevoir » pour le total du
+    bordereau, puis passe chaque effet lié en ``remis``. Refusé en période close.
+    Idempotent : un bordereau déjà posté renvoie son écriture. Renvoie
+    l'écriture.
+    """
+    company = bordereau.company
+    if bordereau.posted and bordereau.ecriture_id:
+        return bordereau.ecriture
+    effets = list(bordereau.effets.all())
+    if not effets:
+        raise ValidationError(
+            "Un bordereau doit comporter au moins un effet.")
+    total = _recalc_total_bordereau(bordereau)
+    if total <= 0:
+        raise ValidationError("Le total du bordereau est nul.")
+    if PeriodeComptable.date_verrouillee(company.id, bordereau.date_remise):
+        raise ValidationError(
+            "Période comptable clôturée : impossible de poster le bordereau "
+            f"du {bordereau.date_remise}.")
+    compte_enc = _compte_effets_encaissement(company)
+    compte_eff = _compte_effets_recevoir(company)
+    journal = _journal(company, Journal.Type.OPERATIONS_DIVERSES)
+    if journal is None:
+        seed_journaux(company)
+        journal = _journal(company, Journal.Type.OPERATIONS_DIVERSES)
+    libelle = f'Remise effets {bordereau.reference or bordereau.id}'
+    lignes = [
+        {'compte': compte_enc, 'debit': total, 'credit': Decimal('0'),
+         'libelle': libelle},
+        {'compte': compte_eff, 'debit': Decimal('0'), 'credit': total,
+         'libelle': libelle},
+    ]
+    ecriture = creer_ecriture(
+        company, journal, bordereau.date_remise, libelle, lignes,
+        reference=bordereau.reference or f'BORD-{bordereau.id}',
+        source_type='bordereau_remise', source_id=bordereau.id,
+        created_by=user, statut=EcritureComptable.Statut.VALIDEE)
+    for effet in effets:
+        effet.statut = Effet.Statut.REMIS
+        effet.save(update_fields=['statut'])
+    bordereau.posted = True
+    bordereau.ecriture = ecriture
+    bordereau.statut = BordereauRemise.Statut.REMIS
+    bordereau.save(update_fields=['posted', 'ecriture', 'statut'])
+    return bordereau.ecriture
+
+
+# ── FG130 — Impayés / rejets d'effets ──────────────────────────────────────
+
+@transaction.atomic
+def rejeter_effet(effet, *, date_rejet=None, frais_rejet=None, commentaire='',
+                  user=None):
+    """Constate l'impayé / rejet d'un effet (FG130).
+
+    Rouvre le montant dû en contre-passant la remise (pour un effet à recevoir
+    remis : débit 3425 effets à recevoir / crédit 5113 à l'encaissement) et,
+    si des ``frais_rejet`` bancaires sont saisis, les comptabilise (débit 6147
+    frais bancaires / crédit 5141 banque). L'effet passe ``impaye``, ses frais
+    sont figés. Refusé en période close. Renvoie l'effet.
+    """
+    if effet.statut == Effet.Statut.IMPAYE:
+        return effet
+    if effet.statut in (Effet.Statut.ENCAISSE, Effet.Statut.PAYE):
+        raise ValidationError(
+            "Un effet déjà soldé ne peut être rejeté.")
+    company = effet.company
+    date_r = date_rejet or effet.date_echeance
+    if PeriodeComptable.date_verrouillee(company.id, date_r):
+        raise ValidationError(
+            "Période comptable clôturée : impossible de rejeter l'effet du "
+            f"{date_r}.")
+    frais = Decimal(frais_rejet or 0)
+    if frais < 0:
+        raise ValidationError("Les frais de rejet doivent être positifs.")
+    journal = _journal(company, Journal.Type.BANQUE)
+    if journal is None:
+        seed_journaux(company)
+        journal = _journal(company, Journal.Type.BANQUE)
+    libelle = f'Rejet effet {effet.numero or effet.id}'
+    # Réouverture du montant dû pour un effet à recevoir qui avait été remis :
+    # on annule l'effet « à l'encaissement » et on rouvre la créance effet.
+    if effet.sens == Effet.Sens.RECEVOIR and effet.statut == Effet.Statut.REMIS:
+        montant = Decimal(effet.montant or 0)
+        compte_eff = _compte_effets_recevoir(company)
+        compte_enc = _compte_effets_encaissement(company)
+        lignes = [
+            {'compte': compte_eff, 'debit': montant, 'credit': Decimal('0'),
+             'libelle': libelle,
+             'tiers_type': effet.tiers_type, 'tiers_id': effet.tiers_id},
+            {'compte': compte_enc, 'debit': Decimal('0'), 'credit': montant,
+             'libelle': libelle},
+        ]
+        creer_ecriture(
+            company, journal, date_r, libelle, lignes,
+            reference=effet.numero or f'EFFET-{effet.id}',
+            source_type='effet_rejet', source_id=effet.id,
+            created_by=user, statut=EcritureComptable.Statut.VALIDEE)
+    # Frais de rejet bancaires (le cas échéant), écriture distincte.
+    if frais > 0:
+        compte_frais = _compte_frais_bancaires(company)
+        banque = _assurer_compte(company, '5141')
+        lignes_frais = [
+            {'compte': compte_frais, 'debit': frais, 'credit': Decimal('0'),
+             'libelle': f'Frais rejet effet {effet.numero or effet.id}'},
+            {'compte': banque, 'debit': Decimal('0'), 'credit': frais,
+             'libelle': f'Frais rejet effet {effet.numero or effet.id}'},
+        ]
+        creer_ecriture(
+            company, journal, date_r,
+            f'Frais rejet effet {effet.numero or effet.id}', lignes_frais,
+            reference=effet.numero or f'EFFET-{effet.id}',
+            source_type='effet_frais_rejet', source_id=effet.id,
+            created_by=user, statut=EcritureComptable.Statut.VALIDEE)
+    effet.statut = Effet.Statut.IMPAYE
+    effet.frais_rejet = frais
+    if commentaire:
+        effet.commentaire = commentaire
+    effet.save(update_fields=['statut', 'frais_rejet', 'commentaire'])
+    return effet

@@ -63,6 +63,16 @@ class NonConformite(models.Model):
     # import cross-app de modèle.
     chantier_id = models.PositiveIntegerField(
         null=True, blank=True, verbose_name='ID du chantier')
+    # QHSE11 — pont Réserve (installations.Reserve) → NCR. Lien optionnel via
+    # FK chaîne de caractères (jamais un import cross-app de modèle) : une
+    # non-conformité peut naître d'une réserve de fin de chantier.
+    reserve = models.ForeignKey(
+        'installations.Reserve',
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='qhse_ncr',
+        verbose_name="Réserve d'origine",
+    )
     signale_par = models.ForeignKey(
         settings.AUTH_USER_MODEL,
         on_delete=models.SET_NULL,

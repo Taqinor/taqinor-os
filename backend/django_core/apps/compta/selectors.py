@@ -4,12 +4,15 @@ Grand livre (FG110), balance générale (FG111), lettrage (FG112), CPC (FG113) e
 bilan (FG114) se déduisent tous des ``LigneEcriture`` du grand livre. Aucune
 écriture n'est modifiée ici. Toutes les fonctions sont scopées par société.
 """
+from datetime import timedelta
 from decimal import Decimal
 
 from django.db.models import Sum
+from django.utils import timezone
 
 from .models import (
-    Caisse, CompteComptable, CompteTresorerie, LigneEcriture, MouvementCaisse,
+    Caisse, CompteComptable, CompteTresorerie, Effet, LigneEcriture,
+    LignePrevisionnelTresorerie, MouvementCaisse,
 )
 
 
@@ -574,3 +577,135 @@ def caisses_de(company):
     """Caisses actives d'une société (lecture seule, scopée société)."""
     return list(Caisse.objects.filter(company=company).select_related(
         'compte_tresorerie').order_by('libelle'))
+
+
+# ── FG126 — Prévisionnel de trésorerie roulant 13 semaines ─────────────────
+
+def previsionnel_tresorerie(company, *, date_debut=None, nb_semaines=13):
+    """Prévisionnel de trésorerie roulant sur ``nb_semaines`` semaines (FG126).
+
+    Construit une projection SEMAINE PAR SEMAINE en partant de la position de
+    trésorerie consolidée actuelle (selon le grand livre) et en y empilant, pour
+    chaque semaine, les ``LignePrevisionnelTresorerie`` prévues qui y tombent
+    (montant signé : + encaissement, − décaissement) PLUS les effets ouverts
+    (FG127/FG128) dont l'échéance tombe dans la semaine (effets à recevoir → +,
+    à payer → −). Renvoie ``{'solde_initial', 'date_debut', 'semaines': [...]}``
+    où chaque semaine porte ``{'index', 'date_debut', 'date_fin', 'entrees',
+    'sorties', 'flux_net', 'solde_fin', 'lignes': [...]}``. Lecture seule.
+    """
+    debut = date_debut or timezone.localdate()
+    # Cale le début sur le lundi de la semaine de ``debut``.
+    debut = debut - timedelta(days=debut.weekday())
+    position = position_tresorerie(company)
+    solde = position['total']
+    solde_initial = solde
+
+    fin_horizon = debut + timedelta(weeks=nb_semaines)
+    lignes_prev = list(LignePrevisionnelTresorerie.objects.filter(
+        company=company, date_prevue__gte=debut,
+        date_prevue__lt=fin_horizon).order_by('date_prevue', 'id'))
+    effets = list(Effet.objects.filter(
+        company=company, date_echeance__gte=debut,
+        date_echeance__lt=fin_horizon,
+        statut__in=[Effet.Statut.PORTEFEUILLE, Effet.Statut.REMIS]
+    ).order_by('date_echeance', 'id'))
+
+    semaines = []
+    for i in range(nb_semaines):
+        s_debut = debut + timedelta(weeks=i)
+        s_fin = s_debut + timedelta(days=6)
+        entrees = Decimal('0')
+        sorties = Decimal('0')
+        lignes = []
+        for lp in lignes_prev:
+            if s_debut <= lp.date_prevue <= s_fin:
+                montant = lp.montant or Decimal('0')
+                if montant >= 0:
+                    entrees += montant
+                else:
+                    sorties += -montant
+                lignes.append({
+                    'type': 'prevu',
+                    'libelle': lp.libelle,
+                    'categorie': lp.categorie,
+                    'date': lp.date_prevue,
+                    'montant': montant,
+                })
+        for ef in effets:
+            if s_debut <= ef.date_echeance <= s_fin:
+                montant = ef.montant or Decimal('0')
+                if ef.sens == Effet.Sens.RECEVOIR:
+                    entrees += montant
+                    signe = montant
+                else:
+                    sorties += montant
+                    signe = -montant
+                lignes.append({
+                    'type': 'effet',
+                    'libelle': (ef.numero or ef.tireur
+                                or ef.get_type_effet_display()),
+                    'categorie': ef.sens,
+                    'date': ef.date_echeance,
+                    'montant': signe,
+                })
+        flux_net = entrees - sorties
+        solde += flux_net
+        semaines.append({
+            'index': i + 1,
+            'date_debut': s_debut,
+            'date_fin': s_fin,
+            'entrees': entrees,
+            'sorties': sorties,
+            'flux_net': flux_net,
+            'solde_fin': solde,
+            'lignes': lignes,
+        })
+    return {
+        'solde_initial': solde_initial,
+        'date_debut': debut,
+        'nb_semaines': nb_semaines,
+        'semaines': semaines,
+    }
+
+
+# ── FG127 / FG128 — Portefeuille d'effets (échéancier) ─────────────────────
+
+def echeancier_effets(company, *, sens=None, statut=None):
+    """Échéancier des effets (chèques/traites) de la société (FG127/FG128).
+
+    Liste les ``Effet`` filtrés par ``sens`` (recevoir/payer) et/ou ``statut``,
+    ordonnés par échéance. Renvoie une liste de dicts ; les effets OUVERTS (non
+    soldés/rejetés) alimentent la trésorerie prévisionnelle. Lecture seule.
+    """
+    qs = Effet.objects.filter(company=company)
+    if sens:
+        qs = qs.filter(sens=sens)
+    if statut:
+        qs = qs.filter(statut=statut)
+    qs = qs.order_by('date_echeance', 'id')
+    resultats = []
+    for ef in qs:
+        resultats.append({
+            'id': ef.id,
+            'sens': ef.sens,
+            'type_effet': ef.type_effet,
+            'numero': ef.numero,
+            'montant': ef.montant,
+            'date_emission': ef.date_emission,
+            'date_echeance': ef.date_echeance,
+            'banque': ef.banque,
+            'tireur': ef.tireur,
+            'statut': ef.statut,
+            'frais_rejet': ef.frais_rejet,
+            'bordereau_id': ef.bordereau_id,
+        })
+    return resultats
+
+
+def total_effets_ouverts(company, *, sens):
+    """Total des montants des effets OUVERTS d'un sens (portefeuille+remis)."""
+    total = Effet.objects.filter(
+        company=company, sens=sens,
+        statut__in=[Effet.Statut.PORTEFEUILLE, Effet.Statut.REMIS]
+    ).aggregate(s=Sum('montant'))['s']
+    return total or Decimal('0')

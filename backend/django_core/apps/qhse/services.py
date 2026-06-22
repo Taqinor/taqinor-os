@@ -9,7 +9,7 @@ elle réutilise le plan existant et n'ajoute que les relevés manquants.
 from django.db import transaction
 
 from .models import (
-    PlanInspectionChantier, PointControleModele, ReleveControle,
+    NonConformite, PlanInspectionChantier, PointControleModele, ReleveControle,
 )
 
 
@@ -51,3 +51,49 @@ def instancier_plan_chantier(modele, chantier_id, company, date_ouverture=None):
         ReleveControle.objects.bulk_create(a_creer)
 
     return plan
+
+
+# ── QHSE11 — Pont Réserve (installations.Reserve) → NCR ─────────────────────
+
+@transaction.atomic
+def creer_ncr_depuis_reserve(reserve_id, company, signale_par=None,
+                             gravite=None):
+    """Crée une non-conformité (NCR) à partir d'une réserve de chantier.
+
+    Pont cross-app conforme : la ``Reserve`` est lue via le sélecteur LECTURE
+    SEULE de ``installations`` (``reserve_scoped`` / ``reserve_resume``) — jamais
+    par un import de ``installations.models`` — et la NCR garde un lien lâche
+    (FK chaîne ``installations.Reserve``).
+
+    Idempotent : une seule NCR par réserve. Ré-appeler la fonction renvoie la
+    NCR existante sans en créer une seconde. Renvoie ``(ncr, created)``.
+
+    Lève ``ValueError`` si la réserve n'existe pas dans la société.
+    """
+    from apps.installations.selectors import reserve_resume, reserve_scoped
+
+    reserve = reserve_scoped(company, reserve_id)
+    if reserve is None:
+        raise ValueError("Réserve introuvable dans votre société.")
+
+    existante = NonConformite.objects.filter(
+        company=company, reserve_id=reserve.id).first()
+    if existante is not None:
+        return existante, False
+
+    resume = reserve_resume(reserve)
+    description = resume['description']
+    titre = (
+        f'Réserve · {description[:80]}' if description
+        else f'Réserve #{resume["id"]}')
+    ncr = NonConformite.objects.create(
+        company=company,
+        titre=titre,
+        description=description,
+        origine='Réserve de fin de chantier',
+        gravite=gravite or NonConformite.Gravite.MINEURE,
+        chantier_id=resume['chantier_id'],
+        reserve_id=reserve.id,
+        signale_par=signale_par,
+    )
+    return ncr, True
