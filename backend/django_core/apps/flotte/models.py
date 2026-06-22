@@ -51,6 +51,12 @@ class Vehicule(models.Model):
     statut = models.CharField(
         max_length=20, choices=Statut.choices, default=Statut.ACTIF,
         verbose_name='Statut')
+    # FLOTTE3 — référence VERS un emplacement de stock (`stock.EmplacementStock`)
+    # par id NUMÉRIQUE, jamais un FK cross-app dur (modularité, voir CLAUDE.md).
+    # null = véhicule non rattaché à un emplacement. La validation « même
+    # société » se fait côté serveur via le sélecteur de `apps.stock`.
+    emplacement_stock_id = models.PositiveIntegerField(
+        null=True, blank=True, verbose_name='Emplacement de stock (id)')
     date_creation = models.DateTimeField(
         auto_now_add=True, verbose_name='Créé le')
 
