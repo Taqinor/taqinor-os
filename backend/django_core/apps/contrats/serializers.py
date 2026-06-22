@@ -6,7 +6,7 @@ serveur.
 """
 from rest_framework import serializers
 
-from .models import Contrat, PartieContrat
+from .models import Contrat, ContratLien, PartieContrat
 
 
 class ContratSerializer(serializers.ModelSerializer):
@@ -43,6 +43,32 @@ class PartieContratSerializer(serializers.ModelSerializer):
         société de la partie elle-même est posée côté serveur par le
         ``TenantMixin``).
         """
+        request = self.context.get('request')
+        if request is not None and contrat.company_id != request.user.company_id:
+            raise serializers.ValidationError(
+                "Ce contrat n'appartient pas à votre société.")
+        return contrat
+
+
+class ContratLienSerializer(serializers.ModelSerializer):
+    """Lien contrat → document métier d'une autre app (référence lâche typée).
+
+    ``company`` n'est jamais exposée : elle est posée côté serveur. Le
+    ``contrat`` reçu est validé comme appartenant à la société de l'utilisateur.
+    """
+    type_cible_display = serializers.CharField(
+        source='get_type_cible_display', read_only=True)
+
+    class Meta:
+        model = ContratLien
+        fields = [
+            'id', 'contrat', 'type_cible', 'type_cible_display', 'cible_id',
+            'libelle', 'date_creation',
+        ]
+        read_only_fields = ['date_creation']
+
+    def validate_contrat(self, contrat):
+        """Le contrat rattaché doit appartenir à la société de l'utilisateur."""
         request = self.context.get('request')
         if request is not None and contrat.company_id != request.user.company_id:
             raise serializers.ValidationError(
