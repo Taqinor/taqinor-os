@@ -60,9 +60,9 @@ describe('W54 — plus de double listing des installations', () => {
 });
 
 describe('W55/W64 — bande de crédibilité du fondateur (composant FounderPortrait)', () => {
-  it("l'accueil monte le composant FounderPortrait", () => {
-    expect(index).toContain('<FounderPortrait');
-    expect(index).toContain("import FounderPortrait from '../components/FounderPortrait.astro'");
+  it("l'accueil NE monte PLUS le portrait du fondateur (décision fondateur 2026-06-22 : accueil épuré ; le portrait vivra sur /à-propos → page équipe)", () => {
+    expect(index).not.toContain('<FounderPortrait');
+    expect(index).not.toContain("import FounderPortrait from '../components/FounderPortrait.astro'");
   });
 
   it('nomme le parcours approuvé (docteur-ingénieur + 3 maisons) et lie /à-propos', () => {

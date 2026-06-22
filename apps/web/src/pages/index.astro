@@ -104,14 +104,16 @@ const solutionIcons: Record<string, string> = {
 };
 
 // Pourquoi Taqinor / confiance — bande de quatre chiffres monumentaux, faits
-// déjà publiés (mêmes valeurs que la bande de confiance historique :
-// 3 chantiers visitables, 43,48 kWc installés, 10+ ans docteur-ingénieur,
-// Deye Cloud). L'or vit sur les chiffres .lum (discipline laiton). Aucun
-// nouveau claim.
+// déjà publiés. Décision fondateur 2026-06-22 : le slot « docteur-ingénieur »
+// est remplacé par la conformité loi 82-21 — un signal de confiance concret et
+// non personnel (le crédit fondateur vivra sur la page équipe). Les trois autres
+// valeurs (3 chantiers visitables, 43,48 kWc installés, Deye Cloud) sont
+// inchangées. L'or vit sur les chiffres .lum (discipline laiton). Aucun claim
+// inventé.
 const trust = [
   { fig: '3', tally: false, label: 'Chantiers visitables', body: 'Installations réelles à voir sur demande — Casablanca, El Jadida, Nouaceur' },
   { fig: '43,48 kWc', tally: true, label: 'Installés', body: 'Casablanca, El Jadida, Nouaceur' },
-  { fig: '10+ ans', tally: false, label: 'Docteur-ingénieur', body: 'Expertise R&D — chaque étude validée par le fondateur' },
+  { fig: 'Loi 82-21', tally: false, label: 'Conformité incluse', body: 'Déclaration préparée et déposée pour vous par Taqinor' },
   { fig: 'Deye Cloud', tally: false, label: 'Production mesurée', body: 'Monitoring sur chaque installation, accès client inclus' },
 ];
 ---
@@ -273,8 +275,8 @@ const trust = [
           <p class="tech-label v2-kicker rule-brass text-lune"><span class="mr-2 font-display text-xs text-azur-200/80" aria-hidden="true">02</span>Pourquoi Taqinor</p>
           <h2 class="display v2-section-title mt-5 text-white">La preuve avant la promesse</h2>
           <p class="v2-body mt-5">
-            Des chantiers réels, visitables, supervisés en continu, et une étude validée par un
-            docteur-ingénieur. Le chiffre décide du matériel — jamais l'inverse.
+            Des chantiers réels, visitables, supervisés en continu, et une étude dimensionnée à la
+            main sur votre facture réelle. Le chiffre décide du matériel — jamais l'inverse.
           </p>
         </div>
         <dl class="mt-12 grid gap-x-6 gap-y-10 sm:grid-cols-2 lg:grid-cols-4" data-stagger>
