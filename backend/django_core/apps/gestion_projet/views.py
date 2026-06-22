@@ -14,6 +14,7 @@ from authentication.permissions import IsResponsableOrAdmin
 
 from . import selectors, services
 from .models import (
+    DependanceTache,
     PhaseProjet,
     Projet,
     ProjetActivity,
@@ -22,6 +23,7 @@ from .models import (
     Tache,
 )
 from .serializers import (
+    DependanceTacheSerializer,
     PhaseProjetSerializer,
     ProjetActivitySerializer,
     ProjetChantierSerializer,
@@ -291,4 +293,48 @@ class TacheViewSet(_GestionProjetBaseViewSet):
         statut = self.request.query_params.get('statut')
         if statut:
             qs = qs.filter(statut=statut)
+        return qs
+
+    @action(detail=True, methods=['get'], url_path='dependances')
+    def dependances(self, request, pk=None):
+        """Prédécesseurs & successeurs directs d'une tâche (lecture seule).
+
+        La société est garantie par ``get_object`` (queryset scopé société) :
+        une tâche d'une autre société → 404. Délègue au sélecteur
+        ``dependances_de_tache`` (deux dicts ``predecesseurs``/``successeurs``).
+        """
+        tache = self.get_object()
+        return Response(selectors.dependances_de_tache(tache))
+
+
+class DependanceTacheViewSet(_GestionProjetBaseViewSet):
+    """Dépendances de planning entre tâches (FS/SS/FF/SF + lag) — CRUD scopé.
+
+    ``company`` est posée côté serveur (TenantMixin) ; les FK reçus
+    (``predecesseur``, ``successeur``) sont validés même-société par le
+    sérialiseur, qui refuse en plus l'auto-dépendance, une dépendance
+    inter-projets et un cycle direct (l'arête inverse existe déjà) → 400.
+    Filtres optionnels : ``?projet=<id>`` (toutes les arêtes du projet),
+    ``?predecesseur=<id>``, ``?successeur=<id>``, ``?type_dependance=<type>``.
+    """
+    queryset = DependanceTache.objects.select_related(
+        'predecesseur', 'successeur').all()
+    serializer_class = DependanceTacheSerializer
+    filter_backends = [filters.OrderingFilter]
+    ordering_fields = ['id', 'type_dependance']
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        projet = self.request.query_params.get('projet')
+        if projet:
+            qs = qs.filter(predecesseur__projet_id=projet)
+        predecesseur = self.request.query_params.get('predecesseur')
+        if predecesseur:
+            qs = qs.filter(predecesseur_id=predecesseur)
+        successeur = self.request.query_params.get('successeur')
+        if successeur:
+            qs = qs.filter(successeur_id=successeur)
+        type_dependance = self.request.query_params.get('type_dependance')
+        if type_dependance:
+            qs = qs.filter(type_dependance=type_dependance)
         return qs

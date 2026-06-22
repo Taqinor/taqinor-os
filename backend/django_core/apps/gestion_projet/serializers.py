@@ -7,6 +7,7 @@ appartenant à la société de l'utilisateur.
 from rest_framework import serializers
 
 from .models import (
+    DependanceTache,
     PhaseProjet,
     Projet,
     ProjetActivity,
@@ -191,3 +192,58 @@ class ProjetLienSerializer(serializers.ModelSerializer):
 
     def validate_projet(self, value):
         return _meme_societe(self, value, 'Projet')
+
+
+class DependanceTacheSerializer(serializers.ModelSerializer):
+    """Dépendance de planning entre deux tâches (FS/SS/FF/SF + lag).
+
+    ``company`` n'est jamais exposée : elle est posée côté serveur. Les deux FK
+    reçus (``predecesseur``, ``successeur``) sont validés même-société ; le
+    ``validate`` global refuse en plus l'auto-dépendance, une dépendance entre
+    tâches de projets DIFFÉRENTS, et un cycle DIRECT (l'arête inverse existe
+    déjà). Mêmes garde-fous que ``DependanceTache.clean`` — exposés ici en 400.
+    """
+    type_dependance_display = serializers.CharField(
+        source='get_type_dependance_display', read_only=True)
+    projet = serializers.IntegerField(
+        source='predecesseur.projet_id', read_only=True)
+
+    class Meta:
+        model = DependanceTache
+        fields = [
+            'id', 'predecesseur', 'successeur', 'type_dependance',
+            'type_dependance_display', 'lag', 'projet', 'date_creation',
+        ]
+        read_only_fields = ['date_creation']
+
+    def validate_predecesseur(self, value):
+        return _meme_societe(self, value, 'Tâche prédécesseur')
+
+    def validate_successeur(self, value):
+        return _meme_societe(self, value, 'Tâche successeur')
+
+    def validate(self, attrs):
+        # ``predecesseur``/``successeur`` peuvent manquer d'un PATCH partiel : on
+        # retombe sur l'instance courante pour les contrôles de cohérence.
+        pred = attrs.get(
+            'predecesseur', getattr(self.instance, 'predecesseur', None))
+        succ = attrs.get(
+            'successeur', getattr(self.instance, 'successeur', None))
+        if pred is None or succ is None:
+            return attrs
+        if pred.id == succ.id:
+            raise serializers.ValidationError(
+                {'successeur': 'Une tâche ne peut pas dépendre d’elle-même.'})
+        if pred.projet_id != succ.projet_id:
+            raise serializers.ValidationError(
+                {'successeur': 'Le prédécesseur et le successeur doivent '
+                               'appartenir au même projet.'})
+        inverse = DependanceTache.objects.filter(
+            predecesseur_id=succ.id, successeur_id=pred.id)
+        if self.instance is not None:
+            inverse = inverse.exclude(pk=self.instance.pk)
+        if inverse.exists():
+            raise serializers.ValidationError(
+                {'successeur': 'Dépendance cyclique : l’arête inverse existe '
+                               'déjà.'})
+        return attrs
