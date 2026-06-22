@@ -203,6 +203,45 @@ layout shift.**
 
 ---
 
+### W236–W244 — WHOLE-SITE « THE BEST » ELEVATION: EN + AR MIRRORS (founder request 2026-06-22)
+
+**Context.** Founder asked to elevate the WHOLE site to "the best" — KEEP the Majorelle
+night-blue (`--color-nuit` #070b1d), NEVER black. **The FR site is DONE and live (2026-06-22):**
+homepage + résidentiel, professionnel, pompage-solaire, batteries-stockage,
+maintenance-monitoring, regularization-article-33, pourquoi-taqinor, garanties, financement,
+nos-solutions, loi-82-21, recharge-voiture-electrique-solaire, marocains-du-monde, à-propos.
+Also shipped: homepage portrait removed + "docteur-ingénieur" trust card → "Loi 82-21 ·
+Conformité incluse" + trust-band overlap fix; new `ZelligeSignature.astro`; `.v3-grade`
+golden-hour grade in `v3-photo-motion.css`. This group finishes the rollout — the **English
+then Arabic mirrors**, same treatment.
+
+**THE ELEVATION PLAYBOOK** (reference: `apps/web/src/pages/index.astro` +
+`apps/web/src/pages/preview/accueil-v3.astro`, both on main — study & match):
+- Elevate the existing v2 «Cinéma du chantier» system; reuse existing components/classes/tokens;
+  **NO new deps; apps/web only; live pages = NOT noindex**.
+- **Keep ALL content/numbers VERBATIM. Lead form (`DiagnosticForm`) byte-for-byte unchanged.**
+- **Brass discipline:** gold ONLY on `.lum`/`.fig` key figures + the primary CTA; demote stray
+  brass eyebrows/borders/links to `text-lune` (dark) / `text-azur-*` (light) / white.
+- **Warm grade:** add class `v3-grade` (on main) to CONTENT photos only — NEVER the LCP/hero.
+- Taller cinematic hero (~90–100svh) where a photo hero exists; one motion language
+  (`.cine-in`/`.v2-rise`); `.section`/`.section-lg` spacing; `<ZelligeSignature/>` at most once.
+- **Overlap guard:** monumental-figure bands with long values use ≤2 columns + `fig-md` +
+  `min-w-0` (the homepage trust-band fix) so big figures never collide.
+- **À-propos (each language) = the FOUNDER/TEAM page:** founder portrait `fondateur-portrait`
+  present at a MODEST size (~240px, smaller than the old homepage version), NOT a giant hero.
+
+- [ ] W236 — Elevate EN homepage `apps/web/src/pages/en/index.astro` to mirror the FR index (portrait-free, Loi 82-21 trust card, taller hero, brass discipline, zellige signature, overlap-safe trust band).
+- [ ] W237 — Elevate EN solution pages: `en/résidentiel.astro`, `en/professionnel.astro`, `en/pompage-solaire.astro`, `en/batteries-stockage.astro`, `en/maintenance-monitoring.astro`, `en/regularization-article-33.astro`.
+- [ ] W238 — Elevate EN secondary pages: `en/pourquoi-taqinor.astro`, `en/garanties.astro`, `en/financement.astro`, `en/nos-solutions.astro`, `en/loi-82-21.astro`, `en/marocains-du-monde.astro` (+ any `en/recharge-…` if present).
+- [ ] W239 — Elevate EN `en/à-propos.astro` → founder/team page + modest founder portrait (~240px).
+- [ ] W240 — Elevate AR homepage `apps/web/src/pages/ar/index.astro`; verify the `dir="rtl"` layout holds (hero, trust band, zellige signature, spacing).
+- [ ] W241 — Elevate AR solution pages: `ar/résidentiel.astro`, `ar/professionnel.astro`, `ar/pompage-solaire.astro`, `ar/batteries-stockage.astro`, `ar/maintenance-monitoring.astro`, `ar/regularization-article-33.astro` — RTL-checked.
+- [ ] W242 — Elevate AR secondary pages: `ar/pourquoi-taqinor.astro`, `ar/garanties.astro`, `ar/financement.astro`, `ar/nos-solutions.astro`, `ar/loi-82-21.astro`, `ar/marocains-du-monde.astro` — RTL-checked.
+- [ ] W243 — Elevate AR `ar/à-propos.astro` → founder/team page + modest founder portrait (~240px), RTL-checked.
+- [ ] W244 — Brass-discipline consistency sweep on remaining content pages (FR/EN/AR `faq`, `guides/*`, `realisations/*`): apply ONLY the brass-discipline + spacing pass (no hero rebuild). Coordinate with the concurrent SEO/content session — skip any page it is mid-editing, do the rest.
+
+---
+
 ### W70–W97 — 3D BUILDER AUDIT (canonical builder `/preview/toiture-3d-pro-11`, 2026-06-20)
 
 These tasks come from a June 2026 six-lane audit of the canonical 3D roof builder
