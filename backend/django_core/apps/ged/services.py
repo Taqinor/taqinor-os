@@ -51,6 +51,22 @@ def move_folder(folder, new_parent):
     return folder
 
 
+def move_document(document, new_folder):
+    """Déplace un document dans un autre dossier (même société).
+
+    Le dossier cible DOIT appartenir à la même société que le document — sinon
+    on refuse (jamais de fuite cross-société). La société du document n'est
+    jamais modifiée (elle reste posée côté serveur). Renvoie le document.
+    """
+    if new_folder.company_id != document.company_id:
+        raise ValueError(
+            "Le dossier cible doit appartenir à la même société.")
+    if document.folder_id != new_folder.id:
+        document.folder = new_folder
+        document.save(update_fields=['folder', 'updated_at'])
+    return document
+
+
 def add_version(document, *, file_key, company, filename='', size=0, mime='',
                 checksum='', uploaded_by=None):
     """Ajoute une nouvelle version à un document (numéro auto-incrémenté).
