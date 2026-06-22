@@ -1,12 +1,13 @@
 import { useSelector, useDispatch } from 'react-redux'
 import { useLocation, useNavigate } from 'react-router-dom'
-import { Menu, Search, LogOut, User as UserIcon, Settings, Zap } from 'lucide-react'
+import { Menu, Search, LogOut, User as UserIcon, Settings, Zap, Bot } from 'lucide-react'
 import {
   Avatar, AvatarFallback, initials,
   DropdownMenu, DropdownMenuTrigger, DropdownMenuContent,
   DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator,
 } from '../../ui'
 import { logoutUser } from '../../features/auth/store/authSlice'
+import { toggleCopilot } from '../../features/ia/store/iaSlice'
 import GlobalSearch from './GlobalSearch'
 import NotificationBell from './NotificationBell'
 import ChatBell from './ChatBell'
@@ -77,6 +78,18 @@ export default function Header({ onMenu }) {
 
         <div className="header-user">
           <ThemeToggle />
+          {/* FG350 — bascule du tiroir Copilote (agent FastAPI) accessible
+              partout dans l'app shell. */}
+          <button
+            type="button"
+            className="nb-btn"
+            aria-label="Ouvrir le Copilote"
+            title="Copilote"
+            data-testid="copilot-toggle"
+            onClick={() => dispatch(toggleCopilot())}
+          >
+            <Bot size={19} aria-hidden="true" />
+          </button>
           <ChatBell />
           <NotificationBell />
           <DropdownMenu>

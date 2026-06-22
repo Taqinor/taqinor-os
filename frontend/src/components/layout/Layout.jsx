@@ -6,6 +6,7 @@ import { fetchProfile } from '../../features/parametres/store/parametresSlice'
 import Sidebar from './Sidebar'
 import Header from './Header'
 import BottomTabBar from './BottomTabBar'
+import CopilotPanel from '../../features/ia/CopilotPanel'
 import { OfflineBanner } from '../../ui/OfflineState'
 
 // I34 — État réduit de la sidebar persisté en localStorage. Défaut = false
@@ -77,6 +78,9 @@ export default function Layout({ children }) {
         {/* I36 — Barre d'onglets inférieure (mobile uniquement, via CSS). */}
         <BottomTabBar onMore={() => setDrawerOpen(true)} />
       </div>
+      {/* FG350 — Copilote in-app : tiroir conversationnel global (agent FastAPI),
+          monté une fois pour toute l'app, piloté par la slice `ia`. */}
+      <CopilotPanel />
     </div>
   )
 }
