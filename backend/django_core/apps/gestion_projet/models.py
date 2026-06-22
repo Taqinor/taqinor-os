@@ -328,6 +328,106 @@ class Tache(models.Model):
         return f'{prefix}{self.libelle}'
 
 
+class DependanceTache(models.Model):
+    """Une dépendance de planning entre deux ``Tache`` d'un MÊME projet.
+
+    Relie une tâche PRÉDÉCESSEUR (``predecesseur``) à une tâche SUCCESSEUR
+    (``successeur``) selon un ``type_dependance`` de planification classique :
+
+        FS (finish-to-start)  — le successeur démarre après la fin du prédécesseur
+        SS (start-to-start)   — les deux démarrent ensemble
+        FF (finish-to-finish) — les deux finissent ensemble
+        SF (start-to-finish)  — le successeur finit après le début du prédécesseur
+
+    Le ``lag`` est un décalage en JOURS (lead/lag) appliqué à la contrainte : il
+    peut être NÉGATIF (lead, chevauchement) comme positif (lag, temporisation).
+    Le ``type_dependance`` est un enum PROPRE à ce module — il ne réutilise NI
+    n'importe AUCUNE clé/étiquette de ``STAGES.py`` (règle #2).
+
+    Garde-fous (posés au ``clean`` du modèle ET au sérialiseur) : prédécesseur et
+    successeur doivent appartenir au MÊME projet et à la MÊME société ; une tâche
+    ne peut dépendre d'elle-même ; et un cycle DIRECT (A→B alors que B→A existe
+    déjà) est refusé. C'est la brique de données de PROJ8 (chemin critique / CPM).
+    Tout est multi-société : ``company`` est posée côté serveur, jamais lue du
+    corps de requête. Modèle entièrement additif.
+    """
+    class TypeDependance(models.TextChoices):
+        FS = 'fs', 'Fin → Début (FS)'
+        SS = 'ss', 'Début → Début (SS)'
+        FF = 'ff', 'Fin → Fin (FF)'
+        SF = 'sf', 'Début → Fin (SF)'
+
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='projet_dependances',
+        verbose_name='Société',
+    )
+    # La tâche dont l'achèvement/le démarrage CONTRAINT l'autre.
+    predecesseur = models.ForeignKey(
+        Tache,
+        on_delete=models.CASCADE,
+        related_name='dependances_sortantes',
+        verbose_name='Tâche prédécesseur',
+    )
+    # La tâche contrainte par le prédécesseur.
+    successeur = models.ForeignKey(
+        Tache,
+        on_delete=models.CASCADE,
+        related_name='dependances_entrantes',
+        verbose_name='Tâche successeur',
+    )
+    type_dependance = models.CharField(
+        max_length=2, choices=TypeDependance.choices,
+        default=TypeDependance.FS, verbose_name='Type de dépendance')
+    # Décalage en jours (lead/lag) — peut être négatif.
+    lag = models.IntegerField(default=0, verbose_name='Décalage (jours)')
+    date_creation = models.DateTimeField(
+        auto_now_add=True, verbose_name='Créé le')
+
+    class Meta:
+        verbose_name = 'Dépendance de tâche'
+        verbose_name_plural = 'Dépendances de tâches'
+        ordering = ['id']
+        # Une seule arête par couple (prédécesseur, successeur) : le type/lag se
+        # modifie par PATCH, jamais en dupliquant l'arête.
+        unique_together = [('predecesseur', 'successeur')]
+        indexes = [
+            models.Index(
+                fields=['successeur'], name='gp_dep_successeur_idx'),
+            models.Index(
+                fields=['predecesseur'], name='gp_dep_predecesseur_idx'),
+        ]
+
+    def __str__(self):
+        return (f'{self.predecesseur_id} →[{self.type_dependance}] '
+                f'{self.successeur_id}')
+
+    def clean(self):
+        from django.core.exceptions import ValidationError
+        pred = self.predecesseur
+        succ = self.successeur
+        if pred is None or succ is None:
+            return
+        # Pas d'auto-dépendance.
+        if pred.id is not None and pred.id == succ.id:
+            raise ValidationError(
+                'Une tâche ne peut pas dépendre d’elle-même.')
+        # Même projet (et donc même société).
+        if pred.projet_id != succ.projet_id:
+            raise ValidationError(
+                'Le prédécesseur et le successeur doivent appartenir au même '
+                'projet.')
+        # Cycle DIRECT : l'arête inverse existe déjà (B→A alors qu'on crée A→B).
+        inverse = DependanceTache.objects.filter(
+            predecesseur_id=succ.id, successeur_id=pred.id)
+        if self.pk is not None:
+            inverse = inverse.exclude(pk=self.pk)
+        if inverse.exists():
+            raise ValidationError(
+                'Dépendance cyclique : l’arête inverse existe déjà.')
+
+
 class ProjetActivity(models.Model):
     """Journal minimal des transitions de statut d'un ``Projet``.
 

@@ -7,7 +7,7 @@ les imports cross-app sont fonction-locaux pour éviter les cycles. Quand une ap
 cible n'a pas de sélecteur exploitable, on DÉGRADE proprement : on renvoie le
 ``libelle`` mis en cache et les ids stockés, sans rien importer.
 """
-from .models import ProjetLien, Tache
+from .models import DependanceTache, ProjetLien, Tache
 
 
 def taches_for_projet(projet):
@@ -18,6 +18,56 @@ def taches_for_projet(projet):
     """
     return Tache.objects.filter(
         projet=projet, company=projet.company).order_by('ordre', 'id')
+
+
+def _serialize_dependance(dep, autre_tache):
+    """Dict d'une arête de dépendance vue depuis une tâche (l'autre bout)."""
+    return {
+        'id': dep.id,
+        'predecesseur': dep.predecesseur_id,
+        'successeur': dep.successeur_id,
+        'type_dependance': dep.type_dependance,
+        'lag': dep.lag,
+        'tache_id': autre_tache.id,
+        'tache_libelle': autre_tache.libelle,
+        'tache_code_wbs': autre_tache.code_wbs,
+    }
+
+
+def predecesseurs_de_tache(tache):
+    """Arêtes entrantes d'une tâche (les tâches dont elle dépend).
+
+    Lecture seule. ``tache`` est le SUCCESSEUR de chaque arête renvoyée ; on
+    expose le prédécesseur (l'autre bout). QuerySet scopé société.
+    """
+    qs = DependanceTache.objects.filter(
+        successeur=tache, company=tache.company
+    ).select_related('predecesseur').order_by('id')
+    return [_serialize_dependance(dep, dep.predecesseur) for dep in qs]
+
+
+def successeurs_de_tache(tache):
+    """Arêtes sortantes d'une tâche (les tâches qui dépendent d'elle).
+
+    Lecture seule. ``tache`` est le PRÉDÉCESSEUR de chaque arête renvoyée ; on
+    expose le successeur (l'autre bout). QuerySet scopé société.
+    """
+    qs = DependanceTache.objects.filter(
+        predecesseur=tache, company=tache.company
+    ).select_related('successeur').order_by('id')
+    return [_serialize_dependance(dep, dep.successeur) for dep in qs]
+
+
+def dependances_de_tache(tache):
+    """Prédécesseurs ET successeurs directs d'une tâche (lecture seule).
+
+    Renvoie ``{'predecesseurs': [...], 'successeurs': [...]}`` — base de PROJ8
+    (chemin critique / CPM). Société portée par la tâche.
+    """
+    return {
+        'predecesseurs': predecesseurs_de_tache(tache),
+        'successeurs': successeurs_de_tache(tache),
+    }
 
 
 def _serialize_tache(tache, enfants_par_parent):

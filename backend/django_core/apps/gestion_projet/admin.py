@@ -1,6 +1,7 @@
 from django.contrib import admin
 
 from .models import (
+    DependanceTache,
     PhaseProjet,
     Projet,
     ProjetActivity,
@@ -47,6 +48,13 @@ class TacheAdmin(admin.ModelAdmin):
                     'statut', 'avancement_pct', 'company')
     list_filter = ('statut', 'company')
     search_fields = ('libelle', 'code_wbs')
+
+
+@admin.register(DependanceTache)
+class DependanceTacheAdmin(admin.ModelAdmin):
+    list_display = ('id', 'predecesseur', 'successeur', 'type_dependance',
+                    'lag', 'company')
+    list_filter = ('type_dependance', 'company')
 
 
 @admin.register(ProjetActivity)
