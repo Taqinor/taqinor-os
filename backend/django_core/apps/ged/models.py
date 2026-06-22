@@ -25,7 +25,15 @@ mécanisme ContentType déjà en place pour Activity/Attachment/Comment/TaggedIt
 from django.conf import settings
 from django.contrib.contenttypes.fields import GenericForeignKey
 from django.contrib.contenttypes.models import ContentType
+from django.contrib.postgres.indexes import GinIndex
+from django.contrib.postgres.search import SearchVectorField
 from django.db import models
+from pgvector.django import VectorField
+
+# GED12 — dimension du vecteur d'embedding documentaire (clé-gated). Aligné sur
+# les embeddings Zhipu/OpenAI-compatibles (1024). Fixe : changer la dimension
+# exigerait une migration destructive (jamais fait à la volée).
+EMBEDDING_DIM = 1024
 
 
 class Cabinet(models.Model):
@@ -128,6 +136,68 @@ class Folder(models.Model):
         ).exclude(pk=self.pk)
 
 
+class Coffre(models.Model):
+    """GED8 — Coffre-fort par employé/client (ACL propriétaire + admin).
+
+    Un coffre-fort est un espace documentaire confidentiel rattaché à UN
+    propriétaire : soit un employé (`proprietaire`, un User de la société), soit
+    un client (`client_id`, référence string-FK vers `crm.Client` — jamais un
+    import direct du modèle). Les documents placés dans un coffre (via
+    `Document.coffre`) ne sont visibles QUE de leur propriétaire et des
+    administrateurs de la société : le filtrage ACL est appliqué côté serveur
+    dans les `selectors`/viewsets (jamais lu du corps de requête).
+
+    Company posée côté serveur. Le coffre porte exactement un type de
+    propriétaire : un employé OU un client (jamais les deux, jamais aucun).
+    """
+    company = models.ForeignKey(
+        'authentication.Company', on_delete=models.CASCADE,
+        null=True, blank=True, related_name='ged_coffres')
+    nom = models.CharField(max_length=200)
+    description = models.TextField(blank=True, default='')
+    # Propriétaire employé (User de la société) — exclusif avec `client_id`.
+    proprietaire = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.CASCADE,
+        null=True, blank=True, related_name='ged_coffres')
+    # Propriétaire client — référence string-FK vers crm.Client (cross-app via
+    # selectors, jamais un import du modèle). Exclusif avec `proprietaire`.
+    client = models.ForeignKey(
+        'crm.Client', on_delete=models.CASCADE,
+        null=True, blank=True, related_name='ged_coffres')
+    created_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL,
+        null=True, blank=True, related_name='ged_coffres_crees')
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ['nom', 'id']
+        verbose_name = 'Coffre-fort'
+        verbose_name_plural = 'Coffres-forts'
+        indexes = [
+            models.Index(fields=['company', 'proprietaire']),
+            models.Index(fields=['company', 'client']),
+        ]
+
+    def __str__(self):
+        return self.nom
+
+    def is_accessible_by(self, user):
+        """ACL — True si `user` peut accéder à ce coffre (propriétaire OU admin).
+
+        Un employé voit son propre coffre (`proprietaire`). Un coffre client
+        n'a pas d'utilisateur propriétaire : seuls les admins de la société y
+        accèdent. Les administrateurs voient tous les coffres de leur société.
+        """
+        if user is None or not user.is_authenticated:
+            return False
+        if user.company_id != self.company_id:
+            return False
+        if getattr(user, 'is_admin_role', False) or user.is_superuser:
+            return True
+        return self.proprietaire_id == user.id
+
+
 class Document(models.Model):
     """Document logique vivant dans un dossier (GED3).
 
@@ -141,8 +211,34 @@ class Document(models.Model):
         null=True, blank=True, related_name='ged_documents')
     folder = models.ForeignKey(
         Folder, on_delete=models.CASCADE, related_name='documents')
+    # GED8 — un document peut vivre dans un coffre-fort (ACL propriétaire+admin).
+    # Quand `coffre` est non nul, seuls le propriétaire du coffre et les admins
+    # voient/manipulent ce document (filtrage en `selectors`/viewset).
+    coffre = models.ForeignKey(
+        'Coffre', on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='documents')
     nom = models.CharField(max_length=255)
     description = models.TextField(blank=True, default='')
+    # GED10 — métadonnées typées configurables (réutilise `customfields`).
+    # Un admin définit des `CustomFieldDef` sur le module « document » ; les
+    # valeurs vivent ici, indexées par `code` (approche additive JSONField —
+    # ajouter/retirer une définition ne touche jamais le schéma). Validé contre
+    # les définitions actives via `customfields.serializers.validate_custom_data`.
+    custom_data = models.JSONField(null=True, blank=True, default=dict)
+    # GED11 — recherche plein-texte Postgres. `search_vector` est un tsvector
+    # maintenu côté serveur (via `services.update_search_vector`) à partir du
+    # nom, de la description, des tags et — quand GED12 l'alimente — du texte
+    # OCR. Un index GIN dessus rend la recherche `@@` rapide. Le `texte_ocr`
+    # est le texte extrait (vide par défaut ; rempli par l'indexation GED12).
+    texte_ocr = models.TextField(blank=True, default='')
+    search_vector = SearchVectorField(null=True, blank=True)
+    # GED12 — index OCR + recherche sémantique (pgvector, KEY-GATED no-op).
+    # `embedding` est le vecteur d'embedding du texte OCR/nom du document
+    # (dimension EMBEDDING_DIM). Il n'est calculé QUE si une clé d'embedding est
+    # configurée (`settings.GED_EMBEDDING_ENABLED` + provider) — sinon il reste
+    # NULL et la recherche sémantique est un no-op qui retombe sur la recherche
+    # plein-texte (GED11). Aucun appel réseau ni coût tant que la clé est absente.
+    embedding = VectorField(dimensions=EMBEDDING_DIM, null=True, blank=True)
     created_by = models.ForeignKey(
         settings.AUTH_USER_MODEL, on_delete=models.SET_NULL,
         null=True, blank=True, related_name='ged_documents_crees')
@@ -155,6 +251,8 @@ class Document(models.Model):
         verbose_name_plural = 'Documents'
         indexes = [
             models.Index(fields=['company', 'folder']),
+            # GED11 — index GIN sur le tsvector pour la recherche plein-texte.
+            GinIndex(fields=['search_vector'], name='ged_doc_search_gin'),
         ]
 
     def __str__(self):
@@ -244,3 +342,88 @@ class DocumentLien(models.Model):
 
     def __str__(self):
         return f'{self.document} ↔ {self.content_type.model}:{self.object_id}'
+
+
+class DocumentTag(models.Model):
+    """GED9 — Taxonomie de tags documentaires (vocabulaire HIÉRARCHIQUE).
+
+    Contrairement au tag plat partagé de `records.Tag`, la GED gère une
+    TAXONOMIE : des tags peuvent porter un parent (`parent`, self-FK) pour
+    former une arborescence de catégories (ex. « Juridique » → « Contrats » →
+    « NDA »). Le `slug` est l'identifiant stable par société ; `couleur` un chip
+    UI optionnel. Company posée côté serveur. Un tag est unique par (société,
+    slug). On applique un tag à un document via `DocumentTagAssignment`.
+    """
+    company = models.ForeignKey(
+        'authentication.Company', on_delete=models.CASCADE,
+        null=True, blank=True, related_name='ged_tags')
+    parent = models.ForeignKey(
+        'self', on_delete=models.CASCADE,
+        null=True, blank=True, related_name='enfants')
+    nom = models.CharField(max_length=100)
+    slug = models.SlugField(max_length=110)
+    couleur = models.CharField(max_length=7, blank=True, default='')
+    description = models.TextField(blank=True, default='')
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ['nom', 'id']
+        unique_together = [('company', 'slug')]
+        verbose_name = 'Tag documentaire'
+        verbose_name_plural = 'Tags documentaires'
+        indexes = [
+            models.Index(fields=['company', 'slug']),
+            models.Index(fields=['parent']),
+        ]
+
+    def __str__(self):
+        return self.nom
+
+    def ancetres(self):
+        """Liste des tags ancêtres (du plus proche à la racine).
+
+        Remonte la self-FK `parent` en restant borné à la société. Sert au
+        chemin lisible « Juridique / Contrats / NDA » et à la garde anti-cycle.
+        """
+        chaine = []
+        courant = self.parent
+        seen = set()
+        while courant is not None and courant.pk not in seen:
+            seen.add(courant.pk)
+            chaine.append(courant)
+            courant = courant.parent
+        return chaine
+
+
+class DocumentTagAssignment(models.Model):
+    """GED9 — Application d'un tag de la taxonomie à un document.
+
+    Lien M2M explicite (through) entre `Document` et `DocumentTag` : un document
+    porte N tags, un tag étiquette N documents. Unique par (document, tag).
+    Company posée côté serveur (cohérente avec le document et le tag).
+    """
+    company = models.ForeignKey(
+        'authentication.Company', on_delete=models.CASCADE,
+        null=True, blank=True, related_name='ged_tag_assignments')
+    document = models.ForeignKey(
+        Document, on_delete=models.CASCADE, related_name='tag_assignments')
+    tag = models.ForeignKey(
+        DocumentTag, on_delete=models.CASCADE, related_name='assignments')
+    created_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL,
+        null=True, blank=True, related_name='ged_tag_assignments_crees')
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['-created_at', '-id']
+        unique_together = [('document', 'tag')]
+        verbose_name = 'Affectation de tag'
+        verbose_name_plural = 'Affectations de tag'
+        indexes = [
+            models.Index(fields=['company', 'document']),
+            models.Index(fields=['tag']),
+        ]
+
+    def __str__(self):
+        return f'{self.document} #{self.tag}'

@@ -17,7 +17,10 @@ from authentication.models import Company
 from apps.crm.models import Client
 from apps.records.models import Attachment
 from apps.ged import selectors, services
-from apps.ged.models import Cabinet, Document, DocumentLien, DocumentVersion, Folder
+from apps.ged.models import (
+    Cabinet, Coffre, Document, DocumentLien, DocumentTag,
+    DocumentTagAssignment, DocumentVersion, Folder,
+)
 
 User = get_user_model()
 
@@ -775,3 +778,489 @@ class MigrateAttachmentsToGedTests(GedBase):
         self.assertFalse(DocumentLien.objects.exists())
         self.assertFalse(
             Cabinet.objects.filter(company=self.co_a, nom='Importé').exists())
+
+
+# ── GED8 — Coffre-fort par employé/client (ACL propriétaire + admin) ──
+class CoffreAclTests(GedBase):
+    """Vérifie l'ACL du coffre-fort : un employé ne voit QUE son coffre, un
+    admin voit tous ceux de sa société, et un document placé dans un coffre est
+    invisible des autres. Société toujours posée côté serveur."""
+
+    def setUp(self):
+        super().setUp()
+        # Deux employés non-admin de la société A + un client.
+        self.emp1 = make_user(self.co_a, 'ged-emp1', 'normal')
+        self.emp2 = make_user(self.co_a, 'ged-emp2', 'normal')
+        self.client_a = Client.objects.create(
+            company=self.co_a, nom='Client A', email='ca@example.com')
+        self.folder_a = Folder.objects.create(
+            company=self.co_a, cabinet=self.cab_a, nom='Racine')
+        # Coffre de emp1.
+        self.coffre1 = Coffre.objects.create(
+            company=self.co_a, nom='Coffre emp1', proprietaire=self.emp1)
+        # Document dans le coffre de emp1.
+        self.doc_secret = Document.objects.create(
+            company=self.co_a, folder=self.folder_a, coffre=self.coffre1,
+            nom='Bulletin de paie emp1')
+        # Document hors coffre (visible de tous).
+        self.doc_public = Document.objects.create(
+            company=self.co_a, folder=self.folder_a, nom='Note de service')
+
+    def test_owner_sees_own_coffre(self):
+        api = auth(self.emp1)
+        resp = api.get('/api/django/ged/coffres/')
+        ids = [r['id'] for r in rows(resp)]
+        self.assertIn(self.coffre1.id, ids)
+
+    def test_non_owner_employee_cannot_see_coffre(self):
+        api = auth(self.emp2)
+        # emp2 n'est pas propriétaire : ni en liste…
+        resp = api.get('/api/django/ged/coffres/')
+        self.assertEqual(rows(resp), [])
+        # …ni en lecture directe (404, pas dans le queryset).
+        resp = api.get(f'/api/django/ged/coffres/{self.coffre1.id}/')
+        self.assertEqual(resp.status_code, 404)
+
+    def test_admin_sees_all_company_coffres(self):
+        api = auth(self.admin_a)
+        resp = api.get('/api/django/ged/coffres/')
+        ids = [r['id'] for r in rows(resp)]
+        self.assertIn(self.coffre1.id, ids)
+
+    def test_document_in_coffre_hidden_from_non_owner(self):
+        api = auth(self.emp2)
+        resp = api.get('/api/django/ged/documents/')
+        ids = [r['id'] for r in rows(resp)]
+        self.assertNotIn(self.doc_secret.id, ids)
+        self.assertIn(self.doc_public.id, ids)
+        # Lecture directe du doc secret : 404.
+        resp = api.get(f'/api/django/ged/documents/{self.doc_secret.id}/')
+        self.assertEqual(resp.status_code, 404)
+
+    def test_owner_sees_document_in_own_coffre(self):
+        api = auth(self.emp1)
+        resp = api.get('/api/django/ged/documents/')
+        ids = [r['id'] for r in rows(resp)]
+        self.assertIn(self.doc_secret.id, ids)
+
+    def test_admin_sees_document_in_coffre(self):
+        api = auth(self.admin_a)
+        resp = api.get(f'/api/django/ged/documents/{self.doc_secret.id}/')
+        self.assertEqual(resp.status_code, 200)
+
+    def test_cross_company_coffre_isolation(self):
+        # Admin B ne voit aucun coffre de A.
+        api = auth(self.admin_b)
+        resp = api.get('/api/django/ged/coffres/')
+        ids = [r['id'] for r in rows(resp)]
+        self.assertNotIn(self.coffre1.id, ids)
+
+    def test_create_coffre_forces_company_and_owner_xor(self):
+        api = auth(self.admin_a)
+        # Sans propriétaire ni client → 400.
+        resp = api.post('/api/django/ged/coffres/', {
+            'nom': 'Vide', 'company': self.co_b.id}, format='json')
+        self.assertEqual(resp.status_code, 400)
+        # Les deux propriétaires → 400.
+        resp = api.post('/api/django/ged/coffres/', {
+            'nom': 'Deux', 'proprietaire': self.emp1.id,
+            'client': self.client_a.id}, format='json')
+        self.assertEqual(resp.status_code, 400)
+        # Un employé seul → 201, société forcée à A.
+        resp = api.post('/api/django/ged/coffres/', {
+            'nom': 'OK emp', 'proprietaire': self.emp2.id,
+            'company': self.co_b.id}, format='json')
+        self.assertEqual(resp.status_code, 201, resp.data)
+        coffre = Coffre.objects.get(id=resp.data['id'])
+        self.assertEqual(coffre.company_id, self.co_a.id)
+        self.assertEqual(coffre.proprietaire_id, self.emp2.id)
+
+    def test_cannot_drop_document_in_others_coffre(self):
+        # Un responsable (droit d'écrire) qui n'est PAS propriétaire du coffre
+        # de emp1 ne peut pas y déposer un document : rejet ACL en 400.
+        resp_user = make_user(self.co_a, 'ged-resp2', 'responsable')
+        api = auth(resp_user)
+        resp = api.post('/api/django/ged/documents/', {
+            'folder': self.folder_a.id, 'coffre': self.coffre1.id,
+            'nom': 'Intrusion'}, format='json')
+        self.assertEqual(resp.status_code, 400, resp.data)
+
+    def test_coffre_documents_action(self):
+        api = auth(self.emp1)
+        resp = api.get(f'/api/django/ged/coffres/{self.coffre1.id}/documents/')
+        self.assertEqual(resp.status_code, 200)
+        ids = [r['id'] for r in resp.data]
+        self.assertIn(self.doc_secret.id, ids)
+
+
+# ── GED9 — Taxonomie de tags documentaires ───────────────────────────
+class DocumentTagTaxonomyTests(GedBase):
+    """Vérifie la taxonomie hiérarchique de tags : création scopée société,
+    parent même-société, garde anti-cycle, application/retrait sur un document,
+    chemin lisible et filtre par tag (+ descendants)."""
+
+    def setUp(self):
+        super().setUp()
+        self.folder_a = Folder.objects.create(
+            company=self.co_a, cabinet=self.cab_a, nom='Racine')
+        self.doc = Document.objects.create(
+            company=self.co_a, folder=self.folder_a, nom='Contrat X')
+
+    def test_create_tag_forces_company(self):
+        api = auth(self.admin_a)
+        resp = api.post('/api/django/ged/tags/', {
+            'nom': 'Juridique', 'slug': 'juridique',
+            'company': self.co_b.id}, format='json')
+        self.assertEqual(resp.status_code, 201, resp.data)
+        tag = DocumentTag.objects.get(id=resp.data['id'])
+        self.assertEqual(tag.company_id, self.co_a.id)
+
+    def test_hierarchy_and_chemin(self):
+        racine = DocumentTag.objects.create(
+            company=self.co_a, nom='Juridique', slug='juridique')
+        enfant = DocumentTag.objects.create(
+            company=self.co_a, nom='Contrats', slug='contrats', parent=racine)
+        api = auth(self.admin_a)
+        resp = api.get(f'/api/django/ged/tags/{enfant.id}/')
+        self.assertEqual(resp.data['chemin'], 'Juridique / Contrats')
+
+    def test_parent_other_company_rejected(self):
+        tag_b = DocumentTag.objects.create(
+            company=self.co_b, nom='Etranger', slug='etranger')
+        api = auth(self.admin_a)
+        resp = api.post('/api/django/ged/tags/', {
+            'nom': 'Sous', 'slug': 'sous', 'parent': tag_b.id}, format='json')
+        self.assertEqual(resp.status_code, 400)
+
+    def test_cycle_rejected(self):
+        a = DocumentTag.objects.create(company=self.co_a, nom='A', slug='a')
+        b = DocumentTag.objects.create(
+            company=self.co_a, nom='B', slug='b', parent=a)
+        api = auth(self.admin_a)
+        # Tenter de mettre A sous B (son descendant) → cycle → 400.
+        resp = api.patch(f'/api/django/ged/tags/{a.id}/',
+                         {'parent': b.id}, format='json')
+        self.assertEqual(resp.status_code, 400)
+
+    def test_tagger_and_detagger_document(self):
+        tag = DocumentTag.objects.create(
+            company=self.co_a, nom='Important', slug='important')
+        api = auth(self.admin_a)
+        resp = api.post(f'/api/django/ged/documents/{self.doc.id}/tagger/',
+                        {'tag': tag.id}, format='json')
+        self.assertEqual(resp.status_code, 201, resp.data)
+        self.assertTrue(DocumentTagAssignment.objects.filter(
+            document=self.doc, tag=tag).exists())
+        tag_ids = [t['id'] for t in resp.data['tags']]
+        self.assertIn(tag.id, tag_ids)
+        # Idempotent : 2e tagger → 200, toujours un seul lien.
+        resp = api.post(f'/api/django/ged/documents/{self.doc.id}/tagger/',
+                        {'tag': tag.id}, format='json')
+        self.assertEqual(resp.status_code, 200)
+        self.assertEqual(DocumentTagAssignment.objects.filter(
+            document=self.doc, tag=tag).count(), 1)
+        # detagger.
+        resp = api.post(f'/api/django/ged/documents/{self.doc.id}/detagger/',
+                        {'tag': tag.id}, format='json')
+        self.assertEqual(resp.status_code, 200)
+        self.assertFalse(DocumentTagAssignment.objects.filter(
+            document=self.doc, tag=tag).exists())
+
+    def test_cannot_tag_other_company_tag(self):
+        tag_b = DocumentTag.objects.create(
+            company=self.co_b, nom='B', slug='b')
+        api = auth(self.admin_a)
+        resp = api.post(f'/api/django/ged/documents/{self.doc.id}/tagger/',
+                        {'tag': tag_b.id}, format='json')
+        self.assertEqual(resp.status_code, 404)
+
+    def test_filter_documents_by_tag(self):
+        tag = DocumentTag.objects.create(
+            company=self.co_a, nom='T', slug='t')
+        services.assign_tag(self.doc, tag)
+        other = Document.objects.create(
+            company=self.co_a, folder=self.folder_a, nom='Sans tag')
+        api = auth(self.admin_a)
+        resp = api.get(f'/api/django/ged/documents/?tag={tag.id}')
+        ids = [r['id'] for r in rows(resp)]
+        self.assertIn(self.doc.id, ids)
+        self.assertNotIn(other.id, ids)
+
+    def test_tag_documents_action_with_descendants(self):
+        parent = DocumentTag.objects.create(
+            company=self.co_a, nom='P', slug='p')
+        child = DocumentTag.objects.create(
+            company=self.co_a, nom='C', slug='c', parent=parent)
+        doc_child = Document.objects.create(
+            company=self.co_a, folder=self.folder_a, nom='Doc enfant')
+        services.assign_tag(doc_child, child)
+        api = auth(self.admin_a)
+        # Sans descendants : le doc du sous-tag n'apparaît pas.
+        resp = api.get(f'/api/django/ged/tags/{parent.id}/documents/')
+        ids = [r['id'] for r in resp.data]
+        self.assertNotIn(doc_child.id, ids)
+        # Avec descendants : il apparaît.
+        resp = api.get(
+            f'/api/django/ged/tags/{parent.id}/documents/?descendants=1')
+        ids = [r['id'] for r in resp.data]
+        self.assertIn(doc_child.id, ids)
+
+    def test_tag_isolation_list(self):
+        DocumentTag.objects.create(company=self.co_b, nom='B', slug='b')
+        DocumentTag.objects.create(company=self.co_a, nom='A', slug='a')
+        api = auth(self.admin_a)
+        resp = api.get('/api/django/ged/tags/')
+        noms = [r['nom'] for r in rows(resp)]
+        self.assertIn('A', noms)
+        self.assertNotIn('B', noms)
+
+
+# ── GED10 — Métadonnées typées configurables (réutilise customfields) ─
+class DocumentCustomDataTests(GedBase):
+    """Vérifie que les documents portent des métadonnées typées validées contre
+    les définitions `customfields` du module « document » : champ obligatoire,
+    type cohérent, choix borné, clés inconnues écartées, et isolation société."""
+
+    def setUp(self):
+        super().setUp()
+        from apps.customfields.models import CustomFieldDef
+        self.CFD = CustomFieldDef
+        self.folder_a = Folder.objects.create(
+            company=self.co_a, cabinet=self.cab_a, nom='Racine')
+        # Une définition obligatoire (texte) + une de choix sur le module doc.
+        self.CFD.objects.create(
+            company=self.co_a, module='document', code='reference',
+            libelle='Référence', type='text', obligatoire=True)
+        self.CFD.objects.create(
+            company=self.co_a, module='document', code='confidentialite',
+            libelle='Confidentialité', type='choice',
+            options=['public', 'interne', 'secret'])
+
+    def test_create_document_with_valid_custom_data(self):
+        api = auth(self.admin_a)
+        resp = api.post('/api/django/ged/documents/', {
+            'folder': self.folder_a.id, 'nom': 'Contrat',
+            'custom_data': {'reference': 'DOC-001',
+                            'confidentialite': 'interne'},
+        }, format='json')
+        self.assertEqual(resp.status_code, 201, resp.data)
+        doc = Document.objects.get(id=resp.data['id'])
+        self.assertEqual(doc.custom_data['reference'], 'DOC-001')
+        self.assertEqual(doc.custom_data['confidentialite'], 'interne')
+
+    def test_missing_required_field_rejected(self):
+        api = auth(self.admin_a)
+        resp = api.post('/api/django/ged/documents/', {
+            'folder': self.folder_a.id, 'nom': 'Sans ref',
+            'custom_data': {'confidentialite': 'public'},
+        }, format='json')
+        self.assertEqual(resp.status_code, 400)
+
+    def test_invalid_choice_rejected(self):
+        api = auth(self.admin_a)
+        resp = api.post('/api/django/ged/documents/', {
+            'folder': self.folder_a.id, 'nom': 'Doc',
+            'custom_data': {'reference': 'R', 'confidentialite': 'inconnu'},
+        }, format='json')
+        self.assertEqual(resp.status_code, 400)
+
+    def test_unknown_keys_are_dropped(self):
+        api = auth(self.admin_a)
+        resp = api.post('/api/django/ged/documents/', {
+            'folder': self.folder_a.id, 'nom': 'Doc',
+            'custom_data': {'reference': 'R', 'inexistant': 'x'},
+        }, format='json')
+        self.assertEqual(resp.status_code, 201, resp.data)
+        doc = Document.objects.get(id=resp.data['id'])
+        self.assertNotIn('inexistant', doc.custom_data)
+
+    def test_custom_data_isolated_by_company(self):
+        # Une définition obligatoire de A ne s'applique PAS à B (qui n'en a pas).
+        api = auth(self.admin_b)
+        folder_b = Folder.objects.create(
+            company=self.co_b, cabinet=self.cab_b, nom='Racine B')
+        resp = api.post('/api/django/ged/documents/', {
+            'folder': folder_b.id, 'nom': 'Doc B', 'custom_data': {},
+        }, format='json')
+        # Aucun champ obligatoire pour B → accepté.
+        self.assertEqual(resp.status_code, 201, resp.data)
+
+
+# ── GED11 — Recherche plein-texte Postgres (SearchVector + GIN) ───────
+class DocumentFullTextSearchTests(GedBase):
+    """Vérifie la recherche plein-texte : le tsvector est alimenté à la
+    création/màj, l'endpoint /recherche matche nom/description/OCR, classe par
+    pertinence, respecte l'ACL coffre-fort et l'isolation société."""
+
+    def setUp(self):
+        super().setUp()
+        self.folder_a = Folder.objects.create(
+            company=self.co_a, cabinet=self.cab_a, nom='Racine')
+
+    def test_search_matches_name(self):
+        api = auth(self.admin_a)
+        api.post('/api/django/ged/documents/', {
+            'folder': self.folder_a.id,
+            'nom': 'Contrat de maintenance photovoltaïque'}, format='json')
+        api.post('/api/django/ged/documents/', {
+            'folder': self.folder_a.id, 'nom': 'Facture eau'}, format='json')
+        resp = api.get('/api/django/ged/documents/recherche/?q=maintenance')
+        noms = [r['nom'] for r in rows(resp)]
+        self.assertIn('Contrat de maintenance photovoltaïque', noms)
+        self.assertNotIn('Facture eau', noms)
+
+    def test_search_matches_description(self):
+        api = auth(self.admin_a)
+        api.post('/api/django/ged/documents/', {
+            'folder': self.folder_a.id, 'nom': 'Doc',
+            'description': 'onduleur Huawei trois phases'}, format='json')
+        resp = api.get('/api/django/ged/documents/recherche/?q=onduleur')
+        self.assertEqual(len(rows(resp)), 1)
+
+    def test_search_matches_ocr_text(self):
+        doc = Document.objects.create(
+            company=self.co_a, folder=self.folder_a, nom='Scan')
+        services.set_ocr_text(doc, 'numéro de série panneau JA Solar 555W')
+        api = auth(self.admin_a)
+        resp = api.get('/api/django/ged/documents/recherche/?q=panneau')
+        ids = [r['id'] for r in rows(resp)]
+        self.assertIn(doc.id, ids)
+
+    def test_empty_query_returns_nothing(self):
+        Document.objects.create(
+            company=self.co_a, folder=self.folder_a, nom='Quelque chose')
+        api = auth(self.admin_a)
+        resp = api.get('/api/django/ged/documents/recherche/?q=')
+        self.assertEqual(rows(resp), [])
+
+    def test_search_respects_company_isolation(self):
+        folder_b = Folder.objects.create(
+            company=self.co_b, cabinet=self.cab_b, nom='Racine B')
+        doc_b = Document.objects.create(
+            company=self.co_b, folder=folder_b, nom='Secret maintenance B')
+        services.update_search_vector(doc_b)
+        api = auth(self.admin_a)
+        resp = api.get('/api/django/ged/documents/recherche/?q=maintenance')
+        ids = [r['id'] for r in rows(resp)]
+        self.assertNotIn(doc_b.id, ids)
+
+    def test_search_respects_coffre_acl(self):
+        emp = make_user(self.co_a, 'ged-fts-emp', 'normal')
+        coffre = Coffre.objects.create(
+            company=self.co_a, nom='Coffre', proprietaire=self.admin_a)
+        secret = Document.objects.create(
+            company=self.co_a, folder=self.folder_a, coffre=coffre,
+            nom='dossier maintenance confidentiel')
+        services.update_search_vector(secret)
+        # L'employé non-propriétaire ne le trouve pas.
+        api = auth(emp)
+        resp = api.get('/api/django/ged/documents/recherche/?q=maintenance')
+        ids = [r['id'] for r in rows(resp)]
+        self.assertNotIn(secret.id, ids)
+        # Le propriétaire (admin) le trouve.
+        api2 = auth(self.admin_a)
+        resp2 = api2.get('/api/django/ged/documents/recherche/?q=maintenance')
+        ids2 = [r['id'] for r in rows(resp2)]
+        self.assertIn(secret.id, ids2)
+
+    def test_update_reindexes(self):
+        api = auth(self.admin_a)
+        resp = api.post('/api/django/ged/documents/', {
+            'folder': self.folder_a.id, 'nom': 'Ancien titre'}, format='json')
+        doc_id = resp.data['id']
+        api.patch(f'/api/django/ged/documents/{doc_id}/',
+                  {'nom': 'Nouveau libellé batterie'}, format='json')
+        resp = api.get('/api/django/ged/documents/recherche/?q=batterie')
+        ids = [r['id'] for r in rows(resp)]
+        self.assertIn(doc_id, ids)
+
+
+# ── GED12 — Index OCR + recherche sémantique (pgvector, key-gated no-op) ──
+class DocumentSemanticSearchTests(GedBase):
+    """Vérifie le comportement KEY-GATED de la recherche sémantique : sans clé
+    d'embedding, `index_embedding` est un no-op (embedding reste NULL) et la
+    recherche sémantique dégrade proprement sur le plein-texte GED11. Avec un
+    provider simulé, l'embedding est posé et la recherche cosinus s'active."""
+
+    def setUp(self):
+        super().setUp()
+        self.folder_a = Folder.objects.create(
+            company=self.co_a, cabinet=self.cab_a, nom='Racine')
+
+    def test_embedding_disabled_by_default(self):
+        self.assertFalse(services.embedding_enabled())
+
+    def test_index_embedding_is_noop_without_key(self):
+        doc = Document.objects.create(
+            company=self.co_a, folder=self.folder_a, nom='Doc')
+        self.assertFalse(services.index_embedding(doc))
+        doc.refresh_from_db()
+        self.assertIsNone(doc.embedding)
+
+    def test_compute_embedding_noop_without_key(self):
+        self.assertIsNone(services.compute_embedding('un texte quelconque'))
+
+    def test_semantique_endpoint_falls_back_to_fulltext(self):
+        api = auth(self.admin_a)
+        api.post('/api/django/ged/documents/', {
+            'folder': self.folder_a.id,
+            'nom': 'Contrat maintenance onduleur'}, format='json')
+        resp = api.get('/api/django/ged/documents/semantique/?q=maintenance')
+        self.assertEqual(resp.status_code, 200)
+        # Sans clé : mode plein-texte, et le doc matche par plein-texte.
+        self.assertEqual(resp.data['mode'], 'plein-texte')
+        noms = [r['nom'] for r in resp.data['results']]
+        self.assertIn('Contrat maintenance onduleur', noms)
+
+    def test_semantique_respects_company_isolation_in_fallback(self):
+        folder_b = Folder.objects.create(
+            company=self.co_b, cabinet=self.cab_b, nom='Racine B')
+        doc_b = Document.objects.create(
+            company=self.co_b, folder=folder_b, nom='Secret maintenance B')
+        services.update_search_vector(doc_b)
+        api = auth(self.admin_a)
+        resp = api.get('/api/django/ged/documents/semantique/?q=maintenance')
+        ids = [r['id'] for r in resp.data['results']]
+        self.assertNotIn(doc_b.id, ids)
+
+    def test_set_ocr_text_triggers_embedding_index(self):
+        # set_ocr_text indexe l'OCR (plein-texte) + tente l'embedding (no-op).
+        doc = Document.objects.create(
+            company=self.co_a, folder=self.folder_a, nom='Scan')
+        services.set_ocr_text(doc, 'panneau monocristallin 555W')
+        doc.refresh_from_db()
+        self.assertEqual(doc.texte_ocr, 'panneau monocristallin 555W')
+        # Embedding reste NULL (no-op sans clé).
+        self.assertIsNone(doc.embedding)
+
+    def test_semantic_search_uses_cosine_when_enabled(self):
+        # Provider simulé : on active le flag + on monkeypatch compute_embedding.
+        from unittest import mock
+        from django.test import override_settings
+        from apps.ged import services as svc
+
+        def fake_embed(text):
+            # Embedding trivial : vecteur orienté par la présence d'un mot-clé.
+            base = [0.0] * 1024
+            if 'solaire' in (text or '').lower():
+                base[0] = 1.0
+            else:
+                base[1] = 1.0
+            return base
+
+        doc_solaire = Document.objects.create(
+            company=self.co_a, folder=self.folder_a, nom='Étude solaire')
+        doc_autre = Document.objects.create(
+            company=self.co_a, folder=self.folder_a, nom='Facture eau')
+        with override_settings(GED_EMBEDDING_ENABLED=True), \
+                mock.patch.object(svc, 'compute_embedding', side_effect=fake_embed):
+            # Indexe les deux documents.
+            self.assertTrue(svc.index_embedding(doc_solaire))
+            self.assertTrue(svc.index_embedding(doc_autre))
+            doc_solaire.refresh_from_db()
+            self.assertIsNotNone(doc_solaire.embedding)
+            # Recherche sémantique : "centrale solaire" doit ramener l'étude
+            # solaire en tête (distance cosinus minimale).
+            results = list(selectors.semantic_search_documents(
+                self.admin_a, 'centrale solaire'))
+            self.assertEqual(results[0].id, doc_solaire.id)

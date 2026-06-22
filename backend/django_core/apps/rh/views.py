@@ -19,18 +19,28 @@ from apps.records.storage import delete_attachment, store_attachment
 from authentication.mixins import TenantMixin
 from authentication.permissions import HasPermission, IsResponsableOrAdmin
 
-from . import selectors
+from . import selectors, services
 from .models import (
+    DemandeConge,
     Departement,
     DocumentEmploye,
     DossierEmploye,
+    ElementSortie,
+    Poste,
     Remuneration,
+    SoldeConge,
+    TypeAbsence,
 )
 from .serializers import (
+    DemandeCongeSerializer,
     DepartementSerializer,
     DocumentEmployeSerializer,
     DossierEmployeSerializer,
+    ElementSortieSerializer,
+    PosteSerializer,
     RemunerationSerializer,
+    SoldeCongeSerializer,
+    TypeAbsenceSerializer,
 )
 
 
@@ -201,5 +211,164 @@ class DocumentEmployeViewSet(TenantMixin, viewsets.ModelViewSet):
         if page is not None:
             serializer = self.get_serializer(page, many=True)
             return self.get_paginated_response(serializer.data)
+        serializer = self.get_serializer(qs, many=True)
+        return Response(serializer.data)
+
+
+class PosteViewSet(_RhBaseViewSet):
+    """Référentiel des postes (FG160). Recherche par intitulé/code."""
+    queryset = Poste.objects.select_related('departement').all()
+    serializer_class = PosteSerializer
+    filter_backends = [filters.SearchFilter, filters.OrderingFilter]
+    search_fields = ['intitule', 'code']
+    ordering_fields = ['intitule']
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        departement = self.request.query_params.get('departement')
+        if departement:
+            qs = qs.filter(departement_id=departement)
+        return qs
+
+
+class ElementSortieViewSet(_RhBaseViewSet):
+    """Checklist d'offboarding (FG161) — éléments à récupérer au départ.
+
+    Société scopée + Administrateur/Responsable. La liste d'un employé s'obtient
+    via ``?employe=<id>``. ``employe`` doit appartenir à la société.
+    """
+    queryset = ElementSortie.objects.select_related('employe').all()
+    serializer_class = ElementSortieSerializer
+    filter_backends = [filters.OrderingFilter]
+    ordering_fields = ['type_element', 'libelle', 'date_creation']
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        employe = self.request.query_params.get('employe')
+        if employe:
+            qs = qs.filter(employe_id=employe)
+        recupere = self.request.query_params.get('recupere')
+        if recupere in ('0', 'false', 'False'):
+            qs = qs.filter(recupere=False)
+        elif recupere in ('1', 'true', 'True'):
+            qs = qs.filter(recupere=True)
+        return qs
+
+
+class TypeAbsenceViewSet(_RhBaseViewSet):
+    """Typologie d'absences (FG164) — référentiel + règle de décompte."""
+    queryset = TypeAbsence.objects.all()
+    serializer_class = TypeAbsenceSerializer
+    filter_backends = [filters.SearchFilter, filters.OrderingFilter]
+    search_fields = ['code', 'libelle']
+    ordering_fields = ['libelle', 'code']
+
+
+class SoldeCongeViewSet(_RhBaseViewSet):
+    """Soldes de congés annuels (FG162). ``?employe=`` / ``?annee=`` filtrent."""
+    queryset = SoldeConge.objects.select_related('employe').all()
+    serializer_class = SoldeCongeSerializer
+    filter_backends = [filters.OrderingFilter]
+    ordering_fields = ['annee', 'employe']
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        employe = self.request.query_params.get('employe')
+        if employe:
+            qs = qs.filter(employe_id=employe)
+        annee = self.request.query_params.get('annee')
+        if annee:
+            qs = qs.filter(annee=annee)
+        return qs
+
+
+class DemandeCongeViewSet(_RhBaseViewSet):
+    """Demandes & validation de congés (FG163) — workflow employé → superviseur.
+
+    Société scopée + Administrateur/Responsable. À la création, le nombre de
+    ``jours`` est calculé côté serveur (jours ouvrés hors fériés/WE si le type le
+    requiert — FG5 ``working_days``, sinon jours calendaires). Les actions
+    ``valider``/``refuser``/``annuler`` pilotent les transitions et mettent à jour
+    le solde via ``services``. Filtres : ``?employe=`` / ``?statut=``.
+    """
+    queryset = DemandeConge.objects.select_related(
+        'employe', 'type_absence', 'decide_par').all()
+    serializer_class = DemandeCongeSerializer
+    filter_backends = [filters.OrderingFilter]
+    ordering_fields = ['date_debut', 'date_fin', 'date_creation', 'statut']
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        employe = self.request.query_params.get('employe')
+        if employe:
+            qs = qs.filter(employe_id=employe)
+        statut = self.request.query_params.get('statut')
+        if statut:
+            qs = qs.filter(statut=statut)
+        return qs
+
+    def perform_create(self, serializer):
+        # ``jours`` calculé côté serveur selon la règle de décompte du type.
+        type_absence = serializer.validated_data['type_absence']
+        jours = services.calculer_jours_demande(
+            type_absence,
+            serializer.validated_data['date_debut'],
+            serializer.validated_data['date_fin'])
+        serializer.save(company=self.request.user.company, jours=jours)
+
+    @action(detail=True, methods=['post'])
+    def valider(self, request, pk=None):
+        """Valide une demande soumise et déduit le solde si le type le requiert."""
+        demande = self.get_object()
+        try:
+            services.valider_demande(demande, decide_par=request.user)
+        except ValueError as exc:
+            return Response({'detail': str(exc)},
+                            status=status.HTTP_400_BAD_REQUEST)
+        return Response(self.get_serializer(demande).data)
+
+    @action(detail=True, methods=['post'])
+    def refuser(self, request, pk=None):
+        """Refuse une demande soumise (aucune déduction de solde)."""
+        demande = self.get_object()
+        motif = request.data.get('motif_refus', '')
+        try:
+            services.refuser_demande(
+                demande, decide_par=request.user, motif_refus=motif)
+        except ValueError as exc:
+            return Response({'detail': str(exc)},
+                            status=status.HTTP_400_BAD_REQUEST)
+        return Response(self.get_serializer(demande).data)
+
+    @action(detail=True, methods=['post'])
+    def annuler(self, request, pk=None):
+        """Annule une demande ; recrédite le solde si elle était validée."""
+        demande = self.get_object()
+        services.annuler_demande(demande)
+        return Response(self.get_serializer(demande).data)
+
+    @action(detail=False, methods=['get'], url_path='calendrier-equipe')
+    def calendrier_equipe(self, request):
+        """Calendrier d'absences d'équipe (FG165) — demandes VALIDÉES chevauchant
+        ``?debut=YYYY-MM-DD`` → ``?fin=YYYY-MM-DD`` (défaut : 30 jours à venir).
+
+        Sert d'agenda d'équipe : un technicien listé ici n'est pas assignable au
+        dispatch terrain sur la période. Scopé société.
+        """
+        from datetime import datetime
+        today = timezone.localdate()
+
+        def _parse(name, fallback):
+            raw = request.query_params.get(name)
+            if not raw:
+                return fallback
+            try:
+                return datetime.strptime(raw, '%Y-%m-%d').date()
+            except (TypeError, ValueError):
+                return fallback
+
+        debut = _parse('debut', today)
+        fin = _parse('fin', today + timedelta(days=30))
+        qs = selectors.absences_equipe(request.user.company, debut, fin)
         serializer = self.get_serializer(qs, many=True)
         return Response(serializer.data)

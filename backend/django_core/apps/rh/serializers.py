@@ -7,10 +7,15 @@ appartenant à la société de l'utilisateur.
 from rest_framework import serializers
 
 from .models import (
+    DemandeConge,
     Departement,
     DocumentEmploye,
     DossierEmploye,
+    ElementSortie,
+    Poste,
     Remuneration,
+    SoldeConge,
+    TypeAbsence,
 )
 
 
@@ -37,6 +42,8 @@ class DossierEmployeSerializer(serializers.ModelSerializer):
         source='get_statut_display', read_only=True)
     situation_familiale_display = serializers.CharField(
         source='get_situation_familiale_display', read_only=True)
+    motif_sortie_display = serializers.CharField(
+        source='get_motif_sortie_display', read_only=True)
 
     class Meta:
         model = DossierEmploye
@@ -44,9 +51,12 @@ class DossierEmployeSerializer(serializers.ModelSerializer):
             'id', 'user', 'matricule', 'nom', 'prenom', 'cin',
             'cnss', 'cimr', 'amo', 'situation_familiale',
             'situation_familiale_display', 'nombre_enfants', 'telephone',
-            'email', 'poste', 'departement', 'date_embauche', 'type_contrat',
+            'email', 'poste', 'poste_ref', 'departement', 'date_embauche',
+            'type_contrat',
             'type_contrat_display', 'contrat_date_debut', 'contrat_date_fin',
             'statut', 'statut_display', 'cout_horaire',
+            # FG161 — cycle de vie / offboarding.
+            'date_sortie', 'motif_sortie', 'motif_sortie_display',
             'rib',
             # FG158 — coordonnées perso étendues + contact d'urgence (internes).
             'adresse_perso', 'telephone_perso', 'email_perso',
@@ -58,6 +68,9 @@ class DossierEmployeSerializer(serializers.ModelSerializer):
 
     def validate_departement(self, value):
         return _meme_societe(self, value, 'Département')
+
+    def validate_poste_ref(self, value):
+        return _meme_societe(self, value, 'Poste')
 
 
 class RemunerationSerializer(serializers.ModelSerializer):
@@ -120,3 +133,104 @@ class DocumentEmployeSerializer(serializers.ModelSerializer):
 
     def validate_employe(self, value):
         return _meme_societe(self, value, 'Employé')
+
+
+class PosteSerializer(serializers.ModelSerializer):
+    """Référentiel poste (FG160). ``departement`` doit appartenir à la société."""
+    departement_nom = serializers.CharField(
+        source='departement.nom', read_only=True)
+
+    class Meta:
+        model = Poste
+        fields = [
+            'id', 'intitule', 'code', 'departement', 'departement_nom',
+            'actif', 'date_creation',
+        ]
+        read_only_fields = ['date_creation']
+
+    def validate_departement(self, value):
+        return _meme_societe(self, value, 'Département')
+
+
+class ElementSortieSerializer(serializers.ModelSerializer):
+    """Élément de checklist d'offboarding (FG161). ``employe`` même société."""
+    type_element_display = serializers.CharField(
+        source='get_type_element_display', read_only=True)
+
+    class Meta:
+        model = ElementSortie
+        fields = [
+            'id', 'employe', 'libelle', 'type_element', 'type_element_display',
+            'recupere', 'date_recuperation', 'note', 'date_creation',
+        ]
+        read_only_fields = ['date_creation']
+
+    def validate_employe(self, value):
+        return _meme_societe(self, value, 'Employé')
+
+
+class TypeAbsenceSerializer(serializers.ModelSerializer):
+    """Typologie d'absence (FG164) — règle de décompte par catégorie."""
+
+    class Meta:
+        model = TypeAbsence
+        fields = [
+            'id', 'code', 'libelle', 'decompte_jours_ouvres', 'deduit_solde',
+            'remunere', 'actif', 'date_creation',
+        ]
+        read_only_fields = ['date_creation']
+
+
+class SoldeCongeSerializer(serializers.ModelSerializer):
+    """Solde de congés annuel (FG162). ``disponible`` est calculé (lecture)."""
+    disponible = serializers.DecimalField(
+        max_digits=6, decimal_places=2, read_only=True)
+
+    class Meta:
+        model = SoldeConge
+        fields = [
+            'id', 'employe', 'annee', 'acquis', 'report', 'pris', 'disponible',
+            'date_creation', 'date_modification',
+        ]
+        read_only_fields = ['date_creation', 'date_modification']
+
+    def validate_employe(self, value):
+        return _meme_societe(self, value, 'Employé')
+
+
+class DemandeCongeSerializer(serializers.ModelSerializer):
+    """Demande de congés (FG163). ``employe`` et ``type_absence`` doivent
+    appartenir à la société ; ``jours`` et le workflow de décision sont posés
+    côté serveur (jamais lus du corps)."""
+    statut_display = serializers.CharField(
+        source='get_statut_display', read_only=True)
+    type_absence_code = serializers.CharField(
+        source='type_absence.code', read_only=True)
+
+    class Meta:
+        model = DemandeConge
+        fields = [
+            'id', 'employe', 'type_absence', 'type_absence_code',
+            'date_debut', 'date_fin', 'jours', 'motif',
+            'statut', 'statut_display',
+            'decide_par', 'date_decision', 'motif_refus', 'date_creation',
+        ]
+        # ``jours`` et tout l'état de décision sont calculés/posés côté serveur.
+        read_only_fields = [
+            'jours', 'statut', 'decide_par', 'date_decision', 'motif_refus',
+            'date_creation',
+        ]
+
+    def validate_employe(self, value):
+        return _meme_societe(self, value, 'Employé')
+
+    def validate_type_absence(self, value):
+        return _meme_societe(self, value, "Type d'absence")
+
+    def validate(self, attrs):
+        debut = attrs.get('date_debut')
+        fin = attrs.get('date_fin')
+        if debut and fin and fin < debut:
+            raise serializers.ValidationError(
+                {'date_fin': 'La date de fin précède la date de début.'})
+        return attrs

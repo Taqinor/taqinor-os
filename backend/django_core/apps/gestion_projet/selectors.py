@@ -7,7 +7,164 @@ les imports cross-app sont fonction-locaux pour éviter les cycles. Quand une ap
 cible n'a pas de sélecteur exploitable, on DÉGRADE proprement : on renvoie le
 ``libelle`` mis en cache et les ids stockés, sans rien importer.
 """
-from .models import DependanceTache, Jalon, ProjetLien, Tache
+from datetime import timedelta
+
+from .models import (
+    BaselinePlanning,
+    CalendrierProjet,
+    DependanceTache,
+    Jalon,
+    ProjetLien,
+    Tache,
+)
+
+
+def baselines_for_projet(projet):
+    """Baselines d'un projet (QuerySet scopé société, plus récentes d'abord)."""
+    return BaselinePlanning.objects.filter(
+        projet=projet, company=projet.company).order_by(
+            '-date_creation', '-id')
+
+
+def _ecart_jours(reel, baseline):
+    """Écart en jours entre une date réelle et une date baseline (ou None)."""
+    if reel is None or baseline is None:
+        return None
+    return (reel - baseline).days
+
+
+def comparer_baseline(baseline):
+    """Compare une BASELINE au planning COURANT (plan vs réel) — lecture seule.
+
+    Pour chaque ligne figée de la baseline, retrouve la tâche courante (par FK)
+    et calcule l'écart de DÉBUT et de FIN (en jours, positif = glissement vers
+    le futur) ainsi que la dérive de charge. Une tâche supprimée depuis le
+    snapshot apparaît avec ``tache=None`` (le libellé figé est conservé). Renvoie
+    ``{baseline, projet, lignes: [...], glissement_max_fin}`` où
+    ``glissement_max_fin`` est le plus grand retard de fin observé (0 si aucun).
+    """
+    lignes = []
+    glissement_max = 0
+    qs = baseline.lignes.select_related('tache').order_by('id')
+    for ligne in qs:
+        tache = ligne.tache
+        reel_debut = tache.date_debut_prevue if tache else None
+        reel_fin = tache.date_fin_prevue if tache else None
+        reel_charge = tache.charge_estimee if tache else None
+        ecart_debut = _ecart_jours(reel_debut, ligne.date_debut_prevue)
+        ecart_fin = _ecart_jours(reel_fin, ligne.date_fin_prevue)
+        if ecart_fin is not None and ecart_fin > glissement_max:
+            glissement_max = ecart_fin
+        derive_charge = None
+        if reel_charge is not None and ligne.charge_estimee is not None:
+            derive_charge = str(reel_charge - ligne.charge_estimee)
+        lignes.append({
+            'ligne': ligne.id,
+            'tache': ligne.tache_id,
+            'libelle': ligne.tache_libelle,
+            'code_wbs': ligne.tache_code_wbs,
+            'baseline_debut': (
+                ligne.date_debut_prevue.isoformat()
+                if ligne.date_debut_prevue else None),
+            'baseline_fin': (
+                ligne.date_fin_prevue.isoformat()
+                if ligne.date_fin_prevue else None),
+            'baseline_charge': (
+                str(ligne.charge_estimee)
+                if ligne.charge_estimee is not None else None),
+            'reel_debut': reel_debut.isoformat() if reel_debut else None,
+            'reel_fin': reel_fin.isoformat() if reel_fin else None,
+            'reel_charge': (
+                str(reel_charge) if reel_charge is not None else None),
+            'ecart_debut_jours': ecart_debut,
+            'ecart_fin_jours': ecart_fin,
+            'derive_charge': derive_charge,
+            'tache_supprimee': tache is None,
+        })
+    return {
+        'baseline': baseline.id,
+        'projet': baseline.projet_id,
+        'glissement_max_fin': glissement_max,
+        'lignes': lignes,
+    }
+
+
+def calendrier_de_projet(projet):
+    """Calendrier ouvré d'un projet (ou None s'il n'en a pas) — lecture seule."""
+    return CalendrierProjet.objects.filter(
+        projet=projet, company=projet.company).first()
+
+
+def _jours_ouvres_et_feries(projet):
+    """(set d'indices ouvrés, set de dates fériées) du calendrier — défaut L–V.
+
+    Sans calendrier configuré : lundi→vendredi ouvrés, aucun férié.
+    """
+    cal = calendrier_de_projet(projet)
+    if cal is None:
+        return {0, 1, 2, 3, 4}, set()
+    feries = set(cal.jours_feries.values_list('date', flat=True))
+    return set(cal.jours_ouvres()), feries
+
+
+def est_jour_ouvre(projet, jour):
+    """True si ``jour`` (date) est OUVRÉ selon le calendrier du projet."""
+    ouvres, feries = _jours_ouvres_et_feries(projet)
+    return jour.weekday() in ouvres and jour not in feries
+
+
+def jours_ouvres_entre(projet, debut, fin):
+    """Nombre de jours OUVRÉS dans l'intervalle [debut, fin) (fin exclusive).
+
+    Lecture seule. Respecte les week-ends définis par le calendrier du projet et
+    ses jours fériés. ``debut``/``fin`` sont des dates ; renvoie 0 si
+    ``fin <= debut``.
+    """
+    if fin <= debut:
+        return 0
+    ouvres, feries = _jours_ouvres_et_feries(projet)
+    n = 0
+    cur = debut
+    while cur < fin:
+        if cur.weekday() in ouvres and cur not in feries:
+            n += 1
+        cur += timedelta(days=1)
+    return n
+
+
+def ajouter_jours_ouvres(projet, debut, n_jours_ouvres):
+    """Date obtenue en ajoutant ``n_jours_ouvres`` jours OUVRÉS à ``debut``.
+
+    Lecture seule. ``debut`` est inclus s'il est ouvré : ajouter 0 jour ouvré
+    renvoie le premier jour ouvré ≥ ``debut``. Respecte week-ends et fériés du
+    calendrier projet. Sert à projeter une durée en jours ouvrés sur le
+    calendrier (raffinement de la projection naïve du Gantt PROJ10).
+    """
+    ouvres, feries = _jours_ouvres_et_feries(projet)
+
+    def _ouvre(d):
+        return d.weekday() in ouvres and d not in feries
+
+    cur = debut
+    while not _ouvre(cur):
+        cur += timedelta(days=1)
+    restants = n_jours_ouvres
+    while restants > 0:
+        cur += timedelta(days=1)
+        if _ouvre(cur):
+            restants -= 1
+    return cur
+
+
+def chemin_critique(projet):
+    """Calcul du chemin critique (CPM) + marges d'un projet (lecture seule).
+
+    Délègue à ``cpm.calculer_cpm`` (import local pour éviter tout cycle). Renvoie
+    un dict ``{duree_projet, has_cycle, chemin_critique, taches}`` — voir
+    ``cpm.calculer_cpm``. La société est portée par le projet.
+    """
+    from . import cpm
+    return cpm.calculer_cpm(projet)
 
 
 def jalons_for_projet(projet):
@@ -119,6 +276,104 @@ def arbre_taches(projet):
         enfants_par_parent.setdefault(tache.parent_id, []).append(tache)
     racines = enfants_par_parent.get(None, [])
     return [_serialize_tache(racine, enfants_par_parent) for racine in racines]
+
+
+def _poids_tache(tache):
+    """Poids d'une tâche pour le roll-up — sa ``charge_estimee`` (≥ 0).
+
+    Une charge absente ou nulle vaut 0 : la pondération retombe alors sur une
+    moyenne ÉGALE entre fratries (voir ``_rollup_node``).
+    """
+    charge = tache.charge_estimee
+    if charge is None:
+        return 0.0
+    return max(0.0, float(charge))
+
+
+def _rollup_node(tache, enfants_par_parent):
+    """Roll-up RÉCURSIF de l'avancement d'une tâche pondéré par charge.
+
+    Une tâche FEUILLE porte son ``avancement_pct`` propre et son poids =
+    ``charge_estimee`` (ou 0). Une tâche PARENTE voit son avancement RECALCULÉ
+    comme la moyenne des avancements de ses enfants pondérée par leur charge
+    cumulée ; si la charge cumulée des enfants est nulle, on retombe sur une
+    moyenne ÉGALE (chaque enfant compte pour 1). Renvoie un dict
+    ``{id, libelle, code_wbs, charge, avancement_pct, est_feuille, sous_taches}``
+    où ``avancement_pct`` est la valeur ROLLÉE (arrondie à l'entier) et
+    ``charge`` la charge cumulée de la branche (somme des charges des feuilles,
+    au minimum la charge propre des feuilles).
+    """
+    enfants = enfants_par_parent.get(tache.id, [])
+    if not enfants:
+        poids = _poids_tache(tache)
+        return {
+            'id': tache.id,
+            'libelle': tache.libelle,
+            'code_wbs': tache.code_wbs,
+            'charge': poids,
+            'avancement_pct': int(tache.avancement_pct),
+            'est_feuille': True,
+            'sous_taches': [],
+        }
+    sous = [_rollup_node(child, enfants_par_parent) for child in enfants]
+    charge_cumulee = sum(n['charge'] for n in sous)
+    if charge_cumulee > 0:
+        total = sum(n['avancement_pct'] * n['charge'] for n in sous)
+        avancement = total / charge_cumulee
+    else:
+        # Aucune charge sur la branche : moyenne ÉGALE entre enfants.
+        avancement = sum(n['avancement_pct'] for n in sous) / len(sous)
+    return {
+        'id': tache.id,
+        'libelle': tache.libelle,
+        'code_wbs': tache.code_wbs,
+        'charge': charge_cumulee,
+        'avancement_pct': int(round(avancement)),
+        'est_feuille': False,
+        'sous_taches': sous,
+    }
+
+
+def rollup_avancement(projet):
+    """Roll-up d'avancement pondéré par charge d'un projet (lecture seule).
+
+    Renvoie ``{avancement_pct, charge_totale, taches}`` où ``taches`` est
+    l'arborescence WBS avec, sur chaque nœud parent, l'avancement RECALCULÉ
+    comme moyenne pondérée par la charge de ses enfants (PROJ9). L'avancement
+    GLOBAL du projet est le roll-up de ses tâches RACINES (mêmes règles de
+    pondération). Une seule requête : on charge toutes les tâches puis on
+    déroule la récursion en mémoire. Ne MODIFIE aucune donnée.
+    """
+    taches = list(taches_for_projet(projet))
+    enfants_par_parent = {}
+    for tache in taches:
+        enfants_par_parent.setdefault(tache.parent_id, []).append(tache)
+    racines = enfants_par_parent.get(None, [])
+    arbre = [_rollup_node(racine, enfants_par_parent) for racine in racines]
+    charge_totale = sum(n['charge'] for n in arbre)
+    if charge_totale > 0:
+        avancement = sum(
+            n['avancement_pct'] * n['charge'] for n in arbre) / charge_totale
+    elif arbre:
+        avancement = sum(n['avancement_pct'] for n in arbre) / len(arbre)
+    else:
+        avancement = 0
+    return {
+        'avancement_pct': int(round(avancement)),
+        'charge_totale': charge_totale,
+        'taches': arbre,
+    }
+
+
+def planning_gantt(projet):
+    """Planning Gantt d'un projet (lecture seule) — barres + liens de dépendance.
+
+    Délègue à ``gantt.construire_planning`` (import local anti-cycle). Renvoie
+    ``{date_origine, duree_projet, taches: [...], liens: [...]}`` — voir
+    ``gantt.construire_planning``. La société est portée par le projet.
+    """
+    from . import gantt
+    return gantt.construire_planning(projet)
 
 
 def liens_for_projet(projet):

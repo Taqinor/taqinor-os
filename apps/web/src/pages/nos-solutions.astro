@@ -78,7 +78,7 @@ const jsonLd = {
 
     <section class="px-4 pb-10 pt-16 text-white sm:pt-20">
       <div class="mx-auto max-w-3xl">
-        <p class="tech-label v2-kicker rule-brass cine-in text-brass-300">Nos solutions</p>
+        <p class="tech-label v2-kicker rule-brass cine-in text-lune">Nos solutions</p>
         <h1 class="display v2-page-title cine-in mt-5 [animation-delay:120ms]">Une offre solaire pour chaque besoin</h1>
         <p class="v2-lead cine-in mt-6 max-w-xl text-white/85 [animation-delay:240ms]">
           Une villa ne se dimensionne pas comme un hangar, et le pompage agricole obéit encore à
@@ -93,11 +93,11 @@ const jsonLd = {
       <div class="mx-auto grid max-w-6xl gap-6 md:grid-cols-3" data-stagger>
         {solutions.map((s, i) => (
           <a href={s.href} class="v2-rise cine-card flex flex-col p-7" style={`--v2-i:${i}`}>
-            <p class="tech-label text-brass-300">Solution</p>
+            <p class="tech-label text-lune">Solution</p>
             <h2 class="display mt-2 text-xl text-white" set:html={s.title.replace('&', '&amp;')} />
             <p class="mt-3 flex-1 text-sm leading-relaxed text-lune-soft">{s.summary}</p>
             {/* W204 — nudge flèche : arrow dans un span inline-block motion-safe */}
-            <span class="mt-5 inline-flex items-center gap-1 border-b-2 border-brass-400 pb-0.5 text-sm font-bold text-white">Découvrir <span class="motion-safe:transition-transform motion-safe:duration-200 motion-safe:group-hover:translate-x-1" aria-hidden="true">→</span></span>
+            <span class="mt-5 inline-flex items-center gap-1 border-b-2 border-white/30 pb-0.5 text-sm font-bold text-white">Découvrir <span class="motion-safe:transition-transform motion-safe:duration-200 motion-safe:group-hover:translate-x-1" aria-hidden="true">→</span></span>
           </a>
         ))}
       </div>
@@ -105,7 +105,7 @@ const jsonLd = {
 
     <section class="border-y border-white/10 px-4 py-16 sm:py-20">
       <div class="mx-auto max-w-3xl text-center">
-        <p class="tech-label v2-kicker rule-brass text-brass-300">Par où commencer</p>
+        <p class="tech-label v2-kicker rule-brass text-lune">Par où commencer</p>
         <h2 class="display v2-section-title mt-5 text-white">Pas sûr de la solution qu’il vous faut ?</h2>
         <p class="v2-lead mt-5 text-lune-soft">
           Inutile de trancher seul. Décrivez votre situation et votre consommation, et le diagnostic
@@ -115,8 +115,8 @@ const jsonLd = {
         <a href="/contact#simulateur" class="mt-8 inline-block bg-brass-400 px-7 py-3.5 text-base font-bold text-azur-950 transition-colors hover:bg-brass-300">Lancer mon diagnostic gratuit</a>
         <p class="mt-6 text-sm text-lune-faint">
           Vous roulez à l’électrique ? Découvrez aussi comment
-          <a href="/recharge-voiture-electrique-solaire" class="text-brass-300 underline underline-offset-2 hover:text-white">recharger votre voiture au solaire</a>,
-          ou parcourez tous nos <a href="/guides" class="text-brass-300 underline underline-offset-2 hover:text-white">guides</a>.
+          <a href="/recharge-voiture-electrique-solaire" class="text-white underline underline-offset-2 hover:text-lune">recharger votre voiture au solaire</a>,
+          ou parcourez tous nos <a href="/guides" class="text-white underline underline-offset-2 hover:text-lune">guides</a>.
         </p>
       </div>
     </section>

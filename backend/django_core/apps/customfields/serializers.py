@@ -84,6 +84,10 @@ def _module_model(module):
     if module == 'ticket':
         from apps.sav.models import Ticket
         return Ticket
+    # GED10 — métadonnées typées configurables sur les documents GED.
+    if module == 'document':
+        from apps.ged.models import Document
+        return Document
     return None
 
 

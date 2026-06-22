@@ -14,6 +14,7 @@ import {
   Select, SelectTrigger, SelectValue, SelectContent, SelectItem,
 } from '../../ui'
 import { buildFolderTree, flattenVisible, countFolders } from './tree.js'
+import GedSearch from './GedSearch.jsx'
 
 // Le backend pagine certains endpoints (DRF) : on accepte `results` OU le
 // tableau brut, comme partout dans le frontend.
@@ -133,6 +134,11 @@ export default function GedNavigator() {
         <Button variant="secondary" onClick={() => loadFolders(cabinetId)} disabled={!cabinetId}>
           <RefreshCw className="size-4" aria-hidden="true" /> Actualiser
         </Button>
+      </div>
+
+      {/* GED13 — Filtres & recherche avancée (plein-texte/sémantique + tags). */}
+      <div className="mb-4">
+        <GedSearch />
       </div>
 
       {error ? (

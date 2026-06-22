@@ -117,6 +117,32 @@ class BonCommandeViewSet(viewsets.ModelViewSet):
                 )},
                 status=status.HTTP_400_BAD_REQUEST,
             )
+        # FG51 — capture optionnelle de la preuve de livraison (PV/signature).
+        # Le signataire, une note et une pièce jointe (bon signé) peuvent être
+        # joints à la livraison. Tout est optionnel : un BC peut être livré sans
+        # preuve (la facturation n'est jamais bloquée), mais la preuve lève
+        # l'avertissement doux au moment de facturer.
+        from django.utils import timezone as _tz
+        signataire = (request.data.get('signataire') or '').strip()
+        note_pv = (request.data.get('note_pv') or '').strip()
+        upload = request.FILES.get('pv') or request.FILES.get('file')
+        pv = {}
+        if signataire:
+            pv['signataire'] = signataire[:150]
+        if note_pv:
+            pv['note'] = note_pv[:1000]
+        if upload is not None:
+            from apps.records.storage import store_attachment
+            meta, err = store_attachment(upload)
+            if err is not None:
+                return Response(
+                    {'detail': err},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+            pv['file_key'] = meta['file_key']
+            pv['filename'] = meta['filename']
+        if pv:
+            pv['signed_at'] = _tz.now().isoformat()
         from decimal import Decimal, ROUND_HALF_UP
         with transaction.atomic():
             if bc.devis:
@@ -154,6 +180,10 @@ class BonCommandeViewSet(viewsets.ModelViewSet):
                         created_by=request.user,
                     )
             bc.statut = BonCommande.Statut.LIVRE
+            from django.utils import timezone as _tz2
+            bc.date_livraison_reelle = _tz2.now().date()
+            if pv:
+                bc.pv_livraison = pv
             bc.save()
         return Response(BonCommandeSerializer(bc).data)
 
@@ -222,7 +252,17 @@ class BonCommandeViewSet(viewsets.ModelViewSet):
         # the facture and its copied lines stay atomic like before.
         facture = create_numbered(
             Facture, company, 'facture', _create_facture)
+        data = FactureSerializer(facture).data
+        # FG51 — avertissement DOUX (jamais bloquant) : on facture la livraison
+        # de matériel sans preuve de livraison (PV/signature). Le facturier voit
+        # le message mais la facture est bien créée (201).
+        if not bc.has_proof_of_delivery:
+            data['warnings'] = [
+                'Aucune preuve de livraison (PV / signature) n\'est attachée '
+                'à ce bon de commande. Vous facturez sans bon de livraison '
+                'signé.'
+            ]
         return Response(
-            FactureSerializer(facture).data,
+            data,
             status=status.HTTP_201_CREATED,
         )

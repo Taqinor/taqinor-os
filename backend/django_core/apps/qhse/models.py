@@ -63,6 +63,16 @@ class NonConformite(models.Model):
     # import cross-app de modèle.
     chantier_id = models.PositiveIntegerField(
         null=True, blank=True, verbose_name='ID du chantier')
+    # QHSE11 — pont Réserve (installations.Reserve) → NCR. Lien optionnel via
+    # FK chaîne de caractères (jamais un import cross-app de modèle) : une
+    # non-conformité peut naître d'une réserve de fin de chantier.
+    reserve = models.ForeignKey(
+        'installations.Reserve',
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='qhse_ncr',
+        verbose_name="Réserve d'origine",
+    )
     signale_par = models.ForeignKey(
         settings.AUTH_USER_MODEL,
         on_delete=models.SET_NULL,
@@ -132,6 +142,23 @@ class ActionCorrectivePreventive(models.Model):
     statut = models.CharField(
         max_length=10, choices=Statut.choices,
         default=Statut.A_FAIRE, verbose_name='Statut')
+    # QHSE13 — vérification d'efficacité : une CAPA réalisée n'est VÉRIFIÉE
+    # (et donc clôturable au niveau NCR) que si son efficacité a été contrôlée
+    # et jugée concluante (``efficace=True``). ``efficace`` null = pas encore
+    # vérifiée, True = efficace, False = inefficace (rouvre le traitement).
+    efficace = models.BooleanField(
+        null=True, blank=True, verbose_name='Efficace')
+    commentaire_verification = models.TextField(
+        blank=True, default='', verbose_name="Commentaire de vérification")
+    date_verification = models.DateTimeField(
+        null=True, blank=True, verbose_name='Vérifiée le')
+    verifiee_par = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='qhse_capa_verifiees',
+        verbose_name='Vérifiée par',
+    )
     date_creation = models.DateTimeField(
         auto_now_add=True, verbose_name='Créé le')
 
@@ -496,3 +523,165 @@ class ReleveCourbeIV(models.Model):
         if denom == 0:
             return None
         return (self.pmpp / denom).quantize(Decimal('0.0001'))
+
+
+# ── QHSE14 — Chatter QHSE (NCR / CAPA / Incident / Audit) ──────────────────
+
+class QhseChatterEntry(models.Model):
+    """Entrée d'historique « chatter » (style Odoo) d'un objet QHSE.
+
+    Rattachée à une entité QHSE par couple ``(cible_type, cible_id)`` — une
+    référence lâche stable qui couvre déjà la non-conformité (NCR) et l'action
+    corrective/préventive (CAPA) et reste ouverte aux futures entités Incident
+    et Audit, sans coupler ces modèles ni dépendre de ContentType.
+
+    Deux familles d'entrées, comme le chatter CRM :
+
+    * automatiques (``CREATION`` / ``MODIFICATION``) — log d'un champ suivi
+      (``field`` / ``field_label`` / ``old_value`` / ``new_value``), écrit côté
+      serveur, jamais par le navigateur ;
+    * manuelles (``NOTE``) — note libre saisie par un utilisateur.
+
+    L'utilisateur acteur (``user``) et la société (``company``) sont TOUJOURS
+    posés côté serveur. Entièrement additif.
+    """
+    class Cible(models.TextChoices):
+        NCR = 'ncr', 'Non-conformité'
+        CAPA = 'capa', 'Action corrective/préventive'
+        INCIDENT = 'incident', 'Incident'
+        AUDIT = 'audit', 'Audit'
+
+    class Kind(models.TextChoices):
+        CREATION = 'creation', 'Création'
+        MODIFICATION = 'modification', 'Modification'
+        NOTE = 'note', 'Note'
+
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='qhse_chatter',
+        verbose_name='Société',
+    )
+    cible_type = models.CharField(
+        max_length=10, choices=Cible.choices, verbose_name='Type de cible')
+    cible_id = models.PositiveIntegerField(verbose_name="ID de l'objet ciblé")
+    kind = models.CharField(
+        max_length=15, choices=Kind.choices, verbose_name="Type d'entrée")
+    field = models.CharField(
+        max_length=100, blank=True, default='', verbose_name='Champ')
+    field_label = models.CharField(
+        max_length=150, blank=True, default='', verbose_name='Libellé du champ')
+    old_value = models.TextField(
+        blank=True, default='', verbose_name='Ancienne valeur')
+    new_value = models.TextField(
+        blank=True, default='', verbose_name='Nouvelle valeur')
+    body = models.TextField(blank=True, default='', verbose_name='Note')
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='qhse_chatter',
+        verbose_name='Auteur',
+    )
+    created_at = models.DateTimeField(auto_now_add=True, verbose_name='Le')
+
+    class Meta:
+        verbose_name = 'Entrée de chatter QHSE'
+        verbose_name_plural = 'Entrées de chatter QHSE'
+        ordering = ['-created_at', '-id']
+        indexes = [
+            models.Index(fields=['company', 'cible_type', 'cible_id']),
+        ]
+
+    def __str__(self):
+        return f'{self.cible_type}#{self.cible_id} {self.kind}'
+
+
+# ── QHSE15 — Grille d'audit + critères pondérés ────────────────────────────
+
+class GrilleAudit(models.Model):
+    """Grille d'audit réutilisable (gabarit de notation pondérée).
+
+    Modèle de grille que l'on instancie lors d'un audit (à venir, QHSE16) :
+    porte un ``nom``/``code``, une description, un ``type_audit`` (chantier /
+    sécurité / qualité / environnement) et un drapeau ``actif``. Ses critères
+    pondérés vivent dans ``CritereAudit`` (relation 1-N). Multi-société via le FK
+    ``company`` posé côté serveur. Entièrement additif.
+    """
+    class TypeAudit(models.TextChoices):
+        CHANTIER = 'chantier', 'Chantier'
+        SECURITE = 'securite', 'Sécurité'
+        QUALITE = 'qualite', 'Qualité'
+        ENVIRONNEMENT = 'environnement', 'Environnement'
+
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='qhse_grilles_audit',
+        verbose_name='Société',
+    )
+    code = models.CharField(
+        max_length=50, blank=True, default='', verbose_name='Code')
+    nom = models.CharField(max_length=255, verbose_name='Nom')
+    description = models.TextField(
+        blank=True, default='', verbose_name='Description')
+    type_audit = models.CharField(
+        max_length=15, choices=TypeAudit.choices,
+        default=TypeAudit.CHANTIER, verbose_name="Type d'audit")
+    actif = models.BooleanField(default=True, verbose_name='Active')
+    date_creation = models.DateTimeField(
+        auto_now_add=True, verbose_name='Créé le')
+
+    class Meta:
+        verbose_name = "Grille d'audit"
+        verbose_name_plural = "Grilles d'audit"
+        ordering = ['-id']
+
+    def __str__(self):
+        return self.nom
+
+    def poids_total(self):
+        """Somme des poids des critères de la grille (0 si aucun)."""
+        agg = self.criteres.aggregate(total=models.Sum('poids'))
+        return agg['total'] or 0
+
+
+class CritereAudit(models.Model):
+    """Critère pondéré d'une ``GrilleAudit``.
+
+    Décrit un point à noter au sein d'une grille : son ``intitule``, une
+    ``categorie`` (regroupement libre), un ``poids`` (pondération relative dans
+    le score) et un ``ordre`` d'affichage. La note se fera sur une échelle
+    ``note_max`` (défaut 5). Multi-société via ``company`` posée côté serveur.
+    """
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='qhse_criteres_audit',
+        verbose_name='Société',
+    )
+    grille = models.ForeignKey(
+        GrilleAudit,
+        on_delete=models.CASCADE,
+        related_name='criteres',
+        verbose_name="Grille d'audit",
+    )
+    ordre = models.PositiveIntegerField(default=0, verbose_name='Ordre')
+    intitule = models.CharField(max_length=255, verbose_name='Intitulé')
+    categorie = models.CharField(
+        max_length=120, blank=True, default='', verbose_name='Catégorie')
+    poids = models.PositiveIntegerField(default=1, verbose_name='Poids')
+    note_max = models.PositiveIntegerField(
+        default=5, verbose_name='Note maximale')
+    description = models.TextField(
+        blank=True, default='', verbose_name='Description')
+    date_creation = models.DateTimeField(
+        auto_now_add=True, verbose_name='Créé le')
+
+    class Meta:
+        verbose_name = "Critère d'audit"
+        verbose_name_plural = "Critères d'audit"
+        ordering = ['grille', 'ordre', 'id']
+
+    def __str__(self):
+        return f'{self.intitule} (poids {self.poids})'

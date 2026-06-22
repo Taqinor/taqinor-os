@@ -42,6 +42,46 @@ class Departement(models.Model):
         return self.nom
 
 
+class Poste(models.Model):
+    """Référentiel des postes/fonctions (FG160) — remplace le ``poste`` texte
+    libre de ``DossierEmploye``.
+
+    Un ``Poste`` est une fonction normalisée de la société (ex. « Technicien
+    pose », « Chef de chantier », « Commercial ») rattachable optionnellement à
+    un ``Departement``. Il sert de socle aux grilles/habilitations et à
+    l'organigramme : un employé pointe désormais vers un ``Poste`` (FK) au lieu
+    d'une chaîne saisie à la main. Multi-société : ``company`` posée côté serveur.
+    """
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='rh_postes',
+        verbose_name='Société',
+    )
+    intitule = models.CharField(max_length=120, verbose_name='Intitulé')
+    code = models.CharField(
+        max_length=20, blank=True, default='', verbose_name='Code')
+    departement = models.ForeignKey(
+        'Departement',
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='postes',
+        verbose_name='Département',
+    )
+    actif = models.BooleanField(default=True, verbose_name='Actif')
+    date_creation = models.DateTimeField(
+        auto_now_add=True, verbose_name='Créé le')
+
+    class Meta:
+        verbose_name = 'Poste'
+        verbose_name_plural = 'Postes'
+        unique_together = [('company', 'intitule')]
+        ordering = ['intitule']
+
+    def __str__(self):
+        return self.intitule
+
+
 class DossierEmploye(models.Model):
     """Fiche employé maître (DC29) — source de vérité unique du collaborateur.
 
@@ -57,9 +97,20 @@ class DossierEmploye(models.Model):
         INTERIM = 'interim', 'Intérim'
 
     class Statut(models.TextChoices):
+        # FG161 — cycle de vie : embauché (avant prise de poste) → actif →
+        # (suspendu) → sorti. Le statut SORTI déclenche l'offboarding.
+        EMBAUCHE = 'embauche', 'Embauché'
         ACTIF = 'actif', 'Actif'
         SUSPENDU = 'suspendu', 'Suspendu'
         SORTI = 'sorti', 'Sorti'
+
+    class MotifSortie(models.TextChoices):
+        DEMISSION = 'demission', 'Démission'
+        LICENCIEMENT = 'licenciement', 'Licenciement'
+        FIN_CONTRAT = 'fin_contrat', 'Fin de contrat'
+        RETRAITE = 'retraite', 'Retraite'
+        RUPTURE_PERIODE_ESSAI = 'rupture_essai', "Rupture période d'essai"
+        AUTRE = 'autre', 'Autre'
 
     class SituationFamiliale(models.TextChoices):
         CELIBATAIRE = 'celibataire', 'Célibataire'
@@ -101,8 +152,17 @@ class DossierEmploye(models.Model):
     telephone = models.CharField(
         max_length=30, blank=True, default='', verbose_name='Téléphone')
     email = models.EmailField(blank=True, default='', verbose_name='E-mail')
+    # FG160 — référentiel : ``poste_ref`` (FK Poste) remplace le ``poste`` texte
+    # libre, conservé en transition pour migrer/dédupliquer les chaînes existantes.
     poste = models.CharField(
-        max_length=120, blank=True, default='', verbose_name='Poste')
+        max_length=120, blank=True, default='', verbose_name='Poste (libre)')
+    poste_ref = models.ForeignKey(
+        'Poste',
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='employes',
+        verbose_name='Poste',
+    )
     departement = models.ForeignKey(
         Departement,
         on_delete=models.SET_NULL,
@@ -122,6 +182,12 @@ class DossierEmploye(models.Model):
     statut = models.CharField(
         max_length=10, choices=Statut.choices,
         default=Statut.ACTIF, verbose_name='Statut')
+    # FG161 — offboarding : date + motif de sortie (renseignés quand SORTI).
+    date_sortie = models.DateField(
+        null=True, blank=True, verbose_name='Date de sortie')
+    motif_sortie = models.CharField(
+        max_length=20, choices=MotifSortie.choices,
+        blank=True, default='', verbose_name='Motif de sortie')
     # FG158 — Coordonnées personnelles étendues (facultatives) : utiles RH/paie,
     # restent INTERNES au dossier (accès Administrateur/Responsable uniquement).
     adresse_perso = models.CharField(
@@ -281,3 +347,236 @@ class DocumentEmploye(models.Model):
 
     def __str__(self):
         return f'{self.employe.matricule} — {self.get_type_document_display()}'
+
+
+class ElementSortie(models.Model):
+    """Checklist d'offboarding (FG161) — un élément à récupérer au départ.
+
+    À la sortie d'un employé (``DossierEmploye.statut = SORTI``) on suit la
+    restitution du matériel et la clôture des accès : EPI, outils, badge, clés,
+    véhicule, téléphone… Chaque ligne porte un libellé, un type normalisé et un
+    drapeau ``recupere`` (avec date). Multi-société : ``company`` posée côté
+    serveur, jamais lue du corps de requête.
+    """
+    class TypeElement(models.TextChoices):
+        EPI = 'epi', 'EPI'
+        OUTIL = 'outil', 'Outil'
+        BADGE = 'badge', 'Badge'
+        CLES = 'cles', 'Clés'
+        VEHICULE = 'vehicule', 'Véhicule'
+        TELEPHONE = 'telephone', 'Téléphone'
+        ORDINATEUR = 'ordinateur', 'Ordinateur'
+        ACCES_SI = 'acces_si', 'Accès informatiques'
+        AUTRE = 'autre', 'Autre'
+
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='rh_elements_sortie',
+        verbose_name='Société',
+    )
+    employe = models.ForeignKey(
+        DossierEmploye,
+        on_delete=models.CASCADE,
+        related_name='elements_sortie',
+        verbose_name='Employé',
+    )
+    libelle = models.CharField(max_length=160, verbose_name='Libellé')
+    type_element = models.CharField(
+        max_length=12, choices=TypeElement.choices,
+        default=TypeElement.AUTRE, verbose_name='Type')
+    recupere = models.BooleanField(default=False, verbose_name='Récupéré')
+    date_recuperation = models.DateField(
+        null=True, blank=True, verbose_name='Date de récupération')
+    note = models.CharField(
+        max_length=255, blank=True, default='', verbose_name='Note')
+    date_creation = models.DateTimeField(
+        auto_now_add=True, verbose_name='Créé le')
+
+    class Meta:
+        verbose_name = 'Élément de sortie'
+        verbose_name_plural = 'Éléments de sortie'
+        ordering = ['type_element', 'libelle']
+        indexes = [models.Index(fields=['company', 'employe'])]
+
+    def __str__(self):
+        return f'{self.employe.matricule} — {self.libelle}'
+
+
+class TypeAbsence(models.Model):
+    """Typologie d'absences (FG164) — catégorie de congé/absence + règle de
+    décompte.
+
+    Chaque société dispose d'un référentiel de types : congé payé (CP), maladie,
+    sans solde, exceptionnel, accident du travail (AT)… Deux règles pilotent le
+    décompte d'une demande de congé (FG163) :
+
+    * ``decompte_jours_ouvres`` — si vrai, seuls les jours ouvrés (hors week-end
+      et jours fériés) entre les deux dates comptent ; sinon on compte les jours
+      calendaires.
+    * ``deduit_solde`` — si vrai, la durée est retranchée du solde de congés de
+      l'employé (FG162) ; un congé sans solde ou la maladie ne déduisent pas le
+      compteur CP.
+
+    ``code`` est unique par société pour servir de clé stable (CP, MAL, SS…).
+    """
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='rh_types_absence',
+        verbose_name='Société',
+    )
+    code = models.CharField(max_length=20, verbose_name='Code')
+    libelle = models.CharField(max_length=120, verbose_name='Libellé')
+    decompte_jours_ouvres = models.BooleanField(
+        default=True, verbose_name='Décompte en jours ouvrés')
+    deduit_solde = models.BooleanField(
+        default=True, verbose_name='Déduit du solde de congés')
+    remunere = models.BooleanField(default=True, verbose_name='Rémunéré')
+    actif = models.BooleanField(default=True, verbose_name='Actif')
+    date_creation = models.DateTimeField(
+        auto_now_add=True, verbose_name='Créé le')
+
+    class Meta:
+        verbose_name = "Type d'absence"
+        verbose_name_plural = "Types d'absence"
+        unique_together = [('company', 'code')]
+        ordering = ['libelle']
+
+    def __str__(self):
+        return f'{self.code} — {self.libelle}'
+
+
+class SoldeConge(models.Model):
+    """Compteur annuel de congés payés d'un employé (FG162) — droits Maroc.
+
+    Un solde par employé et par ``annee``. Le droit légal marocain s'acquiert à
+    raison d'environ 1,5 jour ouvrable par mois de service (18 jours/an), majoré
+    de l'ancienneté (1,5 jour supplémentaire par tranche de 5 ans). Le modèle
+    stocke :
+
+    * ``acquis`` — jours acquis sur l'année (acquisition mensuelle, voir
+      ``services.acquisition_mensuelle``) ;
+    * ``report`` — solde reporté de l'année précédente ;
+    * ``pris`` — jours déjà consommés par des demandes validées.
+
+    Le ``disponible`` = report + acquis − pris est calculé (non stocké). Tout est
+    multi-société (``company`` posée côté serveur).
+    """
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='rh_soldes_conge',
+        verbose_name='Société',
+    )
+    employe = models.ForeignKey(
+        DossierEmploye,
+        on_delete=models.CASCADE,
+        related_name='soldes_conge',
+        verbose_name='Employé',
+    )
+    annee = models.PositiveIntegerField(verbose_name='Année')
+    acquis = models.DecimalField(
+        max_digits=6, decimal_places=2, default=Decimal('0'),
+        verbose_name='Jours acquis')
+    report = models.DecimalField(
+        max_digits=6, decimal_places=2, default=Decimal('0'),
+        verbose_name='Report année précédente')
+    pris = models.DecimalField(
+        max_digits=6, decimal_places=2, default=Decimal('0'),
+        verbose_name='Jours pris')
+    date_creation = models.DateTimeField(
+        auto_now_add=True, verbose_name='Créé le')
+    date_modification = models.DateTimeField(
+        auto_now=True, verbose_name='Modifié le')
+
+    class Meta:
+        verbose_name = 'Solde de congés'
+        verbose_name_plural = 'Soldes de congés'
+        unique_together = [('company', 'employe', 'annee')]
+        ordering = ['-annee', 'employe']
+
+    @property
+    def disponible(self):
+        """Jours encore disponibles = report + acquis − pris."""
+        return (self.report or Decimal('0')) + \
+            (self.acquis or Decimal('0')) - (self.pris or Decimal('0'))
+
+    def __str__(self):
+        return f'{self.employe.matricule} — {self.annee} : {self.disponible} j'
+
+
+class DemandeConge(models.Model):
+    """Demande & validation de congés (FG163) — workflow employé → superviseur/RH.
+
+    Un employé soumet une demande (type d'absence + dates) ; un superviseur/RH la
+    valide ou la refuse. Le nombre de jours décomptés est calculé à la soumission
+    (``services.calculer_jours_demande``) : jours OUVRÉS (hors week-end et jours
+    fériés, cf. FG5 / ``working_days``) si le type le requiert, sinon jours
+    calendaires. À la validation, si le type ``deduit_solde``, la durée est
+    ajoutée au compteur ``pris`` du ``SoldeConge`` de l'année. Multi-société :
+    ``company`` posée côté serveur ; ``employe`` et ``type_absence`` doivent
+    appartenir à la même société.
+    """
+    class Statut(models.TextChoices):
+        SOUMISE = 'soumise', 'Soumise'
+        VALIDEE = 'validee', 'Validée'
+        REFUSEE = 'refusee', 'Refusée'
+        ANNULEE = 'annulee', 'Annulée'
+
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='rh_demandes_conge',
+        verbose_name='Société',
+    )
+    employe = models.ForeignKey(
+        DossierEmploye,
+        on_delete=models.CASCADE,
+        related_name='demandes_conge',
+        verbose_name='Employé',
+    )
+    type_absence = models.ForeignKey(
+        TypeAbsence,
+        on_delete=models.PROTECT,
+        related_name='demandes',
+        verbose_name="Type d'absence",
+    )
+    date_debut = models.DateField(verbose_name='Du')
+    date_fin = models.DateField(verbose_name='Au')
+    jours = models.DecimalField(
+        max_digits=6, decimal_places=2, default=Decimal('0'),
+        verbose_name='Jours décomptés')
+    motif = models.CharField(
+        max_length=255, blank=True, default='', verbose_name='Motif')
+    statut = models.CharField(
+        max_length=10, choices=Statut.choices,
+        default=Statut.SOUMISE, verbose_name='Statut')
+    # Décision (validation/refus) : qui et quand, côté serveur.
+    decide_par = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='rh_demandes_decidees',
+        verbose_name='Décidé par',
+    )
+    date_decision = models.DateTimeField(
+        null=True, blank=True, verbose_name='Date de décision')
+    motif_refus = models.CharField(
+        max_length=255, blank=True, default='', verbose_name='Motif de refus')
+    date_creation = models.DateTimeField(
+        auto_now_add=True, verbose_name='Créé le')
+
+    class Meta:
+        verbose_name = 'Demande de congés'
+        verbose_name_plural = 'Demandes de congés'
+        ordering = ['-date_debut', '-date_creation']
+        indexes = [
+            models.Index(fields=['company', 'employe']),
+            models.Index(fields=['company', 'statut']),
+            models.Index(fields=['company', 'date_debut', 'date_fin']),
+        ]
+
+    def __str__(self):
+        return (f'{self.employe.matricule} — {self.type_absence.code} '
+                f'{self.date_debut}→{self.date_fin} ({self.get_statut_display()})')
