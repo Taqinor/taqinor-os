@@ -766,3 +766,220 @@ class CaisseViewSet(_ComptaBaseViewSet):
         return Response(
             ClotureCaisseSerializer(cloture).data,
             status=status.HTTP_201_CREATED)
+
+
+# ── FG125 — Virements internes entre comptes de trésorerie ─────────────────
+
+class VirementInterneViewSet(_ComptaBaseViewSet):
+    """Virements internes entre comptes de trésorerie (FG125).
+
+    Banque↔banque/caisse en écriture à deux jambes. La création valide les
+    comptes (mêmes société, différents) ; l'action ``poster`` passe l'écriture
+    équilibrée au grand livre (refusée en période close). Société scopée.
+    """
+    queryset = VirementInterne.objects.select_related(
+        'compte_source', 'compte_destination', 'ecriture').all()
+    serializer_class = VirementInterneSerializer
+    filter_backends = [filters.OrderingFilter]
+    ordering_fields = ['date_virement', 'id']
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        posted = self.request.query_params.get('posted')
+        if posted in ('0', '1'):
+            qs = qs.filter(posted=(posted == '1'))
+        return qs
+
+    def perform_create(self, serializer):
+        serializer.save(
+            company=self.request.user.company, created_by=self.request.user)
+
+    @action(detail=True, methods=['post'])
+    def poster(self, request, pk=None):
+        """Poste le virement au grand livre (FG125). Refusé en période close."""
+        virement = self.get_object()  # scopé société par TenantMixin.
+        try:
+            ecriture = services.poster_virement(virement, user=request.user)
+        except DjangoValidationError as exc:
+            return Response(
+                {'detail': exc.messages[0] if exc.messages else str(exc)},
+                status=status.HTTP_400_BAD_REQUEST)
+        virement.refresh_from_db()
+        return Response({
+            'virement': self.get_serializer(virement).data,
+            'ecriture_id': ecriture.id if ecriture else None,
+        })
+
+
+# ── FG126 — Prévisionnel de trésorerie roulant 13 semaines ─────────────────
+
+class LignePrevisionnelTresorerieViewSet(_ComptaBaseViewSet):
+    """Lignes prévues éditables du prévisionnel de trésorerie (FG126).
+
+    Saisie manuelle des flux attendus (crédits, leasing, salaires, acomptes IS…)
+    empilés au-dessus de la projection AR/AP. La projection consolidée roulante
+    13 semaines est servie par ``etats/previsionnel-tresorerie``. Société scopée.
+    """
+    queryset = LignePrevisionnelTresorerie.objects.all()
+    serializer_class = LignePrevisionnelTresorerieSerializer
+    filter_backends = [filters.OrderingFilter]
+    ordering_fields = ['date_prevue', 'id']
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        categorie = self.request.query_params.get('categorie')
+        if categorie:
+            qs = qs.filter(categorie=categorie)
+        return qs
+
+    def perform_create(self, serializer):
+        serializer.save(company=self.request.user.company)
+
+
+# ── FG127 / FG128 — Effets (chèques / traites) ─────────────────────────────
+
+class EffetViewSet(_ComptaBaseViewSet):
+    """Portefeuille d'effets à recevoir (FG127) & à payer (FG128).
+
+    Chèques/traites avec échéance/banque/statut (portefeuille→remis→encaissé→
+    impayé pour les effets à recevoir ; portefeuille→payé→impayé pour les effets
+    à payer). Actions ``encaisser``/``payer``/``rejeter`` font évoluer le statut
+    et passent l'écriture au grand livre (refusée en période close). Société
+    scopée, posée côté serveur.
+    """
+    queryset = Effet.objects.select_related('bordereau').all()
+    serializer_class = EffetSerializer
+    filter_backends = [filters.SearchFilter, filters.OrderingFilter]
+    search_fields = ['numero', 'tireur', 'banque']
+    ordering_fields = ['date_echeance', 'date_emission', 'montant', 'id']
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        params = self.request.query_params
+        sens = params.get('sens')
+        if sens:
+            qs = qs.filter(sens=sens)
+        statut = params.get('statut')
+        if statut:
+            qs = qs.filter(statut=statut)
+        return qs
+
+    def perform_create(self, serializer):
+        serializer.save(
+            company=self.request.user.company, created_by=self.request.user)
+
+    @action(detail=True, methods=['post'])
+    def encaisser(self, request, pk=None):
+        """Encaisse un effet à recevoir : remis/portefeuille → encaissé (FG127)."""
+        effet = self.get_object()  # scopé société par TenantMixin.
+        try:
+            effet = services.encaisser_effet(
+                effet,
+                date_encaissement=request.data.get('date_encaissement') or None,
+                user=request.user)
+        except DjangoValidationError as exc:
+            return Response(
+                {'detail': exc.messages[0] if exc.messages else str(exc)},
+                status=status.HTTP_400_BAD_REQUEST)
+        return Response(self.get_serializer(effet).data)
+
+    @action(detail=True, methods=['post'])
+    def payer(self, request, pk=None):
+        """Paie un effet à payer fournisseur : portefeuille → payé (FG128)."""
+        effet = self.get_object()  # scopé société par TenantMixin.
+        try:
+            effet = services.payer_effet(
+                effet,
+                date_paiement=request.data.get('date_paiement') or None,
+                user=request.user)
+        except DjangoValidationError as exc:
+            return Response(
+                {'detail': exc.messages[0] if exc.messages else str(exc)},
+                status=status.HTTP_400_BAD_REQUEST)
+        return Response(self.get_serializer(effet).data)
+
+    @action(detail=True, methods=['post'])
+    def rejeter(self, request, pk=None):
+        """Constate l'impayé / rejet d'un effet (FG130).
+
+        Corps : ``{date_rejet?, frais_rejet?, commentaire?}``. Rouvre le montant
+        dû et comptabilise les frais de rejet. Refusé en période close.
+        """
+        effet = self.get_object()  # scopé société par TenantMixin.
+        try:
+            effet = services.rejeter_effet(
+                effet,
+                date_rejet=request.data.get('date_rejet') or None,
+                frais_rejet=request.data.get('frais_rejet'),
+                commentaire=request.data.get('commentaire', '') or '',
+                user=request.user)
+        except DjangoValidationError as exc:
+            return Response(
+                {'detail': exc.messages[0] if exc.messages else str(exc)},
+                status=status.HTTP_400_BAD_REQUEST)
+        return Response(self.get_serializer(effet).data)
+
+
+# ── FG129 — Bordereau de remise en banque ──────────────────────────────────
+
+class BordereauRemiseViewSet(_ComptaBaseViewSet):
+    """Bordereaux de remise en banque d'effets à recevoir (FG129).
+
+    Regroupe des effets pour un dépôt groupé + écriture de remise. La création
+    rattache les effets (corps ``{compte_tresorerie, date_remise, reference?,
+    effet_ids: [...]}``) ; l'action ``poster`` passe l'écriture et fait basculer
+    les effets en ``remis``. Société scopée, posée côté serveur.
+    """
+    http_method_names = ['get', 'post', 'head', 'options']
+    queryset = BordereauRemise.objects.select_related(
+        'compte_tresorerie', 'ecriture').prefetch_related('effets').all()
+    serializer_class = BordereauRemiseSerializer
+    filter_backends = [filters.OrderingFilter]
+    ordering_fields = ['date_remise', 'id']
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        statut = self.request.query_params.get('statut')
+        if statut:
+            qs = qs.filter(statut=statut)
+        return qs
+
+    def create(self, request, *args, **kwargs):
+        data = request.data
+        company = request.user.company
+        treso = CompteTresorerie.objects.filter(
+            company=company, id=data.get('compte_tresorerie')).first()
+        if treso is None:
+            return Response(
+                {'detail': 'Compte de trésorerie inconnu.'},
+                status=status.HTTP_400_BAD_REQUEST)
+        try:
+            bordereau = services.creer_bordereau(
+                company, treso,
+                date_remise=data.get('date_remise'),
+                effet_ids=data.get('effet_ids') or [],
+                reference=data.get('reference', '') or '',
+                user=request.user)
+        except DjangoValidationError as exc:
+            return Response(
+                {'detail': exc.messages[0] if exc.messages else str(exc)},
+                status=status.HTTP_400_BAD_REQUEST)
+        return Response(
+            self.get_serializer(bordereau).data,
+            status=status.HTTP_201_CREATED)
+
+    @action(detail=True, methods=['post'])
+    def poster(self, request, pk=None):
+        """Poste le bordereau au grand livre (FG129). Refusé en période close."""
+        bordereau = self.get_object()  # scopé société par TenantMixin.
+        try:
+            ecriture = services.poster_bordereau(bordereau, user=request.user)
+        except DjangoValidationError as exc:
+            return Response(
+                {'detail': exc.messages[0] if exc.messages else str(exc)},
+                status=status.HTTP_400_BAD_REQUEST)
+        bordereau.refresh_from_db()
+        return Response({
+            'bordereau': self.get_serializer(bordereau).data,
+            'ecriture_id': ecriture.id if ecriture else None,
+        })

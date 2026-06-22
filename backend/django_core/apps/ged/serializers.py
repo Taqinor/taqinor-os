@@ -1,9 +1,80 @@
 from rest_framework import serializers
 
 from .models import (
-    Cabinet, Coffre, Document, DocumentLien, DocumentVersion, Folder,
+    Cabinet, Coffre, Document, DocumentLien, DocumentTag,
+    DocumentTagAssignment, DocumentVersion, Folder,
 )
 from . import services
+
+
+class DocumentTagSerializer(serializers.ModelSerializer):
+    """GED9 — Tag de la taxonomie documentaire (hiérarchique).
+
+    `company` posée côté serveur. `chemin` expose le chemin lisible depuis la
+    racine (« Juridique / Contrats / NDA »). Le parent doit appartenir à la même
+    société et ne jamais créer de cycle (garde `services.validate_tag_parent`).
+    """
+    parent_nom = serializers.CharField(
+        source='parent.nom', read_only=True, default=None)
+    chemin = serializers.SerializerMethodField()
+    document_count = serializers.SerializerMethodField()
+
+    class Meta:
+        model = DocumentTag
+        fields = [
+            'id', 'nom', 'slug', 'parent', 'parent_nom', 'chemin',
+            'couleur', 'description', 'document_count',
+            'created_at', 'updated_at',
+        ]
+        read_only_fields = ['created_at', 'updated_at']
+
+    def get_chemin(self, obj):
+        parts = [a.nom for a in reversed(obj.ancetres())] + [obj.nom]
+        return ' / '.join(parts)
+
+    def get_document_count(self, obj):
+        return obj.assignments.count()
+
+    def validate(self, attrs):
+        request = self.context.get('request')
+        parent = attrs.get('parent', getattr(self.instance, 'parent', None))
+        if request is not None and parent is not None \
+                and parent.company_id != request.user.company_id:
+            raise serializers.ValidationError({'parent': 'Tag parent inconnu.'})
+        try:
+            services.validate_tag_parent(self.instance, parent)
+        except ValueError as exc:
+            raise serializers.ValidationError({'parent': str(exc)})
+        return attrs
+
+
+class DocumentTagAssignmentSerializer(serializers.ModelSerializer):
+    """GED9 — Application d'un tag à un document. `document` et `tag` doivent
+    appartenir à la société courante ; `company`/`created_by` posés serveur."""
+    tag_nom = serializers.CharField(source='tag.nom', read_only=True)
+    document_nom = serializers.CharField(
+        source='document.nom', read_only=True)
+
+    class Meta:
+        model = DocumentTagAssignment
+        fields = [
+            'id', 'document', 'document_nom', 'tag', 'tag_nom',
+            'created_by', 'created_at',
+        ]
+        read_only_fields = ['created_by', 'created_at']
+
+    def validate(self, attrs):
+        request = self.context.get('request')
+        if request is None:
+            return attrs
+        cid = request.user.company_id
+        document = attrs.get('document')
+        tag = attrs.get('tag')
+        if document is not None and document.company_id != cid:
+            raise serializers.ValidationError({'document': 'Document inconnu.'})
+        if tag is not None and tag.company_id != cid:
+            raise serializers.ValidationError({'tag': 'Tag inconnu.'})
+        return attrs
 
 
 class CoffreSerializer(serializers.ModelSerializer):

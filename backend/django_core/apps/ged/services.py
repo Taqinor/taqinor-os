@@ -35,6 +35,46 @@ def compute_checksum(data):
     return hashlib.sha256(data).hexdigest()
 
 
+def validate_tag_parent(tag, new_parent):
+    """GED9 — Garde anti-cycle / cross-société pour la taxonomie de tags.
+
+    Refuse qu'un tag devienne son propre parent, qu'il descende sous l'un de ses
+    descendants (cycle), ou qu'il pointe sur un parent d'une autre société. À
+    appeler avant de poser `parent`. `new_parent` peut être None (tag racine).
+    """
+    if new_parent is None:
+        return
+    if tag is not None and new_parent.pk == tag.pk:
+        raise ValueError("Un tag ne peut pas être son propre parent.")
+    if tag is not None and tag.company_id is not None \
+            and new_parent.company_id != tag.company_id:
+        raise ValueError("Le parent doit appartenir à la même société.")
+    if tag is not None and tag.pk is not None:
+        # Empêche un cycle : le nouveau parent ne doit pas être un descendant.
+        courant = new_parent
+        seen = set()
+        while courant is not None and courant.pk not in seen:
+            if courant.pk == tag.pk:
+                raise ValueError(
+                    "Déplacement impossible : le parent est un descendant.")
+            seen.add(courant.pk)
+            courant = courant.parent
+
+
+def assign_tag(document, tag, *, created_by=None):
+    """GED9 — Applique un tag de la taxonomie à un document (idempotent).
+
+    Le tag et le document doivent appartenir à la même société (jamais de fuite
+    cross-société). Renvoie (assignment, created).
+    """
+    from .models import DocumentTag, DocumentTagAssignment  # noqa: F401
+    if tag.company_id != document.company_id:
+        raise ValueError("Le tag doit appartenir à la même société.")
+    return DocumentTagAssignment.objects.get_or_create(
+        document=document, tag=tag,
+        defaults={'company': document.company, 'created_by': created_by})
+
+
 def move_folder(folder, new_parent):
     """Déplace un dossier sous un nouveau parent et recalcule les chemins.
 

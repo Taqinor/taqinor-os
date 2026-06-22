@@ -206,6 +206,18 @@ class ProjetViewSet(_GestionProjetBaseViewSet):
         projet = self.get_object()
         return Response(selectors.arbre_taches(projet))
 
+    @action(detail=True, methods=['get'], url_path='gantt')
+    def gantt(self, request, pk=None):
+        """Planning Gantt du projet : barres + liens de dépendance (lecture seule).
+
+        La société est garantie par ``get_object`` (queryset scopé société) :
+        un projet d'une autre société → 404. Délègue au sélecteur
+        ``planning_gantt`` (barres datées via ``projet.date_debut``, marges,
+        drapeau critique, liens prédécesseur→successeur).
+        """
+        projet = self.get_object()
+        return Response(selectors.planning_gantt(projet))
+
     @action(detail=True, methods=['get'], url_path='avancement')
     def avancement(self, request, pk=None):
         """Roll-up d'avancement pondéré par charge du projet (lecture seule).

@@ -5,8 +5,41 @@ LIRE la GED passe par ces fonctions plutôt que d'importer `ged.models`.
 Toutes les lectures sont bornées à une société.
 """
 from .models import (
-    Cabinet, Coffre, Document, DocumentLien, DocumentVersion, Folder,
+    Cabinet, Coffre, Document, DocumentLien, DocumentTag,
+    DocumentTagAssignment, DocumentVersion, Folder,
 )
+
+
+def tags_for_company(company):
+    """GED9 — Tags de la taxonomie d'une société (QuerySet)."""
+    return DocumentTag.objects.filter(company=company)
+
+
+def tags_for_document(document):
+    """GED9 — Tags appliqués à un document (QuerySet, distinct)."""
+    return DocumentTag.objects.filter(
+        company=document.company, assignments__document=document).distinct()
+
+
+def documents_with_tag(tag, *, include_descendants=False):
+    """GED9 — Documents portant un tag (option : + ses sous-tags descendants).
+
+    Avec `include_descendants`, on inclut les documents étiquetés par n'importe
+    quel descendant du tag dans la taxonomie (filtre hiérarchique). Borné à la
+    société du tag.
+    """
+    tag_ids = [tag.pk]
+    if include_descendants:
+        frontier = [tag.pk]
+        while frontier:
+            children = list(DocumentTag.objects.filter(
+                company=tag.company, parent_id__in=frontier
+            ).values_list('pk', flat=True))
+            children = [c for c in children if c not in tag_ids]
+            tag_ids.extend(children)
+            frontier = children
+    return Document.objects.filter(
+        company=tag.company, tag_assignments__tag_id__in=tag_ids).distinct()
 
 
 def cabinets_for_company(company):
