@@ -317,3 +317,118 @@ class OptimizeOrientationTest(SimpleTestCase):
         # borne non multiple : la dernière valeur force le stop exact.
         self.assertEqual(sd._frange(0, 50, 20), [0, 20, 40, 50])
         self.assertEqual(sd._frange(30, 30, 15), [30])
+
+
+class ShadingAnalysisTest(SimpleTestCase):
+    """FG250 — perte d'ombrage mensuelle depuis l'horizon + obstacles."""
+
+    def test_no_shading_is_unity(self):
+        res = sd.shading_analysis([], [])
+        self.assertEqual(res["annual_loss_pct"], 0.0)
+        self.assertEqual(res["production_factor"], 1.0)
+        self.assertEqual(res["monthly_loss_pct"], [0.0] * 12)
+
+    def test_south_obstacle_costs_more_than_north(self):
+        south = sd.shading_analysis(
+            [], [{"azimuth": 180, "elevation": 30}])
+        north = sd.shading_analysis(
+            [], [{"azimuth": 0, "elevation": 30}])
+        self.assertGreater(south["annual_loss_pct"], north["annual_loss_pct"])
+        # Un masque plein Nord (hémisphère N) ne coûte ~rien.
+        self.assertLess(north["annual_loss_pct"], 1.0)
+
+    def test_winter_loss_exceeds_summer(self):
+        res = sd.shading_analysis(
+            [], [{"azimuth": 180, "elevation": 25}])
+        jan = res["monthly_loss_pct"][0]
+        jun = res["monthly_loss_pct"][5]
+        self.assertGreater(jan, jun)
+        # Facteur de production mensuel = 1 - perte/100.
+        self.assertAlmostEqual(
+            res["monthly_production_factor"][0], 1 - jan / 100.0, places=3)
+
+    def test_horizon_profile_drives_loss(self):
+        flat = sd.shading_analysis(
+            [{"azimuth": 180, "elevation": 2}], [])
+        steep = sd.shading_analysis(
+            [{"azimuth": 180, "elevation": 35}], [])
+        self.assertGreater(steep["annual_loss_pct"], flat["annual_loss_pct"])
+
+    def test_heavy_shading_warns(self):
+        res = sd.shading_analysis(
+            [], [{"azimuth": 180, "elevation": 45},
+                 {"azimuth": 170, "elevation": 40}])
+        self.assertTrue(res["warnings"])
+        self.assertGreaterEqual(res["annual_loss_pct"], 20.0)
+
+    def test_loss_is_bounded(self):
+        res = sd.shading_analysis(
+            [], [{"azimuth": 180, "elevation": 90}] * 10)
+        for m in res["monthly_loss_pct"]:
+            self.assertLessEqual(m, 90.0)
+        self.assertLessEqual(res["horizon_severity"], 0.6)
+
+    def test_malformed_input_safe(self):
+        res = sd.shading_analysis(
+            [{"azimuth": "x", "elevation": None}],
+            [{"foo": "bar"}])
+        self.assertEqual(res["annual_loss_pct"], 0.0)
+
+
+class GenerateBoqTest(SimpleTestCase):
+    """FG251 — nomenclature électrique (BOQ) déduite du design."""
+
+    def test_zero_panels_empty(self):
+        res = sd.generate_boq(n_panels=0)
+        self.assertEqual(res["items"], [])
+        self.assertTrue(res["warnings"])
+
+    def test_basic_reseau_boq_categories(self):
+        sr = sd.string_design(
+            12, inverter={"ac_kw": 5, "n_mppt": 2})
+        res = sd.generate_boq(
+            n_panels=12, string_result=sr, installation_type="reseau")
+        cats = {it["categorie"] for it in res["items"]}
+        for expected in ("Câblage DC", "Câblage AC", "Protection DC",
+                         "Protection AC", "Coffret", "Mise à la terre",
+                         "Structure"):
+            self.assertIn(expected, cats)
+        # Pas de batterie sur du réseau pur.
+        self.assertNotIn("Batterie", cats)
+        # Jamais de prix dans une ligne de BOQ.
+        for it in res["items"]:
+            self.assertNotIn("prix", it)
+            self.assertNotIn("prix_achat", it)
+
+    def test_structure_scales_with_panels(self):
+        small = sd.generate_boq(n_panels=6)
+        big = sd.generate_boq(n_panels=24)
+
+        def rails(boq):
+            return next(it["quantite"] for it in boq["items"]
+                        if it["designation"].startswith("Rail"))
+        self.assertGreater(rails(big), rails(small))
+
+    def test_three_phase_breaker_and_cable(self):
+        mono = sd.generate_boq(n_panels=20, kwc=11, phases=1)
+        tri = sd.generate_boq(n_panels=20, kwc=11, phases=3)
+        self.assertEqual(mono["summary"]["phases"], 1)
+        self.assertEqual(tri["summary"]["phases"], 3)
+        # Le triphasé tire moins de courant → calibre plus petit.
+        self.assertLessEqual(tri["summary"]["ac_breaker_amp"],
+                             mono["summary"]["ac_breaker_amp"])
+
+    def test_battery_adds_lines(self):
+        res = sd.generate_boq(
+            n_panels=10, has_battery=True, installation_type="hybride")
+        cats = {it["categorie"] for it in res["items"]}
+        self.assertIn("Batterie", cats)
+        self.assertIn("Protection batterie", cats)
+
+    def test_strings_drive_string_protections(self):
+        sr = sd.string_design(
+            16, inverter={"ac_kw": 6, "n_mppt": 2})
+        res = sd.generate_boq(n_panels=16, string_result=sr)
+        fuses = next(it["quantite"] for it in res["items"]
+                     if it["designation"].startswith("Sectionneur-fusible"))
+        self.assertEqual(fuses, sr["strings"])
