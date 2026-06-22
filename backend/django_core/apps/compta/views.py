@@ -18,14 +18,16 @@ from . import selectors, services
 from .models import (
     CessionImmobilisation, CompteComptable, CompteTresorerie,
     DotationAmortissement, EcritureComptable, ExerciceComptable,
-    Immobilisation, Journal, PeriodeComptable, PlanComptable,
+    Immobilisation, Journal, LigneReleve, PeriodeComptable, PlanComptable,
+    RapprochementBancaire,
 )
 from .serializers import (
     CessionImmobilisationSerializer, CompteComptableSerializer,
     CompteTresorerieSerializer, DotationAmortissementSerializer,
     EcritureComptableSerializer, ExerciceComptableSerializer,
-    ImmobilisationSerializer, JournalSerializer, PeriodeComptableSerializer,
-    PlanAmortissementSerializer, PlanComptableSerializer,
+    ImmobilisationSerializer, JournalSerializer, LigneReleveSerializer,
+    PeriodeComptableSerializer, PlanAmortissementSerializer,
+    PlanComptableSerializer, RapprochementBancaireSerializer,
 )
 
 
@@ -487,3 +489,112 @@ class DotationAmortissementViewSet(_ComptaBaseViewSet):
             'dotation': self.get_serializer(dotation).data,
             'ecriture_id': ecriture.id if ecriture else None,
         })
+
+
+# ── FG123 — Rapprochement bancaire (relevé ↔ écritures) ────────────────────
+
+class RapprochementBancaireViewSet(_ComptaBaseViewSet):
+    """Rapprochements bancaires (FG123) : pointer relevé ↔ grand livre.
+
+    Crée un rapprochement par compte de trésorerie/période, ajoute des lignes de
+    relevé, pointe chaque ligne contre des lignes du grand livre jusqu'à
+    concordance, et expose la synthèse (solde relevé vs solde GL vs écart). C'est
+    DISTINCT de l'import de paiements clients (FG42) : aucune écriture n'est
+    créée. Société scopée, posée côté serveur ; Admin/Responsable uniquement.
+    """
+    queryset = RapprochementBancaire.objects.select_related(
+        'compte_tresorerie').prefetch_related(
+        'lignes_releve__lignes_gl').all()
+    serializer_class = RapprochementBancaireSerializer
+    filter_backends = [filters.OrderingFilter]
+    ordering_fields = ['date_fin', 'date_debut', 'id']
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        compte = self.request.query_params.get('compte_tresorerie')
+        if compte:
+            qs = qs.filter(compte_tresorerie_id=compte)
+        statut = self.request.query_params.get('statut')
+        if statut:
+            qs = qs.filter(statut=statut)
+        return qs
+
+    def perform_create(self, serializer):
+        serializer.save(
+            company=self.request.user.company, created_by=self.request.user)
+
+    @action(detail=True, methods=['get'], url_path='lignes-gl')
+    def lignes_gl(self, request, pk=None):
+        """Lignes du grand livre pointables sur la période (FG123)."""
+        rapprochement = self.get_object()  # scopé société par TenantMixin.
+        return Response(selectors.lignes_gl_pointables(rapprochement))
+
+    @action(detail=True, methods=['get'])
+    def resume(self, request, pk=None):
+        """Synthèse : solde relevé vs solde GL vs écart (FG123)."""
+        rapprochement = self.get_object()  # scopé société par TenantMixin.
+        return Response(selectors.resume_rapprochement(rapprochement))
+
+    @action(detail=True, methods=['post'], url_path='ligne-releve')
+    def ligne_releve(self, request, pk=None):
+        """Ajoute une ligne de relevé bancaire (FG123).
+
+        Corps : ``{date_operation, libelle, montant, reference?}``. ``montant``
+        signé (+ entrée, − sortie). Société héritée du rapprochement.
+        """
+        rapprochement = self.get_object()  # scopé société par TenantMixin.
+        data = request.data
+        try:
+            ligne = services.ajouter_ligne_releve(
+                rapprochement,
+                date_operation=data.get('date_operation'),
+                libelle=data.get('libelle', '') or '',
+                montant=data.get('montant'),
+                reference=data.get('reference', '') or '',
+            )
+        except DjangoValidationError as exc:
+            return Response(
+                {'detail': exc.messages[0] if exc.messages else str(exc)},
+                status=status.HTTP_400_BAD_REQUEST)
+        return Response(
+            LigneReleveSerializer(ligne).data,
+            status=status.HTTP_201_CREATED)
+
+    @action(detail=True, methods=['post'], url_path='pointer')
+    def pointer(self, request, pk=None):
+        """Pointe une ligne de relevé contre des lignes du grand livre (FG123).
+
+        Corps : ``{ligne_releve: <id>, lignes_gl: [<id>, ...]}``. Remplace les
+        lignes GL appariées ; la ligne devient ``rapprochee`` si l'écart est nul.
+        Toutes les lignes restent scopées à la société du rapprochement.
+        """
+        rapprochement = self.get_object()  # scopé société par TenantMixin.
+        data = request.data
+        ligne = LigneReleve.objects.filter(
+            company=request.user.company, rapprochement=rapprochement,
+            id=data.get('ligne_releve')).first()
+        if ligne is None:
+            return Response(
+                {'detail': 'Ligne de relevé inconnue.'},
+                status=status.HTTP_400_BAD_REQUEST)
+        try:
+            ligne = services.pointer_ligne_releve(
+                ligne, data.get('lignes_gl') or [])
+        except DjangoValidationError as exc:
+            return Response(
+                {'detail': exc.messages[0] if exc.messages else str(exc)},
+                status=status.HTTP_400_BAD_REQUEST)
+        return Response(LigneReleveSerializer(ligne).data)
+
+    @action(detail=True, methods=['post'])
+    def cloturer(self, request, pk=None):
+        """Clôture le rapprochement quand tout concorde (FG123)."""
+        rapprochement = self.get_object()  # scopé société par TenantMixin.
+        try:
+            services.cloturer_rapprochement(rapprochement)
+        except DjangoValidationError as exc:
+            return Response(
+                {'detail': exc.messages[0] if exc.messages else str(exc)},
+                status=status.HTTP_400_BAD_REQUEST)
+        rapprochement.refresh_from_db()
+        return Response(self.get_serializer(rapprochement).data)

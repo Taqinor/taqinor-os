@@ -913,3 +913,210 @@ class CessionImmobilisation(models.Model):
         """Moins-value de cession (valeur absolue du résultat négatif, sinon 0)."""
         resultat = self.resultat_cession or Decimal('0')
         return -resultat if resultat < 0 else Decimal('0')
+
+
+# ── FG123 — Rapprochement bancaire (relevé ↔ écritures) ────────────────────
+
+class RapprochementBancaire(models.Model):
+    """Rapprochement bancaire d'un ``CompteTresorerie`` sur une période (FG123).
+
+    Pointe les lignes du RELEVÉ de banque contre les lignes du GRAND LIVRE
+    (``LigneEcriture`` du compte comptable de classe 5 rattaché) jusqu'à
+    concordance. C'est une opération STRICTEMENT DISTINCTE de l'import de
+    paiements clients (FG42) : ici on ne crée aucun encaissement ; on apparie
+    relevé ↔ écritures déjà comptabilisées et on mesure l'écart.
+
+    Le rapprochement porte un ``solde_releve`` (solde de clôture lu sur le
+    relevé) et une période ``[date_debut ; date_fin]``. Le solde GL se déduit du
+    grand livre (``solde_initial`` du compte de trésorerie + mouvements jusqu'à
+    ``date_fin``). L'écart = solde relevé − solde GL ; il tend vers 0 à mesure
+    que l'on pointe. Le statut passe ``rapproche`` lorsque toutes les lignes de
+    relevé sont pointées et que l'écart est nul.
+    """
+    class Statut(models.TextChoices):
+        EN_COURS = 'en_cours', 'En cours'
+        RAPPROCHE = 'rapproche', 'Rapproché'
+
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='rapprochements_bancaires',
+        verbose_name='Société',
+    )
+    compte_tresorerie = models.ForeignKey(
+        CompteTresorerie,
+        on_delete=models.PROTECT,
+        related_name='rapprochements',
+        verbose_name='Compte de trésorerie',
+    )
+    libelle = models.CharField(
+        max_length=120, blank=True, default='', verbose_name='Libellé')
+    date_debut = models.DateField(verbose_name='Début de période')
+    date_fin = models.DateField(verbose_name='Fin de période')
+    # Date d'arrêté du relevé bancaire (généralement = date_fin).
+    date_releve = models.DateField(
+        null=True, blank=True, verbose_name='Date du relevé')
+    # Solde de clôture lu sur le relevé de banque. Le solde GL est comparé tel
+    # quel et l'écart (solde relevé − solde GL) en découle.
+    solde_releve = models.DecimalField(
+        max_digits=14, decimal_places=2, default=Decimal('0'),
+        verbose_name='Solde du relevé')
+    statut = models.CharField(
+        max_length=12, choices=Statut.choices,
+        default=Statut.EN_COURS, verbose_name='Statut')
+    date_rapprochement = models.DateTimeField(
+        null=True, blank=True, verbose_name='Rapproché le')
+    created_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='rapprochements_crees',
+        verbose_name='Créé par',
+    )
+    date_creation = models.DateTimeField(
+        auto_now_add=True, verbose_name='Créé le')
+
+    class Meta:
+        verbose_name = 'Rapprochement bancaire'
+        verbose_name_plural = 'Rapprochements bancaires'
+        ordering = ['-date_fin', '-id']
+
+    def __str__(self):
+        return (f'Rapprochement {self.compte_tresorerie_id} '
+                f'{self.date_debut}–{self.date_fin}')
+
+    def clean(self):
+        super().clean()
+        if (self.date_debut and self.date_fin
+                and self.date_fin < self.date_debut):
+            raise ValidationError(
+                "La date de fin doit être postérieure à la date de début.")
+
+    @property
+    def est_rapproche(self):
+        return self.statut == self.Statut.RAPPROCHE
+
+
+class LigneReleve(models.Model):
+    """Ligne d'un relevé bancaire à pointer contre le grand livre (FG123).
+
+    Une ligne de relevé porte un montant SIGNÉ (``montant`` ; positif =
+    encaissement/crédit côté entreprise, négatif = décaissement) et un libellé.
+    On la POINTE en l'appariant à une ou plusieurs ``LigneEcriture`` du grand
+    livre (``lignes_gl``). Quand le montant pointé GL concorde avec le montant
+    de la ligne de relevé, elle est ``rapprochee`` (``ecart`` = 0). Tant qu'elle
+    n'est pas appariée, elle est ``non_pointee``.
+
+    L'appariement passe par une table de liaison ``PointageReleve`` (jamais un
+    import cross-app : ``LigneEcriture`` est dans la même app).
+    """
+    class Statut(models.TextChoices):
+        NON_POINTEE = 'non_pointee', 'Non pointée'
+        RAPPROCHEE = 'rapprochee', 'Rapprochée'
+
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='lignes_releve',
+        verbose_name='Société',
+    )
+    rapprochement = models.ForeignKey(
+        RapprochementBancaire,
+        on_delete=models.CASCADE,
+        related_name='lignes_releve',
+        verbose_name='Rapprochement',
+    )
+    date_operation = models.DateField(verbose_name="Date d'opération")
+    libelle = models.CharField(max_length=255, verbose_name='Libellé')
+    reference = models.CharField(
+        max_length=80, blank=True, default='', verbose_name='Référence')
+    # Montant SIGNÉ tel que lu sur le relevé : + = crédit (entrée), − = débit.
+    montant = models.DecimalField(
+        max_digits=14, decimal_places=2, default=Decimal('0'),
+        verbose_name='Montant')
+    statut = models.CharField(
+        max_length=12, choices=Statut.choices,
+        default=Statut.NON_POINTEE, verbose_name='Statut')
+    # Lignes du grand livre appariées à cette ligne de relevé.
+    lignes_gl = models.ManyToManyField(
+        LigneEcriture,
+        through='PointageReleve',
+        related_name='lignes_releve',
+        verbose_name='Lignes du grand livre',
+    )
+    date_creation = models.DateTimeField(
+        auto_now_add=True, verbose_name='Créé le')
+
+    class Meta:
+        verbose_name = 'Ligne de relevé'
+        verbose_name_plural = 'Lignes de relevé'
+        ordering = ['date_operation', 'id']
+
+    def __str__(self):
+        return f'{self.date_operation} — {self.libelle} ({self.montant})'
+
+    @property
+    def montant_pointe(self):
+        """Montant GL apparié, SIGNÉ comme le relevé (débit GL = entrée banque).
+
+        Côté grand livre, un encaissement bancaire DÉBITE le compte de
+        trésorerie (classe 5) ; on aligne donc le signe sur le relevé en prenant
+        ``débit − crédit`` des lignes GL pointées.
+        """
+        total = Decimal('0')
+        for ligne in self.lignes_gl.all():
+            total += (ligne.debit or Decimal('0')) - (ligne.credit or Decimal('0'))
+        return total
+
+    @property
+    def ecart(self):
+        """Écart entre le montant du relevé et le montant GL pointé (0 = concord)."""
+        return (self.montant or Decimal('0')) - self.montant_pointe
+
+    @property
+    def est_concordante(self):
+        """Vrai si au moins une ligne GL est pointée et l'écart est nul."""
+        return self.lignes_gl.exists() and self.ecart == Decimal('0')
+
+
+class PointageReleve(models.Model):
+    """Table de liaison ligne de relevé ↔ ligne du grand livre (FG123).
+
+    Matérialise un POINTAGE : on coche qu'une ligne de relevé correspond à une
+    ligne d'écriture du grand livre. Unicité ``(ligne_releve, ligne_gl)`` : on
+    ne pointe pas deux fois le même couple.
+    """
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='pointages_releve',
+        verbose_name='Société',
+    )
+    ligne_releve = models.ForeignKey(
+        LigneReleve,
+        on_delete=models.CASCADE,
+        related_name='pointages',
+        verbose_name='Ligne de relevé',
+    )
+    ligne_gl = models.ForeignKey(
+        LigneEcriture,
+        on_delete=models.CASCADE,
+        related_name='pointages_releve',
+        verbose_name='Ligne du grand livre',
+    )
+    date_creation = models.DateTimeField(
+        auto_now_add=True, verbose_name='Créé le')
+
+    class Meta:
+        verbose_name = 'Pointage de relevé'
+        verbose_name_plural = 'Pointages de relevé'
+        ordering = ['id']
+        constraints = [
+            models.UniqueConstraint(
+                fields=['ligne_releve', 'ligne_gl'],
+                name='uniq_pointage_releve_gl',
+            ),
+        ]
+
+    def __str__(self):
+        return f'Pointage relevé {self.ligne_releve_id} ↔ GL {self.ligne_gl_id}'

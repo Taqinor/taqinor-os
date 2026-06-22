@@ -386,3 +386,102 @@ def projection_tresorerie(company, *, date_fin=None, validees_seulement=False):
         'tva_nette': tva_nette,
         'projection_nette': projection,
     }
+
+
+# ── FG123 — Rapprochement bancaire (relevé ↔ écritures) ────────────────────
+
+def solde_gl_compte_tresorerie(rapprochement):
+    """Solde GL d'un compte de trésorerie à la fin de la période rapprochée.
+
+    ``solde_initial`` du ``CompteTresorerie`` + mouvements du grand livre sur son
+    compte comptable (classe 5) jusqu'à ``date_fin`` du rapprochement. Lecture
+    seule, scopée société.
+    """
+    treso = rapprochement.compte_tresorerie
+    mouvements = solde_compte(
+        rapprochement.company, treso.compte_comptable,
+        date_fin=rapprochement.date_fin)
+    return (treso.solde_initial or Decimal('0')) + mouvements
+
+
+def lignes_gl_pointables(rapprochement):
+    """Lignes du grand livre du compte de trésorerie sur la période (FG123).
+
+    Restitue les ``LigneEcriture`` du compte comptable (classe 5) du compte de
+    trésorerie dont l'écriture tombe dans ``[date_debut ; date_fin]``, avec un
+    drapeau ``pointee`` indiquant si la ligne est déjà appariée dans CE
+    rapprochement. Sert à présenter le côté GL face au relevé. Lecture seule.
+    """
+    from .models import LigneReleve
+
+    treso = rapprochement.compte_tresorerie
+    qs = LigneEcriture.objects.filter(
+        company=rapprochement.company,
+        compte=treso.compte_comptable,
+        ecriture__date_ecriture__gte=rapprochement.date_debut,
+        ecriture__date_ecriture__lte=rapprochement.date_fin,
+    ).select_related('ecriture', 'ecriture__journal').order_by(
+        'ecriture__date_ecriture', 'id')
+    # IDs des lignes GL déjà pointées dans ce rapprochement.
+    pointees = set(
+        LigneReleve.objects.filter(rapprochement=rapprochement).values_list(
+            'lignes_gl__id', flat=True))
+    resultat = []
+    for ligne in qs:
+        resultat.append({
+            'id': ligne.id,
+            'date': ligne.ecriture.date_ecriture,
+            'journal': ligne.ecriture.journal.code,
+            'reference': ligne.ecriture.reference,
+            'libelle': ligne.libelle or ligne.ecriture.libelle,
+            'debit': ligne.debit,
+            'credit': ligne.credit,
+            'montant': (ligne.debit or Decimal('0')) - (
+                ligne.credit or Decimal('0')),
+            'pointee': ligne.id in pointees,
+        })
+    return resultat
+
+
+def resume_rapprochement(rapprochement):
+    """Synthèse d'un rapprochement : solde relevé vs solde GL vs écart (FG123).
+
+    Renvoie ``{'solde_releve', 'solde_gl', 'ecart', 'lignes_total',
+    'lignes_pointees', 'lignes_non_pointees', 'montant_pointe',
+    'montant_non_pointe', 'statut', 'rapproche'}``. Le ``solde_gl`` se déduit du
+    grand livre, l'``ecart`` global = solde relevé − solde GL ; ``rapproche`` est
+    vrai quand chaque ligne de relevé est concordante (écart nul) et que l'écart
+    global est nul. Lecture seule, scopée société.
+    """
+    lignes = list(
+        rapprochement.lignes_releve.all().prefetch_related('lignes_gl'))
+    solde_gl = solde_gl_compte_tresorerie(rapprochement)
+    solde_releve = rapprochement.solde_releve or Decimal('0')
+    montant_pointe = Decimal('0')
+    montant_non_pointe = Decimal('0')
+    lignes_pointees = 0
+    lignes_non_pointees = 0
+    toutes_concordantes = True
+    for ligne in lignes:
+        if ligne.est_concordante:
+            lignes_pointees += 1
+            montant_pointe += ligne.montant or Decimal('0')
+        else:
+            lignes_non_pointees += 1
+            montant_non_pointe += ligne.montant or Decimal('0')
+            toutes_concordantes = False
+    ecart = solde_releve - solde_gl
+    rapproche = (
+        bool(lignes) and toutes_concordantes and ecart == Decimal('0'))
+    return {
+        'solde_releve': solde_releve,
+        'solde_gl': solde_gl,
+        'ecart': ecart,
+        'lignes_total': len(lignes),
+        'lignes_pointees': lignes_pointees,
+        'lignes_non_pointees': lignes_non_pointees,
+        'montant_pointe': montant_pointe,
+        'montant_non_pointe': montant_non_pointe,
+        'statut': rapprochement.statut,
+        'rapproche': rapproche,
+    }
