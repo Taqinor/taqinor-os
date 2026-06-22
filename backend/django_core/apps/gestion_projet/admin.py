@@ -6,6 +6,7 @@ from .models import (
     ProjetActivity,
     ProjetChantier,
     ProjetLien,
+    Tache,
 )
 
 
@@ -38,6 +39,14 @@ class PhaseProjetAdmin(admin.ModelAdmin):
                     'avancement_pct', 'company')
     list_filter = ('type_phase', 'statut', 'company')
     search_fields = ('libelle',)
+
+
+@admin.register(Tache)
+class TacheAdmin(admin.ModelAdmin):
+    list_display = ('id', 'code_wbs', 'libelle', 'projet', 'phase', 'parent',
+                    'statut', 'avancement_pct', 'company')
+    list_filter = ('statut', 'company')
+    search_fields = ('libelle', 'code_wbs')
 
 
 @admin.register(ProjetActivity)

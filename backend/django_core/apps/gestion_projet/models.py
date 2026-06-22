@@ -236,6 +236,98 @@ class PhaseProjet(models.Model):
         return f'{self.projet.code} — {self.get_type_phase_display()}'
 
 
+class Tache(models.Model):
+    """Une tâche de la décomposition de travail (WBS) d'un ``Projet``.
+
+    Brique de planning la plus fine du module : une tâche appartient à un
+    ``Projet`` et, optionnellement, à une ``PhaseProjet``. Les SOUS-TÂCHES sont
+    portées par un FK auto-référent ``parent`` (related_name ``sous_taches``) →
+    arborescence WBS de profondeur ARBITRAIRE. Le ``code_wbs`` (ex. « 1.2.3 »)
+    et ``ordre`` donnent un classement stable au sein d'une fratrie.
+
+    Le ``statut`` est une machine d'état PROPRE à la tâche
+    (a_faire/en_cours/termine/bloque) : il ne réutilise NI n'importe AUCUNE
+    clé/étiquette de ``STAGES.py`` (règle #2), et il est DISTINCT du statut du
+    ``Projet`` (PROJ3) comme de celui de la ``PhaseProjet`` (PROJ4).
+
+    Les champs ``charge_estimee`` (jours-homme prévus, nullable) et
+    ``avancement_pct`` sont posés MINIMAUX mais EXTENSIBLES : PROJ6
+    (dépendances), PROJ8 (CPM) et PROJ9 (roll-up d'avancement pondéré par la
+    charge) construiront dessus. Tout est multi-société : ``company`` est posée
+    côté serveur, jamais lue du corps de requête. Modèle entièrement additif.
+    """
+    class Statut(models.TextChoices):
+        A_FAIRE = 'a_faire', 'À faire'
+        EN_COURS = 'en_cours', 'En cours'
+        TERMINE = 'termine', 'Terminée'
+        BLOQUE = 'bloque', 'Bloquée'
+
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='projet_taches',
+        verbose_name='Société',
+    )
+    projet = models.ForeignKey(
+        Projet,
+        on_delete=models.CASCADE,
+        related_name='taches',
+        verbose_name='Projet',
+    )
+    # Phase optionnelle : une tâche peut être rattachée à une phase du projet.
+    phase = models.ForeignKey(
+        PhaseProjet,
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='taches',
+        verbose_name='Phase',
+    )
+    # FK auto-référent : porte les SOUS-TÂCHES (arborescence WBS, profondeur
+    # arbitraire). Supprimer une tâche supprime ses descendants (CASCADE).
+    parent = models.ForeignKey(
+        'self',
+        on_delete=models.CASCADE,
+        null=True, blank=True,
+        related_name='sous_taches',
+        verbose_name='Tâche parente',
+    )
+    code_wbs = models.CharField(
+        max_length=50, blank=True, default='', verbose_name='Code WBS')
+    libelle = models.CharField(max_length=200, verbose_name='Libellé')
+    description = models.TextField(
+        blank=True, default='', verbose_name='Description')
+    ordre = models.PositiveIntegerField(default=0, verbose_name='Ordre')
+    statut = models.CharField(
+        max_length=10, choices=Statut.choices,
+        default=Statut.A_FAIRE, verbose_name='Statut')
+    avancement_pct = models.PositiveSmallIntegerField(
+        default=0, validators=[MaxValueValidator(100)],
+        verbose_name='Avancement (%)')
+    # Charge prévue en jours-homme (nullable) — base de PROJ8/PROJ9.
+    charge_estimee = models.DecimalField(
+        max_digits=8, decimal_places=2, null=True, blank=True,
+        verbose_name='Charge estimée (j-h)')
+    date_debut_prevue = models.DateField(
+        null=True, blank=True, verbose_name='Date de début prévue')
+    date_fin_prevue = models.DateField(
+        null=True, blank=True, verbose_name='Date de fin prévue')
+    date_creation = models.DateTimeField(
+        auto_now_add=True, verbose_name='Créé le')
+
+    class Meta:
+        verbose_name = 'Tâche de projet'
+        verbose_name_plural = 'Tâches de projet'
+        ordering = ['projet', 'ordre', 'id']
+        indexes = [
+            models.Index(
+                fields=['projet', 'parent'], name='gp_tache_proj_parent_idx'),
+        ]
+
+    def __str__(self):
+        prefix = f'{self.code_wbs} ' if self.code_wbs else ''
+        return f'{prefix}{self.libelle}'
+
+
 class ProjetActivity(models.Model):
     """Journal minimal des transitions de statut d'un ``Projet``.
 

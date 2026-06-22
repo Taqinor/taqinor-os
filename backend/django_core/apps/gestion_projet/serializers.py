@@ -12,6 +12,7 @@ from .models import (
     ProjetActivity,
     ProjetChantier,
     ProjetLien,
+    Tache,
 )
 
 
@@ -107,6 +108,67 @@ class PhaseProjetSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError(
                 'L’avancement doit être compris entre 0 et 100.')
         return value
+
+
+class TacheSerializer(serializers.ModelSerializer):
+    """Tâche (WBS) d'un projet, avec sous-tâches auto-référentes.
+
+    ``company`` n'est jamais exposée : elle est posée côté serveur. Les FK reçus
+    (``projet``, ``phase``, ``parent``) sont validés comme appartenant à la
+    société de l'utilisateur ; un parent doit en outre cibler le MÊME projet (et
+    une tâche ne peut être son propre parent).
+    """
+    projet_code = serializers.CharField(source='projet.code', read_only=True)
+    statut_display = serializers.CharField(
+        source='get_statut_display', read_only=True)
+    # Nombre de sous-tâches directes (lecture seule, pratique pour l'UI).
+    nb_sous_taches = serializers.IntegerField(
+        source='sous_taches.count', read_only=True)
+
+    class Meta:
+        model = Tache
+        fields = [
+            'id', 'projet', 'projet_code', 'phase', 'parent', 'code_wbs',
+            'libelle', 'description', 'ordre', 'statut', 'statut_display',
+            'avancement_pct', 'charge_estimee', 'date_debut_prevue',
+            'date_fin_prevue', 'nb_sous_taches', 'date_creation',
+        ]
+        read_only_fields = ['date_creation']
+
+    def validate_projet(self, value):
+        return _meme_societe(self, value, 'Projet')
+
+    def validate_phase(self, value):
+        return _meme_societe(self, value, 'Phase')
+
+    def validate_parent(self, value):
+        return _meme_societe(self, value, 'Tâche parente')
+
+    def validate_avancement_pct(self, value):
+        if value is not None and not (0 <= value <= 100):
+            raise serializers.ValidationError(
+                'L’avancement doit être compris entre 0 et 100.')
+        return value
+
+    def validate(self, attrs):
+        # ``projet`` peut être absent d'un PATCH partiel : on retombe sur
+        # l'instance courante pour les contrôles de cohérence.
+        projet = attrs.get('projet') or getattr(self.instance, 'projet', None)
+        parent = attrs.get('parent', getattr(self.instance, 'parent', None))
+        phase = attrs.get('phase', getattr(self.instance, 'phase', None))
+        if parent is not None:
+            if self.instance is not None and parent.id == self.instance.id:
+                raise serializers.ValidationError(
+                    {'parent': 'Une tâche ne peut pas être sa propre parente.'})
+            if projet is not None and parent.projet_id != projet.id:
+                raise serializers.ValidationError(
+                    {'parent': 'La tâche parente doit appartenir au même '
+                               'projet.'})
+        if phase is not None and projet is not None \
+                and phase.projet_id != projet.id:
+            raise serializers.ValidationError(
+                {'phase': 'La phase doit appartenir au même projet.'})
+        return attrs
 
 
 class ProjetLienSerializer(serializers.ModelSerializer):
