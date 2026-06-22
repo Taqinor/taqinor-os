@@ -6,7 +6,7 @@ n'est jamais acceptée (multi-tenant).
 """
 from rest_framework import serializers
 
-from .models import EnginRoulant, Vehicule
+from .models import EnginRoulant, ReferentielFlotte, Vehicule
 
 
 class VehiculeSerializer(serializers.ModelSerializer):
@@ -72,3 +72,44 @@ class EnginRoulantSerializer(serializers.ModelSerializer):
             'date_creation',
         ]
         read_only_fields = ['date_creation']
+
+
+class ReferentielFlotteSerializer(serializers.ModelSerializer):
+    """FLOTTE6 — entrée d'une liste de référence éditable du parc.
+
+    ``company`` n'est jamais exposée en écriture : elle est posée côté serveur
+    par le ``TenantMixin``. L'unicité ``(company, domaine, code)`` est validée
+    par société (le scope société est appliqué dans le sérialiseur, jamais lu du
+    corps de requête)."""
+
+    domaine_display = serializers.CharField(
+        source='get_domaine_display', read_only=True)
+
+    class Meta:
+        model = ReferentielFlotte
+        fields = [
+            'id', 'domaine', 'domaine_display', 'code', 'libelle', 'ordre',
+            'actif', 'date_creation',
+        ]
+        read_only_fields = ['date_creation']
+
+    def validate(self, attrs):
+        """Vérifie l'unicité (company, domaine, code) DANS la société courante.
+
+        Le ``UniqueTogetherValidator`` par défaut inclut ``company``, absent des
+        champs exposés ; on revalide donc explicitement avec la société du
+        serveur pour renvoyer une 400 lisible plutôt qu'une 500 d'intégrité."""
+        request = self.context.get('request')
+        company = getattr(getattr(request, 'user', None), 'company', None)
+        if company is None:
+            return attrs
+        domaine = attrs.get('domaine', getattr(self.instance, 'domaine', None))
+        code = attrs.get('code', getattr(self.instance, 'code', None))
+        qs = ReferentielFlotte.objects.filter(
+            company=company, domaine=domaine, code=code)
+        if self.instance is not None:
+            qs = qs.exclude(pk=self.instance.pk)
+        if qs.exists():
+            raise serializers.ValidationError(
+                {'code': "Ce code existe déjà pour ce domaine."})
+        return attrs
