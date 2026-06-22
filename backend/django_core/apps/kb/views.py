@@ -23,12 +23,41 @@ class _KbBaseViewSet(TenantMixin, viewsets.ModelViewSet):
 
 
 class KbArticleViewSet(_KbBaseViewSet):
-    """Articles de la base de connaissances. Recherche plein texte."""
+    """Articles de la base de connaissances. Recherche plein texte + filtres.
+
+    Recherche plein-texte (``?search=``) sur titre/contenu/catégorie/tags via le
+    ``SearchFilter`` de DRF (``icontains`` côté serveur). Filtres exacts/partiels
+    additionnels appliqués dans ``get_queryset`` (KB3) :
+
+    * ``?categorie=`` — catégorie exacte (insensible à la casse).
+    * ``?tag=`` — présence du tag dans la liste ``tags`` (``icontains``).
+    * ``?statut=`` — statut exact (``brouillon`` / ``publie`` / ``obsolete``).
+
+    Tous les filtres s'appliquent APRÈS le scoping société du ``TenantMixin``
+    (``super().get_queryset()``) : un résultat ne peut jamais fuir entre sociétés.
+    """
     queryset = KbArticle.objects.select_related('auteur').all()
     serializer_class = KbArticleSerializer
     filter_backends = [filters.SearchFilter, filters.OrderingFilter]
     search_fields = ['titre', 'corps', 'categorie', 'tags']
     ordering_fields = ['id', 'titre', 'date_modification']
+
+    def get_queryset(self):
+        # Le scoping société est posé en premier par le TenantMixin ; les
+        # filtres ci-dessous opèrent donc sur un queryset déjà borné à la
+        # société de l'utilisateur (aucune fuite cross-tenant possible).
+        qs = super().get_queryset()
+        params = self.request.query_params
+        categorie = params.get('categorie')
+        if categorie:
+            qs = qs.filter(categorie__iexact=categorie)
+        tag = params.get('tag')
+        if tag:
+            qs = qs.filter(tags__icontains=tag)
+        statut = params.get('statut')
+        if statut:
+            qs = qs.filter(statut=statut)
+        return qs
 
     def perform_create(self, serializer):
         serializer.save(
