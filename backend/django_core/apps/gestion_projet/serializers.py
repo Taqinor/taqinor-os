@@ -6,7 +6,7 @@ appartenant à la société de l'utilisateur.
 """
 from rest_framework import serializers
 
-from .models import Projet, ProjetChantier
+from .models import Projet, ProjetChantier, ProjetLien
 
 
 def _meme_societe(serializer, value, label):
@@ -43,6 +43,28 @@ class ProjetChantierSerializer(serializers.ModelSerializer):
         fields = [
             'id', 'projet', 'projet_code', 'chantier_id', 'libelle',
             'date_creation',
+        ]
+        read_only_fields = ['date_creation']
+
+    def validate_projet(self, value):
+        return _meme_societe(self, value, 'Projet')
+
+
+class ProjetLienSerializer(serializers.ModelSerializer):
+    """Lien projet → document métier d'une autre app (référence lâche typée).
+
+    ``company`` n'est jamais exposée : elle est posée côté serveur. Le ``projet``
+    reçu est validé comme appartenant à la société de l'utilisateur.
+    """
+    projet_code = serializers.CharField(source='projet.code', read_only=True)
+    type_cible_display = serializers.CharField(
+        source='get_type_cible_display', read_only=True)
+
+    class Meta:
+        model = ProjetLien
+        fields = [
+            'id', 'projet', 'projet_code', 'type_cible', 'type_cible_display',
+            'cible_id', 'libelle', 'date_creation',
         ]
         read_only_fields = ['date_creation']
 
