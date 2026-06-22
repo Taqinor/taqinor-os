@@ -1120,3 +1120,244 @@ class PointageReleve(models.Model):
 
     def __str__(self):
         return f'Pointage relevé {self.ligne_releve_id} ↔ GL {self.ligne_gl_id}'
+
+
+# ── FG124 — Caisse / petty cash (journal d'espèces) ────────────────────────
+
+class Caisse(models.Model):
+    """Caisse d'espèces (petty cash) rattachée à un ``CompteTresorerie`` caisse.
+
+    Tient un JOURNAL D'ESPÈCES pour les achats terrain : chaque entrée/sortie de
+    liquide est un ``MouvementCaisse``, et le SOLDE COURANT théorique se déduit du
+    ``solde_initial`` + Σ(entrées) − Σ(sorties). Périodiquement, une
+    ``ClotureCaisse`` constate le comptage physique (cash count) et fige les
+    mouvements antérieurs : ils deviennent immuables (audit terrain).
+
+    Le ``compte_tresorerie`` lié DOIT être de type ``caisse`` (classe 5). Une
+    caisse par compte de trésorerie en pratique (unicité non contrainte pour
+    rester purement additif). Multi-société : ``company`` posée côté serveur.
+    """
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='caisses',
+        verbose_name='Société',
+    )
+    compte_tresorerie = models.ForeignKey(
+        CompteTresorerie,
+        on_delete=models.PROTECT,
+        related_name='caisses',
+        verbose_name='Compte de trésorerie (caisse)',
+    )
+    libelle = models.CharField(max_length=120, verbose_name='Libellé')
+    # Responsable de la caisse terrain (caissier). Optionnel.
+    responsable = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='caisses_responsable',
+        verbose_name='Responsable',
+    )
+    # Fonds de caisse de départ (encaisse initiale).
+    solde_initial = models.DecimalField(
+        max_digits=14, decimal_places=2, default=Decimal('0'),
+        verbose_name='Solde initial')
+    actif = models.BooleanField(default=True, verbose_name='Active')
+    date_creation = models.DateTimeField(
+        auto_now_add=True, verbose_name='Créé le')
+
+    class Meta:
+        verbose_name = 'Caisse'
+        verbose_name_plural = 'Caisses'
+        ordering = ['libelle']
+
+    def __str__(self):
+        return f'Caisse {self.libelle}'
+
+    def clean(self):
+        super().clean()
+        treso = self.compte_tresorerie
+        if treso is not None and treso.type_compte != CompteTresorerie.Type.CAISSE:
+            raise ValidationError(
+                "Une caisse doit être rattachée à un compte de trésorerie de "
+                "type « caisse ».")
+
+
+class MouvementCaisse(models.Model):
+    """Mouvement d'une caisse : entrée OU sortie d'espèces (FG124).
+
+    Un mouvement porte un ``sens`` (entrée/sortie), un ``montant`` POSITIF, une
+    ``date_mouvement``, un ``motif`` (achat terrain, appoint, dépense…) et la
+    référence du justificatif (ticket/reçu). Une ``piece`` optionnelle pointe un
+    document (URL/chemin du scan du reçu). Une fois la caisse clôturée à une date
+    couvrant le mouvement, celui-ci devient IMMUABLE (audit). Si l'auto-posting
+    est demandé, le mouvement porte un lien vers l'``EcritureComptable`` passée.
+    """
+    class Sens(models.TextChoices):
+        ENTREE = 'entree', 'Entrée'
+        SORTIE = 'sortie', 'Sortie'
+
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='mouvements_caisse',
+        verbose_name='Société',
+    )
+    caisse = models.ForeignKey(
+        Caisse,
+        on_delete=models.CASCADE,
+        related_name='mouvements',
+        verbose_name='Caisse',
+    )
+    sens = models.CharField(
+        max_length=10, choices=Sens.choices, verbose_name='Sens')
+    date_mouvement = models.DateField(verbose_name='Date du mouvement')
+    montant = models.DecimalField(
+        max_digits=14, decimal_places=2, default=Decimal('0'),
+        verbose_name='Montant')
+    motif = models.CharField(max_length=255, verbose_name='Motif')
+    # Référence du justificatif (ticket de caisse, reçu, n° de pièce).
+    justificatif = models.CharField(
+        max_length=120, blank=True, default='',
+        verbose_name='Référence du justificatif')
+    # Lien vers le document scanné (URL/chemin) — optionnel.
+    piece = models.CharField(
+        max_length=255, blank=True, default='',
+        verbose_name='Pièce (document)')
+    # Compte de contrepartie (classe 6 charge, ou autre) si le mouvement est posté.
+    compte_contrepartie = models.ForeignKey(
+        CompteComptable,
+        on_delete=models.PROTECT,
+        null=True, blank=True,
+        related_name='mouvements_caisse',
+        verbose_name='Compte de contrepartie',
+    )
+    posted = models.BooleanField(
+        default=False, verbose_name='Postée au grand livre')
+    ecriture = models.ForeignKey(
+        EcritureComptable,
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='mouvements_caisse',
+        verbose_name='Écriture comptable',
+    )
+    created_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='mouvements_caisse_crees',
+        verbose_name='Saisi par',
+    )
+    date_creation = models.DateTimeField(
+        auto_now_add=True, verbose_name='Créé le')
+
+    class Meta:
+        verbose_name = 'Mouvement de caisse'
+        verbose_name_plural = 'Mouvements de caisse'
+        ordering = ['date_mouvement', 'id']
+
+    def __str__(self):
+        return f'{self.get_sens_display()} {self.montant} — {self.motif}'
+
+    def clean(self):
+        super().clean()
+        if self.montant is not None and self.montant <= 0:
+            raise ValidationError(
+                "Le montant d'un mouvement de caisse doit être strictement "
+                "positif.")
+
+    @property
+    def montant_signe(self):
+        """Montant signé : + pour une entrée, − pour une sortie."""
+        montant = self.montant or Decimal('0')
+        if self.sens == self.Sens.SORTIE:
+            return -montant
+        return montant
+
+    # ── FG124 — Immutabilité d'un mouvement clôturé ────────────────────────
+    def _verifier_caisse_ouverte(self):
+        """Refuse de toucher un mouvement couvert par une clôture de caisse.
+
+        Garde-fou d'audit : dès qu'une ``ClotureCaisse`` de la même caisse a une
+        ``date_cloture`` ≥ ``date_mouvement``, le mouvement est figé (création,
+        modification, suppression refusées). Lève ``ValidationError``.
+        """
+        if self.caisse_id is None or self.date_mouvement is None:
+            return
+        if ClotureCaisse.objects.filter(
+                caisse_id=self.caisse_id,
+                date_cloture__gte=self.date_mouvement).exists():
+            raise ValidationError(
+                "Caisse clôturée : le mouvement du "
+                f"{self.date_mouvement} est verrouillé et ne peut plus être "
+                "modifié.")
+
+    def save(self, *args, **kwargs):
+        self._verifier_caisse_ouverte()
+        super().save(*args, **kwargs)
+
+    def delete(self, *args, **kwargs):
+        self._verifier_caisse_ouverte()
+        return super().delete(*args, **kwargs)
+
+
+class ClotureCaisse(models.Model):
+    """Clôture de caisse : comptage physique (cash count) à une date (FG124).
+
+    Constate l'ARRÊTÉ d'une caisse : le ``solde_theorique`` (figé = solde initial
+    + Σ mouvements jusqu'à ``date_cloture``) est comparé au ``solde_compte``
+    (espèces réellement comptées). L'``ecart`` = solde compté − solde théorique
+    (> 0 excédent, < 0 manquant). Une fois posée, elle VERROUILLE tous les
+    mouvements de la caisse antérieurs ou égaux à sa date (immutabilité d'audit).
+    """
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='clotures_caisse',
+        verbose_name='Société',
+    )
+    caisse = models.ForeignKey(
+        Caisse,
+        on_delete=models.CASCADE,
+        related_name='clotures',
+        verbose_name='Caisse',
+    )
+    date_cloture = models.DateField(verbose_name='Date de clôture')
+    # Solde théorique figé à la clôture (solde initial + Σ mouvements ≤ date).
+    solde_theorique = models.DecimalField(
+        max_digits=14, decimal_places=2, default=Decimal('0'),
+        verbose_name='Solde théorique')
+    # Espèces réellement comptées en caisse (cash count).
+    solde_compte = models.DecimalField(
+        max_digits=14, decimal_places=2, default=Decimal('0'),
+        verbose_name='Solde compté')
+    # Écart = solde compté − solde théorique (figé).
+    ecart = models.DecimalField(
+        max_digits=14, decimal_places=2, default=Decimal('0'),
+        verbose_name='Écart')
+    commentaire = models.CharField(
+        max_length=255, blank=True, default='', verbose_name='Commentaire')
+    cloturee_par = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='clotures_caisse',
+        verbose_name='Clôturée par',
+    )
+    date_creation = models.DateTimeField(
+        auto_now_add=True, verbose_name='Créé le')
+
+    class Meta:
+        verbose_name = 'Clôture de caisse'
+        verbose_name_plural = 'Clôtures de caisse'
+        ordering = ['-date_cloture', '-id']
+        constraints = [
+            # Une seule clôture par caisse et par date.
+            models.UniqueConstraint(
+                fields=['caisse', 'date_cloture'],
+                name='uniq_cloture_caisse_date',
+            ),
+        ]
+
+    def __str__(self):
+        return f'Clôture caisse {self.caisse_id} au {self.date_cloture}'

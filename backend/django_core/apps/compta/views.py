@@ -16,18 +16,19 @@ from authentication.permissions import IsResponsableOrAdmin
 
 from . import selectors, services
 from .models import (
-    CessionImmobilisation, CompteComptable, CompteTresorerie,
+    Caisse, CessionImmobilisation, CompteComptable, CompteTresorerie,
     DotationAmortissement, EcritureComptable, ExerciceComptable,
-    Immobilisation, Journal, LigneReleve, PeriodeComptable, PlanComptable,
-    RapprochementBancaire,
+    Immobilisation, Journal, LigneReleve, MouvementCaisse, PeriodeComptable,
+    PlanComptable, RapprochementBancaire,
 )
 from .serializers import (
-    CessionImmobilisationSerializer, CompteComptableSerializer,
-    CompteTresorerieSerializer, DotationAmortissementSerializer,
-    EcritureComptableSerializer, ExerciceComptableSerializer,
-    ImmobilisationSerializer, JournalSerializer, LigneReleveSerializer,
-    PeriodeComptableSerializer, PlanAmortissementSerializer,
-    PlanComptableSerializer, RapprochementBancaireSerializer,
+    CaisseSerializer, CessionImmobilisationSerializer, ClotureCaisseSerializer,
+    CompteComptableSerializer, CompteTresorerieSerializer,
+    DotationAmortissementSerializer, EcritureComptableSerializer,
+    ExerciceComptableSerializer, ImmobilisationSerializer, JournalSerializer,
+    LigneReleveSerializer, MouvementCaisseSerializer, PeriodeComptableSerializer,
+    PlanAmortissementSerializer, PlanComptableSerializer,
+    RapprochementBancaireSerializer,
 )
 
 
@@ -598,3 +599,146 @@ class RapprochementBancaireViewSet(_ComptaBaseViewSet):
                 status=status.HTTP_400_BAD_REQUEST)
         rapprochement.refresh_from_db()
         return Response(self.get_serializer(rapprochement).data)
+
+
+# ── FG124 — Caisse / petty cash (journal d'espèces) ────────────────────────
+
+class CaisseViewSet(_ComptaBaseViewSet):
+    """Caisses d'espèces (petty cash) pour les achats terrain (FG124).
+
+    Tient un journal d'espèces par caisse : entrées/sorties (avec justificatif
+    et pièce) via l'action ``mouvement``, journal + solde courant via
+    ``journal``/``resume``, et clôture de caisse (comptage physique, écart) via
+    ``cloturer``. Le ``compte_tresorerie`` lié doit être de type caisse. Société
+    scopée, posée côté serveur ; Admin/Responsable uniquement.
+    """
+    queryset = Caisse.objects.select_related('compte_tresorerie').all()
+    serializer_class = CaisseSerializer
+    filter_backends = [filters.OrderingFilter]
+    ordering_fields = ['libelle', 'date_creation']
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        actif = self.request.query_params.get('actif')
+        if actif in ('0', '1'):
+            qs = qs.filter(actif=(actif == '1'))
+        return qs
+
+    def perform_create(self, serializer):
+        serializer.save(company=self.request.user.company)
+
+    @action(detail=True, methods=['get', 'post'])
+    def mouvement(self, request, pk=None):
+        """Liste ou enregistre un mouvement d'espèces de la caisse (FG124).
+
+        GET : renvoie le journal d'espèces (mouvements + solde cumulé), filtrable
+        par ``date_debut``/``date_fin``.
+        POST : enregistre une entrée/sortie. Corps : ``{sens, montant,
+        date_mouvement, motif, justificatif?, piece?, compte_contrepartie?,
+        poster?}``. ``montant`` strictement positif ; refusé à une date clôturée.
+        Si ``poster`` est vrai, l'écriture de caisse est passée au grand livre
+        (refusée si la période comptable est verrouillée). Société côté serveur.
+        """
+        caisse = self.get_object()  # scopée société par TenantMixin.
+        if request.method == 'GET':
+            params = request.query_params
+            return Response(selectors.journal_caisse(
+                caisse,
+                date_debut=params.get('date_debut') or None,
+                date_fin=params.get('date_fin') or None))
+        data = request.data
+        contrepartie = None
+        cp_id = data.get('compte_contrepartie')
+        if cp_id:
+            contrepartie = CompteComptable.objects.filter(
+                company=request.user.company, id=cp_id).first()
+            if contrepartie is None:
+                return Response(
+                    {'detail': 'Compte de contrepartie inconnu.'},
+                    status=status.HTTP_400_BAD_REQUEST)
+        try:
+            mouvement = services.enregistrer_mouvement_caisse(
+                caisse,
+                sens=data.get('sens'),
+                montant=data.get('montant'),
+                date_mouvement=data.get('date_mouvement'),
+                motif=data.get('motif', '') or '',
+                justificatif=data.get('justificatif', '') or '',
+                piece=data.get('piece', '') or '',
+                compte_contrepartie=contrepartie,
+                poster=bool(data.get('poster')),
+                user=request.user,
+            )
+        except DjangoValidationError as exc:
+            return Response(
+                {'detail': exc.messages[0] if exc.messages else str(exc)},
+                status=status.HTTP_400_BAD_REQUEST)
+        return Response(
+            MouvementCaisseSerializer(mouvement).data,
+            status=status.HTTP_201_CREATED)
+
+    @action(detail=True, methods=['post'], url_path='poster-mouvement')
+    def poster_mouvement(self, request, pk=None):
+        """Poste un mouvement existant au grand livre (FG124).
+
+        Corps : ``{mouvement: <id>}``. Refusé si la période comptable est
+        verrouillée. Idempotent. Le mouvement doit appartenir à la caisse.
+        """
+        caisse = self.get_object()  # scopée société par TenantMixin.
+        mouvement = MouvementCaisse.objects.filter(
+            company=request.user.company, caisse=caisse,
+            id=request.data.get('mouvement')).first()
+        if mouvement is None:
+            return Response(
+                {'detail': 'Mouvement inconnu.'},
+                status=status.HTTP_400_BAD_REQUEST)
+        try:
+            ecriture = services.poster_mouvement_caisse(
+                mouvement, user=request.user)
+        except DjangoValidationError as exc:
+            return Response(
+                {'detail': exc.messages[0] if exc.messages else str(exc)},
+                status=status.HTTP_400_BAD_REQUEST)
+        mouvement.refresh_from_db()
+        return Response({
+            'mouvement': MouvementCaisseSerializer(mouvement).data,
+            'ecriture_id': ecriture.id if ecriture else None,
+        })
+
+    @action(detail=True, methods=['get'])
+    def resume(self, request, pk=None):
+        """Synthèse de la caisse : solde initial/entrées/sorties/courant (FG124)."""
+        caisse = self.get_object()  # scopée société par TenantMixin.
+        date_fin = request.query_params.get('date_fin') or None
+        return Response(selectors.resume_caisse(caisse, date_fin=date_fin))
+
+    @action(detail=True, methods=['get', 'post'])
+    def cloturer(self, request, pk=None):
+        """Liste les clôtures ou clôture la caisse (cash count) — FG124.
+
+        GET : renvoie l'historique des clôtures de la caisse.
+        POST : effectue une clôture. Corps : ``{date_cloture, solde_compte,
+        commentaire?}``. Le solde théorique et l'écart sont figés côté serveur ;
+        les mouvements ≤ ``date_cloture`` deviennent immuables. La société est
+        posée côté serveur (jamais du corps).
+        """
+        caisse = self.get_object()  # scopée société par TenantMixin.
+        if request.method == 'GET':
+            return Response(ClotureCaisseSerializer(
+                caisse.clotures.all(), many=True).data)
+        data = request.data
+        try:
+            cloture = services.cloturer_caisse(
+                caisse,
+                date_cloture=data.get('date_cloture'),
+                solde_compte=data.get('solde_compte'),
+                commentaire=data.get('commentaire', '') or '',
+                user=request.user,
+            )
+        except DjangoValidationError as exc:
+            return Response(
+                {'detail': exc.messages[0] if exc.messages else str(exc)},
+                status=status.HTTP_400_BAD_REQUEST)
+        return Response(
+            ClotureCaisseSerializer(cloture).data,
+            status=status.HTTP_201_CREATED)
