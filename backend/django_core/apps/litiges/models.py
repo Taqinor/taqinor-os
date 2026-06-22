@@ -79,3 +79,60 @@ class Reclamation(models.Model):
 
     def __str__(self):
         return self.objet
+
+
+class ReclamationActivity(models.Model):
+    """Historique « chatter » d'une réclamation (style Odoo), modèle maison.
+
+    Deux familles d'entrées :
+      - automatiques : changements de statut suivis (ancien → nouveau statut,
+        utilisateur, horodatage) — écrites côté serveur au niveau de l'API,
+        jamais par le navigateur ;
+      - manuelles : notes libres (commentaire, suivi…).
+    La société et l'auteur sont toujours posés côté serveur.
+    """
+
+    class Kind(models.TextChoices):
+        LOG = 'log', 'Changement de statut'
+        NOTE = 'note', 'Note'
+
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='litiges_activites',
+        verbose_name='Société',
+    )
+    reclamation = models.ForeignKey(
+        Reclamation,
+        on_delete=models.CASCADE,
+        related_name='activites',
+        verbose_name='Réclamation',
+    )
+    type = models.CharField(
+        max_length=10, choices=Kind.choices, verbose_name='Type')
+    old_value = models.CharField(
+        max_length=15, blank=True, default='', verbose_name='Ancien statut')
+    new_value = models.CharField(
+        max_length=15, blank=True, default='', verbose_name='Nouveau statut')
+    message = models.TextField(
+        blank=True, default='', verbose_name='Message')
+    auteur = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='litiges_activites',
+        verbose_name='Auteur',
+    )
+    date_creation = models.DateTimeField(
+        auto_now_add=True, verbose_name='Créé le')
+
+    class Meta:
+        verbose_name = 'Activité réclamation'
+        verbose_name_plural = 'Activités réclamation'
+        ordering = ['-date_creation', '-id']
+        indexes = [models.Index(
+            fields=['reclamation', '-date_creation'],
+            name='litiges_rec_reclama_idx')]
+
+    def __str__(self):
+        return f"{self.reclamation_id} {self.type}".strip()
