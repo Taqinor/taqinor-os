@@ -73,7 +73,8 @@ class PointControleModeleSerializer(serializers.ModelSerializer):
         model = PointControleModele
         fields = [
             'id', 'plan', 'ordre', 'intitule', 'phase', 'type_releve',
-            'type_releve_display', 'hold_point', 'description', 'date_creation',
+            'type_releve_display', 'valeur_min', 'valeur_max', 'hold_point',
+            'description', 'date_creation',
         ]
         read_only_fields = ['date_creation']
 
@@ -106,12 +107,19 @@ class ReleveControleSerializer(serializers.ModelSerializer):
     point_phase = serializers.CharField(source='point.phase', read_only=True)
     point_hold_point = serializers.BooleanField(
         source='point.hold_point', read_only=True)
+    point_valeur_min = serializers.DecimalField(
+        source='point.valeur_min', max_digits=14, decimal_places=4,
+        read_only=True)
+    point_valeur_max = serializers.DecimalField(
+        source='point.valeur_max', max_digits=14, decimal_places=4,
+        read_only=True)
 
     class Meta:
         model = ReleveControle
         fields = [
             'id', 'plan_chantier', 'point', 'point_intitule', 'point_phase',
-            'point_hold_point', 'valeur', 'conforme', 'photo_key',
+            'point_hold_point', 'point_valeur_min', 'point_valeur_max',
+            'valeur', 'conforme', 'photo_key',
             'date_releve', 'releve_par', 'date_creation',
         ]
         read_only_fields = ['date_creation']
