@@ -80,7 +80,7 @@ class DevisViewSet(viewsets.ModelViewSet):
         elif self.action in WRITE_ACTIONS + [
             'generer_pdf', 'telecharger_pdf', 'convertir_en_bc', 'proposal',
             'generer_facture', 'reviser', 'accepter', 'refuser', 'noter',
-            'layout', 'roof_image',
+            'layout', 'roof_image', 'from_layout', 'share_link',
         ]:
             return [IsResponsableOrAdmin()]
         elif self.action == 'destroy':
