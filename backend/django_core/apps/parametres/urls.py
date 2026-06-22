@@ -3,12 +3,19 @@ from rest_framework.routers import DefaultRouter
 
 from . import views
 from .views_statuses import StatutConfigViewSet
+from .views_email import EmailTemplateViewSet
 
 # N58 — configuration d'affichage des statuts métier (chantier/SAV/BC).
 # Routeur isolé (registre dédié) pour ne pas perturber les vues fonctions.
 statuts_router = DefaultRouter()
 statuts_router.register(r'statuts', StatutConfigViewSet,
                         basename='statut-config')
+
+# FG17 — modèles d'e-mail éditables (parité WhatsApp). Routeur isolé pour ne pas
+# perturber les vues fonctions.
+emails_router = DefaultRouter()
+emails_router.register(r'email-templates', EmailTemplateViewSet,
+                       basename='email-template')
 
 urlpatterns = [
     path('', views.get_profile),
@@ -31,4 +38,6 @@ urlpatterns = [
     path('tarification/productible/', views.get_productible),
     # N58 — statuts configurables (libellé/ordre/visibilité), couche affichage.
     path('', include(statuts_router.urls)),
+    # FG17 — modèles d'e-mail éditables (sujet + corps), par société/clé.
+    path('', include(emails_router.urls)),
 ]
