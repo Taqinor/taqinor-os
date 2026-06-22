@@ -140,3 +140,96 @@ class TestBuildFromLayout(TestCase):
             lead=self._lead())
         for li in devis.lignes.all():
             self.assertNotIn('Foreign', li.designation)
+
+
+class TestFG248RoofBridge(TestCase):
+    """FG248 — pont 3D toiture web → ERP : import surface/pans/orientation/kWc."""
+
+    def setUp(self):
+        self.company = make_company('fg248-co')
+        self.user = User.objects.create_user(
+            username='fg248user', password='x', role_legacy='responsable',
+            company=self.company)
+        seed_catalogue(self.company)
+
+    def _lead(self, **extra):
+        return Lead.objects.create(
+            company=self.company, nom='Roof', prenom='Lead',
+            email='roof@ex.com', **extra)
+
+    def test_extract_roof_config_pure(self):
+        from apps.ventes.services import extract_roof_config
+        layout = {
+            'areas': [
+                {'label': 'Pan Sud', 'roofType': 'pitched', 'pitchDeg': 30,
+                 'facingAzimuthDeg': 0,
+                 'result': {'count': 12, 'kwc': 6.6, 'areaM2': 24.0}},
+                {'label': 'Pan Est', 'roofType': 'pitched', 'pitchDeg': 25,
+                 'facingAzimuthDeg': -90,
+                 'result': {'count': 4, 'kwc': 2.2, 'areaM2': 9.0}},
+            ],
+        }
+        cfg = extract_roof_config(layout)
+        self.assertEqual(cfg['nb_pans'], 2)
+        self.assertEqual(cfg['nb_panneaux'], 16)
+        self.assertAlmostEqual(cfg['surface_m2'], 33.0, places=1)
+        self.assertAlmostEqual(cfg['kwc'], 8.8, places=2)
+        # Orientation principale = pan le plus puissant (Sud).
+        self.assertEqual(cfg['orientation_principale'], 'Sud')
+        self.assertEqual(cfg['azimut_deg'], 0)
+        self.assertEqual(cfg['inclinaison_deg'], 30)
+        self.assertEqual(len(cfg['pans']), 2)
+        self.assertEqual(cfg['pans'][1]['orientation'], 'Est')
+
+    def test_extract_empty_layout_is_empty(self):
+        from apps.ventes.services import extract_roof_config
+        self.assertEqual(extract_roof_config({}), {})
+        self.assertEqual(extract_roof_config(
+            {'result': {'panels': 8}}), {})
+        self.assertEqual(extract_roof_config({'areas': []}), {})
+
+    def test_roof_config_stored_in_devis(self):
+        layout = {
+            'scenario': 'reseau',
+            'result': {'panels': 12, 'kwc': 6.6, 'annualKwh': 10800},
+            'areas': [
+                {'label': 'Toiture', 'roofType': 'pitched', 'pitchDeg': 20,
+                 'facingAzimuthDeg': 0,
+                 'result': {'count': 12, 'kwc': 6.6, 'areaM2': 24.0}},
+            ],
+        }
+        devis = build_devis_from_layout(
+            layout=layout, user=self.user, company=self.company,
+            lead=self._lead())
+        toiture = devis.etude_params['toiture']
+        self.assertEqual(toiture['nb_panneaux'], 12)
+        self.assertEqual(toiture['orientation_principale'], 'Sud')
+        self.assertAlmostEqual(toiture['surface_m2'], 24.0, places=1)
+
+    def test_panels_fallback_from_pans_when_result_missing(self):
+        """Layout 3D sans bloc result : les panneaux viennent des pans."""
+        layout = {
+            'scenario': 'reseau',
+            'areas': [
+                {'roofType': 'pitched', 'pitchDeg': 30, 'facingAzimuthDeg': 0,
+                 'result': {'count': 10, 'kwc': 5.5, 'areaM2': 20.0}},
+            ],
+        }
+        devis = build_devis_from_layout(
+            layout=layout, user=self.user, company=self.company,
+            lead=self._lead())
+        panel = next((li for li in devis.lignes.all()
+                      if 'Panneau' in li.designation), None)
+        self.assertIsNotNone(panel)
+        self.assertEqual(int(panel.quantite), 10)
+        self.assertEqual(devis.etude_params['toiture']['nb_pans'], 1)
+
+    def test_legacy_layout_unchanged(self):
+        """Layout sans géométrie → pas de clé toiture (rétro-compat)."""
+        layout = {'scenario': 'reseau',
+                  'result': {'panels': 8, 'kwc': 4.4, 'annualKwh': 7000}}
+        devis = build_devis_from_layout(
+            layout=layout, user=self.user, company=self.company,
+            lead=self._lead())
+        self.assertNotIn('toiture', devis.etude_params or {})
+        self.assertEqual(devis.etude_params['production_annuelle'], 7000)

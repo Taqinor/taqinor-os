@@ -75,6 +75,99 @@ def _parse_watt(name):
     return int(m.group(1)) if m else None
 
 
+def _aspect_to_orientation(aspect):
+    """FG248 — azimut PVGIS (0=Sud, -90=Est, 90=Ouest, ±180=Nord) → libellé FR.
+
+    Miroir inverse de ``orientationToAspect`` (apps/web/src/lib/roof.ts) pour que
+    le devis affiche la même orientation que l'outil 3D. Aspect inconnu → ''."""
+    try:
+        a = float(aspect)
+    except (TypeError, ValueError):
+        return ''
+    # Normalise dans [-180, 180].
+    a = (a + 180.0) % 360.0 - 180.0
+    table = [
+        (0.0, 'Sud'), (-45.0, 'Sud-Est'), (45.0, 'Sud-Ouest'),
+        (-90.0, 'Est'), (90.0, 'Ouest'),
+        (-135.0, 'Nord-Est'), (135.0, 'Nord-Ouest'),
+        (180.0, 'Nord'), (-180.0, 'Nord'),
+    ]
+    return min(table, key=lambda t: abs(a - t[0]))[1]
+
+
+def extract_roof_config(layout):
+    """FG248 — extrait la config TOITURE d'un layout 3D (roofPro11) en un dict
+    plat, JSON-sérialisable, indépendant de la version de l'outil.
+
+    Lit les PANS de toiture (``areas``/``zones``/``pans``) — chacun portant
+    ``roofType``, ``pitchDeg``/``pitch``, ``facingAzimuthDeg``/``aspect`` et un
+    ``result`` ``{count, kwc, areaM2}`` — et en agrège :
+
+        {surface_m2, nb_pans, nb_panneaux, kwc, orientation_principale,
+         azimut_deg, inclinaison_deg, pans: [{...}]}
+
+    Tolérant : entrées manquantes → champs omis ; aucune exception. Renvoie {}
+    si le layout ne contient aucune géométrie de toiture exploitable (pour ne
+    rien changer au comportement historique du seul bloc ``result``).
+    """
+    layout = layout or {}
+    areas = (layout.get('areas') or layout.get('zones')
+             or layout.get('pans') or [])
+    if not isinstance(areas, list) or not areas:
+        return {}
+
+    pans = []
+    total_surface = 0.0
+    total_panels = 0
+    total_kwc = 0.0
+    best = None  # pan le plus puissant → orientation principale
+    for a in areas:
+        if not isinstance(a, dict):
+            continue
+        res = a.get('result') or {}
+        count = int(res.get('count') or a.get('neededPanels') or 0)
+        kwc = float(res.get('kwc') or 0.0)
+        surface = float(res.get('areaM2') or a.get('areaM2') or 0.0)
+        aspect = a.get('facingAzimuthDeg')
+        if aspect is None:
+            aspect = a.get('aspect')
+        pitch = a.get('pitchDeg')
+        if pitch is None:
+            pitch = a.get('pitch')
+        pan = {
+            'label': a.get('label') or '',
+            'roof_type': a.get('roofType') or '',
+            'nb_panneaux': count,
+            'kwc': round(kwc, 3) if kwc else 0.0,
+            'surface_m2': round(surface, 2) if surface else 0.0,
+            'azimut_deg': aspect,
+            'inclinaison_deg': pitch,
+            'orientation': _aspect_to_orientation(aspect),
+        }
+        pans.append(pan)
+        total_surface += surface
+        total_panels += count
+        total_kwc += kwc
+        if best is None or kwc > best['kwc']:
+            best = pan
+
+    if not pans:
+        return {}
+
+    cfg = {
+        'surface_m2': round(total_surface, 2),
+        'nb_pans': len(pans),
+        'nb_panneaux': total_panels,
+        'kwc': round(total_kwc, 3),
+        'pans': pans,
+    }
+    if best is not None:
+        cfg['orientation_principale'] = best['orientation']
+        cfg['azimut_deg'] = best['azimut_deg']
+        cfg['inclinaison_deg'] = best['inclinaison_deg']
+    return cfg
+
+
 def build_devis_from_layout(*, layout, user, company, lead=None, client=None,
                             taux_tva=Decimal('20'), remise_globale=Decimal('0')):
     """Q3 — turn a FINALISED roof layout into a coherent, company-scoped Devis.
@@ -106,6 +199,18 @@ def build_devis_from_layout(*, layout, user, company, lead=None, client=None,
     kwc = float(result.get('kwc') or 0)
     annual_kwh = result.get('annualKwh')
     savings = result.get('savings')
+
+    # FG248 — pont 3D toiture → ERP : extrait la config toiture (surface/pans/
+    # orientation/inclinaison/kWc) du builder 3D. Quand le bloc ``result`` ne
+    # porte pas le nombre de panneaux / la puissance, on retombe sur la somme des
+    # pans (cohérence kWc/panneaux écran ↔ pont 3D). Layout sans géométrie →
+    # dict vide → comportement historique strictement inchangé.
+    toiture = extract_roof_config(layout)
+    if toiture:
+        if nb_panneaux <= 0 and toiture.get('nb_panneaux'):
+            nb_panneaux = int(toiture['nb_panneaux'])
+        if not kwc and toiture.get('kwc'):
+            kwc = float(toiture['kwc'])
 
     # Panel wattage: prefer an explicit hint, else derive from kWc / panels.
     watt = layout.get('panelWatt') or layout.get('watt')
@@ -146,6 +251,10 @@ def build_devis_from_layout(*, layout, user, company, lead=None, client=None,
         etude_params['economies_annuelles'] = int(savings)
     if kwc:
         etude_params['puissance_kwc'] = kwc
+    # FG248 — la config toiture importée du builder 3D est conservée avec le
+    # devis (prête à servir au chantier).
+    if toiture:
+        etude_params['toiture'] = toiture
 
     def _create(ref):
         devis = Devis.objects.create(
