@@ -139,3 +139,88 @@ class ActionCorrectivePreventive(models.Model):
 
     def __str__(self):
         return f'{self.get_type_action_display()} — {self.description[:40]}'
+
+
+# ── QHSE2 — ITP (Inspection & Test Plan) ───────────────────────────────────
+
+class PlanInspectionModele(models.Model):
+    """Modèle réutilisable de plan d'inspection (ITP — Inspection & Test Plan).
+
+    Gabarit de plan d'inspection et d'essais qu'on instancie sur un chantier :
+    porte un ``nom``/``code``, une description et un drapeau ``actif``. Ses
+    points de contrôle vivent dans ``PointControleModele`` (relation 1-N). Tout
+    est scopé société via le FK ``company`` posé côté serveur.
+    """
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='qhse_plans_inspection',
+        verbose_name='Société',
+    )
+    code = models.CharField(
+        max_length=50, blank=True, default='', verbose_name='Code')
+    nom = models.CharField(max_length=255, verbose_name='Nom')
+    description = models.TextField(
+        blank=True, default='', verbose_name='Description')
+    actif = models.BooleanField(default=True, verbose_name='Actif')
+    date_creation = models.DateTimeField(
+        auto_now_add=True, verbose_name='Créé le')
+
+    class Meta:
+        verbose_name = "Modèle de plan d'inspection"
+        verbose_name_plural = "Modèles de plan d'inspection"
+        ordering = ['-id']
+
+    def __str__(self):
+        return self.nom
+
+
+class PointControleModele(models.Model):
+    """Point de contrôle d'un modèle de plan d'inspection (ITP).
+
+    Décrit un contrôle à exécuter au sein d'un ``PlanInspectionModele`` : la
+    ``phase`` de travaux concernée, le ``type_releve`` (nature du
+    relevé — mesure/visuel/document/essai) et, surtout, un drapeau
+    ``hold_point`` : un point d'arrêt obligatoire où les travaux ne peuvent pas
+    se poursuivre tant qu'il n'est pas levé/signé. ``ordre`` ordonne les points
+    au sein d'un plan.
+    """
+    class TypeReleve(models.TextChoices):
+        MESURE = 'mesure', 'Mesure'
+        VISUEL = 'visuel', 'Visuel'
+        DOCUMENT = 'document', 'Document'
+        ESSAI = 'essai', 'Essai'
+
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='qhse_points_controle',
+        verbose_name='Société',
+    )
+    plan = models.ForeignKey(
+        PlanInspectionModele,
+        on_delete=models.CASCADE,
+        related_name='points',
+        verbose_name="Plan d'inspection",
+    )
+    ordre = models.PositiveIntegerField(default=0, verbose_name='Ordre')
+    intitule = models.CharField(max_length=255, verbose_name='Intitulé')
+    phase = models.CharField(
+        max_length=120, blank=True, default='', verbose_name='Phase')
+    type_releve = models.CharField(
+        max_length=10, choices=TypeReleve.choices,
+        default=TypeReleve.VISUEL, verbose_name='Type de relevé')
+    hold_point = models.BooleanField(
+        default=False, verbose_name="Point d'arrêt")
+    description = models.TextField(
+        blank=True, default='', verbose_name='Description')
+    date_creation = models.DateTimeField(
+        auto_now_add=True, verbose_name='Créé le')
+
+    class Meta:
+        verbose_name = 'Point de contrôle (modèle)'
+        verbose_name_plural = 'Points de contrôle (modèle)'
+        ordering = ['plan', 'ordre', 'id']
+
+    def __str__(self):
+        return f'{self.intitule} ({self.get_type_releve_display()})'
