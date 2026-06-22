@@ -9,8 +9,7 @@ elle réutilise le plan existant et n'ajoute que les relevés manquants.
 from django.db import transaction
 
 from .models import (
-    PlanInspectionChantier, PlanInspectionModele, PointControleModele,
-    ReleveControle,
+    PlanInspectionChantier, PointControleModele, ReleveControle,
 )
 
 
