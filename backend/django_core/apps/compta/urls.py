@@ -23,6 +23,10 @@ router.register(r'dotations', DotationAmortissementViewSet)
 router.register(r'cessions', CessionImmobilisationViewSet)
 router.register(r'rapprochements', RapprochementBancaireViewSet)
 router.register(r'caisses', CaisseViewSet)
+router.register(r'virements', VirementInterneViewSet)
+router.register(r'previsionnel', LignePrevisionnelTresorerieViewSet)
+router.register(r'effets', EffetViewSet)
+router.register(r'bordereaux', BordereauRemiseViewSet)
 router.register(r'etats', EtatsComptablesViewSet, basename='etats')
 
 urlpatterns = [

@@ -1,10 +1,10 @@
 from django.contrib import admin
 
 from .models import (
-    Caisse, ClotureCaisse, CompteComptable, CompteTresorerie,
-    EcritureComptable, ExerciceComptable, Immobilisation, Journal,
-    LigneEcriture, LigneReleve, MouvementCaisse, PeriodeComptable,
-    PlanComptable, RapprochementBancaire,
+    BordereauRemise, Caisse, ClotureCaisse, CompteComptable, CompteTresorerie,
+    EcritureComptable, Effet, ExerciceComptable, Immobilisation, Journal,
+    LigneEcriture, LignePrevisionnelTresorerie, LigneReleve, MouvementCaisse,
+    PeriodeComptable, PlanComptable, RapprochementBancaire, VirementInterne,
 )
 
 

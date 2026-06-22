@@ -4,7 +4,11 @@ Point d'entrée des écritures internes au module. ``company`` est toujours
 dérivée du ``projet`` (jamais lue d'un corps de requête) ; aucun import
 cross-app (on reste dans ``gestion_projet``).
 """
-from .models import PhaseProjet, Projet
+from datetime import timedelta
+
+from django.db import transaction
+
+from .models import DependanceTache, PhaseProjet, Projet, Tache
 
 
 # Décomposition standard d'un projet d'installation solaire (WBS), dans l'ordre

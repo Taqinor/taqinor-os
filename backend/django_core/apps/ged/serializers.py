@@ -191,6 +191,7 @@ class DocumentSerializer(serializers.ModelSerializer):
         source='created_by.username', read_only=True, default=None)
     version_count = serializers.SerializerMethodField()
     derniere_version = serializers.SerializerMethodField()
+    tags = serializers.SerializerMethodField()
 
     class Meta:
         model = Document
@@ -198,7 +199,7 @@ class DocumentSerializer(serializers.ModelSerializer):
         fields = [
             'id', 'folder', 'folder_nom', 'coffre', 'nom', 'description',
             'created_by', 'created_by_nom', 'version_count', 'derniere_version',
-            'created_at', 'updated_at',
+            'tags', 'created_at', 'updated_at',
         ]
         read_only_fields = ['created_by', 'created_at', 'updated_at']
 
@@ -208,6 +209,13 @@ class DocumentSerializer(serializers.ModelSerializer):
     def get_derniere_version(self, obj):
         last = obj.versions.order_by('-version').first()
         return last.version if last else None
+
+    def get_tags(self, obj):
+        # GED9 — tags de la taxonomie appliqués au document (id + nom).
+        return [
+            {'id': a.tag_id, 'nom': a.tag.nom, 'slug': a.tag.slug}
+            for a in obj.tag_assignments.select_related('tag').all()
+        ]
 
     def validate_folder(self, value):
         request = self.context.get('request')
