@@ -203,6 +203,205 @@ class FolderMoveTests(GedBase):
         with self.assertRaises(ValueError):
             services.move_folder(a, b)
 
+    def test_move_document_service(self):
+        f1 = Folder.objects.create(company=self.co_a, cabinet=self.cab_a, nom='F1')
+        f2 = Folder.objects.create(company=self.co_a, cabinet=self.cab_a, nom='F2')
+        doc = Document.objects.create(company=self.co_a, folder=f1, nom='D')
+        services.move_document(doc, f2)
+        doc.refresh_from_db()
+        self.assertEqual(doc.folder_id, f2.id)
+
+    def test_move_document_rejects_other_company_folder(self):
+        f1 = Folder.objects.create(company=self.co_a, cabinet=self.cab_a, nom='F1')
+        folder_b = Folder.objects.create(
+            company=self.co_b, cabinet=self.cab_b, nom='F B')
+        doc = Document.objects.create(company=self.co_a, folder=f1, nom='D')
+        with self.assertRaises(ValueError):
+            services.move_document(doc, folder_b)
+
+
+# ── GED4 — CRUD + déplacement via l'API (scopé société) ─────────────
+class GedCrudTests(GedBase):
+    """CRUD complet (update/delete) pour dossiers et documents, scopé société."""
+
+    def test_update_folder_scoped(self):
+        f = Folder.objects.create(company=self.co_a, cabinet=self.cab_a, nom='Avant')
+        api = auth(self.admin_a)
+        resp = api.patch(f'/api/django/ged/dossiers/{f.id}/', {
+            'nom': 'Après',
+            'company': self.co_b.id,  # injection ignorée
+        }, format='json')
+        self.assertEqual(resp.status_code, 200, resp.data)
+        f.refresh_from_db()
+        self.assertEqual(f.nom, 'Après')
+        self.assertEqual(f.company_id, self.co_a.id)
+
+    def test_cannot_update_other_company_folder(self):
+        f_b = Folder.objects.create(company=self.co_b, cabinet=self.cab_b, nom='B')
+        api = auth(self.admin_a)
+        resp = api.patch(f'/api/django/ged/dossiers/{f_b.id}/', {
+            'nom': 'Piraté',
+        }, format='json')
+        self.assertEqual(resp.status_code, 404)
+
+    def test_delete_folder_scoped(self):
+        f = Folder.objects.create(company=self.co_a, cabinet=self.cab_a, nom='Jetable')
+        api = auth(self.admin_a)
+        resp = api.delete(f'/api/django/ged/dossiers/{f.id}/')
+        self.assertEqual(resp.status_code, 204)
+        self.assertFalse(Folder.objects.filter(id=f.id).exists())
+
+    def test_cannot_delete_other_company_folder(self):
+        f_b = Folder.objects.create(company=self.co_b, cabinet=self.cab_b, nom='B')
+        api = auth(self.admin_a)
+        resp = api.delete(f'/api/django/ged/dossiers/{f_b.id}/')
+        self.assertEqual(resp.status_code, 404)
+        self.assertTrue(Folder.objects.filter(id=f_b.id).exists())
+
+    def test_update_document_scoped(self):
+        f = Folder.objects.create(company=self.co_a, cabinet=self.cab_a, nom='F')
+        doc = Document.objects.create(company=self.co_a, folder=f, nom='Avant')
+        api = auth(self.admin_a)
+        resp = api.patch(f'/api/django/ged/documents/{doc.id}/', {
+            'nom': 'Après',
+            'company': self.co_b.id,  # injection ignorée
+        }, format='json')
+        self.assertEqual(resp.status_code, 200, resp.data)
+        doc.refresh_from_db()
+        self.assertEqual(doc.nom, 'Après')
+        self.assertEqual(doc.company_id, self.co_a.id)
+
+    def test_cannot_update_other_company_document(self):
+        f_b = Folder.objects.create(company=self.co_b, cabinet=self.cab_b, nom='F B')
+        doc_b = Document.objects.create(company=self.co_b, folder=f_b, nom='B')
+        api = auth(self.admin_a)
+        resp = api.patch(f'/api/django/ged/documents/{doc_b.id}/', {
+            'nom': 'Piraté',
+        }, format='json')
+        self.assertEqual(resp.status_code, 404)
+
+    def test_delete_document_scoped(self):
+        f = Folder.objects.create(company=self.co_a, cabinet=self.cab_a, nom='F')
+        doc = Document.objects.create(company=self.co_a, folder=f, nom='Jetable')
+        api = auth(self.admin_a)
+        resp = api.delete(f'/api/django/ged/documents/{doc.id}/')
+        self.assertEqual(resp.status_code, 204)
+        self.assertFalse(Document.objects.filter(id=doc.id).exists())
+
+
+# ── GED4 — déplacement via l'API (action `deplacer`, scopé société) ──
+class GedMoveEndpointTests(GedBase):
+    def test_move_folder_endpoint_reparents(self):
+        a = Folder.objects.create(company=self.co_a, cabinet=self.cab_a, nom='A')
+        b = Folder.objects.create(
+            company=self.co_a, cabinet=self.cab_a, parent=a, nom='B')
+        new_root = Folder.objects.create(
+            company=self.co_a, cabinet=self.cab_a, nom='Nouveau')
+        api = auth(self.admin_a)
+        resp = api.post(f'/api/django/ged/dossiers/{b.id}/deplacer/', {
+            'parent': new_root.id,
+        }, format='json')
+        self.assertEqual(resp.status_code, 200, resp.data)
+        b.refresh_from_db()
+        self.assertEqual(b.parent_id, new_root.id)
+        self.assertEqual(b.path, f'/{new_root.pk}/{b.pk}/')
+
+    def test_move_folder_endpoint_to_root(self):
+        a = Folder.objects.create(company=self.co_a, cabinet=self.cab_a, nom='A')
+        b = Folder.objects.create(
+            company=self.co_a, cabinet=self.cab_a, parent=a, nom='B')
+        api = auth(self.admin_a)
+        resp = api.post(f'/api/django/ged/dossiers/{b.id}/deplacer/', {
+            'parent': None,
+        }, format='json')
+        self.assertEqual(resp.status_code, 200, resp.data)
+        b.refresh_from_db()
+        self.assertIsNone(b.parent_id)
+        self.assertEqual(b.path, f'/{b.pk}/')
+
+    def test_move_folder_endpoint_rejects_cycle(self):
+        a = Folder.objects.create(company=self.co_a, cabinet=self.cab_a, nom='A')
+        b = Folder.objects.create(
+            company=self.co_a, cabinet=self.cab_a, parent=a, nom='B')
+        api = auth(self.admin_a)
+        # Déplacer A sous son propre descendant B → cycle → 400.
+        resp = api.post(f'/api/django/ged/dossiers/{a.id}/deplacer/', {
+            'parent': b.id,
+        }, format='json')
+        self.assertEqual(resp.status_code, 400)
+
+    def test_move_folder_endpoint_rejects_other_company_parent(self):
+        b_parent = Folder.objects.create(
+            company=self.co_b, cabinet=self.cab_b, nom='Parent B')
+        a = Folder.objects.create(company=self.co_a, cabinet=self.cab_a, nom='A')
+        api = auth(self.admin_a)
+        # Le parent appartient à la société B → introuvable côté A → 404.
+        resp = api.post(f'/api/django/ged/dossiers/{a.id}/deplacer/', {
+            'parent': b_parent.id,
+        }, format='json')
+        self.assertEqual(resp.status_code, 404)
+        a.refresh_from_db()
+        self.assertIsNone(a.parent_id)
+
+    def test_cannot_move_other_company_folder(self):
+        b_folder = Folder.objects.create(
+            company=self.co_b, cabinet=self.cab_b, nom='B')
+        a_target = Folder.objects.create(
+            company=self.co_a, cabinet=self.cab_a, nom='Cible A')
+        api = auth(self.admin_a)
+        # Le dossier source appartient à B → introuvable côté A → 404.
+        resp = api.post(f'/api/django/ged/dossiers/{b_folder.id}/deplacer/', {
+            'parent': a_target.id,
+        }, format='json')
+        self.assertEqual(resp.status_code, 404)
+
+    def test_move_document_endpoint(self):
+        f1 = Folder.objects.create(company=self.co_a, cabinet=self.cab_a, nom='F1')
+        f2 = Folder.objects.create(company=self.co_a, cabinet=self.cab_a, nom='F2')
+        doc = Document.objects.create(company=self.co_a, folder=f1, nom='D')
+        api = auth(self.admin_a)
+        resp = api.post(f'/api/django/ged/documents/{doc.id}/deplacer/', {
+            'folder': f2.id,
+        }, format='json')
+        self.assertEqual(resp.status_code, 200, resp.data)
+        doc.refresh_from_db()
+        self.assertEqual(doc.folder_id, f2.id)
+        self.assertEqual(doc.company_id, self.co_a.id)
+
+    def test_move_document_endpoint_rejects_other_company_folder(self):
+        f1 = Folder.objects.create(company=self.co_a, cabinet=self.cab_a, nom='F1')
+        folder_b = Folder.objects.create(
+            company=self.co_b, cabinet=self.cab_b, nom='F B')
+        doc = Document.objects.create(company=self.co_a, folder=f1, nom='D')
+        api = auth(self.admin_a)
+        # Le dossier cible appartient à B → introuvable côté A → 404.
+        resp = api.post(f'/api/django/ged/documents/{doc.id}/deplacer/', {
+            'folder': folder_b.id,
+        }, format='json')
+        self.assertEqual(resp.status_code, 404)
+        doc.refresh_from_db()
+        self.assertEqual(doc.folder_id, f1.id)
+
+    def test_cannot_move_other_company_document(self):
+        f_b = Folder.objects.create(company=self.co_b, cabinet=self.cab_b, nom='F B')
+        doc_b = Document.objects.create(company=self.co_b, folder=f_b, nom='B')
+        target_a = Folder.objects.create(
+            company=self.co_a, cabinet=self.cab_a, nom='Cible A')
+        api = auth(self.admin_a)
+        # Le document source appartient à B → introuvable côté A → 404.
+        resp = api.post(f'/api/django/ged/documents/{doc_b.id}/deplacer/', {
+            'folder': target_a.id,
+        }, format='json')
+        self.assertEqual(resp.status_code, 404)
+
+    def test_move_document_endpoint_requires_folder(self):
+        f1 = Folder.objects.create(company=self.co_a, cabinet=self.cab_a, nom='F1')
+        doc = Document.objects.create(company=self.co_a, folder=f1, nom='D')
+        api = auth(self.admin_a)
+        resp = api.post(f'/api/django/ged/documents/{doc.id}/deplacer/', {},
+                        format='json')
+        self.assertEqual(resp.status_code, 400)
+
 
 # ── GED3 — Document + DocumentVersion (numérotation, checksum/dedup) ──
 class DocumentVersionTests(GedBase):
