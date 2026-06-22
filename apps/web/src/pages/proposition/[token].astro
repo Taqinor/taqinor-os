@@ -1,0 +1,569 @@
+---
+/**
+ * /proposition/<token> — PROPOSITION CLIENT EN LIGNE (W116 + W117).
+ *
+ * La belle page « UI » que TAQINOR envoie au client (≠ PDF). Rendu côté serveur
+ * (prerender=false) : le frontmatter lit la proposition depuis l'endpoint backend
+ * public/token, et la page affiche un devis premium responsive + une signature en
+ * ligne (CTA collant « Signer en ligne »). La signature passe par le proxy
+ * same-origin /api/proposition-accept — le navigateur n'appelle jamais le backend
+ * en cross-origin. Aucun prix d'achat / marge n'est jamais affiché (le backend ne
+ * les envoie pas). noindex=true : page privée et tokenisée.
+ *
+ * Design : langage v2 (« cinéma du chantier »). Bleu Majorelle dominant, laiton
+ * (.lum / CTA) réservé aux chiffres clés et au bouton principal, encres lune,
+ * Archivo / Hanken. Zéro CLS, prefers-reduced-motion respecté, contraste AA.
+ */
+export const prerender = false;
+
+import Layout from '../../layouts/Layout.astro';
+import {
+  type ProposalResponse,
+  type OptionKey,
+  formatMAD,
+  formatNumber,
+  formatPayback,
+  hasTwoOptions,
+  recommendedOption,
+  optionTtc,
+  optionItems,
+  optionTotaux,
+  optionLabel,
+  defaultSelectedOption,
+  isAccepted,
+  proposalEndpoint,
+} from '../../lib/proposition';
+
+const API_BASE = (import.meta.env.PUBLIC_API_BASE as string | undefined) ?? 'https://api.taqinor.ma';
+const { token } = Astro.params as { token: string };
+
+// ── Lecture serveur de la proposition ────────────────────────────────────────
+let data: ProposalResponse | null = null;
+let errorDetail: string | null = null;
+let httpStatus = 200;
+
+if (!token || !token.trim()) {
+  httpStatus = 404;
+  errorDetail = 'Ce lien de proposition est introuvable ou a expiré.';
+} else {
+  try {
+    const res = await fetch(proposalEndpoint(API_BASE, token), {
+      headers: { accept: 'application/json' },
+    });
+    httpStatus = res.status;
+    if (res.ok) {
+      data = (await res.json()) as ProposalResponse;
+    } else {
+      let detail = '';
+      try {
+        const body = (await res.json()) as { detail?: string };
+        detail = typeof body.detail === 'string' ? body.detail : '';
+      } catch {
+        detail = '';
+      }
+      errorDetail =
+        detail ||
+        (res.status === 404
+          ? 'Ce lien de proposition est introuvable ou a expiré.'
+          : 'Cette proposition n’est pas accessible pour le moment.');
+    }
+  } catch {
+    httpStatus = 502;
+    errorDetail = 'Proposition momentanément indisponible. Veuillez réessayer dans un instant.';
+  }
+}
+
+// La page renvoie 404 quand le token est invalide/expiré : propre pour les bots
+// comme pour les humains (Layout est de toute façon noindex).
+if (!data && (httpStatus === 404 || httpStatus === 200)) {
+  Astro.response.status = httpStatus === 200 ? 404 : httpStatus;
+} else if (!data) {
+  Astro.response.status = httpStatus;
+}
+
+// ── Préparation des données d'affichage (uniquement si OK) ───────────────────
+const ok = !!data;
+const q = data?.quote;
+const twoOptions = ok ? hasTwoOptions(data!) : false;
+const reco: OptionKey | null = ok ? recommendedOption(data!) : null;
+const accepted = ok ? isAccepted(data!) : false;
+const preselect: OptionKey | null = ok ? defaultSelectedOption(data!) : null;
+
+const roofImg = data?.roof_image_url ?? null;
+const clientName = data?.client_name || q?.client_name || 'Client';
+const reference = data?.reference || q?.ref || '';
+const proposalDate = data?.date || q?.date || '';
+
+// Options à présenter (une ou deux), dans l'ordre Sans → Avec.
+const options: OptionKey[] = ok
+  ? twoOptions
+    ? ['sans_batterie', 'avec_batterie']
+    : q?.totaux_avec && !q?.totaux_sans
+      ? ['avec_batterie']
+      : ['sans_batterie']
+  : [];
+
+// Bloc énergie/économies (résidentiel/industriel). Pompage n'a pas ces champs.
+const puissance = q?.puissance_kwc ?? null;
+const nbPanneaux = q?.nb_panneaux ?? null;
+const wattPanneau = q?.watt_par_panneau ?? null;
+const prodKwh = q?.prod_kwh ?? null;
+const ecoSans = q?.eco_s_ann ?? null;
+const ecoAvec = q?.eco_a_ann ?? null;
+const paybackSans = formatPayback(q?.roi_s);
+const paybackAvec = formatPayback(q?.roi_a);
+// Économie / payback « phares » : ceux de l'option recommandée.
+const ecoHero = reco === 'avec_batterie' ? (ecoAvec ?? ecoSans) : (ecoSans ?? ecoAvec);
+const paybackHero = reco === 'avec_batterie' ? (paybackAvec ?? paybackSans) : (paybackSans ?? paybackAvec);
+
+const instLabel =
+  q?.inst_type === 'agricole'
+    ? 'Pompage solaire'
+    : q?.inst_type === 'industriel' || q?.inst_type === 'commercial'
+      ? 'Autoconsommation'
+      : q?.inst_type
+        ? String(q.inst_type)
+        : 'Installation solaire';
+
+const pageTitle = ok ? `Proposition ${reference} — ${clientName} | Taqinor` : 'Proposition | Taqinor';
+
+// Données passées au script de signature (sérialisées en JSON dans un data-attr).
+const signConfig = ok
+  ? JSON.stringify({ token, twoOptions, preselect, accepted, acceptedName: data?.accepte_par_nom ?? '' })
+  : null;
+---
+
+<Layout title={pageTitle} description="Votre proposition solaire personnalisée Taqinor." noindex={true}>
+  {!ok ? (
+    <!-- ── État « lien expiré / introuvable » ─────────────────────────────── -->
+    <section class="mx-auto flex min-h-[60vh] max-w-2xl flex-col items-center justify-center px-5 py-24 text-center">
+      <div class="rule-brass mx-auto text-brass-300" aria-hidden="true"></div>
+      <h1 class="display mt-6 text-3xl text-lune sm:text-4xl">Proposition indisponible</h1>
+      <p class="v2-body mt-4 max-w-md">{errorDetail}</p>
+      <p class="mt-8 text-sm text-lune-faint">
+        Besoin d’un nouveau lien ? Contactez votre conseiller Taqinor.
+      </p>
+      <a href="/" class="btn-pill mt-8">Retour à l’accueil</a>
+    </section>
+  ) : (
+    <div class="proposition pb-28" data-sign-config={signConfig}>
+      <!-- ── HÉRO ────────────────────────────────────────────────────────── -->
+      <section class="relative overflow-hidden">
+        {roofImg ? (
+          <img
+            src={roofImg}
+            alt={`Étude de toiture — ${clientName}`}
+            width="1600"
+            height="900"
+            class="absolute inset-0 h-full w-full object-cover"
+            loading="eager"
+            decoding="async"
+          />
+        ) : (
+          <div class="absolute inset-0 bg-azur-950" aria-hidden="true"></div>
+        )}
+        <!-- Scrim pour garantir le contraste AA du texte par-dessus la photo. -->
+        <div class="hero-scrim absolute inset-0" aria-hidden="true"></div>
+        <div class="relative mx-auto max-w-4xl px-5 pb-12 pt-24 sm:px-8 sm:pb-16 sm:pt-32">
+          <p class="tech-label text-brass-300">Proposition · {instLabel}</p>
+          <h1 class="display mt-3 text-4xl text-blanc sm:text-5xl">
+            Bonjour {clientName},
+          </h1>
+          <p class="v2-body mt-4 max-w-xl text-lune">
+            Voici votre proposition solaire personnalisée. Tout est détaillé ci-dessous —
+            vous pouvez la signer en ligne en bas de page.
+          </p>
+          <dl class="mt-7 flex flex-wrap gap-x-8 gap-y-3 text-sm">
+            {reference && (
+              <div>
+                <dt class="text-lune-faint">Référence</dt>
+                <dd class="fig text-lg text-lune">{reference}</dd>
+              </div>
+            )}
+            {proposalDate && (
+              <div>
+                <dt class="text-lune-faint">Date</dt>
+                <dd class="fig text-lg text-lune">{proposalDate}</dd>
+              </div>
+            )}
+          </dl>
+        </div>
+      </section>
+
+      <!-- ── BANDEAU « déjà signé » (si accepté au chargement) ─────────────── -->
+      {accepted && (
+        <section class="mx-auto max-w-4xl px-5 pt-8 sm:px-8">
+          <div class="cine-card rounded-xl border-brass-400/40 p-5 sm:p-6" style="border-color: rgb(232 181 74 / 0.4)">
+            <p class="fig text-xl text-brass-300">Devis accepté ✓</p>
+            <p class="v2-body mt-1">
+              Cette proposition a été acceptée
+              {data?.accepte_par_nom ? <> par <strong class="text-lune">{data.accepte_par_nom}</strong></> : null}.
+              Merci de votre confiance — votre conseiller Taqinor revient vers vous.
+            </p>
+          </div>
+        </section>
+      )}
+
+      <!-- ── CHIFFRES PHARES : économies / payload ───────────────────────── -->
+      {(ecoHero || paybackHero || prodKwh) && (
+        <section class="mx-auto max-w-4xl px-5 pt-12 sm:px-8 sm:pt-16">
+          <div class="grid gap-4 sm:grid-cols-3">
+            {ecoHero ? (
+              <div class="cine-card rounded-xl p-5">
+                <p class="tech-label text-lune-faint">Économies estimées / an</p>
+                <p class="fig fig-md lum mt-2">{formatMAD(ecoHero)}</p>
+              </div>
+            ) : null}
+            {paybackHero ? (
+              <div class="cine-card rounded-xl p-5">
+                <p class="tech-label text-lune-faint">Retour sur investissement</p>
+                <p class="fig fig-md mt-2 text-lune">{paybackHero}</p>
+              </div>
+            ) : null}
+            {prodKwh ? (
+              <div class="cine-card rounded-xl p-5">
+                <p class="tech-label text-lune-faint">Production estimée / an</p>
+                <p class="fig fig-md mt-2 text-lune">{formatNumber(prodKwh)} <span class="text-lg text-lune-soft">kWh</span></p>
+              </div>
+            ) : null}
+          </div>
+        </section>
+      )}
+
+      <!-- ── SYSTÈME : puissance / panneaux ───────────────────────────────── -->
+      {(puissance || nbPanneaux) && (
+        <section class="mx-auto max-w-4xl px-5 pt-12 sm:px-8">
+          <p class="tech-label rule-brass text-brass-300">Votre système</p>
+          <div class="mt-5 grid gap-4 sm:grid-cols-3">
+            {puissance ? (
+              <div class="cine-card rounded-xl p-5">
+                <p class="tech-label text-lune-faint">Puissance</p>
+                <p class="fig mt-2 text-2xl text-lune">{formatNumber(puissance, 2)} <span class="text-base text-lune-soft">kWc</span></p>
+              </div>
+            ) : null}
+            {nbPanneaux ? (
+              <div class="cine-card rounded-xl p-5">
+                <p class="tech-label text-lune-faint">Panneaux</p>
+                <p class="fig mt-2 text-2xl text-lune">
+                  {formatNumber(nbPanneaux)}
+                  {wattPanneau ? <span class="text-base text-lune-soft"> × {formatNumber(wattPanneau)} W</span> : null}
+                </p>
+              </div>
+            ) : null}
+            <div class="cine-card rounded-xl p-5">
+              <p class="tech-label text-lune-faint">Type</p>
+              <p class="fig mt-2 text-2xl text-lune">{instLabel}</p>
+            </div>
+          </div>
+        </section>
+      )}
+
+      <!-- ── OPTIONS ──────────────────────────────────────────────────────── -->
+      <section id="options" class="mx-auto max-w-4xl px-5 pt-14 sm:px-8">
+        <p class="tech-label rule-brass text-brass-300">
+          {twoOptions ? 'Vos deux options' : 'Votre proposition'}
+        </p>
+        <div class={`mt-5 grid gap-4 ${twoOptions ? 'sm:grid-cols-2' : ''}`}>
+          {options.map((opt) => {
+            const totaux = optionTotaux(data!, opt);
+            const items = optionItems(data!, opt);
+            const isReco = twoOptions && opt === reco;
+            const eco = opt === 'avec_batterie' ? ecoAvec : ecoSans;
+            return (
+              <article
+                class="cine-card relative flex flex-col rounded-2xl p-6"
+                style={isReco ? 'border-color: rgb(232 181 74 / 0.45)' : undefined}
+              >
+                {isReco && (
+                  <span class="absolute -top-3 left-6 rounded-full bg-brass-400 px-3 py-1 text-xs font-bold text-nuit">
+                    Recommandé
+                  </span>
+                )}
+                <h3 class="display text-xl text-lune">{optionLabel(opt)}</h3>
+                <p class="fig fig-md lum mt-3">{formatMAD(optionTtc(data!, opt))}</p>
+                <p class="text-sm text-lune-faint">TTC, clé en main</p>
+                {eco ? (
+                  <p class="mt-2 text-sm text-lune-soft">
+                    Économies estimées : <span class="text-brass-300">{formatMAD(eco)}/an</span>
+                  </p>
+                ) : null}
+
+                <!-- Équipement -->
+                {items.length > 0 && (
+                  <div class="mt-5 border-t border-white/10 pt-4">
+                    <p class="tech-label text-lune-faint">Équipement</p>
+                    <ul class="mt-3 space-y-2 text-sm text-lune-soft">
+                      {items.map((it) => (
+                        <li class="flex items-baseline justify-between gap-3">
+                          <span>
+                            <span class="text-lune">{it.designation}</span>
+                            {it.marque ? <span class="text-lune-faint"> · {it.marque}</span> : null}
+                          </span>
+                          <span class="fig shrink-0 text-lune-faint">×{formatNumber(it.quantite)}</span>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+
+                <!-- Chaîne de prix explicite -->
+                {totaux && (
+                  <dl class="mt-5 space-y-1.5 border-t border-white/10 pt-4 text-sm">
+                    <div class="flex justify-between">
+                      <dt class="text-lune-faint">Sous-total HT</dt>
+                      <dd class="fig text-lune-soft">{formatMAD(totaux.ht_brut)}</dd>
+                    </div>
+                    {totaux.remise > 0 && (
+                      <div class="flex justify-between">
+                        <dt class="text-lune-faint">Remise</dt>
+                        <dd class="fig text-brass-300">−{formatMAD(totaux.remise)}</dd>
+                      </div>
+                    )}
+                    <div class="flex justify-between">
+                      <dt class="text-lune-faint">Total HT</dt>
+                      <dd class="fig text-lune-soft">{formatMAD(totaux.ht_net)}</dd>
+                    </div>
+                    <div class="flex justify-between">
+                      <dt class="text-lune-faint">TVA</dt>
+                      <dd class="fig text-lune-soft">{formatMAD(totaux.tva)}</dd>
+                    </div>
+                    <div class="flex justify-between border-t border-white/10 pt-2">
+                      <dt class="text-lune">Total TTC</dt>
+                      <dd class="fig text-lg text-lune">{formatMAD(totaux.ttc)}</dd>
+                    </div>
+                  </dl>
+                )}
+              </article>
+            );
+          })}
+        </div>
+      </section>
+
+      <!-- ── SIGNATURE EN LIGNE ───────────────────────────────────────────── -->
+      <section id="signer" class="mx-auto max-w-4xl px-5 pt-16 sm:px-8">
+        <div class="cine-card rounded-2xl p-6 sm:p-8">
+          <!-- État confirmé (caché par défaut, affiché après signature ou si déjà accepté) -->
+          <div id="sign-success" class="result-fade" hidden>
+            <p class="fig text-2xl text-brass-300">Devis accepté ✓</p>
+            <p class="v2-body mt-2">
+              Merci <span id="sign-success-name" class="text-lune"></span> — votre acceptation est bien enregistrée.
+              Votre conseiller Taqinor revient vers vous très vite.
+            </p>
+          </div>
+
+          <!-- Formulaire de signature -->
+          <form id="sign-form" novalidate>
+            <p class="tech-label rule-brass text-brass-300">Signer en ligne</p>
+            <h2 class="display mt-3 text-2xl text-lune">Bon pour accord</h2>
+            <p class="v2-body mt-2">
+              Validez votre proposition en quelques secondes. Vous recevrez ensuite la confirmation
+              de votre conseiller.
+            </p>
+
+            {twoOptions && (
+              <fieldset class="mt-6">
+                <legend class="tech-label text-lune-faint">Votre choix</legend>
+                <div class="mt-3 grid gap-3 sm:grid-cols-2">
+                  {options.map((opt) => (
+                    <label class="flex cursor-pointer items-center gap-3 rounded-xl border border-white/12 p-4 text-sm has-[:checked]:border-brass-400">
+                      <input
+                        type="radio"
+                        name="option"
+                        value={opt}
+                        checked={opt === preselect}
+                        class="h-4 w-4 accent-[var(--color-brass-400)]"
+                      />
+                      <span class="text-lune">
+                        {optionLabel(opt)}
+                        <span class="block text-lune-faint">{formatMAD(optionTtc(data!, opt))} TTC</span>
+                      </span>
+                    </label>
+                  ))}
+                </div>
+              </fieldset>
+            )}
+
+            <div class="mt-6">
+              <label for="sign-nom" class="tech-label text-lune-faint">Votre nom complet</label>
+              <input
+                id="sign-nom"
+                name="nom"
+                type="text"
+                autocomplete="name"
+                required
+                class="mt-2 w-full rounded-xl border border-white/15 bg-nuit-800 px-4 py-3 text-lune placeholder:text-lune-faint"
+                placeholder="Prénom Nom"
+              />
+            </div>
+
+            <label class="mt-5 flex cursor-pointer items-start gap-3 text-sm">
+              <input id="sign-accord" name="accord" type="checkbox" required class="mt-1 h-4 w-4 accent-[var(--color-brass-400)]" />
+              <span class="text-lune-soft">
+                Je certifie « <strong class="text-lune">Bon pour accord</strong> » et j’accepte cette proposition
+                aux conditions indiquées ci-dessus.
+              </span>
+            </label>
+
+            <p id="sign-error" class="mt-4 text-sm text-alert-300" role="alert" hidden></p>
+
+            <button
+              id="sign-submit"
+              type="submit"
+              class="btn-pill glow-hero mt-6 w-full justify-center bg-brass-400 px-6 py-3 text-base font-bold text-nuit sm:w-auto"
+              style="background: var(--color-brass-400); color: var(--color-nuit); border-color: var(--color-brass-400)"
+            >
+              <span id="sign-submit-label">Signer en ligne</span>
+              <span id="sign-spinner" class="spinner" hidden aria-hidden="true"></span>
+            </button>
+          </form>
+        </div>
+
+        <p class="mt-6 text-center text-xs text-lune-faint">
+          Proposition Taqinor · réf. {reference}. Document non contractuel sans signature du devis officiel.
+        </p>
+      </section>
+
+      <!-- ── CTA COLLANT « Signer en ligne » ──────────────────────────────── -->
+      <div
+        id="sticky-cta"
+        class="fixed inset-x-0 bottom-0 z-40 border-t border-white/10 bg-nuit-800/95 px-4 py-3 backdrop-blur supports-[backdrop-filter]:bg-nuit-800/80"
+      >
+        <div class="mx-auto flex max-w-4xl items-center justify-between gap-4">
+          <div class="min-w-0">
+            <p class="truncate text-sm text-lune-soft">
+              {twoOptions ? 'À partir de ' : ''}
+              <span class="lum fig text-lg">{formatMAD(optionTtc(data!, reco ?? 'sans_batterie'))}</span>
+              <span class="text-lune-faint"> TTC</span>
+            </p>
+          </div>
+          <a
+            href="#signer"
+            class="btn-pill shrink-0 whitespace-nowrap"
+            style="background: var(--color-brass-400); color: var(--color-nuit); border-color: var(--color-brass-400)"
+          >
+            Signer en ligne
+          </a>
+        </div>
+      </div>
+    </div>
+  )}
+</Layout>
+
+<script>
+  import {
+    validateSign,
+    type OptionKey,
+    type SignFormState,
+  } from '../../lib/proposition';
+
+  interface SignConfig {
+    token: string;
+    twoOptions: boolean;
+    preselect: OptionKey | null;
+    accepted: boolean;
+    acceptedName: string;
+  }
+
+  const root = document.querySelector<HTMLElement>('.proposition');
+  const raw = root?.dataset.signConfig;
+  if (root && raw) {
+    const cfg = JSON.parse(raw) as SignConfig;
+
+    const form = document.getElementById('sign-form') as HTMLFormElement | null;
+    const success = document.getElementById('sign-success');
+    const successName = document.getElementById('sign-success-name');
+    const errorEl = document.getElementById('sign-error');
+    const submitBtn = document.getElementById('sign-submit') as HTMLButtonElement | null;
+    const submitLabel = document.getElementById('sign-submit-label');
+    const spinner = document.getElementById('sign-spinner');
+    const sticky = document.getElementById('sticky-cta');
+
+    function showError(msg: string): void {
+      if (!errorEl) return;
+      errorEl.textContent = msg;
+      errorEl.hidden = false;
+    }
+    function clearError(): void {
+      if (errorEl) errorEl.hidden = true;
+    }
+    function showSuccess(name: string): void {
+      if (form) form.hidden = true;
+      if (sticky) sticky.hidden = true;
+      if (successName) successName.textContent = name || '';
+      if (success) success.hidden = false;
+    }
+
+    // Déjà accepté au chargement → affiche directement l'état confirmé.
+    if (cfg.accepted) {
+      showSuccess(cfg.acceptedName);
+    }
+
+    function selectedOption(): OptionKey | null {
+      if (!cfg.twoOptions) return cfg.preselect;
+      const checked = form?.querySelector<HTMLInputElement>('input[name="option"]:checked');
+      return (checked?.value as OptionKey) ?? null;
+    }
+
+    let submitting = false;
+    form?.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      if (submitting) return;
+      clearError();
+
+      const accord = (document.getElementById('sign-accord') as HTMLInputElement | null)?.checked;
+      const nom = (document.getElementById('sign-nom') as HTMLInputElement | null)?.value ?? '';
+      const state: SignFormState = { nom, option: selectedOption() };
+
+      const v = validateSign(state, cfg.twoOptions);
+      if (!v.valid) {
+        showError(v.error ?? 'Formulaire incomplet.');
+        return;
+      }
+      if (!accord) {
+        showError('Veuillez cocher « Bon pour accord » pour valider.');
+        return;
+      }
+
+      submitting = true;
+      if (submitBtn) submitBtn.disabled = true;
+      if (spinner) spinner.hidden = false;
+      if (submitLabel) submitLabel.textContent = 'Signature…';
+
+      try {
+        const res = await fetch('/api/proposition-accept', {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({
+            token: cfg.token,
+            nom: nom.trim(),
+            option: state.option,
+            twoOptions: cfg.twoOptions,
+          }),
+        });
+        const data = (await res.json()) as {
+          ok?: boolean;
+          detail?: string;
+          accepte_par_nom?: string;
+        };
+        if (res.ok && data.ok) {
+          showSuccess(data.accepte_par_nom || nom.trim());
+          return;
+        }
+        // 400 / 409 / 404 : message backend inline. 409 = déjà accepté →
+        // on bascule quand même sur l'état confirmé (double-clic sûr).
+        if (res.status === 409) {
+          showSuccess(data.accepte_par_nom || nom.trim());
+          return;
+        }
+        showError(data.detail || 'Une erreur est survenue. Veuillez réessayer.');
+      } catch {
+        showError('Service momentanément indisponible. Veuillez réessayer.');
+      } finally {
+        submitting = false;
+        if (submitBtn) submitBtn.disabled = false;
+        if (spinner) spinner.hidden = true;
+        if (submitLabel) submitLabel.textContent = 'Signer en ligne';
+      }
+    });
+  }
+</script>
