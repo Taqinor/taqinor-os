@@ -1,0 +1,264 @@
+---
+/**
+ * W112 — CAPTURE CLIENT « Mon toit » (PUBLIC, noindex).
+ *
+ * Flux mobile-first en UNE page : le client cherche son adresse → pose UN repère
+ * sur son toit (tracer le contour est facultatif) → remplit Nom / Téléphone /
+ * Adresse + tranche de facture + type de toit + consentement → envoie. L'outil
+ * 3D est booté en mode CAPTURE (captureOnly) : AUCUN optimiseur, AUCUNE scène 3D,
+ * AUCUNE carte de production — les panneaux n'apparaissent JAMAIS sur cette page.
+ *
+ * La soumission passe par l'endpoint dédié /api/capture-lead (jamais l'outil) :
+ * validation + transfert webhook CRM identiques au flux existant, plus le repère
+ * (roofPoint), le contour (roofOutline) et la consommation (billKwh) joints au
+ * lead. L'étude solaire complète (panneaux, optimiseur) se fait ENSUITE côté
+ * Meriem (page interne /internal/devis-design).
+ */
+import Layout from '../../layouts/Layout.astro';
+import { BILL_RANGES } from '../../lib/billRange';
+import { ROOF_TYPES } from '../../lib/lead';
+
+const inputClass =
+  'w-full border border-white/15 bg-white/5 px-3 py-3 text-base text-white placeholder:text-lune-faint outline-none transition-colors focus:border-brass-400 focus:ring-2 focus:ring-brass-400/30';
+// Le type de toit attendu par validateLead est l' id ROOF_TYPES (villa/hangar/toit_plat/autre).
+const roofTypes = ROOF_TYPES;
+const billRanges = BILL_RANGES;
+---
+
+<Layout
+  title="Repérez votre toit — étude solaire | Taqinor"
+  description="Posez un repère sur votre toit et recevez votre étude solaire personnalisée."
+  noindex={true}
+>
+  <section class="bg-nuit px-4 py-10 sm:py-14">
+    <div class="mx-auto max-w-2xl">
+      <p class="tech-label rule-brass text-brass-300">Étude solaire · repérez votre toit</p>
+      <h1 class="display mt-4 text-2xl text-white sm:text-3xl">Posez un repère sur votre toit</h1>
+      <p class="mt-3 text-lune-soft">
+        Cherchez votre adresse, posez <strong class="text-white">un repère</strong> sur votre toit
+        (vous pouvez aussi en tracer le contour, c'est facultatif), puis laissez-nous vos
+        coordonnées. Notre équipe prépare votre étude et vous recontacte.
+      </p>
+
+      <!-- Repli sans JavaScript / sans clé carte : on demande l'adresse en clair. -->
+      <div id="mt-fallback" hidden class="cine-card mt-6 border-l-4 border-alert-300 p-5">
+        <p class="font-semibold text-white">Carte momentanément indisponible</p>
+        <p class="mt-2 text-sm text-lune-soft">
+          Indiquez votre adresse complète dans le champ ci-dessous et nous localiserons votre toit
+          pour vous.
+        </p>
+      </div>
+
+      <!-- CARTE — recherche d'adresse + repère. Les ids rp9-* sont ceux que le boot
+           CAPTURE (captureBoot.ts) câble : carte, géocodeur, repère/tracé. -->
+      <div id="mt-stage" class="cine-card mt-6 overflow-hidden">
+        <form id="rp9-search" class="flex flex-col gap-3 border-b border-white/10 p-4 sm:flex-row">
+          <label for="rp9-address" class="sr-only">Votre adresse</label>
+          <div class="relative flex-1">
+            <input id="rp9-address" name="address" type="text" autocomplete="off"
+              role="combobox" aria-autocomplete="list" aria-expanded="false"
+              aria-controls="rp9-suggestions" aria-haspopup="listbox"
+              placeholder="Adresse, quartier ou ville (ex. Casablanca, Maârif)" class={inputClass} />
+            <ul id="rp9-suggestions" role="listbox" aria-label="Suggestions d'adresses" hidden
+              class="absolute left-0 right-0 top-full z-20 mt-1 max-h-72 overflow-auto border border-white/15 bg-nuit-900 shadow-xl">
+            </ul>
+          </div>
+          <button type="submit"
+            class="flex-none bg-brass-400 px-6 py-3 text-base font-bold text-azur-950 transition-colors hover:bg-brass-300">
+            Localiser
+          </button>
+        </form>
+
+        <div id="rp9-map" class="mt-0 h-[52vh] min-h-[320px] w-full bg-nuit-700"
+          role="application" aria-label="Carte satellite pour repérer votre toit"></div>
+
+        <div class="flex flex-wrap items-center gap-3 border-t border-white/10 p-4">
+          <button type="button" id="rp9-finish" disabled
+            class="border border-white/25 px-4 py-2.5 text-sm font-semibold text-white transition-colors hover:border-brass-400 hover:text-brass-300 disabled:cursor-not-allowed disabled:opacity-40">
+            Terminer le tracé
+          </button>
+          <button type="button" id="rp9-undo-point" hidden
+            class="border border-white/25 px-4 py-2.5 text-sm font-semibold text-lune-soft transition-colors hover:border-brass-400 hover:text-brass-300">
+            Annuler le dernier point
+          </button>
+          <button type="button" id="rp9-clear"
+            class="border border-white/25 px-4 py-2.5 text-sm font-semibold text-lune-soft transition-colors hover:border-white/50 hover:text-white">
+            Effacer
+          </button>
+          <p class="ml-auto text-sm text-lune-faint">
+            <span>Repère&nbsp;: </span><span id="rp9-area-value" class="text-white">—</span>
+          </p>
+        </div>
+        <p id="rp9-status" class="border-t border-white/10 px-4 py-3 text-sm text-lune-faint" aria-live="polite">
+          Cherchez votre adresse, puis posez un repère sur votre toit.
+        </p>
+      </div>
+
+      <!-- COORDONNÉES — formulaire de capture. noValidate : aucun nombre n'est rejeté. -->
+      <form id="mt-form" novalidate class="cine-card mt-6 space-y-4 p-5 sm:p-6">
+        <p class="tech-label rule-brass text-brass-300">Vos coordonnées</p>
+
+        <div class="grid gap-4 sm:grid-cols-2">
+          <label class="block text-sm text-lune-soft">
+            Nom complet
+            <input id="mt-name" name="fullName" type="text" autocomplete="name" class={`${inputClass} mt-1`} />
+          </label>
+          <label class="block text-sm text-lune-soft">
+            Téléphone
+            <input id="mt-phone" name="phone" type="tel" inputmode="tel" autocomplete="tel"
+              placeholder="06 XX XX XX XX" class={`${inputClass} mt-1`} />
+          </label>
+        </div>
+
+        <label class="block text-sm text-lune-soft">
+          Adresse / ville
+          <input id="mt-city" name="city" type="text" autocomplete="address-level2"
+            placeholder="Pré-remplie depuis la carte — modifiable" class={`${inputClass} mt-1`} />
+        </label>
+
+        <div class="grid gap-4 sm:grid-cols-2">
+          <label class="block text-sm text-lune-soft">
+            Facture d'électricité (par mois)
+            <select id="mt-bill" name="billRange" class={`${inputClass} mt-1`}>
+              <option value="">Choisir…</option>
+              {billRanges.map((b) => <option value={b.id}>{b.label}</option>)}
+            </select>
+          </label>
+          <label class="block text-sm text-lune-soft">
+            Type de toit
+            <select id="mt-roof" name="roofType" class={`${inputClass} mt-1`}>
+              <option value="">Choisir…</option>
+              {roofTypes.map((r) => <option value={r.id}>{r.label}</option>)}
+            </select>
+          </label>
+        </div>
+
+        <label class="flex items-start gap-3 text-sm text-lune-soft">
+          <input id="mt-consent" name="consent" type="checkbox" class="mt-1 h-5 w-5 flex-none accent-brass-400" />
+          <span>
+            J'accepte d'être recontacté(e) par Taqinor au sujet de mon projet solaire.
+          </span>
+        </label>
+
+        <p id="mt-error" hidden class="text-sm text-alert-300" aria-live="polite"></p>
+
+        <button type="submit" id="mt-submit"
+          class="inline-flex w-full items-center justify-center gap-2 bg-ok-600 px-6 py-4 text-base font-bold text-white transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50">
+          Envoyer ma demande
+        </button>
+
+        <div id="mt-success" hidden class="border border-ok-600/40 bg-ok-600/10 p-4 text-sm text-white">
+          <p class="font-semibold">Merci ! Votre demande est enregistrée.</p>
+          <p class="mt-1 text-lune-soft">Notre équipe prépare votre étude et vous recontacte très vite.</p>
+        </div>
+      </form>
+    </div>
+  </section>
+</Layout>
+
+<script>
+  // W112 — boot CAPTURE CLIENT : carte + géocodeur + repère SEULEMENT (captureOnly).
+  // La clé MapTiler publique vient de /api/roof-config (comme les pages preview).
+  const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  const fallback = document.getElementById('mt-fallback');
+  const cityEl = document.getElementById('mt-city') as HTMLInputElement | null;
+  const addressEl = document.getElementById('rp9-address') as HTMLInputElement | null;
+
+  // Repère/contour courants, tenus à jour par onCaptureChange (jamais posté ici).
+  let capturePin: { lat: number; lng: number } | null = null;
+  let captureOutline: Array<[number, number]> = [];
+
+  let started = false;
+
+  async function boot(initialQuery: string | undefined, key: string, mapboxToken: string) {
+    if (started) return;
+    started = true;
+    try {
+      const mod = await import('../../scripts/roof-tool-pro11.ts');
+      mod.initRoofToolPro8({
+        maptilerKey: key,
+        mapboxToken: mapboxToken || undefined,
+        reducedMotion,
+        initialQuery,
+        captureOnly: true,
+        onCaptureChange: (s) => {
+          capturePin = s.pin;
+          captureOutline = s.outline;
+          // Pré-remplit la ville depuis l'adresse géocodée quand le champ est vide.
+          if (cityEl && !cityEl.value.trim() && addressEl?.value.trim()) cityEl.value = addressEl.value.trim();
+        },
+      });
+    } catch {
+      started = false;
+      if (fallback) fallback.hidden = false;
+    }
+  }
+
+  (async () => {
+    try {
+      const res = await fetch('/api/roof-config');
+      const cfg = (await res.json()) as { available?: boolean; maptilerKey?: string; mapboxToken?: string };
+      if (!cfg.available || !cfg.maptilerKey) {
+        if (fallback) fallback.hidden = false;
+        return;
+      }
+      const key = cfg.maptilerKey;
+      const mapboxToken = cfg.mapboxToken || '';
+      // Boot immédiat : la carte de capture est l'élément central de la page.
+      void boot(undefined, key, mapboxToken);
+    } catch {
+      if (fallback) fallback.hidden = false;
+    }
+  })();
+
+  // — Soumission du formulaire de capture → /api/capture-lead —
+  const form = document.getElementById('mt-form') as HTMLFormElement | null;
+  const errEl = document.getElementById('mt-error');
+  const okEl = document.getElementById('mt-success');
+  const submitBtn = document.getElementById('mt-submit') as HTMLButtonElement | null;
+  const val = (id: string) => (document.getElementById(id) as HTMLInputElement | HTMLSelectElement | null)?.value ?? '';
+
+  form?.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    if (errEl) errEl.hidden = true;
+    const consent = (document.getElementById('mt-consent') as HTMLInputElement | null)?.checked === true;
+    const body: Record<string, unknown> = {
+      fullName: val('mt-name'),
+      phone: val('mt-phone'),
+      city: val('mt-city') || addressEl?.value.trim() || '',
+      billRange: val('mt-bill'),
+      roofType: val('mt-roof'),
+      consent,
+    };
+    if (capturePin) body.roofPoint = capturePin;
+    if (captureOutline.length >= 3) body.roofOutline = captureOutline;
+
+    if (submitBtn) submitBtn.disabled = true;
+    try {
+      const res = await fetch('/api/capture-lead', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify(body),
+      });
+      const data = (await res.json().catch(() => ({}))) as { ok?: boolean; errors?: Record<string, string> };
+      if (res.ok && data.ok) {
+        if (okEl) okEl.hidden = false;
+        // Désactive les champs après succès (la demande est partie).
+        Array.from(form.elements).forEach((el) => ((el as HTMLInputElement).disabled = true));
+        return;
+      }
+      const firstErr = data.errors ? Object.values(data.errors)[0] : null;
+      if (errEl) {
+        errEl.textContent = firstErr || 'Un champ est manquant ou invalide. Vérifiez vos informations.';
+        errEl.hidden = false;
+      }
+      if (submitBtn) submitBtn.disabled = false;
+    } catch {
+      if (errEl) {
+        errEl.textContent = 'Envoi impossible pour le moment. Réessayez dans un instant.';
+        errEl.hidden = false;
+      }
+      if (submitBtn) submitBtn.disabled = false;
+    }
+  });
+</script>

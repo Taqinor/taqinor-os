@@ -1,0 +1,89 @@
+/**
+ * POST /api/proposition-accept — proxy SAME-ORIGIN de la signature en ligne (W117).
+ *
+ * Le navigateur du client n'appelle JAMAIS le backend en cross-origin : il poste
+ * ici { token, nom, option? } et ce handler relaie côté serveur vers
+ * `{API_BASE}/api/django/ventes/proposal/<token>/accept/` (endpoint public/token,
+ * sans login), puis renvoie le statut + le JSON tels quels au navigateur.
+ *
+ * API_BASE = PUBLIC_API_BASE (runtime cf.env OU build import.meta.env) sinon
+ * https://api.taqinor.ma. Le backend est idempotent (un second envoi sur un devis
+ * déjà accepté → 409) : on se contente de refléter sa réponse, ce qui rend le
+ * double-clic sûr. Aucune donnée de lead, aucun prix d'achat n'est manipulé ici.
+ */
+export const prerender = false;
+
+import type { APIRoute } from 'astro';
+import * as cf from 'cloudflare:workers';
+import {
+  acceptEndpoint,
+  buildAcceptBody,
+  normalizeAcceptResponse,
+  type OptionKey,
+  type SignFormState,
+} from '../../lib/proposition';
+
+function json(data: unknown, status = 200): Response {
+  return new Response(JSON.stringify(data), {
+    status,
+    headers: { 'content-type': 'application/json', 'cache-control': 'no-store' },
+  });
+}
+
+function resolveApiBase(): string {
+  const env = (cf.env ?? {}) as { PUBLIC_API_BASE?: string };
+  const runtime = env.PUBLIC_API_BASE?.trim();
+  const build = (import.meta.env.PUBLIC_API_BASE as string | undefined)?.trim();
+  return runtime || build || 'https://api.taqinor.ma';
+}
+
+export const POST: APIRoute = async ({ request }) => {
+  let body: Record<string, unknown>;
+  try {
+    body = (await request.json()) as Record<string, unknown>;
+  } catch {
+    return json({ ok: false, detail: 'Requête invalide.' }, 400);
+  }
+
+  const token = typeof body.token === 'string' ? body.token.trim() : '';
+  if (!token) return json({ ok: false, detail: 'Lien de proposition manquant.' }, 400);
+
+  const optRaw = body.option;
+  const option: OptionKey | null =
+    optRaw === 'sans_batterie' || optRaw === 'avec_batterie' ? optRaw : null;
+  const form: SignFormState = {
+    nom: typeof body.nom === 'string' ? body.nom : '',
+    option,
+  };
+
+  // `twoOptions` est transmis par le client (il connaît l'état rendu de la page).
+  // Quand il est vrai, l'option est incluse dans le corps relayé au backend.
+  const twoOptions = body.twoOptions === true || body.twoOptions === 'true';
+  const upstreamBody = buildAcceptBody(form, twoOptions);
+
+  const url = acceptEndpoint(resolveApiBase(), token);
+
+  let upstreamStatus = 502;
+  let upstreamPayload: unknown = null;
+  try {
+    const res = await fetch(url, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', accept: 'application/json' },
+      body: JSON.stringify(upstreamBody),
+    });
+    upstreamStatus = res.status;
+    try {
+      upstreamPayload = await res.json();
+    } catch {
+      upstreamPayload = null;
+    }
+  } catch {
+    // Backend injoignable : on renvoie une erreur réseau propre, sans détail PII.
+    return json({ ok: false, detail: 'Service momentanément indisponible. Veuillez réessayer.' }, 502);
+  }
+
+  const result = normalizeAcceptResponse(upstreamStatus, upstreamPayload);
+  // On relaie le statut backend (200 / 400 / 409 / 404) et l'objet normalisé,
+  // ce qui permet au client d'afficher le message `detail` exact inline.
+  return json(result, upstreamStatus >= 200 && upstreamStatus < 600 ? upstreamStatus : 502);
+};

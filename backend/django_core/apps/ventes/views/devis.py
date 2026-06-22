@@ -80,7 +80,7 @@ class DevisViewSet(viewsets.ModelViewSet):
         elif self.action in WRITE_ACTIONS + [
             'generer_pdf', 'telecharger_pdf', 'convertir_en_bc', 'proposal',
             'generer_facture', 'reviser', 'accepter', 'refuser', 'noter',
-            'layout', 'roof_image',
+            'layout', 'roof_image', 'from_layout', 'share_link',
         ]:
             return [IsResponsableOrAdmin()]
         elif self.action == 'destroy':
@@ -126,6 +126,104 @@ class DevisViewSet(viewsets.ModelViewSet):
             serializer.instance, Devis.Statut.BROUILLON,
             serializer.instance.statut, self.request.user,
         )
+
+    @action(detail=False, methods=['post'], url_path='from-layout',
+            permission_classes=[IsResponsableOrAdmin])
+    def from_layout(self, request):
+        """Q3/B1 — transforme un layout toiture 3D FINALISÉ en Devis brouillon,
+        puis frappe un lien public de proposition.
+
+        Corps : ``{layout, lead, client, taux_tva?, remise_globale?}``. Le
+        ``layout`` est le JSON sérialisé tel que stocké par l'action ``layout``
+        (AreaRecord[] + result + renderPlan). La société est TOUJOURS celle du
+        user (jamais lue du corps) ; lead et client sont résolus bornés à cette
+        société (404/400 si une autre société). Au moins un lead OU un client est
+        requis. Aucun statut n'est touché : le service renvoie un brouillon
+        (préservation des statuts, règle #4) et la numérotation anti-collision
+        est gérée par le service."""
+        from decimal import Decimal, InvalidOperation
+        from ..services import build_devis_from_layout
+        from ..models import ShareLink
+
+        company = request.user.company
+        if company is None:
+            return Response(
+                {'detail': 'Utilisateur sans société.'},
+                status=status.HTTP_400_BAD_REQUEST)
+
+        layout = request.data.get('layout')
+        if not isinstance(layout, dict) or not layout:
+            return Response(
+                {'detail': 'Layout manquant ou invalide.'},
+                status=status.HTTP_400_BAD_REQUEST)
+
+        # Résolution bornée société du lead et du client. On passe par les
+        # sélecteurs/services crm (jamais d'import direct des models crm depuis
+        # ventes) ; un id d'une autre société → 404 (introuvable dans la portée).
+        lead_obj = None
+        client_obj = None
+        lead_id = request.data.get('lead')
+        client_id = request.data.get('client')
+        if lead_id:
+            from apps.crm.selectors import get_company_lead
+            lead_obj = get_company_lead(company, lead_id)
+            if lead_obj is None:
+                return Response({'detail': 'Lead inconnu.'},
+                                status=status.HTTP_404_NOT_FOUND)
+        if client_id:
+            from apps.crm.selectors import get_company_client
+            client_obj = get_company_client(company, client_id)
+            if client_obj is None:
+                return Response({'detail': 'Client inconnu.'},
+                                status=status.HTTP_404_NOT_FOUND)
+        if lead_obj is None and client_obj is None:
+            return Response(
+                {'detail': 'Un client ou un lead est requis.'},
+                status=status.HTTP_400_BAD_REQUEST)
+
+        def _dec(raw, default):
+            if raw in (None, ''):
+                return default
+            try:
+                return Decimal(str(raw))
+            except (InvalidOperation, ValueError, TypeError):
+                return None
+
+        taux_tva = _dec(request.data.get('taux_tva'), Decimal('20'))
+        remise = _dec(request.data.get('remise_globale'), Decimal('0'))
+        if taux_tva is None or remise is None:
+            return Response(
+                {'detail': 'taux_tva / remise_globale invalide.'},
+                status=status.HTTP_400_BAD_REQUEST)
+
+        devis = build_devis_from_layout(
+            layout=layout, user=request.user, company=company,
+            lead=lead_obj, client=client_obj,
+            taux_tva=taux_tva, remise_globale=remise)
+        link = ShareLink.for_devis(devis)
+        return Response(
+            {
+                'id': devis.id,
+                'reference': devis.reference,
+                'statut': devis.statut,
+                'proposal_token': link.token,
+                'proposal_path': f'/proposition/{link.token}',
+            },
+            status=status.HTTP_201_CREATED)
+
+    @action(detail=True, methods=['post'], url_path='share-link',
+            permission_classes=[IsResponsableOrAdmin])
+    def share_link(self, request, pk=None):
+        """B2 — frappe (ou réutilise) un lien public de proposition pour ce
+        devis. Permet au site de (re)générer le lien de proposition d'un devis
+        existant lors de la livraison. Le devis est déjà borné à la société de
+        l'utilisateur par ``get_queryset`` (autre société → 404)."""
+        from ..models import ShareLink
+        devis = self.get_object()
+        link = ShareLink.for_devis(devis)
+        return Response(
+            {'token': link.token, 'path': f'/proposition/{link.token}'},
+            status=status.HTTP_200_OK)
 
     @action(detail=True, methods=['post'], url_path='approuver-remise',
             permission_classes=[IsAdminRole])

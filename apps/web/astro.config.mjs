@@ -79,7 +79,10 @@ export default defineConfig({
       // jamais indexées. Les prévisualisations /v2 et /v3 ont été promues en
       // production puis supprimées ; /preview/* est la zone de revue privée
       // actuelle (diagnostic enrichi + schéma), exclue tant qu'elle n'est pas promue.
-      filter: (page) => !/type-test|media-test|variants-test|craft-|\/preview\//.test(page)
+      // Le tunnel devis↔toiture-3D est privé de bout en bout : capture client
+      // (/devis/), atelier interne Meriem (/internal/) et proposition client
+      // tokenisée (/proposition/) restent hors sitemap et noindex.
+      filter: (page) => !/type-test|media-test|variants-test|craft-|\/preview\/|\/devis\/|\/internal\/|\/proposition\//.test(page)
     }),
     workersDevRedirect()
   ]

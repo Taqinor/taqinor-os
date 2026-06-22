@@ -82,6 +82,9 @@ export interface Scene3d {
   /** W88 — surligne le panneau de la zone active correspondant à `cellIndex` (or = sélection),
    *  ou efface tout surlignage (cellIndex null). Pose les couleurs d'instance + repeint. */
   setPanelHighlight: (cellIndex: number | null) => void;
+  /** W115 — instantané PNG (data URL) de la 3D rendue, ou null si le renderer/canvas
+   *  est indisponible. Le renderer partage le canvas MapLibre (map.getCanvas()). */
+  snapshot: () => string | null;
 }
 
 // ════════════════════════ W107 — faîtière commune (pans connectés) ════════════════════════
@@ -1159,5 +1162,20 @@ export function createScene3d(ctx: Ctx, deps: Scene3dDeps): Scene3d {
     map.triggerRepaint();
   }
 
-  return { customLayer, disposeScene, setOrigin, appendOtherZones, renderScene, resetTextures, setPanelHighlight };
+  /** W115 — instantané PNG de la scène 3D. Le renderer Three.js partage le canvas
+   *  MapLibre (map.getCanvas()), donc toDataURL renvoie la carte + la 3D composées.
+   *  preserveDrawingBuffer n'est pas garanti : on force d'abord un rendu synchrone via
+   *  triggerRepaint, puis on lit le canvas. Renvoie null si rien à lire (pas de GL). */
+  function snapshot(): string | null {
+    const canvas = renderer?.domElement ?? (glCanvas as HTMLCanvasElement | null) ?? null;
+    if (!canvas || typeof canvas.toDataURL !== 'function') return null;
+    map.triggerRepaint();
+    try {
+      return canvas.toDataURL('image/png');
+    } catch {
+      return null;
+    }
+  }
+
+  return { customLayer, disposeScene, setOrigin, appendOtherZones, renderScene, resetTextures, setPanelHighlight, snapshot };
 }

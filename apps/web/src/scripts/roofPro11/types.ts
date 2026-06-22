@@ -19,6 +19,44 @@ export interface InitOptions {
   // puces `[data-rooftype]` (câblées dès le chargement, donc le bouton « Toit en
   // pente » répond avant ce boot). On honore son choix initial puis on s'abonne.
   roofType?: RoofTypeSelect;
+  // W112 — mode CAPTURE CLIENT (page /devis/mon-toit) : ne construit QUE la carte +
+  // le géocodeur + le pin/tracé. AUCUN optimiseur, AUCUNE scène 3D, AUCUNE carte de
+  // production — les panneaux n'apparaissent JAMAIS. Le flux complet (non-capture)
+  // reste octet pour octet identique quand le drapeau est absent/false.
+  captureOnly?: boolean;
+  // W112 — callback déclenché à chaque changement du pin/tracé en mode capture
+  // (pin {lat,lng} | null + tracé optionnel [[lat,lng],…]). Permet à la page de
+  // refléter l'état (activer le bouton « envoyer », pré-remplir l'adresse, etc.).
+  onCaptureChange?: (state: { pin: { lat: number; lng: number } | null; outline: Array<[number, number]> }) => void;
+  // W113 — HYDRATATION optionnelle depuis un lead (le fetch est fait par la page,
+  // pas par l'outil). Sème le pin/tracé de la carte + les champs contact à partir
+  // d'un payload lead. Le boot complet reste inchangé quand `hydrate` est absent.
+  hydrate?: { lead?: LeadPayload };
+  // W114/W115 — l'outil expose une petite API à la page (sérialiser le layout
+  // finalisé, capturer le PNG 3D) une fois le boot complet terminé. Invoqué
+  // seulement en boot complet (jamais en capture). Absent → comportement inchangé.
+  onApiReady?: (api: RoofToolApi) => void;
+}
+
+/** W114/W115 — API minimale exposée par l'outil à la page de design. */
+export interface RoofToolApi {
+  /** Layout finalisé sérialisé en JSON pur (zones + repère). `billKwh` optionnel. */
+  serializeLayout: (billKwh?: number | null) => unknown;
+  /** Instantané PNG (data URL) de la 3D rendue, ou null. */
+  snapshot: () => string | null;
+}
+
+/** W113 — payload lead minimal consommé par l'hydratation (forme du GET
+ *  /api/django/crm/leads/<id>/). Tous les champs optionnels : un champ absent
+ *  ne sème rien. `roof_point` = pin {lat,lng}, `roof_outline` = [[lat,lng],…]. */
+export interface LeadPayload {
+  roof_point?: { lat: number; lng: number } | null;
+  roof_outline?: Array<[number, number]> | null;
+  bill_kwh?: number | null;
+  fullName?: string;
+  phone?: string;
+  city?: string;
+  [k: string]: unknown;
 }
 
 export type TiltMode = 'reco' | number;
