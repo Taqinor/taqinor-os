@@ -540,7 +540,7 @@ first run that ticks any `FG*` task refreshes CODEMAP §10 + `--write` in that c
 ### RH, terrain & HSE
 
 - [x] FG154 — **Module RH (app dédiée) + dossier employé** — `DossierEmploye` (OneToOne→user) : date d'embauche, matricule, statut ; socle de tout le RH (inexistant aujourd'hui). (ARCH)  [DONE 2026-06-22: RH app + DossierEmploye master (OneToOne→user; matricule/poste/contrat/statut/cout_horaire interne); admin-gated, multi-tenant, tests. NEW app apps/rh.]
-- [ ] FG155 — **Type de contrat & dates** — CDI/CDD/ANAPEC/stage/intérim + alerte fin de CDD. (SCHEMA)
+- [x] FG155 — **Type de contrat & dates** — CDI/CDD/ANAPEC/stage/intérim + alerte fin de CDD. (SCHEMA)
 - [ ] FG156 — **Identité & numéros légaux employé** — CIN, CNSS, CIMR/AMO, RIB, situation familiale (données paie obligatoires). (SCHEMA)
 - [ ] FG157 — **Rémunération de base (gated rôle RH)** — salaire, périodicité, historique, réservé permission `salaires_voir`. (AUTH)
 - [ ] FG158 — **Contact d'urgence & coordonnées étendues** — personne à prévenir, groupe sanguin (utile chantier/accident). (SCHEMA)
@@ -898,7 +898,7 @@ these overlap and SUPERSEDE the domain-list FG items as the module-organized hom
 ### Module Gestion de projet (`apps/gestion_projet`) · PROJ1–PROJ38
 **But :** couche projet/programme au-dessus de `installations` regroupant N chantiers+devis+factures+tickets+achats avec WBS/dépendances/chemin critique, Gantt, capacité ressources, budget & P&L projet, jalons de facturation, timesheets, risques, documents, portefeuille. **Statuts propres** (jamais STAGES.py / statut chantier) ; coûts/marges internes. Recouvre FG291–FG303.
 - [x] PROJ1 — Modèle `Projet`/Programme multi-chantiers + `ProjetChantier`. (ARCH)  [DONE 2026-06-22: NEW app apps/gestion_projet: Projet + ProjetChantier (multi-chantiers, statut propre, jamais STAGES.py).]
-- [ ] PROJ2 — Liens projet → devis/factures/tickets/achats (string-FK via selectors). (SCHEMA)
+- [x] PROJ2 — Liens projet → devis/factures/tickets/achats (string-FK via selectors). (SCHEMA)
 - [ ] PROJ3 — Machine à états du projet (propre, jamais STAGES.py). (DECISION)
 - [ ] PROJ4 — Phases de projet (étude/appro/pose/MES/réception). (SCHEMA)
 - [ ] PROJ5 — Tâches & sous-tâches (WBS). (ARCH)
@@ -941,7 +941,7 @@ these overlap and SUPERSEDE the domain-list FG items as the module-organized hom
 - [x] GED1 — Squelette de l'app `apps/ged` (services/selectors, scoping société). (ARCH)
 - [x] GED2 — Cabinet + Folder arborescent (path matérialisé). (SCHEMA)
 - [x] GED3 — Document + DocumentVersion (file_key MinIO, checksum/dedupe). (SCHEMA)
-- [ ] GED4 — CRUD dossiers/documents + déplacement (scopé société). (ROUTINE)
+- [x] GED4 — CRUD dossiers/documents + déplacement (scopé société). (ROUTINE)
 - [ ] GED5 — Navigateur arborescent FR (frontend). (ROUTINE)
 - [ ] GED6 — Liaison polymorphe Document↔objet métier (étend `records.ALLOWED_TARGETS`). (SCHEMA+DECISION)
 - [ ] GED7 — Migration des `records.Attachment` existants (réutilise file_key). (DECISION)
@@ -1018,7 +1018,7 @@ these overlap and SUPERSEDE the domain-list FG items as the module-organized hom
 ### Module QHSE — qualité, hygiène, sécurité & environnement (`apps/qhse`) · QHSE1–QHSE40
 **But :** couche programme/site au-dessus de la checklist F18 : ITP + points d'arrêt + relevés (couples/polarité/isolement/I-V), NCR/CAPA, audits, document unique/permis de travail, incidents+CNSS, inspections/TF-TG, déchets (BSD loi 28-00)/recyclage modules, bilan carbone/ESG. **Garde F18 intacte.** Recouvre FG181–FG186, FG343–FG349.
 - [x] QHSE1 — App QHSE + socle multi-tenant. (ARCH)  [DONE 2026-06-22: NEW app apps/qhse, socle multi-tenant.]
-- [ ] QHSE2 — ITP : `PlanInspectionModele` + `PointControleModele` (phase/type relevé/hold-point). (SCHEMA)
+- [x] QHSE2 — ITP : `PlanInspectionModele` + `PointControleModele` (phase/type relevé/hold-point). (SCHEMA)
 - [ ] QHSE3 — Seed ITP solaire par type d'installation. (ROUTINE)
 - [ ] QHSE4 — `PlanInspectionChantier` + `ReleveControle` (valeur/conforme/photo). (SCHEMA)
 - [ ] QHSE5 — Auto-conformité des relevés mesurés (vs min/max attendu). (ROUTINE)
@@ -1493,3 +1493,7 @@ Tracked here so they aren't lost:
 - 2026-06-21 — Installations (apps/installations): FG293 JalonProjet (phases étude/appro/pose/MES/réception, dates cibles/réelles), FG296 ModeleProjet (+ jalons/BoM-type, service instantiate_modele_projet idempotent), FG298 ReunionChantier (comptes-rendus horodatés). Modèles additifs (migration 0013), 17 tests, FK produit en string-FK.
 - 2026-06-21 — NOUVELLE APP apps/flotte (composant architectural nouveau, ARCH founder-ungated): FLOTTE1 squelette multi-tenant + enregistrement (INSTALLED_APPS, urls), FLOTTE2 modèle Vehicule (immat/marque/énergie/km/valeur/statut), FLOTTE4 EnginRoulant (compteur d'heures nacelle/groupe/chariot). ViewSets company-scoped (company forcée serveur), 2 migrations additives, 9 tests. Aucune dépendance externe/payante, aucun changement d'auth.
 - 2026-06-21 — NOUVELLE APP apps/ged (composant architectural nouveau, ARCH founder-ungated): GED1 squelette DMS multi-tenant + enregistrement, GED2 Cabinet + Folder arborescent (chemin matérialisé, déplacement sûr anti-cycle), GED3 Document + DocumentVersion (file_key MinIO réutilisant records.storage, checksum SHA-256 dédup, version auto). ViewSets company-scoped, 1 migration additive, 22 tests. Aucune dépendance externe/payante, aucun changement d'auth.
+- 2026-06-22 — GED4 (apps/ged): exposé le déplacement (déjà un service interne) en HTTP — actions `deplacer` sur dossiers et documents (`POST /api/django/ged/dossiers/<id>/deplacer/` body `{parent}` et `/documents/<id>/deplacer/` body `{folder}`), destination résolue dans la société de l'appelant (404 cross-tenant, 400 cycle/cross-cabinet), réutilise `services.move_folder` + nouveau `services.move_document`. CRUD dossiers/documents déjà présent (verrouillé par 8 nouveaux tests de scoping). +20 tests. Aucune migration (déplacement = réassignation de FK), aucune dépendance/auth nouvelle.
+- 2026-06-22 — QHSE2 (apps/qhse): ITP — nouveaux modèles `PlanInspectionModele` (gabarit, code/nom/actif) + `PointControleModele` (FK plan, `phase`, `type_releve` choices mesure/visuel/document/essai, `hold_point` bool, `ordre`), ViewSets company-scoped (company posée serveur, point validé même-société que son plan → 400 sinon), routes `plans-inspection/` + `points-controle/`. 1 migration additive (2 CreateModel), 11 tests. Aucune dépendance/auth nouvelle.
+- 2026-06-22 — FG155 (apps/rh): type de contrat (CDI/CDD/ANAPEC/stage/intérim — déjà présent sur DossierEmploye) + dates `contrat_date_debut`/`contrat_date_fin` (DateField nullable, sûr sur table peuplée) + action `GET /api/django/rh/employes/cdd-a-echeance/?within=N` (CDD dont date_fin tombe dans N jours, défaut 30, scopé société). 1 migration additive (2 AddField nullable, pas de défaut/unique → pas de piège), 7 tests. Aucune dépendance/auth nouvelle.
+- 2026-06-22 — PROJ2 (apps/gestion_projet): modèle `ProjetLien` (FK projet, `type_cible` devis/facture/ticket/achat, `cible_id` PK, `libelle` cache) reliant un projet aux documents d'autres apps par STRING-FK (pas de vrai FK cross-app) ; CRUD `projet-liens/` + action `projets/<id>/liens/` enrichie via `selectors.liens_enrichis` (appel fonction-local de `apps.ventes.selectors.devis_card` pour les devis, dégradation au libellé stocké sinon — frontière cross-app respectée, import-linter non violé). 1 migration additive, 8 tests. Aucune dépendance/auth nouvelle.
