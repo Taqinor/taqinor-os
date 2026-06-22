@@ -6,6 +6,20 @@
  * Tout le mouvement est désactivé sous prefers-reduced-motion. Le diagnostic
  * et son flux de données restent inchangés (composant partagé DiagnosticForm).
  * Voir apps/web/DESIGN_RATIONALE.md.
+ *
+ * ÉLÉVATION (2026-06-22) — « bleu Majorelle élevé + âme marocaine, avec
+ * discipline », sans rien remplacer : nuit profonde (#070b1d) + laiton, aucun
+ * noir. CONTENU et chiffres VERBATIM (texte de loi, sanctions, dates). Rythme
+ * via les tokens .section / .section-tight ; un seul langage de mouvement
+ * (.cine-in / .v2-rise), tous gated prefers-reduced-motion, zéro CLS.
+ * Discipline laiton : l'or ne reste que sur les CHIFFRES clés (« 18 mois » en
+ * .lum, les numéros d'étapes en .lum) et le CTA principal « Démarrer sur
+ * WhatsApp » ; les eyebrows brass sont rétrogradés en lune, et les disques
+ * laiton pleins des étapes deviennent des numéros .lum dans un anneau azur.
+ * Pas de photo de contenu → pas de .v3-grade. Le ZelligeDivider de l'acte final
+ * reste l'unique marqueur zellige (aucune ZelligeSignature ajoutée). Le lien
+ * WhatsApp pré-rempli (waFallback + script) est INCHANGÉ byte-for-byte : le
+ * client n'édite jamais le message.
  */
 import Layout from '../layouts/Layout.astro';
 import V2Enhance from '../components/V2Enhance.astro';
@@ -46,11 +60,11 @@ const sanctions = [
 
     <Breadcrumb items={[{ label: 'Accueil', href: '/' }, { label: 'Régularisation Article 33' }]} />
 
-    <section class="px-4 py-20 text-white sm:py-28">
+    <section class="section px-4 text-white">
       <div class="mx-auto max-w-6xl">
-        <p class="tech-label v2-kicker rule-brass cine-in text-brass-300">Loi 82-21 — Article 33</p>
-        <h1 class="display v2-page-title cine-in mt-5 max-w-3xl [animation-delay:120ms]">Votre installation solaire existe déjà ? Régularisez-la maintenant.</h1>
-        <p class="v2-lead cine-in mt-6 max-w-xl text-white/85 [animation-delay:240ms]">
+        <p class="tech-label v2-kicker rule-brass cine-in text-lune">Loi 82-21 — Article 33</p>
+        <h1 class="display v2-page-title cine-in cine-in-1 mt-5 max-w-3xl">Votre installation solaire existe déjà ? Régularisez-la maintenant.</h1>
+        <p class="v2-lead cine-in cine-in-2 mt-6 max-w-xl text-white/85">
           Le décret 2-25-100, publié au Bulletin Officiel le 9 mars 2026, est entré en vigueur le
           9 juin 2026, et la décision de l'ANRE fixe le tarif de rachat du surplus ; depuis ce jour
           le régime de la loi 82-21 vaut pour toutes les installations
@@ -59,9 +73,10 @@ const sanctions = [
       </div>
     </section>
 
-    <section class="mx-auto max-w-3xl px-4 py-16">
+    <div class="seam-soft" aria-hidden="true"></div>
+    <section class="section mx-auto max-w-3xl px-4">
       <div class="v2-rise">
-        <p class="tech-label v2-kicker rule-brass text-brass-300">Le texte</p>
+        <p class="tech-label v2-kicker rule-brass text-lune">Le texte</p>
         <h2 class="display v2-section-title mt-4 text-white">Ce que dit l'Article 33</h2>
         <p class="v2-lead mt-5 text-lune-soft">
           L'Article 33 de la loi 82-21 laisse aux exploitants d'installations existantes une
@@ -73,17 +88,21 @@ const sanctions = [
       </div>
 
       <h2 class="display v2-section-title v2-rise mt-14 text-white">Qui est concerné ?</h2>
+      {/* Losanges au trait rétrogradés en azur (l'or reste aux chiffres/CTA) */}
       <ul class="v2-rise mt-5 space-y-2.5 text-sm leading-relaxed text-lune-soft">
-        <li class="flex gap-2.5"><span class="mt-1.5 inline-block h-1.5 w-1.5 flex-none rotate-45 border border-brass-400" aria-hidden="true"></span><span>Toute installation solaire d'autoproduction mise en service avant l'entrée en vigueur du régime — villa, hangar, hôtel, exploitation agricole.</span></li>
-        <li class="flex gap-2.5"><span class="mt-1.5 inline-block h-1.5 w-1.5 flex-none rotate-45 border border-brass-400" aria-hidden="true"></span><span>Raccordée au réseau ou en site isolé, quelle que soit la puissance.</span></li>
-        <li class="flex gap-2.5"><span class="mt-1.5 inline-block h-1.5 w-1.5 flex-none rotate-45 border border-brass-400" aria-hidden="true"></span><span>Sans déclaration, sans accord de raccordement ou sans autorisation au regard du régime applicable.</span></li>
+        <li class="flex gap-2.5"><span class="mt-1.5 inline-block h-1.5 w-1.5 flex-none rotate-45 border border-azur-200/70" aria-hidden="true"></span><span>Toute installation solaire d'autoproduction mise en service avant l'entrée en vigueur du régime — villa, hangar, hôtel, exploitation agricole.</span></li>
+        <li class="flex gap-2.5"><span class="mt-1.5 inline-block h-1.5 w-1.5 flex-none rotate-45 border border-azur-200/70" aria-hidden="true"></span><span>Raccordée au réseau ou en site isolé, quelle que soit la puissance.</span></li>
+        <li class="flex gap-2.5"><span class="mt-1.5 inline-block h-1.5 w-1.5 flex-none rotate-45 border border-azur-200/70" aria-hidden="true"></span><span>Sans déclaration, sans accord de raccordement ou sans autorisation au regard du régime applicable.</span></li>
       </ul>
 
       <h2 class="display v2-section-title v2-rise mt-14 text-white">La régularisation en 5 étapes</h2>
-      <ol class="mt-8 border-l-2 border-brass-400/60" data-stagger>
+      {/* Rail de timeline rétrogradé en filet blanc ; numéros d'étape en .lum
+          (l'or reste sur les chiffres clés) dans un anneau azur, plus de disque
+          laiton plein répété. */}
+      <ol class="mt-8 border-l-2 border-white/15" data-stagger>
         {steps.map((s, i) => (
           <li class="v2-rise relative pb-8 pl-8 last:pb-0" style={`--v2-i:${i}`}>
-            <span class="fig absolute -left-5 flex h-10 w-10 items-center justify-center rounded-full bg-brass-400 text-lg text-azur-950">{i + 1}</span>
+            <span class="fig lum absolute -left-5 flex h-10 w-10 items-center justify-center rounded-full border border-azur-200/40 bg-nuit text-lg">{i + 1}</span>
             <h3 class="display pt-1.5 text-lg text-white">{s.title}</h3>
             <p class="mt-1.5 text-sm leading-relaxed text-lune-soft">{s.body}</p>
           </li>
@@ -136,7 +155,7 @@ const sanctions = [
             </div>
           </div>
           <a id="rg33-go" href={waFallback} rel="noopener"
-            class="mt-6 inline-block bg-brass-400 px-7 py-3.5 text-base font-bold text-azur-950 transition-colors hover:bg-brass-300"
+            class="glow mt-6 inline-block bg-brass-400 px-7 py-3.5 text-base font-bold text-azur-950 transition-colors hover:bg-brass-300"
           >Démarrer sur WhatsApp</a>
         </div>
       </div>

@@ -96,11 +96,13 @@ const jsonLd = {
 
     <Breadcrumb items={[{ label: 'Accueil', href: '/' }, { label: 'Batteries & stockage' }]} />
 
-    <section class="px-4 pb-10 pt-16 text-white sm:pt-20">
+    {/* ── HÉROS ÉDITORIAL — discipline laiton #2 : eyebrow rétrogradé en lune,
+        l'or reste réservé aux chiffres .lum et au CTA. Rythme via .section-lg. ── */}
+    <section class="section-lg px-4 pb-10 text-white">
       <div class="mx-auto max-w-3xl">
-        <p class="tech-label v2-kicker rule-brass cine-in text-brass-300">Stockage d'énergie</p>
-        <h1 class="display v2-page-title cine-in mt-5 [animation-delay:120ms]">Batteries &amp; stockage</h1>
-        <p class="v2-lead cine-in mt-6 max-w-xl text-white/85 [animation-delay:240ms]">
+        <p class="tech-label v2-kicker rule-brass cine-in text-lune">Stockage d'énergie</p>
+        <h1 class="display v2-page-title cine-in cine-in-1 mt-6">Batteries &amp; stockage</h1>
+        <p class="v2-lead cine-in cine-in-2 mt-6 max-w-xl text-white/85">
           Une batterie LFP Dyness encaisse 6 000 cycles à 90 % de profondeur de décharge ; elle
           durera. La question qui décide n'est pourtant pas <em>laquelle</em> mais <em>quand</em>
           vous consommez. Si l'essentiel de votre courant part en journée, ce que vous payez pour
@@ -110,32 +112,35 @@ const jsonLd = {
     </section>
 
     <!-- Quand le stockage se justifie / quand non -->
-    <section class="px-4 pb-20 sm:pb-24">
+    <section class="section px-4">
       <div class="mx-auto max-w-6xl">
-        <p class="tech-label v2-kicker rule-brass text-brass-300">Le bon arbitrage</p>
+        {/* Eyebrow rétrogradé en lune (discipline laiton #2) */}
+        <p class="tech-label v2-kicker rule-brass text-lune">Le bon arbitrage</p>
         <h2 class="display v2-section-title mt-5 text-white">Quand une batterie se justifie — et quand non</h2>
-        <div class="mt-10 grid gap-6 md:grid-cols-2" data-stagger>
+        <div class="mt-12 grid gap-6 md:grid-cols-2" data-stagger>
           {cas.map((c, i) => (
             <div class="v2-rise cine-card flex flex-col p-7" style={`--v2-i:${i}`}>
-              <p class="tech-label text-brass-300">{c.k}</p>
+              {/* Sous-libellé de carte rétrogradé en lune (l'or reste aux chiffres/CTA) */}
+              <p class="tech-label text-lune">{c.k}</p>
               <h3 class="display mt-2 text-2xl text-white">{c.title}</h3>
               <p class="mt-3 flex-1 text-sm leading-relaxed text-lune-soft">{c.body}</p>
             </div>
           ))}
         </div>
-        <p class="mt-8 max-w-2xl border-l-4 border-brass-400 pl-4 text-sm leading-relaxed text-lune-soft">
+        {/* Filet rétrogradé en azur + lien secondaire en lune/azur (discipline #2) */}
+        <p class="mt-8 max-w-2xl border-l-4 border-azur-200/50 pl-4 text-sm leading-relaxed text-lune-soft">
           Notre intérêt commercial serait de vous en vendre une. On préfère commencer par lire
           votre courbe de consommation heure par heure : c'est elle qui tranche si le stockage se
           rentabilise et, le cas échéant, combien de kWh suffisent vraiment. Bien souvent, la
           réponse honnête tient en deux mots — pas maintenant.
-          <a href="/guides/faut-il-des-batteries" class="border-b-2 border-brass-400 pb-0.5 font-bold text-brass-300 transition-colors hover:text-brass-200">Lire le guide complet →</a>
+          <a href="/guides/faut-il-des-batteries" class="border-b-2 border-azur-200/60 pb-0.5 font-bold text-azur-200 transition-colors hover:text-white">Lire le guide complet →</a>
         </p>
       </div>
     </section>
 
     <!-- Le matériel de stockage posé — Dyness LFP -->
     <div class="v2-seam" aria-hidden="true"></div>
-    <section class="bg-blanc-azur px-4 pb-20 pt-10 text-encre sm:pb-28">
+    <section class="section bg-blanc-azur px-4 text-encre">
       <div class="mx-auto max-w-3xl">
         <p class="tech-label v2-kicker rule-brass text-azur-600">Le matériel posé</p>
         <h2 class="display v2-section-title mt-5">Batteries Dyness lithium-fer-phosphate</h2>
@@ -186,37 +191,39 @@ const jsonLd = {
     />
 
     <!-- Guides et ressources internes — liens battery (W130) -->
-    <section class="px-4 pb-20 pt-16 sm:pb-24">
+    <section class="section px-4">
       <div class="mx-auto max-w-6xl">
-        <p class="tech-label v2-kicker rule-brass text-brass-300">Pour aller plus loin</p>
+        {/* Eyebrow + sous-libellés + liens rétrogradés en lune/azur (discipline #2) */}
+        <p class="tech-label v2-kicker rule-brass text-lune">Pour aller plus loin</p>
         <h2 class="display v2-section-title mt-5 text-white">Guides batteries &amp; stockage</h2>
-        <div class="mt-10 grid gap-6 sm:grid-cols-2 lg:grid-cols-3" data-stagger>
-          <a href="/guides/batterie-lithium-ou-gel" class="v2-rise cine-card flex flex-col p-6 transition-colors hover:border-brass-400/60" style="--v2-i:0">
-            <p class="tech-label text-brass-300">Chimie</p>
+        <div class="mt-12 grid gap-6 sm:grid-cols-2 lg:grid-cols-3" data-stagger>
+          <a href="/guides/batterie-lithium-ou-gel" class="v2-rise cine-card flex flex-col p-6 transition-colors hover:border-azur-200/40" style="--v2-i:0">
+            <p class="tech-label text-lune">Chimie</p>
             <h3 class="display mt-2 text-lg text-white">Lithium ou gel : quelle chimie choisir ?</h3>
             <p class="mt-3 flex-1 text-sm leading-relaxed text-lune-soft">LFP, AGM/GEL, NMC — durée de vie, profondeur de décharge, sécurité thermique : le comparatif pour le Maroc.</p>
-            <span class="mt-4 text-sm font-bold text-brass-300">Lire le guide →</span>
+            <span class="mt-4 text-sm font-bold text-azur-200">Lire le guide →</span>
           </a>
-          <a href="/guides/quelle-taille-de-batterie" class="v2-rise cine-card flex flex-col p-6 transition-colors hover:border-brass-400/60" style="--v2-i:1">
-            <p class="tech-label text-brass-300">Dimensionnement</p>
+          <a href="/guides/quelle-taille-de-batterie" class="v2-rise cine-card flex flex-col p-6 transition-colors hover:border-azur-200/40" style="--v2-i:1">
+            <p class="tech-label text-lune">Dimensionnement</p>
             <h3 class="display mt-2 text-lg text-white">Quelle taille de batterie pour ma maison ?</h3>
             <p class="mt-3 flex-1 text-sm leading-relaxed text-lune-soft">Méthode de calcul pas à pas : relevez votre creux du soir, choisissez les paliers 5–10 / 10–20 / 20+ kWh.</p>
-            <span class="mt-4 text-sm font-bold text-brass-300">Lire le guide →</span>
+            <span class="mt-4 text-sm font-bold text-azur-200">Lire le guide →</span>
           </a>
-          <a href="/guides/electricite-pendant-les-coupures" class="v2-rise cine-card flex flex-col p-6 transition-colors hover:border-brass-400/60" style="--v2-i:2">
-            <p class="tech-label text-brass-300">Continuité de service</p>
+          <a href="/guides/electricite-pendant-les-coupures" class="v2-rise cine-card flex flex-col p-6 transition-colors hover:border-azur-200/40" style="--v2-i:2">
+            <p class="tech-label text-lune">Continuité de service</p>
             <h3 class="display mt-2 text-lg text-white">Avoir de l'électricité pendant les coupures</h3>
             <p class="mt-3 flex-1 text-sm leading-relaxed text-lune-soft">Mode EPS, basculement ≈ 4 ms, circuits de secours : comment une installation hybride tient les coupures.</p>
-            <span class="mt-4 text-sm font-bold text-brass-300">Lire le guide →</span>
+            <span class="mt-4 text-sm font-bold text-azur-200">Lire le guide →</span>
           </a>
         </div>
       </div>
     </section>
 
     <!-- Liens de fin -->
-    <section class="px-4 pb-20 sm:pb-24">
+    <section class="section-tight px-4 pb-20 sm:pb-24">
       <div class="mx-auto max-w-6xl">
-        <p class="tech-label v2-kicker rule-brass text-brass-300">Le stockage dans votre projet</p>
+        {/* Eyebrow rétrogradé en lune (discipline laiton #2) */}
+        <p class="tech-label v2-kicker rule-brass text-lune">Le stockage dans votre projet</p>
         <div class="mt-6 flex flex-wrap gap-3">
           <a href="/équipement" class="border border-white/40 px-5 py-3 text-sm font-bold text-white transition-colors hover:border-white hover:bg-white/10">Tout l'équipement →</a>
           <a href="/résidentiel" class="border border-white/40 px-5 py-3 text-sm font-bold text-white transition-colors hover:border-white hover:bg-white/10">Solaire résidentiel →</a>

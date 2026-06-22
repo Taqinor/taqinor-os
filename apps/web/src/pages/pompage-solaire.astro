@@ -81,11 +81,14 @@ const jsonLd = {
 
     <Breadcrumb items={[{ label: 'Accueil', href: '/' }, { label: 'Pompage solaire' }]} />
 
-    <section class="px-4 pb-10 pt-16 text-white sm:pt-20">
+    {/* ── HÉROS ÉDITORIAL — pas de photo (zéro chantier de pompage posé : aucune
+        image inventée). Discipline laiton #2 : eyebrow rétrogradé en lune, l'or
+        reste réservé aux chiffres .lum et au CTA. Rythme via .section-lg + air. ── */}
+    <section class="section-lg px-4 pb-10 text-white">
       <div class="mx-auto max-w-3xl">
-        <p class="tech-label v2-kicker rule-brass cine-in text-brass-300">Nouveau service</p>
-        <h1 class="display v2-page-title cine-in mt-5 [animation-delay:120ms]">Pomper l’eau au soleil, pas au gasoil</h1>
-        <p class="v2-lead cine-in mt-6 max-w-xl text-white/85 [animation-delay:240ms]">
+        <p class="tech-label v2-kicker rule-brass cine-in text-lune">Nouveau service</p>
+        <h1 class="display v2-page-title cine-in cine-in-1 mt-6 max-w-[18ch]">Pomper l’eau au soleil, pas au gasoil</h1>
+        <p class="v2-lead cine-in cine-in-2 mt-6 max-w-xl text-white/85">
           Pour l’irrigation, le pompage solaire remplace le plein de gasoil : tant que le soleil
           donne, les panneaux entraînent la pompe. Le nombre de panneaux, lui, dépend entièrement
           de votre parcelle — du débit que vous visez, de la hauteur que la pompe doit vaincre, de
@@ -96,11 +99,12 @@ const jsonLd = {
     </section>
 
     <!-- Comment ça marche -->
-    <section class="px-4 pb-20 sm:pb-24">
+    <section class="section px-4">
       <div class="mx-auto max-w-6xl">
-        <p class="tech-label v2-kicker rule-brass text-brass-300">Comment ça marche</p>
+        {/* Eyebrow rétrogradé en lune (discipline laiton #2) */}
+        <p class="tech-label v2-kicker rule-brass text-lune">Comment ça marche</p>
         <h2 class="display v2-section-title mt-5 text-white">Du soleil au champ, en quatre temps</h2>
-        <div class="mt-10 grid gap-6 md:grid-cols-2" data-stagger>
+        <div class="mt-12 grid gap-6 md:grid-cols-2" data-stagger>
           {etapes.map((e, i) => (
             <div class="v2-rise cine-card flex flex-col p-7" style={`--v2-i:${i}`}>
               <p class="fig lum text-3xl">{e.k}</p>
@@ -112,14 +116,14 @@ const jsonLd = {
         <p class="mx-auto mt-8 max-w-2xl text-sm leading-relaxed text-lune-faint">
           Tout ordre de grandeur dépend de votre site : avant le relevé du forage, nous pouvons vous
           décrire la méthode, mais pas vous avancer un chiffre que nous tiendrions. Le champ et le
-          variateur, eux, s’appuient sur les mêmes marques tier-1 que nos toitures — <a href="/équipement" class="border-b border-brass-400 pb-0.5 font-semibold text-brass-300 transition-colors hover:text-brass-200">voir l’équipement →</a>
+          variateur, eux, s’appuient sur les mêmes marques tier-1 que nos toitures — <a href="/équipement" class="border-b border-azur-200/60 pb-0.5 font-semibold text-azur-200 transition-colors hover:text-white">voir l’équipement →</a>
         </p>
       </div>
     </section>
 
     <!-- Les variables de dimensionnement (fond clair) -->
     <div class="v2-seam" aria-hidden="true"></div>
-    <section class="bg-blanc-azur px-4 pb-20 pt-10 text-encre sm:pb-24">
+    <section class="section bg-blanc-azur px-4 text-encre">
       <div class="mx-auto max-w-6xl">
         <p class="tech-label v2-kicker rule-brass text-azur-600">Quatre mesures</p>
         <h2 class="display v2-section-title mt-5">Ce qui décide du dimensionnement</h2>
@@ -128,7 +132,7 @@ const jsonLd = {
           juillet. Le bon point se trouve à l’intersection de quatre variables concrètes, relevées
           sur place avant d’ouvrir le moindre catalogue.
         </p>
-        <div class="mt-10 grid gap-6 md:grid-cols-2" data-stagger>
+        <div class="mt-12 grid gap-6 md:grid-cols-2" data-stagger>
           {variables.map((v, i) => (
             <div class="v2-rise border-t-2 border-azur-900 bg-blanc p-6" style={`--v2-i:${i}`}>
               <h3 class="display text-xl text-azur-700">{v.title}</h3>
@@ -145,11 +149,12 @@ const jsonLd = {
     </section>
 
     <!-- Avantage fiscal : exonération de TVA (pompage agricole uniquement) -->
-    <section class="px-4 py-20 sm:py-28">
+    <section class="section px-4">
       <div class="mx-auto max-w-6xl">
         <div class="grid gap-10 lg:grid-cols-[1.1fr_1fr] lg:items-center">
           <div class="v2-rise">
-            <p class="tech-label v2-kicker rule-brass text-brass-300">Avantage fiscal vérifié</p>
+            {/* Eyebrow rétrogradé en lune (discipline laiton #2) */}
+            <p class="tech-label v2-kicker rule-brass text-lune">Avantage fiscal vérifié</p>
             <h2 class="display v2-section-title mt-5 text-white">Le pompage agricole exonéré de TVA</h2>
             <p class="v2-lead mt-5 text-lune-soft">
               Au Maroc, les systèmes de pompage de l’eau à l’énergie solaire sont exonérés de TVA —
@@ -173,9 +178,10 @@ const jsonLd = {
     </section>
 
     <!-- Bloc liens / segment professionnel -->
-    <section class="border-t border-white/10 px-4 py-16 sm:py-20">
+    <section class="section border-t border-white/10 px-4">
       <div class="mx-auto max-w-6xl">
-        <p class="tech-label v2-kicker rule-brass text-brass-300">Pour aller plus loin</p>
+        {/* Eyebrow rétrogradé en lune (discipline laiton #2) */}
+        <p class="tech-label v2-kicker rule-brass text-lune">Pour aller plus loin</p>
         <h2 class="display v2-section-title mt-5 text-white">L’agriculture, un segment professionnel</h2>
         <p class="v2-lead mt-5 max-w-2xl text-lune-soft">
           Le pompage solaire relève de l’exploitation agricole, pas du kit grand public qu’on
