@@ -239,11 +239,32 @@ class DocumentViewSet(TenantMixin, viewsets.ModelViewSet):
             company=self.request.user.company, created_by=self.request.user)
         # GED11 — alimente le tsvector plein-texte à la création.
         services.update_search_vector(document)
+        # GED12 — (ré)indexe l'embedding sémantique (no-op sans clé).
+        services.index_embedding(document)
 
     def perform_update(self, serializer):
         document = serializer.save()
         # GED11 — réindexe après modification (nom/description/métadonnées).
         services.update_search_vector(document)
+        # GED12 — réindexe l'embedding sémantique (no-op sans clé).
+        services.index_embedding(document)
+
+    @action(detail=False, methods=['get'], url_path='semantique')
+    def semantique(self, request):
+        """GED12 — Recherche sémantique (pgvector), KEY-GATED no-op.
+
+        `GET …/documents/semantique/?q=<texte>`. Quand la clé d'embedding est
+        configurée, classe par proximité sémantique ; sinon dégrade proprement
+        sur la recherche plein-texte GED11. `mode` indique le moteur utilisé."""
+        query = request.query_params.get('q', '')
+        qs = selectors.semantic_search_documents(request.user, query)
+        data = DocumentSerializer(
+            qs, many=True, context={'request': request}).data
+        return Response({
+            'mode': 'semantique' if services.embedding_enabled()
+            else 'plein-texte',
+            'results': data,
+        })
 
     @action(detail=False, methods=['get'], url_path='recherche')
     def recherche(self, request):

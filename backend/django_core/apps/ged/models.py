@@ -28,6 +28,12 @@ from django.contrib.contenttypes.models import ContentType
 from django.contrib.postgres.indexes import GinIndex
 from django.contrib.postgres.search import SearchVectorField
 from django.db import models
+from pgvector.django import VectorField
+
+# GED12 — dimension du vecteur d'embedding documentaire (clé-gated). Aligné sur
+# les embeddings Zhipu/OpenAI-compatibles (1024). Fixe : changer la dimension
+# exigerait une migration destructive (jamais fait à la volée).
+EMBEDDING_DIM = 1024
 
 
 class Cabinet(models.Model):
@@ -226,6 +232,13 @@ class Document(models.Model):
     # est le texte extrait (vide par défaut ; rempli par l'indexation GED12).
     texte_ocr = models.TextField(blank=True, default='')
     search_vector = SearchVectorField(null=True, blank=True)
+    # GED12 — index OCR + recherche sémantique (pgvector, KEY-GATED no-op).
+    # `embedding` est le vecteur d'embedding du texte OCR/nom du document
+    # (dimension EMBEDDING_DIM). Il n'est calculé QUE si une clé d'embedding est
+    # configurée (`settings.GED_EMBEDDING_ENABLED` + provider) — sinon il reste
+    # NULL et la recherche sémantique est un no-op qui retombe sur la recherche
+    # plein-texte (GED11). Aucun appel réseau ni coût tant que la clé est absente.
+    embedding = VectorField(dimensions=EMBEDDING_DIM, null=True, blank=True)
     created_by = models.ForeignKey(
         settings.AUTH_USER_MODEL, on_delete=models.SET_NULL,
         null=True, blank=True, related_name='ged_documents_crees')

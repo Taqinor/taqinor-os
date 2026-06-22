@@ -111,6 +111,27 @@ def search_documents(user, query):
             .order_by('-rank', 'nom'))
 
 
+def semantic_search_documents(user, query, *, limit=20):
+    """GED12 — Recherche sémantique (pgvector cosinus), KEY-GATED no-op.
+
+    Quand l'embedding est activé (clé présente) et la requête vectorisable, on
+    classe les documents visibles par distance cosinus à l'embedding de la
+    requête. Sinon (clé absente / requête non vectorisable), on RETOMBE
+    proprement sur la recherche plein-texte GED11 — la fonctionnalité dégrade
+    sans jamais échouer ni appeler un service payant. Borné par l'ACL/société.
+    """
+    from . import services
+    if not services.embedding_enabled():
+        return search_documents(user, query)[:limit]
+    vec = services.compute_embedding(str(query) if query else '')
+    if vec is None:
+        return search_documents(user, query)[:limit]
+    from pgvector.django import CosineDistance
+    base = documents_visible_to_user(user).filter(embedding__isnull=False)
+    return (base.annotate(distance=CosineDistance('embedding', vec))
+            .order_by('distance')[:limit])
+
+
 def folders_for_company(company):
     """Dossiers d'une société (QuerySet)."""
     return Folder.objects.filter(company=company)

@@ -1173,3 +1173,94 @@ class DocumentFullTextSearchTests(GedBase):
         resp = api.get('/api/django/ged/documents/recherche/?q=batterie')
         ids = [r['id'] for r in rows(resp)]
         self.assertIn(doc_id, ids)
+
+
+# ── GED12 — Index OCR + recherche sémantique (pgvector, key-gated no-op) ──
+class DocumentSemanticSearchTests(GedBase):
+    """Vérifie le comportement KEY-GATED de la recherche sémantique : sans clé
+    d'embedding, `index_embedding` est un no-op (embedding reste NULL) et la
+    recherche sémantique dégrade proprement sur le plein-texte GED11. Avec un
+    provider simulé, l'embedding est posé et la recherche cosinus s'active."""
+
+    def setUp(self):
+        super().setUp()
+        self.folder_a = Folder.objects.create(
+            company=self.co_a, cabinet=self.cab_a, nom='Racine')
+
+    def test_embedding_disabled_by_default(self):
+        self.assertFalse(services.embedding_enabled())
+
+    def test_index_embedding_is_noop_without_key(self):
+        doc = Document.objects.create(
+            company=self.co_a, folder=self.folder_a, nom='Doc')
+        self.assertFalse(services.index_embedding(doc))
+        doc.refresh_from_db()
+        self.assertIsNone(doc.embedding)
+
+    def test_compute_embedding_noop_without_key(self):
+        self.assertIsNone(services.compute_embedding('un texte quelconque'))
+
+    def test_semantique_endpoint_falls_back_to_fulltext(self):
+        api = auth(self.admin_a)
+        api.post('/api/django/ged/documents/', {
+            'folder': self.folder_a.id,
+            'nom': 'Contrat maintenance onduleur'}, format='json')
+        resp = api.get('/api/django/ged/documents/semantique/?q=maintenance')
+        self.assertEqual(resp.status_code, 200)
+        # Sans clé : mode plein-texte, et le doc matche par plein-texte.
+        self.assertEqual(resp.data['mode'], 'plein-texte')
+        noms = [r['nom'] for r in resp.data['results']]
+        self.assertIn('Contrat maintenance onduleur', noms)
+
+    def test_semantique_respects_company_isolation_in_fallback(self):
+        folder_b = Folder.objects.create(
+            company=self.co_b, cabinet=self.cab_b, nom='Racine B')
+        doc_b = Document.objects.create(
+            company=self.co_b, folder=folder_b, nom='Secret maintenance B')
+        services.update_search_vector(doc_b)
+        api = auth(self.admin_a)
+        resp = api.get('/api/django/ged/documents/semantique/?q=maintenance')
+        ids = [r['id'] for r in resp.data['results']]
+        self.assertNotIn(doc_b.id, ids)
+
+    def test_set_ocr_text_triggers_embedding_index(self):
+        # set_ocr_text indexe l'OCR (plein-texte) + tente l'embedding (no-op).
+        doc = Document.objects.create(
+            company=self.co_a, folder=self.folder_a, nom='Scan')
+        services.set_ocr_text(doc, 'panneau monocristallin 555W')
+        doc.refresh_from_db()
+        self.assertEqual(doc.texte_ocr, 'panneau monocristallin 555W')
+        # Embedding reste NULL (no-op sans clé).
+        self.assertIsNone(doc.embedding)
+
+    def test_semantic_search_uses_cosine_when_enabled(self):
+        # Provider simulé : on active le flag + on monkeypatch compute_embedding.
+        from unittest import mock
+        from django.test import override_settings
+        from apps.ged import services as svc
+
+        def fake_embed(text):
+            # Embedding trivial : vecteur orienté par la présence d'un mot-clé.
+            base = [0.0] * 1024
+            if 'solaire' in (text or '').lower():
+                base[0] = 1.0
+            else:
+                base[1] = 1.0
+            return base
+
+        doc_solaire = Document.objects.create(
+            company=self.co_a, folder=self.folder_a, nom='Étude solaire')
+        doc_autre = Document.objects.create(
+            company=self.co_a, folder=self.folder_a, nom='Facture eau')
+        with override_settings(GED_EMBEDDING_ENABLED=True), \
+                mock.patch.object(svc, 'compute_embedding', side_effect=fake_embed):
+            # Indexe les deux documents.
+            self.assertTrue(svc.index_embedding(doc_solaire))
+            self.assertTrue(svc.index_embedding(doc_autre))
+            doc_solaire.refresh_from_db()
+            self.assertIsNotNone(doc_solaire.embedding)
+            # Recherche sémantique : "centrale solaire" doit ramener l'étude
+            # solaire en tête (distance cosinus minimale).
+            results = list(selectors.semantic_search_documents(
+                self.admin_a, 'centrale solaire'))
+            self.assertEqual(results[0].id, doc_solaire.id)

@@ -40,11 +40,69 @@ def set_ocr_text(document, texte):
     """GED12/GED11 — Pose le texte OCR d'un document et réindexe le tsvector.
 
     Sert de point d'entrée unique pour l'indexation OCR : on stocke le texte
-    extrait puis on rafraîchit la recherche plein-texte (GED11)."""
+    extrait, on rafraîchit la recherche plein-texte (GED11), puis on (ré)indexe
+    l'embedding sémantique (GED12, no-op sans clé)."""
     Document.objects.filter(pk=document.pk).update(texte_ocr=texte or '')
     document.texte_ocr = texte or ''
     update_search_vector(document)
+    index_embedding(document)
     return document
+
+
+# ── GED12 — Index OCR + recherche sémantique (pgvector, KEY-GATED no-op) ──
+
+def embedding_enabled():
+    """True si la recherche sémantique est activée (clé d'embedding présente).
+
+    KEY-GATED : sans `settings.GED_EMBEDDING_ENABLED` à vrai, tout est un no-op
+    (aucun appel réseau, aucun coût) et la recherche sémantique retombe sur la
+    recherche plein-texte GED11. Le founder active la fonctionnalité en posant
+    le flag + la clé du provider dans l'environnement."""
+    from django.conf import settings
+    return bool(getattr(settings, 'GED_EMBEDDING_ENABLED', False))
+
+
+def compute_embedding(text):
+    """Calcule l'embedding d'un texte via le provider configuré, ou None.
+
+    NO-OP par défaut : renvoie None tant que `embedding_enabled()` est faux —
+    le squelette d'appel provider est isolé ici pour un futur branchement
+    (Zhipu/OpenAI-compatible) sans toucher au reste du module. Un provider réel
+    devra renvoyer une liste de `EMBEDDING_DIM` flottants."""
+    if not text or not embedding_enabled():
+        return None
+    # Branchement provider à venir (clé-gated). Tant qu'aucun provider concret
+    # n'est câblé, on reste no-op même flag activé — jamais d'appel fantôme.
+    provider = None
+    try:  # pragma: no cover - dépend d'un provider externe non câblé ici.
+        from . import embedding_provider as provider  # noqa: F401
+    except ImportError:
+        provider = None
+    if provider is None:
+        return None
+    vec = provider.embed(text)  # pragma: no cover
+    return vec  # pragma: no cover
+
+
+def index_embedding(document):
+    """GED12 — (Ré)indexe l'embedding sémantique d'un document (no-op sans clé).
+
+    Concatène nom + texte OCR, calcule l'embedding (no-op sans clé) et le stocke
+    dans `Document.embedding`. Idempotent ; ne lève jamais (l'indexation ne doit
+    pas casser une écriture documentaire). Renvoie True si un vecteur a été posé.
+    """
+    if not embedding_enabled():
+        return False
+    text = f'{document.nom}\n{document.texte_ocr or ""}'.strip()
+    try:
+        vec = compute_embedding(text)
+    except Exception:  # pragma: no cover - robustesse : jamais bloquer l'écriture.
+        vec = None
+    if vec is None:
+        return False
+    Document.objects.filter(pk=document.pk).update(embedding=vec)
+    document.embedding = vec
+    return True
 
 
 def validate_coffre_owner(proprietaire, client):

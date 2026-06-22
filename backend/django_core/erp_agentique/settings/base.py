@@ -325,6 +325,12 @@ ENTREPRISE_COULEUR = os.environ.get('ENTREPRISE_COULEUR', '#2563EB')
 # the legacy ventes WeasyPrint quote PDF. Only affects QUOTES, never invoices.
 USE_PREMIUM_QUOTE_ENGINE = os.environ.get('USE_PREMIUM_QUOTE_ENGINE', '1') != '0'
 
+# GED12 — recherche sémantique documentaire (pgvector). KEY-GATED : OFF par
+# défaut, donc l'indexation d'embeddings est un no-op (aucun appel/coût) et la
+# recherche sémantique retombe sur le plein-texte GED11. Le founder l'active en
+# posant GED_EMBEDDING_ENABLED=1 + la clé du provider d'embeddings.
+GED_EMBEDDING_ENABLED = os.environ.get('GED_EMBEDDING_ENABLED', '0') == '1'
+
 # Security headers (safe in all environments)
 SECURE_CONTENT_TYPE_NOSNIFF = True
 X_FRAME_OPTIONS = 'DENY'
