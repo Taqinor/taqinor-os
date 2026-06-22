@@ -1,0 +1,206 @@
+/*
+ * roofbuilder.css — styles SCOPÉS de la page ERP « Concevoir la toiture (3D) ».
+ *
+ * Le builder 3D (apps/web/src/scripts/roof-tool-pro11.ts) est importé tel quel
+ * dans l'ERP, mais son DOM (échafaudage `rp9-*`) s'appuie sur des classes du
+ * système de design du SITE PUBLIC (cine-card, tech-label, rule-brass, fig,
+ * display, rp9-chip, rp9-range, couleurs de marque nuit/brass/lune) qui
+ * n'existent pas dans l'ERP. On les RE-DÉFINIT ici, en valeurs littérales, et
+ * TOUT est scopé sous `.rp9-host` pour ne JAMAIS toucher le reste de l'ERP.
+ *
+ * Aucune dépendance au thème apps/web ni au theme Tailwind de l'ERP : ce
+ * fichier est autonome. Le builder repère ses éléments par id/data-attr, donc
+ * ces classes sont surtout visuelles ; seules `rp9-chip[aria-pressed]`,
+ * `.rp9-range`, le compas et le dimensionnement de `#rp9-map` ont un rôle
+ * fonctionnel (état actif, carte plein cadre).
+ */
+
+.rp9-host {
+  /* Palette de marque (extraite des tokens du site public, en littéral). */
+  --rp-nuit: #070b1d;
+  --rp-nuit-700: #11162e;
+  --rp-nuit-800: #0c1226;
+  --rp-nuit-900: #070b1d;
+  --rp-brass-300: #f3cc66;
+  --rp-brass-400: #e8b54a;
+  --rp-azur-950: #0a1020;
+  --rp-lune-soft: #c7d0e0;
+  --rp-lune-faint: #8a93a8;
+  --rp-alert-300: #f7a8a0;
+  --rp-ok-400: #4ade80;
+  --rp-ok-600: #16a34a;
+
+  color: var(--rp-lune-soft);
+}
+
+/* ── Cartes « braise » : surface glass sur nuit ─────────────────────────── */
+.rp9-host .cine-card {
+  background:
+    linear-gradient(
+      to bottom,
+      rgb(255 255 255 / 0.07) 0px,
+      rgb(255 255 255 / 0.07) 1px,
+      transparent 1px
+    ),
+    rgb(255 255 255 / 0.06);
+  border: 1px solid rgb(255 255 255 / 0.12);
+  border-radius: 2px;
+  box-shadow:
+    inset 0 1px 0 rgb(255 255 255 / 0.10),
+    0 24px 60px -30px rgb(0 0 0 / 0.8);
+}
+
+/* ── Typographie signature ──────────────────────────────────────────────── */
+.rp9-host .display {
+  font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+  font-weight: 800;
+  letter-spacing: -0.012em;
+  line-height: 1.04;
+}
+.rp9-host .fig {
+  font-family: ui-monospace, "SF Mono", "Segoe UI", system-ui, sans-serif;
+  font-weight: 800;
+  letter-spacing: -0.01em;
+  line-height: 0.95;
+  font-variant-numeric: lining-nums tabular-nums;
+}
+.rp9-host .tech-label {
+  font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+  font-size: 0.6875rem;
+  font-weight: 700;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+}
+.rp9-host .rule-brass {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+.rp9-host .rule-brass::before {
+  content: '';
+  width: 2.5rem;
+  height: 2px;
+  background: currentColor;
+  flex: none;
+}
+.rp9-host .rule-brass::after {
+  content: '';
+  width: 0.5rem;
+  height: 0.5rem;
+  flex: none;
+  order: -1;
+  transform: rotate(45deg);
+  border: 1.5px solid currentColor;
+}
+
+/* ── Couleurs de marque utilisées par l'échafaudage (utilitaires Tailwind du
+   site public ré-écrits en littéral, scopés). ─────────────────────────────── */
+.rp9-host .text-brass-300 { color: var(--rp-brass-300); }
+.rp9-host .text-brass-400 { color: var(--rp-brass-400); }
+.rp9-host .text-lune-soft { color: var(--rp-lune-soft); }
+.rp9-host .text-lune-faint { color: var(--rp-lune-faint); }
+.rp9-host .text-alert-300 { color: var(--rp-alert-300); }
+.rp9-host .text-ok-400 { color: var(--rp-ok-400); }
+.rp9-host .text-azur-950 { color: var(--rp-azur-950); }
+
+/* ── Compas + dimensionnement de la carte (FONCTIONNEL) ─────────────────── */
+.rp9-host #rp9-map { position: relative; }
+.rp9-host #rp9-map .maplibregl-map { position: absolute; inset: 0; }
+.rp9-host .rp9-compass {
+  position: absolute;
+  top: 12px;
+  left: 12px;
+  z-index: 2;
+  width: 48px;
+  height: 48px;
+  border-radius: 9999px;
+  background: rgb(7 11 29 / 0.72);
+  pointer-events: none;
+}
+.rp9-host .rp9-compass-arrow {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: space-between;
+  padding: 5px 0;
+  font: 700 0.7rem/1 sans-serif;
+  color: var(--rp-lune-soft);
+}
+
+/* ── Puces de configuration (rp9-chip) — état actif FONCTIONNEL ──────────── */
+.rp9-host .rp9-chip {
+  border: 1px solid rgb(255 255 255 / 0.20);
+  padding: 0.5rem 0.875rem;
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: var(--rp-lune-soft);
+  background: transparent;
+  border-radius: 2px;
+  cursor: pointer;
+  transition: border-color 0.15s ease, color 0.15s ease, background 0.15s ease;
+}
+.rp9-host .rp9-chip:hover {
+  border-color: var(--rp-brass-400);
+  color: var(--rp-brass-300);
+}
+.rp9-host .rp9-chip[aria-pressed='true'] {
+  border-color: var(--rp-brass-400);
+  color: var(--rp-brass-300);
+  background: rgb(232 181 74 / 0.15);
+}
+.rp9-host .rp9-chip:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+/* ── Curseurs (rp9-range) ───────────────────────────────────────────────── */
+.rp9-host .rp9-range {
+  appearance: none;
+  -webkit-appearance: none;
+  height: 4px;
+  border-radius: 9999px;
+  background: rgb(255 255 255 / 0.18);
+  outline: none;
+}
+.rp9-host .rp9-range::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 18px;
+  height: 18px;
+  border-radius: 9999px;
+  background: var(--rp-brass-400);
+  cursor: pointer;
+  border: none;
+}
+.rp9-host .rp9-range::-moz-range-thumb {
+  width: 18px;
+  height: 18px;
+  border-radius: 9999px;
+  background: var(--rp-brass-400);
+  cursor: pointer;
+  border: none;
+}
+
+/* ── Badge « Recommandé » + résultats ───────────────────────────────────── */
+.rp9-host .rp9-reco-badge {
+  margin-left: 0.35rem;
+  font-size: 0.7rem;
+  font-weight: 700;
+  color: var(--rp-brass-300);
+}
+.rp9-host .rp9-results { min-height: 320px; }
+
+/* ── Surfaces sombres : la page (atelier) a un fond nuit pour que la carte et
+   les panneaux du builder ressortent comme sur le site. Scopé au host. ────── */
+.rp9-host {
+  background: var(--rp-nuit);
+  border-radius: 4px;
+  padding: 1rem;
+}
+.rp9-host .bg-nuit { background: var(--rp-nuit); }
+.rp9-host .bg-nuit-700 { background: var(--rp-nuit-700); }
+.rp9-host .bg-nuit-800 { background: var(--rp-nuit-800); }
+.rp9-host .bg-nuit-900 { background: var(--rp-nuit-900); }
+.rp9-host .bg-nuit-800\/60 { background: rgb(12 18 38 / 0.6); }

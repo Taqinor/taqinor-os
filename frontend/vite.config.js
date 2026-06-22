@@ -1,7 +1,89 @@
-import { defineConfig } from 'vite'
+import { defineConfig, transformWithOxc } from 'vite'
+import { readFile } from 'node:fs/promises'
+import { fileURLToPath } from 'node:url'
+import { dirname, resolve as resolvePath } from 'node:path'
 import react from '@vitejs/plugin-react'
 import tailwindcss from '@tailwindcss/vite'
 import { VitePWA } from 'vite-plugin-pwa'
+
+// Racine du repo (frontend/.. → taqinor-os). Sert à IMPORTER le builder 3D
+// vivant du site public (apps/web/src/scripts/roof-tool-pro11.ts) DANS l'ERP
+// sans dupliquer son code : la page ToitureDesign l'importe via l'alias
+// `@roofbuilder`. On n'édite JAMAIS la source du builder — on ne fait que la
+// résoudre par chemin (Rollup suit ses imports relatifs tout seul).
+const __dir = dirname(fileURLToPath(import.meta.url))
+const WEB_SRC = resolvePath(__dir, '../apps/web/src')
+
+// Le builder 3D importé vit dans `apps/web/src`, à côté d'un `tsconfig.json` qui
+// étend `astro/tsconfigs/strict` (astro n'est PAS une dépendance de l'ERP). Le
+// transform TS natif de Vite 8 (oxc/rolldown) découvre PAR FICHIER le tsconfig le
+// plus proche et tente de résoudre cet `extends` → la build casse
+// (« Tsconfig not found astro/tsconfigs/strict »). On ne peut pas éditer apps/web,
+// et la découverte native ignore les overrides de config (`oxc.tsconfig`,
+// `oxc.tsconfigRaw`, `rollupOptions.tsconfig`…).
+//
+// Parade (cf. `roofBuilderTsPlugin` ci-dessous) : un plugin `pre` route les
+// fichiers `.ts`/`.tsx` du builder vers un ID VIRTUEL (préfixe `\0rb:`) dont le
+// nom ne finit PAS par une extension TS — le transform TS natif (filtre
+// `/\.(m?ts|[jt]sx)$/`) ne les voit donc jamais et ne déclenche aucune découverte
+// de tsconfig. C'est NOTRE plugin qui les charge et les transpile via
+// `transformWithOxc`, avec un nom de fichier synthétique rooté dans `frontend/`
+// (aucun tsconfig en remontant). Le reste de l'ERP (JS/JSX) garde le pipeline
+// standard, inchangé. La source du builder n'est JAMAIS modifiée — seulement lue.
+//
+// Motif des fichiers TS du builder (apps/web/src/**.ts|tsx). Tolère les deux
+// styles de séparateur (Windows `\` / POSIX `/`) car l'`id` vu par les filtres
+// Vite peut varier selon la plateforme.
+const WEB_TS_RE = /[\\/]apps[\\/]web[\\/]src[\\/].*\.(m?ts|tsx)(\?.*)?$/
+
+// Préfixe d'ID VIRTUEL pour les modules TS du builder. La VRAIE chemin du fichier
+// est encodée dans l'id et l'id NE finit PAS par `.ts`/`.tsx` → le transform TS
+// natif de Vite (dont le filtre `include` est `/\.(m?ts|[jt]sx)$/`) ne le traite
+// PAS, donc ne déclenche jamais la découverte du tsconfig astro. C'est NOTRE
+// plugin qui charge + transpile ces fichiers (sans découverte de tsconfig).
+const RB_PREFIX = '\0rb:'
+const encodeRb = (abs) => `${RB_PREFIX}${encodeURIComponent(abs.replace(/\\/g, '/'))}`
+const decodeRb = (id) => decodeURIComponent(id.slice(RB_PREFIX.length))
+
+function roofBuilderTsPlugin() {
+  return {
+    name: 'roofbuilder-ts-transpile',
+    enforce: 'pre',
+    async resolveId(source, importer) {
+      // a) Import d'un fichier TS du builder depuis l'ERP (via alias résolu) ou
+      //    depuis un autre module virtuel du builder (imports relatifs internes).
+      if (importer && importer.startsWith(RB_PREFIX)) {
+        // Résolution d'un import relatif DEPUIS un module virtuel : on calcule le
+        // chemin réel relatif au fichier réel encodé, et on le re-virtualise.
+        const fromAbs = decodeRb(importer)
+        const resolved = await this.resolve(source, fromAbs, { skipSelf: true })
+        if (resolved && WEB_TS_RE.test(resolved.id.replace(/\\/g, '/'))) {
+          return encodeRb(resolved.id)
+        }
+        return resolved
+      }
+      // b) Premier saut depuis l'ERP : si la cible se résout vers un TS du builder.
+      const resolved = await this.resolve(source, importer, { skipSelf: true })
+      if (resolved && WEB_TS_RE.test(resolved.id.replace(/\\/g, '/'))) {
+        return encodeRb(resolved.id)
+      }
+      return null
+    },
+    async load(id) {
+      if (!id.startsWith(RB_PREFIX)) return null
+      const abs = decodeRb(id)
+      const code = await readFile(abs, 'utf-8')
+      const lang = abs.endsWith('.tsx') ? 'tsx' : 'ts'
+      // oxc résout le tsconfig à partir du chemin du fichier transpilé ; on lui
+      // passe un nom SYNTHÉTIQUE rooté dans `frontend/` (aucun tsconfig en
+      // remontant → aucune découverte, donc jamais l'`extends astro/...` qui
+      // casse). La transpilation est purement syntaxique (effacement des types).
+      const fakeName = resolvePath(__dir, `.roofbuilder-virtual.${lang}`)
+      const res = await transformWithOxc(code, fakeName, { lang })
+      return { code: res.code, map: res.map ?? null }
+    },
+  }
+}
 
 // https://vite.dev/config/
 // ── E2E (Playwright) ───────────────────────────────────────────────────────
@@ -20,6 +102,7 @@ const E2E_API_TARGET = process.env.E2E_API_TARGET || 'http://127.0.0.1:8000'
 
 export default defineConfig({
   plugins: [
+    roofBuilderTsPlugin(),
     react(),
     tailwindcss(),
     // PWA : Taqinor OS devient installable (« Ajouter à l'écran d'accueil »),
@@ -76,12 +159,31 @@ export default defineConfig({
       },
     }),
   ],
+  // Alias d'IMPORT du builder 3D vendu sur le site public — réutilisé tel quel
+  // par la page ERP ToitureDesign. `@roofbuilder` pointe sur l'entrée
+  // `initRoofToolPro8` ; `@roofpro`/`@rooflib` restent disponibles en repli si
+  // un jour la résolution cross-projet de l'entrée échoue (elle ne devrait pas :
+  // Rollup suit les imports relatifs par chemin de fichier). La source du builder
+  // n'est JAMAIS éditée — uniquement importée.
+  resolve: {
+    alias: {
+      '@roofbuilder': resolvePath(WEB_SRC, 'scripts/roof-tool-pro11.ts'),
+      '@roofpro': resolvePath(WEB_SRC, 'scripts/roofPro11'),
+      '@rooflib': resolvePath(WEB_SRC, 'lib'),
+    },
+  },
   server: {
     host: true,
     port: 3000,
     watch: {
       usePolling: true,
       interval: 500,
+    },
+    // Le builder vit hors de `frontend/` (dans `apps/web/src`) : on autorise le
+    // serveur dev à servir ce sous-arbre. Sans effet sur `vite build` (Rollup
+    // n'a pas de garde fs.allow), mais nécessaire pour `vite dev`/`preview`.
+    fs: {
+      allow: [resolvePath(__dir, '..'), __dir],
     },
   },
   // O66 — Budget de bundle + découpage des gros vendors.
