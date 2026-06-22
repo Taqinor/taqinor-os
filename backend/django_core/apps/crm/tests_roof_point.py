@@ -92,3 +92,23 @@ class TestQ2LeadToken(TestCase):
         # it. A lead created via the model carries the company we passed.
         lead = Lead.objects.create(company=self.company, nom='Scoped')
         self.assertEqual(lead.company_id, self.company.id)
+
+
+class TestRaccordementChoices(TestCase):
+    """T1 — le choix additif 'inconnu' (« Je ne sais pas ») existe et les
+    valeurs historiques restent intactes."""
+
+    def test_inconnu_choice_present(self):
+        self.assertIn('inconnu', Lead.Raccordement.values)
+        self.assertEqual(Lead.Raccordement.INCONNU.label, 'Je ne sais pas')
+
+    def test_existing_choices_intact(self):
+        self.assertIn('monophase', Lead.Raccordement.values)
+        self.assertIn('triphase', Lead.Raccordement.values)
+
+    def test_lead_stores_inconnu(self):
+        company = Company.objects.create(nom='Racc Co', slug='racc-co')
+        lead = Lead.objects.create(
+            company=company, nom='R', raccordement='inconnu')
+        lead.refresh_from_db()
+        self.assertEqual(lead.raccordement, 'inconnu')

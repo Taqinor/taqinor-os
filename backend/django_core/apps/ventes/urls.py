@@ -21,7 +21,7 @@ from .recouvrement import (
     client_releve_pdf,
     lettre_relance_pdf,
 )
-from .public_views import proposal_data, proposal_accept
+from .public_views import proposal_data, proposal_accept, proposal_pdf
 from .dashboard_view import dashboard_quote_to_cash
 from .insights_view import cash_flow_forecast
 from .journal_view import journal_ventes, export_comptable
@@ -46,6 +46,10 @@ urlpatterns = [
     path('proposal/<str:token>/', proposal_data, name='proposal-data'),
     path('proposal/<str:token>/accept/', proposal_accept,
          name='proposal-accept'),
+    # Flux PDF CLIENT du devis derrière le même jeton de proposition (W116) —
+    # affichage inline. Placé AVANT le routeur (comme les autres routes
+    # proposal/) pour ne pas être avalé par la route /devis/.
+    path('proposal/<str:token>/pdf/', proposal_pdf, name='proposal-pdf'),
     # Export comptable : journal des ventes + résumé TVA (.xlsx).
     path('journal-ventes/', journal_ventes, name='journal-ventes'),
     # Export comptable DGI (groundwork) : factures validées d'une plage,

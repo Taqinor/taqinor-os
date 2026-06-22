@@ -285,6 +285,131 @@ class TestQ6ProposalData(TestCase):
         self.assertEqual(resp.data['roof_image_url'], 'https://minio/signed')
 
 
+class TestProposalPdfRoute(TestCase):
+    """T3 — flux PDF CLIENT public derrière le jeton de proposition."""
+
+    def setUp(self):
+        from apps.ventes.models import ShareLink
+        self.company = make_company('pdf-co')
+        self.devis = make_devis(self.company, ref='DEV-PDF-0001')
+        self.link = ShareLink.for_devis(self.devis)
+        self.api = APIClient()
+
+    def _url(self, token):
+        return f'/api/django/ventes/proposal/{token}/pdf/'
+
+    def test_valid_token_streams_pdf(self):
+        with mock.patch(
+            'apps.ventes.public_views.generate_premium_devis_pdf',
+            return_value='devis/1/DEV-PDF-0001.pdf',
+        ), mock.patch(
+            'apps.ventes.public_views.download_pdf',
+            return_value=b'%PDF-1.4 fake',
+        ):
+            resp = self.api.get(self._url(self.link.token))
+        self.assertEqual(resp.status_code, 200, resp.content)
+        self.assertEqual(resp['Content-Type'], 'application/pdf')
+        self.assertIn('inline', resp['Content-Disposition'])
+        self.assertIn('Devis_DEV-PDF-0001.pdf', resp['Content-Disposition'])
+        self.assertEqual(resp['X-Robots-Tag'].split(',')[0], 'noindex')
+        self.assertTrue(bytes(resp.content).startswith(b'%PDF'))
+
+    def test_invalid_token_404(self):
+        resp = self.api.get(self._url('nope'))
+        self.assertEqual(resp.status_code, 404)
+
+    def test_expired_token_404(self):
+        from django.utils import timezone
+        self.link.expires_at = timezone.now() - timezone.timedelta(days=1)
+        self.link.save(update_fields=['expires_at'])
+        resp = self.api.get(self._url(self.link.token))
+        self.assertEqual(resp.status_code, 404)
+
+    def test_render_failure_is_friendly_404(self):
+        with mock.patch(
+            'apps.ventes.public_views.generate_premium_devis_pdf',
+            side_effect=RuntimeError('boom'),
+        ):
+            resp = self.api.get(self._url(self.link.token))
+        self.assertEqual(resp.status_code, 404)
+        self.assertEqual(resp['X-Robots-Tag'].split(',')[0], 'noindex')
+
+
+class TestProposalMonthlyArrays(TestCase):
+    """T4 — séries mensuelles production + consommation dans proposal_data."""
+
+    def setUp(self):
+        from apps.ventes.models import ShareLink
+        self.company = make_company('t4-co')
+        self.devis = make_devis(self.company, ref='DEV-T4-0001')
+        self.link = ShareLink.for_devis(self.devis)
+        self.api = APIClient()
+
+    def _data(self, token=None):
+        token = token or self.link.token
+        return self.api.get(f'/api/django/ventes/proposal/{token}/')
+
+    def test_monthly_production_real_annual_distributed(self):
+        resp = self._data()
+        self.assertEqual(resp.status_code, 200, resp.data)
+        prod = resp.data['monthly_production']
+        self.assertEqual(len(prod), 12)
+        annual = resp.data['quote']['prod_kwh']
+        # La somme distribuée colle au total RÉEL (tolérance d'arrondi).
+        self.assertAlmostEqual(sum(prod), annual, delta=12)
+        # Profil saisonnier : un mois d'été > un mois d'hiver.
+        self.assertGreater(prod[5], prod[11])
+
+    def test_monthly_consumption_empty_without_bills(self):
+        resp = self._data()
+        self.assertEqual(resp.status_code, 200, resp.data)
+        self.assertEqual(resp.data['monthly_consumption'], [])
+
+    def test_monthly_consumption_winter_year_round(self):
+        from apps.crm.models import Lead
+        lead = Lead.objects.create(
+            company=self.company, nom='Conso', client=self.devis.client,
+            facture_hiver='875', ete_differente=False)
+        self.devis.lead = lead
+        self.devis.save(update_fields=['lead'])
+        resp = self._data()
+        conso = resp.data['monthly_consumption']
+        self.assertEqual(len(conso), 12)
+        # Tous les mois identiques (été non différent), MAD→kWh au tarif interne.
+        from apps.ventes.quote_engine.constants import KWH_PRICE
+        expected = round(875 / KWH_PRICE)
+        self.assertTrue(all(v == expected for v in conso))
+
+    def test_monthly_consumption_summer_split(self):
+        from apps.crm.models import Lead
+        lead = Lead.objects.create(
+            company=self.company, nom='Split', client=self.devis.client,
+            facture_hiver='1200', facture_ete='600', ete_differente=True)
+        self.devis.lead = lead
+        self.devis.save(update_fields=['lead'])
+        resp = self._data()
+        conso = resp.data['monthly_consumption']
+        self.assertEqual(len(conso), 12)
+        from apps.ventes.quote_engine.constants import KWH_PRICE
+        # Un mois d'été (index 5 = Juin) < un mois d'hiver (index 0 = Jan).
+        self.assertEqual(conso[0], round(1200 / KWH_PRICE))
+        self.assertEqual(conso[5], round(600 / KWH_PRICE))
+        self.assertLess(conso[5], conso[0])
+
+    def test_consumption_resolves_via_client_when_no_direct_lead(self):
+        # Devis sans lead direct mais dont le client porte un lead avec facture.
+        from apps.crm.models import Lead
+        Lead.objects.create(
+            company=self.company, nom='ViaClient', client=self.devis.client,
+            facture_hiver='1000', ete_differente=False)
+        self.assertIsNone(self.devis.lead)
+        resp = self._data()
+        conso = resp.data['monthly_consumption']
+        self.assertEqual(len(conso), 12)
+        from apps.ventes.quote_engine.constants import KWH_PRICE
+        self.assertEqual(conso[0], round(1000 / KWH_PRICE))
+
+
 class TestQ7ProposalAccept(TestCase):
     """Q7 — tokenized e-signature acceptance reusing the existing stamp."""
 

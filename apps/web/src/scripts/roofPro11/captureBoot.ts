@@ -130,8 +130,27 @@ export function bootCaptureOnly(opts: InitOptions): void {
     return vertices.map(([lng, lat]) => [lat, lng] as [number, number]);
   }
 
-  function notify() {
-    opts.onCaptureChange?.({ pin: currentPin(), outline: currentOutline() });
+  // W2 — annule un reverse-geocode en vol quand un nouveau repère est posé : seul le
+  // dernier repère doit remplir l'adresse (anti-course, comme la recherche d'adresse).
+  let revAbort: AbortController | null = null;
+
+  function notify(address?: string | null) {
+    opts.onCaptureChange?.({ pin: currentPin(), outline: currentOutline(), address });
+  }
+
+  // W2 — RÉSOUT l'adresse depuis le repère courant (géocodage inverse) puis re-notifie
+  // la page avec `address` rempli. Lancé après chaque pose/déplacement de repère/contour ;
+  // ne fait rien sans repère (effacement). Tolère l'échec (address null → on n'écrase rien).
+  function refreshAddressFromPin() {
+    const p = currentPin();
+    if (!p) return;
+    revAbort?.abort();
+    const ctrl = new AbortController();
+    revAbort = ctrl;
+    void reverseGeocode(p.lng, p.lat, { signal: ctrl.signal }).then((address) => {
+      if (ctrl.signal.aborted) return; // un repère plus récent a pris la main
+      if (address) notify(address);
+    });
   }
 
   function updateAreaReadout() {
@@ -156,6 +175,8 @@ export function bootCaptureOnly(opts: InitOptions): void {
   const mapDraw = createMapDraw(ctx, { map, setStatus, updateAreaReadout });
   const addVertex = mapDraw.addVertex;
   const redrawTrace = mapDraw.redrawTrace;
+  // W2 — géocodage inverse (repère → adresse), partagé avec la recherche d'adresse.
+  const reverseGeocode = mapDraw.reverseGeocode;
 
   map.on('load', () => {
     map.addSource('rp9-line', { type: 'geojson', data: empty as never });
@@ -188,6 +209,8 @@ export function bootCaptureOnly(opts: InitOptions): void {
     if (finishBtn) finishBtn.disabled = true;
     setStatus('Repère posé. Vous pouvez l’ajuster, ou tracer le contour (facultatif), puis remplir vos coordonnées.');
     notify();
+    // W2 — lit l'adresse DEPUIS la carte : remplit le champ adresse + capture le GPS.
+    refreshAddressFromPin();
   }
 
   // Clic carte : en mode capture, un clic SIMPLE pose/déplace le pin. Si le visiteur
@@ -201,6 +224,8 @@ export function bootCaptureOnly(opts: InitOptions): void {
       if (finishBtn) finishBtn.disabled = vertices.length < 3;
       if (undoPointBtn) undoPointBtn.hidden = vertices.length < 1;
       notify();
+      // W2 — le centroïde du contour bouge à chaque sommet : rafraîchit l'adresse.
+      refreshAddressFromPin();
       return;
     }
     setPin(lngLat);
@@ -220,6 +245,7 @@ export function bootCaptureOnly(opts: InitOptions): void {
       setStatus('Contour tracé. Remplissez vos coordonnées ci-dessous, puis envoyez.');
       updateAreaReadout();
       notify();
+      refreshAddressFromPin();
       return;
     }
     // démarre le tracé sur ce point (et reprend le pin s'il existait)
@@ -232,6 +258,7 @@ export function bootCaptureOnly(opts: InitOptions): void {
     addVertex(start);
     setStatus('Tracez le contour de votre toit. Double-cliquez pour fermer (facultatif).');
     notify();
+    refreshAddressFromPin();
   });
 
   finishBtn?.addEventListener('click', () => {
@@ -248,6 +275,7 @@ export function bootCaptureOnly(opts: InitOptions): void {
     setStatus('Contour tracé. Remplissez vos coordonnées ci-dessous, puis envoyez.');
     updateAreaReadout();
     notify();
+    refreshAddressFromPin();
   });
 
   undoPointBtn?.addEventListener('click', () => {
@@ -267,6 +295,9 @@ export function bootCaptureOnly(opts: InitOptions): void {
     pin = null;
     vertices = [];
     closed = false;
+    // W2 — annule un reverse-geocode en vol : aucune adresse périmée ne doit arriver
+    // après l'effacement.
+    revAbort?.abort();
     redrawTrace();
     srcOf('rp9-line')?.setData(empty as never);
     redrawPin();

@@ -124,6 +124,9 @@ class Lead(models.Model):
     class Raccordement(models.TextChoices):
         MONOPHASE = 'monophase', 'Monophasé'
         TRIPHASE = 'triphase', 'Triphasé'
+        # Additif (toiture-3D intake) : le prospect ne connaît pas toujours son
+        # type de raccordement — choix tolérant qui ne fausse pas l'existant.
+        INCONNU = 'inconnu', 'Je ne sais pas'
 
     class TypeToiture(models.TextChoices):
         TERRASSE_BETON = 'terrasse_beton', 'Terrasse béton'

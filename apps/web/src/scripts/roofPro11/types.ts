@@ -27,7 +27,11 @@ export interface InitOptions {
   // W112 — callback déclenché à chaque changement du pin/tracé en mode capture
   // (pin {lat,lng} | null + tracé optionnel [[lat,lng],…]). Permet à la page de
   // refléter l'état (activer le bouton « envoyer », pré-remplir l'adresse, etc.).
-  onCaptureChange?: (state: { pin: { lat: number; lng: number } | null; outline: Array<[number, number]> }) => void;
+  // W2 — `address` (libellé géocodé INVERSE depuis le repère) est joint quand il est
+  // disponible : un changement géométrique du pin déclenche d'abord un onCaptureChange
+  // SANS adresse (immédiat), puis un second AVEC `address` une fois le reverse-geocode
+  // résolu. La page lit `pin.lat`/`pin.lng` comme GPS et `address` comme adresse.
+  onCaptureChange?: (state: { pin: { lat: number; lng: number } | null; outline: Array<[number, number]>; address?: string | null }) => void;
   // W113 — HYDRATATION optionnelle depuis un lead (le fetch est fait par la page,
   // pas par l'outil). Sème le pin/tracé de la carte + les champs contact à partir
   // d'un payload lead. Le boot complet reste inchangé quand `hydrate` est absent.

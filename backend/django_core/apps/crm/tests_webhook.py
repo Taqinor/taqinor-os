@@ -127,3 +127,62 @@ class WebsiteLeadWebhookTests(TestCase):
             self.url, data='{pas du json', content_type='application/json',
             HTTP_X_WEBHOOK_SECRET=SECRET)
         self.assertEqual(res.status_code, 400)
+
+    # ── T2 — nouveaux champs de capture toiture-3D (additifs, tolérants) ──
+    def test_nouveaux_champs_captures(self):
+        res = self.post(payload_site(
+            factureHiver='1450.50', factureEte='800', eteDifferente=True,
+            raccordement='triphase', adresse='12 Rue des Oliviers, Anfa',
+            gpsLat='33.589', gpsLng='-7.603'))
+        self.assertEqual(res.status_code, 201, res.content)
+        lead = Lead.objects.get(pk=res.json()['lead_id'])
+        # Company forcée côté serveur (jamais du payload).
+        self.assertEqual(lead.company, self.company)
+        self.assertEqual(str(lead.facture_hiver), '1450.50')
+        self.assertEqual(str(lead.facture_ete), '800.00')
+        self.assertTrue(lead.ete_differente)
+        self.assertEqual(lead.raccordement, 'triphase')
+        self.assertEqual(lead.adresse, '12 Rue des Oliviers, Anfa')
+        self.assertEqual(str(lead.gps_lat), '33.589000')
+        self.assertEqual(str(lead.gps_lng), '-7.603000')
+
+    def test_nouveaux_champs_snake_case_acceptes(self):
+        res = self.post(payload_site(
+            facture_hiver='990', ete_differente=False,
+            gps_lat='34.0', gps_lng='-6.8', address='Rabat centre'))
+        self.assertEqual(res.status_code, 201, res.content)
+        lead = Lead.objects.get(pk=res.json()['lead_id'])
+        self.assertEqual(str(lead.facture_hiver), '990.00')
+        self.assertFalse(lead.ete_differente)
+        self.assertEqual(str(lead.gps_lat), '34.000000')
+        self.assertEqual(lead.adresse, 'Rabat centre')
+
+    def test_raccordement_inconnu_accepte(self):
+        # T1 — nouveau choix « Je ne sais pas ».
+        res = self.post(payload_site(raccordement='inconnu'))
+        self.assertEqual(res.status_code, 201, res.content)
+        lead = Lead.objects.get(pk=res.json()['lead_id'])
+        self.assertEqual(lead.raccordement, 'inconnu')
+
+    def test_champs_invalides_ignores_jamais_de_crash(self):
+        # Décimales non numériques + raccordement hors choix + GPS hors bornes
+        # → tous ignorés, le lead est quand même créé.
+        res = self.post(payload_site(
+            factureHiver='pas-un-nombre', raccordement='wifi',
+            gpsLat='999', gpsLng='abc'))
+        self.assertEqual(res.status_code, 201, res.content)
+        lead = Lead.objects.get(pk=res.json()['lead_id'])
+        self.assertIsNone(lead.facture_hiver)
+        self.assertIsNone(lead.raccordement)
+        self.assertIsNone(lead.gps_lat)
+        self.assertIsNone(lead.gps_lng)
+
+    def test_champs_absents_inchanges(self):
+        # Payload existant sans les nouveaux champs : comportement identique.
+        res = self.post(payload_site())
+        self.assertEqual(res.status_code, 201, res.content)
+        lead = Lead.objects.get(pk=res.json()['lead_id'])
+        self.assertIsNone(lead.facture_hiver)
+        self.assertIsNone(lead.facture_ete)
+        self.assertFalse(lead.ete_differente)
+        self.assertIsNone(lead.raccordement)

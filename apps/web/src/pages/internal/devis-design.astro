@@ -5,12 +5,16 @@
  * Page de travail de Meriem : ouvre ?lead=<id>, se connecte à l'ERP (JWT), charge
  * le lead (repère/contour + contact), boote le builder COMPLET (mode normal) hydraté
  * avec le repère du client (W113), laisse dessiner/auto-remplir/éditer (panneaux +
- * optimiseur visibles ICI), puis « Valider & générer le devis » :
+ * optimiseur visibles ICI), puis UN SEUL bouton « Générer le devis & envoyer au client »
+ * enchaîne tout en un clic (spinner + désactivé pendant l'exécution) :
  *   1. sérialise le layout finalisé (W113),
  *   2. POST /api/django/ventes/devis/from-layout/  {layout, lead}  (Bearer JWT),
  *   3. POST /api/django/ventes/devis/<id>/layout/   (persistance idempotente),
  *   4. W115 — capture le PNG de la 3D et POST /devis/<id>/roof-image/ (multipart),
- *   5. W118 — surface le lien de proposition tokenisé (WhatsApp / e-mail / copier).
+ *   5. W118 — bascule sur l'état « Prêt à envoyer » : lien de proposition tokenisé +
+ *      WhatsApp / e-mail / copier (référence du devis affichée).
+ * En cas d'échec, le tracé de Meriem est conservé et le bouton se réactive pour relancer
+ * (401 → re-login ; autres 4xx/5xx → message FR lisible).
  *
  * Le jeton d'accès vit en sessionStorage (jamais de persistance longue durée). Les
  * panneaux/optimiseur n'apparaissent QUE sur cette page authentifiée — jamais sur la
@@ -226,30 +230,51 @@ const chipClass =
           <p id="rp9-maxline" class="mt-3 text-xs text-lune-faint"></p>
         </div>
 
-        <!-- VALIDER & GÉNÉRER -->
+        <!-- UN SEUL BOUTON — génère le devis, capture la 3D, mint le lien, puis
+             bascule sur l'état « Prêt à envoyer ». -->
         <div class="cine-card mt-6 p-6">
-          <button type="button" id="dd-generate"
-            class="inline-flex w-full items-center justify-center gap-2 bg-ok-600 px-6 py-4 text-base font-bold text-white transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50">
-            Valider & générer le devis
-          </button>
-          <p id="dd-gen-status" hidden class="mt-3 text-sm text-lune-soft" aria-live="polite"></p>
-          <p id="dd-gen-error" hidden class="mt-3 text-sm text-alert-300" aria-live="polite"></p>
+          <!-- BLOC ACTION (caché une fois le devis prêt) -->
+          <div id="dd-action">
+            <button type="button" id="dd-generate"
+              class="inline-flex w-full items-center justify-center gap-3 bg-ok-600 px-6 py-4 text-base font-bold text-white transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-60">
+              <span id="dd-gen-spinner" hidden aria-hidden="true"
+                class="h-5 w-5 shrink-0 animate-spin rounded-full border-2 border-white/30 border-t-white"></span>
+              <span id="dd-gen-label">Générer le devis &amp; envoyer au client</span>
+            </button>
+            <p class="mt-3 text-xs text-lune-faint">
+              Un seul clic : le devis est créé, la vue 3D enregistrée et le lien client préparé.
+            </p>
+            <p id="dd-gen-status" hidden class="mt-3 text-sm text-lune-soft" aria-live="polite"></p>
+            <p id="dd-gen-error" hidden class="mt-3 text-sm text-alert-300" aria-live="assertive"></p>
+          </div>
 
-          <!-- W118 — LIVRAISON : lien de proposition + WhatsApp / e-mail / copier. -->
-          <div id="dd-deliver" hidden class="mt-5 space-y-4 border-t border-white/10 pt-5">
-            <p class="tech-label text-brass-300">Devis créé · <span id="dd-ref" class="text-white">—</span></p>
+          <!-- W118 — PRÊT À ENVOYER : lien de proposition + WhatsApp / e-mail / copier. -->
+          <div id="dd-deliver" hidden class="space-y-4">
+            <div class="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
+              <p class="tech-label rule-brass text-brass-300">Prêt à envoyer</p>
+              <p class="text-sm text-lune-soft">Devis <span id="dd-ref" class="font-semibold text-white">—</span></p>
+            </div>
+            <p class="text-sm text-lune-soft">
+              Le devis est créé et la vue 3D enregistrée. Envoyez le lien au client par WhatsApp,
+              e-mail, ou copiez-le.
+            </p>
             <label class="block text-sm text-lune-soft">
               Lien de la proposition
               <input id="dd-proposal-url" type="text" readonly class={`${inputClass} mt-1`} />
             </label>
-            <div class="flex flex-wrap gap-3">
+            <div class="flex flex-wrap items-center gap-3">
               <a id="dd-wa" href="#" target="_blank" rel="noopener"
-                class="inline-flex items-center gap-2 bg-ok-600 px-4 py-2.5 text-sm font-bold text-white hover:opacity-90">WhatsApp</a>
+                class="inline-flex items-center gap-2 bg-ok-600 px-5 py-3 text-base font-bold text-white hover:opacity-90">WhatsApp</a>
               <a id="dd-mail" href="#"
-                class="inline-flex items-center gap-2 border border-brass-400 px-4 py-2.5 text-sm font-bold text-brass-300 hover:bg-brass-400/10">E-mail</a>
+                class="inline-flex items-center gap-2 border border-brass-400 px-5 py-3 text-base font-bold text-brass-300 hover:bg-brass-400/10">E-mail</a>
               <button type="button" id="dd-copy"
-                class="inline-flex items-center gap-2 border border-white/25 px-4 py-2.5 text-sm font-semibold text-lune-soft hover:border-brass-400 hover:text-brass-300">Copier le lien</button>
+                class="inline-flex items-center gap-2 border border-white/25 px-5 py-3 text-base font-semibold text-lune-soft hover:border-brass-400 hover:text-brass-300">Copier le lien</button>
+              <span id="dd-copy-ok" hidden class="text-sm font-semibold text-ok-400" aria-live="polite">Lien copié</span>
             </div>
+            <a id="dd-proposal-open" href="#" target="_blank" rel="noopener"
+              class="inline-block text-sm text-lune-faint underline decoration-white/25 underline-offset-2 hover:text-brass-300">
+              Ouvrir la proposition dans un nouvel onglet
+            </a>
           </div>
         </div>
       </div>
@@ -374,7 +399,7 @@ const chipClass =
       hydrate: { lead: lead as never },
       onApiReady: (a) => { api = a; },
     });
-    if (statusEl) statusEl.textContent = 'Repère du client chargé. Dessinez/ajustez, puis « Valider & générer le devis ».';
+    if (statusEl) statusEl.textContent = 'Repère du client chargé. Dessinez/ajustez, puis « Générer le devis & envoyer au client ».';
   }
 
   loginForm?.addEventListener('submit', async (e) => {
@@ -392,13 +417,44 @@ const chipClass =
 
   $('dd-logout')?.addEventListener('click', () => { setToken(null); location.reload(); });
 
-  // — Génération du devis (W114) + snapshot (W115) + livraison (W118) —
+  // — UN SEUL BOUTON : devis (W114) + snapshot (W115) + livraison (W118) —
   const genBtn = $<HTMLButtonElement>('dd-generate');
   const genStatus = $('dd-gen-status');
   const genErr = $('dd-gen-error');
+  const genSpinner = $('dd-gen-spinner');
+  const genLabel = $('dd-gen-label');
+  let sending = false;
 
-  function setGenStatus(msg: string) { if (genStatus) { genStatus.textContent = msg; genStatus.hidden = false; } }
+  function setGenStatus(msg: string) {
+    if (genStatus) { genStatus.textContent = msg; genStatus.hidden = false; }
+  }
+  function clearGenStatus() { if (genStatus) genStatus.hidden = true; }
   function setGenError(msg: string) { if (genErr) { genErr.textContent = msg; genErr.hidden = false; } }
+
+  /** Bascule le bouton en mode « envoi en cours » (spinner + désactivé). */
+  function setSending(on: boolean) {
+    sending = on;
+    if (genBtn) genBtn.disabled = on;
+    if (genSpinner) genSpinner.hidden = !on;
+    if (genLabel) genLabel.textContent = on ? 'Génération en cours…' : 'Réessayer';
+  }
+
+  /** Échec : message FR lisible, statut nettoyé, bouton réactivé — le tracé de
+   *  Meriem n'est jamais perdu, elle peut relancer. */
+  function failSend(msg: string) {
+    clearGenStatus();
+    setGenError(msg);
+    setSending(false);
+  }
+
+  /** Traduit un code HTTP en message client lisible. */
+  function httpMessage(status: number): string {
+    if (status === 400 || status === 422) return 'Le devis n’a pas pu être créé : données du tracé invalides. Vérifiez le toit puis réessayez.';
+    if (status === 403) return 'Accès refusé pour ce lead. Contactez un administrateur.';
+    if (status === 404) return 'Lead introuvable côté ERP. Vérifiez le lien puis réessayez.';
+    if (status >= 500) return `Le serveur a renvoyé une erreur (${status}). Réessayez dans un instant.`;
+    return `Création du devis impossible (erreur ${status}).`;
+  }
 
   /** Convertit un data URL PNG en Blob (pour l'upload multipart). */
   function dataUrlToBlob(dataUrl: string): Blob | null {
@@ -411,12 +467,24 @@ const chipClass =
     return new Blob([bytes], { type: mime });
   }
 
+  // Le presse-papier est câblé une fois (l'URL est lue au moment du clic).
+  let lastProposalUrl = '';
+  $('dd-copy')?.addEventListener('click', () => {
+    if (!lastProposalUrl) return;
+    try {
+      void navigator.clipboard?.writeText(lastProposalUrl);
+      const ok = $('dd-copy-ok');
+      if (ok) { ok.hidden = false; window.setTimeout(() => { ok.hidden = true; }, 2000); }
+    } catch { /* presse-papier indispo */ }
+  });
+
   genBtn?.addEventListener('click', async () => {
+    if (sending) return; // anti-double-clic
     if (genErr) genErr.hidden = true;
     if (!api) { setGenError('Outil non prêt — tracez le toit puis réessayez.'); return; }
     const t = token();
     if (!t) { showLogin('Session expirée — reconnectez-vous.'); return; }
-    genBtn.disabled = true;
+    setSending(true);
     setGenStatus('Génération du devis…');
     try {
       const layout = api.serializeLayout();
@@ -426,12 +494,8 @@ const chipClass =
         headers: { 'content-type': 'application/json', ...authHeaders() },
         body: JSON.stringify({ layout, lead: leadId }),
       });
-      if (createRes.status === 401) { setToken(null); showLogin('Session expirée — reconnectez-vous.'); genBtn.disabled = false; return; }
-      if (!createRes.ok) {
-        setGenError(`Création du devis impossible (erreur ${createRes.status}).`);
-        genBtn.disabled = false;
-        return;
-      }
+      if (createRes.status === 401) { setToken(null); showLogin('Session expirée — reconnectez-vous.'); setSending(false); return; }
+      if (!createRes.ok) { failSend(httpMessage(createRes.status)); return; }
       const devis = (await createRes.json()) as { id: number; reference: string; proposal_token: string; proposal_path: string };
 
       // 2) Persistance idempotente du layout finalisé.
@@ -457,11 +521,14 @@ const chipClass =
         }
       }
 
-      // 4) W118 — surface le lien de proposition + WhatsApp / e-mail / copier.
+      // 4) W118 — bascule sur l'état « Prêt à envoyer » : lien + WhatsApp / e-mail / copier.
       const proposalUrl = designProposalUrl(location.origin, devis.proposal_path);
+      lastProposalUrl = proposalUrl;
       $('dd-ref')!.textContent = devis.reference;
       const urlInput = $<HTMLInputElement>('dd-proposal-url');
       if (urlInput) urlInput.value = proposalUrl;
+      const openEl = $<HTMLAnchorElement>('dd-proposal-open');
+      if (openEl) openEl.href = proposalUrl;
 
       const phone = (lead?.phone as string) || '';
       const name = (lead?.fullName as string) || '';
@@ -476,14 +543,15 @@ const chipClass =
         if (email) { mailEl.href = designMailto(email, name, proposalUrl); mailEl.hidden = false; }
         else mailEl.hidden = true;
       }
-      $('dd-copy')?.addEventListener('click', () => {
-        try { void navigator.clipboard?.writeText(proposalUrl); } catch { /* presse-papier indispo */ }
-      });
+
+      // Succès : on masque le bloc action et on révèle l'état « Prêt à envoyer ».
+      sending = false;
+      const actionEl = $('dd-action');
+      if (actionEl) actionEl.hidden = true;
       $('dd-deliver')!.hidden = false;
-      setGenStatus(`Devis ${devis.reference} créé.`);
+      if (statusEl) statusEl.textContent = `Devis ${devis.reference} créé — prêt à envoyer au client.`;
     } catch {
-      setGenError('Erreur réseau pendant la génération. Réessayez.');
-      genBtn.disabled = false;
+      failSend('Erreur réseau pendant la génération. Vérifiez votre connexion puis réessayez.');
     }
   });
 
