@@ -279,10 +279,10 @@ const trust = [
             main sur votre facture réelle. Le chiffre décide du matériel — jamais l'inverse.
           </p>
         </div>
-        <dl class="mt-12 grid gap-x-6 gap-y-10 sm:grid-cols-2 lg:grid-cols-4" data-stagger>
+        <dl class="mt-12 grid gap-x-8 gap-y-12 sm:grid-cols-2 lg:grid-cols-2" data-stagger>
           {trust.map((t, i) => (
-            <div class="v2-rise" style={`--v2-i:${i}`}>
-              <dd class="fig fig-lg lum" data-tally={t.tally ? '' : undefined}>{t.fig}</dd>
+            <div class="v2-rise min-w-0" style={`--v2-i:${i}`}>
+              <dd class="fig fig-md lum break-words" data-tally={t.tally ? '' : undefined}>{t.fig}</dd>
               <dt class="tech-label mt-2 text-lune-faint">{t.label}</dt>
               <p class="mt-1 text-sm leading-snug text-lune-soft">{t.body}</p>
             </div>
