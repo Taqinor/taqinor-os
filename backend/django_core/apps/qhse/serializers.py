@@ -6,7 +6,10 @@ appartenant à la société de l'utilisateur.
 """
 from rest_framework import serializers
 
-from .models import ActionCorrectivePreventive, NonConformite
+from .models import (
+    ActionCorrectivePreventive, NonConformite, PlanInspectionModele,
+    PointControleModele,
+)
 
 
 def _meme_societe(serializer, value, label):
@@ -51,3 +54,28 @@ class ActionCorrectivePreventiveSerializer(serializers.ModelSerializer):
 
     def validate_non_conformite(self, value):
         return _meme_societe(self, value, 'Non-conformité')
+
+
+class PlanInspectionModeleSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = PlanInspectionModele
+        fields = [
+            'id', 'code', 'nom', 'description', 'actif', 'date_creation',
+        ]
+        read_only_fields = ['date_creation']
+
+
+class PointControleModeleSerializer(serializers.ModelSerializer):
+    type_releve_display = serializers.CharField(
+        source='get_type_releve_display', read_only=True)
+
+    class Meta:
+        model = PointControleModele
+        fields = [
+            'id', 'plan', 'ordre', 'intitule', 'phase', 'type_releve',
+            'type_releve_display', 'hold_point', 'description', 'date_creation',
+        ]
+        read_only_fields = ['date_creation']
+
+    def validate_plan(self, value):
+        return _meme_societe(self, value, "Plan d'inspection")

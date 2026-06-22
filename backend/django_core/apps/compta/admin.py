@@ -2,7 +2,7 @@ from django.contrib import admin
 
 from .models import (
     CompteComptable, CompteTresorerie, EcritureComptable, ExerciceComptable,
-    Journal, LigneEcriture, PeriodeComptable, PlanComptable,
+    Immobilisation, Journal, LigneEcriture, PeriodeComptable, PlanComptable,
 )
 
 
@@ -65,3 +65,11 @@ class PeriodeComptableAdmin(admin.ModelAdmin):
                     'verrouillee', 'company')
     list_filter = ('type_periode', 'verrouillee')
     search_fields = ('libelle',)
+
+
+@admin.register(Immobilisation)
+class ImmobilisationAdmin(admin.ModelAdmin):
+    list_display = ('id', 'libelle', 'categorie', 'cout', 'taux_tva',
+                    'date_acquisition', 'company', 'actif')
+    list_filter = ('categorie', 'actif')
+    search_fields = ('libelle', 'reference')

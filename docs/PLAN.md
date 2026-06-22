@@ -350,7 +350,7 @@ add-to-plan rule) — this audit branch only edits `docs/PLAN.md`.
 
 ### Paramètres / RBAC / auth & security
 
-- [ ] FG17 — Email template management (parity with WhatsApp templates). Only WhatsApp templates are modelled; the automation email action falls back to a hardcoded "Notification Taqinor" subject. Add editable `sujet`+`corps` per `cle` (extend `MessageTemplate` or add `EmailTemplate`) with `{civilite}{nom}{reference}{lien}` placeholders + editor in `EmailSection.jsx`. (Gate: SCHEMA.)
+- [x] FG17 — Email template management (parity with WhatsApp templates). Only WhatsApp templates are modelled; the automation email action falls back to a hardcoded "Notification Taqinor" subject. Add editable `sujet`+`corps` per `cle` (extend `MessageTemplate` or add `EmailTemplate`) with `{civilite}{nom}{reference}{lien}` placeholders + editor in `EmailSection.jsx`. (Gate: SCHEMA.)
 - [ ] FG18 — Settings-audit completeness. `SettingsAuditLog` covers only profil/messages; role-permission edits, user role/active/supervisor changes, and automation rule create/toggle/delete are **not** audited. Emit audit entries on those writes + add their sections to the audit filter. (Gate: ROUTINE.)
 - [ ] FG19 — Read-only org-chart / team hierarchy view. `EquipeSection.jsx` is a flat supervisor table; add a tree view fed by the existing `/users/` `supervisor` field (optionally a per-node "sees N records/people" hint from `visible_user_ids`) so the founder can verify record-visibility scoping at a glance. (Gate: ROUTINE — frontend only.)
 - [ ] FG20 — Per-field / sensitive-data role permissions. RBAC has only `prix_achat_voir`/`journal_activite_voir`; no PII/margin masking. Add a curated "Données sensibles" permission group (e.g. `client_pii_voir`, `marge_voir`) enforced in the relevant serializers (mask when absent). (Gate: DECISION on which fields; curated version SCHEMA-light, fully-dynamic version ARCH.)
@@ -500,7 +500,7 @@ first run that ticks any `FG*` task refreshes CODEMAP §10 + `--write` in that c
 - [x] FG115 — **Clôture & verrouillage de période comptable** — figer un mois/exercice (écritures + factures immuables) pour l'audit. (SCHEMA)
 - [x] FG116 — **Écritures de régularisation / OD manuelles** — saisie d'écritures sans document source (provisions, amortissements, corrections). (SCHEMA)
 - [x] FG117 — **À-nouveaux / réouverture d'exercice** — report des soldes de bilan dans le nouvel exercice. (SCHEMA)
-- [ ] FG118 — **Registre des immobilisations** — actifs (camionnettes, outillage, matériel) avec coût/date/catégorie/TVA. (SCHEMA)
+- [x] FG118 — **Registre des immobilisations** — actifs (camionnettes, outillage, matériel) avec coût/date/catégorie/TVA. (SCHEMA)
 - [ ] FG119 — **Plan d'amortissement (linéaire/dégressif)** — dotations par actif aux taux marocains, postées au grand livre (impacte l'IS). (SCHEMA)
 - [ ] FG120 — **Cession / mise au rebut d'immobilisation** — plus/moins-value + écritures associées. (SCHEMA)
 - [x] FG121 — **Référentiel comptes bancaires & caisses** — `CompteTresorerie` (banque/RIB/devise/solde) ; aujourd'hui un seul RIB texte. (SCHEMA)  [DONE 2026-06-21]
@@ -540,7 +540,7 @@ first run that ticks any `FG*` task refreshes CODEMAP §10 + `--write` in that c
 ### RH, terrain & HSE
 
 - [x] FG154 — **Module RH (app dédiée) + dossier employé** — `DossierEmploye` (OneToOne→user) : date d'embauche, matricule, statut ; socle de tout le RH (inexistant aujourd'hui). (ARCH)  [DONE 2026-06-22: RH app + DossierEmploye master (OneToOne→user; matricule/poste/contrat/statut/cout_horaire interne); admin-gated, multi-tenant, tests. NEW app apps/rh.]
-- [ ] FG155 — **Type de contrat & dates** — CDI/CDD/ANAPEC/stage/intérim + alerte fin de CDD. (SCHEMA)
+- [x] FG155 — **Type de contrat & dates** — CDI/CDD/ANAPEC/stage/intérim + alerte fin de CDD. (SCHEMA)
 - [ ] FG156 — **Identité & numéros légaux employé** — CIN, CNSS, CIMR/AMO, RIB, situation familiale (données paie obligatoires). (SCHEMA)
 - [ ] FG157 — **Rémunération de base (gated rôle RH)** — salaire, périodicité, historique, réservé permission `salaires_voir`. (AUTH)
 - [ ] FG158 — **Contact d'urgence & coordonnées étendues** — personne à prévenir, groupe sanguin (utile chantier/accident). (SCHEMA)
@@ -898,7 +898,7 @@ these overlap and SUPERSEDE the domain-list FG items as the module-organized hom
 ### Module Gestion de projet (`apps/gestion_projet`) · PROJ1–PROJ38
 **But :** couche projet/programme au-dessus de `installations` regroupant N chantiers+devis+factures+tickets+achats avec WBS/dépendances/chemin critique, Gantt, capacité ressources, budget & P&L projet, jalons de facturation, timesheets, risques, documents, portefeuille. **Statuts propres** (jamais STAGES.py / statut chantier) ; coûts/marges internes. Recouvre FG291–FG303.
 - [x] PROJ1 — Modèle `Projet`/Programme multi-chantiers + `ProjetChantier`. (ARCH)  [DONE 2026-06-22: NEW app apps/gestion_projet: Projet + ProjetChantier (multi-chantiers, statut propre, jamais STAGES.py).]
-- [ ] PROJ2 — Liens projet → devis/factures/tickets/achats (string-FK via selectors). (SCHEMA)
+- [x] PROJ2 — Liens projet → devis/factures/tickets/achats (string-FK via selectors). (SCHEMA)
 - [ ] PROJ3 — Machine à états du projet (propre, jamais STAGES.py). (DECISION)
 - [ ] PROJ4 — Phases de projet (étude/appro/pose/MES/réception). (SCHEMA)
 - [ ] PROJ5 — Tâches & sous-tâches (WBS). (ARCH)
@@ -941,7 +941,7 @@ these overlap and SUPERSEDE the domain-list FG items as the module-organized hom
 - [x] GED1 — Squelette de l'app `apps/ged` (services/selectors, scoping société). (ARCH)
 - [x] GED2 — Cabinet + Folder arborescent (path matérialisé). (SCHEMA)
 - [x] GED3 — Document + DocumentVersion (file_key MinIO, checksum/dedupe). (SCHEMA)
-- [ ] GED4 — CRUD dossiers/documents + déplacement (scopé société). (ROUTINE)
+- [x] GED4 — CRUD dossiers/documents + déplacement (scopé société). (ROUTINE)
 - [ ] GED5 — Navigateur arborescent FR (frontend). (ROUTINE)
 - [ ] GED6 — Liaison polymorphe Document↔objet métier (étend `records.ALLOWED_TARGETS`). (SCHEMA+DECISION)
 - [ ] GED7 — Migration des `records.Attachment` existants (réutilise file_key). (DECISION)
@@ -981,7 +981,7 @@ these overlap and SUPERSEDE the domain-list FG items as the module-organized hom
 **But :** référentiel et opérations de tout ce qui roule (camionnettes, nacelles, groupes électrogènes) : immatriculation/compteurs, conducteurs+permis, carburant, entretien, échéances réglementaires marocaines (TSAV/assurance/visite technique), sinistres, télématique, trajets imputés chantier, TCO. Recouvre FG334–FG342.
 - [x] FLOTTE1 — Nouvelle app `apps/flotte` (squelette multi-tenant). (ARCH)
 - [x] FLOTTE2 — Modèle `Vehicule` (immat/marque/énergie/km/valeur/statut). (SCHEMA)
-- [ ] FLOTTE3 — Lien `Vehicule.emplacement_stock` ↔ `stock.EmplacementStock` (via selector). (DEP)
+- [x] FLOTTE3 — Lien `Vehicule.emplacement_stock` ↔ `stock.EmplacementStock` (via selector). (DEP)
 - [x] FLOTTE4 — `EnginRoulant` (compteur d'heures, nacelle/groupe/chariot). (SCHEMA)
 - [ ] FLOTTE5 — Référence d'actif commune (Vehicule|Engin) pour entretien/sinistre/doc. (DECISION)
 - [ ] FLOTTE6 — Référentiels listes (type véhicule/engin, énergie, catégorie permis). (SCHEMA)
@@ -1018,7 +1018,7 @@ these overlap and SUPERSEDE the domain-list FG items as the module-organized hom
 ### Module QHSE — qualité, hygiène, sécurité & environnement (`apps/qhse`) · QHSE1–QHSE40
 **But :** couche programme/site au-dessus de la checklist F18 : ITP + points d'arrêt + relevés (couples/polarité/isolement/I-V), NCR/CAPA, audits, document unique/permis de travail, incidents+CNSS, inspections/TF-TG, déchets (BSD loi 28-00)/recyclage modules, bilan carbone/ESG. **Garde F18 intacte.** Recouvre FG181–FG186, FG343–FG349.
 - [x] QHSE1 — App QHSE + socle multi-tenant. (ARCH)  [DONE 2026-06-22: NEW app apps/qhse, socle multi-tenant.]
-- [ ] QHSE2 — ITP : `PlanInspectionModele` + `PointControleModele` (phase/type relevé/hold-point). (SCHEMA)
+- [x] QHSE2 — ITP : `PlanInspectionModele` + `PointControleModele` (phase/type relevé/hold-point). (SCHEMA)
 - [ ] QHSE3 — Seed ITP solaire par type d'installation. (ROUTINE)
 - [ ] QHSE4 — `PlanInspectionChantier` + `ReleveControle` (valeur/conforme/photo). (SCHEMA)
 - [ ] QHSE5 — Auto-conformité des relevés mesurés (vs min/max attendu). (ROUTINE)
@@ -1062,7 +1062,7 @@ these overlap and SUPERSEDE the domain-list FG items as the module-organized hom
 **But :** référentiel multi-type de contrats (vente/O&M/monitoring/garantie/PPA/fournisseur/sous-traitance/location/emploi/NDA) : modèles+clauses, génération, approbation, e-sign, obligations/SLA/retenue de garantie, renouvellements/avenants/résiliation, facturation récurrente, tableau de bord. **Wrappe** `sav.ContratMaintenance` sans le casser ; parties = FK Client/Fournisseur/Employé. Recouvre FG243.
 - [x] CONTRAT1 — App `contrats` + modèle `Contrat` socle (référence via `references.py`). (ARCH)  [DONE 2026-06-22: NEW app apps/contrats: Contrat socle (champ reference présent; auto-numérotation references.py = follow-up).]
 - [x] CONTRAT2 — Enum `type_contrat` (12 types) + lifecycle statut. (SCHEMA)  [DONE 2026-06-22: type_contrat 12 types + statut lifecycle (brouillon→…→résilié/expiré).]
-- [ ] CONTRAT3 — `PartieContrat` (parties/signataires, ≥2). (SCHEMA)
+- [x] CONTRAT3 — `PartieContrat` (parties/signataires, ≥2). (SCHEMA)
 - [ ] CONTRAT4 — Liens inter-apps (devis/lead/installation/maintenance) en string-FK. (ROUTINE)
 - [ ] CONTRAT5 — Wrap de `sav.ContratMaintenance` (lecture/lien, ne casse pas). (ROUTINE)
 - [ ] CONTRAT6 — Niveaux de confidentialité + droits d'accès par type. (DECISION)
@@ -1099,7 +1099,7 @@ these overlap and SUPERSEDE the domain-list FG items as the module-organized hom
 ### Module Base de connaissances / Wiki technique (`apps/kb`) · KB1–KB7
 **But :** base documentaire interne searchable (SOP d'installation, procédures ONEE/raccordement, fiches techniques, guides de dépannage, onboarding) — alimente aussi le RAG/DocQA (FG352). Survey-recommended (priorité moyenne).
 - [x] KB1 — App `kb` + `KbArticle` (titre/corps/catégorie/tags, company FK). (ARCH)  [DONE 2026-06-22: NEW app apps/kb: KbArticle (titre/corps/catégorie/tags/statut/auteur).]
-- [ ] KB2 — Versionnage des articles + statut (brouillon/publié/obsolète). (SCHEMA)
+- [x] KB2 — Versionnage des articles + statut (brouillon/publié/obsolète). (SCHEMA)
 - [ ] KB3 — Recherche plein-texte + filtres par catégorie/tag. (ROUTINE)
 - [ ] KB4 — Lien article ↔ produit/équipement/type d'intervention (contextuel sur SAV/chantier). (SCHEMA)
 - [ ] KB5 — Procédures/SOP d'installation & dossiers ONEE/82-21 (gabarits seedés). (ROUTINE)
@@ -1109,7 +1109,7 @@ these overlap and SUPERSEDE the domain-list FG items as the module-organized hom
 ### Module Réclamations & litiges (`apps/litiges`) · LITIGE1–LITIGE6
 **But :** objet formel de réclamation/litige rattaché à une Facture/Lead/Chantier/Ticket (motif, montant contesté, statut, résolution) — comble le vide entre SAV (technique) et recouvrement (financier). Survey-recommended (priorité moyenne).
 - [x] LITIGE1 — App `litiges` + modèle `Reclamation` (type, gravité, source FK polymorphe, statut). (ARCH)  [DONE 2026-06-22: NEW app apps/litiges: Reclamation (type/gravité/source polymorphe loose/statut/montant_conteste).]
-- [ ] LITIGE2 — Workflow statut (ouverte→en_traitement→résolue/rejetée) + chatter. (SCHEMA)
+- [x] LITIGE2 — Workflow statut (ouverte→en_traitement→résolue/rejetée) + chatter. (SCHEMA)
 - [ ] LITIGE3 — Litige financier ↔ recouvrement : suspendre les relances d'une facture en litige. (ROUTINE)
 - [ ] LITIGE4 — Litige qualité ↔ QHSE : lien NCR + audit fin de chantier. (ROUTINE)
 - [ ] LITIGE5 — Capture du concurrent/motif sur deal perdu (étend FG242). (SCHEMA)
@@ -1493,3 +1493,13 @@ Tracked here so they aren't lost:
 - 2026-06-21 — Installations (apps/installations): FG293 JalonProjet (phases étude/appro/pose/MES/réception, dates cibles/réelles), FG296 ModeleProjet (+ jalons/BoM-type, service instantiate_modele_projet idempotent), FG298 ReunionChantier (comptes-rendus horodatés). Modèles additifs (migration 0013), 17 tests, FK produit en string-FK.
 - 2026-06-21 — NOUVELLE APP apps/flotte (composant architectural nouveau, ARCH founder-ungated): FLOTTE1 squelette multi-tenant + enregistrement (INSTALLED_APPS, urls), FLOTTE2 modèle Vehicule (immat/marque/énergie/km/valeur/statut), FLOTTE4 EnginRoulant (compteur d'heures nacelle/groupe/chariot). ViewSets company-scoped (company forcée serveur), 2 migrations additives, 9 tests. Aucune dépendance externe/payante, aucun changement d'auth.
 - 2026-06-21 — NOUVELLE APP apps/ged (composant architectural nouveau, ARCH founder-ungated): GED1 squelette DMS multi-tenant + enregistrement, GED2 Cabinet + Folder arborescent (chemin matérialisé, déplacement sûr anti-cycle), GED3 Document + DocumentVersion (file_key MinIO réutilisant records.storage, checksum SHA-256 dédup, version auto). ViewSets company-scoped, 1 migration additive, 22 tests. Aucune dépendance externe/payante, aucun changement d'auth.
+- 2026-06-22 — GED4 (apps/ged): exposé le déplacement (déjà un service interne) en HTTP — actions `deplacer` sur dossiers et documents (`POST /api/django/ged/dossiers/<id>/deplacer/` body `{parent}` et `/documents/<id>/deplacer/` body `{folder}`), destination résolue dans la société de l'appelant (404 cross-tenant, 400 cycle/cross-cabinet), réutilise `services.move_folder` + nouveau `services.move_document`. CRUD dossiers/documents déjà présent (verrouillé par 8 nouveaux tests de scoping). +20 tests. Aucune migration (déplacement = réassignation de FK), aucune dépendance/auth nouvelle.
+- 2026-06-22 — QHSE2 (apps/qhse): ITP — nouveaux modèles `PlanInspectionModele` (gabarit, code/nom/actif) + `PointControleModele` (FK plan, `phase`, `type_releve` choices mesure/visuel/document/essai, `hold_point` bool, `ordre`), ViewSets company-scoped (company posée serveur, point validé même-société que son plan → 400 sinon), routes `plans-inspection/` + `points-controle/`. 1 migration additive (2 CreateModel), 11 tests. Aucune dépendance/auth nouvelle.
+- 2026-06-22 — FG155 (apps/rh): type de contrat (CDI/CDD/ANAPEC/stage/intérim — déjà présent sur DossierEmploye) + dates `contrat_date_debut`/`contrat_date_fin` (DateField nullable, sûr sur table peuplée) + action `GET /api/django/rh/employes/cdd-a-echeance/?within=N` (CDD dont date_fin tombe dans N jours, défaut 30, scopé société). 1 migration additive (2 AddField nullable, pas de défaut/unique → pas de piège), 7 tests. Aucune dépendance/auth nouvelle.
+- 2026-06-22 — PROJ2 (apps/gestion_projet): modèle `ProjetLien` (FK projet, `type_cible` devis/facture/ticket/achat, `cible_id` PK, `libelle` cache) reliant un projet aux documents d'autres apps par STRING-FK (pas de vrai FK cross-app) ; CRUD `projet-liens/` + action `projets/<id>/liens/` enrichie via `selectors.liens_enrichis` (appel fonction-local de `apps.ventes.selectors.devis_card` pour les devis, dégradation au libellé stocké sinon — frontière cross-app respectée, import-linter non violé). 1 migration additive, 8 tests. Aucune dépendance/auth nouvelle.
+- 2026-06-22 — FG118 (apps/compta): modèle `Immobilisation` (registre des immobilisations) — company FK, libellé, catégorie (vehicule/outillage/materiel/mobilier/informatique/autre), coût HT, taux TVA, date d'acquisition, actif ; props montant_tva/cout_ttc ; ViewSet company-scoped + filtres/recherche. 1 migration additive, 8 tests. Pas d'amortissement (hors scope). Aucune dépendance/auth nouvelle.
+- 2026-06-22 — CONTRAT3 (apps/contrats): modèle `PartieContrat` (parties/signataires d'un contrat) — company FK, contrat FK (related_name parties), type_partie (client/prestataire/temoin/garant/autre), nom/fonction/email/telephone/ordre ; CRUD company-scoped (partie validée même-société que son contrat → 400 sinon) ; règle ≥2 via `Contrat.valider_parties()` (finalisation, testée). 1 migration additive, 11 tests. Aucune dépendance/auth nouvelle.
+- 2026-06-22 — KB2 (apps/kb): versionnage des articles — modèle `KbArticleVersion` (snapshot titre/contenu/auteur, numéro incrémenté serveur via select_for_update, jamais count()+1) ; actions `publier` (statut→publié + snapshot) et `nouvelle-version`, snapshot aussi à chaque update ; viewset versions read-only company-scoped. statut (brouillon/publié/obsolète) déjà présent (KB1). 1 migration additive, 8 tests. Aucune dépendance/auth nouvelle.
+- 2026-06-22 — LITIGE2 (apps/litiges): workflow statut `Reclamation` (ouverte→en_traitement→résolue/rejetée, machine d'état serveur, transitions illégales → 400 ; statut read-only hors actions) + chatter `ReclamationActivity` (log auto old→new sur chaque transition + notes manuelles via `noter`/`historique`, auteur+société serveur). Actions prendre-en-charge/resoudre/rejeter/noter/historique. 1 migration additive, 22 tests. Aucune dépendance/auth nouvelle.
+- 2026-06-22 — FG17 (apps/parametres): gestion des modèles d'e-mail (parité templates WhatsApp) — NOUVEAU modèle `EmailTemplate` (company+cle unique, sujet+corps, placeholders {civilite}{nom}{reference}{lien}{n}) + helpers `get_template`/`render` tolérants pour le futur câblage automation ; viewset company-scoped + `effective/` (défauts+overrides) + `bulk/`, écritures auditées. Le câblage de l'action e-mail de l'automation est VOLONTAIREMENT laissé à une lane séparée. 1 migration additive, 17 tests. Aucune dépendance/auth nouvelle.
+- 2026-06-22 — FLOTTE3 (apps/flotte): lien `Vehicule.emplacement_stock_id` (PositiveInteger nullable, PAS de FK cross-app) vers `stock.EmplacementStock` ; validé même-société via `apps.stock.selectors.get_emplacement_scoped` (import fonction-local, jamais les models — import-linter respecté), label résolu via `flotte/selectors.py` (dégrade au #id). 1 migration additive nullable, 6 tests. Aucune dépendance/auth nouvelle.

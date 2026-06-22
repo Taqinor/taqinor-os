@@ -96,6 +96,10 @@ class DossierEmploye(models.Model):
     type_contrat = models.CharField(
         max_length=10, choices=TypeContrat.choices,
         default=TypeContrat.CDI, verbose_name='Type de contrat')
+    contrat_date_debut = models.DateField(
+        null=True, blank=True, verbose_name='Début de contrat')
+    contrat_date_fin = models.DateField(
+        null=True, blank=True, verbose_name='Fin de contrat')
     statut = models.CharField(
         max_length=10, choices=Statut.choices,
         default=Statut.ACTIF, verbose_name='Statut')

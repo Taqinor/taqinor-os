@@ -12,6 +12,8 @@ from rest_framework_simplejwt.tokens import AccessToken
 from authentication.models import Company
 
 from apps.flotte.models import EnginRoulant, Vehicule
+from apps.flotte.selectors import emplacement_stock_label
+from apps.stock.models import EmplacementStock
 
 User = get_user_model()
 
@@ -143,3 +145,87 @@ class FlotteEnginRoulantTests(TestCase):
         immats = rows(resp)
         self.assertEqual([x['nom'] for x in immats], ['Groupe'])
         self.assertEqual(immats[0]['type_engin_display'], 'Groupe électrogène')
+
+
+class FlotteEmplacementLinkTests(TestCase):
+    """FLOTTE3 — lien Vehicule -> stock.EmplacementStock (id via sélecteur)."""
+
+    def setUp(self):
+        self.co_a = make_company('flotte-loc-a', 'Flotte Loc A')
+        self.co_b = make_company('flotte-loc-b', 'Flotte Loc B')
+        self.admin_a = make_user(self.co_a, 'flotte-loc-admin-a', 'admin')
+        self.empl_a = EmplacementStock.objects.create(
+            company=self.co_a, nom='Dépôt principal', is_principal=True)
+        self.empl_b = EmplacementStock.objects.create(
+            company=self.co_b, nom='Dépôt B')
+
+    def test_set_link_same_company_persists(self):
+        api = auth(self.admin_a)
+        resp = api.post('/api/django/flotte/vehicules/', {
+            'immatriculation': 'L-1', 'energie': 'diesel',
+            'emplacement_stock_id': self.empl_a.id,
+        }, format='json')
+        self.assertEqual(resp.status_code, 201, resp.data)
+        veh = Vehicule.objects.get(id=resp.data['id'])
+        self.assertEqual(veh.emplacement_stock_id, self.empl_a.id)
+        self.assertEqual(resp.data['emplacement_stock_id'], self.empl_a.id)
+        # Le libellé est résolu via le sélecteur de stock.
+        self.assertEqual(
+            resp.data['emplacement_stock_label'], 'Dépôt principal')
+
+    def test_set_link_other_company_rejected(self):
+        """Un emplacement d'une AUTRE société est refusé (validation sélecteur)."""
+        api = auth(self.admin_a)
+        resp = api.post('/api/django/flotte/vehicules/', {
+            'immatriculation': 'L-2', 'energie': 'diesel',
+            'emplacement_stock_id': self.empl_b.id,
+        }, format='json')
+        self.assertEqual(resp.status_code, 400, resp.data)
+        self.assertIn('emplacement_stock_id', resp.data)
+        self.assertFalse(
+            Vehicule.objects.filter(immatriculation='L-2').exists())
+
+    def test_set_link_unknown_id_rejected(self):
+        api = auth(self.admin_a)
+        resp = api.post('/api/django/flotte/vehicules/', {
+            'immatriculation': 'L-3', 'energie': 'diesel',
+            'emplacement_stock_id': 999999,
+        }, format='json')
+        self.assertEqual(resp.status_code, 400, resp.data)
+
+    def test_clear_link_via_patch(self):
+        veh = Vehicule.objects.create(
+            company=self.co_a, immatriculation='L-4',
+            emplacement_stock_id=self.empl_a.id)
+        api = auth(self.admin_a)
+        resp = api.patch(
+            f'/api/django/flotte/vehicules/{veh.id}/',
+            {'emplacement_stock_id': None}, format='json')
+        self.assertEqual(resp.status_code, 200, resp.data)
+        veh.refresh_from_db()
+        self.assertIsNone(veh.emplacement_stock_id)
+        self.assertIsNone(resp.data['emplacement_stock_label'])
+
+    def test_create_without_link_is_allowed(self):
+        api = auth(self.admin_a)
+        resp = api.post('/api/django/flotte/vehicules/', {
+            'immatriculation': 'L-5', 'energie': 'diesel',
+        }, format='json')
+        self.assertEqual(resp.status_code, 201, resp.data)
+        self.assertIsNone(resp.data['emplacement_stock_id'])
+        self.assertIsNone(resp.data['emplacement_stock_label'])
+
+    def test_selector_label_helper(self):
+        """Le sélecteur résout le nom, dégrade sur l'id nu, None si vide."""
+        self.assertEqual(
+            emplacement_stock_label(self.co_a, self.empl_a.id),
+            'Dépôt principal')
+        # Emplacement d'une autre société : non résolu -> dégrade sur l'id nu.
+        self.assertEqual(
+            emplacement_stock_label(self.co_a, self.empl_b.id),
+            f'#{self.empl_b.id}')
+        # Id inexistant -> dégrade sur l'id nu.
+        self.assertEqual(
+            emplacement_stock_label(self.co_a, 999999), '#999999')
+        # Pas de lien -> None.
+        self.assertIsNone(emplacement_stock_label(self.co_a, None))

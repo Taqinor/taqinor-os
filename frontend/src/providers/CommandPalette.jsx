@@ -1,8 +1,11 @@
-// L56 — Palette de commandes globale (⌘K / Ctrl+K). Recherche transverse
-// (leads / clients / devis / factures / chantiers / équipements / tickets /
-// produits) via l'endpoint serveur existant `/reporting/search` (réutilisé, on
-// ne duplique aucune logique back). Résultats groupés, navigables au clavier
-// (↑/↓ pour bouger, Entrée pour ouvrir, Échap pour fermer). Saisie débouncée.
+// L56 / I134 — Palette de commandes globale (⌘K / Ctrl+K).
+//   • Recherche transverse (leads / clients / devis / factures / chantiers /
+//     équipements / tickets / produits) via l'endpoint serveur existant
+//     `/reporting/search` (réutilisé — on ne duplique aucune logique back).
+//   • Mode « Actions » : navigation directe (dérivée des raccourcis « g x »),
+//     affiché à vide et filtré à la frappe, avec une puce de raccourci par ligne.
+//   • « Récents » : entités récemment ouvertes via la palette, affichées à vide.
+//   • Navigation clavier (↑/↓ pour bouger, Entrée pour ouvrir, Échap pour fermer).
 //
 // S'ouvre sur DEUX déclencheurs (joint avec la lane Header) :
 //   (a) l'événement window `taqinor:command-palette` (clic du bouton ⌘K du Header)
@@ -14,6 +17,7 @@ import {
   Dialog, DialogContent, DialogTitle, DialogDescription,
 } from '../ui/Dialog'
 import reportingApi from '../api/reportingApi'
+import { filterActions, readRecentEntities, pushRecentEntity } from './commandActions'
 
 // Route d'ouverture par type d'entité (aligné sur router/index.jsx). `produit`
 // est inclus pour le jour où le back le renvoie ; il pointe vers le stock.
@@ -28,13 +32,16 @@ const ROUTE = {
   produit: () => '/stock',
 }
 
-// Aplati les groupes en une liste indexable pour la navigation clavier.
-function flatten(groups) {
-  const flat = []
-  for (const g of groups) {
-    for (const r of g.results || []) flat.push({ ...r, _type: g.type })
-  }
-  return flat
+// Libellé de groupe par type d'entité — sert d'étiquette discrète aux récents.
+const TYPE_LABEL = {
+  lead: 'Lead',
+  client: 'Client',
+  devis: 'Devis',
+  facture: 'Facture',
+  chantier: 'Chantier',
+  equipement: 'Équipement',
+  ticket: 'SAV',
+  produit: 'Produit',
 }
 
 export function CommandPalette() {
@@ -48,7 +55,49 @@ export function CommandPalette() {
   const listRef = useRef(null)
   const navigate = useNavigate()
 
-  const flat = useMemo(() => flatten(groups), [groups])
+  const term = q.trim()
+  const actions = useMemo(() => filterActions(term), [term])
+  // Récents (entités ouvertes via la palette) relus à chaque ouverture — DÉRIVÉS
+  // via useMemo, donc aucun setState synchrone dans un effet (règle lint).
+  const recent = useMemo(() => (open ? readRecentEntities() : []), [open])
+
+  // Sections de rendu + liste APLATIE (indexable clavier) construites en une
+  // passe, dans l'ordre d'affichage : Actions → Récents (à vide) → Résultats.
+  const { sections, flat } = useMemo(() => {
+    const secs = []
+    const f = []
+    // « Actions » — toujours présentes si au moins une correspond à la requête.
+    if (actions.length) {
+      const rows = actions.map((a) => {
+        const index = f.length
+        f.push({ kind: 'action', action: a })
+        return { ...a, index }
+      })
+      secs.push({ key: 'actions', title: 'Actions', kind: 'action', rows })
+    }
+    if (term.length < 2) {
+      // « Récents » (entités) à vide.
+      if (recent.length) {
+        const rows = recent.map((e, i) => {
+          const index = f.length
+          f.push({ kind: 'recent', entity: e })
+          return { ...e, _i: i, index }
+        })
+        secs.push({ key: 'recent', title: 'Récents', kind: 'recent', rows })
+      }
+    } else {
+      // Résultats serveur groupés par entité.
+      for (const g of groups) {
+        const rows = (g.results || []).map((r) => {
+          const index = f.length
+          f.push({ kind: 'result', type: g.type, item: r })
+          return { ...r, index }
+        })
+        if (rows.length) secs.push({ key: `g-${g.type}`, title: g.label, kind: 'result', type: g.type, rows })
+      }
+    }
+    return { sections: secs, flat: f }
+  }, [actions, recent, groups, term])
 
   const close = useCallback(() => {
     setOpen(false)
@@ -77,13 +126,11 @@ export function CommandPalette() {
     }
   }, [])
 
-  // Focus l'input à l'ouverture.
+  // À l'ouverture : focus l'input (les récents sont dérivés via useMemo).
   useEffect(() => {
-    if (open) {
-      const t = setTimeout(() => inputRef.current?.focus(), 30)
-      return () => clearTimeout(t)
-    }
-    return undefined
+    if (!open) return undefined
+    const t = setTimeout(() => inputRef.current?.focus(), 30)
+    return () => clearTimeout(t)
   }, [open])
 
   // ── Recherche débouncée (~250 ms) ───────────────────────────────────────────
@@ -91,7 +138,6 @@ export function CommandPalette() {
   // setState synchrone dans le corps de l'effet (motif GlobalSearch).
   useEffect(() => {
     if (!open) return undefined
-    const term = q.trim()
     const t = setTimeout(() => {
       if (term.length < 2) {
         setGroups([]); setLoading(false); setError(false); setActive(0)
@@ -104,11 +150,26 @@ export function CommandPalette() {
         .finally(() => { setLoading(false); setActive(0) })
     }, term.length < 2 ? 0 : 250)
     return () => clearTimeout(t)
-  }, [q, open])
+  }, [q, open]) // eslint-disable-line react-hooks/exhaustive-deps
 
-  const go = useCallback((item) => {
-    const make = ROUTE[item?._type]
-    if (make) navigate(make(item.id))
+  // L'index actif peut dépasser la liste après un changement de résultats : on le
+  // borne au point d'usage (rendu + Entrée) plutôt que via un setState en effet.
+  const activeClamped = flat.length ? Math.min(active, flat.length - 1) : 0
+
+  // Ouvre une cible quelconque de la liste aplatie.
+  const activate = useCallback((entry) => {
+    if (!entry) return
+    if (entry.kind === 'action') {
+      navigate(entry.action.to)
+    } else if (entry.kind === 'recent') {
+      const make = ROUTE[entry.entity.type]
+      if (make) navigate(make(entry.entity.id))
+    } else if (entry.kind === 'result') {
+      const make = ROUTE[entry.type]
+      // Mémorise l'entité ouverte pour la section « Récents ».
+      pushRecentEntity({ type: entry.type, id: entry.item.id, label: entry.item.label })
+      if (make) navigate(make(entry.item.id))
+    }
     close()
   }, [navigate, close])
 
@@ -122,20 +183,19 @@ export function CommandPalette() {
       setActive((i) => (flat.length ? (i - 1 + flat.length) % flat.length : 0))
     } else if (e.key === 'Enter') {
       e.preventDefault()
-      if (flat[active]) go(flat[active])
+      if (flat[activeClamped]) activate(flat[activeClamped])
     }
     // Échap est géré par le Dialog (onOpenChange) → close().
-  }, [flat, active, go])
+  }, [flat, activeClamped, activate])
 
   // Garde l'élément actif visible.
   useEffect(() => {
     if (!open || !listRef.current) return
     const el = listRef.current.querySelector('[data-active="true"]')
     el?.scrollIntoView({ block: 'nearest' })
-  }, [active, open])
+  }, [activeClamped, open])
 
-  const term = q.trim()
-  let idx = -1
+  const showSearchStates = term.length >= 2
 
   return (
     <Dialog open={open} onOpenChange={(v) => (v ? setOpen(true) : close())}>
@@ -149,7 +209,7 @@ export function CommandPalette() {
             visuellement (la palette se présente comme une barre de recherche). */}
         <DialogTitle className="sr-only">Recherche rapide</DialogTitle>
         <DialogDescription className="sr-only">
-          Recherchez leads, clients, devis, factures, chantiers, équipements et tickets.
+          Recherchez leads, clients, devis, factures, chantiers, équipements et tickets, ou lancez une action.
         </DialogDescription>
 
         <div className="cmdk-input-row">
@@ -158,7 +218,7 @@ export function CommandPalette() {
             ref={inputRef}
             type="text"
             className="cmdk-input"
-            placeholder="Rechercher leads, clients, devis, factures, chantiers…"
+            placeholder="Rechercher ou lancer une action…"
             value={q}
             onChange={(e) => setQ(e.target.value)}
             aria-label="Recherche rapide"
@@ -167,32 +227,61 @@ export function CommandPalette() {
         </div>
 
         <div className="cmdk-list" ref={listRef}>
-          {term.length < 2 && (
-            <div className="cmdk-state">Tapez au moins 2 caractères pour rechercher.</div>
-          )}
-          {term.length >= 2 && loading && (
+          {/* États de recherche (seulement en mode recherche). */}
+          {showSearchStates && loading && (
             <div className="cmdk-state">Recherche…</div>
           )}
-          {term.length >= 2 && !loading && error && (
+          {showSearchStates && !loading && error && (
             <div className="cmdk-state">La recherche a échoué. Réessayez.</div>
           )}
-          {term.length >= 2 && !loading && !error && flat.length === 0 && (
+          {showSearchStates && !loading && !error && flat.length === 0 && (
             <div className="cmdk-state">Aucun résultat pour « {term} ».</div>
           )}
-          {!loading && !error && flat.length > 0 && groups.map((g) => (
-            <div key={g.type} className="cmdk-group">
-              <div className="cmdk-group-title">{g.label}</div>
-              {(g.results || []).map((r) => {
-                idx += 1
-                const i = idx
+
+          {sections.map((sec) => (
+            <div key={sec.key} className="cmdk-group">
+              <div className="cmdk-group-title">{sec.title}</div>
+              {sec.rows.map((r) => {
+                const i = r.index
+                if (sec.kind === 'action') {
+                  return (
+                    <button
+                      key={`action-${r.id}`}
+                      type="button"
+                      className="cmdk-item"
+                      data-active={i === activeClamped ? 'true' : 'false'}
+                      onMouseMove={() => setActive(i)}
+                      onClick={() => activate({ kind: 'action', action: r })}
+                    >
+                      <span className="cmdk-item-label">{r.label}</span>
+                      {r.keys && <span className="cmdk-kbd cmdk-item-kbd">{r.keys}</span>}
+                    </button>
+                  )
+                }
+                if (sec.kind === 'recent') {
+                  return (
+                    <button
+                      key={`recent-${r.type}-${r.id}`}
+                      type="button"
+                      className="cmdk-item"
+                      data-active={i === activeClamped ? 'true' : 'false'}
+                      onMouseMove={() => setActive(i)}
+                      onClick={() => activate({ kind: 'recent', entity: r })}
+                    >
+                      <span className="cmdk-item-label">{r.label || TYPE_LABEL[r.type] || r.type}</span>
+                      {TYPE_LABEL[r.type] && <span className="cmdk-item-sub">{TYPE_LABEL[r.type]}</span>}
+                    </button>
+                  )
+                }
+                // résultat de recherche
                 return (
                   <button
-                    key={`${g.type}-${r.id}`}
+                    key={`${sec.type}-${r.id}`}
                     type="button"
                     className="cmdk-item"
-                    data-active={i === active ? 'true' : 'false'}
+                    data-active={i === activeClamped ? 'true' : 'false'}
                     onMouseMove={() => setActive(i)}
-                    onClick={() => go({ ...r, _type: g.type })}
+                    onClick={() => activate({ kind: 'result', type: sec.type, item: r })}
                   >
                     <span className="cmdk-item-label">{r.label}</span>
                     {r.sublabel && <span className="cmdk-item-sub">{r.sublabel}</span>}

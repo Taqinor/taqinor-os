@@ -10,7 +10,7 @@ from rest_framework import serializers
 
 from .models import (
     CompteComptable, CompteTresorerie, EcritureComptable, ExerciceComptable,
-    Journal, LigneEcriture, PeriodeComptable, PlanComptable,
+    Immobilisation, Journal, LigneEcriture, PeriodeComptable, PlanComptable,
 )
 
 
@@ -210,3 +210,39 @@ class PeriodeComptableSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError(
                 "La date de fin doit être postérieure à la date de début.")
         return attrs
+
+
+class ImmobilisationSerializer(serializers.ModelSerializer):
+    """Sérialiseur du registre des immobilisations (FG118).
+
+    ``company`` posée côté serveur (jamais du corps). Expose la TVA et le coût
+    TTC dérivés en lecture seule.
+    """
+    categorie_display = serializers.CharField(
+        source='get_categorie_display', read_only=True)
+    montant_tva = serializers.DecimalField(
+        max_digits=14, decimal_places=2, read_only=True)
+    cout_ttc = serializers.DecimalField(
+        max_digits=14, decimal_places=2, read_only=True)
+
+    class Meta:
+        model = Immobilisation
+        fields = [
+            'id', 'reference', 'libelle', 'categorie', 'categorie_display',
+            'cout', 'taux_tva', 'montant_tva', 'cout_ttc', 'date_acquisition',
+            'actif', 'date_creation',
+        ]
+        read_only_fields = [
+            'montant_tva', 'cout_ttc', 'date_creation']
+
+    def validate_cout(self, value):
+        if value is not None and value < 0:
+            raise serializers.ValidationError(
+                "Le coût d'acquisition doit être positif.")
+        return value
+
+    def validate_taux_tva(self, value):
+        if value is not None and value < 0:
+            raise serializers.ValidationError(
+                "Le taux de TVA doit être positif.")
+        return value
