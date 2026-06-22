@@ -1,6 +1,6 @@
 from django.contrib import admin
 
-from .models import Departement, DossierEmploye
+from .models import Departement, DossierEmploye, Remuneration
 
 
 @admin.register(Departement)
@@ -8,6 +8,14 @@ class DepartementAdmin(admin.ModelAdmin):
     list_display = ('nom', 'code', 'company', 'actif')
     list_filter = ('actif',)
     search_fields = ('nom', 'code')
+
+
+@admin.register(Remuneration)
+class RemunerationAdmin(admin.ModelAdmin):
+    list_display = ('employe', 'montant', 'devise', 'periodicite',
+                    'date_effet', 'company')
+    list_filter = ('periodicite', 'devise')
+    search_fields = ('employe__matricule', 'employe__nom', 'employe__prenom')
 
 
 @admin.register(DossierEmploye)

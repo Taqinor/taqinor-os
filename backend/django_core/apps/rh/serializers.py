@@ -6,7 +6,7 @@ appartenant à la société de l'utilisateur.
 """
 from rest_framework import serializers
 
-from .models import Departement, DossierEmploye
+from .models import Departement, DossierEmploye, Remuneration
 
 
 def _meme_societe(serializer, value, label):
@@ -48,3 +48,21 @@ class DossierEmployeSerializer(serializers.ModelSerializer):
 
     def validate_departement(self, value):
         return _meme_societe(self, value, 'Département')
+
+
+class RemunerationSerializer(serializers.ModelSerializer):
+    """Rémunération de base (FG157). ``employe`` doit appartenir à la société de
+    l'utilisateur ; ``company`` est posée côté serveur."""
+    periodicite_display = serializers.CharField(
+        source='get_periodicite_display', read_only=True)
+
+    class Meta:
+        model = Remuneration
+        fields = [
+            'id', 'employe', 'montant', 'devise', 'periodicite',
+            'periodicite_display', 'date_effet', 'motif', 'date_creation',
+        ]
+        read_only_fields = ['date_creation']
+
+    def validate_employe(self, value):
+        return _meme_societe(self, value, 'Employé')
