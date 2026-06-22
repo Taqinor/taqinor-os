@@ -819,3 +819,97 @@ class DotationAmortissement(models.Model):
 
     def __str__(self):
         return f"Dotation {self.annee} — {self.montant}"
+
+
+# ── FG120 — Cession / mise au rebut d'immobilisation ───────────────────────
+
+class CessionImmobilisation(models.Model):
+    """Cession (vente) ou mise au rebut d'une ``Immobilisation`` (FG120).
+
+    Constate la SORTIE d'un actif immobilisé du patrimoine : soit une vente (un
+    ``prix_cession`` est encaissé), soit une mise au rebut (``prix_cession`` =
+    0). La valeur nette comptable (VNC = coût − amortissements cumulés à la date
+    de cession) est figée sur la cession, ainsi que le résultat de cession
+    (``resultat_cession`` = prix de cession − VNC) : positif → plus-value,
+    négatif → moins-value.
+
+    Le posting (``services.poster_cession``) passe l'écriture standard de sortie
+    (reprise des amortissements + sortie de l'immobilisation + constatation du
+    résultat) au grand livre, RESPECTE le verrou de période et marque
+    l'immobilisation inactive. Strictement additif ; ``company`` posée côté
+    serveur, jamais lue du corps de requête.
+    """
+    class Type(models.TextChoices):
+        VENTE = 'vente', 'Vente'
+        REBUT = 'rebut', 'Mise au rebut'
+
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='cessions_immobilisation',
+        verbose_name='Société',
+    )
+    immobilisation = models.ForeignKey(
+        Immobilisation,
+        on_delete=models.PROTECT,
+        related_name='cessions',
+        verbose_name='Immobilisation',
+    )
+    type_cession = models.CharField(
+        max_length=10, choices=Type.choices, default=Type.VENTE,
+        verbose_name='Type de cession')
+    date_cession = models.DateField(verbose_name='Date de cession')
+    prix_cession = models.DecimalField(
+        max_digits=14, decimal_places=2, default=Decimal('0'),
+        verbose_name='Prix de cession (HT)')
+    # Valeur nette comptable figée à la date de cession (coût − cumul amort.).
+    valeur_nette_comptable = models.DecimalField(
+        max_digits=14, decimal_places=2, default=Decimal('0'),
+        verbose_name='Valeur nette comptable')
+    # Cumul des amortissements à la date de cession (figé).
+    amortissements_cumules = models.DecimalField(
+        max_digits=14, decimal_places=2, default=Decimal('0'),
+        verbose_name='Amortissements cumulés')
+    # Résultat de cession SIGNÉ = prix de cession − VNC. > 0 plus-value,
+    # < 0 moins-value (mise au rebut → toujours une moins-value = −VNC).
+    resultat_cession = models.DecimalField(
+        max_digits=14, decimal_places=2, default=Decimal('0'),
+        verbose_name='Résultat de cession')
+    posted = models.BooleanField(
+        default=False, verbose_name='Postée au grand livre')
+    ecriture = models.ForeignKey(
+        EcritureComptable,
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='cessions_immobilisation',
+        verbose_name='Écriture comptable',
+    )
+    date_creation = models.DateTimeField(
+        auto_now_add=True, verbose_name='Créé le')
+
+    class Meta:
+        verbose_name = "Cession d'immobilisation"
+        verbose_name_plural = "Cessions d'immobilisation"
+        ordering = ['-date_cession', '-id']
+
+    def __str__(self):
+        return (f'{self.get_type_cession_display()} — '
+                f'{self.immobilisation.libelle} ({self.date_cession})')
+
+    def clean(self):
+        super().clean()
+        if self.prix_cession is not None and self.prix_cession < 0:
+            raise ValidationError(
+                "Le prix de cession doit être positif.")
+
+    @property
+    def plus_value(self):
+        """Plus-value de cession (résultat positif, sinon 0)."""
+        resultat = self.resultat_cession or Decimal('0')
+        return resultat if resultat > 0 else Decimal('0')
+
+    @property
+    def moins_value(self):
+        """Moins-value de cession (valeur absolue du résultat négatif, sinon 0)."""
+        resultat = self.resultat_cession or Decimal('0')
+        return -resultat if resultat < 0 else Decimal('0')

@@ -28,9 +28,9 @@ from django.db import transaction
 from django.utils import timezone
 
 from .models import (
-    CompteComptable, DotationAmortissement, EcritureComptable,
-    ExerciceComptable, Immobilisation, Journal, LigneEcriture,
-    PeriodeComptable, PlanAmortissement, PlanComptable,
+    CessionImmobilisation, CompteComptable, DotationAmortissement,
+    EcritureComptable, ExerciceComptable, Immobilisation, Journal,
+    LigneEcriture, PeriodeComptable, PlanAmortissement, PlanComptable,
 )
 
 
@@ -851,4 +851,215 @@ def poster_dotation(dotation, *, user=None):
     dotation.posted = True
     dotation.ecriture = ecriture
     dotation.save(update_fields=['posted', 'ecriture'])
+    return ecriture
+
+
+# ── FG120 — Cession / mise au rebut d'immobilisation ───────────────────────
+
+# Compte d'immobilisation brute (classe 2) par catégorie : on solde le coût
+# d'acquisition par le crédit de ce compte. CGNC : 2340 matériel de transport,
+# 2351 matériel et outillage, 2355 mobilier/matériel de bureau, 2356 matériel
+# informatique. Défaut prudent : 2351 (matériel et outillage).
+_COMPTE_IMMO_PAR_CATEGORIE = {
+    Immobilisation.Categorie.VEHICULE: '2340',
+    Immobilisation.Categorie.OUTILLAGE: '2351',
+    Immobilisation.Categorie.MATERIEL: '2351',
+    Immobilisation.Categorie.MOBILIER: '2355',
+    Immobilisation.Categorie.INFORMATIQUE: '2355',
+    Immobilisation.Categorie.AUTRE: '2351',
+}
+
+# Comptes de résultat de cession (CGNC) :
+#  * 6513 — VNA des immobilisations corporelles cédées (charge : la VNC sortie).
+#  * 7513 — PV / produits de cession des immobilisations corporelles (produit).
+_COMPTE_VNA_CESSION = '6513'  # classe 6 — charge (VNC des biens cédés).
+_COMPTE_PRODUIT_CESSION = '7513'  # classe 7 — produit (prix de cession).
+
+
+def _amortissements_cumules(immobilisation, date_cession):
+    """Cumul des amortissements de l'immobilisation à la date de cession.
+
+    Source de vérité : le calendrier d'amortissement (FG119). On somme les
+    dotations dont la ``date_dotation`` est antérieure ou égale à la date de
+    cession (un plan amorti jusqu'à la cession). En l'absence de plan, le cumul
+    est nul (l'actif n'a jamais été amorti → VNC = coût). Lecture seule.
+    """
+    plan = getattr(immobilisation, 'plan_amortissement', None)
+    if plan is None:
+        return Decimal('0')
+    cumul = Decimal('0')
+    for dotation in plan.dotations.filter(date_dotation__lte=date_cession):
+        cumul += Decimal(dotation.montant)
+    return _arrondi(cumul)
+
+
+def calculer_cession(immobilisation, date_cession, prix_cession,
+                     *, type_cession=None):
+    """Calcule (sans persister) VNC, cumul d'amortissement et résultat de cession.
+
+    * cumul amort. = Σ dotations postées/calculées jusqu'à la date de cession.
+    * VNC = coût d'acquisition − cumul des amortissements (jamais négative).
+    * résultat de cession SIGNÉ = prix de cession − VNC. > 0 plus-value,
+      < 0 moins-value. Une mise au rebut (prix 0) donne toujours −VNC.
+
+    Renvoie un dict ``{amortissements_cumules, valeur_nette_comptable,
+    resultat_cession}``. Pur calcul, lecture seule.
+    """
+    cout = Decimal(immobilisation.cout or 0)
+    prix = Decimal(prix_cession or 0)
+    cumul = _amortissements_cumules(immobilisation, date_cession)
+    # Le cumul ne peut excéder le coût (un actif est amorti au plus à 100 %).
+    cumul = min(cumul, cout)
+    vnc = _arrondi(cout - cumul)
+    if vnc < 0:
+        vnc = Decimal('0.00')
+    resultat = _arrondi(prix - vnc)
+    return {
+        'amortissements_cumules': cumul,
+        'valeur_nette_comptable': vnc,
+        'resultat_cession': resultat,
+    }
+
+
+@transaction.atomic
+def enregistrer_cession(immobilisation, *, date_cession, prix_cession=None,
+                        type_cession=None, user=None):
+    """Crée la ``CessionImmobilisation`` (calcul figé) — SANS poster l'écriture.
+
+    Fige la VNC, le cumul d'amortissement et le résultat de cession à la date de
+    cession. ``type_cession`` est déduit du prix s'il n'est pas fourni (prix 0 →
+    rebut, sinon vente). ``company`` posée côté serveur. Renvoie la cession (non
+    postée). Le posting passe par ``poster_cession``.
+    """
+    company = immobilisation.company
+    prix = Decimal(prix_cession or 0)
+    if type_cession is None:
+        type_cession = (
+            CessionImmobilisation.Type.REBUT if prix == 0
+            else CessionImmobilisation.Type.VENTE)
+    if type_cession == CessionImmobilisation.Type.REBUT:
+        prix = Decimal('0')
+    calc = calculer_cession(immobilisation, date_cession, prix,
+                            type_cession=type_cession)
+    cession = CessionImmobilisation(
+        company=company,
+        immobilisation=immobilisation,
+        type_cession=type_cession,
+        date_cession=date_cession,
+        prix_cession=prix,
+        amortissements_cumules=calc['amortissements_cumules'],
+        valeur_nette_comptable=calc['valeur_nette_comptable'],
+        resultat_cession=calc['resultat_cession'],
+    )
+    cession.full_clean(exclude=['ecriture'])
+    cession.save()
+    return cession
+
+
+def _compte_immo_brut(company, immobilisation):
+    """Compte d'immobilisation brute (classe 2) selon la catégorie de l'actif."""
+    numero = _COMPTE_IMMO_PAR_CATEGORIE.get(immobilisation.categorie, '2351')
+    return _assurer_compte(company, numero)
+
+
+@transaction.atomic
+def poster_cession(cession, *, user=None):
+    """Poste la cession au grand livre : sortie de l'actif + résultat de cession.
+
+    Écriture ÉQUILIBRÉE (journal OD), datée de la date de cession :
+
+    * REPRISE DES AMORTISSEMENTS — débit du compte d'amortissement (classe 28)
+      pour le cumul des amortissements (s'il est non nul) ;
+    * SORTIE DE L'IMMOBILISATION — crédit du compte d'immobilisation brute
+      (classe 2) pour le coût d'acquisition ;
+    * ENCAISSEMENT (vente) — débit d'un compte de tiers/divers pour le prix de
+      cession (omis pour une mise au rebut, prix 0) ;
+    * CONSTATATION DU RÉSULTAT — l'écart soldant l'écriture : moins-value au
+      débit du 6513 (VNA des biens cédés) ou plus-value au crédit du 7513
+      (produit de cession).
+
+    Idempotent : une cession déjà postée renvoie son écriture. RESPECTE LE
+    VERROU DE PÉRIODE (FG115) : si la date de cession tombe dans une
+    ``PeriodeComptable`` verrouillée, lève ``ValidationError`` (jamais
+    contourné, même garde-fou que ``poster_dotation``). Marque l'immobilisation
+    INACTIVE. Renvoie l'écriture.
+    """
+    company = cession.company
+    immobilisation = cession.immobilisation
+    if cession.posted and cession.ecriture_id:
+        return cession.ecriture
+    # Garde-fou du verrou de période (FG115) — refus explicite, jamais contourné.
+    if PeriodeComptable.date_verrouillee(company.id, cession.date_cession):
+        raise ValidationError(
+            "Période comptable clôturée : impossible de poster la cession de "
+            f"l'immobilisation au {cession.date_cession}.")
+    cout = Decimal(immobilisation.cout or 0)
+    cumul = Decimal(cession.amortissements_cumules or 0)
+    prix = Decimal(cession.prix_cession or 0)
+    resultat = Decimal(cession.resultat_cession or 0)
+
+    compte_immo = _compte_immo_brut(company, immobilisation)
+    # Compte d'amortissement : celui du plan (classe 28) sinon selon catégorie.
+    plan = getattr(immobilisation, 'plan_amortissement', None)
+    if plan is not None:
+        compte_amort = _compte_amortissement(company, plan)
+    else:
+        compte_amort = _assurer_compte(
+            company,
+            _COMPTE_AMORT_PAR_CATEGORIE.get(immobilisation.categorie, '2833'))
+    # Contrepartie de l'encaissement (vente) : compte de tiers « débiteurs
+    # divers » (3481). Pour une vente avec encaissement immédiat, la trésorerie
+    # est constatée par le règlement (FG109) — ici on porte la créance de cession.
+    compte_creance = _assurer_compte(company, '3481')
+
+    libelle = f"Cession {immobilisation.libelle}"
+    lignes = []
+    # Reprise des amortissements (débit classe 28) — seulement si non nul.
+    if cumul > 0:
+        lignes.append({
+            'compte': compte_amort, 'debit': cumul, 'credit': Decimal('0'),
+            'libelle': f'Reprise amortissements — {immobilisation.libelle}'})
+    # Encaissement / créance de cession (débit) — seulement pour une vente.
+    if prix > 0:
+        lignes.append({
+            'compte': compte_creance, 'debit': prix, 'credit': Decimal('0'),
+            'libelle': f'Créance de cession — {immobilisation.libelle}'})
+    # Constatation du résultat de cession (la ligne qui solde l'écriture).
+    if resultat < 0:
+        # Moins-value : VNA des immobilisations cédées au débit (charge).
+        compte_vna = _assurer_compte(company, _COMPTE_VNA_CESSION)
+        lignes.append({
+            'compte': compte_vna, 'debit': -resultat, 'credit': Decimal('0'),
+            'libelle': f'Moins-value de cession — {immobilisation.libelle}'})
+    elif resultat > 0:
+        # Plus-value : produit de cession au crédit.
+        compte_pv = _assurer_compte(company, _COMPTE_PRODUIT_CESSION)
+        lignes.append({
+            'compte': compte_pv, 'debit': Decimal('0'), 'credit': resultat,
+            'libelle': f'Plus-value de cession — {immobilisation.libelle}'})
+    # Sortie de l'immobilisation (crédit classe 2) pour le coût d'acquisition.
+    lignes.append({
+        'compte': compte_immo, 'debit': Decimal('0'), 'credit': cout,
+        'libelle': f"Sortie de l'immobilisation — {immobilisation.libelle}"})
+
+    if cout <= 0 and not lignes:
+        raise ValidationError(
+            "Impossible de poster la cession d'une immobilisation de coût nul.")
+    journal = _journal(company, Journal.Type.OPERATIONS_DIVERSES)
+    if journal is None:
+        seed_journaux(company)
+        journal = _journal(company, Journal.Type.OPERATIONS_DIVERSES)
+    ecriture = creer_ecriture(
+        company, journal, cession.date_cession, libelle, lignes,
+        reference=f'CESSION-{immobilisation.id}',
+        source_type='cession_immobilisation', source_id=cession.id,
+        created_by=user, statut=EcritureComptable.Statut.VALIDEE,
+    )
+    cession.posted = True
+    cession.ecriture = ecriture
+    cession.save(update_fields=['posted', 'ecriture'])
+    # Sortie du patrimoine : l'immobilisation cédée devient inactive.
+    if immobilisation.actif:
+        immobilisation.actif = False
+        immobilisation.save(update_fields=['actif'])
     return ecriture
