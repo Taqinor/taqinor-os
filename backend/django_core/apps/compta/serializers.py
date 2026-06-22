@@ -9,10 +9,11 @@ from decimal import Decimal
 from rest_framework import serializers
 
 from .models import (
-    CessionImmobilisation, CompteComptable, CompteTresorerie,
-    DotationAmortissement, EcritureComptable, ExerciceComptable,
-    Immobilisation, Journal, LigneEcriture, LigneReleve, PeriodeComptable,
-    PlanAmortissement, PlanComptable, RapprochementBancaire,
+    Caisse, CessionImmobilisation, ClotureCaisse, CompteComptable,
+    CompteTresorerie, DotationAmortissement, EcritureComptable,
+    ExerciceComptable, Immobilisation, Journal, LigneEcriture, LigneReleve,
+    MouvementCaisse, PeriodeComptable, PlanAmortissement, PlanComptable,
+    RapprochementBancaire,
 )
 
 
@@ -397,3 +398,85 @@ class RapprochementBancaireSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError(
                 "La date de fin doit être postérieure à la date de début.")
         return attrs
+
+
+# ── FG124 — Caisse / petty cash (journal d'espèces) ────────────────────────
+
+class CaisseSerializer(serializers.ModelSerializer):
+    """Caisse d'espèces (petty cash) — FG124.
+
+    ``company`` posée côté serveur. ``compte_tresorerie`` validé comme
+    appartenant à la société ET de type caisse. Expose le solde courant
+    théorique dérivé en lecture seule.
+    """
+    compte_libelle = serializers.CharField(
+        source='compte_tresorerie.libelle', read_only=True)
+    solde_courant = serializers.SerializerMethodField()
+
+    class Meta:
+        model = Caisse
+        fields = [
+            'id', 'compte_tresorerie', 'compte_libelle', 'libelle',
+            'responsable', 'solde_initial', 'solde_courant', 'actif',
+            'date_creation',
+        ]
+        read_only_fields = ['solde_courant', 'date_creation']
+
+    def get_solde_courant(self, obj):
+        from . import selectors
+        return selectors.solde_caisse_a(obj)
+
+    def validate_compte_tresorerie(self, value):
+        value = _meme_societe(self, value, 'Compte de trésorerie')
+        if value is not None and value.type_compte != (
+                CompteTresorerie.Type.CAISSE):
+            raise serializers.ValidationError(
+                "Le compte de trésorerie doit être de type « caisse ».")
+        return value
+
+
+class MouvementCaisseSerializer(serializers.ModelSerializer):
+    """Mouvement d'une caisse : entrée/sortie d'espèces (FG124).
+
+    ``company``/``caisse`` posés côté serveur (via l'action de la caisse). Le
+    montant signé est exposé en lecture seule ; ``posted``/``ecriture`` aussi.
+    """
+    sens_display = serializers.CharField(
+        source='get_sens_display', read_only=True)
+    montant_signe = serializers.DecimalField(
+        max_digits=14, decimal_places=2, read_only=True)
+
+    class Meta:
+        model = MouvementCaisse
+        fields = [
+            'id', 'caisse', 'sens', 'sens_display', 'date_mouvement',
+            'montant', 'montant_signe', 'motif', 'justificatif', 'piece',
+            'compte_contrepartie', 'posted', 'ecriture', 'date_creation',
+        ]
+        read_only_fields = [
+            'caisse', 'montant_signe', 'posted', 'ecriture', 'date_creation']
+
+    def validate_montant(self, value):
+        if value is not None and value <= 0:
+            raise serializers.ValidationError(
+                "Le montant doit être strictement positif.")
+        return value
+
+    def validate_compte_contrepartie(self, value):
+        return _meme_societe(self, value, 'Compte de contrepartie')
+
+
+class ClotureCaisseSerializer(serializers.ModelSerializer):
+    """Clôture de caisse : comptage physique à une date (FG124) — lecture seule.
+
+    Les clôtures sont CALCULÉES par le service (action ``cloturer`` de la
+    caisse) : le solde théorique et l'écart sont figés côté serveur, jamais
+    saisis. Ce sérialiseur ne sert qu'à les restituer.
+    """
+    class Meta:
+        model = ClotureCaisse
+        fields = [
+            'id', 'caisse', 'date_cloture', 'solde_theorique', 'solde_compte',
+            'ecart', 'commentaire', 'cloturee_par', 'date_creation',
+        ]
+        read_only_fields = fields

@@ -8,7 +8,9 @@ from decimal import Decimal
 
 from django.db.models import Sum
 
-from .models import CompteComptable, CompteTresorerie, LigneEcriture
+from .models import (
+    Caisse, CompteComptable, CompteTresorerie, LigneEcriture, MouvementCaisse,
+)
 
 
 def _lignes_qs(company, *, date_debut=None, date_fin=None, validees_seulement=False):
@@ -485,3 +487,90 @@ def resume_rapprochement(rapprochement):
         'statut': rapprochement.statut,
         'rapproche': rapproche,
     }
+
+
+# ── FG124 — Caisse / petty cash (journal d'espèces) ────────────────────────
+
+def solde_caisse_a(caisse, *, date_fin=None):
+    """Solde théorique d'une caisse (solde initial + entrées − sorties).
+
+    = ``solde_initial`` + Σ(entrées) − Σ(sorties) jusqu'à ``date_fin`` (incluse)
+    si fournie. Lecture seule, identique au calcul du service ``solde_caisse``.
+    """
+    qs = MouvementCaisse.objects.filter(caisse=caisse)
+    if date_fin is not None:
+        qs = qs.filter(date_mouvement__lte=date_fin)
+    entrees = qs.filter(sens=MouvementCaisse.Sens.ENTREE).aggregate(
+        s=Sum('montant'))['s'] or Decimal('0')
+    sorties = qs.filter(sens=MouvementCaisse.Sens.SORTIE).aggregate(
+        s=Sum('montant'))['s'] or Decimal('0')
+    return (caisse.solde_initial or Decimal('0')) + entrees - sorties
+
+
+def journal_caisse(caisse, *, date_debut=None, date_fin=None):
+    """Journal d'espèces d'une caisse : mouvements + solde courant cumulé (FG124).
+
+    Renvoie une liste de dicts ordonnée par date puis id, chaque entrée portant
+    ``{'id', 'date', 'sens', 'montant', 'montant_signe', 'motif',
+    'justificatif', 'piece', 'posted', 'solde_courant'}`` où ``solde_courant``
+    est le solde cumulé APRÈS le mouvement (en partant du solde initial). Lecture
+    seule, scopée à la caisse.
+    """
+    qs = MouvementCaisse.objects.filter(caisse=caisse).order_by(
+        'date_mouvement', 'id')
+    if date_debut is not None:
+        qs = qs.filter(date_mouvement__gte=date_debut)
+    if date_fin is not None:
+        qs = qs.filter(date_mouvement__lte=date_fin)
+    solde = caisse.solde_initial or Decimal('0')
+    lignes = []
+    for mvt in qs:
+        solde += mvt.montant_signe
+        lignes.append({
+            'id': mvt.id,
+            'date': mvt.date_mouvement,
+            'sens': mvt.sens,
+            'montant': mvt.montant,
+            'montant_signe': mvt.montant_signe,
+            'motif': mvt.motif,
+            'justificatif': mvt.justificatif,
+            'piece': mvt.piece,
+            'posted': mvt.posted,
+            'solde_courant': solde,
+        })
+    return lignes
+
+
+def resume_caisse(caisse, *, date_fin=None):
+    """Synthèse d'une caisse : solde initial, entrées, sorties, solde courant.
+
+    Renvoie ``{'solde_initial', 'total_entrees', 'total_sorties',
+    'nb_mouvements', 'solde_courant', 'derniere_cloture'}`` jusqu'à ``date_fin``
+    (incluse) si fournie. ``derniere_cloture`` porte la date et l'écart de la
+    dernière clôture (ou None). Lecture seule.
+    """
+    qs = MouvementCaisse.objects.filter(caisse=caisse)
+    if date_fin is not None:
+        qs = qs.filter(date_mouvement__lte=date_fin)
+    total_entrees = qs.filter(sens=MouvementCaisse.Sens.ENTREE).aggregate(
+        s=Sum('montant'))['s'] or Decimal('0')
+    total_sorties = qs.filter(sens=MouvementCaisse.Sens.SORTIE).aggregate(
+        s=Sum('montant'))['s'] or Decimal('0')
+    solde_initial = caisse.solde_initial or Decimal('0')
+    derniere = caisse.clotures.order_by('-date_cloture', '-id').first()
+    return {
+        'solde_initial': solde_initial,
+        'total_entrees': total_entrees,
+        'total_sorties': total_sorties,
+        'nb_mouvements': qs.count(),
+        'solde_courant': solde_initial + total_entrees - total_sorties,
+        'derniere_cloture': (
+            {'date_cloture': derniere.date_cloture, 'ecart': derniere.ecart}
+            if derniere is not None else None),
+    }
+
+
+def caisses_de(company):
+    """Caisses actives d'une société (lecture seule, scopée société)."""
+    return list(Caisse.objects.filter(company=company).select_related(
+        'compte_tresorerie').order_by('libelle'))
