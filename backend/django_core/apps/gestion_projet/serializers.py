@@ -6,7 +6,7 @@ appartenant à la société de l'utilisateur.
 """
 from rest_framework import serializers
 
-from .models import Projet, ProjetChantier, ProjetLien
+from .models import Projet, ProjetActivity, ProjetChantier, ProjetLien
 
 
 def _meme_societe(serializer, value, label):
@@ -29,10 +29,31 @@ class ProjetSerializer(serializers.ModelSerializer):
             'client_id', 'date_debut', 'date_fin_prevue', 'responsable',
             'budget_total', 'date_creation',
         ]
-        read_only_fields = ['date_creation']
+        # ``statut`` est piloté UNIQUEMENT par les actions de transition
+        # (machine à états côté serveur) — jamais écrit depuis le corps de
+        # requête (création ou PATCH).
+        read_only_fields = ['statut', 'date_creation']
 
     def validate_responsable(self, value):
         return _meme_societe(self, value, 'Responsable')
+
+
+class ProjetActivitySerializer(serializers.ModelSerializer):
+    """Entrée du journal des transitions de statut d'un projet (lecture seule).
+
+    ``company`` et ``auteur`` sont posés côté serveur ; jamais exposés en
+    écriture.
+    """
+    auteur_nom = serializers.CharField(
+        source='auteur.username', read_only=True, default='')
+
+    class Meta:
+        model = ProjetActivity
+        fields = [
+            'id', 'projet', 'old_value', 'new_value', 'auteur', 'auteur_nom',
+            'date_creation',
+        ]
+        read_only_fields = fields
 
 
 class ProjetChantierSerializer(serializers.ModelSerializer):
