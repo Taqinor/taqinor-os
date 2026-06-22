@@ -15,8 +15,16 @@ requêtes de sous-arbre (descendants) triviales sans récursion SQL.
 
 GED3 — Document + DocumentVersion : un document vit dans un dossier et porte N
 versions ordonnées (numéro, file_key MinIO, checksum, uploadé par, date).
+
+GED6 — DocumentLien : liaison polymorphe entre un Document et N'IMPORTE quel
+objet métier autorisé (lead, client, devis, bon de commande, facture, chantier,
+ticket SAV, outillage). On RÉUTILISE le registre `records.ALLOWED_TARGETS` et le
+mécanisme ContentType déjà en place pour Activity/Attachment/Comment/TaggedItem
+— on n'invente pas un nouveau schéma de FK générique. Company posée côté serveur.
 """
 from django.conf import settings
+from django.contrib.contenttypes.fields import GenericForeignKey
+from django.contrib.contenttypes.models import ContentType
 from django.db import models
 
 
@@ -194,3 +202,45 @@ class DocumentVersion(models.Model):
 
     def __str__(self):
         return f'{self.document} v{self.version}'
+
+
+class DocumentLien(models.Model):
+    """GED6 — Liaison polymorphe entre un Document et un objet métier.
+
+    Rattache un document GED à N'IMPORTE quel enregistrement métier autorisé
+    (lead, client, devis, bon de commande, facture, chantier/installation,
+    ticket SAV, outillage) via le MÊME mécanisme ContentType que
+    `records.Activity`/`Attachment`/`Comment`/`TaggedItem` — on ne réinvente pas
+    de schéma de FK générique. La cible est bornée par `records.ALLOWED_TARGETS`
+    (validation côté serveur : on ne lie jamais un type arbitraire).
+
+    Company posée côté serveur (cohérente avec celle du document) — jamais lue du
+    corps de requête. Un même document ne se lie qu'UNE fois à un objet donné.
+    """
+    company = models.ForeignKey(
+        'authentication.Company', on_delete=models.CASCADE,
+        null=True, blank=True, related_name='ged_document_liens')
+    document = models.ForeignKey(
+        Document, on_delete=models.CASCADE, related_name='liens')
+
+    content_type = models.ForeignKey(ContentType, on_delete=models.CASCADE)
+    object_id = models.PositiveIntegerField()
+    content_object = GenericForeignKey('content_type', 'object_id')
+
+    created_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL,
+        null=True, blank=True, related_name='ged_liens_crees')
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['-created_at', '-id']
+        unique_together = [('document', 'content_type', 'object_id')]
+        verbose_name = 'Lien de document'
+        verbose_name_plural = 'Liens de document'
+        indexes = [
+            models.Index(fields=['content_type', 'object_id']),
+            models.Index(fields=['company', 'document']),
+        ]
+
+    def __str__(self):
+        return f'{self.document} ↔ {self.content_type.model}:{self.object_id}'
