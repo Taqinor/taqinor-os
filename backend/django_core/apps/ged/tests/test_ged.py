@@ -15,6 +15,7 @@ from rest_framework_simplejwt.tokens import AccessToken
 
 from authentication.models import Company
 from apps.crm.models import Client
+from apps.records.models import Attachment
 from apps.ged import selectors, services
 from apps.ged.models import Cabinet, Document, DocumentLien, DocumentVersion, Folder
 
@@ -637,3 +638,140 @@ class DocumentLienTests(GedBase):
         self.assertIn(self.doc_a.id, ids)
         self.assertNotIn(doc_b.id, ids)
         self.assertEqual(len(ids), 1)
+
+
+# ── GED7 — import des records.Attachment existants dans la GED ──────
+class MigrateAttachmentsToGedTests(GedBase):
+    """GED7 — `migrate_attachments_to_ged` : import idempotent des pièces jointes.
+
+    Couvre : création de Document réutilisant le file_key (aucun fichier
+    recopié), pose du DocumentLien quand la cible est autorisée, idempotence
+    (re-lancer ne duplique rien), isolation multi-tenant, originaux intacts,
+    cabinet/dossier d'atterrissage par défaut, et le mode --dry-run.
+    """
+
+    def setUp(self):
+        super().setUp()
+        self.client_a = Client.objects.create(company=self.co_a, nom='Client A')
+        self.client_b = Client.objects.create(company=self.co_b, nom='Client B')
+        ct_client = ContentType.objects.get_for_model(Client)
+        # Pièce jointe de A ciblant un client autorisé (→ doit donner un lien).
+        self.att_a = Attachment.objects.create(
+            company=self.co_a, content_type=ct_client,
+            object_id=self.client_a.id, file_key='co_a/keyA.pdf',
+            filename='contrat-a.pdf', size=1234, mime='application/pdf',
+            uploaded_by=self.admin_a)
+        # Pièce jointe de B (autre société) ciblant son propre client.
+        self.att_b = Attachment.objects.create(
+            company=self.co_b, content_type=ct_client,
+            object_id=self.client_b.id, file_key='co_b/keyB.pdf',
+            filename='contrat-b.pdf', size=99, mime='application/pdf',
+            uploaded_by=self.admin_b)
+
+    def _run(self, **kwargs):
+        from django.core.management import call_command
+        call_command('migrate_attachments_to_ged', **kwargs)
+
+    def test_import_creates_document_reusing_file_key(self):
+        self._run(company='ged-a')
+        doc = Document.objects.get(company=self.co_a, nom='contrat-a.pdf')
+        # Document atterri dans le cabinet/dossier d'import par défaut.
+        self.assertEqual(doc.folder.cabinet.nom, 'Importé')
+        self.assertEqual(doc.folder.nom, 'Pièces jointes importées')
+        version = doc.versions.get()
+        # RÉUTILISE la clé MinIO d'origine — aucun fichier recopié.
+        self.assertEqual(version.file_key, self.att_a.file_key)
+        self.assertEqual(version.version, 1)
+        self.assertEqual(version.filename, 'contrat-a.pdf')
+        self.assertEqual(version.size, 1234)
+        self.assertEqual(version.company_id, self.co_a.id)
+
+    def test_import_creates_documentlien_for_targeted_attachment(self):
+        self._run(company='ged-a')
+        doc = Document.objects.get(company=self.co_a, nom='contrat-a.pdf')
+        liens = selectors.documents_for_target(self.co_a, self.client_a)
+        self.assertIn(doc.id, [d.id for d in liens])
+        lien = DocumentLien.objects.get(document=doc)
+        self.assertEqual(lien.company_id, self.co_a.id)
+        self.assertEqual(lien.object_id, self.client_a.id)
+
+    def test_import_is_idempotent_no_duplicates(self):
+        self._run()  # toutes sociétés
+        self._run()  # re-lancement
+        self._run()
+        # Un seul document par pièce jointe, un seul lien — jamais de doublon.
+        self.assertEqual(
+            Document.objects.filter(company=self.co_a).count(), 1)
+        self.assertEqual(
+            DocumentVersion.objects.filter(file_key='co_a/keyA.pdf').count(), 1)
+        self.assertEqual(
+            DocumentLien.objects.filter(object_id=self.client_a.id).count(), 1)
+        # Le cabinet/dossier d'import n'est créé qu'une fois.
+        self.assertEqual(
+            Cabinet.objects.filter(company=self.co_a, nom='Importé').count(), 1)
+        self.assertEqual(
+            Folder.objects.filter(
+                company=self.co_a, nom='Pièces jointes importées').count(), 1)
+
+    def test_multi_tenant_isolation(self):
+        self._run()  # toutes sociétés
+        # Chaque pièce jointe atterrit dans SA société, jamais cross-société.
+        doc_a = Document.objects.get(company=self.co_a, nom='contrat-a.pdf')
+        doc_b = Document.objects.get(company=self.co_b, nom='contrat-b.pdf')
+        self.assertEqual(doc_a.company_id, self.co_a.id)
+        self.assertEqual(doc_b.company_id, self.co_b.id)
+        self.assertEqual(doc_a.versions.get().file_key, 'co_a/keyA.pdf')
+        self.assertEqual(doc_b.versions.get().file_key, 'co_b/keyB.pdf')
+        # Le cabinet « Importé » de A ne contient pas le document de B.
+        self.assertEqual(doc_a.folder.cabinet.company_id, self.co_a.id)
+        self.assertNotEqual(doc_a.folder.cabinet_id, doc_b.folder.cabinet_id)
+
+    def test_company_scope_limits_import(self):
+        self._run(company='ged-a')
+        # Seule la société A est importée.
+        self.assertTrue(Document.objects.filter(company=self.co_a).exists())
+        self.assertFalse(Document.objects.filter(company=self.co_b).exists())
+
+    def test_originals_untouched(self):
+        self._run()
+        # Les pièces jointes d'origine ne sont ni supprimées ni modifiées.
+        self.att_a.refresh_from_db()
+        self.att_b.refresh_from_db()
+        self.assertEqual(Attachment.objects.count(), 2)
+        self.assertEqual(self.att_a.file_key, 'co_a/keyA.pdf')
+        self.assertEqual(self.att_a.filename, 'contrat-a.pdf')
+
+    def test_no_lien_for_disallowed_target(self):
+        # Pièce jointe ciblant un type NON autorisé (authentication.company).
+        ct_company = ContentType.objects.get_for_model(Company)
+        Attachment.objects.create(
+            company=self.co_a, content_type=ct_company,
+            object_id=self.co_a.id, file_key='co_a/misc.pdf',
+            filename='divers.pdf', size=10, mime='application/pdf',
+            uploaded_by=self.admin_a)
+        self._run(company='ged-a')
+        # Le document existe mais sans lien (cible non autorisée).
+        doc = Document.objects.get(company=self.co_a, nom='divers.pdf')
+        self.assertEqual(DocumentLien.objects.filter(document=doc).count(), 0)
+
+    def test_no_lien_when_target_object_gone(self):
+        # La cible existe au moment de l'import puis disparaît : pas de lien
+        # bancal. On simule en supprimant le client après création de la pièce.
+        ct_client = ContentType.objects.get_for_model(Client)
+        Attachment.objects.create(
+            company=self.co_a, content_type=ct_client,
+            object_id=999999, file_key='co_a/orphan.pdf',
+            filename='orphelin.pdf', size=10, mime='application/pdf',
+            uploaded_by=self.admin_a)
+        self._run(company='ged-a')
+        doc = Document.objects.get(company=self.co_a, nom='orphelin.pdf')
+        # Aucun lien vers un objet inexistant.
+        self.assertEqual(DocumentLien.objects.filter(document=doc).count(), 0)
+
+    def test_dry_run_writes_nothing(self):
+        self._run(company='ged-a', dry_run=True)
+        self.assertFalse(Document.objects.filter(company=self.co_a).exists())
+        self.assertFalse(DocumentVersion.objects.exists())
+        self.assertFalse(DocumentLien.objects.exists())
+        self.assertFalse(
+            Cabinet.objects.filter(company=self.co_a, nom='Importé').exists())
