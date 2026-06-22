@@ -157,3 +157,53 @@ class PartieContrat(models.Model):
 
     def __str__(self):
         return f'{self.nom} ({self.get_type_partie_display()})'
+
+
+class ContratLien(models.Model):
+    """Lien LÂCHE d'un contrat vers un document métier d'une AUTRE app.
+
+    Permet de rattacher un contrat à un devis (``ventes``), un lead (``crm``),
+    un chantier/installation (``installations``) ou une maintenance/ticket SAV
+    (``sav``) SANS aucun FK dur : la cible est désignée par un couple typé
+    ``(type_cible, cible_id)`` — jamais un import du modèle d'une autre app. Le
+    ``libelle`` met en cache un libellé d'affichage ; les sélecteurs
+    (``selectors.py``) l'enrichissent au vol quand l'app cible expose un
+    sélecteur de lecture, et dégradent proprement (libellé stocké seul) sinon.
+    """
+    class TypeCible(models.TextChoices):
+        DEVIS = 'devis', 'Devis'
+        LEAD = 'lead', 'Lead'
+        INSTALLATION = 'installation', 'Installation'
+        MAINTENANCE = 'maintenance', 'Maintenance'
+
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='contrat_liens',
+        verbose_name='Société',
+    )
+    contrat = models.ForeignKey(
+        Contrat,
+        on_delete=models.CASCADE,
+        related_name='liens',
+        verbose_name='Contrat',
+    )
+    type_cible = models.CharField(
+        max_length=20, choices=TypeCible.choices, verbose_name='Type de cible')
+    # PK de l'objet cible dans son app (référence lâche, aucun FK dur).
+    cible_id = models.PositiveIntegerField(verbose_name='ID de la cible')
+    # Libellé d'affichage mis en cache (fallback quand l'app cible n'a pas de
+    # sélecteur d'enrichissement).
+    libelle = models.CharField(
+        max_length=200, blank=True, default='', verbose_name='Libellé')
+    date_creation = models.DateTimeField(
+        auto_now_add=True, verbose_name='Créé le')
+
+    class Meta:
+        verbose_name = 'Lien du contrat'
+        verbose_name_plural = 'Liens du contrat'
+        ordering = ['id']
+        unique_together = [('contrat', 'type_cible', 'cible_id')]
+
+    def __str__(self):
+        return f'{self.contrat_id} → {self.type_cible} #{self.cible_id}'
