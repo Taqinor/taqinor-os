@@ -199,6 +199,9 @@ export const deleteOcrDocument = createAsyncThunk('ia/deleteOcrDocument', async 
 const iaSlice = createSlice({
   name: 'ia',
   initialState: {
+    // FG350 — Copilote in-app : état ouvert/fermé du tiroir conversationnel
+    // global (CopilotPanel). Piloté depuis l'app shell (bouton de l'en-tête).
+    copilotOpen: false,
     // Chat agent
     messages: [],
     agentLoading: false,
@@ -225,6 +228,10 @@ const iaSlice = createSlice({
     docsError: null,
   },
   reducers: {
+    // FG350 — bascule / ouverture / fermeture du tiroir Copilote global.
+    openCopilot(state) { state.copilotOpen = true },
+    closeCopilot(state) { state.copilotOpen = false },
+    toggleCopilot(state) { state.copilotOpen = !state.copilotOpen },
     clearMessages(state) { state.messages = [] },
     historyLoaded(state, action) { state.messages = action.payload },
     // AG3 — « Annuler » sur une carte proposition : on l'écarte sans appel API
@@ -371,5 +378,5 @@ const iaSlice = createSlice({
   },
 })
 
-export const { clearMessages, historyLoaded, dismissProposal, clearOcrResult, clearStockOcrResult, clearErrors } = iaSlice.actions
+export const { openCopilot, closeCopilot, toggleCopilot, clearMessages, historyLoaded, dismissProposal, clearOcrResult, clearStockOcrResult, clearErrors } = iaSlice.actions
 export default iaSlice.reducer
