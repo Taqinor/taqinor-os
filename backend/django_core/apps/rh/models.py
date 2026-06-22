@@ -214,3 +214,70 @@ class Remuneration(models.Model):
     def __str__(self):
         return (f'{self.employe.matricule} — {self.montant} {self.devise} '
                 f'({self.get_periodicite_display()})')
+
+
+class DocumentEmploye(models.Model):
+    """Coffre documents employé (FG159) — pièces administratives d'un dossier.
+
+    Chaque document RÉUTILISE le stockage objet existant de ``records.Attachment``
+    (MinIO, bucket ``erp-uploads``) : ce modèle est une simple couche de
+    QUALIFICATION (type de document + expiration optionnelle) au-dessus d'une
+    pièce jointe — il ne stocke aucun fichier lui-même. ``records`` est une app
+    socle : la référencer par FK est autorisé, on n'importe pas ses vues. Le
+    fichier transite par ``records.storage.store_attachment`` exactement comme
+    les autres pièces jointes ; rien n'est commité dans le dépôt.
+
+    Multi-société : ``company`` est posée côté serveur (jamais lue du corps), et
+    l'accès suit le même verrou que le dossier (Administrateur/Responsable). La
+    ``date_expiration`` est facultative (NULL = document sans échéance) ; un
+    sélecteur liste les documents qui expirent bientôt.
+    """
+    class TypeDocument(models.TextChoices):
+        CONTRAT = 'contrat', 'Contrat'
+        CIN = 'cin', 'CIN'
+        RIB = 'rib', 'RIB'
+        DIPLOME = 'diplome', 'Diplôme'
+        AUTRE = 'autre', 'Autre'
+
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='rh_documents',
+        verbose_name='Société',
+    )
+    employe = models.ForeignKey(
+        DossierEmploye,
+        on_delete=models.CASCADE,
+        related_name='documents',
+        verbose_name='Employé',
+    )
+    # Réutilise le stockage MinIO existant : on ne construit AUCUN nouveau
+    # stockage de fichier. La suppression du document supprime sa pièce jointe.
+    attachment = models.OneToOneField(
+        'records.Attachment',
+        on_delete=models.CASCADE,
+        related_name='document_employe',
+        verbose_name='Pièce jointe',
+    )
+    type_document = models.CharField(
+        max_length=10, choices=TypeDocument.choices,
+        default=TypeDocument.AUTRE, verbose_name='Type de document')
+    # Facultative : NULL = document sans date d'expiration (ex. diplôme).
+    date_expiration = models.DateField(
+        null=True, blank=True, verbose_name="Date d'expiration")
+    note = models.CharField(
+        max_length=255, blank=True, default='', verbose_name='Note')
+    date_creation = models.DateTimeField(
+        auto_now_add=True, verbose_name='Créé le')
+
+    class Meta:
+        verbose_name = 'Document employé'
+        verbose_name_plural = 'Documents employés'
+        ordering = ['type_document', '-date_creation']
+        indexes = [
+            models.Index(fields=['company', 'employe']),
+            models.Index(fields=['company', 'date_expiration']),
+        ]
+
+    def __str__(self):
+        return f'{self.employe.matricule} — {self.get_type_document_display()}'
