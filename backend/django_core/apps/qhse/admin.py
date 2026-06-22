@@ -1,8 +1,8 @@
 from django.contrib import admin
 
 from .models import (
-    ActionCorrectivePreventive, NonConformite, PlanInspectionModele,
-    PointControleModele,
+    ActionCorrectivePreventive, NonConformite, PlanInspectionChantier,
+    PlanInspectionModele, PointControleModele, ReleveControle,
 )
 
 
@@ -35,3 +35,19 @@ class PointControleModeleAdmin(admin.ModelAdmin):
                     'type_releve', 'hold_point', 'company')
     list_filter = ('type_releve', 'hold_point')
     search_fields = ('intitule', 'phase', 'description')
+
+
+@admin.register(PlanInspectionChantier)
+class PlanInspectionChantierAdmin(admin.ModelAdmin):
+    list_display = ('id', 'modele', 'chantier_id', 'statut',
+                    'date_ouverture', 'company', 'date_creation')
+    list_filter = ('statut',)
+    search_fields = ('modele__nom', 'modele__code')
+
+
+@admin.register(ReleveControle)
+class ReleveControleAdmin(admin.ModelAdmin):
+    list_display = ('id', 'plan_chantier', 'point', 'conforme',
+                    'date_releve', 'releve_par', 'company')
+    list_filter = ('conforme',)
+    search_fields = ('valeur', 'point__intitule')

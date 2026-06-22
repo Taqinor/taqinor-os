@@ -9,8 +9,10 @@ from decimal import Decimal
 from rest_framework import serializers
 
 from .models import (
-    CompteComptable, CompteTresorerie, EcritureComptable, ExerciceComptable,
-    Immobilisation, Journal, LigneEcriture, PeriodeComptable, PlanComptable,
+    CessionImmobilisation, CompteComptable, CompteTresorerie,
+    DotationAmortissement, EcritureComptable, ExerciceComptable,
+    Immobilisation, Journal, LigneEcriture, PeriodeComptable,
+    PlanAmortissement, PlanComptable,
 )
 
 
@@ -246,3 +248,83 @@ class ImmobilisationSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError(
                 "Le taux de TVA doit être positif.")
         return value
+
+
+class DotationAmortissementSerializer(serializers.ModelSerializer):
+    """Dotation d'amortissement d'un exercice (FG119) — lecture seule.
+
+    Les dotations sont CALCULÉES par le service à partir du plan, jamais saisies
+    à la main. Ce sérialiseur ne sert qu'à les restituer (et l'écriture postée).
+    """
+    class Meta:
+        model = DotationAmortissement
+        fields = [
+            'id', 'plan', 'annee', 'date_dotation', 'montant', 'cumul',
+            'valeur_nette', 'posted', 'ecriture', 'date_creation',
+        ]
+        read_only_fields = fields
+
+
+class PlanAmortissementSerializer(serializers.ModelSerializer):
+    """Plan d'amortissement d'une immobilisation (FG119).
+
+    ``company`` posée côté serveur. Expose le calendrier de dotations imbriqué
+    (lecture seule) et le taux linéaire dérivé. La création/maj passe par
+    l'action ``plan-amortissement`` de l'immobilisation (service idempotent).
+    """
+    mode_display = serializers.CharField(
+        source='get_mode_display', read_only=True)
+    taux_lineaire = serializers.DecimalField(
+        max_digits=8, decimal_places=4, read_only=True)
+    dotations = DotationAmortissementSerializer(many=True, read_only=True)
+
+    class Meta:
+        model = PlanAmortissement
+        fields = [
+            'id', 'immobilisation', 'mode', 'mode_display', 'duree_annees',
+            'base_amortissable', 'date_debut', 'coefficient_degressif',
+            'taux_lineaire', 'compte_dotation', 'compte_amortissement',
+            'dotations', 'date_creation',
+        ]
+        read_only_fields = [
+            'coefficient_degressif', 'taux_lineaire', 'dotations',
+            'date_creation',
+        ]
+
+    def validate_immobilisation(self, value):
+        return _meme_societe(self, value, 'Immobilisation')
+
+    def validate_duree_annees(self, value):
+        if value is not None and value < 1:
+            raise serializers.ValidationError(
+                "La durée d'amortissement doit être d'au moins 1 an.")
+        return value
+
+
+class CessionImmobilisationSerializer(serializers.ModelSerializer):
+    """Cession / mise au rebut d'une immobilisation (FG120) — lecture seule.
+
+    Les cessions sont CALCULÉES et enregistrées par le service (action
+    ``ceder`` de l'immobilisation), jamais saisies à la main : VNC, cumul
+    d'amortissement et résultat de cession sont figés côté serveur. Expose les
+    plus/moins-values dérivées et l'écriture postée.
+    """
+    type_cession_display = serializers.CharField(
+        source='get_type_cession_display', read_only=True)
+    immobilisation_libelle = serializers.CharField(
+        source='immobilisation.libelle', read_only=True)
+    plus_value = serializers.DecimalField(
+        max_digits=14, decimal_places=2, read_only=True)
+    moins_value = serializers.DecimalField(
+        max_digits=14, decimal_places=2, read_only=True)
+
+    class Meta:
+        model = CessionImmobilisation
+        fields = [
+            'id', 'immobilisation', 'immobilisation_libelle', 'type_cession',
+            'type_cession_display', 'date_cession', 'prix_cession',
+            'amortissements_cumules', 'valeur_nette_comptable',
+            'resultat_cession', 'plus_value', 'moins_value', 'posted',
+            'ecriture', 'date_creation',
+        ]
+        read_only_fields = fields

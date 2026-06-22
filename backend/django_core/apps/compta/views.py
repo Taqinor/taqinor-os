@@ -16,14 +16,16 @@ from authentication.permissions import IsResponsableOrAdmin
 
 from . import selectors, services
 from .models import (
-    CompteComptable, CompteTresorerie, EcritureComptable, ExerciceComptable,
+    CessionImmobilisation, CompteComptable, CompteTresorerie,
+    DotationAmortissement, EcritureComptable, ExerciceComptable,
     Immobilisation, Journal, PeriodeComptable, PlanComptable,
 )
 from .serializers import (
-    CompteComptableSerializer, CompteTresorerieSerializer,
+    CessionImmobilisationSerializer, CompteComptableSerializer,
+    CompteTresorerieSerializer, DotationAmortissementSerializer,
     EcritureComptableSerializer, ExerciceComptableSerializer,
     ImmobilisationSerializer, JournalSerializer, PeriodeComptableSerializer,
-    PlanComptableSerializer,
+    PlanAmortissementSerializer, PlanComptableSerializer,
 )
 
 
@@ -310,3 +312,156 @@ class ImmobilisationViewSet(_ComptaBaseViewSet):
         if categorie:
             qs = qs.filter(categorie=categorie)
         return qs
+
+    @action(detail=True, methods=['get', 'post'], url_path='plan-amortissement')
+    def plan_amortissement(self, request, pk=None):
+        """Plan d'amortissement de l'immobilisation (FG119).
+
+        GET : renvoie le plan + son calendrier de dotations (ou 404 si aucun).
+        POST : (re)génère le plan. Corps : ``{mode, duree_annees,
+        base_amortissable?, date_debut?, coefficient_degressif?}``. Idempotent —
+        les dotations déjà postées sont préservées. La société est posée côté
+        serveur (jamais du corps).
+        """
+        immo = self.get_object()  # déjà scopé société par TenantMixin.
+        if request.method == 'GET':
+            plan = getattr(immo, 'plan_amortissement', None)
+            if plan is None:
+                return Response(
+                    {'detail': "Aucun plan d'amortissement."},
+                    status=status.HTTP_404_NOT_FOUND)
+            return Response(PlanAmortissementSerializer(
+                plan, context={'request': request}).data)
+        data = request.data
+        try:
+            plan = services.generer_plan_amortissement(
+                immo,
+                mode=data.get('mode') or None,
+                duree_annees=data.get('duree_annees') or None,
+                base_amortissable=data.get('base_amortissable'),
+                date_debut=data.get('date_debut') or None,
+                coefficient_degressif=data.get('coefficient_degressif'),
+            )
+        except DjangoValidationError as exc:
+            return Response(
+                {'detail': exc.messages[0] if exc.messages else str(exc)},
+                status=status.HTTP_400_BAD_REQUEST)
+        return Response(
+            PlanAmortissementSerializer(
+                plan, context={'request': request}).data,
+            status=status.HTTP_200_OK)
+
+    @action(detail=True, methods=['post'])
+    def ceder(self, request, pk=None):
+        """Enregistre et poste la cession / mise au rebut de l'actif (FG120).
+
+        Corps : ``{type_cession?, date_cession, prix_cession?}`` —
+        ``type_cession`` (vente/rebut) déduit du prix si absent (0 → rebut). La
+        VNC, le cumul d'amortissement et le résultat de cession sont figés côté
+        serveur, l'écriture de sortie est postée au grand livre (refusée si la
+        période est verrouillée) et l'immobilisation est marquée inactive. La
+        société est posée côté serveur (jamais du corps). Renvoie la cession.
+        """
+        immo = self.get_object()  # déjà scopée société par TenantMixin.
+        data = request.data
+        try:
+            cession = services.enregistrer_cession(
+                immo,
+                date_cession=data.get('date_cession'),
+                prix_cession=data.get('prix_cession'),
+                type_cession=data.get('type_cession') or None,
+                user=request.user,
+            )
+            services.poster_cession(cession, user=request.user)
+        except DjangoValidationError as exc:
+            return Response(
+                {'detail': exc.messages[0] if exc.messages else str(exc)},
+                status=status.HTTP_400_BAD_REQUEST)
+        cession.refresh_from_db()
+        return Response(
+            CessionImmobilisationSerializer(
+                cession, context={'request': request}).data,
+            status=status.HTTP_201_CREATED)
+
+
+class CessionImmobilisationViewSet(_ComptaBaseViewSet):
+    """Cessions / mises au rebut d'immobilisations (FG120) — lecture seule.
+
+    Les cessions sont enregistrées et postées via l'action ``ceder`` de
+    l'immobilisation. Ce viewset les restitue (liste/détail) ; l'action
+    ``poster`` re-poste une cession non encore postée (idempotente, refusée en
+    période close). Société scopée.
+    """
+    http_method_names = ['get', 'post', 'head', 'options']
+    queryset = CessionImmobilisation.objects.select_related(
+        'immobilisation', 'ecriture').all()
+    serializer_class = CessionImmobilisationSerializer
+    filter_backends = [filters.OrderingFilter]
+    ordering_fields = ['date_cession', 'id']
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        immobilisation = self.request.query_params.get('immobilisation')
+        if immobilisation:
+            qs = qs.filter(immobilisation_id=immobilisation)
+        type_cession = self.request.query_params.get('type_cession')
+        if type_cession:
+            qs = qs.filter(type_cession=type_cession)
+        return qs
+
+    @action(detail=True, methods=['post'])
+    def poster(self, request, pk=None):
+        """Poste la cession au grand livre (FG120). Refusée en période close."""
+        cession = self.get_object()  # scopée société par TenantMixin.
+        try:
+            ecriture = services.poster_cession(cession, user=request.user)
+        except DjangoValidationError as exc:
+            return Response(
+                {'detail': exc.messages[0] if exc.messages else str(exc)},
+                status=status.HTTP_400_BAD_REQUEST)
+        cession.refresh_from_db()
+        return Response({
+            'cession': self.get_serializer(cession).data,
+            'ecriture_id': ecriture.id if ecriture else None,
+        })
+
+
+class DotationAmortissementViewSet(_ComptaBaseViewSet):
+    """Dotations d'amortissement (FG119) — lecture seule + action ``poster``.
+
+    Les dotations sont calculées par le service (jamais saisies à la main) ;
+    l'action ``poster`` passe la dotation au grand livre (débit classe 6 / crédit
+    classe 28), refusée si la période est verrouillée. Société scopée.
+    """
+    http_method_names = ['get', 'post', 'head', 'options']
+    queryset = DotationAmortissement.objects.select_related(
+        'plan__immobilisation', 'ecriture').all()
+    serializer_class = DotationAmortissementSerializer
+    filter_backends = [filters.OrderingFilter]
+    ordering_fields = ['annee', 'plan']
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        plan = self.request.query_params.get('plan')
+        if plan:
+            qs = qs.filter(plan_id=plan)
+        immobilisation = self.request.query_params.get('immobilisation')
+        if immobilisation:
+            qs = qs.filter(plan__immobilisation_id=immobilisation)
+        return qs
+
+    @action(detail=True, methods=['post'])
+    def poster(self, request, pk=None):
+        """Poste la dotation au grand livre (FG119). Refusée en période close."""
+        dotation = self.get_object()  # scopée société par TenantMixin.
+        try:
+            ecriture = services.poster_dotation(dotation, user=request.user)
+        except DjangoValidationError as exc:
+            return Response(
+                {'detail': exc.messages[0] if exc.messages else str(exc)},
+                status=status.HTTP_400_BAD_REQUEST)
+        dotation.refresh_from_db()
+        return Response({
+            'dotation': self.get_serializer(dotation).data,
+            'ecriture_id': ecriture.id if ecriture else None,
+        })
