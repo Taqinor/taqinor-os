@@ -94,4 +94,27 @@ describe('W114 — la page de design : auth + from-layout + dégradés d\'erreur
     expect(page).toContain('hydrate: { lead');
     expect(page).toContain('onApiReady');
   });
+
+  it('expose UN SEUL bouton « Générer le devis & envoyer au client » avec spinner', () => {
+    expect(page).toContain('Générer le devis &amp; envoyer au client');
+    expect(page).toContain('id="dd-generate"');
+    expect(page).toContain('id="dd-gen-spinner"');
+    // anti-double-clic + spinner/désactivé pendant l'envoi
+    expect(page).toContain('if (sending) return;');
+    expect(page).toContain('setSending(true)');
+  });
+
+  it('après succès bascule sur l\'état « Prêt à envoyer » (masque l\'action, montre la livraison)', () => {
+    expect(page).toContain('Prêt à envoyer');
+    // on masque le bloc action et on révèle dd-deliver
+    expect(page).toContain("$('dd-action')");
+    expect(page).toContain("$('dd-deliver')!.hidden = false");
+  });
+
+  it('ne perd pas le tracé en cas d\'échec : message FR lisible + bouton réactivé', () => {
+    expect(page).toContain('function failSend');
+    expect(page).toContain('function httpMessage');
+    // un échec réactive le bouton (setSending(false)) au lieu de tout perdre
+    expect(page).toContain('setSending(false)');
+  });
 });
