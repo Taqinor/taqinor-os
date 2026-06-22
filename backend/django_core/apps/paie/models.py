@@ -25,7 +25,8 @@ class ParametrePaie(models.Model):
     """Constantes sociales d'une société à une ``date_effet`` donnée.
 
     Versionné : un jeu par date d'effet (SMIG/SMAG, plafond & taux CNSS/AMO,
-    taux de formation professionnelle). L'historique est immuable — un nouveau
+    taux de formation professionnelle, frais professionnels et — PAIE5 —
+    déduction pour charges de famille). L'historique est immuable — un nouveau
     barème réglementaire crée une nouvelle ligne, jamais une modification.
     """
     company = models.ForeignKey(
@@ -77,6 +78,16 @@ class ParametrePaie(models.Model):
     seuil_frais_pro = models.DecimalField(
         max_digits=14, decimal_places=2, default=Decimal('6500'),
         verbose_name='Seuil brut frais professionnels')
+    # PAIE5 — Déduction pour charges de famille (déduction sur l'IR).
+    # Cadre social marocain : un montant fixe par personne à charge et par mois,
+    # plafonné à un nombre maximal de personnes (barème courant ≈ 30 MAD/mois et
+    # par personne, plafond 6 → 360 MAD/mois). Valeurs ÉDITABLES par le fondateur.
+    deduction_par_personne_a_charge = models.DecimalField(
+        max_digits=14, decimal_places=2, default=Decimal('30'),
+        verbose_name='Déduction mensuelle par personne à charge')
+    plafond_personnes_a_charge = models.PositiveIntegerField(
+        default=6,
+        verbose_name='Plafond du nombre de personnes à charge')
     actif = models.BooleanField(default=True, verbose_name='Actif')
     # PAIE3 — Validation fondateur des valeurs légales par défaut. Les valeurs
     # 2026 sont préremplies par le seed mais restent ÉDITABLES ; tant que le
