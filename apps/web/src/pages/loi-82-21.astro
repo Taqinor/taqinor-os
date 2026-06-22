@@ -31,7 +31,7 @@ import { REGIMES } from '../lib/regime';
 
     <section class="px-4 py-20 text-white sm:py-28">
       <div class="mx-auto max-w-6xl">
-        <p class="tech-label v2-kicker rule-brass cine-in text-brass-300">Loi 82-21 · décret 2-25-100</p>
+        <p class="tech-label v2-kicker rule-brass cine-in text-lune">Loi 82-21 · décret 2-25-100</p>
         <h1 class="display v2-page-title cine-in mt-5 max-w-3xl [animation-delay:120ms]">Trois régimes, un seul qui vous concerne</h1>
         <p class="v2-lead cine-in mt-6 max-w-xl text-white/85 [animation-delay:240ms]">
           Depuis le 9 juin 2026, la loi 82-21 sur l'autoproduction d'énergie électrique et son
@@ -52,7 +52,7 @@ import { REGIMES } from '../lib/regime';
     <ZelligeDivider tone="white" />
 
     <section class="mx-auto max-w-4xl px-4 py-16">
-      <p class="tech-label v2-kicker rule-brass text-brass-300">Référence</p>
+      <p class="tech-label v2-kicker rule-brass text-lune">Référence</p>
       <h2 class="display v2-section-title mt-4 text-white">Les trois régimes en détail</h2>
       <div class="mt-10 grid gap-6" data-stagger>
         {Object.values(REGIMES).map((r, i) => (
@@ -63,7 +63,7 @@ import { REGIMES } from '../lib/regime';
               <p class="mt-2 text-sm leading-relaxed text-lune-soft">{r.summary}</p>
               <ul class="mt-4 space-y-2 text-sm text-lune">
                 {r.obligations.map((o) => (
-                  <li class="flex gap-2.5"><span class="mt-1.5 inline-block h-1.5 w-1.5 flex-none rotate-45 border border-brass-400" aria-hidden="true"></span><span>{o}</span></li>
+                  <li class="flex gap-2.5"><span class="mt-1.5 inline-block h-1.5 w-1.5 flex-none rotate-45 border border-lune-faint" aria-hidden="true"></span><span>{o}</span></li>
                 ))}
               </ul>
             </div>
