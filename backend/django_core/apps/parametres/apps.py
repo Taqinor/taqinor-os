@@ -18,3 +18,6 @@ class ParametresConfig(AppConfig):
         # N64/N65 — tarification ONEE + hypothèses ROI/productible, gardées dans
         # un fichier dédié et enregistrées ici sans toucher models.py.
         import apps.parametres.models_tariff  # noqa: F401
+        # FG17 — modèles d'e-mail éditables (parité WhatsApp), fichier dédié
+        # enregistré ici sans toucher models.py.
+        import apps.parametres.models_email  # noqa: F401

@@ -587,3 +587,79 @@ class PeriodeComptable(models.Model):
             company_id=company_id, verrouillee=True,
             date_debut__lte=d, date_fin__gte=d,
         ).exists()
+
+
+# ── FG118 — Registre des immobilisations ───────────────────────────────────
+
+class Immobilisation(models.Model):
+    """Une immobilisation (actif immobilisé) au registre des immobilisations.
+
+    Simple REGISTRE par société : chaque bif (camionnette, outillage, matériel…)
+    est inventorié avec son coût d'acquisition, sa date d'acquisition, sa
+    catégorie et le taux de TVA appliqué. Ce module est strictement additif et
+    NE calcule PAS de plan d'amortissement (hors périmètre) — il tient le
+    registre. La TVA récupérable est dérivée du ``cout`` HT et du ``taux_tva``.
+    """
+    class Categorie(models.TextChoices):
+        VEHICULE = 'vehicule', 'Véhicule'
+        OUTILLAGE = 'outillage', 'Outillage'
+        MATERIEL = 'materiel', 'Matériel'
+        MOBILIER = 'mobilier', 'Mobilier'
+        INFORMATIQUE = 'informatique', 'Matériel informatique'
+        AUTRE = 'autre', 'Autre'
+
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='immobilisations',
+        verbose_name='Société',
+    )
+    # Référence interne optionnelle (par société). Libre, jamais auto-numérotée :
+    # le registre n'impose pas de codification. Unicité non contrainte en base
+    # pour rester purement additif sur une table éventuellement déjà peuplée.
+    reference = models.CharField(
+        max_length=50, blank=True, default='',
+        verbose_name='Référence interne')
+    libelle = models.CharField(max_length=200, verbose_name='Libellé')
+    categorie = models.CharField(
+        max_length=15, choices=Categorie.choices,
+        default=Categorie.MATERIEL, verbose_name='Catégorie')
+    cout = models.DecimalField(
+        max_digits=14, decimal_places=2, default=Decimal('0'),
+        verbose_name="Coût d'acquisition (HT)")
+    taux_tva = models.DecimalField(
+        max_digits=5, decimal_places=2, default=Decimal('20.00'),
+        verbose_name='Taux de TVA (%)')
+    date_acquisition = models.DateField(verbose_name="Date d'acquisition")
+    actif = models.BooleanField(default=True, verbose_name='Actif')
+    date_creation = models.DateTimeField(
+        auto_now_add=True, verbose_name='Créé le')
+
+    class Meta:
+        verbose_name = 'Immobilisation'
+        verbose_name_plural = 'Immobilisations'
+        ordering = ['-date_acquisition', '-id']
+
+    def __str__(self):
+        return f'{self.libelle} ({self.get_categorie_display()})'
+
+    def clean(self):
+        super().clean()
+        if self.cout is not None and self.cout < 0:
+            raise ValidationError(
+                "Le coût d'acquisition doit être positif.")
+        if self.taux_tva is not None and self.taux_tva < 0:
+            raise ValidationError(
+                "Le taux de TVA doit être positif.")
+
+    @property
+    def montant_tva(self):
+        """Montant de TVA dérivé du coût HT et du taux (informatif)."""
+        cout = self.cout or Decimal('0')
+        taux = self.taux_tva or Decimal('0')
+        return (cout * taux / Decimal('100')).quantize(Decimal('0.01'))
+
+    @property
+    def cout_ttc(self):
+        """Coût TTC = coût HT + TVA dérivée."""
+        return (self.cout or Decimal('0')) + self.montant_tva

@@ -13,6 +13,6 @@ class DepartementAdmin(admin.ModelAdmin):
 @admin.register(DossierEmploye)
 class DossierEmployeAdmin(admin.ModelAdmin):
     list_display = ('matricule', 'nom', 'prenom', 'poste', 'departement',
-                    'type_contrat', 'statut', 'company')
+                    'type_contrat', 'contrat_date_fin', 'statut', 'company')
     list_filter = ('type_contrat', 'statut', 'departement')
     search_fields = ('matricule', 'nom', 'prenom', 'cin', 'email')

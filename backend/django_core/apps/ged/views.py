@@ -5,7 +5,7 @@ TOUJOURS posée côté serveur (TenantMixin) — jamais lue du corps de requête
 Les dossiers (Folder) ont un chemin matérialisé recalculé côté serveur, et les
 versions de document sont numérotées + déduppées via `services`.
 """
-from rest_framework import filters, viewsets
+from rest_framework import filters, status, viewsets
 from rest_framework.decorators import action
 from rest_framework.response import Response
 
@@ -50,6 +50,16 @@ class FolderViewSet(TenantMixin, viewsets.ModelViewSet):
             return [IsAnyRole()]
         return [IsResponsableOrAdmin()]
 
+    def _resolve_company_folder(self, folder_id):
+        """Résout un dossier de la société courante, ou None.
+
+        Borne au queryset company-scopé (TenantMixin) : un id appartenant à
+        une autre société renvoie None (jamais de fuite cross-société)."""
+        if folder_id in (None, '', 'null'):
+            return None
+        return (Folder.objects.filter(company=self.request.user.company)
+                .filter(pk=folder_id).first())
+
     def get_queryset(self):
         qs = super().get_queryset()
         params = self.request.query_params
@@ -73,6 +83,33 @@ class FolderViewSet(TenantMixin, viewsets.ModelViewSet):
         folder = self.get_object()
         qs = folder.descendants()
         data = FolderSerializer(qs, many=True, context={'request': request}).data
+        return Response(data)
+
+    @action(detail=True, methods=['post'], url_path='deplacer')
+    def deplacer(self, request, pk=None):
+        """Déplace ce dossier sous un nouveau parent (déplacement scopé société).
+
+        Body : `{"parent": <id|null>}`. Le dossier source est company-scopé via
+        `get_object()` (404 cross-société). Le parent cible est résolu DANS la
+        société courante — un id d'une autre société est introuvable (404). Le
+        recalcul du chemin matérialisé de tout le sous-arbre est délégué à
+        `services.move_folder` (refus de cycle / cabinet différent → 400)."""
+        folder = self.get_object()
+        raw_parent = request.data.get('parent', None)
+        new_parent = None
+        if raw_parent not in (None, '', 'null'):
+            new_parent = self._resolve_company_folder(raw_parent)
+            if new_parent is None:
+                return Response(
+                    {'parent': 'Dossier parent inconnu.'},
+                    status=status.HTTP_404_NOT_FOUND)
+        try:
+            services.move_folder(folder, new_parent)
+        except ValueError as exc:
+            return Response(
+                {'detail': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+        folder.refresh_from_db()
+        data = FolderSerializer(folder, context={'request': request}).data
         return Response(data)
 
 
@@ -100,6 +137,36 @@ class DocumentViewSet(TenantMixin, viewsets.ModelViewSet):
         # company + created_by posés côté serveur.
         serializer.save(
             company=self.request.user.company, created_by=self.request.user)
+
+    @action(detail=True, methods=['post'], url_path='deplacer')
+    def deplacer(self, request, pk=None):
+        """Déplace ce document dans un autre dossier (déplacement scopé société).
+
+        Body : `{"folder": <id>}`. Le document source est company-scopé via
+        `get_object()` (404 cross-société). Le dossier cible est résolu DANS la
+        société courante — un id d'une autre société est introuvable (404). La
+        société du document n'est jamais modifiée (posée côté serveur)."""
+        document = self.get_object()
+        raw_folder = request.data.get('folder', None)
+        if raw_folder in (None, '', 'null'):
+            return Response(
+                {'folder': 'Le dossier cible est requis.'},
+                status=status.HTTP_400_BAD_REQUEST)
+        new_folder = (Folder.objects
+                      .filter(company=request.user.company)
+                      .filter(pk=raw_folder).first())
+        if new_folder is None:
+            return Response(
+                {'folder': 'Dossier inconnu.'},
+                status=status.HTTP_404_NOT_FOUND)
+        try:
+            services.move_document(document, new_folder)
+        except ValueError as exc:
+            return Response(
+                {'detail': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+        document.refresh_from_db()
+        data = DocumentSerializer(document, context={'request': request}).data
+        return Response(data)
 
 
 class DocumentVersionViewSet(TenantMixin, viewsets.ModelViewSet):

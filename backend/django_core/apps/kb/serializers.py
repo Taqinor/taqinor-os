@@ -5,7 +5,7 @@ le ``TenantMixin`` (``perform_create``). ``auteur`` est posé côté serveur.
 """
 from rest_framework import serializers
 
-from .models import KbArticle
+from .models import KbArticle, KbArticleVersion
 
 
 class KbArticleSerializer(serializers.ModelSerializer):
@@ -23,3 +23,17 @@ class KbArticleSerializer(serializers.ModelSerializer):
         ]
         read_only_fields = [
             'auteur', 'date_creation', 'date_modification']
+
+
+class KbArticleVersionSerializer(serializers.ModelSerializer):
+    """Lecture seule : les versions sont des instantanés posés côté serveur."""
+    auteur_nom = serializers.CharField(
+        source='auteur.get_full_name', read_only=True)
+
+    class Meta:
+        model = KbArticleVersion
+        fields = [
+            'id', 'article', 'version', 'titre', 'contenu', 'auteur',
+            'auteur_nom', 'date_creation',
+        ]
+        read_only_fields = fields

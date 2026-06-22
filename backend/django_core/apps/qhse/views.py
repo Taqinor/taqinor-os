@@ -9,9 +9,13 @@ from rest_framework import filters, viewsets
 from authentication.mixins import TenantMixin
 from authentication.permissions import IsResponsableOrAdmin
 
-from .models import ActionCorrectivePreventive, NonConformite
+from .models import (
+    ActionCorrectivePreventive, NonConformite, PlanInspectionModele,
+    PointControleModele,
+)
 from .serializers import (
     ActionCorrectivePreventiveSerializer, NonConformiteSerializer,
+    PlanInspectionModeleSerializer, PointControleModeleSerializer,
 )
 
 
@@ -42,3 +46,21 @@ class ActionCorrectivePreventiveViewSet(_QhseBaseViewSet):
     filter_backends = [filters.SearchFilter, filters.OrderingFilter]
     search_fields = ['description', 'cause_racine']
     ordering_fields = ['id', 'echeance', 'date_creation']
+
+
+class PlanInspectionModeleViewSet(_QhseBaseViewSet):
+    """Modèles de plan d'inspection (ITP — QHSE2). Recherche par code/nom."""
+    queryset = PlanInspectionModele.objects.all()
+    serializer_class = PlanInspectionModeleSerializer
+    filter_backends = [filters.SearchFilter, filters.OrderingFilter]
+    search_fields = ['code', 'nom', 'description']
+    ordering_fields = ['id', 'nom', 'date_creation']
+
+
+class PointControleModeleViewSet(_QhseBaseViewSet):
+    """Points de contrôle d'un modèle de plan d'inspection (ITP — QHSE2)."""
+    queryset = PointControleModele.objects.select_related('plan').all()
+    serializer_class = PointControleModeleSerializer
+    filter_backends = [filters.SearchFilter, filters.OrderingFilter]
+    search_fields = ['intitule', 'phase', 'description']
+    ordering_fields = ['id', 'ordre', 'date_creation']

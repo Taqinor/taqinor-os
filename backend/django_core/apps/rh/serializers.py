@@ -36,7 +36,8 @@ class DossierEmployeSerializer(serializers.ModelSerializer):
         fields = [
             'id', 'user', 'matricule', 'nom', 'prenom', 'cin', 'telephone',
             'email', 'poste', 'departement', 'date_embauche', 'type_contrat',
-            'type_contrat_display', 'statut', 'statut_display', 'cout_horaire',
+            'type_contrat_display', 'contrat_date_debut', 'contrat_date_fin',
+            'statut', 'statut_display', 'cout_horaire',
             'rib', 'date_creation',
         ]
         read_only_fields = ['date_creation']
