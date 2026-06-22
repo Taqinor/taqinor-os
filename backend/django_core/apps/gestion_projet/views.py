@@ -15,6 +15,7 @@ from authentication.permissions import IsResponsableOrAdmin
 from . import selectors, services
 from .models import (
     DependanceTache,
+    Jalon,
     PhaseProjet,
     Projet,
     ProjetActivity,
@@ -24,6 +25,7 @@ from .models import (
 )
 from .serializers import (
     DependanceTacheSerializer,
+    JalonSerializer,
     PhaseProjetSerializer,
     ProjetActivitySerializer,
     ProjetChantierSerializer,
@@ -204,6 +206,19 @@ class ProjetViewSet(_GestionProjetBaseViewSet):
         projet = self.get_object()
         return Response(selectors.arbre_taches(projet))
 
+    @action(detail=True, methods=['get'], url_path='jalons')
+    def jalons(self, request, pk=None):
+        """Jalons du projet, ordonnés par date prévue (lecture seule).
+
+        La société est garantie par ``get_object`` (queryset scopé société) :
+        un projet d'une autre société → 404. Délègue au sélecteur
+        ``jalons_for_projet``.
+        """
+        projet = self.get_object()
+        return Response(
+            JalonSerializer(
+                selectors.jalons_for_projet(projet), many=True).data)
+
 
 class ProjetChantierViewSet(_GestionProjetBaseViewSet):
     """Rattachements chantier ↔ projet (liens lâches)."""
@@ -337,4 +352,37 @@ class DependanceTacheViewSet(_GestionProjetBaseViewSet):
         type_dependance = self.request.query_params.get('type_dependance')
         if type_dependance:
             qs = qs.filter(type_dependance=type_dependance)
+        return qs
+
+
+class JalonViewSet(_GestionProjetBaseViewSet):
+    """Jalons (milestones) d'un projet — CRUD scopé société.
+
+    ``company`` est posée côté serveur (TenantMixin) ; les FK reçus (``projet``,
+    ``phase``, ``tache``) sont validés même-société par le sérialiseur (cible
+    d'une autre société → 400), qui borne en plus ``facturation_pct`` à
+    [0, 100]. Filtres optionnels : ``?projet=<id>``, ``?statut=<statut>``,
+    ``?facturation=1`` (jalons de facturation, ``facturation_pct`` > 0).
+    Recherche par libellé ; tri par défaut ``date_prevue`` puis ``id``.
+    L'échéancier complet d'un projet est servi par ``projets/<id>/jalons/``.
+    """
+    queryset = Jalon.objects.select_related(
+        'projet', 'phase', 'tache').all()
+    serializer_class = JalonSerializer
+    filter_backends = [filters.SearchFilter, filters.OrderingFilter]
+    search_fields = ['libelle', 'description']
+    ordering_fields = ['date_prevue', 'date_reelle', 'statut',
+                       'facturation_pct', 'id']
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        projet = self.request.query_params.get('projet')
+        if projet:
+            qs = qs.filter(projet_id=projet)
+        statut = self.request.query_params.get('statut')
+        if statut:
+            qs = qs.filter(statut=statut)
+        facturation = self.request.query_params.get('facturation')
+        if facturation in ('1', 'true', 'True'):
+            qs = qs.filter(facturation_pct__gt=0)
         return qs
