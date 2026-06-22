@@ -123,3 +123,29 @@
     saturate(0.90)
     sepia(0.15);
 }
+
+/* ─── Grade « heure dorée » — accueil élevé v3 (preview /preview/accueil-v3) ──
+   .v3-grade : UNE seule étalonnage chaud, appliqué UNIFORMÉMENT à toute la
+   photographie de l'accueil v3 (galerie-preuve + cartes-métiers). Pousse la
+   palette vers l'heure dorée « Cinéma du chantier » : chaleur (sepia 18 %
+   clippé), micro-contraste (+8 %) et désaturation très légère (−6 %) qui
+   laisse les bleus Majorelle respirer. Volontairement subtil — aucun détail
+   écrasé.
+
+   CONTRASTE TEXTE-SUR-PHOTO : ce grade s'applique à l'IMAGE seule. Les
+   libellés (ville · kWc · kWh/an) sont posés au-DESSUS, sur un dégradé
+   nuit→transparent inchangé (et renforcé sur le héros via le scrim). Le grade
+   ne touche donc jamais le texte → le contraste AA est préservé ; sur la page
+   v3 le scrim héro est même relevé pour compenser toute chaleur ajoutée.
+
+   PROTECTION HÉRO / LCP : comme .photo-grade, ne JAMAIS appliquer .v3-grade à
+   une image LCP ni à un conteneur .v2-hero-media — réservé aux photos de
+   contenu. Compatibilité CSS filter universelle ; aucune interaction avec
+   transform/opacity du Ken Burns / .v2-rise (filtre vs transform). */
+.v3-grade {
+  filter:
+    contrast(1.08)
+    saturate(0.94)
+    sepia(0.18)
+    brightness(1.01);
+}
