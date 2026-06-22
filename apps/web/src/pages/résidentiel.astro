@@ -1,11 +1,23 @@
 ---
 /**
- * Page publique — élévation « élégance retenue » : typographie éditoriale,
- * révélations au défilement, chiffres count-up, parallaxe d'en-tête (desktop)
- * + mouvement photo (Ken Burns d'en-tête, montée d'échelle au défilement).
- * Tout le mouvement est désactivé sous prefers-reduced-motion. Le diagnostic
- * et son flux de données restent inchangés (composant partagé DiagnosticForm).
- * Voir apps/web/DESIGN_RATIONALE.md.
+ * Page publique — élévation « bleu Majorelle élevé + âme marocaine, appliquée
+ * avec discipline ». ÉLÈVE le système v2 « élégance retenue » / « Cinéma du
+ * chantier » (il ne le remplace PAS) : nuit profonde (#070b1d) + laiton, aucun
+ * noir. Mêmes hooks de mouvement que l'accueil élevé (.cine-in / .v2-rise,
+ * count-up, Ken Burns), tous gated `prefers-reduced-motion`. Données et chiffres
+ * VERBATIM — aucun fait inventé ; le formulaire et son flux de lead sont
+ * inchangés byte-for-byte (composant partagé DiagnosticForm).
+ *
+ * Élévations appliquées (réf. /preview/accueil-v3 + index.astro) :
+ *  1. héros cinématographique plus haut (~92svh), photo plein cadre
+ *     protagoniste, eyebrow lune + titre ancrés bas, UN CTA brass + ghost
+ *     WhatsApp, chevron de défilement ; scrim relevé (.hero-scrim-v3) ;
+ *  2. discipline laiton : l'or sur les chiffres (.lum) et le CTA principal ;
+ *     les eyebrows brass sont rétrogradés en lune ;
+ *  3. grade « heure dorée » (.v3-grade) sur la photographie de contenu ;
+ *  4. rythme via les tokens .section / .section-tight + coutures .seam-soft ;
+ *  5. un seul langage de mouvement .cine-in (+ stagger) / .v2-rise ;
+ *  6. typographie .display / .fig / .v2-body resserrée.
  */
 import Layout from '../layouts/Layout.astro';
 import V2Enhance from '../components/V2Enhance.astro';
@@ -20,6 +32,10 @@ import GarantiesTeaser from '../components/GarantiesTeaser.astro';
 import Testimonials from '../components/Testimonials.astro';
 import { BILL_RANGES, localEstimateBand } from '../lib/billRange';
 import { formatMAD } from '../lib/format';
+import { WHATSAPP_LEADS } from '../lib/nap';
+import { whatsappLink } from '../lib/whatsapp';
+
+const waDirect = whatsappLink(WHATSAPP_LEADS, 'Bonjour, je souhaite une étude pour une installation solaire.');
 
 const PRIX_PAR_KWC = { bas: 10000, haut: 12500 };
 const arrondi5k = (v: number) => Math.round(v / 5000) * 5000;
@@ -54,41 +70,71 @@ const brackets = BILL_RANGES.filter((r) => r.qualifies && r.id !== 'gt10000').ma
 
     <Breadcrumb items={[{ label: 'Accueil', href: '/' }, { label: 'Résidentiel' }]} />
 
-    <!-- ACTE I — le crépuscule plein cadre : la photo est la lumière -->
-    <section class="relative isolate overflow-hidden text-white">
+    {/* ── 1 · HÉROS CINÉMATOGRAPHIQUE (~92svh) — la photo est le protagoniste ── */}
+    <section class="relative isolate flex min-h-[92svh] flex-col justify-end overflow-hidden text-white">
       <div class="v2-hero-media absolute inset-0 -z-10">
+        {/* Affiche héro plein cadre (élément LCP) — JAMAIS de .v3-grade ici
+            (protection LCP) : seul le scrim relevé porte la chaleur. */}
         <Picture name="crepuscule-penthouse" alt="" widths={[1600, 1024, 640]} ratio={4 / 3} sizes="100vw"
           loading="eager" fetchpriority="high" class="h-full w-full object-cover object-[65%_40%]" />
-        <div class="absolute inset-0 bg-gradient-to-t from-nuit via-nuit/45 to-transparent"></div>
+        {/* Scrim canonique relevé (.hero-scrim-v3 → --hero-scrim-strength 0.52) :
+            compense la chaleur de la photo et garde le headline ≥ AA. */}
+        <div class="hero-scrim hero-scrim-v3 absolute inset-0"></div>
       </div>
-      <div class="mx-auto grid max-w-6xl gap-10 px-4 pb-20 pt-28 sm:pb-24 sm:pt-36 lg:grid-cols-[1.1fr_1fr] lg:items-end">
-        <div>
-          <p class="tech-label v2-kicker rule-brass cine-in text-brass-300">Villas · appartements</p>
-          <h1 class="display v2-page-title cine-in mt-5 max-w-[18ch] [animation-delay:120ms]">Votre facture connaît déjà la taille de votre installation</h1>
-          <p class="v2-lead cine-in mt-6 max-w-xl text-white/85 [animation-delay:240ms]">
-            Bien dimensionnée, une installation couvre 60 à 90 % de ce qu'une villa consomme. Trois
-            chiffres suffisent à fixer la puissance : votre relevé ONEE, vos heures de pointe et
-            l'orientation du toit. Nous travaillons à partir de ces relevés, et nous vous disons
-            franchement la puissance qu'ils appellent — ni plus pour gonfler la facture, ni moins
-            pour faire un prix d'appel.
-          </p>
+
+      {/* Chevron d'invitation au défilement — statique sous reduced-motion */}
+      <div class="absolute bottom-6 left-1/2 -translate-x-1/2 scroll-chevron" aria-hidden="true">
+        <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <polyline points="6 9 12 15 18 9" />
+        </svg>
+      </div>
+
+      {/* Contenu ancré BAS — eyebrow rétrogradé en lune (discipline laiton) */}
+      <div class="mx-auto w-full max-w-6xl px-4 pb-24 pt-32 sm:pb-32">
+        <p class="tech-label v2-kicker rule-brass cine-in text-lune">Villas · appartements</p>
+        <h1 class="display v2-page-title cine-in cine-in-1 mt-5 max-w-[18ch]">Votre facture connaît déjà la taille de votre installation</h1>
+        <p class="v2-lead cine-in cine-in-2 mt-6 max-w-xl text-white/85">
+          Bien dimensionnée, une installation couvre 60 à 90 % de ce qu'une villa consomme. Trois
+          chiffres suffisent à fixer la puissance : votre relevé ONEE, vos heures de pointe et
+          l'orientation du toit. Nous travaillons à partir de ces relevés, et nous vous disons
+          franchement la puissance qu'ils appellent — ni plus pour gonfler la facture, ni moins
+          pour faire un prix d'appel.
+        </p>
+        <div class="cine-in cine-in-3 mt-10 flex flex-wrap items-center gap-3">
+          {/* UN seul CTA brass (discipline laiton) — l'or est ici autorisé */}
+          <a href="#simulateur" class="glow-hero bg-brass-400 px-8 py-4 text-lg font-bold text-azur-950 transition-all hover:bg-brass-300">
+            Estimer mon installation →
+          </a>
+          {/* Ghost WhatsApp — contour blanc, aucun laiton */}
+          <a href={waDirect} rel="noopener" class="inline-flex items-center gap-2 border border-white/40 px-6 py-3.5 text-base font-semibold text-white backdrop-blur-sm transition-colors hover:border-white hover:bg-white/10">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 2a10 10 0 0 0-8.6 15.1L2 22l5-1.3A10 10 0 1 0 12 2Zm5.4 14.1c-.2.6-1.3 1.2-1.8 1.2-.5.1-1 .2-3.3-.7-2.8-1.1-4.6-4-4.7-4.2-.1-.2-1.1-1.5-1.1-2.9s.7-2 1-2.3c.2-.3.5-.3.7-.3h.5c.2 0 .4 0 .6.4l.9 2.1c.1.2.1.4 0 .6l-.4.6-.5.5c-.2.2-.3.4-.1.7.2.3.9 1.4 1.9 2.3 1.3 1.1 2.3 1.5 2.6 1.6.3.1.5.1.7-.1l1-1.2c.2-.3.4-.2.7-.1l2 1c.3.1.5.2.6.4 0 .1 0 .7-.3 1.4Z"/></svg>
+            WhatsApp direct
+          </a>
         </div>
-        <aside class="cine-in border-t-4 border-brass-400 bg-blanc p-6 text-encre shadow-[0_40px_90px_-30px_rgb(0_0_0/0.85)] [animation-delay:360ms]">
-          <p class="tech-label text-brass-600">Extrait d'étude — réf. 400 · Casablanca · avril 2026</p>
-          <div class="mt-5 grid grid-cols-2 gap-x-4 gap-y-6">
-            <div><p class="fig text-3xl text-azur-600 sm:text-4xl">11,36 <span class="text-base">kWc</span></p><p class="tech-label mt-1.5 text-encre-faint">Puissance installée</p></div>
-            <div><p class="fig text-3xl text-azur-600 sm:text-4xl">14 271 <span class="text-base">kWh/an</span></p><p class="tech-label mt-1.5 text-encre-faint">Production mesurée</p></div>
-            <div><p class="fig text-3xl text-azur-600 sm:text-4xl">16 <span class="text-base">panneaux</span></p><p class="tech-label mt-1.5 text-encre-faint">Canadian Solar 710 Wc</p></div>
-            <div><p class="fig text-3xl text-azur-600 sm:text-4xl">10 <span class="text-base">kWh</span></p><p class="tech-label mt-1.5 text-encre-faint">Stockage Dyness LFP</p></div>
-          </div>
-          <p class="mt-5 border-t border-azur-900/10 pt-3 text-xs text-encre-soft">Production suivie sur Deye Cloud — accès client inclus.</p>
-        </aside>
       </div>
     </section>
 
-    <!-- Transparence des prix — le grand livre, chiffres qui s'égrènent -->
-    <section class="mx-auto max-w-4xl px-4 py-24 sm:py-32">
-      <p class="tech-label v2-kicker rule-brass text-brass-300">Transparence des prix</p>
+    {/* Extrait d'étude — la carte « salle blanche » respire en pleine largeur
+        sous le héros (chiffres VERBATIM réf. 400). L'azur porte les chiffres :
+        l'or reste réservé au CTA héro et aux chiffres .lum du grand livre. */}
+    <div class="seam-soft" aria-hidden="true"></div>
+    <section class="section-tight px-4">
+      <aside class="v2-rise mx-auto max-w-3xl border-t-4 border-brass-400 bg-blanc p-6 text-encre shadow-premium sm:p-8">
+        <p class="tech-label text-brass-600">Extrait d'étude — réf. 400 · Casablanca · avril 2026</p>
+        <div class="mt-5 grid grid-cols-2 gap-x-4 gap-y-6 sm:grid-cols-4">
+          <div><p class="fig text-3xl text-azur-600 sm:text-4xl">11,36 <span class="text-base">kWc</span></p><p class="tech-label mt-1.5 text-encre-faint">Puissance installée</p></div>
+          <div><p class="fig text-3xl text-azur-600 sm:text-4xl">14 271 <span class="text-base">kWh/an</span></p><p class="tech-label mt-1.5 text-encre-faint">Production mesurée</p></div>
+          <div><p class="fig text-3xl text-azur-600 sm:text-4xl">16 <span class="text-base">panneaux</span></p><p class="tech-label mt-1.5 text-encre-faint">Canadian Solar 710 Wc</p></div>
+          <div><p class="fig text-3xl text-azur-600 sm:text-4xl">10 <span class="text-base">kWh</span></p><p class="tech-label mt-1.5 text-encre-faint">Stockage Dyness LFP</p></div>
+        </div>
+        <p class="mt-5 border-t border-azur-900/10 pt-3 text-xs text-encre-soft">Production suivie sur Deye Cloud — accès client inclus.</p>
+      </aside>
+    </section>
+
+    {/* Transparence des prix — le grand livre, chiffres qui s'égrènent.
+        Eyebrow rétrogradé en lune (discipline laiton). */}
+    <section class="section mx-auto max-w-4xl px-4">
+      <p class="tech-label v2-kicker rule-brass text-lune">Transparence des prix</p>
       <h2 class="display v2-section-title mt-5 text-white">Votre facture vous place déjà dans une fourchette</h2>
       <p class="v2-lead mt-4 max-w-2xl text-lune-soft">
         Voici les ordres de grandeur relevés sur nos chantiers résidentiels — <strong class="text-lune">jamais un
@@ -120,11 +166,12 @@ const brackets = BILL_RANGES.filter((r) => r.qualifies && r.id !== 'gt10000').ma
 
     <ZelligeDivider tone="white" />
 
-    <!-- Illustration 25 ans -->
-    <section class="border-t border-white/10 px-4 py-24 sm:py-32">
+    {/* Illustration 25 ans — eyebrow rétrogradé en lune (discipline laiton) */}
+    <div class="seam-soft" aria-hidden="true"></div>
+    <section class="section px-4">
       <div class="mx-auto grid max-w-6xl gap-12 lg:grid-cols-[1.1fr_1fr] lg:items-center">
         <div class="v2-rise">
-          <p class="tech-label v2-kicker rule-brass text-brass-300">L'horizon d'investissement</p>
+          <p class="tech-label v2-kicker rule-brass text-lune">L'horizon d'investissement</p>
           <h2 class="display v2-section-title mt-5 text-white">Ce que les 25 ans donnent, année par année</h2>
           <p class="v2-lead mt-5 text-lune-soft">
             Le constructeur garantit la performance des panneaux sur 25 ans. Prenez une villa à
@@ -153,7 +200,7 @@ const brackets = BILL_RANGES.filter((r) => r.qualifies && r.id !== 'gt10000').ma
           <figure class="v2-rise cine-card group relative overflow-hidden">
             <Picture name="pose-134" alt="L'équipe Taqinor incline un panneau pendant la pose sur une villa de Casablanca"
               widths={[1600, 1024, 640]} ratio={4 / 3} sizes="(min-width: 1024px) 40vw, 100vw"
-              class="w-full object-cover transition-transform duration-700 group-hover:scale-[1.04]" />
+              class="v3-grade w-full object-cover transition-transform duration-700 group-hover:scale-[1.04]" />
             <figcaption class="absolute inset-x-0 bottom-0 bg-gradient-to-t from-nuit/95 to-transparent px-4 pb-3 pt-12">
               <span class="tech-label block text-brass-300">Casablanca · 5,68 kWc · 7 135 kWh/an</span>
               <span class="mt-0.5 block text-xs text-lune">Pose en cours · 8 × Canadian Solar 710 Wc · mars 2026</span>
@@ -162,7 +209,7 @@ const brackets = BILL_RANGES.filter((r) => r.qualifies && r.id !== 'gt10000').ma
           <figure class="v2-rise cine-card group relative overflow-hidden">
             <Picture name="champ-villa" alt="Champ de huit panneaux sur toit plat de villa à El Jadida, ciel bleu"
               widths={[1600, 1024, 640]} ratio={3 / 2} sizes="(min-width: 1024px) 40vw, 100vw"
-              class="w-full object-cover transition-transform duration-700 group-hover:scale-[1.04]" />
+              class="v3-grade w-full object-cover transition-transform duration-700 group-hover:scale-[1.04]" />
             <figcaption class="absolute inset-x-0 bottom-0 bg-gradient-to-t from-nuit/95 to-transparent px-4 pb-3 pt-12">
               <span class="tech-label block text-brass-300">El Jadida · 5,68 kWc · 7 135 kWh/an</span>
               <span class="mt-0.5 block text-xs text-lune">8 × Canadian Solar 710 Wc · Deye 5 kW · production mesurée Deye Cloud</span>
@@ -172,8 +219,9 @@ const brackets = BILL_RANGES.filter((r) => r.qualifies && r.id !== 'gt10000').ma
       </div>
     </section>
 
-    <!-- Liens contextuels -->
-    <section class="border-t border-white/10 px-4 py-16">
+    {/* Liens contextuels */}
+    <div class="seam-soft" aria-hidden="true"></div>
+    <section class="section-tight px-4">
       <div class="mx-auto flex max-w-6xl flex-wrap gap-3">
         <a href="/realisations" class="border border-white/40 px-5 py-3 text-sm font-bold text-white transition-colors hover:border-white hover:bg-white/10">Nos réalisations résidentielles →</a>
         <a href="/équipement" class="border border-white/40 px-5 py-3 text-sm font-bold text-white transition-colors hover:border-white hover:bg-white/10">L'équipement posé →</a>
@@ -198,3 +246,11 @@ const brackets = BILL_RANGES.filter((r) => r.qualifies && r.id !== 'gt10000').ma
     <StickyCta />
   </div>
 </Layout>
+
+<style>
+  /* Scrim héro relevé pour l'élévation : compense la chaleur de la photo
+     plein cadre et garantit le contraste AA du headline blanc (réf. v3). */
+  .hero-scrim-v3 {
+    --hero-scrim-strength: 0.52;
+  }
+</style>
