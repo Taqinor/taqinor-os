@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { useDispatch } from 'react-redux'
 import { createLead, updateLead, archiveLead, restoreLead } from '../../features/crm/store/crmSlice'
 import api from '../../api/axios'
@@ -25,10 +26,6 @@ import { normalizeMaPhone } from '../../lib/format'
 const DEFAULT_CANAL = 'walk_in'
 // Validation e-mail minimale (le formulaire est noValidate) : « un@deux.trois ».
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
-
-// Site public (taqinor.ma) — base de l'outil de conception 3D de toiture.
-// Meriem ouvre le lead déjà chargé sur le site, sans copier d'ID ni de lien.
-const PUBLIC_SITE_URL = import.meta.env.VITE_PUBLIC_SITE_URL || 'https://taqinor.ma'
 
 const STAGE_LABELS = {
   NEW: 'Nouveau',
@@ -128,6 +125,7 @@ function timeAgo(iso) {
 
 export default function LeadForm({ lead = null, onClose, onSaved, initialDevis = null, onOpenDuplicate = null }) {
   const dispatch = useDispatch()
+  const navigate = useNavigate()
   const isEdit = !!lead
   // Canaux depuis le référentiel géré (Paramètres → CRM) + libellés statiques :
   // un canal ajouté en Paramètres apparaît dans le sélecteur sans redéploiement.
@@ -402,12 +400,11 @@ export default function LeadForm({ lead = null, onClose, onSaved, initialDevis =
     setDevisPanel(mode)
   }
 
-  // Ouvre l'outil de conception 3D du site avec le lead déjà chargé (nouvel
-  // onglet) — Meriem n'a aucun ID à copier ni lien à coller.
+  // Ouvre l'outil de conception 3D DANS l'ERP (même origine, session cookie de
+  // Meriem) avec le lead déjà chargé — navigation interne, aucun ID à copier.
   const ouvrirConceptionToiture = () => {
     if (!lead?.id) return
-    const url = `${PUBLIC_SITE_URL}/internal/devis-design?lead=${lead.id}`
-    window.open(url, '_blank', 'noopener,noreferrer')
+    navigate(`/devis-design/${lead.id}`)
   }
 
   // Après création/édition d'un devis dans le panneau : on recharge le lead

@@ -12,6 +12,7 @@ from .views import (
     client_credit_warning,
     releve_dry_run,
     releve_commit,
+    roof_config,
 )
 from .recouvrement import (
     FollowupLevelViewSet,
@@ -77,6 +78,9 @@ urlpatterns = [
          fiche_remise_premium, name='fiche-remise-premium'),
     # N87 — état du compte d'envoi email (informatif, lecture seule).
     path('email-config/', email_config, name='email-config'),
+    # Config carte pour l'outil de conception 3D de toiture (ERP même origine) :
+    # clé MapTiler / token Mapbox d'environnement, lus par la page ToitureDesign.
+    path('roof-config/', roof_config, name='roof-config'),
     # FG41 — avertissement plafond de crédit client (soft warning, jamais blocage).
     path('clients/<int:client_id>/credit-warning/', client_credit_warning,
          name='client-credit-warning'),
