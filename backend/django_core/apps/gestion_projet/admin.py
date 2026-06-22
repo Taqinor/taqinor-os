@@ -1,6 +1,12 @@
 from django.contrib import admin
 
-from .models import Projet, ProjetActivity, ProjetChantier, ProjetLien
+from .models import (
+    PhaseProjet,
+    Projet,
+    ProjetActivity,
+    ProjetChantier,
+    ProjetLien,
+)
 
 
 @admin.register(Projet)
@@ -23,6 +29,14 @@ class ProjetLienAdmin(admin.ModelAdmin):
     list_display = ('id', 'projet', 'type_cible', 'cible_id', 'libelle',
                     'company')
     list_filter = ('type_cible', 'company')
+    search_fields = ('libelle',)
+
+
+@admin.register(PhaseProjet)
+class PhaseProjetAdmin(admin.ModelAdmin):
+    list_display = ('id', 'projet', 'type_phase', 'ordre', 'statut',
+                    'avancement_pct', 'company')
+    list_filter = ('type_phase', 'statut', 'company')
     search_fields = ('libelle',)
 
 

@@ -12,6 +12,7 @@ module est entièrement additif.
 from decimal import Decimal
 
 from django.conf import settings
+from django.core.validators import MaxValueValidator
 from django.db import models
 
 
@@ -162,6 +163,77 @@ class ProjetLien(models.Model):
 
     def __str__(self):
         return f'{self.projet.code} → {self.type_cible} #{self.cible_id}'
+
+
+class PhaseProjet(models.Model):
+    """Une phase de la décomposition (WBS) d'un ``Projet``.
+
+    Découpe un projet en étapes de réalisation standard — étude, appro, pose,
+    mise en service, réception — pour suivre l'avancement par phase (statut,
+    dates prévues/réelles, pourcentage). C'est le WBS PROPRE à la gestion de
+    projet : totalement DISTINCT des jalons ``installations.JalonProjet`` — ce
+    module n'importe JAMAIS ``installations`` (référence d'aucune sorte).
+
+    Le ``type_phase`` est un enum PROPRE à ce module : il ne réutilise NI
+    n'importe AUCUNE clé/étiquette de ``STAGES.py`` (règle #2). Tout est
+    multi-société : ``company`` est posée côté serveur, jamais lue du corps de
+    requête. Modèle entièrement additif.
+    """
+    class TypePhase(models.TextChoices):
+        ETUDE = 'etude', 'Étude'
+        APPRO = 'appro', 'Approvisionnement'
+        POSE = 'pose', 'Pose'
+        MES = 'mes', 'Mise en service'
+        RECEPTION = 'reception', 'Réception'
+
+    class Statut(models.TextChoices):
+        A_VENIR = 'a_venir', 'À venir'
+        EN_COURS = 'en_cours', 'En cours'
+        TERMINEE = 'terminee', 'Terminée'
+
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='projet_phases',
+        verbose_name='Société',
+    )
+    projet = models.ForeignKey(
+        Projet,
+        on_delete=models.CASCADE,
+        related_name='phases',
+        verbose_name='Projet',
+    )
+    type_phase = models.CharField(
+        max_length=12, choices=TypePhase.choices,
+        verbose_name='Type de phase')
+    libelle = models.CharField(
+        max_length=200, blank=True, default='', verbose_name='Libellé')
+    ordre = models.PositiveIntegerField(default=0, verbose_name='Ordre')
+    date_debut_prevue = models.DateField(
+        null=True, blank=True, verbose_name='Date de début prévue')
+    date_fin_prevue = models.DateField(
+        null=True, blank=True, verbose_name='Date de fin prévue')
+    date_debut_reelle = models.DateField(
+        null=True, blank=True, verbose_name='Date de début réelle')
+    date_fin_reelle = models.DateField(
+        null=True, blank=True, verbose_name='Date de fin réelle')
+    statut = models.CharField(
+        max_length=10, choices=Statut.choices,
+        default=Statut.A_VENIR, verbose_name='Statut')
+    avancement_pct = models.PositiveSmallIntegerField(
+        default=0, validators=[MaxValueValidator(100)],
+        verbose_name='Avancement (%)')
+    date_creation = models.DateTimeField(
+        auto_now_add=True, verbose_name='Créé le')
+
+    class Meta:
+        verbose_name = 'Phase de projet'
+        verbose_name_plural = 'Phases de projet'
+        ordering = ['projet', 'ordre', 'id']
+        unique_together = [('projet', 'type_phase')]
+
+    def __str__(self):
+        return f'{self.projet.code} — {self.get_type_phase_display()}'
 
 
 class ProjetActivity(models.Model):
