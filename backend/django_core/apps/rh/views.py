@@ -19,18 +19,28 @@ from apps.records.storage import delete_attachment, store_attachment
 from authentication.mixins import TenantMixin
 from authentication.permissions import HasPermission, IsResponsableOrAdmin
 
-from . import selectors
+from . import selectors, services
 from .models import (
+    DemandeConge,
     Departement,
     DocumentEmploye,
     DossierEmploye,
+    ElementSortie,
+    Poste,
     Remuneration,
+    SoldeConge,
+    TypeAbsence,
 )
 from .serializers import (
+    DemandeCongeSerializer,
     DepartementSerializer,
     DocumentEmployeSerializer,
     DossierEmployeSerializer,
+    ElementSortieSerializer,
+    PosteSerializer,
     RemunerationSerializer,
+    SoldeCongeSerializer,
+    TypeAbsenceSerializer,
 )
 
 
