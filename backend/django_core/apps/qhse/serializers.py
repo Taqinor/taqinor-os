@@ -88,14 +88,34 @@ class PlanInspectionChantierSerializer(serializers.ModelSerializer):
     modele_nom = serializers.CharField(source='modele.nom', read_only=True)
     nb_releves = serializers.IntegerField(
         source='releves.count', read_only=True)
+    # QHSE6 — gating points d'arrêt : True si aucun point d'arrêt bloquant
+    # (relevé absent ou non conforme) n'empêche l'avancement chantier.
+    peut_avancer = serializers.SerializerMethodField()
+    nb_hold_points_bloquants = serializers.SerializerMethodField()
 
     class Meta:
         model = PlanInspectionChantier
         fields = [
             'id', 'modele', 'modele_nom', 'chantier_id', 'date_ouverture',
-            'statut', 'statut_display', 'nb_releves', 'date_creation',
+            'statut', 'statut_display', 'nb_releves', 'peut_avancer',
+            'nb_hold_points_bloquants', 'date_creation',
         ]
         read_only_fields = ['date_creation']
+
+    def _hold_points_status(self, obj):
+        # Calcul mémoïsé par instance pour ne pas le refaire deux fois.
+        cache = getattr(obj, '_hold_points_status_cache', None)
+        if cache is None:
+            from .selectors import hold_points_status
+            cache = hold_points_status(obj)
+            obj._hold_points_status_cache = cache
+        return cache
+
+    def get_peut_avancer(self, obj):
+        return self._hold_points_status(obj)['peut_avancer']
+
+    def get_nb_hold_points_bloquants(self, obj):
+        return self._hold_points_status(obj)['nb_bloquants']
 
     def validate_modele(self, value):
         return _meme_societe(self, value, "Modèle d'ITP")
