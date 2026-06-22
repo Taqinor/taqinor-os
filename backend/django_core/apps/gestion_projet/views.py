@@ -14,8 +14,10 @@ from authentication.permissions import IsResponsableOrAdmin
 
 from . import selectors, services
 from .models import (
+    CalendrierProjet,
     DependanceTache,
     Jalon,
+    JourFerie,
     PhaseProjet,
     Projet,
     ProjetActivity,
@@ -24,8 +26,10 @@ from .models import (
     Tache,
 )
 from .serializers import (
+    CalendrierProjetSerializer,
     DependanceTacheSerializer,
     JalonSerializer,
+    JourFerieSerializer,
     PhaseProjetSerializer,
     ProjetActivitySerializer,
     ProjetChantierSerializer,
@@ -466,4 +470,48 @@ class JalonViewSet(_GestionProjetBaseViewSet):
         facturation = self.request.query_params.get('facturation')
         if facturation in ('1', 'true', 'True'):
             qs = qs.filter(facturation_pct__gt=0)
+        return qs
+
+
+class CalendrierProjetViewSet(_GestionProjetBaseViewSet):
+    """Calendrier ouvré d'un projet (jours travaillés + fériés) — CRUD scopé.
+
+    ``company`` est posée côté serveur (TenantMixin) ; le ``projet`` reçu est
+    validé même-société par le sérialiseur (un seul calendrier par projet).
+    Filtre optionnel ``?projet=<id>``. Les jours fériés sont exposés imbriqués
+    en lecture ; ils se créent via ``jours-feries/``.
+    """
+    queryset = CalendrierProjet.objects.select_related('projet').all()
+    serializer_class = CalendrierProjetSerializer
+    filter_backends = [filters.OrderingFilter]
+    ordering_fields = ['id']
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        projet = self.request.query_params.get('projet')
+        if projet:
+            qs = qs.filter(projet_id=projet)
+        return qs
+
+
+class JourFerieViewSet(_GestionProjetBaseViewSet):
+    """Jours fériés (chômés) d'un calendrier de projet — CRUD scopé société.
+
+    ``company`` est posée côté serveur (TenantMixin) ; le ``calendrier`` reçu est
+    validé même-société par le sérialiseur. Filtres optionnels :
+    ``?calendrier=<id>``, ``?projet=<id>``. Tri par défaut ``date`` puis ``id``.
+    """
+    queryset = JourFerie.objects.select_related('calendrier').all()
+    serializer_class = JourFerieSerializer
+    filter_backends = [filters.OrderingFilter]
+    ordering_fields = ['date', 'id']
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        calendrier = self.request.query_params.get('calendrier')
+        if calendrier:
+            qs = qs.filter(calendrier_id=calendrier)
+        projet = self.request.query_params.get('projet')
+        if projet:
+            qs = qs.filter(calendrier__projet_id=projet)
         return qs

@@ -142,6 +142,23 @@ class ActionCorrectivePreventive(models.Model):
     statut = models.CharField(
         max_length=10, choices=Statut.choices,
         default=Statut.A_FAIRE, verbose_name='Statut')
+    # QHSE13 — vérification d'efficacité : une CAPA réalisée n'est VÉRIFIÉE
+    # (et donc clôturable au niveau NCR) que si son efficacité a été contrôlée
+    # et jugée concluante (``efficace=True``). ``efficace`` null = pas encore
+    # vérifiée, True = efficace, False = inefficace (rouvre le traitement).
+    efficace = models.BooleanField(
+        null=True, blank=True, verbose_name='Efficace')
+    commentaire_verification = models.TextField(
+        blank=True, default='', verbose_name="Commentaire de vérification")
+    date_verification = models.DateTimeField(
+        null=True, blank=True, verbose_name='Vérifiée le')
+    verifiee_par = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='qhse_capa_verifiees',
+        verbose_name='Vérifiée par',
+    )
     date_creation = models.DateTimeField(
         auto_now_add=True, verbose_name='Créé le')
 

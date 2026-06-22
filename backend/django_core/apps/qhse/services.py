@@ -9,7 +9,8 @@ elle réutilise le plan existant et n'ajoute que les relevés manquants.
 from django.db import transaction
 
 from .models import (
-    NonConformite, PlanInspectionChantier, PointControleModele, ReleveControle,
+    ActionCorrectivePreventive, NonConformite, PlanInspectionChantier,
+    PointControleModele, ReleveControle,
 )
 
 
@@ -164,3 +165,73 @@ def _notifier_capa(user, titre, corps, company):
                link='/qhse/capa', company=company)
     except Exception:  # pragma: no cover - défensif
         pass
+
+
+# ── QHSE13 — Vérification d'efficacité CAPA (clôture conditionnée) ──────────
+
+@transaction.atomic
+def verifier_efficacite_capa(capa, efficace, verifiee_par=None, commentaire=''):
+    """Enregistre la vérification d'efficacité d'une CAPA (QHSE13).
+
+    Une CAPA ne peut être vérifiée qu'une fois RÉALISÉE (le traitement est
+    terminé, on en mesure l'effet). Selon le verdict :
+
+    * ``efficace=True``  → la CAPA passe au statut ``VERIFIEE`` (elle devient
+      clôturable au niveau de la non-conformité) ;
+    * ``efficace=False`` → l'action n'a pas réglé l'écart : la CAPA repasse
+      ``EN_COURS`` pour relancer le traitement.
+
+    Pose ``efficace`` / ``commentaire_verification`` / ``date_verification`` /
+    ``verifiee_par``. Lève ``ValueError`` si la CAPA n'est pas réalisée.
+    Renvoie la CAPA.
+    """
+    from django.utils import timezone
+
+    S = ActionCorrectivePreventive.Statut
+    if capa.statut not in (S.REALISEE, S.VERIFIEE):
+        raise ValueError(
+            "La CAPA doit être réalisée avant la vérification d'efficacité.")
+
+    capa.efficace = bool(efficace)
+    capa.commentaire_verification = commentaire or ''
+    capa.date_verification = timezone.now()
+    capa.verifiee_par = verifiee_par
+    capa.statut = S.VERIFIEE if capa.efficace else S.EN_COURS
+    capa.save(update_fields=[
+        'efficace', 'commentaire_verification', 'date_verification',
+        'verifiee_par', 'statut'])
+    return capa
+
+
+def ncr_capa_bloquantes(ncr):
+    """CAPA qui empêchent la clôture d'une non-conformité (QHSE13).
+
+    Une NCR ne peut être clôturée que si CHACUNE de ses CAPA est vérifiée
+    efficace (``statut=VERIFIEE`` ET ``efficace=True``). Renvoie la liste des
+    CAPA non encore vérifiées efficaces. Lecture seule.
+    """
+    S = ActionCorrectivePreventive.Statut
+    return [
+        capa for capa in ncr.actions.all()
+        if not (capa.statut == S.VERIFIEE and capa.efficace is True)
+    ]
+
+
+@transaction.atomic
+def cloturer_ncr(ncr):
+    """Clôture une non-conformité — conditionnée à l'efficacité des CAPA (QHSE13).
+
+    La clôture n'est autorisée que si toutes les CAPA de la NCR sont vérifiées
+    efficaces (cf. ``ncr_capa_bloquantes``). Lève ``ValueError`` avec la liste
+    des CAPA bloquantes sinon. Idempotent si déjà clôturée. Renvoie la NCR.
+    """
+    if ncr.statut == NonConformite.Statut.CLOTUREE:
+        return ncr
+    bloquantes = ncr_capa_bloquantes(ncr)
+    if bloquantes:
+        raise ValueError(
+            "Clôture impossible : %d action(s) corrective(s) non vérifiée(s) "
+            "efficace(s)." % len(bloquantes))
+    ncr.statut = NonConformite.Statut.CLOTUREE
+    ncr.save(update_fields=['statut'])
+    return ncr

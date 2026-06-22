@@ -211,6 +211,12 @@ class Document(models.Model):
         related_name='documents')
     nom = models.CharField(max_length=255)
     description = models.TextField(blank=True, default='')
+    # GED10 — métadonnées typées configurables (réutilise `customfields`).
+    # Un admin définit des `CustomFieldDef` sur le module « document » ; les
+    # valeurs vivent ici, indexées par `code` (approche additive JSONField —
+    # ajouter/retirer une définition ne touche jamais le schéma). Validé contre
+    # les définitions actives via `customfields.serializers.validate_custom_data`.
+    custom_data = models.JSONField(null=True, blank=True, default=dict)
     created_by = models.ForeignKey(
         settings.AUTH_USER_MODEL, on_delete=models.SET_NULL,
         null=True, blank=True, related_name='ged_documents_crees')

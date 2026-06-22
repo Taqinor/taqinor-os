@@ -27,8 +27,8 @@ from .selectors import (
     photos_controle_par_phase,
 )
 from .services import (
-    creer_ncr_depuis_reserve, instancier_plan_chantier,
-    relancer_capa_en_retard,
+    cloturer_ncr, creer_ncr_depuis_reserve, instancier_plan_chantier,
+    relancer_capa_en_retard, verifier_efficacite_capa,
 )
 
 
@@ -78,6 +78,21 @@ class NonConformiteViewSet(_QhseBaseViewSet):
         code = status.HTTP_201_CREATED if created else status.HTTP_200_OK
         return Response(self.get_serializer(ncr).data, status=code)
 
+    @action(detail=True, methods=['post'])
+    def cloturer(self, request, pk=None):
+        """Clôture une NCR — conditionnée à l'efficacité des CAPA (QHSE13).
+
+        Refuse (400) tant qu'une CAPA n'est pas vérifiée efficace. ``get_object``
+        scopé société (404 hors société). Idempotent si déjà clôturée.
+        """
+        ncr = self.get_object()
+        try:
+            cloturer_ncr(ncr)
+        except ValueError as exc:
+            return Response(
+                {'detail': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+        return Response(self.get_serializer(ncr).data)
+
 
 class ActionCorrectivePreventiveViewSet(_QhseBaseViewSet):
     """Actions correctives / préventives (CAPA — QHSE10)."""
@@ -106,6 +121,32 @@ class ActionCorrectivePreventiveViewSet(_QhseBaseViewSet):
         """
         digest = relancer_capa_en_retard(request.user.company)
         return Response(digest)
+
+    @action(detail=True, methods=['post'], url_path='verifier-efficacite')
+    def verifier_efficacite(self, request, pk=None):
+        """Vérifie l'efficacité d'une CAPA réalisée (QHSE13).
+
+        Corps : ``efficace`` (bool requis), ``commentaire`` optionnel.
+        ``efficace=True`` → statut VÉRIFIÉE ; ``False`` → repasse EN COURS.
+        Refuse (400) si la CAPA n'est pas encore réalisée. ``verifiee_par`` posé
+        côté serveur. ``get_object`` scopé société.
+        """
+        capa = self.get_object()
+        efficace = request.data.get('efficace')
+        if efficace is None:
+            return Response(
+                {'detail': 'efficace est requis.'},
+                status=status.HTTP_400_BAD_REQUEST)
+        try:
+            verifier_efficacite_capa(
+                capa,
+                efficace=bool(efficace),
+                verifiee_par=request.user,
+                commentaire=request.data.get('commentaire', ''))
+        except ValueError as exc:
+            return Response(
+                {'detail': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+        return Response(self.get_serializer(capa).data)
 
 
 class PlanInspectionModeleViewSet(_QhseBaseViewSet):

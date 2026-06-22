@@ -198,8 +198,8 @@ class DocumentSerializer(serializers.ModelSerializer):
         # `company` + `created_by` posés côté serveur.
         fields = [
             'id', 'folder', 'folder_nom', 'coffre', 'nom', 'description',
-            'created_by', 'created_by_nom', 'version_count', 'derniere_version',
-            'tags', 'created_at', 'updated_at',
+            'custom_data', 'created_by', 'created_by_nom', 'version_count',
+            'derniere_version', 'tags', 'created_at', 'updated_at',
         ]
         read_only_fields = ['created_by', 'created_at', 'updated_at']
 

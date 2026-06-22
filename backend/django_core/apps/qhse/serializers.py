@@ -49,9 +49,13 @@ class ActionCorrectivePreventiveSerializer(serializers.ModelSerializer):
         fields = [
             'id', 'non_conformite', 'type_action', 'type_action_display',
             'description', 'cause_racine', 'responsable', 'echeance',
-            'statut', 'statut_display', 'date_creation',
+            'statut', 'statut_display', 'efficace', 'commentaire_verification',
+            'date_verification', 'verifiee_par', 'date_creation',
         ]
-        read_only_fields = ['date_creation']
+        read_only_fields = [
+            'efficace', 'commentaire_verification', 'date_verification',
+            'verifiee_par', 'date_creation',
+        ]
 
     def validate_non_conformite(self, value):
         return _meme_societe(self, value, 'Non-conformité')

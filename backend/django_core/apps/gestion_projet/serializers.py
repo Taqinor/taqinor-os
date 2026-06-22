@@ -305,3 +305,45 @@ class JalonSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError(
                 {'tache': 'La tâche doit appartenir au même projet.'})
         return attrs
+
+
+class JourFerieSerializer(serializers.ModelSerializer):
+    """Jour férié (chômé) d'un calendrier de projet.
+
+    ``company`` n'est jamais exposée : elle est posée côté serveur. Le
+    ``calendrier`` reçu est validé comme appartenant à la société de
+    l'utilisateur.
+    """
+    class Meta:
+        model = JourFerie
+        fields = [
+            'id', 'calendrier', 'date', 'libelle', 'date_creation',
+        ]
+        read_only_fields = ['date_creation']
+
+    def validate_calendrier(self, value):
+        return _meme_societe(self, value, 'Calendrier')
+
+
+class CalendrierProjetSerializer(serializers.ModelSerializer):
+    """Calendrier ouvré d'un projet (jours travaillés + fériés imbriqués).
+
+    ``company`` n'est jamais exposée : elle est posée côté serveur. Le ``projet``
+    reçu est validé comme appartenant à la société de l'utilisateur ; un seul
+    calendrier par projet (OneToOne). Les jours fériés sont exposés en LECTURE
+    seule (créés via leur propre endpoint).
+    """
+    projet_code = serializers.CharField(source='projet.code', read_only=True)
+    jours_feries = JourFerieSerializer(many=True, read_only=True)
+
+    class Meta:
+        model = CalendrierProjet
+        fields = [
+            'id', 'projet', 'projet_code', 'lundi', 'mardi', 'mercredi',
+            'jeudi', 'vendredi', 'samedi', 'dimanche', 'jours_feries',
+            'date_creation',
+        ]
+        read_only_fields = ['date_creation']
+
+    def validate_projet(self, value):
+        return _meme_societe(self, value, 'Projet')
