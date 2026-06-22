@@ -7,6 +7,17 @@
  * sous-performance, aucun « sous 24h/48h » inventé : rien de tout cela n'est
  * publié. Aucune fausse capture du tableau de bord Deye Cloud n'est annoncée :
  * on renvoie vers les réalisations réelles plutôt que vers un visuel manquant.
+ *
+ * ÉLÉVATION (2026-06-22) — « bleu Majorelle élevé + âme marocaine, avec
+ * discipline ». On ÉLÈVE le système v2 « Cinéma du chantier » sans rien
+ * remplacer : nuit profonde (#070b1d) + laiton, aucun noir. Tout le CONTENU et
+ * les chiffres restent VERBATIM. Mouvements : un seul langage (.cine-in /
+ * .v2-rise), tous gated prefers-reduced-motion, zéro CLS. Discipline laiton :
+ * l'or ne vit plus que sur le chiffre clé (.lum) et le CTA principal — les
+ * eyebrows brass sont rétrogradés en lune/azur. Rythme via les tokens .section
+ * / .section-tight. Pas de photo de contenu ici → pas de .v3-grade ; pas de
+ * signature zellige (page texte, aucun beat brand-soul qui la justifie). Le
+ * formulaire de lead n'existe pas sur cette page : aucun flux de données touché.
  */
 import Layout from '../layouts/Layout.astro';
 import V2Enhance from '../components/V2Enhance.astro';
@@ -56,12 +67,12 @@ const jsonLd = {
 
     <Breadcrumb items={[{ label: 'Accueil', href: '/' }, { label: 'Maintenance & monitoring' }]} />
 
-    <!-- Héros sombre -->
-    <section class="px-4 pb-10 pt-16 text-white sm:pt-20">
+    {/* ── HÉROS SOMBRE — eyebrow rétrogradé en lune (discipline laiton) ── */}
+    <section class="px-4 pb-12 pt-16 text-white sm:pt-20">
       <div class="mx-auto max-w-3xl">
-        <p class="tech-label v2-kicker rule-brass cine-in text-brass-300">Après la pose</p>
-        <h1 class="display v2-page-title cine-in mt-5 [animation-delay:120ms]">Maintenance &amp; monitoring</h1>
-        <p class="v2-lead cine-in mt-6 max-w-xl text-white/85 [animation-delay:240ms]">
+        <p class="tech-label v2-kicker rule-brass cine-in text-lune">Après la pose</p>
+        <h1 class="display v2-page-title cine-in cine-in-1 mt-5">Maintenance &amp; monitoring</h1>
+        <p class="v2-lead cine-in cine-in-2 mt-6 max-w-xl text-white/85">
           Le jour où l’installation est mise en service, elle commence à parler. Sur Deye Cloud,
           chaque toit Taqinor remonte sa production en continu — la vôtre lisible sur votre
           téléphone, la nôtre surveillée sur tout le parc. Une anomalie déclenche une alerte ; nous
@@ -70,12 +81,13 @@ const jsonLd = {
       </div>
     </section>
 
-    <!-- Ce que comprend le suivi -->
-    <section class="px-4 pb-20 sm:pb-24">
+    {/* ── CE QUE COMPREND LE SUIVI — rythme .section, eyebrow en lune ── */}
+    <div class="seam-soft" aria-hidden="true"></div>
+    <section class="section px-4">
       <div class="mx-auto max-w-6xl">
-        <p class="tech-label v2-kicker rule-brass text-brass-300">Inclus à chaque installation</p>
+        <p class="tech-label v2-kicker rule-brass text-lune">Inclus à chaque installation</p>
         <h2 class="display v2-section-title mt-5 text-white">Ce que comprend le suivi</h2>
-        <div class="mt-10 grid gap-6 md:grid-cols-3" data-stagger>
+        <div class="mt-12 grid gap-6 md:grid-cols-3" data-stagger>
           {suivi.map((s, i) => (
             <div class="v2-rise cine-card p-7" style={`--v2-i:${i}`}>
               <h3 class="display text-xl text-white">{s.title}</h3>
@@ -83,21 +95,23 @@ const jsonLd = {
             </div>
           ))}
         </div>
-        <p class="mt-10 max-w-xl border-l-4 border-brass-400/60 pl-4 text-sm leading-relaxed text-lune-soft">
+        {/* Filet azur (laiton rétrogradé) ; lien vers la fiche équipement en lune */}
+        <p class="v2-rise mt-12 max-w-xl border-l-2 border-azur-200/40 pl-4 text-sm leading-relaxed text-lune-soft">
           Côté matériel, la remontée passe par un dongle WiFi ou Ethernet branché sur l’onduleur ;
           c’est lui qui envoie chaque mesure vers Deye Cloud. Le détail figure sur la fiche
           équipement.
-          <a href="/équipement" class="border-b border-brass-400 pb-0.5 font-semibold text-brass-300 transition-colors hover:text-brass-200">Voir le monitoring Deye Cloud →</a>
+          <a href="/équipement" class="border-b border-lune/40 pb-0.5 font-semibold text-lune transition-colors hover:border-lune hover:text-white">Voir le monitoring Deye Cloud →</a>
         </p>
       </div>
     </section>
 
-    <!-- Production mesurée, pas promise (fond clair) -->
+    {/* ── PRODUCTION MESURÉE (acte clair, « salle blanche ») ── */}
     <div class="v2-seam" aria-hidden="true"></div>
-    <section class="bg-blanc-azur px-4 pb-20 pt-10 text-encre sm:pb-24">
+    <section class="bg-blanc-azur px-4 pb-20 pt-12 text-encre sm:pb-24">
       <div class="mx-auto max-w-3xl">
         <div class="v2-rise">
-          <p class="tech-label v2-kicker rule-brass text-azur-600">Des chiffres relevés</p>
+          {/* Eyebrow canonique fond clair — accent azur unique (discipline) */}
+          <p class="tech-label v2-kicker rule-brass eyebrow-light">Des chiffres relevés</p>
           <h2 class="display v2-section-title mt-5">Ce que dit le compteur, pas la plaquette</h2>
           <p class="v2-lead mt-5 text-encre-soft">
             Les kWh qu’une installation Taqinor affiche, Deye Cloud les enregistre jour après jour ;
@@ -109,23 +123,24 @@ const jsonLd = {
             mobile vous montre, en temps réel, ce que votre toit produit — sans intermédiaire.
           </p>
           <div class="mt-8 flex flex-wrap gap-3">
-            <a href="/garanties" class="inline-block bg-brass-400 px-7 py-3.5 text-base font-bold text-azur-950 transition-colors hover:bg-brass-300">Voir nos garanties écrites</a>
+            {/* CTA principal : le seul laiton de cette section claire (discipline) */}
+            <a href="/garanties" class="glow inline-block bg-brass-400 px-7 py-3.5 text-base font-bold text-azur-950 transition-colors hover:bg-brass-300">Voir nos garanties écrites</a>
             <a href="/realisations" class="inline-block border-b-2 border-azur-600 pb-0.5 text-base font-bold text-azur-600 transition-colors hover:text-azur-700">Voir nos réalisations →</a>
           </div>
         </div>
       </div>
     </section>
 
-    <!-- Bloc de liens de clôture -->
-    <section class="px-4 py-20 sm:py-28">
+    {/* ── BLOC DE LIENS DE CLÔTURE — eyebrow en lune, liens ghost blancs ── */}
+    <section class="section px-4">
       <div class="mx-auto max-w-6xl">
-        <p class="tech-label v2-kicker rule-brass text-brass-300">Pour aller plus loin</p>
+        <p class="tech-label v2-kicker rule-brass text-lune">Pour aller plus loin</p>
         <h2 class="display v2-section-title mt-5 text-white">Le suivi, dans le détail</h2>
-        <p class="mt-5 max-w-xl text-sm leading-relaxed text-lune-soft">
+        <p class="v2-rise mt-5 max-w-xl text-sm leading-relaxed text-lune-soft">
           Monitoring et SAV proactif ne tiennent que parce qu’ils s’appuient sur du matériel
           nommé et des garanties écrites noir sur blanc. Les voici en détail.
         </p>
-        <div class="mt-10 flex flex-wrap gap-3">
+        <div class="v2-rise mt-10 flex flex-wrap gap-3">
           <a href="/garanties" class="border border-white/40 px-5 py-3 text-sm font-bold text-white transition-colors hover:border-white hover:bg-white/10">Nos garanties →</a>
           <a href="/équipement" class="border border-white/40 px-5 py-3 text-sm font-bold text-white transition-colors hover:border-white hover:bg-white/10">L’équipement posé →</a>
           <a href="/contact#simulateur" class="border border-white/40 px-5 py-3 text-sm font-bold text-white transition-colors hover:border-white hover:bg-white/10">Mon diagnostic gratuit →</a>
