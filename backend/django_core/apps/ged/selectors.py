@@ -6,7 +6,7 @@ Toutes les lectures sont bornées à une société.
 """
 from .models import (
     Cabinet, Coffre, Document, DocumentLien, DocumentTag,
-    DocumentTagAssignment, DocumentVersion, Folder,
+    DocumentVersion, Folder,
 )
 
 
@@ -54,7 +54,6 @@ def coffres_for_user(user):
     voit que SES coffres (`proprietaire`). Toujours borné à la société de
     l'utilisateur — jamais de fuite cross-société.
     """
-    from django.db.models import Q
     company = getattr(user, 'company', None)
     if company is None and not user.is_superuser:
         return Coffre.objects.none()

@@ -28,7 +28,7 @@ from authentication.models import Company
 from apps.compta import selectors, services
 from apps.compta.models import (
     BordereauRemise, CompteTresorerie, EcritureComptable, Effet,
-    LignePrevisionnelTresorerie, PeriodeComptable, VirementInterne,
+    LignePrevisionnelTresorerie, PeriodeComptable,
 )
 
 User = get_user_model()

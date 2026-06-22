@@ -10,7 +10,6 @@ Couvre :
 * PAIE11 — ElementVariable + import RH (inerte tant que RH n'expose rien).
 * PAIE12 — moteur calculer_bulletin (brut/CNSS/AMO/IR/net).
 """
-from datetime import date
 from decimal import Decimal
 
 from django.contrib.auth import get_user_model

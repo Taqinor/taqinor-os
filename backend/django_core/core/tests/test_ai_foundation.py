@@ -12,8 +12,6 @@ from core.ai import (
     AIResult,
     OCRProvider,
     STTProvider,
-    VisionQAProvider,
-    LLMProvider,
     get_provider,
     register_provider,
     available_providers,

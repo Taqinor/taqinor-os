@@ -7,7 +7,6 @@ SS/FF + lag, date_fin déduite quand absente, garde date_fin < date_debut,
 endpoint scopé société et accès Administrateur/Responsable.
 """
 from datetime import date
-from decimal import Decimal
 
 from django.contrib.auth import get_user_model
 from django.test import TestCase

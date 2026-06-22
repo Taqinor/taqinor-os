@@ -81,7 +81,7 @@ class GanttTests(TestCase):
 
     def test_links_listed(self):
         a, b = self._t('A', 3), self._t('B', 2)
-        dep = DependanceTache.objects.create(
+        DependanceTache.objects.create(
             company=self.co, predecesseur=a, successeur=b,
             type_dependance=FS, lag=1)
         res = selectors.planning_gantt(self.p)

@@ -49,6 +49,7 @@ class RollupTests(TestCase):
 
     def _by_id(self, nodes):
         out = {}
+
         def walk(ns):
             for n in ns:
                 out[n['id']] = n

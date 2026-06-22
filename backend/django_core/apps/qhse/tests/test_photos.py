@@ -118,7 +118,7 @@ class PhotosApiTests(TestCase):
 
     def test_endpoint_isolation_404(self):
         other = make_company('qhse8-api-b', 'B')
-        other_user = make_user(other, 'qhse8-api-b')
+        make_user(other, 'qhse8-api-b')
         other_releve = make_releve(other)
         resp = auth(self.user).get(self.url(other_releve))
         self.assertEqual(resp.status_code, 404)
