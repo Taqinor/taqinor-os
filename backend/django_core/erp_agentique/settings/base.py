@@ -56,6 +56,11 @@ INSTALLED_APPS = [
     'rest_framework_simplejwt.token_blacklist',
     'corsheaders',
     # Local apps
+    # App de fondation : modèles abstraits, mixins, bus d'événements
+    # (core.events), portée des enregistrements (core.scoping) et fondation IA
+    # (core.ai — interfaces de fournisseurs IA NO-OP par défaut). Aucun modèle
+    # concret → aucune migration. N'importe que vers le bas (import-linter).
+    'core',
     'authentication',
     'apps.stock',
     'apps.crm',
@@ -320,6 +325,12 @@ ENTREPRISE_COULEUR = os.environ.get('ENTREPRISE_COULEUR', '#2563EB')
 # the legacy ventes WeasyPrint quote PDF. Only affects QUOTES, never invoices.
 USE_PREMIUM_QUOTE_ENGINE = os.environ.get('USE_PREMIUM_QUOTE_ENGINE', '1') != '0'
 
+# GED12 — recherche sémantique documentaire (pgvector). KEY-GATED : OFF par
+# défaut, donc l'indexation d'embeddings est un no-op (aucun appel/coût) et la
+# recherche sémantique retombe sur le plein-texte GED11. Le founder l'active en
+# posant GED_EMBEDDING_ENABLED=1 + la clé du provider d'embeddings.
+GED_EMBEDDING_ENABLED = os.environ.get('GED_EMBEDDING_ENABLED', '0') == '1'
+
 # Security headers (safe in all environments)
 SECURE_CONTENT_TYPE_NOSNIFF = True
 X_FRAME_OPTIONS = 'DENY'
@@ -344,3 +355,22 @@ TESTING = ('test' in sys.argv) or bool(os.environ.get('PYTEST_CURRENT_TEST'))
 # when no keys are provided via env, so web push works out of the box. OFF under
 # the test runner so the "unconfigured => empty endpoint => no-op" contract holds.
 VAPID_AUTOGENERATE = os.environ.get('VAPID_AUTOGENERATE', '0' if TESTING else '1') == '1'
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Fondation IA (core.ai) — sélection des fournisseurs par capacité.
+# Dict {capacité: clé_fournisseur}. Le DÉFAUT de chaque capacité est 'noop' :
+# sans configuration explicite, AUCUN appel externe n'a lieu, aucune dépendance
+# n'est chargée et rien n'est facturé (la fonctionnalité « ne fait rien » plutôt
+# que de casser). Pour activer une capacité, enregistrer un vrai fournisseur
+# (core.ai.register_provider) et le sélectionner ici, ex. :
+#   AI_PROVIDERS = {'ocr': 'zhipu', 'stt': 'whisper', 'llm': 'groq'}
+# Un fournisseur sélectionné mais non configuré (clé absente) retombe lui-même
+# sur le NO-OP — garantie « aucun appel sans config ». Capacités : 'ocr', 'stt',
+# 'vision_qa', 'llm'. Lue depuis AI_PROVIDERS_JSON (JSON) si présente.
+import json as _json  # noqa: E402
+try:
+    AI_PROVIDERS = _json.loads(os.environ.get('AI_PROVIDERS_JSON', '') or '{}')
+    if not isinstance(AI_PROVIDERS, dict):
+        AI_PROVIDERS = {}
+except (ValueError, TypeError):
+    AI_PROVIDERS = {}

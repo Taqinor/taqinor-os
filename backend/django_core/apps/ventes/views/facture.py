@@ -82,7 +82,7 @@ class FactureViewSet(viewsets.ModelViewSet):
             'emettre', 'marquer_payee', 'enregistrer_paiement',
             'generer_pdf', 'telecharger_pdf', 'envoyer_email',
             'relancer', 'exclure_relance', 'whatsapp', 'ubl',
-            'dgi_export', 'dgi_conformite', 'bulk',
+            'dgi_export', 'dgi_conformite', 'bulk', 'lien_paiement',
         ]:
             return [IsResponsableOrAdmin()]
         # Annuler une facture = réservé à l'admin/propriétaire (geste comptable).
@@ -546,6 +546,41 @@ class FactureViewSet(viewsets.ModelViewSet):
             'wa_url': build_wa_url(phone, message),
             'phone': phone, 'message': message, 'url': link['url'],
         })
+
+    @action(detail=True, methods=['post'], url_path='lien-paiement',
+            permission_classes=[IsResponsableOrAdmin])
+    def lien_paiement(self, request, pk=None):
+        """FG53 — crée (ou réutilise) un lien « Payer en ligne » pour la facture.
+
+        Le fournisseur par défaut est NoOp (page de paiement interne, aucun coût
+        ni dépendance ; passerelle live gatée). Renvoie le jeton, l'URL de la
+        page de paiement, le montant figé (reste à payer) et l'échéance. Société
+        forcée depuis la facture ; n'envoie rien au client (pas d'email/SMS)."""
+        facture = self.get_object()
+        if facture.statut == Facture.Statut.ANNULEE:
+            return Response(
+                {'detail': 'Facture annulée : aucun lien de paiement.'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        from decimal import Decimal
+        if facture.montant_du <= Decimal('0'):
+            return Response(
+                {'detail': 'Cette facture est déjà soldée.'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        from ..services import create_payment_link
+        from ..payments.providers import get_provider
+        provider_key = request.data.get('provider') or 'noop'
+        link = create_payment_link(facture=facture, provider=provider_key)
+        session = get_provider(link.provider).create_session(link)
+        return Response({
+            'token': link.token,
+            'statut': link.statut,
+            'montant': str(link.montant),
+            'provider': link.provider,
+            'pay_url': session.get('pay_url'),
+            'expires_at': link.expires_at.isoformat(),
+        }, status=status.HTTP_201_CREATED)
 
     @action(detail=True, methods=['post'], url_path='envoyer-email',
             permission_classes=[IsResponsableOrAdmin])

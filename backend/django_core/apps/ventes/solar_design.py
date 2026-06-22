@@ -569,3 +569,314 @@ def optimize_orientation(settings, lat, lon, *, peakpower_kwc=1.0,
         },
         "gain_vs_default_pct": gain_pct,
     }
+
+
+# ── FG250 — Analyse d'ombrage & profil d'horizon ─────────────────────────────
+# Transforme l'ombrage QUALITATIF (obstacles + profil d'horizon) en une PERTE
+# d'ombrage CHIFFRÉE, mensuelle. Module PUR : aucune base, aucun réseau.
+#
+# Modèle simplifié et transparent (pas de tracé de rayon par minute) :
+#   * Le profil d'horizon est une liste d'élévations (degrés au-dessus de
+#     l'horizontale) par secteur d'azimut. Plus l'horizon est haut au Sud, plus
+#     la perte est forte ; l'Est/Ouest pèse moins, le Nord (hémisphère N) ~0.
+#   * Des obstacles ponctuels (arbre, mur, cheminée) ajoutent une perte locale
+#     pondérée par leur azimut et par la saison (soleil bas en hiver → pertes
+#     accrues).
+# Le résultat donne une perte mensuelle (%) et une perte annuelle moyenne (%),
+# un facteur de production (1 - perte) prêt à multiplier un productible PVGIS.
+
+# Poids saisonnier de l'élévation solaire : en hiver le soleil culmine bas, donc
+# un horizon haut masque davantage. Index 0 = janvier … 11 = décembre.
+_SHADING_SEASON_WEIGHT = [
+    1.35, 1.25, 1.10, 0.95, 0.85, 0.80,
+    0.82, 0.90, 1.05, 1.20, 1.32, 1.40,
+]
+
+_MONTHS_FR = [
+    "janvier", "février", "mars", "avril", "mai", "juin",
+    "juillet", "août", "septembre", "octobre", "novembre", "décembre",
+]
+
+
+def _azimuth_solar_weight(azimuth, hemisphere_north=True):
+    """Poids de pénalité d'un obstacle selon son azimut (0=N, 90=E, 180=S, 270=O).
+
+    Le soleil utile est au Sud (hémisphère Nord) : un masque plein Sud coûte le
+    plus (poids ~1), l'Est/Ouest ~0.5, le Nord ~0 (le soleil n'y passe jamais).
+    """
+    try:
+        az = float(azimuth) % 360.0
+    except (TypeError, ValueError):
+        return 0.5
+    # Azimut solaire de référence : 180° (Sud) au Nord, 0° (Nord) au Sud.
+    ref = 180.0 if hemisphere_north else 0.0
+    delta = abs((az - ref + 180.0) % 360.0 - 180.0)  # écart angulaire 0..180
+    # cos décroît du Sud (0°) vers le Nord (180°) ; borné à [0, 1].
+    return max(0.0, math.cos(math.radians(min(delta, 90.0))))
+
+
+def shading_analysis(horizon_profile=None, obstacles=None, *,
+                     hemisphere_north=True):
+    """FG250 — perte d'ombrage mensuelle depuis l'horizon + les obstacles.
+
+    Paramètres
+    ----------
+    horizon_profile : liste de points ``{azimuth, elevation}`` (degrés). Une
+        élévation d'horizon ``e`` au secteur d'azimut ``a`` masque le soleil
+        bas ; sa pénalité est ``e/90`` pondérée par le poids solaire de ``a``.
+    obstacles : liste de masques ponctuels ``{azimuth, elevation, type?}`` —
+        même pénalité, additive et bornée.
+    hemisphere_north : True (Maroc) → soleil au Sud.
+
+    Retourne un dict JSON-sérialisable ::
+
+        {monthly_loss_pct: [12], annual_loss_pct, production_factor,
+         monthly_production_factor: [12], horizon_severity, n_obstacles,
+         warnings: []}
+
+    Ne lève jamais : entrées vides → perte 0, facteur 1.0 (aucun ombrage).
+    """
+    horizon_profile = horizon_profile or []
+    obstacles = obstacles or []
+    warnings = []
+
+    def _pt_penalty(pt):
+        """Pénalité de base (0..1) d'un point d'horizon/obstacle, hors saison."""
+        try:
+            elev = float(pt.get("elevation") or 0.0)
+        except (TypeError, ValueError, AttributeError):
+            return 0.0
+        if elev <= 0:
+            return 0.0
+        elev = min(elev, 90.0)
+        az_w = _azimuth_solar_weight(pt.get("azimuth"), hemisphere_north)
+        # Fraction du ciel utile masquée par cette élévation à cet azimut.
+        return (elev / 90.0) * az_w
+
+    # Sévérité de base = moyenne des pénalités d'horizon + somme bornée des
+    # obstacles (un obstacle plein Sud à 30° pèse lourd, plusieurs s'ajoutent).
+    horizon_pen = 0.0
+    if horizon_profile:
+        horizon_pen = sum(_pt_penalty(p) for p in horizon_profile) \
+            / len(horizon_profile)
+    obstacle_pen = sum(_pt_penalty(p) for p in obstacles)
+
+    # Pénalité de référence (annuelle, avant pondération saisonnière), bornée.
+    base_pen = min(0.6, horizon_pen + obstacle_pen)
+
+    if base_pen <= 0:
+        return {
+            "monthly_loss_pct": [0.0] * 12,
+            "annual_loss_pct": 0.0,
+            "production_factor": 1.0,
+            "monthly_production_factor": [1.0] * 12,
+            "horizon_severity": 0.0,
+            "n_obstacles": len(obstacles),
+            "warnings": ["aucun ombrage significatif détecté"]
+            if not (horizon_profile or obstacles) else [],
+        }
+
+    monthly_loss_pct = []
+    monthly_factor = []
+    for w in _SHADING_SEASON_WEIGHT:
+        # Perte du mois = pénalité de base × poids saisonnier, en %, bornée à 90.
+        loss = min(90.0, round(base_pen * w * 100.0, 1))
+        monthly_loss_pct.append(loss)
+        monthly_factor.append(round(1.0 - loss / 100.0, 4))
+
+    annual_loss = round(sum(monthly_loss_pct) / 12.0, 1)
+    production_factor = round(1.0 - annual_loss / 100.0, 4)
+
+    if annual_loss >= 20.0:
+        warnings.append(
+            "ombrage important (perte annuelle ≥ 20 %) — envisager un "
+            "repositionnement des panneaux ou des optimiseurs/micro-onduleurs")
+    elif annual_loss >= 8.0:
+        warnings.append(
+            "ombrage modéré — vérifier la disposition des chaînes pour limiter "
+            "l'impact d'un panneau masqué sur sa chaîne")
+
+    return {
+        "monthly_loss_pct": monthly_loss_pct,
+        "monthly_labels": list(_MONTHS_FR),
+        "annual_loss_pct": annual_loss,
+        "production_factor": production_factor,
+        "monthly_production_factor": monthly_factor,
+        "horizon_severity": round(base_pen, 4),
+        "n_obstacles": len(obstacles),
+        "warnings": warnings,
+    }
+
+
+# ── FG251 — Générateur de nomenclature électrique (BOQ) ───────────────────────
+# Déduit du design (nb panneaux, kWc, conception de chaînes, type d'installation)
+# une nomenclature électrique : câbles DC/AC, disjoncteurs, parafoudres,
+# coffrets, mise à la terre, structure. Module PUR ; aucun prix (le BOQ liste des
+# QUANTITÉS et des spécifications, jamais de prix d'achat/marge).
+
+# Section de câble AC (mm²) par tranche de courant — barème prudent (cuivre).
+_AC_CABLE_BY_AMP = [
+    (16, 2.5), (25, 4.0), (32, 6.0), (40, 10.0),
+    (63, 16.0), (80, 25.0), (100, 35.0), (125, 50.0),
+]
+
+
+def _ac_cable_section(amps):
+    for amp_max, section in _AC_CABLE_BY_AMP:
+        if amps <= amp_max:
+            return section
+    return 70.0
+
+
+def generate_boq(*, n_panels=0, kwc=None, string_result=None,
+                 installation_type="reseau", phases=1, has_battery=False,
+                 ac_cable_length_m=15.0, dc_cable_length_m=None):
+    """FG251 — nomenclature électrique (BOQ) déduite du design.
+
+    Paramètres
+    ----------
+    n_panels : nombre de panneaux.
+    kwc : puissance crête DC (kWc) ; déduite de ``string_result.dc_kw`` sinon.
+    string_result : sortie de ``string_design`` (strings/panels_per_string/
+        ac_kw…) — pilote la longueur DC et le nombre de protections de chaîne.
+    installation_type : 'reseau' | 'hybride' | 'autonome' (pompage exclu — pas
+        de BOQ PV classique).
+    phases : 1 (mono) ou 3 (triphasé) → calibre disjoncteur AC + section câble.
+    has_battery : ajoute le câblage/protections batterie (DC).
+    ac_cable_length_m / dc_cable_length_m : longueurs estimées (m) ; le DC est
+        déduit du nombre de chaînes si non fourni.
+
+    Retourne ``{items: [{categorie, designation, quantite, unite, spec}],
+    summary: {...}, warnings: []}``. JSON-sérialisable, jamais de prix.
+    """
+    warnings = []
+    sr = string_result or {}
+    if kwc is None:
+        kwc = sr.get("dc_kw")
+    try:
+        kwc = float(kwc or 0.0)
+    except (TypeError, ValueError):
+        kwc = 0.0
+    try:
+        n_panels = int(n_panels or sr.get("n_panels") or 0)
+    except (TypeError, ValueError):
+        n_panels = 0
+    strings = int(sr.get("strings") or (1 if n_panels else 0))
+    phases = 3 if int(phases or 1) == 3 else 1
+
+    items = []
+
+    def add(categorie, designation, quantite, unite, spec=""):
+        items.append({
+            "categorie": categorie,
+            "designation": designation,
+            "quantite": quantite,
+            "unite": unite,
+            "spec": spec,
+        })
+
+    if n_panels <= 0:
+        return {
+            "items": [],
+            "summary": {"kwc": kwc, "n_panels": 0, "strings": 0,
+                        "phases": phases},
+            "warnings": ["aucun panneau — pas de nomenclature à générer"],
+        }
+
+    # ── Courant & calibre AC ──
+    # Puissance AC de référence = ac_kw onduleur si connu, sinon kWc / 1.2.
+    ac_kw = sr.get("ac_kw") or (kwc / 1.2 if kwc else 0.0)
+    voltage = 400.0 if phases == 3 else 230.0
+    sqrt3 = math.sqrt(3) if phases == 3 else 1.0
+    ac_amps = (ac_kw * 1000.0) / (voltage * sqrt3) if ac_kw else 0.0
+    # Calibre disjoncteur AC : 1.25× le courant nominal, arrondi au calibre std.
+    breaker_amp = _round_breaker(ac_amps * 1.25)
+
+    # ── Câble DC (chaînes) ──
+    if dc_cable_length_m is None:
+        # ~2 conducteurs (+/-) par chaîne, longueur estimée par chaîne.
+        dc_cable_length_m = max(10.0, strings * 20.0)
+    add("Câblage DC", "Câble solaire DC 6 mm² (PV1-F)",
+        round(dc_cable_length_m, 1), "m",
+        "1000 V DC, double isolation, résistant UV")
+
+    # ── Câble AC ──
+    ac_section = _ac_cable_section(max(ac_amps, 1.0))
+    n_cond_ac = 5 if phases == 3 else 3  # 3P+N+T ou P+N+T
+    add("Câblage AC",
+        f"Câble AC {ac_section:g} mm² ({'triphasé' if phases == 3 else 'monophasé'})",
+        round(ac_cable_length_m * n_cond_ac, 1), "m",
+        f"{n_cond_ac} conducteurs, U-1000 R2V")
+
+    # ── Protections DC ──
+    add("Protection DC", "Parafoudre DC Type 2", 1, "u",
+        "1000 V DC, pour string box / entrée onduleur")
+    add("Protection DC", "Sectionneur-fusible DC par chaîne", max(strings, 1),
+        "u", "porte-fusible + fusible gPV 1000 V DC")
+    add("Coffret", "Coffret de chaîne DC (string box)",
+        1 if strings <= 2 else 2, "u",
+        "IP65, presse-étoupes, embase parafoudre")
+
+    # ── Protections AC ──
+    add("Protection AC", f"Disjoncteur AC {breaker_amp} A "
+        f"{'tétrapolaire' if phases == 3 else 'bipolaire'}", 1, "u",
+        f"courbe C, {voltage:g} V")
+    add("Protection AC", "Parafoudre AC Type 2", 1, "u",
+        f"{'triphasé' if phases == 3 else 'monophasé'}, In 20 kA")
+    add("Coffret", "Coffret de protection AC", 1, "u",
+        "IP65, prêt à raccorder au tableau")
+
+    # ── Mise à la terre ──
+    add("Mise à la terre", "Piquet de terre + barrette de coupure", 1, "ens",
+        "≤ 100 Ω, conforme NF C 15-100")
+    add("Mise à la terre", "Câble de terre cuivre nu 25 mm²",
+        round(dc_cable_length_m * 0.6 + ac_cable_length_m, 1), "m",
+        "liaison équipotentielle structure + masses")
+
+    # ── Structure ──
+    add("Structure", "Rail de fixation aluminium", n_panels * 2, "u",
+        "rail anodisé, longueur ajustée au module")
+    add("Structure", "Pince de fixation (milieu + extrémité)",
+        n_panels * 2 + 4, "u", "inox A2, milieu et extrémité")
+    add("Structure", "Crochet / patte de fixation toiture",
+        max(4, int(math.ceil(n_panels * 0.6))), "u",
+        "selon couverture (tuile/bac acier)")
+
+    # ── Batterie (hybride/autonome) ──
+    if has_battery or installation_type in ("hybride", "autonome"):
+        add("Batterie", "Câble batterie DC 25 mm²", 6.0, "m",
+            "section forte courant, cosses serties")
+        add("Protection batterie", "Fusible / disjoncteur DC batterie", 1, "u",
+            "calibre selon courant batterie")
+
+    if string_result and not string_result.get("ok", True):
+        warnings.append(
+            "la conception de chaînes signale des avertissements — vérifier la "
+            "compatibilité tension avant de figer la nomenclature")
+
+    summary = {
+        "kwc": round(kwc, 3),
+        "n_panels": n_panels,
+        "strings": strings,
+        "phases": phases,
+        "ac_breaker_amp": breaker_amp,
+        "ac_cable_section_mm2": ac_section,
+        "n_lignes": len(items),
+    }
+    return {"items": items, "summary": summary, "warnings": warnings}
+
+
+# Calibres de disjoncteur AC normalisés (A).
+_STD_BREAKERS = [6, 10, 16, 20, 25, 32, 40, 50, 63, 80, 100, 125, 160]
+
+
+def _round_breaker(amps):
+    """Arrondit au calibre normalisé immédiatement supérieur."""
+    try:
+        amps = float(amps)
+    except (TypeError, ValueError):
+        amps = 0.0
+    for b in _STD_BREAKERS:
+        if amps <= b:
+            return b
+    return _STD_BREAKERS[-1]

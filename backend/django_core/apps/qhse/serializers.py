@@ -7,8 +7,9 @@ appartenant à la société de l'utilisateur.
 from rest_framework import serializers
 
 from .models import (
-    ActionCorrectivePreventive, NonConformite, PlanInspectionChantier,
-    PlanInspectionModele, PointControleModele, ReleveControle, ReleveCourbeIV,
+    ActionCorrectivePreventive, CritereAudit, GrilleAudit, NonConformite,
+    PlanInspectionChantier, PlanInspectionModele, PointControleModele,
+    QhseChatterEntry, ReleveControle, ReleveCourbeIV,
 )
 
 
@@ -32,9 +33,10 @@ class NonConformiteSerializer(serializers.ModelSerializer):
         fields = [
             'id', 'reference', 'titre', 'description', 'gravite',
             'gravite_display', 'origine', 'statut', 'statut_display',
-            'chantier_id', 'signale_par', 'date_detection', 'date_creation',
+            'chantier_id', 'reserve', 'signale_par', 'date_detection',
+            'date_creation',
         ]
-        read_only_fields = ['signale_par', 'date_creation']
+        read_only_fields = ['reserve', 'signale_par', 'date_creation']
 
 
 class ActionCorrectivePreventiveSerializer(serializers.ModelSerializer):
@@ -48,9 +50,13 @@ class ActionCorrectivePreventiveSerializer(serializers.ModelSerializer):
         fields = [
             'id', 'non_conformite', 'type_action', 'type_action_display',
             'description', 'cause_racine', 'responsable', 'echeance',
-            'statut', 'statut_display', 'date_creation',
+            'statut', 'statut_display', 'efficace', 'commentaire_verification',
+            'date_verification', 'verifiee_par', 'date_creation',
         ]
-        read_only_fields = ['date_creation']
+        read_only_fields = [
+            'efficace', 'commentaire_verification', 'date_verification',
+            'verifiee_par', 'date_creation',
+        ]
 
     def validate_non_conformite(self, value):
         return _meme_societe(self, value, 'Non-conformité')
@@ -176,3 +182,60 @@ class ReleveCourbeIVSerializer(serializers.ModelSerializer):
 
     def validate_plan_chantier(self, value):
         return _meme_societe(self, value, "Plan d'inspection chantier")
+
+
+class QhseChatterEntrySerializer(serializers.ModelSerializer):
+    """Entrée de chatter QHSE (QHSE14, lecture seule via l'API)."""
+    kind_display = serializers.CharField(
+        source='get_kind_display', read_only=True)
+    cible_type_display = serializers.CharField(
+        source='get_cible_type_display', read_only=True)
+    user_nom = serializers.CharField(
+        source='user.username', read_only=True, default=None)
+
+    class Meta:
+        model = QhseChatterEntry
+        fields = [
+            'id', 'cible_type', 'cible_type_display', 'cible_id', 'kind',
+            'kind_display', 'field', 'field_label', 'old_value', 'new_value',
+            'body', 'user', 'user_nom', 'created_at',
+        ]
+        read_only_fields = fields
+
+
+class GrilleAuditSerializer(serializers.ModelSerializer):
+    """Grille d'audit + critères pondérés (QHSE15)."""
+    type_audit_display = serializers.CharField(
+        source='get_type_audit_display', read_only=True)
+    poids_total = serializers.IntegerField(read_only=True)
+    nb_criteres = serializers.IntegerField(
+        source='criteres.count', read_only=True)
+
+    class Meta:
+        model = GrilleAudit
+        fields = [
+            'id', 'code', 'nom', 'description', 'type_audit',
+            'type_audit_display', 'actif', 'poids_total', 'nb_criteres',
+            'date_creation',
+        ]
+        read_only_fields = ['date_creation']
+
+
+class CritereAuditSerializer(serializers.ModelSerializer):
+    """Critère pondéré d'une grille d'audit (QHSE15)."""
+
+    class Meta:
+        model = CritereAudit
+        fields = [
+            'id', 'grille', 'ordre', 'intitule', 'categorie', 'poids',
+            'note_max', 'description', 'date_creation',
+        ]
+        read_only_fields = ['date_creation']
+
+    def validate_grille(self, value):
+        return _meme_societe(self, value, "Grille d'audit")
+
+    def validate_poids(self, value):
+        if value < 1:
+            raise serializers.ValidationError('Le poids doit être ≥ 1.')
+        return value

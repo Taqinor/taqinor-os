@@ -14,8 +14,16 @@ const gedApi = {
   getDescendants: (id) => api.get(`/ged/dossiers/${id}/descendants/`),
 
   // ── Documents ──
-  // `params` : { folder } pour lister les documents d'un dossier donné.
+  // `params` : { folder, coffre, tag } pour filtrer les documents (GED8/GED9).
   getDocuments: (params) => api.get('/ged/documents/', { params }),
+
+  // ── GED13 — Recherche & filtres avancés ──
+  // Recherche plein-texte Postgres (GED11) : `params` = { q }.
+  searchDocuments: (params) => api.get('/ged/documents/recherche/', { params }),
+  // Recherche sémantique (GED12, dégrade en plein-texte sans clé) : { q }.
+  semanticSearch: (params) => api.get('/ged/documents/semantique/', { params }),
+  // Taxonomie de tags (GED9) pour le filtre par tag.
+  getTags: (params) => api.get('/ged/tags/', { params }),
 }
 
 export default gedApi

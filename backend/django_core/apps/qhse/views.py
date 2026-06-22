@@ -13,17 +13,26 @@ from authentication.mixins import TenantMixin
 from authentication.permissions import IsResponsableOrAdmin
 
 from .models import (
-    ActionCorrectivePreventive, NonConformite, PlanInspectionChantier,
-    PlanInspectionModele, PointControleModele, ReleveControle, ReleveCourbeIV,
+    ActionCorrectivePreventive, CritereAudit, GrilleAudit, NonConformite,
+    PlanInspectionChantier, PlanInspectionModele, PointControleModele,
+    QhseChatterEntry, ReleveControle, ReleveCourbeIV,
 )
 from .serializers import (
-    ActionCorrectivePreventiveSerializer, NonConformiteSerializer,
+    ActionCorrectivePreventiveSerializer, CritereAuditSerializer,
+    GrilleAuditSerializer, NonConformiteSerializer,
     PlanInspectionChantierSerializer, PlanInspectionModeleSerializer,
-    PointControleModeleSerializer, ReleveControleSerializer,
-    ReleveCourbeIVSerializer,
+    PointControleModeleSerializer, QhseChatterEntrySerializer,
+    ReleveControleSerializer, ReleveCourbeIVSerializer,
 )
-from .selectors import courbes_iv_for_chantier, hold_points_status
-from .services import instancier_plan_chantier
+from . import chatter
+from .selectors import (
+    capa_en_retard, courbes_iv_for_chantier, hold_points_status,
+    photos_controle_par_phase,
+)
+from .services import (
+    cloturer_ncr, creer_ncr_depuis_reserve, instancier_plan_chantier,
+    relancer_capa_en_retard, verifier_efficacite_capa,
+)
 
 
 class _QhseBaseViewSet(TenantMixin, viewsets.ModelViewSet):
@@ -31,21 +40,127 @@ class _QhseBaseViewSet(TenantMixin, viewsets.ModelViewSet):
     permission_classes = [IsResponsableOrAdmin]
 
 
-class NonConformiteViewSet(_QhseBaseViewSet):
+class _ChatterMixin:
+    """QHSE14 — chatter (historique style Odoo) sur une entité QHSE.
+
+    Ajoute deux actions détail :
+
+    * ``GET …/<id>/historique/`` — l'historique de l'objet (le plus récent
+      d'abord), scopé société ;
+    * ``POST …/<id>/noter/`` — ajoute une note manuelle (``body`` requis).
+
+    Trace aussi automatiquement la création (``perform_create``) et les
+    changements des champs déclarés dans ``CHATTER_FIELDS`` (``perform_update``).
+    """
+    # {nom_attribut: libellé} des champs suivis automatiquement.
+    CHATTER_FIELDS = {}
+
+    def perform_create(self, serializer):
+        obj = serializer.save(company=self.request.user.company)
+        chatter.log_creation(obj, self.request.user)
+        return obj
+
+    def perform_update(self, serializer):
+        before = {
+            field: getattr(serializer.instance, field)
+            for field in self.CHATTER_FIELDS
+        }
+        obj = serializer.save()
+        for field, label in self.CHATTER_FIELDS.items():
+            chatter.log_field_change(
+                obj, self.request.user, field,
+                before.get(field), getattr(obj, field), label=label)
+        return obj
+
+    @action(detail=True, methods=['get'])
+    def historique(self, request, pk=None):
+        obj = self.get_object()
+        entries = chatter.chatter_for(
+            request.user.company,
+            chatter.cible_type_for(obj),
+            obj.id)
+        return Response(QhseChatterEntrySerializer(entries, many=True).data)
+
+    @action(detail=True, methods=['post'])
+    def noter(self, request, pk=None):
+        obj = self.get_object()
+        body = (request.data.get('body') or '').strip()
+        if not body:
+            return Response(
+                {'detail': 'body est requis.'},
+                status=status.HTTP_400_BAD_REQUEST)
+        entry = chatter.log_note(obj, request.user, body)
+        return Response(
+            QhseChatterEntrySerializer(entry).data,
+            status=status.HTTP_201_CREATED)
+
+
+class NonConformiteViewSet(_ChatterMixin, _QhseBaseViewSet):
     """Fiches de non-conformité (QHSE9). Recherche par référence/titre/origine."""
     queryset = NonConformite.objects.all()
     serializer_class = NonConformiteSerializer
     filter_backends = [filters.SearchFilter, filters.OrderingFilter]
     search_fields = ['reference', 'titre', 'origine']
     ordering_fields = ['id', 'date_detection', 'date_creation']
+    # QHSE14 — champs suivis dans le chatter de la NCR.
+    CHATTER_FIELDS = {
+        'statut': 'Statut',
+        'gravite': 'Gravité',
+        'titre': 'Titre',
+    }
 
     def perform_create(self, serializer):
-        serializer.save(
+        obj = serializer.save(
             company=self.request.user.company,
             signale_par=self.request.user)
+        chatter.log_creation(obj, self.request.user)
+        return obj
+
+    @action(detail=False, methods=['post'], url_path='depuis-reserve')
+    def depuis_reserve(self, request):
+        """Crée une NCR à partir d'une réserve de chantier (QHSE11).
+
+        Corps : ``reserve`` (id de la ``installations.Reserve``), ``gravite``
+        optionnelle. La réserve est lue via le sélecteur d'``installations``
+        (scopé société) ; ``signale_par`` et ``company`` sont posés côté serveur.
+        Idempotent : une seule NCR par réserve. 404 si la réserve n'appartient
+        pas à la société.
+        """
+        reserve_id = request.data.get('reserve')
+        if reserve_id in (None, ''):
+            return Response(
+                {'detail': 'reserve est requis.'},
+                status=status.HTTP_400_BAD_REQUEST)
+        try:
+            ncr, created = creer_ncr_depuis_reserve(
+                reserve_id=reserve_id,
+                company=request.user.company,
+                signale_par=request.user,
+                gravite=request.data.get('gravite') or None,
+            )
+        except ValueError as exc:
+            return Response(
+                {'detail': str(exc)}, status=status.HTTP_404_NOT_FOUND)
+        code = status.HTTP_201_CREATED if created else status.HTTP_200_OK
+        return Response(self.get_serializer(ncr).data, status=code)
+
+    @action(detail=True, methods=['post'])
+    def cloturer(self, request, pk=None):
+        """Clôture une NCR — conditionnée à l'efficacité des CAPA (QHSE13).
+
+        Refuse (400) tant qu'une CAPA n'est pas vérifiée efficace. ``get_object``
+        scopé société (404 hors société). Idempotent si déjà clôturée.
+        """
+        ncr = self.get_object()
+        try:
+            cloturer_ncr(ncr)
+        except ValueError as exc:
+            return Response(
+                {'detail': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+        return Response(self.get_serializer(ncr).data)
 
 
-class ActionCorrectivePreventiveViewSet(_QhseBaseViewSet):
+class ActionCorrectivePreventiveViewSet(_ChatterMixin, _QhseBaseViewSet):
     """Actions correctives / préventives (CAPA — QHSE10)."""
     queryset = ActionCorrectivePreventive.objects.select_related(
         'non_conformite').all()
@@ -53,6 +168,56 @@ class ActionCorrectivePreventiveViewSet(_QhseBaseViewSet):
     filter_backends = [filters.SearchFilter, filters.OrderingFilter]
     search_fields = ['description', 'cause_racine']
     ordering_fields = ['id', 'echeance', 'date_creation']
+    # QHSE14 — champs suivis dans le chatter de la CAPA.
+    CHATTER_FIELDS = {
+        'statut': 'Statut',
+        'echeance': 'Échéance',
+    }
+
+    @action(detail=False, methods=['get'], url_path='en-retard')
+    def en_retard(self, request):
+        """CAPA en retard de la société (échéance passée, non résolue — QHSE12).
+
+        Lecture seule, scopée société via le sélecteur ``capa_en_retard``.
+        """
+        qs = capa_en_retard(request.user.company)
+        return Response(self.get_serializer(qs, many=True).data)
+
+    @action(detail=False, methods=['post'], url_path='relancer-retards')
+    def relancer_retards(self, request):
+        """Relance les CAPA en retard : notifie chaque responsable + digest.
+
+        Notifications best-effort (in-app) ; ne mute aucune CAPA. Renvoie le
+        digest (total / notifiées / sans responsable / items). Scopé société.
+        """
+        digest = relancer_capa_en_retard(request.user.company)
+        return Response(digest)
+
+    @action(detail=True, methods=['post'], url_path='verifier-efficacite')
+    def verifier_efficacite(self, request, pk=None):
+        """Vérifie l'efficacité d'une CAPA réalisée (QHSE13).
+
+        Corps : ``efficace`` (bool requis), ``commentaire`` optionnel.
+        ``efficace=True`` → statut VÉRIFIÉE ; ``False`` → repasse EN COURS.
+        Refuse (400) si la CAPA n'est pas encore réalisée. ``verifiee_par`` posé
+        côté serveur. ``get_object`` scopé société.
+        """
+        capa = self.get_object()
+        efficace = request.data.get('efficace')
+        if efficace is None:
+            return Response(
+                {'detail': 'efficace est requis.'},
+                status=status.HTTP_400_BAD_REQUEST)
+        try:
+            verifier_efficacite_capa(
+                capa,
+                efficace=bool(efficace),
+                verifiee_par=request.user,
+                commentaire=request.data.get('commentaire', ''))
+        except ValueError as exc:
+            return Response(
+                {'detail': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+        return Response(self.get_serializer(capa).data)
 
 
 class PlanInspectionModeleViewSet(_QhseBaseViewSet):
@@ -139,6 +304,25 @@ class ReleveControleViewSet(_QhseBaseViewSet):
             company=self.request.user.company,
             releve_par=self.request.user)
 
+    @action(detail=True, methods=['get'])
+    def photos(self, request, pk=None):
+        """Photos de contrôle d'un relevé, regroupées par phase (QHSE8).
+
+        Renvoie ``{'avant': [...], 'pendant': [...], 'apres': [...],
+        'autres': [...]}``. Les pièces jointes sont des ``records.Attachment``
+        ciblant ce relevé ; l'upload se fait via l'API records standard
+        (``POST /api/django/records/attachments/`` avec ``model=qhse.relevecontrole``
+        + ``phase``). ``get_object`` est scopé société (TenantMixin) — un relevé
+        d'une autre société renvoie 404. Lecture seule.
+        """
+        from apps.records.serializers import AttachmentSerializer
+        releve = self.get_object()
+        groupes = photos_controle_par_phase(releve)
+        return Response({
+            phase: AttachmentSerializer(atts, many=True).data
+            for phase, atts in groupes.items()
+        })
+
 
 class ReleveCourbeIVViewSet(_QhseBaseViewSet):
     """Relevés de courbe I-V par string PV à la mise en service (QHSE7).
@@ -179,3 +363,55 @@ class ReleveCourbeIVViewSet(_QhseBaseViewSet):
                 status=status.HTTP_400_BAD_REQUEST)
         qs = courbes_iv_for_chantier(request.user.company, chantier_id)
         return Response(self.get_serializer(qs, many=True).data)
+
+
+class GrilleAuditViewSet(_QhseBaseViewSet):
+    """Grilles d'audit pondérées (QHSE15). Recherche par code/nom."""
+    queryset = GrilleAudit.objects.all()
+    serializer_class = GrilleAuditSerializer
+    filter_backends = [filters.SearchFilter, filters.OrderingFilter]
+    search_fields = ['code', 'nom', 'description']
+    ordering_fields = ['id', 'nom', 'date_creation']
+
+
+class CritereAuditViewSet(_QhseBaseViewSet):
+    """Critères pondérés d'une grille d'audit (QHSE15).
+
+    Filtre optionnel par ``?grille=``. La société est posée côté serveur ; la
+    grille référencée est validée même-société par le sérialiseur.
+    """
+    queryset = CritereAudit.objects.select_related('grille').all()
+    serializer_class = CritereAuditSerializer
+    filter_backends = [filters.SearchFilter, filters.OrderingFilter]
+    search_fields = ['intitule', 'categorie', 'description']
+    ordering_fields = ['id', 'ordre', 'poids', 'date_creation']
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        grille = self.request.query_params.get('grille')
+        if grille not in (None, ''):
+            qs = qs.filter(grille_id=grille)
+        return qs
+
+
+class QhseChatterEntryViewSet(TenantMixin, viewsets.ReadOnlyModelViewSet):
+    """Chatter QHSE en lecture seule (QHSE14).
+
+    Filtre par ``?cible_type=`` (ncr/capa/incident/audit) + ``?cible_id=``. Les
+    écritures passent par les actions ``noter`` / le log auto des viewsets NCR et
+    CAPA — jamais par cet endpoint. Scopé société (TenantMixin), palier
+    Responsable/Admin.
+    """
+    permission_classes = [IsResponsableOrAdmin]
+    queryset = QhseChatterEntry.objects.select_related('user').all()
+    serializer_class = QhseChatterEntrySerializer
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        cible_type = self.request.query_params.get('cible_type')
+        cible_id = self.request.query_params.get('cible_id')
+        if cible_type:
+            qs = qs.filter(cible_type=cible_type)
+        if cible_id not in (None, ''):
+            qs = qs.filter(cible_id=cible_id)
+        return qs

@@ -93,6 +93,39 @@ def _active_reservations():
     return StockReservation.objects.filter(active=True, consomme=False)
 
 
+def reserve_scoped(company, pk):
+    """Réserve (F16 — point de finition) scopée société, par id, ou ``None``.
+
+    Point d'entrée cross-app LECTURE SEULE : les autres apps (ex. QHSE, pour le
+    pont Réserve → NCR) lisent une ``Reserve`` à travers ce sélecteur plutôt
+    qu'en important ``installations.models`` directement. Scopé société :
+    ``None`` si la réserve n'appartient pas à ``company``."""
+    from .models import Reserve
+    return (Reserve.objects
+            .filter(company=company, pk=pk)
+            .select_related('intervention', 'intervention__installation')
+            .first())
+
+
+def reserve_resume(reserve):
+    """Résumé LECTURE SEULE d'une ``Reserve`` pour un pont cross-app (→ NCR).
+
+    Renvoie un dict plat ``{id, description, statut, intervention_id,
+    chantier_id}`` — jamais l'instance du modèle — pour qu'une autre app
+    construise une fiche (ex. non-conformité QHSE) sans importer le modèle ni
+    coupler les apps. ``chantier_id`` est l'id du chantier (Installation) de
+    l'intervention, ``None`` s'il n'y en a pas."""
+    intervention = getattr(reserve, 'intervention', None)
+    chantier_id = getattr(intervention, 'installation_id', None)
+    return {
+        'id': reserve.id,
+        'description': reserve.description or '',
+        'statut': reserve.statut,
+        'intervention_id': reserve.intervention_id,
+        'chantier_id': chantier_id,
+    }
+
+
 def chantier_card(chantier_id, company):
     """S8 — fiche-carte LECTURE SEULE d'un chantier (Installation) pour le
     partage dans la messagerie. Scopée société : None si le chantier n'appartient

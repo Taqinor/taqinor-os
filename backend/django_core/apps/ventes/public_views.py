@@ -17,7 +17,7 @@ from rest_framework.permissions import AllowAny
 from rest_framework.response import Response
 from rest_framework.throttling import SimpleRateThrottle
 
-from .models import ShareLink
+from .models import PaymentLink, ShareLink
 from .quote_engine import clean_pdf_options, generate_premium_devis_pdf
 from .utils.pdf import download_pdf, generate_facture_pdf
 
@@ -215,4 +215,72 @@ def proposal_accept(request, token):
         'reference': devis.reference,
         'statut': devis.statut,
         'accepte_par_nom': devis.accepte_par_nom,
+    }))
+
+
+# ── FG53 — Page publique « Payer en ligne » + webhook ────────────────────────
+# Authentifiée par le jeton PaymentLink (long, imprévisible, expirant) ; bornée
+# à une seule facture d'une seule société par construction. Aucun login. Aucune
+# donnée interne (prix d'achat/marge) n'est jamais exposée.
+
+def _resolve_payment_link(token, *, require_valid=True):
+    link = (
+        PaymentLink.objects
+        .select_related('facture', 'facture__client', 'company')
+        .filter(token=token)
+        .first()
+    )
+    if link is None:
+        return None
+    if require_valid and not link.is_valid:
+        return None
+    return link
+
+
+@api_view(['GET'])
+@permission_classes([AllowAny])
+@throttle_classes([PublicLinkRateThrottle])
+def pay_page(request, token):
+    """FG53 — données minimales de la page publique de paiement.
+
+    Lecture seule, authentifiée par le jeton. Renvoie la référence facture, le
+    montant à payer et le statut du lien — jamais de prix d'achat ni de marge.
+    Un lien payé renvoie statut='paye' (page de confirmation côté front)."""
+    link = _resolve_payment_link(token, require_valid=False)
+    if link is None:
+        return _not_found()
+    facture = link.facture
+    return _noindex(Response({
+        'reference': facture.reference,
+        'client_name': str(facture.client) if facture.client_id else '',
+        'montant': str(link.montant),
+        'devise': 'MAD',
+        'statut': link.statut,
+        'paye': link.statut == PaymentLink.Statut.PAYE,
+        'expire': not link.is_valid and link.statut != PaymentLink.Statut.PAYE,
+    }))
+
+
+@api_view(['POST'])
+@permission_classes([AllowAny])
+@throttle_classes([PublicLinkRateThrottle])
+def pay_webhook(request, token):
+    """FG53 — webhook : enregistre un Paiement quand le fournisseur confirme.
+
+    Idempotent (un double appel ne crée pas deux paiements). Le fournisseur du
+    lien valide d'abord la notification (verify_webhook) ; le défaut NoOp confirme
+    en mode manuel. Aucune passerelle live n'est câblée — c'est le scaffold."""
+    link = _resolve_payment_link(token, require_valid=False)
+    if link is None:
+        return _not_found()
+    from .services import record_payment_from_link
+    paiement, err = record_payment_from_link(link=link, payload=request.data)
+    if err is not None:
+        return _noindex(Response(
+            {'detail': err}, status=status.HTTP_400_BAD_REQUEST))
+    return _noindex(Response({
+        'detail': 'Paiement enregistré. Merci !',
+        'reference': link.facture.reference,
+        'montant': str(paiement.montant),
+        'statut': PaymentLink.Statut.PAYE,
     }))

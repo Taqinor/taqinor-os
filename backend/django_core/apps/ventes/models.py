@@ -369,6 +369,22 @@ class BonCommande(models.Model):
     date_creation = models.DateTimeField(auto_now_add=True)
     date_livraison_prevue = models.DateField(null=True, blank=True)
     note = models.TextField(blank=True, null=True)
+    # ── FG51 — Preuve de livraison (PV / signature) ───────────────────────────
+    # Capturée au moment de « marquer livré » : nom du signataire, note libre,
+    # horodatage et, optionnellement, une pièce jointe (PV/bon signé) stockée
+    # dans MinIO via records.storage. Tout est additif et optionnel : un BC
+    # livré sans preuve reste valide (la facturation n'est jamais bloquée), mais
+    # `generer-facture`/`creer-facture` renvoie un avertissement doux quand
+    # aucune preuve n'existe pour la tranche matériel. Forme du JSON :
+    # {signataire, note, file_key, filename, signed_at}.
+    pv_livraison = models.JSONField(null=True, blank=True)
+    date_livraison_reelle = models.DateField(null=True, blank=True)
+
+    @property
+    def has_proof_of_delivery(self):
+        """FG51 — vrai si une preuve de livraison (PV/signature) est consignée."""
+        pv = self.pv_livraison or {}
+        return bool(pv.get('signataire') or pv.get('file_key'))
 
     class Meta:
         verbose_name = 'Bon de Commande'
@@ -1069,3 +1085,72 @@ class ShareLink(models.Model):
         ).order_by('-expires_at').first()
         return link or cls.objects.create(
             company=facture.company, facture=facture)
+
+
+PAYMENT_LINK_TTL_DAYS = 30
+
+
+def _default_payment_token():
+    return secrets.token_urlsafe(32)
+
+
+def _default_payment_expiry():
+    return timezone.now() + timedelta(days=PAYMENT_LINK_TTL_DAYS)
+
+
+class PaymentLink(models.Model):
+    """FG53 — lien « Payer en ligne » d'une facture.
+
+    Scaffolding swappable (cf. monitoring/providers) : un fournisseur de
+    paiement est sélectionné par clé ; le DÉFAUT est NoOp (« manuel »), sans
+    dépendance ni appel réseau ni coût. Le lien public expose le minimum (montant
+    dû, référence facture) et un webhook idempotent enregistre un ``Paiement``
+    quand le fournisseur confirme l'encaissement. Tant qu'aucun fournisseur réel
+    n'est configuré, le lien reste un squelette inerte : aucune passerelle live
+    n'est câblée ici.
+
+    Le jeton est long/imprévisible/expirant (30 j), comme ShareLink. Aucune
+    donnée interne (prix d'achat/marge) n'est jamais exposée."""
+
+    class Statut(models.TextChoices):
+        EN_ATTENTE = 'en_attente', 'En attente'
+        PAYE = 'paye', 'Payé'
+        EXPIRE = 'expire', 'Expiré'
+        ANNULE = 'annule', 'Annulé'
+
+    company = models.ForeignKey(
+        'authentication.Company', on_delete=models.CASCADE,
+        related_name='payment_links')
+    facture = models.ForeignKey(
+        Facture, on_delete=models.CASCADE, related_name='payment_links')
+    token = models.CharField(
+        max_length=64, unique=True, default=_default_payment_token,
+        editable=False)
+    # Clé du fournisseur (registre payments.providers). 'noop' = défaut inerte.
+    provider = models.CharField(max_length=40, default='noop')
+    # Montant figé à la création du lien (= reste à payer au moment T).
+    montant = models.DecimalField(max_digits=12, decimal_places=2)
+    statut = models.CharField(
+        max_length=20, choices=Statut.choices, default=Statut.EN_ATTENTE)
+    # Référence retournée par le fournisseur (idempotence du webhook).
+    provider_ref = models.CharField(max_length=200, blank=True, default='')
+    paiement = models.ForeignKey(
+        Paiement, on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='payment_links')
+    created_at = models.DateTimeField(auto_now_add=True)
+    expires_at = models.DateTimeField(default=_default_payment_expiry)
+    paid_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        verbose_name = 'Lien de paiement'
+        verbose_name_plural = 'Liens de paiement'
+        ordering = ['-created_at']
+        indexes = [models.Index(fields=['token'])]
+
+    def __str__(self):
+        return f'PaymentLink {self.token[:8]}… ({self.facture.reference})'
+
+    @property
+    def is_valid(self):
+        return (self.statut == self.Statut.EN_ATTENTE
+                and self.expires_at > timezone.now())

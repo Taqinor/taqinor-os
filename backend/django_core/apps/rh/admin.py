@@ -1,10 +1,15 @@
 from django.contrib import admin
 
 from .models import (
+    DemandeConge,
     Departement,
     DocumentEmploye,
     DossierEmploye,
+    ElementSortie,
+    Poste,
     Remuneration,
+    SoldeConge,
+    TypeAbsence,
 )
 
 
@@ -36,4 +41,42 @@ class DocumentEmployeAdmin(admin.ModelAdmin):
     list_display = ('employe', 'type_document', 'date_expiration',
                     'date_creation', 'company')
     list_filter = ('type_document',)
+    search_fields = ('employe__matricule', 'employe__nom', 'employe__prenom')
+
+
+@admin.register(Poste)
+class PosteAdmin(admin.ModelAdmin):
+    list_display = ('intitule', 'code', 'departement', 'actif', 'company')
+    list_filter = ('actif',)
+    search_fields = ('intitule', 'code')
+
+
+@admin.register(ElementSortie)
+class ElementSortieAdmin(admin.ModelAdmin):
+    list_display = ('employe', 'libelle', 'type_element', 'recupere',
+                    'date_recuperation', 'company')
+    list_filter = ('type_element', 'recupere')
+    search_fields = ('employe__matricule', 'employe__nom', 'libelle')
+
+
+@admin.register(TypeAbsence)
+class TypeAbsenceAdmin(admin.ModelAdmin):
+    list_display = ('code', 'libelle', 'decompte_jours_ouvres', 'deduit_solde',
+                    'remunere', 'actif', 'company')
+    list_filter = ('decompte_jours_ouvres', 'deduit_solde', 'remunere', 'actif')
+    search_fields = ('code', 'libelle')
+
+
+@admin.register(SoldeConge)
+class SoldeCongeAdmin(admin.ModelAdmin):
+    list_display = ('employe', 'annee', 'acquis', 'report', 'pris', 'company')
+    list_filter = ('annee',)
+    search_fields = ('employe__matricule', 'employe__nom', 'employe__prenom')
+
+
+@admin.register(DemandeConge)
+class DemandeCongeAdmin(admin.ModelAdmin):
+    list_display = ('employe', 'type_absence', 'date_debut', 'date_fin',
+                    'jours', 'statut', 'company')
+    list_filter = ('statut', 'type_absence')
     search_fields = ('employe__matricule', 'employe__nom', 'employe__prenom')

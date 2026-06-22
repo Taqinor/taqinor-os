@@ -14,8 +14,11 @@ from authentication.permissions import IsResponsableOrAdmin
 
 from . import selectors, services
 from .models import (
+    BaselinePlanning,
+    CalendrierProjet,
     DependanceTache,
     Jalon,
+    JourFerie,
     PhaseProjet,
     Projet,
     ProjetActivity,
@@ -24,8 +27,11 @@ from .models import (
     Tache,
 )
 from .serializers import (
+    BaselinePlanningSerializer,
+    CalendrierProjetSerializer,
     DependanceTacheSerializer,
     JalonSerializer,
+    JourFerieSerializer,
     PhaseProjetSerializer,
     ProjetActivitySerializer,
     ProjetChantierSerializer,
@@ -206,6 +212,66 @@ class ProjetViewSet(_GestionProjetBaseViewSet):
         projet = self.get_object()
         return Response(selectors.arbre_taches(projet))
 
+    @action(detail=True, methods=['post'], url_path='baseline')
+    def baseline(self, request, pk=None):
+        """Fige une BASELINE du planning courant du projet (plan vs réel).
+
+        Corps optionnel : ``libelle``. La société est garantie par
+        ``get_object`` (queryset scopé société) ; ``auteur`` est posé côté
+        serveur. Délègue au service ``creer_baseline`` (snapshot atomique de
+        toutes les tâches). Renvoie la baseline créée.
+        """
+        projet = self.get_object()
+        libelle = request.data.get('libelle', '') or ''
+        baseline = services.creer_baseline(
+            projet, libelle=libelle, auteur=request.user)
+        return Response(
+            BaselinePlanningSerializer(baseline).data,
+            status=status.HTTP_201_CREATED)
+
+    @action(detail=True, methods=['get'], url_path='baselines')
+    def baselines(self, request, pk=None):
+        """Baselines du projet (plus récentes d'abord, lecture seule)."""
+        projet = self.get_object()
+        return Response(
+            BaselinePlanningSerializer(
+                selectors.baselines_for_projet(projet), many=True).data)
+
+    @action(detail=True, methods=['get'], url_path='gantt')
+    def gantt(self, request, pk=None):
+        """Planning Gantt du projet : barres + liens de dépendance (lecture seule).
+
+        La société est garantie par ``get_object`` (queryset scopé société) :
+        un projet d'une autre société → 404. Délègue au sélecteur
+        ``planning_gantt`` (barres datées via ``projet.date_debut``, marges,
+        drapeau critique, liens prédécesseur→successeur).
+        """
+        projet = self.get_object()
+        return Response(selectors.planning_gantt(projet))
+
+    @action(detail=True, methods=['get'], url_path='avancement')
+    def avancement(self, request, pk=None):
+        """Roll-up d'avancement pondéré par charge du projet (lecture seule).
+
+        La société est garantie par ``get_object`` (queryset scopé société) :
+        un projet d'une autre société → 404. Délègue au sélecteur
+        ``rollup_avancement`` (avancement global + arbre WBS recalculé).
+        """
+        projet = self.get_object()
+        return Response(selectors.rollup_avancement(projet))
+
+    @action(detail=True, methods=['get'], url_path='chemin-critique')
+    def chemin_critique(self, request, pk=None):
+        """Chemin critique (CPM) + marges du projet (lecture seule).
+
+        La société est garantie par ``get_object`` (queryset scopé société) :
+        un projet d'une autre société → 404. Délègue au sélecteur
+        ``chemin_critique`` (durées dérivées, ES/EF/LS/LF, marges
+        totale/libre, ensemble des tâches critiques).
+        """
+        projet = self.get_object()
+        return Response(selectors.chemin_critique(projet))
+
     @action(detail=True, methods=['get'], url_path='jalons')
     def jalons(self, request, pk=None):
         """Jalons du projet, ordonnés par date prévue (lecture seule).
@@ -321,6 +387,52 @@ class TacheViewSet(_GestionProjetBaseViewSet):
         tache = self.get_object()
         return Response(selectors.dependances_de_tache(tache))
 
+    @action(detail=True, methods=['post'], url_path='reprogrammer')
+    def reprogrammer(self, request, pk=None):
+        """Déplace la tâche (drag) et POUSSE ses successeurs en cascade.
+
+        Corps : ``date_debut`` (obligatoire, ``YYYY-MM-DD``) et ``date_fin``
+        (optionnelle ; à défaut la durée courante est conservée). La société est
+        garantie par ``get_object`` (queryset scopé société) : une tâche d'une
+        autre société → 404. Délègue au service ``reprogrammer_tache`` (écritures
+        atomiques). Renvoie la liste des tâches modifiées (tâche déplacée +
+        successeurs décalés) ; une date incohérente ou un cycle → 400.
+        """
+        from datetime import date as _date
+
+        tache = self.get_object()
+        debut_raw = request.data.get('date_debut')
+        fin_raw = request.data.get('date_fin')
+        if not debut_raw:
+            return Response(
+                {'date_debut': 'La date de début est obligatoire.'},
+                status=status.HTTP_400_BAD_REQUEST)
+
+        def _parse(value, champ):
+            if value in (None, ''):
+                return None
+            if isinstance(value, _date):
+                return value
+            try:
+                return _date.fromisoformat(value)
+            except (ValueError, TypeError):
+                raise ValueError(champ)
+
+        try:
+            debut = _parse(debut_raw, 'date_debut')
+            fin = _parse(fin_raw, 'date_fin')
+        except ValueError as exc:
+            return Response(
+                {str(exc): 'Date invalide (format attendu : YYYY-MM-DD).'},
+                status=status.HTTP_400_BAD_REQUEST)
+
+        try:
+            modifies = services.reprogrammer_tache(tache, debut, fin)
+        except services.RescheduleError as exc:
+            return Response(
+                {'detail': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+        return Response(TacheSerializer(modifies, many=True).data)
+
 
 class DependanceTacheViewSet(_GestionProjetBaseViewSet):
     """Dépendances de planning entre tâches (FS/SS/FF/SF + lag) — CRUD scopé.
@@ -386,3 +498,87 @@ class JalonViewSet(_GestionProjetBaseViewSet):
         if facturation in ('1', 'true', 'True'):
             qs = qs.filter(facturation_pct__gt=0)
         return qs
+
+
+class CalendrierProjetViewSet(_GestionProjetBaseViewSet):
+    """Calendrier ouvré d'un projet (jours travaillés + fériés) — CRUD scopé.
+
+    ``company`` est posée côté serveur (TenantMixin) ; le ``projet`` reçu est
+    validé même-société par le sérialiseur (un seul calendrier par projet).
+    Filtre optionnel ``?projet=<id>``. Les jours fériés sont exposés imbriqués
+    en lecture ; ils se créent via ``jours-feries/``.
+    """
+    queryset = CalendrierProjet.objects.select_related('projet').all()
+    serializer_class = CalendrierProjetSerializer
+    filter_backends = [filters.OrderingFilter]
+    ordering_fields = ['id']
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        projet = self.request.query_params.get('projet')
+        if projet:
+            qs = qs.filter(projet_id=projet)
+        return qs
+
+
+class JourFerieViewSet(_GestionProjetBaseViewSet):
+    """Jours fériés (chômés) d'un calendrier de projet — CRUD scopé société.
+
+    ``company`` est posée côté serveur (TenantMixin) ; le ``calendrier`` reçu est
+    validé même-société par le sérialiseur. Filtres optionnels :
+    ``?calendrier=<id>``, ``?projet=<id>``. Tri par défaut ``date`` puis ``id``.
+    """
+    queryset = JourFerie.objects.select_related('calendrier').all()
+    serializer_class = JourFerieSerializer
+    filter_backends = [filters.OrderingFilter]
+    ordering_fields = ['date', 'id']
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        calendrier = self.request.query_params.get('calendrier')
+        if calendrier:
+            qs = qs.filter(calendrier_id=calendrier)
+        projet = self.request.query_params.get('projet')
+        if projet:
+            qs = qs.filter(calendrier__projet_id=projet)
+        return qs
+
+
+class BaselinePlanningViewSet(_GestionProjetBaseViewSet):
+    """Baselines de planning d'un projet (snapshots plan vs réel) — scopé société.
+
+    ``company`` est posée côté serveur (TenantMixin) ; le ``projet`` reçu est
+    validé même-société par le sérialiseur ; ``auteur`` est posé côté serveur.
+    Une baseline se prend de préférence via ``projets/<id>/baseline/`` (snapshot
+    complet) ; ce viewset gère la lecture, l'édition du libellé et la suppression.
+    Filtre optionnel ``?projet=<id>``. L'action ``comparer/`` renvoie l'écart
+    plan vs réel ligne à ligne.
+    """
+    queryset = BaselinePlanning.objects.select_related(
+        'projet', 'auteur').all()
+    serializer_class = BaselinePlanningSerializer
+    filter_backends = [filters.OrderingFilter]
+    ordering_fields = ['date_creation', 'id']
+
+    def perform_create(self, serializer):
+        serializer.save(
+            company=self.request.user.company, auteur=self.request.user)
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        projet = self.request.query_params.get('projet')
+        if projet:
+            qs = qs.filter(projet_id=projet)
+        return qs
+
+    @action(detail=True, methods=['get'], url_path='comparer')
+    def comparer(self, request, pk=None):
+        """Compare la baseline au planning COURANT (plan vs réel, lecture seule).
+
+        La société est garantie par ``get_object`` (queryset scopé société) :
+        une baseline d'une autre société → 404. Délègue au sélecteur
+        ``comparer_baseline`` (écarts de début/fin en jours, dérive de charge,
+        glissement maximal de fin).
+        """
+        baseline = self.get_object()
+        return Response(selectors.comparer_baseline(baseline))

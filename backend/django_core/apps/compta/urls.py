@@ -2,11 +2,12 @@ from django.urls import include, path
 from rest_framework.routers import DefaultRouter
 
 from .views import (
-    CaisseViewSet, CessionImmobilisationViewSet, CompteComptableViewSet,
-    CompteTresorerieViewSet, DotationAmortissementViewSet,
-    EcritureComptableViewSet, EtatsComptablesViewSet, ExerciceComptableViewSet,
-    ImmobilisationViewSet, JournalViewSet, PeriodeComptableViewSet,
-    PlanComptableViewSet, RapprochementBancaireViewSet,
+    BordereauRemiseViewSet, CaisseViewSet, CessionImmobilisationViewSet,
+    CompteComptableViewSet, CompteTresorerieViewSet, DotationAmortissementViewSet,
+    EcritureComptableViewSet, EffetViewSet, EtatsComptablesViewSet,
+    ExerciceComptableViewSet, ImmobilisationViewSet, JournalViewSet,
+    LignePrevisionnelTresorerieViewSet, PeriodeComptableViewSet,
+    PlanComptableViewSet, RapprochementBancaireViewSet, VirementInterneViewSet,
 )
 
 router = DefaultRouter()
@@ -22,6 +23,10 @@ router.register(r'dotations', DotationAmortissementViewSet)
 router.register(r'cessions', CessionImmobilisationViewSet)
 router.register(r'rapprochements', RapprochementBancaireViewSet)
 router.register(r'caisses', CaisseViewSet)
+router.register(r'virements', VirementInterneViewSet)
+router.register(r'previsionnel', LignePrevisionnelTresorerieViewSet)
+router.register(r'effets', EffetViewSet)
+router.register(r'bordereaux', BordereauRemiseViewSet)
 router.register(r'etats', EtatsComptablesViewSet, basename='etats')
 
 urlpatterns = [

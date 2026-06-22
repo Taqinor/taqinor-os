@@ -75,6 +75,99 @@ def _parse_watt(name):
     return int(m.group(1)) if m else None
 
 
+def _aspect_to_orientation(aspect):
+    """FG248 — azimut PVGIS (0=Sud, -90=Est, 90=Ouest, ±180=Nord) → libellé FR.
+
+    Miroir inverse de ``orientationToAspect`` (apps/web/src/lib/roof.ts) pour que
+    le devis affiche la même orientation que l'outil 3D. Aspect inconnu → ''."""
+    try:
+        a = float(aspect)
+    except (TypeError, ValueError):
+        return ''
+    # Normalise dans [-180, 180].
+    a = (a + 180.0) % 360.0 - 180.0
+    table = [
+        (0.0, 'Sud'), (-45.0, 'Sud-Est'), (45.0, 'Sud-Ouest'),
+        (-90.0, 'Est'), (90.0, 'Ouest'),
+        (-135.0, 'Nord-Est'), (135.0, 'Nord-Ouest'),
+        (180.0, 'Nord'), (-180.0, 'Nord'),
+    ]
+    return min(table, key=lambda t: abs(a - t[0]))[1]
+
+
+def extract_roof_config(layout):
+    """FG248 — extrait la config TOITURE d'un layout 3D (roofPro11) en un dict
+    plat, JSON-sérialisable, indépendant de la version de l'outil.
+
+    Lit les PANS de toiture (``areas``/``zones``/``pans``) — chacun portant
+    ``roofType``, ``pitchDeg``/``pitch``, ``facingAzimuthDeg``/``aspect`` et un
+    ``result`` ``{count, kwc, areaM2}`` — et en agrège :
+
+        {surface_m2, nb_pans, nb_panneaux, kwc, orientation_principale,
+         azimut_deg, inclinaison_deg, pans: [{...}]}
+
+    Tolérant : entrées manquantes → champs omis ; aucune exception. Renvoie {}
+    si le layout ne contient aucune géométrie de toiture exploitable (pour ne
+    rien changer au comportement historique du seul bloc ``result``).
+    """
+    layout = layout or {}
+    areas = (layout.get('areas') or layout.get('zones')
+             or layout.get('pans') or [])
+    if not isinstance(areas, list) or not areas:
+        return {}
+
+    pans = []
+    total_surface = 0.0
+    total_panels = 0
+    total_kwc = 0.0
+    best = None  # pan le plus puissant → orientation principale
+    for a in areas:
+        if not isinstance(a, dict):
+            continue
+        res = a.get('result') or {}
+        count = int(res.get('count') or a.get('neededPanels') or 0)
+        kwc = float(res.get('kwc') or 0.0)
+        surface = float(res.get('areaM2') or a.get('areaM2') or 0.0)
+        aspect = a.get('facingAzimuthDeg')
+        if aspect is None:
+            aspect = a.get('aspect')
+        pitch = a.get('pitchDeg')
+        if pitch is None:
+            pitch = a.get('pitch')
+        pan = {
+            'label': a.get('label') or '',
+            'roof_type': a.get('roofType') or '',
+            'nb_panneaux': count,
+            'kwc': round(kwc, 3) if kwc else 0.0,
+            'surface_m2': round(surface, 2) if surface else 0.0,
+            'azimut_deg': aspect,
+            'inclinaison_deg': pitch,
+            'orientation': _aspect_to_orientation(aspect),
+        }
+        pans.append(pan)
+        total_surface += surface
+        total_panels += count
+        total_kwc += kwc
+        if best is None or kwc > best['kwc']:
+            best = pan
+
+    if not pans:
+        return {}
+
+    cfg = {
+        'surface_m2': round(total_surface, 2),
+        'nb_pans': len(pans),
+        'nb_panneaux': total_panels,
+        'kwc': round(total_kwc, 3),
+        'pans': pans,
+    }
+    if best is not None:
+        cfg['orientation_principale'] = best['orientation']
+        cfg['azimut_deg'] = best['azimut_deg']
+        cfg['inclinaison_deg'] = best['inclinaison_deg']
+    return cfg
+
+
 def build_devis_from_layout(*, layout, user, company, lead=None, client=None,
                             taux_tva=Decimal('20'), remise_globale=Decimal('0')):
     """Q3 — turn a FINALISED roof layout into a coherent, company-scoped Devis.
@@ -106,6 +199,18 @@ def build_devis_from_layout(*, layout, user, company, lead=None, client=None,
     kwc = float(result.get('kwc') or 0)
     annual_kwh = result.get('annualKwh')
     savings = result.get('savings')
+
+    # FG248 — pont 3D toiture → ERP : extrait la config toiture (surface/pans/
+    # orientation/inclinaison/kWc) du builder 3D. Quand le bloc ``result`` ne
+    # porte pas le nombre de panneaux / la puissance, on retombe sur la somme des
+    # pans (cohérence kWc/panneaux écran ↔ pont 3D). Layout sans géométrie →
+    # dict vide → comportement historique strictement inchangé.
+    toiture = extract_roof_config(layout)
+    if toiture:
+        if nb_panneaux <= 0 and toiture.get('nb_panneaux'):
+            nb_panneaux = int(toiture['nb_panneaux'])
+        if not kwc and toiture.get('kwc'):
+            kwc = float(toiture['kwc'])
 
     # Panel wattage: prefer an explicit hint, else derive from kWc / panels.
     watt = layout.get('panelWatt') or layout.get('watt')
@@ -146,6 +251,10 @@ def build_devis_from_layout(*, layout, user, company, lead=None, client=None,
         etude_params['economies_annuelles'] = int(savings)
     if kwc:
         etude_params['puissance_kwc'] = kwc
+    # FG248 — la config toiture importée du builder 3D est conservée avec le
+    # devis (prête à servir au chantier).
+    if toiture:
+        etude_params['toiture'] = toiture
 
     def _create(ref):
         devis = Devis.objects.create(
@@ -339,3 +448,107 @@ def creer_facture_contrat(*, contrat, user, company):
         'FG40: facture %s créée pour contrat #%s (company %s)',
         facture.reference, contrat.pk, company.id)
     return facture
+
+
+# ── FG53 — Liens de paiement « Payer en ligne » ──────────────────────────────
+
+def create_payment_link(*, facture, provider=None):
+    """FG53 — crée (ou réutilise) un lien de paiement pour une facture.
+
+    Réutilise un lien encore valide (en attente, non expiré) pour la même
+    facture plutôt que d'en empiler. Le montant est figé au reste à payer à
+    l'instant T. Le fournisseur par défaut est NoOp (page interne, aucun coût).
+    Société forcée depuis la facture, jamais lue d'un corps de requête.
+    """
+    from decimal import Decimal
+    from django.utils import timezone
+    from .models import PaymentLink
+
+    existing = (PaymentLink.objects
+                .filter(facture=facture,
+                        statut=PaymentLink.Statut.EN_ATTENTE,
+                        expires_at__gt=timezone.now())
+                .order_by('-created_at').first())
+    if existing is not None:
+        return existing
+
+    montant = facture.montant_du
+    if montant is None or montant <= Decimal('0'):
+        montant = facture.total_ttc
+    return PaymentLink.objects.create(
+        company=facture.company,
+        facture=facture,
+        provider=(provider or 'noop'),
+        montant=montant,
+    )
+
+
+def record_payment_from_link(*, link, payload=None):
+    """FG53 — enregistre un Paiement quand un lien est confirmé payé (webhook).
+
+    Idempotent : un lien déjà payé renvoie le paiement existant sans en créer un
+    second. Le fournisseur valide d'abord la notification (verify_webhook) ; tant
+    qu'il ne confirme pas, rien n'est écrit. Le montant et le statut de la
+    facture sont mis à jour exactement comme un encaissement manuel.
+
+    Retourne (paiement, message_erreur). En succès message_erreur=None.
+    """
+    from decimal import Decimal
+    from django.db import transaction
+    from django.utils import timezone
+    from .models import Facture, Paiement, PaymentLink
+    from .payments.providers import get_provider
+
+    if link.statut == PaymentLink.Statut.PAYE and link.paiement_id:
+        # Déjà encaissé — idempotent.
+        return link.paiement, None
+    if not link.is_valid:
+        return None, 'Lien de paiement expiré ou invalide.'
+
+    provider = get_provider(link.provider)
+    result = provider.verify_webhook(link, payload or {})
+    if not result.get('paid'):
+        return None, 'Paiement non confirmé par le fournisseur.'
+
+    montant = result.get('montant')
+    if montant is None:
+        montant = link.montant
+    montant = Decimal(str(montant))
+
+    with transaction.atomic():
+        locked_link = (PaymentLink.objects.select_for_update()
+                       .get(pk=link.pk))
+        if locked_link.statut == PaymentLink.Statut.PAYE \
+                and locked_link.paiement_id:
+            return locked_link.paiement, None
+        facture = (Facture.objects.select_for_update()
+                   .get(pk=locked_link.facture_id))
+        if facture.statut == Facture.Statut.ANNULEE:
+            return None, 'Facture annulée.'
+        # Borne le montant au reste à payer (jamais de sur-paiement).
+        reste = facture.montant_du
+        if montant > reste:
+            montant = reste
+        if montant <= Decimal('0'):
+            return None, 'Aucun reste à payer sur cette facture.'
+        paiement = Paiement.objects.create(
+            company=facture.company,
+            facture=facture,
+            montant=montant,
+            date_paiement=timezone.localdate(),
+            mode=Paiement.Mode.CARTE,
+            reference=(result.get('provider_ref') or '')[:120],
+            note='Paiement en ligne (lien « Payer en ligne »).',
+        )
+        locked_link.statut = PaymentLink.Statut.PAYE
+        locked_link.paiement = paiement
+        locked_link.provider_ref = (result.get('provider_ref') or '')[:200]
+        locked_link.paid_at = timezone.now()
+        locked_link.save(update_fields=[
+            'statut', 'paiement', 'provider_ref', 'paid_at'])
+        facture.refresh_from_db()
+        if facture.montant_du <= Decimal('0') \
+                and facture.statut != Facture.Statut.ANNULEE:
+            facture.statut = Facture.Statut.PAYEE
+            facture.save(update_fields=['statut'])
+    return paiement, None
