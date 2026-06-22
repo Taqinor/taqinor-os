@@ -12,9 +12,16 @@ from rest_framework.response import Response
 from authentication.mixins import TenantMixin
 from authentication.permissions import IsResponsableOrAdmin
 
-from . import selectors
-from .models import Projet, ProjetActivity, ProjetChantier, ProjetLien
+from . import selectors, services
+from .models import (
+    PhaseProjet,
+    Projet,
+    ProjetActivity,
+    ProjetChantier,
+    ProjetLien,
+)
 from .serializers import (
+    PhaseProjetSerializer,
     ProjetActivitySerializer,
     ProjetChantierSerializer,
     ProjetLienSerializer,
@@ -172,6 +179,17 @@ class ProjetViewSet(_GestionProjetBaseViewSet):
             ProjetActivitySerializer(
                 projet.activites.all(), many=True).data)
 
+    @action(detail=True, methods=['post'], url_path='instancier-phases')
+    def instancier_phases(self, request, pk=None):
+        """Crée les 5 phases standard du projet (idempotent).
+
+        La société est garantie par ``get_object`` (queryset scopé société). Un
+        second appel ne duplique rien. Renvoie la liste complète des phases.
+        """
+        projet = self.get_object()
+        phases = services.instancier_phases_standard(projet)
+        return Response(PhaseProjetSerializer(phases, many=True).data)
+
 
 class ProjetChantierViewSet(_GestionProjetBaseViewSet):
     """Rattachements chantier ↔ projet (liens lâches)."""
@@ -208,4 +226,24 @@ class ProjetLienViewSet(_GestionProjetBaseViewSet):
         type_cible = self.request.query_params.get('type_cible')
         if type_cible:
             qs = qs.filter(type_cible=type_cible)
+        return qs
+
+
+class PhaseProjetViewSet(_GestionProjetBaseViewSet):
+    """Phases (WBS) d'un projet : étude / appro / pose / MES / réception.
+
+    ``company`` est posée côté serveur (TenantMixin) ; le ``projet`` reçu est
+    validé même-société par le sérialiseur (cible d'une autre société → 400).
+    Filtre optionnel ``?projet=<id>`` ; tri par défaut ``ordre`` puis ``id``.
+    """
+    queryset = PhaseProjet.objects.select_related('projet').all()
+    serializer_class = PhaseProjetSerializer
+    filter_backends = [filters.OrderingFilter]
+    ordering_fields = ['ordre', 'type_phase', 'statut', 'id']
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        projet = self.request.query_params.get('projet')
+        if projet:
+            qs = qs.filter(projet_id=projet)
         return qs

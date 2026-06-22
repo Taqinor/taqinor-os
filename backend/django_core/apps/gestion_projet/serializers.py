@@ -6,7 +6,13 @@ appartenant à la société de l'utilisateur.
 """
 from rest_framework import serializers
 
-from .models import Projet, ProjetActivity, ProjetChantier, ProjetLien
+from .models import (
+    PhaseProjet,
+    Projet,
+    ProjetActivity,
+    ProjetChantier,
+    ProjetLien,
+)
 
 
 def _meme_societe(serializer, value, label):
@@ -69,6 +75,38 @@ class ProjetChantierSerializer(serializers.ModelSerializer):
 
     def validate_projet(self, value):
         return _meme_societe(self, value, 'Projet')
+
+
+class PhaseProjetSerializer(serializers.ModelSerializer):
+    """Phase (WBS) d'un projet.
+
+    ``company`` n'est jamais exposée : elle est posée côté serveur. Le ``projet``
+    reçu est validé comme appartenant à la société de l'utilisateur.
+    """
+    projet_code = serializers.CharField(source='projet.code', read_only=True)
+    type_phase_display = serializers.CharField(
+        source='get_type_phase_display', read_only=True)
+    statut_display = serializers.CharField(
+        source='get_statut_display', read_only=True)
+
+    class Meta:
+        model = PhaseProjet
+        fields = [
+            'id', 'projet', 'projet_code', 'type_phase', 'type_phase_display',
+            'libelle', 'ordre', 'date_debut_prevue', 'date_fin_prevue',
+            'date_debut_reelle', 'date_fin_reelle', 'statut', 'statut_display',
+            'avancement_pct', 'date_creation',
+        ]
+        read_only_fields = ['date_creation']
+
+    def validate_projet(self, value):
+        return _meme_societe(self, value, 'Projet')
+
+    def validate_avancement_pct(self, value):
+        if value is not None and not (0 <= value <= 100):
+            raise serializers.ValidationError(
+                'L’avancement doit être compris entre 0 et 100.')
+        return value
 
 
 class ProjetLienSerializer(serializers.ModelSerializer):
