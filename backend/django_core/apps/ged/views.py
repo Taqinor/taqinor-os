@@ -18,11 +18,13 @@ from apps.records.serializers import resolve_target
 
 from . import selectors, services
 from .models import (
-    Cabinet, Coffre, Document, DocumentLien, DocumentVersion, Folder,
+    Cabinet, Coffre, Document, DocumentLien, DocumentTag,
+    DocumentTagAssignment, DocumentVersion, Folder,
 )
 from .serializers import (
     CabinetSerializer, CoffreSerializer, DocumentLienSerializer,
-    DocumentSerializer, DocumentVersionSerializer, FolderSerializer,
+    DocumentSerializer, DocumentTagAssignmentSerializer, DocumentTagSerializer,
+    DocumentVersionSerializer, FolderSerializer,
 )
 
 READ_ACTIONS = ['list', 'retrieve']
@@ -190,7 +192,44 @@ class DocumentViewSet(TenantMixin, viewsets.ModelViewSet):
             qs = qs.filter(coffre__isnull=True)
         elif coffre:
             qs = qs.filter(coffre_id=coffre)
+        # GED9 — filtre par tag de la taxonomie (?tag=<id>).
+        tag = self.request.query_params.get('tag')
+        if tag:
+            qs = qs.filter(tag_assignments__tag_id=tag).distinct()
         return qs
+
+    @action(detail=True, methods=['post'], url_path='tagger')
+    def tagger(self, request, pk=None):
+        """GED9 — Applique un tag de la taxonomie à ce document (idempotent).
+
+        Body : `{"tag": <id>}`. Le document est company-scopé (et ACL coffre)
+        via `get_object()` ; le tag est résolu DANS la société courante."""
+        document = self.get_object()
+        tag_id = request.data.get('tag')
+        if not tag_id:
+            return Response({'tag': 'Tag requis.'},
+                            status=status.HTTP_400_BAD_REQUEST)
+        tag = DocumentTag.objects.filter(
+            company=request.user.company, pk=tag_id).first()
+        if tag is None:
+            return Response({'tag': 'Tag inconnu.'},
+                            status=status.HTTP_404_NOT_FOUND)
+        _assign, created = services.assign_tag(
+            document, tag, created_by=request.user)
+        return Response(
+            DocumentSerializer(document, context={'request': request}).data,
+            status=status.HTTP_201_CREATED if created else status.HTTP_200_OK)
+
+    @action(detail=True, methods=['post'], url_path='detagger')
+    def detagger(self, request, pk=None):
+        """GED9 — Retire un tag de ce document. Body : `{"tag": <id>}`."""
+        document = self.get_object()
+        tag_id = request.data.get('tag')
+        DocumentTagAssignment.objects.filter(
+            company=request.user.company, document=document, tag_id=tag_id
+        ).delete()
+        return Response(
+            DocumentSerializer(document, context={'request': request}).data)
 
     def perform_create(self, serializer):
         # company + created_by posés côté serveur.
@@ -331,3 +370,78 @@ class DocumentLienViewSet(TenantMixin, viewsets.ModelViewSet):
             defaults={'company': company, 'created_by': request.user})
         code = status.HTTP_201_CREATED if created else status.HTTP_200_OK
         return Response(DocumentLienSerializer(lien).data, status=code)
+
+
+class DocumentTagViewSet(TenantMixin, viewsets.ModelViewSet):
+    """GED9 — Taxonomie de tags documentaires (hiérarchique, scopée société).
+
+    Lecture : tout rôle (les formulaires/filtres en ont besoin). Écriture :
+    responsable/admin. `company` posée côté serveur. Filtre `?parent=<id|null>`
+    pour naviguer la taxonomie ; action `documents` liste les documents portant
+    ce tag (option `?descendants=1` pour inclure les sous-tags)."""
+    queryset = DocumentTag.objects.select_related('parent').all()
+    serializer_class = DocumentTagSerializer
+    filter_backends = [filters.SearchFilter, filters.OrderingFilter]
+    search_fields = ['nom', 'slug', 'description']
+    ordering_fields = ['nom', 'created_at']
+
+    def get_permissions(self):
+        if self.action in READ_ACTIONS or self.action == 'documents':
+            return [IsAnyRole()]
+        return [IsResponsableOrAdmin()]
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        parent = self.request.query_params.get('parent')
+        if parent == 'null':
+            qs = qs.filter(parent__isnull=True)
+        elif parent:
+            qs = qs.filter(parent_id=parent)
+        return qs
+
+    def perform_create(self, serializer):
+        serializer.save(company=self.request.user.company)
+
+    @action(detail=True, methods=['get'], url_path='documents')
+    def documents(self, request, pk=None):
+        """Documents portant ce tag (ACL coffre appliquée). `?descendants=1`
+        inclut les documents des sous-tags de la taxonomie."""
+        tag = self.get_object()
+        include = request.query_params.get('descendants') in ('1', 'true')
+        docs = selectors.documents_with_tag(tag, include_descendants=include)
+        # Recroise avec l'ACL coffre-fort (un tag ne contourne pas le coffre).
+        visible = selectors.documents_visible_to_user(request.user)
+        docs = docs.filter(pk__in=visible.values('pk'))
+        data = DocumentSerializer(
+            docs, many=True, context={'request': request}).data
+        return Response(data)
+
+
+class DocumentTagAssignmentViewSet(TenantMixin, viewsets.ModelViewSet):
+    """GED9 — Affectations tag↔document (M2M explicite, scopé société).
+
+    Création : `{"document": <id>, "tag": <id>}` (idempotent via la contrainte
+    d'unicité). `company`/`created_by` posés côté serveur. Filtrable par
+    `?document=<id>` ou `?tag=<id>`."""
+    queryset = DocumentTagAssignment.objects.select_related(
+        'document', 'tag', 'created_by').all()
+    serializer_class = DocumentTagAssignmentSerializer
+
+    def get_permissions(self):
+        if self.action in READ_ACTIONS:
+            return [IsAnyRole()]
+        return [IsResponsableOrAdmin()]
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        document = self.request.query_params.get('document')
+        if document:
+            qs = qs.filter(document_id=document)
+        tag = self.request.query_params.get('tag')
+        if tag:
+            qs = qs.filter(tag_id=tag)
+        return qs
+
+    def perform_create(self, serializer):
+        serializer.save(
+            company=self.request.user.company, created_by=self.request.user)

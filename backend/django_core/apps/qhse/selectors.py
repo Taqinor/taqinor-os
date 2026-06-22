@@ -20,7 +20,9 @@ interrogeable (``peut_avancer`` + liste des points bloquants, globalement et par
 phase). Le câblage éventuel vers l'avancement chantier de ``installations`` est
 un suivi à part : un appelant consulte cette porte, il ne la franchit pas ici.
 """
-from .models import ReleveControle, ReleveCourbeIV
+from .models import (
+    ActionCorrectivePreventive, ReleveControle, ReleveCourbeIV,
+)
 
 
 def _bloquant(releve):
@@ -161,3 +163,33 @@ def photos_controle_par_phase(releve):
         else:
             groupes['autres'].append(att)
     return groupes
+
+
+# ── QHSE12 — Relances CAPA en retard ───────────────────────────────────────
+
+# Statuts CAPA considérés comme NON résolus (donc relançables s'ils sont
+# échus) : une CAPA réalisée ou vérifiée n'est plus en retard.
+STATUTS_CAPA_OUVERTS = (
+    ActionCorrectivePreventive.Statut.A_FAIRE,
+    ActionCorrectivePreventive.Statut.EN_COURS,
+)
+
+
+def capa_en_retard(company, today=None):
+    """Actions correctives/préventives (CAPA) en retard d'une société.
+
+    Une CAPA est *en retard* quand son échéance (``echeance``) est strictement
+    passée (``< today``) ET que son statut reste ouvert (à faire / en cours).
+    Les CAPA réalisées ou vérifiées, ou sans échéance, sont exclues. Renvoie un
+    queryset scopé société, échéance la plus ancienne d'abord. Lecture seule.
+    """
+    from django.utils import timezone
+    if today is None:
+        today = timezone.localdate()
+    return (ActionCorrectivePreventive.objects
+            .filter(company=company,
+                    echeance__isnull=False,
+                    echeance__lt=today,
+                    statut__in=STATUTS_CAPA_OUVERTS)
+            .select_related('non_conformite', 'responsable')
+            .order_by('echeance', 'id'))

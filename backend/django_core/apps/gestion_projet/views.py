@@ -356,6 +356,52 @@ class TacheViewSet(_GestionProjetBaseViewSet):
         tache = self.get_object()
         return Response(selectors.dependances_de_tache(tache))
 
+    @action(detail=True, methods=['post'], url_path='reprogrammer')
+    def reprogrammer(self, request, pk=None):
+        """Déplace la tâche (drag) et POUSSE ses successeurs en cascade.
+
+        Corps : ``date_debut`` (obligatoire, ``YYYY-MM-DD``) et ``date_fin``
+        (optionnelle ; à défaut la durée courante est conservée). La société est
+        garantie par ``get_object`` (queryset scopé société) : une tâche d'une
+        autre société → 404. Délègue au service ``reprogrammer_tache`` (écritures
+        atomiques). Renvoie la liste des tâches modifiées (tâche déplacée +
+        successeurs décalés) ; une date incohérente ou un cycle → 400.
+        """
+        from datetime import date as _date
+
+        tache = self.get_object()
+        debut_raw = request.data.get('date_debut')
+        fin_raw = request.data.get('date_fin')
+        if not debut_raw:
+            return Response(
+                {'date_debut': 'La date de début est obligatoire.'},
+                status=status.HTTP_400_BAD_REQUEST)
+
+        def _parse(value, champ):
+            if value in (None, ''):
+                return None
+            if isinstance(value, _date):
+                return value
+            try:
+                return _date.fromisoformat(value)
+            except (ValueError, TypeError):
+                raise ValueError(champ)
+
+        try:
+            debut = _parse(debut_raw, 'date_debut')
+            fin = _parse(fin_raw, 'date_fin')
+        except ValueError as exc:
+            return Response(
+                {str(exc): 'Date invalide (format attendu : YYYY-MM-DD).'},
+                status=status.HTTP_400_BAD_REQUEST)
+
+        try:
+            modifies = services.reprogrammer_tache(tache, debut, fin)
+        except services.RescheduleError as exc:
+            return Response(
+                {'detail': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+        return Response(TacheSerializer(modifies, many=True).data)
+
 
 class DependanceTacheViewSet(_GestionProjetBaseViewSet):
     """Dépendances de planning entre tâches (FS/SS/FF/SF + lag) — CRUD scopé.

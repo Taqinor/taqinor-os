@@ -23,9 +23,13 @@ from .serializers import (
     ReleveCourbeIVSerializer,
 )
 from .selectors import (
-    courbes_iv_for_chantier, hold_points_status, photos_controle_par_phase,
+    capa_en_retard, courbes_iv_for_chantier, hold_points_status,
+    photos_controle_par_phase,
 )
-from .services import creer_ncr_depuis_reserve, instancier_plan_chantier
+from .services import (
+    creer_ncr_depuis_reserve, instancier_plan_chantier,
+    relancer_capa_en_retard,
+)
 
 
 class _QhseBaseViewSet(TenantMixin, viewsets.ModelViewSet):
@@ -83,6 +87,25 @@ class ActionCorrectivePreventiveViewSet(_QhseBaseViewSet):
     filter_backends = [filters.SearchFilter, filters.OrderingFilter]
     search_fields = ['description', 'cause_racine']
     ordering_fields = ['id', 'echeance', 'date_creation']
+
+    @action(detail=False, methods=['get'], url_path='en-retard')
+    def en_retard(self, request):
+        """CAPA en retard de la société (échéance passée, non résolue — QHSE12).
+
+        Lecture seule, scopée société via le sélecteur ``capa_en_retard``.
+        """
+        qs = capa_en_retard(request.user.company)
+        return Response(self.get_serializer(qs, many=True).data)
+
+    @action(detail=False, methods=['post'], url_path='relancer-retards')
+    def relancer_retards(self, request):
+        """Relance les CAPA en retard : notifie chaque responsable + digest.
+
+        Notifications best-effort (in-app) ; ne mute aucune CAPA. Renvoie le
+        digest (total / notifiées / sans responsable / items). Scopé société.
+        """
+        digest = relancer_capa_en_retard(request.user.company)
+        return Response(digest)
 
 
 class PlanInspectionModeleViewSet(_QhseBaseViewSet):

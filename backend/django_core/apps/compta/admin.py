@@ -129,3 +129,35 @@ class ClotureCaisseAdmin(admin.ModelAdmin):
     list_display = ('id', 'caisse', 'date_cloture', 'solde_theorique',
                     'solde_compte', 'ecart', 'company')
     search_fields = ('commentaire',)
+
+
+@admin.register(VirementInterne)
+class VirementInterneAdmin(admin.ModelAdmin):
+    list_display = ('id', 'compte_source', 'compte_destination', 'montant',
+                    'date_virement', 'posted', 'company')
+    list_filter = ('posted',)
+    search_fields = ('libelle', 'reference')
+
+
+@admin.register(LignePrevisionnelTresorerie)
+class LignePrevisionnelTresorerieAdmin(admin.ModelAdmin):
+    list_display = ('id', 'libelle', 'categorie', 'date_prevue', 'montant',
+                    'recurrence', 'company')
+    list_filter = ('categorie', 'recurrence')
+    search_fields = ('libelle', 'commentaire')
+
+
+@admin.register(Effet)
+class EffetAdmin(admin.ModelAdmin):
+    list_display = ('id', 'sens', 'type_effet', 'numero', 'montant',
+                    'date_echeance', 'statut', 'company')
+    list_filter = ('sens', 'type_effet', 'statut')
+    search_fields = ('numero', 'tireur', 'banque')
+
+
+@admin.register(BordereauRemise)
+class BordereauRemiseAdmin(admin.ModelAdmin):
+    list_display = ('id', 'reference', 'compte_tresorerie', 'date_remise',
+                    'total', 'statut', 'posted', 'company')
+    list_filter = ('statut', 'posted')
+    search_fields = ('reference',)

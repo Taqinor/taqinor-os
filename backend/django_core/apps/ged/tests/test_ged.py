@@ -890,3 +890,125 @@ class CoffreAclTests(GedBase):
         self.assertEqual(resp.status_code, 200)
         ids = [r['id'] for r in resp.data]
         self.assertIn(self.doc_secret.id, ids)
+
+
+# ── GED9 — Taxonomie de tags documentaires ───────────────────────────
+class DocumentTagTaxonomyTests(GedBase):
+    """Vérifie la taxonomie hiérarchique de tags : création scopée société,
+    parent même-société, garde anti-cycle, application/retrait sur un document,
+    chemin lisible et filtre par tag (+ descendants)."""
+
+    def setUp(self):
+        super().setUp()
+        self.folder_a = Folder.objects.create(
+            company=self.co_a, cabinet=self.cab_a, nom='Racine')
+        self.doc = Document.objects.create(
+            company=self.co_a, folder=self.folder_a, nom='Contrat X')
+
+    def test_create_tag_forces_company(self):
+        api = auth(self.admin_a)
+        resp = api.post('/api/django/ged/tags/', {
+            'nom': 'Juridique', 'slug': 'juridique',
+            'company': self.co_b.id}, format='json')
+        self.assertEqual(resp.status_code, 201, resp.data)
+        tag = DocumentTag.objects.get(id=resp.data['id'])
+        self.assertEqual(tag.company_id, self.co_a.id)
+
+    def test_hierarchy_and_chemin(self):
+        racine = DocumentTag.objects.create(
+            company=self.co_a, nom='Juridique', slug='juridique')
+        enfant = DocumentTag.objects.create(
+            company=self.co_a, nom='Contrats', slug='contrats', parent=racine)
+        api = auth(self.admin_a)
+        resp = api.get(f'/api/django/ged/tags/{enfant.id}/')
+        self.assertEqual(resp.data['chemin'], 'Juridique / Contrats')
+
+    def test_parent_other_company_rejected(self):
+        tag_b = DocumentTag.objects.create(
+            company=self.co_b, nom='Etranger', slug='etranger')
+        api = auth(self.admin_a)
+        resp = api.post('/api/django/ged/tags/', {
+            'nom': 'Sous', 'slug': 'sous', 'parent': tag_b.id}, format='json')
+        self.assertEqual(resp.status_code, 400)
+
+    def test_cycle_rejected(self):
+        a = DocumentTag.objects.create(company=self.co_a, nom='A', slug='a')
+        b = DocumentTag.objects.create(
+            company=self.co_a, nom='B', slug='b', parent=a)
+        api = auth(self.admin_a)
+        # Tenter de mettre A sous B (son descendant) → cycle → 400.
+        resp = api.patch(f'/api/django/ged/tags/{a.id}/',
+                         {'parent': b.id}, format='json')
+        self.assertEqual(resp.status_code, 400)
+
+    def test_tagger_and_detagger_document(self):
+        tag = DocumentTag.objects.create(
+            company=self.co_a, nom='Important', slug='important')
+        api = auth(self.admin_a)
+        resp = api.post(f'/api/django/ged/documents/{self.doc.id}/tagger/',
+                        {'tag': tag.id}, format='json')
+        self.assertEqual(resp.status_code, 201, resp.data)
+        self.assertTrue(DocumentTagAssignment.objects.filter(
+            document=self.doc, tag=tag).exists())
+        tag_ids = [t['id'] for t in resp.data['tags']]
+        self.assertIn(tag.id, tag_ids)
+        # Idempotent : 2e tagger → 200, toujours un seul lien.
+        resp = api.post(f'/api/django/ged/documents/{self.doc.id}/tagger/',
+                        {'tag': tag.id}, format='json')
+        self.assertEqual(resp.status_code, 200)
+        self.assertEqual(DocumentTagAssignment.objects.filter(
+            document=self.doc, tag=tag).count(), 1)
+        # detagger.
+        resp = api.post(f'/api/django/ged/documents/{self.doc.id}/detagger/',
+                        {'tag': tag.id}, format='json')
+        self.assertEqual(resp.status_code, 200)
+        self.assertFalse(DocumentTagAssignment.objects.filter(
+            document=self.doc, tag=tag).exists())
+
+    def test_cannot_tag_other_company_tag(self):
+        tag_b = DocumentTag.objects.create(
+            company=self.co_b, nom='B', slug='b')
+        api = auth(self.admin_a)
+        resp = api.post(f'/api/django/ged/documents/{self.doc.id}/tagger/',
+                        {'tag': tag_b.id}, format='json')
+        self.assertEqual(resp.status_code, 404)
+
+    def test_filter_documents_by_tag(self):
+        tag = DocumentTag.objects.create(
+            company=self.co_a, nom='T', slug='t')
+        services.assign_tag(self.doc, tag)
+        other = Document.objects.create(
+            company=self.co_a, folder=self.folder_a, nom='Sans tag')
+        api = auth(self.admin_a)
+        resp = api.get(f'/api/django/ged/documents/?tag={tag.id}')
+        ids = [r['id'] for r in rows(resp)]
+        self.assertIn(self.doc.id, ids)
+        self.assertNotIn(other.id, ids)
+
+    def test_tag_documents_action_with_descendants(self):
+        parent = DocumentTag.objects.create(
+            company=self.co_a, nom='P', slug='p')
+        child = DocumentTag.objects.create(
+            company=self.co_a, nom='C', slug='c', parent=parent)
+        doc_child = Document.objects.create(
+            company=self.co_a, folder=self.folder_a, nom='Doc enfant')
+        services.assign_tag(doc_child, child)
+        api = auth(self.admin_a)
+        # Sans descendants : le doc du sous-tag n'apparaît pas.
+        resp = api.get(f'/api/django/ged/tags/{parent.id}/documents/')
+        ids = [r['id'] for r in resp.data]
+        self.assertNotIn(doc_child.id, ids)
+        # Avec descendants : il apparaît.
+        resp = api.get(
+            f'/api/django/ged/tags/{parent.id}/documents/?descendants=1')
+        ids = [r['id'] for r in resp.data]
+        self.assertIn(doc_child.id, ids)
+
+    def test_tag_isolation_list(self):
+        DocumentTag.objects.create(company=self.co_b, nom='B', slug='b')
+        DocumentTag.objects.create(company=self.co_a, nom='A', slug='a')
+        api = auth(self.admin_a)
+        resp = api.get('/api/django/ged/tags/')
+        noms = [r['nom'] for r in rows(resp)]
+        self.assertIn('A', noms)
+        self.assertNotIn('B', noms)

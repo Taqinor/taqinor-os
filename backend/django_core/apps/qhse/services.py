@@ -97,3 +97,70 @@ def creer_ncr_depuis_reserve(reserve_id, company, signale_par=None,
         signale_par=signale_par,
     )
     return ncr, True
+
+
+# ── QHSE12 — Relances CAPA en retard (notifications / digest) ───────────────
+
+def relancer_capa_en_retard(company, today=None):
+    """Relance les CAPA en retard d'une société (notification au responsable).
+
+    Pour chaque CAPA échue et non résolue (cf. ``selectors.capa_en_retard``),
+    émet une notification in-app au responsable (best-effort via
+    ``notifications.notify`` — jamais d'exception remontée ; une CAPA sans
+    responsable est comptée mais non notifiée). Réutilise l'``EventType``
+    existant ``MAINTENANCE_DUE`` (échéance interne dépassée) pour rester additif.
+
+    Renvoie un *digest* : ``{'total': N, 'notifiees': M, 'sans_responsable': K,
+    'items': [...]}`` où ``items`` résume chaque CAPA en retard (id, description,
+    échéance, responsable, jours de retard). Ne mute aucune CAPA.
+    """
+    from django.utils import timezone
+
+    from apps.qhse.selectors import capa_en_retard
+
+    if today is None:
+        today = timezone.localdate()
+    retards = list(capa_en_retard(company, today=today))
+
+    notifiees = 0
+    sans_responsable = 0
+    items = []
+    for capa in retards:
+        jours = (today - capa.echeance).days
+        ncr = capa.non_conformite
+        titre = 'CAPA en retard'
+        corps = (
+            f"L'action « {capa.description[:80]} » liée à la non-conformité "
+            f"« {ncr.titre} » est en retard de {jours} jour(s) "
+            f"(échéance {capa.echeance.isoformat()}).")
+        if capa.responsable_id is not None:
+            _notifier_capa(capa.responsable, titre, corps, company)
+            notifiees += 1
+        else:
+            sans_responsable += 1
+        items.append({
+            'capa_id': capa.id,
+            'description': capa.description,
+            'echeance': capa.echeance.isoformat(),
+            'jours_retard': jours,
+            'responsable_id': capa.responsable_id,
+            'non_conformite_id': capa.non_conformite_id,
+        })
+
+    return {
+        'total': len(retards),
+        'notifiees': notifiees,
+        'sans_responsable': sans_responsable,
+        'items': items,
+    }
+
+
+def _notifier_capa(user, titre, corps, company):
+    """Notifie un responsable d'une CAPA en retard (best-effort, sans erreur)."""
+    try:
+        from apps.notifications.models import EventType
+        from apps.notifications.services import notify
+        notify(user, EventType.MAINTENANCE_DUE, titre, body=corps,
+               link='/qhse/capa', company=company)
+    except Exception:  # pragma: no cover - défensif
+        pass
