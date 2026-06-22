@@ -142,8 +142,12 @@ def build(ctx) -> str:
 .a2-sch{{margin-top:11px;border:1px solid {line};border-radius:14px;background:{wash};padding:8px 10px;}}
 .a2-sch svg{{width:100%;height:auto;display:block;}}
 .a2-sch-cap{{font-size:7.4pt;color:{muted_2};text-align:center;margin-top:2px;}}
-.a2-cols{{display:flex;gap:12px;margin-top:13px;align-items:flex-start;}}
-.a2-col{{flex:1 1 0;min-width:0;}}
+/* TABLE, not flex: WeasyPrint can let a flex column with nowrap content
+   overflow its 50% box and collide with the other column (the chain value
+   slid under the right callout). Table cells give deterministic columns. */
+.a2-cols{{display:table;width:100%;margin-top:13px;table-layout:fixed;}}
+.a2-col{{display:table-cell;vertical-align:top;}}
+.a2-col-gap{{display:table-cell;width:12px;}}
 .a2-h{{font-family:{f_serif};font-weight:700;font-size:12pt;color:{navy};margin-bottom:7px;}}
 .a2-sub{{font-size:8pt;color:{muted};margin-bottom:8px;line-height:1.35;}}
 .a2-card{{border:1px solid {line};border-radius:12px;background:#fff;padding:13px 15px;}}
@@ -200,6 +204,7 @@ def build(ctx) -> str:
       <div class="a2-steps">{steps_html}</div>
       <div class="a2-facts">{facts_html}</div>
     </div>
+    <div class="a2-col-gap"></div>
     <div class="a2-col">
       {hmt_block}
       <div class="a2-why"><div class="a2-why-t">Champ solaire <b>≈ 1,4 × la pompe</b> :

@@ -129,24 +129,27 @@ def build(ctx) -> str:
 .a1-tag{{margin-left:auto;background:{green_bg};border:1px solid #BFE6CB;border-radius:20px;
   padding:2px 11px;font-size:7pt;font-weight:700;color:{C['green_700']};letter-spacing:.3px;}}
 .a1-wrap{{padding:4.5mm 14mm 0;}}
-/* hero hook */
-.a1-hook{{display:flex;gap:14px;align-items:stretch;}}
-.a1-hook-l{{flex:1 1 0;border:1px solid {line};border-left:5px solid {water};border-radius:14px;
-  padding:14px 18px;background:linear-gradient(110deg,{water_bg},#fff 75%);display:flex;
-  flex-direction:column;justify-content:center;}}
+/* hero hook — TABLE layout, not flex: WeasyPrint under-computes a flex
+   container's flow height vs its children, so the next block (KPI grid)
+   overlapped it. Table cells auto-equalise height and report correct flow. */
+.a1-hook{{display:table;width:100%;}}
+.a1-hook-l{{display:table-cell;vertical-align:middle;border:1px solid {line};
+  border-left:5px solid {water};border-radius:14px;padding:14px 18px;
+  background:linear-gradient(110deg,{water_bg},#fff 75%);}}
+.a1-hook-gap{{display:table-cell;width:14px;}}
 .a1-hook-eyebrow{{color:{muted};font-size:6.5pt;letter-spacing:2px;text-transform:uppercase;font-weight:700;}}
-.a1-bign{{display:flex;align-items:baseline;gap:12px;margin-top:5px;}}
+.a1-bign{{display:flex;align-items:baseline;margin-top:5px;}}
 .a1-bign-v{{font-family:{f_display};font-size:46pt;color:{water};line-height:.85;letter-spacing:-1.5px;}}
-.a1-bign-v .a1-u{{font-size:18pt;color:{water};}}
-.a1-bign-t{{font-size:12pt;font-weight:700;color:{navy};line-height:1.15;}}
-.a1-hook-r{{flex:0 0 56mm;border:1px solid {line};border-left:5px solid {gold};border-radius:14px;
-  background:linear-gradient(180deg,#FFFCF5,#fff 60%);padding:14px 16px;display:flex;
-  flex-direction:column;justify-content:center;overflow:hidden;}}
+.a1-bign-v .a1-u{{font-size:18pt;color:{water};margin-left:5px;}}
+.a1-bign-t{{font-size:12pt;font-weight:700;color:{navy};line-height:1.15;margin-left:14px;}}
+.a1-hook-r{{display:table-cell;vertical-align:middle;width:56mm;border:1px solid {line};
+  border-left:5px solid {gold};border-radius:14px;
+  background:linear-gradient(180deg,#FFFCF5,#fff 60%);padding:12px 15px;}}
 .a1-zero{{white-space:nowrap;line-height:1;}}
-.a1-zero b{{font-family:{f_display};font-weight:400;font-size:33pt;color:{gold};}}
+.a1-zero b{{font-family:{f_display};font-weight:400;font-size:30pt;color:{gold};}}
 .a1-zero i{{font-style:normal;font-size:9pt;font-weight:700;letter-spacing:.06em;
   text-transform:uppercase;color:{gold};margin-left:8px;}}
-.a1-zero-t{{font-size:9pt;color:{navy};font-weight:700;margin-top:7px;line-height:1.25;}}
+.a1-zero-t{{font-size:9pt;color:{navy};font-weight:700;margin-top:6px;line-height:1.2;}}
 .a1-zero-s{{font-size:8pt;color:{muted};margin-top:4px;line-height:1.3;}}
 /* kpi grid */
 .a1-kpis{{display:flex;flex-wrap:wrap;gap:11px;margin-top:12px;}}
@@ -210,10 +213,11 @@ def build(ctx) -> str:
           <div class="a1-bign-t">{hero_t}</div>
         </div>
       </div>
+      <div class="a1-hook-gap"></div>
       <div class="a1-hook-r">
         <div class="a1-zero"><b>0</b><i>carburant</i></div>
         <div class="a1-zero-t">Plus de bonbonnes,<br>plus de gasoil.</div>
-        <div class="a1-zero-s">Le soleil fait tourner votre pompe — l'eau que vous pompez devient gratuite.</div>
+        <div class="a1-zero-s">Le soleil fait tourner votre pompe — l'eau pompée est gratuite.</div>
       </div>
     </div>
 
