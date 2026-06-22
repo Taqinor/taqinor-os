@@ -13,10 +13,14 @@ from rest_framework.decorators import action
 from rest_framework.response import Response
 
 from authentication.mixins import TenantMixin
-from authentication.permissions import IsResponsableOrAdmin
+from authentication.permissions import HasPermission, IsResponsableOrAdmin
 
-from .models import Departement, DossierEmploye
-from .serializers import DepartementSerializer, DossierEmployeSerializer
+from .models import Departement, DossierEmploye, Remuneration
+from .serializers import (
+    DepartementSerializer,
+    DossierEmployeSerializer,
+    RemunerationSerializer,
+)
 
 
 class _RhBaseViewSet(TenantMixin, viewsets.ModelViewSet):
@@ -70,3 +74,28 @@ class DossierEmployeViewSet(_RhBaseViewSet):
             return self.get_paginated_response(serializer.data)
         serializer = self.get_serializer(qs, many=True)
         return Response(serializer.data)
+
+
+class RemunerationViewSet(TenantMixin, viewsets.ModelViewSet):
+    """Rémunération de base des employés (FG157) — paie SENSIBLE.
+
+    Lecture ET écriture réservées aux porteurs de ``salaires_voir`` (palier RH) :
+    sans cette permission tout accès est refusé (403). Société scopée
+    (TenantMixin) et posée côté serveur. L'historique d'un employé s'obtient via
+    ``?employe=<id>`` — les lignes sont triées de la plus récente à la plus
+    ancienne (``date_effet`` décroissante), la première étant la rémunération en
+    vigueur.
+    """
+    permission_classes = [HasPermission('salaires_voir')]
+    queryset = Remuneration.objects.select_related('employe').all()
+    serializer_class = RemunerationSerializer
+    filter_backends = [filters.OrderingFilter]
+    filterset_fields = ['employe']
+    ordering_fields = ['date_effet', 'date_creation', 'montant']
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        employe = self.request.query_params.get('employe')
+        if employe:
+            qs = qs.filter(employe_id=employe)
+        return qs

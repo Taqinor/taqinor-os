@@ -139,3 +139,54 @@ class DossierEmploye(models.Model):
 
     def __str__(self):
         return f'{self.matricule} — {self.nom} {self.prenom}'
+
+
+class Remuneration(models.Model):
+    """Rémunération de base d'un employé (FG157) — donnée paie SENSIBLE.
+
+    Chaque changement de salaire crée une NOUVELLE ligne : la dernière (par
+    ``date_effet`` décroissante) est la rémunération en vigueur, les précédentes
+    forment l'historique conservé. L'accès en lecture ET en écriture est réservé
+    aux porteurs de la permission ``salaires_voir`` (palier RH) ; ces montants ne
+    quittent jamais une sortie client.
+    """
+    class Periodicite(models.TextChoices):
+        MENSUEL = 'mensuel', 'Mensuel'
+        HORAIRE = 'horaire', 'Horaire'
+        JOURNALIER = 'journalier', 'Journalier'
+        ANNUEL = 'annuel', 'Annuel'
+
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='rh_remunerations',
+        verbose_name='Société',
+    )
+    employe = models.ForeignKey(
+        DossierEmploye,
+        on_delete=models.CASCADE,
+        related_name='remunerations',
+        verbose_name='Employé',
+    )
+    montant = models.DecimalField(
+        max_digits=14, decimal_places=2, verbose_name='Montant')
+    devise = models.CharField(
+        max_length=3, default='MAD', verbose_name='Devise')
+    periodicite = models.CharField(
+        max_length=12, choices=Periodicite.choices,
+        default=Periodicite.MENSUEL, verbose_name='Périodicité')
+    date_effet = models.DateField(verbose_name="Date d'effet")
+    motif = models.CharField(
+        max_length=200, blank=True, default='', verbose_name='Motif')
+    date_creation = models.DateTimeField(
+        auto_now_add=True, verbose_name='Créé le')
+
+    class Meta:
+        verbose_name = 'Rémunération'
+        verbose_name_plural = 'Rémunérations'
+        # Historique : la plus récente d'abord ; ligne courante = première.
+        ordering = ['-date_effet', '-date_creation']
+
+    def __str__(self):
+        return (f'{self.employe.matricule} — {self.montant} {self.devise} '
+                f'({self.get_periodicite_display()})')

@@ -46,6 +46,11 @@ ALL_PERMISSIONS = [
     'prix_achat_voir',
     # Voir le Journal d'activité (audit). Directeur uniquement par défaut.
     'journal_activite_voir',
+    # ── Rémunération RH (Feature G, 2026-06) ──
+    # Lire ET écrire la rémunération de base d'un employé (salaire, périodicité,
+    # historique). Donnée paie sensible : réservée au palier RH (Directeur +
+    # Administrateur par défaut) ; ne fuit jamais dans une sortie client.
+    'salaires_voir',
     # ── Portée de visibilité des enregistrements (Feature F) ──
     # Marqueurs de RÔLE (pas des cases « action ») : narrowing OPT-IN. Un rôle
     # SANS l'un de ces marqueurs voit tous les enregistrements de sa société
@@ -72,6 +77,7 @@ ELEVATED_PERMISSIONS = frozenset({
     'roles_gerer',
     'prix_achat_voir',
     'journal_activite_voir',
+    'salaires_voir',
 })
 
 RESPONSABLE_PERMISSIONS = [
