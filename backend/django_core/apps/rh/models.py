@@ -122,6 +122,30 @@ class DossierEmploye(models.Model):
     statut = models.CharField(
         max_length=10, choices=Statut.choices,
         default=Statut.ACTIF, verbose_name='Statut')
+    # FG158 — Coordonnées personnelles étendues (facultatives) : utiles RH/paie,
+    # restent INTERNES au dossier (accès Administrateur/Responsable uniquement).
+    adresse_perso = models.CharField(
+        max_length=255, blank=True, default='',
+        verbose_name='Adresse personnelle')
+    telephone_perso = models.CharField(
+        max_length=30, blank=True, default='',
+        verbose_name='Téléphone personnel')
+    email_perso = models.EmailField(
+        blank=True, default='', verbose_name='E-mail personnel')
+    # FG158 — Contact d'urgence (personne à prévenir) — utile chantier/accident.
+    urgence_nom = models.CharField(
+        max_length=120, blank=True, default='',
+        verbose_name='Personne à prévenir — nom')
+    urgence_lien = models.CharField(
+        max_length=60, blank=True, default='',
+        verbose_name='Personne à prévenir — lien')
+    urgence_telephone = models.CharField(
+        max_length=30, blank=True, default='',
+        verbose_name='Personne à prévenir — téléphone')
+    # FG158 — Donnée MÉDICALE sensible (utile chantier/accident) : ne quitte
+    # jamais l'API RH interne, soumise au même contrôle d'accès que le dossier.
+    groupe_sanguin = models.CharField(
+        max_length=3, blank=True, default='', verbose_name='Groupe sanguin')
     # Coût horaire INTERNE (paie/marge) — ne JAMAIS exposer côté client.
     cout_horaire = models.DecimalField(
         max_digits=14, decimal_places=2, default=Decimal('0'),

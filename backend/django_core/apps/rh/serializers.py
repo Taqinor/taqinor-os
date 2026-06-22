@@ -42,7 +42,12 @@ class DossierEmployeSerializer(serializers.ModelSerializer):
             'email', 'poste', 'departement', 'date_embauche', 'type_contrat',
             'type_contrat_display', 'contrat_date_debut', 'contrat_date_fin',
             'statut', 'statut_display', 'cout_horaire',
-            'rib', 'date_creation',
+            'rib',
+            # FG158 — coordonnées perso étendues + contact d'urgence (internes).
+            'adresse_perso', 'telephone_perso', 'email_perso',
+            'urgence_nom', 'urgence_lien', 'urgence_telephone',
+            'groupe_sanguin',
+            'date_creation',
         ]
         read_only_fields = ['date_creation']
 
