@@ -13,7 +13,10 @@
 #   1. core domain *models* stay mutually decoupled (the M1 win — a model-level
 #      cross-import is exactly what collided in production), and
 #   2. the `core` foundation app never imports a domain-core or satellite app
-#      (it must remain a base layer everything can depend DOWN on).
+#      (it must remain a base layer everything can depend DOWN on), and
+#   3. the business-core `ventes` app never imports the `audit` satellite (the
+#      M4 win — that last upward back-edge was replaced by the core event bus:
+#      ventes emits `document_pdf_generated` and audit subscribes).
 
 [importlinter]
 root_packages =
@@ -44,6 +47,14 @@ forbidden_modules =
     apps.ventes.models
     apps.stock.models
     apps.sav.models
+
+[importlinter:contract:ventes-does-not-import-audit]
+name = Business-core ventes never imports the audit satellite (locks the M4 back-edge removal — reactions go through core.events)
+type = forbidden
+source_modules =
+    apps.ventes
+forbidden_modules =
+    apps.audit
 
 [importlinter:contract:core-foundation-is-a-base-layer]
 name = The core foundation app imports downward only (no domain-core or satellite app)
