@@ -7,9 +7,9 @@ appartenant à la société de l'utilisateur.
 from rest_framework import serializers
 
 from .models import (
-    ActionCorrectivePreventive, NonConformite, PlanInspectionChantier,
-    PlanInspectionModele, PointControleModele, QhseChatterEntry,
-    ReleveControle, ReleveCourbeIV,
+    ActionCorrectivePreventive, CritereAudit, GrilleAudit, NonConformite,
+    PlanInspectionChantier, PlanInspectionModele, PointControleModele,
+    QhseChatterEntry, ReleveControle, ReleveCourbeIV,
 )
 
 
@@ -201,3 +201,41 @@ class QhseChatterEntrySerializer(serializers.ModelSerializer):
             'body', 'user', 'user_nom', 'created_at',
         ]
         read_only_fields = fields
+
+
+class GrilleAuditSerializer(serializers.ModelSerializer):
+    """Grille d'audit + critères pondérés (QHSE15)."""
+    type_audit_display = serializers.CharField(
+        source='get_type_audit_display', read_only=True)
+    poids_total = serializers.IntegerField(read_only=True)
+    nb_criteres = serializers.IntegerField(
+        source='criteres.count', read_only=True)
+
+    class Meta:
+        model = GrilleAudit
+        fields = [
+            'id', 'code', 'nom', 'description', 'type_audit',
+            'type_audit_display', 'actif', 'poids_total', 'nb_criteres',
+            'date_creation',
+        ]
+        read_only_fields = ['date_creation']
+
+
+class CritereAuditSerializer(serializers.ModelSerializer):
+    """Critère pondéré d'une grille d'audit (QHSE15)."""
+
+    class Meta:
+        model = CritereAudit
+        fields = [
+            'id', 'grille', 'ordre', 'intitule', 'categorie', 'poids',
+            'note_max', 'description', 'date_creation',
+        ]
+        read_only_fields = ['date_creation']
+
+    def validate_grille(self, value):
+        return _meme_societe(self, value, "Grille d'audit")
+
+    def validate_poids(self, value):
+        if value < 1:
+            raise serializers.ValidationError('Le poids doit être ≥ 1.')
+        return value

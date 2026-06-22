@@ -13,12 +13,13 @@ from authentication.mixins import TenantMixin
 from authentication.permissions import IsResponsableOrAdmin
 
 from .models import (
-    ActionCorrectivePreventive, NonConformite, PlanInspectionChantier,
-    PlanInspectionModele, PointControleModele, QhseChatterEntry,
-    ReleveControle, ReleveCourbeIV,
+    ActionCorrectivePreventive, CritereAudit, GrilleAudit, NonConformite,
+    PlanInspectionChantier, PlanInspectionModele, PointControleModele,
+    QhseChatterEntry, ReleveControle, ReleveCourbeIV,
 )
 from .serializers import (
-    ActionCorrectivePreventiveSerializer, NonConformiteSerializer,
+    ActionCorrectivePreventiveSerializer, CritereAuditSerializer,
+    GrilleAuditSerializer, NonConformiteSerializer,
     PlanInspectionChantierSerializer, PlanInspectionModeleSerializer,
     PointControleModeleSerializer, QhseChatterEntrySerializer,
     ReleveControleSerializer, ReleveCourbeIVSerializer,
@@ -362,6 +363,35 @@ class ReleveCourbeIVViewSet(_QhseBaseViewSet):
                 status=status.HTTP_400_BAD_REQUEST)
         qs = courbes_iv_for_chantier(request.user.company, chantier_id)
         return Response(self.get_serializer(qs, many=True).data)
+
+
+class GrilleAuditViewSet(_QhseBaseViewSet):
+    """Grilles d'audit pondérées (QHSE15). Recherche par code/nom."""
+    queryset = GrilleAudit.objects.all()
+    serializer_class = GrilleAuditSerializer
+    filter_backends = [filters.SearchFilter, filters.OrderingFilter]
+    search_fields = ['code', 'nom', 'description']
+    ordering_fields = ['id', 'nom', 'date_creation']
+
+
+class CritereAuditViewSet(_QhseBaseViewSet):
+    """Critères pondérés d'une grille d'audit (QHSE15).
+
+    Filtre optionnel par ``?grille=``. La société est posée côté serveur ; la
+    grille référencée est validée même-société par le sérialiseur.
+    """
+    queryset = CritereAudit.objects.select_related('grille').all()
+    serializer_class = CritereAuditSerializer
+    filter_backends = [filters.SearchFilter, filters.OrderingFilter]
+    search_fields = ['intitule', 'categorie', 'description']
+    ordering_fields = ['id', 'ordre', 'poids', 'date_creation']
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        grille = self.request.query_params.get('grille')
+        if grille not in (None, ''):
+            qs = qs.filter(grille_id=grille)
+        return qs
 
 
 class QhseChatterEntryViewSet(TenantMixin, viewsets.ReadOnlyModelViewSet):

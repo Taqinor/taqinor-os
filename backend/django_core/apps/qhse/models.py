@@ -595,3 +595,93 @@ class QhseChatterEntry(models.Model):
 
     def __str__(self):
         return f'{self.cible_type}#{self.cible_id} {self.kind}'
+
+
+# ── QHSE15 — Grille d'audit + critères pondérés ────────────────────────────
+
+class GrilleAudit(models.Model):
+    """Grille d'audit réutilisable (gabarit de notation pondérée).
+
+    Modèle de grille que l'on instancie lors d'un audit (à venir, QHSE16) :
+    porte un ``nom``/``code``, une description, un ``type_audit`` (chantier /
+    sécurité / qualité / environnement) et un drapeau ``actif``. Ses critères
+    pondérés vivent dans ``CritereAudit`` (relation 1-N). Multi-société via le FK
+    ``company`` posé côté serveur. Entièrement additif.
+    """
+    class TypeAudit(models.TextChoices):
+        CHANTIER = 'chantier', 'Chantier'
+        SECURITE = 'securite', 'Sécurité'
+        QUALITE = 'qualite', 'Qualité'
+        ENVIRONNEMENT = 'environnement', 'Environnement'
+
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='qhse_grilles_audit',
+        verbose_name='Société',
+    )
+    code = models.CharField(
+        max_length=50, blank=True, default='', verbose_name='Code')
+    nom = models.CharField(max_length=255, verbose_name='Nom')
+    description = models.TextField(
+        blank=True, default='', verbose_name='Description')
+    type_audit = models.CharField(
+        max_length=15, choices=TypeAudit.choices,
+        default=TypeAudit.CHANTIER, verbose_name="Type d'audit")
+    actif = models.BooleanField(default=True, verbose_name='Active')
+    date_creation = models.DateTimeField(
+        auto_now_add=True, verbose_name='Créé le')
+
+    class Meta:
+        verbose_name = "Grille d'audit"
+        verbose_name_plural = "Grilles d'audit"
+        ordering = ['-id']
+
+    def __str__(self):
+        return self.nom
+
+    def poids_total(self):
+        """Somme des poids des critères de la grille (0 si aucun)."""
+        agg = self.criteres.aggregate(total=models.Sum('poids'))
+        return agg['total'] or 0
+
+
+class CritereAudit(models.Model):
+    """Critère pondéré d'une ``GrilleAudit``.
+
+    Décrit un point à noter au sein d'une grille : son ``intitule``, une
+    ``categorie`` (regroupement libre), un ``poids`` (pondération relative dans
+    le score) et un ``ordre`` d'affichage. La note se fera sur une échelle
+    ``note_max`` (défaut 5). Multi-société via ``company`` posée côté serveur.
+    """
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='qhse_criteres_audit',
+        verbose_name='Société',
+    )
+    grille = models.ForeignKey(
+        GrilleAudit,
+        on_delete=models.CASCADE,
+        related_name='criteres',
+        verbose_name="Grille d'audit",
+    )
+    ordre = models.PositiveIntegerField(default=0, verbose_name='Ordre')
+    intitule = models.CharField(max_length=255, verbose_name='Intitulé')
+    categorie = models.CharField(
+        max_length=120, blank=True, default='', verbose_name='Catégorie')
+    poids = models.PositiveIntegerField(default=1, verbose_name='Poids')
+    note_max = models.PositiveIntegerField(
+        default=5, verbose_name='Note maximale')
+    description = models.TextField(
+        blank=True, default='', verbose_name='Description')
+    date_creation = models.DateTimeField(
+        auto_now_add=True, verbose_name='Créé le')
+
+    class Meta:
+        verbose_name = "Critère d'audit"
+        verbose_name_plural = "Critères d'audit"
+        ordering = ['grille', 'ordre', 'id']
+
+    def __str__(self):
+        return f'{self.intitule} (poids {self.poids})'
