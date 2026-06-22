@@ -11,8 +11,8 @@ from rest_framework import serializers
 from .models import (
     CessionImmobilisation, CompteComptable, CompteTresorerie,
     DotationAmortissement, EcritureComptable, ExerciceComptable,
-    Immobilisation, Journal, LigneEcriture, PeriodeComptable,
-    PlanAmortissement, PlanComptable,
+    Immobilisation, Journal, LigneEcriture, LigneReleve, PeriodeComptable,
+    PlanAmortissement, PlanComptable, RapprochementBancaire,
 )
 
 
@@ -328,3 +328,72 @@ class CessionImmobilisationSerializer(serializers.ModelSerializer):
             'ecriture', 'date_creation',
         ]
         read_only_fields = fields
+
+
+class LigneReleveSerializer(serializers.ModelSerializer):
+    """Ligne d'un relevé bancaire (FG123).
+
+    ``company``/``rapprochement`` posés côté serveur. Expose en lecture seule le
+    montant GL pointé, l'écart et le statut de concordance dérivés ; les lignes
+    GL appariées sont restituées en IDs.
+    """
+    statut_display = serializers.CharField(
+        source='get_statut_display', read_only=True)
+    montant_pointe = serializers.DecimalField(
+        max_digits=14, decimal_places=2, read_only=True)
+    ecart = serializers.DecimalField(
+        max_digits=14, decimal_places=2, read_only=True)
+    est_concordante = serializers.BooleanField(read_only=True)
+    lignes_gl = serializers.PrimaryKeyRelatedField(
+        many=True, read_only=True)
+
+    class Meta:
+        model = LigneReleve
+        fields = [
+            'id', 'rapprochement', 'date_operation', 'libelle', 'reference',
+            'montant', 'statut', 'statut_display', 'lignes_gl',
+            'montant_pointe', 'ecart', 'est_concordante', 'date_creation',
+        ]
+        read_only_fields = [
+            'rapprochement', 'statut', 'statut_display', 'lignes_gl',
+            'montant_pointe', 'ecart', 'est_concordante', 'date_creation',
+        ]
+
+
+class RapprochementBancaireSerializer(serializers.ModelSerializer):
+    """Rapprochement bancaire d'un compte de trésorerie (FG123).
+
+    ``company`` posée côté serveur (jamais du corps). ``compte_tresorerie`` est
+    validé comme appartenant à la société. Expose les lignes de relevé imbriquées
+    et l'indicateur ``est_rapproche`` en lecture seule.
+    """
+    statut_display = serializers.CharField(
+        source='get_statut_display', read_only=True)
+    compte_libelle = serializers.CharField(
+        source='compte_tresorerie.libelle', read_only=True)
+    lignes_releve = LigneReleveSerializer(many=True, read_only=True)
+    est_rapproche = serializers.BooleanField(read_only=True)
+
+    class Meta:
+        model = RapprochementBancaire
+        fields = [
+            'id', 'compte_tresorerie', 'compte_libelle', 'libelle',
+            'date_debut', 'date_fin', 'date_releve', 'solde_releve', 'statut',
+            'statut_display', 'date_rapprochement', 'lignes_releve',
+            'est_rapproche', 'date_creation',
+        ]
+        read_only_fields = [
+            'statut', 'statut_display', 'date_rapprochement', 'lignes_releve',
+            'est_rapproche', 'date_creation',
+        ]
+
+    def validate_compte_tresorerie(self, value):
+        return _meme_societe(self, value, 'Compte de trésorerie')
+
+    def validate(self, attrs):
+        debut = attrs.get('date_debut')
+        fin = attrs.get('date_fin')
+        if debut and fin and fin < debut:
+            raise serializers.ValidationError(
+                "La date de fin doit être postérieure à la date de début.")
+        return attrs

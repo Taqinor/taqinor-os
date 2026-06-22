@@ -2,7 +2,8 @@ from django.contrib import admin
 
 from .models import (
     CompteComptable, CompteTresorerie, EcritureComptable, ExerciceComptable,
-    Immobilisation, Journal, LigneEcriture, PeriodeComptable, PlanComptable,
+    Immobilisation, Journal, LigneEcriture, LigneReleve, PeriodeComptable,
+    PlanComptable, RapprochementBancaire,
 )
 
 
@@ -72,4 +73,27 @@ class ImmobilisationAdmin(admin.ModelAdmin):
     list_display = ('id', 'libelle', 'categorie', 'cout', 'taux_tva',
                     'date_acquisition', 'company', 'actif')
     list_filter = ('categorie', 'actif')
+    search_fields = ('libelle', 'reference')
+
+
+class LigneReleveInline(admin.TabularInline):
+    model = LigneReleve
+    extra = 0
+    fields = ('date_operation', 'libelle', 'reference', 'montant', 'statut')
+
+
+@admin.register(RapprochementBancaire)
+class RapprochementBancaireAdmin(admin.ModelAdmin):
+    list_display = ('id', 'compte_tresorerie', 'date_debut', 'date_fin',
+                    'solde_releve', 'statut', 'company')
+    list_filter = ('statut',)
+    search_fields = ('libelle',)
+    inlines = [LigneReleveInline]
+
+
+@admin.register(LigneReleve)
+class LigneReleveAdmin(admin.ModelAdmin):
+    list_display = ('id', 'rapprochement', 'date_operation', 'libelle',
+                    'montant', 'statut', 'company')
+    list_filter = ('statut',)
     search_fields = ('libelle', 'reference')

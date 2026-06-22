@@ -30,7 +30,8 @@ from django.utils import timezone
 from .models import (
     CessionImmobilisation, CompteComptable, DotationAmortissement,
     EcritureComptable, ExerciceComptable, Immobilisation, Journal,
-    LigneEcriture, PeriodeComptable, PlanAmortissement, PlanComptable,
+    LigneEcriture, LigneReleve, PeriodeComptable, PlanAmortissement,
+    PlanComptable, PointageReleve, RapprochementBancaire,
 )
 
 
@@ -1063,3 +1064,120 @@ def poster_cession(cession, *, user=None):
         immobilisation.actif = False
         immobilisation.save(update_fields=['actif'])
     return ecriture
+
+
+# ── FG123 — Rapprochement bancaire (relevé ↔ écritures) ────────────────────
+
+def creer_rapprochement(company, compte_tresorerie, *, date_debut, date_fin,
+                        libelle='', date_releve=None, solde_releve=None,
+                        created_by=None):
+    """Crée un rapprochement bancaire pour un ``CompteTresorerie`` (FG123).
+
+    Ouvre un rapprochement ``en_cours`` sur ``[date_debut ; date_fin]`` avec le
+    ``solde_releve`` de clôture. ``company`` posée côté serveur ; le compte de
+    trésorerie DOIT appartenir à la société, sinon ``ValidationError``. Aucune
+    écriture n'est créée — ce n'est PAS un import de paiements (FG42).
+    """
+    if compte_tresorerie.company_id != company.id:
+        raise ValidationError("Compte de trésorerie inconnu.")
+    if not date_debut or not date_fin:
+        raise ValidationError(
+            "Les dates de début et de fin sont obligatoires.")
+    if date_fin < date_debut:
+        raise ValidationError(
+            "La date de fin doit être postérieure à la date de début.")
+    rapprochement = RapprochementBancaire.objects.create(
+        company=company,
+        compte_tresorerie=compte_tresorerie,
+        libelle=libelle or '',
+        date_debut=date_debut,
+        date_fin=date_fin,
+        date_releve=date_releve or date_fin,
+        solde_releve=Decimal(solde_releve or 0),
+        created_by=created_by,
+    )
+    return rapprochement
+
+
+def ajouter_ligne_releve(rapprochement, *, date_operation, libelle, montant,
+                         reference=''):
+    """Ajoute une ligne de relevé bancaire à un rapprochement (FG123).
+
+    ``montant`` est SIGNÉ tel que lu sur le relevé (+ entrée, − sortie). La
+    société est héritée du rapprochement (jamais du corps). On ne peut plus
+    ajouter de ligne à un rapprochement déjà ``rapproche``.
+    """
+    if rapprochement.est_rapproche:
+        raise ValidationError(
+            "Rapprochement déjà clôturé : on ne peut plus ajouter de ligne.")
+    if not date_operation:
+        raise ValidationError("La date d'opération est obligatoire.")
+    return LigneReleve.objects.create(
+        company=rapprochement.company,
+        rapprochement=rapprochement,
+        date_operation=date_operation,
+        libelle=libelle or '',
+        reference=reference or '',
+        montant=Decimal(montant or 0),
+    )
+
+
+@transaction.atomic
+def pointer_ligne_releve(ligne_releve, ligne_gl_ids):
+    """Apparie une ligne de relevé à une ou plusieurs lignes GL (FG123).
+
+    REMPLACE l'ensemble des lignes GL pointées par ``ligne_gl_ids`` (liste d'IDs
+    de ``LigneEcriture``). Chaque ligne GL doit appartenir à la même société ET
+    au compte comptable du compte de trésorerie du rapprochement, sinon
+    ``ValidationError``. Si le montant GL pointé concorde avec le montant du
+    relevé (écart nul) la ligne passe ``rapprochee``, sinon ``non_pointee``.
+    Renvoie la ligne de relevé rafraîchie.
+    """
+    company = ligne_releve.company
+    rapprochement = ligne_releve.rapprochement
+    compte_treso = rapprochement.compte_tresorerie.compte_comptable_id
+    ids = list(dict.fromkeys(ligne_gl_ids or []))  # déduplique, ordre stable.
+    lignes_gl = list(LigneEcriture.objects.filter(
+        company=company, id__in=ids))
+    if len(lignes_gl) != len(ids):
+        raise ValidationError("Ligne du grand livre inconnue.")
+    for ligne in lignes_gl:
+        if ligne.compte_id != compte_treso:
+            raise ValidationError(
+                "Une ligne pointée doit appartenir au compte de trésorerie "
+                "du rapprochement.")
+    # Remplace les pointages existants par le nouveau lot.
+    PointageReleve.objects.filter(ligne_releve=ligne_releve).delete()
+    for ligne in lignes_gl:
+        PointageReleve.objects.create(
+            company=company, ligne_releve=ligne_releve, ligne_gl=ligne)
+    ligne_releve.refresh_from_db()
+    if ligne_releve.est_concordante:
+        ligne_releve.statut = LigneReleve.Statut.RAPPROCHEE
+    else:
+        ligne_releve.statut = LigneReleve.Statut.NON_POINTEE
+    ligne_releve.save(update_fields=['statut'])
+    return ligne_releve
+
+
+def cloturer_rapprochement(rapprochement):
+    """Clôture un rapprochement quand tout concorde (FG123).
+
+    Vérifie via le selector ``resume_rapprochement`` que chaque ligne de relevé
+    est concordante (écart nul) ET que l'écart global (solde relevé − solde GL)
+    est nul. Si oui, marque le rapprochement ``rapproche`` (idempotent), sinon
+    lève ``ValidationError`` avec l'écart restant. Aucune écriture n'est créée.
+    """
+    from . import selectors
+
+    resume = selectors.resume_rapprochement(rapprochement)
+    if not resume['rapproche']:
+        raise ValidationError(
+            "Rapprochement impossible : il reste un écart de "
+            f"{resume['ecart']} ({resume['lignes_non_pointees']} ligne(s) "
+            "non concordante(s)).")
+    if not rapprochement.est_rapproche:
+        rapprochement.statut = RapprochementBancaire.Statut.RAPPROCHE
+        rapprochement.date_rapprochement = timezone.now()
+        rapprochement.save(update_fields=['statut', 'date_rapprochement'])
+    return rapprochement
