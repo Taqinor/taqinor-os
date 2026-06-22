@@ -1,0 +1,438 @@
+---
+/**
+ * PAGE PRIVÉE DE PRÉVISUALISATION — /preview/accueil-v3 (noindex, hors nav,
+ * exclue du sitemap, non liée). Réservée à la revue du fondateur AVANT toute
+ * promotion. Aucune page publique ni le formulaire live ne sont touchés :
+ * l'accueil `/` et le formulaire de lead restent inchangés byte-for-byte.
+ *
+ * Direction : « bleu Majorelle élevé + âme marocaine, appliquée avec
+ * discipline ». ÉLÈVE le système v2 « élégance retenue » / « Cinéma du
+ * chantier » (il ne le remplace PAS) : on garde la nuit profonde (#070b1d) et
+ * le laiton, on n'introduit aucun noir. Mouvements et chiffres réutilisent les
+ * mêmes hooks que l'accueil (count-up héro, Ken Burns, .cine-in / .v2-rise),
+ * tous gated `prefers-reduced-motion`. DONNÉES RÉELLES reprises VERBATIM de
+ * src/pages/index.astro — aucun chiffre ni claim inventé.
+ *
+ * Élévations appliquées :
+ *  1. héros cinématographique plus haut (~100svh), photo plein cadre
+ *     protagoniste, eyebrow + chiffre + titre ancrés bas, UN CTA brass + un
+ *     ghost WhatsApp, chevron de défilement ;
+ *  2. retenue sur la preuve : 3 installations phares seulement + lien discret ;
+ *  3. grade « heure dorée » (.v3-grade) uniforme sur la photographie ;
+ *  4. discipline laiton : l'or sur les chiffres (.lum) et le CTA principal ;
+ *     les eyebrows sont rétrogradés vers lune/azur ;
+ *  5. signature zellige unique (ZelligeSignature) entre preuve et solutions ;
+ *  6. rythme via les tokens .section / .section-lg / .section-tight ;
+ *  7. typographie .display / .fig / .v2-body resserrée ;
+ *  8. un seul langage de mouvement .cine-in (+ stagger) sur les entrées ;
+ *  9. set complet des sections, séquencé et aéré ;
+ * 10. mobile + RTL tenus (règles RTL globales dans global.css).
+ */
+import Layout from '../../layouts/Layout.astro';
+import V2Enhance from '../../components/V2Enhance.astro';
+import Article33Ribbon from '../../components/Article33Ribbon.astro';
+import DiagnosticForm from '../../components/DiagnosticForm.astro';
+import Faq from '../../components/Faq.astro';
+import Picture from '../../components/Picture.astro';
+import VideoChantier from '../../components/VideoChantier.astro';
+import StickyCta from '../../components/StickyCta.astro';
+import WhatsAppMock from '../../components/WhatsAppMock.astro';
+import GarantiesTeaser from '../../components/GarantiesTeaser.astro';
+import Testimonials from '../../components/Testimonials.astro';
+import FounderPortrait from '../../components/FounderPortrait.astro';
+import BrandStrip from '../../components/BrandStrip.astro';
+import ZelligeSignature from '../../components/ZelligeSignature.astro';
+import { WHATSAPP_LEADS } from '../../lib/nap';
+import { whatsappLink } from '../../lib/whatsapp';
+
+const waDirect = whatsappLink(WHATSAPP_LEADS, 'Bonjour, je souhaite une étude pour une installation solaire.');
+
+// Chiffre protagoniste de l'en-tête — séparé pour le count-up. Largeur réservée
+// (tabular-nums + min-width verrouillée par JS) → zéro CLS. VERBATIM index.astro.
+const heroFigure = "21 406";
+const heroTitleSuffix = " kWh par an, produits sur un toit d’El Jadida.";
+const heroSub =
+  'Installation réf. 468 — 17,04 kWc, dimensionnée, posée et mesurée par Taqinor. La vôtre commence par un diagnostic de 60 secondes.';
+
+// FAQ — VERBATIM index.astro (PLACEHOLDER MERYEM côté live, conservé tel quel).
+const faq = [
+  { q: 'Combien coûte une installation solaire résidentielle ?', a: 'Cela dépend de votre consommation et de votre toiture. Une villa avec une facture de 1 500 MAD par mois s’équipe typiquement en 4 à 6 kWc. Le diagnostic ci-dessous vous donne une fourchette immédiate ; le chiffrage précis est établi après visite technique.' },
+  { q: 'Que dit la loi 82-21 pour les particuliers ?', a: 'En basse tension, une installation de moins de 11 kW relève du régime de déclaration : une formalité préalable, pas une autorisation. Taqinor prépare et dépose la déclaration pour vous.' },
+  { q: 'Mon installation existante n’est pas déclarée. Que faire ?', a: 'L’Article 33 de la loi 82-21 ouvre une fenêtre de régularisation pour les installations existantes. La fenêtre est ouverte : déposez maintenant. Voir la page Régularisation pour la procédure en 5 étapes.' },
+  { q: 'Combien de temps durent les panneaux ?', a: 'Les panneaux sont garantis en performance sur 25 ans (généralement ≥ 84,8 % de la puissance initiale à 25 ans). Les onduleurs se remplacent typiquement une fois sur la durée de vie de l’installation.' },
+  { q: 'Faut-il des batteries ?', a: 'Pas nécessairement. Si votre consommation est principalement diurne, l’autoconsommation directe est le meilleur investissement. Les batteries se justifient pour la consommation nocturne ou la continuité de service — nous le calculons dans l’étude.' },
+];
+
+// Retenue sur la preuve (élévation #2) : SEULEMENT les 3 installations phares de
+// l'accueil — ville · kWc · production mesurée · matériel. Sous-ensemble VERBATIM
+// de `gallery` (index.astro) : reflet-468 (17,04 kWc · 21 406 kWh/an),
+// hero-skyline (11,36 kWc · 14 271 kWh/an), champ-villa (5,68 kWc · 7 135 kWh/an).
+// Les 8 cartes complètes restent sur /realisations (lien discret ci-dessous).
+const heroProof = [
+  { name: 'reflet-468', alt: 'Le soleil se reflète sur la rangée de panneaux pendant la pose, El Jadida', widths: [1600, 1024, 640], ville: 'El Jadida', kwc: '17,04 kWc', prod: '21 406 kWh/an', type: '24 × Canadian Solar 710 Wc · Deye 15 kW', slug: 'el-jadida-17-kwc' },
+  { name: 'hero-skyline', alt: 'Rangée de panneaux solaires devant la skyline de Casablanca et un minaret, lumière dorée', widths: [2000, 1280, 768, 480], ville: 'Casablanca', kwc: '11,36 kWc', prod: '14 271 kWh/an', type: '16 × Canadian Solar 710 Wc · Deye 10 kW', slug: 'casablanca-11-kwc' },
+  { name: 'champ-villa', alt: 'Champ de huit panneaux sur toit plat de villa, El Jadida', widths: [1600, 1024, 640], ville: 'El Jadida', kwc: '5,68 kWc', prod: '7 135 kWh/an', type: '8 × Canadian Solar 710 Wc · Deye 5 kW', slug: 'el-jadida-6-kwc' },
+];
+
+// Nos solutions (6) — VERBATIM index.astro.
+const solutions = [
+  { href: '/résidentiel', tag: 'Villas & appartements', title: 'Solaire résidentiel', body: 'Dimensionné sur votre facture réelle, déclaration loi 82-21 incluse.' },
+  { href: '/professionnel', tag: 'Industriels · hôtels · cliniques', title: 'Solaire professionnel', body: 'Réduction du poste électricité, moyenne tension, conformité loi 82-21.' },
+  { href: '/pompage-solaire', tag: 'Agriculture & irrigation', title: 'Pompage solaire', body: 'Pompage au fil du soleil, souvent sans batteries, dimensionné au besoin réel.' },
+  { href: '/batteries-stockage', tag: 'Autoconsommation', title: 'Batteries & stockage', body: 'Stockage LFP pour le nocturne ou la continuité de service — quand l’étude le justifie.' },
+  { href: '/maintenance-monitoring', tag: 'Après la pose', title: 'Maintenance & monitoring', body: 'Supervision Deye Cloud avec accès client, SAV proactif, dossier technique.' },
+  { href: '/regularization-article-33', tag: 'Mise en conformité', title: 'Régularisation Loi 82-21', body: 'Régularisation des installations existantes via l’Article 33.' },
+];
+
+// Le parcours réel (6 steps) — VERBATIM index.astro.
+const journey = [
+  { n: '1', title: 'Diagnostic 60 secondes', body: 'Une fourchette immédiate à partir de votre facture, sans engagement.' },
+  { n: '2', title: 'Échange WhatsApp', body: 'Direct avec l’équipe technique, photos de toiture à l’appui — pas de centre d’appels.' },
+  { n: '3', title: 'Visite technique & étude gratuite', body: 'Lecture de la toiture sur site, étude complète et devis à 0 MAD.' },
+  { n: '4', title: 'Pose', body: 'Matériel tier-1 installé avec son dossier technique complet.' },
+  { n: '5', title: 'Mise en service', body: 'Raccordement, contrôles, et dossier loi 82-21 mené à terme.' },
+  { n: '6', title: 'Monitoring Deye Cloud', body: 'Production relevée en continu, accès client inclus : vous lisez vos kWh à la source.' },
+];
+
+// Pictogrammes au trait des cartes « Nos solutions » — VERBATIM index.astro.
+const solutionIcons: Record<string, string> = {
+  '/résidentiel': '<path d="M4 13 12 5l8 8" /><path d="M6 11v8h12v-8" /><path d="M10 19v-4h4v4" />',
+  '/professionnel': '<path d="M4 21V8l7-3v4l7-3v15" /><path d="M4 21h16" /><path d="M8 12h0M8 16h0M14 12h0M14 16h0" />',
+  '/pompage-solaire': '<path d="M12 3v6" /><path d="M5 21c1.6-2 3.2-2 4.8 0s3.2 2 4.8 0 3.2-2 4.4 0" /><path d="M8 9h8l-2 6H10z" />',
+  '/batteries-stockage': '<path d="M5 8h14v11H5z" /><path d="M9 5h6v3H9z" /><path d="M12 11v5" /><path d="M9.5 13.5h5" />',
+  '/maintenance-monitoring': '<path d="M4 18 9 12l3 3 4-6 4 5" /><path d="M4 21h16" /><circle cx="9" cy="12" r="0.6" /><circle cx="16" cy="9" r="0.6" />',
+  '/regularization-article-33': '<path d="M7 4h7l4 4v12H7z" /><path d="M14 4v4h4" /><path d="M9.5 14l1.5 1.5 3-3.5" />',
+};
+
+// Pourquoi Taqinor / confiance — bande de quatre chiffres monumentaux, VERBATIM
+// les faits déjà publiés (mêmes valeurs que la bande de confiance index.astro :
+// 3 chantiers visitables, 43,48 kWc installés, 10+ ans docteur-ingénieur,
+// Deye Cloud). Aucun nouveau claim.
+const trust = [
+  { fig: '3', tally: false, label: 'Chantiers visitables', body: 'Installations réelles à voir sur demande — Casablanca, El Jadida, Nouaceur' },
+  { fig: '43,48 kWc', tally: true, label: 'Installés', body: 'Casablanca, El Jadida, Nouaceur' },
+  { fig: '10+ ans', tally: false, label: 'Docteur-ingénieur', body: 'Expertise R&D — chaque étude validée par le fondateur' },
+  { fig: 'Deye Cloud', tally: false, label: 'Production mesurée', body: 'Monitoring sur chaque installation, accès client inclus' },
+];
+---
+
+<Layout
+  title="Prévisualisation privée — accueil élevé v3 | Taqinor"
+  description="Page de travail privée, non indexée."
+  preloadHeroPoster
+  noindex={true}
+>
+  <div class="v2">
+    <V2Enhance />
+
+    {/* Bandeau de revue — rappelle que rien n'est en ligne. Discret, retiré du
+        flux visuel du héros qui suit immédiatement. */}
+    <div class="border-b border-brass-400/20 bg-nuit-800/90 px-4 py-2 text-center">
+      <p class="tech-label text-lune-faint">
+        Prévisualisation privée · non publiée — l'accueil <span class="text-lune">/</span> et le formulaire en production sont inchangés
+      </p>
+    </div>
+
+    <Article33Ribbon />
+
+    {/* ── 1 · HÉROS CINÉMATOGRAPHIQUE (~100svh) — la photo est le protagoniste ── */}
+    <section class="relative isolate flex min-h-[100svh] flex-col justify-end overflow-hidden text-white">
+      <div class="v2-hero-media absolute inset-0 -z-10">
+        {/* Affiche héro plein cadre (élément LCP) — Ken Burns hérité de la couche
+            photo. JAMAIS de .v3-grade ici (protection LCP) : seul le scrim, relevé
+            sur cette page, porte la chaleur sans toucher le contraste du texte. */}
+        <picture>
+          <source type="image/avif" media="(orientation: portrait)" sizes="100vw"
+            srcset="/videos/hero-poster-540.avif 540w, /videos/hero-poster-720.avif 720w, /videos/hero-poster-1080.avif 1080w" />
+          <source type="image/webp" media="(orientation: portrait)" sizes="100vw"
+            srcset="/videos/hero-poster-540.webp 540w, /videos/hero-poster-720.webp 720w, /videos/hero-poster-1080.webp 1080w" />
+          <source type="image/avif" sizes="100vw"
+            srcset="/videos/hero-poster-540.avif 540w, /videos/hero-poster-720.avif 720w, /videos/hero-poster-1080.avif 1080w, /videos/hero-poster-1600.avif 1600w" />
+          <source type="image/webp" sizes="100vw"
+            srcset="/videos/hero-poster-540.webp 540w, /videos/hero-poster-720.webp 720w, /videos/hero-poster-1080.webp 1080w, /videos/hero-poster-1600.webp 1600w" />
+          <img src="/videos/hero-poster-1600.webp" alt="" width="1600" height="900"
+            loading="eager" decoding="async" fetchpriority="high"
+            class="h-full w-full object-cover hero-portrait-img" />
+        </picture>
+        <video id="hero-video" muted loop playsinline preload="none" aria-hidden="true" tabindex="-1"
+          class="absolute inset-0 h-full w-full object-cover opacity-0 transition-opacity duration-700"></video>
+        {/* Scrim canonique RELEVÉ (--hero-scrim-strength 0.52) : compense la
+            chaleur du grade « heure dorée » et garde le headline ≥ AA. */}
+        <div class="hero-scrim hero-scrim-v3 absolute inset-0"></div>
+      </div>
+
+      {/* Chevron d'invitation au défilement — statique sous reduced-motion */}
+      <div class="absolute bottom-6 left-1/2 -translate-x-1/2 scroll-chevron" aria-hidden="true">
+        <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <polyline points="6 9 12 15 18 9" />
+        </svg>
+      </div>
+
+      {/* Contenu ancré BAS — eyebrow rétrogradé en lune (discipline laiton #4) */}
+      <div class="mx-auto w-full max-w-6xl px-4 pb-24 pt-32 sm:pb-32">
+        <p class="tech-label v2-kicker rule-brass cine-in text-lune">L'étude d'abord, le chantier ensuite</p>
+        <h1 class="display v2-hero-title cine-in cine-in-1 mt-6 max-w-[15ch]">
+          <span data-hero-tally class="font-variant-numeric tabular-nums">{heroFigure}</span>{heroTitleSuffix}
+        </h1>
+        <p class="v2-lead cine-in cine-in-2 mt-6 max-w-xl text-white/85">{heroSub}</p>
+        <div class="cine-in cine-in-3 mt-10 flex flex-wrap items-center gap-3">
+          {/* UN seul CTA brass (discipline laiton) — l'or est ici autorisé */}
+          <a href="#simulateur" class="glow-hero bg-brass-400 px-8 py-4 text-lg font-bold text-azur-950 transition-all hover:bg-brass-300">
+            Estimer mon installation →
+          </a>
+          {/* Ghost WhatsApp — contour blanc, aucun laiton */}
+          <a href={waDirect} rel="noopener" class="inline-flex items-center gap-2 border border-white/40 px-6 py-3.5 text-base font-semibold text-white backdrop-blur-sm transition-colors hover:border-white hover:bg-white/10">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 2a10 10 0 0 0-8.6 15.1L2 22l5-1.3A10 10 0 1 0 12 2Zm5.4 14.1c-.2.6-1.3 1.2-1.8 1.2-.5.1-1 .2-3.3-.7-2.8-1.1-4.6-4-4.7-4.2-.1-.2-1.1-1.5-1.1-2.9s.7-2 1-2.3c.2-.3.5-.3.7-.3h.5c.2 0 .4 0 .6.4l.9 2.1c.1.2.1.4 0 .6l-.4.6-.5.5c-.2.2-.3.4-.1.7.2.3.9 1.4 1.9 2.3 1.3 1.1 2.3 1.5 2.6 1.6.3.1.5.1.7-.1l1-1.2c.2-.3.4-.2.7-.1l2 1c.3.1.5.2.6.4 0 .1 0 .7-.3 1.4Z"/></svg>
+            WhatsApp direct
+          </a>
+        </div>
+      </div>
+    </section>
+
+    {/* Promesse de garantie en tête — VERBATIM index.astro (faits publiés). */}
+    <div class="seam-soft" aria-hidden="true"></div>
+    <section class="bg-brass-400/5 px-4 py-6">
+      <p class="mx-auto flex max-w-6xl flex-wrap items-center justify-center gap-x-3 gap-y-1 text-center text-sm font-semibold text-lune sm:text-base">
+        <span class="text-brass-300">25 ans de performance garantie</span>
+        <span class="text-lune-faint" aria-hidden="true">·</span>
+        <span>production mesurée, pas promise — monitoring Deye Cloud sur chaque installation</span>
+      </p>
+    </section>
+
+    {/* ── 2 · PREUVE PAR CHANTIER — RETENUE : 3 installations phares seulement ── */}
+    <div class="seam-soft" aria-hidden="true"></div>
+    <section class="section px-4">
+      <div class="mx-auto max-w-6xl">
+        <div class="flex flex-wrap items-end justify-between gap-4">
+          <div class="v2-rise">
+            {/* Eyebrow rétrogradé en lune (discipline laiton #4) */}
+            <p class="tech-label text-lune">Réalisations récentes</p>
+            <h2 class="display v2-section-title mt-5 text-white">Trois chantiers, mesurés</h2>
+          </div>
+          <p class="v2-rise max-w-sm text-sm leading-relaxed text-lune-soft">
+            Données issues des dossiers techniques. Clarté et cadrage ajustés —
+            rien d'ajouté, rien d'effacé.
+          </p>
+        </div>
+        <div class="mt-12 grid gap-5 sm:grid-cols-2 lg:grid-cols-3" data-stagger>
+          {heroProof.map((g, i) => (
+            <a href={`/realisations/${g.slug}`} class="v2-rise cine-card group relative block overflow-hidden" style={`--v2-i:${i}`}>
+              {/* Grade « heure dorée » uniforme — .v3-grade sur la photo de contenu */}
+              <Picture name={g.name} alt={g.alt} widths={g.widths} ratio={4 / 3} sizes="(min-width: 1024px) 33vw, (min-width: 640px) 50vw, 100vw"
+                class="v3-grade aspect-[4/3] w-full object-cover transition-transform duration-700 group-hover:scale-[1.04]" />
+              <div class="absolute inset-x-0 bottom-0 bg-gradient-to-t from-nuit/95 to-transparent px-4 pb-3 pt-12">
+                {/* Le seul laiton ici : aucun — ville/kWc en lune, kWh/an reste sobre */}
+                <span class="tech-label block text-lune">{g.ville} · {g.kwc}{g.prod ? ` · ${g.prod}` : ''}</span>
+                <span class="mt-0.5 block text-xs text-lune-soft">{g.type}</span>
+              </div>
+            </a>
+          ))}
+        </div>
+        {/* Lien discret vers TOUTES les réalisations — pas un bouton plein */}
+        <a href="/realisations" class="v2-rise group mt-10 inline-flex items-center gap-1 border-b-2 border-white/30 pb-0.5 text-sm font-bold text-white transition-colors hover:border-white">
+          Voir toutes les réalisations <span class="motion-safe:transition-transform motion-safe:duration-200 motion-safe:group-hover:translate-x-1" aria-hidden="true">→</span>
+        </a>
+      </div>
+    </section>
+
+    {/* ── 5 · SIGNATURE ZELLIGE — UNE seule fois, entre preuve et solutions ── */}
+    <ZelligeSignature />
+
+    {/* ── NOS SOLUTIONS (6) — toute l'offre — VERBATIM data index.astro ── */}
+    <div class="seam-soft" aria-hidden="true"></div>
+    <section class="section px-4">
+      <div class="mx-auto max-w-6xl">
+        {/* Eyebrow rétrogradé en lune + numéro azur (discipline laiton #4) */}
+        <p class="tech-label v2-kicker rule-brass text-lune"><span class="mr-2 font-display text-xs text-azur-200/80" aria-hidden="true">01</span>Nos solutions</p>
+        <h2 class="display v2-section-title mt-5 max-w-xl text-white">Tout ce que nous installons</h2>
+        <p class="v2-body mt-5 max-w-2xl">
+          Au-delà du résidentiel et du professionnel : pompage agricole, stockage, suivi de
+          production et mise en conformité. Chaque solution part de votre situation réelle —
+          c'est l'étude qui décide.
+        </p>
+        <div class="mt-12 grid gap-6 sm:grid-cols-2 lg:grid-cols-3" data-stagger>
+          {solutions.map((s, i) => (
+            <a href={s.href} class="v2-rise cine-card group flex flex-col p-7" style={`--v2-i:${i}`}>
+              {/* Pictogramme au trait — teinte azur (l'or reste réservé chiffres/CTA) */}
+              <svg class="h-9 w-9 text-azur-200 transition-colors group-hover:text-white" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" set:html={solutionIcons[s.href] ?? ''} />
+              <p class="tech-label mt-5 text-lune">{s.tag}</p>
+              <h3 class="display mt-2 text-xl text-white">{s.title}</h3>
+              <p class="mt-3 flex-1 text-sm leading-relaxed text-lune-soft">{s.body}</p>
+              <span class="mt-5 inline-flex items-center gap-1 border-b-2 border-white/30 pb-0.5 text-sm font-bold text-white">Découvrir <span class="motion-safe:transition-transform motion-safe:duration-200 motion-safe:group-hover:translate-x-1" aria-hidden="true">→</span></span>
+            </a>
+          ))}
+        </div>
+        <a href="/nos-solutions" class="v2-rise group mt-10 inline-flex items-center gap-1 border border-white/40 px-6 py-3 text-sm font-bold text-white transition-colors hover:border-white hover:bg-white/10">Voir toutes nos solutions <span class="motion-safe:transition-transform motion-safe:duration-200 motion-safe:group-hover:translate-x-1" aria-hidden="true">→</span></a>
+      </div>
+    </section>
+
+    {/* ── POURQUOI TAQINOR / CONFIANCE — quatre chiffres monumentaux (l'or vit
+        sur les chiffres .lum, discipline #4) — faits VERBATIM index.astro ── */}
+    <div class="seam-soft" aria-hidden="true"></div>
+    <section class="section px-4">
+      <div class="mx-auto max-w-6xl">
+        <div class="v2-rise max-w-2xl">
+          <p class="tech-label v2-kicker rule-brass text-lune"><span class="mr-2 font-display text-xs text-azur-200/80" aria-hidden="true">02</span>Pourquoi Taqinor</p>
+          <h2 class="display v2-section-title mt-5 text-white">La preuve avant la promesse</h2>
+          <p class="v2-body mt-5">
+            Des chantiers réels, visitables, supervisés en continu, et une étude validée par un
+            docteur-ingénieur. Le chiffre décide du matériel — jamais l'inverse.
+          </p>
+        </div>
+        <dl class="mt-12 grid gap-x-6 gap-y-10 sm:grid-cols-2 lg:grid-cols-4" data-stagger>
+          {trust.map((t, i) => (
+            <div class="v2-rise" style={`--v2-i:${i}`}>
+              <dd class="fig fig-lg lum" data-tally={t.tally ? '' : undefined}>{t.fig}</dd>
+              <dt class="tech-label mt-2 text-lune-faint">{t.label}</dt>
+              <p class="mt-1 text-sm leading-snug text-lune-soft">{t.body}</p>
+            </div>
+          ))}
+        </dl>
+      </div>
+    </section>
+
+    {/* ── LE FONDATEUR — signal de confiance (composant partagé) ── */}
+    <FounderPortrait />
+
+    {/* ── LE PARCOURS (6 steps) + aperçu WhatsApp — VERBATIM data index.astro ── */}
+    <div class="seam-soft" aria-hidden="true"></div>
+    <section class="section px-4">
+      <div class="mx-auto max-w-6xl">
+        <div class="grid items-center gap-12 lg:grid-cols-[1.1fr_1fr]">
+          <div class="v2-rise">
+            <p class="tech-label v2-kicker rule-brass text-lune"><span class="mr-2 font-display text-xs text-azur-200/80" aria-hidden="true">03</span>Comment ça se passe</p>
+            <h2 class="display v2-section-title mt-5 max-w-md text-white">La suite se passe sur WhatsApp</h2>
+            <p class="v2-body mt-5 max-w-md">
+              Pas de centre d'appels, pas de relances : votre diagnostic arrive sur WhatsApp,
+              vous échangez directement avec l'équipe technique, photos de toiture à l'appui,
+              jusqu'à la visite sur site. Échange type ci-contre — anonymisé.
+            </p>
+          </div>
+          <div class="v2-rise">
+            <WhatsAppMock />
+          </div>
+        </div>
+        <ol class="mt-14 grid gap-x-6 gap-y-8 sm:grid-cols-2 lg:grid-cols-3" data-stagger>
+          {journey.map((s, i) => (
+            <li class="v2-rise relative border-t-2 border-white/10 pt-5" style={`--v2-i:${i % 3}`}>
+              <span class="absolute -top-px left-0 h-0.5 w-10 bg-brass-400" aria-hidden="true"></span>
+              {/* Numéro de step en .lum : l'or est ici un chiffre clé (discipline #4) */}
+              <span class="fig lum text-2xl">{s.n}</span>
+              <h3 class="display mt-2 text-lg text-white">{s.title}</h3>
+              <p class="mt-2 text-sm leading-relaxed text-lune-soft">{s.body}</p>
+            </li>
+          ))}
+        </ol>
+      </div>
+    </section>
+
+    {/* ── TÉMOIGNAGES — preuve sociale réelle (vide tant qu'aucun avis réel) ── */}
+    <Testimonials />
+
+    {/* ── MARQUES TIER-1 ── */}
+    <BrandStrip />
+
+    {/* ── FILM DE CHANTIER ── */}
+    <VideoChantier />
+
+    {/* ── GARANTIES (teaser) ── */}
+    <GarantiesTeaser />
+
+    {/* ── ACTE FINAL — DIAGNOSTIC « salle blanche » (seam-lumiere intégrée) ── */}
+    <DiagnosticForm>
+      <aside slot="aside" class="cine-card border-t-4 border-t-brass-400 p-6">
+        <p class="tech-label text-lune-faint">Dernière installation livrée</p>
+        <p class="fig lum mt-3 text-4xl" data-tally>17,04 kWc</p>
+        <p class="tech-label mt-1 text-lune-faint">El Jadida · avril 2026</p>
+        <p class="mt-4 text-sm leading-relaxed text-lune-soft">
+          Production : <strong class="text-brass-300" data-tally>21 406 kWh/an</strong><br />
+          24 × Canadian Solar 710 Wc · Deye 15 kW · 15 kWh Dyness
+        </p>
+        <p class="mt-4 border-t border-white/10 pt-3 text-xs text-lune-faint">
+          Production mesurée — Deye Cloud. Visites de site possibles sur demande.
+        </p>
+      </aside>
+    </DiagnosticForm>
+
+    {/* ── FAQ courte (sans JSON-LD FAQPage, hygiène) — items VERBATIM index.astro ── */}
+    <Faq items={faq} schema={false} />
+
+    <StickyCta />
+  </div>
+</Layout>
+
+<style>
+  /* Portrait-crop héro : recadrage en haut sur téléphones verticaux (VERBATIM
+     index.astro) — les panneaux restent visibles sur un écran 9:19. */
+  @media (orientation: portrait) {
+    .hero-portrait-img {
+      object-position: center 20%;
+    }
+  }
+
+  /* Scrim héro RELEVÉ pour la page v3 : compense la chaleur du grade « heure
+     dorée » et garantit le contraste AA du headline blanc sur la photo. */
+  .hero-scrim-v3 {
+    --hero-scrim-strength: 0.52;
+  }
+</style>
+
+<script>
+  // Vidéo héro : différée — première interaction ou 2,8 s après chargement ;
+  // jamais si reduced-motion ou économie de données. VERBATIM index.astro.
+  const video = document.getElementById('hero-video') as HTMLVideoElement | null;
+  const motionOk = matchMedia('(prefers-reduced-motion: no-preference)').matches;
+  // @ts-expect-error saveData non typé partout
+  const saveData = navigator.connection?.saveData === true;
+  if (video && motionOk && !saveData) {
+    let started = false;
+    const start = () => {
+      if (started) return;
+      started = true;
+      video.src = '/videos/hero.mp4';
+      video.play().then(() => video.classList.add('opacity-100')).catch(() => {});
+    };
+    for (const ev of ['scroll', 'pointerdown', 'touchstart', 'keydown']) {
+      addEventListener(ev, start, { once: true, passive: true });
+    }
+    const arm = () => setTimeout(start, 2800);
+    if (document.readyState === 'complete') arm();
+    else addEventListener('load', arm, { once: true });
+  }
+</script>
+
+<script>
+  // Count-up sur le chiffre protagoniste héro (21 406). Reduced-motion safe :
+  // valeur finale affichée immédiatement. Anti-CLS : largeur verrouillée AVANT
+  // toute animation. VERBATIM index.astro.
+  import { formatFrame, shouldDigitRoll } from '../../lib/countup';
+
+  const el = document.querySelector<HTMLElement>('[data-hero-tally]');
+  if (el) {
+    const finalText = el.textContent ?? '';
+    if (getComputedStyle(el).display.startsWith('inline')) {
+      const w = el.getBoundingClientRect().width;
+      el.style.display = 'inline-block';
+      el.style.minWidth = w + 'px';
+    }
+
+    const reduce = matchMedia('(prefers-reduced-motion: reduce)').matches;
+    if (reduce || !shouldDigitRoll(finalText)) {
+      el.textContent = finalText;
+    } else {
+      const dur = 1400;
+      let start: number | null = null;
+      function frame(t: number) {
+        if (start === null) start = t;
+        const p = Math.min(1, (t - start) / dur);
+        const e = 1 - Math.pow(1 - p, 3); // easeOutCubic
+        el!.textContent = formatFrame(finalText, e);
+        if (p < 1) requestAnimationFrame(frame);
+        else el!.textContent = finalText;
+      }
+      const kick = () => requestAnimationFrame(frame);
+      if (document.readyState === 'complete') kick();
+      else addEventListener('load', kick, { once: true });
+    }
+  }
+</script>
