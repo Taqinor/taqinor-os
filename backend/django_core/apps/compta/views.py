@@ -17,12 +17,13 @@ from authentication.permissions import IsResponsableOrAdmin
 from . import selectors, services
 from .models import (
     CompteComptable, CompteTresorerie, EcritureComptable, ExerciceComptable,
-    Journal, PeriodeComptable, PlanComptable,
+    Immobilisation, Journal, PeriodeComptable, PlanComptable,
 )
 from .serializers import (
     CompteComptableSerializer, CompteTresorerieSerializer,
     EcritureComptableSerializer, ExerciceComptableSerializer,
-    JournalSerializer, PeriodeComptableSerializer, PlanComptableSerializer,
+    ImmobilisationSerializer, JournalSerializer, PeriodeComptableSerializer,
+    PlanComptableSerializer,
 )
 
 
@@ -285,3 +286,27 @@ class ExerciceComptableViewSet(_ComptaBaseViewSet):
         return Response(
             EcritureComptableSerializer(ecriture).data,
             status=status.HTTP_201_CREATED)
+
+
+# ── FG118 — Registre des immobilisations ───────────────────────────────────
+
+class ImmobilisationViewSet(_ComptaBaseViewSet):
+    """Registre des immobilisations (FG118).
+
+    Inventaire des actifs immobilisés (véhicules, outillage, matériel…) avec
+    coût, date d'acquisition, catégorie et TVA. Société scopée + accès
+    Administrateur/Responsable. Filtrable par catégorie, recherche sur
+    libellé/référence. Pas d'amortissement (hors périmètre) — juste le registre.
+    """
+    queryset = Immobilisation.objects.all()
+    serializer_class = ImmobilisationSerializer
+    filter_backends = [filters.SearchFilter, filters.OrderingFilter]
+    search_fields = ['libelle', 'reference']
+    ordering_fields = ['date_acquisition', 'cout', 'libelle']
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        categorie = self.request.query_params.get('categorie')
+        if categorie:
+            qs = qs.filter(categorie=categorie)
+        return qs
