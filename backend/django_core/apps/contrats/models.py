@@ -13,6 +13,7 @@ est entièrement additif.
 from decimal import Decimal
 
 from django.conf import settings
+from django.core.exceptions import ValidationError
 from django.db import models
 
 
@@ -91,3 +92,68 @@ class Contrat(models.Model):
 
     def __str__(self):
         return f'{self.objet} ({self.get_type_contrat_display()})'
+
+    def valider_parties(self):
+        """Vérifie qu'un contrat finalisable a au moins deux parties.
+
+        Renvoie ``True`` si la condition est remplie, sinon lève
+        ``ValidationError`` — utilisé au moment de la finalisation/signature, et
+        jamais en bloquant la création unitaire d'une partie.
+        """
+        if self.parties.count() < 2:
+            raise ValidationError(
+                'Un contrat doit comporter au moins deux parties.')
+        return True
+
+
+class PartieContrat(models.Model):
+    """Une partie / un signataire d'un contrat (au moins deux par contrat).
+
+    Chaque contrat met en présence plusieurs parties : le client, le
+    prestataire, et éventuellement un témoin ou un garant. Le rôle est qualifié
+    par ``type_partie`` et l'ordre d'affichage/signature par ``ordre``.
+
+    La règle « au moins deux parties » n'est PAS imposée à la création unitaire
+    (on ajoute les parties une à une) : elle est vérifiée au moment de la
+    finalisation d'un contrat via ``Contrat.valider_parties`` (service léger),
+    jamais en bloquant un simple POST.
+    """
+    class TypePartie(models.TextChoices):
+        CLIENT = 'client', 'Client'
+        PRESTATAIRE = 'prestataire', 'Prestataire'
+        TEMOIN = 'temoin', 'Témoin'
+        GARANT = 'garant', 'Garant'
+        AUTRE = 'autre', 'Autre'
+
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='parties_contrat',
+        verbose_name='Société',
+    )
+    contrat = models.ForeignKey(
+        Contrat,
+        on_delete=models.CASCADE,
+        related_name='parties',
+        verbose_name='Contrat',
+    )
+    type_partie = models.CharField(
+        max_length=20, choices=TypePartie.choices,
+        default=TypePartie.CLIENT, verbose_name='Rôle de la partie')
+    nom = models.CharField(max_length=255, verbose_name='Nom')
+    fonction = models.CharField(
+        max_length=120, blank=True, default='', verbose_name='Fonction')
+    email = models.EmailField(
+        blank=True, default='', verbose_name='Email')
+    telephone = models.CharField(
+        max_length=30, blank=True, default='', verbose_name='Téléphone')
+    ordre = models.PositiveIntegerField(
+        default=0, verbose_name='Ordre')
+
+    class Meta:
+        verbose_name = 'Partie au contrat'
+        verbose_name_plural = 'Parties au contrat'
+        ordering = ['contrat_id', 'ordre', 'id']
+
+    def __str__(self):
+        return f'{self.nom} ({self.get_type_partie_display()})'
