@@ -599,6 +599,7 @@ _COMPTE_AMORT_PAR_CATEGORIE = {
     Immobilisation.Categorie.AUTRE: '2833',
 }
 
+
 # Coefficients dégressifs fiscaux marocains (CGI) selon la durée d'utilisation :
 # 1,5 pour 3-4 ans, 2 pour 5-6 ans, 3 au-delà de 6 ans. En deçà de 3 ans, pas de
 # régime dégressif → coefficient 1 (équivaut au linéaire).
