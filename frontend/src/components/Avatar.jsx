@@ -4,6 +4,8 @@
    l'utiliser partout : entête du lead, carte kanban, listes, sélecteur de
    responsable. */
 
+import { useEffect, useState } from 'react'
+
 // Palette douce, lisible en blanc — une teinte stable par personne.
 const PALETTE = [
   '#1d4ed8', '#7c3aed', '#db2777', '#dc2626', '#ea580c',
@@ -32,6 +34,15 @@ function colorOf(name) {
  * @param {string} [title] Infobulle (défaut = name)
  */
 export default function Avatar({ name, src, size = 28, title }) {
+  // Si l'image échoue à charger (URL expirée, objet supprimé…), on retombe
+  // proprement sur les initiales au lieu d'un <img> cassé. On réessaie dès que
+  // `src` change (nouvelle photo téléversée → aperçu immédiat).
+  const [imgFailed, setImgFailed] = useState(false)
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- réinitialiser l'état d'échec quand src change (aperçu immédiat d'une nouvelle photo)
+    setImgFailed(false)
+  }, [src])
+
   const dim = `${size}px`
   const base = {
     width: dim,
@@ -48,12 +59,13 @@ export default function Avatar({ name, src, size = 28, title }) {
   }
   const label = title ?? (name || 'Non assigné')
 
-  if (src) {
+  if (src && !imgFailed) {
     return (
       <span style={base} title={label}>
         <img
           src={src}
           alt={label}
+          onError={() => setImgFailed(true)}
           style={{ width: '100%', height: '100%', objectFit: 'cover' }}
         />
       </span>

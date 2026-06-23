@@ -129,7 +129,11 @@ class TestDevisAcceptation(TestCase):
         r1 = self.api.post(
             '/api/django/installations/chantiers/creer-depuis-devis/',
             {'devis': devis.id}, format='json')
-        self.assertEqual(r1.status_code, 201, r1.data)
+        # U6 : l'acceptation crée DÉJÀ le chantier automatiquement (événement
+        # devis_accepted → receiver installations) ; l'endpoint manuel est donc
+        # idempotent et renvoie le chantier existant (200) au lieu d'en créer un
+        # second.
+        self.assertEqual(r1.status_code, 200, r1.data)
         # La date de signature du chantier reprend la date d'acceptation.
         self.assertEqual(r1.data.get('date_signature'), '2026-06-05')
 

@@ -807,6 +807,24 @@ def mouvement_type_entree():
     return MouvementStock.TypeMouvement.ENTREE
 
 
+def sortie_exists_for_reference(company, reference):
+    """True si un mouvement SORTIE référence déjà ``reference`` pour la société.
+
+    Sert de garde anti-double-comptage (U9) : les apps appelantes (ventes)
+    vérifient via ce service — sans importer le modèle MouvementStock — qu'un
+    stock n'a pas déjà été réservé/consommé pour un même document (devis),
+    qu'il vienne du chemin bon-commande (livraison) ou de la facturation
+    directe par échéancier."""
+    from .models import MouvementStock
+    if not reference:
+        return False
+    return MouvementStock.objects.filter(
+        company=company,
+        type_mouvement=MouvementStock.TypeMouvement.SORTIE,
+        reference=reference,
+    ).exists()
+
+
 # ── FG54 — Réapprovisionnement auto ──────────────────────────────────────────
 
 def produits_a_reapprovisionner(company):

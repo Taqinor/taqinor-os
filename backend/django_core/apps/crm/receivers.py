@@ -6,9 +6,12 @@ sans que celles-ci importent le CRM. Câblé au démarrage par ``CrmConfig.ready
 """
 from django.dispatch import receiver
 
-from core.events import devis_accepted, devis_refused
+from core.events import devis_accepted, devis_refused, devis_sent
 
-from .services import avancer_stage_pour_devis
+from .services import (
+    avancer_stage_pour_devis,
+    signaler_mismatch_signe_sur_refus,
+)
 
 
 @receiver(devis_accepted, dispatch_uid="crm_advance_stage_on_devis_accepted")
@@ -19,6 +22,18 @@ def _avancer_stage_on_devis_accepted(sender, devis, user, ancien_statut,
     Remplace, à l'identique, l'appel direct ``ventes → crm.services`` qui était
     fait au site d'acceptation : même règle (ne recule jamais, ignore les leads
     perdus), désormais déclenchée par l'événement ``devis_accepted``.
+    """
+    avancer_stage_pour_devis(devis, ancien_statut, devis.statut, user)
+
+
+@receiver(devis_sent, dispatch_uid="crm_advance_stage_on_devis_sent")
+def _avancer_stage_on_devis_sent(sender, devis, user, ancien_statut,
+                                 **kwargs):
+    """À l'ENVOI d'un devis (U4), avance l'étape du lead (→ QUOTE_SENT).
+
+    Même câblage que ``devis_accepted`` : ``avancer_stage_pour_devis`` ne recule
+    jamais le funnel et ignore les leads perdus, donc l'avance vers QUOTE_SENT
+    est sûre et idempotente (un lead déjà ≥ QUOTE_SENT ne bouge pas).
     """
     avancer_stage_pour_devis(devis, ancien_statut, devis.statut, user)
 
@@ -55,3 +70,19 @@ def _marquer_lead_perdu_on_devis_refused(sender, devis, user, motif_refus,
     if motif_refus:
         crm_activity.log_bulk_change(lead, user, 'motif_perte',
                                      old_motif, motif_refus)
+
+
+@receiver(devis_refused, dispatch_uid="crm_signal_signe_sans_devis_actif")
+def _signaler_signe_sans_devis_actif(sender, devis, user, motif_refus,
+                                     **kwargs):
+    """U11 — au refus d'un devis, signale (sans reculer l'étape) si le lead reste
+    coincé à SIGNED sans aucun devis accepté actif (« signé fantôme »).
+
+    Indépendant de la case « marquer le lead perdu » : la cohérence du funnel
+    doit être signalée que l'utilisateur coche ou non cette case. Conforme à la
+    règle #2 (le funnel est une couche permanente, séparée des statuts DOCUMENT —
+    on NE recule JAMAIS l'étape à l'aveugle).
+    """
+    if not getattr(devis, 'lead_id', None):
+        return
+    signaler_mismatch_signe_sur_refus(devis, user)

@@ -6,6 +6,7 @@ octets magiques. Aucune dépendance nouvelle (boto3 déjà présent ; Pillow dé
 fourni par WeasyPrint si une vérification d'image plus poussée devenait utile).
 """
 import uuid
+from urllib.parse import quote
 
 from django.conf import settings
 
@@ -13,6 +14,18 @@ from apps.ventes.utils.minio_client import ensure_uploads_bucket, get_minio_clie
 
 _ALLOWED_EXTENSIONS = {'png', 'jpg', 'jpeg', 'webp'}
 _MAX_BYTES = 2 * 1024 * 1024
+
+# Préfixe d'objet réservé aux photos de profil dans le bucket erp-uploads. Le
+# proxy de lecture (UserViewSet.avatar_image) n'accepte QUE des clés sous ce
+# préfixe, pour ne jamais relayer un objet arbitraire du bucket.
+_AVATAR_PREFIX = 'avatars/'
+
+_AVATAR_MIME_BY_EXT = {
+    'png': 'image/png',
+    'jpg': 'image/jpeg',
+    'jpeg': 'image/jpeg',
+    'webp': 'image/webp',
+}
 
 
 def _detect_image_type(header: bytes):
@@ -25,17 +38,48 @@ def _detect_image_type(header: bytes):
     return None
 
 
+def avatar_mime_for_key(key):
+    """Type MIME déduit de l'extension de la clé (défaut image/png)."""
+    ext = key.rsplit('.', 1)[-1].lower() if key and '.' in key else ''
+    return _AVATAR_MIME_BY_EXT.get(ext, 'image/png')
+
+
+def is_avatar_key(key):
+    """La clé désigne-t-elle bien une photo de profil (préfixe attendu) ?"""
+    return bool(key) and str(key).startswith(_AVATAR_PREFIX) \
+        and '..' not in str(key)
+
+
 def presign_avatar(key):
-    """URL présignée (1 h) de lecture d'une photo, ou None si pas de clé."""
-    if not key:
+    """URL de lecture d'une photo de profil, ou None si pas de clé.
+
+    BUG HISTORIQUE (T-U13) : on renvoyait ici une URL présignée MinIO qui pointe
+    sur l'hôte INTERNE du conteneur (``settings.MINIO_ENDPOINT`` = ``minio:9000``),
+    INJOIGNABLE depuis le navigateur — l'``<img>`` tombait en 404 et seules les
+    initiales s'affichaient. Même classe de bug déjà corrigée pour les pièces
+    jointes (apps.records.storage) : on relaie le fichier via Django (MÊME
+    ORIGINE), authentifié par le cookie, au lieu d'une URL présignée interne.
+
+    On renvoie donc un chemin RELATIF de même origine vers le proxy de lecture
+    (``GET /api/django/users/avatar-image/?key=...``). nginx route ce chemin vers
+    Django, qui streame les octets depuis MinIO côté serveur. Le navigateur n'a
+    jamais à joindre MinIO directement."""
+    if not is_avatar_key(key):
+        return None
+    return f'/api/django/users/avatar-image/?key={quote(key, safe="")}'
+
+
+def fetch_avatar(key):
+    """Octets de la photo stockée, ou (None) en cas d'absence/erreur.
+
+    Source du proxy de lecture de même origine (UserViewSet.avatar_image)."""
+    if not is_avatar_key(key):
         return None
     try:
         client = get_minio_client()
-        return client.generate_presigned_url(
-            'get_object',
-            Params={'Bucket': settings.MINIO_BUCKET_UPLOADS, 'Key': key},
-            ExpiresIn=3600,
-        )
+        obj = client.get_object(
+            Bucket=settings.MINIO_BUCKET_UPLOADS, Key=key)
+        return obj['Body'].read()
     except Exception:
         return None
 

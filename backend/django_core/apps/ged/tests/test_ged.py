@@ -1264,3 +1264,116 @@ class DocumentSemanticSearchTests(GedBase):
             results = list(selectors.semantic_search_documents(
                 self.admin_a, 'centrale solaire'))
             self.assertEqual(results[0].id, doc_solaire.id)
+
+
+# ── U14 — Upload « en un appel » (document + version 1) via televerser ──
+class DocumentUploadTests(GedBase):
+    """L'action multipart `documents/televerser/` crée le document ET sa
+    première version en un seul appel, en RÉUTILISANT `records.storage`
+    (mocké ici pour ne pas toucher MinIO). Company/créateur/uploader posés
+    côté serveur ; dossier cible borné à la société (isolation préservée).
+    """
+    def setUp(self):
+        super().setUp()
+        self.folder_a = Folder.objects.create(
+            company=self.co_a, cabinet=self.cab_a, nom='Docs A')
+
+    def _file(self, name='contrat.pdf'):
+        from django.core.files.uploadedfile import SimpleUploadedFile
+        return SimpleUploadedFile(
+            name, b'%PDF-1.4 fake', content_type='application/pdf')
+
+    def _fake_store(self, filename='contrat.pdf'):
+        # store_attachment renvoie (meta, None) en succès — on évite MinIO.
+        return ({
+            'file_key': f'attachments/{filename}',
+            'filename': filename,
+            'size': 12,
+            'mime': 'application/pdf',
+        }, None)
+
+    def test_upload_creates_document_and_version(self):
+        from unittest import mock
+        api = auth(self.admin_a)
+        with mock.patch('apps.ged.views.store_attachment',
+                        return_value=self._fake_store()):
+            resp = api.post('/api/django/ged/documents/televerser/', {
+                'folder': self.folder_a.id,
+                'nom': 'Contrat CIN',
+                'file': self._file(),
+                # Tentative d'injecter une autre société — doit être ignorée.
+                'company': self.co_b.id,
+            }, format='multipart')
+        self.assertEqual(resp.status_code, 201, resp.data)
+        doc = Document.objects.get(id=resp.data['id'])
+        self.assertEqual(doc.nom, 'Contrat CIN')
+        self.assertEqual(doc.folder_id, self.folder_a.id)
+        # company + created_by posés côté serveur (jamais du corps).
+        self.assertEqual(doc.company_id, self.co_a.id)
+        self.assertEqual(doc.created_by_id, self.admin_a.id)
+        # Version 1 créée, file_key issu de records.storage, uploader serveur.
+        version = doc.versions.get()
+        self.assertEqual(version.version, 1)
+        self.assertEqual(version.file_key, 'attachments/contrat.pdf')
+        self.assertEqual(version.company_id, self.co_a.id)
+        self.assertEqual(version.uploaded_by_id, self.admin_a.id)
+        self.assertEqual(resp.data['version_count'], 1)
+
+    def test_upload_defaults_name_to_filename(self):
+        from unittest import mock
+        api = auth(self.admin_a)
+        with mock.patch('apps.ged.views.store_attachment',
+                        return_value=self._fake_store('photo.pdf')):
+            resp = api.post('/api/django/ged/documents/televerser/', {
+                'folder': self.folder_a.id, 'file': self._file('photo.pdf'),
+            }, format='multipart')
+        self.assertEqual(resp.status_code, 201, resp.data)
+        doc = Document.objects.get(id=resp.data['id'])
+        # Sans `nom` saisi, on retombe sur le nom du fichier stocké.
+        self.assertEqual(doc.nom, 'photo.pdf')
+
+    def test_upload_requires_file(self):
+        api = auth(self.admin_a)
+        resp = api.post('/api/django/ged/documents/televerser/', {
+            'folder': self.folder_a.id, 'nom': 'Sans fichier',
+        }, format='multipart')
+        self.assertEqual(resp.status_code, 400)
+        self.assertNotIn('file', [d.nom for d in Document.objects.all()])
+
+    def test_upload_requires_folder(self):
+        from unittest import mock
+        api = auth(self.admin_a)
+        with mock.patch('apps.ged.views.store_attachment',
+                        return_value=self._fake_store()):
+            resp = api.post('/api/django/ged/documents/televerser/', {
+                'file': self._file(),
+            }, format='multipart')
+        self.assertEqual(resp.status_code, 400)
+
+    def test_upload_rejects_other_company_folder(self):
+        from unittest import mock
+        folder_b = Folder.objects.create(
+            company=self.co_b, cabinet=self.cab_b, nom='Docs B')
+        api = auth(self.admin_a)
+        with mock.patch('apps.ged.views.store_attachment',
+                        return_value=self._fake_store()):
+            resp = api.post('/api/django/ged/documents/televerser/', {
+                'folder': folder_b.id, 'file': self._file(),
+            }, format='multipart')
+        # Dossier d'une autre société → 404 (jamais de fuite cross-société).
+        self.assertEqual(resp.status_code, 404)
+        self.assertFalse(
+            Document.objects.filter(folder=folder_b).exists())
+
+    def test_upload_propagates_store_error(self):
+        from unittest import mock
+        api = auth(self.admin_a)
+        with mock.patch('apps.ged.views.store_attachment',
+                        return_value=(None, 'Format non supporté.')):
+            resp = api.post('/api/django/ged/documents/televerser/', {
+                'folder': self.folder_a.id, 'file': self._file('x.txt'),
+            }, format='multipart')
+        self.assertEqual(resp.status_code, 400)
+        # Aucun document créé si le stockage échoue.
+        self.assertFalse(
+            Document.objects.filter(folder=self.folder_a).exists())

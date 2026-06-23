@@ -435,15 +435,19 @@ class TestWhatsAppChatterLogging(TestCase):
 
     def test_lead_devis_whatsapp_writes_note_to_chatter(self):
         from apps.crm.models import LeadActivity
-        before = LeadActivity.objects.filter(lead=self.lead).count()
+        before_notes = LeadActivity.objects.filter(
+            lead=self.lead, kind=LeadActivity.Kind.NOTE).count()
         resp = self.api.post(
             f'/api/django/crm/leads/{self.lead.id}/whatsapp-devis/',
             {'devis_ids': [self.devis.id]}, format='json')
         self.assertEqual(resp.status_code, 200, resp.data)
         notes = LeadActivity.objects.filter(
             lead=self.lead, kind=LeadActivity.Kind.NOTE)
-        self.assertEqual(LeadActivity.objects.filter(
-            lead=self.lead).count(), before + 1)
+        # U4 : l'action WhatsApp ajoute la note de partage (kind=NOTE) ; faire
+        # passer le devis à « envoyé » fait AUSSI avancer le tunnel (→ QUOTE_SENT),
+        # ce qui journalise une activité kind=MODIFICATION SÉPARÉE. On vérifie
+        # donc spécifiquement la note WhatsApp.
+        self.assertEqual(notes.count(), before_notes + 1)
         last = notes.order_by('-created_at').first()
         self.assertIn('WhatsApp', last.body)
         self.assertIn('DEV-LOG-1', last.body)

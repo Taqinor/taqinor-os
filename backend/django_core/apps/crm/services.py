@@ -84,6 +84,67 @@ def avancer_stage_pour_devis(devis, ancien_statut, nouveau_statut, user):
     )
 
 
+# ── U11 — Cohérence funnel : « Signé sans devis actif » (DÉCISION fondateur) ──
+#
+# Le funnel n'avance jamais en arrière (avancer_stage_pour_devis), donc un lead
+# peut rester à SIGNED alors que son SEUL devis accepté a depuis été refusé : un
+# « signé fantôme ». La règle #2 (le funnel est une couche PERMANENTE, séparée
+# des statuts DOCUMENT — les deux ne se mélangent jamais) interdit de reculer
+# l'étape à l'aveugle. Option conservatrice retenue : on NE recule PAS l'étape,
+# on SIGNALE l'incohérence (drapeau dérivé + note de chatter) pour que l'UI
+# puisse la badger et que le commercial décide.
+
+# Statut DOCUMENT « accepté » d'un devis (couche séparée — STATUT, pas étape).
+_DEVIS_STATUT_ACCEPTE = 'accepte'
+
+
+def lead_signe_sans_devis_actif(lead) -> bool:
+    """Drapeau DÉRIVÉ (lecture seule) : le lead est à SIGNED mais n'a plus aucun
+    devis accepté actif.
+
+    « Actif » = un devis au statut DOCUMENT « accepté » qui n'est pas archivé.
+    Ne modifie RIEN (aucune écriture, aucune migration) : c'est un calcul que
+    l'UI peut badger pour repérer un « signé fantôme ». Renvoie ``False`` dès que
+    le lead n'est pas à SIGNED (rien à signaler hors de l'étape Signé).
+    """
+    if getattr(lead, 'stage', None) != 'SIGNED':
+        return False
+    qs = lead.devis.filter(statut=_DEVIS_STATUT_ACCEPTE)
+    # Certains devis peuvent être archivés (champ optionnel selon le schéma) —
+    # on les exclut s'il existe, sinon on compte tous les devis acceptés.
+    try:
+        Devis = lead.devis.model
+        if any(f.name == 'is_archived' for f in Devis._meta.get_fields()):
+            qs = qs.filter(is_archived=False)
+    except Exception:
+        pass
+    return not qs.exists()
+
+
+def signaler_mismatch_signe_sur_refus(devis, user):
+    """À l'événement « devis refusé » : si le refus laisse un lead SIGNED sans
+    AUCUN devis accepté actif, consigne UNE note de chatter pour signaler le
+    « signé sans devis actif » — SANS jamais reculer l'étape (règle #2).
+
+    Best-effort, idempotent dans les faits : on n'écrit la note que lorsque
+    l'incohérence est réellement présente après le refus. Ne crée pas de doublon
+    pour un même refus car ``date_refus``/``motif_refus`` y figurent en clair.
+    """
+    lead = getattr(devis, 'lead', None)
+    if lead is None:
+        return
+    # Le refus a déjà été appliqué (statut DOCUMENT) avant l'émission du signal,
+    # donc le devis refusé n'est plus compté comme « accepté actif » ici.
+    if not lead_signe_sans_devis_actif(lead):
+        return
+    activity.log_note(
+        lead, user,
+        f"⚠ Étape Signé sans devis actif : le devis {devis.reference} "
+        f"(qui avait fait passer ce lead à « Signé ») est désormais refusé et "
+        f"plus aucun devis accepté n'est actif. L'étape n'a PAS été reculée "
+        f"automatiquement (à vérifier).")
+
+
 def sync_relance_activity(lead, user):
     """Garde UN seul système de rappel : la `relance_date` du lead pilote une
     activité « Relance » auto-gérée (records.Activity). On ne crée jamais deux

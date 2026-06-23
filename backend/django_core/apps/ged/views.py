@@ -7,7 +7,13 @@ versions de document sont numérotées + déduppées via `services`.
 """
 from rest_framework import filters, status, viewsets
 from rest_framework.decorators import action
+from rest_framework.parsers import FormParser, JSONParser, MultiPartParser
 from rest_framework.response import Response
+
+# `records.storage` est la fondation de stockage MinIO partagée (avatars,
+# pièces jointes…). On la RÉUTILISE pour l'upload GED — on ne réimplémente
+# jamais le stockage objet ni un second pipeline d'upload.
+from apps.records.storage import store_attachment
 
 from authentication.mixins import TenantMixin
 from authentication.permissions import IsAnyRole, IsResponsableOrAdmin
@@ -248,6 +254,57 @@ class DocumentViewSet(TenantMixin, viewsets.ModelViewSet):
         services.update_search_vector(document)
         # GED12 — réindexe l'embedding sémantique (no-op sans clé).
         services.index_embedding(document)
+
+    @action(detail=False, methods=['post'], url_path='televerser',
+            parser_classes=[MultiPartParser, FormParser, JSONParser])
+    def televerser(self, request):
+        """Téléverse un fichier et crée le document + sa version 1 en UN appel.
+
+        `POST …/documents/televerser/` (multipart) — corps :
+        `{folder: <id>, nom?: <str>, description?: <str>, file: <binaire>}`.
+        Le fichier est stocké via `records.storage.store_attachment` (même
+        pipeline MinIO que les pièces jointes — on ne réimplémente pas le
+        stockage), puis on crée le `Document` (company + created_by posés côté
+        serveur, jamais lus du corps) et sa première `DocumentVersion`
+        (numéro + uploaded_by posés côté serveur via `services.add_version`).
+        Le dossier cible est borné à la société courante (404/400 sinon)."""
+        company = request.user.company
+        # 1) dossier cible : borné à la société (jamais un dossier d'autrui).
+        folder_id = request.data.get('folder')
+        if not folder_id:
+            return Response({'folder': 'Le dossier cible est requis.'},
+                            status=status.HTTP_400_BAD_REQUEST)
+        folder = (Folder.objects.filter(company=company)
+                  .filter(pk=folder_id).first())
+        if folder is None:
+            return Response({'folder': 'Dossier inconnu.'},
+                            status=status.HTTP_404_NOT_FOUND)
+        # 2) fichier : obligatoire, validé + stocké par records.storage.
+        file = request.FILES.get('file')
+        if not file:
+            return Response({'file': 'Aucun fichier fourni.'},
+                            status=status.HTTP_400_BAD_REQUEST)
+        meta, err = store_attachment(file)
+        if err:
+            return Response({'file': err},
+                            status=status.HTTP_400_BAD_REQUEST)
+        # 3) document : nom = saisi ou nom de fichier ; company/créateur serveur.
+        nom = (request.data.get('nom') or meta['filename'] or 'Document').strip()
+        document = Document.objects.create(
+            company=company, folder=folder, nom=nom,
+            description=(request.data.get('description') or '').strip(),
+            created_by=request.user)
+        # 4) version 1 (numéro + uploaded_by + company posés côté serveur).
+        services.add_version(
+            document, file_key=meta['file_key'], company=company,
+            filename=meta['filename'], size=meta['size'], mime=meta['mime'],
+            uploaded_by=request.user)
+        # GED11/GED12 — indexe le document fraîchement créé.
+        services.update_search_vector(document)
+        services.index_embedding(document)
+        return Response(
+            DocumentSerializer(document, context={'request': request}).data,
+            status=status.HTTP_201_CREATED)
 
     @action(detail=False, methods=['get'], url_path='semantique')
     def semantique(self, request):
