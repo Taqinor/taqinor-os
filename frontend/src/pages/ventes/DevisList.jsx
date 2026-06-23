@@ -1012,6 +1012,25 @@ export default function DevisList() {
                             Option : {d.option_acceptee === 'avec_batterie' ? 'Avec batterie' : 'Sans batterie'}
                           </div>
                         )}
+                        {/* U8 — état du bon de commande lié (lecture seule, depuis
+                            le OneToOne existant) + avertissement d'incohérence
+                            quand un devis accepté n'a pas de BC actif. */}
+                        {d.bon_commande_etat?.exists && (
+                          <div className="mt-1 text-xs text-muted-foreground">
+                            BC : {d.bon_commande_etat.statut_display}
+                          </div>
+                        )}
+                        {d.bon_commande_etat?.mismatch && (
+                          <div className="mt-1 flex items-start gap-1 text-xs font-medium text-warning"
+                               title="Devis accepté mais le bon de commande est annulé ou absent">
+                            <AlertTriangle className="mt-0.5 size-3 shrink-0" aria-hidden="true" />
+                            <span>
+                              {d.bon_commande_etat.exists
+                                ? 'Devis accepté mais BC annulé'
+                                : 'Devis accepté sans bon de commande'}
+                            </span>
+                          </div>
+                        )}
                       </td>
                       <td>
                         <div className="flex flex-wrap items-center gap-2">

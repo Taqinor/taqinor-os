@@ -146,3 +146,46 @@ describe('DevisList — U7 : révisions remplacées masquées par défaut', () =
     expect(within(row).getByText('DEV-V2')).toBeVisible()
   })
 })
+
+describe('DevisList — U8 : état du bon de commande + incohérence', () => {
+  it('affiche le statut du BC et avertit quand un devis accepté a un BC annulé', () => {
+    renderList({
+      loading: false,
+      devis: [{
+        id: 3, reference: 'DEV-BC-ANN', client_nom: 'ACME', statut: 'accepte',
+        date_creation: '2026-07-01', total_ttc: 9000, nb_options: 1, version: 1,
+        bon_commande_etat: { exists: true, id: 9, reference: 'BC-9', statut: 'annule', statut_display: 'Annulé', mismatch: true },
+      }],
+    })
+    const row = screen.getByText('DEV-BC-ANN').closest('tr')
+    expect(within(row).getByText(/BC : Annulé/)).toBeVisible()
+    expect(within(row).getByText('Devis accepté mais BC annulé')).toBeVisible()
+  })
+
+  it('avertit quand un devis accepté n\'a aucun bon de commande', () => {
+    renderList({
+      loading: false,
+      devis: [{
+        id: 4, reference: 'DEV-BC-NONE', client_nom: 'ACME', statut: 'accepte',
+        date_creation: '2026-07-01', total_ttc: 9000, nb_options: 1, version: 1,
+        bon_commande_etat: { exists: false, reference: null, statut: null, statut_display: null, mismatch: true },
+      }],
+    })
+    const row = screen.getByText('DEV-BC-NONE').closest('tr')
+    expect(within(row).getByText('Devis accepté sans bon de commande')).toBeVisible()
+  })
+
+  it('n\'avertit pas quand le BC est confirmé sur un devis accepté', () => {
+    renderList({
+      loading: false,
+      devis: [{
+        id: 5, reference: 'DEV-BC-OK', client_nom: 'ACME', statut: 'accepte',
+        date_creation: '2026-07-01', total_ttc: 9000, nb_options: 1, version: 1,
+        bon_commande_etat: { exists: true, id: 10, reference: 'BC-10', statut: 'confirme', statut_display: 'Confirmé', mismatch: false },
+      }],
+    })
+    const row = screen.getByText('DEV-BC-OK').closest('tr')
+    expect(within(row).getByText(/BC : Confirmé/)).toBeVisible()
+    expect(within(row).queryByText(/BC annulé|sans bon de commande/)).toBeNull()
+  })
+})
