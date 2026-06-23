@@ -1,17 +1,27 @@
 // GED5 — Navigateur arborescent (frontend). Vue en arbre des dossiers (GED) avec
 // dépliage/repliage, et liste des documents du dossier sélectionné. Consomme les
-// endpoints existants d'`apps/ged` (cabinets / dossiers / documents) — aucun
-// modèle backend ajouté. Tout le texte est en français, lecture seule.
+// endpoints d'`apps/ged` (cabinets / dossiers / documents) — aucun modèle backend
+// ajouté. Tout le texte est en français.
+//
+// U14 — La GED n'est plus en lecture seule : on ajoute les affordances d'écriture
+// indispensables pour rendre le menu utilisable sur un déploiement vierge — créer
+// une armoire (cabinet), créer / renommer / déplacer un dossier, et téléverser un
+// document — plus un état vide qui GUIDE le premier usage. Les écritures restent
+// scopées société côté serveur (jamais lues du corps de requête) ; les
+// permissions (responsable/admin) sont appliquées côté backend — un refus 403 se
+// traduit par un toast d'erreur, comme partout dans l'ERP.
 import { useEffect, useMemo, useState } from 'react'
 import {
   Folder, FolderOpen, ChevronRight, ChevronDown, FileText, Loader2, Inbox,
-  RefreshCw,
+  RefreshCw, Plus, FolderPlus, Pencil, Upload, MoveRight,
 } from 'lucide-react'
 import gedApi from '../../api/gedApi'
 import { formatDate } from '../../lib/format'
 import {
   Card, CardContent, Button, EmptyState, Skeleton, Badge,
   Select, SelectTrigger, SelectValue, SelectContent, SelectItem,
+  Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription,
+  DialogFooter, DialogClose, Input, Textarea, FileUpload, toast,
 } from '../../ui'
 import { buildFolderTree, flattenVisible, countFolders } from './tree.js'
 import GedSearch from './GedSearch.jsx'
@@ -19,6 +29,19 @@ import GedSearch from './GedSearch.jsx'
 // Le backend pagine certains endpoints (DRF) : on accepte `results` OU le
 // tableau brut, comme partout dans le frontend.
 const rows = (r) => r?.data?.results ?? r?.data ?? []
+
+// Message d'erreur lisible à partir d'une réponse axios (premier champ d'erreur
+// DRF, ou message générique). Évite d'afficher un objet brut dans un toast.
+const errText = (e, fallback) => {
+  const d = e?.response?.data
+  if (typeof d === 'string') return d
+  if (d && typeof d === 'object') {
+    const first = d.detail ?? Object.values(d)[0]
+    if (Array.isArray(first)) return String(first[0])
+    if (first) return String(first)
+  }
+  return fallback
+}
 
 export default function GedNavigator() {
   const [cabinets, setCabinets] = useState([])
@@ -32,26 +55,37 @@ export default function GedNavigator() {
   const [loadingDocs, setLoadingDocs] = useState(false)
   const [error, setError] = useState(null)
 
+  // ── État des dialogues d'écriture (U14) ──
+  const [cabinetDlg, setCabinetDlg] = useState(false)
+  const [folderDlg, setFolderDlg] = useState(null) // { mode:'create'|'rename'|'move', folder? }
+  const [uploadDlg, setUploadDlg] = useState(false)
+
   // ── Chargement des cabinets (armoires racines) ──
-  useEffect(() => {
-    let alive = true
-    gedApi.getCabinets()
+  const loadCabinets = (preferId) => {
+    setLoadingTree(true)
+    return gedApi.getCabinets()
       .then((r) => {
-        if (!alive) return
         const list = rows(r)
         setCabinets(list)
-        // Sélectionne le premier cabinet par défaut (le plus courant).
-        if (list.length) setCabinetId((c) => c ?? list[0].id)
-        else setLoadingTree(false)
+        if (list.length) {
+          setCabinetId((c) => preferId ?? c ?? list[0].id)
+        } else {
+          setCabinetId(null)
+          setFolders([])
+          setLoadingTree(false)
+        }
+        setError(null)
+        return list
       })
-      .catch(() => { if (alive) { setError('Impossible de charger la GED. Réessayez.'); setLoadingTree(false) } })
-    return () => { alive = false }
+      .catch(() => { setError('Impossible de charger la GED. Réessayez.'); setLoadingTree(false) })
+  }
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- load-on-mount loading state
+    loadCabinets()
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- mount-only fetch
   }, [])
 
   // ── Chargement des dossiers du cabinet courant ──
-  // L'effet ne fait QUE l'appel réseau : les seuls setState synchrones du
-  // changement de cabinet (reset sélection/dépliage) vivent dans le handler
-  // `selectCabinet`, pas dans un effet (évite les rendus en cascade).
   const loadFolders = (cid) => {
     if (!cid) return
     setLoadingTree(true)
@@ -76,8 +110,14 @@ export default function GedNavigator() {
   }
 
   // ── Chargement des documents du dossier sélectionné ──
-  // Sélectionner `null` vide la liste DANS le handler de sélection : l'effet ne
-  // s'occupe que de l'appel réseau quand un dossier est choisi.
+  const reloadDocuments = () => {
+    if (!selected) return
+    setLoadingDocs(true)
+    gedApi.getDocuments({ folder: selected.id })
+      .then((r) => setDocuments(rows(r)))
+      .catch(() => setDocuments([]))
+      .finally(() => setLoadingDocs(false))
+  }
   useEffect(() => {
     if (!selected) return
     let alive = true
@@ -97,8 +137,6 @@ export default function GedNavigator() {
     return next
   })
 
-  // Sélection d'un dossier dans l'arbre : vide d'abord la liste (handler, pas
-  // effet) pour éviter d'afficher les documents de l'ancien dossier.
   const selectFolder = (node) => {
     if (selected?.id !== node.id) setDocuments([])
     setSelected(node)
@@ -109,13 +147,20 @@ export default function GedNavigator() {
   const visible = useMemo(() => flattenVisible(tree, expanded), [tree, expanded])
   const total = useMemo(() => countFolders(tree), [tree])
 
+  // ── Handlers d'écriture (U14) — après succès on recharge depuis le serveur. ──
+  const onCabinetCreated = (cab) => loadCabinets(cab.id)
+  const onFolderChanged = () => loadFolders(cabinetId)
+  const onDocumentUploaded = () => reloadDocuments()
+
+  const hasCabinet = cabinetId != null
+
   return (
     <div className="page">
       <div className="mb-4 flex flex-wrap items-center gap-2">
         <div className="mr-auto">
           <h1 className="text-xl font-semibold">Documents (GED)</h1>
           <p className="text-[12.5px] text-muted-foreground">
-            Arborescence documentaire — dépliez un dossier pour en consulter les documents.
+            Arborescence documentaire — créez une armoire et un dossier, puis téléversez vos documents.
           </p>
         </div>
         {cabinets.length > 1 && (
@@ -131,7 +176,10 @@ export default function GedNavigator() {
             </Select>
           </div>
         )}
-        <Button variant="secondary" onClick={() => loadFolders(cabinetId)} disabled={!cabinetId}>
+        <Button variant="secondary" onClick={() => setCabinetDlg(true)}>
+          <Plus className="size-4" aria-hidden="true" /> Nouvelle armoire
+        </Button>
+        <Button variant="secondary" onClick={() => loadFolders(cabinetId)} disabled={!hasCabinet}>
           <RefreshCw className="size-4" aria-hidden="true" /> Actualiser
         </Button>
       </div>
@@ -149,21 +197,40 @@ export default function GedNavigator() {
           {[0, 1, 2, 3].map((i) => <Skeleton key={i} className="h-9 w-full" />)}
         </div>
       ) : cabinets.length === 0 ? (
+        // U14 — état vide qui GUIDE le premier usage : bouton pour créer la
+        // première armoire (sans quoi l'écran paraissait cassé sur un déploiement neuf).
         <EmptyState icon={<Folder className="size-6" aria-hidden="true" />}
-          title="Aucun cabinet"
-          description="Aucune armoire documentaire n'a encore été créée pour cette société." />
+          title="Aucune armoire documentaire"
+          description="Commencez par créer une armoire (cabinet), puis ajoutez-y des dossiers et téléversez vos documents."
+          action={<Button onClick={() => setCabinetDlg(true)}>
+            <Plus className="size-4" aria-hidden="true" /> Créer la première armoire
+          </Button>} />
       ) : (
         <div className="grid gap-4 md:grid-cols-[minmax(240px,360px)_1fr]">
           {/* ── Arborescence des dossiers ── */}
           <Card>
             <CardContent className="p-2">
-              <div className="mb-1 px-1 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
-                {total} dossier{total > 1 ? 's' : ''}
+              <div className="mb-2 flex items-center gap-1 px-1">
+                <span className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
+                  {total} dossier{total > 1 ? 's' : ''}
+                </span>
+                <Button size="sm" variant="ghost" className="ml-auto"
+                  onClick={() => setFolderDlg({ mode: 'create' })}
+                  disabled={!hasCabinet}>
+                  <FolderPlus className="size-4" aria-hidden="true" /> Dossier
+                </Button>
               </div>
               {visible.length === 0 ? (
-                <p className="px-2 py-4 text-[13px] text-muted-foreground">
-                  Aucun dossier dans ce cabinet.
-                </p>
+                // U14 — état vide de l'arbre : CTA pour créer le premier dossier.
+                <div className="px-2 py-4 text-center">
+                  <p className="text-[13px] text-muted-foreground">
+                    Aucun dossier dans cette armoire.
+                  </p>
+                  <Button size="sm" variant="secondary" className="mt-2"
+                    onClick={() => setFolderDlg({ mode: 'create' })}>
+                    <FolderPlus className="size-4" aria-hidden="true" /> Créer un dossier
+                  </Button>
+                </div>
               ) : (
                 <ul className="flex flex-col" role="tree" aria-label="Dossiers">
                   {visible.map((node) => {
@@ -204,57 +271,310 @@ export default function GedNavigator() {
                 <EmptyState icon={<Folder className="size-6" aria-hidden="true" />}
                   title="Aucun dossier sélectionné"
                   description="Sélectionnez un dossier dans l'arborescence pour afficher ses documents." />
-              ) : loadingDocs ? (
-                <div className="flex items-center gap-2 p-6 text-[13px] text-muted-foreground">
-                  <Loader2 className="size-4 animate-spin" aria-hidden="true" /> Chargement des documents…
-                </div>
-              ) : documents.length === 0 ? (
-                <EmptyState icon={<Inbox className="size-6" aria-hidden="true" />}
-                  title={`Dossier « ${selected.nom} »`}
-                  description="Ce dossier ne contient aucun document." />
               ) : (
                 <>
-                  <div className="flex items-center gap-2 border-b border-border px-4 py-2.5">
+                  <div className="flex flex-wrap items-center gap-2 border-b border-border px-4 py-2.5">
                     <FolderOpen className="size-4 text-primary" aria-hidden="true" />
                     <span className="text-[13px] font-medium">{selected.nom}</span>
-                    <Badge tone="neutral" className="ml-auto">
-                      {documents.length} document{documents.length > 1 ? 's' : ''}
-                    </Badge>
+                    <div className="ml-auto flex items-center gap-1">
+                      <Button size="sm" variant="ghost"
+                        onClick={() => setFolderDlg({ mode: 'rename', folder: selected })}>
+                        <Pencil className="size-4" aria-hidden="true" /> Renommer
+                      </Button>
+                      <Button size="sm" variant="ghost"
+                        onClick={() => setFolderDlg({ mode: 'move', folder: selected })}>
+                        <MoveRight className="size-4" aria-hidden="true" /> Déplacer
+                      </Button>
+                      <Button size="sm" variant="default"
+                        onClick={() => setUploadDlg(true)}>
+                        <Upload className="size-4" aria-hidden="true" /> Téléverser
+                      </Button>
+                    </div>
                   </div>
-                  <table className="data-table">
-                    <thead>
-                      <tr>
-                        <th>Document</th>
-                        <th className="m-hide">Versions</th>
-                        <th className="m-hide">Créé par</th>
-                        <th>Mis à jour</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {documents.map((d) => (
-                        <tr key={d.id}>
-                          <td data-label="Document" className="font-medium">
-                            <span className="flex items-center gap-1.5">
-                              <FileText className="size-4 shrink-0 text-muted-foreground" aria-hidden="true" />
-                              {d.nom}
-                            </span>
-                          </td>
-                          <td data-label="Versions" className="m-hide">
-                            {d.version_count ?? 0}
-                            {d.derniere_version ? ` (v${d.derniere_version})` : ''}
-                          </td>
-                          <td data-label="Créé par" className="m-hide">{d.created_by_nom || '—'}</td>
-                          <td data-label="Mis à jour">{formatDate(d.updated_at)}</td>
+                  {loadingDocs ? (
+                    <div className="flex items-center gap-2 p-6 text-[13px] text-muted-foreground">
+                      <Loader2 className="size-4 animate-spin" aria-hidden="true" /> Chargement des documents…
+                    </div>
+                  ) : documents.length === 0 ? (
+                    // U14 — état vide du dossier : CTA pour téléverser le premier document.
+                    <EmptyState icon={<Inbox className="size-6" aria-hidden="true" />}
+                      title={`Dossier « ${selected.nom} »`}
+                      description="Ce dossier ne contient aucun document. Téléversez-en un pour démarrer."
+                      action={<Button onClick={() => setUploadDlg(true)}>
+                        <Upload className="size-4" aria-hidden="true" /> Téléverser un document
+                      </Button>} />
+                  ) : (
+                    <table className="data-table">
+                      <thead>
+                        <tr>
+                          <th>Document</th>
+                          <th className="m-hide">Versions</th>
+                          <th className="m-hide">Créé par</th>
+                          <th>Mis à jour</th>
                         </tr>
-                      ))}
-                    </tbody>
-                  </table>
+                      </thead>
+                      <tbody>
+                        {documents.map((d) => (
+                          <tr key={d.id}>
+                            <td data-label="Document" className="font-medium">
+                              <span className="flex items-center gap-1.5">
+                                <FileText className="size-4 shrink-0 text-muted-foreground" aria-hidden="true" />
+                                {d.nom}
+                              </span>
+                            </td>
+                            <td data-label="Versions" className="m-hide">
+                              {d.version_count ?? 0}
+                              {d.derniere_version ? ` (v${d.derniere_version})` : ''}
+                            </td>
+                            <td data-label="Créé par" className="m-hide">{d.created_by_nom || '—'}</td>
+                            <td data-label="Mis à jour">{formatDate(d.updated_at)}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  )}
                 </>
               )}
             </CardContent>
           </Card>
         </div>
       )}
+
+      {/* ── Dialogues d'écriture (U14) ── */}
+      <CabinetDialog open={cabinetDlg} onOpenChange={setCabinetDlg}
+        onCreated={onCabinetCreated} />
+      <FolderDialog state={folderDlg} onClose={() => setFolderDlg(null)}
+        cabinetId={cabinetId} folders={folders} onChanged={onFolderChanged} />
+      <UploadDialog open={uploadDlg} onOpenChange={setUploadDlg}
+        folder={selected} onUploaded={onDocumentUploaded} />
     </div>
+  )
+}
+
+// ── Dialogue : créer une armoire (cabinet) ──────────────────────────────
+function CabinetDialog({ open, onOpenChange, onCreated }) {
+  const [nom, setNom] = useState('')
+  const [busy, setBusy] = useState(false)
+
+  useEffect(() => { if (open) { setNom(''); setBusy(false) } }, [open])
+
+  const submit = async (e) => {
+    e.preventDefault()
+    if (!nom.trim() || busy) return
+    setBusy(true)
+    try {
+      const r = await gedApi.createCabinet({ nom: nom.trim() })
+      toast.success('Armoire créée.')
+      onOpenChange(false)
+      onCreated?.(r.data)
+    } catch (err) {
+      toast.error(errText(err, "Impossible de créer l'armoire."))
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>Nouvelle armoire</DialogTitle>
+          <DialogDescription>
+            Une armoire (cabinet) est la racine d'une arborescence documentaire.
+          </DialogDescription>
+        </DialogHeader>
+        <form onSubmit={submit} className="grid gap-3">
+          <Input aria-label="Nom de l'armoire" placeholder="Ex. Administratif"
+            value={nom} onChange={(e) => setNom(e.target.value)} autoFocus />
+          <DialogFooter>
+            <DialogClose asChild>
+              <Button type="button" variant="ghost">Annuler</Button>
+            </DialogClose>
+            <Button type="submit" disabled={!nom.trim() || busy}>
+              {busy ? <Loader2 className="size-4 animate-spin" aria-hidden="true" /> : null}
+              Créer l'armoire
+            </Button>
+          </DialogFooter>
+        </form>
+      </DialogContent>
+    </Dialog>
+  )
+}
+
+// ── Dialogue : créer / renommer / déplacer un dossier ───────────────────
+function FolderDialog({ state, onClose, cabinetId, folders, onChanged }) {
+  const mode = state?.mode
+  const target = state?.folder
+  const [nom, setNom] = useState('')
+  const [parentId, setParentId] = useState('') // '' = racine ; sinon id (string)
+  const [busy, setBusy] = useState(false)
+
+  useEffect(() => {
+    if (!state) return
+    setBusy(false)
+    setNom(mode === 'rename' ? (target?.nom ?? '') : '')
+    setParentId(
+      mode === 'move'
+        ? (target?.parent != null ? String(target.parent) : '')
+        : '',
+    )
+  }, [state, mode, target])
+
+  // Parents possibles : tous les dossiers du cabinet, en EXCLUANT (pour un
+  // déplacement) le dossier déplacé et son sous-arbre (le backend refuse les
+  // cycles, mais on filtre aussi côté UI pour un choix propre).
+  const parentOptions = useMemo(() => {
+    const list = Array.isArray(folders) ? folders : []
+    if (mode !== 'move' || !target) return list
+    const banned = list.filter(
+      (f) => typeof f.path === 'string' && typeof target.path === 'string'
+        && f.path.startsWith(target.path),
+    ).map((f) => f.id)
+    const bannedSet = new Set([target.id, ...banned])
+    return list.filter((f) => !bannedSet.has(f.id))
+  }, [folders, mode, target])
+
+  const titles = {
+    create: 'Nouveau dossier',
+    rename: 'Renommer le dossier',
+    move: 'Déplacer le dossier',
+  }
+
+  const submit = async (e) => {
+    e.preventDefault()
+    if (busy) return
+    if ((mode === 'create' || mode === 'rename') && !nom.trim()) return
+    setBusy(true)
+    try {
+      if (mode === 'create') {
+        const body = { cabinet: cabinetId, nom: nom.trim() }
+        if (parentId) body.parent = Number(parentId)
+        await gedApi.createDossier(body)
+        toast.success('Dossier créé.')
+      } else if (mode === 'rename') {
+        await gedApi.renameDossier(target.id, nom.trim())
+        toast.success('Dossier renommé.')
+      } else if (mode === 'move') {
+        await gedApi.moveDossier(target.id, parentId ? Number(parentId) : null)
+        toast.success('Dossier déplacé.')
+      }
+      onClose()
+      onChanged?.()
+    } catch (err) {
+      toast.error(errText(err, "Action impossible sur le dossier."))
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  return (
+    <Dialog open={!!state} onOpenChange={(v) => { if (!v) onClose() }}>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>{titles[mode] || 'Dossier'}</DialogTitle>
+        </DialogHeader>
+        <form onSubmit={submit} className="grid gap-3">
+          {(mode === 'create' || mode === 'rename') && (
+            <Input aria-label="Nom du dossier" placeholder="Ex. Contrats"
+              value={nom} onChange={(e) => setNom(e.target.value)} autoFocus />
+          )}
+          {(mode === 'create' || mode === 'move') && (
+            <label className="grid gap-1 text-[13px]">
+              <span className="text-muted-foreground">Dossier parent (optionnel)</span>
+              <Select value={parentId} onValueChange={(v) => setParentId(v === '__root__' ? '' : v)}>
+                <SelectTrigger aria-label="Dossier parent">
+                  <SelectValue placeholder="— Racine de l'armoire —" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="__root__">— Racine de l'armoire —</SelectItem>
+                  {parentOptions.map((f) => (
+                    <SelectItem key={f.id} value={String(f.id)}>{f.nom}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </label>
+          )}
+          <DialogFooter>
+            <DialogClose asChild>
+              <Button type="button" variant="ghost">Annuler</Button>
+            </DialogClose>
+            <Button type="submit"
+              disabled={busy || ((mode === 'create' || mode === 'rename') && !nom.trim())}>
+              {busy ? <Loader2 className="size-4 animate-spin" aria-hidden="true" /> : null}
+              Valider
+            </Button>
+          </DialogFooter>
+        </form>
+      </DialogContent>
+    </Dialog>
+  )
+}
+
+// ── Dialogue : téléverser un document ───────────────────────────────────
+function UploadDialog({ open, onOpenChange, folder, onUploaded }) {
+  const [file, setFile] = useState(null)
+  const [nom, setNom] = useState('')
+  const [description, setDescription] = useState('')
+  const [busy, setBusy] = useState(false)
+
+  useEffect(() => {
+    if (open) { setFile(null); setNom(''); setDescription(''); setBusy(false) }
+  }, [open])
+
+  const submit = async (e) => {
+    e.preventDefault()
+    if (!file || !folder || busy) return
+    setBusy(true)
+    try {
+      await gedApi.uploadDocument({
+        folder: folder.id, file, nom: nom.trim(), description: description.trim(),
+      })
+      toast.success('Document téléversé.')
+      onOpenChange(false)
+      onUploaded?.()
+    } catch (err) {
+      toast.error(errText(err, 'Téléversement impossible.'))
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>Téléverser un document</DialogTitle>
+          <DialogDescription>
+            {folder ? `Dans le dossier « ${folder.nom} ».` : null}
+          </DialogDescription>
+        </DialogHeader>
+        <form onSubmit={submit} className="grid gap-3">
+          <FileUpload accept="application/pdf,image/png,image/jpeg,image/webp"
+            maxSize={10 * 1024 * 1024}
+            onFiles={(files) => { setFile(files[0]); if (!nom) setNom(files[0]?.name || '') }}
+            onReject={(rej) => toast.error(rej[0]?.error || 'Fichier refusé.')} />
+          {file && (
+            <p className="text-[13px] text-muted-foreground">
+              Fichier sélectionné : <span className="font-medium text-foreground">{file.name}</span>
+            </p>
+          )}
+          <Input aria-label="Nom du document"
+            placeholder="Nom du document (par défaut : nom du fichier)"
+            value={nom} onChange={(e) => setNom(e.target.value)} />
+          <Textarea aria-label="Description" rows={2}
+            placeholder="Description (optionnel)"
+            value={description} onChange={(e) => setDescription(e.target.value)} />
+          <DialogFooter>
+            <DialogClose asChild>
+              <Button type="button" variant="ghost">Annuler</Button>
+            </DialogClose>
+            <Button type="submit" disabled={!file || busy}>
+              {busy ? <Loader2 className="size-4 animate-spin" aria-hidden="true" /> : null}
+              Téléverser
+            </Button>
+          </DialogFooter>
+        </form>
+      </DialogContent>
+    </Dialog>
   )
 }
