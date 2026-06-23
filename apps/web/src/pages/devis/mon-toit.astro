@@ -281,6 +281,16 @@ const billRanges = BILL_RANGES;
   form?.addEventListener('submit', async (e) => {
     e.preventDefault();
     if (errEl) errEl.hidden = true;
+    // Repere obligatoire : sans position GPS le lead n'a aucun toit a montrer
+    // et l'atelier de conception (ERP) ne peut rien centrer.
+    if (!capturePin) {
+      if (errEl) {
+        errEl.textContent = 'Posez d’abord un repère sur votre toit : cherchez votre adresse, puis cliquez sur votre toit dans la carte.';
+        errEl.hidden = false;
+      }
+      document.getElementById('rp9-map')?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      return;
+    }
     const consent = (document.getElementById('mt-consent') as HTMLInputElement | null)?.checked === true;
     // W1/W3 — profil énergétique mirroir de l'ERP.
     const eteDifferente = eteToggle?.checked === true;
