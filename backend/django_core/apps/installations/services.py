@@ -182,9 +182,15 @@ def _freeze_bom(devis):
 def create_installation_from_devis(devis, user, company):
     """Retourne (installation, created).
 
-    Si un chantier existe déjà pour ce devis, on le RETOURNE (pas de doublon).
+    IDEMPOTENT : si un chantier existe déjà pour ce devis, on le RETOURNE tel
+    quel (created=False) sans en créer un second. C'est ce garde-fou qui rend
+    sûre l'auto-création sur l'événement ``devis_accepted`` (cf.
+    ``apps/installations/receivers.py``) : ré-accepter un devis ou ré-émettre
+    l'événement ne duplique jamais le chantier. Le chantier porte la société du
+    devis (``company``), jamais une valeur issue d'une requête.
     """
-    existing = Installation.objects.filter(devis=devis).first()
+    existing = Installation.objects.filter(
+        devis=devis, company=company).first()
     if existing is not None:
         return existing, False
 
