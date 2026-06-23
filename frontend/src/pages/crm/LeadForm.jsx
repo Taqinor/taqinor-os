@@ -260,6 +260,8 @@ export default function LeadForm({ lead = null, onClose, onSaved, initialDevis =
   const [noteBody, setNoteBody] = useState('')
   const [noteError, setNoteError] = useState(null)
   const [saving, setSaving] = useState(false)
+  const [savedConfirm, setSavedConfirm] = useState(false)
+  const savedConfirmTimer = useRef(null)
   const [errors, setErrors] = useState({})
   const [activeSec, setActiveSec] = useState('contact')
   // Doublons probables détectés EN DIRECT depuis le téléphone/email saisi
@@ -545,12 +547,24 @@ export default function LeadForm({ lead = null, onClose, onSaved, initialDevis =
       if (!fields.ete_differente) payload.facture_ete = null
       payload.custom_data = customData  // champs personnalisés (T11)
       if (isEdit) {
-        await dispatch(updateLead({ id: lead.id, data: payload })).unwrap()
+        const updated = await dispatch(updateLead({ id: lead.id, data: payload })).unwrap()
+        // En mode ÉDITION : on reste ouvert — on recharge les données en place.
+        setLiveLead(updated)
+        // Ré-hydrate les champs modifiés (par ex. valeurs normalisées côté serveur).
+        setFields(prev => ({ ...prev, ...Object.fromEntries(
+          Object.keys(prev).map(k => [k, updated[k] !== undefined ? (updated[k] ?? '') : prev[k]])
+        )}))
+        setCustomData(updated.custom_data || {})
+        onSaved?.()  // rafraîchit la liste/kanban parent sans fermer la fiche
+        // Confirmation visuelle transitoire (2 s).
+        if (savedConfirmTimer.current) clearTimeout(savedConfirmTimer.current)
+        setSavedConfirm(true)
+        savedConfirmTimer.current = setTimeout(() => setSavedConfirm(false), 2000)
       } else {
         await dispatch(createLead(payload)).unwrap()
+        onSaved?.()
+        onClose()
       }
-      onSaved?.()
-      onClose()
     } catch (err) {
       setErrors(typeof err === 'object' ? err : { submit: String(err) })
     } finally {
@@ -1172,6 +1186,11 @@ export default function LeadForm({ lead = null, onClose, onSaved, initialDevis =
           </div>
 
           <div className="modal-footer">
+            {savedConfirm && (
+              <span className="lead-saved-confirm" role="status" aria-live="polite">
+                ✓ Enregistré
+              </span>
+            )}
             <Button type="button" variant="outline" onClick={onClose}>
               Annuler
             </Button>
