@@ -8,7 +8,7 @@ class Migration(migrations.Migration):
 
     dependencies = [
         ("crm", "0004_lead_client_lead_ete_differente_lead_facture_ete_and_more"),
-        ("ventes", "0026_paymentlink"),
+        ("ventes", "0027_devis_date_envoi"),
     ]
 
     operations = [
