@@ -361,6 +361,19 @@ class BonCommande(models.Model):
         blank=True,
         related_name='bon_commande',
     )
+    # U12 — lien DIRECT vers le lead d'origine, snapshoté à la création depuis
+    # le devis source (devis.lead). Additif/optionnel : un BC sans lead reste
+    # valide, et on ne perd jamais le lien si le devis est supprimé (SET_NULL).
+    # Permet « tous les documents d'un lead » sans traverser le devis (qui peut
+    # passer à NULL). related_name distinct (`bons_commande_directs`) pour ne pas
+    # entrer en conflit avec un futur reverse `bons_commande` côté Lead.
+    lead = models.ForeignKey(
+        'crm.Lead',
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='bons_commande_directs',
+    )
     client = models.ForeignKey(
         'crm.Client',
         on_delete=models.PROTECT,
@@ -390,6 +403,21 @@ class BonCommande(models.Model):
         """FG51 — vrai si une preuve de livraison (PV/signature) est consignée."""
         pv = self.pv_livraison or {}
         return bool(pv.get('signataire') or pv.get('file_key'))
+
+    def save(self, *args, **kwargs):
+        """U12 — snapshote le lead d'origine depuis le devis source à la création.
+
+        Toute voie de création (action `convertir-bc`, services cross-app…)
+        hérite ainsi du lien direct sans avoir à le poser à la main. On ne pose
+        le lead que s'il n'est pas déjà fixé (jamais d'écrasement) et qu'un
+        devis source le porte — comportement historique strictement inchangé
+        pour un BC sans devis ou sans lead."""
+        from apps.ventes.services import lead_from_source_devis
+        if self.lead_id is None:
+            resolved = lead_from_source_devis(self)
+            if resolved is not None:
+                self.lead = resolved
+        super().save(*args, **kwargs)
 
     class Meta:
         verbose_name = 'Bon de Commande'
@@ -444,6 +472,20 @@ class Facture(models.Model):
         null=True,
         blank=True,
         related_name='factures',
+    )
+    # U12 — lien DIRECT vers le lead d'origine, snapshoté à la création depuis
+    # le devis source (devis.lead, ou bon_commande.devis.lead pour la chaîne
+    # BC → facture). Additif/optionnel : une facture sans lead reste valide, et
+    # on ne perd jamais le lien si le devis est supprimé (SET_NULL). Permet de
+    # lister « toutes les factures d'un lead » sans traverser le devis (qui peut
+    # passer à NULL). related_name distinct (`factures_directes`) pour ne pas
+    # entrer en conflit avec un futur reverse `factures` côté Lead.
+    lead = models.ForeignKey(
+        'crm.Lead',
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='factures_directes',
     )
     type_facture = models.CharField(
         max_length=20,
@@ -533,6 +575,22 @@ class Facture(models.Model):
 
     def __str__(self):
         return self.reference
+
+    def save(self, *args, **kwargs):
+        """U12 — snapshote le lead d'origine depuis le devis source à la création.
+
+        Couvre les deux voies : la facture d'échéancier (porte `devis`) et la
+        chaîne BC → facture (porte `bon_commande`, dont le devis porte le lead).
+        On ne pose le lead que s'il n'est pas déjà fixé (jamais d'écrasement) et
+        qu'un devis source le porte — comportement historique strictement
+        inchangé pour une facture sans devis/BC ou sans lead (ex. facture de
+        contrat de maintenance)."""
+        from apps.ventes.services import lead_from_source_devis
+        if self.lead_id is None:
+            resolved = lead_from_source_devis(self)
+            if resolved is not None:
+                self.lead = resolved
+        super().save(*args, **kwargs)
 
     @property
     def total_ht(self):

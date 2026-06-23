@@ -10,6 +10,32 @@ import re
 
 logger = logging.getLogger(__name__)
 
+
+def lead_from_source_devis(document):
+    """U12 — résout le lead d'origine d'une Facture / d'un BonCommande.
+
+    Le lien direct ``lead`` de la Facture/BC est snapshoté depuis le devis
+    source à la création. On le résout ici, de façon centralisée, pour les deux
+    voies de création :
+
+    * facture d'échéancier ou BC directement lié à un devis → ``document.devis``;
+    * chaîne BC → facture (la facture porte ``bon_commande``, pas ``devis``) →
+      ``document.bon_commande.devis``.
+
+    Renvoie l'instance ``crm.Lead`` du devis source, ou ``None`` si aucun devis
+    source ne porte de lead (ex. facture de contrat de maintenance, BC sans
+    devis). Ne lève jamais : un attribut absent retombe sur ``None``.
+    """
+    devis = getattr(document, 'devis', None)
+    if devis is None:
+        bc = getattr(document, 'bon_commande', None)
+        if bc is not None:
+            devis = getattr(bc, 'devis', None)
+    if devis is None:
+        return None
+    return getattr(devis, 'lead', None)
+
+
 # Q3 — composition keyword rules. Kept ALIGNED with
 # apps/ventes/quote_engine/builder.py (réseau/injection, hybride, batterie,
 # panneau) so the PDF option split reads the lines this service writes the same
