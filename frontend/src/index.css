@@ -33,8 +33,20 @@ body {
    `position: sticky` de la sidebar / des en-têtes (un overflow ailleurs que sur
    le viewport racine fige le sticky). Les médias et blocs larges qui débordent
    sont contraints à la largeur de leur conteneur. Additif, sans régression
-   bureau : la mise en page existante ne dépasse jamais 100 % de toute façon. */
-html, body { max-width: 100%; overflow-x: hidden; }
+   bureau : la mise en page existante ne dépasse jamais 100 % de toute façon.
+
+   U2 — RÉGRESSION DÉFILEMENT ROUE : overflow-x:hidden sur html/body crée un
+   conteneur de défilement implicite (spec CSS — overflow:hidden sur le viewport
+   root transfère le défilement Y au viewport) ; dans Chrome/Edge ≥ 120 ce
+   transfert capte les delta-roue AVANT que .layout-content (overflow-y:auto)
+   ne les reçoive → la roue ne scrolle plus la zone de contenu.
+   CORRECTION : overflow-x:clip au lieu de hidden. `clip` coupe visuellement
+   les débordements horizontaux SANS créer de nouveau contexte de défilement
+   (contrairement à hidden) — sticky sidebar/header inchangé, mobile scroll
+   préservé, roue de la souris retrouve .layout-content comme cible naturelle.
+   Voir aussi : #root et .layout passent de min-height:100vh à height:100vh
+   pour borner la chaîne et rendre .layout-content scrollable. */
+html, body { max-width: 100%; overflow-x: clip; }
 img, table, pre { max-width: 100%; }
 
 /* M62 — Défilement fluide (ancres, scrollIntoView). */
@@ -176,9 +188,17 @@ button:active, [role="button"]:active, a.btn:active,
    de défilement.
    ========================================================================== */
 
+/* U2 — #root et .layout bornés à hauteur-viewport (height, pas min-height) :
+   la chaîne de hauteur est fermée → .layout-main { overflow:hidden } peut
+   limiter la colonne à 100 % du viewport, et .layout-content { overflow-y:auto }
+   devient le seul scrolleur de la zone principale. Avec min-height la chaîne
+   était "infinie" → .layout-content grandissait sans limite, overflow-y:auto ne
+   déclenchait jamais le scroll interne, et la roue de la souris ne scrollait pas.
+   Repli 100vh → 100dvh (barres d'URL dynamiques sur mobile). */
 #root {
   width: 100%;
-  min-height: 100vh;
+  height: 100vh;
+  height: 100dvh;
   display: flex;
 }
 
@@ -186,7 +206,7 @@ button:active, [role="button"]:active, a.btn:active,
 .layout {
   display: flex;
   width: 100%;
-  min-height: 100vh;
+  height: 100%;
 }
 
 .layout-main {
@@ -194,12 +214,21 @@ button:active, [role="button"]:active, a.btn:active,
   display: flex;
   flex-direction: column;
   overflow: hidden;
+  /* U2-GUARD: ne jamais mettre height:auto ici — cela briserait la chaîne de
+     hauteur bornée et réintroduirait la régression de défilement roue. */
 }
 
 .layout-content {
   flex: 1;
+  /* U2-GUARD: min-height:0 indispensable dans un flex column borné :
+     sans lui flex refuse de réduire sous la taille du contenu et overflow-y
+     n'active pas le scroll interne. */
+  min-height: 0;
   padding: 2rem;
   overflow-y: auto;
+  /* U2-GUARD: overscroll-behavior:contain empêche le scroll de se propager
+     vers un ancêtre quand on atteint le bord (évite rebonds iOS indésirables). */
+  overscroll-behavior-y: contain;
 }
 
 /* ── Sidebar ──────────────────────────────────────────────── */
@@ -1814,7 +1843,9 @@ textarea.form-control {
 .bottom-tabbar { display: none; }
 
 @media (max-width: 768px) {
-  html, body { overflow-x: hidden; }
+  /* U2 — même raison que la règle globale : overflow-x:clip au lieu de hidden
+     pour ne pas créer de contexte de défilement qui capte la roue. */
+  html, body { overflow-x: clip; }
 
   /* ── Coquille : sidebar → tiroir ── */
   .header-menu-btn { display: flex; align-items: center; }
@@ -1836,6 +1867,73 @@ textarea.form-control {
   .gs-wrap-expanded .gs-input { display: block; }
   .header-cmdk-kbd { display: none; }
   .header-user-name { display: none; }
+
+  /* U3 — En-tête mobile : une seule rangée propre, rien sous l'encoche.
+     ────────────────────────────────────────────────────────────────────
+
+     PROBLÈME : sur iPhone (notch/Dynamic Island), env(safe-area-inset-top)
+     ajoute 44–59 px de padding-top à .header. Les éléments flex centrent
+     (align-items:center) dans toute la hauteur padded-top, ce qui :
+       (a) place le contenu trop bas visuellement,
+       (b) peut créer un chevauchement apparent avec la barre d'état iOS.
+     De plus sur < 768 px la rangée [hamburger][brand][titre/fil]···[icônes]
+     est trop chargée : .header-cmdk prend ~40 px qu'on peut libérer.
+
+     CORRECTIONS :
+     1. Contexte d'empilement isolé (isolation:isolate) : garantit que le
+        contenu de .layout-content ne passe jamais DEVANT le header.
+     2. padding-top via env() CONSERVÉ pour décoller de l'encoche ; en
+        complément on bascule l'alignement flex sur le start ET on centre
+        les items en padding-block sur chaque groupe gauche/droite — le
+        contenu reste centré DANS la zone sous-encoche (52 px visible).
+     3. .header-cmdk masqué sur mobile (doublon avec la loupe GlobalSearch).
+     4. .header-heading prend flex:1 pour remplir l'espace et tronquer
+        sans pousser les icônes de droite hors écran.
+     5. .header-left n'est plus flex-shrink:0 → peut rétrécir pour laisser
+        de la place aux icônes de droite. */
+
+  .header {
+    /* Stacking context : le contenu scrollant ne passe jamais devant. */
+    isolation: isolate;
+    /* Alignement des items : flex-start + padding interne sur les groupes
+       pour centrer visuellement dans la zone sous-encoche. */
+    align-items: flex-start;
+    /* La hauteur visible (hors safe-area) reste 52 px. */
+    min-height: calc(52px + env(safe-area-inset-top));
+  }
+
+  /* Groupes gauche et droite : centrer verticalement dans la zone 52 px
+     sous l'encoche via padding-top égal au safe-area-inset. */
+  .header-left,
+  .header-right {
+    padding-top: env(safe-area-inset-top);
+    min-height: 52px;
+    align-items: center;
+  }
+
+  /* Le groupe gauche peut rétrécir pour céder de la place aux icônes. */
+  .header-left {
+    flex-shrink: 1;
+    min-width: 0;
+    flex: 1 1 0;
+  }
+
+  /* Le titre + fil d'Ariane occupent l'espace disponible et tronquent. */
+  .header-heading {
+    flex: 1 1 0;
+    min-width: 0;
+    overflow: hidden;
+  }
+
+  /* Le groupe droite ne rétrécit pas (icônes d'action). */
+  .header-right {
+    flex-shrink: 0;
+    flex: 0 0 auto;
+  }
+
+  /* ⌘K masqué sur mobile : la loupe GlobalSearch (gs-mobile-toggle)
+     offre le même point d'entrée sans doubler les icônes. */
+  .header-cmdk { display: none; }
 
   /* I36 — Barre d'onglets inférieure (navigation primaire au pouce). */
   .bottom-tabbar {
