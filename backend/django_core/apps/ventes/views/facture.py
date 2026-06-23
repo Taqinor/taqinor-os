@@ -406,6 +406,11 @@ class FactureViewSet(viewsets.ModelViewSet):
                     locked.statut != Facture.Statut.ANNULEE:
                 locked.statut = Facture.Statut.PAYEE
                 locked.save(update_fields=['statut'])
+                # U10 — facture soldée : on arrête l'escalade de relance
+                # (efface la prochaine relance et neutralise le compteur de
+                # niveau) pour qu'une facture payée cesse d'afficher un retard.
+                from ..services import reset_relance_escalation
+                reset_relance_escalation(locked)
             facture = locked
         return Response(
             FactureSerializer(facture).data, status=status.HTTP_201_CREATED,

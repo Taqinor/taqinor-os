@@ -696,10 +696,27 @@ class DevisViewSet(viewsets.ModelViewSet):
         """
         devis = self.get_object()
         from ..utils.echeancier import creer_facture_tranche
+        from ..services import (
+            reserver_stock_devis_facture, StockInsuffisantError,
+        )
+        company = request.user.company
         try:
-            facture = creer_facture_tranche(
-                devis, request.user, request.user.company,
-                create_with_reference,
+            # U9 — la facturation directe par échéancier court-circuite le bon
+            # de commande : on réserve/consomme ici le stock matériel du devis,
+            # comme le ferait la livraison d'un BC, dans la MÊME transaction que
+            # la facture (rollback atomique si la réservation échoue). La garde
+            # anti-double-comptage du service évite de re-décompter quand un BC
+            # livré existe déjà ou qu'une tranche antérieure a déjà réservé.
+            with transaction.atomic():
+                reserver_stock_devis_facture(
+                    devis=devis, user=request.user, company=company)
+                facture = creer_facture_tranche(
+                    devis, request.user, company,
+                    create_with_reference,
+                )
+        except StockInsuffisantError as exc:
+            return Response(
+                {'detail': exc.message}, status=status.HTTP_400_BAD_REQUEST,
             )
         except ValueError as exc:
             return Response(

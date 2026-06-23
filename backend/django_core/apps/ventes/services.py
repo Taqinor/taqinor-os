@@ -449,6 +449,122 @@ def mark_devis_sent(*, devis, user=None):
     return devis
 
 
+# Note des relances automatiques programmées (chemin scheduler). La séquence de
+# relance compte ces traces pour reprendre au bon niveau ; on les neutralise au
+# paiement intégral (U10) pour remettre l'escalade à zéro.
+RELANCE_AUTO_NOTE = 'Relance automatique programmée (email).'
+RELANCE_AUTO_NOTE_RESOLUE = (
+    'Relance automatique programmée (email). [résolue — facture soldée]')
+
+
+def reset_relance_escalation(facture):
+    """U10 — remet à zéro l'escalade de relance d'une facture soldée.
+
+    Quand un paiement amène ``montant_du <= 0`` et que la facture passe
+    « Payée », l'escalade de recouvrement doit s'arrêter : sinon la facture
+    continue d'afficher un ancien niveau de relance en retard et le scheduler
+    (``relance_reminders``) pourrait reprendre la séquence là où elle s'était
+    arrêtée. On efface donc ``prochaine_relance`` ET on neutralise les traces
+    de relance AUTOMATIQUE consignées (le compteur qui pilote le niveau
+    courant) — sans détruire l'historique : les ``RelanceLog`` sont conservés,
+    leur note est seulement marquée « résolue » pour qu'ils ne soient plus
+    comptés dans l'escalade. Idempotent : rien à faire si aucune escalade n'est
+    en cours. Renvoie True si quelque chose a été réinitialisé."""
+    changed = False
+    if facture.prochaine_relance is not None:
+        facture.prochaine_relance = None
+        facture.save(update_fields=['prochaine_relance'])
+        changed = True
+    autos = facture.relances.filter(note=RELANCE_AUTO_NOTE)
+    n = autos.update(note=RELANCE_AUTO_NOTE_RESOLUE)
+    if n:
+        changed = True
+    return changed
+
+
+class StockInsuffisantError(Exception):
+    """Levée quand une réservation de stock dépasserait le disponible (U9)."""
+
+    def __init__(self, message):
+        super().__init__(message)
+        self.message = message
+
+
+def reserver_stock_devis_facture(*, devis, user, company):
+    """U9 — réserve/consomme le stock matériel d'un devis facturé EN DIRECT.
+
+    Le chemin bon-commande (``bon_commande.marquer_livre``) décrémente déjà le
+    stock à la livraison. Mais un devis accepté puis facturé directement via
+    l'échéancier (``generer-facture``) court-circuite le bon de commande et ne
+    réservait donc AUCUN stock — d'où une survente possible entre devis. Cette
+    fonction reproduit EXACTEMENT la réservation de la livraison BC (mêmes
+    lignes du devis, même arrondi HALF_UP du décimal vers l'entier du registre,
+    même garde de stock insuffisant), mais branchée sur la première facture
+    d'échéancier.
+
+    Garde anti-double-comptage : on ne réserve qu'UNE fois par devis. On ne
+    fait RIEN si
+      * un mouvement SORTIE référence déjà ce devis (réservation déjà posée par
+        une tranche antérieure de l'échéancier), ou
+      * un bon de commande de ce devis a déjà été livré (stock déjà consommé par
+        le chemin BC).
+    Écriture du mouvement déléguée au service stock (jamais d'import direct des
+    models stock). À appeler dans la transaction de l'appelant.
+
+    Lève ``StockInsuffisantError`` si une ligne dépasse le disponible (la
+    transaction de l'appelant est alors annulée, comme côté BC).
+    """
+    from decimal import Decimal, ROUND_HALF_UP
+    from apps.stock.services import (
+        mouvement_type_sortie, record_stock_movement,
+        sortie_exists_for_reference,
+    )
+    from apps.ventes.models import BonCommande
+
+    reference = devis.reference
+
+    # Déjà réservé pour ce devis (tranche antérieure de l'échéancier) → no-op.
+    if sortie_exists_for_reference(company, reference):
+        return False
+
+    # Un BC livré a déjà consommé le stock de ce devis → ne pas re-décompter.
+    if BonCommande.objects.filter(
+            devis=devis, statut=BonCommande.Statut.LIVRE).exists():
+        return False
+
+    moved = False
+    for ligne in devis.lignes.select_related('produit'):
+        produit = ligne.produit
+        if produit is None:
+            continue
+        produit.refresh_from_db()
+        # Même règle que la livraison BC (ERR15) : on arrondit au plus proche
+        # (HALF_UP) au lieu de tronquer, le registre de stock étant en entiers.
+        qte = int(Decimal(ligne.quantite).quantize(
+            Decimal('1'), rounding=ROUND_HALF_UP))
+        if qte <= 0:
+            continue
+        qte_avant = produit.quantite_stock
+        qte_apres = qte_avant - qte
+        if qte_apres < 0:
+            raise StockInsuffisantError(
+                f'Stock insuffisant pour « {produit.nom} » '
+                f'(disponible : {qte_avant}, requis : {qte}).')
+        record_stock_movement(
+            company=company,
+            produit=produit,
+            type_mouvement=mouvement_type_sortie(),
+            quantite=qte,
+            quantite_avant=qte_avant,
+            quantite_apres=qte_apres,
+            reference=reference,
+            note=f'Facturation directe — devis {reference}',
+            created_by=user,
+        )
+        moved = True
+    return moved
+
+
 def creer_facture_contrat(*, contrat, user, company):
     """FG40 — Crée une Facture de maintenance récurrente depuis un ContratMaintenance.
 
