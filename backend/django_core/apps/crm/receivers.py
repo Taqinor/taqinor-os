@@ -8,7 +8,10 @@ from django.dispatch import receiver
 
 from core.events import devis_accepted, devis_refused
 
-from .services import avancer_stage_pour_devis
+from .services import (
+    avancer_stage_pour_devis,
+    signaler_mismatch_signe_sur_refus,
+)
 
 
 @receiver(devis_accepted, dispatch_uid="crm_advance_stage_on_devis_accepted")
@@ -55,3 +58,19 @@ def _marquer_lead_perdu_on_devis_refused(sender, devis, user, motif_refus,
     if motif_refus:
         crm_activity.log_bulk_change(lead, user, 'motif_perte',
                                      old_motif, motif_refus)
+
+
+@receiver(devis_refused, dispatch_uid="crm_signal_signe_sans_devis_actif")
+def _signaler_signe_sans_devis_actif(sender, devis, user, motif_refus,
+                                     **kwargs):
+    """U11 — au refus d'un devis, signale (sans reculer l'étape) si le lead reste
+    coincé à SIGNED sans aucun devis accepté actif (« signé fantôme »).
+
+    Indépendant de la case « marquer le lead perdu » : la cohérence du funnel
+    doit être signalée que l'utilisateur coche ou non cette case. Conforme à la
+    règle #2 (le funnel est une couche permanente, séparée des statuts DOCUMENT —
+    on NE recule JAMAIS l'étape à l'aveugle).
+    """
+    if not getattr(devis, 'lead_id', None):
+        return
+    signaler_mismatch_signe_sur_refus(devis, user)
