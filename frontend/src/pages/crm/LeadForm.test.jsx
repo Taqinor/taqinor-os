@@ -146,8 +146,10 @@ describe('LeadForm U1 — mise à jour garde la modale ouverte', () => {
     const onClose = vi.fn()
     renderLeadForm({ lead: null, onClose })
 
-    // Renseigner le nom (requis).
-    const nomInput = screen.getByLabelText(/Nom/i)
+    // Renseigner le nom (requis). Le label « Nom » n'est pas associé à son
+    // input (label frère, sans htmlFor) → on cible l'input via son groupe.
+    const nomLabel = screen.getByText(/^Nom/, { selector: 'label' })
+    const nomInput = nomLabel.parentElement.querySelector('input')
     fireEvent.change(nomInput, { target: { value: 'Ben Youssef' } })
 
     fireEvent.click(screen.getByRole('button', { name: 'Créer le lead' }))

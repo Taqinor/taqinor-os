@@ -199,7 +199,7 @@ export default function GedNavigator() {
       ) : cabinets.length === 0 ? (
         // U14 — état vide qui GUIDE le premier usage : bouton pour créer la
         // première armoire (sans quoi l'écran paraissait cassé sur un déploiement neuf).
-        <EmptyState icon={<Folder className="size-6" aria-hidden="true" />}
+        <EmptyState icon={Folder}
           title="Aucune armoire documentaire"
           description="Commencez par créer une armoire (cabinet), puis ajoutez-y des dossiers et téléversez vos documents."
           action={<Button onClick={() => setCabinetDlg(true)}>
@@ -268,7 +268,7 @@ export default function GedNavigator() {
           <Card>
             <CardContent className="p-0">
               {!selected ? (
-                <EmptyState icon={<Folder className="size-6" aria-hidden="true" />}
+                <EmptyState icon={Folder}
                   title="Aucun dossier sélectionné"
                   description="Sélectionnez un dossier dans l'arborescence pour afficher ses documents." />
               ) : (
@@ -297,7 +297,7 @@ export default function GedNavigator() {
                     </div>
                   ) : documents.length === 0 ? (
                     // U14 — état vide du dossier : CTA pour téléverser le premier document.
-                    <EmptyState icon={<Inbox className="size-6" aria-hidden="true" />}
+                    <EmptyState icon={Inbox}
                       title={`Dossier « ${selected.nom} »`}
                       description="Ce dossier ne contient aucun document. Téléversez-en un pour démarrer."
                       action={<Button onClick={() => setUploadDlg(true)}>
