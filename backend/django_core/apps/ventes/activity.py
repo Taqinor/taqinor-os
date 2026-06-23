@@ -33,6 +33,22 @@ def log_devis_acceptance(devis, user, nom, date_acceptation, option=''):
     )
 
 
+def log_devis_sent(devis, user):
+    """U4 — Consigne l'envoi du devis (passage brouillon → envoyé) au chatter.
+
+    Posé lors d'un partage client (ex. lien WhatsApp). Acteur et société
+    toujours posés côté serveur, jamais lus du corps de la requête.
+    """
+    qui = getattr(user, 'username', '?')
+    return DevisActivity.objects.create(
+        company=devis.company, devis=devis, user=user,
+        kind=DevisActivity.Kind.MODIFICATION,
+        field='statut', field_label='Statut',
+        old_value='Brouillon', new_value='Envoyé',
+        body=f"Devis envoyé au client par {qui}.",
+    )
+
+
 def log_devis_refusal(devis, user, motif, date_refus):
     """FG44 — Consigne le refus du devis (qui + quand + motif) dans son chatter."""
     qui = getattr(user, 'username', '?')

@@ -59,6 +59,11 @@ class Devis(models.Model):
     fichier_pdf = models.CharField(
         max_length=500, blank=True, null=True
     )
+    # ── Envoi explicite (U4) — additif, optionnel. Horodatage du moment où le
+    # devis est partagé au client (ex. via WhatsApp). Posé UNE fois lors du
+    # passage brouillon → envoyé par le service ventes ; jamais réécrit ensuite.
+    date_envoi = models.DateTimeField(null=True, blank=True)
+
     # ── Acceptation explicite (N25) — additif. Date choisie + nom de la
     # personne qui accepte, consignés dans le chatter du devis. C'est le
     # déclencheur officiel de la création d'un chantier (devis « accepté »).

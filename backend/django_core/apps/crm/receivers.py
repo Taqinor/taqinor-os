@@ -6,7 +6,7 @@ sans que celles-ci importent le CRM. Câblé au démarrage par ``CrmConfig.ready
 """
 from django.dispatch import receiver
 
-from core.events import devis_accepted, devis_refused
+from core.events import devis_accepted, devis_refused, devis_sent
 
 from .services import (
     avancer_stage_pour_devis,
@@ -22,6 +22,18 @@ def _avancer_stage_on_devis_accepted(sender, devis, user, ancien_statut,
     Remplace, à l'identique, l'appel direct ``ventes → crm.services`` qui était
     fait au site d'acceptation : même règle (ne recule jamais, ignore les leads
     perdus), désormais déclenchée par l'événement ``devis_accepted``.
+    """
+    avancer_stage_pour_devis(devis, ancien_statut, devis.statut, user)
+
+
+@receiver(devis_sent, dispatch_uid="crm_advance_stage_on_devis_sent")
+def _avancer_stage_on_devis_sent(sender, devis, user, ancien_statut,
+                                 **kwargs):
+    """À l'ENVOI d'un devis (U4), avance l'étape du lead (→ QUOTE_SENT).
+
+    Même câblage que ``devis_accepted`` : ``avancer_stage_pour_devis`` ne recule
+    jamais le funnel et ignore les leads perdus, donc l'avance vers QUOTE_SENT
+    est sûre et idempotente (un lead déjà ≥ QUOTE_SENT ne bouge pas).
     """
     avancer_stage_pour_devis(devis, ancien_statut, devis.statut, user)
 
