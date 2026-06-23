@@ -1237,8 +1237,25 @@ export function initRoofToolPro8(opts: InitOptions): void {
     }
     if (h.center) {
       const target = { center: h.center, zoom: 19, pitch: 0 } as const;
-      if (opts.reducedMotion) map.jumpTo(target);
-      else map.flyTo({ ...target, essential: true });
+      // W113 (atterrissage fiable) — dans l'ERP, le builder est monté DANS une page React
+      // (ToitureDesign.jsx) : le conteneur `#rp9-map` peut ne pas avoir sa taille finale
+      // quand `load` se déclenche, et un `flyTo` synchrone se calcule alors contre une boîte
+      // 0-hauteur / mal dimensionnée → la caméra reste à MOROCCO_CENTER (le bug). On rend le
+      // vol vers le pin FIABLE : (1) `resize()` juste avant le déplacement pour caler la
+      // taille réelle ; (2) un `jumpTo` INSTANTANÉ d'abord (aucune animation à interrompre par
+      // une étape de boot ultérieure) ; (3) un `easeTo` doux PAR-DESSUS seulement si le mouvement
+      // est permis (cosmétique : le jumpTo a déjà atterri). Puis, au repos (`once('idle')`), on
+      // RE-CALE : un dernier `resize()` + `jumpTo` empêche un redimensionnement React tardif
+      // de laisser la caméra à MOROCCO_CENTER. `idle` ne change RIEN au boot public (qui n'a
+      // pas de `h.center`).
+      const landOnPin = () => {
+        map.resize();
+        map.jumpTo(target);
+      };
+      landOnPin();
+      if (!opts.reducedMotion) map.easeTo({ ...target, duration: 600, essential: true });
+      // Re-assertion au repos : garde contre une remise à MOROCCO_CENTER par un resize tardif.
+      map.once('idle', landOnPin);
       // Plante un marqueur laiton BIEN VISIBLE à l'endroit exact pointé par le client, pour
       // que Meriem voie son repère (distinct du contour qu'elle trace). On remplace tout
       // marqueur précédent (ré-hydratation d'un autre lead).
