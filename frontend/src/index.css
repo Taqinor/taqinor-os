@@ -1868,6 +1868,73 @@ textarea.form-control {
   .header-cmdk-kbd { display: none; }
   .header-user-name { display: none; }
 
+  /* U3 — En-tête mobile : une seule rangée propre, rien sous l'encoche.
+     ────────────────────────────────────────────────────────────────────
+
+     PROBLÈME : sur iPhone (notch/Dynamic Island), env(safe-area-inset-top)
+     ajoute 44–59 px de padding-top à .header. Les éléments flex centrent
+     (align-items:center) dans toute la hauteur padded-top, ce qui :
+       (a) place le contenu trop bas visuellement,
+       (b) peut créer un chevauchement apparent avec la barre d'état iOS.
+     De plus sur < 768 px la rangée [hamburger][brand][titre/fil]···[icônes]
+     est trop chargée : .header-cmdk prend ~40 px qu'on peut libérer.
+
+     CORRECTIONS :
+     1. Contexte d'empilement isolé (isolation:isolate) : garantit que le
+        contenu de .layout-content ne passe jamais DEVANT le header.
+     2. padding-top via env() CONSERVÉ pour décoller de l'encoche ; en
+        complément on bascule l'alignement flex sur le start ET on centre
+        les items en padding-block sur chaque groupe gauche/droite — le
+        contenu reste centré DANS la zone sous-encoche (52 px visible).
+     3. .header-cmdk masqué sur mobile (doublon avec la loupe GlobalSearch).
+     4. .header-heading prend flex:1 pour remplir l'espace et tronquer
+        sans pousser les icônes de droite hors écran.
+     5. .header-left n'est plus flex-shrink:0 → peut rétrécir pour laisser
+        de la place aux icônes de droite. */
+
+  .header {
+    /* Stacking context : le contenu scrollant ne passe jamais devant. */
+    isolation: isolate;
+    /* Alignement des items : flex-start + padding interne sur les groupes
+       pour centrer visuellement dans la zone sous-encoche. */
+    align-items: flex-start;
+    /* La hauteur visible (hors safe-area) reste 52 px. */
+    min-height: calc(52px + env(safe-area-inset-top));
+  }
+
+  /* Groupes gauche et droite : centrer verticalement dans la zone 52 px
+     sous l'encoche via padding-top égal au safe-area-inset. */
+  .header-left,
+  .header-right {
+    padding-top: env(safe-area-inset-top);
+    min-height: 52px;
+    align-items: center;
+  }
+
+  /* Le groupe gauche peut rétrécir pour céder de la place aux icônes. */
+  .header-left {
+    flex-shrink: 1;
+    min-width: 0;
+    flex: 1 1 0;
+  }
+
+  /* Le titre + fil d'Ariane occupent l'espace disponible et tronquent. */
+  .header-heading {
+    flex: 1 1 0;
+    min-width: 0;
+    overflow: hidden;
+  }
+
+  /* Le groupe droite ne rétrécit pas (icônes d'action). */
+  .header-right {
+    flex-shrink: 0;
+    flex: 0 0 auto;
+  }
+
+  /* ⌘K masqué sur mobile : la loupe GlobalSearch (gs-mobile-toggle)
+     offre le même point d'entrée sans doubler les icônes. */
+  .header-cmdk { display: none; }
+
   /* I36 — Barre d'onglets inférieure (navigation primaire au pouce). */
   .bottom-tabbar {
     display: flex;
