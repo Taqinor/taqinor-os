@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { render, screen, within, act } from '@testing-library/react'
+import { render, screen, within, act, fireEvent } from '@testing-library/react'
 import { Provider } from 'react-redux'
 import { MemoryRouter } from 'react-router-dom'
 import { configureStore } from '@reduxjs/toolkit'
@@ -111,5 +111,38 @@ describe('DevisList — U5 : factures + bon de commande générés', () => {
     const row = screen.getByText('DEV-2026-07-0008').closest('tr')
     expect(within(row).queryByText(/FAC-/)).toBeNull()
     expect(within(row).queryByText(/^BC-/)).toBeNull()
+  })
+})
+
+describe('DevisList — U7 : révisions remplacées masquées par défaut', () => {
+  const data = () => ([
+    {
+      id: 1, reference: 'DEV-V1', client_nom: 'ACME', statut: 'envoye',
+      date_creation: '2026-07-01', total_ttc: 1000, nb_options: 1, version: 1,
+      is_active: false, superseded_by_ref: 'DEV-V2',
+    },
+    {
+      id: 2, reference: 'DEV-V2', client_nom: 'ACME', statut: 'envoye',
+      date_creation: '2026-07-02', total_ttc: 1200, nb_options: 1, version: 2,
+      is_active: true, version_parent_ref: 'DEV-V1',
+    },
+  ])
+
+  it('masque la révision remplacée (is_active=false) par défaut', () => {
+    renderList({ loading: false, devis: data() })
+    // La version courante est visible…
+    expect(screen.getByText('DEV-V2')).toBeVisible()
+    // …mais la version remplacée n'apparaît pas comme une ligne « vivante ».
+    expect(screen.queryByText('DEV-V1')).toBeNull()
+  })
+
+  it('réaffiche la révision remplacée, badgée « Remplacé », via la bascule', () => {
+    renderList({ loading: false, devis: data() })
+    const toggle = screen.getByRole('button', { name: /Voir les versions remplacées \(1\)/ })
+    fireEvent.click(toggle)
+    const row = screen.getByText('DEV-V1').closest('tr')
+    expect(within(row).getByText('Remplacé')).toBeVisible()
+    // Le lien « remplacé par DEV-V2 » est présent dans la ligne remplacée.
+    expect(within(row).getByText('DEV-V2')).toBeVisible()
   })
 })

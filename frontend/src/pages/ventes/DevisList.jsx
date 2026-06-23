@@ -142,6 +142,11 @@ export default function DevisList() {
   // ── Filtre statut + recherche (référence / client) ──
   const [statutFilter, setStatutFilter] = useState('tous')
   const [query, setQuery] = useState('')
+  // U7 — masque par défaut les révisions remplacées (is_active=False) pour
+  // qu'un devis révisé n'apparaisse plus comme un doublon « vivant ». Un
+  // bouton « voir les versions remplacées » les réaffiche, toujours badgées
+  // « Remplacé » + lien vers la version courante.
+  const [showSuperseded, setShowSuperseded] = useState(false)
   // Vues enregistrées (FG11).
   const { savedViews: devisSavedViews, saveView: saveDevisView, deleteView: deleteDevisView } = useSavedViews(DL_SAVED_VIEWS_KEY)
   const saveCurrentDevisView = () => {
@@ -443,16 +448,26 @@ export default function DevisList() {
   const effStatutOf = (d) => (d.is_expired ? 'expire' : d.statut)
 
   // T5 — Liste filtrée (statut effectif) + recherche (référence / client).
+  // U7 — les révisions remplacées (is_active === false) sont masquées tant que
+  // le bouton « voir les versions remplacées » n'est pas activé.
   const filteredDevis = useMemo(() => {
     const q = query.trim().toLowerCase()
     return devis.filter(d => {
+      if (!showSuperseded && d.is_active === false) return false
       if (statutFilter !== 'tous' && effStatutOf(d) !== statutFilter) return false
       if (!q) return true
       const ref = String(d.reference ?? '').toLowerCase()
       const client = String(d.client_nom ?? '').toLowerCase()
       return ref.includes(q) || client.includes(q)
     })
-  }, [devis, statutFilter, query])
+  }, [devis, statutFilter, query, showSuperseded])
+
+  // U7 — nombre de révisions remplacées actuellement masquées (pour le bouton
+  // de bascule + le compteur).
+  const supersededCount = useMemo(
+    () => devis.filter(d => d.is_active === false).length,
+    [devis],
+  )
 
   // Chaîne de révisions d'un devis : remonte version_parent_ref jusqu'au plus
   // ancien, puis ajoute la version courante et descend via superseded_by_ref.
@@ -658,6 +673,16 @@ export default function DevisList() {
               </span>
             ))}
           </div>
+          {/* U7 — bascule pour réafficher les révisions remplacées (masquées
+              par défaut). N'apparaît que s'il y en a au moins une. */}
+          {supersededCount > 0 && (
+            <Button type="button" variant="link" size="sm"
+                    onClick={() => setShowSuperseded(s => !s)}>
+              {showSuperseded
+                ? `Masquer les versions remplacées (${supersededCount})`
+                : `Voir les versions remplacées (${supersededCount})`}
+            </Button>
+          )}
         </div>
       )}
 
@@ -874,9 +899,24 @@ export default function DevisList() {
                         {d.version > 1 && (
                           <Badge tone="primary" className="ml-1.5">v{d.version}</Badge>
                         )}
+                        {/* U7 — une révision remplacée (is_active=False) porte un
+                            badge « Remplacé » explicite ; le lien ouvre l'historique
+                            des versions (qui pointe vers la version courante). */}
+                        {d.is_active === false && (
+                          <Badge tone="neutral" className="ml-1.5">Remplacé</Badge>
+                        )}
                         {d.superseded_by_ref && (
                           <div className="mt-0.5 text-xs text-warning">
-                            remplacé par {d.superseded_by_ref}
+                            remplacé par{' '}
+                            <button
+                              type="button"
+                              className="font-medium underline hover:no-underline"
+                              onClick={() => setVersionsOpenId(
+                                versionsOpenId === d.id ? null : d.id)}
+                              title="Voir la version qui remplace ce devis"
+                            >
+                              {d.superseded_by_ref}
+                            </button>
                           </div>
                         )}
                         {(d.version > 1 || d.superseded_by_ref || d.version_parent_ref) && (
