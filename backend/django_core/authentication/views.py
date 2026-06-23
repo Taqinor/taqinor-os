@@ -1,4 +1,5 @@
 from django.conf import settings
+from django.http import HttpResponse
 from django.utils.text import slugify
 from rest_framework import generics, permissions, viewsets, status
 from rest_framework.decorators import action
@@ -409,8 +410,13 @@ class UserViewSet(viewsets.ModelViewSet):
     serializer_class = UserSerializer
 
     def get_permissions(self):
-        # Écran Utilisateurs ouvert au Responsable (promu) en plus de
-        # l'Administrateur ; le palier limité reste bloqué.
+        # Le proxy de lecture des photos de profil (avatar_image) est consommé
+        # par un <img> de N'IMPORTE quel écran (sélecteur de responsable côté
+        # Commerciale, cartes kanban, entête…), pas seulement l'écran admin :
+        # il suffit d'être authentifié. Tout le RESTE de l'écran Utilisateurs
+        # reste réservé à l'Administrateur/Responsable promu.
+        if getattr(self, 'action', None) == 'avatar_image':
+            return [permissions.IsAuthenticated()]
         return [IsAdminOrResponsableTier()]
 
     def get_queryset(self):
@@ -451,6 +457,36 @@ class UserViewSet(viewsets.ModelViewSet):
         target.save(update_fields=['avatar_key'])
         return Response(
             UserSerializer(target, context={'request': request}).data)
+
+    @action(detail=False, methods=['get'], url_path='avatar-image',
+            permission_classes=[permissions.IsAuthenticated])
+    def avatar_image(self, request):
+        """T-U13 — relaie la photo de profil via Django (MÊME ORIGINE).
+
+        ``presign_avatar`` renvoyait jadis une URL présignée pointant sur l'hôte
+        INTERNE MinIO (``minio:9000``), injoignable depuis le navigateur → la
+        photo ne s'affichait jamais (seules les initiales). On streame ici les
+        octets côté serveur, comme le proxy des pièces jointes
+        (apps.records.views.AttachmentViewSet.download).
+
+        Authentifié par le cookie ; la clé est bornée au préfixe ``avatars/``
+        (``is_avatar_key``) pour ne jamais relayer un objet arbitraire du
+        bucket. Servi en ligne (inline) pour s'afficher dans un ``<img>``."""
+        from .avatars import avatar_mime_for_key, fetch_avatar, is_avatar_key
+        key = request.query_params.get('key', '')
+        if not is_avatar_key(key):
+            return Response({'detail': 'Photo introuvable.'},
+                            status=status.HTTP_404_NOT_FOUND)
+        data = fetch_avatar(key)
+        if data is None:
+            return Response({'detail': 'Photo introuvable.'},
+                            status=status.HTTP_404_NOT_FOUND)
+        resp = HttpResponse(data, content_type=avatar_mime_for_key(key))
+        resp['Content-Disposition'] = 'inline'
+        resp['X-Content-Type-Options'] = 'nosniff'
+        # Photo immuable (clé = uuid) → cache navigateur privé court.
+        resp['Cache-Control'] = 'private, max-age=300'
+        return resp
 
     def _role_grants_admin(self, target, role_id):
         """L'utilisateur serait-il admin avec ce nouveau rôle ?"""
