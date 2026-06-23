@@ -142,6 +142,11 @@ export default function DevisList() {
   // ── Filtre statut + recherche (référence / client) ──
   const [statutFilter, setStatutFilter] = useState('tous')
   const [query, setQuery] = useState('')
+  // U7 — masque par défaut les révisions remplacées (is_active=False) pour
+  // qu'un devis révisé n'apparaisse plus comme un doublon « vivant ». Un
+  // bouton « voir les versions remplacées » les réaffiche, toujours badgées
+  // « Remplacé » + lien vers la version courante.
+  const [showSuperseded, setShowSuperseded] = useState(false)
   // Vues enregistrées (FG11).
   const { savedViews: devisSavedViews, saveView: saveDevisView, deleteView: deleteDevisView } = useSavedViews(DL_SAVED_VIEWS_KEY)
   const saveCurrentDevisView = () => {
@@ -443,16 +448,26 @@ export default function DevisList() {
   const effStatutOf = (d) => (d.is_expired ? 'expire' : d.statut)
 
   // T5 — Liste filtrée (statut effectif) + recherche (référence / client).
+  // U7 — les révisions remplacées (is_active === false) sont masquées tant que
+  // le bouton « voir les versions remplacées » n'est pas activé.
   const filteredDevis = useMemo(() => {
     const q = query.trim().toLowerCase()
     return devis.filter(d => {
+      if (!showSuperseded && d.is_active === false) return false
       if (statutFilter !== 'tous' && effStatutOf(d) !== statutFilter) return false
       if (!q) return true
       const ref = String(d.reference ?? '').toLowerCase()
       const client = String(d.client_nom ?? '').toLowerCase()
       return ref.includes(q) || client.includes(q)
     })
-  }, [devis, statutFilter, query])
+  }, [devis, statutFilter, query, showSuperseded])
+
+  // U7 — nombre de révisions remplacées actuellement masquées (pour le bouton
+  // de bascule + le compteur).
+  const supersededCount = useMemo(
+    () => devis.filter(d => d.is_active === false).length,
+    [devis],
+  )
 
   // Chaîne de révisions d'un devis : remonte version_parent_ref jusqu'au plus
   // ancien, puis ajoute la version courante et descend via superseded_by_ref.
@@ -658,6 +673,16 @@ export default function DevisList() {
               </span>
             ))}
           </div>
+          {/* U7 — bascule pour réafficher les révisions remplacées (masquées
+              par défaut). N'apparaît que s'il y en a au moins une. */}
+          {supersededCount > 0 && (
+            <Button type="button" variant="link" size="sm"
+                    onClick={() => setShowSuperseded(s => !s)}>
+              {showSuperseded
+                ? `Masquer les versions remplacées (${supersededCount})`
+                : `Voir les versions remplacées (${supersededCount})`}
+            </Button>
+          )}
         </div>
       )}
 
@@ -874,9 +899,24 @@ export default function DevisList() {
                         {d.version > 1 && (
                           <Badge tone="primary" className="ml-1.5">v{d.version}</Badge>
                         )}
+                        {/* U7 — une révision remplacée (is_active=False) porte un
+                            badge « Remplacé » explicite ; le lien ouvre l'historique
+                            des versions (qui pointe vers la version courante). */}
+                        {d.is_active === false && (
+                          <Badge tone="neutral" className="ml-1.5">Remplacé</Badge>
+                        )}
                         {d.superseded_by_ref && (
                           <div className="mt-0.5 text-xs text-warning">
-                            remplacé par {d.superseded_by_ref}
+                            remplacé par{' '}
+                            <button
+                              type="button"
+                              className="font-medium underline hover:no-underline"
+                              onClick={() => setVersionsOpenId(
+                                versionsOpenId === d.id ? null : d.id)}
+                              title="Voir la version qui remplace ce devis"
+                            >
+                              {d.superseded_by_ref}
+                            </button>
                           </div>
                         )}
                         {(d.version > 1 || d.superseded_by_ref || d.version_parent_ref) && (
@@ -889,6 +929,36 @@ export default function DevisList() {
                             >
                               {versionsOpenId === d.id ? 'Masquer les versions' : 'Voir les versions'}
                             </button>
+                          </div>
+                        )}
+                        {/* U5 — Documents générés depuis ce devis : factures (chips
+                            cliquables → liste Factures) + bon de commande (→ BC).
+                            Lecture seule, données du serializer. */}
+                        {(d.factures_liees?.length > 0 || d.bon_commande_etat?.exists) && (
+                          <div className="mt-1 flex flex-wrap gap-1">
+                            {d.bon_commande_etat?.exists && (
+                              <button
+                                type="button"
+                                onClick={() => navigate('/ventes/bons-commande')}
+                                title={`Bon de commande ${d.bon_commande_etat.reference} — ${d.bon_commande_etat.statut_display}`}
+                                className="inline-flex items-center gap-1 rounded-full border border-border bg-muted/60 px-2 py-0.5 text-xs font-medium hover:bg-muted"
+                              >
+                                <FileStack className="size-3" aria-hidden="true" />
+                                {d.bon_commande_etat.reference}
+                              </button>
+                            )}
+                            {(d.factures_liees ?? []).map(f => (
+                              <button
+                                key={f.id}
+                                type="button"
+                                onClick={() => navigate('/ventes/factures')}
+                                title={`Facture ${f.reference} — ${f.statut_display}`}
+                                className="inline-flex items-center gap-1 rounded-full border border-success/40 bg-success/10 px-2 py-0.5 text-xs font-medium text-success hover:bg-success/20"
+                              >
+                                <FileText className="size-3" aria-hidden="true" />
+                                {f.reference} · {f.statut_display}
+                              </button>
+                            ))}
                           </div>
                         )}
                       </td>
@@ -940,6 +1010,25 @@ export default function DevisList() {
                         {d.statut === 'accepte' && d.option_acceptee && (
                           <div className="mt-1 text-xs text-success">
                             Option : {d.option_acceptee === 'avec_batterie' ? 'Avec batterie' : 'Sans batterie'}
+                          </div>
+                        )}
+                        {/* U8 — état du bon de commande lié (lecture seule, depuis
+                            le OneToOne existant) + avertissement d'incohérence
+                            quand un devis accepté n'a pas de BC actif. */}
+                        {d.bon_commande_etat?.exists && (
+                          <div className="mt-1 text-xs text-muted-foreground">
+                            BC : {d.bon_commande_etat.statut_display}
+                          </div>
+                        )}
+                        {d.bon_commande_etat?.mismatch && (
+                          <div className="mt-1 flex items-start gap-1 text-xs font-medium text-warning"
+                               title="Devis accepté mais le bon de commande est annulé ou absent">
+                            <AlertTriangle className="mt-0.5 size-3 shrink-0" aria-hidden="true" />
+                            <span>
+                              {d.bon_commande_etat.exists
+                                ? 'Devis accepté mais BC annulé'
+                                : 'Devis accepté sans bon de commande'}
+                            </span>
                           </div>
                         )}
                       </td>

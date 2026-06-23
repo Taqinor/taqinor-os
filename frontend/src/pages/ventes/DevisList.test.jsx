@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { render, screen, within, act } from '@testing-library/react'
+import { render, screen, within, act, fireEvent } from '@testing-library/react'
 import { Provider } from 'react-redux'
 import { MemoryRouter } from 'react-router-dom'
 import { configureStore } from '@reduxjs/toolkit'
@@ -75,5 +75,117 @@ describe('DevisList — rendu des données (J141)', () => {
     // ligne du tableau (le libellé apparaît aussi dans les cartes de résumé).
     const row = cell.closest('tr')
     expect(within(row).getByText('Envoyé')).toBeVisible()
+  })
+})
+
+describe('DevisList — U5 : factures + bon de commande générés', () => {
+  it('affiche des chips facture (réf + statut) et bon de commande dans la ligne', () => {
+    renderList({
+      loading: false,
+      devis: [{
+        id: 7, reference: 'DEV-2026-07-0007', client_nom: 'ACME', statut: 'accepte',
+        date_creation: '2026-07-01', total_ttc: 50000, nb_options: 1, version: 1,
+        factures_liees: [
+          { id: 11, reference: 'FAC-2026-07-0011', statut: 'emise', statut_display: 'Émise', type_facture: 'acompte' },
+        ],
+        bon_commande_etat: { exists: true, id: 5, reference: 'BC-2026-07-0005', statut: 'confirme', statut_display: 'Confirmé', mismatch: false },
+      }],
+    })
+    const row = screen.getByText('DEV-2026-07-0007').closest('tr')
+    // La facture liée apparaît avec sa référence et son libellé de statut.
+    expect(within(row).getByText(/FAC-2026-07-0011/)).toBeVisible()
+    expect(within(row).getByText(/Émise/)).toBeVisible()
+    // Le bon de commande lié apparaît aussi.
+    expect(within(row).getByText('BC-2026-07-0005')).toBeVisible()
+  })
+
+  it('n\'affiche aucune chip document quand le devis n\'a ni facture ni BC', () => {
+    renderList({
+      loading: false,
+      devis: [{
+        id: 8, reference: 'DEV-2026-07-0008', client_nom: 'ACME', statut: 'brouillon',
+        date_creation: '2026-07-01', total_ttc: 1000, nb_options: 1, version: 1,
+        factures_liees: [], bon_commande_etat: { exists: false, mismatch: false },
+      }],
+    })
+    const row = screen.getByText('DEV-2026-07-0008').closest('tr')
+    expect(within(row).queryByText(/FAC-/)).toBeNull()
+    expect(within(row).queryByText(/^BC-/)).toBeNull()
+  })
+})
+
+describe('DevisList — U7 : révisions remplacées masquées par défaut', () => {
+  const data = () => ([
+    {
+      id: 1, reference: 'DEV-V1', client_nom: 'ACME', statut: 'envoye',
+      date_creation: '2026-07-01', total_ttc: 1000, nb_options: 1, version: 1,
+      is_active: false, superseded_by_ref: 'DEV-V2',
+    },
+    {
+      id: 2, reference: 'DEV-V2', client_nom: 'ACME', statut: 'envoye',
+      date_creation: '2026-07-02', total_ttc: 1200, nb_options: 1, version: 2,
+      is_active: true, version_parent_ref: 'DEV-V1',
+    },
+  ])
+
+  it('masque la révision remplacée (is_active=false) par défaut', () => {
+    renderList({ loading: false, devis: data() })
+    // La version courante est visible…
+    expect(screen.getByText('DEV-V2')).toBeVisible()
+    // …mais la version remplacée n'apparaît pas comme une ligne « vivante ».
+    expect(screen.queryByText('DEV-V1')).toBeNull()
+  })
+
+  it('réaffiche la révision remplacée, badgée « Remplacé », via la bascule', () => {
+    renderList({ loading: false, devis: data() })
+    const toggle = screen.getByRole('button', { name: /Voir les versions remplacées \(1\)/ })
+    fireEvent.click(toggle)
+    const row = screen.getByText('DEV-V1').closest('tr')
+    expect(within(row).getByText('Remplacé')).toBeVisible()
+    // Le lien « remplacé par DEV-V2 » est présent dans la ligne remplacée.
+    expect(within(row).getByText('DEV-V2')).toBeVisible()
+  })
+})
+
+describe('DevisList — U8 : état du bon de commande + incohérence', () => {
+  it('affiche le statut du BC et avertit quand un devis accepté a un BC annulé', () => {
+    renderList({
+      loading: false,
+      devis: [{
+        id: 3, reference: 'DEV-BC-ANN', client_nom: 'ACME', statut: 'accepte',
+        date_creation: '2026-07-01', total_ttc: 9000, nb_options: 1, version: 1,
+        bon_commande_etat: { exists: true, id: 9, reference: 'BC-9', statut: 'annule', statut_display: 'Annulé', mismatch: true },
+      }],
+    })
+    const row = screen.getByText('DEV-BC-ANN').closest('tr')
+    expect(within(row).getByText(/BC : Annulé/)).toBeVisible()
+    expect(within(row).getByText('Devis accepté mais BC annulé')).toBeVisible()
+  })
+
+  it('avertit quand un devis accepté n\'a aucun bon de commande', () => {
+    renderList({
+      loading: false,
+      devis: [{
+        id: 4, reference: 'DEV-BC-NONE', client_nom: 'ACME', statut: 'accepte',
+        date_creation: '2026-07-01', total_ttc: 9000, nb_options: 1, version: 1,
+        bon_commande_etat: { exists: false, reference: null, statut: null, statut_display: null, mismatch: true },
+      }],
+    })
+    const row = screen.getByText('DEV-BC-NONE').closest('tr')
+    expect(within(row).getByText('Devis accepté sans bon de commande')).toBeVisible()
+  })
+
+  it('n\'avertit pas quand le BC est confirmé sur un devis accepté', () => {
+    renderList({
+      loading: false,
+      devis: [{
+        id: 5, reference: 'DEV-BC-OK', client_nom: 'ACME', statut: 'accepte',
+        date_creation: '2026-07-01', total_ttc: 9000, nb_options: 1, version: 1,
+        bon_commande_etat: { exists: true, id: 10, reference: 'BC-10', statut: 'confirme', statut_display: 'Confirmé', mismatch: false },
+      }],
+    })
+    const row = screen.getByText('DEV-BC-OK').closest('tr')
+    expect(within(row).getByText(/BC : Confirmé/)).toBeVisible()
+    expect(within(row).queryByText(/BC annulé|sans bon de commande/)).toBeNull()
   })
 })
