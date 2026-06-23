@@ -119,6 +119,60 @@ class DevisSerializer(serializers.ModelSerializer):
         return {'id': inst.id, 'reference': inst.reference,
                 'statut': inst.statut}
 
+    # U5 — Factures générées depuis ce devis (échéancier : acompte/tranches),
+    # lecture seule. Permet d'afficher des chips cliquables vers la facture dans
+    # la liste/le détail. Bornées à la société par le devis lui-même (un Facture
+    # partage toujours la company de son devis). Aucun nouveau chemin d'écriture.
+    factures_liees = serializers.SerializerMethodField()
+    # U5/U8 — Bon de commande lié (OneToOne) : référence + statut, et un drapeau
+    # d'incohérence (U8) quand le devis est « accepté » mais que son BC est
+    # annulé — ou qu'aucun BC n'existe. Lecture seule, dérivé de la relation
+    # existante ; ne change aucun statut.
+    bon_commande_etat = serializers.SerializerMethodField()
+
+    def get_factures_liees(self, obj):
+        # related_name='factures' depuis Facture.devis (FK). Triées par référence
+        # pour un rendu stable. Référence + statut (+ libellé du statut) suffisent
+        # pour une chip cliquable ; aucun montant client-sensible ajouté ici.
+        return [
+            {
+                'id': f.id,
+                'reference': f.reference,
+                'statut': f.statut,
+                'statut_display': f.get_statut_display(),
+                'type_facture': f.type_facture,
+            }
+            for f in obj.factures.all().order_by('reference')
+        ]
+
+    def get_bon_commande_etat(self, obj):
+        # Reverse OneToOne : l'accès lève RelatedObjectDoesNotExist quand aucun
+        # BC n'existe — on le rattrape pour renvoyer un état « absent » propre.
+        try:
+            bc = obj.bon_commande
+        except BonCommande.DoesNotExist:
+            bc = None
+        # U8 — un devis accepté DOIT normalement avoir un BC actif. On signale
+        # l'incohérence quand le BC est annulé OU absent sur un devis accepté.
+        is_accepte = obj.statut == 'accepte'
+        if bc is None:
+            return {
+                'exists': False,
+                'reference': None,
+                'statut': None,
+                'statut_display': None,
+                'mismatch': is_accepte,
+            }
+        bc_annule = bc.statut == BonCommande.Statut.ANNULE
+        return {
+            'exists': True,
+            'id': bc.id,
+            'reference': bc.reference,
+            'statut': bc.statut,
+            'statut_display': bc.get_statut_display(),
+            'mismatch': is_accepte and bc_annule,
+        }
+
     # FG48 — comparaison deux options (Sans batterie / Avec batterie).
     # Données déjà calculées par build_quote_data ; on les expose ici pour
     # que le frontend puisse afficher la carte de comparaison A vs B avec ROI.

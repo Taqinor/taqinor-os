@@ -891,6 +891,36 @@ export default function DevisList() {
                             </button>
                           </div>
                         )}
+                        {/* U5 — Documents générés depuis ce devis : factures (chips
+                            cliquables → liste Factures) + bon de commande (→ BC).
+                            Lecture seule, données du serializer. */}
+                        {(d.factures_liees?.length > 0 || d.bon_commande_etat?.exists) && (
+                          <div className="mt-1 flex flex-wrap gap-1">
+                            {d.bon_commande_etat?.exists && (
+                              <button
+                                type="button"
+                                onClick={() => navigate('/ventes/bons-commande')}
+                                title={`Bon de commande ${d.bon_commande_etat.reference} — ${d.bon_commande_etat.statut_display}`}
+                                className="inline-flex items-center gap-1 rounded-full border border-border bg-muted/60 px-2 py-0.5 text-xs font-medium hover:bg-muted"
+                              >
+                                <FileStack className="size-3" aria-hidden="true" />
+                                {d.bon_commande_etat.reference}
+                              </button>
+                            )}
+                            {(d.factures_liees ?? []).map(f => (
+                              <button
+                                key={f.id}
+                                type="button"
+                                onClick={() => navigate('/ventes/factures')}
+                                title={`Facture ${f.reference} — ${f.statut_display}`}
+                                className="inline-flex items-center gap-1 rounded-full border border-success/40 bg-success/10 px-2 py-0.5 text-xs font-medium text-success hover:bg-success/20"
+                              >
+                                <FileText className="size-3" aria-hidden="true" />
+                                {f.reference} · {f.statut_display}
+                              </button>
+                            ))}
+                          </div>
+                        )}
                       </td>
                       <td data-label="Client">
                         {d.client_nom ?? '—'}

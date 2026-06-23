@@ -77,3 +77,39 @@ describe('DevisList — rendu des données (J141)', () => {
     expect(within(row).getByText('Envoyé')).toBeVisible()
   })
 })
+
+describe('DevisList — U5 : factures + bon de commande générés', () => {
+  it('affiche des chips facture (réf + statut) et bon de commande dans la ligne', () => {
+    renderList({
+      loading: false,
+      devis: [{
+        id: 7, reference: 'DEV-2026-07-0007', client_nom: 'ACME', statut: 'accepte',
+        date_creation: '2026-07-01', total_ttc: 50000, nb_options: 1, version: 1,
+        factures_liees: [
+          { id: 11, reference: 'FAC-2026-07-0011', statut: 'emise', statut_display: 'Émise', type_facture: 'acompte' },
+        ],
+        bon_commande_etat: { exists: true, id: 5, reference: 'BC-2026-07-0005', statut: 'confirme', statut_display: 'Confirmé', mismatch: false },
+      }],
+    })
+    const row = screen.getByText('DEV-2026-07-0007').closest('tr')
+    // La facture liée apparaît avec sa référence et son libellé de statut.
+    expect(within(row).getByText(/FAC-2026-07-0011/)).toBeVisible()
+    expect(within(row).getByText(/Émise/)).toBeVisible()
+    // Le bon de commande lié apparaît aussi.
+    expect(within(row).getByText('BC-2026-07-0005')).toBeVisible()
+  })
+
+  it('n\'affiche aucune chip document quand le devis n\'a ni facture ni BC', () => {
+    renderList({
+      loading: false,
+      devis: [{
+        id: 8, reference: 'DEV-2026-07-0008', client_nom: 'ACME', statut: 'brouillon',
+        date_creation: '2026-07-01', total_ttc: 1000, nb_options: 1, version: 1,
+        factures_liees: [], bon_commande_etat: { exists: false, mismatch: false },
+      }],
+    })
+    const row = screen.getByText('DEV-2026-07-0008').closest('tr')
+    expect(within(row).queryByText(/FAC-/)).toBeNull()
+    expect(within(row).queryByText(/^BC-/)).toBeNull()
+  })
+})
