@@ -19,7 +19,12 @@ from pathlib import Path
 logger = logging.getLogger(__name__)
 
 _WATT_RE = re.compile(r"(\d{3,4})\s*(?:wc|w)\b", re.IGNORECASE)
-_DEFAULT_WATT = 450
+# Repli SÛR quand une ligne panneau n'a aucune puissance lisible dans sa
+# désignation ni dans le nom du produit lié : on prend le STANDARD du catalogue
+# (710 W — « Panneau Canadien Solar 710W »/« Panneau Jinko 710W », cf.
+# seed_catalogue + generate_devis_premium.watt_par_panneau), JAMAIS l'ancien 450
+# obsolète. Le chemin normal lit la VRAIE puissance via _parse_watt(nom produit).
+_DEFAULT_WATT = 710
 
 # ── Conditions de paiement par mode d'installation (SOURCE UNIQUE) ──
 # Décision propriétaire 2026-06-12. Tous les formats PDF ET l'échéancier

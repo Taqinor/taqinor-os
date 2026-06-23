@@ -96,6 +96,40 @@ class TestBuildQuoteData(TestCase):
         self.assertIn('eco_s_monthly', data)
         self.assertEqual(len(data['eco_s_monthly']), 12)
 
+    def test_real_catalogue_panel_reports_its_true_wattage(self):
+        """Le devis auto utilise un VRAI panneau du catalogue : la désignation
+        porte sa puissance (« Panneau Canadien Solar 710W ») et le moteur lit
+        710 — jamais une valeur inventée."""
+        from apps.ventes.quote_engine import build_quote_data
+        devis = make_devis(self.company, self.user, self.client_obj, [
+            ('Panneau Canadien Solar 710W', '10', '1400'),
+            ('Onduleur réseau 8kW', '1', '14000'),
+        ], reference='DEV-QE-REAL')
+        data = build_quote_data(devis)
+        self.assertEqual(data['nb_panneaux'], 10)
+        self.assertEqual(data['watt_par_panneau'], 710)  # vraie puissance lue
+        self.assertEqual(data['puissance_kwc'], 7.1)
+
+    def test_unparseable_panel_defaults_to_catalogue_standard_not_stale_450(self):
+        """Repli SÛR : une ligne panneau sans puissance lisible (ni désignation
+        ni nom produit) ne doit PLUS inventer l'ancien 450 W obsolète — elle
+        retombe sur le STANDARD du catalogue (710 W), panneau moderne réaliste.
+        Garde la régression « pourquoi 450 W alors que la donnée est là ? »."""
+        from apps.ventes.quote_engine import build_quote_data
+        from apps.ventes.quote_engine.builder import _DEFAULT_WATT
+        # désignation SANS chiffre de puissance + produit lié au même nom : aucun
+        # wattage lisible → le repli s'applique.
+        devis = make_devis(self.company, self.user, self.client_obj, [
+            ('Panneau photovoltaïque monocristallin', '12', '1400'),
+            ('Onduleur réseau 8kW', '1', '14000'),
+        ], reference='DEV-QE-NOWATT')
+        data = build_quote_data(devis)
+        self.assertEqual(data['nb_panneaux'], 12)
+        # le repli est le standard catalogue, JAMAIS l'ancien 450 périmé
+        self.assertEqual(_DEFAULT_WATT, 710)
+        self.assertEqual(data['watt_par_panneau'], 710)
+        self.assertNotEqual(data['watt_par_panneau'], 450)
+
     def test_no_hybrid_means_single_option_no_fabricated_battery(self):
         """RÈGLE DURE : sans onduleur hybride, l'option « avec batterie » ne
         se rend pas — document à option unique, jamais de batterie fabriquée
