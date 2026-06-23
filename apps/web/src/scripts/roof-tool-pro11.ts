@@ -315,6 +315,17 @@ export function initRoofToolPro8(opts: InitOptions): void {
   // W92 — glissé-déplacement d'un SOMMET du tracé (delta lng/lat sur ctx.vertices[idx]).
   let moveVertex: { idx: number; startLng: number; startLat: number; vLng: number; vLat: number; moved: boolean } | null = null;
   let rec: Recommendation | null = null;
+  // W113 — repère VISIBLE du pin client (étude Meriem) : quand un lead n'apporte qu'un
+  // pin (pas de contour ≥3 sommets), on plante un marqueur laiton à l'endroit exact pointé
+  // par le client, distinct du contour que Meriem trace. Posé dans applyHydration, retiré
+  // dans clearEditorState (nouveau lead / effacement). null hors flux d'hydratation.
+  let clientPinMarker: maplibregl.Marker | null = null;
+  const removeClientPinMarker = () => {
+    if (clientPinMarker) {
+      clientPinMarker.remove();
+      clientPinMarker = null;
+    }
+  };
   // V3 — type de toit (plat = modèle existant, défaut ; pente = pose affleurante),
   // pente + face SAISIES (imposent l'inclinaison et l'azimut de l'array), et le
   // résultat pente courant. `pinned` = axes que l'utilisateur a explicitement figés
@@ -1228,6 +1239,13 @@ export function initRoofToolPro8(opts: InitOptions): void {
       const target = { center: h.center, zoom: 19, pitch: 0 } as const;
       if (opts.reducedMotion) map.jumpTo(target);
       else map.flyTo({ ...target, essential: true });
+      // Plante un marqueur laiton BIEN VISIBLE à l'endroit exact pointé par le client, pour
+      // que Meriem voie son repère (distinct du contour qu'elle trace). On remplace tout
+      // marqueur précédent (ré-hydratation d'un autre lead).
+      removeClientPinMarker();
+      clientPinMarker = new maplibregl.Marker({ color: '#e8b54a' })
+        .setLngLat(h.center)
+        .addTo(map);
       setStatus('Repère du client chargé — tracez le contour du toit pour lancer le calcul.');
       return true;
     }
@@ -1486,6 +1504,7 @@ export function initRoofToolPro8(opts: InitOptions): void {
   function clearEditorState() {
     vertices = [];
     closed = false;
+    removeClientPinMarker(); // W113 — retire le repère client (nouveau lead / effacement)
     obstacles = [];
     selectedObsId = null;
     setObstacleMode(false);

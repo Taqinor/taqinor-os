@@ -64,8 +64,25 @@ class FakeMap {
   setStyle() {}
 }
 
+// W113 — marqueurs MapLibre instanciés (le repère client de l'hydratation). On capture
+// chaque Marker créé (couleur + lngLat + ajout/retrait) pour vérifier l'hydratation pin.
+interface FakeMarkerRecord { color?: string; lngLat: [number, number] | null; added: boolean; removed: boolean }
+const fakeMarkers: FakeMarkerRecord[] = [];
+
 vi.mock('maplibre-gl', () => {
   class NavigationControl {}
+  // W113 — Marker mocké : un faux marqueur chaînable qui enregistre sa couleur, sa position
+  // et son cycle add/remove dans `fakeMarkers` (jamais de DOM/WebGL réel).
+  class Marker {
+    rec: FakeMarkerRecord;
+    constructor(opts?: { color?: string }) {
+      this.rec = { color: opts?.color, lngLat: null, added: false, removed: false };
+      fakeMarkers.push(this.rec);
+    }
+    setLngLat(ll: [number, number]) { this.rec.lngLat = ll; return this; }
+    addTo() { this.rec.added = true; return this; }
+    remove() { this.rec.removed = true; return this; }
+  }
   // W91 — GeolocateControl natif mocké : un émetteur d'événements minimal (on/fire) pour
   // que l'entrée puisse s'abonner à `geolocate` et qu'un test déclenche une position.
   class GeolocateControl {
@@ -80,7 +97,7 @@ vi.mock('maplibre-gl', () => {
   const MercatorCoordinate = {
     fromLngLat: () => ({ x: 0, y: 0, z: 0, meterInMercatorCoordinateUnits: () => 1e-7 }),
   };
-  const api = { Map: FakeMap, NavigationControl, GeolocateControl, Point, MercatorCoordinate, GeoJSONSource: class {} };
+  const api = { Map: FakeMap, NavigationControl, GeolocateControl, Marker, Point, MercatorCoordinate, GeoJSONSource: class {} };
   return { default: api, ...api };
 });
 
@@ -1605,5 +1622,97 @@ describe('runtime W97 §6 — un obstacle couvrant fait chuter la pose (dégagem
     expect(intOf('rp9-reco-kwc')).toBe(0);
     // message honnête « non viable » (W74) au lieu d'un faux « 0 panneau gagnant ».
     expect(txt('rp9-reco-why')).toMatch(/non viable/i);
+  });
+});
+
+// ════════════════════════════════════════════════════════════════════════════════════
+// W113 — REPÈRE CLIENT VISIBLE À L'HYDRATATION. Quand l'étude Meriem (/devis-design/:id)
+// hydrate l'outil avec un lead « pin seul » (roof_point sans contour ≥3 sommets), un
+// marqueur laiton DOIT être planté à l'endroit exact pointé par le client, pour qu'elle
+// le voie. Un lead sans roof_point n'en plante AUCUN. L'effacement le retire.
+// ════════════════════════════════════════════════════════════════════════════════════
+describe('runtime W113 — marqueur du pin client à l\'hydratation', () => {
+  beforeEach(() => {
+    fakeMaps.length = 0;
+    fakeMarkers.length = 0;
+    setupDom();
+    vi.stubGlobal('fetch', vi.fn(() => Promise.reject(new Error('no network'))));
+  });
+  afterEach(() => {
+    vi.useRealTimers();
+    vi.unstubAllGlobals();
+    vi.resetModules();
+  });
+
+  // L'hydratation vit dans le handler map.on('load') (la couche WebGL) ; le mock ne le
+  // déclenche pas tout seul → on le déclenche après init, comme MapLibre une fois le style prêt.
+  const fireLoad = () => fakeMaps[0].fire('load', {});
+
+  it('hydrater un lead « pin seul » plante un marqueur laiton à ce lng/lat', async () => {
+    const init = await loadTool();
+    init({
+      maptilerKey: 'test',
+      reducedMotion: true,
+      roofType: createRoofTypeSelect(document),
+      hydrate: { lead: { roof_point: { lat: 33.5905, lng: -7.5997 } } },
+    });
+    fireLoad();
+    // un seul marqueur, ajouté, à la position du pin (lng/lat), couleur laiton de marque
+    const added = fakeMarkers.filter((m) => m.added);
+    expect(added.length).toBe(1);
+    expect(added[0].lngLat).toEqual([-7.5997, 33.5905]); // [lng, lat] convention MapLibre
+    expect(added[0].color).toBe('#e8b54a');
+  });
+
+  it('hydrater un lead SANS roof_point ne plante aucun marqueur', async () => {
+    const init = await loadTool();
+    init({
+      maptilerKey: 'test',
+      reducedMotion: true,
+      roofType: createRoofTypeSelect(document),
+      hydrate: { lead: { fullName: 'Sans GPS' } },
+    });
+    fireLoad();
+    expect(fakeMarkers.filter((m) => m.added).length).toBe(0);
+  });
+
+  it('un lead avec un VRAI contour (≥3 sommets) ne plante pas le marqueur pin', async () => {
+    const init = await loadTool();
+    const sq = squareCorners(16); // [lng,lat] → le lead les fournit en [lat,lng]
+    init({
+      maptilerKey: 'test',
+      reducedMotion: true,
+      roofType: createRoofTypeSelect(document),
+      hydrate: { lead: { roof_outline: sq.map(([lng, lat]) => [lat, lng] as [number, number]) } },
+    });
+    fireLoad();
+    // contour fermé → l'optimiseur tourne ; aucun marqueur pin (Meriem trace, pas un point seul)
+    expect(fakeMarkers.filter((m) => m.added).length).toBe(0);
+  });
+
+  it('« Effacer » retire le marqueur du pin client', async () => {
+    const init = await loadTool();
+    init({
+      maptilerKey: 'test',
+      reducedMotion: true,
+      roofType: createRoofTypeSelect(document),
+      hydrate: { lead: { roof_point: { lat: 33.5905, lng: -7.5997 } } },
+    });
+    fireLoad();
+    expect(fakeMarkers.filter((m) => m.added && !m.removed).length).toBe(1);
+    (document.getElementById('rp9-clear') as HTMLButtonElement).click(); // reset() → clearEditorState
+    // le marqueur posé est retiré (plus aucun marqueur vivant)
+    expect(fakeMarkers.filter((m) => m.added && !m.removed).length).toBe(0);
+  });
+
+  // Boot normal (pro-11 sans hydrate) et capture : aucun marqueur planté → non-régression
+  // du builder public preview/capture (le marqueur ne fire QUE dans le flux d'hydratation).
+  it('boot pro-11 SANS hydrate ne plante aucun marqueur (preview public intact)', async () => {
+    const init = await loadTool();
+    init({ maptilerKey: 'test', reducedMotion: true, roofType: createRoofTypeSelect(document) });
+    fireLoad();
+    setBill('1500');
+    traceRoof(fakeMaps[0], 16);
+    expect(fakeMarkers.filter((m) => m.added).length).toBe(0);
   });
 });
