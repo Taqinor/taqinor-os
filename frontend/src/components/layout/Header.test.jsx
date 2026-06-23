@@ -38,40 +38,40 @@ function renderHeader(path = '/dashboard') {
   )
 }
 
-describe(‘Header — I136 polissage en-tête’, () => {
+describe('Header — I136 polissage en-tête', () => {
   beforeEach(() => navigateMock.mockClear())
 
-  it(‘garde .header-title comme NON-heading (collision e2e avec le h2 de page)’, () => {
+  it('garde .header-title comme NON-heading (collision e2e avec le h2 de page)', () => {
     const { container } = renderHeader()
-    const titleEl = container.querySelector(‘.header-title’)
+    const titleEl = container.querySelector('.header-title')
     expect(titleEl).toBeInTheDocument()
     // Ne doit JAMAIS être role=heading.
-    expect(titleEl.getAttribute(‘role’)).not.toBe(‘heading’)
+    expect(titleEl.getAttribute('role')).not.toBe('heading')
     expect(titleEl.tagName.toLowerCase()).not.toMatch(/^h[1-6]$/)
   })
 
-  it(‘expose un repère de marque/logo CLIQUABLE qui ramène au dashboard’, async () => {
-    renderHeader(‘/ventes/devis’)
-    const brand = screen.getByRole(‘button’, { name: /accueil|taqinor/i })
+  it('expose un repère de marque/logo CLIQUABLE qui ramène au dashboard', async () => {
+    renderHeader('/ventes/devis')
+    const brand = screen.getByRole('button', { name: /accueil|taqinor/i })
     expect(brand).toBeInTheDocument()
     await userEvent.click(brand)
-    expect(navigateMock).toHaveBeenCalledWith(‘/dashboard’)
+    expect(navigateMock).toHaveBeenCalledWith('/dashboard')
   })
 
-  it(‘affiche l\’affordance ⌘K avec une touche kbd’, () => {
+  it('affiche l\'affordance ⌘K avec une touche kbd', () => {
     const { container } = renderHeader()
-    const kbd = container.querySelector(‘.header-cmdk-kbd’)
+    const kbd = container.querySelector('.header-cmdk-kbd')
     expect(kbd).toBeInTheDocument()
-    expect(kbd.tagName.toLowerCase()).toBe(‘kbd’)
+    expect(kbd.tagName.toLowerCase()).toBe('kbd')
   })
 
-  it(‘le déclencheur ⌘K émet l\’événement de palette de commandes’, async () => {
+  it('le déclencheur ⌘K émet l\'événement de palette de commandes', async () => {
     renderHeader()
     const listener = vi.fn()
-    window.addEventListener(‘taqinor:command-palette’, listener)
+    window.addEventListener('taqinor:command-palette', listener)
     await userEvent.click(screen.getByLabelText(/Recherche et commandes/i))
     expect(listener).toHaveBeenCalled()
-    window.removeEventListener(‘taqinor:command-palette’, listener)
+    window.removeEventListener('taqinor:command-palette', listener)
   })
 })
 
@@ -82,52 +82,52 @@ describe(‘Header — I136 polissage en-tête’, () => {
    safe-area ne sont pas vérifiables en jsdom (pas de layout réel),
    mais une régression de structure DOM suffit à casser le rendu mobile.
    ─────────────────────────────────────────────────────────────────── */
-describe(‘Header — U3 layout mobile : rangée plate sans chevauchement’, () => {
+describe('Header — U3 layout mobile : rangée plate sans chevauchement', () => {
   beforeEach(() => navigateMock.mockClear())
 
-  it(‘le <header> contient exactement .header-left et .header-right comme enfants directs de la rangée’, () => {
+  it('le <header> contient exactement .header-left et .header-right comme enfants directs de la rangée', () => {
     const { container } = renderHeader()
-    const header = container.querySelector(‘header.header’)
+    const header = container.querySelector('header.header')
     expect(header).toBeInTheDocument()
 
     // Les deux groupes sont des enfants DIRECTS du <header>.
-    const left  = header.querySelector(‘:scope > .header-left’)
-    const right = header.querySelector(‘:scope > .header-right’)
+    const left  = header.querySelector(':scope > .header-left')
+    const right = header.querySelector(':scope > .header-right')
     expect(left).toBeInTheDocument()
     expect(right).toBeInTheDocument()
   })
 
-  it(‘le bouton hamburger (menu) est dans .header-left’, () => {
+  it('le bouton hamburger (menu) est dans .header-left', () => {
     const { container } = renderHeader()
-    const left = container.querySelector(‘.header-left’)
-    const menuBtn = left.querySelector(‘.header-menu-btn’)
+    const left = container.querySelector('.header-left')
+    const menuBtn = left.querySelector('.header-menu-btn')
     expect(menuBtn).toBeInTheDocument()
-    expect(menuBtn).toHaveAttribute(‘aria-label’, ‘Ouvrir le menu’)
+    expect(menuBtn).toHaveAttribute('aria-label', 'Ouvrir le menu')
   })
 
-  it(‘.header-heading (titre + fil d\’Ariane) est dans .header-left et NON dupliqué’, () => {
-    const { container } = renderHeader(‘/ventes’)
-    const headings = container.querySelectorAll(‘.header-heading’)
+  it('.header-heading (titre + fil d\'Ariane) est dans .header-left et NON dupliqué', () => {
+    const { container } = renderHeader('/ventes')
+    const headings = container.querySelectorAll('.header-heading')
     expect(headings.length).toBe(1)
     // Doit être dans .header-left, pas dans .header-right.
-    const left = container.querySelector(‘.header-left’)
+    const left = container.querySelector('.header-left')
     expect(left.contains(headings[0])).toBe(true)
   })
 
-  it(‘.header-title est présent, non vide et dans .header-heading’, () => {
-    const { container } = renderHeader(‘/dashboard’)
-    const titleEl = container.querySelector(‘.header-title’)
+  it('.header-title est présent, non vide et dans .header-heading', () => {
+    const { container } = renderHeader('/dashboard')
+    const titleEl = container.querySelector('.header-title')
     expect(titleEl).toBeInTheDocument()
-    // Le titre ne doit pas être vide (titleFor retourne au moins ‘’)
+    // Le titre ne doit pas être vide (titleFor retourne au moins '')
     // et doit être DANS .header-heading (pas flottant hors du groupe).
-    const heading = container.querySelector(‘.header-heading’)
+    const heading = container.querySelector('.header-heading')
     expect(heading).toContainElement(titleEl)
   })
 
-  it(‘le <header> est un <header> sémantique (balise landmark) avec un seul niveau’, () => {
+  it('le <header> est un <header> sémantique (balise landmark) avec un seul niveau', () => {
     const { container } = renderHeader()
     // Aucun <header> imbriqué (cela créerait deux landmarks header).
-    const headers = container.querySelectorAll(‘header’)
+    const headers = container.querySelectorAll('header')
     expect(headers.length).toBe(1)
   })
 })

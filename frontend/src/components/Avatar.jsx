@@ -38,7 +38,10 @@ export default function Avatar({ name, src, size = 28, title }) {
   // proprement sur les initiales au lieu d'un <img> cassé. On réessaie dès que
   // `src` change (nouvelle photo téléversée → aperçu immédiat).
   const [imgFailed, setImgFailed] = useState(false)
-  useEffect(() => { setImgFailed(false) }, [src])
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- réinitialiser l'état d'échec quand src change (aperçu immédiat d'une nouvelle photo)
+    setImgFailed(false)
+  }, [src])
 
   const dim = `${size}px`
   const base = {

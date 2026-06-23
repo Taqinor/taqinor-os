@@ -356,7 +356,10 @@ function CabinetDialog({ open, onOpenChange, onCreated }) {
   const [nom, setNom] = useState('')
   const [busy, setBusy] = useState(false)
 
-  useEffect(() => { if (open) { setNom(''); setBusy(false) } }, [open])
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- réinitialiser le formulaire à l'ouverture du dialogue
+    if (open) { setNom(''); setBusy(false) }
+  }, [open])
 
   const submit = async (e) => {
     e.preventDefault()
@@ -411,6 +414,7 @@ function FolderDialog({ state, onClose, cabinetId, folders, onChanged }) {
 
   useEffect(() => {
     if (!state) return
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- réinitialiser le formulaire à l'ouverture du dialogue
     setBusy(false)
     setNom(mode === 'rename' ? (target?.nom ?? '') : '')
     setParentId(
@@ -518,6 +522,7 @@ function UploadDialog({ open, onOpenChange, folder, onUploaded }) {
   const [busy, setBusy] = useState(false)
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- réinitialiser le formulaire à l'ouverture du dialogue
     if (open) { setFile(null); setNom(''); setDescription(''); setBusy(false) }
   }, [open])
 

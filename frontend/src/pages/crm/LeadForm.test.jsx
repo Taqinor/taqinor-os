@@ -3,6 +3,7 @@ import { render, screen, cleanup, fireEvent, waitFor } from '@testing-library/re
 import { Provider } from 'react-redux'
 import { configureStore } from '@reduxjs/toolkit'
 import crmReducer from '../../features/crm/store/crmSlice'
+import LeadForm from './LeadForm'
 
 /* U1 — LeadForm : en mode ÉDITION, « Mettre à jour » garde la modale ouverte,
    affiche « Enregistré » et permet d'enchaîner sur le panneau devis inline.
@@ -89,7 +90,6 @@ function renderLeadForm(props = {}) {
   const store = makeStore()
   // Pré-injecter updateLead comme fulfilled dans la slice via dispatch simulé.
   // On utilise la vraie slice mais on mocke crmApi.updateLead au niveau réseau.
-  const LeadForm = require('./LeadForm').default
   const onClose = props.onClose ?? vi.fn()
   const onSaved = props.onSaved ?? vi.fn()
   render(

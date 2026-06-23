@@ -412,11 +412,14 @@ class BonCommande(models.Model):
         le lead que s'il n'est pas déjà fixé (jamais d'écrasement) et qu'un
         devis source le porte — comportement historique strictement inchangé
         pour un BC sans devis ou sans lead."""
-        from apps.ventes.services import lead_from_source_devis
         if self.lead_id is None:
-            resolved = lead_from_source_devis(self)
-            if resolved is not None:
-                self.lead = resolved
+            # Résolution INLINE (aucun import de services → préserve le contrat
+            # import-linter « modèles de domaine découplés »). Un BC porte son
+            # devis directement ; on hérite du lead du devis source s'il existe.
+            devis = getattr(self, 'devis', None)
+            lead = getattr(devis, 'lead', None) if devis is not None else None
+            if lead is not None:
+                self.lead = lead
         super().save(*args, **kwargs)
 
     class Meta:
@@ -585,11 +588,17 @@ class Facture(models.Model):
         qu'un devis source le porte — comportement historique strictement
         inchangé pour une facture sans devis/BC ou sans lead (ex. facture de
         contrat de maintenance)."""
-        from apps.ventes.services import lead_from_source_devis
         if self.lead_id is None:
-            resolved = lead_from_source_devis(self)
-            if resolved is not None:
-                self.lead = resolved
+            # Résolution INLINE (aucun import de services → préserve le contrat
+            # import-linter). Facture d'échéancier → self.devis ; chaîne
+            # BC → facture → self.bon_commande.devis.
+            devis = getattr(self, 'devis', None)
+            if devis is None:
+                bc = getattr(self, 'bon_commande', None)
+                devis = getattr(bc, 'devis', None) if bc is not None else None
+            lead = getattr(devis, 'lead', None) if devis is not None else None
+            if lead is not None:
+                self.lead = lead
         super().save(*args, **kwargs)
 
     @property
