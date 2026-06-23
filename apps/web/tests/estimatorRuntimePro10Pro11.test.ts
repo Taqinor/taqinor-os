@@ -17,9 +17,14 @@ import { createRoofTypeSelect } from '../src/lib/roofTypeSelect';
 const fakeMaps: FakeMap[] = [];
 class FakeMap {
   handlers: Record<string, ((e: unknown) => void)[]> = {};
+  // W113 (atterrissage) — handlers ONE-SHOT (`map.once`) séparés : `fire` les invoque puis
+  // les vide. Indispensable pour la re-assertion d'atterrissage `map.once('idle', …)`.
+  onceHandlers: Record<string, ((e: unknown) => void)[]> = {};
   controls: unknown[] = [];
   flyToCalls: unknown[] = [];
   jumpToCalls: unknown[] = [];
+  easeToCalls: unknown[] = [];
+  resizeCalls = 0;
   doubleClickZoom = { disable() {}, enable() {} };
   dragPan = { disable() {}, enable() {} };
   constructor() {
@@ -29,8 +34,16 @@ class FakeMap {
     (this.handlers[ev] ||= []).push(h);
     return this;
   }
+  // W113 (atterrissage) — `map.once(ev, h)` : un handler qui ne se déclenche qu'une fois.
+  once(ev: string, h: (e: unknown) => void) {
+    (this.onceHandlers[ev] ||= []).push(h);
+    return this;
+  }
   fire(ev: string, e: unknown) {
     (this.handlers[ev] || []).forEach((h) => h(e));
+    const once = this.onceHandlers[ev] || [];
+    this.onceHandlers[ev] = [];
+    once.forEach((h) => h(e));
   }
   addControl(ctrl: unknown) { this.controls.push(ctrl); return this; }
   addLayer() { return this; }
@@ -44,7 +57,9 @@ class FakeMap {
   }
   getLayer() { return null; }
   removeLayer() {}
-  easeTo() { return this; }
+  // W113 (atterrissage) — `resize()` recale la taille du conteneur avant un déplacement caméra.
+  resize() { this.resizeCalls += 1; return this; }
+  easeTo(opts: unknown) { this.easeToCalls.push(opts); return this; }
   flyTo(opts: unknown) { this.flyToCalls.push(opts); return this; }
   jumpTo(opts: unknown) { this.jumpToCalls.push(opts); return this; }
   getBearing() { return 0; }
@@ -1662,6 +1677,77 @@ describe('runtime W113 — marqueur du pin client à l\'hydratation', () => {
     expect(added.length).toBe(1);
     expect(added[0].lngLat).toEqual([-7.5997, 33.5905]); // [lng, lat] convention MapLibre
     expect(added[0].color).toBe('#e8b54a');
+  });
+
+  // W113 (atterrissage fiable) — le BUG : la caméra restait à MOROCCO_CENTER (vue Maroc
+  // entière) au lieu d'atterrir sur le pin du client, parce que `flyTo` se calculait contre
+  // un conteneur React pas encore dimensionné. La correction rend l'atterrissage FIABLE :
+  // `resize()` recale la taille, un `jumpTo` INSTANTANÉ pose la caméra (rien à interrompre),
+  // et une re-assertion `once('idle')` re-cale après un resize React tardif.
+  it('hydrater un lead « pin seul » FAIT ATTERRIR la caméra sur le pin (zoom toit) — resize + jumpTo', async () => {
+    const init = await loadTool();
+    init({
+      maptilerKey: 'test',
+      reducedMotion: true,
+      roofType: createRoofTypeSelect(document),
+      hydrate: { lead: { roof_point: { lat: 33.5905, lng: -7.5997 } } },
+    });
+    fireLoad();
+    const map = fakeMaps[0];
+    // la taille du conteneur est recalée AVANT le déplacement (≥1 resize avant l'idle).
+    expect(map.resizeCalls).toBeGreaterThanOrEqual(1);
+    // placement INSTANTANÉ via jumpTo (aucune animation interruptible) sur le pin, zoom toit.
+    const jt = map.jumpToCalls.at(-1) as { center: [number, number]; zoom: number } | undefined;
+    expect(jt).toBeTruthy();
+    expect(jt!.center).toEqual([-7.5997, 33.5905]); // [lng, lat] : pin exact
+    expect(jt!.zoom).toBeGreaterThanOrEqual(18); // niveau bâtiment, pas Maroc-entier
+    // en reduced-motion, AUCUN easeTo (placement instantané pur).
+    expect(map.easeToCalls.length).toBe(0);
+  });
+
+  it('hydrater un lead « pin seul » RE-CALE au repos (once idle) — un resize React tardif ne ramène pas la caméra au Maroc', async () => {
+    const init = await loadTool();
+    init({
+      maptilerKey: 'test',
+      reducedMotion: true,
+      roofType: createRoofTypeSelect(document),
+      hydrate: { lead: { roof_point: { lat: 33.5905, lng: -7.5997 } } },
+    });
+    fireLoad();
+    const map = fakeMaps[0];
+    const resizesBeforeIdle = map.resizeCalls;
+    const jumpsBeforeIdle = map.jumpToCalls.length;
+    // le conteneur se redimensionne tard (React) puis la carte se stabilise → `idle`.
+    map.fire('idle', {});
+    // la re-assertion a recalé la taille ET re-posé la caméra sur le pin.
+    expect(map.resizeCalls).toBe(resizesBeforeIdle + 1);
+    expect(map.jumpToCalls.length).toBe(jumpsBeforeIdle + 1);
+    const jt = map.jumpToCalls.at(-1) as { center: [number, number]; zoom: number };
+    expect(jt.center).toEqual([-7.5997, 33.5905]);
+    expect(jt.zoom).toBeGreaterThanOrEqual(18);
+    // la re-assertion est ONE-SHOT : un second `idle` ne re-déplace plus la caméra.
+    map.fire('idle', {});
+    expect(map.jumpToCalls.length).toBe(jumpsBeforeIdle + 1);
+  });
+
+  it('en mouvement permis, le pin reçoit un jumpTo instantané PUIS un easeTo doux (pas un flyTo interruptible)', async () => {
+    const init = await loadTool();
+    init({
+      maptilerKey: 'test',
+      reducedMotion: false, // mouvement permis
+      roofType: createRoofTypeSelect(document),
+      hydrate: { lead: { roof_point: { lat: 33.5905, lng: -7.5997 } } },
+    });
+    fireLoad();
+    const map = fakeMaps[0];
+    // l'atterrissage de base reste un jumpTo INSTANTANÉ (jamais interrompu par une étape de boot).
+    const jt = map.jumpToCalls.at(-1) as { center: [number, number]; zoom: number };
+    expect(jt.center).toEqual([-7.5997, 33.5905]);
+    expect(jt.zoom).toBeGreaterThanOrEqual(18);
+    // un easeTo COSMÉTIQUE par-dessus (le jumpTo a déjà atterri) ; plus de flyTo « course ».
+    const et = map.easeToCalls.at(-1) as { center: [number, number] } | undefined;
+    expect(et).toBeTruthy();
+    expect(et!.center).toEqual([-7.5997, 33.5905]);
   });
 
   it('hydrater un lead SANS roof_point ne plante aucun marqueur', async () => {
