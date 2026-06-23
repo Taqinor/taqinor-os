@@ -42,6 +42,15 @@ importe ``apps.audit``.
     * ``user`` — l'utilisateur qui accepte (peut être ``None``) ;
     * ``ancien_statut`` — le statut du devis avant l'acceptation.
 
+``devis_sent``
+    Émis quand un devis passe à « envoyé » suite à un partage client (U4), p.
+    ex. la génération d'un lien WhatsApp. Abonné par ``crm`` pour avancer
+    l'étape du lead vers QUOTE_SENT. Arguments du signal :
+
+    * ``devis`` — l'instance ``Devis`` envoyée ;
+    * ``user`` — l'utilisateur qui partage (peut être ``None``) ;
+    * ``ancien_statut`` — le statut du devis avant l'envoi.
+
 ``document_pdf_generated``
     Émis quand un PDF de document de vente est généré (devis ou facture).
     Abonné par le satellite ``audit`` (journalise une entrée ``AuditLog.PDF``).
@@ -55,6 +64,12 @@ import django.dispatch
 # Émis à l'acceptation d'un devis.
 # Abonné dans ce repo : crm (avance l'étape du lead → SIGNED).
 devis_accepted = django.dispatch.Signal()
+
+# Émis à l'ENVOI d'un devis (U4) — passage brouillon → envoyé déclenché par un
+# partage client (ex. lien WhatsApp). Arguments : devis, user, ancien_statut.
+# Abonné dans ce repo : crm (avance l'étape du lead → QUOTE_SENT), exactement
+# comme devis_accepted, pour que ventes n'importe jamais crm directement.
+devis_sent = django.dispatch.Signal()
 
 # Émis au refus d'un devis (FG44).
 # Arguments : devis, user, motif_refus.

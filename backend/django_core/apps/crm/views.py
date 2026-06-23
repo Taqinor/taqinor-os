@@ -419,6 +419,15 @@ class LeadViewSet(TenantMixin, viewsets.ModelViewSet):
         if langue is None:
             langue = lead.langue_preferee or 'fr'
         message, links = build_devis_whatsapp(request, lead, devis_list, langue)
+        # U4 — partager un devis au client le marque « envoyé » et fait avancer
+        # le funnel (→ QUOTE_SENT). On passe par le service ventes (jamais une
+        # écriture brute de statut) pour préserver la sémantique (règle #4) + le
+        # chatter du devis ; l'avance du lead se fait via l'événement domaine
+        # ``devis_sent``, comme ``devis_accepted``. Idempotent et ne dégrade
+        # jamais un devis déjà accepté/refusé/envoyé.
+        from apps.ventes.services import mark_devis_sent
+        for d in devis_list:
+            mark_devis_sent(devis=d, user=request.user)
         from apps.audit.recorder import record
         from apps.audit.models import AuditLog
         record(AuditLog.Action.WHATSAPP, instance=lead,

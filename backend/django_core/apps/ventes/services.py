@@ -379,6 +379,50 @@ def accept_devis(*, devis, user, nom='', date_acceptation=None, option='',
     return devis
 
 
+def mark_devis_sent(*, devis, user=None):
+    """U4 — flip a Devis to « envoyé » through the ONE status-change path.
+
+    Called when a quote is shared with the client (e.g. the lead WhatsApp
+    action builds a wa.me link). It is the single place that moves a quote
+    document from « brouillon » to « envoyé » outside the viewset's own
+    perform_update, so rule #4 status semantics + the chatter log are
+    preserved (no raw ``.statut =`` write elsewhere).
+
+    Behaviour:
+
+    * a ``brouillon`` devis flips to ``envoye``, stamps ``date_envoi`` once,
+      writes the « envoyé » chatter entry, and emits the ``devis_sent`` domain
+      event so ``crm`` advances the lead funnel to QUOTE_SENT — without
+      ventes importing crm directly (mirror of ``accept_devis``) ;
+    * idempotent — an already-``envoye`` devis is returned unchanged (no second
+      stamp, no second event, no duplicate chatter line) ;
+    * NEVER regresses a further-along devis: ``accepte`` / ``refuse`` /
+      ``expire`` are left exactly as-is (returned untouched).
+
+    Returns the (possibly unchanged) Devis. Tenant scoping is the caller's
+    responsibility — the devis is always passed already company-resolved.
+    """
+    from django.utils import timezone
+    from apps.ventes.models import Devis
+    from apps.ventes import activity
+    from core.events import devis_sent
+
+    # Already sent (or beyond): never re-stamp, never downgrade. Only a live
+    # brouillon advances — accepté/refusé/expiré are terminal-or-further and
+    # must stay put (the guard the test pins).
+    if devis.statut != Devis.Statut.BROUILLON:
+        return devis
+
+    ancien = devis.statut
+    devis.statut = Devis.Statut.ENVOYE
+    devis.date_envoi = timezone.now()
+    devis.save(update_fields=['statut', 'date_envoi'])
+    activity.log_devis_sent(devis, user)
+    devis_sent.send(
+        sender=Devis, devis=devis, user=user, ancien_statut=ancien)
+    return devis
+
+
 def creer_facture_contrat(*, contrat, user, company):
     """FG40 — Crée une Facture de maintenance récurrente depuis un ContratMaintenance.
 
