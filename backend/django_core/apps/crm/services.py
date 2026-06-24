@@ -623,6 +623,105 @@ def noter_devis_ouvert(devis_reference: str, lead) -> None:
         body=f"Le client a ouvert le devis {devis_reference}")
 
 
+# ── QJ2 — Speed-to-lead : notifications vendeur avec lien wa.me ──────────────
+
+def _build_lead_wa_reply_url(lead):
+    """Construit un lien wa.me « répondre maintenant » vers le prospect du lead.
+
+    Utilise le numéro WhatsApp du lead (sinon son téléphone). Renvoie l'URL
+    ou None si aucun numéro n'est disponible. Best-effort — jamais d'exception.
+    """
+    try:
+        import urllib.parse
+        phone_raw = (
+            getattr(lead, 'whatsapp', None)
+            or getattr(lead, 'telephone', None)
+            or ''
+        )
+        digits = ''.join(c for c in (phone_raw or '') if c.isdigit())
+        if not digits:
+            return None
+        nom = (
+            (getattr(lead, 'nom', '') or '').strip()
+            or 'votre client'
+        )
+        # Message pré-rempli court — le vendeur personnalise avant d'envoyer.
+        text = urllib.parse.quote(f'Bonjour {nom}, je vous contacte suite à votre demande.')
+        return f'https://wa.me/{digits}?text={text}'
+    except Exception:
+        return None
+
+
+def notify_new_lead(lead) -> None:
+    """QJ2 (a) — Notifie le responsable du lead à la CRÉATION d'un nouveau lead.
+
+    Événement de speed-to-lead : le owner du lead est notifié dès l'arrivée du
+    lead (webhook site web ou création manuelle). La notification porte un lien
+    wa.me « répondre maintenant » vers le prospect. Best-effort : jamais
+    d'exception propagée — un échec de notification ne doit pas casser le flux
+    de création.
+
+    Multi-tenant : le owner est résolu depuis le lead (server-side, jamais du
+    corps de requête). Rien à notifier si le lead n'a pas de responsable.
+    """
+    try:
+        owner = getattr(lead, 'owner', None)
+        if owner is None:
+            return
+        from apps.notifications.services import notify
+        nom = (getattr(lead, 'nom', '') or '').strip() or 'Nouveau prospect'
+        wa_url = _build_lead_wa_reply_url(lead)
+        body_parts = [f'Un nouveau lead vient d\'arriver : {nom}.']
+        if wa_url:
+            body_parts.append(f'Répondre maintenant : {wa_url}')
+        notify(
+            user=owner,
+            event_type='lead_new',
+            title=f'Nouveau lead : {nom}',
+            body='\n'.join(body_parts),
+            link=f'/crm/leads?lead={lead.pk}',
+            company=lead.company,
+        )
+    except Exception as exc:  # noqa: BLE001 — best-effort
+        import logging
+        logging.getLogger(__name__).warning(
+            'QJ2: notify_new_lead échoué pour lead #%s : %s',
+            getattr(lead, 'pk', '?'), exc)
+
+
+def notify_devis_opened(devis_reference: str, lead) -> None:
+    """QJ2 (b) — Notifie le responsable du lead à la PREMIÈRE ouverture du devis.
+
+    Complémente noter_devis_ouvert (QJ1) : en plus de la note chatter, envoie
+    une notification in-app + Web Push au owner du lead, avec un lien wa.me
+    « répondre maintenant » vers le prospect. Best-effort — jamais d'exception
+    propagée.
+    """
+    try:
+        owner = getattr(lead, 'owner', None)
+        if owner is None:
+            return
+        from apps.notifications.services import notify
+        nom = (getattr(lead, 'nom', '') or '').strip() or 'Votre client'
+        wa_url = _build_lead_wa_reply_url(lead)
+        body_parts = [f'{nom} vient d\'ouvrir le devis {devis_reference}.']
+        if wa_url:
+            body_parts.append(f'Répondre maintenant : {wa_url}')
+        notify(
+            user=owner,
+            event_type='devis_opened',
+            title=f'Devis {devis_reference} ouvert par le client',
+            body='\n'.join(body_parts),
+            link=f'/crm/leads?lead={lead.pk}',
+            company=lead.company,
+        )
+    except Exception as exc:  # noqa: BLE001 — best-effort
+        import logging
+        logging.getLogger(__name__).warning(
+            'QJ2: notify_devis_opened échoué pour lead #%s devis %s : %s',
+            getattr(lead, 'pk', '?'), devis_reference, exc)
+
+
 # ─────────────────────────────────────────────────────────────────────────────
 # Actions EN MASSE sur les leads (T3) — multi-sélection liste/kanban.
 #

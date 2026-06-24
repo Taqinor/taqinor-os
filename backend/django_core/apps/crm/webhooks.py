@@ -305,6 +305,14 @@ def website_lead_webhook(request):
                 kind=LeadActivity.Kind.CREATION,
                 body='Lead créé via le site web',
             )
+            # QJ2 (a) — speed-to-lead : notifie le owner dès la création.
+            try:
+                from .services import notify_new_lead
+                notify_new_lead(lead)
+            except Exception as _exc:  # noqa: BLE001 — best-effort, jamais bloquant
+                logger.warning(
+                    'website_lead_webhook: notify_new_lead échoué (lead #%s) : %s',
+                    lead.pk, _exc)
 
         raw.lead = lead
         raw.processed = True

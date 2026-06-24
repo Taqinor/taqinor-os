@@ -114,16 +114,22 @@ def _stamp_view(link):
 
 
 def _notify_first_open(link):
-    """QJ1 — Sur la première ouverture, logue une note dans le chatter du lead
-    lié (si le devis porte un lead). Best-effort, silencieux sur erreur."""
+    """QJ1 / QJ2 (b) — Sur la première ouverture, logue une note dans le
+    chatter du lead lié (QJ1) ET envoie une notification in-app + Web Push
+    au responsable du lead avec un lien wa.me « répondre maintenant » (QJ2).
+    Best-effort, silencieux sur erreur."""
     try:
         if not link.devis_id:
             return
         lead = getattr(link.devis, 'lead', None)
         if lead is None:
             return
-        from apps.crm.services import noter_devis_ouvert
-        noter_devis_ouvert(link.devis.reference, lead)
+        devis_ref = link.devis.reference
+        # QJ1 — note chatter (toujours).
+        from apps.crm.services import noter_devis_ouvert, notify_devis_opened
+        noter_devis_ouvert(devis_ref, lead)
+        # QJ2 (b) — notification in-app + Web Push au owner.
+        notify_devis_opened(devis_ref, lead)
     except Exception:  # noqa: BLE001 — best-effort, jamais de fuite
         pass
 
