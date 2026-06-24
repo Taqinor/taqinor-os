@@ -72,6 +72,10 @@ export interface ProposalQuote {
   display_total?: number;
   nb_options?: number;
   roof_image_key?: string;
+  /** Factures mensuelles (MAD) du client si le backend les expose — sert
+   *  uniquement à l'accroche « < votre facture actuelle » (WJ10). Optionnel :
+   *  absent → l'accroche comparative est masquée, jamais inventée. */
+  factures_mensuelles?: number[] | null;
   etude?: Record<string, unknown>;
 }
 
