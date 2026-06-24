@@ -1707,3 +1707,149 @@ def _send_nudge_email(*, to_email, devis_ref, subject_fr, body_fr):
         logger.info('QJ4: email relance envoyé à %s (devis %s)', to_email, devis_ref)
     except Exception as exc:  # noqa: BLE001
         logger.warning('QJ4: email relance échec pour %s: %s', devis_ref, exc)
+
+
+# ── QJ5 — Expiration automatique des devis + hygiène funnel ──────────────────
+
+
+def expire_stale_devis():
+    """QJ5 — Bascule les devis envoyés dépassés en « expiré » et avance le funnel.
+
+    Deux effets ATOMIQUEMENT SÉPARÉS (chaque devis est traité indépendamment) :
+
+    1. ``envoye → expire`` pour tout devis dont la date de validité effective
+       est dépassée. Délègue à ``ventes.utils.expiry.is_expired`` (même logique
+       que l'indicateur à la volée, garantie de cohérence). Ne touche JAMAIS un
+       devis ``accepte`` ou ``refuse`` (rule #4). Idempotent : un devis déjà
+       ``expire`` est ignoré.
+
+    2. Pour le lead lié au devis expiré (s'il en a un) : si le lead est à
+       ``QUOTE_SENT`` il avance vers ``FOLLOW_UP``; s'il est déjà à ``FOLLOW_UP``
+       depuis plus de COLD_DAYS jours (configurable, défaut 30) et n'a reçu
+       aucune activité récente, il est parqué à ``COLD``. Ne recule JAMAIS un
+       lead déjà plus avancé (SIGNED) et ignore les leads perdus (drapeau perdu).
+       STAGES.py keys utilisées, jamais hardcodées.
+
+    Renvoie un dict ``{expired, funnel_followup, funnel_cold}`` pour les tests.
+    """
+    from datetime import date
+
+    from .models import Devis
+
+    today = date.today()
+    expired = 0
+    funnel_followup = 0
+    funnel_cold = 0
+
+    # Candidats : devis envoyés uniquement (jamais accepte/refuse/expire).
+    candidates = Devis.objects.filter(
+        statut=Devis.Statut.ENVOYE,
+    ).select_related('lead', 'lead__company')
+
+    for devis in candidates:
+        from .utils.expiry import is_expired
+        if not is_expired(devis, today=today):
+            continue
+
+        # Flip to expired through the single status-change path: direct field
+        # write + chatter log. Using the same field pattern as other beat jobs
+        # (check_overdue_factures) — safe, reversible via git revert.
+        devis.statut = Devis.Statut.EXPIRE
+        devis.save(update_fields=['statut'])
+
+        # Chatter entry via ventes.activity (exists for devis accepted/sent —
+        # reuse the generic note pattern).
+        try:
+            from apps.ventes import activity as _act
+            _act.log_devis_note(
+                devis, None,
+                'Devis expiré automatiquement (date de validité dépassée).')
+        except Exception as exc:  # noqa: BLE001
+            logger.warning('QJ5: log chatter échec devis %s : %s',
+                           devis.reference, exc)
+
+        expired += 1
+
+        # Funnel hygiene: advance QUOTE_SENT → FOLLOW_UP via crm.services.
+        lead = devis.lead
+        if lead is None:
+            continue
+
+        try:
+            fup, cold = _advance_lead_on_expiry(lead, today=today)
+            funnel_followup += int(fup)
+            funnel_cold += int(cold)
+        except Exception as exc:  # noqa: BLE001
+            logger.warning('QJ5: avance funnel échec lead %s : %s',
+                           getattr(lead, 'pk', '?'), exc)
+
+    logger.info(
+        'QJ5 expire_stale_devis: %d expiré(s), %d → FOLLOW_UP, %d → COLD',
+        expired, funnel_followup, funnel_cold)
+    return {'expired': expired, 'funnel_followup': funnel_followup,
+            'funnel_cold': funnel_cold}
+
+
+# Days a QUOTE_SENT lead stays at FOLLOW_UP before being parked COLD (no
+# recent activity). Kept as a module-level constant so tests can patch it.
+_COLD_AFTER_FOLLOWUP_DAYS = 30
+
+
+def _advance_lead_on_expiry(lead, today):
+    """Avance l'étape du lead lié à un devis expiré (QUOTE_SENT → FOLLOW_UP,
+    puis FOLLOW_UP → COLD si inactif depuis COLD_AFTER_FOLLOWUP_DAYS jours).
+
+    Ne recule JAMAIS. Ignore les leads perdus. Utilise les clés STAGES.py.
+    Renvoie (moved_to_followup: bool, moved_to_cold: bool).
+    """
+    from datetime import timedelta
+    from apps.crm import stages as crm_stages
+    from apps.crm.models import LeadActivity
+
+    if lead.perdu:
+        return False, False
+
+    moved_fup = False
+    moved_cold = False
+
+    if lead.stage == crm_stages.QUOTE_SENT:
+        # Only advance if lead is not already further.
+        from apps.crm.services import _rang_funnel
+        if _rang_funnel(lead.stage) < _rang_funnel(crm_stages.FOLLOW_UP):
+            ancien = lead.stage
+            lead.stage = crm_stages.FOLLOW_UP
+            lead.save(update_fields=['stage'])
+            from apps.crm import activity as crm_activity
+            # Pass raw stage keys; _display resolves choices labels.
+            crm_activity.log_bulk_change(
+                lead, user=None,
+                field='stage',
+                old_val=ancien,
+                new_val=crm_stages.FOLLOW_UP,
+            )
+            moved_fup = True
+        return moved_fup, False
+
+    if lead.stage == crm_stages.FOLLOW_UP:
+        # Park COLD only if no activity in last _COLD_AFTER_FOLLOWUP_DAYS days.
+        cutoff = today - timedelta(days=_COLD_AFTER_FOLLOWUP_DAYS)
+        recent_activity = LeadActivity.objects.filter(
+            lead=lead,
+            date_creation__date__gte=cutoff,
+        ).exists()
+        if recent_activity:
+            return False, False
+        ancien = lead.stage
+        lead.stage = crm_stages.COLD
+        lead.save(update_fields=['stage'])
+        from apps.crm import activity as crm_activity
+        crm_activity.log_bulk_change(
+            lead, user=None,
+            field='stage',
+            old_val=ancien,
+            new_val=crm_stages.COLD,
+        )
+        moved_cold = True
+        return False, moved_cold
+
+    return False, False

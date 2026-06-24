@@ -157,6 +157,26 @@ def relance_reminders():
     return sent
 
 
+@shared_task(name='ventes.expire_stale_devis')
+def expire_stale_devis():
+    """QJ5 — Expiration automatique des devis dépassés + hygiène du funnel CRM.
+
+    Bascule ``envoye → expire`` pour tout devis dont la date de validité effective
+    est dépassée (via ``services.expire_stale_devis``, même logique que
+    l'indicateur à la volée — cohérence garantie). Avance ensuite l'étape funnel
+    du lead lié : QUOTE_SENT → FOLLOW_UP, puis FOLLOW_UP → COLD si inactif
+    depuis 30 jours. Ne touche JAMAIS un devis ``accepte`` / ``refuse`` (rule #4),
+    ne recule JAMAIS un lead déjà plus avancé (SIGNED), ignore les leads perdus.
+    Idempotent et safe à ré-exécuter.
+    """
+    from .services import expire_stale_devis as _expire
+    result = _expire()
+    logger.info(
+        'expire_stale_devis: %d expiré(s), %d → FOLLOW_UP, %d → COLD',
+        result['expired'], result['funnel_followup'], result['funnel_cold'])
+    return result
+
+
 @shared_task(name='ventes.devis_followup_nudges')
 def devis_followup_nudges():
     """QJ4 — Relance automatique cadencée des devis envoyés toujours en attente.
