@@ -132,6 +132,7 @@ class ProfilPaieSerializer(serializers.ModelSerializer):
         model = ProfilPaie
         fields = [
             'id', 'employe', 'employe_nom', 'type_remuneration', 'salaire_base',
+            'jours_travail_mensuel', 'heures_travail_mensuel',
             'affilie_cnss', 'affilie_amo', 'affilie_cimr', 'taux_cimr_salarial',
             'numero_cnss', 'numero_amo', 'numero_cimr', 'rib', 'banque',
             'actif', 'date_creation',

@@ -6,7 +6,7 @@ n'est jamais acceptée (multi-tenant).
 """
 from rest_framework import serializers
 
-from .models import EnginRoulant, ReferentielFlotte, Vehicule
+from .models import ActifFlotte, EnginRoulant, ReferentielFlotte, Vehicule
 
 
 class VehiculeSerializer(serializers.ModelSerializer):
@@ -112,4 +112,60 @@ class ReferentielFlotteSerializer(serializers.ModelSerializer):
         if qs.exists():
             raise serializers.ValidationError(
                 {'code': "Ce code existe déjà pour ce domaine."})
+        return attrs
+
+
+class ActifFlotteSerializer(serializers.ModelSerializer):
+    """FLOTTE5 — référence d'actif unifiée (Vehicule | EnginRoulant).
+
+    ``company`` est posée côté serveur par le ``TenantMixin`` — jamais lue du
+    corps de requête. Les champs ``vehicule`` et ``engin`` acceptent les ids
+    des actifs de la MÊME société ; la validation (exactement l'un des deux)
+    est déléguée au modèle (``full_clean`` dans ``save``).
+
+    Champs lecture seule :
+    - ``type_actif`` : 'vehicule' | 'engin'
+    - ``label``      : désignation lisible de l'actif cible
+    """
+
+    type_actif = serializers.CharField(read_only=True)
+    label = serializers.CharField(read_only=True)
+
+    class Meta:
+        model = ActifFlotte
+        fields = [
+            'id', 'vehicule', 'engin', 'type_actif', 'label', 'date_creation',
+        ]
+        read_only_fields = ['date_creation']
+
+    def validate(self, attrs):
+        """Vérifie que exactement un des deux FKs est fourni ET que l'actif
+        cible appartient à la société courante."""
+        request = self.context.get('request')
+        company = getattr(getattr(request, 'user', None), 'company', None)
+
+        vehicule = attrs.get(
+            'vehicule', getattr(self.instance, 'vehicule', None))
+        engin = attrs.get(
+            'engin', getattr(self.instance, 'engin', None))
+
+        has_vehicule = vehicule is not None
+        has_engin = engin is not None
+
+        if has_vehicule and has_engin:
+            raise serializers.ValidationError(
+                "Un actif ne peut pointer qu'un véhicule OU un engin, pas les "
+                "deux.")
+        if not has_vehicule and not has_engin:
+            raise serializers.ValidationError(
+                "Renseignez soit 'vehicule' soit 'engin'.")
+
+        if company is not None:
+            if has_vehicule and vehicule.company_id != company.id:
+                raise serializers.ValidationError(
+                    {'vehicule': "Ce véhicule n'appartient pas à votre société."})
+            if has_engin and engin.company_id != company.id:
+                raise serializers.ValidationError(
+                    {'engin': "Cet engin n'appartient pas à votre société."})
+
         return attrs

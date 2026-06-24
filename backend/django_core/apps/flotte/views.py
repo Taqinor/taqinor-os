@@ -9,8 +9,9 @@ from rest_framework import filters, viewsets
 from authentication.mixins import TenantMixin
 from authentication.permissions import IsAnyRole, IsResponsableOrAdmin
 
-from .models import EnginRoulant, ReferentielFlotte, Vehicule
+from .models import ActifFlotte, EnginRoulant, ReferentielFlotte, Vehicule
 from .serializers import (
+    ActifFlotteSerializer,
     EnginRoulantSerializer,
     ReferentielFlotteSerializer,
     VehiculeSerializer,
@@ -91,4 +92,28 @@ class ReferentielFlotteViewSet(_FlotteBaseViewSet):
         actif = params.get('actif')
         if actif is not None:
             qs = qs.filter(actif=actif.lower() in ('1', 'true', 'vrai', 'oui'))
+        return qs
+
+
+class ActifFlotteViewSet(_FlotteBaseViewSet):
+    """Références d'actif unifiées (FLOTTE5) — Vehicule | EnginRoulant.
+
+    Chaque ``ActifFlotte`` pointe vers SOIT un véhicule SOIT un engin roulant
+    de la même société, permettant aux futurs modules entretien/sinistre/
+    document de se rattacher à l'un ou l'autre via un FK unique.
+
+    Filtrable par ``?type_actif=vehicule`` ou ``?type_actif=engin``.
+    """
+    queryset = ActifFlotte.objects.select_related('vehicule', 'engin')
+    serializer_class = ActifFlotteSerializer
+    filter_backends = [filters.OrderingFilter]
+    ordering_fields = ['date_creation']
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        type_actif = self.request.query_params.get('type_actif')
+        if type_actif == ActifFlotte.TYPE_VEHICULE:
+            qs = qs.filter(vehicule__isnull=False)
+        elif type_actif == ActifFlotte.TYPE_ENGIN:
+            qs = qs.filter(engin__isnull=False)
         return qs

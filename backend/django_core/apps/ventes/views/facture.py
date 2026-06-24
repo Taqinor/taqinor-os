@@ -109,13 +109,21 @@ class FactureViewSet(viewsets.ModelViewSet):
                     {'bon_commande': 'Bon de commande inconnu.'})
             if devis is not None and devis.company_id != company.id:
                 raise ValidationError({'devis': 'Devis inconnu.'})
+        # FG52 — devise : si le corps n'en fournit pas, appliquer la devise par
+        # défaut de la société (CompanyProfile.devise_defaut), repli MAD.
+        save_kwargs = dict(
+            created_by=self.request.user,
+            company=company,
+        )
+        if 'devise' not in serializer.validated_data:
+            from apps.parametres.models import CompanyProfile
+            save_kwargs['devise'] = (
+                getattr(CompanyProfile.get(company=company), 'devise_defaut', '')
+                or 'MAD')
+
         create_numbered(
             Facture, company, 'facture',
-            lambda ref: serializer.save(
-                created_by=self.request.user,
-                reference=ref,
-                company=company,
-            ),
+            lambda ref: serializer.save(reference=ref, **save_kwargs),
         )
 
     @action(detail=True, methods=['post'], url_path='emettre',

@@ -26,6 +26,7 @@ from .models import (
     DocumentEmploye,
     DossierEmploye,
     ElementSortie,
+    Pointage,
     Poste,
     Remuneration,
     SoldeConge,
@@ -37,6 +38,7 @@ from .serializers import (
     DocumentEmployeSerializer,
     DossierEmployeSerializer,
     ElementSortieSerializer,
+    PointageSerializer,
     PosteSerializer,
     RemunerationSerializer,
     SoldeCongeSerializer,
@@ -372,3 +374,107 @@ class DemandeCongeViewSet(_RhBaseViewSet):
         qs = selectors.absences_equipe(request.user.company, debut, fin)
         serializer = self.get_serializer(qs, many=True)
         return Response(serializer.data)
+
+
+class PointageViewSet(_RhBaseViewSet):
+    """Pointages (FG166) — arrivée/départ avec géoloc (mobile).
+
+    Société scopée + Administrateur/Responsable. ``company`` et
+    ``heure_arrivee`` sont posés côté serveur à la création ; ``employe`` doit
+    appartenir à la même société. Filtres : ``?employe=``, ``?date=YYYY-MM-DD``
+    (filtre sur la date de l'heure_arrivee).
+
+    Actions spéciales :
+    * ``POST .../pointager-arrivee/`` — ouvre un pointage : pose ``heure_arrivee``
+      côté serveur et type ARRIVEE ; accepte ``employe``, ``note`` et GPS.
+    * ``POST <id>/pointager-depart/`` — ferme un pointage : pose ``heure_depart``
+      côté serveur ; accepte ``note`` et GPS départ. Calcule la durée en réponse.
+    """
+    queryset = Pointage.objects.select_related('employe').all()
+    serializer_class = PointageSerializer
+    filter_backends = [filters.OrderingFilter]
+    ordering_fields = ['heure_arrivee', 'heure_depart', 'date_creation']
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        employe = self.request.query_params.get('employe')
+        if employe:
+            qs = qs.filter(employe_id=employe)
+        date_str = self.request.query_params.get('date')
+        if date_str:
+            try:
+                from datetime import datetime
+                jour = datetime.strptime(date_str, '%Y-%m-%d').date()
+                qs = qs.filter(heure_arrivee__date=jour)
+            except (TypeError, ValueError):
+                pass
+        return qs
+
+    def perform_create(self, serializer):
+        """Company posée côté serveur ; heure_arrivee auto si absente."""
+        now = timezone.now()
+        # Si le corps ne fournit pas heure_arrivee, on la pose côté serveur.
+        if not serializer.validated_data.get('heure_arrivee'):
+            serializer.save(
+                company=self.request.user.company,
+                heure_arrivee=now,
+                type_pointage=Pointage.TypePointage.ARRIVEE)
+        else:
+            serializer.save(company=self.request.user.company)
+
+    @action(detail=False, methods=['post'], url_path='pointager-arrivee')
+    def pointager_arrivee(self, request):
+        """Ouvre un pointage arrivée côté serveur (heure = now, type ARRIVEE).
+
+        Corps attendu : ``employe`` (id), ``arrivee_gps_lat``,
+        ``arrivee_gps_lng`` (facultatifs), ``note`` (facultatif). ``company``
+        et ``heure_arrivee`` sont TOUJOURS posés côté serveur.
+        """
+        company = request.user.company
+        employe_id = request.data.get('employe')
+        try:
+            employe = DossierEmploye.objects.get(pk=employe_id, company=company)
+        except (DossierEmploye.DoesNotExist, ValueError, TypeError):
+            return Response({'employe': 'Employé inconnu.'},
+                            status=status.HTTP_400_BAD_REQUEST)
+        pointage = Pointage.objects.create(
+            company=company,
+            employe=employe,
+            type_pointage=Pointage.TypePointage.ARRIVEE,
+            heure_arrivee=timezone.now(),
+            arrivee_gps_lat=request.data.get('arrivee_gps_lat') or None,
+            arrivee_gps_lng=request.data.get('arrivee_gps_lng') or None,
+            note=request.data.get('note', ''),
+        )
+        return Response(self.get_serializer(pointage).data,
+                        status=status.HTTP_201_CREATED)
+
+    @action(detail=True, methods=['post'], url_path='pointager-depart')
+    def pointager_depart(self, request, pk=None):
+        """Ferme un pointage en posant ``heure_depart`` côté serveur (now).
+
+        Met à jour le type à COMPLET si une arrivée était déjà renseignée.
+        Accepte ``depart_gps_lat``, ``depart_gps_lng``, ``note``.
+        La réponse inclut ``duree_minutes`` calculée.
+        """
+        pointage = self.get_object()
+        if pointage.heure_depart is not None:
+            return Response(
+                {'detail': 'Ce pointage a déjà un départ enregistré.'},
+                status=status.HTTP_400_BAD_REQUEST)
+        pointage.heure_depart = timezone.now()
+        if pointage.heure_arrivee:
+            pointage.type_pointage = Pointage.TypePointage.COMPLET
+        else:
+            pointage.type_pointage = Pointage.TypePointage.DEPART
+        lat = request.data.get('depart_gps_lat')
+        lng = request.data.get('depart_gps_lng')
+        note = request.data.get('note')
+        if lat is not None:
+            pointage.depart_gps_lat = lat or None
+        if lng is not None:
+            pointage.depart_gps_lng = lng or None
+        if note is not None:
+            pointage.note = note
+        pointage.save()
+        return Response(self.get_serializer(pointage).data)

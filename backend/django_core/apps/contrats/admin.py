@@ -6,8 +6,8 @@ from .models import Contrat, ContratLien, PartieContrat
 @admin.register(Contrat)
 class ContratAdmin(admin.ModelAdmin):
     list_display = ('id', 'reference', 'objet', 'type_contrat', 'statut',
-                    'montant', 'devise', 'company')
-    list_filter = ('type_contrat', 'statut')
+                    'confidentialite', 'montant', 'devise', 'company')
+    list_filter = ('type_contrat', 'statut', 'confidentialite')
     search_fields = ('reference', 'objet')
 
 

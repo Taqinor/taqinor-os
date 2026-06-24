@@ -3,6 +3,19 @@
 Les viewsets filtrent par ``request.user.company`` (TenantMixin) et posent la
 société côté serveur ; l'accès est réservé au palier Administrateur/Responsable
 (``IsResponsableOrAdmin``).
+
+Niveaux de confidentialité (CONTRAT6)
+--------------------------------------
+La visibilité d'un ``Contrat`` est réglée par son champ ``confidentialite`` :
+
+- ``PUBLIC``       : visible par tous les utilisateurs authentifiés de la société
+                     qui ont accès au module (responsable + admin).
+- ``INTERNE``      : même visibilité que PUBLIC au niveau du rôle — pas de
+                     restriction supplémentaire au-dessus du filtre société.
+- ``CONFIDENTIEL`` : visible uniquement par les Administrateurs.
+
+Le filtre est appliqué dans ``ContratViewSet.get_queryset``.  Les filtres
+``?confidentialite=`` permettent de restreindre la liste côté client.
 """
 from rest_framework import filters, viewsets
 from rest_framework.decorators import action
@@ -26,12 +39,41 @@ class _ContratsBaseViewSet(TenantMixin, viewsets.ModelViewSet):
 
 
 class ContratViewSet(_ContratsBaseViewSet):
-    """Contrats de la société (CLM). Recherche par référence/objet."""
+    """Contrats de la société (CLM). Recherche par référence/objet.
+
+    Visibilité par confidentialité : les contrats ``CONFIDENTIEL`` ne sont
+    accessibles qu'aux Administrateurs. Les contrats ``PUBLIC``/``INTERNE``
+    sont accessibles à tous les Responsables et Administrateurs de la société.
+    Un filtre optionnel ``?confidentialite=<niveau>`` permet de restreindre
+    la liste retournée.
+    """
     queryset = Contrat.objects.all()
     serializer_class = ContratSerializer
     filter_backends = [filters.SearchFilter, filters.OrderingFilter]
     search_fields = ['reference', 'objet']
-    ordering_fields = ['date_debut', 'date_fin', 'montant', 'id']
+    ordering_fields = ['date_debut', 'date_fin', 'montant', 'id', 'confidentialite']
+
+    def get_queryset(self):
+        """Queryset scopé société + filtre confidentialité.
+
+        Les contrats ``CONFIDENTIEL`` sont exclus pour les non-Administrateurs.
+        Un filtre optionnel ``?confidentialite=<valeur>`` restreint
+        supplémentairement la liste.
+        """
+        qs = super().get_queryset()
+        user = self.request.user
+        # Exclure les contrats CONFIDENTIEL pour les non-Administrateurs.
+        # Le palier FAISANT AUTORITÉ est ``menu_tier`` (dérive du Role FK, repli
+        # legacy, et renvoie ROLE_ADMIN pour un superuser) — ``role_legacy``
+        # seul n'est pas fiable pour un admin provisionné via le Role FK.
+        if user.menu_tier != user.ROLE_ADMIN:
+            qs = qs.exclude(
+                confidentialite=Contrat.NiveauConfidentialite.CONFIDENTIEL)
+        # Filtre optionnel par niveau de confidentialité.
+        niveau = self.request.query_params.get('confidentialite')
+        if niveau:
+            qs = qs.filter(confidentialite=niveau)
+        return qs
 
     def perform_create(self, serializer):
         serializer.save(

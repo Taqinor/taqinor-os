@@ -158,6 +158,17 @@ class CompanyProfile(models.Model):
     referral_enabled = models.BooleanField(default=False)
     referral_reward = models.DecimalField(
         max_digits=10, decimal_places=2, null=True, blank=True)
+    # ── FG52 — Devise par défaut de la société (multi-currency) ──
+    # Préremplie sur les NOUVEAUX documents créés pour cette société. Défaut MAD
+    # = comportement inchangé pour toutes les sociétés existantes. La devise est
+    # uniquement informative / portée par le document (pas de conversion en base).
+    devise_defaut = models.CharField(
+        max_length=10, default='MAD',
+        verbose_name='Devise par défaut',
+        help_text='Code ISO 4217 appliqué par défaut aux nouveaux devis/factures '
+                  '(ex. MAD, EUR, USD). Défaut MAD.',
+    )
+
     # ── N105 — Capacité DGI LOCALE (interrupteur maître, défaut OFF) ──
     # Unique commutateur, par société, qui ARME la capacité DGI locale (export
     # UBL 2.1 conforme + validateur de conformité), atteignable UNIQUEMENT à la

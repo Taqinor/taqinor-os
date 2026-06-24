@@ -109,14 +109,22 @@ class DevisViewSet(viewsets.ModelViewSet):
                     {'client': 'Un client ou un lead est requis.'})
             client = resolve_client_for_lead(lead)
 
+        # FG52 — devise : si le corps n'en fournit pas, appliquer la devise par
+        # défaut de la société (CompanyProfile.devise_defaut), repli MAD.
+        save_kwargs = dict(
+            client=client,
+            created_by=self.request.user,
+            company=company,
+        )
+        if 'devise' not in serializer.validated_data:
+            from apps.parametres.models import CompanyProfile
+            save_kwargs['devise'] = (
+                getattr(CompanyProfile.get(company=company), 'devise_defaut', '')
+                or 'MAD')
+
         create_numbered(
             Devis, company, 'devis',
-            lambda ref: serializer.save(
-                reference=ref,
-                client=client,
-                created_by=self.request.user,
-                company=company,
-            ),
+            lambda ref: serializer.save(reference=ref, **save_kwargs),
         )
 
         # Mouvement automatique du funnel CRM : un devis créé directement en

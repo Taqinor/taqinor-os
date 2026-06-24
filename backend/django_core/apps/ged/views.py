@@ -5,6 +5,7 @@ TOUJOURS posée côté serveur (TenantMixin) — jamais lue du corps de requête
 Les dossiers (Folder) ont un chemin matérialisé recalculé côté serveur, et les
 versions de document sont numérotées + déduppées via `services`.
 """
+from django.http import HttpResponse
 from rest_framework import filters, status, viewsets
 from rest_framework.decorators import action
 from rest_framework.parsers import FormParser, JSONParser, MultiPartParser
@@ -13,7 +14,8 @@ from rest_framework.response import Response
 # `records.storage` est la fondation de stockage MinIO partagée (avatars,
 # pièces jointes…). On la RÉUTILISE pour l'upload GED — on ne réimplémente
 # jamais le stockage objet ni un second pipeline d'upload.
-from apps.records.storage import store_attachment
+# GED14 — `fetch_attachment` sert au proxy aperçu même-origine (PDF/image/texte).
+from apps.records.storage import fetch_attachment, store_attachment
 
 from authentication.mixins import TenantMixin
 from authentication.permissions import IsAnyRole, IsResponsableOrAdmin
@@ -383,7 +385,10 @@ class DocumentVersionViewSet(TenantMixin, viewsets.ModelViewSet):
     ordering_fields = ['version', 'created_at']
 
     def get_permissions(self):
-        if self.action in READ_ACTIONS:
+        # ``apercu`` est une opération de LECTURE (aperçu inline même-origine),
+        # donc ouverte à tout rôle authentifié comme list/retrieve — même motif
+        # que les actions de lecture custom des viewsets frères.
+        if self.action in READ_ACTIONS or self.action == 'apercu':
             return [IsAnyRole()]
         return [IsResponsableOrAdmin()]
 
@@ -409,6 +414,49 @@ class DocumentVersionViewSet(TenantMixin, viewsets.ModelViewSet):
             uploaded_by=self.request.user,
         )
         serializer.instance = instance
+
+    @action(detail=True, methods=['get'], url_path='apercu')
+    def apercu(self, request, pk=None):
+        """GED14 — Proxy même-origine pour l'aperçu inline multi-format.
+
+        Relaie le contenu binaire de la version via Django (MÊME ORIGINE) au
+        lieu d'une URL présignée pointant vers l'hôte interne MinIO (injoignable
+        depuis le navigateur). Permet l'ouverture inline de PDF, images et
+        textes directement dans le navigateur (pas de téléchargement forcé).
+
+        La version est bornée à la société courante (TenantMixin + scoping du
+        document parent) : une version d'une autre société renvoie 404. Lecture
+        : tout rôle authentifié.
+
+        Types pris en charge en aperçu inline :
+        - PDF       (application/pdf)
+        - Images    (image/png, image/jpeg, image/webp, image/gif)
+        - Texte     (text/plain, text/csv, text/html)
+        Tout autre type est servi avec `Content-Disposition: attachment` (pas
+        d'aperçu inline, téléchargement direct sécurisé).
+        """
+        version = self.get_object()  # borné à la société par get_queryset (TenantMixin)
+        data, err = fetch_attachment(version.file_key)
+        if err:
+            return Response({'detail': err}, status=status.HTTP_404_NOT_FOUND)
+
+        mime = version.mime or 'application/octet-stream'
+        safe_name = (version.filename or 'document').replace('"', '')
+
+        # Formats affichables inline (PDF, images, texte). Tout le reste → attachment.
+        _INLINE_MIMES = {
+            'application/pdf',
+            'image/png', 'image/jpeg', 'image/webp', 'image/gif',
+            'text/plain', 'text/csv', 'text/html',
+        }
+        disposition = (
+            'inline' if mime in _INLINE_MIMES else 'attachment'
+        )
+
+        resp = HttpResponse(data, content_type=mime)
+        resp['Content-Disposition'] = f'{disposition}; filename="{safe_name}"'
+        resp['X-Content-Type-Options'] = 'nosniff'
+        return resp
 
 
 class DocumentLienViewSet(TenantMixin, viewsets.ModelViewSet):

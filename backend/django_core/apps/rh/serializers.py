@@ -12,6 +12,7 @@ from .models import (
     DocumentEmploye,
     DossierEmploye,
     ElementSortie,
+    Pointage,
     Poste,
     Remuneration,
     SoldeConge,
@@ -233,4 +234,47 @@ class DemandeCongeSerializer(serializers.ModelSerializer):
         if debut and fin and fin < debut:
             raise serializers.ValidationError(
                 {'date_fin': 'La date de fin précède la date de début.'})
+        return attrs
+
+
+class PointageSerializer(serializers.ModelSerializer):
+    """Pointage (FG166) — arrivée/départ avec géoloc.
+
+    ``company`` et ``heure_arrivee`` (pour le type ARRIVEE) sont posés côté
+    serveur. ``employe`` doit appartenir à la société de l'utilisateur.
+    ``duree_minutes`` est calculée (lecture seule). ``heure_depart`` est
+    facultative à la création ; elle est renseignée via l'action ``depart``
+    ou par PATCH.
+    """
+    type_pointage_display = serializers.CharField(
+        source='get_type_pointage_display', read_only=True)
+    duree_minutes = serializers.IntegerField(read_only=True)
+    employe_nom = serializers.SerializerMethodField()
+
+    class Meta:
+        model = Pointage
+        fields = [
+            'id', 'employe', 'employe_nom',
+            'type_pointage', 'type_pointage_display',
+            'heure_arrivee', 'heure_depart',
+            'arrivee_gps_lat', 'arrivee_gps_lng',
+            'depart_gps_lat', 'depart_gps_lng',
+            'duree_minutes', 'note',
+            'date_creation', 'date_modification',
+        ]
+        read_only_fields = ['date_creation', 'date_modification', 'duree_minutes']
+
+    def get_employe_nom(self, obj):
+        return f'{obj.employe.nom} {obj.employe.prenom}'
+
+    def validate_employe(self, value):
+        return _meme_societe(self, value, 'Employé')
+
+    def validate(self, attrs):
+        arrivee = attrs.get('heure_arrivee')
+        depart = attrs.get('heure_depart')
+        if arrivee and depart and depart < arrivee:
+            raise serializers.ValidationError(
+                {'heure_depart':
+                 "L'heure de départ précède l'heure d'arrivée."})
         return attrs
