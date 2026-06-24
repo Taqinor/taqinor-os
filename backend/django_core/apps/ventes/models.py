@@ -1460,3 +1460,73 @@ class DevisPreset(models.Model):
 
     def __str__(self):
         return f'{self.nom} ({getattr(self.company, "nom", self.company_id)})'
+
+
+# ── QJ4 — Suivi automatique de devis envoyé (relance cadencée) ───────────────
+
+# Cadence par défaut : j+2, j+5, j+10 après date_envoi.
+# Modifiable via le paramètre DEVIS_NUDGE_DAYS dans les settings Django
+# (liste d'entiers). La cadence s'arrête dès que le devis passe « accepté »
+# ou « refusé ».
+DEVIS_NUDGE_DEFAULT_DAYS = [2, 5, 10]
+
+
+class DevisNudgeLog(models.Model):
+    """Trace d'une relance automatique envoyée au vendeur pour un devis.
+
+    Un enregistrement par (devis, niveau) garantit qu'un niveau ne se déclenche
+    jamais deux fois (idempotence). La relance est adressée AU VENDEUR
+    (created_by), pas au client — soit un draft wa.me, soit un email SendGrid
+    si configuré. Scopé société (multi-tenant).
+
+    Champs :
+    - devis       : FK vers le Devis concerné (scopé société)
+    - niveau      : indice 0-based du jour de relance (0 = j+2, 1 = j+5, 2 = j+10)
+    - jours       : nombre de jours après date_envoi de ce niveau (ex. 2)
+    - canal       : 'email' | 'wa_draft' (indique comment la relance a été traitée)
+    - created_at  : horodatage UTC de l'envoi
+    """
+    class Canal(models.TextChoices):
+        EMAIL = 'email', 'Email'
+        WA_DRAFT = 'wa_draft', 'WhatsApp draft (wa.me)'
+
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        null=True, blank=True,
+        related_name='devis_nudge_logs',
+    )
+    devis = models.ForeignKey(
+        Devis,
+        on_delete=models.CASCADE,
+        related_name='nudge_logs',
+    )
+    niveau = models.PositiveSmallIntegerField(
+        verbose_name='Niveau (indice 0-based)',
+        help_text='0 = premier palier, 1 = deuxième, etc.',
+    )
+    jours = models.PositiveSmallIntegerField(
+        verbose_name='Jours après envoi',
+        help_text='Nombre de jours après date_envoi de ce palier.',
+    )
+    canal = models.CharField(
+        max_length=10,
+        choices=Canal.choices,
+        default=Canal.WA_DRAFT,
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        verbose_name = 'Relance automatique devis'
+        verbose_name_plural = 'Relances automatiques devis'
+        ordering = ['-created_at']
+        unique_together = [('devis', 'niveau')]
+        indexes = [
+            models.Index(fields=['devis', 'niveau'], name='ventes_nudge_dev_niv_idx'),
+        ]
+
+    def __str__(self):
+        return (
+            f'NudgeLog devis={self.devis_id} niveau={self.niveau}'
+            f' j+{self.jours} [{self.canal}]'
+        )

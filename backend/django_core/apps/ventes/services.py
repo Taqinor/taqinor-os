@@ -1251,3 +1251,213 @@ def apply_preset_to_devis(preset, devis, *, skip_priceless: bool = True) -> list
         'QJ16 apply_preset: applied preset "%s" to devis %s (%d lines)',
         preset.nom, getattr(devis, 'reference', devis.pk), len(created))
     return created
+
+
+# ── QJ4 — Relance automatique cadencée des devis envoyés ─────────────────────
+# Logique : pour chaque devis « envoyé » (statut ENVOYE) dont date_envoi est
+# renseignée, on contrôle si l'un des paliers de la cadence est échu
+# (aujourd'hui >= date_envoi + jours[niveau]) et s'il n'a pas encore été
+# déclenché (pas de DevisNudgeLog pour ce niveau). On surface alors un draft
+# wa.me au vendeur — ou on envoie un email si le canal email est configuré.
+# La relance s'arrête dès que le statut passe à ACCEPTE ou REFUSE.
+
+# Modèles de message de relance — FR et AR.
+# Clés : ref (référence devis), jours (palier), client_nom, wa_url (lien
+# public). Les accolades dobles {{ }} échappées en cas d'imbrication Django
+# template — ici on utilise .format() directement, pas de template Django.
+_NUDGE_MSG_FR = (
+    "Bonjour,\n\n"
+    "Le devis {ref} envoyé à {client_nom} il y a {jours} jours est toujours "
+    "en attente de validation.\n\n"
+    "Pensez à relancer votre client :\n{wa_url}\n\n"
+    "Cordialement,\nL'équipe TAQINOR"
+)
+
+_NUDGE_MSG_AR = (
+    "مرحبا،\n\n"
+    "لا يزال عرض "
+    "{ref} المرسل إلى "
+    "{client_nom} منذ {jours} أيام "
+    "في انتظار الموافقة.\n\n"
+    "يُرجى متابعة "
+    "العميل:\n{wa_url}\n\n"
+    "مع التحيات،\n"
+    "فريق TAQINOR"
+)
+
+
+def _build_wa_draft_url(phone, text):
+    """Construit un lien wa.me pré-rempli. phone peut inclure '+' ou non."""
+    import urllib.parse
+    digits = ''.join(c for c in (phone or '') if c.isdigit())
+    if not digits:
+        return None
+    encoded = urllib.parse.quote(text)
+    return f'https://wa.me/{digits}?text={encoded}'
+
+
+def _get_nudge_days():
+    """Renvoie la cadence de relance depuis les settings (ou la valeur par défaut)."""
+    from django.conf import settings
+    from apps.ventes.models import DEVIS_NUDGE_DEFAULT_DAYS
+    return getattr(settings, 'DEVIS_NUDGE_DAYS', DEVIS_NUDGE_DEFAULT_DAYS)
+
+
+def send_devis_followup_nudges():
+    """QJ4 — Déclenche les relances cadencées pour les devis « envoyés ».
+
+    Pour chaque devis ENVOYE avec date_envoi renseignée :
+    - parcourt les paliers de la cadence (j+2, j+5, j+10 par défaut) ;
+    - si today >= date_envoi + jours[niveau] ET que ce niveau n'a jamais été
+      déclenché (pas de DevisNudgeLog) → envoie la relance ;
+    - préfère un email si le canal email est configuré, sinon surface un draft
+      wa.me au vendeur (logged) ;
+    - enregistre un DevisNudgeLog pour éviter tout doublon.
+
+    Idempotent : safe à ré-exécuter sans effet si tous les niveaux dus ont déjà
+    leur DevisNudgeLog. Renvoie le nombre total de nudges déclenchés.
+
+    RULE #4 : ne touche JAMAIS au statut du Devis.
+    Multi-tenant : chaque devis est scopé company (never trusts body company).
+    """
+    from django.utils import timezone
+    try:
+        from zoneinfo import ZoneInfo
+        _tz = ZoneInfo('Africa/Casablanca')
+
+        def _today():
+            return timezone.now().astimezone(_tz).date()
+    except Exception:
+        def _today():
+            return timezone.localdate()
+
+    from apps.ventes.models import Devis, DevisNudgeLog, ShareLink
+    from apps.ventes.email_service import is_email_configured
+
+    nudge_days = _get_nudge_days()
+    today = _today()
+
+    # Only look at envoye devis with a known send date.
+    candidates = Devis.objects.filter(
+        statut=Devis.Statut.ENVOYE,
+        date_envoi__isnull=False,
+    ).select_related('client', 'company', 'created_by').prefetch_related(
+        'nudge_logs',
+    )
+
+    use_email = is_email_configured()
+    total_sent = 0
+
+    for devis in candidates:
+        # Double-check: cadence stops on accept/refuse (belt-and-suspenders
+        # since we filter on ENVOYE above, but guards concurrent transitions).
+        if devis.statut in (Devis.Statut.ACCEPTE, Devis.Statut.REFUSE):
+            continue
+
+        # date_envoi is a DateTimeField — extract date in Casablanca tz.
+        try:
+            envoi_date = devis.date_envoi.astimezone(
+                ZoneInfo('Africa/Casablanca')).date()
+        except Exception:
+            envoi_date = devis.date_envoi.date()
+
+        # Which levels already fired?
+        fired = set(
+            devis.nudge_logs.values_list('niveau', flat=True)
+        )
+
+        client = getattr(devis, 'client', None)
+        client_nom = (getattr(client, 'nom', '') or '') if client else ''
+        vendeur = getattr(devis, 'created_by', None)
+
+        for idx, jours in enumerate(nudge_days):
+            if idx in fired:
+                continue  # already sent for this level — idempotent
+            trigger_date = envoi_date + __import__('datetime').timedelta(days=jours)
+            if today < trigger_date:
+                continue  # not due yet
+
+            # Build the public share link for the seller to use.
+            try:
+                share_link = ShareLink.for_devis(devis)
+                from django.conf import settings
+                site = getattr(settings, 'SITE_URL', 'https://taqinor.ma')
+                proposal_url = f'{site}/proposal/{share_link.token}'
+            except Exception:
+                proposal_url = ''
+
+            msg_fr = _NUDGE_MSG_FR.format(
+                ref=devis.reference,
+                client_nom=client_nom or 'votre client',
+                jours=jours,
+                wa_url=proposal_url,
+            )
+            msg_ar = _NUDGE_MSG_AR.format(
+                ref=devis.reference,
+                client_nom=client_nom or 'عميلك',
+                jours=jours,
+                wa_url=proposal_url,
+            )
+
+            canal = DevisNudgeLog.Canal.WA_DRAFT
+
+            # Bilingual body used for email (FR + AR separator).
+            msg_bilingual = msg_fr + '\n\n---\n\n' + msg_ar
+
+            if use_email and vendeur and getattr(vendeur, 'email', ''):
+                # Send email to seller (bilingual FR + AR).
+                _send_nudge_email(
+                    to_email=vendeur.email,
+                    devis_ref=devis.reference,
+                    subject_fr=f'Relance devis {devis.reference} — niveau {idx + 1}',
+                    body_fr=msg_bilingual,
+                )
+                canal = DevisNudgeLog.Canal.EMAIL
+            else:
+                # Surface wa.me draft — log so the seller sees it.
+                vendeur_phone = (
+                    getattr(vendeur, 'phone_number', '') or ''
+                    if vendeur else ''
+                )
+                wa_url = _build_wa_draft_url(vendeur_phone, msg_fr) or proposal_url
+                logger.info(
+                    'QJ4 nudge wa_draft devis=%s niveau=%d j+%d vendeur=%s url=%s',
+                    devis.reference, idx, jours,
+                    getattr(vendeur, 'username', '?'), wa_url)
+
+            # Record the fired level — unique_together prevents duplicates.
+            try:
+                DevisNudgeLog.objects.create(
+                    company=devis.company,
+                    devis=devis,
+                    niveau=idx,
+                    jours=jours,
+                    canal=canal,
+                )
+                total_sent += 1
+                logger.info(
+                    'QJ4: nudge N%d déclenché pour devis %s (j+%d, canal=%s)',
+                    idx, devis.reference, jours, canal)
+            except Exception as exc:
+                # IntegrityError → already fired concurrently — safe to ignore.
+                logger.warning(
+                    'QJ4: DevisNudgeLog creation skipped for devis %s niveau=%d: %s',
+                    devis.reference, idx, exc)
+
+    logger.info('QJ4 send_devis_followup_nudges: %d nudge(s) déclenchés', total_sent)
+    return total_sent
+
+
+def _send_nudge_email(*, to_email, devis_ref, subject_fr, body_fr):
+    """Envoie un email de relance au vendeur (NO-OP sans backend email configuré).
+
+    Best-effort : ne lève jamais, consigne juste le résultat en log.
+    """
+    try:
+        from django.core.mail import send_mail
+        from django.conf import settings
+        from_email = getattr(settings, 'DEFAULT_FROM_EMAIL', 'noreply@erp.local')
+        send_mail(subject_fr, body_fr, from_email, [to_email], fail_silently=False)
+        logger.info('QJ4: email relance envoyé à %s (devis %s)', to_email, devis_ref)
+    except Exception as exc:  # noqa: BLE001
+        logger.warning('QJ4: email relance échec pour %s: %s', devis_ref, exc)
