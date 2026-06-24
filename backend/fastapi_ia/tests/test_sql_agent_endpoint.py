@@ -256,5 +256,53 @@ class QueryConfirmLoopTests(unittest.TestCase):
         self.assertIsNone(body["result"])
 
 
+@unittest.skipUnless(_OK, f"service sql_agent indisponible: {_ERR}")
+class RelevantTableSelectionTests(unittest.TestCase):
+    """La selection de tables doit rester BORNEE. Un repli sur TOUTES les tables
+    gonfle le prompt au-dela de la limite TPM gratuite de Groq (12k) — c'est la
+    cause racine du 413/504 observe en prod. On verifie que le repli mots-cles
+    ne renvoie jamais toutes les tables, reste pertinent, et que
+    `_get_relevant_tables` retombe sur ce repli borne quand le modele
+    d'embeddings est indisponible."""
+
+    def test_keyword_fallback_is_bounded(self):
+        from app.services.sql_agent_service import (
+            SQLAgentService, _TABLE_DESCRIPTIONS,
+        )
+        tables = SQLAgentService._keyword_relevant_tables(
+            "combien de devis ce mois-ci", k=5)
+        self.assertTrue(tables)
+        self.assertLessEqual(len(tables), 5)
+        self.assertLess(len(tables), len(_TABLE_DESCRIPTIONS))
+        for t in tables:
+            self.assertIn(t, _TABLE_DESCRIPTIONS)
+
+    def test_keyword_fallback_is_relevant(self):
+        from app.services.sql_agent_service import SQLAgentService
+        tables = SQLAgentService._keyword_relevant_tables(
+            "liste des factures clients", k=5)
+        self.assertIn("ventes_facture", tables)
+
+    def test_keyword_fallback_unknown_words_small_core(self):
+        from app.services.sql_agent_service import (
+            SQLAgentService, _TABLE_DESCRIPTIONS,
+        )
+        tables = SQLAgentService._keyword_relevant_tables("xyzzy qwerty", k=5)
+        self.assertTrue(tables)
+        self.assertLess(len(tables), len(_TABLE_DESCRIPTIONS))
+
+    def test_get_relevant_tables_bounded_when_embeddings_fail(self):
+        from app.services.sql_agent_service import (
+            SQLAgentService, _TABLE_DESCRIPTIONS,
+        )
+        svc = SQLAgentService()
+        with mock.patch.object(
+                svc, "_get_embeddings", side_effect=RuntimeError("no model")):
+            tables = svc._get_relevant_tables("combien de clients actifs", k=5)
+        self.assertTrue(tables)
+        self.assertLessEqual(len(tables), 5)
+        self.assertLess(len(tables), len(_TABLE_DESCRIPTIONS))
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -1,9 +1,9 @@
 """
-Service Agent SQL — LangChain + pgvector.
+Service Agent SQL — LangChain + selection de tables en memoire.
 Architecture :
   Question NL
     -> Embedding (sentence-transformers, local, gratuit)
-    -> pgvector : top-5 tables pertinentes
+    -> top-5 tables pertinentes (similarite cosinus EN MEMOIRE, sans pgvector)
     -> SQLDatabase filtre
     -> LangChain SQL Agent (provider configurable via SQL_AGENT_PROVIDER)
     -> Securite : _SecureQueryTool intercepte chaque SQL avant execution
@@ -43,7 +43,6 @@ from app.core.config import (
     CHAT_HISTORY_MAX,
     CHAT_HISTORY_TTL,
     CLAUDE_API_KEY,
-    DATABASE_URL,
     GROQ_API_KEY,
     OPENAI_API_KEY,
     REDIS_CHAT_URL,
@@ -794,7 +793,10 @@ class SQLAgentService:
 
     def __init__(self) -> None:
         self._embeddings = None
-        self._vectorstore = None
+        # Selection de tables EN MEMOIRE (plus de pgvector) : les vecteurs des
+        # descriptions sont calcules une seule fois puis mis en cache.
+        self._table_names: list[str] | None = None
+        self._table_vectors: list[list[float]] | None = None
         self._init_lock = threading.Lock()  # evite la race condition au demarrage
 
     # ── Embeddings (sentence-transformers, local, gratuit) ────────────────
@@ -809,49 +811,61 @@ class SQLAgentService:
             )
         return self._embeddings
 
-    # ── pgvector : init + recherche de tables pertinentes ─────────────────
+    # ── Selection de tables pertinentes (EN MEMOIRE, sans pgvector) ───────
+    # pgvector etait fragile : selon la version, l'API `connection=` attend un
+    # Engine SQLAlchemy ; lui passer une URL en chaine levait « 'str' object has
+    # no attribute 'connect' ». L'ancien repli renvoyait alors TOUTES les tables,
+    # gonflant le prompt a ~20k tokens et depassant la limite TPM du palier
+    # gratuit Groq (12k) -> 413/504. Pour ~20 courtes descriptions, un vector
+    # store persistant est inutile : on embarque les descriptions en memoire
+    # (modele local deja charge) et on classe par similarite cosinus. Le repli
+    # (modele indisponible) score par mots-cles et reste BORNE a k tables —
+    # JAMAIS toutes — pour que le prompt tienne sous la limite en toute
+    # circonstance.
 
-    def _init_vectorstore(self):
-        from langchain_community.vectorstores import PGVector
-        from langchain.schema import Document
-        from sqlalchemy import create_engine, text
-
-        engine = create_engine(DATABASE_URL)
-        with engine.connect() as conn:
-            conn.execute(text("CREATE EXTENSION IF NOT EXISTS vector"))
-            conn.commit()
-
-        docs = [
-            Document(
-                page_content=f"Table: {table}\nDescription: {desc}",
-                metadata={"table_name": table},
-            )
-            for table, desc in _TABLE_DESCRIPTIONS.items()
-        ]
-
-        self._vectorstore = PGVector.from_documents(
-            documents=docs,
-            embedding=self._get_embeddings(),
-            collection_name="sql_agent_table_descriptions",
-            connection=DATABASE_URL,
-            connection_string=DATABASE_URL,
-            pre_delete_collection=False,
-        )
+    def _ensure_table_vectors(self) -> None:
+        if self._table_vectors is None:
+            with self._init_lock:
+                if self._table_vectors is None:  # double-checked locking
+                    emb = self._get_embeddings()
+                    names = list(_TABLE_DESCRIPTIONS.keys())
+                    docs = [f"Table: {t}. {_TABLE_DESCRIPTIONS[t]}" for t in names]
+                    self._table_vectors = emb.embed_documents(docs)
+                    self._table_names = names
 
     def _get_relevant_tables(self, question: str, k: int = 5) -> list[str]:
         try:
-            # Lock : un seul thread initialise pgvector, les autres attendent
-            if self._vectorstore is None:
-                with self._init_lock:
-                    if self._vectorstore is None:  # double-checked locking
-                        self._init_vectorstore()
-            results = self._vectorstore.similarity_search(question, k=k)
-            tables = [r.metadata["table_name"] for r in results]
-            logger.info("Tables selectionnees: %s", tables)
+            self._ensure_table_vectors()
+            qv = self._get_embeddings().embed_query(question)
+            # Embeddings normalises (normalize_embeddings=True) -> produit
+            # scalaire = cosinus. Pas de numpy : ~20x384 multiplications.
+            scored = [
+                (sum(a * b for a, b in zip(vec, qv)), name)
+                for name, vec in zip(self._table_names, self._table_vectors)
+            ]
+            scored.sort(key=lambda s: s[0], reverse=True)
+            tables = [name for _, name in scored[: max(1, k)]]
+            logger.info("Tables pertinentes (embeddings en memoire): %s", tables)
             return tables
         except Exception as exc:
-            logger.warning("pgvector indisponible, toutes les tables: %s", exc)
-            return _ALLOWED_TABLES
+            logger.warning(
+                "Embeddings indisponibles, repli mots-cles borne: %s", exc)
+            return self._keyword_relevant_tables(question, k)
+
+    @staticmethod
+    def _keyword_relevant_tables(question: str, k: int = 5) -> list[str]:
+        """Repli SANS modele : score par recouvrement de mots, BORNE a k tables.
+        Ne renvoie JAMAIS toutes les tables (sinon prompt > limite TPM Groq)."""
+        words = {w for w in re.findall(r"\w+", question.lower()) if len(w) > 3}
+        scored = []
+        for table, desc in _TABLE_DESCRIPTIONS.items():
+            hay = (table + " " + desc).lower()
+            scored.append((sum(1 for w in words if w in hay), table))
+        scored.sort(key=lambda s: s[0], reverse=True)
+        top = [t for score, t in scored if score > 0][: max(1, k)]
+        # Aucun mot connu -> petit noyau commercial par defaut (jamais tout).
+        return top or ["crm_client", "ventes_devis",
+                       "ventes_facture", "stock_produit"][: max(1, k)]
 
     # ── Factory LLM ───────────────────────────────────────────────────────
 
