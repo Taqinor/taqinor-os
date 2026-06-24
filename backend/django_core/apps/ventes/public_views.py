@@ -297,6 +297,11 @@ def proposal_data(request, token):
             # Consommation : factures RÉELLES du lead (MAD→kWh, tarif interne),
             # [] sans facture → la page masque le graphe.
             'monthly_consumption': _monthly_consumption(devis),
+            # QJ12 — financing block (indicatif / à confirmer).
+            # Present when build_quote_data produced a non-None financing dict;
+            # absent (key not sent) when total is unknown — frontend must check.
+            # NOTE: also nested inside data['quote']['financing'] for the PDF engine.
+            'financing': data.get('financing'),
         }
     except Exception:  # noqa: BLE001
         return _noindex(Response(
