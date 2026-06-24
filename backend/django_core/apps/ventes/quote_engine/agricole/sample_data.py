@@ -122,7 +122,7 @@ _SCENARIOS = {
             "hmt_m": 75, "debit_souhaite_m3h": 35, "debit_hmt_m3h": 36,
             "heures_pompage": 7, "m3_jour": 252, "profondeur_m": 110,
             "distance_m": 45, "champ_kwc": 15.62,
-            "crop": "dattier", "region": "draa-tafilalet", "surface_ha": 3.0,
+            "crop": "dattier", "region": "draa-tafilalet", "surface_ha": 2.8,
             "irrigation_method": "goutte", "source": "forage",
             "hmt_static": 58, "hmt_drawdown": 9, "hmt_lift": 4, "hmt_friction": 4,
         },

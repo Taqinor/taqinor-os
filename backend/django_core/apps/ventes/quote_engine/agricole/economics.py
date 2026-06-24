@@ -165,6 +165,10 @@ def compute(data: dict, company_id=None) -> dict:
     else:
         hectares = None
 
+    # Peak farm water need (FAO-56) — the sizing target the pump must cover.
+    from . import agronomy
+    besoin_m3j = agronomy.peak_need_m3_day(etude)
+
     water_monthly = _monthly(annual_m3, K.WATER_MONTHLY_WEIGHTS) if has_water else [0] * 12
     prod_monthly = _monthly(prod_kwh, K.PROD_MONTHLY_WEIGHTS) if prod_kwh > 0 else [0] * 12
 
@@ -198,6 +202,7 @@ def compute(data: dict, company_id=None) -> dict:
         "trees": trees,
         "fuel_qty_label": fuel_qty_label,
         "hectares_irrigable": hectares,
+        "besoin_m3j": besoin_m3j,
         "butane_12kg_subventionne": _num(cfg["butane_12kg_subventionne"]),
         "butane_12kg_reel": _num(cfg["butane_12kg_reel"]),
         "quote_ttc": quote_ttc,
