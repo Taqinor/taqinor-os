@@ -185,6 +185,60 @@ unlinked):
 
 ## BUILD QUEUE (do top-down — highest value first)
 
+### WJ1–WJ24 — QUOTE JOURNEY: BEST-IN-WORLD ELEVATION (research-driven, 2026-06-24)
+
+**Why.** A June-2026 deep audit of TAQINOR's quote journey (website pin+bill capture → CRM lead →
+seller designs the roof in 3D in the ERP → premium quote → tokenized web proposal + e-sign) against
+the best solar platforms in the world (Aurora, OpenSolar, Solargraf, Pylon, Tesla, Otovo, Demand IQ,
+Solo, EnergySage, Bodhi) plus Morocco market + conversion-science research. These are the **website
+(`apps/web`) half**; the matching ERP tasks are **Group QJ in `docs/PLAN2.md`** (cross-referenced per
+task). The goal: make the journey the best in the world for BOTH the homeowner/business CLIENT and the
+COMMERCIAL user.
+
+**Cross-cutting constraints (every WJ task).** Stay strictly inside `apps/web/**`. The live lead form
+→ CRM **webhook contract stays working** (a task may evolve the capture UX but must keep posting a
+valid lead + the 1 000 MAD qualify logic + consent/UTM/fbclid). Private estimator previews stay
+private (noindex/not-in-nav/sitemap-excluded/unlinked). **No invented numbers** — every figure traces
+to PVGIS / a confirmed constant / sound logic; **savings are self-consumption-first (loi 82-21): value
+only self-consumed kWh; any surplus-injection line stays OFF until the founder confirms ANRE's BT
+residential net-billing tariff (still unpublished)** → see NEEDS YOUR INPUT. **Google Solar API does
+NOT cover Morocco — do NOT design around auto roof detection**; reuse TAQINOR's own engine. All new
+text **FR + AR**; **WhatsApp-first**; Lighthouse 97–100, reduced-motion respected, zero CLS, <3 s on a
+mid-range Android. New scaffolds needing real assets (photos, reviews, certs) ship **flagged `pending
+real content from Reda`, never fabricated**.
+
+**A — Capture (turn the website into an instant-estimate magnet):**
+- [ ] WJ1 — **Instant ballpark BEFORE the contact gate.** address + bill → an instant savings RANGE (kWc, ≈MAD/mois économisés, amortissement ~N ans) from the existing estimator engine, shown *before* asking for contact; make the roof PIN **optional / post-estimate** (estimate from the bill alone, refine with the pin afterwards). Keep the webhook contract + 1 000 MAD logic intact. @files: apps/web/src/pages/devis/mon-toit.astro, apps/web/src/lib/lead.ts
+- [ ] WJ2 — **Show panels on THEIR roof at capture.** Wire the private 3D estimator (`toiture-3d-pro-11`) into the public capture as an optional "voir les panneaux sur votre toit" step (lite, mobile-first), reusing the existing builder — the Aurora/Otovo effect, built on our own engine since Google Solar API is unavailable in Morocco. @files: apps/web/src/pages/devis/mon-toit.astro, apps/web/src/scripts/roof-tool-pro11.ts
+- [ ] WJ3 — **WhatsApp-first capture + email/opt-in.** Primary "Recevoir mon estimation sur WhatsApp" `wa.me` CTA with the estimate prefilled; capture email + WhatsApp opt-in (`lead.ts` already supports `whatsappOptIn`) and forward both through the webhook. @files: apps/web/src/pages/devis/mon-toit.astro, apps/web/src/lib/lead.ts
+- [ ] WJ4 — **Capture reliability.** Align client/server validation (inline `required` + `aria-invalid` matching `validateLead`, field-level errors before the round-trip) and fix the **keyless-map dead-end** (allow an address-only submit when no MapTiler key, instead of blocking forever on the pin). @files: apps/web/src/pages/devis/mon-toit.astro, apps/web/src/lib/lead.ts
+- [ ] WJ5 — **Honest sub-1 000 MAD path.** Stop showing a false "demande enregistrée" to sub-threshold bills that never reach the CRM; show a tailored message / nurture path instead. @files: apps/web/src/pages/devis/mon-toit.astro, apps/web/src/pages/api/capture-lead.ts
+- [ ] WJ6 — **Mobile wizard + reassurance.** Multi-step capture with a labeled progress bar ("Votre toit → Votre facture → Votre estimation"), a mode selector (résidentiel / professionnel / agricole), big tap targets, and no-pressure microcopy ("gratuit, sans engagement · réponse sous 24–48 h · on vous répond sur WhatsApp, pas d'appels commerciaux") — FR + AR. @files: apps/web/src/pages/devis/mon-toit.astro
+- [ ] WJ7 — **Abandon recovery.** Exit-intent / "recevez votre estimation sur WhatsApp" capturing just the number when a mobile user abandons mid-flow. @files: apps/web/src/pages/devis/mon-toit.astro
+- [ ] WJ8 — **Trust at the point of capture.** Real install photos + client count + named Moroccan towns + loi 82-21 conformité + warranty badges placed beside the CTA (scaffold + flag `pending real content from Reda`). @files: apps/web/src/pages/devis/mon-toit.astro
+
+**B — Client proposal (the page that closes the sale):**
+- [ ] WJ9 — **Headline reframe: money over time.** Bold 25-year cumulative savings + payback above the fold, anchored on the rising-bill *cost of doing nothing*, with monthly framing ("≈ X MAD/mois") beside the total. Renders backend figures (cross-ref PLAN2 QJ13). @files: apps/web/src/pages/proposition/[token].astro
+- [ ] WJ10 — **Financing comparison block.** Cash vs indicative green-loan monthly vs "X MAD/mois de mensualité < votre facture actuelle", flagged "à confirmer"; renders the data from backend (cross-ref PLAN2 QJ12). @files: apps/web/src/pages/proposition/[token].astro
+- [ ] WJ11 — **Real e-signature UX.** Typed-signature canvas + "j'accepte de signer électroniquement" consent checkbox + show the timestamp/ref back to the client, posting the richer payload to the backend (cross-ref PLAN2 QJ10). Keep it embedded + mobile-frictionless, no download. @files: apps/web/src/pages/proposition/[token].astro, apps/web/src/pages/api/proposition-accept.ts
+- [ ] WJ12 — **In-proposal contact at every doubt point.** "Discuter sur WhatsApp" (`wa.me` prefilled with the devis ref) + "Demander un rappel" + "Poser une question" beside the price/sign sections. @files: apps/web/src/pages/proposition/[token].astro
+- [ ] WJ13 — **Credibility block on the proposal.** Warranties (20–25 ans), certifications (IEC 61215/61730, IRESEN/AMEE), real install photos, install count, a founder welcome note (FR/AR) — scaffold + flag `pending real content`. @files: apps/web/src/pages/proposition/[token].astro
+- [ ] WJ14 — **Environmental impact in human terms** (tonnes CO₂/an ≈ arbres plantés) computed honestly from the production figure, as an emotional closer. @files: apps/web/src/pages/proposition/[token].astro
+- [ ] WJ15 — **Honest validity window.** "Devis valable jusqu'au [date]" on the hero + sticky CTA, from the real backend expiry — never a resetting timer. @files: apps/web/src/pages/proposition/[token].astro
+- [ ] WJ16 — **Animated production-vs-consumption curve** (sunrise→night) with a graceful "année type" fallback (clearly labelled) when monthly data is absent, so the most persuasive visual never disappears. @files: apps/web/src/pages/proposition/[token].astro
+- [ ] WJ17 — **Arabic-first, RTL-native** across capture + estimate + proposal + signature (mirrored layout, AR switcher in Arabic script, 1.6–1.8× line-height, correct AR+Latin/number handling) — designed, not bolt-on translated. @files: apps/web/src/pages/proposition/[token].astro, apps/web/src/pages/devis/mon-toit.astro
+- [ ] WJ18 — **Mobile performance <3 s** on mid-range Android/3G: defer/lazy the 3D, compress imagery, SSR the proposal shell; keep Lighthouse 97–100, zero CLS. @files: apps/web/src/pages/proposition/[token].astro, apps/web/src/pages/devis/mon-toit.astro
+
+**C — 3D estimator / builder engine (shared by the website lab AND the ERP design tool):**
+- [ ] WJ19 — **Shadow-tracing shading → honest production.** Let the user outline visible shadows on the satellite image; back-out obstruction heights from the sun azimuth/elevation at the imagery timestamp + shadow length, cast them in Three.js AND **derate the PVGIS hourly production** (Pylon's method — near-LIDAR accuracy, no paid API). @files: apps/web/src/scripts/roof-tool-pro11.ts, apps/web/src/lib/productionEngine.ts
+- [ ] WJ20 — **One-click auto-layout.** Auto-fill the traced roof with panels (respecting setbacks + obstacle no-go zones) so a visitor/seller stops hand-placing — pure geometry on data we already have. @files: apps/web/src/scripts/roof-tool-pro11.ts
+- [ ] WJ21 — **Sun-path animation + irradiance heatmap.** Animate shadows across the day/season in the existing Three.js view and color the roof by solar access (engineering proof + sales "wow"; pure astronomy, no API). @files: apps/web/src/scripts/roof-tool-pro11.ts
+- [ ] WJ22 — **Honest climate-loss layer.** Apply temperature derate (~8 % MA summer) + soiling/dust + diffuse/haze to production (PVGIS exposes the components) — fixes the ~15–20 % coastal-summer overstatement — and render production/savings as a **confidence band**, not a single number. @files: apps/web/src/lib/estimatorBrainV2.ts, apps/web/src/lib/productionEngine.ts
+- [ ] WJ23 — **Tariff fidelity + 82-21 savings honesty.** Per-utility (ONEE / Lydec / Redal) editable tranche tables; self-consumption-first savings (offset the expensive top tranches first); an OPTIONAL surplus-injection line that stays OFF until the founder confirms ANRE's BT tariff (no invented numbers). Mirror the ERP engine (PLAN2 QJ13). @files: apps/web/src/lib/estimatorBrainV2.ts, apps/web/src/lib/yieldTable.ts
+- [ ] WJ24 — **Deeper battery model + export fidelity.** Battery DoD + round-trip efficiency + degradation + real LFP pack sizes + 25-yr cashflow (indicative cost flagged); and `serializeLayout` keeps full per-pan geometry/azimuth so the ERP quote/PDF reflect the real multi-plane design (pairs with PLAN2 QJ21). @files: apps/web/src/lib/applianceConsumption.ts, apps/web/src/scripts/roof-tool-pro11.ts
+
+---
+
 **ACROSS W62–W66 (world-class audit — founder's cross-cutting constraints):** these tasks come from
 a June 2026 audit of the live site against best-in-class residential-solar sites (1KOMMA5°, Otovo,
 Aira, Enpal). **No invented facts anywhere** — every figure on the site traces to already-published
