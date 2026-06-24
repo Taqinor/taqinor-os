@@ -36,8 +36,16 @@ def _q2(value):
     return str(Decimal(value).quantize(Decimal('0.01'), rounding=ROUND_HALF_UP))
 
 
-def build_ubl_xml(facture, profile, currency='MAD'):
-    """Construit le XML UBL 2.1 d'une facture. Renvoie une chaîne (str)."""
+def build_ubl_xml(facture, profile, currency=None):
+    """Construit le XML UBL 2.1 d'une facture. Renvoie une chaîne (str).
+
+    FG52 — ``currency`` est résolu (dans l'ordre) depuis :
+      1. Le paramètre explicite ``currency`` (rétro-compat).
+      2. Le champ ``facture.devise`` (défaut « MAD » sur les factures existantes).
+      3. Le repli ultime « MAD ».
+    """
+    if currency is None:
+        currency = getattr(facture, 'devise', None) or 'MAD'
     for prefix, uri in NS.items():
         ET.register_namespace(prefix, uri)
     inv_ns = NS['']
