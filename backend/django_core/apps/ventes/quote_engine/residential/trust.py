@@ -34,19 +34,39 @@ def _disp(url: str) -> str:
 
 
 def _qr_data_uri(url: str, dark: str) -> str:
-    """An SVG data-URI QR code for `url` (scan-to-sign). Uses `segno` (pure
-    Python, no native deps); returns '' if segno isn't installed so the proposal
-    still renders — the textual 'Signez en ligne' link is always there too."""
+    """Premium scannable QR (rounded navy modules + centre TAQINOR logo) as a
+    PNG data-URI. Uses `qrcode[pil]` (free, BSD-licensed, no API/cost). Error
+    correction H keeps it scannable WITH the centre logo. Returns '' if the lib
+    or URL is unavailable, so the textual 'Signez en ligne' link always remains."""
     target = _link(url)
     if not target or target == "#":
         return ""
     try:
-        import segno
-    except Exception:
-        return ""
-    try:
-        return segno.make(target, error="m").svg_data_uri(
-            dark=dark, light=None, scale=10, border=0)
+        import base64
+        import io
+        import qrcode
+        from qrcode.image.styledpil import StyledPilImage
+        from qrcode.image.styles.moduledrawers.pil import RoundedModuleDrawer
+        from qrcode.image.styles.colormasks import SolidFillColorMask
+        from . import theme
+        qr = qrcode.QRCode(
+            error_correction=qrcode.constants.ERROR_CORRECT_H,
+            box_size=16, border=2)
+        qr.add_data(target)
+        qr.make(fit=True)
+        kw = dict(
+            image_factory=StyledPilImage,
+            module_drawer=RoundedModuleDrawer(),
+            color_mask=SolidFillColorMask(front_color=(26, 43, 74),
+                                          back_color=(255, 255, 255)))
+        logo = theme._LIVE_ASSETS / "logo.png"
+        if logo.exists():
+            kw["embeded_image_path"] = str(logo)
+        img = qr.make_image(**kw)
+        buf = io.BytesIO()
+        img.save(buf, "PNG")
+        return "data:image/png;base64," + base64.b64encode(
+            buf.getvalue()).decode()
     except Exception:
         return ""
 
@@ -125,7 +145,6 @@ def build(ctx) -> str:
         ("Paiement", paiement),
         ("TVA", tva_note or "Selon barème en vigueur"),
         ("Délai d'installation", "7 à 14 jours ouvrés"),
-        ("Tarifs de référence", "barème ONEE / SRM"),
     ]
     cond_html = "".join(
         f'<div class="p3-cond-row"><span class="p3-cond-k">{k}</span>'
@@ -147,83 +166,105 @@ def build(ctx) -> str:
         for n, t, s in steps
     )
 
-    # Scan-to-sign QR (degrades to the text link if segno is unavailable).
+    # Scan-to-sign QR (degrades to the text link if qrcode is unavailable).
     qr_uri = _qr_data_uri(l_sign, C["navy"])
     qr_html = (
-        f'<div class="p3-cta-qr"><img src="{qr_uri}" alt="QR — signer en ligne">'
-        f'<span>Scannez<br>pour signer</span></div>' if qr_uri else "")
+        f'<div class="p3-cta-qr">'
+        f'<img src="{qr_uri}" alt="QR — signer en ligne">'
+        f'<span class="p3-cta-qr-t">Scannez pour signer</span></div>'
+        if qr_uri else "")
+
+    # Legal identifier band — real company data (RC/ICE/capital from taqinor.ma).
+    legal = (
+        '<b>TAQINOR Solutions SARLAU</b> au capital de 100 000,00 MAD'
+        ' &middot; RC 691213 — Tribunal de Commerce de Casablanca'
+        ' &middot; ICE 003799642000067 &middot; Gérant : M. Reda Kasri'
+        ' &middot; contact@taqinor.com &middot; +212 6 61 85 04 10'
+        ' &middot; taqinor.ma'
+    )
 
     return f"""
 <style>
-.p3-wrap {{ padding:15mm 14mm 0 14mm; }}
-.p3-kicker {{ font-size:8.5pt; letter-spacing:.22em; text-transform:uppercase;
+/* Page-3 vertical rhythm — the wrap reserves a generous bottom band so the
+   composition breathes evenly top-to-bottom and the legal fine print lands as
+   an intentional margin ~8mm above the fixed 13mm footer (no awkward void). */
+.p3-wrap {{ padding:13mm 14mm 0 14mm; }}
+.p3-kicker {{ font-size:8.5pt; letter-spacing:.24em; text-transform:uppercase;
   color:{C['gold']}; font-weight:700; }}
 .p3-title {{ font-family:{ctx['fonts']['serif']}; font-weight:700;
-  font-size:25pt; color:{C['navy']}; line-height:1.04; margin:3px 0 0;
+  font-size:26pt; color:{C['navy']}; line-height:1.04; margin:4px 0 0;
   letter-spacing:-.3px; }}
 
 /* Value points row */
-.p3-values {{ display:flex; gap:8px; margin:12px 0 15px; }}
-.p3-val {{ flex:1; display:flex; align-items:flex-start; gap:6px;
-  background:{C['wash']}; border:1px solid {C['line_soft']}; border-radius:9px;
-  padding:9px 10px; }}
+.p3-values {{ display:flex; gap:9px; margin:12px 0 14px; }}
+.p3-val {{ flex:1; display:flex; align-items:flex-start; gap:7px;
+  background:{C['wash']}; border:1px solid {C['line_soft']}; border-radius:10px;
+  padding:11px 12px; }}
 .p3-dot {{ width:7px; height:7px; min-width:7px; border-radius:50%;
   background:{C['gold']}; margin-top:3px; }}
-.p3-val-t {{ font-size:8.4pt; color:{C['ink']}; font-weight:500; line-height:1.25; }}
+.p3-val-t {{ font-size:8.5pt; color:{C['ink']}; font-weight:500; line-height:1.3; }}
 
 /* Section heading */
-.p3-h {{ font-family:{ctx['fonts']['serif']}; font-weight:700; font-size:11.5pt;
-  color:{C['navy']}; margin:0 0 7px; }}
-.p3-block {{ margin-bottom:20px; }}
+.p3-h {{ font-family:{ctx['fonts']['serif']}; font-weight:700; font-size:12pt;
+  color:{C['navy']}; margin:0 0 8px; }}
+.p3-block {{ margin-bottom:14px; }}
 
 /* Garantie badges */
-.p3-badges {{ display:flex; gap:8px; }}
+.p3-badges {{ display:flex; gap:9px; }}
 .p3-badge {{ flex:1; text-align:center; border:1px solid {C['line']};
-  border-top:3px solid {C['gold']}; border-radius:10px; padding:11px 4px 10px;
+  border-top:3px solid {C['gold']}; border-radius:11px; padding:14px 4px 12px;
   background:{C['paper']}; }}
-.p3-badge-n {{ font-family:{ctx['fonts']['display']}; font-size:25pt;
+.p3-badge-n {{ font-family:{ctx['fonts']['display']}; font-size:26pt;
   color:{C['navy']}; line-height:1; }}
 .p3-badge-u {{ font-family:{ctx['fonts']['sans']}; font-size:8pt;
   color:{C['gold']}; font-weight:700; margin-left:3px; }}
 .p3-badge-l {{ font-size:7.6pt; color:{C['muted']}; font-weight:600;
-  margin-top:4px; letter-spacing:.02em; }}
+  margin-top:6px; letter-spacing:.02em; }}
 
 /* Trust strip (navy band, links out) */
-.p3-trust {{ background:{C['navy']}; border-radius:11px; padding:13px 14px;
-  display:flex; gap:10px; }}
+.p3-trust {{ background:{C['navy']}; border-radius:12px; padding:15px 16px;
+  display:flex; gap:12px; }}
 .p3-trust-item {{ flex:1; text-decoration:none; display:block;
-  border-right:1px solid rgba(255,255,255,.14); padding-right:10px; }}
+  border-right:1px solid rgba(255,255,255,.14); padding-right:12px; }}
 .p3-trust-item:last-child {{ border-right:none; padding-right:0; }}
-.p3-trust-t {{ display:block; color:#fff; font-size:8.6pt; font-weight:700;
-  margin-bottom:2px; }}
+.p3-trust-t {{ display:block; color:#fff; font-size:8.7pt; font-weight:700;
+  margin-bottom:3px; }}
 .p3-trust-u {{ display:block; color:{C['gold']}; font-size:7.8pt;
   font-weight:600; }}
 
 /* Conditions + steps side by side */
-.p3-cols {{ display:flex; gap:10px; }}
+.p3-cols {{ display:flex; gap:12px; align-items:flex-start; }}
 .p3-col {{ flex:1; }}
-.p3-card {{ border:1px solid {C['line']}; border-radius:10px;
-  background:{C['paper']}; padding:10px 12px; height:100%; }}
+.p3-card {{ border:1px solid {C['line']}; border-radius:11px;
+  background:{C['paper']}; padding:12px 14px; }}
 .p3-cond-row {{ padding:7px 0; border-bottom:1px dashed {C['line_soft']}; }}
-.p3-cond-row:last-child {{ border-bottom:none; }}
+.p3-cond-row:last-child {{ border-bottom:none; padding-bottom:1px; }}
+.p3-cond-row:first-child {{ padding-top:1px; }}
 .p3-cond-k {{ display:block; font-size:7pt; letter-spacing:.1em;
   text-transform:uppercase; color:{C['muted_2']}; font-weight:700;
   margin-bottom:2px; }}
 .p3-cond-v {{ display:block; font-size:8.4pt; color:{C['ink']};
   font-weight:500; line-height:1.3; }}
 
-.p3-steps {{ display:flex; flex-direction:column; gap:9px; }}
-.p3-step {{ display:flex; align-items:baseline; gap:8px; }}
-.p3-step-n {{ width:18px; min-width:18px; height:18px; border-radius:50%;
+/* Steps mirror the Conditions rhythm (padded rows + dashed dividers) AND the 4
+   rows flex-divide the card's full height, so the two cards are equal height
+   with the steps evenly filling — no floating dots, no void, bottoms aligned. */
+.p3-steps {{ display:block; }}
+.p3-step {{ display:flex; align-items:center; padding:15px 0;
+  border-bottom:1px dashed {C['line_soft']}; }}
+.p3-step:first-child {{ padding-top:2px; }}
+.p3-step:last-child {{ border-bottom:none; padding-bottom:2px; }}
+.p3-step-n {{ width:20px; min-width:20px; height:20px; border-radius:50%;
   background:{C['navy']}; color:#fff; font-size:8pt; font-weight:700;
-  text-align:center; line-height:18px; }}
-.p3-step-t {{ font-size:8.6pt; color:{C['ink']}; font-weight:700; }}
-.p3-step-s {{ font-size:8pt; color:{C['muted']}; margin-left:auto; }}
+  text-align:center; line-height:20px; margin-right:12px; }}
+.p3-step-t {{ font-size:8.7pt; color:{C['ink']}; font-weight:700; }}
+.p3-step-s {{ font-size:8pt; color:{C['muted']}; margin-left:auto;
+  padding-left:8px; }}
 
 /* Bon pour accord */
-.p3-accord {{ border:1.5px solid {C['navy']}; border-radius:12px;
-  margin-top:4px; overflow:hidden; }}
-.p3-accord-hd {{ background:{C['navy']}; color:#fff; padding:9px 14px;
+.p3-accord {{ border:1.5px solid {C['navy']}; border-radius:13px;
+  margin-bottom:13px; overflow:hidden; }}
+.p3-accord-hd {{ background:{C['navy']}; color:#fff; padding:11px 16px;
   display:flex; align-items:center; justify-content:space-between; }}
 .p3-accord-ttl {{ font-family:{ctx['fonts']['serif']}; font-weight:700;
   font-size:11.5pt; letter-spacing:.02em; }}
@@ -231,32 +272,41 @@ def build(ctx) -> str:
 .p3-box {{ display:inline-block; width:9px; height:9px; border:1.4px solid #fff;
   border-radius:2px; margin:0 4px 0 10px; vertical-align:-1px; }}
 .p3-accord-bd {{ display:flex; }}
-.p3-sig {{ flex:1; padding:13px 16px 16px; }}
+.p3-sig {{ flex:1; padding:13px 18px 15px; }}
 .p3-sig:first-child {{ border-right:1px dashed {C['line']}; }}
 .p3-sig-who {{ font-size:8.2pt; color:{C['navy']}; font-weight:700;
   text-transform:uppercase; letter-spacing:.06em; }}
 .p3-sig-name {{ font-size:9.2pt; color:{C['ink']}; font-weight:700;
-  margin-top:1px; }}
-.p3-sig-hint {{ font-size:7.4pt; color:{C['muted']}; margin-top:2px; }}
-.p3-sig-line {{ border-bottom:1px solid {C['line']}; height:42px; margin-top:8px; }}
+  margin-top:2px; }}
+.p3-sig-hint {{ font-size:7.4pt; color:{C['muted']}; margin-top:3px; }}
+.p3-sig-line {{ border-bottom:1px solid {C['line']}; height:34px; margin-top:8px; }}
 
-/* CTA */
-.p3-cta {{ margin-top:14px; background:{C['gold']}; border-radius:11px;
-  padding:13px 18px; display:flex; align-items:center; gap:18px;
+/* CTA — gold close band with scan-to-sign QR */
+.p3-cta {{ background:{C['gold']}; border-radius:12px;
+  padding:15px 20px; display:flex; align-items:center; gap:18px;
   justify-content:space-between; }}
 .p3-cta-l {{ flex:1 1 auto; min-width:0; }}
-.p3-cta-t {{ color:{C['navy']}; font-size:11pt; font-weight:700; }}
-.p3-cta-s {{ color:{C['navy']}; font-size:8pt; opacity:.78; margin-top:1px; }}
-.p3-cta-btn {{ display:inline-block; margin-top:9px; background:{C['navy']};
-  color:#fff; font-size:9.5pt; font-weight:700; padding:8px 16px;
-  border-radius:8px; white-space:nowrap; text-decoration:none; }}
+.p3-cta-t {{ color:{C['navy']}; font-size:11.5pt; font-weight:700;
+  letter-spacing:-.1px; }}
+.p3-cta-s {{ color:{C['navy']}; font-size:8pt; opacity:.78; margin-top:2px; }}
+.p3-cta-btn {{ display:inline-block; margin-top:11px; background:{C['navy']};
+  color:#fff; font-size:9.5pt; font-weight:700; padding:9px 17px;
+  border-radius:9px; white-space:nowrap; text-decoration:none; }}
 .p3-cta-btn span {{ color:{C['gold']}; }}
-.p3-cta-qr {{ flex:0 0 auto; display:flex; align-items:center; gap:9px;
-  padding-left:16px; border-left:1.5px solid rgba(26,43,74,.22); }}
-.p3-cta-qr img {{ width:18mm; height:18mm; display:block; background:#fff;
-  border-radius:7px; padding:4px; }}
-.p3-cta-qr span {{ font-size:8.6pt; font-weight:700; color:{C['navy']};
-  line-height:1.15; }}
+.p3-cta-qr {{ flex:0 0 auto; display:flex; flex-direction:column;
+  align-items:center; padding-left:18px;
+  border-left:1.5px solid rgba(26,43,74,.22); }}
+.p3-cta-qr img {{ flex:0 0 auto; width:20mm; height:20mm; display:block;
+  background:#fff; border-radius:9px; padding:5px; margin:0 0 6px 0; }}
+.p3-cta-qr-t {{ flex:0 0 auto; font-size:7.8pt; font-weight:700;
+  color:{C['navy']}; line-height:1.25; letter-spacing:.01em;
+  text-align:center; white-space:nowrap; }}
+
+/* Legal identifier band — refined fine print, intentional margin above footer */
+.p3-legal {{ margin-top:13px; padding-top:8px; border-top:1px solid {C['line']};
+  font-size:6.7pt; color:{C['muted_2']}; text-align:center; line-height:1.6;
+  letter-spacing:.015em; }}
+.p3-legal b {{ color:{C['navy']}; font-weight:700; }}
 </style>
 
 <div class="p3-wrap">
@@ -317,5 +367,7 @@ def build(ctx) -> str:
     </div>
     {qr_html}
   </div>
+
+  <div class="p3-legal">{legal}</div>
 </div>
 """

@@ -127,8 +127,8 @@ def build(ctx):
 .c1-kicker{{font-size:7pt;letter-spacing:2.6px;font-weight:700;text-transform:uppercase;}}
 
 /* ── HERO ──────────────────────────────────────────────────────────────── */
-.c1-hero{{position:relative;background:{hero_bg};height:58mm;overflow:hidden;
-  padding:9mm 14mm 0 14mm;border-bottom:2.5px solid {gold};}}
+.c1-hero{{position:relative;background:{hero_bg};height:53mm;overflow:hidden;
+  padding:8mm 14mm 0 14mm;border-bottom:2.5px solid {gold};}}
 .c1-hero-glow{{position:absolute;top:-30px;right:-40px;width:300px;height:210px;
   background:radial-gradient(ellipse at 75% 18%,rgba(245,166,35,0.30) 0%,transparent 64%);
   pointer-events:none;}}
@@ -143,38 +143,45 @@ def build(ctx):
 .c1-hero-meta .c1-date{{font-size:8pt;color:rgba(255,255,255,0.72);margin-top:3px;}}
 .c1-pill-gold{{display:inline-block;margin-top:6px;background:{gold};color:{navy_900};
   border-radius:20px;padding:3px 11px;font-size:7pt;font-weight:700;letter-spacing:.3px;}}
-.c1-hero-body{{position:absolute;left:14mm;right:14mm;bottom:7mm;z-index:1;
+.c1-hero-body{{position:absolute;left:14mm;right:14mm;bottom:6.5mm;z-index:1;
   text-shadow:0 1px 6px rgba(0,0,0,0.40);}}
 .c1-hero-kicker{{color:{gold};margin-bottom:6px;}}
 .c1-hello{{font-size:37pt;color:#fff;line-height:0.98;letter-spacing:-0.6px;}}
-.c1-sub{{font-size:11.5pt;color:rgba(255,255,255,0.86);margin-top:7px;font-weight:400;}}
+.c1-sub{{font-size:11pt;color:rgba(255,255,255,0.88);margin-top:7px;font-weight:400;}}
 
-/* ── CLIENT LINE ───────────────────────────────────────────────────────── */
-.c1-client{{display:flex;align-items:center;gap:9px;padding:4.5mm 14mm 0 14mm;
+/* ── CLIENT + CREDIBILITY LINE ─────────────────────────────────────────── */
+.c1-client{{display:flex;align-items:center;gap:9px;padding:5mm 14mm 0 14mm;
   font-size:8.5pt;color:{muted};}}
 .c1-client b{{color:{ink};font-weight:700;}}
 .c1-dot{{color:{line};font-weight:700;}}
 .c1-tag{{margin-left:auto;background:{wash};border:1px solid {line};border-radius:20px;
   padding:2px 10px;font-size:7pt;font-weight:600;color:{navy};letter-spacing:.3px;}}
+.c1-trust{{display:flex;align-items:center;gap:8px;padding:2.6mm 14mm 0 14mm;}}
+.c1-trust-line{{flex:1 1 0;height:1px;background:{line_soft};}}
+.c1-trust-txt{{font-size:7pt;letter-spacing:2px;text-transform:uppercase;
+  font-weight:700;color:{muted_2};white-space:nowrap;}}
+.c1-trust-txt b{{color:{navy};font-weight:700;}}
 
 /* ── MONEY HOOK ────────────────────────────────────────────────────────── */
-.c1-wrap{{padding:4mm 14mm 0 14mm;}}
-.c1-hook{{display:flex;gap:14px;align-items:stretch;}}
-.c1-hook-left{{flex:1 1 0;min-width:0;border:1px solid {line};border-radius:12px;
-  padding:13px 16px;background:#fff;display:flex;flex-direction:column;
-  justify-content:center;}}
+.c1-wrap{{padding:3.5mm 14mm 0 14mm;}}
+/* CSS table (not flex) so the two cards auto-equalise height — WeasyPrint flex
+   align-stretch left the donut card ~24pt short of the hook card. */
+.c1-hook{{display:table;width:100%;border-spacing:0;}}
+.c1-hook-left{{display:table-cell;vertical-align:middle;border:1px solid {line};
+  border-radius:14px;padding:15px 18px;background:#fff;}}
+.c1-hook-gap{{display:table-cell;width:14px;}}
 .c1-hook-head{{display:flex;align-items:center;justify-content:space-between;margin-bottom:9px;}}
 .c1-hook-eyebrow{{color:{muted};font-size:6.5pt;letter-spacing:2px;text-transform:uppercase;
   font-weight:700;}}
-.c1-bigcut{{display:flex;align-items:center;gap:16px;margin-top:7px;}}
-.c1-bigcut-n{{font-family:'{f_display}','{f_serif}',serif;font-size:44pt;color:{gold};
-  line-height:.82;letter-spacing:-1.5px;white-space:nowrap;}}
-.c1-bigcut-n span{{font-size:21pt;vertical-align:top;}}
+.c1-bigcut{{display:flex;align-items:center;gap:18px;margin-top:8px;}}
+.c1-bigcut-n{{font-family:'{f_display}','{f_serif}',serif;font-size:46pt;color:{gold};
+  line-height:.82;letter-spacing:-1.5px;white-space:nowrap;margin-right:20px;}}
+.c1-bigcut-n span{{font-size:22pt;vertical-align:top;}}
 .c1-bigcut-t{{font-size:11.5pt;font-weight:700;color:{navy};line-height:1.15;}}
-.c1-bigcut-c{{font-size:9.5pt;color:{muted};margin-top:5px;white-space:nowrap;}}
+.c1-bigcut-c{{font-size:9.5pt;color:{muted};margin-top:6px;white-space:nowrap;}}
 .c1-bigcut-c s{{color:{muted_2};text-decoration-thickness:1.5px;}}
 .c1-bigcut-c b{{color:{navy};font-weight:700;}}
-.c1-bigcut-m{{font-size:8pt;color:{muted};margin-top:2px;white-space:nowrap;}}
+.c1-bigcut-m{{font-size:8pt;color:{muted};margin-top:3px;white-space:nowrap;}}
 .c1-bigcut-m s{{color:{muted_2};text-decoration-thickness:1.2px;}}
 .c1-bigcut-m b{{color:{gold};font-weight:700;}}
 .c1-cut{{background:{gold};color:{navy_900};font-weight:700;font-size:9.5pt;
@@ -190,27 +197,43 @@ def build(ctx):
   line-height:1.0;white-space:nowrap;letter-spacing:-0.5px;}}
 .c1-cmp-new .c1-u{{font-size:10pt;color:{gold};}}
 .c1-arrow{{width:30px;height:18px;flex-shrink:0;}}
-.c1-hook-right{{flex:0 0 40mm;border:1px solid {line};border-radius:12px;
-  background:{wash};display:flex;flex-direction:column;align-items:center;
-  justify-content:center;padding:8px 6px;}}
-.c1-donut{{height:30mm;width:auto;display:block;}}
-.c1-donut-cap{{font-size:7pt;color:{muted};text-align:center;line-height:1.25;
-  margin-top:2px;max-width:34mm;}}
-.c1-bill{{margin-top:11px;border:1px solid {line};border-radius:12px;background:#fff;
-  padding:9px 14px 7px;}}
+
+/* Donut card — donut + caption read as ONE tight, centered unit. The PNG
+   already bakes in "74%" + "couverture", so the caption only COMPLEMENTS it.
+   The card stays a normal flex item (block); an INNER table-cell does the
+   reliable vertical centring (WeasyPrint flex column centring is flaky). */
+.c1-hook-right{{display:table-cell;vertical-align:middle;width:41mm;
+  border:1px solid {line};border-radius:14px;
+  background:linear-gradient(180deg,{wash},#ffffff 80%);}}
+.c1-donut-tab{{display:table;width:100%;height:100%;}}
+.c1-donut-cell{{display:table-cell;vertical-align:middle;text-align:center;
+  padding:8px 5px;}}
+.c1-donut-k{{font-size:6pt;letter-spacing:2px;text-transform:uppercase;
+  font-weight:700;color:{muted_2};margin-bottom:3px;}}
+.c1-donut{{height:31mm;width:31mm;display:inline-block;}}
+.c1-donut-cap{{font-size:7.5pt;color:{navy};text-align:center;line-height:1.25;
+  margin-top:3px;font-weight:600;}}
+.c1-donut-cap span{{display:block;font-size:6.8pt;color:{muted};font-weight:400;
+  margin-top:1px;}}
+
+/* ── BILL CHART ────────────────────────────────────────────────────────── */
+.c1-bill{{margin-top:12px;border:1px solid {line};border-radius:14px;background:#fff;
+  padding:10px 16px 8px;}}
 .c1-bill-head{{display:flex;align-items:baseline;justify-content:space-between;
-  margin-bottom:3px;}}
+  margin-bottom:4px;}}
 .c1-bill-t{{font-size:7.5pt;font-weight:700;color:{navy};text-transform:uppercase;
   letter-spacing:.6px;}}
 .c1-bill-leg{{font-size:6.5pt;color:{muted};}}
 .c1-bill-leg .c1-sw{{display:inline-block;width:8px;height:8px;border-radius:2px;
   vertical-align:middle;margin:0 3px 0 8px;}}
-.c1-bill img{{width:100%;height:auto;display:block;}}
+/* Cap chart height (PNG is ~3.3:1) so it stays crisp & airy, never dominates the
+   page — centred so the shorter image reads as intentional, not floated. */
+.c1-bill img{{height:37mm;width:auto;max-width:100%;display:block;margin:0 auto;}}
 
 /* ── KPI CHIPS ─────────────────────────────────────────────────────────── */
 .c1-kpis{{display:flex;gap:12px;margin-top:11px;}}
 .c1-kpi{{flex:1 1 0;min-width:0;border:1px solid {line};border-left:4px solid {gold};
-  border-radius:12px;padding:11px 13px;background:#fff;}}
+  border-radius:12px;padding:11px 14px;background:#fff;}}
 .c1-kpi-v{{font-family:'{f_display}','{f_serif}',serif;font-size:17pt;color:{navy};
   line-height:1.0;}}
 .c1-kpi-v .c1-u{{font-size:9pt;color:{muted};}}
@@ -219,15 +242,15 @@ def build(ctx):
 /* ── IMPACT STRIP ──────────────────────────────────────────────────────── */
 .c1-impact{{display:flex;align-items:center;gap:9px;margin-top:9px;
   border:1px solid {green_bg};border-left:4px solid {green};border-radius:12px;
-  background:linear-gradient(100deg,{green_bg},#ffffff 70%);padding:7px 13px;}}
+  background:linear-gradient(100deg,{green_bg},#ffffff 70%);padding:8px 14px;}}
 .c1-impact svg{{width:15px;height:15px;flex-shrink:0;}}
 .c1-impact-t{{font-size:8pt;color:{ink};line-height:1.25;}}
 .c1-impact-t b{{color:{green};font-weight:700;}}
 
 /* ── OPTION CARDS ──────────────────────────────────────────────────────── */
 .c1-opts{{display:flex;gap:14px;margin-top:11px;}}
-.c1-opt{{flex:1 1 0;min-width:0;border:1px solid {line};border-radius:12px;
-  background:#fff;padding:15px 16px 14px;position:relative;display:flex;
+.c1-opt{{flex:1 1 0;min-width:0;border:1px solid {line};border-radius:14px;
+  background:#fff;padding:13px 17px 12px;position:relative;display:flex;
   flex-direction:column;}}
 .c1-opt.c1-reco{{border:1.5px solid {gold};
   background:linear-gradient(180deg,#FFFCF5,#ffffff 55%);}}
@@ -246,14 +269,15 @@ def build(ctx):
   background:{green_bg};color:{green};border-radius:20px;padding:3px 11px;
   font-size:8pt;font-weight:700;margin-top:8px;}}
 .c1-roi svg{{width:11px;height:11px;}}
-.c1-opt-hr{{height:1px;background:{line_soft};margin:11px 0 9px;}}
-.c1-opt ul{{list-style:none;padding:0;margin:0;}}
+.c1-opt-hr{{height:1px;background:{line_soft};margin:9px 0 7px;}}
+.c1-opt ul{{list-style:none;padding:8px 0 0;margin:9px 0 0;
+  border-top:1px solid {line_soft};}}
 .c1-opt li{{display:flex;align-items:flex-start;gap:7px;font-size:8pt;
-  color:{ink};line-height:1.4;margin-bottom:6px;}}
+  color:{ink};line-height:1.35;margin-bottom:4px;}}
 .c1-chk{{width:12px;height:12px;flex-shrink:0;margin-top:1px;}}
 .c1-opt li span{{min-width:0;}}
 .c1-note{{font-size:6.5pt;color:{muted_2};font-style:italic;margin-top:auto;
-  padding-top:6px;}}
+  padding-top:5px;}}
 </style>
 """
 
@@ -287,6 +311,13 @@ def build(ctx):
     <span class="c1-tag">{inst_type}</span>
   </div>
 
+  <!-- CREDIBILITY CUE (number-free) ──────────────────────────────────────── -->
+  <div class="c1-trust">
+    <div class="c1-trust-line"></div>
+    <div class="c1-trust-txt"><b>Ingénieurs solaires</b> · Garantie 25 ans · Suivi temps réel</div>
+    <div class="c1-trust-line"></div>
+  </div>
+
   <div class="c1-wrap">
 
     <!-- MONEY HOOK ─────────────────────────────────────────────────────── -->
@@ -304,9 +335,13 @@ def build(ctx):
           </div>
         </div>
       </div>
+      <div class="c1-hook-gap"></div>
       <div class="c1-hook-right">
-        <img class="c1-donut" src="{charts['coverage']}" alt="Couverture">
-        <div class="c1-donut-cap">de votre consommation<br>couverte par le solaire</div>
+        <div class="c1-donut-tab"><div class="c1-donut-cell">
+          <div class="c1-donut-k">Énergie solaire</div>
+          <img class="c1-donut" src="{charts['coverage']}" alt="Couverture solaire">
+          <div class="c1-donut-cap">de votre consommation<span>annuelle assurée par le solaire</span></div>
+        </div></div>
       </div>
     </div>
 
@@ -343,7 +378,7 @@ def build(ctx):
       <svg viewBox="0 0 24 24" fill="none"><path d="M12 21c5-1 8-5 8-11V5l-5 1c-5 1-8 4-8 9 0 .7.1 1.4.3 2"
         stroke="{green}" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/>
         <path d="M7 21c0-4 2-7 6-9" stroke="{green}" stroke-width="1.7" stroke-linecap="round"/></svg>
-      <div class="c1-impact-t">Et pour la planète&nbsp;: ≈&nbsp;<b>{co2_txt} tonnes de CO₂</b>
+      <div class="c1-impact-t">Et pour la planète&nbsp;: ≈&nbsp;<b>{co2_txt} tonnes de CO<sub>2</sub></b>
         évitées chaque année — l'équivalent de <b>≈&nbsp;{fmt(trees)} arbres</b> plantés.</div>
     </div>
 
@@ -360,7 +395,6 @@ def build(ctx):
         <div class="c1-opt-price">{fmt(total_sans)}<span class="c1-u">&nbsp;MAD</span></div>
         <div class="c1-opt-kwc">soit {pkwc_sans} MAD/kWc · TTC</div>
         <div class="c1-roi">{_roi_svg(green)}Rentabilisé en {_yrs(roi_s)} ans</div>
-        <div class="c1-opt-hr"></div>
         <ul>{bullets(sans_bullets)}</ul>
         <div class="c1-note">Détail &amp; équipement en page 2</div>
       </div>
@@ -376,7 +410,6 @@ def build(ctx):
         <div class="c1-opt-price">{fmt(total_avec)}<span class="c1-u">&nbsp;MAD</span></div>
         <div class="c1-opt-kwc">soit {pkwc_avec} MAD/kWc · TTC</div>
         <div class="c1-roi">{_roi_svg(green)}Rentabilisé en {_yrs(roi_a)} ans</div>
-        <div class="c1-opt-hr"></div>
         <ul>{bullets(avec_bullets)}</ul>
         <div class="c1-note">Détail &amp; équipement en page 2</div>
       </div>
