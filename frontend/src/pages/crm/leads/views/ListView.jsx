@@ -69,6 +69,32 @@ const SORTERS = {
   ville: (a, b) => (a.ville ?? '').localeCompare(b.ville ?? '', 'fr'),
   telephone: (a, b) =>
     (a.telephone ?? '').localeCompare(b.telephone ?? '', 'fr'),
+  score: (a, b) => (a.score ?? 0) - (b.score ?? 0),
+}
+
+// Badge de score : couleur selon le libellé renvoyé par scoring.py.
+const SCORE_COLORS = {
+  Chaud: { bg: '#fef3c7', color: '#92400e', border: '#fcd34d' },
+  Tiede: { bg: '#e0f2fe', color: '#0369a1', border: '#7dd3fc' },
+  Froid: { bg: '#f1f5f9', color: '#64748b', border: '#cbd5e1' },
+}
+
+function ScoreBadge({ lead }) {
+  const score = lead.score ?? null
+  const label = lead.score_label ?? null
+  if (score === null && label === null) return <span className="lv-muted">—</span>
+  const s = score ?? 0
+  const lbl = label ?? (s >= 70 ? 'Chaud' : s >= 45 ? 'Tiede' : 'Froid')
+  const c = SCORE_COLORS[lbl] ?? SCORE_COLORS.Froid
+  return (
+    <span
+      className="lv-score-badge"
+      style={{ background: c.bg, color: c.color, border: `1px solid ${c.border}` }}
+      title={`Score de qualité : ${s}/100`}
+    >
+      {s}
+    </span>
+  )
 }
 
 const todayISO = () => {
@@ -182,6 +208,7 @@ export default function ListView({
             )}
             <SortableTh col="lead" label="Lead" sort={sort} onSort={onSort} />
             <SortableTh col="stage" label="Stade" sort={sort} onSort={onSort} />
+            <SortableTh col="score" label="Score" sort={sort} onSort={onSort} className="m-hide" />
             <SortableTh col="telephone" label="Téléphone" sort={sort} onSort={onSort} className="m-hide" />
             <SortableTh col="ville" label="Ville" sort={sort} onSort={onSort} className="m-hide" />
             <th className="m-hide">Facture</th>
@@ -246,6 +273,9 @@ export default function ListView({
                     )}
                     onSave={(v) => onInlineSave(lead, 'stage', v)}
                   />
+                </td>
+                <td className="m-hide" data-label="Score">
+                  <ScoreBadge lead={lead} />
                 </td>
                 <td className="m-hide" onClick={(e) => e.stopPropagation()}>
                   {lead.telephone ? (

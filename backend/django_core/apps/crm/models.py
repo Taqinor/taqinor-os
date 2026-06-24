@@ -359,6 +359,16 @@ class Lead(models.Model):
     date_creation = models.DateTimeField(auto_now_add=True)
     date_modification = models.DateTimeField(auto_now=True)
 
+    # QJ6 — Score de qualité calculé (0–100) et persisté pour un tri
+    # pagination-safe. Recalculé à chaque création/mise à jour du lead
+    # (services.recompute_lead_score). NULL sur les leads importés avant la
+    # migration (backfill optionnel au premier accès).
+    score = models.IntegerField(
+        null=True, blank=True,
+        verbose_name='Score de qualité',
+        help_text='Score 0–100 calculé automatiquement (voir scoring.py).',
+    )
+
     class Meta:
         verbose_name = 'Lead'
         verbose_name_plural = 'Leads'
@@ -366,6 +376,7 @@ class Lead(models.Model):
         indexes = [
             models.Index(fields=['company', 'source']),
             models.Index(fields=['company', 'stage']),
+            models.Index(fields=['company', 'score']),
         ]
         constraints = [
             # An imported record is unique per (company, system, external id) so
