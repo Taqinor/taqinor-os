@@ -6,6 +6,7 @@ from .models import (
     DocumentEmploye,
     DossierEmploye,
     ElementSortie,
+    Pointage,
     Poste,
     Remuneration,
     SoldeConge,
@@ -79,4 +80,12 @@ class DemandeCongeAdmin(admin.ModelAdmin):
     list_display = ('employe', 'type_absence', 'date_debut', 'date_fin',
                     'jours', 'statut', 'company')
     list_filter = ('statut', 'type_absence')
+    search_fields = ('employe__matricule', 'employe__nom', 'employe__prenom')
+
+
+@admin.register(Pointage)
+class PointageAdmin(admin.ModelAdmin):
+    list_display = ('employe', 'type_pointage', 'heure_arrivee', 'heure_depart',
+                    'company', 'date_creation')
+    list_filter = ('type_pointage',)
     search_fields = ('employe__matricule', 'employe__nom', 'employe__prenom')
