@@ -1377,3 +1377,140 @@ class DocumentUploadTests(GedBase):
         # Aucun document créé si le stockage échoue.
         self.assertFalse(
             Document.objects.filter(folder=self.folder_a).exists())
+
+
+# ── GED14 — Aperçu inline multi-format (proxy même-origine) ──────────
+class DocumentVersionAperuTests(GedBase):
+    """GED14 — L'action `apercu` relaie le contenu MinIO via Django (même
+    origine) pour un affichage inline dans le navigateur.
+
+    Couvre :
+    - aperçu inline d'un PDF (Content-Disposition: inline)
+    - aperçu inline d'une image (image/png)
+    - aperçu inline d'un texte (text/plain)
+    - type non-inline (application/zip) → Content-Disposition: attachment
+    - objet MinIO manquant → 404
+    - isolation multi-tenant : une version d'une autre société renvoie 404
+    - authentification requise
+    """
+
+    def setUp(self):
+        super().setUp()
+        self.folder_a = Folder.objects.create(
+            company=self.co_a, cabinet=self.cab_a, nom='Docs A')
+        self.doc_a = Document.objects.create(
+            company=self.co_a, folder=self.folder_a, nom='Contrat')
+        self.version_a = services.add_version(
+            self.doc_a, file_key='attachments/contrat.pdf',
+            company=self.co_a, filename='contrat.pdf', size=100,
+            mime='application/pdf', uploaded_by=self.admin_a)
+
+    def _url(self, version_id):
+        return f'/api/django/ged/versions/{version_id}/apercu/'
+
+    def test_apercu_pdf_inline(self):
+        """Un PDF est servi avec Content-Disposition: inline."""
+        from unittest import mock
+        fake_content = b'%PDF-1.4 fake'
+        api = auth(self.admin_a)
+        with mock.patch('apps.ged.views.fetch_attachment',
+                        return_value=(fake_content, None)):
+            resp = api.get(self._url(self.version_a.id))
+        self.assertEqual(resp.status_code, 200)
+        self.assertEqual(resp['Content-Type'], 'application/pdf')
+        self.assertIn('inline', resp['Content-Disposition'])
+        self.assertIn('contrat.pdf', resp['Content-Disposition'])
+        self.assertEqual(resp['X-Content-Type-Options'], 'nosniff')
+        self.assertEqual(resp.content, fake_content)
+
+    def test_apercu_image_inline(self):
+        """Une image est servie avec Content-Disposition: inline."""
+        from unittest import mock
+        folder_a = self.folder_a
+        doc = Document.objects.create(
+            company=self.co_a, folder=folder_a, nom='Photo')
+        version_img = services.add_version(
+            doc, file_key='attachments/photo.png', company=self.co_a,
+            filename='photo.png', size=50, mime='image/png',
+            uploaded_by=self.admin_a)
+        fake_png = b'\x89PNG\r\n\x1a\n' + b'\x00' * 10
+        api = auth(self.admin_a)
+        with mock.patch('apps.ged.views.fetch_attachment',
+                        return_value=(fake_png, None)):
+            resp = api.get(self._url(version_img.id))
+        self.assertEqual(resp.status_code, 200)
+        self.assertEqual(resp['Content-Type'], 'image/png')
+        self.assertIn('inline', resp['Content-Disposition'])
+
+    def test_apercu_text_inline(self):
+        """Un fichier texte est servi avec Content-Disposition: inline."""
+        from unittest import mock
+        doc = Document.objects.create(
+            company=self.co_a, folder=self.folder_a, nom='Notes')
+        version_txt = services.add_version(
+            doc, file_key='attachments/notes.txt', company=self.co_a,
+            filename='notes.txt', size=20, mime='text/plain',
+            uploaded_by=self.admin_a)
+        fake_text = b'Contenu textuel'
+        api = auth(self.admin_a)
+        with mock.patch('apps.ged.views.fetch_attachment',
+                        return_value=(fake_text, None)):
+            resp = api.get(self._url(version_txt.id))
+        self.assertEqual(resp.status_code, 200)
+        self.assertIn('text/plain', resp['Content-Type'])
+        self.assertIn('inline', resp['Content-Disposition'])
+
+    def test_apercu_non_inline_type_becomes_attachment(self):
+        """Un type non-inline (ex. application/zip) est servi en attachment."""
+        from unittest import mock
+        doc = Document.objects.create(
+            company=self.co_a, folder=self.folder_a, nom='Archive')
+        version_zip = services.add_version(
+            doc, file_key='attachments/archive.zip', company=self.co_a,
+            filename='archive.zip', size=1000, mime='application/zip',
+            uploaded_by=self.admin_a)
+        fake_zip = b'PK\x03\x04'
+        api = auth(self.admin_a)
+        with mock.patch('apps.ged.views.fetch_attachment',
+                        return_value=(fake_zip, None)):
+            resp = api.get(self._url(version_zip.id))
+        self.assertEqual(resp.status_code, 200)
+        # Pas de type inline → attachment (téléchargement forcé).
+        self.assertIn('attachment', resp['Content-Disposition'])
+        self.assertNotIn('inline', resp['Content-Disposition'])
+
+    def test_apercu_missing_object_returns_404(self):
+        """MinIO renvoie une erreur → 404."""
+        from unittest import mock
+        api = auth(self.admin_a)
+        with mock.patch('apps.ged.views.fetch_attachment',
+                        return_value=(None, 'Fichier introuvable.')):
+            resp = api.get(self._url(self.version_a.id))
+        self.assertEqual(resp.status_code, 404)
+
+    def test_apercu_tenant_isolation(self):
+        """Une version d'une autre société n'est pas accessible (404)."""
+        from unittest import mock
+        # Version appartenant à la société B.
+        folder_b = Folder.objects.create(
+            company=self.co_b, cabinet=self.cab_b, nom='Docs B')
+        doc_b = Document.objects.create(
+            company=self.co_b, folder=folder_b, nom='Doc B')
+        version_b = services.add_version(
+            doc_b, file_key='attachments/b.pdf', company=self.co_b,
+            filename='b.pdf', size=10, mime='application/pdf',
+            uploaded_by=self.admin_b)
+        # L'admin de la société A ne peut pas accéder à la version de B.
+        api = auth(self.admin_a)
+        with mock.patch('apps.ged.views.fetch_attachment',
+                        return_value=(b'%PDF-', None)) as m:
+            resp = api.get(self._url(version_b.id))
+        # 404 : la version de B est hors du queryset scopé A.
+        self.assertEqual(resp.status_code, 404)
+        # fetch_attachment ne doit JAMAIS être appelé (scoping DB, pas applicatif).
+        m.assert_not_called()
+
+    def test_apercu_requires_authentication(self):
+        """Sans token, l'aperçu renvoie 401/403."""
+        resp = APIClient().get(self._url(self.version_a.id))
+        self.assertIn(resp.status_code, (401, 403))
