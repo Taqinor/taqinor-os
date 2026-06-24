@@ -333,7 +333,7 @@ class WhatsAppTemplate(models.Model):
             ),
         ]
         indexes = [
-            models.Index(fields=['company', 'active'], name='notif_wa_tpl_company_active_idx'),
+            models.Index(fields=['company', 'active'], name='nwa_tpl_company_active_idx'),
         ]
 
     def __str__(self):
@@ -395,11 +395,11 @@ class WhatsAppMessageLog(models.Model):
         indexes = [
             models.Index(
                 fields=['company', 'recipient', 'status'],
-                name='notif_wa_log_company_recip_st_idx',
+                name='nwa_log_company_recip_st_idx',
             ),
             models.Index(
                 fields=['company', 'created_at'],
-                name='notif_wa_log_company_created_idx',
+                name='nwa_log_company_created_idx',
             ),
         ]
 

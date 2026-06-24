@@ -376,7 +376,7 @@ class Lead(models.Model):
         indexes = [
             models.Index(fields=['company', 'source']),
             models.Index(fields=['company', 'stage']),
-            models.Index(fields=['company', 'score']),
+            models.Index(fields=['company', 'score'], name='crm_lead_company_score_idx'),
         ]
         constraints = [
             # An imported record is unique per (company, system, external id) so

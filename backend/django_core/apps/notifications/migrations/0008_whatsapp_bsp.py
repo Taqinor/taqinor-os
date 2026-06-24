@@ -85,7 +85,7 @@ class Migration(migrations.Migration):
             model_name="whatsapptemplate",
             index=models.Index(
                 fields=["company", "active"],
-                name="notif_wa_tpl_company_active_idx",
+                name="nwa_tpl_company_active_idx",
             ),
         ),
         # 2. WhatsAppMessageLog — delivery/receipt log, company-scoped.
@@ -185,14 +185,14 @@ class Migration(migrations.Migration):
             model_name="whatsappmessagelog",
             index=models.Index(
                 fields=["company", "recipient", "status"],
-                name="notif_wa_log_company_recip_st_idx",
+                name="nwa_log_company_recip_st_idx",
             ),
         ),
         migrations.AddIndex(
             model_name="whatsappmessagelog",
             index=models.Index(
                 fields=["company", "created_at"],
-                name="notif_wa_log_company_created_idx",
+                name="nwa_log_company_created_idx",
             ),
         ),
     ]
