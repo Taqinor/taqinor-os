@@ -6,6 +6,7 @@ from .views import (
     MessageTemplateViewSet,
 )
 from .webhooks import website_lead_webhook
+from .roof_views import lead_roof_footprint
 
 router = DefaultRouter()
 router.register(r'clients', ClientViewSet)
@@ -21,5 +22,7 @@ urlpatterns = [
     path('webhooks/website-leads/', website_lead_webhook, name='website-lead-webhook'),
     # Employés assignables (sélecteur de responsable) — ouvert à la Commerciale.
     path('assignable-users/', assignable_users, name='assignable-users'),
+    # QJ25 — Contour OSM du bâtiment épinglé (free, sans clé API)
+    path('leads/<int:lead_id>/roof-footprint/', lead_roof_footprint, name='lead-roof-footprint'),
     path('', include(router.urls)),
 ]
