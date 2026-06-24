@@ -218,6 +218,38 @@ class DevisSerializer(serializers.ModelSerializer):
         except Exception:
             return None
 
+    # QJ1 — Statistiques de consultation du lien public (lecture seule).
+    # Agrégat sur tous les ShareLinks du devis (on prend le lien le plus récent
+    # encore valide, ou le dernier tout court). Aucun prix d'achat/marge exposé.
+    nombre_vues = serializers.SerializerMethodField()
+    derniere_consultation = serializers.SerializerMethodField()
+    deja_consulte = serializers.SerializerMethodField()
+
+    def _active_share_link(self, obj):
+        """Renvoie le ShareLink le plus récent lié à ce devis (valide en premier)."""
+        from django.utils import timezone as tz
+        links = obj.share_links.filter(devis=obj).order_by(
+            # Valides d'abord, puis par date de création décroissante.
+            '-expires_at', '-created_at'
+        )
+        now = tz.now()
+        valid = [lk for lk in links if lk.expires_at > now]
+        return (valid[0] if valid else links.first()) if links.exists() else None
+
+    def get_nombre_vues(self, obj):
+        link = self._active_share_link(obj)
+        return link.view_count if link else 0
+
+    def get_derniere_consultation(self, obj):
+        link = self._active_share_link(obj)
+        if link and link.last_viewed_at:
+            return link.last_viewed_at.isoformat()
+        return None
+
+    def get_deja_consulte(self, obj):
+        link = self._active_share_link(obj)
+        return bool(link and link.first_viewed_at is not None)
+
     class Meta:
         model = Devis
         fields = '__all__'

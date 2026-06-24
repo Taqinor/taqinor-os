@@ -570,6 +570,20 @@ def resolve_client_for_lead(lead: Lead) -> Client:
     return client
 
 
+def noter_devis_ouvert(devis_reference: str, lead) -> None:
+    """QJ1 — Consigne « Le client a ouvert le devis » dans le chatter du lead.
+
+    Appelé par ``public_views.py`` uniquement à la PREMIÈRE ouverture du lien
+    public. Best-effort : les appelants catchent toute exception.
+    ``lead`` doit être un objet Lead avec company_id ; ``devis_reference`` est
+    la référence textuelle du devis (pas d'import ventes ici).
+    """
+    LeadActivity.objects.create(
+        company=lead.company, lead=lead, user=None,
+        kind=LeadActivity.Kind.NOTE,
+        body=f"Le client a ouvert le devis {devis_reference}")
+
+
 # ─────────────────────────────────────────────────────────────────────────────
 # Actions EN MASSE sur les leads (T3) — multi-sélection liste/kanban.
 #
