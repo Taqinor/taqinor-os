@@ -35,6 +35,14 @@ logger = logging.getLogger(__name__)
 #: (relance réseau, double clic) = mise à jour, pas de doublon.
 DEDUP_WINDOW_SECONDS = 60
 
+#: Champs d'attribution first-touch préservés sur un visiteur revenant (QJ8).
+#: Ces valeurs sont posées au PREMIER contact et ne doivent jamais être écrasées
+#: par un re-POST ultérieur (campagne différente du visiteur revenant).
+_FIRST_TOUCH_FIELDS = frozenset([
+    'fbclid', 'utm_source', 'utm_medium',
+    'utm_campaign', 'utm_content', 'utm_term',
+])
+
 
 def _secret_ok(request) -> bool:
     expected = getattr(settings, 'WEBSITE_LEAD_WEBHOOK_SECRET', '') or ''
@@ -124,6 +132,7 @@ def _map_payload_to_fields(data: dict) -> dict:
     fields = {
         'nom': str(data.get('fullName') or '').strip()[:255] or 'Lead site web',
         'telephone': str(data.get('phoneE164') or data.get('phone') or '').strip()[:50],
+        'email': str(data.get('email') or '').strip()[:254] or None,
         'ville': (str(data.get('city')).strip()[:120] if data.get('city') else None),
         'roof_type': (str(data.get('roofType')).strip()[:30] if data.get('roofType') else None),
         'bill_range_bucket': data.get('billRange') if data.get('billRange') in Lead.BillRangeBucket.values else None,
@@ -222,8 +231,11 @@ def website_lead_webhook(request):
     try:
         fields = _map_payload_to_fields(data)
         telephone = fields.get('telephone') or ''
+        email = fields.get('email') or ''
 
         existing = None
+        is_window_dedup = False
+        # ── Couche 1 : dédup < 60 s (double-clic / relance réseau) ────────────
         if telephone:
             window_start = timezone.now() - timezone.timedelta(seconds=DEDUP_WINDOW_SECONDS)
             existing = (
@@ -234,24 +246,53 @@ def website_lead_webhook(request):
                 .order_by('-date_creation')
                 .first()
             )
+            if existing is not None:
+                is_window_dedup = True
+
+        # ── Couche 2 (QJ8) : dédup visiteur revenant — téléphone OU email ─────
+        # Si la fenêtre courte n'a rien trouvé, on cherche un lead existant dans
+        # la MÊME société par téléphone ou email normalisé (sans limite de temps).
+        # Préserve l'attribution first-touch (UTM/fbclid) : jamais écrasée.
+        # Périmètre : uniquement `company` — jamais de fusion cross-company.
+        # Les leads sans téléphone dédupliquent par email.
+        if existing is None:
+            from .services import find_duplicates_by_contact
+            dupes = find_duplicates_by_contact(
+                company, phone=telephone or None, email=email or None)
+            # Prend le lead le plus récent (find_duplicates_by_contact retourne
+            # une liste non ordonnée — on trie par date_creation desc).
+            if dupes:
+                dupes_sorted = sorted(
+                    dupes, key=lambda lead_: lead_.date_creation, reverse=True)
+                existing = dupes_sorted[0]
 
         if existing:
-            # Re-POST idempotent (< 1 min) : on COMPLÈTE sans jamais écraser une
+            # Re-POST ou visiteur revenant : on COMPLÈTE sans jamais écraser une
             # donnée déjà captée. Un second payload plus pauvre (champ absent →
             # None/'') ne doit pas annuler ce que le premier a rempli. On
             # n'écrit donc que les valeurs réellement renseignées.
+            # Attribution first-touch (UTM/fbclid) : préservée sur visiteur revenant.
             for key, value in fields.items():
                 if value is None or value == '':
+                    continue
+                # Sur un visiteur revenant (couche 2), l'attribution first-touch
+                # du lead existant prime sur celle du nouveau payload.
+                if (not is_window_dedup
+                        and key in _FIRST_TOUCH_FIELDS
+                        and getattr(existing, key, None)):
                     continue
                 setattr(existing, key, value)
             existing.save()
             lead, created = existing, False
-            # Trace la mise à jour idempotente dans le chatter (les champs ont
-            # pu être écrasés par le re-POST du site dans la fenêtre < 1 min).
+            # Trace la mise à jour dans le chatter.
+            if is_window_dedup:
+                chatter_body = 'Mis à jour via le site web (doublon < 1 min)'
+            else:
+                chatter_body = 'Visiteur revenant : lead existant mis à jour via le site web'
             LeadActivity.objects.create(
                 company=lead.company, lead=lead, user=None,
                 kind=LeadActivity.Kind.NOTE,
-                body='Mis à jour via le site web (doublon < 1 min)',
+                body=chatter_body,
             )
         else:
             # Responsable par défaut de la société (Paramètres) si configuré.
@@ -268,9 +309,14 @@ def website_lead_webhook(request):
         raw.lead = lead
         raw.processed = True
         raw.save(update_fields=['lead', 'processed'])
+        if created:
+            detail = 'Lead créé.'
+        elif is_window_dedup:
+            detail = 'Lead mis à jour (doublon < 1 min).'
+        else:
+            detail = 'Lead existant mis à jour (visiteur revenant).'
         return JsonResponse(
-            {'detail': 'Lead créé.' if created else 'Lead mis à jour (doublon < 1 min).',
-             'lead_id': lead.pk, 'payload_id': raw.pk},
+            {'detail': detail, 'lead_id': lead.pk, 'payload_id': raw.pk},
             status=201 if created else 200,
         )
     except Exception as exc:  # noqa: BLE001 — la donnée brute prime
