@@ -663,12 +663,14 @@ def _send_acceptance_emails(*, devis, user):
 
 
 def _notify_seller_accepted(*, devis, user):
-    """QJ10 — Notification in-app au vendeur (créateur du devis) lors de l'acceptation.
+    """QJ10 / QJ2 (c) — Notification in-app + wa.me au vendeur (créateur du
+    devis) lors de l'acceptation.
 
     Réutilise notifications.services.notify (N75). Best-effort : appelé
     dans un bloc except de l'appelant. Pas de notification si le devis n'a
     pas de créateur ou si le créateur est l'utilisateur courant (in-app
-    pour soi-même serait du bruit).
+    pour soi-même serait du bruit). QJ2 ajoute un lien wa.me « répondre
+    maintenant » vers le client dans le corps de la notification.
     """
     vendeur = getattr(devis, 'created_by', None)
     if vendeur is None:
@@ -681,15 +683,246 @@ def _notify_seller_accepted(*, devis, user):
     client = getattr(devis, 'client', None)
     if client is not None:
         client_nom = getattr(client, 'nom', '') or ''
+    # QJ2 (c) — lien wa.me vers le client (via son téléphone sur le lead ou le
+    # client). Best-effort : on préfère le numéro WhatsApp du lead d'origine.
+    wa_url = _build_acceptance_wa_url(devis=devis)
+    body_lines = [
+        (
+            f'Le client {client_nom} a accepté le devis {devis.reference}.'
+        ) if client_nom else f'Le devis {devis.reference} a été accepté.',
+    ]
+    if wa_url:
+        body_lines.append(f'Répondre maintenant : {wa_url}')
     notify(
         user=vendeur,
-        event_type='devis_accepte',
+        event_type='devis_accepted',
         title=f'Devis {devis.reference} accepté',
-        body=(
-            f'Le client {client_nom} a accepté le devis '
-            f'{devis.reference}.'
-        ) if client_nom else f'Le devis {devis.reference} a été accepté.',
+        body='\n'.join(body_lines),
+        link=f'/ventes/devis/{devis.pk}',
+        company=getattr(devis, 'company', None),
     )
+
+
+def _build_acceptance_wa_url(*, devis):
+    """QJ2 (c) — Construit le lien wa.me « répondre maintenant » au client.
+
+    Cherche d'abord le numéro WhatsApp du lead lié au devis, puis le numéro
+    du client (champ telephone). Renvoie l'URL ou None. Best-effort — jamais
+    d'exception remontée. Les prix d'achat ne sont JAMAIS exposés (règle #4).
+    """
+    try:
+        import urllib.parse
+        # Prefer lead WhatsApp, then lead telephone, then client telephone.
+        phone_raw = ''
+        lead = getattr(devis, 'lead', None)
+        if lead is not None:
+            phone_raw = (
+                getattr(lead, 'whatsapp', None)
+                or getattr(lead, 'telephone', None)
+                or ''
+            )
+        if not phone_raw:
+            client = getattr(devis, 'client', None)
+            if client is not None:
+                phone_raw = getattr(client, 'telephone', '') or ''
+        digits = ''.join(c for c in (phone_raw or '') if c.isdigit())
+        if not digits:
+            return None
+        nom = ''
+        if lead is not None:
+            nom = (getattr(lead, 'nom', '') or '').strip()
+        if not nom and devis.client_id:
+            client = getattr(devis, 'client', None)
+            if client is not None:
+                nom = (getattr(client, 'nom', '') or '').strip()
+        nom = nom or 'votre client'
+        text = urllib.parse.quote(
+            f'Bonjour {nom}, votre proposition {devis.reference} a bien été '
+            f'confirmée. Merci pour votre confiance !'
+        )
+        return f'https://wa.me/{digits}?text={text}'
+    except Exception as exc:  # noqa: BLE001 — best-effort
+        logger.warning('QJ2: _build_acceptance_wa_url échoué : %s', exc)
+        return None
+
+
+# ── QJ9 — Attribution first-touch + Meta CAPI hook ───────────────────────────
+
+#: Champs UTM/fbclid copiés du Lead vers etude_params du Devis à l'acceptation.
+_ATTRIBUTION_FIELDS = (
+    'fbclid', 'utm_source', 'utm_medium',
+    'utm_campaign', 'utm_content', 'utm_term',
+)
+
+
+def _persist_attribution(*, devis):
+    """QJ9 — Copie les champs d'attribution first-touch du lead vers le devis.
+
+    À l'acceptation, les UTM/fbclid du Lead d'origine sont snapshottés dans
+    ``devis.etude_params['attribution']`` (JSONField déjà sur le modèle — aucune
+    migration). Cette copie est LOSSLESS : l'attribution reste disponible même si
+    le lead est fusionné, archivé ou supprimé plus tard.
+
+    Idempotent : ne ré-écrit pas si une attribution est déjà présente.
+    Aucun impact sur les statuts (règle #4 — pure donnée dérivée en lecture seule).
+    Ne lève jamais : l'appelant attrape toute exception.
+    """
+    lead = getattr(devis, 'lead', None)
+    if lead is None:
+        return  # Devis sans lead — aucune attribution à copier.
+
+    params = dict(devis.etude_params or {})
+    if 'attribution' in params:
+        return  # Déjà présent — idempotent.
+
+    attribution = {}
+    for field in _ATTRIBUTION_FIELDS:
+        val = getattr(lead, field, None)
+        if val:
+            attribution[field] = val
+
+    if not attribution:
+        return  # Lead sans données d'attribution — rien à copier.
+
+    params['attribution'] = attribution
+    devis.etude_params = params
+    devis.save(update_fields=['etude_params'])
+    logger.info('QJ9: attribution copiée pour devis %s → %s',
+                getattr(devis, 'reference', '?'), list(attribution.keys()))
+
+
+def _fire_capi_signed_quote(*, devis):
+    """QJ9 — Émet un événement « SignedQuote » vers l'API Conversions Meta (CAPI).
+
+    Gate : si ``META_CAPI_ACCESS_TOKEN`` est absent (ou vide) dans les settings
+    ou l'environnement, on dégrade en no-op silencieux (log uniquement). Cela
+    permet de pré-câbler l'intégration sans créer de dépendance sur un token
+    absent en dev/staging.
+
+    Conformité règle #4 : ne touche jamais les statuts Devis/Facture.
+    Conformité règle #3 (CLAUDE.md) : le call HTTP CAPI est server-side — jamais
+    de création de campagne (interdit par règle #3).
+    Ne lève jamais : l'appelant attrape toute exception.
+
+    L'événement CAPI inclut les données d'attribution (fbclid/UTM) snapshottées
+    dans etude_params (QJ9 _persist_attribution) pour un matching maximal.
+
+    Env var attendue : ``META_CAPI_ACCESS_TOKEN`` (token de page Meta / CAPI).
+    Var optionnelle : ``META_CAPI_PIXEL_ID`` (Pixel ID — peut être vide).
+    """
+    import os
+    from django.conf import settings
+
+    token = (
+        getattr(settings, 'META_CAPI_ACCESS_TOKEN', None)
+        or os.environ.get('META_CAPI_ACCESS_TOKEN', '')
+        or ''
+    ).strip()
+    if not token:
+        logger.info(
+            'QJ9: CAPI SignedQuote ignoré pour devis %s — META_CAPI_ACCESS_TOKEN absent',
+            getattr(devis, 'reference', '?'))
+        return
+
+    pixel_id = (
+        getattr(settings, 'META_CAPI_PIXEL_ID', None)
+        or os.environ.get('META_CAPI_PIXEL_ID', '')
+        or ''
+    ).strip()
+
+    # Récupère l'attribution snapshottée (QJ9) ou tente le lead directement.
+    attribution = {}
+    params = devis.etude_params or {}
+    if 'attribution' in params:
+        attribution = params['attribution']
+    else:
+        lead = getattr(devis, 'lead', None)
+        if lead is not None:
+            for field in _ATTRIBUTION_FIELDS:
+                val = getattr(lead, field, None)
+                if val:
+                    attribution[field] = val
+
+    import hashlib
+    import time
+    import urllib.parse
+    import urllib.request
+    import json as _json
+
+    # Données de l'événement CAPI (hachage SHA-256 pour le PII).
+    def _sha256(val):
+        return hashlib.sha256((val or '').strip().lower().encode()).hexdigest()
+
+    event_time = int(time.time())
+    client = getattr(devis, 'client', None)
+    email_hash = _sha256(getattr(client, 'email', '') or '') if client else ''
+    phone_raw = ''
+    if client:
+        phone_raw = getattr(client, 'telephone', '') or ''
+    phone_digits = ''.join(c for c in (phone_raw or '') if c.isdigit())
+    phone_hash = _sha256(phone_digits) if phone_digits else ''
+
+    # Valeur de conversion : total TTC du devis (sans prix d'achat — règle #4).
+    try:
+        value = float(getattr(devis, 'total_ttc', None) or 0)
+    except (TypeError, ValueError):
+        value = 0.0
+
+    user_data = {}
+    if email_hash:
+        user_data['em'] = [email_hash]
+    if phone_hash:
+        user_data['ph'] = [phone_hash]
+    fbclid = attribution.get('fbclid', '')
+    if fbclid:
+        user_data['fbc'] = f'fb.1.{int(time.time() * 1000)}.{fbclid}'
+
+    custom_data = {
+        'currency': 'MAD',
+        'value': value,
+        'order_id': str(getattr(devis, 'reference', '')),
+    }
+    utm_source = attribution.get('utm_source', '')
+    if utm_source:
+        custom_data['utm_source'] = utm_source
+    utm_campaign = attribution.get('utm_campaign', '')
+    if utm_campaign:
+        custom_data['utm_campaign'] = utm_campaign
+
+    event = {
+        'event_name': 'SignedQuote',
+        'event_time': event_time,
+        'action_source': 'website',
+        'user_data': user_data,
+        'custom_data': custom_data,
+    }
+
+    payload = _json.dumps({'data': [event]}).encode('utf-8')
+    api_url = f'https://graph.facebook.com/v19.0/{pixel_id}/events' if pixel_id else None
+
+    if not api_url:
+        logger.info(
+            'QJ9: CAPI SignedQuote prêt pour devis %s (pixel non configuré — log seul) '
+            'fbclid=%s utm_source=%s value=%.2f MAD',
+            getattr(devis, 'reference', '?'), fbclid, utm_source, value)
+        return
+
+    params_qs = urllib.parse.urlencode({'access_token': token})
+    full_url = f'{api_url}?{params_qs}'
+    req = urllib.request.Request(
+        full_url, data=payload,
+        headers={'Content-Type': 'application/json'},
+        method='POST',
+    )
+    try:
+        with urllib.request.urlopen(req, timeout=5) as resp:
+            resp_body = resp.read().decode('utf-8', errors='replace')
+            logger.info(
+                'QJ9: CAPI SignedQuote envoyé pour devis %s — status %s body %.200s',
+                getattr(devis, 'reference', '?'), resp.status, resp_body)
+    except Exception as exc:
+        logger.warning('QJ9: CAPI SignedQuote HTTP échoué pour devis %s : %s',
+                       getattr(devis, 'reference', '?'), exc)
 
 
 def accept_devis(*, devis, user, nom='', date_acceptation=None, option='',
@@ -778,6 +1011,13 @@ def accept_devis(*, devis, user, nom='', date_acceptation=None, option='',
         devis=devis, nom=nom, ip=ip,
         user_agent=user_agent, consentement=consentement,
     )
+    # QJ9 — Attribution first-touch : copie UTM/fbclid du lead vers etude_params
+    # du devis pour que l'attribution reste lossless même si le lead est fusionné.
+    try:
+        _persist_attribution(devis=devis)
+    except Exception as exc:  # noqa: BLE001 — best-effort
+        logger.warning('QJ9: _persist_attribution échoué pour devis %s : %s',
+                       getattr(devis, 'reference', '?'), exc)
     # QJ22 — Stockage de l'artefact PDF signé (proposition verrouillée).
     # Appelé APRÈS _create_esign_record pour que le DevisSignature existe déjà.
     _store_signed_pdf(devis=devis)
@@ -786,6 +1026,12 @@ def accept_devis(*, devis, user, nom='', date_acceptation=None, option='',
 
     devis_accepted.send(
         sender=Devis, devis=devis, user=user, ancien_statut=ancien)
+    # QJ9 — CAPI SignedQuote event (gated on META_CAPI_ACCESS_TOKEN).
+    try:
+        _fire_capi_signed_quote(devis=devis)
+    except Exception as exc:  # noqa: BLE001 — best-effort
+        logger.warning('QJ9: _fire_capi_signed_quote échoué pour devis %s : %s',
+                       getattr(devis, 'reference', '?'), exc)
     return devis
 
 
@@ -1461,3 +1707,149 @@ def _send_nudge_email(*, to_email, devis_ref, subject_fr, body_fr):
         logger.info('QJ4: email relance envoyé à %s (devis %s)', to_email, devis_ref)
     except Exception as exc:  # noqa: BLE001
         logger.warning('QJ4: email relance échec pour %s: %s', devis_ref, exc)
+
+
+# ── QJ5 — Expiration automatique des devis + hygiène funnel ──────────────────
+
+
+def expire_stale_devis():
+    """QJ5 — Bascule les devis envoyés dépassés en « expiré » et avance le funnel.
+
+    Deux effets ATOMIQUEMENT SÉPARÉS (chaque devis est traité indépendamment) :
+
+    1. ``envoye → expire`` pour tout devis dont la date de validité effective
+       est dépassée. Délègue à ``ventes.utils.expiry.is_expired`` (même logique
+       que l'indicateur à la volée, garantie de cohérence). Ne touche JAMAIS un
+       devis ``accepte`` ou ``refuse`` (rule #4). Idempotent : un devis déjà
+       ``expire`` est ignoré.
+
+    2. Pour le lead lié au devis expiré (s'il en a un) : si le lead est à
+       ``QUOTE_SENT`` il avance vers ``FOLLOW_UP``; s'il est déjà à ``FOLLOW_UP``
+       depuis plus de COLD_DAYS jours (configurable, défaut 30) et n'a reçu
+       aucune activité récente, il est parqué à ``COLD``. Ne recule JAMAIS un
+       lead déjà plus avancé (SIGNED) et ignore les leads perdus (drapeau perdu).
+       STAGES.py keys utilisées, jamais hardcodées.
+
+    Renvoie un dict ``{expired, funnel_followup, funnel_cold}`` pour les tests.
+    """
+    from datetime import date
+
+    from .models import Devis
+
+    today = date.today()
+    expired = 0
+    funnel_followup = 0
+    funnel_cold = 0
+
+    # Candidats : devis envoyés uniquement (jamais accepte/refuse/expire).
+    candidates = Devis.objects.filter(
+        statut=Devis.Statut.ENVOYE,
+    ).select_related('lead', 'lead__company')
+
+    for devis in candidates:
+        from .utils.expiry import is_expired
+        if not is_expired(devis, today=today):
+            continue
+
+        # Flip to expired through the single status-change path: direct field
+        # write + chatter log. Using the same field pattern as other beat jobs
+        # (check_overdue_factures) — safe, reversible via git revert.
+        devis.statut = Devis.Statut.EXPIRE
+        devis.save(update_fields=['statut'])
+
+        # Chatter entry via ventes.activity (exists for devis accepted/sent —
+        # reuse the generic note pattern).
+        try:
+            from apps.ventes import activity as _act
+            _act.log_devis_note(
+                devis, None,
+                'Devis expiré automatiquement (date de validité dépassée).')
+        except Exception as exc:  # noqa: BLE001
+            logger.warning('QJ5: log chatter échec devis %s : %s',
+                           devis.reference, exc)
+
+        expired += 1
+
+        # Funnel hygiene: advance QUOTE_SENT → FOLLOW_UP via crm.services.
+        lead = devis.lead
+        if lead is None:
+            continue
+
+        try:
+            fup, cold = _advance_lead_on_expiry(lead, today=today)
+            funnel_followup += int(fup)
+            funnel_cold += int(cold)
+        except Exception as exc:  # noqa: BLE001
+            logger.warning('QJ5: avance funnel échec lead %s : %s',
+                           getattr(lead, 'pk', '?'), exc)
+
+    logger.info(
+        'QJ5 expire_stale_devis: %d expiré(s), %d → FOLLOW_UP, %d → COLD',
+        expired, funnel_followup, funnel_cold)
+    return {'expired': expired, 'funnel_followup': funnel_followup,
+            'funnel_cold': funnel_cold}
+
+
+# Days a QUOTE_SENT lead stays at FOLLOW_UP before being parked COLD (no
+# recent activity). Kept as a module-level constant so tests can patch it.
+_COLD_AFTER_FOLLOWUP_DAYS = 30
+
+
+def _advance_lead_on_expiry(lead, today):
+    """Avance l'étape du lead lié à un devis expiré (QUOTE_SENT → FOLLOW_UP,
+    puis FOLLOW_UP → COLD si inactif depuis COLD_AFTER_FOLLOWUP_DAYS jours).
+
+    Ne recule JAMAIS. Ignore les leads perdus. Utilise les clés STAGES.py.
+    Renvoie (moved_to_followup: bool, moved_to_cold: bool).
+    """
+    from datetime import timedelta
+    from apps.crm import stages as crm_stages
+    from apps.crm.models import LeadActivity
+
+    if lead.perdu:
+        return False, False
+
+    moved_fup = False
+    moved_cold = False
+
+    if lead.stage == crm_stages.QUOTE_SENT:
+        # Only advance if lead is not already further.
+        from apps.crm.services import _rang_funnel
+        if _rang_funnel(lead.stage) < _rang_funnel(crm_stages.FOLLOW_UP):
+            ancien = lead.stage
+            lead.stage = crm_stages.FOLLOW_UP
+            lead.save(update_fields=['stage'])
+            from apps.crm import activity as crm_activity
+            # Pass raw stage keys; _display resolves choices labels.
+            crm_activity.log_bulk_change(
+                lead, user=None,
+                field='stage',
+                old_val=ancien,
+                new_val=crm_stages.FOLLOW_UP,
+            )
+            moved_fup = True
+        return moved_fup, False
+
+    if lead.stage == crm_stages.FOLLOW_UP:
+        # Park COLD only if no activity in last _COLD_AFTER_FOLLOWUP_DAYS days.
+        cutoff = today - timedelta(days=_COLD_AFTER_FOLLOWUP_DAYS)
+        recent_activity = LeadActivity.objects.filter(
+            lead=lead,
+            date_creation__date__gte=cutoff,
+        ).exists()
+        if recent_activity:
+            return False, False
+        ancien = lead.stage
+        lead.stage = crm_stages.COLD
+        lead.save(update_fields=['stage'])
+        from apps.crm import activity as crm_activity
+        crm_activity.log_bulk_change(
+            lead, user=None,
+            field='stage',
+            old_val=ancien,
+            new_val=crm_stages.COLD,
+        )
+        moved_cold = True
+        return False, moved_cold
+
+    return False, False

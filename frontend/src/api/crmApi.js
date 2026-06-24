@@ -76,6 +76,12 @@ const crmApi = {
     : api.post('/crm/parrainages/', data),
   deleteParrainage: (id) => api.delete(`/crm/parrainages/${id}/`),
   parrainageStats: () => api.get('/crm/parrainages/stats/'),
+
+  // QJ20 — Rendez-vous (visites commerciales/techniques).
+  getAppointments: (leadId) => api.get('/crm/appointments/', { params: { lead: leadId } }),
+  createAppointment: (data) => api.post('/crm/appointments/', data),
+  updateAppointment: (id, data) => api.patch(`/crm/appointments/${id}/`, data),
+  deleteAppointment: (id) => api.delete(`/crm/appointments/${id}/`),
 }
 
 export default crmApi

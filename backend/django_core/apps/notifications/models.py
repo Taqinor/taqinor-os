@@ -25,7 +25,11 @@ logger = logging.getLogger(__name__)
 class EventType(models.TextChoices):
     """Événements métier déclencheurs de notification (clé EN, libellé FR)."""
     LEAD_ASSIGNED = 'lead_assigned', 'Nouveau lead assigné'
+    # QJ2 — speed-to-lead : nouveau lead entrant (webhook site web).
+    LEAD_NEW = 'lead_new', 'Nouveau lead site web'
     DEVIS_ACCEPTED = 'devis_accepted', 'Devis accepté'
+    # QJ2 — première ouverture du lien de proposition par le client.
+    DEVIS_OPENED = 'devis_opened', 'Proposition ouverte par le client'
     CHANTIER_DUE = 'chantier_due', 'Chantier à installer'
     FACTURE_OVERDUE = 'facture_overdue', 'Facture en retard'
     WARRANTY_EXPIRING = 'warranty_expiring', 'Garantie bientôt expirée'

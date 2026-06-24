@@ -1,5 +1,5 @@
 from rest_framework import serializers
-from .models import Client, Lead, LeadActivity, MessageTemplate, Parrainage
+from .models import Appointment, Client, Lead, LeadActivity, MessageTemplate, Parrainage
 from .devis_auto import champs_manquants, message_manquants
 from .scoring import compute_score, score_label
 
@@ -438,3 +438,37 @@ class MessageTemplateSerializer(serializers.ModelSerializer):
             'archived', 'date_creation', 'date_modification',
         ]
         read_only_fields = ['date_creation', 'date_modification']
+
+
+# QJ20 — Rendez-vous (visites commerciales/techniques) ───────────────────────
+
+class AppointmentSerializer(serializers.ModelSerializer):
+    """QJ20 — Rendez-vous sur un lead.
+
+    La société est posée côté serveur (HiddenField depuis l'utilisateur courant
+    — multi-tenant, jamais lu du corps de requête). Le lead doit appartenir à la
+    même société (validate_lead).
+    ``statut_display`` et ``lead_nom`` sont en lecture seule pour l'UI.
+    """
+    company = serializers.HiddenField(default=_CurrentCompanyDefault())
+    statut_display = serializers.CharField(
+        source='get_statut_display', read_only=True)
+    lead_nom = serializers.CharField(
+        source='lead.nom', read_only=True, default=None)
+
+    class Meta:
+        model = Appointment
+        fields = [
+            'id', 'company', 'lead', 'lead_nom',
+            'scheduled_at', 'statut', 'statut_display',
+            'notes', 'reminder_sent', 'created_by',
+            'date_creation', 'date_modification',
+        ]
+        read_only_fields = ['reminder_sent', 'created_by',
+                            'date_creation', 'date_modification']
+
+    def validate_lead(self, value):
+        req = self.context.get('request')
+        if req and value.company_id != getattr(req.user, 'company_id', None):
+            raise serializers.ValidationError('Lead inconnu.')
+        return value
