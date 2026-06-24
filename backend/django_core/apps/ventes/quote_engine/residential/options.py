@@ -131,7 +131,7 @@ def build(ctx) -> str:
 
     # ── Top spec list ────────────────────────────────────────────────────────
     specs = [
-        (f'{d["puissance_kwc"]:g}', "kWc installés"),
+        (f'{d["puissance_kwc"]:g}'.replace(".", ","), "kWc installés"),
         (f'{d["nb_panneaux"]:g}', f'panneaux · {d["watt_par_panneau"]:g} W'),
         (fmt(d["prod_kwh"]), "kWh / an produits"),
     ]
@@ -173,17 +173,17 @@ def build(ctx) -> str:
 
     style = f"""
 <style>
-  .p2-wrap {{ padding:9mm 14mm 0 14mm; }}
+  .p2-wrap {{ padding:7mm 14mm 6mm 14mm; }}
 
   /* Section header */
   .p2-kick {{ font-size:8.5pt; letter-spacing:.22em; text-transform:uppercase;
     color:{C['gold']}; font-weight:700; }}
-  .p2-title {{ font-family:{fonts['serif']}; font-weight:700; font-size:23pt;
-    color:{C['navy']}; line-height:1.04; margin-top:2mm; letter-spacing:-.3px; }}
+  .p2-title {{ font-family:{fonts['serif']}; font-weight:700; font-size:21.5pt;
+    color:{C['navy']}; line-height:1.04; margin-top:1.5mm; letter-spacing:-.3px; }}
 
   /* Top band: roof schematic + spec list */
-  .p2-band {{ display:flex; align-items:center; gap:6mm; margin-top:3.5mm;
-    padding:2.5mm 5mm; background:{C['wash']}; border:1px solid {C['line']};
+  .p2-band {{ display:flex; align-items:center; gap:6mm; margin-top:2.5mm;
+    padding:1.7mm 5mm; background:{C['wash']}; border:1px solid {C['line']};
     border-radius:12px; }}
   .p2-roof {{ flex:0 0 36mm; text-align:center; }}
   .p2-roof img {{ width:34mm; height:auto; }}
@@ -197,7 +197,7 @@ def build(ctx) -> str:
 
   /* Block label */
   .p2-lbl {{ font-size:8.5pt; letter-spacing:.16em; text-transform:uppercase;
-    color:{C['navy']}; font-weight:700; margin:4.5mm 0 2mm; }}
+    color:{C['navy']}; font-weight:700; margin:3.5mm 0 1.5mm; }}
 
   /* Shared equipment table */
   .p2-tbl {{ width:100%; border-collapse:collapse; font-size:8.7pt; }}
@@ -206,7 +206,7 @@ def build(ctx) -> str:
     text-align:left; padding:0 0 2mm; border-bottom:1.5px solid {C['line']}; }}
   .p2-tbl th.p2-c, .p2-tbl td.p2-c {{ text-align:center; }}
   .p2-tbl th.p2-r, .p2-tbl td.p2-r {{ text-align:right; }}
-  .p2-tbl tbody td {{ padding:1.7mm 0; border-bottom:1px solid {C['line_soft']};
+  .p2-tbl tbody td {{ padding:1.15mm 0; border-bottom:1px solid {C['line_soft']};
     vertical-align:middle; }}
   .p2-tbl tbody tr:nth-child(even) td {{ background:{C['wash']}; }}
   .p2-tbl tbody td.p2-d {{ padding-left:2.5mm; }}
@@ -219,15 +219,16 @@ def build(ctx) -> str:
   .p2-tot {{ font-weight:700; color:{C['navy']}; white-space:nowrap; }}
 
   /* Per-option delta mini-cards */
-  .p2-deltas {{ display:flex; gap:5mm; margin-top:3mm; }}
+  .p2-deltas {{ display:flex; gap:5mm; margin-top:2mm; align-items:stretch; }}
   .p2-dcard {{ flex:1; border:1px solid {C['line']}; border-radius:10px;
-    overflow:hidden; }}
+    overflow:hidden; display:flex; flex-direction:column; }}
   .p2-dhead {{ padding:2.2mm 3.5mm; font-size:8.4pt; font-weight:700;
     color:#fff; }}
   .p2-dhead small {{ font-weight:500; opacity:.85; }}
-  .p2-dbody ul {{ list-style:none; }}
+  .p2-dbody {{ flex:1 1 auto; display:flex; align-items:center; }}
+  .p2-dbody ul {{ list-style:none; width:100%; }}
   .p2-dbody li {{ display:flex; justify-content:space-between; align-items:center;
-    padding:2mm 3.5mm; font-size:8.5pt; border-bottom:1px solid {C['line_soft']}; }}
+    padding:1.7mm 3.5mm; font-size:8.5pt; border-bottom:1px solid {C['line_soft']}; }}
   .p2-dbody li:last-child {{ border-bottom:none; }}
   .p2-dl-n {{ color:{C['ink']}; }}
   .p2-dl-p {{ color:{C['navy']}; font-weight:700; white-space:nowrap;
@@ -239,7 +240,7 @@ def build(ctx) -> str:
   .p2-fiche-i {{ color:{C['gold']}; font-weight:700; }}
 
   /* Totals chains side by side */
-  .p2-totals {{ display:flex; gap:5mm; margin-top:3.5mm; }}
+  .p2-totals {{ display:flex; gap:5mm; margin-top:2.5mm; }}
   .p2-tot-card {{ flex:1; border:1px solid {C['line']};
     border-radius:0 0 10px 10px; background:{C['paper']};
     box-shadow:0 1px 3px rgba(26,43,74,.05); }}
@@ -265,28 +266,34 @@ def build(ctx) -> str:
   .p2-tva-note {{ font-size:7.4pt; color:{C['muted']}; margin-top:2mm;
     text-align:center; }}
 
-  /* Finance: payback */
-  .p2-fin {{ margin-top:2.5mm; }}
+  /* Finance: rentabilité — the curve gets real height BESIDE airy stats */
+  .p2-fin {{ margin-top:2mm; }}
   .p2-fin-head {{ display:flex; align-items:baseline; }}
-  .p2-fin-title {{ font-family:{fonts['serif']}; font-weight:700; font-size:13pt;
+  .p2-fin-title {{ font-family:{fonts['serif']}; font-weight:700; font-size:14pt;
     color:{C['navy']}; margin-right:4mm; }}
   .p2-fin-sub {{ font-size:8pt; color:{C['muted']}; }}
-  .p2-fin-grid {{ display:flex; gap:7mm; align-items:stretch; margin-top:2mm; }}
-  .p2-fin-chart {{ flex:1 1 60%; display:flex; align-items:center; }}
-  .p2-fin-chart img {{ width:100%; max-height:42mm; height:auto;
-    object-fit:contain; }}
-  .p2-fin-panel {{ flex:0 0 36%; display:flex; flex-direction:column;
-    justify-content:center; gap:3mm; border-left:1px solid {C['line']};
-    padding-left:6mm; }}
-  .p2-fin-k {{ display:block; font-size:6.8pt; letter-spacing:.11em;
+
+  /* CSS table: chart cell (left, full height) + stats cell (right, airy) */
+  .p2-fin-grid {{ display:table; width:100%; table-layout:fixed; margin-top:2.5mm; }}
+  .p2-fin-cc {{ display:table-cell; width:60%; vertical-align:middle; }}
+  .p2-fin-cc img {{ display:block; height:33mm; width:auto; }}
+  .p2-fin-sc {{ display:table-cell; width:39%; vertical-align:middle;
+    padding-left:9mm; }}
+  .p2-side-stat {{ margin-bottom:2.5mm; }}
+  .p2-side-stat:last-child {{ margin-bottom:0; }}
+  .p2-stat-k {{ display:block; font-size:6.7pt; letter-spacing:.12em;
     text-transform:uppercase; color:{C['muted_2']}; font-weight:700;
-    margin-bottom:1mm; }}
-  .p2-fin-v {{ display:block; font-family:{fonts['display']}; font-size:18pt;
+    margin-bottom:0.8mm; }}
+  .p2-stat-v {{ display:block; font-family:{fonts['display']}; font-size:14.5pt;
     color:{C['navy']}; line-height:1; }}
-  .p2-fin-v small {{ font-family:{fonts['sans']}; font-size:8.5pt;
+  .p2-stat-v small {{ font-family:{fonts['sans']}; font-size:8pt;
     color:{C['muted']}; font-weight:600; }}
-  .p2-fin-s {{ display:block; font-size:7.2pt; color:{C['muted']};
-    margin-top:1mm; }}
+  .p2-stat-s {{ display:block; font-size:7.2pt; color:{C['muted']};
+    margin-top:0.8mm; line-height:1.2; }}
+  .p2-stat-s b {{ color:{C['green']}; font-weight:700; }}
+  .p2-fin-cap {{ font-size:7.3pt; color:{C['muted']}; text-align:center;
+    margin-top:3mm; font-style:italic; }}
+  .p2-fin-cap b {{ color:{C['navy']}; font-weight:700; font-style:normal; }}
 </style>
 """
 
@@ -346,24 +353,33 @@ def build(ctx) -> str:
       <span class="p2-fin-title">Rentabilité sur 25 ans</span>
       <span class="p2-fin-sub">gain cumulé, deux scénarios — le point marque le retour sur investissement</span>
     </div>
+
     <div class="p2-fin-grid">
-      <div class="p2-fin-chart"><img src="{charts['payback']}" alt="Courbe de rentabilité 25 ans"></div>
-      <div class="p2-fin-panel">
-        <div>
-          <span class="p2-fin-k">Retour sur investissement</span>
-          <span class="p2-fin-v">{roi_range}</span>
+      <div class="p2-fin-cc">
+        <img src="{charts['payback']}" alt="Courbe de rentabilité sur 25 ans">
+      </div>
+      <div class="p2-fin-sc">
+        <div class="p2-side-stat">
+          <span class="p2-stat-k">Retour sur investissement</span>
+          <span class="p2-stat-v">{roi_range}</span>
+          <span class="p2-stat-s">l'installation se rembourse</span>
         </div>
-        <div>
-          <span class="p2-fin-k">Gain net sur 25 ans</span>
-          <span class="p2-fin-v">≈ {fmt(gain25)} <small>MAD</small></span>
-          <span class="p2-fin-s">option avec batterie</span>
+        <div class="p2-side-stat">
+          <span class="p2-stat-k">Gain net sur 25 ans</span>
+          <span class="p2-stat-v">≈ {fmt(gain25)} <small>MAD</small></span>
+          <span class="p2-stat-s">option avec batterie</span>
         </div>
-        <div>
-          <span class="p2-fin-k">Production garantie</span>
-          <span class="p2-fin-v">25 ans</span>
-          <span class="p2-fin-s">panneaux &amp; performance</span>
+        <div class="p2-side-stat">
+          <span class="p2-stat-k">Production garantie</span>
+          <span class="p2-stat-v">25 ans</span>
+          <span class="p2-stat-s">panneaux &amp; performance</span>
         </div>
       </div>
+    </div>
+
+    <div class="p2-fin-cap">
+      Projection <b>à tarif ONEE constant</b> — toute hausse future du prix de
+      l'électricité accélère votre rentabilité, votre coût solaire restant fixe.
     </div>
   </div>
 
