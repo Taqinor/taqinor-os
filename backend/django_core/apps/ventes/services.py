@@ -1027,3 +1027,132 @@ def record_payment_from_link(*, link, payload=None):
             facture.statut = Facture.Statut.PAYEE
             facture.save(update_fields=['statut'])
     return paiement, None
+
+
+# ── QJ16 — Reusable quote presets ────────────────────────────────────────────
+
+def save_devis_as_preset(devis, nom: str, description: str = "", *, user=None):
+    """QJ16 — snapshot a Devis into a company-scoped DevisPreset.
+
+    The preset captures the line configuration (designation, quantite,
+    prix_unitaire, remise, taux_tva per line, plus taux_tva and remise_globale
+    at devis level) as a JSON snapshot.  The company is ALWAYS forced from
+    ``devis.company`` — never from user input.
+
+    Price-less lines are excluded at save time (same guard as auto-fill): if a
+    line's produit has no sell price, it is still captured in the snapshot so the
+    preset is complete, but at apply-time such lines are re-checked and skipped
+    if the product is no longer priced.
+
+    Returns the created DevisPreset.
+    """
+    from apps.ventes.models import DevisPreset
+
+    company = devis.company
+    if company is None:
+        raise ValueError("save_devis_as_preset: devis has no company")
+
+    lignes_snapshot = []
+    for ligne in devis.lignes.select_related('produit').order_by('id'):
+        produit = ligne.produit
+        lignes_snapshot.append({
+            'produit_id': produit.pk if produit else None,
+            'designation': ligne.designation,
+            'quantite': str(ligne.quantite),
+            'prix_unitaire': str(ligne.prix_unitaire),
+            'remise': str(ligne.remise),
+            'taux_tva': str(ligne.taux_tva) if ligne.taux_tva is not None else None,
+        })
+
+    preset = DevisPreset.objects.create(
+        company=company,
+        nom=nom.strip(),
+        description=description,
+        mode_installation=devis.mode_installation or None,
+        taux_tva=devis.taux_tva,
+        remise_globale=devis.remise_globale,
+        lignes_snapshot=lignes_snapshot,
+        etude_params_snapshot=dict(devis.etude_params) if devis.etude_params else None,
+        created_by=user,
+    )
+    logger.info(
+        'QJ16: preset "%s" saved (id=%s, company=%s, %d lignes)',
+        preset.nom, preset.pk, company.pk, len(lignes_snapshot))
+    return preset
+
+
+def apply_preset_to_devis(preset, devis, *, skip_priceless: bool = True) -> list:
+    """QJ16 — apply a DevisPreset to an existing (empty) Devis.
+
+    Creates LigneDevis rows on ``devis`` from the preset snapshot.  The caller
+    is responsible for ensuring ``devis`` is brouillon and belongs to the same
+    company as the preset (enforced below — cross-company apply is refused).
+
+    ``skip_priceless=True`` (default): lines whose snapshot product no longer
+    has a sell price are skipped (same guard as auto-fill — never auto-quote a
+    price-less product).  Pass ``skip_priceless=False`` only in tests that need
+    to exercise the skipping logic.
+
+    Returns the list of created LigneDevis instances (may be empty if all lines
+    are priceless).
+
+    RULE #4: this service only builds lines — it never changes Devis.statut.
+    """
+    from apps.ventes.models import LigneDevis
+    from apps.stock.models import Produit
+
+    if preset.company_id != devis.company_id:
+        raise ValueError(
+            "apply_preset_to_devis: preset and devis belong to different companies"
+        )
+
+    created = []
+    for snap in preset.lignes_snapshot:
+        produit_id = snap.get('produit_id')
+        produit = None
+        if produit_id:
+            try:
+                produit = Produit.objects.get(
+                    pk=produit_id, company=devis.company)
+            except Produit.DoesNotExist:
+                # Product deleted or belongs to another company — try global
+                try:
+                    produit = Produit.objects.get(
+                        pk=produit_id, company__isnull=True)
+                except Produit.DoesNotExist:
+                    produit = None
+
+        if skip_priceless and produit is not None and not _has_price(produit):
+            logger.info(
+                'QJ16 apply_preset: skipping priceless product %s ("%s")',
+                produit_id, snap.get('designation', ''))
+            continue
+
+        taux_snap = snap.get('taux_tva')
+        ligne = LigneDevis.objects.create(
+            devis=devis,
+            produit=produit,
+            designation=snap['designation'],
+            quantite=Decimal(str(snap['quantite'])),
+            prix_unitaire=Decimal(str(snap['prix_unitaire'])),
+            remise=Decimal(str(snap.get('remise', '0'))),
+            taux_tva=Decimal(str(taux_snap)) if taux_snap is not None else None,
+        )
+        created.append(ligne)
+
+    # Apply devis-level settings from preset if the devis is fresh (no lignes yet
+    # before this call means we can safely update tva and remise).
+    if created:
+        devis.taux_tva = preset.taux_tva
+        devis.remise_globale = preset.remise_globale
+        if preset.mode_installation:
+            devis.mode_installation = preset.mode_installation
+        if preset.etude_params_snapshot and not devis.etude_params:
+            devis.etude_params = dict(preset.etude_params_snapshot)
+        devis.save(update_fields=[
+            'taux_tva', 'remise_globale', 'mode_installation', 'etude_params'])
+
+    logger.info(
+        'QJ16 apply_preset: applied preset "%s" to devis %s (%d lines)',
+        preset.nom, getattr(devis, 'reference', devis.pk), len(created))
+    return created

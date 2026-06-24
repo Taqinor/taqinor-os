@@ -113,6 +113,12 @@ const ventesApi = {
   createLigneFacture: (data) => api.post('/ventes/factures-lignes/', data),
   updateLigneFacture: (id, data) => api.put(`/ventes/factures-lignes/${id}/`, data),
   deleteLigneFacture: (id) => api.delete(`/ventes/factures-lignes/${id}/`),
+
+  // QJ16 — Modèles de devis (presets)
+  getPresets: (params) => api.get('/ventes/presets/', { params }),
+  savePreset: (devisId, data) => api.post(`/ventes/devis/${devisId}/save-preset/`, data),
+  applyPreset: (devisId, data) => api.post(`/ventes/devis/${devisId}/apply-preset/`, data),
+  deletePreset: (id) => api.delete(`/ventes/presets/${id}/`),
 }
 
 export default ventesApi

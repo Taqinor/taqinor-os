@@ -1370,3 +1370,87 @@ class DevisSignature(models.Model):
             f"lignes={lignes_str}"
         )
         return hashlib.sha256(payload.encode('utf-8')).hexdigest()
+
+
+# ── QJ16 — Reusable quote presets ────────────────────────────────────────────
+
+class DevisPreset(models.Model):
+    """A company-scoped saved quote configuration (« modèle de devis »).
+
+    A preset captures the line configuration of an existing Devis so a user
+    can apply it to a new quote in one click instead of rebuilding from the
+    catalogue.  It stores lines as a JSON snapshot (never live references) so
+    the preset remains stable after the source devis is edited.
+
+    Multi-tenancy: ``company`` is always forced server-side; never accepted
+    from the request body.  Querysets are always filtered by
+    ``request.user.company``.
+
+    Price-less products are excluded at apply-time (same guard as the
+    auto-fill / build_devis_from_layout service): a preset line whose product
+    no longer carries a sell price is skipped, not applied.
+    """
+
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='devis_presets',
+        verbose_name='Société',
+    )
+    nom = models.CharField(
+        max_length=150,
+        verbose_name='Nom du modèle',
+        help_text='Ex. « Standard 6 kWc résidentiel ».',
+    )
+    description = models.TextField(
+        blank=True, default='',
+        verbose_name='Description',
+        help_text='Note libre sur ce modèle (optionnel).',
+    )
+    mode_installation = models.CharField(
+        max_length=20,
+        choices=Devis.ModeInstallation.choices,
+        blank=True, null=True,
+        verbose_name='Mode d\'installation',
+    )
+    taux_tva = models.DecimalField(
+        max_digits=5, decimal_places=2, default=20,
+        verbose_name='Taux TVA (%)',
+    )
+    remise_globale = models.DecimalField(
+        max_digits=5, decimal_places=2, default=0,
+        verbose_name='Remise globale (%)',
+    )
+    # Snapshot of lines: list of
+    # {produit_id, designation, quantite, prix_unitaire, remise, taux_tva}.
+    # produit_id is nullable in the snapshot (product may have been deleted).
+    lignes_snapshot = models.JSONField(
+        verbose_name='Lignes (snapshot)',
+        help_text='Snapshot JSON des lignes du devis source.',
+    )
+    # etude_params snapshot — preserves pompage / industrial study data
+    # so presets for those modes carry the right sizing defaults.
+    etude_params_snapshot = models.JSONField(
+        blank=True, null=True,
+        verbose_name='Paramètres étude (snapshot)',
+    )
+    created_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='devis_presets_crees',
+        verbose_name='Créé par',
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = 'Modèle de devis'
+        verbose_name_plural = 'Modèles de devis'
+        ordering = ['nom']
+        indexes = [
+            models.Index(fields=['company', 'nom'], name='ventes_preset_co_nom_idx'),
+        ]
+
+    def __str__(self):
+        return f'{self.nom} ({getattr(self.company, "nom", self.company_id)})'
