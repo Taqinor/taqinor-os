@@ -285,6 +285,30 @@ class ProjetViewSet(_GestionProjetBaseViewSet):
             JalonSerializer(
                 selectors.jalons_for_projet(projet), many=True).data)
 
+    @action(detail=True, methods=['get'], url_path='retards')
+    def retards(self, request, pk=None):
+        """Tâches et jalons EN RETARD ou À RISQUE du projet (PROJ14).
+
+        Paramètre optionnel ``?seuil_jours=N`` (entier positif, défaut 7) :
+        horizon du radar « à risque » — une tâche/un jalon dont la fin prévue
+        tombe dans les N prochains jours est signalée « à risque ».
+
+        La société est garantie par ``get_object`` (queryset scopé société) :
+        un projet d'une autre société → 404. Délègue au sélecteur
+        ``retards_projet`` (lecture seule, aucune écriture). Le paramètre
+        ``seuil_jours`` invalide (non entier / négatif) est silencieusement
+        remplacé par la valeur par défaut (7 jours).
+        """
+        projet = self.get_object()
+        seuil_raw = request.query_params.get('seuil_jours')
+        seuil = None
+        if seuil_raw is not None:
+            try:
+                seuil = max(0, int(seuil_raw))
+            except (ValueError, TypeError):
+                seuil = None
+        return Response(selectors.retards_projet(projet, seuil_jours=seuil))
+
 
 class ProjetChantierViewSet(_GestionProjetBaseViewSet):
     """Rattachements chantier ↔ projet (liens lâches)."""
