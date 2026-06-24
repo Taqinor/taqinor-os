@@ -8,6 +8,7 @@ Protections (L855) : chaque réponse publique porte « X-Robots-Tag: noindex »
 pour rester hors des moteurs de recherche, et l'accès est limité en débit par
 IP + jeton (throttle cache-based, sans dépendance externe ni rendu modifié).
 """
+from django.db import models
 from django.db.models import F
 from django.http import HttpResponse
 from django.utils import timezone
@@ -244,6 +245,63 @@ def _monthly_consumption(devis) -> list:
     return out
 
 
+def _variant_summaries(devis) -> list:
+    """QJ15 — côte-à-côte : résumé minimal de chaque variante du devis.
+
+    Retourne une liste de dicts (non vide uniquement quand il existe au moins
+    une autre variante active partageant le même version_parent). La liste est
+    vide si le devis est isolé (pas de version_parent, pas de frère/sœur actif).
+
+    Le summary est volontairement minimal : id, reference, version, note,
+    total_ttc (somme brute sans remise globale, bonne pour une comparaison
+    relative côte-à-côte). Jamais de prix d'achat ni de marge (règle #4).
+    """
+    root = devis.version_parent_id or devis.pk
+    try:
+        from .models import Devis as DevisModel, LigneDevis
+        # Include root + all siblings with the same version_parent.
+        siblings = list(
+            DevisModel.objects
+            .filter(
+                company=devis.company,
+                is_active=True,
+            )
+            .filter(
+                models.Q(pk=root) | models.Q(version_parent_id=root)
+            )
+            .exclude(pk=devis.pk)   # exclude self — self is the main payload
+            .order_by('version', 'id')
+            .only('id', 'reference', 'version', 'note',
+                  'taux_tva', 'remise_globale')
+        )
+        if not siblings:
+            return []
+        out = []
+        for s in siblings:
+            # Approximate total TTC (no access to build_quote_data for speed)
+            lines = LigneDevis.objects.filter(devis=s).values(
+                'quantite', 'prix_unitaire', 'remise', 'taux_tva')
+            total_ht = sum(
+                float(ln['quantite']) * float(ln['prix_unitaire'])
+                * (1 - float(ln['remise'] or 0) / 100)
+                for ln in lines
+            )
+            remise_g = float(s.remise_globale or 0)
+            total_ht_after_remise = total_ht * (1 - remise_g / 100)
+            taux = float(s.taux_tva or 20)
+            total_ttc = total_ht_after_remise * (1 + taux / 100)
+            out.append({
+                'id': s.id,
+                'reference': s.reference,
+                'version': s.version,
+                'note': (s.note or ''),
+                'total_ttc': round(total_ttc, 2),
+            })
+        return out
+    except Exception:  # noqa: BLE001 — best-effort, never break the proposal
+        return []
+
+
 @api_view(['GET'])
 @permission_classes([AllowAny])
 @throttle_classes([PublicLinkRateThrottle])
@@ -297,6 +355,14 @@ def proposal_data(request, token):
             # Consommation : factures RÉELLES du lead (MAD→kWh, tarif interne),
             # [] sans facture → la page masque le graphe.
             'monthly_consumption': _monthly_consumption(devis),
+            # QJ12 — financing block (indicatif / à confirmer).
+            # Present when build_quote_data produced a non-None financing dict;
+            # absent (key not sent) when total is unknown — frontend must check.
+            # NOTE: also nested inside data['quote']['financing'] for the PDF engine.
+            'financing': data.get('financing'),
+            # QJ15 — variantes côte-à-côte (même version_parent, toutes actives).
+            # [] quand le devis est isolé — le client voit seulement sa proposition.
+            'variants': _variant_summaries(devis),
         }
     except Exception:  # noqa: BLE001
         return _noindex(Response(

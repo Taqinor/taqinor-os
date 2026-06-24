@@ -180,6 +180,12 @@ class Devis(models.Model):
     # Clé de l'image PNG « votre installation » (snapshot 3D) stockée dans le
     # bucket PDF, scopée société. Vide → la proposition n'affiche pas de rendu.
     roof_image = models.CharField(max_length=500, blank=True, null=True)
+    # ── QJ17 — Layout hash pour la déduplication (from-layout idempotency) ──
+    # SHA-256 du layout géométrique (zones + result + scenario) posé lors du
+    # premier « Générer ». Null pour les devis antérieurs ou créés sans layout.
+    # Longueur 64 = SHA-256 hex (max 63 chars pour l'index Oracle — unused here,
+    # mais on plafonne à 64 pour la cohérence). Index ≤ 30 chars : lyt_hash_idx.
+    layout_hash = models.CharField(max_length=64, null=True, blank=True, db_index=True)
 
     class Meta:
         verbose_name = 'Devis'
@@ -1370,3 +1376,157 @@ class DevisSignature(models.Model):
             f"lignes={lignes_str}"
         )
         return hashlib.sha256(payload.encode('utf-8')).hexdigest()
+
+
+# ── QJ16 — Reusable quote presets ────────────────────────────────────────────
+
+class DevisPreset(models.Model):
+    """A company-scoped saved quote configuration (« modèle de devis »).
+
+    A preset captures the line configuration of an existing Devis so a user
+    can apply it to a new quote in one click instead of rebuilding from the
+    catalogue.  It stores lines as a JSON snapshot (never live references) so
+    the preset remains stable after the source devis is edited.
+
+    Multi-tenancy: ``company`` is always forced server-side; never accepted
+    from the request body.  Querysets are always filtered by
+    ``request.user.company``.
+
+    Price-less products are excluded at apply-time (same guard as the
+    auto-fill / build_devis_from_layout service): a preset line whose product
+    no longer carries a sell price is skipped, not applied.
+    """
+
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='devis_presets',
+        verbose_name='Société',
+    )
+    nom = models.CharField(
+        max_length=150,
+        verbose_name='Nom du modèle',
+        help_text='Ex. « Standard 6 kWc résidentiel ».',
+    )
+    description = models.TextField(
+        blank=True, default='',
+        verbose_name='Description',
+        help_text='Note libre sur ce modèle (optionnel).',
+    )
+    mode_installation = models.CharField(
+        max_length=20,
+        choices=Devis.ModeInstallation.choices,
+        blank=True, null=True,
+        verbose_name='Mode d\'installation',
+    )
+    taux_tva = models.DecimalField(
+        max_digits=5, decimal_places=2, default=20,
+        verbose_name='Taux TVA (%)',
+    )
+    remise_globale = models.DecimalField(
+        max_digits=5, decimal_places=2, default=0,
+        verbose_name='Remise globale (%)',
+    )
+    # Snapshot of lines: list of
+    # {produit_id, designation, quantite, prix_unitaire, remise, taux_tva}.
+    # produit_id is nullable in the snapshot (product may have been deleted).
+    lignes_snapshot = models.JSONField(
+        verbose_name='Lignes (snapshot)',
+        help_text='Snapshot JSON des lignes du devis source.',
+    )
+    # etude_params snapshot — preserves pompage / industrial study data
+    # so presets for those modes carry the right sizing defaults.
+    etude_params_snapshot = models.JSONField(
+        blank=True, null=True,
+        verbose_name='Paramètres étude (snapshot)',
+    )
+    created_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='devis_presets_crees',
+        verbose_name='Créé par',
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = 'Modèle de devis'
+        verbose_name_plural = 'Modèles de devis'
+        ordering = ['nom']
+        indexes = [
+            models.Index(fields=['company', 'nom'], name='ventes_preset_co_nom_idx'),
+        ]
+
+    def __str__(self):
+        return f'{self.nom} ({getattr(self.company, "nom", self.company_id)})'
+
+
+# ── QJ4 — Suivi automatique de devis envoyé (relance cadencée) ───────────────
+
+# Cadence par défaut : j+2, j+5, j+10 après date_envoi.
+# Modifiable via le paramètre DEVIS_NUDGE_DAYS dans les settings Django
+# (liste d'entiers). La cadence s'arrête dès que le devis passe « accepté »
+# ou « refusé ».
+DEVIS_NUDGE_DEFAULT_DAYS = [2, 5, 10]
+
+
+class DevisNudgeLog(models.Model):
+    """Trace d'une relance automatique envoyée au vendeur pour un devis.
+
+    Un enregistrement par (devis, niveau) garantit qu'un niveau ne se déclenche
+    jamais deux fois (idempotence). La relance est adressée AU VENDEUR
+    (created_by), pas au client — soit un draft wa.me, soit un email SendGrid
+    si configuré. Scopé société (multi-tenant).
+
+    Champs :
+    - devis       : FK vers le Devis concerné (scopé société)
+    - niveau      : indice 0-based du jour de relance (0 = j+2, 1 = j+5, 2 = j+10)
+    - jours       : nombre de jours après date_envoi de ce niveau (ex. 2)
+    - canal       : 'email' | 'wa_draft' (indique comment la relance a été traitée)
+    - created_at  : horodatage UTC de l'envoi
+    """
+    class Canal(models.TextChoices):
+        EMAIL = 'email', 'Email'
+        WA_DRAFT = 'wa_draft', 'WhatsApp draft (wa.me)'
+
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        null=True, blank=True,
+        related_name='devis_nudge_logs',
+    )
+    devis = models.ForeignKey(
+        Devis,
+        on_delete=models.CASCADE,
+        related_name='nudge_logs',
+    )
+    niveau = models.PositiveSmallIntegerField(
+        verbose_name='Niveau (indice 0-based)',
+        help_text='0 = premier palier, 1 = deuxième, etc.',
+    )
+    jours = models.PositiveSmallIntegerField(
+        verbose_name='Jours après envoi',
+        help_text='Nombre de jours après date_envoi de ce palier.',
+    )
+    canal = models.CharField(
+        max_length=10,
+        choices=Canal.choices,
+        default=Canal.WA_DRAFT,
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        verbose_name = 'Relance automatique devis'
+        verbose_name_plural = 'Relances automatiques devis'
+        ordering = ['-created_at']
+        unique_together = [('devis', 'niveau')]
+        indexes = [
+            models.Index(fields=['devis', 'niveau'], name='ventes_nudge_dev_niv_idx'),
+        ]
+
+    def __str__(self):
+        return (
+            f'NudgeLog devis={self.devis_id} niveau={self.niveau}'
+            f' j+{self.jours} [{self.canal}]'
+        )

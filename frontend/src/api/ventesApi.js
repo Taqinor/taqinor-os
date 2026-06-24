@@ -18,6 +18,12 @@ const ventesApi = {
   convertirDevisEnBC: (id) => api.post(`/ventes/devis/${id}/convertir-bc/`),
   // Révision : crée une nouvelle version (v2, v3…) d'un devis.
   reviserDevis: (id) => api.post(`/ventes/devis/${id}/reviser/`),
+  // QJ14 — Envoyer par email : PDF premium + lien tokenisé → client, consigne EmailLog, marque envoyé.
+  envoyerEmailDevis: (id, payload = {}) => api.post(`/ventes/devis/${id}/envoyer-email/`, payload),
+  // QJ15 — Variantes : créer 2–3 copies dimensionnées pour comparaison côte-à-côte.
+  dupliquerVariante: (id, payload = {}) => api.post(`/ventes/devis/${id}/dupliquer-variante/`, payload),
+  // QJ15 — Lister les variantes liées à ce devis (même version_parent).
+  getVariantes: (id) => api.get(`/ventes/devis/${id}/variantes/`),
   // Approbation admin de la remise (T17) — débloque l'envoi.
   approuverRemise: (id) => api.post(`/ventes/devis/${id}/approuver-remise/`),
   // N25 — acceptation explicite (date + nom), déclencheur de chantier + chatter.
@@ -113,6 +119,12 @@ const ventesApi = {
   createLigneFacture: (data) => api.post('/ventes/factures-lignes/', data),
   updateLigneFacture: (id, data) => api.put(`/ventes/factures-lignes/${id}/`, data),
   deleteLigneFacture: (id) => api.delete(`/ventes/factures-lignes/${id}/`),
+
+  // QJ16 — Modèles de devis (presets)
+  getPresets: (params) => api.get('/ventes/presets/', { params }),
+  savePreset: (devisId, data) => api.post(`/ventes/devis/${devisId}/save-preset/`, data),
+  applyPreset: (devisId, data) => api.post(`/ventes/devis/${devisId}/apply-preset/`, data),
+  deletePreset: (id) => api.delete(`/ventes/presets/${id}/`),
 }
 
 export default ventesApi

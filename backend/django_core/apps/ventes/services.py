@@ -194,6 +194,86 @@ def extract_roof_config(layout):
     return cfg
 
 
+def layout_hash(layout):
+    """QJ17 — deterministic SHA-256 fingerprint of a roof layout dict.
+
+    Used to detect duplicate ``from-layout`` submissions (same geometry re-sent
+    after a network retry or a double-click).  Only the geometry-bearing keys are
+    hashed (``zones``/``areas``/``pans``, ``result``, ``scenario``, ``panelWatt``,
+    ``watt``, ``battery``) so that transient UI state (``pin``, ``outline``,
+    ``billKwh``, ``activeAreaId``, ``renderPlan``…) never prevents deduplication.
+    """
+    import hashlib
+    import json as _json
+
+    if not isinstance(layout, dict):
+        return ''
+    canonical = {
+        'zones': layout.get('zones') or layout.get('areas') or layout.get('pans'),
+        'result': layout.get('result'),
+        'scenario': layout.get('scenario'),
+        'panelWatt': layout.get('panelWatt') or layout.get('watt'),
+        'battery': bool(layout.get('battery')),
+    }
+    blob = _json.dumps(canonical, sort_keys=True, separators=(',', ':'),
+                       default=str)
+    return hashlib.sha256(blob.encode()).hexdigest()
+
+
+def validate_composition_for_layout(layout, company):
+    """QJ17 — pre-flight composition check before building a devis.
+
+    Returns ``None`` when the composition is valid.  Returns a list of French
+    error strings when problems are detected (caller should surface them inline
+    rather than raising a PDF error at render time).
+
+    Rules (aligned with quote_engine/builder.py keyword classification):
+    - At least 1 panel is required.
+    - A battery scenario requires both a hybrid inverter AND a battery in the
+      catalogue (priced); if either is missing, warn the agent.
+    - A réseau scenario requires a réseau/injection inverter (priced).
+    - A price-less required product blocks the composition (never auto-quote it).
+    """
+    if not isinstance(layout, dict):
+        return ['Layout invalide — impossible de valider la composition.']
+
+    result = dict((layout.get('result') or {}))
+    nb_panneaux = int(result.get('panels') or 0)
+    toiture = extract_roof_config(layout)
+    if nb_panneaux <= 0 and toiture.get('nb_panneaux'):
+        nb_panneaux = int(toiture['nb_panneaux'])
+
+    errors = []
+    if nb_panneaux <= 0:
+        errors.append(
+            'Aucun panneau détecté dans le layout. '
+            'Terminez le tracé du toit et relancez l\'optimiseur avant de générer.')
+
+    scenario = (layout.get('scenario') or '').lower()
+    wants_battery = ('batterie' in scenario or 'hybride' in scenario
+                     or bool(layout.get('battery')))
+
+    if wants_battery:
+        inv = _pick_product(company, _is_hybrid_inverter)
+        bat = _pick_product(company, _is_battery)
+        if inv is None:
+            errors.append(
+                'Aucun onduleur hybride disponible (ou sans prix) dans le catalogue. '
+                'Ajoutez un onduleur hybride tarifé avant de générer ce devis.')
+        if bat is None:
+            errors.append(
+                'Aucune batterie disponible (ou sans prix) dans le catalogue. '
+                'Ajoutez une batterie tarifée avant de générer ce devis.')
+    else:
+        inv = _pick_product(company, _is_reseau_inverter)
+        if inv is None:
+            errors.append(
+                'Aucun onduleur réseau disponible (ou sans prix) dans le catalogue. '
+                'Ajoutez un onduleur réseau/injection tarifé avant de générer.')
+
+    return errors if errors else None
+
+
 def build_devis_from_layout(*, layout, user, company, lead=None, client=None,
                             taux_tva=Decimal('20'), remise_globale=Decimal('0')):
     """Q3 — turn a FINALISED roof layout into a coherent, company-scoped Devis.
@@ -207,6 +287,11 @@ def build_devis_from_layout(*, layout, user, company, lead=None, client=None,
     resolved server-side from the lead via crm.services (no duplicates). The
     layout's production/savings are stored into ``etude_params``. A price-less
     catalogue product is NEVER quoted.
+
+    QJ21 — the stored ``roof_layout`` is enriched with a ``_pans_geometry`` key
+    holding the processed per-pan list (azimut_deg, inclinaison_deg, kwc,
+    nb_panneaux, orientation, label, roof_type) so consumers never have to
+    re-run ``extract_roof_config`` to access the full multi-plane design.
 
     Returns the created Devis. The Devis is left ``brouillon`` — this service
     only BUILDS; it never changes downstream statuses (rule #4).
@@ -282,6 +367,14 @@ def build_devis_from_layout(*, layout, user, company, lead=None, client=None,
     if toiture:
         etude_params['toiture'] = toiture
 
+    # QJ21 — enrich roof_layout with a ``_pans_geometry`` key carrying the
+    # PROCESSED per-pan data (azimut_deg, inclinaison_deg, kwc, nb_panneaux,
+    # orientation, label, roof_type) so consumers never have to re-run
+    # extract_roof_config.  We copy rather than mutate the caller's dict.
+    stored_layout = dict(layout)
+    if toiture and toiture.get('pans'):
+        stored_layout['_pans_geometry'] = toiture['pans']
+
     def _create(ref):
         devis = Devis.objects.create(
             company=company,
@@ -294,7 +387,7 @@ def build_devis_from_layout(*, layout, user, company, lead=None, client=None,
             created_by=user,
             mode_installation=Devis.ModeInstallation.RESIDENTIEL,
             etude_params=etude_params or None,
-            roof_layout=layout,
+            roof_layout=stored_layout,
         )
         for produit, designation, quantite in line_specs:
             LigneDevis.objects.create(
@@ -309,8 +402,10 @@ def build_devis_from_layout(*, layout, user, company, lead=None, client=None,
 
     devis = create_with_reference(Devis, 'DEV', company, _create)
     logger.info(
-        'Q3: devis %s built from layout (%d lignes, %.2f kWc, company %s)',
-        devis.reference, len(line_specs), kwc, getattr(company, 'id', '?'))
+        'Q3/QJ21: devis %s built from layout (%d lignes, %.2f kWc, %d pans, company %s)',
+        devis.reference, len(line_specs), kwc,
+        len(toiture.get('pans', [])) if toiture else 0,
+        getattr(company, 'id', '?'))
     return devis
 
 
@@ -1027,3 +1122,342 @@ def record_payment_from_link(*, link, payload=None):
             facture.statut = Facture.Statut.PAYEE
             facture.save(update_fields=['statut'])
     return paiement, None
+
+
+# ── QJ16 — Reusable quote presets ────────────────────────────────────────────
+
+def save_devis_as_preset(devis, nom: str, description: str = "", *, user=None):
+    """QJ16 — snapshot a Devis into a company-scoped DevisPreset.
+
+    The preset captures the line configuration (designation, quantite,
+    prix_unitaire, remise, taux_tva per line, plus taux_tva and remise_globale
+    at devis level) as a JSON snapshot.  The company is ALWAYS forced from
+    ``devis.company`` — never from user input.
+
+    Price-less lines are excluded at save time (same guard as auto-fill): if a
+    line's produit has no sell price, it is still captured in the snapshot so the
+    preset is complete, but at apply-time such lines are re-checked and skipped
+    if the product is no longer priced.
+
+    Returns the created DevisPreset.
+    """
+    from apps.ventes.models import DevisPreset
+
+    company = devis.company
+    if company is None:
+        raise ValueError("save_devis_as_preset: devis has no company")
+
+    lignes_snapshot = []
+    for ligne in devis.lignes.select_related('produit').order_by('id'):
+        produit = ligne.produit
+        lignes_snapshot.append({
+            'produit_id': produit.pk if produit else None,
+            'designation': ligne.designation,
+            'quantite': str(ligne.quantite),
+            'prix_unitaire': str(ligne.prix_unitaire),
+            'remise': str(ligne.remise),
+            'taux_tva': str(ligne.taux_tva) if ligne.taux_tva is not None else None,
+        })
+
+    preset = DevisPreset.objects.create(
+        company=company,
+        nom=nom.strip(),
+        description=description,
+        mode_installation=devis.mode_installation or None,
+        taux_tva=devis.taux_tva,
+        remise_globale=devis.remise_globale,
+        lignes_snapshot=lignes_snapshot,
+        etude_params_snapshot=dict(devis.etude_params) if devis.etude_params else None,
+        created_by=user,
+    )
+    logger.info(
+        'QJ16: preset "%s" saved (id=%s, company=%s, %d lignes)',
+        preset.nom, preset.pk, company.pk, len(lignes_snapshot))
+    return preset
+
+
+def apply_preset_to_devis(preset, devis, *, skip_priceless: bool = True) -> list:
+    """QJ16 — apply a DevisPreset to an existing (empty) Devis.
+
+    Creates LigneDevis rows on ``devis`` from the preset snapshot.  The caller
+    is responsible for ensuring ``devis`` is brouillon and belongs to the same
+    company as the preset (enforced below — cross-company apply is refused).
+
+    ``skip_priceless=True`` (default): lines whose snapshot product no longer
+    has a sell price are skipped (same guard as auto-fill — never auto-quote a
+    price-less product).  Pass ``skip_priceless=False`` only in tests that need
+    to exercise the skipping logic.
+
+    Returns the list of created LigneDevis instances (may be empty if all lines
+    are priceless).
+
+    RULE #4: this service only builds lines — it never changes Devis.statut.
+    """
+    from apps.ventes.models import LigneDevis
+    from apps.stock.models import Produit
+
+    if preset.company_id != devis.company_id:
+        raise ValueError(
+            "apply_preset_to_devis: preset and devis belong to different companies"
+        )
+
+    created = []
+    for snap in preset.lignes_snapshot:
+        produit_id = snap.get('produit_id')
+        produit = None
+        if produit_id:
+            try:
+                produit = Produit.objects.get(
+                    pk=produit_id, company=devis.company)
+            except Produit.DoesNotExist:
+                # Product deleted or belongs to another company — try global
+                try:
+                    produit = Produit.objects.get(
+                        pk=produit_id, company__isnull=True)
+                except Produit.DoesNotExist:
+                    produit = None
+
+        if skip_priceless and produit is not None and not _has_price(produit):
+            logger.info(
+                'QJ16 apply_preset: skipping priceless product %s ("%s")',
+                produit_id, snap.get('designation', ''))
+            continue
+
+        taux_snap = snap.get('taux_tva')
+        ligne = LigneDevis.objects.create(
+            devis=devis,
+            produit=produit,
+            designation=snap['designation'],
+            quantite=Decimal(str(snap['quantite'])),
+            prix_unitaire=Decimal(str(snap['prix_unitaire'])),
+            remise=Decimal(str(snap.get('remise', '0'))),
+            taux_tva=Decimal(str(taux_snap)) if taux_snap is not None else None,
+        )
+        created.append(ligne)
+
+    # Apply devis-level settings from preset if the devis is fresh (no lignes yet
+    # before this call means we can safely update tva and remise).
+    if created:
+        devis.taux_tva = preset.taux_tva
+        devis.remise_globale = preset.remise_globale
+        if preset.mode_installation:
+            devis.mode_installation = preset.mode_installation
+        if preset.etude_params_snapshot and not devis.etude_params:
+            devis.etude_params = dict(preset.etude_params_snapshot)
+        devis.save(update_fields=[
+            'taux_tva', 'remise_globale', 'mode_installation', 'etude_params'])
+
+    logger.info(
+        'QJ16 apply_preset: applied preset "%s" to devis %s (%d lines)',
+        preset.nom, getattr(devis, 'reference', devis.pk), len(created))
+    return created
+
+
+# ── QJ4 — Relance automatique cadencée des devis envoyés ─────────────────────
+# Logique : pour chaque devis « envoyé » (statut ENVOYE) dont date_envoi est
+# renseignée, on contrôle si l'un des paliers de la cadence est échu
+# (aujourd'hui >= date_envoi + jours[niveau]) et s'il n'a pas encore été
+# déclenché (pas de DevisNudgeLog pour ce niveau). On surface alors un draft
+# wa.me au vendeur — ou on envoie un email si le canal email est configuré.
+# La relance s'arrête dès que le statut passe à ACCEPTE ou REFUSE.
+
+# Modèles de message de relance — FR et AR.
+# Clés : ref (référence devis), jours (palier), client_nom, wa_url (lien
+# public). Les accolades dobles {{ }} échappées en cas d'imbrication Django
+# template — ici on utilise .format() directement, pas de template Django.
+_NUDGE_MSG_FR = (
+    "Bonjour,\n\n"
+    "Le devis {ref} envoyé à {client_nom} il y a {jours} jours est toujours "
+    "en attente de validation.\n\n"
+    "Pensez à relancer votre client :\n{wa_url}\n\n"
+    "Cordialement,\nL'équipe TAQINOR"
+)
+
+_NUDGE_MSG_AR = (
+    "مرحبا،\n\n"
+    "لا يزال عرض "
+    "{ref} المرسل إلى "
+    "{client_nom} منذ {jours} أيام "
+    "في انتظار الموافقة.\n\n"
+    "يُرجى متابعة "
+    "العميل:\n{wa_url}\n\n"
+    "مع التحيات،\n"
+    "فريق TAQINOR"
+)
+
+
+def _build_wa_draft_url(phone, text):
+    """Construit un lien wa.me pré-rempli. phone peut inclure '+' ou non."""
+    import urllib.parse
+    digits = ''.join(c for c in (phone or '') if c.isdigit())
+    if not digits:
+        return None
+    encoded = urllib.parse.quote(text)
+    return f'https://wa.me/{digits}?text={encoded}'
+
+
+def _get_nudge_days():
+    """Renvoie la cadence de relance depuis les settings (ou la valeur par défaut)."""
+    from django.conf import settings
+    from apps.ventes.models import DEVIS_NUDGE_DEFAULT_DAYS
+    return getattr(settings, 'DEVIS_NUDGE_DAYS', DEVIS_NUDGE_DEFAULT_DAYS)
+
+
+def send_devis_followup_nudges():
+    """QJ4 — Déclenche les relances cadencées pour les devis « envoyés ».
+
+    Pour chaque devis ENVOYE avec date_envoi renseignée :
+    - parcourt les paliers de la cadence (j+2, j+5, j+10 par défaut) ;
+    - si today >= date_envoi + jours[niveau] ET que ce niveau n'a jamais été
+      déclenché (pas de DevisNudgeLog) → envoie la relance ;
+    - préfère un email si le canal email est configuré, sinon surface un draft
+      wa.me au vendeur (logged) ;
+    - enregistre un DevisNudgeLog pour éviter tout doublon.
+
+    Idempotent : safe à ré-exécuter sans effet si tous les niveaux dus ont déjà
+    leur DevisNudgeLog. Renvoie le nombre total de nudges déclenchés.
+
+    RULE #4 : ne touche JAMAIS au statut du Devis.
+    Multi-tenant : chaque devis est scopé company (never trusts body company).
+    """
+    from django.utils import timezone
+    try:
+        from zoneinfo import ZoneInfo
+        _tz = ZoneInfo('Africa/Casablanca')
+
+        def _today():
+            return timezone.now().astimezone(_tz).date()
+    except Exception:
+        def _today():
+            return timezone.localdate()
+
+    from apps.ventes.models import Devis, DevisNudgeLog, ShareLink
+    from apps.ventes.email_service import is_email_configured
+
+    nudge_days = _get_nudge_days()
+    today = _today()
+
+    # Only look at envoye devis with a known send date.
+    candidates = Devis.objects.filter(
+        statut=Devis.Statut.ENVOYE,
+        date_envoi__isnull=False,
+    ).select_related('client', 'company', 'created_by').prefetch_related(
+        'nudge_logs',
+    )
+
+    use_email = is_email_configured()
+    total_sent = 0
+
+    for devis in candidates:
+        # Double-check: cadence stops on accept/refuse (belt-and-suspenders
+        # since we filter on ENVOYE above, but guards concurrent transitions).
+        if devis.statut in (Devis.Statut.ACCEPTE, Devis.Statut.REFUSE):
+            continue
+
+        # date_envoi is a DateTimeField — extract date in Casablanca tz.
+        try:
+            envoi_date = devis.date_envoi.astimezone(
+                ZoneInfo('Africa/Casablanca')).date()
+        except Exception:
+            envoi_date = devis.date_envoi.date()
+
+        # Which levels already fired?
+        fired = set(
+            devis.nudge_logs.values_list('niveau', flat=True)
+        )
+
+        client = getattr(devis, 'client', None)
+        client_nom = (getattr(client, 'nom', '') or '') if client else ''
+        vendeur = getattr(devis, 'created_by', None)
+
+        for idx, jours in enumerate(nudge_days):
+            if idx in fired:
+                continue  # already sent for this level — idempotent
+            trigger_date = envoi_date + __import__('datetime').timedelta(days=jours)
+            if today < trigger_date:
+                continue  # not due yet
+
+            # Build the public share link for the seller to use.
+            try:
+                share_link = ShareLink.for_devis(devis)
+                from django.conf import settings
+                site = getattr(settings, 'SITE_URL', 'https://taqinor.ma')
+                proposal_url = f'{site}/proposal/{share_link.token}'
+            except Exception:
+                proposal_url = ''
+
+            msg_fr = _NUDGE_MSG_FR.format(
+                ref=devis.reference,
+                client_nom=client_nom or 'votre client',
+                jours=jours,
+                wa_url=proposal_url,
+            )
+            msg_ar = _NUDGE_MSG_AR.format(
+                ref=devis.reference,
+                client_nom=client_nom or 'عميلك',
+                jours=jours,
+                wa_url=proposal_url,
+            )
+
+            canal = DevisNudgeLog.Canal.WA_DRAFT
+
+            # Bilingual body used for email (FR + AR separator).
+            msg_bilingual = msg_fr + '\n\n---\n\n' + msg_ar
+
+            if use_email and vendeur and getattr(vendeur, 'email', ''):
+                # Send email to seller (bilingual FR + AR).
+                _send_nudge_email(
+                    to_email=vendeur.email,
+                    devis_ref=devis.reference,
+                    subject_fr=f'Relance devis {devis.reference} — niveau {idx + 1}',
+                    body_fr=msg_bilingual,
+                )
+                canal = DevisNudgeLog.Canal.EMAIL
+            else:
+                # Surface wa.me draft — log so the seller sees it.
+                vendeur_phone = (
+                    getattr(vendeur, 'phone_number', '') or ''
+                    if vendeur else ''
+                )
+                wa_url = _build_wa_draft_url(vendeur_phone, msg_fr) or proposal_url
+                logger.info(
+                    'QJ4 nudge wa_draft devis=%s niveau=%d j+%d vendeur=%s url=%s',
+                    devis.reference, idx, jours,
+                    getattr(vendeur, 'username', '?'), wa_url)
+
+            # Record the fired level — unique_together prevents duplicates.
+            try:
+                DevisNudgeLog.objects.create(
+                    company=devis.company,
+                    devis=devis,
+                    niveau=idx,
+                    jours=jours,
+                    canal=canal,
+                )
+                total_sent += 1
+                logger.info(
+                    'QJ4: nudge N%d déclenché pour devis %s (j+%d, canal=%s)',
+                    idx, devis.reference, jours, canal)
+            except Exception as exc:
+                # IntegrityError → already fired concurrently — safe to ignore.
+                logger.warning(
+                    'QJ4: DevisNudgeLog creation skipped for devis %s niveau=%d: %s',
+                    devis.reference, idx, exc)
+
+    logger.info('QJ4 send_devis_followup_nudges: %d nudge(s) déclenchés', total_sent)
+    return total_sent
+
+
+def _send_nudge_email(*, to_email, devis_ref, subject_fr, body_fr):
+    """Envoie un email de relance au vendeur (NO-OP sans backend email configuré).
+
+    Best-effort : ne lève jamais, consigne juste le résultat en log.
+    """
+    try:
+        from django.core.mail import send_mail
+        from django.conf import settings
+        from_email = getattr(settings, 'DEFAULT_FROM_EMAIL', 'noreply@erp.local')
+        send_mail(subject_fr, body_fr, from_email, [to_email], fail_silently=False)
+        logger.info('QJ4: email relance envoyé à %s (devis %s)', to_email, devis_ref)
+    except Exception as exc:  # noqa: BLE001
+        logger.warning('QJ4: email relance échec pour %s: %s', devis_ref, exc)
