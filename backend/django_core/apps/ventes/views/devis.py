@@ -286,6 +286,116 @@ class DevisViewSet(viewsets.ModelViewSet):
             {'token': link.token, 'path': f'/proposition/{link.token}'},
             status=status.HTTP_200_OK)
 
+    @action(detail=True, methods=['post'], url_path='envoyer-email',
+            permission_classes=[IsResponsableOrAdmin])
+    def envoyer_email(self, request, pk=None):
+        """QJ14 — Envoie la proposition (PDF premium + lien tokenisé) au client
+        par email, consigne l'envoi dans EmailLog et marque le devis « envoyé »
+        via mark_devis_sent (règle #4 — seul chemin de transition brouillon→envoyé).
+
+        Body (tous optionnels) :
+          - ``to_email``  : adresse destinataire (défaut : client.email)
+          - ``sujet``     : objet de l'email (défaut : modèle FR)
+          - ``corps``     : corps de l'email (défaut : modèle FR)
+          - ``pdf_mode``  : « full » | « onepage » (défaut : « full »)
+
+        Idempotent : un devis déjà « envoyé » (ou plus avancé) ne régresse pas
+        — l'email est tout de même envoyé mais mark_devis_sent ne re-stampe pas.
+
+        Retourne l'EmailLog id + statut + le statut courant du devis.
+        """
+        from ..models import ShareLink
+        from ..services import mark_devis_sent
+        from ..quote_engine import clean_pdf_options, generate_premium_devis_pdf
+        from ..utils.pdf import download_pdf
+
+        devis = self.get_object()
+        to_email = (request.data.get('to_email') or '').strip() or None
+        sujet = (request.data.get('sujet') or '').strip() or None
+        corps = (request.data.get('corps') or '').strip() or None
+        pdf_mode = (request.data.get('pdf_mode') or 'full').strip()
+
+        # Génère le PDF premium (persist=False — rendu à la volée, pas de
+        # remplacement du fichier stocké : le moteur rend seulement).
+        attachment = None
+        attachment_name = None
+        try:
+            opts = clean_pdf_options({'pdf_mode': pdf_mode})
+            key = generate_premium_devis_pdf(devis.id, opts, persist=False)
+            attachment = download_pdf(key)
+            attachment_name = f'Devis_{devis.reference}.pdf'
+        except Exception:  # noqa: BLE001 — PDF indisponible n'empêche pas l'envoi
+            pass
+
+        # Ajoute le lien de proposition tokenisé dans le corps si fourni.
+        link = ShareLink.for_devis(devis)
+        proposal_url = f'/proposition/{link.token}'
+        if not corps:
+            client = devis.client
+            nom_client = ''
+            if client:
+                nom_client = f"{client.nom} {getattr(client, 'prenom', '') or ''}".strip()
+            salut = f'Bonjour {nom_client},' if nom_client else 'Bonjour,'
+            corps = (
+                f"{salut}\n\n"
+                f"Veuillez trouver ci-joint votre devis {devis.reference}.\n\n"
+                f"Vous pouvez également consulter et signer votre proposition en ligne :\n"
+                f"{proposal_url}\n\n"
+                f"Nous restons à votre disposition pour toute question.\n\n"
+                f"Cordialement,\nL'équipe TAQINOR"
+            )
+
+        # Envoi + EmailLog via le service centralisé. attach_pdf=False car on
+        # a déjà le contenu — on passe attachment/attachment_name directement.
+        from ..email_service import _send, _from_email, _chatter_note
+        from ..models import EmailLog  # noqa: F811 — local import shadows class-level
+
+        client = devis.client
+        dest = (to_email or (getattr(client, 'email', '') or '')).strip()
+        reference = devis.reference or ''
+        if not sujet:
+            sujet = f'Votre devis {reference}'
+
+        log = EmailLog(
+            company=devis.company,
+            direction=EmailLog.Direction.SORTANT,
+            client=client,
+            devis=devis,
+            to_email=dest, from_email=_from_email(),
+            sujet=(sujet or '')[:300], corps=corps,
+            reference=reference[:80],
+            piece_jointe=(attachment_name or '')[:255],
+            created_by=request.user if getattr(request.user, 'is_authenticated', False) else None,
+        )
+
+        if not dest:
+            log.statut = EmailLog.Statut.ECHEC
+            log.erreur = 'Aucune adresse email destinataire.'
+            log.save()
+            return Response(
+                {'detail': log.erreur, 'log_id': log.id, 'statut': 'echec'},
+                status=status.HTTP_400_BAD_REQUEST)
+
+        ok, err = _send(dest, sujet, corps, attachment, attachment_name)
+        log.statut = EmailLog.Statut.ENVOYE if ok else EmailLog.Statut.ECHEC
+        log.erreur = err
+        log.save()
+
+        etat = 'envoyé' if ok else "échec d'envoi"
+        _chatter_note(devis, f"Email du devis {reference} — {etat} (à {dest}).", request.user)
+
+        # Marque le devis « envoyé » via le seul chemin autorisé (règle #4).
+        # Idempotent : un devis déjà envoyé/accepté/refusé n'est pas régressé.
+        mark_devis_sent(devis=devis, user=request.user)
+
+        return Response({
+            'detail': f'Email envoyé à {dest}.' if ok else f'Échec envoi email : {err}',
+            'log_id': log.id,
+            'email_statut': log.statut,
+            'devis_statut': devis.statut,
+            'proposal_path': proposal_url,
+        }, status=status.HTTP_200_OK)
+
     @action(detail=True, methods=['post'], url_path='approuver-remise',
             permission_classes=[IsAdminRole])
     def approuver_remise(self, request, pk=None):

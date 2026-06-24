@@ -178,6 +178,32 @@ export default function DevisList() {
   const [acceptOption, setAcceptOption] = useState('sans_batterie')
   const [acceptBusy, setAcceptBusy] = useState(false)
 
+  // QJ14 — Modale « Envoyer par email » (PDF premium + lien tokenisé → client).
+  const [emailTarget, setEmailTarget]   = useState(null)
+  const [emailAddress, setEmailAddress] = useState('')
+  const [emailBusy, setEmailBusy]       = useState(false)
+
+  const openEmailModal = (d) => {
+    setEmailTarget(d)
+    setEmailAddress(d.client_email || '')
+  }
+  const closeEmailModal = () => { setEmailTarget(null); setEmailAddress('') }
+  const submitEmail = async () => {
+    if (!emailTarget) return
+    setEmailBusy(true)
+    try {
+      const payload = emailAddress ? { to_email: emailAddress } : {}
+      await ventesApi.envoyerEmailDevis(emailTarget.id, payload)
+      closeEmailModal()
+      dispatch(fetchDevis())
+      toast.success(`Devis ${emailTarget.reference} envoyé par email.`)
+    } catch (err) {
+      toast.error(frenchError(err, 'Envoi email impossible.'))
+    } finally {
+      setEmailBusy(false)
+    }
+  }
+
   // T13 — la case « Inclure l'étude » n'a de sens qu'avec des données d'étude.
   const targetHasEtude = !!(pdfTarget?.etude_params
     && Object.keys(pdfTarget.etude_params).length > 0)
@@ -839,6 +865,40 @@ export default function DevisList() {
         </DialogContent>
       </Dialog>
 
+      {/* QJ14 — Modale « Envoyer par email » : PDF premium + lien de proposition */}
+      <Dialog open={!!emailTarget} onOpenChange={(o) => { if (!o) closeEmailModal() }}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Envoyer par email — {emailTarget?.reference}</DialogTitle>
+          </DialogHeader>
+          <div className="flex flex-col gap-4">
+            <div className="grid gap-1.5">
+              <Label htmlFor="email-address">Adresse email du destinataire</Label>
+              <Input
+                id="email-address"
+                type="email"
+                placeholder="client@exemple.ma"
+                value={emailAddress}
+                onChange={e => setEmailAddress(e.target.value)}
+              />
+              <p className="text-xs text-muted-foreground">
+                Laissez vide pour utiliser l'email du client enregistré.
+                Le PDF de la proposition et le lien de signature seront joints.
+              </p>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={closeEmailModal} disabled={emailBusy}>
+              Annuler
+            </Button>
+            <Button onClick={submitEmail} loading={emailBusy}>
+              <Send className="size-4 mr-1" aria-hidden="true" />
+              Envoyer
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
       {devis.length === 0 ? (
         <EmptyState
           icon={FileStack}
@@ -1148,6 +1208,18 @@ export default function DevisList() {
                               title="Marquer ce devis comme envoyé"
                             >
                               <Send /> Envoyer
+                            </Button>
+                          )}
+                          {/* QJ14 — Envoyer par email : PDF premium + lien de proposition */}
+                          {(d.statut === 'brouillon' || d.statut === 'envoye') && (
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              onClick={() => openEmailModal(d)}
+                              title="Envoyer la proposition par email (PDF + lien de signature)"
+                            >
+                              <Send className="size-3.5 mr-1" aria-hidden="true" />
+                              Email
                             </Button>
                           )}
                           <Button
