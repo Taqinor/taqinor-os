@@ -290,3 +290,118 @@ class VapidKeyPair(models.Model):
         except Exception as exc:  # pragma: no cover - défensif
             logger.warning('Initialisation de la paire VAPID échouée : %s', exc)
             return None
+
+
+# =============================================================================
+# QJ23 — WhatsApp BSP scaffold (flag-gated, défaut manuel wa.me)
+# =============================================================================
+
+class WhatsAppTemplate(models.Model):
+    """Registre des gabarits BSP WhatsApp approuvés par Meta, par entreprise.
+
+    ADDITIF : sans aucune ligne, le comportement actuel (wa.me manuel) est
+    préservé à 100 %. Ce modèle ne remplace PAS `parametres.MessageTemplate`
+    (messages éditables manuels) — il ajoute le registre BSP (gabarits approuvés
+    côté Meta, avec leur nom et leur langue).
+
+    MULTI-TENANT : `company` est forcé côté serveur, jamais accepté du corps.
+    Ne jamais exposer prix_achat / marge dans un message.
+    """
+
+    company = models.ForeignKey(
+        'authentication.Company', on_delete=models.CASCADE,
+        related_name='whatsapp_bsp_templates')
+    # Nom du gabarit tel qu'approuvé par Meta (ex. 'devis_envoye_v1').
+    name = models.CharField(max_length=100, verbose_name='Nom du gabarit Meta')
+    # Corps du message en français (texte de référence interne — le texte réel
+    # est côté Meta ; ici c'est un aide-mémoire éditable).
+    body_fr = models.TextField(blank=True, default='', verbose_name='Corps FR (aide-mémoire)')
+    # Code langue IETF (ex. 'fr', 'ar', 'fr_MA') — défaut FR.
+    language = models.CharField(max_length=10, default='fr', verbose_name='Langue')
+    active = models.BooleanField(default=True, verbose_name='Actif')
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = 'Gabarit WhatsApp BSP'
+        verbose_name_plural = 'Gabarits WhatsApp BSP'
+        ordering = ['name']
+        constraints = [
+            models.UniqueConstraint(
+                fields=['company', 'name', 'language'],
+                name='notif_wa_tpl_company_name_lang_uniq',
+            ),
+        ]
+        indexes = [
+            models.Index(fields=['company', 'active'], name='notif_wa_tpl_company_active_idx'),
+        ]
+
+    def __str__(self):
+        return f'{self.company_id}:{self.name}:{self.language}'
+
+
+class WhatsAppMessageLog(models.Model):
+    """Journal des messages WhatsApp (envois BSP + liens manuels wa.me).
+
+    Chaque tentative d'envoi ou de construction de lien wa.me peut laisser
+    une trace ici. Les mises à jour de statut (livré/lu) arrivent via le
+    webhook BSP et mettent à jour la ligne correspondante via `external_id`.
+
+    MULTI-TENANT : `company` forcé côté serveur.
+    Ne jamais stocker prix_achat / marge dans `body`.
+    """
+
+    class Status(models.TextChoices):
+        QUEUED = 'queued', 'En attente'
+        SENT = 'sent', 'Envoyé'
+        DELIVERED = 'delivered', 'Distribué'
+        READ = 'read', 'Lu'
+        FAILED = 'failed', 'Échec'
+        MANUAL = 'manual', 'Manuel (wa.me)'
+
+    class Provider(models.TextChoices):
+        MANUAL = 'manual', 'Manuel (wa.me)'
+        BSP = 'bsp', 'BSP (API WhatsApp Business)'
+
+    company = models.ForeignKey(
+        'authentication.Company', on_delete=models.CASCADE,
+        related_name='whatsapp_message_logs')
+    # Destinataire (numéro normalisé, ex. 2126xxxxxxxx).
+    recipient = models.CharField(max_length=30, verbose_name='Destinataire')
+    # Corps du message (ou référence au gabarit). NE PAS y mettre prix_achat.
+    body = models.TextField(blank=True, default='', verbose_name='Corps')
+    # Gabarit BSP utilisé (nullable — None pour les messages libres / manuels).
+    template = models.ForeignKey(
+        WhatsAppTemplate, on_delete=models.SET_NULL,
+        null=True, blank=True, related_name='message_logs',
+        verbose_name='Gabarit BSP')
+    status = models.CharField(
+        max_length=20, choices=Status.choices, default=Status.MANUAL,
+        verbose_name='Statut')
+    provider = models.CharField(
+        max_length=20, choices=Provider.choices, default=Provider.MANUAL,
+        verbose_name='Fournisseur')
+    # ID externe renvoyé par l'API Meta (permet de relier les webhooks).
+    external_id = models.CharField(
+        max_length=255, blank=True, default='', db_index=True,
+        verbose_name='ID externe Meta')
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = 'Journal WhatsApp'
+        verbose_name_plural = 'Journal WhatsApp'
+        ordering = ['-created_at', '-id']
+        indexes = [
+            models.Index(
+                fields=['company', 'recipient', 'status'],
+                name='notif_wa_log_company_recip_st_idx',
+            ),
+            models.Index(
+                fields=['company', 'created_at'],
+                name='notif_wa_log_company_created_idx',
+            ),
+        ]
+
+    def __str__(self):
+        return f'WA:{self.provider}:{self.status} → {self.recipient}'
