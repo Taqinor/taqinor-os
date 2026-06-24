@@ -161,10 +161,11 @@ const enviro = ok ? environmentalImpact(prodKwh) : null;
 const financing = ok ? financingComparison(data!, reco ?? 'sans_batterie') : null;
 
 // ── WJ12 — Contact intégré : deep-link WhatsApp prérempli avec la réf devis ──
+// « Demander un rappel » = appeler le numéro TAQINOR (NAP), jamais le numéro du
+// client. Numéro réel (= lib/nap NAP.phone), affiché tel quel.
 const waLink = ok ? whatsappLink(reference) : '';
-const callbackHref = data?.client_phone
-  ? `tel:${String(data.client_phone).replace(/\s+/g, '')}`
-  : '';
+const TAQINOR_TEL = '+212661850410';
+const callbackHref = ok ? `tel:${TAQINOR_TEL}` : '';
 
 // ── P3 — Lien public du devis PDF premium (même token, nouvel onglet) ────────
 const pdfUrl = ok ? proposalPdfEndpoint(API_BASE, token) : '';
