@@ -263,7 +263,7 @@ class LeadViewSet(TenantMixin, viewsets.ModelViewSet):
     serializer_class = LeadSerializer
     filter_backends = [filters.SearchFilter, filters.OrderingFilter]
     search_fields = ['nom', 'prenom', 'societe', 'email', 'telephone', 'ville']
-    ordering_fields = ['nom', 'date_creation', 'stage']
+    ordering_fields = ['nom', 'date_creation', 'stage', 'score']
     ordering = ['-date_creation']
 
     def get_queryset(self):
@@ -310,8 +310,9 @@ class LeadViewSet(TenantMixin, viewsets.ModelViewSet):
                     extra['owner'] = default
         serializer.save(**extra)
         activity.log_creation(serializer.instance, user)
-        from .services import sync_relance_activity
+        from .services import sync_relance_activity, recompute_lead_score
         sync_relance_activity(serializer.instance, user)
+        recompute_lead_score(serializer.instance)
 
     def perform_update(self, serializer):
         # Snapshot avant écriture pour journaliser ancien → nouveau.
@@ -319,10 +320,12 @@ class LeadViewSet(TenantMixin, viewsets.ModelViewSet):
         super().perform_update(serializer)
         new_lead = serializer.instance
         activity.log_changes(old, new_lead, self.request.user)
-        from .services import sync_relance_activity, maybe_set_first_contacted_at
+        from .services import sync_relance_activity, maybe_set_first_contacted_at, recompute_lead_score
         sync_relance_activity(new_lead, self.request.user)
         # FG28 — Pose first_contacted_at à la première sortie de l'étape NEW.
         maybe_set_first_contacted_at(old, new_lead)
+        # QJ6 — Recalcule et persiste le score après chaque mise à jour.
+        recompute_lead_score(new_lead)
 
     def get_permissions(self):
         if self.action in READ_ACTIONS + ['historique', 'duplicates',

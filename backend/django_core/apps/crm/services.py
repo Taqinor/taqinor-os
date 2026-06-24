@@ -1,4 +1,9 @@
-"""
+"""QJ6 + Lead → Client resolution.
+
+QJ6 — recompute_lead_score(lead) persiste le score calculé sur le lead pour
+permettre un tri pagination-safe (?ordering=-score). Appelé dans perform_create
+et perform_update du LeadViewSet.
+
 Lead → Client resolution (approach approved by the founder, 2026-06-12).
 
 A quote always carries a Client; when it starts from a Lead the client is
@@ -493,6 +498,23 @@ def merge_leads(survivor, others, user):
                       f" (#{absorbed.id}) absorbé dans cette fiche."))
         survivor.save()
     return survivor
+
+
+def recompute_lead_score(lead) -> int:
+    """Calcule et persiste le score de qualité du lead.
+
+    QJ6 — le score est stocké sur Lead.score pour permettre un tri
+    pagination-safe (?ordering=-score). Renvoie le score calculé.
+    Best-effort : n'échoue jamais l'enregistrement du lead appelant.
+    """
+    try:
+        from .scoring import compute_score
+        score = compute_score(lead)
+        lead.score = score
+        lead.save(update_fields=['score'])
+        return score
+    except Exception:
+        return 0
 
 
 def resolve_client_for_lead(lead: Lead) -> Client:
