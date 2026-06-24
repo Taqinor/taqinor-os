@@ -20,6 +20,10 @@ const ventesApi = {
   reviserDevis: (id) => api.post(`/ventes/devis/${id}/reviser/`),
   // QJ14 — Envoyer par email : PDF premium + lien tokenisé → client, consigne EmailLog, marque envoyé.
   envoyerEmailDevis: (id, payload = {}) => api.post(`/ventes/devis/${id}/envoyer-email/`, payload),
+  // QJ15 — Variantes : créer 2–3 copies dimensionnées pour comparaison côte-à-côte.
+  dupliquerVariante: (id, payload = {}) => api.post(`/ventes/devis/${id}/dupliquer-variante/`, payload),
+  // QJ15 — Lister les variantes liées à ce devis (même version_parent).
+  getVariantes: (id) => api.get(`/ventes/devis/${id}/variantes/`),
   // Approbation admin de la remise (T17) — débloque l'envoi.
   approuverRemise: (id) => api.post(`/ventes/devis/${id}/approuver-remise/`),
   // N25 — acceptation explicite (date + nom), déclencheur de chantier + chatter.

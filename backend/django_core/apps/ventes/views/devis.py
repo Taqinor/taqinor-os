@@ -396,6 +396,124 @@ class DevisViewSet(viewsets.ModelViewSet):
             'proposal_path': proposal_url,
         }, status=status.HTTP_200_OK)
 
+    @action(detail=True, methods=['post'], url_path='dupliquer-variante',
+            permission_classes=[IsResponsableOrAdmin])
+    def dupliquer_variante(self, request, pk=None):
+        """QJ15 — Crée 2–3 variantes de taille du devis pour comparaison
+        côte-à-côte.
+
+        Chaque variante est un devis brouillon indépendant partageable :
+          - même client / lead / mode / TVA / remise que l'original ;
+          - lignes clonées avec quantités ajustées selon le facteur de
+            dimensionnement (``scale``) passé dans le corps — ou déduit
+            automatiquement : ×0.8 (−20 %) / ×1.0 (identique) / ×1.25 (+25 %) ;
+          - ``version_parent`` positionné sur l'original (ou son propre parent)
+            pour grouper les variantes sans créer une revision :
+            ``is_active=True`` sur toutes → ce sont des alternatives, pas des
+            remplacements ;
+          - aucun changement de statut (règle #4) ;
+          - numéros de référence séquentiels via ``create_numbered``.
+
+        Corps optionnel :
+          ``scales`` : liste de flottants, ex. [0.8, 1.0, 1.25]
+                       (défaut : [0.8, 1.0, 1.25], max 3 éléments).
+
+        Retourne la liste des devis créés.
+        """
+        source = self.get_object()
+        company = source.company
+        root = source.version_parent or source
+
+        raw_scales = request.data.get('scales', [0.8, 1.0, 1.25])
+        try:
+            scales = [float(s) for s in raw_scales][:3]
+        except (TypeError, ValueError):
+            scales = [0.8, 1.0, 1.25]
+        if not scales:
+            scales = [0.8, 1.0, 1.25]
+
+        # Labels FR pour les variantes (affichés dans la liste et la proposition)
+        _labels = {0.8: '−20 %', 1.0: 'Standard', 1.25: '+25 %'}
+
+        created = []
+        from decimal import Decimal, ROUND_HALF_UP
+
+        for scale in scales:
+            variant_note = _labels.get(scale) or f'×{scale:.2f}'
+            holder = {}
+
+            def _save(ref, _scale=scale, _note=variant_note):
+                obj = Devis.objects.create(
+                    company=company, reference=ref,
+                    client=source.client, lead=source.lead,
+                    statut=Devis.Statut.BROUILLON,
+                    taux_tva=source.taux_tva,
+                    remise_globale=source.remise_globale,
+                    note=(f'[Variante {_note}] ' + (source.note or '')).strip(),
+                    mode_installation=source.mode_installation,
+                    etude_params=source.etude_params,
+                    prix_cible_kwc=source.prix_cible_kwc,
+                    created_by=request.user,
+                    # Groupe : version_parent = racine, version incrémentée,
+                    # is_active=True (alternative, pas remplacement).
+                    version=source.version + len(created) + 1,
+                    version_parent=root,
+                    is_active=True,
+                )
+                holder['obj'] = obj
+                return obj
+
+            create_numbered(Devis, company, 'devis', _save)
+            nd = holder['obj']
+
+            for ligne in source.lignes.all():
+                raw_qty = ligne.quantite * Decimal(str(scale))
+                qty = raw_qty.quantize(Decimal('0.01'), rounding=ROUND_HALF_UP)
+                qty = max(qty, Decimal('0.01'))
+                LigneDevis.objects.create(
+                    devis=nd,
+                    produit=ligne.produit,
+                    designation=ligne.designation,
+                    quantite=qty,
+                    prix_unitaire=ligne.prix_unitaire,
+                    remise=ligne.remise,
+                    taux_tva=ligne.taux_tva,
+                )
+            created.append(nd)
+
+        return Response(
+            [DevisSerializer(v, context={'request': request}).data
+             for v in created],
+            status=status.HTTP_201_CREATED,
+        )
+
+    @action(detail=True, methods=['get'], url_path='variantes',
+            permission_classes=[IsResponsableOrAdmin])
+    def variantes(self, request, pk=None):
+        """QJ15 — Liste les variantes liées à ce devis (même version_parent,
+        toutes actives). Utilisé par la proposal côte-à-côte."""
+        devis = self.get_object()
+        root = devis.version_parent or devis
+        siblings = (
+            Devis.objects
+            .filter(company=devis.company, version_parent=root, is_active=True)
+            .select_related('client')
+            .order_by('version', 'id')
+        )
+        # Include root itself in the comparison set.
+        root_devis = Devis.objects.filter(
+            pk=root.pk, company=devis.company, is_active=True).first()
+        results = []
+        if root_devis:
+            results.append(root_devis)
+        for s in siblings:
+            if s.pk not in {r.pk for r in results}:
+                results.append(s)
+        return Response(
+            [DevisSerializer(v, context={'request': request}).data
+             for v in results],
+        )
+
     @action(detail=True, methods=['post'], url_path='approuver-remise',
             permission_classes=[IsAdminRole])
     def approuver_remise(self, request, pk=None):

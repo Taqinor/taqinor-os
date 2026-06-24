@@ -1157,6 +1157,25 @@ export default function DevisList() {
                               Réviser
                             </Button>
                           )}
+                          {/* QJ15 — Dupliquer en variantes de taille (−20 % / standard / +25 %) */}
+                          {d.statut === 'brouillon' && (
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              title="Créer 3 variantes de taille (−20 %, standard, +25 %) pour comparaison côte-à-côte"
+                              onClick={() => {
+                                ventesApi.dupliquerVariante(d.id)
+                                  .then(() => {
+                                    dispatch(fetchDevis())
+                                    toast.success(`Variantes créées pour ${d.reference}.`)
+                                  })
+                                  .catch(err => toast.error(frenchError(err, 'Création variantes impossible.')))
+                              }}
+                            >
+                              <Copy className="size-3.5 mr-1" aria-hidden="true" />
+                              Variantes
+                            </Button>
+                          )}
                           {role === 'admin' && d.statut === 'brouillon'
                             && parseFloat(d.remise_globale) > 0 && !d.remise_approuvee && (
                             <Button
