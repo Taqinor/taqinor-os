@@ -128,7 +128,7 @@ export default function GedSearch() {
           </div>
         ) : searched ? (
           results.length === 0 ? (
-            <EmptyState icon={<Inbox className="size-6" aria-hidden="true" />}
+            <EmptyState icon={Inbox}
               title="Aucun résultat"
               description="Aucun document ne correspond à ces critères." />
           ) : (
