@@ -341,6 +341,21 @@ class ProfilPaie(models.Model):
         max_length=20, blank=True, default='', verbose_name='N° AMO')
     numero_cimr = models.CharField(
         max_length=20, blank=True, default='', verbose_name='N° CIMR')
+    # PAIE13 — Normes de travail du profil, utilisées pour la proration.
+    # Pour le type JOURNALIER : salaire_base est le taux journalier ; le brut
+    # est taux × jours effectivement travaillés (ElementVariable.TYPE_HEURES /
+    # TYPE_ABSENCE sont convertis en jours). Pour le type HORAIRE : salaire_base
+    # est le taux horaire ; le brut est taux × heures effectivement travaillées.
+    # Pour MENSUEL et FORFAIT : salaire_base est utilisé tel quel (mensuel peut
+    # néanmoins être proraté quand l'employé ne couvre pas le mois complet — la
+    # proratisation compare les jours travaillés aux jours contractuels du mois).
+    # Ces normes sont éditables par employé ; les défauts 26 j / 191 h
+    # correspondent au cadre marocain standard (169 h réglementaires ≈ 191 h
+    # pratiques entreprise ; 26 jours ouvrables par mois en moyenne).
+    jours_travail_mensuel = models.PositiveSmallIntegerField(
+        default=26, verbose_name='Jours de travail par mois (norme)')
+    heures_travail_mensuel = models.PositiveSmallIntegerField(
+        default=191, verbose_name='Heures de travail par mois (norme)')
     rib = models.CharField(
         max_length=40, blank=True, default='', verbose_name='RIB')
     banque = models.CharField(

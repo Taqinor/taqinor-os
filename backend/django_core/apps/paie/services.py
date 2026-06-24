@@ -400,6 +400,111 @@ def _elements_rh_du_dossier(periode, dossier):
     return []
 
 
+# ── PAIE13 — Calcul du salaire de base proraté selon le type de rémunération ─
+
+def calculer_salaire_base_periode(profil, periode, elements=None):
+    """Salaire de base proraté pour ``profil`` sur ``periode`` (PAIE13).
+
+    Prend en compte le ``type_remuneration`` du profil :
+
+    * **mensuel** — Le salaire mensuel contractuel est proraté quand l'employé
+      n'a pas travaillé le mois complet : on déduit les jours d'absence
+      (``ElementVariable.TYPE_ABSENCE``, exprimée en quantité = nombre de jours)
+      et le résultat est borné à zéro.
+      Formula : ``salaire_base × (jours_normes − jours_absence) / jours_normes``.
+
+    * **journalier** — Le ``salaire_base`` est le taux JOURNALIER. Le brut est
+      ``taux_journalier × jours_travailles``, où les jours travaillés proviennent
+      soit d'un élément variable ``TYPE_HEURES`` (``quantite`` = jours), soit
+      d'une déduction depuis les jours normes moins les absences.
+      Formula : ``salaire_base × max(0, jours_normes − jours_absence)``.
+
+    * **horaire** — Le ``salaire_base`` est le taux HORAIRE. Le brut est
+      ``taux_horaire × heures_travaillees``, où les heures travaillées proviennent
+      d'un élément variable ``TYPE_HEURES`` (``quantite`` = heures) ou d'une
+      déduction depuis les heures normes moins les absences (converties en heures
+      par le ratio ``heures_normes / jours_normes``).
+      Formula : ``salaire_base × max(0, heures_normes − heures_absence)``.
+
+    * **forfait** — Le ``salaire_base`` est un montant forfaitaire fixe, versé
+      intégralement sans proration.
+
+    ``elements`` est la liste des ``ElementVariable`` de la période pour ce profil
+    (passée pour éviter un re-hit DB depuis ``calculer_bulletin``). Si ``None``,
+    les éléments sont chargés depuis la base.
+
+    Renvoie un ``Decimal`` arrondi au centime, >= 0.
+    """
+    from .models import ProfilPaie  # évite l'import circulaire au niveau module
+
+    salaire_base = Decimal(profil.salaire_base or 0)
+    type_rem = profil.type_remuneration
+
+    if type_rem == ProfilPaie.TYPE_FORFAIT:
+        # Forfait fixe : aucune proration.
+        return _q(salaire_base)
+
+    if elements is None:
+        elements = list(
+            ElementVariable.objects.filter(periode=periode, profil=profil)
+        )
+
+    # Comptabiliser les absences et les heures/jours travaillés déclarés.
+    jours_absence = Decimal('0')
+    heures_absence = Decimal('0')
+    jours_travailles_declares = None   # None = non déclaré explicitement
+    heures_travaillees_declares = None
+
+    for el in elements:
+        if el.type == ElementVariable.TYPE_ABSENCE:
+            # Les absences sont en jours par convention dans ElementVariable.
+            jours_absence += Decimal(el.quantite or 0)
+        elif el.type == ElementVariable.TYPE_HEURES:
+            # Des heures travaillées déclarées explicitement.
+            heures_travaillees_declares = (
+                (heures_travaillees_declares or Decimal('0'))
+                + Decimal(el.quantite or 0)
+            )
+
+    jours_normes = Decimal(max(1, profil.jours_travail_mensuel or 26))
+    heures_normes = Decimal(max(1, profil.heures_travail_mensuel or 191))
+
+    if type_rem == ProfilPaie.TYPE_MENSUEL:
+        # Proration : déduit les jours d'absence du plein mois.
+        jours_effectifs = max(Decimal('0'), jours_normes - jours_absence)
+        brut = salaire_base * jours_effectifs / jours_normes
+        return _q(brut)
+
+    if type_rem == ProfilPaie.TYPE_JOURNALIER:
+        # Taux journalier × jours effectivement travaillés.
+        if heures_travaillees_declares is not None:
+            # Si des heures ont été déclarées, convertir en jours.
+            ratio = heures_normes / jours_normes
+            jours_de_heures = (
+                heures_travaillees_declares / ratio if ratio else Decimal('0')
+            )
+            jours_effectifs = max(Decimal('0'), jours_de_heures - jours_absence)
+        else:
+            jours_effectifs = max(Decimal('0'), jours_normes - jours_absence)
+        brut = salaire_base * jours_effectifs
+        return _q(brut)
+
+    if type_rem == ProfilPaie.TYPE_HORAIRE:
+        # Taux horaire × heures effectivement travaillées.
+        if heures_travaillees_declares is not None:
+            heures_effectifs = heures_travaillees_declares
+        else:
+            # Déduit les absences (en jours) converties en heures.
+            ratio = heures_normes / jours_normes if jours_normes else Decimal('1')
+            heures_absence_h = jours_absence * ratio
+            heures_effectifs = max(Decimal('0'), heures_normes - heures_absence_h)
+        brut = salaire_base * heures_effectifs
+        return _q(brut)
+
+    # Fallback de sécurité (ne devrait pas arriver).
+    return _q(salaire_base)
+
+
 # ── PAIE12 — Moteur de calcul du bulletin ──────────────────────────────────
 
 _CENT = Decimal('0.01')
@@ -469,7 +574,8 @@ def calculer_bulletin(profil, periode, personnes_a_charge=0):
         .select_related('rubrique')
     )
 
-    salaire_base = Decimal(profil.salaire_base or 0)
+    # PAIE13 — salaire de base proraté selon le type de rémunération.
+    salaire_base = calculer_salaire_base_periode(profil, periode, elements)
     gains_variables = Decimal('0')
     retenues_variables = Decimal('0')
     gains_imposables = Decimal('0')
