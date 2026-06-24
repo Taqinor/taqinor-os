@@ -506,6 +506,98 @@ class SoldeConge(models.Model):
         return f'{self.employe.matricule} — {self.annee} : {self.disponible} j'
 
 
+class Pointage(models.Model):
+    """Pointage journalier (FG166) — arrivée/départ d'un employé avec géoloc.
+
+    Chaque enregistrement trace un événement d'entrée (ARRIVEE) ou de sortie
+    (DEPART) d'un employé, optionnellement accompagné de coordonnées GPS
+    (``gps_lat`` / ``gps_lng``) saisies côté mobile. La durée travaillée entre
+    une arrivée et un départ se calcule dynamiquement (propriété
+    ``duree_minutes``).
+
+    Convention : un pointage ARRIVEE a un ``pointage_le`` posé côté serveur et
+    des coordonnées GPS facultatives. Un pointage DEPART référence
+    optionnellement l'ARRIVEE du même jour via ``arrivee`` (FK auto-résolu côté
+    service). Les deux peuvent aussi rester indépendants (pointage simplifié :
+    ``heure_arrivee`` + ``heure_depart`` sur la même ligne).
+
+    Design minimal choisi : une seule ligne par session travaillée (arrivée +
+    départ), pour simplifier le calcul des heures. Le champ ``type_pointage``
+    reste pour les cas d'entrées partielles (ex. saisie mobile purement
+    arrivée, départ saisi plus tard via PATCH).
+
+    Multi-société : ``company`` posée côté serveur (jamais lue du corps). Le
+    ``DossierEmploye`` doit appartenir à la même société.
+    """
+    class TypePointage(models.TextChoices):
+        ARRIVEE = 'arrivee', 'Arrivée'
+        DEPART = 'depart', 'Départ'
+        COMPLET = 'complet', 'Complet (arrivée + départ)'
+
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='rh_pointages',
+        verbose_name='Société',
+    )
+    employe = models.ForeignKey(
+        DossierEmploye,
+        on_delete=models.CASCADE,
+        related_name='pointages',
+        verbose_name='Employé',
+    )
+    type_pointage = models.CharField(
+        max_length=10, choices=TypePointage.choices,
+        default=TypePointage.ARRIVEE, verbose_name='Type')
+    # Heure d'arrivée (pointée côté serveur à la création si type=ARRIVEE).
+    heure_arrivee = models.DateTimeField(
+        null=True, blank=True, verbose_name="Heure d'arrivée")
+    # Heure de départ (mise à jour via PATCH ou @action depart).
+    heure_depart = models.DateTimeField(
+        null=True, blank=True, verbose_name='Heure de départ')
+    # Géolocalisation arrivée (mobile, facultative).
+    arrivee_gps_lat = models.DecimalField(
+        max_digits=9, decimal_places=6, null=True, blank=True,
+        verbose_name='GPS arrivée — latitude')
+    arrivee_gps_lng = models.DecimalField(
+        max_digits=9, decimal_places=6, null=True, blank=True,
+        verbose_name='GPS arrivée — longitude')
+    # Géolocalisation départ (mobile, facultative).
+    depart_gps_lat = models.DecimalField(
+        max_digits=9, decimal_places=6, null=True, blank=True,
+        verbose_name='GPS départ — latitude')
+    depart_gps_lng = models.DecimalField(
+        max_digits=9, decimal_places=6, null=True, blank=True,
+        verbose_name='GPS départ — longitude')
+    note = models.CharField(
+        max_length=255, blank=True, default='', verbose_name='Note')
+    date_creation = models.DateTimeField(
+        auto_now_add=True, verbose_name='Créé le')
+    date_modification = models.DateTimeField(
+        auto_now=True, verbose_name='Modifié le')
+
+    class Meta:
+        verbose_name = 'Pointage'
+        verbose_name_plural = 'Pointages'
+        ordering = ['-heure_arrivee', '-date_creation']
+        indexes = [
+            models.Index(fields=['company', 'employe']),
+            models.Index(fields=['company', 'heure_arrivee']),
+        ]
+
+    @property
+    def duree_minutes(self):
+        """Durée travaillée en minutes (None si arrivée ou départ absent)."""
+        if self.heure_arrivee and self.heure_depart:
+            delta = self.heure_depart - self.heure_arrivee
+            return max(0, int(delta.total_seconds() // 60))
+        return None
+
+    def __str__(self):
+        return (f'{self.employe.matricule} — '
+                f'{self.heure_arrivee} ({self.get_type_pointage_display()})')
+
+
 class DemandeConge(models.Model):
     """Demande & validation de congés (FG163) — workflow employé → superviseur/RH.
 
