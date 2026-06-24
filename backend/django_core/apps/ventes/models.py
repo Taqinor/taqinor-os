@@ -180,6 +180,12 @@ class Devis(models.Model):
     # Clé de l'image PNG « votre installation » (snapshot 3D) stockée dans le
     # bucket PDF, scopée société. Vide → la proposition n'affiche pas de rendu.
     roof_image = models.CharField(max_length=500, blank=True, null=True)
+    # ── QJ17 — Layout hash pour la déduplication (from-layout idempotency) ──
+    # SHA-256 du layout géométrique (zones + result + scenario) posé lors du
+    # premier « Générer ». Null pour les devis antérieurs ou créés sans layout.
+    # Longueur 64 = SHA-256 hex (max 63 chars pour l'index Oracle — unused here,
+    # mais on plafonne à 64 pour la cohérence). Index ≤ 30 chars : lyt_hash_idx.
+    layout_hash = models.CharField(max_length=64, null=True, blank=True, db_index=True)
 
     class Meta:
         verbose_name = 'Devis'

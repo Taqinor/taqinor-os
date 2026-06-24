@@ -148,9 +148,16 @@ class DevisViewSet(viewsets.ModelViewSet):
         société (404/400 si une autre société). Au moins un lead OU un client est
         requis. Aucun statut n'est touché : le service renvoie un brouillon
         (préservation des statuts, règle #4) et la numérotation anti-collision
-        est gérée par le service."""
+        est gérée par le service.
+
+        QJ17 — idempotency: if a brouillon devis with the same lead + layout hash
+        already exists for this company, it is returned (HTTP 200) instead of
+        creating a duplicate.  A pre-flight composition check validates the
+        catalogue before building and returns HTTP 422 with inline French guidance
+        on failure (instead of a PDF error at render time).
+        """
         from decimal import Decimal, InvalidOperation
-        from ..services import build_devis_from_layout
+        from ..services import build_devis_from_layout, layout_hash, validate_composition_for_layout
         from ..models import ShareLink
 
         company = request.user.company
@@ -204,10 +211,56 @@ class DevisViewSet(viewsets.ModelViewSet):
                 {'detail': 'taux_tva / remise_globale invalide.'},
                 status=status.HTTP_400_BAD_REQUEST)
 
+        # QJ17 — pre-flight composition check: validate catalogue before building.
+        composition_errors = validate_composition_for_layout(layout, company)
+        if composition_errors:
+            return Response(
+                {'detail': composition_errors[0], 'errors': composition_errors},
+                status=status.HTTP_422_UNPROCESSABLE_ENTITY)
+
+        # QJ17 — idempotency: dedupe by lead + layout hash.
+        # Re-clicking « Générer » returns the existing brouillon, not a duplicate.
+        lhash = layout_hash(layout)
+        existing = None
+        if lead_obj is not None and lhash:
+            existing = (
+                Devis.objects.filter(
+                    company=company,
+                    lead=lead_obj,
+                    statut=Devis.Statut.BROUILLON,
+                    layout_hash=lhash,
+                )
+                .order_by('-date_creation')
+                .first()
+            )
+        if existing is not None:
+            link = ShareLink.for_devis(existing)
+            import logging as _logging
+            _logging.getLogger(__name__).info(
+                'QJ17: dedup hit — returning existing brouillon %s (hash %s…)',
+                existing.reference, lhash[:8])
+            return Response(
+                {
+                    'id': existing.id,
+                    'reference': existing.reference,
+                    'statut': existing.statut,
+                    'proposal_token': link.token,
+                    'proposal_path': f'/proposition/{link.token}',
+                    'deduplicated': True,
+                },
+                status=status.HTTP_200_OK)
+
         devis = build_devis_from_layout(
             layout=layout, user=request.user, company=company,
             lead=lead_obj, client=client_obj,
             taux_tva=taux_tva, remise_globale=remise)
+
+        # QJ17 — persist the layout hash on the newly-created devis so future
+        # duplicate requests are caught in O(1).
+        if lhash:
+            Devis.objects.filter(pk=devis.pk).update(layout_hash=lhash)
+            devis.layout_hash = lhash
+
         link = ShareLink.for_devis(devis)
         return Response(
             {
