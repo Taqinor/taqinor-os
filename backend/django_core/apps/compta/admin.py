@@ -1,10 +1,13 @@
 from django.contrib import admin
 
 from .models import (
-    BordereauRemise, Caisse, ClotureCaisse, CompteComptable, CompteTresorerie,
-    EcritureComptable, Effet, ExerciceComptable, Immobilisation, Journal,
-    LigneEcriture, LignePrevisionnelTresorerie, LigneReleve, MouvementCaisse,
-    PeriodeComptable, PlanComptable, RapprochementBancaire, VirementInterne,
+    BonCommandeFournisseur, BordereauRemise, Caisse, ClotureCaisse,
+    CompteComptable, CompteTresorerie, EcritureComptable, Effet,
+    ExerciceComptable, FactureFournisseur, Immobilisation, Journal,
+    LigneEcriture, LigneBonCommandeFournisseur, LigneFactureFournisseur,
+    LignePrevisionnelTresorerie, LigneReleve, LigneReceptionMarchandise,
+    MouvementCaisse, PeriodeComptable, PlanComptable, Rapprochement3Voies,
+    RapprochementBancaire, ReceptionMarchandise, VirementInterne,
 )
 
 
@@ -161,3 +164,65 @@ class BordereauRemiseAdmin(admin.ModelAdmin):
                     'total', 'statut', 'posted', 'company')
     list_filter = ('statut', 'posted')
     search_fields = ('reference',)
+
+
+# ── FG131 — Rapprochement 3 voies ──────────────────────────────────────────
+
+class LigneBonCommandeFournisseurInline(admin.TabularInline):
+    model = LigneBonCommandeFournisseur
+    extra = 0
+    fields = ('designation', 'quantite', 'prix_unitaire_ht', 'unite')
+
+
+@admin.register(BonCommandeFournisseur)
+class BonCommandeFournisseurAdmin(admin.ModelAdmin):
+    list_display = ('id', 'reference', 'fournisseur_nom', 'date_commande',
+                    'montant_ht', 'statut', 'company')
+    list_filter = ('statut',)
+    search_fields = ('reference', 'fournisseur_nom')
+    inlines = [LigneBonCommandeFournisseurInline]
+
+
+class LigneReceptionMarchandiseInline(admin.TabularInline):
+    model = LigneReceptionMarchandise
+    extra = 0
+    fields = ('ligne_bc', 'quantite_recue', 'notes')
+
+
+@admin.register(ReceptionMarchandise)
+class ReceptionMarchandiseAdmin(admin.ModelAdmin):
+    list_display = ('id', 'reference', 'bon_commande', 'date_reception',
+                    'statut', 'company')
+    list_filter = ('statut',)
+    search_fields = ('reference', 'numero_bl_fournisseur')
+    inlines = [LigneReceptionMarchandiseInline]
+
+
+class LigneFactureFournisseurInline(admin.TabularInline):
+    model = LigneFactureFournisseur
+    extra = 0
+    fields = ('designation', 'quantite_facturee', 'prix_unitaire_ht', 'unite',
+              'ligne_bc')
+
+
+@admin.register(FactureFournisseur)
+class FactureFournisseurAdmin(admin.ModelAdmin):
+    list_display = ('id', 'reference', 'fournisseur_nom', 'date_facture',
+                    'montant_ht', 'montant_ttc', 'statut', 'company')
+    list_filter = ('statut',)
+    search_fields = ('reference', 'fournisseur_nom')
+    inlines = [LigneFactureFournisseurInline]
+
+
+@admin.register(Rapprochement3Voies)
+class Rapprochement3VoiesAdmin(admin.ModelAdmin):
+    list_display = ('id', 'bon_commande', 'reception', 'facture',
+                    'montant_commande_ht', 'montant_recu_ht',
+                    'montant_facture_ht', 'statut', 'company')
+    list_filter = ('statut',)
+    search_fields = ('libelle',)
+    readonly_fields = (
+        'montant_commande_ht', 'montant_recu_ht', 'montant_facture_ht',
+        'ecart_commande_facture_ht', 'ecart_recu_facture_ht',
+        'valide_par', 'date_validation',
+    )

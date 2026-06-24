@@ -2,12 +2,14 @@ from django.urls import include, path
 from rest_framework.routers import DefaultRouter
 
 from .views import (
-    BordereauRemiseViewSet, CaisseViewSet, CessionImmobilisationViewSet,
-    CompteComptableViewSet, CompteTresorerieViewSet, DotationAmortissementViewSet,
+    BonCommandeFournisseurViewSet, BordereauRemiseViewSet, CaisseViewSet,
+    CessionImmobilisationViewSet, CompteComptableViewSet,
+    CompteTresorerieViewSet, DotationAmortissementViewSet,
     EcritureComptableViewSet, EffetViewSet, EtatsComptablesViewSet,
-    ExerciceComptableViewSet, ImmobilisationViewSet, JournalViewSet,
-    LignePrevisionnelTresorerieViewSet, PeriodeComptableViewSet,
-    PlanComptableViewSet, RapprochementBancaireViewSet, VirementInterneViewSet,
+    ExerciceComptableViewSet, FactureFournisseurViewSet, ImmobilisationViewSet,
+    JournalViewSet, LignePrevisionnelTresorerieViewSet, PeriodeComptableViewSet,
+    PlanComptableViewSet, Rapprochement3VoiesViewSet, RapprochementBancaireViewSet,
+    ReceptionMarchandiseViewSet, VirementInterneViewSet,
 )
 
 router = DefaultRouter()
@@ -28,6 +30,11 @@ router.register(r'previsionnel', LignePrevisionnelTresorerieViewSet)
 router.register(r'effets', EffetViewSet)
 router.register(r'bordereaux', BordereauRemiseViewSet)
 router.register(r'etats', EtatsComptablesViewSet, basename='etats')
+# FG131 — Rapprochement 3 voies
+router.register(r'bons-commande-fournisseur', BonCommandeFournisseurViewSet)
+router.register(r'receptions', ReceptionMarchandiseViewSet)
+router.register(r'factures-fournisseur', FactureFournisseurViewSet)
+router.register(r'rapprochements-3voies', Rapprochement3VoiesViewSet)
 
 urlpatterns = [
     path('', include(router.urls)),

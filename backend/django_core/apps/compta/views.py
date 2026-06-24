@@ -16,22 +16,25 @@ from authentication.permissions import IsResponsableOrAdmin
 
 from . import selectors, services
 from .models import (
-    BordereauRemise, Caisse, CessionImmobilisation, CompteComptable,
-    CompteTresorerie, DotationAmortissement, EcritureComptable, Effet,
-    ExerciceComptable, Immobilisation, Journal, LignePrevisionnelTresorerie,
-    LigneReleve, MouvementCaisse, PeriodeComptable, PlanComptable,
-    RapprochementBancaire, VirementInterne,
+    BonCommandeFournisseur, BordereauRemise, Caisse, CessionImmobilisation,
+    CompteComptable, CompteTresorerie, DotationAmortissement, EcritureComptable,
+    Effet, ExerciceComptable, FactureFournisseur, Immobilisation, Journal,
+    LignePrevisionnelTresorerie, LigneReleve, MouvementCaisse, PeriodeComptable,
+    PlanComptable, Rapprochement3Voies, RapprochementBancaire,
+    ReceptionMarchandise, VirementInterne,
 )
 from .serializers import (
-    BordereauRemiseSerializer, CaisseSerializer,
+    BonCommandeFournisseurSerializer, BordereauRemiseSerializer, CaisseSerializer,
     CessionImmobilisationSerializer, ClotureCaisseSerializer,
     CompteComptableSerializer, CompteTresorerieSerializer,
     DotationAmortissementSerializer, EcritureComptableSerializer,
-    EffetSerializer, ExerciceComptableSerializer, ImmobilisationSerializer,
-    JournalSerializer, LignePrevisionnelTresorerieSerializer,
+    EffetSerializer, ExerciceComptableSerializer, FactureFournisseurSerializer,
+    ImmobilisationSerializer, JournalSerializer,
+    LignePrevisionnelTresorerieSerializer,
     LigneReleveSerializer, MouvementCaisseSerializer, PeriodeComptableSerializer,
     PlanAmortissementSerializer, PlanComptableSerializer,
-    RapprochementBancaireSerializer, VirementInterneSerializer,
+    Rapprochement3VoiesSerializer, RapprochementBancaireSerializer,
+    ReceptionMarchandiseSerializer, VirementInterneSerializer,
 )
 
 
@@ -983,3 +986,257 @@ class BordereauRemiseViewSet(_ComptaBaseViewSet):
             'bordereau': self.get_serializer(bordereau).data,
             'ecriture_id': ecriture.id if ecriture else None,
         })
+
+
+# ── FG131 — Rapprochement 3 voies ──────────────────────────────────────────
+
+class BonCommandeFournisseurViewSet(_ComptaBaseViewSet):
+    """Bons de commande fournisseur (FG131). Création avec lignes via action
+    ``creer-avec-lignes``. CRUD sur les BC ; liste filtrable par statut."""
+    queryset = BonCommandeFournisseur.objects.prefetch_related('lignes_bc').all()
+    serializer_class = BonCommandeFournisseurSerializer
+    filter_backends = [filters.SearchFilter, filters.OrderingFilter]
+    search_fields = ['reference', 'fournisseur_nom']
+    ordering_fields = ['date_commande', 'montant_ht', 'id']
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        statut = self.request.query_params.get('statut')
+        if statut:
+            qs = qs.filter(statut=statut)
+        return qs
+
+    def perform_create(self, serializer):
+        serializer.save(
+            company=self.request.user.company,
+            created_by=self.request.user)
+
+    @action(detail=False, methods=['post'], url_path='creer-avec-lignes')
+    def creer_avec_lignes(self, request):
+        """Crée un BC avec ses lignes en une seule requête et calcule le HT.
+
+        Corps : ``{date_commande, reference?, fournisseur_nom?, taux_tva?,
+        notes?, lignes: [{designation, quantite, prix_unitaire_ht, unite?}]}``.
+        """
+        company = request.user.company
+        data = request.data
+        lignes = data.get('lignes') or []
+        if not lignes:
+            return Response(
+                {'detail': 'Au moins une ligne est requise.'},
+                status=status.HTTP_400_BAD_REQUEST)
+        try:
+            bc = services.creer_bon_commande(
+                company,
+                date_commande=data.get('date_commande'),
+                lignes=lignes,
+                reference=data.get('reference', '') or '',
+                fournisseur_nom=data.get('fournisseur_nom', '') or '',
+                fournisseur_type=data.get('fournisseur_type', '') or '',
+                fournisseur_id=data.get('fournisseur_id'),
+                taux_tva=data.get('taux_tva'),
+                notes=data.get('notes', '') or '',
+                created_by=request.user,
+            )
+        except (DjangoValidationError, Exception) as exc:
+            msg = exc.messages[0] if hasattr(exc, 'messages') else str(exc)
+            return Response({'detail': msg},
+                            status=status.HTTP_400_BAD_REQUEST)
+        return Response(
+            BonCommandeFournisseurSerializer(bc, context={'request': request}).data,
+            status=status.HTTP_201_CREATED)
+
+
+class ReceptionMarchandiseViewSet(_ComptaBaseViewSet):
+    """Réceptions de marchandise fournisseur (FG131)."""
+    queryset = ReceptionMarchandise.objects.select_related(
+        'bon_commande').prefetch_related('lignes_reception__ligne_bc').all()
+    serializer_class = ReceptionMarchandiseSerializer
+    filter_backends = [filters.OrderingFilter]
+    ordering_fields = ['date_reception', 'id']
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        bc = self.request.query_params.get('bon_commande')
+        if bc:
+            qs = qs.filter(bon_commande_id=bc)
+        return qs
+
+    def perform_create(self, serializer):
+        serializer.save(
+            company=self.request.user.company,
+            created_by=self.request.user)
+
+    @action(detail=False, methods=['post'], url_path='creer-avec-lignes')
+    def creer_avec_lignes(self, request):
+        """Crée une réception avec ses lignes.
+
+        Corps : ``{bon_commande, date_reception, reference?, statut?,
+        numero_bl_fournisseur?, notes?,
+        lignes: [{ligne_bc_id, quantite_recue, notes?}]}``.
+        """
+        company = request.user.company
+        data = request.data
+        bc_id = data.get('bon_commande')
+        bon_commande = BonCommandeFournisseur.objects.filter(
+            id=bc_id, company=company).first()
+        if bon_commande is None:
+            return Response(
+                {'detail': 'Bon de commande inconnu.'},
+                status=status.HTTP_400_BAD_REQUEST)
+        try:
+            rec = services.creer_reception(
+                company, bon_commande,
+                date_reception=data.get('date_reception'),
+                lignes=data.get('lignes') or [],
+                reference=data.get('reference', '') or '',
+                statut=data.get('statut') or None,
+                numero_bl_fournisseur=data.get('numero_bl_fournisseur', '') or '',
+                notes=data.get('notes', '') or '',
+                created_by=request.user,
+            )
+        except (DjangoValidationError, Exception) as exc:
+            msg = exc.messages[0] if hasattr(exc, 'messages') else str(exc)
+            return Response({'detail': msg},
+                            status=status.HTTP_400_BAD_REQUEST)
+        return Response(
+            ReceptionMarchandiseSerializer(rec, context={'request': request}).data,
+            status=status.HTTP_201_CREATED)
+
+
+class FactureFournisseurViewSet(_ComptaBaseViewSet):
+    """Factures fournisseur (AP) saisies à la main (FG131).
+
+    Action ``a-valider`` : liste des factures dont le paiement est bloqué
+    (pas de rapprochement 3 voies approuvé).
+    """
+    queryset = FactureFournisseur.objects.prefetch_related(
+        'lignes_facture').all()
+    serializer_class = FactureFournisseurSerializer
+    filter_backends = [filters.SearchFilter, filters.OrderingFilter]
+    search_fields = ['reference', 'fournisseur_nom']
+    ordering_fields = ['date_facture', 'date_echeance', 'montant_ttc', 'id']
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        statut = self.request.query_params.get('statut')
+        if statut:
+            qs = qs.filter(statut=statut)
+        return qs
+
+    def perform_create(self, serializer):
+        company = self.request.user.company
+        instance = serializer.save(
+            company=company, created_by=self.request.user)
+        # Recalcule TVA + TTC après création.
+        instance.recalculer_montants()
+
+    def perform_update(self, serializer):
+        instance = serializer.save()
+        instance.recalculer_montants()
+
+    @action(detail=False, methods=['get'], url_path='a-valider')
+    def a_valider(self, request):
+        """Factures fournisseur dont le paiement est bloqué (sans rapr. 3V approuvé)."""
+        qs = selectors.factures_fournisseur_a_valider(request.user.company)
+        return Response(
+            FactureFournisseurSerializer(qs, many=True,
+                                         context={'request': request}).data)
+
+
+class Rapprochement3VoiesViewSet(_ComptaBaseViewSet):
+    """Rapprochements 3 voies (BC ↔ réception ↔ facture fournisseur — FG131).
+
+    Création : ``POST /`` avec ``{bon_commande, reception, facture, tolerance_ht?,
+    libelle?, notes?}``. Les montants et écarts sont calculés côté serveur.
+    Actions ``approuver`` et ``rejeter`` passent le statut.
+    Action ``resume`` renvoie le résumé calculé (écarts, tolérance, blocage).
+    """
+    queryset = Rapprochement3Voies.objects.select_related(
+        'bon_commande', 'reception', 'facture', 'valide_par').all()
+    serializer_class = Rapprochement3VoiesSerializer
+    filter_backends = [filters.OrderingFilter]
+    ordering_fields = ['date_creation', 'statut', 'id']
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        statut = self.request.query_params.get('statut')
+        if statut:
+            qs = qs.filter(statut=statut)
+        facture = self.request.query_params.get('facture')
+        if facture:
+            qs = qs.filter(facture_id=facture)
+        return qs
+
+    def perform_create(self, serializer):
+        company = self.request.user.company
+        bc = serializer.validated_data.get('bon_commande')
+        reception = serializer.validated_data.get('reception')
+        facture = serializer.validated_data.get('facture')
+        tolerance = serializer.validated_data.get('tolerance_ht', 0)
+        libelle = serializer.validated_data.get('libelle', '') or ''
+        notes = serializer.validated_data.get('notes', '') or ''
+        try:
+            rap = services.creer_rapprochement_3voies(
+                company, bc, reception, facture,
+                libelle=libelle, tolerance_ht=tolerance,
+                notes=notes, created_by=self.request.user)
+        except DjangoValidationError as exc:
+            from rest_framework.exceptions import ValidationError as DRFValidationError
+            raise DRFValidationError(
+                {'detail': exc.messages[0] if exc.messages else str(exc)})
+        # On retourne l'instance créée par le service (pas le serializer.save()).
+        # On la lie au serializer via un hack minimal : on stocke dans l'instance
+        # pour que create() retourne bien.
+        serializer.instance = rap
+
+    def create(self, request, *args, **kwargs):
+        serializer = self.get_serializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        self.perform_create(serializer)
+        return Response(
+            self.get_serializer(serializer.instance).data,
+            status=status.HTTP_201_CREATED)
+
+    @action(detail=True, methods=['post'])
+    def approuver(self, request, pk=None):
+        """Approuve le rapprochement — autorise le paiement de la facture AP.
+
+        Corps optionnel : ``{notes: "..."}``. Lève 400 si les écarts dépassent
+        la tolérance.
+        """
+        rap = self.get_object()
+        try:
+            services.valider_rapprochement_3voies(
+                rap, approuver=True, user=request.user,
+                notes=request.data.get('notes', '') or '')
+        except DjangoValidationError as exc:
+            return Response(
+                {'detail': exc.messages[0] if exc.messages else str(exc)},
+                status=status.HTTP_400_BAD_REQUEST)
+        rap.refresh_from_db()
+        return Response(self.get_serializer(rap).data)
+
+    @action(detail=True, methods=['post'])
+    def rejeter(self, request, pk=None):
+        """Rejette le rapprochement — maintient le blocage du paiement.
+
+        Corps optionnel : ``{notes: "..."}``.
+        """
+        rap = self.get_object()
+        try:
+            services.valider_rapprochement_3voies(
+                rap, approuver=False, user=request.user,
+                notes=request.data.get('notes', '') or '')
+        except DjangoValidationError as exc:
+            return Response(
+                {'detail': exc.messages[0] if exc.messages else str(exc)},
+                status=status.HTTP_400_BAD_REQUEST)
+        rap.refresh_from_db()
+        return Response(self.get_serializer(rap).data)
+
+    @action(detail=True, methods=['get'])
+    def resume(self, request, pk=None):
+        """Résumé du rapprochement : montants, écarts, tolérance, blocage."""
+        rap = self.get_object()
+        return Response(selectors.resume_rapprochement_3voies(rap))
