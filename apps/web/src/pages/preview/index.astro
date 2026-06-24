@@ -1,0 +1,159 @@
+---
+/**
+ * PAGE PRIVÉE DE PRÉVISUALISATION — /preview/ (noindex, hors nav,
+ * exclue du sitemap par le filtre /preview/ de astro.config.mjs, non liée
+ * depuis aucune page publique). Réservée à la revue du fondateur.
+ * Lister ici toutes les routes /preview/* pour y accéder d'un coup d'œil.
+ */
+---
+<!doctype html>
+<html lang="fr">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="robots" content="noindex,nofollow" />
+    <title>Index de prévisualisation (privé) | Taqinor</title>
+    <style>
+      *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+      body {
+        font-family: system-ui, sans-serif;
+        background: #070b1d;
+        color: #e8e4d6;
+        padding: 2rem 1.5rem;
+        max-width: 40rem;
+        margin: 0 auto;
+        line-height: 1.6;
+      }
+      h1 { font-size: 1.25rem; font-weight: 700; margin-bottom: 0.25rem; color: #fff; }
+      .badge {
+        display: inline-block;
+        font-size: 0.7rem;
+        font-weight: 600;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+        background: rgba(255,255,255,0.08);
+        border: 1px solid rgba(255,255,255,0.15);
+        color: rgba(255,255,255,0.55);
+        padding: 0.15rem 0.5rem;
+        border-radius: 2px;
+        margin-bottom: 1.5rem;
+      }
+      ul { list-style: none; display: flex; flex-direction: column; gap: 0.5rem; }
+      li a {
+        display: block;
+        padding: 0.75rem 1rem;
+        border: 1px solid rgba(255,255,255,0.1);
+        border-radius: 4px;
+        color: #c8b97a;
+        text-decoration: none;
+        font-size: 0.9rem;
+        transition: background 0.15s, border-color 0.15s;
+      }
+      li a:hover { background: rgba(255,255,255,0.05); border-color: rgba(255,255,255,0.25); }
+      li a .label { display: block; font-weight: 600; color: #fff; }
+      li a .path { font-size: 0.75rem; color: rgba(255,255,255,0.4); font-family: monospace; margin-top: 0.1rem; }
+      li.featured a { border-color: #c8b97a66; }
+      li.featured a .label { color: #c8b97a; }
+      hr { border: none; border-top: 1px solid rgba(255,255,255,0.08); margin: 1.5rem 0; }
+      footer { font-size: 0.75rem; color: rgba(255,255,255,0.3); margin-top: 2rem; }
+    </style>
+  </head>
+  <body>
+    <h1>Prévisualisations privées</h1>
+    <span class="badge">noindex · hors nav · fondateur seulement</span>
+    <ul>
+      <li class="featured">
+        <a href="/preview/accueil-v3">
+          <span class="label">Accueil élevé v3 ✦</span>
+          <span class="path">/preview/accueil-v3</span>
+        </a>
+      </li>
+      <li>
+        <a href="/preview/diagnostic">
+          <span class="label">Diagnostic (prévisualisation)</span>
+          <span class="path">/preview/diagnostic</span>
+        </a>
+      </li>
+      <li>
+        <a href="/preview/toiture">
+          <span class="label">Estimateur toiture (tracé)</span>
+          <span class="path">/preview/toiture</span>
+        </a>
+      </li>
+      <li>
+        <a href="/preview/toiture-3d">
+          <span class="label">Estimateur toiture 3D</span>
+          <span class="path">/preview/toiture-3d</span>
+        </a>
+      </li>
+      <li>
+        <a href="/preview/toiture-3d-pro">
+          <span class="label">Estimateur toiture 3D Pro</span>
+          <span class="path">/preview/toiture-3d-pro</span>
+        </a>
+      </li>
+      <li>
+        <a href="/preview/toiture-3d-pro-2">
+          <span class="label">Estimateur 3D Pro v2</span>
+          <span class="path">/preview/toiture-3d-pro-2</span>
+        </a>
+      </li>
+      <li>
+        <a href="/preview/toiture-3d-pro-3">
+          <span class="label">Estimateur 3D Pro v3</span>
+          <span class="path">/preview/toiture-3d-pro-3</span>
+        </a>
+      </li>
+      <li>
+        <a href="/preview/toiture-3d-pro-4">
+          <span class="label">Estimateur 3D Pro v4</span>
+          <span class="path">/preview/toiture-3d-pro-4</span>
+        </a>
+      </li>
+      <li>
+        <a href="/preview/toiture-3d-pro-5">
+          <span class="label">Estimateur 3D Pro v5</span>
+          <span class="path">/preview/toiture-3d-pro-5</span>
+        </a>
+      </li>
+      <li>
+        <a href="/preview/toiture-3d-pro-6">
+          <span class="label">Estimateur 3D Pro v6</span>
+          <span class="path">/preview/toiture-3d-pro-6</span>
+        </a>
+      </li>
+      <li>
+        <a href="/preview/toiture-3d-pro-7">
+          <span class="label">Estimateur 3D Pro v7</span>
+          <span class="path">/preview/toiture-3d-pro-7</span>
+        </a>
+      </li>
+      <li>
+        <a href="/preview/toiture-3d-pro-8">
+          <span class="label">Estimateur 3D Pro v8</span>
+          <span class="path">/preview/toiture-3d-pro-8</span>
+        </a>
+      </li>
+      <li>
+        <a href="/preview/toiture-3d-pro-9">
+          <span class="label">Estimateur 3D Pro v9</span>
+          <span class="path">/preview/toiture-3d-pro-9</span>
+        </a>
+      </li>
+      <li>
+        <a href="/preview/toiture-3d-pro-10">
+          <span class="label">Estimateur 3D Pro v10</span>
+          <span class="path">/preview/toiture-3d-pro-10</span>
+        </a>
+      </li>
+      <li>
+        <a href="/preview/toiture-3d-pro-11">
+          <span class="label">Estimateur 3D Pro v11</span>
+          <span class="path">/preview/toiture-3d-pro-11</span>
+        </a>
+      </li>
+    </ul>
+    <hr />
+    <footer>Page privée · non publiée · non liée depuis aucune page publique · accueil <code>/</code> et formulaire en production inchangés</footer>
+  </body>
+</html>
