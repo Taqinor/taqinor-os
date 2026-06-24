@@ -381,7 +381,26 @@ def build_quote_data(devis, pdf_options=None) -> dict:
     # l'option PDF (sinon l'étude / le défaut « butane » s'applique).
     if opts.get('current_fuel'):
         etude['current_fuel'] = opts['current_fuel']
-    roi = calculate_savings_roi(puissance_kwc, total_sans, total_avec)
+    # QJ13 — tariff / self-consumption overrides from etude_params.
+    # Resolves: tarif_kwh_override → tranches_override → utility name → fallback.
+    # All are seller-editable via etude_params; nothing is fabricated from thin air.
+    _tarif_kwh_override = etude.get("tarif_kwh")  # explicit flat price (seller set)
+    _tranches_override = etude.get("tarif_tranches")  # custom schedule [[ceil, price], …]
+    _utility = etude.get("distributeur")  # "onee" | "lydec" | "redal"
+    _conso_annuelle = etude.get("conso_annuelle")  # from industrial étude if available
+    # Autoconsommation overrides (seller/study can refine these)
+    _autoconso_sans = float(etude.get("autoconso_sans") or 0) or None
+    _autoconso_avec = float(etude.get("autoconso_avec") or 0) or None
+    from .pricing import AUTOCONSO_SANS, AUTOCONSO_AVEC
+    roi_kwargs = dict(
+        conso_annuelle_kwh=float(_conso_annuelle) if _conso_annuelle else None,
+        utility=_utility or None,
+        tarif_kwh_override=float(_tarif_kwh_override) if _tarif_kwh_override else None,
+        tranches_override=_tranches_override or None,
+        autoconso_sans=_autoconso_sans if _autoconso_sans else AUTOCONSO_SANS,
+        autoconso_avec=_autoconso_avec if _autoconso_avec else AUTOCONSO_AVEC,
+    )
+    roi = calculate_savings_roi(puissance_kwc, total_sans, total_avec, **roi_kwargs)
     if etude.get("production_annuelle"):
         roi["prod_kwh"] = int(etude["production_annuelle"])
         if etude.get("economies_annuelles"):
@@ -521,6 +540,9 @@ def build_quote_data(devis, pdf_options=None) -> dict:
         "roi_a": roi["roi_a"],
         "eco_s_monthly": roi["eco_s_monthly"],
         "eco_a_monthly": roi["eco_a_monthly"],
+        # QJ13 — honest-number guard: True when savings are an estimate (no tariff data)
+        "savings_estimated": roi.get("savings_estimated", False),
+        "tarif_kwh": roi.get("tarif_kwh"),
         "factures_mensuelles": factures_mensuelles,
         "sans_items": sans_items,
         "avec_items": avec_items,
