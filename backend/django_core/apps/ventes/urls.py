@@ -13,6 +13,7 @@ from .views import (
     releve_dry_run,
     releve_commit,
     roof_config,
+    DevisPresetViewSet,  # QJ16-wiring
 )
 from .recouvrement import (
     FollowupLevelViewSet,
@@ -39,6 +40,9 @@ router.register(r'paiements', PaiementViewSet)
 router.register(r'avoirs', AvoirViewSet)
 router.register(r'niveaux-relance', FollowupLevelViewSet,
                 basename='niveau-relance')
+# QJ16-wiring — presets de devis (list + destroy uniquement).
+# La création passe par POST /devis/{id}/save-preset/ sur le DevisViewSet.
+router.register(r'presets', DevisPresetViewSet, basename='devis-preset')
 
 urlpatterns = [
     # Q6/Q7 — Proposition web tokenisée (données JSON + e-signature). Jeton

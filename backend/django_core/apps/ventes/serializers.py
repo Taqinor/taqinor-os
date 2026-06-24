@@ -1,7 +1,7 @@
 from rest_framework import serializers
 from .models import (
     Devis, LigneDevis, BonCommande, Facture, LigneFacture, Paiement,
-    Avoir, LigneAvoir, DevisActivity,
+    Avoir, LigneAvoir, DevisActivity, DevisPreset,
 )
 
 
@@ -537,3 +537,20 @@ class EmailLogSerializer(serializers.ModelSerializer):
                   'to_email', 'from_email', 'sujet', 'corps', 'reference',
                   'piece_jointe', 'erreur', 'created_at', 'created_by_nom']
         read_only_fields = fields
+
+
+# QJ16 — Preset serializer (company-scoped, read-only company field).
+# Company is never accepted from the request body — forced server-side.
+
+class DevisPresetSerializer(serializers.ModelSerializer):
+    created_by_nom = serializers.CharField(
+        source='created_by.username', read_only=True, default=None)
+
+    class Meta:
+        model = DevisPreset
+        fields = [
+            'id', 'nom', 'description', 'mode_installation',
+            'taux_tva', 'remise_globale', 'lignes_snapshot',
+            'etude_params_snapshot', 'created_by_nom', 'created_at',
+        ]
+        read_only_fields = ['id', 'created_by_nom', 'created_at']

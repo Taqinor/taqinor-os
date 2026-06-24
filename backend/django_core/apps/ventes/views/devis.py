@@ -396,6 +396,76 @@ class DevisViewSet(viewsets.ModelViewSet):
             'proposal_path': proposal_url,
         }, status=status.HTTP_200_OK)
 
+    @action(detail=True, methods=['post'], url_path='save-preset',
+            permission_classes=[IsResponsableOrAdmin])
+    def save_preset(self, request, pk=None):
+        """QJ16-wiring — Enregistre le devis courant comme preset (modèle de devis).
+
+        Body (tous optionnels sauf ``nom``) :
+          - ``nom``         : nom du modèle (obligatoire, max 150 caractères)
+          - ``description`` : note libre (optionnel)
+
+        La company est TOUJOURS forcée depuis ``devis.company`` — jamais du corps.
+        Retourne le preset créé (id, nom, mode_installation, lignes_snapshot…).
+        """
+        from ..services import save_devis_as_preset
+        from ..serializers import DevisPresetSerializer
+        devis = self.get_object()
+        nom = (request.data.get('nom') or '').strip()
+        if not nom:
+            return Response(
+                {'detail': 'Le nom du modèle est obligatoire.'},
+                status=status.HTTP_400_BAD_REQUEST)
+        description = (request.data.get('description') or '').strip()
+        try:
+            preset = save_devis_as_preset(
+                devis, nom, description, user=request.user)
+        except ValueError as exc:
+            return Response({'detail': str(exc)},
+                            status=status.HTTP_400_BAD_REQUEST)
+        return Response(
+            DevisPresetSerializer(preset).data,
+            status=status.HTTP_201_CREATED)
+
+    @action(detail=True, methods=['post'], url_path='apply-preset',
+            permission_classes=[IsResponsableOrAdmin])
+    def apply_preset(self, request, pk=None):
+        """QJ16-wiring — Applique un preset à ce devis (brouillon uniquement).
+
+        Body :
+          - ``preset_id`` : id du DevisPreset à appliquer (obligatoire)
+
+        La company du preset DOIT correspondre à celle du devis (vérifiée
+        par ``apply_preset_to_devis`` — cross-company → 400).
+        RULE #4 : n'affecte jamais Devis.statut.
+        Retourne le décompte de lignes créées.
+        """
+        from ..services import apply_preset_to_devis
+        from ..models import DevisPreset
+        devis = self.get_object()
+        preset_id = request.data.get('preset_id')
+        if not preset_id:
+            return Response(
+                {'detail': 'preset_id est obligatoire.'},
+                status=status.HTTP_400_BAD_REQUEST)
+        try:
+            preset = DevisPreset.objects.get(
+                pk=preset_id, company=devis.company)
+        except DevisPreset.DoesNotExist:
+            return Response(
+                {'detail': 'Modèle introuvable pour cette société.'},
+                status=status.HTTP_404_NOT_FOUND)
+        try:
+            created = apply_preset_to_devis(preset, devis)
+        except ValueError as exc:
+            return Response({'detail': str(exc)},
+                            status=status.HTTP_400_BAD_REQUEST)
+        return Response({
+            'detail': f'{len(created)} ligne(s) ajoutée(s) depuis le modèle.',
+            'lignes_created': len(created),
+            'skipped_priceless': len(preset.lignes_snapshot) - len(created),
+        }, status=status.HTTP_200_OK)
+
     @action(detail=True, methods=['post'], url_path='dupliquer-variante',
             permission_classes=[IsResponsableOrAdmin])
     def dupliquer_variante(self, request, pk=None):
