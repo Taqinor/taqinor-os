@@ -24,6 +24,8 @@ class ContratSerializer(serializers.ModelSerializer):
         source='get_type_contrat_display', read_only=True)
     statut_display = serializers.CharField(
         source='get_statut_display', read_only=True)
+    confidentialite_display = serializers.CharField(
+        source='get_confidentialite_display', read_only=True)
 
     class Meta:
         model = Contrat
@@ -31,7 +33,9 @@ class ContratSerializer(serializers.ModelSerializer):
             'id', 'reference', 'type_contrat', 'type_contrat_display',
             'objet', 'statut', 'statut_display', 'client_id',
             'sav_contrat_maintenance_id', 'date_debut',
-            'date_fin', 'montant', 'devise', 'created_by', 'date_creation',
+            'date_fin', 'montant', 'devise',
+            'confidentialite', 'confidentialite_display',
+            'created_by', 'date_creation',
         ]
         read_only_fields = ['created_by', 'date_creation']
 
