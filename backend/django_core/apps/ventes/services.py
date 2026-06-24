@@ -314,6 +314,95 @@ def build_devis_from_layout(*, layout, user, company, lead=None, client=None,
     return devis
 
 
+# ── Copilote — devis AUTOMATIQUE (résidentiel) ───────────────────────────────
+# Le Copilote ne doit JAMAIS créer un devis vide : il passe toujours par ce
+# dimensionnement automatique. Port résidentiel de l'auto-fill solar.js —
+# 8 panneaux par tranche de 900 MAD de facture d'hiver, panneaux 710 Wc — puis
+# délégation à build_devis_from_layout (catalogue, numérotation, brouillon).
+
+_AUTO_PANEL_WATT = 710        # Wc — panneau catalogue par défaut (cf. solar.js)
+_AUTO_PANELS_PER_TRANCHE = 8  # panneaux par tranche de facture d'hiver
+_AUTO_TRANCHE_MAD = 900       # MAD/mois de facture d'hiver par tranche
+
+
+class AutoDevisError(Exception):
+    """Le devis automatique ne peut pas être dimensionné (donnée manquante ou
+    marché non géré). L'endpoint la traduit en 422 et l'agent demande la donnée
+    (ou oriente vers le générateur) plutôt que de produire un devis vide."""
+
+    def __init__(self, message, *, field=None):
+        super().__init__(message)
+        self.message = message
+        self.field = field
+
+
+def _residential_panel_count(*, facture_hiver=None, taille_kwc=None,
+                             panel_watt=_AUTO_PANEL_WATT):
+    """Nombre de panneaux pour un lead résidentiel.
+
+    Priorité à la taille souhaitée explicite (kWc → panneaux à ``panel_watt``),
+    sinon estimation depuis la facture d'hiver (port de ``estimerPanneaux`` de
+    solar.js : 8 panneaux par tranche de 900 MAD). Renvoie 0 si aucune donnée
+    exploitable (le caller lève alors ``AutoDevisError``)."""
+    if taille_kwc not in (None, '') and Decimal(str(taille_kwc)) > 0:
+        return int(round(float(taille_kwc) * 1000 / panel_watt))
+    if facture_hiver not in (None, '') and Decimal(str(facture_hiver)) > 0:
+        tranches = int(Decimal(str(facture_hiver)) // _AUTO_TRANCHE_MAD)
+        return tranches * _AUTO_PANELS_PER_TRANCHE
+    return 0
+
+
+def build_devis_auto(*, lead, user, company, taux_tva=Decimal('20'),
+                     remise_globale=Decimal('0')):
+    """Crée un devis RÉSIDENTIEL automatiquement dimensionné depuis la fiche lead.
+
+    Lit le profil énergétique du lead (taille souhaitée en kWc, sinon facture
+    d'hiver), dimensionne le champ PV, compose un layout réseau (batterie ajoutée
+    si ``batterie_souhaitee == 'avec'``) et délègue à ``build_devis_from_layout``
+    (sélection catalogue, numérotation anti-collision, devis ``brouillon``). Lève
+    ``AutoDevisError`` (→ 422) si le marché n'est pas résidentiel ou si aucune
+    donnée de dimensionnement n'est exploitable — l'agent demande alors la donnée
+    plutôt que de produire un devis vide. Ne change aucun statut (règle #4)."""
+    marche = (getattr(lead, 'type_installation', '') or '').lower()
+    if marche and marche != 'residentiel':
+        raise AutoDevisError(
+            "L'auto-devis ne gère que le résidentiel pour l'instant. Pour "
+            "l'industriel/commercial ou l'agricole, utilisez l'écran générateur "
+            "de devis.",
+            field='type_installation')
+
+    facture_hiver = getattr(lead, 'facture_hiver', None)
+    taille_kwc = getattr(lead, 'taille_souhaitee_kwc', None)
+    panneaux = _residential_panel_count(
+        facture_hiver=facture_hiver, taille_kwc=taille_kwc)
+    if panneaux <= 0:
+        if facture_hiver not in (None, '') or taille_kwc not in (None, ''):
+            msg = ("La facture d'hiver du lead est trop faible pour dimensionner "
+                   "une installation résidentielle. Précisez la taille souhaitée "
+                   "(kWc) du lead.")
+        else:
+            msg = ("Données insuffisantes pour dimensionner le devis : renseignez "
+                   "la facture d'électricité d'hiver (ou la taille souhaitée en "
+                   "kWc) du lead.")
+        raise AutoDevisError(msg, field='facture_hiver')
+
+    kwc = round(panneaux * _AUTO_PANEL_WATT / 1000, 2)
+    wants_battery = (getattr(lead, 'batterie_souhaitee', '') or '') == 'avec'
+    layout = {
+        'result': {'panels': panneaux, 'kwc': kwc},
+        'panelWatt': _AUTO_PANEL_WATT,
+        'scenario': 'avec_batterie' if wants_battery else 'reseau',
+    }
+    devis = build_devis_from_layout(
+        layout=layout, user=user, company=company, lead=lead,
+        taux_tva=taux_tva, remise_globale=remise_globale)
+    logger.info(
+        'Auto-devis %s: %d panneaux, %.2f kWc, batterie=%s (company %s)',
+        devis.reference, panneaux, kwc, wants_battery,
+        getattr(company, 'id', '?'))
+    return devis
+
+
 class AcceptError(Exception):
     """Raised when a devis cannot be accepted (wrong status / bad option)."""
 

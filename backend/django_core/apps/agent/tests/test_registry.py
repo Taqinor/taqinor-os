@@ -86,14 +86,14 @@ class ForUserFilterTest(TestCase):
 
     def test_readonly_user_sees_only_permitted(self):
         keys = {a.key for a in for_user(self.readonly)}
-        self.assertIn('crm.lead.list', keys)            # crm_voir → autorisé
-        self.assertNotIn('ventes.devis.create', keys)   # ventes_creer manquant
+        self.assertIn('crm.lead.list', keys)              # crm_voir → autorisé
+        self.assertNotIn('ventes.devis.creer_auto', keys)  # ventes_creer manquant
         self.assertNotIn('ventes.devis.proposal_pdf', keys)
         self.assertNotIn('stock.produit.delete', keys)
 
     def test_sales_user_sees_sales_actions(self):
         keys = {a.key for a in for_user(self.sales)}
-        self.assertIn('ventes.devis.create', keys)
+        self.assertIn('ventes.devis.creer_auto', keys)
         self.assertIn('ventes.devis.proposal_pdf', keys)
         self.assertIn('crm.lead.list', keys)
         self.assertNotIn('stock.produit.delete', keys)  # stock_supprimer manquant
@@ -144,16 +144,18 @@ class GuardedWriteActionsTest(TestCase):
     def _by_key(self):
         return {a.key: a for a in all_actions()}
 
-    def test_three_write_actions_registered(self):
+    def test_builtin_write_actions_registered(self):
         catalogue = self._by_key()
-        for key in ('ventes.devis.create', 'crm.client.create',
-                    'crm.lead.create'):
+        for key in ('crm.client.create', 'crm.lead.create'):
             self.assertIn(key, catalogue)
+        # L'ancienne création de devis VIDE n'existe plus : le Copilote crée
+        # toujours un devis dimensionné via l'auto-devis (ventes_creer).
+        self.assertNotIn('ventes.devis.create', catalogue)
+        self.assertNotIn('ventes.devis.creer', catalogue)
 
     def test_write_actions_are_guarded_outward(self):
         catalogue = self._by_key()
-        for key in ('ventes.devis.create', 'crm.client.create',
-                    'crm.lead.create'):
+        for key in ('crm.client.create', 'crm.lead.create'):
             action = catalogue[key]
             # outward => le relais renvoie une PROPOSITION à confirmer (jamais
             # une exécution immédiate).
@@ -167,21 +169,22 @@ class GuardedWriteActionsTest(TestCase):
             catalogue['crm.client.create'].required_permission, 'crm_creer')
         self.assertEqual(
             catalogue['crm.lead.create'].required_permission, 'crm_creer')
+        # L'auto-devis (déclaré par l'app ventes) reste gaté par ventes_creer.
         self.assertEqual(
-            catalogue['ventes.devis.create'].required_permission,
+            catalogue['ventes.devis.creer_auto'].required_permission,
             'ventes_creer')
 
     def test_readonly_cannot_propose_writes(self):
         keys = {a.key for a in for_user(self.readonly)}
         self.assertNotIn('crm.client.create', keys)
         self.assertNotIn('crm.lead.create', keys)
-        self.assertNotIn('ventes.devis.create', keys)
+        self.assertNotIn('ventes.devis.creer_auto', keys)
 
     def test_writer_can_propose_writes(self):
         keys = {a.key for a in for_user(self.writer)}
         self.assertIn('crm.client.create', keys)
         self.assertIn('crm.lead.create', keys)
-        self.assertIn('ventes.devis.create', keys)
+        self.assertIn('ventes.devis.creer_auto', keys)
 
     def test_client_and_lead_require_nom(self):
         catalogue = self._by_key()

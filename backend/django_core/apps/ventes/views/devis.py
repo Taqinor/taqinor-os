@@ -80,7 +80,7 @@ class DevisViewSet(viewsets.ModelViewSet):
         elif self.action in WRITE_ACTIONS + [
             'generer_pdf', 'telecharger_pdf', 'convertir_en_bc', 'proposal',
             'generer_facture', 'reviser', 'accepter', 'refuser', 'noter',
-            'layout', 'roof_image', 'from_layout', 'share_link',
+            'layout', 'roof_image', 'from_layout', 'auto', 'share_link',
         ]:
             return [IsResponsableOrAdmin()]
         elif self.action == 'destroy':
@@ -214,6 +214,93 @@ class DevisViewSet(viewsets.ModelViewSet):
                 'id': devis.id,
                 'reference': devis.reference,
                 'statut': devis.statut,
+                'proposal_token': link.token,
+                'proposal_path': f'/proposition/{link.token}',
+            },
+            status=status.HTTP_201_CREATED)
+
+    @action(detail=False, methods=['post'], url_path='auto',
+            permission_classes=[IsResponsableOrAdmin])
+    def auto(self, request):
+        """Copilote — crée un devis RÉSIDENTIEL automatiquement dimensionné à
+        partir de la fiche lead (JAMAIS un brouillon vide). C'est le seul chemin
+        de création de devis offert à l'agent.
+
+        Corps : ``{lead}`` (ou ``{client}``, dont on remonte au lead le plus
+        récent) + ``taux_tva?`` / ``remise_globale?``. La société est TOUJOURS
+        celle du user ; le lead est borné à cette société (404 sinon). 422 si les
+        données de dimensionnement manquent ou si le marché n'est pas résidentiel
+        — l'agent demande alors la donnée / oriente vers le générateur. Aucun
+        statut n'est touché : le service renvoie un brouillon (règle #4)."""
+        from decimal import Decimal, InvalidOperation
+        from ..services import build_devis_auto, AutoDevisError
+        from ..models import ShareLink
+        from apps.crm.selectors import (
+            get_company_lead, get_company_client, get_latest_lead_for_client,
+        )
+
+        company = request.user.company
+        if company is None:
+            return Response(
+                {'detail': 'Utilisateur sans société.'},
+                status=status.HTTP_400_BAD_REQUEST)
+
+        lead_obj = None
+        lead_id = request.data.get('lead')
+        client_id = request.data.get('client')
+        if lead_id:
+            lead_obj = get_company_lead(company, lead_id)
+            if lead_obj is None:
+                return Response({'detail': 'Lead inconnu.'},
+                                status=status.HTTP_404_NOT_FOUND)
+        elif client_id:
+            if get_company_client(company, client_id) is None:
+                return Response({'detail': 'Client inconnu.'},
+                                status=status.HTTP_404_NOT_FOUND)
+            lead_obj = get_latest_lead_for_client(company, client_id)
+            if lead_obj is None:
+                return Response(
+                    {'detail': "Ce client n'a pas de fiche lead avec profil "
+                     "énergétique. Complétez le lead (facture d'hiver ou taille "
+                     "souhaitée) pour générer l'auto-devis."},
+                    status=status.HTTP_422_UNPROCESSABLE_ENTITY)
+        else:
+            return Response(
+                {'detail': 'Un lead (ou un client) est requis.'},
+                status=status.HTTP_400_BAD_REQUEST)
+
+        def _dec(raw, default):
+            if raw in (None, ''):
+                return default
+            try:
+                return Decimal(str(raw))
+            except (InvalidOperation, ValueError, TypeError):
+                return None
+
+        taux_tva = _dec(request.data.get('taux_tva'), Decimal('20'))
+        remise = _dec(request.data.get('remise_globale'), Decimal('0'))
+        if taux_tva is None or remise is None:
+            return Response(
+                {'detail': 'taux_tva / remise_globale invalide.'},
+                status=status.HTTP_400_BAD_REQUEST)
+
+        try:
+            devis = build_devis_auto(
+                lead=lead_obj, user=request.user, company=company,
+                taux_tva=taux_tva, remise_globale=remise)
+        except AutoDevisError as exc:
+            return Response(
+                {'detail': exc.message, 'field': exc.field},
+                status=status.HTTP_422_UNPROCESSABLE_ENTITY)
+
+        link = ShareLink.for_devis(devis)
+        return Response(
+            {
+                'id': devis.id,
+                'reference': devis.reference,
+                'statut': devis.statut,
+                'kwc': (devis.etude_params or {}).get('puissance_kwc'),
+                'nb_lignes': devis.lignes.count(),
                 'proposal_token': link.token,
                 'proposal_path': f'/proposition/{link.token}',
             },
