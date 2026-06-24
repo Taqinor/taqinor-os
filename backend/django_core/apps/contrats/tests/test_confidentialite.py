@@ -18,6 +18,7 @@ from rest_framework_simplejwt.tokens import AccessToken
 from authentication.models import Company
 
 from apps.contrats.models import Contrat
+from apps.roles.models import RESPONSABLE_PERMISSIONS, Role
 
 User = get_user_model()
 
@@ -32,6 +33,17 @@ def make_company(slug, nom):
 def make_user(company, username, role='responsable'):
     return User.objects.create_user(
         username=username, password='x', company=company, role_legacy=role)
+
+
+def make_role_fk_user(company, username, permissions):
+    """Utilisateur provisionné via le Role FK (role_legacy laissé à 'normal',
+    comme en production après ``init_roles``). Le palier faisant autorité dérive
+    alors du Role, pas de ``role_legacy``."""
+    role = Role.objects.create(
+        company=company, nom=username + '-role', permissions=permissions)
+    return User.objects.create_user(
+        username=username, password='x', company=company,
+        role_legacy='normal', role=role)
 
 
 def auth(user):
@@ -136,6 +148,51 @@ class ConfidentialiteVisibiliteTests(TestCase):
         resp = api.get(f'{BASE}{self.c_confidentiel.id}/')
         self.assertEqual(resp.status_code, 200)
         self.assertEqual(resp.data['confidentialite'], 'confidentiel')
+
+
+class ConfidentialiteRoleFKTests(TestCase):
+    """Régression CONTRAT6 : le palier doit dériver du Role FK, pas de
+    ``role_legacy``.
+
+    En production (après ``init_roles``) un Administrateur porte un Role FK avec
+    ``roles_gerer`` tout en gardant ``role_legacy='normal'``. La visibilité des
+    contrats CONFIDENTIEL doit suivre le palier FAISANT AUTORITÉ (``menu_tier``)
+    et non le champ legacy.
+    """
+
+    def setUp(self):
+        self.co = make_company('conf-rolefk', 'R')
+        # Admin via Role FK (roles_gerer) — role_legacy reste 'normal'.
+        self.admin_fk = make_role_fk_user(
+            self.co, 'conf-admin-fk', permissions=['roles_gerer'])
+        # Responsable via Role FK (palier responsable : permissions d'écriture
+        # + users_voir, mais PAS roles_gerer → non-admin).
+        self.resp_fk = make_role_fk_user(
+            self.co, 'conf-resp-fk',
+            permissions=list(RESPONSABLE_PERMISSIONS))
+        self.c_confidentiel = Contrat.objects.create(
+            company=self.co, objet='Confidentiel RoleFK',
+            confidentialite=Contrat.NiveauConfidentialite.CONFIDENTIEL)
+
+    def test_admin_role_fk_voit_confidentiel(self):
+        """Un admin provisionné via Role FK VOIT les contrats CONFIDENTIEL."""
+        api = auth(self.admin_fk)
+        resp = api.get(BASE)
+        self.assertEqual(resp.status_code, 200)
+        ids = [r['id'] for r in rows(resp)]
+        self.assertIn(self.c_confidentiel.id, ids)
+        detail = api.get(f'{BASE}{self.c_confidentiel.id}/')
+        self.assertEqual(detail.status_code, 200)
+
+    def test_responsable_role_fk_ne_voit_pas_confidentiel(self):
+        """Un responsable via Role FK NE VOIT PAS les contrats CONFIDENTIEL."""
+        api = auth(self.resp_fk)
+        resp = api.get(BASE)
+        self.assertEqual(resp.status_code, 200)
+        ids = [r['id'] for r in rows(resp)]
+        self.assertNotIn(self.c_confidentiel.id, ids)
+        detail = api.get(f'{BASE}{self.c_confidentiel.id}/')
+        self.assertEqual(detail.status_code, 404)
 
 
 class ConfidentialiteMultiTenantTests(TestCase):

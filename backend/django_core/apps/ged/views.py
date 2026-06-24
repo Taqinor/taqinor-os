@@ -385,7 +385,10 @@ class DocumentVersionViewSet(TenantMixin, viewsets.ModelViewSet):
     ordering_fields = ['version', 'created_at']
 
     def get_permissions(self):
-        if self.action in READ_ACTIONS:
+        # ``apercu`` est une opération de LECTURE (aperçu inline même-origine),
+        # donc ouverte à tout rôle authentifié comme list/retrieve — même motif
+        # que les actions de lecture custom des viewsets frères.
+        if self.action in READ_ACTIONS or self.action == 'apercu':
             return [IsAnyRole()]
         return [IsResponsableOrAdmin()]
 

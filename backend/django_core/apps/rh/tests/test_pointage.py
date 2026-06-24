@@ -173,9 +173,13 @@ class PointageDepartTests(TestCase):
         self.emp = make_employe(self.co, 'ED1')
 
     def _create_arrivee(self):
+        # Une arrivée réaliste porte toujours ``heure_arrivee`` (posée par
+        # l'action pointager-arrivee côté serveur) — sans elle le départ ne
+        # peut ni passer COMPLET ni calculer la durée.
         return Pointage.objects.create(
             company=self.co, employe=self.emp,
-            type_pointage=Pointage.TypePointage.ARRIVEE)
+            type_pointage=Pointage.TypePointage.ARRIVEE,
+            heure_arrivee=datetime.now(dt_timezone.utc) - timedelta(hours=1))
 
     def test_depart_ferme_pointage(self):
         pt = self._create_arrivee()

@@ -1423,6 +1423,20 @@ class DocumentVersionAperuTests(GedBase):
         self.assertEqual(resp['X-Content-Type-Options'], 'nosniff')
         self.assertEqual(resp.content, fake_content)
 
+    def test_apercu_lecture_seule_role_autorise(self):
+        """Régression GED14 : un rôle LECTURE SEULE (non-responsable) qui peut
+        déjà list/retrieve doit AUSSI pouvoir prévisualiser (200, pas 403) —
+        ``apercu`` est une action de lecture (IsAnyRole)."""
+        from unittest import mock
+        viewer = make_user(self.co_a, 'ged-viewer-a', role='normal')
+        fake_content = b'%PDF-1.4 fake'
+        api = auth(viewer)
+        with mock.patch('apps.ged.views.fetch_attachment',
+                        return_value=(fake_content, None)):
+            resp = api.get(self._url(self.version_a.id))
+        self.assertEqual(resp.status_code, 200)
+        self.assertIn('inline', resp['Content-Disposition'])
+
     def test_apercu_image_inline(self):
         """Une image est servie avec Content-Disposition: inline."""
         from unittest import mock

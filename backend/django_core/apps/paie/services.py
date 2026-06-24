@@ -449,10 +449,8 @@ def calculer_salaire_base_periode(profil, periode, elements=None):
             ElementVariable.objects.filter(periode=periode, profil=profil)
         )
 
-    # Comptabiliser les absences et les heures/jours travaillés déclarés.
+    # Comptabiliser les absences et les heures travaillées déclarées.
     jours_absence = Decimal('0')
-    heures_absence = Decimal('0')
-    jours_travailles_declares = None   # None = non déclaré explicitement
     heures_travaillees_declares = None
 
     for el in elements:

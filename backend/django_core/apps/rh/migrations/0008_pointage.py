@@ -69,10 +69,10 @@ class Migration(migrations.Migration):
                 'indexes': [
                     models.Index(
                         fields=['company', 'employe'],
-                        name='rh_pointage_company_employe_idx'),
+                        name='rh_pointage_comp_employe_idx'),
                     models.Index(
                         fields=['company', 'heure_arrivee'],
-                        name='rh_pointage_company_arrivee_idx'),
+                        name='rh_pointage_comp_arrivee_idx'),
                 ],
             },
         ),

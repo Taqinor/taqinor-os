@@ -63,11 +63,10 @@ class ContratViewSet(_ContratsBaseViewSet):
         qs = super().get_queryset()
         user = self.request.user
         # Exclure les contrats CONFIDENTIEL pour les non-Administrateurs.
-        # Le rôle effectif est lu via la propriété ``effective_role`` du modèle
-        # utilisateur (préférant le Role FK, fallback sur role_legacy).
-        effective_role = getattr(user, 'effective_role', None) or getattr(
-            user, 'role_legacy', 'normal')
-        if effective_role != user.ROLE_ADMIN and not user.is_superuser:
+        # Le palier FAISANT AUTORITÉ est ``menu_tier`` (dérive du Role FK, repli
+        # legacy, et renvoie ROLE_ADMIN pour un superuser) — ``role_legacy``
+        # seul n'est pas fiable pour un admin provisionné via le Role FK.
+        if user.menu_tier != user.ROLE_ADMIN:
             qs = qs.exclude(
                 confidentialite=Contrat.NiveauConfidentialite.CONFIDENTIEL)
         # Filtre optionnel par niveau de confidentialité.

@@ -11,9 +11,8 @@ from django.db.models import Sum
 from django.utils import timezone
 
 from .models import (
-    BonCommandeFournisseur, Caisse, CompteComptable, CompteTresorerie, Effet,
-    FactureFournisseur, LigneEcriture, LignePrevisionnelTresorerie,
-    MouvementCaisse, Rapprochement3Voies, ReceptionMarchandise,
+    Caisse, CompteComptable, CompteTresorerie, Effet, LigneEcriture,
+    LignePrevisionnelTresorerie, MouvementCaisse,
 )
 
 
@@ -710,48 +709,3 @@ def total_effets_ouverts(company, *, sens):
         statut__in=[Effet.Statut.PORTEFEUILLE, Effet.Statut.REMIS]
     ).aggregate(s=Sum('montant'))['s']
     return total or Decimal('0')
-
-
-# ── FG131 — Rapprochement 3 voies ──────────────────────────────────────────
-
-def resume_rapprochement_3voies(rap):
-    """Résumé d'un ``Rapprochement3Voies`` : montants, écarts, statut paiement.
-
-    Renvoie un dict :
-    ``{'montant_commande_ht', 'montant_recu_ht', 'montant_facture_ht',
-    'ecart_commande_facture_ht', 'ecart_recu_facture_ht',
-    'tolerance_ht', 'ecarts_dans_tolerance', 'paiement_bloque', 'statut'}``.
-    """
-    return {
-        'montant_commande_ht': rap.montant_commande_ht,
-        'montant_recu_ht': rap.montant_recu_ht,
-        'montant_facture_ht': rap.montant_facture_ht,
-        'ecart_commande_facture_ht': rap.ecart_commande_facture_ht,
-        'ecart_recu_facture_ht': rap.ecart_recu_facture_ht,
-        'tolerance_ht': rap.tolerance_ht,
-        'ecarts_dans_tolerance': rap.ecarts_dans_tolerance,
-        'paiement_bloque': rap.paiement_bloque,
-        'statut': rap.statut,
-    }
-
-
-def factures_fournisseur_a_valider(company):
-    """Factures fournisseur dont le paiement est BLOQUÉ (pas de rap. 3V approuvé).
-
-    Renvoie les ``FactureFournisseur`` sans aucun ``Rapprochement3Voies``
-    approuvé lié, encore en statut payable (brouillon/a_valider/validee).
-    """
-    statuts_payables = [
-        FactureFournisseur.Statut.BROUILLON,
-        FactureFournisseur.Statut.A_VALIDER,
-        FactureFournisseur.Statut.VALIDEE,
-    ]
-    # IDs des factures ayant AU MOINS un rapprochement approuvé.
-    ids_approuvees = Rapprochement3Voies.objects.filter(
-        company=company,
-        statut=Rapprochement3Voies.Statut.APPROUVE,
-    ).values_list('facture_id', flat=True)
-    return FactureFournisseur.objects.filter(
-        company=company,
-        statut__in=statuts_payables,
-    ).exclude(id__in=ids_approuvees).order_by('date_echeance', 'id')

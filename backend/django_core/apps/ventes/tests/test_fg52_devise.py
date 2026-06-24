@@ -202,6 +202,61 @@ class TestDevisAPIDevise(TestCase):
         self.assertIn('taux_change', first)
 
 
+class TestCompanyDeviseDefautApplique(TestCase):
+    """Régression FG52 : la devise par défaut de la société
+    (``CompanyProfile.devise_defaut``) pilote RÉELLEMENT les nouveaux devis et
+    factures créés via l'API quand le corps n'envoie pas de devise ; une devise
+    explicite reste prioritaire et une autre société reste en MAD."""
+
+    def setUp(self):
+        self.co_eur = make_company('fg52-defeur')
+        self.co_mad = make_company('fg52-defmad')
+        self.user_eur = make_user(self.co_eur, 'fg52_def_eur')
+        self.user_mad = make_user(self.co_mad, 'fg52_def_mad')
+        self.client_eur = make_client(self.co_eur, 'def-eur@fg52.ma')
+        self.client_mad = make_client(self.co_mad, 'def-mad@fg52.ma')
+        prof = CompanyProfile.get(company=self.co_eur)
+        prof.devise_defaut = 'EUR'
+        prof.save(update_fields=['devise_defaut'])
+
+    def test_devis_herite_devise_defaut_societe(self):
+        api = auth(self.user_eur)
+        resp = api.post(
+            '/api/django/ventes/devis/',
+            {'client': self.client_eur.id, 'taux_tva': '20.00'},
+            format='json')
+        self.assertIn(resp.status_code, (200, 201), resp.content)
+        self.assertEqual(resp.json().get('devise'), 'EUR')
+
+    def test_facture_herite_devise_defaut_societe(self):
+        api = auth(self.user_eur)
+        resp = api.post(
+            '/api/django/ventes/factures/',
+            {'client': self.client_eur.id, 'taux_tva': '20.00'},
+            format='json')
+        self.assertIn(resp.status_code, (200, 201), resp.content)
+        self.assertEqual(resp.json().get('devise'), 'EUR')
+
+    def test_devise_explicite_prime_sur_defaut_societe(self):
+        api = auth(self.user_eur)
+        resp = api.post(
+            '/api/django/ventes/devis/',
+            {'client': self.client_eur.id, 'taux_tva': '20.00',
+             'devise': 'USD'},
+            format='json')
+        self.assertIn(resp.status_code, (200, 201), resp.content)
+        self.assertEqual(resp.json().get('devise'), 'USD')
+
+    def test_autre_societe_reste_mad(self):
+        api = auth(self.user_mad)
+        resp = api.post(
+            '/api/django/ventes/devis/',
+            {'client': self.client_mad.id, 'taux_tva': '20.00'},
+            format='json')
+        self.assertIn(resp.status_code, (200, 201), resp.content)
+        self.assertEqual(resp.json().get('devise'), 'MAD')
+
+
 class TestMultiTenantIsolation(TestCase):
     """Un user de company B ne doit pas voir les devis de company A."""
 

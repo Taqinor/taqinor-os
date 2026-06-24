@@ -9,14 +9,11 @@ from decimal import Decimal
 from rest_framework import serializers
 
 from .models import (
-    BonCommandeFournisseur, BordereauRemise, Caisse, CessionImmobilisation,
-    ClotureCaisse, CompteComptable, CompteTresorerie, DotationAmortissement,
-    EcritureComptable, Effet, ExerciceComptable, FactureFournisseur,
-    Immobilisation, Journal, LigneBonCommandeFournisseur, LigneEcriture,
-    LigneFactureFournisseur, LignePrevisionnelTresorerie, LigneReleve,
-    LigneReceptionMarchandise, MouvementCaisse, PeriodeComptable,
-    PlanAmortissement, PlanComptable, Rapprochement3Voies,
-    RapprochementBancaire, ReceptionMarchandise, VirementInterne,
+    BordereauRemise, Caisse, CessionImmobilisation, ClotureCaisse,
+    CompteComptable, CompteTresorerie, DotationAmortissement, EcritureComptable,
+    Effet, ExerciceComptable, Immobilisation, Journal, LigneEcriture,
+    LignePrevisionnelTresorerie, LigneReleve, MouvementCaisse, PeriodeComptable,
+    PlanAmortissement, PlanComptable, RapprochementBancaire, VirementInterne,
 )
 
 
@@ -632,139 +629,3 @@ class BordereauRemiseSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError(
                 "Un bordereau de remise se dépose sur un compte bancaire.")
         return value
-
-
-# ── FG131 — Rapprochement 3 voies ──────────────────────────────────────────
-
-class LigneBonCommandeFournisseurSerializer(serializers.ModelSerializer):
-    montant_ligne_ht = serializers.SerializerMethodField()
-
-    class Meta:
-        model = LigneBonCommandeFournisseur
-        fields = [
-            'id', 'designation', 'produit_id', 'quantite',
-            'prix_unitaire_ht', 'unite', 'montant_ligne_ht',
-        ]
-
-    def get_montant_ligne_ht(self, obj):
-        return obj.montant_ligne_ht
-
-
-class BonCommandeFournisseurSerializer(serializers.ModelSerializer):
-    lignes_bc = LigneBonCommandeFournisseurSerializer(many=True, read_only=True)
-    statut_display = serializers.CharField(
-        source='get_statut_display', read_only=True)
-    montant_ttc = serializers.SerializerMethodField()
-
-    class Meta:
-        model = BonCommandeFournisseur
-        fields = [
-            'id', 'reference', 'date_commande',
-            'fournisseur_type', 'fournisseur_id', 'fournisseur_nom',
-            'statut', 'statut_display', 'montant_ht', 'taux_tva', 'montant_ttc',
-            'notes', 'lignes_bc', 'date_creation',
-        ]
-        read_only_fields = ['montant_ht', 'date_creation']
-
-    def get_montant_ttc(self, obj):
-        return obj.montant_ttc
-
-
-class LigneReceptionMarchandiseSerializer(serializers.ModelSerializer):
-    designation = serializers.CharField(
-        source='ligne_bc.designation', read_only=True)
-
-    class Meta:
-        model = LigneReceptionMarchandise
-        fields = [
-            'id', 'ligne_bc', 'designation', 'quantite_recue', 'notes',
-        ]
-
-    def validate_ligne_bc(self, value):
-        return _meme_societe(self, value, 'Ligne BC')
-
-
-class ReceptionMarchandiseSerializer(serializers.ModelSerializer):
-    lignes_reception = LigneReceptionMarchandiseSerializer(
-        many=True, read_only=True)
-    statut_display = serializers.CharField(
-        source='get_statut_display', read_only=True)
-
-    class Meta:
-        model = ReceptionMarchandise
-        fields = [
-            'id', 'bon_commande', 'reference', 'date_reception',
-            'statut', 'statut_display', 'numero_bl_fournisseur',
-            'notes', 'lignes_reception', 'date_creation',
-        ]
-        read_only_fields = ['date_creation']
-
-    def validate_bon_commande(self, value):
-        return _meme_societe(self, value, 'Bon de commande')
-
-
-class LigneFactureFournisseurSerializer(serializers.ModelSerializer):
-    montant_ligne_ht = serializers.SerializerMethodField()
-
-    class Meta:
-        model = LigneFactureFournisseur
-        fields = [
-            'id', 'designation', 'quantite_facturee', 'prix_unitaire_ht',
-            'unite', 'ligne_bc', 'montant_ligne_ht',
-        ]
-
-    def get_montant_ligne_ht(self, obj):
-        return obj.montant_ligne_ht
-
-    def validate_ligne_bc(self, value):
-        return _meme_societe(self, value, 'Ligne BC')
-
-
-class FactureFournisseurSerializer(serializers.ModelSerializer):
-    lignes_facture = LigneFactureFournisseurSerializer(
-        many=True, read_only=True)
-    statut_display = serializers.CharField(
-        source='get_statut_display', read_only=True)
-
-    class Meta:
-        model = FactureFournisseur
-        fields = [
-            'id', 'reference', 'date_facture', 'date_echeance',
-            'fournisseur_type', 'fournisseur_id', 'fournisseur_nom',
-            'statut', 'statut_display',
-            'montant_ht', 'taux_tva', 'montant_tva', 'montant_ttc',
-            'notes', 'lignes_facture', 'date_creation',
-        ]
-        read_only_fields = ['montant_tva', 'montant_ttc', 'date_creation']
-
-
-class Rapprochement3VoiesSerializer(serializers.ModelSerializer):
-    statut_display = serializers.CharField(
-        source='get_statut_display', read_only=True)
-    paiement_bloque = serializers.BooleanField(read_only=True)
-    ecarts_dans_tolerance = serializers.BooleanField(read_only=True)
-
-    class Meta:
-        model = Rapprochement3Voies
-        fields = [
-            'id', 'bon_commande', 'reception', 'facture',
-            'libelle', 'statut', 'statut_display',
-            'montant_commande_ht', 'montant_recu_ht', 'montant_facture_ht',
-            'ecart_commande_facture_ht', 'ecart_recu_facture_ht',
-            'tolerance_ht', 'ecarts_dans_tolerance', 'paiement_bloque',
-            'notes', 'valide_par', 'date_validation', 'date_creation',
-        ]
-        read_only_fields = [
-            'montant_commande_ht', 'montant_recu_ht', 'montant_facture_ht',
-            'ecart_commande_facture_ht', 'ecart_recu_facture_ht',
-            'statut', 'valide_par', 'date_validation', 'date_creation',
-        ]
-
-    def validate_bon_commande(self, value):
-        return _meme_societe(self, value, 'Bon de commande')
-
-    def validate_reception(self, value):
-        return _meme_societe(self, value, 'Réception')
-
-    def validate_facture(self, value):
-        return _meme_societe(self, value, 'Facture fournisseur')
