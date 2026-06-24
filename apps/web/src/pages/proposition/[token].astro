@@ -34,7 +34,13 @@ import {
   proposalEndpoint,
   proposalPdfEndpoint,
   hasProductionSeries,
+  resolveValidity,
+  savingsHeadline,
+  environmentalImpact,
+  financingComparison,
+  whatsappLink,
 } from '../../lib/proposition';
+import { renderYearCurve } from '../../lib/proposalCurve';
 import { renderProposalChart, resolveSeries } from '../../lib/proposalChart';
 
 const API_BASE = (import.meta.env.PUBLIC_API_BASE as string | undefined) ?? 'https://api.taqinor.ma';
@@ -137,6 +143,30 @@ const chartSvg = ok && chartSeries.mode !== 'none'
 const showChart = ok && hasProductionSeries(data!) && chartSvg.length > 0;
 const chartHasConso = chartSeries.mode === 'comparison';
 
+// ── WJ16 — Courbe journalière production vs consommation (lever → coucher) ────
+// Calée sur la production annuelle RÉELLE backend si présente, sinon « année
+// type » clairement libellée. Le visuel le plus persuasif ne disparaît jamais.
+const dailyCurve = ok ? renderYearCurve(prodKwh) : { svg: '', hasRealScale: false };
+
+// ── WJ15 — Fenêtre de validité honnête (date backend réelle, jamais inventée) ─
+const validity = ok ? resolveValidity(data!) : { label: null, fromBackend: false, expired: false };
+
+// ── WJ9 — Argent dans le temps : cumul 25 ans + payback + cadrage mensuel ────
+const headline = ok ? savingsHeadline(data!, reco ?? 'sans_batterie') : null;
+
+// ── WJ14 — Impact environnemental humain (CO₂ ≈ arbres), depuis la production ─
+const enviro = ok ? environmentalImpact(prodKwh) : null;
+
+// ── WJ10 — Comparatif de financement (cash backend + éco-prêt indicatif) ─────
+const financing = ok ? financingComparison(data!, reco ?? 'sans_batterie') : null;
+
+// ── WJ12 — Contact intégré : deep-link WhatsApp prérempli avec la réf devis ──
+// « Demander un rappel » = appeler le numéro TAQINOR (NAP), jamais le numéro du
+// client. Numéro réel (= lib/nap NAP.phone), affiché tel quel.
+const waLink = ok ? whatsappLink(reference) : '';
+const TAQINOR_TEL = '+212661850410';
+const callbackHref = ok ? `tel:${TAQINOR_TEL}` : '';
+
 // ── P3 — Lien public du devis PDF premium (même token, nouvel onglet) ────────
 const pdfUrl = ok ? proposalPdfEndpoint(API_BASE, token) : '';
 
@@ -144,7 +174,7 @@ const pageTitle = ok ? `Proposition ${reference} — ${clientName} | Taqinor` : 
 
 // Données passées au script de signature (sérialisées en JSON dans un data-attr).
 const signConfig = ok
-  ? JSON.stringify({ token, twoOptions, preselect, accepted, acceptedName: data?.accepte_par_nom ?? '' })
+  ? JSON.stringify({ token, twoOptions, preselect, accepted, acceptedName: data?.accepte_par_nom ?? '', reference })
   : null;
 ---
 
@@ -201,6 +231,19 @@ const signConfig = ok
                 <dd class="fig text-lg text-lune">{proposalDate}</dd>
               </div>
             )}
+            {/* WJ15 — Fenêtre de validité honnête : date backend réelle, sinon mention libellée. Jamais un compte-à-rebours. */}
+            {validity.fromBackend && validity.label && !validity.expired && (
+              <div>
+                <dt class="text-lune-faint">Devis valable jusqu’au</dt>
+                <dd class="fig text-lg text-brass-300">{validity.label}</dd>
+              </div>
+            )}
+            {validity.fromBackend && validity.expired && (
+              <div>
+                <dt class="text-lune-faint">Validité</dt>
+                <dd class="text-base text-lune-soft">Offre échue — demandez une réactualisation</dd>
+              </div>
+            )}
           </dl>
         </div>
       </section>
@@ -219,20 +262,37 @@ const signConfig = ok
         </section>
       )}
 
-      <!-- ── CHIFFRES PHARES : économies / payload ───────────────────────── -->
-      {(ecoHero || paybackHero || prodKwh) && (
+      <!-- ── WJ9 · ARGENT DANS LE TEMPS (cumul 25 ans + payback + /mois) ───── -->
+      {headline && (headline.cumulative || headline.annual || paybackHero || prodKwh) && (
         <section class="mx-auto max-w-4xl px-5 pt-12 sm:px-8 sm:pt-16">
-          <div class="grid gap-4 sm:grid-cols-3">
-            {ecoHero ? (
+          {/* Accroche « coût de ne rien faire » : le cumul phare. */}
+          {headline.cumulative ? (
+            <div class="cine-card rounded-2xl p-6 sm:p-8" style="border-color: rgb(232 181 74 / 0.35)">
+              <p class="tech-label text-lune-faint">
+                Sans le solaire, votre facture continue de courir. Avec, vous économisez sur {headline.years} ans
+              </p>
+              <p class="fig lum mt-3 text-4xl sm:text-5xl">{formatMAD(headline.cumulative)}</p>
+              <p class="v2-body mt-2 text-sm text-lune-soft">
+                Économies cumulées estimées sur {headline.years} ans
+                {headline.monthly ? <> — soit <span class="text-brass-300">≈ {formatMAD(headline.monthly)}/mois</span> qui restent dans votre poche</> : null}.
+                {!headline.cumulativeFromBackend ? <span class="text-lune-faint"> Estimation à tarif constant (loi 82-21, autoconsommation).</span> : null}
+              </p>
+            </div>
+          ) : null}
+
+          <div class="mt-4 grid gap-4 sm:grid-cols-3">
+            {headline.annual ? (
               <div class="cine-card rounded-xl p-5">
                 <p class="tech-label text-lune-faint">Économies estimées / an</p>
-                <p class="fig fig-md lum mt-2">{formatMAD(ecoHero)}</p>
+                <p class="fig fig-md lum mt-2">{formatMAD(headline.annual)}</p>
+                {headline.monthly ? <p class="mt-1 text-sm text-lune-faint">≈ {formatMAD(headline.monthly)}/mois</p> : null}
               </div>
             ) : null}
             {paybackHero ? (
               <div class="cine-card rounded-xl p-5">
-                <p class="tech-label text-lune-faint">Retour sur investissement</p>
+                <p class="tech-label text-lune-faint">Rentabilisé en</p>
                 <p class="fig fig-md mt-2 text-lune">{paybackHero}</p>
+                <p class="mt-1 text-sm text-lune-faint">puis l’énergie est gratuite</p>
               </div>
             ) : null}
             {prodKwh ? (
@@ -300,6 +360,38 @@ const signConfig = ok
                 {chartHasConso ? ' Plus la production (laiton) couvre votre consommation (azur), plus vous économisez.' : ''}
               </p>
             )}
+          </div>
+        </section>
+      )}
+
+      <!-- ── WJ16 · COURBE JOURNALIÈRE (lever → coucher) ───────────────────── -->
+      {/* Visuel le plus persuasif : la cloche solaire couvre la conso du foyer.
+          Calée sur la production RÉELLE si présente, sinon « année type » libellée.
+          Animation gatée prefers-reduced-motion (voir <style>). */}
+      {dailyCurve.svg && (
+        <section class="mx-auto max-w-4xl px-5 pt-14 sm:px-8">
+          <p class="tech-label rule-brass text-brass-300">Votre journée solaire</p>
+          <div class="cine-card mt-5 rounded-2xl p-5 sm:p-6">
+            <div class="daily-curve-wrap" set:html={dailyCurve.svg}></div>
+            <div class="mt-4 flex flex-wrap items-center gap-x-6 gap-y-2 text-sm">
+              <span class="inline-flex items-center gap-2 text-lune-soft">
+                <span class="inline-block h-3 w-3 rounded-sm" style="background: var(--color-brass-400)" aria-hidden="true"></span>
+                Production solaire
+              </span>
+              <span class="inline-flex items-center gap-2 text-lune-soft">
+                <span class="inline-block h-3 w-3 rounded-sm" style="background: var(--color-azur-300, #7fb4e8)" aria-hidden="true"></span>
+                Votre consommation
+              </span>
+              {!dailyCurve.hasRealScale && (
+                <span class="text-lune-faint">profil — année type (forme indicative)</span>
+              )}
+            </div>
+            <p class="v2-body mt-4 text-sm text-lune-soft">
+              Le soleil produit en pleine journée : chaque kWh consommé à ce moment-là
+              ne vient plus du réseau. {dailyCurve.hasRealScale
+                ? 'Les repères sont calés sur votre production estimée.'
+                : 'Cette courbe illustre une journée type — votre profil exact est précisé avec votre conseiller.'}
+            </p>
           </div>
         </section>
       )}
@@ -385,6 +477,94 @@ const signConfig = ok
         </div>
       </section>
 
+      <!-- ── WJ10 · COMPARATIF DE FINANCEMENT (cash vs éco-prêt indicatif) ─── -->
+      {financing && (
+        <section class="mx-auto max-w-4xl px-5 pt-14 sm:px-8">
+          <p class="tech-label rule-brass text-brass-300">Comment financer</p>
+          <div class="mt-5 grid gap-4 sm:grid-cols-2">
+            <div class="cine-card rounded-2xl p-6">
+              <p class="tech-label text-lune-faint">Au comptant</p>
+              <p class="fig fig-md lum mt-2">{formatMAD(financing.cash)}</p>
+              <p class="mt-2 text-sm text-lune-soft">Prix clé en main, TTC. L’investissement le plus rentable sur la durée.</p>
+            </div>
+            <div class="cine-card rounded-2xl p-6">
+              <p class="tech-label text-lune-faint">À crédit (éco-prêt)</p>
+              <p class="fig fig-md mt-2 text-lune">
+                ≈ {formatMAD(financing.monthlyLow)}<span class="text-lg text-lune-soft"> – {formatMAD(financing.monthlyHigh)}/mois</span>
+              </p>
+              <p class="mt-2 text-sm text-lune-soft">
+                Sur {Math.round(financing.months / 12)} ans, fourchette indicative
+                <span class="text-brass-300"> à confirmer</span> avec votre banque.
+                {financing.beatsBill && financing.currentBillMonthly
+                  ? <> Souvent <strong class="text-lune">moins que votre facture actuelle</strong> (≈ {formatMAD(financing.currentBillMonthly)}/mois).</>
+                  : null}
+              </p>
+            </div>
+          </div>
+          <p class="mt-3 text-xs text-lune-faint">
+            Mensualités calculées à titre indicatif (taux et durée non contractuels). Le montant exact dépend de l’offre bancaire retenue.
+          </p>
+        </section>
+      )}
+
+      <!-- ── WJ14 · IMPACT ENVIRONNEMENTAL (CO₂ ≈ arbres) — clôture émotion ── -->
+      {enviro && (
+        <section class="mx-auto max-w-4xl px-5 pt-14 sm:px-8">
+          <p class="tech-label rule-brass text-brass-300">Votre impact, concrètement</p>
+          <div class="cine-card mt-5 rounded-2xl p-6 sm:p-8">
+            <div class="grid gap-6 sm:grid-cols-2 sm:items-center">
+              <div>
+                <p class="fig lum text-4xl sm:text-5xl">{formatNumber(enviro.co2TonnesPerYear, 1)} <span class="text-2xl text-lune-soft">t CO₂ / an</span></p>
+                <p class="v2-body mt-2 text-sm text-lune-soft">
+                  évités chaque année — l’équivalent de
+                  <strong class="text-brass-300"> {formatNumber(enviro.trees)} arbres</strong> qui absorberaient ce CO₂.
+                </p>
+              </div>
+              <div class="text-sm text-lune-faint">
+                <p>Calcul transparent : production estimée × {formatNumber(enviro.kgPerKwh, 2)} kg CO₂/kWh (facteur d’émission du réseau marocain), ramené à raison de {formatNumber(enviro.kgPerTreeYear)} kg CO₂ absorbés par arbre et par an.</p>
+              </div>
+            </div>
+          </div>
+        </section>
+      )}
+
+      <!-- ── WJ12 · CONTACT AU MOINDRE DOUTE (avant la signature) ──────────── -->
+      <section class="mx-auto max-w-4xl px-5 pt-14 sm:px-8">
+        <div class="cine-card rounded-2xl p-6 sm:p-7">
+          <p class="v2-body text-lune">
+            Une question avant de signer ? Parlons-en — sans engagement, et sans appel commercial non sollicité.
+          </p>
+          <div class="mt-4 flex flex-col gap-3 sm:flex-row sm:flex-wrap">
+            <a
+              href={waLink}
+              target="_blank"
+              rel="noopener noreferrer"
+              class="btn-pill inline-flex items-center justify-center gap-2"
+              style="background: #25d366; color: #062b14; border-color: #25d366"
+            >
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+                <path d="M12.04 2C6.58 2 2.13 6.45 2.13 11.91c0 1.75.46 3.45 1.32 4.95L2 22l5.25-1.38a9.9 9.9 0 0 0 4.79 1.22h.01c5.46 0 9.91-4.45 9.91-9.91 0-2.65-1.03-5.14-2.9-7.01A9.82 9.82 0 0 0 12.04 2Zm0 18.1h-.01a8.2 8.2 0 0 1-4.18-1.15l-.3-.18-3.11.82.83-3.04-.2-.31a8.2 8.2 0 0 1-1.26-4.37c0-4.54 3.7-8.23 8.24-8.23 2.2 0 4.27.86 5.83 2.42a8.18 8.18 0 0 1 2.41 5.82c0 4.54-3.7 8.23-8.23 8.23Zm4.52-6.16c-.25-.12-1.47-.72-1.69-.81-.23-.08-.39-.12-.56.13-.16.25-.64.81-.78.97-.14.17-.29.19-.54.06-.25-.12-1.05-.39-1.99-1.23-.74-.66-1.23-1.47-1.38-1.72-.14-.25-.01-.38.11-.51.11-.11.25-.29.37-.43.13-.14.17-.25.25-.41.08-.17.04-.31-.02-.43-.06-.12-.56-1.35-.77-1.85-.2-.48-.41-.42-.56-.43l-.48-.01c-.17 0-.43.06-.66.31-.23.25-.86.85-.86 2.07 0 1.22.89 2.4 1.01 2.57.12.17 1.75 2.67 4.23 3.74.59.26 1.05.41 1.41.52.59.19 1.13.16 1.56.1.48-.07 1.47-.6 1.68-1.18.21-.58.21-1.07.14-1.18-.06-.1-.22-.16-.47-.28Z"/>
+              </svg>
+              Discuter sur WhatsApp
+            </a>
+            {callbackHref ? (
+              <a href={callbackHref} class="btn-pill inline-flex items-center justify-center gap-2">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                  <path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72c.13.96.36 1.9.7 2.81a2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45c.91.34 1.85.57 2.81.7A2 2 0 0 1 22 16.92Z"/>
+                </svg>
+                Demander un rappel
+              </a>
+            ) : null}
+            <a href={waLink} target="_blank" rel="noopener noreferrer" class="btn-pill inline-flex items-center justify-center gap-2">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5Z"/>
+              </svg>
+              Poser une question
+            </a>
+          </div>
+        </div>
+      </section>
+
       <!-- ── SIGNATURE EN LIGNE ───────────────────────────────────────────── -->
       <section id="signer" class="mx-auto max-w-4xl px-5 pt-16 sm:px-8">
         <div class="cine-card rounded-2xl p-6 sm:p-8">
@@ -394,6 +574,9 @@ const signConfig = ok
             <p class="v2-body mt-2">
               Merci <span id="sign-success-name" class="text-lune"></span> — votre acceptation est bien enregistrée.
               Votre conseiller Taqinor revient vers vous très vite.
+            </p>
+            <p id="sign-success-stamp" class="mt-3 text-sm text-lune-faint">
+              Réf. {reference}<span id="sign-success-time"></span>.
             </p>
           </div>
 
@@ -442,6 +625,29 @@ const signConfig = ok
               />
             </div>
 
+            <!-- WJ11 · SIGNATURE MANUSCRITE (canvas natif, tactile + souris) ── -->
+            <div class="mt-6">
+              <div class="flex items-baseline justify-between gap-3">
+                <label for="sign-pad" class="tech-label text-lune-faint">Votre signature</label>
+                <button
+                  id="sign-clear"
+                  type="button"
+                  class="text-xs text-lune-faint underline-offset-2 hover:underline"
+                >Effacer</button>
+              </div>
+              <div class="sign-pad-wrap mt-2 rounded-xl border border-white/15 bg-nuit-800">
+                <canvas
+                  id="sign-pad"
+                  width="640"
+                  height="180"
+                  class="sign-pad block w-full touch-none rounded-xl"
+                  role="img"
+                  aria-label="Zone de signature manuscrite — dessinez votre signature au doigt ou à la souris"
+                ></canvas>
+              </div>
+              <p class="mt-1.5 text-xs text-lune-faint">Dessinez votre signature ci-dessus (facultatif mais recommandé). Votre nom et votre accord ci-dessous valent signature électronique (loi 53-05).</p>
+            </div>
+
             <label class="mt-5 flex cursor-pointer items-start gap-3 text-sm">
               <input id="sign-accord" name="accord" type="checkbox" required class="mt-1 h-4 w-4 accent-[var(--color-brass-400)]" />
               <span class="text-lune-soft">
@@ -449,6 +655,19 @@ const signConfig = ok
                 aux conditions indiquées ci-dessus.
               </span>
             </label>
+
+            <label class="mt-3 flex cursor-pointer items-start gap-3 text-sm">
+              <input id="sign-consent" name="consent" type="checkbox" required class="mt-1 h-4 w-4 accent-[var(--color-brass-400)]" />
+              <span class="text-lune-soft">
+                J’accepte de <strong class="text-lune">signer électroniquement</strong> cette proposition.
+                Mon nom, la date et l’heure de signature sont enregistrés avec mon accord.
+              </span>
+            </label>
+
+            <!-- Récapitulatif horodaté (réf + date/heure côté client) -->
+            <p id="sign-stamp" class="mt-4 text-xs text-lune-faint">
+              Réf. {reference} · l’horodatage de votre signature s’affichera ici.
+            </p>
 
             <p id="sign-error" class="mt-4 text-sm text-alert-300" role="alert" hidden></p>
 
@@ -486,6 +705,52 @@ const signConfig = ok
         </p>
       </section>
 
+      <!-- ── WJ13 · BLOC CRÉDIBILITÉ (garanties · certifications · réassurance) -->
+      {/* Aucune donnée chiffrée fabriquée : nombre de clients / avis / photos
+          réelles marqués `pending real content` tant que Reda ne les fournit pas.
+          Les garanties et normes ci-dessous sont des FAITS techniques vérifiables. */}
+      <section class="mx-auto max-w-4xl px-5 pt-16 sm:px-8">
+        <p class="tech-label rule-brass text-brass-300">Pourquoi nous faire confiance</p>
+        <div class="mt-5 grid gap-4 sm:grid-cols-3">
+          <div class="cine-card rounded-xl p-5">
+            <p class="fig text-2xl text-lune">20–25 ans</p>
+            <p class="mt-1 text-sm text-lune-soft">Garanties constructeur : 25 ans de performance sur les panneaux, 10 ans sur l’onduleur.</p>
+          </div>
+          <div class="cine-card rounded-xl p-5">
+            <p class="fig text-xl text-lune">IEC 61215 / 61730</p>
+            <p class="mt-1 text-sm text-lune-soft">Modules certifiés aux normes internationales. Conformité étude IRESEN / AMEE.</p>
+          </div>
+          <div class="cine-card rounded-xl p-5">
+            <p class="fig text-xl text-lune">Loi 82-21</p>
+            <p class="mt-1 text-sm text-lune-soft">Installation conforme au cadre marocain d’autoconsommation en basse tension.</p>
+          </div>
+        </div>
+
+        <!-- Photos d'installations réelles — scaffold, à remplir par Reda. -->
+        <div class="mt-4 cine-card rounded-xl p-5">
+          <p class="tech-label text-lune-faint">Nos chantiers</p>
+          <!-- pending real content from Reda : photos d'installations réelles + nombre de clients + villes -->
+          <p class="mt-2 text-sm text-lune-soft">
+            Des dizaines d’installations livrées partout au Maroc.
+            <span class="text-lune-faint"> (Photos et références clients à venir.)</span>
+          </p>
+        </div>
+
+        <!-- Mot du fondateur (FR + AR) — scaffold, contenu réel à confirmer. -->
+        <div class="mt-4 cine-card rounded-xl p-6">
+          <p class="tech-label text-lune-faint">Le mot du fondateur</p>
+          <!-- pending real content from Reda : texte définitif du mot de bienvenue -->
+          <blockquote class="mt-3 v2-body text-lune">
+            « Chez Taqinor, nous traitons chaque toit comme le nôtre : une étude honnête,
+            du matériel certifié, et un accompagnement après l’installation. Merci de votre confiance. »
+          </blockquote>
+          <blockquote dir="rtl" lang="ar" class="mt-3 text-right text-lune" style="line-height: 1.8">
+            « في تاقينور، نتعامل مع كل سطح كأنه سطحنا: دراسة صادقة، معدات معتمدة، ومرافقة بعد التركيب. شكراً على ثقتكم. »
+          </blockquote>
+          <p class="mt-2 text-sm text-lune-faint">Reda Kasri — fondateur, Taqinor</p>
+        </div>
+      </section>
+
       <!-- ── CTA COLLANT « Signer en ligne » ──────────────────────────────── -->
       <div
         id="sticky-cta"
@@ -498,6 +763,9 @@ const signConfig = ok
               <span class="lum fig text-lg">{formatMAD(optionTtc(data!, reco ?? 'sans_batterie'))}</span>
               <span class="text-lune-faint"> TTC</span>
             </p>
+            {validity.fromBackend && validity.label && !validity.expired && (
+              <p class="truncate text-xs text-lune-faint">Valable jusqu’au {validity.label}</p>
+            )}
           </div>
           <a
             href="#signer"
@@ -515,6 +783,7 @@ const signConfig = ok
 <script>
   import {
     validateSign,
+    buildAcceptBodyRich,
     type OptionKey,
     type SignFormState,
   } from '../../lib/proposition';
@@ -525,6 +794,7 @@ const signConfig = ok
     preselect: OptionKey | null;
     accepted: boolean;
     acceptedName: string;
+    reference: string;
   }
 
   const root = document.querySelector<HTMLElement>('.proposition');
@@ -535,11 +805,89 @@ const signConfig = ok
     const form = document.getElementById('sign-form') as HTMLFormElement | null;
     const success = document.getElementById('sign-success');
     const successName = document.getElementById('sign-success-name');
+    const successTime = document.getElementById('sign-success-time');
+    const stampEl = document.getElementById('sign-stamp');
     const errorEl = document.getElementById('sign-error');
     const submitBtn = document.getElementById('sign-submit') as HTMLButtonElement | null;
     const submitLabel = document.getElementById('sign-submit-label');
     const spinner = document.getElementById('sign-spinner');
     const sticky = document.getElementById('sticky-cta');
+
+    // ── WJ11 · Pad de signature manuscrite (canvas natif, tactile + souris) ──
+    const canvas = document.getElementById('sign-pad') as HTMLCanvasElement | null;
+    const clearBtn = document.getElementById('sign-clear');
+    let hasInk = false;
+
+    function setupSignaturePad(c: HTMLCanvasElement): void {
+      // Adapte la résolution interne au DPR pour un trait net (sans CLS : la
+      // hauteur CSS est fixée par .sign-pad, on n'ajuste que le bitmap).
+      const ctx = c.getContext('2d');
+      if (!ctx) return;
+      const dpr = Math.min(window.devicePixelRatio || 1, 2);
+      const resize = (): void => {
+        const rect = c.getBoundingClientRect();
+        if (rect.width === 0) return;
+        c.width = Math.round(rect.width * dpr);
+        c.height = Math.round(rect.height * dpr);
+        ctx.scale(dpr, dpr);
+        ctx.lineWidth = 2.2;
+        ctx.lineJoin = 'round';
+        ctx.lineCap = 'round';
+        ctx.strokeStyle = '#f3cc66';
+      };
+      resize();
+      window.addEventListener('resize', resize);
+
+      let drawing = false;
+      const pos = (e: PointerEvent): { x: number; y: number } => {
+        const rect = c.getBoundingClientRect();
+        return { x: e.clientX - rect.left, y: e.clientY - rect.top };
+      };
+      c.addEventListener('pointerdown', (e) => {
+        drawing = true;
+        hasInk = true;
+        const p = pos(e);
+        ctx.beginPath();
+        ctx.moveTo(p.x, p.y);
+        c.setPointerCapture(e.pointerId);
+        e.preventDefault();
+      });
+      c.addEventListener('pointermove', (e) => {
+        if (!drawing) return;
+        const p = pos(e);
+        ctx.lineTo(p.x, p.y);
+        ctx.stroke();
+        e.preventDefault();
+      });
+      const stop = (): void => { drawing = false; };
+      c.addEventListener('pointerup', stop);
+      c.addEventListener('pointercancel', stop);
+      c.addEventListener('pointerleave', stop);
+    }
+    if (canvas) setupSignaturePad(canvas);
+
+    function clearSignature(): void {
+      if (!canvas) return;
+      const ctx = canvas.getContext('2d');
+      if (ctx) ctx.clearRect(0, 0, canvas.width, canvas.height);
+      hasInk = false;
+    }
+    clearBtn?.addEventListener('click', clearSignature);
+
+    // Horodatage local lisible (fr-MA) — affiché en direct dans le récap.
+    function frenchStamp(d: Date): string {
+      try {
+        return d.toLocaleString('fr-MA', {
+          dateStyle: 'long', timeStyle: 'short',
+        });
+      } catch {
+        return d.toLocaleString('fr-FR');
+      }
+    }
+    if (stampEl) {
+      const now = new Date();
+      stampEl.textContent = `Réf. ${cfg.reference} · signature horodatée le ${frenchStamp(now)} (heure de votre appareil).`;
+    }
 
     function showError(msg: string): void {
       if (!errorEl) return;
@@ -549,10 +897,11 @@ const signConfig = ok
     function clearError(): void {
       if (errorEl) errorEl.hidden = true;
     }
-    function showSuccess(name: string): void {
+    function showSuccess(name: string, when?: string): void {
       if (form) form.hidden = true;
       if (sticky) sticky.hidden = true;
       if (successName) successName.textContent = name || '';
+      if (successTime && when) successTime.textContent = ` · signé le ${when}`;
       if (success) success.hidden = false;
     }
 
@@ -574,6 +923,7 @@ const signConfig = ok
       clearError();
 
       const accord = (document.getElementById('sign-accord') as HTMLInputElement | null)?.checked;
+      const consent = (document.getElementById('sign-consent') as HTMLInputElement | null)?.checked;
       const nom = (document.getElementById('sign-nom') as HTMLInputElement | null)?.value ?? '';
       const state: SignFormState = { nom, option: selectedOption() };
 
@@ -586,6 +936,22 @@ const signConfig = ok
         showError('Veuillez cocher « Bon pour accord » pour valider.');
         return;
       }
+      if (!consent) {
+        showError('Veuillez accepter de signer électroniquement pour continuer.');
+        return;
+      }
+
+      // Capture la signature manuscrite (PNG data URL) UNIQUEMENT si dessinée.
+      let signatureDataUrl = '';
+      if (canvas && hasInk) {
+        try {
+          signatureDataUrl = canvas.toDataURL('image/png');
+        } catch {
+          signatureDataUrl = '';
+        }
+      }
+      const signedAt = new Date();
+      const signedAtIso = signedAt.toISOString();
 
       submitting = true;
       if (submitBtn) submitBtn.disabled = true;
@@ -593,14 +959,20 @@ const signConfig = ok
       if (submitLabel) submitLabel.textContent = 'Signature…';
 
       try {
+        // Corps RÉTRO-COMPATIBLE : base (token/nom/option) + champs optionnels
+        // (signature, consentement, horodatage) que le backend peut ignorer.
+        const richBody = buildAcceptBodyRich(state, cfg.twoOptions, {
+          signature_data_url: signatureDataUrl,
+          consent_esign: true,
+          signed_at_client: signedAtIso,
+        });
         const res = await fetch('/api/proposition-accept', {
           method: 'POST',
           headers: { 'content-type': 'application/json' },
           body: JSON.stringify({
             token: cfg.token,
-            nom: nom.trim(),
-            option: state.option,
             twoOptions: cfg.twoOptions,
+            ...richBody,
           }),
         });
         const data = (await res.json()) as {
@@ -609,7 +981,7 @@ const signConfig = ok
           accepte_par_nom?: string;
         };
         if (res.ok && data.ok) {
-          showSuccess(data.accepte_par_nom || nom.trim());
+          showSuccess(data.accepte_par_nom || nom.trim(), frenchStamp(signedAt));
           return;
         }
         // 400 / 409 / 404 : message backend inline. 409 = déjà accepté →
@@ -643,5 +1015,62 @@ const signConfig = ok
     display: block;
     width: 100%;
     height: 100%;
+  }
+
+  /* WJ16 — courbe journalière : ratio réservé AVANT rendu (viewBox 360×170)
+     → zéro CLS. Le SVG enfant occupe 100 % de la largeur. */
+  .daily-curve-wrap {
+    width: 100%;
+    aspect-ratio: 360 / 170;
+  }
+  .daily-curve-wrap :global(svg) {
+    display: block;
+    width: 100%;
+    height: 100%;
+  }
+
+  /* WJ11 — pad de signature : hauteur fixe (zéro CLS) ; pas de débordement.
+     touch-none (classe utilitaire) empêche le scroll pendant le tracé. */
+  .sign-pad {
+    height: 160px;
+    cursor: crosshair;
+  }
+
+  /* WJ16 — animation : tracé des courbes + lever de soleil, GATÉE derrière
+     prefers-reduced-motion. Sans préférence de mouvement, les courbes sont
+     dessinées statiquement (dasharray neutre) — jamais cachées. */
+  @media (prefers-reduced-motion: no-preference) {
+    /* La ligne de production est tracée (dasharray sur une ligne pleine). */
+    .daily-curve-wrap :global(.curve-solar-line) {
+      stroke-dasharray: 600;
+      stroke-dashoffset: 600;
+      animation: curve-draw 1.6s ease-out forwards;
+    }
+    /* La conso (pointillée 4 3) ne peut pas être « tracée » sans casser son
+       motif : on la fait simplement apparaître en fondu, motif préservé. */
+    .daily-curve-wrap :global(.curve-cons-line) {
+      opacity: 0;
+      animation: curve-fade 1s ease-out 0.6s forwards;
+    }
+    .daily-curve-wrap :global(.curve-solar-fill) {
+      opacity: 0;
+      animation: curve-fade 1.2s ease-out 0.8s forwards;
+    }
+    .daily-curve-wrap :global(.curve-sun) {
+      transform-box: fill-box;
+      transform-origin: center;
+      opacity: 0;
+      animation: sun-rise 1.4s ease-out 0.3s forwards;
+    }
+  }
+  @keyframes curve-draw {
+    to { stroke-dashoffset: 0; }
+  }
+  @keyframes curve-fade {
+    to { opacity: 1; }
+  }
+  @keyframes sun-rise {
+    from { opacity: 0; transform: translateY(10px) scale(0.6); }
+    to { opacity: 0.9; transform: translateY(0) scale(1); }
   }
 </style>
