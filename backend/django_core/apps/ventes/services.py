@@ -746,6 +746,185 @@ def _build_acceptance_wa_url(*, devis):
         return None
 
 
+# ── QJ9 — Attribution first-touch + Meta CAPI hook ───────────────────────────
+
+#: Champs UTM/fbclid copiés du Lead vers etude_params du Devis à l'acceptation.
+_ATTRIBUTION_FIELDS = (
+    'fbclid', 'utm_source', 'utm_medium',
+    'utm_campaign', 'utm_content', 'utm_term',
+)
+
+
+def _persist_attribution(*, devis):
+    """QJ9 — Copie les champs d'attribution first-touch du lead vers le devis.
+
+    À l'acceptation, les UTM/fbclid du Lead d'origine sont snapshottés dans
+    ``devis.etude_params['attribution']`` (JSONField déjà sur le modèle — aucune
+    migration). Cette copie est LOSSLESS : l'attribution reste disponible même si
+    le lead est fusionné, archivé ou supprimé plus tard.
+
+    Idempotent : ne ré-écrit pas si une attribution est déjà présente.
+    Aucun impact sur les statuts (règle #4 — pure donnée dérivée en lecture seule).
+    Ne lève jamais : l'appelant attrape toute exception.
+    """
+    lead = getattr(devis, 'lead', None)
+    if lead is None:
+        return  # Devis sans lead — aucune attribution à copier.
+
+    params = dict(devis.etude_params or {})
+    if 'attribution' in params:
+        return  # Déjà présent — idempotent.
+
+    attribution = {}
+    for field in _ATTRIBUTION_FIELDS:
+        val = getattr(lead, field, None)
+        if val:
+            attribution[field] = val
+
+    if not attribution:
+        return  # Lead sans données d'attribution — rien à copier.
+
+    params['attribution'] = attribution
+    devis.etude_params = params
+    devis.save(update_fields=['etude_params'])
+    logger.info('QJ9: attribution copiée pour devis %s → %s',
+                getattr(devis, 'reference', '?'), list(attribution.keys()))
+
+
+def _fire_capi_signed_quote(*, devis):
+    """QJ9 — Émet un événement « SignedQuote » vers l'API Conversions Meta (CAPI).
+
+    Gate : si ``META_CAPI_ACCESS_TOKEN`` est absent (ou vide) dans les settings
+    ou l'environnement, on dégrade en no-op silencieux (log uniquement). Cela
+    permet de pré-câbler l'intégration sans créer de dépendance sur un token
+    absent en dev/staging.
+
+    Conformité règle #4 : ne touche jamais les statuts Devis/Facture.
+    Conformité règle #3 (CLAUDE.md) : le call HTTP CAPI est server-side — jamais
+    de création de campagne (interdit par règle #3).
+    Ne lève jamais : l'appelant attrape toute exception.
+
+    L'événement CAPI inclut les données d'attribution (fbclid/UTM) snapshottées
+    dans etude_params (QJ9 _persist_attribution) pour un matching maximal.
+
+    Env var attendue : ``META_CAPI_ACCESS_TOKEN`` (token de page Meta / CAPI).
+    Var optionnelle : ``META_CAPI_PIXEL_ID`` (Pixel ID — peut être vide).
+    """
+    import os
+    from django.conf import settings
+
+    token = (
+        getattr(settings, 'META_CAPI_ACCESS_TOKEN', None)
+        or os.environ.get('META_CAPI_ACCESS_TOKEN', '')
+        or ''
+    ).strip()
+    if not token:
+        logger.info(
+            'QJ9: CAPI SignedQuote ignoré pour devis %s — META_CAPI_ACCESS_TOKEN absent',
+            getattr(devis, 'reference', '?'))
+        return
+
+    pixel_id = (
+        getattr(settings, 'META_CAPI_PIXEL_ID', None)
+        or os.environ.get('META_CAPI_PIXEL_ID', '')
+        or ''
+    ).strip()
+
+    # Récupère l'attribution snapshottée (QJ9) ou tente le lead directement.
+    attribution = {}
+    params = devis.etude_params or {}
+    if 'attribution' in params:
+        attribution = params['attribution']
+    else:
+        lead = getattr(devis, 'lead', None)
+        if lead is not None:
+            for field in _ATTRIBUTION_FIELDS:
+                val = getattr(lead, field, None)
+                if val:
+                    attribution[field] = val
+
+    import hashlib
+    import time
+    import urllib.parse
+    import urllib.request
+    import json as _json
+
+    # Données de l'événement CAPI (hachage SHA-256 pour le PII).
+    def _sha256(val):
+        return hashlib.sha256((val or '').strip().lower().encode()).hexdigest()
+
+    event_time = int(time.time())
+    client = getattr(devis, 'client', None)
+    email_hash = _sha256(getattr(client, 'email', '') or '') if client else ''
+    phone_raw = ''
+    if client:
+        phone_raw = getattr(client, 'telephone', '') or ''
+    phone_digits = ''.join(c for c in (phone_raw or '') if c.isdigit())
+    phone_hash = _sha256(phone_digits) if phone_digits else ''
+
+    # Valeur de conversion : total TTC du devis (sans prix d'achat — règle #4).
+    try:
+        value = float(getattr(devis, 'total_ttc', None) or 0)
+    except (TypeError, ValueError):
+        value = 0.0
+
+    user_data = {}
+    if email_hash:
+        user_data['em'] = [email_hash]
+    if phone_hash:
+        user_data['ph'] = [phone_hash]
+    fbclid = attribution.get('fbclid', '')
+    if fbclid:
+        user_data['fbc'] = f'fb.1.{int(time.time() * 1000)}.{fbclid}'
+
+    custom_data = {
+        'currency': 'MAD',
+        'value': value,
+        'order_id': str(getattr(devis, 'reference', '')),
+    }
+    utm_source = attribution.get('utm_source', '')
+    if utm_source:
+        custom_data['utm_source'] = utm_source
+    utm_campaign = attribution.get('utm_campaign', '')
+    if utm_campaign:
+        custom_data['utm_campaign'] = utm_campaign
+
+    event = {
+        'event_name': 'SignedQuote',
+        'event_time': event_time,
+        'action_source': 'website',
+        'user_data': user_data,
+        'custom_data': custom_data,
+    }
+
+    payload = _json.dumps({'data': [event]}).encode('utf-8')
+    api_url = f'https://graph.facebook.com/v19.0/{pixel_id}/events' if pixel_id else None
+
+    if not api_url:
+        logger.info(
+            'QJ9: CAPI SignedQuote prêt pour devis %s (pixel non configuré — log seul) '
+            'fbclid=%s utm_source=%s value=%.2f MAD',
+            getattr(devis, 'reference', '?'), fbclid, utm_source, value)
+        return
+
+    params_qs = urllib.parse.urlencode({'access_token': token})
+    full_url = f'{api_url}?{params_qs}'
+    req = urllib.request.Request(
+        full_url, data=payload,
+        headers={'Content-Type': 'application/json'},
+        method='POST',
+    )
+    try:
+        with urllib.request.urlopen(req, timeout=5) as resp:
+            resp_body = resp.read().decode('utf-8', errors='replace')
+            logger.info(
+                'QJ9: CAPI SignedQuote envoyé pour devis %s — status %s body %.200s',
+                getattr(devis, 'reference', '?'), resp.status, resp_body)
+    except Exception as exc:
+        logger.warning('QJ9: CAPI SignedQuote HTTP échoué pour devis %s : %s',
+                       getattr(devis, 'reference', '?'), exc)
+
+
 def accept_devis(*, devis, user, nom='', date_acceptation=None, option='',
                  ip=None, user_agent='', consentement=True,
                  idempotent_reaccept=True):
@@ -832,6 +1011,13 @@ def accept_devis(*, devis, user, nom='', date_acceptation=None, option='',
         devis=devis, nom=nom, ip=ip,
         user_agent=user_agent, consentement=consentement,
     )
+    # QJ9 — Attribution first-touch : copie UTM/fbclid du lead vers etude_params
+    # du devis pour que l'attribution reste lossless même si le lead est fusionné.
+    try:
+        _persist_attribution(devis=devis)
+    except Exception as exc:  # noqa: BLE001 — best-effort
+        logger.warning('QJ9: _persist_attribution échoué pour devis %s : %s',
+                       getattr(devis, 'reference', '?'), exc)
     # QJ22 — Stockage de l'artefact PDF signé (proposition verrouillée).
     # Appelé APRÈS _create_esign_record pour que le DevisSignature existe déjà.
     _store_signed_pdf(devis=devis)
@@ -840,6 +1026,12 @@ def accept_devis(*, devis, user, nom='', date_acceptation=None, option='',
 
     devis_accepted.send(
         sender=Devis, devis=devis, user=user, ancien_statut=ancien)
+    # QJ9 — CAPI SignedQuote event (gated on META_CAPI_ACCESS_TOKEN).
+    try:
+        _fire_capi_signed_quote(devis=devis)
+    except Exception as exc:  # noqa: BLE001 — best-effort
+        logger.warning('QJ9: _fire_capi_signed_quote échoué pour devis %s : %s',
+                       getattr(devis, 'reference', '?'), exc)
     return devis
 
 

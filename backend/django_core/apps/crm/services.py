@@ -114,8 +114,10 @@ def avancer_stage_pour_devis(devis, ancien_statut, nouveau_statut, user):
     lead.save(update_fields=['stage'])
 
     if stage_cible == 'SIGNED':
-        # SIGNED_QUOTE_CAPI_HOOK: fire on transition INTO SIGNED — entering Signé here
-        # (auto via devis accepté) est équivalent à une entrée manuelle.
+        # QJ9 — CAPI SignedQuote : le hook réside dans ventes.services.accept_devis
+        # (_fire_capi_signed_quote, gated sur META_CAPI_ACCESS_TOKEN). L'avancée
+        # manuelle en masse vers SIGNED (set_stage bulk) ne reporte pas de devis
+        # accepté et ne dispose pas de l'attribution UTM — pas de CAPI ici.
         pass
 
     LeadActivity.objects.create(
@@ -930,7 +932,8 @@ def apply_bulk_action(*, company, user, lead_ids, op, params):
                 lead.stage = target_stage
                 lead.save(update_fields=['stage'])
                 activity.log_bulk_change(lead, user, 'stage', old, target_stage)
-                # SIGNED_QUOTE_CAPI_HOOK: entrée manuelle en masse dans SIGNED.
+                # QJ9 — entrée manuelle en masse dans SIGNED : pas de CAPI ici
+                # (pas de devis accepté associé ni d'attribution UTM disponible).
                 updated += 1
 
             elif op == 'set_canal':
