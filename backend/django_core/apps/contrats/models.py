@@ -49,6 +49,17 @@ class Contrat(models.Model):
         RESILIE = 'resilie', 'Résilié'
         EXPIRE = 'expire', 'Expiré'
 
+    class NiveauConfidentialite(models.TextChoices):
+        """Niveau de confidentialité d'un contrat.
+
+        - ``PUBLIC`` : visible par tout utilisateur authentifié de la société.
+        - ``INTERNE`` : visible uniquement par les Responsables et Administrateurs.
+        - ``CONFIDENTIEL`` : visible uniquement par les Administrateurs.
+        """
+        PUBLIC = 'public', 'Public'
+        INTERNE = 'interne', 'Interne'
+        CONFIDENTIEL = 'confidentiel', 'Confidentiel'
+
     company = models.ForeignKey(
         'authentication.Company',
         on_delete=models.CASCADE,
@@ -85,6 +96,17 @@ class Contrat(models.Model):
         verbose_name='Montant')
     devise = models.CharField(
         max_length=3, default='MAD', verbose_name='Devise')
+    # Niveau de confidentialité : contrôle la visibilité du contrat au sein de
+    # la société. PUBLIC = tous les utilisateurs authentifiés de la société ;
+    # INTERNE = uniquement Responsables et Administrateurs ; CONFIDENTIEL =
+    # uniquement Administrateurs. La valeur par défaut est INTERNE pour protéger
+    # les données contractuelles sans sur-exposer.
+    confidentialite = models.CharField(
+        max_length=20,
+        choices=NiveauConfidentialite.choices,
+        default=NiveauConfidentialite.INTERNE,
+        verbose_name='Confidentialité',
+    )
     created_by = models.ForeignKey(
         settings.AUTH_USER_MODEL,
         on_delete=models.SET_NULL,
