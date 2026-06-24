@@ -155,6 +155,7 @@ const NAV_SECTIONS = [
       { to: '/reporting',            label: 'Reporting',        icon: I.reporting,    roles: ['responsable','admin'] },
       { to: '/rapports',             label: 'Rapports',         icon: I.reporting,    roles: ['responsable','admin'] },
       { to: '/reporting/balance-agee', label: 'Balance âgée',   icon: I.reporting,    roles: ['responsable','admin'] },
+      { to: '/reporting/commercial', label: 'Tableau commercial', icon: I.reporting,  roles: ['responsable','admin'] },
     ],
   },
   {

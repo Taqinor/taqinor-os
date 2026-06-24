@@ -68,6 +68,12 @@ const reportingApi = {
   // FG99 — Rentabilité par segment (admin).
   profitability: (params) =>
     api.get('/reporting/insights/profitability/', { params }),
+  // QJ18 — Tableau de bord commercial (entonnoir, vélocité, classement).
+  commercialDashboard: (params) =>
+    api.get('/reporting/commercial/dashboard/', { params }),
+  // QJ19 — Win/loss par canal/source + top motifs de perte.
+  winLossBySource: (params) =>
+    api.get('/reporting/commercial/win-loss-by-source/', { params }),
 }
 
 export default reportingApi
