@@ -17,7 +17,7 @@ import type { APIRoute } from 'astro';
 import * as cf from 'cloudflare:workers';
 import {
   acceptEndpoint,
-  buildAcceptBody,
+  buildAcceptBodyRich,
   normalizeAcceptResponse,
   type OptionKey,
   type SignFormState,
@@ -59,7 +59,21 @@ export const POST: APIRoute = async ({ request }) => {
   // `twoOptions` est transmis par le client (il connaît l'état rendu de la page).
   // Quand il est vrai, l'option est incluse dans le corps relayé au backend.
   const twoOptions = body.twoOptions === true || body.twoOptions === 'true';
-  const upstreamBody = buildAcceptBody(form, twoOptions);
+
+  // WJ11 — champs e-signature OPTIONNELS, relayés tels quels et IGNORABLES par
+  // un backend non mis à jour (le contrat de base nom/option reste intact). On
+  // borne la taille du data URL pour éviter d'inonder l'upstream.
+  const signatureRaw = typeof body.signature_data_url === 'string' ? body.signature_data_url : '';
+  const signature_data_url =
+    signatureRaw.startsWith('data:image/') && signatureRaw.length <= 300_000 ? signatureRaw : '';
+  const consent_esign = body.consent_esign === true || body.consent_esign === 'true';
+  const signed_at_client = typeof body.signed_at_client === 'string' ? body.signed_at_client : '';
+
+  const upstreamBody = buildAcceptBodyRich(form, twoOptions, {
+    signature_data_url,
+    consent_esign,
+    signed_at_client,
+  });
 
   const url = acceptEndpoint(resolveApiBase(), token);
 
