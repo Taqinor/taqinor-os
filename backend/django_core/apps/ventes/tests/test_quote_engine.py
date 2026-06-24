@@ -1339,16 +1339,17 @@ class TestResidentialRenderer(TestCase):
         self.assertEqual(theme.fiche_slug('Structures acier'), '')
         self.assertEqual(theme.fiche_slug('Installation'), '')
 
-    def test_scan_to_sign_qr_when_segno_available(self):
-        """The scan-to-sign QR renders on page 3 (segno is a pinned dep). The
-        renderer guards the import so a missing wheel degrades to the text link
-        rather than breaking the PDF — so only assert when segno is importable."""
+    def test_scan_to_sign_qr_when_qrcode_available(self):
+        """The premium scan-to-sign QR renders on page 3 (qrcode is a pinned
+        dep). The renderer guards the import so a missing wheel degrades to the
+        text link rather than breaking the PDF — so only assert when qrcode is
+        importable."""
         html, _ = self._html_and_doc()
         # The textual sign link is ALWAYS present.
         self.assertIn('Signez en ligne', html)
         try:
-            import segno  # noqa: F401
+            import qrcode  # noqa: F401
         except Exception:
-            self.skipTest('segno not installed in this environment')
+            self.skipTest('qrcode not installed in this environment')
         self.assertIn('Scannez', html)
-        self.assertIn('data:image/svg+xml', html)
+        self.assertIn('data:image/png', html)

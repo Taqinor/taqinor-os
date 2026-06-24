@@ -36,8 +36,8 @@ plt.rcParams.update({
     "axes.titlecolor": NAVY,
 })
 
-_MONTHS = ["Jan", "Fév", "Mar", "Avr", "Mai", "Jun",
-           "Jul", "Aoû", "Sep", "Oct", "Nov", "Déc"]
+_MONTHS = ["Jan", "Fév", "Mar", "Avr", "Mai", "Juin",
+           "Juil", "Aoû", "Sep", "Oct", "Nov", "Déc"]
 
 
 def _uri(fig, dpi=210) -> str:
@@ -98,7 +98,7 @@ def coverage_donut(pct, w=1.95, h=1.95) -> str:
 
 
 def payback_curve(total_sans, total_avec, eco_s, eco_a, roi_s, roi_a,
-                  w=6.6, h=2.25) -> str:
+                  w=6.9, h=2.35) -> str:
     import numpy as np
     years = np.arange(0, 26)
     cs = np.array([(-total_sans + eco_s * y) / 1000 for y in years])
