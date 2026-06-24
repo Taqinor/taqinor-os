@@ -55,8 +55,10 @@ class RubriqueAdmin(admin.ModelAdmin):
 
 @admin.register(ProfilPaie)
 class ProfilPaieAdmin(admin.ModelAdmin):
-    list_display = ('id', 'employe', 'type_remuneration', 'affilie_cnss',
-                    'affilie_amo', 'affilie_cimr', 'actif', 'company')
+    list_display = ('id', 'employe', 'type_remuneration', 'salaire_base',
+                    'jours_travail_mensuel', 'heures_travail_mensuel',
+                    'affilie_cnss', 'affilie_amo', 'affilie_cimr',
+                    'actif', 'company')
     list_filter = ('type_remuneration', 'affilie_cnss', 'affilie_amo',
                    'affilie_cimr', 'actif')
     search_fields = ('employe__nom', 'employe__prenom', 'employe__matricule')
