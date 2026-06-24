@@ -43,6 +43,45 @@ def _rang_funnel(stage_key: str) -> int:
     return stages.STAGES.index(stage_key)
 
 
+# ── QJ7 — Avance automatique NEW → CONTACTED au premier contact ──────────────
+#
+# Kinds d'activité qui comptent comme « premier contact » :
+#   NOTE, APPEL, EMAIL — une CREATION ou MODIFICATION ne suffit pas.
+_CONTACT_KINDS = frozenset([
+    LeadActivity.Kind.NOTE,
+    LeadActivity.Kind.APPEL,
+    LeadActivity.Kind.EMAIL,
+])
+
+# Clé canonique de l'étape « Contacté » (STAGES.py — jamais hardcodée ailleurs).
+_STAGE_CONTACTED = 'CONTACTED'
+
+
+def avancer_stage_new_vers_contacted(lead, user) -> bool:
+    """Avance le stage du lead NEW → CONTACTED lors du premier contact.
+
+    « Premier contact » = première activité de type NOTE, APPEL ou EMAIL.
+    Idempotent : si le lead n'est plus à NEW (ou est perdu), ne fait rien et
+    renvoie False. Ne recule jamais une étape déjà plus avancée.
+    Renvoie True si l'avance a effectivement eu lieu, False sinon.
+    """
+    if lead.perdu:
+        return False
+    if lead.stage != stages.NEW:
+        return False
+    lead.stage = _STAGE_CONTACTED
+    lead.save(update_fields=['stage'])
+    LeadActivity.objects.create(
+        company=lead.company, lead=lead, user=user,
+        kind=LeadActivity.Kind.MODIFICATION,
+        field='stage', field_label='Étape',
+        old_value=stages.STAGE_LABELS[stages.NEW],
+        new_value=stages.STAGE_LABELS[_STAGE_CONTACTED],
+        body='auto — premier contact',
+    )
+    return True
+
+
 def avancer_stage_pour_devis(devis, ancien_statut, nouveau_statut, user):
     """Avance l'étape du lead quand le STATUT d'un devis change.
 
