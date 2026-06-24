@@ -1160,6 +1160,17 @@ class ShareLink(models.Model):
         related_name='share_links')
     created_at = models.DateTimeField(auto_now_add=True)
     expires_at = models.DateTimeField(default=_default_share_expiry)
+    # QJ1 — Suivi d'ouverture : première et dernière consultation + compteur.
+    # Tous nullable/default=0 → additive, aucune valeur sur les liens existants.
+    first_viewed_at = models.DateTimeField(
+        null=True, blank=True,
+        verbose_name='Première consultation')
+    last_viewed_at = models.DateTimeField(
+        null=True, blank=True,
+        verbose_name='Dernière consultation')
+    view_count = models.PositiveIntegerField(
+        default=0,
+        verbose_name='Nombre de consultations')
 
     class Meta:
         ordering = ['-created_at']

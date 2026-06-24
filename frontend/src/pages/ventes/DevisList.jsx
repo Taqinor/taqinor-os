@@ -931,6 +931,19 @@ export default function DevisList() {
                             </button>
                           </div>
                         )}
+                        {/* QJ1 — Badge de consultation : affiché quand le lien public
+                            a été ouvert au moins une fois. Nombre de vues + date. */}
+                        {d.deja_consulte && (
+                          <div
+                            className="mt-0.5 inline-flex items-center gap-1 rounded-full border border-primary/30 bg-primary/10 px-2 py-0.5 text-xs font-medium text-primary"
+                            title={d.derniere_consultation
+                              ? `Dernière ouverture : ${new Date(d.derniere_consultation).toLocaleString('fr-FR')}`
+                              : 'Document consulté'}
+                          >
+                            <Eye className="size-3" aria-hidden="true" />
+                            Consulté ×{d.nombre_vues ?? 1}
+                          </div>
+                        )}
                         {/* U5 — Documents générés depuis ce devis : factures (chips
                             cliquables → liste Factures) + bon de commande (→ BC).
                             Lecture seule, données du serializer. */}

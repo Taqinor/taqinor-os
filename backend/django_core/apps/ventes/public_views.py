@@ -8,7 +8,9 @@ Protections (L855) : chaque réponse publique porte « X-Robots-Tag: noindex »
 pour rester hors des moteurs de recherche, et l'accès est limité en débit par
 IP + jeton (throttle cache-based, sans dépendance externe ni rendu modifié).
 """
+from django.db.models import F
 from django.http import HttpResponse
+from django.utils import timezone
 from rest_framework import status
 from rest_framework.decorators import (
     api_view, permission_classes, throttle_classes,
@@ -80,6 +82,51 @@ def _not_found():
     ))
 
 
+def _stamp_view(link):
+    """QJ1 — Horodate la consultation du lien public et renvoie True si c'est
+    la première (first_viewed_at était None avant ce GET).
+
+    Race-safe : incrémente view_count via F-expression + refresh_from_db plutôt
+    qu'un read-modify-write. first_viewed_at n'est écrite qu'une seule fois
+    (via update() conditionnel sur le filtre pk + first_viewed_at__isnull=True),
+    ce qui est idempotent sous requêtes concurrentes. Best-effort : une exception
+    ne doit jamais remonter vers le client.
+    """
+    try:
+        now = timezone.now()
+        is_first = link.first_viewed_at is None
+        # Increment atomically; set last_viewed_at unconditionally.
+        ShareLink.objects.filter(pk=link.pk).update(
+            view_count=F('view_count') + 1,
+            last_viewed_at=now,
+        )
+        # Set first_viewed_at only once (conditioned on still being null so
+        # concurrent requests from the same client don't overwrite each other).
+        if is_first:
+            ShareLink.objects.filter(
+                pk=link.pk, first_viewed_at__isnull=True,
+            ).update(first_viewed_at=now)
+        link.refresh_from_db(fields=['view_count', 'last_viewed_at', 'first_viewed_at'])
+        return is_first
+    except Exception:  # noqa: BLE001 — best-effort, never break the public GET
+        return False
+
+
+def _notify_first_open(link):
+    """QJ1 — Sur la première ouverture, logue une note dans le chatter du lead
+    lié (si le devis porte un lead). Best-effort, silencieux sur erreur."""
+    try:
+        if not link.devis_id:
+            return
+        lead = getattr(link.devis, 'lead', None)
+        if lead is None:
+            return
+        from apps.crm.services import noter_devis_ouvert
+        noter_devis_ouvert(link.devis.reference, lead)
+    except Exception:  # noqa: BLE001 — best-effort, jamais de fuite
+        pass
+
+
 @api_view(['GET'])
 @permission_classes([AllowAny])
 @throttle_classes([PublicLinkRateThrottle])
@@ -92,6 +139,9 @@ def public_document(request, token):
     )
     if link is None or not link.is_valid:
         return _not_found()
+
+    # QJ1 — stamp the view (best-effort; True = first open).
+    is_first = _stamp_view(link)
 
     try:
         if link.devis_id:
@@ -113,6 +163,10 @@ def public_document(request, token):
             {'detail': 'Document indisponible pour le moment.'},
             status=status.HTTP_404_NOT_FOUND,
         ))
+
+    # QJ1 — chatter notification on first open (best-effort, after PDF success).
+    if is_first:
+        _notify_first_open(link)
 
     response = HttpResponse(pdf_bytes, content_type='application/pdf')
     response['Content-Disposition'] = f'inline; filename="{filename}"'
@@ -203,6 +257,12 @@ def proposal_data(request, token):
     link = _resolve_proposal_link(token)
     if link is None:
         return _not_found()
+
+    # QJ1 — stamp the view (best-effort; True = first open).
+    is_first = _stamp_view(link)
+    if is_first:
+        _notify_first_open(link)
+
     try:
         from .quote_engine.builder import build_quote_data
         devis = link.devis
@@ -260,6 +320,12 @@ def proposal_pdf(request, token):
     link = _resolve_proposal_link(token)
     if link is None:
         return _not_found()
+
+    # QJ1 — stamp the view (best-effort; True = first open).
+    is_first = _stamp_view(link)
+    if is_first:
+        _notify_first_open(link)
+
     try:
         # ERR74 — GET sûr : rendu + flux sans persister fichier_pdf.
         key = generate_premium_devis_pdf(
