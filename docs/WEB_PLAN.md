@@ -242,6 +242,44 @@ then Arabic mirrors**, same treatment.
 
 ---
 
+### W222–W235 — HOMEPAGE « THE BEST » ELEVATION v3 (founder request 2026-06-22)
+
+**Why.** After every polish round the founder still felt the homepage was "not the best" and
+asked whether the blue should become black. Design session outcome (2026-06-22): **keep the
+Majorelle blue** — it is Moroccan brand equity (Jardin Majorelle / YSL) and a deep slightly-blue
+night reads *more* premium than flat black, which would erase the identity. The agreed direction
+is **"elevated blue + Moroccan soul, applied with discipline"**: it ELEVATES the existing v2
+« élégance retenue » / « Cinéma du chantier » system — it does not replace it. The levers (from
+2026 best-in-class research) are **restraint, not reinvention**: more air, one consistent warm
+photo grade, brass used only on figures + the primary CTA, a single zellige signature, one
+editorial line, a taller cinematic hero, and the dark→light arc resolving in the lit diagnostic.
+
+**How it ships — PREVIEW-FIRST (live site untouched).** Build the whole elevated homepage on a
+**private preview route** `apps/web/src/pages/preview/accueil-v3.astro` (noindex, not in nav, out
+of sitemap via the `/preview/` filter, unlinked), **reusing the existing v2 components**
+(Layout, V2Enhance, Header, Footer, DiagnosticForm, Picture, Testimonials, FounderPortrait,
+BrandStrip, Faq, Article33Ribbon). The live `/` (`index.astro`) and the entire lead form / lead
+pipe stay **byte-for-byte unchanged** until the founder promotes it (W235 — a taste decision).
+**No new dependencies. Touch only `apps/web`. Lighthouse held 97–100, reduced-motion respected,
+zero layout shift. No invented figures** — reuse only already-published Taqinor data.
+
+- [ ] W222 — Scaffold `preview/accueil-v3.astro` as a faithful clone of the current homepage composition (same sections, same data, same components) so it renders identically to live `/` first — the baseline we then elevate. Inherit the `/preview/` noindex + sitemap guards. @files: apps/web/src/pages/preview/accueil-v3.astro
+- [ ] W223 — Taller cinematic hero: raise to ~100svh desktop, photo full-bleed as the protagonist, eyebrow + counting figure + headline anchored low, ONE primary brass CTA + WhatsApp ghost, scroll chevron. Keep count-up + Ken Burns; reduced-motion safe; zero CLS. @files: apps/web/src/pages/preview/accueil-v3.astro
+- [ ] W224 — Restraint on proof: feature **3** hero installations on the homepage (El Jadida 17,04 kWc · 21 406 kWh/an, Casablanca 11,36 kWc · 14 271 kWh/an, El Jadida 5,68 kWc · 7 135 kWh/an) + a quiet "Voir toutes les réalisations →" link; the full 8-photo gallery stays on the réalisations page. @files: apps/web/src/pages/preview/accueil-v3.astro
+- [ ] W225 — Warm "golden-hour" photo grade: ONE consistent, subtle grade (CSS filter or warm scrim) applied uniformly to homepage photography so it reads shot-by-one-hand; must not break AA contrast of overlaid text. @files: apps/web/src/styles/v3-photo-motion.css, apps/web/src/pages/preview/accueil-v3.astro
+- [ ] W226 — Brass discipline: gold appears ONLY on key figures (`.lum`) and the primary CTA; demote stray brass eyebrows/borders to lune/azur tokens elsewhere on the preview. @files: apps/web/src/pages/preview/accueil-v3.astro
+- [ ] W227 — New `ZelligeSignature.astro`: a refined single zellige motif divider + one editorial line (« Chaque chiffre de ce site est mesuré, pas promis. » / « L'étude d'abord. Le chantier ensuite. ») used ONCE between proof and solutions; brass hairline, reduced-motion safe. @files: apps/web/src/components/ZelligeSignature.astro, apps/web/src/pages/preview/accueil-v3.astro
+- [ ] W228 — Spacing & rhythm: apply `.section` / `.section-lg` vertical-rhythm tokens consistently so every section breathes; keep the dark→light seam into the diagnostic. @files: apps/web/src/pages/preview/accueil-v3.astro
+- [ ] W229 — Type discipline: lock display/body to the canonical Archivo/Hanken scale + two weights; tighten hero/section headline sizes & tracking per the elevated direction; zero CLS via the existing fallback metrics. @files: apps/web/src/pages/preview/accueil-v3.astro
+- [ ] W230 — Motion personality: one coherent discreet reveal language (`.cine-in` stagger) on section entrances, no gratuitous effects, all gated behind `prefers-reduced-motion`; verify zero CLS. @files: apps/web/src/pages/preview/accueil-v3.astro
+- [ ] W231 — Restore + sequence the full section set (Article 33 ribbon, proof, signature, solutions, pourquoi-Taqinor/trust, parcours, témoignages, fondateur, brand strip, FAQ, diagnostic, footer) in the agreed order — long-but-spacious, not short. @files: apps/web/src/pages/preview/accueil-v3.astro
+- [ ] W232 — Mobile + RTL pass: verify hero, proof, zellige signature and spacing hold at phone width and on the Arabic (dir=rtl) rendering; fix any overflow/crop. @files: apps/web/src/pages/preview/accueil-v3.astro
+- [ ] W233 — A11y + perf gate: AA contrast in full sun on all new text-over-photo, focus rings intact, Lighthouse 97–100, zero layout shift; extend the apps/web vitest guards where applicable. @files: apps/web/src/pages/preview/accueil-v3.astro, apps/web/tests
+- [ ] W234 — Private review aid: link `/preview/accueil-v3` from the existing private preview index (or add a one-line note) so the founder can open and judge it; noindex preserved. @files: apps/web/src/pages/preview/accueil-v3.astro
+- [ ] W235 — [BLOCKED: taste/promotion — founder's call] Promote `/preview/accueil-v3` to the live homepage (swap the `/` composition) once the founder approves the preview; live lead form / data flow stay byte-for-byte unchanged. → move to NEEDS YOUR INPUT until approved.
+
+---
+
 ### W70–W97 — 3D BUILDER AUDIT (canonical builder `/preview/toiture-3d-pro-11`, 2026-06-20)
 
 These tasks come from a June 2026 six-lane audit of the canonical 3D roof builder
