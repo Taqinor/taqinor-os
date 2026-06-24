@@ -80,6 +80,15 @@ function cleanAdresse(v: unknown): string | null {
   return s.length > 0 ? s : null;
 }
 
+/** E-mail (WJ3) — validation légère et bornée. On ne devine pas : sans « @ » ou
+ *  vide, on renvoie null (le champ est facultatif côté client). */
+function cleanEmail(v: unknown): string | null {
+  if (typeof v !== 'string') return null;
+  const s = v.trim().slice(0, 254);
+  // garde-fou minimal (pas une RFC complète) : un « @ » entouré de caractères.
+  return /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(s) ? s : null;
+}
+
 export const POST: APIRoute = async ({ request }) => {
   // Même garde-fou anti-spam que /api/preview-lead (bucket distinct par endpoint).
   const rl = rateLimit(`capture-lead:${clientIpFromRequest(request)}`);
@@ -121,6 +130,10 @@ export const POST: APIRoute = async ({ request }) => {
   const factureEte = eteDifferente ? cleanMoney(b.factureEte) : null;
   const raccordement = cleanRaccordement(b.raccordement);
   const adresse = cleanAdresse(b.adresse);
+  // WJ3 — e-mail facultatif joint au record (l'opt-in WhatsApp passe déjà par
+  // validateLead → record.whatsappOptIn). Le contrat reste additif : le récepteur
+  // ignore sans danger un champ inconnu.
+  const email = cleanEmail(b.email);
   // W3 — GPS issu du repère (priorité au repère validé ; sinon les champs gps* bruts).
   const gpsLat = roofPoint ? roofPoint.lat : cleanCoord(b.gpsLat);
   const gpsLng = roofPoint ? roofPoint.lng : cleanCoord(b.gpsLng);
@@ -136,6 +149,7 @@ export const POST: APIRoute = async ({ request }) => {
     eteDifferente,
     ...(raccordement ? { raccordement } : {}),
     ...(adresse ? { adresse } : {}),
+    ...(email ? { email } : {}),
     ...(gpsLat != null ? { gpsLat } : {}),
     ...(gpsLng != null ? { gpsLng } : {}),
   };

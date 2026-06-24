@@ -54,3 +54,23 @@ const LOCAL_BANDS: Record<BillRangeId, Omit<EstimateBand, 'source'>> = {
 export function localEstimateBand(id: BillRangeId): EstimateBand {
   return { ...LOCAL_BANDS[id], source: 'local' };
 }
+
+/**
+ * WJ1 — libellés d'amortissement indicatifs par TAILLE d'installation (kWc).
+ * Dérivés des `paybackLabel` déjà committés des bandes de tranche ci-dessus (mêmes
+ * fourchettes) : plus l'installation est grande, plus le retour est court. AUCUN
+ * nombre nouveau inventé — c'est un re-mapping des constantes existantes, utilisé
+ * par billEstimate.ts pour une estimation à partir de la facture SEULE (sans devis
+ * chiffré, puisqu'on n'a aucun prix €/kWc fiable côté site).
+ */
+export interface PaybackHint {
+  /** Taille maximale (kWc) couverte par ce libellé (inclus). */
+  maxKwc: number;
+  paybackLabel: string;
+}
+export const LOCAL_PAYBACK_BY_KWC: PaybackHint[] = [
+  { maxKwc: 4, paybackLabel: '6 à 8 ans' },
+  { maxKwc: 9, paybackLabel: '5 à 7 ans' },
+  { maxKwc: 15, paybackLabel: '4 à 6 ans' },
+  { maxKwc: Infinity, paybackLabel: '3 à 5 ans' },
+];

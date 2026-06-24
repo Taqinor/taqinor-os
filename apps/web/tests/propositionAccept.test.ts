@@ -79,6 +79,57 @@ describe('POST /api/proposition-accept — relais au backend', () => {
     expect(JSON.parse(init.body as string)).toEqual({ nom: 'Reda' });
   });
 
+  // WJ11 — le proxy relaie les champs e-signature OPTIONNELS (rétro-compatible).
+  it('WJ11 — relaie signature/consentement/horodatage quand fournis', async () => {
+    const fn = vi.fn().mockResolvedValue(upstream(200, { detail: 'Devis accepté', accepte_par_nom: 'Reda' }));
+    vi.stubGlobal('fetch', fn);
+
+    await call({
+      token: 'tok123',
+      nom: 'Reda',
+      option: 'avec_batterie',
+      twoOptions: true,
+      signature_data_url: 'data:image/png;base64,AAAA',
+      consent_esign: true,
+      signed_at_client: '2026-06-24T10:00:00Z',
+    });
+    const [, init] = fn.mock.calls[0] as [string, RequestInit];
+    expect(JSON.parse(init.body as string)).toEqual({
+      nom: 'Reda',
+      option: 'avec_batterie',
+      signature_data_url: 'data:image/png;base64,AAAA',
+      consent_esign: true,
+      signed_at_client: '2026-06-24T10:00:00Z',
+    });
+  });
+
+  it('WJ11 — sans champs e-signature, le corps reste le contrat de base (rétro-compat)', async () => {
+    const fn = vi.fn().mockResolvedValue(upstream(200, { detail: 'OK', accepte_par_nom: 'Reda' }));
+    vi.stubGlobal('fetch', fn);
+
+    await call({ token: 'tok', nom: 'Reda', twoOptions: false });
+    const [, init] = fn.mock.calls[0] as [string, RequestInit];
+    // Aucun champ optionnel ajouté → backend non mis à jour fonctionne comme avant.
+    expect(JSON.parse(init.body as string)).toEqual({ nom: 'Reda' });
+  });
+
+  it('WJ11 — rejette un data URL non-image ou surdimensionné (jamais relayé)', async () => {
+    const fn = vi.fn().mockResolvedValue(upstream(200, { detail: 'OK', accepte_par_nom: 'Reda' }));
+    vi.stubGlobal('fetch', fn);
+
+    await call({
+      token: 'tok',
+      nom: 'Reda',
+      twoOptions: false,
+      signature_data_url: 'javascript:alert(1)',
+      consent_esign: true,
+    });
+    const [, init] = fn.mock.calls[0] as [string, RequestInit];
+    const relayed = JSON.parse(init.body as string) as Record<string, unknown>;
+    expect(relayed.signature_data_url).toBeUndefined();
+    expect(relayed.consent_esign).toBe(true);
+  });
+
   it('400 backend → reflète le statut + detail', async () => {
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue(upstream(400, { detail: 'Le nom est requis.' })));
     const { status, json } = await call({ token: 'tok', nom: '', twoOptions: false });
