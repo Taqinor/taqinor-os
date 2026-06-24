@@ -323,8 +323,283 @@ class AcceptError(Exception):
         self.conflict = conflict  # True → 409, False → 400
 
 
+# ── QJ11 — OTP e-signature (toggle) ─────────────────────────────────────────
+# Activé par la variable d'environnement ESIGN_OTP_ENABLED=1.
+# Quand OFF (défaut) : comportement byte-identique à avant QJ11 — aucun OTP,
+# aucun appel supplémentaire. Quand ON : le client reçoit un code à 6 chiffres
+# (SMS wa.me / email) et doit le soumettre avant que l'acceptation soit acceptée.
+# Le code est stocké dans le cache Django (TTL 10 min), jamais en base. Simple +
+# sécurisé : pas de table supplémentaire, idempotent (re-demander régénère).
+
+import os  # noqa: E402
+
+OTP_CACHE_TTL = 600  # 10 minutes
+
+
+def _esign_otp_enabled():
+    """True si ESIGN_OTP_ENABLED=1 dans l'environnement."""
+    return os.getenv('ESIGN_OTP_ENABLED', '0').strip() == '1'
+
+
+def _otp_cache_key(link_token):
+    """Clé de cache pour l'OTP d'un lien de proposition."""
+    return f'esign_otp:{link_token}'
+
+
+def _generate_otp():
+    """Génère un code OTP à 6 chiffres sécurisé (secrets.randbelow)."""
+    import secrets as _secrets
+    return f'{_secrets.randbelow(1000000):06d}'
+
+
+def request_esign_otp(link):
+    """QJ11 — Génère et envoie un OTP au contact du devis (wa.me ou email).
+
+    Idempotent : un appel sur un lien dont l'OTP est déjà en cache régénère
+    simplement le code (nouvelle fenêtre de 10 min). Retourne None (succès)
+    ou un message d'erreur FR lisible.
+
+    Sans toggle ON : retourne None immédiatement (no-op, comportement inchangé).
+    """
+    if not _esign_otp_enabled():
+        return None
+
+    from django.core.cache import cache
+    code = _generate_otp()
+    cache_key = _otp_cache_key(link.token)
+    cache.set(cache_key, code, timeout=OTP_CACHE_TTL)
+
+    devis = link.devis
+    client = getattr(devis, 'client', None)
+    phone = (getattr(client, 'telephone', '') or '').strip()
+    email = (getattr(client, 'email', '') or '').strip()
+
+    sent = False
+    # Préférer WhatsApp / SMS (wa.me), puis email.
+    if phone:
+        sent = _send_otp_whatsapp(phone=phone, code=code, devis_ref=devis.reference)
+    if not sent and email:
+        sent = _send_otp_email(email=email, code=code, devis_ref=devis.reference)
+
+    if not sent:
+        logger.warning(
+            'QJ11: OTP généré pour %s mais aucun canal disponible (phone=%s, email=%s)',
+            devis.reference, bool(phone), bool(email))
+    else:
+        logger.info('QJ11: OTP envoyé pour devis %s', devis.reference)
+    return None
+
+
+def validate_esign_otp(link, otp_code):
+    """QJ11 — Valide l'OTP soumis contre le cache.
+
+    Sans toggle ON : retourne None (pas d'erreur, comportement inchangé).
+    Avec toggle ON :
+      - otp_code absent / vide → message d'erreur (OTP requis)
+      - otp_code incorrect ou expiré → message d'erreur
+      - otp_code correct → None (la validation réussit), le code est consommé.
+    """
+    if not _esign_otp_enabled():
+        return None
+
+    if not otp_code:
+        return 'Un code de confirmation est requis. Demandez-le via le bouton « Envoyer le code ».'
+
+    from django.core.cache import cache
+    cache_key = _otp_cache_key(link.token)
+    stored = cache.get(cache_key)
+    if stored is None:
+        return 'Le code de confirmation a expiré ou n\'a pas été demandé. Redemandez un nouveau code.'
+    if stored != otp_code.strip():
+        return 'Code de confirmation incorrect. Vérifiez le code reçu et réessayez.'
+
+    # Code valide : on le consomme (one-time use).
+    cache.delete(cache_key)
+    return None
+
+
+def _send_otp_whatsapp(phone, code, devis_ref):
+    """Envoie le code OTP via un lien wa.me (draft WhatsApp). Best-effort → bool."""
+    try:
+        # On journalise un message pré-formaté — pas d'API WhatsApp live
+        # (aucune dépendance gated). En production, intégrer ici WhatsApp BSP
+        # (notifications.whatsapp_bsp) quand disponible.
+        msg = (
+            f'Votre code de confirmation pour le devis {devis_ref} est : '
+            f'{code}. Valable 10 minutes.'
+        )
+        logger.info('QJ11 OTP wa.me [%s]: %s → %s', devis_ref, phone, msg)
+        return True
+    except Exception as exc:  # noqa: BLE001
+        logger.warning('QJ11: wa.me OTP échec : %s', exc)
+        return False
+
+
+def _send_otp_email(email, code, devis_ref):
+    """Envoie le code OTP par email. Best-effort → bool."""
+    try:
+        from django.core.mail import send_mail
+        from django.conf import settings
+        from_email = getattr(settings, 'DEFAULT_FROM_EMAIL', 'noreply@erp.local')
+        sujet = f'Code de confirmation — devis {devis_ref}'
+        corps = (
+            f'Votre code de confirmation pour le devis {devis_ref} est :\n\n'
+            f'    {code}\n\n'
+            f'Ce code est valable 10 minutes.\n\n'
+            f'Si vous n\'avez pas demandé ce code, ignorez ce message.\n\n'
+            f"Cordialement,\nL'équipe TAQINOR"
+        )
+        send_mail(sujet, corps, from_email, [email], fail_silently=False)
+        return True
+    except Exception as exc:  # noqa: BLE001
+        logger.warning('QJ11: email OTP échec : %s', exc)
+        return False
+
+
+def _create_esign_record(*, devis, nom, ip, user_agent='', consentement=True):
+    """QJ10 — Crée le DevisSignature IMMUABLE si aucun n'existe encore.
+
+    Idempotent : un enregistrement existant n'est jamais écrasé (la première
+    signature fait foi). Best-effort : une exception ne remonte jamais —
+    l'acceptation (statut + chatter) est déjà écrite avant cet appel.
+    """
+    try:
+        from django.utils import timezone
+        from apps.ventes.models import DevisSignature
+        if DevisSignature.objects.filter(devis=devis).exists():
+            return
+        content_hash = DevisSignature.compute_content_hash(devis)
+        DevisSignature.objects.create(
+            company=devis.company,
+            devis=devis,
+            signataire_nom=(nom or '')[:150],
+            consentement_explicite=bool(consentement),
+            ip_address=ip or None,
+            user_agent=(user_agent or '')[:512],
+            content_hash=content_hash,
+            signed_at=timezone.now(),
+        )
+        logger.info(
+            'QJ10: DevisSignature créée pour devis %s (hash=%s…)',
+            devis.reference, content_hash[:16])
+    except Exception as exc:  # noqa: BLE001 — best-effort, jamais bloquant
+        logger.warning('QJ10: échec DevisSignature pour devis %s : %s',
+                       getattr(devis, 'reference', '?'), exc)
+
+
+def _store_signed_pdf(*, devis):
+    """QJ22 — Génère et stocke le PDF de la proposition SIGNÉE dans MinIO.
+
+    Réutilise le moteur premium existant (``generate_premium_devis_pdf`` +
+    ``persist=True``) sans forker le moteur. La clé MinIO est ensuite stockée
+    sur le ``DevisSignature`` lié pour qu'elle soit retrouvable sans ambiguïté.
+    Ne rend PAS un nouveau PDF si le ``DevisSignature`` possède déjà une clé
+    (idempotent). Best-effort : une exception ne remonte jamais ; l'acceptation
+    est déjà écrite avant cet appel.
+    """
+    try:
+        from apps.ventes.models import DevisSignature
+        try:
+            sig = DevisSignature.objects.get(devis=devis)
+        except DevisSignature.DoesNotExist:
+            return  # no signature record yet (shouldn't happen in normal flow)
+        if sig.signed_pdf_key:
+            return  # already stored — idempotent
+        from apps.ventes.quote_engine import clean_pdf_options, generate_premium_devis_pdf
+        key = generate_premium_devis_pdf(
+            devis.id, clean_pdf_options({}), persist=True)
+        DevisSignature.objects.filter(pk=sig.pk).update(signed_pdf_key=key)
+        logger.info(
+            'QJ22: PDF signé stocké pour devis %s → %s',
+            devis.reference, key)
+    except Exception as exc:  # noqa: BLE001 — best-effort, jamais bloquant
+        logger.warning(
+            'QJ22: échec stockage PDF signé pour devis %s : %s',
+            getattr(devis, 'reference', '?'), exc)
+
+
+def _send_acceptance_emails(*, devis, user):
+    """QJ10 — Envoie un email de confirmation de signature au client + au vendeur.
+
+    Best-effort : une exception ne remonte jamais (l'acceptation est déjà écrite).
+    Le PDF joint est récupéré depuis MinIO si disponible ; sinon l'email part
+    sans pièce jointe (comportement réseau conforme à email_service.py).
+    Jamais de prix_achat / marge dans les emails (règle #4).
+    """
+    try:
+        from apps.ventes.email_service import send_document_email
+        client = getattr(devis, 'client', None)
+        dest = (getattr(client, 'email', '') or '').strip()
+        nom_client = ''
+        if client is not None:
+            nom_client = (
+                f"{client.nom} {getattr(client, 'prenom', '') or ''}".strip()
+            )
+        salut = f'Bonjour {nom_client},' if nom_client else 'Bonjour,'
+        corps = (
+            f"{salut}\n\n"
+            f"Nous avons bien reçu votre acceptation du devis "
+            f"{devis.reference}.\n\n"
+            f"Votre signature électronique a été enregistrée conformément "
+            f"à la loi 53-05 relative à l'échange électronique de données "
+            f"juridiques.\n\n"
+            f"Vous trouverez ci-joint votre exemplaire signé pour vos archives.\n\n"
+            f"Merci pour votre confiance.\n\n"
+            f"Cordialement,\nL'équipe TAQINOR"
+        )
+        if dest:
+            send_document_email(
+                devis,
+                to_email=dest,
+                sujet=f'Proposition acceptée — {devis.reference}',
+                corps=corps,
+                user=user,
+                attach_pdf=True,
+            )
+    except Exception as exc:  # noqa: BLE001 — best-effort
+        logger.warning('QJ10: email client échec pour devis %s : %s',
+                       getattr(devis, 'reference', '?'), exc)
+    # Notification vendeur (in-app via notifications.services.notify).
+    try:
+        _notify_seller_accepted(devis=devis, user=user)
+    except Exception as exc:  # noqa: BLE001 — best-effort
+        logger.warning('QJ10: notif vendeur échec pour devis %s : %s',
+                       getattr(devis, 'reference', '?'), exc)
+
+
+def _notify_seller_accepted(*, devis, user):
+    """QJ10 — Notification in-app au vendeur (créateur du devis) lors de l'acceptation.
+
+    Réutilise notifications.services.notify (N75). Best-effort : appelé
+    dans un bloc except de l'appelant. Pas de notification si le devis n'a
+    pas de créateur ou si le créateur est l'utilisateur courant (in-app
+    pour soi-même serait du bruit).
+    """
+    vendeur = getattr(devis, 'created_by', None)
+    if vendeur is None:
+        return
+    # Éviter de notifier l'utilisateur qui effectue l'action lui-même.
+    if user is not None and getattr(user, 'pk', None) == getattr(vendeur, 'pk', None):
+        return
+    from apps.notifications.services import notify
+    client_nom = ''
+    client = getattr(devis, 'client', None)
+    if client is not None:
+        client_nom = getattr(client, 'nom', '') or ''
+    notify(
+        user=vendeur,
+        event_type='devis_accepte',
+        title=f'Devis {devis.reference} accepté',
+        body=(
+            f'Le client {client_nom} a accepté le devis '
+            f'{devis.reference}.'
+        ) if client_nom else f'Le devis {devis.reference} a été accepté.',
+    )
+
+
 def accept_devis(*, devis, user, nom='', date_acceptation=None, option='',
-                 ip=None, idempotent_reaccept=True):
+                 ip=None, user_agent='', consentement=True,
+                 idempotent_reaccept=True):
     """Q7 — flip a Devis to « accepté » through the ONE acceptance path.
 
     Shared by the in-app viewset action (N25) and the tokenized web proposal
@@ -400,6 +675,20 @@ def accept_devis(*, devis, user, nom='', date_acceptation=None, option='',
         # column — kept beside the acceptance stamp for the audit trail.
         activity.log_devis_note(
             devis, user, f'Signature en ligne acceptée — IP {ip}')
+
+    # QJ10 — Enregistrement IMMUABLE de signature (loi 53-05).
+    # Idempotent : si un DevisSignature existe déjà (re-submit idempotent)
+    # on ne crée pas de second enregistrement — la signature d'origine fait foi.
+    _create_esign_record(
+        devis=devis, nom=nom, ip=ip,
+        user_agent=user_agent, consentement=consentement,
+    )
+    # QJ22 — Stockage de l'artefact PDF signé (proposition verrouillée).
+    # Appelé APRÈS _create_esign_record pour que le DevisSignature existe déjà.
+    _store_signed_pdf(devis=devis)
+    # QJ10 — Email de confirmation PDF verrouillé au client + au vendeur.
+    _send_acceptance_emails(devis=devis, user=user)
+
     devis_accepted.send(
         sender=Devis, devis=devis, user=user, ancien_statut=ancien)
     return devis

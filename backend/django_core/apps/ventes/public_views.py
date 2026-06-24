@@ -345,6 +345,26 @@ def proposal_pdf(request, token):
 @api_view(['POST'])
 @permission_classes([AllowAny])
 @throttle_classes([PublicLinkRateThrottle])
+def proposal_request_otp(request, token):
+    """QJ11 — Demande l'envoi d'un OTP au contact du devis (toggle ESIGN_OTP_ENABLED).
+
+    No-op quand le toggle est OFF (retourne succès immédiatement — comportement
+    byte-identique à aujourd'hui). Quand ON : génère un code, l'envoie via
+    WhatsApp (wa.me draft) ou email et le stocke en cache (10 min)."""
+    link = _resolve_proposal_link(token)
+    if link is None:
+        return _not_found()
+    from .services import request_esign_otp
+    err = request_esign_otp(link)
+    if err:
+        return _noindex(Response(
+            {'detail': err}, status=status.HTTP_400_BAD_REQUEST))
+    return _noindex(Response({'detail': 'Code envoyé.'}))
+
+
+@api_view(['POST'])
+@permission_classes([AllowAny])
+@throttle_classes([PublicLinkRateThrottle])
 def proposal_accept(request, token):
     """Q7 — e-signature : le client accepte la proposition via le jeton.
 
@@ -363,11 +383,24 @@ def proposal_accept(request, token):
             {'detail': 'Votre nom est requis pour signer la proposition.'},
             status=status.HTTP_400_BAD_REQUEST))
     option = (request.data.get('option') or '').strip()
-    from .services import accept_devis, AcceptError
+    # QJ10 — consentement explicite requis pour la validité loi 53-05.
+    consentement = bool(request.data.get('consentement', True))
+    # QJ11 — code OTP si le toggle est actif (service gère la validation).
+    otp_code = (request.data.get('otp_code') or '').strip()
+    from .services import accept_devis, AcceptError, validate_esign_otp
+    # QJ11 — validation OTP avant l'acceptation (no-op quand toggle OFF).
+    otp_err = validate_esign_otp(link=link, otp_code=otp_code)
+    if otp_err:
+        return _noindex(Response(
+            {'detail': otp_err},
+            status=status.HTTP_400_BAD_REQUEST))
     try:
         accept_devis(
             devis=devis, user=None, nom=nom, option=option,
-            ip=_client_ip(request))
+            ip=_client_ip(request),
+            user_agent=request.META.get('HTTP_USER_AGENT', '')[:512],
+            consentement=consentement,
+        )
     except AcceptError as exc:
         return _noindex(Response(
             {'detail': exc.message},

@@ -218,6 +218,35 @@ class DevisSerializer(serializers.ModelSerializer):
         except Exception:
             return None
 
+    # QJ22 — État de signature électronique (loi 53-05). Lecture seule.
+    # ``est_signe`` : True si un DevisSignature immuable existe pour ce devis.
+    # ``signature_info`` : dict minimal (signataire_nom, signed_at, has_pdf) —
+    # jamais d'IP ni d'user_agent dans l'API interne (données personnelles) ;
+    # jamais de prix_achat/marge.
+    est_signe = serializers.SerializerMethodField()
+    signature_info = serializers.SerializerMethodField()
+
+    def get_est_signe(self, obj):
+        """True si un DevisSignature (loi 53-05) existe pour ce devis."""
+        try:
+            return obj.signature is not None
+        except Exception:
+            return False
+
+    def get_signature_info(self, obj):
+        """Informations minimales de signature (sans données personnelles)."""
+        try:
+            sig = obj.signature
+        except Exception:
+            return None
+        if sig is None:
+            return None
+        return {
+            'signataire_nom': sig.signataire_nom,
+            'signed_at': sig.signed_at.isoformat() if sig.signed_at else None,
+            'has_pdf': bool(sig.signed_pdf_key),
+        }
+
     # QJ1 — Statistiques de consultation du lien public (lecture seule).
     # Agrégat sur tous les ShareLinks du devis (on prend le lien le plus récent
     # encore valide, ou le dernier tout court). Aucun prix d'achat/marge exposé.

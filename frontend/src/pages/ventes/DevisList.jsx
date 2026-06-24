@@ -1025,6 +1025,31 @@ export default function DevisList() {
                             Option : {d.option_acceptee === 'avec_batterie' ? 'Avec batterie' : 'Sans batterie'}
                           </div>
                         )}
+                        {/* QJ22 — Badge « Proposition signée » : affiché quand un
+                            DevisSignature (loi 53-05) existe pour ce devis accepté.
+                            Indique que la signature électronique légale a été
+                            enregistrée + le PDF de proposition signé est disponible. */}
+                        {d.est_signe && (
+                          <div
+                            className="mt-1 inline-flex items-center gap-1 rounded-full border border-success/40 bg-success/10 px-2 py-0.5 text-xs font-medium text-success"
+                            title={
+                              d.signature_info
+                                ? [
+                                    `Signé par : ${d.signature_info.signataire_nom || '—'}`,
+                                    d.signature_info.signed_at
+                                      ? `le ${new Date(d.signature_info.signed_at).toLocaleString('fr-FR')}`
+                                      : null,
+                                    d.signature_info.has_pdf
+                                      ? 'PDF signé disponible'
+                                      : null,
+                                  ].filter(Boolean).join(' ')
+                                : 'Proposition signée (loi 53-05)'
+                            }
+                          >
+                            <Check className="size-3" aria-hidden="true" />
+                            Proposition signée
+                          </div>
+                        )}
                         {/* U8 — état du bon de commande lié (lecture seule, depuis
                             le OneToOne existant) + avertissement d'incohérence
                             quand un devis accepté n'a pas de BC actif. */}
