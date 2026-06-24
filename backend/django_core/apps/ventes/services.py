@@ -194,6 +194,86 @@ def extract_roof_config(layout):
     return cfg
 
 
+def layout_hash(layout):
+    """QJ17 — deterministic SHA-256 fingerprint of a roof layout dict.
+
+    Used to detect duplicate ``from-layout`` submissions (same geometry re-sent
+    after a network retry or a double-click).  Only the geometry-bearing keys are
+    hashed (``zones``/``areas``/``pans``, ``result``, ``scenario``, ``panelWatt``,
+    ``watt``, ``battery``) so that transient UI state (``pin``, ``outline``,
+    ``billKwh``, ``activeAreaId``, ``renderPlan``…) never prevents deduplication.
+    """
+    import hashlib
+    import json as _json
+
+    if not isinstance(layout, dict):
+        return ''
+    canonical = {
+        'zones': layout.get('zones') or layout.get('areas') or layout.get('pans'),
+        'result': layout.get('result'),
+        'scenario': layout.get('scenario'),
+        'panelWatt': layout.get('panelWatt') or layout.get('watt'),
+        'battery': bool(layout.get('battery')),
+    }
+    blob = _json.dumps(canonical, sort_keys=True, separators=(',', ':'),
+                       default=str)
+    return hashlib.sha256(blob.encode()).hexdigest()
+
+
+def validate_composition_for_layout(layout, company):
+    """QJ17 — pre-flight composition check before building a devis.
+
+    Returns ``None`` when the composition is valid.  Returns a list of French
+    error strings when problems are detected (caller should surface them inline
+    rather than raising a PDF error at render time).
+
+    Rules (aligned with quote_engine/builder.py keyword classification):
+    - At least 1 panel is required.
+    - A battery scenario requires both a hybrid inverter AND a battery in the
+      catalogue (priced); if either is missing, warn the agent.
+    - A réseau scenario requires a réseau/injection inverter (priced).
+    - A price-less required product blocks the composition (never auto-quote it).
+    """
+    if not isinstance(layout, dict):
+        return ['Layout invalide — impossible de valider la composition.']
+
+    result = dict((layout.get('result') or {}))
+    nb_panneaux = int(result.get('panels') or 0)
+    toiture = extract_roof_config(layout)
+    if nb_panneaux <= 0 and toiture.get('nb_panneaux'):
+        nb_panneaux = int(toiture['nb_panneaux'])
+
+    errors = []
+    if nb_panneaux <= 0:
+        errors.append(
+            'Aucun panneau détecté dans le layout. '
+            'Terminez le tracé du toit et relancez l\'optimiseur avant de générer.')
+
+    scenario = (layout.get('scenario') or '').lower()
+    wants_battery = ('batterie' in scenario or 'hybride' in scenario
+                     or bool(layout.get('battery')))
+
+    if wants_battery:
+        inv = _pick_product(company, _is_hybrid_inverter)
+        bat = _pick_product(company, _is_battery)
+        if inv is None:
+            errors.append(
+                'Aucun onduleur hybride disponible (ou sans prix) dans le catalogue. '
+                'Ajoutez un onduleur hybride tarifé avant de générer ce devis.')
+        if bat is None:
+            errors.append(
+                'Aucune batterie disponible (ou sans prix) dans le catalogue. '
+                'Ajoutez une batterie tarifée avant de générer ce devis.')
+    else:
+        inv = _pick_product(company, _is_reseau_inverter)
+        if inv is None:
+            errors.append(
+                'Aucun onduleur réseau disponible (ou sans prix) dans le catalogue. '
+                'Ajoutez un onduleur réseau/injection tarifé avant de générer.')
+
+    return errors if errors else None
+
+
 def build_devis_from_layout(*, layout, user, company, lead=None, client=None,
                             taux_tva=Decimal('20'), remise_globale=Decimal('0')):
     """Q3 — turn a FINALISED roof layout into a coherent, company-scoped Devis.
@@ -207,6 +287,11 @@ def build_devis_from_layout(*, layout, user, company, lead=None, client=None,
     resolved server-side from the lead via crm.services (no duplicates). The
     layout's production/savings are stored into ``etude_params``. A price-less
     catalogue product is NEVER quoted.
+
+    QJ21 — the stored ``roof_layout`` is enriched with a ``_pans_geometry`` key
+    holding the processed per-pan list (azimut_deg, inclinaison_deg, kwc,
+    nb_panneaux, orientation, label, roof_type) so consumers never have to
+    re-run ``extract_roof_config`` to access the full multi-plane design.
 
     Returns the created Devis. The Devis is left ``brouillon`` — this service
     only BUILDS; it never changes downstream statuses (rule #4).
@@ -282,6 +367,14 @@ def build_devis_from_layout(*, layout, user, company, lead=None, client=None,
     if toiture:
         etude_params['toiture'] = toiture
 
+    # QJ21 — enrich roof_layout with a ``_pans_geometry`` key carrying the
+    # PROCESSED per-pan data (azimut_deg, inclinaison_deg, kwc, nb_panneaux,
+    # orientation, label, roof_type) so consumers never have to re-run
+    # extract_roof_config.  We copy rather than mutate the caller's dict.
+    stored_layout = dict(layout)
+    if toiture and toiture.get('pans'):
+        stored_layout['_pans_geometry'] = toiture['pans']
+
     def _create(ref):
         devis = Devis.objects.create(
             company=company,
@@ -294,7 +387,7 @@ def build_devis_from_layout(*, layout, user, company, lead=None, client=None,
             created_by=user,
             mode_installation=Devis.ModeInstallation.RESIDENTIEL,
             etude_params=etude_params or None,
-            roof_layout=layout,
+            roof_layout=stored_layout,
         )
         for produit, designation, quantite in line_specs:
             LigneDevis.objects.create(
@@ -309,8 +402,10 @@ def build_devis_from_layout(*, layout, user, company, lead=None, client=None,
 
     devis = create_with_reference(Devis, 'DEV', company, _create)
     logger.info(
-        'Q3: devis %s built from layout (%d lignes, %.2f kWc, company %s)',
-        devis.reference, len(line_specs), kwc, getattr(company, 'id', '?'))
+        'Q3/QJ21: devis %s built from layout (%d lignes, %.2f kWc, %d pans, company %s)',
+        devis.reference, len(line_specs), kwc,
+        len(toiture.get('pans', [])) if toiture else 0,
+        getattr(company, 'id', '?'))
     return devis
 
 
