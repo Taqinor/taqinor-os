@@ -11,6 +11,7 @@ import AssigneePicker from '../../components/AssigneePicker'
 import ActivitiesPanel from '../../components/ActivitiesPanel'
 import AttachmentsPanel from '../../components/AttachmentsPanel'
 import CustomFieldsInput from '../../components/CustomFieldsInput'
+import AppointmentBooker from './leads/AppointmentBooker'
 import LeadDevisPanel from './leads/LeadDevisPanel'
 import SigneDialog from './leads/SigneDialog'
 import { CONVERSION_STAGE } from '../../features/crm/stages'
@@ -918,6 +919,8 @@ export default function LeadForm({ lead = null, onClose, onSaved, initialDevis =
                   <Txt fields={fields} set={set} k="visite_notes" label="Notes de visite" />
                 </div>
               </div>
+              {/* QJ20 — Planifier une visite (inline, edit mode seulement) */}
+              {isEdit && <AppointmentBooker leadId={lead.id} />}
             </Sec>
 
             {/* ── Origine web (taqinor.ma) — lecture seule ; masquée si tout vide.

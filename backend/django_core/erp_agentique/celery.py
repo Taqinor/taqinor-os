@@ -23,6 +23,7 @@ app.conf.enable_utc = False
 #   - rappels de relance programmés (07:00) — apps/ventes/scheduled.py,
 #   - QJ4 : relance cadencée des devis envoyés (08:15) — apps/ventes/scheduled.py,
 #   - QJ5 : expiration automatique des devis + hygiène funnel (01:00) — apps/ventes/scheduled.py,
+#   - QJ20 : rappels de rendez-vous (toutes les 15 min) — apps/ventes/scheduled.py,
 #   - N76 : récapitulatif quotidien (07:30) et hebdomadaire le lundi (07:30) —
 #     apps/notifications/digests.py,
 #   - FG1 : balayage quotidien des EventTypes morts (08:00) —
@@ -39,6 +40,10 @@ app.conf.beat_schedule = {
     'ventes-expire-stale-devis': {
         'task': 'ventes.expire_stale_devis',
         'schedule': crontab(hour=1, minute=0),
+    },
+    'crm-appointment-reminders': {
+        'task': 'crm.appointment_reminders',
+        'schedule': crontab(minute='*/15'),  # every 15 minutes
     },
     'ventes-relance-reminders': {
         'task': 'ventes.relance_reminders',

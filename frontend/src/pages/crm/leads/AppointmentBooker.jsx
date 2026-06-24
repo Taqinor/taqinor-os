@@ -1,0 +1,191 @@
+/* QJ20 — Planifier une visite (inline dans la fiche lead).
+   Contrôle minimal, style cohérent avec la fiche existante.
+   Un clic sur « Planifier une visite » révèle un mini-formulaire
+   (date/heure + notes optionnelles) ; la soumission POST /crm/appointments/
+   et affiche les RDV existants du lead. Aucun état global Redux : local only. */
+import { useState, useEffect, useCallback } from 'react'
+import crmApi from '../../../api/crmApi'
+
+const STATUS_LABELS = {
+  planifie: 'Planifié',
+  confirme: 'Confirmé',
+  effectue: 'Effectué',
+  annule: 'Annulé',
+}
+
+export default function AppointmentBooker({ leadId }) {
+  const [open, setOpen] = useState(false)
+  const [scheduledAt, setScheduledAt] = useState('')
+  const [notes, setNotes] = useState('')
+  const [saving, setSaving] = useState(false)
+  const [error, setError] = useState(null)
+  const [appointments, setAppointments] = useState([])
+  const [loading, setLoading] = useState(false)
+
+  const load = useCallback(() => {
+    if (!leadId) return
+    setLoading(true)
+    crmApi.getAppointments(leadId)
+      .then(r => setAppointments(Array.isArray(r.data) ? r.data : (r.data?.results ?? [])))
+      .catch(() => {})
+      .finally(() => setLoading(false))
+  }, [leadId])
+
+  useEffect(() => { load() }, [load])
+
+  async function handleBook(e) {
+    e.preventDefault()
+    if (!scheduledAt) { setError('La date et heure sont requises.'); return }
+    setSaving(true)
+    setError(null)
+    try {
+      await crmApi.createAppointment({ lead: leadId, scheduled_at: scheduledAt, notes })
+      setOpen(false)
+      setScheduledAt('')
+      setNotes('')
+      load()
+    } catch (err) {
+      setError(
+        err?.response?.data?.detail
+        || err?.response?.data?.scheduled_at?.[0]
+        || 'Erreur lors de la création du rendez-vous.'
+      )
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  async function handleCancel(apptId) {
+    try {
+      await crmApi.updateAppointment(apptId, { statut: 'annule' })
+      load()
+    } catch {
+      // best-effort
+    }
+  }
+
+  const upcoming = appointments.filter(a => a.statut !== 'annule' && a.statut !== 'effectue')
+
+  return (
+    <div style={{ marginTop: 12 }}>
+      {/* Liste des RDV existants */}
+      {!loading && upcoming.length > 0 && (
+        <div style={{ marginBottom: 8 }}>
+          <div style={{ fontSize: 12, color: 'var(--color-text-muted)', marginBottom: 4 }}>
+            Visites planifiées
+          </div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+            {upcoming.map(a => (
+              <div key={a.id} style={{
+                display: 'flex', alignItems: 'center', gap: 8,
+                padding: '6px 10px',
+                background: 'var(--color-surface-2, #f8f9fa)',
+                borderRadius: 6, fontSize: 13,
+              }}>
+                <span style={{ fontWeight: 500 }}>
+                  {new Date(a.scheduled_at).toLocaleString('fr-MA', {
+                    dateStyle: 'medium', timeStyle: 'short',
+                  })}
+                </span>
+                <span style={{
+                  fontSize: 11, padding: '2px 6px', borderRadius: 10,
+                  background: a.statut === 'confirme'
+                    ? 'var(--color-success-light, #d1fae5)'
+                    : 'var(--color-warning-light, #fef9c3)',
+                  color: a.statut === 'confirme'
+                    ? 'var(--color-success, #059669)'
+                    : 'var(--color-warning-dark, #92400e)',
+                }}>
+                  {STATUS_LABELS[a.statut] ?? a.statut}
+                </span>
+                {a.notes && (
+                  <span style={{ color: 'var(--color-text-muted)', fontSize: 12, flex: 1 }}>
+                    — {a.notes}
+                  </span>
+                )}
+                <button
+                  type="button"
+                  onClick={() => handleCancel(a.id)}
+                  style={{
+                    fontSize: 11, color: 'var(--color-danger, #dc2626)',
+                    background: 'none', border: 'none', cursor: 'pointer',
+                    padding: '0 4px', marginLeft: 'auto',
+                  }}
+                  title="Annuler ce rendez-vous"
+                >
+                  Annuler
+                </button>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Bouton / formulaire */}
+      {!open ? (
+        <button
+          type="button"
+          className="btn btn-outline-secondary"
+          style={{ fontSize: 13, padding: '4px 12px' }}
+          onClick={() => setOpen(true)}
+        >
+          + Planifier une visite
+        </button>
+      ) : (
+        <form onSubmit={handleBook} style={{
+          display: 'flex', flexWrap: 'wrap', gap: 8, alignItems: 'flex-end',
+          padding: '10px', background: 'var(--color-surface-2, #f8f9fa)',
+          borderRadius: 8, border: '1px solid var(--color-border, #e5e7eb)',
+        }}>
+          <div className="form-group" style={{ flex: '1 1 180px', margin: 0 }}>
+            <label className="form-label" style={{ fontSize: 12 }}>
+              Date et heure <span style={{ color: 'var(--color-danger)' }}>*</span>
+            </label>
+            <input
+              type="datetime-local"
+              className="form-control"
+              style={{ fontSize: 13 }}
+              value={scheduledAt}
+              onChange={e => setScheduledAt(e.target.value)}
+              required
+            />
+          </div>
+          <div className="form-group" style={{ flex: '2 1 200px', margin: 0 }}>
+            <label className="form-label" style={{ fontSize: 12 }}>Notes (optionnel)</label>
+            <input
+              type="text"
+              className="form-control"
+              style={{ fontSize: 13 }}
+              value={notes}
+              onChange={e => setNotes(e.target.value)}
+              placeholder="Objet de la visite…"
+            />
+          </div>
+          {error && (
+            <div style={{ width: '100%', color: 'var(--color-danger)', fontSize: 12 }}>
+              {error}
+            </div>
+          )}
+          <div style={{ display: 'flex', gap: 6 }}>
+            <button
+              type="submit"
+              className="btn btn-primary"
+              style={{ fontSize: 13, padding: '4px 14px' }}
+              disabled={saving}
+            >
+              {saving ? 'Enregistrement…' : 'Confirmer'}
+            </button>
+            <button
+              type="button"
+              className="btn btn-outline-secondary"
+              style={{ fontSize: 13, padding: '4px 12px' }}
+              onClick={() => { setOpen(false); setError(null) }}
+            >
+              Annuler
+            </button>
+          </div>
+        </form>
+      )}
+    </div>
+  )
+}

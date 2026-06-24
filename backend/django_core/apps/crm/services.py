@@ -1113,3 +1113,225 @@ def apply_bulk_action(*, company, user, lead_ids, op, params):
         'skipped': skipped,
         'total': len(leads),
     }
+
+
+# ── QJ20 — Site-visit appointment service ────────────────────────────────────
+
+import logging as _logging  # noqa: E402
+
+_appt_logger = _logging.getLogger(__name__)
+
+# How many minutes before a scheduled appointment to send the reminder.
+APPOINTMENT_REMINDER_MINUTES = 60
+
+# RAMADAN-AWARE PACING: when the per-company flag ``ramadan_pacing`` is enabled
+# (a simple boolean stored in CompanyProfile), reminders are suppressed during
+# the iftar-sensitive window (18h–21h Africa/Casablanca, local time). This avoids
+# interrupting families at meal time. The window is deliberately simple and
+# documented — no external calendar needed. The beat job reschedules to just
+# after the window end (21h) when the slot would land inside.
+RAMADAN_AVOID_START_H = 18
+RAMADAN_AVOID_END_H = 21
+RAMADAN_TZ = 'Africa/Casablanca'
+
+
+def _ramadan_pacing_enabled(company) -> bool:
+    """True si le drapeau « pacing Ramadan » est actif pour la société.
+
+    Lit ``CompanyProfile.ramadan_pacing`` (BooleanField nullable, défaut False).
+    Renvoie False si le profil n'existe pas ou que le champ est absent.
+    Ajout futur : le champ ``ramadan_pacing`` est posé au besoin sur
+    CompanyProfile via une migration dédiée ; en attendant, ce helper renvoie
+    toujours False (comportement non-ramadan inchangé).
+    """
+    if company is None:
+        return False
+    try:
+        from apps.parametres.models import CompanyProfile
+        profile = CompanyProfile.objects.filter(company=company).first()
+        return bool(getattr(profile, 'ramadan_pacing', False))
+    except Exception:
+        return False
+
+
+def _is_ramadan_iftar_window(dt_utc) -> bool:
+    """True si le datetime UTC tombe dans la plage iftar-sensible (18h–21h Casablanca).
+
+    Vérifie que l'heure locale (Africa/Casablanca) est dans [18, 21).
+    """
+    try:
+        from zoneinfo import ZoneInfo
+        local_dt = dt_utc.astimezone(ZoneInfo(RAMADAN_TZ))
+        return RAMADAN_AVOID_START_H <= local_dt.hour < RAMADAN_AVOID_END_H
+    except Exception:
+        return False
+
+
+def book_appointment(*, lead, scheduled_at, notes=None, user=None):
+    """QJ20 — Planifie un rendez-vous (visite commerciale/technique) sur un lead.
+
+    Crée un ``crm.Appointment`` lié au lead et à sa société (forcé côté serveur —
+    jamais lu d'un corps de requête). Écrit une entrée de chatter sur le lead.
+    Renvoie l'instance Appointment créée.
+
+    ``scheduled_at`` doit être un datetime timezone-aware (UTC recommandé).
+    ``notes`` est optionnel.
+    ``user`` est l'utilisateur actif (peut être None pour les appels beat).
+    """
+    from .models import Appointment
+
+    if scheduled_at is None:
+        raise ValueError('scheduled_at est requis pour planifier un rendez-vous.')
+
+    # Company is always forced from the lead (never from request body).
+    company = lead.company
+
+    appointment = Appointment.objects.create(
+        company=company,
+        lead=lead,
+        scheduled_at=scheduled_at,
+        statut=Appointment.Statut.PLANIFIE,
+        notes=notes or '',
+        created_by=user,
+    )
+
+    # Chatter entry on the lead.
+    try:
+        import zoneinfo
+        local = scheduled_at.astimezone(zoneinfo.ZoneInfo(RAMADAN_TZ))
+        date_str = local.strftime('%d/%m/%Y à %H:%M')
+    except Exception:
+        date_str = str(scheduled_at)
+    activity.log_note(
+        lead, user,
+        f'Visite planifiée le {date_str} (RDV #{appointment.pk}).',
+    )
+
+    _appt_logger.info(
+        'QJ20: RDV #%d créé pour lead %s le %s (company %s)',
+        appointment.pk, lead.pk, scheduled_at, getattr(company, 'id', '?'))
+    return appointment
+
+
+def dispatch_appointment_reminder(appointment) -> bool:
+    """QJ20 — Envoie le rappel de visite pour un rendez-vous à venir.
+
+    Canaux (par priorité) :
+      1. WhatsApp wa.me draft (log uniquement — pas d'API WhatsApp gated).
+      2. Notifications in-app via notifications.services.notify.
+
+    RAMADAN-AWARE PACING : si le drapeau est actif pour la société ET que
+    l'heure du rappel tombe dans la plage iftar-sensible (18h–21h Casablanca),
+    le rappel est différé (renvoie False sans marquer reminder_sent).
+
+    Idempotent : si reminder_sent est déjà True, renvoie True sans rien envoyer.
+    Renvoie True si le rappel a été envoyé, False sinon (différé ou erreur).
+    """
+    from django.utils import timezone as tz
+
+    if appointment.reminder_sent:
+        return True  # already sent — idempotent
+
+    # Ramadan-aware pacing check.
+    if _ramadan_pacing_enabled(appointment.company):
+        if _is_ramadan_iftar_window(tz.now()):
+            _appt_logger.info(
+                'QJ20: rappel RDV #%d différé (plage iftar Ramadan)',
+                appointment.pk)
+            return False
+
+    lead = appointment.lead
+    phone = (
+        getattr(lead, 'whatsapp', '') or getattr(lead, 'telephone', '') or ''
+    ).strip()
+
+    # 1) wa.me draft logged (no WhatsApp API dependency).
+    try:
+        import urllib.parse
+        import zoneinfo
+        local = appointment.scheduled_at.astimezone(
+            zoneinfo.ZoneInfo(RAMADAN_TZ))
+        date_str = local.strftime('%d/%m/%Y à %H:%M')
+        msg = (
+            f'Rappel : votre visite est prévue le {date_str}. '
+            f'Notre équipe sera présente. Merci !'
+        )
+        if phone:
+            digits = ''.join(c for c in phone if c.isdigit())
+            wa_url = (f'https://wa.me/{digits}?text='
+                      f'{urllib.parse.quote(msg)}')
+            _appt_logger.info(
+                'QJ20 rappel wa.me RDV #%d lead %s → %s',
+                appointment.pk, lead.pk, wa_url)
+    except Exception as exc:  # noqa: BLE001
+        _appt_logger.warning(
+            'QJ20: wa.me draft échec RDV #%d : %s', appointment.pk, exc)
+
+    # 2) In-app notification to the lead owner (if any).
+    try:
+        from apps.notifications.services import notify
+        owner = getattr(lead, 'owner', None)
+        if owner is not None:
+            import zoneinfo
+            local = appointment.scheduled_at.astimezone(
+                zoneinfo.ZoneInfo(RAMADAN_TZ))
+            date_str = local.strftime('%d/%m/%Y à %H:%M')
+            notify(
+                user=owner,
+                event_type='appointment_reminder',
+                title=f'Rappel visite — {lead.nom}',
+                body=(
+                    f'Rendez-vous prévu le {date_str} '
+                    f'avec {lead.nom} (RDV #{appointment.pk}).'
+                ),
+                link=f'/crm/leads/{lead.pk}',
+                company=appointment.company,
+            )
+    except Exception as exc:  # noqa: BLE001
+        _appt_logger.warning(
+            'QJ20: notify échec RDV #%d : %s', appointment.pk, exc)
+
+    # Mark as sent (idempotency guard).
+    appointment.reminder_sent = True
+    appointment.save(update_fields=['reminder_sent'])
+
+    _appt_logger.info('QJ20: rappel envoyé pour RDV #%d', appointment.pk)
+    return True
+
+
+def send_due_appointment_reminders() -> int:
+    """QJ20 — Parcourt les rendez-vous à venir et envoie les rappels dus.
+
+    Un rappel est dû quand :
+      - l'appointment est à l'état PLANIFIE ou CONFIRME (pas EFFECTUE / ANNULE) ;
+      - ``scheduled_at`` est dans les prochaines APPOINTMENT_REMINDER_MINUTES
+        minutes (fenêtre glissante) ;
+      - ``reminder_sent`` est False.
+
+    Renvoie le nombre de rappels envoyés.
+    """
+    from datetime import timedelta
+    from django.utils import timezone as tz
+    from .models import Appointment
+
+    now = tz.now()
+    window_end = now + timedelta(minutes=APPOINTMENT_REMINDER_MINUTES)
+
+    due = Appointment.objects.filter(
+        statut__in=[Appointment.Statut.PLANIFIE, Appointment.Statut.CONFIRME],
+        scheduled_at__gte=now,
+        scheduled_at__lte=window_end,
+        reminder_sent=False,
+    ).select_related('lead', 'lead__owner', 'company')
+
+    sent = 0
+    for appt in due:
+        try:
+            if dispatch_appointment_reminder(appt):
+                sent += 1
+        except Exception as exc:  # noqa: BLE001
+            _appt_logger.warning(
+                'QJ20: erreur rappel RDV #%d : %s', appt.pk, exc)
+
+    _appt_logger.info('QJ20 send_due_appointment_reminders: %d rappel(s)', sent)
+    return sent

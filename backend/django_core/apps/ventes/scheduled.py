@@ -157,6 +157,23 @@ def relance_reminders():
     return sent
 
 
+@shared_task(name='crm.appointment_reminders')
+def appointment_reminders():
+    """QJ20 — Envoie les rappels de visites planifiées arrivant dans l'heure.
+
+    Délègue toute la logique à ``crm.services.send_due_appointment_reminders``
+    pour que la logique métier reste testable sans Celery. RAMADAN-AWARE :
+    les rappels pendant la plage 18h–21h Casablanca sont différés si le drapeau
+    est actif sur la société (voir ``crm.services.dispatch_appointment_reminder``).
+    Idempotent : safe à ré-exécuter. Ne touche JAMAIS au statut du Lead ou du
+    Devis (rule #4). Renvoie le nombre de rappels envoyés.
+    """
+    from apps.crm.services import send_due_appointment_reminders
+    count = send_due_appointment_reminders()
+    logger.info('appointment_reminders: %d rappel(s) envoyé(s)', count)
+    return count
+
+
 @shared_task(name='ventes.expire_stale_devis')
 def expire_stale_devis():
     """QJ5 — Expiration automatique des devis dépassés + hygiène du funnel CRM.
