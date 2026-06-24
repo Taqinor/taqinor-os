@@ -151,6 +151,23 @@ class Devis(models.Model):
     # Les définitions viennent de apps.customfields (module='devis').
     custom_data = models.JSONField(null=True, blank=True)
 
+    # ── FG52 — Devise (multi-currency) — additif, tout optionnel ──
+    # « devise » : code ISO 4217 (« MAD » par défaut — comportement inchangé pour
+    # tous les devis existants). « taux_change » : taux de conversion MAD→devise
+    # saisi à la création (1.0 par défaut = MAD, sans conversion). La devise est
+    # uniquement PORTÉE par le document ; les montants restent en MAD en base,
+    # le taux de change est un libellé informatif affiché sur le PDF et l'export UBL.
+    devise = models.CharField(
+        max_length=10, default='MAD',
+        verbose_name='Devise',
+        help_text='Code ISO 4217 (ex. MAD, EUR, USD). Défaut MAD.',
+    )
+    taux_change = models.DecimalField(
+        max_digits=12, decimal_places=6, default=1,
+        verbose_name='Taux de change',
+        help_text='1 MAD = X devise (1 = MAD, sans conversion).',
+    )
+
     # ── Q1 — Toiture 3D : layout FINALISÉ (additif, optionnel) ──
     # JSON sérialisé de l'outil roofPro11 (apps/web) une fois la conception
     # validée par Meriem : AreaRecord[] (sommets de toiture, obstacles,
@@ -568,6 +585,20 @@ class Facture(models.Model):
     # Purement préparatoire (aperçu brouillon, jamais transmis). Additif.
     fichier_ubl = models.CharField(
         max_length=500, blank=True, null=True
+    )
+    # ── FG52 — Devise (multi-currency) — additif, tout optionnel ──
+    # Même sémantique que sur le Devis : code ISO 4217, défaut MAD, taux = 1.0.
+    # Le UBL 2.1 lit ce champ pour renseigner DocumentCurrencyCode au lieu du
+    # « MAD » codé en dur de la version précédente.
+    devise = models.CharField(
+        max_length=10, default='MAD',
+        verbose_name='Devise',
+        help_text='Code ISO 4217 (ex. MAD, EUR, USD). Défaut MAD.',
+    )
+    taux_change = models.DecimalField(
+        max_digits=12, decimal_places=6, default=1,
+        verbose_name='Taux de change',
+        help_text='1 MAD = X devise (1 = MAD, sans conversion).',
     )
 
     class Meta:

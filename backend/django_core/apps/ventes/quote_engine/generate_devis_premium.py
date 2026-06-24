@@ -283,6 +283,9 @@ RECOMMENDED = "Avec batterie"
 DEVIS_FINAL    = False
 PAYMENT_MODE   = "standard"   # "standard" or "custom"
 CUSTOM_ACOMPTE = None          # user-defined acompte (MAD) for custom mode
+# FG52 — devise portée par le document (ISO 4217, défaut MAD). Lue depuis
+# data["devise"] ; permet l'affichage de la bonne devise sur le PDF.
+DEVISE = "MAD"
 PAGES_TOTAL = 3                # nombre réel de pages (4 avec l'étude)
 PAGE3_NUM = 3                  # numéro de la page de signature
 TOTAUX_ALL = None              # totaux canoniques toutes-lignes (one-page)
@@ -427,9 +430,14 @@ _GAR = {
 
 # ── Helpers ──────────────────────────────────────────────────────────────────
 def fmt(v):
-    """Format as French MAD amount: 52\u202f650\u00a0MAD"""
+    """Format as French currency amount: 52\u202f650\u00a0MAD (or DEVISE).
+
+    FG52 \u2014 utilise le global DEVISE (positionn\u00e9 par _render_premium_pdf depuis
+    data["devise"]) pour afficher la bonne devise sur le PDF. Le comportement
+    reste byte-identique pour MAD (d\u00e9faut = comportement historique).
+    """
     try:
-        return f"{int(round(float(v))):,}".replace(",", "\u202f") + "\u00a0MAD"
+        return f"{int(round(float(v))):,}".replace(",", "\u202f") + "\u00a0" + DEVISE
     except Exception:
         return str(v)
 
@@ -1992,6 +2000,7 @@ def _render_premium_pdf(data: dict, out_path) -> str:
     global TVA_NOTE, TOTAUX_SANS, TOTAUX_AVEC, TOTAUX_ALL, SANS_BULLETS, AVEC_BULLETS
     global PAY_A, PAY_M, PAY_S, ONEPAGE_NOTE_BATTERIE
     global DOC_TEXTS, ACCEPTE_PAR_NOM, DATE_ACCEPTATION
+    global DEVISE  # FG52 — devise du document (ISO 4217)
 
     # ERR37 — escape user-controlled client fields before they reach the PDF HTML.
     CLIENT_NAME  = _esc(data["client_name"])
@@ -2027,6 +2036,8 @@ def _render_premium_pdf(data: dict, out_path) -> str:
     _tva_lbl = int(TVA_PCT) if TVA_PCT == int(TVA_PCT) else TVA_PCT
     TVA_NOTE       = data.get("tva_note") or (
         f"TVA {_tva_lbl} % appliquée sur l'ensemble des équipements et travaux.")
+    # FG52 — devise portée par le document (défaut MAD = comportement inchangé).
+    DEVISE         = (data.get("devise") or "MAD").strip().upper()
 
     # Totaux canoniques (une seule source pour toutes les pages). À défaut
     # (anciens appels), reconstruits une fois ici avec la même chaîne.

@@ -52,13 +52,20 @@ def _client_nom(client):
     return plein or (getattr(client, 'nom', '') or '')
 
 
-def build_ubl_xml(facture, profile=None, currency='MAD'):
+def build_ubl_xml(facture, profile=None, currency=None):
     """Construit le XML UBL 2.1 conforme DGI d'une facture. Renvoie une str.
 
     ``profile`` (CompanyProfile vendeur) est optionnel : s'il est absent, il
     est résolu depuis la société de la facture. La portée société est garantie
     par l'appelant (commande/endpoint) ; cette fonction ne fait que rendre.
+
+    FG52 — ``currency`` est résolu (dans l'ordre) depuis :
+      1. Le paramètre explicite ``currency`` (rétro-compat appels existants).
+      2. Le champ ``facture.devise`` (défaut « MAD » sur les factures existantes).
+      3. Le repli ultime « MAD ».
     """
+    if currency is None:
+        currency = getattr(facture, 'devise', None) or 'MAD'
     profile = _resolve_profile(facture, profile)
     for prefix, uri in NS.items():
         ET.register_namespace(prefix, uri)

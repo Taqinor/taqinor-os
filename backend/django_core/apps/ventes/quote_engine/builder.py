@@ -562,6 +562,11 @@ def build_quote_data(devis, pdf_options=None) -> dict:
         "date_acceptation": (
             devis.date_acceptation.strftime("%d/%m/%Y")
             if getattr(devis, "date_acceptation", None) else ""),
+        # FG52 — devise portée par le document (ISO 4217, défaut MAD).
+        # Aucun impact sur les montants en base (stockés en MAD) ; uniquement
+        # affiché sur le PDF et porté dans l'export UBL.
+        "devise": (getattr(devis, "devise", None) or "MAD"),
+        "taux_change": float(getattr(devis, "taux_change", 1) or 1),
     }
     # Q5 — visuel « votre installation » : la clé MinIO du rendu 3D N'EST
     # ajoutée que si le devis en porte un. Sans rendu, aucune clé n'est
