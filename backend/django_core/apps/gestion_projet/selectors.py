@@ -7,6 +7,7 @@ les imports cross-app sont fonction-locaux pour éviter les cycles. Quand une ap
 cible n'a pas de sélecteur exploitable, on DÉGRADE proprement : on renvoie le
 ``libelle`` mis en cache et les ids stockés, sans rien importer.
 """
+from datetime import date as _date
 from datetime import timedelta
 
 from .models import (
@@ -447,3 +448,173 @@ def liens_enrichis(projet):
             'source': source,
         })
     return out
+
+
+# ── PROJ14 : Détection des retards (tâches/jalons à risque) ──────────────────
+
+# Seuil par défaut (en jours) : une tâche/un jalon est « à risque » si sa date
+# de fin prévue tombe dans les N prochains jours (aujourd'hui inclu).
+_SEUIL_RISQUE_DEFAUT = 7
+
+
+def _risque_tache(tache, aujourd_hui, seuil_jours):
+    """Niveau de risque d'une tâche (lecture seule, sans IO).
+
+    Renvoie :
+      - ``'en_retard'`` : date de fin prévue DÉPASSÉE et tâche non terminée
+      - ``'a_risque'``  : date de fin prévue dans [aujourd'hui, +seuil_jours] et
+                          tâche non terminée (statut ≠ 'termine')
+      - None            : dans les délais ou tâche terminée / sans date de fin
+
+    Le statut ``'termine'`` est la seule valeur excluant la tâche du radar ;
+    ``'bloque'`` + ``'en_cours'`` sont considérés normalement.
+    """
+    if tache.statut == Tache.Statut.TERMINE:
+        return None
+    fin = tache.date_fin_prevue
+    if fin is None:
+        return None
+    if fin < aujourd_hui:
+        return 'en_retard'
+    if fin <= aujourd_hui + timedelta(days=seuil_jours):
+        return 'a_risque'
+    return None
+
+
+def _risque_jalon(jalon, aujourd_hui, seuil_jours):
+    """Niveau de risque d'un jalon (lecture seule, sans IO).
+
+    Renvoie :
+      - ``'en_retard'`` : date prévue DÉPASSÉE et jalon non atteint
+      - ``'a_risque'``  : date prévue dans [aujourd'hui, +seuil_jours] et jalon
+                          non atteint (statut ≠ 'atteint')
+      - None            : dans les délais, atteint, ou manqué déjà comptabilisé
+
+    ``'manque'`` (Jalon.Statut.MANQUE) est un état terminal de RATAGE déjà
+    enregistré manuellement par l'utilisateur : il reste dans ``'en_retard'``
+    sauf s'il a une ``date_reelle`` prouvant qu'il a été soldé (auquel cas on
+    traite comme atteint). En pratique un jalon MANQUÉ est déjà un retard connu.
+    """
+    if jalon.statut == Jalon.Statut.ATTEINT:
+        return None
+    date_prevue = jalon.date_prevue
+    if date_prevue < aujourd_hui:
+        return 'en_retard'
+    if date_prevue <= aujourd_hui + timedelta(days=seuil_jours):
+        return 'a_risque'
+    return None
+
+
+def retards_projet(projet, seuil_jours=None):
+    """Tâches et jalons EN RETARD ou À RISQUE d'un projet (lecture seule).
+
+    Compare les dates de fin prévues au jour courant (``datetime.date.today()``).
+    Le ``seuil_jours`` (par défaut :attr:`_SEUIL_RISQUE_DEFAUT`) définit
+    l'horizon « à risque » : une tâche/un jalon dont la fin prévue tombe dans
+    les N prochains jours est « à risque » (pas encore en retard mais proche).
+
+    Renvoie un dict ::
+
+        {
+          "date_reference": "YYYY-MM-DD",   # aujourd'hui (ISO)
+          "seuil_jours": 7,
+          "taches_en_retard":  [...],        # statut == 'en_retard'
+          "taches_a_risque":   [...],        # statut == 'a_risque'
+          "jalons_en_retard":  [...],
+          "jalons_a_risque":   [...],
+          "nb_taches_en_retard":  int,
+          "nb_taches_a_risque":   int,
+          "nb_jalons_en_retard":  int,
+          "nb_jalons_a_risque":   int,
+        }
+
+    Chaque entrée tâche ::
+
+        {
+          "id": int, "libelle": str, "code_wbs": str, "statut": str,
+          "avancement_pct": int,
+          "date_fin_prevue": "YYYY-MM-DD",
+          "retard_jours": int,   # positif = retard en jours par rapport à aujourd'hui
+                                 # négatif = encore N jours avant l'échéance
+          "phase": int | null, "parent": int | null,
+        }
+
+    Chaque entrée jalon ::
+
+        {
+          "id": int, "libelle": str, "statut": str,
+          "date_prevue": "YYYY-MM-DD",
+          "retard_jours": int,
+          "facturation_pct": str,
+          "phase": int | null, "tache": int | null,
+        }
+
+    Seules les tâches de PREMIER niveau ou de sous-tâche (toutes profondeurs)
+    ayant une ``date_fin_prevue`` sont analysées. Les tâches terminées
+    (``statut == 'termine'``) et les jalons atteints (``statut == 'atteint'``)
+    sont EXCLUS du radar. La société est portée par le projet (le filtre est
+    appliqué par les sélecteurs ``taches_for_projet`` / ``jalons_for_projet``).
+    """
+    if seuil_jours is None:
+        seuil_jours = _SEUIL_RISQUE_DEFAUT
+    aujourd_hui = _date.today()
+
+    taches_retard = []
+    taches_risque = []
+    for tache in taches_for_projet(projet):
+        niveau = _risque_tache(tache, aujourd_hui, seuil_jours)
+        if niveau is None:
+            continue
+        fin = tache.date_fin_prevue
+        retard_jours = (aujourd_hui - fin).days  # >0 = retard, <0 = jours restants
+        item = {
+            'id': tache.id,
+            'libelle': tache.libelle,
+            'code_wbs': tache.code_wbs,
+            'statut': tache.statut,
+            'avancement_pct': tache.avancement_pct,
+            'date_fin_prevue': fin.isoformat(),
+            'retard_jours': retard_jours,
+            'phase': tache.phase_id,
+            'parent': tache.parent_id,
+        }
+        if niveau == 'en_retard':
+            taches_retard.append(item)
+        else:
+            taches_risque.append(item)
+
+    jalons_retard = []
+    jalons_risque = []
+    for jalon in jalons_for_projet(projet):
+        niveau = _risque_jalon(jalon, aujourd_hui, seuil_jours)
+        if niveau is None:
+            continue
+        date_prevue = jalon.date_prevue
+        retard_jours = (aujourd_hui - date_prevue).days
+        item = {
+            'id': jalon.id,
+            'libelle': jalon.libelle,
+            'statut': jalon.statut,
+            'date_prevue': date_prevue.isoformat(),
+            'retard_jours': retard_jours,
+            'facturation_pct': str(jalon.facturation_pct),
+            'phase': jalon.phase_id,
+            'tache': jalon.tache_id,
+        }
+        if niveau == 'en_retard':
+            jalons_retard.append(item)
+        else:
+            jalons_risque.append(item)
+
+    return {
+        'date_reference': aujourd_hui.isoformat(),
+        'seuil_jours': seuil_jours,
+        'taches_en_retard': taches_retard,
+        'taches_a_risque': taches_risque,
+        'jalons_en_retard': jalons_retard,
+        'jalons_a_risque': jalons_risque,
+        'nb_taches_en_retard': len(taches_retard),
+        'nb_taches_a_risque': len(taches_risque),
+        'nb_jalons_en_retard': len(jalons_retard),
+        'nb_jalons_a_risque': len(jalons_risque),
+    }
