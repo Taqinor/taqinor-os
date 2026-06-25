@@ -17,6 +17,7 @@ import sys
 from unittest.mock import MagicMock, patch
 
 from django.test import TestCase, RequestFactory
+from rest_framework.test import force_authenticate
 
 from apps.crm.roof_detect import fetch_building_footprint, _parse_geometry
 
@@ -182,6 +183,10 @@ class LeadRoofFootprintViewTests(TestCase):
     def _make_request(self, user, lead_id):
         request = self.factory.get(f"/api/django/crm/leads/{lead_id}/roof-footprint/")
         request.user = user
+        # DRF (@api_view) ré-exécute l'authentification sur la requête brute :
+        # force_authenticate fait respecter l'utilisateur au lieu de retomber
+        # sur AnonymousUser (sinon 401 avant d'atteindre la vue).
+        force_authenticate(request, user=user)
         return request
 
     def _company_user(self):

@@ -75,7 +75,14 @@ def avancer_stage_new_vers_contacted(lead, user) -> bool:
     if lead.stage != stages.NEW:
         return False
     lead.stage = _STAGE_CONTACTED
-    lead.save(update_fields=['stage'])
+    update_fields = ['stage']
+    # FG28 — le premier contact fait quitter NEW via CE signal (hors du
+    # perform_update du lead qui posait first_contacted_at avant) : on le pose ici.
+    if getattr(lead, 'first_contacted_at', None) is None:
+        from django.utils import timezone
+        lead.first_contacted_at = timezone.now()
+        update_fields.append('first_contacted_at')
+    lead.save(update_fields=update_fields)
     LeadActivity.objects.create(
         company=lead.company, lead=lead, user=user,
         kind=LeadActivity.Kind.MODIFICATION,

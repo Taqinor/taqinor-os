@@ -105,7 +105,7 @@ def _chatter_note(devis, body, user):
 
 
 def send_document_email(document, *, to_email=None, sujet=None, corps=None,
-                        user=None, attach_pdf=True):
+                        user=None, attach_pdf=True, log_activity=True):
     """Envoie un document (Devis ou Facture) au client par email et consigne
     l'envoi sur le fil (EmailLog + chatter du devis le cas échéant).
 
@@ -165,7 +165,7 @@ def send_document_email(document, *, to_email=None, sujet=None, corps=None,
     log.erreur = err
     log.save()
 
-    if isinstance(document, Devis):
+    if log_activity and isinstance(document, Devis):
         etat = 'envoyé' if ok else 'échec d\'envoi'
         _chatter_note(
             document, f"Email du devis {reference} — {etat} (à {dest}).", user)

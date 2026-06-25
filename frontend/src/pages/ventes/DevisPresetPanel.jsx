@@ -104,13 +104,12 @@ function SaveSection({ devisId, onSaved }) {
 
 function ApplySection({ devisId, onApplied }) {
   const [presets, setPresets] = useState([])
-  const [loading, setLoading] = useState(false)
+  const [loading, setLoading] = useState(true)
   const [applying, setApplying] = useState(null)  // preset id being applied
   const [deleting, setDeleting] = useState(null)  // preset id being deleted
   const [status, setStatus] = useState(null)
 
   const load = useCallback(async () => {
-    setLoading(true)
     try {
       const res = await ventesApi.getPresets()
       setPresets(res.data?.results ?? res.data ?? [])

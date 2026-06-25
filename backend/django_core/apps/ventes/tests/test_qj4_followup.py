@@ -245,7 +245,7 @@ class QJ4EmailCanalTests(TestCase):
             date_envoi=timezone.now() - timedelta(days=2),
             created_by=self.user,
         )
-        with patch('apps.ventes.services.is_email_configured', return_value=True):
+        with patch('apps.ventes.email_service.is_email_configured', return_value=True):
             count = send_devis_followup_nudges()
         self.assertEqual(count, 1)
         log = DevisNudgeLog.objects.get(devis=devis, niveau=0)

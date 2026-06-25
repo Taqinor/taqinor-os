@@ -108,5 +108,7 @@ def _avancer_stage_on_contact_activity(sender, instance, created, **kwargs):
         return  # mise à jour, pas une nouvelle activité
     if instance.kind not in _CONTACT_KINDS:
         return  # CREATION ou MODIFICATION ne déclenchent pas l'avancée
+    if instance.user is None:
+        return  # uniquement un contact MANUEL d'un utilisateur (pas auto/système)
     lead = instance.lead
     avancer_stage_new_vers_contacted(lead, instance.user)

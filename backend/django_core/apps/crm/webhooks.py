@@ -120,7 +120,9 @@ def _clean_roof_outline(raw):
 
 def _map_payload_to_fields(data: dict) -> dict:
     """Payload du site (lead.ts:LeadRecord) → champs du modèle Lead."""
-    band = data.get('band') or {}
+    band = data.get('band')
+    if not isinstance(band, dict):
+        band = {}
     roi_band = ' · '.join(
         str(v) for v in (band.get('kwcLabel'), band.get('paybackLabel')) if v
     ) or None

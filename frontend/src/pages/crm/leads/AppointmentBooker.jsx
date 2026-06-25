@@ -20,11 +20,10 @@ export default function AppointmentBooker({ leadId }) {
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState(null)
   const [appointments, setAppointments] = useState([])
-  const [loading, setLoading] = useState(false)
+  const [loading, setLoading] = useState(true)
 
   const load = useCallback(() => {
     if (!leadId) return
-    setLoading(true)
     crmApi.getAppointments(leadId)
       .then(r => setAppointments(Array.isArray(r.data) ? r.data : (r.data?.results ?? [])))
       .catch(() => {})

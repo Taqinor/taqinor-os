@@ -190,5 +190,5 @@ def score_label(score: int) -> str:
     if score >= 70:
         return 'Chaud'
     if score >= 45:
-        return 'Tiede'
+        return 'Tiède'
     return 'Froid'

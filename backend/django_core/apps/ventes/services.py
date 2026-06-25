@@ -650,6 +650,7 @@ def _send_acceptance_emails(*, devis, user):
                 corps=corps,
                 user=user,
                 attach_pdf=True,
+                log_activity=False,  # l'acceptation a déjà son propre chatter
             )
     except Exception as exc:  # noqa: BLE001 — best-effort
         logger.warning('QJ10: email client échec pour devis %s : %s',

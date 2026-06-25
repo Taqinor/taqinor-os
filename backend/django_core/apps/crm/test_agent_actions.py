@@ -140,7 +140,8 @@ class CrmAgentActionRelayedCallTest(TestCase):
         }, format='json')
         self.assertEqual(resp.status_code, 201, resp.data)
         # La note atterrit dans le chatter du lead, acteur + société serveur.
-        act = LeadActivity.objects.filter(lead=lead).order_by('-id').first()
+        # (QJ7 ajoute aussi une activité « modification » d'étape — on cible la NOTE.)
+        act = LeadActivity.objects.filter(lead=lead, kind='note').order_by('-id').first()
         self.assertIsNotNone(act)
         self.assertEqual(act.user_id, self.user.id)
         self.assertEqual(act.company_id, self.company.id)

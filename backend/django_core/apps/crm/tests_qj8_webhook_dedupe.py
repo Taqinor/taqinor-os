@@ -65,7 +65,7 @@ class TestQJ8ReturningVisitorDedupe(TestCase):
     def _make_existing_lead(self, telephone='+212661000001', email=None,
                             utm_source='facebook', fbclid='fb.1.ABC.XYZ'):
         """Crée un lead existant simulant une première visite."""
-        return Lead.objects.create(
+        lead = Lead.objects.create(
             company=self.company,
             nom='Karim Alaoui',
             telephone=telephone,
@@ -76,8 +76,14 @@ class TestQJ8ReturningVisitorDedupe(TestCase):
             utm_medium='cpc',
             utm_campaign='promo_ete',
             fbclid=fbclid,
-            date_creation=timezone.now() - timezone.timedelta(days=2),
         )
+        # date_creation est auto_now_add (la valeur passée à create() est
+        # ignorée) → on la force >60 s en arrière pour sortir de la fenêtre de
+        # dédup courte et exercer la couche 2 (visiteur revenant).
+        Lead.objects.filter(pk=lead.pk).update(
+            date_creation=timezone.now() - timezone.timedelta(days=2))
+        lead.refresh_from_db()
+        return lead
 
     # ── Test principal : visiteur revenant par téléphone ─────────────────────
 
