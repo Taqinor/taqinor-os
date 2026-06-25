@@ -126,7 +126,7 @@ class TestShareLinkStamping(TestCase):
             self, m_dl, m_gen):
         """proposal_pdf view also stamps."""
         APIClient().get(
-            f'/api/django/public/proposal/pdf/{self.link.token}/')
+            f'/api/django/public/proposal/{self.link.token}/pdf/')
         self.link.refresh_from_db()
         self.assertEqual(self.link.view_count, 1)
 
@@ -167,7 +167,7 @@ class TestPublicPayloadNoPriceAchat(TestCase):
            })
     def test_prix_achat_not_in_public_response(self, m_bqd):
         resp = APIClient().get(
-            f'/api/django/public/proposal/data/{self.link.token}/')
+            f'/api/django/public/proposal/{self.link.token}/data/')
         # The view should succeed (200) and NOT include prix_achat or marge.
         self.assertEqual(resp.status_code, 200)
         import json

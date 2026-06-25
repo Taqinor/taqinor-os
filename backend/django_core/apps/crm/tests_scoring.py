@@ -81,7 +81,8 @@ class TestComputeScoreSignals(TestCase):
         lead = _make_lead(facture_hiver=10000)
         lead_no_bill = _make_lead(facture_hiver=None)
         diff = compute_score(lead) - compute_score(lead_no_bill)
-        self.assertEqual(diff, 20)  # _W_BILL = 20
+        # 20 (_W_BILL) + 3 (complétude : facture_hiver renseignée compte 1 champ).
+        self.assertEqual(diff, 23)
 
     def test_regularisation_8221_adds_5_pts(self):
         lead_no = _make_lead(regularisation_8221=False)
@@ -204,10 +205,10 @@ class TestScoreLabel(TestCase):
         self.assertEqual(score_label(100), 'Chaud')
 
     def test_tiede_at_45(self):
-        self.assertEqual(score_label(45), 'Tiede')
+        self.assertEqual(score_label(45), 'Tiède')
 
     def test_tiede_at_69(self):
-        self.assertEqual(score_label(69), 'Tiede')
+        self.assertEqual(score_label(69), 'Tiède')
 
     def test_froid_at_0(self):
         self.assertEqual(score_label(0), 'Froid')

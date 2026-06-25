@@ -70,6 +70,11 @@ def avancer_stage_new_vers_contacted(lead, user) -> bool:
     renvoie False. Ne recule jamais une étape déjà plus avancée.
     Renvoie True si l'avance a effectivement eu lieu, False sinon.
     """
+    # Relire l'état courant en base : l'instance passée par le signal peut être
+    # périmée (ex. un autre effet du même flux a déjà avancé le lead vers
+    # QUOTE_SENT) — sans cela, on écraserait une étape plus avancée par CONTACTED.
+    if lead.pk:
+        lead.refresh_from_db(fields=['stage', 'perdu', 'first_contacted_at'])
     if lead.perdu:
         return False
     if lead.stage != stages.NEW:
