@@ -11,6 +11,7 @@ import {
 } from 'lucide-react'
 import { createDevis, addLigneDevis } from '../../features/ventes/store/ventesSlice'
 import { createAutoQuote, buildEtudePompage, LEAD_TYPE_TO_MODE } from '../../features/ventes/autoQuote'
+import { waterDemandFromFarm } from '../../features/ventes/agronomy'
 import crmApi from '../../api/crmApi'
 import stockApi from '../../api/stockApi'
 import ventesApi from '../../api/ventesApi'
@@ -211,6 +212,20 @@ export default function DevisGenerator({
   const [pompeProfondeur, setPompeProfondeur] = useState('')
   const [pompeDistance, setPompeDistance] = useState('20')
   const [pompeHeures, setPompeHeures] = useState(String(HEURES_POMPAGE_DEFAUT))
+  // ── Exploitation agricole (données GUIDÉES, toutes optionnelles) — alimentent
+  // le calcul FAO-56 (besoin en eau) et le redimensionnement/chiffrage du PDF.
+  // Stockées dans etude_params sous ces clés exactes (le backend les relit).
+  const [farmRegion, setFarmRegion] = useState('souss-massa')
+  const [farmCrop, setFarmCrop] = useState('agrumes')
+  const [farmSurfaceHa, setFarmSurfaceHa] = useState('')
+  const [farmIrrigation, setFarmIrrigation] = useState('goutte')
+  const [farmFuel, setFarmFuel] = useState('butane')
+  // Dépense carburant ACTUELLE : saisie au mois OU à l'année (bascule), mais
+  // stockée toujours en MAD/AN (fuel_spend_current).
+  const [farmFuelSpend, setFarmFuelSpend] = useState('')
+  const [farmFuelPeriod, setFarmFuelPeriod] = useState('mois') // 'mois' | 'an'
+  const [farmHmtStatic, setFarmHmtStatic] = useState('')
+  const [farmHmtDrawdown, setFarmHmtDrawdown] = useState('')
 
   useEffect(() => {
     // Les trois échecs réseau sont SURFACÉS (bannière) au lieu d'avaler l'erreur :
@@ -458,6 +473,20 @@ export default function DevisGenerator({
       if (e.debit_souhaite_m3h) setPompeDebit(String(e.debit_souhaite_m3h))
       if (e.heures_pompage) setPompeHeures(String(e.heures_pompage))
       if (e.conso_annuelle) setConsoMensuelle(String(Math.round(e.conso_annuelle / 12)))
+      // Round-trip des données d'exploitation guidées (toutes optionnelles).
+      if (e.region) setFarmRegion(String(e.region))
+      if (e.crop) setFarmCrop(String(e.crop))
+      if (e.surface_ha != null && e.surface_ha !== '') setFarmSurfaceHa(String(e.surface_ha))
+      if (e.irrigation_method) setFarmIrrigation(String(e.irrigation_method))
+      if (e.current_fuel) setFarmFuel(String(e.current_fuel))
+      // fuel_spend_current est stocké en MAD/AN — on le réaffiche en annuel.
+      if (e.fuel_spend_current != null && e.fuel_spend_current !== '') {
+        setFarmFuelSpend(String(e.fuel_spend_current))
+        setFarmFuelPeriod('an')
+      }
+      if (e.hmt_static != null && e.hmt_static !== '') setFarmHmtStatic(String(e.hmt_static))
+      if (e.hmt_drawdown != null && e.hmt_drawdown !== '') setFarmHmtDrawdown(String(e.hmt_drawdown))
+      if (e.profondeur_m != null && e.profondeur_m !== '') setPompeProfondeur(String(e.profondeur_m))
     }).catch(() => {
       setErrors(prev => ({
         ...prev,
@@ -679,6 +708,19 @@ export default function DevisGenerator({
           hmt: pompeHmt, debit: pompeDebit, heures: pompeHeures,
           profondeur: pompeProfondeur, distance: pompeDistance,
         })
+        // Données d'exploitation guidées (clés exactes lues par le backend pour
+        // redimensionner/chiffrer le PDF). Optionnelles : numériques null si vides.
+        etudeParams = {
+          ...etudeParams,
+          region: farmRegion,
+          crop: farmCrop,
+          surface_ha: parseFloat(farmSurfaceHa) || null,
+          irrigation_method: farmIrrigation,
+          current_fuel: farmFuel,
+          fuel_spend_current: farmFuelSpendAnnual !== '' ? farmFuelSpendAnnual : null,
+          hmt_static: parseFloat(farmHmtStatic) || null,
+          hmt_drawdown: parseFloat(farmHmtDrawdown) || null,
+        }
       }
       // Persiste le scénario + l'option recommandée affichés à l'écran pour que
       // le PDF mette en avant EXACTEMENT la même option (option recommandée
@@ -797,6 +839,27 @@ export default function DevisGenerator({
       })
     : null
   const pompageDims = pompageSel?.dims ?? null
+
+  // ── Données d'exploitation guidées → dépense carburant ANNUELLE + besoin eau ──
+  // La dépense saisie au mois est ramenée à l'année (clé fuel_spend_current en
+  // MAD/AN). farmFuelSpendAnnual reste '' si rien n'est saisi (champ optionnel).
+  const farmFuelSpendAnnual = (() => {
+    const v = parseFloat(farmFuelSpend)
+    if (!Number.isFinite(v) || v <= 0) return ''
+    return farmFuelPeriod === 'mois' ? Math.round(v * 12) : Math.round(v)
+  })()
+
+  // Besoin en eau de POINTE (FAO-56) — informatif, le backend le recalcule.
+  const farmWaterDemand = useMemo(() => {
+    if (modeInstallation !== 'agricole') return null
+    if (!(parseFloat(farmSurfaceHa) > 0)) return null
+    return waterDemandFromFarm({
+      crop: farmCrop, region: farmRegion,
+      surfaceHa: farmSurfaceHa, method: farmIrrigation,
+    })
+  }, [modeInstallation, farmCrop, farmRegion, farmSurfaceHa, farmIrrigation])
+  // Volume jour livré par la pompe choisie (m³/jour) — comparé au besoin.
+  const pumpM3Day = pompageSel?.m3Jour ?? null
 
   const pkwc = prixParKwc(kpiTotal, kwp)
   const buyCost = useMemo(() => computeBuyCost(lines, produits), [lines, produits])
@@ -1109,6 +1172,147 @@ export default function DevisGenerator({
                        value={pompeDistance}
                        onChange={e => setPompeDistance(e.target.value)} />
               </div>
+            </div>
+
+            {/* ── Votre exploitation (données GUIDÉES, toutes optionnelles) ── */}
+            {/* Encouragées : elles permettent au PDF de dimensionner et chiffrer
+                sur les données réelles du fermier (besoin en eau FAO-56, économies
+                vs carburant). Aucune n'est obligatoire — chacune a un défaut. */}
+            <div className="mt-4 rounded-lg border border-success/30 bg-success/5 p-3 sm:p-4">
+              <div className="flex flex-wrap items-center gap-2">
+                <Sprout className="size-4 text-success" aria-hidden="true" />
+                <span className="font-display text-sm font-semibold tracking-tight">
+                  Votre exploitation
+                </span>
+                <span className="text-xs text-muted-foreground">
+                  recommandé — affine le devis avec les données réelles du fermier
+                </span>
+              </div>
+              <div className="mt-3 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+                <div className="grid gap-1.5">
+                  <Label htmlFor="gen-farm-surface">
+                    Surface irriguée (ha)
+                  </Label>
+                  <Input id="gen-farm-surface" type="number" min="0" step="any"
+                         placeholder="ex: 5" value={farmSurfaceHa}
+                         onChange={e => setFarmSurfaceHa(e.target.value)} />
+                </div>
+                <div className="grid gap-1.5">
+                  <Label htmlFor="gen-farm-crop">Culture</Label>
+                  <Select value={farmCrop} onValueChange={setFarmCrop}>
+                    <SelectTrigger id="gen-farm-crop"><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="agrumes">Agrumes</SelectItem>
+                      <SelectItem value="maraichage">Maraîchage</SelectItem>
+                      <SelectItem value="olivier">Olivier</SelectItem>
+                      <SelectItem value="dattier">Dattier (palmier)</SelectItem>
+                      <SelectItem value="cereales">Céréales</SelectItem>
+                      <SelectItem value="luzerne">Luzerne / fourrage</SelectItem>
+                      <SelectItem value="arganier">Arganier</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="grid gap-1.5">
+                  <Label htmlFor="gen-farm-region">Région</Label>
+                  <Select value={farmRegion} onValueChange={setFarmRegion}>
+                    <SelectTrigger id="gen-farm-region"><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="souss-massa">Souss-Massa (Agadir)</SelectItem>
+                      <SelectItem value="doukkala">Doukkala (El Jadida)</SelectItem>
+                      <SelectItem value="tadla">Tadla (Béni Mellal)</SelectItem>
+                      <SelectItem value="saiss">Saïss (Fès-Meknès)</SelectItem>
+                      <SelectItem value="oriental">Oriental (Berkane)</SelectItem>
+                      <SelectItem value="draa-tafilalet">Drâa-Tafilalet</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="grid gap-1.5">
+                  <Label htmlFor="gen-farm-irrigation">Mode d'irrigation</Label>
+                  <Select value={farmIrrigation} onValueChange={setFarmIrrigation}>
+                    <SelectTrigger id="gen-farm-irrigation"><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="goutte">Goutte-à-goutte</SelectItem>
+                      <SelectItem value="aspersion">Aspersion</SelectItem>
+                      <SelectItem value="gravitaire">Gravitaire</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="grid gap-1.5">
+                  <Label htmlFor="gen-farm-fuel">Énergie actuelle</Label>
+                  <Select value={farmFuel} onValueChange={setFarmFuel}>
+                    <SelectTrigger id="gen-farm-fuel"><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="butane">Butane (gaz)</SelectItem>
+                      <SelectItem value="diesel">Diesel (gasoil)</SelectItem>
+                      <SelectItem value="none">Aucune / nouveau forage</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="grid gap-1.5">
+                  <Label htmlFor="gen-farm-fuelspend">
+                    Dépense carburant actuelle (MAD) — optionnel
+                  </Label>
+                  <div className="flex gap-2">
+                    <Input id="gen-farm-fuelspend" type="number" min="0" step="any"
+                           className="flex-1"
+                           placeholder="ex: 2000" value={farmFuelSpend}
+                           onChange={e => setFarmFuelSpend(e.target.value)} />
+                    <Select value={farmFuelPeriod} onValueChange={setFarmFuelPeriod}>
+                      <SelectTrigger id="gen-farm-fuelperiod" className="w-28">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="mois">/ mois</SelectItem>
+                        <SelectItem value="an">/ an</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  {farmFuelSpendAnnual !== '' && farmFuelPeriod === 'mois' && (
+                    <p className="text-xs text-muted-foreground">
+                      ≈ {fmtNum(farmFuelSpendAnnual)} MAD / an
+                    </p>
+                  )}
+                </div>
+                <div className="grid gap-1.5">
+                  <Label htmlFor="gen-farm-static">
+                    Niveau statique de l'eau (m) — optionnel
+                  </Label>
+                  <Input id="gen-farm-static" type="number" min="0" step="any"
+                         placeholder="ex: 40" value={farmHmtStatic}
+                         onChange={e => setFarmHmtStatic(e.target.value)} />
+                </div>
+                <div className="grid gap-1.5">
+                  <Label htmlFor="gen-farm-drawdown">
+                    Rabattement en pompage (m) — optionnel
+                  </Label>
+                  <Input id="gen-farm-drawdown" type="number" min="0" step="any"
+                         placeholder="ex: 15" value={farmHmtDrawdown}
+                         onChange={e => setFarmHmtDrawdown(e.target.value)} />
+                </div>
+              </div>
+
+              {/* Readout FAO-56 : besoin estimé vs débit livré par la pompe.
+                  Purement informatif (le backend recalcule le besoin lui-même). */}
+              {farmWaterDemand && (
+                pumpM3Day != null ? (
+                  <div className={`mt-3 rounded-lg border p-3 text-sm ${
+                    pumpM3Day >= farmWaterDemand.m3DayPeak
+                      ? 'border-success/30 bg-success/10 text-success'
+                      : 'border-warning/40 bg-warning/10 text-warning'
+                  }`}>
+                    Besoin estimé ≈ <strong>{fmtNum(farmWaterDemand.m3DayPeak)} m³/jour</strong>
+                    {' '}(pointe estivale) — votre pompe livre{' '}
+                    <strong>{fmtNum(pumpM3Day)} m³/jour</strong>{' '}
+                    {pumpM3Day >= farmWaterDemand.m3DayPeak ? '✓' : '⚠ insuffisant'}
+                  </div>
+                ) : (
+                  <div className="mt-3 rounded-lg border border-info/30 bg-info/10 p-3 text-sm text-info">
+                    Besoin estimé ≈ <strong>{fmtNum(farmWaterDemand.m3DayPeak)} m³/jour</strong>
+                    {' '}(pointe estivale). Renseignez HMT + débit souhaité pour comparer
+                    au débit livré par la pompe.
+                  </div>
+                )
+              )}
             </div>
 
             {/* ── Résultat du dimensionnement (source des chiffres du PDF) ── */}

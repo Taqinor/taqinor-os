@@ -17,7 +17,7 @@ def build_ctx(data: dict) -> dict:
         "fmt": theme.fmt,
         "fmt_dec": theme.fmt_dec,
         "fonts": {"display": theme.FONT_DISPLAY, "serif": theme.FONT_SERIF,
-                  "sans": theme.FONT_SANS},
+                  "sans": theme.FONT_SANS, "arabic": theme.FONT_ARABIC},
         "logo_dark": theme.logo_dark_b64(),
         "logo_color": theme.logo_color_b64(),
         "hero_img": theme.hero_image_b64(data.get("puissance_kwc"), "agricole"),

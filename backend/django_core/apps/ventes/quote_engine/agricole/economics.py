@@ -111,6 +111,12 @@ def compute(data: dict, company_id=None) -> dict:
     else:  # butane (default) / none → butane baseline
         annual_fuel_now = butane_today
 
+    # The farmer's REAL current fuel bill (MAD/an), when captured, overrides the
+    # modelled cost — savings & payback then reflect what he actually pays today.
+    fuel_spend = _num(etude.get("fuel_spend_current"))
+    if fuel_spend > 0:
+        annual_fuel_now = round(fuel_spend)
+
     # Savings = the whole fuel bill solar eliminates (solar fuel cost = 0).
     saving_vs_butane = butane_today
     saving_vs_diesel = diesel
@@ -165,6 +171,10 @@ def compute(data: dict, company_id=None) -> dict:
     else:
         hectares = None
 
+    # Peak farm water need (FAO-56) — the sizing target the pump must cover.
+    from . import agronomy
+    besoin_m3j = agronomy.peak_need_m3_day(etude)
+
     water_monthly = _monthly(annual_m3, K.WATER_MONTHLY_WEIGHTS) if has_water else [0] * 12
     prod_monthly = _monthly(prod_kwh, K.PROD_MONTHLY_WEIGHTS) if prod_kwh > 0 else [0] * 12
 
@@ -198,6 +208,7 @@ def compute(data: dict, company_id=None) -> dict:
         "trees": trees,
         "fuel_qty_label": fuel_qty_label,
         "hectares_irrigable": hectares,
+        "besoin_m3j": besoin_m3j,
         "butane_12kg_subventionne": _num(cfg["butane_12kg_subventionne"]),
         "butane_12kg_reel": _num(cfg["butane_12kg_reel"]),
         "quote_ttc": quote_ttc,
