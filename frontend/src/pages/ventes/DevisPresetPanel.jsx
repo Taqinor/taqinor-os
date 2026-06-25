@@ -109,15 +109,11 @@ function ApplySection({ devisId, onApplied }) {
   const [deleting, setDeleting] = useState(null)  // preset id being deleted
   const [status, setStatus] = useState(null)
 
-  const load = useCallback(async () => {
-    try {
-      const res = await ventesApi.getPresets()
-      setPresets(res.data?.results ?? res.data ?? [])
-    } catch {
-      setPresets([])
-    } finally {
-      setLoading(false)
-    }
+  const load = useCallback(() => {
+    ventesApi.getPresets()
+      .then(res => setPresets(res.data?.results ?? res.data ?? []))
+      .catch(() => setPresets([]))
+      .finally(() => setLoading(false))
   }, [])
 
   // Load once on mount

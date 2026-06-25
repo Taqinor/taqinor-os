@@ -105,9 +105,9 @@ function httpMessage(status, responseData) {
     return 'Composition invalide — vérifiez le catalogue produits puis réessayez.'
   }
   if (status === 400)
-    return ‘Le devis n’a pas pu être créé : données du tracé invalides. Vérifiez le toit puis réessayez.’
-  if (status === 403) return ‘Accès refusé pour ce lead. Contactez un administrateur.’
-  if (status === 404) return ‘Lead introuvable côté ERP. Vérifiez le lien puis réessayez.’
+    return "Le devis n'a pas pu être créé : données du tracé invalides. Vérifiez le toit puis réessayez."
+  if (status === 403) return "Accès refusé pour ce lead. Contactez un administrateur."
+  if (status === 404) return "Lead introuvable côté ERP. Vérifiez le lien puis réessayez."
   if (status >= 500) return `Le serveur a renvoyé une erreur (${status}). Réessayez dans un instant.`
   return `Création du devis impossible (erreur ${status}).`
 }
