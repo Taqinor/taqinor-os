@@ -50,7 +50,7 @@ class AgentActionsEndpointTest(TestCase):
         self.assertEqual(resp.status_code, 200)
         keys = {a['key'] for a in resp.data['actions']}
         self.assertEqual(resp.data['count'], len(resp.data['actions']))
-        self.assertIn('ventes.devis.create', keys)
+        self.assertIn('ventes.devis.creer_auto', keys)
         self.assertIn('ventes.devis.proposal_pdf', keys)
         self.assertNotIn('stock.produit.delete', keys)
 
@@ -59,7 +59,7 @@ class AgentActionsEndpointTest(TestCase):
         self.assertEqual(resp.status_code, 200)
         keys = {a['key'] for a in resp.data['actions']}
         self.assertIn('crm.lead.list', keys)
-        self.assertNotIn('ventes.devis.create', keys)
+        self.assertNotIn('ventes.devis.creer_auto', keys)
         self.assertNotIn('ventes.devis.proposal_pdf', keys)
 
     def test_action_metadata_present(self):
@@ -95,8 +95,8 @@ class CrossTenantNoLeakageTest(TestCase):
         keys_a = {a['key'] for a in _auth(self.user_a).get(URL).data['actions']}
         keys_b = {a['key'] for a in _auth(self.user_b).get(URL).data['actions']}
         # A peut créer un devis ; B (lecture seule autre société) non.
-        self.assertIn('ventes.devis.create', keys_a)
-        self.assertNotIn('ventes.devis.create', keys_b)
+        self.assertIn('ventes.devis.creer_auto', keys_a)
+        self.assertNotIn('ventes.devis.creer_auto', keys_b)
         # B voit les leads (crm_voir) ; A n'a pas crm_voir → ne le voit pas.
         self.assertIn('crm.lead.list', keys_b)
         self.assertNotIn('crm.lead.list', keys_a)

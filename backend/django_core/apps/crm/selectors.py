@@ -109,6 +109,22 @@ def get_company_client(company, client_id):
     return client_base_qs(company).filter(pk=client_id).first()
 
 
+def get_latest_lead_for_client(company, client_id):
+    """Lead le plus récent rattaché à un client (borné société), ou None.
+
+    Point d'entrée cross-app LECTURE SEULE pour que ``ventes`` remonte au lead
+    porteur du profil énergétique quand seul le client est connu (auto-devis du
+    Copilote). Miroir du fallback de ``lead_bills_for_devis``. Un client d'une
+    autre société → None (jamais d'accès cross-tenant)."""
+    if not client_id:
+        return None
+    from .models import Lead
+    return (Lead.objects
+            .filter(client_id=client_id, company=company)
+            .order_by('-date_creation')
+            .first())
+
+
 def lead_bills_for_devis(devis):
     """Factures électriques RÉELLES (MAD/mois) du lead d'un devis, ou None.
 
