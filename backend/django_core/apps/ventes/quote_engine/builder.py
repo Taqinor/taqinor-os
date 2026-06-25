@@ -165,6 +165,158 @@ def clean_pdf_options(raw) -> dict:
     return opts
 
 
+# ── QJ12 — Financing comparison block ──────────────────────────────────────
+# Indicative figures only (no live bank API).  All amounts are MAD TTC.
+#
+# Green loan parameters (APPROXIMATIF — marché marocain 2026, à confirmer
+# avec les banques partenaires). NEVER presented as confirmed prices.
+#
+# Tatwir Croissance Verte (CIH/BMCE/Attijariwafa — PME):
+#   Taux: ~4–5 % an (HT), durée max 7 ans.
+# ISTIDAMA (Crédit Agricole du Maroc — agricole):
+#   Taux: ~3–4 % an (HTT), durée max 10 ans, FDA subsidy compatible.
+#
+# Residential / uncategorised fall back to a generic green-mortgage proxy
+# (MCMA-style): ~6 % an, 10 ans.
+_FINANCING_PROGRAMS = {
+    "residentiel": {
+        "nom": "Crédit vert résidentiel",
+        "taux_annuel": 0.06,          # indicatif
+        "duree_mois": 120,
+        "programme_label": None,      # no specific named programme
+    },
+    "industriel": {
+        "nom": "Tatwir Croissance Verte (PME)",
+        "taux_annuel": 0.045,         # milieu fourchette 4–5 %
+        "duree_mois": 84,             # 7 ans
+        "programme_label": "Tatwir",
+    },
+    "agricole": {
+        "nom": "ISTIDAMA (Crédit Agricole du Maroc)",
+        "taux_annuel": 0.035,         # milieu fourchette 3–4 %
+        "duree_mois": 120,            # 10 ans
+        "programme_label": "ISTIDAMA",
+    },
+}
+_DEFAULT_FINANCING_KEY = "residentiel"
+
+
+def _monthly_loan_payment(principal: float, annual_rate: float, n_months: int) -> float:
+    """Standard annuity formula.  annual_rate = 0.06 means 6 % per year.
+    Returns 0 if inputs are degenerate.
+    """
+    if principal <= 0 or n_months <= 0:
+        return 0.0
+    if annual_rate <= 0:
+        return round(principal / n_months, 2)
+    r = annual_rate / 12
+    factor = r * (1 + r) ** n_months / ((1 + r) ** n_months - 1)
+    return round(principal * factor, 2)
+
+
+def compute_financing_block(
+    display_total: float,
+    eco_s_ann: float,
+    eco_a_ann: float,
+    mode_installation: str = "residentiel",
+) -> dict | None:
+    """QJ12 — Build the indicative financing comparison block.
+
+    Returns a dict to be embedded in build_quote_data output under the key
+    ``financing``, or ``None`` when the total is zero / unknown (degrades cleanly
+    — callers must handle None and omit the block).
+
+    The block is PURELY INDICATIVE.  Every figure carries the flag
+    ``indicatif=True``.  Never show buy prices or margins — the returned dict
+    contains only TTC client-facing numbers.
+
+    Structure:
+        {
+            indicatif: True,
+            cash: {montant_ttc: float, label: str},
+            credit: {
+                mensualite: float,
+                duree_mois: int,
+                taux_annuel_pct: float,
+                programme_nom: str,
+                programme_label: str | None,
+            },
+            onee_comparison: {
+                show: bool,           # mensualité < économie mensuelle ONEE
+                message: str,         # French message if show=True
+                eco_mensuelle_sans: float,
+                eco_mensuelle_avec: float,
+            },
+            guidance_text: str | None,  # Tatwir / ISTIDAMA text or None
+        }
+    """
+    if not display_total or display_total <= 0:
+        return None
+
+    key = mode_installation if mode_installation in _FINANCING_PROGRAMS else _DEFAULT_FINANCING_KEY
+    prog = _FINANCING_PROGRAMS[key]
+
+    mensualite = _monthly_loan_payment(
+        display_total,
+        prog["taux_annuel"],
+        prog["duree_mois"],
+    )
+
+    # Monthly savings (use option-1 / sans-batterie as the reference for comparison)
+    eco_mensuelle_sans = round(eco_s_ann / 12, 2) if eco_s_ann else 0.0
+    eco_mensuelle_avec = round(eco_a_ann / 12, 2) if eco_a_ann else 0.0
+
+    # "mensualité < économie ONEE mensuelle" — when the monthly payment is below
+    # even the option-1 monthly savings, the system "pays for itself each month".
+    onee_ref = eco_mensuelle_sans  # conservative reference (sans batterie)
+    shows_comparison = mensualite > 0 and onee_ref > 0 and mensualite < onee_ref
+    if shows_comparison:
+        comparison_msg = (
+            f"La mensualité indicative ({int(mensualite):,} MAD) est inférieure "
+            f"à votre économie mensuelle estimée ({int(onee_ref):,} MAD) — "
+            "l'installation se rembourse chaque mois."
+        ).replace(',', ' ')
+    else:
+        comparison_msg = ""
+
+    # Programme guidance text
+    guidance = None
+    if key == "industriel":
+        guidance = (
+            "Les PME et professionnels peuvent financer cette installation via "
+            "Tatwir Croissance Verte (CIH, BMCE, Attijariwafa) — taux préférentiel "
+            "réservé aux projets d'efficacité énergétique. Demandez à votre banque."
+        )
+    elif key == "agricole":
+        guidance = (
+            "Le programme ISTIDAMA du Crédit Agricole du Maroc propose un financement "
+            "dédié au pompage solaire, cumulable avec la subvention FDA 30 %. "
+            "Contactez votre agence CAM pour les conditions exactes."
+        )
+
+    return {
+        "indicatif": True,
+        "cash": {
+            "montant_ttc": display_total,
+            "label": "Paiement comptant (TTC)",
+        },
+        "credit": {
+            "mensualite": mensualite,
+            "duree_mois": prog["duree_mois"],
+            "taux_annuel_pct": round(prog["taux_annuel"] * 100, 2),
+            "programme_nom": prog["nom"],
+            "programme_label": prog["programme_label"],
+        },
+        "onee_comparison": {
+            "show": shows_comparison,
+            "message": comparison_msg,
+            "eco_mensuelle_sans": eco_mensuelle_sans,
+            "eco_mensuelle_avec": eco_mensuelle_avec,
+        },
+        "guidance_text": guidance,
+    }
+
+
 def build_quote_data(devis, pdf_options=None) -> dict:
     """Build the dict consumed by generate_premium_pdf from a Devis instance."""
     from .pricing import calculate_savings_roi
@@ -381,7 +533,26 @@ def build_quote_data(devis, pdf_options=None) -> dict:
     # l'option PDF (sinon l'étude / le défaut « butane » s'applique).
     if opts.get('current_fuel'):
         etude['current_fuel'] = opts['current_fuel']
-    roi = calculate_savings_roi(puissance_kwc, total_sans, total_avec)
+    # QJ13 — tariff / self-consumption overrides from etude_params.
+    # Resolves: tarif_kwh_override → tranches_override → utility name → fallback.
+    # All are seller-editable via etude_params; nothing is fabricated from thin air.
+    _tarif_kwh_override = etude.get("tarif_kwh")  # explicit flat price (seller set)
+    _tranches_override = etude.get("tarif_tranches")  # custom schedule [[ceil, price], …]
+    _utility = etude.get("distributeur")  # "onee" | "lydec" | "redal"
+    _conso_annuelle = etude.get("conso_annuelle")  # from industrial étude if available
+    # Autoconsommation overrides (seller/study can refine these)
+    _autoconso_sans = float(etude.get("autoconso_sans") or 0) or None
+    _autoconso_avec = float(etude.get("autoconso_avec") or 0) or None
+    from .pricing import AUTOCONSO_SANS, AUTOCONSO_AVEC
+    roi_kwargs = dict(
+        conso_annuelle_kwh=float(_conso_annuelle) if _conso_annuelle else None,
+        utility=_utility or None,
+        tarif_kwh_override=float(_tarif_kwh_override) if _tarif_kwh_override else None,
+        tranches_override=_tranches_override or None,
+        autoconso_sans=_autoconso_sans if _autoconso_sans else AUTOCONSO_SANS,
+        autoconso_avec=_autoconso_avec if _autoconso_avec else AUTOCONSO_AVEC,
+    )
+    roi = calculate_savings_roi(puissance_kwc, total_sans, total_avec, **roi_kwargs)
     if etude.get("production_annuelle"):
         roi["prod_kwh"] = int(etude["production_annuelle"])
         if etude.get("economies_annuelles"):
@@ -521,6 +692,9 @@ def build_quote_data(devis, pdf_options=None) -> dict:
         "roi_a": roi["roi_a"],
         "eco_s_monthly": roi["eco_s_monthly"],
         "eco_a_monthly": roi["eco_a_monthly"],
+        # QJ13 — honest-number guard: True when savings are an estimate (no tariff data)
+        "savings_estimated": roi.get("savings_estimated", False),
+        "tarif_kwh": roi.get("tarif_kwh"),
         "factures_mensuelles": factures_mensuelles,
         "sans_items": sans_items,
         "avec_items": avec_items,
@@ -574,6 +748,17 @@ def build_quote_data(devis, pdf_options=None) -> dict:
     roof_image = getattr(devis, "roof_image", None)
     if roof_image:
         data["roof_image_key"] = roof_image
+    # QJ12 — financing block (indicatif / à confirmer). Added additively after
+    # all other keys so omitting it never changes any existing key's value.
+    # Degrades to None when display_total is unavailable — callers omit the block.
+    financing = compute_financing_block(
+        display_total=display_total,
+        eco_s_ann=roi.get("eco_s_ann", 0),
+        eco_a_ann=roi.get("eco_a_ann", 0),
+        mode_installation=mode,
+    )
+    if financing is not None:
+        data["financing"] = financing
     return data
 
 

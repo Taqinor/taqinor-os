@@ -1,5 +1,5 @@
-"""G9 — Tâches planifiées (Celery Beat). DEUX jobs, toute la logique de temps en
-Africa/Casablanca :
+"""G9/QJ4 — Tâches planifiées (Celery Beat). TROIS jobs, toute la logique de
+temps en Africa/Casablanca :
 
   1. ``relance_reminders`` — envoie les rappels de relance programmés : pour
      chaque facture impayée dont ``prochaine_relance`` est arrivée à échéance
@@ -11,6 +11,11 @@ Africa/Casablanca :
      la date d'émission + 30 jours. Le job bascule alors ``statut`` →
      ``en_retard``. Idempotent : une facture déjà ``en_retard`` n'est pas
      re-basculée, une facture réglée/annulée est ignorée.
+  3. ``devis_followup_nudges`` (QJ4) — relance automatique cadencée pour les
+     devis « envoyés » toujours en attente de validation. Paliers j+2 / j+5 /
+     j+10 après date_envoi (configurable via DEVIS_NUDGE_DAYS). Surface un
+     draft wa.me au vendeur (ou email si configuré). Idempotent via
+     DevisNudgeLog. S'arrête dès que le devis passe « accepté » / « refusé ».
 
 La planification réelle (cadence) est définie dans ``CELERY_BEAT_SCHEDULE``
 (settings) ; ces tâches sont sûres à ré-exécuter (idempotentes).
@@ -150,3 +155,57 @@ def relance_reminders():
 
     logger.info('relance_reminders: %s relance(s) envoyée(s)', sent)
     return sent
+
+
+@shared_task(name='crm.appointment_reminders')
+def appointment_reminders():
+    """QJ20 — Envoie les rappels de visites planifiées arrivant dans l'heure.
+
+    Délègue toute la logique à ``crm.services.send_due_appointment_reminders``
+    pour que la logique métier reste testable sans Celery. RAMADAN-AWARE :
+    les rappels pendant la plage 18h–21h Casablanca sont différés si le drapeau
+    est actif sur la société (voir ``crm.services.dispatch_appointment_reminder``).
+    Idempotent : safe à ré-exécuter. Ne touche JAMAIS au statut du Lead ou du
+    Devis (rule #4). Renvoie le nombre de rappels envoyés.
+    """
+    from apps.crm.services import send_due_appointment_reminders
+    count = send_due_appointment_reminders()
+    logger.info('appointment_reminders: %d rappel(s) envoyé(s)', count)
+    return count
+
+
+@shared_task(name='ventes.expire_stale_devis')
+def expire_stale_devis():
+    """QJ5 — Expiration automatique des devis dépassés + hygiène du funnel CRM.
+
+    Bascule ``envoye → expire`` pour tout devis dont la date de validité effective
+    est dépassée (via ``services.expire_stale_devis``, même logique que
+    l'indicateur à la volée — cohérence garantie). Avance ensuite l'étape funnel
+    du lead lié : QUOTE_SENT → FOLLOW_UP, puis FOLLOW_UP → COLD si inactif
+    depuis 30 jours. Ne touche JAMAIS un devis ``accepte`` / ``refuse`` (rule #4),
+    ne recule JAMAIS un lead déjà plus avancé (SIGNED), ignore les leads perdus.
+    Idempotent et safe à ré-exécuter.
+    """
+    from .services import expire_stale_devis as _expire
+    result = _expire()
+    logger.info(
+        'expire_stale_devis: %d expiré(s), %d → FOLLOW_UP, %d → COLD',
+        result['expired'], result['funnel_followup'], result['funnel_cold'])
+    return result
+
+
+@shared_task(name='ventes.devis_followup_nudges')
+def devis_followup_nudges():
+    """QJ4 — Relance automatique cadencée des devis envoyés toujours en attente.
+
+    Délègue toute la logique à ``services.send_devis_followup_nudges`` pour que
+    la logique métier reste testable sans Celery. Renvoie le nombre de nudges
+    déclenchés.
+
+    Idempotent : safe à ré-exécuter. Ne touche JAMAIS au statut du Devis
+    (RULE #4). Toute la logique de temps raisonne en Africa/Casablanca.
+    """
+    from .services import send_devis_followup_nudges
+    count = send_devis_followup_nudges()
+    logger.info('devis_followup_nudges: %d nudge(s) déclenchés', count)
+    return count

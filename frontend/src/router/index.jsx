@@ -65,6 +65,7 @@ const PaiementsPage = lazy(() => import('../pages/ventes/PaiementsPage'))
 const BalanceAgeePage = lazy(() => import('../pages/reporting/BalanceAgeePage'))
 const ArchiveClientPage = lazy(() => import('../pages/reporting/ArchiveClientPage'))
 const ArchiveChantierPage = lazy(() => import('../pages/reporting/ArchiveChantierPage'))
+const CommercialDashboard = lazy(() => import('../pages/reporting/CommercialDashboard'))
 // Vitrine interne du système UI (refonte, P68) — référence vivante des primitifs.
 const UIShowcase = lazy(() => import('../pages/ui/UIShowcase'))
 const ChatPage = lazy(() => import('../pages/messaging/ChatPage'))
@@ -210,6 +211,7 @@ const router = createBrowserRouter([
   { path: '/reporting', loader: roleLoader(['responsable', 'admin']), element: <WithLayout><Reporting /></WithLayout> },
   { path: '/rapports', loader: authLoader, element: <WithLayout><Rapports /></WithLayout> },
   { path: '/reporting/balance-agee', loader: authLoader, element: <WithLayout><BalanceAgeePage /></WithLayout> },
+  { path: '/reporting/commercial', loader: roleLoader(['responsable', 'admin']), element: <WithLayout><CommercialDashboard /></WithLayout> },
   { path: '/reporting/archive/client/:id', loader: authLoader, element: <WithLayout><ArchiveClientPage /></WithLayout> },
   { path: '/reporting/archive/chantier/:id', loader: authLoader, element: <WithLayout><ArchiveChantierPage /></WithLayout> },
 

@@ -1,4 +1,9 @@
-"""
+"""QJ6 + Lead → Client resolution.
+
+QJ6 — recompute_lead_score(lead) persiste le score calculé sur le lead pour
+permettre un tri pagination-safe (?ordering=-score). Appelé dans perform_create
+et perform_update du LeadViewSet.
+
 Lead → Client resolution (approach approved by the founder, 2026-06-12).
 
 A quote always carries a Client; when it starts from a Lead the client is
@@ -43,6 +48,57 @@ def _rang_funnel(stage_key: str) -> int:
     return stages.STAGES.index(stage_key)
 
 
+# ── QJ7 — Avance automatique NEW → CONTACTED au premier contact ──────────────
+#
+# Kinds d'activité qui comptent comme « premier contact » :
+#   NOTE, APPEL, EMAIL — une CREATION ou MODIFICATION ne suffit pas.
+_CONTACT_KINDS = frozenset([
+    LeadActivity.Kind.NOTE,
+    LeadActivity.Kind.APPEL,
+    LeadActivity.Kind.EMAIL,
+])
+
+# Clé canonique de l'étape « Contacté » (STAGES.py — jamais hardcodée ailleurs).
+_STAGE_CONTACTED = 'CONTACTED'
+
+
+def avancer_stage_new_vers_contacted(lead, user) -> bool:
+    """Avance le stage du lead NEW → CONTACTED lors du premier contact.
+
+    « Premier contact » = première activité de type NOTE, APPEL ou EMAIL.
+    Idempotent : si le lead n'est plus à NEW (ou est perdu), ne fait rien et
+    renvoie False. Ne recule jamais une étape déjà plus avancée.
+    Renvoie True si l'avance a effectivement eu lieu, False sinon.
+    """
+    # Relire l'état courant en base : l'instance passée par le signal peut être
+    # périmée (ex. un autre effet du même flux a déjà avancé le lead vers
+    # QUOTE_SENT) — sans cela, on écraserait une étape plus avancée par CONTACTED.
+    if lead.pk:
+        lead.refresh_from_db(fields=['stage', 'perdu', 'first_contacted_at'])
+    if lead.perdu:
+        return False
+    if lead.stage != stages.NEW:
+        return False
+    lead.stage = _STAGE_CONTACTED
+    update_fields = ['stage']
+    # FG28 — le premier contact fait quitter NEW via CE signal (hors du
+    # perform_update du lead qui posait first_contacted_at avant) : on le pose ici.
+    if getattr(lead, 'first_contacted_at', None) is None:
+        from django.utils import timezone
+        lead.first_contacted_at = timezone.now()
+        update_fields.append('first_contacted_at')
+    lead.save(update_fields=update_fields)
+    LeadActivity.objects.create(
+        company=lead.company, lead=lead, user=user,
+        kind=LeadActivity.Kind.MODIFICATION,
+        field='stage', field_label='Étape',
+        old_value=stages.STAGE_LABELS[stages.NEW],
+        new_value=stages.STAGE_LABELS[_STAGE_CONTACTED],
+        body='auto — premier contact',
+    )
+    return True
+
+
 def avancer_stage_pour_devis(devis, ancien_statut, nouveau_statut, user):
     """Avance l'étape du lead quand le STATUT d'un devis change.
 
@@ -70,8 +126,10 @@ def avancer_stage_pour_devis(devis, ancien_statut, nouveau_statut, user):
     lead.save(update_fields=['stage'])
 
     if stage_cible == 'SIGNED':
-        # SIGNED_QUOTE_CAPI_HOOK: fire on transition INTO SIGNED — entering Signé here
-        # (auto via devis accepté) est équivalent à une entrée manuelle.
+        # QJ9 — CAPI SignedQuote : le hook réside dans ventes.services.accept_devis
+        # (_fire_capi_signed_quote, gated sur META_CAPI_ACCESS_TOKEN). L'avancée
+        # manuelle en masse vers SIGNED (set_stage bulk) ne reporte pas de devis
+        # accepté et ne dispose pas de l'attribution UTM — pas de CAPI ici.
         pass
 
     LeadActivity.objects.create(
@@ -495,6 +553,23 @@ def merge_leads(survivor, others, user):
     return survivor
 
 
+def recompute_lead_score(lead) -> int:
+    """Calcule et persiste le score de qualité du lead.
+
+    QJ6 — le score est stocké sur Lead.score pour permettre un tri
+    pagination-safe (?ordering=-score). Renvoie le score calculé.
+    Best-effort : n'échoue jamais l'enregistrement du lead appelant.
+    """
+    try:
+        from .scoring import compute_score
+        score = compute_score(lead)
+        lead.score = score
+        lead.save(update_fields=['score'])
+        return score
+    except Exception:
+        return 0
+
+
 def resolve_client_for_lead(lead: Lead) -> Client:
     from django.db import IntegrityError, transaction
 
@@ -546,6 +621,126 @@ def resolve_client_for_lead(lead: Lead) -> Client:
         kind=LeadActivity.Kind.NOTE,
         body=f"Client lié : {nom_client}")
     return client
+
+
+def noter_devis_ouvert(devis_reference: str, lead) -> None:
+    """QJ1 — Consigne « Le client a ouvert le devis » dans le chatter du lead.
+
+    Appelé par ``public_views.py`` uniquement à la PREMIÈRE ouverture du lien
+    public. Best-effort : les appelants catchent toute exception.
+    ``lead`` doit être un objet Lead avec company_id ; ``devis_reference`` est
+    la référence textuelle du devis (pas d'import ventes ici).
+    """
+    LeadActivity.objects.create(
+        company=lead.company, lead=lead, user=None,
+        kind=LeadActivity.Kind.NOTE,
+        body=f"Le client a ouvert le devis {devis_reference}")
+
+
+# ── QJ2 — Speed-to-lead : notifications vendeur avec lien wa.me ──────────────
+
+def _build_lead_wa_reply_url(lead):
+    """Construit un lien wa.me « répondre maintenant » vers le prospect du lead.
+
+    Utilise le numéro WhatsApp du lead (sinon son téléphone). Renvoie l'URL
+    ou None si aucun numéro n'est disponible. Best-effort — jamais d'exception.
+    """
+    try:
+        import urllib.parse
+        phone_raw = (
+            getattr(lead, 'whatsapp', None)
+            or getattr(lead, 'telephone', None)
+            or ''
+        )
+        digits = ''.join(c for c in (phone_raw or '') if c.isdigit())
+        if not digits:
+            return None
+        # Format international marocain (wa.me exige l'indicatif pays).
+        if digits.startswith('00'):
+            digits = digits[2:]
+        if digits.startswith('0'):
+            digits = '212' + digits[1:]
+        elif not digits.startswith('212'):
+            digits = '212' + digits
+        nom = (
+            (getattr(lead, 'nom', '') or '').strip()
+            or 'votre client'
+        )
+        # Message pré-rempli court — le vendeur personnalise avant d'envoyer.
+        text = urllib.parse.quote(f'Bonjour {nom}, je vous contacte suite à votre demande.')
+        return f'https://wa.me/{digits}?text={text}'
+    except Exception:
+        return None
+
+
+def notify_new_lead(lead) -> None:
+    """QJ2 (a) — Notifie le responsable du lead à la CRÉATION d'un nouveau lead.
+
+    Événement de speed-to-lead : le owner du lead est notifié dès l'arrivée du
+    lead (webhook site web ou création manuelle). La notification porte un lien
+    wa.me « répondre maintenant » vers le prospect. Best-effort : jamais
+    d'exception propagée — un échec de notification ne doit pas casser le flux
+    de création.
+
+    Multi-tenant : le owner est résolu depuis le lead (server-side, jamais du
+    corps de requête). Rien à notifier si le lead n'a pas de responsable.
+    """
+    try:
+        owner = getattr(lead, 'owner', None)
+        if owner is None:
+            return
+        from apps.notifications.services import notify
+        nom = (getattr(lead, 'nom', '') or '').strip() or 'Nouveau prospect'
+        wa_url = _build_lead_wa_reply_url(lead)
+        body_parts = [f'Un nouveau lead vient d\'arriver : {nom}.']
+        if wa_url:
+            body_parts.append(f'Répondre maintenant : {wa_url}')
+        notify(
+            user=owner,
+            event_type='lead_new',
+            title=f'Nouveau lead : {nom}',
+            body='\n'.join(body_parts),
+            link=f'/crm/leads?lead={lead.pk}',
+            company=lead.company,
+        )
+    except Exception as exc:  # noqa: BLE001 — best-effort
+        import logging
+        logging.getLogger(__name__).warning(
+            'QJ2: notify_new_lead échoué pour lead #%s : %s',
+            getattr(lead, 'pk', '?'), exc)
+
+
+def notify_devis_opened(devis_reference: str, lead) -> None:
+    """QJ2 (b) — Notifie le responsable du lead à la PREMIÈRE ouverture du devis.
+
+    Complémente noter_devis_ouvert (QJ1) : en plus de la note chatter, envoie
+    une notification in-app + Web Push au owner du lead, avec un lien wa.me
+    « répondre maintenant » vers le prospect. Best-effort — jamais d'exception
+    propagée.
+    """
+    try:
+        owner = getattr(lead, 'owner', None)
+        if owner is None:
+            return
+        from apps.notifications.services import notify
+        nom = (getattr(lead, 'nom', '') or '').strip() or 'Votre client'
+        wa_url = _build_lead_wa_reply_url(lead)
+        body_parts = [f'{nom} vient d\'ouvrir le devis {devis_reference}.']
+        if wa_url:
+            body_parts.append(f'Répondre maintenant : {wa_url}')
+        notify(
+            user=owner,
+            event_type='devis_opened',
+            title=f'Devis {devis_reference} ouvert par le client',
+            body='\n'.join(body_parts),
+            link=f'/crm/leads?lead={lead.pk}',
+            company=lead.company,
+        )
+    except Exception as exc:  # noqa: BLE001 — best-effort
+        import logging
+        logging.getLogger(__name__).warning(
+            'QJ2: notify_devis_opened échoué pour lead #%s devis %s : %s',
+            getattr(lead, 'pk', '?'), devis_reference, exc)
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -756,7 +951,8 @@ def apply_bulk_action(*, company, user, lead_ids, op, params):
                 lead.stage = target_stage
                 lead.save(update_fields=['stage'])
                 activity.log_bulk_change(lead, user, 'stage', old, target_stage)
-                # SIGNED_QUOTE_CAPI_HOOK: entrée manuelle en masse dans SIGNED.
+                # QJ9 — entrée manuelle en masse dans SIGNED : pas de CAPI ici
+                # (pas de devis accepté associé ni d'attribution UTM disponible).
                 updated += 1
 
             elif op == 'set_canal':
@@ -936,3 +1132,225 @@ def apply_bulk_action(*, company, user, lead_ids, op, params):
         'skipped': skipped,
         'total': len(leads),
     }
+
+
+# ── QJ20 — Site-visit appointment service ────────────────────────────────────
+
+import logging as _logging  # noqa: E402
+
+_appt_logger = _logging.getLogger(__name__)
+
+# How many minutes before a scheduled appointment to send the reminder.
+APPOINTMENT_REMINDER_MINUTES = 60
+
+# RAMADAN-AWARE PACING: when the per-company flag ``ramadan_pacing`` is enabled
+# (a simple boolean stored in CompanyProfile), reminders are suppressed during
+# the iftar-sensitive window (18h–21h Africa/Casablanca, local time). This avoids
+# interrupting families at meal time. The window is deliberately simple and
+# documented — no external calendar needed. The beat job reschedules to just
+# after the window end (21h) when the slot would land inside.
+RAMADAN_AVOID_START_H = 18
+RAMADAN_AVOID_END_H = 21
+RAMADAN_TZ = 'Africa/Casablanca'
+
+
+def _ramadan_pacing_enabled(company) -> bool:
+    """True si le drapeau « pacing Ramadan » est actif pour la société.
+
+    Lit ``CompanyProfile.ramadan_pacing`` (BooleanField nullable, défaut False).
+    Renvoie False si le profil n'existe pas ou que le champ est absent.
+    Ajout futur : le champ ``ramadan_pacing`` est posé au besoin sur
+    CompanyProfile via une migration dédiée ; en attendant, ce helper renvoie
+    toujours False (comportement non-ramadan inchangé).
+    """
+    if company is None:
+        return False
+    try:
+        from apps.parametres.models import CompanyProfile
+        profile = CompanyProfile.objects.filter(company=company).first()
+        return bool(getattr(profile, 'ramadan_pacing', False))
+    except Exception:
+        return False
+
+
+def _is_ramadan_iftar_window(dt_utc) -> bool:
+    """True si le datetime UTC tombe dans la plage iftar-sensible (18h–21h Casablanca).
+
+    Vérifie que l'heure locale (Africa/Casablanca) est dans [18, 21).
+    """
+    try:
+        from zoneinfo import ZoneInfo
+        local_dt = dt_utc.astimezone(ZoneInfo(RAMADAN_TZ))
+        return RAMADAN_AVOID_START_H <= local_dt.hour < RAMADAN_AVOID_END_H
+    except Exception:
+        return False
+
+
+def book_appointment(*, lead, scheduled_at, notes=None, user=None):
+    """QJ20 — Planifie un rendez-vous (visite commerciale/technique) sur un lead.
+
+    Crée un ``crm.Appointment`` lié au lead et à sa société (forcé côté serveur —
+    jamais lu d'un corps de requête). Écrit une entrée de chatter sur le lead.
+    Renvoie l'instance Appointment créée.
+
+    ``scheduled_at`` doit être un datetime timezone-aware (UTC recommandé).
+    ``notes`` est optionnel.
+    ``user`` est l'utilisateur actif (peut être None pour les appels beat).
+    """
+    from .models import Appointment
+
+    if scheduled_at is None:
+        raise ValueError('scheduled_at est requis pour planifier un rendez-vous.')
+
+    # Company is always forced from the lead (never from request body).
+    company = lead.company
+
+    appointment = Appointment.objects.create(
+        company=company,
+        lead=lead,
+        scheduled_at=scheduled_at,
+        statut=Appointment.Statut.PLANIFIE,
+        notes=notes or '',
+        created_by=user,
+    )
+
+    # Chatter entry on the lead.
+    try:
+        import zoneinfo
+        local = scheduled_at.astimezone(zoneinfo.ZoneInfo(RAMADAN_TZ))
+        date_str = local.strftime('%d/%m/%Y à %H:%M')
+    except Exception:
+        date_str = str(scheduled_at)
+    activity.log_note(
+        lead, user,
+        f'Visite planifiée le {date_str} (RDV #{appointment.pk}).',
+    )
+
+    _appt_logger.info(
+        'QJ20: RDV #%d créé pour lead %s le %s (company %s)',
+        appointment.pk, lead.pk, scheduled_at, getattr(company, 'id', '?'))
+    return appointment
+
+
+def dispatch_appointment_reminder(appointment) -> bool:
+    """QJ20 — Envoie le rappel de visite pour un rendez-vous à venir.
+
+    Canaux (par priorité) :
+      1. WhatsApp wa.me draft (log uniquement — pas d'API WhatsApp gated).
+      2. Notifications in-app via notifications.services.notify.
+
+    RAMADAN-AWARE PACING : si le drapeau est actif pour la société ET que
+    l'heure du rappel tombe dans la plage iftar-sensible (18h–21h Casablanca),
+    le rappel est différé (renvoie False sans marquer reminder_sent).
+
+    Idempotent : si reminder_sent est déjà True, renvoie True sans rien envoyer.
+    Renvoie True si le rappel a été envoyé, False sinon (différé ou erreur).
+    """
+    from django.utils import timezone as tz
+
+    if appointment.reminder_sent:
+        return True  # already sent — idempotent
+
+    # Ramadan-aware pacing check.
+    if _ramadan_pacing_enabled(appointment.company):
+        if _is_ramadan_iftar_window(tz.now()):
+            _appt_logger.info(
+                'QJ20: rappel RDV #%d différé (plage iftar Ramadan)',
+                appointment.pk)
+            return False
+
+    lead = appointment.lead
+    phone = (
+        getattr(lead, 'whatsapp', '') or getattr(lead, 'telephone', '') or ''
+    ).strip()
+
+    # 1) wa.me draft logged (no WhatsApp API dependency).
+    try:
+        import urllib.parse
+        import zoneinfo
+        local = appointment.scheduled_at.astimezone(
+            zoneinfo.ZoneInfo(RAMADAN_TZ))
+        date_str = local.strftime('%d/%m/%Y à %H:%M')
+        msg = (
+            f'Rappel : votre visite est prévue le {date_str}. '
+            f'Notre équipe sera présente. Merci !'
+        )
+        if phone:
+            digits = ''.join(c for c in phone if c.isdigit())
+            wa_url = (f'https://wa.me/{digits}?text='
+                      f'{urllib.parse.quote(msg)}')
+            _appt_logger.info(
+                'QJ20 rappel wa.me RDV #%d lead %s → %s',
+                appointment.pk, lead.pk, wa_url)
+    except Exception as exc:  # noqa: BLE001
+        _appt_logger.warning(
+            'QJ20: wa.me draft échec RDV #%d : %s', appointment.pk, exc)
+
+    # 2) In-app notification to the lead owner (if any).
+    try:
+        from apps.notifications.services import notify
+        owner = getattr(lead, 'owner', None)
+        if owner is not None:
+            import zoneinfo
+            local = appointment.scheduled_at.astimezone(
+                zoneinfo.ZoneInfo(RAMADAN_TZ))
+            date_str = local.strftime('%d/%m/%Y à %H:%M')
+            notify(
+                user=owner,
+                event_type='appointment_reminder',
+                title=f'Rappel visite — {lead.nom}',
+                body=(
+                    f'Rendez-vous prévu le {date_str} '
+                    f'avec {lead.nom} (RDV #{appointment.pk}).'
+                ),
+                link=f'/crm/leads/{lead.pk}',
+                company=appointment.company,
+            )
+    except Exception as exc:  # noqa: BLE001
+        _appt_logger.warning(
+            'QJ20: notify échec RDV #%d : %s', appointment.pk, exc)
+
+    # Mark as sent (idempotency guard).
+    appointment.reminder_sent = True
+    appointment.save(update_fields=['reminder_sent'])
+
+    _appt_logger.info('QJ20: rappel envoyé pour RDV #%d', appointment.pk)
+    return True
+
+
+def send_due_appointment_reminders() -> int:
+    """QJ20 — Parcourt les rendez-vous à venir et envoie les rappels dus.
+
+    Un rappel est dû quand :
+      - l'appointment est à l'état PLANIFIE ou CONFIRME (pas EFFECTUE / ANNULE) ;
+      - ``scheduled_at`` est dans les prochaines APPOINTMENT_REMINDER_MINUTES
+        minutes (fenêtre glissante) ;
+      - ``reminder_sent`` est False.
+
+    Renvoie le nombre de rappels envoyés.
+    """
+    from datetime import timedelta
+    from django.utils import timezone as tz
+    from .models import Appointment
+
+    now = tz.now()
+    window_end = now + timedelta(minutes=APPOINTMENT_REMINDER_MINUTES)
+
+    due = Appointment.objects.filter(
+        statut__in=[Appointment.Statut.PLANIFIE, Appointment.Statut.CONFIRME],
+        scheduled_at__gte=now,
+        scheduled_at__lte=window_end,
+        reminder_sent=False,
+    ).select_related('lead', 'lead__owner', 'company')
+
+    sent = 0
+    for appt in due:
+        try:
+            if dispatch_appointment_reminder(appt):
+                sent += 1
+        except Exception as exc:  # noqa: BLE001
+            _appt_logger.warning(
+                'QJ20: erreur rappel RDV #%d : %s', appt.pk, exc)
+
+    _appt_logger.info('QJ20 send_due_appointment_reminders: %d rappel(s)', sent)
+    return sent

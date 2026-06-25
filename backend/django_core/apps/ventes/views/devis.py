@@ -81,6 +81,8 @@ class DevisViewSet(viewsets.ModelViewSet):
             'generer_pdf', 'telecharger_pdf', 'convertir_en_bc', 'proposal',
             'generer_facture', 'reviser', 'accepter', 'refuser', 'noter',
             'layout', 'roof_image', 'from_layout', 'auto', 'share_link',
+            'envoyer_email', 'dupliquer_variante', 'variantes',
+            'save_preset', 'apply_preset',
         ]:
             return [IsResponsableOrAdmin()]
         elif self.action == 'destroy':
@@ -148,9 +150,16 @@ class DevisViewSet(viewsets.ModelViewSet):
         société (404/400 si une autre société). Au moins un lead OU un client est
         requis. Aucun statut n'est touché : le service renvoie un brouillon
         (préservation des statuts, règle #4) et la numérotation anti-collision
-        est gérée par le service."""
+        est gérée par le service.
+
+        QJ17 — idempotency: if a brouillon devis with the same lead + layout hash
+        already exists for this company, it is returned (HTTP 200) instead of
+        creating a duplicate.  A pre-flight composition check validates the
+        catalogue before building and returns HTTP 422 with inline French guidance
+        on failure (instead of a PDF error at render time).
+        """
         from decimal import Decimal, InvalidOperation
-        from ..services import build_devis_from_layout
+        from ..services import build_devis_from_layout, layout_hash, validate_composition_for_layout
         from ..models import ShareLink
 
         company = request.user.company
@@ -204,10 +213,56 @@ class DevisViewSet(viewsets.ModelViewSet):
                 {'detail': 'taux_tva / remise_globale invalide.'},
                 status=status.HTTP_400_BAD_REQUEST)
 
+        # QJ17 — pre-flight composition check: validate catalogue before building.
+        composition_errors = validate_composition_for_layout(layout, company)
+        if composition_errors:
+            return Response(
+                {'detail': composition_errors[0], 'errors': composition_errors},
+                status=status.HTTP_422_UNPROCESSABLE_ENTITY)
+
+        # QJ17 — idempotency: dedupe by lead + layout hash.
+        # Re-clicking « Générer » returns the existing brouillon, not a duplicate.
+        lhash = layout_hash(layout)
+        existing = None
+        if lead_obj is not None and lhash:
+            existing = (
+                Devis.objects.filter(
+                    company=company,
+                    lead=lead_obj,
+                    statut=Devis.Statut.BROUILLON,
+                    layout_hash=lhash,
+                )
+                .order_by('-date_creation')
+                .first()
+            )
+        if existing is not None:
+            link = ShareLink.for_devis(existing)
+            import logging as _logging
+            _logging.getLogger(__name__).info(
+                'QJ17: dedup hit — returning existing brouillon %s (hash %s…)',
+                existing.reference, lhash[:8])
+            return Response(
+                {
+                    'id': existing.id,
+                    'reference': existing.reference,
+                    'statut': existing.statut,
+                    'proposal_token': link.token,
+                    'proposal_path': f'/proposition/{link.token}',
+                    'deduplicated': True,
+                },
+                status=status.HTTP_200_OK)
+
         devis = build_devis_from_layout(
             layout=layout, user=request.user, company=company,
             lead=lead_obj, client=client_obj,
             taux_tva=taux_tva, remise_globale=remise)
+
+        # QJ17 — persist the layout hash on the newly-created devis so future
+        # duplicate requests are caught in O(1).
+        if lhash:
+            Devis.objects.filter(pk=devis.pk).update(layout_hash=lhash)
+            devis.layout_hash = lhash
+
         link = ShareLink.for_devis(devis)
         return Response(
             {
@@ -319,6 +374,308 @@ class DevisViewSet(viewsets.ModelViewSet):
         return Response(
             {'token': link.token, 'path': f'/proposition/{link.token}'},
             status=status.HTTP_200_OK)
+
+    @action(detail=True, methods=['post'], url_path='envoyer-email',
+            permission_classes=[IsResponsableOrAdmin])
+    def envoyer_email(self, request, pk=None):
+        """QJ14 — Envoie la proposition (PDF premium + lien tokenisé) au client
+        par email, consigne l'envoi dans EmailLog et marque le devis « envoyé »
+        via mark_devis_sent (règle #4 — seul chemin de transition brouillon→envoyé).
+
+        Body (tous optionnels) :
+          - ``to_email``  : adresse destinataire (défaut : client.email)
+          - ``sujet``     : objet de l'email (défaut : modèle FR)
+          - ``corps``     : corps de l'email (défaut : modèle FR)
+          - ``pdf_mode``  : « full » | « onepage » (défaut : « full »)
+
+        Idempotent : un devis déjà « envoyé » (ou plus avancé) ne régresse pas
+        — l'email est tout de même envoyé mais mark_devis_sent ne re-stampe pas.
+
+        Retourne l'EmailLog id + statut + le statut courant du devis.
+        """
+        from ..models import ShareLink
+        from ..services import mark_devis_sent
+        from ..quote_engine import clean_pdf_options, generate_premium_devis_pdf
+        from ..utils.pdf import download_pdf
+
+        devis = self.get_object()
+        to_email = (request.data.get('to_email') or '').strip() or None
+        sujet = (request.data.get('sujet') or '').strip() or None
+        corps = (request.data.get('corps') or '').strip() or None
+        pdf_mode = (request.data.get('pdf_mode') or 'full').strip()
+
+        # Génère le PDF premium (persist=False — rendu à la volée, pas de
+        # remplacement du fichier stocké : le moteur rend seulement).
+        attachment = None
+        attachment_name = None
+        try:
+            opts = clean_pdf_options({'pdf_mode': pdf_mode})
+            key = generate_premium_devis_pdf(devis.id, opts, persist=False)
+            attachment = download_pdf(key)
+            attachment_name = f'Devis_{devis.reference}.pdf'
+        except Exception:  # noqa: BLE001 — PDF indisponible n'empêche pas l'envoi
+            pass
+
+        # Ajoute le lien de proposition tokenisé dans le corps si fourni.
+        link = ShareLink.for_devis(devis)
+        proposal_url = f'/proposition/{link.token}'
+        if not corps:
+            client = devis.client
+            nom_client = ''
+            if client:
+                nom_client = f"{client.nom} {getattr(client, 'prenom', '') or ''}".strip()
+            salut = f'Bonjour {nom_client},' if nom_client else 'Bonjour,'
+            corps = (
+                f"{salut}\n\n"
+                f"Veuillez trouver ci-joint votre devis {devis.reference}.\n\n"
+                f"Vous pouvez également consulter et signer votre proposition en ligne :\n"
+                f"{proposal_url}\n\n"
+                f"Nous restons à votre disposition pour toute question.\n\n"
+                f"Cordialement,\nL'équipe TAQINOR"
+            )
+
+        # Envoi + EmailLog via le service centralisé. attach_pdf=False car on
+        # a déjà le contenu — on passe attachment/attachment_name directement.
+        from ..email_service import _send, _from_email, _chatter_note
+        from ..models import EmailLog  # noqa: F811 — local import shadows class-level
+
+        client = devis.client
+        dest = (to_email or (getattr(client, 'email', '') or '')).strip()
+        reference = devis.reference or ''
+        if not sujet:
+            sujet = f'Votre devis {reference}'
+
+        log = EmailLog(
+            company=devis.company,
+            direction=EmailLog.Direction.SORTANT,
+            client=client,
+            devis=devis,
+            to_email=dest, from_email=_from_email(),
+            sujet=(sujet or '')[:300], corps=corps,
+            reference=reference[:80],
+            piece_jointe=(attachment_name or '')[:255],
+            created_by=request.user if getattr(request.user, 'is_authenticated', False) else None,
+        )
+
+        if not dest:
+            log.statut = EmailLog.Statut.ECHEC
+            log.erreur = 'Aucune adresse email destinataire.'
+            log.save()
+            return Response(
+                {'detail': log.erreur, 'log_id': log.id, 'statut': 'echec'},
+                status=status.HTTP_400_BAD_REQUEST)
+
+        ok, err = _send(dest, sujet, corps, attachment, attachment_name)
+        log.statut = EmailLog.Statut.ENVOYE if ok else EmailLog.Statut.ECHEC
+        log.erreur = err
+        log.save()
+
+        etat = 'envoyé' if ok else "échec d'envoi"
+        _chatter_note(devis, f"Email du devis {reference} — {etat} (à {dest}).", request.user)
+
+        # Marque le devis « envoyé » via le seul chemin autorisé (règle #4).
+        # Idempotent : un devis déjà envoyé/accepté/refusé n'est pas régressé.
+        mark_devis_sent(devis=devis, user=request.user)
+
+        return Response({
+            'detail': f'Email envoyé à {dest}.' if ok else f'Échec envoi email : {err}',
+            'log_id': log.id,
+            'email_statut': log.statut,
+            'devis_statut': devis.statut,
+            'proposal_path': proposal_url,
+        }, status=status.HTTP_200_OK)
+
+    @action(detail=True, methods=['post'], url_path='save-preset',
+            permission_classes=[IsResponsableOrAdmin])
+    def save_preset(self, request, pk=None):
+        """QJ16-wiring — Enregistre le devis courant comme preset (modèle de devis).
+
+        Body (tous optionnels sauf ``nom``) :
+          - ``nom``         : nom du modèle (obligatoire, max 150 caractères)
+          - ``description`` : note libre (optionnel)
+
+        La company est TOUJOURS forcée depuis ``devis.company`` — jamais du corps.
+        Retourne le preset créé (id, nom, mode_installation, lignes_snapshot…).
+        """
+        from ..services import save_devis_as_preset
+        from ..serializers import DevisPresetSerializer
+        devis = self.get_object()
+        nom = (request.data.get('nom') or '').strip()
+        if not nom:
+            return Response(
+                {'detail': 'Le nom du modèle est obligatoire.'},
+                status=status.HTTP_400_BAD_REQUEST)
+        description = (request.data.get('description') or '').strip()
+        try:
+            preset = save_devis_as_preset(
+                devis, nom, description, user=request.user)
+        except ValueError as exc:
+            return Response({'detail': str(exc)},
+                            status=status.HTTP_400_BAD_REQUEST)
+        return Response(
+            DevisPresetSerializer(preset).data,
+            status=status.HTTP_201_CREATED)
+
+    @action(detail=True, methods=['post'], url_path='apply-preset',
+            permission_classes=[IsResponsableOrAdmin])
+    def apply_preset(self, request, pk=None):
+        """QJ16-wiring — Applique un preset à ce devis (brouillon uniquement).
+
+        Body :
+          - ``preset_id`` : id du DevisPreset à appliquer (obligatoire)
+
+        La company du preset DOIT correspondre à celle du devis (vérifiée
+        par ``apply_preset_to_devis`` — cross-company → 400).
+        RULE #4 : n'affecte jamais Devis.statut.
+        Retourne le décompte de lignes créées.
+        """
+        from ..services import apply_preset_to_devis
+        from ..models import DevisPreset
+        devis = self.get_object()
+        preset_id = request.data.get('preset_id')
+        if not preset_id:
+            return Response(
+                {'detail': 'preset_id est obligatoire.'},
+                status=status.HTTP_400_BAD_REQUEST)
+        try:
+            preset = DevisPreset.objects.get(
+                pk=preset_id, company=devis.company)
+        except DevisPreset.DoesNotExist:
+            return Response(
+                {'detail': 'Modèle introuvable pour cette société.'},
+                status=status.HTTP_404_NOT_FOUND)
+        try:
+            created = apply_preset_to_devis(preset, devis)
+        except ValueError as exc:
+            return Response({'detail': str(exc)},
+                            status=status.HTTP_400_BAD_REQUEST)
+        return Response({
+            'detail': f'{len(created)} ligne(s) ajoutée(s) depuis le modèle.',
+            'lignes_created': len(created),
+            'skipped_priceless': len(preset.lignes_snapshot) - len(created),
+        }, status=status.HTTP_200_OK)
+
+    @action(detail=True, methods=['post'], url_path='dupliquer-variante',
+            permission_classes=[IsResponsableOrAdmin])
+    def dupliquer_variante(self, request, pk=None):
+        """QJ15 — Crée 2–3 variantes de taille du devis pour comparaison
+        côte-à-côte.
+
+        Chaque variante est un devis brouillon indépendant partageable :
+          - même client / lead / mode / TVA / remise que l'original ;
+          - lignes clonées avec quantités ajustées selon le facteur de
+            dimensionnement (``scale``) passé dans le corps — ou déduit
+            automatiquement : ×0.8 (−20 %) / ×1.0 (identique) / ×1.25 (+25 %) ;
+          - ``version_parent`` positionné sur l'original (ou son propre parent)
+            pour grouper les variantes sans créer une revision :
+            ``is_active=True`` sur toutes → ce sont des alternatives, pas des
+            remplacements ;
+          - aucun changement de statut (règle #4) ;
+          - numéros de référence séquentiels via ``create_numbered``.
+
+        Corps optionnel :
+          ``scales`` : liste de flottants, ex. [0.8, 1.0, 1.25]
+                       (défaut : [0.8, 1.0, 1.25], max 3 éléments).
+
+        Retourne la liste des devis créés.
+        """
+        source = self.get_object()
+        company = source.company
+        root = source.version_parent or source
+
+        raw_scales = request.data.get('scales', [0.8, 1.0, 1.25])
+        try:
+            scales = [float(s) for s in raw_scales][:3]
+        except (TypeError, ValueError):
+            scales = [0.8, 1.0, 1.25]
+        if not scales:
+            scales = [0.8, 1.0, 1.25]
+
+        # Labels FR pour les variantes (affichés dans la liste et la proposition)
+        _labels = {0.8: '−20 %', 1.0: 'Standard', 1.25: '+25 %'}
+
+        created = []
+        from decimal import Decimal, ROUND_HALF_UP
+
+        for scale in scales:
+            variant_note = _labels.get(scale) or f'×{scale:.2f}'
+            holder = {}
+
+            def _save(ref, _scale=scale, _note=variant_note):
+                obj = Devis.objects.create(
+                    company=company, reference=ref,
+                    client=source.client, lead=source.lead,
+                    statut=Devis.Statut.BROUILLON,
+                    taux_tva=source.taux_tva,
+                    remise_globale=source.remise_globale,
+                    note=(f'[Variante {_note}] ' + (source.note or '')).strip(),
+                    mode_installation=source.mode_installation,
+                    etude_params=source.etude_params,
+                    prix_cible_kwc=source.prix_cible_kwc,
+                    created_by=request.user,
+                    # Groupe : version_parent = racine, version incrémentée,
+                    # is_active=True (alternative, pas remplacement).
+                    version=source.version + len(created) + 1,
+                    version_parent=root,
+                    is_active=True,
+                )
+                holder['obj'] = obj
+                return obj
+
+            create_numbered(Devis, company, 'devis', _save)
+            nd = holder['obj']
+
+            for ligne in source.lignes.all():
+                raw_qty = ligne.quantite * Decimal(str(scale))
+                qty = raw_qty.quantize(Decimal('0.01'), rounding=ROUND_HALF_UP)
+                qty = max(qty, Decimal('0.01'))
+                LigneDevis.objects.create(
+                    devis=nd,
+                    produit=ligne.produit,
+                    designation=ligne.designation,
+                    quantite=qty,
+                    prix_unitaire=ligne.prix_unitaire,
+                    remise=ligne.remise,
+                    taux_tva=ligne.taux_tva,
+                )
+            created.append(nd)
+
+        return Response(
+            [DevisSerializer(v, context={'request': request}).data
+             for v in created],
+            status=status.HTTP_201_CREATED,
+        )
+
+    @action(detail=True, methods=['get'], url_path='variantes',
+            permission_classes=[IsResponsableOrAdmin])
+    def variantes(self, request, pk=None):
+        """QJ15 — Liste les variantes liées à ce devis (même version_parent,
+        toutes actives). Utilisé par la proposal côte-à-côte."""
+        devis = self.get_object()
+        root = devis.version_parent or devis
+        siblings = (
+            Devis.objects
+            .filter(company=devis.company, version_parent=root, is_active=True)
+            .select_related('client')
+            .order_by('version', 'id')
+        )
+        # An isolated devis (no version_parent and no child variants) is not
+        # part of any variant group → return an empty comparison set.
+        if devis.version_parent_id is None and not siblings.exists():
+            return Response([])
+        # Include root itself in the comparison set.
+        root_devis = Devis.objects.filter(
+            pk=root.pk, company=devis.company, is_active=True).first()
+        results = []
+        if root_devis:
+            results.append(root_devis)
+        for s in siblings:
+            if s.pk not in {r.pk for r in results}:
+                results.append(s)
+        return Response(
+            [DevisSerializer(v, context={'request': request}).data
+             for v in results],
+        )
 
     @action(detail=True, methods=['post'], url_path='approuver-remise',
             permission_classes=[IsAdminRole])

@@ -8,7 +8,10 @@ Protections (L855) : chaque réponse publique porte « X-Robots-Tag: noindex »
 pour rester hors des moteurs de recherche, et l'accès est limité en débit par
 IP + jeton (throttle cache-based, sans dépendance externe ni rendu modifié).
 """
+from django.db import models
+from django.db.models import F
 from django.http import HttpResponse
+from django.utils import timezone
 from rest_framework import status
 from rest_framework.decorators import (
     api_view, permission_classes, throttle_classes,
@@ -80,6 +83,57 @@ def _not_found():
     ))
 
 
+def _stamp_view(link):
+    """QJ1 — Horodate la consultation du lien public et renvoie True si c'est
+    la première (first_viewed_at était None avant ce GET).
+
+    Race-safe : incrémente view_count via F-expression + refresh_from_db plutôt
+    qu'un read-modify-write. first_viewed_at n'est écrite qu'une seule fois
+    (via update() conditionnel sur le filtre pk + first_viewed_at__isnull=True),
+    ce qui est idempotent sous requêtes concurrentes. Best-effort : une exception
+    ne doit jamais remonter vers le client.
+    """
+    try:
+        now = timezone.now()
+        is_first = link.first_viewed_at is None
+        # Increment atomically; set last_viewed_at unconditionally.
+        ShareLink.objects.filter(pk=link.pk).update(
+            view_count=F('view_count') + 1,
+            last_viewed_at=now,
+        )
+        # Set first_viewed_at only once (conditioned on still being null so
+        # concurrent requests from the same client don't overwrite each other).
+        if is_first:
+            ShareLink.objects.filter(
+                pk=link.pk, first_viewed_at__isnull=True,
+            ).update(first_viewed_at=now)
+        link.refresh_from_db(fields=['view_count', 'last_viewed_at', 'first_viewed_at'])
+        return is_first
+    except Exception:  # noqa: BLE001 — best-effort, never break the public GET
+        return False
+
+
+def _notify_first_open(link):
+    """QJ1 / QJ2 (b) — Sur la première ouverture, logue une note dans le
+    chatter du lead lié (QJ1) ET envoie une notification in-app + Web Push
+    au responsable du lead avec un lien wa.me « répondre maintenant » (QJ2).
+    Best-effort, silencieux sur erreur."""
+    try:
+        if not link.devis_id:
+            return
+        lead = getattr(link.devis, 'lead', None)
+        if lead is None:
+            return
+        devis_ref = link.devis.reference
+        # QJ1 — note chatter (toujours).
+        from apps.crm.services import noter_devis_ouvert, notify_devis_opened
+        noter_devis_ouvert(devis_ref, lead)
+        # QJ2 (b) — notification in-app + Web Push au owner.
+        notify_devis_opened(devis_ref, lead)
+    except Exception:  # noqa: BLE001 — best-effort, jamais de fuite
+        pass
+
+
 @api_view(['GET'])
 @permission_classes([AllowAny])
 @throttle_classes([PublicLinkRateThrottle])
@@ -92,6 +146,9 @@ def public_document(request, token):
     )
     if link is None or not link.is_valid:
         return _not_found()
+
+    # QJ1 — stamp the view (best-effort; True = first open).
+    is_first = _stamp_view(link)
 
     try:
         if link.devis_id:
@@ -113,6 +170,10 @@ def public_document(request, token):
             {'detail': 'Document indisponible pour le moment.'},
             status=status.HTTP_404_NOT_FOUND,
         ))
+
+    # QJ1 — chatter notification on first open (best-effort, after PDF success).
+    if is_first:
+        _notify_first_open(link)
 
     response = HttpResponse(pdf_bytes, content_type='application/pdf')
     response['Content-Disposition'] = f'inline; filename="{filename}"'
@@ -190,6 +251,63 @@ def _monthly_consumption(devis) -> list:
     return out
 
 
+def _variant_summaries(devis) -> list:
+    """QJ15 — côte-à-côte : résumé minimal de chaque variante du devis.
+
+    Retourne une liste de dicts (non vide uniquement quand il existe au moins
+    une autre variante active partageant le même version_parent). La liste est
+    vide si le devis est isolé (pas de version_parent, pas de frère/sœur actif).
+
+    Le summary est volontairement minimal : id, reference, version, note,
+    total_ttc (somme brute sans remise globale, bonne pour une comparaison
+    relative côte-à-côte). Jamais de prix d'achat ni de marge (règle #4).
+    """
+    root = devis.version_parent_id or devis.pk
+    try:
+        from .models import Devis as DevisModel, LigneDevis
+        # Include root + all siblings with the same version_parent.
+        siblings = list(
+            DevisModel.objects
+            .filter(
+                company=devis.company,
+                is_active=True,
+            )
+            .filter(
+                models.Q(pk=root) | models.Q(version_parent_id=root)
+            )
+            .exclude(pk=devis.pk)   # exclude self — self is the main payload
+            .order_by('version', 'id')
+            .only('id', 'reference', 'version', 'note',
+                  'taux_tva', 'remise_globale')
+        )
+        if not siblings:
+            return []
+        out = []
+        for s in siblings:
+            # Approximate total TTC (no access to build_quote_data for speed)
+            lines = LigneDevis.objects.filter(devis=s).values(
+                'quantite', 'prix_unitaire', 'remise', 'taux_tva')
+            total_ht = sum(
+                float(ln['quantite']) * float(ln['prix_unitaire'])
+                * (1 - float(ln['remise'] or 0) / 100)
+                for ln in lines
+            )
+            remise_g = float(s.remise_globale or 0)
+            total_ht_after_remise = total_ht * (1 - remise_g / 100)
+            taux = float(s.taux_tva or 20)
+            total_ttc = total_ht_after_remise * (1 + taux / 100)
+            out.append({
+                'id': s.id,
+                'reference': s.reference,
+                'version': s.version,
+                'note': (s.note or ''),
+                'total_ttc': round(total_ttc, 2),
+            })
+        return out
+    except Exception:  # noqa: BLE001 — best-effort, never break the proposal
+        return []
+
+
 @api_view(['GET'])
 @permission_classes([AllowAny])
 @throttle_classes([PublicLinkRateThrottle])
@@ -203,10 +321,21 @@ def proposal_data(request, token):
     link = _resolve_proposal_link(token)
     if link is None:
         return _not_found()
+
+    # QJ1 — stamp the view (best-effort; True = first open).
+    is_first = _stamp_view(link)
+    if is_first:
+        _notify_first_open(link)
+
     try:
         from .quote_engine.builder import build_quote_data
         devis = link.devis
         data = build_quote_data(devis, {'pdf_mode': 'full'})
+        # Rule #4 — jamais de prix d'achat / marge côté client, même si le
+        # builder en plaçait par mégarde dans la donnée du devis (défense en
+        # profondeur : retirer toute clé d'achat/marge avant l'exposition).
+        data = {k: v for k, v in data.items()
+                if not any(s in k for s in ('prix_achat', 'achat', 'marge', 'revendeur'))}
         roof_url = None
         if data.get('roof_image_key'):
             try:
@@ -237,6 +366,14 @@ def proposal_data(request, token):
             # Consommation : factures RÉELLES du lead (MAD→kWh, tarif interne),
             # [] sans facture → la page masque le graphe.
             'monthly_consumption': _monthly_consumption(devis),
+            # QJ12 — financing block (indicatif / à confirmer).
+            # Present when build_quote_data produced a non-None financing dict;
+            # absent (key not sent) when total is unknown — frontend must check.
+            # NOTE: also nested inside data['quote']['financing'] for the PDF engine.
+            'financing': data.get('financing'),
+            # QJ15 — variantes côte-à-côte (même version_parent, toutes actives).
+            # [] quand le devis est isolé — le client voit seulement sa proposition.
+            'variants': _variant_summaries(devis),
         }
     except Exception:  # noqa: BLE001
         return _noindex(Response(
@@ -260,6 +397,12 @@ def proposal_pdf(request, token):
     link = _resolve_proposal_link(token)
     if link is None:
         return _not_found()
+
+    # QJ1 — stamp the view (best-effort; True = first open).
+    is_first = _stamp_view(link)
+    if is_first:
+        _notify_first_open(link)
+
     try:
         # ERR74 — GET sûr : rendu + flux sans persister fichier_pdf.
         key = generate_premium_devis_pdf(
@@ -274,6 +417,26 @@ def proposal_pdf(request, token):
     response = HttpResponse(pdf_bytes, content_type='application/pdf')
     response['Content-Disposition'] = f'inline; filename="{filename}"'
     return _noindex(response)
+
+
+@api_view(['POST'])
+@permission_classes([AllowAny])
+@throttle_classes([PublicLinkRateThrottle])
+def proposal_request_otp(request, token):
+    """QJ11 — Demande l'envoi d'un OTP au contact du devis (toggle ESIGN_OTP_ENABLED).
+
+    No-op quand le toggle est OFF (retourne succès immédiatement — comportement
+    byte-identique à aujourd'hui). Quand ON : génère un code, l'envoie via
+    WhatsApp (wa.me draft) ou email et le stocke en cache (10 min)."""
+    link = _resolve_proposal_link(token)
+    if link is None:
+        return _not_found()
+    from .services import request_esign_otp
+    err = request_esign_otp(link)
+    if err:
+        return _noindex(Response(
+            {'detail': err}, status=status.HTTP_400_BAD_REQUEST))
+    return _noindex(Response({'detail': 'Code envoyé.'}))
 
 
 @api_view(['POST'])
@@ -297,11 +460,24 @@ def proposal_accept(request, token):
             {'detail': 'Votre nom est requis pour signer la proposition.'},
             status=status.HTTP_400_BAD_REQUEST))
     option = (request.data.get('option') or '').strip()
-    from .services import accept_devis, AcceptError
+    # QJ10 — consentement explicite requis pour la validité loi 53-05.
+    consentement = bool(request.data.get('consentement', True))
+    # QJ11 — code OTP si le toggle est actif (service gère la validation).
+    otp_code = (request.data.get('otp_code') or '').strip()
+    from .services import accept_devis, AcceptError, validate_esign_otp
+    # QJ11 — validation OTP avant l'acceptation (no-op quand toggle OFF).
+    otp_err = validate_esign_otp(link=link, otp_code=otp_code)
+    if otp_err:
+        return _noindex(Response(
+            {'detail': otp_err},
+            status=status.HTTP_400_BAD_REQUEST))
     try:
         accept_devis(
             devis=devis, user=None, nom=nom, option=option,
-            ip=_client_ip(request))
+            ip=_client_ip(request),
+            user_agent=request.META.get('HTTP_USER_AGENT', '')[:512],
+            consentement=consentement,
+        )
     except AcceptError as exc:
         return _noindex(Response(
             {'detail': exc.message},

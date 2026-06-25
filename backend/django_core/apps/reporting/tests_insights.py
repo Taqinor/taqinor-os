@@ -73,7 +73,9 @@ class TestRecurringRevenue(InsightsBase):
 
 class TestAuditLog(InsightsBase):
     def test_unified_feed_and_scope(self):
-        lead = Lead.objects.create(company=self.company, nom='L1', stage='NEW')
+        # stage CONTACTED (pas NEW) : la note ne déclenche pas l'auto-avance QJ7
+        # (qui ajouterait une activité « modification ») — le feed reste focalisé.
+        lead = Lead.objects.create(company=self.company, nom='L1', stage='CONTACTED')
         LeadActivity.objects.create(
             company=self.company, lead=lead, kind='note',
             body='Appel passé', user=self.user)

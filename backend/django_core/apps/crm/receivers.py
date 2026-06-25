@@ -4,11 +4,15 @@ Abonne le CRM aux événements du cœur métier exposés par ``core.events``, po
 réagir à des changements d'état déclenchés par d'autres apps (ex. ``ventes``)
 sans que celles-ci importent le CRM. Câblé au démarrage par ``CrmConfig.ready``.
 """
+from django.db.models.signals import post_save
 from django.dispatch import receiver
 
 from core.events import devis_accepted, devis_refused, devis_sent
 
+from .models import LeadActivity
 from .services import (
+    _CONTACT_KINDS,
+    avancer_stage_new_vers_contacted,
     avancer_stage_pour_devis,
     signaler_mismatch_signe_sur_refus,
 )
@@ -86,3 +90,25 @@ def _signaler_signe_sans_devis_actif(sender, devis, user, motif_refus,
     if not getattr(devis, 'lead_id', None):
         return
     signaler_mismatch_signe_sur_refus(devis, user)
+
+
+# ── QJ7 — Avance automatique NEW → CONTACTED au premier contact ──────────────
+
+@receiver(post_save, sender=LeadActivity,
+          dispatch_uid="crm_advance_stage_new_vers_contacted_on_activity")
+def _avancer_stage_on_contact_activity(sender, instance, created, **kwargs):
+    """QJ7 — Quand la PREMIÈRE activité de contact (NOTE/APPEL/EMAIL) est créée
+    sur un lead NEW (et non perdu), avance l'étape vers CONTACTED — une seule fois.
+
+    Intra-CRM : utilise ``post_save`` sur ``LeadActivity`` (pas de bus cross-app).
+    Le garde-fou « ne recule jamais » et « ignore les leads perdus » est délégué à
+    ``avancer_stage_new_vers_contacted`` dans ``services.py``.
+    """
+    if not created:
+        return  # mise à jour, pas une nouvelle activité
+    if instance.kind not in _CONTACT_KINDS:
+        return  # CREATION ou MODIFICATION ne déclenchent pas l'avancée
+    if instance.user is None:
+        return  # uniquement un contact MANUEL d'un utilisateur (pas auto/système)
+    lead = instance.lead
+    avancer_stage_new_vers_contacted(lead, instance.user)

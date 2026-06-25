@@ -309,8 +309,10 @@ class TestLeadActivity(TestCase):
         kinds = [a['kind'] for a in hist.data]
         self.assertIn('note', kinds)
         self.assertIn('creation', kinds)
-        # plus récent en premier
-        self.assertEqual(hist.data[0]['kind'], 'note')
+        # plus récent en premier — QJ7 avance NEW→CONTACTED au premier contact,
+        # donc l'activité « modification » d'étape est la plus récente, la note juste après.
+        self.assertEqual(hist.data[0]['kind'], 'modification')
+        self.assertEqual(hist.data[1]['kind'], 'note')
 
     def test_empty_note_rejected(self):
         lead_id = self._create()

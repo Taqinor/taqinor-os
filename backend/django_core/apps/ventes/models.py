@@ -180,6 +180,12 @@ class Devis(models.Model):
     # Clé de l'image PNG « votre installation » (snapshot 3D) stockée dans le
     # bucket PDF, scopée société. Vide → la proposition n'affiche pas de rendu.
     roof_image = models.CharField(max_length=500, blank=True, null=True)
+    # ── QJ17 — Layout hash pour la déduplication (from-layout idempotency) ──
+    # SHA-256 du layout géométrique (zones + result + scenario) posé lors du
+    # premier « Générer ». Null pour les devis antérieurs ou créés sans layout.
+    # Longueur 64 = SHA-256 hex (max 63 chars pour l'index Oracle — unused here,
+    # mais on plafonne à 64 pour la cohérence). Index ≤ 30 chars : lyt_hash_idx.
+    layout_hash = models.CharField(max_length=64, null=True, blank=True, db_index=True)
 
     class Meta:
         verbose_name = 'Devis'
@@ -1160,6 +1166,17 @@ class ShareLink(models.Model):
         related_name='share_links')
     created_at = models.DateTimeField(auto_now_add=True)
     expires_at = models.DateTimeField(default=_default_share_expiry)
+    # QJ1 — Suivi d'ouverture : première et dernière consultation + compteur.
+    # Tous nullable/default=0 → additive, aucune valeur sur les liens existants.
+    first_viewed_at = models.DateTimeField(
+        null=True, blank=True,
+        verbose_name='Première consultation')
+    last_viewed_at = models.DateTimeField(
+        null=True, blank=True,
+        verbose_name='Dernière consultation')
+    view_count = models.PositiveIntegerField(
+        default=0,
+        verbose_name='Nombre de consultations')
 
     class Meta:
         ordering = ['-created_at']
@@ -1257,3 +1274,259 @@ class PaymentLink(models.Model):
     def is_valid(self):
         return (self.statut == self.Statut.EN_ATTENTE
                 and self.expires_at > timezone.now())
+
+
+import hashlib  # noqa: E402
+
+
+class DevisSignature(models.Model):
+    """QJ10 — Enregistrement IMMUABLE de signature électronique (loi 53-05).
+
+    Créé UNE SEULE FOIS au moment de l'acceptation de la proposition.
+    Ne peut jamais être modifié (pas de méthode save() de mise à jour ;
+    l'idempotence est portée par le service qui interdit un deuxième enregistrement
+    sur un devis déjà signé). Scopé société, jamais de prix d'achat/marge exposé.
+    Champs :
+    - signataire_nom   : nom saisi par le client (texte libre, ≤150 chars)
+    - consentement_explicite : le client a coché « J'accepte » (True requis)
+    - ip_address       : IP du navigateur client à l'instant de la soumission
+    - user_agent       : User-Agent HTTP du navigateur (≤512 chars, tronqué)
+    - content_hash     : SHA-256 hex du payload canonique du devis (données
+                         commerciales : référence, lignes, totaux, client) — le
+                         moteur ne rend qu'ici la proposition ; ce hash est le
+                         sceau du document signé, sans aucune donnée interne
+                         (prix d'achat / marge) — CONFORME règle #4.
+    - signed_at        : horodatage UTC de la signature
+    """
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        null=True, blank=True,
+        related_name='devis_signatures',
+    )
+    devis = models.OneToOneField(
+        Devis,
+        on_delete=models.CASCADE,
+        related_name='signature',
+    )
+    signataire_nom = models.CharField(max_length=150)
+    consentement_explicite = models.BooleanField(default=False)
+    ip_address = models.GenericIPAddressField(
+        null=True, blank=True,
+        verbose_name='Adresse IP',
+    )
+    user_agent = models.CharField(
+        max_length=512, blank=True, default='',
+        verbose_name='User-Agent',
+    )
+    # SHA-256 hex du payload canonique (référence + lignes + totaux + client).
+    # Ne contient JAMAIS prix_achat ni marge.
+    content_hash = models.CharField(
+        max_length=64, blank=True, default='',
+        verbose_name='Hash du contenu signé (SHA-256)',
+    )
+    signed_at = models.DateTimeField(
+        verbose_name='Horodatage de signature',
+    )
+    # QJ22 — Artefact PDF signé (clé MinIO du PDF de la proposition acceptée).
+    # Stocké une fois à l'acceptation via le moteur premium existant. Nullable :
+    # les signatures antérieures à QJ22 n'ont pas de PDF stocké (valeur None →
+    # comportement pré-QJ22 strictement inchangé). Jamais de prix_achat/marge.
+    signed_pdf_key = models.CharField(
+        max_length=500, blank=True, null=True,
+        verbose_name='Clé MinIO du PDF signé',
+    )
+
+    class Meta:
+        verbose_name = 'Signature électronique'
+        verbose_name_plural = 'Signatures électroniques'
+        ordering = ['-signed_at']
+        indexes = [
+            models.Index(fields=['devis'],
+                         name='ventes_devissig_dev_idx'),
+        ]
+
+    def __str__(self):
+        return f'Signature {self.devis_id} — {self.signataire_nom}'
+
+    @staticmethod
+    def compute_content_hash(devis):
+        """SHA-256 du payload canonique du devis (sans aucune donnée interne).
+
+        Le hash couvre : référence, client (nom/email), date_creation,
+        lignes (designation/qte/pu_ht/remise), taux_tva, remise_globale.
+        JAMAIS prix_achat ni marge. Déterministe et reproductible.
+        """
+        client = getattr(devis, 'client', None)
+        client_str = ''
+        if client is not None:
+            client_str = f'{getattr(client, "nom", "")}|{getattr(client, "email", "")}'
+        lignes = list(devis.lignes.order_by('id').values(
+            'designation', 'quantite', 'prix_unitaire', 'remise'))
+        lignes_str = '|'.join(
+            f"{lg['designation']}:{lg['quantite']}:{lg['prix_unitaire']}:{lg['remise']}"
+            for lg in lignes
+        )
+        payload = (
+            f"ref={devis.reference}|"
+            f"client={client_str}|"
+            f"created={devis.date_creation}|"
+            f"tva={devis.taux_tva}|"
+            f"remise={devis.remise_globale}|"
+            f"lignes={lignes_str}"
+        )
+        return hashlib.sha256(payload.encode('utf-8')).hexdigest()
+
+
+# ── QJ16 — Reusable quote presets ────────────────────────────────────────────
+
+class DevisPreset(models.Model):
+    """A company-scoped saved quote configuration (« modèle de devis »).
+
+    A preset captures the line configuration of an existing Devis so a user
+    can apply it to a new quote in one click instead of rebuilding from the
+    catalogue.  It stores lines as a JSON snapshot (never live references) so
+    the preset remains stable after the source devis is edited.
+
+    Multi-tenancy: ``company`` is always forced server-side; never accepted
+    from the request body.  Querysets are always filtered by
+    ``request.user.company``.
+
+    Price-less products are excluded at apply-time (same guard as the
+    auto-fill / build_devis_from_layout service): a preset line whose product
+    no longer carries a sell price is skipped, not applied.
+    """
+
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='devis_presets',
+        verbose_name='Société',
+    )
+    nom = models.CharField(
+        max_length=150,
+        verbose_name='Nom du modèle',
+        help_text='Ex. « Standard 6 kWc résidentiel ».',
+    )
+    description = models.TextField(
+        blank=True, default='',
+        verbose_name='Description',
+        help_text='Note libre sur ce modèle (optionnel).',
+    )
+    mode_installation = models.CharField(
+        max_length=20,
+        choices=Devis.ModeInstallation.choices,
+        blank=True, null=True,
+        verbose_name='Mode d\'installation',
+    )
+    taux_tva = models.DecimalField(
+        max_digits=5, decimal_places=2, default=20,
+        verbose_name='Taux TVA (%)',
+    )
+    remise_globale = models.DecimalField(
+        max_digits=5, decimal_places=2, default=0,
+        verbose_name='Remise globale (%)',
+    )
+    # Snapshot of lines: list of
+    # {produit_id, designation, quantite, prix_unitaire, remise, taux_tva}.
+    # produit_id is nullable in the snapshot (product may have been deleted).
+    lignes_snapshot = models.JSONField(
+        verbose_name='Lignes (snapshot)',
+        help_text='Snapshot JSON des lignes du devis source.',
+    )
+    # etude_params snapshot — preserves pompage / industrial study data
+    # so presets for those modes carry the right sizing defaults.
+    etude_params_snapshot = models.JSONField(
+        blank=True, null=True,
+        verbose_name='Paramètres étude (snapshot)',
+    )
+    created_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='devis_presets_crees',
+        verbose_name='Créé par',
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = 'Modèle de devis'
+        verbose_name_plural = 'Modèles de devis'
+        ordering = ['nom']
+        indexes = [
+            models.Index(fields=['company', 'nom'], name='ventes_preset_co_nom_idx'),
+        ]
+
+    def __str__(self):
+        return f'{self.nom} ({getattr(self.company, "nom", self.company_id)})'
+
+
+# ── QJ4 — Suivi automatique de devis envoyé (relance cadencée) ───────────────
+
+# Cadence par défaut : j+2, j+5, j+10 après date_envoi.
+# Modifiable via le paramètre DEVIS_NUDGE_DAYS dans les settings Django
+# (liste d'entiers). La cadence s'arrête dès que le devis passe « accepté »
+# ou « refusé ».
+DEVIS_NUDGE_DEFAULT_DAYS = [2, 5, 10]
+
+
+class DevisNudgeLog(models.Model):
+    """Trace d'une relance automatique envoyée au vendeur pour un devis.
+
+    Un enregistrement par (devis, niveau) garantit qu'un niveau ne se déclenche
+    jamais deux fois (idempotence). La relance est adressée AU VENDEUR
+    (created_by), pas au client — soit un draft wa.me, soit un email SendGrid
+    si configuré. Scopé société (multi-tenant).
+
+    Champs :
+    - devis       : FK vers le Devis concerné (scopé société)
+    - niveau      : indice 0-based du jour de relance (0 = j+2, 1 = j+5, 2 = j+10)
+    - jours       : nombre de jours après date_envoi de ce niveau (ex. 2)
+    - canal       : 'email' | 'wa_draft' (indique comment la relance a été traitée)
+    - created_at  : horodatage UTC de l'envoi
+    """
+    class Canal(models.TextChoices):
+        EMAIL = 'email', 'Email'
+        WA_DRAFT = 'wa_draft', 'WhatsApp draft (wa.me)'
+
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        null=True, blank=True,
+        related_name='devis_nudge_logs',
+    )
+    devis = models.ForeignKey(
+        Devis,
+        on_delete=models.CASCADE,
+        related_name='nudge_logs',
+    )
+    niveau = models.PositiveSmallIntegerField(
+        verbose_name='Niveau (indice 0-based)',
+        help_text='0 = premier palier, 1 = deuxième, etc.',
+    )
+    jours = models.PositiveSmallIntegerField(
+        verbose_name='Jours après envoi',
+        help_text='Nombre de jours après date_envoi de ce palier.',
+    )
+    canal = models.CharField(
+        max_length=10,
+        choices=Canal.choices,
+        default=Canal.WA_DRAFT,
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        verbose_name = 'Relance automatique devis'
+        verbose_name_plural = 'Relances automatiques devis'
+        ordering = ['-created_at']
+        unique_together = [('devis', 'niveau')]
+        indexes = [
+            models.Index(fields=['devis', 'niveau'], name='ventes_nudge_dev_niv_idx'),
+        ]
+
+    def __str__(self):
+        return (
+            f'NudgeLog devis={self.devis_id} niveau={self.niveau}'
+            f' j+{self.jours} [{self.canal}]'
+        )

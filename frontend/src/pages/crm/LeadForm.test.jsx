@@ -53,6 +53,7 @@ vi.mock('../../components/ActivitiesPanel', () => ({ default: () => null }))
 vi.mock('../../components/AttachmentsPanel', () => ({ default: () => null }))
 vi.mock('../../components/CustomFieldsInput', () => ({ default: () => null }))
 vi.mock('./leads/SigneDialog', () => ({ default: () => null }))
+vi.mock('./leads/AppointmentBooker', () => ({ default: () => null }))
 vi.mock('./leads/LeadDevisPanel', () => ({
   default: ({ mode }) => (
     <div data-testid="lead-devis-panel" data-mode={mode}>PanneauDevis</div>

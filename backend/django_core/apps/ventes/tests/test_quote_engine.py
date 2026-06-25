@@ -1353,3 +1353,241 @@ class TestResidentialRenderer(TestCase):
             self.skipTest('qrcode not installed in this environment')
         self.assertIn('Scannez', html)
         self.assertIn('data:image/png', html)
+
+
+# ─── QJ13 — Loi 82-21 self-consumption-first savings + utility tranche tables ──
+
+
+class TestSavingsMath(TestCase):
+    """QJ13 — Pure-Python tests for the self-consumption-first savings model.
+
+    These tests are DB-free (no Devis needed): they exercise pricing.py directly.
+    """
+
+    def test_self_consumption_first_no_surplus_valued(self):
+        """Only self-consumed kWh are valued — surplus injection yields nothing."""
+        from apps.ventes.quote_engine.pricing import calculate_savings_roi
+        roi = calculate_savings_roi(
+            5.0, 50000, 80000,
+            tarif_kwh_override=1.75,
+            autoconso_sans=0.60,
+            autoconso_avec=0.85,
+        )
+        prod = roi["prod_kwh"]   # = 5 * 1240 = 6200
+        # Option 1 savings = production × autoconso_sans × tarif
+        self.assertEqual(roi["eco_s_ann"], round(prod * 0.60 * 1.75))
+        # Option 2 savings = production × autoconso_avec × tarif
+        self.assertEqual(roi["eco_a_ann"], round(prod * 0.85 * 1.75))
+        # Savings < production × tarif (surplus not valued)
+        self.assertLess(roi["eco_s_ann"], round(prod * 1.75))
+        self.assertLess(roi["eco_a_ann"], round(prod * 1.75))
+
+    def test_onee_tranche_weighted_price_increases_with_consumption(self):
+        """Higher consumption → higher average ONEE tariff (progressive tranches)."""
+        from apps.ventes.quote_engine.pricing import _weighted_kwh_price, ONEE_TRANCHES
+        price_low = _weighted_kwh_price(80, ONEE_TRANCHES)    # within first tranche
+        price_mid = _weighted_kwh_price(250, ONEE_TRANCHES)   # crosses first two
+        price_high = _weighted_kwh_price(600, ONEE_TRANCHES)  # crosses all
+        self.assertLessEqual(price_low, price_mid)
+        self.assertLessEqual(price_mid, price_high)
+        # First-tranche cap
+        self.assertAlmostEqual(price_low, 0.9010, places=3)
+
+    def test_utility_name_resolves_to_table(self):
+        """Passing utility='onee' uses the ONEE tranche table, not the fallback."""
+        from apps.ventes.quote_engine.pricing import calculate_savings_roi, _FALLBACK_KWH_PRICE
+        roi_onee = calculate_savings_roi(
+            5.0, 50000, 80000,
+            utility="onee",
+            conso_annuelle_kwh=3600,   # 300 kWh/mois
+        )
+        # Result is NOT the fallback flat price
+        self.assertFalse(roi_onee["savings_estimated"])
+        self.assertNotAlmostEqual(roi_onee["tarif_kwh"], _FALLBACK_KWH_PRICE, places=2)
+
+    def test_utility_case_insensitive(self):
+        """utility='ONEE' and utility='onee' produce identical results."""
+        from apps.ventes.quote_engine.pricing import calculate_savings_roi
+        r1 = calculate_savings_roi(5.0, 50000, 80000, utility="ONEE",
+                                   conso_annuelle_kwh=3600)
+        r2 = calculate_savings_roi(5.0, 50000, 80000, utility="onee",
+                                   conso_annuelle_kwh=3600)
+        self.assertEqual(r1["eco_s_ann"], r2["eco_s_ann"])
+
+    def test_lydec_and_redal_tables_present(self):
+        """Lydec and Redal tables are registered and return non-estimated results."""
+        from apps.ventes.quote_engine.pricing import calculate_savings_roi
+        for util in ("lydec", "redal"):
+            roi = calculate_savings_roi(5.0, 50000, 80000, utility=util,
+                                        conso_annuelle_kwh=3000)
+            self.assertFalse(roi["savings_estimated"],
+                             f"{util} should not trigger the fallback")
+
+    def test_tranches_override_beats_utility_name(self):
+        """Caller-supplied tranches_override takes precedence over utility name."""
+        from apps.ventes.quote_engine.pricing import calculate_savings_roi
+        custom = [[100, 2.00], [None, 3.00]]
+        roi_custom = calculate_savings_roi(
+            5.0, 50000, 80000,
+            utility="onee",
+            tranches_override=custom,
+            conso_annuelle_kwh=1200,
+        )
+        roi_onee = calculate_savings_roi(
+            5.0, 50000, 80000,
+            utility="onee",
+            conso_annuelle_kwh=1200,
+        )
+        # Custom has higher prices → custom savings > ONEE savings
+        self.assertGreater(roi_custom["eco_s_ann"], roi_onee["eco_s_ann"])
+        self.assertFalse(roi_custom["savings_estimated"])
+
+    def test_explicit_tarif_kwh_override_beats_all(self):
+        """tarif_kwh_override wins over utility name and tranches."""
+        from apps.ventes.quote_engine.pricing import calculate_savings_roi
+        roi = calculate_savings_roi(
+            5.0, 50000, 80000,
+            tarif_kwh_override=2.50,
+            utility="onee",
+            conso_annuelle_kwh=3600,
+        )
+        self.assertAlmostEqual(roi["tarif_kwh"], 2.50, places=4)
+        self.assertFalse(roi["savings_estimated"])
+        prod = roi["prod_kwh"]
+        self.assertEqual(roi["eco_s_ann"], round(prod * 0.60 * 2.50))
+
+    def test_roi_computed_from_totals(self):
+        """ROI = total_option / economie_annuelle (± rounding tolerance)."""
+        from apps.ventes.quote_engine.pricing import calculate_savings_roi
+        roi = calculate_savings_roi(
+            5.0, 50000, 80000,
+            tarif_kwh_override=1.75,
+        )
+        expected_roi_s = round(50000 / roi["eco_s_ann"], 1)
+        expected_roi_a = round(80000 / roi["eco_a_ann"], 1)
+        self.assertAlmostEqual(roi["roi_s"], expected_roi_s, places=1)
+        self.assertAlmostEqual(roi["roi_a"], expected_roi_a, places=1)
+
+    def test_monthly_seasonal_factors_sum_to_production(self):
+        """The 12 monthly savings values sum to approximately the annual savings."""
+        from apps.ventes.quote_engine.pricing import calculate_savings_roi
+        roi = calculate_savings_roi(10.0, 100000, 150000, tarif_kwh_override=1.40)
+        # Sum of monthly ≈ annual (within ±12 MAD due to rounding per month)
+        self.assertAlmostEqual(sum(roi["eco_s_monthly"]), roi["eco_s_ann"], delta=12)
+        self.assertAlmostEqual(sum(roi["eco_a_monthly"]), roi["eco_a_ann"], delta=12)
+        self.assertEqual(len(roi["eco_s_monthly"]), 12)
+        self.assertEqual(len(roi["eco_a_monthly"]), 12)
+
+    def test_tranche_table_zero_consumption_returns_first_tranche_price(self):
+        """With zero consumption, return the first-tranche price (conservative floor)."""
+        from apps.ventes.quote_engine.pricing import _weighted_kwh_price, ONEE_TRANCHES
+        price = _weighted_kwh_price(0, ONEE_TRANCHES)
+        self.assertAlmostEqual(price, ONEE_TRANCHES[0][1], places=4)
+
+    def test_tranche_table_large_consumption_approaches_last_tranche(self):
+        """Very large consumption is dominated by the last (most expensive) band."""
+        from apps.ventes.quote_engine.pricing import _weighted_kwh_price, ONEE_TRANCHES
+        # 10 000 kWh/mois — the last tranche dominates the weighted average, so
+        # the result must be close to (but not exceed) the last tranche price.
+        price_huge = _weighted_kwh_price(10000, ONEE_TRANCHES)
+        last_tranche_price = ONEE_TRANCHES[-1][1]
+        self.assertGreater(price_huge, 1.35)
+        self.assertLessEqual(price_huge, last_tranche_price)
+
+
+class TestNoInventedNumberGuard(TestCase):
+    """QJ13 — No-invented-number guard: when tariff/consumption data is absent,
+    savings degrade honestly (flagged as estimate) rather than fabricating a
+    precise number.
+    """
+
+    def test_no_tariff_data_flags_savings_as_estimated(self):
+        """Without any tariff override or utility name, savings_estimated is True."""
+        from apps.ventes.quote_engine.pricing import calculate_savings_roi
+        roi = calculate_savings_roi(5.0, 50000, 80000)
+        self.assertTrue(roi["savings_estimated"],
+                        "savings must be flagged as an estimate when no tariff data")
+
+    def test_no_tariff_data_uses_fallback_price_not_zero(self):
+        """Fallback still produces a non-zero savings figure (honest estimate, not
+        a blank/zero that would confuse the user)."""
+        from apps.ventes.quote_engine.pricing import calculate_savings_roi
+        roi = calculate_savings_roi(5.0, 50000, 80000)
+        self.assertGreater(roi["eco_s_ann"], 0)
+        self.assertGreater(roi["eco_a_ann"], 0)
+
+    def test_tarif_kwh_override_zero_keeps_estimated_flag_false(self):
+        """tarif_kwh_override=0 is treated as absent → fallback fires."""
+        from apps.ventes.quote_engine.pricing import calculate_savings_roi
+        roi_zero = calculate_savings_roi(5.0, 50000, 80000, tarif_kwh_override=0)
+        self.assertTrue(roi_zero["savings_estimated"])
+
+    def test_with_tariff_data_flag_is_false(self):
+        """Providing a real tariff override disables the estimated flag."""
+        from apps.ventes.quote_engine.pricing import calculate_savings_roi
+        roi = calculate_savings_roi(5.0, 50000, 80000, tarif_kwh_override=1.40)
+        self.assertFalse(roi["savings_estimated"])
+
+    def test_builder_exposes_savings_estimated_key(self):
+        """build_quote_data forwards savings_estimated into the data dict."""
+        company = make_company()
+        user = make_user(company)
+        client_obj = make_client(company)
+        devis = make_devis(company, user, client_obj, [
+            ('Panneau mono 450W', '10', '1500'),
+            ('Onduleur hybride', '1', '12000'),
+        ], reference='DEV-QJ13-EST')
+        from apps.ventes.quote_engine.builder import build_quote_data
+        data = build_quote_data(devis)
+        # No etude_params → no tariff data → must be estimated
+        self.assertIn("savings_estimated", data)
+        self.assertTrue(data["savings_estimated"])
+        self.assertIn("tarif_kwh", data)
+
+    def test_builder_with_etude_params_tarif_kwh_not_estimated(self):
+        """When etude_params carries tarif_kwh, savings are not estimated."""
+        company = make_company()
+        user = make_user(company)
+        client_obj = make_client(company)
+        devis = make_devis(company, user, client_obj, [
+            ('Panneau mono 450W', '10', '1500'),
+            ('Onduleur hybride', '1', '12000'),
+        ], reference='DEV-QJ13-KWH')
+        devis.etude_params = {"tarif_kwh": 1.50}
+        devis.save(update_fields=["etude_params"])
+        from apps.ventes.quote_engine.builder import build_quote_data
+        data = build_quote_data(devis)
+        self.assertFalse(data["savings_estimated"])
+        self.assertAlmostEqual(data["tarif_kwh"], 1.50, places=2)
+
+    def test_builder_with_distributeur_onee_not_estimated(self):
+        """etude_params distributeur='onee' → ONEE tranche table, not estimated."""
+        company = make_company()
+        user = make_user(company)
+        client_obj = make_client(company)
+        devis = make_devis(company, user, client_obj, [
+            ('Panneau mono 450W', '10', '1500'),
+            ('Onduleur réseau 8kW', '1', '14000'),
+        ], reference='DEV-QJ13-ONEE')
+        devis.etude_params = {"distributeur": "onee", "conso_annuelle": 18000}
+        devis.save(update_fields=["etude_params"])
+        from apps.ventes.quote_engine.builder import build_quote_data
+        data = build_quote_data(devis)
+        self.assertFalse(data["savings_estimated"])
+
+    def test_surplus_injection_not_in_savings(self):
+        """Savings must NEVER exceed production × autoconso × price.
+
+        The self-consumption ratio caps savings; there is no surplus-injection bonus.
+        """
+        from apps.ventes.quote_engine.pricing import (
+            calculate_savings_roi, AUTOCONSO_AVEC)
+        kwc = 10.0
+        roi = calculate_savings_roi(kwc, 100000, 150000, tarif_kwh_override=1.75)
+        prod = roi["prod_kwh"]
+        # Savings must not exceed 100% autoconsumption (no injection bonus)
+        max_possible = round(prod * 1.0 * 1.75)
+        self.assertLessEqual(roi["eco_s_ann"], max_possible)
+        self.assertLessEqual(roi["eco_a_ann"], max_possible)
+        # And they should reflect only the self-consumed share
+        self.assertEqual(roi["eco_a_ann"], round(prod * AUTOCONSO_AVEC * 1.75))

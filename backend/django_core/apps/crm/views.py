@@ -3,9 +3,9 @@ from rest_framework.decorators import action, api_view, permission_classes
 from rest_framework.response import Response
 from authentication.mixins import TenantMixin
 from authentication.scoping import scope_queryset, scope_client_queryset
-from .models import Client, Lead, LeadTag, MotifPerte, Canal, Parrainage, MessageTemplate
+from .models import Appointment, Client, Lead, LeadTag, MotifPerte, Canal, Parrainage, MessageTemplate
 from .serializers import (
-    ClientSerializer, LeadSerializer, LeadActivitySerializer,
+    AppointmentSerializer, ClientSerializer, LeadSerializer, LeadActivitySerializer,
     LeadTagSerializer, MotifPerteSerializer, CanalSerializer,
     ParrainageSerializer, MessageTemplateSerializer, _tag_en_usage, _motif_en_usage,
 )
@@ -263,7 +263,7 @@ class LeadViewSet(TenantMixin, viewsets.ModelViewSet):
     serializer_class = LeadSerializer
     filter_backends = [filters.SearchFilter, filters.OrderingFilter]
     search_fields = ['nom', 'prenom', 'societe', 'email', 'telephone', 'ville']
-    ordering_fields = ['nom', 'date_creation', 'stage']
+    ordering_fields = ['nom', 'date_creation', 'stage', 'score']
     ordering = ['-date_creation']
 
     def get_queryset(self):
@@ -310,8 +310,9 @@ class LeadViewSet(TenantMixin, viewsets.ModelViewSet):
                     extra['owner'] = default
         serializer.save(**extra)
         activity.log_creation(serializer.instance, user)
-        from .services import sync_relance_activity
+        from .services import sync_relance_activity, recompute_lead_score
         sync_relance_activity(serializer.instance, user)
+        recompute_lead_score(serializer.instance)
 
     def perform_update(self, serializer):
         # Snapshot avant écriture pour journaliser ancien → nouveau.
@@ -319,10 +320,12 @@ class LeadViewSet(TenantMixin, viewsets.ModelViewSet):
         super().perform_update(serializer)
         new_lead = serializer.instance
         activity.log_changes(old, new_lead, self.request.user)
-        from .services import sync_relance_activity, maybe_set_first_contacted_at
+        from .services import sync_relance_activity, maybe_set_first_contacted_at, recompute_lead_score
         sync_relance_activity(new_lead, self.request.user)
         # FG28 — Pose first_contacted_at à la première sortie de l'étape NEW.
         maybe_set_first_contacted_at(old, new_lead)
+        # QJ6 — Recalcule et persiste le score après chaque mise à jour.
+        recompute_lead_score(new_lead)
 
     def get_permissions(self):
         if self.action in READ_ACTIONS + ['historique', 'duplicates',
@@ -1110,3 +1113,49 @@ class MessageTemplateViewSet(TenantMixin, viewsets.ModelViewSet):
         ville = request.data.get('ville', '')
         lien = request.data.get('lien', '')
         return Response({'texte': tmpl.render(prenom=prenom, ville=ville, lien=lien)})
+
+
+# ── QJ20 — Rendez-vous (visites commerciales/techniques) ──────────────────────
+
+class AppointmentViewSet(TenantMixin, viewsets.ModelViewSet):
+    """QJ20 — Rendez-vous planifiés sur les leads (visites commerciales/techniques).
+
+    Lecture tout rôle, écriture responsable/admin.
+    Toujours scopé par société (TenantMixin). La société est posée côté serveur
+    depuis l'utilisateur actif (jamais lue du corps de requête — multi-tenant).
+    Filtre ?lead=<id> pour n'avoir que les RDV d'un lead donné.
+    """
+    serializer_class = AppointmentSerializer
+    queryset = Appointment.objects.select_related('lead', 'company').all()
+    filterset_fields = ['lead', 'statut']
+    ordering_fields = ['scheduled_at', 'date_creation']
+    ordering = ['scheduled_at']
+
+    def get_permissions(self):
+        if self.action in READ_ACTIONS:
+            return [IsAnyRole()]
+        return [IsResponsableOrAdmin()]
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        lead_id = self.request.query_params.get('lead')
+        if lead_id:
+            qs = qs.filter(lead_id=lead_id)
+        return qs
+
+    def perform_create(self, serializer):
+        """Company et created_by toujours posés côté serveur."""
+        from .services import book_appointment
+        lead = serializer.validated_data['lead']
+        scheduled_at = serializer.validated_data['scheduled_at']
+        notes = serializer.validated_data.get('notes') or ''
+        appt = book_appointment(
+            lead=lead,
+            scheduled_at=scheduled_at,
+            notes=notes,
+            user=self.request.user,
+        )
+        # The serializer's save() would create a duplicate — we bypass it here
+        # and return the already-created appointment via the serializer for the
+        # response. Patch self so the serializer picks up the instance.
+        serializer.instance = appt

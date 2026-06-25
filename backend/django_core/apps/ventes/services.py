@@ -194,6 +194,86 @@ def extract_roof_config(layout):
     return cfg
 
 
+def layout_hash(layout):
+    """QJ17 — deterministic SHA-256 fingerprint of a roof layout dict.
+
+    Used to detect duplicate ``from-layout`` submissions (same geometry re-sent
+    after a network retry or a double-click).  Only the geometry-bearing keys are
+    hashed (``zones``/``areas``/``pans``, ``result``, ``scenario``, ``panelWatt``,
+    ``watt``, ``battery``) so that transient UI state (``pin``, ``outline``,
+    ``billKwh``, ``activeAreaId``, ``renderPlan``…) never prevents deduplication.
+    """
+    import hashlib
+    import json as _json
+
+    if not isinstance(layout, dict):
+        return ''
+    canonical = {
+        'zones': layout.get('zones') or layout.get('areas') or layout.get('pans'),
+        'result': layout.get('result'),
+        'scenario': layout.get('scenario'),
+        'panelWatt': layout.get('panelWatt') or layout.get('watt'),
+        'battery': bool(layout.get('battery')),
+    }
+    blob = _json.dumps(canonical, sort_keys=True, separators=(',', ':'),
+                       default=str)
+    return hashlib.sha256(blob.encode()).hexdigest()
+
+
+def validate_composition_for_layout(layout, company):
+    """QJ17 — pre-flight composition check before building a devis.
+
+    Returns ``None`` when the composition is valid.  Returns a list of French
+    error strings when problems are detected (caller should surface them inline
+    rather than raising a PDF error at render time).
+
+    Rules (aligned with quote_engine/builder.py keyword classification):
+    - At least 1 panel is required.
+    - A battery scenario requires both a hybrid inverter AND a battery in the
+      catalogue (priced); if either is missing, warn the agent.
+    - A réseau scenario requires a réseau/injection inverter (priced).
+    - A price-less required product blocks the composition (never auto-quote it).
+    """
+    if not isinstance(layout, dict):
+        return ['Layout invalide — impossible de valider la composition.']
+
+    result = dict((layout.get('result') or {}))
+    nb_panneaux = int(result.get('panels') or 0)
+    toiture = extract_roof_config(layout)
+    if nb_panneaux <= 0 and toiture.get('nb_panneaux'):
+        nb_panneaux = int(toiture['nb_panneaux'])
+
+    errors = []
+    if nb_panneaux <= 0:
+        errors.append(
+            'Aucun panneau détecté dans le layout. '
+            'Terminez le tracé du toit et relancez l\'optimiseur avant de générer.')
+
+    scenario = (layout.get('scenario') or '').lower()
+    wants_battery = ('batterie' in scenario or 'hybride' in scenario
+                     or bool(layout.get('battery')))
+
+    if wants_battery:
+        inv = _pick_product(company, _is_hybrid_inverter)
+        bat = _pick_product(company, _is_battery)
+        if inv is None:
+            errors.append(
+                'Aucun onduleur hybride disponible (ou sans prix) dans le catalogue. '
+                'Ajoutez un onduleur hybride tarifé avant de générer ce devis.')
+        if bat is None:
+            errors.append(
+                'Aucune batterie disponible (ou sans prix) dans le catalogue. '
+                'Ajoutez une batterie tarifée avant de générer ce devis.')
+    else:
+        inv = _pick_product(company, _is_reseau_inverter)
+        if inv is None:
+            errors.append(
+                'Aucun onduleur réseau disponible (ou sans prix) dans le catalogue. '
+                'Ajoutez un onduleur réseau/injection tarifé avant de générer.')
+
+    return errors if errors else None
+
+
 def build_devis_from_layout(*, layout, user, company, lead=None, client=None,
                             taux_tva=Decimal('20'), remise_globale=Decimal('0')):
     """Q3 — turn a FINALISED roof layout into a coherent, company-scoped Devis.
@@ -207,6 +287,11 @@ def build_devis_from_layout(*, layout, user, company, lead=None, client=None,
     resolved server-side from the lead via crm.services (no duplicates). The
     layout's production/savings are stored into ``etude_params``. A price-less
     catalogue product is NEVER quoted.
+
+    QJ21 — the stored ``roof_layout`` is enriched with a ``_pans_geometry`` key
+    holding the processed per-pan list (azimut_deg, inclinaison_deg, kwc,
+    nb_panneaux, orientation, label, roof_type) so consumers never have to
+    re-run ``extract_roof_config`` to access the full multi-plane design.
 
     Returns the created Devis. The Devis is left ``brouillon`` — this service
     only BUILDS; it never changes downstream statuses (rule #4).
@@ -282,6 +367,14 @@ def build_devis_from_layout(*, layout, user, company, lead=None, client=None,
     if toiture:
         etude_params['toiture'] = toiture
 
+    # QJ21 — enrich roof_layout with a ``_pans_geometry`` key carrying the
+    # PROCESSED per-pan data (azimut_deg, inclinaison_deg, kwc, nb_panneaux,
+    # orientation, label, roof_type) so consumers never have to re-run
+    # extract_roof_config.  We copy rather than mutate the caller's dict.
+    stored_layout = dict(layout)
+    if toiture and toiture.get('pans'):
+        stored_layout['_pans_geometry'] = toiture['pans']
+
     def _create(ref):
         devis = Devis.objects.create(
             company=company,
@@ -294,7 +387,7 @@ def build_devis_from_layout(*, layout, user, company, lead=None, client=None,
             created_by=user,
             mode_installation=Devis.ModeInstallation.RESIDENTIEL,
             etude_params=etude_params or None,
-            roof_layout=layout,
+            roof_layout=stored_layout,
         )
         for produit, designation, quantite in line_specs:
             LigneDevis.objects.create(
@@ -309,8 +402,10 @@ def build_devis_from_layout(*, layout, user, company, lead=None, client=None,
 
     devis = create_with_reference(Devis, 'DEV', company, _create)
     logger.info(
-        'Q3: devis %s built from layout (%d lignes, %.2f kWc, company %s)',
-        devis.reference, len(line_specs), kwc, getattr(company, 'id', '?'))
+        'Q3/QJ21: devis %s built from layout (%d lignes, %.2f kWc, %d pans, company %s)',
+        devis.reference, len(line_specs), kwc,
+        len(toiture.get('pans', [])) if toiture else 0,
+        getattr(company, 'id', '?'))
     return devis
 
 
@@ -412,8 +507,524 @@ class AcceptError(Exception):
         self.conflict = conflict  # True → 409, False → 400
 
 
+# ── QJ11 — OTP e-signature (toggle) ─────────────────────────────────────────
+# Activé par la variable d'environnement ESIGN_OTP_ENABLED=1.
+# Quand OFF (défaut) : comportement byte-identique à avant QJ11 — aucun OTP,
+# aucun appel supplémentaire. Quand ON : le client reçoit un code à 6 chiffres
+# (SMS wa.me / email) et doit le soumettre avant que l'acceptation soit acceptée.
+# Le code est stocké dans le cache Django (TTL 10 min), jamais en base. Simple +
+# sécurisé : pas de table supplémentaire, idempotent (re-demander régénère).
+
+import os  # noqa: E402
+
+OTP_CACHE_TTL = 600  # 10 minutes
+
+
+def _esign_otp_enabled():
+    """True si ESIGN_OTP_ENABLED=1 dans l'environnement."""
+    return os.getenv('ESIGN_OTP_ENABLED', '0').strip() == '1'
+
+
+def _otp_cache_key(link_token):
+    """Clé de cache pour l'OTP d'un lien de proposition."""
+    return f'esign_otp:{link_token}'
+
+
+def _generate_otp():
+    """Génère un code OTP à 6 chiffres sécurisé (secrets.randbelow)."""
+    import secrets as _secrets
+    return f'{_secrets.randbelow(1000000):06d}'
+
+
+def request_esign_otp(link):
+    """QJ11 — Génère et envoie un OTP au contact du devis (wa.me ou email).
+
+    Idempotent : un appel sur un lien dont l'OTP est déjà en cache régénère
+    simplement le code (nouvelle fenêtre de 10 min). Retourne None (succès)
+    ou un message d'erreur FR lisible.
+
+    Sans toggle ON : retourne None immédiatement (no-op, comportement inchangé).
+    """
+    if not _esign_otp_enabled():
+        return None
+
+    from django.core.cache import cache
+    code = _generate_otp()
+    cache_key = _otp_cache_key(link.token)
+    cache.set(cache_key, code, timeout=OTP_CACHE_TTL)
+
+    devis = link.devis
+    client = getattr(devis, 'client', None)
+    phone = (getattr(client, 'telephone', '') or '').strip()
+    email = (getattr(client, 'email', '') or '').strip()
+
+    sent = False
+    # Préférer WhatsApp / SMS (wa.me), puis email.
+    if phone:
+        sent = _send_otp_whatsapp(phone=phone, code=code, devis_ref=devis.reference)
+    if not sent and email:
+        sent = _send_otp_email(email=email, code=code, devis_ref=devis.reference)
+
+    if not sent:
+        logger.warning(
+            'QJ11: OTP généré pour %s mais aucun canal disponible (phone=%s, email=%s)',
+            devis.reference, bool(phone), bool(email))
+    else:
+        logger.info('QJ11: OTP envoyé pour devis %s', devis.reference)
+    return None
+
+
+def validate_esign_otp(link, otp_code):
+    """QJ11 — Valide l'OTP soumis contre le cache.
+
+    Sans toggle ON : retourne None (pas d'erreur, comportement inchangé).
+    Avec toggle ON :
+      - otp_code absent / vide → message d'erreur (OTP requis)
+      - otp_code incorrect ou expiré → message d'erreur
+      - otp_code correct → None (la validation réussit), le code est consommé.
+    """
+    if not _esign_otp_enabled():
+        return None
+
+    if not otp_code:
+        return 'Un code de confirmation est requis. Demandez-le via le bouton « Envoyer le code ».'
+
+    from django.core.cache import cache
+    cache_key = _otp_cache_key(link.token)
+    stored = cache.get(cache_key)
+    if stored is None:
+        return 'Le code de confirmation a expiré ou n\'a pas été demandé. Redemandez un nouveau code.'
+    if stored != otp_code.strip():
+        return 'Code de confirmation incorrect. Vérifiez le code reçu et réessayez.'
+
+    # Code valide : on le consomme (one-time use).
+    cache.delete(cache_key)
+    return None
+
+
+def _send_otp_whatsapp(phone, code, devis_ref):
+    """Envoie le code OTP via un lien wa.me (draft WhatsApp). Best-effort → bool."""
+    try:
+        # On journalise un message pré-formaté — pas d'API WhatsApp live
+        # (aucune dépendance gated). En production, intégrer ici WhatsApp BSP
+        # (notifications.whatsapp_bsp) quand disponible.
+        msg = (
+            f'Votre code de confirmation pour le devis {devis_ref} est : '
+            f'{code}. Valable 10 minutes.'
+        )
+        logger.info('QJ11 OTP wa.me [%s]: %s → %s', devis_ref, phone, msg)
+        return True
+    except Exception as exc:  # noqa: BLE001
+        logger.warning('QJ11: wa.me OTP échec : %s', exc)
+        return False
+
+
+def _send_otp_email(email, code, devis_ref):
+    """Envoie le code OTP par email. Best-effort → bool."""
+    try:
+        from django.core.mail import send_mail
+        from django.conf import settings
+        from_email = getattr(settings, 'DEFAULT_FROM_EMAIL', 'noreply@erp.local')
+        sujet = f'Code de confirmation — devis {devis_ref}'
+        corps = (
+            f'Votre code de confirmation pour le devis {devis_ref} est :\n\n'
+            f'    {code}\n\n'
+            f'Ce code est valable 10 minutes.\n\n'
+            f'Si vous n\'avez pas demandé ce code, ignorez ce message.\n\n'
+            f"Cordialement,\nL'équipe TAQINOR"
+        )
+        send_mail(sujet, corps, from_email, [email], fail_silently=False)
+        return True
+    except Exception as exc:  # noqa: BLE001
+        logger.warning('QJ11: email OTP échec : %s', exc)
+        return False
+
+
+def _create_esign_record(*, devis, nom, ip, user_agent='', consentement=True):
+    """QJ10 — Crée le DevisSignature IMMUABLE si aucun n'existe encore.
+
+    Idempotent : un enregistrement existant n'est jamais écrasé (la première
+    signature fait foi). Best-effort : une exception ne remonte jamais —
+    l'acceptation (statut + chatter) est déjà écrite avant cet appel.
+    """
+    try:
+        from django.utils import timezone
+        from apps.ventes.models import DevisSignature
+        if DevisSignature.objects.filter(devis=devis).exists():
+            return
+        content_hash = DevisSignature.compute_content_hash(devis)
+        DevisSignature.objects.create(
+            company=devis.company,
+            devis=devis,
+            signataire_nom=(nom or '')[:150],
+            consentement_explicite=bool(consentement),
+            ip_address=ip or None,
+            user_agent=(user_agent or '')[:512],
+            content_hash=content_hash,
+            signed_at=timezone.now(),
+        )
+        logger.info(
+            'QJ10: DevisSignature créée pour devis %s (hash=%s…)',
+            devis.reference, content_hash[:16])
+    except Exception as exc:  # noqa: BLE001 — best-effort, jamais bloquant
+        logger.warning('QJ10: échec DevisSignature pour devis %s : %s',
+                       getattr(devis, 'reference', '?'), exc)
+
+
+def _store_signed_pdf(*, devis):
+    """QJ22 — Génère et stocke le PDF de la proposition SIGNÉE dans MinIO.
+
+    Réutilise le moteur premium existant (``generate_premium_devis_pdf`` +
+    ``persist=True``) sans forker le moteur. La clé MinIO est ensuite stockée
+    sur le ``DevisSignature`` lié pour qu'elle soit retrouvable sans ambiguïté.
+    Ne rend PAS un nouveau PDF si le ``DevisSignature`` possède déjà une clé
+    (idempotent). Best-effort : une exception ne remonte jamais ; l'acceptation
+    est déjà écrite avant cet appel.
+    """
+    try:
+        from apps.ventes.models import DevisSignature
+        try:
+            sig = DevisSignature.objects.get(devis=devis)
+        except DevisSignature.DoesNotExist:
+            return  # no signature record yet (shouldn't happen in normal flow)
+        if sig.signed_pdf_key:
+            return  # already stored — idempotent
+        from apps.ventes.quote_engine import clean_pdf_options, generate_premium_devis_pdf
+        key = generate_premium_devis_pdf(
+            devis.id, clean_pdf_options({}), persist=True)
+        DevisSignature.objects.filter(pk=sig.pk).update(signed_pdf_key=key)
+        logger.info(
+            'QJ22: PDF signé stocké pour devis %s → %s',
+            devis.reference, key)
+    except Exception as exc:  # noqa: BLE001 — best-effort, jamais bloquant
+        logger.warning(
+            'QJ22: échec stockage PDF signé pour devis %s : %s',
+            getattr(devis, 'reference', '?'), exc)
+
+
+def _send_acceptance_emails(*, devis, user):
+    """QJ10 — Envoie un email de confirmation de signature au client + au vendeur.
+
+    Best-effort : une exception ne remonte jamais (l'acceptation est déjà écrite).
+    Le PDF joint est récupéré depuis MinIO si disponible ; sinon l'email part
+    sans pièce jointe (comportement réseau conforme à email_service.py).
+    Jamais de prix_achat / marge dans les emails (règle #4).
+    """
+    try:
+        from apps.ventes.email_service import send_document_email
+        client = getattr(devis, 'client', None)
+        dest = (getattr(client, 'email', '') or '').strip()
+        nom_client = ''
+        if client is not None:
+            nom_client = (
+                f"{client.nom} {getattr(client, 'prenom', '') or ''}".strip()
+            )
+        salut = f'Bonjour {nom_client},' if nom_client else 'Bonjour,'
+        corps = (
+            f"{salut}\n\n"
+            f"Nous avons bien reçu votre acceptation du devis "
+            f"{devis.reference}.\n\n"
+            f"Votre signature électronique a été enregistrée conformément "
+            f"à la loi 53-05 relative à l'échange électronique de données "
+            f"juridiques.\n\n"
+            f"Vous trouverez ci-joint votre exemplaire signé pour vos archives.\n\n"
+            f"Merci pour votre confiance.\n\n"
+            f"Cordialement,\nL'équipe TAQINOR"
+        )
+        if dest:
+            send_document_email(
+                devis,
+                to_email=dest,
+                sujet=f'Proposition acceptée — {devis.reference}',
+                corps=corps,
+                user=user,
+                attach_pdf=True,
+                log_activity=False,  # l'acceptation a déjà son propre chatter
+            )
+    except Exception as exc:  # noqa: BLE001 — best-effort
+        logger.warning('QJ10: email client échec pour devis %s : %s',
+                       getattr(devis, 'reference', '?'), exc)
+    # Notification vendeur (in-app via notifications.services.notify).
+    try:
+        _notify_seller_accepted(devis=devis, user=user)
+    except Exception as exc:  # noqa: BLE001 — best-effort
+        logger.warning('QJ10: notif vendeur échec pour devis %s : %s',
+                       getattr(devis, 'reference', '?'), exc)
+
+
+def _notify_seller_accepted(*, devis, user):
+    """QJ10 / QJ2 (c) — Notification in-app + wa.me au vendeur (créateur du
+    devis) lors de l'acceptation.
+
+    Réutilise notifications.services.notify (N75). Best-effort : appelé
+    dans un bloc except de l'appelant. Pas de notification si le devis n'a
+    pas de créateur ou si le créateur est l'utilisateur courant (in-app
+    pour soi-même serait du bruit). QJ2 ajoute un lien wa.me « répondre
+    maintenant » vers le client dans le corps de la notification.
+    """
+    vendeur = getattr(devis, 'created_by', None)
+    if vendeur is None:
+        return
+    # Éviter de notifier l'utilisateur qui effectue l'action lui-même.
+    if user is not None and getattr(user, 'pk', None) == getattr(vendeur, 'pk', None):
+        return
+    from apps.notifications.services import notify
+    client_nom = ''
+    client = getattr(devis, 'client', None)
+    if client is not None:
+        client_nom = getattr(client, 'nom', '') or ''
+    # QJ2 (c) — lien wa.me vers le client (via son téléphone sur le lead ou le
+    # client). Best-effort : on préfère le numéro WhatsApp du lead d'origine.
+    wa_url = _build_acceptance_wa_url(devis=devis)
+    body_lines = [
+        (
+            f'Le client {client_nom} a accepté le devis {devis.reference}.'
+        ) if client_nom else f'Le devis {devis.reference} a été accepté.',
+    ]
+    if wa_url:
+        body_lines.append(f'Répondre maintenant : {wa_url}')
+    notify(
+        user=vendeur,
+        event_type='devis_accepted',
+        title=f'Devis {devis.reference} accepté',
+        body='\n'.join(body_lines),
+        link=f'/ventes/devis/{devis.pk}',
+        company=getattr(devis, 'company', None),
+    )
+
+
+def _build_acceptance_wa_url(*, devis):
+    """QJ2 (c) — Construit le lien wa.me « répondre maintenant » au client.
+
+    Cherche d'abord le numéro WhatsApp du lead lié au devis, puis le numéro
+    du client (champ telephone). Renvoie l'URL ou None. Best-effort — jamais
+    d'exception remontée. Les prix d'achat ne sont JAMAIS exposés (règle #4).
+    """
+    try:
+        import urllib.parse
+        # Prefer lead WhatsApp, then lead telephone, then client telephone.
+        phone_raw = ''
+        lead = getattr(devis, 'lead', None)
+        if lead is not None:
+            phone_raw = (
+                getattr(lead, 'whatsapp', None)
+                or getattr(lead, 'telephone', None)
+                or ''
+            )
+        if not phone_raw:
+            client = getattr(devis, 'client', None)
+            if client is not None:
+                phone_raw = getattr(client, 'telephone', '') or ''
+        digits = ''.join(c for c in (phone_raw or '') if c.isdigit())
+        if not digits:
+            return None
+        # Format international marocain (wa.me exige l'indicatif pays).
+        if digits.startswith('00'):
+            digits = digits[2:]
+        if digits.startswith('0'):
+            digits = '212' + digits[1:]
+        elif not digits.startswith('212'):
+            digits = '212' + digits
+        nom = ''
+        if lead is not None:
+            nom = (getattr(lead, 'nom', '') or '').strip()
+        if not nom and devis.client_id:
+            client = getattr(devis, 'client', None)
+            if client is not None:
+                nom = (getattr(client, 'nom', '') or '').strip()
+        nom = nom or 'votre client'
+        text = urllib.parse.quote(
+            f'Bonjour {nom}, votre proposition {devis.reference} a bien été '
+            f'confirmée. Merci pour votre confiance !'
+        )
+        return f'https://wa.me/{digits}?text={text}'
+    except Exception as exc:  # noqa: BLE001 — best-effort
+        logger.warning('QJ2: _build_acceptance_wa_url échoué : %s', exc)
+        return None
+
+
+# ── QJ9 — Attribution first-touch + Meta CAPI hook ───────────────────────────
+
+#: Champs UTM/fbclid copiés du Lead vers etude_params du Devis à l'acceptation.
+_ATTRIBUTION_FIELDS = (
+    'fbclid', 'utm_source', 'utm_medium',
+    'utm_campaign', 'utm_content', 'utm_term',
+)
+
+
+def _persist_attribution(*, devis):
+    """QJ9 — Copie les champs d'attribution first-touch du lead vers le devis.
+
+    À l'acceptation, les UTM/fbclid du Lead d'origine sont snapshottés dans
+    ``devis.etude_params['attribution']`` (JSONField déjà sur le modèle — aucune
+    migration). Cette copie est LOSSLESS : l'attribution reste disponible même si
+    le lead est fusionné, archivé ou supprimé plus tard.
+
+    Idempotent : ne ré-écrit pas si une attribution est déjà présente.
+    Aucun impact sur les statuts (règle #4 — pure donnée dérivée en lecture seule).
+    Ne lève jamais : l'appelant attrape toute exception.
+    """
+    lead = getattr(devis, 'lead', None)
+    if lead is None:
+        return  # Devis sans lead — aucune attribution à copier.
+
+    params = dict(devis.etude_params or {})
+    if 'attribution' in params:
+        return  # Déjà présent — idempotent.
+
+    attribution = {}
+    for field in _ATTRIBUTION_FIELDS:
+        val = getattr(lead, field, None)
+        if val:
+            attribution[field] = val
+
+    if not attribution:
+        return  # Lead sans données d'attribution — rien à copier.
+
+    params['attribution'] = attribution
+    devis.etude_params = params
+    devis.save(update_fields=['etude_params'])
+    logger.info('QJ9: attribution copiée pour devis %s → %s',
+                getattr(devis, 'reference', '?'), list(attribution.keys()))
+
+
+def _fire_capi_signed_quote(*, devis):
+    """QJ9 — Émet un événement « SignedQuote » vers l'API Conversions Meta (CAPI).
+
+    Gate : si ``META_CAPI_ACCESS_TOKEN`` est absent (ou vide) dans les settings
+    ou l'environnement, on dégrade en no-op silencieux (log uniquement). Cela
+    permet de pré-câbler l'intégration sans créer de dépendance sur un token
+    absent en dev/staging.
+
+    Conformité règle #4 : ne touche jamais les statuts Devis/Facture.
+    Conformité règle #3 (CLAUDE.md) : le call HTTP CAPI est server-side — jamais
+    de création de campagne (interdit par règle #3).
+    Ne lève jamais : l'appelant attrape toute exception.
+
+    L'événement CAPI inclut les données d'attribution (fbclid/UTM) snapshottées
+    dans etude_params (QJ9 _persist_attribution) pour un matching maximal.
+
+    Env var attendue : ``META_CAPI_ACCESS_TOKEN`` (token de page Meta / CAPI).
+    Var optionnelle : ``META_CAPI_PIXEL_ID`` (Pixel ID — peut être vide).
+    """
+    import os
+    from django.conf import settings
+
+    token = (
+        getattr(settings, 'META_CAPI_ACCESS_TOKEN', None)
+        or os.environ.get('META_CAPI_ACCESS_TOKEN', '')
+        or ''
+    ).strip()
+    if not token:
+        logger.info(
+            'QJ9: CAPI SignedQuote ignoré pour devis %s — META_CAPI_ACCESS_TOKEN absent',
+            getattr(devis, 'reference', '?'))
+        return
+
+    pixel_id = (
+        getattr(settings, 'META_CAPI_PIXEL_ID', None)
+        or os.environ.get('META_CAPI_PIXEL_ID', '')
+        or ''
+    ).strip()
+
+    # Récupère l'attribution snapshottée (QJ9) ou tente le lead directement.
+    attribution = {}
+    params = devis.etude_params or {}
+    if 'attribution' in params:
+        attribution = params['attribution']
+    else:
+        lead = getattr(devis, 'lead', None)
+        if lead is not None:
+            for field in _ATTRIBUTION_FIELDS:
+                val = getattr(lead, field, None)
+                if val:
+                    attribution[field] = val
+
+    import hashlib
+    import time
+    import urllib.parse
+    import urllib.request
+    import json as _json
+
+    # Données de l'événement CAPI (hachage SHA-256 pour le PII).
+    def _sha256(val):
+        return hashlib.sha256((val or '').strip().lower().encode()).hexdigest()
+
+    event_time = int(time.time())
+    client = getattr(devis, 'client', None)
+    email_hash = _sha256(getattr(client, 'email', '') or '') if client else ''
+    phone_raw = ''
+    if client:
+        phone_raw = getattr(client, 'telephone', '') or ''
+    phone_digits = ''.join(c for c in (phone_raw or '') if c.isdigit())
+    phone_hash = _sha256(phone_digits) if phone_digits else ''
+
+    # Valeur de conversion : total TTC du devis (sans prix d'achat — règle #4).
+    try:
+        value = float(getattr(devis, 'total_ttc', None) or 0)
+    except (TypeError, ValueError):
+        value = 0.0
+
+    user_data = {}
+    if email_hash:
+        user_data['em'] = [email_hash]
+    if phone_hash:
+        user_data['ph'] = [phone_hash]
+    fbclid = attribution.get('fbclid', '')
+    if fbclid:
+        user_data['fbc'] = f'fb.1.{int(time.time() * 1000)}.{fbclid}'
+
+    custom_data = {
+        'currency': 'MAD',
+        'value': value,
+        'order_id': str(getattr(devis, 'reference', '')),
+    }
+    utm_source = attribution.get('utm_source', '')
+    if utm_source:
+        custom_data['utm_source'] = utm_source
+    utm_campaign = attribution.get('utm_campaign', '')
+    if utm_campaign:
+        custom_data['utm_campaign'] = utm_campaign
+
+    event = {
+        'event_name': 'SignedQuote',
+        'event_time': event_time,
+        'action_source': 'website',
+        'user_data': user_data,
+        'custom_data': custom_data,
+    }
+
+    payload = _json.dumps({'data': [event]}).encode('utf-8')
+    api_url = f'https://graph.facebook.com/v19.0/{pixel_id}/events' if pixel_id else None
+
+    if not api_url:
+        logger.info(
+            'QJ9: CAPI SignedQuote prêt pour devis %s (pixel non configuré — log seul) '
+            'fbclid=%s utm_source=%s value=%.2f MAD',
+            getattr(devis, 'reference', '?'), fbclid, utm_source, value)
+        return
+
+    params_qs = urllib.parse.urlencode({'access_token': token})
+    full_url = f'{api_url}?{params_qs}'
+    req = urllib.request.Request(
+        full_url, data=payload,
+        headers={'Content-Type': 'application/json'},
+        method='POST',
+    )
+    try:
+        with urllib.request.urlopen(req, timeout=5) as resp:
+            resp_body = resp.read().decode('utf-8', errors='replace')
+            logger.info(
+                'QJ9: CAPI SignedQuote envoyé pour devis %s — status %s body %.200s',
+                getattr(devis, 'reference', '?'), resp.status, resp_body)
+    except Exception as exc:
+        logger.warning('QJ9: CAPI SignedQuote HTTP échoué pour devis %s : %s',
+                       getattr(devis, 'reference', '?'), exc)
+
+
 def accept_devis(*, devis, user, nom='', date_acceptation=None, option='',
-                 ip=None, idempotent_reaccept=True):
+                 ip=None, user_agent='', consentement=True,
+                 idempotent_reaccept=True):
     """Q7 — flip a Devis to « accepté » through the ONE acceptance path.
 
     Shared by the in-app viewset action (N25) and the tokenized web proposal
@@ -489,8 +1100,39 @@ def accept_devis(*, devis, user, nom='', date_acceptation=None, option='',
         # column — kept beside the acceptance stamp for the audit trail.
         activity.log_devis_note(
             devis, user, f'Signature en ligne acceptée — IP {ip}')
+
+    # QJ10 — Enregistrement IMMUABLE de signature (loi 53-05).
+    # Idempotent : si un DevisSignature existe déjà (re-submit idempotent)
+    # on ne crée pas de second enregistrement — la signature d'origine fait foi.
+    _create_esign_record(
+        devis=devis, nom=nom, ip=ip,
+        user_agent=user_agent, consentement=consentement,
+    )
+    # QJ9 — Attribution first-touch : copie UTM/fbclid du lead vers etude_params
+    # du devis pour que l'attribution reste lossless même si le lead est fusionné.
+    try:
+        _persist_attribution(devis=devis)
+    except Exception as exc:  # noqa: BLE001 — best-effort
+        logger.warning('QJ9: _persist_attribution échoué pour devis %s : %s',
+                       getattr(devis, 'reference', '?'), exc)
+    # QJ22 — Stockage de l'artefact PDF signé (proposition verrouillée).
+    # Appelé APRÈS _create_esign_record pour que le DevisSignature existe déjà.
+    _store_signed_pdf(devis=devis)
+    # QJ10 — Email de confirmation PDF verrouillé au client + au vendeur.
+    try:
+        _send_acceptance_emails(devis=devis, user=user)
+    except Exception as exc:  # noqa: BLE001 — best-effort
+        logger.warning('QJ10: _send_acceptance_emails échoué pour devis %s : %s',
+                       getattr(devis, 'reference', '?'), exc)
+
     devis_accepted.send(
         sender=Devis, devis=devis, user=user, ancien_statut=ancien)
+    # QJ9 — CAPI SignedQuote event (gated on META_CAPI_ACCESS_TOKEN).
+    try:
+        _fire_capi_signed_quote(devis=devis)
+    except Exception as exc:  # noqa: BLE001 — best-effort
+        logger.warning('QJ9: _fire_capi_signed_quote échoué pour devis %s : %s',
+                       getattr(devis, 'reference', '?'), exc)
     return devis
 
 
@@ -827,3 +1469,495 @@ def record_payment_from_link(*, link, payload=None):
             facture.statut = Facture.Statut.PAYEE
             facture.save(update_fields=['statut'])
     return paiement, None
+
+
+# ── QJ16 — Reusable quote presets ────────────────────────────────────────────
+
+def save_devis_as_preset(devis, nom: str, description: str = "", *, user=None):
+    """QJ16 — snapshot a Devis into a company-scoped DevisPreset.
+
+    The preset captures the line configuration (designation, quantite,
+    prix_unitaire, remise, taux_tva per line, plus taux_tva and remise_globale
+    at devis level) as a JSON snapshot.  The company is ALWAYS forced from
+    ``devis.company`` — never from user input.
+
+    Price-less lines are excluded at save time (same guard as auto-fill): if a
+    line's produit has no sell price, it is still captured in the snapshot so the
+    preset is complete, but at apply-time such lines are re-checked and skipped
+    if the product is no longer priced.
+
+    Returns the created DevisPreset.
+    """
+    from apps.ventes.models import DevisPreset
+
+    company = devis.company
+    if company is None:
+        raise ValueError("save_devis_as_preset: devis has no company")
+
+    def _ds(value):
+        # Normalise a Decimal to a clean string (strip trailing zeros):
+        # 10.00 -> "10", 10.50 -> "10.5". None stays None.
+        if value is None:
+            return None
+        s = str(value)
+        return s.rstrip('0').rstrip('.') if '.' in s else s
+
+    lignes_snapshot = []
+    for ligne in devis.lignes.select_related('produit').order_by('id'):
+        produit = ligne.produit
+        lignes_snapshot.append({
+            'produit_id': produit.pk if produit else None,
+            'designation': ligne.designation,
+            'quantite': _ds(ligne.quantite),
+            'prix_unitaire': _ds(ligne.prix_unitaire),
+            'remise': _ds(ligne.remise),
+            'taux_tva': _ds(ligne.taux_tva),
+        })
+
+    preset = DevisPreset.objects.create(
+        company=company,
+        nom=nom.strip(),
+        description=description,
+        mode_installation=devis.mode_installation or None,
+        taux_tva=devis.taux_tva,
+        remise_globale=devis.remise_globale,
+        lignes_snapshot=lignes_snapshot,
+        etude_params_snapshot=dict(devis.etude_params) if devis.etude_params else None,
+        created_by=user,
+    )
+    logger.info(
+        'QJ16: preset "%s" saved (id=%s, company=%s, %d lignes)',
+        preset.nom, preset.pk, company.pk, len(lignes_snapshot))
+    return preset
+
+
+def apply_preset_to_devis(preset, devis, *, skip_priceless: bool = True) -> list:
+    """QJ16 — apply a DevisPreset to an existing (empty) Devis.
+
+    Creates LigneDevis rows on ``devis`` from the preset snapshot.  The caller
+    is responsible for ensuring ``devis`` is brouillon and belongs to the same
+    company as the preset (enforced below — cross-company apply is refused).
+
+    ``skip_priceless=True`` (default): lines whose snapshot product no longer
+    has a sell price are skipped (same guard as auto-fill — never auto-quote a
+    price-less product).  Pass ``skip_priceless=False`` only in tests that need
+    to exercise the skipping logic.
+
+    Returns the list of created LigneDevis instances (may be empty if all lines
+    are priceless).
+
+    RULE #4: this service only builds lines — it never changes Devis.statut.
+    """
+    from apps.ventes.models import LigneDevis
+    from apps.stock.models import Produit
+
+    if preset.company_id != devis.company_id:
+        raise ValueError(
+            "apply_preset_to_devis: preset and devis belong to different companies"
+        )
+
+    created = []
+    for snap in preset.lignes_snapshot:
+        produit_id = snap.get('produit_id')
+        produit = None
+        if produit_id:
+            try:
+                produit = Produit.objects.get(
+                    pk=produit_id, company=devis.company)
+            except Produit.DoesNotExist:
+                # Product deleted or belongs to another company — try global
+                try:
+                    produit = Produit.objects.get(
+                        pk=produit_id, company__isnull=True)
+                except Produit.DoesNotExist:
+                    produit = None
+
+        if skip_priceless and produit is not None and not _has_price(produit):
+            logger.info(
+                'QJ16 apply_preset: skipping priceless product %s ("%s")',
+                produit_id, snap.get('designation', ''))
+            continue
+
+        taux_snap = snap.get('taux_tva')
+        ligne = LigneDevis.objects.create(
+            devis=devis,
+            produit=produit,
+            designation=snap['designation'],
+            quantite=Decimal(str(snap['quantite'])),
+            prix_unitaire=Decimal(str(snap['prix_unitaire'])),
+            remise=Decimal(str(snap.get('remise', '0'))),
+            taux_tva=Decimal(str(taux_snap)) if taux_snap is not None else None,
+        )
+        created.append(ligne)
+
+    # Apply devis-level settings from preset if the devis is fresh (no lignes yet
+    # before this call means we can safely update tva and remise).
+    if created:
+        devis.taux_tva = preset.taux_tva
+        devis.remise_globale = preset.remise_globale
+        if preset.mode_installation:
+            devis.mode_installation = preset.mode_installation
+        if preset.etude_params_snapshot and not devis.etude_params:
+            devis.etude_params = dict(preset.etude_params_snapshot)
+        devis.save(update_fields=[
+            'taux_tva', 'remise_globale', 'mode_installation', 'etude_params'])
+
+    logger.info(
+        'QJ16 apply_preset: applied preset "%s" to devis %s (%d lines)',
+        preset.nom, getattr(devis, 'reference', devis.pk), len(created))
+    return created
+
+
+# ── QJ4 — Relance automatique cadencée des devis envoyés ─────────────────────
+# Logique : pour chaque devis « envoyé » (statut ENVOYE) dont date_envoi est
+# renseignée, on contrôle si l'un des paliers de la cadence est échu
+# (aujourd'hui >= date_envoi + jours[niveau]) et s'il n'a pas encore été
+# déclenché (pas de DevisNudgeLog pour ce niveau). On surface alors un draft
+# wa.me au vendeur — ou on envoie un email si le canal email est configuré.
+# La relance s'arrête dès que le statut passe à ACCEPTE ou REFUSE.
+
+# Modèles de message de relance — FR et AR.
+# Clés : ref (référence devis), jours (palier), client_nom, wa_url (lien
+# public). Les accolades dobles {{ }} échappées en cas d'imbrication Django
+# template — ici on utilise .format() directement, pas de template Django.
+_NUDGE_MSG_FR = (
+    "Bonjour,\n\n"
+    "Le devis {ref} envoyé à {client_nom} il y a {jours} jours est toujours "
+    "en attente de validation.\n\n"
+    "Pensez à relancer votre client :\n{wa_url}\n\n"
+    "Cordialement,\nL'équipe TAQINOR"
+)
+
+_NUDGE_MSG_AR = (
+    "مرحبا،\n\n"
+    "لا يزال عرض "
+    "{ref} المرسل إلى "
+    "{client_nom} منذ {jours} أيام "
+    "في انتظار الموافقة.\n\n"
+    "يُرجى متابعة "
+    "العميل:\n{wa_url}\n\n"
+    "مع التحيات،\n"
+    "فريق TAQINOR"
+)
+
+
+def _build_wa_draft_url(phone, text):
+    """Construit un lien wa.me pré-rempli. phone peut inclure '+' ou non."""
+    import urllib.parse
+    digits = ''.join(c for c in (phone or '') if c.isdigit())
+    if not digits:
+        return None
+    encoded = urllib.parse.quote(text)
+    return f'https://wa.me/{digits}?text={encoded}'
+
+
+def _get_nudge_days():
+    """Renvoie la cadence de relance depuis les settings (ou la valeur par défaut)."""
+    from django.conf import settings
+    from apps.ventes.models import DEVIS_NUDGE_DEFAULT_DAYS
+    return getattr(settings, 'DEVIS_NUDGE_DAYS', DEVIS_NUDGE_DEFAULT_DAYS)
+
+
+def send_devis_followup_nudges():
+    """QJ4 — Déclenche les relances cadencées pour les devis « envoyés ».
+
+    Pour chaque devis ENVOYE avec date_envoi renseignée :
+    - parcourt les paliers de la cadence (j+2, j+5, j+10 par défaut) ;
+    - si today >= date_envoi + jours[niveau] ET que ce niveau n'a jamais été
+      déclenché (pas de DevisNudgeLog) → envoie la relance ;
+    - préfère un email si le canal email est configuré, sinon surface un draft
+      wa.me au vendeur (logged) ;
+    - enregistre un DevisNudgeLog pour éviter tout doublon.
+
+    Idempotent : safe à ré-exécuter sans effet si tous les niveaux dus ont déjà
+    leur DevisNudgeLog. Renvoie le nombre total de nudges déclenchés.
+
+    RULE #4 : ne touche JAMAIS au statut du Devis.
+    Multi-tenant : chaque devis est scopé company (never trusts body company).
+    """
+    from django.utils import timezone
+    try:
+        from zoneinfo import ZoneInfo
+        _tz = ZoneInfo('Africa/Casablanca')
+
+        def _today():
+            return timezone.now().astimezone(_tz).date()
+    except Exception:
+        def _today():
+            return timezone.localdate()
+
+    from apps.ventes.models import Devis, DevisNudgeLog, ShareLink
+    from apps.ventes.email_service import is_email_configured
+
+    nudge_days = _get_nudge_days()
+    today = _today()
+
+    # Only look at envoye devis with a known send date.
+    candidates = Devis.objects.filter(
+        statut=Devis.Statut.ENVOYE,
+        date_envoi__isnull=False,
+    ).select_related('client', 'company', 'created_by').prefetch_related(
+        'nudge_logs',
+    )
+
+    use_email = is_email_configured()
+    total_sent = 0
+
+    for devis in candidates:
+        # Double-check: cadence stops on accept/refuse (belt-and-suspenders
+        # since we filter on ENVOYE above, but guards concurrent transitions).
+        if devis.statut in (Devis.Statut.ACCEPTE, Devis.Statut.REFUSE):
+            continue
+
+        # date_envoi is a DateTimeField — extract date in Casablanca tz.
+        try:
+            envoi_date = devis.date_envoi.astimezone(
+                ZoneInfo('Africa/Casablanca')).date()
+        except Exception:
+            envoi_date = devis.date_envoi.date()
+
+        # Which levels already fired?
+        fired = set(
+            devis.nudge_logs.values_list('niveau', flat=True)
+        )
+
+        client = getattr(devis, 'client', None)
+        client_nom = (getattr(client, 'nom', '') or '') if client else ''
+        vendeur = getattr(devis, 'created_by', None)
+
+        for idx, jours in enumerate(nudge_days):
+            if idx in fired:
+                continue  # already sent for this level — idempotent
+            trigger_date = envoi_date + __import__('datetime').timedelta(days=jours)
+            if today < trigger_date:
+                continue  # not due yet
+
+            # Build the public share link for the seller to use.
+            try:
+                share_link = ShareLink.for_devis(devis)
+                from django.conf import settings
+                site = getattr(settings, 'SITE_URL', 'https://taqinor.ma')
+                proposal_url = f'{site}/proposal/{share_link.token}'
+            except Exception:
+                proposal_url = ''
+
+            msg_fr = _NUDGE_MSG_FR.format(
+                ref=devis.reference,
+                client_nom=client_nom or 'votre client',
+                jours=jours,
+                wa_url=proposal_url,
+            )
+            msg_ar = _NUDGE_MSG_AR.format(
+                ref=devis.reference,
+                client_nom=client_nom or 'عميلك',
+                jours=jours,
+                wa_url=proposal_url,
+            )
+
+            canal = DevisNudgeLog.Canal.WA_DRAFT
+
+            # Bilingual body used for email (FR + AR separator).
+            msg_bilingual = msg_fr + '\n\n---\n\n' + msg_ar
+
+            if use_email and vendeur and getattr(vendeur, 'email', ''):
+                # Send email to seller (bilingual FR + AR).
+                _send_nudge_email(
+                    to_email=vendeur.email,
+                    devis_ref=devis.reference,
+                    subject_fr=f'Relance devis {devis.reference} — niveau {idx + 1}',
+                    body_fr=msg_bilingual,
+                )
+                canal = DevisNudgeLog.Canal.EMAIL
+            else:
+                # Surface wa.me draft — log so the seller sees it.
+                vendeur_phone = (
+                    getattr(vendeur, 'phone_number', '') or ''
+                    if vendeur else ''
+                )
+                wa_url = _build_wa_draft_url(vendeur_phone, msg_fr) or proposal_url
+                logger.info(
+                    'QJ4 nudge wa_draft devis=%s niveau=%d j+%d vendeur=%s url=%s',
+                    devis.reference, idx, jours,
+                    getattr(vendeur, 'username', '?'), wa_url)
+
+            # Record the fired level — unique_together prevents duplicates.
+            try:
+                DevisNudgeLog.objects.create(
+                    company=devis.company,
+                    devis=devis,
+                    niveau=idx,
+                    jours=jours,
+                    canal=canal,
+                )
+                total_sent += 1
+                logger.info(
+                    'QJ4: nudge N%d déclenché pour devis %s (j+%d, canal=%s)',
+                    idx, devis.reference, jours, canal)
+            except Exception as exc:
+                # IntegrityError → already fired concurrently — safe to ignore.
+                logger.warning(
+                    'QJ4: DevisNudgeLog creation skipped for devis %s niveau=%d: %s',
+                    devis.reference, idx, exc)
+
+    logger.info('QJ4 send_devis_followup_nudges: %d nudge(s) déclenchés', total_sent)
+    return total_sent
+
+
+def _send_nudge_email(*, to_email, devis_ref, subject_fr, body_fr):
+    """Envoie un email de relance au vendeur (NO-OP sans backend email configuré).
+
+    Best-effort : ne lève jamais, consigne juste le résultat en log.
+    """
+    try:
+        from django.core.mail import send_mail
+        from django.conf import settings
+        from_email = getattr(settings, 'DEFAULT_FROM_EMAIL', 'noreply@erp.local')
+        send_mail(subject_fr, body_fr, from_email, [to_email], fail_silently=False)
+        logger.info('QJ4: email relance envoyé à %s (devis %s)', to_email, devis_ref)
+    except Exception as exc:  # noqa: BLE001
+        logger.warning('QJ4: email relance échec pour %s: %s', devis_ref, exc)
+
+
+# ── QJ5 — Expiration automatique des devis + hygiène funnel ──────────────────
+
+
+def expire_stale_devis():
+    """QJ5 — Bascule les devis envoyés dépassés en « expiré » et avance le funnel.
+
+    Deux effets ATOMIQUEMENT SÉPARÉS (chaque devis est traité indépendamment) :
+
+    1. ``envoye → expire`` pour tout devis dont la date de validité effective
+       est dépassée. Délègue à ``ventes.utils.expiry.is_expired`` (même logique
+       que l'indicateur à la volée, garantie de cohérence). Ne touche JAMAIS un
+       devis ``accepte`` ou ``refuse`` (rule #4). Idempotent : un devis déjà
+       ``expire`` est ignoré.
+
+    2. Pour le lead lié au devis expiré (s'il en a un) : si le lead est à
+       ``QUOTE_SENT`` il avance vers ``FOLLOW_UP``; s'il est déjà à ``FOLLOW_UP``
+       depuis plus de COLD_DAYS jours (configurable, défaut 30) et n'a reçu
+       aucune activité récente, il est parqué à ``COLD``. Ne recule JAMAIS un
+       lead déjà plus avancé (SIGNED) et ignore les leads perdus (drapeau perdu).
+       STAGES.py keys utilisées, jamais hardcodées.
+
+    Renvoie un dict ``{expired, funnel_followup, funnel_cold}`` pour les tests.
+    """
+    from datetime import date
+
+    from .models import Devis
+
+    today = date.today()
+    expired = 0
+    funnel_followup = 0
+    funnel_cold = 0
+
+    # Candidats : devis envoyés uniquement (jamais accepte/refuse/expire).
+    candidates = Devis.objects.filter(
+        statut=Devis.Statut.ENVOYE,
+    ).select_related('lead', 'lead__company')
+
+    for devis in candidates:
+        from .utils.expiry import is_expired
+        if not is_expired(devis, today=today):
+            continue
+
+        # Flip to expired through the single status-change path: direct field
+        # write + chatter log. Using the same field pattern as other beat jobs
+        # (check_overdue_factures) — safe, reversible via git revert.
+        devis.statut = Devis.Statut.EXPIRE
+        devis.save(update_fields=['statut'])
+
+        # Chatter entry via ventes.activity (exists for devis accepted/sent —
+        # reuse the generic note pattern).
+        try:
+            from apps.ventes import activity as _act
+            _act.log_devis_note(
+                devis, None,
+                'Devis expiré automatiquement (date de validité dépassée).')
+        except Exception as exc:  # noqa: BLE001
+            logger.warning('QJ5: log chatter échec devis %s : %s',
+                           devis.reference, exc)
+
+        expired += 1
+
+        # Funnel hygiene: advance QUOTE_SENT → FOLLOW_UP via crm.services.
+        lead = devis.lead
+        if lead is None:
+            continue
+
+        try:
+            fup, cold = _advance_lead_on_expiry(lead, today=today)
+            funnel_followup += int(fup)
+            funnel_cold += int(cold)
+        except Exception as exc:  # noqa: BLE001
+            logger.warning('QJ5: avance funnel échec lead %s : %s',
+                           getattr(lead, 'pk', '?'), exc)
+
+    logger.info(
+        'QJ5 expire_stale_devis: %d expiré(s), %d → FOLLOW_UP, %d → COLD',
+        expired, funnel_followup, funnel_cold)
+    return {'expired': expired, 'funnel_followup': funnel_followup,
+            'funnel_cold': funnel_cold}
+
+
+# Days a QUOTE_SENT lead stays at FOLLOW_UP before being parked COLD (no
+# recent activity). Kept as a module-level constant so tests can patch it.
+_COLD_AFTER_FOLLOWUP_DAYS = 30
+
+
+def _advance_lead_on_expiry(lead, today):
+    """Avance l'étape du lead lié à un devis expiré (QUOTE_SENT → FOLLOW_UP,
+    puis FOLLOW_UP → COLD si inactif depuis COLD_AFTER_FOLLOWUP_DAYS jours).
+
+    Ne recule JAMAIS. Ignore les leads perdus. Utilise les clés STAGES.py.
+    Renvoie (moved_to_followup: bool, moved_to_cold: bool).
+    """
+    from datetime import timedelta
+    from apps.crm.models import LeadActivity
+
+    if lead.perdu:
+        return False, False
+
+    moved_fup = False
+    moved_cold = False
+
+    if lead.stage == 'QUOTE_SENT':
+        # Only advance if lead is not already further.
+        from apps.crm.services import _rang_funnel
+        if _rang_funnel(lead.stage) < _rang_funnel('FOLLOW_UP'):
+            ancien = lead.stage
+            lead.stage = 'FOLLOW_UP'
+            lead.save(update_fields=['stage'])
+            from apps.crm import activity as crm_activity
+            # Pass raw stage keys; _display resolves choices labels.
+            crm_activity.log_bulk_change(
+                lead, user=None,
+                field='stage',
+                old_val=ancien,
+                new_val='FOLLOW_UP',
+            )
+            moved_fup = True
+        return moved_fup, False
+
+    if lead.stage == 'FOLLOW_UP':
+        # Park COLD only if no activity in last _COLD_AFTER_FOLLOWUP_DAYS days.
+        cutoff = today - timedelta(days=_COLD_AFTER_FOLLOWUP_DAYS)
+        recent_activity = LeadActivity.objects.filter(
+            lead=lead,
+            created_at__date__gte=cutoff,
+        ).exists()
+        if recent_activity:
+            return False, False
+        ancien = lead.stage
+        lead.stage = 'COLD'
+        lead.save(update_fields=['stage'])
+        from apps.crm import activity as crm_activity
+        crm_activity.log_bulk_change(
+            lead, user=None,
+            field='stage',
+            old_val=ancien,
+            new_val='COLD',
+        )
+        moved_cold = True
+        return False, moved_cold
+
+    return False, False

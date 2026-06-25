@@ -359,6 +359,16 @@ class Lead(models.Model):
     date_creation = models.DateTimeField(auto_now_add=True)
     date_modification = models.DateTimeField(auto_now=True)
 
+    # QJ6 — Score de qualité calculé (0–100) et persisté pour un tri
+    # pagination-safe. Recalculé à chaque création/mise à jour du lead
+    # (services.recompute_lead_score). NULL sur les leads importés avant la
+    # migration (backfill optionnel au premier accès).
+    score = models.IntegerField(
+        null=True, blank=True,
+        verbose_name='Score de qualité',
+        help_text='Score 0–100 calculé automatiquement (voir scoring.py).',
+    )
+
     class Meta:
         verbose_name = 'Lead'
         verbose_name_plural = 'Leads'
@@ -366,6 +376,7 @@ class Lead(models.Model):
         indexes = [
             models.Index(fields=['company', 'source']),
             models.Index(fields=['company', 'stage']),
+            models.Index(fields=['company', 'score'], name='crm_lead_company_score_idx'),
         ]
         constraints = [
             # An imported record is unique per (company, system, external id) so
@@ -636,3 +647,93 @@ class Parrainage(models.Model):
 
     def __str__(self):
         return f'Parrainage #{self.pk} (parrain {self.parrain_id})'
+
+
+class Appointment(models.Model):
+    """QJ20 — Rendez-vous (visite commerciale/technique) planifié sur un lead.
+
+    Modèle additif. Un lead peut avoir plusieurs rendez-vous ; le statut suit
+    le cycle de vie (planifié → confirmé → effectué / annulé). Company scopé :
+    un rendez-vous appartient à la société du lead. La date planifiée est
+    stockée en UTC (convention Django) ; l'UI affiche l'heure locale marocaine
+    (Africa/Casablanca).
+
+    RAMADAN-AWARE PACING (``ramadan_pacing``): champ booléen sur la société
+    (voir ``Appointment.RAMADAN_AVOID_HOURS``) — quand activé, les rappels
+    ne sont PAS envoyés pendant la plage horaire iftar-sensible (défaut :
+    18 h – 21 h Casablanca). Le service de rappel consulte ce drapeau avant
+    d'envoyer. Aucune dépendance externe : le drapeau est simplement posé par
+    l'utilisateur dans les réglages, et la logique est documentée ici.
+    """
+
+    # Heures (locales Casablanca) à éviter quand le drapeau Ramadan est actif.
+    # Plage iftar-sensible (simplifié : 18h–21h). Documenté ici pour référence.
+    RAMADAN_AVOID_START_H = 18
+    RAMADAN_AVOID_END_H = 21
+
+    class Statut(models.TextChoices):
+        PLANIFIE = 'planifie', 'Planifié'
+        CONFIRME = 'confirme', 'Confirmé'
+        EFFECTUE = 'effectue', 'Effectué'
+        ANNULE = 'annule', 'Annulé'
+
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        null=True,
+        blank=True,
+        related_name='appointments',
+    )
+    lead = models.ForeignKey(
+        'crm.Lead',
+        on_delete=models.CASCADE,
+        related_name='appointments',
+        verbose_name='Lead',
+    )
+    scheduled_at = models.DateTimeField(
+        verbose_name='Date et heure planifiées',
+        help_text='Heure UTC ; affichée en Africa/Casablanca dans l\'UI.',
+    )
+    statut = models.CharField(
+        max_length=10,
+        choices=Statut.choices,
+        default=Statut.PLANIFIE,
+        verbose_name='Statut',
+    )
+    notes = models.TextField(
+        blank=True, null=True,
+        verbose_name='Notes de visite',
+    )
+    # Whether a reminder has already been dispatched (idempotency guard for
+    # the beat job — prevents double-sending if the job fires twice).
+    reminder_sent = models.BooleanField(
+        default=False,
+        verbose_name='Rappel envoyé',
+    )
+    created_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='appointments_crees',
+        verbose_name='Créé par',
+    )
+    date_creation = models.DateTimeField(auto_now_add=True)
+    date_modification = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = 'Rendez-vous'
+        verbose_name_plural = 'Rendez-vous'
+        ordering = ['scheduled_at']
+        indexes = [
+            models.Index(fields=['company', 'scheduled_at'],
+                         name='crm_appt_co_sched_idx'),
+            models.Index(fields=['lead', 'statut'],
+                         name='crm_appt_lead_stat_idx'),
+        ]
+
+    def __str__(self):
+        return (
+            f'RDV #{self.pk} — lead {self.lead_id} '
+            f'le {self.scheduled_at:%Y-%m-%d %H:%M} ({self.statut})'
+        )

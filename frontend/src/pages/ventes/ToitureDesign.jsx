@@ -94,11 +94,20 @@ function leadToBuilderPayload(lead) {
   }
 }
 
-function httpMessage(status) {
-  if (status === 400 || status === 422)
-    return 'Le devis n’a pas pu être créé : données du tracé invalides. Vérifiez le toit puis réessayez.'
-  if (status === 403) return 'Accès refusé pour ce lead. Contactez un administrateur.'
-  if (status === 404) return 'Lead introuvable côté ERP. Vérifiez le lien puis réessayez.'
+function httpMessage(status, responseData) {
+  // QJ17 — the backend returns a structured French error for 422 (composition
+  // pre-flight failures). Surface it directly instead of a generic message.
+  if (status === 422) {
+    const detail = responseData?.detail
+    if (detail) return detail
+    const errors = responseData?.errors
+    if (Array.isArray(errors) && errors.length > 0) return errors[0]
+    return 'Composition invalide — vérifiez le catalogue produits puis réessayez.'
+  }
+  if (status === 400)
+    return "Le devis n'a pas pu être créé : données du tracé invalides. Vérifiez le toit puis réessayez."
+  if (status === 403) return "Accès refusé pour ce lead. Contactez un administrateur."
+  if (status === 404) return "Lead introuvable côté ERP. Vérifiez le lien puis réessayez."
   if (status >= 500) return `Le serveur a renvoyé une erreur (${status}). Réessayez dans un instant.`
   return `Création du devis impossible (erreur ${status}).`
 }
@@ -219,6 +228,10 @@ export default function ToitureDesign() {
     try {
       const layout = apiTool.serializeLayout()
       // 1) Crée le devis depuis le layout (cookie = auth, pas de Bearer).
+      //    QJ17 — le backend renvoie 200 si un brouillon identique existe déjà
+      //    (idempotency par lead + hash du layout), 201 pour un nouveau devis, et
+      //    422 avec un message FR clair si la composition est invalide (catalogue
+      //    manquant ou sans prix). Dans tous les cas le corps a la même forme.
       let devis
       try {
         const createRes = await api.post('/ventes/devis/from-layout/', {
@@ -226,10 +239,15 @@ export default function ToitureDesign() {
           lead: leadId,
         })
         devis = createRes.data
+        // QJ17 — if the backend deduplicated, show a soft notice to the agent.
+        if (createRes.status === 200 && devis.deduplicated) {
+          setGenStatus('Devis existant retrouvé — aucun doublon créé.')
+        }
       } catch (err) {
         const code = err?.response?.status
+        const responseData = err?.response?.data
         setGenStatus(null)
-        setGenError(httpMessage(code ?? 0))
+        setGenError(httpMessage(code ?? 0, responseData))
         setSending(false)
         return
       }

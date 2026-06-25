@@ -13,6 +13,7 @@ from .calendar import calendar_events, calendar_reschedule
 from .geo import geo_points
 from .balance_export import balance_agee_export
 from .saved_reports_api import SavedReportViewSet
+from .commercial import commercial_dashboard, win_loss_by_source
 
 # N79 — CRUD des rapports sauvegardés (router DRF, ajouté en additif).
 router = DefaultRouter()
@@ -56,4 +57,10 @@ urlpatterns = [
     # borné à la société (miroir de l'export journal des ventes).
     path('balance-agee/export/', balance_agee_export,
          name='reporting-balance-agee-export'),
+    # QJ18 — Tableau de bord commercial (entonnoir, vélocité, classement).
+    path('commercial/dashboard/', commercial_dashboard,
+         name='reporting-commercial-dashboard'),
+    # QJ19 — Win/loss par canal/source + top motifs de perte.
+    path('commercial/win-loss-by-source/', win_loss_by_source,
+         name='reporting-win-loss-by-source'),
 ]

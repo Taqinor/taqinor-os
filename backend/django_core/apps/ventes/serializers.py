@@ -1,7 +1,7 @@
 from rest_framework import serializers
 from .models import (
     Devis, LigneDevis, BonCommande, Facture, LigneFacture, Paiement,
-    Avoir, LigneAvoir, DevisActivity,
+    Avoir, LigneAvoir, DevisActivity, DevisPreset,
 )
 
 
@@ -217,6 +217,67 @@ class DevisSerializer(serializers.ModelSerializer):
             }
         except Exception:
             return None
+
+    # QJ22 — État de signature électronique (loi 53-05). Lecture seule.
+    # ``est_signe`` : True si un DevisSignature immuable existe pour ce devis.
+    # ``signature_info`` : dict minimal (signataire_nom, signed_at, has_pdf) —
+    # jamais d'IP ni d'user_agent dans l'API interne (données personnelles) ;
+    # jamais de prix_achat/marge.
+    est_signe = serializers.SerializerMethodField()
+    signature_info = serializers.SerializerMethodField()
+
+    def get_est_signe(self, obj):
+        """True si un DevisSignature (loi 53-05) existe pour ce devis."""
+        try:
+            return obj.signature is not None
+        except Exception:
+            return False
+
+    def get_signature_info(self, obj):
+        """Informations minimales de signature (sans données personnelles)."""
+        try:
+            sig = obj.signature
+        except Exception:
+            return None
+        if sig is None:
+            return None
+        return {
+            'signataire_nom': sig.signataire_nom,
+            'signed_at': sig.signed_at.isoformat() if sig.signed_at else None,
+            'has_pdf': bool(sig.signed_pdf_key),
+        }
+
+    # QJ1 — Statistiques de consultation du lien public (lecture seule).
+    # Agrégat sur tous les ShareLinks du devis (on prend le lien le plus récent
+    # encore valide, ou le dernier tout court). Aucun prix d'achat/marge exposé.
+    nombre_vues = serializers.SerializerMethodField()
+    derniere_consultation = serializers.SerializerMethodField()
+    deja_consulte = serializers.SerializerMethodField()
+
+    def _active_share_link(self, obj):
+        """Renvoie le ShareLink le plus récent lié à ce devis (valide en premier)."""
+        from django.utils import timezone as tz
+        links = obj.share_links.filter(devis=obj).order_by(
+            # Valides d'abord, puis par date de création décroissante.
+            '-expires_at', '-created_at'
+        )
+        now = tz.now()
+        valid = [lk for lk in links if lk.expires_at > now]
+        return (valid[0] if valid else links.first()) if links.exists() else None
+
+    def get_nombre_vues(self, obj):
+        link = self._active_share_link(obj)
+        return link.view_count if link else 0
+
+    def get_derniere_consultation(self, obj):
+        link = self._active_share_link(obj)
+        if link and link.last_viewed_at:
+            return link.last_viewed_at.isoformat()
+        return None
+
+    def get_deja_consulte(self, obj):
+        link = self._active_share_link(obj)
+        return bool(link and link.first_viewed_at is not None)
 
     class Meta:
         model = Devis
@@ -476,3 +537,20 @@ class EmailLogSerializer(serializers.ModelSerializer):
                   'to_email', 'from_email', 'sujet', 'corps', 'reference',
                   'piece_jointe', 'erreur', 'created_at', 'created_by_nom']
         read_only_fields = fields
+
+
+# QJ16 — Preset serializer (company-scoped, read-only company field).
+# Company is never accepted from the request body — forced server-side.
+
+class DevisPresetSerializer(serializers.ModelSerializer):
+    created_by_nom = serializers.CharField(
+        source='created_by.username', read_only=True, default=None)
+
+    class Meta:
+        model = DevisPreset
+        fields = [
+            'id', 'nom', 'description', 'mode_installation',
+            'taux_tva', 'remise_globale', 'lignes_snapshot',
+            'etude_params_snapshot', 'created_by_nom', 'created_at',
+        ]
+        read_only_fields = ['id', 'created_by_nom', 'created_at']

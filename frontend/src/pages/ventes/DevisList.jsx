@@ -178,6 +178,32 @@ export default function DevisList() {
   const [acceptOption, setAcceptOption] = useState('sans_batterie')
   const [acceptBusy, setAcceptBusy] = useState(false)
 
+  // QJ14 — Modale « Envoyer par email » (PDF premium + lien tokenisé → client).
+  const [emailTarget, setEmailTarget]   = useState(null)
+  const [emailAddress, setEmailAddress] = useState('')
+  const [emailBusy, setEmailBusy]       = useState(false)
+
+  const openEmailModal = (d) => {
+    setEmailTarget(d)
+    setEmailAddress(d.client_email || '')
+  }
+  const closeEmailModal = () => { setEmailTarget(null); setEmailAddress('') }
+  const submitEmail = async () => {
+    if (!emailTarget) return
+    setEmailBusy(true)
+    try {
+      const payload = emailAddress ? { to_email: emailAddress } : {}
+      await ventesApi.envoyerEmailDevis(emailTarget.id, payload)
+      closeEmailModal()
+      dispatch(fetchDevis())
+      toast.success(`Devis ${emailTarget.reference} envoyé par email.`)
+    } catch (err) {
+      toast.error(frenchError(err, 'Envoi email impossible.'))
+    } finally {
+      setEmailBusy(false)
+    }
+  }
+
   // T13 — la case « Inclure l'étude » n'a de sens qu'avec des données d'étude.
   const targetHasEtude = !!(pdfTarget?.etude_params
     && Object.keys(pdfTarget.etude_params).length > 0)
@@ -839,6 +865,40 @@ export default function DevisList() {
         </DialogContent>
       </Dialog>
 
+      {/* QJ14 — Modale « Envoyer par email » : PDF premium + lien de proposition */}
+      <Dialog open={!!emailTarget} onOpenChange={(o) => { if (!o) closeEmailModal() }}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Envoyer par email — {emailTarget?.reference}</DialogTitle>
+          </DialogHeader>
+          <div className="flex flex-col gap-4">
+            <div className="grid gap-1.5">
+              <Label htmlFor="email-address">Adresse email du destinataire</Label>
+              <Input
+                id="email-address"
+                type="email"
+                placeholder="client@exemple.ma"
+                value={emailAddress}
+                onChange={e => setEmailAddress(e.target.value)}
+              />
+              <p className="text-xs text-muted-foreground">
+                Laissez vide pour utiliser l'email du client enregistré.
+                Le PDF de la proposition et le lien de signature seront joints.
+              </p>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={closeEmailModal} disabled={emailBusy}>
+              Annuler
+            </Button>
+            <Button onClick={submitEmail} loading={emailBusy}>
+              <Send className="size-4 mr-1" aria-hidden="true" />
+              Envoyer
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
       {devis.length === 0 ? (
         <EmptyState
           icon={FileStack}
@@ -931,6 +991,19 @@ export default function DevisList() {
                             </button>
                           </div>
                         )}
+                        {/* QJ1 — Badge de consultation : affiché quand le lien public
+                            a été ouvert au moins une fois. Nombre de vues + date. */}
+                        {d.deja_consulte && (
+                          <div
+                            className="mt-0.5 inline-flex items-center gap-1 rounded-full border border-primary/30 bg-primary/10 px-2 py-0.5 text-xs font-medium text-primary"
+                            title={d.derniere_consultation
+                              ? `Dernière ouverture : ${new Date(d.derniere_consultation).toLocaleString('fr-FR')}`
+                              : 'Document consulté'}
+                          >
+                            <Eye className="size-3" aria-hidden="true" />
+                            Consulté ×{d.nombre_vues ?? 1}
+                          </div>
+                        )}
                         {/* U5 — Documents générés depuis ce devis : factures (chips
                             cliquables → liste Factures) + bon de commande (→ BC).
                             Lecture seule, données du serializer. */}
@@ -1012,6 +1085,31 @@ export default function DevisList() {
                             Option : {d.option_acceptee === 'avec_batterie' ? 'Avec batterie' : 'Sans batterie'}
                           </div>
                         )}
+                        {/* QJ22 — Badge « Proposition signée » : affiché quand un
+                            DevisSignature (loi 53-05) existe pour ce devis accepté.
+                            Indique que la signature électronique légale a été
+                            enregistrée + le PDF de proposition signé est disponible. */}
+                        {d.est_signe && (
+                          <div
+                            className="mt-1 inline-flex items-center gap-1 rounded-full border border-success/40 bg-success/10 px-2 py-0.5 text-xs font-medium text-success"
+                            title={
+                              d.signature_info
+                                ? [
+                                    `Signé par : ${d.signature_info.signataire_nom || '—'}`,
+                                    d.signature_info.signed_at
+                                      ? `le ${new Date(d.signature_info.signed_at).toLocaleString('fr-FR')}`
+                                      : null,
+                                    d.signature_info.has_pdf
+                                      ? 'PDF signé disponible'
+                                      : null,
+                                  ].filter(Boolean).join(' ')
+                                : 'Proposition signée (loi 53-05)'
+                            }
+                          >
+                            <Check className="size-3" aria-hidden="true" />
+                            Proposition signée
+                          </div>
+                        )}
                         {/* U8 — état du bon de commande lié (lecture seule, depuis
                             le OneToOne existant) + avertissement d'incohérence
                             quand un devis accepté n'a pas de BC actif. */}
@@ -1057,6 +1155,25 @@ export default function DevisList() {
                               }}
                             >
                               Réviser
+                            </Button>
+                          )}
+                          {/* QJ15 — Dupliquer en variantes de taille (−20 % / standard / +25 %) */}
+                          {d.statut === 'brouillon' && (
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              title="Créer 3 variantes de taille (−20 %, standard, +25 %) pour comparaison côte-à-côte"
+                              onClick={() => {
+                                ventesApi.dupliquerVariante(d.id)
+                                  .then(() => {
+                                    dispatch(fetchDevis())
+                                    toast.success(`Variantes créées pour ${d.reference}.`)
+                                  })
+                                  .catch(err => toast.error(frenchError(err, 'Création variantes impossible.')))
+                              }}
+                            >
+                              <Copy className="size-3.5 mr-1" aria-hidden="true" />
+                              Variantes
                             </Button>
                           )}
                           {role === 'admin' && d.statut === 'brouillon'
@@ -1110,6 +1227,18 @@ export default function DevisList() {
                               title="Marquer ce devis comme envoyé"
                             >
                               <Send /> Envoyer
+                            </Button>
+                          )}
+                          {/* QJ14 — Envoyer par email : PDF premium + lien de proposition */}
+                          {(d.statut === 'brouillon' || d.statut === 'envoye') && (
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              onClick={() => openEmailModal(d)}
+                              title="Envoyer la proposition par email (PDF + lien de signature)"
+                            >
+                              <Send className="size-3.5 mr-1" aria-hidden="true" />
+                              Email
                             </Button>
                           )}
                           <Button
