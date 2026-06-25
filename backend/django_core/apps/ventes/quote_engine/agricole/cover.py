@@ -48,6 +48,7 @@ def build(ctx) -> str:
     annual_saving = d.get("annual_saving") or 0
     payback = d.get("payback")
     fda_amount = d.get("fda_amount") or 0; fda_pct = d.get("fda_pct") or 30
+    show_subsidy = d.get("show_subsidy", True)
     hectares = d.get("hectares_irrigable")
     current_fuel = d.get("current_fuel") or "butane"
     fuel_lbl = {"butane": "le butane", "diesel": "le gasoil",
@@ -110,7 +111,7 @@ def build(ctx) -> str:
     if pompe_cv:
         sub = theme.join_meta(f"{fmt_dec(pompe_kw)} kW" if pompe_kw else "", type_lbl)
         stats.append((f"{fmt_dec(pompe_cv)} CV", f"Pompe solaire{(' · ' + sub) if sub else ''}"))
-    if fda_amount > 0:
+    if show_subsidy and fda_amount > 0:
         stats.append((f"{fmt(fda_amount)} DH", f"Subvention FDA {fda_pct} % (estimée)"))
     elif hmt:
         stats.append((f"{fmt(hmt)} m", "Hauteur d'élévation de l'eau"))
@@ -123,8 +124,11 @@ def build(ctx) -> str:
         return (f'<div class="a1-tr"><svg viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="10" '
                 f'fill="{green_bg}"/><path d="M7.5 12.3l3 3 6-6.5" stroke="{green_700}" stroke-width="2" '
                 f'stroke-linecap="round" stroke-linejoin="round"/></svg><span>{txt}</span></div>')
-    trust_html = (_chk("Panneaux garantis <b>25 ans</b>") + _chk("Pompe & variateur garantis")
-                  + _chk("Installation & SAV par TAQINOR") + _chk("Aide au dossier de subvention FDA"))
+    trust_txt = ["Panneaux garantis <b>25 ans</b>", "Pompe & variateur garantis",
+                 "Installation & SAV par TAQINOR",
+                 ("Aide au dossier de subvention FDA" if show_subsidy
+                  else "Mise en service & formation incluses")]
+    trust_html = "".join(_chk(t) for t in trust_txt)
 
     if hero_img:
         hero_bg = ("linear-gradient(180deg,rgba(15,30,53,0.66) 0%,"
