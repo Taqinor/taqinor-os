@@ -229,8 +229,6 @@ def _monthly_consumption(devis) -> list:
     jamais un nouveau tarif codé en dur. Facture d'hiver toute l'année, ou
     hiver+été quand ``ete_differente`` (été = mois ~Mai→Oct). Sans facture → []
     (la page masque alors le graphe)."""
-    if not getattr(devis, 'lead_id', None):
-        return []  # devis sans lead → aucune facture à convertir
     from apps.crm.selectors import lead_bills_for_devis
     bills = lead_bills_for_devis(devis)
     if not bills:
