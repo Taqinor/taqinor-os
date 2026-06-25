@@ -74,15 +74,18 @@ def build(ctx) -> str:
         fda_html = (
             f'<div class="a3-fda"><div class="a3-fda-k">Subvention FDA · pompage solaire</div>'
             f'<div class="a3-fda-v">− {fmt(fda_amount)} MAD</div>'
-            f'<div class="a3-fda-s">{fda_pct} % du coût, versée a posteriori sur dossier '
-            f'DPA/ORMVA — cumulable avec la subvention goutte-à-goutte.</div>'
+            f'<div class="a3-fda-s">{fda_pct} % du coût, plafonnée à 30 000 MAD par projet '
+            f'(pompage couplé à l\'irrigation localisée), versée a posteriori sur dossier '
+            f'DPA/ORMVA, sous réserve d\'éligibilité — cumulable avec la subvention '
+            f'goutte-à-goutte. Nous montons le dossier avec vous.</div>'
             f'<div class="a3-fda-net"><span>Coût net estimé</span>'
             f'<b>≈ {fmt(net_after_fda)} MAD</b></div></div>')
     else:
         fda_html = ('<div class="a3-fda a3-fda-empty"><div class="a3-fda-k">Bon à savoir</div>'
-                    '<div class="a3-fda-s">Le pompage solaire agricole est éligible à la '
-                    'subvention FDA (30 %), versée a posteriori. Nous vous accompagnons pour '
-                    'le dossier.</div></div>')
+                    '<div class="a3-fda-s">Le pompage solaire couplé au goutte-à-goutte est '
+                    'éligible à la subvention FDA (30 %, plafonnée à 30 000 MAD par projet, '
+                    'versée a posteriori, sous réserve d\'éligibilité). Nous montons le '
+                    'dossier DPA/ORMVA avec vous.</div></div>')
 
     # ── garanties (folded up from the trust page) ────────────────────────────
     badges = [("25", "ans", "Panneaux (perf.)"), ("5", "ans", "Variateur"),

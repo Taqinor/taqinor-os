@@ -111,6 +111,12 @@ def compute(data: dict, company_id=None) -> dict:
     else:  # butane (default) / none → butane baseline
         annual_fuel_now = butane_today
 
+    # The farmer's REAL current fuel bill (MAD/an), when captured, overrides the
+    # modelled cost — savings & payback then reflect what he actually pays today.
+    fuel_spend = _num(etude.get("fuel_spend_current"))
+    if fuel_spend > 0:
+        annual_fuel_now = round(fuel_spend)
+
     # Savings = the whole fuel bill solar eliminates (solar fuel cost = 0).
     saving_vs_butane = butane_today
     saving_vs_diesel = diesel

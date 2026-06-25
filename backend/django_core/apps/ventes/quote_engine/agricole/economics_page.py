@@ -150,7 +150,9 @@ def build(ctx) -> str:
     # ── closing: conditions · étapes · signature (3 equal-height cols) ────────
     paiement = f"{acompte}% commande · {materiel}% matériel · {solde}% service"
     conditions = [("Validité", f"{validity} jours"), ("Paiement", paiement),
-                  ("TVA", tva_note or "Selon barème"), ("Délai", "selon site & forage")]
+                  ("TVA", tva_note or "Selon barème"), ("Délai", "selon site & forage"),
+                  ("Point d'eau", "Forage/puits avec autorisation ABH valide — "
+                   "nous vous orientons pour la démarche")]
     cond_html = "".join(
         f'<div class="a4-cr"><span class="a4-ck">{k}</span><span class="a4-cv">{v}</span></div>'
         for k, v in conditions)
