@@ -22,6 +22,7 @@ def build(ctx) -> str:
     from . import theme
     d = ctx["d"]; C = ctx["C"]; fmt = ctx["fmt"]; fmt_dec = ctx["fmt_dec"]
     fonts = ctx["fonts"]; logo_dark = ctx["logo_dark"]; hero_img = ctx.get("hero_img", "")
+    charts = ctx.get("charts") or {}
     etude = d.get("etude") or {}
 
     navy = C["navy"]; navy_900 = C["navy_900"]; gold = C["gold"]; green = C["green"]
@@ -29,6 +30,7 @@ def build(ctx) -> str:
     water_bg = C["water_bg"]; ink = C["ink"]; muted = C["muted"]; muted_2 = C["muted_2"]
     line = C["line"]; line_soft = C["line_soft"]; wash = C["wash"]; earth = C["earth"]
     f_display = fonts["display"]; f_serif = fonts["serif"]; f_sans = fonts["sans"]
+    f_arabic = fonts.get("arabic", f_sans)
 
     ref = d["ref"]; date = d["date"]
     client_full = theme.titlecase_name(d.get("client_full") or "Client")
@@ -82,6 +84,7 @@ def build(ctx) -> str:
     if has_water and m3j:
         heroA = (f'<div class="a1-hero-eb">L\'eau que le soleil vous pompe</div>'
                  f'<div class="a1-hero-n">{fmt(m3j)}<span class="a1-hero-u">m³</span></div>'
+                 f'<div class="a1-ar">متر مكعب من الماء كل يوم</div>'
                  f'<div class="a1-hero-c">d\'eau <b>chaque jour</b> — sans gasoil, sans butane.</div>'
                  f'<div class="a1-tgs">{tang_html}</div>')
     else:
@@ -97,6 +100,7 @@ def build(ctx) -> str:
               if payback else "")
         heroB = (f'<div class="a1-hero-eb a1-eb-g">Ce que vous économisez</div>'
                  f'<div class="a1-hero-n a1-n-g">{fmt(annual_saving)}<span class="a1-hero-u a1-u-g">DH</span></div>'
+                 f'<div class="a1-ar a1-ar-g">درهم توفّره كل سنة</div>'
                  f'<div class="a1-hero-c">par an, en ne payant plus {fuel_lbl}.</div>{pb}')
     else:
         heroB = (f'<div class="a1-hero-eb a1-eb-g">Votre carburant</div>'
@@ -129,6 +133,18 @@ def build(ctx) -> str:
                  ("Aide au dossier de subvention FDA" if show_subsidy
                   else "Mise en service & formation incluses")]
     trust_html = "".join(_chk(t) for t in trust_txt)
+
+    # ── small "you cross into profit" payback graph (fills the lower third) ──
+    pb_chart = charts.get("payback") or ""
+    graph_html = ""
+    if pb_chart and payback and annual_saving > 0:
+        graph_html = (
+            f'<div class="a1-graph"><div class="a1-graph-tx">'
+            f'<div class="a1-graph-h">Le jour où le solaire vous rembourse</div>'
+            f'<div class="a1-graph-s">Vous récupérez votre investissement en '
+            f'≈ <b>{_yrs(payback)} ans</b>. Ensuite, l\'eau du soleil est quasiment '
+            f'gratuite — pour 20 ans et plus.</div></div>'
+            f'<img class="a1-graph-img" src="{pb_chart}" alt="Amortissement"></div>')
 
     if hero_img:
         hero_bg = ("linear-gradient(180deg,rgba(15,30,53,0.66) 0%,"
@@ -180,6 +196,9 @@ def build(ctx) -> str:
 .a1-u-g{{color:{green_700};}}
 .a1-hero-c{{font-size:10pt;color:{ink};line-height:1.4;margin-top:8px;}}
 .a1-hero-c b{{color:{navy};}}
+.a1-ar{{font-family:{f_arabic};direction:rtl;text-align:right;unicode-bidi:isolate;
+  font-size:10.5pt;font-weight:700;color:{water};margin-top:5px;line-height:1.3;}}
+.a1-ar-g{{color:{green_700};}}
 /* tangibility row under water hero */
 .a1-tgs{{display:flex;gap:14px;margin-top:13px;padding-top:12px;border-top:1px dashed #CFE0EF;}}
 .a1-tg{{display:flex;align-items:center;gap:7px;}}
@@ -201,6 +220,15 @@ def build(ctx) -> str:
 .a1-tr{{display:flex;align-items:center;gap:7px;font-size:8.6pt;color:{ink};flex:1 1 40%;}}
 .a1-tr svg{{width:17px;height:17px;flex-shrink:0;}}
 .a1-tr b{{color:{green_700};font-weight:700;}}
+.a1-graph{{display:flex;gap:14px;align-items:center;margin-top:13px;padding:13px 16px;
+  border:1px solid {line};border-left:5px solid {gold};border-radius:14px;
+  background:linear-gradient(110deg,{C['gold_soft']},#fff 58%);}}
+.a1-graph-tx{{flex:0 0 56mm;}}
+.a1-graph-h{{font-family:{f_serif};font-weight:700;font-size:12pt;color:{navy};line-height:1.12;}}
+.a1-graph-s{{font-size:8.6pt;color:{ink};line-height:1.4;margin-top:5px;}}
+.a1-graph-s b{{color:{earth};}}
+.a1-graph-img{{flex:1 1 0;min-width:0;display:block;width:100%;height:30mm;
+  object-fit:contain;object-position:right center;}}
 .a1-note{{margin-top:13px;font-size:7.8pt;color:{muted_2};line-height:1.4;}}
 .a1-note b{{color:{muted};font-weight:700;}}
 </style>
@@ -238,6 +266,7 @@ def build(ctx) -> str:
     </div>
     <div class="a1-stats">{stats_html}</div>
     <div class="a1-trust">{trust_html}</div>
+    {graph_html}
     <div class="a1-note">Tous les montants sont en dirhams (DH), TTC. Les volumes d'eau, économies
       et durées d'amortissement sont des <b>estimations</b> basées sur vos données et l'ensoleillement
       de votre région. Étude, équipement, prix et conditions détaillés dans les pages suivantes.</div>

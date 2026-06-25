@@ -179,7 +179,7 @@ def build(ctx) -> str:
 /* rentabilité */
 .a4-renta{{display:flex;gap:12px;align-items:stretch;}}
 .a4-num{{flex:0 0 62mm;display:flex;flex-direction:column;border-top:3px solid {green};}}
-.a4-fuel{{flex:1 1 0;min-width:0;display:flex;flex-direction:column;}}
+.a4-fuel{{flex:1 1 0;min-width:0;}}
 .a4-pb{{font-family:{f_display};font-size:38pt;color:{green};line-height:.85;letter-spacing:-1px;}}
 .a4-pb span{{font-size:15pt;color:{muted};margin-left:4px;}}
 .a4-pb-sub{{font-size:8pt;color:{muted};margin:5px 0 9px;}} .a4-pb-sub b{{color:{navy};}}
@@ -187,7 +187,10 @@ def build(ctx) -> str:
 .a4-stat span{{display:block;font-family:{f_display};font-size:14pt;color:{navy};line-height:1;}}
 .a4-stat small{{font-size:7.6pt;color:{muted};}}
 .a4-stat-hi{{margin-top:8px;}} .a4-stat-hi span{{color:{gold};font-size:16pt;}}
-.a4-fuelimg{{width:100%;height:auto;display:block;margin-top:auto;}}
+/* Fixed height: WeasyPrint collapses a width:100%/height:auto <img> to 0 inside
+   a flex column. Explicit height + object-fit keeps the chart visible & sharp. */
+.a4-fuelimg{{display:block;width:100%;height:34mm;object-fit:contain;
+  object-position:left bottom;margin-top:10px;}}
 /* punch + env */
 .a4-msg{{display:flex;gap:12px;margin-top:14px;align-items:stretch;}}
 .a4-punch{{flex:1 1 0;border-left:4px solid {gold};background:{wash};border-radius:8px;
@@ -224,13 +227,14 @@ def build(ctx) -> str:
 .a4-why-i:last-child{{border-bottom:none;}}
 .a4-why-i b{{display:block;font-size:8.6pt;color:{navy};font-weight:700;}}
 .a4-why-i span{{display:block;font-size:7.8pt;color:{muted};margin-top:1px;line-height:1.3;}}
-.a4-acc{{border:1.5px solid {navy};border-radius:12px;overflow:hidden;flex:1 1 auto;display:flex;flex-direction:column;min-height:54mm;}}
+.a4-acc{{border:1.5px solid {navy};border-radius:12px;overflow:hidden;min-height:52mm;}}
 .a4-acc-hd{{background:{navy};color:#fff;padding:7px 12px;font-family:{f_serif};font-weight:700;font-size:10.5pt;}}
-.a4-sig{{padding:10px 13px;border-bottom:1px dashed {line};flex:1 1 0;display:flex;flex-direction:column;}}
-.a4-sig:last-child{{border-bottom:none;}}
+.a4-sig{{padding:11px 14px 6px;}}
 .a4-sig-who{{font-size:7.4pt;color:{navy};font-weight:700;text-transform:uppercase;letter-spacing:.05em;}}
 .a4-sig-name{{font-size:8.6pt;color:{ink};font-weight:700;margin-top:1px;}}
-.a4-sig-line{{border-bottom:1px solid {line};height:18px;margin-top:auto;}}
+/* one clean signing line per signer, with room to sign above it (block layout —
+   WeasyPrint did not fill a nested flex column, which collapsed the card) */
+.a4-sig-line{{height:1px;background:{muted_2};margin-top:44px;}}
 .a4-stamp{{font-size:7.4pt;color:{green};font-weight:700;padding:6px 13px 0;}}
 /* CTA */
 .a4-cta{{margin-top:16px;background:{gold};border-radius:12px;padding:15px 18px;display:flex;
@@ -286,5 +290,5 @@ def _env_block(show_env, co2_t, trees, fuel_qty, C, fmt, fmt_dec):
             f'<path d="M12 21c5-1 8-5 8-11V5l-5 1c-5 1-8 4-8 9 0 .7.1 1.4.3 2" stroke="{green}" '
             f'stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/>'
             f'<path d="M7 21c0-4 2-7 6-9" stroke="{green}" stroke-width="1.7" stroke-linecap="round"/></svg>'
-            f'<div>≈ <b>{fuel_qty}</b> évitées/an · ≈ <b>{fmt_dec(co2_t)} t CO₂</b> '
+            f'<div>≈ <b>{fuel_qty}</b> évitées/an · ≈ <b>{fmt_dec(co2_t)} t CO<sub>2</sub></b> '
             f'(≈ {fmt(trees)} arbres)</div></div>')

@@ -18,6 +18,7 @@ def build(ctx) -> str:
     green_700 = C["green_700"]; water = C["water"]; ink = C["ink"]; muted = C["muted"]
     muted_2 = C["muted_2"]; line = C["line"]; line_soft = C["line_soft"]; wash = C["wash"]
     f_display = fonts["display"]; f_serif = fonts["serif"]; f_sans = fonts["sans"]
+    f_arabic = fonts.get("arabic", f_sans)
 
     totaux = d.get("totaux_all") or {}
     items = [it for it in (d.get("all_items") or []) if (it.get("quantite") or 0) > 0]
@@ -122,6 +123,8 @@ def build(ctx) -> str:
 .a3-cr-tot{{border-top:2px solid {navy};margin-top:3px;padding-top:8px;}}
 .a3-cr-tot span{{font-weight:700;font-size:9.5pt;color:{navy};}}
 .a3-cr-tot b{{font-family:{f_display};font-size:16pt;color:{gold};}}
+.a3-ar{{font-family:{f_arabic};direction:rtl;text-align:right;unicode-bidi:isolate;
+  font-size:9pt;font-weight:700;color:{C['earth']};margin-top:7px;}}
 .a3-fda{{border:1px solid #BFE6CB;border-radius:12px;background:linear-gradient(180deg,{green_bg},#fff 72%);
   padding:11px 14px;flex:1 1 0;min-width:0;display:flex;flex-direction:column;}}
 .a3-fda-empty{{border-color:{line};background:{wash};}}
@@ -151,7 +154,8 @@ def build(ctx) -> str:
     qui réduit votre coût réel.</div>
   {table_html}
   <div class="a3-band">
-    <div class="a3-band-col"><div class="a3-h">Le prix, en toute transparence</div>{chain_html}</div>
+    <div class="a3-band-col"><div class="a3-h">Le prix, en toute transparence</div>{chain_html}
+      <div class="a3-ar">الثمن الإجمالي شامل الضريبة</div></div>
     {fda_html}
   </div>
   <div class="a3-gh">Nos garanties</div>
