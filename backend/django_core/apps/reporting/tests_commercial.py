@@ -13,7 +13,6 @@ from decimal import Decimal
 from django.contrib.auth import get_user_model
 from django.test import TestCase
 from rest_framework.test import APIClient
-from rest_framework_simplejwt.tokens import AccessToken
 
 from authentication.models import Company
 from apps.crm.models import Client, Lead
@@ -37,8 +36,7 @@ class CommercialBase(TestCase):
             username='com_admin', password='x', role_legacy='admin',
             company=self.company)
         self.api = APIClient()
-        self.api.credentials(
-            HTTP_AUTHORIZATION=f'Bearer {AccessToken.for_user(self.user)}')
+        self.api.force_authenticate(user=self.user)
 
     # ── Helpers ───────────────────────────────────────────────────────────────
 

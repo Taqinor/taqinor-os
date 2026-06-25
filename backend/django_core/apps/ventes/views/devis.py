@@ -81,6 +81,8 @@ class DevisViewSet(viewsets.ModelViewSet):
             'generer_pdf', 'telecharger_pdf', 'convertir_en_bc', 'proposal',
             'generer_facture', 'reviser', 'accepter', 'refuser', 'noter',
             'layout', 'roof_image', 'from_layout', 'share_link',
+            'envoyer_email', 'dupliquer_variante', 'variantes',
+            'save_preset', 'apply_preset',
         ]:
             return [IsResponsableOrAdmin()]
         elif self.action == 'destroy':
@@ -570,6 +572,10 @@ class DevisViewSet(viewsets.ModelViewSet):
             .select_related('client')
             .order_by('version', 'id')
         )
+        # An isolated devis (no version_parent and no child variants) is not
+        # part of any variant group → return an empty comparison set.
+        if devis.version_parent_id is None and not siblings.exists():
+            return Response([])
         # Include root itself in the comparison set.
         root_devis = Devis.objects.filter(
             pk=root.pk, company=devis.company, is_active=True).first()

@@ -728,6 +728,13 @@ def _build_acceptance_wa_url(*, devis):
         digits = ''.join(c for c in (phone_raw or '') if c.isdigit())
         if not digits:
             return None
+        # Format international marocain (wa.me exige l'indicatif pays).
+        if digits.startswith('00'):
+            digits = digits[2:]
+        if digits.startswith('0'):
+            digits = '212' + digits[1:]
+        elif not digits.startswith('212'):
+            digits = '212' + digits
         nom = ''
         if lead is not None:
             nom = (getattr(lead, 'nom', '') or '').strip()
@@ -1022,7 +1029,11 @@ def accept_devis(*, devis, user, nom='', date_acceptation=None, option='',
     # Appelé APRÈS _create_esign_record pour que le DevisSignature existe déjà.
     _store_signed_pdf(devis=devis)
     # QJ10 — Email de confirmation PDF verrouillé au client + au vendeur.
-    _send_acceptance_emails(devis=devis, user=user)
+    try:
+        _send_acceptance_emails(devis=devis, user=user)
+    except Exception as exc:  # noqa: BLE001 — best-effort
+        logger.warning('QJ10: _send_acceptance_emails échoué pour devis %s : %s',
+                       getattr(devis, 'reference', '?'), exc)
 
     devis_accepted.send(
         sender=Devis, devis=devis, user=user, ancien_statut=ancien)
@@ -1393,16 +1404,24 @@ def save_devis_as_preset(devis, nom: str, description: str = "", *, user=None):
     if company is None:
         raise ValueError("save_devis_as_preset: devis has no company")
 
+    def _ds(value):
+        # Normalise a Decimal to a clean string (strip trailing zeros):
+        # 10.00 -> "10", 10.50 -> "10.5". None stays None.
+        if value is None:
+            return None
+        s = str(value)
+        return s.rstrip('0').rstrip('.') if '.' in s else s
+
     lignes_snapshot = []
     for ligne in devis.lignes.select_related('produit').order_by('id'):
         produit = ligne.produit
         lignes_snapshot.append({
             'produit_id': produit.pk if produit else None,
             'designation': ligne.designation,
-            'quantite': str(ligne.quantite),
-            'prix_unitaire': str(ligne.prix_unitaire),
-            'remise': str(ligne.remise),
-            'taux_tva': str(ligne.taux_tva) if ligne.taux_tva is not None else None,
+            'quantite': _ds(ligne.quantite),
+            'prix_unitaire': _ds(ligne.prix_unitaire),
+            'remise': _ds(ligne.remise),
+            'taux_tva': _ds(ligne.taux_tva),
         })
 
     preset = DevisPreset.objects.create(
@@ -1803,7 +1822,6 @@ def _advance_lead_on_expiry(lead, today):
     Renvoie (moved_to_followup: bool, moved_to_cold: bool).
     """
     from datetime import timedelta
-    from apps.crm import stages as crm_stages
     from apps.crm.models import LeadActivity
 
     if lead.perdu:
@@ -1812,12 +1830,12 @@ def _advance_lead_on_expiry(lead, today):
     moved_fup = False
     moved_cold = False
 
-    if lead.stage == crm_stages.QUOTE_SENT:
+    if lead.stage == 'QUOTE_SENT':
         # Only advance if lead is not already further.
         from apps.crm.services import _rang_funnel
-        if _rang_funnel(lead.stage) < _rang_funnel(crm_stages.FOLLOW_UP):
+        if _rang_funnel(lead.stage) < _rang_funnel('FOLLOW_UP'):
             ancien = lead.stage
-            lead.stage = crm_stages.FOLLOW_UP
+            lead.stage = 'FOLLOW_UP'
             lead.save(update_fields=['stage'])
             from apps.crm import activity as crm_activity
             # Pass raw stage keys; _display resolves choices labels.
@@ -1825,29 +1843,29 @@ def _advance_lead_on_expiry(lead, today):
                 lead, user=None,
                 field='stage',
                 old_val=ancien,
-                new_val=crm_stages.FOLLOW_UP,
+                new_val='FOLLOW_UP',
             )
             moved_fup = True
         return moved_fup, False
 
-    if lead.stage == crm_stages.FOLLOW_UP:
+    if lead.stage == 'FOLLOW_UP':
         # Park COLD only if no activity in last _COLD_AFTER_FOLLOWUP_DAYS days.
         cutoff = today - timedelta(days=_COLD_AFTER_FOLLOWUP_DAYS)
         recent_activity = LeadActivity.objects.filter(
             lead=lead,
-            date_creation__date__gte=cutoff,
+            created_at__date__gte=cutoff,
         ).exists()
         if recent_activity:
             return False, False
         ancien = lead.stage
-        lead.stage = crm_stages.COLD
+        lead.stage = 'COLD'
         lead.save(update_fields=['stage'])
         from apps.crm import activity as crm_activity
         crm_activity.log_bulk_change(
             lead, user=None,
             field='stage',
             old_val=ancien,
-            new_val=crm_stages.COLD,
+            new_val='COLD',
         )
         moved_cold = True
         return False, moved_cold

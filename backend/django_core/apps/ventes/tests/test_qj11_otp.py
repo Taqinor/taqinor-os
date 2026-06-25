@@ -186,7 +186,7 @@ class TestProposalRequestOtpEndpoint(TestCase):
         self.api = APIClient()
 
     def test_invalid_token_returns_404(self):
-        resp = self.api.post('/api/django/public/proposal/otp/invalid-token/')
+        resp = self.api.post('/api/django/public/proposal/invalid-token/otp/')
         self.assertEqual(resp.status_code, 404)
 
     def test_noop_when_toggle_off(self):
@@ -194,7 +194,7 @@ class TestProposalRequestOtpEndpoint(TestCase):
         link = _make_share_link(devis)
         with patch.dict('os.environ', {'ESIGN_OTP_ENABLED': '0'}):
             resp = self.api.post(
-                f'/api/django/public/proposal/otp/{link.token}/')
+                f'/api/django/public/proposal/{link.token}/otp/')
         self.assertEqual(resp.status_code, 200)
 
     def test_returns_200_when_toggle_on(self):
@@ -202,7 +202,7 @@ class TestProposalRequestOtpEndpoint(TestCase):
         link = _make_share_link(devis)
         with patch.dict('os.environ', {'ESIGN_OTP_ENABLED': '1'}):
             resp = self.api.post(
-                f'/api/django/public/proposal/otp/{link.token}/')
+                f'/api/django/public/proposal/{link.token}/otp/')
         self.assertEqual(resp.status_code, 200)
 
 
@@ -224,7 +224,7 @@ class TestProposalAcceptOtp(TestCase):
         link = _make_share_link(devis)
         with patch.dict('os.environ', {'ESIGN_OTP_ENABLED': '0'}):
             resp = self.api.post(
-                f'/api/django/public/proposal/accept/{link.token}/',
+                f'/api/django/public/proposal/{link.token}/accept/',
                 {'nom': 'M. Test'}, format='json')
         self.assertEqual(resp.status_code, 200, resp.data)
         devis.refresh_from_db()
@@ -235,7 +235,7 @@ class TestProposalAcceptOtp(TestCase):
         link = _make_share_link(devis)
         with patch.dict('os.environ', {'ESIGN_OTP_ENABLED': '1'}):
             resp = self.api.post(
-                f'/api/django/public/proposal/accept/{link.token}/',
+                f'/api/django/public/proposal/{link.token}/accept/',
                 {'nom': 'M. Test'}, format='json')
         self.assertEqual(resp.status_code, 400, resp.data)
         devis.refresh_from_db()
@@ -248,7 +248,7 @@ class TestProposalAcceptOtp(TestCase):
         cache.set(_otp_cache_key(link.token), '777777', 600)
         with patch.dict('os.environ', {'ESIGN_OTP_ENABLED': '1'}):
             resp = self.api.post(
-                f'/api/django/public/proposal/accept/{link.token}/',
+                f'/api/django/public/proposal/{link.token}/accept/',
                 {'nom': 'M. Test', 'otp_code': '777777'}, format='json')
         self.assertEqual(resp.status_code, 200, resp.data)
         devis.refresh_from_db()
@@ -260,7 +260,7 @@ class TestProposalAcceptOtp(TestCase):
         cache.set(_otp_cache_key(link.token), '888888', 600)
         with patch.dict('os.environ', {'ESIGN_OTP_ENABLED': '1'}):
             resp = self.api.post(
-                f'/api/django/public/proposal/accept/{link.token}/',
+                f'/api/django/public/proposal/{link.token}/accept/',
                 {'nom': 'M. Test', 'otp_code': '000000'}, format='json')
         self.assertEqual(resp.status_code, 400, resp.data)
         devis.refresh_from_db()

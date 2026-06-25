@@ -15,7 +15,6 @@ from decimal import Decimal
 from django.contrib.auth import get_user_model
 from django.test import TestCase
 from rest_framework.test import APIClient
-from rest_framework_simplejwt.tokens import AccessToken
 
 from apps.crm.models import Lead
 from apps.stock.models import Produit
@@ -35,7 +34,7 @@ def make_company(slug):
 
 def auth_client(user):
     api = APIClient()
-    api.credentials(HTTP_AUTHORIZATION=f'Bearer {AccessToken.for_user(user)}')
+    api.force_authenticate(user=user)
     return api
 
 
@@ -144,6 +143,7 @@ class TestValidateComposition(TestCase):
     def test_no_panels_returns_error(self):
         layout = dict(SAMPLE_LAYOUT)
         layout['result'] = {'panels': 0, 'kwc': 0}
+        layout['zones'] = []
         errors = validate_composition_for_layout(layout, self.company)
         self.assertIsNotNone(errors)
         self.assertTrue(any('panneau' in e.lower() for e in errors))
@@ -344,6 +344,7 @@ class TestQJ17CompositionCheck(TestCase):
     def test_no_panels_in_layout_returns_422(self):
         layout_no_panels = dict(SAMPLE_LAYOUT)
         layout_no_panels['result'] = {'panels': 0, 'kwc': 0}
+        layout_no_panels['zones'] = []
         lead = self._lead()
         resp = self.api.post(FROM_LAYOUT_URL,
                              {'layout': layout_no_panels, 'lead': lead.id},

@@ -19,7 +19,6 @@ Run:
 """
 from django.test import TestCase, override_settings
 from rest_framework.test import APIClient
-from rest_framework_simplejwt.tokens import AccessToken
 from django.contrib.auth import get_user_model
 
 from apps.crm.models import Client
@@ -63,7 +62,7 @@ def make_devis(company, user, client, statut='brouillon', ref=None):
 
 def make_api(user):
     client = APIClient()
-    client.credentials(HTTP_AUTHORIZATION=f'Bearer {AccessToken.for_user(user)}')
+    client.force_authenticate(user=user)
     return client
 
 

@@ -643,6 +643,13 @@ def _build_lead_wa_reply_url(lead):
         digits = ''.join(c for c in (phone_raw or '') if c.isdigit())
         if not digits:
             return None
+        # Format international marocain (wa.me exige l'indicatif pays).
+        if digits.startswith('00'):
+            digits = digits[2:]
+        if digits.startswith('0'):
+            digits = '212' + digits[1:]
+        elif not digits.startswith('212'):
+            digits = '212' + digits
         nom = (
             (getattr(lead, 'nom', '') or '').strip()
             or 'votre client'

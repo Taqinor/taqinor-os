@@ -58,7 +58,8 @@ class NotifyNewLeadTests(TestCase):
         """Un nouveau lead déclenche une notification in-app pour le owner."""
         lead = _make_lead(self.company, owner=self.owner)
         notify_new_lead(lead)
-        notifs = Notification.objects.filter(recipient=self.owner)
+        notifs = Notification.objects.filter(
+            recipient=self.owner, event_type='lead_new')
         self.assertEqual(notifs.count(), 1)
         n = notifs.first()
         self.assertEqual(n.event_type, EventType.LEAD_NEW)
@@ -117,7 +118,8 @@ class NotifyDevisOpenedTests(TestCase):
         """La première ouverture du devis déclenche une notification in-app."""
         lead = _make_lead(self.company, owner=self.owner)
         notify_devis_opened('DEV-001', lead)
-        notifs = Notification.objects.filter(recipient=self.owner)
+        notifs = Notification.objects.filter(
+            recipient=self.owner, event_type='devis_opened')
         self.assertEqual(notifs.count(), 1)
         n = notifs.first()
         self.assertEqual(n.event_type, EventType.DEVIS_OPENED)

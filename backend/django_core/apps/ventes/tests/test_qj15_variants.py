@@ -20,7 +20,6 @@ from decimal import Decimal
 
 from django.test import TestCase
 from rest_framework.test import APIClient
-from rest_framework_simplejwt.tokens import AccessToken
 from django.contrib.auth import get_user_model
 
 from apps.crm.models import Client
@@ -77,7 +76,7 @@ def add_ligne(devis, produit, qty='6', pu='2000'):
 
 def make_api(user):
     cli = APIClient()
-    cli.credentials(HTTP_AUTHORIZATION=f'Bearer {AccessToken.for_user(user)}')
+    cli.force_authenticate(user=user)
     return cli
 
 
