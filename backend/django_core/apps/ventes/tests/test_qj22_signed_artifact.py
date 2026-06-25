@@ -174,7 +174,10 @@ class TestDevisSerializerSignedFields(TestCase):
     def test_signature_info_has_required_fields(self, mock_gen):
         devis = _make_devis(self.company, self.client_obj, 'DEV-QJ22-D02')
         accept_devis(devis=devis, user=self.user, nom='Madame Signer')
-        data = DevisSerializer(devis).data
+        # Re-fetch : la OneToOne `signature` est posée en base par
+        # _store_signed_pdf via .update() ; recharger évite une instance en
+        # cache (signed_pdf_key périmé) au moment de la sérialisation.
+        data = DevisSerializer(devis.__class__.objects.get(pk=devis.pk)).data
         info = data['signature_info']
         self.assertIsNotNone(info)
         self.assertEqual(info['signataire_nom'], 'Madame Signer')

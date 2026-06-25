@@ -229,6 +229,8 @@ def _monthly_consumption(devis) -> list:
     jamais un nouveau tarif codé en dur. Facture d'hiver toute l'année, ou
     hiver+été quand ``ete_differente`` (été = mois ~Mai→Oct). Sans facture → []
     (la page masque alors le graphe)."""
+    if not getattr(devis, 'lead_id', None):
+        return []  # devis sans lead → aucune facture à convertir
     from apps.crm.selectors import lead_bills_for_devis
     bills = lead_bills_for_devis(devis)
     if not bills:
@@ -331,6 +333,11 @@ def proposal_data(request, token):
         from .quote_engine.builder import build_quote_data
         devis = link.devis
         data = build_quote_data(devis, {'pdf_mode': 'full'})
+        # Rule #4 — jamais de prix d'achat / marge côté client, même si le
+        # builder en plaçait par mégarde dans la donnée du devis (défense en
+        # profondeur : retirer toute clé d'achat/marge avant l'exposition).
+        data = {k: v for k, v in data.items()
+                if not any(s in k for s in ('prix_achat', 'achat', 'marge', 'revendeur'))}
         roof_url = None
         if data.get('roof_image_key'):
             try:
