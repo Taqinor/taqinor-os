@@ -309,7 +309,7 @@ class TestProposalDataEndpointFinancing(TestCase):
 
         from django.test import Client as DjangoClient
         c = DjangoClient()
-        with patch('apps.ventes.public_views.build_quote_data') as mock_bqd:
+        with patch('apps.ventes.quote_engine.builder.build_quote_data') as mock_bqd:
             # Provide a minimal data dict that includes a financing block
             mock_bqd.return_value = {
                 'ref': devis.reference,

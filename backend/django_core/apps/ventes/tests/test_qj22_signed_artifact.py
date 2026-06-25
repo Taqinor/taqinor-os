@@ -66,7 +66,7 @@ class TestSignedPdfKeyStored(TestCase):
         self.client_obj = _make_client(self.company, 'QJ22 A Client')
         self.user = _make_user(self.company, 'qj22au')
 
-    @patch('apps.ventes.services.generate_premium_devis_pdf',
+    @patch('apps.ventes.quote_engine.generate_premium_devis_pdf',
            return_value=_DUMMY_KEY)
     def test_signed_pdf_key_set_after_accept(self, mock_gen):
         devis = _make_devis(self.company, self.client_obj, 'DEV-QJ22-A01')
@@ -74,7 +74,7 @@ class TestSignedPdfKeyStored(TestCase):
         sig = DevisSignature.objects.get(devis=devis)
         self.assertEqual(sig.signed_pdf_key, _DUMMY_KEY)
 
-    @patch('apps.ventes.services.generate_premium_devis_pdf',
+    @patch('apps.ventes.quote_engine.generate_premium_devis_pdf',
            return_value=_DUMMY_KEY)
     def test_generate_premium_devis_pdf_called_with_persist_true(
             self, mock_gen):
@@ -99,7 +99,7 @@ class TestSignedPdfKeyIdempotency(TestCase):
         self.client_obj = _make_client(self.company, 'QJ22 B Client')
         self.user = _make_user(self.company, 'qj22bu')
 
-    @patch('apps.ventes.services.generate_premium_devis_pdf',
+    @patch('apps.ventes.quote_engine.generate_premium_devis_pdf',
            return_value='new/key.pdf')
     def test_existing_key_not_overwritten(self, mock_gen):
         devis = _make_devis(self.company, self.client_obj, 'DEV-QJ22-B01')
@@ -136,7 +136,7 @@ class TestSignedPdfKeyBestEffort(TestCase):
         self.client_obj = _make_client(self.company, 'QJ22 C Client')
         self.user = _make_user(self.company, 'qj22cu')
 
-    @patch('apps.ventes.services.generate_premium_devis_pdf',
+    @patch('apps.ventes.quote_engine.generate_premium_devis_pdf',
            side_effect=Exception('WeasyPrint offline'))
     def test_pdf_engine_failure_does_not_block_acceptance(self, mock_gen):
         devis = _make_devis(self.company, self.client_obj, 'DEV-QJ22-C01')
@@ -161,7 +161,7 @@ class TestDevisSerializerSignedFields(TestCase):
         self.client_obj = _make_client(self.company, 'QJ22 D Client')
         self.user = _make_user(self.company, 'qj22du')
 
-    @patch('apps.ventes.services.generate_premium_devis_pdf',
+    @patch('apps.ventes.quote_engine.generate_premium_devis_pdf',
            return_value=_DUMMY_KEY)
     def test_est_signe_true_after_acceptance(self, mock_gen):
         devis = _make_devis(self.company, self.client_obj, 'DEV-QJ22-D01')
@@ -169,7 +169,7 @@ class TestDevisSerializerSignedFields(TestCase):
         data = DevisSerializer(devis).data
         self.assertTrue(data['est_signe'])
 
-    @patch('apps.ventes.services.generate_premium_devis_pdf',
+    @patch('apps.ventes.quote_engine.generate_premium_devis_pdf',
            return_value=_DUMMY_KEY)
     def test_signature_info_has_required_fields(self, mock_gen):
         devis = _make_devis(self.company, self.client_obj, 'DEV-QJ22-D02')
@@ -183,7 +183,7 @@ class TestDevisSerializerSignedFields(TestCase):
         self.assertIn('has_pdf', info)
         self.assertTrue(info['has_pdf'])
 
-    @patch('apps.ventes.services.generate_premium_devis_pdf',
+    @patch('apps.ventes.quote_engine.generate_premium_devis_pdf',
            return_value=_DUMMY_KEY)
     def test_signature_info_has_pdf_false_when_no_key(self, mock_gen):
         devis = _make_devis(self.company, self.client_obj, 'DEV-QJ22-D03')
@@ -243,7 +243,7 @@ class TestSignedPdfKeyCompanyScoping(TestCase):
         self.cli_a = _make_client(self.co_a, 'Cli A')
         self.cli_b = _make_client(self.co_b, 'Cli B')
 
-    @patch('apps.ventes.services.generate_premium_devis_pdf',
+    @patch('apps.ventes.quote_engine.generate_premium_devis_pdf',
            return_value=_DUMMY_KEY)
     def test_signature_info_not_visible_from_other_company(self, mock_gen):
         user_a = _make_user(self.co_a, 'qj22fua')
@@ -271,7 +271,7 @@ class TestSignedPdfKeyNoPrixAchat(TestCase):
         self.client_obj = _make_client(self.company, 'QJ22 G Client')
         self.user = _make_user(self.company, 'qj22gu')
 
-    @patch('apps.ventes.services.generate_premium_devis_pdf',
+    @patch('apps.ventes.quote_engine.generate_premium_devis_pdf',
            return_value=_DUMMY_KEY)
     def test_no_prix_achat_in_signature_info(self, mock_gen):
         import json
@@ -295,7 +295,7 @@ class TestQJ22SellerNotificationStillFires(TestCase):
         self.client_obj = _make_client(self.company, 'QJ22 H Client')
         self.seller = _make_user(self.company, 'qj22hs')
 
-    @patch('apps.ventes.services.generate_premium_devis_pdf',
+    @patch('apps.ventes.quote_engine.generate_premium_devis_pdf',
            return_value=_DUMMY_KEY)
     @patch('apps.ventes.services._notify_seller_accepted')
     def test_seller_notified_after_qj22(self, mock_notify, mock_gen):

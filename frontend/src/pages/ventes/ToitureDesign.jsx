@@ -102,7 +102,7 @@ function httpMessage(status, responseData) {
     if (detail) return detail
     const errors = responseData?.errors
     if (Array.isArray(errors) && errors.length > 0) return errors[0]
-    return ‘Composition invalide — vérifiez le catalogue produits puis réessayez.’
+    return 'Composition invalide — vérifiez le catalogue produits puis réessayez.'
   }
   if (status === 400)
     return ‘Le devis n’a pas pu être créé : données du tracé invalides. Vérifiez le toit puis réessayez.’

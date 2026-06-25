@@ -34,7 +34,6 @@ export default function CommercialDashboard() {
   const [errWL, setErrWL] = useState(false)
 
   useEffect(() => {
-    setLoadingDash(true)
     reportingApi.commercialDashboard()
       .then(r => { setDash(r.data); setErrDash(false) })
       .catch(() => setErrDash(true))
@@ -42,7 +41,6 @@ export default function CommercialDashboard() {
   }, [])
 
   useEffect(() => {
-    setLoadingWL(true)
     reportingApi.winLossBySource()
       .then(r => { setWinLoss(r.data); setErrWL(false) })
       .catch(() => setErrWL(true))

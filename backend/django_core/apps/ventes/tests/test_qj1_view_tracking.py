@@ -156,7 +156,7 @@ class TestPublicPayloadNoPriceAchat(TestCase):
         self.link = ShareLink.objects.create(
             company=self.company, devis=self.devis)
 
-    @patch('apps.ventes.public_views.build_quote_data',
+    @patch('apps.ventes.quote_engine.builder.build_quote_data',
            return_value={
                'ref': 'DEV-QJ1-L1',
                'date': '2026-06-24',
