@@ -1,8 +1,9 @@
 """AG4/AG5 — Tests des actions agentiques Ventes.
 
 Couvre :
-  - les six actions du flux (créer devis, PDF /proposal, accepter, convertir en
-    BC, générer facture, enregistrer paiement) sont dans le catalogue AG1 ;
+  - les actions du flux (créer le devis AUTO, éditer ses lignes / remise, PDF
+    /proposal, accepter, convertir en BC, générer facture, enregistrer paiement)
+    sont dans le catalogue AG1 ;
   - elles sont EXPOSÉES à un responsable/admin (qui porte les codes ERP de
     rattachement) et CACHÉES à un utilisateur en lecture seule ;
   - les niveaux de risque sont EXACTS (internal / outward / irreversible) — c'est
@@ -32,7 +33,7 @@ from apps.ventes.models import (
     Devis, Facture, LigneFacture, Paiement,
 )
 from apps.ventes.agent_actions import (
-    CREER_DEVIS,
+    CREER_AUTO,
     GENERER_PDF_DEVIS,
     ACCEPTER_DEVIS,
     CONVERTIR_EN_BON_COMMANDE,
@@ -77,7 +78,7 @@ class VentesAgentCatalogueTest(TestCase):
             username='ag45_ro', password='x', role=self.readonly_role,
             company=self.company)
 
-    def test_all_six_actions_registered(self):
+    def test_all_actions_registered(self):
         keys = {a.key for a in all_actions()}
         for action in VENTES_ACTIONS:
             self.assertIn(action.key, keys, action.key)
@@ -93,7 +94,7 @@ class VentesAgentCatalogueTest(TestCase):
             self.assertNotIn(action.key, keys, action.key)
 
     def test_required_permissions(self):
-        self.assertEqual(CREER_DEVIS.required_permission, 'ventes_creer')
+        self.assertEqual(CREER_AUTO.required_permission, 'ventes_creer')
         self.assertEqual(GENERER_PDF_DEVIS.required_permission, 'ventes_pdf')
         for action in (
             ACCEPTER_DEVIS, CONVERTIR_EN_BON_COMMANDE, GENERER_FACTURE,
@@ -104,7 +105,7 @@ class VentesAgentCatalogueTest(TestCase):
 
     def test_risk_levels_exact(self):
         # AG4
-        self.assertEqual(CREER_DEVIS.risk, RISK_INTERNAL)
+        self.assertEqual(CREER_AUTO.risk, RISK_INTERNAL)
         self.assertEqual(GENERER_PDF_DEVIS.risk, RISK_INTERNAL)
         self.assertEqual(ACCEPTER_DEVIS.risk, RISK_OUTWARD)
         # AG5
@@ -117,9 +118,9 @@ class VentesAgentCatalogueTest(TestCase):
             props = action.inputs.get('properties', {})
             self.assertNotIn('company', props, action.key)
 
-    def test_creer_devis_accepts_lead(self):
+    def test_creer_auto_accepts_lead(self):
         # Le client est résolu serveur depuis le lead → lead doit être un input.
-        self.assertIn('lead', CREER_DEVIS.inputs['properties'])
+        self.assertIn('lead', CREER_AUTO.inputs['properties'])
 
     def test_catalogue_endpoint_lists_actions_for_responsable(self):
         api = auth(self.resp)
@@ -136,8 +137,18 @@ class VentesAgentCatalogueTest(TestCase):
         self.assertEqual(len(all_actions()), before)
 
 
-class CreerDevisRelayedCallTest(TestCase):
-    """Un devis créé via l'appel relayé (depuis un lead) force la société."""
+class CreerAutoRelayedCallTest(TestCase):
+    """Un devis créé via l'auto-devis relayé (depuis un lead) force la société et
+    n'est JAMAIS vide quand le profil lead est dimensionnable."""
+
+    def _seed_catalogue(self, company):
+        def mk(nom, sku, prix):
+            Produit.objects.create(
+                company=company, nom=nom, sku=sku,
+                prix_vente=Decimal(prix), prix_achat=Decimal('1'),
+                quantite_stock=100)
+        mk('Panneau Jinko 550W', f'PAN-{company.pk}', 1100)
+        mk('Onduleur réseau Huawei 5kW Monophasé', f'ONDR-{company.pk}', 14000)
 
     def setUp(self):
         self.company = Company.objects.create(nom='AG45 Relay', slug='ag45-relay')
@@ -145,16 +156,16 @@ class CreerDevisRelayedCallTest(TestCase):
         self.user = User.objects.create_user(
             username='ag45_relay', password='x', role_legacy='responsable',
             company=self.company)
+        self._seed_catalogue(self.company)
 
-    def test_create_from_lead_forces_company_server_side(self):
+    def test_auto_from_lead_forces_company_and_is_not_empty(self):
         lead = Lead.objects.create(
             company=self.company, nom='Relay', prenom='Lead',
             telephone='+212600000010', ville='Casablanca',
-            facture_hiver=700, ete_differente=False)
+            facture_hiver=1800, ete_differente=False)
         api = auth(self.user)
-        resp = api.post(CREER_DEVIS.endpoint, {
+        resp = api.post(CREER_AUTO.endpoint, {
             'lead': lead.id,
-            'statut': 'brouillon',
             'taux_tva': '20.00',
             'remise_globale': '0',
             # Tentative d'injection : la société est ignorée côté serveur.
@@ -168,6 +179,19 @@ class CreerDevisRelayedCallTest(TestCase):
         self.assertEqual(devis.lead_id, lead.id)
         self.assertIsNotNone(devis.client_id)
         self.assertEqual(devis.client.company_id, self.company.id)
+        # JAMAIS un devis vide : l'auto-devis a dimensionné des lignes.
+        self.assertGreater(devis.lignes.count(), 0)
+        self.assertEqual(devis.statut, Devis.Statut.BROUILLON)
+
+    def test_auto_missing_data_returns_422_no_devis(self):
+        lead = Lead.objects.create(
+            company=self.company, nom='Vide', prenom='Lead')
+        api = auth(self.user)
+        resp = api.post(
+            CREER_AUTO.endpoint, {'lead': lead.id}, format='json')
+        self.assertEqual(resp.status_code, 422, resp.data)
+        self.assertEqual(
+            Devis.objects.filter(company=self.company).count(), 0)
 
 
 class EnregistrerPaiementRelayedCallTest(TestCase):

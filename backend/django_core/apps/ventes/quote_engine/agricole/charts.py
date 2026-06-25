@@ -273,10 +273,16 @@ def payback_curve(total, annual_saving, years=20, w=6.6, h=2.2) -> str:
 
 
 def build_all(data: dict) -> dict:
+    """Charts the redesigned (2026-06) farmer-first layout actually renders.
+
+    The monthly water/production BAR GRAPHS were dropped from the pages (founder
+    + research: a single big number + tangible pictograms beats a monthly bar
+    chart for this audience), so they are no longer built here. ``water_per_month``
+    / ``production_per_month`` remain in the module for any future use, but the
+    premium agricole PDF must NOT show a monthly bar graph.
+    """
     data = data or {}
     return {
-        "water": water_per_month(data.get("water_monthly")),
-        "production": production_per_month(data.get("prod_monthly")),
         "fuel": fuel_comparison(data.get("fuel_costs")),
         "cost_m3": cost_per_m3(data.get("cost_per_m3")),
         "payback": payback_curve(

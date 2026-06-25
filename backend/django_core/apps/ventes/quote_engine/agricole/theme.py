@@ -44,6 +44,8 @@ C = {
 FONT_DISPLAY = "'DM Serif Display', Georgia, serif"
 FONT_SERIF = "'Playfair Display', Georgia, serif"
 FONT_SANS = "'DM Sans', system-ui, sans-serif"
+# Arabic gloss on the headline numbers (RTL). Shaped by Pango/HarfBuzz in WeasyPrint.
+FONT_ARABIC = "'Noto Sans Arabic', 'DM Sans', sans-serif"
 
 
 def _font_b64(name: str) -> str:
@@ -106,6 +108,8 @@ def font_face_css() -> str:
         ("DM Sans", 400, "DMSans-400.woff2"),
         ("DM Sans", 500, "DMSans-500.woff2"),
         ("DM Sans", 700, "DMSans-700.woff2"),
+        ("Noto Sans Arabic", 400, "NotoSansArabic-400.woff2"),
+        ("Noto Sans Arabic", 700, "NotoSansArabic-700.woff2"),
     ]
     out = []
     for fam, wt, fn in faces:

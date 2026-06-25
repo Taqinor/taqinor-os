@@ -9,11 +9,15 @@ Ventes EXISTANT, qui re-vérifie permission ET société à l'exécution.
 Multi-tenant : ``company`` n'apparaît JAMAIS dans le schéma ``inputs`` — la
 société est forcée côté serveur (``perform_create`` / l'action de viewset) à
 partir de ``request.user.company`` ; elle ne doit jamais provenir du corps.
-``creer_devis`` accepte un ``lead`` : le client est alors résolu côté serveur
-(``apps.crm.services.resolve_client_for_lead``), jamais dupliqué.
+``creer_auto`` accepte un ``lead`` (ou un ``client``, dont on remonte au lead) :
+le devis est DIMENSIONNÉ depuis la fiche lead puis le client résolu côté serveur
+(``apps.crm.services.resolve_client_for_lead``), jamais dupliqué. Il n'existe
+plus d'action de création « vide » — le Copilote crée toujours un devis chiffré.
 
 Niveaux de risque (qui pilotent le garde-fou propose→confirm) :
-  * AG4 ``creer_devis``        → INTERNAL  (écriture interne, pas d'effet externe)
+  * AG4 ``creer_auto``         → INTERNAL  (devis dimensionné, écriture interne)
+  * AG4 ``ligne_ajouter`` / ``ligne_modifier`` / ``remise`` → INTERNAL (édition brouillon)
+  * AG4 ``ligne_supprimer``    → OUTWARD   (retrait de ligne — confirmation)
   * AG4 ``generer_pdf_devis``  → INTERNAL  (rend le PDF, ne change aucun statut)
   * AG4 ``accepter_devis``     → OUTWARD   (marque le devis accepté → chantier)
   * AG5 ``convertir_en_bon_commande`` → OUTWARD (crée le BC du devis accepté)
@@ -58,40 +62,153 @@ _PERM_VALIDER = 'ventes_valider'
 
 # ── AG4 ─────────────────────────────────────────────────────────────────────
 
-# Action — Créer un devis. Endpoint réel : POST /api/django/ventes/devis/
-# (DevisViewSet.create). La société et le created_by sont forcés côté serveur ;
-# si ``lead`` est fourni sans ``client``, le client est résolu côté serveur
-# depuis le lead (réutilise le lien/le client existant, sinon en crée un — sans
-# doublon). La numérotation séquentielle est attribuée par le serveur.
-CREER_DEVIS = AgentAction(
-    key='ventes.devis.creer',
-    label='Créer un devis',
+# Action — Créer un devis AUTOMATIQUE (résidentiel). Endpoint réel : POST
+# /api/django/ventes/devis/auto/ (DevisViewSet.auto). C'est le SEUL chemin de
+# création de devis offert à l'agent : il dimensionne l'installation à partir de
+# la fiche lead (facture d'hiver / taille souhaitée), choisit panneaux + onduleur
+# (+ batterie si le lead la souhaite) dans le catalogue, force la société et le
+# created_by côté serveur, et numérote. Il ne crée JAMAIS un devis vide : si une
+# donnée manque, le serveur répond 422 avec le champ à compléter pour que l'agent
+# le demande.
+CREER_AUTO = AgentAction(
+    key='ventes.devis.creer_auto',
+    label='Créer un devis (automatique)',
     description=(
-        "Crée un nouveau devis pour un client ou un lead. L'agent fournit les "
-        "lignes et le marché ; le serveur résout le client à partir du lead, "
-        "attribue la référence numérotée et force la société du caller."
+        "Crée un devis RÉSIDENTIEL automatiquement dimensionné à partir de la "
+        "fiche du lead (facture d'électricité ou taille souhaitée). C'EST LE "
+        "SEUL moyen de créer un devis : il choisit panneaux, onduleur et "
+        "batterie depuis le catalogue. Fournir le 'lead' (ou le 'client', dont "
+        "on remonte au lead). Si une donnée de dimensionnement manque, le serveur "
+        "l'indique (422) pour que tu la demandes — il ne crée jamais de devis "
+        "vide. Pour l'industriel/agricole, le serveur oriente vers le générateur."
     ),
-    endpoint='/api/django/ventes/devis/',
+    endpoint='/api/django/ventes/devis/auto/',
     method='POST',
     inputs={
         'type': 'object',
         'properties': {
-            'client': {
-                'type': 'integer',
-                'description': 'Identifiant du client (optionnel si lead).',
-            },
             'lead': {
                 'type': 'integer',
+                'description': 'Identifiant du lead (porteur du profil énergétique).',
+            },
+            'client': {
+                'type': 'integer',
                 'description': (
-                    'Identifiant du lead — le client est résolu côté serveur '
-                    'depuis le lead (sans doublon).'
+                    'Identifiant du client — on remonte au lead le plus récent '
+                    'qui lui est rattaché.'
                 ),
             },
-            'statut': {'type': 'string'},
             'taux_tva': {'type': 'string'},
             'remise_globale': {'type': 'string'},
-            'lignes': {'type': 'array', 'items': {'type': 'object'}},
         },
+    },
+    required_permission=_PERM_CREER,
+    risk=RISK_INTERNAL,
+)
+
+
+# Action — Ajouter une ligne à un devis brouillon. Endpoint réel : POST
+# /api/django/ventes/devis-lignes/ (LigneDevisViewSet). La société est imposée
+# côté serveur (la ligne doit cibler un devis de la société du caller).
+LIGNE_AJOUTER = AgentAction(
+    key='ventes.devis.ligne_ajouter',
+    label='Ajouter une ligne au devis',
+    description=(
+        "Ajoute une ligne de produit à un devis brouillon. Fournir 'devis' (id), "
+        "'produit' (id du catalogue), 'quantite' et le 'prix_unitaire' (HT, même "
+        "base que le devis) ; 'designation' et 'remise' (%) optionnels."
+    ),
+    endpoint='/api/django/ventes/devis-lignes/',
+    method='POST',
+    inputs={
+        'type': 'object',
+        'properties': {
+            'devis': {'type': 'integer'},
+            'produit': {'type': 'integer'},
+            'designation': {'type': 'string'},
+            'quantite': {'type': 'string'},
+            'prix_unitaire': {'type': 'string'},
+            'remise': {'type': 'string'},
+        },
+        'required': ['devis', 'produit', 'quantite'],
+    },
+    required_permission=_PERM_CREER,
+    risk=RISK_INTERNAL,
+)
+
+
+# Action — Modifier une ligne de devis. Endpoint réel : PATCH
+# /api/django/ventes/devis-lignes/{id}/ (LigneDevisViewSet). Pour viser « la
+# batterie », l'agent liste d'abord les lignes du devis puis agit par id.
+LIGNE_MODIFIER = AgentAction(
+    key='ventes.devis.ligne_modifier',
+    label='Modifier une ligne de devis',
+    description=(
+        "Modifie une ligne d'un devis brouillon (prix unitaire, quantité, remise "
+        "ou désignation). Fournir l'id de la LIGNE et les champs à changer. "
+        "'prix_unitaire' est en HT (même base que le devis). Pour retrouver la "
+        "ligne visée (ex. « la batterie »), liste d'abord les lignes du devis."
+    ),
+    endpoint='/api/django/ventes/devis-lignes/{id}/',
+    method='PATCH',
+    inputs={
+        'type': 'object',
+        'properties': {
+            'id': {'type': 'integer'},
+            'prix_unitaire': {'type': 'string'},
+            'quantite': {'type': 'string'},
+            'remise': {'type': 'string'},
+            'designation': {'type': 'string'},
+        },
+        'required': ['id'],
+    },
+    required_permission=_PERM_CREER,
+    risk=RISK_INTERNAL,
+)
+
+
+# Action — Retirer une ligne d'un devis brouillon. Endpoint réel : DELETE
+# /api/django/ventes/devis-lignes/{id}/ (LigneDevisViewSet). Suppression → on
+# demande une confirmation avant exécution.
+LIGNE_SUPPRIMER = AgentAction(
+    key='ventes.devis.ligne_supprimer',
+    label='Retirer une ligne de devis',
+    description=(
+        "Retire une ligne d'un devis brouillon (par id de ligne). À confirmer "
+        "avant exécution."
+    ),
+    endpoint='/api/django/ventes/devis-lignes/{id}/',
+    method='DELETE',
+    inputs={
+        'type': 'object',
+        'properties': {'id': {'type': 'integer'}},
+        'required': ['id'],
+    },
+    required_permission=_PERM_CREER,
+    risk=RISK_OUTWARD,
+    confirm_summary='Retirer cette ligne du devis.',
+)
+
+
+# Action — Remise globale d'un devis. Endpoint réel : PATCH
+# /api/django/ventes/devis/{id}/ (DevisViewSet.partial_update). Définit le
+# pourcentage de remise globale d'un devis brouillon.
+REMISE_DEVIS = AgentAction(
+    key='ventes.devis.remise',
+    label='Appliquer une remise au devis',
+    description=(
+        "Définit la remise globale (en %) d'un devis brouillon. Fournir l'id du "
+        "DEVIS et 'remise_globale'."
+    ),
+    endpoint='/api/django/ventes/devis/{id}/',
+    method='PATCH',
+    inputs={
+        'type': 'object',
+        'properties': {
+            'id': {'type': 'integer'},
+            'remise_globale': {'type': 'string'},
+        },
+        'required': ['id', 'remise_globale'],
     },
     required_permission=_PERM_CREER,
     risk=RISK_INTERNAL,
@@ -303,8 +420,12 @@ ENREGISTRER_PAIEMENT = AgentAction(
 
 # Toutes les actions Ventes (AG4 puis AG5), dans l'ordre du flux.
 VENTES_ACTIONS = (
-    # AG4
-    CREER_DEVIS,
+    # AG4 — création (TOUJOURS automatique) + édition par chat
+    CREER_AUTO,
+    LIGNE_AJOUTER,
+    LIGNE_MODIFIER,
+    LIGNE_SUPPRIMER,
+    REMISE_DEVIS,
     GENERER_PDF_DEVIS,
     ACCEPTER_DEVIS,
     # AG5

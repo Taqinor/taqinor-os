@@ -105,6 +105,27 @@ class TestAgricoleEconomics(SimpleTestCase):
         self.assertEqual(eco["fuel_costs"]["butane_today"], 0)
         self.assertIsNone(eco["payback"])
 
+    def test_peak_water_need_from_fao56(self):
+        """The farm's real peak need (FAO-56) is computed and the pump covers it."""
+        eco = economics.compute(self.data)  # 2 ha agrumes · souss-massa · goutte
+        self.assertIsNotNone(eco["besoin_m3j"])
+        self.assertGreater(eco["besoin_m3j"], 0)
+        self.assertGreaterEqual(self.data["etude"]["m3_jour"], eco["besoin_m3j"])
+
+    def test_no_farm_data_means_no_invented_need(self):
+        data = sample_data.build("agrumes")
+        for k in ("crop", "surface_ha", "region", "irrigation_method"):
+            data["etude"].pop(k, None)
+        self.assertIsNone(economics.compute(data)["besoin_m3j"])
+
+    def test_real_fuel_bill_overrides_model(self):
+        """A captured current fuel spend (MAD/an) drives savings & payback."""
+        data = sample_data.build("agrumes")
+        data["etude"]["fuel_spend_current"] = 40000
+        eco = economics.compute(data)
+        self.assertEqual(eco["annual_fuel_now"], 40000)
+        self.assertEqual(eco["annual_saving"], 40000)
+
 
 class TestAgricoleRender(SimpleTestCase):
     def _html(self, key="agrumes", **opts):
@@ -119,13 +140,38 @@ class TestAgricoleRender(SimpleTestCase):
 
     def test_key_content_present(self):
         html = self._html()
-        self.assertIn("carburant", html)              # zero-fuel promise (cover)
-        self.assertIn("Plus de bonbonnes", html)      # zero-fuel headline
+        self.assertIn("carburant", html)                  # the sun-is-your-fuel framing
+        self.assertIn("économisez", html.lower())         # money co-hero
         self.assertIn("Subvention FDA", html)
-        self.assertIn("bon marché tant qu", html)        # butane punch line
+        self.assertIn("bon marché tant qu", html)         # butane punch line
         self.assertIn("Bon pour accord", html)
-        self.assertIn("<svg", html)                       # schematic
-        self.assertIn("data:image/png;base64", html)      # charts
+        self.assertIn("<svg", html)                       # schematic + icons
+        self.assertIn("data:image/png;base64", html)      # fuel / payback charts
+
+    def test_no_monthly_bar_graph(self):
+        """Founder + research: the monthly water/production bar graphs are gone."""
+        html = self._html()
+        self.assertNotIn("mois par mois", html)
+        from apps.ventes.quote_engine.agricole import charts
+        keys = set(charts.build_all(renderer._augment(sample_data.build("agrumes"))))
+        self.assertNotIn("water", keys)
+        self.assertNotIn("production", keys)
+
+    def test_two_heroes_and_tangible_water(self):
+        """Page 1 leads with water + money; water is made tangible (bidons)."""
+        html = self._html()
+        self.assertIn("bidons", html)                     # jerrycan equivalence
+        self.assertIn("économisez", html.lower())         # money co-hero
+
+    def test_lift_translated_to_farmer_language(self):
+        """HMT is shown as a building height, never a bare acronym headline."""
+        self.assertIn("immeuble", self._html())
+
+    def test_reassurance_water_all_year(self):
+        self.assertIn("toute l", self._html())            # "De l'eau toute l'année"
+
+    def test_abh_authorisation_guardrail_present(self):
+        self.assertIn("ABH", self._html())
 
     def test_margin_never_leaks(self):
         html = self._html().lower()
