@@ -195,10 +195,10 @@ def build(ctx) -> str:
 .a4-msg{{display:flex;gap:12px;margin-top:14px;align-items:stretch;}}
 .a4-punch{{flex:1 1 0;border-left:4px solid {gold};background:{wash};border-radius:8px;
   padding:10px 14px;font-size:8pt;color:{ink};line-height:1.4;}} .a4-punch b{{color:{navy};}}
-.a4-env{{flex:0 0 58mm;display:flex;align-items:center;gap:8px;border:1px solid {green_bg};
+.a4-env{{flex:0 0 58mm;display:flex;align-items:flex-start;gap:9px;border:1px solid {green_bg};
   border-left:4px solid {green};border-radius:10px;background:linear-gradient(160deg,{green_bg},#fff 78%);
-  padding:9px 13px;font-size:7.8pt;color:{ink};line-height:1.3;}} .a4-env b{{color:{green};}}
-.a4-env svg{{width:18px;height:18px;flex-shrink:0;}}
+  padding:10px 13px;font-size:7.8pt;color:{ink};line-height:1.35;}} .a4-env b{{color:{green};}}
+.a4-env svg{{width:18px;height:18px;flex-shrink:0;margin-top:1px;}}
 /* closing 3 cols */
 .a4-close{{display:flex;gap:12px;margin-top:16px;align-items:stretch;}}
 .a4-col{{flex:1 1 0;min-width:0;display:flex;flex-direction:column;}}

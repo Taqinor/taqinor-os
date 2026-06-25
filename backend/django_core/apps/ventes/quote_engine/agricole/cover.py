@@ -71,22 +71,27 @@ def build(ctx) -> str:
         field = (f'<svg viewBox="0 0 24 24" fill="none"><path d="M3 19h18" stroke="{green}" stroke-width="1.6"/>'
                  f'<path d="M7 19c0-4 1.5-7 5-9M12 19c0-3 1-6 4-8M7 13c-2 0-3-1.5-3-3 2 0 3 1 3 3z" '
                  f'stroke="{green}" stroke-width="1.5" stroke-linejoin="round"/></svg>')
-        tang_items.append((jerry, f'≈ {fmt(bidons)}', 'bidons de 20 L / jour'))
+        tang_items.append((jerry, f'≈ {fmt(bidons)}', 'bidons de 20 L par jour'))
         if citernes >= 1:
-            tang_items.append((truck, f'≈ {fmt(citernes)}', 'camions-citernes / jour'))
+            tang_items.append((truck, f'≈ {fmt(citernes)}', 'camions-citernes par jour'))
         if hectares:
-            tang_items.append((field, f'≈ {fmt_dec(hectares)} ha', 'irrigués'))
-    tang_html = "".join(
-        f'<div class="a1-tg">{ic}<div class="a1-tg-tx"><b>{v}</b><span>{l}</span></div></div>'
-        for ic, v, l in tang_items[:3])
+            tang_items.append((field, f'≈ {fmt_dec(hectares)} ha', 'de cultures irriguées'))
+    # Full-width strip below the heroes (boxed cells) — room to breathe so the
+    # icons never collide with the text (the cramped half-card version did).
+    tang_strip = ""
+    if tang_items:
+        cells = "".join(
+            f'<div class="a1-ts"><div class="a1-ts-ic">{ic}</div>'
+            f'<div class="a1-ts-tx"><b>{v}</b><span>{l}</span></div></div>'
+            for ic, v, l in tang_items[:3])
+        tang_strip = f'<div class="a1-tang">{cells}</div>'
 
     # ── HERO A (water) ───────────────────────────────────────────────────────
     if has_water and m3j:
         heroA = (f'<div class="a1-hero-eb">L\'eau que le soleil vous pompe</div>'
                  f'<div class="a1-hero-n">{fmt(m3j)}<span class="a1-hero-u">m³</span></div>'
                  f'<div class="a1-ar">متر مكعب من الماء كل يوم</div>'
-                 f'<div class="a1-hero-c">d\'eau <b>chaque jour</b> — sans gasoil, sans butane.</div>'
-                 f'<div class="a1-tgs">{tang_html}</div>')
+                 f'<div class="a1-hero-c">d\'eau <b>chaque jour</b> — sans gasoil, sans butane.</div>')
     else:
         heroA = (f'<div class="a1-hero-eb">Votre champ solaire</div>'
                  f'<div class="a1-hero-n">{fmt_dec(kwc)}<span class="a1-hero-u">kWc</span></div>'
@@ -95,13 +100,10 @@ def build(ctx) -> str:
 
     # ── HERO B (money) ───────────────────────────────────────────────────────
     if annual_saving > 0:
-        pb = (f'<div class="a1-hb-pb"><span class="a1-hb-pb-v">{_yrs(payback)} ans</span>'
-              f'<span class="a1-hb-pb-l">pour rembourser — ensuite l\'eau est quasi gratuite.</span></div>'
-              if payback else "")
         heroB = (f'<div class="a1-hero-eb a1-eb-g">Ce que vous économisez</div>'
                  f'<div class="a1-hero-n a1-n-g">{fmt(annual_saving)}<span class="a1-hero-u a1-u-g">DH</span></div>'
                  f'<div class="a1-ar a1-ar-g">درهم توفّره كل سنة</div>'
-                 f'<div class="a1-hero-c">par an, en ne payant plus {fuel_lbl}.</div>{pb}')
+                 f'<div class="a1-hero-c">par an, en ne payant plus {fuel_lbl} pour pomper.</div>')
     else:
         heroB = (f'<div class="a1-hero-eb a1-eb-g">Votre carburant</div>'
                  f'<div class="a1-hero-n a1-n-g">0<span class="a1-hero-u a1-u-g">DH</span></div>'
@@ -199,16 +201,16 @@ def build(ctx) -> str:
 .a1-ar{{font-family:{f_arabic};direction:rtl;text-align:right;unicode-bidi:isolate;
   font-size:10.5pt;font-weight:700;color:{water};margin-top:5px;line-height:1.3;}}
 .a1-ar-g{{color:{green_700};}}
-/* tangibility row under water hero */
-.a1-tgs{{display:flex;gap:14px;margin-top:13px;padding-top:12px;border-top:1px dashed #CFE0EF;}}
-.a1-tg{{display:flex;align-items:center;gap:7px;}}
-.a1-tg svg{{width:19px;height:19px;flex-shrink:0;}}
-.a1-tg-tx b{{display:block;font-size:9.5pt;font-weight:700;color:{navy};line-height:1.05;}}
-.a1-tg-tx span{{display:block;font-size:7pt;color:{muted};margin-top:1px;}}
-/* payback under money hero */
-.a1-hb-pb{{margin-top:13px;padding-top:12px;border-top:1px dashed #BFE6CB;}}
-.a1-hb-pb-v{{font-family:{f_display};font-size:16pt;color:{green_700};margin-right:7px;}}
-.a1-hb-pb-l{{font-size:8.5pt;color:{ink};}}
+/* tangibility — full-width strip below the heroes (boxed cells, icon in its own
+   slot so it never collides with the text) */
+.a1-tang{{display:flex;gap:11px;margin-top:12px;}}
+.a1-ts{{flex:1 1 0;min-width:0;display:flex;align-items:center;gap:11px;
+  border:1px solid {line};border-radius:12px;background:{wash};padding:10px 13px;}}
+.a1-ts-ic{{flex-shrink:0;width:24px;height:24px;}}
+.a1-ts-ic svg{{width:24px;height:24px;display:block;}}
+.a1-ts-tx{{min-width:0;}}
+.a1-ts-tx b{{display:block;font-family:{f_display};font-size:15pt;color:{navy};line-height:1;}}
+.a1-ts-tx span{{display:block;font-size:7.4pt;color:{muted};margin-top:3px;line-height:1.2;}}
 /* supporting stat strip */
 .a1-stats{{display:flex;gap:11px;margin-top:13px;}}
 .a1-stat{{flex:1 1 0;min-width:0;border:1px solid {line};border-top:3px solid {gold};
@@ -264,6 +266,7 @@ def build(ctx) -> str:
       <div class="a1-hero-gap"></div>
       <div class="a1-hero-c-r">{heroB}</div>
     </div>
+    {tang_strip}
     <div class="a1-stats">{stats_html}</div>
     <div class="a1-trust">{trust_html}</div>
     {graph_html}
