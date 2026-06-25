@@ -156,30 +156,11 @@ def _register_builtin_actions() -> None:
         # permission ERP + société sont re-vérifiées à l'exécution (la société
         # est toujours imposée côté serveur via perform_create, jamais lue du
         # corps fourni par l'agent).
-        AgentAction(
-            key='ventes.devis.create',
-            label='Créer un devis',
-            description=(
-                "Crée un nouveau devis pour un client ou un lead. L'agent "
-                "fournit le client/lead, les lignes et le marché ; le serveur "
-                "calcule les totaux, la numérotation et impose la société. "
-                "Écriture sensible : confirmation requise avant exécution."
-            ),
-            endpoint='/api/django/ventes/devis/',
-            method='POST',
-            inputs={
-                'type': 'object',
-                'properties': {
-                    'client': {'type': 'integer'},
-                    'lead': {'type': 'integer'},
-                    'marche': {'type': 'string'},
-                    'lignes': {'type': 'array', 'items': {'type': 'object'}},
-                },
-            },
-            required_permission='ventes_creer',
-            risk=RISK_OUTWARD,
-            confirm_summary='Créer un devis pour ce client/lead.',
-        ),
+        # NOTE — l'action « créer un devis » VIDE est retirée à dessein : le
+        # Copilote crée TOUJOURS un devis dimensionné via l'auto-devis
+        # (``ventes.devis.creer_auto`` → POST /ventes/devis/auto/, déclaré dans
+        # apps/ventes/agent_actions.py). On n'expose plus de chemin produisant
+        # un brouillon à 0 DH.
         AgentAction(
             key='crm.client.create',
             label='Créer un client',
