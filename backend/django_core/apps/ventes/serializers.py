@@ -1,7 +1,7 @@
 from rest_framework import serializers
 from .models import (
     Devis, LigneDevis, BonCommande, Facture, LigneFacture, Paiement,
-    Avoir, LigneAvoir, DevisActivity, DevisPreset,
+    Avoir, LigneAvoir, DevisActivity, DevisPreset, RoofLayout,
 )
 
 
@@ -554,3 +554,32 @@ class DevisPresetSerializer(serializers.ModelSerializer):
             'etude_params_snapshot', 'created_by_nom', 'created_at',
         ]
         read_only_fields = ['id', 'created_by_nom', 'created_at']
+
+
+class RoofLayoutSerializer(serializers.ModelSerializer):
+    """FG245 — Calepinage toiture (placement panneaux).
+
+    ``panel_count`` et ``puissance_kwc`` sont en lecture seule : le compte est
+    recalculé côté serveur depuis la géométrie (jamais accepté du corps de la
+    requête). ``company`` et ``created_by`` sont forcés côté serveur dans le
+    viewset, jamais désérialisés depuis la requête.
+    """
+    created_by_nom = serializers.CharField(
+        source='created_by.username', read_only=True, default=None)
+    puissance_kwc = serializers.DecimalField(
+        max_digits=10, decimal_places=3, read_only=True)
+
+    class Meta:
+        model = RoofLayout
+        fields = [
+            'id', 'devis', 'nom',
+            'largeur_m', 'hauteur_m', 'retrait_m',
+            'module_largeur_m', 'module_hauteur_m', 'espacement_m',
+            'orientation', 'puissance_module_wc',
+            'panels', 'panel_count', 'puissance_kwc',
+            'created_by_nom', 'created_at', 'updated_at',
+        ]
+        read_only_fields = [
+            'id', 'panel_count', 'puissance_kwc',
+            'created_by_nom', 'created_at', 'updated_at',
+        ]
