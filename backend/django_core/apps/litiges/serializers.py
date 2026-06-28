@@ -44,9 +44,11 @@ class ReclamationSerializer(serializers.ModelSerializer):
             'id', 'reference', 'type_reclamation', 'type_reclamation_display',
             'gravite', 'gravite_display', 'objet', 'description',
             'source_type', 'source_id', 'montant_conteste', 'statut',
-            'statut_display', 'created_by', 'date_creation',
+            'statut_display', 'bloque_relances', 'created_by', 'date_creation',
         ]
         # ``statut`` ne se modifie pas par PATCH direct : le cycle de vie passe
         # par les actions de transition (prendre_en_charge/resoudre/rejeter)
         # qui appliquent la machine à états et journalisent le chatter.
+        # ``bloque_relances`` est modifiable par PATCH (le gestionnaire peut
+        # désactiver la suspension si nécessaire).
         read_only_fields = ['created_by', 'date_creation', 'statut']
