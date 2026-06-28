@@ -7,9 +7,10 @@ appartenant à la société de l'utilisateur.
 from rest_framework import serializers
 
 from .models import (
-    ActionCorrectivePreventive, CritereAudit, GrilleAudit, NonConformite,
-    PlanInspectionChantier, PlanInspectionModele, PointControleModele,
-    QhseChatterEntry, ReleveControle, ReleveCourbeIV,
+    ActionCorrectivePreventive, Audit, CritereAudit, GrilleAudit,
+    NonConformite, PlanInspectionChantier, PlanInspectionModele,
+    PointControleModele, QhseChatterEntry, ReleveControle, ReleveCourbeIV,
+    ReponseCritere,
 )
 
 
@@ -239,3 +240,49 @@ class CritereAuditSerializer(serializers.ModelSerializer):
         if value < 1:
             raise serializers.ValidationError('Le poids doit être ≥ 1.')
         return value
+
+
+class AuditSerializer(serializers.ModelSerializer):
+    """Audit (session d'exécution d'une grille — QHSE16)."""
+    statut_display = serializers.CharField(
+        source='get_statut_display', read_only=True)
+    grille_nom = serializers.CharField(source='grille.nom', read_only=True)
+
+    class Meta:
+        model = Audit
+        fields = [
+            'id', 'grille', 'grille_nom', 'date_audit', 'auditeur',
+            'statut', 'statut_display', 'score', 'notes', 'chantier_id',
+            'date_creation',
+        ]
+        read_only_fields = ['score', 'date_creation']
+
+    def validate_grille(self, value):
+        return _meme_societe(self, value, "Grille d'audit")
+
+
+class ReponseCritereSerializer(serializers.ModelSerializer):
+    """Réponse à un critère dans un audit (QHSE16)."""
+    resultat_display = serializers.CharField(
+        source='get_resultat_display', read_only=True)
+    critere_intitule = serializers.CharField(
+        source='critere.intitule', read_only=True)
+    critere_poids = serializers.IntegerField(
+        source='critere.poids', read_only=True)
+    critere_categorie = serializers.CharField(
+        source='critere.categorie', read_only=True)
+
+    class Meta:
+        model = ReponseCritere
+        fields = [
+            'id', 'audit', 'critere', 'critere_intitule', 'critere_poids',
+            'critere_categorie', 'resultat', 'resultat_display', 'note',
+            'ncr_id', 'date_creation',
+        ]
+        read_only_fields = ['ncr_id', 'date_creation']
+
+    def validate_audit(self, value):
+        return _meme_societe(self, value, 'Audit')
+
+    def validate_critere(self, value):
+        return _meme_societe(self, value, "Critère d'audit")
