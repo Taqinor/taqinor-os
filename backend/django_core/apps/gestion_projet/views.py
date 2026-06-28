@@ -14,6 +14,7 @@ from authentication.permissions import IsResponsableOrAdmin
 
 from . import selectors, services
 from .models import (
+    AffectationRessource,
     BaselinePlanning,
     CalendrierProjet,
     DependanceTache,
@@ -29,6 +30,7 @@ from .models import (
     Tache,
 )
 from .serializers import (
+    AffectationRessourceSerializer,
     BaselinePlanningSerializer,
     CalendrierProjetSerializer,
     DependanceTacheSerializer,
@@ -668,4 +670,43 @@ class EquipeViewSet(_GestionProjetBaseViewSet):
         membre = self.request.query_params.get('membre')
         if membre:
             qs = qs.filter(membres__id=membre)
+        return qs
+
+
+class AffectationRessourceViewSet(_GestionProjetBaseViewSet):
+    """Affectations de ressources sur les taches de projet (PROJ16).
+
+    Alloue une ressource (profil, equipe ou actif materiel) a une tache sur
+    une periode donnee. ``company`` est posee cote serveur (TenantMixin) ; les
+    FK recus (``tache``, ``ressource``, ``equipe``) sont valides meme-societe
+    par le serialiseur, qui refuse en plus plusieurs vecteurs simultanement.
+
+    Filtres optionnels : ``?tache=<id>``, ``?projet=<id>`` (via la tache),
+    ``?ressource=<id>``, ``?equipe=<id>``.
+    Recherche par note ; tri par defaut ``tache``, ``date_debut``.
+    """
+    queryset = AffectationRessource.objects.select_related(
+        'tache', 'ressource', 'equipe').all()
+    serializer_class = AffectationRessourceSerializer
+    filter_backends = [filters.SearchFilter, filters.OrderingFilter]
+    search_fields = ['note']
+    ordering_fields = ['date_debut', 'date_fin', 'tache', 'id']
+
+    def perform_create(self, serializer):
+        serializer.save(company=self.request.user.company)
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        tache = self.request.query_params.get('tache')
+        if tache:
+            qs = qs.filter(tache_id=tache)
+        projet = self.request.query_params.get('projet')
+        if projet:
+            qs = qs.filter(tache__projet_id=projet)
+        ressource = self.request.query_params.get('ressource')
+        if ressource:
+            qs = qs.filter(ressource_id=ressource)
+        equipe = self.request.query_params.get('equipe')
+        if equipe:
+            qs = qs.filter(equipe_id=equipe)
         return qs
