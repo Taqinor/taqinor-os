@@ -1691,3 +1691,119 @@ class BordereauRemise(models.Model):
     @property
     def est_remis(self):
         return self.statut == self.Statut.REMIS
+
+
+# ── FG131 — Rapprochement 3 voies (BC ↔ réception ↔ facture fournisseur) ────
+
+class Rapprochement(models.Model):
+    """Rapprochement 3 voies d'un achat avant paiement (FG131).
+
+    Contrôle de pré-paiement qui confronte les TROIS montants HT d'un même achat
+    fournisseur : ce qui a été COMMANDÉ (bon de commande fournisseur), ce qui a
+    été REÇU (réceptions confirmées) et ce qui a été FACTURÉ (factures
+    fournisseur). Les trois documents vivent dans ``apps.stock`` ; ce modèle ne
+    fait que les RÉFÉRENCER (FK chaîne ``stock.BonCommandeFournisseur``) et lit
+    leurs montants UNIQUEMENT à travers ``apps.stock.selectors`` — il ne
+    duplique aucun document d'achat.
+
+    À chaque évaluation (``services.evaluer_rapprochement``) les trois montants
+    sont rafraîchis (snapshot) et l'``ecart`` reçu↔facturé est recalculé. Tant
+    que l'écart dépasse la tolérance, le rapprochement reste ``ecart`` (bloquant
+    pour le paiement) ; concordant sinon. Un responsable peut le ``valider``
+    explicitement (bon à payer). ``company`` posée côté serveur, jamais lue du
+    corps de requête. Strictement additif ; montants d'achat INTERNES.
+    """
+    class Statut(models.TextChoices):
+        EN_ATTENTE = 'en_attente', 'En attente'
+        ECART = 'ecart', 'Écart détecté'
+        CONCORDANT = 'concordant', 'Concordant'
+        VALIDE = 'valide', 'Validé (bon à payer)'
+
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='compta_rapprochements',
+        verbose_name='Société',
+    )
+    # Référence au bon de commande fournisseur (apps.stock) par FK chaîne —
+    # jamais d'import du modèle stock. related_name préfixé par le label d'app.
+    bon_commande = models.ForeignKey(
+        'stock.BonCommandeFournisseur',
+        on_delete=models.CASCADE,
+        related_name='compta_rapprochements',
+        verbose_name='Bon de commande fournisseur',
+    )
+    statut = models.CharField(
+        max_length=12, choices=Statut.choices,
+        default=Statut.EN_ATTENTE, verbose_name='Statut')
+    # Tolérance d'écart absolue (arrondis, frais de port…) en deçà de laquelle
+    # reçu et facturé sont jugés concordants.
+    tolerance = models.DecimalField(
+        max_digits=14, decimal_places=2, default=Decimal('0'),
+        verbose_name='Tolérance')
+    # Snapshot des trois montants HT à la dernière évaluation (lus via les
+    # sélecteurs de stock). Permet d'auditer ce qui a été comparé.
+    montant_commande = models.DecimalField(
+        max_digits=14, decimal_places=2, default=Decimal('0'),
+        verbose_name='Montant commandé (HT)')
+    montant_recu = models.DecimalField(
+        max_digits=14, decimal_places=2, default=Decimal('0'),
+        verbose_name='Montant reçu (HT)')
+    montant_facture = models.DecimalField(
+        max_digits=14, decimal_places=2, default=Decimal('0'),
+        verbose_name='Montant facturé (HT)')
+    # Écart reçu↔facturé (facturé − reçu) figé à la dernière évaluation : le
+    # contrôle bloquant avant paiement (on ne paie pas plus que reçu).
+    ecart = models.DecimalField(
+        max_digits=14, decimal_places=2, default=Decimal('0'),
+        verbose_name='Écart (facturé − reçu)')
+    note = models.TextField(blank=True, null=True, verbose_name='Note')
+    date_evaluation = models.DateTimeField(
+        null=True, blank=True, verbose_name='Dernière évaluation')
+    valide_par = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='compta_rapprochements_valides',
+        verbose_name='Validé par',
+    )
+    date_validation = models.DateTimeField(
+        null=True, blank=True, verbose_name='Validé le')
+    created_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='compta_rapprochements_crees',
+        verbose_name='Créé par',
+    )
+    date_creation = models.DateTimeField(
+        auto_now_add=True, verbose_name='Créé le')
+
+    class Meta:
+        verbose_name = 'Rapprochement 3 voies'
+        verbose_name_plural = 'Rapprochements 3 voies'
+        ordering = ['-date_creation', '-id']
+        # Un seul rapprochement par BCF et par société.
+        unique_together = [('company', 'bon_commande')]
+
+    def __str__(self):
+        return f'Rapprochement BCF {self.bon_commande_id} ({self.statut})'
+
+    @property
+    def ecart_commande_recu(self):
+        """Écart commandé↔reçu (reçu − commandé) — informatif (livraison
+        partielle si négatif)."""
+        return (self.montant_recu or Decimal('0')) - (
+            self.montant_commande or Decimal('0'))
+
+    @property
+    def est_concordant(self):
+        """True si l'écart reçu↔facturé tient dans la tolérance."""
+        return abs(self.ecart or Decimal('0')) <= (
+            self.tolerance or Decimal('0'))
+
+    @property
+    def bon_a_payer(self):
+        """True si le rapprochement autorise le paiement (concordant ou
+        explicitement validé)."""
+        return self.statut in (self.Statut.CONCORDANT, self.Statut.VALIDE)
