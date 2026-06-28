@@ -62,6 +62,15 @@ class Reclamation(models.Model):
     statut = models.CharField(
         max_length=15, choices=Statut.choices,
         default=Statut.OUVERTE, verbose_name='Statut')
+    # LITIGE3 — quand True (par défaut), ce litige suspend les relances
+    # automatiques sur la facture liée (source_type='facture', source_id=…).
+    # Passe à False si le gestionnaire décide de laisser les relances continuer
+    # malgré le litige ouvert.
+    bloque_relances = models.BooleanField(
+        default=True,
+        verbose_name='Bloque les relances',
+        help_text="Si coché, suspend les relances automatiques sur la facture "
+                  "liée tant que ce litige est ouvert.")
     created_by = models.ForeignKey(
         settings.AUTH_USER_MODEL,
         on_delete=models.SET_NULL,

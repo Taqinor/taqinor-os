@@ -11,6 +11,7 @@ from .models import (
     TypeInterventionPlan,
     JalonProjet, ModeleProjet, ModeleProjetJalon, ModeleProjetBomLigne,
     ReunionChantier,
+    DocumentProjet, RevisionDocument,
 )
 
 
@@ -668,3 +669,49 @@ class ReunionChantierSerializer(serializers.ModelSerializer):
 
     def get_redige_par_nom(self, obj):
         return getattr(obj.redige_par, 'username', None)
+
+
+# ── FG297 — Contrôle documentaire de projet ──────────────────────────────────
+
+class RevisionDocumentSerializer(serializers.ModelSerializer):
+    """FG297 — révision d'un document de projet. `auteur` posé côté serveur."""
+    auteur_nom = serializers.SerializerMethodField()
+    fichier_url = serializers.SerializerMethodField()
+
+    class Meta:
+        model = RevisionDocument
+        fields = [
+            'id', 'document', 'indice', 'date_revision',
+            'auteur', 'auteur_nom', 'fichier', 'fichier_url',
+            'notes', 'date_creation',
+        ]
+        read_only_fields = ['auteur', 'date_creation']
+
+    def get_auteur_nom(self, obj):
+        return getattr(obj.auteur, 'username', None)
+
+    def get_fichier_url(self, obj):
+        if not obj.fichier_id:
+            return None
+        return f'/api/django/records/attachments/{obj.fichier_id}/download/'
+
+
+class DocumentProjetSerializer(serializers.ModelSerializer):
+    """FG297 — document de projet avec ses révisions imbriquées (lecture).
+    La société est posée côté serveur, jamais lue du corps."""
+    type_doc_display = serializers.CharField(
+        source='get_type_doc_display', read_only=True)
+    inst_revisions = RevisionDocumentSerializer(many=True, read_only=True)
+    nb_revisions = serializers.SerializerMethodField()
+
+    class Meta:
+        model = DocumentProjet
+        fields = [
+            'id', 'installation', 'type_doc', 'type_doc_display',
+            'titre', 'notes', 'inst_revisions', 'nb_revisions',
+            'date_creation', 'date_modification',
+        ]
+        read_only_fields = ['date_creation', 'date_modification']
+
+    def get_nb_revisions(self, obj):
+        return obj.inst_revisions.count()

@@ -17,6 +17,7 @@ from .models import (
     BaselinePlanning,
     CalendrierProjet,
     DependanceTache,
+    Equipe,
     Jalon,
     JourFerie,
     PhaseProjet,
@@ -24,12 +25,14 @@ from .models import (
     ProjetActivity,
     ProjetChantier,
     ProjetLien,
+    RessourceProfil,
     Tache,
 )
 from .serializers import (
     BaselinePlanningSerializer,
     CalendrierProjetSerializer,
     DependanceTacheSerializer,
+    EquipeSerializer,
     JalonSerializer,
     JourFerieSerializer,
     PhaseProjetSerializer,
@@ -37,6 +40,7 @@ from .serializers import (
     ProjetChantierSerializer,
     ProjetLienSerializer,
     ProjetSerializer,
+    RessourceProfilSerializer,
     TacheSerializer,
 )
 
@@ -606,3 +610,62 @@ class BaselinePlanningViewSet(_GestionProjetBaseViewSet):
         """
         baseline = self.get_object()
         return Response(selectors.comparer_baseline(baseline))
+
+
+class RessourceProfilViewSet(_GestionProjetBaseViewSet):
+    """Profils ressources internes (personnes / rôles) — CRUD scopé société.
+
+    ``company`` est posée côté serveur (TenantMixin) ; ``user`` optionnel reçu
+    validé même-société par le sérialiseur (cible d'une autre société → 400).
+    Filtres optionnels : ``?actif=1`` (actifs uniquement), ``?role=<role>``.
+    Recherche par nom/rôle ; tri par défaut ``nom`` puis ``id``.
+
+    ``cout_horaire`` est INTERNE : visible sur cet écran de pilotage mais ne
+    doit jamais figurer dans un PDF client.
+    """
+    queryset = RessourceProfil.objects.select_related(
+        'company', 'user').all()
+    serializer_class = RessourceProfilSerializer
+    filter_backends = [filters.SearchFilter, filters.OrderingFilter]
+    search_fields = ['nom', 'role', 'competences']
+    ordering_fields = ['nom', 'role', 'actif', 'id']
+
+    def perform_create(self, serializer):
+        serializer.save(company=self.request.user.company)
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        actif = self.request.query_params.get('actif')
+        if actif in ('1', 'true', 'True'):
+            qs = qs.filter(actif=True)
+        elif actif in ('0', 'false', 'False'):
+            qs = qs.filter(actif=False)
+        role = self.request.query_params.get('role')
+        if role:
+            qs = qs.filter(role__icontains=role)
+        return qs
+
+
+class EquipeViewSet(_GestionProjetBaseViewSet):
+    """Équipes de ressources pour le planning — CRUD scopé société.
+
+    ``company`` est posée côté serveur (TenantMixin) ; les ``membres`` reçus
+    sont validés comme appartenant à la société de l'utilisateur par le
+    sérialiseur. Filtre optionnel ``?membre=<id>`` (équipes contenant ce
+    membre). Recherche par nom ; tri par défaut ``nom`` puis ``id``.
+    """
+    queryset = Equipe.objects.prefetch_related('membres').all()
+    serializer_class = EquipeSerializer
+    filter_backends = [filters.SearchFilter, filters.OrderingFilter]
+    search_fields = ['nom', 'description']
+    ordering_fields = ['nom', 'id']
+
+    def perform_create(self, serializer):
+        serializer.save(company=self.request.user.company)
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        membre = self.request.query_params.get('membre')
+        if membre:
+            qs = qs.filter(membres__id=membre)
+        return qs

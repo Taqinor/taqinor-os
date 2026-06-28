@@ -107,7 +107,16 @@ def relance_reminders():
     ).select_related('client', 'company').prefetch_related(
         'lignes', 'paiements', 'avoirs')
 
+    # LITIGE3 — import local pour respecter les contrats d'import CI-enforced
+    # (ventes ne doit pas importer les modèles d'une autre app au niveau module).
+    from apps.litiges.selectors import relances_suspendues_pour_facture
+
     for facture in factures:
+        # LITIGE3 — sauter si un litige financier bloquant est actif.
+        if relances_suspendues_pour_facture(facture.id, facture.company):
+            logger.info(
+                'relance_reminders: facture %s suspendue (litige actif)', facture.id)
+            continue
         if facture.montant_du <= 0:
             facture.prochaine_relance = None
             facture.save(update_fields=['prochaine_relance'])

@@ -1528,3 +1528,234 @@ class DocumentVersionAperuTests(GedBase):
         """Sans token, l'aperçu renvoie 401/403."""
         resp = APIClient().get(self._url(self.version_a.id))
         self.assertIn(resp.status_code, (401, 403))
+
+
+# ── GED15 — Versionnage + historique + restauration de version ────────
+class DocumentVersionHistoryRestoreTests(GedBase):
+    """GED15 — Historique de versions d'un Document et restauration non-destructive.
+
+    Couvre :
+    - L'endpoint `historique` renvoie les versions scopées société (ACL coffre).
+    - La restauration crée une nouvelle version (plus ancien contenu, numéro max+1).
+    - L'historique est préservé après restauration (toutes les versions visibles).
+    - `restored_from` et `restored_from_version` sont exposés en lecture seule.
+    - Un non-propriétaire / cross-société ne peut pas restaurer (404/403).
+    - La version source doit appartenir au document cible (rejet 404).
+    - Isolation société : l'historique et la restauration sont bornés à la société.
+    """
+
+    def setUp(self):
+        super().setUp()
+        self.folder_a = Folder.objects.create(
+            company=self.co_a, cabinet=self.cab_a, nom='Docs A')
+        self.doc_a = Document.objects.create(
+            company=self.co_a, folder=self.folder_a, nom='Contrat')
+        # Crée deux versions initiales.
+        self.v1 = services.add_version(
+            self.doc_a, file_key='docs/v1.pdf', company=self.co_a,
+            filename='v1.pdf', size=100, mime='application/pdf',
+            checksum='aaa', uploaded_by=self.admin_a)
+        self.v2 = services.add_version(
+            self.doc_a, file_key='docs/v2.pdf', company=self.co_a,
+            filename='v2.pdf', size=200, mime='application/pdf',
+            checksum='bbb', uploaded_by=self.admin_a)
+
+    # ── historique ──────────────────────────────────────────────────
+
+    def test_historique_returns_all_versions_newest_first(self):
+        api = auth(self.admin_a)
+        resp = api.get(f'/api/django/ged/documents/{self.doc_a.id}/historique/')
+        self.assertEqual(resp.status_code, 200, resp.data)
+        versions = resp.data
+        # Deux versions, v2 (numéro 2) d'abord car ordre décroissant.
+        self.assertEqual(len(versions), 2)
+        self.assertEqual(versions[0]['version'], 2)
+        self.assertEqual(versions[1]['version'], 1)
+
+    def test_historique_exposes_restored_from_null_for_normal_versions(self):
+        api = auth(self.admin_a)
+        resp = api.get(f'/api/django/ged/documents/{self.doc_a.id}/historique/')
+        for v in resp.data:
+            self.assertIsNone(v['restored_from'])
+            self.assertIsNone(v['restored_from_version'])
+
+    def test_historique_company_scoped(self):
+        """Un document d'une autre société renvoie 404 à l'admin de la société A."""
+        folder_b = Folder.objects.create(
+            company=self.co_b, cabinet=self.cab_b, nom='Docs B')
+        doc_b = Document.objects.create(
+            company=self.co_b, folder=folder_b, nom='Doc B')
+        services.add_version(
+            doc_b, file_key='docs/b.pdf', company=self.co_b,
+            filename='b.pdf', size=10, mime='application/pdf',
+            checksum='zz', uploaded_by=self.admin_b)
+        api = auth(self.admin_a)
+        resp = api.get(f'/api/django/ged/documents/{doc_b.id}/historique/')
+        self.assertEqual(resp.status_code, 404)
+
+    def test_historique_requires_auth(self):
+        resp = APIClient().get(
+            f'/api/django/ged/documents/{self.doc_a.id}/historique/')
+        self.assertIn(resp.status_code, (401, 403))
+
+    def test_historique_read_role_allowed(self):
+        """Tout rôle authentifié peut lire l'historique (IsAnyRole)."""
+        viewer = make_user(self.co_a, 'ged15-viewer', 'normal')
+        api = auth(viewer)
+        resp = api.get(f'/api/django/ged/documents/{self.doc_a.id}/historique/')
+        self.assertEqual(resp.status_code, 200)
+
+    def test_historique_respects_coffre_acl(self):
+        """Un document dans un coffre n'est visible qu'au propriétaire/admin."""
+        emp = make_user(self.co_a, 'ged15-emp', 'normal')
+        coffre = Coffre.objects.create(
+            company=self.co_a, nom='Coffre', proprietaire=self.admin_a)
+        doc_secret = Document.objects.create(
+            company=self.co_a, folder=self.folder_a, coffre=coffre,
+            nom='Doc coffre')
+        services.add_version(
+            doc_secret, file_key='docs/secret.pdf', company=self.co_a,
+            filename='secret.pdf', size=50, mime='application/pdf',
+            checksum='cc', uploaded_by=self.admin_a)
+        # Non-propriétaire → 404.
+        api_emp = auth(emp)
+        resp = api_emp.get(
+            f'/api/django/ged/documents/{doc_secret.id}/historique/')
+        self.assertEqual(resp.status_code, 404)
+        # Propriétaire → 200.
+        api_owner = auth(self.admin_a)
+        resp = api_owner.get(
+            f'/api/django/ged/documents/{doc_secret.id}/historique/')
+        self.assertEqual(resp.status_code, 200)
+
+    # ── restaurer ───────────────────────────────────────────────────
+
+    def test_restaurer_creates_new_version_copying_source(self):
+        """Restaurer v1 crée une v3 avec le même contenu que v1."""
+        api = auth(self.admin_a)
+        resp = api.post(
+            f'/api/django/ged/documents/{self.doc_a.id}/restaurer/',
+            {'version': self.v1.id}, format='json')
+        self.assertEqual(resp.status_code, 201, resp.data)
+        v3 = resp.data
+        self.assertEqual(v3['version'], 3)
+        self.assertEqual(v3['file_key'], 'docs/v1.pdf')
+        self.assertEqual(v3['filename'], 'v1.pdf')
+        self.assertEqual(v3['checksum'], 'aaa')
+        # restored_from pointe vers v1.
+        self.assertEqual(v3['restored_from'], self.v1.id)
+        self.assertEqual(v3['restored_from_version'], 1)
+
+    def test_restaurer_preserves_full_history(self):
+        """Après restauration, toutes les versions initiales sont encore présentes."""
+        api = auth(self.admin_a)
+        api.post(
+            f'/api/django/ged/documents/{self.doc_a.id}/restaurer/',
+            {'version': self.v1.id}, format='json')
+        # L'historique doit contenir 3 versions (v1, v2, v3-restaurée).
+        resp = api.get(f'/api/django/ged/documents/{self.doc_a.id}/historique/')
+        self.assertEqual(len(resp.data), 3)
+        # v1 et v2 sont intactes.
+        nums = [v['version'] for v in resp.data]
+        self.assertIn(1, nums)
+        self.assertIn(2, nums)
+        self.assertIn(3, nums)
+
+    def test_restaurer_service_sets_restored_from_in_db(self):
+        """La nouvelle version pointe bien vers la version source en DB."""
+        new_v = services.restore_version(
+            self.doc_a, self.v1, uploaded_by=self.admin_a)
+        new_v.refresh_from_db()
+        self.assertEqual(new_v.restored_from_id, self.v1.id)
+        self.assertEqual(new_v.file_key, self.v1.file_key)
+        self.assertEqual(new_v.version, 3)
+
+    def test_restaurer_service_rejects_wrong_document(self):
+        """La version source doit appartenir au même document."""
+        folder_a2 = Folder.objects.create(
+            company=self.co_a, cabinet=self.cab_a, nom='Docs A2')
+        other_doc = Document.objects.create(
+            company=self.co_a, folder=folder_a2, nom='Autre')
+        other_v = services.add_version(
+            other_doc, file_key='docs/other.pdf', company=self.co_a,
+            filename='other.pdf', size=10, mime='application/pdf',
+            checksum='oth', uploaded_by=self.admin_a)
+        with self.assertRaises(ValueError):
+            services.restore_version(self.doc_a, other_v, uploaded_by=self.admin_a)
+
+    def test_restaurer_endpoint_rejects_other_company_document(self):
+        """Un document d'une autre société renvoie 404 (jamais de fuite cross)."""
+        folder_b = Folder.objects.create(
+            company=self.co_b, cabinet=self.cab_b, nom='Docs B')
+        doc_b = Document.objects.create(
+            company=self.co_b, folder=folder_b, nom='Doc B')
+        v_b = services.add_version(
+            doc_b, file_key='docs/b.pdf', company=self.co_b,
+            filename='b.pdf', size=10, mime='application/pdf',
+            checksum='zz', uploaded_by=self.admin_b)
+        api = auth(self.admin_a)
+        # Tente de restaurer un document B — doit échouer en 404.
+        resp = api.post(
+            f'/api/django/ged/documents/{doc_b.id}/restaurer/',
+            {'version': v_b.id}, format='json')
+        self.assertEqual(resp.status_code, 404)
+
+    def test_restaurer_endpoint_rejects_other_document_version(self):
+        """La version source d'un autre document renvoie 404."""
+        folder_a2 = Folder.objects.create(
+            company=self.co_a, cabinet=self.cab_a, nom='Docs A2')
+        other_doc = Document.objects.create(
+            company=self.co_a, folder=folder_a2, nom='Autre')
+        other_v = services.add_version(
+            other_doc, file_key='docs/other.pdf', company=self.co_a,
+            filename='other.pdf', size=10, mime='application/pdf',
+            checksum='oth', uploaded_by=self.admin_a)
+        api = auth(self.admin_a)
+        # Tente de restaurer le document A à une version appartenant à `other_doc`.
+        resp = api.post(
+            f'/api/django/ged/documents/{self.doc_a.id}/restaurer/',
+            {'version': other_v.id}, format='json')
+        self.assertEqual(resp.status_code, 404)
+
+    def test_restaurer_requires_responsable_or_admin(self):
+        """Un utilisateur normal (non responsable/admin) ne peut pas restaurer."""
+        viewer = make_user(self.co_a, 'ged15-normal', 'normal')
+        api = auth(viewer)
+        resp = api.post(
+            f'/api/django/ged/documents/{self.doc_a.id}/restaurer/',
+            {'version': self.v1.id}, format='json')
+        self.assertIn(resp.status_code, (403, 401))
+        # Aucune nouvelle version créée.
+        self.assertEqual(self.doc_a.versions.count(), 2)
+
+    def test_restaurer_requires_version_id(self):
+        """Un body sans `version` renvoie 400."""
+        api = auth(self.admin_a)
+        resp = api.post(
+            f'/api/django/ged/documents/{self.doc_a.id}/restaurer/',
+            {}, format='json')
+        self.assertEqual(resp.status_code, 400)
+
+    def test_restaurer_uploaded_by_set_server_side(self):
+        """L'auteur de la restauration est posé côté serveur (jamais du corps)."""
+        api = auth(self.admin_a)
+        resp = api.post(
+            f'/api/django/ged/documents/{self.doc_a.id}/restaurer/',
+            {'version': self.v1.id, 'uploaded_by': 9999}, format='json')
+        self.assertEqual(resp.status_code, 201, resp.data)
+        v3 = DocumentVersion.objects.get(id=resp.data['id'])
+        # L'uploader est l'admin, pas l'id fourni.
+        self.assertEqual(v3.uploaded_by_id, self.admin_a.id)
+
+    def test_multiple_restores_increment_version_correctly(self):
+        """Des restaurations successives incrémentent le numéro correctement."""
+        api = auth(self.admin_a)
+        r1 = api.post(
+            f'/api/django/ged/documents/{self.doc_a.id}/restaurer/',
+            {'version': self.v1.id}, format='json')
+        self.assertEqual(r1.data['version'], 3)
+        r2 = api.post(
+            f'/api/django/ged/documents/{self.doc_a.id}/restaurer/',
+            {'version': self.v2.id}, format='json')
+        self.assertEqual(r2.data['version'], 4)
+        self.assertEqual(self.doc_a.versions.count(), 4)

@@ -58,6 +58,10 @@ from .models_projet import (
     ModeleProjetBomLigne,
     ReunionChantier,
 )
+from .models_document import (
+    DocumentProjet,
+    RevisionDocument,
+)
 
 __all__ = [
     'Installation',
@@ -89,4 +93,6 @@ __all__ = [
     'ModeleProjetJalon',
     'ModeleProjetBomLigne',
     'ReunionChantier',
+    'DocumentProjet',
+    'RevisionDocument',
 ]

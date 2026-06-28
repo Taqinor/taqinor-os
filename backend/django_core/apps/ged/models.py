@@ -286,6 +286,14 @@ class DocumentVersion(models.Model):
     uploaded_by = models.ForeignKey(
         settings.AUTH_USER_MODEL, on_delete=models.SET_NULL,
         null=True, blank=True, related_name='ged_versions_uploadees')
+    # GED15 — traçabilité de la restauration : si cette version est le résultat
+    # d'une restauration d'une version antérieure, `restored_from` pointe vers
+    # cette version d'origine. NULL pour toutes les autres versions. Jamais lu
+    # du corps de requête — posé côté serveur dans `services.restore_version`.
+    restored_from = models.ForeignKey(
+        'self', on_delete=models.SET_NULL,
+        null=True, blank=True, related_name='ged_restorations',
+        verbose_name='restaurée depuis')
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:

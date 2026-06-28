@@ -14,10 +14,14 @@ from .geo import geo_points
 from .balance_export import balance_agee_export
 from .saved_reports_api import SavedReportViewSet
 from .commercial import commercial_dashboard, win_loss_by_source
+from .dashboard_config_api import DashboardConfigViewSet
 
 # N79 — CRUD des rapports sauvegardés (router DRF, ajouté en additif).
+# FG96 — CRUD + effective/ pour la config tableau de bord.
 router = DefaultRouter()
 router.register(r'saved-reports', SavedReportViewSet, basename='saved-report')
+router.register(r'dashboard-config', DashboardConfigViewSet,
+                basename='dashboard-config')
 
 urlpatterns = [
     path('', include(router.urls)),

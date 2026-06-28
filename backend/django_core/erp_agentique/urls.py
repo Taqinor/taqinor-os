@@ -47,6 +47,8 @@ urlpatterns = [
     path('api/django/automation/', include('apps.automation.urls')),
     # Liens publics tokenisés (PDF client via WhatsApp) — sans login.
     path('api/django/public/', include('apps.ventes.public_urls')),
+    # FG86 — Suivi client ticket SAV — sans login.
+    path('api/django/public/sav/', include('apps.sav.public_urls')),
     # N89 — API publique REST par clé d'API (données read-only).
     path('api/public/', include('apps.publicapi.public_urls')),
     # N89 — gestion des clés API & webhooks (session admin, Paramètres).

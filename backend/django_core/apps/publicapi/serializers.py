@@ -82,7 +82,7 @@ class WebhookDeliverySerializer(serializers.ModelSerializer):
     class Meta:
         model = WebhookDelivery
         fields = [
-            'id', 'webhook', 'event', 'status', 'response_status',
+            'id', 'webhook', 'event', 'payload', 'status', 'response_status',
             'error', 'created_at',
         ]
         read_only_fields = fields

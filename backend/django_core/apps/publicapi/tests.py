@@ -389,3 +389,179 @@ class WebhookSSRFGuardTests(TestCase):
                     'ftp://8.8.8.8/'):
             with self.assertRaises(UnsafeWebhookURL):
                 validate_webhook_target_url(bad)
+
+
+# ── FG102 — Historique des livraisons + replay + test (ping) ─────────────────
+
+class DeliveryHistoryTests(TestCase):
+    """GET webhooks/{id}/deliveries/ — liste paginée, company-scoped."""
+
+    def setUp(self):
+        self.co_a = make_company('fg-a', 'FG A')
+        self.co_b = make_company('fg-b', 'FG B')
+        self.admin_a = make_user(self.co_a, 'fg-admin-a', 'admin')
+        self.admin_b = make_user(self.co_b, 'fg-admin-b', 'admin')
+        self.hook_a = Webhook.objects.create(
+            company=self.co_a, target_url='https://example.test/a',
+            secret='sec-a', events=[EVENT_LEAD_CREATED], enabled=True)
+        self.hook_b = Webhook.objects.create(
+            company=self.co_b, target_url='https://example.test/b',
+            secret='sec-b', events=[EVENT_LEAD_CREATED], enabled=True)
+        # 3 livraisons pour le webhook A
+        for i in range(3):
+            WebhookDelivery.objects.create(
+                company=self.co_a, webhook=self.hook_a,
+                event=EVENT_LEAD_CREATED, payload={'i': i},
+                status=WebhookDelivery.Statut.SUCCESS)
+        # 1 livraison pour le webhook B
+        WebhookDelivery.objects.create(
+            company=self.co_b, webhook=self.hook_b,
+            event=EVENT_LEAD_CREATED, payload={},
+            status=WebhookDelivery.Statut.FAILED)
+
+    def test_list_returns_own_deliveries(self):
+        api = session_auth(self.admin_a)
+        resp = api.get(f'/api/django/publicapi/webhooks/{self.hook_a.id}/deliveries/')
+        self.assertEqual(resp.status_code, 200)
+        self.assertEqual(len(resp.data), 3)
+        # Chaque entrée expose le payload (FG102 : inclus pour le replay UI)
+        for item in resp.data:
+            self.assertIn('payload', item)
+
+    def test_cross_company_webhook_is_404(self):
+        # L'admin A ne peut pas lire les livraisons du webhook B.
+        api = session_auth(self.admin_a)
+        resp = api.get(f'/api/django/publicapi/webhooks/{self.hook_b.id}/deliveries/')
+        self.assertEqual(resp.status_code, 404)
+
+    def test_non_admin_forbidden(self):
+        normal = make_user(self.co_a, 'fg-normal-a', 'normal')
+        api = session_auth(normal)
+        resp = api.get(f'/api/django/publicapi/webhooks/{self.hook_a.id}/deliveries/')
+        self.assertEqual(resp.status_code, 403)
+
+
+class DeliveryReplayTests(TestCase):
+    """POST webhooks/{id}/deliveries/{delivery_id}/replay/"""
+
+    def setUp(self):
+        self.co_a = make_company('rp-a', 'RP A')
+        self.co_b = make_company('rp-b', 'RP B')
+        self.admin_a = make_user(self.co_a, 'rp-admin-a', 'admin')
+        self.hook_a = Webhook.objects.create(
+            company=self.co_a, target_url='https://example.test/rp',
+            secret='rp-sec', events=[EVENT_LEAD_CREATED], enabled=True)
+        self.hook_b = Webhook.objects.create(
+            company=self.co_b, target_url='https://example.test/rpb',
+            secret='rp-secb', events=[EVENT_LEAD_CREATED], enabled=True)
+        self.original = WebhookDelivery.objects.create(
+            company=self.co_a, webhook=self.hook_a,
+            event=EVENT_LEAD_CREATED, payload={'lead_id': 42},
+            status=WebhookDelivery.Statut.FAILED,
+            error='HTTP 500')
+        # Livraison appartenant à la société B
+        self.other_co_delivery = WebhookDelivery.objects.create(
+            company=self.co_b, webhook=self.hook_b,
+            event=EVENT_LEAD_CREATED, payload={},
+            status=WebhookDelivery.Statut.FAILED)
+        # Patch SSRF guard + httpx pour éviter les vrais appels réseau
+        patcher_ssrf = mock.patch(
+            'apps.publicapi.delivery.validate_webhook_target_url',
+            side_effect=lambda u: u)
+        patcher_ssrf.start()
+        self.addCleanup(patcher_ssrf.stop)
+
+    def test_replay_sends_original_payload_and_records_new_attempt(self):
+        api = session_auth(self.admin_a)
+        url = (f'/api/django/publicapi/webhooks/{self.hook_a.id}'
+               f'/deliveries/{self.original.id}/replay/')
+        with mock.patch.object(delivery.httpx, 'post') as m:
+            m.return_value = mock.Mock(status_code=200)
+            resp = api.post(url)
+        self.assertEqual(resp.status_code, 201)
+        # Un NOUVEL enregistrement a été créé (on en a maintenant 2).
+        self.assertEqual(
+            WebhookDelivery.objects.filter(webhook=self.hook_a).count(), 2)
+        # La réponse décrit la nouvelle tentative (succès).
+        self.assertEqual(resp.data['status'], WebhookDelivery.Statut.SUCCESS)
+        # L'original n'a pas changé.
+        self.original.refresh_from_db()
+        self.assertEqual(self.original.status, WebhookDelivery.Statut.FAILED)
+        self.assertEqual(self.original.error, 'HTTP 500')
+        # httpx.post a été appelé avec le bon payload
+        call_kwargs = m.call_args
+        sent_body = json.loads(call_kwargs[1]['content'])
+        self.assertEqual(sent_body, {'lead_id': 42})
+
+    def test_replay_cross_company_delivery_is_404(self):
+        # L'admin A ne peut pas rejouer une livraison de la société B.
+        api = session_auth(self.admin_a)
+        url = (f'/api/django/publicapi/webhooks/{self.hook_a.id}'
+               f'/deliveries/{self.other_co_delivery.id}/replay/')
+        resp = api.post(url)
+        self.assertEqual(resp.status_code, 404)
+
+    def test_replay_cross_company_webhook_is_404(self):
+        # L'admin A ne peut pas accéder au webhook de la société B.
+        api = session_auth(self.admin_a)
+        url = (f'/api/django/publicapi/webhooks/{self.hook_b.id}'
+               f'/deliveries/{self.original.id}/replay/')
+        resp = api.post(url)
+        self.assertEqual(resp.status_code, 404)
+
+    def test_replay_unknown_delivery_is_404(self):
+        api = session_auth(self.admin_a)
+        url = (f'/api/django/publicapi/webhooks/{self.hook_a.id}'
+               f'/deliveries/999999/replay/')
+        resp = api.post(url)
+        self.assertEqual(resp.status_code, 404)
+
+
+class WebhookTestPingTests(TestCase):
+    """POST webhooks/{id}/test/ — ping synthétique."""
+
+    def setUp(self):
+        self.co_a = make_company('tp-a', 'TP A')
+        self.co_b = make_company('tp-b', 'TP B')
+        self.admin_a = make_user(self.co_a, 'tp-admin-a', 'admin')
+        self.hook_a = Webhook.objects.create(
+            company=self.co_a, target_url='https://example.test/tp',
+            secret='tp-sec', events=[EVENT_LEAD_CREATED], enabled=True)
+        self.hook_b = Webhook.objects.create(
+            company=self.co_b, target_url='https://example.test/tpb',
+            secret='tp-secb', events=[EVENT_LEAD_CREATED], enabled=True)
+        patcher_ssrf = mock.patch(
+            'apps.publicapi.delivery.validate_webhook_target_url',
+            side_effect=lambda u: u)
+        patcher_ssrf.start()
+        self.addCleanup(patcher_ssrf.stop)
+
+    def test_ping_creates_delivery_record(self):
+        api = session_auth(self.admin_a)
+        url = f'/api/django/publicapi/webhooks/{self.hook_a.id}/test/'
+        with mock.patch.object(delivery.httpx, 'post') as m:
+            m.return_value = mock.Mock(status_code=200)
+            resp = api.post(url)
+        self.assertEqual(resp.status_code, 201)
+        self.assertEqual(resp.data['event'], 'webhook.test')
+        self.assertEqual(resp.data['status'], WebhookDelivery.Statut.SUCCESS)
+        d = WebhookDelivery.objects.get(webhook=self.hook_a, event='webhook.test')
+        self.assertIn('webhook_id', d.payload)
+        self.assertEqual(d.payload['webhook_id'], self.hook_a.id)
+
+    def test_ping_records_failure_when_endpoint_errors(self):
+        api = session_auth(self.admin_a)
+        url = f'/api/django/publicapi/webhooks/{self.hook_a.id}/test/'
+        with mock.patch.object(delivery.httpx, 'post',
+                               side_effect=RuntimeError('timeout')):
+            resp = api.post(url)
+        self.assertEqual(resp.status_code, 201)
+        self.assertEqual(resp.data['status'], WebhookDelivery.Statut.FAILED)
+        self.assertIn('timeout', resp.data['error'])
+
+    def test_ping_cross_company_webhook_is_404(self):
+        # L'admin A ne peut pas envoyer un ping vers le webhook de la société B.
+        api = session_auth(self.admin_a)
+        url = f'/api/django/publicapi/webhooks/{self.hook_b.id}/test/'
+        resp = api.post(url)
+        self.assertEqual(resp.status_code, 404)
