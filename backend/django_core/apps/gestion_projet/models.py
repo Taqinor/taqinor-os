@@ -913,7 +913,6 @@ class AffectationRessource(models.Model):
         return f"Tâche {self.tache_id} ← {label} ({self.date_debut}/{self.date_fin})"
 
     def clean(self):
-        from django.core.exceptions import ValidationError
         self._validate_un_seul_vecteur()
 
     def _validate_un_seul_vecteur(self):

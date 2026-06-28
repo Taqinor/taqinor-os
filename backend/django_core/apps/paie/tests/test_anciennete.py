@@ -264,7 +264,7 @@ class BulletinAncienneteTests(TestCase):
         profil, periode = self._make_context(
             date_embauche=date(2024, 6, 1), matricule='B2')
         res = calculer_bulletin(profil, periode)
-        codes = [l['code'] for l in res['lignes']]
+        codes = [ligne['code'] for ligne in res['lignes']]
         self.assertIn('ANCIENNETE', codes)
 
     def test_sans_anciennete_suffisante_pas_de_prime(self):
@@ -275,7 +275,7 @@ class BulletinAncienneteTests(TestCase):
         res = calculer_bulletin(profil, periode)
         self.assertEqual(res['prime_anciennete'], Decimal('0'))
         self.assertEqual(res['brut'], Decimal('10000.00'))
-        codes = [l['code'] for l in res['lignes']]
+        codes = [ligne['code'] for ligne in res['lignes']]
         self.assertNotIn('ANCIENNETE', codes)
 
     def test_sans_date_embauche_pas_de_prime(self):
