@@ -3,7 +3,7 @@ from rest_framework.routers import DefaultRouter
 from .views import (
     AppointmentViewSet, ClientViewSet, LeadViewSet, assignable_users,
     LeadTagViewSet, MotifPerteViewSet, CanalViewSet, ParrainageViewSet,
-    MessageTemplateViewSet,
+    MessageTemplateViewSet, ObjectifCommercialViewSet,
 )
 from .webhooks import website_lead_webhook
 from .roof_views import lead_roof_footprint
@@ -17,6 +17,7 @@ router.register(r'canaux', CanalViewSet)
 router.register(r'parrainages', ParrainageViewSet)
 router.register(r'message-templates', MessageTemplateViewSet)  # FG36
 router.register(r'appointments', AppointmentViewSet)  # QJ20
+router.register(r'objectifs', ObjectifCommercialViewSet)  # FG39
 
 urlpatterns = [
     # Récepteur des leads du site public (secret statique, voir webhooks.py)
