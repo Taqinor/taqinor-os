@@ -58,6 +58,15 @@ class Vehicule(models.Model):
     statut = models.CharField(
         max_length=20, choices=Statut.choices, default=Statut.ACTIF,
         verbose_name='Statut')
+    # FLOTTE9 — catégorie de permis exigée pour conduire ce véhicule (B, C, CE,
+    # D…). Vide = aucune exigence (le contrôle de catégorie à l'affectation est
+    # alors neutralisé). Le contrôle « permis valide / catégorie » à
+    # l'affectation s'appuie sur ce champ (voir `services.controle_permis`).
+    categorie_permis_requise = models.CharField(
+        max_length=30, blank=True,
+        verbose_name='Catégorie de permis requise',
+        help_text='Ex. : B, C, CE, D… Vide = aucune exigence de catégorie.',
+    )
     # FLOTTE3 — référence VERS un emplacement de stock (`stock.EmplacementStock`)
     # par id NUMÉRIQUE, jamais un FK cross-app dur (modularité, voir CLAUDE.md).
     # null = véhicule non rattaché à un emplacement. La validation « même

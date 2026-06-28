@@ -30,7 +30,8 @@ class VehiculeSerializer(serializers.ModelSerializer):
         fields = [
             'id', 'immatriculation', 'marque', 'modele', 'energie',
             'energie_display', 'kilometrage', 'valeur', 'statut',
-            'statut_display', 'emplacement_stock_id', 'emplacement_stock_label',
+            'statut_display', 'categorie_permis_requise',
+            'emplacement_stock_id', 'emplacement_stock_label',
             'date_creation',
         ]
         read_only_fields = ['date_creation']
@@ -231,13 +232,27 @@ class AffectationConducteurSerializer(serializers.ModelSerializer):
     à la même société que l'utilisateur courant. La validation garantit que
     ``date_fin >= date_debut`` quand ``date_fin`` est renseignée.
 
+    FLOTTE9 — Contrôle « permis valide / catégorie » à l'affectation : par
+    défaut, une affectation dont le conducteur n'a pas de permis valide (numéro/
+    catégorie manquant, permis expiré, ou catégorie inadaptée au véhicule) est
+    REJETÉE (400). Le drapeau écriture-seule ``force`` dégrade ce rejet en
+    soft-warn : l'affectation est acceptée et l'avertissement est exposé en
+    lecture via ``permis_avertissement``.
+
     Champs lecture seule :
-    - ``conducteur_nom``  : nom complet du conducteur.
-    - ``vehicule_label``  : immatriculation + marque/modèle du véhicule.
+    - ``conducteur_nom``       : nom complet du conducteur.
+    - ``vehicule_label``       : immatriculation + marque/modèle du véhicule.
+    - ``permis_avertissement`` : message du contrôle de permis quand
+      l'affectation a été forcée malgré une non-conformité, sinon ``None``.
     """
 
     conducteur_nom = serializers.SerializerMethodField()
     vehicule_label = serializers.SerializerMethodField()
+    # FLOTTE9 — drapeau écriture-seule : dégrade le rejet du contrôle de permis
+    # en soft-warn (l'affectation est créée malgré la non-conformité).
+    force = serializers.BooleanField(write_only=True, required=False,
+                                     default=False)
+    permis_avertissement = serializers.SerializerMethodField()
 
     class Meta:
         model = AffectationConducteur
@@ -251,9 +266,16 @@ class AffectationConducteurSerializer(serializers.ModelSerializer):
             "date_fin",
             "notes",
             "actif",
+            "force",
+            "permis_avertissement",
             "date_creation",
         ]
         read_only_fields = ["date_creation"]
+
+    def get_permis_avertissement(self, obj):
+        """Avertissement de permis posé lors d'une affectation forcée
+        (non-conformité acceptée volontairement)."""
+        return getattr(obj, '_permis_avertissement', None)
 
     def get_conducteur_nom(self, obj):
         return str(obj.conducteur) if obj.conducteur_id else None
@@ -293,4 +315,29 @@ class AffectationConducteurSerializer(serializers.ModelSerializer):
                     {"vehicule":
                      "Ce véhicule n'appartient pas à votre société."})
 
+        # FLOTTE9 — Contrôle « permis valide / catégorie » à l'affectation.
+        # Par défaut : rejet (400) si le conducteur n'a pas un permis valide de
+        # la bonne catégorie ; ``force=True`` dégrade en soft-warn.
+        force = attrs.pop('force', False)
+        self._permis_avertissement = None
+        if conducteur is not None and vehicule is not None:
+            from .services import controle_permis
+            ok, _code, message = controle_permis(conducteur, vehicule)
+            if not ok:
+                if force:
+                    self._permis_avertissement = message
+                else:
+                    raise serializers.ValidationError({"conducteur": message})
+
         return attrs
+
+    def _attach_warning(self, instance):
+        instance._permis_avertissement = getattr(
+            self, '_permis_avertissement', None)
+        return instance
+
+    def create(self, validated_data):
+        return self._attach_warning(super().create(validated_data))
+
+    def update(self, instance, validated_data):
+        return self._attach_warning(super().update(instance, validated_data))
