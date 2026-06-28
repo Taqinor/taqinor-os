@@ -2,6 +2,7 @@ from django.urls import include, path
 from rest_framework.routers import DefaultRouter
 
 from .views import (
+    AffectationRessourceViewSet,
     BaselinePlanningViewSet,
     CalendrierProjetViewSet,
     DependanceTacheViewSet,
@@ -29,6 +30,7 @@ router.register(r'jours-feries', JourFerieViewSet)
 router.register(r'baselines', BaselinePlanningViewSet)
 router.register(r'ressources', RessourceProfilViewSet)
 router.register(r'equipes', EquipeViewSet)
+router.register(r'affectations', AffectationRessourceViewSet)
 
 urlpatterns = [
     path('', include(router.urls)),

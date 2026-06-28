@@ -14,13 +14,16 @@ from authentication.permissions import IsResponsableOrAdmin
 
 from .models import (
     ActionCorrectivePreventive, Audit, CritereAudit, GrilleAudit,
-    NonConformite, PlanInspectionChantier, PlanInspectionModele,
+    ItemNotation, NonConformite, NotationFinChantier,
+    PlanInspectionChantier, PlanInspectionModele,
     PointControleModele, QhseChatterEntry, ReleveControle, ReleveCourbeIV,
     ReponseCritere,
 )
 from .serializers import (
     ActionCorrectivePreventiveSerializer, AuditSerializer,
-    CritereAuditSerializer, GrilleAuditSerializer, NonConformiteSerializer,
+    CritereAuditSerializer, GrilleAuditSerializer,
+    ItemNotationSerializer, NonConformiteSerializer,
+    NotationFinChantierSerializer,
     PlanInspectionChantierSerializer, PlanInspectionModeleSerializer,
     PointControleModeleSerializer, QhseChatterEntrySerializer,
     ReleveControleSerializer, ReleveCourbeIVSerializer,
@@ -28,13 +31,13 @@ from .serializers import (
 )
 from . import chatter
 from .selectors import (
-    capa_en_retard, courbes_iv_for_chantier, hold_points_status,
-    photos_controle_par_phase,
+    capa_en_retard, chantier_peut_cloturer, courbes_iv_for_chantier,
+    hold_points_status, photos_controle_par_phase,
 )
 from .services import (
-    calculer_score_audit, cloturer_ncr, creer_ncr_depuis_reserve,
-    instancier_plan_chantier, lever_ncr_audit, relancer_capa_en_retard,
-    verifier_efficacite_capa,
+    calculer_score_audit, calculer_score_notation, cloturer_ncr,
+    creer_ncr_depuis_reserve, instancier_plan_chantier, lever_ncr_audit,
+    relancer_capa_en_retard, verifier_efficacite_capa,
 )
 
 
@@ -483,4 +486,84 @@ class QhseChatterEntryViewSet(TenantMixin, viewsets.ReadOnlyModelViewSet):
             qs = qs.filter(cible_type=cible_type)
         if cible_id not in (None, ''):
             qs = qs.filter(cible_id=cible_id)
+        return qs
+
+
+# ── QHSE17 — Notation fin de chantier (gate clôture) ────────────────────────
+
+class NotationFinChantierViewSet(_QhseBaseViewSet):
+    """Notations fin de chantier — gate advisory de clôture (QHSE17).
+
+    À la création, ``auteur`` est posé côté serveur. Filtre optionnel par
+    ``?chantier_id=``. L'action ``calculer`` (POST) recalcule le score pondéré et
+    le verdict (passe/échec) à partir des ``ItemNotation`` de la notation.
+
+    L'action ``peut-cloturer`` (GET) expose le verdict advisory du sélecteur
+    ``chantier_peut_cloturer`` pour un chantier donné (``?chantier_id=``).
+    """
+    queryset = NotationFinChantier.objects.select_related('auteur').all()
+    serializer_class = NotationFinChantierSerializer
+    filter_backends = [filters.OrderingFilter]
+    ordering_fields = ['id', 'date_notation', 'score', 'date_creation']
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        chantier_id = self.request.query_params.get('chantier_id')
+        if chantier_id not in (None, ''):
+            qs = qs.filter(chantier_id=chantier_id)
+        return qs
+
+    def perform_create(self, serializer):
+        serializer.save(
+            company=self.request.user.company,
+            auteur=self.request.user)
+
+    @action(detail=True, methods=['post'])
+    def calculer(self, request, pk=None):
+        """Calcule et stocke le score pondéré + verdict de la notation.
+
+        Retourne la notation mise à jour. ``get_object`` est scopé société.
+        """
+        notation = self.get_object()
+        calculer_score_notation(notation)
+        return Response(self.get_serializer(notation).data)
+
+    @action(detail=False, methods=['get'], url_path='peut-cloturer')
+    def peut_cloturer(self, request):
+        """Gate advisory : le chantier peut-il clôturer ?
+
+        Paramètre obligatoire ``?chantier_id=``. Renvoie
+        ``{'chantier_id': …, 'peut_cloturer': bool}``. Scopé société.
+        """
+        chantier_id = request.query_params.get('chantier_id')
+        if chantier_id in (None, ''):
+            return Response(
+                {'detail': 'chantier_id est requis.'},
+                status=status.HTTP_400_BAD_REQUEST)
+        try:
+            chantier_id = int(chantier_id)
+        except (TypeError, ValueError):
+            return Response(
+                {'detail': 'chantier_id doit être un entier.'},
+                status=status.HTTP_400_BAD_REQUEST)
+        peut = chantier_peut_cloturer(chantier_id, request.user.company)
+        return Response({'chantier_id': chantier_id, 'peut_cloturer': peut})
+
+
+class ItemNotationViewSet(_QhseBaseViewSet):
+    """Items de notation fin de chantier (QHSE17).
+
+    Filtre optionnel par ``?notation=``. La société est posée côté serveur ; la
+    notation référencée est validée même-société par le sérialiseur.
+    """
+    queryset = ItemNotation.objects.select_related('notation').all()
+    serializer_class = ItemNotationSerializer
+    filter_backends = [filters.OrderingFilter]
+    ordering_fields = ['id', 'ordre', 'date_creation']
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        notation = self.request.query_params.get('notation')
+        if notation not in (None, ''):
+            qs = qs.filter(notation_id=notation)
         return qs

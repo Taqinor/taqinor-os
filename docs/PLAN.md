@@ -829,7 +829,7 @@ these overlap and SUPERSEDE the domain-list FG items as the module-organized hom
 - [x] PAIE12 — Moteur de calcul du bulletin (`services.calculer_bulletin`). (ROUTINE) [DONE 2026-06-22: Moteur calculer_bulletin (brut/CNSS plafonnée/AMO/CIMR/IR barème + charges famille/net à payer); action bulletin; 8 tests. Migration paie 0005 additive (dépend de rh.0006).]
 - [x] PAIE13 — Salaire de base multi-profils (mensuel/journalier/forfait/horaire) + proration. (ROUTINE)
 - [x] PAIE14 — Heures supplémentaires majorées (25/50/100 % jour/nuit/férié). (ROUTINE) [DONE 2026-06-27: `ParametrePaie` gains taux_hs_jour/nuit/ferie (défauts 25/50/100 %, éditables par société) + `ElementVariable.categorie_hs`; `services` helpers (taux_majoration_hs, calculer_gain_hs, taux_horaire_base_profil) wired into `calculer_bulletin` (quantité × taux horaire × majoration ; montant explicite l'emporte). Migration paie 0007 additive, 20 tests.]
-- [ ] PAIE15 — Prime d'ancienneté barème (5/10/15/20/25 %). (ROUTINE)
+- [x] PAIE15 — Prime d'ancienneté barème (5/10/15/20/25 %). (ROUTINE) [DONE 2026-06-27: barème ancienneté (5 seuils/taux éditables sur `ParametrePaie`, défauts 2/5/12/20/25 ans → 5/10/15/20/25 %) + helpers `taux_anciennete`/`calculer_prime_anciennete` câblés dans `calculer_bulletin` (gain ANCIENNETE, base prorata) ; date d'embauche lue via nouveau selector `rh.date_embauche_employe` (cross-app propre). Sans date → 0, aucun effet. Migration paie 0008, tests.]
 - [ ] PAIE16 — Avantages en nature & indemnités imposables vs non-imposables (plafonds). (DECISION)
 - [ ] PAIE17 — `BulletinPaie` + `LigneBulletin` (snapshot immuable une fois validé). (SCHEMA)
 - [ ] PAIE18 — CNSS plafonnée (part salariale & patronale). (ROUTINE)
@@ -912,7 +912,7 @@ these overlap and SUPERSEDE the domain-list FG items as the module-organized hom
 - [x] PROJ13 — Baseline de planning (plan vs réel). (SCHEMA) [DONE 2026-06-22: Baseline de planning (plan vs réel); BaselinePlanning + BaselineTache + comparer_baseline; migration 0009 additive; 9 tests.]
 - [x] PROJ14 — Détection des retards (tâches/jalons à risque). (ROUTINE)
 - [x] PROJ15 — Profil ressource & équipes (RH-léger, `cout_horaire` interne). (SCHEMA) [DONE 2026-06-27: `gestion_projet.RessourceProfil` (company forcé, user FK optionnel, role/competences, `cout_horaire` interne) + `Equipe` (M2M membres) avec contraintes uniques nommées ; viewsets company-scoped + filtres. Migration gestion_projet 0010, 10 tests.]
-- [ ] PROJ16 — Affectation des ressources (User/équipe/camionnette/machine). (ARCH)
+- [x] PROJ16 — Affectation des ressources (User/équipe/camionnette/machine). (ARCH) [DONE 2026-06-27: `gestion_projet.AffectationRessource` (company forcé, FK Tache, ressource RessourceProfil OU equipe Equipe OU actif lâche `flotte.ActifFlotte` via type+id — exactement un vecteur validé, dates, charge/quantité) + viewset company-scoped + filtres. Cross-app par string-FK uniquement. Migration gestion_projet 0011 (regénérée), 18 tests.]
 - [ ] PROJ17 — Indisponibilités ressources (congé/formation/arrêt). (SCHEMA)
 - [ ] PROJ18 — Plan de charge (capacité vs affecté). (ROUTINE)
 - [ ] PROJ19 — Détection de conflits d'affectation. (ROUTINE)
@@ -953,7 +953,7 @@ these overlap and SUPERSEDE the domain-list FG items as the module-organized hom
 - [x] GED13 — Filtres & recherche avancée (frontend). (ROUTINE) [DONE 2026-06-22: Filtres & recherche avancée (frontend GedSearch.jsx + search.js + gedApi); 14 tests frontend node:test.]
 - [x] GED14 — Aperçu inline multi-format (proxy même-origine). (ROUTINE)
 - [x] GED15 — Versionnage + historique + restauration de version. (SCHEMA) [DONE 2026-06-27: sur le `DocumentVersion` existant — endpoint `documents/<id>/historique/` (versions, plus récentes d'abord) + action `documents/<id>/restaurer/` créant une NOUVELLE version courante depuis une antérieure (historique préservé), champ d'audit `restored_from`. Réutilise le file_key (pas de ré-upload MinIO). Migration ged 0008 (additive), 16 tests (ACL coffre, rôle, isolation société).]
-- [ ] GED16 — Check-out / check-in (verrouillage). (ROUTINE)
+- [x] GED16 — Check-out / check-in (verrouillage). (ROUTINE) [DONE 2026-06-27: verrouillage optimiste sur `Document` (`locked_by`/`locked_at`, propriété `is_locked`) + actions `documents/<id>/check-out/` (409 si déjà verrouillé) et `check-in/` (locker ou admin) ; ajout de version refusé si verrouillé par un autre (select_for_update). Migration ged 0009 additive, 20 tests.]
 - [ ] GED17 — Cycle de vie documentaire (brouillon→revue→approuvé→archivé→obsolète). (SCHEMA+DECISION)
 - [ ] GED18 — Workflow d'approbation/revue. (SCHEMA)
 - [ ] GED19 — ACL par dossier/document (héritage + override). (SCHEMA+DECISION)
@@ -986,7 +986,7 @@ these overlap and SUPERSEDE the domain-list FG items as the module-organized hom
 - [x] FLOTTE5 — Référence d'actif commune (Vehicule|Engin) pour entretien/sinistre/doc. (DECISION)
 - [x] FLOTTE6 — Référentiels listes (type véhicule/engin, énergie, catégorie permis). (SCHEMA)
 - [x] FLOTTE7 — `Conducteur` + permis (lien `authentication.User`). (SCHEMA) [DONE 2026-06-27: `flotte.Conducteur` (company forcé, user FK nullable→authentication.User `related_name=conducteurs_flotte`, numero/categorie permis, dates obtention/expiration, actif) + company-scoped viewset, `?actif`/`?permis_expirant=<jours>` filters, selectors conducteurs_de_la_societe/permis_expirant. Migration flotte 0006 additive, 17 tests.]
-- [ ] FLOTTE8 — `AffectationConducteur` (conducteur↔véhicule datée). (ROUTINE)
+- [x] FLOTTE8 — `AffectationConducteur` (conducteur↔véhicule datée). (ROUTINE) [DONE 2026-06-27: `flotte.AffectationConducteur` (company forcé, FK Conducteur + Vehicule, date_debut/date_fin, actif) + viewset company-scoped + filtres ?vehicule/?conducteur/?actif + selectors (conducteur actuel du véhicule). Validation date_fin ≥ date_debut + intégrité cross-company. Migration flotte 0007 additive, 25 tests.]
 - [ ] FLOTTE9 — Contrôle permis valide/catégorie à l'affectation. (ROUTINE)
 - [ ] FLOTTE10 — `ReservationVehicule` + détection de conflit. (ROUTINE)
 - [ ] FLOTTE11 — Check-list état des lieux départ/retour (photos). (SCHEMA)
@@ -1033,7 +1033,7 @@ these overlap and SUPERSEDE the domain-list FG items as the module-organized hom
 - [x] QHSE14 — Chatter QHSE (NCR/CAPA/Incident/Audit). (SCHEMA) [DONE 2026-06-22: Chatter QHSE (QhseChatterEntry + auto-log create/field-change + historique/noter); migration 0008; 9 tests.]
 - [x] QHSE15 — `GrilleAudit` + `CritereAudit` pondérés. (SCHEMA) [DONE 2026-06-22: GrilleAudit + CritereAudit pondérés (poids_total/note_max); migration 0009; 8 tests.]
 - [x] QHSE16 — `Audit` + `ReponseCritere` + score (→ NCR). (SCHEMA) [DONE 2026-06-27: `qhse.Audit` (company forcé, grille FK, date/auditeur/statut/score/notes) + `ReponseCritere` (audit+critere, conforme/non_conforme/na, UniqueConstraint audit+critère) over the existing GrilleAudit/CritereAudit template; services calculer_score_audit (% conforme, NA exclu) + lever_ncr_audit (idempotent NonConformité par réponse non-conforme); company-scoped viewsets + `/calculer-score/` `/lever-ncr/` actions, Audit registered for chatter. Migration qhse 0010 additive, 14 tests.]
-- [ ] QHSE17 — Grille de notation fin de chantier (gate clôture). (DECISION)
+- [x] QHSE17 — Grille de notation fin de chantier (gate clôture). (DECISION) [DONE 2026-06-27: `qhse.NotationFinChantier` (company forcé, chantier lâche, score 0-100, seuil_passage défaut 70, verdict passe/échec, auteur serveur) + `ItemNotation` (items pondérés) + service `calculer_score_notation` + selector-gate `chantier_peut_cloturer(chantier_id, company)` (advisory, ne bloque aucun flux existant — câblage installations = futur). Migration qhse 0011 additive, tests.]
 - [ ] QHSE18 — `ProcedureQualite` versionnée (docs qualité GED). (SCHEMA)
 - [ ] QHSE19 — `RetourClientQualite` (satisfaction qualité). (SCHEMA)
 - [ ] QHSE20 — Tableau de bord « ISO 9001 readiness ». (ROUTINE)
@@ -1067,7 +1067,7 @@ these overlap and SUPERSEDE the domain-list FG items as the module-organized hom
 - [x] CONTRAT5 — Wrap de `sav.ContratMaintenance` (lecture/lien, ne casse pas). (ROUTINE)
 - [x] CONTRAT6 — Niveaux de confidentialité + droits d'accès par type. (DECISION)
 - [x] CONTRAT7 — `ModeleContrat` (bibliothèque de modèles). (SCHEMA) [DONE 2026-06-27: `contrats.ModeleContrat` (company forcé, nom/categorie/type_contrat_defaut/corps/clauses/devise/confidentialite/actif/ordre, `related_name=contrats_modeles`) + company-scoped viewset, `?actif`/`?categorie`/`?search` filters, `/instancier/` action creating a pre-filled `Contrat`. Migration contrats 0006 additive, 18 tests.]
-- [ ] CONTRAT8 — `Clause` (bibliothèque de clauses réutilisables). (SCHEMA)
+- [x] CONTRAT8 — `Clause` (bibliothèque de clauses réutilisables). (SCHEMA) [DONE 2026-06-27: `contrats.Clause` (company forcé, titre/categorie/type_clause/corps/ordre/actif) + through-model `ModeleContratClause` (clauses ordonnées rattachées à un `ModeleContrat`, unique modele+clause) + viewsets company-scoped + filtres. Migration contrats 0007 additive, tests.]
 - [ ] CONTRAT9 — `ClauseContrat` (clauses résolues, ordonnées, surchargeables). (SCHEMA)
 - [ ] CONTRAT10 — Génération du contrat par fusion (merge tokens). (ROUTINE)
 - [ ] CONTRAT11 — Rendu PDF interne du contrat (hors `/proposal`). (ROUTINE)
@@ -1487,6 +1487,13 @@ Tracked here so they aren't lost:
 - 2026-06-27 — COMPTA1 verified already-present: `compta.PlanComptable` + `CompteComptable` (CGNC, hierarchy, unique (company,code)) + idempotent `seed_plan_comptable` + viewsets/tests already on `main` (compta 0001). Ticked `[x] (already present)`, no code change.
 - 2026-06-27 — LITIGE3 done: `Reclamation.bloque_relances` + `litiges.relances_suspendues_pour_facture` selector; `ventes.relance_reminders` skips factures en litige via a function-local litiges import (import-linter 4/4). No change without a dispute. Migration litiges 0003. 12 tests.
 - 2026-06-27 — Run note: waves 2+3 of the parallel worktree drain (9 more file-disjoint apps: ged/gestion_projet/crm/notifications + sav/kb/reporting/publicapi/installations). No new external/paid dependency; no auth change; all migrations additive & revertable. Validated via the docker CI harness (makemigrations --check clean, flake8 clean, import-linter 4/4, affected-app tests green). Bugs caught+fixed pre-merge: a French apostrophe in a single-quoted Python string (gestion_projet), model↔migration field drift (ged/gestion_projet), and several flake8 unused-import / ambiguous-name issues. NOTE: local docker harness can't sign MinIO PutObject (pre-existing crm `/proposal` PDF + VAPID tests fail locally only — they pass in CI, as proven by PR #265).
+- 2026-06-27 — PAIE15 done: prime d'ancienneté barème (editable seuils/taux on ParametrePaie) wired into calculer_bulletin; hire date via new `rh.date_embauche_employe` selector. Migration paie 0008.
+- 2026-06-27 — CONTRAT8 done: `contrats.Clause` reusable clause library + `ModeleContratClause` ordered link to templates. Migration contrats 0007.
+- 2026-06-27 — FLOTTE8 done: `flotte.AffectationConducteur` (dated driver↔vehicle) + current-driver selector. Migration flotte 0007.
+- 2026-06-27 — GED16 done: document check-out/check-in optimistic locking (`locked_by`/`locked_at`, 409 on conflict, new-version blocked while locked). Migration ged 0009.
+- 2026-06-27 — QHSE17 done: `qhse.NotationFinChantier` + items + `chantier_peut_cloturer` advisory gate selector. Migration qhse 0011.
+- 2026-06-27 — PROJ16 done: `gestion_projet.AffectationRessource` (profil/équipe/actif-flotte via string-FK, exactly-one-kind validated). Migration gestion_projet 0011.
+- 2026-06-27 — Run note: wave 5 (6 module-extension lanes — paie/contrats/flotte/ged/qhse/gestion_projet, +1 rh selector) built after waves 1-4 merged, so the base now carried prior migrations (collision-free reuse of module lanes). All additive, multi-tenant, tested; validated on the docker harness (drift clean, flake8 clean, import-linter 4/4). Bugs caught+fixed pre-merge: PROJ16 migration drift (regenerated) + flake8 unused-import/ambiguous-name.
 - 2026-06-20 — N108 done: uploads bucket self-heal — best-effort `ensure_uploads_bucket()` beside `get_minio_client` (mirrors `_ensure_pdf_bucket`), called before every write to `erp-uploads` (records/avatars/logo-signature); fixes the live HTTP-500 NoSuchBucket; new bucket-absent test; premium engine untouched.
 - 2026-06-20 — N109 done: Web Push activated — `pywebpush==2.0.3` pinned (http-ece sdist builds via Dockerfile pip/setuptools upgrade), `VAPID_AUTOGENERATE` gated off under the test runner, `notifications.VapidKeyPair` singleton auto-generates+persists a P-256 keypair (private never committed), endpoint serves it so the frontend banner clears; env keys take precedence; push best-effort. Empty-keys tests preserved + 3 new tests.
 - 2026-06-20 — N110 done: role-change NOT reproducible (backend correct + already tested); no code change; added `tests_role_change.py` (4 tests) + documented the likely live cause (stale JWT menu_tier / drifted acting-account role → run init_roles + re-login).

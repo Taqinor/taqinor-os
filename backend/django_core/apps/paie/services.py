@@ -68,6 +68,19 @@ PARAMETRES_DEFAUT_2026 = {
     'taux_hs_jour': Decimal('25'),
     'taux_hs_nuit': Decimal('50'),
     'taux_hs_ferie': Decimal('100'),
+    # PAIE15 — Barème d'ancienneté (cadre marocain standard).
+    # 5 % après 2 ans, 10 % après 5 ans, 15 % après 12 ans,
+    # 20 % après 20 ans, 25 % après 25 ans.
+    'anciennete_seuil_1': 2,
+    'anciennete_taux_1': Decimal('5'),
+    'anciennete_seuil_2': 5,
+    'anciennete_taux_2': Decimal('10'),
+    'anciennete_seuil_3': 12,
+    'anciennete_taux_3': Decimal('15'),
+    'anciennete_seuil_4': 20,
+    'anciennete_taux_4': Decimal('20'),
+    'anciennete_seuil_5': 25,
+    'anciennete_taux_5': Decimal('25'),
 }
 
 # ── Barème IR mensuel 2026 (TrancheIR) ──────────────────────────────────────
@@ -508,6 +521,85 @@ def calculer_salaire_base_periode(profil, periode, elements=None):
     return _q(salaire_base)
 
 
+# ── PAIE15 — Prime d'ancienneté ───────────────────────────────────────────
+
+def taux_anciennete(parametre, annees):
+    """Taux d'ancienneté (%) applicable pour ``annees`` années de présence.
+
+    Barème marocain par défaut (éditable sur ``ParametrePaie``) :
+
+    * < seuil 1  → 0 %
+    * >= seuil 1 → taux_1  (par défaut 5 % après 2 ans)
+    * >= seuil 2 → taux_2  (par défaut 10 % après 5 ans)
+    * >= seuil 3 → taux_3  (par défaut 15 % après 12 ans)
+    * >= seuil 4 → taux_4  (par défaut 20 % après 20 ans)
+    * >= seuil 5 → taux_5  (par défaut 25 % après 25 ans)
+
+    Renvoie un ``Decimal``. Renvoie 0 si ``annees < seuil_1`` ou si
+    ``parametre`` est ``None``.
+    """
+    if parametre is None:
+        return Decimal('0')
+    annees = int(annees or 0)
+    # On parcourt les seuils du plus élevé au plus bas pour trouver le palier.
+    niveaux = [
+        (int(parametre.anciennete_seuil_5 or 25), Decimal(parametre.anciennete_taux_5 or 25)),
+        (int(parametre.anciennete_seuil_4 or 20), Decimal(parametre.anciennete_taux_4 or 20)),
+        (int(parametre.anciennete_seuil_3 or 12), Decimal(parametre.anciennete_taux_3 or 15)),
+        (int(parametre.anciennete_seuil_2 or 5),  Decimal(parametre.anciennete_taux_2 or 10)),
+        (int(parametre.anciennete_seuil_1 or 2),  Decimal(parametre.anciennete_taux_1 or 5)),
+    ]
+    for seuil, taux in niveaux:
+        if annees >= seuil:
+            return taux
+    return Decimal('0')
+
+
+def calculer_anciennete_annees(date_embauche, le_jour):
+    """Nombre d'années COMPLÈTES d'ancienneté à la date ``le_jour``.
+
+    Renvoie 0 si ``date_embauche`` est ``None`` ou postérieure à ``le_jour``.
+    Calcul exact : on compare l'anniversaire pour tenir compte des années
+    bissextiles (pas une simple division par 365).
+    """
+    if date_embauche is None or date_embauche > le_jour:
+        return 0
+    annees = le_jour.year - date_embauche.year
+    # Soustraire 1 si l'anniversaire de cette année n'est pas encore atteint.
+    # Gestion du 29 fév (embauche en année bissextile) : en année non-bissextile,
+    # l'anniversaire est ramené au 28 fév.
+    try:
+        anniversaire_cette_annee = date_embauche.replace(year=le_jour.year)
+    except ValueError:
+        # 29 fév → 28 fév dans une année non-bissextile.
+        anniversaire_cette_annee = date_embauche.replace(year=le_jour.year, day=28)
+    if anniversaire_cette_annee > le_jour:
+        annees -= 1
+    return max(0, annees)
+
+
+def calculer_prime_anciennete(profil, base, anciennete_annees, parametre):
+    """Prime d'ancienneté pour un profil sur une base donnée (PAIE15).
+
+    Formule : ``base × taux_anciennete(annees) / 100``.
+
+    * ``profil`` — ``ProfilPaie`` de l'employé.
+    * ``base`` — salaire de base servant d'assiette (brut de base, *avant*
+      éléments variables) ; généralement ``profil.salaire_base`` ou le salaire
+      proraté déjà calculé.
+    * ``anciennete_annees`` — nombre d'années d'ancienneté complètes.
+    * ``parametre`` — ``ParametrePaie`` en vigueur (barème).
+
+    Renvoie un ``Decimal`` >= 0 arrondi au centime. Retourne 0 quand le taux
+    résolu est 0 (ancienneté insuffisante) — aucun effet sur le bulletin.
+    """
+    taux = taux_anciennete(parametre, anciennete_annees)
+    if taux == 0:
+        return Decimal('0.00')
+    prime = Decimal(base) * taux / Decimal('100')
+    return _q(prime)
+
+
 # ── PAIE14 — Heures supplémentaires majorées ───────────────────────────────
 
 def taux_majoration_hs(parametre, categorie_hs):
@@ -657,6 +749,26 @@ def calculer_bulletin(profil, periode, personnes_a_charge=0):
     # PAIE14 — Taux horaire de base pour la majoration des HS.
     _taux_h_base = taux_horaire_base_profil(profil)
 
+    # PAIE15 — Prime d'ancienneté : calculée sur le salaire de base proraté,
+    # à partir de la date d'embauche lue via le sélecteur RH (cross-app).
+    prime_anciennete = Decimal('0')
+    if parametre is not None:
+        from apps.rh import selectors as rh_selectors  # import paresseux cross-app
+        date_embauche = rh_selectors.date_embauche_employe(
+            profil.company, profil.employe_id)
+        anciennete_annees = calculer_anciennete_annees(date_embauche, le_jour)
+        prime_anciennete = calculer_prime_anciennete(
+            profil, salaire_base, anciennete_annees, parametre)
+    if prime_anciennete > 0:
+        gains_variables += prime_anciennete
+        gains_imposables += prime_anciennete  # la prime d'ancienneté est imposable
+        lignes.append({
+            'code': 'ANCIENNETE',
+            'libelle': "Prime d'ancienneté",
+            'type': Rubrique.TYPE_GAIN,
+            'montant': prime_anciennete,
+        })
+
     for el in elements:
         montant = Decimal(el.montant or 0)
         imposable = el.rubrique.imposable if el.rubrique_id else True
@@ -752,5 +864,6 @@ def calculer_bulletin(profil, periode, personnes_a_charge=0):
         'ir': ir,
         'retenues': _q(retenues_variables),
         'net_a_payer': net_a_payer,
+        'prime_anciennete': prime_anciennete,
         'lignes': lignes,
     }

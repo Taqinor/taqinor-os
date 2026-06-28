@@ -300,3 +300,80 @@ def create_document(*, company, folder, nom, description='', created_by=None):
     return Document.objects.create(
         company=company, folder=folder, nom=nom,
         description=description, created_by=created_by)
+
+
+# ── GED16 — Check-out / check-in (verrouillage optimiste) ──────────
+
+def checkout_document(document, user):
+    """GED16 — Pose un verrou sur un document (check-out).
+
+    Si le document est LIBRE (locked_by == None), pose locked_by=user et
+    locked_at=now dans une transaction sérialisée (select_for_update) pour
+    éviter les doubles check-out simultanés.
+
+    Si le document est déjà verrouillé PAR UN AUTRE utilisateur, lève
+    PermissionError (→ 409 dans la vue). Si le même utilisateur re-check-out
+    son propre document, l'opération est idempotente.
+
+    Multi-tenant : vérifie que user.company_id == document.company_id.
+    """
+    from django.utils import timezone
+    if document.company_id != user.company_id:
+        raise PermissionError("Document inaccessible.")
+    with transaction.atomic():
+        doc = Document.objects.select_for_update().get(pk=document.pk)
+        if doc.locked_by_id is not None and doc.locked_by_id != user.pk:
+            raise PermissionError(
+                "Le document est déjà extrait par un autre utilisateur.")
+        if doc.locked_by_id == user.pk:
+            # Déjà verrouillé par ce même utilisateur — idempotent.
+            return doc
+        doc.locked_by = user
+        doc.locked_at = timezone.now()
+        doc.save(update_fields=['locked_by', 'locked_at', 'updated_at'])
+    document.locked_by = doc.locked_by
+    document.locked_at = doc.locked_at
+    return doc
+
+
+def checkin_document(document, user):
+    """GED16 — Libère le verrou d'un document (check-in).
+
+    Seul le détenteur du verrou OU un administrateur peut libérer le verrou.
+    Si le document est déjà libre, l'opération est silencieusement idempotente.
+
+    Multi-tenant : vérifie que user.company_id == document.company_id.
+    """
+    if document.company_id != user.company_id:
+        raise PermissionError("Document inaccessible.")
+    with transaction.atomic():
+        doc = Document.objects.select_for_update().get(pk=document.pk)
+        if doc.locked_by_id is None:
+            # Déjà libre — idempotent.
+            return doc
+        is_locker = doc.locked_by_id == user.pk
+        is_admin = getattr(user, 'is_admin_role', False) or user.is_superuser
+        if not is_locker and not is_admin:
+            raise PermissionError(
+                "Seul le détenteur du verrou ou un administrateur peut "
+                "libérer ce document.")
+        doc.locked_by = None
+        doc.locked_at = None
+        doc.save(update_fields=['locked_by', 'locked_at', 'updated_at'])
+    document.locked_by = None
+    document.locked_at = None
+    return doc
+
+
+def assert_not_locked_by_other(document, user):
+    """GED16 — Garde : rejette si document verrouillé par un autre utilisateur.
+
+    À appeler avant add_version ou toute autre écriture sur le contenu du
+    document. Ne lève rien si le document est libre OU si c'est le détenteur
+    du verrou qui écrit.
+    """
+    if document.locked_by_id is not None and document.locked_by_id != user.pk:
+        raise PermissionError(
+            "Le document est extrait par un autre utilisateur. "
+            "Attendez le check-in avant de téléverser une nouvelle version."
+        )

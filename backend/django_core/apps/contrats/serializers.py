@@ -6,7 +6,7 @@ serveur.
 """
 from rest_framework import serializers
 
-from .models import Contrat, ContratLien, ModeleContrat, PartieContrat
+from .models import Clause, Contrat, ContratLien, ModeleContrat, ModeleContratClause, PartieContrat
 
 
 class ContratSerializer(serializers.ModelSerializer):
@@ -113,6 +113,61 @@ class ModeleContratSerializer(serializers.ModelSerializer):
             'actif', 'ordre', 'date_creation',
         ]
         read_only_fields = ['date_creation']
+
+
+class ClauseSerializer(serializers.ModelSerializer):
+    """Sérialiseur d'une ``Clause`` (bibliothèque de clauses — CONTRAT8).
+
+    ``company`` n'est jamais exposée en écriture : posée côté serveur.
+    ``type_clause_display`` est en lecture seule.
+    """
+
+    type_clause_display = serializers.CharField(
+        source="get_type_clause_display", read_only=True
+    )
+
+    class Meta:
+        model = Clause
+        fields = [
+            "id",
+            "titre",
+            "categorie",
+            "type_clause",
+            "type_clause_display",
+            "corps",
+            "ordre",
+            "actif",
+            "date_creation",
+        ]
+        read_only_fields = ["date_creation"]
+
+
+class ModeleContratClauseSerializer(serializers.ModelSerializer):
+    """Sérialiseur d'une liaison ``ModeleContratClause`` (CONTRAT8).
+
+    Permet de rattacher / ordonner des ``Clause`` sur un ``ModeleContrat``.
+    ``company`` est posée côté serveur ; ``modele`` et ``clause`` sont validés
+    comme appartenant à la même société que l'utilisateur.
+    """
+
+    class Meta:
+        model = ModeleContratClause
+        fields = ["id", "modele", "clause", "ordre"]
+
+    def _validate_tenant(self, obj, field_name):
+        """Vérifie que l'objet appartient à la société de l'utilisateur."""
+        request = self.context.get("request")
+        if request is not None and obj.company_id != request.user.company_id:
+            raise serializers.ValidationError(
+                f"Ce {field_name} n'appartient pas à votre société."
+            )
+        return obj
+
+    def validate_modele(self, modele):
+        return self._validate_tenant(modele, "modèle de contrat")
+
+    def validate_clause(self, clause):
+        return self._validate_tenant(clause, "clause")
 
 
 class InstancierContratSerializer(serializers.Serializer):

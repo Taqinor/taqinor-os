@@ -101,6 +101,35 @@ class ParametrePaie(models.Model):
     taux_hs_ferie = models.DecimalField(
         max_digits=6, decimal_places=2, default=Decimal('100'),
         verbose_name='Majoration HS férié/dimanche (%)')
+    # PAIE15 — Barème d'ancienneté (prime d'ancienneté marocaine).
+    # Barème standard : 5 % après 2 ans, 10 % après 5 ans, 15 % après 12 ans,
+    # 20 % après 20 ans, 25 % après 25 ans. Exprimés en années (seuils)
+    # et en pourcentage (taux). Éditables par société.
+    anciennete_seuil_1 = models.PositiveSmallIntegerField(
+        default=2, verbose_name="Ancienneté seuil 1 (années)")
+    anciennete_taux_1 = models.DecimalField(
+        max_digits=6, decimal_places=2, default=Decimal('5'),
+        verbose_name="Taux ancienneté seuil 1 (%)")
+    anciennete_seuil_2 = models.PositiveSmallIntegerField(
+        default=5, verbose_name="Ancienneté seuil 2 (années)")
+    anciennete_taux_2 = models.DecimalField(
+        max_digits=6, decimal_places=2, default=Decimal('10'),
+        verbose_name="Taux ancienneté seuil 2 (%)")
+    anciennete_seuil_3 = models.PositiveSmallIntegerField(
+        default=12, verbose_name="Ancienneté seuil 3 (années)")
+    anciennete_taux_3 = models.DecimalField(
+        max_digits=6, decimal_places=2, default=Decimal('15'),
+        verbose_name="Taux ancienneté seuil 3 (%)")
+    anciennete_seuil_4 = models.PositiveSmallIntegerField(
+        default=20, verbose_name="Ancienneté seuil 4 (années)")
+    anciennete_taux_4 = models.DecimalField(
+        max_digits=6, decimal_places=2, default=Decimal('20'),
+        verbose_name="Taux ancienneté seuil 4 (%)")
+    anciennete_seuil_5 = models.PositiveSmallIntegerField(
+        default=25, verbose_name="Ancienneté seuil 5 (années)")
+    anciennete_taux_5 = models.DecimalField(
+        max_digits=6, decimal_places=2, default=Decimal('25'),
+        verbose_name="Taux ancienneté seuil 5 (%)")
     actif = models.BooleanField(default=True, verbose_name='Actif')
     # PAIE3 — Validation fondateur des valeurs légales par défaut. Les valeurs
     # 2026 sont préremplies par le seed mais restent ÉDITABLES ; tant que le

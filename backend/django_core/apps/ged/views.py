@@ -184,9 +184,13 @@ class DocumentViewSet(TenantMixin, viewsets.ModelViewSet):
     ordering_fields = ['nom', 'created_at', 'updated_at']
 
     def get_permissions(self):
-        # `recherche`/`semantique`/`historique` sont des lectures : tout rôle.
+        # `recherche`/`semantique`/`historique`/`check_out`/`check_in` lisibles
+        # par tout rôle authentifié ; écriture réservée aux responsables/admins.
         if self.action in READ_ACTIONS or self.action in (
                 'recherche', 'semantique', 'historique'):
+            return [IsAnyRole()]
+        # check_out/check_in : tout rôle peut extraire/libérer ses propres docs.
+        if self.action in ('check_out', 'check_in'):
             return [IsAnyRole()]
         return [IsResponsableOrAdmin()]
 
@@ -296,6 +300,16 @@ class DocumentViewSet(TenantMixin, viewsets.ModelViewSet):
             company=company, folder=folder, nom=nom,
             description=(request.data.get('description') or '').strip(),
             created_by=request.user)
+        # GED16 — vérifie que le document n'est pas extrait par un autre
+        # utilisateur avant d'ajouter la version (televerser crée doc+v1 en
+        # même temps, donc le document n'est jamais verrouillé ici — garde
+        # conservatrice incluse pour les cas edge de re-creation).
+        try:
+            services.assert_not_locked_by_other(document, request.user)
+        except PermissionError as exc:
+            document.delete()
+            return Response({'detail': str(exc)},
+                            status=status.HTTP_409_CONFLICT)
         # 4) version 1 (numéro + uploaded_by + company posés côté serveur).
         services.add_version(
             document, file_key=meta['file_key'], company=company,
@@ -432,6 +446,45 @@ class DocumentViewSet(TenantMixin, viewsets.ModelViewSet):
                 new_version, context={'request': request}).data,
             status=status.HTTP_201_CREATED)
 
+    @action(detail=True, methods=['post'], url_path='check-out')
+    def check_out(self, request, pk=None):
+        """GED16 — Extrait un document (pose le verrou de check-out).
+
+        `POST …/documents/<id>/check-out/` — aucun corps requis.
+
+        Si le document est libre, il est verrouillé pour l'utilisateur courant.
+        Si le document est déjà extrait PAR LE MÊME utilisateur, idempotent (200).
+        Si extrait par un autre utilisateur, renvoie 409 Conflict.
+        """
+        document = self.get_object()
+        try:
+            doc = services.checkout_document(document, request.user)
+        except PermissionError as exc:
+            return Response(
+                {'detail': str(exc)}, status=status.HTTP_409_CONFLICT)
+        doc.refresh_from_db()
+        return Response(
+            DocumentSerializer(doc, context={'request': request}).data)
+
+    @action(detail=True, methods=['post'], url_path='check-in')
+    def check_in(self, request, pk=None):
+        """GED16 — Libère le verrou d'un document (check-in).
+
+        `POST …/documents/<id>/check-in/` — aucun corps requis.
+
+        Seul le détenteur du verrou OU un administrateur peut libérer le verrou.
+        Si le document est déjà libre, idempotent (200).
+        """
+        document = self.get_object()
+        try:
+            doc = services.checkin_document(document, request.user)
+        except PermissionError as exc:
+            return Response(
+                {'detail': str(exc)}, status=status.HTTP_403_FORBIDDEN)
+        doc.refresh_from_db()
+        return Response(
+            DocumentSerializer(doc, context={'request': request}).data)
+
 
 class DocumentVersionViewSet(TenantMixin, viewsets.ModelViewSet):
     """Versions d'un document. Le numéro de version et `uploaded_by` sont posés
@@ -460,6 +513,13 @@ class DocumentVersionViewSet(TenantMixin, viewsets.ModelViewSet):
     def perform_create(self, serializer):
         # Numéro de version auto-incrémenté + company/uploaded_by côté serveur.
         document = serializer.validated_data['document']
+        # GED16 — bloque l'ajout d'une version si le document est extrait par
+        # un autre utilisateur.
+        try:
+            services.assert_not_locked_by_other(document, self.request.user)
+        except PermissionError as exc:
+            from rest_framework.exceptions import PermissionDenied
+            raise PermissionDenied(str(exc))
         v = serializer.validated_data
         instance = services.add_version(
             document,

@@ -21,7 +21,8 @@ phase). Le câblage éventuel vers l'avancement chantier de ``installations`` es
 un suivi à part : un appelant consulte cette porte, il ne la franchit pas ici.
 """
 from .models import (
-    ActionCorrectivePreventive, ReleveControle, ReleveCourbeIV,
+    ActionCorrectivePreventive, NotationFinChantier, ReleveControle,
+    ReleveCourbeIV,
 )
 
 
@@ -193,3 +194,48 @@ def capa_en_retard(company, today=None):
                     statut__in=STATUTS_CAPA_OUVERTS)
             .select_related('non_conformite', 'responsable')
             .order_by('echeance', 'id'))
+
+
+# ── QHSE17 — Gate de clôture (grille de notation fin de chantier) ───────────
+
+def chantier_peut_cloturer(chantier_id, company):
+    """Gate advisory : le chantier est-il autorisé à clôturer ?
+
+    Consulte la notation fin de chantier (``NotationFinChantier``) la plus récente
+    pour ce chantier et cette société. Renvoie ``True`` si :
+
+    * aucune notation n'a encore été créée pour ce chantier (pas de blocage par
+      défaut — la gate est advisory, non bloquante) ;
+    * OU la notation la plus récente a un ``verdict = 'passe'``.
+
+    Renvoie ``False`` uniquement si la notation la plus récente existe avec un
+    ``verdict = 'echec'`` (score < seuil_passage). Un verdict ``None`` (score pas
+    encore calculé) est traité comme un non-blocage (la gate n'est advisory que
+    sur un verdict calculé).
+
+    Aucun import cross-app : référence lâche par ``chantier_id``. Lecture seule.
+    """
+    notation = (
+        NotationFinChantier.objects
+        .filter(company=company, chantier_id=chantier_id)
+        .order_by('-id')
+        .first()
+    )
+    if notation is None:
+        return True
+    if notation.verdict == NotationFinChantier.Verdict.ECHEC:
+        return False
+    return True
+
+
+def notation_fin_chantier_latest(chantier_id, company):
+    """Notation fin de chantier la plus récente d'un chantier (ou None).
+
+    Lecture seule, scopée société. Référence lâche par ``chantier_id``.
+    """
+    return (
+        NotationFinChantier.objects
+        .filter(company=company, chantier_id=chantier_id)
+        .order_by('-id')
+        .first()
+    )

@@ -765,6 +765,7 @@ class ReponseCritere(models.Model):
 
     Multi-société via ``company`` posée côté serveur. Entièrement additif.
     """
+
     class Resultat(models.TextChoices):
         CONFORME = 'conforme', 'Conforme'
         NON_CONFORME = 'non_conforme', 'Non conforme'
@@ -818,3 +819,127 @@ class ReponseCritere(models.Model):
             f'{self.critere.intitule} → {self.get_resultat_display()}'
             f' (audit {self.audit_id})'
         )
+
+
+# ── QHSE17 — Grille de notation fin de chantier (gate clôture) ──────────────
+
+class NotationFinChantier(models.Model):
+    """Grille de notation de fin de chantier (gate de clôture).
+
+    Évalue la qualité d'un chantier solaire avant sa clôture sur une rubrique
+    pondérée : sécurité, qualité de pose, nettoyage, documents remis, satisfaction
+    client. Le ``score`` (0–100, % pondéré des items conformes) est calculé à la
+    création / mise à jour via le service ``calculer_score_notation`` ; le
+    ``verdict`` (``passe`` / ``echec``) est dérivé automatiquement du seuil de la
+    rubrique (``seuil_passage``, défaut 70). Le sélecteur
+    ``chantier_peut_cloturer`` consulte cette porte avant la clôture — il ne
+    bloque rien par lui-même ; le câblage dans ``installations`` est un suivi
+    futur (QHSE17 advisory gate).
+
+    Référence lâche au chantier (``chantier_id``) — jamais un import cross-app de
+    ``installations.models``. Multi-société via ``company`` posée côté serveur.
+    Entièrement additif.
+    """
+
+    # Seuil de passage par défaut (pourcentage de score minimal pour que le
+    # chantier soit autorisé à clôturer).
+    SEUIL_PASSAGE_DEFAUT = 70
+
+    class Verdict(models.TextChoices):
+        PASSE = 'passe', 'Passé'
+        ECHEC = 'echec', 'Échec'
+
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='qhse_notations_fin_chantier',
+        verbose_name='Société',
+    )
+    # Référence lâche au chantier (installations.Chantier) par id : jamais un
+    # import cross-app de modèle.
+    chantier_id = models.PositiveIntegerField(verbose_name='ID du chantier')
+    date_notation = models.DateField(
+        null=True, blank=True, verbose_name='Date de notation')
+    auteur = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='qhse_notations_fin_chantier',
+        verbose_name='Auteur',
+    )
+    # Score calculé (% pondéré, 0–100, 2 décimales). Null = non encore calculé.
+    score = models.DecimalField(
+        max_digits=5, decimal_places=2,
+        null=True, blank=True, verbose_name='Score (%)')
+    # Seuil de passage paramétrable (%, entier). Score ≥ seuil → PASSE.
+    seuil_passage = models.PositiveIntegerField(
+        default=SEUIL_PASSAGE_DEFAUT, verbose_name='Seuil de passage (%)')
+    # Verdict dérivé du score vs seuil. Null = pas encore calculé.
+    verdict = models.CharField(
+        max_length=6, choices=Verdict.choices,
+        null=True, blank=True, verbose_name='Verdict')
+    notes = models.TextField(
+        blank=True, default='', verbose_name='Notes')
+    date_creation = models.DateTimeField(
+        auto_now_add=True, verbose_name='Créé le')
+
+    class Meta:
+        verbose_name = 'Notation fin de chantier'
+        verbose_name_plural = 'Notations fin de chantier'
+        ordering = ['-id']
+        indexes = [
+            models.Index(
+                fields=['company', 'chantier_id'],
+                name='qhse_notation_co_chantier',
+            ),
+        ]
+
+    def __str__(self):
+        score_str = f'{self.score}%' if self.score is not None else '—'
+        return f"Notation chantier {self.chantier_id} — {score_str}"
+
+
+class ItemNotation(models.Model):
+    """Item de notation fin de chantier (rubrique pondérée).
+
+    Représente un critère de la grille de fin de chantier (ex. « sécurité du
+    chantier », « qualité de câblage », « nettoyage », « documents remis »,
+    « satisfaction client »). Chaque item porte un ``intitule``, un ``poids``
+    (pondération relative) et un résultat : ``conforme`` (True/False/null).
+
+    Le service ``calculer_score_notation`` agrège les items conformes pondérés de
+    la notation parente pour calculer le ``score`` et le ``verdict``. Multi-société
+    via ``company`` posée côté serveur.
+    """
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='qhse_items_notation',
+        verbose_name='Société',
+    )
+    notation = models.ForeignKey(
+        NotationFinChantier,
+        on_delete=models.CASCADE,
+        related_name='items',
+        verbose_name='Notation fin de chantier',
+    )
+    intitule = models.CharField(max_length=255, verbose_name='Intitulé')
+    categorie = models.CharField(
+        max_length=120, blank=True, default='', verbose_name='Catégorie')
+    poids = models.PositiveIntegerField(default=1, verbose_name='Poids')
+    conforme = models.BooleanField(
+        null=True, blank=True, verbose_name='Conforme')
+    commentaire = models.TextField(
+        blank=True, default='', verbose_name='Commentaire')
+    ordre = models.PositiveIntegerField(default=0, verbose_name='Ordre')
+    date_creation = models.DateTimeField(
+        auto_now_add=True, verbose_name='Créé le')
+
+    class Meta:
+        verbose_name = 'Item de notation fin de chantier'
+        verbose_name_plural = 'Items de notation fin de chantier'
+        ordering = ['notation', 'ordre', 'id']
+
+    def __str__(self):
+        etat = 'conforme' if self.conforme else ('NC' if self.conforme is False else '?')
+        return f'{self.intitule} [{etat}] (poids {self.poids})'

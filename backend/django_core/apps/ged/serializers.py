@@ -197,6 +197,10 @@ class DocumentSerializer(serializers.ModelSerializer):
     version_count = serializers.SerializerMethodField()
     derniere_version = serializers.SerializerMethodField()
     tags = serializers.SerializerMethodField()
+    # GED16 — état du verrou (lecture seule, posé côté serveur).
+    locked_by_nom = serializers.CharField(
+        source='locked_by.username', read_only=True, default=None)
+    is_locked = serializers.BooleanField(read_only=True)
 
     class Meta:
         model = Document
@@ -204,9 +208,14 @@ class DocumentSerializer(serializers.ModelSerializer):
         fields = [
             'id', 'folder', 'folder_nom', 'coffre', 'nom', 'description',
             'custom_data', 'created_by', 'created_by_nom', 'version_count',
-            'derniere_version', 'tags', 'created_at', 'updated_at',
+            'derniere_version', 'tags',
+            'locked_by', 'locked_by_nom', 'locked_at', 'is_locked',
+            'created_at', 'updated_at',
         ]
-        read_only_fields = ['created_by', 'created_at', 'updated_at']
+        read_only_fields = [
+            'created_by', 'created_at', 'updated_at',
+            'locked_by', 'locked_at', 'is_locked',
+        ]
 
     def get_version_count(self, obj):
         return obj.versions.count()

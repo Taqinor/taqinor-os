@@ -6,7 +6,14 @@ n'est jamais acceptée (multi-tenant).
 """
 from rest_framework import serializers
 
-from .models import ActifFlotte, Conducteur, EnginRoulant, ReferentielFlotte, Vehicule
+from .models import (
+    ActifFlotte,
+    AffectationConducteur,
+    Conducteur,
+    EnginRoulant,
+    ReferentielFlotte,
+    Vehicule,
+)
 
 
 class VehiculeSerializer(serializers.ModelSerializer):
@@ -212,5 +219,78 @@ class ActifFlotteSerializer(serializers.ModelSerializer):
             if has_engin and engin.company_id != company.id:
                 raise serializers.ValidationError(
                     {'engin': "Cet engin n'appartient pas à votre société."})
+
+        return attrs
+
+
+class AffectationConducteurSerializer(serializers.ModelSerializer):
+    """FLOTTE8 — Affectation datée conducteur ↔ véhicule.
+
+    ``company`` est posée côté serveur par le ``TenantMixin`` (jamais lue du
+    corps de requête). Les FKs ``conducteur`` et ``vehicule`` doivent appartenir
+    à la même société que l'utilisateur courant. La validation garantit que
+    ``date_fin >= date_debut`` quand ``date_fin`` est renseignée.
+
+    Champs lecture seule :
+    - ``conducteur_nom``  : nom complet du conducteur.
+    - ``vehicule_label``  : immatriculation + marque/modèle du véhicule.
+    """
+
+    conducteur_nom = serializers.SerializerMethodField()
+    vehicule_label = serializers.SerializerMethodField()
+
+    class Meta:
+        model = AffectationConducteur
+        fields = [
+            "id",
+            "conducteur",
+            "conducteur_nom",
+            "vehicule",
+            "vehicule_label",
+            "date_debut",
+            "date_fin",
+            "notes",
+            "actif",
+            "date_creation",
+        ]
+        read_only_fields = ["date_creation"]
+
+    def get_conducteur_nom(self, obj):
+        return str(obj.conducteur) if obj.conducteur_id else None
+
+    def get_vehicule_label(self, obj):
+        return str(obj.vehicule) if obj.vehicule_id else None
+
+    def validate(self, attrs):
+        """Valide la plage de dates et l'appartenance à la société courante."""
+        request = self.context.get("request")
+        company = getattr(getattr(request, "user", None), "company", None)
+
+        conducteur = attrs.get(
+            "conducteur", getattr(self.instance, "conducteur", None))
+        vehicule = attrs.get(
+            "vehicule", getattr(self.instance, "vehicule", None))
+        date_debut = attrs.get(
+            "date_debut", getattr(self.instance, "date_debut", None))
+        date_fin = attrs.get(
+            "date_fin", getattr(self.instance, "date_fin", None))
+
+        # Plage de dates : date_fin >= date_debut quand fournie.
+        if date_debut is not None and date_fin is not None:
+            if date_fin < date_debut:
+                raise serializers.ValidationError(
+                    {"date_fin": "La date de fin doit être postérieure ou égale"
+                     " à la date de début."})
+
+        # Vérification de société sur les FKs.
+        if company is not None:
+            if conducteur is not None and conducteur.company_id != company.id:
+                raise serializers.ValidationError(
+                    {"conducteur":
+                     "Ce conducteur n'appartient pas à votre société."})
+            if vehicule is not None and vehicule.company_id != company.id:
+                raise serializers.ValidationError(
+                    {"vehicule":
+                     "Ce véhicule n'appartient pas à votre société."})
 
         return attrs
