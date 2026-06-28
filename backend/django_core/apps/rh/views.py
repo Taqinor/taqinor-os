@@ -26,6 +26,7 @@ from .models import (
     DocumentEmploye,
     DossierEmploye,
     ElementSortie,
+    FeuilleTemps,
     Pointage,
     Poste,
     Remuneration,
@@ -38,6 +39,7 @@ from .serializers import (
     DocumentEmployeSerializer,
     DossierEmployeSerializer,
     ElementSortieSerializer,
+    FeuilleTempsSerializer,
     PointageSerializer,
     PosteSerializer,
     RemunerationSerializer,
@@ -374,6 +376,47 @@ class DemandeCongeViewSet(_RhBaseViewSet):
         qs = selectors.absences_equipe(request.user.company, debut, fin)
         serializer = self.get_serializer(qs, many=True)
         return Response(serializer.data)
+
+
+class FeuilleTempsViewSet(_RhBaseViewSet):
+    """Feuilles de temps par chantier (FG167) — heures imputées job-costing.
+
+    Société scopée + Administrateur/Responsable. ``company`` est posée côté
+    serveur ; ``employe`` doit appartenir à la même société. Filtres :
+    * ``?employe=<id>`` — feuilles d'un employé.
+    * ``?installation_id=<id>`` — feuilles d'une installation (chantier).
+    * ``?date=YYYY-MM-DD`` — feuilles d'un jour précis.
+    * ``?intervention_id=<id>`` — feuilles liées à une intervention SAV.
+    """
+    queryset = FeuilleTemps.objects.select_related('employe').all()
+    serializer_class = FeuilleTempsSerializer
+    filter_backends = [filters.OrderingFilter]
+    ordering_fields = ['date', 'heures', 'date_creation']
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        employe = self.request.query_params.get('employe')
+        if employe:
+            qs = qs.filter(employe_id=employe)
+        installation_id = self.request.query_params.get('installation_id')
+        if installation_id:
+            qs = qs.filter(installation_id=installation_id)
+        intervention_id = self.request.query_params.get('intervention_id')
+        if intervention_id:
+            qs = qs.filter(intervention_id=intervention_id)
+        date_str = self.request.query_params.get('date')
+        if date_str:
+            try:
+                from datetime import datetime
+                jour = datetime.strptime(date_str, '%Y-%m-%d').date()
+                qs = qs.filter(date=jour)
+            except (TypeError, ValueError):
+                pass
+        return qs
+
+    def perform_create(self, serializer):
+        """Company posée côté serveur. ``employe`` validé via le sérialiseur."""
+        serializer.save(company=self.request.user.company)
 
 
 class PointageViewSet(_RhBaseViewSet):
