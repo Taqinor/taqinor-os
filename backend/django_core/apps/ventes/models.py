@@ -1530,3 +1530,213 @@ class DevisNudgeLog(models.Model):
             f'NudgeLog devis={self.devis_id} niveau={self.niveau}'
             f' j+{self.jours} [{self.canal}]'
         )
+
+
+# ── FG245 — Éditeur de calepinage toiture (placement panneaux) ───────────────
+
+
+class RoofLayout(models.Model):
+    """Calepinage toiture : placement réaliste des modules sur un pan de toit.
+
+    Persiste une conception de calepinage attachée à un Devis : la surface
+    utile du toit, les retraits de sécurité (marges sur les bords), la taille
+    d'un module et la liste des panneaux placés (position + orientation). Le
+    nombre réaliste de panneaux (``panel_count``) est calculé côté serveur à
+    partir de cette géométrie, jamais accepté tel quel depuis la requête, pour
+    figer un compte cohérent avec la surface disponible.
+
+    Multi-tenancy : ``company`` est toujours forcée côté serveur (depuis le
+    devis lié ou l'utilisateur) ; jamais lue du corps de la requête. Les
+    querysets sont toujours filtrés par ``request.user.company``.
+
+    RULE #4 / status preservation : ce modèle ne RENDU rien et ne change aucun
+    statut de devis — il ne fait que persister une géométrie de calepinage,
+    couche additive et séparée du PDF premium (`quote_engine/`) et de
+    `/proposal`.
+    """
+
+    class Orientation(models.TextChoices):
+        PORTRAIT = 'portrait', 'Portrait'
+        PAYSAGE = 'paysage', 'Paysage'
+
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='ventes_roof_layouts',
+        verbose_name='Société',
+    )
+    # Un calepinage est rattaché à un devis (le devis porte déjà la société).
+    # SET_NULL pour qu'un calepinage survive à la suppression d'un brouillon.
+    devis = models.ForeignKey(
+        'ventes.Devis',
+        on_delete=models.CASCADE,
+        related_name='ventes_roof_layouts',
+        null=True, blank=True,
+        verbose_name='Devis',
+    )
+    nom = models.CharField(
+        max_length=150, blank=True, default='',
+        verbose_name='Nom du calepinage',
+        help_text='Ex. « Pan sud — toiture tôle ».',
+    )
+    # ── Géométrie du pan de toit (mètres) ──
+    largeur_m = models.DecimalField(
+        max_digits=8, decimal_places=2, default=0,
+        verbose_name='Largeur du pan (m)',
+    )
+    hauteur_m = models.DecimalField(
+        max_digits=8, decimal_places=2, default=0,
+        verbose_name='Hauteur / longueur du pan (m)',
+    )
+    # Retrait de sécurité appliqué sur chaque bord du pan (marge incendie /
+    # accès). Réduit la surface réellement calepinable.
+    retrait_m = models.DecimalField(
+        max_digits=6, decimal_places=2, default=0,
+        verbose_name='Retrait de sécurité (m)',
+        help_text='Marge libre sur chaque bord du pan.',
+    )
+    # ── Dimensions d'un module (mètres) ──
+    module_largeur_m = models.DecimalField(
+        max_digits=6, decimal_places=3, default=1.134,
+        verbose_name='Largeur module (m)',
+    )
+    module_hauteur_m = models.DecimalField(
+        max_digits=6, decimal_places=3, default=2.278,
+        verbose_name='Hauteur module (m)',
+    )
+    # Jeu (espacement) entre deux modules adjacents.
+    espacement_m = models.DecimalField(
+        max_digits=6, decimal_places=3, default=0.02,
+        verbose_name='Espacement entre modules (m)',
+    )
+    orientation = models.CharField(
+        max_length=10, choices=Orientation.choices,
+        default=Orientation.PORTRAIT,
+        verbose_name='Orientation des modules',
+    )
+    puissance_module_wc = models.PositiveIntegerField(
+        default=0,
+        verbose_name='Puissance unitaire module (Wc)',
+        help_text='Pour déduire le kWc total du calepinage (0 = inconnu).',
+    )
+    # Liste des panneaux placés : [{x, y, w, h, orientation}], coordonnées en
+    # mètres relatives au coin du pan. Posée par l'éditeur web et/ou par le
+    # calcul auto. Reste cohérente avec ``panel_count`` recalculé côté serveur.
+    panels = models.JSONField(
+        default=list, blank=True,
+        verbose_name='Panneaux placés',
+    )
+    # Nombre réaliste de panneaux — TOUJOURS recalculé côté serveur depuis la
+    # géométrie ; jamais accepté du corps de la requête (lecture seule API).
+    panel_count = models.PositiveIntegerField(
+        default=0,
+        verbose_name='Nombre de panneaux',
+    )
+    created_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='ventes_roof_layouts_crees',
+        verbose_name='Créé par',
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = 'Calepinage toiture'
+        verbose_name_plural = 'Calepinages toiture'
+        ordering = ['-updated_at']
+        indexes = [
+            models.Index(
+                fields=['company', 'devis'],
+                name='ventes_roof_co_dev_idx',
+            ),
+        ]
+
+    def __str__(self):
+        return f'Calepinage #{self.pk} ({self.panel_count} modules)'
+
+    # ── Calcul du calepinage ──────────────────────────────────────────────
+
+    def compute_grid(self):
+        """Compte réaliste de modules tenant sur le pan, retraits déduits.
+
+        Calepinage rectangulaire simple : la surface utile (pan moins retrait
+        sur chaque bord) est pavée par des modules dans l'orientation choisie,
+        en tenant compte de l'espacement entre modules. Renvoie un dict
+        {cols, rows, count} ; ne fait AUCUN effet de bord (n'écrit pas le
+        modèle). Tout ≤ 0 → zéro module (jamais d'erreur).
+        """
+        usable_w = float(self.largeur_m) - 2 * float(self.retrait_m)
+        usable_h = float(self.hauteur_m) - 2 * float(self.retrait_m)
+        if usable_w <= 0 or usable_h <= 0:
+            return {'cols': 0, 'rows': 0, 'count': 0}
+
+        if self.orientation == self.Orientation.PAYSAGE:
+            mod_w = float(self.module_hauteur_m)
+            mod_h = float(self.module_largeur_m)
+        else:
+            mod_w = float(self.module_largeur_m)
+            mod_h = float(self.module_hauteur_m)
+        if mod_w <= 0 or mod_h <= 0:
+            return {'cols': 0, 'rows': 0, 'count': 0}
+
+        gap = max(0.0, float(self.espacement_m))
+        # N modules sur un axe : N*mod + (N-1)*gap <= usable
+        #  => N <= (usable + gap) / (mod + gap)
+        cols = int((usable_w + gap) // (mod_w + gap))
+        rows = int((usable_h + gap) // (mod_h + gap))
+        cols = max(0, cols)
+        rows = max(0, rows)
+        return {'cols': cols, 'rows': rows, 'count': cols * rows}
+
+    def build_panels(self):
+        """Génère la liste des panneaux placés depuis la grille calculée.
+
+        Coordonnées en mètres, origine au coin retrait du pan. Chaque panneau :
+        {x, y, w, h, orientation}. Pur calcul, aucun effet de bord.
+        """
+        grid = self.compute_grid()
+        if self.orientation == self.Orientation.PAYSAGE:
+            mod_w = float(self.module_hauteur_m)
+            mod_h = float(self.module_largeur_m)
+        else:
+            mod_w = float(self.module_largeur_m)
+            mod_h = float(self.module_hauteur_m)
+        gap = max(0.0, float(self.espacement_m))
+        margin = float(self.retrait_m)
+        panels = []
+        for r in range(grid['rows']):
+            for c in range(grid['cols']):
+                panels.append({
+                    'x': round(margin + c * (mod_w + gap), 3),
+                    'y': round(margin + r * (mod_h + gap), 3),
+                    'w': round(mod_w, 3),
+                    'h': round(mod_h, 3),
+                    'orientation': self.orientation,
+                })
+        return panels
+
+    def recompute(self, rebuild_panels=True):
+        """Recalcule ``panel_count`` (et optionnellement ``panels``) en place.
+
+        Si ``panels`` a été fourni explicitement (placement manuel par
+        l'éditeur), on respecte ce placement : le compte est alors la longueur
+        de la liste fournie, pas la grille. Sinon, on dérive panneaux + compte
+        de la géométrie. N'enregistre PAS (l'appelant fait .save()).
+        """
+        if self.panels and not rebuild_panels:
+            self.panel_count = len(self.panels)
+            return self.panel_count
+        grid = self.compute_grid()
+        if rebuild_panels:
+            self.panels = self.build_panels()
+        self.panel_count = grid['count']
+        return self.panel_count
+
+    @property
+    def puissance_kwc(self):
+        """kWc total déduit du compte de panneaux × puissance unitaire."""
+        if not self.puissance_module_wc:
+            return None
+        return round(self.panel_count * self.puissance_module_wc / 1000.0, 3)

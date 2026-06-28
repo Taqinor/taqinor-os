@@ -13,6 +13,7 @@ from .views import (
     releve_dry_run,
     releve_commit,
     roof_config,
+    RoofLayoutViewSet,  # FG245
     DevisPresetViewSet,  # QJ16-wiring
 )
 from .recouvrement import (
@@ -38,6 +39,8 @@ router.register(r'factures', FactureViewSet)
 router.register(r'factures-lignes', LigneFactureViewSet)
 router.register(r'paiements', PaiementViewSet)
 router.register(r'avoirs', AvoirViewSet)
+# FG245 — calepinage toiture (placement panneaux), compte calculé serveur.
+router.register(r'calepinages', RoofLayoutViewSet, basename='calepinage')
 router.register(r'niveaux-relance', FollowupLevelViewSet,
                 basename='niveau-relance')
 # QJ16-wiring — presets de devis (list + destroy uniquement).
