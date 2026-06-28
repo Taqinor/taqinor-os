@@ -11,9 +11,17 @@ from rest_framework import filters, viewsets
 from authentication.mixins import TenantMixin
 from authentication.permissions import IsAnyRole, IsResponsableOrAdmin
 
-from .models import ActifFlotte, Conducteur, EnginRoulant, ReferentielFlotte, Vehicule
+from .models import (
+    ActifFlotte,
+    AffectationConducteur,
+    Conducteur,
+    EnginRoulant,
+    ReferentielFlotte,
+    Vehicule,
+)
 from .serializers import (
     ActifFlotteSerializer,
+    AffectationConducteurSerializer,
     ConducteurSerializer,
     EnginRoulantSerializer,
     ReferentielFlotteSerializer,
@@ -156,4 +164,41 @@ class ActifFlotteViewSet(_FlotteBaseViewSet):
             qs = qs.filter(vehicule__isnull=False)
         elif type_actif == ActifFlotte.TYPE_ENGIN:
             qs = qs.filter(engin__isnull=False)
+        return qs
+
+
+class AffectationConducteurViewSet(_FlotteBaseViewSet):
+    """Affectations datées conducteur ↔ véhicule (FLOTTE8).
+
+    Filtrable par ``?vehicule=<id>``, ``?conducteur=<id>`` et
+    ``?actif=true|false``. Toutes les affectations sont scopées par société.
+    """
+    queryset = AffectationConducteur.objects.select_related(
+        'conducteur', 'vehicule')
+    serializer_class = AffectationConducteurSerializer
+    filter_backends = [filters.OrderingFilter]
+    ordering_fields = ['date_debut', 'date_fin', 'actif', 'date_creation']
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        params = self.request.query_params
+
+        vehicule = params.get('vehicule')
+        if vehicule:
+            try:
+                qs = qs.filter(vehicule_id=int(vehicule))
+            except (ValueError, TypeError):
+                pass
+
+        conducteur = params.get('conducteur')
+        if conducteur:
+            try:
+                qs = qs.filter(conducteur_id=int(conducteur))
+            except (ValueError, TypeError):
+                pass
+
+        actif = params.get('actif')
+        if actif is not None:
+            qs = qs.filter(actif=actif.lower() in ('1', 'true', 'vrai', 'oui'))
+
         return qs

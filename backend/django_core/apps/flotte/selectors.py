@@ -6,7 +6,9 @@ scopées par société (CLAUDE.md, règle de modularité cross-app).
 """
 import datetime
 
-from .models import ActifFlotte, Conducteur, EnginRoulant, Vehicule
+from django.db import models
+
+from .models import ActifFlotte, AffectationConducteur, Conducteur, EnginRoulant, Vehicule
 
 
 def vehicules_de_la_societe(company):
@@ -66,6 +68,55 @@ def conducteurs_permis_expirant(company, jours=30):
         date_expiration__gte=today,
         date_expiration__lte=horizon,
     ).select_related('user')
+
+
+def conducteur_actuel_du_vehicule(company, vehicule_id):
+    """FLOTTE8 — Retourne le conducteur actuellement actif pour un véhicule donné.
+
+    Filtre sur ``actif=True`` et la plage de dates : ``date_debut`` dans le passé
+    (ou aujourd'hui) et ``date_fin`` soit nulle, soit dans le futur (ou aujourd'hui).
+    Retourne le conducteur de l'affectation la plus récente (tri ``-date_debut``),
+    ou ``None`` si aucune affectation active n'est trouvée.
+    """
+    today = datetime.date.today()
+    affectation = (
+        AffectationConducteur.objects
+        .filter(
+            company=company,
+            vehicule_id=vehicule_id,
+            actif=True,
+            date_debut__lte=today,
+        )
+        .filter(
+            models.Q(date_fin__isnull=True) | models.Q(date_fin__gte=today)
+        )
+        .select_related("conducteur")
+        .order_by("-date_debut")
+        .first()
+    )
+    return affectation.conducteur if affectation else None
+
+
+def affectations_du_vehicule(company, vehicule_id):
+    """FLOTTE8 — Toutes les affectations (passées et actives) d'un véhicule,
+    scopées par société, par ordre chronologique décroissant."""
+    return (
+        AffectationConducteur.objects
+        .filter(company=company, vehicule_id=vehicule_id)
+        .select_related("conducteur")
+        .order_by("-date_debut")
+    )
+
+
+def affectations_du_conducteur(company, conducteur_id):
+    """FLOTTE8 — Toutes les affectations (passées et actives) d'un conducteur,
+    scopées par société, par ordre chronologique décroissant."""
+    return (
+        AffectationConducteur.objects
+        .filter(company=company, conducteur_id=conducteur_id)
+        .select_related("vehicule")
+        .order_by("-date_debut")
+    )
 
 
 def emplacement_stock_label(company, emplacement_stock_id):

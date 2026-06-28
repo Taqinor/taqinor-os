@@ -278,6 +278,66 @@ class ActifFlotte(models.Model):
         return f'ActifFlotte({self.type_actif}) — {self.label}'
 
 
+# ── FLOTTE8 — Affectation conducteur ↔ véhicule (datée) ───────────────────────
+
+class AffectationConducteur(models.Model):
+    """Affectation datée d'un conducteur à un véhicule du parc.
+
+    Relie un ``Conducteur`` à un ``Vehicule`` de la même société sur une
+    période (``date_debut`` … ``date_fin`` nullable). Un seul enregistrement
+    peut être marqué ``actif`` à la fois pour un véhicule donné — la règle
+    métier est vérifiée au niveau sérialiseur lors de l'API (pas une contrainte
+    DB car les périodes passées peuvent se superposer légitimement).
+
+    Multi-tenant : ``company`` est posée côté serveur, jamais lue du corps de
+    requête.
+    """
+
+    company = models.ForeignKey(
+        "authentication.Company",
+        on_delete=models.CASCADE,
+        related_name="affectations_flotte",
+        verbose_name="Société",
+    )
+    conducteur = models.ForeignKey(
+        "Conducteur",
+        on_delete=models.CASCADE,
+        related_name="affectations_flotte",
+        verbose_name="Conducteur",
+    )
+    vehicule = models.ForeignKey(
+        "Vehicule",
+        on_delete=models.CASCADE,
+        related_name="affectations_flotte",
+        verbose_name="Véhicule",
+    )
+    date_debut = models.DateField(verbose_name="Date de début")
+    date_fin = models.DateField(null=True, blank=True, verbose_name="Date de fin")
+    notes = models.TextField(blank=True, verbose_name="Notes")
+    actif = models.BooleanField(default=True, verbose_name="Actif")
+    date_creation = models.DateTimeField(
+        auto_now_add=True, verbose_name="Créé le")
+
+    class Meta:
+        verbose_name = "Affectation conducteur"
+        verbose_name_plural = "Affectations conducteurs"
+        ordering = ["-date_debut"]
+        indexes = [
+            models.Index(
+                fields=["company", "vehicule"],
+                name="flotte_aff_co_veh_idx",
+            ),
+            models.Index(
+                fields=["company", "conducteur"],
+                name="flotte_aff_co_cond_idx",
+            ),
+        ]
+
+    def __str__(self):
+        fin = self.date_fin.isoformat() if self.date_fin else "…"
+        return f"{self.conducteur} → {self.vehicule} ({self.date_debut}/{fin})"
+
+
 # ── FLOTTE7 — Conducteurs / chauffeurs ────────────────────────────────────────
 
 class Conducteur(models.Model):

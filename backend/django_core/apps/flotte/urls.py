@@ -3,6 +3,7 @@ from rest_framework.routers import DefaultRouter
 
 from .views import (
     ActifFlotteViewSet,
+    AffectationConducteurViewSet,
     ConducteurViewSet,
     EnginRoulantViewSet,
     ReferentielFlotteViewSet,
@@ -15,6 +16,7 @@ router.register(r'engins', EnginRoulantViewSet)
 router.register(r'referentiels', ReferentielFlotteViewSet)
 router.register(r'actifs', ActifFlotteViewSet)
 router.register(r'conducteurs', ConducteurViewSet)
+router.register(r'affectations', AffectationConducteurViewSet)
 
 urlpatterns = [
     path('', include(router.urls)),
