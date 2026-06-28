@@ -1,6 +1,9 @@
 from rest_framework import serializers
 
-from .models import EventType, Notification, NotificationPreference, NotificationRoutingRule
+from .models import (
+    EventType, Holiday, Notification, NotificationPreference,
+    NotificationRoutingRule, WorkingHoursConfig,
+)
 
 
 class NotificationSerializer(serializers.ModelSerializer):
@@ -58,3 +61,23 @@ class NotificationRoutingRuleSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError(
                 'Une règle de routage doit cibler soit un rôle, soit un utilisateur.')
         return data
+
+
+class WorkingHoursConfigSerializer(serializers.ModelSerializer):
+    """FG5 — Sérializer de la configuration des jours ouvrés (singleton société)."""
+
+    class Meta:
+        model = WorkingHoursConfig
+        # company posée côté serveur — jamais acceptée du corps.
+        fields = ['id', 'working_days', 'hours_per_day', 'updated_at']
+        read_only_fields = ['id', 'updated_at']
+
+
+class HolidaySerializer(serializers.ModelSerializer):
+    """FG5 — Sérializer des jours fériés."""
+
+    class Meta:
+        model = Holiday
+        # company posée côté serveur — jamais acceptée du corps.
+        fields = ['id', 'date', 'nom', 'recurrent_annuel', 'created_at']
+        read_only_fields = ['id', 'created_at']
