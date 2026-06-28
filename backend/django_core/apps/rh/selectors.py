@@ -113,6 +113,23 @@ def employe_absent_le(company, employe_id, jour):
     ).exists()
 
 
+def date_embauche_employe(company, employe_id):
+    """Date d'embauche d'un employé (cross-app, pour la paie).
+
+    Sélecteur cadrée société : la paie utilise cette fonction pour calculer
+    l'ancienneté sans jamais importer ``rh.models`` directement. Renvoie la
+    ``date_embauche`` du dossier (peut être ``None`` si non renseignée) ou
+    ``None`` si le dossier est introuvable ou hors société.
+    """
+    if company is None or employe_id is None:
+        return None
+    try:
+        dossier = DossierEmploye.objects.get(company=company, pk=employe_id)
+        return dossier.date_embauche
+    except DossierEmploye.DoesNotExist:
+        return None
+
+
 def labour_hours_for_installation(installation_id, company=None):
     """Heures de main-d'œuvre imputées à une installation (job-costing, FG167).
 
