@@ -46,10 +46,11 @@ class TrancheIRAdmin(admin.ModelAdmin):
 @admin.register(Rubrique)
 class RubriqueAdmin(admin.ModelAdmin):
     list_display = ('id', 'code', 'libelle', 'type', 'imposable',
-                    'soumis_cnss', 'soumis_amo', 'soumis_cimr', 'compte',
+                    'soumis_cnss', 'soumis_amo', 'soumis_cimr',
+                    'avantage_nature', 'plafond_exoneration', 'compte',
                     'ordre', 'actif', 'company')
     list_filter = ('type', 'imposable', 'soumis_cnss', 'soumis_amo',
-                   'soumis_cimr', 'actif')
+                   'soumis_cimr', 'avantage_nature', 'actif')
     search_fields = ('code', 'libelle')
 
 
