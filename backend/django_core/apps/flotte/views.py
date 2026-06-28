@@ -4,14 +4,17 @@ La flotte est INTERNE. Chaque viewset filtre par ``request.user.company``
 (``TenantMixin``) et pose la société côté serveur ; aucune société n'est jamais
 acceptée du corps de requête (multi-tenant).
 """
+import datetime
+
 from rest_framework import filters, viewsets
 
 from authentication.mixins import TenantMixin
 from authentication.permissions import IsAnyRole, IsResponsableOrAdmin
 
-from .models import ActifFlotte, EnginRoulant, ReferentielFlotte, Vehicule
+from .models import ActifFlotte, Conducteur, EnginRoulant, ReferentielFlotte, Vehicule
 from .serializers import (
     ActifFlotteSerializer,
+    ConducteurSerializer,
     EnginRoulantSerializer,
     ReferentielFlotteSerializer,
     VehiculeSerializer,
@@ -92,6 +95,43 @@ class ReferentielFlotteViewSet(_FlotteBaseViewSet):
         actif = params.get('actif')
         if actif is not None:
             qs = qs.filter(actif=actif.lower() in ('1', 'true', 'vrai', 'oui'))
+        return qs
+
+
+class ConducteurViewSet(_FlotteBaseViewSet):
+    """Conducteurs / chauffeurs du parc (FLOTTE7).
+
+    Filtrable par ``?actif=true|false`` et ``?permis_expirant=<jours>`` (permis
+    expirant dans les N prochains jours, 30 par défaut). Recherche par nom,
+    numéro de permis et téléphone.
+    """
+    queryset = Conducteur.objects.select_related('user')
+    serializer_class = ConducteurSerializer
+    filter_backends = [filters.SearchFilter, filters.OrderingFilter]
+    search_fields = ['nom', 'numero_permis', 'telephone']
+    ordering_fields = ['nom', 'date_expiration', 'actif', 'date_creation']
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        params = self.request.query_params
+
+        actif = params.get('actif')
+        if actif is not None:
+            qs = qs.filter(actif=actif.lower() in ('1', 'true', 'vrai', 'oui'))
+
+        permis_expirant = params.get('permis_expirant')
+        if permis_expirant is not None:
+            try:
+                jours = int(permis_expirant)
+            except (ValueError, TypeError):
+                jours = 30
+            today = datetime.date.today()
+            horizon = today + datetime.timedelta(days=jours)
+            qs = qs.filter(
+                date_expiration__isnull=False,
+                date_expiration__gte=today,
+                date_expiration__lte=horizon,
+            )
         return qs
 
 

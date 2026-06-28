@@ -6,7 +6,7 @@ n'est jamais acceptée (multi-tenant).
 """
 from rest_framework import serializers
 
-from .models import ActifFlotte, EnginRoulant, ReferentielFlotte, Vehicule
+from .models import ActifFlotte, Conducteur, EnginRoulant, ReferentielFlotte, Vehicule
 
 
 class VehiculeSerializer(serializers.ModelSerializer):
@@ -113,6 +113,51 @@ class ReferentielFlotteSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError(
                 {'code': "Ce code existe déjà pour ce domaine."})
         return attrs
+
+
+class ConducteurSerializer(serializers.ModelSerializer):
+    """FLOTTE7 — conducteur / chauffeur avec informations de permis.
+
+    ``company`` n'est JAMAIS exposée en écriture (posée côté serveur via
+    ``TenantMixin``). ``user`` est facultatif : un conducteur externe sans
+    compte ERP peut être enregistré sans liaison utilisateur.
+
+    Champ lecture seule :
+    - ``user_display`` : nom complet de l'utilisateur ERP lié, ou ``None``.
+    """
+
+    user_display = serializers.SerializerMethodField()
+
+    class Meta:
+        model = Conducteur
+        fields = [
+            'id', 'user', 'user_display', 'nom', 'telephone',
+            'numero_permis', 'categorie_permis',
+            'date_obtention', 'date_expiration',
+            'actif', 'date_creation',
+        ]
+        read_only_fields = ['date_creation']
+
+    def get_user_display(self, obj):
+        if obj.user_id is None:
+            return None
+        user = obj.user
+        full = (
+            f'{user.first_name} {user.last_name}'.strip()
+            or user.username
+        )
+        return full
+
+    def validate_user(self, value):
+        """Vérifie que l'utilisateur lié appartient à la même société."""
+        if value is None:
+            return value
+        request = self.context.get('request')
+        company = getattr(getattr(request, 'user', None), 'company', None)
+        if company is not None and value.company_id != company.id:
+            raise serializers.ValidationError(
+                "Cet utilisateur n'appartient pas à votre société.")
+        return value
 
 
 class ActifFlotteSerializer(serializers.ModelSerializer):

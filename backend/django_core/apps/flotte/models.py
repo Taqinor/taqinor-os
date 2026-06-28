@@ -9,11 +9,14 @@ Squelette multi-société (FLOTTE1) enrichi des premiers actifs roulants :
 * ``ActifFlotte`` (FLOTTE5) — référence d'actif unifiée (véhicule OU engin)
   permettant à entretien, sinistre et document de se rattacher à l'un ou
   l'autre via un FK unique (deux FKs nullable, exactement un renseigné).
+* ``Conducteur`` (FLOTTE7) — conducteur/chauffeur rattaché à un utilisateur
+  ERP (``authentication.User``), avec informations de permis de conduire.
 
 Tout est multi-société : chaque modèle porte un FK ``company`` posé côté serveur
 (jamais lu du corps de requête). Module entièrement additif — aucun comportement
 existant n'est modifié.
 """
+from django.conf import settings
 from django.core.exceptions import ValidationError
 from django.db import models
 
@@ -273,3 +276,61 @@ class ActifFlotte(models.Model):
 
     def __str__(self):
         return f'ActifFlotte({self.type_actif}) — {self.label}'
+
+
+# ── FLOTTE7 — Conducteurs / chauffeurs ────────────────────────────────────────
+
+class Conducteur(models.Model):
+    """Conducteur/chauffeur rattaché à un utilisateur ERP et à une société.
+
+    Porte les informations de permis de conduire (numéro, catégorie, dates
+    d'obtention et d'expiration). Le champ ``user`` relie le conducteur à un
+    compte ``authentication.User`` existant de la même société — liaison
+    facultative (null/blank) pour permettre l'enregistrement d'un chauffeur
+    externe sans compte ERP. ``related_name='conducteurs_flotte'`` évite tout
+    conflit avec d'autres apps qui pourraient définir un reverse accessor sur
+    ``User``.
+
+    Multi-tenant : ``company`` est posée côté serveur, jamais lue du corps de
+    requête.
+    """
+
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='conducteurs_flotte',
+        verbose_name='Société',
+    )
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='conducteurs_flotte',
+        verbose_name='Utilisateur ERP',
+    )
+    nom = models.CharField(max_length=120, verbose_name='Nom complet')
+    telephone = models.CharField(
+        max_length=30, blank=True, verbose_name='Téléphone')
+    numero_permis = models.CharField(
+        max_length=50, blank=True, verbose_name='Numéro de permis')
+    categorie_permis = models.CharField(
+        max_length=30, blank=True,
+        verbose_name='Catégorie de permis',
+        help_text='Ex. : B, C, CE, D…',
+    )
+    date_obtention = models.DateField(
+        null=True, blank=True, verbose_name="Date d'obtention du permis")
+    date_expiration = models.DateField(
+        null=True, blank=True, verbose_name="Date d'expiration du permis")
+    actif = models.BooleanField(default=True, verbose_name='Actif')
+    date_creation = models.DateTimeField(
+        auto_now_add=True, verbose_name='Créé le')
+
+    class Meta:
+        verbose_name = 'Conducteur'
+        verbose_name_plural = 'Conducteurs'
+        ordering = ['nom']
+
+    def __str__(self):
+        return self.nom
