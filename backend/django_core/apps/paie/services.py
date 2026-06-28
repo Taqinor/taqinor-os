@@ -63,6 +63,11 @@ PARAMETRES_DEFAUT_2026 = {
     # 30 MAD/mois par personne à charge, plafonnée à 6 personnes (→ 360 MAD/mois).
     'deduction_par_personne_a_charge': Decimal('30'),
     'plafond_personnes_a_charge': 6,
+    # PAIE14 — Taux de majoration des heures supplémentaires (cadre marocain).
+    # Code du travail : 25 % HS jour semaine, 50 % HS nuit, 100 % HS férié/dim.
+    'taux_hs_jour': Decimal('25'),
+    'taux_hs_nuit': Decimal('50'),
+    'taux_hs_ferie': Decimal('100'),
 }
 
 # ── Barème IR mensuel 2026 (TrancheIR) ──────────────────────────────────────
@@ -503,6 +508,74 @@ def calculer_salaire_base_periode(profil, periode, elements=None):
     return _q(salaire_base)
 
 
+# ── PAIE14 — Heures supplémentaires majorées ───────────────────────────────
+
+def taux_majoration_hs(parametre, categorie_hs):
+    """Taux de majoration (%) pour une catégorie d'HS et un ``parametre``.
+
+    Renvoie le ``Decimal`` correspondant à la catégorie :
+
+    * ``'jour'``  → ``parametre.taux_hs_jour``  (défaut réglementaire : 25 %)
+    * ``'nuit'``  → ``parametre.taux_hs_nuit``  (défaut : 50 %)
+    * ``'ferie'`` → ``parametre.taux_hs_ferie`` (défaut : 100 %)
+    * Valeur manquante / None → taux jour (25 %)
+    """
+    from .models import ElementVariable as EV
+
+    if categorie_hs == EV.HS_NUIT:
+        return Decimal(parametre.taux_hs_nuit or 50)
+    if categorie_hs == EV.HS_FERIE:
+        return Decimal(parametre.taux_hs_ferie or 100)
+    # Défaut : HS jour (catégorie 'jour' ou valeur absente/inconnue).
+    return Decimal(parametre.taux_hs_jour or 25)
+
+
+def calculer_gain_hs(heures, taux_horaire_base, taux_majoration):
+    """Gain brut pour des heures supplémentaires majorées (PAIE14).
+
+    Formule : ``heures × taux_horaire_base × (1 + taux_majoration / 100)``.
+
+    * ``heures`` — nombre d'heures supplémentaires effectuées.
+    * ``taux_horaire_base`` — taux horaire de référence du salarié (MAD/h).
+      Pour un salarié mensuel, il doit être calculé AVANT cet appel :
+      ``salaire_base / heures_travail_mensuel``.
+    * ``taux_majoration`` — taux de majoration en % (p. ex. 25, 50, 100).
+
+    Renvoie un ``Decimal`` >= 0 arrondi au centime.
+    """
+    heures = Decimal(heures or 0)
+    taux_h = Decimal(taux_horaire_base or 0)
+    taux_m = Decimal(taux_majoration or 0)
+    if heures <= 0 or taux_h <= 0:
+        return Decimal('0.00')
+    gain = heures * taux_h * (Decimal('1') + taux_m / Decimal('100'))
+    return _q(gain)
+
+
+def taux_horaire_base_profil(profil):
+    """Taux horaire de base d'un profil (MAD/h), utilisé pour majorer les HS.
+
+    * **horaire** : ``salaire_base`` est déjà le taux horaire.
+    * **mensuel / journalier / forfait** : on dérive un taux horaire à partir du
+      salaire mensuel divisé par la norme d'heures mensuelle du profil.
+      Pour les types JOURNALIER et FORFAIT, ``salaire_base`` est traité comme
+      un salaire mensuel de référence (comportement raisonnable en l'absence
+      d'autres informations).
+
+    Renvoie un ``Decimal``. Si la norme d'heures est nulle, retourne 0.
+    """
+    from .models import ProfilPaie
+
+    salaire = Decimal(profil.salaire_base or 0)
+    heures_normes = Decimal(max(1, profil.heures_travail_mensuel or 191))
+
+    if profil.type_remuneration == ProfilPaie.TYPE_HORAIRE:
+        return salaire  # déjà le taux horaire
+    # Mensuel / journalier / forfait → dériver le taux horaire.
+    return (salaire / heures_normes).quantize(
+        Decimal('0.000001'), rounding=ROUND_HALF_UP)
+
+
 # ── PAIE12 — Moteur de calcul du bulletin ──────────────────────────────────
 
 _CENT = Decimal('0.01')
@@ -581,6 +654,9 @@ def calculer_bulletin(profil, periode, personnes_a_charge=0):
         'code': 'SB', 'libelle': 'Salaire de base',
         'type': Rubrique.TYPE_GAIN, 'montant': _q(salaire_base),
     }]
+    # PAIE14 — Taux horaire de base pour la majoration des HS.
+    _taux_h_base = taux_horaire_base_profil(profil)
+
     for el in elements:
         montant = Decimal(el.montant or 0)
         imposable = el.rubrique.imposable if el.rubrique_id else True
@@ -593,6 +669,17 @@ def calculer_bulletin(profil, periode, personnes_a_charge=0):
                 'type': Rubrique.TYPE_RETENUE, 'montant': _q(montant),
             })
         else:
+            # PAIE14 — Heures supplémentaires : si la quantité est renseignée
+            # et que les paramètres de paie sont disponibles, on CALCULE le
+            # gain majoré depuis la quantité (heures) et le taux horaire de
+            # base. Le ``montant`` stocké sert de SURCHARGE EXPLICITE :
+            # si l'opérateur a saisi un montant non-nul, il prime sur le calcul.
+            if (el.type == ElementVariable.TYPE_HS
+                    and parametre is not None
+                    and Decimal(el.quantite or 0) > 0
+                    and montant == 0):
+                taux_maj = taux_majoration_hs(parametre, el.categorie_hs)
+                montant = calculer_gain_hs(el.quantite, _taux_h_base, taux_maj)
             gains_variables += montant
             if imposable:
                 gains_imposables += montant

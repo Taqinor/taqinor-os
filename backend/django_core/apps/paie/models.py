@@ -88,6 +88,19 @@ class ParametrePaie(models.Model):
     plafond_personnes_a_charge = models.PositiveIntegerField(
         default=6,
         verbose_name='Plafond du nombre de personnes à charge')
+    # PAIE14 — Taux de majoration des heures supplémentaires (cadre marocain).
+    # 25 % : HS de jour (semaine normale) ; 50 % : HS de nuit ;
+    # 100 % : HS de jour férié ou dimanche.
+    # Valeurs réglementaires marocaines ; éditables par société.
+    taux_hs_jour = models.DecimalField(
+        max_digits=6, decimal_places=2, default=Decimal('25'),
+        verbose_name='Majoration HS jour (%)')
+    taux_hs_nuit = models.DecimalField(
+        max_digits=6, decimal_places=2, default=Decimal('50'),
+        verbose_name='Majoration HS nuit (%)')
+    taux_hs_ferie = models.DecimalField(
+        max_digits=6, decimal_places=2, default=Decimal('100'),
+        verbose_name='Majoration HS férié/dimanche (%)')
     actif = models.BooleanField(default=True, verbose_name='Actif')
     # PAIE3 — Validation fondateur des valeurs légales par défaut. Les valeurs
     # 2026 sont préremplies par le seed mais restent ÉDITABLES ; tant que le
@@ -524,6 +537,17 @@ class ElementVariable(models.Model):
         (TYPE_RETENUE, 'Retenue'),
     ]
 
+    # PAIE14 — Catégorie des heures supplémentaires (utilisée uniquement quand
+    # ``type == TYPE_HS``). Détermine le taux de majoration applicable.
+    HS_JOUR = 'jour'      # Heures sup de jour (semaine) → +25 %
+    HS_NUIT = 'nuit'      # Heures sup de nuit → +50 %
+    HS_FERIE = 'ferie'    # Heures sup jour férié ou dimanche → +100 %
+    HS_CATEGORIE_CHOICES = [
+        (HS_JOUR, 'Heures sup de jour (25 %)'),
+        (HS_NUIT, 'Heures sup de nuit (50 %)'),
+        (HS_FERIE, 'Heures sup férié/dimanche (100 %)'),
+    ]
+
     SOURCE_MANUEL = 'manuel'
     SOURCE_RH = 'rh'
     SOURCE_CHOICES = [
@@ -564,6 +588,16 @@ class ElementVariable(models.Model):
     quantite = models.DecimalField(
         max_digits=10, decimal_places=2, default=Decimal('0'),
         verbose_name='Quantité')
+    # PAIE14 — Catégorie HS : ``jour`` (25 %), ``nuit`` (50 %),
+    # ``ferie`` (100 %). Ignoré si ``type != TYPE_HS``.
+    # Blank/null = jour par défaut (la majoration s'applique quand même,
+    # avec le taux « jour » du ParametrePaie de la société).
+    categorie_hs = models.CharField(
+        max_length=6,
+        choices=HS_CATEGORIE_CHOICES,
+        default=HS_JOUR,
+        blank=True,
+        verbose_name='Catégorie HS')
     montant = models.DecimalField(
         max_digits=14, decimal_places=2, default=Decimal('0'),
         verbose_name='Montant')
