@@ -21,8 +21,8 @@ phase). Le câblage éventuel vers l'avancement chantier de ``installations`` es
 un suivi à part : un appelant consulte cette porte, il ne la franchit pas ici.
 """
 from .models import (
-    ActionCorrectivePreventive, NotationFinChantier, ReleveControle,
-    ReleveCourbeIV,
+    ActionCorrectivePreventive, NotationFinChantier, ProcedureQualite,
+    ReleveControle, ReleveCourbeIV,
 )
 
 
@@ -239,3 +239,48 @@ def notation_fin_chantier_latest(chantier_id, company):
         .order_by('-id')
         .first()
     )
+
+
+# ── QHSE18 — Procédures qualité versionnées (lecture seule) ─────────────────
+
+def procedure_qualite_courante(company, reference):
+    """Version « courante » d'une procédure qualité d'une société (ou None).
+
+    La version courante est la version ``en_vigueur`` de la ``reference`` ; à
+    défaut (aucune en vigueur), c'est la version au numéro le plus haut. Lecture
+    seule, scopée société. Référence lâche au document GED par ``document_id``.
+    """
+    qs = ProcedureQualite.objects.filter(
+        company=company, reference=reference)
+    en_vigueur = qs.filter(
+        statut=ProcedureQualite.Statut.EN_VIGUEUR).order_by('-version').first()
+    if en_vigueur is not None:
+        return en_vigueur
+    return qs.order_by('-version').first()
+
+
+def procedure_qualite_versions(company, reference):
+    """Toutes les versions d'une procédure qualité (la plus récente d'abord).
+
+    Queryset scopé société pour une ``reference`` donnée. Lecture seule.
+    """
+    return (ProcedureQualite.objects
+            .filter(company=company, reference=reference)
+            .order_by('-version', '-id'))
+
+
+def procedures_qualite_courantes(company):
+    """Liste des versions courantes de chaque référence de procédure d'une société.
+
+    Pour chaque ``reference`` distincte de la société, renvoie la version
+    courante (cf. ``procedure_qualite_courante``). Lecture seule. Renvoie une
+    liste de ``ProcedureQualite`` triée par référence.
+    """
+    refs = (ProcedureQualite.objects
+            .filter(company=company)
+            .values_list('reference', flat=True)
+            .distinct())
+    courantes = [
+        procedure_qualite_courante(company, ref) for ref in sorted(set(refs))
+    ]
+    return [p for p in courantes if p is not None]

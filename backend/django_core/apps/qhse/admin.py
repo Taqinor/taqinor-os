@@ -2,7 +2,8 @@ from django.contrib import admin
 
 from .models import (
     ActionCorrectivePreventive, NonConformite, PlanInspectionChantier,
-    PlanInspectionModele, PointControleModele, ReleveControle, ReleveCourbeIV,
+    PlanInspectionModele, PointControleModele, ProcedureQualite,
+    ReleveControle, ReleveCourbeIV,
 )
 
 
@@ -58,3 +59,11 @@ class ReleveCourbeIVAdmin(admin.ModelAdmin):
     list_display = ('id', 'string_id', 'chantier_id', 'voc', 'isc',
                     'pmpp', 'date_releve', 'releve_par', 'company')
     search_fields = ('string_id', 'notes')
+
+
+@admin.register(ProcedureQualite)
+class ProcedureQualiteAdmin(admin.ModelAdmin):
+    list_display = ('id', 'reference', 'titre', 'version', 'statut',
+                    'date_application', 'auteur', 'company', 'date_creation')
+    list_filter = ('statut',)
+    search_fields = ('reference', 'titre', 'contenu')

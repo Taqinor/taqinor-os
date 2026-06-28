@@ -16,8 +16,8 @@ from .models import (
     ActionCorrectivePreventive, Audit, CritereAudit, GrilleAudit,
     ItemNotation, NonConformite, NotationFinChantier,
     PlanInspectionChantier, PlanInspectionModele,
-    PointControleModele, QhseChatterEntry, ReleveControle, ReleveCourbeIV,
-    ReponseCritere,
+    PointControleModele, ProcedureQualite, QhseChatterEntry,
+    ReleveControle, ReleveCourbeIV, ReponseCritere,
 )
 from .serializers import (
     ActionCorrectivePreventiveSerializer, AuditSerializer,
@@ -25,7 +25,8 @@ from .serializers import (
     ItemNotationSerializer, NonConformiteSerializer,
     NotationFinChantierSerializer,
     PlanInspectionChantierSerializer, PlanInspectionModeleSerializer,
-    PointControleModeleSerializer, QhseChatterEntrySerializer,
+    PointControleModeleSerializer, ProcedureQualiteSerializer,
+    QhseChatterEntrySerializer,
     ReleveControleSerializer, ReleveCourbeIVSerializer,
     ReponseCritereSerializer,
 )
@@ -33,11 +34,14 @@ from . import chatter
 from .selectors import (
     capa_en_retard, chantier_peut_cloturer, courbes_iv_for_chantier,
     hold_points_status, photos_controle_par_phase,
+    procedure_qualite_courante, procedure_qualite_versions,
+    procedures_qualite_courantes,
 )
 from .services import (
-    calculer_score_audit, calculer_score_notation, cloturer_ncr,
-    creer_ncr_depuis_reserve, instancier_plan_chantier, lever_ncr_audit,
-    relancer_capa_en_retard, verifier_efficacite_capa,
+    activer_procedure, calculer_score_audit, calculer_score_notation,
+    cloturer_ncr, creer_ncr_depuis_reserve, instancier_plan_chantier,
+    lever_ncr_audit, nouvelle_version_procedure, relancer_capa_en_retard,
+    verifier_efficacite_capa,
 )
 
 
@@ -567,3 +571,104 @@ class ItemNotationViewSet(_QhseBaseViewSet):
         if notation not in (None, ''):
             qs = qs.filter(notation_id=notation)
         return qs
+
+
+# ── QHSE18 — Procédure qualité versionnée (docs qualité GED) ────────────────
+
+class ProcedureQualiteViewSet(_QhseBaseViewSet):
+    """Procédures qualité versionnées (QHSE18).
+
+    Une procédure est identifiée par sa ``reference`` et historisée par
+    ``version`` : la création route par le service ``nouvelle_version_procedure``
+    qui calcule la version suivante côté serveur (jamais ``count()+1``), donc
+    poster deux fois la même ``reference`` empile v1, v2… sans rien écraser.
+    ``version`` et ``statut`` ne sont jamais lus du corps de requête ;
+    ``company`` et ``auteur`` sont posés côté serveur.
+
+    Filtres optionnels : ``?reference=`` (toutes les versions d'une référence),
+    ``?courantes=1`` (uniquement la version courante de chaque référence).
+
+    Actions :
+    * ``POST …/<id>/activer/`` — met cette version en vigueur et rend les autres
+      versions de la référence obsolètes ;
+    * ``GET …/courante/?reference=`` — version courante d'une référence ;
+    * ``GET …/<id>/versions/`` — toutes les versions de la référence de l'objet.
+    """
+    queryset = ProcedureQualite.objects.select_related('auteur').all()
+    serializer_class = ProcedureQualiteSerializer
+    filter_backends = [filters.SearchFilter, filters.OrderingFilter]
+    search_fields = ['reference', 'titre', 'contenu']
+    ordering_fields = ['id', 'reference', 'version', 'date_creation']
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        reference = self.request.query_params.get('reference')
+        if reference not in (None, ''):
+            qs = qs.filter(reference=reference)
+        if self.request.query_params.get('courantes') in ('1', 'true', 'True'):
+            ids = [
+                p.id
+                for p in procedures_qualite_courantes(self.request.user.company)
+            ]
+            qs = qs.filter(id__in=ids)
+        return qs
+
+    def perform_create(self, serializer):
+        data = serializer.validated_data
+        return nouvelle_version_procedure(
+            company=self.request.user.company,
+            reference=data['reference'],
+            titre=data['titre'],
+            contenu=data.get('contenu', ''),
+            document_id=data.get('document_id'),
+            auteur=self.request.user,
+        )
+
+    def create(self, request, *args, **kwargs):
+        serializer = self.get_serializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        procedure = self.perform_create(serializer)
+        out = self.get_serializer(procedure)
+        return Response(out.data, status=status.HTTP_201_CREATED)
+
+    @action(detail=True, methods=['post'])
+    def activer(self, request, pk=None):
+        """Met cette version en vigueur ; les autres versions deviennent obsolètes.
+
+        ``get_object`` est scopé société (404 hors société). ``date_application``
+        optionnelle (défaut : aujourd'hui).
+        """
+        procedure = self.get_object()
+        activer_procedure(
+            procedure, date_application=request.data.get('date_application'))
+        return Response(self.get_serializer(procedure).data)
+
+    @action(detail=False, methods=['get'])
+    def courante(self, request):
+        """Version courante d'une procédure (``?reference=``), scopée société.
+
+        La version courante est celle en vigueur, à défaut la plus haute. 400 si
+        ``reference`` absente, 404 si aucune version pour cette référence.
+        """
+        reference = request.query_params.get('reference')
+        if reference in (None, ''):
+            return Response(
+                {'detail': 'reference est requis.'},
+                status=status.HTTP_400_BAD_REQUEST)
+        procedure = procedure_qualite_courante(request.user.company, reference)
+        if procedure is None:
+            return Response(
+                {'detail': 'Aucune procédure pour cette référence.'},
+                status=status.HTTP_404_NOT_FOUND)
+        return Response(self.get_serializer(procedure).data)
+
+    @action(detail=True, methods=['get'])
+    def versions(self, request, pk=None):
+        """Toutes les versions de la référence de cette procédure (récent d'abord).
+
+        ``get_object`` est scopé société. Lecture seule.
+        """
+        procedure = self.get_object()
+        qs = procedure_qualite_versions(
+            request.user.company, procedure.reference)
+        return Response(self.get_serializer(qs, many=True).data)
