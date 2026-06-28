@@ -55,6 +55,7 @@ import {
   SerialsPanel, ConsommationPanel, MemosPanel, ReservesPanel,
   ToolReturnPanel, SafetyPanel, CompteRenduButton, CodePanel,
 } from '../../features/installations/InterventionCapturePanels'
+import OfflineSyncIndicator from '../../features/installations/offline/OfflineSyncIndicator'
 import { formatDate, formatDateTime } from '../../lib/format'
 
 const TYPE_LABELS = Object.fromEntries(
@@ -311,6 +312,10 @@ function DetailSheet({ intervention, users, onClose, onChanged }) {
             {typeLabel(intervention.type_intervention)} — {intervention.installation_reference ?? `#${intervention.id}`}
           </SheetTitle>
         </SheetHeader>
+
+        {/* N91/F21 — état de la synchro terrain hors-ligne (silencieux si en
+            ligne et file vide). */}
+        <OfflineSyncIndicator />
 
         <Tabs defaultValue="detail" className="mt-2">
           <TabsList className="flex w-full justify-start overflow-x-auto">

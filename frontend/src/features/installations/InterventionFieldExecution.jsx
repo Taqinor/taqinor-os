@@ -18,6 +18,11 @@ import {
   Button, Badge, Spinner, Checkbox, Progress, toast,
 } from '../../ui'
 import { formatDateTime } from '../../lib/format'
+import { withOfflineFallback, FIELD_OPS } from './offline/fieldOutbox'
+
+// N91/F21 — message commun quand une action a été MISE EN FILE (hors-ligne) :
+// elle se synchronisera toute seule au retour du réseau.
+const QUEUED_MSG = 'Hors ligne — enregistré, synchro au retour du réseau.'
 
 const PHASES = [
   ['avant', 'Avant'],
@@ -41,15 +46,35 @@ export function PreparationPanel({ intervention, onChanged }) {
   const toggleMateriel = async (ligne, charge) => {
     setBusy(true)
     try {
-      const r = await installationsApi.cocherMateriel(id, ligne.id, charge)
-      setPrep(r.data); onChanged?.()
+      const r = await withOfflineFallback(
+        () => installationsApi.cocherMateriel(id, ligne.id, charge),
+        FIELD_OPS.COCHER_MATERIEL, { intervention: id, ligne: ligne.id, charge })
+      if (r.queued) {
+        // Hors ligne : reflète l'état localement (l'op est filée) et resync au
+        // retour réseau.
+        setPrep((p) => p && ({
+          ...p,
+          materiel: (p.materiel ?? []).map((l) => l.id === ligne.id ? { ...l, charge } : l),
+        }))
+        toast.success(QUEUED_MSG)
+      } else { setPrep(r.data) }
+      onChanged?.()
     } catch { toast.error('Mise à jour impossible.') } finally { setBusy(false) }
   }
   const toggleOutil = async (ligne, coche) => {
     setBusy(true)
     try {
-      const r = await installationsApi.cocherOutil(id, ligne.id, coche)
-      setPrep(r.data); onChanged?.()
+      const r = await withOfflineFallback(
+        () => installationsApi.cocherOutil(id, ligne.id, coche),
+        FIELD_OPS.COCHER_OUTIL, { intervention: id, ligne: ligne.id, coche })
+      if (r.queued) {
+        setPrep((p) => p && ({
+          ...p,
+          outils: (p.outils ?? []).map((l) => l.id === ligne.id ? { ...l, coche } : l),
+        }))
+        toast.success(QUEUED_MSG)
+      } else { setPrep(r.data) }
+      onChanged?.()
     } catch { toast.error('Mise à jour impossible.') } finally { setBusy(false) }
   }
   const confirmer = async () => {
@@ -165,13 +190,23 @@ export function TrajetPanel({ intervention, onChanged }) {
 
   const stampDepart = async () => {
     setBusy(true)
-    try { await installationsApi.departDepot(id); toast.success('Départ dépôt enregistré.'); onChanged?.() }
-    catch { toast.error('Enregistrement impossible.') } finally { setBusy(false) }
+    try {
+      const r = await withOfflineFallback(
+        () => installationsApi.departDepot(id),
+        FIELD_OPS.DEPART_DEPOT, { intervention: id })
+      toast.success(r.queued ? QUEUED_MSG : 'Départ dépôt enregistré.')
+      onChanged?.()
+    } catch { toast.error('Enregistrement impossible.') } finally { setBusy(false) }
   }
   const stampRetour = async () => {
     setBusy(true)
-    try { await installationsApi.retourDepot(id); toast.success('Retour dépôt enregistré.'); onChanged?.() }
-    catch { toast.error('Enregistrement impossible.') } finally { setBusy(false) }
+    try {
+      const r = await withOfflineFallback(
+        () => installationsApi.retourDepot(id),
+        FIELD_OPS.RETOUR, { intervention: id })
+      toast.success(r.queued ? QUEUED_MSG : 'Retour dépôt enregistré.')
+      onChanged?.()
+    } catch { toast.error('Enregistrement impossible.') } finally { setBusy(false) }
   }
   const checkin = () => {
     if (!navigator.geolocation) {
@@ -189,8 +224,10 @@ export function TrajetPanel({ intervention, onChanged }) {
   const sendCheckin = async (lat, lng) => {
     setBusy(true)
     try {
-      await installationsApi.checkin(id, lat, lng)
-      toast.success('Arrivée sur site enregistrée.')
+      const r = await withOfflineFallback(
+        () => installationsApi.checkin(id, lat, lng),
+        FIELD_OPS.CHECKIN, { intervention: id, lat, lng })
+      toast.success(r.queued ? QUEUED_MSG : 'Arrivée sur site enregistrée.')
       onChanged?.()
     } catch { toast.error('Check-in impossible.') } finally { setBusy(false) }
   }

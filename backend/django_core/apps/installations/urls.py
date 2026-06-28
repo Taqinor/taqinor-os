@@ -6,7 +6,7 @@ from .views import (
     ChecklistTemplateViewSet, ChecklistEtapeModeleViewSet, ShotListSlotViewSet,
     SafetyChecklistSlotViewSet,
     JalonProjetViewSet, ModeleProjetViewSet, ReunionChantierViewSet,
-    DocumentProjetViewSet, RevisionDocumentViewSet,
+    DocumentProjetViewSet, RevisionDocumentViewSet, FieldSyncView,
 )
 
 router = DefaultRouter()
@@ -24,5 +24,7 @@ router.register(r'documents-projet', DocumentProjetViewSet)
 router.register(r'revisions-document', RevisionDocumentViewSet)
 
 urlpatterns = [
+    # N91/F21 — synchro idempotente de la capture terrain hors-ligne.
+    path('sync/', FieldSyncView.as_view(), name='installations-field-sync'),
     path('', include(router.urls)),
 ]

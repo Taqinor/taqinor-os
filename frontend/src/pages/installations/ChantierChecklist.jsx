@@ -7,9 +7,12 @@ import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import installationsApi from '../../api/installationsApi'
 import ProduitPicker from '../../components/ProduitPicker'
-import { Progress, Checkbox, Input, Spinner } from '../../ui'
+import { Progress, Checkbox, Input, Spinner, toast } from '../../ui'
 import { cn } from '../../lib/cn'
 import { formatDate } from '../../lib/format'
+import {
+  withOfflineFallback, FIELD_OPS,
+} from '../../features/installations/offline/fieldOutbox'
 
 export default function ChantierChecklist({
   installationId, produits, series = [], onChanged,
@@ -44,9 +47,21 @@ export default function ChantierChecklist({
       }
     }
     try {
-      const r = await installationsApi.cocherChecklist(installationId, payload)
-      setItems(r.data.items ?? [])
-      setCompletion(r.data.completion)
+      // N91 — repli hors-ligne : on file le cochage (la capture de série
+      // optionnelle, qui crée un équipement parc, reste en ligne — elle n'est
+      // pas portée par l'op JSON et sera ressaisie/synchronisée si besoin).
+      const r = await withOfflineFallback(
+        () => installationsApi.cocherChecklist(installationId, payload),
+        FIELD_OPS.COCHER_CHECKLIST,
+        { chantier: installationId, cle: item.cle, fait })
+      if (r.queued) {
+        // Reflète l'état localement ; la synchro reposera le serveur au retour.
+        setItems((prev) => prev.map((it) => it.cle === item.cle ? { ...it, fait } : it))
+        toast.success('Hors ligne — coché, synchro au retour du réseau.')
+      } else {
+        setItems(r.data.items ?? [])
+        setCompletion(r.data.completion)
+      }
       setSerie((prev) => ({ ...prev, [item.cle]: undefined }))
       onChanged?.()
     } catch { /* erreur silencieuse */ }

@@ -194,6 +194,14 @@ const installationsApi = {
 
   // ── F23 — Code/QR de l'intervention ──
   getCode: (id) => api.get(`/installations/interventions/${id}/code/`),
+
+  // ── N91/F21 — Synchro idempotente de la capture terrain hors-ligne ──
+  // `ops` : [{ client_op_id, op_type, payload }]. Sûr à rejouer en entier
+  // (la même clé est un no-op côté serveur). suppressErrorToast : le flush se
+  // fait en arrière-plan, on ne veut pas spammer l'utilisateur si le réseau
+  // retombe pendant l'envoi (l'outbox réessaiera).
+  syncField: (ops) =>
+    api.post('/installations/sync/', { ops }, { suppressErrorToast: true }),
 }
 
 export default installationsApi

@@ -98,6 +98,30 @@ self.addEventListener('push', (event) => {
   event.waitUntil(self.registration.showNotification(title, options))
 })
 
+// ── N91/F21 — Synchro de la capture terrain hors-ligne ──────────────────────
+// L'outbox (file IndexedDB des actions terrain) est vidée par la PAGE (elle a
+// le client axios authentifié), pas par le service worker. Quand le navigateur
+// déclenche une Background Sync (tag « field-outbox-sync », planifiée par la
+// page au moment d'une mise en file hors-ligne), on réveille les onglets
+// ouverts pour qu'ils flushent. NO-OP si aucune page n'est ouverte (la page
+// flushe de toute façon à son prochain montage / événement « online »).
+// Tout est défensif : un échec ne casse jamais le service worker.
+function notifyClientsToFlush() {
+  return self.clients.matchAll({ type: 'window', includeUncontrolled: true })
+    .then((clientList) => {
+      for (const client of clientList) {
+        try { client.postMessage({ type: 'FIELD_OUTBOX_FLUSH' }) } catch { /* best-effort */ }
+      }
+    })
+    .catch(() => undefined)
+}
+
+self.addEventListener('sync', (event) => {
+  if (event.tag === 'field-outbox-sync') {
+    event.waitUntil(notifyClientsToFlush())
+  }
+})
+
 self.addEventListener('notificationclick', (event) => {
   event.notification.close()
   const link = (event.notification.data && event.notification.data.link) || '/'
