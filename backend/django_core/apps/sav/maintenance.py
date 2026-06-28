@@ -3,12 +3,22 @@
 Aucun planificateur : on matérialise les visites dues quand l'utilisateur
 consulte la liste « à venir » / déclenche la génération. Idempotent — on avance
 `derniere_visite` à la date de la visite générée pour ne pas dupliquer.
+
+FG88 — Planification de tournée maintenance préventive. Les visites préventives
+matérialisées (tickets PREVENTIF ouverts) restent sans date ni groupage bien
+que le GPS du chantier existe. On expose la file des visites DUES avec leur GPS
+(triée par proximité, haversine — aucun service de routage externe) et une
+action de planification BULK posant date_tournee + technicien sur un lot de
+tickets, scopée société côté serveur.
 """
 from datetime import date as _date
+from math import asin, cos, radians, sin, sqrt
 
+from django.contrib.auth import get_user_model
 from django.http import HttpResponse
 from rest_framework import viewsets, status
 from rest_framework.decorators import action
+from rest_framework.exceptions import ValidationError
 from rest_framework.response import Response
 
 from authentication.mixins import TenantMixin
@@ -17,6 +27,119 @@ from apps.ventes.utils.references import create_with_reference
 from .models import ContratMaintenance, Ticket
 from .pdf import rapport_maintenance_pdf
 from .serializers_maintenance import ContratMaintenanceSerializer
+
+
+def _haversine_km(lat1, lng1, lat2, lng2):
+    """Distance en kilomètres entre deux points GPS (haversine). Renvoie None si
+    une coordonnée manque. Math pure — aucun service externe (FG88)."""
+    if None in (lat1, lng1, lat2, lng2):
+        return None
+    try:
+        lat1, lng1, lat2, lng2 = float(lat1), float(lng1), float(lat2), float(lng2)
+    except (TypeError, ValueError):
+        return None
+    r = 6371.0
+    dlat = radians(lat2 - lat1)
+    dlng = radians(lng2 - lng1)
+    a = (sin(dlat / 2) ** 2
+         + cos(radians(lat1)) * cos(radians(lat2)) * sin(dlng / 2) ** 2)
+    return round(2 * r * asin(sqrt(a)), 3)
+
+
+def tournee_preventive(company, origin_lat=None, origin_lng=None):
+    """FG88 — File des visites préventives DUES, enrichie du GPS du chantier et
+    triée par proximité (haversine) depuis un point d'origine optionnel.
+
+    Une « visite due » = un ticket PREVENTIF ouvert (NOUVEAU/PLANIFIE/EN_COURS),
+    non annulé, de la société. Le GPS est lu via le sélecteur installations
+    (jamais un import direct du modèle). Sans point d'origine, l'origine est le
+    premier chantier doté d'un GPS (tri relatif : on regroupe les voisins).
+    Les tickets sans GPS sont placés en fin de liste (distance None).
+    Renvoie une liste de dicts plats (jamais l'instance ORM).
+    """
+    from apps.installations.selectors import installation_gps_map
+
+    tickets = list(
+        Ticket.objects
+        .filter(company=company, type=Ticket.Type.PREVENTIF,
+                statut__in=Ticket.OPEN_STATUTS, annule=False)
+        .select_related('client', 'installation', 'technicien_responsable')
+        .order_by('date_ouverture', 'id'))
+
+    gps = installation_gps_map(
+        [t.installation_id for t in tickets if t.installation_id])
+
+    # Point d'origine : explicite, sinon le premier chantier géolocalisé.
+    if origin_lat is None or origin_lng is None:
+        for t in tickets:
+            coord = gps.get(t.installation_id)
+            if coord and coord[0] is not None and coord[1] is not None:
+                origin_lat, origin_lng = coord
+                break
+
+    rows = []
+    for t in tickets:
+        coord = gps.get(t.installation_id) or (None, None)
+        lat, lng = coord
+        distance = _haversine_km(origin_lat, origin_lng, lat, lng)
+        rows.append({
+            'id': t.id,
+            'reference': t.reference,
+            'statut': t.statut,
+            'client_id': t.client_id,
+            'client_nom': getattr(t.client, 'nom', None),
+            'installation_id': t.installation_id,
+            'date_ouverture': (t.date_ouverture.isoformat()
+                               if t.date_ouverture else None),
+            'date_tournee': (t.date_tournee.isoformat()
+                             if t.date_tournee else None),
+            'technicien_id': t.technicien_responsable_id,
+            'technicien': getattr(t.technicien_responsable, 'username', None),
+            'gps_lat': str(lat) if lat is not None else None,
+            'gps_lng': str(lng) if lng is not None else None,
+            'distance_km': distance,
+        })
+
+    # Tri par proximité : les chantiers sans distance (GPS manquant) en fin.
+    rows.sort(key=lambda r: (r['distance_km'] is None,
+                             r['distance_km'] if r['distance_km'] is not None
+                             else 0.0))
+    return rows
+
+
+def planifier_tournee(company, ticket_ids, date_tournee, technicien_id=None):
+    """FG88 — Affecte EN LOT une date de tournée (et un technicien optionnel) à
+    un ensemble de tickets préventifs de la société.
+
+    Tenant safety : seuls les tickets de `company` sont touchés (les ids
+    étrangers sont ignorés silencieusement), et le technicien doit appartenir à
+    la même société. Pose date_tournee + technicien_responsable et passe le
+    ticket en PLANIFIE s'il était encore NOUVEAU. Renvoie le nombre mis à jour.
+    """
+    technicien = None
+    if technicien_id is not None:
+        User = get_user_model()
+        technicien = User.objects.filter(
+            id=technicien_id, company=company).first()
+        if technicien is None:
+            raise ValidationError({'technicien': 'Technicien inconnu.'})
+
+    qs = Ticket.objects.filter(
+        company=company, id__in=ticket_ids, type=Ticket.Type.PREVENTIF,
+        annule=False)
+    updated = 0
+    for ticket in qs:
+        ticket.date_tournee = date_tournee
+        fields = ['date_tournee']
+        if technicien is not None:
+            ticket.technicien_responsable = technicien
+            fields.append('technicien_responsable')
+        if ticket.statut == Ticket.Statut.NOUVEAU:
+            ticket.statut = Ticket.Statut.PLANIFIE
+            fields.append('statut')
+        ticket.save(update_fields=fields)
+        updated += 1
+    return updated
 
 
 def generer_visites_dues(company, user):
@@ -51,7 +174,7 @@ class ContratMaintenanceViewSet(TenantMixin, viewsets.ModelViewSet):
     serializer_class = ContratMaintenanceSerializer
 
     def get_permissions(self):
-        if self.action in ('list', 'retrieve', 'a_venir'):
+        if self.action in ('list', 'retrieve', 'a_venir', 'tournee'):
             return [IsAnyRole()]
         return [IsResponsableOrAdmin()]
 
@@ -92,6 +215,64 @@ class ContratMaintenanceViewSet(TenantMixin, viewsets.ModelViewSet):
         des contrats dont la visite est due."""
         n = generer_visites_dues(request.user.company, request.user)
         return Response({'ok': True, 'tickets_generes': n},
+                        status=status.HTTP_200_OK)
+
+    @action(detail=False, methods=['get'], url_path='tournee',
+            permission_classes=[IsAnyRole])
+    def tournee(self, request):
+        """FG88 — File des visites préventives DUES à planifier.
+
+        GET /sav/contrats-maintenance/tournee/[?lat=..&lng=..]
+
+        Renvoie les tickets préventifs ouverts de la société avec le GPS du
+        chantier, triés par proximité (haversine) depuis le point d'origine
+        fourni (?lat/?lng) ou, à défaut, le premier chantier géolocalisé. Aucun
+        service de routage externe."""
+        def _coord(name):
+            raw = (request.query_params.get(name) or '').strip()
+            if not raw:
+                return None
+            try:
+                return float(raw)
+            except ValueError:
+                return None
+
+        rows = tournee_preventive(
+            request.user.company, _coord('lat'), _coord('lng'))
+        return Response({'count': len(rows), 'results': rows},
+                        status=status.HTTP_200_OK)
+
+    @action(detail=False, methods=['post'], url_path='planifier-tournee',
+            permission_classes=[IsResponsableOrAdmin])
+    def planifier_tournee(self, request):
+        """FG88 — Affecte EN LOT date + technicien à un lot de visites.
+
+        POST /sav/contrats-maintenance/planifier-tournee/
+        body: {ticket_ids: [int], date_tournee: "AAAA-MM-JJ",
+               technicien_id: int|null}
+
+        Pose date_tournee (+ technicien optionnel) sur les tickets préventifs
+        de la société et passe NOUVEAU → PLANIFIE. La société n'est jamais lue
+        du corps : seuls les tickets de l'utilisateur sont touchés."""
+        ticket_ids = request.data.get('ticket_ids') or []
+        if not isinstance(ticket_ids, list) or not ticket_ids:
+            return Response({'ok': False, 'detail': 'ticket_ids requis.'},
+                            status=status.HTTP_400_BAD_REQUEST)
+        raw_date = (request.data.get('date_tournee') or '').strip()
+        try:
+            date_tournee = _date.fromisoformat(raw_date)
+        except (ValueError, TypeError):
+            return Response(
+                {'ok': False, 'detail': 'date_tournee invalide (AAAA-MM-JJ).'},
+                status=status.HTTP_400_BAD_REQUEST)
+        technicien_id = request.data.get('technicien_id')
+        try:
+            n = planifier_tournee(
+                request.user.company, ticket_ids, date_tournee, technicien_id)
+        except ValidationError as exc:
+            return Response({'ok': False, 'detail': exc.detail},
+                            status=status.HTTP_400_BAD_REQUEST)
+        return Response({'ok': True, 'tickets_planifies': n},
                         status=status.HTTP_200_OK)
 
     @action(detail=True, methods=['post'], url_path='facturer',
