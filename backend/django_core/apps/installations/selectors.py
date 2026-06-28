@@ -33,6 +33,20 @@ def installation_scoped(company, pk):
             .first())
 
 
+def installation_gps_map(installation_ids):
+    """Map {installation_id: (gps_lat, gps_lng)} pour un lot de chantiers — une
+    seule requête. Lecture seule, point d'entrée cross-app : les autres apps
+    (ex. SAV, pour le tri de tournée par proximité) lisent le GPS du chantier à
+    travers ce sélecteur plutôt qu'en important `installations.models`. Une
+    coordonnée manquante reste à None (l'appelant la traite comme « sans GPS »).
+    """
+    from .models import Installation
+    rows = (Installation.objects
+            .filter(id__in=installation_ids)
+            .values_list('id', 'gps_lat', 'gps_lng'))
+    return {iid: (lat, lng) for iid, lat, lng in rows}
+
+
 def installation_qs_for_remise():
     """Queryset Installation prêt pour la fiche de remise (relations préchargées).
     L'appelant applique son propre scope société puis filtre par pk."""

@@ -297,6 +297,11 @@ class Ticket(models.Model):
     )
     date_ouverture = models.DateField(null=True, blank=True)
     date_resolution = models.DateField(null=True, blank=True)
+    # FG88 — Date de tournée planifiée (jour de la visite préventive groupée).
+    # Posée par l'action de planification de tournée (bulk-assign date +
+    # technicien), distincte de date_ouverture qui reste la date d'ouverture du
+    # ticket. NULL = visite non encore planifiée.
+    date_tournee = models.DateField(null=True, blank=True)
 
     # Sous garantie : CALCULÉ depuis l'équipement lié quand il y en a un ;
     # sinon, valeur manuelle (oui/non/à déterminer) posée par l'utilisateur.
