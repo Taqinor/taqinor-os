@@ -808,6 +808,130 @@ class Equipe(models.Model):
         return self.nom
 
 
+class AffectationRessource(models.Model):
+    """Affectation d'une ressource (personne, équipe ou matériel) à une tâche.
+
+    Brique PROJ16 : alloue une RESSOURCE — ``RessourceProfil`` (personne/rôle),
+    ``Equipe``, ou un actif matériel (véhicule/machine, référence LÂCHE vers
+    ``flotte.ActifFlotte``) — à une ``Tache`` du projet, sur une période
+    définie (``date_debut`` / ``date_fin``). La charge (``charge_jours``) et
+    la quantité (``quantite``) sont optionnelles : données de pilotage interne.
+
+    EXACTEMENT UN des trois vecteurs de ressource doit être renseigné (validé
+    dans ``clean`` et dans le sérialiseur) :
+        • ``ressource``     — FK vers ``RessourceProfil`` (personne ou rôle)
+        • ``equipe``        — FK vers ``Equipe``
+        • ``actif_type`` + ``actif_id`` — référence LÂCHE vers ``flotte.ActifFlotte``
+          (type = 'actif_flotte') ; l'identifiant est stocké séparément pour ne
+          JAMAIS importer les modèles flotte (règle cross-app).
+
+    Tout est multi-société : ``company`` est posée côté serveur, jamais lue du
+    corps de requête. Modèle entièrement additif.
+    """
+
+    class TypeActif(models.TextChoices):
+        ACTIF_FLOTTE = 'actif_flotte', 'Actif flotte'
+
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='gp_affectations',
+        verbose_name='Société',
+    )
+    tache = models.ForeignKey(
+        Tache,
+        on_delete=models.CASCADE,
+        related_name='affectations',
+        verbose_name='Tâche',
+    )
+    # ── Vecteur 1 : personne / rôle ──────────────────────────────────────────
+    ressource = models.ForeignKey(
+        RessourceProfil,
+        on_delete=models.CASCADE,
+        null=True, blank=True,
+        related_name='gp_affectations',
+        verbose_name='Ressource (profil)',
+    )
+    # ── Vecteur 2 : équipe ────────────────────────────────────────────────────
+    equipe = models.ForeignKey(
+        Equipe,
+        on_delete=models.CASCADE,
+        null=True, blank=True,
+        related_name='gp_affectations',
+        verbose_name='Équipe',
+    )
+    # ── Vecteur 3 : actif matériel (référence LÂCHE vers flotte) ─────────────
+    actif_type = models.CharField(
+        max_length=30,
+        choices=TypeActif.choices,
+        blank=True, default='',
+        verbose_name='Type actif',
+    )
+    actif_id = models.PositiveIntegerField(
+        null=True, blank=True, verbose_name="ID de l'actif")
+    # ── Période ───────────────────────────────────────────────────────────────
+    date_debut = models.DateField(verbose_name='Date de début')
+    date_fin = models.DateField(verbose_name='Date de fin')
+    # ── Charge / quantité (pilotage interne) ─────────────────────────────────
+    charge_jours = models.DecimalField(
+        max_digits=8, decimal_places=2,
+        null=True, blank=True,
+        verbose_name='Charge (j-h)',
+    )
+    quantite = models.DecimalField(
+        max_digits=10, decimal_places=3,
+        null=True, blank=True,
+        verbose_name='Quantité',
+    )
+    note = models.TextField(blank=True, default='', verbose_name='Note')
+    date_creation = models.DateTimeField(
+        auto_now_add=True, verbose_name='Créé le')
+
+    class Meta:
+        verbose_name = "Affectation de ressource"
+        verbose_name_plural = "Affectations de ressources"
+        ordering = ['tache', 'date_debut', 'id']
+        indexes = [
+            models.Index(
+                fields=['tache', 'date_debut'],
+                name='gp_affect_tache_debut_idx'),
+            models.Index(
+                fields=['ressource'],
+                name='gp_affect_ressource_idx'),
+            models.Index(
+                fields=['equipe'],
+                name='gp_affect_equipe_idx'),
+        ]
+
+    def __str__(self):
+        if self.ressource_id:
+            label = str(self.ressource)
+        elif self.equipe_id:
+            label = str(self.equipe)
+        else:
+            label = f"{self.actif_type}#{self.actif_id}"
+        return f"Tâche {self.tache_id} ← {label} ({self.date_debut}/{self.date_fin})"
+
+    def clean(self):
+        from django.core.exceptions import ValidationError
+        self._validate_un_seul_vecteur()
+
+    def _validate_un_seul_vecteur(self):
+        from django.core.exceptions import ValidationError
+        has_ressource = self.ressource_id is not None
+        has_equipe = self.equipe_id is not None
+        has_actif = bool(self.actif_type) and self.actif_id is not None
+        vecteurs = sum([has_ressource, has_equipe, has_actif])
+        if vecteurs == 0:
+            raise ValidationError(
+                "Exactement un vecteur de ressource doit être renseigné "
+                "(ressource, équipe ou actif matériel).")
+        if vecteurs > 1:
+            raise ValidationError(
+                "Un seul vecteur de ressource à la fois : ressource, équipe "
+                "ou actif matériel — pas plusieurs simultanément.")
+
+
 class ProjetActivity(models.Model):
     """Journal minimal des transitions de statut d'un ``Projet``.
 

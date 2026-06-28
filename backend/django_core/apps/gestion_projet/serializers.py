@@ -7,6 +7,7 @@ appartenant à la société de l'utilisateur.
 from rest_framework import serializers
 
 from .models import (
+    AffectationRessource,
     BaselinePlanning,
     BaselineTache,
     CalendrierProjet,
@@ -434,3 +435,81 @@ class BaselinePlanningSerializer(serializers.ModelSerializer):
 
     def validate_projet(self, value):
         return _meme_societe(self, value, 'Projet')
+
+
+class AffectationRessourceSerializer(serializers.ModelSerializer):
+    """Affectation d'une ressource (personne, equipe ou actif) a une tache.
+
+    ``company`` n'est jamais exposee en ecriture : elle est posee cote serveur
+    par le ``TenantMixin``. Les FK recus (``tache``, ``ressource``, ``equipe``)
+    sont valides comme appartenant a la societe de l'utilisateur.
+
+    EXACTEMENT UN des trois vecteurs doit etre fourni :
+        - ``ressource``                 : FK RessourceProfil
+        - ``equipe``                    : FK Equipe
+        - ``actif_type`` + ``actif_id`` : reference lache flotte
+    """
+    tache_libelle = serializers.CharField(
+        source='tache.libelle', read_only=True)
+    ressource_nom = serializers.CharField(
+        source='ressource.nom', read_only=True, default=None)
+    equipe_nom = serializers.CharField(
+        source='equipe.nom', read_only=True, default=None)
+
+    class Meta:
+        model = AffectationRessource
+        fields = [
+            'id', 'tache', 'tache_libelle',
+            'ressource', 'ressource_nom',
+            'equipe', 'equipe_nom',
+            'actif_type', 'actif_id',
+            'date_debut', 'date_fin',
+            'charge_jours', 'quantite', 'note',
+            'date_creation',
+        ]
+        read_only_fields = ['date_creation']
+
+    def validate_tache(self, value):
+        return _meme_societe(self, value, 'Tache')
+
+    def validate_ressource(self, value):
+        return _meme_societe(self, value, 'Ressource')
+
+    def validate_equipe(self, value):
+        return _meme_societe(self, value, 'Equipe')
+
+    def validate(self, attrs):
+        # Recupere les valeurs depuis attrs ou l'instance courante (PATCH partiel).
+        ressource = attrs.get(
+            'ressource', getattr(self.instance, 'ressource', None))
+        equipe = attrs.get(
+            'equipe', getattr(self.instance, 'equipe', None))
+        actif_type = attrs.get(
+            'actif_type', getattr(self.instance, 'actif_type', ''))
+        actif_id = attrs.get(
+            'actif_id', getattr(self.instance, 'actif_id', None))
+
+        has_ressource = ressource is not None
+        has_equipe = equipe is not None
+        has_actif = bool(actif_type) and actif_id is not None
+        vecteurs = sum([has_ressource, has_equipe, has_actif])
+
+        if vecteurs == 0:
+            raise serializers.ValidationError(
+                "Exactement un vecteur de ressource doit etre renseigne "
+                "(ressource, equipe ou actif materiel).")
+        if vecteurs > 1:
+            raise serializers.ValidationError(
+                "Un seul vecteur de ressource a la fois : ressource, equipe "
+                "ou actif materiel.")
+
+        # Validation date_fin >= date_debut.
+        date_debut = attrs.get(
+            'date_debut', getattr(self.instance, 'date_debut', None))
+        date_fin = attrs.get(
+            'date_fin', getattr(self.instance, 'date_fin', None))
+        if date_debut and date_fin and date_fin < date_debut:
+            raise serializers.ValidationError(
+                {'date_fin': "La date de fin ne peut pas etre anterieure "
+                             "a la date de debut."})
+        return attrs
