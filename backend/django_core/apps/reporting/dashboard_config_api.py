@@ -12,6 +12,7 @@ CRUD complet via le router DRF (SavedReportViewSet style) — company forcée se
 """
 from rest_framework import serializers, viewsets
 from rest_framework.decorators import action
+from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 
 from authentication.permissions import IsResponsableOrAdmin
@@ -79,7 +80,7 @@ class DashboardConfigViewSet(TenantMixin, viewsets.ModelViewSet):
         serializer.save(company=self.request.user.company)
 
     @action(detail=False, methods=['get'], url_path='effective',
-            permission_classes=[IsResponsableOrAdmin])
+            permission_classes=[IsAuthenticated])
     def effective(self, request):
         """Retourne la config effective (per-user > palier > défaut Python).
 
