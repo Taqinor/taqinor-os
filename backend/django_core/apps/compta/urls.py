@@ -7,7 +7,8 @@ from .views import (
     EcritureComptableViewSet, EffetViewSet, EtatsComptablesViewSet,
     ExerciceComptableViewSet, ImmobilisationViewSet, JournalViewSet,
     LignePrevisionnelTresorerieViewSet, PeriodeComptableViewSet,
-    PlanComptableViewSet, RapprochementBancaireViewSet, VirementInterneViewSet,
+    PlanComptableViewSet, RapprochementBancaireViewSet, RapprochementViewSet,
+    VirementInterneViewSet,
 )
 
 router = DefaultRouter()
@@ -22,6 +23,8 @@ router.register(r'immobilisations', ImmobilisationViewSet)
 router.register(r'dotations', DotationAmortissementViewSet)
 router.register(r'cessions', CessionImmobilisationViewSet)
 router.register(r'rapprochements', RapprochementBancaireViewSet)
+router.register(r'rapprochements-3voies', RapprochementViewSet,
+                basename='rapprochement-3voies')
 router.register(r'caisses', CaisseViewSet)
 router.register(r'virements', VirementInterneViewSet)
 router.register(r'previsionnel', LignePrevisionnelTresorerieViewSet)

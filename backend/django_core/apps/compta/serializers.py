@@ -13,7 +13,8 @@ from .models import (
     CompteComptable, CompteTresorerie, DotationAmortissement, EcritureComptable,
     Effet, ExerciceComptable, Immobilisation, Journal, LigneEcriture,
     LignePrevisionnelTresorerie, LigneReleve, MouvementCaisse, PeriodeComptable,
-    PlanAmortissement, PlanComptable, RapprochementBancaire, VirementInterne,
+    PlanAmortissement, PlanComptable, Rapprochement, RapprochementBancaire,
+    VirementInterne,
 )
 
 
@@ -628,4 +629,47 @@ class BordereauRemiseSerializer(serializers.ModelSerializer):
                 CompteTresorerie.Type.BANQUE):
             raise serializers.ValidationError(
                 "Un bordereau de remise se dépose sur un compte bancaire.")
+        return value
+
+
+# ── FG131 — Rapprochement 3 voies (BC ↔ réception ↔ facture fournisseur) ────
+
+class RapprochementSerializer(serializers.ModelSerializer):
+    """Rapprochement 3 voies d'un achat avant paiement (FG131).
+
+    ``company`` posée côté serveur. ``bon_commande`` est un BCF (apps.stock) —
+    sa validité-société est vérifiée par le service à l'évaluation. Les montants
+    (commandé/reçu/facturé), l'écart et le statut sont calculés côté serveur (en
+    lecture seule ici) ; seuls ``bon_commande``, ``tolerance`` et ``note`` sont
+    saisissables. ``bon_a_payer`` indique si le paiement est autorisé.
+    """
+    statut_display = serializers.CharField(
+        source='get_statut_display', read_only=True)
+    bon_commande_reference = serializers.CharField(
+        source='bon_commande.reference', read_only=True)
+    fournisseur_nom = serializers.CharField(
+        source='bon_commande.fournisseur.nom', read_only=True)
+    ecart_commande_recu = serializers.DecimalField(
+        max_digits=14, decimal_places=2, read_only=True)
+    bon_a_payer = serializers.BooleanField(read_only=True)
+
+    class Meta:
+        model = Rapprochement
+        fields = [
+            'id', 'bon_commande', 'bon_commande_reference', 'fournisseur_nom',
+            'statut', 'statut_display', 'tolerance', 'montant_commande',
+            'montant_recu', 'montant_facture', 'ecart', 'ecart_commande_recu',
+            'bon_a_payer', 'note', 'date_evaluation', 'valide_par',
+            'date_validation', 'date_creation',
+        ]
+        read_only_fields = [
+            'statut', 'montant_commande', 'montant_recu', 'montant_facture',
+            'ecart', 'date_evaluation', 'valide_par', 'date_validation',
+            'date_creation',
+        ]
+
+    def validate_tolerance(self, value):
+        if value is not None and value < 0:
+            raise serializers.ValidationError(
+                "La tolérance doit être positive ou nulle.")
         return value
