@@ -233,6 +233,35 @@ def _register_builtin_actions() -> None:
             risk=RISK_OUTWARD,
             confirm_summary='Produire le PDF de devis destiné au client.',
         ),
+        # FG352 — Outil de RÉCUPÉRATION RAG / DocQA. Action de LECTURE pure
+        # (risk=internal) : renvoie les passages de documents/manuels les plus
+        # proches d'une question, scopés société + ACL coffre-fort côté serveur.
+        # KEY-GATED : sans clé d'embedding, l'endpoint renvoie `enabled=false` et
+        # une liste vide (no-op propre, aucun coût). Aucune permission ERP requise
+        # ici — l'endpoint GED re-vérifie le rôle + la société à l'exécution.
+        AgentAction(
+            key='ged.docqa.retrieve',
+            label='Rechercher dans les documents (DocQA)',
+            description=(
+                "Récupère les passages de documents et manuels les plus "
+                "pertinents pour une question (RAG sémantique sur le magasin "
+                "pgvector). Lecture seule, scopée à la société et à l'ACL "
+                "coffre-fort de l'utilisateur. Sans clé d'embedding configurée, "
+                "renvoie un résultat vide (fonctionnalité désactivée)."
+            ),
+            endpoint='/api/django/ged/documents/docqa/',
+            method='GET',
+            inputs={
+                'type': 'object',
+                'properties': {
+                    'q': {'type': 'string'},
+                    'k': {'type': 'integer'},
+                },
+                'required': ['q'],
+            },
+            required_permission=None,
+            risk=RISK_INTERNAL,
+        ),
         AgentAction(
             key='crm.lead.list',
             label='Lister les leads',

@@ -131,6 +131,38 @@ def semantic_search_documents(user, query, *, limit=20):
             .order_by('distance')[:limit])
 
 
+def retrieve_chunks(user, query, *, limit=5):
+    """FG352 — Outil de récupération RAG : top-k fragments pour une question.
+
+    Renvoie les `limit` fragments de documents (`DocumentChunk`) les plus proches
+    de la question par distance cosinus dans le magasin pgvector partagé. Les
+    fragments sont bornés aux documents que l'utilisateur peut VOIR (ACL
+    coffre-fort + société, via `documents_visible_to_user`) — jamais de fuite
+    cross-société.
+
+    KEY-GATED no-op : sans clé d'embedding ou si la question n'est pas
+    vectorisable, on renvoie une liste vide (aucun appel réseau, aucun coût) — le
+    DocQA dégrade proprement plutôt que d'échouer. Le résultat est une liste de
+    `DocumentChunk` (ordre = plus proche d'abord), chacun annoté de `distance`.
+    """
+    from .models import DocumentChunk
+    from . import services
+    if not services.embedding_enabled():
+        return []
+    if not query or not str(query).strip():
+        return []
+    vec = services.compute_embedding(str(query))
+    if vec is None:
+        return []
+    from pgvector.django import CosineDistance
+    # Restreint aux documents visibles de l'utilisateur (ACL + société).
+    visible_ids = documents_visible_to_user(user).values_list('id', flat=True)
+    base = (DocumentChunk.objects
+            .filter(document_id__in=visible_ids, embedding__isnull=False))
+    return list(base.annotate(distance=CosineDistance('embedding', vec))
+                .order_by('distance')[:max(1, int(limit))])
+
+
 def folders_for_company(company):
     """Dossiers d'une société (QuerySet)."""
     return Folder.objects.filter(company=company)
