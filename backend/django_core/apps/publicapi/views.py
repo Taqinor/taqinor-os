@@ -16,6 +16,7 @@ from .serializers import (
     ApiKeySerializer, ApiKeyCreateSerializer, WebhookSerializer,
     WebhookDeliverySerializer, scope_catalogue,
 )
+from . import delivery as delivery_service
 
 
 def _no_store(response):
@@ -112,7 +113,73 @@ class WebhookViewSet(_CompanyScopedMixin, viewsets.ModelViewSet):
 
     @action(detail=True, methods=['get'])
     def deliveries(self, request, pk=None):
-        """Dernières livraisons de ce webhook (diagnostic)."""
+        """Liste des 50 dernières livraisons de ce webhook (historique/diagnostic)."""
         instance = self.get_object()
-        qs = WebhookDelivery.objects.filter(webhook=instance)[:50]
+        qs = WebhookDelivery.objects.filter(
+            webhook=instance, company=request.user.company
+        ).order_by('-created_at')[:50]
         return Response(WebhookDeliverySerializer(qs, many=True).data)
+
+    @action(
+        detail=True, methods=['post'],
+        url_path=r'deliveries/(?P<delivery_id>[0-9]+)/replay',
+    )
+    def delivery_replay(self, request, pk=None, delivery_id=None):
+        """Rejoue une livraison existante en renvoyant le même payload.
+
+        Crée un NOUVEL enregistrement WebhookDelivery — la livraison originale
+        est conservée intacte. Toujours company-scoped : la livraison doit
+        appartenir au même webhook ET à la même société que l'utilisateur
+        connecté.
+        """
+        webhook = self.get_object()  # lève 404 si mauvaise société
+        try:
+            original = WebhookDelivery.objects.get(
+                id=delivery_id,
+                webhook=webhook,
+                company=request.user.company,
+            )
+        except WebhookDelivery.DoesNotExist:
+            return Response(
+                {"detail": "Livraison introuvable."},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+        # Réutilise la fonction de livraison existante (signature HMAC incluse).
+        delivery_service._deliver_one(webhook, original.event, original.payload)
+        # Renvoie le dernier enregistrement créé pour ce webhook (la nouvelle tentative).
+        new_delivery = (
+            WebhookDelivery.objects.filter(webhook=webhook)
+            .order_by('-created_at')
+            .first()
+        )
+        return Response(
+            WebhookDeliverySerializer(new_delivery).data,
+            status=status.HTTP_201_CREATED,
+        )
+
+    @action(detail=True, methods=['post'], url_path='test')
+    def test_ping(self, request, pk=None):
+        """Envoie un évènement de test synthétique vers ce webhook.
+
+        Crée une charge utile test (type « ping ») et la livre immédiatement.
+        L'évènement n'est PAS dans la liste officielle — le label « test »
+        identifie clairement les pings dans l'historique de livraison.
+        Toujours company-scoped.
+        """
+        webhook = self.get_object()  # lève 404 si mauvaise société
+        test_event = 'webhook.test'
+        test_payload = {
+            'event': test_event,
+            'webhook_id': webhook.id,
+            'message': "Ceci est un ping de test depuis Taqinor.",
+        }
+        delivery_service._deliver_one(webhook, test_event, test_payload)
+        new_delivery = (
+            WebhookDelivery.objects.filter(webhook=webhook, event=test_event)
+            .order_by('-created_at')
+            .first()
+        )
+        return Response(
+            WebhookDeliverySerializer(new_delivery).data,
+            status=status.HTTP_201_CREATED,
+        )
