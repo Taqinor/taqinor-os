@@ -217,13 +217,17 @@ def move_document(document, new_folder):
 
 
 def add_version(document, *, file_key, company, filename='', size=0, mime='',
-                checksum='', uploaded_by=None):
+                checksum='', uploaded_by=None, restored_from=None):
     """Ajoute une nouvelle version à un document (numéro auto-incrémenté).
 
     Le numéro de version est calculé côté serveur (dernière + 1) et la société
     est forcée à celle du document (jamais du corps de requête). `checksum`
     permet la déduplication : un appelant peut vérifier au préalable s'il
     existe déjà une version de même empreinte (voir `find_duplicate`).
+
+    GED15 — `restored_from` : si cette version est le résultat d'une restauration,
+    on passe ici la version source pour traçabilité (posé côté serveur dans
+    `restore_version`, jamais lu du corps de requête).
     """
     with transaction.atomic():
         last = (DocumentVersion.objects
@@ -242,7 +246,41 @@ def add_version(document, *, file_key, company, filename='', size=0, mime='',
             mime=mime,
             checksum=checksum,
             uploaded_by=uploaded_by,
+            restored_from=restored_from,
         )
+
+
+def restore_version(document, source_version, *, uploaded_by=None):
+    """GED15 — Restaure un document à une version antérieure (non destructif).
+
+    Crée une NOUVELLE version (numéro max + 1) dont le contenu (file_key,
+    filename, size, mime, checksum) est copié depuis `source_version`, en
+    traçant le lien via `restored_from`. L'historique est ENTIÈREMENT PRÉSERVÉ —
+    aucune version n'est modifiée ou supprimée.
+
+    La `source_version` doit appartenir au même document ET à la même société
+    (validé ici côté serveur — jamais du corps de requête). La société de la
+    nouvelle version est toujours celle du document.
+
+    Renvoie la nouvelle version créée.
+    """
+    # Garde : la version source doit appartenir à ce document et cette société.
+    if source_version.document_id != document.pk:
+        raise ValueError("La version source n'appartient pas à ce document.")
+    if source_version.company_id != document.company_id:
+        raise ValueError(
+            "La version source n'appartient pas à la même société.")
+    return add_version(
+        document,
+        file_key=source_version.file_key,
+        company=document.company,
+        filename=source_version.filename,
+        size=source_version.size,
+        mime=source_version.mime,
+        checksum=source_version.checksum,
+        uploaded_by=uploaded_by,
+        restored_from=source_version,
+    )
 
 
 def find_duplicate(company, checksum):

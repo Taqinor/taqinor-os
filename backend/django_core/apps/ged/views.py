@@ -184,9 +184,9 @@ class DocumentViewSet(TenantMixin, viewsets.ModelViewSet):
     ordering_fields = ['nom', 'created_at', 'updated_at']
 
     def get_permissions(self):
-        # `recherche`/`semantique` sont des lectures : tout rôle authentifié.
+        # `recherche`/`semantique`/`historique` sont des lectures : tout rôle.
         if self.action in READ_ACTIONS or self.action in (
-                'recherche', 'semantique'):
+                'recherche', 'semantique', 'historique'):
             return [IsAnyRole()]
         return [IsResponsableOrAdmin()]
 
@@ -373,6 +373,64 @@ class DocumentViewSet(TenantMixin, viewsets.ModelViewSet):
         document.refresh_from_db()
         data = DocumentSerializer(document, context={'request': request}).data
         return Response(data)
+
+    @action(detail=True, methods=['get'], url_path='historique')
+    def historique(self, request, pk=None):
+        """GED15 — Historique complet des versions d'un document (scopé société).
+
+        `GET …/documents/<id>/historique/` renvoie toutes les versions du
+        document, ordonnées de la plus récente à la plus ancienne (numéro
+        décroissant). Le document est company-scopé via `get_object()` (404
+        cross-société + ACL coffre). Lecture : tout rôle authentifié.
+
+        Chaque entrée expose `restored_from_version` pour tracer les
+        restaurations (GED15 : null pour les versions ordinaires, numéro source
+        pour les restaurations)."""
+        document = self.get_object()
+        qs = selectors.versions_for_document(document).select_related(
+            'uploaded_by', 'restored_from')
+        data = DocumentVersionSerializer(
+            qs, many=True, context={'request': request}).data
+        return Response(data)
+
+    @action(detail=True, methods=['post'], url_path='restaurer')
+    def restaurer(self, request, pk=None):
+        """GED15 — Restaure le document à une version antérieure (non destructif).
+
+        `POST …/documents/<id>/restaurer/` — corps : `{"version": <id>}`.
+
+        Crée une NOUVELLE version (numéro max + 1) dont le contenu est copié
+        depuis la version `version`, et marque `restored_from` → source.
+        L'historique est entièrement PRÉSERVÉ : aucune version n'est modifiée
+        ou supprimée (opération additive et auditée). La version source est
+        bornée à ce document et à la société courante (jamais cross-société ni
+        cross-document). Écriture : responsable/admin."""
+        document = self.get_object()
+        version_id = request.data.get('version')
+        if not version_id:
+            return Response(
+                {'version': 'L\'identifiant de version est requis.'},
+                status=status.HTTP_400_BAD_REQUEST)
+        # La version source est bornée à ce document et à la société courante.
+        source_version = (DocumentVersion.objects
+                          .filter(company=request.user.company,
+                                  document=document,
+                                  pk=version_id)
+                          .first())
+        if source_version is None:
+            return Response(
+                {'version': 'Version inconnue ou inaccessible.'},
+                status=status.HTTP_404_NOT_FOUND)
+        try:
+            new_version = services.restore_version(
+                document, source_version, uploaded_by=request.user)
+        except ValueError as exc:
+            return Response(
+                {'detail': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+        return Response(
+            DocumentVersionSerializer(
+                new_version, context={'request': request}).data,
+            status=status.HTTP_201_CREATED)
 
 
 class DocumentVersionViewSet(TenantMixin, viewsets.ModelViewSet):

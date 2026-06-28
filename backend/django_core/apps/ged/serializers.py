@@ -163,15 +163,20 @@ class FolderSerializer(serializers.ModelSerializer):
 class DocumentVersionSerializer(serializers.ModelSerializer):
     uploaded_by_nom = serializers.CharField(
         source='uploaded_by.username', read_only=True, default=None)
+    # GED15 — si la version est une restauration, `restored_from_version` expose
+    # le numéro de version source (lisible, jamais écrit du corps de requête).
+    restored_from_version = serializers.IntegerField(
+        source='restored_from.version', read_only=True, default=None)
 
     class Meta:
         model = DocumentVersion
-        # version / company posés côté serveur (services.add_version).
+        # version / company / restored_from posés côté serveur (services).
         fields = [
             'id', 'document', 'version', 'file_key', 'filename', 'size',
-            'mime', 'checksum', 'uploaded_by', 'uploaded_by_nom', 'created_at',
+            'mime', 'checksum', 'uploaded_by', 'uploaded_by_nom',
+            'restored_from', 'restored_from_version', 'created_at',
         ]
-        read_only_fields = ['version', 'uploaded_by', 'created_at']
+        read_only_fields = ['version', 'uploaded_by', 'restored_from', 'created_at']
         # `version` est posé côté serveur (services.add_version). On retire le
         # UniqueTogetherValidator (document, version) auto-généré : il évaluerait
         # version à sa valeur par défaut (1) à chaque POST et rejetterait la 2e
