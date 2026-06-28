@@ -13,6 +13,7 @@ from .models import (
     DossierEmploye,
     FeuilleTemps,
     HeuresSupp,
+    Poste,
 )
 
 
@@ -243,3 +244,17 @@ def employes_assignables(company, jour):
         .exclude(id__in=absents)
         .order_by('nom', 'prenom')
     )
+
+
+def poste_appartient_societe(company, poste_id):
+    """Vrai si le ``rh.Poste`` ``poste_id`` appartient à ``company`` (cross-app).
+
+    DC17 — point d'entrée de lecture pour les modules qui référencent le
+    référentiel de postes (FG160) par STRING-FK (ex. ``authentication.CustomUser
+    .poste_ref``) sans importer ``rh.models`` : permet de valider qu'un Poste
+    assigné est bien de la société de l'appelant. Toujours scopé société ;
+    ``False`` si la société est absente ou le poste introuvable/hors société.
+    """
+    if company is None or poste_id is None:
+        return False
+    return Poste.objects.filter(company=company, pk=poste_id).exists()
