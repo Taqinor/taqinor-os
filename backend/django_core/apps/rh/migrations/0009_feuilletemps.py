@@ -1,0 +1,63 @@
+# Generated 2026-06-28 — FG167 Feuilles de temps par chantier (job-costing)
+
+import django.db.models.deletion
+from django.db import migrations, models
+
+
+class Migration(migrations.Migration):
+
+    dependencies = [
+        ("authentication", "0012_customuser_must_change_password_and_more"),
+        ("rh", "0008_pointage"),
+    ]
+
+    operations = [
+        migrations.CreateModel(
+            name='FeuilleTemps',
+            fields=[
+                ('id', models.BigAutoField(
+                    auto_created=True, primary_key=True,
+                    serialize=False, verbose_name='ID')),
+                ('installation_id', models.PositiveIntegerField(
+                    verbose_name='Installation (ID)')),
+                ('intervention_id', models.PositiveIntegerField(
+                    blank=True, null=True,
+                    verbose_name='Intervention (ID, optionnel)')),
+                ('date', models.DateField(
+                    verbose_name="Date d'imputation")),
+                ('heures', models.DecimalField(
+                    decimal_places=2, max_digits=6,
+                    verbose_name='Heures imputées')),
+                ('taux_horaire', models.DecimalField(
+                    blank=True, decimal_places=2, max_digits=14, null=True,
+                    verbose_name='Taux horaire (interne)')),
+                ('description', models.CharField(
+                    blank=True, default='', max_length=255,
+                    verbose_name='Nature du travail')),
+                ('date_creation', models.DateTimeField(
+                    auto_now_add=True, verbose_name='Créé le')),
+                ('date_modification', models.DateTimeField(
+                    auto_now=True, verbose_name='Modifié le')),
+                ('company', models.ForeignKey(
+                    on_delete=django.db.models.deletion.CASCADE,
+                    related_name='rh_feuilles_temps',
+                    to='authentication.company',
+                    verbose_name='Société')),
+                ('employe', models.ForeignKey(
+                    on_delete=django.db.models.deletion.CASCADE,
+                    related_name='feuilles_temps',
+                    to='rh.dossieremploye',
+                    verbose_name='Employé')),
+            ],
+            options={
+                'verbose_name': 'Feuille de temps',
+                'verbose_name_plural': 'Feuilles de temps',
+                'ordering': ['-date', '-date_creation'],
+                'indexes': [
+                    models.Index(fields=['company', 'employe']),
+                    models.Index(fields=['company', 'installation_id']),
+                    models.Index(fields=['company', 'date']),
+                ],
+            },
+        ),
+    ]

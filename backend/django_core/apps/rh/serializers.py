@@ -12,6 +12,7 @@ from .models import (
     DocumentEmploye,
     DossierEmploye,
     ElementSortie,
+    FeuilleTemps,
     Pointage,
     Poste,
     Remuneration,
@@ -235,6 +236,41 @@ class DemandeCongeSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError(
                 {'date_fin': 'La date de fin précède la date de début.'})
         return attrs
+
+
+class FeuilleTempsSerializer(serializers.ModelSerializer):
+    """Feuille de temps par chantier (FG167) — heures imputées job-costing.
+
+    ``company`` est posée côté serveur (jamais lue du corps). ``employe`` doit
+    appartenir à la société de l'utilisateur. ``taux_horaire`` est un champ
+    INTERNE : visible en API RH mais ne quitte jamais une sortie client. Le
+    ``cout_calcule`` (heures × taux) est calculé en lecture, non stocké.
+    """
+    employe_nom = serializers.SerializerMethodField()
+    cout_calcule = serializers.DecimalField(
+        max_digits=16, decimal_places=2, read_only=True)
+
+    class Meta:
+        model = FeuilleTemps
+        fields = [
+            'id', 'employe', 'employe_nom',
+            'installation_id', 'intervention_id',
+            'date', 'heures', 'taux_horaire', 'cout_calcule',
+            'description', 'date_creation', 'date_modification',
+        ]
+        read_only_fields = ['date_creation', 'date_modification', 'cout_calcule']
+
+    def get_employe_nom(self, obj):
+        return f'{obj.employe.nom} {obj.employe.prenom}'
+
+    def validate_employe(self, value):
+        return _meme_societe(self, value, 'Employé')
+
+    def validate_heures(self, value):
+        if value is not None and value <= 0:
+            raise serializers.ValidationError(
+                'Les heures imputées doivent être positives.')
+        return value
 
 
 class PointageSerializer(serializers.ModelSerializer):
