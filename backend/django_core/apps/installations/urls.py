@@ -6,6 +6,7 @@ from .views import (
     ChecklistTemplateViewSet, ChecklistEtapeModeleViewSet, ShotListSlotViewSet,
     SafetyChecklistSlotViewSet,
     JalonProjetViewSet, ModeleProjetViewSet, ReunionChantierViewSet,
+    DocumentProjetViewSet, RevisionDocumentViewSet,
 )
 
 router = DefaultRouter()
@@ -19,6 +20,8 @@ router.register(r'consignes-securite', SafetyChecklistSlotViewSet)
 router.register(r'jalons-projet', JalonProjetViewSet)
 router.register(r'modeles-projet', ModeleProjetViewSet)
 router.register(r'reunions-chantier', ReunionChantierViewSet)
+router.register(r'documents-projet', DocumentProjetViewSet)
+router.register(r'revisions-document', RevisionDocumentViewSet)
 
 urlpatterns = [
     path('', include(router.urls)),
