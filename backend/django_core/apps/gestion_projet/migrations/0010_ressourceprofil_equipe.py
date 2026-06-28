@@ -109,7 +109,7 @@ class Migration(migrations.Migration):
                 (
                     "nom",
                     models.CharField(
-                        max_length=150, verbose_name="Nom de l’équipe"
+                        max_length=150, verbose_name="Nom de l'équipe"
                     ),
                 ),
                 (

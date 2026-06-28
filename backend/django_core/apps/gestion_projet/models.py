@@ -781,7 +781,7 @@ class Equipe(models.Model):
         related_name='projet_equipes',
         verbose_name='Société',
     )
-    nom = models.CharField(max_length=150, verbose_name='Nom de l'équipe')
+    nom = models.CharField(max_length=150, verbose_name="Nom de l'équipe")
     description = models.TextField(
         blank=True, default='', verbose_name='Description')
     membres = models.ManyToManyField(

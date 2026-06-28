@@ -16,7 +16,7 @@ from django.test import TestCase
 from django.utils import timezone
 
 from apps.crm.models import (
-    Appointment, Lead, LeadActivity, ObjectifCommercial,
+    Appointment, Lead, ObjectifCommercial,
 )
 from apps.crm.selectors import compute_attainment
 from authentication.models import Company
@@ -50,7 +50,7 @@ def _lead(company, owner=None, stage='NEW'):
 
 
 def _objectif(company, metric, year, month=None, quarter=None,
-               period_type='month', cible=10, owner=None):
+              period_type='month', cible=10, owner=None):
     return ObjectifCommercial.objects.create(
         company=company,
         metric=metric,
@@ -131,13 +131,13 @@ class TestAttainmentNbLeads(TestCase):
         obj = _objectif(self.co, 'nb_leads', 2026, month=6, cible=5)
         # 3 leads in June 2026
         for _ in range(3):
-            l = _lead(self.co)
-            l.date_creation = _aware(2026, 6, 15)
-            l.save(update_fields=['date_creation'])
+            lead = _lead(self.co)
+            lead.date_creation = _aware(2026, 6, 15)
+            lead.save(update_fields=['date_creation'])
         # 1 lead outside (May)
-        l = _lead(self.co)
-        l.date_creation = _aware(2026, 5, 30)
-        l.save(update_fields=['date_creation'])
+        lead = _lead(self.co)
+        lead.date_creation = _aware(2026, 5, 30)
+        lead.save(update_fields=['date_creation'])
 
         result = compute_attainment(obj)
         self.assertEqual(result['realise'], Decimal('3'))
@@ -157,9 +157,9 @@ class TestAttainmentNbLeads(TestCase):
         obj = _objectif(self.co, 'nb_leads', 2026, month=6, cible=3, owner=user)
         # 2 leads assigned to user
         for _ in range(2):
-            l = _lead(self.co, owner=user)
-            l.date_creation = _aware(2026, 6, 10)
-            l.save(update_fields=['date_creation'])
+            lead = _lead(self.co, owner=user)
+            lead.date_creation = _aware(2026, 6, 10)
+            lead.save(update_fields=['date_creation'])
         # 1 lead assigned to nobody
         l2 = _lead(self.co, owner=None)
         l2.date_creation = _aware(2026, 6, 10)
@@ -174,9 +174,9 @@ class TestAttainmentNbLeads(TestCase):
                         quarter=2, period_type='quarter', cible=10)
         # 2 leads in April, 1 in July (out)
         for d in [15, 20]:
-            l = _lead(self.co)
-            l.date_creation = _aware(2026, 4, d)
-            l.save(update_fields=['date_creation'])
+            lead = _lead(self.co)
+            lead.date_creation = _aware(2026, 4, d)
+            lead.save(update_fields=['date_creation'])
         l_out = _lead(self.co)
         l_out.date_creation = _aware(2026, 7, 1)
         l_out.save(update_fields=['date_creation'])
@@ -189,9 +189,9 @@ class TestAttainmentNbLeads(TestCase):
     def test_nb_leads_year(self):
         obj = _objectif(self.co, 'nb_leads', 2025, period_type='year', cible=12)
         for m in [1, 6, 12]:
-            l = _lead(self.co)
-            l.date_creation = _aware(2025, m, 15)
-            l.save(update_fields=['date_creation'])
+            lead = _lead(self.co)
+            lead.date_creation = _aware(2025, m, 15)
+            lead.save(update_fields=['date_creation'])
         # 1 lead in 2026 (out)
         l_out = _lead(self.co)
         l_out.date_creation = _aware(2026, 1, 1)
@@ -213,9 +213,9 @@ class TestAttainmentNbContacts(TestCase):
         obj = _objectif(self.co, 'nb_contacts', 2026, month=6, cible=5)
         # 2 leads contacted in June
         for _ in range(2):
-            l = _lead(self.co)
-            l.first_contacted_at = _aware(2026, 6, 15)
-            l.save(update_fields=['first_contacted_at'])
+            lead = _lead(self.co)
+            lead.first_contacted_at = _aware(2026, 6, 15)
+            lead.save(update_fields=['first_contacted_at'])
         # 1 lead not yet contacted
         _lead(self.co)
         # 1 lead contacted in May (out)
@@ -291,9 +291,9 @@ class TestAttainmentExceedsTarget(TestCase):
     def test_taux_exceeds_100(self):
         obj = _objectif(self.co, 'nb_leads', 2026, month=6, cible=2)
         for _ in range(5):
-            l = _lead(self.co)
-            l.date_creation = _aware(2026, 6, 1)
-            l.save(update_fields=['date_creation'])
+            lead = _lead(self.co)
+            lead.date_creation = _aware(2026, 6, 1)
+            lead.save(update_fields=['date_creation'])
         result = compute_attainment(obj)
         self.assertEqual(result['realise'], Decimal('5'))
         self.assertAlmostEqual(result['taux'], 250.0)

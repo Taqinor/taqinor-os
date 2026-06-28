@@ -292,7 +292,8 @@ class DocumentVersion(models.Model):
     # du corps de requête — posé côté serveur dans `services.restore_version`.
     restored_from = models.ForeignKey(
         'self', on_delete=models.SET_NULL,
-        null=True, blank=True, related_name='ged_restorations')
+        null=True, blank=True, related_name='ged_restorations',
+        verbose_name='restaurée depuis')
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
