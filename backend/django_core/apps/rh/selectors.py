@@ -7,7 +7,7 @@ from datetime import timedelta
 
 from django.utils import timezone
 
-from .models import DemandeConge, DocumentEmploye, DossierEmploye
+from .models import DemandeConge, DocumentEmploye, DossierEmploye, FeuilleTemps
 
 
 def dossier_appartient_societe(company, dossier_id):
@@ -111,6 +111,51 @@ def employe_absent_le(company, employe_id, jour):
         date_debut__lte=jour,
         date_fin__gte=jour,
     ).exists()
+
+
+def labour_hours_for_installation(installation_id, company=None):
+    """Heures de main-d'œuvre imputées à une installation (job-costing, FG167).
+
+    Sélecteur cross-app : les autres modules (ventes job-costing, installations)
+    appellent ce sélecteur SANS jamais importer ``rh.models`` directement. Renvoie
+    le total des heures et le coût total (si valorisé) pour une installation donnée.
+
+    Retourne un dict :
+    ``{
+        'total_heures': Decimal,         # 0 si aucune ligne
+        'total_cout': Decimal | None,    # None si aucune ligne n'a de taux
+        'count': int,
+    }``
+
+    ``company`` est recommandé pour garantir l'isolation multi-tenant ; quand
+    absent on agrège toutes les sociétés (réservé au reporting global).
+    """
+    from decimal import Decimal
+    from django.db.models import Sum
+
+    qs = FeuilleTemps.objects.filter(installation_id=installation_id)
+    if company is not None:
+        qs = qs.filter(company=company)
+
+    agg = qs.aggregate(total_heures=Sum('heures'))
+    total_heures = agg['total_heures'] or Decimal('0')
+    count = qs.count()
+
+    # Coût agrégé : somme des (heures × taux) pour les lignes où taux non NULL.
+    cout_lines = qs.filter(
+        taux_horaire__isnull=False).only('heures', 'taux_horaire')
+    total_cout = None
+    if cout_lines.exists():
+        total_cout = sum(
+            (ft.heures * ft.taux_horaire for ft in cout_lines),
+            Decimal('0'),
+        )
+
+    return {
+        'total_heures': total_heures,
+        'total_cout': total_cout,
+        'count': count,
+    }
 
 
 def employes_assignables(company, jour):

@@ -685,3 +685,136 @@ class CritereAudit(models.Model):
 
     def __str__(self):
         return f'{self.intitule} (poids {self.poids})'
+
+
+# ── QHSE16 — Exécution d'audit : Audit + ReponseCritere ────────────────────
+
+class Audit(models.Model):
+    """Exécution d'un audit contre une ``GrilleAudit`` (template).
+
+    Un ``Audit`` représente la session de notation concrète : on choisit une
+    ``GrilleAudit`` (gabarit), on renseigne l'auditeur, la date, et le système
+    calcule un ``score`` (% pondéré des critères conformes) à la clôture via le
+    service ``calculer_score_audit``. Chaque critère de la grille reçoit une
+    ``ReponseCritere`` (conforme / non-conforme / NA). Les critères non-conformes
+    peuvent lever une ``NonConformite`` (NCR) via ``lever_ncr_audit``.
+
+    Cycle de vie : ``brouillon`` → ``en_cours`` → ``clos``.
+    Multi-société via ``company`` posée côté serveur. Entièrement additif.
+    """
+    class Statut(models.TextChoices):
+        BROUILLON = 'brouillon', 'Brouillon'
+        EN_COURS = 'en_cours', 'En cours'
+        CLOS = 'clos', 'Clôturé'
+
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='qhse_audits',
+        verbose_name='Société',
+    )
+    grille = models.ForeignKey(
+        GrilleAudit,
+        on_delete=models.PROTECT,
+        related_name='qhse_audits',
+        verbose_name="Grille d'audit",
+    )
+    date_audit = models.DateField(
+        null=True, blank=True, verbose_name="Date de l'audit")
+    auditeur = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='qhse_audits_conduits',
+        verbose_name='Auditeur',
+    )
+    statut = models.CharField(
+        max_length=10, choices=Statut.choices,
+        default=Statut.BROUILLON, verbose_name='Statut')
+    # Score calculé à la clôture (% pondéré des critères conformes, 0-100,
+    # arrondi à 2 décimales). Null = pas encore calculé.
+    score = models.DecimalField(
+        max_digits=5, decimal_places=2,
+        null=True, blank=True, verbose_name='Score (%)')
+    notes = models.TextField(
+        blank=True, default='', verbose_name='Notes')
+    # Référence lâche au chantier (installations.Chantier) par id — jamais un
+    # import cross-app de modèle.
+    chantier_id = models.PositiveIntegerField(
+        null=True, blank=True, verbose_name='ID du chantier')
+    date_creation = models.DateTimeField(
+        auto_now_add=True, verbose_name='Créé le')
+
+    class Meta:
+        verbose_name = 'Audit'
+        verbose_name_plural = 'Audits'
+        ordering = ['-id']
+
+    def __str__(self):
+        return f'Audit {self.grille.nom} — {self.date_audit or "sans date"}'
+
+
+class ReponseCritere(models.Model):
+    """Réponse à un critère d'audit dans le cadre d'un ``Audit``.
+
+    Pour chaque ``CritereAudit`` de la grille, l'auditeur coche ``CONFORME``,
+    ``NON_CONFORME`` ou ``NA`` (non applicable — exclu du calcul du score) et
+    peut ajouter une note. Une ``ReponseCritere`` non conforme peut générer une
+    ``NonConformite`` (NCR) via le service ``lever_ncr_audit`` (lien lâche par
+    ``ncr_id`` — jamais un FK fort pour éviter le couplage fort intra-app).
+
+    Multi-société via ``company`` posée côté serveur. Entièrement additif.
+    """
+    class Resultat(models.TextChoices):
+        CONFORME = 'conforme', 'Conforme'
+        NON_CONFORME = 'non_conforme', 'Non conforme'
+        NA = 'na', 'Non applicable'
+
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='qhse_reponses_critere',
+        verbose_name='Société',
+    )
+    audit = models.ForeignKey(
+        Audit,
+        on_delete=models.CASCADE,
+        related_name='qhse_reponses',
+        verbose_name='Audit',
+    )
+    critere = models.ForeignKey(
+        CritereAudit,
+        on_delete=models.PROTECT,
+        related_name='qhse_reponses',
+        verbose_name="Critère d'audit",
+    )
+    resultat = models.CharField(
+        max_length=12, choices=Resultat.choices,
+        default=Resultat.NA, verbose_name='Résultat')
+    note = models.TextField(
+        blank=True, default='', verbose_name='Note / observation')
+    # Lien lâche vers la NonConformite levée pour cette réponse (même app, mais
+    # on garde un IntegerField pour éviter les suppressions en cascade non voulues
+    # et garder un couplage minimal).
+    ncr_id = models.PositiveIntegerField(
+        null=True, blank=True, verbose_name='ID de la non-conformité levée')
+    date_creation = models.DateTimeField(
+        auto_now_add=True, verbose_name='Créé le')
+
+    class Meta:
+        verbose_name = "Réponse à critère"
+        verbose_name_plural = "Réponses à critères"
+        ordering = ['audit', 'critere__ordre', 'critere__id']
+        # Un seul enregistrement par (audit, critère).
+        constraints = [
+            models.UniqueConstraint(
+                fields=['audit', 'critere'],
+                name='qhse_reponsecritere_audit_critere_uniq',
+            )
+        ]
+
+    def __str__(self):
+        return (
+            f'{self.critere.intitule} → {self.get_resultat_display()}'
+            f' (audit {self.audit_id})'
+        )

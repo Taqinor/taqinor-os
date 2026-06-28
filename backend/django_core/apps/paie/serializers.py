@@ -37,6 +37,8 @@ class ParametrePaieSerializer(serializers.ModelSerializer):
             'seuil_frais_pro', 'taux_frais_pro_bas', 'plafond_frais_pro_bas',
             'taux_frais_pro_haut', 'plafond_frais_pro_haut',
             'deduction_par_personne_a_charge', 'plafond_personnes_a_charge',
+            # PAIE14 — Taux de majoration HS (éditables par société).
+            'taux_hs_jour', 'taux_hs_nuit', 'taux_hs_ferie',
             'actif', 'valide_par_fondateur', 'date_creation',
         ]
         read_only_fields = ['date_creation']
@@ -224,7 +226,8 @@ class ElementVariableSerializer(serializers.ModelSerializer):
         model = ElementVariable
         fields = [
             'id', 'periode', 'profil', 'type', 'rubrique', 'libelle',
-            'quantite', 'montant', 'source', 'date_creation',
+            # PAIE14 — categorie_hs : 'jour'|'nuit'|'ferie' (ignoré hors HS).
+            'quantite', 'categorie_hs', 'montant', 'source', 'date_creation',
         ]
         read_only_fields = ['date_creation']
 

@@ -7,6 +7,7 @@ from .views import (
     DocumentEmployeViewSet,
     DossierEmployeViewSet,
     ElementSortieViewSet,
+    FeuilleTempsViewSet,
     PointageViewSet,
     PosteViewSet,
     RemunerationViewSet,
@@ -25,6 +26,7 @@ router.register(r'types-absence', TypeAbsenceViewSet)
 router.register(r'soldes-conge', SoldeCongeViewSet)
 router.register(r'demandes-conge', DemandeCongeViewSet)
 router.register(r'pointages', PointageViewSet)
+router.register(r'feuilles-temps', FeuilleTempsViewSet)
 
 urlpatterns = [
     path('', include(router.urls)),

@@ -602,6 +602,88 @@ class Pointage(models.Model):
                 f'{self.heure_arrivee} ({self.get_type_pointage_display()})')
 
 
+class FeuilleTemps(models.Model):
+    """Feuille de temps par chantier (FG167) — heures imputées à une Installation.
+
+    Distinct du ``Pointage`` (clock-in/out brut) : ici on IMPUTE des heures de
+    main-d'œuvre à un chantier (``installations.Installation``) pour le calcul
+    du coût réel en job-costing. Optionnellement lié à une intervention SAV
+    (``intervention_id``, string FK lazy — on ne veut pas importer sav.models).
+
+    Champs :
+    * ``employe`` — technicien dont les heures sont imputées.
+    * ``installation_id`` — FK string vers ``installations.Installation`` (jamais
+      importé directement — cross-app boundary via string FK).
+    * ``intervention_id`` — FK string facultative vers ``sav.Intervention`` (même
+      règle).
+    * ``date`` — journée d'imputation.
+    * ``heures`` — durée imputée en heures décimales (ex. 7,5).
+    * ``taux_horaire`` — taux appliqué (copié du ``cout_horaire`` au moment de la
+      saisie ; INTERNE, jamais exposé côté client). NULL = pas encore valorisé.
+    * ``cout_calcule`` — heures × taux_horaire (propriété calculée, non stockée).
+    * ``description`` — nature du travail (pose, câblage, test…).
+
+    Le ``cout_horaire`` est strictement INTERNE (jamais dans une réponse client) ;
+    seul un accès Administrateur/Responsable peut lire ce champ.
+
+    Multi-société : ``company`` posée côté serveur (jamais lue du corps de requête).
+    """
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='rh_feuilles_temps',
+        verbose_name='Société',
+    )
+    employe = models.ForeignKey(
+        DossierEmploye,
+        on_delete=models.CASCADE,
+        related_name='feuilles_temps',
+        verbose_name='Employé',
+    )
+    # String FK cross-app — jamais importer installations.models directement.
+    installation_id = models.PositiveIntegerField(
+        verbose_name="Installation (ID)")
+    # Référence optionnelle à une intervention SAV (cross-app string FK).
+    intervention_id = models.PositiveIntegerField(
+        null=True, blank=True, verbose_name='Intervention (ID, optionnel)')
+    date = models.DateField(verbose_name="Date d'imputation")
+    heures = models.DecimalField(
+        max_digits=6, decimal_places=2, verbose_name='Heures imputées')
+    # Taux horaire INTERNE (copié du dossier employé au moment de la saisie).
+    # NULL = non valorisé (pas de coût disponible).
+    taux_horaire = models.DecimalField(
+        max_digits=14, decimal_places=2, null=True, blank=True,
+        verbose_name='Taux horaire (interne)')
+    description = models.CharField(
+        max_length=255, blank=True, default='',
+        verbose_name='Nature du travail')
+    date_creation = models.DateTimeField(
+        auto_now_add=True, verbose_name='Créé le')
+    date_modification = models.DateTimeField(
+        auto_now=True, verbose_name='Modifié le')
+
+    class Meta:
+        verbose_name = 'Feuille de temps'
+        verbose_name_plural = 'Feuilles de temps'
+        ordering = ['-date', '-date_creation']
+        indexes = [
+            models.Index(fields=['company', 'employe']),
+            models.Index(fields=['company', 'installation_id']),
+            models.Index(fields=['company', 'date']),
+        ]
+
+    @property
+    def cout_calcule(self):
+        """Coût de main-d'œuvre = heures × taux_horaire (None si non valorisé)."""
+        if self.heures is not None and self.taux_horaire is not None:
+            return self.heures * self.taux_horaire
+        return None
+
+    def __str__(self):
+        return (f'{self.employe.matricule} — installation#{self.installation_id}'
+                f' {self.date} : {self.heures}h')
+
+
 class DemandeConge(models.Model):
     """Demande & validation de congés (FG163) — workflow employé → superviseur/RH.
 

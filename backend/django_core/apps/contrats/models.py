@@ -5,10 +5,12 @@ contrats de la société (vente, O&M, monitoring, garantie, PPA, fournisseur,
 sous-traitance, location, emploi, NDA, maintenance…) avec leur statut, leurs
 dates et leur montant.
 
-Tout est multi-société : chaque modèle porte un FK ``company`` posé côté serveur
-(jamais lu du corps de requête). Référence au client en lien lâche
-(``client_id``) — jamais un import cross-app du modèle ``crm.Client``. Ce module
-est entièrement additif.
+``ModeleContrat`` (CONTRAT7) — bibliothèque de modèles/gabarits réutilisables :
+permet de pré-remplir un contrat à partir d'un gabarit enregistré (type,
+clauses, corps, champs par défaut).  Tout est multi-société : chaque modèle
+porte un FK ``company`` posé côté serveur (jamais lu du corps de requête).
+Référence au client en lien lâche (``client_id``) — jamais un import cross-app
+du modèle ``crm.Client``. Ce module est entièrement additif.
 """
 from decimal import Decimal
 
@@ -239,3 +241,68 @@ class ContratLien(models.Model):
 
     def __str__(self):
         return f'{self.contrat_id} → {self.type_cible} #{self.cible_id}'
+
+
+class ModeleContrat(models.Model):
+    """Gabarit/modèle de contrat réutilisable (bibliothèque de modèles — CONTRAT7).
+
+    Permet de définir des canevas contractuels pré-remplis (clauses types,
+    corps du contrat, valeurs par défaut) qu'un utilisateur peut instancier en
+    un nouveau ``Contrat`` via l'action ``/instancier/``.
+
+    Champs pré-remplis applicables à un ``Contrat`` :
+    - ``type_contrat_defaut``  → ``Contrat.type_contrat``
+    - ``devise_defaut``        → ``Contrat.devise``
+    - ``confidentialite_defaut`` → ``Contrat.confidentialite``
+    - ``corps``                → corps narratif du contrat (texte libre, non
+                                 stocké directement sur ``Contrat`` — le gabarit
+                                 peut servir de point de départ éditorial)
+    - ``clauses``              → texte des clauses contractuelles types
+
+    ``actif`` et ``ordre`` permettent de gérer la visibilité et l'ordre
+    d'affichage dans les listes de sélection de gabarits.
+    """
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='contrats_modeles',
+        verbose_name='Société',
+    )
+    nom = models.CharField(max_length=200, verbose_name='Nom du modèle')
+    # Catégorie libre (ex. "O&M Standard", "PPA Résidentiel") — pas de choix
+    # figés pour laisser la liberté à chaque société.
+    categorie = models.CharField(
+        max_length=100, blank=True, default='', verbose_name='Catégorie')
+    # Type de contrat par défaut (reprend les mêmes choix que Contrat).
+    type_contrat_defaut = models.CharField(
+        max_length=20,
+        choices=Contrat.TypeContrat.choices,
+        default=Contrat.TypeContrat.VENTE,
+        verbose_name='Type de contrat par défaut',
+    )
+    # Corps narratif du contrat (texte libre, peut contenir des variables).
+    corps = models.TextField(blank=True, default='', verbose_name='Corps du contrat')
+    # Clauses contractuelles types (texte libre).
+    clauses = models.TextField(
+        blank=True, default='', verbose_name='Clauses types')
+    # Valeurs par défaut propagées à un Contrat instancié depuis ce gabarit.
+    devise_defaut = models.CharField(
+        max_length=3, default='MAD', verbose_name='Devise par défaut')
+    confidentialite_defaut = models.CharField(
+        max_length=20,
+        choices=Contrat.NiveauConfidentialite.choices,
+        default=Contrat.NiveauConfidentialite.INTERNE,
+        verbose_name='Confidentialité par défaut',
+    )
+    actif = models.BooleanField(default=True, verbose_name='Actif')
+    ordre = models.PositiveIntegerField(default=0, verbose_name='Ordre')
+    date_creation = models.DateTimeField(
+        auto_now_add=True, verbose_name='Créé le')
+
+    class Meta:
+        verbose_name = 'Modèle de contrat'
+        verbose_name_plural = 'Modèles de contrats'
+        ordering = ['ordre', 'nom']
+
+    def __str__(self):
+        return f'{self.nom} ({self.get_type_contrat_defaut_display()})'

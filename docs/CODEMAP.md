@@ -1,8 +1,8 @@
 # CODEMAP — TAQINOR OS
 
-Generated from commit `dev` on 2026-06-22, refreshed for the functional-domain expansion wave (5 parallel worktree lanes: apps/compta clôture de période + OD manuelles + à-nouveaux FG115–117; apps/ventes solar string-design + inverter match + tilt/azimut FG246/247/249; apps/installations jalons/modèles-de-projet/réunions FG293/296/298; **NEW app apps/flotte** Vehicule+EnginRoulant FLOTTE1/2/4; **NEW app apps/ged** Cabinet/Folder/Document/Version GED1/2/3 — all additive, company-scoped, tested), on top of the prior `dev-uiwave-20260621` world-class UI wave (34 frontend UI/UX tasks: premium DataTable, calm chrome, foundation hooks/primitives, page redesigns) (PLAN2 priority-queue run — Group Q Devis↔Toiture-3D pipeline backend (Q1–Q7: Devis.roof_layout/roof_image + layout endpoints, Lead roof_point/roof_outline/bill_kwh + per-lead token, build_devis_from_layout() service, MinIO roof-image, layout-aware quote data with byte-identical no-layout path, tokenized /proposal data endpoint + e-sign accept); Group R agentic layer — NEW APP `apps/agent` (in-code action registry + `/api/django/agent/` catalogue, AG1), FastAPI registry-driven tools with propose→confirm (`/sql-agent/confirm`, AG2) surfaced on /query, assistant confirm/result cards (AG3), domain agent actions in ventes/crm/stock/sav/installations `agent_actions.py` (AG4–AG9), Groq-Whisper assistant voice `/sql-agent/transcribe` (AG10) + voice/hands-free chat (AG11/AG12); Group S internal team chat — NEW APP `apps/chat` (Conversation/Member/Message/Attachment/Reaction/Mention, company+membership scoped, `/api/django/chat/`, S1–S9), self-hosted faster-whisper `/chat/transcribe` (NEW dep, `CHAT_TRANSCRIPTION_ENABLED`, S10) + Celery transcription pipeline (S11), full React `features/messaging` UI + `/messages` route (S12–S20); design/UI/reporting polish (F120–F123 OKLCH tokens, G124–G128 primitives, K147/N161/K148/K149/J146/P167 chart kit + dashboard + table unification); P171 DataTable→@tanstack engine swap (API-compatible, full parity). ADDITIVE migrations: ventes/0024, crm/0024, chat/0001, notifications/0007. Founder standing consent recorded in CLAUDE.md lifting the ARCH/AUTH/COST/DECISION/GALLERY/DEP gate. + 2026-06-22 greenfield-foundations run: 7 NEW apps stood up (apps/rh DossierEmploye master FG154/DC29, apps/paie ParametrePaie/BaremeIR PAIE1/2/4, apps/gestion_projet Projet/ProjetChantier PROJ1, apps/contrats Contrat CONTRAT1/2, apps/qhse NCR/CAPA QHSE1/9/10, apps/kb KbArticle KB1, apps/litiges Reclamation LITIGE1) — additive, multi-tenant, admin-gated, tested; INSTALLED_APPS+urls wired; 13 tasks ticked. BLOCKED: S21 WebSocket/Channels (needs provisioned ASGI/nginx-WS infra), I134/I138 ⌘K palette (reconcile with existing providers).) + 2026-06-22 `claude/serene-ptolemy-dj5cs0` wave-1 run: 8 parallel worktree lanes — FG122 (compta consolidated treasury position + AR/AP/payroll/TVA projection, GL-only selector + read endpoint), M4 (last `ventes → audit` back-edge removed — PDF audit capture now flows through the `core.events.document_pdf_generated` bus with an `audit` receiver; new import-linter contract pins it), FG157 (apps/rh `Remuneration` gated by the new `salaires_voir` permission), PAIE3 (apps/paie 2026 Moroccan legal payroll defaults seeded editable + `valide_par_fondateur` flag), PROJ5 (apps/gestion_projet `Tache` WBS with self-FK sub-tasks), QHSE5 (apps/qhse auto-conformity min/max on `PointControleModele`/`ReleveControle`), FG350 (frontend global `CopilotPanel` drawer reusing the FastAPI agent), GED5 (frontend `/ged` arborescent navigator over existing ged endpoints) — all additive, multi-tenant, tested; ADDITIVE migrations rh/0004, paie/0002, qhse/0004, gestion_projet/0005. + wave-2 (same run): FG123 (compta `RapprochementBancaire`/`LigneReleve`/`PointageReleve` — statement↔GL pointing, écart-zero close, no écriture), FG49 (ventes account-coded grand-livre export CGNC 3421/7111/4455, xlsx+csv, configurable codes), FG351 (apps/agent registry guarded write actions `ventes.devis.create`/`crm.client.create`/`crm.lead.create` via propose→confirm + FastAPI dynamic action_tools), FG158 (rh `DossierEmploye` emergency-contact + extended coordinates fields), PAIE5 (paie family-charge deduction params + `compute_ir` helper), GED6 (ged `DocumentLien` generic-target link via `records.ALLOWED_TARGETS` +ventes.boncommande), PROJ6 (gestion_projet `DependanceTache` FS/SS/FF/SF + lag with cycle guards), QHSE6 (qhse hold-point gating selector/endpoint) — all additive, multi-tenant, tested; ADDITIVE migrations compta/0006, rh/0005, paie/0003, ged/0002, gestion_projet/0006 (FG49/FG351/QHSE6 need none); import-linter stays 4/4. + wave-3 (same run, 7 lanes): FG124 (compta `Caisse`/`MouvementCaisse`/`ClotureCaisse` petty-cash with optional GL posting honouring the FG115 period lock), FG50 (ventes acompte transfer/refund on facture cancel — re-point Paiement or reversing negative Paiement, chatter, no migration), FG159 (rh `DocumentEmploye` vault reusing `records.Attachment` MinIO storage + optional expiry), PAIE6 (paie `Rubrique` configurable payslip-line catalogue + idempotent seed), GED7 (ged `migrate_attachments_to_ged` command importing records.Attachment into Documents reusing file_key + DocumentLien), PROJ7 (gestion_projet `Jalon` milestones + `facturation_pct`), QHSE7 (qhse `ReleveCourbeIV` PV string I-V curve + fill factor) — all additive, multi-tenant, tested; ADDITIVE migrations compta/0007, rh/0006, paie/0004, gestion_projet/0007, qhse/0005 (FG50/GED7 need none); import-linter stays 4/4. FG352 (RAG/pgvector, DEP:langchain-textsplitters) intentionally left [ ] for a focused run. + 2026-06-22 `claude/plan-md-completion-ysbchz` drain: 8 parallel worktree lanes off PLAN.md (compta FG125–130, ventes FG51/53/248/250/251, core FG355–359 NoOp-AI, rh FG160–165, paie PAIE7–12, ged GED8–13, gestion_projet PROJ8–13, qhse QHSE8/11–15 — 46 tasks; ADDITIVE migrations across those apps + customfields/0003; new NoOp scaffolds add no external dependency; GED12 semantic embedding OFF by default). + 2026-06-23 PLAN2 **Group U** drain (U1–U14, 10 parallel worktree lanes, one self-merge): lead-modal stays-open UX (U1), mouse-wheel + mobile-header CSS regressions (U2/U3), WhatsApp-send flips devis→envoyé via a NEW `core.events.devis_sent` event (U4), surface generated factures/BC in the devis list + BC-state warning (U5/U8), hide/badge superseded devis revisions (U7), auto-create chantier on devis acceptance via the `devis_accepted` bus (U6), stock reservation on the direct generer-facture path (U9), relance-escalation reset on full payment (U10), phantom-signé flag on post-acceptance refusal (U11, flag-only), direct nullable lead FK on Facture/BonCommande (U12), avatar same-origin proxy fix (U13), GED « Documents » write UI + `documents/televerser/` upload (U14) — additive, multi-tenant, tested; ADDITIVE migrations ventes/0027_devis_date_envoi + 0028_boncommande_lead_facture_lead. + 2026-06-24 PLAN.md batch-1 drain (8 parallel worktree lanes off the FG/module wave plan, adversarial review + local CI incl. makemigrations-check & full affected test run, one self-merge): 7 shipped — FG52 (ventes multi-currency `devise`/`taux_change` + CompanyProfile default), FG166 (rh `Pointage` clock-in/out), CONTRAT6 (contrats `confidentialite` gated on `menu_tier`), FLOTTE5 (flotte `ActifFlotte` unified asset ref), PAIE13 (paie multi-profile base-salary + proration), GED14 (ged inline `apercu` preview), PROJ14 (gestion_projet delay detection). ADDITIVE migrations ventes/0029 + parametres/0025, rh/0008, contrats/0005, flotte/0005, paie/0006. **FG131 (compta 3-way match) DEFERRED/backed-out** — the build duplicated stock's BonCommandeFournisseur/FactureFournisseur (reverse-accessor clash); needs a rebuild reusing stock procurement via selectors/services (left `[ ]`).
-Structure fingerprint: f39531f6c44371c2aee3ddb290ec0892f78e7b1ba20364d90902f2a657f4459f
-Plan fingerprint: 4e6025c2f3eadf57ba3f1f2d46b910d18c9a3ae6ea3673fcc4d681b10425e92f
+Generated from commit `dev` on 2026-06-22, refreshed for the functional-domain expansion wave (5 parallel worktree lanes: apps/compta clôture de période + OD manuelles + à-nouveaux FG115–117; apps/ventes solar string-design + inverter match + tilt/azimut FG246/247/249; apps/installations jalons/modèles-de-projet/réunions FG293/296/298; **NEW app apps/flotte** Vehicule+EnginRoulant FLOTTE1/2/4; **NEW app apps/ged** Cabinet/Folder/Document/Version GED1/2/3 — all additive, company-scoped, tested), on top of the prior `dev-uiwave-20260621` world-class UI wave (34 frontend UI/UX tasks: premium DataTable, calm chrome, foundation hooks/primitives, page redesigns) (PLAN2 priority-queue run — Group Q Devis↔Toiture-3D pipeline backend (Q1–Q7: Devis.roof_layout/roof_image + layout endpoints, Lead roof_point/roof_outline/bill_kwh + per-lead token, build_devis_from_layout() service, MinIO roof-image, layout-aware quote data with byte-identical no-layout path, tokenized /proposal data endpoint + e-sign accept); Group R agentic layer — NEW APP `apps/agent` (in-code action registry + `/api/django/agent/` catalogue, AG1), FastAPI registry-driven tools with propose→confirm (`/sql-agent/confirm`, AG2) surfaced on /query, assistant confirm/result cards (AG3), domain agent actions in ventes/crm/stock/sav/installations `agent_actions.py` (AG4–AG9), Groq-Whisper assistant voice `/sql-agent/transcribe` (AG10) + voice/hands-free chat (AG11/AG12); Group S internal team chat — NEW APP `apps/chat` (Conversation/Member/Message/Attachment/Reaction/Mention, company+membership scoped, `/api/django/chat/`, S1–S9), self-hosted faster-whisper `/chat/transcribe` (NEW dep, `CHAT_TRANSCRIPTION_ENABLED`, S10) + Celery transcription pipeline (S11), full React `features/messaging` UI + `/messages` route (S12–S20); design/UI/reporting polish (F120–F123 OKLCH tokens, G124–G128 primitives, K147/N161/K148/K149/J146/P167 chart kit + dashboard + table unification); P171 DataTable→@tanstack engine swap (API-compatible, full parity). ADDITIVE migrations: ventes/0024, crm/0024, chat/0001, notifications/0007. Founder standing consent recorded in CLAUDE.md lifting the ARCH/AUTH/COST/DECISION/GALLERY/DEP gate. + 2026-06-22 greenfield-foundations run: 7 NEW apps stood up (apps/rh DossierEmploye master FG154/DC29, apps/paie ParametrePaie/BaremeIR PAIE1/2/4, apps/gestion_projet Projet/ProjetChantier PROJ1, apps/contrats Contrat CONTRAT1/2, apps/qhse NCR/CAPA QHSE1/9/10, apps/kb KbArticle KB1, apps/litiges Reclamation LITIGE1) — additive, multi-tenant, admin-gated, tested; INSTALLED_APPS+urls wired; 13 tasks ticked. BLOCKED: S21 WebSocket/Channels (needs provisioned ASGI/nginx-WS infra), I134/I138 ⌘K palette (reconcile with existing providers).) + 2026-06-22 `claude/serene-ptolemy-dj5cs0` wave-1 run: 8 parallel worktree lanes — FG122 (compta consolidated treasury position + AR/AP/payroll/TVA projection, GL-only selector + read endpoint), M4 (last `ventes → audit` back-edge removed — PDF audit capture now flows through the `core.events.document_pdf_generated` bus with an `audit` receiver; new import-linter contract pins it), FG157 (apps/rh `Remuneration` gated by the new `salaires_voir` permission), PAIE3 (apps/paie 2026 Moroccan legal payroll defaults seeded editable + `valide_par_fondateur` flag), PROJ5 (apps/gestion_projet `Tache` WBS with self-FK sub-tasks), QHSE5 (apps/qhse auto-conformity min/max on `PointControleModele`/`ReleveControle`), FG350 (frontend global `CopilotPanel` drawer reusing the FastAPI agent), GED5 (frontend `/ged` arborescent navigator over existing ged endpoints) — all additive, multi-tenant, tested; ADDITIVE migrations rh/0004, paie/0002, qhse/0004, gestion_projet/0005. + wave-2 (same run): FG123 (compta `RapprochementBancaire`/`LigneReleve`/`PointageReleve` — statement↔GL pointing, écart-zero close, no écriture), FG49 (ventes account-coded grand-livre export CGNC 3421/7111/4455, xlsx+csv, configurable codes), FG351 (apps/agent registry guarded write actions `ventes.devis.create`/`crm.client.create`/`crm.lead.create` via propose→confirm + FastAPI dynamic action_tools), FG158 (rh `DossierEmploye` emergency-contact + extended coordinates fields), PAIE5 (paie family-charge deduction params + `compute_ir` helper), GED6 (ged `DocumentLien` generic-target link via `records.ALLOWED_TARGETS` +ventes.boncommande), PROJ6 (gestion_projet `DependanceTache` FS/SS/FF/SF + lag with cycle guards), QHSE6 (qhse hold-point gating selector/endpoint) — all additive, multi-tenant, tested; ADDITIVE migrations compta/0006, rh/0005, paie/0003, ged/0002, gestion_projet/0006 (FG49/FG351/QHSE6 need none); import-linter stays 4/4. + wave-3 (same run, 7 lanes): FG124 (compta `Caisse`/`MouvementCaisse`/`ClotureCaisse` petty-cash with optional GL posting honouring the FG115 period lock), FG50 (ventes acompte transfer/refund on facture cancel — re-point Paiement or reversing negative Paiement, chatter, no migration), FG159 (rh `DocumentEmploye` vault reusing `records.Attachment` MinIO storage + optional expiry), PAIE6 (paie `Rubrique` configurable payslip-line catalogue + idempotent seed), GED7 (ged `migrate_attachments_to_ged` command importing records.Attachment into Documents reusing file_key + DocumentLien), PROJ7 (gestion_projet `Jalon` milestones + `facturation_pct`), QHSE7 (qhse `ReleveCourbeIV` PV string I-V curve + fill factor) — all additive, multi-tenant, tested; ADDITIVE migrations compta/0007, rh/0006, paie/0004, gestion_projet/0007, qhse/0005 (FG50/GED7 need none); import-linter stays 4/4. FG352 (RAG/pgvector, DEP:langchain-textsplitters) intentionally left [ ] for a focused run. + 2026-06-22 `claude/plan-md-completion-ysbchz` drain: 8 parallel worktree lanes off PLAN.md (compta FG125–130, ventes FG51/53/248/250/251, core FG355–359 NoOp-AI, rh FG160–165, paie PAIE7–12, ged GED8–13, gestion_projet PROJ8–13, qhse QHSE8/11–15 — 46 tasks; ADDITIVE migrations across those apps + customfields/0003; new NoOp scaffolds add no external dependency; GED12 semantic embedding OFF by default). + 2026-06-23 PLAN2 **Group U** drain (U1–U14, 10 parallel worktree lanes, one self-merge): lead-modal stays-open UX (U1), mouse-wheel + mobile-header CSS regressions (U2/U3), WhatsApp-send flips devis→envoyé via a NEW `core.events.devis_sent` event (U4), surface generated factures/BC in the devis list + BC-state warning (U5/U8), hide/badge superseded devis revisions (U7), auto-create chantier on devis acceptance via the `devis_accepted` bus (U6), stock reservation on the direct generer-facture path (U9), relance-escalation reset on full payment (U10), phantom-signé flag on post-acceptance refusal (U11, flag-only), direct nullable lead FK on Facture/BonCommande (U12), avatar same-origin proxy fix (U13), GED « Documents » write UI + `documents/televerser/` upload (U14) — additive, multi-tenant, tested; ADDITIVE migrations ventes/0027_devis_date_envoi + 0028_boncommande_lead_facture_lead. + 2026-06-24 PLAN.md batch-1 drain (8 parallel worktree lanes off the FG/module wave plan, adversarial review + local CI incl. makemigrations-check & full affected test run, one self-merge): 7 shipped — FG52 (ventes multi-currency `devise`/`taux_change` + CompanyProfile default), FG166 (rh `Pointage` clock-in/out), CONTRAT6 (contrats `confidentialite` gated on `menu_tier`), FLOTTE5 (flotte `ActifFlotte` unified asset ref), PAIE13 (paie multi-profile base-salary + proration), GED14 (ged inline `apercu` preview), PROJ14 (gestion_projet delay detection). ADDITIVE migrations ventes/0029 + parametres/0025, rh/0008, contrats/0005, flotte/0005, paie/0006. **FG131 (compta 3-way match) DEFERRED/backed-out** — the build duplicated stock's BonCommandeFournisseur/FactureFournisseur (reverse-accessor clash); needs a rebuild reusing stock procurement via selectors/services (left `[ ]`). + 2026-06-27 `claude/lucid-banzai-33af1c` PLAN.md wave-1 drain (5 parallel worktree lanes, one self-merge): PAIE14 (paie heures-sup majorées 25/50/100 %), FG167 (rh `FeuilleTemps` timesheets + labour-hours selector), CONTRAT7 (contrats `ModeleContrat` + `/instancier/`), FLOTTE7 (flotte `Conducteur` + permis), QHSE16 (qhse `Audit`/`ReponseCritere` + score → NCR) — all additive, multi-tenant, tested; ADDITIVE migrations paie/0007, rh/0009, contrats/0006, flotte/0006, qhse/0010. No new external/paid dependency, no auth change. Validated on the docker CI harness (511 affected-app tests green, makemigrations --check clean).
+Structure fingerprint: 76fe48c2183a4f03049223eaf25fe41f89b72ef3d92909d2a90208d6331446f6
+Plan fingerprint: 05221b89dd62035de9bfba88265aac8c9ccc389e4114e2edff99a7dfef261c8c
 
 > This file is **regenerated by the build pipeline**. It is derived by reading the
 > actual source (models, urls, serializers, settings, docker-compose, requirements,
@@ -650,7 +650,7 @@ functional-domain expansion audit, **PAIE*/COMPTA*/PROJ*/GED*/FLOTTE*/QHSE*/CONT
 new-module deep-dive backlogs, **DC*** data-connectivity / single-source-of-truth audit),
 `docs/PLAN2.md` (A*–E*, F*–P* UI/UX, G*/Q*/R-AG*/S* feature groups, **U*** field-UX + document-status "connection" fixes), and `docs/ERROR_PLAN.md` (ERR* bug backlog) — read from their
 BUILD QUEUE task boxes and cross-checked against `main`; completed tasks are archived verbatim in
-`docs/DONE.md`. Refreshed by the `claude/plan-md-completion-ysbchz` run on 2026-06-22 (8 parallel worktree lanes drained off PLAN.md — compta/ventes/core/rh/paie/ged/gestion_projet/qhse, 46 tasks, all additive/multi-tenant/tested), on top of the prior `claude/serene-ptolemy-dj5cs0` functional-domain wave. This section is guarded by the
+`docs/DONE.md`. Refreshed by the `claude/lucid-banzai-33af1c` run on 2026-06-27 (5 parallel worktree lanes drained off PLAN.md — paie PAIE14 / rh FG167 / contrats CONTRAT7 / flotte FLOTTE7 / qhse QHSE16, all additive/multi-tenant/tested), on top of the prior `claude/plan-md-completion-ysbchz` PLAN.md drain. This section is guarded by the
 `Plan fingerprint:` header at the top of the file: the required `stage-names` CI job runs
 `scripts/codemap_fingerprint.py --check`, which recomputes a SHA-256 over every task's
 `(file, id, done/open/blocked)` state — so ticking, adding, or removing a plan task without
@@ -674,7 +674,7 @@ are unchanged from the prior batch.)
 > deferred until a 2nd paying installer; do not let a drain build them yet). See the **NEEDS YOUR
 > INPUT** sections of `docs/PLAN.md` / `docs/WEB_PLAN.md` for the credential/data/taste items.
 
-**Done (442)**
+**Done (472)**
 
 - `ERR1` — [FastAPI] NL→SQL agent has no SELECT-only enforcement in code…
 - `ERR2` — [FastAPI] NL→SQL tenant isolation is defeatable four ways…
@@ -795,6 +795,7 @@ are unchanged from the prior batch.)
 - `CONTRAT4` — Liens inter-apps (devis/lead/installation/maintenance) en string-FK
 - `CONTRAT5` — Wrap de `sav.ContratMaintenance` (lecture/lien, ne casse pas)
 - `CONTRAT6` — Niveaux de confidentialité + droits d'accès par type
+- `CONTRAT7` — `ModeleContrat` (bibliothèque de modèles)
 - `DC29` — UN master employé : `DossierEmploye` OneToOne→`CustomUser`
 - `FG1` — Activate the dead notification EventTypes via Celery-Beat sweeps
 - `FG2` — Wire the automation engine's time-based triggers
@@ -912,6 +913,7 @@ are unchanged from the prior batch.)
 - `FG164` — Typologie d'absences
 - `FG165` — Calendrier d'absences d'équipe → planning
 - `FG166` — Pointage / clock-in–out
+- `FG167` — Feuilles de temps par chantier (timesheets)
 - `FG246` — Calcul de chaînes (string design) & vérif ratio DC/AC
 - `FG247` — Appariement module–onduleur depuis le catalogue
 - `FG248` — Pont 3D toiture web → ERP
@@ -934,6 +936,7 @@ are unchanged from the prior batch.)
 - `FLOTTE4` — `EnginRoulant` (compteur d'heures, nacelle/groupe/chariot)
 - `FLOTTE5` — Référence d'actif commune (Vehicule|Engin) pour entretien/sinistre/doc
 - `FLOTTE6` — Référentiels listes (type véhicule/engin, énergie, catégorie permis)
+- `FLOTTE7` — `Conducteur` + permis (lien `authentication.User`)
 - `G5` — Supplier procurement module (a dedicated multi-session module): bons de commande…
 - `GED1` — Squelette de l'app `apps/ged` (services/selectors, scoping société)
 - `GED2` — Cabinet + Folder arborescent (path matérialisé)
@@ -983,6 +986,7 @@ are unchanged from the prior batch.)
 - `PAIE11` — `ElementVariable` + import depuis RH (heures/HS/absences/primes)
 - `PAIE12` — Moteur de calcul du bulletin (`services.calculer_bulletin`)
 - `PAIE13` — Salaire de base multi-profils (mensuel/journalier/forfait/horaire) + proration
+- `PAIE14` — Heures supplémentaires majorées (25/50/100 % jour/nuit/férié)
 - `PROJ1` — Modèle `Projet`/Programme multi-chantiers + `ProjetChantier`
 - `PROJ2` — Liens projet → devis/factures/tickets/achats (string-FK via selectors)
 - `PROJ3` — Machine à états du projet (propre, jamais STAGES.py)
@@ -1012,6 +1016,7 @@ are unchanged from the prior batch.)
 - `QHSE13` — Vérification d'efficacité CAPA (clôture conditionnée)
 - `QHSE14` — Chatter QHSE (NCR/CAPA/Incident/Audit)
 - `QHSE15` — `GrilleAudit` + `CritereAudit` pondérés
+- `QHSE16` — `Audit` + `ReponseCritere` + score (→ NCR)
 - `AG1` — Agent action-registry framework + catalogue endpoint
 - `AG2` — Registry-driven agent tools + propose→confirm protocol (FastAPI)
 - `AG3` — Confirmation + result cards in the assistant chat
@@ -1084,6 +1089,31 @@ are unchanged from the prior batch.)
 - `Q5` — Feed roof render + layout figures into the quote data (additive/guarded)
 - `Q6` — Tokenized web-proposal data endpoint
 - `Q7` — E-signature acceptance (reuse the existing stamp)
+- `QJ1` — Proposal open-tracking
+- `QJ2` — Instant seller notification
+- `QJ3` — Scheduler infra (Celery beat)
+- `QJ4` — Automated devis follow-up cadence (relance)
+- `QJ5` — Auto quote-expiry + funnel hygiene
+- `QJ6` — Rule-based lead scoring + hot-list sort
+- `QJ7` — Auto-advance NEW→CONTACTED
+- `QJ8` — Webhook dedupe beyond 60 s + secondary key
+- `QJ9` — Conversion attribution + Meta CAPI wiring
+- `QJ10` — Stronger e-sign legal trail (loi 53-05)
+- `QJ11` — Bind the signature to the lead contact
+- `QJ12` — Financing data in the quote
+- `QJ13` — 82-21 self-consumption savings + tariff tables in the quote engine
+- `QJ14` — Server-side proposal email send (SendGrid)
+- `QJ15` — Quote variants / multi-option comparison
+- `QJ16` — Reusable quote templates / presets
+- `QJ17` — `from-layout` idempotency + pre-flight composition check
+- `QJ18` — Commercial dashboard
+- `QJ19` — Win/loss + per-source close-rate report
+- `QJ20` — Self-booking site-visit scheduler
+- `QJ21` — Richer layout payload fidelity
+- `QJ22` — Signed-proposal artifact + prominent "signé" surfacing
+- `QJ23` — [GATED: paid — WhatsApp Business API]
+- `QJ24` — [GATED: paid — payment gateway]
+- `QJ25` — [GATED: research — auto roof detection]
 - `S1` — `apps/chat` app skeleton + core models
 - `S2` — Attachment, reaction, mention & pin models
 - `S3` — Serializers, viewsets, membership permissions & company scoping
@@ -1119,7 +1149,7 @@ are unchanged from the prior batch.)
 - `U13` — Bug: uploading a user profile picture does not work
 - `U14` — Bug: the new « Documents (GED) » menu does nothing usable
 
-**Open — to build (541)**
+**Open — to build (511)**
 
 - `COMPTA1` — Plan comptable CGNC paramétrable + `seed_plan_comptable` idempotent
 - `COMPTA2` — Mapping document→compte par société (familles/TVA/modes de paiement → comptes)
@@ -1161,7 +1191,6 @@ are unchanged from the prior batch.)
 - `COMPTA38` — Comptabilité analytique / centres de coût (axe chantier/agence/marché/commercial)
 - `COMPTA39` — Piste d'audit comptable inaltérable (écritures hash-chaînées)
 - `COMPTA40` — Séparation des tâches (saisie vs validation vs clôture)
-- `CONTRAT7` — `ModeleContrat` (bibliothèque de modèles)
 - `CONTRAT8` — `Clause` (bibliothèque de clauses réutilisables)
 - `CONTRAT9` — `ClauseContrat` (clauses résolues, ordonnées, surchargeables)
 - `CONTRAT10` — Génération du contrat par fusion (merge tokens)
@@ -1282,7 +1311,6 @@ are unchanged from the prior batch.)
 - `FG151` — Tableau de bord financier directeur
 - `FG152` — Provisions pour créances douteuses
 - `FG153` — Inter-sociétés / consolidation multi-entités
-- `FG167` — Feuilles de temps par chantier (timesheets)
 - `FG168` — Heures supplémentaires & calcul majoré
 - `FG169` — Planning d'équipes / roster (shifts)
 - `FG170` — Registre de présence chantier journalier (émargement)
@@ -1499,7 +1527,6 @@ are unchanged from the prior batch.)
 - `FG397` — Page d'état / santé système
 - `FG398` — Plans de tarif API & analytics d'usage
 - `FG399` — Journal des nouveautés in-app (changelog)
-- `FLOTTE7` — `Conducteur` + permis (lien `authentication.User`)
 - `FLOTTE8` — `AffectationConducteur` (conducteur↔véhicule datée)
 - `FLOTTE9` — Contrôle permis valide/catégorie à l'affectation
 - `FLOTTE10` — `ReservationVehicule` + détection de conflit
@@ -1565,7 +1592,6 @@ are unchanged from the prior batch.)
 - `N100` — Build out multi-tenant operation on the existing tenant_id foundation (strict…
 - `N101` — Tenant administration console (manage tenants/plans/usage/support) + self-serve signup…
 - `N102` — After the modules above are built, update the master project document + PLAN + DONE log…
-- `PAIE14` — Heures supplémentaires majorées (25/50/100 % jour/nuit/férié)
 - `PAIE15` — Prime d'ancienneté barème (5/10/15/20/25 %)
 - `PAIE16` — Avantages en nature & indemnités imposables vs non-imposables (plafonds)
 - `PAIE17` — `BulletinPaie` + `LigneBulletin` (snapshot immuable une fois validé)
@@ -1612,7 +1638,6 @@ are unchanged from the prior batch.)
 - `PROJ36` — Tableau de bord portefeuille (avancement/retards/marge/charge)
 - `PROJ37` — Portail d'avancement client (sans coûts/marges)
 - `PROJ38` — Sous-traitance & clôture + retour d'expérience
-- `QHSE16` — `Audit` + `ReponseCritere` + score (→ NCR)
 - `QHSE17` — Grille de notation fin de chantier (gate clôture)
 - `QHSE18` — `ProcedureQualite` versionnée (docs qualité GED)
 - `QHSE19` — `RetourClientQualite` (satisfaction qualité)
@@ -1637,31 +1662,6 @@ are unchanged from the prior batch.)
 - `QHSE38` — `ConformiteEnvironnementale` + relances
 - `QHSE39` — `BilanCarbone` interne (scopes 1/2/3)
 - `QHSE40` — `IndicateurESG` + export reporting
-- `QJ1` — Proposal open-tracking
-- `QJ2` — Instant seller notification
-- `QJ3` — Scheduler infra (Celery beat)
-- `QJ4` — Automated devis follow-up cadence (relance)
-- `QJ5` — Auto quote-expiry + funnel hygiene
-- `QJ6` — Rule-based lead scoring + hot-list sort
-- `QJ7` — Auto-advance NEW→CONTACTED
-- `QJ8` — Webhook dedupe beyond 60 s + secondary key
-- `QJ9` — Conversion attribution + Meta CAPI wiring
-- `QJ10` — Stronger e-sign legal trail (loi 53-05)
-- `QJ11` — Bind the signature to the lead contact
-- `QJ12` — Financing data in the quote
-- `QJ13` — 82-21 self-consumption savings + tariff tables in the quote engine
-- `QJ14` — Server-side proposal email send (SendGrid)
-- `QJ15` — Quote variants / multi-option comparison
-- `QJ16` — Reusable quote templates / presets
-- `QJ17` — `from-layout` idempotency + pre-flight composition check
-- `QJ18` — Commercial dashboard
-- `QJ19` — Win/loss + per-source close-rate report
-- `QJ20` — Self-booking site-visit scheduler
-- `QJ21` — Richer layout payload fidelity
-- `QJ22` — Signed-proposal artifact + prominent "signé" surfacing
-- `QJ23` — [GATED: paid — WhatsApp Business API]
-- `QJ24` — [GATED: paid — payment gateway]
-- `QJ25` — [GATED: research — auto roof detection]
 
 **Blocked — awaiting founder decision (1)**
 

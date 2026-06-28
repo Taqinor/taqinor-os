@@ -4,7 +4,9 @@ Point d'entrée des LECTURES cross-app vers la flotte. Les autres apps ne lisent
 jamais les modèles flotte directement : elles passent par ces fonctions, toutes
 scopées par société (CLAUDE.md, règle de modularité cross-app).
 """
-from .models import ActifFlotte, EnginRoulant, Vehicule
+import datetime
+
+from .models import ActifFlotte, Conducteur, EnginRoulant, Vehicule
 
 
 def vehicules_de_la_societe(company):
@@ -39,6 +41,31 @@ def actif_par_engin(company, engin_id):
     ou ``None`` s'il n'existe pas encore."""
     return ActifFlotte.objects.filter(
         company=company, engin_id=engin_id).first()
+
+
+def conducteurs_de_la_societe(company, actif_only=False):
+    """FLOTTE7 — Conducteurs d'une société (queryset scopé).
+
+    Si ``actif_only=True``, ne retourne que les conducteurs actifs.
+    """
+    qs = Conducteur.objects.filter(company=company).select_related('user')
+    if actif_only:
+        qs = qs.filter(actif=True)
+    return qs
+
+
+def conducteurs_permis_expirant(company, jours=30):
+    """FLOTTE7 — Conducteurs dont le permis expire dans les ``jours`` prochains
+    jours (inclusif). Ne retourne que les conducteurs avec ``date_expiration``
+    renseignée ; les permis déjà expirés sont exclus."""
+    today = datetime.date.today()
+    horizon = today + datetime.timedelta(days=jours)
+    return Conducteur.objects.filter(
+        company=company,
+        date_expiration__isnull=False,
+        date_expiration__gte=today,
+        date_expiration__lte=horizon,
+    ).select_related('user')
 
 
 def emplacement_stock_label(company, emplacement_stock_id):
