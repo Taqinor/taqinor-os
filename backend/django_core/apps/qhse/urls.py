@@ -6,7 +6,8 @@ from .views import (
     GrilleAuditViewSet, ItemNotationViewSet, NonConformiteViewSet,
     NotationFinChantierViewSet,
     PlanInspectionChantierViewSet, PlanInspectionModeleViewSet,
-    PointControleModeleViewSet, QhseChatterEntryViewSet,
+    PointControleModeleViewSet, ProcedureQualiteViewSet,
+    QhseChatterEntryViewSet,
     ReleveControleViewSet, ReleveCourbeIVViewSet, ReponseCritereViewSet,
 )
 
@@ -25,6 +26,7 @@ router.register(r'audits', AuditViewSet)
 router.register(r'reponses-critere', ReponseCritereViewSet)
 router.register(r'notations-fin-chantier', NotationFinChantierViewSet)
 router.register(r'items-notation', ItemNotationViewSet)
+router.register(r'procedures-qualite', ProcedureQualiteViewSet)
 
 urlpatterns = [
     path('', include(router.urls)),

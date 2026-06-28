@@ -12,7 +12,8 @@ from django.db import transaction
 
 from .models import (
     ActionCorrectivePreventive, NonConformite, NotationFinChantier,
-    PlanInspectionChantier, PointControleModele, ReponseCritere, ReleveControle,
+    PlanInspectionChantier, PointControleModele, ProcedureQualite,
+    ReponseCritere, ReleveControle,
 )
 
 
@@ -361,3 +362,66 @@ def calculer_score_notation(notation):
         )
     notation.save(update_fields=['score', 'verdict'])
     return notation
+
+
+# ── QHSE18 — Procédure qualité versionnée (docs qualité GED) ────────────────
+
+@transaction.atomic
+def nouvelle_version_procedure(company, reference, titre, *, contenu='',
+                              document_id=None, auteur=None,
+                              date_application=None):
+    """Crée la version SUIVANTE d'une procédure qualité (additif, non destructif).
+
+    La version est calculée côté serveur : ``max(version de la référence) + 1``
+    pour ce couple (société, ``reference``), via un ``select_for_update`` qui
+    sérialise les créations concurrentes (jamais ``count()+1``). La première
+    version d'une référence inédite est la v1. Rien n'est écrasé : chaque appel
+    AJOUTE une ligne, préservant l'historique complet (comme
+    ``ged.services.add_version``).
+
+    Le ``document_id`` est une référence lâche au document GED (jamais un import
+    cross-app de ``ged.models``). La nouvelle version naît en ``brouillon`` ;
+    l'entrée en vigueur passe par ``activer_procedure``.
+
+    Renvoie la ``ProcedureQualite`` créée.
+    """
+    last = (ProcedureQualite.objects
+            .select_for_update()
+            .filter(company=company, reference=reference)
+            .order_by('-version')
+            .first())
+    next_version = (last.version + 1) if last else 1
+    return ProcedureQualite.objects.create(
+        company=company,
+        reference=reference,
+        titre=titre,
+        version=next_version,
+        statut=ProcedureQualite.Statut.BROUILLON,
+        contenu=contenu or '',
+        document_id=document_id,
+        auteur=auteur,
+        date_application=date_application,
+    )
+
+
+@transaction.atomic
+def activer_procedure(procedure, date_application=None):
+    """Met une version de procédure EN VIGUEUR et rend les autres obsolètes.
+
+    Une seule version d'une référence est ``en_vigueur`` à la fois : cette
+    version passe ``EN_VIGUEUR`` et toutes les autres versions de la même
+    référence (même société) qui étaient en vigueur deviennent ``OBSOLETE``.
+    L'historique reste intact (aucune suppression). Renvoie la ``procedure``.
+    """
+    from django.utils import timezone
+
+    S = ProcedureQualite.Statut
+    (ProcedureQualite.objects
+        .filter(company=procedure.company, reference=procedure.reference,
+                statut=S.EN_VIGUEUR)
+        .exclude(pk=procedure.pk)
+        .update(statut=S.OBSOLETE))
+    procedure.statut = S.EN_VIGUEUR
+    procedure.date_application = date_application or timezone.localdate()
+    procedure.save(update_fields=['statut', 'date_application'])
+    return procedure

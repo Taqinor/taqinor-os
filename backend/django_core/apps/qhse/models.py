@@ -943,3 +943,79 @@ class ItemNotation(models.Model):
     def __str__(self):
         etat = 'conforme' if self.conforme else ('NC' if self.conforme is False else '?')
         return f'{self.intitule} [{etat}] (poids {self.poids})'
+
+
+# ── QHSE18 — Procédure qualité versionnée (docs qualité GED) ────────────────
+
+class ProcedureQualite(models.Model):
+    """Procédure qualité VERSIONNÉE (document du système qualité, type ISO 9001).
+
+    Chaque enregistrement est UNE version d'une procédure identifiée par sa
+    ``reference`` (ex. ``PRO-QUAL-001``). À la manière de ``ged.DocumentVersion``,
+    on conserve l'historique complet : créer une nouvelle version n'écrase rien,
+    elle ajoute une ligne avec ``version = max(version de la référence) + 1`` (cf.
+    ``services.nouvelle_version_procedure``). Le sélecteur
+    ``procedure_qualite_courante`` renvoie la version en vigueur (ou, à défaut, la
+    plus haute) d'une référence.
+
+    Cycle de vie d'une version via ``statut`` : ``brouillon`` → ``en_vigueur`` →
+    ``obsolete``. Le contenu peut vivre en texte libre (``contenu``) et/ou être
+    rattaché à un document GED par référence lâche (``document_id`` — jamais un
+    import cross-app de ``ged.models`` ; la lecture passe par
+    ``apps.ged.selectors``). Multi-société via ``company`` posée côté serveur.
+    Entièrement additif.
+    """
+    class Statut(models.TextChoices):
+        BROUILLON = 'brouillon', 'Brouillon'
+        EN_VIGUEUR = 'en_vigueur', 'En vigueur'
+        OBSOLETE = 'obsolete', 'Obsolète'
+
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='qhse_procedures_qualite',
+        verbose_name='Société',
+    )
+    reference = models.CharField(max_length=80, verbose_name='Référence')
+    titre = models.CharField(max_length=255, verbose_name='Titre')
+    version = models.PositiveIntegerField(default=1, verbose_name='Version')
+    statut = models.CharField(
+        max_length=12, choices=Statut.choices,
+        default=Statut.BROUILLON, verbose_name='Statut')
+    contenu = models.TextField(
+        blank=True, default='', verbose_name='Contenu')
+    # Référence lâche au document GED (ged.Document) par id : jamais un import
+    # cross-app de modèle. La lecture passe par apps.ged.selectors.
+    document_id = models.PositiveIntegerField(
+        null=True, blank=True, verbose_name='ID du document GED')
+    date_application = models.DateField(
+        null=True, blank=True, verbose_name="Date d'entrée en vigueur")
+    auteur = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='qhse_procedures_qualite',
+        verbose_name='Auteur',
+    )
+    date_creation = models.DateTimeField(
+        auto_now_add=True, verbose_name='Créé le')
+
+    class Meta:
+        verbose_name = 'Procédure qualité'
+        verbose_name_plural = 'Procédures qualité'
+        ordering = ['reference', '-version', '-id']
+        constraints = [
+            models.UniqueConstraint(
+                fields=['company', 'reference', 'version'],
+                name='qhse_procqual_ref_version_uniq',
+            )
+        ]
+        indexes = [
+            models.Index(
+                fields=['company', 'reference'],
+                name='qhse_procqual_co_ref',
+            ),
+        ]
+
+    def __str__(self):
+        return f'{self.reference} v{self.version} — {self.titre}'
