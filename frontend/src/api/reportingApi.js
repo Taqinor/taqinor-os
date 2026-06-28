@@ -38,6 +38,10 @@ const reportingApi = {
   getCalendar: (params) => api.get('/reporting/calendar/', { params }),
   rescheduleCalendar: (payload) =>
     api.post('/reporting/calendar/reschedule/', payload),
+  // FG6 — URL d'abonnement ICS de l'utilisateur (Google/Outlook). Réponse
+  // {token, url}. L'URL .ics est authentifiée par jeton signé (sans session).
+  getCalendarSubscription: () =>
+    api.get('/reporting/calendar/subscription/'),
   // N85 — Vue carte. Points géolocalisés ; filtres optionnels ?types=&statuts=.
   getGeoPoints: (params) => api.get('/reporting/geo/', { params }),
   // FG91 — Rapports sauvegardés (CRUD). company + owner posés côté serveur.
