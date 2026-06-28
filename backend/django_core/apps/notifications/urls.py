@@ -2,8 +2,9 @@ from django.urls import include, path
 from rest_framework.routers import DefaultRouter
 
 from .views import (
-    NotificationPreferenceViewSet, NotificationRoutingRuleViewSet,
-    NotificationViewSet, push_subscribe, push_unsubscribe, vapid_public_key,
+    HolidayViewSet, NotificationPreferenceViewSet, NotificationRoutingRuleViewSet,
+    NotificationViewSet, WorkingHoursConfigViewSet,
+    calendar_check, push_subscribe, push_unsubscribe, vapid_public_key,
 )
 from .views_whatsapp_bsp import WhatsAppBspWebhookView
 
@@ -13,6 +14,11 @@ router.register(
     r'preferences', NotificationPreferenceViewSet, basename='notification-preference')
 router.register(
     r'routing-rules', NotificationRoutingRuleViewSet, basename='notification-routing-rule')
+# FG5 — Calendrier ouvré.
+router.register(
+    r'working-hours', WorkingHoursConfigViewSet, basename='notification-working-hours')
+router.register(
+    r'holidays', HolidayViewSet, basename='notification-holiday')
 
 urlpatterns = [
     path('', include(router.urls)),
@@ -27,4 +33,6 @@ urlpatterns = [
         WhatsAppBspWebhookView.as_view(),
         name='whatsapp-bsp-webhook',
     ),
+    # FG5 — Diagnostic calendrier ouvré.
+    path('calendar/check/', calendar_check, name='notification-calendar-check'),
 ]

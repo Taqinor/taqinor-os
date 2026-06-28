@@ -17,12 +17,13 @@ from authentication.mixins import TenantMixin
 from authentication.permissions import IsAdminRole, IsAnyRole
 
 from .models import (
-    EventType, Notification, NotificationPreference, NotificationRoutingRule,
-    PushSubscription,
+    EventType, Holiday, Notification, NotificationPreference,
+    NotificationRoutingRule, PushSubscription, WorkingHoursConfig,
 )
 from .serializers import (
-    NotificationPreferenceSerializer, NotificationRoutingRuleSerializer,
-    NotificationSerializer,
+    HolidaySerializer, NotificationPreferenceSerializer,
+    NotificationRoutingRuleSerializer, NotificationSerializer,
+    WorkingHoursConfigSerializer,
 )
 from .services import merged_preferences, resolve_vapid_keys
 
@@ -148,6 +149,113 @@ class NotificationRoutingRuleViewSet(TenantMixin, viewsets.ModelViewSet):
 # TOUJOURS posés côté serveur (jamais lus du corps). La clé publique VAPID est
 # publique par nature (exposée au navigateur) ; les autres routes exigent un
 # utilisateur authentifié.
+
+class WorkingHoursConfigViewSet(viewsets.ViewSet):
+    """FG5 — Config des jours ouvrés : GET (lecture) + PUT/PATCH (upsert).
+
+    Singleton par société : GET renvoie la config effective (défauts si absente).
+    PUT/PATCH crée ou met à jour la ligne de la société courante.
+    Lecture : tout rôle. Écriture : admin seulement. company posée côté serveur.
+    Pas de TenantMixin (ViewSet sans queryset) : scoping manuel via request.user.company."""
+    permission_classes = [IsAnyRole]
+
+    def _get_or_default_data(self, company):
+        cfg = WorkingHoursConfig.objects.filter(company=company).first()
+        if cfg is not None:
+            return WorkingHoursConfigSerializer(cfg).data
+        return {
+            'id': None,
+            'working_days': WorkingHoursConfig.DEFAULT_WORKING_DAYS,
+            'hours_per_day': '8.00',
+            'updated_at': None,
+        }
+
+    def list(self, request):
+        return Response(self._get_or_default_data(request.user.company))
+
+    def update(self, request, pk=None):
+        return self._upsert(request)
+
+    def partial_update(self, request, pk=None):
+        return self._upsert(request)
+
+    def _upsert(self, request):
+        if not IsAdminRole().has_permission(request, self):
+            return Response(
+                {'detail': 'Réservé aux administrateurs.'},
+                status=status.HTTP_403_FORBIDDEN)
+        company = request.user.company
+        cfg, _ = WorkingHoursConfig.objects.get_or_create(
+            company=company,
+            defaults={'working_days': WorkingHoursConfig.DEFAULT_WORKING_DAYS})
+        serializer = WorkingHoursConfigSerializer(
+            cfg, data=request.data, partial=True)
+        serializer.is_valid(raise_exception=True)
+        serializer.save()
+        return Response(serializer.data)
+
+
+class HolidayViewSet(TenantMixin, viewsets.ModelViewSet):
+    """FG5 — CRUD des jours fériés, scopé à la société courante.
+
+    Lecture : tout rôle. Écriture/Suppression : admin seulement.
+    company posée côté serveur dans perform_create.
+    Filtre optionnel : ?year=2025 pour n'obtenir que les fériés actifs en 2025
+    (date.year == 2025 OU recurrent_annuel)."""
+    queryset = Holiday.objects.all()
+    serializer_class = HolidaySerializer
+    READ_ACTIONS = ['list', 'retrieve']
+
+    def get_permissions(self):
+        if self.action in self.READ_ACTIONS:
+            return [IsAnyRole()]
+        return [IsAdminRole()]
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        year = self.request.query_params.get('year')
+        if year:
+            try:
+                yr = int(year)
+                from django.db.models import Q
+                qs = qs.filter(Q(date__year=yr) | Q(recurrent_annuel=True))
+            except (ValueError, TypeError):
+                pass
+        return qs
+
+    def perform_create(self, serializer):
+        serializer.save(company=self.request.user.company)
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# FG5 — Endpoint de vérification des helpers de calendrier.
+
+@api_view(['GET'])
+@permission_classes([IsAnyRole])
+def calendar_check(request):
+    """FG5 — Diagnostic rapide : renvoie is_jour_ouvre pour la date demandée.
+
+    Query param : ?date=2025-01-01 (défaut : aujourd'hui).
+    Utile pour les tests d'intégration et le débogage de la config."""
+    from datetime import date as _date
+    from .calendar_utils import is_jour_ouvre, prochain_jour_ouvre
+    date_str = request.query_params.get('date', '')
+    try:
+        d = _date.fromisoformat(date_str) if date_str else _date.today()
+    except ValueError:
+        return Response({'detail': 'Format de date invalide. Utilisez YYYY-MM-DD.'},
+                        status=status.HTTP_400_BAD_REQUEST)
+    company = request.user.company
+    ouvre = is_jour_ouvre(d, company)
+    next_ouvre = prochain_jour_ouvre(d, company)
+    return Response({
+        'date': d.isoformat(),
+        'is_jour_ouvre': ouvre,
+        'prochain_jour_ouvre': next_ouvre.isoformat(),
+    })
+
+
+# ─────────────────────────────────────────────────────────────────────────────
 
 @api_view(['GET'])
 @permission_classes([AllowAny])

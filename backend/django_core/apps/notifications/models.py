@@ -297,6 +297,99 @@ class VapidKeyPair(models.Model):
 
 
 # =============================================================================
+# FG5 — Calendrier ouvré par société : config horaires + jours fériés marocains
+# =============================================================================
+
+class WorkingHoursConfig(models.Model):
+    """Configuration des jours ouvrés pour une société.
+
+    `working_days` est un entier bitmask (bits 0=Lundi … 6=Dimanche, LSB=Lundi).
+    La valeur par défaut 0b00011111 (= 31) représente Lundi–Vendredi.
+    Les helpers de `calendar_utils` lisent ce masque pour décider si un jour
+    est ouvré. ADDITIF : sans ligne, les helpers tombent sur les défauts (L–V).
+    MULTI-TENANT : singleton par société, posé côté serveur.
+    """
+
+    # Bitmask : bit 0 = Lundi, bit 1 = Mardi, …, bit 6 = Dimanche.
+    # L–V uniquement = 0b00011111 = 31.
+    LUNDI = 0
+    MARDI = 1
+    MERCREDI = 2
+    JEUDI = 3
+    VENDREDI = 4
+    SAMEDI = 5
+    DIMANCHE = 6
+
+    # Défaut Maroc : Lundi–Vendredi (bits 0–4).
+    DEFAULT_WORKING_DAYS = 0b00011111  # 31
+
+    company = models.OneToOneField(
+        'authentication.Company', on_delete=models.CASCADE,
+        related_name='notif_working_hours_config',
+        verbose_name='Société')
+    # Bitmask des jours ouvrés (Lundi=bit0 … Dimanche=bit6).
+    working_days = models.PositiveSmallIntegerField(
+        default=DEFAULT_WORKING_DAYS,
+        verbose_name='Jours ouvrés (bitmask)')
+    # Durée standard d'une journée de travail (information mémorisée, non
+    # utilisée par les helpers de date — gardée pour usage futur).
+    hours_per_day = models.DecimalField(
+        max_digits=4, decimal_places=2, default='8.00',
+        verbose_name='Heures / jour')
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = 'Configuration des heures ouvrées'
+        verbose_name_plural = 'Configurations des heures ouvrées'
+
+    def __str__(self):
+        return f'WorkingHoursConfig [{self.company_id}]'
+
+    def is_working_weekday(self, weekday: int) -> bool:
+        """Renvoie True si `weekday` (0=Lun … 6=Dim) est coché comme ouvré."""
+        return bool(self.working_days & (1 << weekday))
+
+
+class Holiday(models.Model):
+    """Jour férié par société.
+
+    `date` = date exacte du jour férié pour cette année.
+    `recurrent_annuel` = True → la date est annuelle (anniversaire ; seul le
+    mois + le jour comptent, l'année de `date` sert de référence).
+    Les fêtes islamiques (Id al-Fitr, Id al-Adha, etc.) varient d'année en
+    année (calendrier lunaire) et DOIVENT être saisies manuellement.
+    Le seed initial ne couvre que les 9 jours fériés FIXES marocains.
+    MULTI-TENANT : chaque ligne appartient à UNE société.
+    """
+
+    company = models.ForeignKey(
+        'authentication.Company', on_delete=models.CASCADE,
+        related_name='notif_holidays',
+        verbose_name='Société')
+    date = models.DateField(verbose_name='Date')
+    nom = models.CharField(max_length=150, verbose_name='Nom')
+    recurrent_annuel = models.BooleanField(
+        default=False,
+        verbose_name='Récurrent chaque année')
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        verbose_name = 'Jour férié'
+        verbose_name_plural = 'Jours fériés'
+        ordering = ['date']
+        constraints = [
+            models.UniqueConstraint(
+                fields=['company', 'date', 'nom'],
+                name='notif_holiday_company_date_nom_uniq',
+            ),
+        ]
+
+    def __str__(self):
+        flag = ' (annuel)' if self.recurrent_annuel else ''
+        return f'{self.date} — {self.nom}{flag}'
+
+
+# =============================================================================
 # QJ23 — WhatsApp BSP scaffold (flag-gated, défaut manuel wa.me)
 # =============================================================================
 
