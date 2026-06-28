@@ -101,8 +101,6 @@ class TestRelanceReminderSkipsLitige(TestCase):
     """Tests d'intégration : relance_reminders saute les factures en litige."""
 
     def setUp(self):
-        from django.contrib.auth import get_user_model
-        User = get_user_model()
         self.company = make_company("litige3-sch", "Sched Co")
         self.client_obj = Client.objects.create(
             company=self.company, nom="Débiteur",
@@ -148,7 +146,7 @@ class TestRelanceReminderSkipsLitige(TestCase):
     @patch("apps.ventes.email_service.send_relance_email")
     def test_relance_sent_when_no_litige(self, mock_send):
         """Sans litige, la facture est bien relancée."""
-        f = self._facture("FAC-LIT3-0002")
+        self._facture("FAC-LIT3-0002")
         from apps.ventes.scheduled import relance_reminders
         n = relance_reminders()
         self.assertEqual(n, 1)
