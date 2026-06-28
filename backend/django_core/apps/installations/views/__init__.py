@@ -16,6 +16,7 @@ from .projet import (
     JalonProjetViewSet, ModeleProjetViewSet, ReunionChantierViewSet,
 )
 from .document import DocumentProjetViewSet, RevisionDocumentViewSet
+from .field_sync import FieldSyncView
 
 __all__ = [
     'TypeInterventionViewSet',
@@ -31,4 +32,5 @@ __all__ = [
     'ReunionChantierViewSet',
     'DocumentProjetViewSet',
     'RevisionDocumentViewSet',
+    'FieldSyncView',
 ]
