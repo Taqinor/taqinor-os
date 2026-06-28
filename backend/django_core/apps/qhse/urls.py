@@ -3,7 +3,8 @@ from rest_framework.routers import DefaultRouter
 
 from .views import (
     ActionCorrectivePreventiveViewSet, AuditViewSet, CritereAuditViewSet,
-    GrilleAuditViewSet, NonConformiteViewSet,
+    GrilleAuditViewSet, ItemNotationViewSet, NonConformiteViewSet,
+    NotationFinChantierViewSet,
     PlanInspectionChantierViewSet, PlanInspectionModeleViewSet,
     PointControleModeleViewSet, QhseChatterEntryViewSet,
     ReleveControleViewSet, ReleveCourbeIVViewSet, ReponseCritereViewSet,
@@ -22,6 +23,8 @@ router.register(r'grilles-audit', GrilleAuditViewSet)
 router.register(r'criteres-audit', CritereAuditViewSet)
 router.register(r'audits', AuditViewSet)
 router.register(r'reponses-critere', ReponseCritereViewSet)
+router.register(r'notations-fin-chantier', NotationFinChantierViewSet)
+router.register(r'items-notation', ItemNotationViewSet)
 
 urlpatterns = [
     path('', include(router.urls)),

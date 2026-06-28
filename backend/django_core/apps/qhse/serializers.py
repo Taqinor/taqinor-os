@@ -8,7 +8,8 @@ from rest_framework import serializers
 
 from .models import (
     ActionCorrectivePreventive, Audit, CritereAudit, GrilleAudit,
-    NonConformite, PlanInspectionChantier, PlanInspectionModele,
+    ItemNotation, NonConformite, NotationFinChantier,
+    PlanInspectionChantier, PlanInspectionModele,
     PointControleModele, QhseChatterEntry, ReleveControle, ReleveCourbeIV,
     ReponseCritere,
 )
@@ -286,3 +287,45 @@ class ReponseCritereSerializer(serializers.ModelSerializer):
 
     def validate_critere(self, value):
         return _meme_societe(self, value, "Critère d'audit")
+
+
+# ── QHSE17 — Notation fin de chantier ──────────────────────────────────────
+
+class ItemNotationSerializer(serializers.ModelSerializer):
+    """Item de notation fin de chantier (QHSE17)."""
+
+    class Meta:
+        model = ItemNotation
+        fields = [
+            'id', 'notation', 'intitule', 'categorie', 'poids',
+            'conforme', 'commentaire', 'ordre', 'date_creation',
+        ]
+        read_only_fields = ['date_creation']
+
+    def validate_notation(self, value):
+        return _meme_societe(self, value, 'Notation fin de chantier')
+
+
+class NotationFinChantierSerializer(serializers.ModelSerializer):
+    """Notation fin de chantier (QHSE17).
+
+    Expose le ``score`` (calculé), le ``verdict`` et le flag advisory
+    ``peut_cloturer`` issu du sélecteur ``chantier_peut_cloturer``.
+    """
+    verdict_display = serializers.CharField(
+        source='get_verdict_display', read_only=True)
+    nb_items = serializers.IntegerField(source='items.count', read_only=True)
+    peut_cloturer = serializers.SerializerMethodField()
+
+    class Meta:
+        model = NotationFinChantier
+        fields = [
+            'id', 'chantier_id', 'date_notation', 'auteur',
+            'score', 'seuil_passage', 'verdict', 'verdict_display',
+            'notes', 'nb_items', 'peut_cloturer', 'date_creation',
+        ]
+        read_only_fields = ['score', 'verdict', 'date_creation']
+
+    def get_peut_cloturer(self, obj):
+        from .selectors import chantier_peut_cloturer
+        return chantier_peut_cloturer(obj.chantier_id, obj.company)

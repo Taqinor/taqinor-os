@@ -11,7 +11,7 @@ from decimal import Decimal
 from django.db import transaction
 
 from .models import (
-    ActionCorrectivePreventive, NonConformite,
+    ActionCorrectivePreventive, NonConformite, NotationFinChantier,
     PlanInspectionChantier, PointControleModele, ReponseCritere, ReleveControle,
 )
 
@@ -317,3 +317,47 @@ def cloturer_ncr(ncr):
     ncr.statut = NonConformite.Statut.CLOTUREE
     ncr.save(update_fields=['statut'])
     return ncr
+
+
+# ── QHSE17 — Score de notation fin de chantier ──────────────────────────────
+
+@transaction.atomic
+def calculer_score_notation(notation):
+    """Calcule et stocke le score pondéré d'une ``NotationFinChantier``.
+
+    Agrège les ``ItemNotation`` conformes (``conforme=True``) pondérés en
+    pourcentage du total des items renseignés (``conforme`` non nul). Les items
+    dont ``conforme`` est ``None`` (pas encore évalués) sont exclus du calcul
+    (identique au comportement NA des audits). Si aucun item n'est renseigné,
+    ``score`` reste ``None`` et ``verdict`` reste ``None``.
+
+    Le ``verdict`` (``passe`` / ``echec``) est dérivé automatiquement : score ≥
+    ``seuil_passage`` → PASSE, score < seuil_passage → ECHEC.
+
+    Retourne la ``notation`` avec ``score`` et ``verdict`` mis à jour et sauvegardés.
+    """
+    items = list(notation.items.all())
+    poids_conforme = Decimal('0')
+    poids_total = Decimal('0')
+    for item in items:
+        if item.conforme is None:
+            continue
+        poids = Decimal(item.poids)
+        poids_total += poids
+        if item.conforme:
+            poids_conforme += poids
+
+    if poids_total == 0:
+        notation.score = None
+        notation.verdict = None
+    else:
+        notation.score = (poids_conforme / poids_total * 100).quantize(
+            Decimal('0.01'))
+        seuil = Decimal(notation.seuil_passage)
+        notation.verdict = (
+            NotationFinChantier.Verdict.PASSE
+            if notation.score >= seuil
+            else NotationFinChantier.Verdict.ECHEC
+        )
+    notation.save(update_fields=['score', 'verdict'])
+    return notation
