@@ -6,7 +6,7 @@ serveur.
 """
 from rest_framework import serializers
 
-from .models import Contrat, ContratLien, PartieContrat
+from .models import Contrat, ContratLien, ModeleContrat, PartieContrat
 
 
 class ContratSerializer(serializers.ModelSerializer):
@@ -89,3 +89,38 @@ class ContratLienSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError(
                 "Ce contrat n'appartient pas à votre société.")
         return contrat
+
+
+class ModeleContratSerializer(serializers.ModelSerializer):
+    """Sérialiseur d'un ``ModeleContrat`` (bibliothèque de gabarits — CONTRAT7).
+
+    ``company`` n'est jamais exposée en écriture : elle est posée côté serveur.
+    Champs d'affichage (_display) sont en lecture seule.
+    """
+    type_contrat_defaut_display = serializers.CharField(
+        source='get_type_contrat_defaut_display', read_only=True)
+    confidentialite_defaut_display = serializers.CharField(
+        source='get_confidentialite_defaut_display', read_only=True)
+
+    class Meta:
+        model = ModeleContrat
+        fields = [
+            'id', 'nom', 'categorie',
+            'type_contrat_defaut', 'type_contrat_defaut_display',
+            'corps', 'clauses',
+            'devise_defaut',
+            'confidentialite_defaut', 'confidentialite_defaut_display',
+            'actif', 'ordre', 'date_creation',
+        ]
+        read_only_fields = ['date_creation']
+
+
+class InstancierContratSerializer(serializers.Serializer):
+    """Corps de la requête POST /modeles/<id>/instancier/.
+
+    Permet de surcharger les valeurs par défaut du gabarit au moment de
+    l'instanciation. Tous les champs sont facultatifs : les valeurs manquantes
+    sont héritées du gabarit.
+    """
+    objet = serializers.CharField(max_length=255, required=False, allow_blank=True)
+    reference = serializers.CharField(max_length=50, required=False, allow_blank=True)

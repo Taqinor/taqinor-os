@@ -16,8 +16,13 @@ La visibilité d'un ``Contrat`` est réglée par son champ ``confidentialite`` :
 
 Le filtre est appliqué dans ``ContratViewSet.get_queryset``.  Les filtres
 ``?confidentialite=`` permettent de restreindre la liste côté client.
+
+ModeleContratViewSet (CONTRAT7)
+--------------------------------
+Bibliothèque de gabarits/modèles de contrats. Scopé société (TenantMixin).
+Action ``/instancier/`` crée un ``Contrat`` pré-rempli depuis le gabarit.
 """
-from rest_framework import filters, viewsets
+from rest_framework import filters, status, viewsets
 from rest_framework.decorators import action
 from rest_framework.response import Response
 
@@ -25,10 +30,12 @@ from authentication.mixins import TenantMixin
 from authentication.permissions import IsResponsableOrAdmin
 
 from . import selectors
-from .models import Contrat, ContratLien, PartieContrat
+from .models import Contrat, ContratLien, ModeleContrat, PartieContrat
 from .serializers import (
     ContratLienSerializer,
     ContratSerializer,
+    InstancierContratSerializer,
+    ModeleContratSerializer,
     PartieContratSerializer,
 )
 
@@ -133,3 +140,68 @@ class ContratLienViewSet(_ContratsBaseViewSet):
         if type_cible:
             qs = qs.filter(type_cible=type_cible)
         return qs
+
+
+class ModeleContratViewSet(_ContratsBaseViewSet):
+    """Bibliothèque de gabarits de contrats (CONTRAT7).
+
+    Scopé société (TenantMixin). ``company`` est posée côté serveur.
+
+    Filtres : ``?actif=true/false``, ``?categorie=<texte>``.
+    Recherche : ``nom``, ``categorie``.
+
+    Action supplémentaire :
+    - POST ``/<id>/instancier/`` : crée et renvoie un ``Contrat`` pré-rempli
+      depuis ce gabarit (type_contrat, devise, confidentialite du gabarit ;
+      ``objet`` et ``reference`` peuvent être surchargés dans le corps).
+    """
+    queryset = ModeleContrat.objects.all()
+    serializer_class = ModeleContratSerializer
+    filter_backends = [filters.SearchFilter, filters.OrderingFilter]
+    search_fields = ['nom', 'categorie']
+    ordering_fields = ['ordre', 'nom', 'id']
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        # Filtre optionnel ?actif=true/false
+        actif = self.request.query_params.get('actif')
+        if actif is not None:
+            qs = qs.filter(actif=actif.lower() in ('1', 'true', 'oui'))
+        # Filtre optionnel ?categorie=<texte>
+        categorie = self.request.query_params.get('categorie')
+        if categorie:
+            qs = qs.filter(categorie__icontains=categorie)
+        return qs
+
+    @action(detail=True, methods=['post'])
+    def instancier(self, request, pk=None):
+        """Crée un ``Contrat`` pré-rempli depuis ce gabarit.
+
+        Les champs du gabarit (type_contrat_defaut, devise_defaut,
+        confidentialite_defaut) sont copiés sur le nouveau contrat. L'appelant
+        peut fournir ``objet`` et ``reference`` dans le corps de la requête pour
+        surcharger les valeurs par défaut (``objet`` est requis si non fourni,
+        car c'est un champ obligatoire sur ``Contrat``). La société est posée
+        côté serveur.
+        """
+        modele = self.get_object()
+        body_serializer = InstancierContratSerializer(data=request.data)
+        body_serializer.is_valid(raise_exception=True)
+        data = body_serializer.validated_data
+
+        objet = data.get('objet') or modele.nom
+        reference = data.get('reference', '')
+
+        contrat = Contrat.objects.create(
+            company=request.user.company,
+            created_by=request.user,
+            objet=objet,
+            reference=reference,
+            type_contrat=modele.type_contrat_defaut,
+            devise=modele.devise_defaut,
+            confidentialite=modele.confidentialite_defaut,
+        )
+        return Response(
+            ContratSerializer(contrat, context={'request': request}).data,
+            status=status.HTTP_201_CREATED,
+        )
