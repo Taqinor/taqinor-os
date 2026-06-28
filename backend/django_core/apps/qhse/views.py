@@ -13,16 +13,18 @@ from authentication.mixins import TenantMixin
 from authentication.permissions import IsResponsableOrAdmin
 
 from .models import (
-    ActionCorrectivePreventive, CritereAudit, GrilleAudit, NonConformite,
-    PlanInspectionChantier, PlanInspectionModele, PointControleModele,
-    QhseChatterEntry, ReleveControle, ReleveCourbeIV,
+    ActionCorrectivePreventive, Audit, CritereAudit, GrilleAudit,
+    NonConformite, PlanInspectionChantier, PlanInspectionModele,
+    PointControleModele, QhseChatterEntry, ReleveControle, ReleveCourbeIV,
+    ReponseCritere,
 )
 from .serializers import (
-    ActionCorrectivePreventiveSerializer, CritereAuditSerializer,
-    GrilleAuditSerializer, NonConformiteSerializer,
+    ActionCorrectivePreventiveSerializer, AuditSerializer,
+    CritereAuditSerializer, GrilleAuditSerializer, NonConformiteSerializer,
     PlanInspectionChantierSerializer, PlanInspectionModeleSerializer,
     PointControleModeleSerializer, QhseChatterEntrySerializer,
     ReleveControleSerializer, ReleveCourbeIVSerializer,
+    ReponseCritereSerializer,
 )
 from . import chatter
 from .selectors import (
@@ -30,8 +32,9 @@ from .selectors import (
     photos_controle_par_phase,
 )
 from .services import (
-    cloturer_ncr, creer_ncr_depuis_reserve, instancier_plan_chantier,
-    relancer_capa_en_retard, verifier_efficacite_capa,
+    calculer_score_audit, cloturer_ncr, creer_ncr_depuis_reserve,
+    instancier_plan_chantier, lever_ncr_audit, relancer_capa_en_retard,
+    verifier_efficacite_capa,
 )
 
 
@@ -391,6 +394,72 @@ class CritereAuditViewSet(_QhseBaseViewSet):
         grille = self.request.query_params.get('grille')
         if grille not in (None, ''):
             qs = qs.filter(grille_id=grille)
+        return qs
+
+
+class AuditViewSet(_QhseBaseViewSet):
+    """Audits (sessions d'exécution d'une grille — QHSE16).
+
+    ``POST …/<id>/calculer-score/`` — calcule et stocke le score pondéré.
+    ``POST …/<id>/lever-ncr/`` — lève une NCR pour chaque réponse non conforme
+    (idempotent : ne duplique pas une NCR déjà existante).
+    """
+    queryset = Audit.objects.select_related('grille', 'auditeur').all()
+    serializer_class = AuditSerializer
+    filter_backends = [filters.SearchFilter, filters.OrderingFilter]
+    search_fields = ['grille__nom', 'notes']
+    ordering_fields = ['id', 'date_audit', 'date_creation', 'score']
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        grille = self.request.query_params.get('grille')
+        if grille not in (None, ''):
+            qs = qs.filter(grille_id=grille)
+        return qs
+
+    @action(detail=True, methods=['post'], url_path='calculer-score')
+    def calculer_score(self, request, pk=None):
+        """Calcule et stocke le score pondéré de l'audit (% conforme).
+
+        Retourne l'audit mis à jour avec le champ ``score`` renseigné. Les
+        critères ``NA`` sont exclus du calcul. ``get_object`` est scopé société.
+        """
+        audit = self.get_object()
+        calculer_score_audit(audit)
+        return Response(self.get_serializer(audit).data)
+
+    @action(detail=True, methods=['post'], url_path='lever-ncr')
+    def lever_ncr(self, request, pk=None):
+        """Lève une NCR pour chaque réponse non conforme (QHSE16 → NCR).
+
+        Idempotent : une ``ReponseCritere`` ayant déjà un ``ncr_id`` n'est pas
+        dupliquée. ``signale_par`` est posé côté serveur. ``get_object`` est
+        scopé société. Retourne ``{'creees': [...], 'existantes': [...]}``.
+        """
+        audit = self.get_object()
+        result = lever_ncr_audit(audit, signale_par=request.user)
+        return Response(result, status=status.HTTP_200_OK)
+
+
+class ReponseCritereViewSet(_QhseBaseViewSet):
+    """Réponses aux critères d'audit (QHSE16).
+
+    Filtre optionnel par ``?audit=``. La société est posée côté serveur ; les
+    FKs ``audit`` et ``critere`` sont validés même-société par le sérialiseur.
+    Un seul enregistrement par (audit, critère) — l'unicité est gérée par la
+    contrainte DB (unique_together) et une réponse peut être mise à jour (PATCH).
+    """
+    queryset = ReponseCritere.objects.select_related(
+        'audit', 'critere').all()
+    serializer_class = ReponseCritereSerializer
+    filter_backends = [filters.OrderingFilter]
+    ordering_fields = ['id', 'critere__ordre', 'date_creation']
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        audit = self.request.query_params.get('audit')
+        if audit not in (None, ''):
+            qs = qs.filter(audit_id=audit)
         return qs
 
 

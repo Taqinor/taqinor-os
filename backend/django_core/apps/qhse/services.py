@@ -6,11 +6,13 @@ et matérialise un ``ReleveControle`` par point de contrôle du modèle. L'opér
 est idempotente : ré-appelée pour le même couple (modèle, chantier, société),
 elle réutilise le plan existant et n'ajoute que les relevés manquants.
 """
+from decimal import Decimal
+
 from django.db import transaction
 
 from .models import (
-    ActionCorrectivePreventive, NonConformite, PlanInspectionChantier,
-    PointControleModele, ReleveControle,
+    ActionCorrectivePreventive, Audit, NonConformite,
+    PlanInspectionChantier, PointControleModele, ReponseCritere, ReleveControle,
 )
 
 
@@ -201,6 +203,86 @@ def verifier_efficacite_capa(capa, efficace, verifiee_par=None, commentaire=''):
         'efficace', 'commentaire_verification', 'date_verification',
         'verifiee_par', 'statut'])
     return capa
+
+
+# ── QHSE16 — Audit : score + levée de NCR ──────────────────────────────────
+
+@transaction.atomic
+def calculer_score_audit(audit):
+    """Calcule et stocke le score pondéré d'un ``Audit`` (% conforme, 0–100).
+
+    Seuls les critères avec résultat ``CONFORME`` ou ``NON_CONFORME`` entrent
+    dans le calcul (les ``NA`` sont exclus des numérateur ET dénominateur). Si
+    aucun critère applicable n'est renseigné, le score reste ``None``.
+
+    Retourne l'``Audit`` avec ``score`` mis à jour et sauvegardé.
+    """
+    reponses = list(
+        audit.qhse_reponses.select_related('critere').all()
+    )
+    poids_conforme = Decimal('0')
+    poids_total = Decimal('0')
+    for rep in reponses:
+        if rep.resultat == ReponseCritere.Resultat.NA:
+            continue
+        poids = Decimal(rep.critere.poids)
+        poids_total += poids
+        if rep.resultat == ReponseCritere.Resultat.CONFORME:
+            poids_conforme += poids
+
+    if poids_total == 0:
+        audit.score = None
+    else:
+        audit.score = (poids_conforme / poids_total * 100).quantize(
+            Decimal('0.01'))
+    audit.save(update_fields=['score'])
+    return audit
+
+
+@transaction.atomic
+def lever_ncr_audit(audit, signale_par=None):
+    """Lève une ``NonConformite`` pour chaque réponse non conforme de l'audit.
+
+    Idempotent : si une NCR est déjà enregistrée pour une ``ReponseCritere``
+    (``ncr_id`` non nul), elle n'est pas dupliquée. Seules les réponses
+    ``NON_CONFORME`` sans NCR existante génèrent une nouvelle NCR.
+
+    Retourne un dict ``{'creees': [ncr_id, ...], 'existantes': [ncr_id, ...]}``.
+    """
+    reponses_nc = list(
+        audit.qhse_reponses.filter(
+            resultat=ReponseCritere.Resultat.NON_CONFORME
+        ).select_related('critere').all()
+    )
+
+    creees = []
+    existantes = []
+    for rep in reponses_nc:
+        if rep.ncr_id is not None:
+            existantes.append(rep.ncr_id)
+            continue
+        titre = (
+            f'[Audit] {rep.critere.intitule[:120]}'
+        )
+        description = rep.note or (
+            f'Non-conformité détectée lors de l\'audit du '
+            f'{audit.date_audit or "date inconnue"} '
+            f'sur le critère « {rep.critere.intitule} ».'
+        )
+        ncr = NonConformite.objects.create(
+            company=audit.company,
+            titre=titre,
+            description=description,
+            origine=f'Audit — {audit.grille.nom}',
+            gravite=NonConformite.Gravite.MINEURE,
+            chantier_id=audit.chantier_id,
+            signale_par=signale_par,
+        )
+        rep.ncr_id = ncr.id
+        rep.save(update_fields=['ncr_id'])
+        creees.append(ncr.id)
+
+    return {'creees': creees, 'existantes': existantes}
 
 
 def ncr_capa_bloquantes(ncr):
