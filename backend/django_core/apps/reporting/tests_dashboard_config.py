@@ -16,7 +16,6 @@ from authentication.models import Company
 
 from .models import (
     DashboardConfig,
-    ALL_DASHBOARD_CARDS,
     ROLE_DEFAULT_CARDS,
     GLOBAL_DEFAULT_CARDS,
 )

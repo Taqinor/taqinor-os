@@ -10,7 +10,7 @@ Endpoint principal : GET /reporting/dashboard-config/effective/
 
 CRUD complet via le router DRF (SavedReportViewSet style) — company forcée serveur.
 """
-from rest_framework import serializers, viewsets, status
+from rest_framework import serializers, viewsets
 from rest_framework.decorators import action
 from rest_framework.response import Response
 
