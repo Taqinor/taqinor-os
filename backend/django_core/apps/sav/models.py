@@ -29,6 +29,8 @@ FG85 — Jeton QR EQUIP:<id> sur Equipement + action étiquettes.
 FG87 — Base de connaissances SAV (KbArticle).
 FG90 — nb_tickets_12m (équipement « citron ») — computed, pas de colonne DB.
 """
+import secrets
+
 from django.conf import settings
 from django.db import models
 from django.utils import timezone
@@ -329,6 +331,13 @@ class Ticket(models.Model):
     # FG100 — champs personnalisés (additif, jamais destructif).
     # Les définitions viennent de apps.customfields (module='ticket').
     custom_data = models.JSONField(null=True, blank=True)
+    # FG86 — Jeton de partage public (lecture seule) pour le lien client.
+    # Nullable + blank : jamais un seul default pour toutes les lignes existantes
+    # (évite la violation d'unicité sur une DB peuplée). Généré lazily via
+    # ensure_share_token(). Unique : chaque ticket a son propre jeton.
+    share_token = models.CharField(
+        max_length=64, unique=True, null=True, blank=True, editable=False,
+        help_text="Jeton public du lien client (FG86). Généré via ensure_share_token().")
 
     class Meta:
         verbose_name = 'Ticket SAV'
@@ -367,6 +376,22 @@ class Ticket(models.Model):
             self.sla_breach = False
             return
         self.sla_breach = timezone.localdate() > self.sla_due_at
+
+    def ensure_share_token(self):
+        """FG86 — Génère (lazily) et renvoie le jeton de partage public.
+
+        Idempotent : si le jeton existe déjà, le retourne tel quel sans écriture.
+        Si le jeton est absent, génère un secrets.token_urlsafe(32) (43 chars URL-safe),
+        l'enregistre avec update_fields pour ne pas déclencher auto_now sur d'autres
+        champs, et le renvoie.  La collision est théoriquement possible mais
+        négligeable (espace de 2^192).
+        """
+        if self.share_token:
+            return self.share_token
+        token = secrets.token_urlsafe(32)
+        self.share_token = token
+        self.save(update_fields=['share_token'])
+        return self.share_token
 
 
 # ── FG82 — Checklist par ticket ───────────────────────────────────────────────

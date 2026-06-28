@@ -245,7 +245,7 @@ class TicketViewSet(TenantMixin, viewsets.ModelViewSet):
         return qs
 
     def get_permissions(self):
-        if self.action in READ_ACTIONS + ['historique', 'rapport_pdf']:
+        if self.action in READ_ACTIONS + ['historique', 'rapport_pdf', 'lien_client']:
             return [HasPermissionOrLegacy('sav_voir')()]
         elif self.action in WRITE_ACTIONS + ['noter', 'annuler', 'reactiver']:
             return [HasPermissionOrLegacy('sav_gerer')()]
@@ -567,6 +567,20 @@ class TicketViewSet(TenantMixin, viewsets.ModelViewSet):
             item.note = request.data['note'] or ''
         item.save()
         return Response(TicketChecklistItemSerializer(item).data)
+
+    @action(detail=True, methods=['get'], url_path='lien-client',
+            permission_classes=[HasPermissionOrLegacy('sav_voir')])
+    def lien_client(self, request, pk=None):
+        """FG86 — Génère (lazily) le lien de suivi public du ticket.
+
+        Retourne l'URL absolue du lien client tokenisé + le jeton brut.
+        Le jeton est créé à la première demande ; les appels suivants renvoient
+        le même jeton sans régénérer. Aucun cout ni chatter n'est exposé."""
+        ticket = self.get_object()
+        token = ticket.ensure_share_token()
+        url = request.build_absolute_uri(
+            f'/api/django/public/sav/ticket/{token}/')
+        return Response({'token': token, 'url': url})
 
 
 # ── FG81 — Réglages SLA ────────────────────────────────────────────────────────
