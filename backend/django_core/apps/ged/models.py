@@ -275,6 +275,51 @@ class Document(models.Model):
         return self.nom
 
 
+class DocumentChunk(models.Model):
+    """FG352 — Fragment indexé d'un document pour le RAG / DocQA.
+
+    Le RAG (récupération augmentée) découpe le texte d'un document (OCR/nom) en
+    fragments (« chunks ») chevauchants et stocke un embedding par fragment dans
+    le MÊME magasin pgvector que `Document.embedding` (GED12) — on ne dresse PAS
+    un second magasin vectoriel. Un outil de récupération renvoie les top-k
+    fragments les plus proches d'une question, scopés société + ACL coffre-fort.
+
+    KEY-GATED no-op : sans clé d'embedding (`services.embedding_enabled()`),
+    aucun fragment n'est embeddé (l'indexation est un no-op) et la récupération
+    renvoie un résultat vide — aucun appel réseau, aucun coût.
+
+    Company posée côté serveur (cohérente avec celle du document) — jamais lue du
+    corps de requête. `chunk_index` ordonne les fragments d'un même document.
+    """
+    company = models.ForeignKey(
+        'authentication.Company', on_delete=models.CASCADE,
+        null=True, blank=True, related_name='ged_document_chunks')
+    document = models.ForeignKey(
+        Document, on_delete=models.CASCADE, related_name='chunks')
+    # Position du fragment dans le document (0, 1, 2…) — posée côté serveur.
+    chunk_index = models.PositiveIntegerField(default=0)
+    # Texte brut du fragment (sert à renvoyer le passage récupéré à l'agent).
+    texte = models.TextField(blank=True, default='')
+    # Embedding du fragment (dimension EMBEDDING_DIM, alignée sur GED12). NULL
+    # tant que la clé d'embedding est absente (no-op). Réutilise le même type
+    # pgvector — pas un second magasin vectoriel.
+    embedding = VectorField(dimensions=EMBEDDING_DIM, null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['document', 'chunk_index', 'id']
+        unique_together = [('document', 'chunk_index')]
+        verbose_name = 'Fragment de document'
+        verbose_name_plural = 'Fragments de document'
+        indexes = [
+            models.Index(fields=['company', 'document'],
+                         name='ged_chunk_co_doc_idx'),
+        ]
+
+    def __str__(self):
+        return f'{self.document} #{self.chunk_index}'
+
+
 class DocumentVersion(models.Model):
     """Version d'un document (GED3) — pointeur vers un objet MinIO.
 

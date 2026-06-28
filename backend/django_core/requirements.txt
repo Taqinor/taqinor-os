@@ -32,6 +32,11 @@ boto3==1.35.99
 # Excel (.xlsx) export — exports CRM/listes (pré-approuvé, voir docs/PLAN.md)
 openpyxl==3.1.5
 
+# FG352 — RAG / DocQA : découpage de texte en fragments (free/open-source).
+# Importé défensivement dans apps/ged/services.chunk_text (repli pur Python si
+# absent), donc le code reste import-safe sans cette dépendance.
+langchain-text-splitters==0.3.2
+
 # Image handling
 Pillow==10.4.0
 

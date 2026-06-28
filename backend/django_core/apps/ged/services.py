@@ -46,6 +46,8 @@ def set_ocr_text(document, texte):
     document.texte_ocr = texte or ''
     update_search_vector(document)
     index_embedding(document)
+    # FG352 — (ré)indexe les fragments RAG/DocQA (no-op sans clé).
+    index_document_chunks(document)
     return document
 
 
@@ -103,6 +105,88 @@ def index_embedding(document):
     Document.objects.filter(pk=document.pk).update(embedding=vec)
     document.embedding = vec
     return True
+
+
+# ── FG352 — RAG / DocQA : indexation par fragments (pgvector, no-op sans clé) ──
+
+# Paramètres de découpage par défaut (caractères). Un chevauchement préserve le
+# contexte aux frontières de fragments. Modestes : un manuel reste lisible et le
+# nombre de fragments par document reste raisonnable.
+CHUNK_SIZE = 1000
+CHUNK_OVERLAP = 150
+
+
+def chunk_text(text, *, chunk_size=CHUNK_SIZE, chunk_overlap=CHUNK_OVERLAP):
+    """FG352 — Découpe un texte en fragments chevauchants pour le RAG.
+
+    Utilise `langchain-textsplitters` (RecursiveCharacterTextSplitter) quand il
+    est disponible — il coupe en priorité sur les frontières naturelles
+    (paragraphes, phrases) avant de tomber sur les caractères. Import gardé : si
+    la dépendance n'est pas installée, on retombe sur un découpage fenêtré pur
+    Python équivalent, pour que le code reste import-safe partout (CI sans clé).
+
+    Renvoie une liste de fragments non vides (jamais None). Un texte vide donne
+    une liste vide.
+    """
+    if not text or not str(text).strip():
+        return []
+    text = str(text)
+    try:  # Dépendance optionnelle — import gardé (no-op-safe sans la lib).
+        from langchain_text_splitters import RecursiveCharacterTextSplitter
+        splitter = RecursiveCharacterTextSplitter(
+            chunk_size=chunk_size, chunk_overlap=chunk_overlap)
+        chunks = splitter.split_text(text)
+    except Exception:  # pragma: no cover - chemin de repli sans la lib.
+        # Repli pur Python : fenêtre glissante avec chevauchement.
+        chunks = []
+        step = max(1, chunk_size - chunk_overlap)
+        for start in range(0, len(text), step):
+            piece = text[start:start + chunk_size]
+            if piece:
+                chunks.append(piece)
+    return [c.strip() for c in chunks if c and c.strip()]
+
+
+def index_document_chunks(document):
+    """FG352 — (Ré)indexe les fragments RAG d'un document (no-op sans clé).
+
+    Découpe le texte du document (nom + texte OCR) en fragments, calcule un
+    embedding par fragment (no-op sans clé) et les stocke dans `DocumentChunk`,
+    dans le MÊME magasin pgvector que `Document.embedding` — pas un second
+    magasin. Idempotent : remplace les fragments existants du document. Ne lève
+    jamais (l'indexation ne doit pas casser une écriture documentaire).
+
+    KEY-GATED : sans clé d'embedding, c'est un no-op total — on n'écrit aucun
+    fragment et on renvoie 0. La company de chaque fragment est posée côté
+    serveur (celle du document), jamais lue d'un corps de requête.
+
+    Renvoie le nombre de fragments embeddés et stockés.
+    """
+    from .models import DocumentChunk
+    if not embedding_enabled():
+        return 0
+    text = f'{document.nom}\n{document.texte_ocr or ""}'.strip()
+    pieces = chunk_text(text)
+    if not pieces:
+        # Plus aucun contenu indexable : purge les anciens fragments.
+        DocumentChunk.objects.filter(document=document).delete()
+        return 0
+    rows = []
+    for idx, piece in enumerate(pieces):
+        try:
+            vec = compute_embedding(piece)
+        except Exception:  # pragma: no cover - robustesse : jamais bloquer.
+            vec = None
+        if vec is None:
+            continue
+        rows.append(DocumentChunk(
+            company=document.company, document=document,
+            chunk_index=idx, texte=piece, embedding=vec))
+    with transaction.atomic():
+        DocumentChunk.objects.filter(document=document).delete()
+        if rows:
+            DocumentChunk.objects.bulk_create(rows)
+    return len(rows)
 
 
 def validate_coffre_owner(proprietaire, client):
