@@ -15,6 +15,7 @@ from .safety import SafetyChecklistSlotViewSet
 from .projet import (
     JalonProjetViewSet, ModeleProjetViewSet, ReunionChantierViewSet,
 )
+from .document import DocumentProjetViewSet, RevisionDocumentViewSet
 
 __all__ = [
     'TypeInterventionViewSet',
@@ -28,4 +29,6 @@ __all__ = [
     'JalonProjetViewSet',
     'ModeleProjetViewSet',
     'ReunionChantierViewSet',
+    'DocumentProjetViewSet',
+    'RevisionDocumentViewSet',
 ]
