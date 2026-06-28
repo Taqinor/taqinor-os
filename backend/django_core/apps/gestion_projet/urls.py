@@ -5,12 +5,14 @@ from .views import (
     BaselinePlanningViewSet,
     CalendrierProjetViewSet,
     DependanceTacheViewSet,
+    EquipeViewSet,
     JalonViewSet,
     JourFerieViewSet,
     PhaseProjetViewSet,
     ProjetChantierViewSet,
     ProjetLienViewSet,
     ProjetViewSet,
+    RessourceProfilViewSet,
     TacheViewSet,
 )
 
@@ -25,6 +27,8 @@ router.register(r'jalons', JalonViewSet)
 router.register(r'calendriers', CalendrierProjetViewSet)
 router.register(r'jours-feries', JourFerieViewSet)
 router.register(r'baselines', BaselinePlanningViewSet)
+router.register(r'ressources', RessourceProfilViewSet)
+router.register(r'equipes', EquipeViewSet)
 
 urlpatterns = [
     path('', include(router.urls)),

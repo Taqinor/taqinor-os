@@ -11,6 +11,7 @@ from .models import (
     BaselineTache,
     CalendrierProjet,
     DependanceTache,
+    Equipe,
     Jalon,
     JourFerie,
     PhaseProjet,
@@ -18,6 +19,7 @@ from .models import (
     ProjetActivity,
     ProjetChantier,
     ProjetLien,
+    RessourceProfil,
     Tache,
 )
 
@@ -349,6 +351,52 @@ class CalendrierProjetSerializer(serializers.ModelSerializer):
 
     def validate_projet(self, value):
         return _meme_societe(self, value, 'Projet')
+
+
+class RessourceProfilSerializer(serializers.ModelSerializer):
+    """Profil de ressource interne pour le planning de projet (PROJ15).
+
+    ``company`` n'est jamais exposée : elle est posée côté serveur. Le ``user``
+    reçu (optionnel) est validé comme appartenant à la société de l'utilisateur.
+    ``cout_horaire`` est un champ INTERNE de pilotage : il reste lisible sur cet
+    écran de gestion de projet mais ne doit jamais apparaître dans un PDF client.
+    """
+    class Meta:
+        model = RessourceProfil
+        fields = [
+            'id', 'user', 'nom', 'role', 'competences', 'cout_horaire',
+            'actif', 'date_creation',
+        ]
+        read_only_fields = ['date_creation']
+
+
+class EquipeSerializer(serializers.ModelSerializer):
+    """Équipe de ressources pour le planning de projet (PROJ15).
+
+    ``company`` n'est jamais exposée : elle est posée côté serveur. Les
+    ``membres`` reçus sont validés comme appartenant à la société de
+    l'utilisateur. Les détails de chaque membre sont exposés en lecture seule
+    via ``membres_detail``.
+    """
+    membres_detail = RessourceProfilSerializer(
+        source='membres', many=True, read_only=True)
+
+    class Meta:
+        model = Equipe
+        fields = [
+            'id', 'nom', 'description', 'membres', 'membres_detail',
+            'date_creation',
+        ]
+        read_only_fields = ['date_creation']
+
+    def validate_membres(self, value):
+        request = self.context.get('request')
+        if request is not None:
+            for membre in value:
+                if membre.company_id != request.user.company_id:
+                    raise serializers.ValidationError(
+                        f'Ressource #{membre.id} inconnue.')
+        return value
 
 
 class BaselineTacheSerializer(serializers.ModelSerializer):
