@@ -71,6 +71,16 @@ class Reclamation(models.Model):
         verbose_name='Bloque les relances',
         help_text="Si coché, suspend les relances automatiques sur la facture "
                   "liée tant que ce litige est ouvert.")
+    # LITIGE4 — Litige qualité ↔ QHSE. Liens lâches par id (jamais un import
+    # cross-app des modèles QHSE) vers la non-conformité (NCR) et l'audit fin de
+    # chantier rattachés à ce litige qualité. La lecture des données QHSE passe
+    # par ``apps.qhse.selectors`` (import fonction-local). Null = non rattaché.
+    ncr_id = models.PositiveIntegerField(
+        null=True, blank=True,
+        verbose_name='ID de la non-conformité QHSE (NCR)')
+    audit_id = models.PositiveIntegerField(
+        null=True, blank=True,
+        verbose_name="ID de l'audit fin de chantier QHSE")
     created_by = models.ForeignKey(
         settings.AUTH_USER_MODEL,
         on_delete=models.SET_NULL,

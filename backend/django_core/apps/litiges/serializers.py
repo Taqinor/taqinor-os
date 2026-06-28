@@ -37,6 +37,11 @@ class ReclamationSerializer(serializers.ModelSerializer):
         source='get_gravite_display', read_only=True)
     statut_display = serializers.CharField(
         source='get_statut_display', read_only=True)
+    # LITIGE4 — aperçus QHSE (NCR + audit fin de chantier) résolus côté serveur
+    # via apps.qhse.selectors (import fonction-local). Lecture seule ; le
+    # rattachement se pose en écriture via ``ncr_id`` / ``audit_id``.
+    ncr = serializers.SerializerMethodField()
+    audit = serializers.SerializerMethodField()
 
     class Meta:
         model = Reclamation
@@ -44,7 +49,8 @@ class ReclamationSerializer(serializers.ModelSerializer):
             'id', 'reference', 'type_reclamation', 'type_reclamation_display',
             'gravite', 'gravite_display', 'objet', 'description',
             'source_type', 'source_id', 'montant_conteste', 'statut',
-            'statut_display', 'bloque_relances', 'created_by', 'date_creation',
+            'statut_display', 'bloque_relances', 'ncr_id', 'audit_id',
+            'ncr', 'audit', 'created_by', 'date_creation',
         ]
         # ``statut`` ne se modifie pas par PATCH direct : le cycle de vie passe
         # par les actions de transition (prendre_en_charge/resoudre/rejeter)
@@ -52,3 +58,21 @@ class ReclamationSerializer(serializers.ModelSerializer):
         # ``bloque_relances`` est modifiable par PATCH (le gestionnaire peut
         # désactiver la suspension si nécessaire).
         read_only_fields = ['created_by', 'date_creation', 'statut']
+
+    def get_ncr(self, obj):
+        """Aperçu de la non-conformité QHSE liée (ou None), scopé société.
+
+        Lecture cross-app via le sélecteur QHSE (import fonction-local) — jamais
+        un import de modèle. La société vient de l'objet (posée côté serveur).
+        """
+        if not obj.ncr_id:
+            return None
+        from apps.qhse.selectors import ncr_apercu
+        return ncr_apercu(obj.ncr_id, obj.company_id and obj.company)
+
+    def get_audit(self, obj):
+        """Aperçu de l'audit fin de chantier QHSE lié (ou None), scopé société."""
+        if not obj.audit_id:
+            return None
+        from apps.qhse.selectors import audit_apercu
+        return audit_apercu(obj.audit_id, obj.company_id and obj.company)
