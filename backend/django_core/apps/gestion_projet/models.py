@@ -711,6 +711,103 @@ class BaselineTache(models.Model):
         return f'baseline {self.baseline_id} ← {self.tache_libelle}'
 
 
+class RessourceProfil(models.Model):
+    """Profil de ressource interne pour le planning de projet (PROJ15).
+
+    Représente une personne (ou un rôle) mobilisable sur un projet. Le lien
+    vers un compte utilisateur (``user``) est OPTIONNEL : une ressource peut
+    exister sans compte ERP (sous-traitant, poste budgétaire, futur embauche).
+
+    Le ``cout_horaire`` est un coût INTERNE de pilotage (comme ``budget_total``
+    du Projet) — il ne doit jamais apparaître dans un PDF ou un lien client.
+    Tout est multi-société : ``company`` est posée côté serveur, jamais lue du
+    corps de requête. Modèle entièrement additif.
+    """
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='projet_ressources',
+        verbose_name='Société',
+    )
+    # Lien OPTIONNEL vers un compte utilisateur de la fondation (import autorisé
+    # car authentication est une app fondation, non un domaine-cœur).
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='gestion_projet_ressources',
+        verbose_name='Utilisateur lié',
+    )
+    nom = models.CharField(max_length=150, verbose_name='Nom / identifiant')
+    role = models.CharField(
+        max_length=100, blank=True, default='', verbose_name='Rôle')
+    competences = models.TextField(
+        blank=True, default='', verbose_name='Compétences')
+    # Coût horaire INTERNE — jamais exposé dans un PDF ou un lien client.
+    cout_horaire = models.DecimalField(
+        max_digits=10, decimal_places=2, default=Decimal('0'),
+        verbose_name='Coût horaire interne')
+    actif = models.BooleanField(default=True, verbose_name='Actif')
+    date_creation = models.DateTimeField(
+        auto_now_add=True, verbose_name='Créé le')
+
+    class Meta:
+        verbose_name = 'Profil ressource'
+        verbose_name_plural = 'Profils ressources'
+        ordering = ['nom', 'id']
+        constraints = [
+            models.UniqueConstraint(
+                fields=['company', 'nom'],
+                name='gp_ressource_company_nom_uniq',
+            ),
+        ]
+
+    def __str__(self):
+        return f'{self.nom} ({self.role})' if self.role else self.nom
+
+
+class Equipe(models.Model):
+    """Équipe de ressources pour le planning de projet (PROJ15).
+
+    Regroupe plusieurs ``RessourceProfil`` d'une même société sous un nom
+    d'équipe (ex. « Équipe pose Casablanca »). La relation membres est une M2M
+    directe (pas de through explicite : aucune donnée propre à l'appartenance
+    n'est requise ici). Tout est multi-société : ``company`` est posée côté
+    serveur, jamais lue du corps de requête. Modèle entièrement additif.
+    """
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='projet_equipes',
+        verbose_name='Société',
+    )
+    nom = models.CharField(max_length=150, verbose_name='Nom de l'équipe')
+    description = models.TextField(
+        blank=True, default='', verbose_name='Description')
+    membres = models.ManyToManyField(
+        RessourceProfil,
+        blank=True,
+        related_name='equipes',
+        verbose_name='Membres',
+    )
+    date_creation = models.DateTimeField(
+        auto_now_add=True, verbose_name='Créé le')
+
+    class Meta:
+        verbose_name = 'Équipe'
+        verbose_name_plural = 'Équipes'
+        ordering = ['nom', 'id']
+        constraints = [
+            models.UniqueConstraint(
+                fields=['company', 'nom'],
+                name='gp_equipe_company_nom_uniq',
+            ),
+        ]
+
+    def __str__(self):
+        return self.nom
+
+
 class ProjetActivity(models.Model):
     """Journal minimal des transitions de statut d'un ``Projet``.
 
