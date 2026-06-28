@@ -239,6 +239,15 @@ class Document(models.Model):
     # NULL et la recherche sémantique est un no-op qui retombe sur la recherche
     # plein-texte (GED11). Aucun appel réseau ni coût tant que la clé est absente.
     embedding = VectorField(dimensions=EMBEDDING_DIM, null=True, blank=True)
+    # GED16 — verrouillage optimiste (check-out / check-in).
+    # `locked_by` : utilisateur qui a extrait le document ; NULL = libre.
+    # `locked_at` : horodatage du verrouillage (posé côté serveur).
+    locked_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL,
+        null=True, blank=True, related_name='ged_documents_verrou',
+        verbose_name="verrouille par")
+    locked_at = models.DateTimeField(null=True, blank=True,
+                                     verbose_name="verrouille le")
     created_by = models.ForeignKey(
         settings.AUTH_USER_MODEL, on_delete=models.SET_NULL,
         null=True, blank=True, related_name='ged_documents_crees')
@@ -253,7 +262,14 @@ class Document(models.Model):
             models.Index(fields=['company', 'folder']),
             # GED11 — index GIN sur le tsvector pour la recherche plein-texte.
             GinIndex(fields=['search_vector'], name='ged_doc_search_gin'),
+            # GED16 — index rapide sur les documents verrouillés par un utilisateur.
+            models.Index(fields=['locked_by'], name='ged_doc_locked_by_idx'),
         ]
+
+    @property
+    def is_locked(self):
+        """True si le document est actuellement verrouillé (check-out actif)."""
+        return self.locked_by_id is not None
 
     def __str__(self):
         return self.nom

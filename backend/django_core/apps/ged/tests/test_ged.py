@@ -1759,3 +1759,244 @@ class DocumentVersionHistoryRestoreTests(GedBase):
             {'version': self.v2.id}, format='json')
         self.assertEqual(r2.data['version'], 4)
         self.assertEqual(self.doc_a.versions.count(), 4)
+
+
+# ── GED16 — Check-out / check-in (verrouillage optimiste) ───────────
+class CheckoutCheckinTests(GedBase):
+    """Tests du verrouillage optimiste (GED16).
+
+    Couvre :
+      * checkout pose le verrou (company-scopé) ;
+      * un second utilisateur ne peut pas extraire un document déjà verrouillé ;
+      * un second utilisateur ne peut pas ajouter de version sur un doc verrouillé ;
+      * le détenteur du verrou peut relâcher (check-in) ;
+      * un admin peut forcer le check-in (force-release) ;
+      * un non-détenteur non-admin ne peut pas relâcher ;
+      * l'état du verrou est exposé dans la réponse ;
+      * cross-société rejetée.
+    """
+
+    def setUp(self):
+        super().setUp()
+        self.folder_a = Folder.objects.create(
+            company=self.co_a, cabinet=self.cab_a, nom="GED16-docs")
+        self.doc_a = Document.objects.create(
+            company=self.co_a, folder=self.folder_a, nom="Doc verrouillable")
+        # Deuxième utilisateur dans la société A (non-admin).
+        self.user_a2 = make_user(self.co_a, 'ged16-user2', 'responsable')
+
+    # ── service : checkout ────────────────────────────────────────────
+
+    def test_checkout_service_locks_document(self):
+        """checkout_document pose locked_by + locked_at côté serveur."""
+        doc = services.checkout_document(self.doc_a, self.admin_a)
+        doc.refresh_from_db()
+        self.assertEqual(doc.locked_by_id, self.admin_a.id)
+        self.assertIsNotNone(doc.locked_at)
+        self.assertTrue(doc.is_locked)
+
+    def test_checkout_service_idempotent_same_user(self):
+        """Un re-checkout par le même utilisateur est silencieusement idempotent."""
+        services.checkout_document(self.doc_a, self.admin_a)
+        # Doit ne pas lever et garder le même verrou.
+        doc2 = services.checkout_document(self.doc_a, self.admin_a)
+        doc2.refresh_from_db()
+        self.assertEqual(doc2.locked_by_id, self.admin_a.id)
+
+    def test_checkout_service_rejects_other_user(self):
+        """checkout_document lève PermissionError si verrouillé par autrui."""
+        services.checkout_document(self.doc_a, self.admin_a)
+        with self.assertRaises(PermissionError):
+            services.checkout_document(self.doc_a, self.user_a2)
+
+    def test_checkout_service_rejects_other_company(self):
+        """checkout_document lève PermissionError si document d'une autre société."""
+        with self.assertRaises(PermissionError):
+            services.checkout_document(self.doc_a, self.admin_b)
+
+    # ── service : checkin ────────────────────────────────────────────
+
+    def test_checkin_service_releases_lock(self):
+        """checkin_document libère le verrou (locked_by → None)."""
+        services.checkout_document(self.doc_a, self.admin_a)
+        doc = services.checkin_document(self.doc_a, self.admin_a)
+        doc.refresh_from_db()
+        self.assertIsNone(doc.locked_by_id)
+        self.assertIsNone(doc.locked_at)
+        self.assertFalse(doc.is_locked)
+
+    def test_checkin_service_idempotent_on_free_document(self):
+        """checkin sur un document libre est silencieusement idempotent."""
+        doc = services.checkin_document(self.doc_a, self.admin_a)
+        doc.refresh_from_db()
+        self.assertIsNone(doc.locked_by_id)
+
+    def test_checkin_service_admin_can_force_release(self):
+        """Un admin peut libérer le verrou posé par un autre utilisateur."""
+        services.checkout_document(self.doc_a, self.user_a2)
+        doc = services.checkin_document(self.doc_a, self.admin_a)
+        doc.refresh_from_db()
+        self.assertIsNone(doc.locked_by_id)
+
+    def test_checkin_service_rejects_non_locker_non_admin(self):
+        """Un utilisateur normal non-détenteur ne peut pas libérer le verrou."""
+        services.checkout_document(self.doc_a, self.admin_a)
+        with self.assertRaises(PermissionError):
+            services.checkin_document(self.doc_a, self.user_a2)
+
+    # ── service : assert_not_locked_by_other ─────────────────────────
+
+    def test_assert_not_locked_passes_when_free(self):
+        """assert_not_locked_by_other ne lève rien sur un document libre."""
+        services.assert_not_locked_by_other(self.doc_a, self.admin_a)
+
+    def test_assert_not_locked_passes_for_locker(self):
+        """assert_not_locked_by_other ne lève rien pour le détenteur du verrou."""
+        services.checkout_document(self.doc_a, self.admin_a)
+        self.doc_a.refresh_from_db()
+        services.assert_not_locked_by_other(self.doc_a, self.admin_a)
+
+    def test_assert_not_locked_raises_for_other_user(self):
+        """assert_not_locked_by_other lève PermissionError pour un autre."""
+        services.checkout_document(self.doc_a, self.admin_a)
+        self.doc_a.refresh_from_db()
+        with self.assertRaises(PermissionError):
+            services.assert_not_locked_by_other(self.doc_a, self.user_a2)
+
+    # ── API : check-out endpoint ──────────────────────────────────────
+
+    def test_checkout_endpoint_locks_and_returns_state(self):
+        """POST check-out renvoie 200 avec is_locked=True et locked_by renseigné."""
+        api = auth(self.admin_a)
+        resp = api.post(f'/api/django/ged/documents/{self.doc_a.id}/check-out/')
+        self.assertEqual(resp.status_code, 200, resp.data)
+        self.assertTrue(resp.data['is_locked'])
+        self.assertEqual(resp.data['locked_by'], self.admin_a.id)
+        self.assertIsNotNone(resp.data['locked_at'])
+        self.assertEqual(resp.data['locked_by_nom'], self.admin_a.username)
+
+    def test_checkout_endpoint_conflict_when_locked_by_other(self):
+        """POST check-out renvoie 409 si déjà extrait par un autre utilisateur."""
+        services.checkout_document(self.doc_a, self.admin_a)
+        api = auth(self.user_a2)
+        resp = api.post(f'/api/django/ged/documents/{self.doc_a.id}/check-out/')
+        self.assertEqual(resp.status_code, 409, resp.data)
+
+    def test_checkout_endpoint_idempotent_same_user(self):
+        """POST check-out par le même utilisateur renvoie 200 (idempotent)."""
+        api = auth(self.admin_a)
+        api.post(f'/api/django/ged/documents/{self.doc_a.id}/check-out/')
+        resp = api.post(f'/api/django/ged/documents/{self.doc_a.id}/check-out/')
+        self.assertEqual(resp.status_code, 200, resp.data)
+        self.assertTrue(resp.data['is_locked'])
+
+    def test_checkout_endpoint_rejects_other_company(self):
+        """POST check-out sur un document d'une autre société renvoie 404."""
+        api = auth(self.admin_b)
+        resp = api.post(f'/api/django/ged/documents/{self.doc_a.id}/check-out/')
+        self.assertEqual(resp.status_code, 404)
+
+    def test_checkout_endpoint_requires_auth(self):
+        """POST check-out sans authentification renvoie 401/403."""
+        resp = APIClient().post(
+            f'/api/django/ged/documents/{self.doc_a.id}/check-out/')
+        self.assertIn(resp.status_code, (401, 403))
+
+    # ── API : check-in endpoint ───────────────────────────────────────
+
+    def test_checkin_endpoint_releases_lock(self):
+        """POST check-in libère le verrou, renvoie 200 avec is_locked=False."""
+        services.checkout_document(self.doc_a, self.admin_a)
+        api = auth(self.admin_a)
+        resp = api.post(f'/api/django/ged/documents/{self.doc_a.id}/check-in/')
+        self.assertEqual(resp.status_code, 200, resp.data)
+        self.assertFalse(resp.data['is_locked'])
+        self.assertIsNone(resp.data['locked_by'])
+
+    def test_checkin_endpoint_admin_force_release(self):
+        """POST check-in par un admin libère le verrou posé par un autre."""
+        services.checkout_document(self.doc_a, self.user_a2)
+        self.doc_a.refresh_from_db()
+        api = auth(self.admin_a)
+        resp = api.post(f'/api/django/ged/documents/{self.doc_a.id}/check-in/')
+        self.assertEqual(resp.status_code, 200, resp.data)
+        self.assertFalse(resp.data['is_locked'])
+
+    def test_checkin_endpoint_forbidden_for_non_locker(self):
+        """POST check-in par un non-détenteur non-admin renvoie 403."""
+        services.checkout_document(self.doc_a, self.admin_a)
+        api = auth(self.user_a2)
+        resp = api.post(f'/api/django/ged/documents/{self.doc_a.id}/check-in/')
+        self.assertEqual(resp.status_code, 403, resp.data)
+
+    def test_checkin_endpoint_rejects_other_company(self):
+        """POST check-in sur un document d'une autre société renvoie 404."""
+        api = auth(self.admin_b)
+        resp = api.post(f'/api/django/ged/documents/{self.doc_a.id}/check-in/')
+        self.assertEqual(resp.status_code, 404)
+
+    # ── Rejet d'une nouvelle version sur document verrouillé ─────────
+
+    def test_add_version_via_api_rejected_when_locked_by_other(self):
+        """POST /versions/ est rejeté (403) si le document est extrait par autrui."""
+        services.checkout_document(self.doc_a, self.admin_a)
+        self.doc_a.refresh_from_db()
+        api = auth(self.user_a2)
+        resp = api.post('/api/django/ged/versions/', {
+            'document': self.doc_a.id,
+            'file_key': 'docs/intrus.pdf',
+            'filename': 'intrus.pdf',
+            'size': 1,
+            'mime': 'application/pdf',
+        }, format='json')
+        self.assertIn(resp.status_code, (403, 409), resp.data)
+        # Aucune version créée.
+        self.assertEqual(self.doc_a.versions.count(), 0)
+
+    def test_add_version_allowed_for_locker(self):
+        """Le détenteur du verrou peut toujours ajouter une version."""
+        services.checkout_document(self.doc_a, self.admin_a)
+        self.doc_a.refresh_from_db()
+        api = auth(self.admin_a)
+        resp = api.post('/api/django/ged/versions/', {
+            'document': self.doc_a.id,
+            'file_key': 'docs/v1.pdf',
+            'filename': 'v1.pdf',
+            'size': 100,
+            'mime': 'application/pdf',
+        }, format='json')
+        self.assertEqual(resp.status_code, 201, resp.data)
+        self.assertEqual(self.doc_a.versions.count(), 1)
+
+    def test_add_version_allowed_when_document_free(self):
+        """Un document libre accepte une nouvelle version de n'importe quel auteur."""
+        api = auth(self.user_a2)
+        resp = api.post('/api/django/ged/versions/', {
+            'document': self.doc_a.id,
+            'file_key': 'docs/libre.pdf',
+            'filename': 'libre.pdf',
+            'size': 50,
+            'mime': 'application/pdf',
+        }, format='json')
+        self.assertEqual(resp.status_code, 201, resp.data)
+
+    # ── État du verrou dans le serializer ────────────────────────────
+
+    def test_document_detail_exposes_lock_state(self):
+        """GET /documents/<id>/ expose locked_by, locked_at, is_locked."""
+        services.checkout_document(self.doc_a, self.admin_a)
+        self.doc_a.refresh_from_db()
+        api = auth(self.admin_a)
+        resp = api.get(f'/api/django/ged/documents/{self.doc_a.id}/')
+        self.assertEqual(resp.status_code, 200, resp.data)
+        self.assertTrue(resp.data['is_locked'])
+        self.assertEqual(resp.data['locked_by'], self.admin_a.id)
+        self.assertIsNotNone(resp.data['locked_at'])
+
+    def test_document_detail_lock_free_when_not_checked_out(self):
+        """GET /documents/<id>/ renvoie is_locked=False sur un doc libre."""
+        api = auth(self.admin_a)
+        resp = api.get(f'/api/django/ged/documents/{self.doc_a.id}/')
+        self.assertEqual(resp.status_code, 200, resp.data)
+        self.assertFalse(resp.data['is_locked'])
+        self.assertIsNone(resp.data['locked_by'])
