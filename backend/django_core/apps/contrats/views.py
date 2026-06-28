@@ -30,11 +30,13 @@ from authentication.mixins import TenantMixin
 from authentication.permissions import IsResponsableOrAdmin
 
 from . import selectors
-from .models import Contrat, ContratLien, ModeleContrat, PartieContrat
+from .models import Clause, Contrat, ContratLien, ModeleContrat, ModeleContratClause, PartieContrat
 from .serializers import (
+    ClauseSerializer,
     ContratLienSerializer,
     ContratSerializer,
     InstancierContratSerializer,
+    ModeleContratClauseSerializer,
     ModeleContratSerializer,
     PartieContratSerializer,
 )
@@ -205,3 +207,62 @@ class ModeleContratViewSet(_ContratsBaseViewSet):
             ContratSerializer(contrat, context={'request': request}).data,
             status=status.HTTP_201_CREATED,
         )
+
+
+class ClauseViewSet(_ContratsBaseViewSet):
+    """Bibliothèque de clauses réutilisables (CONTRAT8).
+
+    Scopé société (TenantMixin). ``company`` est posée côté serveur.
+
+    Filtres : ``?actif=true/false``, ``?type_clause=<valeur>``,
+              ``?categorie=<texte>``.
+    Recherche : ``titre``, ``categorie``, ``corps``.
+    """
+
+    queryset = Clause.objects.all()
+    serializer_class = ClauseSerializer
+    filter_backends = [filters.SearchFilter, filters.OrderingFilter]
+    search_fields = ["titre", "categorie", "corps"]
+    ordering_fields = ["ordre", "titre", "type_clause", "id"]
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        # Filtre optionnel ?actif=true/false
+        actif = self.request.query_params.get("actif")
+        if actif is not None:
+            qs = qs.filter(actif=actif.lower() in ("1", "true", "oui"))
+        # Filtre optionnel ?type_clause=<valeur>
+        type_clause = self.request.query_params.get("type_clause")
+        if type_clause:
+            qs = qs.filter(type_clause=type_clause)
+        # Filtre optionnel ?categorie=<texte>
+        categorie = self.request.query_params.get("categorie")
+        if categorie:
+            qs = qs.filter(categorie__icontains=categorie)
+        return qs
+
+
+class ModeleContratClauseViewSet(_ContratsBaseViewSet):
+    """Liaisons ordonnées ModeleContrat ↔ Clause (CONTRAT8).
+
+    Permet d'associer des clauses à un gabarit de contrat avec un ordre
+    d'affichage propre au gabarit. Scopé société ; ``company`` posée côté
+    serveur.
+
+    Filtre optionnel : ``?modele=<id>`` pour lister les clauses d'un gabarit.
+    """
+
+    queryset = ModeleContratClause.objects.select_related("modele", "clause").all()
+    serializer_class = ModeleContratClauseSerializer
+    filter_backends = [filters.OrderingFilter]
+    ordering_fields = ["ordre", "id"]
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        modele_id = self.request.query_params.get("modele")
+        if modele_id:
+            qs = qs.filter(modele_id=modele_id)
+        return qs
+
+    def perform_create(self, serializer):
+        serializer.save(company=self.request.user.company)

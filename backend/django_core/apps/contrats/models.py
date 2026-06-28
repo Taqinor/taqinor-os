@@ -243,6 +243,72 @@ class ContratLien(models.Model):
         return f'{self.contrat_id} → {self.type_cible} #{self.cible_id}'
 
 
+class Clause(models.Model):
+    """Clause réutilisable de la bibliothèque de clauses (CONTRAT8).
+
+    Une ``Clause`` est un fragment textuel normatif (article, disposition,
+    condition générale, obligation…) identifié par un ``titre``, rangé dans une
+    ``categorie`` libre et qualifié par un ``type_clause``.  Elle est réutilisable
+    sur n'importe quel ``ModeleContrat`` via la table de liaison ordonnée
+    ``ModeleContratClause``.
+
+    Multi-tenant : chaque clause porte un FK ``company`` posé côté serveur.
+    ``actif=False`` masque la clause des listes de sélection sans la supprimer.
+    ``ordre`` permet un tri par défaut au sein d'une catégorie.
+    """
+
+    class TypeClause(models.TextChoices):
+        GENERALE = "generale", "Générale"
+        TECHNIQUE = "technique", "Technique"
+        FINANCIERE = "financiere", "Financière"
+        JURIDIQUE = "juridique", "Juridique"
+        RESILIATION = "resiliation", "Résiliation"
+        GARANTIE = "garantie", "Garantie"
+        CONFIDENTIALITE = "confidentialite", "Confidentialité"
+        AUTRE = "autre", "Autre"
+
+    company = models.ForeignKey(
+        "authentication.Company",
+        on_delete=models.CASCADE,
+        related_name="contrats_clauses",
+        verbose_name="Société",
+    )
+    titre = models.CharField(max_length=200, verbose_name="Titre")
+    categorie = models.CharField(
+        max_length=100, blank=True, default="", verbose_name="Catégorie"
+    )
+    type_clause = models.CharField(
+        max_length=20,
+        choices=TypeClause.choices,
+        default=TypeClause.GENERALE,
+        verbose_name="Type de clause",
+    )
+    corps = models.TextField(verbose_name="Corps de la clause")
+    ordre = models.PositiveIntegerField(default=0, verbose_name="Ordre")
+    actif = models.BooleanField(default=True, verbose_name="Actif")
+    date_creation = models.DateTimeField(
+        auto_now_add=True, verbose_name="Créé le"
+    )
+
+    class Meta:
+        verbose_name = "Clause"
+        verbose_name_plural = "Clauses"
+        ordering = ["ordre", "titre"]
+        indexes = [
+            models.Index(
+                fields=["company", "actif"],
+                name="contrats_clause_co_actif",
+            ),
+            models.Index(
+                fields=["company", "type_clause"],
+                name="contrats_clause_co_type",
+            ),
+        ]
+
+    def __str__(self):
+        return f"{self.titre} ({self.get_type_clause_display()})"
+
+
 class ModeleContrat(models.Model):
     """Gabarit/modèle de contrat réutilisable (bibliothèque de modèles — CONTRAT7).
 
@@ -306,3 +372,52 @@ class ModeleContrat(models.Model):
 
     def __str__(self):
         return f'{self.nom} ({self.get_type_contrat_defaut_display()})'
+
+    # M2M vers Clause via table de liaison ordonnée (CONTRAT8).
+    # On ne peut pas déclarer le ManyToManyField ici avec through=ModeleContratClause
+    # car la classe n'est pas encore définie — on l'ajoute juste après.
+
+
+class ModeleContratClause(models.Model):
+    """Liaison ordonnée entre un ``ModeleContrat`` et une ``Clause`` (CONTRAT8).
+
+    Table de liaison M2M EXPLICITE pour conserver un ``ordre`` d'affichage
+    spécifique au gabarit, indépendant de l'ordre général de la clause.
+    Multi-tenant : ``company`` est redondant (les deux FK le portent déjà) mais
+    facilite les filtrages et l'audit ; il est posé côté serveur.
+    """
+
+    company = models.ForeignKey(
+        "authentication.Company",
+        on_delete=models.CASCADE,
+        related_name="contrats_modele_clauses",
+        verbose_name="Société",
+    )
+    modele = models.ForeignKey(
+        ModeleContrat,
+        on_delete=models.CASCADE,
+        related_name="modele_clauses",
+        verbose_name="Modèle de contrat",
+    )
+    clause = models.ForeignKey(
+        Clause,
+        on_delete=models.CASCADE,
+        related_name="modele_clauses",
+        verbose_name="Clause",
+    )
+    ordre = models.PositiveIntegerField(default=0, verbose_name="Ordre")
+
+    class Meta:
+        verbose_name = "Clause du modèle"
+        verbose_name_plural = "Clauses du modèle"
+        ordering = ["modele_id", "ordre", "id"]
+        unique_together = [("modele", "clause")]
+        indexes = [
+            models.Index(
+                fields=["modele", "ordre"],
+                name="contrats_mc_clause_modele",
+            ),
+        ]
+
+    def __str__(self):
+        return f"{self.modele_id} → clause#{self.clause_id} (ordre {self.ordre})"
