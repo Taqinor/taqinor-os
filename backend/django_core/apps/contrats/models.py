@@ -421,3 +421,100 @@ class ModeleContratClause(models.Model):
 
     def __str__(self):
         return f"{self.modele_id} → clause#{self.clause_id} (ordre {self.ordre})"
+
+
+class ClauseContrat(models.Model):
+    """Clause RÉSOLUE rattachée à un ``Contrat`` concret (CONTRAT9).
+
+    Là où ``ModeleContratClause`` rattache une ``Clause`` à un *gabarit*
+    (``ModeleContrat``), ``ClauseContrat`` rattache une clause à un *contrat*
+    réel et instancié. C'est l'état « résolu » d'une clause : son ``titre`` et
+    son ``corps`` sont matérialisés sur le contrat et peuvent être SURCHARGÉS
+    (édités) indépendamment de la clause-source de la bibliothèque.
+
+    - ``clause`` (FK ``Clause``, optionnel) — la clause-source de la
+      bibliothèque dont ce texte est issu. NULL pour une clause ad hoc saisie
+      directement sur le contrat (sans source en bibliothèque).
+    - ``titre`` / ``corps`` — le texte résolu. À la création, on peut les copier
+      depuis la clause-source via ``resoudre_depuis_clause`` ; toute édition
+      ultérieure les surcharge (``surchargee=True``) sans toucher la source.
+    - ``ordre`` — ordre d'affichage des clauses AU SEIN du contrat.
+    - ``surchargee`` — drapeau indiquant que le texte a été édité par rapport à
+      la clause-source (pour distinguer les clauses « telles quelles » de celles
+      personnalisées).
+
+    Multi-tenant : ``company`` est posée côté serveur. Une même clause-source
+    n'est rattachée qu'une fois par contrat (``unique_together`` sur
+    ``contrat`` + ``clause``), mais plusieurs clauses ad hoc (``clause=NULL``)
+    sont permises sur un même contrat.
+    """
+
+    company = models.ForeignKey(
+        "authentication.Company",
+        on_delete=models.CASCADE,
+        related_name="contrats_clauses_resolues",
+        verbose_name="Société",
+    )
+    contrat = models.ForeignKey(
+        Contrat,
+        on_delete=models.CASCADE,
+        related_name="clauses_resolues",
+        verbose_name="Contrat",
+    )
+    # Clause-source de la bibliothèque (optionnelle) : NULL = clause ad hoc.
+    clause = models.ForeignKey(
+        Clause,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="contrats_clauses_resolues",
+        verbose_name="Clause source",
+    )
+    titre = models.CharField(max_length=200, verbose_name="Titre")
+    corps = models.TextField(verbose_name="Corps résolu")
+    ordre = models.PositiveIntegerField(default=0, verbose_name="Ordre")
+    surchargee = models.BooleanField(
+        default=False, verbose_name="Texte surchargé"
+    )
+    date_creation = models.DateTimeField(
+        auto_now_add=True, verbose_name="Créé le"
+    )
+
+    class Meta:
+        verbose_name = "Clause du contrat"
+        verbose_name_plural = "Clauses du contrat"
+        ordering = ["contrat_id", "ordre", "id"]
+        constraints = [
+            # Une clause-source donnée n'est rattachée qu'une fois par contrat.
+            # Les clauses ad hoc (clause=NULL) ne sont PAS contraintes : un
+            # contrat peut en porter plusieurs.
+            models.UniqueConstraint(
+                fields=["contrat", "clause"],
+                condition=models.Q(clause__isnull=False),
+                name="contrats_clausecontrat_uniq",
+            ),
+        ]
+        indexes = [
+            models.Index(
+                fields=["contrat", "ordre"],
+                name="contrats_clausec_co_ordre",
+            ),
+        ]
+
+    def __str__(self):
+        return f"{self.contrat_id} → {self.titre} (ordre {self.ordre})"
+
+    def resoudre_depuis_clause(self):
+        """Copie ``titre``/``corps`` depuis la clause-source si non déjà fixés.
+
+        Appelée au moment de la résolution initiale : si une clause-source est
+        liée et que ``titre``/``corps`` sont vides, on les matérialise depuis
+        la source. Ne touche jamais la clause-source ; ne marque pas
+        ``surchargee`` (la surcharge se constate à l'édition, pas à la copie).
+        """
+        if self.clause_id and self.clause is not None:
+            if not self.titre:
+                self.titre = self.clause.titre
+            if not self.corps:
+                self.corps = self.clause.corps
+        return self
