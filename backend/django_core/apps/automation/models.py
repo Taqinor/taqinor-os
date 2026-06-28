@@ -43,6 +43,83 @@ class ActionType(models.TextChoices):
     CREATE_SAV_TICKET = 'create_sav_ticket', 'Créer un ticket SAV'
 
 
+class CanalMessage(models.TextChoices):
+    """Canal d'envoi d'un modèle de message d'automatisation."""
+    EMAIL = 'email', 'Email'
+    WHATSAPP = 'whatsapp', 'WhatsApp'
+    DOC = 'doc', 'Document'
+
+
+# Sujet/corps par défaut par canal. Tant qu'aucun ``ModeleMessage`` n'est
+# enregistré pour la société + le canal, ces valeurs s'appliquent — le
+# comportement reste IDENTIQUE à l'ancien sujet codé en dur
+# « Notification Taqinor ». Le corps reste vide par défaut (l'action retombe
+# alors sur ``action_config['body']`` ou un modèle Paramètres, inchangé).
+MODELE_MESSAGE_DEFAULTS = {
+    CanalMessage.EMAIL: {'objet': 'Notification Taqinor', 'corps': ''},
+    CanalMessage.WHATSAPP: {'objet': '', 'corps': ''},
+    CanalMessage.DOC: {'objet': 'Notification Taqinor', 'corps': ''},
+}
+
+
+class ModeleMessage(models.Model):
+    """Modèle de message éditable par société et par canal (DC18).
+
+    Remplace le sujet d'email codé en dur (« Notification Taqinor ») par un
+    modèle stocké et modifiable : un ``objet`` (sujet) et un ``corps`` par
+    canal (email / WhatsApp / doc). Tant qu'aucun modèle n'est enregistré pour
+    la société + le canal, ``resolve`` retombe sur ``MODELE_MESSAGE_DEFAULTS``
+    — le comportement reste donc identique à l'ancien sujet codé en dur.
+    """
+    company = models.ForeignKey(
+        'authentication.Company', on_delete=models.CASCADE,
+        related_name='automation_modeles_message')
+    canal = models.CharField(
+        max_length=20, choices=CanalMessage.choices)
+    objet = models.CharField(max_length=255, blank=True, default='')
+    corps = models.TextField(blank=True, default='')
+    enabled = models.BooleanField(default=True)
+
+    date_creation = models.DateTimeField(auto_now_add=True)
+    date_modification = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = "Modèle de message"
+        verbose_name_plural = "Modèles de message"
+        ordering = ['canal', 'id']
+        unique_together = [('company', 'canal')]
+        indexes = [
+            models.Index(
+                fields=['company', 'canal', 'enabled'],
+                name='automation_modmsg_idx'),
+        ]
+
+    def __str__(self):
+        return f'{self.company_id}:{self.canal}'
+
+    @classmethod
+    def resolve(cls, company, canal):
+        """Renvoie ``(objet, corps)`` pour (société, canal).
+
+        Retombe sur ``MODELE_MESSAGE_DEFAULTS`` quand aucun modèle ACTIVÉ n'est
+        enregistré (ou que ses champs sont vides) — comportement préservé.
+        """
+        default = MODELE_MESSAGE_DEFAULTS.get(
+            canal, {'objet': '', 'corps': ''})
+        row = None
+        if company is not None:
+            try:
+                row = cls.objects.filter(
+                    company=company, canal=canal, enabled=True).first()
+            except Exception:  # pragma: no cover - défensif
+                row = None
+        if row is None:
+            return default['objet'], default['corps']
+        objet = (row.objet or '').strip() or default['objet']
+        corps = (row.corps or '').strip() or default['corps']
+        return objet, corps
+
+
 class AutomationRule(models.Model):
     """Règle d'automatisation éditable (N72), par société.
 

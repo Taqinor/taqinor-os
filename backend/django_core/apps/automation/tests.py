@@ -22,7 +22,8 @@ from apps.ventes.models import Devis, Facture
 
 from apps.automation import engine
 from apps.automation.models import (
-    ActionType, AutomationApproval, AutomationRule, AutomationRun, TriggerType,
+    ActionType, AutomationApproval, AutomationRule, AutomationRun,
+    CanalMessage, ModeleMessage, TriggerType,
 )
 
 User = get_user_model()
@@ -566,6 +567,123 @@ class FactureOverdueTimezoneTests(TestCase):
             self._facture(local_today - timedelta(days=1))  # échue hier
         self.assertTrue(AutomationRun.objects.filter(
             rule__trigger_type=TriggerType.FACTURE_OVERDUE).exists())
+
+
+class ModeleMessageTests(TestCase):
+    """DC18 — sujet/corps d'email résolus depuis un modèle stocké éditable,
+    avec repli sur l'ancien défaut codé en dur (« Notification Taqinor »)."""
+
+    def setUp(self):
+        self.co = make_company('auto-mm', 'Auto MM')
+        self.co_b = make_company('auto-mm-b', 'Auto MM B')
+
+    def _send_rule(self):
+        return AutomationRule.objects.create(
+            company=self.co, nom='Mail',
+            trigger_type=TriggerType.DEVIS_ACCEPTED, trigger_config={},
+            action_type=ActionType.SEND_EMAIL, action_config={'body': 'salut'})
+
+    def _devis_with_email(self, ref='DEV-MM'):
+        client = Client.objects.create(
+            company=self.co, nom='C', email='c@example.com')
+        return Devis.objects.create(
+            company=self.co, reference=ref, statut='brouillon', client=client)
+
+    # ── Résolution du modèle ────────────────────────────────────────────
+
+    def test_resolve_falls_back_to_default_subject_when_absent(self):
+        objet, corps = ModeleMessage.resolve(self.co, CanalMessage.EMAIL)
+        self.assertEqual(objet, 'Notification Taqinor')
+        self.assertEqual(corps, '')
+
+    def test_resolve_uses_stored_template(self):
+        ModeleMessage.objects.create(
+            company=self.co, canal=CanalMessage.EMAIL,
+            objet='Bonjour de Taqinor', corps='Corps stocké')
+        objet, corps = ModeleMessage.resolve(self.co, CanalMessage.EMAIL)
+        self.assertEqual(objet, 'Bonjour de Taqinor')
+        self.assertEqual(corps, 'Corps stocké')
+
+    def test_resolve_empty_subject_falls_back_to_default(self):
+        ModeleMessage.objects.create(
+            company=self.co, canal=CanalMessage.EMAIL, objet='', corps='')
+        objet, _ = ModeleMessage.resolve(self.co, CanalMessage.EMAIL)
+        self.assertEqual(objet, 'Notification Taqinor')
+
+    def test_resolve_disabled_template_ignored(self):
+        ModeleMessage.objects.create(
+            company=self.co, canal=CanalMessage.EMAIL,
+            objet='Désactivé', corps='x', enabled=False)
+        objet, _ = ModeleMessage.resolve(self.co, CanalMessage.EMAIL)
+        self.assertEqual(objet, 'Notification Taqinor')
+
+    def test_resolve_per_channel(self):
+        ModeleMessage.objects.create(
+            company=self.co, canal=CanalMessage.WHATSAPP,
+            objet='WA', corps='wa body')
+        # Le modèle WhatsApp ne fuit pas sur le canal email.
+        objet_email, _ = ModeleMessage.resolve(self.co, CanalMessage.EMAIL)
+        self.assertEqual(objet_email, 'Notification Taqinor')
+        objet_wa, corps_wa = ModeleMessage.resolve(
+            self.co, CanalMessage.WHATSAPP)
+        self.assertEqual(objet_wa, 'WA')
+        self.assertEqual(corps_wa, 'wa body')
+
+    def test_resolve_scoped_per_company(self):
+        ModeleMessage.objects.create(
+            company=self.co, canal=CanalMessage.EMAIL,
+            objet='Modèle A', corps='a')
+        # Une autre société ne voit pas le modèle de self.co → défaut.
+        objet, _ = ModeleMessage.resolve(self.co_b, CanalMessage.EMAIL)
+        self.assertEqual(objet, 'Notification Taqinor')
+
+    # ── Intégration avec actions._send_email ────────────────────────────
+
+    def test_send_email_uses_default_subject_when_no_template(self):
+        rule = self._send_rule()
+        devis = self._devis_with_email('DEV-MM-DEF')
+        mail.outbox = []
+        status, _ = engine.run_action(rule, devis, self.co)
+        self.assertEqual(status, AutomationRun.Status.SUCCESS)
+        self.assertEqual(mail.outbox[-1].subject, 'Notification Taqinor')
+
+    def test_send_email_uses_stored_subject(self):
+        ModeleMessage.objects.create(
+            company=self.co, canal=CanalMessage.EMAIL,
+            objet='Sujet personnalisé', corps='')
+        rule = self._send_rule()
+        devis = self._devis_with_email('DEV-MM-SUB')
+        mail.outbox = []
+        engine.run_action(rule, devis, self.co)
+        self.assertEqual(mail.outbox[-1].subject, 'Sujet personnalisé')
+
+    def test_action_config_subject_overrides_template(self):
+        ModeleMessage.objects.create(
+            company=self.co, canal=CanalMessage.EMAIL,
+            objet='Sujet modèle', corps='')
+        rule = AutomationRule.objects.create(
+            company=self.co, nom='Mail',
+            trigger_type=TriggerType.DEVIS_ACCEPTED, trigger_config={},
+            action_type=ActionType.SEND_EMAIL,
+            action_config={'body': 'salut', 'subject': 'Sujet explicite'})
+        devis = self._devis_with_email('DEV-MM-OVR')
+        mail.outbox = []
+        engine.run_action(rule, devis, self.co)
+        self.assertEqual(mail.outbox[-1].subject, 'Sujet explicite')
+
+    def test_send_email_body_falls_back_to_template_corps(self):
+        ModeleMessage.objects.create(
+            company=self.co, canal=CanalMessage.EMAIL,
+            objet='S', corps='Corps du modèle')
+        # Règle SANS body ni template Paramètres → corps issu du modèle.
+        rule = AutomationRule.objects.create(
+            company=self.co, nom='Mail',
+            trigger_type=TriggerType.DEVIS_ACCEPTED, trigger_config={},
+            action_type=ActionType.SEND_EMAIL, action_config={})
+        devis = self._devis_with_email('DEV-MM-BODY')
+        mail.outbox = []
+        engine.run_action(rule, devis, self.co)
+        self.assertEqual(mail.outbox[-1].body, 'Corps du modèle')
 
 
 class BeatTaskTests(TestCase):
