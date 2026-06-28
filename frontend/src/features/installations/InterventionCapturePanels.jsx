@@ -20,6 +20,10 @@ import {
   Button, Badge, Spinner, Checkbox, Input, Textarea, toast,
 } from '../../ui'
 import { formatDateTime } from '../../lib/format'
+import { withOfflineFallback, FIELD_OPS } from './offline/fieldOutbox'
+
+// N91/F21 — message commun quand une action a été MISE EN FILE (hors-ligne).
+const QUEUED_MSG = 'Hors ligne — enregistré, synchro au retour du réseau.'
 
 // ── F9 — N° de série par composant ───────────────────────────────────────────
 export function SerialsPanel({ intervention, onChanged }) {
@@ -299,9 +303,12 @@ export function ReservesPanel({ intervention, onChanged }) {
     if (!desc.trim()) return
     setBusy(true)
     try {
-      await installationsApi.ajouterReserve(id, {
-        description: desc, creer_ticket: creerTicket, creer_suivi: creerSuivi })
+      const r = await withOfflineFallback(
+        () => installationsApi.ajouterReserve(id, {
+          description: desc, creer_ticket: creerTicket, creer_suivi: creerSuivi }),
+        FIELD_OPS.RESERVE, { intervention: id, description: desc })
       setDesc(''); setCreerTicket(false); setCreerSuivi(false)
+      if (r.queued) toast.success(QUEUED_MSG)
       await load(); onChanged?.()
     } catch { toast.error('Ajout impossible.') } finally { setBusy(false) }
   }
@@ -408,8 +415,13 @@ export function SafetyPanel({ intervention, onChanged }) {
 
   const toggle = async (cle, coche) => {
     setBusy(true)
-    try { await installationsApi.cocherSafety(id, cle, coche); await load() }
-    catch { toast.error('Mise à jour impossible.') } finally { setBusy(false) }
+    try {
+      const r = await withOfflineFallback(
+        () => installationsApi.cocherSafety(id, cle, coche),
+        FIELD_OPS.COCHER_SAFETY, { intervention: id, cle, coche })
+      if (r.queued) toast.success(QUEUED_MSG)
+      await load()
+    } catch { toast.error('Mise à jour impossible.') } finally { setBusy(false) }
   }
   const sign = async () => {
     setBusy(true)
