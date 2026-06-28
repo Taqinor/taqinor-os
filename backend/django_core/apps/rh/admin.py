@@ -6,6 +6,7 @@ from .models import (
     DocumentEmploye,
     DossierEmploye,
     ElementSortie,
+    HeuresSupp,
     Pointage,
     Poste,
     Remuneration,
@@ -88,4 +89,12 @@ class PointageAdmin(admin.ModelAdmin):
     list_display = ('employe', 'type_pointage', 'heure_arrivee', 'heure_depart',
                     'company', 'date_creation')
     list_filter = ('type_pointage',)
+    search_fields = ('employe__matricule', 'employe__nom', 'employe__prenom')
+
+
+@admin.register(HeuresSupp)
+class HeuresSuppAdmin(admin.ModelAdmin):
+    list_display = ('employe', 'date', 'heures_travaillees', 'hs_25', 'hs_50',
+                    'hs_100', 'jour_repos_ferie', 'company')
+    list_filter = ('jour_repos_ferie',)
     search_fields = ('employe__matricule', 'employe__nom', 'employe__prenom')

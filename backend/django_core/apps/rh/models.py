@@ -684,6 +684,112 @@ class FeuilleTemps(models.Model):
                 f' {self.date} : {self.heures}h')
 
 
+class HeuresSupp(models.Model):
+    """Heures supplémentaires & calcul majoré (FG168) — entrée de paie.
+
+    Détecte les heures supplémentaires d'un employé sur une journée (au-delà du
+    seuil légal) et leur applique le taux de majoration marocain. Le droit du
+    travail marocain (code du travail, art. 196 & 201) fixe la durée normale à
+    44 h/semaine (≈ 8 h/jour) et majore les heures effectuées au-delà :
+
+    * **+25 %** — heures sup. de JOUR (entre 6 h et 21 h) un jour ouvrable ;
+    * **+50 %** — heures sup. de NUIT (entre 21 h et 6 h) un jour ouvrable ;
+    * **+50 %** — heures sup. de JOUR un jour de repos hebdomadaire ou férié ;
+    * **+100 %** — heures sup. de NUIT un jour de repos hebdomadaire ou férié.
+
+    Modèle de saisie (journalier) : on enregistre, pour une ``date`` donnée, les
+    heures travaillées (``heures_travaillees``) au-delà desquelles on dépasse le
+    ``seuil_journalier`` (défaut 8 h), avec la part effectuée de NUIT
+    (``heures_nuit``) et un drapeau ``jour_repos_ferie`` (jour de repos ou férié).
+    À partir de ces entrées, ``services.calculer_majoration`` répartit les heures
+    supplémentaires dans les quatre tranches de taux et calcule le montant majoré
+    consommable par la paie (via le ``cout_horaire`` interne du dossier).
+
+    Les quatre décomptes (``hs_25``, ``hs_50``, ``hs_100`` + heures normales) et
+    le ``montant_majore`` sont CALCULÉS et STOCKÉS côté serveur à la saisie pour
+    rester stables (la paie les relit tels quels). Multi-société : ``company``
+    posée côté serveur (jamais lue du corps). Le ``cout_horaire`` reste INTERNE :
+    il n'apparaît dans aucune sortie client.
+    """
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='rh_heures_supp',
+        verbose_name='Société',
+    )
+    employe = models.ForeignKey(
+        DossierEmploye,
+        on_delete=models.CASCADE,
+        related_name='heures_supp',
+        verbose_name='Employé',
+    )
+    date = models.DateField(verbose_name='Date')
+    heures_travaillees = models.DecimalField(
+        max_digits=6, decimal_places=2,
+        verbose_name='Heures travaillées')
+    # Part des heures effectuée de NUIT (21 h–6 h). Bornée aux heures sup.
+    heures_nuit = models.DecimalField(
+        max_digits=6, decimal_places=2, default=Decimal('0'),
+        verbose_name='Heures de nuit')
+    # Seuil journalier au-delà duquel les heures deviennent supplémentaires.
+    seuil_journalier = models.DecimalField(
+        max_digits=6, decimal_places=2, default=Decimal('8'),
+        verbose_name='Seuil journalier')
+    # Jour de repos hebdomadaire OU jour férié → tranche 50 %/100 %.
+    jour_repos_ferie = models.BooleanField(
+        default=False, verbose_name='Jour de repos / férié')
+    # Décomptes répartis (calculés à la saisie, relus tels quels par la paie).
+    heures_normales = models.DecimalField(
+        max_digits=6, decimal_places=2, default=Decimal('0'),
+        verbose_name='Heures normales')
+    hs_25 = models.DecimalField(
+        max_digits=6, decimal_places=2, default=Decimal('0'),
+        verbose_name='HS majorées 25 %')
+    hs_50 = models.DecimalField(
+        max_digits=6, decimal_places=2, default=Decimal('0'),
+        verbose_name='HS majorées 50 %')
+    hs_100 = models.DecimalField(
+        max_digits=6, decimal_places=2, default=Decimal('0'),
+        verbose_name='HS majorées 100 %')
+    # Taux horaire INTERNE (copié du dossier au moment de la saisie ; NULL = non
+    # valorisé). Le montant majoré en découle ; jamais exposé côté client.
+    taux_horaire = models.DecimalField(
+        max_digits=14, decimal_places=2, null=True, blank=True,
+        verbose_name='Taux horaire (interne)')
+    montant_majore = models.DecimalField(
+        max_digits=16, decimal_places=2, null=True, blank=True,
+        verbose_name='Montant majoré (interne)')
+    note = models.CharField(
+        max_length=255, blank=True, default='', verbose_name='Note')
+    date_creation = models.DateTimeField(
+        auto_now_add=True, verbose_name='Créé le')
+    date_modification = models.DateTimeField(
+        auto_now=True, verbose_name='Modifié le')
+
+    class Meta:
+        verbose_name = 'Heures supplémentaires'
+        verbose_name_plural = 'Heures supplémentaires'
+        ordering = ['-date', '-date_creation']
+        indexes = [
+            models.Index(
+                fields=['company', 'employe'],
+                name='rh_hsupp_comp_employe_idx'),
+            models.Index(
+                fields=['company', 'date'],
+                name='rh_hsupp_comp_date_idx'),
+        ]
+
+    @property
+    def total_hs(self):
+        """Total des heures supplémentaires (toutes tranches confondues)."""
+        return (self.hs_25 or Decimal('0')) + (self.hs_50 or Decimal('0')) \
+            + (self.hs_100 or Decimal('0'))
+
+    def __str__(self):
+        return (f'{self.employe.matricule} — {self.date} : '
+                f'{self.total_hs} HS')
+
+
 class DemandeConge(models.Model):
     """Demande & validation de congés (FG163) — workflow employé → superviseur/RH.
 

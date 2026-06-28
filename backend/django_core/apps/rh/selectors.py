@@ -7,7 +7,13 @@ from datetime import timedelta
 
 from django.utils import timezone
 
-from .models import DemandeConge, DocumentEmploye, DossierEmploye, FeuilleTemps
+from .models import (
+    DemandeConge,
+    DocumentEmploye,
+    DossierEmploye,
+    FeuilleTemps,
+    HeuresSupp,
+)
 
 
 def dossier_appartient_societe(company, dossier_id):
@@ -173,6 +179,47 @@ def labour_hours_for_installation(installation_id, company=None):
         'total_cout': total_cout,
         'count': count,
     }
+
+
+def heures_supp_pour_paie(company, date_debut, date_fin, employe_id=None):
+    """Heures supplémentaires majorées d'une période (FG168, entrée de paie).
+
+    Sélecteur cross-app : la paie lit les HS d'une période SANS importer
+    ``rh.models`` — elle obtient, par employé, les totaux d'heures
+    supplémentaires par tranche de taux et le montant majoré déjà valorisé.
+    Toujours scopé société ; renvoie une liste vide si la société est absente.
+
+    Renvoie une liste de dicts (un par employé ayant des HS sur la période) :
+    ``{
+        'employe_id': int,
+        'hs_25': Decimal, 'hs_50': Decimal, 'hs_100': Decimal,
+        'total_hs': Decimal,
+        'montant_majore': Decimal,   # 0 si aucune ligne valorisée
+    }``
+    """
+    from decimal import Decimal
+    if company is None or date_debut is None or date_fin is None:
+        return []
+    qs = HeuresSupp.objects.filter(
+        company=company, date__gte=date_debut, date__lte=date_fin)
+    if employe_id is not None:
+        qs = qs.filter(employe_id=employe_id)
+    agg = {}
+    for hs in qs.only(
+            'employe_id', 'hs_25', 'hs_50', 'hs_100', 'montant_majore'):
+        row = agg.setdefault(hs.employe_id, {
+            'employe_id': hs.employe_id,
+            'hs_25': Decimal('0'), 'hs_50': Decimal('0'),
+            'hs_100': Decimal('0'), 'total_hs': Decimal('0'),
+            'montant_majore': Decimal('0'),
+        })
+        row['hs_25'] += hs.hs_25 or Decimal('0')
+        row['hs_50'] += hs.hs_50 or Decimal('0')
+        row['hs_100'] += hs.hs_100 or Decimal('0')
+        row['total_hs'] += (hs.hs_25 or Decimal('0')) \
+            + (hs.hs_50 or Decimal('0')) + (hs.hs_100 or Decimal('0'))
+        row['montant_majore'] += hs.montant_majore or Decimal('0')
+    return [agg[k] for k in sorted(agg)]
 
 
 def employes_assignables(company, jour):

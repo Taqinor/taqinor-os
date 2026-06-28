@@ -27,6 +27,7 @@ from .models import (
     DossierEmploye,
     ElementSortie,
     FeuilleTemps,
+    HeuresSupp,
     Pointage,
     Poste,
     Remuneration,
@@ -40,6 +41,7 @@ from .serializers import (
     DossierEmployeSerializer,
     ElementSortieSerializer,
     FeuilleTempsSerializer,
+    HeuresSuppSerializer,
     PointageSerializer,
     PosteSerializer,
     RemunerationSerializer,
@@ -417,6 +419,83 @@ class FeuilleTempsViewSet(_RhBaseViewSet):
     def perform_create(self, serializer):
         """Company posée côté serveur. ``employe`` validé via le sérialiseur."""
         serializer.save(company=self.request.user.company)
+
+
+class HeuresSuppViewSet(_RhBaseViewSet):
+    """Heures supplémentaires & calcul majoré (FG168) — entrée de paie.
+
+    Société scopée + Administrateur/Responsable. ``company`` est posée côté
+    serveur ; ``employe`` doit appartenir à la même société. À la création ET à
+    la mise à jour, les décomptes majorés (heures normales, HS 25/50/100 %, taux
+    interne, montant majoré) sont CALCULÉS côté serveur via
+    ``services.appliquer_majoration`` (taux pris du dossier si non fourni) —
+    jamais lus du corps. Filtres : ``?employe=<id>``, ``?date=YYYY-MM-DD``,
+    ``?debut=`` / ``?fin=`` (plage).
+    """
+    queryset = HeuresSupp.objects.select_related('employe').all()
+    serializer_class = HeuresSuppSerializer
+    filter_backends = [filters.OrderingFilter]
+    ordering_fields = ['date', 'date_creation']
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        employe = self.request.query_params.get('employe')
+        if employe:
+            qs = qs.filter(employe_id=employe)
+        date_str = self.request.query_params.get('date')
+        if date_str:
+            from datetime import datetime
+            try:
+                jour = datetime.strptime(date_str, '%Y-%m-%d').date()
+                qs = qs.filter(date=jour)
+            except (TypeError, ValueError):
+                pass
+        debut = self._parse_date(self.request.query_params.get('debut'))
+        if debut:
+            qs = qs.filter(date__gte=debut)
+        fin = self._parse_date(self.request.query_params.get('fin'))
+        if fin:
+            qs = qs.filter(date__lte=fin)
+        return qs
+
+    @staticmethod
+    def _parse_date(raw):
+        if not raw:
+            return None
+        from datetime import datetime
+        try:
+            return datetime.strptime(raw, '%Y-%m-%d').date()
+        except (TypeError, ValueError):
+            return None
+
+    def perform_create(self, serializer):
+        """Company posée côté serveur ; majoration calculée côté serveur."""
+        instance = serializer.save(company=self.request.user.company)
+        services.appliquer_majoration(instance)
+        instance.save()
+
+    def perform_update(self, serializer):
+        """Recalcule la majoration à chaque mise à jour."""
+        instance = serializer.save()
+        services.appliquer_majoration(instance)
+        instance.save()
+
+    @action(detail=False, methods=['get'], url_path='export-paie')
+    def export_paie(self, request):
+        """Totaux d'heures sup. majorées par employé sur une période (paie).
+
+        ``?debut=YYYY-MM-DD`` → ``?fin=YYYY-MM-DD`` (défaut : 30 jours écoulés).
+        ``?employe=<id>`` restreint à un employé. S'appuie sur
+        ``selectors.heures_supp_pour_paie`` — scopé société.
+        """
+        today = timezone.localdate()
+        debut = self._parse_date(request.query_params.get('debut')) \
+            or (today - timedelta(days=30))
+        fin = self._parse_date(request.query_params.get('fin')) or today
+        employe = request.query_params.get('employe') or None
+        rows = selectors.heures_supp_pour_paie(
+            request.user.company, debut, fin, employe_id=employe)
+        return Response(rows)
 
 
 class PointageViewSet(_RhBaseViewSet):
