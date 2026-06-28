@@ -9,7 +9,10 @@ from .insights import (
     sales_leaderboard, cf_group_by, cohorts, profitability,
 )
 from .archive import archive_client, archive_chantier
-from .calendar import calendar_events, calendar_reschedule
+from .calendar import (
+    calendar_events, calendar_reschedule, calendar_ics,
+    calendar_ics_subscription,
+)
 from .geo import geo_points
 from .balance_export import balance_agee_export
 from .saved_reports_api import SavedReportViewSet
@@ -31,6 +34,11 @@ urlpatterns = [
     path('calendar/', calendar_events, name='reporting-calendar'),
     path('calendar/reschedule/', calendar_reschedule,
          name='reporting-calendar-reschedule'),
+    # FG6 — flux ICS/iCal par utilisateur (abonnement Google/Outlook). Le flux
+    # est authentifié par jeton signé (?token=) — pas de session.
+    path('calendar.ics', calendar_ics, name='reporting-calendar-ics'),
+    path('calendar/subscription/', calendar_ics_subscription,
+         name='reporting-calendar-ics-subscription'),
     path('geo/', geo_points, name='reporting-geo'),
     path('pipeline/', pipeline, name='reporting-pipeline'),
     path('pipeline/velocity/', funnel_velocity, name='reporting-funnel-velocity'),  # FG29

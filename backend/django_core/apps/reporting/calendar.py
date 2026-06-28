@@ -7,15 +7,28 @@ suivi. Tout est borné à la société de l'utilisateur. La replanification
 (« glisser pour reprogrammer ») n'agit que sur les dates réellement éditables
 — jamais sur une visite de maintenance, qui est calculée.
 """
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta, timezone
 
-from rest_framework.decorators import api_view, permission_classes
+from django.contrib.auth import get_user_model
+from django.core import signing
+from django.http import HttpResponse
+from rest_framework.decorators import (
+    api_view, authentication_classes, permission_classes,
+)
+from rest_framework.permissions import AllowAny
 from rest_framework.response import Response
 
 from authentication.permissions import IsAnyRole, IsResponsableOrAdmin
 
 # Types éditables (une date stockée) → replanifiables par glisser-déposer.
 EDITABLE_TYPES = {'pose', 'mise_en_service', 'intervention', 'activite'}
+
+# FG6 — jeton ICS stable par utilisateur. On signe l'id utilisateur avec la
+# SECRET_KEY (django.core.signing) sous un sel dédié : pas d'expiration (l'URL
+# d'abonnement reste valable pour Google/Outlook), non devinable, et révocable
+# globalement par rotation de la SECRET_KEY. Aucun nouveau modèle, aucune
+# migration, aucune dépendance.
+_ICS_SALT = 'reporting.calendar.ics.v1'
 
 
 def _co_filter(user):
@@ -227,3 +240,187 @@ def calendar_reschedule(request):
         return Response({'detail': 'Introuvable.'}, status=404)
 
     return Response({'ok': True, 'date': new_date.isoformat()})
+
+
+# ── FG6 — flux ICS / iCal par utilisateur ────────────────────────────────────
+
+def make_ics_token(user):
+    """Jeton signé stable pour l'utilisateur (sans expiration)."""
+    return signing.dumps(user.pk, salt=_ICS_SALT)
+
+
+def resolve_ics_token(token):
+    """Retourne l'utilisateur du jeton signé, ou None si invalide."""
+    if not token:
+        return None
+    try:
+        user_id = signing.loads(token, salt=_ICS_SALT)
+    except signing.BadSignature:
+        return None
+    User = get_user_model()
+    try:
+        user = User.objects.select_related('company').get(pk=user_id)
+    except User.DoesNotExist:
+        return None
+    if not user.is_active:
+        return None
+    return user
+
+
+def _user_calendar_events(user):
+    """Évènements planifiés de l'utilisateur, bornés à sa société.
+
+    Poses / mises en service / interventions qui lui sont assignées, ses
+    activités de suivi ouvertes, et les visites de maintenance préventive de la
+    société (calculées, sans responsable — visibles pour tous les techniciens,
+    cohérent avec la vue JSON). Fenêtre large : passé proche → un an.
+    """
+    co = _co_filter(user)
+    if co is None:
+        return []
+
+    today = date.today()
+    start = today - timedelta(days=31)
+    end = today + timedelta(days=366)
+    events = []
+
+    from apps.installations.models import Installation, Intervention
+
+    inst_qs = Installation.objects.filter(
+        **co, technicien_responsable_id=user.pk).select_related('client')
+    for i in inst_qs.filter(date_pose_prevue__gte=start,
+                            date_pose_prevue__lte=end):
+        events.append({
+            'uid': f'pose-{i.id}', 'date': i.date_pose_prevue,
+            'summary': f"Pose — {i.reference}",
+            'description': f"Pose prévue — {getattr(i.client, 'nom', '') or ''}".strip(' —'),
+        })
+    for i in inst_qs.filter(date_mise_en_service__gte=start,
+                            date_mise_en_service__lte=end):
+        events.append({
+            'uid': f'mes-{i.id}', 'date': i.date_mise_en_service,
+            'summary': f"Mise en service — {i.reference}",
+            'description': f"Mise en service — {getattr(i.client, 'nom', '') or ''}".strip(' —'),
+        })
+
+    iv_qs = (Intervention.objects.filter(**co, technicien_id=user.pk)
+             .filter(date_prevue__gte=start, date_prevue__lte=end))
+    for iv in iv_qs:
+        events.append({
+            'uid': f'intervention-{iv.id}', 'date': iv.date_prevue,
+            'summary': iv.get_type_intervention_display(),
+            'description': 'Intervention terrain',
+        })
+
+    from apps.sav.models import ContratMaintenance
+    contrats = (ContratMaintenance.objects.filter(**co, actif=True)
+                .select_related('client'))
+    for ct in contrats:
+        d = ct.prochaine_visite()
+        if d and start <= d <= end:
+            nom = getattr(ct.client, 'nom', '') or ''
+            events.append({
+                'uid': f'visite-{ct.id}', 'date': d,
+                'summary': f"Maintenance — {nom}".strip(' —'),
+                'description': 'Visite de maintenance préventive',
+            })
+
+    from apps.records.models import Activity
+    acts = (Activity.objects.filter(**co, done=False,
+                                    assigned_to_id=user.pk,
+                                    due_date__gte=start, due_date__lte=end))
+    for a in acts:
+        events.append({
+            'uid': f'activite-{a.id}', 'date': a.due_date,
+            'summary': a.summary or 'Activité',
+            'description': 'Activité de suivi',
+        })
+
+    return events
+
+
+def _ics_escape(text):
+    """Échappe une valeur de texte iCal (RFC 5545 §3.3.11)."""
+    return (str(text or '')
+            .replace('\\', '\\\\').replace(';', '\\;')
+            .replace(',', '\\,').replace('\n', '\\n').replace('\r', ''))
+
+
+def _fold(line):
+    """Plie une ligne ICS à 75 octets (RFC 5545 §3.1)."""
+    raw = line.encode('utf-8')
+    if len(raw) <= 75:
+        return line
+    out, chunk = [], b''
+    for ch in line:
+        enc = ch.encode('utf-8')
+        if len(chunk) + len(enc) > 75:
+            out.append(chunk.decode('utf-8'))
+            chunk = b' ' + enc
+        else:
+            chunk += enc
+    out.append(chunk.decode('utf-8'))
+    return '\r\n'.join(out)
+
+
+def build_ics(user, events):
+    """Construit un VCALENDAR valide (évènements journée entière)."""
+    stamp = datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%SZ')
+    lines = [
+        'BEGIN:VCALENDAR',
+        'VERSION:2.0',
+        'PRODID:-//Taqinor OS//Agenda//FR',
+        'CALSCALE:GREGORIAN',
+        'METHOD:PUBLISH',
+        f'X-WR-CALNAME:Agenda Taqinor — {_ics_escape(_user_label(user))}',
+    ]
+    for ev in events:
+        d = ev['date']
+        dnext = d + timedelta(days=1)
+        lines += [
+            'BEGIN:VEVENT',
+            f"UID:{ev['uid']}@taqinor",
+            f'DTSTAMP:{stamp}',
+            f"DTSTART;VALUE=DATE:{d.strftime('%Y%m%d')}",
+            f"DTEND;VALUE=DATE:{dnext.strftime('%Y%m%d')}",
+            f"SUMMARY:{_ics_escape(ev['summary'])}",
+            f"DESCRIPTION:{_ics_escape(ev.get('description', ''))}",
+            'END:VEVENT',
+        ]
+    lines.append('END:VCALENDAR')
+    body = '\r\n'.join(_fold(ln) for ln in lines) + '\r\n'
+    return body
+
+
+@api_view(['GET'])
+@authentication_classes([])
+@permission_classes([AllowAny])
+def calendar_ics(request):
+    """Flux iCal du calendrier de l'utilisateur — ``?token=<jeton signé>``.
+
+    Authentifié par le jeton signé (pas de session) pour que Google/Outlook
+    puissent s'abonner. Borné à la société de l'utilisateur résolu du jeton ;
+    jamais d'évènements d'une autre société/d'un autre utilisateur.
+    """
+    user = resolve_ics_token(request.query_params.get('token'))
+    if user is None:
+        return HttpResponse('Jeton invalide.', status=401,
+                            content_type='text/plain; charset=utf-8')
+    events = _user_calendar_events(user)
+    body = build_ics(user, events)
+    resp = HttpResponse(body, content_type='text/calendar; charset=utf-8')
+    resp['Content-Disposition'] = 'inline; filename="taqinor-agenda.ics"'
+    return resp
+
+
+@api_view(['GET'])
+@permission_classes([IsAnyRole])
+def calendar_ics_subscription(request):
+    """URL d'abonnement ICS de l'utilisateur courant (authentifié par session).
+
+    Réponse : ``{token, url}`` — l'URL absolue ``…/calendar.ics?token=…`` à
+    coller dans Google Agenda / Outlook (« S'abonner au calendrier »).
+    """
+    token = make_ics_token(request.user)
+    path = '/api/django/reporting/calendar.ics?token=' + token
+    return Response({'token': token, 'url': request.build_absolute_uri(path)})
