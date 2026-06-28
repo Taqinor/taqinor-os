@@ -19,6 +19,7 @@ from .models import (
     CalendrierProjet,
     DependanceTache,
     Equipe,
+    Indisponibilite,
     Jalon,
     JourFerie,
     PhaseProjet,
@@ -35,6 +36,7 @@ from .serializers import (
     CalendrierProjetSerializer,
     DependanceTacheSerializer,
     EquipeSerializer,
+    IndisponibiliteSerializer,
     JalonSerializer,
     JourFerieSerializer,
     PhaseProjetSerializer,
@@ -709,4 +711,44 @@ class AffectationRessourceViewSet(_GestionProjetBaseViewSet):
         equipe = self.request.query_params.get('equipe')
         if equipe:
             qs = qs.filter(equipe_id=equipe)
+        return qs
+
+
+class IndisponibiliteViewSet(_GestionProjetBaseViewSet):
+    """Indisponibilites des ressources de projet (PROJ17).
+
+    Modelise les fenetres ou une ``RessourceProfil`` n'est pas mobilisable
+    (conge / formation / arret), pour que la planification exclue une ressource
+    indisponible sur une periode. ``company`` est posee cote serveur
+    (TenantMixin) ; la ``ressource`` recue est validee meme-societe par le
+    serialiseur.
+
+    Filtres optionnels :
+        ``?ressource=<id>``, ``?type=<conge|formation|arret>``,
+        ``?debut=YYYY-MM-DD&fin=YYYY-MM-DD`` (indispos chevauchant la fenetre).
+    Recherche par motif ; tri par defaut ``ressource``, ``date_debut``.
+    """
+    queryset = Indisponibilite.objects.select_related(
+        'ressource', 'company').all()
+    serializer_class = IndisponibiliteSerializer
+    filter_backends = [filters.SearchFilter, filters.OrderingFilter]
+    search_fields = ['motif']
+    ordering_fields = ['date_debut', 'date_fin', 'ressource', 'id']
+
+    def perform_create(self, serializer):
+        serializer.save(company=self.request.user.company)
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        ressource = self.request.query_params.get('ressource')
+        if ressource:
+            qs = qs.filter(ressource_id=ressource)
+        type_indispo = self.request.query_params.get('type')
+        if type_indispo:
+            qs = qs.filter(type_indispo=type_indispo)
+        debut = self.request.query_params.get('debut')
+        fin = self.request.query_params.get('fin')
+        if debut and fin:
+            # Chevauchement avec [debut, fin] (bornes inclusives).
+            qs = qs.filter(date_debut__lte=fin, date_fin__gte=debut)
         return qs

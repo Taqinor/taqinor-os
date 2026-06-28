@@ -931,6 +931,87 @@ class AffectationRessource(models.Model):
                 "ou actif matériel — pas plusieurs simultanément.")
 
 
+class Indisponibilite(models.Model):
+    """Fenêtre d'indisponibilité d'une ressource de projet (PROJ17).
+
+    Modélise une période pendant laquelle une ``RessourceProfil`` n'est PAS
+    mobilisable — congé, formation ou arrêt (maladie/panne/autre). La planification
+    et l'affectation (PROJ16/18/19) peuvent ainsi exclure une ressource indisponible
+    sur une fenêtre donnée (voir ``selectors.ressource_disponible_sur_periode``).
+
+    La période ``date_debut`` / ``date_fin`` est INCLUSIVE des deux bornes : une
+    indisponibilité du 1er au 5 couvre les cinq jours. ``motif`` est un commentaire
+    libre optionnel (réf. dossier RH, n° de formation…).
+
+    Tout est multi-société : ``company`` est posée côté serveur, jamais lue du
+    corps de requête. La ressource est une ``RessourceProfil`` de la MÊME société
+    (validé dans le sérialiseur). Modèle entièrement additif.
+    """
+
+    class TypeIndispo(models.TextChoices):
+        CONGE = 'conge', 'Congé'
+        FORMATION = 'formation', 'Formation'
+        ARRET = 'arret', 'Arrêt'
+
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='gp_indisponibilites',
+        verbose_name='Société',
+    )
+    ressource = models.ForeignKey(
+        RessourceProfil,
+        on_delete=models.CASCADE,
+        related_name='gp_indisponibilites',
+        verbose_name='Ressource (profil)',
+    )
+    type_indispo = models.CharField(
+        max_length=20,
+        choices=TypeIndispo.choices,
+        default=TypeIndispo.CONGE,
+        verbose_name="Type d'indisponibilité",
+    )
+    date_debut = models.DateField(verbose_name='Date de début')
+    date_fin = models.DateField(verbose_name='Date de fin')
+    motif = models.TextField(blank=True, default='', verbose_name='Motif')
+    date_creation = models.DateTimeField(
+        auto_now_add=True, verbose_name='Créé le')
+
+    class Meta:
+        verbose_name = 'Indisponibilité ressource'
+        verbose_name_plural = 'Indisponibilités ressources'
+        ordering = ['ressource', 'date_debut', 'id']
+        indexes = [
+            models.Index(
+                fields=['ressource', 'date_debut'],
+                name='gp_indispo_res_debut_idx'),
+            models.Index(
+                fields=['company', 'date_debut'],
+                name='gp_indispo_co_debut_idx'),
+        ]
+
+    def __str__(self):
+        return (
+            f"{self.ressource_id} {self.type_indispo} "
+            f"({self.date_debut}→{self.date_fin})")
+
+    def clean(self):
+        from django.core.exceptions import ValidationError
+        if (self.date_debut and self.date_fin
+                and self.date_fin < self.date_debut):
+            raise ValidationError(
+                "La date de fin ne peut pas être antérieure à la date de début.")
+
+    def chevauche(self, debut, fin):
+        """True si cette indisponibilité chevauche la fenêtre [debut, fin].
+
+        Bornes INCLUSIVES des deux côtés (comme la période stockée) : deux
+        intervalles se chevauchent dès que ``date_debut <= fin`` ET
+        ``date_fin >= debut``.
+        """
+        return self.date_debut <= fin and self.date_fin >= debut
+
+
 class ProjetActivity(models.Model):
     """Journal minimal des transitions de statut d'un ``Projet``.
 
