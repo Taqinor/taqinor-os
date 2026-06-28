@@ -3,11 +3,15 @@ from rest_framework.decorators import action, api_view, permission_classes
 from rest_framework.response import Response
 from authentication.mixins import TenantMixin
 from authentication.scoping import scope_queryset, scope_client_queryset
-from .models import Appointment, Client, Lead, LeadTag, MotifPerte, Canal, Parrainage, MessageTemplate
+from .models import (
+    Appointment, Client, Lead, LeadTag, MotifPerte, Canal, Parrainage,
+    MessageTemplate, ObjectifCommercial,
+)
 from .serializers import (
     AppointmentSerializer, ClientSerializer, LeadSerializer, LeadActivitySerializer,
     LeadTagSerializer, MotifPerteSerializer, CanalSerializer,
     ParrainageSerializer, MessageTemplateSerializer, _tag_en_usage, _motif_en_usage,
+    ObjectifCommercialSerializer, ObjectifAttainmentSerializer,
 )
 from . import activity
 from .services import default_responsable_for
@@ -1159,3 +1163,97 @@ class AppointmentViewSet(TenantMixin, viewsets.ModelViewSet):
         # and return the already-created appointment via the serializer for the
         # response. Patch self so the serializer picks up the instance.
         serializer.instance = appt
+
+
+# ── FG39 — ObjectifCommercial / KPI Target ────────────────────────────────────
+
+class ObjectifCommercialViewSet(TenantMixin, viewsets.ModelViewSet):
+    """CRUD objectifs commerciaux + endpoint d'atteinte (réalisé vs cible).
+
+    Routes :
+      GET/POST  /crm/objectifs/
+      GET/PATCH /crm/objectifs/{id}/
+      DELETE    /crm/objectifs/{id}/
+      GET       /crm/objectifs/attainment/?year=&metric=&period_type=&owner=
+      GET       /crm/objectifs/{id}/attainment/
+    """
+    queryset = ObjectifCommercial.objects.all()
+    serializer_class = ObjectifCommercialSerializer
+
+    def get_queryset(self):
+        qs = super().get_queryset().select_related('owner')
+        # Filtres optionnels.
+        metric = self.request.query_params.get('metric')
+        if metric:
+            qs = qs.filter(metric=metric)
+        year = self.request.query_params.get('year')
+        if year:
+            qs = qs.filter(period_year=year)
+        period_type = self.request.query_params.get('period_type')
+        if period_type:
+            qs = qs.filter(period_type=period_type)
+        owner = self.request.query_params.get('owner')
+        if owner == 'null':
+            qs = qs.filter(owner__isnull=True)
+        elif owner:
+            qs = qs.filter(owner_id=owner)
+        return qs
+
+    def perform_create(self, serializer):
+        serializer.save(
+            company=self.request.user.company,
+            created_by=self.request.user,
+        )
+
+    def get_permissions(self):
+        if self.action in READ_ACTIONS + ['attainment', 'attainment_list']:
+            return [IsAnyRole()]
+        return [IsAdminRole()]
+
+    @action(detail=True, methods=['get'], url_path='attainment',
+            permission_classes=[IsAnyRole])
+    def attainment(self, request, pk=None):
+        """Réalisé vs cible pour un objectif unique."""
+        from .selectors import compute_attainment
+        obj = self.get_object()
+        data = compute_attainment(obj)
+        payload = {
+            'id': obj.pk,
+            'metric': obj.metric,
+            'metric_display': obj.get_metric_display(),
+            'period_type': obj.period_type,
+            'period_year': obj.period_year,
+            'period_month': obj.period_month,
+            'period_quarter': obj.period_quarter,
+            'cible': obj.cible,
+            'owner': obj.owner_id,
+            'owner_nom': getattr(obj.owner, 'username', None),
+            **data,
+        }
+        s = ObjectifAttainmentSerializer(payload)
+        return Response(s.data)
+
+    @action(detail=False, methods=['get'], url_path='attainment',
+            permission_classes=[IsAnyRole])
+    def attainment_list(self, request):
+        """Réalisé vs cible pour tous les objectifs du filtre courant."""
+        from .selectors import compute_attainment
+        qs = self.get_queryset()
+        result = []
+        for obj in qs:
+            data = compute_attainment(obj)
+            result.append({
+                'id': obj.pk,
+                'metric': obj.metric,
+                'metric_display': obj.get_metric_display(),
+                'period_type': obj.period_type,
+                'period_year': obj.period_year,
+                'period_month': obj.period_month,
+                'period_quarter': obj.period_quarter,
+                'cible': obj.cible,
+                'owner': obj.owner_id,
+                'owner_nom': getattr(obj.owner, 'username', None),
+                **data,
+            })
+        s = ObjectifAttainmentSerializer(result, many=True)
+        return Response(s.data)

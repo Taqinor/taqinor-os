@@ -1,5 +1,7 @@
 from rest_framework import serializers
-from .models import Appointment, Client, Lead, LeadActivity, MessageTemplate, Parrainage
+from .models import (
+    Appointment, Client, Lead, LeadActivity, MessageTemplate, ObjectifCommercial, Parrainage,
+)
 from .devis_auto import champs_manquants, message_manquants
 from .scoring import compute_score, score_label
 
@@ -472,3 +474,78 @@ class AppointmentSerializer(serializers.ModelSerializer):
         if req and value.company_id != getattr(req.user, 'company_id', None):
             raise serializers.ValidationError('Lead inconnu.')
         return value
+
+
+# ── FG39 — ObjectifCommercial / KPI Target ────────────────────────────────────
+
+class ObjectifCommercialSerializer(serializers.ModelSerializer):
+    """Sérialise un objectif commercial + champs lecture optionnels."""
+
+    owner_nom = serializers.SerializerMethodField()
+    metric_display = serializers.SerializerMethodField()
+    period_type_display = serializers.SerializerMethodField()
+
+    class Meta:
+        model = ObjectifCommercial
+        fields = [
+            'id', 'company', 'owner', 'owner_nom',
+            'metric', 'metric_display',
+            'period_type', 'period_type_display',
+            'period_year', 'period_month', 'period_quarter',
+            'cible', 'notes',
+            'created_by', 'date_creation', 'date_modification',
+        ]
+        read_only_fields = [
+            'company', 'created_by', 'date_creation', 'date_modification',
+        ]
+
+    def get_owner_nom(self, obj):
+        return getattr(obj.owner, 'username', None)
+
+    def get_metric_display(self, obj):
+        return obj.get_metric_display()
+
+    def get_period_type_display(self, obj):
+        return obj.get_period_type_display()
+
+    def validate(self, attrs):
+        pt = attrs.get('period_type', getattr(self.instance, 'period_type', None))
+        if pt == 'month' and not attrs.get(
+                'period_month', getattr(self.instance, 'period_month', None)):
+            raise serializers.ValidationError(
+                {'period_month': 'Requis pour un objectif mensuel.'}
+            )
+        if pt == 'quarter' and not attrs.get(
+                'period_quarter', getattr(self.instance, 'period_quarter', None)):
+            raise serializers.ValidationError(
+                {'period_quarter': 'Requis pour un objectif trimestriel.'}
+            )
+        month = attrs.get('period_month', getattr(self.instance, 'period_month', None))
+        if month is not None and not (1 <= month <= 12):
+            raise serializers.ValidationError(
+                {'period_month': 'Doit être entre 1 et 12.'}
+            )
+        quarter = attrs.get('period_quarter', getattr(self.instance, 'period_quarter', None))
+        if quarter is not None and not (1 <= quarter <= 4):
+            raise serializers.ValidationError(
+                {'period_quarter': 'Doit être entre 1 et 4.'}
+            )
+        return attrs
+
+
+class ObjectifAttainmentSerializer(serializers.Serializer):
+    """Lecture seule — objectif + réalisé + taux d'atteinte."""
+    id = serializers.IntegerField()
+    metric = serializers.CharField()
+    metric_display = serializers.CharField()
+    period_type = serializers.CharField()
+    period_year = serializers.IntegerField()
+    period_month = serializers.IntegerField(allow_null=True)
+    period_quarter = serializers.IntegerField(allow_null=True)
+    cible = serializers.DecimalField(max_digits=14, decimal_places=2)
+    owner = serializers.IntegerField(allow_null=True)
+    owner_nom = serializers.CharField(allow_null=True)
+    realise = serializers.DecimalField(max_digits=14, decimal_places=2)
+    taux = serializers.FloatField()
+    period_start = serializers.DateField()
+    period_end = serializers.DateField()

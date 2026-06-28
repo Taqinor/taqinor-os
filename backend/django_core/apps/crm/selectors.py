@@ -156,6 +156,118 @@ def lead_bills_for_devis(devis):
     }
 
 
+def compute_attainment(objectif):
+    """FG39 — Calcule le réalisé pour un ObjectifCommercial.
+
+    Retourne un dict::
+
+        {
+          'cible': Decimal,
+          'realise': Decimal,
+          'taux': float,          # 0.0–100.0+ (peut dépasser 100 %)
+          'period_start': date,   # premier jour de la période
+          'period_end': date,     # dernier jour de la période (inclus)
+        }
+
+    Métriques CRM-only calculées ici :
+      - nb_leads    : leads crm.Lead créés dans la période
+      - nb_contacts : leads avec first_contacted_at dans la période
+      - nb_rdv      : Appointment.statut=EFFECTUE avec scheduled_at dans la période
+
+    Métriques ventes (nb_devis / ca_signe) : retourne 0 ; un futur hook
+    d'un sélecteur ventes branchera la valeur sans importer ventes.models.
+    """
+    import datetime
+    from decimal import Decimal
+
+    year = objectif.period_year
+    pt = objectif.period_type
+    company = objectif.company
+    owner = objectif.owner  # None = équipe complète
+
+    # ── Bornes de la période ──────────────────────────────────────────────────
+    if pt == 'month':
+        month = objectif.period_month or 1
+        period_start = datetime.date(year, month, 1)
+        import calendar
+        last_day = calendar.monthrange(year, month)[1]
+        period_end = datetime.date(year, month, last_day)
+    elif pt == 'quarter':
+        q = objectif.period_quarter or 1
+        month_start = (q - 1) * 3 + 1
+        period_start = datetime.date(year, month_start, 1)
+        import calendar
+        month_end = month_start + 2
+        last_day = calendar.monthrange(year, month_end)[1]
+        period_end = datetime.date(year, month_end, last_day)
+    else:  # year
+        period_start = datetime.date(year, 1, 1)
+        period_end = datetime.date(year, 12, 31)
+
+    # Convertir en datetimes UTC-aware pour filtrer sur des DateTimeFields.
+    import datetime as _dt
+    from django.utils import timezone as _tz
+
+    def _to_aware(d):
+        return _tz.make_aware(
+            _dt.datetime.combine(d, _dt.time.min), _tz.get_current_timezone())
+
+    start_dt = _to_aware(period_start)
+    end_dt = _to_aware(period_end) + _dt.timedelta(days=1)  # exclusif
+
+    # ── Calcul réalisé ────────────────────────────────────────────────────────
+    realise = Decimal('0')
+    metric = objectif.metric
+
+    if metric == 'nb_leads':
+        from .models import Lead
+        qs = Lead.objects.filter(
+            company=company,
+            date_creation__gte=start_dt,
+            date_creation__lt=end_dt,
+        )
+        if owner is not None:
+            qs = qs.filter(owner=owner)
+        realise = Decimal(qs.count())
+
+    elif metric == 'nb_contacts':
+        from .models import Lead
+        qs = Lead.objects.filter(
+            company=company,
+            first_contacted_at__isnull=False,
+            first_contacted_at__gte=start_dt,
+            first_contacted_at__lt=end_dt,
+        )
+        if owner is not None:
+            qs = qs.filter(owner=owner)
+        realise = Decimal(qs.count())
+
+    elif metric == 'nb_rdv':
+        from .models import Appointment
+        qs = Appointment.objects.filter(
+            company=company,
+            statut=Appointment.Statut.EFFECTUE,
+            scheduled_at__gte=start_dt,
+            scheduled_at__lt=end_dt,
+        )
+        if owner is not None:
+            qs = qs.filter(created_by=owner)
+        realise = Decimal(qs.count())
+
+    # else: nb_devis / ca_signe → réalisé = 0 (hook ventes futur)
+
+    cible = objectif.cible or Decimal('0')
+    taux = float(realise / cible * 100) if cible else 0.0
+
+    return {
+        'cible': cible,
+        'realise': realise,
+        'taux': round(taux, 1),
+        'period_start': period_start,
+        'period_end': period_end,
+    }
+
+
 def lead_card(lead_id, company):
     """S8 — fiche-carte LECTURE SEULE d'un lead pour le partage dans la
     messagerie. Scopée société : renvoie None si le lead n'appartient pas à la

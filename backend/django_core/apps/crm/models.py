@@ -649,6 +649,128 @@ class Parrainage(models.Model):
         return f'Parrainage #{self.pk} (parrain {self.parrain_id})'
 
 
+class ObjectifCommercial(models.Model):
+    """FG39 — Objectif commercial / KPI target (objectif vs réalisé).
+
+    Chaque objectif porte une métrique, une période et une cible (Decimal).
+    Le « réalisé » est calculé à la demande (endpoint attainment) depuis les
+    données du domaine CRM — pas stocké, pour rester toujours à jour.
+
+    Métriques CRM-only (pas d'import ventes) :
+      - nb_leads    : leads créés dans la période
+      - nb_contacts : leads passés en CONTACTED+ dans la période
+      - nb_devis    : placeholder (réalisé = 0 sans données ventes)
+      - ca_signe    : placeholder (réalisé = 0 sans données ventes)
+      - nb_rdv      : rendez-vous effectués dans la période
+
+    Les métriques ``nb_devis`` et ``ca_signe`` sont exposées pour permettre
+    au fondateur de saisir des cibles maintenant ; le réalisé sera branché
+    quand la couche service ventes sera exposée via un sélecteur cross-app.
+    (Aucun import de ``apps.ventes.models`` ici — règle import-linter.)
+    """
+
+    class PeriodType(models.TextChoices):
+        MONTH = 'month', 'Mensuel'
+        QUARTER = 'quarter', 'Trimestriel'
+        YEAR = 'year', 'Annuel'
+
+    class Metric(models.TextChoices):
+        NB_LEADS = 'nb_leads', 'Nombre de leads'
+        NB_CONTACTS = 'nb_contacts', 'Leads contactés'
+        NB_DEVIS = 'nb_devis', 'Nombre de devis'
+        CA_SIGNE = 'ca_signe', 'CA signé (MAD TTC)'
+        NB_RDV = 'nb_rdv', 'Rendez-vous effectués'
+
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        null=True,
+        blank=True,
+        related_name='objectifs_commerciaux',
+    )
+    # Responsable optionnel — NULL = objectif d'équipe global.
+    owner = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='crm_objectifs',
+        verbose_name='Responsable',
+    )
+    metric = models.CharField(
+        max_length=20,
+        choices=Metric.choices,
+        verbose_name='Métrique',
+    )
+    period_type = models.CharField(
+        max_length=10,
+        choices=PeriodType.choices,
+        default=PeriodType.MONTH,
+        verbose_name='Périodicité',
+    )
+    # Année du début de la période (ex. 2026). Pour un trimestre : trimestre
+    # 1 = mois 1–3 de cette année. Pour un mois : period_month (1–12).
+    period_year = models.PositiveSmallIntegerField(verbose_name='Année')
+    # Pour les objectifs mensuels (1–12) ; ignoré pour les trimestriels/annuels.
+    period_month = models.PositiveSmallIntegerField(
+        null=True, blank=True,
+        verbose_name='Mois (1–12)',
+        help_text='Uniquement pour les objectifs mensuels.',
+    )
+    # Pour les objectifs trimestriels (1–4) ; ignoré sinon.
+    period_quarter = models.PositiveSmallIntegerField(
+        null=True, blank=True,
+        verbose_name='Trimestre (1–4)',
+        help_text='Uniquement pour les objectifs trimestriels.',
+    )
+    cible = models.DecimalField(
+        max_digits=14, decimal_places=2,
+        verbose_name='Cible',
+    )
+    notes = models.TextField(blank=True, null=True, verbose_name='Notes')
+    created_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='crm_objectifs_crees',
+        verbose_name='Créé par',
+    )
+    date_creation = models.DateTimeField(auto_now_add=True)
+    date_modification = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = 'Objectif commercial'
+        verbose_name_plural = 'Objectifs commerciaux'
+        ordering = ['-period_year', '-period_month', 'metric']
+        # Contraintes nommées (pas d'Index sans nom — règle CI-enforced).
+        constraints = [
+            models.UniqueConstraint(
+                fields=['company', 'owner', 'metric',
+                        'period_type', 'period_year', 'period_month'],
+                name='crm_obj_uniq_month',
+                condition=models.Q(period_type='month'),
+            ),
+            models.UniqueConstraint(
+                fields=['company', 'owner', 'metric',
+                        'period_type', 'period_year', 'period_quarter'],
+                name='crm_obj_uniq_quarter',
+                condition=models.Q(period_type='quarter'),
+            ),
+            models.UniqueConstraint(
+                fields=['company', 'owner', 'metric',
+                        'period_type', 'period_year'],
+                name='crm_obj_uniq_year',
+                condition=models.Q(period_type='year'),
+            ),
+        ]
+
+    def __str__(self):
+        return (
+            f'{self.get_metric_display()} — {self.period_type} '
+            f'{self.period_year} (cible {self.cible})'
+        )
+
+
 class Appointment(models.Model):
     """QJ20 — Rendez-vous (visite commerciale/technique) planifié sur un lead.
 
