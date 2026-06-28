@@ -30,8 +30,17 @@ from authentication.mixins import TenantMixin
 from authentication.permissions import IsResponsableOrAdmin
 
 from . import selectors
-from .models import Clause, Contrat, ContratLien, ModeleContrat, ModeleContratClause, PartieContrat
+from .models import (
+    Clause,
+    ClauseContrat,
+    Contrat,
+    ContratLien,
+    ModeleContrat,
+    ModeleContratClause,
+    PartieContrat,
+)
 from .serializers import (
+    ClauseContratSerializer,
     ClauseSerializer,
     ContratLienSerializer,
     ContratSerializer,
@@ -262,6 +271,41 @@ class ModeleContratClauseViewSet(_ContratsBaseViewSet):
         modele_id = self.request.query_params.get("modele")
         if modele_id:
             qs = qs.filter(modele_id=modele_id)
+        return qs
+
+    def perform_create(self, serializer):
+        serializer.save(company=self.request.user.company)
+
+
+class ClauseContratViewSet(_ContratsBaseViewSet):
+    """Clauses RÉSOLUES d'un contrat (CONTRAT9).
+
+    Clauses matérialisées (titre + corps résolus, ordonnées, surchargeables) sur
+    un ``Contrat`` concret. Scopé société ; ``company`` posée côté serveur. Le
+    ``contrat`` et la ``clause`` source (optionnelle) sont validés même-société
+    par le sérialiseur.
+
+    Filtres optionnels : ``?contrat=<id>``, ``?clause=<id>``,
+    ``?surchargee=true/false``.
+    """
+
+    queryset = ClauseContrat.objects.select_related("contrat", "clause").all()
+    serializer_class = ClauseContratSerializer
+    filter_backends = [filters.SearchFilter, filters.OrderingFilter]
+    search_fields = ["titre", "corps"]
+    ordering_fields = ["ordre", "id"]
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        contrat_id = self.request.query_params.get("contrat")
+        if contrat_id:
+            qs = qs.filter(contrat_id=contrat_id)
+        clause_id = self.request.query_params.get("clause")
+        if clause_id:
+            qs = qs.filter(clause_id=clause_id)
+        surchargee = self.request.query_params.get("surchargee")
+        if surchargee is not None:
+            qs = qs.filter(surchargee=surchargee.lower() in ("1", "true", "oui"))
         return qs
 
     def perform_create(self, serializer):
