@@ -2,7 +2,9 @@ from django.contrib import admin
 
 from .models import (
     BaremeIR,
+    BulletinPaie,
     ElementVariable,
+    LigneBulletin,
     ParametrePaie,
     PeriodePaie,
     ProfilPaie,
@@ -86,3 +88,26 @@ class ElementVariableAdmin(admin.ModelAdmin):
                     'montant', 'source', 'company')
     list_filter = ('type', 'source')
     search_fields = ('libelle',)
+
+
+class LigneBulletinInline(admin.TabularInline):
+    model = LigneBulletin
+    extra = 0
+    fields = ('ordre', 'code', 'libelle', 'type', 'montant')
+
+
+@admin.register(BulletinPaie)
+class BulletinPaieAdmin(admin.ModelAdmin):
+    list_display = ('id', 'periode', 'profil', 'statut', 'brut', 'net_a_payer',
+                    'date_validation', 'company')
+    list_filter = ('statut',)
+    search_fields = ('profil__employe__nom', 'profil__employe__prenom')
+    inlines = [LigneBulletinInline]
+
+
+@admin.register(LigneBulletin)
+class LigneBulletinAdmin(admin.ModelAdmin):
+    list_display = ('id', 'bulletin', 'ordre', 'code', 'libelle', 'type',
+                    'montant', 'company')
+    list_filter = ('type',)
+    search_fields = ('code', 'libelle')

@@ -661,3 +661,233 @@ class ElementVariable(models.Model):
 
     def __str__(self):
         return f'{self.get_type_display()} {self.quantite} → profil #{self.profil_id}'
+
+
+# ── PAIE17 — Bulletin de paie (snapshot immuable une fois validé) ───────────
+
+class BulletinPaie(models.Model):
+    """Bulletin de paie d'un employé pour une période (PAIE17).
+
+    SNAPSHOT figé du calcul (``services.calculer_bulletin``) : tous les montants
+    sont MATÉRIALISÉS au moment de la génération (brut, cotisations salariales &
+    patronales, frais pro, net imposable, IR, net à payer…). Le détail des lignes
+    vit dans ``LigneBulletin`` (cf. ``lignes``).
+
+    IMMUTABILITÉ — une fois ``statut == 'valide'``, le bulletin et ses lignes sont
+    GELÉS : aucune modification de montant n'est plus possible, et le bulletin ne
+    peut être ni supprimé ni recalculé. Tant qu'il est ``'brouillon'``, il peut
+    être recalculé (régénéré) librement. Le passage ``brouillon → valide`` est la
+    seule transition autorisée (irréversible). Cette garde est posée dans
+    ``save``/``delete`` ci-dessous ET dans ``services`` — elle ne dépend donc pas
+    de la couche API.
+
+    Multi-société : ``company`` posée côté serveur. Le couple
+    ``(periode, profil)`` est unique — un seul bulletin par employé et par
+    période. Donnée SENSIBLE (salaires) — usage interne paie uniquement.
+    """
+    STATUT_BROUILLON = 'brouillon'
+    STATUT_VALIDE = 'valide'
+    STATUT_CHOICES = [
+        (STATUT_BROUILLON, 'Brouillon'),
+        (STATUT_VALIDE, 'Validé'),
+    ]
+
+    # Champs de montant figés au moment du calcul (snapshot). Modifiables tant
+    # que le bulletin est en brouillon, gelés dès la validation.
+    SNAPSHOT_FIELDS = [
+        'brut', 'brut_imposable', 'cnss_salariale', 'cnss_patronale',
+        'amo_salariale', 'amo_patronale', 'cimr_salariale',
+        'frais_professionnels', 'net_imposable', 'ir', 'retenues',
+        'prime_anciennete', 'charges_patronales', 'net_a_payer',
+        'personnes_a_charge',
+    ]
+
+    class BulletinVerrouille(Exception):
+        """Tentative de modification/suppression d'un bulletin validé (figé)."""
+
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='paie_bulletins',
+        verbose_name='Société',
+    )
+    periode = models.ForeignKey(
+        PeriodePaie,
+        on_delete=models.CASCADE,
+        related_name='bulletins',
+        verbose_name='Période',
+    )
+    profil = models.ForeignKey(
+        ProfilPaie,
+        on_delete=models.CASCADE,
+        related_name='bulletins',
+        verbose_name='Profil de paie',
+    )
+    statut = models.CharField(
+        max_length=12, choices=STATUT_CHOICES, default=STATUT_BROUILLON,
+        verbose_name='Statut')
+    personnes_a_charge = models.PositiveSmallIntegerField(
+        default=0, verbose_name='Personnes à charge')
+    # ── Snapshot des montants (Decimal au centime) ─────────────────────────
+    brut = models.DecimalField(
+        max_digits=14, decimal_places=2, default=Decimal('0'),
+        verbose_name='Brut')
+    brut_imposable = models.DecimalField(
+        max_digits=14, decimal_places=2, default=Decimal('0'),
+        verbose_name='Brut imposable')
+    cnss_salariale = models.DecimalField(
+        max_digits=14, decimal_places=2, default=Decimal('0'),
+        verbose_name='CNSS salariale')
+    cnss_patronale = models.DecimalField(
+        max_digits=14, decimal_places=2, default=Decimal('0'),
+        verbose_name='CNSS patronale')
+    amo_salariale = models.DecimalField(
+        max_digits=14, decimal_places=2, default=Decimal('0'),
+        verbose_name='AMO salariale')
+    amo_patronale = models.DecimalField(
+        max_digits=14, decimal_places=2, default=Decimal('0'),
+        verbose_name='AMO patronale')
+    cimr_salariale = models.DecimalField(
+        max_digits=14, decimal_places=2, default=Decimal('0'),
+        verbose_name='CIMR salariale')
+    frais_professionnels = models.DecimalField(
+        max_digits=14, decimal_places=2, default=Decimal('0'),
+        verbose_name='Frais professionnels')
+    net_imposable = models.DecimalField(
+        max_digits=14, decimal_places=2, default=Decimal('0'),
+        verbose_name='Net imposable')
+    ir = models.DecimalField(
+        max_digits=14, decimal_places=2, default=Decimal('0'),
+        verbose_name='IR')
+    retenues = models.DecimalField(
+        max_digits=14, decimal_places=2, default=Decimal('0'),
+        verbose_name='Retenues')
+    prime_anciennete = models.DecimalField(
+        max_digits=14, decimal_places=2, default=Decimal('0'),
+        verbose_name="Prime d'ancienneté")
+    charges_patronales = models.DecimalField(
+        max_digits=14, decimal_places=2, default=Decimal('0'),
+        verbose_name='Charges patronales')
+    net_a_payer = models.DecimalField(
+        max_digits=14, decimal_places=2, default=Decimal('0'),
+        verbose_name='Net à payer')
+    date_validation = models.DateTimeField(
+        null=True, blank=True, verbose_name='Validé le')
+    date_creation = models.DateTimeField(
+        auto_now_add=True, verbose_name='Créé le')
+
+    class Meta:
+        verbose_name = 'Bulletin de paie'
+        verbose_name_plural = 'Bulletins de paie'
+        ordering = ['-date_creation']
+        unique_together = [('periode', 'profil')]
+
+    def __str__(self):
+        return f'Bulletin #{self.profil_id} {self.periode} ({self.statut})'
+
+    @property
+    def est_valide(self):
+        """Vrai quand le bulletin est figé (validé)."""
+        return self.statut == self.STATUT_VALIDE
+
+    def save(self, *args, **kwargs):
+        """Garde d'immuabilité (PAIE17).
+
+        Un bulletin déjà ``valide`` en base est FIGÉ : seule reste autorisée la
+        transition de validation elle-même (``brouillon → valide``, qui pose
+        ``date_validation``). Toute autre écriture sur un bulletin validé lève
+        ``BulletinVerrouille``. Tant que le bulletin est brouillon, ``save`` est
+        libre (recalcul/régénération).
+        """
+        if self.pk:
+            ancien = (
+                BulletinPaie.objects
+                .filter(pk=self.pk)
+                .values('statut')
+                .first()
+            )
+            if ancien and ancien['statut'] == self.STATUT_VALIDE:
+                # Déjà validé en base → immuable.
+                update_fields = kwargs.get('update_fields')
+                autorise = (
+                    update_fields is not None
+                    and set(update_fields) <= {'statut', 'date_validation'}
+                    and self.statut == self.STATUT_VALIDE
+                )
+                if not autorise:
+                    raise BulletinPaie.BulletinVerrouille(
+                        'Bulletin validé : modification interdite (figé).')
+        super().save(*args, **kwargs)
+
+    def delete(self, *args, **kwargs):
+        """Interdit la suppression d'un bulletin validé (snapshot conservé)."""
+        if self.est_valide:
+            raise BulletinPaie.BulletinVerrouille(
+                'Bulletin validé : suppression interdite.')
+        return super().delete(*args, **kwargs)
+
+
+class LigneBulletin(models.Model):
+    """Ligne d'un ``BulletinPaie`` (PAIE17) — snapshot d'une ligne de paie.
+
+    Détail figé d'un bulletin : ``code``, ``libelle``, ``type`` (gain / retenue /
+    cotisation) et ``montant``, dans l'ordre d'affichage (``ordre``). Issu du
+    moteur ``calculer_bulletin`` (clé ``lignes``).
+
+    IMMUTABILITÉ — une ligne dont le bulletin parent est ``valide`` est GELÉE :
+    ni création, ni modification, ni suppression. La garde est posée dans
+    ``save``/``delete`` (et dans ``services``). Multi-société : ``company`` posée
+    côté serveur (héritée du bulletin).
+    """
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='paie_lignes_bulletin',
+        verbose_name='Société',
+    )
+    bulletin = models.ForeignKey(
+        BulletinPaie,
+        on_delete=models.CASCADE,
+        related_name='lignes',
+        verbose_name='Bulletin',
+    )
+    code = models.CharField(max_length=30, verbose_name='Code')
+    libelle = models.CharField(max_length=120, verbose_name='Libellé')
+    type = models.CharField(
+        max_length=12, choices=Rubrique.TYPE_CHOICES,
+        default=Rubrique.TYPE_GAIN, verbose_name='Type')
+    montant = models.DecimalField(
+        max_digits=14, decimal_places=2, default=Decimal('0'),
+        verbose_name='Montant')
+    ordre = models.PositiveIntegerField(default=0, verbose_name='Ordre')
+
+    class Meta:
+        verbose_name = 'Ligne de bulletin'
+        verbose_name_plural = 'Lignes de bulletin'
+        ordering = ['bulletin', 'ordre', 'id']
+
+    def __str__(self):
+        return f'{self.code} {self.montant} (bulletin #{self.bulletin_id})'
+
+    def _bulletin_fige(self):
+        statut = (
+            BulletinPaie.objects
+            .filter(pk=self.bulletin_id)
+            .values_list('statut', flat=True)
+            .first()
+        )
+        return statut == BulletinPaie.STATUT_VALIDE
+
+    def save(self, *args, **kwargs):
+        """Interdit toute écriture si le bulletin parent est validé (figé)."""
+        if self.bulletin_id and self._bulletin_fige():
+            raise BulletinPaie.BulletinVerrouille(
+                'Bulletin validé : lignes figées (écriture interdite).')
+        super().save(*args, **kwargs)
+
+    def delete(self, *args, **kwargs):
+        """Interdit la suppression d'une ligne d'un bulletin validé."""
+        if self.bulletin_id and self._bulletin_fige():
+            raise BulletinPaie.BulletinVerrouille(
+                'Bulletin validé : lignes figées (suppression interdite).')
+        return super().delete(*args, **kwargs)

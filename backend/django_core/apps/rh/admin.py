@@ -1,14 +1,17 @@
 from django.contrib import admin
 
 from .models import (
+    AffectationRoster,
     DemandeConge,
     Departement,
     DocumentEmploye,
     DossierEmploye,
     ElementSortie,
     HeuresSupp,
+    IncidentPresence,
     Pointage,
     Poste,
+    PresenceChantier,
     Remuneration,
     SoldeConge,
     TypeAbsence,
@@ -97,4 +100,28 @@ class HeuresSuppAdmin(admin.ModelAdmin):
     list_display = ('employe', 'date', 'heures_travaillees', 'hs_25', 'hs_50',
                     'hs_100', 'jour_repos_ferie', 'company')
     list_filter = ('jour_repos_ferie',)
+    search_fields = ('employe__matricule', 'employe__nom', 'employe__prenom')
+
+
+@admin.register(AffectationRoster)
+class AffectationRosterAdmin(admin.ModelAdmin):
+    list_display = ('employe', 'equipe', 'date', 'creneau', 'vehicule_id',
+                    'conflit_conge', 'company')
+    list_filter = ('creneau', 'conflit_conge')
+    search_fields = ('employe__matricule', 'employe__nom', 'equipe')
+
+
+@admin.register(PresenceChantier)
+class PresenceChantierAdmin(admin.ModelAdmin):
+    list_display = ('employe', 'installation_id', 'date', 'statut', 'emarge',
+                    'company')
+    list_filter = ('statut', 'emarge')
+    search_fields = ('employe__matricule', 'employe__nom', 'employe__prenom')
+
+
+@admin.register(IncidentPresence)
+class IncidentPresenceAdmin(admin.ModelAdmin):
+    list_display = ('employe', 'type_incident', 'date', 'minutes_retard',
+                    'justifie', 'company')
+    list_filter = ('type_incident', 'justifie')
     search_fields = ('employe__matricule', 'employe__nom', 'employe__prenom')

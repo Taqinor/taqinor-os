@@ -14,6 +14,7 @@ from .views import (
     releve_commit,
     roof_config,
     RoofLayoutViewSet,  # FG245
+    FicheTechniqueViewSet,  # FG254
     DevisPresetViewSet,  # QJ16-wiring
 )
 from .recouvrement import (
@@ -30,6 +31,8 @@ from .insights_view import cash_flow_forecast
 from .journal_view import journal_ventes, export_comptable
 from .numbering_view import numerotation_audit, numerotation_preview
 from .extra_docs_views import lettre_relance_premium, fiche_remise_premium
+from .diagram_views import schema_unifilaire, schema_unifilaire_devis  # FG252
+from .roof_load_view import roof_load_check  # FG253
 
 router = DefaultRouter()
 router.register(r'devis', DevisViewSet)
@@ -41,6 +44,9 @@ router.register(r'paiements', PaiementViewSet)
 router.register(r'avoirs', AvoirViewSet)
 # FG245 — calepinage toiture (placement panneaux), compte calculé serveur.
 router.register(r'calepinages', RoofLayoutViewSet, basename='calepinage')
+# FG254 / DC35 — bibliothèque de fiches techniques normalisées (datasheets).
+router.register(r'fiches-techniques', FicheTechniqueViewSet,
+                basename='fiche-technique')
 router.register(r'niveaux-relance', FollowupLevelViewSet,
                 basename='niveau-relance')
 # QJ16-wiring — presets de devis (list + destroy uniquement).
@@ -83,6 +89,13 @@ urlpatterns = [
          lettre_relance_premium, name='lettre-relance-premium'),
     path('chantiers/<int:chantier_id>/fiche-remise-premium/',
          fiche_remise_premium, name='fiche-remise-premium'),
+    # FG252 — brouillon de schéma unifilaire (SVG), dossier technique.
+    # Placé AVANT le routeur pour ne pas être avalé par la route /devis/.
+    path('devis/<int:pk>/schema-unifilaire/', schema_unifilaire_devis,
+         name='devis-schema-unifilaire'),
+    path('schema-unifilaire/', schema_unifilaire, name='schema-unifilaire'),
+    # FG253 — aide au calcul de charge structure toiture (alerte dépassement).
+    path('toiture/charge/', roof_load_check, name='toiture-charge'),
     # N87 — état du compte d'envoi email (informatif, lecture seule).
     path('email-config/', email_config, name='email-config'),
     # Config carte pour l'outil de conception 3D de toiture (ERP même origine) :

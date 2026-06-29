@@ -7,6 +7,7 @@ appartenant à la société de l'utilisateur.
 from rest_framework import serializers
 
 from .models import (
+    AffectationRoster,
     DemandeConge,
     Departement,
     DocumentEmploye,
@@ -14,8 +15,10 @@ from .models import (
     ElementSortie,
     FeuilleTemps,
     HeuresSupp,
+    IncidentPresence,
     Pointage,
     Poste,
+    PresenceChantier,
     Remuneration,
     SoldeConge,
     TypeAbsence,
@@ -364,3 +367,157 @@ class PointageSerializer(serializers.ModelSerializer):
                 {'heure_depart':
                  "L'heure de départ précède l'heure d'arrivée."})
         return attrs
+
+
+class AffectationRosterSerializer(serializers.ModelSerializer):
+    """Affectation roster (FG169) — affectation hebdo technicien↔équipe/camionnette.
+
+    Le client saisit ``employe``, ``equipe``, ``date``, ``creneau`` et,
+    facultativement, ``vehicule_id`` et ``note``. ``company`` est posée côté
+    serveur (jamais lue du corps) ; ``employe`` doit appartenir à la société.
+    ``semaine_du`` (lundi de la semaine) et ``conflit_conge`` (congé validé
+    couvrant le jour) sont CALCULÉS et posés côté serveur — lecture seule.
+    """
+    creneau_display = serializers.CharField(
+        source='get_creneau_display', read_only=True)
+    employe_nom = serializers.SerializerMethodField()
+
+    class Meta:
+        model = AffectationRoster
+        fields = [
+            'id', 'employe', 'employe_nom', 'equipe', 'vehicule_id',
+            'date', 'semaine_du', 'creneau', 'creneau_display',
+            'conflit_conge', 'note',
+            'date_creation', 'date_modification',
+        ]
+        read_only_fields = [
+            'semaine_du', 'conflit_conge',
+            'date_creation', 'date_modification',
+        ]
+
+    def get_employe_nom(self, obj):
+        return f'{obj.employe.nom} {obj.employe.prenom}'
+
+    def validate_employe(self, value):
+        return _meme_societe(self, value, 'Employé')
+
+    def validate_equipe(self, value):
+        if not value or not value.strip():
+            raise serializers.ValidationError("L'équipe est obligatoire.")
+        return value
+
+    def validate(self, attrs):
+        # Unicité (société, employé, jour) : ``company`` n'est pas un champ du
+        # sérialiseur (posée côté serveur), donc DRF ne génère pas le validateur
+        # automatiquement — on le vérifie ici contre la société de l'utilisateur.
+        request = self.context.get('request')
+        employe = attrs.get('employe') or getattr(self.instance, 'employe', None)
+        jour = attrs.get('date') or getattr(self.instance, 'date', None)
+        if request is not None and employe is not None and jour is not None:
+            qs = AffectationRoster.objects.filter(
+                company_id=request.user.company_id,
+                employe=employe, date=jour)
+            if self.instance is not None:
+                qs = qs.exclude(pk=self.instance.pk)
+            if qs.exists():
+                raise serializers.ValidationError(
+                    {'date': "Une affectation existe déjà pour cet employé "
+                             "ce jour-là."})
+        return attrs
+
+
+class PresenceChantierSerializer(serializers.ModelSerializer):
+    """Présence chantier / émargement (FG170) — qui était sur quel chantier.
+
+    Le client saisit ``employe``, ``installation_id``, ``date``, ``statut`` et,
+    facultativement, ``heure_arrivee``/``heure_depart``/``note``. ``company`` est
+    posée côté serveur (jamais lue du corps) ; ``employe`` doit appartenir à la
+    société. L'émargement (``emarge``/``emarge_le``/``emarge_par``) est posé côté
+    serveur via l'action dédiée — lecture seule ici. Unicité (société, employé,
+    installation, jour).
+    """
+    statut_display = serializers.CharField(
+        source='get_statut_display', read_only=True)
+    employe_nom = serializers.SerializerMethodField()
+
+    class Meta:
+        model = PresenceChantier
+        fields = [
+            'id', 'employe', 'employe_nom', 'installation_id', 'date',
+            'statut', 'statut_display',
+            'heure_arrivee', 'heure_depart',
+            'emarge', 'emarge_le', 'emarge_par', 'note',
+            'date_creation', 'date_modification',
+        ]
+        read_only_fields = [
+            'emarge', 'emarge_le', 'emarge_par',
+            'date_creation', 'date_modification',
+        ]
+
+    def get_employe_nom(self, obj):
+        return f'{obj.employe.nom} {obj.employe.prenom}'
+
+    def validate_employe(self, value):
+        return _meme_societe(self, value, 'Employé')
+
+    def validate(self, attrs):
+        # Garde-fou cohérence horaire.
+        arrivee = attrs.get('heure_arrivee')
+        depart = attrs.get('heure_depart')
+        if arrivee and depart and depart < arrivee:
+            raise serializers.ValidationError(
+                {'heure_depart':
+                 "L'heure de départ précède l'heure d'arrivée."})
+        # Unicité (société, employé, installation, jour) — ``company`` posée côté
+        # serveur n'est pas un champ du sérialiseur, donc on la vérifie ici.
+        request = self.context.get('request')
+        employe = attrs.get('employe') or getattr(self.instance, 'employe', None)
+        installation_id = attrs.get('installation_id') \
+            or getattr(self.instance, 'installation_id', None)
+        jour = attrs.get('date') or getattr(self.instance, 'date', None)
+        if request is not None and employe is not None \
+                and installation_id is not None and jour is not None:
+            qs = PresenceChantier.objects.filter(
+                company_id=request.user.company_id, employe=employe,
+                installation_id=installation_id, date=jour)
+            if self.instance is not None:
+                qs = qs.exclude(pk=self.instance.pk)
+            if qs.exists():
+                raise serializers.ValidationError(
+                    {'date': "Une présence existe déjà pour cet employé sur "
+                             "ce chantier ce jour-là."})
+        return attrs
+
+
+class IncidentPresenceSerializer(serializers.ModelSerializer):
+    """Incident de présence (FG171) — retard / absence injustifiée + comptage.
+
+    Le client saisit ``employe``, ``type_incident``, ``date``,
+    ``minutes_retard`` (retard/départ anticipé) et ``motif``/``note``.
+    ``company`` est posée côté serveur (jamais lue du corps) ; ``employe`` doit
+    appartenir à la société. La régularisation (``justifie``/``justifie_par``/
+    ``justifie_le``) est posée côté serveur via l'action dédiée — lecture seule.
+    """
+    type_incident_display = serializers.CharField(
+        source='get_type_incident_display', read_only=True)
+    employe_nom = serializers.SerializerMethodField()
+
+    class Meta:
+        model = IncidentPresence
+        fields = [
+            'id', 'employe', 'employe_nom',
+            'type_incident', 'type_incident_display', 'date',
+            'minutes_retard', 'justifie', 'motif',
+            'justifie_par', 'justifie_le', 'note',
+            'date_creation', 'date_modification',
+        ]
+        read_only_fields = [
+            'justifie', 'justifie_par', 'justifie_le',
+            'date_creation', 'date_modification',
+        ]
+
+    def get_employe_nom(self, obj):
+        return f'{obj.employe.nom} {obj.employe.prenom}'
+
+    def validate_employe(self, value):
+        return _meme_societe(self, value, 'Employé')

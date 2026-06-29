@@ -12,9 +12,9 @@ from .models import (
     BordereauRemise, Caisse, CessionImmobilisation, ClotureCaisse,
     CompteComptable, CompteTresorerie, DotationAmortissement, EcritureComptable,
     Effet, ExerciceComptable, Immobilisation, Journal, LigneEcriture,
-    LignePrevisionnelTresorerie, LigneReleve, MouvementCaisse, PeriodeComptable,
-    PlanAmortissement, PlanComptable, Rapprochement, RapprochementBancaire,
-    VirementInterne,
+    LignePrevisionnelTresorerie, LigneReleve, MouvementCaisse, PaymentRun,
+    PaymentRunLine, PeriodeComptable, PlanAmortissement, PlanComptable,
+    Rapprochement, RapprochementBancaire, VirementInterne,
 )
 
 
@@ -672,4 +672,65 @@ class RapprochementSerializer(serializers.ModelSerializer):
         if value is not None and value < 0:
             raise serializers.ValidationError(
                 "La tolérance doit être positive ou nulle.")
+        return value
+
+
+# ── FG133 — Campagnes de règlement fournisseurs (payment run) ──────────────
+
+class PaymentRunLineSerializer(serializers.ModelSerializer):
+    """Ligne d'une campagne de règlement : une échéance fournisseur à payer.
+
+    ``company``/``payment_run`` sont posés côté serveur. Le bénéficiaire et les
+    coordonnées bancaires manquants sont complétés depuis le sélecteur de stock
+    par le service à l'ajout.
+    """
+    class Meta:
+        model = PaymentRunLine
+        fields = [
+            'id', 'tiers_type', 'tiers_id', 'beneficiaire', 'reference',
+            'montant', 'date_echeance', 'rib', 'iban',
+        ]
+
+    def validate_montant(self, value):
+        if value is not None and value <= 0:
+            raise serializers.ValidationError(
+                "Le montant d'une ligne de règlement doit être strictement "
+                "positif.")
+        return value
+
+
+class PaymentRunSerializer(serializers.ModelSerializer):
+    """Campagne de règlement fournisseurs (FG133).
+
+    ``company`` posée côté serveur ; ``compte_tresorerie`` validé comme banque de
+    la société. ``lignes`` est saisissable à la création (le service complète
+    les bénéficiaires/coordonnées et recalcule le total) puis en lecture seule.
+    Le statut, le total, le posting et l'écriture évoluent par les actions de
+    service (figer/poster), jamais par écriture directe du corps.
+    """
+    mode_paiement_display = serializers.CharField(
+        source='get_mode_paiement_display', read_only=True)
+    statut_display = serializers.CharField(
+        source='get_statut_display', read_only=True)
+    compte_libelle = serializers.CharField(
+        source='compte_tresorerie.libelle', read_only=True, default='')
+    lignes = PaymentRunLineSerializer(many=True, required=False)
+
+    class Meta:
+        model = PaymentRun
+        fields = [
+            'id', 'reference', 'mode_paiement', 'mode_paiement_display',
+            'compte_tresorerie', 'compte_libelle', 'date_paiement', 'statut',
+            'statut_display', 'total', 'posted', 'ecriture', 'note', 'lignes',
+            'date_creation',
+        ]
+        read_only_fields = [
+            'statut', 'total', 'posted', 'ecriture', 'date_creation']
+
+    def validate_compte_tresorerie(self, value):
+        value = _meme_societe(self, value, 'Compte de trésorerie')
+        if value is not None and value.type_compte != (
+                CompteTresorerie.Type.BANQUE):
+            raise serializers.ValidationError(
+                "Le règlement par virement se débite d'un compte bancaire.")
         return value

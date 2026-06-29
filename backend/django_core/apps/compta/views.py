@@ -5,7 +5,11 @@ réservé au palier Administrateur/Responsable (``IsResponsableOrAdmin``).
 Les viewsets filtrent par ``request.user.company`` (TenantMixin) et posent la
 société côté serveur ; aucun prix d'achat ni marge n'apparaît ici.
 """
+import csv
+import io
+
 from django.core.exceptions import ValidationError as DjangoValidationError
+from django.http import HttpResponse
 
 from rest_framework import filters, status, viewsets
 from rest_framework.decorators import action
@@ -19,7 +23,7 @@ from .models import (
     BordereauRemise, Caisse, CessionImmobilisation, CompteComptable,
     CompteTresorerie, DotationAmortissement, EcritureComptable, Effet,
     ExerciceComptable, Immobilisation, Journal, LignePrevisionnelTresorerie,
-    LigneReleve, MouvementCaisse, PeriodeComptable, PlanComptable,
+    LigneReleve, MouvementCaisse, PaymentRun, PeriodeComptable, PlanComptable,
     Rapprochement, RapprochementBancaire, VirementInterne,
 )
 from .serializers import (
@@ -29,10 +33,10 @@ from .serializers import (
     DotationAmortissementSerializer, EcritureComptableSerializer,
     EffetSerializer, ExerciceComptableSerializer, ImmobilisationSerializer,
     JournalSerializer, LignePrevisionnelTresorerieSerializer,
-    LigneReleveSerializer, MouvementCaisseSerializer, PeriodeComptableSerializer,
-    PlanAmortissementSerializer, PlanComptableSerializer,
-    RapprochementBancaireSerializer, RapprochementSerializer,
-    VirementInterneSerializer,
+    LigneReleveSerializer, MouvementCaisseSerializer, PaymentRunSerializer,
+    PeriodeComptableSerializer, PlanAmortissementSerializer,
+    PlanComptableSerializer, RapprochementBancaireSerializer,
+    RapprochementSerializer, VirementInterneSerializer,
 )
 
 
@@ -213,6 +217,35 @@ class EtatsComptablesViewSet(viewsets.ViewSet):
             company,
             date_debut=request.query_params.get('date_debut') or None,
             nb_semaines=max(1, min(nb_semaines, 52)))
+        return Response(data)
+
+    @action(detail=False, methods=['get'], url_path='balance-agee-fournisseurs')
+    def balance_agee_fournisseurs(self, request):
+        """Balance âgée fournisseurs (FG132) : encours dû par fournisseur,
+        bucketé 0–30 / 31–60 / 61–90 / 90+ jours depuis le grand livre (compte
+        4411). Miroir AP de la balance âgée clients. Paramètres :
+        ``date_reference`` (défaut aujourd'hui), ``validees`` (1 → écritures
+        validées seulement). Lecture seule, scopée société, Admin/Responsable.
+        """
+        data = selectors.balance_agee_fournisseurs(
+            request.user.company,
+            date_reference=request.query_params.get('date_reference') or None,
+            validees_seulement=request.query_params.get('validees') == '1')
+        return Response(data)
+
+    @action(detail=False, methods=['get'],
+            url_path='releve-fournisseur/(?P<tiers_id>[0-9]+)')
+    def releve_fournisseur(self, request, tiers_id=None):
+        """Relevé de compte d'un fournisseur (FG132) : mouvements chronologiques
+        du compte 4411 pour l'auxiliaire ``tiers_id`` + solde dû. Miroir AP du
+        relevé client. Paramètres : ``date_debut`` / ``date_fin`` / ``validees``.
+        Lecture seule, scopée société, Admin/Responsable.
+        """
+        periode = self._periode(request)
+        data = selectors.releve_fournisseur(
+            request.user.company, int(tiers_id),
+            date_debut=periode['date_debut'], date_fin=periode['date_fin'],
+            validees_seulement=periode['validees_seulement'])
         return Response(data)
 
 
@@ -1060,3 +1093,118 @@ class RapprochementViewSet(_ComptaBaseViewSet):
                 {'detail': exc.messages[0] if exc.messages else str(exc)},
                 status=status.HTTP_400_BAD_REQUEST)
         return Response(self.get_serializer(rapp).data)
+
+
+# ── FG133 / FG134 — Campagnes de règlement fournisseurs + fichier virement ──
+
+class PaymentRunViewSet(_ComptaBaseViewSet):
+    """Campagnes de règlement fournisseurs (FG133) + export virement (FG134).
+
+    Regroupe une sélection de dettes fournisseur dues à régler en un lot. La
+    création (corps ``{date_paiement, mode_paiement?, compte_tresorerie?,
+    reference?, note?, lignes: [{tiers_id, montant, reference?, date_echeance?,
+    beneficiaire?, rib?, iban?}]}``) passe par le service, qui complète les
+    bénéficiaires/coordonnées depuis le sélecteur de stock et calcule le total.
+    ``figer`` fige la proposition (brouillon → proposée) ; ``poster`` passe
+    l'écriture EN LOT (débit 4411 par ligne / crédit 5141 banque) et solde les
+    dettes ; ``fichier-virement`` exporte l'ordre de virement bancaire (CSV).
+    Société scopée, posée côté serveur ; suppression interdite une fois postée.
+    """
+    http_method_names = ['get', 'post', 'delete', 'head', 'options']
+    queryset = PaymentRun.objects.select_related(
+        'compte_tresorerie', 'ecriture').prefetch_related('lignes').all()
+    serializer_class = PaymentRunSerializer
+    filter_backends = [filters.OrderingFilter]
+    ordering_fields = ['date_paiement', 'date_creation', 'total', 'id']
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        params = self.request.query_params
+        statut = params.get('statut')
+        if statut:
+            qs = qs.filter(statut=statut)
+        mode = params.get('mode_paiement')
+        if mode:
+            qs = qs.filter(mode_paiement=mode)
+        return qs
+
+    def create(self, request, *args, **kwargs):
+        serializer = self.get_serializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        vd = serializer.validated_data
+        compte = vd.get('compte_tresorerie')
+        try:
+            run = services.creer_payment_run(
+                request.user.company,
+                date_paiement=vd['date_paiement'],
+                mode_paiement=vd.get('mode_paiement'),
+                compte_tresorerie=compte,
+                reference=vd.get('reference', '') or '',
+                note=vd.get('note', '') or '',
+                lignes=vd.get('lignes') or [],
+                user=request.user)
+        except DjangoValidationError as exc:
+            return Response(
+                {'detail': exc.messages[0] if exc.messages else str(exc)},
+                status=status.HTTP_400_BAD_REQUEST)
+        return Response(
+            self.get_serializer(run).data, status=status.HTTP_201_CREATED)
+
+    def destroy(self, request, *args, **kwargs):
+        run = self.get_object()  # scopé société par TenantMixin.
+        if run.posted:
+            return Response(
+                {'detail': 'Une campagne postée ne peut être supprimée.'},
+                status=status.HTTP_400_BAD_REQUEST)
+        return super().destroy(request, *args, **kwargs)
+
+    @action(detail=True, methods=['post'])
+    def figer(self, request, pk=None):
+        """Fige la proposition de règlement (brouillon → proposée, FG133)."""
+        run = self.get_object()  # scopé société par TenantMixin.
+        try:
+            run = services.figer_payment_run(run)
+        except DjangoValidationError as exc:
+            return Response(
+                {'detail': exc.messages[0] if exc.messages else str(exc)},
+                status=status.HTTP_400_BAD_REQUEST)
+        return Response(self.get_serializer(run).data)
+
+    @action(detail=True, methods=['post'])
+    def poster(self, request, pk=None):
+        """Poste la campagne au grand livre EN LOT (FG133). Refusé en période
+        close ; idempotent. Renvoie la campagne postée."""
+        run = self.get_object()  # scopé société par TenantMixin.
+        try:
+            services.poster_payment_run(run, user=request.user)
+        except DjangoValidationError as exc:
+            return Response(
+                {'detail': exc.messages[0] if exc.messages else str(exc)},
+                status=status.HTTP_400_BAD_REQUEST)
+        run.refresh_from_db()
+        return Response(self.get_serializer(run).data)
+
+    @action(detail=True, methods=['get'], url_path='fichier-virement')
+    def fichier_virement(self, request, pk=None):
+        """Exporte l'ordre de virement bancaire de la campagne (FG134).
+
+        Fichier CSV (un virement par ligne : bénéficiaire, RIB/IBAN, montant,
+        devise, référence, motif). Refusé si la campagne n'est pas en virement
+        ou si une ligne n'a aucune coordonnée bancaire. Lecture seule.
+        """
+        run = self.get_object()  # scopé société par TenantMixin.
+        try:
+            data = services.fichier_virement(run)
+        except DjangoValidationError as exc:
+            return Response(
+                {'detail': exc.messages[0] if exc.messages else str(exc)},
+                status=status.HTTP_400_BAD_REQUEST)
+        buffer = io.StringIO()
+        writer = csv.writer(buffer, delimiter=';')
+        writer.writerow(data['headers'])
+        writer.writerows(data['rows'])
+        resp = HttpResponse(
+            buffer.getvalue(), content_type='text/csv; charset=utf-8')
+        resp['Content-Disposition'] = (
+            f'attachment; filename="virements_{run.reference or run.id}.csv"')
+        return resp

@@ -22,6 +22,7 @@ ModeleContratViewSet (CONTRAT7)
 Bibliothèque de gabarits/modèles de contrats. Scopé société (TenantMixin).
 Action ``/instancier/`` crée un ``Contrat`` pré-rempli depuis le gabarit.
 """
+from django.http import HttpResponse
 from rest_framework import filters, status, viewsets
 from rest_framework.decorators import action
 from rest_framework.response import Response
@@ -29,7 +30,7 @@ from rest_framework.response import Response
 from authentication.mixins import TenantMixin
 from authentication.permissions import IsResponsableOrAdmin
 
-from . import selectors
+from . import selectors, services
 from .models import (
     Clause,
     ClauseContrat,
@@ -40,6 +41,7 @@ from .models import (
     PartieContrat,
 )
 from .serializers import (
+    ChangerStatutSerializer,
     ClauseContratSerializer,
     ClauseSerializer,
     ContratLienSerializer,
@@ -48,6 +50,7 @@ from .serializers import (
     ModeleContratClauseSerializer,
     ModeleContratSerializer,
     PartieContratSerializer,
+    RendreContratSerializer,
 )
 
 
@@ -107,6 +110,66 @@ class ContratViewSet(_ContratsBaseViewSet):
         """
         contrat = self.get_object()
         return Response(selectors.liens_enrichis(contrat))
+
+    @action(detail=True, methods=['post'], url_path='rendre')
+    def rendre(self, request, pk=None):
+        """Génère le texte du contrat par fusion de jetons (CONTRAT10).
+
+        Fusionne les jetons ``{{ ... }}`` (champs du contrat, parties, clauses
+        résolues) dans un gabarit : le ``gabarit`` fourni dans le corps, sinon
+        le corps du ``ModeleContrat`` lié, sinon un gabarit par défaut. Lecture
+        seule : ne persiste rien. La société est garantie par ``get_object``.
+        """
+        contrat = self.get_object()
+        body = RendreContratSerializer(data=request.data)
+        body.is_valid(raise_exception=True)
+        gabarit = body.validated_data.get('gabarit') or None
+        return Response(services.rendre_contrat(contrat, gabarit=gabarit))
+
+    @action(detail=True, methods=['get'], url_path='pdf')
+    def pdf(self, request, pk=None):
+        """Rendu PDF INTERNE du contrat — hors ``/proposal`` (CONTRAT11).
+
+        PDF de travail interne (jamais un PDF de devis client : ``/proposal``
+        reste l'unique chemin des PDF de devis). Fusionne le contrat
+        (CONTRAT10) puis convertit le texte en PDF. La société est garantie par
+        ``get_object`` (queryset scopé société).
+        """
+        contrat = self.get_object()
+        pdf_bytes = services.rendre_contrat_pdf(contrat)
+        filename = (contrat.reference or f'contrat-{contrat.id}') + '.pdf'
+        response = HttpResponse(pdf_bytes, content_type='application/pdf')
+        response['Content-Disposition'] = f'inline; filename="{filename}"'
+        return response
+
+    @action(detail=True, methods=['post'], url_path='changer-statut')
+    def changer_statut(self, request, pk=None):
+        """Applique une transition de statut GARDÉE (CONTRAT12).
+
+        Refuse (400) toute transition hors du graphe d'états ou un passage en
+        approbation/signature sans au moins deux parties. La société est
+        garantie par ``get_object``.
+        """
+        contrat = self.get_object()
+        body = ChangerStatutSerializer(data=request.data)
+        body.is_valid(raise_exception=True)
+        cible = body.validated_data['statut']
+        try:
+            services.changer_statut(contrat, cible)
+        except services.TransitionInterdite as exc:
+            return Response(
+                {'detail': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+        return Response(
+            ContratSerializer(contrat, context={'request': request}).data)
+
+    @action(detail=True, methods=['get'], url_path='statuts-suivants')
+    def statuts_suivants(self, request, pk=None):
+        """Liste des statuts cibles autorisés depuis le statut courant (CONTRAT12)."""
+        contrat = self.get_object()
+        return Response({
+            'statut': contrat.statut,
+            'suivants': services.statuts_suivants(contrat),
+        })
 
 
 class PartieContratViewSet(_ContratsBaseViewSet):
@@ -211,6 +274,8 @@ class ModeleContratViewSet(_ContratsBaseViewSet):
             type_contrat=modele.type_contrat_defaut,
             devise=modele.devise_defaut,
             confidentialite=modele.confidentialite_defaut,
+            # CONTRAT10 — garder le gabarit source pour le rendu par fusion.
+            modele=modele,
         )
         return Response(
             ContratSerializer(contrat, context={'request': request}).data,

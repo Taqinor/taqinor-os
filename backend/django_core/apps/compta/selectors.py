@@ -721,3 +721,143 @@ def rapprochements_en_ecart(company):
         Rapprochement.objects.filter(
             company=company, statut=Rapprochement.Statut.ECART)
         .order_by('-date_evaluation', '-id'))
+
+
+# ── FG132 — Échéancier & relevé fournisseur (balance âgée AP + relevé) ──────
+# Miroir fournisseur de la balance âgée clients (apps.ventes.recouvrement). Tout
+# se déduit du grand livre de la compta elle-même (lignes du compte 4411
+# Fournisseurs, auxiliarisées par ``tiers_type``/``tiers_id``) — AUCUN import
+# cross-app de modèle. Lecture seule, scopée société. Le côté fournisseur est un
+# compte de PASSIF : son solde naturel est CRÉDITEUR ; ce qui reste DÛ à un
+# fournisseur = Σ(crédit) − Σ(débit) de ses lignes (positif = à payer).
+
+# Comptes de tiers fournisseurs dont les lignes alimentent la balance âgée AP.
+_COMPTES_FOURNISSEURS_AP = ('4411', '4417')   # Fournisseurs + retenues garantie.
+
+
+def _nom_fournisseur(company, tiers_type, tiers_id):
+    """Résout le nom d'un fournisseur via le sélecteur de stock (cross-app READ).
+
+    N'importe JAMAIS ``apps.stock.models`` : passe par
+    ``apps.stock.selectors.get_fournisseur_by_id`` (import local pour éviter les
+    cycles). Renvoie ``''`` si le tiers est inconnu / non fournisseur.
+    """
+    if tiers_id is None or (tiers_type or '') != 'fournisseur':
+        return ''
+    try:
+        from apps.stock.selectors import get_fournisseur_by_id
+    except Exception:  # pragma: no cover - défensif si l'app stock manque
+        return ''
+    fournisseur = get_fournisseur_by_id(company, tiers_id)
+    return getattr(fournisseur, 'nom', '') or ''
+
+
+def _lignes_ap_qs(company, *, date_debut=None, date_fin=None,
+                  validees_seulement=False):
+    """Lignes du grand livre sur les comptes fournisseurs (auxiliaire tiers)."""
+    return _lignes_qs(company, date_debut=date_debut, date_fin=date_fin,
+                      validees_seulement=validees_seulement).filter(
+        compte__numero__in=_COMPTES_FOURNISSEURS_AP)
+
+
+def balance_agee_fournisseurs(company, *, date_reference=None,
+                              validees_seulement=False):
+    """Balance âgée fournisseurs : encours dû par fournisseur, bucketé par âge.
+
+    Miroir AP de la balance âgée clients. Pour chaque fournisseur (auxiliaire
+    ``tiers_id`` des lignes du compte 4411), on cumule le montant restant DÛ
+    (Σ crédit − Σ débit) en quatre tranches d'ancienneté calculées à partir de la
+    DATE D'ÉCRITURE par rapport à ``date_reference`` (défaut : aujourd'hui) :
+    0–30 / 31–60 / 61–90 / 90+ jours. Les lignes lettrées (appariées/soldées)
+    sont EXCLUES — seul l'encours ouvert reste dû. Un fournisseur dont l'encours
+    net est nul ou débiteur (avance/avoir) est omis. Renvoie une liste de dicts
+    ``{'tiers_id', 'fournisseur_nom', 'b0_30', 'b31_60', 'b61_90', 'b90_plus',
+    'total'}`` triés par total décroissant. Lecture seule, scopée société.
+    """
+    ref = date_reference or timezone.localdate()
+    qs = _lignes_ap_qs(
+        company, date_fin=date_reference,
+        validees_seulement=validees_seulement).filter(
+        lettrage='', tiers_id__isnull=False, tiers_type='fournisseur')
+    par_tiers = {}
+    for ligne in qs:
+        tid = ligne.tiers_id
+        entry = par_tiers.setdefault(tid, {
+            'tiers_id': tid,
+            'tiers_type': ligne.tiers_type,
+            'b0_30': Decimal('0'), 'b31_60': Decimal('0'),
+            'b61_90': Decimal('0'), 'b90_plus': Decimal('0'),
+            'total': Decimal('0'),
+        })
+        # Dette fournisseur (passif) : crédit − débit (positif = à payer).
+        montant = (ligne.credit or Decimal('0')) - (ligne.debit or Decimal('0'))
+        jours = (ref - ligne.ecriture.date_ecriture).days
+        if jours <= 30:
+            entry['b0_30'] += montant
+        elif jours <= 60:
+            entry['b31_60'] += montant
+        elif jours <= 90:
+            entry['b61_90'] += montant
+        else:
+            entry['b90_plus'] += montant
+        entry['total'] += montant
+    out = []
+    for entry in par_tiers.values():
+        if entry['total'] <= 0:
+            continue  # solde nul ou débiteur (avance/avoir) : pas une dette.
+        entry['fournisseur_nom'] = _nom_fournisseur(
+            company, entry['tiers_type'], entry['tiers_id'])
+        out.append(entry)
+    out.sort(key=lambda e: e['total'], reverse=True)
+    return out
+
+
+def releve_fournisseur(company, tiers_id, *, tiers_type='fournisseur',
+                       date_debut=None, date_fin=None,
+                       validees_seulement=False):
+    """Relevé de compte d'un fournisseur : toutes ses lignes 4411 + soldes.
+
+    Miroir AP du relevé client. Liste chronologiquement les mouvements du compte
+    fournisseur pour l'auxiliaire ``tiers_id`` (factures au crédit, règlements au
+    débit) avec un solde courant cumulé (côté passif : crédit − débit), et les
+    totaux ``{credit, debit, solde_du}``. ``solde_du`` positif = reste à payer.
+    Renvoie ``{'fournisseur': {...}, 'lignes': [...], 'totaux': {...}}``.
+    Lecture seule, scopée société.
+    """
+    qs = _lignes_ap_qs(
+        company, date_debut=date_debut, date_fin=date_fin,
+        validees_seulement=validees_seulement).filter(
+        tiers_id=tiers_id, tiers_type=tiers_type).order_by(
+        'ecriture__date_ecriture', 'id')
+    lignes = []
+    total_credit = total_debit = Decimal('0')
+    solde = Decimal('0')
+    for ligne in qs:
+        credit = ligne.credit or Decimal('0')
+        debit = ligne.debit or Decimal('0')
+        solde += credit - debit
+        total_credit += credit
+        total_debit += debit
+        lignes.append({
+            'date': ligne.ecriture.date_ecriture,
+            'journal': ligne.ecriture.journal.code,
+            'reference': ligne.ecriture.reference,
+            'libelle': ligne.libelle or ligne.ecriture.libelle,
+            'credit': credit,   # facture / dette engagée.
+            'debit': debit,     # règlement / avoir.
+            'lettrage': ligne.lettrage,
+            'solde_courant': solde,
+        })
+    return {
+        'fournisseur': {
+            'tiers_id': tiers_id,
+            'tiers_type': tiers_type,
+            'nom': _nom_fournisseur(company, tiers_type, tiers_id),
+        },
+        'lignes': lignes,
+        'totaux': {
+            'credit': total_credit,
+            'debit': total_debit,
+            'solde_du': solde,
+        },
+    }

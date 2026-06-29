@@ -8,7 +8,9 @@ from rest_framework import serializers
 
 from .models import (
     BaremeIR,
+    BulletinPaie,
     ElementVariable,
+    LigneBulletin,
     ParametrePaie,
     PeriodePaie,
     ProfilPaie,
@@ -242,3 +244,35 @@ class ElementVariableSerializer(serializers.ModelSerializer):
 
     def validate_rubrique(self, value):
         return _meme_societe(self, value, 'Rubrique')
+
+
+class LigneBulletinSerializer(serializers.ModelSerializer):
+    """Ligne d'un bulletin (PAIE17) — snapshot figé, lecture seule."""
+
+    class Meta:
+        model = LigneBulletin
+        fields = ['id', 'code', 'libelle', 'type', 'montant', 'ordre']
+        read_only_fields = fields
+
+
+class BulletinPaieSerializer(serializers.ModelSerializer):
+    """Bulletin de paie matérialisé (PAIE17).
+
+    Snapshot en LECTURE SEULE : les montants sont posés par
+    ``services.generer_bulletin`` (jamais via l'API) et figés à la validation.
+    Le bulletin se crée/recalcule par l'action ``generer`` et se fige par
+    l'action ``valider`` — pas d'écriture directe des montants.
+    """
+    lignes = LigneBulletinSerializer(many=True, read_only=True)
+
+    class Meta:
+        model = BulletinPaie
+        fields = [
+            'id', 'periode', 'profil', 'statut', 'personnes_a_charge',
+            'brut', 'brut_imposable', 'cnss_salariale', 'cnss_patronale',
+            'amo_salariale', 'amo_patronale', 'cimr_salariale',
+            'frais_professionnels', 'net_imposable', 'ir', 'retenues',
+            'prime_anciennete', 'charges_patronales', 'net_a_payer',
+            'date_validation', 'date_creation', 'lignes',
+        ]
+        read_only_fields = fields
