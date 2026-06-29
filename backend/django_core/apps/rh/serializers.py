@@ -27,6 +27,7 @@ from .models import (
     Pointage,
     Poste,
     PresenceChantier,
+    PresquAccident,
     Remuneration,
     SoldeConge,
     TypeAbsence,
@@ -985,3 +986,44 @@ class AccidentTravailSerializer(serializers.ModelSerializer):
                 {'nb_jours_arret':
                  "Un nombre de jours d'arrêt implique un arrêt de travail."})
         return attrs
+
+
+class PresquAccidentSerializer(serializers.ModelSerializer):
+    """Presqu'accident / near-miss (FG182) — saisie rapide terrain.
+
+    Le client saisit l'essentiel : ``date_constat``, ``lieu``, ``chantier_id``
+    (référence chaîne optionnelle), ``description``, ``gravite_potentielle``
+    (faible / moyenne / élevée), ``mesure_corrective``, ``photo_key`` (clé MinIO
+    optionnelle) et ``statut`` (ouvert / traité). ``company``, ``reference`` ET
+    ``declare_par`` sont posées CÔTÉ SERVEUR (jamais lues du corps).
+    ``reference`` et ``declare_par`` sont en lecture seule (générées /
+    renseignées côté serveur à la création).
+    """
+    gravite_potentielle_display = serializers.CharField(
+        source='get_gravite_potentielle_display', read_only=True)
+    statut_display = serializers.CharField(
+        source='get_statut_display', read_only=True)
+    declare_par_nom = serializers.SerializerMethodField()
+
+    class Meta:
+        model = PresquAccident
+        fields = [
+            'id', 'reference',
+            'date_constat', 'lieu', 'chantier_id',
+            'description',
+            'gravite_potentielle', 'gravite_potentielle_display',
+            'mesure_corrective', 'photo_key',
+            'declare_par', 'declare_par_nom',
+            'statut', 'statut_display',
+            'date_creation', 'date_modification',
+        ]
+        read_only_fields = [
+            'reference', 'declare_par',
+            'date_creation', 'date_modification']
+
+    def get_declare_par_nom(self, obj):
+        if not obj.declare_par_id:
+            return ''
+        user = obj.declare_par
+        full = user.get_full_name() if hasattr(user, 'get_full_name') else ''
+        return full or getattr(user, 'username', '') or ''

@@ -20,6 +20,7 @@ from .models import (
     Pointage,
     Poste,
     PresenceChantier,
+    PresquAccident,
     Remuneration,
     SoldeConge,
     TypeAbsence,
@@ -212,3 +213,11 @@ class AccidentTravailAdmin(admin.ModelAdmin):
     list_filter = ('gravite', 'statut', 'arret_travail', 'declare_cnss')
     search_fields = ('reference', 'lieu', 'employe__matricule',
                      'employe__nom', 'employe__prenom')
+
+
+@admin.register(PresquAccident)
+class PresquAccidentAdmin(admin.ModelAdmin):
+    list_display = ('reference', 'date_constat', 'lieu',
+                    'gravite_potentielle', 'statut', 'declare_par', 'company')
+    list_filter = ('gravite_potentielle', 'statut')
+    search_fields = ('reference', 'lieu', 'chantier_id')
