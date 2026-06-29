@@ -425,3 +425,49 @@ def activer_procedure(procedure, date_application=None):
     procedure.date_application = date_application or timezone.localdate()
     procedure.save(update_fields=['statut', 'date_application'])
     return procedure
+
+
+# ── QHSE22 — Gate « document unique requis avant pose » ─────────────────────
+
+# Messages de refus lisibles par motif (rendu côté appelant — p. ex.
+# ``installations`` qui GATE la transition vers « pose »).
+_DUER_MOTIF_MESSAGES = {
+    'aucune_evaluation': (
+        "Aucun document unique d'évaluation des risques (DUERP) n'a été créé "
+        "pour ce chantier ; il est requis avant la pose."),
+    'aucune_validee': (
+        "Le document unique d'évaluation des risques (DUERP) du chantier n'est "
+        "pas validé ; il doit l'être avant la pose."),
+    'validee_sans_lignes': (
+        "Le document unique d'évaluation des risques (DUERP) validé ne contient "
+        "aucun risque évalué ; au moins une ligne est requise avant la pose."),
+}
+
+
+def exiger_document_unique(company, chantier_id):
+    """Exige un document unique validé avant la pose (gate, QHSE22).
+
+    Porte publique pour les autres apps (typiquement ``installations``, qui
+    l'appelle pour GATER la transition d'un chantier vers « pose ») : laisse
+    passer SI ``selectors.document_unique_valide`` confirme un DUERP ``validee``
+    non vide pour le chantier (scopé société), sinon lève une
+    ``django.core.exceptions.ValidationError`` au message clair selon le motif
+    (aucune évaluation / aucune validée / validée sans lignes).
+
+    Référence LÂCHE au chantier par ``chantier_id`` — aucun import cross-app de
+    ``installations`` ici ; l'appelant fournit l'id et capte l'exception. Aucune
+    mutation. Retourne le dict de statut (cf. ``document_unique_valide``) en cas
+    de succès, ce qui en fait aussi un assertion réutilisable.
+    """
+    from django.core.exceptions import ValidationError
+
+    from .selectors import document_unique_valide
+
+    statut = document_unique_valide(company, chantier_id)
+    if not statut['valide']:
+        message = _DUER_MOTIF_MESSAGES.get(
+            statut['motif'],
+            "Un document unique d'évaluation des risques validé est requis "
+            "avant la pose.")
+        raise ValidationError(message, code=statut['motif'] or 'duer_requis')
+    return statut
