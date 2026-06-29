@@ -2202,10 +2202,16 @@ def creer_note_frais(company, *, employe, date_frais, montant, motif,
     if justificatif is not None:
         note.justificatif = justificatif
     note.full_clean(exclude=['reference', 'employe', 'created_by'])
-    from apps.ventes.utils.references import next_reference
-    note.reference = next_reference(NoteFrais, 'NDF', company)
-    note.save()
-    return note
+    from apps.ventes.utils.references import create_with_reference
+
+    def _save(reference):
+        note.reference = reference
+        note.save()
+        return note
+
+    # Savepoint + retry : sous double-création concurrente même société/mois,
+    # le perdant réessaie le numéro suivant au lieu de 500 (collision connue).
+    return create_with_reference(NoteFrais, 'NDF', company, _save)
 
 
 def soumettre_note_frais(note):

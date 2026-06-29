@@ -195,9 +195,12 @@ def _forecast_holt_winters(
         )
         fitted = model.fit()
         predicted = fitted.forecast(horizon)
-        out = [max(0.0, float(v)) for v in predicted]
-        if len(out) != horizon or any(v != v for v in out):  # NaN guard
+        raw = [float(v) for v in predicted]
+        # Garde NaN AVANT le clamp : max(0.0, nan) renvoie 0.0 (0.0 > nan est
+        # False), donc tester le NaN après clamp ne déclencherait jamais le repli.
+        if len(raw) != horizon or any(v != v for v in raw):  # NaN guard
             return None
+        out = [max(0.0, v) for v in raw]
         # Pente moyenne estimée sur l'horizon prévu.
         slope = (out[-1] - out[0]) / (horizon - 1) if horizon > 1 else 0.0
         return out, 'holt-winters', slope

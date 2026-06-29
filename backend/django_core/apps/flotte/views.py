@@ -36,7 +36,7 @@ from .serializers import (
     VehiculeSerializer,
 )
 
-READ_ACTIONS = ['list', 'retrieve']
+READ_ACTIONS = ['list', 'retrieve', 'consommation']
 
 
 class _FlotteBaseViewSet(TenantMixin, viewsets.ModelViewSet):
