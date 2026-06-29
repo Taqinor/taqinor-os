@@ -174,6 +174,36 @@ RETENTION_SCOPE_RANK = {
     RETENTION_SCOPE_FOLDER: 3,
 }
 
+# GED23 — Archivage légal à valeur probante (write-once / object-lock).
+#
+# Une fois un document ARCHIVÉ LÉGALEMENT (`ArchivageLegal` posé), il devient
+# IMMUABLE — WRITE-ONCE : ni le document ni ses versions ne peuvent plus être
+# modifiés ou supprimés (au niveau APPLICATIF — la garantie est posée dans
+# `save()`/`delete()` ici ET dans `services.py`). L'enregistrement
+# `ArchivageLegal` lui-même est en CRÉATION SEULE (immuable : pas d'update, pas
+# de delete via l'API). On enregistre un `hash_integrite` (SHA-256 du contenu de
+# la version archivée) pour la valeur probante (preuve d'intégrité, anti-
+# altération) et, en BONUS best-effort, on pose un verrou objet MinIO
+# (object-lock retain-until) via la couche `records.storage` SI le backend le
+# supporte — sinon on dégrade proprement (l'immuabilité applicative reste LA
+# garantie ; l'object-lock n'est qu'un renfort). Couche LOCALE à la GED, séparée
+# du funnel commercial `STAGES.py` (rule #2) — on n'importe surtout PAS STAGES.py.
+#
+# Le message d'erreur levé quand on tente d'écrire/supprimer un objet archivé.
+ARCHIVE_LEGALE_MESSAGE = (
+    "Document archivé à valeur probante (write-once) : il est immuable et ne "
+    "peut plus être modifié ni supprimé."
+)
+
+
+class ArchivageLegalError(Exception):
+    """GED23 — Levée à toute tentative d'écriture/suppression d'un objet archivé.
+
+    Hérite d'``Exception`` (et non de ``PermissionError``/``ValidationError``)
+    pour rester explicitement reconnaissable ; les vues la traduisent en 403.
+    L'immuabilité write-once est posée au niveau modèle (`save()`/`delete()`)
+    ET service, de sorte qu'aucun chemin d'écriture ne peut la contourner."""
+
 
 class Cabinet(models.Model):
     """Espace documentaire racine (« armoire ») d'une société.
@@ -438,6 +468,35 @@ class Document(models.Model):
         `services.change_lifecycle_status`."""
         return sorted(LIFECYCLE_TRANSITIONS.get(self.statut, set()))
 
+    @property
+    def est_archive_legalement(self):
+        """GED23 — True si ce document est archivé à valeur probante (write-once).
+
+        Lit en base l'existence d'un `ArchivageLegal` rattaché à ce document.
+        Tant qu'un archivage existe, le document (et ses versions) est IMMUABLE."""
+        if self.pk is None:
+            return False
+        return self.archivages_legaux.exists()
+
+    def save(self, *args, **kwargs):
+        """GED23 — Refuse toute MODIFICATION d'un document archivé (write-once).
+
+        Une CRÉATION (pk encore absent) reste libre ; seules les écritures sur un
+        document DÉJÀ archivé légalement sont bloquées. La garantie est posée au
+        niveau modèle pour qu'aucun chemin d'écriture (`save`/`update_fields`) ne
+        puisse la contourner. L'indexation plein-texte/embedding passe par des
+        `QuerySet.update()` (qui n'appellent PAS `save()`) — elle n'est donc pas
+        affectée par cette garde et reste opérante après archivage."""
+        if self.pk is not None and self.est_archive_legalement:
+            raise ArchivageLegalError(ARCHIVE_LEGALE_MESSAGE)
+        super().save(*args, **kwargs)
+
+    def delete(self, *args, **kwargs):
+        """GED23 — Refuse la SUPPRESSION d'un document archivé (write-once)."""
+        if self.pk is not None and self.est_archive_legalement:
+            raise ArchivageLegalError(ARCHIVE_LEGALE_MESSAGE)
+        return super().delete(*args, **kwargs)
+
     def __str__(self):
         return self.nom
 
@@ -533,6 +592,33 @@ class DocumentVersion(models.Model):
             models.Index(fields=['company', 'checksum']),
             models.Index(fields=['document', 'version']),
         ]
+
+    def _document_archive_legalement(self):
+        """True si le document parent est archivé légalement (write-once GED23).
+
+        Lecture en base (l'existence d'un `ArchivageLegal` sur le document) —
+        bornée au document parent de cette version."""
+        document_id = self.document_id
+        if document_id is None:
+            return False
+        return ArchivageLegal.objects.filter(document_id=document_id).exists()
+
+    def save(self, *args, **kwargs):
+        """GED23 — Refuse l'ajout/modification d'une version sur un document
+        archivé légalement (write-once).
+
+        Couvre AUSSI la création d'une nouvelle version : un document archivé est
+        figé — on ne lui ajoute plus de version. L'indexation passe par
+        `QuerySet.update()` et n'est pas affectée."""
+        if self._document_archive_legalement():
+            raise ArchivageLegalError(ARCHIVE_LEGALE_MESSAGE)
+        super().save(*args, **kwargs)
+
+    def delete(self, *args, **kwargs):
+        """GED23 — Refuse la suppression d'une version d'un document archivé."""
+        if self._document_archive_legalement():
+            raise ArchivageLegalError(ARCHIVE_LEGALE_MESSAGE)
+        return super().delete(*args, **kwargs)
 
     def __str__(self):
         return f'{self.document} v{self.version}'
@@ -1088,3 +1174,97 @@ class PolitiqueRetention(models.Model):
     def __str__(self):
         return f'{self.nom} ({self.duree_conservation_jours} j → ' \
                f'{self.action_echeance})'
+
+
+class ArchivageLegal(models.Model):
+    """GED23 — Archivage légal à valeur probante d'un document (write-once).
+
+    Marque un document comme ARCHIVÉ LÉGALEMENT à une date donnée, par un
+    utilisateur, avec un motif. Une fois posé, le document (et toutes ses
+    versions) devient IMMUABLE — WRITE-ONCE : plus aucune modification ni
+    suppression (garde au niveau modèle dans `Document.save/delete` &
+    `DocumentVersion.save/delete`, ET dans `services`).
+
+    Valeur PROBANTE : on fige le `hash_integrite` (SHA-256 hexadécimal, 64
+    caractères) du CONTENU de la version archivée au moment de l'archivage. Ce
+    condensat sert de preuve d'intégrité (anti-altération) : recalculer le hash
+    du contenu plus tard et le comparer atteste qu'il n'a pas été modifié.
+
+    Renfort BONUS (best-effort) : `object_lock_retain_until` enregistre la date
+    jusqu'à laquelle un verrou objet (MinIO/S3 Object-Lock) devrait retenir le
+    fichier. Le service tente de poser ce verrou côté stockage SI le backend le
+    supporte (import paresseux, dégradation propre sinon) — mais l'immuabilité
+    APPLICATIVE est LA garantie ; l'object-lock n'est qu'un renfort.
+
+    L'enregistrement lui-même est en CRÉATION SEULE (immuable) : `save()` refuse
+    toute mise à jour et `delete()` toute suppression — un archivage légal ne se
+    « dé-archive » jamais. Multi-tenant : `company` & `archive_par` posés côté
+    serveur (jamais lus du corps de requête), toutes les requêtes bornées à la
+    société. Couche LOCALE à la GED, séparée du funnel `STAGES.py` (rule #2).
+    """
+    company = models.ForeignKey(
+        'authentication.Company', on_delete=models.CASCADE,
+        null=True, blank=True, related_name='ged_archivages_legaux')
+    document = models.ForeignKey(
+        Document, on_delete=models.CASCADE, related_name='archivages_legaux')
+    # Version précise figée au moment de l'archivage (la version courante au
+    # moment de l'appel). Optionnelle : un document peut être archivé sans
+    # version (rare) — le hash reste alors vide.
+    version = models.ForeignKey(
+        DocumentVersion, on_delete=models.SET_NULL, null=True, blank=True,
+        related_name='archivages_legaux',
+        verbose_name='version archivée')
+    archive_le = models.DateTimeField(
+        auto_now_add=True, verbose_name='archivé le')
+    archive_par = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL,
+        null=True, blank=True, related_name='ged_archivages_legaux',
+        verbose_name='archivé par')
+    motif = models.TextField(blank=True, default='', verbose_name='motif')
+    # Condensat SHA-256 (hexadécimal = 64 caractères) du contenu de la version
+    # archivée — preuve d'intégrité à valeur probante. Vide si aucune version.
+    hash_integrite = models.CharField(
+        max_length=64, blank=True, default='',
+        verbose_name="condensat d'intégrité (SHA-256)")
+    # Renfort object-lock (best-effort) : date de rétention jusqu'à laquelle un
+    # verrou objet devrait retenir le fichier côté stockage. NULL si non posé.
+    object_lock_retain_until = models.DateField(
+        null=True, blank=True, verbose_name='verrou objet jusqu\'au')
+    # True si le verrou objet a effectivement été posé côté stockage (best-effort
+    # — reste faux si le backend ne supporte pas l'object-lock : on dégrade).
+    object_lock_applique = models.BooleanField(
+        default=False, verbose_name='verrou objet appliqué')
+
+    class Meta:
+        ordering = ['-archive_le', '-id']
+        verbose_name = 'Archivage légal'
+        verbose_name_plural = 'Archivages légaux'
+        constraints = [
+            # Un document n'est archivé légalement qu'UNE seule fois (write-once).
+            models.UniqueConstraint(
+                fields=['document'], name='ged_arch_legal_doc_unique'),
+        ]
+        indexes = [
+            models.Index(fields=['company', 'document'],
+                         name='ged_arch_legal_co_doc_idx'),
+        ]
+
+    def save(self, *args, **kwargs):
+        """GED23 — Création SEULE : refuse toute mise à jour (immuable).
+
+        Un archivage légal ne se modifie jamais — il n'existe que pour figer un
+        état. Toute tentative de ré-`save()` d'un enregistrement déjà persisté
+        est rejetée (write-once de l'archivage lui-même)."""
+        if self.pk is not None:
+            raise ArchivageLegalError(
+                "Un archivage légal est immuable (création seule) : il ne peut "
+                "pas être modifié.")
+        super().save(*args, **kwargs)
+
+    def delete(self, *args, **kwargs):
+        """GED23 — Refuse la suppression d'un archivage légal (immuable)."""
+        raise ArchivageLegalError(
+            "Un archivage légal est immuable : il ne peut pas être supprimé.")
+
+    def __str__(self):
+        return f'Archivage légal — {self.document} ({self.archive_le:%Y-%m-%d})'
