@@ -643,14 +643,15 @@ def reject_demande(demande, *, user, commentaire=''):
 # ── GED20 — Partage public d'un document par lien tokenisé ──────────
 
 def create_partage(*, document, company, created_by=None, expires_at=None,
-                   password=None, quota_max=None):
+                   password=None, quota_max=None, watermark=False):
     """GED20 — Crée un partage public tokenisé pour un document (côté gestion).
 
     `company` est posée côté serveur et doit être celle du document (jamais lue
     du corps de requête). Le `token` long/imprévisible est généré par le défaut
     du modèle. Le mot de passe (optionnel) est HACHÉ via `set_password` — jamais
     stocké en clair. `expires_at`/`quota_max` sont optionnels (NULL = pas de
-    limite). Renvoie le `PartageGed` créé.
+    limite). `watermark` (GED21) force le filigrane sur ce lien public. Renvoie
+    le `PartageGed` créé.
     """
     from .models import PartageGed
     if document.company_id != getattr(company, 'id', company):
@@ -660,6 +661,7 @@ def create_partage(*, document, company, created_by=None, expires_at=None,
         document=document,
         expires_at=expires_at,
         quota_max=quota_max,
+        watermark=watermark,
         created_by=created_by,
     )
     partage.set_password(password)
@@ -749,3 +751,146 @@ def consume_partage_download(partage):
         return False
     partage.refresh_from_db(fields=['telechargements'])
     return True
+
+
+# ── GED21 — Filigrane & contrôle de diffusion ───────────────────────────────
+
+# Types de contenu que le filigrane sait traiter. Tout autre type est renvoyé
+# tel quel (jamais d'erreur) — le filigrane est best-effort, jamais bloquant.
+_WATERMARK_PDF_MIMES = {'application/pdf'}
+_WATERMARK_IMAGE_MIMES = {
+    'image/png', 'image/jpeg', 'image/jpg', 'image/webp', 'image/gif',
+}
+
+
+def _watermark_pdf(file_bytes, text):
+    """GED21 — Filigrane diagonal répété sur chaque page d'un PDF.
+
+    Utilise PyMuPDF (`fitz`) quand il est disponible — import GARDÉ et
+    PARESSEUX : si la lib n'est pas installée (elle n'est PAS une dépendance
+    dure du backend), on dégrade proprement en renvoyant le PDF d'origine. Ne
+    lève jamais : tout échec retombe sur l'original (best-effort).
+
+    Renvoie `(out_bytes, watermarked)` où `watermarked` est False si la lib est
+    absente ou si le rendu a échoué (octets inchangés).
+    """
+    try:  # Dépendance optionnelle — import paresseux (no-op-safe sans la lib).
+        import fitz  # PyMuPDF
+    except Exception:  # pragma: no cover - chemin de repli sans la lib.
+        return file_bytes, False
+    try:
+        doc = fitz.open(stream=file_bytes, filetype='pdf')
+        try:
+            for page in doc:
+                rect = page.rect
+                # Filigrane diagonal centré, gris translucide, répété en bas.
+                page.insert_textbox(
+                    rect,
+                    text,
+                    fontsize=28,
+                    color=(0.5, 0.5, 0.5),
+                    rotate=45,
+                    align=fitz.TEXT_ALIGN_CENTER,
+                    overlay=True,
+                )
+            out = doc.tobytes()
+        finally:
+            doc.close()
+        return out, True
+    except Exception:  # pragma: no cover - robustesse : jamais bloquer.
+        return file_bytes, False
+
+
+def _watermark_image(file_bytes, text):
+    """GED21 — Incruste un filigrane texte translucide sur une image.
+
+    Utilise Pillow (déjà épinglé dans requirements) via un import PARESSEUX et
+    GARDÉ : si Pillow venait à manquer, on dégrade en renvoyant l'image
+    d'origine. Ne lève jamais.
+
+    Renvoie `(out_bytes, watermarked)`.
+    """
+    try:  # Import paresseux et gardé — Pillow présent, mais on reste robuste.
+        from PIL import Image, ImageDraw, ImageFont
+    except Exception:  # pragma: no cover - chemin de repli sans la lib.
+        return file_bytes, False
+    try:
+        import io
+        src = Image.open(io.BytesIO(file_bytes)).convert('RGBA')
+        overlay = Image.new('RGBA', src.size, (0, 0, 0, 0))
+        draw = ImageDraw.Draw(overlay)
+        try:
+            font = ImageFont.load_default()
+        except Exception:  # pragma: no cover - police par défaut indisponible.
+            font = None
+        # Tuile le texte en diagonale sur toute la surface (gris translucide).
+        step_x = max(160, src.width // 3)
+        step_y = max(90, src.height // 4)
+        for y in range(0, src.height + step_y, step_y):
+            for x in range(0, src.width + step_x, step_x):
+                draw.text((x, y), text, fill=(128, 128, 128, 110), font=font)
+        watermarked = Image.alpha_composite(src, overlay)
+        out = io.BytesIO()
+        # On réémet en PNG : préserve l'alpha du filigrane, sans dépendance
+        # supplémentaire (toujours supporté par Pillow).
+        watermarked.save(out, format='PNG')
+        return out.getvalue(), True
+    except Exception:  # pragma: no cover - robustesse : jamais bloquer.
+        return file_bytes, False
+
+
+def apply_watermark(file_bytes, content_type, text):
+    """GED21 — Applique un filigrane texte sur un contenu diffusé (best-effort).
+
+    Point d'entrée unique du contrôle de diffusion : superpose un texte de
+    confidentialité (ex. « CONFIDENTIEL — {société} — {utilisateur/date} ») sur
+    les PDF (via PyMuPDF) et les images (via Pillow). Le filigrane est un RENDU
+    À LA VOLÉE — il ne modifie JAMAIS le binaire stocké (MinIO/base) ni aucun
+    statut documentaire ; il ne s'applique qu'au flux servi.
+
+    SÉCURITÉ DÉPENDANCES : les libs sont importées PARESSEUSEMENT à l'intérieur
+    des helpers. Si une lib est absente (PyMuPDF n'est PAS une dépendance dure)
+    ou si le rendu échoue, on DÉGRADE proprement en renvoyant les octets
+    d'origine + `watermarked=False` — aucune exception, aucun crash, aucun
+    rebuild obligatoire. Un type non pris en charge (texte, zip…) est de même
+    renvoyé tel quel.
+
+    Renvoie un tuple `(out_bytes, watermarked)` :
+      - `out_bytes`     : les octets à servir (filigranés ou identiques).
+      - `watermarked`   : True seulement si un filigrane a effectivement été
+        appliqué (utile pour ajuster le Content-Type côté appelant).
+
+    Le contenu vide ou un texte vide laissent les octets inchangés.
+    """
+    if not file_bytes or not text:
+        return file_bytes, False
+    ct = (content_type or '').split(';')[0].strip().lower()
+    if ct in _WATERMARK_PDF_MIMES:
+        return _watermark_pdf(file_bytes, text)
+    if ct in _WATERMARK_IMAGE_MIMES:
+        return _watermark_image(file_bytes, text)
+    # Type non filigranable (texte, archive, octet-stream…) → inchangé.
+    return file_bytes, False
+
+
+def watermark_label(*, company=None, user=None):
+    """GED21 — Construit l'étiquette de filigrane de confidentialité.
+
+    Format : « CONFIDENTIEL — {société} — {acteur} — {date} ». Tout segment
+    absent est omis proprement. La société/l'utilisateur viennent TOUJOURS du
+    serveur (jamais d'un corps de requête) — l'appelant les résout depuis le
+    document partagé ou `request.user`.
+    """
+    from django.utils import timezone
+    parts = ['CONFIDENTIEL']
+    co_nom = getattr(company, 'nom', None)
+    if co_nom:
+        parts.append(str(co_nom))
+    actor = None
+    if user is not None:
+        actor = (getattr(user, 'username', None)
+                 or getattr(user, 'email', None))
+    if actor:
+        parts.append(str(actor))
+    parts.append(timezone.now().strftime('%Y-%m-%d'))
+    return ' — '.join(parts)
