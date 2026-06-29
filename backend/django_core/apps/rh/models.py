@@ -1558,3 +1558,128 @@ class VisiteMedicale(models.Model):
     def __str__(self):
         return (f'{self.employe.matricule} — '
                 f'{self.get_aptitude_display()}')
+
+
+class EpiCatalogue(models.Model):
+    """Catalogue des EPI de la société (FG178) — équipement de protection.
+
+    Référentiel des équipements de protection individuelle (EPI) que la société
+    attribue à ses équipes chantier : casque, harnais antichute, gants isolants,
+    chaussures de sécurité, lunettes… Une ligne par modèle/référence d'EPI ; la
+    DOTATION nominative (qui porte quel EPI, en quelle taille, depuis quelle
+    date) est portée par ``DotationEpi``.
+
+    Famille DISTINCTE des habilitations (FG173), certifications (FG174) et
+    visites médicales (FG177) : ici c'est le MATÉRIEL de protection attribué, pas
+    un titre réglementaire. Le ``type_epi`` regroupe les dotations par famille
+    d'équipement.
+
+    Multi-société : ``company`` posée côté serveur (jamais lue du corps).
+    """
+    class TypeEpi(models.TextChoices):
+        CASQUE = 'casque', 'Casque'
+        HARNAIS = 'harnais', 'Harnais antichute'
+        GANTS_ISOLANTS = 'gants_isolants', 'Gants isolants'
+        CHAUSSURES = 'chaussures', 'Chaussures de sécurité'
+        LUNETTES = 'lunettes', 'Lunettes de protection'
+        AUTRE = 'autre', 'Autre'
+
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='rh_epi_catalogue',
+        verbose_name='Société',
+    )
+    type_epi = models.CharField(
+        max_length=20, choices=TypeEpi.choices,
+        default=TypeEpi.CASQUE, verbose_name="Type d'EPI")
+    # Désignation lisible du modèle/référence (marque, norme…).
+    designation = models.CharField(
+        max_length=160, verbose_name='Désignation')
+    actif = models.BooleanField(default=True, verbose_name='Actif')
+    date_creation = models.DateTimeField(
+        auto_now_add=True, verbose_name='Créé le')
+    date_modification = models.DateTimeField(
+        auto_now=True, verbose_name='Modifié le')
+
+    class Meta:
+        verbose_name = 'EPI (catalogue)'
+        verbose_name_plural = 'EPI (catalogue)'
+        ordering = ['type_epi', 'designation']
+        indexes = [
+            models.Index(
+                fields=['company', 'type_epi'],
+                name='rh_epicat_comp_type_idx'),
+        ]
+
+    def __str__(self):
+        return f'{self.get_type_epi_display()} — {self.designation}'
+
+
+class DotationEpi(models.Model):
+    """Dotation nominative d'un EPI à un employé (FG178) — taille + date.
+
+    Attribue un EPI du catalogue (``EpiCatalogue``) à un employé, NOMINATIVEMENT,
+    avec sa ``taille``, la ``date_dotation`` (remise) et une éventuelle
+    ``date_renouvellement`` (échéance de remplacement — p. ex. un harnais
+    antichute se renouvelle périodiquement). ``quantite`` permet de tracer
+    plusieurs unités d'un même EPI.
+
+    Si ``date_renouvellement`` est renseignée, la dotation alimente le moteur
+    d'échéances RH (FG175) comme une alerte de remplacement à venir/dépassée.
+
+    Multi-société : ``company`` posée côté serveur (jamais lue du corps) ;
+    ``employe`` et ``epi`` doivent appartenir à la même société.
+    """
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='rh_dotations_epi',
+        verbose_name='Société',
+    )
+    employe = models.ForeignKey(
+        DossierEmploye,
+        on_delete=models.CASCADE,
+        related_name='dotations_epi',
+        verbose_name='Employé',
+    )
+    epi = models.ForeignKey(
+        EpiCatalogue,
+        on_delete=models.PROTECT,
+        related_name='dotations',
+        verbose_name='EPI',
+    )
+    # Taille attribuée (libre : « M », « 42 », « T9 »…).
+    taille = models.CharField(
+        max_length=20, blank=True, default='', verbose_name='Taille')
+    date_dotation = models.DateField(
+        null=True, blank=True, verbose_name='Date de dotation')
+    # Échéance de renouvellement : NULL = pas de renouvellement planifié. Une
+    # dotation dont l'échéance est passée doit alerter (FG175).
+    date_renouvellement = models.DateField(
+        null=True, blank=True,
+        verbose_name='Date de renouvellement (échéance)')
+    quantite = models.PositiveIntegerField(
+        default=1, verbose_name='Quantité')
+    note = models.CharField(
+        max_length=255, blank=True, default='', verbose_name='Note')
+    date_creation = models.DateTimeField(
+        auto_now_add=True, verbose_name='Créé le')
+    date_modification = models.DateTimeField(
+        auto_now=True, verbose_name='Modifié le')
+
+    class Meta:
+        verbose_name = 'Dotation EPI'
+        verbose_name_plural = 'Dotations EPI'
+        ordering = ['employe', 'epi']
+        indexes = [
+            models.Index(
+                fields=['company', 'employe'],
+                name='rh_dotepi_comp_emp_idx'),
+            models.Index(
+                fields=['company', 'date_renouvellement'],
+                name='rh_dotepi_comp_renouv_idx'),
+        ]
+
+    def __str__(self):
+        return f'{self.employe.matricule} — {self.epi}'

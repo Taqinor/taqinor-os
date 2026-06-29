@@ -13,6 +13,7 @@ from .models import (
     DemandeConge,
     DocumentEmploye,
     DossierEmploye,
+    DotationEpi,
     FeuilleTemps,
     Habilitation,
     HeuresSupp,
@@ -524,6 +525,45 @@ def visites_medicales_expirantes(company, within_days=30, inclure_expirees=True,
     return qs.select_related('employe').order_by('prochaine_visite', 'id')
 
 
+def dotations_epi_a_renouveler(company, within_days=30, inclure_expirees=True,
+                               employe_id=None):
+    """Dotations EPI (FG178) dont le renouvellement approche ou est dépassé.
+
+    Famille DISTINCTE des titres réglementaires : ici l'équipement de protection
+    (casque, harnais, gants isolants, chaussures…) attribué nominativement.
+    Lecture cadrée société : retient les dotations dont la
+    ``date_renouvellement`` (échéance) est renseignée et tombe au plus tard dans
+    ``within_days`` jours (aujourd'hui + ``within_days`` inclus). Par défaut
+    ``inclure_expirees`` est vrai : les dotations déjà échues sont aussi
+    renvoyées, car un EPI à remplacer est exactement ce qui doit alerter avant un
+    chantier ; passer ``inclure_expirees=False`` ne garde que les échéances à
+    venir. Les dotations sans échéance (``date_renouvellement`` NULL) sont
+    exclues. ``employe_id`` restreint à un employé. Toujours scopé société ;
+    trié par échéance la plus proche d'abord.
+    """
+    if company is None:
+        return DotationEpi.objects.none()
+    try:
+        within_days = int(within_days)
+    except (TypeError, ValueError):
+        within_days = 30
+    if within_days < 0:
+        within_days = 0
+    today = timezone.localdate()
+    limite = today + timedelta(days=within_days)
+    qs = DotationEpi.objects.filter(
+        company=company,
+        date_renouvellement__isnull=False,
+        date_renouvellement__lte=limite,
+    )
+    if not inclure_expirees:
+        qs = qs.filter(date_renouvellement__gte=today)
+    if employe_id is not None:
+        qs = qs.filter(employe_id=employe_id)
+    return (qs.select_related('employe', 'epi')
+            .order_by('date_renouvellement', 'id'))
+
+
 def echeances_rh(company, within_days=30, today=None):
     """Moteur d'échéances RH unifié (FG175) — alertes d'expiration agrégées.
 
@@ -535,7 +575,9 @@ def echeances_rh(company, within_days=30, today=None):
     * documents employé pourvus d'une échéance (FG159,
       ``DocumentEmploye.date_expiration``) ;
     * visites médicales du travail (FG177,
-      ``VisiteMedicale.prochaine_visite``).
+      ``VisiteMedicale.prochaine_visite``) ;
+    * dotations EPI à renouveler (FG178,
+      ``DotationEpi.date_renouvellement``).
 
     Comme les sélecteurs sous-jacents par famille, on INCLUT les échéances déjà
     dépassées (une habilitation/certification/doc/visite expiré est précisément
@@ -554,7 +596,7 @@ def echeances_rh(company, within_days=30, today=None):
 
     ``{
         'type': 'habilitation' | 'certification' | 'document'
-                | 'visite_medicale',
+                | 'visite_medicale' | 'dotation_epi',
         'employe_id': int,
         'employe': str,                 # « MATRICULE — Nom Prénom »
         'libelle': str,                 # libellé lisible du titre/document
@@ -641,6 +683,23 @@ def echeances_rh(company, within_days=30, today=None):
             'libelle': f'Visite médicale ({vis.get_aptitude_display()})',
             'date_validite': vis.prochaine_visite,
             'jours_restants': (vis.prochaine_visite - today).days,
+        })
+
+    dotations = (
+        DotationEpi.objects
+        .filter(company=company,
+                date_renouvellement__isnull=False,
+                date_renouvellement__lte=limite)
+        .select_related('employe', 'epi')
+    )
+    for dot in dotations:
+        rows.append({
+            'type': 'dotation_epi',
+            'employe_id': dot.employe_id,
+            'employe': _employe_label(dot.employe),
+            'libelle': f'EPI à renouveler ({dot.epi.designation})',
+            'date_validite': dot.date_renouvellement,
+            'jours_restants': (dot.date_renouvellement - today).days,
         })
 
     rows.sort(key=lambda r: (r['date_validite'], r['type'], r['employe_id']))

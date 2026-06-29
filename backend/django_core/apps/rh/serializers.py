@@ -15,7 +15,9 @@ from .models import (
     Departement,
     DocumentEmploye,
     DossierEmploye,
+    DotationEpi,
     ElementSortie,
+    EpiCatalogue,
     FeuilleTemps,
     Habilitation,
     HeuresSupp,
@@ -787,4 +789,74 @@ class VisiteMedicaleSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError(
                 {'prochaine_visite':
                  'La prochaine visite précède la date de la visite.'})
+        return attrs
+
+
+class EpiCatalogueSerializer(serializers.ModelSerializer):
+    """Catalogue des EPI de la société (FG178) — type + désignation.
+
+    Le client saisit ``type_epi``, ``designation`` et ``actif``. ``company`` est
+    posée côté serveur (jamais lue du corps). Référentiel des équipements de
+    protection ; la dotation nominative est portée par ``DotationEpi``.
+    """
+    type_epi_display = serializers.CharField(
+        source='get_type_epi_display', read_only=True)
+
+    class Meta:
+        model = EpiCatalogue
+        fields = [
+            'id', 'type_epi', 'type_epi_display',
+            'designation', 'actif',
+            'date_creation', 'date_modification',
+        ]
+        read_only_fields = ['date_creation', 'date_modification']
+
+
+class DotationEpiSerializer(serializers.ModelSerializer):
+    """Dotation nominative d'un EPI à un employé (FG178) — taille + date.
+
+    Le client saisit ``employe``, ``epi`` (du catalogue), ``taille``,
+    ``date_dotation``, ``date_renouvellement`` (échéance), ``quantite`` et
+    ``note``. ``company`` est posée côté serveur (jamais lue du corps) ;
+    ``employe`` et ``epi`` doivent appartenir à la société de l'utilisateur.
+    Une échéance de renouvellement alimente le moteur d'échéances RH (FG175).
+    """
+    employe_nom = serializers.SerializerMethodField()
+    epi_designation = serializers.CharField(
+        source='epi.designation', read_only=True)
+    type_epi = serializers.CharField(
+        source='epi.type_epi', read_only=True)
+    type_epi_display = serializers.CharField(
+        source='epi.get_type_epi_display', read_only=True)
+
+    class Meta:
+        model = DotationEpi
+        fields = [
+            'id', 'employe', 'employe_nom',
+            'epi', 'epi_designation', 'type_epi', 'type_epi_display',
+            'taille', 'date_dotation', 'date_renouvellement',
+            'quantite', 'note',
+            'date_creation', 'date_modification',
+        ]
+        read_only_fields = ['date_creation', 'date_modification']
+
+    def get_employe_nom(self, obj):
+        return f'{obj.employe.nom} {obj.employe.prenom}'
+
+    def validate_employe(self, value):
+        return _meme_societe(self, value, 'Employé')
+
+    def validate_epi(self, value):
+        return _meme_societe(self, value, 'EPI')
+
+    def validate(self, attrs):
+        # Cohérence des dates : le renouvellement ne précède pas la dotation.
+        dotation = attrs.get('date_dotation') \
+            or getattr(self.instance, 'date_dotation', None)
+        renouvellement = attrs.get('date_renouvellement') \
+            or getattr(self.instance, 'date_renouvellement', None)
+        if dotation and renouvellement and renouvellement < dotation:
+            raise serializers.ValidationError(
+                {'date_renouvellement':
+                 'La date de renouvellement précède la date de dotation.'})
         return attrs
