@@ -1,7 +1,7 @@
 from rest_framework import serializers
 from .models import (
     Appointment, Client, ConcurrentPerte, Lead, LeadActivity, MessageTemplate,
-    ObjectifCommercial, Parrainage,
+    ObjectifCommercial, Parrainage, PointContact,
 )
 from .devis_auto import champs_manquants, message_manquants
 from .scoring import compute_score, score_label
@@ -600,4 +600,56 @@ class ConcurrentPerteSerializer(serializers.ModelSerializer):
         if not (value or '').strip():
             raise serializers.ValidationError(
                 'Le nom du concurrent est obligatoire.')
+        return value
+
+
+class PointContactSerializer(serializers.ModelSerializer):
+    """FG204 — point de contact du parcours multi-touch d'un lead.
+
+    La société est posée côté serveur (HiddenField depuis l'utilisateur courant
+    — multi-tenant, jamais lue du corps de requête) ; ``saisi_par`` est forcé
+    dans ``perform_create``. Le lead doit appartenir à la même société
+    (validate_lead). ``date_contact`` est optionnel à la saisie (défaut : now).
+    """
+    company = serializers.HiddenField(default=_CurrentCompanyDefault())
+    saisi_par = serializers.PrimaryKeyRelatedField(read_only=True)
+    saisi_par_nom = serializers.SerializerMethodField()
+    canal_libelle = serializers.CharField(
+        source='get_canal_display', read_only=True)
+    lead_nom = serializers.CharField(
+        source='lead.nom', read_only=True, default=None)
+    date_contact = serializers.DateTimeField(required=False)
+
+    class Meta:
+        model = PointContact
+        fields = [
+            'id', 'company', 'lead', 'lead_nom',
+            'canal', 'canal_libelle', 'source', 'date_contact', 'ordre',
+            'detail', 'cout',
+            'saisi_par', 'saisi_par_nom', 'saisi_le', 'date_modification',
+        ]
+        read_only_fields = [
+            'saisi_par', 'saisi_le', 'date_modification',
+        ]
+
+    def get_saisi_par_nom(self, obj):
+        return getattr(obj.saisi_par, 'username', None)
+
+    def validate_lead(self, value):
+        req = self.context.get('request')
+        if req and value.company_id != getattr(req.user, 'company_id', None):
+            raise serializers.ValidationError('Lead inconnu.')
+        return value
+
+    def validate_cout(self, value):
+        # Coût optionnel mais jamais négatif (garde Decimal explicite en plus du
+        # validateur modèle, pour un message clair côté API).
+        if value is not None and value < 0:
+            raise serializers.ValidationError(
+                'Le coût ne peut pas être négatif.')
+        return value
+
+    def validate_date_contact(self, value):
+        # Si non fourni, retombe sur maintenant (le champ a un default côté
+        # serveur via perform_create ; ici on accepte simplement la valeur).
         return value

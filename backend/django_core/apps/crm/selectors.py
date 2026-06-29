@@ -268,6 +268,59 @@ def compute_attainment(objectif):
     }
 
 
+def lead_touchpoints_attribution(lead, company=None):
+    """FG204 — journal multi-touch ordonné + résumé d'attribution d'un lead.
+
+    Renvoie la timeline des points de contact (PointContact) du lead, ordonnée
+    (``ordre`` puis ``date_contact``), plus un résumé d'attribution simple :
+    first-touch vs last-touch (canal + libellé), nombre de points et coût total
+    des canaux payants. Lecture seule.
+
+    Scopé société si ``company`` est fournie (jamais d'accès cross-tenant). Si le
+    lead n'a aucun point de contact, ``timeline`` est vide et les champs
+    first/last sont ``None`` (l'UI peut alors retomber sur ``Lead.canal``).
+
+    Format::
+
+        {
+          'lead_id': int,
+          'count': int,
+          'timeline': [PointContact, ...],   # ordonné
+          'first_touch': {'canal': str, 'canal_libelle': str} | None,
+          'last_touch':  {'canal': str, 'canal_libelle': str} | None,
+          'cout_total': Decimal,             # somme des coûts (canaux payants)
+        }
+    """
+    from decimal import Decimal
+    from .models import PointContact
+
+    qs = PointContact.objects.filter(lead=lead)
+    if company is not None:
+        qs = qs.filter(company=company)
+    # ordering du modèle (ordre, date_contact, id) → timeline chronologique.
+    points = list(qs)
+
+    def _touch(pc):
+        if pc is None:
+            return None
+        return {
+            'canal': pc.canal,
+            'canal_libelle': pc.get_canal_display(),
+        }
+
+    cout_total = sum(
+        (p.cout for p in points if p.cout is not None), Decimal('0'))
+
+    return {
+        'lead_id': lead.pk,
+        'count': len(points),
+        'timeline': points,
+        'first_touch': _touch(points[0]) if points else None,
+        'last_touch': _touch(points[-1]) if points else None,
+        'cout_total': cout_total,
+    }
+
+
 def lead_card(lead_id, company):
     """S8 — fiche-carte LECTURE SEULE d'un lead pour le partage dans la
     messagerie. Scopée société : renvoie None si le lead n'appartient pas à la

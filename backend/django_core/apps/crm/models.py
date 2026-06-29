@@ -941,3 +941,92 @@ class ConcurrentPerte(models.Model):
             f'Concurrent {self.concurrent_nom} '
             f'(lead {self.lead_id})'
         )
+
+
+class PointContact(models.Model):
+    """FG204 — Tableau d'attribution multi-touch : journal des points de contact.
+
+    Au-delà du first-touch (``Lead.canal``/``Lead.source``), on consigne CHAQUE
+    point de contact du parcours d'un lead — publicité Meta → site web →
+    WhatsApp → signature — pour une attribution multi-touch (qui a vraiment
+    amené, puis converti, le lead).
+
+    Additif et borné société : un enregistrement appartient à la société du lead
+    (posée côté serveur, jamais lue du corps de requête — multi-tenant). Le
+    ``canal`` réutilise le vocabulaire ``Lead.Canal`` (meta_ads/whatsapp_ctwa/
+    site_web/reference/telephone/walk_in/autre), donc aucun nouveau jeu de
+    valeurs n'est inventé. ``cout`` est optionnel (canaux payants : Meta Ads…).
+    """
+
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        null=True,
+        blank=True,
+        related_name='points_contact',
+    )
+    lead = models.ForeignKey(
+        'crm.Lead',
+        on_delete=models.CASCADE,
+        related_name='points_contact',
+        verbose_name='Lead',
+    )
+    # Canal du point de contact — réutilise STRICTEMENT le vocabulaire
+    # Lead.Canal (max_length=20 couvre la plus longue clé, 'whatsapp_ctwa').
+    canal = models.CharField(
+        max_length=20,
+        choices=Lead.Canal.choices,
+        verbose_name='Canal',
+    )
+    # Source/détail libre du canal (ex. nom de la campagne Meta, page web).
+    source = models.CharField(
+        max_length=200, blank=True, null=True,
+        verbose_name='Source',
+    )
+    # Date/heure du point de contact (défaut : maintenant à la création).
+    date_contact = models.DateTimeField(
+        verbose_name='Date du contact',
+    )
+    # Rang explicite dans le parcours (1, 2, 3…) — pose l'ordre du journal
+    # même quand deux contacts partagent la même date.
+    ordre = models.PositiveIntegerField(
+        default=0,
+        verbose_name='Ordre / séquence',
+    )
+    # Note libre sur ce point de contact.
+    detail = models.TextField(blank=True, null=True, verbose_name='Détail')
+    # Coût du point de contact pour les canaux payants (Meta Ads…). Optionnel.
+    cout = models.DecimalField(
+        max_digits=12, decimal_places=2,
+        null=True, blank=True,
+        validators=[MinValueValidator(0)],
+        verbose_name='Coût',
+        help_text='Coût du point de contact (canaux payants). Vide si gratuit.',
+    )
+    # Traçabilité : qui a saisi le point de contact (forcé côté serveur) + quand.
+    saisi_par = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='points_contact_saisis',
+        verbose_name='Saisi par',
+    )
+    saisi_le = models.DateTimeField(auto_now_add=True)
+    date_modification = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = 'Point de contact'
+        verbose_name_plural = 'Points de contact'
+        # Journal chronologique : par ordre explicite puis date de contact.
+        ordering = ['ordre', 'date_contact', 'id']
+        indexes = [
+            # Nom d'index ≤ 30 chars (règle CI-enforced).
+            models.Index(fields=['company', 'lead'],
+                         name='crm_ptcontact_co_lead_idx'),
+        ]
+
+    def __str__(self):
+        return (
+            f'Point de contact {self.get_canal_display()} '
+            f'(lead {self.lead_id})'
+        )
