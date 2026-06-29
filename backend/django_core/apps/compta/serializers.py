@@ -10,12 +10,12 @@ from rest_framework import serializers
 
 from .models import (
     BaremeIndemnite, BordereauRemise, Caisse, CessionImmobilisation,
-    ClotureCaisse, CompteComptable, CompteTresorerie, DotationAmortissement,
-    EcritureComptable, Effet, ExerciceComptable, Immobilisation,
-    IndemniteChantier, Journal, LigneEcriture, LignePrevisionnelTresorerie,
-    LigneReleve, MouvementCaisse, NoteFrais, PaymentRun, PaymentRunLine,
-    PeriodeComptable, PlanAmortissement, PlanComptable, Rapprochement,
-    RapprochementBancaire, VirementInterne,
+    ClotureCaisse, CompteComptable, CompteTresorerie, DeclarationTVA,
+    DotationAmortissement, EcritureComptable, Effet, ExerciceComptable,
+    Immobilisation, IndemniteChantier, Journal, LigneEcriture,
+    LignePrevisionnelTresorerie, LigneReleve, MouvementCaisse, NoteFrais,
+    PaymentRun, PaymentRunLine, PeriodeComptable, PlanAmortissement,
+    PlanComptable, Rapprochement, RapprochementBancaire, VirementInterne,
 )
 
 
@@ -850,3 +850,33 @@ class IndemniteChantierSerializer(serializers.ModelSerializer):
 
     def validate_bareme(self, value):
         return _meme_societe(self, value, 'Barème')
+
+
+class DeclarationTVASerializer(serializers.ModelSerializer):
+    """Préparation d'une déclaration de TVA sur une période (FG137).
+
+    À la création on n'accepte que les champs de cadrage (période, régime,
+    méthode, crédit antérieur, libellé) ; la TVA collectée/déductible, le montant
+    à déclarer et le crédit reportable sont DÉRIVÉS du grand livre côté serveur et
+    restent en lecture seule, comme ``company``/``reference``/statut.
+    """
+    regime_display = serializers.CharField(
+        source='get_regime_display', read_only=True)
+    methode_display = serializers.CharField(
+        source='get_methode_display', read_only=True)
+    statut_display = serializers.CharField(
+        source='get_statut_display', read_only=True)
+
+    class Meta:
+        model = DeclarationTVA
+        fields = [
+            'id', 'reference', 'regime', 'regime_display', 'methode',
+            'methode_display', 'date_debut', 'date_fin', 'credit_anterieur',
+            'tva_collectee', 'tva_deductible', 'tva_a_declarer',
+            'credit_reportable', 'statut', 'statut_display', 'libelle',
+            'created_by', 'date_creation',
+        ]
+        read_only_fields = [
+            'reference', 'tva_collectee', 'tva_deductible', 'tva_a_declarer',
+            'credit_reportable', 'statut', 'created_by', 'date_creation',
+        ]

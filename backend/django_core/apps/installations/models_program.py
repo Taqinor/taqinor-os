@@ -291,3 +291,134 @@ class ProjetTicket(models.Model):
 
     def __str__(self):
         return f'{self.projet_id} · ticket {self.ticket_id}'
+
+
+class BudgetProjet(models.Model):
+    """FG294 — budget d'un programme/projet (engagé/dépensé) vs réel.
+
+    Porte les enveloppes BUDGÉTÉES par catégorie de coût (matériel,
+    main-d'œuvre, sous-traitance, divers) pour un ``Projet``. Le RÉEL (engagé +
+    dépensé) n'est PAS stocké ici : il est AGRÉGÉ à la lecture par le sélecteur
+    ``budget_projet_synthese`` à partir des devis du programme (``ProjetDevis``),
+    des bons de commande / factures fournisseur rattachés (``BudgetEngagement``,
+    référencés par string-FK — jamais d'import des modèles ``stock``/``ventes``)
+    et de la main-d'œuvre des chantiers (``Installation.labour_*`` × tarif).
+
+    Couche INDÉPENDANTE : ce budget ne touche AUCUN statut (ni l'entonnoir
+    commercial ``STAGES.py``, ni le statut devis/facture, ni le statut chantier,
+    ni la machine à états du ``Projet``). Additif, multi-tenant (société posée
+    côté serveur). Relation 1-à-1 avec ``Projet`` : un programme a au plus un
+    budget."""
+
+    company = models.ForeignKey(
+        'authentication.Company', on_delete=models.CASCADE,
+        null=True, blank=True, related_name='installations_budgets_projet')
+    projet = models.OneToOneField(
+        Projet, on_delete=models.CASCADE, related_name='budget')
+    devise = models.CharField(max_length=8, default='MAD')
+    # Enveloppes budgétées HT par catégorie de coût.
+    budget_materiel = models.DecimalField(
+        max_digits=14, decimal_places=2, default=0)
+    budget_main_oeuvre = models.DecimalField(
+        max_digits=14, decimal_places=2, default=0)
+    budget_sous_traitance = models.DecimalField(
+        max_digits=14, decimal_places=2, default=0)
+    budget_divers = models.DecimalField(
+        max_digits=14, decimal_places=2, default=0)
+    # Tarif main-d'œuvre (MAD/jour) appliqué aux jours-homme des chantiers pour
+    # monétiser le réel main-d'œuvre. 0 → le coût main-d'œuvre réel reste 0.
+    tarif_jour_mo = models.DecimalField(
+        max_digits=10, decimal_places=2, default=0)
+    # Seuil d'alerte de dépassement, en % du budget total (10 → alerte si le
+    # réel dépasse 110 % du budget). Borné [0, 100] côté validation.
+    seuil_alerte_pct = models.DecimalField(
+        max_digits=5, decimal_places=2, default=0)
+    note = models.TextField(blank=True, null=True)
+    created_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='installations_budgets_projet_crees')
+    date_creation = models.DateTimeField(auto_now_add=True)
+    date_modification = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = 'Budget de projet'
+        verbose_name_plural = 'Budgets de projet'
+        ordering = ['-date_creation']
+        indexes = [
+            models.Index(fields=['company', 'projet'],
+                         name='idx_budgproj_co_proj'),
+        ]
+
+    def __str__(self):
+        return f'Budget {self.projet_id}'
+
+    @property
+    def budget_total(self):
+        """Enveloppe budgétée totale (somme des catégories)."""
+        from decimal import Decimal
+        return (
+            (self.budget_materiel or Decimal('0'))
+            + (self.budget_main_oeuvre or Decimal('0'))
+            + (self.budget_sous_traitance or Decimal('0'))
+            + (self.budget_divers or Decimal('0')))
+
+
+class BudgetEngagement(models.Model):
+    """FG294 — rattachement d'un coût FOURNISSEUR à un budget de projet.
+
+    Aucune FK native ne relie un bon de commande / une facture fournisseur à un
+    ``Projet`` : cette table de liaison attribue EXPLICITEMENT une dépense
+    d'achat à un budget de programme, par string-FK (``stock.BonCommandeFournisseur``
+    ou ``stock.FactureFournisseur``) — JAMAIS d'import des modèles ``stock``. Le
+    sélecteur ``budget_projet_synthese`` lit les montants via
+    ``apps.stock.selectors`` (engagé = montant commandé/HT du BCF ; dépensé =
+    montant HT facturé) sans coupler les apps.
+
+    ``categorie`` ventile la dépense dans la même grille que les enveloppes
+    budgétées. ``source`` distingue un BCF (engagé) d'une facture (dépensé)."""
+
+    class Source(models.TextChoices):
+        BON_COMMANDE = 'bon_commande', 'Bon de commande fournisseur'
+        FACTURE = 'facture', 'Facture fournisseur'
+
+    class Categorie(models.TextChoices):
+        MATERIEL = 'materiel', 'Matériel'
+        MAIN_OEUVRE = 'main_oeuvre', "Main-d'œuvre"
+        SOUS_TRAITANCE = 'sous_traitance', 'Sous-traitance'
+        DIVERS = 'divers', 'Divers'
+
+    company = models.ForeignKey(
+        'authentication.Company', on_delete=models.CASCADE,
+        null=True, blank=True,
+        related_name='installations_budget_engagements')
+    budget = models.ForeignKey(
+        BudgetProjet, on_delete=models.CASCADE, related_name='engagements')
+    source = models.CharField(
+        max_length=12, choices=Source.choices, default=Source.BON_COMMANDE)
+    categorie = models.CharField(
+        max_length=14, choices=Categorie.choices, default=Categorie.MATERIEL)
+    # Id de l'objet stock rattaché (BCF ou facture fournisseur), selon
+    # ``source`` — string-FK volontaire (jamais d'import des modèles stock).
+    bon_commande = models.ForeignKey(
+        'stock.BonCommandeFournisseur', on_delete=models.CASCADE,
+        null=True, blank=True, related_name='installations_budget_engagements')
+    facture = models.ForeignKey(
+        'stock.FactureFournisseur', on_delete=models.CASCADE,
+        null=True, blank=True, related_name='installations_budget_engagements')
+    libelle = models.CharField(max_length=200, blank=True, null=True)
+    date_creation = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        verbose_name = 'Engagement de budget'
+        verbose_name_plural = 'Engagements de budget'
+        ordering = ['budget_id', 'id']
+        indexes = [
+            models.Index(fields=['company', 'budget'],
+                         name='idx_budgeng_co_budg'),
+        ]
+
+    def __str__(self):
+        cible = self.facture_id if self.source == self.Source.FACTURE \
+            else self.bon_commande_id
+        return f'{self.budget_id} · {self.source}:{cible}'

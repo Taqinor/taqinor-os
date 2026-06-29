@@ -2372,3 +2372,134 @@ class IndemniteChantier(models.Model):
     def est_terminee(self):
         """Vrai si l'indemnité est dans un état terminal."""
         return self.statut in (self.Statut.REMBOURSEE, self.Statut.REJETEE)
+
+
+# ── FG137 — Préparation de la déclaration de TVA ────────────────────────────
+
+class DeclarationTVA(models.Model):
+    """Préparation d'une déclaration de TVA sur une période (FG137).
+
+    Constate, pour une période ``[date_debut ; date_fin]``, le résultat de TVA à
+    déclarer : ``tva_collectee`` (TVA facturée, comptes de classe 4455…) moins
+    ``tva_deductible`` (TVA récupérable, comptes de classe 3455…), tous deux
+    DÉRIVÉS du grand livre de la compta (mouvements de la période sur ces
+    comptes — AUCUN import cross-app). La déclaration porte un ``regime``
+    (mensuel/trimestriel) et une ``methode`` (débit/encaissement) qui qualifient
+    le dépôt déclaratif ; les montants sont FIGÉS au moment de la préparation
+    (snapshot auditable) et restitués à l'identique à l'écran et à l'export CSV.
+
+    ``tva_a_declarer`` = max(0, collectée − déductible). Lorsque la TVA
+    déductible dépasse la collectée, l'excédent devient un ``credit_reportable``
+    sur la période suivante (le montant à déclarer est alors nul). Un
+    ``credit_anterieur`` (crédit reporté d'une déclaration précédente) peut être
+    saisi et vient en déduction du montant net dû. Multi-société : ``company``
+    posée côté serveur, jamais lue du corps de requête.
+    """
+    class Regime(models.TextChoices):
+        MENSUEL = 'mensuel', 'Mensuel'
+        TRIMESTRIEL = 'trimestriel', 'Trimestriel'
+
+    class Methode(models.TextChoices):
+        DEBIT = 'debit', 'Débit'
+        ENCAISSEMENT = 'encaissement', 'Encaissement'
+
+    class Statut(models.TextChoices):
+        BROUILLON = 'brouillon', 'Brouillon'
+        PREPAREE = 'preparee', 'Préparée'
+        DEPOSEE = 'deposee', 'Déposée'
+
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='declarations_tva',
+        verbose_name='Société',
+    )
+    reference = models.CharField(
+        max_length=50, blank=True, default='',
+        verbose_name='Référence')
+    regime = models.CharField(
+        max_length=12, choices=Regime.choices,
+        default=Regime.MENSUEL, verbose_name='Régime')
+    methode = models.CharField(
+        max_length=12, choices=Methode.choices,
+        default=Methode.DEBIT, verbose_name='Méthode')
+    date_debut = models.DateField(verbose_name='Début de période')
+    date_fin = models.DateField(verbose_name='Fin de période')
+    # ── Montants FIGÉS au calcul (snapshot auditable) ──
+    tva_collectee = models.DecimalField(
+        max_digits=14, decimal_places=2, default=Decimal('0'),
+        verbose_name='TVA collectée')
+    tva_deductible = models.DecimalField(
+        max_digits=14, decimal_places=2, default=Decimal('0'),
+        verbose_name='TVA déductible')
+    # Crédit de TVA reporté d'une période antérieure (saisi), déduit du net dû.
+    credit_anterieur = models.DecimalField(
+        max_digits=14, decimal_places=2, default=Decimal('0'),
+        verbose_name='Crédit de TVA antérieur')
+    # TVA nette à déclarer = max(0, collectée − déductible − crédit antérieur).
+    tva_a_declarer = models.DecimalField(
+        max_digits=14, decimal_places=2, default=Decimal('0'),
+        verbose_name='TVA à déclarer')
+    # Excédent reportable sur la période suivante (crédit de TVA).
+    credit_reportable = models.DecimalField(
+        max_digits=14, decimal_places=2, default=Decimal('0'),
+        verbose_name='Crédit de TVA reportable')
+    statut = models.CharField(
+        max_length=12, choices=Statut.choices,
+        default=Statut.BROUILLON, verbose_name='Statut')
+    libelle = models.CharField(
+        max_length=200, blank=True, default='', verbose_name='Libellé')
+    created_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='declarations_tva_creees',
+        verbose_name='Préparée par',
+    )
+    date_creation = models.DateTimeField(
+        auto_now_add=True, verbose_name='Créé le')
+
+    class Meta:
+        verbose_name = 'Déclaration de TVA'
+        verbose_name_plural = 'Déclarations de TVA'
+        ordering = ['-date_fin', '-id']
+        constraints = [
+            models.UniqueConstraint(
+                fields=['company', 'reference'],
+                condition=models.Q(reference__gt=''),
+                name='uniq_decl_tva_reference',
+            ),
+        ]
+
+    def __str__(self):
+        return (f'{self.reference or "TVA"} — '
+                f'{self.date_debut}–{self.date_fin} ({self.tva_a_declarer})')
+
+    def clean(self):
+        super().clean()
+        if (self.date_debut and self.date_fin
+                and self.date_fin < self.date_debut):
+            raise ValidationError(
+                "La date de fin doit être postérieure à la date de début.")
+        if self.credit_anterieur is not None and self.credit_anterieur < 0:
+            raise ValidationError(
+                "Le crédit de TVA antérieur ne peut pas être négatif.")
+
+    def recalculer(self):
+        """(Re)calcule la TVA à déclarer et le crédit reportable depuis le snapshot.
+
+        ``net`` = collectée − déductible − crédit antérieur. S'il est positif,
+        c'est le montant à déclarer (et payer) ; s'il est négatif, sa valeur
+        absolue devient un crédit reportable sur la période suivante.
+        """
+        collectee = self.tva_collectee or Decimal('0')
+        deductible = self.tva_deductible or Decimal('0')
+        anterieur = self.credit_anterieur or Decimal('0')
+        net = collectee - deductible - anterieur
+        if net >= 0:
+            self.tva_a_declarer = net
+            self.credit_reportable = Decimal('0')
+        else:
+            self.tva_a_declarer = Decimal('0')
+            self.credit_reportable = -net
+        return self

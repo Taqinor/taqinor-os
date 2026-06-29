@@ -9,6 +9,7 @@ from django.utils import timezone
 
 from .models import (
     AffectationRoster,
+    Certification,
     DemandeConge,
     DocumentEmploye,
     DossierEmploye,
@@ -440,3 +441,41 @@ def employe_a_habilitation_valide(company, employe_id, type_habilitation):
     ).filter(
         Q(date_validite__isnull=True) | Q(date_validite__gte=today)
     ).exists()
+
+
+def certifications_expirantes(company, within_days=30, inclure_expirees=True,
+                              employe_id=None):
+    """Certifications spécifiques (FG174) qui expirent bientôt ou sont expirées.
+
+    Famille DISTINCTE des habilitations électriques (FG173). Lecture cadrée
+    société : retient les certifications ACTIVES dont la ``date_validite`` est
+    renseignée et tombe au plus tard dans ``within_days`` jours (aujourd'hui +
+    ``within_days`` inclus). Par défaut ``inclure_expirees`` est vrai : les
+    certifications déjà échues sont également renvoyées, car une certification
+    expirée (hauteur, harnais, CACES, SST…) est exactement ce qui doit alerter
+    avant un chantier PV ; passer ``inclure_expirees=False`` ne garde que les
+    échéances encore à venir dans la fenêtre. Les certifications sans échéance
+    (``date_validite`` NULL) ou inactives sont exclues. ``employe_id`` restreint
+    à un employé. Toujours scopé société ; trié par échéance la plus proche.
+    """
+    if company is None:
+        return Certification.objects.none()
+    try:
+        within_days = int(within_days)
+    except (TypeError, ValueError):
+        within_days = 30
+    if within_days < 0:
+        within_days = 0
+    today = timezone.localdate()
+    limite = today + timedelta(days=within_days)
+    qs = Certification.objects.filter(
+        company=company,
+        actif=True,
+        date_validite__isnull=False,
+        date_validite__lte=limite,
+    )
+    if not inclure_expirees:
+        qs = qs.filter(date_validite__gte=today)
+    if employe_id is not None:
+        qs = qs.filter(employe_id=employe_id)
+    return qs.select_related('employe').order_by('date_validite', 'id')

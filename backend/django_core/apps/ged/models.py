@@ -74,6 +74,25 @@ LIFECYCLE_TRANSITIONS = {
     LIFECYCLE_OBSOLETE: {LIFECYCLE_BROUILLON},
 }
 
+# GED18 — Workflow d'approbation / revue documentaire (statuts LOCAUX à la GED).
+#
+# Couche EXPLICITE de validation par-dessus le cycle de vie GED17 : une demande
+# d'approbation enregistre QUI doit relire/valider un document et SA décision.
+# Elle PILOTE (sans dupliquer) la machine à états du cycle de vie — à
+# l'approbation, le service réutilise `change_lifecycle_status` pour faire
+# avancer le document « revue → approuvé ». Ces statuts de demande sont LOCAUX
+# à la GED et n'ont aucun rapport avec le funnel commercial `STAGES.py`
+# (rule #2) — on n'importe surtout PAS `STAGES.py` ici.
+APPROBATION_EN_ATTENTE = 'en_attente'
+APPROBATION_APPROUVE = 'approuve'
+APPROBATION_REJETE = 'rejete'
+
+APPROBATION_CHOICES = [
+    (APPROBATION_EN_ATTENTE, 'En attente'),
+    (APPROBATION_APPROUVE, 'Approuvée'),
+    (APPROBATION_REJETE, 'Rejetée'),
+]
+
 
 class Cabinet(models.Model):
     """Espace documentaire racine (« armoire ») d'une société.
@@ -555,3 +574,67 @@ class DocumentTagAssignment(models.Model):
 
     def __str__(self):
         return f'{self.document} #{self.tag}'
+
+
+class DemandeApprobation(models.Model):
+    """GED18 — Demande d'approbation / revue d'un document.
+
+    Couche EXPLICITE de validation par-dessus le cycle de vie GED17 : un
+    `demandeur` lance une revue d'un document et désigne (optionnellement) un
+    `approbateur` ; ce dernier APPROUVE ou REJETTE, ce qui horodate la décision
+    (`decision_le`) et la trace (`commentaire`). À l'approbation, le service
+    réutilise `change_lifecycle_status` pour faire avancer le document
+    « revue → approuvé » — il NE duplique PAS la machine à états du cycle de vie.
+
+    Les statuts (`en_attente` / `approuve` / `rejete`) sont LOCAUX à la GED et
+    distincts du funnel commercial `STAGES.py` (rule #2). `company`,
+    `demandeur` et `approbateur` (au moment de la décision) sont posés côté
+    serveur — jamais lus du corps de requête.
+    """
+    company = models.ForeignKey(
+        'authentication.Company', on_delete=models.CASCADE,
+        null=True, blank=True, related_name='ged_demandes_approbation')
+    document = models.ForeignKey(
+        Document, on_delete=models.CASCADE, related_name='demandes_approbation')
+    # Utilisateur qui a lancé la demande de revue (posé côté serveur).
+    demandeur = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL,
+        null=True, blank=True, related_name='ged_demandes_approbation_emises',
+        verbose_name='demandeur')
+    # Approbateur (relecteur). Renseigné à l'assignation OU au moment de la
+    # décision (celui qui tranche) — posé côté serveur, jamais du corps.
+    approbateur = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL,
+        null=True, blank=True, related_name='ged_demandes_approbation_recues',
+        verbose_name='approbateur')
+    statut = models.CharField(
+        max_length=10, choices=APPROBATION_CHOICES,
+        default=APPROBATION_EN_ATTENTE,
+        verbose_name="statut de la demande")
+    commentaire = models.TextField(blank=True, default='')
+    # Horodatage de la décision (approbation/rejet) — NULL tant qu'en attente.
+    decision_le = models.DateTimeField(
+        null=True, blank=True, verbose_name='décidée le')
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ['-created_at', '-id']
+        verbose_name = "Demande d'approbation"
+        verbose_name_plural = "Demandes d'approbation"
+        indexes = [
+            models.Index(fields=['company', 'statut'],
+                         name='ged_demande_co_statut_idx'),
+            models.Index(fields=['company', 'document'],
+                         name='ged_demande_co_doc_idx'),
+            models.Index(fields=['approbateur'],
+                         name='ged_demande_approb_idx'),
+        ]
+
+    @property
+    def is_pending(self):
+        """True si la demande est encore en attente d'une décision."""
+        return self.statut == APPROBATION_EN_ATTENTE
+
+    def __str__(self):
+        return f'Approbation {self.document} ({self.statut})'

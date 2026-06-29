@@ -519,7 +519,7 @@ first run that ticks any `FG*` task refreshes CODEMAP §10 + `--write` in that c
 - [x] FG134 — **Génération de fichier de virement bancaire** — export du lot au format de la banque depuis un payment run. (DECISION)
 - [x] FG135 — **Notes de frais & remboursements employés** — saisie avec justificatif photo, validation, remboursement ; les équipes avancent du cash en continu. (SCHEMA)
 - [x] FG136 — **Indemnités kilométriques & per-diem chantier** — barèmes km/jour calculés auto depuis la distance site (GPS/haversine déjà présents). (SCHEMA)
-- [ ] FG137 — **Préparation de la déclaration TVA** — TVA collectée − déductible par régime (mensuel/trimestriel, débit/encaissement) → montant déclarable + export. (SCHEMA)
+- [x] FG137 — **Préparation de la déclaration TVA** — TVA collectée − déductible par régime (mensuel/trimestriel, débit/encaissement) → montant déclarable + export. (SCHEMA)
 - [ ] FG138 — **Relevé de déductions détaillé (annexe TVA)** — l'annexe ligne par ligne exigée par la DGI. (ROUTINE)
 - [ ] FG139 — **Retenue à la source (RAS) sur honoraires/prestations** — calcul + bordereau de versement (obligation marocaine non gérée). (SCHEMA)
 - [ ] FG140 — **Aide au calcul de l'IS** — estimation depuis le CPC + échéancier des 4 acomptes provisionnels + régularisation. (DECISION)
@@ -559,7 +559,7 @@ first run that ticks any `FG*` task refreshes CODEMAP §10 + `--write` in that c
 - [x] FG171 — **Retards & absences injustifiées** — marquage + compteur (base disciplinaire/pilotage). (ROUTINE)
 - [x] FG172 — **Matrice de compétences** — pose structure, raccordement DC/AC, MES onduleur, pompage, soudure + niveau par employé. (SCHEMA)
 - [x] FG173 — **Habilitations électriques (B1V/BR/B2V/H0…)** — par employé avec validité/organisme, exigées sur tout chantier PV. (SCHEMA)
-- [ ] FG174 — **Certifications spécifiques** — travail en hauteur, harnais, CACES/nacelle, secourisme/SST, conduite + expiration. (SCHEMA)
+- [x] FG174 — **Certifications spécifiques** — travail en hauteur, harnais, CACES/nacelle, secourisme/SST, conduite + expiration. (SCHEMA)
 - [ ] FG175 — **Alertes d'expiration (habilitations/certifs/docs)** — moteur d'échéances → notifications RH/superviseur X jours avant. (ROUTINE)
 - [ ] FG176 — **Garde d'affectation par habilitation** — alerte/blocage doux si on assigne un technicien sans l'habilitation requise. (DECISION)
 - [ ] FG177 — **Visite médicale du travail** — dernière/prochaine visite + aptitude + alerte (obligatoire pour le chantier). (SCHEMA)
@@ -648,7 +648,7 @@ first run that ticks any `FG*` task refreshes CODEMAP §10 + `--write` in that c
 - [x] FG254 — **Bibliothèque de fiches techniques modules/onduleurs (PAN/OND)** — datasheets + paramètres normalisés (Pmax/Voc/Isc/coef temp) par produit. (SCHEMA)
 - [x] FG255 — **Dimensionnement borne de recharge VE** — borne (kW/mono-tri/sessions) couplée au PV + impact autoconsommation. (ROUTINE)
 - [x] FG256 — **Étude de stockage & dispatch batterie (backup)** — autoconsommation max vs backup heures critiques → kWh/kW utiles. (ROUTINE)
-- [ ] FG257 — **Simulation bankable P50/P90 avec modèle de pertes** — production P50/P90 + ratio de performance (température/salissure/câblage/onduleur). (DECISION)
+- [x] FG257 — **Simulation bankable P50/P90 avec modèle de pertes** — production P50/P90 + ratio de performance (température/salissure/câblage/onduleur). (DECISION)
 - [ ] FG258 — **Profil d'autoconsommation horaire depuis courbe de charge** — courbe 8760/profil type × production horaire → taux d'autoconso réel. (DEP:openpyxl)
 - [ ] FG259 — **Économie net-metering / injection surplus (loi 13-09/MT)** — valorisation du surplus injecté par tranche horaire (réglage `surplus_injecte_compense` existant). (ROUTINE)
 - [ ] FG260 — **Modélisation escalade tarifaire ONEE sur 20–25 ans** — projeter facture/économies + VAN/TRI avec taux d'escalade éditable. (ROUTINE)
@@ -688,7 +688,7 @@ first run that ticks any `FG*` task refreshes CODEMAP §10 + `--write` in that c
 - [x] FG291 — **Programme / Projet multi-chantiers** — `Projet` regroupant chantiers + devis + tickets d'un même client/site (ferme à 4 forages, toiture par tranches). (ARCH)
 - [x] FG292 — **Tâches & sous-tâches de projet avec dépendances** — `ProjetTache` (assigné/échéance/prédécesseur) au-delà de la checklist figée. (ARCH)
 - [x] FG293 — **Jalons & phases de projet** — étude/appro/pose/MES/réception avec dates cibles/réelles. (SCHEMA)
-- [ ] FG294 — **Budget projet vs réel (engagé/dépensé)** — agrège devis + BCF/factures fournisseur + main-d'œuvre vs budget, alerte de dépassement. (ARCH)
+- [x] FG294 — **Budget projet vs réel (engagé/dépensé)** — agrège devis + BCF/factures fournisseur + main-d'œuvre vs budget, alerte de dépassement. (ARCH)
 - [ ] FG295 — **P&L de projet consolidé** — résultat par `Projet` (marge tous chantiers, sous-traitance et imports inclus). (ARCH)
 - [x] FG296 — **Modèles de projet (templates de chantier-type)** — patron pré-créant tâches/jalons/BoM type à la signature. (SCHEMA)
 - [x] FG297 — **Contrôle documentaire de projet (plans & révisions)** — registre versionné (schéma unifilaire, calepinage, note de calcul). (ARCH) [DONE 2026-06-27: `installations.DocumentProjet` (company forcé, installation FK même-app, type schema_unifilaire/calepinage/note_calcul/autre, titre) + `RevisionDocument` (indice, date, auteur serveur, fichier via string-FK records.Attachment, unique (document, indice)) en module `models_document.py` re-exporté ; viewsets company-scoped + filtres. Import-linter safe (aucun import d'un autre modèle domaine). Migration installations 0014, 13 tests.]
@@ -760,7 +760,7 @@ first run that ticks any `FG*` task refreshes CODEMAP §10 + `--write` in that c
 - [x] FG360 — **Détection d'anomalies (stock/paiements/fraude)** — scan planifié signalant les outliers dans un modèle `AnomalyFlag`. (SCHEMA)
 - [x] FG361 — **Prévision de ventes / demande** — série temporelle du CA et du volume de devis par mois depuis l'historique. (DEP:statsmodels)
 - [x] FG362 — **Score de probabilité de gain (win-probability)** — probabilité par lead remplaçant l'heuristique d'étape statique de `pipeline.py`. (SCHEMA)
-- [ ] FG363 — **Score de churn / risque client** — repérer les clients maintenance/SAV à risque (sans activité, contrat lapsé) pour l'outreach proactif. (SCHEMA)
+- [x] FG363 — **Score de churn / risque client** — repérer les clients maintenance/SAV à risque (sans activité, contrat lapsé) pour l'outreach proactif. (SCHEMA)
 - [ ] FG364 — **Prévision de réappro stock** — prédire les dates de rupture + quantités suggérées depuis l'historique de mouvements. (ROUTINE)
 - [ ] FG365 — **Prédiction de retard de paiement** — scorer chaque facture ouverte pour prioriser le recouvrement. (ROUTINE)
 - [ ] FG366 — **Moteur de workflow multi-étapes (BPM) + SLA/escalades** — `WorkflowDefinition/Instance/Step` pour chaînes d'approbation visuelles + minuteries SLA, au-delà des règles à déclencheur unique. (ARCH)
@@ -955,7 +955,7 @@ these overlap and SUPERSEDE the domain-list FG items as the module-organized hom
 - [x] GED15 — Versionnage + historique + restauration de version. (SCHEMA) [DONE 2026-06-27: sur le `DocumentVersion` existant — endpoint `documents/<id>/historique/` (versions, plus récentes d'abord) + action `documents/<id>/restaurer/` créant une NOUVELLE version courante depuis une antérieure (historique préservé), champ d'audit `restored_from`. Réutilise le file_key (pas de ré-upload MinIO). Migration ged 0008 (additive), 16 tests (ACL coffre, rôle, isolation société).]
 - [x] GED16 — Check-out / check-in (verrouillage). (ROUTINE) [DONE 2026-06-27: verrouillage optimiste sur `Document` (`locked_by`/`locked_at`, propriété `is_locked`) + actions `documents/<id>/check-out/` (409 si déjà verrouillé) et `check-in/` (locker ou admin) ; ajout de version refusé si verrouillé par un autre (select_for_update). Migration ged 0009 additive, 20 tests.]
 - [x] GED17 — Cycle de vie documentaire (brouillon→revue→approuvé→archivé→obsolète). (SCHEMA+DECISION)
-- [ ] GED18 — Workflow d'approbation/revue. (SCHEMA)
+- [x] GED18 — Workflow d'approbation/revue. (SCHEMA)
 - [ ] GED19 — ACL par dossier/document (héritage + override). (SCHEMA+DECISION)
 - [ ] GED20 — Partage par lien tokenisé (expiry/mot de passe/quota). (SCHEMA+DECISION)
 - [ ] GED21 — Watermarking & contrôle de diffusion. (DEP)
@@ -993,7 +993,7 @@ these overlap and SUPERSEDE the domain-list FG items as the module-organized hom
 - [x] FLOTTE12 — Carnet de carburant (`PleinCarburant`). (SCHEMA)
 - [x] FLOTTE13 — Calcul conso L/100 km (et kWh/100 km). (ROUTINE)
 - [x] FLOTTE14 — Cartes carburant & alertes anomalie (km incohérent/fraude). (ROUTINE)
-- [ ] FLOTTE15 — Plans d'entretien préventif (km/date/heures). (SCHEMA)
+- [x] FLOTTE15 — Plans d'entretien préventif (km/date/heures). (SCHEMA)
 - [ ] FLOTTE16 — Génération d'échéances d'entretien dues + alertes. (ROUTINE)
 - [ ] FLOTTE17 — Ordres de réparation + atelier/garage + coûts. (SCHEMA)
 - [ ] FLOTTE18 — Pneumatiques & pièces. (SCHEMA)
@@ -1074,7 +1074,7 @@ these overlap and SUPERSEDE the domain-list FG items as the module-organized hom
 - [x] CONTRAT12 — Machine d'états du cycle de vie + transitions gardées. (ROUTINE)
 - [x] CONTRAT13 — `RegleApprobation` (par montant/type). (DECISION)
 - [x] CONTRAT14 — `EtapeApprobation` + workflow d'approbation interne. (ROUTINE)
-- [ ] CONTRAT15 — Chatter/journal du contrat (audit des transitions). (ROUTINE)
+- [x] CONTRAT15 — Chatter/journal du contrat (audit des transitions). (ROUTINE)
 - [ ] CONTRAT16 — `SignatureContrat` (point e-sign + statut signé). (DECISION)
 - [ ] CONTRAT17 — Transition automatique signé→actif sur signature. (ROUTINE)
 - [ ] CONTRAT18 — `VersionContrat` (versionnage immuable des rendus). (SCHEMA)
@@ -1628,3 +1628,11 @@ Tracked here so they aren't lost:
 - 2026-06-29 — CONTRAT14 (apps/contrats): Étapes & workflow d'approbation interne — `EtapeApprobation` instanciée depuis la `RegleApprobation` (CONTRAT13) via le résolveur existant ; `lancer_workflow_approbation`/`approuver_etape`/`rejeter_etape` séquentiels et gardés ; ne touche jamais `Contrat.statut` (préservation des statuts). Migration contrats 0011 additive, 23 tests.
 - 2026-06-29 — FLOTTE14 (apps/flotte): Cartes carburant & alertes anomalie — `CarteCarburant` (numéro/plafond, FK véhicule/conducteur optionnelles) + détecteur `anomalies_pleins` (km en recul, saut >5000 km, conso aberrante >2× médiane véhicule en réutilisant FLOTTE13, dépassement de plafond), endpoint `cartes/anomalies/` lecture tout rôle. Migration flotte 0012 additive, 22 tests. (NOTE: nouveau composant CarteCarburant, additif/réversible.)
 - 2026-06-29 — QHSE19 (apps/qhse): `RetourClientQualite` (satisfaction qualité) — note 1–5 + commentaire, liens chantier/client par id chaîné (pas d'import cross-app), `traite` bool, sélecteur `satisfaction_moyenne` + endpoint `retours-client/moyenne/`. Migration qhse 0013 additive, 18 tests.
+- 2026-06-29 — FG137 (apps/compta): Préparation de la déclaration TVA — `DeclarationTVA` agrège depuis le grand-livre TVA collectée (4455/44552) − déductible (3455/34552) sur la période par régime (mensuel/trimestriel) & méthode (débit/encaissement) → `tva_a_declarer` + `credit_reportable`, snapshot figé (réf `TVA-` race-safe), export CSV. Migration compta 0013 additive, 18 tests.
+- 2026-06-29 — FG294 (apps/installations): Budget projet vs réel — `BudgetProjet` (enveloppes HT par catégorie + seuil d'alerte) + `BudgetEngagement`, sélecteur `budget_projet_synthese` agrège les réels (devis ventes via get_model, BCF/factures fournisseur via stock.selectors, main-d'œuvre même-app) vs budget + alerte de dépassement. Migration installations 0018 additive, 16 tests, import-linter 4/4. (NOTE: composant ARCH budgétaire, viewsets internes responsable/admin.)
+- 2026-06-29 — FG257 (apps/ventes): Simulation bankable P50/P90 — fonction pure `simulate_bankable_yield` : Performance Ratio depuis les pertes (température/salissure/câblage/onduleur/mismatch/dispo), P50 = base×PR, P90/P75 via quantile gaussien d'une variabilité annuelle σ (déf. 6 %), breakdown des pertes. Aucune migration, 16 tests, chemin PDF intact.
+- 2026-06-29 — FG363 (core): Score de churn / risque client — `core/churn_risk.py` scorer pur fondation (features client en entrée : inactivité/contrat lapsé/tickets SAV/âge intervention → score [0,1] + bande faible/moyen/élevé + explication), repli si aucune feature. Aucune migration, import-linter 4/4 (core reste fondation), 26 tests.
+- 2026-06-29 — FG174 (apps/rh): Certifications spécifiques — `Certification` par employé (travail en hauteur/harnais/CACES-nacelle/secourisme-SST/conduite + organisme + `date_validite`), propriété `valide`, endpoint `certifications/expirantes/?expire_within=N`. Distincte des habilitations électriques FG173. Migration rh 0016 additive, 19 tests.
+- 2026-06-29 — CONTRAT15 (apps/contrats): Chatter/journal du contrat — `ContratActivity` journalise automatiquement les transitions (statut/confidentialité + étapes du workflow d'approbation) + notes manuelles, timeline `historique/` et action `noter/`, valeurs old/new en TextField (snapshots longs). Migration contrats 0012 additive, 21 tests.
+- 2026-06-29 — FLOTTE15 (apps/flotte): Plans d'entretien préventif — `PlanEntretien` rattaché à un `ActifFlotte` (véhicule|engin), déclenchement par intervalle km/jours/heures + seuils, sélecteur d'échéances (due/upcoming/ok) + endpoint `plans-entretien/echeances/` (lecture tout rôle). Migration flotte 0013 additive, 21 tests.
+- 2026-06-29 — GED18 (apps/ged): Workflow d'approbation/revue documentaire — `DemandeApprobation` (demandeur/approbateur, statut en_attente/approuve/rejete) ; `request_review`/`approve`/`reject` réutilisent la machine d'états GED17 (`change_lifecycle_status`, brouillon→revue→approuvé) sans la dupliquer, gardes anti-doublon/déjà-décidé/cross-société. Migration ged 0012 additive, 20 tests.

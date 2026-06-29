@@ -22,6 +22,7 @@ from authentication.permissions import HasPermission, IsResponsableOrAdmin
 from . import selectors, services
 from .models import (
     AffectationRoster,
+    Certification,
     Competence,
     CompetenceEmploye,
     DemandeConge,
@@ -42,6 +43,7 @@ from .models import (
 )
 from .serializers import (
     AffectationRosterSerializer,
+    CertificationSerializer,
     CompetenceEmployeSerializer,
     CompetenceSerializer,
     DemandeCongeSerializer,
@@ -1087,6 +1089,76 @@ class HabilitationViewSet(_RhBaseViewSet):
         inclure = request.query_params.get('inclure_expirees') \
             not in ('0', 'false', 'False')
         qs = selectors.habilitations_expirantes(
+            request.user.company, within_days=within,
+            inclure_expirees=inclure, employe_id=employe)
+        page = self.paginate_queryset(qs)
+        if page is not None:
+            serializer = self.get_serializer(page, many=True)
+            return self.get_paginated_response(serializer.data)
+        serializer = self.get_serializer(qs, many=True)
+        return Response(serializer.data)
+
+
+class CertificationViewSet(_RhBaseViewSet):
+    """Certifications spécifiques par employé (FG174) — hauteur/harnais/CACES…
+
+    Société scopée + Administrateur/Responsable. ``company`` est posée côté
+    serveur (jamais lue du corps) ; ``employe`` doit appartenir à la même
+    société. Une ligne par (employé, certification) ; ``valide`` (actif ET non
+    expiré) est calculé. Famille DISTINCTE des habilitations électriques
+    (FG173) : ici les certifications NON électriques (travail en hauteur,
+    harnais, CACES/nacelle, secourisme SST, conduite), avec expiration.
+
+    Filtres : ``?employe=<id>``, ``?type_certification=``, ``?actif=0|1``.
+    Recherche : organisme.
+
+    Actions :
+    * ``GET .../expirantes/?expire_within=N&employe=&inclure_expirees=0`` —
+      certifications qui expirent dans N jours (défaut 30) ou déjà expirées.
+    """
+    queryset = Certification.objects.select_related('employe').all()
+    serializer_class = CertificationSerializer
+    filter_backends = [filters.SearchFilter, filters.OrderingFilter]
+    search_fields = ['organisme']
+    ordering_fields = [
+        'date_validite', 'date_obtention', 'type_certification',
+        'date_creation']
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        employe = self.request.query_params.get('employe')
+        if employe:
+            qs = qs.filter(employe_id=employe)
+        type_certification = self.request.query_params.get(
+            'type_certification')
+        if type_certification:
+            qs = qs.filter(type_certification=type_certification)
+        actif = self.request.query_params.get('actif')
+        if actif in ('0', 'false', 'False'):
+            qs = qs.filter(actif=False)
+        elif actif in ('1', 'true', 'True'):
+            qs = qs.filter(actif=True)
+        return qs
+
+    def perform_create(self, serializer):
+        """Company posée côté serveur ; employe validé via le sérialiseur."""
+        serializer.save(company=self.request.user.company)
+
+    @action(detail=False, methods=['get'])
+    def expirantes(self, request):
+        """Certifications qui expirent bientôt ou sont déjà expirées (FG174).
+
+        ``?expire_within=N`` (défaut 30) fixe la fenêtre ; ``?employe=``
+        restreint à un employé ; ``?inclure_expirees=0`` ne garde que les
+        échéances à venir (par défaut on inclut aussi les certifications déjà
+        échues, qui sont précisément celles à signaler avant un chantier PV).
+        S'appuie sur ``selectors.certifications_expirantes`` — scopé société.
+        """
+        within = request.query_params.get('expire_within', 30)
+        employe = request.query_params.get('employe') or None
+        inclure = request.query_params.get('inclure_expirees') \
+            not in ('0', 'false', 'False')
+        qs = selectors.certifications_expirantes(
             request.user.company, within_days=within,
             inclure_expirees=inclure, employe_id=employe)
         page = self.paginate_queryset(qs)

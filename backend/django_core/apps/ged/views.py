@@ -26,12 +26,13 @@ from apps.records.serializers import resolve_target
 
 from . import selectors, services
 from .models import (
-    Cabinet, Coffre, Document, DocumentLien, DocumentTag,
+    Cabinet, Coffre, DemandeApprobation, Document, DocumentLien, DocumentTag,
     DocumentTagAssignment, DocumentVersion, Folder,
 )
 from .serializers import (
-    CabinetSerializer, CoffreSerializer, DocumentLienSerializer,
-    DocumentSerializer, DocumentTagAssignmentSerializer, DocumentTagSerializer,
+    CabinetSerializer, CoffreSerializer, DemandeApprobationSerializer,
+    DocumentLienSerializer, DocumentSerializer,
+    DocumentTagAssignmentSerializer, DocumentTagSerializer,
     DocumentVersionSerializer, FolderSerializer,
 )
 
@@ -187,7 +188,7 @@ class DocumentViewSet(TenantMixin, viewsets.ModelViewSet):
         # `recherche`/`semantique`/`historique`/`check_out`/`check_in` lisibles
         # par tout rôle authentifié ; écriture réservée aux responsables/admins.
         if self.action in READ_ACTIONS or self.action in (
-                'recherche', 'semantique', 'historique'):
+                'recherche', 'semantique', 'historique', 'demandes'):
             return [IsAnyRole()]
         # check_out/check_in : tout rôle peut extraire/libérer ses propres docs.
         if self.action in ('check_out', 'check_in'):
@@ -555,6 +556,60 @@ class DocumentViewSet(TenantMixin, viewsets.ModelViewSet):
         return Response(
             DocumentSerializer(doc, context={'request': request}).data)
 
+    @action(detail=True, methods=['post'], url_path='demander-revue')
+    def demander_revue(self, request, pk=None):
+        """GED18 — Lance une demande d'approbation/revue sur ce document.
+
+        `POST …/documents/<id>/demander-revue/` — corps optionnel :
+        `{"approbateur": <id?>, "commentaire": "<str?>"}`.
+
+        Crée une `DemandeApprobation` « en_attente » (demandeur + company posés
+        côté serveur) et, si le document est brouillon, le fait avancer
+        « brouillon → revue » via la machine à états GED17 (réutilisée, jamais
+        dupliquée). `approbateur` est borné à la société courante. Une 2e demande
+        alors qu'une est déjà en attente renvoie 400. Écriture : responsable/admin.
+        """
+        document = self.get_object()
+        approbateur = None
+        raw_approbateur = request.data.get('approbateur')
+        if raw_approbateur not in (None, '', 'null'):
+            from django.contrib.auth import get_user_model
+            approbateur = (get_user_model().objects
+                           .filter(company=request.user.company,
+                                   pk=raw_approbateur)
+                           .first())
+            if approbateur is None:
+                return Response(
+                    {'approbateur': 'Approbateur inconnu.'},
+                    status=status.HTTP_404_NOT_FOUND)
+        try:
+            demande = services.request_review(
+                document, user=request.user, approbateur=approbateur,
+                commentaire=(request.data.get('commentaire') or '').strip())
+        except ValueError as exc:
+            return Response(
+                {'detail': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+        except PermissionError as exc:
+            return Response(
+                {'detail': str(exc)}, status=status.HTTP_403_FORBIDDEN)
+        return Response(
+            DemandeApprobationSerializer(
+                demande, context={'request': request}).data,
+            status=status.HTTP_201_CREATED)
+
+    @action(detail=True, methods=['get'], url_path='demandes')
+    def demandes(self, request, pk=None):
+        """GED18 — Demandes d'approbation/revue de ce document (récentes d'abord).
+
+        `GET …/documents/<id>/demandes/`. Le document est company-scopé (+ ACL
+        coffre) via `get_object()`. Lecture : tout rôle authentifié."""
+        document = self.get_object()
+        qs = selectors.demandes_approbation_for_document(document).select_related(
+            'demandeur', 'approbateur', 'document')
+        data = DemandeApprobationSerializer(
+            qs, many=True, context={'request': request}).data
+        return Response(data)
+
 
 class DocumentVersionViewSet(TenantMixin, viewsets.ModelViewSet):
     """Versions d'un document. Le numéro de version et `uploaded_by` sont posés
@@ -787,3 +842,89 @@ class DocumentTagAssignmentViewSet(TenantMixin, viewsets.ModelViewSet):
     def perform_create(self, serializer):
         serializer.save(
             company=self.request.user.company, created_by=self.request.user)
+
+
+class DemandeApprobationViewSet(TenantMixin, viewsets.ReadOnlyModelViewSet):
+    """GED18 — Workflow d'approbation / revue documentaire (scopé société).
+
+    Lecture seule en CRUD : une demande est CRÉÉE via
+    `documents/<id>/demander-revue/` et DÉCIDÉE via les actions `approuver` /
+    `rejeter` (jamais par un POST/PATCH brut) — toujours côté serveur (company,
+    demandeur, approbateur, statut, horodatage). Filtrable par `?document=<id>`,
+    `?statut=…` et `?en_attente=1`.
+
+    Lecture : tout rôle authentifié. Décision (approuver/rejeter) :
+    responsable/admin. À l'approbation, le document « en revue » est avancé
+    « revue → approuvé » via la machine à états GED17 (réutilisée, jamais
+    dupliquée) ; au rejet, il repart « revue → brouillon ».
+    """
+    queryset = DemandeApprobation.objects.select_related(
+        'document', 'demandeur', 'approbateur').all()
+    serializer_class = DemandeApprobationSerializer
+    filter_backends = [filters.OrderingFilter]
+    ordering_fields = ['created_at', 'decision_le', 'statut']
+
+    def get_permissions(self):
+        if self.action in READ_ACTIONS:
+            return [IsAnyRole()]
+        return [IsResponsableOrAdmin()]
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        document = self.request.query_params.get('document')
+        if document:
+            qs = qs.filter(document_id=document)
+        statut = self.request.query_params.get('statut')
+        if statut:
+            qs = qs.filter(statut=statut)
+        if self.request.query_params.get('en_attente') in ('1', 'true'):
+            from .models import APPROBATION_EN_ATTENTE
+            qs = qs.filter(statut=APPROBATION_EN_ATTENTE)
+        return qs
+
+    @action(detail=True, methods=['post'], url_path='approuver')
+    def approuver(self, request, pk=None):
+        """GED18 — Approuve cette demande et avance le document (revue→approuvé).
+
+        `POST …/demandes-approbation/<id>/approuver/` — corps optionnel :
+        `{"commentaire": "<str?>"}`. Une demande déjà décidée renvoie 400.
+        Écriture : responsable/admin."""
+        demande = self.get_object()
+        try:
+            dem = services.approve_demande(
+                demande, user=request.user,
+                commentaire=(request.data.get('commentaire') or '').strip())
+        except ValueError as exc:
+            return Response(
+                {'detail': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+        except PermissionError as exc:
+            return Response(
+                {'detail': str(exc)}, status=status.HTTP_403_FORBIDDEN)
+        dem.refresh_from_db()
+        return Response(
+            DemandeApprobationSerializer(
+                dem, context={'request': request}).data)
+
+    @action(detail=True, methods=['post'], url_path='rejeter')
+    def rejeter(self, request, pk=None):
+        """GED18 — Rejette cette demande et renvoie le document en correction.
+
+        `POST …/demandes-approbation/<id>/rejeter/` — corps optionnel :
+        `{"commentaire": "<str?>"}`. Si le document est « en revue », il repart
+        « revue → brouillon ». Une demande déjà décidée renvoie 400. Écriture :
+        responsable/admin."""
+        demande = self.get_object()
+        try:
+            dem = services.reject_demande(
+                demande, user=request.user,
+                commentaire=(request.data.get('commentaire') or '').strip())
+        except ValueError as exc:
+            return Response(
+                {'detail': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+        except PermissionError as exc:
+            return Response(
+                {'detail': str(exc)}, status=status.HTTP_403_FORBIDDEN)
+        dem.refresh_from_db()
+        return Response(
+            DemandeApprobationSerializer(
+                dem, context={'request': request}).data)

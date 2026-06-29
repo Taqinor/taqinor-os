@@ -2,11 +2,11 @@ from django.contrib import admin
 
 from .models import (
     BaremeIndemnite, BordereauRemise, Caisse, ClotureCaisse, CompteComptable,
-    CompteTresorerie, EcritureComptable, Effet, ExerciceComptable,
-    Immobilisation, IndemniteChantier, Journal, LigneEcriture,
-    LignePrevisionnelTresorerie, LigneReleve, MouvementCaisse, NoteFrais,
-    PaymentRun, PaymentRunLine, PeriodeComptable, PlanComptable, Rapprochement,
-    RapprochementBancaire, VirementInterne,
+    CompteTresorerie, DeclarationTVA, EcritureComptable, Effet,
+    ExerciceComptable, Immobilisation, IndemniteChantier, Journal,
+    LigneEcriture, LignePrevisionnelTresorerie, LigneReleve, MouvementCaisse,
+    NoteFrais, PaymentRun, PaymentRunLine, PeriodeComptable, PlanComptable,
+    Rapprochement, RapprochementBancaire, VirementInterne,
 )
 
 
@@ -220,3 +220,12 @@ class IndemniteChantierAdmin(admin.ModelAdmin):
                     'statut', 'company')
     list_filter = ('statut', 'aller_retour')
     search_fields = ('reference', 'libelle_chantier')
+
+
+@admin.register(DeclarationTVA)
+class DeclarationTVAAdmin(admin.ModelAdmin):
+    list_display = ('id', 'reference', 'date_debut', 'date_fin', 'regime',
+                    'methode', 'tva_collectee', 'tva_deductible',
+                    'tva_a_declarer', 'statut', 'company')
+    list_filter = ('regime', 'methode', 'statut')
+    search_fields = ('reference', 'libelle')

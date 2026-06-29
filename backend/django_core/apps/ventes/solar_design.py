@@ -1,4 +1,4 @@
-"""FG246 / FG247 / FG249 / … — Calculs d'ingénierie solaire (conception électrique).
+"""FG246 / FG247 / FG249 / … / FG257 — Calculs d'ingénierie solaire (conception électrique).
 
 Module PUR (aucune écriture base, aucun effet de bord) regroupant trois
 calculateurs réutilisés par l'écran de devis et, à terme, le pont toiture 3D :
@@ -1323,5 +1323,171 @@ def battery_storage_sizing(*, mode="autoconso",
         "depth_of_discharge": round(dod, 4),
         "round_trip_efficiency": round(rte, 4),
         "system_voltage_v": round(voltage, 1),
+        "warnings": warnings,
+    }
+
+
+# ── FG257 — Simulation bankable P50/P90 avec modèle de pertes ─────────────────
+# Transforme une production de BASE (le productible « brut », p. ex. PVGIS au
+# point de fonctionnement idéal × kWc) en une production FINANCIÈREMENT EXPLOITABLE
+# (« bankable ») en deux temps :
+#
+#   1) MODÈLE DE PERTES → RATIO DE PERFORMANCE (PR). Chaque source de perte
+#      physique (température, salissure/poussière, câblage DC+AC, rendement
+#      onduleur, et des pertes diverses : mismatch, ombrage déjà chiffré ailleurs,
+#      indisponibilité) ronge une fraction de l'énergie. Le PR est le produit des
+#      rendements de chaque poste : PR = Π (1 − perte_i). La production P50 (valeur
+#      médiane attendue, « 1 année sur 2 on fait au moins ça ») = base × PR.
+#
+#   2) VARIABILITÉ INTERANNUELLE → P90 / P75. L'ensoleillement varie d'une année
+#      à l'autre (météo) ; on modélise la production annuelle comme une gaussienne
+#      de moyenne P50 et d'écart-type relatif σ (typiquement 5–7 %). Les banques
+#      financent sur le P90 : la production DÉPASSÉE 9 années sur 10. Avec le
+#      quantile gaussien z₉₀ = 1.282, P90 = P50 × (1 − z₉₀·σ) ; de même
+#      P75 = P50 × (1 − z₇₅·σ) avec z₇₅ = 0.674.
+#
+# Module PUR : aucune base, aucun réseau, aucun prix. Les entrées numériques ne
+# sont JAMAIS rejetées (liberté de saisie du founder) — seuls les facteurs de
+# perte sont bornés à [0, 1] (une perte hors de cet intervalle n'a pas de sens
+# physique) et σ est borné ≥ 0 pour éviter un P90 > P50.
+
+# Postes de perte par défaut (fractions), valeurs marché conservatrices pour une
+# centrale PV au Maroc bien conçue. Tout est surchargeable par l'appelant.
+DEFAULT_LOSS_FACTORS = {
+    "temperature": 0.08,   # échauffement cellule au-dessus du STC (climat chaud)
+    "soiling": 0.03,       # salissure / poussière (Maroc : sable, à nettoyer)
+    "wiring": 0.02,        # pertes ohmiques câblage DC + AC
+    "inverter": 0.025,     # rendement de conversion onduleur (≈ 97.5 %)
+    "mismatch": 0.02,      # dispersion modules + connectique + LID/dégradation 1re année
+    "availability": 0.01,  # indisponibilité réseau / maintenance
+}
+
+# Quantiles de la loi normale centrée réduite (borne basse) :
+#   P90 = production dépassée 90 % du temps → z tel que Φ(−z) = 10 % → z = 1.282.
+#   P75 = production dépassée 75 % du temps → Φ(−z) = 25 % → z = 0.674.
+Z_P90 = 1.282
+Z_P75 = 0.674
+
+# Écart-type relatif interannuel par défaut (variabilité météo), typiquement 5–7 %.
+DEFAULT_ANNUAL_VARIABILITY = 0.06
+
+
+def _clamp01(value, default):
+    """Borne un facteur de perte à [0, 1]. Entrée illisible → ``default``."""
+    try:
+        v = float(value)
+    except (TypeError, ValueError):
+        return float(default)
+    if v < 0.0:
+        return 0.0
+    if v > 1.0:
+        return 1.0
+    return v
+
+
+def simulate_bankable_yield(base_production_kwh, *, loss_factors=None,
+                            annual_variability=DEFAULT_ANNUAL_VARIABILITY,
+                            kwc=None, include_p75=True):
+    """FG257 — simulation bankable P50/P90 (+P75) avec modèle de pertes & PR.
+
+    Calcule un RATIO DE PERFORMANCE (PR) à partir des postes de perte, l'applique
+    à une production de base pour obtenir le P50 (médiane), puis dérive le P90
+    (et optionnellement le P75) via le quantile gaussien d'une variabilité
+    interannuelle ``annual_variability`` (σ relatif).
+
+    Paramètres
+    ----------
+    base_production_kwh : production de base AVANT pertes (kWh/an) — typiquement
+        le productible idéal (PVGIS au point de fonctionnement) × kWc. Une valeur
+        ≤ 0 ou illisible → 0 (toutes les sorties à 0, jamais d'exception).
+    loss_factors : dict ``{poste: fraction}`` surchargeant ``DEFAULT_LOSS_FACTORS``
+        (température, soiling/salissure, wiring/câblage, inverter/onduleur, …).
+        Chaque facteur est borné à [0, 1] ; les postes inconnus sont acceptés et
+        comptés (extensibilité). Le PR = produit des (1 − perte_i).
+    annual_variability : écart-type relatif σ de la production annuelle (météo),
+        typiquement 0.05–0.07. Borné ≥ 0 (un σ négatif est ramené à 0 → P90=P50).
+    kwc : puissance crête (kWc) facultative, pour rapporter un ``specific_yield``
+        (kWh/kWc/an) au P50 — purement indicatif, jamais de prix.
+    include_p75 : ajoute le P75 (médiane des banques moins conservatrices).
+
+    Retourne un dict JSON-sérialisable ::
+
+        {base_production_kwh, performance_ratio, total_loss_pct,
+         loss_breakdown: {poste: {fraction, pct}}, applied_losses,
+         p50_kwh, p90_kwh, p75_kwh|None, annual_variability,
+         z_p90, z_p75, specific_yield_kwh_kwc|None, warnings: []}
+
+    Ne lève jamais : entrées dégradées → structure cohérente à 0.
+    """
+    warnings = []
+
+    try:
+        base = float(base_production_kwh)
+    except (TypeError, ValueError):
+        base = 0.0
+    if base < 0.0:
+        base = 0.0
+        warnings.append("production de base négative ramenée à 0")
+
+    factors = {**DEFAULT_LOSS_FACTORS, **(loss_factors or {})}
+
+    # ── PR = produit des rendements (1 − perte) de chaque poste ──
+    loss_breakdown = {}
+    pr = 1.0
+    for poste, raw in factors.items():
+        frac = _clamp01(raw, DEFAULT_LOSS_FACTORS.get(poste, 0.0))
+        loss_breakdown[poste] = {
+            "fraction": round(frac, 4),
+            "pct": round(frac * 100.0, 2),
+        }
+        pr *= (1.0 - frac)
+
+    performance_ratio = round(pr, 4)
+    total_loss_pct = round((1.0 - pr) * 100.0, 2)
+    if performance_ratio < 0.70 and factors:
+        warnings.append(
+            "ratio de performance < 0.70 — pertes cumulées élevées, vérifier les "
+            "postes (température/salissure/câblage/onduleur)")
+
+    # ── P50 = base × PR (production médiane attendue) ──
+    p50 = round(base * pr, 1)
+
+    # ── Variabilité interannuelle → P90 / P75 (quantile gaussien borne basse) ──
+    try:
+        sigma = float(annual_variability)
+    except (TypeError, ValueError):
+        sigma = DEFAULT_ANNUAL_VARIABILITY
+    if sigma < 0.0:
+        sigma = 0.0
+        warnings.append("variabilité interannuelle négative ramenée à 0")
+    if sigma > 0.30:
+        warnings.append(
+            "variabilité interannuelle > 30 % — valeur inhabituelle, vérifier σ")
+
+    # P90/P75 = P50 × (1 − z·σ), borné ≥ 0 (un σ énorme ne donne pas un négatif).
+    p90 = round(p50 * max(0.0, 1.0 - Z_P90 * sigma), 1)
+    p75 = round(p50 * max(0.0, 1.0 - Z_P75 * sigma), 1) if include_p75 else None
+
+    specific_yield = None
+    try:
+        k = float(kwc) if kwc is not None else None
+    except (TypeError, ValueError):
+        k = None
+    if k is not None and k > 0:
+        specific_yield = round(p50 / k, 1)
+
+    return {
+        "base_production_kwh": round(base, 1),
+        "performance_ratio": performance_ratio,
+        "total_loss_pct": total_loss_pct,
+        "loss_breakdown": loss_breakdown,
+        "applied_losses": sorted(loss_breakdown.keys()),
+        "p50_kwh": p50,
+        "p90_kwh": p90,
+        "p75_kwh": p75,
+        "annual_variability": round(sigma, 4),
+        "z_p90": Z_P90,
+        "z_p75": Z_P75,
+        "specific_yield_kwh_kwc": specific_yield,
         "warnings": warnings,
     }

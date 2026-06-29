@@ -753,3 +753,107 @@ class CarteCarburant(models.Model):
 
     def __str__(self):
         return f'Carte {self.numero}'
+
+
+# ── FLOTTE15 — Plans d'entretien préventif (km / date / heures) ────────────────
+
+class PlanEntretien(models.Model):
+    """Plan d'entretien préventif d'un actif du parc (FLOTTE15).
+
+    Un plan déclenche un rappel d'entretien (vidange, révision, contrôle
+    technique, graissage…) selon un OU plusieurs critères additifs :
+
+    * ``intervalle_km``     — tous les N kilomètres (véhicules immatriculés) ;
+    * ``intervalle_jours``  — tous les N jours (date calendaire) ;
+    * ``intervalle_heures`` — toutes les N heures de compteur (engins roulants).
+
+    Chaque critère est associé à une référence « dernier réalisé » (``dernier_km``,
+    ``derniere_date``, ``dernier_heures``) à partir de laquelle l'échéance suivante
+    est calculée : ``prochaine = dernier_réalisé + intervalle``. La comparaison à
+    l'état COURANT de l'actif (kilométrage du véhicule, compteur d'heures de
+    l'engin, date du jour) classe le plan en ``due`` (échéance dépassée) ou
+    ``upcoming`` (à venir). Tout le calcul est LECTURE SEULE et vit dans
+    ``selectors.plans_entretien_status`` — le modèle ne stocke aucun état dérivé.
+
+    L'actif ciblé est référencé via ``ActifFlotte`` (FLOTTE5), qui pointe vers SOIT
+    un ``Vehicule`` SOIT un ``EnginRoulant`` de la même société : un seul FK, des
+    requêtes simples, et l'accès uniforme au kilométrage / compteur d'heures
+    courant quel que soit le type d'actif.
+
+    Multi-tenant : ``company`` est posée côté serveur, jamais lue du corps de
+    requête. L'actif ciblé doit appartenir à la MÊME société (validé dans
+    ``clean`` et au sérialiseur).
+    """
+
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='plans_entretien_flotte',
+        verbose_name='Société',
+    )
+    actif_flotte = models.ForeignKey(
+        'ActifFlotte',
+        on_delete=models.CASCADE,
+        related_name='plans_entretien_flotte',
+        verbose_name="Actif (véhicule ou engin)",
+    )
+    # Code court du type d'entretien (vidange, révision, contrôle technique…).
+    # CharField borné : la valeur DOIT tenir dans max_length (leçon FG136).
+    type_entretien = models.CharField(
+        max_length=60, verbose_name="Type d'entretien")
+
+    # ── Critères de déclenchement (au moins un renseigné, validé dans clean) ──
+    intervalle_km = models.PositiveIntegerField(
+        null=True, blank=True, verbose_name='Intervalle (km)')
+    intervalle_jours = models.PositiveIntegerField(
+        null=True, blank=True, verbose_name='Intervalle (jours)')
+    intervalle_heures = models.PositiveIntegerField(
+        null=True, blank=True, verbose_name="Intervalle (heures)")
+
+    # ── Références « dernier entretien réalisé » ──────────────────────────────
+    dernier_km = models.PositiveIntegerField(
+        null=True, blank=True, verbose_name='Dernier entretien (km)')
+    derniere_date = models.DateField(
+        null=True, blank=True, verbose_name='Dernier entretien (date)')
+    dernier_heures = models.PositiveIntegerField(
+        null=True, blank=True, verbose_name='Dernier entretien (heures)')
+
+    # Seuil d'anticipation : un plan est « à venir » (upcoming) quand l'échéance
+    # tombe dans cette marge (en % de l'intervalle restant) — purement indicatif,
+    # le calcul concret vit dans le sélecteur.
+    seuil_alerte_km = models.PositiveIntegerField(
+        default=500, verbose_name="Marge d'alerte (km)")
+    seuil_alerte_jours = models.PositiveIntegerField(
+        default=14, verbose_name="Marge d'alerte (jours)")
+    seuil_alerte_heures = models.PositiveIntegerField(
+        default=25, verbose_name="Marge d'alerte (heures)")
+
+    notes = models.TextField(blank=True, verbose_name='Notes')
+    actif = models.BooleanField(default=True, verbose_name='Actif')
+    date_creation = models.DateTimeField(
+        auto_now_add=True, verbose_name='Créé le')
+
+    class Meta:
+        verbose_name = "Plan d'entretien préventif"
+        verbose_name_plural = "Plans d'entretien préventif"
+        ordering = ['type_entretien']
+        indexes = [
+            models.Index(
+                fields=['company', 'actif'],
+                name='flotte_plan_co_act_idx',
+            ),
+        ]
+
+    def clean(self):
+        """Au moins un intervalle renseigné ; l'actif appartient à la société."""
+        if not any((self.intervalle_km, self.intervalle_jours,
+                    self.intervalle_heures)):
+            raise ValidationError(
+                "Renseignez au moins un intervalle (km, jours ou heures).")
+        if self.actif_flotte_id is not None \
+                and self.actif_flotte.company_id != self.company_id:
+            raise ValidationError(
+                "L'actif ciblé n'appartient pas à la même société.")
+
+    def __str__(self):
+        return f'{self.type_entretien} — {self.actif_flotte}'

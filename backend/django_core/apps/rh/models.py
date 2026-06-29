@@ -1354,3 +1354,105 @@ class Habilitation(models.Model):
     def __str__(self):
         return (f'{self.employe.matricule} — '
                 f'{self.get_type_habilitation_display()}')
+
+
+class Certification(models.Model):
+    """Certification spécifique par employé (FG174) — hauteur/harnais/CACES/SST…
+
+    Famille DISTINCTE des habilitations électriques (FG173, ``Habilitation``,
+    norme NF C 18-510) : ici les certifications NON électriques exigées en
+    chantier PV — travail en hauteur, port du harnais, CACES/conduite de
+    nacelle, secourisme du travail (SST), conduite (permis/engins). Comme pour
+    une habilitation, c'est un TITRE délivré par un organisme avec une DATE DE
+    VALIDITÉ (expiration), mais on ne mélange pas les deux familles.
+
+    Une ligne par certification détenue par un employé. ``valide`` est CALCULÉ
+    (la certification est active ET sa date de validité n'est pas dépassée — une
+    certification sans échéance reste valide tant qu'elle est ``actif``). Un
+    sélecteur/endpoint liste les certifications qui expirent bientôt ou sont
+    déjà expirées (``?expire_within=``).
+
+    Multi-société : ``company`` posée côté serveur (jamais lue du corps) ;
+    ``employe`` doit appartenir à la même société.
+    """
+    class TypeCertification(models.TextChoices):
+        TRAVAIL_HAUTEUR = 'travail_hauteur', 'Travail en hauteur'
+        HARNAIS = 'harnais', 'Port du harnais / EPI antichute'
+        CACES_NACELLE = 'caces_nacelle', 'CACES / nacelle (PEMP)'
+        SECOURISME_SST = 'secourisme_sst', \
+            'Secourisme du travail (SST)'
+        CONDUITE = 'conduite', 'Conduite (permis / engins)'
+        AUTRE = 'autre', 'Autre'
+
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='rh_certifications',
+        verbose_name='Société',
+    )
+    employe = models.ForeignKey(
+        DossierEmploye,
+        on_delete=models.CASCADE,
+        related_name='certifications',
+        verbose_name='Employé',
+    )
+    type_certification = models.CharField(
+        max_length=20, choices=TypeCertification.choices,
+        default=TypeCertification.TRAVAIL_HAUTEUR,
+        verbose_name='Type de certification')
+    # Organisme délivrant le titre (centre de formation, organisme agréé…).
+    organisme = models.CharField(
+        max_length=160, blank=True, default='',
+        verbose_name='Organisme délivrant')
+    date_obtention = models.DateField(
+        null=True, blank=True, verbose_name="Date d'obtention")
+    # Échéance du titre : NULL = sans date de validité (reste valide tant que
+    # ``actif``). Une certification dont l'échéance est passée n'est plus
+    # ``valide``.
+    date_validite = models.DateField(
+        null=True, blank=True, verbose_name='Date de validité (expiration)')
+    actif = models.BooleanField(default=True, verbose_name='Actif')
+    note = models.CharField(
+        max_length=255, blank=True, default='', verbose_name='Note')
+    date_creation = models.DateTimeField(
+        auto_now_add=True, verbose_name='Créé le')
+    date_modification = models.DateTimeField(
+        auto_now=True, verbose_name='Modifié le')
+
+    class Meta:
+        verbose_name = 'Certification spécifique'
+        verbose_name_plural = 'Certifications spécifiques'
+        ordering = ['employe', 'type_certification']
+        constraints = [
+            # Un employé ne détient qu'UNE ligne par certification (on met à
+            # jour la validité plutôt que d'empiler des doublons).
+            models.UniqueConstraint(
+                fields=['employe', 'type_certification'],
+                name='rh_cert_emp_type_uniq'),
+        ]
+        indexes = [
+            models.Index(
+                fields=['company', 'employe'],
+                name='rh_cert_comp_emp_idx'),
+            models.Index(
+                fields=['company', 'date_validite'],
+                name='rh_cert_comp_valid_idx'),
+        ]
+
+    @property
+    def valide(self):
+        """Vrai si la certification est active ET non expirée.
+
+        Une certification sans ``date_validite`` reste valide tant qu'elle est
+        ``actif``. Sinon elle est valide jusqu'au jour de l'échéance inclus.
+        """
+        if not self.actif:
+            return False
+        if self.date_validite is None:
+            return True
+        from django.utils import timezone
+        return self.date_validite >= timezone.localdate()
+
+    def __str__(self):
+        return (f'{self.employe.matricule} — '
+                f'{self.get_type_certification_display()}')

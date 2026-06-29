@@ -3,6 +3,7 @@ from django.contrib import admin
 from .models import (
     ClauseContrat,
     Contrat,
+    ContratActivity,
     ContratLien,
     EtapeApprobation,
     PartieContrat,
@@ -57,3 +58,11 @@ class EtapeApprobationAdmin(admin.ModelAdmin):
                     'statut', 'approbateur', 'decision_le', 'company')
     list_filter = ('statut', 'niveau_approbation')
     search_fields = ('commentaire',)
+
+
+@admin.register(ContratActivity)
+class ContratActivityAdmin(admin.ModelAdmin):
+    list_display = ('id', 'contrat', 'type', 'field', 'auteur',
+                    'date_creation', 'company')
+    list_filter = ('type', 'field')
+    search_fields = ('message', 'old_value', 'new_value')

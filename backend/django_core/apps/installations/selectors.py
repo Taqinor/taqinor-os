@@ -107,6 +107,183 @@ def _active_reservations():
     return StockReservation.objects.filter(active=True, consomme=False)
 
 
+# ── FG294 — Budget projet vs réel (engagé / dépensé) ─────────────────────────
+# Le sélecteur ci-dessous AGRÈGE le réel d'un budget de programme à partir de
+# trois sources qui vivent dans D'AUTRES apps, sans JAMAIS importer leurs
+# modèles (règle de modularité CLAUDE.md, contrat import-linter) :
+#   * devis du programme (``ProjetDevis`` → ``ventes.Devis``) — montant contracté
+#     CLIENT (HT/TTC), lu via ``apps.get_model('ventes', 'Devis')`` (lecture
+#     ORM, aucune arête d'import au chargement) ;
+#   * coûts fournisseur rattachés (``BudgetEngagement`` → BCF / facture
+#     fournisseur) — engagé = montant commandé du BCF, dépensé = montant facturé,
+#     lus via ``apps.stock.selectors`` (import LOCAL à la fonction) ;
+#   * main-d'œuvre des chantiers du programme (``Installation.labour_*`` ×
+#     ``tarif_jour_mo``), même app — FK directe.
+# Toute donnée manquante DÉGRADE proprement (montant = 0) ; aucun statut n'est
+# touché.
+
+def _dec(value):
+    from decimal import Decimal, InvalidOperation
+    if value is None:
+        return Decimal('0')
+    try:
+        return Decimal(str(value))
+    except (InvalidOperation, TypeError, ValueError):
+        return Decimal('0')
+
+
+def _devis_totaux_programme(projet):
+    """(Σ total HT, Σ total TTC) des devis rattachés au programme. Lu via
+    ``apps.get_model`` — aucune arête d'import vers ``ventes`` au chargement. Un
+    devis introuvable / illisible dégrade à 0."""
+    from decimal import Decimal
+    from django.apps import apps as django_apps
+    devis_ids = list(projet.devis.values_list('devis_id', flat=True))
+    if not devis_ids:
+        return Decimal('0'), Decimal('0')
+    devis_model = django_apps.get_model('ventes', 'Devis')
+    total_ht = Decimal('0')
+    total_ttc = Decimal('0')
+    for devis in devis_model.objects.filter(id__in=devis_ids):
+        try:
+            total_ht += _dec(devis.total_ht)
+            total_ttc += _dec(devis.total_ttc)
+        except Exception:  # pragma: no cover - défensif
+            continue
+    return total_ht, total_ttc
+
+
+def _engagements_fournisseur(budget, company):
+    """Réel fournisseur d'un budget, ventilé par catégorie.
+
+    Renvoie ``(engage_par_cat, depense_par_cat)`` — deux dicts
+    {catégorie: Decimal}. Engagé = Σ montants COMMANDÉS des BCF rattachés ;
+    dépensé = Σ montants HT FACTURÉS des factures fournisseur rattachées. Les
+    montants sont lus via ``apps.stock.selectors`` (import LOCAL — aucune arête
+    d'import au chargement). Un objet introuvable pour la société dégrade à 0."""
+    from decimal import Decimal
+    from apps.stock import selectors as stock_selectors
+    engage = {}
+    depense = {}
+    for eng in budget.engagements.all():
+        cat = eng.categorie
+        if eng.source == eng.Source.BON_COMMANDE and eng.bon_commande_id:
+            bon = stock_selectors.get_bon_commande_fournisseur(
+                company, eng.bon_commande_id)
+            montant = (stock_selectors.montant_commande_bcf(bon)
+                       if bon is not None else Decimal('0'))
+            engage[cat] = engage.get(cat, Decimal('0')) + _dec(montant)
+        elif eng.source == eng.Source.FACTURE and eng.facture_id:
+            montant = _facture_fournisseur_ht(company, eng.facture_id)
+            depense[cat] = depense.get(cat, Decimal('0')) + _dec(montant)
+    return engage, depense
+
+
+def _facture_fournisseur_ht(company, facture_id):
+    """Montant HT d'une facture fournisseur scopée société (0 si introuvable).
+    Lu via ``apps.get_model`` — aucune arête d'import vers ``stock`` au
+    chargement."""
+    from decimal import Decimal
+    from django.apps import apps as django_apps
+    model = django_apps.get_model('stock', 'FactureFournisseur')
+    fac = model.objects.filter(id=facture_id, company=company).first()
+    if fac is None:
+        return Decimal('0')
+    return _dec(fac.montant_ht)
+
+
+def _main_oeuvre_reelle(projet, tarif_jour):
+    """(jours-homme réels Σ, coût main-d'œuvre réel) des chantiers du programme.
+
+    Σ ``Installation.labour_jours_reels`` sur les chantiers rattachés
+    (``ProjetChantier`` → ``Installation``, même app, FK directe) × ``tarif_jour``
+    (MAD/jour). Tarif 0 → coût 0."""
+    from decimal import Decimal
+    from .models import Installation
+    inst_ids = list(projet.chantiers.values_list('installation_id', flat=True))
+    if not inst_ids:
+        return Decimal('0'), Decimal('0')
+    jours = Decimal('0')
+    for inst in Installation.objects.filter(id__in=inst_ids):
+        jours += _dec(inst.labour_jours_reels)
+    return jours, jours * _dec(tarif_jour)
+
+
+def budget_projet_synthese(budget):
+    """FG294 — synthèse budget vs réel (engagé / dépensé) d'un programme.
+
+    AGRÈGE, pour le ``BudgetProjet`` donné, le réel à partir des devis du
+    programme, des bons de commande / factures fournisseur rattachés et de la
+    main-d'œuvre des chantiers, puis le compare au budget par catégorie et au
+    total, et lève un drapeau de DÉPASSEMENT.
+
+    Renvoie un dict plat (jamais d'instance de modèle d'une autre app) :
+      ``devise`` ; ``budget`` (par catégorie + total) ;
+      ``engage`` / ``depense`` (par catégorie + total — engagé = BCF commandés +
+      main-d'œuvre, dépensé = factures fournisseur + main-d'œuvre) ;
+      ``reste`` (budget total − dépensé total) ;
+      ``devis_total_ht`` / ``devis_total_ttc`` (montant contracté client) ;
+      ``seuil_alerte_pct`` ; ``depassement`` (bool) ; ``categories_depassees``
+      (liste des catégories dont le dépensé excède le budget).
+
+    Le ``depassement`` est vrai quand le dépensé total dépasse le budget total
+    majoré du seuil (``budget × (1 + seuil/100)``). Lecture seule, import-linter
+    safe (lectures cross-app via sélecteurs / ``apps.get_model``)."""
+    from decimal import Decimal
+    company = budget.company
+    projet = budget.projet
+
+    budget_cat = {
+        'materiel': _dec(budget.budget_materiel),
+        'main_oeuvre': _dec(budget.budget_main_oeuvre),
+        'sous_traitance': _dec(budget.budget_sous_traitance),
+        'divers': _dec(budget.budget_divers),
+    }
+    budget_total = sum(budget_cat.values(), Decimal('0'))
+
+    eng_fourn, dep_fourn = _engagements_fournisseur(budget, company)
+    mo_jours, mo_cout = _main_oeuvre_reelle(projet, budget.tarif_jour_mo)
+
+    cats = ('materiel', 'main_oeuvre', 'sous_traitance', 'divers')
+    engage_cat = {c: eng_fourn.get(c, Decimal('0')) for c in cats}
+    depense_cat = {c: dep_fourn.get(c, Decimal('0')) for c in cats}
+    # La main-d'œuvre des chantiers s'ajoute à la catégorie main_oeuvre, à la
+    # fois en engagé et en dépensé (le temps passé est un coût encouru).
+    engage_cat['main_oeuvre'] += mo_cout
+    depense_cat['main_oeuvre'] += mo_cout
+
+    engage_total = sum(engage_cat.values(), Decimal('0'))
+    depense_total = sum(depense_cat.values(), Decimal('0'))
+
+    seuil = _dec(budget.seuil_alerte_pct)
+    plafond = budget_total * (Decimal('1') + seuil / Decimal('100'))
+    depassement = budget_total > 0 and depense_total > plafond
+    categories_depassees = [
+        c for c in cats if budget_cat[c] > 0 and depense_cat[c] > budget_cat[c]
+    ]
+
+    devis_ht, devis_ttc = _devis_totaux_programme(projet)
+
+    def _floats(d):
+        return {k: float(v) for k, v in d.items()}
+
+    return {
+        'budget_id': budget.id,
+        'projet_id': projet.id,
+        'devise': budget.devise,
+        'budget': {**_floats(budget_cat), 'total': float(budget_total)},
+        'engage': {**_floats(engage_cat), 'total': float(engage_total)},
+        'depense': {**_floats(depense_cat), 'total': float(depense_total)},
+        'reste': float(budget_total - depense_total),
+        'main_oeuvre_jours_reels': float(mo_jours),
+        'devis_total_ht': float(devis_ht),
+        'devis_total_ttc': float(devis_ttc),
+        'seuil_alerte_pct': float(seuil),
+        'depassement': bool(depassement),
+        'categories_depassees': categories_depassees,
+    }
+
+
 def reserve_scoped(company, pk):
     """Réserve (F16 — point de finition) scopée société, par id, ou ``None``.
 

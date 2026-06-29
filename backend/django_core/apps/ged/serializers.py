@@ -1,7 +1,7 @@
 from rest_framework import serializers
 
 from .models import (
-    Cabinet, Coffre, Document, DocumentLien, DocumentTag,
+    Cabinet, Coffre, DemandeApprobation, Document, DocumentLien, DocumentTag,
     DocumentTagAssignment, DocumentVersion, Folder,
 )
 from . import services
@@ -313,3 +313,39 @@ class DocumentLienSerializer(serializers.ModelSerializer):
                     return f'{val} {prenom}'.strip()
                 return str(val)
         return str(target)
+
+
+class DemandeApprobationSerializer(serializers.ModelSerializer):
+    """GED18 — Demande d'approbation / revue d'un document.
+
+    Lecture seule pour l'essentiel : la demande est créée et décidée via les
+    actions/services dédiés (jamais par un POST/PATCH brut), qui posent
+    `company`, `demandeur`, `approbateur`, `statut` et `decision_le` côté
+    serveur. `document` et `commentaire` sont les seuls champs réellement
+    saisissables (la création passe par l'action `documents/<id>/demander-revue`,
+    où `document` est borné à la société courante).
+    """
+    document_nom = serializers.CharField(
+        source='document.nom', read_only=True)
+    demandeur_nom = serializers.CharField(
+        source='demandeur.username', read_only=True, default=None)
+    approbateur_nom = serializers.CharField(
+        source='approbateur.username', read_only=True, default=None)
+    statut_display = serializers.CharField(
+        source='get_statut_display', read_only=True)
+    document_statut = serializers.CharField(
+        source='document.statut', read_only=True)
+    is_pending = serializers.BooleanField(read_only=True)
+
+    class Meta:
+        model = DemandeApprobation
+        fields = [
+            'id', 'document', 'document_nom', 'document_statut',
+            'demandeur', 'demandeur_nom', 'approbateur', 'approbateur_nom',
+            'statut', 'statut_display', 'commentaire', 'is_pending',
+            'decision_le', 'created_at', 'updated_at',
+        ]
+        read_only_fields = [
+            'demandeur', 'approbateur', 'statut', 'decision_le',
+            'created_at', 'updated_at',
+        ]

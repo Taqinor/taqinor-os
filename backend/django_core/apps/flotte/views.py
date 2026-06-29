@@ -20,6 +20,7 @@ from .models import (
     Conducteur,
     EnginRoulant,
     EtatDesLieux,
+    PlanEntretien,
     PleinCarburant,
     ReferentielFlotte,
     ReservationVehicule,
@@ -32,13 +33,14 @@ from .serializers import (
     ConducteurSerializer,
     EnginRoulantSerializer,
     EtatDesLieuxSerializer,
+    PlanEntretienSerializer,
     PleinCarburantSerializer,
     ReferentielFlotteSerializer,
     ReservationVehiculeSerializer,
     VehiculeSerializer,
 )
 
-READ_ACTIONS = ['list', 'retrieve', 'consommation', 'anomalies']
+READ_ACTIONS = ['list', 'retrieve', 'consommation', 'anomalies', 'echeances']
 
 
 class _FlotteBaseViewSet(TenantMixin, viewsets.ModelViewSet):
@@ -417,3 +419,65 @@ class CarteCarburantViewSet(_FlotteBaseViewSet):
 
         from .selectors import anomalies_pleins
         return Response(anomalies_pleins(company, vehicule_id))
+
+
+class PlanEntretienViewSet(_FlotteBaseViewSet):
+    """Plans d'entretien préventif km/date/heures (FLOTTE15).
+
+    CRUD scopé société (écriture responsable/admin). Filtrable par
+    ``?actif_flotte=<id>`` et ``?actif=true|false``. Recherche par type
+    d'entretien.
+
+    L'action de lecture ``GET /plans-entretien/echeances/`` calcule, pour chaque
+    plan actif de la société, son statut (``due`` / ``upcoming`` / ``ok`` /
+    ``inconnu``) vs l'état COURANT de l'actif ciblé (kilométrage du véhicule,
+    compteur d'heures de l'engin, date du jour). ``?statut=due|upcoming|ok|inconnu``
+    restreint la liste. Lecture seule (voir
+    ``selectors.plans_entretien_status``).
+    """
+    queryset = PlanEntretien.objects.select_related(
+        'actif_flotte', 'actif_flotte__vehicule', 'actif_flotte__engin')
+    serializer_class = PlanEntretienSerializer
+    filter_backends = [filters.SearchFilter, filters.OrderingFilter]
+    search_fields = ['type_entretien']
+    ordering_fields = ['type_entretien', 'actif', 'date_creation']
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        params = self.request.query_params
+
+        actif_flotte = params.get('actif_flotte')
+        if actif_flotte:
+            try:
+                qs = qs.filter(actif_flotte_id=int(actif_flotte))
+            except (ValueError, TypeError):
+                pass
+
+        actif = params.get('actif')
+        if actif is not None:
+            qs = qs.filter(actif=actif.lower() in ('1', 'true', 'vrai', 'oui'))
+
+        return qs
+
+    @action(detail=False, methods=['get'])
+    def echeances(self, request):
+        """FLOTTE15 — Entretiens DUS / À VENIR de la société.
+
+        Lecture seule, scopée société. ``?statut=due|upcoming|ok|inconnu``
+        (facultatif) restreint la liste ; ``?inclure_inactifs=true`` inclut les
+        plans désactivés (par défaut seuls les plans actifs sont examinés).
+        Renvoie l'agrégat des échéances (voir
+        ``selectors.plans_entretien_status``).
+        """
+        company = request.user.company
+        statut = request.query_params.get('statut')
+
+        inclure = request.query_params.get('inclure_inactifs')
+        actif_only = not (
+            inclure is not None
+            and inclure.lower() in ('1', 'true', 'vrai', 'oui'))
+
+        from .selectors import plans_entretien_status
+        return Response(
+            plans_entretien_status(company, actif_only=actif_only,
+                                   statut=statut))

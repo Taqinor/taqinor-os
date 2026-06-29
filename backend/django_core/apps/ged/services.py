@@ -508,3 +508,133 @@ def change_lifecycle_status(document, target_status, *, user):
         doc.save(update_fields=['statut', 'updated_at'])
     document.statut = doc.statut
     return doc
+
+
+# ── GED18 — Workflow d'approbation / revue documentaire ─────────────
+
+def request_review(document, *, user, approbateur=None, commentaire=''):
+    """GED18 — Lance une demande d'approbation/revue sur un document.
+
+    Crée une `DemandeApprobation` « en_attente » et — si le document n'est pas
+    déjà en revue — le fait avancer « brouillon → revue » via la machine à états
+    GED17 (`change_lifecycle_status`, jamais dupliquée ici). Le `demandeur` et la
+    `company` sont posés côté serveur (jamais lus du corps de requête).
+
+    Refuse (`ValueError`) s'il existe déjà une demande EN ATTENTE pour ce
+    document (une seule revue active à la fois) ou si `approbateur` appartient à
+    une autre société. Multi-tenant : `PermissionError` si l'utilisateur n'est
+    pas de la société du document.
+
+    Renvoie la `DemandeApprobation` créée.
+    """
+    from .models import (
+        APPROBATION_EN_ATTENTE, DemandeApprobation, LIFECYCLE_BROUILLON,
+        LIFECYCLE_REVUE,
+    )
+    if document.company_id != user.company_id:
+        raise PermissionError("Document inaccessible.")
+    if approbateur is not None and approbateur.company_id != document.company_id:
+        raise ValueError("L'approbateur doit appartenir à la même société.")
+    with transaction.atomic():
+        doc = Document.objects.select_for_update().get(pk=document.pk)
+        existe = (DemandeApprobation.objects
+                  .filter(document=doc, statut=APPROBATION_EN_ATTENTE)
+                  .exists())
+        if existe:
+            raise ValueError(
+                "Une demande d'approbation est déjà en attente pour ce "
+                "document.")
+        demande = DemandeApprobation.objects.create(
+            company=doc.company,
+            document=doc,
+            demandeur=user,
+            approbateur=approbateur,
+            statut=APPROBATION_EN_ATTENTE,
+            commentaire=commentaire or '',
+        )
+        # Met le document « en revue » s'il est encore brouillon (transition
+        # GED17 réutilisée — on ne duplique pas la machine à états).
+        if doc.statut == LIFECYCLE_BROUILLON:
+            change_lifecycle_status(doc, LIFECYCLE_REVUE, user=user)
+    document.statut = doc.statut
+    return demande
+
+
+def _decide_demande(demande, *, user, statut_cible, commentaire=''):
+    """GED18 — Tranche une demande d'approbation (approbation OU rejet).
+
+    Garde commune à `approve_demande`/`reject_demande` : seule une demande
+    ENCORE EN ATTENTE peut être décidée (sinon `ValueError` — pas de double
+    décision). L'`approbateur`, le statut, l'horodatage `decision_le` et le
+    commentaire sont posés côté serveur. Multi-tenant : `PermissionError` si
+    l'utilisateur n'est pas de la société de la demande.
+
+    Renvoie la `DemandeApprobation` rafraîchie.
+    """
+    from django.utils import timezone
+    from .models import APPROBATION_EN_ATTENTE, DemandeApprobation
+    if demande.company_id != user.company_id:
+        raise PermissionError("Demande inaccessible.")
+    with transaction.atomic():
+        dem = (DemandeApprobation.objects
+               .select_for_update()
+               .get(pk=demande.pk))
+        if dem.statut != APPROBATION_EN_ATTENTE:
+            raise ValueError(
+                f"La demande est déjà « {dem.statut} » — décision impossible.")
+        dem.statut = statut_cible
+        dem.approbateur = user
+        dem.decision_le = timezone.now()
+        if commentaire:
+            dem.commentaire = commentaire
+        dem.save(update_fields=[
+            'statut', 'approbateur', 'decision_le', 'commentaire',
+            'updated_at'])
+    demande.statut = dem.statut
+    demande.approbateur = dem.approbateur
+    demande.decision_le = dem.decision_le
+    demande.commentaire = dem.commentaire
+    return dem
+
+
+def approve_demande(demande, *, user, commentaire=''):
+    """GED18 — Approuve une demande de revue et fait avancer le document.
+
+    Tranche la demande (« approuve », horodatage + approbateur côté serveur),
+    puis — si le document est « en revue » — le fait avancer « revue →
+    approuvé » via la machine à états GED17 (`change_lifecycle_status`, jamais
+    dupliquée). L'avancement du cycle de vie n'est tenté QUE depuis « revue » :
+    un document à un autre statut reste inchangé (la décision est tout de même
+    enregistrée). Renvoie la `DemandeApprobation` décidée.
+    """
+    from .models import (
+        APPROBATION_APPROUVE, LIFECYCLE_APPROUVE, LIFECYCLE_REVUE,
+    )
+    dem = _decide_demande(
+        demande, user=user, statut_cible=APPROBATION_APPROUVE,
+        commentaire=commentaire)
+    document = dem.document
+    if document.statut == LIFECYCLE_REVUE:
+        change_lifecycle_status(document, LIFECYCLE_APPROUVE, user=user)
+    return dem
+
+
+def reject_demande(demande, *, user, commentaire=''):
+    """GED18 — Rejette une demande de revue et renvoie le document en correction.
+
+    Tranche la demande (« rejete », horodatage + approbateur côté serveur),
+    puis — si le document est « en revue » — le renvoie « revue → brouillon »
+    via la machine à états GED17 (`change_lifecycle_status`, jamais dupliquée),
+    pour qu'il reparte en correction. Un document à un autre statut reste
+    inchangé. Renvoie la `DemandeApprobation` décidée.
+    """
+    from .models import (
+        APPROBATION_REJETE, LIFECYCLE_BROUILLON, LIFECYCLE_REVUE,
+    )
+    dem = _decide_demande(
+        demande, user=user, statut_cible=APPROBATION_REJETE,
+        commentaire=commentaire)
+    document = dem.document
+    if document.statut == LIFECYCLE_REVUE:
+        change_lifecycle_status(document, LIFECYCLE_BROUILLON, user=user)
+    return dem
