@@ -3,8 +3,8 @@ from rest_framework.routers import DefaultRouter
 
 from .views import (
     ActionCorrectivePreventiveViewSet, AuditViewSet, CritereAuditViewSet,
-    GrilleAuditViewSet, ItemNotationViewSet, NonConformiteViewSet,
-    NotationFinChantierViewSet,
+    GrilleAuditViewSet, Iso9001ReadinessViewSet, ItemNotationViewSet,
+    NonConformiteViewSet, NotationFinChantierViewSet,
     PlanInspectionChantierViewSet, PlanInspectionModeleViewSet,
     PointControleModeleViewSet, ProcedureQualiteViewSet,
     QhseChatterEntryViewSet,
@@ -29,6 +29,9 @@ router.register(r'notations-fin-chantier', NotationFinChantierViewSet)
 router.register(r'items-notation', ItemNotationViewSet)
 router.register(r'procedures-qualite', ProcedureQualiteViewSet)
 router.register(r'retours-client', RetourClientQualiteViewSet)
+router.register(
+    r'iso9001-readiness', Iso9001ReadinessViewSet,
+    basename='iso9001-readiness')
 
 urlpatterns = [
     path('', include(router.urls)),

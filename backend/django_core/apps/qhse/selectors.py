@@ -24,7 +24,8 @@ from django.db.models import Avg
 
 from .models import (
     ActionCorrectivePreventive, Audit, NonConformite, NotationFinChantier,
-    ProcedureQualite, ReleveControle, ReleveCourbeIV, RetourClientQualite,
+    PlanInspectionChantier, ProcedureQualite, ReleveControle, ReleveCourbeIV,
+    RetourClientQualite,
 )
 
 
@@ -377,4 +378,193 @@ def audit_apercu(audit_id, company):
         'statut_display': audit.get_statut_display(),
         'score': audit.score,
         'chantier_id': audit.chantier_id,
+    }
+
+
+# ── QHSE20 — Tableau de bord « ISO 9001 readiness » ────────────────────────
+#
+# Agrégation pure et EN LECTURE SEULE des données QHSE déjà existantes (aucun
+# nouveau modèle) en un score de « préparation ISO 9001 » + une ventilation par
+# critère, chaque critère étant rattaché à la clause ISO 9001:2015
+# correspondante. Tout est scopé société (tous les querysets filtrent par
+# ``company``). Aucune division par zéro : un critère sans donnée vaut 0 et est
+# marqué ``no_data=True`` (jamais un plantage).
+
+# Cible de satisfaction client (note maximale de RetourClientQualite) pour
+# convertir la moyenne 1–5 en pourcentage de critère.
+_SATISFACTION_NOTE_MAX = RetourClientQualite.NOTE_MAX
+
+
+def _pct(numerateur, denominateur):
+    """Pourcentage 0–100 (2 décimales) ou ``None`` si le dénominateur est nul.
+
+    Garde anti-division-par-zéro : aucune donnée → ``None`` (pas un plantage,
+    pas un 0 trompeur). L'appelant décide comment pondérer un critère sans
+    donnée (ici : score 0, ``no_data=True``).
+    """
+    if not denominateur:
+        return None
+    return round(100.0 * numerateur / denominateur, 2)
+
+
+def _critere(cle, libelle, clause, score, detail, poids=1):
+    """Construit un dict-critère normalisé pour le tableau de bord.
+
+    ``score`` est un pourcentage 0–100 ou ``None`` (aucune donnée). Un critère
+    sans donnée compte pour 0 dans le score global mais est signalé
+    (``no_data``) pour ne pas masquer un manque de preuve ISO.
+    """
+    no_data = score is None
+    return {
+        'cle': cle,
+        'libelle': libelle,
+        'clause_iso': clause,
+        'poids': poids,
+        'score': score,
+        'score_effectif': 0.0 if no_data else score,
+        'no_data': no_data,
+        'detail': detail,
+    }
+
+
+def iso9001_readiness(company):
+    """Tableau de bord « ISO 9001 readiness » d'une société (lecture seule).
+
+    Agrège les données QHSE existantes (non-conformités, CAPA, audits,
+    procédures qualité, ITP/relevés, retours client) en un score global de
+    préparation ISO 9001 et une ventilation par critère, chaque critère étant
+    rattaché à la clause ISO 9001:2015 correspondante :
+
+    * **NCR clôturées** (clause 10.2 — non-conformité & action corrective) :
+      part des ``NonConformite`` à l'état ``cloturee`` ;
+    * **CAPA dans les délais** (clause 10.2) : part des CAPA réalisées/vérifiées
+      OU encore dans les délais (échéance non dépassée) — l'inverse des CAPA en
+      retard ;
+    * **Audits réalisés** (clause 9.2 — audit interne) : part des ``Audit`` à
+      l'état ``clos`` ;
+    * **Procédures publiées** (clause 7.5 — informations documentées) : part des
+      références de procédure qualité dont la version courante est
+      ``en_vigueur`` ;
+    * **Couverture ITP** (clause 8.5/8.6 — maîtrise & libération) : part des
+      relevés de contrôle effectivement renseignés (``conforme`` non nul) ;
+    * **Satisfaction client** (clause 9.1.2 — satisfaction du client) : moyenne
+      des retours client convertie en pourcentage sur l'échelle 1–5.
+
+    Le ``score_global`` est la moyenne (pondérée par ``poids``) des
+    ``score_effectif`` des critères ; un critère **sans donnée** vaut 0 et porte
+    ``no_data=True`` (jamais une division par zéro, jamais un plantage). Le
+    ``niveau`` est dérivé du score global (≥ 85 « avancé », ≥ 60 « intermédiaire »,
+    sinon « initial »). Tout est scopé ``company`` ; aucune mutation.
+    """
+    from django.utils import timezone
+
+    today = timezone.localdate()
+
+    # ── Critère 1 — NCR clôturées (clause 10.2) ─────────────────────────────
+    ncr_qs = NonConformite.objects.filter(company=company)
+    ncr_total = ncr_qs.count()
+    ncr_cloturees = ncr_qs.filter(
+        statut=NonConformite.Statut.CLOTUREE).count()
+    crit_ncr = _critere(
+        'ncr_cloturees', 'Non-conformités clôturées', '10.2',
+        _pct(ncr_cloturees, ncr_total),
+        {'total': ncr_total, 'cloturees': ncr_cloturees,
+         'ouvertes': ncr_total - ncr_cloturees})
+
+    # ── Critère 2 — CAPA dans les délais (clause 10.2) ──────────────────────
+    capa_qs = ActionCorrectivePreventive.objects.filter(company=company)
+    capa_total = capa_qs.count()
+    capa_en_retard_n = capa_qs.filter(
+        echeance__isnull=False,
+        echeance__lt=today,
+        statut__in=STATUTS_CAPA_OUVERTS,
+    ).count()
+    capa_a_temps = capa_total - capa_en_retard_n
+    crit_capa = _critere(
+        'capa_dans_delais', 'CAPA dans les délais', '10.2',
+        _pct(capa_a_temps, capa_total),
+        {'total': capa_total, 'dans_delais': capa_a_temps,
+         'en_retard': capa_en_retard_n})
+
+    # ── Critère 3 — Audits réalisés (clause 9.2) ────────────────────────────
+    audit_qs = Audit.objects.filter(company=company)
+    audit_total = audit_qs.count()
+    audit_clos = audit_qs.filter(statut=Audit.Statut.CLOS).count()
+    crit_audit = _critere(
+        'audits_realises', 'Audits internes réalisés', '9.2',
+        _pct(audit_clos, audit_total),
+        {'total': audit_total, 'clos': audit_clos,
+         'en_cours': audit_total - audit_clos})
+
+    # ── Critère 4 — Procédures publiées (clause 7.5) ────────────────────────
+    refs = (ProcedureQualite.objects
+            .filter(company=company)
+            .values_list('reference', flat=True)
+            .distinct())
+    refs = sorted(set(refs))
+    proc_total = len(refs)
+    proc_en_vigueur = 0
+    for ref in refs:
+        courante = procedure_qualite_courante(company, ref)
+        if (courante is not None
+                and courante.statut == ProcedureQualite.Statut.EN_VIGUEUR):
+            proc_en_vigueur += 1
+    crit_proc = _critere(
+        'procedures_publiees', 'Procédures qualité publiées', '7.5',
+        _pct(proc_en_vigueur, proc_total),
+        {'references': proc_total, 'en_vigueur': proc_en_vigueur,
+         'brouillon_ou_obsolete': proc_total - proc_en_vigueur})
+
+    # ── Critère 5 — Couverture ITP (clauses 8.5 / 8.6) ──────────────────────
+    releve_qs = ReleveControle.objects.filter(company=company)
+    releve_total = releve_qs.count()
+    releve_renseignes = releve_qs.filter(conforme__isnull=False).count()
+    crit_itp = _critere(
+        'couverture_itp', 'Couverture des plans d\'inspection (ITP)', '8.5/8.6',
+        _pct(releve_renseignes, releve_total),
+        {'releves': releve_total, 'renseignes': releve_renseignes,
+         'plans_chantier': PlanInspectionChantier.objects.filter(
+             company=company).count()})
+
+    # ── Critère 6 — Satisfaction client (clause 9.1.2) ──────────────────────
+    moyenne = satisfaction_moyenne(company)
+    nb_retours = RetourClientQualite.objects.filter(company=company).count()
+    if moyenne is None or not _SATISFACTION_NOTE_MAX:
+        satisfaction_pct = None
+    else:
+        satisfaction_pct = round(
+            100.0 * moyenne / _SATISFACTION_NOTE_MAX, 2)
+    crit_satisfaction = _critere(
+        'satisfaction_client', 'Satisfaction client', '9.1.2',
+        satisfaction_pct,
+        {'moyenne': moyenne, 'note_max': _SATISFACTION_NOTE_MAX,
+         'nb_retours': nb_retours})
+
+    criteres = [
+        crit_ncr, crit_capa, crit_audit, crit_proc, crit_itp,
+        crit_satisfaction,
+    ]
+
+    # ── Score global pondéré (un critère sans donnée compte pour 0) ─────────
+    poids_total = sum(c['poids'] for c in criteres)
+    if poids_total:
+        somme_ponderee = sum(
+            c['score_effectif'] * c['poids'] for c in criteres)
+        score_global = round(somme_ponderee / poids_total, 2)
+    else:
+        score_global = 0.0
+
+    if score_global >= 85:
+        niveau = 'avance'
+    elif score_global >= 60:
+        niveau = 'intermediaire'
+    else:
+        niveau = 'initial'
+
+    return {
+        'score_global': score_global,
+        'niveau': niveau,
+        'nb_criteres': len(criteres),
+        'nb_criteres_sans_donnee': sum(1 for c in criteres if c['no_data']),
+        'criteres': criteres,
     }

@@ -33,7 +33,7 @@ from .serializers import (
 from . import chatter
 from .selectors import (
     capa_en_retard, chantier_peut_cloturer, courbes_iv_for_chantier,
-    hold_points_status, photos_controle_par_phase,
+    hold_points_status, iso9001_readiness, photos_controle_par_phase,
     procedure_qualite_courante, procedure_qualite_versions,
     procedures_qualite_courantes, satisfaction_moyenne,
 )
@@ -719,3 +719,21 @@ class RetourClientQualiteViewSet(_QhseBaseViewSet):
                 request.user.company, chantier_id=chantier_id),
             'total': qs.count(),
         })
+
+
+# ── QHSE20 — Tableau de bord « ISO 9001 readiness » ─────────────────────────
+
+class Iso9001ReadinessViewSet(viewsets.ViewSet):
+    """Tableau de bord « ISO 9001 readiness » en lecture seule (QHSE20).
+
+    ``GET …/iso9001-readiness/`` renvoie un score global de préparation ISO 9001
+    et une ventilation par critère (NCR clôturées, CAPA dans les délais, audits
+    réalisés, procédures publiées, couverture ITP, satisfaction client), chacun
+    rattaché à sa clause ISO 9001:2015. Agrégation PURE des données QHSE
+    existantes — aucun modèle, aucune mutation. Scopé société : le sélecteur ne
+    lit que les données de ``request.user.company``. Palier Responsable/Admin.
+    """
+    permission_classes = [IsResponsableOrAdmin]
+
+    def list(self, request):
+        return Response(iso9001_readiness(request.user.company))
