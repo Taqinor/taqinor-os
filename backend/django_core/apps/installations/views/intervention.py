@@ -161,6 +161,8 @@ class InterventionViewSet(TenantMixin, viewsets.ModelViewSet):
             'ma_tournee',
             # FG299 — plan de charge des équipes (capacité vs affecté).
             'plan_de_charge',
+            # FG300 — détection de conflits d'affectation.
+            'conflits_affectation',
             # FG69 — signature client.
             'signer_client',
         ]:

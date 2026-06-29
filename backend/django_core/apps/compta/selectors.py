@@ -1342,7 +1342,9 @@ def echeancier_acomptes(company, exercice, *, is_reference=None,
         cumul += montant
         acomptes.append({
             'numero': index,
-            'date_echeance': _fin_de_mois(debut, mois),
+            # Échéance = dernier jour du Nᵉ mois de l'exercice (3/6/9/12) ; le
+            # Nᵉ mois est à (N−1) mois du mois de début (1er mois = début).
+            'date_echeance': _fin_de_mois(debut, mois - 1),
             'montant': montant,
         })
     return {
@@ -1417,8 +1419,8 @@ def aide_calcul_is(company, exercice, *, is_reference=None,
 def _fin_de_mois(reference, mois_apres_debut):
     """Dernier jour du mois situé ``mois_apres_debut`` mois après ``reference``.
 
-    Ex. début 2026-01-01 + 3 mois ⇒ 2026-03-31. Gère les fins de mois et les
-    changements d'année sans dépendance externe.
+    Ex. 2026-01-01 + 3 mois ⇒ 2026-04-30 ; 2026-12-31 + 3 mois ⇒ 2027-03-31.
+    Gère les fins de mois et les changements d'année sans dépendance externe.
     """
     total_mois = (reference.month - 1) + mois_apres_debut
     annee = reference.year + total_mois // 12
