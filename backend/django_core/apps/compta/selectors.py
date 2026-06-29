@@ -861,3 +861,72 @@ def releve_fournisseur(company, tiers_id, *, tiers_type='fournisseur',
             'solde_du': solde,
         },
     }
+
+
+# ── FG137 — Préparation de la déclaration de TVA ────────────────────────────
+
+# Comptes CGNC de TVA. La TVA collectée (facturée aux clients) est un PASSIF
+# (classe 4455…) : elle naît au CRÉDIT. La TVA déductible/récupérable (payée
+# aux fournisseurs) est un ACTIF (classe 3455…) : elle naît au DÉBIT.
+_COMPTES_TVA_COLLECTEE = ('4455', '44552')      # TVA facturée / due (passif).
+_COMPTES_TVA_DEDUCTIBLE = ('3455', '34552')     # TVA récupérable (actif).
+
+
+def _mouvements_groupe(company, numeros, *, date_debut=None, date_fin=None,
+                       validees_seulement=False):
+    """Σ débit et Σ crédit d'un groupe de comptes (par numéros) sur une période.
+
+    À la différence de ``_solde_groupe`` (solde cumulé à une date), on agrège
+    les MOUVEMENTS de la période ``[date_debut ; date_fin]`` — c'est ce qu'exige
+    une déclaration périodique de TVA (la TVA du mois/trimestre, pas le cumul).
+    """
+    qs = _lignes_qs(company, date_debut=date_debut, date_fin=date_fin,
+                    validees_seulement=validees_seulement).filter(
+        compte__numero__in=numeros)
+    agg = qs.aggregate(debit=Sum('debit'), credit=Sum('credit'))
+    return (agg['debit'] or Decimal('0'), agg['credit'] or Decimal('0'))
+
+
+def preparer_declaration_tva(company, *, date_debut, date_fin, regime='mensuel',
+                             methode='debit', credit_anterieur=Decimal('0'),
+                             validees_seulement=False):
+    """Calcule la TVA à déclarer sur une période depuis le grand livre (FG137).
+
+    TVA collectée = Σ crédit − Σ débit des comptes 4455… (passif : un avoir
+    annulant une vente DÉBITE 4455, on le déduit). TVA déductible = Σ débit − Σ
+    crédit des comptes 3455… (actif : un avoir fournisseur CRÉDITE 3455). La TVA
+    nette à déclarer = max(0, collectée − déductible − crédit antérieur) ;
+    l'excédent éventuel devient un crédit reportable. ``regime`` (mensuel /
+    trimestriel) et ``methode`` (débit / encaissement) qualifient le dépôt mais
+    n'altèrent pas l'agrégation GL (la période en porte la portée). Lecture
+    seule, scopée société. Renvoie un dict prêt à figer sur une ``DeclarationTVA``.
+    """
+    debit_coll, credit_coll = _mouvements_groupe(
+        company, _COMPTES_TVA_COLLECTEE, date_debut=date_debut,
+        date_fin=date_fin, validees_seulement=validees_seulement)
+    collectee = credit_coll - debit_coll
+    if collectee < 0:
+        collectee = Decimal('0')
+
+    debit_ded, credit_ded = _mouvements_groupe(
+        company, _COMPTES_TVA_DEDUCTIBLE, date_debut=date_debut,
+        date_fin=date_fin, validees_seulement=validees_seulement)
+    deductible = debit_ded - credit_ded
+    if deductible < 0:
+        deductible = Decimal('0')
+
+    anterieur = credit_anterieur or Decimal('0')
+    net = collectee - deductible - anterieur
+    a_declarer = net if net >= 0 else Decimal('0')
+    reportable = -net if net < 0 else Decimal('0')
+    return {
+        'date_debut': date_debut,
+        'date_fin': date_fin,
+        'regime': regime,
+        'methode': methode,
+        'tva_collectee': collectee,
+        'tva_deductible': deductible,
+        'credit_anterieur': anterieur,
+        'tva_a_declarer': a_declarer,
+        'credit_reportable': reportable,
+    }

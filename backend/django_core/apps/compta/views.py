@@ -21,19 +21,19 @@ from authentication.permissions import IsResponsableOrAdmin
 from . import selectors, services
 from .models import (
     BaremeIndemnite, BordereauRemise, Caisse, CessionImmobilisation,
-    CompteComptable, CompteTresorerie, DotationAmortissement, EcritureComptable,
-    Effet, ExerciceComptable, Immobilisation, IndemniteChantier, Journal,
-    LignePrevisionnelTresorerie, LigneReleve, MouvementCaisse, NoteFrais,
-    PaymentRun, PeriodeComptable, PlanComptable, Rapprochement,
-    RapprochementBancaire, VirementInterne,
+    CompteComptable, CompteTresorerie, DeclarationTVA, DotationAmortissement,
+    EcritureComptable, Effet, ExerciceComptable, Immobilisation,
+    IndemniteChantier, Journal, LignePrevisionnelTresorerie, LigneReleve,
+    MouvementCaisse, NoteFrais, PaymentRun, PeriodeComptable, PlanComptable,
+    Rapprochement, RapprochementBancaire, VirementInterne,
 )
 from .serializers import (
     BaremeIndemniteSerializer, BordereauRemiseSerializer, CaisseSerializer,
     CessionImmobilisationSerializer, ClotureCaisseSerializer,
     CompteComptableSerializer, CompteTresorerieSerializer,
-    DotationAmortissementSerializer, EcritureComptableSerializer,
-    EffetSerializer, ExerciceComptableSerializer, ImmobilisationSerializer,
-    IndemniteChantierSerializer, JournalSerializer,
+    DeclarationTVASerializer, DotationAmortissementSerializer,
+    EcritureComptableSerializer, EffetSerializer, ExerciceComptableSerializer,
+    ImmobilisationSerializer, IndemniteChantierSerializer, JournalSerializer,
     LignePrevisionnelTresorerieSerializer, LigneReleveSerializer,
     MouvementCaisseSerializer, NoteFraisSerializer, PaymentRunSerializer,
     PeriodeComptableSerializer, PlanAmortissementSerializer,
@@ -1523,3 +1523,111 @@ class IndemniteChantierViewSet(_ComptaBaseViewSet):
                 {'detail': exc.messages[0] if exc.messages else str(exc)},
                 status=status.HTTP_400_BAD_REQUEST)
         return Response(self.get_serializer(indem).data)
+
+
+# ── FG137 — Préparation de la déclaration de TVA ───────────────────────────
+
+class DeclarationTVAViewSet(_ComptaBaseViewSet):
+    """Préparation de la déclaration de TVA (FG137).
+
+    Liste/consulte les déclarations préparées et expose deux actions :
+    ``preparer`` (POST) calcule la TVA collectée − déductible sur une période
+    depuis le grand livre et FIGE un snapshot ``DeclarationTVA`` (régime
+    mensuel/trimestriel, méthode débit/encaissement, crédit antérieur), et
+    ``export`` (GET) renvoie le détail en CSV. Société scopée, posée côté
+    serveur ; Admin/Responsable uniquement. La création directe (POST sur la
+    collection) passe par ``preparer`` afin que les montants soient toujours
+    dérivés du GL (le corps ne peut jamais les imposer).
+    """
+    queryset = DeclarationTVA.objects.select_related('created_by').all()
+    serializer_class = DeclarationTVASerializer
+    filter_backends = [filters.SearchFilter, filters.OrderingFilter]
+    search_fields = ['reference', 'libelle']
+    ordering_fields = ['date_fin', 'date_debut', 'tva_a_declarer', 'id']
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        params = self.request.query_params
+        regime = params.get('regime')
+        if regime:
+            qs = qs.filter(regime=regime)
+        statut = params.get('statut')
+        if statut:
+            qs = qs.filter(statut=statut)
+        return qs
+
+    def _preparer(self, request):
+        """Valide le corps et fige la déclaration depuis le GL (FG137)."""
+        serializer = self.get_serializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        vd = serializer.validated_data
+        declaration = services.preparer_declaration_tva(
+            request.user.company,
+            date_debut=vd['date_debut'],
+            date_fin=vd['date_fin'],
+            regime=vd.get('regime') or DeclarationTVA.Regime.MENSUEL,
+            methode=vd.get('methode') or DeclarationTVA.Methode.DEBIT,
+            credit_anterieur=vd.get('credit_anterieur') or 0,
+            libelle=vd.get('libelle', '') or '',
+            validees_seulement=request.query_params.get('validees') == '1',
+            user=request.user)
+        return declaration
+
+    def create(self, request, *args, **kwargs):
+        """POST sur la collection = préparation (montants dérivés du GL)."""
+        try:
+            declaration = self._preparer(request)
+        except DjangoValidationError as exc:
+            return Response(
+                {'detail': exc.messages[0] if exc.messages else str(exc)},
+                status=status.HTTP_400_BAD_REQUEST)
+        return Response(
+            self.get_serializer(declaration).data,
+            status=status.HTTP_201_CREATED)
+
+    @action(detail=False, methods=['post'])
+    def preparer(self, request):
+        """Prépare et fige une déclaration de TVA sur une période (FG137).
+
+        Corps : ``{date_debut, date_fin, regime?, methode?, credit_anterieur?,
+        libelle?}``. La TVA collectée/déductible et le montant à déclarer sont
+        calculés depuis le grand livre côté serveur. Renvoie la déclaration figée.
+        """
+        try:
+            declaration = self._preparer(request)
+        except DjangoValidationError as exc:
+            return Response(
+                {'detail': exc.messages[0] if exc.messages else str(exc)},
+                status=status.HTTP_400_BAD_REQUEST)
+        return Response(
+            self.get_serializer(declaration).data,
+            status=status.HTTP_201_CREATED)
+
+    @action(detail=True, methods=['get'])
+    def export(self, request, pk=None):
+        """Exporte la déclaration de TVA en CSV (FG137).
+
+        Une ligne par poste (TVA collectée, TVA déductible, crédit antérieur,
+        TVA à déclarer, crédit reportable) + l'en-tête de période/régime/méthode.
+        Lecture seule, scopée société.
+        """
+        decl = self.get_object()  # scopée société par TenantMixin.
+        buffer = io.StringIO()
+        writer = csv.writer(buffer, delimiter=';')
+        writer.writerow(['Déclaration de TVA', decl.reference or decl.id])
+        writer.writerow(['Période', f'{decl.date_debut} → {decl.date_fin}'])
+        writer.writerow(['Régime', decl.get_regime_display()])
+        writer.writerow(['Méthode', decl.get_methode_display()])
+        writer.writerow([])
+        writer.writerow(['Poste', 'Montant'])
+        writer.writerow(['TVA collectée', decl.tva_collectee])
+        writer.writerow(['TVA déductible', decl.tva_deductible])
+        writer.writerow(['Crédit de TVA antérieur', decl.credit_anterieur])
+        writer.writerow(['TVA à déclarer', decl.tva_a_declarer])
+        writer.writerow(['Crédit de TVA reportable', decl.credit_reportable])
+        resp = HttpResponse(
+            buffer.getvalue(), content_type='text/csv; charset=utf-8')
+        resp['Content-Disposition'] = (
+            f'attachment; filename="declaration_tva_'
+            f'{decl.reference or decl.id}.csv"')
+        return resp

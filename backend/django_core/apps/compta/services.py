@@ -31,12 +31,13 @@ from django.utils import timezone
 
 from .models import (
     BaremeIndemnite, BordereauRemise, Caisse, CessionImmobilisation,
-    ClotureCaisse, CompteComptable, CompteTresorerie, DotationAmortissement,
-    EcritureComptable, Effet, ExerciceComptable, Immobilisation,
-    IndemniteChantier, Journal, LigneEcriture, LignePrevisionnelTresorerie,
-    LigneReleve, MouvementCaisse, NoteFrais, PaymentRun, PaymentRunLine,
-    PeriodeComptable, PlanAmortissement, PlanComptable, PointageReleve,
-    Rapprochement, RapprochementBancaire, VirementInterne,
+    ClotureCaisse, CompteComptable, CompteTresorerie, DeclarationTVA,
+    DotationAmortissement, EcritureComptable, Effet, ExerciceComptable,
+    Immobilisation, IndemniteChantier, Journal, LigneEcriture,
+    LignePrevisionnelTresorerie, LigneReleve, MouvementCaisse, NoteFrais,
+    PaymentRun, PaymentRunLine, PeriodeComptable, PlanAmortissement,
+    PlanComptable, PointageReleve, Rapprochement, RapprochementBancaire,
+    VirementInterne,
 )
 
 
@@ -2658,3 +2659,51 @@ def rembourser_indemnite_chantier(indem, *, compte_tresorerie,
         'statut', 'compte_tresorerie', 'date_remboursement',
         'rembourse_par', 'ecriture_remboursement'])
     return indem
+
+
+# ── FG137 — Préparation de la déclaration de TVA ────────────────────────────
+
+def preparer_declaration_tva(company, *, date_debut, date_fin,
+                             regime='mensuel', methode='debit',
+                             credit_anterieur=Decimal('0'), libelle='',
+                             validees_seulement=False, user=None):
+    """Prépare et FIGE une déclaration de TVA sur une période (FG137).
+
+    Agrège la TVA collectée (4455…, crédit) et la TVA déductible (3455…, débit)
+    du grand livre sur ``[date_debut ; date_fin]`` (cf.
+    ``selectors.preparer_declaration_tva``), en déduit le montant à déclarer et
+    l'éventuel crédit reportable, puis persiste un snapshot ``DeclarationTVA`` en
+    statut « préparée ». La ``reference`` (TVA-YYYYMM-NNNN) et la ``company`` sont
+    posées côté serveur (jamais lues du corps). Renvoie la déclaration.
+    """
+    from . import selectors  # import local : évite tout cycle au chargement.
+    from apps.ventes.utils.references import create_with_reference
+
+    calc = selectors.preparer_declaration_tva(
+        company, date_debut=date_debut, date_fin=date_fin, regime=regime,
+        methode=methode, credit_anterieur=credit_anterieur or Decimal('0'),
+        validees_seulement=validees_seulement)
+    declaration = DeclarationTVA(
+        company=company,
+        regime=regime,
+        methode=methode,
+        date_debut=date_debut,
+        date_fin=date_fin,
+        tva_collectee=calc['tva_collectee'],
+        tva_deductible=calc['tva_deductible'],
+        credit_anterieur=calc['credit_anterieur'],
+        tva_a_declarer=calc['tva_a_declarer'],
+        credit_reportable=calc['credit_reportable'],
+        statut=DeclarationTVA.Statut.PREPAREE,
+        libelle=libelle or '',
+        created_by=user,
+    )
+    declaration.full_clean(exclude=['reference', 'created_by'])
+
+    def _save(reference):
+        declaration.reference = reference
+        declaration.save()
+        return declaration
+
+    # Savepoint + retry race-safe (highest-used+1, jamais count()+1).
+    return create_with_reference(DeclarationTVA, 'TVA', company, _save)
