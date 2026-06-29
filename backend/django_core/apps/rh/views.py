@@ -1167,3 +1167,26 @@ class CertificationViewSet(_RhBaseViewSet):
             return self.get_paginated_response(serializer.data)
         serializer = self.get_serializer(qs, many=True)
         return Response(serializer.data)
+
+
+class EcheancesRhViewSet(TenantMixin, viewsets.ViewSet):
+    """Moteur d'échéances RH unifié (FG175) — alertes d'expiration agrégées.
+
+    Société scopée + Administrateur/Responsable. Réunit en UNE liste normalisée
+    les habilitations (FG173), certifications (FG174) et documents employé
+    (FG159) qui expirent (ou sont déjà expirés) dans la fenêtre demandée.
+
+    Action :
+    * ``GET .../echeances/?within=N`` — échéances dans les N prochains jours
+      (défaut 30) ou déjà dépassées, triées par échéance la plus proche.
+
+    Le résultat est une liste de dicts ``{type, employe_id, employe, libelle,
+    date_validite, jours_restants}`` — non paginée (vue d'alerte synthétique).
+    """
+    permission_classes = [IsResponsableOrAdmin]
+
+    def list(self, request):
+        within = request.query_params.get('within', 30)
+        rows = selectors.echeances_rh(
+            request.user.company, within_days=within)
+        return Response(rows)
