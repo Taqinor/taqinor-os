@@ -2565,3 +2565,230 @@ def optimize_subscribed_power(load_curve=None, production_curve=None, *,
         "production_source": production_source,
         "warnings": warnings,
     }
+
+
+# ── FG262 — Modélisation de la dégradation des modules sur la durée ───────────
+# Applique une COURBE DE DÉGRADATION des modules PV à la production projetée et la
+# confronte à la GARANTIE de puissance du constructeur. Un panneau perd une
+# fraction de sa puissance chaque année (vieillissement) — souvent précédée d'une
+# chute initiale (LID, Light Induced Degradation) plus forte la 1re année. Les
+# constructeurs garantissent un plancher de production à des jalons (ex. ≥ 90 % à
+# 10 ans, ≥ 80 % à 25 ans) : sous ce plancher, le constructeur compense.
+#
+# Le facteur de production de l'année ``y`` (base 1) part de 1.0 (production
+# nominale STC year-1) et décroît selon DEUX modèles au choix :
+#
+#   * "compound" (défaut, réaliste) — chute initiale ``year1_degradation`` (LID)
+#     appliquée une fois, puis dégradation annuelle COMPOSÉE :
+#         facteur(y) = (1 - year1_degradation) × (1 - taux)^(y - 1)
+#   * "linear" — chute linéaire constante à partir de 1.0 :
+#         facteur(y) = 1 - year1_degradation - taux × (y - 1)
+#
+# Chaque jalon de garantie (``warranty_floors`` : {année: plancher}) est vérifié :
+# si le facteur de l'année jalon tombe SOUS le plancher garanti, l'année est
+# signalée (le constructeur compenserait l'écart). On rapporte aussi, par jalon,
+# la première année où le facteur passe sous le plancher.
+#
+# Module PUR : aucune base, aucun réseau, aucun prix. Les entrées numériques ne
+# sont JAMAIS rejetées (liberté de saisie du founder) — les valeurs illisibles
+# sont ramenées à un défaut sensé, division par zéro gardée, jamais d'exception.
+
+# Garantie de puissance linéaire constructeur par défaut (Tier-1 silicium) :
+# ≥ 90 % à 10 ans, ≥ 80 % à 25 ans — jalons les plus répandus du marché.
+DEFAULT_WARRANTY_FLOORS = {10: 0.90, 25: 0.80}
+# Chute initiale (LID) par défaut la 1re année, avant la dégradation linéaire.
+DEFAULT_YEAR1_DEGRADATION = 0.02        # 2 % la 1re année (LID typique)
+
+
+def module_degradation_curve(production_year1=None, *,
+                             annual_degradation_rate=DEFAULT_MODULE_DEGRADATION,
+                             year1_degradation=DEFAULT_YEAR1_DEGRADATION,
+                             horizon_years=DEFAULT_HORIZON_YEARS,
+                             warranty_floors=None,
+                             curve="compound"):
+    """FG262 — courbe de dégradation modules + confrontation à la garantie.
+
+    Construit, année par année (base 1), le FACTEUR de production (fraction de la
+    production nominale year-1, départ 1.0) et la production ABSOLUE projetée, en
+    appliquant une chute initiale (LID) ``year1_degradation`` puis une
+    dégradation annuelle ``annual_degradation_rate`` selon le modèle ``curve`` :
+
+    * ``"compound"`` (défaut) — dégradation COMPOSÉE :
+      ``facteur(y) = (1 - year1_degradation) × (1 - taux)^(y - 1)``.
+    * ``"linear"`` — dégradation LINÉAIRE :
+      ``facteur(y) = 1 - year1_degradation - taux × (y - 1)`` (planché à 0).
+
+    Chaque jalon de ``warranty_floors`` ({année: plancher fractionnaire}, défaut
+    ``{10: 0.90, 25: 0.80}``) est vérifié : si le facteur de l'année jalon tombe
+    SOUS le plancher garanti, l'année est marquée ``warranty_breach`` (le
+    constructeur compenserait l'écart).
+
+    Paramètres
+    ----------
+    production_year1 : production nominale de la 1re année (kWh/an). Si absente /
+        illisible, seuls les facteurs sont calculés (production absolue = None).
+    annual_degradation_rate : dégradation annuelle (fraction, défaut ~0,5 %).
+    year1_degradation : chute initiale LID la 1re année (fraction, défaut 2 %).
+    horizon_years : durée de projection (années ; bornée [1, 40]).
+    warranty_floors : dict {année: plancher fractionnaire}. Défaut Tier-1.
+    curve : ``"compound"`` (défaut) ou ``"linear"``.
+
+    Retourne un dict JSON-sérialisable ::
+
+        {schedule: [{year, production_factor, production_kwh,
+                     warranty_floor, warranty_breach}],
+         warranty_checks: [{year, floor, factor, ok, shortfall_pct,
+                            first_breach_year}],
+         summary: {curve, horizon_years, annual_degradation_rate,
+                   year1_degradation, factor_year1, factor_last_year,
+                   total_production_kwh, any_warranty_breach,
+                   first_breach_year},
+         warnings: []}
+
+    Ne lève JAMAIS sur entrées dégradées : valeurs illisibles → défaut, horizon
+    hors bornes ramené dans [1, 40], facteur planché à 0 (jamais négatif).
+    """
+    warnings = []
+
+    def _num(value, default=0.0):
+        try:
+            return float(value)
+        except (TypeError, ValueError):
+            return float(default)
+
+    prod1 = None
+    if production_year1 is not None:
+        prod1 = _num(production_year1, 0.0)
+        if prod1 < 0:
+            prod1 = 0.0
+            warnings.append("production year-1 négative — ramenée à 0")
+
+    deg = _num(annual_degradation_rate, DEFAULT_MODULE_DEGRADATION)
+    lid = _num(year1_degradation, DEFAULT_YEAR1_DEGRADATION)
+
+    # Garde-fous métier (avertissements, jamais de rejet).
+    if not (0.0 <= deg < 1.0):
+        warnings.append(
+            "taux de dégradation annuel hors [0, 1[ — vérifier la saisie")
+    if not (0.0 <= lid < 1.0):
+        warnings.append("chute initiale (LID) hors [0, 1[ — vérifier la saisie")
+
+    mode = "linear" if str(curve or "").lower() == "linear" else "compound"
+
+    # Horizon : entier borné dans [1, 40] (le métier vise 20–25).
+    try:
+        horizon = int(round(_num(horizon_years, DEFAULT_HORIZON_YEARS)))
+    except (TypeError, ValueError):
+        horizon = DEFAULT_HORIZON_YEARS
+    if horizon < _MIN_HORIZON_YEARS:
+        horizon = _MIN_HORIZON_YEARS
+        warnings.append("horizon ramené à 1 an (minimum)")
+    elif horizon > _MAX_HORIZON_YEARS:
+        horizon = _MAX_HORIZON_YEARS
+        warnings.append("horizon plafonné à 40 ans (maximum)")
+
+    # ── Planchers de garantie (normalisés en {int année: float plancher}) ──
+    floors = {}
+    src_floors = DEFAULT_WARRANTY_FLOORS if warranty_floors is None \
+        else warranty_floors
+    try:
+        items = list(src_floors.items())
+    except AttributeError:
+        items = []
+        warnings.append("warranty_floors illisible — garantie ignorée")
+    for k, v in items:
+        try:
+            year_k = int(round(float(k)))
+            floor_v = float(v)
+        except (TypeError, ValueError):
+            continue
+        if year_k < 1:
+            continue
+        # Plancher exprimé en % (ex. 80) → fraction.
+        if floor_v > 1.0:
+            floor_v = floor_v / 100.0
+        if floor_v < 0.0:
+            floor_v = 0.0
+        floors[year_k] = floor_v
+
+    def _factor(year):
+        """Facteur de production de l'année ``year`` (base 1), planché à 0."""
+        if mode == "linear":
+            f = 1.0 - lid - deg * (year - 1)
+        else:
+            head = (1.0 - lid) if lid < 1.0 else 0.0
+            tail = (1.0 - deg) if deg < 1.0 else 0.0
+            f = head * (tail ** (year - 1))
+        return f if f > 0.0 else 0.0
+
+    schedule = []
+    total_production = 0.0
+    first_breach_year = None
+    for y in range(1, horizon + 1):
+        factor = round(_factor(y), 6)
+        production_kwh = None
+        if prod1 is not None:
+            production_kwh = round(prod1 * factor, 2)
+            total_production += production_kwh
+        floor = floors.get(y)
+        breach = floor is not None and factor < floor - 1e-9
+        if breach and first_breach_year is None:
+            first_breach_year = y
+        schedule.append({
+            "year": y,
+            "production_factor": factor,
+            "production_kwh": production_kwh,
+            "warranty_floor": floor,
+            "warranty_breach": breach,
+        })
+
+    # ── Vérification par jalon de garantie ──
+    warranty_checks = []
+    any_breach = False
+    for year_k in sorted(floors):
+        floor_v = floors[year_k]
+        # Facteur au jalon (recalculé même si le jalon dépasse l'horizon).
+        factor_k = round(_factor(year_k), 6)
+        ok = factor_k >= floor_v - 1e-9
+        shortfall = 0.0 if ok else round((floor_v - factor_k) * 100.0, 2)
+        # Première année où le facteur passe sous CE plancher.
+        fb = None
+        for yy in range(1, max(year_k, horizon) + 1):
+            if _factor(yy) < floor_v - 1e-9:
+                fb = yy
+                break
+        if not ok:
+            any_breach = True
+            warnings.append(
+                f"garantie année {year_k} : facteur {round(factor_k * 100, 1)} %"
+                f" < plancher {round(floor_v * 100, 1)} % — le constructeur "
+                "compenserait l'écart")
+        warranty_checks.append({
+            "year": year_k,
+            "floor": round(floor_v, 6),
+            "factor": factor_k,
+            "ok": ok,
+            "shortfall_pct": shortfall,
+            "first_breach_year": fb,
+        })
+
+    summary = {
+        "curve": mode,
+        "horizon_years": horizon,
+        "annual_degradation_rate": round(deg, 6),
+        "year1_degradation": round(lid, 6),
+        "factor_year1": schedule[0]["production_factor"] if schedule else 1.0,
+        "factor_last_year": (
+            schedule[-1]["production_factor"] if schedule else 1.0),
+        "total_production_kwh": (
+            round(total_production, 2) if prod1 is not None else None),
+        "any_warranty_breach": any_breach,
+        "first_breach_year": first_breach_year,
+    }
+
+    return {
+        "schedule": schedule,
+        "warranty_checks": warranty_checks,
+        "summary": summary,
+        "warnings": warnings,
+    }
