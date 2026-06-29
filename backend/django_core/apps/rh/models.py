@@ -1560,6 +1560,32 @@ class VisiteMedicale(models.Model):
                 f'{self.get_aptitude_display()}')
 
 
+def _ajouter_mois(date_depart, mois):
+    """Ajoute ``mois`` mois à ``date_depart`` (clamp fin de mois).
+
+    Brique d'arithmétique de dates pour la péremption/le recontrôle des EPI
+    (FG179), SANS dépendance externe (pas de ``dateutil``). Le jour est borné au
+    dernier jour du mois cible — ainsi le 31 janvier + 1 mois = 28/29 février.
+    Renvoie ``None`` si ``date_depart`` ou ``mois`` est absent/None.
+    """
+    import datetime as _dt
+
+    if date_depart is None or mois is None:
+        return None
+    mois = int(mois)
+    total = (date_depart.month - 1) + mois
+    annee = date_depart.year + total // 12
+    mois_cible = total % 12 + 1
+    # Dernier jour du mois cible (jour 1 du mois suivant - 1 jour).
+    if mois_cible == 12:
+        dernier_jour = 31
+    else:
+        premier_mois_suivant = _dt.date(annee, mois_cible + 1, 1)
+        dernier_jour = (premier_mois_suivant - _dt.timedelta(days=1)).day
+    jour = min(date_depart.day, dernier_jour)
+    return _dt.date(annee, mois_cible, jour)
+
+
 class EpiCatalogue(models.Model):
     """Catalogue des EPI de la société (FG178) — équipement de protection.
 
@@ -1596,6 +1622,19 @@ class EpiCatalogue(models.Model):
     # Désignation lisible du modèle/référence (marque, norme…).
     designation = models.CharField(
         max_length=160, verbose_name='Désignation')
+    # Durée de vie réglementaire en MOIS (FG179) : certains EPI sont à durée
+    # de vie limitée (harnais antichute, longes…). NULL = pas de péremption
+    # programmée. À la dotation, ``DotationEpi.date_peremption`` se dérive de
+    # ``date_dotation + duree_vie_mois``.
+    duree_vie_mois = models.PositiveIntegerField(
+        null=True, blank=True, verbose_name='Durée de vie (mois)')
+    # Intervalle de recontrôle/vérification périodique en MOIS (FG179) : p. ex.
+    # un harnais ou des gants isolants se recontrôlent tous les N mois. NULL =
+    # pas de recontrôle programmé. À la dotation,
+    # ``DotationEpi.date_prochain_controle`` se dérive de
+    # ``date_dotation + intervalle_controle_mois``.
+    intervalle_controle_mois = models.PositiveIntegerField(
+        null=True, blank=True, verbose_name='Intervalle de contrôle (mois)')
     actif = models.BooleanField(default=True, verbose_name='Actif')
     date_creation = models.DateTimeField(
         auto_now_add=True, verbose_name='Créé le')
@@ -1659,6 +1698,18 @@ class DotationEpi(models.Model):
     date_renouvellement = models.DateField(
         null=True, blank=True,
         verbose_name='Date de renouvellement (échéance)')
+    # Date de péremption DÉRIVÉE (FG179) : ``date_dotation`` +
+    # ``epi.duree_vie_mois``, calculée et stockée à la sauvegarde via
+    # ``recalculer_echeances``. NULL = EPI sans durée de vie limitée (ou sans
+    # date de dotation). Un EPI dont la péremption est passée doit alerter
+    # (FG175, famille ``epi_peremption``).
+    date_peremption = models.DateField(
+        null=True, blank=True, verbose_name='Date de péremption')
+    # Date de prochain recontrôle/vérification DÉRIVÉE (FG179) :
+    # ``date_dotation`` + ``epi.intervalle_controle_mois``. NULL = pas de
+    # recontrôle programmé. Un recontrôle dépassé doit alerter (FG175).
+    date_prochain_controle = models.DateField(
+        null=True, blank=True, verbose_name='Date de prochain contrôle')
     quantite = models.PositiveIntegerField(
         default=1, verbose_name='Quantité')
     note = models.CharField(
@@ -1679,7 +1730,64 @@ class DotationEpi(models.Model):
             models.Index(
                 fields=['company', 'date_renouvellement'],
                 name='rh_dotepi_comp_renouv_idx'),
+            models.Index(
+                fields=['company', 'date_peremption'],
+                name='rh_dotepi_comp_perem_idx'),
+            models.Index(
+                fields=['company', 'date_prochain_controle'],
+                name='rh_dotepi_comp_ctrl_idx'),
         ]
+
+    def recalculer_echeances(self):
+        """Dérive ``date_peremption`` / ``date_prochain_controle`` (FG179).
+
+        Calcule les deux échéances de cycle de vie à partir de la
+        ``date_dotation`` et des durées portées par le catalogue
+        (``epi.duree_vie_mois`` / ``epi.intervalle_controle_mois``). Sans date
+        de dotation OU sans durée définie côté catalogue, l'échéance dérivée
+        reste ``None``. N'effectue PAS de sauvegarde (appelée par ``save``).
+        """
+        epi = self.epi if self.epi_id else None
+        duree = getattr(epi, 'duree_vie_mois', None) if epi else None
+        intervalle = (
+            getattr(epi, 'intervalle_controle_mois', None) if epi else None)
+        self.date_peremption = _ajouter_mois(self.date_dotation, duree)
+        self.date_prochain_controle = _ajouter_mois(
+            self.date_dotation, intervalle)
+
+    def save(self, *args, **kwargs):
+        """Recalcule les échéances de cycle de vie avant chaque sauvegarde."""
+        self.recalculer_echeances()
+        super().save(*args, **kwargs)
+
+    def perime(self, today=None):
+        """Vrai si l'EPI a une date de péremption DÉPASSÉE (FG179).
+
+        ``today`` injectable (par défaut ``timezone.localdate()``) rend le
+        calcul déterministe/testable. Un EPI sans ``date_peremption`` n'est
+        jamais périmé. Le jour de péremption inclus reste valide ; le lendemain
+        est périmé.
+        """
+        if self.date_peremption is None:
+            return False
+        if today is None:
+            from django.utils import timezone
+            today = timezone.localdate()
+        return self.date_peremption < today
+
+    def a_controler(self, today=None):
+        """Vrai si le recontrôle périodique est échu/dépassé (FG179).
+
+        ``today`` injectable (par défaut ``timezone.localdate()``). Un EPI sans
+        ``date_prochain_controle`` n'est jamais à recontrôler. Le jour de
+        contrôle inclus reste à jour ; le lendemain est à recontrôler.
+        """
+        if self.date_prochain_controle is None:
+            return False
+        if today is None:
+            from django.utils import timezone
+            today = timezone.localdate()
+        return self.date_prochain_controle < today
 
     def __str__(self):
         return f'{self.employe.matricule} — {self.epi}'

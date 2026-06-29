@@ -564,6 +564,50 @@ def dotations_epi_a_renouveler(company, within_days=30, inclure_expirees=True,
             .order_by('date_renouvellement', 'id'))
 
 
+def epi_a_remplacer_ou_controler(company, within_days=30, today=None,
+                                 employe_id=None):
+    """Dotations EPI à durée de vie : péremption OU recontrôle à venir (FG179).
+
+    Famille DISTINCTE du simple renouvellement (``date_renouvellement``,
+    FG178) : ici les EPI à DURÉE DE VIE limitée (harnais antichute, gants
+    isolants…) dont la ``date_peremption`` (remplacement obligatoire) OU la
+    ``date_prochain_controle`` (recontrôle périodique) — toutes deux dérivées
+    de la dotation et des durées du catalogue — tombent au plus tard dans
+    ``within_days`` jours (aujourd'hui + ``within_days`` inclus). Les échéances
+    DÉJÀ dépassées sont incluses : un EPI périmé ou en retard de contrôle est
+    exactement ce qui doit alerter avant un chantier.
+
+    Sélecteur PUR : la date de référence est le paramètre ``today`` (par défaut
+    ``timezone.localdate()``), ce qui rend le résultat déterministe/testable.
+    Les dotations sans aucune des deux échéances (EPI sans durée de vie) sont
+    exclues. ``employe_id`` restreint à un employé. Toujours scopé société ;
+    renvoie un queryset vide si la société est absente. Trié par l'échéance la
+    plus proche des deux d'abord.
+    """
+    if company is None:
+        return DotationEpi.objects.none()
+    try:
+        within_days = int(within_days)
+    except (TypeError, ValueError):
+        within_days = 30
+    if within_days < 0:
+        within_days = 0
+    if today is None:
+        today = timezone.localdate()
+    from django.db.models import Q
+    limite = today + timedelta(days=within_days)
+    qs = DotationEpi.objects.filter(
+        Q(date_peremption__isnull=False, date_peremption__lte=limite)
+        | Q(date_prochain_controle__isnull=False,
+            date_prochain_controle__lte=limite),
+        company=company,
+    )
+    if employe_id is not None:
+        qs = qs.filter(employe_id=employe_id)
+    return (qs.select_related('employe', 'epi')
+            .order_by('date_peremption', 'date_prochain_controle', 'id'))
+
+
 def echeances_rh(company, within_days=30, today=None):
     """Moteur d'échéances RH unifié (FG175) — alertes d'expiration agrégées.
 
@@ -577,7 +621,10 @@ def echeances_rh(company, within_days=30, today=None):
     * visites médicales du travail (FG177,
       ``VisiteMedicale.prochaine_visite``) ;
     * dotations EPI à renouveler (FG178,
-      ``DotationEpi.date_renouvellement``).
+      ``DotationEpi.date_renouvellement``) ;
+    * EPI à durée de vie limitée (FG179) : péremption/remplacement
+      (``DotationEpi.date_peremption``) et recontrôle périodique
+      (``DotationEpi.date_prochain_controle``).
 
     Comme les sélecteurs sous-jacents par famille, on INCLUT les échéances déjà
     dépassées (une habilitation/certification/doc/visite expiré est précisément
@@ -596,7 +643,8 @@ def echeances_rh(company, within_days=30, today=None):
 
     ``{
         'type': 'habilitation' | 'certification' | 'document'
-                | 'visite_medicale' | 'dotation_epi',
+                | 'visite_medicale' | 'dotation_epi'
+                | 'epi_peremption' | 'epi_controle',
         'employe_id': int,
         'employe': str,                 # « MATRICULE — Nom Prénom »
         'libelle': str,                 # libellé lisible du titre/document
@@ -700,6 +748,42 @@ def echeances_rh(company, within_days=30, today=None):
             'libelle': f'EPI à renouveler ({dot.epi.designation})',
             'date_validite': dot.date_renouvellement,
             'jours_restants': (dot.date_renouvellement - today).days,
+        })
+
+    # EPI à durée de vie limitée (FG179) : péremption (remplacement
+    # obligatoire) et recontrôle périodique, dérivés de la dotation. Familles
+    # DISTINCTES du simple renouvellement ci-dessus.
+    perimables = (
+        DotationEpi.objects
+        .filter(company=company,
+                date_peremption__isnull=False, date_peremption__lte=limite)
+        .select_related('employe', 'epi')
+    )
+    for dot in perimables:
+        rows.append({
+            'type': 'epi_peremption',
+            'employe_id': dot.employe_id,
+            'employe': _employe_label(dot.employe),
+            'libelle': f'EPI à remplacer ({dot.epi.designation})',
+            'date_validite': dot.date_peremption,
+            'jours_restants': (dot.date_peremption - today).days,
+        })
+
+    a_controler = (
+        DotationEpi.objects
+        .filter(company=company,
+                date_prochain_controle__isnull=False,
+                date_prochain_controle__lte=limite)
+        .select_related('employe', 'epi')
+    )
+    for dot in a_controler:
+        rows.append({
+            'type': 'epi_controle',
+            'employe_id': dot.employe_id,
+            'employe': _employe_label(dot.employe),
+            'libelle': f'EPI à recontrôler ({dot.epi.designation})',
+            'date_validite': dot.date_prochain_controle,
+            'jours_restants': (dot.date_prochain_controle - today).days,
         })
 
     rows.sort(key=lambda r: (r['date_validite'], r['type'], r['employe_id']))

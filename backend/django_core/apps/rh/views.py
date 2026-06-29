@@ -1326,6 +1326,9 @@ class DotationEpiViewSet(_RhBaseViewSet):
     * ``GET .../a-renouveler/?expire_within=N&employe=&inclure_expirees=0`` —
       dotations dont le renouvellement arrive dans N jours (défaut 30) ou est
       déjà dépassé.
+    * ``GET .../a-remplacer-controler/?expire_within=N&employe=`` — EPI à durée
+      de vie (FG179) dont la péremption OU le recontrôle arrive dans N jours
+      (défaut 30) ou est déjà dépassé.
     * ``GET .../employe/?employe=<id>`` — dotations EPI d'un employé.
     """
     queryset = DotationEpi.objects.select_related('employe', 'epi').all()
@@ -1333,7 +1336,8 @@ class DotationEpiViewSet(_RhBaseViewSet):
     filter_backends = [filters.SearchFilter, filters.OrderingFilter]
     search_fields = ['taille', 'note']
     ordering_fields = [
-        'date_renouvellement', 'date_dotation', 'date_creation']
+        'date_renouvellement', 'date_dotation',
+        'date_peremption', 'date_prochain_controle', 'date_creation']
 
     def get_queryset(self):
         qs = super().get_queryset()
@@ -1369,6 +1373,27 @@ class DotationEpiViewSet(_RhBaseViewSet):
         qs = selectors.dotations_epi_a_renouveler(
             request.user.company, within_days=within,
             inclure_expirees=inclure, employe_id=employe)
+        page = self.paginate_queryset(qs)
+        if page is not None:
+            serializer = self.get_serializer(page, many=True)
+            return self.get_paginated_response(serializer.data)
+        serializer = self.get_serializer(qs, many=True)
+        return Response(serializer.data)
+
+    @action(detail=False, methods=['get'], url_path='a-remplacer-controler')
+    def a_remplacer_controler(self, request):
+        """EPI à durée de vie : péremption OU recontrôle proche/dépassé (FG179).
+
+        ``?expire_within=N`` (défaut 30) fixe la fenêtre ; ``?employe=``
+        restreint à un employé. Inclut toujours les échéances déjà dépassées
+        (un EPI périmé ou en retard de contrôle est précisément ce qui doit
+        alerter avant un chantier). S'appuie sur
+        ``selectors.epi_a_remplacer_ou_controler`` — scopé société.
+        """
+        within = request.query_params.get('expire_within', 30)
+        employe = request.query_params.get('employe') or None
+        qs = selectors.epi_a_remplacer_ou_controler(
+            request.user.company, within_days=within, employe_id=employe)
         page = self.paginate_queryset(qs)
         if page is not None:
             serializer = self.get_serializer(page, many=True)
