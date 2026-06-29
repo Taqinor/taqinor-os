@@ -341,7 +341,7 @@ class Migration(migrations.Migration):
         migrations.AddConstraint(
             model_name="baremeindemnite",
             constraint=models.UniqueConstraint(
-                condition=models.Q(("defaut", True), ("actif", True)),
+                condition=models.Q(("actif", True), ("defaut", True)),
                 fields=("company",),
                 name="uniq_bareme_indem_defaut",
             ),
