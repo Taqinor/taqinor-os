@@ -3,14 +3,14 @@ from rest_framework.routers import DefaultRouter
 
 from .views import (
     BaremeIndemniteViewSet, BordereauRemiseViewSet, CaisseViewSet,
-    CessionImmobilisationViewSet, CompteComptableViewSet,
+    CautionBancaireViewSet, CessionImmobilisationViewSet, CompteComptableViewSet,
     CompteTresorerieViewSet, DeclarationTVAViewSet, DotationAmortissementViewSet,
     EcritureComptableViewSet, EffetViewSet, EtatsComptablesViewSet,
     ExerciceComptableViewSet, ImmobilisationViewSet, IndemniteChantierViewSet,
     JournalViewSet, LignePrevisionnelTresorerieViewSet, NoteFraisViewSet,
     PaymentRunViewSet, PeriodeComptableViewSet, PlanComptableViewSet,
-    RapprochementBancaireViewSet, RapprochementViewSet, RetenueSourceViewSet,
-    TimbreFiscalViewSet, VirementInterneViewSet,
+    RapprochementBancaireViewSet, RapprochementViewSet, RetenueGarantieViewSet,
+    RetenueSourceViewSet, TimbreFiscalViewSet, VirementInterneViewSet,
 )
 
 router = DefaultRouter()
@@ -39,6 +39,8 @@ router.register(r'indemnites-chantier', IndemniteChantierViewSet)
 router.register(r'declarations-tva', DeclarationTVAViewSet)
 router.register(r'retenues-source', RetenueSourceViewSet)
 router.register(r'timbres-fiscaux', TimbreFiscalViewSet)
+router.register(r'retenues-garantie', RetenueGarantieViewSet)
+router.register(r'cautions-bancaires', CautionBancaireViewSet)
 router.register(r'etats', EtatsComptablesViewSet, basename='etats')
 
 urlpatterns = [
