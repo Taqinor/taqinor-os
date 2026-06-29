@@ -16,7 +16,9 @@ from .models import (
     EtatDesLieux,
     Garage,
     OrdreReparation,
+    PieceFlotte,
     PlanEntretien,
+    Pneumatique,
     PleinCarburant,
     ReferentielFlotte,
     ReservationVehicule,
@@ -860,5 +862,130 @@ class OrdreReparationSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError(
                 {'date_cloture':
                  "La date de clôture ne peut pas précéder l'ouverture."})
+
+        return attrs
+
+
+# ── FLOTTE18 — Pneumatiques + pièces détachées de la flotte ──────────────────
+
+class PneumatiqueSerializer(serializers.ModelSerializer):
+    """FLOTTE18 — Pneumatique monté à une position d'un véhicule.
+
+    ``company`` est posée côté serveur (jamais lue du corps de requête). Le
+    véhicule lié doit appartenir à la société courante. Les dates et le coût
+    sont cohérents (dépose ≥ montage, coût ≥ 0).
+
+    Champs lecture seule :
+    - ``vehicule_label``  : désignation du véhicule.
+    - ``position_display``: libellé de la position.
+    - ``statut_display``  : libellé du statut.
+    """
+
+    vehicule_label = serializers.SerializerMethodField()
+    position_display = serializers.CharField(
+        source='get_position_display', read_only=True)
+    statut_display = serializers.CharField(
+        source='get_statut_display', read_only=True)
+
+    class Meta:
+        model = Pneumatique
+        fields = [
+            'id', 'vehicule', 'vehicule_label', 'position', 'position_display',
+            'marque', 'dimension', 'date_montage', 'km_montage', 'date_depose',
+            'statut', 'statut_display', 'cout', 'notes', 'date_creation',
+        ]
+        read_only_fields = ['date_creation']
+
+    def get_vehicule_label(self, obj):
+        return str(obj.vehicule) if obj.vehicule_id else None
+
+    def validate_cout(self, value):
+        if value is not None and value < 0:
+            raise serializers.ValidationError(
+                "Le coût ne peut pas être négatif.")
+        return value
+
+    def validate(self, attrs):
+        request = self.context.get('request')
+        company = getattr(getattr(request, 'user', None), 'company', None)
+
+        vehicule = attrs.get(
+            'vehicule', getattr(self.instance, 'vehicule', None))
+        date_montage = attrs.get(
+            'date_montage', getattr(self.instance, 'date_montage', None))
+        date_depose = attrs.get(
+            'date_depose', getattr(self.instance, 'date_depose', None))
+
+        if company is not None and vehicule is not None \
+                and vehicule.company_id != company.id:
+            raise serializers.ValidationError(
+                {'vehicule': "Ce véhicule n'appartient pas à votre société."})
+
+        if date_montage is not None and date_depose is not None \
+                and date_depose < date_montage:
+            raise serializers.ValidationError(
+                {'date_depose':
+                 "La date de dépose ne peut pas précéder le montage."})
+
+        return attrs
+
+
+class PieceFlotteSerializer(serializers.ModelSerializer):
+    """FLOTTE18 — Pièce détachée posée sur un véhicule du parc.
+
+    ``company`` est posée côté serveur (jamais lue du corps de requête). Le
+    véhicule et l'ordre de réparation liés (si fournis) doivent appartenir à la
+    société courante. ``cout_total`` est en LECTURE SEULE (quantité × coût
+    unitaire, calculé côté modèle).
+
+    Champs lecture seule :
+    - ``vehicule_label`` : désignation du véhicule.
+    - ``cout_total``     : quantité × coût unitaire (calculé).
+    """
+
+    vehicule_label = serializers.SerializerMethodField()
+    cout_total = serializers.SerializerMethodField()
+
+    class Meta:
+        model = PieceFlotte
+        fields = [
+            'id', 'vehicule', 'vehicule_label', 'ordre_reparation',
+            'designation', 'reference', 'quantite', 'cout_unitaire',
+            'cout_total', 'date_pose', 'notes', 'date_creation',
+        ]
+        read_only_fields = ['date_creation']
+
+    def get_vehicule_label(self, obj):
+        return str(obj.vehicule) if obj.vehicule_id else None
+
+    def get_cout_total(self, obj):
+        return obj.cout_total
+
+    def validate_cout_unitaire(self, value):
+        if value is not None and value < 0:
+            raise serializers.ValidationError(
+                "Le coût unitaire ne peut pas être négatif.")
+        return value
+
+    def validate(self, attrs):
+        request = self.context.get('request')
+        company = getattr(getattr(request, 'user', None), 'company', None)
+
+        vehicule = attrs.get(
+            'vehicule', getattr(self.instance, 'vehicule', None))
+        ordre = attrs.get(
+            'ordre_reparation',
+            getattr(self.instance, 'ordre_reparation', None))
+
+        if company is not None:
+            if vehicule is not None and vehicule.company_id != company.id:
+                raise serializers.ValidationError(
+                    {'vehicule':
+                     "Ce véhicule n'appartient pas à votre société."})
+            if ordre is not None and ordre.company_id != company.id:
+                raise serializers.ValidationError(
+                    {'ordre_reparation':
+                     "Cet ordre de réparation n'appartient pas à votre "
+                     "société."})
 
         return attrs
