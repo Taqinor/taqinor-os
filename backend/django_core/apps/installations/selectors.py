@@ -379,6 +379,156 @@ def projet_pnl(projet):
     }
 
 
+# ── FG299 — Plan de charge des équipes (capacité vs affecté) ─────────────────
+# Vue de PLAN DE CHARGE des équipes terrain : sur une fenêtre de dates, on
+# compare la CAPACITÉ de chaque technicien (jours ouvrés × heures/jour) à sa
+# CHARGE AFFECTÉE (interventions où il est technicien principal OU membre
+# d'équipe, dont `date_prevue` tombe dans la fenêtre) pour détecter la
+# SUR-RÉSERVATION (sur-booking). Pure agrégation — aucun nouveau modèle, lecture
+# seule, scopée société. Distinct de PROJ18 (ressources de PROGRAMME, app
+# gestion_projet) : ici ce sont les ÉQUIPES TERRAIN sur les interventions.
+#
+# Effort d'une intervention : on compte 1 intervention ≈ 1 journée de travail
+# (proxy le plus simple et lisible — il n'existe pas de durée saisie par
+# intervention), soit `heures_par_jour` heures de charge. La capacité est en
+# jours ouvrés (lundi→vendredi) de la fenêtre × `heures_par_jour`.
+
+def _jours_ouvres(debut, fin):
+    """Nombre de jours ouvrés (lundi→vendredi) dans la fenêtre [debut, fin]
+    INCLUSIVE. 0 si la fenêtre est vide/inversée. Pas de dépendance externe
+    (aucun calendrier de jours fériés) — garde simple et déterministe."""
+    if debut is None or fin is None or fin < debut:
+        return 0
+    import datetime
+    jours = 0
+    jour = debut
+    un = datetime.timedelta(days=1)
+    while jour <= fin:
+        if jour.weekday() < 5:  # 0=lundi … 4=vendredi
+            jours += 1
+        jour += un
+    return jours
+
+
+def plan_de_charge_equipes(company, debut, fin, heures_par_jour=8):
+    """FG299 — plan de charge des équipes terrain : capacité vs affecté par
+    technicien sur la fenêtre [debut, fin] inclusive, avec drapeau de
+    SUR-RÉSERVATION.
+
+    Pour CHAQUE technicien de la société qui porte au moins une intervention
+    dans la fenêtre (comme technicien principal OU comme membre d'équipe), on
+    calcule :
+      * ``capacite_heures`` = jours ouvrés de la fenêtre × ``heures_par_jour`` ;
+      * ``affecte_count``   = nombre d'interventions distinctes affectées ;
+      * ``affecte_heures``  = ``affecte_count`` × ``heures_par_jour`` ;
+      * ``charge_pct``      = affecté / capacité × 100 (0 si capacité nulle) ;
+      * ``sur_reservation`` = affecté > capacité (jamais vrai si capacité 0 et
+        affecté 0 ; vrai si une charge existe alors que la capacité est nulle,
+        ex. fenêtre sans aucun jour ouvré → toute affectation est en
+        sur-réservation).
+
+    Renvoie un dict PLAT (jamais d'instance de modèle d'une autre app) :
+      ``debut`` / ``fin`` (ISO) ; ``heures_par_jour`` ; ``jours_ouvres`` ;
+      ``capacite_heures`` (par technicien, identique pour tous) ;
+      ``techniciens`` (liste triée nom) ; ``totaux`` (Σ capacité / Σ affecté /
+      nb en sur-réservation). Lecture seule, scopée société, garde
+      division-par-zéro. Une intervention sans aucun technicien ni équipe est
+      regroupée sous ``non_assigne`` (affichée pour visibilité, jamais en
+      sur-réservation)."""
+    from collections import OrderedDict
+    from django.contrib.auth import get_user_model
+    from .models import Intervention
+
+    try:
+        heures_par_jour = float(heures_par_jour)
+    except (TypeError, ValueError):
+        heures_par_jour = 8.0
+    if heures_par_jour < 0:
+        heures_par_jour = 0.0
+
+    jours_ouvres = _jours_ouvres(debut, fin)
+    capacite_heures = jours_ouvres * heures_par_jour
+
+    qs = (Intervention.objects
+          .filter(company=company)
+          .filter(date_prevue__gte=debut, date_prevue__lte=fin)
+          .prefetch_related('equipe')
+          .only('id', 'technicien_id', 'date_prevue'))
+
+    # {user_id|None: set(intervention_id)} — un set évite de compter deux fois
+    # une intervention où un technicien est À LA FOIS principal et membre.
+    affecte = OrderedDict()
+    non_assigne = set()
+    for interv in qs:
+        membres = set()
+        if interv.technicien_id:
+            membres.add(interv.technicien_id)
+        # Utilise le cache de prefetch (``.all()``) plutôt qu'un values_list qui
+        # rejouerait une requête par intervention (N+1).
+        for membre in interv.equipe.all():
+            membres.add(membre.id)
+        if not membres:
+            non_assigne.add(interv.id)
+            continue
+        for membre_id in membres:
+            affecte.setdefault(membre_id, set()).add(interv.id)
+
+    User = get_user_model()
+    user_ids = [uid for uid in affecte if uid is not None]
+    users = {u.id: u for u in User.objects.filter(id__in=user_ids)} \
+        if user_ids else {}
+
+    def _nom(user, uid):
+        if user is None:
+            return str(uid)
+        nom = ''
+        getter = getattr(user, 'get_full_name', None)
+        if callable(getter):
+            nom = (getter() or '').strip()
+        return nom or getattr(user, 'username', str(uid))
+
+    techniciens = []
+    total_affecte = 0
+    nb_sur_reservation = 0
+    for uid, interv_ids in affecte.items():
+        count = len(interv_ids)
+        affecte_heures = count * heures_par_jour
+        total_affecte += count
+        if capacite_heures > 0:
+            charge_pct = affecte_heures / capacite_heures * 100
+        else:
+            charge_pct = 0.0
+        sur_reservation = affecte_heures > capacite_heures
+        if sur_reservation:
+            nb_sur_reservation += 1
+        techniciens.append({
+            'technicien_id': uid,
+            'nom': _nom(users.get(uid), uid),
+            'capacite_heures': float(capacite_heures),
+            'affecte_count': count,
+            'affecte_heures': float(affecte_heures),
+            'charge_pct': round(float(charge_pct), 1),
+            'sur_reservation': bool(sur_reservation),
+        })
+
+    techniciens.sort(key=lambda t: t['nom'].lower())
+
+    return {
+        'debut': debut.isoformat() if debut is not None else None,
+        'fin': fin.isoformat() if fin is not None else None,
+        'heures_par_jour': float(heures_par_jour),
+        'jours_ouvres': jours_ouvres,
+        'capacite_heures': float(capacite_heures),
+        'techniciens': techniciens,
+        'non_assigne_count': len(non_assigne),
+        'totaux': {
+            'capacite_heures': float(capacite_heures * len(techniciens)),
+            'affecte_count': total_affecte,
+            'nb_sur_reservation': nb_sur_reservation,
+        },
+    }
+
+
 def reserve_scoped(company, pk):
     """Réserve (F16 — point de finition) scopée société, par id, ou ``None``.
 

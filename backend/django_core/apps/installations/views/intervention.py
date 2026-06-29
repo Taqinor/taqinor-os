@@ -159,6 +159,8 @@ class InterventionViewSet(TenantMixin, viewsets.ModelViewSet):
             'calendrier',
             # FG73 — tournée journalière du technicien.
             'ma_tournee',
+            # FG299 — plan de charge des équipes (capacité vs affecté).
+            'plan_de_charge',
             # FG69 — signature client.
             'signer_client',
         ]:
@@ -1462,3 +1464,44 @@ class InterventionViewSet(TenantMixin, viewsets.ModelViewSet):
                 'itineraire_url': maps_link,
             })
         return Response({'date': jour, 'stops': stops})
+
+    # ── FG299 — plan de charge des équipes (capacité vs affecté) ─────────────
+    @action(detail=False, methods=['get'], url_path='plan-de-charge',
+            permission_classes=[IsAnyRole])
+    def plan_de_charge(self, request):
+        """FG299 — plan de charge des équipes terrain : capacité (jours ouvrés ×
+        heures/jour) vs charge affectée (interventions où le technicien est
+        principal ou membre d'équipe, prévues dans la fenêtre), avec drapeau de
+        SUR-RÉSERVATION par technicien. Pure agrégation, scopée société.
+        Params : ``debut``, ``fin`` (YYYY-MM-DD ; défaut = semaine en cours,
+        lundi→dimanche), ``heures_par_jour`` (défaut 8). Aucun ``?format=`` —
+        sortie JSON simple (export via ``?export=`` non requis ici)."""
+        from datetime import date, datetime, timedelta
+        from .. import selectors
+
+        def _parse(value):
+            try:
+                return datetime.strptime(value, '%Y-%m-%d').date()
+            except (TypeError, ValueError):
+                return None
+
+        params = request.query_params
+        debut = _parse(params.get('debut'))
+        fin = _parse(params.get('fin'))
+        if debut is None:
+            today = date.today()
+            debut = today - timedelta(days=today.weekday())  # lundi
+        if fin is None:
+            fin = debut + timedelta(days=6)  # dimanche
+        if fin < debut:
+            return Response(
+                {'detail': 'La fin de fenêtre précède le début.'},
+                status=status.HTTP_400_BAD_REQUEST)
+        heures = params.get('heures_par_jour')
+        try:
+            heures = float(heures) if heures not in (None, '') else 8.0
+        except (TypeError, ValueError):
+            heures = 8.0
+        data = selectors.plan_de_charge_equipes(
+            request.user.company, debut, fin, heures_par_jour=heures)
+        return Response(data)
