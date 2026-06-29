@@ -165,6 +165,8 @@ class InterventionViewSet(TenantMixin, viewsets.ModelViewSet):
             'conflits_affectation',
             # FG301 — nivellement de charge (resource levelling).
             'nivellement_charge',
+            # FG303 — planning des camionnettes (capacité véhicule).
+            'planning_camionnettes',
             # FG69 — signature client.
             'signer_client',
         ]:
@@ -1587,4 +1589,48 @@ class InterventionViewSet(TenantMixin, viewsets.ModelViewSet):
             heures = 8.0
         data = selectors.nivellement_charge(
             request.user.company, debut, fin, heures_par_jour=heures)
+        return Response(data)
+
+    # ── FG303 — planning des camionnettes (capacité véhicule) ────────────────
+    @action(detail=False, methods=['get'], url_path='planning-camionnettes',
+            permission_classes=[IsAnyRole])
+    def planning_camionnettes(self, request):
+        """FG303 — planning PAR CAMIONNETTE : pour chaque véhicule
+        (``Intervention.camionnette``) qui porte des interventions dans la
+        fenêtre, la liste des interventions (date / chantier / technicien) + une
+        charge journalière qui EXCLUT les jours d'indisponibilité du véhicule
+        (FG302). Cohérent avec FG300 : deux interventions le même jour sur la
+        même camionnette = sur-réservation. Pure agrégation, scopée société,
+        aucun nouveau modèle.
+        Params : ``debut``, ``fin`` (YYYY-MM-DD ; défaut = semaine en cours,
+        lundi→dimanche), ``capacite_jour`` (défaut 1). Sortie JSON simple
+        (aucun ``?format=``)."""
+        from datetime import date, datetime, timedelta
+        from .. import selectors
+
+        def _parse(value):
+            try:
+                return datetime.strptime(value, '%Y-%m-%d').date()
+            except (TypeError, ValueError):
+                return None
+
+        params = request.query_params
+        debut = _parse(params.get('debut'))
+        fin = _parse(params.get('fin'))
+        if debut is None:
+            today = date.today()
+            debut = today - timedelta(days=today.weekday())  # lundi
+        if fin is None:
+            fin = debut + timedelta(days=6)  # dimanche
+        if fin < debut:
+            return Response(
+                {'detail': 'La fin de fenêtre précède le début.'},
+                status=status.HTTP_400_BAD_REQUEST)
+        cap = params.get('capacite_jour')
+        try:
+            cap = int(cap) if cap not in (None, '') else 1
+        except (TypeError, ValueError):
+            cap = 1
+        data = selectors.planning_camionnettes(
+            request.user.company, debut, fin, capacite_jour=cap)
         return Response(data)
