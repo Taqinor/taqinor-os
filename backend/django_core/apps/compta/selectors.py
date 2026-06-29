@@ -116,6 +116,109 @@ def balance_generale(company, *, date_debut=None, date_fin=None,
     }
 
 
+# ── FG141 — Export FEC (Fichier des Écritures Comptables, format DGI) ───────
+
+# Colonnes normalisées du FEC (ordre figé, exigé par l'administration fiscale).
+# Adapté du standard FEC français (audit DGI) : une ligne par ligne d'écriture,
+# ordonnée par date puis numéro de pièce. Aucun prix d'achat / aucune marge.
+FEC_COLUMNS = [
+    'JournalCode', 'JournalLib', 'EcritureNum', 'EcritureDate', 'CompteNum',
+    'CompteLib', 'CompAuxNum', 'CompAuxLib', 'PieceRef', 'PieceDate',
+    'EcritureLib', 'Debit', 'Credit', 'EcritureLet', 'DateLet',
+    'ValidDate', 'Montantdevise', 'Idevise',
+]
+
+
+def _fec_date(valeur):
+    """Formate une date au format FEC ``AAAAMMJJ`` (vide si absente)."""
+    if not valeur:
+        return ''
+    return valeur.strftime('%Y%m%d')
+
+
+def _fec_montant(valeur):
+    """Formate un montant FEC : décimale à virgule, deux décimales, jamais vide."""
+    return f'{(valeur or Decimal("0")):.2f}'.replace('.', ',')
+
+
+def export_fec(company, exercice, *, validees_seulement=False):
+    """Lignes du FEC d'un exercice, ordonnées et prêtes pour l'export DGI (FG141).
+
+    Produit UNE ligne par ``LigneEcriture`` de l'exercice (bornée par
+    ``exercice.date_debut``/``date_fin``), triée par date d'écriture puis numéro
+    de pièce (``EcritureNum``) puis ordre de saisie — l'ordre auditable exigé.
+    Chaque ligne porte les colonnes normalisées ``FEC_COLUMNS``. Tout est déduit
+    du grand livre (``LigneEcriture``) ; aucune écriture n'est modifiée et la
+    fonction est scopée société.
+
+    Renvoie ``{'exercice', 'date_debut', 'date_fin', 'columns', 'lignes',
+    'total_debit', 'total_credit', 'equilibre', 'nb_lignes'}`` où ``lignes`` est
+    une liste de dicts (clés = ``FEC_COLUMNS``).
+    """
+    qs = LigneEcriture.objects.filter(
+        company=company,
+        ecriture__date_ecriture__gte=exercice.date_debut,
+        ecriture__date_ecriture__lte=exercice.date_fin,
+    ).select_related('compte', 'ecriture', 'ecriture__journal')
+    if validees_seulement:
+        qs = qs.filter(ecriture__statut='validee')
+    # Ordre auditable : date d'écriture, puis pièce (numéro d'écriture stable =
+    # l'id de la pièce), puis ordre de saisie de la ligne.
+    qs = qs.order_by(
+        'ecriture__date_ecriture', 'ecriture_id', 'id')
+
+    lignes = []
+    total_debit = Decimal('0')
+    total_credit = Decimal('0')
+    for ligne in qs:
+        ecriture = ligne.ecriture
+        compte = ligne.compte
+        # Auxiliaire (tiers) : renseigné seulement pour un compte de tiers porté
+        # par une ligne pointant un tiers (CompAux* sinon vides, comme le veut le
+        # standard FEC).
+        comp_aux_num = ''
+        comp_aux_lib = ''
+        if compte.est_tiers and ligne.tiers_id:
+            comp_aux_num = f'{ligne.tiers_type or "TIERS"}{ligne.tiers_id}'
+            comp_aux_lib = ligne.libelle or ecriture.libelle
+        total_debit += ligne.debit
+        total_credit += ligne.credit
+        lignes.append({
+            'JournalCode': ecriture.journal.code,
+            'JournalLib': ecriture.journal.libelle,
+            'EcritureNum': str(ecriture.pk),
+            'EcritureDate': _fec_date(ecriture.date_ecriture),
+            'CompteNum': compte.numero,
+            'CompteLib': compte.intitule,
+            'CompAuxNum': comp_aux_num,
+            'CompAuxLib': comp_aux_lib,
+            'PieceRef': ecriture.reference or str(ecriture.pk),
+            'PieceDate': _fec_date(ecriture.date_ecriture),
+            'EcritureLib': ligne.libelle or ecriture.libelle,
+            'Debit': _fec_montant(ligne.debit),
+            'Credit': _fec_montant(ligne.credit),
+            'EcritureLet': ligne.lettrage or '',
+            'DateLet': '',
+            'ValidDate': (
+                _fec_date(ecriture.date_creation.date())
+                if ecriture.statut == 'validee' and ecriture.date_creation
+                else ''),
+            'Montantdevise': '',
+            'Idevise': '',
+        })
+    return {
+        'exercice': exercice.libelle or str(exercice.pk),
+        'date_debut': exercice.date_debut.isoformat(),
+        'date_fin': exercice.date_fin.isoformat(),
+        'columns': list(FEC_COLUMNS),
+        'lignes': lignes,
+        'total_debit': total_debit,
+        'total_credit': total_credit,
+        'equilibre': total_debit == total_credit,
+        'nb_lignes': len(lignes),
+    }
+
+
 # ── FG112 / COMPTA22 — Lettrage / encours par tiers ────────────────────────
 
 def lignes_non_lettrees(company, compte):
