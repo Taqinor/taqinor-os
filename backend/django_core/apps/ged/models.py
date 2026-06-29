@@ -132,6 +132,48 @@ ACL_RANK = {
     ACL_GESTION: 3,
 }
 
+# GED22 — Politiques de rétention documentaire (LOCALES à la GED).
+#
+# Une politique décrit COMBIEN DE TEMPS une classe de documents est conservée
+# (`duree_conservation_jours`, à partir de la date de création du document) et
+# CE QU'IL ADVIENT À L'ÉCHÉANCE (`action_echeance`). Par défaut l'échéance est
+# purement CONSULTATIVE : `signaler` (flag) — le document reste intact, la
+# politique se contente de le LISTER comme « échu » pour décision humaine.
+# `archiver` suggère un classement (jamais un effacement). `supprimer` reste un
+# choix EXPLICITE et n'est JAMAIS exécuté passivement : aucune politique ne
+# supprime un document en cascade ; la suppression demeure une action séparée,
+# délibérée et tracée (rule : jamais destructif par défaut).
+#
+# Ces actions sont LOCALES à la GED et n'ont AUCUN rapport avec le funnel
+# commercial `STAGES.py` (rule #2) — on n'importe surtout PAS `STAGES.py` ici.
+RETENTION_SIGNALER = 'signaler'   # flag : lister l'échu, ne rien faire d'autre
+RETENTION_ARCHIVER = 'archiver'   # suggérer un archivage (jamais effacer)
+RETENTION_SUPPRIMER = 'supprimer'  # purge EXPLICITE (action séparée, jamais auto)
+
+RETENTION_ACTION_CHOICES = [
+    (RETENTION_SIGNALER, 'Signaler'),
+    (RETENTION_ARCHIVER, 'Archiver'),
+    (RETENTION_SUPPRIMER, 'Supprimer'),
+]
+
+# Portée d'une politique : tout le module, un cabinet, un dossier (+sous-arbre),
+# ou une catégorie libre (`type_document`). La résolution prend la politique la
+# PLUS SPÉCIFIQUE qui couvre un document (document < dossier < cabinet < global ;
+# une politique typée affine encore par catégorie).
+RETENTION_SCOPE_GLOBAL = 'global'
+RETENTION_SCOPE_CABINET = 'cabinet'
+RETENTION_SCOPE_FOLDER = 'dossier'
+RETENTION_SCOPE_TYPE = 'type'
+
+# Spécificité numérique d'une portée — plus c'est grand, plus c'est spécifique.
+# Sert à choisir la politique la plus proche d'un document (`documents_echus`).
+RETENTION_SCOPE_RANK = {
+    RETENTION_SCOPE_GLOBAL: 0,
+    RETENTION_SCOPE_TYPE: 1,
+    RETENTION_SCOPE_CABINET: 2,
+    RETENTION_SCOPE_FOLDER: 3,
+}
+
 
 class Cabinet(models.Model):
     """Espace documentaire racine (« armoire ») d'une société.
@@ -923,3 +965,126 @@ class PartageGed(models.Model):
         if not raw_password:
             return False
         return check_password(raw_password, self.password_hash)
+
+
+class PolitiqueRetention(models.Model):
+    """GED22 — Politique de rétention documentaire (durée + action à l'échéance).
+
+    Décrit COMBIEN DE TEMPS une classe de documents est conservée et CE QU'IL
+    ADVIENT à l'échéance. La durée (`duree_conservation_jours`) court à partir de
+    la date de CRÉATION du document (`Document.created_at`). À l'échéance :
+
+      * ``signaler`` (DÉFAUT) : purement consultatif — le document est juste
+        LISTÉ comme « échu » (flag) pour décision humaine, rien n'est modifié ;
+      * ``archiver`` : suggère un classement/archivage (jamais un effacement) ;
+      * ``supprimer`` : marque une intention de purge — mais la rétention NE
+        SUPPRIME JAMAIS rien passivement. La suppression reste une action séparée,
+        explicite et tracée (jamais une cascade automatique).
+
+    Portée (du plus large au plus spécifique) : ``global`` (tout le module),
+    ``cabinet`` (un cabinet + ses dossiers), ``dossier`` (un dossier + son
+    sous-arbre matérialisé) ou ``type`` (une catégorie libre `type_document`).
+    La résolution effective (`selectors.documents_echus`) applique à chaque
+    document la politique ACTIVE la PLUS SPÉCIFIQUE qui le couvre.
+
+    Multi-tenant : `company` posée côté serveur (jamais lue du corps de requête),
+    toutes les requêtes bornées à la société. Ces statuts/actions sont LOCAUX à
+    la GED (séparés du funnel commercial STAGES.py, rule #2).
+    """
+    company = models.ForeignKey(
+        'authentication.Company', on_delete=models.CASCADE,
+        null=True, blank=True, related_name='ged_politiques_retention')
+    nom = models.CharField(max_length=255)
+    description = models.TextField(blank=True, default='')
+    # Portée optionnelle — facultative : aucune cible = politique GLOBALE (couvre
+    # tous les documents de la société). `cabinet`/`folder` ciblent un sous-arbre ;
+    # `type_document` affine par catégorie libre (ex. « contrat », « facture »).
+    cabinet = models.ForeignKey(
+        Cabinet, on_delete=models.CASCADE, null=True, blank=True,
+        related_name='politiques_retention')
+    folder = models.ForeignKey(
+        Folder, on_delete=models.CASCADE, null=True, blank=True,
+        related_name='politiques_retention')
+    type_document = models.CharField(
+        max_length=80, blank=True, default='',
+        verbose_name='catégorie de document')
+    # Durée de conservation à partir de la création du document (en jours).
+    duree_conservation_jours = models.PositiveIntegerField(
+        verbose_name='durée de conservation (jours)')
+    # Action à l'échéance — DÉFAUT « signaler » (consultatif, jamais destructif).
+    action_echeance = models.CharField(
+        max_length=10, choices=RETENTION_ACTION_CHOICES,
+        default=RETENTION_SIGNALER, verbose_name="action à l'échéance")
+    actif = models.BooleanField(default=True, verbose_name='active')
+    created_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL,
+        null=True, blank=True, related_name='ged_politiques_retention_crees')
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ['nom', 'id']
+        verbose_name = 'Politique de rétention GED'
+        verbose_name_plural = 'Politiques de rétention GED'
+        indexes = [
+            models.Index(fields=['company', 'actif'],
+                         name='ged_retention_co_actif_idx'),
+            models.Index(fields=['company', 'cabinet'],
+                         name='ged_retention_co_cab_idx'),
+            models.Index(fields=['company', 'folder'],
+                         name='ged_retention_co_fol_idx'),
+        ]
+        constraints = [
+            # Une politique ne cible jamais À LA FOIS un cabinet ET un dossier
+            # (portées concurrentes) — au plus l'un des deux.
+            models.CheckConstraint(
+                condition=(
+                    models.Q(cabinet__isnull=True)
+                    | models.Q(folder__isnull=True)
+                ),
+                name='ged_retention_cab_xor_folder',
+            ),
+        ]
+
+    @property
+    def scope(self):
+        """Type de portée le plus spécifique de cette politique (code).
+
+        dossier > cabinet > type (catégorie) > global. Sert la résolution de la
+        politique la plus proche d'un document."""
+        if self.folder_id:
+            return RETENTION_SCOPE_FOLDER
+        if self.cabinet_id:
+            return RETENTION_SCOPE_CABINET
+        if self.type_document:
+            return RETENTION_SCOPE_TYPE
+        return RETENTION_SCOPE_GLOBAL
+
+    @property
+    def scope_rank(self):
+        """Rang numérique de spécificité (plus grand = plus spécifique)."""
+        return RETENTION_SCOPE_RANK.get(self.scope, 0)
+
+    @property
+    def is_destructive(self):
+        """True seulement si l'action explicite est « supprimer ».
+
+        La rétention reste consultative par défaut : ce drapeau ne déclenche
+        JAMAIS d'effacement automatique — il signale une intention de purge à
+        traiter par une action séparée et délibérée."""
+        return self.action_echeance == RETENTION_SUPPRIMER
+
+    def clean(self):
+        """Garde : pas de cabinet ET dossier simultanés ; durée > 0."""
+        from django.core.exceptions import ValidationError
+        if self.cabinet_id and self.folder_id:
+            raise ValidationError(
+                'Une politique cible au plus un cabinet OU un dossier.')
+        if self.duree_conservation_jours is not None \
+                and self.duree_conservation_jours <= 0:
+            raise ValidationError(
+                'La durée de conservation doit être strictement positive.')
+
+    def __str__(self):
+        return f'{self.nom} ({self.duree_conservation_jours} j → ' \
+               f'{self.action_echeance})'

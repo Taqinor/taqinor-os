@@ -5,7 +5,7 @@ from .views import (
     CabinetViewSet, CoffreViewSet, DemandeApprobationViewSet,
     DocumentLienViewSet, DocumentTagAssignmentViewSet, DocumentTagViewSet,
     DocumentVersionViewSet, DocumentViewSet, FolderViewSet, PartageGedViewSet,
-    public_partage,
+    PolitiqueRetentionViewSet, public_partage,
 )
 
 router = DefaultRouter()
@@ -19,6 +19,7 @@ router.register(r'tags', DocumentTagViewSet)
 router.register(r'tag-assignments', DocumentTagAssignmentViewSet)
 router.register(r'demandes-approbation', DemandeApprobationViewSet)
 router.register(r'partages', PartageGedViewSet)
+router.register(r'politiques-retention', PolitiqueRetentionViewSet)
 
 urlpatterns = [
     # GED20 — accès PUBLIC (sans login) à un document par jeton de partage.

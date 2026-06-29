@@ -3,6 +3,7 @@ from rest_framework import serializers
 from .models import (
     Cabinet, Coffre, DemandeApprobation, Document, DocumentLien, DocumentTag,
     DocumentTagAssignment, DocumentVersion, Folder, PartageGed,
+    PolitiqueRetention,
 )
 from . import services
 
@@ -430,3 +431,63 @@ class PartageGedSerializer(serializers.ModelSerializer):
             setattr(instance, attr, val)
         instance.save()
         return instance
+
+
+class PolitiqueRetentionSerializer(serializers.ModelSerializer):
+    """GED22 — Politique de rétention documentaire (durée + action à l'échéance).
+
+    `company` et `created_by` sont posés côté serveur (jamais lus du corps de
+    requête). Les cibles optionnelles `cabinet`/`folder` sont bornées à la
+    société courante et mutuellement exclusives (validées ci-dessous). L'action
+    par défaut est « signaler » (consultatif) ; aucune suppression automatique
+    n'est jamais déclenchée par une politique."""
+    scope = serializers.CharField(read_only=True)
+    is_destructive = serializers.BooleanField(read_only=True)
+    cabinet_nom = serializers.CharField(
+        source='cabinet.nom', read_only=True, default=None)
+    folder_nom = serializers.CharField(
+        source='folder.nom', read_only=True, default=None)
+    created_by_nom = serializers.CharField(
+        source='created_by.username', read_only=True, default=None)
+
+    class Meta:
+        model = PolitiqueRetention
+        fields = [
+            'id', 'nom', 'description',
+            'cabinet', 'cabinet_nom', 'folder', 'folder_nom',
+            'type_document', 'duree_conservation_jours', 'action_echeance',
+            'scope', 'is_destructive', 'actif',
+            'created_by', 'created_by_nom', 'created_at', 'updated_at',
+        ]
+        read_only_fields = [
+            'created_by', 'created_at', 'updated_at',
+        ]
+
+    def _company_id(self):
+        request = self.context.get('request')
+        return getattr(getattr(request, 'user', None), 'company_id', None)
+
+    def validate_cabinet(self, value):
+        if value is not None and value.company_id != self._company_id():
+            raise serializers.ValidationError('Cabinet inconnu.')
+        return value
+
+    def validate_folder(self, value):
+        if value is not None and value.company_id != self._company_id():
+            raise serializers.ValidationError('Dossier inconnu.')
+        return value
+
+    def validate_duree_conservation_jours(self, value):
+        if value is None or value <= 0:
+            raise serializers.ValidationError(
+                'La durée de conservation doit être strictement positive.')
+        return value
+
+    def validate(self, attrs):
+        cabinet = attrs.get(
+            'cabinet', getattr(self.instance, 'cabinet', None))
+        folder = attrs.get('folder', getattr(self.instance, 'folder', None))
+        if cabinet is not None and folder is not None:
+            raise serializers.ValidationError(
+                'Une politique cible au plus un cabinet OU un dossier.')
+        return attrs
