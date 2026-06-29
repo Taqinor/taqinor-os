@@ -12,6 +12,7 @@ from .models import (
     CarteCarburant,
     Conducteur,
     EcheanceEntretien,
+    EcheanceReglementaire,
     EnginRoulant,
     EtatDesLieux,
     Garage,
@@ -987,5 +988,79 @@ class PieceFlotteSerializer(serializers.ModelSerializer):
                     {'ordre_reparation':
                      "Cet ordre de réparation n'appartient pas à votre "
                      "société."})
+
+        return attrs
+
+
+# ── FLOTTE19 — Échéances réglementaires (visite technique, assurance…) ─────────
+
+class EcheanceReglementaireSerializer(serializers.ModelSerializer):
+    """FLOTTE19 — Échéance réglementaire / administrative d'un actif de flotte.
+
+    ``company`` est posée côté serveur (jamais lue du corps de requête). L'actif
+    lié (``actif_flotte``) doit appartenir à la société courante. La cohérence
+    des dates (échéance ≥ dernier renouvellement) et le coût (≥ 0) sont validés.
+
+    Champs lecture seule :
+    - ``actif_label``       : désignation de l'actif (véhicule ou engin).
+    - ``type_echeance_display`` / ``statut_display`` : libellés.
+    - ``statut_calcule``    : état RÉEL vs la date du jour
+      (``a_jour`` | ``a_renouveler`` | ``expire``), calculé côté modèle.
+    """
+
+    actif_label = serializers.SerializerMethodField()
+    type_echeance_display = serializers.CharField(
+        source='get_type_echeance_display', read_only=True)
+    statut_display = serializers.CharField(
+        source='get_statut_display', read_only=True)
+    statut_calcule = serializers.SerializerMethodField()
+
+    class Meta:
+        model = EcheanceReglementaire
+        fields = [
+            'id', 'actif_flotte', 'actif_label', 'type_echeance',
+            'type_echeance_display', 'date_echeance',
+            'date_dernier_renouvellement', 'organisme', 'cout', 'alerte_jours',
+            'statut', 'statut_display', 'statut_calcule', 'notes',
+            'date_creation',
+        ]
+        read_only_fields = ['date_creation']
+
+    def get_actif_label(self, obj):
+        return obj.actif_flotte.label if obj.actif_flotte_id else None
+
+    def get_statut_calcule(self, obj):
+        return obj.statut_calcule()
+
+    def validate_cout(self, value):
+        if value is not None and value < 0:
+            raise serializers.ValidationError(
+                "Le coût ne peut pas être négatif.")
+        return value
+
+    def validate(self, attrs):
+        request = self.context.get('request')
+        company = getattr(getattr(request, 'user', None), 'company', None)
+
+        actif_flotte = attrs.get(
+            'actif_flotte', getattr(self.instance, 'actif_flotte', None))
+        date_echeance = attrs.get(
+            'date_echeance', getattr(self.instance, 'date_echeance', None))
+        date_renouv = attrs.get(
+            'date_dernier_renouvellement',
+            getattr(self.instance, 'date_dernier_renouvellement', None))
+
+        if company is not None and actif_flotte is not None \
+                and actif_flotte.company_id != company.id:
+            raise serializers.ValidationError(
+                {'actif_flotte':
+                 "Cet actif n'appartient pas à votre société."})
+
+        if date_echeance is not None and date_renouv is not None \
+                and date_echeance < date_renouv:
+            raise serializers.ValidationError(
+                {'date_echeance':
+                 "La date d'échéance ne peut pas précéder le dernier "
+                 "renouvellement."})
 
         return attrs
