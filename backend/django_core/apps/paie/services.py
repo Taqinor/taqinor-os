@@ -1005,3 +1005,82 @@ def calculer_bulletin(profil, periode, personnes_a_charge=0):
         'charges_patronales': charges_patronales,
         'lignes': lignes,
     }
+
+
+# ── PAIE17 — Bulletin de paie matérialisé (snapshot immuable une fois validé) ─
+
+def generer_bulletin(profil, periode, personnes_a_charge=0):
+    """Matérialise (ou régénère) le bulletin de paie d'un profil (PAIE17).
+
+    Calcule le bulletin via ``calculer_bulletin`` puis PERSISTE le snapshot dans
+    ``BulletinPaie`` + ses ``LigneBulletin``. Crée le bulletin s'il n'existe pas ;
+    s'il existe déjà :
+
+    * en statut ``brouillon`` → il est RECALCULÉ (montants & lignes remplacés) ;
+    * en statut ``valide`` → il est FIGÉ : ``BulletinVerrouille`` est levé (on ne
+      régénère jamais un bulletin validé).
+
+    ``company`` posée côté serveur (héritée de la période/profil). Opération
+    atomique. Renvoie le ``BulletinPaie`` (re)matérialisé.
+    """
+    from .models import BulletinPaie, LigneBulletin
+
+    if profil.company_id != periode.company_id:
+        raise ValueError("Profil et période de sociétés différentes.")
+
+    resultat = calculer_bulletin(profil, periode, personnes_a_charge)
+    lignes = resultat.get('lignes', [])
+
+    with transaction.atomic():
+        bulletin = (
+            BulletinPaie.objects
+            .select_for_update()
+            .filter(periode=periode, profil=profil)
+            .first()
+        )
+        if bulletin is not None and bulletin.est_valide:
+            raise BulletinPaie.BulletinVerrouille(
+                'Bulletin validé : régénération interdite (figé).')
+        if bulletin is None:
+            bulletin = BulletinPaie(
+                company=periode.company, periode=periode, profil=profil)
+
+        bulletin.personnes_a_charge = max(0, int(personnes_a_charge or 0))
+        for champ in BulletinPaie.SNAPSHOT_FIELDS:
+            if champ == 'personnes_a_charge':
+                continue
+            setattr(bulletin, champ, resultat[champ])
+        bulletin.statut = BulletinPaie.STATUT_BROUILLON
+        bulletin.save()
+
+        # Remplace les lignes (brouillon uniquement — garde modèle assurée).
+        bulletin.lignes.all().delete()
+        for ordre, ligne in enumerate(lignes, start=1):
+            LigneBulletin.objects.create(
+                company=periode.company,
+                bulletin=bulletin,
+                code=ligne.get('code', ''),
+                libelle=ligne.get('libelle', ''),
+                type=ligne.get('type', 'gain'),
+                montant=ligne.get('montant', Decimal('0')),
+                ordre=ordre,
+            )
+        return bulletin
+
+
+def valider_bulletin(bulletin):
+    """Valide un ``BulletinPaie`` → fige le snapshot (PAIE17).
+
+    Passe le statut ``brouillon → valide`` (irréversible) et pose
+    ``date_validation``. Une fois validé, le bulletin et ses lignes sont
+    immuables (gardes ``save``/``delete`` côté modèle). Re-valider un bulletin
+    déjà validé est un no-op. Renvoie le bulletin.
+    """
+    from .models import BulletinPaie
+
+    if bulletin.statut == BulletinPaie.STATUT_VALIDE:
+        return bulletin
+    bulletin.statut = BulletinPaie.STATUT_VALIDE
+    bulletin.date_validation = timezone.now()
+    bulletin.save(update_fields=['statut', 'date_validation'])
+    return bulletin

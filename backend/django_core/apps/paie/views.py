@@ -14,6 +14,7 @@ from authentication.permissions import IsResponsableOrAdmin
 
 from .models import (
     BaremeIR,
+    BulletinPaie,
     ElementVariable,
     ParametrePaie,
     PeriodePaie,
@@ -23,6 +24,7 @@ from .models import (
 )
 from .serializers import (
     BaremeIRSerializer,
+    BulletinPaieSerializer,
     ElementVariableSerializer,
     ParametrePaieSerializer,
     PeriodePaieSerializer,
@@ -37,7 +39,9 @@ from .services import (
     ensure_defaults,
     ensure_rubriques_defaut,
     ensure_rubriques_standard,
+    generer_bulletin,
     importer_elements_rh,
+    valider_bulletin,
 )
 
 
@@ -201,3 +205,60 @@ class ElementVariableViewSet(_PaieBaseViewSet):
     serializer_class = ElementVariableSerializer
     filter_backends = [filters.OrderingFilter]
     ordering_fields = ['periode', 'profil', 'id']
+
+
+class BulletinPaieViewSet(TenantMixin, viewsets.ReadOnlyModelViewSet):
+    """Bulletins de paie matérialisés (PAIE17) — snapshot immuable.
+
+    Lecture seule via l'API : un bulletin se crée/recalcule par l'action
+    ``generer`` et se fige par l'action ``valider``. Les montants ne sont JAMAIS
+    écrits directement (snapshot). Société scopée, palier paie uniquement.
+    """
+    permission_classes = [IsResponsableOrAdmin]
+    queryset = BulletinPaie.objects.select_related(
+        'periode', 'profil').prefetch_related('lignes').all()
+    serializer_class = BulletinPaieSerializer
+    filter_backends = [filters.OrderingFilter]
+    ordering_fields = ['date_creation', 'periode', 'profil', 'id']
+
+    @action(detail=False, methods=['post'], url_path='generer')
+    def generer(self, request):
+        """Matérialise (ou recalcule) le bulletin d'un profil pour une période.
+
+        Corps : ``periode`` (id), ``profil`` (id), ``personnes_a_charge``
+        (facultatif). Un bulletin déjà VALIDÉ ne peut être régénéré (400).
+        """
+        periode_id = request.data.get('periode')
+        profil_id = request.data.get('profil')
+        if not periode_id or not profil_id:
+            return Response(
+                {'detail': 'Champs "periode" et "profil" requis.'},
+                status=status.HTTP_400_BAD_REQUEST)
+        try:
+            periode = PeriodePaie.objects.get(
+                pk=periode_id, company=request.user.company)
+            profil = ProfilPaie.objects.get(
+                pk=profil_id, company=request.user.company)
+        except (PeriodePaie.DoesNotExist, ProfilPaie.DoesNotExist, ValueError):
+            return Response(
+                {'detail': 'Période ou profil inconnu.'},
+                status=status.HTTP_404_NOT_FOUND)
+        try:
+            pac = int(request.data.get('personnes_a_charge', 0))
+        except (TypeError, ValueError):
+            pac = 0
+        try:
+            bulletin = generer_bulletin(profil, periode, personnes_a_charge=pac)
+        except BulletinPaie.BulletinVerrouille as exc:
+            return Response(
+                {'detail': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+        return Response(
+            self.get_serializer(bulletin).data, status=status.HTTP_200_OK)
+
+    @action(detail=True, methods=['post'], url_path='valider')
+    def valider(self, request, pk=None):
+        """Valide le bulletin → fige le snapshot (immuable, PAIE17)."""
+        bulletin = self.get_object()
+        valider_bulletin(bulletin)
+        return Response(
+            self.get_serializer(bulletin).data, status=status.HTTP_200_OK)

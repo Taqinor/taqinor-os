@@ -3,6 +3,7 @@ from rest_framework.routers import DefaultRouter
 
 from .views import (
     BaremeIRViewSet,
+    BulletinPaieViewSet,
     ElementVariableViewSet,
     ParametrePaieViewSet,
     PeriodePaieViewSet,
@@ -19,6 +20,7 @@ router.register(r'profils', ProfilPaieViewSet)
 router.register(r'rubriques-employe', RubriqueEmployeViewSet)
 router.register(r'periodes', PeriodePaieViewSet)
 router.register(r'elements-variables', ElementVariableViewSet)
+router.register(r'bulletins', BulletinPaieViewSet)
 
 urlpatterns = [
     path('', include(router.urls)),
