@@ -430,6 +430,107 @@ class ReservationVehicule(models.Model):
         )
 
 
+# ── FLOTTE11 — Check-list état des lieux départ / retour (photos) ────────────
+
+class EtatDesLieux(models.Model):
+    """Check-list d'état des lieux d'un véhicule au départ ou au retour.
+
+    Constate l'état d'un ``Vehicule`` à un moment clé (départ d'une mission /
+    retour), avec relevé du kilométrage, du niveau de carburant, l'état général,
+    une check-list de points contrôlés (JSON, ex.
+    ``[{"point": "Pneus", "ok": true}]``) et une liste de **photos** stockées
+    par clé d'objet (clés MinIO — jamais le binaire en base). Optionnellement
+    rattachable à une ``ReservationVehicule``.
+
+    Multi-tenant : ``company`` est posée côté serveur, jamais lue du corps de
+    requête.
+    """
+
+    class Moment(models.TextChoices):
+        DEPART = 'depart', 'Départ'
+        RETOUR = 'retour', 'Retour'
+
+    class Etat(models.TextChoices):
+        BON = 'bon', 'Bon'
+        MOYEN = 'moyen', 'Moyen'
+        MAUVAIS = 'mauvais', 'Mauvais'
+
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='etats_des_lieux_flotte',
+        verbose_name='Société',
+    )
+    vehicule = models.ForeignKey(
+        'Vehicule',
+        on_delete=models.CASCADE,
+        related_name='etats_des_lieux_flotte',
+        verbose_name='Véhicule',
+    )
+    reservation = models.ForeignKey(
+        'ReservationVehicule',
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='etats_des_lieux_flotte',
+        verbose_name='Réservation liée',
+    )
+    conducteur = models.ForeignKey(
+        'Conducteur',
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='etats_des_lieux_flotte',
+        verbose_name='Conducteur',
+    )
+    moment = models.CharField(
+        max_length=10, choices=Moment.choices, default=Moment.DEPART,
+        verbose_name='Moment')
+    date_constat = models.DateTimeField(verbose_name='Date du constat')
+    kilometrage = models.PositiveIntegerField(
+        default=0, verbose_name='Kilométrage relevé')
+    niveau_carburant = models.PositiveSmallIntegerField(
+        default=0, verbose_name='Niveau de carburant (%)')
+    etat_general = models.CharField(
+        max_length=10, choices=Etat.choices, default=Etat.BON,
+        verbose_name='État général')
+    # Check-list de points contrôlés (additive, non figée) :
+    # [{"point": "Pneus", "ok": true, "commentaire": "…"}, …].
+    points = models.JSONField(
+        default=list, blank=True, verbose_name='Points contrôlés')
+    # Photos par clé d'objet (clés MinIO) — jamais le binaire en base.
+    photos = models.JSONField(
+        default=list, blank=True, verbose_name='Photos (clés)')
+    commentaire = models.TextField(blank=True, verbose_name='Commentaire')
+    date_creation = models.DateTimeField(
+        auto_now_add=True, verbose_name='Créé le')
+
+    class Meta:
+        verbose_name = 'État des lieux'
+        verbose_name_plural = 'États des lieux'
+        ordering = ['-date_constat']
+        indexes = [
+            models.Index(
+                fields=['company', 'vehicule'],
+                name='flotte_edl_co_veh_idx',
+            ),
+        ]
+
+    def clean(self):
+        if self.niveau_carburant is not None and \
+                not (0 <= self.niveau_carburant <= 100):
+            raise ValidationError(
+                "Le niveau de carburant doit être compris entre 0 et 100 %.")
+
+    @property
+    def nb_photos(self):
+        return len(self.photos or [])
+
+    def __str__(self):
+        return f'{self.vehicule} — {self.get_moment_display()} ' \
+               f'({self.date_constat:%Y-%m-%d})'
+
+
 # ── FLOTTE7 — Conducteurs / chauffeurs ────────────────────────────────────────
 
 class Conducteur(models.Model):

@@ -16,6 +16,7 @@ from .models import (
     AffectationConducteur,
     Conducteur,
     EnginRoulant,
+    EtatDesLieux,
     ReferentielFlotte,
     ReservationVehicule,
     Vehicule,
@@ -25,6 +26,7 @@ from .serializers import (
     AffectationConducteurSerializer,
     ConducteurSerializer,
     EnginRoulantSerializer,
+    EtatDesLieuxSerializer,
     ReferentielFlotteSerializer,
     ReservationVehiculeSerializer,
     VehiculeSerializer,
@@ -239,5 +241,43 @@ class ReservationVehiculeViewSet(_FlotteBaseViewSet):
         if actives is not None and actives.lower() in ('1', 'true', 'vrai',
                                                        'oui'):
             qs = qs.filter(statut__in=ReservationVehicule.STATUTS_ACTIFS)
+
+        return qs
+
+
+class EtatDesLieuxViewSet(_FlotteBaseViewSet):
+    """Check-lists d'état des lieux départ/retour avec photos (FLOTTE11).
+
+    Filtrable par ``?vehicule=<id>``, ``?moment=<depart|retour>`` et
+    ``?reservation=<id>``. Recherche par commentaire. Scopé par société.
+    """
+    queryset = EtatDesLieux.objects.select_related(
+        'vehicule', 'conducteur', 'reservation')
+    serializer_class = EtatDesLieuxSerializer
+    filter_backends = [filters.SearchFilter, filters.OrderingFilter]
+    search_fields = ['commentaire']
+    ordering_fields = ['date_constat', 'moment', 'kilometrage', 'date_creation']
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        params = self.request.query_params
+
+        vehicule = params.get('vehicule')
+        if vehicule:
+            try:
+                qs = qs.filter(vehicule_id=int(vehicule))
+            except (ValueError, TypeError):
+                pass
+
+        moment = params.get('moment')
+        if moment:
+            qs = qs.filter(moment=moment)
+
+        reservation = params.get('reservation')
+        if reservation:
+            try:
+                qs = qs.filter(reservation_id=int(reservation))
+            except (ValueError, TypeError):
+                pass
 
         return qs

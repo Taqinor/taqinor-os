@@ -11,6 +11,7 @@ from .models import (
     AffectationConducteur,
     Conducteur,
     EnginRoulant,
+    EtatDesLieux,
     ReferentielFlotte,
     ReservationVehicule,
     Vehicule,
@@ -427,5 +428,89 @@ class ReservationVehiculeSerializer(serializers.ModelSerializer):
                     {'debut': "Ce véhicule est déjà réservé sur ce créneau "
                               f"(conflit avec la réservation #{premier.pk})."})
 
+        return attrs
+
+
+# ── FLOTTE11 — Check-list état des lieux départ / retour (photos) ────────────
+
+class EtatDesLieuxSerializer(serializers.ModelSerializer):
+    """FLOTTE11 — Check-list d'état des lieux d'un véhicule (photos).
+
+    ``company`` est posée côté serveur (jamais lue du corps de requête). Les FKs
+    (``vehicule``, ``reservation``, ``conducteur``) doivent appartenir à la
+    société courante. ``points`` et ``photos`` sont des listes JSON.
+
+    Champs lecture seule :
+    - ``vehicule_label`` : désignation du véhicule.
+    - ``moment_display`` / ``etat_general_display`` : libellés.
+    - ``nb_photos``      : nombre de photos jointes.
+    """
+
+    moment_display = serializers.CharField(
+        source='get_moment_display', read_only=True)
+    etat_general_display = serializers.CharField(
+        source='get_etat_general_display', read_only=True)
+    vehicule_label = serializers.SerializerMethodField()
+    nb_photos = serializers.IntegerField(read_only=True)
+
+    class Meta:
+        model = EtatDesLieux
+        fields = [
+            'id', 'vehicule', 'vehicule_label', 'reservation', 'conducteur',
+            'moment', 'moment_display', 'date_constat', 'kilometrage',
+            'niveau_carburant', 'etat_general', 'etat_general_display',
+            'points', 'photos', 'nb_photos', 'commentaire', 'date_creation',
+        ]
+        read_only_fields = ['date_creation']
+
+    def get_vehicule_label(self, obj):
+        return str(obj.vehicule) if obj.vehicule_id else None
+
+    def validate_niveau_carburant(self, value):
+        if value is not None and not (0 <= value <= 100):
+            raise serializers.ValidationError(
+                "Le niveau de carburant doit être compris entre 0 et 100 %.")
+        return value
+
+    def validate_points(self, value):
+        if value in (None, ''):
+            return []
+        if not isinstance(value, list):
+            raise serializers.ValidationError(
+                "Le champ 'points' doit être une liste.")
+        return value
+
+    def validate_photos(self, value):
+        if value in (None, ''):
+            return []
+        if not isinstance(value, list):
+            raise serializers.ValidationError(
+                "Le champ 'photos' doit être une liste de clés.")
+        return value
+
+    def validate(self, attrs):
+        request = self.context.get('request')
+        company = getattr(getattr(request, 'user', None), 'company', None)
+        if company is None:
+            return attrs
+
+        vehicule = attrs.get(
+            'vehicule', getattr(self.instance, 'vehicule', None))
+        reservation = attrs.get(
+            'reservation', getattr(self.instance, 'reservation', None))
+        conducteur = attrs.get(
+            'conducteur', getattr(self.instance, 'conducteur', None))
+
+        if vehicule is not None and vehicule.company_id != company.id:
+            raise serializers.ValidationError(
+                {'vehicule': "Ce véhicule n'appartient pas à votre société."})
+        if reservation is not None and reservation.company_id != company.id:
+            raise serializers.ValidationError(
+                {'reservation':
+                 "Cette réservation n'appartient pas à votre société."})
+        if conducteur is not None and conducteur.company_id != company.id:
+            raise serializers.ValidationError(
+                {'conducteur':
+                 "Ce conducteur n'appartient pas à votre société."})
         return attrs
 
