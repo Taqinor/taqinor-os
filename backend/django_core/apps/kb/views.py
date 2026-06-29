@@ -13,8 +13,14 @@ from authentication.mixins import TenantMixin
 from authentication.permissions import IsResponsableOrAdmin
 
 from . import selectors, services
-from .models import KbArticle, KbArticleLien, KbArticleVersion
+from .models import (
+    KbArticle,
+    KbArticleAcl,
+    KbArticleLien,
+    KbArticleVersion,
+)
 from .serializers import (
+    KbArticleAclSerializer,
     KbArticleLienSerializer,
     KbArticleSerializer,
     KbArticleVersionSerializer,
@@ -51,6 +57,10 @@ class KbArticleViewSet(_KbBaseViewSet):
         # filtres ci-dessous opèrent donc sur un queryset déjà borné à la
         # société de l'utilisateur (aucune fuite cross-tenant possible).
         qs = super().get_queryset()
+        # KB7 — droits d'accès par rôle : restreint aux articles visibles pour
+        # l'utilisateur. RÉTRO-COMPATIBLE : un article SANS ACL reste visible de
+        # tous (KB2/KB3 inchangés) ; un admin voit tout.
+        qs = selectors.visible_articles_qs(qs, self.request.user)
         params = self.request.query_params
         categorie = params.get('categorie')
         if categorie:
@@ -91,6 +101,25 @@ class KbArticleViewSet(_KbBaseViewSet):
         return Response(
             KbArticleVersionSerializer(
                 version, context={'request': request}).data)
+
+    @action(detail=True, methods=['post'], url_path='marquer-lu')
+    def marquer_lu(self, request, pk=None):
+        """Enregistre que l'utilisateur courant a LU cet article (KB7).
+
+        Idempotente : une seule ligne par (article, utilisateur) ; un second
+        appel rafraîchit ``lu_le`` sans dupliquer. L'utilisateur agissant et la
+        société sont posés côté serveur (jamais du corps de requête). Renvoie le
+        résumé de lecture à jour de l'article.
+        """
+        article = self.get_object()
+        services.marquer_lu(article, utilisateur=request.user)
+        return Response(selectors.resume_lecture(article))
+
+    @action(detail=True, methods=['get'], url_path='resume-lecture')
+    def resume_lecture(self, request, pk=None):
+        """Résumé de lecture d'un article : nombre de lecteurs + qui (KB7)."""
+        article = self.get_object()
+        return Response(selectors.resume_lecture(article))
 
 
 class KbArticleVersionViewSet(TenantMixin, viewsets.ReadOnlyModelViewSet):
@@ -161,3 +190,31 @@ class KbArticleLienViewSet(_KbBaseViewSet):
                 {'detail': 'type_cible et cible_id sont requis.'}, status=400)
         return Response(selectors.articles_pour_cible(
             request.user.company, type_cible, cible_id))
+
+
+class KbArticleAclViewSet(_KbBaseViewSet):
+    """Droits d'accès par rôle sur les articles (KB7) — gestion des ACL.
+
+    ``company`` est posée côté serveur (TenantMixin) ; l'``article`` reçu est
+    validé même-société par le sérialiseur. Filtres optionnels ``?article=<id>``
+    et ``?niveau=<lecture|edition>``. Accès réservé au palier
+    Administrateur/Responsable comme le reste de la base.
+    """
+    queryset = KbArticleAcl.objects.select_related('article').all()
+    serializer_class = KbArticleAclSerializer
+    filter_backends = [filters.OrderingFilter]
+    ordering_fields = ['id']
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        params = self.request.query_params
+        article = params.get('article')
+        if article:
+            qs = qs.filter(article_id=article)
+        niveau = params.get('niveau')
+        if niveau:
+            qs = qs.filter(niveau=niveau)
+        return qs
+
+    def perform_create(self, serializer):
+        serializer.save(company=self.request.user.company)

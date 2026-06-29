@@ -1,6 +1,12 @@
 from django.contrib import admin
 
-from .models import KbArticle, KbArticleLien, KbArticleVersion
+from .models import (
+    KbArticle,
+    KbArticleAcl,
+    KbArticleLien,
+    KbArticleVersion,
+    KbLecture,
+)
 
 
 @admin.register(KbArticle)
@@ -25,3 +31,16 @@ class KbArticleLienAdmin(admin.ModelAdmin):
                     'company', 'date_creation')
     list_filter = ('type_cible', 'company')
     search_fields = ('libelle',)
+
+
+@admin.register(KbArticleAcl)
+class KbArticleAclAdmin(admin.ModelAdmin):
+    list_display = ('id', 'article', 'role', 'niveau', 'company',
+                    'date_creation')
+    list_filter = ('role', 'niveau', 'company')
+
+
+@admin.register(KbLecture)
+class KbLectureAdmin(admin.ModelAdmin):
+    list_display = ('id', 'article', 'utilisateur', 'company', 'lu_le')
+    list_filter = ('company',)
