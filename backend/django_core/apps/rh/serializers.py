@@ -8,6 +8,7 @@ from rest_framework import serializers
 
 from .models import (
     AffectationRoster,
+    Certification,
     Competence,
     CompetenceEmploye,
     DemandeConge,
@@ -675,5 +676,67 @@ class HabilitationSerializer(serializers.ModelSerializer):
             if qs.exists():
                 raise serializers.ValidationError(
                     'Une habilitation de ce type existe déjà pour cet '
+                    'employé.')
+        return attrs
+
+
+class CertificationSerializer(serializers.ModelSerializer):
+    """Certification spécifique par employé (FG174) — hauteur/harnais/CACES/SST.
+
+    Le client saisit ``employe``, ``type_certification``, ``organisme``,
+    ``date_obtention``, ``date_validite`` (expiration), ``actif`` et ``note``.
+    ``company`` est posée côté serveur (jamais lue du corps) ; ``employe`` doit
+    appartenir à la société de l'utilisateur. ``valide`` (actif ET non expiré)
+    est CALCULÉ — lecture seule. Une ligne par (employé, certification) : on met
+    à jour la validité plutôt que d'empiler. Famille DISTINCTE des habilitations
+    électriques (FG173).
+    """
+    type_certification_display = serializers.CharField(
+        source='get_type_certification_display', read_only=True)
+    employe_nom = serializers.SerializerMethodField()
+    valide = serializers.BooleanField(read_only=True)
+
+    class Meta:
+        model = Certification
+        fields = [
+            'id', 'employe', 'employe_nom',
+            'type_certification', 'type_certification_display',
+            'organisme', 'date_obtention', 'date_validite',
+            'actif', 'valide', 'note',
+            'date_creation', 'date_modification',
+        ]
+        read_only_fields = ['date_creation', 'date_modification', 'valide']
+
+    def get_employe_nom(self, obj):
+        return f'{obj.employe.nom} {obj.employe.prenom}'
+
+    def validate_employe(self, value):
+        return _meme_societe(self, value, 'Employé')
+
+    def validate(self, attrs):
+        # Cohérence des dates : l'expiration ne précède pas l'obtention.
+        obtention = attrs.get('date_obtention') \
+            or getattr(self.instance, 'date_obtention', None)
+        validite = attrs.get('date_validite') \
+            or getattr(self.instance, 'date_validite', None)
+        if obtention and validite and validite < obtention:
+            raise serializers.ValidationError(
+                {'date_validite':
+                 "La date de validité précède la date d'obtention."})
+        # Unicité (employé, certification) : ``company`` est posée côté serveur
+        # et n'est pas un champ du sérialiseur, donc on valide ici pour rendre
+        # un 400 plutôt que de laisser remonter une IntegrityError 500.
+        employe = attrs.get('employe') \
+            or getattr(self.instance, 'employe', None)
+        type_cert = attrs.get('type_certification') \
+            or getattr(self.instance, 'type_certification', None)
+        if employe is not None and type_cert is not None:
+            qs = Certification.objects.filter(
+                employe=employe, type_certification=type_cert)
+            if self.instance is not None:
+                qs = qs.exclude(pk=self.instance.pk)
+            if qs.exists():
+                raise serializers.ValidationError(
+                    'Une certification de ce type existe déjà pour cet '
                     'employé.')
         return attrs

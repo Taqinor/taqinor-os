@@ -2,6 +2,7 @@ from django.contrib import admin
 
 from .models import (
     AffectationRoster,
+    Certification,
     Competence,
     CompetenceEmploye,
     DemandeConge,
@@ -150,5 +151,14 @@ class HabilitationAdmin(admin.ModelAdmin):
     list_display = ('employe', 'type_habilitation', 'organisme',
                     'date_obtention', 'date_validite', 'actif', 'company')
     list_filter = ('type_habilitation', 'actif')
+    search_fields = ('employe__matricule', 'employe__nom', 'employe__prenom',
+                     'organisme')
+
+
+@admin.register(Certification)
+class CertificationAdmin(admin.ModelAdmin):
+    list_display = ('employe', 'type_certification', 'organisme',
+                    'date_obtention', 'date_validite', 'actif', 'company')
+    list_filter = ('type_certification', 'actif')
     search_fields = ('employe__matricule', 'employe__nom', 'employe__prenom',
                      'organisme')
