@@ -1119,3 +1119,194 @@ class OrdreReparation(models.Model):
     def __str__(self):
         return f'OR #{self.pk} — {self.actif_flotte} ' \
                f'[{self.get_statut_display()}]'
+
+
+# ── FLOTTE18 — Pneumatiques montés sur un véhicule (suivi d'usure) ────────────
+
+class Pneumatique(models.Model):
+    """Un pneumatique suivi à une position d'un véhicule du parc (FLOTTE18).
+
+    Trace la vie d'un pneu monté à une ``position`` du véhicule (avant/arrière
+    gauche/droite ou roue de secours) : marque, dimension, date et kilométrage
+    de montage, et — une fois déposé — date de dépose. Le ``statut`` suit le
+    cycle ``monte`` (en service) → ``depose`` (retiré, encore exploitable) →
+    ``use`` (hors service). Le coût d'achat est conservé pour le suivi de
+    dépense.
+
+    Multi-tenant : ``company`` est posée côté serveur (jamais lue du corps de
+    requête). Le véhicule lié doit appartenir à la MÊME société (validé dans
+    ``clean`` et au sérialiseur).
+    """
+
+    class Position(models.TextChoices):
+        AV_G = 'av_g', 'Avant gauche'
+        AV_D = 'av_d', 'Avant droite'
+        AR_G = 'ar_g', 'Arrière gauche'
+        AR_D = 'ar_d', 'Arrière droite'
+        SECOURS = 'secours', 'Roue de secours'
+
+    class Statut(models.TextChoices):
+        MONTE = 'monte', 'Monté'
+        DEPOSE = 'depose', 'Déposé'
+        USE = 'use', 'Usé'
+
+    # Statuts considérés « en service » (le pneu occupe sa position).
+    STATUTS_MONTES = (Statut.MONTE,)
+
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='flotte_pneumatiques',
+        verbose_name='Société',
+    )
+    vehicule = models.ForeignKey(
+        'Vehicule',
+        on_delete=models.CASCADE,
+        related_name='flotte_pneumatiques',
+        verbose_name='Véhicule',
+    )
+    # Code court de position — CharField borné : la valeur tient dans
+    # max_length (leçon FG136). 'secours' (7) est le plus long code.
+    position = models.CharField(
+        max_length=10, choices=Position.choices, default=Position.AV_G,
+        verbose_name='Position')
+    marque = models.CharField(max_length=80, blank=True, verbose_name='Marque')
+    dimension = models.CharField(
+        max_length=40, blank=True, verbose_name='Dimension',
+        help_text='Ex. : 205/55 R16')
+    date_montage = models.DateField(
+        null=True, blank=True, verbose_name='Date de montage')
+    km_montage = models.PositiveIntegerField(
+        null=True, blank=True, verbose_name='Kilométrage au montage')
+    date_depose = models.DateField(
+        null=True, blank=True, verbose_name='Date de dépose')
+    statut = models.CharField(
+        max_length=10, choices=Statut.choices, default=Statut.MONTE,
+        verbose_name='Statut')
+    cout = models.DecimalField(
+        max_digits=12, decimal_places=2, default=0,
+        verbose_name="Coût d'achat (MAD)")
+    notes = models.TextField(blank=True, verbose_name='Notes')
+    date_creation = models.DateTimeField(
+        auto_now_add=True, verbose_name='Créé le')
+
+    class Meta:
+        verbose_name = 'Pneumatique'
+        verbose_name_plural = 'Pneumatiques'
+        ordering = ['vehicule', 'position', '-date_montage', '-id']
+        indexes = [
+            models.Index(
+                fields=['company', 'vehicule'],
+                name='flotte_pneu_co_veh_idx',
+            ),
+            models.Index(
+                fields=['company', 'statut'],
+                name='flotte_pneu_co_stat_idx',
+            ),
+        ]
+
+    def clean(self):
+        """Valide l'appartenance société du véhicule, la cohérence des dates et
+        le coût."""
+        if self.vehicule_id is not None \
+                and self.vehicule.company_id != self.company_id:
+            raise ValidationError(
+                "Le véhicule n'appartient pas à la même société.")
+        if self.date_montage is not None and self.date_depose is not None \
+                and self.date_depose < self.date_montage:
+            raise ValidationError(
+                "La date de dépose ne peut pas précéder le montage.")
+        if self.cout is not None and self.cout < 0:
+            raise ValidationError(
+                "Le coût ne peut pas être négatif.")
+
+    def __str__(self):
+        return f'{self.get_position_display()} — {self.vehicule} ' \
+               f'[{self.get_statut_display()}]'
+
+
+# ── FLOTTE18 — Pièces détachées posées sur un véhicule du parc ────────────────
+
+class PieceFlotte(models.Model):
+    """Une pièce détachée posée sur un véhicule du parc (FLOTTE18).
+
+    Trace une pièce (filtre, plaquette, batterie, courroie…) montée sur un
+    ``Vehicule`` : désignation, référence fournisseur, quantité, coût unitaire et
+    date de pose. La pièce peut optionnellement être rattachée à un
+    ``OrdreReparation`` (FLOTTE17) qui en a déclenché la pose. Le coût total de
+    la ligne est CALCULÉ (``quantite × cout_unitaire``) — propriété lecture
+    seule, jamais une colonne saisie.
+
+    Multi-tenant : ``company`` est posée côté serveur (jamais lue du corps de
+    requête). Le véhicule et l'ordre de réparation liés doivent appartenir à la
+    MÊME société (validé dans ``clean`` et au sérialiseur).
+    """
+
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='flotte_pieces',
+        verbose_name='Société',
+    )
+    vehicule = models.ForeignKey(
+        'Vehicule',
+        on_delete=models.CASCADE,
+        related_name='flotte_pieces',
+        verbose_name='Véhicule',
+    )
+    # Lien optionnel vers l'OR (FLOTTE17) qui a déclenché la pose de la pièce.
+    ordre_reparation = models.ForeignKey(
+        'OrdreReparation',
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='flotte_pieces',
+        verbose_name='Ordre de réparation lié',
+    )
+    designation = models.CharField(
+        max_length=160, verbose_name='Désignation')
+    reference = models.CharField(
+        max_length=80, blank=True, verbose_name='Référence')
+    quantite = models.PositiveIntegerField(
+        default=1, verbose_name='Quantité')
+    cout_unitaire = models.DecimalField(
+        max_digits=12, decimal_places=2, default=0,
+        verbose_name='Coût unitaire (MAD)')
+    date_pose = models.DateField(
+        null=True, blank=True, verbose_name='Date de pose')
+    notes = models.TextField(blank=True, verbose_name='Notes')
+    date_creation = models.DateTimeField(
+        auto_now_add=True, verbose_name='Créé le')
+
+    class Meta:
+        verbose_name = 'Pièce de flotte'
+        verbose_name_plural = 'Pièces de flotte'
+        ordering = ['vehicule', '-date_pose', '-id']
+        indexes = [
+            models.Index(
+                fields=['company', 'vehicule'],
+                name='flotte_piece_co_veh_idx',
+            ),
+        ]
+
+    def clean(self):
+        """Valide l'appartenance société du véhicule et de l'OR, et le coût."""
+        if self.vehicule_id is not None \
+                and self.vehicule.company_id != self.company_id:
+            raise ValidationError(
+                "Le véhicule n'appartient pas à la même société.")
+        if self.ordre_reparation_id is not None \
+                and self.ordre_reparation.company_id != self.company_id:
+            raise ValidationError(
+                "L'ordre de réparation n'appartient pas à la même société.")
+        if self.cout_unitaire is not None and self.cout_unitaire < 0:
+            raise ValidationError(
+                "Le coût unitaire ne peut pas être négatif.")
+
+    @property
+    def cout_total(self):
+        """Coût total de la ligne (quantité × coût unitaire), en ``float``."""
+        return round(float(self.cout_unitaire or 0) * (self.quantite or 0), 2)
+
+    def __str__(self):
+        return f'{self.designation} ×{self.quantite} — {self.vehicule}'

@@ -18,7 +18,9 @@ from .models import (
     EtatDesLieux,
     Garage,
     OrdreReparation,
+    PieceFlotte,
     PlanEntretien,
+    Pneumatique,
     PleinCarburant,
     ReservationVehicule,
     Vehicule,
@@ -778,4 +780,68 @@ def couts_reparation(company, actif_flotte_id=None, garage_id=None,
         'cout_pieces': round(float(agg['pieces'] or 0), 2),
         'cout_total': round(total, 2),
         'cout_moyen': cout_moyen,
+    }
+
+
+# ── FLOTTE18 — Pneumatiques + pièces ──────────────────────────────────────────
+
+def pneumatiques_de_la_societe(company, vehicule_id=None, statut=None):
+    """Pneumatiques d'une société (queryset scopé, filtrable véhicule/statut)."""
+    qs = Pneumatique.objects.filter(company=company).select_related('vehicule')
+    if vehicule_id is not None:
+        qs = qs.filter(vehicule_id=vehicule_id)
+    if statut:
+        qs = qs.filter(statut=statut)
+    return qs
+
+
+def pieces_de_la_societe(company, vehicule_id=None, ordre_reparation_id=None):
+    """Pièces d'une société (queryset scopé, filtrable véhicule / OR)."""
+    qs = PieceFlotte.objects.filter(company=company).select_related(
+        'vehicule', 'ordre_reparation')
+    if vehicule_id is not None:
+        qs = qs.filter(vehicule_id=vehicule_id)
+    if ordre_reparation_id is not None:
+        qs = qs.filter(ordre_reparation_id=ordre_reparation_id)
+    return qs
+
+
+def synthese_pneus_pieces_vehicule(company, vehicule_id):
+    """FLOTTE18 — Synthèse pneus + pièces d'un véhicule (lecture seule).
+
+    Agrège, pour un véhicule d'une société :
+    - le nombre de pneus montés (``nb_pneus_montes``) et leur coût total ;
+    - le nombre de lignes de pièces (``nb_pieces``), la quantité totale et le
+      coût total des pièces (quantité × coût unitaire) ;
+    - le coût total combiné (pneus + pièces).
+
+    Retourne un dict LECTURE SEULE — tous les montants sont des ``float``
+    arrondis. Aucun calcul de moyenne ici, donc pas de division par zéro.
+    """
+    pneus = pneumatiques_de_la_societe(company, vehicule_id=vehicule_id)
+    agg_pneus = pneus.aggregate(
+        nb_montes=models.Count(
+            'id', filter=models.Q(statut__in=Pneumatique.STATUTS_MONTES)),
+        cout=models.Sum('cout'),
+    )
+
+    pieces = pieces_de_la_societe(company, vehicule_id=vehicule_id)
+    cout_pieces = 0.0
+    quantite_pieces = 0
+    nb_pieces = 0
+    for piece in pieces:
+        cout_pieces += piece.cout_total
+        quantite_pieces += piece.quantite or 0
+        nb_pieces += 1
+
+    cout_pneus = round(float(agg_pneus['cout'] or 0), 2)
+    cout_pieces = round(cout_pieces, 2)
+    return {
+        'vehicule_id': vehicule_id,
+        'nb_pneus_montes': agg_pneus['nb_montes'] or 0,
+        'cout_pneus': cout_pneus,
+        'nb_pieces': nb_pieces,
+        'quantite_pieces': quantite_pieces,
+        'cout_pieces': cout_pieces,
+        'cout_total': round(cout_pneus + cout_pieces, 2),
     }
