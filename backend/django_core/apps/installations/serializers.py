@@ -16,6 +16,7 @@ from .models import (
     BudgetProjet, BudgetEngagement,
     IndisponibiliteRessource,
     SousTraitant,
+    OrdreSousTraitance,
 )
 
 
@@ -1005,4 +1006,52 @@ class SousTraitantSerializer(serializers.ModelSerializer):
         if not value:
             raise serializers.ValidationError(
                 'La raison sociale est obligatoire.')
+        return value
+
+
+class OrdreSousTraitanceSerializer(serializers.ModelSerializer):
+    """FG305 — ordre de travaux émis à un sous-traitant (FG304). La référence,
+    la société et `created_by` sont posés CÔTÉ SERVEUR (jamais lus du corps) ;
+    `reference` est anti-collision (`OST-YYYYMM-NNNN`). `statut_display` et
+    `sous_traitant_nom` exposent des libellés lisibles. Le `statut` n'est pas
+    piloté par l'API d'écriture standard — il avance via les actions de cycle de
+    vie (`emettre`/`receptionner`/`cloturer`)."""
+    statut_display = serializers.CharField(
+        source='get_statut_display', read_only=True, default=None)
+    sous_traitant_nom = serializers.CharField(
+        source='sous_traitant.raison_sociale', read_only=True, default=None)
+
+    class Meta:
+        model = OrdreSousTraitance
+        fields = [
+            'id', 'reference', 'sous_traitant', 'sous_traitant_nom',
+            'chantier', 'prestation', 'montant', 'montant_realise',
+            'date_emission', 'date_echeance', 'statut', 'statut_display',
+            'note', 'created_by', 'date_creation', 'date_modification',
+        ]
+        # La référence, le créateur et les horodatages sont posés serveur. Le
+        # statut n'est jamais écrit librement : il avance via les actions de
+        # cycle de vie (lecture seule ici).
+        read_only_fields = [
+            'reference', 'statut', 'created_by',
+            'date_creation', 'date_modification',
+        ]
+
+    def validate_prestation(self, value):
+        value = (value or '').strip()
+        if not value:
+            raise serializers.ValidationError(
+                'La prestation est obligatoire.')
+        return value
+
+    def validate_montant(self, value):
+        if value is not None and value < 0:
+            raise serializers.ValidationError(
+                'Le montant ne peut pas être négatif.')
+        return value
+
+    def validate_montant_realise(self, value):
+        if value is not None and value < 0:
+            raise serializers.ValidationError(
+                'Le montant réalisé ne peut pas être négatif.')
         return value
