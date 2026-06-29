@@ -799,6 +799,35 @@ def amo_patronale(parametre, brut, affilie=True):
     return _q(cot)
 
 
+# ── PAIE20 — Cotisation CIMR OPTIONNELLE (taux par employé adhérent) ─────────
+
+def cimr_salariale(brut, affilie=False, taux=Decimal('0')):
+    """Cotisation CIMR — part SALARIALE, OPTIONNELLE par employé (PAIE20).
+
+    La CIMR (régime de retraite complémentaire) est FACULTATIVE : seuls les
+    employés ADHÉRENTS cotisent, et chacun avec SON propre taux. Contrairement
+    à la CNSS/AMO, le taux n'est pas une constante de société mais une valeur
+    portée par le ``ProfilPaie`` de l'employé (``taux_cimr_salarial``) — deux
+    adhérents peuvent avoir des taux différents.
+
+    Assiette = brut intégral (non plafonnée) ; cotisation = ``brut × taux / 100``.
+    Renvoie ``0`` quand l'employé n'est PAS adhérent (``affilie=False``, le
+    défaut), ce qui matérialise « pas d'adhésion → pas de CIMR ». Renvoie aussi
+    ``0`` si le taux est nul ou négatif. Decimal au centime.
+
+    ``affilie`` est le drapeau d'adhésion de l'employé
+    (``ProfilPaie.affilie_cimr``) ; ``taux`` son taux salarial propre
+    (``ProfilPaie.taux_cimr_salarial``).
+    """
+    if not affilie:
+        return Decimal('0.00')
+    taux = Decimal(taux or 0)
+    if taux <= 0:
+        return Decimal('0.00')
+    cot = Decimal(brut or 0) * taux / Decimal('100')
+    return _q(cot)
+
+
 # ── PAIE12 — Moteur de calcul du bulletin ──────────────────────────────────
 
 _CENT = Decimal('0.01')
@@ -842,8 +871,9 @@ def calculer_bulletin(profil, periode, personnes_a_charge=0):
        si le profil est affilié CNSS.
     3. **AMO** salariale = ``taux_amo_salarial`` × brut (non plafonnée) si
        affilié AMO.
-    4. **CIMR** salariale = ``taux_cimr_salarial`` du profil × brut si affilié
-       CIMR.
+    4. **CIMR** salariale (PAIE20, OPTIONNELLE) = ``taux_cimr_salarial`` du
+       profil × brut, UNIQUEMENT si le profil est adhérent (``affilie_cimr``) ;
+       sinon 0 (le taux est propre à chaque employé adhérent).
     5. **Frais professionnels** : 35 % du brut imposable plafonné (≤ seuil) sinon
        25 % plafonné — d'après ``ParametrePaie``.
     6. **Net imposable** = brut imposable − (CNSS + AMO + CIMR + frais pro).
@@ -950,11 +980,9 @@ def calculer_bulletin(profil, periode, personnes_a_charge=0):
     amo = amo_salariale(parametre, brut, profil.affilie_amo)
     amo_pat = amo_patronale(parametre, brut, profil.affilie_amo)
 
-    # 4. CIMR (taux propre au profil).
-    cimr = Decimal('0')
-    if profil.affilie_cimr:
-        cimr = brut * Decimal(profil.taux_cimr_salarial or 0) / Decimal('100')
-    cimr = _q(cimr)
+    # 4. CIMR (PAIE20) — OPTIONNELLE : seuls les profils adhérents cotisent,
+    # chacun avec SON taux propre. Non adhérent → 0 (défaut).
+    cimr = cimr_salariale(brut, profil.affilie_cimr, profil.taux_cimr_salarial)
 
     # 5. Frais professionnels.
     frais_pro = Decimal('0')
