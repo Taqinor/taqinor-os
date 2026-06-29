@@ -20,6 +20,7 @@ from .models import (
     IncidentPresence,
     Poste,
     PresenceChantier,
+    PresquAccident,
     VisiteMedicale,
 )
 
@@ -370,6 +371,51 @@ def compteur_incidents(company, date_debut=None, date_fin=None,
         row['total'] += 1
         row['minutes_retard_total'] += inc.minutes_retard or 0
     return [agg[k] for k in sorted(agg)]
+
+
+def stats_presqu_accidents(company, date_debut=None, date_fin=None,
+                           statut=None):
+    """Synthèse des presqu'accidents par gravité potentielle (FG182).
+
+    Compte les ``PresquAccident`` (near-miss) de la société, ventilés par
+    ``gravite_potentielle`` (faible / moyenne / élevée) — la lecture clé du
+    pilotage HSE proactif (combien d'événements à risque, et à quel point ils
+    auraient pu mal tourner). Bornes optionnelles ``date_debut`` / ``date_fin``
+    (sur ``date_constat``) et filtre ``statut`` (ouvert / traité). Toujours scopé
+    société. Renvoie un dict :
+
+    ``{
+        'total': int,
+        'ouverts': int,
+        'par_gravite': {'faible': int, 'moyenne': int, 'elevee': int},
+    }``
+
+    Les trois clés de gravité sont toujours présentes (à 0 par défaut) pour un
+    affichage stable côté UI.
+    """
+    par_gravite = {
+        code: 0 for code, _ in PresquAccident.GravitePotentielle.choices}
+    base = {'total': 0, 'ouverts': 0, 'par_gravite': par_gravite}
+    if company is None:
+        return base
+    qs = PresquAccident.objects.filter(company=company)
+    if date_debut is not None:
+        qs = qs.filter(date_constat__gte=date_debut)
+    if date_fin is not None:
+        qs = qs.filter(date_constat__lte=date_fin)
+    if statut:
+        qs = qs.filter(statut=statut)
+    total = 0
+    ouverts = 0
+    for pa in qs.only('gravite_potentielle', 'statut'):
+        total += 1
+        if pa.gravite_potentielle in par_gravite:
+            par_gravite[pa.gravite_potentielle] += 1
+        if pa.statut == PresquAccident.Statut.OUVERT:
+            ouverts += 1
+    base['total'] = total
+    base['ouverts'] = ouverts
+    return base
 
 
 def poste_appartient_societe(company, poste_id):
