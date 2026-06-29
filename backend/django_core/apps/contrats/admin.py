@@ -4,6 +4,7 @@ from .models import (
     ClauseContrat,
     Contrat,
     ContratLien,
+    EtapeApprobation,
     PartieContrat,
     RegleApprobation,
 )
@@ -48,3 +49,11 @@ class RegleApprobationAdmin(admin.ModelAdmin):
                     'priorite', 'actif', 'company')
     list_filter = ('type_contrat', 'niveau_approbation', 'actif')
     search_fields = ('libelle',)
+
+
+@admin.register(EtapeApprobation)
+class EtapeApprobationAdmin(admin.ModelAdmin):
+    list_display = ('id', 'contrat', 'niveau', 'niveau_approbation',
+                    'statut', 'approbateur', 'decision_le', 'company')
+    list_filter = ('statut', 'niveau_approbation')
+    search_fields = ('commentaire',)

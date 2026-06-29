@@ -8,7 +8,18 @@ cycles. Quand une app cible n'a pas de sélecteur exploitable, on DÉGRADE
 proprement : on renvoie le ``libelle`` mis en cache et les ids stockés, sans
 rien importer.
 """
-from .models import ContratLien, RegleApprobation
+from .models import ContratLien, EtapeApprobation, RegleApprobation
+
+
+def etapes_approbation(contrat):
+    """Étapes d'approbation d'un contrat (QuerySet scopé société, ordonné).
+
+    Lecture seule (CONTRAT14). Ordre par ``niveau`` puis ``id``, cohérent avec
+    ``Meta.ordering``. La société est portée par le contrat ; on filtre aussi
+    sur ``contrat.company`` par sécurité même si le FK ``contrat`` la garantit.
+    """
+    return EtapeApprobation.objects.filter(
+        contrat=contrat, company=contrat.company).order_by('niveau', 'id')
 
 
 def regles_approbation(company):

@@ -11,6 +11,7 @@ from .models import (
     ClauseContrat,
     Contrat,
     ContratLien,
+    EtapeApprobation,
     ModeleContrat,
     ModeleContratClause,
     PartieContrat,
@@ -382,3 +383,38 @@ class ResoudreRegleApprobationSerializer(serializers.Serializer):
     montant = serializers.DecimalField(max_digits=14, decimal_places=2)
     type_contrat = serializers.ChoiceField(
         choices=Contrat.TypeContrat.choices, required=False, allow_blank=True)
+
+
+class EtapeApprobationSerializer(serializers.ModelSerializer):
+    """Sérialiseur d'une ``EtapeApprobation`` (étape de workflow — CONTRAT14).
+
+    Lecture seule côté API : les étapes sont créées par le service de lancement
+    du workflow et décidées via les actions ``approuver`` / ``rejeter`` du
+    contrat — jamais en POST direct. ``company``, ``contrat``, ``regle``,
+    ``approbateur``, ``statut`` et ``decision_le`` sont posés côté serveur.
+    """
+    statut_display = serializers.CharField(
+        source='get_statut_display', read_only=True)
+    niveau_approbation_display = serializers.CharField(
+        source='get_niveau_approbation_display', read_only=True)
+
+    class Meta:
+        model = EtapeApprobation
+        fields = [
+            'id', 'contrat', 'regle', 'niveau',
+            'niveau_approbation', 'niveau_approbation_display',
+            'approbateur', 'statut', 'statut_display',
+            'decision_le', 'commentaire', 'date_creation',
+        ]
+        read_only_fields = fields
+
+
+class DeciderEtapeSerializer(serializers.Serializer):
+    """Corps de POST /contrats/<id>/approuver-etape|rejeter-etape/ (CONTRAT14).
+
+    ``etape`` désigne l'étape (id) à décider ; ``commentaire`` est optionnel.
+    L'approbateur est l'utilisateur courant (posé côté serveur).
+    """
+    etape = serializers.IntegerField(min_value=1)
+    commentaire = serializers.CharField(
+        required=False, allow_blank=True, trim_whitespace=False)

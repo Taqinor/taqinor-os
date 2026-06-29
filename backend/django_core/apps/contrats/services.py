@@ -20,9 +20,20 @@ Contenu :
   ``changer_statut`` applique une transition en la gardant (transition permise,
   parties suffisantes pour finaliser). Voir ``machine_etats.py`` — réexporté
   ici pour garder un point d'entrée unique côté services.
+
+- CONTRAT14 — **Workflow d'approbation interne** : ``lancer_workflow_approbation``
+  instancie les ``EtapeApprobation`` d'un contrat à partir de la
+  ``RegleApprobation`` la plus spécifique (CONTRAT13, via le sélecteur
+  ``resoudre_regle_approbation``), et ``approuver_etape`` / ``rejeter_etape``
+  font avancer le workflow étape après étape. Ces opérations gèrent uniquement
+  les statuts LOCAUX des étapes (``en_attente`` / ``approuve`` / ``rejete``) et
+  ne touchent JAMAIS au ``Contrat.statut`` (préservation des statuts).
 """
 import html as _html
 import re
+
+from django.db import transaction
+from django.utils import timezone
 
 from .machine_etats import (  # noqa: F401 — réexport (point d'entrée services)
     TRANSITIONS_AUTORISEES,
@@ -208,3 +219,183 @@ def _gabarit_par_defaut(contexte):
         "Parties :\n{{ parties }}\n\n"
         "Clauses :\n{{ clauses }}\n"
     )
+
+
+# ---------------------------------------------------------------------------
+# CONTRAT14 — Workflow d'approbation interne (étapes + avancement)
+# ---------------------------------------------------------------------------
+
+
+class ApprobationError(Exception):
+    """Levée quand une opération de workflow d'approbation est invalide.
+
+    Ex. : tenter de lancer un workflow déjà en cours, décider une étape qui
+    n'est plus en attente, ou décider une étape hors séquence (une étape
+    antérieure encore en attente).
+    """
+
+
+def workflow_actif(contrat):
+    """``True`` si un workflow d'approbation est déjà en cours pour ce contrat.
+
+    Un workflow est « actif » dès qu'il reste au moins une étape ``en_attente``.
+    Sert de garde idempotente : on ne relance pas un workflow déjà ouvert.
+    """
+    from .models import EtapeApprobation
+
+    return contrat.etapes_approbation.filter(
+        statut=EtapeApprobation.Statut.EN_ATTENTE
+    ).exists()
+
+
+@transaction.atomic
+def lancer_workflow_approbation(contrat, *, regle=None):
+    """Instancie les étapes d'approbation d'un contrat depuis la règle CONTRAT13.
+
+    - Résout la ``RegleApprobation`` la plus spécifique couvrant le contrat
+      (montant + type) via ``selectors.resoudre_regle_approbation`` — sauf si une
+      ``regle`` est passée explicitement. Aucun seuil n'est codé en dur.
+    - Si aucune règle ne couvre le contrat, renvoie une liste vide (rien à
+      approuver — l'appelant décide alors d'un comportement par défaut).
+    - Crée une ``EtapeApprobation`` par approbation requise
+      (``regle.nombre_approbateurs``, au moins 1), numérotées ``niveau`` 1..N,
+      toutes ``en_attente``, dans la société du contrat.
+    - Idempotent-safe : lever ``ApprobationError`` si un workflow est déjà actif
+      (au moins une étape en attente) pour éviter les doublons.
+
+    Ne touche JAMAIS au ``Contrat.statut`` : seules les étapes locales sont
+    créées (préservation des statuts).
+
+    Renvoie la liste ordonnée des étapes créées (vide si aucune règle).
+    """
+    # Import paresseux pour rester cohérent avec le reste du module (pas de
+    # cycle au chargement) et n'importer que ce qui est utilisé ici.
+    from . import selectors
+    from .models import EtapeApprobation
+
+    if workflow_actif(contrat):
+        raise ApprobationError(
+            "Un workflow d'approbation est déjà en cours pour ce contrat.")
+
+    if regle is None:
+        regle = selectors.resoudre_regle_approbation(
+            contrat.company, contrat.montant, contrat.type_contrat or None)
+
+    if regle is None:
+        return []
+
+    nombre = max(1, regle.nombre_approbateurs)
+    etapes = [
+        EtapeApprobation(
+            company=contrat.company,
+            contrat=contrat,
+            regle=regle,
+            niveau=rang,
+            niveau_approbation=regle.niveau_approbation,
+            statut=EtapeApprobation.Statut.EN_ATTENTE,
+        )
+        for rang in range(1, nombre + 1)
+    ]
+    EtapeApprobation.objects.bulk_create(etapes)
+    # Recharge dans l'ordre canonique (bulk_create ne garantit pas les ids
+    # peuplés sur toutes les bases, mais le tri par niveau reste stable).
+    return list(
+        contrat.etapes_approbation.order_by('niveau', 'id'))
+
+
+def _premiere_etape_en_attente(contrat):
+    """Première étape encore ``en_attente`` (ordre ``niveau``) ou ``None``."""
+    from .models import EtapeApprobation
+
+    return (
+        contrat.etapes_approbation
+        .filter(statut=EtapeApprobation.Statut.EN_ATTENTE)
+        .order_by('niveau', 'id')
+        .first()
+    )
+
+
+def _decider_etape(etape, *, statut_cible, approbateur=None, commentaire=''):
+    """Applique une décision (approuve/rejete) GARDÉE sur une étape.
+
+    Gardes :
+    - L'étape doit être ``en_attente`` (on ne re-décide pas une étape close).
+    - On décide les étapes DANS L'ORDRE : l'étape visée doit être la première
+      étape encore en attente de son contrat (pas de saut d'étape).
+
+    Pose ``approbateur`` (peut être ``None``), ``decision_le`` (maintenant),
+    ``commentaire`` et ``statut``. N'effleure JAMAIS le ``Contrat.statut``.
+    """
+    from .models import EtapeApprobation
+
+    if etape.statut != EtapeApprobation.Statut.EN_ATTENTE:
+        raise ApprobationError(
+            "Cette étape d'approbation a déjà été décidée.")
+
+    premiere = _premiere_etape_en_attente(etape.contrat)
+    if premiere is not None and premiere.pk != etape.pk:
+        raise ApprobationError(
+            "Une étape d'approbation antérieure est encore en attente.")
+
+    etape.statut = statut_cible
+    etape.approbateur = approbateur
+    etape.decision_le = timezone.now()
+    if commentaire:
+        etape.commentaire = commentaire
+    etape.save(update_fields=[
+        'statut', 'approbateur', 'decision_le', 'commentaire'])
+    return etape
+
+
+@transaction.atomic
+def approuver_etape(etape, *, approbateur=None, commentaire=''):
+    """Approuve une étape et fait avancer le workflow (CONTRAT14).
+
+    Garde l'ordre (l'étape doit être la première encore en attente) et refuse de
+    re-décider une étape close (``ApprobationError``). L'approbation de la
+    dernière étape laisse le workflow « complet » (plus aucune étape en
+    attente) ; le ``Contrat.statut`` n'est jamais modifié ici.
+    """
+    from .models import EtapeApprobation
+
+    return _decider_etape(
+        etape,
+        statut_cible=EtapeApprobation.Statut.APPROUVE,
+        approbateur=approbateur,
+        commentaire=commentaire,
+    )
+
+
+@transaction.atomic
+def rejeter_etape(etape, *, approbateur=None, commentaire=''):
+    """Rejette une étape (CONTRAT14).
+
+    Un rejet stoppe de fait l'avancement (les étapes suivantes restent en
+    attente mais ne peuvent plus être approuvées tant que l'étape rejetée est la
+    première en attente : elle ne l'est plus, mais une étape antérieure rejetée
+    bloque l'ordre). Comme pour l'approbation : garde l'ordre, refuse une étape
+    déjà décidée, et ne touche jamais au ``Contrat.statut``.
+    """
+    from .models import EtapeApprobation
+
+    return _decider_etape(
+        etape,
+        statut_cible=EtapeApprobation.Statut.REJETE,
+        approbateur=approbateur,
+        commentaire=commentaire,
+    )
+
+
+def workflow_complet(contrat):
+    """``True`` si le workflow existe et que toutes ses étapes sont approuvées.
+
+    Renvoie ``False`` s'il n'existe aucune étape, ou s'il reste au moins une
+    étape ``en_attente`` ou ``rejete``.
+    """
+    from .models import EtapeApprobation
+
+    etapes = contrat.etapes_approbation.all()
+    if not etapes.exists():
+        return False
+    return not etapes.exclude(
+        statut=EtapeApprobation.Statut.APPROUVE).exists()

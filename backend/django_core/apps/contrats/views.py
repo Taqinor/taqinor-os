@@ -47,6 +47,8 @@ from .serializers import (
     ClauseSerializer,
     ContratLienSerializer,
     ContratSerializer,
+    DeciderEtapeSerializer,
+    EtapeApprobationSerializer,
     InstancierContratSerializer,
     ModeleContratClauseSerializer,
     ModeleContratSerializer,
@@ -173,6 +175,89 @@ class ContratViewSet(_ContratsBaseViewSet):
             'statut': contrat.statut,
             'suivants': services.statuts_suivants(contrat),
         })
+
+    @action(detail=True, methods=['get'], url_path='etapes-approbation')
+    def etapes_approbation(self, request, pk=None):
+        """Étapes du workflow d'approbation interne du contrat (CONTRAT14).
+
+        Lecture seule, ordonnées par niveau. La société est garantie par
+        ``get_object`` (queryset scopé société).
+        """
+        contrat = self.get_object()
+        etapes = selectors.etapes_approbation(contrat)
+        return Response(
+            EtapeApprobationSerializer(
+                etapes, many=True, context={'request': request}).data)
+
+    @action(detail=True, methods=['post'], url_path='lancer-approbation')
+    def lancer_approbation(self, request, pk=None):
+        """Lance le workflow d'approbation interne du contrat (CONTRAT14).
+
+        Instancie les étapes depuis la ``RegleApprobation`` la plus spécifique
+        (montant + type). Refuse (400) si un workflow est déjà en cours. Renvoie
+        les étapes créées (liste vide si aucune règle ne couvre le contrat). Ne
+        change AUCUN statut du contrat. La société est garantie par
+        ``get_object``.
+        """
+        contrat = self.get_object()
+        try:
+            etapes = services.lancer_workflow_approbation(contrat)
+        except services.ApprobationError as exc:
+            return Response(
+                {'detail': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+        return Response(
+            EtapeApprobationSerializer(
+                etapes, many=True, context={'request': request}).data,
+            status=status.HTTP_201_CREATED,
+        )
+
+    @action(detail=True, methods=['post'], url_path='approuver-etape')
+    def approuver_etape(self, request, pk=None):
+        """Approuve une étape du workflow et le fait avancer (CONTRAT14).
+
+        Corps : ``etape`` (id, requis), ``commentaire`` (optionnel).
+        L'approbateur est l'utilisateur courant (posé côté serveur). Refuse
+        (400) une étape hors séquence ou déjà décidée, (404) une étape d'un
+        autre contrat/société. Ne change AUCUN statut du contrat.
+        """
+        return self._decider_etape(request, services.approuver_etape)
+
+    @action(detail=True, methods=['post'], url_path='rejeter-etape')
+    def rejeter_etape(self, request, pk=None):
+        """Rejette une étape du workflow d'approbation (CONTRAT14).
+
+        Mêmes garanties et corps que ``approuver-etape``. Ne change AUCUN statut
+        du contrat.
+        """
+        return self._decider_etape(request, services.rejeter_etape)
+
+    def _decider_etape(self, request, operation):
+        """Logique partagée approuver/rejeter une étape (CONTRAT14).
+
+        Résout l'étape DANS le contrat courant (scopé société par
+        ``get_object``), applique l'opération gardée, et renvoie l'étape
+        sérialisée. Toute erreur de workflow est rendue 400 ; une étape
+        introuvable dans ce contrat est 404.
+        """
+        contrat = self.get_object()
+        body = DeciderEtapeSerializer(data=request.data)
+        body.is_valid(raise_exception=True)
+        etape_id = body.validated_data['etape']
+        commentaire = body.validated_data.get('commentaire', '')
+        etape = contrat.etapes_approbation.filter(id=etape_id).first()
+        if etape is None:
+            return Response(
+                {'detail': "Étape d'approbation introuvable pour ce contrat."},
+                status=status.HTTP_404_NOT_FOUND)
+        try:
+            operation(
+                etape, approbateur=request.user, commentaire=commentaire)
+        except services.ApprobationError as exc:
+            return Response(
+                {'detail': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+        return Response(
+            EtapeApprobationSerializer(
+                etape, context={'request': request}).data)
 
 
 class PartieContratViewSet(_ContratsBaseViewSet):
