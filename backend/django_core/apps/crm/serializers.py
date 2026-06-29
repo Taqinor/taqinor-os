@@ -1,6 +1,7 @@
 from rest_framework import serializers
 from .models import (
-    Appointment, Client, Lead, LeadActivity, MessageTemplate, ObjectifCommercial, Parrainage,
+    Appointment, Client, ConcurrentPerte, Lead, LeadActivity, MessageTemplate,
+    ObjectifCommercial, Parrainage,
 )
 from .devis_auto import champs_manquants, message_manquants
 from .scoring import compute_score, score_label
@@ -549,3 +550,54 @@ class ObjectifAttainmentSerializer(serializers.Serializer):
     taux = serializers.FloatField()
     period_start = serializers.DateField()
     period_end = serializers.DateField()
+
+
+# ── FG242 — Suivi des concurrents sur deals perdus ────────────────────────────
+
+class ConcurrentPerteSerializer(serializers.ModelSerializer):
+    """FG242 — concurrent gagnant + prix saisis sur un lead perdu.
+
+    La société est posée côté serveur (HiddenField depuis l'utilisateur courant
+    — multi-tenant, jamais lue du corps de requête) ; ``saisi_par`` est forcé
+    dans ``perform_create``. Le lead doit appartenir à la même société
+    (validate_lead). ``lead_nom`` est en lecture seule pour l'UI.
+    """
+    company = serializers.HiddenField(default=_CurrentCompanyDefault())
+    saisi_par = serializers.PrimaryKeyRelatedField(read_only=True)
+    saisi_par_nom = serializers.SerializerMethodField()
+    lead_nom = serializers.CharField(
+        source='lead.nom', read_only=True, default=None)
+
+    class Meta:
+        model = ConcurrentPerte
+        fields = [
+            'id', 'company', 'lead', 'lead_nom',
+            'concurrent_nom', 'concurrent_prix', 'devise', 'motif', 'notes',
+            'saisi_par', 'saisi_par_nom', 'saisi_le', 'date_modification',
+        ]
+        read_only_fields = [
+            'saisi_par', 'saisi_le', 'date_modification',
+        ]
+
+    def get_saisi_par_nom(self, obj):
+        return getattr(obj.saisi_par, 'username', None)
+
+    def validate_lead(self, value):
+        req = self.context.get('request')
+        if req and value.company_id != getattr(req.user, 'company_id', None):
+            raise serializers.ValidationError('Lead inconnu.')
+        return value
+
+    def validate_concurrent_prix(self, value):
+        # Prix optionnel mais jamais négatif (garde Decimal explicite en plus du
+        # validateur modèle, pour un message clair côté API).
+        if value is not None and value < 0:
+            raise serializers.ValidationError(
+                'Le prix du concurrent ne peut pas être négatif.')
+        return value
+
+    def validate_concurrent_nom(self, value):
+        if not (value or '').strip():
+            raise serializers.ValidationError(
+                'Le nom du concurrent est obligatoire.')
+        return value
