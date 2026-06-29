@@ -8,7 +8,16 @@ import datetime
 
 from django.db import models
 
-from .models import ActifFlotte, AffectationConducteur, Conducteur, EnginRoulant, Vehicule
+from .models import (
+    ActifFlotte,
+    AffectationConducteur,
+    Conducteur,
+    EnginRoulant,
+    EtatDesLieux,
+    PleinCarburant,
+    ReservationVehicule,
+    Vehicule,
+)
 
 
 def vehicules_de_la_societe(company):
@@ -116,6 +125,43 @@ def affectations_du_conducteur(company, conducteur_id):
         .filter(company=company, conducteur_id=conducteur_id)
         .select_related("vehicule")
         .order_by("-date_debut")
+    )
+
+
+def reservations_de_la_societe(company, vehicule_id=None, actives_only=False):
+    """FLOTTE10 — Réservations de véhicules d'une société (queryset scopé).
+
+    ``vehicule_id`` filtre sur un véhicule ; ``actives_only`` ne retourne que
+    les réservations qui occupent le véhicule (statut ``demandee``/``confirmee``).
+    """
+    qs = ReservationVehicule.objects.filter(company=company).select_related(
+        'vehicule', 'conducteur')
+    if vehicule_id is not None:
+        qs = qs.filter(vehicule_id=vehicule_id)
+    if actives_only:
+        qs = qs.filter(statut__in=ReservationVehicule.STATUTS_ACTIFS)
+    return qs
+
+
+def etats_des_lieux_du_vehicule(company, vehicule_id):
+    """FLOTTE11 — Tous les états des lieux d'un véhicule (scopé société),
+    par ordre chronologique décroissant."""
+    return (
+        EtatDesLieux.objects
+        .filter(company=company, vehicule_id=vehicule_id)
+        .select_related('vehicule', 'conducteur', 'reservation')
+        .order_by('-date_constat')
+    )
+
+
+def pleins_du_vehicule(company, vehicule_id):
+    """FLOTTE12 — Tous les pleins de carburant d'un véhicule (scopé société),
+    par ordre chronologique décroissant."""
+    return (
+        PleinCarburant.objects
+        .filter(company=company, vehicule_id=vehicule_id)
+        .select_related('vehicule', 'conducteur')
+        .order_by('-date_plein', '-kilometrage')
     )
 
 

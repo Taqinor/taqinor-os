@@ -347,6 +347,280 @@ class AffectationConducteur(models.Model):
         return f"{self.conducteur} → {self.vehicule} ({self.date_debut}/{fin})"
 
 
+# ── FLOTTE10 — Réservation de véhicule + détection de conflit ────────────────
+
+class ReservationVehicule(models.Model):
+    """Réservation datée d'un véhicule du parc sur une plage horaire.
+
+    Réserve un ``Vehicule`` de la même société entre ``debut`` et ``fin`` pour
+    un usage donné (mission, déplacement chantier…). Le conducteur prévu est
+    facultatif (``conducteur`` nullable). La **détection de conflit** garantit
+    qu'aucune réservation active (statut ``demandee`` ou ``confirmee``) ne se
+    chevauche pour le même véhicule : deux plages [a1,a2) et [b1,b2) se
+    chevauchent si ``a1 < b2`` ET ``b1 < a2``. La règle est vérifiée côté
+    serveur (service ``reservations_en_conflit`` + sérialiseur), pas par une
+    contrainte DB — les réservations annulées peuvent légitimement se superposer
+    à de nouvelles.
+
+    Multi-tenant : ``company`` est posée côté serveur, jamais lue du corps de
+    requête.
+    """
+
+    class Statut(models.TextChoices):
+        DEMANDEE = 'demandee', 'Demandée'
+        CONFIRMEE = 'confirmee', 'Confirmée'
+        ANNULEE = 'annulee', 'Annulée'
+
+    # Statuts qui « occupent » le véhicule (entrent dans la détection de conflit).
+    STATUTS_ACTIFS = (Statut.DEMANDEE, Statut.CONFIRMEE)
+
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='reservations_flotte',
+        verbose_name='Société',
+    )
+    vehicule = models.ForeignKey(
+        'Vehicule',
+        on_delete=models.CASCADE,
+        related_name='reservations_flotte',
+        verbose_name='Véhicule',
+    )
+    conducteur = models.ForeignKey(
+        'Conducteur',
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='reservations_flotte',
+        verbose_name='Conducteur prévu',
+    )
+    debut = models.DateTimeField(verbose_name='Début')
+    fin = models.DateTimeField(verbose_name='Fin')
+    motif = models.CharField(
+        max_length=200, blank=True, verbose_name='Motif')
+    statut = models.CharField(
+        max_length=20, choices=Statut.choices, default=Statut.DEMANDEE,
+        verbose_name='Statut')
+    notes = models.TextField(blank=True, verbose_name='Notes')
+    date_creation = models.DateTimeField(
+        auto_now_add=True, verbose_name='Créé le')
+
+    class Meta:
+        verbose_name = 'Réservation de véhicule'
+        verbose_name_plural = 'Réservations de véhicule'
+        ordering = ['-debut']
+        indexes = [
+            models.Index(
+                fields=['company', 'vehicule'],
+                name='flotte_resa_co_veh_idx',
+            ),
+        ]
+
+    def clean(self):
+        """Valide que ``fin > debut``."""
+        if self.debut is not None and self.fin is not None \
+                and self.fin <= self.debut:
+            raise ValidationError(
+                "La date de fin doit être postérieure à la date de début.")
+
+    def __str__(self):
+        return (
+            f'{self.vehicule} — '
+            f'{self.debut:%Y-%m-%d %H:%M} → {self.fin:%Y-%m-%d %H:%M}'
+        )
+
+
+# ── FLOTTE11 — Check-list état des lieux départ / retour (photos) ────────────
+
+class EtatDesLieux(models.Model):
+    """Check-list d'état des lieux d'un véhicule au départ ou au retour.
+
+    Constate l'état d'un ``Vehicule`` à un moment clé (départ d'une mission /
+    retour), avec relevé du kilométrage, du niveau de carburant, l'état général,
+    une check-list de points contrôlés (JSON, ex.
+    ``[{"point": "Pneus", "ok": true}]``) et une liste de **photos** stockées
+    par clé d'objet (clés MinIO — jamais le binaire en base). Optionnellement
+    rattachable à une ``ReservationVehicule``.
+
+    Multi-tenant : ``company`` est posée côté serveur, jamais lue du corps de
+    requête.
+    """
+
+    class Moment(models.TextChoices):
+        DEPART = 'depart', 'Départ'
+        RETOUR = 'retour', 'Retour'
+
+    class Etat(models.TextChoices):
+        BON = 'bon', 'Bon'
+        MOYEN = 'moyen', 'Moyen'
+        MAUVAIS = 'mauvais', 'Mauvais'
+
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='etats_des_lieux_flotte',
+        verbose_name='Société',
+    )
+    vehicule = models.ForeignKey(
+        'Vehicule',
+        on_delete=models.CASCADE,
+        related_name='etats_des_lieux_flotte',
+        verbose_name='Véhicule',
+    )
+    reservation = models.ForeignKey(
+        'ReservationVehicule',
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='etats_des_lieux_flotte',
+        verbose_name='Réservation liée',
+    )
+    conducteur = models.ForeignKey(
+        'Conducteur',
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='etats_des_lieux_flotte',
+        verbose_name='Conducteur',
+    )
+    moment = models.CharField(
+        max_length=10, choices=Moment.choices, default=Moment.DEPART,
+        verbose_name='Moment')
+    date_constat = models.DateTimeField(verbose_name='Date du constat')
+    kilometrage = models.PositiveIntegerField(
+        default=0, verbose_name='Kilométrage relevé')
+    niveau_carburant = models.PositiveSmallIntegerField(
+        default=0, verbose_name='Niveau de carburant (%)')
+    etat_general = models.CharField(
+        max_length=10, choices=Etat.choices, default=Etat.BON,
+        verbose_name='État général')
+    # Check-list de points contrôlés (additive, non figée) :
+    # [{"point": "Pneus", "ok": true, "commentaire": "…"}, …].
+    points = models.JSONField(
+        default=list, blank=True, verbose_name='Points contrôlés')
+    # Photos par clé d'objet (clés MinIO) — jamais le binaire en base.
+    photos = models.JSONField(
+        default=list, blank=True, verbose_name='Photos (clés)')
+    commentaire = models.TextField(blank=True, verbose_name='Commentaire')
+    date_creation = models.DateTimeField(
+        auto_now_add=True, verbose_name='Créé le')
+
+    class Meta:
+        verbose_name = 'État des lieux'
+        verbose_name_plural = 'États des lieux'
+        ordering = ['-date_constat']
+        indexes = [
+            models.Index(
+                fields=['company', 'vehicule'],
+                name='flotte_edl_co_veh_idx',
+            ),
+        ]
+
+    def clean(self):
+        if self.niveau_carburant is not None and \
+                not (0 <= self.niveau_carburant <= 100):
+            raise ValidationError(
+                "Le niveau de carburant doit être compris entre 0 et 100 %.")
+
+    @property
+    def nb_photos(self):
+        return len(self.photos or [])
+
+    def __str__(self):
+        return f'{self.vehicule} — {self.get_moment_display()} ' \
+               f'({self.date_constat:%Y-%m-%d})'
+
+
+# ── FLOTTE12 — Carnet de carburant (`PleinCarburant`) ────────────────────────
+
+class PleinCarburant(models.Model):
+    """Un plein de carburant (ou charge électrique) au carnet d'un véhicule.
+
+    Enregistre une prise de carburant : kilométrage au compteur, quantité
+    (litres ou kWh), prix total, plein complet ou non, station. La cohérence du
+    kilométrage (relevé strictement croissant par véhicule) est vérifiée côté
+    serveur (sérialiseur) — la détection fine d'anomalie/fraude relève de
+    FLOTTE14 ; ici on pose le carnet et le coût unitaire calculé.
+
+    Multi-tenant : ``company`` est posée côté serveur, jamais lue du corps de
+    requête.
+    """
+
+    class Unite(models.TextChoices):
+        LITRE = 'litre', 'Litre'
+        KWH = 'kwh', 'kWh'
+
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='pleins_carburant_flotte',
+        verbose_name='Société',
+    )
+    vehicule = models.ForeignKey(
+        'Vehicule',
+        on_delete=models.CASCADE,
+        related_name='pleins_carburant_flotte',
+        verbose_name='Véhicule',
+    )
+    conducteur = models.ForeignKey(
+        'Conducteur',
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='pleins_carburant_flotte',
+        verbose_name='Conducteur',
+    )
+    date_plein = models.DateField(verbose_name='Date du plein')
+    kilometrage = models.PositiveIntegerField(
+        verbose_name='Kilométrage au compteur')
+    quantite = models.DecimalField(
+        max_digits=10, decimal_places=2, default=0,
+        verbose_name='Quantité')
+    unite = models.CharField(
+        max_length=10, choices=Unite.choices, default=Unite.LITRE,
+        verbose_name='Unité')
+    prix_total = models.DecimalField(
+        max_digits=12, decimal_places=2, default=0,
+        verbose_name='Prix total (MAD)')
+    plein_complet = models.BooleanField(
+        default=True, verbose_name='Plein complet')
+    station = models.CharField(
+        max_length=120, blank=True, verbose_name='Station')
+    notes = models.TextField(blank=True, verbose_name='Notes')
+    date_creation = models.DateTimeField(
+        auto_now_add=True, verbose_name='Créé le')
+
+    class Meta:
+        verbose_name = 'Plein de carburant'
+        verbose_name_plural = 'Pleins de carburant'
+        ordering = ['-date_plein', '-kilometrage']
+        indexes = [
+            models.Index(
+                fields=['company', 'vehicule'],
+                name='flotte_plein_co_veh_idx',
+            ),
+        ]
+
+    def clean(self):
+        if self.quantite is not None and self.quantite < 0:
+            raise ValidationError(
+                "La quantité ne peut pas être négative.")
+        if self.prix_total is not None and self.prix_total < 0:
+            raise ValidationError(
+                "Le prix total ne peut pas être négatif.")
+
+    @property
+    def prix_unitaire(self):
+        """Prix par litre / kWh (MAD), ou ``None`` si quantité nulle."""
+        if not self.quantite:
+            return None
+        return round(float(self.prix_total) / float(self.quantite), 3)
+
+    def __str__(self):
+        return f'{self.vehicule} — {self.date_plein} ' \
+               f'({self.quantite} {self.get_unite_display()})'
+
+
 # ── FLOTTE7 — Conducteurs / chauffeurs ────────────────────────────────────────
 
 class Conducteur(models.Model):

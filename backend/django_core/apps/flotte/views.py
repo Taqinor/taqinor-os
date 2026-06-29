@@ -16,7 +16,10 @@ from .models import (
     AffectationConducteur,
     Conducteur,
     EnginRoulant,
+    EtatDesLieux,
+    PleinCarburant,
     ReferentielFlotte,
+    ReservationVehicule,
     Vehicule,
 )
 from .serializers import (
@@ -24,7 +27,10 @@ from .serializers import (
     AffectationConducteurSerializer,
     ConducteurSerializer,
     EnginRoulantSerializer,
+    EtatDesLieuxSerializer,
+    PleinCarburantSerializer,
     ReferentielFlotteSerializer,
+    ReservationVehiculeSerializer,
     VehiculeSerializer,
 )
 
@@ -200,5 +206,112 @@ class AffectationConducteurViewSet(_FlotteBaseViewSet):
         actif = params.get('actif')
         if actif is not None:
             qs = qs.filter(actif=actif.lower() in ('1', 'true', 'vrai', 'oui'))
+
+        return qs
+
+
+class ReservationVehiculeViewSet(_FlotteBaseViewSet):
+    """Réservations de véhicules avec détection de conflit (FLOTTE10).
+
+    Filtrable par ``?vehicule=<id>``, ``?statut=<demandee|confirmee|annulee>``
+    et ``?actives=true`` (réservations qui occupent le véhicule). Recherche par
+    motif. Toutes les réservations sont scopées par société.
+    """
+    queryset = ReservationVehicule.objects.select_related(
+        'vehicule', 'conducteur')
+    serializer_class = ReservationVehiculeSerializer
+    filter_backends = [filters.SearchFilter, filters.OrderingFilter]
+    search_fields = ['motif']
+    ordering_fields = ['debut', 'fin', 'statut', 'date_creation']
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        params = self.request.query_params
+
+        vehicule = params.get('vehicule')
+        if vehicule:
+            try:
+                qs = qs.filter(vehicule_id=int(vehicule))
+            except (ValueError, TypeError):
+                pass
+
+        statut = params.get('statut')
+        if statut:
+            qs = qs.filter(statut=statut)
+
+        actives = params.get('actives')
+        if actives is not None and actives.lower() in ('1', 'true', 'vrai',
+                                                       'oui'):
+            qs = qs.filter(statut__in=ReservationVehicule.STATUTS_ACTIFS)
+
+        return qs
+
+
+class EtatDesLieuxViewSet(_FlotteBaseViewSet):
+    """Check-lists d'état des lieux départ/retour avec photos (FLOTTE11).
+
+    Filtrable par ``?vehicule=<id>``, ``?moment=<depart|retour>`` et
+    ``?reservation=<id>``. Recherche par commentaire. Scopé par société.
+    """
+    queryset = EtatDesLieux.objects.select_related(
+        'vehicule', 'conducteur', 'reservation')
+    serializer_class = EtatDesLieuxSerializer
+    filter_backends = [filters.SearchFilter, filters.OrderingFilter]
+    search_fields = ['commentaire']
+    ordering_fields = ['date_constat', 'moment', 'kilometrage', 'date_creation']
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        params = self.request.query_params
+
+        vehicule = params.get('vehicule')
+        if vehicule:
+            try:
+                qs = qs.filter(vehicule_id=int(vehicule))
+            except (ValueError, TypeError):
+                pass
+
+        moment = params.get('moment')
+        if moment:
+            qs = qs.filter(moment=moment)
+
+        reservation = params.get('reservation')
+        if reservation:
+            try:
+                qs = qs.filter(reservation_id=int(reservation))
+            except (ValueError, TypeError):
+                pass
+
+        return qs
+
+
+class PleinCarburantViewSet(_FlotteBaseViewSet):
+    """Carnet de carburant (FLOTTE12).
+
+    Filtrable par ``?vehicule=<id>`` et ``?unite=<litre|kwh>``. Recherche par
+    station. Scopé par société. Le kilométrage est validé cohérent (compteur
+    monotone croissant) au sérialiseur.
+    """
+    queryset = PleinCarburant.objects.select_related('vehicule', 'conducteur')
+    serializer_class = PleinCarburantSerializer
+    filter_backends = [filters.SearchFilter, filters.OrderingFilter]
+    search_fields = ['station']
+    ordering_fields = ['date_plein', 'kilometrage', 'prix_total',
+                       'date_creation']
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        params = self.request.query_params
+
+        vehicule = params.get('vehicule')
+        if vehicule:
+            try:
+                qs = qs.filter(vehicule_id=int(vehicule))
+            except (ValueError, TypeError):
+                pass
+
+        unite = params.get('unite')
+        if unite:
+            qs = qs.filter(unite=unite)
 
         return qs
