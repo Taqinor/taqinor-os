@@ -25,7 +25,7 @@ from .models import (
     EcritureComptable, Effet, ExerciceComptable, Immobilisation,
     IndemniteChantier, Journal, LignePrevisionnelTresorerie, LigneReleve,
     MouvementCaisse, NoteFrais, PaymentRun, PeriodeComptable, PlanComptable,
-    Rapprochement, RapprochementBancaire, VirementInterne,
+    Rapprochement, RapprochementBancaire, RetenueSource, VirementInterne,
 )
 from .serializers import (
     BaremeIndemniteSerializer, BordereauRemiseSerializer, CaisseSerializer,
@@ -38,7 +38,7 @@ from .serializers import (
     MouvementCaisseSerializer, NoteFraisSerializer, PaymentRunSerializer,
     PeriodeComptableSerializer, PlanAmortissementSerializer,
     PlanComptableSerializer, RapprochementBancaireSerializer,
-    RapprochementSerializer, VirementInterneSerializer,
+    RapprochementSerializer, RetenueSourceSerializer, VirementInterneSerializer,
 )
 
 
@@ -1681,4 +1681,162 @@ class DeclarationTVAViewSet(_ComptaBaseViewSet):
         resp['Content-Disposition'] = (
             f'attachment; filename="declaration_tva_'
             f'{decl.reference or decl.id}.csv"')
+        return resp
+
+
+class RetenueSourceViewSet(_ComptaBaseViewSet):
+    """Retenue à la source (RAS) sur honoraires/prestations (FG139).
+
+    Enregistre/consulte les retenues à la source et expose le bordereau de
+    versement : ``bordereau`` (GET) regroupe les RAS d'une période par
+    prestataire et donne le total à reverser au Trésor (``export=csv`` pour le
+    CSV), ``export`` (GET, détail) liste les retenues de la période en CSV, et
+    ``verser`` (POST) marque une retenue comme versée. La création POST calcule
+    le montant retenu côté serveur (base × taux %) ; le corps ne peut jamais
+    l'imposer. Société scopée, posée côté serveur ; Admin/Responsable uniquement.
+    """
+    queryset = RetenueSource.objects.select_related('created_by').all()
+    serializer_class = RetenueSourceSerializer
+    filter_backends = [filters.SearchFilter, filters.OrderingFilter]
+    search_fields = ['reference', 'piece', 'tiers_nom', 'identifiant_fiscal']
+    ordering_fields = ['date_piece', 'montant', 'base', 'id']
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        params = self.request.query_params
+        statut = params.get('statut')
+        if statut:
+            qs = qs.filter(statut=statut)
+        type_prestation = params.get('type_prestation')
+        if type_prestation:
+            qs = qs.filter(type_prestation=type_prestation)
+        date_debut = params.get('date_debut')
+        if date_debut:
+            qs = qs.filter(date_piece__gte=date_debut)
+        date_fin = params.get('date_fin')
+        if date_fin:
+            qs = qs.filter(date_piece__lte=date_fin)
+        return qs
+
+    def create(self, request, *args, **kwargs):
+        """POST = enregistre une RAS (montant retenu dérivé côté serveur)."""
+        serializer = self.get_serializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        vd = serializer.validated_data
+        try:
+            ras = services.enregistrer_retenue_source(
+                request.user.company,
+                date_piece=vd['date_piece'],
+                base=vd.get('base') or 0,
+                taux=vd.get('taux'),
+                type_prestation=vd.get('type_prestation'),
+                tiers_type=vd.get('tiers_type', '') or '',
+                tiers_id=vd.get('tiers_id'),
+                tiers_nom=vd.get('tiers_nom', '') or '',
+                identifiant_fiscal=vd.get('identifiant_fiscal', '') or '',
+                piece=vd.get('piece', '') or '',
+                libelle=vd.get('libelle', '') or '',
+                user=request.user)
+        except DjangoValidationError as exc:
+            return Response(
+                {'detail': exc.messages[0] if exc.messages else str(exc)},
+                status=status.HTTP_400_BAD_REQUEST)
+        return Response(
+            self.get_serializer(ras).data, status=status.HTTP_201_CREATED)
+
+    @action(detail=True, methods=['post'])
+    def verser(self, request, pk=None):
+        """Marque la retenue comme versée au Trésor (FG139)."""
+        ras = self.get_object()  # scopée société par TenantMixin.
+        services.marquer_ras_versee(ras)
+        return Response(self.get_serializer(ras).data)
+
+    def _periode(self, request):
+        params = request.query_params
+        return {
+            'date_debut': params.get('date_debut') or None,
+            'date_fin': params.get('date_fin') or None,
+            'statut': params.get('statut') or None,
+        }
+
+    @action(detail=False, methods=['get'])
+    def bordereau(self, request):
+        """Bordereau de versement de la RAS : totaux par prestataire (FG139).
+
+        Regroupe les retenues de la période ``[date_debut ; date_fin]`` (bornées
+        sur la date de pièce) par prestataire et donne le total à reverser au
+        Trésor. Paramètres : ``date_debut`` / ``date_fin`` / ``statut`` et
+        ``export=csv`` pour le CSV. Lecture seule, scopée société,
+        Admin/Responsable.
+        """
+        periode = self._periode(request)
+        data = selectors.bordereau_versement_ras(
+            request.user.company, **periode)
+        if request.query_params.get('export') == 'csv':
+            return self._export_bordereau_csv(data)
+        return Response(data)
+
+    @staticmethod
+    def _export_bordereau_csv(data):
+        """Sérialise le bordereau de versement de la RAS (FG139) en CSV."""
+        buffer = io.StringIO()
+        writer = csv.writer(buffer, delimiter=';')
+        writer.writerow(['Bordereau de versement — Retenue à la source'])
+        writer.writerow(
+            ['Période', f"{data['date_debut'] or ''} → {data['date_fin'] or ''}"])
+        writer.writerow([])
+        writer.writerow(
+            ['Prestataire', 'Identifiant fiscal', 'Nb pièces', 'Base',
+             'Montant retenu'])
+        for ligne in data['lignes']:
+            writer.writerow([
+                ligne['tiers_nom'], ligne['identifiant_fiscal'],
+                ligne['nb_pieces'], ligne['base'], ligne['montant']])
+        writer.writerow([])
+        writer.writerow(
+            ['Totaux', '', data['totaux']['nb_pieces'],
+             data['totaux']['base'], data['totaux']['montant']])
+        writer.writerow(['Total à verser', '', '', '', data['total_a_verser']])
+        resp = HttpResponse(
+            buffer.getvalue(), content_type='text/csv; charset=utf-8')
+        resp['Content-Disposition'] = (
+            'attachment; filename="bordereau_versement_ras_'
+            f"{data['date_debut'] or 'periode'}_{data['date_fin'] or ''}.csv\"")
+        return resp
+
+    @action(detail=False, methods=['get'])
+    def export(self, request):
+        """Exporte le détail des RAS d'une période en CSV (FG139).
+
+        Une ligne par retenue (date, pièce, prestataire, IF, type, base, taux,
+        montant retenu, net à payer). Paramètres : ``date_debut`` / ``date_fin``
+        / ``statut``. Lecture seule, scopée société, Admin/Responsable.
+        """
+        periode = self._periode(request)
+        data = selectors.retenues_source_periode(
+            request.user.company, **periode)
+        buffer = io.StringIO()
+        writer = csv.writer(buffer, delimiter=';')
+        writer.writerow(['Retenues à la source (détail)'])
+        writer.writerow(
+            ['Période', f"{data['date_debut'] or ''} → {data['date_fin'] or ''}"])
+        writer.writerow([])
+        writer.writerow(
+            ['Date', 'Référence', 'Pièce', 'Prestataire', 'Identifiant fiscal',
+             'Type', 'Base', 'Taux %', 'Montant retenu', 'Net à payer'])
+        for ligne in data['lignes']:
+            writer.writerow([
+                ligne['date_piece'], ligne['reference'], ligne['piece'],
+                ligne['tiers_nom'], ligne['identifiant_fiscal'],
+                ligne['type_prestation'], ligne['base'], ligne['taux'],
+                ligne['montant'], ligne['net_a_payer']])
+        writer.writerow([])
+        writer.writerow(
+            ['Totaux', '', '', '', '', '', data['totaux']['base'], '',
+             data['totaux']['montant'], data['totaux']['net']])
+        resp = HttpResponse(
+            buffer.getvalue(), content_type='text/csv; charset=utf-8')
+        resp['Content-Disposition'] = (
+            'attachment; filename="retenues_source_'
+            f"{data['date_debut'] or 'periode'}_{data['date_fin'] or ''}.csv\"")
         return resp

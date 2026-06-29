@@ -37,7 +37,7 @@ from .models import (
     LignePrevisionnelTresorerie, LigneReleve, MouvementCaisse, NoteFrais,
     PaymentRun, PaymentRunLine, PeriodeComptable, PlanAmortissement,
     PlanComptable, PointageReleve, Rapprochement, RapprochementBancaire,
-    VirementInterne,
+    RetenueSource, VirementInterne,
 )
 
 
@@ -2707,3 +2707,57 @@ def preparer_declaration_tva(company, *, date_debut, date_fin,
 
     # Savepoint + retry race-safe (highest-used+1, jamais count()+1).
     return create_with_reference(DeclarationTVA, 'TVA', company, _save)
+
+
+# ── FG139 — Retenue à la source (RAS) sur honoraires/prestations ───────────
+
+def enregistrer_retenue_source(company, *, date_piece, base, taux=None,
+                               type_prestation=None, tiers_type='', tiers_id=None,
+                               tiers_nom='', identifiant_fiscal='', piece='',
+                               libelle='', user=None):
+    """Enregistre une RAS sur une pièce d'honoraires/prestation (FG139).
+
+    Calcule le ``montant`` retenu = base × taux % (arrondi 2 décimales) et FIGE le
+    snapshot dans une ``RetenueSource`` en statut « à verser ». Le ``taux`` par
+    défaut est ``RetenueSource.TAUX_DEFAUT`` (10 %). La ``reference``
+    (RAS-YYYYMM-NNNN) et la ``company`` sont posées côté serveur (jamais lues du
+    corps). Le tiers prestataire est référencé par auxiliaire string-FK
+    (``tiers_type`` / ``tiers_id``) — jamais d'import cross-app de modèle. Renvoie
+    la retenue.
+    """
+    from apps.ventes.utils.references import create_with_reference
+
+    ras = RetenueSource(
+        company=company,
+        date_piece=date_piece,
+        base=Decimal(base or 0),
+        taux=(Decimal(taux) if taux is not None
+              else RetenueSource.TAUX_DEFAUT),
+        type_prestation=(type_prestation
+                         or RetenueSource.TypePrestation.HONORAIRES),
+        tiers_type=tiers_type or '',
+        tiers_id=tiers_id,
+        tiers_nom=tiers_nom or '',
+        identifiant_fiscal=identifiant_fiscal or '',
+        piece=piece or '',
+        statut=RetenueSource.Statut.A_VERSER,
+        libelle=libelle or '',
+        created_by=user,
+    )
+    ras.recalculer()
+    ras.full_clean(exclude=['reference', 'created_by'])
+
+    def _save(reference):
+        ras.reference = reference
+        ras.save()
+        return ras
+
+    # Savepoint + retry race-safe (highest-used+1, jamais count()+1).
+    return create_with_reference(RetenueSource, 'RAS', company, _save)
+
+
+def marquer_ras_versee(retenue):
+    """Marque une retenue à la source comme versée au Trésor (FG139)."""
+    retenue.statut = RetenueSource.Statut.VERSEE
+    retenue.save(update_fields=['statut'])
+    return retenue

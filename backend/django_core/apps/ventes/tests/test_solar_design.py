@@ -983,3 +983,182 @@ class LoadCurveFromXlsxTest(SimpleTestCase):
         buf = self._make_workbook(list(range(1, 11)))  # 10 lignes de données
         curve = sd.load_curve_from_xlsx(buf, max_rows=3)
         self.assertEqual(curve, [1.0, 2.0, 3.0])
+
+
+# ── FG259 : économie net-metering / injection surplus (loi 13-09, TOU) ────────
+class NetMeteringSavingsTest(SimpleTestCase):
+    # Tranches de test simples : 4 heures, un libellé par heure, tarifs nets.
+    HT = ["creuse", "pleine", "pointe", "pleine"]
+    TARIFFS = {"creuse": 1.0, "pleine": 2.0, "pointe": 4.0}
+
+    def test_surplus_valued_per_tranche_at_its_tariff(self):
+        # Injecté = import dans chaque tranche → tout compensé au tarif local.
+        # h0 creuse: inj 5, imp 5 → 5×1 = 5
+        # h1 pleine: inj 3, imp 3 → 3×2 = 6
+        # h2 pointe: inj 2, imp 2 → 2×4 = 8
+        # h3 pleine: inj 1, imp 1 → 1×2 = 2  (cumulé pleine: 4 kWh × 2 = 8)
+        res = sd.net_metering_savings(
+            injected_curve=[5, 3, 2, 1],
+            import_curve=[5, 3, 2, 1],
+            hour_tranches=self.HT, tranche_tariffs=self.TARIFFS,
+            days_per_year=1)
+        self.assertTrue(res["compense"])
+        self.assertEqual(res["tranches"]["creuse"]["compensated_kwh"], 5.0)
+        self.assertEqual(res["tranches"]["creuse"]["savings_mad"], 5.0)
+        self.assertEqual(res["tranches"]["pointe"]["compensated_kwh"], 2.0)
+        self.assertEqual(res["tranches"]["pointe"]["savings_mad"], 8.0)
+        self.assertEqual(res["tranches"]["pleine"]["compensated_kwh"], 4.0)
+        self.assertEqual(res["tranches"]["pleine"]["savings_mad"], 8.0)
+        # Total période = 5 + 8 + 8 = 21 ; jamais d'écrêtage ici.
+        self.assertEqual(res["savings_mad_per_period"], 21.0)
+        self.assertEqual(res["spilled_kwh"], 0.0)
+
+    def test_compensation_capped_by_simultaneous_import(self):
+        # Net-metering : on ne compense que jusqu'au soutirage de la tranche.
+        # h2 pointe: inj 10, imp 2 → compensé 2 (cap), 8 en excédent (spill).
+        res = sd.net_metering_savings(
+            injected_curve=[0, 0, 10, 0],
+            import_curve=[0, 0, 2, 0],
+            hour_tranches=self.HT, tranche_tariffs=self.TARIFFS,
+            days_per_year=1)
+        pt = res["tranches"]["pointe"]
+        self.assertEqual(pt["injected_kwh"], 10.0)
+        self.assertEqual(pt["compensated_kwh"], 2.0)
+        self.assertEqual(pt["spilled_kwh"], 8.0)
+        # Économie = 2 kWh × 4 MAD = 8 ; l'excédent n'est pas valorisé (MT 13-09).
+        self.assertEqual(pt["savings_mad"], 8.0)
+        self.assertEqual(res["annual_spill_value_mad"], 0.0)
+
+    def test_spill_tariff_values_excess_when_provided(self):
+        # Tarif résiduel de rachat fourni → l'excédent est valorisé à ce tarif.
+        res = sd.net_metering_savings(
+            injected_curve=[0, 0, 10, 0],
+            import_curve=[0, 0, 2, 0],
+            hour_tranches=self.HT, tranche_tariffs=self.TARIFFS,
+            spill_tariff=0.5, days_per_year=1)
+        # Excédent = 8 kWh × 0.5 = 4 MAD.
+        self.assertEqual(res["spilled_kwh"], 8.0)
+        self.assertEqual(res["annual_spill_value_mad"], 4.0)
+
+    def test_toggle_off_yields_zero_economy(self):
+        # surplus_injecte_compense = False → rien de compensé, économie nulle.
+        res = sd.net_metering_savings(
+            injected_curve=[5, 3, 2, 1],
+            import_curve=[5, 3, 2, 1],
+            hour_tranches=self.HT, tranche_tariffs=self.TARIFFS,
+            surplus_injecte_compense=False, days_per_year=1)
+        self.assertFalse(res["compense"])
+        self.assertEqual(res["compensated_kwh"], 0.0)
+        self.assertEqual(res["savings_mad_per_period"], 0.0)
+        self.assertEqual(res["annual_savings_mad"], 0.0)
+        # Tout le surplus bascule en non-compensé (spill).
+        self.assertEqual(res["spilled_kwh"], res["injected_kwh"])
+        self.assertTrue(any("désactivée" in w for w in res["warnings"]))
+
+    def test_annual_cap_limits_compensation_cheapest_first_dropped(self):
+        # Plafond annuel < éligible total → on garde les kWh les plus chers.
+        # éligible : creuse 5 (×1), pleine 4 (×2), pointe 2 (×4) = 11 kWh.
+        # cap 6 kWh/an, days=1 → cap période 6 : pointe(2)+pleine(4)=6, creuse 0.
+        res = sd.net_metering_savings(
+            injected_curve=[5, 3, 2, 1],
+            import_curve=[5, 3, 2, 1],
+            hour_tranches=self.HT, tranche_tariffs=self.TARIFFS,
+            annual_cap_kwh=6, days_per_year=1)
+        self.assertEqual(res["tranches"]["pointe"]["compensated_kwh"], 2.0)
+        self.assertEqual(res["tranches"]["pleine"]["compensated_kwh"], 4.0)
+        self.assertEqual(res["tranches"]["creuse"]["compensated_kwh"], 0.0)
+        self.assertEqual(res["compensated_kwh"], 6.0)
+        # Économie = 2×4 + 4×2 = 16 (les kWh chers, pas la creuse).
+        self.assertEqual(res["savings_mad_per_period"], 16.0)
+        self.assertTrue(any("plafond" in w for w in res["warnings"]))
+
+    def test_annualisation_scales_daily_curve(self):
+        # Journée type ×365 : l'économie annuelle = économie/jour × 365.
+        res = sd.net_metering_savings(
+            injected_curve=[0, 0, 2, 0],
+            import_curve=[0, 0, 2, 0],
+            hour_tranches=self.HT, tranche_tariffs=self.TARIFFS,
+            days_per_year=365)
+        # Jour : 2 kWh pointe × 4 = 8 MAD ; an = 8 × 365 = 2920.
+        self.assertEqual(res["savings_mad_per_period"], 8.0)
+        self.assertEqual(res["annual_savings_mad"], 2920.0)
+        self.assertEqual(res["annual_compensated_kwh"], 730.0)
+
+    def test_24h_curve_maps_hours_to_default_tranches(self):
+        # Courbe 24 h + tranches par défaut : injection nocturne (creuse) et
+        # de soirée (pointe) mappées sur les bons tarifs par défaut.
+        inj = [0.0] * 24
+        imp = [0.0] * 24
+        inj[19] = 4.0  # 19 h = pointe (défaut)
+        imp[19] = 4.0
+        res = sd.net_metering_savings(
+            injected_curve=inj, import_curve=imp, days_per_year=1)
+        self.assertEqual(res["hours"], 24)
+        self.assertEqual(res["tranches"]["pointe"]["compensated_kwh"], 4.0)
+        # Au tarif pointe par défaut.
+        expected = 4.0 * sd.DEFAULT_TRANCHE_TARIFFS["pointe"]
+        self.assertAlmostEqual(
+            res["tranches"]["pointe"]["savings_mad"], round(expected, 2))
+
+    def test_no_import_means_nothing_compensated(self):
+        # Surplus injecté mais aucun soutirage → rien à compenser (cap = 0).
+        res = sd.net_metering_savings(
+            injected_curve=[5, 5, 5, 5],
+            import_curve=[0, 0, 0, 0],
+            hour_tranches=self.HT, tranche_tariffs=self.TARIFFS,
+            days_per_year=1)
+        self.assertEqual(res["compensated_kwh"], 0.0)
+        self.assertEqual(res["savings_mad_per_period"], 0.0)
+        self.assertEqual(res["spilled_kwh"], 20.0)
+        self.assertTrue(any("aucun soutirage" in w for w in res["warnings"]))
+
+    def test_negative_and_unreadable_values_clamped(self):
+        # Liberté de saisie : valeurs négatives/illisibles → 0, jamais d'erreur.
+        res = sd.net_metering_savings(
+            injected_curve=[-3, "x", 5, None],
+            import_curve=[10, 10, 10, 10],
+            hour_tranches=self.HT, tranche_tariffs=self.TARIFFS,
+            days_per_year=1)
+        # injecté nettoyé = [0, 0, 5, 0] ; seul h2 (pointe) compense 5.
+        self.assertEqual(res["tranches"]["pointe"]["compensated_kwh"], 5.0)
+        self.assertEqual(res["tranches"]["pointe"]["savings_mad"], 20.0)
+
+    def test_empty_curves_never_raise(self):
+        # Courbes vides → tout à 0, jamais d'exception.
+        res = sd.net_metering_savings(
+            injected_curve=[], import_curve=[], days_per_year=1)
+        self.assertEqual(res["injected_kwh"], 0.0)
+        self.assertEqual(res["compensated_kwh"], 0.0)
+        self.assertEqual(res["savings_mad_per_period"], 0.0)
+        self.assertEqual(res["annual_savings_mad"], 0.0)
+
+    def test_zero_days_per_year_guarded(self):
+        # days_per_year = 0 → ramené à 1, pas de division par zéro.
+        res = sd.net_metering_savings(
+            injected_curve=[0, 0, 2, 0],
+            import_curve=[0, 0, 2, 0],
+            hour_tranches=self.HT, tranche_tariffs=self.TARIFFS,
+            days_per_year=0)
+        self.assertEqual(res["days_per_year"], 1.0)
+        self.assertEqual(res["annual_savings_mad"],
+                         res["savings_mad_per_period"])
+
+    def test_chains_from_hourly_self_consumption_surplus(self):
+        # Intégration FG258 → FG259 : le surplus horaire alimente la valorisation.
+        # On reconstruit un surplus/import horaire à la main (FG258 agrège, mais
+        # ici on vérifie que des listes horaires brutes passent telles quelles).
+        load = [1, 1, 1, 1]
+        prod = [0, 0, 6, 0]
+        # h2 : autoconso = min(1, 6) = 1 ; surplus = 5 ; import h0,h1,h3 = 1.
+        surplus = [max(0.0, prod[i] - min(load[i], prod[i]))
+                   for i in range(4)]   # [0, 0, 5, 0]
+        imp = [max(0.0, load[i] - min(load[i], prod[i]))
+               for i in range(4)]       # [1, 1, 0, 1]
+        res = sd.net_metering_savings(
+            injected_curve=surplus, import_curve=imp,
+            hour_tranches=self.HT, tranche_tariffs=self.TARIFFS,
+            days_per_year=1)
+        # Pointe : injecté 5 mais import pointe = 0 → rien compensé sur place.
+        self.assertEqual(res["tranches"]["pointe"]["compensated_kwh"], 0.0)
+        self.assertEqual(res["compensated_kwh"], 0.0)
+        self.assertEqual(res["spilled_kwh"], 5.0)

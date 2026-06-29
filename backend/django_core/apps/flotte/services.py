@@ -170,3 +170,178 @@ def kilometrage_incoherent(company, vehicule, kilometrage, date_plein,
         )
 
     return (False, '')
+
+
+# ── FLOTTE16 — Génération d'échéances d'entretien dues + alertes ───────────────
+
+def _cible_echeance_depuis_criteres(criteres):
+    """Extrait la cible ``(due_le, due_km, due_heures)`` d'une échéance DUE.
+
+    À partir des ``criteres`` calculés par
+    ``selectors.plan_entretien_echeance`` (déjà filtrés sur ``statut == 'due'``
+    en amont), renvoie la prochaine échéance par dimension : la date ISO
+    (``jours``) est convertie en ``datetime.date``, le km et les heures restent
+    des entiers. Une dimension absente vaut ``None``. Lecture seule, pas d'effet
+    de bord."""
+    due_le = None
+    due_km = None
+    due_heures = None
+    for critere in criteres:
+        if critere.get('statut') != 'due':
+            continue
+        dimension = critere.get('dimension')
+        prochaine = critere.get('prochaine_echeance')
+        if dimension == 'jours' and prochaine:
+            try:
+                due_le = datetime.date.fromisoformat(str(prochaine))
+            except (ValueError, TypeError):
+                due_le = None
+        elif dimension == 'km' and prochaine is not None:
+            due_km = int(prochaine)
+        elif dimension == 'heures' and prochaine is not None:
+            due_heures = int(prochaine)
+    return due_le, due_km, due_heures
+
+
+def _destinataire_alerte(plan):
+    """Utilisateur ERP à alerter pour un plan : conducteur actif du véhicule.
+
+    Best-effort : résout le conducteur actuellement affecté au véhicule ciblé
+    (si l'actif est un véhicule) et renvoie son utilisateur ERP lié, sinon
+    ``None``. Aucune exception propagée. Lecture seule."""
+    try:
+        actif = plan.actif_flotte
+        if actif is None or actif.vehicule_id is None:
+            return None
+        from .selectors import conducteur_actuel_du_vehicule
+        conducteur = conducteur_actuel_du_vehicule(
+            plan.company, actif.vehicule_id)
+        return conducteur.user if conducteur is not None else None
+    except Exception:
+        return None
+
+
+def _alerter_echeance(echeance, plan):
+    """FLOTTE16 — Diffuse une alerte « entretien dû » (best-effort, jamais lève).
+
+    Notifie via le service partagé ``apps.notifications.services.notify``
+    (import LOCAL — la flotte ne dépend jamais des modèles d'une autre app) le
+    destinataire le plus pertinent disponible : l'utilisateur ERP lié à l'actif
+    via son affectation conducteur active ; à défaut, on n'alerte personne. La
+    notification réutilise l'événement métier ``maintenance_due``.
+
+    Tolérant : toute exception est avalée — une alerte ratée ne doit jamais
+    interrompre la génération ni casser une transaction d'écriture.
+    """
+    try:
+        from apps.notifications.services import notify
+    except Exception:
+        return None
+
+    user = _destinataire_alerte(plan)
+    if user is None:
+        return None
+
+    cibles = []
+    if echeance.due_le is not None:
+        cibles.append(f"avant le {echeance.due_le.isoformat()}")
+    if echeance.due_km is not None:
+        cibles.append(f"à {echeance.due_km} km")
+    if echeance.due_heures is not None:
+        cibles.append(f"à {echeance.due_heures} h")
+    detail = ' / '.join(cibles) if cibles else 'dès que possible'
+    try:
+        return notify(
+            user=user,
+            event_type='maintenance_due',
+            title=f"Entretien dû : {echeance.type_entretien}",
+            body=(
+                f"L'actif {echeance.actif_flotte.label} doit passer en "
+                f"entretien « {echeance.type_entretien} » ({detail})."
+            ),
+            link='/flotte/echeances-entretien',
+            company=echeance.company,
+        )
+    except Exception:
+        return None
+
+
+def generer_echeances_entretien(company, alerter=True):
+    """FLOTTE16 — Génère les échéances d'entretien DUES depuis les plans actifs.
+
+    Pour chaque ``PlanEntretien`` actif de la société (scopé), calcule son
+    statut courant via ``selectors.plans_entretien_status`` ; lorsqu'un plan est
+    ``due``, matérialise une ``EcheanceEntretien`` (statut ``a_faire``) si — et
+    seulement si — il n'existe pas déjà une échéance OUVERTE
+    (``a_faire`` / ``planifie``) pour ce plan. La génération est donc
+    IDEMPOTENTE : un second passage ne duplique aucune échéance ouverte ; une
+    nouvelle échéance ne renaît qu'une fois la précédente marquée ``fait``.
+
+    Si ``alerter=True``, une alerte best-effort est diffusée pour CHAQUE échéance
+    nouvellement créée via ``apps.notifications.services.notify`` (événement
+    ``maintenance_due``) — un échec d'alerte n'interrompt jamais la génération.
+
+    Multi-tenant : ``company`` est toujours posée côté serveur ; la société de
+    l'échéance créée est celle du plan source. Retourne un dict scopé société ::
+
+        {'company_id', 'nb_plans_due', 'nb_creees', 'nb_existantes',
+         'echeances': [<EcheanceEntretien>, …]}  # uniquement les nouvelles
+
+    Aucune écriture hors ``EcheanceEntretien`` ; l'opération est sûre à relancer.
+    """
+    from .models import EcheanceEntretien
+    from .selectors import plans_de_la_societe, plans_entretien_status
+
+    status = plans_entretien_status(company, actif_only=True, statut='due')
+    plans_due = status['plans']
+
+    # Index des plans actifs par id (pour récupérer l'instance ORM complète).
+    plans_par_id = {
+        plan.id: plan
+        for plan in plans_de_la_societe(company, actif_only=True)
+    }
+
+    # Plans ayant DÉJÀ une échéance ouverte (a_faire/planifie) → on ne re-crée pas.
+    plans_avec_ouverte = set(
+        EcheanceEntretien.objects
+        .filter(company=company,
+                statut__in=EcheanceEntretien.STATUTS_OUVERTS)
+        .values_list('plan_id', flat=True)
+    )
+
+    creees = []
+    nb_existantes = 0
+    for ligne in plans_due:
+        plan_id = ligne['plan_id']
+        plan = plans_par_id.get(plan_id)
+        if plan is None:
+            continue
+        if plan_id in plans_avec_ouverte:
+            nb_existantes += 1
+            continue
+
+        due_le, due_km, due_heures = _cible_echeance_depuis_criteres(
+            ligne.get('criteres', []))
+        echeance = EcheanceEntretien.objects.create(
+            company=company,
+            plan=plan,
+            actif_flotte=plan.actif_flotte,
+            type_entretien=plan.type_entretien,
+            due_le=due_le,
+            due_km=due_km,
+            due_heures=due_heures,
+            statut=EcheanceEntretien.Statut.A_FAIRE,
+        )
+        creees.append(echeance)
+        # Empêche un doublon si plusieurs lignes du même plan apparaissaient.
+        plans_avec_ouverte.add(plan_id)
+        if alerter:
+            _alerter_echeance(echeance, plan)
+
+    return {
+        'company_id': company.id,
+        'nb_plans_due': len(plans_due),
+        'nb_creees': len(creees),
+        'nb_existantes': nb_existantes,
+        'echeances': creees,
+    }

@@ -9,7 +9,8 @@ from .views import (
     ExerciceComptableViewSet, ImmobilisationViewSet, IndemniteChantierViewSet,
     JournalViewSet, LignePrevisionnelTresorerieViewSet, NoteFraisViewSet,
     PaymentRunViewSet, PeriodeComptableViewSet, PlanComptableViewSet,
-    RapprochementBancaireViewSet, RapprochementViewSet, VirementInterneViewSet,
+    RapprochementBancaireViewSet, RapprochementViewSet, RetenueSourceViewSet,
+    VirementInterneViewSet,
 )
 
 router = DefaultRouter()
@@ -36,6 +37,7 @@ router.register(r'notes-frais', NoteFraisViewSet)
 router.register(r'baremes-indemnite', BaremeIndemniteViewSet)
 router.register(r'indemnites-chantier', IndemniteChantierViewSet)
 router.register(r'declarations-tva', DeclarationTVAViewSet)
+router.register(r'retenues-source', RetenueSourceViewSet)
 router.register(r'etats', EtatsComptablesViewSet, basename='etats')
 
 urlpatterns = [

@@ -8,6 +8,7 @@ from .models import (
     EtapeApprobation,
     PartieContrat,
     RegleApprobation,
+    SignatureContrat,
 )
 
 
@@ -66,3 +67,11 @@ class ContratActivityAdmin(admin.ModelAdmin):
                     'date_creation', 'company')
     list_filter = ('type', 'field')
     search_fields = ('message', 'old_value', 'new_value')
+
+
+@admin.register(SignatureContrat)
+class SignatureContratAdmin(admin.ModelAdmin):
+    list_display = ('id', 'contrat', 'role_signataire', 'signataire_nom',
+                    'signataire', 'methode', 'date_signature', 'company')
+    list_filter = ('role_signataire', 'methode')
+    search_fields = ('signataire_nom',)

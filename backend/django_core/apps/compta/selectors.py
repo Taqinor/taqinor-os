@@ -12,7 +12,7 @@ from django.utils import timezone
 
 from .models import (
     Caisse, CompteComptable, CompteTresorerie, Effet, LigneEcriture,
-    LignePrevisionnelTresorerie, MouvementCaisse, Rapprochement,
+    LignePrevisionnelTresorerie, MouvementCaisse, Rapprochement, RetenueSource,
 )
 
 
@@ -1043,4 +1043,136 @@ def releve_deductions_tva(company, *, date_debut, date_fin,
         'date_fin': date_fin,
         'lignes': lignes,
         'totaux': {'base_ht': total_base, 'tva': total_tva},
+    }
+
+
+# ── FG139 — Retenue à la source (RAS) : liste & bordereau de versement ──────
+
+def _retenues_qs(company, *, date_debut=None, date_fin=None, statut=None):
+    """Retenues à la source d'une société, bornées sur la DATE DE PIÈCE.
+
+    Le bornage suit ``date_piece`` (le fait générateur de la retenue) — c'est ce
+    qui définit la période du bordereau de versement. Lecture seule, scopée
+    société.
+    """
+    qs = RetenueSource.objects.filter(company=company)
+    if date_debut:
+        qs = qs.filter(date_piece__gte=date_debut)
+    if date_fin:
+        qs = qs.filter(date_piece__lte=date_fin)
+    if statut:
+        qs = qs.filter(statut=statut)
+    return qs
+
+
+def retenues_source_periode(company, *, date_debut=None, date_fin=None,
+                            statut=None):
+    """Liste détaillée des RAS sur une période (FG139).
+
+    Renvoie ``{'date_debut', 'date_fin', 'lignes': [...], 'totaux':
+    {'base', 'montant', 'net'}}`` où chaque ligne porte la pièce, le tiers, le
+    type de prestation, la base, le taux, le montant retenu et le net à payer.
+    Bornée sur ``date_piece``, lecture seule, scopée société.
+    """
+    qs = _retenues_qs(
+        company, date_debut=date_debut, date_fin=date_fin, statut=statut,
+    ).order_by('date_piece', 'id')
+    lignes = []
+    total_base = total_montant = Decimal('0')
+    for ras in qs:
+        base = ras.base or Decimal('0')
+        montant = ras.montant or Decimal('0')
+        total_base += base
+        total_montant += montant
+        lignes.append({
+            'id': ras.id,
+            'reference': ras.reference,
+            'piece': ras.piece,
+            'date_piece': ras.date_piece,
+            'type_prestation': ras.type_prestation,
+            'tiers_type': ras.tiers_type,
+            'tiers_id': ras.tiers_id,
+            'tiers_nom': ras.tiers_nom,
+            'identifiant_fiscal': ras.identifiant_fiscal,
+            'base': base,
+            'taux': ras.taux or Decimal('0'),
+            'montant': montant,
+            'net_a_payer': base - montant,
+            'statut': ras.statut,
+        })
+    return {
+        'date_debut': date_debut,
+        'date_fin': date_fin,
+        'lignes': lignes,
+        'totaux': {
+            'base': total_base,
+            'montant': total_montant,
+            'net': total_base - total_montant,
+        },
+    }
+
+
+def bordereau_versement_ras(company, *, date_debut=None, date_fin=None,
+                            statut=None):
+    """Bordereau de versement de la RAS : totaux PAR PRESTATAIRE (FG139).
+
+    La déclaration/versement de la retenue à la source à l'administration se fait
+    sur un bordereau récapitulatif : une ligne par prestataire (regroupé sur
+    l'auxiliaire ``tiers_id`` du tiers, ou à défaut sur le couple nom + IF pour
+    les tiers libres), portant l'identifiant fiscal, la base cumulée et le
+    montant total retenu sur la période. Le ``total_a_verser`` est la somme des
+    montants retenus — c'est ce que la société reverse au Trésor. Bornée sur
+    ``date_piece``, lecture seule, scopée société. Renvoie ``{'date_debut',
+    'date_fin', 'lignes': [...], 'totaux': {'base', 'montant', 'nb_pieces'},
+    'total_a_verser'}``.
+    """
+    qs = _retenues_qs(
+        company, date_debut=date_debut, date_fin=date_fin, statut=statut,
+    ).order_by('tiers_id', 'id')
+    par_tiers = {}
+    ordre = []
+    for ras in qs:
+        # Clé de regroupement : l'auxiliaire tiers s'il existe, sinon le couple
+        # (nom, identifiant fiscal) pour un prestataire saisi librement.
+        if ras.tiers_id is not None:
+            cle = ('tiers', ras.tiers_type, ras.tiers_id)
+        else:
+            cle = ('libre', ras.tiers_nom, ras.identifiant_fiscal)
+        entry = par_tiers.get(cle)
+        if entry is None:
+            entry = {
+                'tiers_type': ras.tiers_type,
+                'tiers_id': ras.tiers_id,
+                'tiers_nom': ras.tiers_nom,
+                'identifiant_fiscal': ras.identifiant_fiscal,
+                'base': Decimal('0'),
+                'montant': Decimal('0'),
+                'nb_pieces': 0,
+            }
+            par_tiers[cle] = entry
+            ordre.append(cle)
+        # Garde le nom/IF le plus renseigné rencontré pour ce tiers.
+        if not entry['tiers_nom'] and ras.tiers_nom:
+            entry['tiers_nom'] = ras.tiers_nom
+        if not entry['identifiant_fiscal'] and ras.identifiant_fiscal:
+            entry['identifiant_fiscal'] = ras.identifiant_fiscal
+        entry['base'] += ras.base or Decimal('0')
+        entry['montant'] += ras.montant or Decimal('0')
+        entry['nb_pieces'] += 1
+
+    lignes = [par_tiers[cle] for cle in ordre]
+    lignes.sort(key=lambda e: e['montant'], reverse=True)
+    total_base = sum((e['base'] for e in lignes), Decimal('0'))
+    total_montant = sum((e['montant'] for e in lignes), Decimal('0'))
+    total_pieces = sum(e['nb_pieces'] for e in lignes)
+    return {
+        'date_debut': date_debut,
+        'date_fin': date_fin,
+        'lignes': lignes,
+        'totaux': {
+            'base': total_base,
+            'montant': total_montant,
+            'nb_pieces': total_pieces,
+        },
+        'total_a_verser': total_montant,
     }

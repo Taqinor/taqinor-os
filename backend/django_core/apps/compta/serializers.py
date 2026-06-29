@@ -15,7 +15,8 @@ from .models import (
     Immobilisation, IndemniteChantier, Journal, LigneEcriture,
     LignePrevisionnelTresorerie, LigneReleve, MouvementCaisse, NoteFrais,
     PaymentRun, PaymentRunLine, PeriodeComptable, PlanAmortissement,
-    PlanComptable, Rapprochement, RapprochementBancaire, VirementInterne,
+    PlanComptable, Rapprochement, RapprochementBancaire, RetenueSource,
+    VirementInterne,
 )
 
 
@@ -880,3 +881,45 @@ class DeclarationTVASerializer(serializers.ModelSerializer):
             'reference', 'tva_collectee', 'tva_deductible', 'tva_a_declarer',
             'credit_reportable', 'statut', 'created_by', 'date_creation',
         ]
+
+
+class RetenueSourceSerializer(serializers.ModelSerializer):
+    """Retenue à la source (RAS) sur honoraires/prestations (FG139).
+
+    À la création on accepte la saisie de la pièce (base, taux, type de
+    prestation, prestataire/IF) ; le ``montant`` retenu est DÉRIVÉ côté serveur
+    (base × taux %) et reste en lecture seule, comme
+    ``company``/``reference``/statut/``created_by``. Le statut évolue par
+    l'action de service (versée), jamais par écriture directe du corps.
+    """
+    type_prestation_display = serializers.CharField(
+        source='get_type_prestation_display', read_only=True)
+    statut_display = serializers.CharField(
+        source='get_statut_display', read_only=True)
+    net_a_payer = serializers.DecimalField(
+        max_digits=14, decimal_places=2, read_only=True)
+
+    class Meta:
+        model = RetenueSource
+        fields = [
+            'id', 'reference', 'piece', 'date_piece', 'type_prestation',
+            'type_prestation_display', 'tiers_type', 'tiers_id', 'tiers_nom',
+            'identifiant_fiscal', 'base', 'taux', 'montant', 'net_a_payer',
+            'statut', 'statut_display', 'libelle', 'created_by',
+            'date_creation',
+        ]
+        read_only_fields = [
+            'reference', 'montant', 'statut', 'created_by', 'date_creation',
+        ]
+
+    def validate_base(self, value):
+        if value is not None and value < 0:
+            raise serializers.ValidationError(
+                "La base imposable ne peut pas être négative.")
+        return value
+
+    def validate_taux(self, value):
+        if value is not None and (value < 0 or value > 100):
+            raise serializers.ValidationError(
+                "Le taux de RAS doit être compris entre 0 et 100 %.")
+        return value

@@ -116,6 +116,39 @@ class DossierEmployeViewSet(_RhBaseViewSet):
         serializer = self.get_serializer(qs, many=True)
         return Response(serializer.data)
 
+    @action(detail=True, methods=['get'], url_path='verifier-habilitation')
+    def verifier_habilitation(self, request, pk=None):
+        """Garde d'affectation par habilitation (FG176) — BLOCAGE DOUX.
+
+        Indique si cet employé est AUTORISÉ pour une affectation exigeant
+        certain(s) titre(s) d'habilitation. La garde se contente de RAPPORTER :
+        l'appelant (l'affectation côté ``installations``) décide d'alerter ou de
+        bloquer ; aucune écriture n'est faite ici.
+
+        Titres requis (au moins l'un des deux) :
+        * ``?type=b1v&type=br`` (répété) ou ``?type=b1v,br`` (séparé par des
+          virgules) — codes ``Habilitation.TypeHabilitation`` exigés ;
+        * ``?intervention=pose_pv_bt`` — type d'intervention traduit côté serveur
+          en titres requis via ``INTERVENTION_HABILITATIONS``. Les deux sources
+          sont cumulées.
+
+        L'employé est résolu via ``get_object`` (scopé société par TenantMixin) :
+        un employé d'une autre société renvoie 404. Réponse :
+        ``{employe, autorise, manquantes, expirees, message}``.
+        """
+        employe = self.get_object()
+        types = []
+        for valeur in request.query_params.getlist('type'):
+            types.extend(t.strip() for t in valeur.split(',') if t.strip())
+        intervention = request.query_params.get('intervention')
+        if intervention:
+            types.extend(
+                selectors.habilitations_requises_pour_intervention(
+                    intervention))
+        rapport = selectors.verifier_habilitation_requise(
+            request.user.company, employe, types)
+        return Response({'employe': employe.pk, **rapport})
+
 
 class RemunerationViewSet(TenantMixin, viewsets.ModelViewSet):
     """Rémunération de base des employés (FG157) — paie SENSIBLE.

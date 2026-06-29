@@ -857,3 +857,92 @@ class PlanEntretien(models.Model):
 
     def __str__(self):
         return f'{self.type_entretien} — {self.actif_flotte}'
+
+
+# ── FLOTTE16 — Échéances d'entretien dues (générées depuis les plans) ──────────
+
+class EcheanceEntretien(models.Model):
+    """Échéance d'entretien DUE matérialisée depuis un ``PlanEntretien`` (FLOTTE16).
+
+    Alors que ``PlanEntretien`` (FLOTTE15) décrit la RÈGLE (vidange tous les
+    10 000 km…) et que ``selectors.plans_entretien_status`` calcule en LECTURE
+    SEULE l'état courant, FLOTTE16 GÉNÈRE l'enregistrement concret de l'échéance
+    qui tombe : une ``EcheanceEntretien`` est un travail d'entretien à planifier,
+    suivi de son ``statut`` (``a_faire`` → ``planifie`` → ``fait``) et tracé par
+    sa date de génération.
+
+    La génération (``services.generer_echeances_entretien``) est IDEMPOTENTE :
+    pour un plan donné on ne crée pas une nouvelle échéance OUVERTE
+    (``a_faire`` / ``planifie``) tant qu'une échéance ouverte existe déjà — le
+    « cycle » courant reste matérialisé une seule fois. Cela évite de dupliquer
+    une échéance à chaque passage du générateur.
+
+    Multi-tenant : ``company`` est posée côté serveur (jamais lue du corps de
+    requête) et toujours égale à celle du plan source.
+    """
+
+    class Statut(models.TextChoices):
+        A_FAIRE = 'a_faire', 'À faire'
+        PLANIFIE = 'planifie', 'Planifié'
+        FAIT = 'fait', 'Fait'
+
+    # Statuts qui « occupent » le cycle courant (bloquent une re-génération).
+    STATUTS_OUVERTS = (Statut.A_FAIRE, Statut.PLANIFIE)
+
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='echeances_entretien_flotte',
+        verbose_name='Société',
+    )
+    plan = models.ForeignKey(
+        'PlanEntretien',
+        on_delete=models.CASCADE,
+        related_name='echeances_entretien_flotte',
+        verbose_name="Plan d'entretien",
+    )
+    actif_flotte = models.ForeignKey(
+        'ActifFlotte',
+        on_delete=models.CASCADE,
+        related_name='echeances_entretien_flotte',
+        verbose_name="Actif (véhicule ou engin)",
+    )
+    # Copie figée du type d'entretien du plan au moment de la génération (un plan
+    # peut être renommé / supprimé ensuite). CharField borné : la valeur tient
+    # dans max_length (leçon FG136 — alignée sur PlanEntretien.type_entretien).
+    type_entretien = models.CharField(
+        max_length=60, verbose_name="Type d'entretien")
+
+    # ── Cible de l'échéance (au moins une dimension renseignée) ───────────────
+    due_le = models.DateField(
+        null=True, blank=True, verbose_name="Échéance (date)")
+    due_km = models.PositiveIntegerField(
+        null=True, blank=True, verbose_name="Échéance (km)")
+    due_heures = models.PositiveIntegerField(
+        null=True, blank=True, verbose_name="Échéance (heures)")
+
+    statut = models.CharField(
+        max_length=10, choices=Statut.choices, default=Statut.A_FAIRE,
+        verbose_name='Statut')
+    notes = models.TextField(blank=True, verbose_name='Notes')
+    genere_le = models.DateTimeField(
+        auto_now_add=True, verbose_name='Généré le')
+
+    class Meta:
+        verbose_name = "Échéance d'entretien"
+        verbose_name_plural = "Échéances d'entretien"
+        ordering = ['statut', 'due_le', 'due_km', 'due_heures', 'id']
+        indexes = [
+            models.Index(
+                fields=['company', 'statut'],
+                name='flotte_ech_co_stat_idx',
+            ),
+            models.Index(
+                fields=['plan', 'statut'],
+                name='flotte_ech_plan_stat_idx',
+            ),
+        ]
+
+    def __str__(self):
+        return f'{self.type_entretien} — {self.actif_flotte} ' \
+               f'[{self.get_statut_display()}]'

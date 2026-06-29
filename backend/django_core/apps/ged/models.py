@@ -93,6 +93,41 @@ APPROBATION_CHOICES = [
     (APPROBATION_REJETE, 'Rejetée'),
 ]
 
+# GED19 — ACL par dossier/document (héritage + override).
+#
+# Niveaux d'accès (LOCAUX à la GED), ordonnés du plus faible au plus fort :
+#   lecture  : voir / télécharger le document
+#   ecriture : lecture + déposer une nouvelle version / éditer les métadonnées
+#   gestion  : ecriture + gérer l'ACL elle-même (octroyer/retirer des droits)
+#
+# Une entrée ACL (`AclGed`) cible EXACTEMENT un dossier OU un document (jamais
+# les deux, jamais aucun) et désigne un `principal` : un utilisateur ET/OU un
+# rôle (au moins l'un des deux). Un document HÉRITE de l'ACL de son dossier (et
+# des ancêtres) ; une entrée posée DIRECTEMENT sur le document (ou un dossier
+# plus proche) constitue un OVERRIDE qui l'emporte sur l'ACL héritée. Le drapeau
+# `herite` indique si cette entrée se propage aux sous-dossiers/documents
+# (héritée vers le bas) ou reste locale à la cible (override pur).
+#
+# Ces niveaux sont LOCAUX à la GED et n'ont AUCUN rapport avec le funnel
+# commercial `STAGES.py` (rule #2) — on n'importe surtout PAS `STAGES.py` ici.
+ACL_LECTURE = 'lecture'
+ACL_ECRITURE = 'ecriture'
+ACL_GESTION = 'gestion'
+
+ACL_CHOICES = [
+    (ACL_LECTURE, 'Lecture'),
+    (ACL_ECRITURE, 'Écriture'),
+    (ACL_GESTION, 'Gestion'),
+]
+
+# Rang numérique des niveaux : un niveau supérieur INCLUT les inférieurs. Sert
+# à comparer des droits (le plus permissif l'emporte au sein d'un même scope).
+ACL_RANK = {
+    ACL_LECTURE: 1,
+    ACL_ECRITURE: 2,
+    ACL_GESTION: 3,
+}
+
 
 class Cabinet(models.Model):
     """Espace documentaire racine (« armoire ») d'une société.
@@ -638,3 +673,113 @@ class DemandeApprobation(models.Model):
 
     def __str__(self):
         return f'Approbation {self.document} ({self.statut})'
+
+
+class AclGed(models.Model):
+    """GED19 — Liste de contrôle d'accès par dossier/document (héritage + override).
+
+    Une entrée ACL octroie à un `principal` (un utilisateur ET/OU un rôle, au
+    moins l'un des deux) un `niveau` d'accès (lecture/ecriture/gestion) sur
+    EXACTEMENT une cible : un `folder` OU un `document` (jamais les deux, jamais
+    aucun — garde `clean()` + contrainte base).
+
+    Modèle d'héritage : un document HÉRITE de l'ACL de son dossier et de tous les
+    ancêtres (via le chemin matérialisé `Folder.path`). Une entrée posée
+    directement sur la cible — ou sur un dossier PLUS PROCHE dans la chaîne —
+    constitue un OVERRIDE qui l'emporte sur l'ACL héritée (le scope le plus
+    proche gagne ; à scope égal, le niveau le plus permissif gagne). Le drapeau
+    `herite` indique si l'entrée se propage vers le bas (sous-dossiers/documents)
+    ou reste un override pur, local à sa cible.
+
+    BACKWARD-COMPAT (DECISION) : sans aucune entrée ACL pour une cible, le
+    comportement EXISTANT est strictement préservé (l'ACL coffre-fort GED8 +
+    scoping société restent l'unique filtre). L'ACL GED19 ne fait que
+    RESTREINDRE/AUTORISER en SUS, jamais élargir au-delà de la société. La
+    résolution effective vit dans `selectors.acl_effective`.
+
+    Company posée côté serveur (cohérente avec la cible) — jamais lue du corps
+    de requête. Ces niveaux sont LOCAUX à la GED (séparés du funnel STAGES.py).
+    """
+    company = models.ForeignKey(
+        'authentication.Company', on_delete=models.CASCADE,
+        null=True, blank=True, related_name='ged_acls')
+    # Cible — EXACTEMENT l'une des deux est renseignée (garde clean()).
+    folder = models.ForeignKey(
+        Folder, on_delete=models.CASCADE,
+        null=True, blank=True, related_name='ged_acls')
+    document = models.ForeignKey(
+        Document, on_delete=models.CASCADE,
+        null=True, blank=True, related_name='ged_acls')
+    # Principal — utilisateur ET/OU rôle (au moins l'un des deux, garde clean()).
+    utilisateur = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.CASCADE,
+        null=True, blank=True, related_name='ged_acls',
+        verbose_name='utilisateur')
+    role = models.ForeignKey(
+        'roles.Role', on_delete=models.CASCADE,
+        null=True, blank=True, related_name='ged_acls',
+        verbose_name='rôle')
+    niveau = models.CharField(
+        max_length=8, choices=ACL_CHOICES, default=ACL_LECTURE,
+        verbose_name="niveau d'accès")
+    # True : l'entrée se propage aux sous-dossiers/documents (héritage vers le
+    # bas). False : override pur, local à la cible (ne descend pas).
+    herite = models.BooleanField(default=True, verbose_name='héritée vers le bas')
+    created_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL,
+        null=True, blank=True, related_name='ged_acls_crees')
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ['-created_at', '-id']
+        verbose_name = "Droit d'accès GED"
+        verbose_name_plural = "Droits d'accès GED"
+        indexes = [
+            models.Index(fields=['company', 'folder'],
+                         name='ged_acl_co_folder_idx'),
+            models.Index(fields=['company', 'document'],
+                         name='ged_acl_co_doc_idx'),
+            models.Index(fields=['utilisateur'], name='ged_acl_user_idx'),
+            models.Index(fields=['role'], name='ged_acl_role_idx'),
+        ]
+        constraints = [
+            models.CheckConstraint(
+                condition=(
+                    models.Q(folder__isnull=False, document__isnull=True)
+                    | models.Q(folder__isnull=True, document__isnull=False)
+                ),
+                name='ged_acl_exactly_one_target',
+            ),
+            models.CheckConstraint(
+                condition=(
+                    models.Q(utilisateur__isnull=False)
+                    | models.Q(role__isnull=False)
+                ),
+                name='ged_acl_principal_required',
+            ),
+        ]
+
+    def __str__(self):
+        cible = self.document or self.folder
+        principal = self.utilisateur or self.role
+        return f'ACL {cible} → {principal} ({self.niveau})'
+
+    @property
+    def rank(self):
+        """Rang numérique du niveau (1=lecture, 2=ecriture, 3=gestion)."""
+        return ACL_RANK.get(self.niveau, 0)
+
+    def clean(self):
+        """Garantit cible exactement-une + principal au moins-un.
+
+        - EXACTEMENT un de (`folder`, `document`) est renseigné.
+        - AU MOINS un de (`utilisateur`, `role`) est renseigné.
+        """
+        from django.core.exceptions import ValidationError
+        if bool(self.folder_id) == bool(self.document_id):
+            raise ValidationError(
+                "Une entrée ACL cible exactement un dossier OU un document.")
+        if not self.utilisateur_id and not self.role_id:
+            raise ValidationError(
+                "Une entrée ACL désigne au moins un utilisateur ou un rôle.")
