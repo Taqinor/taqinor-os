@@ -4,8 +4,8 @@ from .models import (
     BordereauRemise, Caisse, ClotureCaisse, CompteComptable, CompteTresorerie,
     EcritureComptable, Effet, ExerciceComptable, Immobilisation, Journal,
     LigneEcriture, LignePrevisionnelTresorerie, LigneReleve, MouvementCaisse,
-    PeriodeComptable, PlanComptable, Rapprochement, RapprochementBancaire,
-    VirementInterne,
+    PaymentRun, PaymentRunLine, PeriodeComptable, PlanComptable, Rapprochement,
+    RapprochementBancaire, VirementInterne,
 )
 
 
@@ -171,3 +171,26 @@ class RapprochementAdmin(admin.ModelAdmin):
                     'date_evaluation', 'company')
     list_filter = ('statut',)
     search_fields = ('bon_commande__reference', 'note')
+
+
+class PaymentRunLineInline(admin.TabularInline):
+    model = PaymentRunLine
+    extra = 0
+    fields = ('beneficiaire', 'tiers_id', 'reference', 'montant',
+              'date_echeance', 'rib', 'iban')
+
+
+@admin.register(PaymentRun)
+class PaymentRunAdmin(admin.ModelAdmin):
+    list_display = ('id', 'reference', 'mode_paiement', 'compte_tresorerie',
+                    'date_paiement', 'total', 'statut', 'posted', 'company')
+    list_filter = ('mode_paiement', 'statut', 'posted')
+    search_fields = ('reference', 'note')
+    inlines = [PaymentRunLineInline]
+
+
+@admin.register(PaymentRunLine)
+class PaymentRunLineAdmin(admin.ModelAdmin):
+    list_display = ('id', 'payment_run', 'beneficiaire', 'reference', 'montant',
+                    'date_echeance', 'company')
+    search_fields = ('beneficiaire', 'reference')
