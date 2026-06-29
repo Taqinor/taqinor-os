@@ -5,8 +5,8 @@ LIRE la GED passe par ces fonctions plutôt que d'importer `ged.models`.
 Toutes les lectures sont bornées à une société.
 """
 from .models import (
-    ACL_RANK, AclGed, Cabinet, Coffre, DemandeApprobation, Document,
-    DocumentLien, DocumentTag, DocumentVersion, Folder, PartageGed,
+    ACL_RANK, AclGed, ArchivageLegal, Cabinet, Coffre, DemandeApprobation,
+    Document, DocumentLien, DocumentTag, DocumentVersion, Folder, PartageGed,
     PolitiqueRetention,
 )
 
@@ -572,3 +572,21 @@ def documents_echus(company, today=None):
             echus.append((document, politique, depasses))
     echus.sort(key=lambda item: (-item[2], item[0].pk))
     return echus
+
+
+def archivages_legaux_for_company(company):
+    """GED23 — Archivages légaux d'une société (QuerySet, scopé société).
+
+    Lecture seule, bornée à la société — jamais de fuite cross-société. Les
+    archivages sont des traces immuables (write-once) ; on ne les modifie ni ne
+    les supprime via cette couche."""
+    return (ArchivageLegal.objects.filter(company=company)
+            .select_related('document', 'version', 'archive_par'))
+
+
+def archivage_legal_for_document(document):
+    """GED23 — Archivage légal d'un document (ou None s'il n'est pas archivé)."""
+    return (ArchivageLegal.objects
+            .filter(document=document)
+            .select_related('document', 'version', 'archive_par')
+            .first())

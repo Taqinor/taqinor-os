@@ -212,6 +212,18 @@ def compute_checksum(data):
     return hashlib.sha256(data).hexdigest()
 
 
+def _document_archive_legalement(document):
+    """GED23 — True si un document est archivé légalement (write-once).
+
+    Helper interne partagé par les gardes d'écriture (déplacement, verrou,
+    transition de cycle de vie…). Lecture en base de l'existence d'un
+    `ArchivageLegal` sur le document. Import paresseux pour éviter tout cycle."""
+    from .models import ArchivageLegal
+    if document.pk is None:
+        return False
+    return ArchivageLegal.objects.filter(document_id=document.pk).exists()
+
+
 def validate_tag_parent(tag, new_parent):
     """GED9 — Garde anti-cycle / cross-société pour la taxonomie de tags.
 
@@ -294,6 +306,12 @@ def move_document(document, new_folder):
     if new_folder.company_id != document.company_id:
         raise ValueError(
             "Le dossier cible doit appartenir à la même société.")
+    # GED23 — write-once : un document archivé légalement est figé (jamais
+    # déplacé). On refuse en `ValueError` (→ 400 côté vue `deplacer`).
+    if _document_archive_legalement(document):
+        raise ValueError(
+            "Document archivé à valeur probante (write-once) : il ne peut plus "
+            "être déplacé.")
     if document.folder_id != new_folder.id:
         document.folder = new_folder
         document.save(update_fields=['folder', 'updated_at'])
@@ -404,6 +422,12 @@ def checkout_document(document, user):
     from django.utils import timezone
     if document.company_id != user.company_id:
         raise PermissionError("Document inaccessible.")
+    # GED23 — write-once : on n'extrait pas (check-out) un document archivé
+    # légalement — il est figé. Refus en `PermissionError` (→ 409 côté vue).
+    if _document_archive_legalement(document):
+        raise PermissionError(
+            "Document archivé à valeur probante (write-once) : il est immuable "
+            "et ne peut plus être extrait pour modification.")
     with transaction.atomic():
         doc = Document.objects.select_for_update().get(pk=document.pk)
         if doc.locked_by_id is not None and doc.locked_by_id != user.pk:
@@ -482,6 +506,12 @@ def change_lifecycle_status(document, target_status, *, user):
     )
     if document.company_id != user.company_id:
         raise PermissionError("Document inaccessible.")
+    # GED23 — write-once : un document archivé légalement est figé — son cycle
+    # de vie ne bouge plus. Refus en `PermissionError` (→ 403 côté vue).
+    if _document_archive_legalement(document):
+        raise PermissionError(
+            "Document archivé à valeur probante (write-once) : son cycle de "
+            "vie est figé.")
     valides = {code for code, _ in LIFECYCLE_CHOICES}
     if target_status not in valides:
         raise ValueError(
@@ -894,3 +924,146 @@ def watermark_label(*, company=None, user=None):
         parts.append(str(actor))
     parts.append(timezone.now().strftime('%Y-%m-%d'))
     return ' — '.join(parts)
+
+
+# ── GED23 — Archivage légal à valeur probante (write-once / object-lock) ─────
+
+def _version_integrity_hash(version):
+    """GED23 — Condensat SHA-256 (hex) du contenu d'une version, ou ''.
+
+    Preuve d'intégrité à valeur probante. On PRIVILÉGIE un recalcul depuis le
+    contenu réellement stocké (`records.storage.fetch_attachment`) — l'empreinte
+    la plus fiable. Si le contenu n'est pas récupérable (stockage indisponible),
+    on retombe sur le `checksum` déjà figé sur la version (lui-même un SHA-256).
+    Best-effort : ne lève jamais — renvoie '' si rien n'est exploitable."""
+    if version is None:
+        return ''
+    # 1) Recalcul depuis le contenu stocké (import paresseux de la couche
+    #    storage partagée — on ne réimplémente pas le stockage objet).
+    try:
+        from apps.records.storage import fetch_attachment
+        data, err = fetch_attachment(version.file_key)
+        if not err and data:
+            return compute_checksum(data)
+    except Exception:
+        pass
+    # 2) Repli : le checksum déjà enregistré sur la version (SHA-256 hex).
+    return version.checksum or ''
+
+
+def _try_set_object_lock(version, retain_until):
+    """GED23 — Pose un verrou objet (MinIO/S3 Object-Lock) — BEST-EFFORT.
+
+    BONUS purement consolidant : l'immuabilité APPLICATIVE (write-once posée
+    dans les modèles + services) est LA garantie ; ce verrou n'est qu'un
+    renfort. Import PARESSEUX du client MinIO (mêmes conventions que
+    `records.storage` — aucune nouvelle dépendance) puis `put_object_retention`.
+
+    DÉGRADE PROPREMENT : si le backend ne supporte pas l'object-lock (MinIO sans
+    bucket WORM, opération non implémentée…), ou si le client est absent, ou si
+    quoi que ce soit échoue, on renvoie ``False`` SANS lever — l'archivage
+    légal reste valide grâce à l'immuabilité applicative.
+
+    Renvoie ``True`` seulement si le verrou a effectivement été posé.
+    """
+    if version is None or not version.file_key or retain_until is None:
+        return False
+    try:
+        import datetime as _dt
+
+        from django.conf import settings
+
+        from apps.ventes.utils.minio_client import get_minio_client
+
+        client = get_minio_client()
+        # boto3 attend un datetime tz-aware pour RetainUntilDate.
+        if isinstance(retain_until, _dt.datetime):
+            until_dt = retain_until
+        else:
+            until_dt = _dt.datetime.combine(retain_until, _dt.time.min)
+        if until_dt.tzinfo is None:
+            until_dt = until_dt.replace(tzinfo=_dt.timezone.utc)
+        client.put_object_retention(
+            Bucket=settings.MINIO_BUCKET_UPLOADS,
+            Key=version.file_key,
+            Retention={'Mode': 'COMPLIANCE', 'RetainUntilDate': until_dt},
+        )
+        return True
+    except Exception:
+        # Object-lock non supporté / indisponible → on dégrade en silence.
+        return False
+
+
+def archiver_legalement(document, *, user, motif='', retain_until=None):
+    """GED23 — Archive un document à VALEUR PROBANTE (write-once / object-lock).
+
+    Pose un `ArchivageLegal` sur le document, ce qui le rend (et toutes ses
+    versions) IMMUABLE — WRITE-ONCE : aucune modification ni suppression
+    ultérieure (gardes au niveau modèle + service). On fige le `hash_integrite`
+    (SHA-256 du contenu de la version courante) comme preuve d'intégrité, et —
+    en BONUS best-effort — on tente de poser un verrou objet (object-lock
+    retain-until) côté stockage SI le backend le supporte (sinon on dégrade
+    proprement : l'immuabilité applicative reste LA garantie).
+
+    Multi-tenant : `company` et `archive_par` sont posés CÔTÉ SERVEUR (jamais
+    lus du corps de requête). `PermissionError` si l'utilisateur n'est pas de la
+    société du document. Idempotence : un document déjà archivé légalement lève
+    `ValueError` (un archivage est unique et définitif — write-once).
+
+    `retain_until` (date OU datetime, OPTIONNEL) est la date de rétention du
+    verrou objet — propagée jusqu'à la pose best-effort du verrou.
+
+    Renvoie l'`ArchivageLegal` créé.
+    """
+    from .models import ArchivageLegal, DocumentVersion
+
+    if document.company_id != getattr(user, 'company_id', None):
+        raise PermissionError("Document inaccessible.")
+    # Write-once : un document n'est archivé légalement qu'une seule fois.
+    if ArchivageLegal.objects.filter(document=document).exists():
+        raise ValueError("Ce document est déjà archivé légalement.")
+    # Version courante figée (la plus récente) — sert au hash + à l'object-lock.
+    version = (DocumentVersion.objects
+               .filter(document=document)
+               .order_by('-version')
+               .first())
+    hash_integrite = _version_integrity_hash(version)
+    # Normalise retain_until → date (le champ modèle est une DateField).
+    retain_date = None
+    if retain_until is not None:
+        import datetime as _dt
+        retain_date = (retain_until.date()
+                       if isinstance(retain_until, _dt.datetime)
+                       else retain_until)
+    # BONUS best-effort : pose l'object-lock AVANT de créer la trace, pour
+    # refléter fidèlement s'il a réussi (dégrade en silence sinon).
+    lock_applique = _try_set_object_lock(version, retain_date)
+    with transaction.atomic():
+        # Re-vérifie sous transaction (la contrainte d'unicité protège aussi en
+        # base, mais on renvoie une erreur métier propre en cas de course).
+        if ArchivageLegal.objects.filter(document=document).exists():
+            raise ValueError("Ce document est déjà archivé légalement.")
+        archivage = ArchivageLegal.objects.create(
+            company=document.company,
+            document=document,
+            version=version,
+            archive_par=user,
+            motif=(motif or '').strip(),
+            hash_integrite=hash_integrite,
+            object_lock_retain_until=retain_date,
+            object_lock_applique=lock_applique,
+        )
+    return archivage
+
+
+def assert_not_archive_legalement(document):
+    """GED23 — Garde : rejette toute écriture si le document est archivé (WORM).
+
+    À appeler côté service avant toute écriture (ajout de version, changement de
+    statut, déplacement, verrouillage…) sur un document. La garde au niveau
+    modèle (`save`/`delete`) est le filet de sécurité ultime ; cette fonction
+    permet de refuser TÔT avec un message clair (→ 403 dans la vue). Lève
+    `ArchivageLegalError` si le document est archivé légalement."""
+    from .models import ARCHIVE_LEGALE_MESSAGE, ArchivageLegalError
+    if _document_archive_legalement(document):
+        raise ArchivageLegalError(ARCHIVE_LEGALE_MESSAGE)

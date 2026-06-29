@@ -1,9 +1,9 @@
 from rest_framework import serializers
 
 from .models import (
-    Cabinet, Coffre, DemandeApprobation, Document, DocumentLien, DocumentTag,
-    DocumentTagAssignment, DocumentVersion, Folder, PartageGed,
-    PolitiqueRetention,
+    ArchivageLegal, Cabinet, Coffre, DemandeApprobation, Document,
+    DocumentLien, DocumentTag, DocumentTagAssignment, DocumentVersion, Folder,
+    PartageGed, PolitiqueRetention,
 )
 from . import services
 
@@ -491,3 +491,34 @@ class PolitiqueRetentionSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError(
                 'Une politique cible au plus un cabinet OU un dossier.')
         return attrs
+
+
+class ArchivageLegalSerializer(serializers.ModelSerializer):
+    """GED23 — Archivage légal à valeur probante (write-once / object-lock).
+
+    En CRÉATION : seul `document` (et `motif`/`retain_until` optionnels) est lu
+    du corps — `company`, `archive_par`, `version`, `hash_integrite` et le verrou
+    objet sont posés CÔTÉ SERVEUR via `services.archiver_legalement` (jamais lus
+    du corps). En LECTURE : expose la trace immuable complète. Un archivage ne se
+    modifie ni ne se supprime jamais (immuable) ; tous les champs effectifs sont
+    en lecture seule ici (la création passe par le service / l'action dédiée)."""
+    document_nom = serializers.CharField(
+        source='document.nom', read_only=True, default=None)
+    archive_par_nom = serializers.CharField(
+        source='archive_par.username', read_only=True, default=None)
+    version_numero = serializers.IntegerField(
+        source='version.version', read_only=True, default=None)
+
+    class Meta:
+        model = ArchivageLegal
+        fields = [
+            'id', 'document', 'document_nom',
+            'version', 'version_numero',
+            'archive_le', 'archive_par', 'archive_par_nom',
+            'motif', 'hash_integrite',
+            'object_lock_retain_until', 'object_lock_applique',
+        ]
+        read_only_fields = [
+            'version', 'archive_le', 'archive_par',
+            'hash_integrite', 'object_lock_applique',
+        ]
