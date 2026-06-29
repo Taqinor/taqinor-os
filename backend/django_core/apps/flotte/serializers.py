@@ -12,6 +12,7 @@ from .models import (
     Conducteur,
     EnginRoulant,
     EtatDesLieux,
+    PleinCarburant,
     ReferentielFlotte,
     ReservationVehicule,
     Vehicule,
@@ -514,3 +515,89 @@ class EtatDesLieuxSerializer(serializers.ModelSerializer):
                  "Ce conducteur n'appartient pas à votre société."})
         return attrs
 
+
+# ── FLOTTE12 — Carnet de carburant (`PleinCarburant`) ────────────────────────
+
+class PleinCarburantSerializer(serializers.ModelSerializer):
+    """FLOTTE12 — Un plein de carburant au carnet d'un véhicule.
+
+    ``company`` est posée côté serveur (jamais lue du corps de requête). Le
+    véhicule (et le conducteur si fourni) doivent appartenir à la société
+    courante. La cohérence du kilométrage (compteur monotone croissant) est
+    vérifiée via ``services.kilometrage_incoherent`` → 400 si le compteur recule.
+
+    Champs lecture seule :
+    - ``vehicule_label``  : désignation du véhicule.
+    - ``unite_display``   : libellé de l'unité.
+    - ``prix_unitaire``   : prix par litre / kWh (MAD), ``None`` si quantité nulle.
+    """
+
+    unite_display = serializers.CharField(
+        source='get_unite_display', read_only=True)
+    vehicule_label = serializers.SerializerMethodField()
+    prix_unitaire = serializers.SerializerMethodField()
+
+    class Meta:
+        model = PleinCarburant
+        fields = [
+            'id', 'vehicule', 'vehicule_label', 'conducteur', 'date_plein',
+            'kilometrage', 'quantite', 'unite', 'unite_display', 'prix_total',
+            'prix_unitaire', 'plein_complet', 'station', 'notes',
+            'date_creation',
+        ]
+        read_only_fields = ['date_creation']
+
+    def get_vehicule_label(self, obj):
+        return str(obj.vehicule) if obj.vehicule_id else None
+
+    def get_prix_unitaire(self, obj):
+        return obj.prix_unitaire
+
+    def validate_quantite(self, value):
+        if value is not None and value < 0:
+            raise serializers.ValidationError(
+                "La quantité ne peut pas être négative.")
+        return value
+
+    def validate_prix_total(self, value):
+        if value is not None and value < 0:
+            raise serializers.ValidationError(
+                "Le prix total ne peut pas être négatif.")
+        return value
+
+    def validate(self, attrs):
+        request = self.context.get('request')
+        company = getattr(getattr(request, 'user', None), 'company', None)
+
+        vehicule = attrs.get(
+            'vehicule', getattr(self.instance, 'vehicule', None))
+        conducteur = attrs.get(
+            'conducteur', getattr(self.instance, 'conducteur', None))
+        kilometrage = attrs.get(
+            'kilometrage', getattr(self.instance, 'kilometrage', None))
+        date_plein = attrs.get(
+            'date_plein', getattr(self.instance, 'date_plein', None))
+
+        if company is not None:
+            if vehicule is not None and vehicule.company_id != company.id:
+                raise serializers.ValidationError(
+                    {'vehicule':
+                     "Ce véhicule n'appartient pas à votre société."})
+            if conducteur is not None and conducteur.company_id != company.id:
+                raise serializers.ValidationError(
+                    {'conducteur':
+                     "Ce conducteur n'appartient pas à votre société."})
+
+            # Cohérence du kilométrage (compteur monotone croissant).
+            if vehicule is not None and kilometrage is not None \
+                    and date_plein is not None:
+                from .services import kilometrage_incoherent
+                exclude_pk = (
+                    self.instance.pk if self.instance is not None else None)
+                incoherent, message = kilometrage_incoherent(
+                    company, vehicule, kilometrage, date_plein,
+                    exclude_pk=exclude_pk)
+                if incoherent:
+                    raise serializers.ValidationError({'kilometrage': message})
+
+        return attrs

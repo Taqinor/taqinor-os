@@ -17,6 +17,7 @@ from .models import (
     Conducteur,
     EnginRoulant,
     EtatDesLieux,
+    PleinCarburant,
     ReferentielFlotte,
     ReservationVehicule,
     Vehicule,
@@ -27,6 +28,7 @@ from .serializers import (
     ConducteurSerializer,
     EnginRoulantSerializer,
     EtatDesLieuxSerializer,
+    PleinCarburantSerializer,
     ReferentielFlotteSerializer,
     ReservationVehiculeSerializer,
     VehiculeSerializer,
@@ -279,5 +281,37 @@ class EtatDesLieuxViewSet(_FlotteBaseViewSet):
                 qs = qs.filter(reservation_id=int(reservation))
             except (ValueError, TypeError):
                 pass
+
+        return qs
+
+
+class PleinCarburantViewSet(_FlotteBaseViewSet):
+    """Carnet de carburant (FLOTTE12).
+
+    Filtrable par ``?vehicule=<id>`` et ``?unite=<litre|kwh>``. Recherche par
+    station. Scopé par société. Le kilométrage est validé cohérent (compteur
+    monotone croissant) au sérialiseur.
+    """
+    queryset = PleinCarburant.objects.select_related('vehicule', 'conducteur')
+    serializer_class = PleinCarburantSerializer
+    filter_backends = [filters.SearchFilter, filters.OrderingFilter]
+    search_fields = ['station']
+    ordering_fields = ['date_plein', 'kilometrage', 'prix_total',
+                       'date_creation']
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        params = self.request.query_params
+
+        vehicule = params.get('vehicule')
+        if vehicule:
+            try:
+                qs = qs.filter(vehicule_id=int(vehicule))
+            except (ValueError, TypeError):
+                pass
+
+        unite = params.get('unite')
+        if unite:
+            qs = qs.filter(unite=unite)
 
         return qs

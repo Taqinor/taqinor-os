@@ -13,6 +13,8 @@ from .models import (
     AffectationConducteur,
     Conducteur,
     EnginRoulant,
+    EtatDesLieux,
+    PleinCarburant,
     ReservationVehicule,
     Vehicule,
 )
@@ -139,6 +141,30 @@ def reservations_de_la_societe(company, vehicule_id=None, actives_only=False):
     if actives_only:
         qs = qs.filter(statut__in=ReservationVehicule.STATUTS_ACTIFS)
     return qs
+
+
+def etats_des_lieux_du_vehicule(company, vehicule_id):
+    """FLOTTE11 — Tous les états des lieux d'un véhicule (scopé société),
+    par ordre chronologique décroissant."""
+    return (
+        EtatDesLieux.objects
+        .filter(company=company, vehicule_id=vehicule_id)
+        .select_related('vehicule', 'conducteur', 'reservation')
+        .order_by('-date_constat')
+    )
+
+
+def pleins_du_vehicule(company, vehicule_id):
+    """FLOTTE12 — Tous les pleins de carburant d'un véhicule (scopé société),
+    par ordre chronologique décroissant."""
+    return (
+        PleinCarburant.objects
+        .filter(company=company, vehicule_id=vehicule_id)
+        .select_related('vehicule', 'conducteur')
+        .order_by('-date_plein', '-kilometrage')
+    )
+
+
 def emplacement_stock_label(company, emplacement_stock_id):
     """FLOTTE3 — Libellé de l'emplacement de stock lié à un véhicule.
 

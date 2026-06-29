@@ -118,3 +118,55 @@ def reservations_en_conflit(company, vehicule, debut, fin, exclude_pk=None):
         qs = qs.exclude(pk=exclude_pk)
     return qs
 
+
+# ── FLOTTE12 — Cohérence du kilométrage au carnet de carburant ────────────────
+
+def kilometrage_incoherent(company, vehicule, kilometrage, date_plein,
+                           exclude_pk=None):
+    """FLOTTE12 — Indique si ``kilometrage`` est incohérent pour ce véhicule.
+
+    Règle simple : le kilométrage relevé à une date doit être >= au plus grand
+    kilométrage déjà enregistré à une date antérieure ou égale, et <= au plus
+    petit kilométrage enregistré à une date postérieure ou égale (le compteur ne
+    recule jamais). Retourne ``(incoherent: bool, message: str)``. Lecture seule.
+
+    NB : la détection fine d'anomalie/fraude (sauts aberrants) relève de FLOTTE14
+    — ici on garde le carnet cohérent (compteur monotone croissant).
+    """
+    from .models import PleinCarburant
+
+    vehicule_id = getattr(vehicule, 'id', vehicule)
+    base = PleinCarburant.objects.filter(
+        company=company, vehicule_id=vehicule_id)
+    if exclude_pk is not None:
+        base = base.exclude(pk=exclude_pk)
+
+    # Plus haut km à une date <= date_plein.
+    avant = (
+        base.filter(date_plein__lte=date_plein)
+        .order_by('-kilometrage')
+        .values_list('kilometrage', flat=True)
+        .first()
+    )
+    if avant is not None and kilometrage < avant:
+        return (
+            True,
+            "Le kilométrage saisi est inférieur à un relevé antérieur "
+            f"({avant} km) — le compteur ne peut pas reculer.",
+        )
+
+    # Plus bas km à une date >= date_plein.
+    apres = (
+        base.filter(date_plein__gte=date_plein)
+        .order_by('kilometrage')
+        .values_list('kilometrage', flat=True)
+        .first()
+    )
+    if apres is not None and kilometrage > apres:
+        return (
+            True,
+            "Le kilométrage saisi est supérieur à un relevé postérieur "
+            f"({apres} km) — le compteur ne peut pas reculer.",
+        )
+
+    return (False, '')

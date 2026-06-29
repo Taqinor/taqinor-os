@@ -531,6 +531,96 @@ class EtatDesLieux(models.Model):
                f'({self.date_constat:%Y-%m-%d})'
 
 
+# ── FLOTTE12 — Carnet de carburant (`PleinCarburant`) ────────────────────────
+
+class PleinCarburant(models.Model):
+    """Un plein de carburant (ou charge électrique) au carnet d'un véhicule.
+
+    Enregistre une prise de carburant : kilométrage au compteur, quantité
+    (litres ou kWh), prix total, plein complet ou non, station. La cohérence du
+    kilométrage (relevé strictement croissant par véhicule) est vérifiée côté
+    serveur (sérialiseur) — la détection fine d'anomalie/fraude relève de
+    FLOTTE14 ; ici on pose le carnet et le coût unitaire calculé.
+
+    Multi-tenant : ``company`` est posée côté serveur, jamais lue du corps de
+    requête.
+    """
+
+    class Unite(models.TextChoices):
+        LITRE = 'litre', 'Litre'
+        KWH = 'kwh', 'kWh'
+
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='pleins_carburant_flotte',
+        verbose_name='Société',
+    )
+    vehicule = models.ForeignKey(
+        'Vehicule',
+        on_delete=models.CASCADE,
+        related_name='pleins_carburant_flotte',
+        verbose_name='Véhicule',
+    )
+    conducteur = models.ForeignKey(
+        'Conducteur',
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='pleins_carburant_flotte',
+        verbose_name='Conducteur',
+    )
+    date_plein = models.DateField(verbose_name='Date du plein')
+    kilometrage = models.PositiveIntegerField(
+        verbose_name='Kilométrage au compteur')
+    quantite = models.DecimalField(
+        max_digits=10, decimal_places=2, default=0,
+        verbose_name='Quantité')
+    unite = models.CharField(
+        max_length=10, choices=Unite.choices, default=Unite.LITRE,
+        verbose_name='Unité')
+    prix_total = models.DecimalField(
+        max_digits=12, decimal_places=2, default=0,
+        verbose_name='Prix total (MAD)')
+    plein_complet = models.BooleanField(
+        default=True, verbose_name='Plein complet')
+    station = models.CharField(
+        max_length=120, blank=True, verbose_name='Station')
+    notes = models.TextField(blank=True, verbose_name='Notes')
+    date_creation = models.DateTimeField(
+        auto_now_add=True, verbose_name='Créé le')
+
+    class Meta:
+        verbose_name = 'Plein de carburant'
+        verbose_name_plural = 'Pleins de carburant'
+        ordering = ['-date_plein', '-kilometrage']
+        indexes = [
+            models.Index(
+                fields=['company', 'vehicule'],
+                name='flotte_plein_co_veh_idx',
+            ),
+        ]
+
+    def clean(self):
+        if self.quantite is not None and self.quantite < 0:
+            raise ValidationError(
+                "La quantité ne peut pas être négative.")
+        if self.prix_total is not None and self.prix_total < 0:
+            raise ValidationError(
+                "Le prix total ne peut pas être négatif.")
+
+    @property
+    def prix_unitaire(self):
+        """Prix par litre / kWh (MAD), ou ``None`` si quantité nulle."""
+        if not self.quantite:
+            return None
+        return round(float(self.prix_total) / float(self.quantite), 3)
+
+    def __str__(self):
+        return f'{self.vehicule} — {self.date_plein} ' \
+               f'({self.quantite} {self.get_unite_display()})'
+
+
 # ── FLOTTE7 — Conducteurs / chauffeurs ────────────────────────────────────────
 
 class Conducteur(models.Model):
