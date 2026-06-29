@@ -7,6 +7,7 @@ Toutes les lectures sont bornées à une société.
 from .models import (
     ACL_RANK, AclGed, Cabinet, Coffre, DemandeApprobation, Document,
     DocumentLien, DocumentTag, DocumentVersion, Folder, PartageGed,
+    PolitiqueRetention,
 )
 
 
@@ -420,3 +421,154 @@ def acls_for_document(document):
 def acls_for_folder(folder):
     """GED19 — Entrées ACL posées DIRECTEMENT sur un dossier (QuerySet)."""
     return AclGed.objects.filter(company=folder.company, folder=folder)
+
+
+# ── GED22 — Politiques de rétention (durée de conservation + échéance) ─────
+
+def politiques_retention_for_company(company, *, actif_only=False):
+    """GED22 — Politiques de rétention d'une société (QuerySet, scopé société).
+
+    Avec `actif_only`, ne renvoie que les politiques actives. Borné à la société
+    — jamais de fuite cross-société.
+    """
+    qs = PolitiqueRetention.objects.filter(company=company)
+    if actif_only:
+        qs = qs.filter(actif=True)
+    return qs
+
+
+def _politique_couvre_document(politique, document):
+    """True si une politique (active) couvre ce document, selon sa portée.
+
+    Portées :
+      * dossier  : le document vit dans ce dossier OU son sous-arbre (chemin
+        matérialisé `Folder.path`) ;
+      * cabinet  : le dossier du document appartient à ce cabinet ;
+      * type     : la catégorie (`type_document`) correspond — comparée au
+        `type_document` du document s'il existe (sinon non couvert) ;
+      * global   : couvre tous les documents de la société.
+    Toujours dans la même société (présupposé par l'appelant).
+    """
+    scope = politique.scope
+    if scope == 'dossier':
+        folder = document.folder
+        if folder is None:
+            return False
+        target = politique.folder
+        if target is None:
+            return False
+        # Le dossier du document est la cible elle-même OU un descendant
+        # (son chemin matérialisé commence par celui de la cible).
+        return bool(folder.path and target.path
+                    and folder.path.startswith(target.path))
+    if scope == 'cabinet':
+        folder = document.folder
+        return folder is not None and folder.cabinet_id == politique.cabinet_id
+    if scope == 'type':
+        doc_type = _document_type(document)
+        if not doc_type:
+            return False
+        return doc_type.lower() == politique.type_document.strip().lower()
+    # global — couvre tout document de la société.
+    return True
+
+
+def _document_type(document):
+    """Catégorie libre d'un document, pour la portée `type` d'une politique.
+
+    Le modèle Document n'a pas de champ catégorie dédié : on lit une éventuelle
+    valeur dans ses métadonnées typées (`custom_data`) sous l'une des clés
+    usuelles (`type_document`/`type`/`categorie`). Renvoie '' si absente — un
+    document sans catégorie n'est jamais couvert par une politique typée."""
+    data = getattr(document, 'custom_data', None) or {}
+    if not isinstance(data, dict):
+        return ''
+    for key in ('type_document', 'type', 'categorie'):
+        val = data.get(key)
+        if val:
+            return str(val).strip()
+    return ''
+
+
+def politique_applicable(document, *, politiques=None):
+    """GED22 — Politique de rétention ACTIVE la PLUS SPÉCIFIQUE pour un document.
+
+    Parmi les politiques actives de la société qui couvrent le document, retient
+    la plus spécifique (dossier > cabinet > type > global) ; à spécificité égale,
+    la durée de conservation la PLUS COURTE l'emporte (la contrainte la plus
+    stricte gagne), puis le plus petit id (déterministe). Renvoie la
+    `PolitiqueRetention` retenue, ou ``None`` si aucune ne couvre le document.
+
+    `politiques` permet de passer une liste pré-chargée (évite une requête par
+    document quand on en balaie plusieurs).
+    """
+    if politiques is None:
+        politiques = list(
+            politiques_retention_for_company(document.company, actif_only=True))
+    best = None
+    for pol in politiques:
+        if not _politique_couvre_document(pol, document):
+            continue
+        if best is None:
+            best = pol
+            continue
+        if pol.scope_rank > best.scope_rank:
+            best = pol
+        elif pol.scope_rank == best.scope_rank:
+            if pol.duree_conservation_jours < best.duree_conservation_jours:
+                best = pol
+            elif (pol.duree_conservation_jours == best.duree_conservation_jours
+                  and pol.pk < best.pk):
+                best = pol
+    return best
+
+
+def documents_echus(company, today=None):
+    """GED22 — Documents ÉCHUS au regard de leur politique de rétention applicable.
+
+    Pour chaque document de la société, on résout la politique de rétention
+    ACTIVE la plus spécifique (`politique_applicable`) puis on compare l'ÂGE du
+    document — calculé depuis sa date de création (`Document.created_at`) jusqu'à
+    `today` — à la durée de conservation. Un document est échu quand son âge (en
+    jours) DÉPASSE STRICTEMENT la durée de conservation de sa politique.
+
+    L'échéance est purement CONSULTATIVE : cette fonction LIT et LISTE seulement
+    — elle ne modifie ni ne supprime jamais aucun document (jamais destructif).
+
+    `today` (date OU datetime) est INJECTABLE et propagé jusqu'au calcul d'âge ;
+    par défaut on prend la date du jour (`timezone.localdate()`). Renvoie une
+    liste de tuples ``(document, politique, jours_depasses)`` triée du plus en
+    retard au moins en retard, bornée à la société.
+    """
+    import datetime
+
+    from django.utils import timezone
+
+    if today is None:
+        today = timezone.localdate()
+    elif isinstance(today, datetime.datetime):
+        # datetime → date (on raisonne en jours pleins)
+        today = today.date()
+
+    politiques = list(
+        politiques_retention_for_company(company, actif_only=True))
+    if not politiques:
+        return []
+
+    documents = (Document.objects.filter(company=company)
+                 .select_related('folder', 'folder__cabinet'))
+    echus = []
+    for document in documents:
+        politique = politique_applicable(document, politiques=politiques)
+        if politique is None:
+            continue
+        created = document.created_at
+        if created is None:
+            continue
+        created_date = created.date() if hasattr(created, 'date') else created
+        age_jours = (today - created_date).days
+        depasses = age_jours - politique.duree_conservation_jours
+        if depasses > 0:
+            echus.append((document, politique, depasses))
+    echus.sort(key=lambda item: (-item[2], item[0].pk))
+    return echus
