@@ -20,21 +20,23 @@ from authentication.permissions import IsResponsableOrAdmin
 
 from . import selectors, services
 from .models import (
-    BordereauRemise, Caisse, CessionImmobilisation, CompteComptable,
-    CompteTresorerie, DotationAmortissement, EcritureComptable, Effet,
-    ExerciceComptable, Immobilisation, Journal, LignePrevisionnelTresorerie,
-    LigneReleve, MouvementCaisse, NoteFrais, PaymentRun, PeriodeComptable,
-    PlanComptable, Rapprochement, RapprochementBancaire, VirementInterne,
+    BaremeIndemnite, BordereauRemise, Caisse, CessionImmobilisation,
+    CompteComptable, CompteTresorerie, DotationAmortissement, EcritureComptable,
+    Effet, ExerciceComptable, Immobilisation, IndemniteChantier, Journal,
+    LignePrevisionnelTresorerie, LigneReleve, MouvementCaisse, NoteFrais,
+    PaymentRun, PeriodeComptable, PlanComptable, Rapprochement,
+    RapprochementBancaire, VirementInterne,
 )
 from .serializers import (
-    BordereauRemiseSerializer, CaisseSerializer,
+    BaremeIndemniteSerializer, BordereauRemiseSerializer, CaisseSerializer,
     CessionImmobilisationSerializer, ClotureCaisseSerializer,
     CompteComptableSerializer, CompteTresorerieSerializer,
     DotationAmortissementSerializer, EcritureComptableSerializer,
     EffetSerializer, ExerciceComptableSerializer, ImmobilisationSerializer,
-    JournalSerializer, LignePrevisionnelTresorerieSerializer,
-    LigneReleveSerializer, MouvementCaisseSerializer, NoteFraisSerializer,
-    PaymentRunSerializer, PeriodeComptableSerializer, PlanAmortissementSerializer,
+    IndemniteChantierSerializer, JournalSerializer,
+    LignePrevisionnelTresorerieSerializer, LigneReleveSerializer,
+    MouvementCaisseSerializer, NoteFraisSerializer, PaymentRunSerializer,
+    PeriodeComptableSerializer, PlanAmortissementSerializer,
     PlanComptableSerializer, RapprochementBancaireSerializer,
     RapprochementSerializer, VirementInterneSerializer,
 )
@@ -1348,3 +1350,176 @@ class NoteFraisViewSet(_ComptaBaseViewSet):
                 {'detail': exc.messages[0] if exc.messages else str(exc)},
                 status=status.HTTP_400_BAD_REQUEST)
         return Response(self.get_serializer(note).data)
+
+
+class BaremeIndemniteViewSet(_ComptaBaseViewSet):
+    """Barèmes d'indemnités km/per-diem chantier (FG136).
+
+    Société scopée, posée côté serveur ; Admin/Responsable uniquement. Un seul
+    barème peut être marqué « par défaut » actif par société : le poser sur un
+    barème démote automatiquement l'ancien défaut (jamais d'erreur de
+    contrainte).
+    """
+    queryset = BaremeIndemnite.objects.all()
+    serializer_class = BaremeIndemniteSerializer
+    filter_backends = [filters.OrderingFilter]
+    ordering_fields = ['libelle', 'defaut', 'id']
+
+    def _demote_other_defaults(self, company, keep_id=None):
+        qs = BaremeIndemnite.objects.filter(
+            company=company, defaut=True, actif=True)
+        if keep_id is not None:
+            qs = qs.exclude(id=keep_id)
+        qs.update(defaut=False)
+
+    def perform_create(self, serializer):
+        company = self.request.user.company
+        if serializer.validated_data.get('defaut') and \
+                serializer.validated_data.get('actif', True):
+            self._demote_other_defaults(company)
+        serializer.save(company=company)
+
+    def perform_update(self, serializer):
+        company = self.request.user.company
+        will_default = serializer.validated_data.get(
+            'defaut', serializer.instance.defaut)
+        will_actif = serializer.validated_data.get(
+            'actif', serializer.instance.actif)
+        if will_default and will_actif:
+            self._demote_other_defaults(
+                company, keep_id=serializer.instance.id)
+        serializer.save(company=company)
+
+
+class IndemniteChantierViewSet(_ComptaBaseViewSet):
+    """Indemnités kilométriques & per-diem chantier (FG136).
+
+    Saisie d'un déplacement chantier (employé, barème, GPS départ/chantier,
+    jours, aller-retour) : la distance (haversine) et les montants sont calculés
+    AUTOMATIQUEMENT côté serveur. Cycle de validation/remboursement par les
+    actions de service : ``soumettre``, ``valider`` (poste la charge : débit
+    classe 6 / crédit 4432), ``rejeter`` (motif figé), ``rembourser`` (poste le
+    paiement). Société scopée, posée côté serveur ; Admin/Responsable
+    uniquement ; aucune écriture de statut/montant directe par le corps.
+    """
+    queryset = IndemniteChantier.objects.select_related(
+        'employe', 'bareme', 'compte_charge', 'compte_tresorerie',
+        'ecriture_charge', 'ecriture_remboursement').all()
+    serializer_class = IndemniteChantierSerializer
+    filter_backends = [filters.SearchFilter, filters.OrderingFilter]
+    search_fields = ['reference', 'libelle_chantier']
+    ordering_fields = ['date_deplacement', 'montant_total', 'statut', 'id']
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        params = self.request.query_params
+        statut = params.get('statut')
+        if statut:
+            qs = qs.filter(statut=statut)
+        employe = params.get('employe')
+        if employe:
+            qs = qs.filter(employe_id=employe)
+        return qs
+
+    def create(self, request, *args, **kwargs):
+        serializer = self.get_serializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        vd = serializer.validated_data
+        try:
+            indem = services.creer_indemnite_chantier(
+                request.user.company,
+                employe=vd['employe'],
+                date_deplacement=vd['date_deplacement'],
+                bareme=vd.get('bareme'),
+                site_lat=vd.get('site_lat'),
+                site_lng=vd.get('site_lng'),
+                depart_lat=vd.get('depart_lat'),
+                depart_lng=vd.get('depart_lng'),
+                aller_retour=vd.get('aller_retour', True),
+                nombre_jours=vd.get('nombre_jours', 1),
+                libelle_chantier=vd.get('libelle_chantier', '') or '',
+                user=request.user)
+        except DjangoValidationError as exc:
+            return Response(
+                {'detail': exc.messages[0] if exc.messages else str(exc)},
+                status=status.HTTP_400_BAD_REQUEST)
+        return Response(
+            self.get_serializer(indem).data, status=status.HTTP_201_CREATED)
+
+    @action(detail=True, methods=['post'])
+    def soumettre(self, request, pk=None):
+        """Soumet l'indemnité pour validation (brouillon → soumise) — FG136."""
+        indem = self.get_object()  # scopée société par TenantMixin.
+        try:
+            indem = services.soumettre_indemnite_chantier(indem)
+        except DjangoValidationError as exc:
+            return Response(
+                {'detail': exc.messages[0] if exc.messages else str(exc)},
+                status=status.HTTP_400_BAD_REQUEST)
+        return Response(self.get_serializer(indem).data)
+
+    @action(detail=True, methods=['post'])
+    def valider(self, request, pk=None):
+        """Valide l'indemnité et poste la charge au grand livre (FG136).
+
+        Corps : ``{compte_charge?}``. Refusé en période close. Idempotent.
+        """
+        indem = self.get_object()  # scopée société par TenantMixin.
+        compte_charge = None
+        cc_id = request.data.get('compte_charge')
+        if cc_id:
+            compte_charge = CompteComptable.objects.filter(
+                company=request.user.company, id=cc_id).first()
+            if compte_charge is None:
+                return Response(
+                    {'detail': 'Compte de charge inconnu.'},
+                    status=status.HTTP_400_BAD_REQUEST)
+        try:
+            indem = services.valider_indemnite_chantier(
+                indem, user=request.user, compte_charge=compte_charge)
+        except DjangoValidationError as exc:
+            return Response(
+                {'detail': exc.messages[0] if exc.messages else str(exc)},
+                status=status.HTTP_400_BAD_REQUEST)
+        return Response(self.get_serializer(indem).data)
+
+    @action(detail=True, methods=['post'])
+    def rejeter(self, request, pk=None):
+        """Rejette une indemnité soumise (soumise → rejetée) — FG136."""
+        indem = self.get_object()  # scopée société par TenantMixin.
+        try:
+            indem = services.rejeter_indemnite_chantier(
+                indem, motif_rejet=request.data.get('motif_rejet', '') or '',
+                user=request.user)
+        except DjangoValidationError as exc:
+            return Response(
+                {'detail': exc.messages[0] if exc.messages else str(exc)},
+                status=status.HTTP_400_BAD_REQUEST)
+        return Response(self.get_serializer(indem).data)
+
+    @action(detail=True, methods=['post'])
+    def rembourser(self, request, pk=None):
+        """Rembourse l'indemnité validée et poste le paiement (FG136).
+
+        Corps : ``{compte_tresorerie, date_remboursement?}``. Le compte payeur
+        doit appartenir à la société. Refusé en période close. Idempotent.
+        """
+        indem = self.get_object()  # scopée société par TenantMixin.
+        treso = CompteTresorerie.objects.filter(
+            company=request.user.company,
+            id=request.data.get('compte_tresorerie')).first()
+        if treso is None:
+            return Response(
+                {'detail': 'Compte de trésorerie inconnu.'},
+                status=status.HTTP_400_BAD_REQUEST)
+        try:
+            indem = services.rembourser_indemnite_chantier(
+                indem, compte_tresorerie=treso,
+                date_remboursement=request.data.get('date_remboursement')
+                or None,
+                user=request.user)
+        except DjangoValidationError as exc:
+            return Response(
+                {'detail': exc.messages[0] if exc.messages else str(exc)},
+                status=status.HTTP_400_BAD_REQUEST)
+        return Response(self.get_serializer(indem).data)

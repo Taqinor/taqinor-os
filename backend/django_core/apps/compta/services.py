@@ -20,7 +20,8 @@ Trois blocs :
 * ``creer_exercice`` / ``reporter_a_nouveaux`` (FG117) — ouverture d'exercice et
   report des soldes de bilan dans le nouvel exercice (à-nouveaux).
 """
-from decimal import Decimal
+from decimal import ROUND_HALF_UP, Decimal
+from math import asin, cos, radians, sin, sqrt
 
 from django.conf import settings
 from django.core.exceptions import ValidationError
@@ -29,13 +30,13 @@ from django.db.models import Sum
 from django.utils import timezone
 
 from .models import (
-    BordereauRemise, Caisse, CessionImmobilisation, ClotureCaisse,
-    CompteComptable, CompteTresorerie, DotationAmortissement, EcritureComptable,
-    Effet, ExerciceComptable, Immobilisation, Journal, LigneEcriture,
-    LignePrevisionnelTresorerie, LigneReleve, MouvementCaisse,
-    NoteFrais, PaymentRun, PaymentRunLine, PeriodeComptable, PlanAmortissement,
-    PlanComptable, PointageReleve, Rapprochement, RapprochementBancaire,
-    VirementInterne,
+    BaremeIndemnite, BordereauRemise, Caisse, CessionImmobilisation,
+    ClotureCaisse, CompteComptable, CompteTresorerie, DotationAmortissement,
+    EcritureComptable, Effet, ExerciceComptable, Immobilisation,
+    IndemniteChantier, Journal, LigneEcriture, LignePrevisionnelTresorerie,
+    LigneReleve, MouvementCaisse, NoteFrais, PaymentRun, PaymentRunLine,
+    PeriodeComptable, PlanAmortissement, PlanComptable, PointageReleve,
+    Rapprochement, RapprochementBancaire, VirementInterne,
 )
 
 
@@ -2364,3 +2365,296 @@ def rembourser_note_frais(note, *, compte_tresorerie, date_remboursement=None,
         'statut', 'compte_tresorerie', 'mode_remboursement',
         'date_remboursement', 'rembourse_par', 'ecriture_remboursement'])
     return note
+
+
+# ── FG136 — Indemnités kilométriques & per-diem chantier ───────────────────
+
+# Compte de charge par défaut imputé à une indemnité chantier validée : le même
+# 6143 « Déplacements, missions et réceptions » du barème CGNC que les notes de
+# frais de déplacement (la dette envers l'employé reste créditée en 4432).
+_COMPTE_INDEM_DEFAUT = '6143'
+_CENT = Decimal('0.01')
+
+
+def _haversine_km(lat1, lng1, lat2, lng2):
+    """Distance en kilomètres entre deux points GPS (haversine) — FG136.
+
+    Réutilise la même formule de distance que le reste du code (terrain/SAV) :
+    math pure, aucun service externe. Renvoie ``None`` si une coordonnée manque
+    ou est illisible.
+    """
+    if None in (lat1, lng1, lat2, lng2):
+        return None
+    try:
+        lat1, lng1, lat2, lng2 = (
+            float(lat1), float(lng1), float(lat2), float(lng2))
+    except (TypeError, ValueError):
+        return None
+    r = 6371.0
+    dlat = radians(lat2 - lat1)
+    dlng = radians(lng2 - lng1)
+    a = (sin(dlat / 2) ** 2
+         + cos(radians(lat1)) * cos(radians(lat2)) * sin(dlng / 2) ** 2)
+    return round(2 * r * asin(sqrt(a)), 3)
+
+
+def bareme_indemnite_defaut(company):
+    """Barème par défaut actif de la société, ou ``None`` — FG136."""
+    return BaremeIndemnite.objects.filter(
+        company=company, defaut=True, actif=True).first()
+
+
+def calculer_indemnite(taux_km, per_diem, distance_km, nombre_jours, *,
+                       aller_retour=True):
+    """Calcule les montants d'une indemnité chantier (math pure) — FG136.
+
+    ``distance_km`` est la distance simple (départ → chantier) ; elle est
+    doublée si ``aller_retour``. Renvoie un dict figé
+    ``{distance_km, montant_km, montant_per_diem, montant_total}`` arrondi au
+    centime. Aucune écriture en base.
+    """
+    taux_km = Decimal(taux_km or 0)
+    per_diem = Decimal(per_diem or 0)
+    distance = Decimal(str(distance_km or 0))
+    jours = int(nombre_jours or 0)
+    parcourue = distance * (2 if aller_retour else 1)
+    montant_km = (taux_km * parcourue).quantize(_CENT, rounding=ROUND_HALF_UP)
+    montant_per_diem = (
+        per_diem * Decimal(jours)).quantize(_CENT, rounding=ROUND_HALF_UP)
+    return {
+        'distance_km': parcourue.quantize(
+            Decimal('0.001'), rounding=ROUND_HALF_UP),
+        'montant_km': montant_km,
+        'montant_per_diem': montant_per_diem,
+        'montant_total': montant_km + montant_per_diem,
+    }
+
+
+def creer_indemnite_chantier(company, *, employe, date_deplacement,
+                             bareme=None, site_lat=None, site_lng=None,
+                             depart_lat=None, depart_lng=None,
+                             aller_retour=True, nombre_jours=1,
+                             libelle_chantier='', user=None):
+    """Crée une indemnité chantier (FG136) en BROUILLON, montants auto-calculés.
+
+    La distance ``départ → chantier`` est calculée par haversine depuis les GPS
+    fournis (réutilise le calcul de distance existant) ; le montant est figé à
+    ``taux_km × km(× 2 si aller-retour) + per_diem × nombre_jours``. Le barème
+    par défaut de la société est utilisé si aucun n'est fourni. La ``reference``
+    (IND-YYYYMM-NNNN) et la ``company`` sont posées côté serveur (jamais lues du
+    corps). Renvoie l'indemnité.
+    """
+    bareme = bareme or bareme_indemnite_defaut(company)
+    if bareme is None:
+        raise ValidationError(
+            "Aucun barème d'indemnité : définissez-en un (ou marquez-en un par "
+            "défaut) avant de créer une indemnité chantier.")
+    if bareme.company_id != company.id:
+        raise ValidationError("Barème inconnu.")
+    distance = _haversine_km(depart_lat, depart_lng, site_lat, site_lng) or 0
+    montants = calculer_indemnite(
+        bareme.taux_km, bareme.per_diem, distance, nombre_jours,
+        aller_retour=aller_retour)
+    indem = IndemniteChantier(
+        company=company,
+        employe=employe,
+        bareme=bareme,
+        date_deplacement=date_deplacement,
+        libelle_chantier=libelle_chantier or '',
+        depart_lat=depart_lat, depart_lng=depart_lng,
+        site_lat=site_lat, site_lng=site_lng,
+        aller_retour=bool(aller_retour),
+        nombre_jours=int(nombre_jours or 0),
+        distance_km=montants['distance_km'],
+        montant_km=montants['montant_km'],
+        montant_per_diem=montants['montant_per_diem'],
+        montant_total=montants['montant_total'],
+        created_by=user,
+    )
+    indem.full_clean(exclude=['reference', 'employe', 'bareme', 'created_by'])
+    from apps.ventes.utils.references import create_with_reference
+
+    def _save(reference):
+        indem.reference = reference
+        indem.save()
+        return indem
+
+    # Savepoint + retry race-safe (highest-used+1, jamais count()+1).
+    return create_with_reference(IndemniteChantier, 'IND', company, _save)
+
+
+def recalculer_indemnite_chantier(indem):
+    """Recalcule les montants d'une indemnité encore modifiable — FG136.
+
+    Réservé aux états non engagés (brouillon/rejetée) ; refuse de toucher une
+    indemnité déjà validée/remboursée (montants figés et postés). Renvoie
+    l'indemnité.
+    """
+    if indem.statut not in (IndemniteChantier.Statut.BROUILLON,
+                            IndemniteChantier.Statut.REJETEE):
+        raise ValidationError(
+            "Seule une indemnité en brouillon (ou rejetée) peut être "
+            "recalculée.")
+    distance = _haversine_km(
+        indem.depart_lat, indem.depart_lng,
+        indem.site_lat, indem.site_lng) or 0
+    montants = calculer_indemnite(
+        indem.bareme.taux_km, indem.bareme.per_diem, distance,
+        indem.nombre_jours, aller_retour=indem.aller_retour)
+    indem.distance_km = montants['distance_km']
+    indem.montant_km = montants['montant_km']
+    indem.montant_per_diem = montants['montant_per_diem']
+    indem.montant_total = montants['montant_total']
+    indem.save(update_fields=[
+        'distance_km', 'montant_km', 'montant_per_diem', 'montant_total'])
+    return indem
+
+
+def soumettre_indemnite_chantier(indem):
+    """Soumet une indemnité pour validation (brouillon → soumise) — FG136."""
+    if indem.statut not in (IndemniteChantier.Statut.BROUILLON,
+                            IndemniteChantier.Statut.REJETEE):
+        raise ValidationError(
+            "Seule une indemnité en brouillon (ou rejetée) peut être soumise.")
+    if indem.montant_total is None or indem.montant_total <= 0:
+        raise ValidationError(
+            "Impossible de soumettre une indemnité de montant nul.")
+    indem.statut = IndemniteChantier.Statut.SOUMISE
+    indem.motif_rejet = ''
+    indem.save(update_fields=['statut', 'motif_rejet'])
+    return indem
+
+
+@transaction.atomic
+def valider_indemnite_chantier(indem, *, user=None, compte_charge=None):
+    """Valide une indemnité chantier et POSTE la charge au grand livre (FG136).
+
+    Écriture ÉQUILIBRÉE dans le journal OD, datée du déplacement : débit du
+    compte de charge classe 6 (fourni, sinon 6143) / crédit du compte
+    personnel-créditeur 4432 (la dette envers l'employé). RESPECTE LE VERROU DE
+    PÉRIODE (FG115). Idempotent. Renvoie l'indemnité.
+    """
+    if indem.statut == IndemniteChantier.Statut.VALIDEE:
+        return indem
+    if indem.statut != IndemniteChantier.Statut.SOUMISE:
+        raise ValidationError(
+            "Seule une indemnité soumise peut être validée.")
+    company = indem.company
+    montant = Decimal(indem.montant_total or 0)
+    if montant <= 0:
+        raise ValidationError(
+            "Impossible de valider une indemnité de montant nul.")
+    if PeriodeComptable.date_verrouillee(company.id, indem.date_deplacement):
+        raise ValidationError(
+            "Période comptable clôturée : impossible de valider l'indemnité "
+            f"du {indem.date_deplacement}.")
+    charge = compte_charge or indem.compte_charge or _assurer_compte(
+        company, _COMPTE_INDEM_DEFAUT)
+    personnel = _assurer_compte(company, _COMPTE_PERSONNEL_CREDITEUR)
+    journal = _journal(company, Journal.Type.OPERATIONS_DIVERSES)
+    if journal is None:
+        seed_journaux(company)
+        journal = _journal(company, Journal.Type.OPERATIONS_DIVERSES)
+    libelle = (f"Indemnité chantier {indem.reference} — "
+               f"{indem.libelle_chantier}").strip()
+    lignes = [
+        {'compte': charge, 'debit': montant, 'credit': Decimal('0'),
+         'libelle': libelle},
+        {'compte': personnel, 'debit': Decimal('0'), 'credit': montant,
+         'libelle': libelle, 'tiers_type': 'employe',
+         'tiers_id': indem.employe_id},
+    ]
+    ecriture = creer_ecriture(
+        company, journal, indem.date_deplacement, libelle, lignes,
+        reference=indem.reference or f'IND-{indem.id}',
+        source_type='indemnite_chantier', source_id=indem.id,
+        created_by=user, statut=EcritureComptable.Statut.VALIDEE,
+    )
+    indem.statut = IndemniteChantier.Statut.VALIDEE
+    indem.compte_charge = charge
+    indem.valide_par = user
+    indem.date_validation = timezone.now()
+    indem.ecriture_charge = ecriture
+    indem.motif_rejet = ''
+    indem.save(update_fields=[
+        'statut', 'compte_charge', 'valide_par', 'date_validation',
+        'ecriture_charge', 'motif_rejet'])
+    return indem
+
+
+def rejeter_indemnite_chantier(indem, *, motif_rejet='', user=None):
+    """Rejette une indemnité soumise (soumise → rejetée), motif figé — FG136."""
+    if indem.statut != IndemniteChantier.Statut.SOUMISE:
+        raise ValidationError(
+            "Seule une indemnité soumise peut être rejetée.")
+    indem.statut = IndemniteChantier.Statut.REJETEE
+    indem.motif_rejet = motif_rejet or ''
+    indem.save(update_fields=['statut', 'motif_rejet'])
+    return indem
+
+
+@transaction.atomic
+def rembourser_indemnite_chantier(indem, *, compte_tresorerie,
+                                  date_remboursement=None, user=None):
+    """Rembourse une indemnité validée et POSTE le paiement au GL (FG136).
+
+    Écriture ÉQUILIBRÉE dans le journal de trésorerie (BNK banque / CSH caisse),
+    datée du remboursement : débit 4432 (extinction de la dette) / crédit du
+    compte comptable du ``compte_tresorerie`` payeur. Le compte DOIT appartenir
+    à la société. RESPECTE LE VERROU DE PÉRIODE (FG115). Idempotent. Renvoie
+    l'indemnité.
+    """
+    if indem.statut == IndemniteChantier.Statut.REMBOURSEE:
+        return indem
+    if indem.statut != IndemniteChantier.Statut.VALIDEE:
+        raise ValidationError(
+            "Seule une indemnité validée peut être remboursée.")
+    company = indem.company
+    if compte_tresorerie is None:
+        raise ValidationError(
+            "Un compte de trésorerie payeur est requis pour le remboursement.")
+    if compte_tresorerie.company_id != company.id:
+        raise ValidationError("Compte de trésorerie inconnu.")
+    montant = Decimal(indem.montant_total or 0)
+    date_rbt = date_remboursement or indem.date_deplacement
+    if PeriodeComptable.date_verrouillee(company.id, date_rbt):
+        raise ValidationError(
+            "Période comptable clôturée : impossible de rembourser "
+            f"l'indemnité à la date du {date_rbt}.")
+    personnel = _assurer_compte(company, _COMPTE_PERSONNEL_CREDITEUR)
+    compte_treso = compte_tresorerie.compte_comptable
+    if compte_tresorerie.type_compte == CompteTresorerie.Type.CAISSE:
+        journal = _journal(company, Journal.Type.CAISSE)
+    else:
+        journal = _journal(company, Journal.Type.BANQUE)
+    if journal is None:
+        seed_journaux(company)
+        journal = _journal(
+            company,
+            Journal.Type.CAISSE
+            if compte_tresorerie.type_compte == CompteTresorerie.Type.CAISSE
+            else Journal.Type.BANQUE)
+    libelle = (f"Remboursement indemnité chantier {indem.reference} — "
+               f"{indem.employe_id}")
+    lignes = [
+        {'compte': personnel, 'debit': montant, 'credit': Decimal('0'),
+         'libelle': libelle, 'tiers_type': 'employe',
+         'tiers_id': indem.employe_id},
+        {'compte': compte_treso, 'debit': Decimal('0'), 'credit': montant,
+         'libelle': libelle},
+    ]
+    ecriture = creer_ecriture(
+        company, journal, date_rbt, libelle, lignes,
+        reference=indem.reference or f'IND-{indem.id}',
+        source_type='indemnite_chantier_remboursement', source_id=indem.id,
+        created_by=user, statut=EcritureComptable.Statut.VALIDEE,
+    )
+    indem.statut = IndemniteChantier.Statut.REMBOURSEE
+    indem.compte_tresorerie = compte_tresorerie
+    indem.date_remboursement = date_rbt
+    indem.rembourse_par = user
+    indem.ecriture_remboursement = ecriture
+    indem.save(update_fields=[
+        'statut', 'compte_tresorerie', 'date_remboursement',
+        'rembourse_par', 'ecriture_remboursement'])
+    return indem

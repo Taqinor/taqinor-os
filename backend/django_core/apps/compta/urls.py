@@ -2,13 +2,14 @@ from django.urls import include, path
 from rest_framework.routers import DefaultRouter
 
 from .views import (
-    BordereauRemiseViewSet, CaisseViewSet, CessionImmobilisationViewSet,
-    CompteComptableViewSet, CompteTresorerieViewSet, DotationAmortissementViewSet,
+    BaremeIndemniteViewSet, BordereauRemiseViewSet, CaisseViewSet,
+    CessionImmobilisationViewSet, CompteComptableViewSet,
+    CompteTresorerieViewSet, DotationAmortissementViewSet,
     EcritureComptableViewSet, EffetViewSet, EtatsComptablesViewSet,
-    ExerciceComptableViewSet, ImmobilisationViewSet, JournalViewSet,
-    LignePrevisionnelTresorerieViewSet, NoteFraisViewSet, PaymentRunViewSet,
-    PeriodeComptableViewSet, PlanComptableViewSet, RapprochementBancaireViewSet,
-    RapprochementViewSet, VirementInterneViewSet,
+    ExerciceComptableViewSet, ImmobilisationViewSet, IndemniteChantierViewSet,
+    JournalViewSet, LignePrevisionnelTresorerieViewSet, NoteFraisViewSet,
+    PaymentRunViewSet, PeriodeComptableViewSet, PlanComptableViewSet,
+    RapprochementBancaireViewSet, RapprochementViewSet, VirementInterneViewSet,
 )
 
 router = DefaultRouter()
@@ -32,6 +33,8 @@ router.register(r'effets', EffetViewSet)
 router.register(r'bordereaux', BordereauRemiseViewSet)
 router.register(r'payment-runs', PaymentRunViewSet)
 router.register(r'notes-frais', NoteFraisViewSet)
+router.register(r'baremes-indemnite', BaremeIndemniteViewSet)
+router.register(r'indemnites-chantier', IndemniteChantierViewSet)
 router.register(r'etats', EtatsComptablesViewSet, basename='etats')
 
 urlpatterns = [
