@@ -367,9 +367,10 @@ class ContratViewSet(_ContratsBaseViewSet):
         ``typed`` par défaut). L'utilisateur agissant, la société et les preuves
         (IP, user agent) sont posés CÔTÉ SERVEUR — jamais lus du corps. Quand le
         client ET le prestataire ont signé, le contrat bascule à ``signe`` via la
-        machine d'états gardée (jamais un funnel STAGES.py). Refuse (400) une
-        seconde signature de la même partie. La société est garantie par
-        ``get_object``.
+        machine d'états gardée (jamais un funnel STAGES.py). Dans la foulée, si
+        la prise d'effet est atteinte, le contrat est activé automatiquement
+        (``signe → actif`` — CONTRAT17). Refuse (400) une seconde signature de la
+        même partie. La société est garantie par ``get_object``.
         """
         contrat = self.get_object()
         body = SignerContratSerializer(data=request.data)
@@ -394,6 +395,7 @@ class ContratViewSet(_ContratsBaseViewSet):
                 'signature': SignatureContratSerializer(
                     resultat['signature'], context={'request': request}).data,
                 'contrat_signe': resultat['contrat_signe'],
+                'contrat_actif': resultat['contrat_actif'],
                 'statut': contrat.statut,
             },
             status=status.HTTP_201_CREATED,

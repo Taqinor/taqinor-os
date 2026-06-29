@@ -15,10 +15,12 @@ Couvre :
 - Utilisateur agissant + société posés CÔTÉ SERVEUR (jamais lus du corps).
 - Endpoints : signer / lister (+ accès réservé au palier admin/responsable).
 """
+from datetime import timedelta
 from decimal import Decimal
 
 from django.contrib.auth import get_user_model
 from django.test import TestCase
+from django.utils import timezone
 from rest_framework.test import APIClient
 from rest_framework_simplejwt.tokens import AccessToken
 
@@ -63,10 +65,15 @@ def make_contrat(company, statut="en_approbation", objet="Contrat test",
 
     Le statut par défaut ``en_approbation`` + 2 parties autorise la transition
     gardée ``en_approbation → signe`` de la machine d'états.
+
+    ``date_debut`` est posée dans le FUTUR pour isoler le test de la bascule
+    ``signe`` du test de l'activation automatique CONTRAT17 (qui n'active que si
+    la prise d'effet est atteinte) : ces contrats restent donc à ``signe``.
     """
     contrat = Contrat.objects.create(
         company=company, objet=objet, montant=Decimal("80000"),
-        type_contrat="vente", statut=statut)
+        type_contrat="vente", statut=statut,
+        date_debut=timezone.localdate() + timedelta(days=30))
     if avec_parties:
         PartieContrat.objects.create(
             company=company, contrat=contrat,
