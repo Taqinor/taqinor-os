@@ -1714,6 +1714,17 @@ class DotationEpi(models.Model):
         default=1, verbose_name='Quantité')
     note = models.CharField(
         max_length=255, blank=True, default='', verbose_name='Note')
+    # Accusé de remise (FG180) : marqueur posé côté serveur quand l'employé a
+    # ÉMARGÉ la dotation (accusé de réception signé prouvant la remise de l'EPI,
+    # exigible en cas de contrôle CNSS / accident du travail). La preuve
+    # détaillée (nom dactylographié, IP, user agent, méthode) est portée par
+    # ``EmargementEpi`` ; ce booléen est l'index rapide « cette dotation a-t-elle
+    # un émargement valide ». Reste ``False`` tant que personne n'a émargé.
+    accuse_remise = models.BooleanField(
+        default=False, verbose_name='Remise émargée (accusée)')
+    date_accuse = models.DateTimeField(
+        null=True, blank=True,
+        verbose_name="Date de l'accusé de remise")
     date_creation = models.DateTimeField(
         auto_now_add=True, verbose_name='Créé le')
     date_modification = models.DateTimeField(
@@ -1791,3 +1802,115 @@ class DotationEpi(models.Model):
 
     def __str__(self):
         return f'{self.employe.matricule} — {self.epi}'
+
+
+class EmargementEpi(models.Model):
+    """Émargement de remise d'un EPI (FG180) — accusé signé de la dotation.
+
+    Matérialise l'ACCUSÉ DE RÉCEPTION signé prouvant qu'un EPI (``DotationEpi``)
+    a bien été REMIS à l'employé. C'est une pièce réglementaire : en cas de
+    contrôle CNSS ou d'accident du travail, l'employeur doit pouvoir prouver
+    qu'il a doté le salarié de l'équipement de protection — l'émargement signé
+    en est la preuve.
+
+    Signature électronique IN-APP, sur le modèle e-sign INTERNE de l'ERP
+    (CONTRAT16) : AUCUN prestataire d'e-sign externe, AUCUNE dépendance tierce.
+    La validité juridique repose sur la **loi marocaine 53-05** : un **nom
+    dactylographié** (``signataire_nom``) consenti vaut signature. On enregistre
+    QUI a émargé (le nom saisi + l'éventuel utilisateur agissant), à quel TITRE
+    (``role_signataire`` : l'employé bénéficiaire, un témoin ou le responsable
+    qui remet) et les ÉLÉMENTS DE PREUVE de l'acte (``ip_adresse``,
+    ``user_agent``, ``date_signature``, ``methode``).
+
+    Quand un émargement est enregistré, la dotation est marquée ACCUSÉE
+    (``DotationEpi.accuse_remise = True`` + ``date_accuse``) par le service
+    ``emarger_dotation``. C'est une couche distincte des échéances de cycle de
+    vie (FG179) : ici on prouve la REMISE, pas la péremption.
+
+    Multi-société : ``company`` est posée côté serveur (jamais lue du corps de
+    requête) — celle de la dotation. ``signataire`` (l'utilisateur agissant)
+    pointe vers ``AUTH_USER_MODEL`` (app foundation), FK autorisé et NULLABLE :
+    un employé sans compte ERP émarge sur place (tablette du responsable) — seul
+    son nom saisi et les preuves font foi.
+
+    RUNTIME-SAFETY (leçon FG136) : ``ip_adresse`` ≤ 45 (IPv6 mappée) ;
+    ``user_agent``, potentiellement très long, est un ``TextField`` (aucune
+    limite à dépasser et lever) ; les codes bornés ``role_signataire`` /
+    ``methode`` ≤ 20.
+    """
+
+    class RoleSignataire(models.TextChoices):
+        # L'employé bénéficiaire qui reçoit l'EPI (accusé de réception).
+        EMPLOYE = 'employe', 'Employé bénéficiaire'
+        # Le responsable/encadrant qui remet l'EPI.
+        REMETTANT = 'remettant', 'Remettant'
+        # Un témoin de la remise.
+        TEMOIN = 'temoin', 'Témoin'
+
+    class Methode(models.TextChoices):
+        # Saisie du nom dactylographié (loi 53-05) — méthode par défaut.
+        TYPED = 'typed', 'Nom dactylographié'
+        # Tracé manuscrit capturé (paraphe dessiné), évidence stockée ailleurs.
+        DRAW = 'draw', 'Signature dessinée'
+
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='rh_emargements_epi',
+        verbose_name='Société',
+    )
+    dotation = models.ForeignKey(
+        DotationEpi,
+        on_delete=models.CASCADE,
+        related_name='emargements',
+        verbose_name='Dotation EPI',
+    )
+    # Nom dactylographié de celui qui émarge — fait foi (loi 53-05). Toujours
+    # saisi.
+    signataire_nom = models.CharField(
+        max_length=255, verbose_name='Nom du signataire')
+    # Utilisateur ERP ayant agi (NULL pour un employé sans compte qui émarge sur
+    # place).
+    signataire = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='rh_emargements_epi',
+        verbose_name='Utilisateur signataire',
+    )
+    role_signataire = models.CharField(
+        max_length=20,
+        choices=RoleSignataire.choices,
+        default=RoleSignataire.EMPLOYE,
+        verbose_name='Rôle du signataire',
+    )
+    date_signature = models.DateTimeField(
+        auto_now_add=True, verbose_name='Émargé le')
+    # Éléments de preuve. ``ip_adresse`` ≤ 45 (IPv6) ; ``user_agent`` en
+    # TextField car potentiellement très long (leçon FG136).
+    ip_adresse = models.CharField(
+        max_length=45, blank=True, default='', verbose_name='Adresse IP')
+    user_agent = models.TextField(
+        blank=True, default='', verbose_name='User agent')
+    methode = models.CharField(
+        max_length=20,
+        choices=Methode.choices,
+        default=Methode.TYPED,
+        verbose_name='Méthode de signature',
+    )
+    # Mention saisie au moment de l'émargement (« reçu en bon état », réserve…).
+    mention = models.CharField(
+        max_length=255, blank=True, default='', verbose_name='Mention')
+
+    class Meta:
+        verbose_name = 'Émargement EPI'
+        verbose_name_plural = 'Émargements EPI'
+        ordering = ['-date_signature', 'id']
+        indexes = [
+            models.Index(
+                fields=['company', 'dotation'],
+                name='rh_emepi_comp_dot_idx'),
+        ]
+
+    def __str__(self):
+        return f'{self.signataire_nom} — {self.dotation_id}'
