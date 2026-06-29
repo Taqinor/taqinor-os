@@ -9,6 +9,7 @@ from .models import (
     PartieContrat,
     RegleApprobation,
     SignatureContrat,
+    VersionContrat,
 )
 
 
@@ -75,3 +76,12 @@ class SignatureContratAdmin(admin.ModelAdmin):
                     'signataire', 'methode', 'date_signature', 'company')
     list_filter = ('role_signataire', 'methode')
     search_fields = ('signataire_nom',)
+
+
+@admin.register(VersionContrat)
+class VersionContratAdmin(admin.ModelAdmin):
+    list_display = ('id', 'contrat', 'version', 'motif', 'fichier_key',
+                    'cree_par', 'cree_le', 'company')
+    list_filter = ('version',)
+    search_fields = ('motif', 'fichier_key')
+    readonly_fields = ('version', 'cree_le')

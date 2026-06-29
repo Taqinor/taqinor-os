@@ -40,6 +40,7 @@ from .models import (
     ModeleContratClause,
     PartieContrat,
     RegleApprobation,
+    VersionContrat,
 )
 from .serializers import (
     ChangerStatutSerializer,
@@ -48,6 +49,7 @@ from .serializers import (
     ContratActivitySerializer,
     ContratLienSerializer,
     ContratSerializer,
+    CreerVersionSerializer,
     DeciderEtapeSerializer,
     EtapeApprobationSerializer,
     InstancierContratSerializer,
@@ -60,6 +62,7 @@ from .serializers import (
     ResoudreRegleApprobationSerializer,
     SignatureContratSerializer,
     SignerContratSerializer,
+    VersionContratSerializer,
 )
 
 
@@ -400,6 +403,69 @@ class ContratViewSet(_ContratsBaseViewSet):
             },
             status=status.HTTP_201_CREATED,
         )
+
+    @action(detail=True, methods=['get'], url_path='versions')
+    def versions(self, request, pk=None):
+        """Versions IMMUABLES du rendu du contrat (CONTRAT18).
+
+        Lecture seule, la dernière version en tête. La société est garantie par
+        ``get_object`` (queryset scopé société).
+        """
+        contrat = self.get_object()
+        versions = selectors.versions_contrat(contrat)
+        return Response(
+            VersionContratSerializer(
+                versions, many=True, context={'request': request}).data)
+
+    @action(detail=True, methods=['post'], url_path='creer-version')
+    def creer_version(self, request, pk=None):
+        """Fige un instantané IMMUABLE du rendu courant du contrat (CONTRAT18).
+
+        Corps : ``motif`` (optionnel), ``fichier_key`` (optionnelle — clé d'un
+        rendu PDF stocké). Le ``contenu`` figé est calculé CÔTÉ SERVEUR (rendu
+        par fusion du contrat — jamais lu du corps). Le numéro de ``version``,
+        la société et ``cree_par`` sont posés côté serveur. La numérotation est
+        sûre face aux courses (``max(version)+1`` sous verrou de ligne, jamais
+        ``count()+1``). La société est garantie par ``get_object``.
+        """
+        contrat = self.get_object()
+        body = CreerVersionSerializer(data=request.data)
+        body.is_valid(raise_exception=True)
+        version = services.creer_version(
+            contrat,
+            motif=body.validated_data.get('motif', ''),
+            fichier_key=body.validated_data.get('fichier_key', ''),
+            cree_par=request.user,
+        )
+        return Response(
+            VersionContratSerializer(
+                version, context={'request': request}).data,
+            status=status.HTTP_201_CREATED,
+        )
+
+
+class VersionContratViewSet(TenantMixin,
+                            viewsets.ReadOnlyModelViewSet):
+    """Versions IMMUABLES des rendus de contrat (CONTRAT18) — LECTURE SEULE.
+
+    Récupération des versions figées : ``list`` (filtrable par ``?contrat=<id>``)
+    et ``retrieve``. AUCUNE création/mise à jour/suppression n'est exposée ici —
+    les versions sont créées exclusivement via l'action ``creer-version`` du
+    contrat et restent immuables. Scopé société (``TenantMixin``) ; accès réservé
+    au palier Administrateur/Responsable.
+    """
+    permission_classes = [IsResponsableOrAdmin]
+    queryset = VersionContrat.objects.all()
+    serializer_class = VersionContratSerializer
+    filter_backends = [filters.OrderingFilter]
+    ordering_fields = ['version', 'cree_le', 'id']
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        contrat_id = self.request.query_params.get('contrat')
+        if contrat_id:
+            qs = qs.filter(contrat_id=contrat_id)
+        return qs
 
 
 class PartieContratViewSet(_ContratsBaseViewSet):
