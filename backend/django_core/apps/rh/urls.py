@@ -10,6 +10,7 @@ from .views import (
     DepartementViewSet,
     DocumentEmployeViewSet,
     DossierEmployeViewSet,
+    EcheancesRhViewSet,
     ElementSortieViewSet,
     FeuilleTempsViewSet,
     HabilitationViewSet,
@@ -43,6 +44,7 @@ router.register(r'competences', CompetenceViewSet)
 router.register(r'competences-employe', CompetenceEmployeViewSet)
 router.register(r'habilitations', HabilitationViewSet)
 router.register(r'certifications', CertificationViewSet)
+router.register(r'echeances', EcheancesRhViewSet, basename='rh-echeances')
 
 urlpatterns = [
     path('', include(router.urls)),

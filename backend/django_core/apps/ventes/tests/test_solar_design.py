@@ -808,3 +808,178 @@ class SimulateBankableYieldTest(SimpleTestCase):
         self.assertGreaterEqual(res["p90_kwh"], 0.0)
         self.assertTrue(any("σ" in w or "variabilité" in w
                             for w in res["warnings"]))
+
+
+# ── FG258 : autoconsommation horaire depuis la courbe de charge (calcul pur) ──
+class HourlySelfConsumptionTest(SimpleTestCase):
+    def test_known_pair_self_consumption_and_coverage(self):
+        # Couple charge/production connu (4 h) :
+        #   charge      = [1, 2, 3, 0]  Σ = 6
+        #   production  = [0, 1, 5, 4]  Σ = 10
+        #   autoconso   = min = [0, 1, 3, 0] → Σ = 4
+        # taux autoconso = 4/10 = 0.40 ; couverture = 4/6 ≈ 0.6667.
+        res = sd.hourly_self_consumption(
+            load_curve=[1, 2, 3, 0],
+            production_curve=[0, 1, 5, 4])
+        self.assertEqual(res["hours"], 4)
+        self.assertEqual(res["total_load_kwh"], 6.0)
+        self.assertEqual(res["total_production_kwh"], 10.0)
+        self.assertEqual(res["self_consumed_kwh"], 4.0)
+        self.assertEqual(res["self_consumption_rate"], 0.4)
+        self.assertEqual(res["self_consumption_pct"], 40.0)
+        self.assertAlmostEqual(res["coverage_rate"], 0.6667, places=4)
+
+    def test_surplus_and_grid_import_balance(self):
+        # surplus = production − autoconso ; import = charge − autoconso.
+        res = sd.hourly_self_consumption(
+            load_curve=[1, 2, 3, 0],
+            production_curve=[0, 1, 5, 4])
+        # surplus = 10 − 4 = 6 ; import = 6 − 4 = 2.
+        self.assertEqual(res["surplus_kwh"], 6.0)
+        self.assertEqual(res["grid_import_kwh"], 2.0)
+        # Bilans cohérents : autoconso + surplus = production ;
+        # autoconso + import = charge.
+        self.assertAlmostEqual(
+            res["self_consumed_kwh"] + res["surplus_kwh"],
+            res["total_production_kwh"], places=3)
+        self.assertAlmostEqual(
+            res["self_consumed_kwh"] + res["grid_import_kwh"],
+            res["total_load_kwh"], places=3)
+
+    def test_full_self_consumption_when_load_exceeds_production(self):
+        # Charge toujours ≥ production → tout est autoconsommé (taux = 100 %).
+        res = sd.hourly_self_consumption(
+            load_curve=[10, 10, 10],
+            production_curve=[2, 3, 4])
+        self.assertEqual(res["self_consumed_kwh"], 9.0)
+        self.assertEqual(res["self_consumption_rate"], 1.0)
+        self.assertEqual(res["surplus_kwh"], 0.0)
+
+    def test_zero_production_guarded(self):
+        # Σproduction = 0 → taux d'autoconso 0 (pas de division par zéro).
+        res = sd.hourly_self_consumption(
+            load_curve=[1, 2, 3],
+            production_curve=[0, 0, 0])
+        self.assertEqual(res["total_production_kwh"], 0.0)
+        self.assertEqual(res["self_consumption_rate"], 0.0)
+        self.assertEqual(res["coverage_rate"], 0.0)
+        self.assertTrue(any("nulle" in w for w in res["warnings"]))
+
+    def test_zero_load_guarded(self):
+        # Σcharge = 0 → couverture 0 (pas de division par zéro), surplus = prod.
+        res = sd.hourly_self_consumption(
+            load_curve=[0, 0, 0],
+            production_curve=[1, 2, 3])
+        self.assertEqual(res["coverage_rate"], 0.0)
+        self.assertEqual(res["self_consumed_kwh"], 0.0)
+        self.assertEqual(res["surplus_kwh"], 6.0)
+
+    def test_negative_and_unreadable_values_clamped(self):
+        # Valeurs négatives/illisibles → 0, jamais de rejet ni d'exception.
+        res = sd.hourly_self_consumption(
+            load_curve=[-5, "x", 4, None],
+            production_curve=[3, 3, 3, 3])
+        # charge nettoyée = [0, 0, 4, 0] Σ = 4 ; prod = [3,3,3,3] Σ = 12.
+        self.assertEqual(res["total_load_kwh"], 4.0)
+        self.assertEqual(res["total_production_kwh"], 12.0)
+        # autoconso = min = [0, 0, 3, 0] = 3.
+        self.assertEqual(res["self_consumed_kwh"], 3.0)
+
+    def test_mismatched_lengths_aligned_to_shorter(self):
+        res = sd.hourly_self_consumption(
+            load_curve=[1, 1, 1, 1, 1],
+            production_curve=[2, 2])
+        self.assertEqual(res["hours"], 2)
+        self.assertTrue(any("longueurs différentes" in w
+                            for w in res["warnings"]))
+
+    def test_8760_annual_curve(self):
+        # Une courbe annuelle 8760 h fonctionne comme un profil 24 h.
+        load = [1.0] * 8760
+        prod = [0.5] * 8760
+        res = sd.hourly_self_consumption(
+            load_curve=load, production_curve=prod)
+        self.assertEqual(res["hours"], 8760)
+        # prod < load partout → tout est autoconsommé → taux = 100 %.
+        self.assertEqual(res["self_consumption_rate"], 1.0)
+        self.assertEqual(res["self_consumed_kwh"], round(0.5 * 8760, 3))
+
+    def test_typical_profiles_fallback_when_no_curve(self):
+        # Sans courbe : profils type calés sur les énergies journalières.
+        res = sd.hourly_self_consumption(
+            daily_load_kwh=20.0, daily_production_kwh=30.0,
+            load_profile="residential")
+        self.assertEqual(res["hours"], 24)
+        self.assertAlmostEqual(res["total_load_kwh"], 20.0, places=1)
+        self.assertAlmostEqual(res["total_production_kwh"], 30.0, places=1)
+        self.assertIn("profil type", res["load_source"])
+        self.assertIn("profil type", res["production_source"])
+        # Le résidentiel (pics soir) autoconsomme moins que tout-le-jour.
+        self.assertLess(res["self_consumption_rate"], 1.0)
+        self.assertGreater(res["self_consumption_rate"], 0.0)
+
+    def test_commercial_profile_self_consumes_more_than_residential(self):
+        # Le profil tertiaire (conso diurne) recouvre mieux la cloche PV.
+        resid = sd.hourly_self_consumption(
+            daily_load_kwh=20.0, daily_production_kwh=20.0,
+            load_profile="residential")
+        comm = sd.hourly_self_consumption(
+            daily_load_kwh=20.0, daily_production_kwh=20.0,
+            load_profile="commercial")
+        self.assertGreater(comm["self_consumption_rate"],
+                           resid["self_consumption_rate"])
+
+    def test_empty_inputs_never_raise(self):
+        res = sd.hourly_self_consumption(load_curve=[], production_curve=[])
+        # Replis profils type sans énergie journalière → tout à 0, jamais lever.
+        self.assertEqual(res["self_consumption_rate"], 0.0)
+        self.assertEqual(res["coverage_rate"], 0.0)
+
+
+# ── FG258 : parsing xlsx de la courbe de charge (openpyxl, déjà au projet) ────
+class LoadCurveFromXlsxTest(SimpleTestCase):
+    def _make_workbook(self, values, header="charge_kwh"):
+        # Classeur openpyxl en mémoire (BytesIO) — aucune écriture disque.
+        import io
+
+        import openpyxl
+        wb = openpyxl.Workbook()
+        ws = wb.active
+        ws.append([header])
+        for v in values:
+            ws.append([v])
+        buf = io.BytesIO()
+        wb.save(buf)
+        buf.seek(0)
+        return buf
+
+    def test_parses_column_into_float_list(self):
+        buf = self._make_workbook([1.5, 2.0, 3.25, 4])
+        curve = sd.load_curve_from_xlsx(buf)
+        self.assertEqual(curve, [1.5, 2.0, 3.25, 4.0])
+
+    def test_skip_header_false_keeps_first_data_row(self):
+        # En-tête texte non numérique → 0.0 quand conservée.
+        buf = self._make_workbook([10, 20])
+        curve = sd.load_curve_from_xlsx(buf, skip_header=False)
+        # Première ligne = en-tête "charge_kwh" → float impossible → 0.0.
+        self.assertEqual(curve, [0.0, 10.0, 20.0])
+
+    def test_blank_cells_become_zero(self):
+        buf = self._make_workbook([5, None, 7])
+        curve = sd.load_curve_from_xlsx(buf)
+        self.assertEqual(curve, [5.0, 0.0, 7.0])
+
+    def test_parsed_curve_feeds_self_consumption(self):
+        # Le parsing alimente directement le calcul (séparation respectée).
+        load_buf = self._make_workbook([1, 2, 3, 0])
+        load = sd.load_curve_from_xlsx(load_buf)
+        res = sd.hourly_self_consumption(
+            load_curve=load, production_curve=[0, 1, 5, 4])
+        self.assertEqual(res["self_consumed_kwh"], 4.0)
+        self.assertEqual(res["self_consumption_rate"], 0.4)
+
+    def test_max_rows_caps_data_rows(self):
+        buf = self._make_workbook(list(range(1, 11)))  # 10 lignes de données
+        curve = sd.load_curve_from_xlsx(buf, max_rows=3)
+        self.assertEqual(curve, [1.0, 2.0, 3.0])

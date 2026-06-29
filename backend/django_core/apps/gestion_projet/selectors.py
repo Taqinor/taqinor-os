@@ -11,12 +11,15 @@ from datetime import date as _date
 from datetime import timedelta
 
 from .models import (
+    AffectationRessource,
     BaselinePlanning,
     CalendrierProjet,
     DependanceTache,
+    Equipe,
     Indisponibilite,
     Jalon,
     ProjetLien,
+    RessourceProfil,
     Tache,
 )
 
@@ -656,3 +659,199 @@ def ressource_disponible_sur_periode(ressource, debut, fin):
     indisponible. La société est portée par la ressource.
     """
     return not indisponibilites_sur_periode(ressource, debut, fin).exists()
+
+
+# ── PROJ18 : Plan de charge (capacité vs affecté) ────────────────────────────
+
+# Semaine ouvrée par défaut du plan de charge : lundi→vendredi. Le plan de
+# charge est TRANSVERSAL (à l'échelle société, toutes ressources confondues) et
+# n'est donc pas rattaché au calendrier d'UN projet (relation 1-1 projet) — on
+# applique une semaine standard L-V, indépendante de tout CalendrierProjet.
+_JOURS_OUVRES_DEFAUT = frozenset({0, 1, 2, 3, 4})
+# Heures travaillées par jour ouvré (capacité d'une ressource à plein temps).
+_HEURES_PAR_JOUR_DEFAUT = 8
+
+
+def _jours_ouvres_periode(debut, fin, jours_ouvres):
+    """Nombre de jours OUVRÉS dans [debut, fin] — bornes INCLUSIVES des 2 côtés.
+
+    Lecture seule. Contrairement à ``jours_ouvres_entre`` (fin exclusive, liée à
+    un projet), cette aide compte une fenêtre inclusive avec une semaine ouvrée
+    explicite — la convention des affectations / indisponibilités (PROJ16/17).
+    Renvoie 0 si ``fin < debut``.
+    """
+    if fin < debut:
+        return 0
+    n = 0
+    cur = debut
+    while cur <= fin:
+        if cur.weekday() in jours_ouvres:
+            n += 1
+        cur += timedelta(days=1)
+    return n
+
+
+def _chevauchement_inclusif(a_debut, a_fin, b_debut, b_fin):
+    """Fenêtre [max(débuts), min(fins)] de chevauchement, ou ``None`` si disjoint.
+
+    Bornes INCLUSIVES (convention PROJ16/17). Renvoie ``(debut, fin)`` du
+    recouvrement quand les deux intervalles se chevauchent, sinon ``None``.
+    """
+    debut = a_debut if a_debut > b_debut else b_debut
+    fin = a_fin if a_fin < b_fin else b_fin
+    if fin < debut:
+        return None
+    return debut, fin
+
+
+def _charge_affectee_periode(affectation, debut, fin, jours_ouvres):
+    """Heures AFFECTÉES par une affectation tombant dans [debut, fin] (inclusif).
+
+    Lecture seule. La charge stockée (``charge_jours``, en jours-homme) est
+    convertie en heures (× heures/jour) puis PRORATÉE par la fraction de jours
+    OUVRÉS de l'affectation qui tombe dans la fenêtre :
+
+        heures = charge_jours × heures_par_jour × (j-ouvrés_dans_fenêtre /
+                                                   j-ouvrés_de_l'affectation)
+
+    Si l'affectation n'a aucun jour ouvré (week-end intégral) le prorata vaut 0
+    (jamais de division par zéro). ``charge_jours`` nul/None → 0.
+    """
+    if affectation.charge_jours is None:
+        return 0.0
+    chevauchement = _chevauchement_inclusif(
+        affectation.date_debut, affectation.date_fin, debut, fin)
+    if chevauchement is None:
+        return 0.0
+    jours_affectation = _jours_ouvres_periode(
+        affectation.date_debut, affectation.date_fin, jours_ouvres)
+    if jours_affectation <= 0:
+        return 0.0
+    jours_fenetre = _jours_ouvres_periode(
+        chevauchement[0], chevauchement[1], jours_ouvres)
+    fraction = jours_fenetre / jours_affectation
+    return float(affectation.charge_jours) * _HEURES_PAR_JOUR_DEFAUT * fraction
+
+
+def plan_de_charge(company, debut, fin, heures_par_jour=_HEURES_PAR_JOUR_DEFAUT,
+                   ressource_id=None):
+    """Plan de charge d'une société sur [debut, fin] : capacité vs affecté.
+
+    PROJ18 — pour CHAQUE ``RessourceProfil`` ACTIVE de la société (ou la seule
+    ``ressource_id`` demandée), agrège :
+
+    * ``capacite_heures`` — jours OUVRÉS (semaine L-V par défaut) de la fenêtre
+      INCLUSIVE [debut, fin], MOINS les jours ouvrés couverts par une
+      indisponibilité (congé/formation/arrêt) chevauchant la fenêtre, × le
+      nombre d'heures par jour ouvré (``heures_par_jour``, défaut 8) ;
+    * ``affecte_heures`` — somme PRORATÉE des affectations (PROJ16) de la
+      ressource — directes (``ressource``) ET via une ``Equipe`` dont elle est
+      membre (la charge d'équipe est répartie à parts ÉGALES entre ses membres
+      du moment) — dont la période chevauche la fenêtre, chaque affectation
+      étant proratée par sa fraction de jours ouvrés tombant dans [debut, fin] ;
+    * ``surcharge`` — booléen ``affecte_heures > capacite_heures`` ;
+    * ``utilisation_pct`` — ``affecte / capacite × 100`` arrondi, ou ``None``
+      quand la capacité est nulle (GARDE division par zéro — une ressource sans
+      capacité mais avec une charge reste signalée ``surcharge=True``).
+
+    Lecture seule, multi-société : seules les données ``company`` sont lues
+    (affectations, indisponibilités et membres d'équipe sont tous filtrés sur la
+    même société). ``debut``/``fin`` sont des dates ; ``fin < debut`` → fenêtre
+    vide (toutes capacités 0). Les actifs matériels et les affectations sans
+    ``charge_jours`` n'entrent pas dans l'affecté. Renvoie un dict
+    ``{debut, fin, heures_par_jour, lignes: [...], nb_surcharges}`` trié par nom
+    de ressource.
+    """
+    try:
+        heures_jour = float(heures_par_jour)
+    except (TypeError, ValueError):
+        heures_jour = float(_HEURES_PAR_JOUR_DEFAUT)
+    if heures_jour < 0:
+        heures_jour = 0.0
+    jours_ouvres = _JOURS_OUVRES_DEFAUT
+
+    ressources = RessourceProfil.objects.filter(company=company, actif=True)
+    if ressource_id is not None:
+        ressources = ressources.filter(id=ressource_id)
+    ressources = list(ressources.order_by('nom', 'id'))
+
+    # Map ressource_id -> ids des équipes (même société) dont elle est membre.
+    equipes_par_ressource = {}
+    equipes_qs = Equipe.objects.filter(company=company).prefetch_related(
+        'membres')
+    membres_par_equipe = {}
+    for equipe in equipes_qs:
+        membres = [m for m in equipe.membres.all() if m.actif]
+        membres_par_equipe[equipe.id] = membres
+        for membre in membres:
+            equipes_par_ressource.setdefault(membre.id, set()).add(equipe.id)
+
+    # Affectations société chevauchant la fenêtre, avec une charge renseignée.
+    affectations = list(
+        AffectationRessource.objects.filter(
+            company=company,
+            charge_jours__isnull=False,
+            date_debut__lte=fin,
+            date_fin__gte=debut,
+        ).select_related('ressource', 'equipe'))
+
+    lignes = []
+    nb_surcharges = 0
+    for ressource in ressources:
+        capacite_brute = _jours_ouvres_periode(debut, fin, jours_ouvres)
+        # Retrancher les jours ouvrés couverts par une indisponibilité.
+        jours_indispo = 0
+        for indispo in indisponibilites_sur_periode(ressource, debut, fin):
+            chev = _chevauchement_inclusif(
+                indispo.date_debut, indispo.date_fin, debut, fin)
+            if chev is not None:
+                jours_indispo += _jours_ouvres_periode(
+                    chev[0], chev[1], jours_ouvres)
+        jours_dispo = capacite_brute - jours_indispo
+        if jours_dispo < 0:
+            jours_dispo = 0
+        capacite_heures = jours_dispo * heures_jour
+
+        affecte_heures = 0.0
+        equipe_ids = equipes_par_ressource.get(ressource.id, set())
+        for aff in affectations:
+            heures = 0.0
+            if aff.ressource_id == ressource.id:
+                heures = _charge_affectee_periode(
+                    aff, debut, fin, jours_ouvres)
+            elif aff.equipe_id in equipe_ids:
+                membres = membres_par_equipe.get(aff.equipe_id, [])
+                n_membres = len(membres)
+                if n_membres > 0:
+                    heures = _charge_affectee_periode(
+                        aff, debut, fin, jours_ouvres) / n_membres
+            affecte_heures += heures
+
+        surcharge = affecte_heures > capacite_heures
+        if surcharge:
+            nb_surcharges += 1
+        if capacite_heures > 0:
+            utilisation_pct = round(affecte_heures / capacite_heures * 100, 1)
+        else:
+            utilisation_pct = None
+
+        lignes.append({
+            'ressource': ressource.id,
+            'nom': ressource.nom,
+            'role': ressource.role,
+            'capacite_heures': round(capacite_heures, 2),
+            'affecte_heures': round(affecte_heures, 2),
+            'disponible_heures': round(capacite_heures - affecte_heures, 2),
+            'jours_ouvres': capacite_brute,
+            'jours_indispo': jours_indispo,
+            'utilisation_pct': utilisation_pct,
+            'surcharge': surcharge,
+        })
+
+    return {
+        'debut': debut.isoformat(),
+        'fin': fin.isoformat(),
+        'heures_par_jour': heures_jour,
+        'nb_surcharges': nb_surcharges,
+        'lignes': lignes,
+    }

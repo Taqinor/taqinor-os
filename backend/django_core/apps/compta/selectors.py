@@ -930,3 +930,117 @@ def preparer_declaration_tva(company, *, date_debut, date_fin, regime='mensuel',
         'tva_a_declarer': a_declarer,
         'credit_reportable': reportable,
     }
+
+
+# ── FG138 — Relevé de déductions détaillé (annexe TVA, DGI) ────────────────
+
+def _taux_tva(base_ht, tva):
+    """Taux de TVA en % déduit de (TVA / base HT), arrondi à 2 décimales.
+
+    Renvoie ``None`` quand la base HT est nulle (taux indéterminé) — le relevé
+    affiche alors le montant de TVA sans imputer un taux fictif.
+    """
+    if not base_ht:
+        return None
+    return (tva / base_ht * Decimal('100')).quantize(Decimal('0.01'))
+
+
+def releve_deductions_tva(company, *, date_debut, date_fin,
+                          validees_seulement=False):
+    """Annexe DGI : relevé ligne par ligne des déductions de TVA (FG138).
+
+    La DGI exige, à l'appui de la déclaration (FG137), la liste détaillée de
+    chaque pièce ouvrant droit à déduction de TVA. On lit le grand livre : pour
+    chaque ÉCRITURE portant une ligne de TVA récupérable (comptes 3455…), on
+    produit une ligne d'annexe avec la date, la référence/pièce, le journal, le
+    tiers (fournisseur résolu via l'auxiliaire de la ligne 4411 de la même
+    écriture), la base HT (Σ des lignes de charge/immobilisation hors TVA et hors
+    compte fournisseur, débit − crédit), le montant de TVA déductible
+    (3455… débit − crédit) et le taux déduit. La somme des TVA des lignes
+    reconcilie 1:1 avec ``tva_deductible`` de ``preparer_declaration_tva`` sur la
+    même période. Borné à ``[date_debut ; date_fin]``, lecture seule, scopé
+    société. Renvoie ``{'date_debut', 'date_fin', 'lignes': [...], 'totaux':
+    {'base_ht', 'tva'}}``.
+    """
+    # Toutes les lignes de TVA déductible de la période, groupées par écriture.
+    tva_qs = _lignes_qs(
+        company, date_debut=date_debut, date_fin=date_fin,
+        validees_seulement=validees_seulement).filter(
+        compte__numero__in=_COMPTES_TVA_DEDUCTIBLE).order_by(
+        'ecriture__date_ecriture', 'ecriture_id', 'id')
+
+    tva_par_ecriture = {}
+    ordre_ecritures = []
+    for ligne in tva_qs:
+        eid = ligne.ecriture_id
+        if eid not in tva_par_ecriture:
+            tva_par_ecriture[eid] = {
+                'ecriture': ligne.ecriture,
+                'tva': Decimal('0'),
+            }
+            ordre_ecritures.append(eid)
+        tva_par_ecriture[eid]['tva'] += (
+            (ligne.debit or Decimal('0')) - (ligne.credit or Decimal('0')))
+
+    if not ordre_ecritures:
+        return {
+            'date_debut': date_debut,
+            'date_fin': date_fin,
+            'lignes': [],
+            'totaux': {'base_ht': Decimal('0'), 'tva': Decimal('0')},
+        }
+
+    # Toutes les AUTRES lignes de ces écritures (base HT + tiers fournisseur).
+    autres_qs = LigneEcriture.objects.filter(
+        company=company, ecriture_id__in=ordre_ecritures).select_related(
+        'compte', 'ecriture', 'ecriture__journal').exclude(
+        compte__numero__in=_COMPTES_TVA_DEDUCTIBLE)
+
+    base_par_ecriture = {eid: Decimal('0') for eid in ordre_ecritures}
+    tiers_par_ecriture = {}
+    for ligne in autres_qs:
+        eid = ligne.ecriture_id
+        numero = ligne.compte.numero
+        # Le tiers fournisseur de la pièce vient de la ligne 4411 (auxiliaire).
+        if numero in _COMPTES_FOURNISSEURS_AP:
+            if ligne.tiers_id is not None and eid not in tiers_par_ecriture:
+                tiers_par_ecriture[eid] = (ligne.tiers_type, ligne.tiers_id)
+            continue  # le compte fournisseur n'entre pas dans la base HT.
+        # Base HT = charges/immobilisations (débit − crédit), hors TVA & tiers.
+        base_par_ecriture[eid] += (
+            (ligne.debit or Decimal('0')) - (ligne.credit or Decimal('0')))
+
+    lignes = []
+    total_base = total_tva = Decimal('0')
+    for eid in ordre_ecritures:
+        ecriture = tva_par_ecriture[eid]['ecriture']
+        tva = tva_par_ecriture[eid]['tva']
+        base_ht = base_par_ecriture.get(eid, Decimal('0'))
+        tiers = tiers_par_ecriture.get(eid)
+        tiers_nom = ''
+        tiers_type = ''
+        tiers_id = None
+        if tiers is not None:
+            tiers_type, tiers_id = tiers
+            tiers_nom = _nom_fournisseur(company, tiers_type, tiers_id)
+        total_base += base_ht
+        total_tva += tva
+        lignes.append({
+            'date': ecriture.date_ecriture,
+            'reference': ecriture.reference or f'{ecriture.journal.code}-{eid}',
+            'journal': ecriture.journal.code,
+            'libelle': ecriture.libelle,
+            'tiers_type': tiers_type,
+            'tiers_id': tiers_id,
+            'tiers': tiers_nom,
+            'base_ht': base_ht,
+            'tva': tva,
+            'taux': _taux_tva(base_ht, tva),
+        })
+
+    return {
+        'date_debut': date_debut,
+        'date_fin': date_fin,
+        'lignes': lignes,
+        'totaux': {'base_ht': total_base, 'tva': total_tva},
+    }

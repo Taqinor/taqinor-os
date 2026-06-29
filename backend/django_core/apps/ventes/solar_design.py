@@ -1491,3 +1491,273 @@ def simulate_bankable_yield(base_production_kwh, *, loss_factors=None,
         "specific_yield_kwh_kwc": specific_yield,
         "warnings": warnings,
     }
+
+
+# ── FG258 — Profil d'autoconsommation horaire depuis la courbe de charge ──────
+# Croise une COURBE DE CHARGE horaire (consommation, kWh par heure) avec un
+# PROFIL DE PRODUCTION horaire (PV, kWh par heure) pour calculer le taux
+# d'autoconsommation RÉEL — heure par heure, l'autoconsommé instantané vaut
+# min(charge, production) (on ne peut pas autoconsommer plus que ce que l'on
+# produit NI plus que ce que l'on consomme à cet instant). Le surplus
+# (production − autoconsommé) part au réseau ; le complément (charge −
+# autoconsommé) est importé.
+#
+#   taux d'autoconsommation = Σ autoconsommé / Σ production
+#       → quelle part de MA production je consomme moi-même (le reste injecté).
+#   taux de couverture (autoproduction) = Σ autoconsommé / Σ charge
+#       → quelle part de MA consommation est couverte par le solaire.
+#
+# Le calcul est PUR (aucune base, aucun réseau, aucun prix) et tolère des
+# courbes de longueurs différentes (on aligne sur la plus courte, en signalant).
+# Un profil annuel 8760 h fonctionne exactement comme un profil type 24 h : la
+# routine ne suppose AUCUNE longueur particulière. La liberté de saisie est
+# préservée : aucune valeur n'est rejetée — les valeurs illisibles ou négatives
+# sont ramenées à 0 (une charge/production négative n'a pas de sens physique),
+# jamais d'exception, division par zéro bornée (Σproduction = 0 → taux = 0).
+#
+# Le PARSING d'un classeur .xlsx (openpyxl, déjà une dépendance du projet) est
+# tenu SÉPARÉ du calcul : ``load_curve_from_xlsx`` lit une colonne en liste de
+# floats, puis on passe cette liste à ``hourly_self_consumption``. Aucune
+# dépendance pip nouvelle n'est introduite.
+
+# ── Profils horaires types (24 valeurs, part de la grandeur journalière) ──────
+# Profil de CHARGE résidentiel marocain type : creux la nuit, pics matin & soir
+# (cuisine, éclairage, clim/TV en soirée). Somme = 1.0 (fractions de la conso
+# journalière). Index 0 = 00 h … 23 = 23 h.
+TYPICAL_LOAD_PROFILE_RESIDENTIAL = [
+    0.020, 0.018, 0.016, 0.016, 0.018, 0.025,  # 00–05 h
+    0.040, 0.055, 0.050, 0.040, 0.035, 0.035,  # 06–11 h
+    0.038, 0.035, 0.030, 0.030, 0.035, 0.050,  # 12–17 h
+    0.075, 0.090, 0.085, 0.065, 0.045, 0.029,  # 18–23 h
+]
+
+# Profil de CHARGE tertiaire / commerce (journée ouvrée) : plat la nuit, plateau
+# diurne aligné sur le soleil — beaucoup plus favorable à l'autoconsommation.
+TYPICAL_LOAD_PROFILE_COMMERCIAL = [
+    0.010, 0.010, 0.010, 0.010, 0.010, 0.015,  # 00–05 h
+    0.030, 0.055, 0.075, 0.085, 0.090, 0.085,  # 06–11 h
+    0.075, 0.085, 0.090, 0.085, 0.070, 0.045,  # 12–17 h
+    0.025, 0.015, 0.010, 0.010, 0.010, 0.010,  # 18–23 h
+]
+
+# Profil de PRODUCTION PV type (jour clair) : cloche centrée sur midi solaire,
+# nulle la nuit. Somme = 1.0 (fractions de la production journalière).
+TYPICAL_PV_PROFILE = [
+    0.0, 0.0, 0.0, 0.0, 0.0, 0.005,            # 00–05 h
+    0.020, 0.045, 0.075, 0.100, 0.120, 0.130,  # 06–11 h
+    0.130, 0.120, 0.100, 0.075, 0.045, 0.020,  # 12–17 h
+    0.010, 0.005, 0.0, 0.0, 0.0, 0.0,          # 18–23 h
+]
+
+_TYPICAL_LOAD_PROFILES = {
+    "residential": TYPICAL_LOAD_PROFILE_RESIDENTIAL,
+    "residentiel": TYPICAL_LOAD_PROFILE_RESIDENTIAL,
+    "commercial": TYPICAL_LOAD_PROFILE_COMMERCIAL,
+    "tertiaire": TYPICAL_LOAD_PROFILE_COMMERCIAL,
+}
+
+
+def _coerce_series(values):
+    """Convertit un itérable en liste de floats ≥ 0 (illisible/<0 → 0.0).
+
+    Préserve la longueur : chaque case impossible à lire ou négative devient
+    0.0 (jamais de rejet, jamais d'exception). ``None`` → liste vide.
+    """
+    if values is None:
+        return []
+    out = []
+    for v in values:
+        try:
+            f = float(v)
+        except (TypeError, ValueError):
+            f = 0.0
+        if f < 0.0 or f != f:  # négatif ou NaN → 0
+            f = 0.0
+        out.append(f)
+    return out
+
+
+def _scaled_typical_load(total_kwh, profile_key="residential"):
+    """Distribue ``total_kwh`` sur 24 h selon un profil type (somme→total)."""
+    try:
+        total = float(total_kwh)
+    except (TypeError, ValueError):
+        total = 0.0
+    if total < 0.0:
+        total = 0.0
+    profile = _TYPICAL_LOAD_PROFILES.get(
+        (profile_key or "residential").lower(),
+        TYPICAL_LOAD_PROFILE_RESIDENTIAL)
+    s = sum(profile)
+    if s <= 0:
+        return [0.0] * len(profile)
+    return [total * (p / s) for p in profile]
+
+
+def _scaled_typical_pv(total_kwh):
+    """Distribue ``total_kwh`` de production sur 24 h selon ``TYPICAL_PV_PROFILE``."""
+    try:
+        total = float(total_kwh)
+    except (TypeError, ValueError):
+        total = 0.0
+    if total < 0.0:
+        total = 0.0
+    s = sum(TYPICAL_PV_PROFILE)
+    if s <= 0:
+        return [0.0] * len(TYPICAL_PV_PROFILE)
+    return [total * (p / s) for p in TYPICAL_PV_PROFILE]
+
+
+def hourly_self_consumption(load_curve=None, production_curve=None, *,
+                            daily_load_kwh=None, daily_production_kwh=None,
+                            load_profile="residential"):
+    """FG258 — taux d'autoconsommation RÉEL depuis courbes horaires.
+
+    Aligne heure par heure une COURBE DE CHARGE (consommation, kWh/h) et un
+    PROFIL DE PRODUCTION (PV, kWh/h). Pour chaque heure :
+
+        autoconsommé[h] = min(charge[h], production[h])
+        surplus_injecté[h] = production[h] − autoconsommé[h]
+        importé_réseau[h] = charge[h] − autoconsommé[h]
+
+    puis agrège ::
+
+        taux_autoconsommation = Σ autoconsommé / Σ production
+        taux_couverture       = Σ autoconsommé / Σ charge
+
+    Paramètres
+    ----------
+    load_curve : itérable de consommations horaires (kWh/h) — 24 h, 8760 h ou
+        toute longueur. Les valeurs illisibles/négatives sont ramenées à 0
+        (jamais de rejet). Si absent, on synthétise un profil type
+        (``load_profile``) calé sur ``daily_load_kwh``.
+    production_curve : itérable de productions PV horaires (kWh/h). Si absent,
+        on synthétise ``TYPICAL_PV_PROFILE`` calé sur ``daily_production_kwh``.
+    daily_load_kwh / daily_production_kwh : énergies journalières servant à
+        générer les profils type quand une courbe n'est pas fournie.
+    load_profile : clé de profil type de charge (``"residential"`` |
+        ``"commercial"`` / ``"tertiaire"``) utilisée comme repli.
+
+    Retourne un dict JSON-sérialisable ::
+
+        {hours, total_load_kwh, total_production_kwh, self_consumed_kwh,
+         surplus_kwh, grid_import_kwh,
+         self_consumption_rate, self_consumption_pct,
+         coverage_rate, coverage_pct,
+         load_source, production_source, warnings: []}
+
+    Ne lève jamais : Σproduction = 0 → taux d'autoconso 0 ; Σcharge = 0 →
+    couverture 0. Des courbes de longueurs différentes sont alignées sur la plus
+    courte (avec un avertissement).
+    """
+    warnings = []
+
+    load = _coerce_series(load_curve)
+    load_source = "courbe fournie"
+    if not load:
+        load = _scaled_typical_load(daily_load_kwh, load_profile)
+        load_source = f"profil type ({load_profile})"
+
+    prod = _coerce_series(production_curve)
+    production_source = "courbe fournie"
+    if not prod:
+        prod = _scaled_typical_pv(daily_production_kwh)
+        production_source = "profil type PV"
+
+    # ── Alignement des longueurs (on borne sur la plus courte) ──
+    n = min(len(load), len(prod))
+    if len(load) != len(prod) and load and prod:
+        warnings.append(
+            f"courbes de longueurs différentes (charge={len(load)} h, "
+            f"production={len(prod)} h) — alignées sur {n} h")
+
+    total_load = 0.0
+    total_prod = 0.0
+    self_consumed = 0.0
+    for i in range(n):
+        c = load[i]
+        p = prod[i]
+        total_load += c
+        total_prod += p
+        self_consumed += c if c < p else p   # min(charge, production)
+
+    total_load = round(total_load, 3)
+    total_prod = round(total_prod, 3)
+    self_consumed = round(self_consumed, 3)
+    surplus = round(max(0.0, total_prod - self_consumed), 3)
+    grid_import = round(max(0.0, total_load - self_consumed), 3)
+
+    sc_rate = round(self_consumed / total_prod, 4) if total_prod > 0 else 0.0
+    cov_rate = round(self_consumed / total_load, 4) if total_load > 0 else 0.0
+
+    if total_prod <= 0:
+        warnings.append("production horaire nulle — taux d'autoconsommation 0")
+    elif sc_rate >= 0.95:
+        warnings.append(
+            "autoconsommation quasi totale (≥ 95 %) — peu/pas de surplus "
+            "injecté ; un champ plus grand resterait autoconsommé")
+    elif sc_rate <= 0.30 and total_prod > 0:
+        warnings.append(
+            "autoconsommation faible (≤ 30 %) — fort surplus injecté au "
+            "réseau ; envisager stockage, décalage des usages ou champ réduit")
+
+    return {
+        "hours": n,
+        "total_load_kwh": total_load,
+        "total_production_kwh": total_prod,
+        "self_consumed_kwh": self_consumed,
+        "surplus_kwh": surplus,
+        "grid_import_kwh": grid_import,
+        "self_consumption_rate": sc_rate,
+        "self_consumption_pct": round(sc_rate * 100.0, 1),
+        "coverage_rate": cov_rate,
+        "coverage_pct": round(cov_rate * 100.0, 1),
+        "load_source": load_source,
+        "production_source": production_source,
+        "warnings": warnings,
+    }
+
+
+def load_curve_from_xlsx(file_or_path, *, sheet=None, column=1,
+                         skip_header=True, max_rows=8760):
+    """FG258 (I/O) — lit une courbe de charge depuis un classeur .xlsx.
+
+    PARSING SÉPARÉ du calcul : extrait UNE colonne d'un classeur openpyxl en
+    liste de floats, prête à passer à :func:`hourly_self_consumption`. openpyxl
+    est déjà une dépendance du projet (exports .xlsx) — aucune nouvelle
+    dépendance n'est ajoutée.
+
+    Paramètres
+    ----------
+    file_or_path : chemin, objet fichier ou flux ouvert par ``load_workbook``.
+    sheet : nom de la feuille (défaut : feuille active).
+    column : index de colonne 1-based contenant les valeurs (défaut 1 = A).
+    skip_header : ignore la première ligne (en-tête) si True.
+    max_rows : nombre maximal de lignes de DONNÉES lues (8760 = année horaire).
+
+    Retourne la liste de floats (cellule vide/illisible → 0.0 pour préserver
+    l'alignement horaire). Ne lève pas sur une cellule illisible.
+    """
+    import openpyxl  # déjà une dépendance projet (cf. requirements.txt)
+
+    wb = openpyxl.load_workbook(file_or_path, read_only=True, data_only=True)
+    try:
+        ws = wb[sheet] if sheet else wb.active
+        col_idx = max(1, int(column or 1))
+        limit = int(max_rows) + (1 if skip_header else 0)
+        values = []
+        for row in ws.iter_rows(min_col=col_idx, max_col=col_idx,
+                                values_only=True):
+            cell = row[0] if row else None
+            try:
+                values.append(float(cell))
+            except (TypeError, ValueError):
+                values.append(0.0)
+            if len(values) >= limit:
+                break
+    finally:
+        wb.close()
+
+    if skip_header and values:
+        values = values[1:]
+    return values[:max_rows]

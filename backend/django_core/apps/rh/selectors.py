@@ -479,3 +479,107 @@ def certifications_expirantes(company, within_days=30, inclure_expirees=True,
     if employe_id is not None:
         qs = qs.filter(employe_id=employe_id)
     return qs.select_related('employe').order_by('date_validite', 'id')
+
+
+def echeances_rh(company, within_days=30, today=None):
+    """Moteur d'échéances RH unifié (FG175) — alertes d'expiration agrégées.
+
+    Réunit en UNE seule liste normalisée les titres/documents d'un employé qui
+    arrivent à expiration (ou sont déjà expirés) dans la fenêtre ``within_days`` :
+
+    * habilitations électriques (FG173, ``Habilitation.date_validite``) ;
+    * certifications spécifiques (FG174, ``Certification.date_validite``) ;
+    * documents employé pourvus d'une échéance (FG159,
+      ``DocumentEmploye.date_expiration``).
+
+    Comme les sélecteurs sous-jacents par famille, on INCLUT les échéances déjà
+    dépassées (une habilitation/certification/doc expiré est précisément ce qui
+    doit alerter avant un chantier PV) ; on retient donc toute échéance ``<=``
+    aujourd'hui + ``within_days``. Pour les titres réglementaires (habilitations,
+    certifications) on ne garde que les lignes ACTIVES ; les documents n'ont pas
+    de drapeau d'activité.
+
+    Sélecteur PUR (pas d'I/O temps réel) : la date de référence est le paramètre
+    ``today`` (par défaut ``timezone.localdate()``), ce qui rend le résultat
+    déterministe et testable. Toujours scopé société (jamais lu du corps de
+    requête) ; renvoie ``[]`` si la société est absente.
+
+    Renvoie une liste de dicts triée par échéance la plus proche (puis type,
+    employé) :
+
+    ``{
+        'type': 'habilitation' | 'certification' | 'document',
+        'employe_id': int,
+        'employe': str,                 # « MATRICULE — Nom Prénom »
+        'libelle': str,                 # libellé lisible du titre/document
+        'date_validite': date,          # échéance
+        'jours_restants': int,          # négatif si déjà expiré
+    }``
+    """
+    if company is None:
+        return []
+    try:
+        within_days = int(within_days)
+    except (TypeError, ValueError):
+        within_days = 30
+    if within_days < 0:
+        within_days = 0
+    if today is None:
+        today = timezone.localdate()
+    limite = today + timedelta(days=within_days)
+
+    rows = []
+
+    def _employe_label(emp):
+        return f'{emp.matricule} — {emp.nom} {emp.prenom}'.strip()
+
+    habilitations = (
+        Habilitation.objects
+        .filter(company=company, actif=True,
+                date_validite__isnull=False, date_validite__lte=limite)
+        .select_related('employe')
+    )
+    for hab in habilitations:
+        rows.append({
+            'type': 'habilitation',
+            'employe_id': hab.employe_id,
+            'employe': _employe_label(hab.employe),
+            'libelle': hab.get_type_habilitation_display(),
+            'date_validite': hab.date_validite,
+            'jours_restants': (hab.date_validite - today).days,
+        })
+
+    certifications = (
+        Certification.objects
+        .filter(company=company, actif=True,
+                date_validite__isnull=False, date_validite__lte=limite)
+        .select_related('employe')
+    )
+    for cert in certifications:
+        rows.append({
+            'type': 'certification',
+            'employe_id': cert.employe_id,
+            'employe': _employe_label(cert.employe),
+            'libelle': cert.get_type_certification_display(),
+            'date_validite': cert.date_validite,
+            'jours_restants': (cert.date_validite - today).days,
+        })
+
+    documents = (
+        DocumentEmploye.objects
+        .filter(company=company,
+                date_expiration__isnull=False, date_expiration__lte=limite)
+        .select_related('employe')
+    )
+    for doc in documents:
+        rows.append({
+            'type': 'document',
+            'employe_id': doc.employe_id,
+            'employe': _employe_label(doc.employe),
+            'libelle': doc.get_type_document_display(),
+            'date_validite': doc.date_expiration,
+            'jours_restants': (doc.date_expiration - today).days,
+        })
+
+    rows.sort(key=lambda r: (r['date_validite'], r['type'], r['employe_id']))
+    return rows
