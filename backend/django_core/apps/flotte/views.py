@@ -16,6 +16,7 @@ from authentication.permissions import IsAnyRole, IsResponsableOrAdmin
 from .models import (
     ActifFlotte,
     AffectationConducteur,
+    BaremeVignette,
     CarteCarburant,
     Conducteur,
     EcheanceEntretien,
@@ -35,6 +36,7 @@ from .models import (
 from .serializers import (
     ActifFlotteSerializer,
     AffectationConducteurSerializer,
+    BaremeVignetteSerializer,
     CarteCarburantSerializer,
     ConducteurSerializer,
     EcheanceEntretienSerializer,
@@ -53,7 +55,7 @@ from .serializers import (
 )
 
 READ_ACTIONS = ['list', 'retrieve', 'consommation', 'anomalies', 'echeances',
-                'couts', 'synthese', 'expirantes']
+                'couts', 'synthese', 'expirantes', 'tsav']
 
 
 class _FlotteBaseViewSet(TenantMixin, viewsets.ModelViewSet):
@@ -86,6 +88,30 @@ class VehiculeViewSet(_FlotteBaseViewSet):
         if energie:
             qs = qs.filter(energie=energie)
         return qs
+
+    @action(detail=True, methods=['get'])
+    def tsav(self, request, pk=None):
+        """FLOTTE20 — Vignette / TSAV due par ce véhicule (lecture tout rôle).
+
+        Calcule le montant via le barème éditable de la société
+        (``selectors.calcul_tsav``) à partir de l'énergie et de la puissance
+        fiscale du véhicule. ``?annee=N`` cible un barème daté (retombe sur le
+        barème générique sinon). Renvoie ``montant`` (``null`` si aucune tranche
+        ne correspond ou si la puissance fiscale est inconnue), ``exonere`` et
+        une ``note`` lisible.
+        """
+        vehicule = self.get_object()
+
+        annee = None
+        annee_param = request.query_params.get('annee')
+        if annee_param:
+            try:
+                annee = int(annee_param)
+            except (ValueError, TypeError):
+                annee = None
+
+        from .selectors import calcul_tsav
+        return Response(calcul_tsav(vehicule, annee=annee))
 
 
 class EnginRoulantViewSet(_FlotteBaseViewSet):
@@ -882,3 +908,40 @@ class EcheanceReglementaireViewSet(_FlotteBaseViewSet):
         qs = echeances_reglementaires_expirantes(company, within=within)
         serializer = self.get_serializer(qs, many=True)
         return Response(serializer.data)
+
+
+class BaremeVignetteViewSet(_FlotteBaseViewSet):
+    """Barème éditable de la vignette / TSAV (FLOTTE20).
+
+    CRUD scopé société (écriture responsable/admin) du référentiel des montants
+    TSAV par énergie et tranche de chevaux fiscaux (CV). Filtrable par
+    ``?energie=<essence|diesel|electrique|hybride>``, ``?annee=<N>`` et
+    ``?actif=true|false``. Le calcul du montant pour un véhicule donné passe par
+    ``GET /vehicules/{id}/tsav/?annee=N``.
+    """
+    queryset = BaremeVignette.objects.all()
+    serializer_class = BaremeVignetteSerializer
+    filter_backends = [filters.SearchFilter, filters.OrderingFilter]
+    search_fields = ['notes']
+    ordering_fields = ['annee', 'energie', 'cv_min', 'montant', 'date_creation']
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        params = self.request.query_params
+
+        energie = params.get('energie')
+        if energie:
+            qs = qs.filter(energie=energie)
+
+        annee = params.get('annee')
+        if annee:
+            try:
+                qs = qs.filter(annee=int(annee))
+            except (ValueError, TypeError):
+                pass
+
+        actif = params.get('actif')
+        if actif is not None:
+            qs = qs.filter(actif=actif.lower() in ('1', 'true', 'vrai', 'oui'))
+
+        return qs

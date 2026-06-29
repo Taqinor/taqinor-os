@@ -54,6 +54,13 @@ class Vehicule(models.Model):
         verbose_name='Énergie')
     kilometrage = models.PositiveIntegerField(
         default=0, verbose_name='Kilométrage')
+    # FLOTTE20 — puissance fiscale (chevaux fiscaux, CV) inscrite sur la carte
+    # grise. Sert de clé, avec l'``energie``, au calcul de la vignette / TSAV
+    # (taxe spéciale annuelle sur les véhicules) via le barème éditable
+    # ``BaremeVignette``. null = puissance inconnue → la TSAV n'est pas calculée.
+    puissance_fiscale = models.PositiveSmallIntegerField(
+        null=True, blank=True, verbose_name='Puissance fiscale (CV)',
+        help_text='Chevaux fiscaux (carte grise). Sert au calcul de la TSAV.')
     valeur = models.DecimalField(
         max_digits=12, decimal_places=2, default=0,
         verbose_name='Valeur (MAD)')
@@ -1454,3 +1461,112 @@ class EcheanceReglementaire(models.Model):
     def __str__(self):
         return f'{self.get_type_echeance_display()} — {self.actif_flotte} ' \
                f'({self.date_echeance})'
+
+
+# ── FLOTTE20 — Barème de la vignette / TSAV (CV × énergie, éditable) ────────────
+
+class BaremeVignette(models.Model):
+    """Barème ÉDITABLE de la vignette / TSAV (FLOTTE20).
+
+    La vignette (Taxe Spéciale Annuelle sur les Véhicules, TSAV) est due chaque
+    année et dépend de DEUX critères : l'``energie`` du véhicule (essence, diesel,
+    électrique, hybride) et sa ``puissance_fiscale`` en chevaux fiscaux (CV). Ce
+    modèle matérialise UNE ligne de barème : « pour cette énergie et cette
+    tranche de CV [``cv_min`` .. ``cv_max``], le montant TSAV est ``montant`` ».
+
+    **Référentiel par société, éditable** : chaque société porte SON propre
+    barème (les montants officiels peuvent évoluer d'une loi de finances à
+    l'autre). La clé stable est ``(company, energie, cv_min, cv_max, annee)`` —
+    deux lignes ne peuvent pas définir la même tranche pour la même énergie et la
+    même année. ``annee`` permet de garder l'historique des grilles ; ``actif``
+    permet de désactiver une ligne sans la supprimer.
+
+    **Calcul** : ``selectors.calcul_tsav(vehicule, annee=…)`` choisit la ligne
+    ACTIVE dont ``energie`` correspond et dont la tranche
+    ``cv_min ≤ puissance_fiscale ≤ cv_max`` contient la puissance du véhicule, et
+    renvoie son ``montant``. L'électrique est typiquement EXONÉRÉ : il suffit de
+    seeder une ligne ``electrique`` à ``montant = 0``.
+
+    **Famille DISTINCTE de l'échéance** : ``EcheanceReglementaire`` (FLOTTE19)
+    suit la DATE limite de la vignette ; ``BaremeVignette`` (FLOTTE20) calcule le
+    MONTANT dû — les deux ne se confondent jamais.
+
+    **Multi-tenant** : ``company`` est posée côté serveur (jamais lue du corps de
+    requête).
+    """
+
+    class Energie(models.TextChoices):
+        DIESEL = 'diesel', 'Diesel'
+        ESSENCE = 'essence', 'Essence'
+        ELECTRIQUE = 'electrique', 'Électrique'
+        HYBRIDE = 'hybride', 'Hybride'
+
+    # CV maximal « sans plafond » : une tranche supérieure ouverte (« ≥ 15 CV »)
+    # se saisit avec un ``cv_max`` très grand (PositiveSmallIntegerField ≤ 32767).
+    CV_MAX_OUVERT = 9999
+
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='flotte_baremes_vignette',
+        verbose_name='Société',
+    )
+    # Code court de l'énergie — CharField borné : 'electrique' (10) est le plus
+    # long code, tient dans max_length (leçon FG136).
+    energie = models.CharField(
+        max_length=20, choices=Energie.choices, default=Energie.ESSENCE,
+        verbose_name='Énergie')
+    cv_min = models.PositiveSmallIntegerField(
+        default=0, verbose_name='CV min (inclus)')
+    cv_max = models.PositiveSmallIntegerField(
+        default=CV_MAX_OUVERT, verbose_name='CV max (inclus)')
+    montant = models.DecimalField(
+        max_digits=12, decimal_places=2, default=0,
+        verbose_name='Montant TSAV (MAD)')
+    annee = models.PositiveIntegerField(
+        default=0,
+        verbose_name='Année',
+        help_text='Année du barème (0 = barème générique, toutes années).')
+    actif = models.BooleanField(default=True, verbose_name='Actif')
+    notes = models.CharField(
+        max_length=200, blank=True, verbose_name='Notes')
+    date_creation = models.DateTimeField(
+        auto_now_add=True, verbose_name='Créé le')
+
+    class Meta:
+        verbose_name = 'Barème vignette / TSAV'
+        verbose_name_plural = 'Barèmes vignette / TSAV'
+        unique_together = [
+            ('company', 'energie', 'cv_min', 'cv_max', 'annee')]
+        ordering = ['annee', 'energie', 'cv_min']
+        indexes = [
+            models.Index(
+                fields=['company', 'energie', 'annee'],
+                name='flotte_barvig_co_en_an_idx',
+            ),
+            models.Index(
+                fields=['company', 'actif'],
+                name='flotte_barvig_co_act_idx',
+            ),
+        ]
+
+    def clean(self):
+        """Valide la cohérence de la tranche et la positivité du montant."""
+        if self.cv_min is not None and self.cv_max is not None \
+                and self.cv_min > self.cv_max:
+            raise ValidationError(
+                "Le CV min ne peut pas dépasser le CV max.")
+        if self.montant is not None and self.montant < 0:
+            raise ValidationError(
+                "Le montant ne peut pas être négatif.")
+
+    def couvre_cv(self, cv):
+        """``True`` si ``cv`` tombe dans la tranche [cv_min .. cv_max] (inclus)."""
+        if cv is None:
+            return False
+        return self.cv_min <= cv <= self.cv_max
+
+    def __str__(self):
+        return (f'TSAV {self.get_energie_display()} '
+                f'{self.cv_min}-{self.cv_max} CV : {self.montant} MAD '
+                f'({self.annee or "générique"})')

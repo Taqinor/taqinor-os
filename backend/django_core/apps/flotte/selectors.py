@@ -11,6 +11,7 @@ from django.db import models
 from .models import (
     ActifFlotte,
     AffectationConducteur,
+    BaremeVignette,
     CarteCarburant,
     Conducteur,
     EcheanceEntretien,
@@ -958,3 +959,104 @@ def echeances_reglementaires_expirantes(company, within=30, today=None):
     return echeances_reglementaires_de_la_societe(company).filter(
         date_echeance__lte=horizon,
     ).order_by('date_echeance', 'id')
+
+
+# ── FLOTTE20 — Barème de la vignette / TSAV (CV × énergie) ─────────────────────
+
+def baremes_vignette_de_la_societe(company, energie=None, annee=None,
+                                   actif=None):
+    """FLOTTE20 — Lignes de barème vignette / TSAV d'une société (queryset scopé).
+
+    Filtres facultatifs : ``energie`` (essence | diesel | electrique | hybride),
+    ``annee`` (année exacte du barème) et ``actif`` (bool). Lecture seule, scopée
+    société.
+    """
+    qs = BaremeVignette.objects.filter(company=company)
+    if energie:
+        qs = qs.filter(energie=energie)
+    if annee is not None:
+        qs = qs.filter(annee=annee)
+    if actif is not None:
+        qs = qs.filter(actif=actif)
+    return qs
+
+
+def calcul_tsav(vehicule, annee=None):
+    """FLOTTE20 — Montant de la vignette / TSAV d'un véhicule (lecture seule).
+
+    Choisit, dans le barème ÉDITABLE de la société du véhicule, la ligne ACTIVE
+    dont l'``energie`` correspond à celle du véhicule et dont la tranche
+    ``cv_min ≤ puissance_fiscale ≤ cv_max`` contient sa puissance fiscale, puis
+    renvoie un dict LECTURE SEULE ::
+
+        {
+          'montant': <Decimal|None>,   # None si aucune tranche ne correspond
+          'energie': <str>,
+          'puissance_fiscale': <int|None>,
+          'annee': <int|None>,         # année effectivement retenue (ou None)
+          'bareme_id': <int|None>,     # ligne de barème retenue (ou None)
+          'exonere': <bool>,           # True si une ligne correspond ET montant=0
+          'note': <str>,               # explication lisible
+        }
+
+    **Sélection de l'année** : si ``annee`` est fourni, on cherche d'abord une
+    ligne pour CETTE année, puis on retombe sur le barème générique (``annee=0``)
+    si aucune ligne datée ne correspond. Sans ``annee``, on prend l'année la plus
+    récente disponible (générique inclus). L'électrique est typiquement exonéré
+    (une ligne ``electrique`` à ``montant = 0`` → ``montant`` 0 et ``exonere``).
+
+    Aucune écriture, aucun effet de bord. ``annee`` est threadé jusqu'au bout.
+    """
+    company = vehicule.company
+    energie = vehicule.energie
+    cv = vehicule.puissance_fiscale
+
+    base = {
+        'montant': None,
+        'energie': energie,
+        'puissance_fiscale': cv,
+        'annee': None,
+        'bareme_id': None,
+        'exonere': False,
+        'note': '',
+    }
+
+    if cv is None:
+        base['note'] = (
+            "Puissance fiscale (CV) inconnue : impossible de calculer la TSAV.")
+        return base
+
+    qs = BaremeVignette.objects.filter(
+        company=company, energie=energie, actif=True,
+        cv_min__lte=cv, cv_max__gte=cv,
+    )
+
+    # Choix de l'année : la datée demandée en priorité, sinon le générique
+    # (annee=0), sinon l'année la plus récente disponible.
+    candidat = None
+    if annee is not None:
+        candidat = qs.filter(annee=annee).order_by('cv_min').first()
+        if candidat is None:
+            candidat = qs.filter(annee=0).order_by('cv_min').first()
+    else:
+        candidat = qs.order_by('-annee', 'cv_min').first()
+
+    if candidat is None:
+        base['note'] = (
+            f"Aucune tranche de barème active pour énergie « {energie} » "
+            f"et {cv} CV"
+            + (f" (année {annee})." if annee is not None else "."))
+        return base
+
+    base['montant'] = candidat.montant
+    base['annee'] = candidat.annee
+    base['bareme_id'] = candidat.id
+    base['exonere'] = candidat.montant == 0
+    if base['exonere']:
+        base['note'] = (
+            f"Exonéré (montant 0) pour énergie « {energie} » et {cv} CV.")
+    else:
+        base['note'] = (
+            f"TSAV {candidat.montant} MAD (énergie « {energie} », {cv} CV, "
+            f"tranche {candidat.cv_min}-{candidat.cv_max}).")
+    return base
