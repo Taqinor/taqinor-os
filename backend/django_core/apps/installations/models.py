@@ -65,6 +65,7 @@ from .models_document import (
 )
 from .models_program import (
     Projet,
+    ProjetTache,
     ProjetChantier,
     ProjetDevis,
     ProjetTicket,
@@ -104,6 +105,7 @@ __all__ = [
     'DocumentProjet',
     'RevisionDocument',
     'Projet',
+    'ProjetTache',
     'ProjetChantier',
     'ProjetDevis',
     'ProjetTicket',

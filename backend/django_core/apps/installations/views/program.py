@@ -24,10 +24,10 @@ from authentication.permissions import IsAnyRole, IsResponsableOrAdmin
 from apps.ventes.utils.references import create_with_reference
 
 from ..models import (
-    Projet, ProjetChantier, ProjetDevis, ProjetTicket,
+    Projet, ProjetTache, ProjetChantier, ProjetDevis, ProjetTicket,
 )
 from ..serializers import (
-    ProjetSerializer, ProjetChantierSerializer,
+    ProjetSerializer, ProjetTacheSerializer, ProjetChantierSerializer,
     ProjetDevisSerializer, ProjetTicketSerializer,
 )
 
@@ -230,3 +230,95 @@ class ProjetTicketViewSet(TenantMixin, viewsets.ModelViewSet):
         _check_projet_tenant(serializer, company)
         _check_tenant(serializer, company, 'ticket')
         serializer.save(company=company)
+
+
+def _check_assigne_tenant(serializer, company):
+    """L'utilisateur assigné (s'il y en a un) doit appartenir à la société du
+    user. L'objet user n'a pas de `company_id` exposé comme les autres FK : on
+    lit sa société résolue par DRF sans importer le modèle d'auth."""
+    cid = getattr(company, 'id', None)
+    user = serializer.validated_data.get('assigne')
+    if user is not None and getattr(user, 'company_id', None) != cid:
+        raise ValidationError({'assigne': 'Utilisateur inconnu pour cette société.'})
+
+
+def _check_tache_links_same_projet(serializer, instance=None):
+    """`parent` et `predecesseur` doivent appartenir au MÊME programme que la
+    tâche, et la garde anti-cycle du modèle (``clean``) doit passer."""
+    data = serializer.validated_data
+    projet = data.get('projet') or getattr(instance, 'projet', None)
+    for field in ('parent', 'predecesseur'):
+        linked = data.get(field)
+        if linked is not None and projet is not None \
+                and linked.projet_id != projet.id:
+            raise ValidationError(
+                {field: 'Doit appartenir au même programme.'})
+
+
+class ProjetTacheViewSet(TenantMixin, viewsets.ModelViewSet):
+    """FG292 — tâches & sous-tâches de programme avec dépendances. Lecture tout
+    rôle, écriture responsable/admin. Société posée côté serveur. Le programme,
+    le parent, le prédécesseur et l'assigné sont validés tenant. Les cycles
+    (parent/prédécesseur) sont refusés via la validation du modèle. Filtrable
+    par `projet`, `statut`, `parent` et `assigne`."""
+    queryset = ProjetTache.objects.select_related(
+        'projet', 'parent', 'predecesseur', 'assigne').all()
+    serializer_class = ProjetTacheSerializer
+
+    def get_permissions(self):
+        if self.action in READ_ACTIONS:
+            return [IsAnyRole()]
+        return [IsResponsableOrAdmin()]
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        projet = self.request.query_params.get('projet')
+        if projet:
+            qs = qs.filter(projet_id=projet)
+        statut = self.request.query_params.get('statut')
+        if statut:
+            qs = qs.filter(statut=statut)
+        parent = self.request.query_params.get('parent')
+        if parent is not None:
+            if parent in ('', 'null', 'none'):
+                qs = qs.filter(parent__isnull=True)
+            else:
+                qs = qs.filter(parent_id=parent)
+        assigne = self.request.query_params.get('assigne')
+        if assigne:
+            qs = qs.filter(assigne_id=assigne)
+        return qs
+
+    def perform_create(self, serializer):
+        company = self.request.user.company
+        _check_projet_tenant(serializer, company)
+        _check_tenant(serializer, company, 'parent')
+        _check_tenant(serializer, company, 'predecesseur')
+        _check_assigne_tenant(serializer, company)
+        _check_tache_links_same_projet(serializer)
+        self._save_no_cycle(serializer, company)
+
+    def perform_update(self, serializer):
+        company = self.request.user.company
+        _check_projet_tenant(serializer, company)
+        _check_tenant(serializer, company, 'parent')
+        _check_tenant(serializer, company, 'predecesseur')
+        _check_assigne_tenant(serializer, company)
+        _check_tache_links_same_projet(serializer, serializer.instance)
+        self._save_no_cycle(serializer, company)
+
+    @staticmethod
+    def _save_no_cycle(serializer, company):
+        """Sauvegarde puis valide la garde anti-cycle (``clean``) dans une même
+        transaction : si une boucle parent/prédécesseur est détectée, tout est
+        annulé (rollback) et une 400 est renvoyée — rien n'est persisté."""
+        from django.core.exceptions import ValidationError as DjangoValidationError
+        from django.db import transaction
+        with transaction.atomic():
+            instance = serializer.save(company=company)
+            try:
+                instance.clean()
+            except DjangoValidationError as exc:
+                transaction.set_rollback(True)
+                raise ValidationError(
+                    getattr(exc, 'message_dict', {'detail': exc.messages}))
