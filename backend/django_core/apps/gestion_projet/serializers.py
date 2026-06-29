@@ -10,12 +10,14 @@ from .models import (
     AffectationRessource,
     BaselinePlanning,
     BaselineTache,
+    BudgetProjet,
     CalendrierProjet,
     DependanceTache,
     Equipe,
     Indisponibilite,
     Jalon,
     JourFerie,
+    LigneBudgetProjet,
     PhaseProjet,
     Projet,
     ProjetActivity,
@@ -550,3 +552,60 @@ class IndisponibiliteSerializer(serializers.ModelSerializer):
                 {'date_fin': "La date de fin ne peut pas etre anterieure "
                              "a la date de debut."})
         return attrs
+
+
+class BudgetProjetSerializer(serializers.ModelSerializer):
+    """Budget prévisionnel d'un projet (en-tête).
+
+    ``company`` n'est jamais exposée ; le ``projet`` reçu est validé
+    même-société. Le total ventilé par catégorie est lecture seule, calculé
+    par le sélecteur ``budget_total``.
+    """
+    statut_display = serializers.CharField(
+        source='get_statut_display', read_only=True)
+    projet_code = serializers.CharField(source='projet.code', read_only=True)
+    total = serializers.SerializerMethodField()
+
+    class Meta:
+        model = BudgetProjet
+        fields = [
+            'id', 'projet', 'projet_code', 'libelle', 'version', 'statut',
+            'statut_display', 'devise', 'total', 'date_creation',
+        ]
+        read_only_fields = ['date_creation']
+
+    def validate_projet(self, value):
+        return _meme_societe(self, value, 'Projet')
+
+    def get_total(self, obj):
+        from . import selectors
+        agg = selectors.budget_total(obj)
+        return {
+            'total': str(agg['total']),
+            'par_categorie': {
+                cat: str(montant)
+                for cat, montant in agg['par_categorie'].items()
+            },
+            'nb_lignes': agg['nb_lignes'],
+        }
+
+
+class LigneBudgetProjetSerializer(serializers.ModelSerializer):
+    """Ligne d'un budget projet (catégorie + montant prévu).
+
+    ``company`` n'est jamais exposée ; le ``budget`` reçu est validé
+    même-société. ``quantite`` et ``pu`` sont optionnels et indicatifs.
+    """
+    categorie_display = serializers.CharField(
+        source='get_categorie_display', read_only=True)
+
+    class Meta:
+        model = LigneBudgetProjet
+        fields = [
+            'id', 'budget', 'categorie', 'categorie_display', 'libelle',
+            'quantite', 'pu', 'montant_prevu', 'date_creation',
+        ]
+        read_only_fields = ['date_creation']
+
+    def validate_budget(self, value):
+        return _meme_societe(self, value, 'Budget')

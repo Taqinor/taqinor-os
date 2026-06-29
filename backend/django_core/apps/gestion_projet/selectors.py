@@ -12,6 +12,8 @@ from datetime import timedelta
 
 from django.db.models import Q
 
+from decimal import Decimal
+
 from .models import (
     AffectationRessource,
     BaselinePlanning,
@@ -20,6 +22,7 @@ from .models import (
     Equipe,
     Indisponibilite,
     Jalon,
+    LigneBudgetProjet,
     ProjetLien,
     RessourceProfil,
     Tache,
@@ -1330,3 +1333,39 @@ def nivellement_charge(company, debut, fin,
         'nb_non_resolues': nb_non_resolues,
     }
     return base
+
+
+# ── Budget projet (PROJ21) ───────────────────────────────────────────────────
+_BUDGET_CATEGORIES = [
+    LigneBudgetProjet.Categorie.MATERIEL,
+    LigneBudgetProjet.Categorie.MAIN_OEUVRE,
+    LigneBudgetProjet.Categorie.SOUS_TRAITANCE,
+    LigneBudgetProjet.Categorie.DIVERS,
+]
+
+
+def budget_total(budget):
+    """Total prévisionnel d'un ``BudgetProjet`` ventilé par catégorie.
+
+    Renvoie un dict ``{'total': Decimal, 'par_categorie': {cat: Decimal, ...},
+    'nb_lignes': int}`` — la somme des ``montant_prevu`` des lignes du budget
+    (scopées société). Toutes les catégories canoniques sont TOUJOURS présentes
+    (à ``0`` si aucune ligne) ; le calcul ne divise jamais (pas de garde
+    division-par-zéro nécessaire) et un budget sans ligne renvoie ``0``.
+    """
+    par_categorie = {c: Decimal('0') for c in _BUDGET_CATEGORIES}
+    total = Decimal('0')
+    nb_lignes = 0
+    lignes = LigneBudgetProjet.objects.filter(
+        budget=budget, company=budget.company).only('categorie', 'montant_prevu')
+    for ligne in lignes:
+        montant = ligne.montant_prevu or Decimal('0')
+        total += montant
+        par_categorie[ligne.categorie] = (
+            par_categorie.get(ligne.categorie, Decimal('0')) + montant)
+        nb_lignes += 1
+    return {
+        'total': total,
+        'par_categorie': par_categorie,
+        'nb_lignes': nb_lignes,
+    }
