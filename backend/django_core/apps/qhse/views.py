@@ -17,18 +17,19 @@ from apps.ventes.utils.references import create_with_reference
 from .models import (
     ActionCorrectivePreventive, Audit, CritereAudit, EvaluationRisque,
     GrilleAudit, ItemNotation, LigneEvaluationRisque, NonConformite,
-    NotationFinChantier, PlanInspectionChantier, PlanInspectionModele,
-    PointControleModele, ProcedureQualite, QhseChatterEntry,
-    ReleveControle, ReleveCourbeIV, ReponseCritere, RetourClientQualite,
+    NotationFinChantier, PermisTravail, PlanInspectionChantier,
+    PlanInspectionModele, PointControleModele, ProcedureQualite,
+    QhseChatterEntry, ReleveControle, ReleveCourbeIV, ReponseCritere,
+    RetourClientQualite,
 )
 from .serializers import (
     ActionCorrectivePreventiveSerializer, AuditSerializer,
     CritereAuditSerializer, EvaluationRisqueSerializer, GrilleAuditSerializer,
     ItemNotationSerializer, LigneEvaluationRisqueSerializer,
     NonConformiteSerializer, NotationFinChantierSerializer,
-    PlanInspectionChantierSerializer, PlanInspectionModeleSerializer,
-    PointControleModeleSerializer, ProcedureQualiteSerializer,
-    QhseChatterEntrySerializer,
+    PermisTravailSerializer, PlanInspectionChantierSerializer,
+    PlanInspectionModeleSerializer, PointControleModeleSerializer,
+    ProcedureQualiteSerializer, QhseChatterEntrySerializer,
     ReleveControleSerializer, ReleveCourbeIVSerializer,
     ReponseCritereSerializer, RetourClientQualiteSerializer,
 )
@@ -848,3 +849,91 @@ class LigneEvaluationRisqueViewSet(_QhseBaseViewSet):
         if evaluation not in (None, ''):
             qs = qs.filter(evaluation_id=evaluation)
         return qs
+
+
+class PermisTravailViewSet(_QhseBaseViewSet):
+    """Permis de travail — autorisations préalables aux travaux à risque (QHSE23).
+
+    CRUD scopé société. ``company`` est posée côté serveur (jamais lue du corps).
+    La ``reference`` est attribuée côté serveur via ``create_with_reference``
+    (plus haut numéro utilisé + 1, race-safe — jamais count()+1). Filtres
+    optionnels : ``?type_permis=`` / ``?statut=`` / ``?chantier_id=``. Recherche
+    par référence/titre/délivreur, tri par date/référence.
+
+    Le ``statut`` est en lecture seule au CRUD et n'est piloté que par deux
+    actions détail :
+
+    * ``POST …/<id>/valider/`` — passe ``brouillon`` → ``valide`` (refuse si déjà
+      clôturé/expiré) ;
+    * ``POST …/<id>/cloturer/`` — passe ``valide``/``brouillon`` → ``cloture``.
+    """
+    queryset = PermisTravail.objects.all()
+    serializer_class = PermisTravailSerializer
+    filter_backends = [filters.SearchFilter, filters.OrderingFilter]
+    search_fields = ['reference', 'titre', 'delivre_par', 'valide_par']
+    ordering_fields = [
+        'id', 'reference', 'date_debut', 'date_fin', 'date_creation']
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        type_permis = self.request.query_params.get('type_permis')
+        if type_permis not in (None, ''):
+            qs = qs.filter(type_permis=type_permis)
+        statut = self.request.query_params.get('statut')
+        if statut not in (None, ''):
+            qs = qs.filter(statut=statut)
+        chantier_id = self.request.query_params.get('chantier_id')
+        if chantier_id not in (None, ''):
+            qs = qs.filter(chantier_id=chantier_id)
+        return qs
+
+    def perform_create(self, serializer):
+        company = self.request.user.company
+        return create_with_reference(
+            PermisTravail, 'PT', company,
+            lambda reference: serializer.save(
+                company=company, reference=reference),
+        )
+
+    def create(self, request, *args, **kwargs):
+        serializer = self.get_serializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        permis = self.perform_create(serializer)
+        out = self.get_serializer(permis)
+        return Response(out.data, status=status.HTTP_201_CREATED)
+
+    @action(detail=True, methods=['post'])
+    def valider(self, request, pk=None):
+        """Valide le permis (``brouillon`` → ``valide``), scopé société.
+
+        Refuse si le permis est déjà clôturé ou expiré. ``valide_par`` peut être
+        fourni au corps (chaîne libre) pour tracer le valideur ; sinon le nom de
+        l'utilisateur courant est posé côté serveur.
+        """
+        permis = self.get_object()
+        if permis.statut in (
+                PermisTravail.Statut.CLOTURE, PermisTravail.Statut.EXPIRE):
+            return Response(
+                {'detail': 'Un permis clôturé ou expiré ne peut être validé.'},
+                status=status.HTTP_400_BAD_REQUEST)
+        valide_par = (request.data.get('valide_par')
+                      or request.user.username or '')
+        permis.statut = PermisTravail.Statut.VALIDE
+        permis.valide_par = valide_par
+        permis.save(update_fields=['statut', 'valide_par'])
+        return Response(self.get_serializer(permis).data)
+
+    @action(detail=True, methods=['post'])
+    def cloturer(self, request, pk=None):
+        """Clôture le permis (``brouillon``/``valide`` → ``cloture``), scopé société.
+
+        Refuse si le permis est déjà clôturé.
+        """
+        permis = self.get_object()
+        if permis.statut == PermisTravail.Statut.CLOTURE:
+            return Response(
+                {'detail': 'Permis déjà clôturé.'},
+                status=status.HTTP_400_BAD_REQUEST)
+        permis.statut = PermisTravail.Statut.CLOTURE
+        permis.save(update_fields=['statut'])
+        return Response(self.get_serializer(permis).data)

@@ -2,7 +2,7 @@ from django.contrib import admin
 
 from .models import (
     ActionCorrectivePreventive, EvaluationRisque, LigneEvaluationRisque,
-    NonConformite, PlanInspectionChantier,
+    NonConformite, PermisTravail, PlanInspectionChantier,
     PlanInspectionModele, PointControleModele, ProcedureQualite,
     ReleveControle, ReleveCourbeIV, RetourClientQualite,
 )
@@ -93,3 +93,12 @@ class LigneEvaluationRisqueAdmin(admin.ModelAdmin):
                     'gravite', 'probabilite', 'criticite', 'company')
     list_filter = ('gravite', 'probabilite')
     search_fields = ('danger', 'poste', 'activite')
+
+
+@admin.register(PermisTravail)
+class PermisTravailAdmin(admin.ModelAdmin):
+    list_display = ('id', 'reference', 'titre', 'type_permis', 'statut',
+                    'chantier_id', 'date_debut', 'date_fin', 'company',
+                    'date_creation')
+    list_filter = ('type_permis', 'statut')
+    search_fields = ('reference', 'titre', 'delivre_par', 'valide_par')

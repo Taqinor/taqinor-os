@@ -4,12 +4,14 @@ from rest_framework.routers import DefaultRouter
 from .views import (
     AffectationRessourceViewSet,
     BaselinePlanningViewSet,
+    BudgetProjetViewSet,
     CalendrierProjetViewSet,
     DependanceTacheViewSet,
     EquipeViewSet,
     IndisponibiliteViewSet,
     JalonViewSet,
     JourFerieViewSet,
+    LigneBudgetProjetViewSet,
     PhaseProjetViewSet,
     ProjetChantierViewSet,
     ProjetLienViewSet,
@@ -33,6 +35,8 @@ router.register(r'ressources', RessourceProfilViewSet)
 router.register(r'equipes', EquipeViewSet)
 router.register(r'affectations', AffectationRessourceViewSet)
 router.register(r'indisponibilites', IndisponibiliteViewSet)
+router.register(r'budgets', BudgetProjetViewSet)
+router.register(r'lignes-budget', LigneBudgetProjetViewSet)
 
 urlpatterns = [
     path('', include(router.urls)),

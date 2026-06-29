@@ -859,3 +859,85 @@ class Appointment(models.Model):
             f'RDV #{self.pk} — lead {self.lead_id} '
             f'le {self.scheduled_at:%Y-%m-%d %H:%M} ({self.statut})'
         )
+
+
+class ConcurrentPerte(models.Model):
+    """FG242 — Suivi des concurrents sur deals perdus.
+
+    Sur un lead PERDU (drapeau ``Lead.perdu`` — voir STAGES.py : « Perdu » est un
+    lost-flag, pas une étape), on saisit le concurrent qui a remporté l'affaire
+    et son prix. Cette intelligence concurrentielle alimente l'analyse des
+    pertes (qui nous bat, à quel prix, sur quel motif).
+
+    Additif et borné société : un enregistrement appartient à la société du lead
+    (posée côté serveur, jamais lue du corps de requête — multi-tenant). Le motif
+    réutilise le vocabulaire ``Lead.motif_perte`` (texte libre alimenté par la
+    liste gérée ``MotifPerte``), donc aucun nouveau jeu de valeurs n'est inventé.
+    """
+
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        null=True,
+        blank=True,
+        related_name='concurrents_perte',
+    )
+    lead = models.ForeignKey(
+        'crm.Lead',
+        on_delete=models.CASCADE,
+        related_name='concurrents_perte',
+        verbose_name='Lead perdu',
+    )
+    # Nom du concurrent gagnant (obligatoire — c'est le cœur de l'intel).
+    concurrent_nom = models.CharField(
+        max_length=200,
+        verbose_name='Concurrent gagnant',
+    )
+    # Prix proposé par le concurrent (optionnel : pas toujours connu).
+    concurrent_prix = models.DecimalField(
+        max_digits=12, decimal_places=2,
+        null=True, blank=True,
+        validators=[MinValueValidator(0)],
+        verbose_name='Prix du concurrent',
+        help_text='Prix proposé par le concurrent. Vide si inconnu.',
+    )
+    # Devise du prix (défaut MAD) ; courte par convention ISO-ish.
+    devise = models.CharField(
+        max_length=8,
+        default='MAD',
+        blank=True,
+        verbose_name='Devise',
+    )
+    # Motif de la perte — réutilise le vocabulaire de Lead.motif_perte (texte
+    # libre alimenté par la liste gérée MotifPerte). Optionnel.
+    motif = models.CharField(
+        max_length=255, blank=True, null=True,
+        verbose_name='Motif de la perte',
+    )
+    notes = models.TextField(blank=True, null=True, verbose_name='Notes')
+    # Traçabilité : qui a saisi l'info (forcé côté serveur) + quand.
+    saisi_par = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='concurrents_perte_saisis',
+        verbose_name='Saisi par',
+    )
+    saisi_le = models.DateTimeField(auto_now_add=True)
+    date_modification = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = 'Concurrent (deal perdu)'
+        verbose_name_plural = 'Concurrents (deals perdus)'
+        ordering = ['-saisi_le']
+        indexes = [
+            # Nom d'index ≤ 30 chars (règle CI-enforced).
+            models.Index(fields=['company', 'lead'],
+                         name='crm_concperte_co_lead_idx'),
+        ]
+
+    def __str__(self):
+        return (
+            f'Concurrent {self.concurrent_nom} '
+            f'(lead {self.lead_id})'
+        )
