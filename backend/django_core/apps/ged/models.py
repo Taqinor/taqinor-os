@@ -743,6 +743,22 @@ class AclGed(models.Model):
             models.Index(fields=['utilisateur'], name='ged_acl_user_idx'),
             models.Index(fields=['role'], name='ged_acl_role_idx'),
         ]
+        constraints = [
+            models.CheckConstraint(
+                condition=(
+                    models.Q(folder__isnull=False, document__isnull=True)
+                    | models.Q(folder__isnull=True, document__isnull=False)
+                ),
+                name='ged_acl_exactly_one_target',
+            ),
+            models.CheckConstraint(
+                condition=(
+                    models.Q(utilisateur__isnull=False)
+                    | models.Q(role__isnull=False)
+                ),
+                name='ged_acl_principal_required',
+            ),
+        ]
 
     def __str__(self):
         cible = self.document or self.folder

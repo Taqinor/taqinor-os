@@ -502,8 +502,13 @@ class EcheanceEntretienViewSet(_FlotteBaseViewSet):
     (nombre de plans dus, échéances créées / déjà existantes). ``?alerter=false``
     désactive la diffusion des alertes.
     """
-    # Pas de POST de création : les échéances sont générées, jamais postées.
-    http_method_names = ['get', 'put', 'patch', 'delete', 'head', 'options']
+    # Pas de POST de création manuelle : les échéances sont générées via
+    # l'action `generer` (POST), jamais créées à la main. On désactive donc le
+    # create par défaut (405) tout en gardant POST autorisé pour l'action.
+    def create(self, request, *args, **kwargs):
+        from rest_framework.exceptions import MethodNotAllowed
+        raise MethodNotAllowed('POST')
+
     queryset = EcheanceEntretien.objects.select_related(
         'plan', 'actif_flotte', 'actif_flotte__vehicule',
         'actif_flotte__engin')

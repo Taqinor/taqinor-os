@@ -154,7 +154,7 @@ class Migration(migrations.Migration):
         migrations.AddConstraint(
             model_name="aclged",
             constraint=models.CheckConstraint(
-                check=(
+                condition=(
                     models.Q(folder__isnull=False, document__isnull=True)
                     | models.Q(folder__isnull=True, document__isnull=False)
                 ),
@@ -164,7 +164,7 @@ class Migration(migrations.Migration):
         migrations.AddConstraint(
             model_name="aclged",
             constraint=models.CheckConstraint(
-                check=(
+                condition=(
                     models.Q(utilisateur__isnull=False)
                     | models.Q(role__isnull=False)
                 ),

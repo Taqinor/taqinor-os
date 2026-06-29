@@ -421,17 +421,20 @@ def habilitations_expirantes(company, within_days=30, inclure_expirees=True,
     return qs.select_related('employe').order_by('date_validite', 'id')
 
 
-def employe_a_habilitation_valide(company, employe_id, type_habilitation):
+def employe_a_habilitation_valide(company, employe_id, type_habilitation,
+                                  today=None):
     """Vrai si l'employé détient un titre ``type_habilitation`` VALIDE (FG173).
 
     Brique d'affectation chantier PV : un technicien sans l'habilitation
     requise (ou dont le titre est expiré/inactif) ne devrait pas être assigné.
     Un titre est valide s'il est actif ET (sans échéance OU échéance non
     dépassée). Toujours scopé société ; ``False`` si la société/employé manque.
+    ``today`` est injectable (défaut = date du jour) pour des évaluations
+    déterministes (FG176).
     """
     if company is None or employe_id is None or not type_habilitation:
         return False
-    today = timezone.localdate()
+    today = today or timezone.localdate()
     from django.db.models import Q
     return Habilitation.objects.filter(
         company=company,
@@ -636,7 +639,8 @@ def _classifier_habilitation(company, employe_id, type_habilitation, today):
     """
     if company is None or employe_id is None or not type_habilitation:
         return 'manquante'
-    if employe_a_habilitation_valide(company, employe_id, type_habilitation):
+    if employe_a_habilitation_valide(company, employe_id, type_habilitation,
+                                     today=today):
         return 'valide'
     detenu = Habilitation.objects.filter(
         company=company,
