@@ -2792,3 +2792,328 @@ def module_degradation_curve(production_year1=None, *,
         "summary": summary,
         "warnings": warnings,
     }
+
+
+# ── FG263 — Modèle financier PPA / tiers-investisseur (client sans capex) ─────
+# Modélise un PPA (Power Purchase Agreement) : un TIERS-INVESTISSEUR finance,
+# installe et exploite la centrale ; le CLIENT ne paie AUCUN capex et achète
+# l'énergie produite au compteur à un tarif PPA (MAD/kWh) — toujours INFÉRIEUR
+# au tarif réseau évité, sinon le client n'a aucun intérêt à signer. Le module
+# rend les DEUX perspectives, année par année :
+#
+#   * CÔTÉ INVESTISSEUR — revenu = production_année × tarif_PPA (le tarif PPA
+#     peut escalader d'un taux annuel ``ppa_escalation``). En face : un capex
+#     initial (année 0) et un O&M annuel (qui peut escalader d'un taux
+#     ``om_escalation``, typiquement l'inflation). Le flux net actualisé donne
+#     la VAN, le TRI et le payback de l'investisseur (réutilise ``_npv``/``_irr``
+#     de FG260 — solveur de TRI BORNÉ, jamais de boucle infinie).
+#   * CÔTÉ CLIENT — économie = production_année × (tarif_réseau − tarif_PPA). Le
+#     tarif réseau évité escalade au rythme ONEE (``grid_escalation``) tandis que
+#     le tarif PPA suit son propre ``ppa_escalation`` : tant que le réseau monte
+#     plus vite que le PPA, l'économie du client S'ÉLARGIT. Le client n'a aucun
+#     capex, donc son flux est purement positif (économies actualisées).
+#
+# La PRODUCTION année par année suit la DÉGRADATION des modules (convention
+# FG262 : chute initiale LID ``year1_degradation`` puis dégradation annuelle
+# composée ``degradation_rate``) — moins d'énergie produite chaque année, donc
+# moins de revenu investisseur ET moins d'économie client.
+#
+# Module PUR : aucune base, aucun réseau, aucun prix d'achat/marge. Les entrées
+# numériques ne sont JAMAIS rejetées (liberté de saisie du founder) — les
+# valeurs illisibles sont ramenées à un défaut sensé, division par zéro gardée,
+# jamais d'exception.
+
+# Tarif PPA par défaut (MAD/kWh) — placeholder marché, toujours surchargé.
+DEFAULT_PPA_TARIFF = 0.90
+# Escalade annuelle par défaut du tarif PPA (souvent indexée inflation).
+DEFAULT_PPA_ESCALATION = 0.02           # 2 %/an
+# Escalade annuelle par défaut de l'O&M investisseur (inflation).
+DEFAULT_OM_ESCALATION = 0.02            # 2 %/an
+# Durée de contrat PPA par défaut (années) — 20 ans est le standard marché.
+DEFAULT_PPA_TERM_YEARS = 20
+
+
+def ppa_model(*, annual_production_kwh,
+              ppa_tariff=DEFAULT_PPA_TARIFF,
+              grid_tariff=None,
+              ppa_escalation=DEFAULT_PPA_ESCALATION,
+              grid_escalation=DEFAULT_TARIFF_ESCALATION,
+              term_years=DEFAULT_PPA_TERM_YEARS,
+              capex=0.0,
+              annual_om=0.0,
+              om_escalation=DEFAULT_OM_ESCALATION,
+              degradation_rate=DEFAULT_MODULE_DEGRADATION,
+              year1_degradation=DEFAULT_YEAR1_DEGRADATION,
+              discount_rate=DEFAULT_DISCOUNT_RATE):
+    """FG263 — modèle financier PPA / tiers-investisseur (client sans capex).
+
+    Simule un Power Purchase Agreement : le tiers-investisseur paie le capex et
+    l'O&M, le client achète l'énergie au tarif PPA (MAD/kWh) sans aucun capex.
+    Rend les DEUX perspectives année par année.
+
+    Production : ``annual_production_kwh`` (production nominale year-1) DÉGRADÉE
+    selon la convention FG262 (chute initiale LID ``year1_degradation`` puis
+    dégradation composée ``degradation_rate``) :
+    ``production(y) = prod1 × (1 - year1_degradation) × (1 - degradation_rate)^(y-1)``.
+
+    Côté INVESTISSEUR (année ``y``, base 1) :
+
+    * revenu = ``production(y) × ppa_tariff × (1 + ppa_escalation)^(y-1)`` ;
+    * O&M = ``annual_om × (1 + om_escalation)^(y-1)`` ;
+    * flux net = revenu − O&M ; flux d'année 0 = ``-capex``.
+    * VAN / TRI / payback investisseur via ``_npv``/``_irr`` (FG260, solveur
+      borné — jamais de boucle infinie).
+
+    Côté CLIENT (année ``y``) :
+
+    * tarif réseau évité = ``grid_tariff × (1 + grid_escalation)^(y-1)`` ;
+    * économie = ``production(y) × (tarif_réseau − tarif_PPA_année)`` (le client
+      paie le PPA au lieu du réseau) — peut devenir négative une année si le PPA
+      dépasse le réseau (signalé) ;
+    * le client n'a AUCUN capex : net = somme des économies actualisées.
+
+    Paramètres
+    ----------
+    annual_production_kwh : production nominale year-1 (kWh/an).
+    ppa_tariff : tarif PPA payé par le client (MAD/kWh).
+    grid_tariff : tarif réseau évité year-1 (MAD/kWh). Requis pour la perspective
+        client ; absent → économies client non calculées (None).
+    ppa_escalation / grid_escalation : escalades annuelles (fractions).
+    term_years : durée du contrat (années ; bornée [1, 40]).
+    capex : investissement initial du tiers-investisseur (MAD, année 0).
+    annual_om : O&M year-1 de l'investisseur (MAD/an).
+    om_escalation : escalade annuelle de l'O&M (fraction).
+    degradation_rate / year1_degradation : dégradation modules (FG262).
+    discount_rate : taux d'actualisation (VAN, des deux côtés).
+
+    Retourne un dict JSON-sérialisable ::
+
+        {schedule: [{year, production_kwh, production_factor,
+                     ppa_tariff_year, grid_tariff_year,
+                     investor_revenue, investor_om, investor_net,
+                     investor_discounted_net,
+                     client_savings, client_discounted_savings,
+                     client_cumulative_savings}],
+         investor: {capex, total_revenue, total_om, total_net, npv, irr,
+                    payback_year, discounted_payback_year,
+                    total_discounted_net},
+         client: {grid_tariff_year1, ppa_tariff_year1, total_savings,
+                  total_discounted_savings, savings_year1, savings_last_year,
+                  net_benefit} | None,
+         summary: {term_years, ppa_tariff, ppa_escalation, grid_escalation,
+                   degradation_rate, discount_rate, total_production_kwh},
+         warnings: []}
+
+    Ne lève JAMAIS sur entrées dégradées : valeurs illisibles → défaut, durée
+    hors bornes ramenée dans [1, 40], division par zéro gardée, TRI = None si le
+    flux n'en admet pas (pas de boucle infinie).
+    """
+    warnings = []
+
+    def _num(value, default=0.0):
+        try:
+            return float(value)
+        except (TypeError, ValueError):
+            return float(default)
+
+    prod1 = _num(annual_production_kwh)
+    if prod1 < 0:
+        prod1 = 0.0
+        warnings.append("production year-1 négative — ramenée à 0")
+
+    ppa = _num(ppa_tariff, DEFAULT_PPA_TARIFF)
+    ppa_esc = _num(ppa_escalation, DEFAULT_PPA_ESCALATION)
+    grid_esc = _num(grid_escalation, DEFAULT_TARIFF_ESCALATION)
+    capex0 = _num(capex)
+    om1 = _num(annual_om)
+    om_esc = _num(om_escalation, DEFAULT_OM_ESCALATION)
+    deg = _num(degradation_rate, DEFAULT_MODULE_DEGRADATION)
+    lid = _num(year1_degradation, DEFAULT_YEAR1_DEGRADATION)
+    disc = _num(discount_rate, DEFAULT_DISCOUNT_RATE)
+
+    grid1 = None
+    if grid_tariff is not None:
+        grid1 = _num(grid_tariff)
+        if grid1 < 0:
+            grid1 = 0.0
+            warnings.append("tarif réseau négatif — ramené à 0")
+
+    # ── Durée du contrat : entier borné dans [1, 40] ──
+    try:
+        term = int(round(_num(term_years, DEFAULT_PPA_TERM_YEARS)))
+    except (TypeError, ValueError):
+        term = DEFAULT_PPA_TERM_YEARS
+    if term < _MIN_HORIZON_YEARS:
+        term = _MIN_HORIZON_YEARS
+        warnings.append("durée ramenée à 1 an (minimum)")
+    elif term > _MAX_HORIZON_YEARS:
+        term = _MAX_HORIZON_YEARS
+        warnings.append("durée plafonnée à 40 ans (maximum)")
+
+    # Garde-fous métier (avertissements, jamais de rejet).
+    if not (0.0 <= deg < 1.0):
+        warnings.append("taux de dégradation hors [0, 1[ — vérifier la saisie")
+    if not (0.0 <= lid < 1.0):
+        warnings.append("chute initiale (LID) hors [0, 1[ — vérifier la saisie")
+    if disc <= -1.0:
+        warnings.append(
+            "taux d'actualisation ≤ -100 % — VAN non calculable, ramené à 0")
+        disc = 0.0
+    if grid1 is not None and grid1 <= ppa:
+        warnings.append(
+            "tarif PPA ≥ tarif réseau year-1 — le client ne fait aucune "
+            "économie au départ, vérifier l'intérêt du contrat")
+
+    def _deg_factor(year):
+        """Facteur de production de l'année ``year`` (base 1), planché à 0 — convention FG262."""
+        head = (1.0 - lid) if lid < 1.0 else 0.0
+        tail = (1.0 - deg) if deg < 1.0 else 0.0
+        f = head * (tail ** (year - 1))
+        return f if f > 0.0 else 0.0
+
+    schedule = []
+    total_production = 0.0
+    investor_total_revenue = 0.0
+    investor_total_om = 0.0
+    investor_total_net = 0.0
+    investor_discounted_total = 0.0
+    investor_payback_year = None
+    investor_disc_payback_year = None
+    investor_disc_cumulative = -capex0
+    # Flux investisseur : année 0 = -capex, puis (revenu − O&M) chaque année.
+    investor_cashflows = [-capex0]
+
+    client_total_savings = 0.0
+    client_discounted_total = 0.0
+    client_cumulative = 0.0
+    has_client = grid1 is not None
+
+    for y in range(1, term + 1):
+        factor = _deg_factor(y)
+        production = prod1 * factor
+        total_production += production
+
+        ppa_year = ppa * ((1.0 + ppa_esc) ** (y - 1))
+
+        # ── Investisseur ──
+        revenue = production * ppa_year
+        om = om1 * ((1.0 + om_esc) ** (y - 1))
+        net = revenue - om
+        investor_total_revenue += revenue
+        investor_total_om += om
+        investor_total_net += net
+        investor_cashflows.append(net)
+
+        if disc > -1.0:
+            disc_net = net / ((1.0 + disc) ** y)
+        else:
+            disc_net = 0.0
+        investor_discounted_total += disc_net
+        investor_disc_cumulative += disc_net
+
+        investor_cumulative_net = investor_total_net - capex0
+        if investor_payback_year is None and investor_cumulative_net >= 0 \
+                and capex0 > 0:
+            investor_payback_year = y
+        if investor_disc_payback_year is None and investor_disc_cumulative >= 0 \
+                and capex0 > 0:
+            investor_disc_payback_year = y
+
+        # ── Client ──
+        grid_year = None
+        client_savings = None
+        client_disc_savings = None
+        if has_client:
+            grid_year = grid1 * ((1.0 + grid_esc) ** (y - 1))
+            # Le client paie le PPA au lieu du réseau : économie sur l'écart.
+            client_savings = production * (grid_year - ppa_year)
+            client_total_savings += client_savings
+            client_cumulative += client_savings
+            if disc > -1.0:
+                client_disc_savings = client_savings / ((1.0 + disc) ** y)
+            else:
+                client_disc_savings = 0.0
+            client_discounted_total += client_disc_savings
+
+        schedule.append({
+            "year": y,
+            "production_kwh": round(production, 2),
+            "production_factor": round(factor, 6),
+            "ppa_tariff_year": round(ppa_year, 4),
+            "grid_tariff_year": (
+                round(grid_year, 4) if grid_year is not None else None),
+            "investor_revenue": round(revenue, 2),
+            "investor_om": round(om, 2),
+            "investor_net": round(net, 2),
+            "investor_discounted_net": round(disc_net, 2),
+            "client_savings": (
+                round(client_savings, 2)
+                if client_savings is not None else None),
+            "client_discounted_savings": (
+                round(client_disc_savings, 2)
+                if client_disc_savings is not None else None),
+            "client_cumulative_savings": (
+                round(client_cumulative, 2) if has_client else None),
+        })
+
+    investor_npv = round(_npv(disc, investor_cashflows), 2)
+    investor_irr = _irr(investor_cashflows)
+
+    if investor_payback_year is None and capex0 > 0:
+        warnings.append(
+            "retour sur investissement non atteint sur la durée — le revenu PPA "
+            "cumulé ne couvre pas le capex de l'investisseur")
+    if investor_irr is None and capex0 > 0:
+        warnings.append(
+            "TRI investisseur non calculable (flux sans changement de signe ou "
+            "non convergent) — vérifier capex et tarif PPA")
+
+    investor = {
+        "capex": round(capex0, 2),
+        "total_revenue": round(investor_total_revenue, 2),
+        "total_om": round(investor_total_om, 2),
+        "total_net": round(investor_total_net, 2),
+        "net_after_capex": round(investor_total_net - capex0, 2),
+        "total_discounted_net": round(investor_discounted_total, 2),
+        "npv": investor_npv,
+        "irr": investor_irr,
+        "payback_year": investor_payback_year,
+        "discounted_payback_year": investor_disc_payback_year,
+    }
+
+    client = None
+    if has_client:
+        client = {
+            "grid_tariff_year1": round(grid1, 4),
+            "ppa_tariff_year1": round(ppa, 4),
+            "total_savings": round(client_total_savings, 2),
+            "total_discounted_savings": round(client_discounted_total, 2),
+            "savings_year1": (
+                round(schedule[0]["client_savings"], 2) if schedule else 0.0),
+            "savings_last_year": (
+                round(schedule[-1]["client_savings"], 2) if schedule else 0.0),
+            # Le client n'a aucun capex : son bénéfice net = économies cumulées.
+            "net_benefit": round(client_total_savings, 2),
+        }
+
+    summary = {
+        "term_years": term,
+        "ppa_tariff": round(ppa, 4),
+        "ppa_escalation": round(ppa_esc, 6),
+        "grid_escalation": round(grid_esc, 6),
+        "om_escalation": round(om_esc, 6),
+        "degradation_rate": round(deg, 6),
+        "year1_degradation": round(lid, 6),
+        "discount_rate": round(disc, 6),
+        "annual_om_year1": round(om1, 2),
+        "total_production_kwh": round(total_production, 2),
+        "production_year1": round(prod1, 2),
+    }
+
+    return {
+        "schedule": schedule,
+        "investor": investor,
+        "client": client,
+        "summary": summary,
+        "warnings": warnings,
+    }
