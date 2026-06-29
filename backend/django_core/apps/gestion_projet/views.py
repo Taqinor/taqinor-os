@@ -5,6 +5,8 @@ L'accès est réservé au palier Administrateur/Responsable
 (TenantMixin) et posent la société côté serveur ; le ``responsable`` reçu est
 validé comme appartenant à la même société.
 """
+from datetime import date as _date
+
 from rest_framework import filters, status, viewsets
 from rest_framework.decorators import action
 from rest_framework.response import Response
@@ -47,6 +49,19 @@ from .serializers import (
     RessourceProfilSerializer,
     TacheSerializer,
 )
+
+
+def _parse_date_param(value):
+    """Parse une date ``YYYY-MM-DD`` issue de la query-string, ou ``None``.
+
+    Renvoie ``None`` si ``value`` est vide ou n'est pas une date ISO valide.
+    """
+    if value in (None, ''):
+        return None
+    try:
+        return _date.fromisoformat(value)
+    except (ValueError, TypeError):
+        return None
 
 
 class _GestionProjetBaseViewSet(TenantMixin, viewsets.ModelViewSet):
@@ -648,6 +663,65 @@ class RessourceProfilViewSet(_GestionProjetBaseViewSet):
         if role:
             qs = qs.filter(role__icontains=role)
         return qs
+
+    @action(detail=False, methods=['get'], url_path='plan-de-charge')
+    def plan_de_charge(self, request):
+        """Plan de charge société : capacité vs affecté par ressource (PROJ18).
+
+        Paramètres de requête :
+            ``?debut=YYYY-MM-DD&fin=YYYY-MM-DD`` (OBLIGATOIRES) — fenêtre
+            INCLUSIVE des deux côtés. ``fin`` antérieure à ``debut`` → 400.
+            ``?heures_par_jour=N`` (optionnel, défaut 8) — heures d'un jour
+            ouvré ; valeur invalide → 400.
+            ``?ressource=<id>`` (optionnel) — restreindre à une ressource.
+
+        Lecture seule. La société est imposée côté serveur
+        (``request.user.company``) — jamais lue du corps de requête. Délègue au
+        sélecteur ``plan_de_charge`` (capacité = jours ouvrés L-V moins
+        indisponibilités × heures/jour ; affecté = somme proratée des
+        affectations chevauchant la fenêtre ; ``surcharge`` quand
+        affecté > capacité ; garde anti-division-par-zéro sur capacité nulle).
+        """
+        debut = _parse_date_param(request.query_params.get('debut'))
+        fin = _parse_date_param(request.query_params.get('fin'))
+        if debut is None or fin is None:
+            return Response(
+                {'detail': 'Les paramètres debut et fin (YYYY-MM-DD) sont '
+                           'obligatoires.'},
+                status=status.HTTP_400_BAD_REQUEST)
+        if fin < debut:
+            return Response(
+                {'detail': 'La date de fin ne peut pas être antérieure à la '
+                           'date de début.'},
+                status=status.HTTP_400_BAD_REQUEST)
+
+        heures_raw = request.query_params.get('heures_par_jour')
+        heures_par_jour = 8
+        if heures_raw is not None:
+            try:
+                heures_par_jour = float(heures_raw)
+            except (TypeError, ValueError):
+                return Response(
+                    {'detail': 'heures_par_jour doit être un nombre.'},
+                    status=status.HTTP_400_BAD_REQUEST)
+            if heures_par_jour < 0:
+                return Response(
+                    {'detail': 'heures_par_jour doit être positif.'},
+                    status=status.HTTP_400_BAD_REQUEST)
+
+        ressource_id = None
+        ressource_raw = request.query_params.get('ressource')
+        if ressource_raw:
+            try:
+                ressource_id = int(ressource_raw)
+            except (TypeError, ValueError):
+                return Response(
+                    {'detail': 'ressource doit être un identifiant entier.'},
+                    status=status.HTTP_400_BAD_REQUEST)
+
+        return Response(selectors.plan_de_charge(
+            request.user.company, debut, fin,
+            heures_par_jour=heures_par_jour, ressource_id=ressource_id))
 
 
 class EquipeViewSet(_GestionProjetBaseViewSet):
