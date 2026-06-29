@@ -36,8 +36,9 @@ from .models import (
     Immobilisation, IndemniteChantier, Journal, LigneEcriture,
     LignePrevisionnelTresorerie, LigneReleve, MouvementCaisse, NoteFrais,
     PaymentRun, PaymentRunLine, PeriodeComptable, PlanAmortissement,
-    PlanComptable, PointageReleve, Rapprochement, RapprochementBancaire,
-    RetenueSource, TimbreFiscal, VirementInterne,
+    CautionBancaire, PlanComptable, PointageReleve, Rapprochement,
+    RapprochementBancaire, RetenueGarantie, RetenueSource, TimbreFiscal,
+    VirementInterne,
 )
 
 
@@ -2836,3 +2837,115 @@ def marquer_timbre_verse(timbre):
     timbre.statut = TimbreFiscal.Statut.VERSEE
     timbre.save(update_fields=['statut'])
     return timbre
+
+
+# ── FG145 — Retenue de garantie & cautions bancaires sur marchés ───────────
+def enregistrer_retenue_garantie(company, *, date_constitution, base,
+                                 taux=None, marche_ref='', facture_id=None,
+                                 facture_ref='', tiers_type='', tiers_id=None,
+                                 tiers_nom='', date_levee_prevue=None,
+                                 libelle='', user=None):
+    """Enregistre une retenue de garantie (RG) sur un marché/décompte (FG145).
+
+    Calcule le ``montant`` retenu = base × taux % (arrondi 2 décimales) et FIGE le
+    snapshot dans une ``RetenueGarantie`` en statut « retenue ». Le ``taux`` par
+    défaut est ``RetenueGarantie.TAUX_DEFAUT`` (10 %). La ``reference``
+    (RG-YYYYMM-NNNN) et la ``company`` sont posées côté serveur (jamais lues du
+    corps). Le marché/la facture sont référencés par string-ref
+    (``marche_ref`` / ``facture_id`` / ``facture_ref``) — jamais d'import
+    cross-app de modèle. Renvoie la retenue.
+    """
+    from apps.ventes.utils.references import create_with_reference
+
+    rg = RetenueGarantie(
+        company=company,
+        date_constitution=date_constitution,
+        base=Decimal(base or 0),
+        taux=(Decimal(taux) if taux is not None
+              else RetenueGarantie.TAUX_DEFAUT),
+        marche_ref=marche_ref or '',
+        facture_id=facture_id,
+        facture_ref=facture_ref or '',
+        tiers_type=tiers_type or '',
+        tiers_id=tiers_id,
+        tiers_nom=tiers_nom or '',
+        date_levee_prevue=date_levee_prevue,
+        statut=RetenueGarantie.Statut.RETENUE,
+        libelle=libelle or '',
+        created_by=user,
+    )
+    rg.recalculer()
+    rg.full_clean(exclude=['reference', 'created_by'])
+
+    def _save(reference):
+        rg.reference = reference
+        rg.save()
+        return rg
+
+    # Savepoint + retry race-safe (highest-used+1, jamais count()+1).
+    return create_with_reference(RetenueGarantie, 'RG', company, _save)
+
+
+def liberer_retenue_garantie(retenue, *, date_liberation=None):
+    """Libère (restitue) une retenue de garantie à sa levée (FG145).
+
+    Pose le statut « libérée » et la ``date_liberation`` (défaut = aujourd'hui).
+    """
+    retenue.statut = RetenueGarantie.Statut.LIBEREE
+    retenue.date_liberation = date_liberation or timezone.now().date()
+    retenue.save(update_fields=['statut', 'date_liberation'])
+    return retenue
+
+
+def enregistrer_caution_bancaire(company, *, type_caution=None, date_emission,
+                                 montant, banque='', marche_ref='',
+                                 tiers_nom='', date_echeance=None, libelle='',
+                                 user=None):
+    """Enregistre une caution bancaire émise sur un marché (FG145).
+
+    Fige l'engagement hors-bilan dans une ``CautionBancaire`` en statut
+    « active ». Le ``type_caution`` par défaut est
+    ``CautionBancaire.TypeCaution.DEFINITIVE``. La ``reference``
+    (CAUTION-YYYYMM-NNNN) et la ``company`` sont posées côté serveur (jamais lues
+    du corps). Le marché est référencé par string-ref (``marche_ref``) — jamais
+    d'import cross-app de modèle. Renvoie la caution.
+    """
+    from apps.ventes.utils.references import create_with_reference
+
+    caution = CautionBancaire(
+        company=company,
+        type_caution=(type_caution
+                      or CautionBancaire.TypeCaution.DEFINITIVE),
+        date_emission=date_emission,
+        montant=Decimal(montant or 0),
+        banque=banque or '',
+        marche_ref=marche_ref or '',
+        tiers_nom=tiers_nom or '',
+        date_echeance=date_echeance,
+        statut=CautionBancaire.Statut.ACTIVE,
+        libelle=libelle or '',
+        created_by=user,
+    )
+    caution.full_clean(exclude=['reference', 'created_by'])
+
+    def _save(reference):
+        caution.reference = reference
+        caution.save()
+        return caution
+
+    # Savepoint + retry race-safe (highest-used+1, jamais count()+1).
+    return create_with_reference(CautionBancaire, 'CAUTION', company, _save)
+
+
+def mainlevee_caution_bancaire(caution, *, date_mainlevee=None,
+                               restituee=False):
+    """Lève (mainlevée) ou restitue une caution bancaire (FG145).
+
+    Pose la ``date_mainlevee`` (défaut = aujourd'hui) et le statut : « restituée »
+    si ``restituee`` est vrai (acompte rendu), sinon « mainlevée » (banque déliée).
+    """
+    caution.date_mainlevee = date_mainlevee or timezone.now().date()
+    caution.statut = (CautionBancaire.Statut.RESTITUEE if restituee
+                      else CautionBancaire.Statut.LEVEE)
+    caution.save(update_fields=['statut', 'date_mainlevee'])
+    return caution

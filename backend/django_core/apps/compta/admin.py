@@ -1,13 +1,13 @@
 from django.contrib import admin
 
 from .models import (
-    BaremeIndemnite, BordereauRemise, Caisse, ClotureCaisse, CompteComptable,
-    CompteTresorerie, DeclarationTVA, EcritureComptable, Effet,
+    BaremeIndemnite, BordereauRemise, Caisse, CautionBancaire, ClotureCaisse,
+    CompteComptable, CompteTresorerie, DeclarationTVA, EcritureComptable, Effet,
     ExerciceComptable, Immobilisation, IndemniteChantier, Journal,
     LigneEcriture, LignePrevisionnelTresorerie, LigneReleve, MouvementCaisse,
     NoteFrais, PaymentRun, PaymentRunLine, PeriodeComptable, PlanComptable,
-    Rapprochement, RapprochementBancaire, RetenueSource, TimbreFiscal,
-    VirementInterne,
+    Rapprochement, RapprochementBancaire, RetenueGarantie, RetenueSource,
+    TimbreFiscal, VirementInterne,
 )
 
 
@@ -247,3 +247,21 @@ class TimbreFiscalAdmin(admin.ModelAdmin):
                     'company')
     list_filter = ('statut', 'mode_reglement')
     search_fields = ('reference', 'facture_ref', 'tiers_nom')
+
+
+@admin.register(RetenueGarantie)
+class RetenueGarantieAdmin(admin.ModelAdmin):
+    list_display = ('id', 'reference', 'marche_ref', 'tiers_nom', 'base',
+                    'taux', 'montant', 'date_constitution', 'date_levee_prevue',
+                    'statut', 'company')
+    list_filter = ('statut',)
+    search_fields = ('reference', 'marche_ref', 'facture_ref', 'tiers_nom')
+
+
+@admin.register(CautionBancaire)
+class CautionBancaireAdmin(admin.ModelAdmin):
+    list_display = ('id', 'reference', 'type_caution', 'marche_ref',
+                    'tiers_nom', 'banque', 'montant', 'date_emission',
+                    'date_echeance', 'statut', 'company')
+    list_filter = ('type_caution', 'statut')
+    search_fields = ('reference', 'marche_ref', 'tiers_nom', 'banque')

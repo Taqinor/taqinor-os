@@ -9,14 +9,14 @@ from decimal import Decimal
 from rest_framework import serializers
 
 from .models import (
-    BaremeIndemnite, BordereauRemise, Caisse, CessionImmobilisation,
-    ClotureCaisse, CompteComptable, CompteTresorerie, DeclarationTVA,
-    DotationAmortissement, EcritureComptable, Effet, ExerciceComptable,
-    Immobilisation, IndemniteChantier, Journal, LigneEcriture,
-    LignePrevisionnelTresorerie, LigneReleve, MouvementCaisse, NoteFrais,
-    PaymentRun, PaymentRunLine, PeriodeComptable, PlanAmortissement,
-    PlanComptable, Rapprochement, RapprochementBancaire, RetenueSource,
-    TimbreFiscal, VirementInterne,
+    BaremeIndemnite, BordereauRemise, Caisse, CautionBancaire,
+    CessionImmobilisation, ClotureCaisse, CompteComptable, CompteTresorerie,
+    DeclarationTVA, DotationAmortissement, EcritureComptable, Effet,
+    ExerciceComptable, Immobilisation, IndemniteChantier, Journal,
+    LigneEcriture, LignePrevisionnelTresorerie, LigneReleve, MouvementCaisse,
+    NoteFrais, PaymentRun, PaymentRunLine, PeriodeComptable, PlanAmortissement,
+    PlanComptable, Rapprochement, RapprochementBancaire, RetenueGarantie,
+    RetenueSource, TimbreFiscal, VirementInterne,
 )
 
 
@@ -965,4 +965,77 @@ class TimbreFiscalSerializer(serializers.ModelSerializer):
         if value is not None and value < 0:
             raise serializers.ValidationError(
                 "Le minimum de perception ne peut pas être négatif.")
+        return value
+
+
+class RetenueGarantieSerializer(serializers.ModelSerializer):
+    """Retenue de garantie (RG / bonne fin) sur un marché (FG145).
+
+    À la création on accepte la saisie du décompte (base, taux, marché/facture,
+    maître d'ouvrage, dates) ; le ``montant`` retenu est DÉRIVÉ côté serveur
+    (base × taux %) et reste en lecture seule, comme
+    ``company`` / ``reference`` / ``statut`` / ``date_liberation`` /
+    ``created_by``. Le statut évolue par l'action de service (libérer), jamais par
+    écriture directe du corps.
+    """
+    statut_display = serializers.CharField(
+        source='get_statut_display', read_only=True)
+
+    class Meta:
+        model = RetenueGarantie
+        fields = [
+            'id', 'reference', 'marche_ref', 'facture_id', 'facture_ref',
+            'tiers_type', 'tiers_id', 'tiers_nom', 'base', 'taux', 'montant',
+            'date_constitution', 'date_levee_prevue', 'statut', 'statut_display',
+            'date_liberation', 'libelle', 'created_by', 'date_creation',
+        ]
+        read_only_fields = [
+            'reference', 'montant', 'statut', 'date_liberation', 'created_by',
+            'date_creation',
+        ]
+
+    def validate_base(self, value):
+        if value is not None and value < 0:
+            raise serializers.ValidationError(
+                "La base du décompte ne peut pas être négative.")
+        return value
+
+    def validate_taux(self, value):
+        if value is not None and (value < 0 or value > 100):
+            raise serializers.ValidationError(
+                "Le taux de RG doit être compris entre 0 et 100 %.")
+        return value
+
+
+class CautionBancaireSerializer(serializers.ModelSerializer):
+    """Caution / garantie bancaire émise sur un marché (FG145).
+
+    À la création on accepte la saisie de l'engagement (type, banque, montant,
+    marché, bénéficiaire, dates) ; ``company`` / ``reference`` / ``statut`` /
+    ``date_mainlevee`` / ``created_by`` restent en lecture seule. Le statut évolue
+    par l'action de service (mainlevée/restitution), jamais par écriture directe
+    du corps.
+    """
+    type_caution_display = serializers.CharField(
+        source='get_type_caution_display', read_only=True)
+    statut_display = serializers.CharField(
+        source='get_statut_display', read_only=True)
+
+    class Meta:
+        model = CautionBancaire
+        fields = [
+            'id', 'reference', 'type_caution', 'type_caution_display',
+            'marche_ref', 'tiers_nom', 'banque', 'montant', 'date_emission',
+            'date_echeance', 'statut', 'statut_display', 'date_mainlevee',
+            'libelle', 'created_by', 'date_creation',
+        ]
+        read_only_fields = [
+            'reference', 'statut', 'date_mainlevee', 'created_by',
+            'date_creation',
+        ]
+
+    def validate_montant(self, value):
+        if value is not None and value < 0:
+            raise serializers.ValidationError(
+                "Le montant de la caution ne peut pas être négatif.")
         return value

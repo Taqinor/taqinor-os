@@ -2767,3 +2767,216 @@ class TimbreFiscal(models.Model):
             Decimal('0.01'))
         self.montant = max(proportionnel, minimum.quantize(Decimal('0.01')))
         return self
+
+
+# ── FG145 — Retenue de garantie & cautions bancaires sur marchés ───────────
+class RetenueGarantie(models.Model):
+    """Retenue de garantie (RG / bonne fin) prélevée sur un marché (FG145).
+
+    Sur les marchés de travaux/fournitures, le maître d'ouvrage (ou le client)
+    RETIENT un pourcentage (usuellement 5 ou 10 %) de chaque décompte/facture en
+    garantie de la bonne exécution ; cette somme est LIBÉRÉE (restituée) à une
+    date d'échéance (réception définitive / fin de la période de garantie). On
+    fige par marché/facture la ``base`` (montant du décompte sur lequel porte la
+    retenue), le ``taux`` de RG et le ``montant`` retenu = base × taux %
+    (arrondi 2 décimales), avec la date de constitution et la date de levée
+    prévue ; ``date_liberation`` est posée quand la RG est effectivement libérée.
+
+    Le marché / la facture d'origine est référencé UNIQUEMENT par string-ref
+    (``marche_ref`` / ``facture_id`` / ``facture_ref``) — JAMAIS un import
+    cross-app de modèle, exactement comme une ``LigneEcriture`` ou une
+    ``RetenueSource``. Tout est multi-société : ``company`` posée côté serveur,
+    jamais lue du corps de requête. Le snapshot (base/taux/montant) est FIGÉ au
+    moment de l'enregistrement et restitué à l'identique à l'écran et au CSV.
+    """
+    class Statut(models.TextChoices):
+        RETENUE = 'retenue', 'Retenue'
+        LIBEREE = 'liberee', 'Libérée'
+
+    # Taux usuel d'une retenue de garantie sur marché (informatif : le taux réel
+    # est saisi par marché ; 10 % est le plafond courant côté CCAG-Travaux).
+    TAUX_DEFAUT = Decimal('10.00')
+
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='retenues_garantie',
+        verbose_name='Société',
+    )
+    reference = models.CharField(
+        max_length=50, blank=True, default='',
+        verbose_name='Référence')
+    # Marché / facture d'origine (string-ref, jamais d'import modèle ventes).
+    marche_ref = models.CharField(
+        max_length=120, blank=True, default='',
+        verbose_name='Marché / contrat')
+    facture_id = models.PositiveIntegerField(
+        null=True, blank=True, verbose_name='ID de la facture')
+    facture_ref = models.CharField(
+        max_length=80, blank=True, default='',
+        verbose_name='Facture / décompte')
+    # ── Tiers (maître d'ouvrage / client) — auxiliaire string-FK ──
+    tiers_type = models.CharField(
+        max_length=20, blank=True, default='', verbose_name='Type de tiers')
+    tiers_id = models.PositiveIntegerField(
+        null=True, blank=True, verbose_name='ID du tiers')
+    tiers_nom = models.CharField(
+        max_length=200, blank=True, default='',
+        verbose_name='Maître d\'ouvrage / client')
+    # ── Montants FIGÉS au calcul (snapshot auditable) ──
+    base = models.DecimalField(
+        max_digits=14, decimal_places=2, default=Decimal('0'),
+        verbose_name='Base du décompte')
+    taux = models.DecimalField(
+        max_digits=5, decimal_places=2, default=TAUX_DEFAUT,
+        verbose_name='Taux de RG (%)')
+    montant = models.DecimalField(
+        max_digits=14, decimal_places=2, default=Decimal('0'),
+        verbose_name='Montant retenu')
+    date_constitution = models.DateField(
+        verbose_name='Date de constitution')
+    date_levee_prevue = models.DateField(
+        null=True, blank=True, verbose_name='Date de levée prévue')
+    statut = models.CharField(
+        max_length=10, choices=Statut.choices,
+        default=Statut.RETENUE, verbose_name='Statut')
+    date_liberation = models.DateField(
+        null=True, blank=True, verbose_name='Date de libération')
+    libelle = models.CharField(
+        max_length=200, blank=True, default='', verbose_name='Libellé')
+    created_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='retenues_garantie_creees',
+        verbose_name='Enregistrée par',
+    )
+    date_creation = models.DateTimeField(
+        auto_now_add=True, verbose_name='Créé le')
+
+    class Meta:
+        verbose_name = 'Retenue de garantie'
+        verbose_name_plural = 'Retenues de garantie'
+        ordering = ['-date_constitution', '-id']
+        constraints = [
+            models.UniqueConstraint(
+                fields=['company', 'reference'],
+                condition=models.Q(reference__gt=''),
+                name='uniq_rg_reference',
+            ),
+        ]
+
+    def __str__(self):
+        return (f'{self.reference or "RG"} — '
+                f'{self.tiers_nom or self.marche_ref} ({self.montant})')
+
+    def clean(self):
+        super().clean()
+        if self.base is not None and self.base < 0:
+            raise ValidationError(
+                "La base du décompte ne peut pas être négative.")
+        if self.taux is not None and (self.taux < 0 or self.taux > 100):
+            raise ValidationError(
+                "Le taux de RG doit être compris entre 0 et 100 %.")
+
+    def recalculer(self):
+        """(Re)calcule le montant retenu = base × taux %, arrondi 2 décimales."""
+        base = self.base or Decimal('0')
+        taux = self.taux or Decimal('0')
+        self.montant = (base * taux / Decimal('100')).quantize(
+            Decimal('0.01'))
+        return self
+
+
+class CautionBancaire(models.Model):
+    """Caution / garantie bancaire émise sur un marché (FG145).
+
+    Sur un marché, la banque émet pour le compte de l'entreprise des cautions au
+    profit du maître d'ouvrage : caution PROVISOIRE (à la soumission), caution
+    DÉFINITIVE (à l'attribution), retenue de garantie (en remplacement de la RG
+    prélevée), ou caution de RESTITUTION d'acompte. Chacune porte un ``montant``,
+    une ``date_emission`` et une ``date_echeance``, et reste ACTIVE jusqu'à sa
+    MAINLEVÉE (la banque est déliée) puis sa RESTITUTION. On suit ici l'engagement
+    hors-bilan : la banque, le marché concerné et les dates de levée.
+
+    Le marché est référencé UNIQUEMENT par string-ref (``marche_ref``) — JAMAIS
+    un import cross-app de modèle. Tout est multi-société : ``company`` posée côté
+    serveur, jamais lue du corps de requête.
+    """
+    class TypeCaution(models.TextChoices):
+        PROVISOIRE = 'provisoire', 'Caution provisoire'
+        DEFINITIVE = 'definitive', 'Caution définitive'
+        RETENUE_GARANTIE = 'retenue_garantie', 'Caution de retenue de garantie'
+        RESTITUTION = 'restitution', "Caution de restitution d'acompte"
+
+    class Statut(models.TextChoices):
+        ACTIVE = 'active', 'Active'
+        LEVEE = 'levee', 'Mainlevée'
+        RESTITUEE = 'restituee', 'Restituée'
+
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='cautions_bancaires',
+        verbose_name='Société',
+    )
+    reference = models.CharField(
+        max_length=50, blank=True, default='',
+        verbose_name='Référence')
+    type_caution = models.CharField(
+        max_length=20, choices=TypeCaution.choices,
+        default=TypeCaution.DEFINITIVE, verbose_name='Type de caution')
+    # Marché / contrat (string-ref, jamais d'import modèle ventes).
+    marche_ref = models.CharField(
+        max_length=120, blank=True, default='',
+        verbose_name='Marché / contrat')
+    tiers_nom = models.CharField(
+        max_length=200, blank=True, default='',
+        verbose_name='Bénéficiaire (maître d\'ouvrage)')
+    banque = models.CharField(
+        max_length=120, blank=True, default='',
+        verbose_name='Banque émettrice')
+    montant = models.DecimalField(
+        max_digits=14, decimal_places=2, default=Decimal('0'),
+        verbose_name='Montant de la caution')
+    date_emission = models.DateField(verbose_name='Date d\'émission')
+    date_echeance = models.DateField(
+        null=True, blank=True, verbose_name='Date d\'échéance')
+    statut = models.CharField(
+        max_length=10, choices=Statut.choices,
+        default=Statut.ACTIVE, verbose_name='Statut')
+    date_mainlevee = models.DateField(
+        null=True, blank=True, verbose_name='Date de mainlevée')
+    libelle = models.CharField(
+        max_length=200, blank=True, default='', verbose_name='Libellé')
+    created_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='cautions_bancaires_creees',
+        verbose_name='Enregistrée par',
+    )
+    date_creation = models.DateTimeField(
+        auto_now_add=True, verbose_name='Créé le')
+
+    class Meta:
+        verbose_name = 'Caution bancaire'
+        verbose_name_plural = 'Cautions bancaires'
+        ordering = ['-date_emission', '-id']
+        constraints = [
+            models.UniqueConstraint(
+                fields=['company', 'reference'],
+                condition=models.Q(reference__gt=''),
+                name='uniq_caution_reference',
+            ),
+        ]
+
+    def __str__(self):
+        return (f'{self.reference or "CAUTION"} — '
+                f'{self.get_type_caution_display()} ({self.montant})')
+
+    def clean(self):
+        super().clean()
+        if self.montant is not None and self.montant < 0:
+            raise ValidationError(
+                "Le montant de la caution ne peut pas être négatif.")
