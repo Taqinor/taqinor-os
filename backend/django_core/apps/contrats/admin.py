@@ -1,6 +1,12 @@
 from django.contrib import admin
 
-from .models import ClauseContrat, Contrat, ContratLien, PartieContrat
+from .models import (
+    ClauseContrat,
+    Contrat,
+    ContratLien,
+    PartieContrat,
+    RegleApprobation,
+)
 
 
 @admin.register(Contrat)
@@ -33,3 +39,12 @@ class ClauseContratAdmin(admin.ModelAdmin):
                     'surchargee', 'company')
     list_filter = ('surchargee',)
     search_fields = ('titre', 'corps')
+
+
+@admin.register(RegleApprobation)
+class RegleApprobationAdmin(admin.ModelAdmin):
+    list_display = ('id', 'libelle', 'type_contrat', 'montant_min',
+                    'montant_max', 'niveau_approbation', 'nombre_approbateurs',
+                    'priorite', 'actif', 'company')
+    list_filter = ('type_contrat', 'niveau_approbation', 'actif')
+    search_fields = ('libelle',)

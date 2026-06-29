@@ -14,6 +14,7 @@ from .models import (
     ModeleContrat,
     ModeleContratClause,
     PartieContrat,
+    RegleApprobation,
 )
 
 
@@ -333,3 +334,51 @@ class InstancierContratSerializer(serializers.Serializer):
     """
     objet = serializers.CharField(max_length=255, required=False, allow_blank=True)
     reference = serializers.CharField(max_length=50, required=False, allow_blank=True)
+
+
+class RegleApprobationSerializer(serializers.ModelSerializer):
+    """Sérialiseur d'une ``RegleApprobation`` (règle d'approbation — CONTRAT13).
+
+    ``company`` n'est jamais exposée en écriture : posée côté serveur par le
+    ``TenantMixin``. Les champs ``_display`` sont en lecture seule. La cohérence
+    des bornes de montant est validée (min ≤ max).
+    """
+    type_contrat_display = serializers.CharField(
+        source='get_type_contrat_display', read_only=True)
+    niveau_approbation_display = serializers.CharField(
+        source='get_niveau_approbation_display', read_only=True)
+
+    class Meta:
+        model = RegleApprobation
+        fields = [
+            'id', 'libelle', 'type_contrat', 'type_contrat_display',
+            'montant_min', 'montant_max',
+            'niveau_approbation', 'niveau_approbation_display',
+            'nombre_approbateurs', 'priorite', 'actif', 'date_creation',
+        ]
+        read_only_fields = ['date_creation']
+
+    def validate(self, attrs):
+        """Borne min ≤ max quand les deux sont fixées (sinon borne ouverte)."""
+        montant_min = attrs.get(
+            'montant_min', getattr(self.instance, 'montant_min', None))
+        montant_max = attrs.get(
+            'montant_max', getattr(self.instance, 'montant_max', None))
+        if (
+            montant_min is not None
+            and montant_max is not None
+            and montant_min > montant_max
+        ):
+            raise serializers.ValidationError(
+                'Le montant minimum ne peut pas dépasser le montant maximum.')
+        return attrs
+
+
+class ResoudreRegleApprobationSerializer(serializers.Serializer):
+    """Paramètres de GET /regles-approbation/resoudre/ (CONTRAT13).
+
+    ``montant`` est requis ; ``type_contrat`` est optionnel (vide = aucun type).
+    """
+    montant = serializers.DecimalField(max_digits=14, decimal_places=2)
+    type_contrat = serializers.ChoiceField(
+        choices=Contrat.TypeContrat.choices, required=False, allow_blank=True)

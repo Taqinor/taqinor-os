@@ -39,6 +39,7 @@ from .models import (
     ModeleContrat,
     ModeleContratClause,
     PartieContrat,
+    RegleApprobation,
 )
 from .serializers import (
     ChangerStatutSerializer,
@@ -50,7 +51,9 @@ from .serializers import (
     ModeleContratClauseSerializer,
     ModeleContratSerializer,
     PartieContratSerializer,
+    RegleApprobationSerializer,
     RendreContratSerializer,
+    ResoudreRegleApprobationSerializer,
 )
 
 
@@ -375,3 +378,55 @@ class ClauseContratViewSet(_ContratsBaseViewSet):
 
     def perform_create(self, serializer):
         serializer.save(company=self.request.user.company)
+
+
+class RegleApprobationViewSet(_ContratsBaseViewSet):
+    """Règles d'approbation des contrats par montant/type (CONTRAT13).
+
+    Scopé société (TenantMixin) ; ``company`` posée côté serveur. CRUD complet
+    plus une action de résolution :
+
+    - GET ``/regles-approbation/resoudre/?montant=<x>&type_contrat=<t>`` :
+      renvoie la règle ACTIVE la plus spécifique couvrant ce couple (ou
+      ``{"regle": null}`` si aucune ne s'applique). Lecture seule : ne change
+      AUCUN statut.
+
+    Filtres : ``?actif=true/false``, ``?type_contrat=<valeur>``.
+    Recherche : ``libelle``.
+    """
+
+    queryset = RegleApprobation.objects.all()
+    serializer_class = RegleApprobationSerializer
+    filter_backends = [filters.SearchFilter, filters.OrderingFilter]
+    search_fields = ['libelle']
+    ordering_fields = ['priorite', 'montant_min', 'montant_max', 'id']
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        actif = self.request.query_params.get('actif')
+        if actif is not None:
+            qs = qs.filter(actif=actif.lower() in ('1', 'true', 'oui'))
+        type_contrat = self.request.query_params.get('type_contrat')
+        if type_contrat:
+            qs = qs.filter(type_contrat=type_contrat)
+        return qs
+
+    @action(detail=False, methods=['get'])
+    def resoudre(self, request):
+        """Résout la règle d'approbation la plus spécifique (CONTRAT13).
+
+        Paramètres de requête : ``montant`` (requis), ``type_contrat``
+        (optionnel). Le résolveur est scopé à la société de l'utilisateur. La
+        réponse porte la règle sérialisée (ou ``null``).
+        """
+        params = ResoudreRegleApprobationSerializer(data=request.query_params)
+        params.is_valid(raise_exception=True)
+        montant = params.validated_data['montant']
+        type_contrat = params.validated_data.get('type_contrat') or None
+        regle = selectors.resoudre_regle_approbation(
+            request.user.company, montant, type_contrat)
+        data = (
+            RegleApprobationSerializer(regle, context={'request': request}).data
+            if regle is not None else None
+        )
+        return Response({'regle': data})
