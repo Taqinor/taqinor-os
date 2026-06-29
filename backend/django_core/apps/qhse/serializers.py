@@ -7,9 +7,9 @@ appartenant à la société de l'utilisateur.
 from rest_framework import serializers
 
 from .models import (
-    ActionCorrectivePreventive, Audit, CritereAudit, EvaluationRisque,
-    GrilleAudit, ItemNotation, LigneEvaluationRisque, NonConformite,
-    NotationFinChantier, PermisTravail, PlanInspectionChantier,
+    ActionCorrectivePreventive, Audit, ConsignationLoto, CritereAudit,
+    EvaluationRisque, GrilleAudit, ItemNotation, LigneEvaluationRisque,
+    NonConformite, NotationFinChantier, PermisTravail, PlanInspectionChantier,
     PlanInspectionModele, PointControleModele, ProcedureQualite,
     QhseChatterEntry, ReleveControle, ReleveCourbeIV, ReponseCritere,
     RetourClientQualite,
@@ -492,3 +492,35 @@ class PermisTravailSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError(
                 {'date_fin': 'La fin de validité précède le début.'})
         return attrs
+
+
+class ConsignationLotoSerializer(serializers.ModelSerializer):
+    """Consignation électrique (LOTO) rattachée à un permis (QHSE24).
+
+    ``company`` est posée côté serveur ; la ``reference`` est attribuée côté
+    serveur (jamais lue du corps). Le ``statut`` et ``date_deconsignation`` ne
+    sont pilotés que par l'action ``deconsigner`` (lecture seule au CRUD). Le
+    ``permis`` doit appartenir à la société de l'utilisateur (filtré côté vue).
+    """
+    permis = serializers.PrimaryKeyRelatedField(
+        queryset=PermisTravail.objects.all())
+    permis_reference = serializers.CharField(
+        source='permis.reference', read_only=True)
+    statut_display = serializers.CharField(
+        source='get_statut_display', read_only=True)
+
+    class Meta:
+        model = ConsignationLoto
+        fields = [
+            'id', 'reference', 'permis', 'permis_reference', 'equipement',
+            'point_consignation', 'consignateur', 'date_consignation',
+            'date_deconsignation', 'cadenas_pose', 'etiquette',
+            'verifie_absence_tension', 'statut', 'statut_display', 'notes',
+            'date_creation',
+        ]
+        read_only_fields = [
+            'reference', 'statut', 'date_deconsignation', 'date_creation',
+        ]
+
+    def validate_permis(self, value):
+        return _meme_societe(self, value, 'Permis de travail')
