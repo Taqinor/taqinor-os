@@ -13,6 +13,7 @@ from .models import (
     Conducteur,
     EnginRoulant,
     EtatDesLieux,
+    PlanEntretien,
     PleinCarburant,
     ReferentielFlotte,
     ReservationVehicule,
@@ -657,5 +658,61 @@ class CarteCarburantSerializer(serializers.ModelSerializer):
                 raise serializers.ValidationError(
                     {'conducteur':
                      "Ce conducteur n'appartient pas à votre société."})
+
+        return attrs
+
+
+class PlanEntretienSerializer(serializers.ModelSerializer):
+    """FLOTTE15 — Plan d'entretien préventif (km / date / heures).
+
+    ``company`` est posée côté serveur (jamais lue du corps de requête). L'actif
+    ciblé (``actif_flotte``) doit appartenir à la société courante. Au moins un
+    intervalle (km / jours / heures) est obligatoire — validé ici pour renvoyer
+    une 400 lisible plutôt qu'une 500 d'intégrité.
+
+    Champs lecture seule :
+    - ``actif_label``   : désignation de l'actif ciblé (véhicule ou engin).
+    - ``type_actif``    : 'vehicule' | 'engin'.
+    """
+
+    actif_label = serializers.SerializerMethodField()
+    type_actif = serializers.SerializerMethodField()
+
+    class Meta:
+        model = PlanEntretien
+        fields = [
+            'id', 'actif_flotte', 'actif_label', 'type_actif',
+            'type_entretien', 'intervalle_km', 'intervalle_jours',
+            'intervalle_heures', 'dernier_km', 'derniere_date',
+            'dernier_heures', 'seuil_alerte_km', 'seuil_alerte_jours',
+            'seuil_alerte_heures', 'notes', 'actif', 'date_creation',
+        ]
+        read_only_fields = ['date_creation']
+
+    def get_actif_label(self, obj):
+        return obj.actif_flotte.label if obj.actif_flotte_id else None
+
+    def get_type_actif(self, obj):
+        return obj.actif_flotte.type_actif if obj.actif_flotte_id else None
+
+    def validate(self, attrs):
+        request = self.context.get('request')
+        company = getattr(getattr(request, 'user', None), 'company', None)
+
+        actif_flotte = attrs.get(
+            'actif_flotte', getattr(self.instance, 'actif_flotte', None))
+        if company is not None and actif_flotte is not None \
+                and actif_flotte.company_id != company.id:
+            raise serializers.ValidationError(
+                {'actif_flotte':
+                 "Cet actif n'appartient pas à votre société."})
+
+        def _get(field):
+            return attrs.get(field, getattr(self.instance, field, None))
+
+        if not any((_get('intervalle_km'), _get('intervalle_jours'),
+                    _get('intervalle_heures'))):
+            raise serializers.ValidationError(
+                "Renseignez au moins un intervalle (km, jours ou heures).")
 
         return attrs

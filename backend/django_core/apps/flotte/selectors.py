@@ -15,6 +15,7 @@ from .models import (
     Conducteur,
     EnginRoulant,
     EtatDesLieux,
+    PlanEntretien,
     PleinCarburant,
     ReservationVehicule,
     Vehicule,
@@ -475,3 +476,200 @@ def emplacement_stock_label(company, emplacement_stock_id):
     if emplacement is not None:
         return str(emplacement)
     return f'#{emplacement_stock_id}'
+
+
+# ── FLOTTE15 — Plans d'entretien préventif (km / date / heures) ────────────────
+
+def plans_de_la_societe(company, actif_only=False, actif_flotte_id=None):
+    """FLOTTE15 — Plans d'entretien préventif d'une société (queryset scopé).
+
+    ``actif_only=True`` ne retourne que les plans actifs ; ``actif_flotte_id``
+    filtre sur un actif unifié (``ActifFlotte``) précis.
+    """
+    qs = PlanEntretien.objects.filter(company=company).select_related(
+        'actif_flotte', 'actif_flotte__vehicule', 'actif_flotte__engin')
+    if actif_only:
+        qs = qs.filter(actif=True)
+    if actif_flotte_id is not None:
+        qs = qs.filter(actif_flotte_id=actif_flotte_id)
+    return qs
+
+
+def _etat_actif_courant(actif_flotte):
+    """Lecture seule : kilométrage et compteur d'heures COURANTS d'un actif.
+
+    Renvoie ``(km_courant | None, heures_courant | None)`` selon le type de
+    l'actif unifié : un véhicule porte un kilométrage, un engin un compteur
+    d'heures. L'autre dimension vaut ``None`` (non applicable).
+    """
+    if actif_flotte.vehicule_id is not None:
+        return actif_flotte.vehicule.kilometrage, None
+    if actif_flotte.engin_id is not None:
+        # compteur_heures est un Decimal ; on le ramène à un entier de comparaison.
+        return None, int(actif_flotte.engin.compteur_heures or 0)
+    return None, None
+
+
+def plan_entretien_echeance(plan, km_courant=None, heures_courant=None,
+                            today=None):
+    """FLOTTE15 — Calcule l'échéance d'UN plan vs l'état courant de l'actif.
+
+    Pour chaque critère renseigné (km / jours / heures), calcule la prochaine
+    échéance ``dernier_réalisé + intervalle`` et la marge restante vs l'état
+    courant. Le plan est globalement ``due`` si AU MOINS un critère est dépassé,
+    ``upcoming`` si au moins un critère tombe dans sa marge d'alerte sans être
+    dépassé, sinon ``ok``. Quand aucune base de comparaison n'est connue (état
+    courant manquant pour tous les critères), le statut est ``inconnu``.
+
+    GARDE-FOUS : aucune division n'est effectuée ici (calcul additif), donc pas
+    de division par zéro possible ; un intervalle nul/absent est simplement
+    ignoré (un ``PositiveIntegerField`` ne peut pas être négatif). Lecture seule.
+    """
+    today = today or datetime.date.today()
+    criteres = []
+
+    # ── Critère kilométrique ──────────────────────────────────────────────────
+    if plan.intervalle_km:
+        base = plan.dernier_km if plan.dernier_km is not None else 0
+        prochaine = base + plan.intervalle_km
+        if km_courant is None:
+            statut = 'inconnu'
+            restant = None
+        else:
+            restant = prochaine - km_courant
+            if restant <= 0:
+                statut = 'due'
+            elif restant <= plan.seuil_alerte_km:
+                statut = 'upcoming'
+            else:
+                statut = 'ok'
+        criteres.append({
+            'dimension': 'km',
+            'prochaine_echeance': prochaine,
+            'restant': restant,
+            'statut': statut,
+        })
+
+    # ── Critère calendaire ────────────────────────────────────────────────────
+    if plan.intervalle_jours:
+        # Base : la date du dernier entretien si connue, sinon la date de création
+        # du plan, et à défaut (objet non encore persisté) la date du jour.
+        base_date = plan.derniere_date
+        if base_date is None and plan.date_creation is not None:
+            base_date = plan.date_creation.date()
+        if base_date is None:
+            base_date = today
+        prochaine_date = base_date + datetime.timedelta(
+            days=plan.intervalle_jours)
+        restant_jours = (prochaine_date - today).days
+        if restant_jours <= 0:
+            statut = 'due'
+        elif restant_jours <= plan.seuil_alerte_jours:
+            statut = 'upcoming'
+        else:
+            statut = 'ok'
+        criteres.append({
+            'dimension': 'jours',
+            'prochaine_echeance': prochaine_date.isoformat(),
+            'restant': restant_jours,
+            'statut': statut,
+        })
+
+    # ── Critère horaire (compteur d'heures) ───────────────────────────────────
+    if plan.intervalle_heures:
+        base = plan.dernier_heures if plan.dernier_heures is not None else 0
+        prochaine = base + plan.intervalle_heures
+        if heures_courant is None:
+            statut = 'inconnu'
+            restant = None
+        else:
+            restant = prochaine - heures_courant
+            if restant <= 0:
+                statut = 'due'
+            elif restant <= plan.seuil_alerte_heures:
+                statut = 'upcoming'
+            else:
+                statut = 'ok'
+        criteres.append({
+            'dimension': 'heures',
+            'prochaine_echeance': prochaine,
+            'restant': restant,
+            'statut': statut,
+        })
+
+    statuts = {c['statut'] for c in criteres}
+    if 'due' in statuts:
+        statut_global = 'due'
+    elif 'upcoming' in statuts:
+        statut_global = 'upcoming'
+    elif 'ok' in statuts:
+        statut_global = 'ok'
+    else:
+        statut_global = 'inconnu'
+
+    return {'statut': statut_global, 'criteres': criteres}
+
+
+def plans_entretien_status(company, actif_only=True, statut=None):
+    """FLOTTE15 — Liste les entretiens DUS / À VENIR d'une société (lecture seule).
+
+    Parcourt les plans actifs (``actif_only=True`` par défaut) — scopés société —
+    et calcule pour chacun son échéance vs l'état COURANT de l'actif ciblé
+    (kilométrage du véhicule, compteur d'heures de l'engin, date du jour). Le
+    paramètre ``statut`` (``due`` | ``upcoming`` | ``ok`` | ``inconnu``) restreint
+    la liste retournée.
+
+    Retourne un dict LECTURE SEULE scopé société ::
+
+        {
+          'nb_plans': <int>,           # plans examinés
+          'nb_due': <int>,
+          'nb_upcoming': <int>,
+          'plans': [
+            {'plan_id', 'actif_flotte_id', 'actif_label', 'type_entretien',
+             'km_courant', 'heures_courant', 'statut', 'criteres': [...]}, …
+          ],
+        }
+
+    Les plans ``due`` sont listés en premier, puis ``upcoming``, puis le reste.
+    Aucune écriture, aucun effet de bord.
+    """
+    today = datetime.date.today()
+    plans = plans_de_la_societe(company, actif_only=actif_only)
+
+    resultats = []
+    nb_due = 0
+    nb_upcoming = 0
+    for plan in plans:
+        km_courant, heures_courant = _etat_actif_courant(plan.actif_flotte)
+        echeance = plan_entretien_echeance(
+            plan, km_courant=km_courant, heures_courant=heures_courant,
+            today=today)
+        if echeance['statut'] == 'due':
+            nb_due += 1
+        elif echeance['statut'] == 'upcoming':
+            nb_upcoming += 1
+        resultats.append({
+            'plan_id': plan.id,
+            'actif_flotte_id': plan.actif_flotte_id,
+            'actif_label': plan.actif_flotte.label,
+            'type_entretien': plan.type_entretien,
+            'km_courant': km_courant,
+            'heures_courant': heures_courant,
+            'statut': echeance['statut'],
+            'criteres': echeance['criteres'],
+        })
+
+    if statut:
+        resultats = [r for r in resultats if r['statut'] == statut]
+
+    ordre = {'due': 0, 'upcoming': 1, 'ok': 2, 'inconnu': 3}
+    resultats.sort(key=lambda r: (ordre.get(r['statut'], 9),
+                                  r['type_entretien']))
+
+    return {
+        'nb_plans': len(resultats) if statut else plans.count(),
+        'nb_due': nb_due,
+        'nb_upcoming': nb_upcoming,
+        'plans': resultats,
+    }
