@@ -17,6 +17,7 @@ from .credit_warning import client_credit_warning
 from .releve_import import releve_dry_run, releve_commit
 from .roof_config import roof_config
 from .roof_layout import RoofLayoutViewSet  # FG245
+from .fiche_technique import FicheTechniqueViewSet  # FG254
 from .preset import DevisPresetViewSet  # QJ16-wiring
 
 __all__ = [
@@ -33,5 +34,6 @@ __all__ = [
     'releve_commit',
     'roof_config',
     'RoofLayoutViewSet',
+    'FicheTechniqueViewSet',
     'DevisPresetViewSet',
 ]

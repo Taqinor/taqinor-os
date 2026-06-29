@@ -1740,3 +1740,104 @@ class RoofLayout(models.Model):
         if not self.puissance_module_wc:
             return None
         return round(self.panel_count * self.puissance_module_wc / 1000.0, 3)
+
+
+class FicheTechnique(models.Model):
+    """FG254 / DC35 — fiche technique normalisée d'un module ou onduleur.
+
+    Bibliothèque de fiches techniques (datasheets) rattachées à un produit du
+    catalogue (``stock.Produit`` via FK chaîne, jamais d'import du modèle stock
+    — couche découplée M1). Cette fiche NE RE-STOCKE PAS les attributs déjà
+    portés par ``Produit`` (marque, description, garantie, courbe de pompe…) :
+    elle ne porte que les PARAMÈTRES ÉLECTRIQUES NORMALISÉS utiles au
+    dimensionnement (Pmax/Voc/Isc + coefficient de température) et, optionnel,
+    une référence vers le PDF datasheet constructeur.
+
+    Multi-tenancy : ``company`` toujours forcée côté serveur (depuis le produit
+    lié ou l'utilisateur), jamais lue du corps. Querysets filtrés par société.
+
+    Couche additive séparée du PDF premium (`quote_engine/`) et de `/proposal` ;
+    ne change aucun statut de devis (RULE #4). Aucun prix / prix d'achat / marge
+    n'est porté ici.
+    """
+
+    class TypeFiche(models.TextChoices):
+        PANNEAU = 'panneau', 'Module PV (panneau)'
+        ONDULEUR = 'onduleur', 'Onduleur'
+
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='ventes_fiches_techniques',
+        verbose_name='Société',
+    )
+    # Un produit du catalogue porte au plus UNE fiche normalisée par société.
+    produit = models.ForeignKey(
+        'stock.Produit',
+        on_delete=models.CASCADE,
+        related_name='fiches_techniques',
+        verbose_name='Produit',
+    )
+    type_fiche = models.CharField(
+        max_length=10, choices=TypeFiche.choices,
+        default=TypeFiche.PANNEAU,
+        verbose_name='Type de fiche',
+    )
+    # ── Paramètres électriques normalisés (STC) ──
+    # Panneau : pmax = puissance crête (Wc) ; onduleur : pmax = puissance AC (W).
+    pmax_w = models.DecimalField(
+        max_digits=10, decimal_places=2, null=True, blank=True,
+        verbose_name='Pmax (W)',
+        help_text='Panneau : puissance crête Wc ; onduleur : puissance AC W.',
+    )
+    voc_v = models.DecimalField(
+        max_digits=8, decimal_places=2, null=True, blank=True,
+        verbose_name='Voc (V)', help_text='Tension circuit ouvert (STC).',
+    )
+    isc_a = models.DecimalField(
+        max_digits=8, decimal_places=2, null=True, blank=True,
+        verbose_name='Isc (A)', help_text='Courant de court-circuit (STC).',
+    )
+    vmp_v = models.DecimalField(
+        max_digits=8, decimal_places=2, null=True, blank=True,
+        verbose_name='Vmp (V)', help_text='Tension au point de puissance max.',
+    )
+    imp_a = models.DecimalField(
+        max_digits=8, decimal_places=2, null=True, blank=True,
+        verbose_name='Imp (A)', help_text='Courant au point de puissance max.',
+    )
+    # Coefficient de température du Voc (%/°C), typiquement négatif.
+    coef_temp_voc = models.DecimalField(
+        max_digits=6, decimal_places=4, null=True, blank=True,
+        verbose_name='Coef. température Voc (%/°C)',
+    )
+    # Datasheet PDF constructeur (chemin/clé de stockage, comme Devis.fichier_pdf).
+    datasheet_pdf = models.CharField(
+        max_length=500, blank=True, null=True,
+        verbose_name='Datasheet PDF',
+    )
+    created_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='fiches_techniques_creees',
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = 'Fiche technique'
+        verbose_name_plural = 'Fiches techniques'
+        # Une seule fiche normalisée par produit et par société.
+        constraints = [
+            models.UniqueConstraint(
+                fields=['company', 'produit'],
+                name='uniq_fiche_company_produit'),
+        ]
+        indexes = [
+            models.Index(fields=['company', 'type_fiche'],
+                         name='ix_fiche_comp_type'),
+        ]
+
+    def __str__(self):
+        return f'Fiche {self.type_fiche} — produit {self.produit_id}'

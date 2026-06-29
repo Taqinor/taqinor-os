@@ -14,6 +14,7 @@ from .views import (
     releve_commit,
     roof_config,
     RoofLayoutViewSet,  # FG245
+    FicheTechniqueViewSet,  # FG254
     DevisPresetViewSet,  # QJ16-wiring
 )
 from .recouvrement import (
@@ -43,6 +44,9 @@ router.register(r'paiements', PaiementViewSet)
 router.register(r'avoirs', AvoirViewSet)
 # FG245 — calepinage toiture (placement panneaux), compte calculé serveur.
 router.register(r'calepinages', RoofLayoutViewSet, basename='calepinage')
+# FG254 / DC35 — bibliothèque de fiches techniques normalisées (datasheets).
+router.register(r'fiches-techniques', FicheTechniqueViewSet,
+                basename='fiche-technique')
 router.register(r'niveaux-relance', FollowupLevelViewSet,
                 basename='niveau-relance')
 # QJ16-wiring — presets de devis (list + destroy uniquement).
