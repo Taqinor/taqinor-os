@@ -21,7 +21,7 @@ from apps.crm.models import Client, Lead
 from apps.ventes.models import Devis, LigneDevis
 from apps.stock.models import Produit
 from apps.installations.models import (
-    Installation, Intervention, MaterielConsommation, ConsommationLigne,
+    Intervention, MaterielConsommation, ConsommationLigne,
 )
 from apps.installations.services import (
     create_installation_from_devis, compute_chantier_cout,

@@ -613,3 +613,114 @@ def compute_chantier_cout(installation, tarif_jour=None):
         'marge': float(marge) if marge is not None else None,
         'marge_taux': marge_taux,
     }
+
+
+# ── FG77 — Contrôle de préparation avant pose (readiness) ─────────────────────
+# Avant de lancer la pose (passage à « En cours »), rien ne vérifie la
+# disponibilité matériel ni l'état du dossier loi 82-21. Ce sélecteur AVISE
+# (advisory) : il agrège le manque matériel (via besoin-materiel), l'état du
+# dossier réglementaire et la date de planification en une checklist + un verdict
+# « prêt / non prêt » destiné à une bannière. Il ne bloque RIEN par lui-même —
+# l'appel reste autorisé ; le frontend peut proposer un override-à-confirmer.
+
+def compute_chantier_readiness(installation):
+    """FG77 — état de préparation avant pose d'un chantier (lecture seule).
+
+    Renvoie un dict :
+      pret (bool) : aucun bloqueur ;
+      checks : [{cle, libelle, statut('ok'|'avertissement'|'bloquant'),
+                 detail}] ;
+      materiel : {nb_manques, manques:[{designation, manque}]} ;
+      dossier : {regime, statut, requis(bool), ok(bool)} ;
+      planning : {date_pose_prevue, defini(bool)}.
+
+    Bloqueurs (advisory) : un manque matériel ; un dossier réglementaire requis
+    non encore approuvé. Avertissement : pas de date de pose planifiée."""
+    from apps.stock.services import compute_besoin_materiel
+
+    checks = []
+
+    # ── Matériel ────────────────────────────────────────────────────────────
+    besoins = compute_besoin_materiel(installation)
+    manques = [
+        {'designation': b['designation'], 'manque': b['manque']}
+        for b in besoins if b.get('manque', 0) > 0
+    ]
+    nb_manques = len(manques)
+    if nb_manques:
+        checks.append({
+            'cle': 'materiel',
+            'libelle': 'Disponibilité du matériel',
+            'statut': 'bloquant',
+            'detail': f'{nb_manques} référence(s) en pénurie.',
+        })
+    else:
+        checks.append({
+            'cle': 'materiel',
+            'libelle': 'Disponibilité du matériel',
+            'statut': 'ok',
+            'detail': 'Tout le matériel requis est disponible.',
+        })
+
+    # ── Dossier réglementaire loi 82-21 ──────────────────────────────────────
+    regime = installation.regime_8221
+    dossier_statut = installation.dossier_statut
+    NON_CONCERNE = Installation.Regime8221.NON_CONCERNE
+    dossier_requis = regime != NON_CONCERNE
+    # « Approuvé » ou « Compteur posé » = dossier en règle pour démarrer.
+    dossier_ok = (not dossier_requis) or dossier_statut in (
+        Installation.DossierStatut.APPROUVE,
+        Installation.DossierStatut.COMPTEUR_POSE,
+    )
+    if not dossier_requis:
+        checks.append({
+            'cle': 'dossier',
+            'libelle': 'Dossier réglementaire (loi 82-21)',
+            'statut': 'ok',
+            'detail': 'Non concerné.',
+        })
+    elif dossier_ok:
+        checks.append({
+            'cle': 'dossier',
+            'libelle': 'Dossier réglementaire (loi 82-21)',
+            'statut': 'ok',
+            'detail': installation.get_dossier_statut_display(),
+        })
+    else:
+        checks.append({
+            'cle': 'dossier',
+            'libelle': 'Dossier réglementaire (loi 82-21)',
+            'statut': 'bloquant',
+            'detail': ('Dossier requis non approuvé '
+                       f'({installation.get_dossier_statut_display()}).'),
+        })
+
+    # ── Planning ──────────────────────────────────────────────────────────────
+    planning_defini = installation.date_pose_prevue is not None
+    checks.append({
+        'cle': 'planning',
+        'libelle': 'Date de pose planifiée',
+        'statut': 'ok' if planning_defini else 'avertissement',
+        'detail': (str(installation.date_pose_prevue) if planning_defini
+                   else 'Aucune date de pose prévue.'),
+    })
+
+    pret = not any(c['statut'] == 'bloquant' for c in checks)
+    return {
+        'installation': installation.id,
+        'reference': installation.reference,
+        'pret': pret,
+        'checks': checks,
+        'materiel': {'nb_manques': nb_manques, 'manques': manques},
+        'dossier': {
+            'regime': regime,
+            'statut': dossier_statut,
+            'requis': dossier_requis,
+            'ok': dossier_ok,
+        },
+        'planning': {
+            'date_pose_prevue': (str(installation.date_pose_prevue)
+                                 if planning_defini else None),
+            'defini': planning_defini,
+        },
+    }

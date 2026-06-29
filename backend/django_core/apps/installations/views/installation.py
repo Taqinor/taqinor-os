@@ -120,7 +120,8 @@ def _apply_reception_handover(inst, canon_old, canon_new, user):
     existants = resume['existants']
     if crees or existants:
         couverts = ', '.join(
-            l['designation'] for l in resume['lignes'] if l['designation'])
+            ligne['designation'] for ligne in resume['lignes']
+            if ligne['designation'])
         detail = f" — {couverts}" if couverts else ''
         activity.log_note(
             inst, user,
@@ -230,6 +231,8 @@ class InstallationViewSet(TenantMixin, viewsets.ModelViewSet):
             'releves',
             # FG70 — fiche de remise de garantie (lecture).
             'remise_garantie',
+            # FG77 — contrôle de préparation avant pose (lecture).
+            'readiness',
         ]:
             return [IsAnyRole()]
         elif self.action in WRITE_ACTIONS + [
@@ -831,3 +834,16 @@ class InstallationViewSet(TenantMixin, viewsets.ModelViewSet):
         inst = self.get_object()
         tarif = request.query_params.get('tarif_jour')
         return Response(compute_chantier_cout(inst, tarif_jour=tarif))
+
+    # ── FG77 — contrôle de préparation avant pose (advisory) ────────────────
+    @action(detail=True, methods=['get'], url_path='readiness',
+            permission_classes=[IsAnyRole])
+    def readiness(self, request, pk=None):
+        """FG77 — état de préparation avant pose : manque matériel (besoin vs
+        stock), état du dossier réglementaire loi 82-21 et date de pose
+        planifiée, agrégés en une checklist + un verdict « prêt / non prêt » pour
+        une bannière. AVISORY (lecture seule) — n'empêche aucun changement de
+        statut ; le frontend peut proposer un override-à-confirmer."""
+        from ..services import compute_chantier_readiness
+        inst = self.get_object()
+        return Response(compute_chantier_readiness(inst))
