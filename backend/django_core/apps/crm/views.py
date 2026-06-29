@@ -4,11 +4,12 @@ from rest_framework.response import Response
 from authentication.mixins import TenantMixin
 from authentication.scoping import scope_queryset, scope_client_queryset
 from .models import (
-    Appointment, Client, Lead, LeadTag, MotifPerte, Canal, Parrainage,
-    MessageTemplate, ObjectifCommercial,
+    Appointment, Client, ConcurrentPerte, Lead, LeadTag, MotifPerte, Canal,
+    Parrainage, MessageTemplate, ObjectifCommercial,
 )
 from .serializers import (
-    AppointmentSerializer, ClientSerializer, LeadSerializer, LeadActivitySerializer,
+    AppointmentSerializer, ClientSerializer, ConcurrentPerteSerializer,
+    LeadSerializer, LeadActivitySerializer,
     LeadTagSerializer, MotifPerteSerializer, CanalSerializer,
     ParrainageSerializer, MessageTemplateSerializer, _tag_en_usage, _motif_en_usage,
     ObjectifCommercialSerializer, ObjectifAttainmentSerializer,
@@ -1257,3 +1258,61 @@ class ObjectifCommercialViewSet(TenantMixin, viewsets.ModelViewSet):
             })
         s = ObjectifAttainmentSerializer(result, many=True)
         return Response(s.data)
+
+
+# ── FG242 — Suivi des concurrents sur deals perdus ────────────────────────────
+
+class ConcurrentPerteViewSet(TenantMixin, viewsets.ModelViewSet):
+    """FG242 — concurrent gagnant + prix saisis sur un lead perdu.
+
+    Intelligence concurrentielle : sur un lead PERDU (drapeau ``Lead.perdu`` —
+    « Perdu » est un lost-flag, pas une étape STAGES.py), on capture qui nous a
+    battu et à quel prix.
+
+    Routes :
+      GET/POST  /crm/concurrents-perte/        (filtre ?lead=<id>)
+      GET/PATCH /crm/concurrents-perte/{id}/
+      DELETE    /crm/concurrents-perte/{id}/
+
+    Lecture tout rôle, écriture responsable/admin. Toujours scopé par société
+    (TenantMixin) : la société et ``saisi_par`` sont posés côté serveur depuis
+    l'utilisateur actif — jamais lus du corps de requête (multi-tenant).
+    """
+    serializer_class = ConcurrentPerteSerializer
+    queryset = ConcurrentPerte.objects.select_related(
+        'lead', 'company', 'saisi_par').all()
+    filterset_fields = ['lead']
+    ordering_fields = ['saisi_le', 'concurrent_prix']
+    ordering = ['-saisi_le']
+
+    def get_permissions(self):
+        if self.action in READ_ACTIONS:
+            return [IsAnyRole()]
+        return [IsResponsableOrAdmin()]
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        lead_id = self.request.query_params.get('lead')
+        if lead_id:
+            qs = qs.filter(lead_id=lead_id)
+        return qs
+
+    def perform_create(self, serializer):
+        """Société et saisi_par toujours posés côté serveur ; trace chatter."""
+        obj = serializer.save(
+            company=self.request.user.company,
+            saisi_par=self.request.user,
+        )
+        # Trace l'info dans le chatter du lead (best-effort, ne casse jamais
+        # la création si le log échoue).
+        try:
+            from . import activity
+            prix = ''
+            if obj.concurrent_prix is not None:
+                prix = f' à {obj.concurrent_prix} {obj.devise or ""}'.rstrip()
+            activity.log_note(
+                obj.lead, self.request.user,
+                f"Concurrent gagnant saisi : {obj.concurrent_nom}{prix}.",
+            )
+        except Exception:
+            pass

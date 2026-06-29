@@ -8,7 +8,69 @@ cycles. Quand une app cible n'a pas de sélecteur exploitable, on DÉGRADE
 proprement : on renvoie le ``libelle`` mis en cache et les ids stockés, sans
 rien importer.
 """
-from .models import KbArticleLien
+from django.db.models import Exists, OuterRef, Q
+
+from .models import KbArticleAcl, KbArticleLien, KbLecture
+
+
+# ── Droits d'accès par rôle (KB7) ──────────────────────────────────────────
+
+def visible_articles_qs(queryset, user):
+    """Restreint un queryset d'articles aux articles VISIBLES pour ``user``.
+
+    Règle RÉTRO-COMPATIBLE : un article SANS aucune ligne ACL reste visible de
+    tous (comportement historique préservé — KB2/KB3 inchangés). Dès qu'au moins
+    une ligne ACL de LECTURE existe pour un article, seuls les paliers listés
+    peuvent le lire. Le palier ``admin`` (accesseur de rôle faisant autorité
+    ``CustomUser.menu_tier``) passe TOUJOURS : un administrateur voit tout.
+
+    Implémentée en une seule requête (pas de N+1) : un article passe s'il
+    *n'a aucune* ACL de lecture, OU s'il a une ACL de lecture pour le palier de
+    l'utilisateur. ``user`` peut être ``None`` (palier inconnu) : seuls les
+    articles sans ACL restent alors visibles.
+    """
+    tier = getattr(user, 'menu_tier', None) if user is not None else None
+    if tier == 'admin':
+        return queryset
+    # Article restreint en LECTURE = il porte au moins une ligne ACL de lecture.
+    a_restriction = KbArticleAcl.objects.filter(
+        article=OuterRef('pk'), niveau=KbArticleAcl.Niveau.LECTURE)
+    qs = queryset.annotate(_kb_acl_restreint=Exists(a_restriction))
+    if not tier:
+        # Palier inconnu : seuls les articles sans restriction restent visibles.
+        return qs.filter(_kb_acl_restreint=False)
+    # Article autorisé pour CE palier = il porte une ligne ACL de lecture pour lui.
+    autorise = a_restriction.filter(role=tier)
+    return qs.annotate(_kb_acl_autorise=Exists(autorise)).filter(
+        Q(_kb_acl_restreint=False) | Q(_kb_acl_autorise=True))
+
+
+def acls_for_article(article):
+    """Lignes ACL d'un article (QuerySet scopé société, ordonné par id)."""
+    return KbArticleAcl.objects.filter(
+        article=article, company=article.company).order_by('id')
+
+
+def resume_lecture(article):
+    """Résumé de lecture d'un article : nombre de lecteurs + qui (KB7).
+
+    Renvoie ``{nombre, lecteurs: [{utilisateur, nom, lu_le}, ...]}`` scopé
+    société. Lecture seule ; sert au tableau de bord « qui a lu cet article ».
+    """
+    lectures = (KbLecture.objects
+                .filter(article=article, company=article.company)
+                .select_related('utilisateur')
+                .order_by('-lu_le', '-id'))
+    lecteurs = []
+    for lecture in lectures:
+        utilisateur = lecture.utilisateur
+        lecteurs.append({
+            'utilisateur': utilisateur.id if utilisateur else None,
+            'nom': (utilisateur.get_full_name() or utilisateur.get_username())
+            if utilisateur else '',
+            'lu_le': lecture.lu_le,
+        })
+    return {'nombre': len(lecteurs), 'lecteurs': lecteurs}
 
 
 def liens_for_article(article):

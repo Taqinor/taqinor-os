@@ -9,9 +9,10 @@ from rest_framework import serializers
 from .models import (
     ActionCorrectivePreventive, Audit, CritereAudit, EvaluationRisque,
     GrilleAudit, ItemNotation, LigneEvaluationRisque, NonConformite,
-    NotationFinChantier, PlanInspectionChantier, PlanInspectionModele,
-    PointControleModele, ProcedureQualite, QhseChatterEntry,
-    ReleveControle, ReleveCourbeIV, ReponseCritere, RetourClientQualite,
+    NotationFinChantier, PermisTravail, PlanInspectionChantier,
+    PlanInspectionModele, PointControleModele, ProcedureQualite,
+    QhseChatterEntry, ReleveControle, ReleveCourbeIV, ReponseCritere,
+    RetourClientQualite,
 )
 
 
@@ -455,3 +456,39 @@ class EvaluationRisqueSerializer(serializers.ModelSerializer):
     def get_criticite_max(self, obj):
         return max(
             (ligne.criticite for ligne in obj.lignes.all()), default=0)
+
+
+class PermisTravailSerializer(serializers.ModelSerializer):
+    """Permis de travail QHSE (QHSE23).
+
+    ``company`` est posée côté serveur ; la ``reference`` est attribuée côté
+    serveur (jamais lue du corps). Le ``statut`` n'est piloté que par les actions
+    ``valider``/``cloturer`` (lecture seule au CRUD). Valide que ``date_fin`` ne
+    précède pas ``date_debut`` quand les deux sont fournies.
+    """
+    type_permis_display = serializers.CharField(
+        source='get_type_permis_display', read_only=True)
+    statut_display = serializers.CharField(
+        source='get_statut_display', read_only=True)
+
+    class Meta:
+        model = PermisTravail
+        fields = [
+            'id', 'reference', 'titre', 'type_permis', 'type_permis_display',
+            'statut', 'statut_display', 'chantier_id', 'date_debut',
+            'date_fin', 'delivre_par', 'valide_par', 'mesures_prevention',
+            'notes', 'date_creation',
+        ]
+        read_only_fields = ['reference', 'statut', 'date_creation']
+
+    def validate(self, attrs):
+        debut = attrs.get('date_debut')
+        fin = attrs.get('date_fin')
+        if debut is None and self.instance is not None:
+            debut = self.instance.date_debut
+        if fin is None and self.instance is not None:
+            fin = self.instance.date_fin
+        if debut is not None and fin is not None and fin < debut:
+            raise serializers.ValidationError(
+                {'date_fin': 'La fin de validité précède le début.'})
+        return attrs

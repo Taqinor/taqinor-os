@@ -697,6 +697,83 @@ class ContratMaintenance(models.Model):
         return (today or timezone.localdate()) >= self.prochaine_facturation()
 
 
+# ── FG280 — Alarmes / défauts onduleur ────────────────────────────────────────
+
+class AlarmeOnduleur(models.Model):
+    """FG280 — Alarme / défaut onduleur, DISTINCTE du ticket SAV.
+
+    Un onduleur remonte des codes de défaut (E07, F12…) avec une gravité.
+    Cet objet capture l'alarme telle qu'observée — code, gravité, équipement
+    concerné — avec son propre cycle de vie d'acquittement/escalade, SÉPARÉ du
+    cycle de vie du ticket SAV (`Ticket`). Acquitter = « j'ai vu » (utilisateur
+    + horodatage côté serveur). Escalader = ouvrir/relier un ticket SAV pour
+    traiter le défaut ; l'alarme reste l'enregistrement source.
+
+    Multi-tenant : `company` posé côté serveur, jamais depuis le corps. Le lien
+    `ticket` reste optionnel — une alarme peut vivre sans ticket (acquittée ou
+    résolue sans intervention).
+    """
+    class Gravite(models.TextChoices):
+        INFO = 'info', 'Information'
+        WARNING = 'warning', 'Avertissement'
+        CRITIQUE = 'critique', 'Critique'
+
+    class Statut(models.TextChoices):
+        ACTIVE = 'active', 'Active'
+        ACQUITTEE = 'acquittee', 'Acquittée'
+        RESOLUE = 'resolue', 'Résolue'
+        ESCALADEE = 'escaladee', 'Escaladée'
+
+    company = models.ForeignKey(
+        'authentication.Company', on_delete=models.CASCADE,
+        null=True, blank=True, related_name='alarmes_onduleur')
+    # L'appareil concerné, si connu. SET_NULL : pas de perte de l'alarme.
+    equipement = models.ForeignKey(
+        'sav.Equipement', on_delete=models.SET_NULL,
+        null=True, blank=True, related_name='alarmes_onduleur')
+    # Code remonté par l'onduleur (ex. "E07", "F12").
+    code = models.CharField(max_length=60)
+    gravite = models.CharField(
+        max_length=10, choices=Gravite.choices, default=Gravite.WARNING)
+    libelle = models.CharField(max_length=180, blank=True, default='')
+    description = models.TextField(blank=True, default='')
+    date_detection = models.DateTimeField(null=True, blank=True)
+    statut = models.CharField(
+        max_length=12, choices=Statut.choices, default=Statut.ACTIVE)
+
+    # ── Acquittement (« j'ai vu ») — utilisateur + date posés côté serveur. ──
+    acquittee_par = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL,
+        null=True, blank=True, related_name='alarmes_onduleur_acquittees')
+    date_acquittement = models.DateTimeField(null=True, blank=True)
+
+    # ── Escalade — lien optionnel vers le ticket SAV qui traite le défaut. ──
+    # SET_NULL : la suppression d'un ticket ne casse pas l'historique d'alarmes.
+    ticket = models.ForeignKey(
+        'sav.Ticket', on_delete=models.SET_NULL,
+        null=True, blank=True, related_name='alarmes_onduleur')
+
+    created_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL,
+        null=True, blank=True, related_name='+')
+    date_creation = models.DateTimeField(auto_now_add=True)
+    date_modification = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = 'Alarme onduleur'
+        verbose_name_plural = 'Alarmes onduleur'
+        ordering = ['-date_creation']
+        indexes = [
+            models.Index(
+                fields=['company', 'statut'], name='sav_alarme_co_statut'),
+            models.Index(
+                fields=['company', 'gravite'], name='sav_alarme_co_gravite'),
+        ]
+
+    def __str__(self):
+        return f'{self.code} ({self.gravite}) — {self.statut}'
+
+
 class PieceConsommee(models.Model):
     """N46 — pièce consommée sur un ticket SAV.
 

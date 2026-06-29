@@ -83,8 +83,14 @@ class BulletinAmoTests(TestCase):
         # Brut 10000 : AMO sur 10000 (non plafonnée).
         self.assertEqual(res['amo_salariale'], Decimal('226.00'))
         self.assertEqual(res['amo_patronale'], Decimal('226.00'))
-        # charges_patronales = CNSS patronale (538.80) + AMO patronale (226.00).
-        self.assertEqual(res['charges_patronales'], Decimal('764.80'))
+        # charges_patronales = CNSS patronale (538.80) + AMO patronale (226.00)
+        # + allocations familiales patronales (PAIE23) — assertion robuste à
+        # l'ajout de postes patronaux.
+        self.assertEqual(
+            res['charges_patronales'],
+            res['cnss_patronale'] + res['amo_patronale']
+            + res['allocations_familiales'])
+        self.assertGreaterEqual(res['charges_patronales'], Decimal('764.80'))
 
     def test_charges_patronales_hors_net(self):
         """La part patronale AMO ne réduit PAS le net à payer du salarié."""
@@ -101,8 +107,11 @@ class BulletinAmoTests(TestCase):
         res = calculer_bulletin(self.profil, self.periode)
         self.assertEqual(res['amo_salariale'], Decimal('0.00'))
         self.assertEqual(res['amo_patronale'], Decimal('0.00'))
-        # Reste la CNSS patronale dans les charges.
-        self.assertEqual(res['charges_patronales'], res['cnss_patronale'])
+        # Reste la CNSS patronale + les allocations familiales (PAIE23, liées à
+        # l'affiliation CNSS toujours active) dans les charges patronales.
+        self.assertEqual(
+            res['charges_patronales'],
+            res['cnss_patronale'] + res['allocations_familiales'])
 
 
 class AmoIsolationTests(TestCase):

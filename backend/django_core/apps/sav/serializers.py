@@ -6,7 +6,7 @@ from django.utils import timezone
 from .models import (
     Equipement, Ticket, TicketActivity, PieceConsommee,
     SavSlaSettings, MaintenanceChecklistTemplate, MaintenanceChecklistItem,
-    TicketChecklistItem, WarrantyClaim, KbArticle,
+    TicketChecklistItem, WarrantyClaim, KbArticle, AlarmeOnduleur,
 )
 
 # Fenêtre « garantie expirant bientôt » (jours).
@@ -306,4 +306,32 @@ class KbArticleSerializer(serializers.ModelSerializer):
         fields = '__all__'
         read_only_fields = [
             'company', 'created_by', 'date_creation', 'date_modification',
+        ]
+
+
+# ── FG280 — Alarmes / défauts onduleur ────────────────────────────────────────
+
+class AlarmeOnduleurSerializer(serializers.ModelSerializer):
+    gravite_display = serializers.CharField(
+        source='get_gravite_display', read_only=True)
+    statut_display = serializers.CharField(
+        source='get_statut_display', read_only=True)
+    equipement_serie = serializers.CharField(
+        source='equipement.numero_serie', read_only=True, default=None)
+    equipement_produit = serializers.CharField(
+        source='equipement.produit.nom', read_only=True, default=None)
+    ticket_reference = serializers.CharField(
+        source='ticket.reference', read_only=True, default=None)
+    acquittee_par_nom = serializers.CharField(
+        source='acquittee_par.username', read_only=True, default=None)
+
+    class Meta:
+        model = AlarmeOnduleur
+        fields = '__all__'
+        # Acquittement, escalade, société et créateur sont posés côté serveur —
+        # jamais depuis le corps de la requête.
+        read_only_fields = [
+            'company', 'created_by', 'statut',
+            'acquittee_par', 'date_acquittement', 'ticket',
+            'date_creation', 'date_modification',
         ]

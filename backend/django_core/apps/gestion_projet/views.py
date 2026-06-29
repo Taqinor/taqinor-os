@@ -18,12 +18,14 @@ from . import selectors, services
 from .models import (
     AffectationRessource,
     BaselinePlanning,
+    BudgetProjet,
     CalendrierProjet,
     DependanceTache,
     Equipe,
     Indisponibilite,
     Jalon,
     JourFerie,
+    LigneBudgetProjet,
     PhaseProjet,
     Projet,
     ProjetActivity,
@@ -35,12 +37,14 @@ from .models import (
 from .serializers import (
     AffectationRessourceSerializer,
     BaselinePlanningSerializer,
+    BudgetProjetSerializer,
     CalendrierProjetSerializer,
     DependanceTacheSerializer,
     EquipeSerializer,
     IndisponibiliteSerializer,
     JalonSerializer,
     JourFerieSerializer,
+    LigneBudgetProjetSerializer,
     PhaseProjetSerializer,
     ProjetActivitySerializer,
     ProjetChantierSerializer,
@@ -905,4 +909,72 @@ class IndisponibiliteViewSet(_GestionProjetBaseViewSet):
         if debut and fin:
             # Chevauchement avec [debut, fin] (bornes inclusives).
             qs = qs.filter(date_debut__lte=fin, date_fin__gte=debut)
+        return qs
+
+
+class BudgetProjetViewSet(_GestionProjetBaseViewSet):
+    """Budgets prévisionnels d'un projet — CRUD scopé société.
+
+    ``company`` est posée côté serveur (TenantMixin) ; le ``projet`` reçu est
+    validé même-société par le sérialiseur (cible d'une autre société → 400).
+    Filtres optionnels : ``?projet=<id>``, ``?statut=<statut>``. L'action
+    ``total`` renvoie le total prévisionnel ventilé par catégorie (sélecteur
+    ``budget_total``). Le budget est INTERNE — jamais exposé au client final.
+    """
+    queryset = BudgetProjet.objects.select_related('projet').all()
+    serializer_class = BudgetProjetSerializer
+    filter_backends = [filters.SearchFilter, filters.OrderingFilter]
+    search_fields = ['libelle']
+    ordering_fields = ['version', 'statut', 'date_creation', 'id']
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        projet = self.request.query_params.get('projet')
+        if projet:
+            qs = qs.filter(projet_id=projet)
+        statut = self.request.query_params.get('statut')
+        if statut:
+            qs = qs.filter(statut=statut)
+        return qs
+
+    @action(detail=True, methods=['get'])
+    def total(self, request, pk=None):
+        """Total prévisionnel du budget ventilé par catégorie.
+
+        La société est garantie par ``get_object`` (queryset scopé société) :
+        une cible d'une autre société → 404.
+        """
+        budget = self.get_object()
+        agg = selectors.budget_total(budget)
+        return Response({
+            'total': str(agg['total']),
+            'par_categorie': {
+                cat: str(montant)
+                for cat, montant in agg['par_categorie'].items()
+            },
+            'nb_lignes': agg['nb_lignes'],
+        })
+
+
+class LigneBudgetProjetViewSet(_GestionProjetBaseViewSet):
+    """Lignes d'un budget projet (ventilées par catégorie) — CRUD scopé société.
+
+    ``company`` est posée côté serveur (TenantMixin) ; le ``budget`` reçu est
+    validé même-société par le sérialiseur (cible d'une autre société → 400).
+    Filtres optionnels : ``?budget=<id>``, ``?categorie=<categorie>``.
+    """
+    queryset = LigneBudgetProjet.objects.select_related('budget').all()
+    serializer_class = LigneBudgetProjetSerializer
+    filter_backends = [filters.SearchFilter, filters.OrderingFilter]
+    search_fields = ['libelle']
+    ordering_fields = ['categorie', 'montant_prevu', 'id']
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        budget = self.request.query_params.get('budget')
+        if budget:
+            qs = qs.filter(budget_id=budget)
+        categorie = self.request.query_params.get('categorie')
+        if categorie:
+            qs = qs.filter(categorie=categorie)
         return qs

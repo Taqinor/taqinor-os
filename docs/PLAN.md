@@ -630,7 +630,7 @@ first run that ticks any `FG*` task refreshes CODEMAP §10 + `--write` in that c
 - [ ] FG239 — **Capture d'avis/témoignages + push Google Reviews** — solliciter un avis et router vers Google (preuve sociale). (COST)
 - [ ] FG240 — **Programme de fidélité / parrainage étendu** — points/paliers au-delà du parrainage simple existant. (SCHEMA)
 - [ ] FG241 — **Moteur d'upsell / cross-sell** — suggestions contextuelles (batterie, 2ᵉ site, contrat O&M) selon l'historique. (ROUTINE)
-- [ ] FG242 — **Suivi des concurrents sur deals perdus** — sur un lead Perdu, saisir le concurrent gagnant + son prix. (SCHEMA)
+- [x] FG242 — **Suivi des concurrents sur deals perdus** — sur un lead Perdu, saisir le concurrent gagnant + son prix. (SCHEMA)
 - [ ] FG243 — **Pipeline de renouvellement de contrats O&M** — vue des `ContratMaintenance` à reconduire (échéances/relances). (SCHEMA)
 - [ ] FG244 — **Abonnements de monitoring** — offre de supervision (mensuel/annuel) liée au module monitoring (revenu récurrent). (SCHEMA)
 
@@ -671,7 +671,7 @@ first run that ticks any `FG*` task refreshes CODEMAP §10 + `--write` in that c
 - [ ] FG277 — **Attestation/certificat de conformité électrique** — attestation (référentiel/mesures/signataire) liée au chantier réceptionné. (ROUTINE)
 - [ ] FG278 — **Test de performance de réception (PR initial)** — PR mesuré à la MES vs attendu, archivé comme référence O&M/garantie. (ROUTINE)
 - [ ] FG279 — **Analytique O&M : PR, disponibilité, soiling, dégradation** — tableau de bord par système depuis `ProductionReading`. (ROUTINE)
-- [ ] FG280 — **Gestion fine des alarmes/défauts onduleur** — alarmes (code/gravité/équipement) distinctes du ticket SAV + acquittement/escalade. (SCHEMA)
+- [x] FG280 — **Gestion fine des alarmes/défauts onduleur** — alarmes (code/gravité/équipement) distinctes du ticket SAV + acquittement/escalade. (SCHEMA)
 - [ ] FG281 — **Tableau de bord parc/flotte multi-systèmes** — production totale, kWc installés, alertes, PR moyen sur tous les systèmes actifs. (ROUTINE)
 - [ ] FG282 — **Suivi de garantie de production & compensation de manque** — production réelle vs productible garanti (avec dégradation) → écart/compensation. (SCHEMA)
 - [ ] FG283 — **Détection & suivi de pertes par salissure** — estimer la perte (chute de PR entre nettoyages) + recommandation de nettoyage (régions poussiéreuses). (ROUTINE)
@@ -837,7 +837,7 @@ these overlap and SUPERSEDE the domain-list FG items as the module-organized hom
 - [x] PAIE20 — CIMR optionnelle (taux par employé adhérent). (ROUTINE)
 - [x] PAIE21 — Frais professionnels & net imposable. (ROUTINE)
 - [x] PAIE22 — Calcul IR (barème progressif + charges de famille). (DECISION)
-- [ ] PAIE23 — Allocations familiales (info patronale). (ROUTINE)
+- [x] PAIE23 — Allocations familiales (info patronale). (ROUTINE)
 - [ ] PAIE24 — Taxe de formation professionnelle (1,6 % patronal). (ROUTINE)
 - [ ] PAIE25 — Provision congés payés (consomme les soldes RH). (DEP:RH-FG162)
 - [ ] PAIE26 — Paiement & décompte des congés/absences sur le bulletin. (ROUTINE)
@@ -917,7 +917,7 @@ these overlap and SUPERSEDE the domain-list FG items as the module-organized hom
 - [x] PROJ18 — Plan de charge (capacité vs affecté). (ROUTINE)
 - [x] PROJ19 — Détection de conflits d'affectation. (ROUTINE)
 - [x] PROJ20 — Nivellement de charge (levelling). (ROUTINE)
-- [ ] PROJ21 — Budget projet (lignes : matériel/MO/sous-traitance/divers). (SCHEMA)
+- [x] PROJ21 — Budget projet (lignes : matériel/MO/sous-traitance/divers). (SCHEMA)
 - [ ] PROJ22 — Coûts engagés vs réels (factures fournisseur + MO + sous-traitance). (ROUTINE)
 - [ ] PROJ23 — Alertes de dépassement budgétaire. (ROUTINE)
 - [ ] PROJ24 — Suivi des temps (timesheets imputés au projet). (SCHEMA)
@@ -1039,7 +1039,7 @@ these overlap and SUPERSEDE the domain-list FG items as the module-organized hom
 - [x] QHSE20 — Tableau de bord « ISO 9001 readiness ». (ROUTINE)
 - [x] QHSE21 — `EvaluationRisque` (document unique / plan de prévention) + lignes. (SCHEMA)
 - [x] QHSE22 — Document unique requis avant pose (gate statut chantier). (DECISION)
-- [ ] QHSE23 — `PermisTravail` (hauteur/élec-consignation/point chaud). (SCHEMA)
+- [x] QHSE23 — `PermisTravail` (hauteur/élec-consignation/point chaud). (SCHEMA)
 - [ ] QHSE24 — Consignation électrique (LOTO) sur permis électrique. (ROUTINE)
 - [ ] QHSE25 — Alerte expiration de permis. (ROUTINE)
 - [ ] QHSE26 — `InductionSecurite` (accueil sécurité site, incl. sous-traitants). (SCHEMA)
@@ -1104,7 +1104,7 @@ these overlap and SUPERSEDE the domain-list FG items as the module-organized hom
 - [x] KB4 — Lien article ↔ produit/équipement/type d'intervention (contextuel sur SAV/chantier). (SCHEMA)
 - [x] KB5 — Procédures/SOP d'installation & dossiers ONEE/82-21 (gabarits seedés). (ROUTINE) [DONE 2026-06-27: management command `seed_kb_templates [--company <slug>]` idempotent (clé stable (company, titre)) créant 5 gabarits KbArticle français — 3 procédures d'installation (résidentiel/industriel-commercial/pompage), checklist raccordement ONEE, checklist dossier loi 82-21 — contenu générique éditable (pas de spécificités réglementaires inventées). Pas de migration. 10 tests.]
 - [ ] KB6 — Source de contenu pour le RAG/DocQA (FG352) — indexation pgvector. (DEP)
-- [ ] KB7 — Droits d'accès par rôle + suivi de lecture. (SCHEMA)
+- [x] KB7 — Droits d'accès par rôle + suivi de lecture. (SCHEMA)
 
 ### Module Réclamations & litiges (`apps/litiges`) · LITIGE1–LITIGE6
 **But :** objet formel de réclamation/litige rattaché à une Facture/Lead/Chantier/Ticket (motif, montant contesté, statut, résolution) — comble le vide entre SAV (technique) et recouvrement (financier). Survey-recommended (priorité moyenne).
@@ -1113,7 +1113,7 @@ these overlap and SUPERSEDE the domain-list FG items as the module-organized hom
 - [x] LITIGE3 — Litige financier ↔ recouvrement : suspendre les relances d'une facture en litige. (ROUTINE) [DONE 2026-06-27: `Reclamation.bloque_relances` (défaut True) + selector `litiges.relances_suspendues_pour_facture(facture_id, company)` ; `ventes.scheduled.relance_reminders` saute une facture en litige bloquant via un import FONCTION-LOCAL de `litiges.selectors` (import-linter reste 4/4). Comportement inchangé sans litige. Migration litiges 0003 additive, 12 tests.]
 - [x] LITIGE4 — Litige qualité ↔ QHSE : lien NCR + audit fin de chantier. (ROUTINE)
 - [ ] LITIGE5 — Capture du concurrent/motif sur deal perdu (étend FG242). (SCHEMA)
-- [ ] LITIGE6 — Tableau de bord litiges (ouverts/montant contesté/délai de résolution). (ROUTINE)
+- [x] LITIGE6 — Tableau de bord litiges (ouverts/montant contesté/délai de résolution). (ROUTINE)
 
 ---
 
@@ -1684,3 +1684,10 @@ Tracked here so they aren't lost:
 - 2026-06-29 — CONTRAT18 (apps/contrats): `VersionContrat` (versionnage immuable des rendus) — modèle versionné (numéro serveur max+1 select_for_update, jamais count()+1 ; contenu figé + clé MinIO), snapshot via service `creer_version` + auto-snapshot à la signature (best-effort, CONTRAT16/17 préservés), viewset lecture seule. Migration contrats 0014 additive, 19 tests.
 - 2026-06-29 — FLOTTE18 (apps/flotte): Pneumatiques & pièces — modèles `Pneumatique` (position/dimension/montage/dépose/statut/coût) et `PieceFlotte` (désignation/réf/quantité/coût, lien OrdreReparation), CRUD + action `synthese` pneus+pièces par véhicule. Migration flotte 0016 additive (index ≤30, related_name préfixés), 25 tests.
 - 2026-06-29 — GED21 (apps/ged): Watermarking & contrôle de diffusion — drapeaux `Document.watermark_diffusion`/`PartageGed.watermark` + service `apply_watermark` (Pillow pour images — déjà dépendance ; PyMuPDF pour PDF importé en lazy, dégradation propre si absent), câblé dans l'aperçu GED14 et le partage public GED20 (chemin sans filigrane identique). Migration ged 0015 additive, 17 tests. (NOTE: DEP — aucune dépendance dure ajoutée ; filigrane PDF actif seulement si PyMuPDF installé ultérieurement.)
+- 2026-06-29 — PAIE23 (apps/paie): Allocations familiales (charge patronale) — taux configurable `ParametrePaie.taux_allocations_familiales` (défaut 6,4 %, non plafonné, sur le brut) émis comme cotisation patronale (alimente `charges_patronales`, jamais déduit du net du salarié), lié à l'affiliation CNSS. Migration paie 0011 additive, 11 tests.
+- 2026-06-29 — PROJ21 (apps/gestion_projet): Budget projet (lignes par catégorie) — modèles `BudgetProjet` + `LigneBudgetProjet` (catégorie matériel/MO/sous-traitance/divers, montant prévu, qté/PU optionnels) + sélecteur `budget_total` (total + par_categorie), ViewSets CRUD + action `/total/`. Migration gestion_projet 0013 additive, 22 tests.
+- 2026-06-29 — QHSE23 (apps/qhse): `PermisTravail` (hauteur/consignation élec/point chaud) — référence serveur race-safe (`PT`, jamais count()+1), `chantier_id` string-ref (pas d'import installations), dates de validité, actions `valider`/`cloturer`. Migration qhse 0015 additive, 22 tests.
+- 2026-06-29 — LITIGE6 (apps/litiges): Tableau de bord litiges — sélecteur `tableau_bord_litiges(company, debut, fin)` agrège les Reclamation existantes : nombres par statut, total `montant_conteste`, délai de résolution moyen (depuis le log chatter « resolue », division par zéro gardée → None) ; endpoint `reclamations/tableau-bord/`. Aucune migration, 18 tests.
+- 2026-06-29 — FG242 (apps/crm): Suivi des concurrents sur deals perdus — modèle `ConcurrentPerte` (lead perdu → concurrent gagnant + prix + devise + motif), acteur + société côté serveur, réutilise le flag `Lead.perdu` (aucun nom d'étape STAGES.py codé en dur), note chatter best-effort. Migration crm 0029 additive, 20 tests.
+- 2026-06-29 — FG280 (apps/sav): Gestion fine des alarmes/défauts onduleur — modèle `AlarmeOnduleur` DISTINCT du ticket SAV (code/gravité/équipement, statut active/acquittée/résolue/escaladée), actions `acquitter` (acteur + date serveur, idempotent) et `escalader` (lie/ouvre un ticket SAV). Migration sav 0011 additive, 18 tests.
+- 2026-06-29 — KB7 (apps/kb): Droits d'accès par rôle + suivi de lecture — modèles `KbArticleAcl` (rôle/niveau) + `KbLecture` ; filtre ACL câblé dans la queryset article (rétro-compatible : sans ACL → visible par tous, admin toujours visible), actions `marquer-lu` (idempotent) + `resume-lecture`. Migration kb 0005 additive, 17 tests.

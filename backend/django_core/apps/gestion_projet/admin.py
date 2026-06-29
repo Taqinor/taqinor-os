@@ -1,8 +1,10 @@
 from django.contrib import admin
 
 from .models import (
+    BudgetProjet,
     DependanceTache,
     Jalon,
+    LigneBudgetProjet,
     PhaseProjet,
     Projet,
     ProjetActivity,
@@ -72,3 +74,19 @@ class ProjetActivityAdmin(admin.ModelAdmin):
                     'company', 'date_creation')
     list_filter = ('company',)
     search_fields = ('old_value', 'new_value')
+
+
+@admin.register(BudgetProjet)
+class BudgetProjetAdmin(admin.ModelAdmin):
+    list_display = ('id', 'projet', 'libelle', 'version', 'statut', 'devise',
+                    'company', 'date_creation')
+    list_filter = ('statut', 'company')
+    search_fields = ('libelle',)
+
+
+@admin.register(LigneBudgetProjet)
+class LigneBudgetProjetAdmin(admin.ModelAdmin):
+    list_display = ('id', 'budget', 'categorie', 'libelle', 'quantite', 'pu',
+                    'montant_prevu', 'company')
+    list_filter = ('categorie', 'company')
+    search_fields = ('libelle',)
