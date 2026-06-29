@@ -18,6 +18,7 @@ from .models import (
     AffectationConducteur,
     CarteCarburant,
     Conducteur,
+    EcheanceEntretien,
     EnginRoulant,
     EtatDesLieux,
     PlanEntretien,
@@ -31,6 +32,7 @@ from .serializers import (
     AffectationConducteurSerializer,
     CarteCarburantSerializer,
     ConducteurSerializer,
+    EcheanceEntretienSerializer,
     EnginRoulantSerializer,
     EtatDesLieuxSerializer,
     PlanEntretienSerializer,
@@ -481,3 +483,82 @@ class PlanEntretienViewSet(_FlotteBaseViewSet):
         return Response(
             plans_entretien_status(company, actif_only=actif_only,
                                    statut=statut))
+
+
+class EcheanceEntretienViewSet(_FlotteBaseViewSet):
+    """Échéances d'entretien dues, générées depuis les plans (FLOTTE16).
+
+    Les échéances ne se CRÉENT pas à la main : elles sont matérialisées côté
+    serveur par ``services.generer_echeances_entretien`` (action ``generer``,
+    écriture responsable/admin). Le viewset expose donc la LISTE (due / en
+    retard), le détail, et l'avancement du ``statut`` (``a_faire`` →
+    ``planifie`` → ``fait``) — POST de création est désactivé.
+
+    Filtrable par ``?statut=a_faire|planifie|fait``, ``?ouvertes=true`` (échéances
+    encore à traiter) et ``?plan=<id>``. Tout est scopé par société.
+
+    ``POST /echeances-entretien/generer/`` (écriture responsable/admin) lance la
+    génération idempotente pour la société courante et renvoie le récapitulatif
+    (nombre de plans dus, échéances créées / déjà existantes). ``?alerter=false``
+    désactive la diffusion des alertes.
+    """
+    # Pas de POST de création : les échéances sont générées, jamais postées.
+    http_method_names = ['get', 'put', 'patch', 'delete', 'head', 'options']
+    queryset = EcheanceEntretien.objects.select_related(
+        'plan', 'actif_flotte', 'actif_flotte__vehicule',
+        'actif_flotte__engin')
+    serializer_class = EcheanceEntretienSerializer
+    filter_backends = [filters.SearchFilter, filters.OrderingFilter]
+    search_fields = ['type_entretien']
+    ordering_fields = ['statut', 'due_le', 'due_km', 'due_heures', 'genere_le']
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        params = self.request.query_params
+
+        statut = params.get('statut')
+        if statut:
+            qs = qs.filter(statut=statut)
+
+        ouvertes = params.get('ouvertes')
+        if ouvertes is not None and ouvertes.lower() in ('1', 'true', 'vrai',
+                                                         'oui'):
+            qs = qs.filter(statut__in=EcheanceEntretien.STATUTS_OUVERTS)
+
+        plan = params.get('plan')
+        if plan:
+            try:
+                qs = qs.filter(plan_id=int(plan))
+            except (ValueError, TypeError):
+                pass
+
+        return qs
+
+    @action(detail=False, methods=['post'])
+    def generer(self, request):
+        """FLOTTE16 — Génère les échéances dues depuis les plans actifs.
+
+        Écriture (responsable/admin). Scopée société : la génération est
+        idempotente (aucun doublon d'échéance ouverte par plan) et pose toujours
+        la société côté serveur. ``?alerter=false`` n'envoie aucune alerte.
+        Renvoie le récapitulatif + les échéances nouvellement créées.
+        """
+        company = request.user.company
+
+        alerter_param = request.query_params.get('alerter')
+        alerter = not (
+            alerter_param is not None
+            and alerter_param.lower() in ('0', 'false', 'faux', 'non'))
+
+        from .services import generer_echeances_entretien
+        resultat = generer_echeances_entretien(company, alerter=alerter)
+
+        serializer = EcheanceEntretienSerializer(
+            resultat['echeances'], many=True,
+            context=self.get_serializer_context())
+        return Response({
+            'nb_plans_due': resultat['nb_plans_due'],
+            'nb_creees': resultat['nb_creees'],
+            'nb_existantes': resultat['nb_existantes'],
+            'echeances': serializer.data,
+        })

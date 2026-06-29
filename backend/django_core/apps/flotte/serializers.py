@@ -11,6 +11,7 @@ from .models import (
     AffectationConducteur,
     CarteCarburant,
     Conducteur,
+    EcheanceEntretien,
     EnginRoulant,
     EtatDesLieux,
     PlanEntretien,
@@ -716,3 +717,43 @@ class PlanEntretienSerializer(serializers.ModelSerializer):
                 "Renseignez au moins un intervalle (km, jours ou heures).")
 
         return attrs
+
+
+class EcheanceEntretienSerializer(serializers.ModelSerializer):
+    """FLOTTE16 — Échéance d'entretien due (générée depuis un plan).
+
+    Les échéances sont MATÉRIALISÉES côté serveur par
+    ``services.generer_echeances_entretien`` — elles ne se créent pas via l'API.
+    Le sérialiseur est donc en lecture ; seuls ``statut`` (pour avancer
+    ``a_faire`` → ``planifie`` → ``fait``) et ``notes`` sont modifiables. Tous
+    les champs dérivés de la génération (plan, actif, cibles, type, date de
+    génération) sont en lecture seule.
+
+    Champs lecture seule :
+    - ``actif_label``   : désignation de l'actif ciblé (véhicule ou engin).
+    - ``statut_display``: libellé du statut.
+    - ``plan_type``     : type d'entretien du plan source.
+    """
+
+    actif_label = serializers.SerializerMethodField()
+    statut_display = serializers.CharField(
+        source='get_statut_display', read_only=True)
+    plan_type = serializers.SerializerMethodField()
+
+    class Meta:
+        model = EcheanceEntretien
+        fields = [
+            'id', 'plan', 'plan_type', 'actif_flotte', 'actif_label',
+            'type_entretien', 'due_le', 'due_km', 'due_heures',
+            'statut', 'statut_display', 'notes', 'genere_le',
+        ]
+        read_only_fields = [
+            'plan', 'actif_flotte', 'type_entretien', 'due_le', 'due_km',
+            'due_heures', 'genere_le',
+        ]
+
+    def get_actif_label(self, obj):
+        return obj.actif_flotte.label if obj.actif_flotte_id else None
+
+    def get_plan_type(self, obj):
+        return obj.plan.type_entretien if obj.plan_id else None

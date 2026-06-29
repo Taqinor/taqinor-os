@@ -13,6 +13,7 @@ from .models import (
     AffectationConducteur,
     CarteCarburant,
     Conducteur,
+    EcheanceEntretien,
     EnginRoulant,
     EtatDesLieux,
     PlanEntretien,
@@ -673,3 +674,31 @@ def plans_entretien_status(company, actif_only=True, statut=None):
         'nb_upcoming': nb_upcoming,
         'plans': resultats,
     }
+
+
+# ── FLOTTE16 — Échéances d'entretien dues (générées depuis les plans) ──────────
+
+def echeances_de_la_societe(company, statut=None, ouvertes_only=False,
+                            plan_id=None):
+    """FLOTTE16 — Échéances d'entretien d'une société (queryset scopé).
+
+    Liste les ``EcheanceEntretien`` matérialisées par
+    ``services.generer_echeances_entretien`` — les travaux d'entretien DUS à
+    planifier / faire. Triées du plus urgent au moins urgent (statut puis date
+    d'échéance), elles donnent la « liste des dues / en retard ».
+
+    Filtres : ``statut`` (``a_faire`` | ``planifie`` | ``fait``) restreint à un
+    statut précis ; ``ouvertes_only=True`` ne garde que les échéances ouvertes
+    (``a_faire`` / ``planifie``) — l'entretien encore à traiter ; ``plan_id``
+    restreint à un plan. Lecture seule, scopée société.
+    """
+    qs = EcheanceEntretien.objects.filter(company=company).select_related(
+        'plan', 'actif_flotte', 'actif_flotte__vehicule',
+        'actif_flotte__engin')
+    if statut:
+        qs = qs.filter(statut=statut)
+    if ouvertes_only:
+        qs = qs.filter(statut__in=EcheanceEntretien.STATUTS_OUVERTS)
+    if plan_id is not None:
+        qs = qs.filter(plan_id=plan_id)
+    return qs
