@@ -13,6 +13,7 @@ from .models import (
     DocumentEmploye,
     DossierEmploye,
     FeuilleTemps,
+    Habilitation,
     HeuresSupp,
     IncidentPresence,
     Poste,
@@ -380,3 +381,62 @@ def poste_appartient_societe(company, poste_id):
     if company is None or poste_id is None:
         return False
     return Poste.objects.filter(company=company, pk=poste_id).exists()
+
+
+def habilitations_expirantes(company, within_days=30, inclure_expirees=True,
+                             employe_id=None):
+    """Habilitations électriques (FG173) qui expirent bientôt ou sont expirées.
+
+    Lecture cadrée société : retient les titres ACTIFS dont la ``date_validite``
+    est renseignée et tombe au plus tard dans ``within_days`` jours
+    (aujourd'hui + ``within_days`` inclus). Par défaut ``inclure_expirees`` est
+    vrai : les titres déjà échus (échéance passée) sont également renvoyés, car
+    une habilitation expirée est exactement ce qui doit alerter avant un
+    chantier PV ; passer ``inclure_expirees=False`` ne garde que les échéances
+    encore à venir dans la fenêtre. Les titres sans échéance (``date_validite``
+    NULL) ou inactifs sont exclus. ``employe_id`` restreint à un employé.
+    Toujours scopé société ; trié par échéance la plus proche d'abord.
+    """
+    if company is None:
+        return Habilitation.objects.none()
+    try:
+        within_days = int(within_days)
+    except (TypeError, ValueError):
+        within_days = 30
+    if within_days < 0:
+        within_days = 0
+    today = timezone.localdate()
+    limite = today + timedelta(days=within_days)
+    qs = Habilitation.objects.filter(
+        company=company,
+        actif=True,
+        date_validite__isnull=False,
+        date_validite__lte=limite,
+    )
+    if not inclure_expirees:
+        qs = qs.filter(date_validite__gte=today)
+    if employe_id is not None:
+        qs = qs.filter(employe_id=employe_id)
+    return qs.select_related('employe').order_by('date_validite', 'id')
+
+
+def employe_a_habilitation_valide(company, employe_id, type_habilitation):
+    """Vrai si l'employé détient un titre ``type_habilitation`` VALIDE (FG173).
+
+    Brique d'affectation chantier PV : un technicien sans l'habilitation
+    requise (ou dont le titre est expiré/inactif) ne devrait pas être assigné.
+    Un titre est valide s'il est actif ET (sans échéance OU échéance non
+    dépassée). Toujours scopé société ; ``False`` si la société/employé manque.
+    """
+    if company is None or employe_id is None or not type_habilitation:
+        return False
+    today = timezone.localdate()
+    from django.db.models import Q
+    return Habilitation.objects.filter(
+        company=company,
+        employe_id=employe_id,
+        type_habilitation=type_habilitation,
+        actif=True,
+    ).filter(
+        Q(date_validite__isnull=True) | Q(date_validite__gte=today)
+    ).exists()

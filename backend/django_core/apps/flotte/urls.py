@@ -4,6 +4,7 @@ from rest_framework.routers import DefaultRouter
 from .views import (
     ActifFlotteViewSet,
     AffectationConducteurViewSet,
+    CarteCarburantViewSet,
     ConducteurViewSet,
     EnginRoulantViewSet,
     EtatDesLieuxViewSet,
@@ -23,6 +24,7 @@ router.register(r'affectations', AffectationConducteurViewSet)
 router.register(r'reservations', ReservationVehiculeViewSet)
 router.register(r'etats-des-lieux', EtatDesLieuxViewSet)
 router.register(r'pleins', PleinCarburantViewSet)
+router.register(r'cartes', CarteCarburantViewSet)
 
 urlpatterns = [
     path('', include(router.urls)),

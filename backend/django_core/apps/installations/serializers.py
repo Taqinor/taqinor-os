@@ -12,7 +12,7 @@ from .models import (
     JalonProjet, ModeleProjet, ModeleProjetJalon, ModeleProjetBomLigne,
     ReunionChantier,
     DocumentProjet, RevisionDocument,
-    Projet, ProjetChantier, ProjetDevis, ProjetTicket,
+    Projet, ProjetTache, ProjetChantier, ProjetDevis, ProjetTicket,
 )
 
 
@@ -803,3 +803,34 @@ class ProjetSerializer(serializers.ModelSerializer):
 
     def get_nb_chantiers(self, obj):
         return obj.chantiers.count()
+
+
+# ── FG292 — Tâches & sous-tâches de projet avec dépendances ───────────────────
+
+class ProjetTacheSerializer(serializers.ModelSerializer):
+    """FG292 — tâche/sous-tâche de programme avec dépendances. La société est
+    posée côté serveur ; `projet`, `parent`, `predecesseur` et `assigne` sont
+    validés tenant côté vue. Le statut est PROPRE à la tâche (jamais
+    l'entonnoir commercial). Les sous-tâches sont imbriquées en lecture."""
+    statut_display = serializers.CharField(
+        source='get_statut_display', read_only=True, default=None)
+    assigne_nom = serializers.SerializerMethodField()
+    predecesseur_libelle = serializers.CharField(
+        source='predecesseur.libelle', read_only=True, default=None)
+    nb_sous_taches = serializers.SerializerMethodField()
+
+    class Meta:
+        model = ProjetTache
+        fields = [
+            'id', 'projet', 'parent', 'predecesseur', 'predecesseur_libelle',
+            'libelle', 'description', 'assigne', 'assigne_nom', 'date_echeance',
+            'statut', 'statut_display', 'ordre', 'nb_sous_taches',
+            'date_creation', 'date_modification',
+        ]
+        read_only_fields = ['date_creation', 'date_modification']
+
+    def get_assigne_nom(self, obj):
+        return getattr(obj.assigne, 'username', None)
+
+    def get_nb_sous_taches(self, obj):
+        return obj.sous_taches.count()

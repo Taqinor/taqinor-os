@@ -20,9 +20,11 @@ interrogeable (``peut_avancer`` + liste des points bloquants, globalement et par
 phase). Le câblage éventuel vers l'avancement chantier de ``installations`` est
 un suivi à part : un appelant consulte cette porte, il ne la franchit pas ici.
 """
+from django.db.models import Avg
+
 from .models import (
     ActionCorrectivePreventive, Audit, NonConformite, NotationFinChantier,
-    ProcedureQualite, ReleveControle, ReleveCourbeIV,
+    ProcedureQualite, ReleveControle, ReleveCourbeIV, RetourClientQualite,
 )
 
 
@@ -284,6 +286,24 @@ def procedures_qualite_courantes(company):
         procedure_qualite_courante(company, ref) for ref in sorted(set(refs))
     ]
     return [p for p in courantes if p is not None]
+
+
+# ── QHSE19 — Satisfaction client qualité (agrégat) ──────────────────────────
+
+def satisfaction_moyenne(company, chantier_id=None):
+    """Note de satisfaction moyenne des retours client d'une société (ou None).
+
+    Agrège ``note_satisfaction`` sur les ``RetourClientQualite`` de la société,
+    optionnellement filtrés sur un ``chantier_id`` (référence lâche). Renvoie un
+    ``float`` arrondi à 2 décimales, ou ``None`` si aucun retour. Lecture seule.
+    """
+    qs = RetourClientQualite.objects.filter(company=company)
+    if chantier_id is not None:
+        qs = qs.filter(chantier_id=chantier_id)
+    moyenne = qs.aggregate(moy=Avg('note_satisfaction'))['moy']
+    if moyenne is None:
+        return None
+    return round(float(moyenne), 2)
 
 
 # ── LITIGE4 — Portail lecture NCR / Audit pour les litiges qualité ──────────

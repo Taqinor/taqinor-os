@@ -17,7 +17,7 @@ from .models import (
     ItemNotation, NonConformite, NotationFinChantier,
     PlanInspectionChantier, PlanInspectionModele,
     PointControleModele, ProcedureQualite, QhseChatterEntry,
-    ReleveControle, ReleveCourbeIV, ReponseCritere,
+    ReleveControle, ReleveCourbeIV, ReponseCritere, RetourClientQualite,
 )
 from .serializers import (
     ActionCorrectivePreventiveSerializer, AuditSerializer,
@@ -28,14 +28,14 @@ from .serializers import (
     PointControleModeleSerializer, ProcedureQualiteSerializer,
     QhseChatterEntrySerializer,
     ReleveControleSerializer, ReleveCourbeIVSerializer,
-    ReponseCritereSerializer,
+    ReponseCritereSerializer, RetourClientQualiteSerializer,
 )
 from . import chatter
 from .selectors import (
     capa_en_retard, chantier_peut_cloturer, courbes_iv_for_chantier,
     hold_points_status, photos_controle_par_phase,
     procedure_qualite_courante, procedure_qualite_versions,
-    procedures_qualite_courantes,
+    procedures_qualite_courantes, satisfaction_moyenne,
 )
 from .services import (
     activer_procedure, calculer_score_audit, calculer_score_notation,
@@ -672,3 +672,50 @@ class ProcedureQualiteViewSet(_QhseBaseViewSet):
         qs = procedure_qualite_versions(
             request.user.company, procedure.reference)
         return Response(self.get_serializer(qs, many=True).data)
+
+
+class RetourClientQualiteViewSet(_QhseBaseViewSet):
+    """Retours client de satisfaction qualité (QHSE19).
+
+    CRUD scopé société. ``company`` posée côté serveur (jamais lue du corps).
+    Liens cross-app par référence lâche (``chantier_id`` / ``client_id``).
+    Filtres optionnels : ``?chantier_id=`` / ``?traite=1|0``. Recherche par
+    commentaire/canal, tri par date/note.
+
+    Action ``GET …/moyenne/`` — note de satisfaction moyenne de la société,
+    optionnellement filtrée par ``?chantier_id=``.
+    """
+    queryset = RetourClientQualite.objects.all()
+    serializer_class = RetourClientQualiteSerializer
+    filter_backends = [filters.SearchFilter, filters.OrderingFilter]
+    search_fields = ['commentaire', 'canal']
+    ordering_fields = ['id', 'date_retour', 'note_satisfaction',
+                       'date_creation']
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        chantier_id = self.request.query_params.get('chantier_id')
+        if chantier_id not in (None, ''):
+            qs = qs.filter(chantier_id=chantier_id)
+        traite = self.request.query_params.get('traite')
+        if traite in ('1', 'true', 'True'):
+            qs = qs.filter(traite=True)
+        elif traite in ('0', 'false', 'False'):
+            qs = qs.filter(traite=False)
+        return qs
+
+    @action(detail=False, methods=['get'])
+    def moyenne(self, request):
+        """Note de satisfaction moyenne de la société (``?chantier_id=`` opt.).
+
+        Renvoie ``{'moyenne': float|null, 'total': int}``. Scopé société.
+        """
+        chantier_id = request.query_params.get('chantier_id') or None
+        qs = self.get_queryset()
+        if chantier_id is not None:
+            qs = qs.filter(chantier_id=chantier_id)
+        return Response({
+            'moyenne': satisfaction_moyenne(
+                request.user.company, chantier_id=chantier_id),
+            'total': qs.count(),
+        })

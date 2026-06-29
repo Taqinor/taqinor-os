@@ -7,8 +7,8 @@ from .views import (
     SafetyChecklistSlotViewSet,
     JalonProjetViewSet, ModeleProjetViewSet, ReunionChantierViewSet,
     DocumentProjetViewSet, RevisionDocumentViewSet, FieldSyncView,
-    ProjetViewSet, ProjetChantierViewSet, ProjetDevisViewSet,
-    ProjetTicketViewSet,
+    ProjetViewSet, ProjetTacheViewSet, ProjetChantierViewSet,
+    ProjetDevisViewSet, ProjetTicketViewSet,
 )
 
 router = DefaultRouter()
@@ -25,6 +25,7 @@ router.register(r'reunions-chantier', ReunionChantierViewSet)
 router.register(r'documents-projet', DocumentProjetViewSet)
 router.register(r'revisions-document', RevisionDocumentViewSet)
 router.register(r'programmes', ProjetViewSet)
+router.register(r'programme-taches', ProjetTacheViewSet)
 router.register(r'programme-chantiers', ProjetChantierViewSet)
 router.register(r'programme-devis', ProjetDevisViewSet)
 router.register(r'programme-tickets', ProjetTicketViewSet)

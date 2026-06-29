@@ -1,11 +1,12 @@
 from django.contrib import admin
 
 from .models import (
-    BordereauRemise, Caisse, ClotureCaisse, CompteComptable, CompteTresorerie,
-    EcritureComptable, Effet, ExerciceComptable, Immobilisation, Journal,
-    LigneEcriture, LignePrevisionnelTresorerie, LigneReleve, MouvementCaisse,
-    NoteFrais, PaymentRun, PaymentRunLine, PeriodeComptable, PlanComptable,
-    Rapprochement, RapprochementBancaire, VirementInterne,
+    BaremeIndemnite, BordereauRemise, Caisse, ClotureCaisse, CompteComptable,
+    CompteTresorerie, EcritureComptable, Effet, ExerciceComptable,
+    Immobilisation, IndemniteChantier, Journal, LigneEcriture,
+    LignePrevisionnelTresorerie, LigneReleve, MouvementCaisse, NoteFrais,
+    PaymentRun, PaymentRunLine, PeriodeComptable, PlanComptable, Rapprochement,
+    RapprochementBancaire, VirementInterne,
 )
 
 
@@ -202,3 +203,20 @@ class NoteFraisAdmin(admin.ModelAdmin):
                     'montant', 'statut', 'date_remboursement', 'company')
     list_filter = ('statut', 'categorie', 'mode_remboursement')
     search_fields = ('reference', 'motif')
+
+
+@admin.register(BaremeIndemnite)
+class BaremeIndemniteAdmin(admin.ModelAdmin):
+    list_display = ('id', 'libelle', 'taux_km', 'per_diem', 'defaut', 'actif',
+                    'company')
+    list_filter = ('defaut', 'actif')
+    search_fields = ('libelle',)
+
+
+@admin.register(IndemniteChantier)
+class IndemniteChantierAdmin(admin.ModelAdmin):
+    list_display = ('id', 'reference', 'employe', 'date_deplacement',
+                    'libelle_chantier', 'distance_km', 'montant_total',
+                    'statut', 'company')
+    list_filter = ('statut', 'aller_retour')
+    search_fields = ('reference', 'libelle_chantier')

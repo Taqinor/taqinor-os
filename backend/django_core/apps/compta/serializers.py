@@ -9,12 +9,13 @@ from decimal import Decimal
 from rest_framework import serializers
 
 from .models import (
-    BordereauRemise, Caisse, CessionImmobilisation, ClotureCaisse,
-    CompteComptable, CompteTresorerie, DotationAmortissement, EcritureComptable,
-    Effet, ExerciceComptable, Immobilisation, Journal, LigneEcriture,
-    LignePrevisionnelTresorerie, LigneReleve, MouvementCaisse, NoteFrais,
-    PaymentRun, PaymentRunLine, PeriodeComptable, PlanAmortissement,
-    PlanComptable, Rapprochement, RapprochementBancaire, VirementInterne,
+    BaremeIndemnite, BordereauRemise, Caisse, CessionImmobilisation,
+    ClotureCaisse, CompteComptable, CompteTresorerie, DotationAmortissement,
+    EcritureComptable, Effet, ExerciceComptable, Immobilisation,
+    IndemniteChantier, Journal, LigneEcriture, LignePrevisionnelTresorerie,
+    LigneReleve, MouvementCaisse, NoteFrais, PaymentRun, PaymentRunLine,
+    PeriodeComptable, PlanAmortissement, PlanComptable, Rapprochement,
+    RapprochementBancaire, VirementInterne,
 )
 
 
@@ -779,3 +780,73 @@ class NoteFraisSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError(
                 "Le montant d'une note de frais doit être strictement positif.")
         return value
+
+
+class BaremeIndemniteSerializer(serializers.ModelSerializer):
+    """Barème d'indemnités km/per-diem d'une société (FG136).
+
+    ``company`` est posée côté serveur (TenantMixin). Les tarifs ne peuvent pas
+    être négatifs.
+    """
+    class Meta:
+        model = BaremeIndemnite
+        fields = [
+            'id', 'libelle', 'taux_km', 'per_diem', 'defaut', 'actif',
+            'date_creation',
+        ]
+        read_only_fields = ['date_creation']
+
+    def validate_taux_km(self, value):
+        if value is not None and value < 0:
+            raise serializers.ValidationError(
+                "L'indemnité kilométrique ne peut pas être négative.")
+        return value
+
+    def validate_per_diem(self, value):
+        if value is not None and value < 0:
+            raise serializers.ValidationError(
+                "Le per-diem ne peut pas être négatif.")
+        return value
+
+
+class IndemniteChantierSerializer(serializers.ModelSerializer):
+    """Indemnité kilométrique & per-diem chantier d'un employé (FG136).
+
+    À la création on n'accepte que les champs de saisie (employé, barème, GPS
+    départ/chantier, jours, aller-retour) ; la distance et les montants sont
+    calculés AUTOMATIQUEMENT côté serveur (haversine × barème) et restent en
+    lecture seule, comme ``company``/``reference``/statut et les écritures.
+    """
+    statut_display = serializers.CharField(
+        source='get_statut_display', read_only=True)
+    employe_nom = serializers.CharField(
+        source='employe.get_full_name', read_only=True, default='')
+    bareme_libelle = serializers.CharField(
+        source='bareme.libelle', read_only=True, default='')
+
+    class Meta:
+        model = IndemniteChantier
+        fields = [
+            'id', 'reference', 'employe', 'employe_nom', 'bareme',
+            'bareme_libelle', 'date_deplacement', 'libelle_chantier',
+            'depart_lat', 'depart_lng', 'site_lat', 'site_lng', 'aller_retour',
+            'nombre_jours', 'distance_km', 'montant_km', 'montant_per_diem',
+            'montant_total', 'statut', 'statut_display', 'compte_charge',
+            'valide_par', 'date_validation', 'ecriture_charge', 'motif_rejet',
+            'compte_tresorerie', 'date_remboursement', 'rembourse_par',
+            'ecriture_remboursement', 'date_creation',
+        ]
+        read_only_fields = [
+            'reference', 'distance_km', 'montant_km', 'montant_per_diem',
+            'montant_total', 'statut', 'compte_charge', 'valide_par',
+            'date_validation', 'ecriture_charge', 'motif_rejet',
+            'compte_tresorerie', 'date_remboursement', 'rembourse_par',
+            'ecriture_remboursement', 'date_creation',
+        ]
+        extra_kwargs = {'bareme': {'required': False}}
+
+    def validate_employe(self, value):
+        return _meme_societe(self, value, 'Employé')
+
+    def validate_bareme(self, value):
+        return _meme_societe(self, value, 'Barème')

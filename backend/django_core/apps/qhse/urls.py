@@ -9,6 +9,7 @@ from .views import (
     PointControleModeleViewSet, ProcedureQualiteViewSet,
     QhseChatterEntryViewSet,
     ReleveControleViewSet, ReleveCourbeIVViewSet, ReponseCritereViewSet,
+    RetourClientQualiteViewSet,
 )
 
 router = DefaultRouter()
@@ -27,6 +28,7 @@ router.register(r'reponses-critere', ReponseCritereViewSet)
 router.register(r'notations-fin-chantier', NotationFinChantierViewSet)
 router.register(r'items-notation', ItemNotationViewSet)
 router.register(r'procedures-qualite', ProcedureQualiteViewSet)
+router.register(r'retours-client', RetourClientQualiteViewSet)
 
 urlpatterns = [
     path('', include(router.urls)),

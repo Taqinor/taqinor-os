@@ -2129,3 +2129,246 @@ class NoteFrais(models.Model):
     def est_terminee(self):
         """Vrai si la note est dans un état terminal (remboursée ou rejetée)."""
         return self.statut in (self.Statut.REMBOURSEE, self.Statut.REJETEE)
+
+
+# ── FG136 — Indemnités kilométriques & per-diem chantier ───────────────────
+
+
+class BaremeIndemnite(models.Model):
+    """Barème d'indemnités de déplacement chantier d'une société (FG136).
+
+    Porte les deux tarifs qui transforment un déplacement terrain en montant
+    remboursable :
+
+    * ``taux_km`` — indemnité kilométrique par km parcouru (MAD/km) ; le
+      kilométrage est calculé AUTOMATIQUEMENT par la formule de haversine à
+      partir des coordonnées GPS du point de départ et du chantier (les GPS et
+      le calcul de distance existent déjà dans le code — réutilisés ici) ;
+    * ``per_diem`` — indemnité journalière forfaitaire (MAD/jour) couvrant
+      repas/hébergement sur place.
+
+    Plusieurs barèmes peuvent coexister par société (révisions successives) ;
+    celui marqué ``defaut`` est appliqué quand aucun barème n'est précisé.
+    Strictement additif, ``company`` posée côté serveur.
+    """
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='baremes_indemnite',
+        verbose_name='Société',
+    )
+    libelle = models.CharField(
+        max_length=120, verbose_name='Libellé du barème')
+    # Indemnité kilométrique (MAD par km parcouru).
+    taux_km = models.DecimalField(
+        max_digits=8, decimal_places=2, default=Decimal('0'),
+        verbose_name='Indemnité kilométrique (MAD/km)')
+    # Per-diem forfaitaire (MAD par jour de chantier).
+    per_diem = models.DecimalField(
+        max_digits=10, decimal_places=2, default=Decimal('0'),
+        verbose_name='Per-diem chantier (MAD/jour)')
+    # Barème appliqué par défaut quand une indemnité n'en précise aucun.
+    defaut = models.BooleanField(
+        default=False, verbose_name='Barème par défaut')
+    actif = models.BooleanField(default=True, verbose_name='Actif')
+    date_creation = models.DateTimeField(
+        auto_now_add=True, verbose_name='Créé le')
+
+    class Meta:
+        verbose_name = "Barème d'indemnité"
+        verbose_name_plural = "Barèmes d'indemnité"
+        ordering = ['-defaut', 'libelle', '-id']
+        constraints = [
+            # Un seul barème "par défaut" actif par société.
+            models.UniqueConstraint(
+                fields=['company'],
+                condition=models.Q(defaut=True, actif=True),
+                name='uniq_bareme_indem_defaut',
+            ),
+        ]
+
+    def __str__(self):
+        return (f'{self.libelle} ({self.taux_km} MAD/km, '
+                f'{self.per_diem} MAD/jour)')
+
+    def clean(self):
+        super().clean()
+        if self.taux_km is not None and self.taux_km < 0:
+            raise ValidationError(
+                "L'indemnité kilométrique ne peut pas être négative.")
+        if self.per_diem is not None and self.per_diem < 0:
+            raise ValidationError(
+                "Le per-diem ne peut pas être négatif.")
+
+
+class IndemniteChantier(models.Model):
+    """Indemnité de déplacement d'un employé vers un chantier (FG136).
+
+    Calcule AUTOMATIQUEMENT le montant dû à un employé pour un déplacement
+    chantier, à partir :
+
+    * de la distance GPS (haversine) entre le point de départ
+      (``depart_lat``/``depart_lng``) et le chantier
+      (``site_lat``/``site_lng``) — multipliée par 2 si ``aller_retour`` ;
+    * du barème (``taux_km`` × km) ;
+    * du per-diem (``per_diem`` × ``nombre_jours``).
+
+    Les coordonnées GPS du chantier sont copiées côté appelant (le module reste
+    autonome). ``distance_km``, ``montant_km``, ``montant_per_diem`` et
+    ``montant_total`` sont FIGÉS au calcul (jamais lus du corps), pour rester
+    auditables même si le barème change ensuite.
+
+    Cycle de vie identique à la note de frais (FG135) :
+    ``brouillon`` → ``soumise`` → ``validee`` (POSTE la charge : débit compte de
+    charge classe 6 / crédit 4432 personnel-créditeur) → ``remboursee`` /
+    ``rejetee``. ``company`` posée côté serveur.
+    """
+    class Statut(models.TextChoices):
+        BROUILLON = 'brouillon', 'Brouillon'
+        SOUMISE = 'soumise', 'Soumise'
+        VALIDEE = 'validee', 'Validée'
+        REJETEE = 'rejetee', 'Rejetée'
+        REMBOURSEE = 'remboursee', 'Remboursée'
+
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='indemnites_chantier',
+        verbose_name='Société',
+    )
+    reference = models.CharField(
+        max_length=50, blank=True, default='', verbose_name='Référence')
+    employe = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.PROTECT,
+        related_name='indemnites_chantier',
+        verbose_name='Employé',
+    )
+    bareme = models.ForeignKey(
+        BaremeIndemnite,
+        on_delete=models.PROTECT,
+        related_name='indemnites',
+        verbose_name='Barème appliqué',
+    )
+    date_deplacement = models.DateField(verbose_name='Date du déplacement')
+    libelle_chantier = models.CharField(
+        max_length=255, blank=True, default='', verbose_name='Chantier')
+    # ── Coordonnées GPS (départ + chantier) — distance auto par haversine ──
+    depart_lat = models.FloatField(
+        null=True, blank=True, verbose_name='Latitude départ')
+    depart_lng = models.FloatField(
+        null=True, blank=True, verbose_name='Longitude départ')
+    site_lat = models.FloatField(
+        null=True, blank=True, verbose_name='Latitude chantier')
+    site_lng = models.FloatField(
+        null=True, blank=True, verbose_name='Longitude chantier')
+    aller_retour = models.BooleanField(
+        default=True, verbose_name='Aller-retour')
+    nombre_jours = models.PositiveIntegerField(
+        default=1, verbose_name='Nombre de jours de chantier')
+    # ── Montants FIGÉS au calcul (auditables) ──
+    distance_km = models.DecimalField(
+        max_digits=10, decimal_places=3, default=Decimal('0'),
+        verbose_name='Distance (km)')
+    montant_km = models.DecimalField(
+        max_digits=14, decimal_places=2, default=Decimal('0'),
+        verbose_name='Indemnité kilométrique')
+    montant_per_diem = models.DecimalField(
+        max_digits=14, decimal_places=2, default=Decimal('0'),
+        verbose_name='Per-diem')
+    montant_total = models.DecimalField(
+        max_digits=14, decimal_places=2, default=Decimal('0'),
+        verbose_name='Montant total')
+    statut = models.CharField(
+        max_length=12, choices=Statut.choices,
+        default=Statut.BROUILLON, verbose_name='Statut')
+    compte_charge = models.ForeignKey(
+        CompteComptable,
+        on_delete=models.PROTECT,
+        null=True, blank=True,
+        related_name='indemnites_chantier_charge',
+        verbose_name='Compte de charge',
+    )
+    valide_par = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='indemnites_chantier_validees',
+        verbose_name='Validée par',
+    )
+    date_validation = models.DateTimeField(
+        null=True, blank=True, verbose_name='Validée le')
+    ecriture_charge = models.ForeignKey(
+        EcritureComptable,
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='indemnites_chantier_charge',
+        verbose_name='Écriture de charge',
+    )
+    motif_rejet = models.CharField(
+        max_length=255, blank=True, default='', verbose_name='Motif de rejet')
+    # ── Remboursement ──
+    compte_tresorerie = models.ForeignKey(
+        CompteTresorerie,
+        on_delete=models.PROTECT,
+        null=True, blank=True,
+        related_name='indemnites_chantier',
+        verbose_name='Compte de trésorerie (payeur)',
+    )
+    date_remboursement = models.DateField(
+        null=True, blank=True, verbose_name='Date de remboursement')
+    rembourse_par = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='indemnites_chantier_remboursees',
+        verbose_name='Remboursée par',
+    )
+    ecriture_remboursement = models.ForeignKey(
+        EcritureComptable,
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='indemnites_chantier_remboursement',
+        verbose_name='Écriture de remboursement',
+    )
+    created_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='indemnites_chantier_creees',
+        verbose_name='Saisie par',
+    )
+    date_creation = models.DateTimeField(
+        auto_now_add=True, verbose_name='Créé le')
+
+    class Meta:
+        verbose_name = 'Indemnité chantier'
+        verbose_name_plural = 'Indemnités chantier'
+        ordering = ['-date_deplacement', '-id']
+        constraints = [
+            models.UniqueConstraint(
+                fields=['company', 'reference'],
+                condition=models.Q(reference__gt=''),
+                name='uniq_indem_chantier_reference',
+            ),
+        ]
+
+    def __str__(self):
+        return (f'{self.reference or "IND"} — {self.libelle_chantier} '
+                f'({self.montant_total})')
+
+    def clean(self):
+        super().clean()
+        if self.nombre_jours is not None and self.nombre_jours < 0:
+            raise ValidationError(
+                "Le nombre de jours ne peut pas être négatif.")
+
+    @property
+    def est_remboursable(self):
+        """Vrai si l'indemnité est validée et pas encore remboursée."""
+        return self.statut == self.Statut.VALIDEE
+
+    @property
+    def est_terminee(self):
+        """Vrai si l'indemnité est dans un état terminal."""
+        return self.statut in (self.Statut.REMBOURSEE, self.Statut.REJETEE)

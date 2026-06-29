@@ -667,3 +667,110 @@ class RegleApprobation(models.Model):
         if self.montant_min is None or self.montant_max is None:
             return None  # intervalle ouvert → moins spécifique
         return self.montant_max - self.montant_min
+
+
+class EtapeApprobation(models.Model):
+    """Une étape d'un workflow d'approbation interne d'un contrat (CONTRAT14).
+
+    Le workflow d'approbation matérialise, pour un ``Contrat`` donné, la suite
+    ordonnée des décisions internes requises AVANT signature. Il est instancié à
+    partir de la ``RegleApprobation`` la plus spécifique (CONTRAT13) couvrant le
+    contrat (montant + type) : la règle déclare combien d'approbations sont
+    requises (``nombre_approbateurs``) et à quel ``niveau`` ; le service de
+    lancement crée une ``EtapeApprobation`` par approbation requise, dans
+    l'ordre.
+
+    Chaque étape porte son propre ``statut`` LOCAL (``en_attente`` → ``approuve``
+    / ``rejete``) — ces statuts sont PROPRES au workflow d'approbation et n'ont
+    AUCUN lien avec le funnel de ``STAGES.py`` ni avec le ``Contrat.statut`` (qui
+    reste piloté par sa machine d'états — voir ``machine_etats.py``). Le service
+    ``approuver_etape`` / ``rejeter_etape`` fait avancer le workflow étape après
+    étape sans jamais toucher au statut du contrat (préservation des statuts).
+
+    Multi-tenant : ``company`` est posée côté serveur (jamais lue du corps de
+    requête). ``contrat`` est une référence interne à l'app `contrats`
+    (foundation), donc FK dur autorisé ; ``approbateur`` pointe vers
+    ``AUTH_USER_MODEL`` (app foundation), FK autorisé et nullable tant que
+    l'étape n'a pas été décidée.
+    """
+
+    class Statut(models.TextChoices):
+        EN_ATTENTE = 'en_attente', 'En attente'
+        APPROUVE = 'approuve', 'Approuvé'
+        REJETE = 'rejete', 'Rejeté'
+
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='contrats_etapes_approbation',
+        verbose_name='Société',
+    )
+    contrat = models.ForeignKey(
+        'Contrat',
+        on_delete=models.CASCADE,
+        related_name='etapes_approbation',
+        verbose_name='Contrat',
+    )
+    # Règle source ayant généré cette étape (CONTRAT13) — référence interne à
+    # l'app `contrats`. NULLABLE + SET_NULL : supprimer la règle n'efface pas
+    # l'historique des décisions, l'étape perd seulement son lien d'origine.
+    regle = models.ForeignKey(
+        'RegleApprobation',
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='etapes_approbation',
+        verbose_name="Règle d'approbation source",
+    )
+    # Ordre / rang de l'étape dans le workflow (1, 2, 3…). Détermine la séquence
+    # d'avancement : on n'approuve l'étape n+1 qu'une fois l'étape n approuvée.
+    niveau = models.PositiveIntegerField(
+        default=1, verbose_name="Niveau / rang de l'étape")
+    # Niveau de rôle requis pour cette étape (repris de la règle source). Valeur
+    # déclarative — aucun contrôle de rôle codé en dur sur l'approbateur.
+    niveau_approbation = models.CharField(
+        max_length=20,
+        choices=RegleApprobation.NiveauApprobation.choices,
+        default=RegleApprobation.NiveauApprobation.RESPONSABLE,
+        verbose_name="Niveau d'approbation requis",
+    )
+    # Utilisateur ayant décidé (NULL tant que l'étape est en attente).
+    approbateur = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='contrats_etapes_approuvees',
+        verbose_name='Approbateur',
+    )
+    statut = models.CharField(
+        max_length=20,
+        choices=Statut.choices,
+        default=Statut.EN_ATTENTE,
+        verbose_name='Statut',
+    )
+    decision_le = models.DateTimeField(
+        null=True, blank=True, verbose_name='Décidé le')
+    commentaire = models.TextField(
+        blank=True, default='', verbose_name='Commentaire')
+    date_creation = models.DateTimeField(
+        auto_now_add=True, verbose_name='Créé le')
+
+    class Meta:
+        verbose_name = "Étape d'approbation"
+        verbose_name_plural = "Étapes d'approbation"
+        ordering = ['contrat_id', 'niveau', 'id']
+        indexes = [
+            models.Index(
+                fields=['company', 'statut'],
+                name='contrats_etapeapp_co_sta',
+            ),
+            models.Index(
+                fields=['contrat', 'niveau'],
+                name='contrats_etapeapp_ct_niv',
+            ),
+        ]
+
+    def __str__(self):
+        return (
+            f'Étape {self.niveau} — {self.get_statut_display()} '
+            f'(contrat {self.contrat_id})'
+        )

@@ -4,13 +4,20 @@ Total MAD par étape, prévision pondérée (probabilité par étape × valeur),
 devis par statut (avec expiration à la volée), et gains/pertes par motif.
 Tout est calculé à la lecture ; rien n'est persisté.
 """
+from datetime import date, datetime
 from decimal import Decimal
+
+from django.utils import timezone
 
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.response import Response
 
 from authentication.permissions import IsResponsableOrAdmin
 from apps.crm import stages as stage_mod
+from core.win_probability import (
+    base_probability_for_stage,
+    win_probability,
+)
 
 
 def _co_filter(user):
@@ -23,6 +30,12 @@ def _co_filter(user):
 
 # Probabilité de conversion heuristique par étape (prévision pondérée).
 # COLD = quasi nul (parking) ; SIGNED = acquis.
+#
+# FG362 — cette table STATIQUE par étape reste le REPLI : la prévision pondérée
+# utilise désormais le scorer par lead `core.win_probability.win_probability`
+# (probabilité PAR lead à partir de ses features), et ne retombe sur cette table
+# d'étape que si les features sont absentes (dégradation propre). La table de
+# base du scorer reproduit ces mêmes poids, donc le repli est identique 1:1.
 _STAGE_WEIGHTS = {
     'NEW': Decimal('0.10'),
     'CONTACTED': Decimal('0.20'),
@@ -31,6 +44,55 @@ _STAGE_WEIGHTS = {
     'SIGNED': Decimal('1.00'),
     'COLD': Decimal('0.05'),
 }
+
+
+def _lead_age_days(lead):
+    """Jours depuis la dernière activité du lead (fraîcheur).
+
+    Préfère ``relance_date`` (dernière relance planifiée) si disponible, sinon
+    ``date_creation``. Renvoie ``None`` si rien d'exploitable (le scorer ignore
+    alors la recency)."""
+    now = timezone.now()
+    ref = getattr(lead, 'relance_date', None) or getattr(
+        lead, 'date_creation', None)
+    if ref is None:
+        return None
+    try:
+        if isinstance(ref, datetime):
+            delta = now - ref
+        elif isinstance(ref, date):
+            delta = now.date() - ref
+            return max(0.0, float(delta.days))
+        else:
+            return None
+        return max(0.0, delta.total_seconds() / 86400.0)
+    except Exception:
+        return None
+
+
+def _lead_win_weight(lead):
+    """Probabilité de gain d'un lead (FG362), en :class:`Decimal`.
+
+    Construit les FEATURES du lead (étape, perdu, fraîcheur, priorité, canal)
+    et délègue au scorer pur `core.win_probability`. Tout échec retombe sur la
+    probabilité d'étape statique (repli identique à l'ancien comportement)."""
+    stage = getattr(lead, 'stage', None)
+    try:
+        features = {
+            'stage': stage,
+            'perdu': bool(getattr(lead, 'perdu', False)),
+            'age_days': _lead_age_days(lead),
+            'priorite': getattr(lead, 'priorite', None),
+            'canal': getattr(lead, 'canal', None),
+        }
+        prob = win_probability(features).probability
+        return Decimal(str(prob))
+    except Exception:
+        # Repli : table d'étape statique (via le scorer, sinon poids historique).
+        fallback = _STAGE_WEIGHTS.get(stage)
+        if fallback is not None:
+            return fallback
+        return Decimal(str(base_probability_for_stage(stage)))
 
 
 def _lead_value(lead):
@@ -65,8 +127,12 @@ def pipeline(request):
     for key in stage_mod.STAGES:
         in_stage = [le for le in leads if le.stage == key and not le.perdu]
         valeur = sum((_lead_value(le) for le in in_stage), Decimal('0'))
-        weight = _STAGE_WEIGHTS.get(key, Decimal('0'))
-        forecast += valeur * weight
+        # FG362 — prévision pondérée par lead : chaque lead contribue sa valeur
+        # × SA probabilité de gain (scorer pur), pas un poids fixe d'étape.
+        forecast += sum(
+            (_lead_value(le) * _lead_win_weight(le) for le in in_stage),
+            Decimal('0'),
+        )
         par_etape.append({
             'stage': key,
             'label': stage_mod.STAGE_LABELS.get(key, key),

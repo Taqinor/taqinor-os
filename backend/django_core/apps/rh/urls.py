@@ -11,6 +11,7 @@ from .views import (
     DossierEmployeViewSet,
     ElementSortieViewSet,
     FeuilleTempsViewSet,
+    HabilitationViewSet,
     HeuresSuppViewSet,
     IncidentPresenceViewSet,
     PointageViewSet,
@@ -39,6 +40,7 @@ router.register(r'presences-chantier', PresenceChantierViewSet)
 router.register(r'incidents-presence', IncidentPresenceViewSet)
 router.register(r'competences', CompetenceViewSet)
 router.register(r'competences-employe', CompetenceEmployeViewSet)
+router.register(r'habilitations', HabilitationViewSet)
 
 urlpatterns = [
     path('', include(router.urls)),

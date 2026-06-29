@@ -9,6 +9,7 @@ from rest_framework import serializers
 from .models import (
     ActifFlotte,
     AffectationConducteur,
+    CarteCarburant,
     Conducteur,
     EnginRoulant,
     EtatDesLieux,
@@ -599,5 +600,62 @@ class PleinCarburantSerializer(serializers.ModelSerializer):
                     exclude_pk=exclude_pk)
                 if incoherent:
                     raise serializers.ValidationError({'kilometrage': message})
+
+        return attrs
+
+
+class CarteCarburantSerializer(serializers.ModelSerializer):
+    """FLOTTE14 — Carte carburant de la société.
+
+    ``company`` est posée côté serveur (jamais lue du corps de requête). Le
+    véhicule et le conducteur attribués (si fournis) doivent appartenir à la
+    société courante. Le plafond ne peut pas être négatif.
+
+    Champs lecture seule :
+    - ``vehicule_label``   : désignation du véhicule attribué (ou ``None``).
+    - ``conducteur_label`` : nom du conducteur attribué (ou ``None``).
+    """
+
+    vehicule_label = serializers.SerializerMethodField()
+    conducteur_label = serializers.SerializerMethodField()
+
+    class Meta:
+        model = CarteCarburant
+        fields = [
+            'id', 'numero', 'vehicule', 'vehicule_label', 'conducteur',
+            'conducteur_label', 'plafond', 'actif', 'notes', 'date_creation',
+        ]
+        read_only_fields = ['date_creation']
+
+    def get_vehicule_label(self, obj):
+        return str(obj.vehicule) if obj.vehicule_id else None
+
+    def get_conducteur_label(self, obj):
+        return str(obj.conducteur) if obj.conducteur_id else None
+
+    def validate_plafond(self, value):
+        if value is not None and value < 0:
+            raise serializers.ValidationError(
+                "Le plafond ne peut pas être négatif.")
+        return value
+
+    def validate(self, attrs):
+        request = self.context.get('request')
+        company = getattr(getattr(request, 'user', None), 'company', None)
+
+        vehicule = attrs.get(
+            'vehicule', getattr(self.instance, 'vehicule', None))
+        conducteur = attrs.get(
+            'conducteur', getattr(self.instance, 'conducteur', None))
+
+        if company is not None:
+            if vehicule is not None and vehicule.company_id != company.id:
+                raise serializers.ValidationError(
+                    {'vehicule':
+                     "Ce véhicule n'appartient pas à votre société."})
+            if conducteur is not None and conducteur.company_id != company.id:
+                raise serializers.ValidationError(
+                    {'conducteur':
+                     "Ce conducteur n'appartient pas à votre société."})
 
         return attrs

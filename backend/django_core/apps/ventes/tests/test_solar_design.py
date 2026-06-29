@@ -537,3 +537,137 @@ class EvChargerSizingTest(SimpleTestCase):
         self.assertGreaterEqual(res["energy"]["daily_demand_kwh"], 0.0)
         # Pas de contexte PV exploitable → impact non chiffré, pas de crash.
         self.assertIsNone(res["pv_impact"]["solar_covered_kwh"])
+
+
+# ── FG256 : stockage & dispatch batterie (backup) (calcul pur, SimpleTestCase) ─
+class BatteryStorageSizingTest(SimpleTestCase):
+    def test_autoconso_stores_surplus_capped_by_night_load(self):
+        # 30 kWh produits, 12 autoconsommés → 18 de surplus ; besoin nuit 14.
+        res = sd.battery_storage_sizing(
+            mode="autoconso", pv_daily_production_kwh=30.0,
+            pv_self_consumption_kwh=12.0, night_load_kwh=14.0)
+        ac = res["autoconso"]
+        self.assertEqual(ac["daily_surplus_kwh"], 18.0)
+        # On ne stocke que ce qui sera redéchargé la nuit → 14 kWh utiles.
+        self.assertEqual(ac["usable_kwh"], 14.0)
+        # 18 − 14 = 4 kWh de surplus non stocké.
+        self.assertEqual(ac["spilled_surplus_kwh"], 4.0)
+        self.assertEqual(res["binding_objective"], "autoconso")
+        self.assertTrue(any("ne sera pas stockée" in w
+                            for w in res["warnings"]))
+
+    def test_autoconso_night_load_caps_below_surplus(self):
+        # Besoin nuit (8) < surplus (18) → utile = 8, pas le surplus entier.
+        res = sd.battery_storage_sizing(
+            mode="autoconso", daily_surplus_kwh=18.0, night_load_kwh=8.0)
+        self.assertEqual(res["autoconso"]["usable_kwh"], 8.0)
+        self.assertEqual(res["autoconso"]["spilled_surplus_kwh"], 10.0)
+
+    def test_autoconso_surplus_from_kwc(self):
+        # Sans production fournie, déduite de kWc × productible / 365.
+        res = sd.battery_storage_sizing(
+            mode="autoconso", pv_kwc=6.0, pv_self_consumption_kwh=10.0,
+            night_load_kwh=100.0)
+        prod = res["autoconso"]["pv_daily_production_kwh"]
+        # 6 kWc × 1700 / 365 ≈ 27.95 kWh/jour.
+        self.assertAlmostEqual(prod, 27.95, places=1)
+        # Surplus = prod − 10 ; besoin nuit 100 ne plafonne pas → tout le surplus.
+        self.assertAlmostEqual(
+            res["autoconso"]["usable_kwh"], prod - 10.0, places=1)
+
+    def test_backup_capacity_is_load_times_hours(self):
+        # 2 kW critiques × 8 h = 16 kWh utiles ; puissance 2 × 1.25 = 2.5 kW.
+        res = sd.battery_storage_sizing(
+            mode="backup", critical_load_kw=2.0, backup_hours=8.0)
+        bk = res["backup"]
+        self.assertEqual(bk["usable_kwh"], 16.0)
+        self.assertEqual(bk["usable_kw"], 2.5)
+        self.assertEqual(res["binding_objective"], "backup")
+
+    def test_usable_to_nominal_uses_dod_and_round_trip(self):
+        # DoD 0.5, rendement 1.0 → nominal = utile / 0.5 = 2× l'utile.
+        res = sd.battery_storage_sizing(
+            mode="backup", critical_load_kw=1.0, backup_hours=5.0,
+            depth_of_discharge=0.5, round_trip_efficiency=1.0)
+        self.assertEqual(res["backup"]["usable_kwh"], 5.0)
+        self.assertAlmostEqual(res["backup"]["nominal_kwh"], 10.0, places=2)
+
+    def test_round_trip_efficiency_inflates_nominal(self):
+        # DoD 1.0, rendement 0.81 → nominal = utile / √0.81 = utile / 0.9.
+        res = sd.battery_storage_sizing(
+            mode="backup", critical_load_kw=1.0, backup_hours=9.0,
+            depth_of_discharge=1.0, round_trip_efficiency=0.81)
+        # 9 / 0.9 = 10.0 kWh nominaux.
+        self.assertAlmostEqual(res["backup"]["nominal_kwh"], 10.0, places=2)
+
+    def test_both_modes_pick_largest_as_binding(self):
+        # Autoconso 14 kWh vs backup 24 kWh → backup dimensionne.
+        res = sd.battery_storage_sizing(
+            mode="both", pv_daily_production_kwh=30.0,
+            pv_self_consumption_kwh=12.0, night_load_kwh=14.0,
+            critical_load_kw=3.0, backup_hours=8.0)
+        self.assertEqual(res["autoconso"]["usable_kwh"], 14.0)
+        self.assertEqual(res["backup"]["usable_kwh"], 24.0)
+        self.assertEqual(res["binding_objective"], "backup")
+        # La capacité retenue est la plus grande des deux.
+        self.assertEqual(res["recommended"]["usable_kwh"], 24.0)
+        # La puissance retenue est le max des deux pics (backup 3×1.25=3.75).
+        self.assertEqual(res["recommended"]["usable_kw"], 3.75)
+
+    def test_recommended_current_from_voltage(self):
+        # Pic 2.5 kW à 48 V → courant ≈ 52.1 A.
+        res = sd.battery_storage_sizing(
+            mode="backup", critical_load_kw=2.0, backup_hours=4.0,
+            system_voltage_v=48.0)
+        self.assertAlmostEqual(
+            res["recommended"]["current_a"], 52.1, delta=0.5)
+
+    def test_dod_and_efficiency_clamped_to_one(self):
+        # DoD/rendement absurdes (>1) plafonnés à 1, sans crash.
+        res = sd.battery_storage_sizing(
+            mode="backup", critical_load_kw=1.0, backup_hours=4.0,
+            depth_of_discharge=1.5, round_trip_efficiency=2.0)
+        self.assertEqual(res["depth_of_discharge"], 1.0)
+        self.assertEqual(res["round_trip_efficiency"], 1.0)
+        # DoD 1 & rendement 1 → nominal == utile.
+        self.assertEqual(
+            res["backup"]["nominal_kwh"], res["backup"]["usable_kwh"])
+        self.assertTrue(any("plafonné" in w for w in res["warnings"]))
+
+    def test_missing_autoconso_context_warns_not_raises(self):
+        # Pas de surplus exploitable → autoconso non chiffré, pas d'exception.
+        res = sd.battery_storage_sizing(mode="autoconso")
+        self.assertIsNone(res["autoconso"]["usable_kwh"])
+        self.assertIsNone(res["binding_objective"])
+        self.assertTrue(any("surplus" in w for w in res["warnings"]))
+
+    def test_missing_backup_context_warns_not_raises(self):
+        # Charge critique / heures manquantes → backup non chiffré, pas de crash.
+        res = sd.battery_storage_sizing(mode="backup", critical_load_kw=2.0)
+        self.assertIsNone(res["backup"]["usable_kwh"])
+        self.assertIsNone(res["binding_objective"])
+        self.assertTrue(any("backup" in w for w in res["warnings"]))
+
+    def test_degraded_inputs_never_raise(self):
+        # Entrées absurdes/None : bornées, jamais d'exception.
+        res = sd.battery_storage_sizing(
+            mode="both", pv_daily_production_kwh=-5,
+            pv_self_consumption_kwh=None, daily_surplus_kwh=-10,
+            critical_load_kw=-2, backup_hours=-4,
+            depth_of_discharge=0, round_trip_efficiency=-1,
+            system_voltage_v=0)
+        # DoD/rendement/tension absurdes → bornés à leurs défauts > 0.
+        self.assertGreater(res["depth_of_discharge"], 0)
+        self.assertGreater(res["round_trip_efficiency"], 0)
+        self.assertGreater(res["system_voltage_v"], 0)
+        # Aucun objectif chiffrable → recommandation vide, pas d'exception.
+        self.assertIsNone(res["binding_objective"])
+        self.assertIsNone(res["recommended"]["usable_kwh"])
+
+    def test_unknown_mode_falls_back_to_autoconso(self):
+        res = sd.battery_storage_sizing(
+            mode="banane", daily_surplus_kwh=10.0, night_load_kwh=10.0)
+        self.assertIsNotNone(res["autoconso"])
+        self.assertIsNone(res["backup"])
+        self.assertEqual(res["autoconso"]["usable_kwh"], 10.0)
+        self.assertTrue(any("inconnu" in w for w in res["warnings"]))
