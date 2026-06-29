@@ -1019,3 +1019,78 @@ class ProcedureQualite(models.Model):
 
     def __str__(self):
         return f'{self.reference} v{self.version} — {self.titre}'
+
+
+# ── QHSE19 — Retour client qualité (satisfaction) ──────────────────────────
+
+class RetourClientQualite(models.Model):
+    """Retour client de satisfaction qualité (enquête post-chantier / SAV).
+
+    Chaque enregistrement capture l'avis d'un client sur la qualité d'une
+    prestation : une ``note_satisfaction`` de 1 (très insatisfait) à 5 (très
+    satisfait), un ``commentaire`` libre, la ``date_retour``, le ``canal`` par
+    lequel l'avis est arrivé (téléphone, email, WhatsApp, formulaire…) et un
+    drapeau ``traite`` indiquant que le retour a été traité côté qualité.
+
+    Le retour peut être rattaché — par référence LÂCHE — à un chantier
+    (``chantier_id``, cf. ``installations.Chantier``) et/ou à un client
+    (``client_id``, cf. ``crm`` / ``ventes``) : jamais un import cross-app de
+    leurs modèles, exactement comme les autres liens QHSE (``NonConformite``,
+    ``NotationFinChantier``). La lecture cross-app passe par les sélecteurs de
+    l'app cible.
+
+    Multi-société via ``company`` posée côté serveur (jamais lue du corps de
+    requête). Le sélecteur ``satisfaction_moyenne`` agrège la note moyenne
+    d'une société (optionnellement par chantier). Entièrement additif.
+    """
+    class Canal(models.TextChoices):
+        TELEPHONE = 'telephone', 'Téléphone'
+        EMAIL = 'email', 'Email'
+        WHATSAPP = 'whatsapp', 'WhatsApp'
+        FORMULAIRE = 'formulaire', 'Formulaire'
+        VISITE = 'visite', 'Visite sur site'
+        AUTRE = 'autre', 'Autre'
+
+    NOTE_MIN = 1
+    NOTE_MAX = 5
+
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='qhse_retours_client',
+        verbose_name='Société',
+    )
+    # Références LÂCHES par id : jamais un import cross-app de modèle.
+    chantier_id = models.PositiveIntegerField(
+        null=True, blank=True, verbose_name='ID du chantier')
+    client_id = models.PositiveIntegerField(
+        null=True, blank=True, verbose_name='ID du client')
+    note_satisfaction = models.PositiveSmallIntegerField(
+        verbose_name='Note de satisfaction (1–5)')
+    commentaire = models.TextField(
+        blank=True, default='', verbose_name='Commentaire')
+    date_retour = models.DateField(verbose_name='Date du retour')
+    canal = models.CharField(
+        max_length=12, choices=Canal.choices,
+        blank=True, default='', verbose_name='Canal')
+    traite = models.BooleanField(default=False, verbose_name='Traité')
+    date_creation = models.DateTimeField(
+        auto_now_add=True, verbose_name='Créé le')
+
+    class Meta:
+        verbose_name = 'Retour client qualité'
+        verbose_name_plural = 'Retours client qualité'
+        ordering = ['-date_retour', '-id']
+        indexes = [
+            models.Index(
+                fields=['company', 'date_retour'],
+                name='qhse_retcli_co_date',
+            ),
+            models.Index(
+                fields=['company', 'chantier_id'],
+                name='qhse_retcli_co_chant',
+            ),
+        ]
+
+    def __str__(self):
+        return f'Retour client {self.note_satisfaction}/5 — {self.date_retour}'

@@ -11,7 +11,7 @@ from .models import (
     ItemNotation, NonConformite, NotationFinChantier,
     PlanInspectionChantier, PlanInspectionModele,
     PointControleModele, ProcedureQualite, QhseChatterEntry,
-    ReleveControle, ReleveCourbeIV, ReponseCritere,
+    ReleveControle, ReleveCourbeIV, ReponseCritere, RetourClientQualite,
 )
 
 
@@ -356,3 +356,32 @@ class ProcedureQualiteSerializer(serializers.ModelSerializer):
         read_only_fields = [
             'version', 'statut', 'auteur', 'date_application', 'date_creation',
         ]
+
+
+class RetourClientQualiteSerializer(serializers.ModelSerializer):
+    """Retour client de satisfaction qualité (QHSE19).
+
+    ``company`` est posée côté serveur (jamais exposée en écriture).
+    ``chantier_id`` / ``client_id`` sont des références lâches par id (jamais
+    un import cross-app). ``note_satisfaction`` est bornée à [1, 5].
+    """
+    canal_display = serializers.CharField(
+        source='get_canal_display', read_only=True)
+
+    class Meta:
+        model = RetourClientQualite
+        fields = [
+            'id', 'chantier_id', 'client_id', 'note_satisfaction',
+            'commentaire', 'date_retour', 'canal', 'canal_display',
+            'traite', 'date_creation',
+        ]
+        read_only_fields = ['date_creation']
+
+    def validate_note_satisfaction(self, value):
+        if not (RetourClientQualite.NOTE_MIN
+                <= value <= RetourClientQualite.NOTE_MAX):
+            raise serializers.ValidationError(
+                'La note doit être comprise entre '
+                f'{RetourClientQualite.NOTE_MIN} et '
+                f'{RetourClientQualite.NOTE_MAX}.')
+        return value

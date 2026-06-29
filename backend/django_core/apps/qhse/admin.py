@@ -3,7 +3,7 @@ from django.contrib import admin
 from .models import (
     ActionCorrectivePreventive, NonConformite, PlanInspectionChantier,
     PlanInspectionModele, PointControleModele, ProcedureQualite,
-    ReleveControle, ReleveCourbeIV,
+    ReleveControle, ReleveCourbeIV, RetourClientQualite,
 )
 
 
@@ -67,3 +67,12 @@ class ProcedureQualiteAdmin(admin.ModelAdmin):
                     'date_application', 'auteur', 'company', 'date_creation')
     list_filter = ('statut',)
     search_fields = ('reference', 'titre', 'contenu')
+
+
+@admin.register(RetourClientQualite)
+class RetourClientQualiteAdmin(admin.ModelAdmin):
+    list_display = ('id', 'note_satisfaction', 'chantier_id', 'client_id',
+                    'canal', 'traite', 'date_retour', 'company',
+                    'date_creation')
+    list_filter = ('traite', 'canal')
+    search_fields = ('commentaire',)
