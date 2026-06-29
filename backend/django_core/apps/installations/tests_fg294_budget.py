@@ -116,9 +116,10 @@ def attach_devis(company, projet, lignes):
     devis = Devis.objects.create(
         company=company, reference=f'DEV-B-{company.id}-{n}',
         client=projet.client, taux_tva=Decimal('20'))
+    produit = make_produit(company)
     for designation, qte, pu in lignes:
         LigneDevis.objects.create(
-            devis=devis, designation=designation,
+            devis=devis, produit=produit, designation=designation,
             quantite=Decimal(str(qte)), prix_unitaire=Decimal(str(pu)))
     ProjetDevis.objects.create(company=company, projet=projet, devis=devis)
     return devis
