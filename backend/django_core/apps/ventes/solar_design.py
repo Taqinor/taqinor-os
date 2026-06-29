@@ -880,3 +880,198 @@ def _round_breaker(amps):
         if amps <= b:
             return b
     return _STD_BREAKERS[-1]
+
+
+# ── FG255 — Dimensionnement borne de recharge VE couplée au PV ───────────────
+# Dimensionne une borne de recharge de véhicule électrique (puissance kW, mono
+# ou triphasé, nombre de sessions/jour) et chiffre son IMPACT sur
+# l'autoconsommation du champ PV : combien de l'énergie VE peut être couverte
+# par le surplus solaire journalier, et de combien la borne augmente le taux
+# d'autoconsommation global de l'installation. Module PUR : aucune base, aucun
+# réseau, aucun prix. Les entrées numériques ne sont JAMAIS rejetées (la liberté
+# de saisie du founder est préservée) — seules les valeurs absurdes (≤ 0) sont
+# bornées à un défaut sensé pour éviter une division par zéro.
+
+# Bornes monophasées usuelles au Maroc (230 V) et triphasées (400 V).
+_EV_VOLTAGE_MONO = 230.0
+_EV_VOLTAGE_TRI = 400.0
+# Rendement de charge AC→batterie (pertes chargeur embarqué + câble).
+_EV_CHARGE_EFFICIENCY = 0.90
+# Calibres de borne courants (kW) pour l'aide au choix.
+_EV_STD_POWER_KW = [3.7, 7.4, 11.0, 22.0]
+
+
+def ev_charger_sizing(*, borne_kw=7.4, phases=1, sessions_per_day=1,
+                      energy_per_session_kwh=None, kwh_per_100km=18.0,
+                      km_per_session=40.0, pv_kwc=None,
+                      pv_daily_production_kwh=None,
+                      pv_self_consumption_kwh=None,
+                      pv_surplus_kwh=None, charge_window_h=None,
+                      productible_kwh_kwc_year=1700.0):
+    """FG255 — dimensionne une borne VE et chiffre son impact autoconsommation.
+
+    Côté BORNE, à partir de la puissance ``borne_kw``, du nombre de phases
+    (``phases`` = 1 mono / 3 tri) et des ``sessions_per_day`` :
+
+    * courant de ligne (A) et calibre disjoncteur dédié (1.25× le nominal,
+      arrondi au calibre normalisé) ;
+    * énergie VE journalière requise — soit ``energy_per_session_kwh`` fournie,
+      soit déduite de la conso véhicule (``kwh_per_100km`` × ``km_per_session``
+      / 100) — multipliée par les sessions et divisée par le rendement de
+      charge ;
+    * durée de charge d'une session à ``borne_kw`` (h) et vérification qu'elle
+      tient dans la fenêtre de charge ``charge_window_h`` si fournie.
+
+    Côté PV (IMPACT AUTOCONSOMMATION), si un contexte PV est donné :
+
+    * le SURPLUS solaire journalier (``pv_surplus_kwh`` direct, sinon
+      production − autoconsommation existante, sinon déduit de ``pv_kwc`` via
+      ``productible_kwh_kwc_year``) est la réserve disponible pour le VE ;
+    * la part de l'énergie VE couvrable par ce surplus (``solar_covered_kwh``)
+      et donc importée du réseau (``grid_kwh``) ;
+    * le NOUVEAU taux d'autoconsommation : (autoconsommation existante + énergie
+      VE couverte par le solaire) ÷ production — la borne RECYCLE le surplus
+      qui partait au réseau, donc le taux MONTE.
+
+    Toutes les sorties sont JSON-sérialisables et sûres sur entrées dégradées
+    (jamais d'exception, division par zéro bornée). Retourne ::
+
+        {borne: {kw, phases, line_current_a, breaker_a, voltage_v,
+                 session_charge_h, fits_window, recommended_kw},
+         energy: {per_session_kwh, daily_demand_kwh, sessions_per_day},
+         pv_impact: {available_surplus_kwh, solar_covered_kwh, grid_kwh,
+                     solar_coverage_pct, base_self_consumption_pct,
+                     new_self_consumption_pct, self_consumption_gain_pts,
+                     pv_daily_production_kwh},
+         warnings: []}
+    """
+    warnings = []
+
+    # ── Normalisation des entrées (bornage minimal, jamais de rejet) ──
+    def _pos(value, default):
+        try:
+            v = float(value)
+        except (TypeError, ValueError):
+            return float(default)
+        return v if v > 0 else float(default)
+
+    def _nonneg(value):
+        try:
+            v = float(value)
+        except (TypeError, ValueError):
+            return None
+        return v if v >= 0 else None
+
+    kw = _pos(borne_kw, 7.4)
+    ph = 3 if int(phases or 1) == 3 else 1
+    sessions = _pos(sessions_per_day, 1)
+
+    # ── Énergie d'une session ──
+    if energy_per_session_kwh is not None:
+        per_session = _pos(energy_per_session_kwh, 0.0)
+        if per_session <= 0:
+            per_session = 0.0
+    else:
+        # Déduite de la conso véhicule × km par session.
+        kwh_100 = _pos(kwh_per_100km, 18.0)
+        km = _pos(km_per_session, 40.0)
+        per_session = kwh_100 * km / 100.0
+
+    # Énergie à PRÉLEVER au tableau (pertes de charge incluses).
+    daily_demand = round(
+        per_session * sessions / _EV_CHARGE_EFFICIENCY, 2)
+
+    # ── Électricité borne : courant de ligne & calibre ──
+    voltage = _EV_VOLTAGE_TRI if ph == 3 else _EV_VOLTAGE_MONO
+    sqrt3 = math.sqrt(3) if ph == 3 else 1.0
+    line_current = (kw * 1000.0) / (voltage * sqrt3)
+    breaker_a = _round_breaker(line_current * 1.25)
+
+    # Durée d'une session à la puissance borne (pertes incluses).
+    session_charge_h = round(
+        (per_session / _EV_CHARGE_EFFICIENCY) / kw, 2) if kw > 0 else None
+
+    fits_window = None
+    win = _nonneg(charge_window_h)
+    if win is not None and session_charge_h is not None:
+        fits_window = session_charge_h <= win
+        if not fits_window:
+            warnings.append(
+                f"charge d'une session {session_charge_h} h > fenêtre "
+                f"disponible {win} h — augmenter la puissance de borne ou "
+                "réduire l'énergie par session")
+
+    # Borne recommandée : la plus petite puissance standard ≥ celle saisie.
+    recommended_kw = next((p for p in _EV_STD_POWER_KW if p >= kw - 1e-6), kw)
+
+    # ── Impact PV / autoconsommation ──
+    prod = _nonneg(pv_daily_production_kwh)
+    if prod is None:
+        kwc = _nonneg(pv_kwc)
+        if kwc is not None and kwc > 0:
+            prod = round(
+                kwc * _pos(productible_kwh_kwc_year, 1700.0) / 365.0, 2)
+
+    surplus = _nonneg(pv_surplus_kwh)
+    base_self = _nonneg(pv_self_consumption_kwh)
+    if surplus is None and prod is not None and base_self is not None:
+        surplus = max(0.0, round(prod - base_self, 2))
+
+    pv_impact = {
+        "pv_daily_production_kwh": prod,
+        "available_surplus_kwh": surplus,
+        "solar_covered_kwh": None,
+        "grid_kwh": None,
+        "solar_coverage_pct": None,
+        "base_self_consumption_pct": None,
+        "new_self_consumption_pct": None,
+        "self_consumption_gain_pts": None,
+    }
+
+    if surplus is not None and daily_demand > 0:
+        # Le VE consomme d'abord le surplus solaire, le reste vient du réseau.
+        solar_covered = round(min(surplus, daily_demand), 2)
+        grid_kwh = round(max(0.0, daily_demand - solar_covered), 2)
+        pv_impact["solar_covered_kwh"] = solar_covered
+        pv_impact["grid_kwh"] = grid_kwh
+        pv_impact["solar_coverage_pct"] = round(
+            solar_covered / daily_demand * 100.0, 1)
+        if solar_covered < daily_demand * 0.5:
+            warnings.append(
+                "le surplus solaire couvre moins de la moitié des besoins VE — "
+                "envisager d'agrandir le champ PV ou de programmer la charge en "
+                "milieu de journée")
+
+        # Nouveau taux d'autoconsommation : la borne recycle le surplus.
+        if prod is not None and prod > 0:
+            base_sc = base_self if base_self is not None else max(
+                0.0, prod - surplus)
+            pv_impact["base_self_consumption_pct"] = round(
+                base_sc / prod * 100.0, 1)
+            new_sc = base_sc + solar_covered
+            pv_impact["new_self_consumption_pct"] = round(
+                min(new_sc, prod) / prod * 100.0, 1)
+            pv_impact["self_consumption_gain_pts"] = round(
+                pv_impact["new_self_consumption_pct"]
+                - pv_impact["base_self_consumption_pct"], 1)
+
+    return {
+        "borne": {
+            "kw": round(kw, 2),
+            "phases": ph,
+            "voltage_v": voltage,
+            "line_current_a": round(line_current, 1),
+            "breaker_a": breaker_a,
+            "session_charge_h": session_charge_h,
+            "fits_window": fits_window,
+            "recommended_kw": recommended_kw,
+        },
+        "energy": {
+            "per_session_kwh": round(per_session, 2),
+            "daily_demand_kwh": daily_demand,
+            "sessions_per_day": round(sessions, 2),
+            "charge_efficiency": _EV_CHARGE_EFFICIENCY,
+        },
+        "pv_impact": pv_impact,
+        "warnings": warnings,
+    }
