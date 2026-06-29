@@ -26,6 +26,7 @@ from .models import (
     Remuneration,
     SoldeConge,
     TypeAbsence,
+    VisiteMedicale,
 )
 
 
@@ -739,4 +740,51 @@ class CertificationSerializer(serializers.ModelSerializer):
                 raise serializers.ValidationError(
                     'Une certification de ce type existe déjà pour cet '
                     'employé.')
+        return attrs
+
+
+class VisiteMedicaleSerializer(serializers.ModelSerializer):
+    """Visite médicale du travail par employé (FG177) — aptitude + échéance.
+
+    Le client saisit ``employe``, ``date_visite``, ``prochaine_visite``
+    (échéance), ``aptitude``, ``medecin``, ``organisme``, ``restrictions``,
+    ``actif`` et ``note``. ``company`` est posée côté serveur (jamais lue du
+    corps) ; ``employe`` doit appartenir à la société de l'utilisateur.
+    ``a_jour`` (active ET prochaine visite non dépassée) est CALCULÉ — lecture
+    seule. On garde l'historique des visites (pas d'unicité). Famille DISTINCTE
+    des habilitations (FG173) et certifications (FG174).
+    """
+    aptitude_display = serializers.CharField(
+        source='get_aptitude_display', read_only=True)
+    employe_nom = serializers.SerializerMethodField()
+    a_jour = serializers.BooleanField(read_only=True)
+
+    class Meta:
+        model = VisiteMedicale
+        fields = [
+            'id', 'employe', 'employe_nom',
+            'date_visite', 'prochaine_visite',
+            'aptitude', 'aptitude_display',
+            'medecin', 'organisme', 'restrictions',
+            'actif', 'a_jour', 'note',
+            'date_creation', 'date_modification',
+        ]
+        read_only_fields = ['date_creation', 'date_modification', 'a_jour']
+
+    def get_employe_nom(self, obj):
+        return f'{obj.employe.nom} {obj.employe.prenom}'
+
+    def validate_employe(self, value):
+        return _meme_societe(self, value, 'Employé')
+
+    def validate(self, attrs):
+        # Cohérence des dates : la prochaine visite ne précède pas la visite.
+        visite = attrs.get('date_visite') \
+            or getattr(self.instance, 'date_visite', None)
+        prochaine = attrs.get('prochaine_visite') \
+            or getattr(self.instance, 'prochaine_visite', None)
+        if visite and prochaine and prochaine < visite:
+            raise serializers.ValidationError(
+                {'prochaine_visite':
+                 'La prochaine visite précède la date de la visite.'})
         return attrs

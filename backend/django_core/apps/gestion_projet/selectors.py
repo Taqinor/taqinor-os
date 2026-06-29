@@ -10,6 +10,8 @@ cible n'a pas de sélecteur exploitable, on DÉGRADE proprement : on renvoie le
 from datetime import date as _date
 from datetime import timedelta
 
+from django.db.models import Q
+
 from .models import (
     AffectationRessource,
     BaselinePlanning,
@@ -853,5 +855,226 @@ def plan_de_charge(company, debut, fin, heures_par_jour=_HEURES_PAR_JOUR_DEFAUT,
         'fin': fin.isoformat(),
         'heures_par_jour': heures_jour,
         'nb_surcharges': nb_surcharges,
+        'lignes': lignes,
+    }
+
+
+# ── PROJ19 : Détection de conflits d'affectation ─────────────────────────────
+
+
+def _affectation_dict(aff):
+    """Dict d'affichage minimal d'une ``AffectationRessource`` (lecture seule).
+
+    Porte la tâche, le projet (via la tâche, préchargé) et la fenêtre. Ne lit
+    aucune donnée d'une AUTRE société : l'appelant ne passe que des affectations
+    déjà scopées société.
+    """
+    tache = aff.tache
+    return {
+        'affectation': aff.id,
+        'tache': aff.tache_id,
+        'tache_libelle': tache.libelle if tache else '',
+        'projet': tache.projet_id if tache else None,
+        'date_debut': aff.date_debut.isoformat(),
+        'date_fin': aff.date_fin.isoformat(),
+        'charge_jours': (
+            str(aff.charge_jours) if aff.charge_jours is not None else None),
+    }
+
+
+def _paires_en_conflit(affectations):
+    """Couples d'affectations dont les fenêtres se CHEVAUCHENT (bornes inclusives).
+
+    ``affectations`` est une liste d'``AffectationRessource`` d'UNE même
+    ressource. On trie par ``date_debut`` puis on compare chaque affectation aux
+    suivantes tant qu'elles peuvent encore chevaucher (balayage trié). Deux
+    fenêtres se chevauchent dès que ``a.date_debut <= b.date_fin`` ET
+    ``a.date_fin >= b.date_debut`` (convention PROJ16/17, bornes inclusives des
+    deux côtés). Renvoie une liste de couples ``(aff_a, aff_b)`` avec
+    ``aff_a`` la plus précoce. Une seule affectation → aucune paire.
+    """
+    ordonnees = sorted(affectations, key=lambda a: (a.date_debut, a.date_fin,
+                                                    a.id))
+    paires = []
+    n = len(ordonnees)
+    for i in range(n):
+        a = ordonnees[i]
+        for j in range(i + 1, n):
+            b = ordonnees[j]
+            # Liste triée par date_debut : dès que b démarre après la fin de a,
+            # aucune affectation suivante ne peut plus chevaucher a (elles
+            # démarrent encore plus tard) → on coupe la boucle interne.
+            if b.date_debut > a.date_fin:
+                break
+            # a.date_debut <= b.date_debut garanti par le tri ; il reste à
+            # vérifier le chevauchement inclusif (équivaut à b.date_debut <=
+            # a.date_fin ici, déjà impliqué par l'absence de break).
+            if a.date_debut <= b.date_fin and a.date_fin >= b.date_debut:
+                paires.append((a, b))
+    return paires
+
+
+def conflits_affectation(company, debut, fin):
+    """Conflits de double-affectation d'une société sur [debut, fin] (PROJ19).
+
+    Détecte, pour CHAQUE ``RessourceProfil`` de la société, les cas où elle est
+    allouée à PLUSIEURS ``AffectationRessource`` dont les fenêtres se
+    CHEVAUCHENT — c'est-à-dire une ressource double-bookée sur une même période.
+    On prend en compte les affectations DIRECTES (vecteur ``ressource``) ET les
+    affectations d'une ``Equipe`` dont la ressource est membre : une personne
+    affectée en direct sur une tâche ET via son équipe sur une autre tâche au
+    même moment est en conflit. Les affectations d'actif matériel (vecteur
+    ``actif_*``) n'entrent PAS dans la détection (une ressource = une personne).
+
+    La fenêtre [debut, fin] est INCLUSIVE des deux bornes (convention
+    PROJ16/17) : seules les affectations chevauchant la fenêtre sont examinées,
+    et deux d'entre elles sont en conflit dès que leurs fenêtres se chevauchent
+    (peu importe qu'un week-end les sépare — la détection est calendaire, pas
+    ouvrée : une affectation reste une réservation continue de la ressource).
+
+    Optionnellement, chaque ligne de ressource porte aussi ses
+    ``indisponibilites`` (congé/formation/arrêt) chevauchant la fenêtre, pour
+    signaler une affectation posée alors que la ressource est indisponible
+    (``affectations_sur_indispo``).
+
+    Lecture seule, multi-société : seules les données ``company`` sont lues
+    (affectations, équipes et indisponibilités sont toutes filtrées sur la même
+    société). ``debut``/``fin`` sont des dates ; une fenêtre VIDE
+    (``fin < debut``) → aucun conflit (garde explicite). Renvoie un dict ::
+
+        {
+          "debut": "YYYY-MM-DD", "fin": "YYYY-MM-DD",
+          "nb_ressources_en_conflit": int,
+          "nb_conflits": int,                # total de paires en conflit
+          "lignes": [                        # une entrée par ressource conflictuelle
+            {
+              "ressource": int, "nom": str, "role": str,
+              "conflits": [                  # paires d'affectations qui se chevauchent
+                {
+                  "affectation_a": {...}, "affectation_b": {...},
+                  "chevauchement_debut": "YYYY-MM-DD",
+                  "chevauchement_fin": "YYYY-MM-DD",
+                  "via_equipe": bool,        # au moins un côté vient d'une équipe
+                },
+                ...
+              ],
+              "affectations_sur_indispo": [  # affectations posées sur une indispo
+                {"affectation": {...}, "indispo_debut": "...",
+                 "indispo_fin": "...", "type_indispo": "..."},
+                ...
+              ],
+            },
+            ...
+          ],
+        }
+    """
+    # Garde fenêtre vide : aucune affectation ne peut être en conflit.
+    if fin < debut:
+        return {
+            'debut': debut.isoformat(),
+            'fin': fin.isoformat(),
+            'nb_ressources_en_conflit': 0,
+            'nb_conflits': 0,
+            'lignes': [],
+        }
+
+    ressources = list(
+        RessourceProfil.objects.filter(company=company).order_by('nom', 'id'))
+
+    # Map ressource_id -> ids des équipes (même société) dont elle est membre,
+    # et l'inverse pour étiqueter une affectation d'équipe sur chaque membre.
+    equipe_ids_par_ressource = {}
+    equipes_qs = Equipe.objects.filter(company=company).prefetch_related(
+        'membres')
+    membres_par_equipe = {}
+    for equipe in equipes_qs:
+        membres = list(equipe.membres.all())
+        membres_par_equipe[equipe.id] = membres
+        for membre in membres:
+            equipe_ids_par_ressource.setdefault(membre.id, set()).add(equipe.id)
+
+    # Affectations société (personnes + équipes) chevauchant la fenêtre. Les
+    # affectations d'actif matériel (sans ressource ni équipe) sont écartées.
+    affectations = list(
+        AffectationRessource.objects.filter(
+            company=company,
+            date_debut__lte=fin,
+            date_fin__gte=debut,
+        ).filter(
+            Q(ressource__isnull=False) | Q(equipe__isnull=False)
+        ).select_related('tache'))
+
+    # Indexer les affectations par ressource concernée (directe + via équipe).
+    # ``via`` mémorise si l'affectation touche la ressource via une équipe.
+    affectations_par_ressource = {}
+    for aff in affectations:
+        if aff.ressource_id is not None:
+            affectations_par_ressource.setdefault(
+                aff.ressource_id, []).append((aff, False))
+        elif aff.equipe_id is not None:
+            for membre in membres_par_equipe.get(aff.equipe_id, []):
+                affectations_par_ressource.setdefault(
+                    membre.id, []).append((aff, True))
+
+    lignes = []
+    nb_conflits = 0
+    for ressource in ressources:
+        entrees = affectations_par_ressource.get(ressource.id, [])
+        # Index (aff_id, via) pour étiqueter chaque côté d'une paire.
+        via_par_aff = {}
+        affs = []
+        for aff, via in entrees:
+            affs.append(aff)
+            # Une affectation directe prime : si la ressource y est à la fois en
+            # direct et via une équipe (cas théorique), elle compte comme directe.
+            via_par_aff[aff.id] = via_par_aff.get(aff.id, True) and via
+        paires = _paires_en_conflit(affs)
+
+        conflits = []
+        for a, b in paires:
+            chev = _chevauchement_inclusif(
+                a.date_debut, a.date_fin, b.date_debut, b.date_fin)
+            if chev is None:  # pragma: no cover - garanti par _paires_en_conflit
+                continue
+            via_equipe = bool(via_par_aff.get(a.id) or via_par_aff.get(b.id))
+            conflits.append({
+                'affectation_a': _affectation_dict(a),
+                'affectation_b': _affectation_dict(b),
+                'chevauchement_debut': chev[0].isoformat(),
+                'chevauchement_fin': chev[1].isoformat(),
+                'via_equipe': via_equipe,
+            })
+
+        # Affectations posées alors que la ressource est indisponible.
+        sur_indispo = []
+        if affs:
+            indispos = list(indisponibilites_sur_periode(
+                ressource, debut, fin))
+            for aff in affs:
+                for indispo in indispos:
+                    if (aff.date_debut <= indispo.date_fin
+                            and aff.date_fin >= indispo.date_debut):
+                        sur_indispo.append({
+                            'affectation': _affectation_dict(aff),
+                            'indispo_debut': indispo.date_debut.isoformat(),
+                            'indispo_fin': indispo.date_fin.isoformat(),
+                            'type_indispo': indispo.type_indispo,
+                        })
+
+        if conflits or sur_indispo:
+            nb_conflits += len(conflits)
+            lignes.append({
+                'ressource': ressource.id,
+                'nom': ressource.nom,
+                'role': ressource.role,
+                'conflits': conflits,
+                'affectations_sur_indispo': sur_indispo,
+            })
+
+    return {
+        'debut': debut.isoformat(),
+        'fin': fin.isoformat(),
+        'nb_ressources_en_conflit': len(lignes),
+        'nb_conflits': nb_conflits,
         'lignes': lignes,
     }

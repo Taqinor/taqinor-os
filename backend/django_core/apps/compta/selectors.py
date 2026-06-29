@@ -4,8 +4,8 @@ Grand livre (FG110), balance générale (FG111), lettrage (FG112), CPC (FG113) e
 bilan (FG114) se déduisent tous des ``LigneEcriture`` du grand livre. Aucune
 écriture n'est modifiée ici. Toutes les fonctions sont scopées par société.
 """
-from datetime import timedelta
-from decimal import Decimal
+from datetime import date, timedelta
+from decimal import Decimal, ROUND_HALF_UP
 
 from django.db.models import Sum
 from django.utils import timezone
@@ -1176,3 +1176,258 @@ def bordereau_versement_ras(company, *, date_debut=None, date_fin=None,
         },
         'total_a_verser': total_montant,
     }
+
+
+# ── FG140 — Aide au calcul de l'IS (impôt sur les sociétés) ─────────────────
+#
+# Aide à l'estimation de l'IS marocain depuis le CPC (résultat fiscal),
+# l'échéancier des 4 acomptes provisionnels et la régularisation. C'est une
+# AIDE indicative : le résultat comptable du CPC sert de base au résultat
+# fiscal (les réintégrations/déductions extra-comptables ne sont pas saisies
+# ici, elles peuvent être passées en argument). Aucune écriture n'est créée.
+#
+# Barème IS progressif (taux marginaux par tranche, CGI marocain) — exprimé en
+# bornes cumulatives. La dernière tranche est ouverte (> 1 000 000 MAD).
+_BAREME_IS = (
+    # (borne_haute_ou_None, taux %)
+    (Decimal('300000'), Decimal('10')),
+    (Decimal('1000000'), Decimal('20')),
+    (None, Decimal('31')),
+)
+# Cotisation minimale (CM) : plancher de l'IS. Taux de droit commun 0,25 % de
+# la base CM (produits d'exploitation/financiers/non courants), avec un montant
+# minimum forfaitaire.
+_TAUX_CM = Decimal('0.25')          # %
+_CM_MINIMUM = Decimal('3000')       # MAD — plancher forfaitaire de la CM.
+# Comptes de produits (classe 7) entrant dans la base de la cotisation minimale.
+# On retient le total des produits du CPC comme proxy de la base CM.
+_QUANTUM = Decimal('0.01')
+
+
+def _q(montant):
+    """Arrondi monétaire à 2 décimales (demi-supérieur)."""
+    return (montant or Decimal('0')).quantize(_QUANTUM, rounding=ROUND_HALF_UP)
+
+
+def is_bareme(resultat_fiscal):
+    """IS théorique au barème progressif marocain sur un résultat fiscal.
+
+    Applique les taux marginaux par tranche (10 / 20 / 31 %). Renvoie un dict
+    ``{'resultat_fiscal', 'tranches': [...], 'is_bareme'}`` où chaque tranche
+    détaille ``{'de', 'a', 'taux', 'base', 'impot'}``. Un résultat ≤ 0 donne
+    un IS au barème nul (la cotisation minimale s'applique alors séparément).
+    """
+    resultat = _q(resultat_fiscal)
+    tranches = []
+    total = Decimal('0')
+    if resultat > 0:
+        bas = Decimal('0')
+        for borne, taux in _BAREME_IS:
+            if borne is None:
+                base = resultat - bas
+            else:
+                base = min(resultat, borne) - bas
+            if base <= 0:
+                break
+            impot = _q(base * taux / Decimal('100'))
+            tranches.append({
+                'de': bas,
+                'a': borne,
+                'taux': taux,
+                'base': _q(base),
+                'impot': impot,
+            })
+            total += impot
+            if borne is None or resultat <= borne:
+                break
+            bas = borne
+    return {
+        'resultat_fiscal': resultat,
+        'tranches': tranches,
+        'is_bareme': _q(total),
+    }
+
+
+def cotisation_minimale(base_cm):
+    """Cotisation minimale = max(taux_CM × base, minimum forfaitaire).
+
+    ``base_cm`` est la base de la CM (produits taxables, proxy = total produits
+    du CPC). Renvoie ``{'base', 'taux', 'cm_calculee', 'cm_minimum', 'cm'}``.
+    """
+    base = _q(base_cm if base_cm and base_cm > 0 else Decimal('0'))
+    calculee = _q(base * _TAUX_CM / Decimal('100'))
+    cm = calculee if calculee > _CM_MINIMUM else _CM_MINIMUM
+    return {
+        'base': base,
+        'taux': _TAUX_CM,
+        'cm_calculee': calculee,
+        'cm_minimum': _CM_MINIMUM,
+        'cm': _q(cm),
+    }
+
+
+def estimer_is(company, exercice, *, reintegrations=None, deductions=None,
+               validees_seulement=False):
+    """Estime l'IS dû d'un exercice depuis le CPC (FG140).
+
+    Le résultat comptable du CPC (produits classe 7 − charges classe 6) est la
+    base. On y ajoute les ``reintegrations`` extra-comptables et on retranche
+    les ``deductions`` pour obtenir le résultat fiscal. L'IS dû = max(IS au
+    barème progressif, cotisation minimale). Lecture seule, scopée société
+    (l'exercice DOIT appartenir à ``company``).
+
+    Renvoie ``{'exercice', 'date_debut', 'date_fin', 'resultat_comptable',
+    'reintegrations', 'deductions', 'resultat_fiscal', 'bareme',
+    'cotisation_minimale', 'is_du', 'base_retenue'}`` où ``base_retenue`` vaut
+    'bareme' ou 'cotisation_minimale'.
+    """
+    if exercice.company_id != company.id:
+        raise ValueError("L'exercice n'appartient pas à cette société.")
+    etat = cpc(
+        company, date_debut=exercice.date_debut, date_fin=exercice.date_fin,
+        validees_seulement=validees_seulement)
+    resultat_comptable = _q(etat['resultat'])
+    reint = _q(reintegrations or Decimal('0'))
+    deduc = _q(deductions or Decimal('0'))
+    resultat_fiscal = _q(resultat_comptable + reint - deduc)
+    bareme = is_bareme(resultat_fiscal)
+    cm = cotisation_minimale(etat['total_produits'])
+    if cm['cm'] > bareme['is_bareme']:
+        is_du = cm['cm']
+        base_retenue = 'cotisation_minimale'
+    else:
+        is_du = bareme['is_bareme']
+        base_retenue = 'bareme'
+    return {
+        'exercice': exercice.id,
+        'date_debut': exercice.date_debut,
+        'date_fin': exercice.date_fin,
+        'resultat_comptable': resultat_comptable,
+        'reintegrations': reint,
+        'deductions': deduc,
+        'resultat_fiscal': resultat_fiscal,
+        'bareme': bareme,
+        'cotisation_minimale': cm,
+        'is_du': _q(is_du),
+        'base_retenue': base_retenue,
+    }
+
+
+def echeancier_acomptes(company, exercice, *, is_reference=None,
+                        validees_seulement=False):
+    """Échéancier des 4 acomptes provisionnels d'IS d'un exercice (FG140).
+
+    Chaque acompte = 25 % de l'IS de l'exercice de référence (l'IS « N-1 »,
+    c.-à-d. l'IS dû au titre de l'exercice clos précédent). Les acomptes d'un
+    exercice ``N`` sont versés avant la fin des 3e, 6e, 9e et 12e mois de
+    l'exercice ``N`` (CGI marocain). Si ``is_reference`` n'est pas fourni, on
+    estime l'IS de l'exercice courant comme proxy (le fiduciaire ajustera).
+
+    Renvoie ``{'exercice', 'is_reference', 'acomptes': [{'numero',
+    'date_echeance', 'montant'}], 'total_acomptes'}``.
+    """
+    if exercice.company_id != company.id:
+        raise ValueError("L'exercice n'appartient pas à cette société.")
+    if is_reference is None:
+        is_reference = estimer_is(
+            company, exercice, validees_seulement=validees_seulement)['is_du']
+    is_reference = _q(is_reference)
+    unitaire = _q(is_reference / Decimal('4'))
+    debut = exercice.date_debut
+    acomptes = []
+    cumul = Decimal('0')
+    for index, mois in enumerate((3, 6, 9, 12), start=1):
+        # Le 4e acompte solde l'arrondi pour que la somme = is_reference.
+        montant = unitaire if index < 4 else _q(is_reference - cumul)
+        cumul += montant
+        acomptes.append({
+            'numero': index,
+            # Échéance = dernier jour du Nᵉ mois de l'exercice (3/6/9/12) ; le
+            # Nᵉ mois est à (N−1) mois du mois de début (1er mois = début).
+            'date_echeance': _fin_de_mois(debut, mois - 1),
+            'montant': montant,
+        })
+    return {
+        'exercice': exercice.id,
+        'is_reference': is_reference,
+        'acomptes': acomptes,
+        'total_acomptes': _q(cumul),
+    }
+
+
+def regularisation_is(company, exercice, *, is_reference=None,
+                      reintegrations=None, deductions=None,
+                      validees_seulement=False):
+    """Régularisation d'IS d'un exercice (FG140).
+
+    Régularisation = IS dû de l'exercice − total des acomptes versés (les 4
+    acomptes provisionnels, basés sur l'IS de référence). Positive ⇒ reliquat
+    à payer ; négative ⇒ excédent (crédit d'IS imputable / à restituer). Le
+    reliquat est exigible avant la fin du 3e mois suivant la clôture.
+
+    Renvoie ``{'exercice', 'is_du', 'total_acomptes', 'regularisation',
+    'sens', 'date_limite_paiement'}`` (``sens`` ∈ {'a_payer', 'excedent',
+    'solde'}).
+    """
+    estimation = estimer_is(
+        company, exercice, reintegrations=reintegrations, deductions=deductions,
+        validees_seulement=validees_seulement)
+    is_du = estimation['is_du']
+    echeancier = echeancier_acomptes(
+        company, exercice, is_reference=is_reference,
+        validees_seulement=validees_seulement)
+    total_acomptes = echeancier['total_acomptes']
+    regularisation = _q(is_du - total_acomptes)
+    if regularisation > 0:
+        sens = 'a_payer'
+    elif regularisation < 0:
+        sens = 'excedent'
+    else:
+        sens = 'solde'
+    return {
+        'exercice': exercice.id,
+        'is_du': is_du,
+        'total_acomptes': total_acomptes,
+        'regularisation': regularisation,
+        'sens': sens,
+        'date_limite_paiement': _fin_de_mois(exercice.date_fin, 3),
+    }
+
+
+def aide_calcul_is(company, exercice, *, is_reference=None,
+                   reintegrations=None, deductions=None,
+                   validees_seulement=False):
+    """Synthèse complète de l'aide au calcul de l'IS (FG140) : estimation +
+    échéancier des 4 acomptes + régularisation, en un seul appel."""
+    estimation = estimer_is(
+        company, exercice, reintegrations=reintegrations, deductions=deductions,
+        validees_seulement=validees_seulement)
+    echeancier = echeancier_acomptes(
+        company, exercice, is_reference=is_reference,
+        validees_seulement=validees_seulement)
+    regularisation = regularisation_is(
+        company, exercice, is_reference=is_reference,
+        reintegrations=reintegrations, deductions=deductions,
+        validees_seulement=validees_seulement)
+    return {
+        'estimation': estimation,
+        'echeancier_acomptes': echeancier,
+        'regularisation': regularisation,
+    }
+
+
+def _fin_de_mois(reference, mois_apres_debut):
+    """Dernier jour du mois situé ``mois_apres_debut`` mois après ``reference``.
+
+    Ex. 2026-01-01 + 3 mois ⇒ 2026-04-30 ; 2026-12-31 + 3 mois ⇒ 2027-03-31.
+    Gère les fins de mois et les changements d'année sans dépendance externe.
+    """
+    total_mois = (reference.month - 1) + mois_apres_debut
+    annee = reference.year + total_mois // 12
+    mois = total_mois % 12 + 1
+    # Premier jour du mois suivant − 1 jour = dernier jour du mois cible.
+    if mois == 12:
+        premier_suivant = date(annee + 1, 1, 1)
+    else:
+        premier_suivant = date(annee, mois + 1, 1)
+    return premier_suivant - timedelta(days=1)

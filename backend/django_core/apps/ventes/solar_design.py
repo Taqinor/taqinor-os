@@ -2063,3 +2063,275 @@ def net_metering_savings(injected_curve=None, import_curve=None, *,
         "compensation_ratio": round(ratio, 4),
         "warnings": warnings,
     }
+
+
+# ── FG260 — Escalade tarifaire ONEE sur 20–25 ans + VAN/TRI ──────────────────
+# Projette, année par année, la facture d'électricité ÉVITÉE (économie) sur un
+# horizon long (20–25 ans) en tenant compte de DEUX dérives bien réelles :
+#
+#   * l'ESCALADE TARIFAIRE annuelle (le kWh ONEE renchérit chaque année — taux
+#     éditable, ~6 %/an par défaut côté marché marocain) qui POUSSE l'économie
+#     vers le HAUT (chaque kWh autoconsommé évite un kWh de plus en plus cher) ;
+#   * la DÉGRADATION des modules (~0,5 %/an) qui ÉRODE la production donc
+#     l'énergie évitée, TIRANT l'économie vers le bas.
+#
+# L'économie de l'année ``y`` (base 1) = économie_année1
+#     × (1 + escalade)^(y-1)        ← le tarif monte
+#     × (1 - dégradation)^(y-1)     ← la production baisse
+#
+# À partir du flux de trésorerie (économies annuelles − coût initial en année 0)
+# on calcule la VAN (NPV, valeur actualisée nette au taux d'actualisation) et le
+# TRI (IRR, taux qui annule la VAN), ce dernier par BISSECTION puis affinage
+# Newton — STDLIB pure, jamais de boucle infinie (itérations plafonnées), renvoie
+# None si le flux n'admet pas de TRI (pas de changement de signe / non-convergence).
+#
+# Module PUR : aucune base, aucun réseau, aucun prix d'achat/marge. Les entrées
+# numériques ne sont JAMAIS rejetées (liberté de saisie du founder) — seules les
+# valeurs absurdes sont bornées pour éviter une division par zéro.
+
+# Taux d'escalade tarifaire ONEE annuel par défaut (éditable par l'appelant).
+DEFAULT_TARIFF_ESCALATION = 0.06        # 6 %/an
+# Dégradation annuelle des modules par défaut (lithium/silicium courant).
+DEFAULT_MODULE_DEGRADATION = 0.005      # 0,5 %/an
+# Taux d'actualisation par défaut pour la VAN.
+DEFAULT_DISCOUNT_RATE = 0.05            # 5 %/an
+# Horizon de projection par défaut (années).
+DEFAULT_HORIZON_YEARS = 25
+# Bornes de l'horizon admissible (le métier vise 20–25 ans, on tolère 1..40).
+_MIN_HORIZON_YEARS = 1
+_MAX_HORIZON_YEARS = 40
+
+
+def _npv(rate, cashflows):
+    """Valeur actualisée nette d'une suite de flux (flux[0] = année 0).
+
+    ``cashflows[t]`` est actualisé par ``(1 + rate)**t``. ``rate`` = -1 est
+    interdit (division par zéro) — renvoie ``float('inf')`` pour rester monotone
+    côté solveur (sans lever).
+    """
+    if rate <= -1.0:
+        return float("inf")
+    total = 0.0
+    for t, cf in enumerate(cashflows):
+        total += cf / ((1.0 + rate) ** t)
+    return total
+
+
+def _irr(cashflows, *, low=-0.9999, high=10.0, tol=1e-7, max_iter=200):
+    """TRI (taux annulant la VAN) par bissection + affinage Newton, ou None.
+
+    Cherche la racine de ``_npv(rate)`` sur ``[low, high]`` quand la VAN y change
+    de signe ; sinon renvoie None (flux sans TRI). Plafonné à ``max_iter`` — pas
+    de boucle infinie. Un dernier pas de Newton affine la racine de bissection.
+    """
+    # Il faut au moins un flux positif ET un flux négatif pour qu'un TRI existe.
+    if not any(cf > 0 for cf in cashflows) or not any(cf < 0 for cf in cashflows):
+        return None
+
+    f_low = _npv(low, cashflows)
+    f_high = _npv(high, cashflows)
+    if f_low == 0.0:
+        return round(low, 6)
+    if f_high == 0.0:
+        return round(high, 6)
+    # Pas de changement de signe sur l'intervalle → pas de racine bracketée ici.
+    if (f_low > 0) == (f_high > 0):
+        return None
+
+    a, b = low, high
+    fa = f_low
+    rate = a
+    for _ in range(max_iter):
+        rate = (a + b) / 2.0
+        fr = _npv(rate, cashflows)
+        if abs(fr) < tol or (b - a) / 2.0 < tol:
+            break
+        if (fr > 0) == (fa > 0):
+            a, fa = rate, fr
+        else:
+            b = rate
+
+    # Affinage Newton (dérivée numérique) sans jamais sortir des bornes.
+    for _ in range(20):
+        fr = _npv(rate, cashflows)
+        if abs(fr) < tol:
+            break
+        h = 1e-6
+        deriv = (_npv(rate + h, cashflows) - fr) / h
+        if deriv == 0.0:
+            break
+        step = fr / deriv
+        new_rate = rate - step
+        if not (low < new_rate < high):
+            break
+        rate = new_rate
+
+    return round(rate, 6)
+
+
+def tariff_escalation_projection(*, annual_savings_year1,
+                                 upfront_cost=0.0,
+                                 escalation_rate=DEFAULT_TARIFF_ESCALATION,
+                                 degradation_rate=DEFAULT_MODULE_DEGRADATION,
+                                 horizon_years=DEFAULT_HORIZON_YEARS,
+                                 discount_rate=DEFAULT_DISCOUNT_RATE,
+                                 baseline_bill_year1=None):
+    """FG260 — projette facture/économies sur 20–25 ans + VAN (NPV) & TRI (IRR).
+
+    Construit le tableau année par année du flux de trésorerie d'une installation
+    PV : l'économie de l'année 1 escalade chaque année au rythme tarifaire ONEE
+    (``escalation_rate``) tout en s'érodant de la dégradation modules
+    (``degradation_rate``), face à un coût initial unique (``upfront_cost``) en
+    année 0.
+
+    Paramètres
+    ----------
+    annual_savings_year1 : économie (facture évitée) de la 1re année (MAD/an).
+    upfront_cost : investissement initial TTC (MAD), placé en flux d'année 0.
+    escalation_rate : taux d'escalade tarifaire annuel (éditable, défaut ~6 %).
+    degradation_rate : dégradation annuelle de la production (défaut ~0,5 %).
+    horizon_years : durée de projection (20–25 visés ; borné 1..40).
+    discount_rate : taux d'actualisation pour la VAN (défaut 5 %).
+    baseline_bill_year1 : facture ONEE de base year-1 (MAD/an), pour projeter la
+        facture brute escaladée (optionnel ; sinon non renseignée).
+
+    Retourne un dict JSON-sérialisable ::
+
+        {schedule: [{year, escalated_tariff_factor, degradation_factor,
+                     annual_savings, projected_bill, cumulative_savings,
+                     net_cumulative, discounted_savings}],
+         summary: {horizon_years, escalation_rate, degradation_rate,
+                   discount_rate, upfront_cost, total_savings,
+                   total_discounted_savings, npv, irr, payback_year,
+                   discounted_payback_year, savings_year1, savings_last_year},
+         warnings: []}
+
+    Ne lève JAMAIS sur entrées dégradées : valeurs illisibles → 0, horizon hors
+    bornes ramené dans [1, 40], division par zéro gardée, TRI = None si le flux
+    n'en admet pas (pas de boucle infinie).
+    """
+    warnings = []
+
+    def _num(value, default=0.0):
+        try:
+            return float(value)
+        except (TypeError, ValueError):
+            return float(default)
+
+    savings1 = _num(annual_savings_year1)
+    cost0 = _num(upfront_cost)
+    esc = _num(escalation_rate, DEFAULT_TARIFF_ESCALATION)
+    deg = _num(degradation_rate, DEFAULT_MODULE_DEGRADATION)
+    disc = _num(discount_rate, DEFAULT_DISCOUNT_RATE)
+
+    # Horizon : entier borné dans [1, 40] (le métier vise 20–25).
+    try:
+        horizon = int(round(_num(horizon_years, DEFAULT_HORIZON_YEARS)))
+    except (TypeError, ValueError):
+        horizon = DEFAULT_HORIZON_YEARS
+    if horizon < _MIN_HORIZON_YEARS:
+        horizon = _MIN_HORIZON_YEARS
+        warnings.append("horizon ramené à 1 an (minimum)")
+    elif horizon > _MAX_HORIZON_YEARS:
+        horizon = _MAX_HORIZON_YEARS
+        warnings.append("horizon plafonné à 40 ans (maximum)")
+
+    base_bill1 = None
+    if baseline_bill_year1 is not None:
+        base_bill1 = _num(baseline_bill_year1)
+
+    # Garde-fous métier (avertissements, jamais de rejet).
+    if esc < 0:
+        warnings.append("taux d'escalade négatif — le tarif baisse, inhabituel")
+    if not (0.0 <= deg < 1.0):
+        warnings.append("taux de dégradation hors [0, 1[ — vérifier la saisie")
+    if disc <= -1.0:
+        warnings.append(
+            "taux d'actualisation ≤ -100 % — VAN non calculable, ramené à 0")
+        disc = 0.0
+
+    schedule = []
+    cumulative = 0.0
+    discounted_total = 0.0
+    payback_year = None
+    discounted_payback_year = None
+    discounted_cumulative_net = -cost0
+    # Flux de trésorerie : année 0 = -coût initial, puis économies escaladées.
+    cashflows = [-cost0]
+
+    for y in range(1, horizon + 1):
+        esc_factor = (1.0 + esc) ** (y - 1)
+        # Dégradation bornée : (1 - deg) ne doit pas devenir négatif.
+        deg_step = 1.0 - deg if deg < 1.0 else 0.0
+        deg_factor = deg_step ** (y - 1)
+        annual_savings = savings1 * esc_factor * deg_factor
+
+        projected_bill = None
+        if base_bill1 is not None:
+            # La facture ONEE brute escalade au même rythme tarifaire.
+            projected_bill = round(base_bill1 * esc_factor, 2)
+
+        cumulative += annual_savings
+        net_cumulative = cumulative - cost0
+
+        # Actualisation : le flux de l'année y est divisé par (1+disc)^y.
+        if disc > -1.0:
+            discounted = annual_savings / ((1.0 + disc) ** y)
+        else:
+            discounted = 0.0
+        discounted_total += discounted
+        discounted_cumulative_net += discounted
+
+        cashflows.append(annual_savings)
+
+        if payback_year is None and net_cumulative >= 0:
+            payback_year = y
+        if discounted_payback_year is None and discounted_cumulative_net >= 0:
+            discounted_payback_year = y
+
+        schedule.append({
+            "year": y,
+            "escalated_tariff_factor": round(esc_factor, 6),
+            "degradation_factor": round(deg_factor, 6),
+            "annual_savings": round(annual_savings, 2),
+            "projected_bill": projected_bill,
+            "cumulative_savings": round(cumulative, 2),
+            "net_cumulative": round(net_cumulative, 2),
+            "discounted_savings": round(discounted, 2),
+        })
+
+    npv = round(_npv(disc, cashflows), 2)
+    irr = _irr(cashflows)
+
+    if payback_year is None and cost0 > 0:
+        warnings.append(
+            "retour sur investissement non atteint sur l'horizon — l'économie "
+            "cumulée ne couvre pas le coût initial")
+    if irr is None and cost0 > 0:
+        warnings.append(
+            "TRI non calculable (flux sans changement de signe ou non "
+            "convergent) — vérifier coût initial et économies")
+
+    summary = {
+        "horizon_years": horizon,
+        "escalation_rate": round(esc, 6),
+        "degradation_rate": round(deg, 6),
+        "discount_rate": round(disc, 6),
+        "upfront_cost": round(cost0, 2),
+        "savings_year1": round(savings1, 2),
+        "savings_last_year": (
+            round(schedule[-1]["annual_savings"], 2) if schedule else 0.0),
+        "total_savings": round(cumulative, 2),
+        "total_discounted_savings": round(discounted_total, 2),
+        "net_total": round(cumulative - cost0, 2),
+        "npv": npv,
+        "irr": irr,
+        "payback_year": payback_year,
+        "discounted_payback_year": discounted_payback_year,
+    }
+
+    return {
+        "schedule": schedule,
+        "summary": summary,
+        "warnings": warnings,
+    }

@@ -7,9 +7,9 @@ appartenant à la société de l'utilisateur.
 from rest_framework import serializers
 
 from .models import (
-    ActionCorrectivePreventive, Audit, CritereAudit, GrilleAudit,
-    ItemNotation, NonConformite, NotationFinChantier,
-    PlanInspectionChantier, PlanInspectionModele,
+    ActionCorrectivePreventive, Audit, CritereAudit, EvaluationRisque,
+    GrilleAudit, ItemNotation, LigneEvaluationRisque, NonConformite,
+    NotationFinChantier, PlanInspectionChantier, PlanInspectionModele,
     PointControleModele, ProcedureQualite, QhseChatterEntry,
     ReleveControle, ReleveCourbeIV, ReponseCritere, RetourClientQualite,
 )
@@ -385,3 +385,73 @@ class RetourClientQualiteSerializer(serializers.ModelSerializer):
                 f'{RetourClientQualite.NOTE_MIN} et '
                 f'{RetourClientQualite.NOTE_MAX}.')
         return value
+
+
+# ── QHSE21 — Évaluation des risques (document unique) ───────────────────────
+
+def _valider_niveau(value, label):
+    """Garde-fou : un niveau gravité/probabilité doit rester dans [1, 5]."""
+    if not (LigneEvaluationRisque.NIVEAU_MIN
+            <= value <= LigneEvaluationRisque.NIVEAU_MAX):
+        raise serializers.ValidationError(
+            f'{label} doit être compris entre '
+            f'{LigneEvaluationRisque.NIVEAU_MIN} et '
+            f'{LigneEvaluationRisque.NIVEAU_MAX}.')
+    return value
+
+
+class LigneEvaluationRisqueSerializer(serializers.ModelSerializer):
+    """Ligne d'une évaluation des risques (QHSE21).
+
+    ``criticite`` est calculée et STOCKÉE côté serveur (gravité × probabilité)
+    — exposée en lecture seule, jamais lue du corps. ``company`` est posée côté
+    serveur ; le FK ``evaluation`` est validé même-société.
+    """
+
+    class Meta:
+        model = LigneEvaluationRisque
+        fields = [
+            'id', 'evaluation', 'poste', 'activite', 'danger',
+            'gravite', 'probabilite', 'criticite', 'mesures_prevention',
+            'risque_residuel', 'ordre', 'date_creation',
+        ]
+        read_only_fields = ['criticite', 'date_creation']
+
+    def validate_evaluation(self, value):
+        return _meme_societe(self, value, 'Évaluation des risques')
+
+    def validate_gravite(self, value):
+        return _valider_niveau(value, 'La gravité')
+
+    def validate_probabilite(self, value):
+        return _valider_niveau(value, 'La probabilité')
+
+
+class EvaluationRisqueSerializer(serializers.ModelSerializer):
+    """Évaluation des risques — document unique (QHSE21).
+
+    ``company`` et ``evaluateur`` sont posés côté serveur ; la ``reference`` est
+    attribuée côté serveur (jamais lue du corps). Expose le nombre de lignes, la
+    criticité maximale et moyenne (résumé), et les lignes imbriquées en lecture.
+    """
+    statut_display = serializers.CharField(
+        source='get_statut_display', read_only=True)
+    evaluateur_nom = serializers.CharField(
+        source='evaluateur.username', read_only=True, default=None)
+    nb_lignes = serializers.IntegerField(
+        source='lignes.count', read_only=True)
+    criticite_max = serializers.SerializerMethodField()
+    lignes = LigneEvaluationRisqueSerializer(many=True, read_only=True)
+
+    class Meta:
+        model = EvaluationRisque
+        fields = [
+            'id', 'reference', 'titre', 'date_evaluation', 'statut',
+            'statut_display', 'chantier_id', 'evaluateur', 'evaluateur_nom',
+            'notes', 'nb_lignes', 'criticite_max', 'lignes', 'date_creation',
+        ]
+        read_only_fields = ['reference', 'evaluateur', 'date_creation']
+
+    def get_criticite_max(self, obj):
+        return max(
+            (ligne.criticite for ligne in obj.lignes.all()), default=0)

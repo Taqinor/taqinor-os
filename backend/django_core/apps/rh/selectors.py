@@ -19,6 +19,7 @@ from .models import (
     IncidentPresence,
     Poste,
     PresenceChantier,
+    VisiteMedicale,
 )
 
 
@@ -484,6 +485,45 @@ def certifications_expirantes(company, within_days=30, inclure_expirees=True,
     return qs.select_related('employe').order_by('date_validite', 'id')
 
 
+def visites_medicales_expirantes(company, within_days=30, inclure_expirees=True,
+                                 employe_id=None):
+    """Visites médicales du travail (FG177) à renouveler bientôt ou échues.
+
+    Famille DISTINCTE des habilitations (FG173) et certifications (FG174).
+    Lecture cadrée société : retient les visites ACTIVES dont la
+    ``prochaine_visite`` (échéance de renouvellement) est renseignée et tombe au
+    plus tard dans ``within_days`` jours (aujourd'hui + ``within_days`` inclus).
+    Par défaut ``inclure_expirees`` est vrai : les visites déjà échues sont
+    également renvoyées, car une visite médicale périmée est exactement ce qui
+    doit alerter avant un chantier ; passer ``inclure_expirees=False`` ne garde
+    que les échéances encore à venir dans la fenêtre. Les visites sans prochaine
+    échéance (``prochaine_visite`` NULL) ou inactives sont exclues.
+    ``employe_id`` restreint à un employé. Toujours scopé société ; trié par
+    échéance la plus proche d'abord.
+    """
+    if company is None:
+        return VisiteMedicale.objects.none()
+    try:
+        within_days = int(within_days)
+    except (TypeError, ValueError):
+        within_days = 30
+    if within_days < 0:
+        within_days = 0
+    today = timezone.localdate()
+    limite = today + timedelta(days=within_days)
+    qs = VisiteMedicale.objects.filter(
+        company=company,
+        actif=True,
+        prochaine_visite__isnull=False,
+        prochaine_visite__lte=limite,
+    )
+    if not inclure_expirees:
+        qs = qs.filter(prochaine_visite__gte=today)
+    if employe_id is not None:
+        qs = qs.filter(employe_id=employe_id)
+    return qs.select_related('employe').order_by('prochaine_visite', 'id')
+
+
 def echeances_rh(company, within_days=30, today=None):
     """Moteur d'échéances RH unifié (FG175) — alertes d'expiration agrégées.
 
@@ -493,14 +533,16 @@ def echeances_rh(company, within_days=30, today=None):
     * habilitations électriques (FG173, ``Habilitation.date_validite``) ;
     * certifications spécifiques (FG174, ``Certification.date_validite``) ;
     * documents employé pourvus d'une échéance (FG159,
-      ``DocumentEmploye.date_expiration``).
+      ``DocumentEmploye.date_expiration``) ;
+    * visites médicales du travail (FG177,
+      ``VisiteMedicale.prochaine_visite``).
 
     Comme les sélecteurs sous-jacents par famille, on INCLUT les échéances déjà
-    dépassées (une habilitation/certification/doc expiré est précisément ce qui
-    doit alerter avant un chantier PV) ; on retient donc toute échéance ``<=``
-    aujourd'hui + ``within_days``. Pour les titres réglementaires (habilitations,
-    certifications) on ne garde que les lignes ACTIVES ; les documents n'ont pas
-    de drapeau d'activité.
+    dépassées (une habilitation/certification/doc/visite expiré est précisément
+    ce qui doit alerter avant un chantier PV) ; on retient donc toute échéance
+    ``<=`` aujourd'hui + ``within_days``. Pour les titres réglementaires
+    (habilitations, certifications) et les visites médicales on ne garde que les
+    lignes ACTIVES ; les documents n'ont pas de drapeau d'activité.
 
     Sélecteur PUR (pas d'I/O temps réel) : la date de référence est le paramètre
     ``today`` (par défaut ``timezone.localdate()``), ce qui rend le résultat
@@ -511,7 +553,8 @@ def echeances_rh(company, within_days=30, today=None):
     employé) :
 
     ``{
-        'type': 'habilitation' | 'certification' | 'document',
+        'type': 'habilitation' | 'certification' | 'document'
+                | 'visite_medicale',
         'employe_id': int,
         'employe': str,                 # « MATRICULE — Nom Prénom »
         'libelle': str,                 # libellé lisible du titre/document
@@ -582,6 +625,22 @@ def echeances_rh(company, within_days=30, today=None):
             'libelle': doc.get_type_document_display(),
             'date_validite': doc.date_expiration,
             'jours_restants': (doc.date_expiration - today).days,
+        })
+
+    visites = (
+        VisiteMedicale.objects
+        .filter(company=company, actif=True,
+                prochaine_visite__isnull=False, prochaine_visite__lte=limite)
+        .select_related('employe')
+    )
+    for vis in visites:
+        rows.append({
+            'type': 'visite_medicale',
+            'employe_id': vis.employe_id,
+            'employe': _employe_label(vis.employe),
+            'libelle': f'Visite médicale ({vis.get_aptitude_display()})',
+            'date_validite': vis.prochaine_visite,
+            'jours_restants': (vis.prochaine_visite - today).days,
         })
 
     rows.sort(key=lambda r: (r['date_validite'], r['type'], r['employe_id']))

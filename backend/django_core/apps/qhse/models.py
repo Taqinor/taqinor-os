@@ -1094,3 +1094,151 @@ class RetourClientQualite(models.Model):
 
     def __str__(self):
         return f'Retour client {self.note_satisfaction}/5 — {self.date_retour}'
+
+
+# ── QHSE21 — Évaluation des risques (document unique) ───────────────────────
+
+class EvaluationRisque(models.Model):
+    """Évaluation des risques professionnels — « document unique » (QHSE21).
+
+    Document unique d'évaluation des risques (DUERP) / plan de prévention : un
+    parent ``EvaluationRisque`` regroupe une série de ``LigneEvaluationRisque``,
+    chaque ligne décrivant un risque par poste/activité avec sa ``gravite`` et sa
+    ``probabilite`` (1–5), sa ``criticite`` calculée (gravité × probabilité) et
+    les mesures de prévention associées.
+
+    Cycle de vie : ``brouillon`` → ``validee`` → ``archivee``. Le rattachement
+    optionnel à un chantier se fait par référence LÂCHE (``chantier_id`` —
+    jamais un import cross-app du modèle ``installations.Chantier``). La lecture
+    cross-app passe par les sélecteurs de l'app cible.
+
+    Multi-société via ``company`` posée côté serveur (jamais lue du corps de
+    requête). La ``reference`` est attribuée côté serveur via
+    ``create_with_reference`` (plus haut numéro utilisé + 1, jamais count()+1).
+    Entièrement additif.
+    """
+    class Statut(models.TextChoices):
+        BROUILLON = 'brouillon', 'Brouillon'
+        VALIDEE = 'validee', 'Validée'
+        ARCHIVEE = 'archivee', 'Archivée'
+
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='qhse_evaluations_risque',
+        verbose_name='Société',
+    )
+    reference = models.CharField(
+        max_length=50, blank=True, default='', verbose_name='Référence')
+    titre = models.CharField(max_length=255, verbose_name='Titre')
+    date_evaluation = models.DateField(
+        null=True, blank=True, verbose_name="Date d'évaluation")
+    statut = models.CharField(
+        max_length=10, choices=Statut.choices,
+        default=Statut.BROUILLON, verbose_name='Statut')
+    # Référence LÂCHE au chantier (installations.Chantier) par id : jamais un
+    # import cross-app de modèle.
+    chantier_id = models.PositiveIntegerField(
+        null=True, blank=True, verbose_name='ID du chantier')
+    evaluateur = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='qhse_evaluations_risque',
+        verbose_name='Évaluateur',
+    )
+    notes = models.TextField(
+        blank=True, default='', verbose_name='Notes')
+    date_creation = models.DateTimeField(
+        auto_now_add=True, verbose_name='Créé le')
+
+    class Meta:
+        verbose_name = 'Évaluation des risques'
+        verbose_name_plural = 'Évaluations des risques'
+        ordering = ['-id']
+        constraints = [
+            models.UniqueConstraint(
+                fields=['company', 'reference'],
+                name='qhse_evalrisque_co_ref_uniq',
+            )
+        ]
+        indexes = [
+            models.Index(
+                fields=['company', 'statut'],
+                name='qhse_evalrisque_co_statut',
+            ),
+            models.Index(
+                fields=['company', 'chantier_id'],
+                name='qhse_evalrisque_co_chant',
+            ),
+        ]
+
+    def __str__(self):
+        return f'{self.reference or "DUERP"} — {self.titre}'
+
+
+class LigneEvaluationRisque(models.Model):
+    """Ligne d'une ``EvaluationRisque`` : un risque par poste/activité (QHSE21).
+
+    Chaque ligne décrit un ``danger`` rattaché à un ``poste``/``activite``,
+    noté par sa ``gravite`` et sa ``probabilite`` (1–5). La ``criticite`` est
+    calculée et STOCKÉE côté serveur (gravité × probabilité, 1–25) à chaque
+    sauvegarde — jamais lue du corps. Les ``mesures_prevention`` et le
+    ``risque_residuel`` (texte libre) complètent la fiche.
+
+    Multi-société via ``company`` posée côté serveur. Entièrement additif.
+    """
+    NIVEAU_MIN = 1
+    NIVEAU_MAX = 5
+
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='qhse_lignes_evaluation_risque',
+        verbose_name='Société',
+    )
+    evaluation = models.ForeignKey(
+        EvaluationRisque,
+        on_delete=models.CASCADE,
+        related_name='lignes',
+        verbose_name='Évaluation des risques',
+    )
+    poste = models.CharField(
+        max_length=255, blank=True, default='', verbose_name='Poste')
+    activite = models.CharField(
+        max_length=255, blank=True, default='', verbose_name='Activité')
+    danger = models.CharField(max_length=255, verbose_name='Danger / risque')
+    gravite = models.PositiveSmallIntegerField(
+        default=1, verbose_name='Gravité (1–5)')
+    probabilite = models.PositiveSmallIntegerField(
+        default=1, verbose_name='Probabilité (1–5)')
+    # Criticité = gravité × probabilité (1–25), calculée et stockée côté serveur.
+    criticite = models.PositiveSmallIntegerField(
+        default=1, verbose_name='Criticité (gravité × probabilité)')
+    mesures_prevention = models.TextField(
+        blank=True, default='', verbose_name='Mesures de prévention')
+    risque_residuel = models.TextField(
+        blank=True, default='', verbose_name='Risque résiduel')
+    ordre = models.PositiveIntegerField(default=0, verbose_name='Ordre')
+    date_creation = models.DateTimeField(
+        auto_now_add=True, verbose_name='Créé le')
+
+    class Meta:
+        verbose_name = "Ligne d'évaluation des risques"
+        verbose_name_plural = "Lignes d'évaluation des risques"
+        ordering = ['evaluation', 'ordre', 'id']
+        indexes = [
+            models.Index(
+                fields=['company', 'evaluation'],
+                name='qhse_ligneer_co_eval',
+            ),
+        ]
+
+    def save(self, *args, **kwargs):
+        # La criticité est TOUJOURS recalculée côté serveur : produit
+        # gravité × probabilité, jamais une valeur reçue du corps de requête.
+        self.criticite = (self.gravite or 0) * (self.probabilite or 0)
+        super().save(*args, **kwargs)
+
+    def __str__(self):
+        return f'{self.danger} (criticité {self.criticite})'

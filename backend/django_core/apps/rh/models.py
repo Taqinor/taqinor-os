@@ -1456,3 +1456,105 @@ class Certification(models.Model):
     def __str__(self):
         return (f'{self.employe.matricule} — '
                 f'{self.get_type_certification_display()}')
+
+
+class VisiteMedicale(models.Model):
+    """Visite médicale du travail par employé (FG177) — aptitude + échéance.
+
+    Famille DISTINCTE des habilitations électriques (FG173, ``Habilitation``)
+    et des certifications (FG174, ``Certification``) : la visite médicale du
+    travail est l'examen de la médecine du travail qui prononce l'APTITUDE du
+    salarié à son poste — obligatoire pour le chantier (Code du travail
+    marocain, médecine du travail). On enregistre la dernière visite
+    (``date_visite``), la prochaine échéance (``prochaine_visite``, p. ex.
+    annuelle), le VERDICT D'APTITUDE (apte / apte avec restrictions / inapte),
+    le médecin/organisme et d'éventuelles restrictions de poste.
+
+    Une ligne par visite (on garde l'historique des visites) ; ``a_jour`` est
+    CALCULÉ : la visite est à jour si elle est active ET que la prochaine visite
+    n'est pas dépassée (une visite sans prochaine échéance reste à jour tant
+    qu'elle est ``actif``). Un sélecteur/endpoint liste les visites dont la
+    prochaine échéance arrive bientôt ou est déjà dépassée (``?expire_within=``)
+    — c'est l'alerte exigée avant toute affectation chantier.
+
+    Multi-société : ``company`` posée côté serveur (jamais lue du corps) ;
+    ``employe`` doit appartenir à la même société.
+    """
+    class Aptitude(models.TextChoices):
+        APTE = 'apte', 'Apte'
+        APTE_AVEC_RESTRICTIONS = 'apte_avec_restrictions', \
+            'Apte avec restrictions'
+        INAPTE = 'inapte', 'Inapte'
+
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='rh_visites_medicales',
+        verbose_name='Société',
+    )
+    employe = models.ForeignKey(
+        DossierEmploye,
+        on_delete=models.CASCADE,
+        related_name='visites_medicales',
+        verbose_name='Employé',
+    )
+    date_visite = models.DateField(
+        null=True, blank=True, verbose_name='Date de la visite')
+    # Prochaine échéance : NULL = pas de prochaine visite planifiée (reste à
+    # jour tant que ``actif``). Une visite dont la prochaine échéance est passée
+    # n'est plus ``a_jour``.
+    prochaine_visite = models.DateField(
+        null=True, blank=True,
+        verbose_name='Prochaine visite (échéance)')
+    aptitude = models.CharField(
+        max_length=24, choices=Aptitude.choices,
+        default=Aptitude.APTE, verbose_name="Verdict d'aptitude")
+    # Médecin du travail ayant prononcé l'aptitude.
+    medecin = models.CharField(
+        max_length=160, blank=True, default='',
+        verbose_name='Médecin du travail')
+    # Organisme / service de médecine du travail.
+    organisme = models.CharField(
+        max_length=160, blank=True, default='',
+        verbose_name='Organisme / service de santé au travail')
+    # Restrictions de poste prononcées (en cas d'aptitude avec restrictions).
+    restrictions = models.TextField(
+        blank=True, default='', verbose_name='Restrictions de poste')
+    actif = models.BooleanField(default=True, verbose_name='Actif')
+    note = models.CharField(
+        max_length=255, blank=True, default='', verbose_name='Note')
+    date_creation = models.DateTimeField(
+        auto_now_add=True, verbose_name='Créé le')
+    date_modification = models.DateTimeField(
+        auto_now=True, verbose_name='Modifié le')
+
+    class Meta:
+        verbose_name = 'Visite médicale du travail'
+        verbose_name_plural = 'Visites médicales du travail'
+        ordering = ['employe', '-date_visite']
+        indexes = [
+            models.Index(
+                fields=['company', 'employe'],
+                name='rh_vismed_comp_emp_idx'),
+            models.Index(
+                fields=['company', 'prochaine_visite'],
+                name='rh_vismed_comp_proch_idx'),
+        ]
+
+    @property
+    def a_jour(self):
+        """Vrai si la visite est active ET sa prochaine échéance non dépassée.
+
+        Une visite sans ``prochaine_visite`` reste à jour tant qu'elle est
+        ``actif``. Sinon elle est à jour jusqu'au jour de l'échéance inclus.
+        """
+        if not self.actif:
+            return False
+        if self.prochaine_visite is None:
+            return True
+        from django.utils import timezone
+        return self.prochaine_visite >= timezone.localdate()
+
+    def __str__(self):
+        return (f'{self.employe.matricule} — '
+                f'{self.get_aptitude_display()}')

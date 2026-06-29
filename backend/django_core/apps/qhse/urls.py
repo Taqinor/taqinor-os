@@ -3,7 +3,8 @@ from rest_framework.routers import DefaultRouter
 
 from .views import (
     ActionCorrectivePreventiveViewSet, AuditViewSet, CritereAuditViewSet,
-    GrilleAuditViewSet, Iso9001ReadinessViewSet, ItemNotationViewSet,
+    EvaluationRisqueViewSet, GrilleAuditViewSet, Iso9001ReadinessViewSet,
+    ItemNotationViewSet, LigneEvaluationRisqueViewSet,
     NonConformiteViewSet, NotationFinChantierViewSet,
     PlanInspectionChantierViewSet, PlanInspectionModeleViewSet,
     PointControleModeleViewSet, ProcedureQualiteViewSet,
@@ -29,6 +30,8 @@ router.register(r'notations-fin-chantier', NotationFinChantierViewSet)
 router.register(r'items-notation', ItemNotationViewSet)
 router.register(r'procedures-qualite', ProcedureQualiteViewSet)
 router.register(r'retours-client', RetourClientQualiteViewSet)
+router.register(r'evaluations-risque', EvaluationRisqueViewSet)
+router.register(r'lignes-evaluation-risque', LigneEvaluationRisqueViewSet)
 router.register(
     r'iso9001-readiness', Iso9001ReadinessViewSet,
     basename='iso9001-readiness')

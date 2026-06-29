@@ -723,6 +723,37 @@ class RessourceProfilViewSet(_GestionProjetBaseViewSet):
             request.user.company, debut, fin,
             heures_par_jour=heures_par_jour, ressource_id=ressource_id))
 
+    @action(detail=False, methods=['get'], url_path='conflits-affectation')
+    def conflits_affectation(self, request):
+        """Conflits de double-affectation des ressources société (PROJ19).
+
+        Paramètres de requête :
+            ``?debut=YYYY-MM-DD&fin=YYYY-MM-DD`` (OBLIGATOIRES) — fenêtre
+            INCLUSIVE des deux côtés. ``fin`` antérieure à ``debut`` → 400.
+
+        Lecture seule. La société est imposée côté serveur
+        (``request.user.company``) — jamais lue du corps de requête. Délègue au
+        sélecteur ``conflits_affectation`` : pour chaque ressource, les couples
+        d'affectations (directes ET via une équipe dont elle est membre) dont
+        les fenêtres se chevauchent — une ressource double-bookée — plus, en
+        bonus, les affectations posées alors qu'elle est indisponible. Les
+        affectations d'actif matériel ne sont pas comptées.
+        """
+        debut = _parse_date_param(request.query_params.get('debut'))
+        fin = _parse_date_param(request.query_params.get('fin'))
+        if debut is None or fin is None:
+            return Response(
+                {'detail': 'Les paramètres debut et fin (YYYY-MM-DD) sont '
+                           'obligatoires.'},
+                status=status.HTTP_400_BAD_REQUEST)
+        if fin < debut:
+            return Response(
+                {'detail': 'La date de fin ne peut pas être antérieure à la '
+                           'date de début.'},
+                status=status.HTTP_400_BAD_REQUEST)
+        return Response(selectors.conflits_affectation(
+            request.user.company, debut, fin))
+
 
 class EquipeViewSet(_GestionProjetBaseViewSet):
     """Équipes de ressources pour le planning — CRUD scopé société.

@@ -1,7 +1,8 @@
 from django.contrib import admin
 
 from .models import (
-    ActionCorrectivePreventive, NonConformite, PlanInspectionChantier,
+    ActionCorrectivePreventive, EvaluationRisque, LigneEvaluationRisque,
+    NonConformite, PlanInspectionChantier,
     PlanInspectionModele, PointControleModele, ProcedureQualite,
     ReleveControle, ReleveCourbeIV, RetourClientQualite,
 )
@@ -76,3 +77,19 @@ class RetourClientQualiteAdmin(admin.ModelAdmin):
                     'date_creation')
     list_filter = ('traite', 'canal')
     search_fields = ('commentaire',)
+
+
+@admin.register(EvaluationRisque)
+class EvaluationRisqueAdmin(admin.ModelAdmin):
+    list_display = ('id', 'reference', 'titre', 'statut', 'date_evaluation',
+                    'chantier_id', 'evaluateur', 'company', 'date_creation')
+    list_filter = ('statut',)
+    search_fields = ('reference', 'titre', 'notes')
+
+
+@admin.register(LigneEvaluationRisque)
+class LigneEvaluationRisqueAdmin(admin.ModelAdmin):
+    list_display = ('id', 'evaluation', 'poste', 'activite', 'danger',
+                    'gravite', 'probabilite', 'criticite', 'company')
+    list_filter = ('gravite', 'probabilite')
+    search_fields = ('danger', 'poste', 'activite')
