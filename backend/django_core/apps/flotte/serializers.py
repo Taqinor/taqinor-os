@@ -12,6 +12,7 @@ from .models import (
     Conducteur,
     EnginRoulant,
     ReferentielFlotte,
+    ReservationVehicule,
     Vehicule,
 )
 
@@ -341,3 +342,90 @@ class AffectationConducteurSerializer(serializers.ModelSerializer):
 
     def update(self, instance, validated_data):
         return self._attach_warning(super().update(instance, validated_data))
+
+
+# ── FLOTTE10 — Réservation de véhicule + détection de conflit ────────────────
+
+class ReservationVehiculeSerializer(serializers.ModelSerializer):
+    """FLOTTE10 — Réservation datée d'un véhicule avec détection de conflit.
+
+    ``company`` est posée côté serveur par le ``TenantMixin`` (jamais lue du
+    corps de requête). Les FKs ``vehicule`` et ``conducteur`` doivent appartenir
+    à la société courante. La validation rejette (400) toute réservation active
+    qui chevauche une autre réservation active du même véhicule (service
+    ``reservations_en_conflit``).
+
+    Champs lecture seule :
+    - ``vehicule_label``   : immatriculation + marque/modèle.
+    - ``conducteur_nom``   : nom du conducteur prévu, ou ``None``.
+    - ``statut_display``   : libellé du statut.
+    """
+
+    statut_display = serializers.CharField(
+        source='get_statut_display', read_only=True)
+    vehicule_label = serializers.SerializerMethodField()
+    conducteur_nom = serializers.SerializerMethodField()
+
+    class Meta:
+        model = ReservationVehicule
+        fields = [
+            'id', 'vehicule', 'vehicule_label', 'conducteur', 'conducteur_nom',
+            'debut', 'fin', 'motif', 'statut', 'statut_display', 'notes',
+            'date_creation',
+        ]
+        read_only_fields = ['date_creation']
+
+    def get_vehicule_label(self, obj):
+        return str(obj.vehicule) if obj.vehicule_id else None
+
+    def get_conducteur_nom(self, obj):
+        return str(obj.conducteur) if obj.conducteur_id else None
+
+    def validate(self, attrs):
+        request = self.context.get('request')
+        company = getattr(getattr(request, 'user', None), 'company', None)
+
+        vehicule = attrs.get(
+            'vehicule', getattr(self.instance, 'vehicule', None))
+        conducteur = attrs.get(
+            'conducteur', getattr(self.instance, 'conducteur', None))
+        debut = attrs.get('debut', getattr(self.instance, 'debut', None))
+        fin = attrs.get('fin', getattr(self.instance, 'fin', None))
+        statut = attrs.get(
+            'statut',
+            getattr(self.instance, 'statut',
+                    ReservationVehicule.Statut.DEMANDEE))
+
+        # Plage horaire : fin > debut.
+        if debut is not None and fin is not None and fin <= debut:
+            raise serializers.ValidationError(
+                {'fin': "La date de fin doit être postérieure à la date de "
+                        "début."})
+
+        # Appartenance société.
+        if company is not None:
+            if vehicule is not None and vehicule.company_id != company.id:
+                raise serializers.ValidationError(
+                    {'vehicule':
+                     "Ce véhicule n'appartient pas à votre société."})
+            if conducteur is not None and conducteur.company_id != company.id:
+                raise serializers.ValidationError(
+                    {'conducteur':
+                     "Ce conducteur n'appartient pas à votre société."})
+
+        # Détection de conflit — uniquement pour une réservation active.
+        if company is not None and vehicule is not None \
+                and debut is not None and fin is not None \
+                and statut in ReservationVehicule.STATUTS_ACTIFS:
+            from .services import reservations_en_conflit
+            exclude_pk = self.instance.pk if self.instance is not None else None
+            conflits = reservations_en_conflit(
+                company, vehicule, debut, fin, exclude_pk=exclude_pk)
+            premier = conflits.first()
+            if premier is not None:
+                raise serializers.ValidationError(
+                    {'debut': "Ce véhicule est déjà réservé sur ce créneau "
+                              f"(conflit avec la réservation #{premier.pk})."})
+
+        return attrs
+

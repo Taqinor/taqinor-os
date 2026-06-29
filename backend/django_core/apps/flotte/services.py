@@ -86,3 +86,35 @@ def controle_permis(conducteur, vehicule, today=None):
         )
 
     return (True, '', '')
+
+
+# ── FLOTTE10 — Détection de conflit de réservation de véhicule ────────────────
+
+def reservations_en_conflit(company, vehicule, debut, fin, exclude_pk=None):
+    """FLOTTE10 — Réservations ACTIVES d'un véhicule qui chevauchent [debut, fin).
+
+    Une réservation est « active » tant que son statut occupe le véhicule
+    (``demandee`` ou ``confirmee``) — les réservations ``annulee`` sont ignorées,
+    elles peuvent légitimement se superposer à de nouvelles.
+
+    Deux plages [a1,a2) et [b1,b2) se chevauchent si ``a1 < b2`` ET ``b1 < a2``.
+    Un retour à l'heure exacte où une autre commence (``a2 == b1``) n'est donc
+    PAS un conflit (bornes demi-ouvertes). Le créneau passé est scopé société et
+    par véhicule. ``exclude_pk`` permet d'exclure la réservation en cours d'édition.
+
+    Retourne un queryset (potentiellement vide). Lecture seule.
+    """
+    from .models import ReservationVehicule
+
+    vehicule_id = getattr(vehicule, 'id', vehicule)
+    qs = ReservationVehicule.objects.filter(
+        company=company,
+        vehicule_id=vehicule_id,
+        statut__in=ReservationVehicule.STATUTS_ACTIFS,
+        debut__lt=fin,
+        fin__gt=debut,
+    )
+    if exclude_pk is not None:
+        qs = qs.exclude(pk=exclude_pk)
+    return qs
+

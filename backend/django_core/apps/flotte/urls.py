@@ -7,6 +7,7 @@ from .views import (
     ConducteurViewSet,
     EnginRoulantViewSet,
     ReferentielFlotteViewSet,
+    ReservationVehiculeViewSet,
     VehiculeViewSet,
 )
 
@@ -17,6 +18,7 @@ router.register(r'referentiels', ReferentielFlotteViewSet)
 router.register(r'actifs', ActifFlotteViewSet)
 router.register(r'conducteurs', ConducteurViewSet)
 router.register(r'affectations', AffectationConducteurViewSet)
+router.register(r'reservations', ReservationVehiculeViewSet)
 
 urlpatterns = [
     path('', include(router.urls)),

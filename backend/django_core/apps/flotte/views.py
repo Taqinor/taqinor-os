@@ -17,6 +17,7 @@ from .models import (
     Conducteur,
     EnginRoulant,
     ReferentielFlotte,
+    ReservationVehicule,
     Vehicule,
 )
 from .serializers import (
@@ -25,6 +26,7 @@ from .serializers import (
     ConducteurSerializer,
     EnginRoulantSerializer,
     ReferentielFlotteSerializer,
+    ReservationVehiculeSerializer,
     VehiculeSerializer,
 )
 
@@ -200,5 +202,42 @@ class AffectationConducteurViewSet(_FlotteBaseViewSet):
         actif = params.get('actif')
         if actif is not None:
             qs = qs.filter(actif=actif.lower() in ('1', 'true', 'vrai', 'oui'))
+
+        return qs
+
+
+class ReservationVehiculeViewSet(_FlotteBaseViewSet):
+    """Réservations de véhicules avec détection de conflit (FLOTTE10).
+
+    Filtrable par ``?vehicule=<id>``, ``?statut=<demandee|confirmee|annulee>``
+    et ``?actives=true`` (réservations qui occupent le véhicule). Recherche par
+    motif. Toutes les réservations sont scopées par société.
+    """
+    queryset = ReservationVehicule.objects.select_related(
+        'vehicule', 'conducteur')
+    serializer_class = ReservationVehiculeSerializer
+    filter_backends = [filters.SearchFilter, filters.OrderingFilter]
+    search_fields = ['motif']
+    ordering_fields = ['debut', 'fin', 'statut', 'date_creation']
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        params = self.request.query_params
+
+        vehicule = params.get('vehicule')
+        if vehicule:
+            try:
+                qs = qs.filter(vehicule_id=int(vehicule))
+            except (ValueError, TypeError):
+                pass
+
+        statut = params.get('statut')
+        if statut:
+            qs = qs.filter(statut=statut)
+
+        actives = params.get('actives')
+        if actives is not None and actives.lower() in ('1', 'true', 'vrai',
+                                                       'oui'):
+            qs = qs.filter(statut__in=ReservationVehicule.STATUTS_ACTIFS)
 
         return qs

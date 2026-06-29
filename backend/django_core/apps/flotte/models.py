@@ -347,6 +347,89 @@ class AffectationConducteur(models.Model):
         return f"{self.conducteur} → {self.vehicule} ({self.date_debut}/{fin})"
 
 
+# ── FLOTTE10 — Réservation de véhicule + détection de conflit ────────────────
+
+class ReservationVehicule(models.Model):
+    """Réservation datée d'un véhicule du parc sur une plage horaire.
+
+    Réserve un ``Vehicule`` de la même société entre ``debut`` et ``fin`` pour
+    un usage donné (mission, déplacement chantier…). Le conducteur prévu est
+    facultatif (``conducteur`` nullable). La **détection de conflit** garantit
+    qu'aucune réservation active (statut ``demandee`` ou ``confirmee``) ne se
+    chevauche pour le même véhicule : deux plages [a1,a2) et [b1,b2) se
+    chevauchent si ``a1 < b2`` ET ``b1 < a2``. La règle est vérifiée côté
+    serveur (service ``reservations_en_conflit`` + sérialiseur), pas par une
+    contrainte DB — les réservations annulées peuvent légitimement se superposer
+    à de nouvelles.
+
+    Multi-tenant : ``company`` est posée côté serveur, jamais lue du corps de
+    requête.
+    """
+
+    class Statut(models.TextChoices):
+        DEMANDEE = 'demandee', 'Demandée'
+        CONFIRMEE = 'confirmee', 'Confirmée'
+        ANNULEE = 'annulee', 'Annulée'
+
+    # Statuts qui « occupent » le véhicule (entrent dans la détection de conflit).
+    STATUTS_ACTIFS = (Statut.DEMANDEE, Statut.CONFIRMEE)
+
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='reservations_flotte',
+        verbose_name='Société',
+    )
+    vehicule = models.ForeignKey(
+        'Vehicule',
+        on_delete=models.CASCADE,
+        related_name='reservations_flotte',
+        verbose_name='Véhicule',
+    )
+    conducteur = models.ForeignKey(
+        'Conducteur',
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='reservations_flotte',
+        verbose_name='Conducteur prévu',
+    )
+    debut = models.DateTimeField(verbose_name='Début')
+    fin = models.DateTimeField(verbose_name='Fin')
+    motif = models.CharField(
+        max_length=200, blank=True, verbose_name='Motif')
+    statut = models.CharField(
+        max_length=20, choices=Statut.choices, default=Statut.DEMANDEE,
+        verbose_name='Statut')
+    notes = models.TextField(blank=True, verbose_name='Notes')
+    date_creation = models.DateTimeField(
+        auto_now_add=True, verbose_name='Créé le')
+
+    class Meta:
+        verbose_name = 'Réservation de véhicule'
+        verbose_name_plural = 'Réservations de véhicule'
+        ordering = ['-debut']
+        indexes = [
+            models.Index(
+                fields=['company', 'vehicule'],
+                name='flotte_resa_co_veh_idx',
+            ),
+        ]
+
+    def clean(self):
+        """Valide que ``fin > debut``."""
+        if self.debut is not None and self.fin is not None \
+                and self.fin <= self.debut:
+            raise ValidationError(
+                "La date de fin doit être postérieure à la date de début.")
+
+    def __str__(self):
+        return (
+            f'{self.vehicule} — '
+            f'{self.debut:%Y-%m-%d %H:%M} → {self.fin:%Y-%m-%d %H:%M}'
+        )
+
+
 # ── FLOTTE7 — Conducteurs / chauffeurs ────────────────────────────────────────
 
 class Conducteur(models.Model):

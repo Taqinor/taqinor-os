@@ -8,7 +8,14 @@ import datetime
 
 from django.db import models
 
-from .models import ActifFlotte, AffectationConducteur, Conducteur, EnginRoulant, Vehicule
+from .models import (
+    ActifFlotte,
+    AffectationConducteur,
+    Conducteur,
+    EnginRoulant,
+    ReservationVehicule,
+    Vehicule,
+)
 
 
 def vehicules_de_la_societe(company):
@@ -119,6 +126,19 @@ def affectations_du_conducteur(company, conducteur_id):
     )
 
 
+def reservations_de_la_societe(company, vehicule_id=None, actives_only=False):
+    """FLOTTE10 — Réservations de véhicules d'une société (queryset scopé).
+
+    ``vehicule_id`` filtre sur un véhicule ; ``actives_only`` ne retourne que
+    les réservations qui occupent le véhicule (statut ``demandee``/``confirmee``).
+    """
+    qs = ReservationVehicule.objects.filter(company=company).select_related(
+        'vehicule', 'conducteur')
+    if vehicule_id is not None:
+        qs = qs.filter(vehicule_id=vehicule_id)
+    if actives_only:
+        qs = qs.filter(statut__in=ReservationVehicule.STATUTS_ACTIFS)
+    return qs
 def emplacement_stock_label(company, emplacement_stock_id):
     """FLOTTE3 — Libellé de l'emplacement de stock lié à un véhicule.
 
