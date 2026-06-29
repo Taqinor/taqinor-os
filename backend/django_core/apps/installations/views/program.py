@@ -27,7 +27,7 @@ from ..models import (
     Projet, ProjetTache, ProjetChantier, ProjetDevis, ProjetTicket,
     BudgetProjet, BudgetEngagement,
 )
-from ..selectors import budget_projet_synthese
+from ..selectors import budget_projet_synthese, projet_pnl
 from ..serializers import (
     ProjetSerializer, ProjetTacheSerializer, ProjetChantierSerializer,
     ProjetDevisSerializer, ProjetTicketSerializer,
@@ -142,6 +142,17 @@ class ProjetViewSet(TenantMixin, viewsets.ModelViewSet):
         intact)."""
         return self._attach(
             request, ProjetTicket, 'ticket', ProjetTicketSerializer)
+
+    @action(detail=True, methods=['get'],
+            permission_classes=[IsResponsableOrAdmin])
+    def pnl(self, request, pk=None):
+        """FG295 — P&L de projet CONSOLIDÉ : revenu (factures client des devis
+        du programme) − coûts (matériel/sous-traitance/imports + main-d'œuvre)
+        → marge brute + marge %, sur TOUS les chantiers. Réservé
+        responsable/admin (expose des coûts d'achat), via le sélecteur
+        `projet_pnl` (lectures cross-app sans import de modèle)."""
+        projet = self.get_object()
+        return Response(projet_pnl(projet))
 
 
 class ProjetChantierViewSet(TenantMixin, viewsets.ModelViewSet):

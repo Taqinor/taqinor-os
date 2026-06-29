@@ -284,6 +284,101 @@ def budget_projet_synthese(budget):
     }
 
 
+# ── FG295 — P&L de projet consolidé (revenu − coûts → marge) ─────────────────
+# Le sélecteur ``projet_pnl`` consolide, pour UN ``Projet``, le résultat de TOUS
+# ses chantiers : REVENU (factures CLIENT émises sur les devis du programme) −
+# COÛTS (matériel via BCF/factures fournisseur, sous-traitance, imports, et
+# main-d'œuvre des chantiers) → marge brute + marge %. Il RÉUTILISE l'agrégation
+# des coûts réels de FG294 (``_engagements_fournisseur`` + ``_main_oeuvre_reelle``)
+# et lit les apps ``ventes``/``stock`` SANS importer leurs modèles
+# (``apps.get_model`` + ``apps.stock.selectors`` — import-linter safe). Toute
+# donnée manquante DÉGRADE proprement à 0 ; AUCUN statut n'est touché.
+
+def _factures_revenu_programme(projet, company):
+    """(Σ revenu HT, Σ revenu TTC) des factures CLIENT émises sur les devis du
+    programme. Lu via ``apps.get_model('ventes', 'Facture')`` — aucune arête
+    d'import vers ``ventes`` au chargement. Les factures ANNULÉES sont exclues
+    (elles ne sont pas un revenu). Une facture introuvable / illisible dégrade
+    à 0. Le revenu est scopé société (jamais la facture d'une autre société)."""
+    from decimal import Decimal
+    from django.apps import apps as django_apps
+    devis_ids = list(projet.devis.values_list('devis_id', flat=True))
+    if not devis_ids:
+        return Decimal('0'), Decimal('0')
+    facture_model = django_apps.get_model('ventes', 'Facture')
+    revenu_ht = Decimal('0')
+    revenu_ttc = Decimal('0')
+    factures = (facture_model.objects
+                .filter(devis_id__in=devis_ids, company=company)
+                .exclude(statut='annulee'))
+    for facture in factures:
+        try:
+            revenu_ht += _dec(facture.total_ht)
+            revenu_ttc += _dec(facture.total_ttc)
+        except Exception:  # pragma: no cover - défensif
+            continue
+    return revenu_ht, revenu_ttc
+
+
+def projet_pnl(projet):
+    """FG295 — P&L de projet CONSOLIDÉ : résultat (marge) de TOUS les chantiers
+    d'un programme, sous-traitance et imports inclus.
+
+    REVENU = Σ factures CLIENT émises sur les devis du programme (HT/TTC) ;
+    COÛTS = coûts RÉELS encourus = dépensé fournisseur (matériel + sous-traitance
+    + divers/imports, via les ``BudgetEngagement`` du budget du programme) +
+    main-d'œuvre des chantiers (jours réels × tarif). On RÉUTILISE l'agrégation
+    de FG294 : si le programme n'a pas de budget, le coût fournisseur dégrade à 0
+    et seule la main-d'œuvre est comptée (tarif 0 → 0).
+
+    Renvoie un dict PLAT (jamais d'instance de modèle d'une autre app) :
+      ``devise`` ; ``revenu`` (ht/ttc) ; ``couts`` (par catégorie + total) ;
+      ``marge_brute`` (revenu HT − coûts) ; ``marge_pct`` (marge / revenu HT,
+      0 si revenu nul) ; ``main_oeuvre_jours_reels``. Lecture seule, import-linter
+      safe (lectures cross-app via ``apps.get_model`` / ``apps.stock.selectors``).
+    """
+    from decimal import Decimal
+    company = projet.company
+
+    revenu_ht, revenu_ttc = _factures_revenu_programme(projet, company)
+
+    # ── Coûts réels — réutilise l'agrégation FG294 ──────────────────────────
+    # Coûts fournisseur (matériel / sous-traitance / divers-imports) = DÉPENSÉ
+    # des factures fournisseur rattachées au budget du programme. L'engagé (BCF
+    # commandé non encore facturé) n'est PAS un coût ENCOURU : un P&L compte le
+    # dépensé. Sans budget rattaché → 0 (dégradation propre).
+    budget = getattr(projet, 'budget', None)
+    cats = ('materiel', 'main_oeuvre', 'sous_traitance', 'divers')
+    couts_cat = {c: Decimal('0') for c in cats}
+    tarif_jour = budget.tarif_jour_mo if budget is not None else Decimal('0')
+    if budget is not None:
+        _eng_fourn, dep_fourn = _engagements_fournisseur(budget, company)
+        for c in cats:
+            couts_cat[c] += dep_fourn.get(c, Decimal('0'))
+
+    # Main-d'œuvre des chantiers (jours réels × tarif) — même app, FK directe.
+    mo_jours, mo_cout = _main_oeuvre_reelle(projet, tarif_jour)
+    couts_cat['main_oeuvre'] += mo_cout
+
+    couts_total = sum(couts_cat.values(), Decimal('0'))
+    marge_brute = revenu_ht - couts_total
+    marge_pct = (marge_brute / revenu_ht * Decimal('100')
+                 if revenu_ht > 0 else Decimal('0'))
+
+    def _floats(d):
+        return {k: float(v) for k, v in d.items()}
+
+    return {
+        'projet_id': projet.id,
+        'devise': budget.devise if budget is not None else 'MAD',
+        'revenu': {'ht': float(revenu_ht), 'ttc': float(revenu_ttc)},
+        'couts': {**_floats(couts_cat), 'total': float(couts_total)},
+        'marge_brute': float(marge_brute),
+        'marge_pct': float(marge_pct),
+        'main_oeuvre_jours_reels': float(mo_jours),
+    }
+
+
 def reserve_scoped(company, pk):
     """Réserve (F16 — point de finition) scopée société, par id, ou ``None``.
 
