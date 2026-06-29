@@ -52,6 +52,8 @@ PARAMETRES_DEFAUT_2026 = {
     'taux_cnss_patronal': Decimal('8.98'),
     'taux_amo_salarial': Decimal('2.26'),
     'taux_amo_patronal': Decimal('2.26'),
+    # PAIE23 — Allocations familiales (charge patronale, non plafonnée, ~6,4 %).
+    'taux_allocations_familiales': Decimal('6.4'),
     'taux_formation_pro': Decimal('1.6'),
     # Frais professionnels (déduction IR) :
     'seuil_frais_pro': Decimal('6500'),
@@ -799,6 +801,29 @@ def amo_patronale(parametre, brut, affilie=True):
     return _q(cot)
 
 
+# ── PAIE23 — Allocations familiales (charge patronale, non plafonnée) ───────
+
+def allocations_familiales_patronale(parametre, brut, affilie=True):
+    """Allocations familiales (prestations familiales CNSS) — charge PATRONALE (PAIE23).
+
+    Cotisation EMPLOYEUR NON PLAFONNÉE sur le brut intégral :
+    ``brut × taux_allocations_familiales / 100`` (taux réglementaire ≈ 6,4 %,
+    éditable par société). C'est une charge 100 % PATRONALE : elle figure au
+    bulletin pour information et déclaration CNSS, mais N'ENTRE JAMAIS dans le
+    net du salarié (aucune part salariale, aucune retenue).
+
+    Le drapeau ``affilie`` reprend l'affiliation CNSS de l'employé
+    (``ProfilPaie.affilie_cnss``) — les allocations familiales sont collectées
+    avec la CNSS. Renvoie ``0`` si non affilié ou ``parametre`` absent. Decimal
+    au centime.
+    """
+    if parametre is None or not affilie:
+        return Decimal('0.00')
+    taux = Decimal(parametre.taux_allocations_familiales or 0)
+    cot = Decimal(brut or 0) * taux / Decimal('100')
+    return _q(cot)
+
+
 # ── PAIE20 — Cotisation CIMR OPTIONNELLE (taux par employé adhérent) ─────────
 
 def cimr_salariale(brut, affilie=False, taux=Decimal('0')):
@@ -980,6 +1005,12 @@ def calculer_bulletin(profil, periode, personnes_a_charge=0):
     amo = amo_salariale(parametre, brut, profil.affilie_amo)
     amo_pat = amo_patronale(parametre, brut, profil.affilie_amo)
 
+    # 3bis. Allocations familiales — PAIE23 (charge 100 % PATRONALE, non
+    # plafonnée). Collectée avec la CNSS → suit l'affiliation CNSS du profil.
+    # N'entre JAMAIS dans le net du salarié (aucune part salariale).
+    alloc_fam = allocations_familiales_patronale(
+        parametre, brut, profil.affilie_cnss)
+
     # 4. CIMR (PAIE20) — OPTIONNELLE : seuls les profils adhérents cotisent,
     # chacun avec SON taux propre. Non adhérent → 0 (défaut).
     cimr = cimr_salariale(brut, profil.affilie_cimr, profil.taux_cimr_salarial)
@@ -1013,8 +1044,20 @@ def calculer_bulletin(profil, periode, personnes_a_charge=0):
     net_a_payer = brut - cnss - amo - cimr - ir - retenues_variables
     net_a_payer = _q(net_a_payer)
 
-    # PAIE18/PAIE19 — Total des charges patronales (coût employeur), informatif.
-    charges_patronales = _q(cnss_pat + amo_pat)
+    # PAIE18/PAIE19/PAIE23 — Total des charges patronales (coût employeur),
+    # informatif : CNSS + AMO + allocations familiales patronales.
+    charges_patronales = _q(cnss_pat + amo_pat + alloc_fam)
+
+    # PAIE23 — Ligne EMPLOYEUR informative pour les allocations familiales.
+    # Type cotisation, marquée part patronale ; comme toute charge patronale
+    # elle ne diminue PAS le net (cf. calcul du net à payer plus haut).
+    if alloc_fam > 0:
+        lignes.append({
+            'code': 'ALLOC_FAM',
+            'libelle': 'Allocations familiales (part patronale)',
+            'type': Rubrique.TYPE_COTISATION,
+            'montant': alloc_fam,
+        })
 
     return {
         'brut': _q(brut),
@@ -1023,6 +1066,7 @@ def calculer_bulletin(profil, periode, personnes_a_charge=0):
         'cnss_patronale': cnss_pat,
         'amo_salariale': amo,
         'amo_patronale': amo_pat,
+        'allocations_familiales': alloc_fam,
         'cimr_salariale': cimr,
         'frais_professionnels': frais_pro,
         'net_imposable': net_imposable,

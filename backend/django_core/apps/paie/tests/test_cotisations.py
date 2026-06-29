@@ -88,10 +88,12 @@ class BulletinCnssTests(TestCase):
         self.assertEqual(res['cnss_salariale'], Decimal('268.80'))
         self.assertEqual(res['cnss_patronale'], Decimal('538.80'))
         # charges_patronales agrège la CNSS patronale + l'AMO patronale
-        # (PAIE19) + tout autre poste patronal — assertion robuste à l'ajout.
+        # (PAIE19) + les allocations familiales (PAIE23) + tout autre poste
+        # patronal — assertion robuste à l'ajout.
         self.assertEqual(
             res['charges_patronales'],
-            res['cnss_patronale'] + res['amo_patronale'])
+            res['cnss_patronale'] + res['amo_patronale']
+            + res['allocations_familiales'])
         self.assertGreaterEqual(res['charges_patronales'], Decimal('538.80'))
 
     def test_charges_patronales_hors_net(self):
