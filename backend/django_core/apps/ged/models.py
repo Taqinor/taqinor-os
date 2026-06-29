@@ -35,6 +35,45 @@ from pgvector.django import VectorField
 # exigerait une migration destructive (jamais fait à la volée).
 EMBEDDING_DIM = 1024
 
+# GED17 — Cycle de vie documentaire (statuts LOCAUX à la GED).
+#
+# Ce cycle de vie est un attribut PROPRE au document (« où en est ce document
+# dans son processus de validation interne »). Il est DISTINCT et SÉPARÉ du
+# funnel de pipeline commercial de `STAGES.py` (rule #2) : les deux couches ne
+# se croisent jamais et on n'importe surtout PAS `STAGES.py` ici.
+#
+# Machine à états (transitions autorisées seulement) :
+#
+#   brouillon ─▶ revue
+#   revue     ─▶ approuve | brouillon (renvoyé pour correction)
+#   approuve  ─▶ archive  | obsolete
+#   archive   ─▶ obsolete | approuve (réactivation)
+#   obsolete  ─▶ brouillon (remise en chantier d'une nouvelle itération)
+#
+# Toute autre transition est refusée par `services.change_lifecycle_status`.
+LIFECYCLE_BROUILLON = 'brouillon'
+LIFECYCLE_REVUE = 'revue'
+LIFECYCLE_APPROUVE = 'approuve'
+LIFECYCLE_ARCHIVE = 'archive'
+LIFECYCLE_OBSOLETE = 'obsolete'
+
+LIFECYCLE_CHOICES = [
+    (LIFECYCLE_BROUILLON, 'Brouillon'),
+    (LIFECYCLE_REVUE, 'En revue'),
+    (LIFECYCLE_APPROUVE, 'Approuvé'),
+    (LIFECYCLE_ARCHIVE, 'Archivé'),
+    (LIFECYCLE_OBSOLETE, 'Obsolète'),
+]
+
+# Transitions autorisées : statut courant -> ensemble des statuts atteignables.
+LIFECYCLE_TRANSITIONS = {
+    LIFECYCLE_BROUILLON: {LIFECYCLE_REVUE},
+    LIFECYCLE_REVUE: {LIFECYCLE_APPROUVE, LIFECYCLE_BROUILLON},
+    LIFECYCLE_APPROUVE: {LIFECYCLE_ARCHIVE, LIFECYCLE_OBSOLETE},
+    LIFECYCLE_ARCHIVE: {LIFECYCLE_OBSOLETE, LIFECYCLE_APPROUVE},
+    LIFECYCLE_OBSOLETE: {LIFECYCLE_BROUILLON},
+}
+
 
 class Cabinet(models.Model):
     """Espace documentaire racine (« armoire ») d'une société.
@@ -248,6 +287,14 @@ class Document(models.Model):
         verbose_name="verrouille par")
     locked_at = models.DateTimeField(null=True, blank=True,
                                      verbose_name="verrouille le")
+    # GED17 — cycle de vie documentaire (statut LOCAL à la GED, séparé du
+    # funnel STAGES.py). Tout document naît « brouillon » ; les transitions
+    # sont gardées côté serveur par `services.change_lifecycle_status` selon la
+    # machine à états `LIFECYCLE_TRANSITIONS`. Jamais muté directement par
+    # l'API (lecture seule au serializer) — uniquement via l'action dédiée.
+    statut = models.CharField(
+        max_length=12, choices=LIFECYCLE_CHOICES, default=LIFECYCLE_BROUILLON,
+        verbose_name="statut du cycle de vie")
     created_by = models.ForeignKey(
         settings.AUTH_USER_MODEL, on_delete=models.SET_NULL,
         null=True, blank=True, related_name='ged_documents_crees')
@@ -264,12 +311,24 @@ class Document(models.Model):
             GinIndex(fields=['search_vector'], name='ged_doc_search_gin'),
             # GED16 — index rapide sur les documents verrouillés par un utilisateur.
             models.Index(fields=['locked_by'], name='ged_doc_locked_by_idx'),
+            # GED17 — filtre rapide par statut du cycle de vie (par société).
+            models.Index(fields=['company', 'statut'],
+                         name='ged_doc_co_statut_idx'),
         ]
 
     @property
     def is_locked(self):
         """True si le document est actuellement verrouillé (check-out actif)."""
         return self.locked_by_id is not None
+
+    @property
+    def transitions_autorisees(self):
+        """GED17 — statuts atteignables depuis le statut courant (liste triée).
+
+        Sert l'UI (boutons d'avancement disponibles) et reste l'unique source
+        de vérité de la machine à états, partagée avec
+        `services.change_lifecycle_status`."""
+        return sorted(LIFECYCLE_TRANSITIONS.get(self.statut, set()))
 
     def __str__(self):
         return self.nom

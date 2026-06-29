@@ -2131,3 +2131,168 @@ class CheckoutCheckinTests(GedBase):
         self.assertEqual(resp.status_code, 200, resp.data)
         self.assertFalse(resp.data['is_locked'])
         self.assertIsNone(resp.data['locked_by'])
+
+
+# ── GED17 — Cycle de vie documentaire (machine à états) ─────────────
+class CycleDeVieTests(GedBase):
+    """Tests du cycle de vie documentaire (GED17).
+
+    Couvre :
+      * un document naît « brouillon » ;
+      * une transition autorisée avance le statut ;
+      * une transition NON autorisée est refusée (400 / ValueError) ;
+      * un statut inconnu est rejeté ;
+      * isolation par société (on n'avance pas un document d'une autre société) ;
+      * le serializer expose statut + transitions autorisées ;
+      * filtre ?statut=… .
+
+    Statuts LOCAUX à la GED — jamais le funnel STAGES.py.
+    """
+
+    def setUp(self):
+        super().setUp()
+        self.folder_a = Folder.objects.create(
+            company=self.co_a, cabinet=self.cab_a, nom="GED17-docs")
+        self.doc_a = Document.objects.create(
+            company=self.co_a, folder=self.folder_a, nom="Doc cycle de vie")
+
+    # ── modèle / valeur par défaut ─────────────────────────────────────
+
+    def test_document_starts_brouillon(self):
+        """Un document neuf est au statut « brouillon »."""
+        from apps.ged.models import LIFECYCLE_BROUILLON
+        self.assertEqual(self.doc_a.statut, LIFECYCLE_BROUILLON)
+        self.assertEqual(
+            self.doc_a.transitions_autorisees, ['revue'])
+
+    # ── service : transitions ──────────────────────────────────────────
+
+    def test_service_valid_transition_advances(self):
+        """change_lifecycle_status applique une transition autorisée."""
+        from apps.ged.models import LIFECYCLE_REVUE
+        doc = services.change_lifecycle_status(
+            self.doc_a, LIFECYCLE_REVUE, user=self.admin_a)
+        doc.refresh_from_db()
+        self.assertEqual(doc.statut, LIFECYCLE_REVUE)
+
+    def test_service_full_happy_path(self):
+        """Parcours complet brouillon→revue→approuvé→archivé→obsolète."""
+        from apps.ged.models import (
+            LIFECYCLE_APPROUVE, LIFECYCLE_ARCHIVE, LIFECYCLE_OBSOLETE,
+            LIFECYCLE_REVUE,
+        )
+        for cible in (LIFECYCLE_REVUE, LIFECYCLE_APPROUVE,
+                      LIFECYCLE_ARCHIVE, LIFECYCLE_OBSOLETE):
+            services.change_lifecycle_status(
+                self.doc_a, cible, user=self.admin_a)
+            self.doc_a.refresh_from_db()
+        self.assertEqual(self.doc_a.statut, LIFECYCLE_OBSOLETE)
+
+    def test_service_rejects_invalid_transition(self):
+        """Une transition NON permise (brouillon→approuvé) lève ValueError."""
+        from apps.ged.models import LIFECYCLE_APPROUVE
+        with self.assertRaises(ValueError):
+            services.change_lifecycle_status(
+                self.doc_a, LIFECYCLE_APPROUVE, user=self.admin_a)
+        self.doc_a.refresh_from_db()
+        self.assertEqual(self.doc_a.statut, 'brouillon')
+
+    def test_service_rejects_unknown_status(self):
+        """Un statut hors vocabulaire est rejeté (ValueError)."""
+        with self.assertRaises(ValueError):
+            services.change_lifecycle_status(
+                self.doc_a, 'nimporte', user=self.admin_a)
+
+    def test_service_rejects_same_status_noop(self):
+        """Avancer vers le statut courant n'est pas une transition valide."""
+        with self.assertRaises(ValueError):
+            services.change_lifecycle_status(
+                self.doc_a, 'brouillon', user=self.admin_a)
+
+    def test_service_rejects_other_company(self):
+        """change_lifecycle_status refuse un document d'une autre société."""
+        with self.assertRaises(PermissionError):
+            services.change_lifecycle_status(
+                self.doc_a, 'revue', user=self.admin_b)
+
+    # ── endpoint ───────────────────────────────────────────────────────
+
+    def test_endpoint_advances_status(self):
+        """POST cycle-vie avance le statut et renvoie le nouvel état."""
+        api = auth(self.admin_a)
+        resp = api.post(
+            f'/api/django/ged/documents/{self.doc_a.id}/cycle-vie/',
+            {'statut': 'revue'}, format='json')
+        self.assertEqual(resp.status_code, 200, resp.data)
+        self.assertEqual(resp.data['statut'], 'revue')
+        self.doc_a.refresh_from_db()
+        self.assertEqual(self.doc_a.statut, 'revue')
+
+    def test_endpoint_rejects_invalid_transition(self):
+        """POST cycle-vie refuse une transition non permise (400)."""
+        api = auth(self.admin_a)
+        resp = api.post(
+            f'/api/django/ged/documents/{self.doc_a.id}/cycle-vie/',
+            {'statut': 'archive'}, format='json')
+        self.assertEqual(resp.status_code, 400, resp.data)
+        self.doc_a.refresh_from_db()
+        self.assertEqual(self.doc_a.statut, 'brouillon')
+
+    def test_endpoint_requires_statut(self):
+        """POST cycle-vie sans statut renvoie 400."""
+        api = auth(self.admin_a)
+        resp = api.post(
+            f'/api/django/ged/documents/{self.doc_a.id}/cycle-vie/',
+            {}, format='json')
+        self.assertEqual(resp.status_code, 400, resp.data)
+
+    def test_endpoint_cannot_touch_other_company_document(self):
+        """Un admin de B ne peut pas avancer un document de A (404)."""
+        api = auth(self.admin_b)
+        resp = api.post(
+            f'/api/django/ged/documents/{self.doc_a.id}/cycle-vie/',
+            {'statut': 'revue'}, format='json')
+        self.assertEqual(resp.status_code, 404)
+        self.doc_a.refresh_from_db()
+        self.assertEqual(self.doc_a.statut, 'brouillon')
+
+    def test_endpoint_requires_auth(self):
+        """POST cycle-vie sans authentification est refusé."""
+        resp = APIClient().post(
+            f'/api/django/ged/documents/{self.doc_a.id}/cycle-vie/',
+            {'statut': 'revue'}, format='json')
+        self.assertIn(resp.status_code, (401, 403))
+
+    # ── serializer / filtre ────────────────────────────────────────────
+
+    def test_serializer_exposes_status_and_transitions(self):
+        """GET /documents/<id>/ expose statut, statut_display, transitions."""
+        api = auth(self.admin_a)
+        resp = api.get(f'/api/django/ged/documents/{self.doc_a.id}/')
+        self.assertEqual(resp.status_code, 200, resp.data)
+        self.assertEqual(resp.data['statut'], 'brouillon')
+        self.assertEqual(resp.data['statut_display'], 'Brouillon')
+        self.assertEqual(resp.data['transitions_autorisees'], ['revue'])
+
+    def test_status_is_read_only_on_patch(self):
+        """Un PATCH direct ne peut pas muter le statut (action dédiée seule)."""
+        api = auth(self.admin_a)
+        resp = api.patch(
+            f'/api/django/ged/documents/{self.doc_a.id}/',
+            {'statut': 'approuve'}, format='json')
+        self.assertEqual(resp.status_code, 200, resp.data)
+        self.doc_a.refresh_from_db()
+        self.assertEqual(self.doc_a.statut, 'brouillon')
+
+    def test_filter_by_statut(self):
+        """?statut=revue ne renvoie que les documents à ce statut."""
+        services.change_lifecycle_status(
+            self.doc_a, 'revue', user=self.admin_a)
+        Document.objects.create(
+            company=self.co_a, folder=self.folder_a, nom="Encore brouillon")
+        api = auth(self.admin_a)
+        resp = api.get('/api/django/ged/documents/?statut=revue')
+        self.assertEqual(resp.status_code, 200, resp.data)
+        noms = [r['nom'] for r in rows(resp)]
+        self.assertIn('Doc cycle de vie', noms)
+        self.assertNotIn('Encore brouillon', noms)

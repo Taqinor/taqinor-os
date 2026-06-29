@@ -7,6 +7,8 @@ acceptée du corps de requête (multi-tenant).
 import datetime
 
 from rest_framework import filters, viewsets
+from rest_framework.decorators import action
+from rest_framework.response import Response
 
 from authentication.mixins import TenantMixin
 from authentication.permissions import IsAnyRole, IsResponsableOrAdmin
@@ -34,7 +36,7 @@ from .serializers import (
     VehiculeSerializer,
 )
 
-READ_ACTIONS = ['list', 'retrieve']
+READ_ACTIONS = ['list', 'retrieve', 'consommation']
 
 
 class _FlotteBaseViewSet(TenantMixin, viewsets.ModelViewSet):
@@ -315,3 +317,36 @@ class PleinCarburantViewSet(_FlotteBaseViewSet):
             qs = qs.filter(unite=unite)
 
         return qs
+
+    @action(detail=False, methods=['get'])
+    def consommation(self, request):
+        """FLOTTE13 — Consommation calculée d'un véhicule (L/100 km et
+        kWh/100 km), à partir du carnet de carburant et du kilométrage.
+
+        ``?vehicule=<id>`` (obligatoire). Lecture seule, scopée société : le
+        véhicule doit appartenir à la société courante (sinon 404, comme la
+        liste). Renvoie l'agrégat par unité + le détail des segments
+        plein-à-plein (voir ``selectors.consommation_vehicule``).
+        """
+        company = request.user.company
+        vehicule_param = request.query_params.get('vehicule')
+        if not vehicule_param:
+            return Response(
+                {'vehicule': "Le paramètre 'vehicule' est obligatoire."},
+                status=400)
+        try:
+            vehicule_id = int(vehicule_param)
+        except (ValueError, TypeError):
+            return Response(
+                {'vehicule': "Le paramètre 'vehicule' doit être un entier."},
+                status=400)
+
+        # Scope société : le véhicule doit appartenir à la société courante.
+        if not Vehicule.objects.filter(
+                company=company, id=vehicule_id).exists():
+            return Response(
+                {'vehicule': "Véhicule introuvable pour cette société."},
+                status=404)
+
+        from .selectors import consommation_vehicule
+        return Response(consommation_vehicule(company, vehicule_id))

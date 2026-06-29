@@ -8,7 +8,59 @@ cycles. Quand une app cible n'a pas de sélecteur exploitable, on DÉGRADE
 proprement : on renvoie le ``libelle`` mis en cache et les ids stockés, sans
 rien importer.
 """
-from .models import ContratLien
+from .models import ContratLien, RegleApprobation
+
+
+def regles_approbation(company):
+    """Règles d'approbation ACTIVES d'une société (QuerySet ordonné).
+
+    Lecture seule, scopée société. Ordre par priorité décroissante puis id,
+    cohérent avec ``Meta.ordering`` du modèle.
+    """
+    return RegleApprobation.objects.filter(
+        company=company, actif=True).order_by('-priorite', 'id')
+
+
+def resoudre_regle_approbation(company, montant, type_contrat=None):
+    """Résout la règle d'approbation la plus SPÉCIFIQUE couvrant un cas.
+
+    Parcourt les règles actives de ``company`` qui couvrent le couple
+    (``montant``, ``type_contrat``) via ``RegleApprobation.couvre`` et renvoie la
+    plus spécifique (voir docstring du modèle). Renvoie ``None`` si aucune règle
+    active ne s'applique — l'appelant décide alors d'un comportement par défaut.
+
+    Aucun seuil n'est codé en dur : tout vient des règles en base.
+    """
+    candidates = [
+        r for r in regles_approbation(company)
+        if r.couvre(montant, type_contrat)
+    ]
+    if not candidates:
+        return None
+
+    def _cle(regle):
+        # Tri décroissant : la plus spécifique en tête.
+        # 1) règle ciblant un type précis prime sur « tous types ».
+        type_specifique = 1 if regle.type_contrat else 0
+        # 2) intervalle borné plus étroit prime (ouvert = moins spécifique).
+        largeur = regle.largeur_intervalle()
+        intervalle_borne = 1 if largeur is not None else 0
+        # Plus étroit d'abord → on trie sur -largeur ; on neutralise pour les
+        # intervalles ouverts en les classant après les bornés.
+        largeur_tri = -largeur if largeur is not None else None
+        return (
+            type_specifique,
+            intervalle_borne,
+            # Pour les bornés : intervalle le plus étroit gagne (largeur_tri le
+            # plus grand car négatif). Les ouverts (None) restent derrière grâce
+            # à intervalle_borne=0, donc largeur_tri n'est lu que pour les bornés.
+            largeur_tri if largeur_tri is not None else 0,
+            regle.priorite,
+            regle.id,
+        )
+
+    candidates.sort(key=_cle, reverse=True)
+    return candidates[0]
 
 
 def liens_for_contrat(contrat):

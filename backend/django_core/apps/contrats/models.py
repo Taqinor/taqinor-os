@@ -529,3 +529,141 @@ class ClauseContrat(models.Model):
             if not self.corps:
                 self.corps = self.clause.corps
         return self
+
+
+class RegleApprobation(models.Model):
+    """Règle d'approbation d'un contrat, par seuil de montant et/ou type (CONTRAT13).
+
+    Détermine le ou les approbateur(s) requis avant de finaliser/signer un
+    contrat, de façon DATA-DRIVEN : chaque règle déclare un intervalle de
+    montant ``[montant_min, montant_max]`` (bornes optionnelles) et,
+    optionnellement, un ``type_contrat`` ciblé. Le résolveur
+    (``selectors.resoudre_regle_approbation``) choisit, parmi les règles
+    actives de la société, la plus SPÉCIFIQUE qui couvre un couple
+    (montant, type) donné — sans aucun seuil codé en dur.
+
+    Spécificité (la plus spécifique gagne, à intervalle couvrant égal) :
+    1. une règle ciblant le ``type_contrat`` exact prime sur une règle « tous
+       types » (``type_contrat`` vide) ;
+    2. à ce niveau égal, la règle dont l'intervalle de montant est le plus
+       étroit prime ;
+    3. à intervalle égal, ``priorite`` (plus grand d'abord) départage, puis
+       l'``id`` le plus récent.
+
+    Le résultat décrit l'exigence d'approbation : le ``niveau_approbation``
+    requis (palier rôle) et un ``nombre_approbateurs`` minimal. La règle est
+    purement déclarative — elle ne change AUCUN statut (préservation des
+    statuts) ; un service appelant peut la consulter pour décider.
+
+    Multi-tenant : ``company`` est posée côté serveur (jamais lue du corps).
+    Lien de domaine LÂCHE uniquement (``type_contrat`` reprend les choix de
+    ``Contrat`` mais reste une simple valeur — aucun import cross-app).
+    """
+
+    class NiveauApprobation(models.TextChoices):
+        RESPONSABLE = 'responsable', 'Responsable'
+        ADMINISTRATEUR = 'administrateur', 'Administrateur'
+        DIRECTION = 'direction', 'Direction'
+
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='contrats_regles_approbation',
+        verbose_name='Société',
+    )
+    libelle = models.CharField(max_length=200, verbose_name='Libellé')
+    # Type de contrat ciblé (reprend les choix de Contrat). Vide = tous types.
+    type_contrat = models.CharField(
+        max_length=20,
+        choices=Contrat.TypeContrat.choices,
+        blank=True,
+        default='',
+        verbose_name='Type de contrat ciblé',
+    )
+    # Bornes de montant (incluses). NULL = borne non fixée (ouverte de ce côté).
+    montant_min = models.DecimalField(
+        max_digits=14, decimal_places=2, null=True, blank=True,
+        verbose_name='Montant minimum')
+    montant_max = models.DecimalField(
+        max_digits=14, decimal_places=2, null=True, blank=True,
+        verbose_name='Montant maximum')
+    # Exigence d'approbation portée par la règle.
+    niveau_approbation = models.CharField(
+        max_length=20,
+        choices=NiveauApprobation.choices,
+        default=NiveauApprobation.RESPONSABLE,
+        verbose_name="Niveau d'approbation requis",
+    )
+    nombre_approbateurs = models.PositiveIntegerField(
+        default=1, verbose_name="Nombre d'approbateurs requis")
+    # Départage à intervalle/spécificité égaux (plus grand d'abord).
+    priorite = models.PositiveIntegerField(default=0, verbose_name='Priorité')
+    actif = models.BooleanField(default=True, verbose_name='Actif')
+    date_creation = models.DateTimeField(
+        auto_now_add=True, verbose_name='Créé le')
+
+    class Meta:
+        verbose_name = "Règle d'approbation"
+        verbose_name_plural = "Règles d'approbation"
+        ordering = ['-priorite', 'id']
+        indexes = [
+            models.Index(
+                fields=['company', 'actif'],
+                name='contrats_regleapp_co_act',
+            ),
+            models.Index(
+                fields=['company', 'type_contrat'],
+                name='contrats_regleapp_co_typ',
+            ),
+        ]
+
+    def __str__(self):
+        cible = self.get_type_contrat_display() if self.type_contrat else 'Tous types'
+        return f'{self.libelle} ({cible})'
+
+    def clean(self):
+        """Valide la cohérence des bornes de montant.
+
+        ``montant_min`` ne peut pas dépasser ``montant_max`` quand les deux sont
+        fixés. Validation appliquée au niveau modèle (et relayée par le
+        sérialiseur), sans jamais bloquer une borne ouverte (NULL).
+        """
+        if (
+            self.montant_min is not None
+            and self.montant_max is not None
+            and self.montant_min > self.montant_max
+        ):
+            raise ValidationError(
+                'Le montant minimum ne peut pas dépasser le montant maximum.')
+
+    def couvre(self, montant, type_contrat=None):
+        """Indique si la règle couvre un couple (montant, type_contrat).
+
+        - Le ``type_contrat`` est couvert si la règle vise « tous types »
+          (``type_contrat`` vide) OU correspond exactement au type demandé.
+        - Le ``montant`` est couvert s'il tombe dans ``[montant_min,
+          montant_max]`` (bornes incluses ; une borne NULL est ouverte).
+        """
+        if self.type_contrat and type_contrat and self.type_contrat != type_contrat:
+            return False
+        if self.type_contrat and not type_contrat:
+            # Règle ciblée mais aucun type demandé : ne s'applique pas.
+            return False
+        if montant is None:
+            return self.montant_min is None and self.montant_max is None
+        montant = Decimal(str(montant))
+        if self.montant_min is not None and montant < self.montant_min:
+            return False
+        if self.montant_max is not None and montant > self.montant_max:
+            return False
+        return True
+
+    def largeur_intervalle(self):
+        """Largeur de l'intervalle de montant (pour départager la spécificité).
+
+        Une borne ouverte (NULL) compte comme « infinie » : une règle bornée des
+        deux côtés est plus spécifique qu'une règle à borne ouverte.
+        """
+        if self.montant_min is None or self.montant_max is None:
+            return None  # intervalle ouvert → moins spécifique
+        return self.montant_max - self.montant_min

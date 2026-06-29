@@ -2,6 +2,8 @@ from django.contrib import admin
 
 from .models import (
     AffectationRoster,
+    Competence,
+    CompetenceEmploye,
     DemandeConge,
     Departement,
     DocumentEmploye,
@@ -125,3 +127,18 @@ class IncidentPresenceAdmin(admin.ModelAdmin):
                     'justifie', 'company')
     list_filter = ('type_incident', 'justifie')
     search_fields = ('employe__matricule', 'employe__nom', 'employe__prenom')
+
+
+@admin.register(Competence)
+class CompetenceAdmin(admin.ModelAdmin):
+    list_display = ('code', 'libelle', 'domaine', 'actif', 'company')
+    list_filter = ('domaine', 'actif')
+    search_fields = ('code', 'libelle', 'description')
+
+
+@admin.register(CompetenceEmploye)
+class CompetenceEmployeAdmin(admin.ModelAdmin):
+    list_display = ('employe', 'competence', 'niveau', 'evalue_le', 'company')
+    list_filter = ('niveau', 'competence__domaine')
+    search_fields = ('employe__matricule', 'employe__nom',
+                     'competence__code', 'competence__libelle')

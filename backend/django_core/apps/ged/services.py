@@ -461,3 +461,50 @@ def assert_not_locked_by_other(document, user):
             "Le document est extrait par un autre utilisateur. "
             "Attendez le check-in avant de téléverser une nouvelle version."
         )
+
+
+def change_lifecycle_status(document, target_status, *, user):
+    """GED17 — Fait avancer un document dans son cycle de vie (statut LOCAL).
+
+    Garde la machine à états `LIFECYCLE_TRANSITIONS` : seule une transition
+    autorisée depuis le statut COURANT vers `target_status` est appliquée ;
+    toute autre lève `ValueError` (→ 400 dans la vue). Ce cycle de vie est
+    DISTINCT du funnel commercial `STAGES.py` (rule #2) — on ne l'importe pas.
+
+    Multi-tenant : refuse si `user.company_id != document.company_id`. La
+    mise à jour est sérialisée (`select_for_update`) pour éviter deux
+    transitions concurrentes depuis le même statut.
+
+    Renvoie le `Document` rafraîchi avec son nouveau statut.
+    """
+    from .models import (
+        Document, LIFECYCLE_CHOICES, LIFECYCLE_TRANSITIONS,
+    )
+    if document.company_id != user.company_id:
+        raise PermissionError("Document inaccessible.")
+    valides = {code for code, _ in LIFECYCLE_CHOICES}
+    if target_status not in valides:
+        raise ValueError(
+            f"Statut « {target_status} » inconnu. "
+            f"Statuts valides : {', '.join(sorted(valides))}."
+        )
+    with transaction.atomic():
+        doc = Document.objects.select_for_update().get(pk=document.pk)
+        if target_status == doc.statut:
+            # Aucune transition réelle — on n'autorise PAS un no-op silencieux :
+            # avancer vers le statut courant n'est pas une transition valide.
+            raise ValueError(
+                f"Le document est déjà au statut « {doc.statut} »."
+            )
+        autorisees = LIFECYCLE_TRANSITIONS.get(doc.statut, set())
+        if target_status not in autorisees:
+            attendus = ', '.join(sorted(autorisees)) or 'aucun'
+            raise ValueError(
+                f"Transition refusée : « {doc.statut} » → "
+                f"« {target_status} » n'est pas permise "
+                f"(transitions possibles : {attendus})."
+            )
+        doc.statut = target_status
+        doc.save(update_fields=['statut', 'updated_at'])
+    document.statut = doc.statut
+    return doc

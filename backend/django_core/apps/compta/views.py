@@ -23,8 +23,8 @@ from .models import (
     BordereauRemise, Caisse, CessionImmobilisation, CompteComptable,
     CompteTresorerie, DotationAmortissement, EcritureComptable, Effet,
     ExerciceComptable, Immobilisation, Journal, LignePrevisionnelTresorerie,
-    LigneReleve, MouvementCaisse, PaymentRun, PeriodeComptable, PlanComptable,
-    Rapprochement, RapprochementBancaire, VirementInterne,
+    LigneReleve, MouvementCaisse, NoteFrais, PaymentRun, PeriodeComptable,
+    PlanComptable, Rapprochement, RapprochementBancaire, VirementInterne,
 )
 from .serializers import (
     BordereauRemiseSerializer, CaisseSerializer,
@@ -33,8 +33,8 @@ from .serializers import (
     DotationAmortissementSerializer, EcritureComptableSerializer,
     EffetSerializer, ExerciceComptableSerializer, ImmobilisationSerializer,
     JournalSerializer, LignePrevisionnelTresorerieSerializer,
-    LigneReleveSerializer, MouvementCaisseSerializer, PaymentRunSerializer,
-    PeriodeComptableSerializer, PlanAmortissementSerializer,
+    LigneReleveSerializer, MouvementCaisseSerializer, NoteFraisSerializer,
+    PaymentRunSerializer, PeriodeComptableSerializer, PlanAmortissementSerializer,
     PlanComptableSerializer, RapprochementBancaireSerializer,
     RapprochementSerializer, VirementInterneSerializer,
 )
@@ -1208,3 +1208,143 @@ class PaymentRunViewSet(_ComptaBaseViewSet):
         resp['Content-Disposition'] = (
             f'attachment; filename="virements_{run.reference or run.id}.csv"')
         return resp
+
+
+# ── FG135 — Notes de frais & remboursements employés ───────────────────────
+
+class NoteFraisViewSet(_ComptaBaseViewSet):
+    """Notes de frais & remboursements employés (FG135).
+
+    Saisie d'une dépense avancée par un employé avec justificatif photo, puis
+    cycle de validation/remboursement par les actions de service : ``soumettre``
+    (brouillon → soumise), ``valider`` (poste la charge : débit classe 6 /
+    crédit 4432 personnel-créditeur), ``rejeter`` (motif figé) et ``rembourser``
+    (poste le paiement : débit 4432 / crédit trésorerie). Société scopée, posée
+    côté serveur ; Admin/Responsable uniquement. Le justificatif accepte un
+    upload de fichier (multipart) ; aucune écriture de statut directe par le
+    corps.
+    """
+    queryset = NoteFrais.objects.select_related(
+        'employe', 'compte_charge', 'compte_tresorerie',
+        'ecriture_charge', 'ecriture_remboursement').all()
+    serializer_class = NoteFraisSerializer
+    filter_backends = [filters.SearchFilter, filters.OrderingFilter]
+    search_fields = ['reference', 'motif']
+    ordering_fields = ['date_frais', 'montant', 'statut', 'id']
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        params = self.request.query_params
+        statut = params.get('statut')
+        if statut:
+            qs = qs.filter(statut=statut)
+        employe = params.get('employe')
+        if employe:
+            qs = qs.filter(employe_id=employe)
+        categorie = params.get('categorie')
+        if categorie:
+            qs = qs.filter(categorie=categorie)
+        return qs
+
+    def create(self, request, *args, **kwargs):
+        serializer = self.get_serializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        vd = serializer.validated_data
+        try:
+            note = services.creer_note_frais(
+                request.user.company,
+                employe=vd['employe'],
+                date_frais=vd['date_frais'],
+                montant=vd['montant'],
+                motif=vd.get('motif', '') or '',
+                categorie=vd.get('categorie'),
+                justificatif=vd.get('justificatif'),
+                compte_charge=vd.get('compte_charge'),
+                user=request.user)
+        except DjangoValidationError as exc:
+            return Response(
+                {'detail': exc.messages[0] if exc.messages else str(exc)},
+                status=status.HTTP_400_BAD_REQUEST)
+        return Response(
+            self.get_serializer(note).data, status=status.HTTP_201_CREATED)
+
+    @action(detail=True, methods=['post'])
+    def soumettre(self, request, pk=None):
+        """Soumet la note pour validation (brouillon → soumise) — FG135."""
+        note = self.get_object()  # scopée société par TenantMixin.
+        try:
+            note = services.soumettre_note_frais(note)
+        except DjangoValidationError as exc:
+            return Response(
+                {'detail': exc.messages[0] if exc.messages else str(exc)},
+                status=status.HTTP_400_BAD_REQUEST)
+        return Response(self.get_serializer(note).data)
+
+    @action(detail=True, methods=['post'])
+    def valider(self, request, pk=None):
+        """Valide la note et poste la charge au grand livre (FG135).
+
+        Corps : ``{compte_charge?}``. Refusé en période close. Idempotent.
+        """
+        note = self.get_object()  # scopée société par TenantMixin.
+        compte_charge = None
+        cc_id = request.data.get('compte_charge')
+        if cc_id:
+            compte_charge = CompteComptable.objects.filter(
+                company=request.user.company, id=cc_id).first()
+            if compte_charge is None:
+                return Response(
+                    {'detail': 'Compte de charge inconnu.'},
+                    status=status.HTTP_400_BAD_REQUEST)
+        try:
+            note = services.valider_note_frais(
+                note, user=request.user, compte_charge=compte_charge)
+        except DjangoValidationError as exc:
+            return Response(
+                {'detail': exc.messages[0] if exc.messages else str(exc)},
+                status=status.HTTP_400_BAD_REQUEST)
+        return Response(self.get_serializer(note).data)
+
+    @action(detail=True, methods=['post'])
+    def rejeter(self, request, pk=None):
+        """Rejette une note soumise (soumise → rejetée), motif figé — FG135."""
+        note = self.get_object()  # scopée société par TenantMixin.
+        try:
+            note = services.rejeter_note_frais(
+                note, motif_rejet=request.data.get('motif_rejet', '') or '',
+                user=request.user)
+        except DjangoValidationError as exc:
+            return Response(
+                {'detail': exc.messages[0] if exc.messages else str(exc)},
+                status=status.HTTP_400_BAD_REQUEST)
+        return Response(self.get_serializer(note).data)
+
+    @action(detail=True, methods=['post'])
+    def rembourser(self, request, pk=None):
+        """Rembourse la note validée et poste le paiement (FG135).
+
+        Corps : ``{compte_tresorerie, date_remboursement?, mode_remboursement?}``.
+        Le compte de trésorerie payeur doit appartenir à la société. Refusé en
+        période close. Idempotent.
+        """
+        note = self.get_object()  # scopée société par TenantMixin.
+        treso = CompteTresorerie.objects.filter(
+            company=request.user.company,
+            id=request.data.get('compte_tresorerie')).first()
+        if treso is None:
+            return Response(
+                {'detail': 'Compte de trésorerie inconnu.'},
+                status=status.HTTP_400_BAD_REQUEST)
+        try:
+            note = services.rembourser_note_frais(
+                note, compte_tresorerie=treso,
+                date_remboursement=request.data.get('date_remboursement')
+                or None,
+                mode_remboursement=request.data.get('mode_remboursement')
+                or None,
+                user=request.user)
+        except DjangoValidationError as exc:
+            return Response(
+                {'detail': exc.messages[0] if exc.messages else str(exc)},
+                status=status.HTTP_400_BAD_REQUEST)
+        return Response(self.get_serializer(note).data)

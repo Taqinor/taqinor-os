@@ -210,6 +210,10 @@ class DocumentViewSet(TenantMixin, viewsets.ModelViewSet):
         tag = self.request.query_params.get('tag')
         if tag:
             qs = qs.filter(tag_assignments__tag_id=tag).distinct()
+        # GED17 — filtre par statut du cycle de vie documentaire (?statut=…).
+        statut = self.request.query_params.get('statut')
+        if statut:
+            qs = qs.filter(statut=statut)
         return qs
 
     @action(detail=True, methods=['post'], url_path='tagger')
@@ -512,6 +516,38 @@ class DocumentViewSet(TenantMixin, viewsets.ModelViewSet):
         document = self.get_object()
         try:
             doc = services.checkin_document(document, request.user)
+        except PermissionError as exc:
+            return Response(
+                {'detail': str(exc)}, status=status.HTTP_403_FORBIDDEN)
+        doc.refresh_from_db()
+        return Response(
+            DocumentSerializer(doc, context={'request': request}).data)
+
+    @action(detail=True, methods=['post'], url_path='cycle-vie')
+    def cycle_vie(self, request, pk=None):
+        """GED17 — Fait avancer le document dans son cycle de vie documentaire.
+
+        `POST …/documents/<id>/cycle-vie/` — corps : `{"statut": "<cible>"}`.
+
+        Les statuts sont LOCAUX à la GED (brouillon → revue → approuvé →
+        archivé → obsolète) et SÉPARÉS du funnel commercial `STAGES.py`. La
+        transition est gardée côté serveur par la machine à états
+        (`services.change_lifecycle_status`) : une transition non autorisée ou
+        un statut inconnu renvoie 400. Le document est company-scopé (+ ACL
+        coffre) via `get_object()`. Écriture : responsable/admin.
+        """
+        document = self.get_object()
+        target = request.data.get('statut')
+        if not target:
+            return Response(
+                {'statut': 'Le statut cible est requis.'},
+                status=status.HTTP_400_BAD_REQUEST)
+        try:
+            doc = services.change_lifecycle_status(
+                document, target, user=request.user)
+        except ValueError as exc:
+            return Response(
+                {'detail': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
         except PermissionError as exc:
             return Response(
                 {'detail': str(exc)}, status=status.HTTP_403_FORBIDDEN)

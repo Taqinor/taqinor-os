@@ -165,6 +165,102 @@ def pleins_du_vehicule(company, vehicule_id):
     )
 
 
+def consommation_vehicule(company, vehicule_id):
+    """FLOTTE13 — Consommation d'un véhicule (L/100 km et kWh/100 km).
+
+    Calcule la consommation à partir du carnet de carburant (``PleinCarburant``)
+    et du kilométrage au compteur. Méthode « plein-à-plein » : entre deux pleins
+    consécutifs (triés par kilométrage croissant), la distance parcourue est
+    ``km(n) - km(n-1)`` et le carburant qui l'a couverte est la quantité du plein
+    d'ARRIVÉE (``quantite`` du plein ``n``) ; la consommation du segment vaut
+    donc ``quantite / distance * 100`` (en L ou kWh pour 100 km selon l'unité du
+    plein). Le premier plein de la série ne produit aucun segment (pas de
+    distance connue avant lui).
+
+    Garde-fous :
+    - ``distance <= 0`` (kilométrage identique ou en recul) → segment ignoré, AUCUNE
+      division par zéro.
+    - Un changement d'unité (litre↔kwh) entre deux pleins isole les totaux : les
+      L et les kWh sont agrégés séparément (jamais additionnés).
+
+    Retourne un dict LECTURE SEULE scopé société :
+
+    ``{
+        'vehicule_id', 'nb_pleins', 'nb_segments',
+        'distance_totale_km',
+        'litres': {'distance_km', 'quantite', 'conso_l_100km'} | None,
+        'kwh':    {'distance_km', 'quantite', 'conso_kwh_100km'} | None,
+        'segments': [
+            {'de_km', 'a_km', 'distance_km', 'quantite', 'unite',
+             'conso_100km', 'date_plein'}, …
+        ],
+    }``
+
+    ``litres`` / ``kwh`` valent ``None`` quand aucun segment exploitable
+    n'existe pour cette unité (p. ex. distance nulle partout) — jamais une
+    consommation calculée sur une distance nulle. Tous les nombres sont des
+    ``float`` arrondis ; les quantités proviennent de ``DecimalField`` converties.
+    """
+    from .models import PleinCarburant
+
+    pleins = list(
+        PleinCarburant.objects
+        .filter(company=company, vehicule_id=vehicule_id)
+        .order_by('kilometrage', 'date_plein', 'id')
+        .values('id', 'kilometrage', 'quantite', 'unite', 'date_plein')
+    )
+
+    segments = []
+    # Totaux séparés par unité (les L et les kWh ne se mélangent jamais).
+    totaux = {
+        PleinCarburant.Unite.LITRE: {'distance': 0, 'quantite': 0.0},
+        PleinCarburant.Unite.KWH: {'distance': 0, 'quantite': 0.0},
+    }
+    distance_totale = 0
+
+    for precedent, courant in zip(pleins, pleins[1:]):
+        distance = courant['kilometrage'] - precedent['kilometrage']
+        if distance <= 0:
+            # Compteur identique ou en recul : aucun segment exploitable.
+            continue
+        quantite = float(courant['quantite'] or 0)
+        unite = courant['unite']
+        conso = round(quantite / distance * 100, 3)
+        distance_totale += distance
+        if unite in totaux:
+            totaux[unite]['distance'] += distance
+            totaux[unite]['quantite'] += quantite
+        segments.append({
+            'de_km': precedent['kilometrage'],
+            'a_km': courant['kilometrage'],
+            'distance_km': distance,
+            'quantite': round(quantite, 3),
+            'unite': unite,
+            'conso_100km': conso,
+            'date_plein': courant['date_plein'],
+        })
+
+    def _agrege(unite, cle_conso):
+        bloc = totaux[unite]
+        if bloc['distance'] <= 0:
+            return None
+        return {
+            'distance_km': bloc['distance'],
+            'quantite': round(bloc['quantite'], 3),
+            cle_conso: round(bloc['quantite'] / bloc['distance'] * 100, 3),
+        }
+
+    return {
+        'vehicule_id': vehicule_id,
+        'nb_pleins': len(pleins),
+        'nb_segments': len(segments),
+        'distance_totale_km': distance_totale,
+        'litres': _agrege(PleinCarburant.Unite.LITRE, 'conso_l_100km'),
+        'kwh': _agrege(PleinCarburant.Unite.KWH, 'conso_kwh_100km'),
+        'segments': segments,
+    }
+
+
 def emplacement_stock_label(company, emplacement_stock_id):
     """FLOTTE3 — Libellé de l'emplacement de stock lié à un véhicule.
 

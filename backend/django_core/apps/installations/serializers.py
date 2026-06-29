@@ -12,6 +12,7 @@ from .models import (
     JalonProjet, ModeleProjet, ModeleProjetJalon, ModeleProjetBomLigne,
     ReunionChantier,
     DocumentProjet, RevisionDocument,
+    Projet, ProjetChantier, ProjetDevis, ProjetTicket,
 )
 
 
@@ -715,3 +716,90 @@ class DocumentProjetSerializer(serializers.ModelSerializer):
 
     def get_nb_revisions(self, obj):
         return obj.inst_revisions.count()
+
+
+# ── FG291 — Programme / Projet multi-chantiers ───────────────────────────────
+
+class ProjetChantierSerializer(serializers.ModelSerializer):
+    """FG291 — rattachement d'un chantier à un programme. La société est posée
+    côté serveur ; le chantier est validé tenant côté vue."""
+    installation_reference = serializers.CharField(
+        source='installation.reference', read_only=True, default=None)
+    installation_statut = serializers.CharField(
+        source='installation.statut', read_only=True, default=None)
+
+    class Meta:
+        model = ProjetChantier
+        fields = [
+            'id', 'projet', 'installation', 'installation_reference',
+            'installation_statut', 'libelle', 'ordre', 'date_creation',
+        ]
+        read_only_fields = ['date_creation']
+
+
+class ProjetDevisSerializer(serializers.ModelSerializer):
+    """FG291 — rattachement d'un devis à un programme (string-FK, statut intact)."""
+    devis_reference = serializers.CharField(
+        source='devis.reference', read_only=True, default=None)
+    devis_statut = serializers.CharField(
+        source='devis.statut', read_only=True, default=None)
+
+    class Meta:
+        model = ProjetDevis
+        fields = [
+            'id', 'projet', 'devis', 'devis_reference', 'devis_statut',
+            'date_creation',
+        ]
+        read_only_fields = ['date_creation']
+
+
+class ProjetTicketSerializer(serializers.ModelSerializer):
+    """FG291 — rattachement d'un ticket SAV à un programme (string-FK, statut
+    intact)."""
+    ticket_reference = serializers.CharField(
+        source='ticket.reference', read_only=True, default=None)
+    ticket_statut = serializers.CharField(
+        source='ticket.statut', read_only=True, default=None)
+
+    class Meta:
+        model = ProjetTicket
+        fields = [
+            'id', 'projet', 'ticket', 'ticket_reference', 'ticket_statut',
+            'date_creation',
+        ]
+        read_only_fields = ['date_creation']
+
+
+class ProjetSerializer(serializers.ModelSerializer):
+    """FG291 — programme/projet multi-chantiers regroupant chantiers + devis +
+    tickets d'un même client/site. `reference`, company et `created_by` sont
+    posés côté serveur (jamais lus du corps). Le statut est PROPRE au programme
+    (jamais l'entonnoir commercial). Les rattachements sont imbriqués en
+    lecture."""
+    reference = serializers.CharField(read_only=True)
+    statut_display = serializers.CharField(
+        source='get_statut_display', read_only=True, default=None)
+    responsable_nom = serializers.SerializerMethodField()
+    chantiers = ProjetChantierSerializer(many=True, read_only=True)
+    devis = ProjetDevisSerializer(many=True, read_only=True)
+    tickets = ProjetTicketSerializer(many=True, read_only=True)
+    nb_chantiers = serializers.SerializerMethodField()
+
+    class Meta:
+        model = Projet
+        fields = [
+            'id', 'reference', 'nom', 'client', 'site_adresse', 'site_ville',
+            'statut', 'statut_display', 'description', 'date_debut',
+            'date_fin_cible', 'responsable', 'responsable_nom',
+            'chantiers', 'devis', 'tickets', 'nb_chantiers',
+            'date_creation', 'date_modification',
+        ]
+        read_only_fields = [
+            'reference', 'date_creation', 'date_modification',
+        ]
+
+    def get_responsable_nom(self, obj):
+        return getattr(obj.responsable, 'username', None)
+
+    def get_nb_chantiers(self, obj):
+        return obj.chantiers.count()

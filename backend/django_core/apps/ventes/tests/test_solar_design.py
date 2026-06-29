@@ -432,3 +432,108 @@ class GenerateBoqTest(SimpleTestCase):
         fuses = next(it["quantite"] for it in res["items"]
                      if it["designation"].startswith("Sectionneur-fusible"))
         self.assertEqual(fuses, sr["strings"])
+
+
+# ── FG255 : dimensionnement borne VE & impact autoconsommation ───────────────
+class EvChargerSizingTest(SimpleTestCase):
+    def test_mono_vs_tri_current_and_breaker(self):
+        # Même puissance, le triphasé tire ~√3 moins de courant → calibre <=.
+        mono = sd.ev_charger_sizing(borne_kw=7.4, phases=1)
+        tri = sd.ev_charger_sizing(borne_kw=7.4, phases=3)
+        self.assertEqual(mono["borne"]["phases"], 1)
+        self.assertEqual(tri["borne"]["phases"], 3)
+        self.assertEqual(mono["borne"]["voltage_v"], 230.0)
+        self.assertEqual(tri["borne"]["voltage_v"], 400.0)
+        self.assertGreater(mono["borne"]["line_current_a"],
+                           tri["borne"]["line_current_a"])
+        self.assertLessEqual(tri["borne"]["breaker_a"],
+                             mono["borne"]["breaker_a"])
+        # 7.4 kW mono à 230 V ≈ 32 A nominal → calibre 40 A (1.25×).
+        self.assertAlmostEqual(mono["borne"]["line_current_a"], 32.2, delta=0.5)
+        self.assertEqual(mono["borne"]["breaker_a"], 50)
+
+    def test_daily_demand_from_km_and_sessions(self):
+        # 18 kWh/100km × 40 km = 7.2 kWh/session ; 2 sessions ; rendement 0.9.
+        res = sd.ev_charger_sizing(
+            borne_kw=11, phases=3, sessions_per_day=2,
+            kwh_per_100km=18.0, km_per_session=40.0)
+        self.assertAlmostEqual(res["energy"]["per_session_kwh"], 7.2, places=2)
+        # 7.2 × 2 / 0.9 = 16.0 kWh prélevés au tableau.
+        self.assertAlmostEqual(res["energy"]["daily_demand_kwh"], 16.0,
+                               places=2)
+        self.assertEqual(res["energy"]["sessions_per_day"], 2.0)
+
+    def test_explicit_energy_per_session_overrides_km(self):
+        res = sd.ev_charger_sizing(
+            borne_kw=7.4, phases=1, sessions_per_day=1,
+            energy_per_session_kwh=10.0, km_per_session=999)
+        self.assertEqual(res["energy"]["per_session_kwh"], 10.0)
+        # 10 / 0.9 ≈ 11.11 kWh.
+        self.assertAlmostEqual(res["energy"]["daily_demand_kwh"], 11.11,
+                               places=2)
+
+    def test_pv_surplus_lifts_self_consumption(self):
+        # 30 kWh produits, 12 autoconsommés → 18 de surplus. VE demande 16 kWh.
+        res = sd.ev_charger_sizing(
+            borne_kw=11, phases=3, sessions_per_day=2,
+            kwh_per_100km=18.0, km_per_session=40.0,
+            pv_daily_production_kwh=30.0, pv_self_consumption_kwh=12.0)
+        pv = res["pv_impact"]
+        self.assertEqual(pv["available_surplus_kwh"], 18.0)
+        # Le VE (16 kWh) est entièrement couvert par le surplus (18 kWh).
+        self.assertEqual(pv["solar_covered_kwh"], 16.0)
+        self.assertEqual(pv["grid_kwh"], 0.0)
+        self.assertEqual(pv["solar_coverage_pct"], 100.0)
+        # Base 12/30 = 40 % ; nouveau (12+16)/30 = 93.3 % ; gain ≈ 53.3 pts.
+        self.assertEqual(pv["base_self_consumption_pct"], 40.0)
+        self.assertEqual(pv["new_self_consumption_pct"], 93.3)
+        self.assertAlmostEqual(pv["self_consumption_gain_pts"], 53.3, places=1)
+
+    def test_surplus_capped_partial_coverage_warns(self):
+        # Surplus 5 kWh < demande VE → couverture partielle + import réseau.
+        res = sd.ev_charger_sizing(
+            borne_kw=7.4, phases=1, sessions_per_day=1,
+            energy_per_session_kwh=18.0,
+            pv_daily_production_kwh=20.0, pv_surplus_kwh=5.0)
+        pv = res["pv_impact"]
+        self.assertEqual(pv["solar_covered_kwh"], 5.0)
+        self.assertGreater(pv["grid_kwh"], 0.0)
+        self.assertLess(pv["solar_coverage_pct"], 50.0)
+        self.assertTrue(any("moins de la moitié" in w
+                            for w in res["warnings"]))
+
+    def test_pv_surplus_from_kwc(self):
+        # Sans production fournie, déduite de kWc × productible / 365.
+        res = sd.ev_charger_sizing(
+            borne_kw=7.4, pv_kwc=5.0, pv_surplus_kwh=10.0,
+            energy_per_session_kwh=8.0)
+        prod = res["pv_impact"]["pv_daily_production_kwh"]
+        # 5 kWc × 1700 / 365 ≈ 23.3 kWh/jour.
+        self.assertAlmostEqual(prod, 23.29, places=1)
+
+    def test_charge_window_fit_flag(self):
+        # 8 kWh / 0.9 / 3.7 kW ≈ 2.4 h — tient dans 4 h, pas dans 2 h.
+        ok = sd.ev_charger_sizing(
+            borne_kw=3.7, energy_per_session_kwh=8.0, charge_window_h=4.0)
+        ko = sd.ev_charger_sizing(
+            borne_kw=3.7, energy_per_session_kwh=8.0, charge_window_h=2.0)
+        self.assertTrue(ok["borne"]["fits_window"])
+        self.assertFalse(ko["borne"]["fits_window"])
+        self.assertTrue(any("fenêtre" in w for w in ko["warnings"]))
+
+    def test_recommended_standard_power(self):
+        # 6 kW saisis → borne standard recommandée 7.4 kW.
+        res = sd.ev_charger_sizing(borne_kw=6.0)
+        self.assertEqual(res["borne"]["recommended_kw"], 7.4)
+
+    def test_degraded_inputs_never_raise(self):
+        # Entrées absurdes/None : bornées, jamais d'exception.
+        res = sd.ev_charger_sizing(
+            borne_kw=0, phases=0, sessions_per_day=-3,
+            energy_per_session_kwh=None, kwh_per_100km=None,
+            km_per_session=None, pv_kwc=-5, pv_surplus_kwh=-1)
+        self.assertGreater(res["borne"]["kw"], 0)
+        self.assertEqual(res["borne"]["phases"], 1)
+        self.assertGreaterEqual(res["energy"]["daily_demand_kwh"], 0.0)
+        # Pas de contexte PV exploitable → impact non chiffré, pas de crash.
+        self.assertIsNone(res["pv_impact"]["solar_covered_kwh"])

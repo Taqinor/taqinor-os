@@ -22,6 +22,12 @@ Jinja2==3.1.5
 numpy==1.26.4
 matplotlib==3.9.2
 
+# FG361 — Prévision de ventes / demande (séries temporelles). Holt-Winters /
+# lissage exponentiel. Importé défensivement dans core/forecast.py (repli pur
+# Python : tendance linéaire / moyenne glissante), donc le code reste import-safe
+# et les tests passent même sans cette dépendance installée.
+statsmodels==0.14.4
+
 # Email
 django-anymail[sendgrid]==10.3
 

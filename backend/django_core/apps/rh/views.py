@@ -22,6 +22,8 @@ from authentication.permissions import HasPermission, IsResponsableOrAdmin
 from . import selectors, services
 from .models import (
     AffectationRoster,
+    Competence,
+    CompetenceEmploye,
     DemandeConge,
     Departement,
     DocumentEmploye,
@@ -39,6 +41,8 @@ from .models import (
 )
 from .serializers import (
     AffectationRosterSerializer,
+    CompetenceEmployeSerializer,
+    CompetenceSerializer,
     DemandeCongeSerializer,
     DepartementSerializer,
     DocumentEmployeSerializer,
@@ -909,3 +913,115 @@ class IncidentPresenceViewSet(_RhBaseViewSet):
             request.user.company, date_debut=debut, date_fin=fin,
             employe_id=employe, inclure_justifies=inclure)
         return Response(rows)
+
+
+class CompetenceViewSet(_RhBaseViewSet):
+    """Référentiel de compétences (FG172) — catalogue par société.
+
+    Société scopée + Administrateur/Responsable. ``company`` est posée côté
+    serveur (jamais lue du corps). Catalogue des savoir-faire techniques (pose
+    structure, raccordement DC/AC, MES onduleur, pompage, soudure…) évalués
+    dans la matrice ``competences-employe``.
+
+    Filtres : ``?domaine=``, ``?actif=0|1``. Recherche : code / libellé.
+    """
+    queryset = Competence.objects.all()
+    serializer_class = CompetenceSerializer
+    filter_backends = [filters.SearchFilter, filters.OrderingFilter]
+    search_fields = ['code', 'libelle', 'description']
+    ordering_fields = ['domaine', 'libelle', 'code', 'date_creation']
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        domaine = self.request.query_params.get('domaine')
+        if domaine:
+            qs = qs.filter(domaine=domaine)
+        actif = self.request.query_params.get('actif')
+        if actif in ('0', 'false', 'False'):
+            qs = qs.filter(actif=False)
+        elif actif in ('1', 'true', 'True'):
+            qs = qs.filter(actif=True)
+        return qs
+
+    def perform_create(self, serializer):
+        """Company posée côté serveur, jamais lue du corps."""
+        serializer.save(company=self.request.user.company)
+
+
+class CompetenceEmployeViewSet(_RhBaseViewSet):
+    """Matrice de compétences — niveau par employé (FG172).
+
+    Société scopée + Administrateur/Responsable. ``company`` est posée côté
+    serveur ; ``employe`` ET ``competence`` doivent appartenir à la même
+    société. Une ligne par (employé, compétence) — on met à jour le niveau
+    plutôt que d'empiler. ``evalue_par``/``evalue_le`` sont posés côté serveur
+    à chaque écriture du niveau.
+
+    Filtres : ``?employe=<id>``, ``?competence=<id>``, ``?domaine=``,
+    ``?niveau_min=<0-4>``.
+    """
+    queryset = CompetenceEmploye.objects.select_related(
+        'employe', 'competence').all()
+    serializer_class = CompetenceEmployeSerializer
+    filter_backends = [filters.OrderingFilter]
+    ordering_fields = ['niveau', 'competence', 'date_modification']
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        employe = self.request.query_params.get('employe')
+        if employe:
+            qs = qs.filter(employe_id=employe)
+        competence = self.request.query_params.get('competence')
+        if competence:
+            qs = qs.filter(competence_id=competence)
+        domaine = self.request.query_params.get('domaine')
+        if domaine:
+            qs = qs.filter(competence__domaine=domaine)
+        niveau_min = self.request.query_params.get('niveau_min')
+        if niveau_min is not None:
+            try:
+                qs = qs.filter(niveau__gte=int(niveau_min))
+            except (TypeError, ValueError):
+                pass
+        return qs
+
+    def perform_create(self, serializer):
+        """Company + traçabilité d'évaluation posées côté serveur."""
+        serializer.save(
+            company=self.request.user.company,
+            evalue_par=self.request.user,
+            evalue_le=timezone.now())
+
+    def perform_update(self, serializer):
+        """Réévaluation : on retrace l'auteur/date côté serveur."""
+        serializer.save(
+            evalue_par=self.request.user,
+            evalue_le=timezone.now())
+
+    @action(detail=False, methods=['get'])
+    def matrice(self, request):
+        """Matrice par employé : pour chaque employé ayant au moins un niveau,
+        la liste de ses compétences évaluées (code/libellé/domaine/niveau).
+
+        Société garantie par ``get_queryset`` (TenantMixin). ``?employe=`` et
+        ``?domaine=`` restreignent comme la liste standard.
+        """
+        qs = self.get_queryset().order_by('employe', 'competence')
+        matrice = {}
+        for ligne in qs:
+            emp = ligne.employe
+            entry = matrice.setdefault(emp.id, {
+                'employe_id': emp.id,
+                'matricule': emp.matricule,
+                'employe_nom': f'{emp.nom} {emp.prenom}',
+                'competences': [],
+            })
+            entry['competences'].append({
+                'competence_id': ligne.competence_id,
+                'code': ligne.competence.code,
+                'libelle': ligne.competence.libelle,
+                'domaine': ligne.competence.domaine,
+                'niveau': ligne.niveau,
+                'niveau_display': ligne.get_niveau_display(),
+            })
+        return Response(list(matrice.values()))

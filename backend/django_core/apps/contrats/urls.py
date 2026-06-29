@@ -9,6 +9,7 @@ from .views import (
     ModeleContratClauseViewSet,
     ModeleContratViewSet,
     PartieContratViewSet,
+    RegleApprobationViewSet,
 )
 
 router = DefaultRouter()
@@ -19,6 +20,7 @@ router.register(r'modeles', ModeleContratViewSet)
 router.register(r'clauses', ClauseViewSet)
 router.register(r'modele-clauses', ModeleContratClauseViewSet)
 router.register(r'clauses-contrat', ClauseContratViewSet)
+router.register(r'regles-approbation', RegleApprobationViewSet)
 
 urlpatterns = [
     path('', include(router.urls)),
