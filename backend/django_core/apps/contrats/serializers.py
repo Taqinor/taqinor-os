@@ -40,12 +40,22 @@ class ContratSerializer(serializers.ModelSerializer):
         fields = [
             'id', 'reference', 'type_contrat', 'type_contrat_display',
             'objet', 'statut', 'statut_display', 'client_id',
-            'sav_contrat_maintenance_id', 'date_debut',
+            'sav_contrat_maintenance_id', 'modele', 'date_debut',
             'date_fin', 'montant', 'devise',
             'confidentialite', 'confidentialite_display',
             'created_by', 'date_creation',
         ]
         read_only_fields = ['created_by', 'date_creation']
+
+    def validate_modele(self, modele):
+        """Le gabarit source (optionnel) doit appartenir à la société."""
+        if modele is None:
+            return modele
+        request = self.context.get('request')
+        if request is not None and modele.company_id != request.user.company_id:
+            raise serializers.ValidationError(
+                "Ce modèle n'appartient pas à votre société.")
+        return modele
 
 
 class PartieContratSerializer(serializers.ModelSerializer):
@@ -293,6 +303,25 @@ class ClauseContratSerializer(serializers.ModelSerializer):
                     {"corps": "Ce champ est obligatoire sans clause source."}
                 )
         return attrs
+
+
+class RendreContratSerializer(serializers.Serializer):
+    """Corps optionnel de POST /contrats/<id>/rendre/ (CONTRAT10).
+
+    ``gabarit`` permet de fournir un corps-modèle ad hoc à fusionner ; s'il est
+    omis, le rendu utilise le corps du ``ModeleContrat`` lié (ou un gabarit par
+    défaut). Tous les champs sont facultatifs.
+    """
+    gabarit = serializers.CharField(
+        required=False, allow_blank=True, trim_whitespace=False)
+
+
+class ChangerStatutSerializer(serializers.Serializer):
+    """Corps de POST /contrats/<id>/changer-statut/ (CONTRAT12).
+
+    ``statut`` est le statut cible de la transition gardée.
+    """
+    statut = serializers.ChoiceField(choices=Contrat.Statut.choices)
 
 
 class InstancierContratSerializer(serializers.Serializer):
