@@ -704,6 +704,7 @@ class BulletinPaie(models.Model):
     SNAPSHOT_FIELDS = [
         'brut', 'brut_imposable', 'cnss_salariale', 'cnss_patronale',
         'amo_salariale', 'amo_patronale', 'allocations_familiales',
+        'formation_professionnelle',
         'cimr_salariale', 'frais_professionnels', 'net_imposable', 'ir',
         'retenues', 'prime_anciennete', 'charges_patronales', 'net_a_payer',
         'personnes_a_charge',
@@ -759,6 +760,11 @@ class BulletinPaie(models.Model):
     allocations_familiales = models.DecimalField(
         max_digits=14, decimal_places=2, default=Decimal('0'),
         verbose_name='Allocations familiales (patronal)')
+    # PAIE24 — Taxe de formation professionnelle (1,6 % patronal, collectée avec
+    # la CNSS) : charge employeur informative — jamais déduite du net du salarié.
+    formation_professionnelle = models.DecimalField(
+        max_digits=14, decimal_places=2, default=Decimal('0'),
+        verbose_name='Formation professionnelle (patronal)')
     cimr_salariale = models.DecimalField(
         max_digits=14, decimal_places=2, default=Decimal('0'),
         verbose_name='CIMR salariale')
