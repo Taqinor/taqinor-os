@@ -7,7 +7,7 @@ from authentication.permissions import IsAnyRole
 from .views import (
     EquipementViewSet, TicketViewSet,
     SavSlaSettingsViewSet, MaintenanceChecklistTemplateViewSet,
-    WarrantyClaimViewSet, KbArticleViewSet,
+    WarrantyClaimViewSet, KbArticleViewSet, AlarmeOnduleurViewSet,
     sav_parts_forecast,
 )
 from .maintenance import ContratMaintenanceViewSet
@@ -20,6 +20,7 @@ router.register(r'sla-settings', SavSlaSettingsViewSet)
 router.register(r'checklist-templates', MaintenanceChecklistTemplateViewSet)
 router.register(r'warranty-claims', WarrantyClaimViewSet)
 router.register(r'kb-articles', KbArticleViewSet)
+router.register(r'alarmes-onduleur', AlarmeOnduleurViewSet)
 
 
 @api_view(['GET'])
