@@ -58,7 +58,24 @@ from .serializers import (
     RegleApprobationSerializer,
     RendreContratSerializer,
     ResoudreRegleApprobationSerializer,
+    SignatureContratSerializer,
+    SignerContratSerializer,
 )
+
+
+def _client_ip(request):
+    """Adresse IP du client à partir de la requête (preuve de signature).
+
+    Préfère ``X-Forwarded-For`` (première IP de la chaîne) derrière un proxy,
+    sinon ``REMOTE_ADDR``. Tronquée à 45 caractères pour tenir dans le champ
+    ``ip_adresse`` (IPv6) — runtime-safety (leçon FG136).
+    """
+    forwarded = request.META.get('HTTP_X_FORWARDED_FOR', '')
+    if forwarded:
+        ip = forwarded.split(',')[0].strip()
+    else:
+        ip = request.META.get('REMOTE_ADDR', '') or ''
+    return ip[:45]
 
 
 class _ContratsBaseViewSet(TenantMixin, viewsets.ModelViewSet):
@@ -327,6 +344,60 @@ class ContratViewSet(_ContratsBaseViewSet):
         return Response(
             EtapeApprobationSerializer(
                 etape, context={'request': request}).data)
+
+    @action(detail=True, methods=['get'], url_path='signatures')
+    def signatures(self, request, pk=None):
+        """Signatures électroniques IN-APP du contrat (CONTRAT16).
+
+        Lecture seule, ordonnées par id. La société est garantie par
+        ``get_object`` (queryset scopé société).
+        """
+        contrat = self.get_object()
+        sigs = selectors.signatures_contrat(contrat)
+        return Response(
+            SignatureContratSerializer(
+                sigs, many=True, context={'request': request}).data)
+
+    @action(detail=True, methods=['post'], url_path='signer')
+    def signer(self, request, pk=None):
+        """Enregistre une signature électronique IN-APP du contrat (CONTRAT16).
+
+        Corps : ``signataire_nom`` (nom dactylographié, requis — loi 53-05),
+        ``role_signataire`` (client/prestataire/temoin), ``methode`` (optionnel,
+        ``typed`` par défaut). L'utilisateur agissant, la société et les preuves
+        (IP, user agent) sont posés CÔTÉ SERVEUR — jamais lus du corps. Quand le
+        client ET le prestataire ont signé, le contrat bascule à ``signe`` via la
+        machine d'états gardée (jamais un funnel STAGES.py). Refuse (400) une
+        seconde signature de la même partie. La société est garantie par
+        ``get_object``.
+        """
+        contrat = self.get_object()
+        body = SignerContratSerializer(data=request.data)
+        body.is_valid(raise_exception=True)
+        data = body.validated_data
+        try:
+            resultat = services.signer_contrat(
+                contrat,
+                signataire_nom=data['signataire_nom'],
+                role_signataire=data['role_signataire'],
+                methode=data.get('methode'),
+                signataire=request.user,
+                ip_adresse=_client_ip(request),
+                user_agent=request.META.get('HTTP_USER_AGENT', ''),
+                auteur=request.user,
+            )
+        except services.SignatureError as exc:
+            return Response(
+                {'detail': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+        return Response(
+            {
+                'signature': SignatureContratSerializer(
+                    resultat['signature'], context={'request': request}).data,
+                'contrat_signe': resultat['contrat_signe'],
+                'statut': contrat.statut,
+            },
+            status=status.HTTP_201_CREATED,
+        )
 
 
 class PartieContratViewSet(_ContratsBaseViewSet):

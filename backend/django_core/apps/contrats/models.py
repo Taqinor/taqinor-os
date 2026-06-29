@@ -859,3 +859,116 @@ class ContratActivity(models.Model):
 
     def __str__(self):
         return f'{self.contrat_id} {self.type}'.strip()
+
+
+class SignatureContrat(models.Model):
+    """Signature électronique IN-APP d'un contrat (point e-sign) — CONTRAT16.
+
+    Point de capture de signature électronique INTERNE à l'ERP : AUCUN
+    prestataire d'e-sign externe, AUCUNE dépendance tierce. La validité juridique
+    repose sur la **loi marocaine 53-05** (échange électronique de données
+    juridiques) : un **nom dactylographié** (``signataire_nom``) consenti vaut
+    signature électronique. On enregistre QUI a signé (le nom saisi + l'éventuel
+    utilisateur agissant), à quel TITRE (``role_signataire`` : client /
+    prestataire / témoin) et les ÉLÉMENTS DE PREUVE de l'acte (``ip_adresse``,
+    ``user_agent``, ``date_signature``, ``methode``).
+
+    Quand toutes les parties REQUISES (client ET prestataire) ont signé, le
+    service ``signer_contrat`` fait basculer ``Contrat.statut`` vers ``signe``
+    via la machine d'états gardée (``machine_etats.changer_statut``) — JAMAIS un
+    funnel ``STAGES.py`` (rule #2) ni une écriture directe du statut. Les statuts
+    documentaires du contrat (brouillon → en_approbation → signe → actif…) sont
+    préservés 1:1 (CONTRAT12).
+
+    Multi-tenant : ``company`` est posée côté serveur (jamais lue du corps de
+    requête). ``contrat`` est une référence interne à l'app `contrats`
+    (foundation), FK dur autorisé ; ``signataire`` (l'utilisateur agissant)
+    pointe vers ``AUTH_USER_MODEL`` (app foundation), FK autorisé et NULLABLE :
+    une partie externe (client) signe sans compte ERP — seul son nom saisi et
+    les preuves font foi.
+
+    RUNTIME-SAFETY (leçon FG136) : les valeurs ``CharField`` restent dans leur
+    ``max_length`` — ``ip_adresse`` ≤ 45 (assez pour une IPv6 mappée), les codes
+    bornés ``role_signataire`` / ``methode`` ≤ 20 — et ``user_agent``, qui peut
+    être très long, est un ``TextField`` (aucune limite à dépasser et lever).
+    """
+
+    class RoleSignataire(models.TextChoices):
+        CLIENT = 'client', 'Client'
+        PRESTATAIRE = 'prestataire', 'Prestataire'
+        TEMOIN = 'temoin', 'Témoin'
+
+    class Methode(models.TextChoices):
+        # Saisie du nom dactylographié (loi 53-05) — méthode par défaut.
+        TYPED = 'typed', 'Nom dactylographié'
+        # Tracé manuscrit capturé (paraphe dessiné), évidence stockée ailleurs.
+        DRAW = 'draw', 'Signature dessinée'
+
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='contrats_signatures',
+        verbose_name='Société',
+    )
+    contrat = models.ForeignKey(
+        Contrat,
+        on_delete=models.CASCADE,
+        related_name='signatures',
+        verbose_name='Contrat',
+    )
+    # Nom dactylographié du signataire — fait foi (loi 53-05). Toujours saisi.
+    signataire_nom = models.CharField(
+        max_length=255, verbose_name='Nom du signataire')
+    # Utilisateur ERP ayant agi (NULL pour un signataire externe sans compte).
+    signataire = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='contrats_signatures',
+        verbose_name='Utilisateur signataire',
+    )
+    role_signataire = models.CharField(
+        max_length=20,
+        choices=RoleSignataire.choices,
+        default=RoleSignataire.CLIENT,
+        verbose_name='Rôle du signataire',
+    )
+    date_signature = models.DateTimeField(
+        auto_now_add=True, verbose_name='Signé le')
+    # Éléments de preuve. ``ip_adresse`` ≤ 45 (IPv6) ; ``user_agent`` en
+    # TextField car potentiellement très long (leçon FG136).
+    ip_adresse = models.CharField(
+        max_length=45, blank=True, default='', verbose_name='Adresse IP')
+    user_agent = models.TextField(
+        blank=True, default='', verbose_name='User agent')
+    methode = models.CharField(
+        max_length=20,
+        choices=Methode.choices,
+        default=Methode.TYPED,
+        verbose_name='Méthode de signature',
+    )
+
+    class Meta:
+        verbose_name = 'Signature de contrat'
+        verbose_name_plural = 'Signatures de contrat'
+        ordering = ['contrat_id', 'id']
+        constraints = [
+            # Une même partie (rôle) ne signe qu'une fois par contrat : empêche
+            # les doublons de signature (client signe deux fois → un seul acte).
+            models.UniqueConstraint(
+                fields=['contrat', 'role_signataire'],
+                name='contrats_signature_uniq',
+            ),
+        ]
+        indexes = [
+            models.Index(
+                fields=['contrat', 'role_signataire'],
+                name='contrats_sig_ct_role',
+            ),
+        ]
+
+    def __str__(self):
+        return (
+            f'{self.signataire_nom} ({self.get_role_signataire_display()}) '
+            f'— contrat {self.contrat_id}'
+        )

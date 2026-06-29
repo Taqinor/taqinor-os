@@ -8,7 +8,23 @@ cycles. Quand une app cible n'a pas de sélecteur exploitable, on DÉGRADE
 proprement : on renvoie le ``libelle`` mis en cache et les ids stockés, sans
 rien importer.
 """
-from .models import ContratLien, EtapeApprobation, RegleApprobation
+from .models import (
+    ContratLien,
+    EtapeApprobation,
+    RegleApprobation,
+    SignatureContrat,
+)
+
+
+def signatures_contrat(contrat):
+    """Signatures électroniques d'un contrat (QuerySet scopé société, ordonné).
+
+    Lecture seule (CONTRAT16). Ordre par ``id`` (cohérent avec ``Meta.ordering``
+    du modèle). La société est portée par le contrat ; on filtre aussi sur
+    ``contrat.company`` par sécurité même si le FK ``contrat`` la garantit.
+    """
+    return SignatureContrat.objects.filter(
+        contrat=contrat, company=contrat.company).order_by('contrat_id', 'id')
 
 
 def etapes_approbation(contrat):

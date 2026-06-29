@@ -40,6 +40,7 @@ from .machine_etats import (  # noqa: F401 — réexport (point d'entrée servic
     TransitionInterdite,
     changer_statut,
     statuts_suivants,
+    transition_permise,
 )
 
 # ---------------------------------------------------------------------------
@@ -450,3 +451,134 @@ def noter_contrat(contrat, *, message, auteur=None):
         message=message,
         auteur=auteur,
     )
+
+
+# ---------------------------------------------------------------------------
+# CONTRAT16 — Signature électronique IN-APP + bascule du statut « signé »
+# ---------------------------------------------------------------------------
+
+
+class SignatureError(Exception):
+    """Levée quand une signature ne peut pas être enregistrée.
+
+    Ex. : tenter de faire signer la même partie (même rôle) deux fois pour un
+    contrat, ou signer dans un état documentaire incompatible.
+    """
+
+
+# Parties dont la signature est REQUISE pour qu'un contrat soit « signé » : le
+# client ET le prestataire. Un témoin renforce la preuve mais n'est pas une
+# condition de bascule. Aucun funnel STAGES.py n'intervient ici (rule #2).
+def _roles_requis():
+    from .models import SignatureContrat
+
+    return {
+        SignatureContrat.RoleSignataire.CLIENT,
+        SignatureContrat.RoleSignataire.PRESTATAIRE,
+    }
+
+
+def roles_signataires(contrat):
+    """Ensemble des rôles ayant déjà signé ce contrat (scopé société)."""
+    from .models import SignatureContrat
+
+    return set(
+        SignatureContrat.objects
+        .filter(contrat=contrat, company=contrat.company)
+        .values_list('role_signataire', flat=True)
+    )
+
+
+def toutes_parties_signataires(contrat):
+    """``True`` si toutes les parties REQUISES (client + prestataire) ont signé.
+
+    Lecture seule. Sert de garde de bascule : ``signer_contrat`` ne fait passer
+    le contrat à ``signe`` qu'une fois cet ensemble couvert.
+    """
+    return _roles_requis().issubset(roles_signataires(contrat))
+
+
+@transaction.atomic
+def signer_contrat(contrat, *, signataire_nom, role_signataire,
+                   signataire=None, ip_adresse='', user_agent='',
+                   methode=None, auteur=None):
+    """Enregistre une signature électronique IN-APP d'un contrat (CONTRAT16).
+
+    - Crée une ``SignatureContrat`` portant le nom dactylographié
+      (``signataire_nom``, fait foi — loi 53-05), le rôle (client / prestataire /
+      témoin), l'utilisateur agissant éventuel (``signataire``, NULL pour une
+      partie externe) et les preuves (``ip_adresse`` ≤ 45, ``user_agent``,
+      ``methode`` typed/draw). La société est posée côté serveur (celle du
+      contrat).
+    - Une même partie (rôle) ne signe qu'une fois : une seconde signature du même
+      rôle lève ``SignatureError`` (la contrainte DB est le filet de sécurité).
+    - Journalise la signature via le chatter CONTRAT15 (``journaliser_transition``)
+      quand ce module est disponible.
+    - BASCULE DE STATUT : si toutes les parties REQUISES (client + prestataire)
+      ont alors signé ET que la transition ``→ signe`` est permise par la machine
+      d'états gardée (``changer_statut``), le contrat passe à ``signe``. Sinon le
+      statut est LAISSÉ INCHANGÉ (signature partielle, ou état documentaire
+      n'autorisant pas encore la signature) — jamais d'écriture directe du
+      statut, jamais de funnel STAGES.py (rule #2). La préservation des statuts
+      documentaires (CONTRAT12) reste donc intacte.
+
+    Renvoie un dict ``{'signature', 'contrat_signe'}`` : la signature créée et un
+    booléen indiquant si la bascule ``signe`` a eu lieu lors de cet appel.
+    """
+    from .models import Contrat, SignatureContrat
+
+    nom = (signataire_nom or '').strip()
+    if not nom:
+        raise SignatureError('Le nom du signataire est requis (loi 53-05).')
+
+    if methode is None:
+        methode = SignatureContrat.Methode.TYPED
+
+    # Garde explicite contre le doublon de rôle (la contrainte DB double la
+    # garde, mais on lève une erreur métier propre plutôt qu'IntegrityError).
+    if role_signataire in roles_signataires(contrat):
+        raise SignatureError(
+            "Cette partie a déjà signé ce contrat.")
+
+    signature = SignatureContrat.objects.create(
+        company=contrat.company,
+        contrat=contrat,
+        signataire_nom=nom,
+        signataire=signataire,
+        role_signataire=role_signataire,
+        ip_adresse=ip_adresse or '',
+        user_agent=user_agent or '',
+        methode=methode,
+    )
+
+    # CONTRAT15 — audit de la signature (champ ``signature``). Auteur posé côté
+    # serveur (l'utilisateur agissant, ou None pour une partie externe).
+    journaliser_transition(
+        contrat, field='signature', old_value='',
+        new_value=f'{nom} ({role_signataire})',
+        auteur=auteur if auteur is not None else signataire)
+
+    # Bascule vers « signe » uniquement si toutes les parties requises ont signé
+    # ET que la machine d'états autorise la transition depuis l'état courant.
+    contrat_signe = False
+    if (
+        contrat.statut != Contrat.Statut.SIGNE
+        and toutes_parties_signataires(contrat)
+        and transition_permise(contrat.statut, Contrat.Statut.SIGNE)
+    ):
+        ancien = contrat.statut
+        try:
+            changer_statut(contrat, Contrat.Statut.SIGNE)
+        except TransitionInterdite:
+            # Garde de la machine (ex. parties insuffisantes) : on n'écrit pas le
+            # statut, la signature reste enregistrée (préservation des statuts).
+            contrat_signe = False
+        else:
+            contrat_signe = True
+            journaliser_transition(
+                contrat, field='statut', old_value=ancien,
+                new_value=contrat.statut,
+                message='Toutes les parties requises ont signé.',
+                auteur=auteur if auteur is not None else signataire)
+
+    return {'signature': signature, 'contrat_signe': contrat_signe}

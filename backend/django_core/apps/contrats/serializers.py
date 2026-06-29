@@ -17,6 +17,7 @@ from .models import (
     ModeleContratClause,
     PartieContrat,
     RegleApprobation,
+    SignatureContrat,
 )
 
 
@@ -453,3 +454,55 @@ class DeciderEtapeSerializer(serializers.Serializer):
     etape = serializers.IntegerField(min_value=1)
     commentaire = serializers.CharField(
         required=False, allow_blank=True, trim_whitespace=False)
+
+
+class SignatureContratSerializer(serializers.ModelSerializer):
+    """Sérialiseur d'une ``SignatureContrat`` (signature e-sign IN-APP — CONTRAT16).
+
+    Lecture seule côté API : les signatures sont créées exclusivement par
+    l'action ``signer`` du contrat (jamais en POST direct). ``company``,
+    ``contrat``, ``signataire`` (utilisateur agissant), les preuves
+    (``ip_adresse`` / ``user_agent``) et ``date_signature`` sont posés côté
+    serveur — jamais lus du corps de requête.
+    """
+    role_signataire_display = serializers.CharField(
+        source='get_role_signataire_display', read_only=True)
+    methode_display = serializers.CharField(
+        source='get_methode_display', read_only=True)
+    signataire_username = serializers.SerializerMethodField()
+
+    class Meta:
+        model = SignatureContrat
+        fields = [
+            'id', 'contrat', 'signataire_nom',
+            'signataire', 'signataire_username',
+            'role_signataire', 'role_signataire_display',
+            'date_signature', 'ip_adresse', 'user_agent',
+            'methode', 'methode_display',
+        ]
+        read_only_fields = fields
+
+    def get_signataire_username(self, obj):
+        return getattr(obj.signataire, 'username', None)
+
+
+class SignerContratSerializer(serializers.Serializer):
+    """Corps de POST /contrats/<id>/signer/ (CONTRAT16).
+
+    Loi 53-05 : un ``signataire_nom`` dactylographié consenti vaut signature.
+    L'utilisateur agissant, la société et les preuves (IP, user agent) sont
+    posés côté serveur — jamais lus du corps de requête. ``methode`` est
+    optionnelle (``typed`` par défaut).
+    """
+    signataire_nom = serializers.CharField(max_length=255)
+    role_signataire = serializers.ChoiceField(
+        choices=SignatureContrat.RoleSignataire.choices)
+    methode = serializers.ChoiceField(
+        choices=SignatureContrat.Methode.choices, required=False)
+
+    def validate_signataire_nom(self, value):
+        value = (value or '').strip()
+        if not value:
+            raise serializers.ValidationError(
+                'Le nom du signataire est requis (loi 53-05).')
+        return value
