@@ -215,6 +215,35 @@ class EtatsComptablesViewSet(viewsets.ViewSet):
             nb_semaines=max(1, min(nb_semaines, 52)))
         return Response(data)
 
+    @action(detail=False, methods=['get'], url_path='balance-agee-fournisseurs')
+    def balance_agee_fournisseurs(self, request):
+        """Balance âgée fournisseurs (FG132) : encours dû par fournisseur,
+        bucketé 0–30 / 31–60 / 61–90 / 90+ jours depuis le grand livre (compte
+        4411). Miroir AP de la balance âgée clients. Paramètres :
+        ``date_reference`` (défaut aujourd'hui), ``validees`` (1 → écritures
+        validées seulement). Lecture seule, scopée société, Admin/Responsable.
+        """
+        data = selectors.balance_agee_fournisseurs(
+            request.user.company,
+            date_reference=request.query_params.get('date_reference') or None,
+            validees_seulement=request.query_params.get('validees') == '1')
+        return Response(data)
+
+    @action(detail=False, methods=['get'],
+            url_path='releve-fournisseur/(?P<tiers_id>[0-9]+)')
+    def releve_fournisseur(self, request, tiers_id=None):
+        """Relevé de compte d'un fournisseur (FG132) : mouvements chronologiques
+        du compte 4411 pour l'auxiliaire ``tiers_id`` + solde dû. Miroir AP du
+        relevé client. Paramètres : ``date_debut`` / ``date_fin`` / ``validees``.
+        Lecture seule, scopée société, Admin/Responsable.
+        """
+        periode = self._periode(request)
+        data = selectors.releve_fournisseur(
+            request.user.company, int(tiers_id),
+            date_debut=periode['date_debut'], date_fin=periode['date_fin'],
+            validees_seulement=periode['validees_seulement'])
+        return Response(data)
+
 
 # ── FG115 — Périodes comptables verrouillables ─────────────────────────────
 
