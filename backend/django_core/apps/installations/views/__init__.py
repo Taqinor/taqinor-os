@@ -21,6 +21,7 @@ from .program import (
     ProjetDevisViewSet, ProjetTicketViewSet,
     BudgetProjetViewSet, BudgetEngagementViewSet,
 )
+from .indispo import IndisponibiliteRessourceViewSet
 from .field_sync import FieldSyncView
 
 __all__ = [
@@ -44,5 +45,6 @@ __all__ = [
     'ProjetTicketViewSet',
     'BudgetProjetViewSet',
     'BudgetEngagementViewSet',
+    'IndisponibiliteRessourceViewSet',
     'FieldSyncView',
 ]

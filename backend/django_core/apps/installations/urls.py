@@ -10,6 +10,7 @@ from .views import (
     ProjetViewSet, ProjetTacheViewSet, ProjetChantierViewSet,
     ProjetDevisViewSet, ProjetTicketViewSet,
     BudgetProjetViewSet, BudgetEngagementViewSet,
+    IndisponibiliteRessourceViewSet,
 )
 
 router = DefaultRouter()
@@ -32,6 +33,7 @@ router.register(r'programme-devis', ProjetDevisViewSet)
 router.register(r'programme-tickets', ProjetTicketViewSet)
 router.register(r'programme-budgets', BudgetProjetViewSet)
 router.register(r'programme-engagements', BudgetEngagementViewSet)
+router.register(r'indisponibilites-ressource', IndisponibiliteRessourceViewSet)
 
 urlpatterns = [
     # N91/F21 — synchro idempotente de la capture terrain hors-ligne.
