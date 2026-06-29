@@ -360,3 +360,71 @@ def summarize_thread(messages: list[dict], *, context: str = '',
                              source=res.provider)
     return ThreadSummary(ok=False, configured=True, summary='',
                          source=res.provider)
+
+
+# --- FG354 — Brouillon de réponse email / WhatsApp --------------------------
+
+# Canaux supportés (libellés FR) — borne la consigne de format au LLM.
+REPLY_CHANNELS = {
+    'email': 'e-mail',
+    'whatsapp': 'message WhatsApp',
+    'sms': 'SMS',
+}
+
+
+@dataclass
+class ReplyDraft:
+    """Brouillon de réponse SUGGÉRÉ (jamais envoyé automatiquement)."""
+
+    ok: bool = False
+    configured: bool = False
+    draft: str = ''
+    channel: str = 'email'
+    source: str = 'noop'
+
+    @property
+    def available(self) -> bool:
+        return self.ok and bool(self.draft)
+
+
+def draft_reply(messages: list[dict], *, channel: str = 'email',
+                context: str = '', instruction: str = '',
+                max_tokens: int = 400) -> ReplyDraft:
+    """Propose un brouillon de réponse FR éditable à partir d'un fil.
+
+    ``channel`` ∈ :data:`REPLY_CHANNELS` (``'email'``/``'whatsapp'``/``'sms'``)
+    règle uniquement le TON/FORMAT. ``instruction`` permet d'orienter la réponse
+    (ex. « propose un créneau de visite »). ``messages`` : voir
+    :func:`format_thread` — aucun modèle métier importé.
+
+    GARANTIE : cette fonction ne fait QUE générer du texte ; elle n'envoie
+    JAMAIS rien. L'envoi reste une action manuelle explicite de l'utilisateur.
+
+    NO-OP-safe : sans clé LLM, aucun appel réseau, renvoie ``configured=False``
+    (l'UI masque la suggestion ; l'utilisateur rédige à la main)."""
+    chan_label = REPLY_CHANNELS.get(channel, REPLY_CHANNELS['email'])
+    provider = get_provider('llm')
+    if getattr(provider, 'key', 'noop') == 'noop':
+        return ReplyDraft(ok=False, configured=False, draft='',
+                          channel=channel, source='noop')
+
+    thread = format_thread(messages)
+    system = (
+        f"Tu es un commercial solaire au Maroc. Rédige en français un brouillon "
+        f"de {chan_label} poli et professionnel répondant au dernier message du "
+        "fil. Reste concret et bref. Ne promets aucun prix ni délai non confirmé."
+    )
+    parts = []
+    if context:
+        parts.append(f"Contexte : {context}")
+    if instruction:
+        parts.append(f"Consigne : {instruction}")
+    parts.append(f"Fil :\n{thread}" if thread else "Fil : (vide)")
+    prompt = '\n\n'.join(parts)
+    res = provider.complete(prompt=prompt, system=system, max_tokens=max_tokens)
+    if res.ok and res.data.get('text'):
+        return ReplyDraft(ok=True, configured=True,
+                          draft=res.data['text'].strip(),
+                          channel=channel, source=res.provider)
+    return ReplyDraft(ok=False, configured=True, draft='',
+                      channel=channel, source=res.provider)

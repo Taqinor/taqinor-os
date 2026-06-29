@@ -1,18 +1,22 @@
-"""Tests FG353 — synthèse automatique d'un fil d'activité.
+"""Tests FG353/FG354 — synthèse de fil & brouillon de réponse.
 
 Prouve, comme le reste de la fondation IA, que :
-  * SANS clé LLM, ``summarize_thread`` est un NO-OP propre
+  * SANS clé LLM, ``summarize_thread`` et ``draft_reply`` sont des NO-OP propres
     (``configured=False``, AUCUN appel réseau, aucune dépendance externe) ;
-  * AVEC un faux fournisseur LLM sélectionné, il renvoie bien le texte généré ;
+  * AVEC un faux fournisseur LLM sélectionné, ils renvoient bien le texte généré ;
   * ``format_thread`` met le fil à plat de façon robuste (entrées vides, non-dict,
-    accents, limite).
+    accents, limite) ;
+  * ``draft_reply`` ne fait QUE générer du texte (jamais d'envoi).
 """
 from django.test import SimpleTestCase, override_settings
 
 from core.ai import (
     AIResult,
     LLMProvider,
+    REPLY_CHANNELS,
+    ReplyDraft,
     ThreadSummary,
+    draft_reply,
     format_thread,
     summarize_thread,
 )
@@ -121,3 +125,42 @@ class FG353SummarizeTests(SimpleTestCase):
             res = summarize_thread([])
         self.assertTrue(res.configured)
         self.assertEqual(res.summary, '')
+
+
+# --- FG354 — draft_reply -----------------------------------------------------
+
+class FG354DraftReplyTests(SimpleTestCase):
+    def test_channels_are_french(self):
+        self.assertIn('email', REPLY_CHANNELS)
+        self.assertIn('whatsapp', REPLY_CHANNELS)
+
+    def test_noop_without_key(self):
+        res = draft_reply(THREAD, channel='whatsapp')
+        self.assertIsInstance(res, ReplyDraft)
+        self.assertFalse(res.configured)
+        self.assertFalse(res.available)
+        self.assertEqual(res.draft, '')
+        self.assertEqual(res.channel, 'whatsapp')
+
+    def test_draft_with_fake_provider(self):
+        _register_fake()
+        self.addCleanup(
+            lambda: registry._REGISTRY['llm'].pop('fake_llm_thread', None))
+        with override_settings(AI_PROVIDERS={'llm': 'fake_llm_thread'}):
+            res = draft_reply(THREAD, channel='email',
+                              instruction='propose un créneau')
+        self.assertTrue(res.ok)
+        self.assertEqual(res.draft, 'TEXTE GÉNÉRÉ')
+        self.assertEqual(res.channel, 'email')
+        self.assertEqual(res.source, 'fake_llm_thread')
+
+    def test_unknown_channel_falls_back_to_email_format(self):
+        _register_fake()
+        self.addCleanup(
+            lambda: registry._REGISTRY['llm'].pop('fake_llm_thread', None))
+        # Canal inconnu : le libellé retombe sur l'e-mail (pas d'erreur).
+        with override_settings(AI_PROVIDERS={'llm': 'fake_llm_thread'}):
+            res = draft_reply(THREAD, channel='pigeon')
+        self.assertTrue(res.ok)
+        # Le canal demandé est conservé tel quel dans le retour.
+        self.assertEqual(res.channel, 'pigeon')
