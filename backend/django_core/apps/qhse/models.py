@@ -1242,3 +1242,98 @@ class LigneEvaluationRisque(models.Model):
 
     def __str__(self):
         return f'{self.danger} (criticité {self.criticite})'
+
+
+class PermisTravail(models.Model):
+    """Permis de travail QHSE — autorisation préalable à un travail à risque (QHSE23).
+
+    Couvre les permis spécifiques exigés avant une opération dangereuse sur un
+    chantier : travail en hauteur, consignation électrique, point chaud (soudure
+    / meulage / flamme nue), espace confiné, ou autre. Le permis fixe une fenêtre
+    de validité (``date_debut`` → ``date_fin``), les mesures de prévention à
+    appliquer, qui l'a délivré et qui l'a validé.
+
+    Cycle de vie : ``brouillon`` → ``valide`` → ``cloture`` (ou ``expire`` une
+    fois la fenêtre de validité passée). Le rattachement au chantier se fait par
+    référence LÂCHE (``chantier_id`` — jamais un import cross-app du modèle
+    ``installations.Chantier``).
+
+    Multi-société via ``company`` posée côté serveur (jamais lue du corps de
+    requête). La ``reference`` est attribuée côté serveur via
+    ``create_with_reference`` (plus haut numéro utilisé + 1, race-safe — jamais
+    count()+1). Entièrement additif.
+    """
+    class TypePermis(models.TextChoices):
+        HAUTEUR = 'hauteur', 'Travail en hauteur'
+        CONSIGNATION_ELEC = 'consignation_elec', 'Consignation électrique'
+        POINT_CHAUD = 'point_chaud', 'Point chaud (soudure / flamme)'
+        ESPACE_CONFINE = 'espace_confine', 'Espace confiné'
+        AUTRE = 'autre', 'Autre'
+
+    class Statut(models.TextChoices):
+        BROUILLON = 'brouillon', 'Brouillon'
+        VALIDE = 'valide', 'Validé'
+        CLOTURE = 'cloture', 'Clôturé'
+        EXPIRE = 'expire', 'Expiré'
+
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='qhse_permis_travail',
+        verbose_name='Société',
+    )
+    reference = models.CharField(
+        max_length=50, blank=True, default='', verbose_name='Référence')
+    titre = models.CharField(max_length=255, verbose_name='Titre')
+    type_permis = models.CharField(
+        max_length=20, choices=TypePermis.choices,
+        default=TypePermis.HAUTEUR, verbose_name='Type de permis')
+    statut = models.CharField(
+        max_length=10, choices=Statut.choices,
+        default=Statut.BROUILLON, verbose_name='Statut')
+    # Référence LÂCHE au chantier (installations.Chantier) par id : jamais un
+    # import cross-app de modèle.
+    chantier_id = models.PositiveIntegerField(
+        null=True, blank=True, verbose_name='ID du chantier')
+    date_debut = models.DateField(
+        null=True, blank=True, verbose_name='Début de validité')
+    date_fin = models.DateField(
+        null=True, blank=True, verbose_name='Fin de validité')
+    delivre_par = models.CharField(
+        max_length=255, blank=True, default='', verbose_name='Délivré par')
+    valide_par = models.CharField(
+        max_length=255, blank=True, default='', verbose_name='Validé par')
+    mesures_prevention = models.TextField(
+        blank=True, default='', verbose_name='Mesures de prévention')
+    notes = models.TextField(
+        blank=True, default='', verbose_name='Notes')
+    date_creation = models.DateTimeField(
+        auto_now_add=True, verbose_name='Créé le')
+
+    class Meta:
+        verbose_name = 'Permis de travail'
+        verbose_name_plural = 'Permis de travail'
+        ordering = ['-id']
+        constraints = [
+            models.UniqueConstraint(
+                fields=['company', 'reference'],
+                name='qhse_permis_co_ref_uniq',
+            )
+        ]
+        indexes = [
+            models.Index(
+                fields=['company', 'statut'],
+                name='qhse_permis_co_statut',
+            ),
+            models.Index(
+                fields=['company', 'type_permis'],
+                name='qhse_permis_co_type',
+            ),
+            models.Index(
+                fields=['company', 'chantier_id'],
+                name='qhse_permis_co_chant',
+            ),
+        ]
+
+    def __str__(self):
+        return f'{self.reference or "PT"} — {self.titre}'
