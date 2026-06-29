@@ -151,3 +151,117 @@ class KbArticleLien(models.Model):
 
     def __str__(self):
         return f'{self.article_id} → {self.type_cible} #{self.cible_id}'
+
+
+class KbArticleAcl(models.Model):
+    """Droit d'accès d'un RÔLE sur un :class:`KbArticle` (KB7).
+
+    Restreint la visibilité d'un article par palier de rôle. Le ``role`` stocké
+    est le palier de menu CANONIQUE faisant autorité du projet
+    (``CustomUser.menu_tier`` : ``admin`` / ``responsable`` / ``normal``) — la
+    seule source de vérité de rôle, jamais une chaîne en dur ailleurs. Le
+    ``niveau`` distingue un droit de LECTURE d'un droit d'ÉDITION.
+
+    RÉTRO-COMPATIBLE — clé de la feature : un article SANS aucune ligne ACL
+    reste visible de TOUS (comportement historique inchangé). Dès qu'au moins
+    une ligne ACL existe pour un article, seuls les paliers listés (plus le
+    palier ``admin``, toujours autorisé) peuvent le lire. La société est posée
+    côté serveur (jamais du corps de requête) et reste cohérente avec celle de
+    l'article.
+    """
+    class Niveau(models.TextChoices):
+        LECTURE = 'lecture', 'Lecture'
+        EDITION = 'edition', 'Édition'
+
+    # Paliers canoniques : repris 1:1 de ``CustomUser.ROLE_CHOICES`` (accesseur
+    # de rôle faisant autorité ``menu_tier``). Définis localement comme simples
+    # constantes de chaîne pour ne pas créer de dépendance dure au moment de
+    # l'import du modèle ; les valeurs sont validées par ``ROLE_CHOICES``.
+    ROLE_CHOICES = [
+        ('admin', 'Administrateur'),
+        ('responsable', 'Responsable'),
+        ('normal', 'Utilisateur'),
+    ]
+
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='kb_app_acls',
+        verbose_name='Société',
+    )
+    article = models.ForeignKey(
+        KbArticle,
+        on_delete=models.CASCADE,
+        related_name='acls',
+        verbose_name='Article',
+    )
+    role = models.CharField(
+        max_length=20, choices=ROLE_CHOICES,
+        verbose_name='Palier de rôle autorisé')
+    niveau = models.CharField(
+        max_length=10, choices=Niveau.choices,
+        default=Niveau.LECTURE, verbose_name='Niveau')
+    date_creation = models.DateTimeField(
+        auto_now_add=True, verbose_name='Créé le')
+
+    class Meta:
+        verbose_name = "Droit d'accès de l'article"
+        verbose_name_plural = "Droits d'accès de l'article"
+        ordering = ['id']
+        unique_together = [('article', 'role', 'niveau')]
+        indexes = [
+            # Nom EXPLICITE (≤30 car.) pour éviter toute divergence entre le
+            # nom haché déterministe de Django et celui de la migration.
+            models.Index(
+                fields=['company', 'article'], name='kb_acl_company_article_idx'),
+        ]
+
+    def __str__(self):
+        return f'{self.article_id} · {self.role} ({self.niveau})'
+
+
+class KbLecture(models.Model):
+    """Suivi de LECTURE d'un :class:`KbArticle` par un utilisateur (KB7).
+
+    Une ligne par (article, utilisateur) : enregistre QUI a lu QUOI et QUAND
+    (``lu_le``). Écrite par l'action ``marquer-lu`` du viewset des articles —
+    l'utilisateur agissant et la société sont posés côté serveur (jamais du
+    corps de requête). Idempotente : remarquer-lu un article déjà lu rafraîchit
+    ``lu_le`` au lieu de créer une seconde ligne (``get_or_create`` côté
+    service). Alimente le résumé de lecture par article
+    (nombre de lecteurs + qui).
+    """
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='kb_app_lectures',
+        verbose_name='Société',
+    )
+    article = models.ForeignKey(
+        KbArticle,
+        on_delete=models.CASCADE,
+        related_name='lectures',
+        verbose_name='Article',
+    )
+    utilisateur = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name='kb_app_lectures',
+        verbose_name='Lecteur',
+    )
+    lu_le = models.DateTimeField(
+        auto_now=True, verbose_name='Lu le')
+
+    class Meta:
+        verbose_name = "Lecture d'article"
+        verbose_name_plural = "Lectures d'article"
+        ordering = ['-lu_le', '-id']
+        unique_together = [('article', 'utilisateur')]
+        indexes = [
+            # Nom EXPLICITE (≤30 car.) — voir KbArticleAcl.Meta.
+            models.Index(
+                fields=['company', 'article'], name='kb_lecture_company_art_idx'),
+        ]
+
+    def __str__(self):
+        return f'{self.utilisateur_id} a lu {self.article_id}'
