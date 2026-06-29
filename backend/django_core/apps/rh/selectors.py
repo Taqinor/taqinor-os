@@ -583,3 +583,158 @@ def echeances_rh(company, within_days=30, today=None):
 
     rows.sort(key=lambda r: (r['date_validite'], r['type'], r['employe_id']))
     return rows
+
+
+# Garde d'affectation par habilitation (FG176) — type d'intervention → titres
+# d'habilitation requis. Carte volontairement conservatrice (clés = familles de
+# chantier ; valeurs = codes ``Habilitation.TypeHabilitation``) : un appelant
+# (l'affectation côté installations, un autre lane) traduit son type
+# d'intervention en titres requis puis appelle ``verifier_habilitation_requise``.
+# « Blocage doux » : la garde RAPPORTE seulement ; l'appelant décide d'alerter
+# ou de bloquer. La carte reste éditable sans migration (pure constante Python).
+INTERVENTION_HABILITATIONS = {
+    # Pose/raccordement BT d'une installation PV (le plus courant).
+    'pose_pv_bt': ['b1v', 'br'],
+    # Intervention/maintenance BT générale.
+    'maintenance_bt': ['br'],
+    # Consignation BT (mise hors tension avant travaux).
+    'consignation_bt': ['bc'],
+    # Opérations sur partie HT (poste, raccordement HT).
+    'travaux_ht': ['h1v', 'h2v'],
+    # Opérations spécifiques sur installation photovoltaïque.
+    'operations_pv': ['bp'],
+}
+
+
+def habilitations_requises_pour_intervention(type_intervention):
+    """Titres d'habilitation requis pour un ``type_intervention`` (FG176).
+
+    Lecture pure de la carte ``INTERVENTION_HABILITATIONS`` : renvoie la liste
+    des codes ``Habilitation.TypeHabilitation`` exigés (copie défensive), ou
+    ``[]`` si le type est inconnu/absent. Aucune I/O ni société — la traduction
+    type → titres ne dépend pas des données ; l'appelant passe ensuite ces codes
+    à ``verifier_habilitation_requise``.
+    """
+    if not type_intervention:
+        return []
+    return list(INTERVENTION_HABILITATIONS.get(type_intervention, []))
+
+
+def _classifier_habilitation(company, employe_id, type_habilitation, today):
+    """Classe UN titre requis : ``'valide'`` / ``'expiree'`` / ``'manquante'``.
+
+    Brique interne de la garde FG176, cadrée société. Réutilise la règle de
+    validité de ``employe_a_habilitation_valide`` (actif ET non expiré). Quand le
+    titre n'est pas valide, on distingue :
+
+    * ``'expiree'`` — l'employé DÉTIENT bien ce titre (une ligne existe) mais il
+      est inactif ou son échéance est dépassée (à recycler/renouveler) ;
+    * ``'manquante'`` — aucune ligne pour ce titre (jamais obtenu).
+
+    Cette distinction alimente les listes ``expirees`` vs ``manquantes`` du
+    rapport. ``today`` est injecté pour rester déterministe/testable.
+    """
+    if company is None or employe_id is None or not type_habilitation:
+        return 'manquante'
+    if employe_a_habilitation_valide(company, employe_id, type_habilitation):
+        return 'valide'
+    detenu = Habilitation.objects.filter(
+        company=company,
+        employe_id=employe_id,
+        type_habilitation=type_habilitation,
+    ).exists()
+    return 'expiree' if detenu else 'manquante'
+
+
+def verifier_habilitation_requise(company, employe, type_requis, today=None):
+    """Garde d'affectation par habilitation (FG176) — BLOCAGE DOUX.
+
+    Étant donné un employé et un (ou plusieurs) titre(s) d'habilitation requis,
+    indique si l'employé est AUTORISÉ — c.-à-d. détient chaque titre exigé,
+    actif et non expiré (même règle que ``employe_a_habilitation_valide``). La
+    garde se contente de RAPPORTER : l'appelant (l'affectation côté
+    ``installations``, un autre lane) décide d'alerter ou de bloquer. Aucune
+    écriture, aucune transition d'état.
+
+    Paramètres
+    * ``company`` — société de l'appelant (jamais lue du corps de requête) ;
+    * ``employe`` — un ``DossierEmploye`` ou son ``id`` ;
+    * ``type_requis`` — un code ``Habilitation.TypeHabilitation`` OU un itérable
+      de codes (tous exigés). Les entrées vides/falsy sont ignorées ;
+    * ``today`` — date de référence injectable (déterminisme/tests).
+
+    Renvoie un dict :
+    ``{
+        'autorise': bool,        # True seulement si aucune manquante ni expirée
+        'manquantes': [str],     # titres jamais obtenus (codes), triés
+        'expirees': [str],       # titres détenus mais expirés/inactifs, triés
+        'message': str,          # résumé lisible (français)
+    }``
+
+    Si la société ou l'employé manque, ou si ``type_requis`` est vide, renvoie un
+    rapport NON autorisé avec un message explicite (on ne « valide » jamais par
+    défaut une affectation que l'on ne peut pas vérifier).
+    """
+    if today is None:
+        today = timezone.localdate()
+
+    # Normalise ``type_requis`` en liste de codes non vides, sans doublon, ordre
+    # stable. Une chaîne unique n'est PAS itérée caractère par caractère.
+    if isinstance(type_requis, str):
+        requis = [type_requis] if type_requis else []
+    elif type_requis is None:
+        requis = []
+    else:
+        requis = [t for t in type_requis if t]
+    vus = set()
+    requis = [t for t in requis if not (t in vus or vus.add(t))]
+
+    employe_id = getattr(employe, 'pk', employe)
+
+    if company is None or employe_id is None:
+        return {
+            'autorise': False,
+            'manquantes': [],
+            'expirees': [],
+            'message': 'Vérification impossible : société ou employé manquant.',
+        }
+    if not requis:
+        return {
+            'autorise': False,
+            'manquantes': [],
+            'expirees': [],
+            'message': 'Aucune habilitation requise précisée.',
+        }
+
+    manquantes = []
+    expirees = []
+    for type_habilitation in requis:
+        statut = _classifier_habilitation(
+            company, employe_id, type_habilitation, today)
+        if statut == 'manquante':
+            manquantes.append(type_habilitation)
+        elif statut == 'expiree':
+            expirees.append(type_habilitation)
+
+    manquantes.sort()
+    expirees.sort()
+    autorise = not manquantes and not expirees
+
+    if autorise:
+        message = 'Habilitation(s) requise(s) présente(s) et valide(s).'
+    else:
+        parties = []
+        if manquantes:
+            parties.append(
+                'manquante(s) : ' + ', '.join(manquantes))
+        if expirees:
+            parties.append(
+                'expirée(s)/inactive(s) : ' + ', '.join(expirees))
+        message = 'Habilitation non conforme — ' + ' ; '.join(parties) + '.'
+
+    return {
+        'autorise': autorise,
+        'manquantes': manquantes,
+        'expirees': expirees,
+        'message': message,
+    }
