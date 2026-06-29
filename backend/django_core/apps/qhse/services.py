@@ -368,8 +368,8 @@ def calculer_score_notation(notation):
 
 @transaction.atomic
 def nouvelle_version_procedure(company, reference, titre, *, contenu='',
-                              document_id=None, auteur=None,
-                              date_application=None):
+                               document_id=None, auteur=None,
+                               date_application=None):
     """Crée la version SUIVANTE d'une procédure qualité (additif, non destructif).
 
     La version est calculée côté serveur : ``max(version de la référence) + 1``

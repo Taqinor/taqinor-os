@@ -1835,8 +1835,8 @@ def _statut_depuis_ecart(ecart, tolerance):
     return Rapprochement.Statut.ECART
 
 
-def creer_rapprochement(company, *, bon_commande_id, tolerance=None, note='',
-                        user=None):
+def creer_rapprochement_3voies(company, *, bon_commande_id, tolerance=None,
+                               note='', user=None):
     """Crée (ou renvoie) le rapprochement 3 voies d'un BCF et l'évalue (FG131).
 
     Le BCF doit appartenir à la société (vérifié via le sélecteur de stock).

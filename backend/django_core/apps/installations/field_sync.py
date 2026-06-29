@@ -32,8 +32,7 @@ from django.db import transaction
 from django.utils import timezone
 
 from .models import (
-    ChantierChecklistItem, ComponentSerial, FieldOp, Installation,
-    Intervention,
+    ComponentSerial, FieldOp, Installation, Intervention,
 )
 from . import field_capture, field_services, intervention_activity
 

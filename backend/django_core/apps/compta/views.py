@@ -1022,7 +1022,7 @@ class RapprochementViewSet(_ComptaBaseViewSet):
         serializer = self.get_serializer(data=data)
         serializer.is_valid(raise_exception=True)
         try:
-            rapp = services.creer_rapprochement(
+            rapp = services.creer_rapprochement_3voies(
                 company,
                 bon_commande_id=serializer.validated_data['bon_commande'].id,
                 tolerance=serializer.validated_data.get('tolerance'),

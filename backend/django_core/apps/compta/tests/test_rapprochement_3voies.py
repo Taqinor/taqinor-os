@@ -130,7 +130,7 @@ class RapprochementServiceTests(_Fixture):
     def test_creer_pose_company_et_evalue(self):
         self._recevoir(10)   # 900 reçu
         self._facturer('900')  # 900 facturé
-        rapp = services.creer_rapprochement(
+        rapp = services.creer_rapprochement_3voies(
             self.co, bon_commande_id=self.bon.id, user=self.user)
         self.assertEqual(rapp.company_id, self.co.id)
         self.assertEqual(rapp.montant_commande, Decimal('900'))
@@ -143,7 +143,7 @@ class RapprochementServiceTests(_Fixture):
     def test_ecart_bloquant_quand_facture_depasse_recu(self):
         self._recevoir(4)    # 360 reçu
         self._facturer('900')  # 900 facturé → écart +540
-        rapp = services.creer_rapprochement(
+        rapp = services.creer_rapprochement_3voies(
             self.co, bon_commande_id=self.bon.id, user=self.user)
         self.assertEqual(rapp.ecart, Decimal('540'))
         self.assertEqual(rapp.statut, Rapprochement.Statut.ECART)
@@ -152,21 +152,21 @@ class RapprochementServiceTests(_Fixture):
     def test_tolerance_absorbe_un_petit_ecart(self):
         self._recevoir(10)   # 900 reçu
         self._facturer('905')  # 905 facturé → écart +5
-        rapp = services.creer_rapprochement(
+        rapp = services.creer_rapprochement_3voies(
             self.co, bon_commande_id=self.bon.id,
             tolerance=Decimal('10'), user=self.user)
         self.assertEqual(rapp.ecart, Decimal('5'))
         self.assertEqual(rapp.statut, Rapprochement.Statut.CONCORDANT)
 
     def test_creer_est_idempotent_et_reevalue(self):
-        rapp1 = services.creer_rapprochement(
+        rapp1 = services.creer_rapprochement_3voies(
             self.co, bon_commande_id=self.bon.id, user=self.user)
         # Première éval : rien reçu/facturé → concordant (0 vs 0).
         self.assertEqual(rapp1.statut, Rapprochement.Statut.CONCORDANT)
         # On reçoit + facture puis on recrée : même objet, ré-évalué.
         self._recevoir(2)     # 180 reçu
         self._facturer('900')  # 900 facturé → écart +720
-        rapp2 = services.creer_rapprochement(
+        rapp2 = services.creer_rapprochement_3voies(
             self.co, bon_commande_id=self.bon.id, user=self.user)
         self.assertEqual(rapp1.id, rapp2.id)
         self.assertEqual(Rapprochement.objects.filter(
@@ -177,18 +177,18 @@ class RapprochementServiceTests(_Fixture):
     def test_creer_refuse_bcf_inconnu(self):
         autre = make_company('fg131-c', 'FG131 C')
         with self.assertRaises(ValidationError):
-            services.creer_rapprochement(
+            services.creer_rapprochement_3voies(
                 autre, bon_commande_id=self.bon.id, user=self.user)
 
     def test_tolerance_negative_refusee(self):
         with self.assertRaises(ValidationError):
-            services.creer_rapprochement(
+            services.creer_rapprochement_3voies(
                 self.co, bon_commande_id=self.bon.id,
                 tolerance=Decimal('-1'), user=self.user)
 
     def test_ecart_commande_recu_informatif(self):
         self._recevoir(4)  # 360 reçu vs 900 commandé → -540 (livraison partielle)
-        rapp = services.creer_rapprochement(
+        rapp = services.creer_rapprochement_3voies(
             self.co, bon_commande_id=self.bon.id, user=self.user)
         self.assertEqual(rapp.ecart_commande_recu, Decimal('-540'))
 
@@ -199,7 +199,7 @@ class RapprochementValidationTests(_Fixture):
     def test_valider_concordant_pose_bon_a_payer(self):
         self._recevoir(10)
         self._facturer('900')
-        rapp = services.creer_rapprochement(
+        rapp = services.creer_rapprochement_3voies(
             self.co, bon_commande_id=self.bon.id, user=self.user)
         rapp = services.valider_rapprochement(rapp, user=self.user)
         self.assertEqual(rapp.statut, Rapprochement.Statut.VALIDE)
@@ -210,7 +210,7 @@ class RapprochementValidationTests(_Fixture):
     def test_valider_refuse_si_ecart_bloquant(self):
         self._recevoir(4)
         self._facturer('900')  # écart +540
-        rapp = services.creer_rapprochement(
+        rapp = services.creer_rapprochement_3voies(
             self.co, bon_commande_id=self.bon.id, user=self.user)
         with self.assertRaises(ValidationError):
             services.valider_rapprochement(rapp, user=self.user)
@@ -220,7 +220,7 @@ class RapprochementValidationTests(_Fixture):
     def test_validation_non_ecrasee_par_reevaluation(self):
         self._recevoir(10)
         self._facturer('900')
-        rapp = services.creer_rapprochement(
+        rapp = services.creer_rapprochement_3voies(
             self.co, bon_commande_id=self.bon.id, user=self.user)
         services.valider_rapprochement(rapp, user=self.user)
         # Une ré-évaluation ne doit pas dégrader un VALIDE en concordant/écart.
@@ -234,7 +234,7 @@ class RapprochementSelectorTests(_Fixture):
     def test_rapprochements_en_ecart(self):
         self._recevoir(4)
         self._facturer('900')  # écart bloquant
-        services.creer_rapprochement(
+        services.creer_rapprochement_3voies(
             self.co, bon_commande_id=self.bon.id, user=self.user)
         en_ecart = selectors.rapprochements_en_ecart(self.co)
         self.assertEqual(len(en_ecart), 1)
