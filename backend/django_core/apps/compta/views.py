@@ -250,6 +250,57 @@ class EtatsComptablesViewSet(viewsets.ViewSet):
             validees_seulement=periode['validees_seulement'])
         return Response(data)
 
+    @action(detail=False, methods=['get'], url_path='releve-deductions-tva')
+    def releve_deductions_tva(self, request):
+        """Relevé de déductions détaillé — annexe TVA exigée par la DGI (FG138).
+
+        Liste ligne par ligne chaque pièce ouvrant droit à déduction de TVA sur
+        la période (date, référence/pièce, journal, tiers fournisseur, base HT,
+        TVA, taux), déduite du grand livre (comptes 3455…). La somme des TVA
+        reconcilie avec la TVA déductible de la déclaration (FG137). Paramètres :
+        ``date_debut`` / ``date_fin`` (la période de la déclaration), ``validees``
+        (1 → écritures validées seulement) et ``format=csv`` pour l'export CSV.
+        Lecture seule, scopée société, Admin/Responsable.
+        """
+        periode = self._periode(request)
+        company = request.user.company
+        data = selectors.releve_deductions_tva(
+            company, date_debut=periode['date_debut'],
+            date_fin=periode['date_fin'],
+            validees_seulement=periode['validees_seulement'])
+        if request.query_params.get('format') == 'csv':
+            return self._export_deductions_csv(data)
+        return Response(data)
+
+    @staticmethod
+    def _export_deductions_csv(data):
+        """Sérialise le relevé de déductions TVA (FG138) en CSV (DGI)."""
+        buffer = io.StringIO()
+        writer = csv.writer(buffer, delimiter=';')
+        writer.writerow(['Relevé de déductions de TVA (annexe DGI)'])
+        writer.writerow(
+            ['Période', f"{data['date_debut'] or ''} → {data['date_fin'] or ''}"])
+        writer.writerow([])
+        writer.writerow(
+            ['Date', 'Référence', 'Journal', 'Libellé', 'Tiers',
+             'Base HT', 'TVA', 'Taux %'])
+        for ligne in data['lignes']:
+            taux = ligne['taux']
+            writer.writerow([
+                ligne['date'], ligne['reference'], ligne['journal'],
+                ligne['libelle'], ligne['tiers'], ligne['base_ht'],
+                ligne['tva'], '' if taux is None else taux])
+        writer.writerow([])
+        writer.writerow(
+            ['Totaux', '', '', '', '', data['totaux']['base_ht'],
+             data['totaux']['tva'], ''])
+        resp = HttpResponse(
+            buffer.getvalue(), content_type='text/csv; charset=utf-8')
+        resp['Content-Disposition'] = (
+            'attachment; filename="releve_deductions_tva_'
+            f"{data['date_debut'] or 'periode'}_{data['date_fin'] or ''}.csv\"")
+        return resp
+
 
 # ── FG115 — Périodes comptables verrouillables ─────────────────────────────
 
