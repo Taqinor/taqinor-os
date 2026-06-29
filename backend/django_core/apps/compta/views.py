@@ -20,7 +20,7 @@ from .models import (
     CompteTresorerie, DotationAmortissement, EcritureComptable, Effet,
     ExerciceComptable, Immobilisation, Journal, LignePrevisionnelTresorerie,
     LigneReleve, MouvementCaisse, PeriodeComptable, PlanComptable,
-    RapprochementBancaire, VirementInterne,
+    Rapprochement, RapprochementBancaire, VirementInterne,
 )
 from .serializers import (
     BordereauRemiseSerializer, CaisseSerializer,
@@ -31,7 +31,8 @@ from .serializers import (
     JournalSerializer, LignePrevisionnelTresorerieSerializer,
     LigneReleveSerializer, MouvementCaisseSerializer, PeriodeComptableSerializer,
     PlanAmortissementSerializer, PlanComptableSerializer,
-    RapprochementBancaireSerializer, VirementInterneSerializer,
+    RapprochementBancaireSerializer, RapprochementSerializer,
+    VirementInterneSerializer,
 )
 
 
@@ -983,3 +984,79 @@ class BordereauRemiseViewSet(_ComptaBaseViewSet):
             'bordereau': self.get_serializer(bordereau).data,
             'ecriture_id': ecriture.id if ecriture else None,
         })
+
+
+# ── FG131 — Rapprochement 3 voies (BC ↔ réception ↔ facture fournisseur) ────
+
+class RapprochementViewSet(_ComptaBaseViewSet):
+    """Rapprochements 3 voies avant paiement (FG131).
+
+    Confronte commandé (BC) ↔ reçu (réception) ↔ facturé (facture fournisseur)
+    — les trois documents vivent dans ``apps.stock`` et sont lus via ses
+    sélecteurs (jamais dupliqués). La création (corps ``{bon_commande,
+    tolerance?, note?}``) passe par le service qui valide le BCF de la société
+    et évalue immédiatement l'écart. ``evaluer`` rafraîchit les montants ;
+    ``valider`` pose le bon-à-payer (refusé tant qu'un écart bloquant subsiste).
+    Société scopée, posée côté serveur.
+    """
+    queryset = Rapprochement.objects.select_related(
+        'bon_commande', 'bon_commande__fournisseur', 'valide_par').all()
+    serializer_class = RapprochementSerializer
+    filter_backends = [filters.OrderingFilter]
+    ordering_fields = ['date_creation', 'date_evaluation', 'ecart', 'id']
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        params = self.request.query_params
+        statut = params.get('statut')
+        if statut:
+            qs = qs.filter(statut=statut)
+        bon_commande = params.get('bon_commande')
+        if bon_commande:
+            qs = qs.filter(bon_commande_id=bon_commande)
+        return qs
+
+    def create(self, request, *args, **kwargs):
+        data = request.data
+        company = request.user.company
+        serializer = self.get_serializer(data=data)
+        serializer.is_valid(raise_exception=True)
+        try:
+            rapp = services.creer_rapprochement_3voies(
+                company,
+                bon_commande_id=serializer.validated_data['bon_commande'].id,
+                tolerance=serializer.validated_data.get('tolerance'),
+                note=serializer.validated_data.get('note', '') or '',
+                user=request.user)
+        except DjangoValidationError as exc:
+            return Response(
+                {'detail': exc.messages[0] if exc.messages else str(exc)},
+                status=status.HTTP_400_BAD_REQUEST)
+        return Response(
+            self.get_serializer(rapp).data, status=status.HTTP_201_CREATED)
+
+    @action(detail=True, methods=['post'])
+    def evaluer(self, request, pk=None):
+        """Rafraîchit les trois montants et recalcule l'écart/statut (FG131)."""
+        rapp = self.get_object()  # scopé société par TenantMixin.
+        try:
+            rapp = services.evaluer_rapprochement(rapp)
+        except DjangoValidationError as exc:
+            return Response(
+                {'detail': exc.messages[0] if exc.messages else str(exc)},
+                status=status.HTTP_400_BAD_REQUEST)
+        return Response(self.get_serializer(rapp).data)
+
+    @action(detail=True, methods=['post'])
+    def valider(self, request, pk=None):
+        """Pose le bon-à-payer (FG131). Refusé tant qu'un écart bloque."""
+        rapp = self.get_object()  # scopé société par TenantMixin.
+        try:
+            rapp = services.valider_rapprochement(
+                rapp, user=request.user,
+                commentaire=request.data.get('commentaire', '') or '')
+        except DjangoValidationError as exc:
+            return Response(
+                {'detail': exc.messages[0] if exc.messages else str(exc)},
+                status=status.HTTP_400_BAD_REQUEST)
+        return Response(self.get_serializer(rapp).data)

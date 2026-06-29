@@ -18,7 +18,7 @@ from apps.crm.models import Client
 from apps.records.models import Attachment
 from apps.ged import selectors, services
 from apps.ged.models import (
-    Cabinet, Coffre, Document, DocumentLien, DocumentTag,
+    Cabinet, Coffre, Document, DocumentChunk, DocumentLien, DocumentTag,
     DocumentTagAssignment, DocumentVersion, Folder,
 )
 
@@ -1264,6 +1264,137 @@ class DocumentSemanticSearchTests(GedBase):
             results = list(selectors.semantic_search_documents(
                 self.admin_a, 'centrale solaire'))
             self.assertEqual(results[0].id, doc_solaire.id)
+
+
+# ── FG352 — RAG / DocQA : indexation par fragments + récupération (no-op) ──
+class DocQaRagTests(GedBase):
+    """FG352 — Vérifie le RAG/DocQA : le découpage (langchain-textsplitters ou
+    repli) produit des fragments cohérents ; sans clé d'embedding, l'indexation
+    par fragments est un no-op (aucun `DocumentChunk`) et la récupération renvoie
+    vide ; avec un provider simulé, les fragments sont embeddés et la
+    récupération top-k cosinus s'active et reste bornée par société + ACL."""
+
+    def setUp(self):
+        super().setUp()
+        self.folder_a = Folder.objects.create(
+            company=self.co_a, cabinet=self.cab_a, nom='Manuels')
+
+    # — Découpage —
+    def test_chunk_text_empty_returns_empty(self):
+        self.assertEqual(services.chunk_text(''), [])
+        self.assertEqual(services.chunk_text('   '), [])
+        self.assertEqual(services.chunk_text(None), [])
+
+    def test_chunk_text_splits_long_text(self):
+        # Texte > chunk_size → plusieurs fragments non vides.
+        text = 'Onduleur. ' * 300  # ~3000 caractères
+        chunks = services.chunk_text(text, chunk_size=500, chunk_overlap=50)
+        self.assertGreater(len(chunks), 1)
+        self.assertTrue(all(c.strip() for c in chunks))
+        # Chaque fragment respecte (à peu près) la taille demandée.
+        self.assertTrue(all(len(c) <= 600 for c in chunks))
+
+    def test_chunk_text_short_text_single_chunk(self):
+        chunks = services.chunk_text('Manuel court onduleur 5kW')
+        self.assertEqual(chunks, ['Manuel court onduleur 5kW'])
+
+    # — Indexation no-op sans clé —
+    def test_index_chunks_is_noop_without_key(self):
+        doc = Document.objects.create(
+            company=self.co_a, folder=self.folder_a, nom='Manuel pompe')
+        services.set_ocr_text(doc, 'Texte du manuel ' * 100)
+        self.assertEqual(services.index_document_chunks(doc), 0)
+        self.assertEqual(DocumentChunk.objects.filter(document=doc).count(), 0)
+
+    def test_retrieve_chunks_empty_without_key(self):
+        self.assertEqual(
+            selectors.retrieve_chunks(self.admin_a, 'comment câbler ?'), [])
+
+    def test_docqa_endpoint_disabled_without_key(self):
+        api = auth(self.admin_a)
+        resp = api.get('/api/django/ged/documents/docqa/?q=onduleur')
+        self.assertEqual(resp.status_code, 200)
+        self.assertFalse(resp.data['enabled'])
+        self.assertEqual(resp.data['results'], [])
+
+    # — Avec un provider simulé (clé présente) —
+    def _fake_embed(self, text):
+        # Vecteur 1024 orienté par la présence d'un mot-clé (déterministe).
+        base = [0.0] * 1024
+        low = (text or '').lower()
+        if 'pompe' in low or 'pompage' in low:
+            base[0] = 1.0
+        elif 'onduleur' in low:
+            base[1] = 1.0
+        else:
+            base[2] = 1.0
+        return base
+
+    def test_index_and_retrieve_with_stub_embedder(self):
+        from unittest import mock
+        from django.test import override_settings
+        from apps.ged import services as svc
+
+        doc = Document.objects.create(
+            company=self.co_a, folder=self.folder_a, nom='Manuel pompe solaire')
+        # Texte assez long pour produire plusieurs fragments.
+        texte = ('La pompe solaire de pompage agricole. ' * 60
+                 + 'Branchement onduleur réseau. ' * 60)
+        with override_settings(GED_EMBEDDING_ENABLED=True), \
+                mock.patch.object(svc, 'compute_embedding',
+                                  side_effect=self._fake_embed):
+            svc.set_ocr_text(doc, texte)
+            n = svc.index_document_chunks(doc)
+            self.assertGreater(n, 1)
+            chunks = DocumentChunk.objects.filter(document=doc)
+            self.assertEqual(chunks.count(), n)
+            # Chaque fragment porte la company du document + un embedding.
+            self.assertTrue(all(c.company_id == self.co_a.id for c in chunks))
+            self.assertTrue(all(c.embedding is not None for c in chunks))
+            # Récupération : « pompage » doit ramener un fragment « pompe » en
+            # tête (distance cosinus minimale).
+            results = selectors.retrieve_chunks(
+                self.admin_a, 'pompage agricole', limit=3)
+            self.assertTrue(results)
+            self.assertIn('pompe', results[0].texte.lower())
+
+    def test_index_chunks_is_idempotent(self):
+        from unittest import mock
+        from django.test import override_settings
+        from apps.ged import services as svc
+
+        doc = Document.objects.create(
+            company=self.co_a, folder=self.folder_a, nom='Manuel onduleur')
+        with override_settings(GED_EMBEDDING_ENABLED=True), \
+                mock.patch.object(svc, 'compute_embedding',
+                                  side_effect=self._fake_embed):
+            svc.set_ocr_text(doc, 'Onduleur hybride. ' * 100)
+            n1 = svc.index_document_chunks(doc)
+            n2 = svc.index_document_chunks(doc)
+            self.assertEqual(n1, n2)
+            # Pas de doublons : exactement n fragments après ré-indexation.
+            self.assertEqual(
+                DocumentChunk.objects.filter(document=doc).count(), n2)
+
+    def test_retrieve_chunks_company_isolated(self):
+        from unittest import mock
+        from django.test import override_settings
+        from apps.ged import services as svc
+
+        # Document chez la société B avec des fragments embeddés.
+        folder_b = Folder.objects.create(
+            company=self.co_b, cabinet=self.cab_b, nom='Manuels B')
+        doc_b = Document.objects.create(
+            company=self.co_b, folder=folder_b, nom='Secret pompe B')
+        with override_settings(GED_EMBEDDING_ENABLED=True), \
+                mock.patch.object(svc, 'compute_embedding',
+                                  side_effect=self._fake_embed):
+            svc.set_ocr_text(doc_b, 'pompe solaire confidentielle ' * 80)
+            svc.index_document_chunks(doc_b)
+            # L'admin de A ne doit JAMAIS voir les fragments de B.
+            results = selectors.retrieve_chunks(self.admin_a, 'pompe', limit=10)
+            doc_ids = {c.document_id for c in results}
+            self.assertNotIn(doc_b.id, doc_ids)
 
 
 # ── U14 — Upload « en un appel » (document + version 1) via televerser ──

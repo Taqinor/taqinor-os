@@ -55,7 +55,10 @@ class RubriqueSerializer(serializers.ModelSerializer):
         model = Rubrique
         fields = [
             'id', 'code', 'libelle', 'type', 'imposable', 'soumis_cnss',
-            'soumis_amo', 'soumis_cimr', 'compte', 'base', 'taux',
+            'soumis_amo', 'soumis_cimr',
+            # PAIE16 — avantage en nature + plafond mensuel d'exonération.
+            'avantage_nature', 'plafond_exoneration',
+            'compte', 'base', 'taux',
             'montant_fixe', 'ordre', 'actif', 'date_creation',
         ]
         read_only_fields = ['date_creation']

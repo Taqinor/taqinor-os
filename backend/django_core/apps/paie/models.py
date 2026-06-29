@@ -250,6 +250,24 @@ class Rubrique(models.Model):
         default=False, verbose_name='Soumis AMO')
     soumis_cimr = models.BooleanField(
         default=False, verbose_name='Soumis CIMR')
+    # PAIE16 — Avantages en nature & indemnités : imposable vs non-imposable
+    # dans la limite d'un plafond. Beaucoup d'indemnités/avantages marocains
+    # (transport, panier, déplacement, logement, voiture de fonction…) sont
+    # EXONÉRÉS d'IR (et souvent de CNSS/AMO) tant que leur montant mensuel reste
+    # SOUS un plafond réglementaire ; la fraction qui EXCÈDE le plafond est
+    # réintégrée dans la base imposable (et dans l'assiette CNSS/AMO si la
+    # rubrique est soumise). ``avantage_nature`` distingue un avantage en nature
+    # (logé/nourri/voiture) d'une indemnité en numéraire — purement informatif.
+    avantage_nature = models.BooleanField(
+        default=False, verbose_name='Avantage en nature')
+    # Plafond mensuel d'exonération. ``None`` (défaut) = pas de plafond
+    # spécifique : la rubrique est entièrement imposable ou entièrement exonérée
+    # selon son drapeau ``imposable`` (comportement historique inchangé). Une
+    # valeur renseignée active le régime « exonéré jusqu'au plafond, excédent
+    # imposable ».
+    plafond_exoneration = models.DecimalField(
+        max_digits=14, decimal_places=2, null=True, blank=True,
+        verbose_name="Plafond mensuel d'exonération")
     compte = models.CharField(
         max_length=30, blank=True, default='',
         verbose_name='Compte comptable')

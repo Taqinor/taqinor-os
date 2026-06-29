@@ -231,31 +231,43 @@ RUBRIQUES_DEFAUT = [
      False, False, False, False, '3431', 70),
 ]
 
-# ── PAIE7 — Catalogue de rubriques STANDARD additionnelles ──────────────────
+# ── PAIE7 / PAIE16 — Catalogue de rubriques STANDARD additionnelles ─────────
 # Rubriques usuelles du bulletin marocain non encore au catalogue de base :
 # indemnités/primes (transport, panier, ancienneté, représentation, logement,
-# responsabilité) avec leur régime fiscal/social usuel, et la cotisation CIMR.
-# Indemnité de transport et de panier sont non imposables et non soumises CNSS
-# dans la limite des plafonds réglementaires (régime simplifié ici : exonérées).
-# Valeurs ÉDITABLES — pures défauts, additif et idempotent.
+# responsabilité), avantages en nature (logement/voiture de fonction) et la
+# cotisation CIMR, avec leur régime fiscal/social usuel.
+#
+# PAIE16 — Plafond d'exonération : transport, panier, déplacement et certains
+# avantages sont EXONÉRÉS d'IR DANS LA LIMITE d'un plafond mensuel ; l'excédent
+# est réintégré dans la base imposable. La 10ᵉ colonne ``plafond`` porte ce
+# plafond (``None`` = pas de plafond, régime tout-ou-rien). La 11ᵉ colonne
+# ``avantage_nature`` marque un avantage en nature (logé/voiture). Valeurs
+# ÉDITABLES — pures défauts (à confirmer par le fondateur), additif et idempotent.
 RUBRIQUES_STANDARD = [
-    # code, libelle, type, imposable, cnss, amo, cimr, compte, ordre
+    # code, libelle, type, imposable, cnss, amo, cimr, compte, ordre,
+    #   plafond_exoneration, avantage_nature
     ('TRANSPORT', 'Indemnité de transport', Rubrique.TYPE_GAIN,
-     False, False, False, False, '6411', 22),
+     False, False, False, False, '6411', 22, Decimal('500'), False),
     ('PANIER', 'Indemnité de panier', Rubrique.TYPE_GAIN,
-     False, False, False, False, '6411', 24),
+     False, False, False, False, '6411', 24, Decimal('2200'), False),
+    ('DEPLACEMENT', 'Indemnité de déplacement', Rubrique.TYPE_GAIN,
+     False, False, False, False, '6411', 25, Decimal('5000'), False),
     ('ANCIENNETE', "Prime d'ancienneté", Rubrique.TYPE_GAIN,
-     True, True, True, True, '6411', 26),
+     True, True, True, True, '6411', 26, None, False),
     ('REPRESENT', 'Indemnité de représentation', Rubrique.TYPE_GAIN,
-     False, False, False, False, '6411', 28),
+     False, False, False, False, '6411', 28, Decimal('5000'), False),
     ('LOGEMENT', 'Indemnité de logement', Rubrique.TYPE_GAIN,
-     True, True, True, True, '6411', 29),
+     True, True, True, True, '6411', 29, None, False),
+    ('AV_LOGEMENT', 'Avantage en nature — logement', Rubrique.TYPE_GAIN,
+     True, True, True, True, '6411', 30, None, True),
+    ('AV_VOITURE', 'Avantage en nature — voiture de fonction',
+     Rubrique.TYPE_GAIN, True, True, True, True, '6411', 31, None, True),
     ('RESPONSAB', 'Prime de responsabilité', Rubrique.TYPE_GAIN,
-     True, True, True, True, '6411', 32),
+     True, True, True, True, '6411', 32, None, False),
     ('RENDEMENT', 'Prime de rendement', Rubrique.TYPE_GAIN,
-     True, True, True, True, '6411', 34),
+     True, True, True, True, '6411', 34, None, False),
     ('CIMR', 'Cotisation CIMR (part salariale)', Rubrique.TYPE_COTISATION,
-     False, False, False, False, '4443', 55),
+     False, False, False, False, '4443', 55, None, False),
 ]
 
 
@@ -264,10 +276,22 @@ def _ensure_rubriques(company, catalogue):
 
     Clé stable ``(company, code)`` : une rubrique déjà présente (éventuellement
     éditée par le fondateur) n'est jamais modifiée. Retourne le nombre créé.
+
+    Chaque entrée du catalogue est un tuple de 9 colonnes ::
+
+        (code, libelle, type, imposable, cnss, amo, cimr, compte, ordre)
+
+    ou de 11 colonnes (PAIE16) avec, en plus ::
+
+        … , plafond_exoneration, avantage_nature
     """
     cree = 0
-    for (code, libelle, type_, imposable, cnss, amo, cimr,
-         compte, ordre) in catalogue:
+    for entree in catalogue:
+        code, libelle, type_, imposable, cnss, amo, cimr, compte, ordre = \
+            entree[:9]
+        # PAIE16 — colonnes optionnelles plafond d'exonération / avantage nature.
+        plafond = entree[9] if len(entree) > 9 else None
+        avantage_nature = entree[10] if len(entree) > 10 else False
         _, new = Rubrique.objects.get_or_create(
             company=company,
             code=code,
@@ -280,6 +304,8 @@ def _ensure_rubriques(company, catalogue):
                 'soumis_cimr': cimr,
                 'compte': compte,
                 'ordre': ordre,
+                'plafond_exoneration': plafond,
+                'avantage_nature': avantage_nature,
             },
         )
         if new:
@@ -668,6 +694,52 @@ def taux_horaire_base_profil(profil):
         Decimal('0.000001'), rounding=ROUND_HALF_UP)
 
 
+# ── PAIE16 — Avantages en nature & indemnités : imposable vs non, plafonds ──
+
+def repartir_avantage(rubrique, montant):
+    """Répartit le ``montant`` d'une indemnité/avantage en part exonérée / part imposable.
+
+    Cadre marocain : de nombreuses indemnités/avantages (transport, panier,
+    déplacement, logement, voiture de fonction…) sont EXONÉRÉS d'IR tant que
+    leur montant mensuel reste SOUS un plafond réglementaire ; la fraction qui
+    EXCÈDE le plafond est réintégrée dans la base imposable.
+
+    Règles (toutes pilotées par les drapeaux de la ``Rubrique``) :
+
+    * ``rubrique`` absente (``None``) → tout est imposable (un élément variable
+      sans rubrique catalogue est traité comme un gain imposable, comportement
+      historique).
+    * ``rubrique.imposable`` vrai ET pas de plafond → tout imposable.
+    * ``rubrique`` non imposable ET pas de plafond (``plafond_exoneration`` à
+      ``None``) → tout exonéré (comportement historique d'une indemnité
+      entièrement exonérée).
+    * ``plafond_exoneration`` renseigné → ``min(montant, plafond)`` est exonéré,
+      l'excédent ``max(0, montant − plafond)`` est imposable. Ceci s'applique
+      que la rubrique soit marquée imposable ou non : le plafond prime.
+
+    Renvoie un tuple ``(part_exoneree, part_imposable)`` de ``Decimal`` au
+    centime, dont la somme vaut toujours ``montant``.
+    """
+    montant = Decimal(montant or 0)
+    if montant <= 0:
+        return Decimal('0.00'), _q(montant)
+
+    if rubrique is None:
+        return Decimal('0.00'), _q(montant)
+
+    plafond = getattr(rubrique, 'plafond_exoneration', None)
+    if plafond is None:
+        # Pas de plafond : tout imposable ou tout exonéré selon le drapeau.
+        if rubrique.imposable:
+            return Decimal('0.00'), _q(montant)
+        return _q(montant), Decimal('0.00')
+
+    plafond = Decimal(plafond)
+    part_exoneree = min(montant, plafond)
+    part_imposable = max(Decimal('0'), montant - plafond)
+    return _q(part_exoneree), _q(part_imposable)
+
+
 # ── PAIE12 — Moteur de calcul du bulletin ──────────────────────────────────
 
 _CENT = Decimal('0.01')
@@ -771,7 +843,7 @@ def calculer_bulletin(profil, periode, personnes_a_charge=0):
 
     for el in elements:
         montant = Decimal(el.montant or 0)
-        imposable = el.rubrique.imposable if el.rubrique_id else True
+        rubrique = el.rubrique if el.rubrique_id else None
         if el.type == ElementVariable.TYPE_RETENUE or \
                 el.type == ElementVariable.TYPE_ABSENCE:
             retenues_variables += montant
@@ -793,8 +865,14 @@ def calculer_bulletin(profil, periode, personnes_a_charge=0):
                 taux_maj = taux_majoration_hs(parametre, el.categorie_hs)
                 montant = calculer_gain_hs(el.quantite, _taux_h_base, taux_maj)
             gains_variables += montant
-            if imposable:
-                gains_imposables += montant
+            # PAIE16 — Avantages en nature & indemnités : la part qui dépasse le
+            # plafond d'exonération de la rubrique (ou la totalité d'une rubrique
+            # imposable sans plafond) entre dans la base imposable ; la part sous
+            # le plafond reste exonérée. Sans rubrique catalogue, l'élément est
+            # imposable (comportement historique).
+            _, part_imposable = repartir_avantage(rubrique, montant)
+            if part_imposable > 0:
+                gains_imposables += part_imposable
             lignes.append({
                 'code': el.rubrique.code if el.rubrique_id else el.type,
                 'libelle': el.libelle or el.get_type_display(),

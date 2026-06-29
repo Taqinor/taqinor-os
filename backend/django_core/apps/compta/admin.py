@@ -4,7 +4,8 @@ from .models import (
     BordereauRemise, Caisse, ClotureCaisse, CompteComptable, CompteTresorerie,
     EcritureComptable, Effet, ExerciceComptable, Immobilisation, Journal,
     LigneEcriture, LignePrevisionnelTresorerie, LigneReleve, MouvementCaisse,
-    PeriodeComptable, PlanComptable, RapprochementBancaire, VirementInterne,
+    PeriodeComptable, PlanComptable, Rapprochement, RapprochementBancaire,
+    VirementInterne,
 )
 
 
@@ -161,3 +162,12 @@ class BordereauRemiseAdmin(admin.ModelAdmin):
                     'total', 'statut', 'posted', 'company')
     list_filter = ('statut', 'posted')
     search_fields = ('reference',)
+
+
+@admin.register(Rapprochement)
+class RapprochementAdmin(admin.ModelAdmin):
+    list_display = ('id', 'bon_commande', 'statut', 'montant_commande',
+                    'montant_recu', 'montant_facture', 'ecart',
+                    'date_evaluation', 'company')
+    list_filter = ('statut',)
+    search_fields = ('bon_commande__reference', 'note')

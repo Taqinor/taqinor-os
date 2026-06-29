@@ -13,6 +13,7 @@ from .models import (
     CalendrierProjet,
     DependanceTache,
     Equipe,
+    Indisponibilite,
     Jalon,
     JourFerie,
     PhaseProjet,
@@ -504,6 +505,42 @@ class AffectationRessourceSerializer(serializers.ModelSerializer):
                 "ou actif materiel.")
 
         # Validation date_fin >= date_debut.
+        date_debut = attrs.get(
+            'date_debut', getattr(self.instance, 'date_debut', None))
+        date_fin = attrs.get(
+            'date_fin', getattr(self.instance, 'date_fin', None))
+        if date_debut and date_fin and date_fin < date_debut:
+            raise serializers.ValidationError(
+                {'date_fin': "La date de fin ne peut pas etre anterieure "
+                             "a la date de debut."})
+        return attrs
+
+
+class IndisponibiliteSerializer(serializers.ModelSerializer):
+    """Indisponibilite d'une ressource (conge / formation / arret) -- PROJ17.
+
+    ``company`` n'est jamais exposee en ecriture : elle est posee cote serveur
+    par le ``TenantMixin``. La ``ressource`` recue est validee comme appartenant
+    a la societe de l'utilisateur. La periode est inclusive des deux bornes ;
+    ``date_fin`` ne peut pas etre anterieure a ``date_debut``.
+    """
+    ressource_nom = serializers.CharField(
+        source='ressource.nom', read_only=True)
+
+    class Meta:
+        model = Indisponibilite
+        fields = [
+            'id', 'ressource', 'ressource_nom',
+            'type_indispo',
+            'date_debut', 'date_fin', 'motif',
+            'date_creation',
+        ]
+        read_only_fields = ['date_creation']
+
+    def validate_ressource(self, value):
+        return _meme_societe(self, value, 'Ressource')
+
+    def validate(self, attrs):
         date_debut = attrs.get(
             'date_debut', getattr(self.instance, 'date_debut', None))
         date_fin = attrs.get(

@@ -60,6 +60,10 @@ export default function CalendarPage() {
   const [users, setUsers] = useState([])
   const [dragId, setDragId] = useState(null)
   const [err, setErr] = useState('')
+  // FG6 — abonnement ICS (Google/Outlook). On ne charge l'URL signée qu'au clic.
+  const [subUrl, setSubUrl] = useState('')
+  const [subOpen, setSubOpen] = useState(false)
+  const [copied, setCopied] = useState(false)
 
   const cells = useMemo(
     () => monthGrid(cursor.year, cursor.month), [cursor])
@@ -112,6 +116,28 @@ export default function CalendarPage() {
     if (route) navigate(route)
   }
 
+  // FG6 — « S'abonner au calendrier » : récupère l'URL ICS signée et l'affiche
+  // pour la coller dans Google Agenda / Outlook (abonnement, pas un import).
+  const toggleSubscribe = useCallback(() => {
+    setCopied(false)
+    setSubOpen(open => {
+      const next = !open
+      if (next && !subUrl) {
+        reportingApi.getCalendarSubscription()
+          .then(r => setSubUrl(r.data?.url || ''))
+          .catch(() => setErr('Lien d’abonnement indisponible.'))
+      }
+      return next
+    })
+  }, [subUrl])
+
+  const copySub = useCallback(() => {
+    if (!subUrl) return
+    navigator.clipboard?.writeText(subUrl)
+      .then(() => { setCopied(true); setTimeout(() => setCopied(false), 2000) })
+      .catch(() => {})
+  }, [subUrl])
+
   const onDrop = async (cellDate) => {
     const ev = events.find(e => e.id === dragId)
     setDragId(null)
@@ -136,6 +162,9 @@ export default function CalendarPage() {
           <button className="btn btn-light" onClick={() => go(-1)}>‹</button>
           <button className="btn btn-light" onClick={goToday}>Aujourd'hui</button>
           <button className="btn btn-light" onClick={() => go(1)}>›</button>
+          <button className="btn btn-light" onClick={toggleSubscribe}>
+            S'abonner au calendrier
+          </button>
           <strong style={{ minWidth: 150, textAlign: 'center' }}>
             {MONTHS[cursor.month]} {cursor.year}
           </strong>
@@ -151,6 +180,29 @@ export default function CalendarPage() {
           </select>
         </div>
       </div>
+
+      {subOpen && (
+        <div style={{ marginBottom: '0.75rem', padding: '0.75rem 1rem',
+          background: '#f8fafc', border: '1px solid #e2e8f0',
+          borderRadius: 8 }}>
+          <p style={{ margin: '0 0 0.5rem', fontSize: '0.85rem',
+            color: '#475569' }}>
+            Copiez ce lien et ajoutez-le comme calendrier « par URL » dans
+            Google Agenda ou Outlook pour voir vos poses, interventions et
+            visites de maintenance sur votre téléphone.
+          </p>
+          <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
+            <input className="form-input" readOnly value={subUrl}
+              onFocus={e => e.target.select()}
+              placeholder="Génération du lien…"
+              style={{ flex: '1 1 320px', minWidth: 0, fontSize: '0.8rem' }} />
+            <button className="btn btn-light" onClick={copySub}
+              disabled={!subUrl}>
+              {copied ? 'Copié !' : 'Copier'}
+            </button>
+          </div>
+        </div>
+      )}
 
       <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.5rem',
         marginBottom: '0.75rem' }}>

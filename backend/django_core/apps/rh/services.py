@@ -81,6 +81,137 @@ def calculer_jours_demande(type_absence, date_debut, date_fin,
     return Decimal(n)
 
 
+# ─────────────────────────────────────────────────────────────────────────
+# Heures supplémentaires & calcul majoré (FG168) — code du travail marocain.
+# Durée normale : 44 h/semaine ≈ 8 h/jour (seuil par défaut). Au-delà, les
+# heures sont supplémentaires et majorées :
+#   +25 %  HS de JOUR un jour ouvrable ;
+#   +50 %  HS de NUIT un jour ouvrable, OU HS de JOUR un jour de repos/férié ;
+#   +100 % HS de NUIT un jour de repos/férié.
+# ─────────────────────────────────────────────────────────────────────────
+SEUIL_JOURNALIER_DEFAUT = Decimal('8')
+TAUX_HS_25 = Decimal('0.25')
+TAUX_HS_50 = Decimal('0.50')
+TAUX_HS_100 = Decimal('1.00')
+
+_CENT = Decimal('0.01')
+
+
+def _d(value, defaut='0'):
+    """Convertit ``value`` en ``Decimal`` (``defaut`` si None/invalide)."""
+    if value is None:
+        return Decimal(defaut)
+    if isinstance(value, Decimal):
+        return value
+    try:
+        return Decimal(str(value))
+    except (TypeError, ValueError, ArithmeticError):
+        return Decimal(defaut)
+
+
+def calculer_majoration(heures_travaillees, heures_nuit=0,
+                        seuil_journalier=None, jour_repos_ferie=False,
+                        taux_horaire=None):
+    """Répartit les heures d'une journée en normales / HS par tranche de taux.
+
+    Règle marocaine (cf. ``HeuresSupp``) :
+
+    * Un jour de REPOS hebdomadaire ou FÉRIÉ : TOUTES les heures travaillées sont
+      supplémentaires (seuil 0) — majorées 50 % le jour, 100 % la nuit.
+    * Un jour ouvrable : seules les heures au-delà du ``seuil_journalier``
+      (défaut 8 h) sont supplémentaires — majorées 25 % le jour, 50 % la nuit.
+
+    ``heures_nuit`` est la part de la journée effectuée entre 21 h et 6 h ; les
+    HS de nuit sont prioritairement imputées à la tranche nuit (la majoration la
+    plus forte s'applique d'abord aux heures de nuit). Renvoie un ``dict`` :
+    ``{'heures_normales', 'hs_25', 'hs_50', 'hs_100', 'total_hs',
+       'montant_majore'}`` (montant ``None`` si ``taux_horaire`` absent).
+    """
+    total = _d(heures_travaillees)
+    if total < 0:
+        total = Decimal('0')
+    nuit = _d(heures_nuit)
+    if nuit < 0:
+        nuit = Decimal('0')
+    if nuit > total:
+        nuit = total
+
+    if jour_repos_ferie:
+        # Jour de repos/férié : tout est supplémentaire — pas d'heures normales.
+        seuil = Decimal('0')
+    else:
+        seuil = _d(seuil_journalier, str(SEUIL_JOURNALIER_DEFAUT)) \
+            if seuil_journalier is not None else SEUIL_JOURNALIER_DEFAUT
+        if seuil < 0:
+            seuil = Decimal('0')
+
+    heures_sup = max(Decimal('0'), total - seuil)
+    heures_normales = total - heures_sup
+
+    # Les heures supplémentaires se composent d'abord des heures de NUIT (taux le
+    # plus fort), puis des heures de JOUR, dans la limite des HS disponibles.
+    hs_nuit = min(nuit, heures_sup)
+    hs_jour = heures_sup - hs_nuit
+
+    hs_25 = Decimal('0')
+    hs_50 = Decimal('0')
+    hs_100 = Decimal('0')
+    if jour_repos_ferie:
+        # Repos/férié : jour → 50 %, nuit → 100 %.
+        hs_50 = hs_jour
+        hs_100 = hs_nuit
+    else:
+        # Jour ouvrable : jour → 25 %, nuit → 50 %.
+        hs_25 = hs_jour
+        hs_50 = hs_nuit
+
+    montant = None
+    taux = _d(taux_horaire, '0') if taux_horaire is not None else None
+    if taux is not None:
+        # Montant des SEULES majorations (la base est déjà payée par le salaire)
+        # + le coût horaire des heures supplémentaires elles-mêmes.
+        base_hs = (hs_25 + hs_50 + hs_100) * taux
+        majoration = (hs_25 * TAUX_HS_25 + hs_50 * TAUX_HS_50
+                      + hs_100 * TAUX_HS_100) * taux
+        montant = (base_hs + majoration).quantize(_CENT)
+
+    return {
+        'heures_normales': heures_normales.quantize(_CENT),
+        'hs_25': hs_25.quantize(_CENT),
+        'hs_50': hs_50.quantize(_CENT),
+        'hs_100': hs_100.quantize(_CENT),
+        'total_hs': (hs_25 + hs_50 + hs_100).quantize(_CENT),
+        'montant_majore': montant,
+    }
+
+
+def appliquer_majoration(heures_supp):
+    """Calcule et POSE les décomptes majorés sur une instance ``HeuresSupp``.
+
+    Utilise ``calculer_majoration`` avec le ``taux_horaire`` de l'entrée (ou, à
+    défaut, le ``cout_horaire`` interne du dossier employé). Renseigne
+    ``heures_normales``, ``hs_25``, ``hs_50``, ``hs_100``, ``taux_horaire`` et
+    ``montant_majore`` sur l'objet (non sauvegardé — l'appelant ``save()``).
+    """
+    taux = heures_supp.taux_horaire
+    if taux is None and heures_supp.employe_id:
+        taux = heures_supp.employe.cout_horaire
+    res = calculer_majoration(
+        heures_supp.heures_travaillees,
+        heures_nuit=heures_supp.heures_nuit,
+        seuil_journalier=heures_supp.seuil_journalier,
+        jour_repos_ferie=heures_supp.jour_repos_ferie,
+        taux_horaire=taux,
+    )
+    heures_supp.heures_normales = res['heures_normales']
+    heures_supp.hs_25 = res['hs_25']
+    heures_supp.hs_50 = res['hs_50']
+    heures_supp.hs_100 = res['hs_100']
+    heures_supp.taux_horaire = taux
+    heures_supp.montant_majore = res['montant_majore']
+    return heures_supp
+
+
 def _solde_de_lannee(demande):
     """``SoldeConge`` (créé si besoin) de l'employé pour l'année de début."""
     from .models import SoldeConge

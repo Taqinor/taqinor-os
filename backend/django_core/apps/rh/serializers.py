@@ -13,6 +13,7 @@ from .models import (
     DossierEmploye,
     ElementSortie,
     FeuilleTemps,
+    HeuresSupp,
     Pointage,
     Poste,
     Remuneration,
@@ -270,6 +271,55 @@ class FeuilleTempsSerializer(serializers.ModelSerializer):
         if value is not None and value <= 0:
             raise serializers.ValidationError(
                 'Les heures imputées doivent être positives.')
+        return value
+
+
+class HeuresSuppSerializer(serializers.ModelSerializer):
+    """Heures supplémentaires majorées (FG168) — entrée de paie.
+
+    Le client saisit ``employe``, ``date``, ``heures_travaillees``,
+    ``heures_nuit``, ``seuil_journalier`` et ``jour_repos_ferie`` ; les
+    décomptes répartis (``heures_normales``, ``hs_25``, ``hs_50``, ``hs_100``)
+    ainsi que le ``taux_horaire`` interne et le ``montant_majore`` sont CALCULÉS
+    et posés côté serveur (lecture seule). ``company`` est posée côté serveur ;
+    ``employe`` doit appartenir à la société de l'utilisateur.
+    """
+    employe_nom = serializers.SerializerMethodField()
+    total_hs = serializers.DecimalField(
+        max_digits=6, decimal_places=2, read_only=True)
+
+    class Meta:
+        model = HeuresSupp
+        fields = [
+            'id', 'employe', 'employe_nom', 'date',
+            'heures_travaillees', 'heures_nuit', 'seuil_journalier',
+            'jour_repos_ferie',
+            'heures_normales', 'hs_25', 'hs_50', 'hs_100', 'total_hs',
+            'taux_horaire', 'montant_majore',
+            'note', 'date_creation', 'date_modification',
+        ]
+        read_only_fields = [
+            'heures_normales', 'hs_25', 'hs_50', 'hs_100', 'total_hs',
+            'taux_horaire', 'montant_majore',
+            'date_creation', 'date_modification',
+        ]
+
+    def get_employe_nom(self, obj):
+        return f'{obj.employe.nom} {obj.employe.prenom}'
+
+    def validate_employe(self, value):
+        return _meme_societe(self, value, 'Employé')
+
+    def validate_heures_travaillees(self, value):
+        if value is not None and value < 0:
+            raise serializers.ValidationError(
+                'Les heures travaillées ne peuvent pas être négatives.')
+        return value
+
+    def validate_heures_nuit(self, value):
+        if value is not None and value < 0:
+            raise serializers.ValidationError(
+                'Les heures de nuit ne peuvent pas être négatives.')
         return value
 
 

@@ -1,6 +1,6 @@
 from django.contrib import admin
 
-from .models import Contrat, ContratLien, PartieContrat
+from .models import ClauseContrat, Contrat, ContratLien, PartieContrat
 
 
 @admin.register(Contrat)
@@ -25,3 +25,11 @@ class ContratLienAdmin(admin.ModelAdmin):
                     'company')
     list_filter = ('type_cible',)
     search_fields = ('libelle',)
+
+
+@admin.register(ClauseContrat)
+class ClauseContratAdmin(admin.ModelAdmin):
+    list_display = ('id', 'contrat', 'clause', 'titre', 'ordre',
+                    'surchargee', 'company')
+    list_filter = ('surchargee',)
+    search_fields = ('titre', 'corps')

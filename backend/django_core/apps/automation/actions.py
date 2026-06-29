@@ -16,7 +16,7 @@ import logging
 
 from django.conf import settings
 
-from .models import ActionType, AutomationRun
+from .models import ActionType, AutomationRun, CanalMessage, ModeleMessage
 
 logger = logging.getLogger(__name__)
 
@@ -100,8 +100,16 @@ def _send_email(rule, instance, company, context, user):
     to = _resolve_email(instance)
     if not to:
         return Status.NOOP, 'Aucune adresse email : envoi ignoré.'
-    body = _message_body(rule, context)
-    subject = (rule.action_config or {}).get('subject') or 'Notification Taqinor'
+    # Sujet/corps : le modèle de message stocké (par société, canal email) sert
+    # de source éditable. L'``action_config`` explicite garde la priorité ; à
+    # défaut, on résout depuis ``ModeleMessage``, qui retombe lui-même sur
+    # « Notification Taqinor » tant qu'aucun modèle n'est enregistré — donc le
+    # comportement reste identique à l'ancien sujet codé en dur.
+    tmpl_objet, tmpl_corps = ModeleMessage.resolve(
+        company, CanalMessage.EMAIL)
+    body = _message_body(rule, context) or tmpl_corps
+    subject = (rule.action_config or {}).get('subject') or tmpl_objet \
+        or 'Notification Taqinor'
     from_email = getattr(settings, 'DEFAULT_FROM_EMAIL', None) or \
         getattr(settings, 'CONTACT_FROM_EMAIL', 'no-reply@taqinor.ma')
     try:

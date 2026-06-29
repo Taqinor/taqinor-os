@@ -21,8 +21,8 @@ phase). Le câblage éventuel vers l'avancement chantier de ``installations`` es
 un suivi à part : un appelant consulte cette porte, il ne la franchit pas ici.
 """
 from .models import (
-    ActionCorrectivePreventive, NotationFinChantier, ReleveControle,
-    ReleveCourbeIV,
+    ActionCorrectivePreventive, Audit, NonConformite, NotationFinChantier,
+    ProcedureQualite, ReleveControle, ReleveCourbeIV,
 )
 
 
@@ -239,3 +239,122 @@ def notation_fin_chantier_latest(chantier_id, company):
         .order_by('-id')
         .first()
     )
+
+
+# ── QHSE18 — Procédures qualité versionnées (lecture seule) ─────────────────
+
+def procedure_qualite_courante(company, reference):
+    """Version « courante » d'une procédure qualité d'une société (ou None).
+
+    La version courante est la version ``en_vigueur`` de la ``reference`` ; à
+    défaut (aucune en vigueur), c'est la version au numéro le plus haut. Lecture
+    seule, scopée société. Référence lâche au document GED par ``document_id``.
+    """
+    qs = ProcedureQualite.objects.filter(
+        company=company, reference=reference)
+    en_vigueur = qs.filter(
+        statut=ProcedureQualite.Statut.EN_VIGUEUR).order_by('-version').first()
+    if en_vigueur is not None:
+        return en_vigueur
+    return qs.order_by('-version').first()
+
+
+def procedure_qualite_versions(company, reference):
+    """Toutes les versions d'une procédure qualité (la plus récente d'abord).
+
+    Queryset scopé société pour une ``reference`` donnée. Lecture seule.
+    """
+    return (ProcedureQualite.objects
+            .filter(company=company, reference=reference)
+            .order_by('-version', '-id'))
+
+
+def procedures_qualite_courantes(company):
+    """Liste des versions courantes de chaque référence de procédure d'une société.
+
+    Pour chaque ``reference`` distincte de la société, renvoie la version
+    courante (cf. ``procedure_qualite_courante``). Lecture seule. Renvoie une
+    liste de ``ProcedureQualite`` triée par référence.
+    """
+    refs = (ProcedureQualite.objects
+            .filter(company=company)
+            .values_list('reference', flat=True)
+            .distinct())
+    courantes = [
+        procedure_qualite_courante(company, ref) for ref in sorted(set(refs))
+    ]
+    return [p for p in courantes if p is not None]
+
+
+# ── LITIGE4 — Portail lecture NCR / Audit pour les litiges qualité ──────────
+#
+# Hooks de lecture seule consommés par ``apps.litiges`` (via import local) pour
+# afficher la non-conformité (NCR) et l'audit fin de chantier rattachés à un
+# litige qualité — référence lâche par id, jamais un import cross-app des
+# modèles QHSE depuis litiges. Tout est scopé société.
+
+def ncr_by_id(ncr_id, company):
+    """Non-conformité (NCR) d'une société par id, ou ``None``.
+
+    Référence lâche par ``ncr_id``. Renvoie l'instance ``NonConformite`` scopée
+    ``company`` si elle existe, sinon ``None`` (id absent ou société différente).
+    Lecture seule, aucune mutation.
+    """
+    if not ncr_id:
+        return None
+    return NonConformite.objects.filter(company=company, id=ncr_id).first()
+
+
+def audit_by_id(audit_id, company):
+    """Audit (exécution) d'une société par id, ou ``None``.
+
+    Référence lâche par ``audit_id`` (un ``Audit`` peut être un audit fin de
+    chantier). Renvoie l'instance ``Audit`` scopée ``company`` si elle existe,
+    sinon ``None``. Lecture seule, aucune mutation.
+    """
+    if not audit_id:
+        return None
+    return Audit.objects.filter(company=company, id=audit_id).first()
+
+
+def ncr_apercu(ncr_id, company):
+    """Aperçu sérialisable d'une NCR pour un litige (ou ``None``).
+
+    Renvoie un petit dict (id/référence/titre/gravité/statut + libellés) prêt à
+    exposer côté API, ou ``None`` si la NCR n'existe pas pour cette société.
+    Lecture seule.
+    """
+    ncr = ncr_by_id(ncr_id, company)
+    if ncr is None:
+        return None
+    return {
+        'id': ncr.id,
+        'reference': ncr.reference,
+        'titre': ncr.titre,
+        'gravite': ncr.gravite,
+        'gravite_display': ncr.get_gravite_display(),
+        'statut': ncr.statut,
+        'statut_display': ncr.get_statut_display(),
+        'chantier_id': ncr.chantier_id,
+    }
+
+
+def audit_apercu(audit_id, company):
+    """Aperçu sérialisable d'un audit fin de chantier pour un litige (ou ``None``).
+
+    Renvoie un petit dict (id/grille/date/statut/score/chantier) prêt à exposer
+    côté API, ou ``None`` si l'audit n'existe pas pour cette société. Lecture
+    seule.
+    """
+    audit = audit_by_id(audit_id, company)
+    if audit is None:
+        return None
+    return {
+        'id': audit.id,
+        'grille': audit.grille.nom,
+        'date_audit': audit.date_audit,
+        'statut': audit.statut,
+        'statut_display': audit.get_statut_display(),
+        'score': audit.score,
+        'chantier_id': audit.chantier_id,
+    }

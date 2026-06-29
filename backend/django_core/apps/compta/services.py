@@ -34,7 +34,7 @@ from .models import (
     ExerciceComptable, Immobilisation, Journal, LigneEcriture,
     LignePrevisionnelTresorerie, LigneReleve, MouvementCaisse,
     PeriodeComptable, PlanAmortissement, PlanComptable, PointageReleve,
-    RapprochementBancaire, VirementInterne,
+    Rapprochement, RapprochementBancaire, VirementInterne,
 )
 
 
@@ -1806,3 +1806,107 @@ def rejeter_effet(effet, *, date_rejet=None, frais_rejet=None, commentaire='',
         effet.commentaire = commentaire
     effet.save(update_fields=['statut', 'frais_rejet', 'commentaire'])
     return effet
+
+
+# ── FG131 — Rapprochement 3 voies (BC ↔ réception ↔ facture fournisseur) ────
+# Contrôle de pré-paiement : on confronte les trois montants HT d'un même achat —
+# COMMANDÉ (bon de commande fournisseur), REÇU (réceptions confirmées) et FACTURÉ
+# (factures fournisseur). Les trois documents vivent dans apps.stock ; la compta
+# les lit UNIQUEMENT via ``apps.stock.selectors`` (jamais d'import de
+# apps.stock.models) et ne fait que comparer. ``company`` posée côté serveur.
+
+
+def _amounts_3voies(company, bc_id):
+    """Lit les trois montants HT (commandé/reçu/facturé) d'un BCF via les
+    sélecteurs de stock. Lève ValidationError si le BCF n'est pas de la société.
+    """
+    from apps.stock import selectors as stock_selectors
+    data = stock_selectors.three_way_amounts(company, bc_id)
+    if not data.get('exists'):
+        raise ValidationError(
+            "Bon de commande fournisseur introuvable dans cette société.")
+    return data
+
+
+def _statut_depuis_ecart(ecart, tolerance):
+    """Concordant si |écart| ≤ tolérance, sinon écart détecté (bloquant)."""
+    if abs(Decimal(ecart or 0)) <= Decimal(tolerance or 0):
+        return Rapprochement.Statut.CONCORDANT
+    return Rapprochement.Statut.ECART
+
+
+def creer_rapprochement_3voies(company, *, bon_commande_id, tolerance=None,
+                               note='', user=None):
+    """Crée (ou renvoie) le rapprochement 3 voies d'un BCF et l'évalue (FG131).
+
+    Le BCF doit appartenir à la société (vérifié via le sélecteur de stock).
+    Idempotent : un rapprochement existe déjà pour ce BCF → il est ré-évalué et
+    renvoyé. ``company`` posée côté serveur. Renvoie le rapprochement.
+    """
+    # Garde société + existence du BCF (sans importer le modèle stock).
+    _amounts_3voies(company, bon_commande_id)
+    tol = Decimal(tolerance or 0)
+    if tol < 0:
+        raise ValidationError("La tolérance doit être positive ou nulle.")
+    rapp, _created = Rapprochement.objects.get_or_create(
+        company=company, bon_commande_id=bon_commande_id,
+        defaults={'tolerance': tol, 'note': note or '', 'created_by': user})
+    if not _created:
+        # Garde multi-société : un BCF d'une autre société ne peut être réutilisé
+        # (unique_together company+bon_commande le garantit déjà au niveau base).
+        if note:
+            rapp.note = note
+        if tolerance is not None:
+            rapp.tolerance = tol
+    return evaluer_rapprochement(rapp)
+
+
+def evaluer_rapprochement(rapprochement):
+    """Rafraîchit les trois montants HT du rapprochement depuis stock et
+    recalcule l'écart reçu↔facturé + le statut (FG131).
+
+    L'écart bloquant pour le paiement = facturé − reçu (on ne paie jamais plus
+    que ce qui est entré en stock). Un rapprochement déjà VALIDÉ reste validé
+    (le bon-à-payer explicite n'est pas écrasé par une ré-évaluation), mais ses
+    snapshots de montants sont tout de même rafraîchis. Renvoie le
+    rapprochement.
+    """
+    data = _amounts_3voies(rapprochement.company, rapprochement.bon_commande_id)
+    rapprochement.montant_commande = Decimal(data['montant_commande'] or 0)
+    rapprochement.montant_recu = Decimal(data['montant_recu'] or 0)
+    rapprochement.montant_facture = Decimal(data['montant_facture'] or 0)
+    rapprochement.ecart = (
+        rapprochement.montant_facture - rapprochement.montant_recu)
+    if rapprochement.statut != Rapprochement.Statut.VALIDE:
+        rapprochement.statut = _statut_depuis_ecart(
+            rapprochement.ecart, rapprochement.tolerance)
+    rapprochement.date_evaluation = timezone.now()
+    rapprochement.save(update_fields=[
+        'montant_commande', 'montant_recu', 'montant_facture', 'ecart',
+        'statut', 'date_evaluation', 'note', 'tolerance'])
+    return rapprochement
+
+
+@transaction.atomic
+def valider_rapprochement(rapprochement, *, user=None, commentaire=''):
+    """Marque un rapprochement « bon à payer » (FG131).
+
+    Ré-évalue d'abord les montants (snapshot frais), puis valide. On REFUSE la
+    validation tant que la facture dépasse le reçu HORS tolérance (écart
+    bloquant) : un montant facturé supérieur au reçu doit être corrigé en amont
+    (réception manquante ou facture en trop) avant le bon-à-payer. Renvoie le
+    rapprochement.
+    """
+    evaluer_rapprochement(rapprochement)
+    if rapprochement.statut == Rapprochement.Statut.ECART:
+        raise ValidationError(
+            "Écart bloquant (facturé > reçu hors tolérance) : impossible de "
+            "valider le rapprochement avant correction.")
+    rapprochement.statut = Rapprochement.Statut.VALIDE
+    rapprochement.valide_par = user
+    rapprochement.date_validation = timezone.now()
+    if commentaire:
+        rapprochement.note = commentaire
+    rapprochement.save(update_fields=[
+        'statut', 'valide_par', 'date_validation', 'note'])
+    return rapprochement

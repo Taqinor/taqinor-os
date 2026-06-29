@@ -253,6 +253,8 @@ class DocumentViewSet(TenantMixin, viewsets.ModelViewSet):
         services.update_search_vector(document)
         # GED12 — (ré)indexe l'embedding sémantique (no-op sans clé).
         services.index_embedding(document)
+        # FG352 — (ré)indexe les fragments RAG/DocQA (no-op sans clé).
+        services.index_document_chunks(document)
 
     def perform_update(self, serializer):
         document = serializer.save()
@@ -260,6 +262,8 @@ class DocumentViewSet(TenantMixin, viewsets.ModelViewSet):
         services.update_search_vector(document)
         # GED12 — réindexe l'embedding sémantique (no-op sans clé).
         services.index_embedding(document)
+        # FG352 — réindexe les fragments RAG/DocQA (no-op sans clé).
+        services.index_document_chunks(document)
 
     @action(detail=False, methods=['post'], url_path='televerser',
             parser_classes=[MultiPartParser, FormParser, JSONParser])
@@ -318,6 +322,8 @@ class DocumentViewSet(TenantMixin, viewsets.ModelViewSet):
         # GED11/GED12 — indexe le document fraîchement créé.
         services.update_search_vector(document)
         services.index_embedding(document)
+        # FG352 — indexe les fragments RAG/DocQA (no-op sans clé).
+        services.index_document_chunks(document)
         return Response(
             DocumentSerializer(document, context={'request': request}).data,
             status=status.HTTP_201_CREATED)
@@ -357,6 +363,34 @@ class DocumentViewSet(TenantMixin, viewsets.ModelViewSet):
         data = DocumentSerializer(
             qs, many=True, context={'request': request}).data
         return Response(data)
+
+    @action(detail=False, methods=['get'], url_path='docqa')
+    def docqa(self, request):
+        """FG352 — Récupération RAG / DocQA : top-k fragments pour une question.
+
+        `GET …/documents/docqa/?q=<question>&k=<n>`. Renvoie les fragments de
+        documents (`DocumentChunk`) les plus proches de la question (distance
+        cosinus, magasin pgvector partagé), bornés aux documents visibles de
+        l'utilisateur (ACL coffre-fort + société). KEY-GATED : sans clé
+        d'embedding, `enabled` est faux et `results` est vide (no-op propre,
+        aucun coût). Réutilise `selectors.retrieve_chunks`."""
+        query = request.query_params.get('q', '')
+        try:
+            k = int(request.query_params.get('k', 5))
+        except (TypeError, ValueError):
+            k = 5
+        chunks = selectors.retrieve_chunks(request.user, query, limit=k)
+        results = [{
+            'document': c.document_id,
+            'document_nom': c.document.nom,
+            'chunk_index': c.chunk_index,
+            'texte': c.texte,
+            'distance': getattr(c, 'distance', None),
+        } for c in chunks]
+        return Response({
+            'enabled': services.embedding_enabled(),
+            'results': results,
+        })
 
     @action(detail=True, methods=['post'], url_path='deplacer')
     def deplacer(self, request, pk=None):

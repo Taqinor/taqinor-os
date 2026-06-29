@@ -479,3 +479,58 @@ class SafetyCheckItem(models.Model):
 
     def __str__(self):
         return f'{self.libelle} · {"✓" if self.coche else "—"}'
+
+
+# ── N91/F21 — Journal d'idempotence de la capture terrain hors-ligne ──────────
+class FieldOp(models.Model):
+    """N91/F21 — une opération de capture terrain rejouée depuis l'outbox du
+    terminal (hors-ligne → en ligne).
+
+    Quand le réseau est mauvais, l'app file localement chaque action de la
+    capture terrain (checklist chantier, photos*, n° de série, mémo vocal*,
+    matériel consommé, réserves, sign-off sécurité, check-in GPS, signature PV)
+    avec une **clé d'idempotence générée côté client** (`client_op_id`, un UUID).
+    À la reconnexion, l'outbox POST le lot au point de synchro. Cette ligne est
+    le JOURNAL de dédup : la première application enregistre le résultat ; un
+    REJEU de la même clé renvoie le résultat mémorisé SANS ré-appliquer l'effet
+    (no-op idempotent, last-write-wins déjà absorbé côté handler).
+
+    La clé est **scopée par société + utilisateur** : un locataire ne peut
+    jamais rejouer l'opération d'un autre. La société est posée côté serveur,
+    JAMAIS lue du corps de requête. Additif — aucune table métier modifiée."""
+    company = models.ForeignKey(
+        'authentication.Company', on_delete=models.CASCADE,
+        null=True, blank=True, related_name='installations_field_ops')
+    # Clé d'idempotence générée par le terminal (UUID). Unique par société.
+    client_op_id = models.CharField(max_length=64, db_index=True)
+    # Type d'opération (ex. « intervention.checkin »), pour router le rejeu et
+    # tracer l'historique. Liste ouverte côté service (FIELD_OP_HANDLERS).
+    op_type = models.CharField(max_length=60)
+    # Cible logique (« intervention » / « chantier ») + son id, pour l'audit.
+    target_type = models.CharField(max_length=20, blank=True, default='')
+    target_id = models.PositiveIntegerField(null=True, blank=True)
+    # Résultat mémorisé renvoyé tel quel au rejeu (no-op idempotent).
+    result = models.JSONField(default=dict, blank=True)
+    # True si l'opération a réussi (un échec n'est PAS mémorisé comme succès —
+    # le terminal pourra la rejouer après correction).
+    ok = models.BooleanField(default=True)
+    created_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL,
+        null=True, blank=True, related_name='+')
+    applied_le = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        verbose_name = 'Opération de capture terrain (idempotence)'
+        verbose_name_plural = 'Opérations de capture terrain (idempotence)'
+        ordering = ['-applied_le', 'id']
+        # Idempotence scopée société : la même clé d'un même locataire ne
+        # s'applique qu'UNE fois ; deux sociétés peuvent réutiliser une valeur
+        # de clé sans collision. Nom d'index ≤30 car.
+        constraints = [
+            models.UniqueConstraint(
+                fields=['company', 'client_op_id'],
+                name='uniq_fieldop_company_opid'),
+        ]
+
+    def __str__(self):
+        return f'{self.op_type} · {self.client_op_id[:8]}'

@@ -14,6 +14,7 @@ from .models import (
     BaselinePlanning,
     CalendrierProjet,
     DependanceTache,
+    Indisponibilite,
     Jalon,
     ProjetLien,
     Tache,
@@ -618,3 +619,40 @@ def retards_projet(projet, seuil_jours=None):
         'nb_jalons_en_retard': len(jalons_retard),
         'nb_jalons_a_risque': len(jalons_risque),
     }
+
+
+# ── PROJ17 : Indisponibilités ressources (congé/formation/arrêt) ─────────────
+
+
+def indisponibilites_de_ressource(ressource):
+    """Indisponibilités d'une ressource (QuerySet scopé société, par date).
+
+    Lecture seule. La société est portée par la ressource ; on filtre aussi sur
+    ``ressource.company`` par sécurité même si le FK ``ressource`` la garantit.
+    Ordre : ``date_debut`` croissante puis ``id``.
+    """
+    return Indisponibilite.objects.filter(
+        ressource=ressource, company=ressource.company,
+    ).order_by('date_debut', 'id')
+
+
+def indisponibilites_sur_periode(ressource, debut, fin):
+    """Indisponibilités d'une ressource CHEVAUCHANT la fenêtre [debut, fin].
+
+    Lecture seule. Bornes INCLUSIVES des deux côtés : une indisponibilité
+    chevauche la fenêtre dès que ``date_debut <= fin`` ET ``date_fin >= debut``.
+    QuerySet scopé société.
+    """
+    return indisponibilites_de_ressource(ressource).filter(
+        date_debut__lte=fin, date_fin__gte=debut)
+
+
+def ressource_disponible_sur_periode(ressource, debut, fin):
+    """True si la ressource est DISPONIBLE sur toute la fenêtre [debut, fin].
+
+    Lecture seule. La ressource est INDISPONIBLE dès qu'une indisponibilité
+    (congé/formation/arrêt) chevauche la fenêtre (bornes inclusives). Sert à la
+    planification / l'affectation (PROJ16/18/19) pour exclure une ressource
+    indisponible. La société est portée par la ressource.
+    """
+    return not indisponibilites_sur_periode(ressource, debut, fin).exists()

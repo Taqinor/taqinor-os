@@ -12,7 +12,7 @@ from django.utils import timezone
 
 from .models import (
     Caisse, CompteComptable, CompteTresorerie, Effet, LigneEcriture,
-    LignePrevisionnelTresorerie, MouvementCaisse,
+    LignePrevisionnelTresorerie, MouvementCaisse, Rapprochement,
 )
 
 
@@ -709,3 +709,15 @@ def total_effets_ouverts(company, *, sens):
         statut__in=[Effet.Statut.PORTEFEUILLE, Effet.Statut.REMIS]
     ).aggregate(s=Sum('montant'))['s']
     return total or Decimal('0')
+
+
+# ── FG131 — Rapprochement 3 voies (BC ↔ réception ↔ facture fournisseur) ────
+
+def rapprochements_en_ecart(company):
+    """Rapprochements 3 voies de la société présentant un écart bloquant
+    (statut ``ecart``), ordonnés du plus récemment évalué au plus ancien.
+    Sert d'alerte « à corriger avant paiement ». Lecture seule."""
+    return list(
+        Rapprochement.objects.filter(
+            company=company, statut=Rapprochement.Statut.ECART)
+        .order_by('-date_evaluation', '-id'))

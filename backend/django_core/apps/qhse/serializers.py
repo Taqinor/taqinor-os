@@ -10,8 +10,8 @@ from .models import (
     ActionCorrectivePreventive, Audit, CritereAudit, GrilleAudit,
     ItemNotation, NonConformite, NotationFinChantier,
     PlanInspectionChantier, PlanInspectionModele,
-    PointControleModele, QhseChatterEntry, ReleveControle, ReleveCourbeIV,
-    ReponseCritere,
+    PointControleModele, ProcedureQualite, QhseChatterEntry,
+    ReleveControle, ReleveCourbeIV, ReponseCritere,
 )
 
 
@@ -329,3 +329,30 @@ class NotationFinChantierSerializer(serializers.ModelSerializer):
     def get_peut_cloturer(self, obj):
         from .selectors import chantier_peut_cloturer
         return chantier_peut_cloturer(obj.chantier_id, obj.company)
+
+
+# ── QHSE18 — Procédure qualité versionnée ──────────────────────────────────
+
+class ProcedureQualiteSerializer(serializers.ModelSerializer):
+    """Procédure qualité versionnée (QHSE18).
+
+    ``version`` est posée côté serveur par le service
+    ``nouvelle_version_procedure`` (jamais lue du corps de requête) ; ``statut``
+    évolue via l'action ``activer``. ``company`` et ``auteur`` sont posés côté
+    serveur. ``document_id`` est une référence lâche au document GED.
+    """
+    statut_display = serializers.CharField(
+        source='get_statut_display', read_only=True)
+    auteur_nom = serializers.CharField(
+        source='auteur.username', read_only=True, default=None)
+
+    class Meta:
+        model = ProcedureQualite
+        fields = [
+            'id', 'reference', 'titre', 'version', 'statut', 'statut_display',
+            'contenu', 'document_id', 'date_application', 'auteur',
+            'auteur_nom', 'date_creation',
+        ]
+        read_only_fields = [
+            'version', 'statut', 'auteur', 'date_application', 'date_creation',
+        ]

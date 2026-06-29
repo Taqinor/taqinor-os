@@ -207,6 +207,9 @@ class TicketSerializer(serializers.ModelSerializer):
             'company', 'reference', 'created_by',
             'date_creation', 'date_modification',
             'sla_breach', 'sla_due_at', 'date_premiere_reponse',
+            # FG88 — date_tournee est posée par l'action de planification de
+            # tournée (bulk-assign), jamais directement du corps de requête.
+            'date_tournee',
         ]
         # client peut être déduit côté serveur d'un équipement lié (ticket
         # ouvert depuis le parc) ; sinon il reste exigé — voir

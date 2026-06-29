@@ -59,3 +59,84 @@ def get_fournisseur_by_id(company, fournisseur_id):
     from .models import Fournisseur
     return Fournisseur.objects.filter(
         id=fournisseur_id, company=company).first()
+
+
+# ── FG131 — Achats / AP : données pour le rapprochement 3 voies ──────────────
+# Point d'entrée cross-app LECTURE SEULE pour la Comptabilité (apps.compta) : le
+# rapprochement 3 voies (BC ↔ réception ↔ facture fournisseur) lit les trois
+# montants à travers ces sélecteurs plutôt qu'en important apps.stock.models.
+# AUCUNE de ces fonctions n'écrit ; les montants d'achat restent INTERNES.
+
+
+def get_bon_commande_fournisseur(company, bc_id):
+    """BonCommandeFournisseur scopé société par id, ou None. Lecture seule."""
+    from .models import BonCommandeFournisseur
+    return BonCommandeFournisseur.objects.filter(
+        id=bc_id, company=company).first()
+
+
+def montant_commande_bcf(bon_commande):
+    """Montant HT COMMANDÉ d'un bon de commande fournisseur (Σ lignes :
+    quantité × prix d'achat unitaire). INTERNE. Renvoie un Decimal."""
+    from decimal import Decimal
+    total = Decimal('0')
+    for ligne in bon_commande.lignes.all():
+        total += Decimal(str(ligne.quantite or 0)) * (
+            ligne.prix_achat_unitaire or Decimal('0'))
+    return total
+
+
+def montant_recu_bcf(bon_commande):
+    """Montant HT REÇU pour un BCF : Σ sur les réceptions CONFIRMÉES de
+    (quantité reçue × prix d'achat unitaire de la ligne de commande). Reflète
+    la marchandise effectivement entrée en stock. INTERNE. Renvoie un Decimal.
+    """
+    from decimal import Decimal
+    from .models import LigneReceptionFournisseur
+    total = Decimal('0')
+    lignes = (LigneReceptionFournisseur.objects
+              .filter(reception__bon_commande=bon_commande,
+                      reception__statut='confirme')
+              .select_related('ligne_commande'))
+    for ligne in lignes:
+        pu = (ligne.ligne_commande.prix_achat_unitaire
+              if ligne.ligne_commande else Decimal('0'))
+        total += Decimal(str(ligne.quantite or 0)) * (pu or Decimal('0'))
+    return total
+
+
+def montant_facture_bcf(bon_commande):
+    """Montant HT FACTURÉ rattaché à un BCF : Σ des ``montant_ht`` des
+    FactureFournisseur liées (statuts de règlement confondus ; une facture
+    reste due tant qu'elle existe). INTERNE. Renvoie un Decimal."""
+    from decimal import Decimal
+    from django.db.models import Sum
+    from .models import FactureFournisseur
+    agg = (FactureFournisseur.objects
+           .filter(bon_commande=bon_commande)
+           .aggregate(total=Sum('montant_ht')))
+    return agg['total'] or Decimal('0')
+
+
+def three_way_amounts(company, bc_id):
+    """FG131 — Les trois montants HT du rapprochement 3 voies pour un BCF :
+    commandé (BC) ↔ reçu (réception) ↔ facturé (facture fournisseur).
+
+    Renvoie un dict ``{exists, bon_commande_id, reference, fournisseur_id,
+    fournisseur_nom, statut, montant_commande, montant_recu, montant_facture}``
+    ou ``{'exists': False}`` si le BCF n'appartient pas à la société. LECTURE
+    SEULE ; montants INTERNES (jamais client-facing)."""
+    bon = get_bon_commande_fournisseur(company, bc_id)
+    if bon is None:
+        return {'exists': False}
+    return {
+        'exists': True,
+        'bon_commande_id': bon.id,
+        'reference': bon.reference,
+        'fournisseur_id': bon.fournisseur_id,
+        'fournisseur_nom': bon.fournisseur.nom if bon.fournisseur_id else None,
+        'statut': bon.statut,
+        'montant_commande': montant_commande_bcf(bon),
+        'montant_recu': montant_recu_bcf(bon),
+        'montant_facture': montant_facture_bcf(bon),
+    }
