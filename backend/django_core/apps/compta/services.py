@@ -2646,7 +2646,7 @@ def rembourser_indemnite_chantier(indem, *, compte_tresorerie,
     ecriture = creer_ecriture(
         company, journal, date_rbt, libelle, lignes,
         reference=indem.reference or f'IND-{indem.id}',
-        source_type='indemnite_chantier_remboursement', source_id=indem.id,
+        source_type='indemnite_chantier_remb', source_id=indem.id,
         created_by=user, statut=EcritureComptable.Statut.VALIDEE,
     )
     indem.statut = IndemniteChantier.Statut.REMBOURSEE
