@@ -498,10 +498,78 @@ def toutes_parties_signataires(contrat):
     return _roles_requis().issubset(roles_signataires(contrat))
 
 
+# ---------------------------------------------------------------------------
+# CONTRAT17 — Transition automatique « signé → actif » sur signature
+# ---------------------------------------------------------------------------
+
+
+def peut_activer_automatiquement(contrat, *, today=None):
+    """``True`` si un contrat « signé » peut s'activer automatiquement.
+
+    Garde de date : un contrat ne devient ``actif`` automatiquement que si sa
+    prise d'effet est atteinte — c.-à-d. ``date_debut`` est absente (effet
+    immédiat) OU ``date_debut`` ≤ aujourd'hui. Un contrat dont la prise d'effet
+    est dans le FUTUR reste ``signe`` jusqu'à cette date (l'activation pourra
+    alors se faire via la machine d'états gardée, ``changer-statut``, ou un
+    futur déclencheur de dates — CONTRAT20).
+
+    Lecture seule : ne modifie ni ne persiste rien. ``today`` est injectable
+    pour les tests ; par défaut on prend la date du jour (fuseau du projet).
+    """
+    from .models import Contrat
+
+    if contrat.statut != Contrat.Statut.SIGNE:
+        return False
+    if today is None:
+        today = timezone.localdate()
+    return contrat.date_debut is None or contrat.date_debut <= today
+
+
+def activer_si_eligible(contrat, *, today=None, auteur=None):
+    """Active automatiquement un contrat ``signe`` éligible (CONTRAT17).
+
+    Une fois un contrat passé à ``signe`` (toutes les parties requises ont
+    signé), on tente de le faire avancer à ``actif`` via la machine d'états
+    GARDÉE (``changer_statut``) — jamais d'écriture directe du statut, jamais de
+    funnel STAGES.py (rule #2). L'activation n'a lieu que si :
+
+    - le contrat est bien ``signe`` ET la garde de date est satisfaite
+      (``peut_activer_automatiquement``), ET
+    - la transition ``signe → actif`` est permise par la machine d'états.
+
+    Sinon le statut est LAISSÉ INCHANGÉ (préservation des statuts — CONTRAT12).
+    La bascule est journalisée dans le chatter (CONTRAT15) avec auteur et
+    société posés côté serveur.
+
+    Renvoie ``True`` si l'activation a eu lieu lors de cet appel, sinon
+    ``False``.
+    """
+    from .models import Contrat
+
+    if not peut_activer_automatiquement(contrat, today=today):
+        return False
+    if not transition_permise(contrat.statut, Contrat.Statut.ACTIF):
+        return False
+
+    ancien = contrat.statut
+    try:
+        changer_statut(contrat, Contrat.Statut.ACTIF)
+    except TransitionInterdite:
+        # Garde de la machine : on n'écrit pas le statut (préservation).
+        return False
+
+    journaliser_transition(
+        contrat, field='statut', old_value=ancien,
+        new_value=contrat.statut,
+        message='Activation automatique à la signature.',
+        auteur=auteur)
+    return True
+
+
 @transaction.atomic
 def signer_contrat(contrat, *, signataire_nom, role_signataire,
                    signataire=None, ip_adresse='', user_agent='',
-                   methode=None, auteur=None):
+                   methode=None, auteur=None, today=None):
     """Enregistre une signature électronique IN-APP d'un contrat (CONTRAT16).
 
     - Crée une ``SignatureContrat`` portant le nom dactylographié
@@ -521,9 +589,16 @@ def signer_contrat(contrat, *, signataire_nom, role_signataire,
       n'autorisant pas encore la signature) — jamais d'écriture directe du
       statut, jamais de funnel STAGES.py (rule #2). La préservation des statuts
       documentaires (CONTRAT12) reste donc intacte.
+    - ACTIVATION AUTOMATIQUE (CONTRAT17) : dans la foulée du passage à ``signe``,
+      le contrat est avancé à ``actif`` via la même machine d'états gardée si sa
+      prise d'effet est atteinte (``date_debut`` absente ou ≤ ``today``). Une
+      prise d'effet FUTURE laisse le contrat à ``signe``. ``today`` est
+      injectable pour les tests (défaut : date du jour).
 
-    Renvoie un dict ``{'signature', 'contrat_signe'}`` : la signature créée et un
-    booléen indiquant si la bascule ``signe`` a eu lieu lors de cet appel.
+    Renvoie un dict ``{'signature', 'contrat_signe', 'contrat_actif'}`` : la
+    signature créée, un booléen indiquant si la bascule ``signe`` a eu lieu, et
+    un booléen indiquant si l'activation automatique ``→ actif`` a eu lieu lors
+    de cet appel.
     """
     from .models import Contrat, SignatureContrat
 
@@ -561,6 +636,7 @@ def signer_contrat(contrat, *, signataire_nom, role_signataire,
     # Bascule vers « signe » uniquement si toutes les parties requises ont signé
     # ET que la machine d'états autorise la transition depuis l'état courant.
     contrat_signe = False
+    contrat_actif = False
     if (
         contrat.statut != Contrat.Statut.SIGNE
         and toutes_parties_signataires(contrat)
@@ -580,5 +656,15 @@ def signer_contrat(contrat, *, signataire_nom, role_signataire,
                 new_value=contrat.statut,
                 message='Toutes les parties requises ont signé.',
                 auteur=auteur if auteur is not None else signataire)
+            # CONTRAT17 — activation automatique « signé → actif » si la prise
+            # d'effet est atteinte. Passe par la machine d'états gardée et
+            # journalise la bascule ; une prise d'effet future laisse à « signe ».
+            contrat_actif = activer_si_eligible(
+                contrat, today=today,
+                auteur=auteur if auteur is not None else signataire)
 
-    return {'signature': signature, 'contrat_signe': contrat_signe}
+    return {
+        'signature': signature,
+        'contrat_signe': contrat_signe,
+        'contrat_actif': contrat_actif,
+    }

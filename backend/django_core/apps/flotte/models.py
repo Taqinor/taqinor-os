@@ -946,3 +946,176 @@ class EcheanceEntretien(models.Model):
     def __str__(self):
         return f'{self.type_entretien} — {self.actif_flotte} ' \
                f'[{self.get_statut_display()}]'
+
+
+# ── FLOTTE17 — Garage / atelier de réparation ─────────────────────────────────
+
+class Garage(models.Model):
+    """Garage / atelier de réparation référencé par la société (FLOTTE17).
+
+    Un ``Garage`` est un prestataire (atelier externe ou atelier interne) auprès
+    duquel un ``OrdreReparation`` est ouvert. Modèle additif, multi-société :
+    ``company`` est posée côté serveur, jamais lue du corps de requête.
+    """
+
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='flotte_garages',
+        verbose_name='Société',
+    )
+    nom = models.CharField(max_length=120, verbose_name='Nom du garage')
+    adresse = models.CharField(
+        max_length=255, blank=True, verbose_name='Adresse')
+    telephone = models.CharField(
+        max_length=30, blank=True, verbose_name='Téléphone')
+    actif = models.BooleanField(default=True, verbose_name='Actif')
+    date_creation = models.DateTimeField(
+        auto_now_add=True, verbose_name='Créé le')
+
+    class Meta:
+        verbose_name = 'Garage / atelier'
+        verbose_name_plural = 'Garages / ateliers'
+        ordering = ['nom']
+        indexes = [
+            models.Index(
+                fields=['company', 'actif'],
+                name='flotte_garage_co_act_idx',
+            ),
+        ]
+
+    def __str__(self):
+        return self.nom
+
+
+# ── FLOTTE17 — Ordres de réparation (atelier/garage + coûts) ──────────────────
+
+class OrdreReparation(models.Model):
+    """Ordre de réparation d'un actif du parc auprès d'un garage (FLOTTE17).
+
+    Un ``OrdreReparation`` (OR) trace une intervention curative sur un actif
+    unifié (``ActifFlotte`` — véhicule OU engin) : le garage qui la réalise (FK
+    nullable, un OR peut être ouvert sans garage encore choisi), une description,
+    les dates d'ouverture / clôture, le statut (``ouvert`` → ``en_cours`` →
+    ``cloture``) et les coûts. ``cout_total`` est CALCULÉ
+    (``cout_main_oeuvre + cout_pieces``) et figé en base à chaque enregistrement
+    afin de rester triable / filtrable côté DB.
+
+    L'OR peut optionnellement référencer une ``EcheanceEntretien`` (FLOTTE16) :
+    quand l'OR est clôturé, le service peut clôturer (``fait``) l'échéance liée.
+
+    Multi-tenant : ``company`` est posée côté serveur (jamais lue du corps de
+    requête). L'actif, le garage et l'échéance liés doivent appartenir à la MÊME
+    société (validé dans ``clean`` et au sérialiseur).
+    """
+
+    class Statut(models.TextChoices):
+        OUVERT = 'ouvert', 'Ouvert'
+        EN_COURS = 'en_cours', 'En cours'
+        CLOTURE = 'cloture', 'Clôturé'
+
+    # Statuts considérés comme « terminés » (l'OR ne bloque plus l'actif).
+    STATUTS_CLOS = (Statut.CLOTURE,)
+
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='flotte_ordres_reparation',
+        verbose_name='Société',
+    )
+    actif_flotte = models.ForeignKey(
+        'ActifFlotte',
+        on_delete=models.CASCADE,
+        related_name='flotte_ordres_reparation',
+        verbose_name='Actif (véhicule ou engin)',
+    )
+    garage = models.ForeignKey(
+        'Garage',
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='flotte_ordres_reparation',
+        verbose_name='Garage / atelier',
+    )
+    # Lien optionnel vers l'échéance d'entretien à l'origine de l'OR (FLOTTE16) :
+    # la clôture de l'OR peut clôturer (``fait``) cette échéance.
+    echeance = models.ForeignKey(
+        'EcheanceEntretien',
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='flotte_ordres_reparation',
+        verbose_name="Échéance d'entretien liée",
+    )
+    description = models.TextField(
+        blank=True, verbose_name='Description des travaux')
+    date_ouverture = models.DateField(verbose_name="Date d'ouverture")
+    date_cloture = models.DateField(
+        null=True, blank=True, verbose_name='Date de clôture')
+    statut = models.CharField(
+        max_length=10, choices=Statut.choices, default=Statut.OUVERT,
+        verbose_name='Statut')
+    cout_main_oeuvre = models.DecimalField(
+        max_digits=12, decimal_places=2, default=0,
+        verbose_name="Coût main d'œuvre (MAD)")
+    cout_pieces = models.DecimalField(
+        max_digits=12, decimal_places=2, default=0,
+        verbose_name='Coût pièces (MAD)')
+    # Coût total figé en base (main d'œuvre + pièces) — recalculé à chaque save
+    # pour rester triable / filtrable côté DB sans annotation.
+    cout_total = models.DecimalField(
+        max_digits=12, decimal_places=2, default=0,
+        verbose_name='Coût total (MAD)')
+    notes = models.TextField(blank=True, verbose_name='Notes')
+    date_creation = models.DateTimeField(
+        auto_now_add=True, verbose_name='Créé le')
+
+    class Meta:
+        verbose_name = 'Ordre de réparation'
+        verbose_name_plural = 'Ordres de réparation'
+        ordering = ['-date_ouverture', '-id']
+        indexes = [
+            models.Index(
+                fields=['company', 'statut'],
+                name='flotte_or_co_stat_idx',
+            ),
+            models.Index(
+                fields=['company', 'actif_flotte'],
+                name='flotte_or_co_act_idx',
+            ),
+        ]
+
+    def clean(self):
+        """Valide l'appartenance société des FKs, la cohérence des dates et des
+        coûts."""
+        if self.actif_flotte_id is not None \
+                and self.actif_flotte.company_id != self.company_id:
+            raise ValidationError(
+                "L'actif ciblé n'appartient pas à la même société.")
+        if self.garage_id is not None \
+                and self.garage.company_id != self.company_id:
+            raise ValidationError(
+                "Le garage n'appartient pas à la même société.")
+        if self.echeance_id is not None \
+                and self.echeance.company_id != self.company_id:
+            raise ValidationError(
+                "L'échéance d'entretien n'appartient pas à la même société.")
+        if self.date_ouverture is not None and self.date_cloture is not None \
+                and self.date_cloture < self.date_ouverture:
+            raise ValidationError(
+                "La date de clôture ne peut pas précéder l'ouverture.")
+        if self.cout_main_oeuvre is not None and self.cout_main_oeuvre < 0:
+            raise ValidationError(
+                "Le coût de main d'œuvre ne peut pas être négatif.")
+        if self.cout_pieces is not None and self.cout_pieces < 0:
+            raise ValidationError(
+                "Le coût des pièces ne peut pas être négatif.")
+
+    def save(self, *args, **kwargs):
+        # Coût total toujours dérivé des deux postes (jamais saisi à la main).
+        self.cout_total = (self.cout_main_oeuvre or 0) + (self.cout_pieces or 0)
+        super().save(*args, **kwargs)
+
+    def __str__(self):
+        return f'OR #{self.pk} — {self.actif_flotte} ' \
+               f'[{self.get_statut_display()}]'

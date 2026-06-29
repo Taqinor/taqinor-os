@@ -22,12 +22,16 @@ ticket SAV, outillage). On RÉUTILISE le registre `records.ALLOWED_TARGETS` et l
 mécanisme ContentType déjà en place pour Activity/Attachment/Comment/TaggedItem
 — on n'invente pas un nouveau schéma de FK générique. Company posée côté serveur.
 """
+import secrets
+
 from django.conf import settings
+from django.contrib.auth.hashers import check_password, make_password
 from django.contrib.contenttypes.fields import GenericForeignKey
 from django.contrib.contenttypes.models import ContentType
 from django.contrib.postgres.indexes import GinIndex
 from django.contrib.postgres.search import SearchVectorField
 from django.db import models
+from django.utils import timezone
 from pgvector.django import VectorField
 
 # GED12 — dimension du vecteur d'embedding documentaire (clé-gated). Aligné sur
@@ -783,3 +787,125 @@ class AclGed(models.Model):
         if not self.utilisateur_id and not self.role_id:
             raise ValidationError(
                 "Une entrée ACL désigne au moins un utilisateur ou un rôle.")
+
+
+def _default_partage_token():
+    """Jeton de partage long, imprévisible et URL-safe (GED20).
+
+    Réutilise le même générateur que `ventes.ShareLink` (secrets.token_urlsafe,
+    32 octets → ~43 caractères) : cryptographiquement fort, impossible à deviner
+    ou à énumérer. C'est le SEUL secret qui authentifie l'accès public."""
+    return secrets.token_urlsafe(32)
+
+
+class PartageGed(models.Model):
+    """GED20 — Partage public d'un document par lien tokenisé.
+
+    Génère un lien PUBLIC (sans login) vers un document GED, authentifié par un
+    seul secret : un `token` long et imprévisible (secrets.token_urlsafe). Le
+    lien peut porter une expiration (`expires_at`), un mot de passe optionnel
+    (`password_hash`, haché via make_password — jamais en clair), et un quota de
+    téléchargements (`quota_max`). Chaque accès incrémente `telechargements` ;
+    `actif` permet la révocation immédiate (kill-switch).
+
+    SÉCURITÉ — modèle calqué sur `ventes.ShareLink` + le canal PDF public
+    tokenisé : le jeton est l'UNIQUE clé d'accès. L'endpoint public NE FAIT
+    JAMAIS confiance à une identité/société venue de la requête — il résout tout
+    DEPUIS le jeton (donc la société du document est implicite, jamais lue du
+    corps). Un lien révoqué/expiré/au quota épuisé renvoie 404/410 sans fuite.
+    Le contenu binaire vit dans MinIO (via la version courante du document) et
+    est relayé même-origine — jamais de prix d'achat ni de document d'un autre
+    locataire (le jeton ne référence qu'un seul document d'une seule société).
+
+    Company posée côté serveur (cohérente avec celle du document) — jamais lue du
+    corps de requête. `created_by` posé côté serveur.
+    """
+    company = models.ForeignKey(
+        'authentication.Company', on_delete=models.CASCADE,
+        null=True, blank=True, related_name='ged_partages')
+    document = models.ForeignKey(
+        Document, on_delete=models.CASCADE, related_name='partages')
+    # Jeton long, imprévisible, URL-safe — l'UNIQUE secret d'accès public.
+    # `unique=True` crée déjà l'index nécessaire au lookup `?token=`.
+    token = models.CharField(
+        max_length=64, unique=True, default=_default_partage_token,
+        editable=False)
+    # Expiration optionnelle (NULL = jamais expiré). Posée côté serveur.
+    expires_at = models.DateTimeField(
+        null=True, blank=True, verbose_name="expire le")
+    # Hash du mot de passe optionnel (make_password). NULL/'' = pas de mot de
+    # passe. JAMAIS stocké en clair ; vérifié via check_password. TextField pour
+    # accueillir n'importe quel format de hash Django (qui peut être long).
+    password_hash = models.TextField(
+        blank=True, default='', verbose_name="hash du mot de passe")
+    # Quota de téléchargements optionnel (NULL = illimité). Posé côté serveur.
+    quota_max = models.PositiveIntegerField(
+        null=True, blank=True, verbose_name="quota de téléchargements")
+    # Compteur de téléchargements (incrémenté à chaque accès public servi).
+    telechargements = models.PositiveIntegerField(
+        default=0, verbose_name="téléchargements")
+    # Kill-switch : un partage révoqué (actif=False) est immédiatement mort.
+    actif = models.BooleanField(default=True, verbose_name="actif")
+    created_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL,
+        null=True, blank=True, related_name='ged_partages_crees')
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ['-created_at', '-id']
+        verbose_name = 'Partage GED'
+        verbose_name_plural = 'Partages GED'
+        indexes = [
+            models.Index(fields=['company', 'document'],
+                         name='ged_partage_co_doc_idx'),
+        ]
+
+    def __str__(self):
+        return f'Partage {self.token[:8]}… → {self.document_id}'
+
+    @property
+    def has_password(self):
+        """True si un mot de passe protège ce partage."""
+        return bool(self.password_hash)
+
+    @property
+    def is_expired(self):
+        """True si le partage a une expiration dépassée."""
+        return self.expires_at is not None and self.expires_at <= timezone.now()
+
+    @property
+    def quota_exhausted(self):
+        """True si le quota de téléchargements est atteint (NULL = illimité)."""
+        return (self.quota_max is not None
+                and self.telechargements >= self.quota_max)
+
+    @property
+    def is_accessible(self):
+        """True si le partage est actuellement servable publiquement.
+
+        Il faut : actif ET non expiré ET quota non épuisé. La validation du mot
+        de passe (le cas échéant) est faite séparément côté endpoint — elle
+        renvoie 403 (et non 404) pour distinguer « mauvais mot de passe » de
+        « lien mort »."""
+        return (self.actif and not self.is_expired
+                and not self.quota_exhausted)
+
+    def set_password(self, raw_password):
+        """Pose (ou retire) le mot de passe — haché, jamais en clair.
+
+        Une valeur vide/None retire la protection (`password_hash` = '')."""
+        if raw_password:
+            self.password_hash = make_password(raw_password)
+        else:
+            self.password_hash = ''
+
+    def check_password(self, raw_password):
+        """Vérifie un mot de passe candidat contre le hash stocké.
+
+        Sans mot de passe configuré, renvoie True (rien à vérifier)."""
+        if not self.password_hash:
+            return True
+        if not raw_password:
+            return False
+        return check_password(raw_password, self.password_hash)

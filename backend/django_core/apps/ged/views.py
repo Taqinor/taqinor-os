@@ -7,9 +7,13 @@ versions de document sont numérotées + déduppées via `services`.
 """
 from django.http import HttpResponse
 from rest_framework import filters, status, viewsets
-from rest_framework.decorators import action
+from rest_framework.decorators import (
+    action, api_view, permission_classes, throttle_classes,
+)
 from rest_framework.parsers import FormParser, JSONParser, MultiPartParser
+from rest_framework.permissions import AllowAny
 from rest_framework.response import Response
+from rest_framework.throttling import SimpleRateThrottle
 
 # `records.storage` est la fondation de stockage MinIO partagée (avatars,
 # pièces jointes…). On la RÉUTILISE pour l'upload GED — on ne réimplémente
@@ -27,16 +31,25 @@ from apps.records.serializers import resolve_target
 from . import selectors, services
 from .models import (
     Cabinet, Coffre, DemandeApprobation, Document, DocumentLien, DocumentTag,
-    DocumentTagAssignment, DocumentVersion, Folder,
+    DocumentTagAssignment, DocumentVersion, Folder, PartageGed,
 )
 from .serializers import (
     CabinetSerializer, CoffreSerializer, DemandeApprobationSerializer,
     DocumentLienSerializer, DocumentSerializer,
     DocumentTagAssignmentSerializer, DocumentTagSerializer,
-    DocumentVersionSerializer, FolderSerializer,
+    DocumentVersionSerializer, FolderSerializer, PartageGedSerializer,
 )
 
 READ_ACTIONS = ['list', 'retrieve']
+
+# GED20 — Formats affichables inline (PDF, images, texte). Tout le reste →
+# téléchargement forcé (attachment). Partagé entre l'aperçu authentifié (GED14)
+# et le partage public tokenisé (GED20).
+_INLINE_MIMES = {
+    'application/pdf',
+    'image/png', 'image/jpeg', 'image/webp', 'image/gif',
+    'text/plain', 'text/csv', 'text/html',
+}
 
 
 class CabinetViewSet(TenantMixin, viewsets.ModelViewSet):
@@ -928,3 +941,168 @@ class DemandeApprobationViewSet(TenantMixin, viewsets.ReadOnlyModelViewSet):
         return Response(
             DemandeApprobationSerializer(
                 dem, context={'request': request}).data)
+
+
+class PartageGedViewSet(TenantMixin, viewsets.ModelViewSet):
+    """GED20 — CRUD de gestion des partages publics tokenisés (scopé société).
+
+    Côté GESTION uniquement (créer, lister, révoquer) — l'accès public au
+    document passe par l'endpoint token-only `public_partage` (AllowAny), jamais
+    par ce viewset. `company` et `created_by` sont posés côté serveur (jamais
+    lus du corps) ; `document` est borné à la société courante. Le `token` est
+    généré côté serveur. Le mot de passe se pose via le champ `password`
+    (write-only) — jamais renvoyé en clair.
+
+    Lecture : tout rôle authentifié (un responsable suit ses partages).
+    Création/modification/révocation : responsable/admin.
+    """
+    queryset = PartageGed.objects.select_related(
+        'document', 'created_by', 'company').all()
+    serializer_class = PartageGedSerializer
+    filter_backends = [filters.OrderingFilter]
+    ordering_fields = ['created_at', 'expires_at', 'telechargements']
+
+    def get_permissions(self):
+        if self.action in READ_ACTIONS:
+            return [IsAnyRole()]
+        return [IsResponsableOrAdmin()]
+
+    def get_queryset(self):
+        qs = selectors.partages_for_company(
+            self.request.user.company).select_related(
+            'document', 'created_by', 'company')
+        document = self.request.query_params.get('document')
+        if document:
+            qs = qs.filter(document_id=document)
+        actif = self.request.query_params.get('actif')
+        if actif in ('1', 'true'):
+            qs = qs.filter(actif=True)
+        elif actif in ('0', 'false'):
+            qs = qs.filter(actif=False)
+        return qs
+
+    def perform_create(self, serializer):
+        # company + created_by posés côté serveur (jamais du corps). Le document
+        # est validé company-scopé dans le serializer (`validate_document`).
+        serializer.save(
+            company=self.request.user.company,
+            created_by=self.request.user)
+
+    @action(detail=True, methods=['post'], url_path='revoquer')
+    def revoquer(self, request, pk=None):
+        """GED20 — Révoque ce partage (kill-switch : actif=False).
+
+        `POST …/partages/<id>/revoquer/`. Le partage est company-scopé via
+        `get_object()` (404 cross-société). Après révocation, l'endpoint public
+        renvoie 404 (lien mort). Idempotent. Écriture : responsable/admin."""
+        partage = self.get_object()
+        services.revoke_partage(partage)
+        partage.refresh_from_db()
+        return Response(
+            PartageGedSerializer(partage, context={'request': request}).data)
+
+
+# ── GED20 — Endpoint PUBLIC (sans login) servant un document par jeton ───────
+# AUTHENTIFIÉ UNIQUEMENT PAR LE JETON : aucune identité/société n'est lue de la
+# requête. Tout est résolu DEPUIS le jeton (qui ne référence qu'un seul document
+# d'une seule société). Révoqué/inconnu → 404 ; expiré/quota épuisé → 410 ;
+# mot de passe manquant/erroné → 403. Aucune autre donnée n'est atteignable.
+
+class PublicPartageRateThrottle(SimpleRateThrottle):
+    """Limite le débit de l'accès public par IP + jeton (cache-based).
+
+    Pas de dépendance externe : throttle DRF intégré + cache du projet. Décourage
+    le balayage de jetons et l'aspiration de fichiers sans bloquer un accès
+    légitime. Même motif que `ventes.public_views.PublicLinkRateThrottle`."""
+    scope = 'public_ged_partage'
+    rate = '30/minute'
+
+    def get_rate(self):
+        return self.rate
+
+    def get_cache_key(self, request, view):
+        token = (getattr(view, 'kwargs', None) or {}).get('token', '')
+        ident = self.get_ident(request)
+        return self.cache_format % {
+            'scope': self.scope,
+            'ident': f'{ident}:{token}',
+        }
+
+
+def _ged_noindex(response):
+    """Marque une réponse publique comme non-indexable par les moteurs."""
+    response['X-Robots-Tag'] = 'noindex, nofollow, noarchive'
+    return response
+
+
+@api_view(['GET'])
+@permission_classes([AllowAny])
+@throttle_classes([PublicPartageRateThrottle])
+def public_partage(request, token):
+    """GED20 — Sert le document d'un partage tokenisé (PUBLIC, sans login).
+
+    `GET /api/django/ged/public/<token>/[?password=…]` (ou en-tête
+    `X-Partage-Password`). Le jeton est l'UNIQUE secret d'accès : aucune
+    identité/société n'est lue de la requête. Le partage est résolu DEPUIS le
+    jeton via `services.resolve_partage_public` (qui ne référence qu'un seul
+    document d'une seule société — pas de fuite cross-locataire).
+
+    Codes :
+      - 404 : jeton inconnu OU partage révoqué (indistinct, pas de fuite).
+      - 410 : partage expiré OU quota de téléchargements épuisé.
+      - 403 : un mot de passe protège le partage et celui fourni est
+        manquant/erroné (le `WWW-Authenticate`-like est implicite, message FR).
+      - 200 : le contenu de la VERSION COURANTE du document est relayé
+        même-origine (inline pour PDF/image/texte, attachment sinon) et le
+        compteur `telechargements` est incrémenté atomiquement.
+
+    Aucun prix d'achat ni document d'un autre locataire n'est jamais exposé.
+    """
+    password = (request.query_params.get('password')
+                or request.META.get('HTTP_X_PARTAGE_PASSWORD')
+                or '')
+    statut, partage = services.resolve_partage_public(token, password=password)
+
+    if statut == services.PARTAGE_INTROUVABLE:
+        return _ged_noindex(Response(
+            {'detail': "Ce lien de partage est introuvable ou a été révoqué."},
+            status=status.HTTP_404_NOT_FOUND))
+    if statut == services.PARTAGE_EXPIRE:
+        return _ged_noindex(Response(
+            {'detail': "Ce lien de partage a expiré ou n'est plus disponible."},
+            status=status.HTTP_410_GONE))
+    if statut == services.PARTAGE_MDP_REQUIS:
+        return _ged_noindex(Response(
+            {'detail': "Mot de passe requis ou incorrect pour ce document."},
+            status=status.HTTP_403_FORBIDDEN))
+
+    # statut == PARTAGE_OK — on sert le contenu de la version courante.
+    version = selectors.latest_version(partage.document)
+    if version is None:
+        return _ged_noindex(Response(
+            {'detail': "Aucun fichier disponible pour ce document."},
+            status=status.HTTP_404_NOT_FOUND))
+
+    # Consomme le quota AVANT de servir : un GET concurrent ne peut pas dépasser
+    # `quota_max` (incrément atomique conditionnel). Si le quota vient d'être
+    # épuisé par un autre accès, on renvoie 410 sans servir.
+    if not services.consume_partage_download(partage):
+        return _ged_noindex(Response(
+            {'detail': "Ce lien de partage a expiré ou n'est plus disponible."},
+            status=status.HTTP_410_GONE))
+
+    data, err = fetch_attachment(version.file_key)
+    if err:
+        return _ged_noindex(Response(
+            {'detail': "Document indisponible pour le moment."},
+            status=status.HTTP_404_NOT_FOUND))
+
+    mime = version.mime or 'application/octet-stream'
+    safe_name = (version.filename or partage.document.nom
+                 or 'document').replace('"', '')
+    disposition = 'inline' if mime in _INLINE_MIMES else 'attachment'
+
+    resp = HttpResponse(data, content_type=mime)
+    resp['Content-Disposition'] = f'{disposition}; filename="{safe_name}"'
+    resp['X-Content-Type-Options'] = 'nosniff'
+    return _ged_noindex(resp)

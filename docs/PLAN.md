@@ -523,7 +523,7 @@ first run that ticks any `FG*` task refreshes CODEMAP §10 + `--write` in that c
 - [x] FG138 — **Relevé de déductions détaillé (annexe TVA)** — l'annexe ligne par ligne exigée par la DGI. (ROUTINE)
 - [x] FG139 — **Retenue à la source (RAS) sur honoraires/prestations** — calcul + bordereau de versement (obligation marocaine non gérée). (SCHEMA)
 - [x] FG140 — **Aide au calcul de l'IS** — estimation depuis le CPC + échéancier des 4 acomptes provisionnels + régularisation. (DECISION)
-- [ ] FG141 — **Export FEC (fichier des écritures comptables)** — export structuré et ordonné des écritures au format auditable DGI (dépend du grand livre). (SCHEMA)
+- [x] FG141 — **Export FEC (fichier des écritures comptables)** — export structuré et ordonné des écritures au format auditable DGI (dépend du grand livre). (SCHEMA)
 - [ ] FG142 — **Trousse liasse fiscale (états de synthèse)** — bilan + CPC + balance + tableaux annexes en un paquet pour le fiduciaire/DGI. (ARCH)
 - [ ] FG143 — **Déclaration des honoraires / état 9421** — déclaration annuelle des paiements aux tiers depuis les règlements fournisseurs. (ROUTINE)
 - [ ] FG144 — **Calcul du timbre fiscal sur encaissements espèces** — droit de timbre auto sur les factures payées en espèces. (SCHEMA)
@@ -563,7 +563,7 @@ first run that ticks any `FG*` task refreshes CODEMAP §10 + `--write` in that c
 - [x] FG175 — **Alertes d'expiration (habilitations/certifs/docs)** — moteur d'échéances → notifications RH/superviseur X jours avant. (ROUTINE)
 - [x] FG176 — **Garde d'affectation par habilitation** — alerte/blocage doux si on assigne un technicien sans l'habilitation requise. (DECISION)
 - [x] FG177 — **Visite médicale du travail** — dernière/prochaine visite + aptitude + alerte (obligatoire pour le chantier). (SCHEMA)
-- [ ] FG178 — **Catalogue & dotation EPI** — casque/harnais/gants isolants/chaussures attribués nominativement (taille, date). (SCHEMA)
+- [x] FG178 — **Catalogue & dotation EPI** — casque/harnais/gants isolants/chaussures attribués nominativement (taille, date). (SCHEMA)
 - [ ] FG179 — **Suivi péremption/contrôle des EPI** — EPI à durée de vie (harnais, gants isolants) + alerte de remplacement/recontrôle. (SCHEMA)
 - [ ] FG180 — **Émargement de remise EPI (signature)** — accusé signé prouvant la dotation (exigible CNSS/accident). (ROUTINE)
 - [ ] FG181 — **Registre HSE & accidents du travail** — déclaration (date/lieu/blessé/gravité/arrêt/photos) + export déclaration CNSS. (SCHEMA)
@@ -652,7 +652,7 @@ first run that ticks any `FG*` task refreshes CODEMAP §10 + `--write` in that c
 - [x] FG258 — **Profil d'autoconsommation horaire depuis courbe de charge** — courbe 8760/profil type × production horaire → taux d'autoconso réel. (DEP:openpyxl)
 - [x] FG259 — **Économie net-metering / injection surplus (loi 13-09/MT)** — valorisation du surplus injecté par tranche horaire (réglage `surplus_injecte_compense` existant). (ROUTINE)
 - [x] FG260 — **Modélisation escalade tarifaire ONEE sur 20–25 ans** — projeter facture/économies + VAN/TRI avec taux d'escalade éditable. (ROUTINE)
-- [ ] FG261 — **Optimisation puissance souscrite (C&I)** — analyser la pointe et recommander une réduction de puissance souscrite post-PV. (ROUTINE)
+- [x] FG261 — **Optimisation puissance souscrite (C&I)** — analyser la pointe et recommander une réduction de puissance souscrite post-PV. (ROUTINE)
 - [ ] FG262 — **Modélisation dégradation modules sur la durée** — courbe de dégradation appliquée à la production projetée et garantie. (ROUTINE)
 - [ ] FG263 — **Modèle financier PPA / tiers-investisseur** — simuler un PPA (tarif MAD/kWh, revenus actualisés) pour les clients sans capex. (DECISION)
 - [ ] FG264 — **Rendement pompage par cycle de marche** — volume d'eau journalier/mensuel selon irradiation horaire + durée de pompage (étend l'`etude_params` actuel). (ROUTINE)
@@ -695,7 +695,7 @@ first run that ticks any `FG*` task refreshes CODEMAP §10 + `--write` in that c
 - [x] FG298 — **Comptes-rendus de réunion de chantier** — `ReunionChantier` (ordre du jour/présents/décisions/actions) horodaté. (SCHEMA)
 - [x] FG299 — **Plan de charge des équipes (capacité vs affecté)** — jours dispo vs affectés par technicien/équipe pour éviter la sur-réservation. (ROUTINE)
 - [x] FG300 — **Détection de conflits d'affectation** — alerte si technicien/camionnette affecté deux fois sur le même créneau. (ROUTINE)
-- [ ] FG301 — **Nivellement de charge (resource levelling)** — proposition de rééquilibrage des interventions surchargées. (ROUTINE)
+- [x] FG301 — **Nivellement de charge (resource levelling)** — proposition de rééquilibrage des interventions surchargées. (ROUTINE)
 - [ ] FG302 — **Calendrier de disponibilité ressources** — `IndisponibiliteRessource` (congé/formation/arrêt) excluant un technicien/véhicule. (SCHEMA)
 - [ ] FG303 — **Planning des camionnettes (capacité véhicule)** — affectation par véhicule sur le calendrier (cohérent avec `Intervention.camionnette`). (ROUTINE)
 - [ ] FG304 — **Référentiel sous-traitants** — `SousTraitant` (métier/contact/RIB/ICE), distinct des fournisseurs matériel. (ARCH)
@@ -764,7 +764,7 @@ first run that ticks any `FG*` task refreshes CODEMAP §10 + `--write` in that c
 - [x] FG364 — **Prévision de réappro stock** — prédire les dates de rupture + quantités suggérées depuis l'historique de mouvements. (ROUTINE)
 - [x] FG365 — **Prédiction de retard de paiement** — scorer chaque facture ouverte pour prioriser le recouvrement. (ROUTINE)
 - [x] FG366 — **Moteur de workflow multi-étapes (BPM) + SLA/escalades** — `WorkflowDefinition/Instance/Step` pour chaînes d'approbation visuelles + minuteries SLA, au-delà des règles à déclencheur unique. (ARCH)
-- [ ] FG367 — **Conditions multi-critères & branches dans les règles** — `AutomationRule` avec groupes ET/OU + plusieurs actions séquentielles. (SCHEMA)
+- [x] FG367 — **Conditions multi-critères & branches dans les règles** — `AutomationRule` avec groupes ET/OU + plusieurs actions séquentielles. (SCHEMA)
 - [ ] FG368 — **UI de gestion des tâches planifiées (jobs)** — écran Paramètres listant les jobs Celery Beat (digests/rapports/monitoring) avec statut + exécution manuelle. (ROUTINE)
 - [ ] FG369 — **Bibliothèque de modèles de workflow** — workflows pré-construits (relance devis, onboarding chantier, rappel garantie) installables en un clic. (ROUTINE)
 - [ ] FG370 — **Passerelle de paiement CMI / Payzone** — paiement carte en ligne d'une facture + rapprochement vers `Paiement`. (AUTH)
@@ -957,7 +957,7 @@ these overlap and SUPERSEDE the domain-list FG items as the module-organized hom
 - [x] GED17 — Cycle de vie documentaire (brouillon→revue→approuvé→archivé→obsolète). (SCHEMA+DECISION)
 - [x] GED18 — Workflow d'approbation/revue. (SCHEMA)
 - [x] GED19 — ACL par dossier/document (héritage + override). (SCHEMA+DECISION)
-- [ ] GED20 — Partage par lien tokenisé (expiry/mot de passe/quota). (SCHEMA+DECISION)
+- [x] GED20 — Partage par lien tokenisé (expiry/mot de passe/quota). (SCHEMA+DECISION)
 - [ ] GED21 — Watermarking & contrôle de diffusion. (DEP)
 - [ ] GED22 — Politiques de rétention. (SCHEMA)
 - [ ] GED23 — Archivage légal à valeur probante (write-once/object-lock). (DECISION)
@@ -995,7 +995,7 @@ these overlap and SUPERSEDE the domain-list FG items as the module-organized hom
 - [x] FLOTTE14 — Cartes carburant & alertes anomalie (km incohérent/fraude). (ROUTINE)
 - [x] FLOTTE15 — Plans d'entretien préventif (km/date/heures). (SCHEMA)
 - [x] FLOTTE16 — Génération d'échéances d'entretien dues + alertes. (ROUTINE)
-- [ ] FLOTTE17 — Ordres de réparation + atelier/garage + coûts. (SCHEMA)
+- [x] FLOTTE17 — Ordres de réparation + atelier/garage + coûts. (SCHEMA)
 - [ ] FLOTTE18 — Pneumatiques & pièces. (SCHEMA)
 - [ ] FLOTTE19 — `EcheanceReglementaire` (modèle générique). (SCHEMA)
 - [ ] FLOTTE20 — Vignette / TSAV (barème CV/énergie, référentiel éditable). (ROUTINE)
@@ -1076,7 +1076,7 @@ these overlap and SUPERSEDE the domain-list FG items as the module-organized hom
 - [x] CONTRAT14 — `EtapeApprobation` + workflow d'approbation interne. (ROUTINE)
 - [x] CONTRAT15 — Chatter/journal du contrat (audit des transitions). (ROUTINE)
 - [x] CONTRAT16 — `SignatureContrat` (point e-sign + statut signé). (DECISION)
-- [ ] CONTRAT17 — Transition automatique signé→actif sur signature. (ROUTINE)
+- [x] CONTRAT17 — Transition automatique signé→actif sur signature. (ROUTINE)
 - [ ] CONTRAT18 — `VersionContrat` (versionnage immuable des rendus). (SCHEMA)
 - [ ] CONTRAT19 — Dépôt en GED des versions & PDF signés. (ROUTINE)
 - [ ] CONTRAT20 — Dates clés (début/fin/préavis) + tacite reconduction. (SCHEMA)
@@ -1660,3 +1660,11 @@ Tracked here so they aren't lost:
 - 2026-06-29 — PROJ19 (apps/gestion_projet): Détection de conflits d'affectation — sélecteur `conflits_affectation` : même `RessourceProfil` affectée à ≥2 `AffectationRessource` aux fenêtres qui se chevauchent (direct + via équipe), bonus affectation pendant indisponibilité, endpoint `ressources/conflits-affectation/`. Aucune migration, 17 tests.
 - 2026-06-29 — PAIE21 (apps/paie): Frais professionnels & net imposable — fonctionnalité DÉJÀ PRÉSENTE (params `taux_frais_pro_bas/haut`+plafonds, `calculer_bulletin` déduit les frais pro avant IR) ; ajout de la couverture de tests comportementaux manquante. Aucune migration, 9 tests. (already present — tests added)
 - 2026-06-29 — QHSE21 (apps/qhse): `EvaluationRisque` (document unique / plan de prévention) + `LigneEvaluationRisque` — gravité×probabilité = criticité (recalculée au save), réf `DUER-` race-safe, statut brouillon/validée/archivée, action `criticite/` (résumé max/moyenne/bandes, garde division par zéro). Migration qhse 0014 additive, 25 tests.
+- 2026-06-29 — FG141 (apps/compta): Export FEC (fichier des écritures comptables) — sélecteur `export_fec` produit les 18 colonnes FEC standard, une ligne par écriture, ordonnée par date/pièce, bornée sur l'exercice, équilibre vérifié ; endpoint `etats/export-fec/?exercice=` (JSON / `?export=fec` tab-délimité DGI / `?export=csv`). Aucune migration (réutilise le GL), 22 tests.
+- 2026-06-29 — FG301 (apps/installations): Nivellement de charge (resource levelling) — sélecteur `nivellement_charge` propose de déplacer les interventions des techniciens surchargés vers les sous-chargés SANS recréer de conflit FG300 (lecture seule, ne mute rien), endpoint `interventions/nivellement-charge/` (lecture tout rôle). Aucune migration, 14 tests.
+- 2026-06-29 — FG261 (apps/ventes): Optimisation puissance souscrite (C&I) — fonction pure `optimize_subscribed_power` : demande réseau nette post-PV (charge − PV), pointe post-PV → puissance souscrite recommandée = ceil(pointe × marge) (jamais > l'actuelle), économie annuelle sur la prime de puissance, conversion kW→kVA optionnelle. Aucune migration, 12 tests, chemin PDF intact.
+- 2026-06-29 — FG367 (core): Conditions multi-critères & branches — `core/rules.py` : `evaluate_condition_group` (arbre ET/OU/NON, 11 opérateurs, court-circuit, tolérant aux champs manquants, ne lève jamais) + `validate_condition_group` (erreurs structurelles) + `sequential_actions` (exécution ordonnée stop-on-error). Pur fondation (stdlib seul, import-linter 4/4). Aucune migration, 33 tests. (NOTE: moteur réutilisable ; câblage dans `apps/automation.AutomationRule` laissé à une tâche dédiée.)
+- 2026-06-29 — FG178 (apps/rh): Catalogue & dotation EPI — `EpiCatalogue` (type casque/harnais/gants isolants/chaussures/lunettes) + `DotationEpi` nominative (employé, taille, date, renouvellement, quantité), endpoints + action `a-renouveler/`, alimente le moteur d'échéances FG175. Migration rh 0018 additive, 20 tests.
+- 2026-06-29 — CONTRAT17 (apps/contrats): Transition automatique signé→actif — après signature complète, `signer_contrat` enchaîne vers `actif` via la machine d'états existante SI `date_debut` nulle ou ≤ aujourd'hui (date future → reste `signé`), journalisé dans la chatter CONTRAT15, `today` injectable. N'altère pas le flip-vers-signé de CONTRAT16. Aucune migration, 13 tests.
+- 2026-06-29 — FLOTTE17 (apps/flotte): Ordres de réparation + garage + coûts — `Garage` + `OrdreReparation` (actif flotte, garage, description, coûts main-d'œuvre/pièces → `cout_total` figé, statut ouvert/en_cours/cloturé, lien échéance), action `couts/` (résumé, garde division par zéro) + `cloturer/` (solde l'échéance liée). Migration flotte 0015 additive, 22 tests.
+- 2026-06-29 — GED20 (apps/ged): Partage par lien tokenisé (expiry/mot de passe/quota) — `PartageGed` (token `secrets`, `expires_at`, mot de passe haché TextField, `quota_max`, compteur, kill-switch) + endpoint PUBLIC `public/<token>/` (AllowAny, résolu par token uniquement, stream du document ; inconnu/révoqué→404, expiré/quota→410, mot de passe manquant/faux→403, incrément atomique conditionnel), gestion CRUD multi-tenant + `revoquer/`. Migration ged 0014 additive, 20 tests. (NOTE: DECISION — endpoint public tokenisé, modèle de sécurité calqué sur ventes.ShareLink, aucune fuite cross-société.)

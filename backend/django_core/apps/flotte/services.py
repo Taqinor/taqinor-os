@@ -345,3 +345,42 @@ def generer_echeances_entretien(company, alerter=True):
         'nb_existantes': nb_existantes,
         'echeances': creees,
     }
+
+
+# ── FLOTTE17 — Clôture d'un ordre de réparation (et de l'échéance liée) ────────
+
+def cloturer_ordre_reparation(ordre, date_cloture=None,
+                              cloturer_echeance=True):
+    """FLOTTE17 — Clôture un ``OrdreReparation`` et, en option, son échéance liée.
+
+    Pose ``statut='cloture'`` sur l'OR et renseigne ``date_cloture`` (date du jour
+    si absente). Quand ``cloturer_echeance=True`` et qu'une ``EcheanceEntretien``
+    est rattachée à l'OR, cette échéance est marquée ``fait`` (sauf si elle l'est
+    déjà) — l'entretien curatif solde l'échéance préventive d'origine.
+
+    Idempotent : ré-appeler sur un OR déjà clôturé ne change rien (la date de
+    clôture existante est conservée). Multi-tenant : aucune société n'est lue du
+    corps de requête ; l'OR porte déjà sa société côté serveur.
+
+    Retourne ``(ordre, echeance_clôturée|None)``.
+    """
+    from .models import EcheanceEntretien
+
+    if date_cloture is None:
+        date_cloture = ordre.date_cloture or datetime.date.today()
+
+    deja_cloture = ordre.statut == ordre.Statut.CLOTURE
+    ordre.statut = ordre.Statut.CLOTURE
+    if ordre.date_cloture is None or not deja_cloture:
+        ordre.date_cloture = date_cloture
+    ordre.save()
+
+    echeance_close = None
+    if cloturer_echeance and ordre.echeance_id is not None:
+        echeance = ordre.echeance
+        if echeance.statut != EcheanceEntretien.Statut.FAIT:
+            echeance.statut = EcheanceEntretien.Statut.FAIT
+            echeance.save(update_fields=['statut'])
+            echeance_close = echeance
+
+    return ordre, echeance_close

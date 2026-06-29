@@ -390,6 +390,63 @@ class EtatsComptablesViewSet(viewsets.ViewSet):
             f'attachment; filename="aide_is_exercice_{exercice.pk}.csv"')
         return resp
 
+    @action(detail=False, methods=['get'], url_path='export-fec')
+    def export_fec(self, request):
+        """Export FEC — Fichier des Écritures Comptables au format DGI (FG141).
+
+        Restitue, pour un exercice, l'ensemble ORDONNÉ des écritures du grand
+        livre (une ligne par ``LigneEcriture``, triée par date d'écriture puis
+        numéro de pièce) au format auditable normalisé. Paramètres : ``exercice``
+        (id, requis), ``validees`` (1 → écritures validées seulement) et
+        ``export`` qui choisit le rendu — ``export=fec`` (texte tabulé, le
+        format DGI), ``export=csv`` (point-virgule) ; sans ``export``, renvoie le
+        JSON (colonnes + lignes + totaux). On utilise ``export=`` et JAMAIS le
+        ``format=`` de DRF (qui répond 404). Lecture seule, scopée société,
+        Admin/Responsable.
+        """
+        company = request.user.company
+        exercice_id = request.query_params.get('exercice')
+        if not exercice_id:
+            return Response(
+                {'detail': "Le paramètre 'exercice' est requis."},
+                status=status.HTTP_400_BAD_REQUEST)
+        exercice = ExerciceComptable.objects.filter(
+            company=company, pk=exercice_id).first()
+        if exercice is None:
+            return Response(
+                {'detail': 'Exercice introuvable pour cette société.'},
+                status=status.HTTP_404_NOT_FOUND)
+        data = selectors.export_fec(
+            company, exercice,
+            validees_seulement=request.query_params.get('validees') == '1')
+        export = request.query_params.get('export')
+        if export in ('fec', 'csv'):
+            return self._export_fec_file(exercice, data, export)
+        return Response(data)
+
+    @staticmethod
+    def _export_fec_file(exercice, data, export):
+        """Sérialise le FEC (FG141) en fichier délimité (tabulé DGI ou CSV)."""
+        # 'fec' → tabulation (format DGI officiel) ; 'csv' → point-virgule.
+        delimiter = '\t' if export == 'fec' else ';'
+        extension = 'txt' if export == 'fec' else 'csv'
+        buffer = io.StringIO()
+        writer = csv.writer(
+            buffer, delimiter=delimiter, lineterminator='\r\n')
+        writer.writerow(data['columns'])
+        for ligne in data['lignes']:
+            writer.writerow([ligne[col] for col in data['columns']])
+        resp = HttpResponse(
+            buffer.getvalue(),
+            content_type=(
+                'text/plain; charset=utf-8' if export == 'fec'
+                else 'text/csv; charset=utf-8'))
+        resp['Content-Disposition'] = (
+            'attachment; filename='
+            f'"FEC_exercice_{exercice.pk}_{exercice.date_debut}'
+            f'_{exercice.date_fin}.{extension}"')
+        return resp
+
 
 # ── FG115 — Périodes comptables verrouillables ─────────────────────────────
 

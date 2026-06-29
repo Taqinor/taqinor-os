@@ -529,6 +529,214 @@ def plan_de_charge_equipes(company, debut, fin, heures_par_jour=8):
     }
 
 
+# ── FG301 — Nivellement de charge (resource levelling) ───────────────────────
+# Construit sur FG299 (plan de charge) + FG300 (conflits) : à partir de la charge
+# par technicien sur une fenêtre, on PROPOSE de déplacer des interventions des
+# techniciens SUR-CHARGÉS (affecté > capacité) vers les techniciens SOUS-CHARGÉS
+# (affecté < capacité) pour rééquilibrer. C'est une proposition LECTURE SEULE :
+# rien n'est jamais muté — on renvoie une liste de déplacements suggérés
+# (quelle intervention → quel technicien sous-chargé). Pure agrégation, scopée
+# société, aucun nouveau modèle.
+#
+# Capacité = jours ouvrés de la fenêtre (proxy : 1 intervention ≈ 1 journée, comme
+# FG299) ; ``heures_par_jour`` ne sert qu'à exprimer les heures pour cohérence
+# d'affichage. Un technicien est sur-chargé si son nombre d'interventions affectées
+# dépasse les jours ouvrés disponibles. Pour chaque excédent on cherche le
+# technicien sous-chargé avec le PLUS de marge restante, en ÉVITANT de recréer un
+# conflit FG300 (on ne propose pas un destinataire déjà affecté ce jour-là).
+
+def nivellement_charge(company, debut, fin, heures_par_jour=8):
+    """FG301 — propose un rééquilibrage des interventions des techniciens
+    SUR-CHARGÉS vers les SOUS-CHARGÉS, sur la fenêtre [debut, fin] inclusive.
+
+    Réutilise la logique de charge de FG299 : pour chaque technicien (principal
+    OU membre d'équipe) on compte ses interventions distinctes prévues dans la
+    fenêtre, comparé à la capacité = jours ouvrés (proxy 1 intervention ≈ 1 jour).
+    Un technicien dont la charge dépasse la capacité est SUR-CHARGÉ ; en dessous,
+    SOUS-CHARGÉ (marge = capacité − charge).
+
+    Pour chaque intervention en excès d'un technicien sur-chargé, on propose de la
+    déplacer vers le technicien sous-chargé qui a LE PLUS de marge restante, sans
+    recréer un conflit FG300 (jamais un destinataire déjà affecté ce jour-là, ni
+    déjà ciblé par une proposition le même jour). Les interventions déplacées
+    « en premier » sont celles dont la date est la plus tardive (on garde le début
+    de fenêtre stable). Une intervention sans date prévue n'est jamais proposée
+    (pas de créneau ⇒ pas de risque de conflit à arbitrer).
+
+    Renvoie un dict PLAT (jamais d'instance de modèle d'une autre app) :
+      ``debut`` / ``fin`` (ISO ou None) ; ``heures_par_jour`` ; ``jours_ouvres`` ;
+      ``capacite_jours`` (= jours ouvrés, identique pour tous) ;
+      ``surcharges`` (techniciens sur-chargés : {technicien_id, nom, charge,
+        capacite, exces}) ; ``propositions`` (liste de déplacements suggérés,
+        triée par date puis nom source) — chaque entrée =
+        {intervention_id, installation_id, type_intervention, date, de_id,
+         de_nom, vers_id, vers_nom} ; ``totaux`` (nb_surcharges,
+         nb_propositions, nb_non_resolues = interventions en excès sans
+         destinataire possible).
+    Lecture seule, NE MUTE RIEN, scopée société, garde division-par-zéro et
+    fenêtre vide/None/inversée (renvoie des listes vides, jamais d'exception).
+    """
+    from collections import OrderedDict
+    from django.contrib.auth import get_user_model
+    from .models import Intervention
+
+    try:
+        heures_par_jour = float(heures_par_jour)
+    except (TypeError, ValueError):
+        heures_par_jour = 8.0
+    if heures_par_jour < 0:
+        heures_par_jour = 0.0
+
+    jours_ouvres = _jours_ouvres(debut, fin)
+
+    base = {
+        'debut': debut.isoformat() if debut is not None else None,
+        'fin': fin.isoformat() if fin is not None else None,
+        'heures_par_jour': float(heures_par_jour),
+        'jours_ouvres': jours_ouvres,
+        'capacite_jours': jours_ouvres,
+        'surcharges': [],
+        'propositions': [],
+        'totaux': {
+            'nb_surcharges': 0,
+            'nb_propositions': 0,
+            'nb_non_resolues': 0,
+        },
+    }
+    # Fenêtre vide / None / inversée → rien à niveler (garde explicite).
+    if debut is None or fin is None or fin < debut:
+        return base
+
+    qs = (Intervention.objects
+          .filter(company=company)
+          .filter(date_prevue__gte=debut, date_prevue__lte=fin)
+          .filter(date_prevue__isnull=False)
+          .prefetch_related('equipe')
+          .only('id', 'installation_id', 'type_intervention',
+                'technicien_id', 'date_prevue'))
+
+    # {user_id: OrderedDict{intervention_id: interv}} — affectation par technicien.
+    # Un OrderedDict évite de compter deux fois une intervention où un technicien
+    # est À LA FOIS principal ET membre d'équipe (clé = id).
+    affecte = OrderedDict()
+    # {user_id: set(jour)} — jours déjà occupés par chaque technicien (pour ne pas
+    # recréer un conflit FG300 en déplaçant une intervention vers lui).
+    jours_occupes = {}
+
+    for interv in qs.order_by('date_prevue', 'id'):
+        membres = set()
+        if interv.technicien_id:
+            membres.add(interv.technicien_id)
+        for membre in interv.equipe.all():
+            membres.add(membre.id)
+        for membre_id in membres:
+            affecte.setdefault(membre_id, OrderedDict())[interv.id] = interv
+            jours_occupes.setdefault(membre_id, set()).add(interv.date_prevue)
+
+    if not affecte:
+        return base
+
+    capacite = jours_ouvres  # jours ouvrés ; proxy 1 intervention ≈ 1 jour
+
+    # Noms des techniciens (un seul accès DB).
+    User = get_user_model()
+    users = {u.id: u for u in User.objects.filter(id__in=list(affecte))}
+
+    def _nom(uid):
+        user = users.get(uid)
+        if user is None:
+            return str(uid)
+        getter = getattr(user, 'get_full_name', None)
+        nom = ''
+        if callable(getter):
+            nom = (getter() or '').strip()
+        return nom or getattr(user, 'username', str(uid))
+
+    # Marge restante par technicien sous-chargé (capacité − charge), mutée au fil
+    # des propositions pour répartir équitablement.
+    marge = {}
+    surcharges = []
+    for uid, intervs in affecte.items():
+        charge = len(intervs)
+        if charge > capacite:
+            surcharges.append((uid, charge))
+        elif charge < capacite:
+            marge[uid] = capacite - charge
+
+    surcharges.sort(key=lambda s: (-(s[1]), _nom(s[0]).lower(), s[0]))
+
+    propositions = []
+    nb_non_resolues = 0
+
+    for uid, charge in surcharges:
+        exces = charge - capacite
+        if exces <= 0:
+            continue
+        intervs = affecte[uid]
+        # On déplace en priorité les interventions les plus TARDIVES (garde le
+        # début de fenêtre stable) ; tri déterministe par date puis id.
+        candidats = sorted(
+            intervs.values(),
+            key=lambda iv: (iv.date_prevue, iv.id), reverse=True)
+        deplaces = 0
+        for interv in candidats:
+            if deplaces >= exces:
+                break
+            jour = interv.date_prevue
+            # Destinataires éligibles : sous-chargés, marge > 0, pas eux-mêmes,
+            # PAS déjà occupés ce jour-là (anti-conflit FG300), pas déjà affectés
+            # à CETTE intervention.
+            deja = set(affecte.get(interv.id, {}))  # techniciens de l'interv
+            meilleur = None
+            meilleure_marge = 0
+            for dest_id, m in marge.items():
+                if m <= 0 or dest_id == uid or dest_id in deja:
+                    continue
+                if jour in jours_occupes.get(dest_id, set()):
+                    continue
+                if m > meilleure_marge:
+                    meilleure_marge = m
+                    meilleur = dest_id
+            if meilleur is None:
+                nb_non_resolues += 1
+                continue
+            propositions.append({
+                'intervention_id': interv.id,
+                'installation_id': interv.installation_id,
+                'type_intervention': interv.type_intervention,
+                'date': jour.isoformat(),
+                'de_id': uid,
+                'de_nom': _nom(uid),
+                'vers_id': meilleur,
+                'vers_nom': _nom(meilleur),
+            })
+            # Met à jour l'état pour les propositions suivantes (équité +
+            # anti-conflit) — n'écrit RIEN en base.
+            marge[meilleur] -= 1
+            jours_occupes.setdefault(meilleur, set()).add(jour)
+            deplaces += 1
+
+    surcharges_out = [{
+        'technicien_id': uid,
+        'nom': _nom(uid),
+        'charge': charge,
+        'capacite': capacite,
+        'exces': charge - capacite,
+    } for uid, charge in surcharges]
+
+    propositions.sort(key=lambda p: (p['date'], p['de_nom'].lower(),
+                                     p['intervention_id']))
+
+    base['surcharges'] = surcharges_out
+    base['propositions'] = propositions
+    base['totaux'] = {
+        'nb_surcharges': len(surcharges_out),
+        'nb_propositions': len(propositions),
+        'nb_non_resolues': nb_non_resolues,
+    }
+    return base
+
+
 def reserve_scoped(company, pk):
     """Réserve (F16 — point de finition) scopée société, par id, ou ``None``.
 

@@ -29,7 +29,9 @@ from .models import (
     Departement,
     DocumentEmploye,
     DossierEmploye,
+    DotationEpi,
     ElementSortie,
+    EpiCatalogue,
     FeuilleTemps,
     Habilitation,
     HeuresSupp,
@@ -51,7 +53,9 @@ from .serializers import (
     DepartementSerializer,
     DocumentEmployeSerializer,
     DossierEmployeSerializer,
+    DotationEpiSerializer,
     ElementSortieSerializer,
+    EpiCatalogueSerializer,
     FeuilleTempsSerializer,
     HabilitationSerializer,
     HeuresSuppSerializer,
@@ -1274,12 +1278,126 @@ class VisiteMedicaleViewSet(_RhBaseViewSet):
         return Response(serializer.data)
 
 
+class EpiCatalogueViewSet(_RhBaseViewSet):
+    """Catalogue des EPI de la société (FG178) — référentiel d'équipements.
+
+    Société scopée + Administrateur/Responsable. ``company`` est posée côté
+    serveur (jamais lue du corps). Référentiel des équipements de protection
+    individuelle (casque, harnais, gants isolants, chaussures, lunettes…) ; la
+    dotation nominative est portée par ``DotationEpi``.
+
+    Filtres : ``?type_epi=``, ``?actif=0|1``. Recherche : désignation.
+    """
+    queryset = EpiCatalogue.objects.all()
+    serializer_class = EpiCatalogueSerializer
+    filter_backends = [filters.SearchFilter, filters.OrderingFilter]
+    search_fields = ['designation']
+    ordering_fields = ['type_epi', 'designation', 'date_creation']
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        type_epi = self.request.query_params.get('type_epi')
+        if type_epi:
+            qs = qs.filter(type_epi=type_epi)
+        actif = self.request.query_params.get('actif')
+        if actif in ('0', 'false', 'False'):
+            qs = qs.filter(actif=False)
+        elif actif in ('1', 'true', 'True'):
+            qs = qs.filter(actif=True)
+        return qs
+
+    def perform_create(self, serializer):
+        """Company posée côté serveur (jamais lue du corps)."""
+        serializer.save(company=self.request.user.company)
+
+
+class DotationEpiViewSet(_RhBaseViewSet):
+    """Dotations EPI nominatives (FG178) — qui porte quel EPI, taille + date.
+
+    Société scopée + Administrateur/Responsable. ``company`` est posée côté
+    serveur (jamais lue du corps) ; ``employe`` et ``epi`` doivent appartenir à
+    la même société. Une ligne par attribution (employé, EPI) avec taille, date
+    de dotation et éventuelle date de renouvellement (échéance).
+
+    Filtres : ``?employe=<id>``, ``?epi=<id>``, ``?type_epi=``. Recherche :
+    taille, note.
+
+    Actions :
+    * ``GET .../a-renouveler/?expire_within=N&employe=&inclure_expirees=0`` —
+      dotations dont le renouvellement arrive dans N jours (défaut 30) ou est
+      déjà dépassé.
+    * ``GET .../employe/?employe=<id>`` — dotations EPI d'un employé.
+    """
+    queryset = DotationEpi.objects.select_related('employe', 'epi').all()
+    serializer_class = DotationEpiSerializer
+    filter_backends = [filters.SearchFilter, filters.OrderingFilter]
+    search_fields = ['taille', 'note']
+    ordering_fields = [
+        'date_renouvellement', 'date_dotation', 'date_creation']
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        employe = self.request.query_params.get('employe')
+        if employe:
+            qs = qs.filter(employe_id=employe)
+        epi = self.request.query_params.get('epi')
+        if epi:
+            qs = qs.filter(epi_id=epi)
+        type_epi = self.request.query_params.get('type_epi')
+        if type_epi:
+            qs = qs.filter(epi__type_epi=type_epi)
+        return qs
+
+    def perform_create(self, serializer):
+        """Company posée côté serveur ; employe/epi validés via le sérialiseur."""
+        serializer.save(company=self.request.user.company)
+
+    @action(detail=False, methods=['get'], url_path='a-renouveler')
+    def a_renouveler(self, request):
+        """Dotations EPI dont le renouvellement approche ou est dépassé (FG178).
+
+        ``?expire_within=N`` (défaut 30) fixe la fenêtre ; ``?employe=``
+        restreint à un employé ; ``?inclure_expirees=0`` ne garde que les
+        échéances à venir (par défaut on inclut aussi les EPI déjà à remplacer,
+        précisément ceux à signaler avant un chantier). S'appuie sur
+        ``selectors.dotations_epi_a_renouveler`` — scopé société.
+        """
+        within = request.query_params.get('expire_within', 30)
+        employe = request.query_params.get('employe') or None
+        inclure = request.query_params.get('inclure_expirees') \
+            not in ('0', 'false', 'False')
+        qs = selectors.dotations_epi_a_renouveler(
+            request.user.company, within_days=within,
+            inclure_expirees=inclure, employe_id=employe)
+        page = self.paginate_queryset(qs)
+        if page is not None:
+            serializer = self.get_serializer(page, many=True)
+            return self.get_paginated_response(serializer.data)
+        serializer = self.get_serializer(qs, many=True)
+        return Response(serializer.data)
+
+    @action(detail=False, methods=['get'])
+    def employe(self, request):
+        """Dotations EPI d'un employé (``?employe=<id>``), scopé société."""
+        employe = request.query_params.get('employe')
+        qs = self.get_queryset()
+        if employe:
+            qs = qs.filter(employe_id=employe)
+        page = self.paginate_queryset(qs)
+        if page is not None:
+            serializer = self.get_serializer(page, many=True)
+            return self.get_paginated_response(serializer.data)
+        serializer = self.get_serializer(qs, many=True)
+        return Response(serializer.data)
+
+
 class EcheancesRhViewSet(TenantMixin, viewsets.ViewSet):
     """Moteur d'échéances RH unifié (FG175) — alertes d'expiration agrégées.
 
     Société scopée + Administrateur/Responsable. Réunit en UNE liste normalisée
-    les habilitations (FG173), certifications (FG174) et documents employé
-    (FG159) qui expirent (ou sont déjà expirés) dans la fenêtre demandée.
+    les habilitations (FG173), certifications (FG174), documents employé
+    (FG159), visites médicales (FG177) et dotations EPI à renouveler (FG178) qui
+    expirent (ou sont déjà expirés) dans la fenêtre demandée.
 
     Action :
     * ``GET .../echeances/?within=N`` — échéances dans les N prochains jours

@@ -16,6 +16,8 @@ from .models import (
     EcheanceEntretien,
     EnginRoulant,
     EtatDesLieux,
+    Garage,
+    OrdreReparation,
     PlanEntretien,
     PleinCarburant,
     ReservationVehicule,
@@ -702,3 +704,78 @@ def echeances_de_la_societe(company, statut=None, ouvertes_only=False,
     if plan_id is not None:
         qs = qs.filter(plan_id=plan_id)
     return qs
+
+
+# ── FLOTTE17 — Garages / ateliers + ordres de réparation (atelier + coûts) ─────
+
+def garages_de_la_societe(company, actif_only=False):
+    """FLOTTE17 — Garages / ateliers d'une société (queryset scopé).
+
+    ``actif_only=True`` ne retourne que les garages actifs.
+    """
+    qs = Garage.objects.filter(company=company)
+    if actif_only:
+        qs = qs.filter(actif=True)
+    return qs
+
+
+def ordres_reparation_de_la_societe(company, actif_flotte_id=None,
+                                    garage_id=None, statut=None,
+                                    ouverts_only=False):
+    """FLOTTE17 — Ordres de réparation d'une société (queryset scopé).
+
+    Filtres : ``actif_flotte_id`` (un actif précis), ``garage_id`` (un garage),
+    ``statut`` (``ouvert`` | ``en_cours`` | ``cloture``), ``ouverts_only=True``
+    (ne garde que les OR non clôturés). Lecture seule, scopée société.
+    """
+    qs = OrdreReparation.objects.filter(company=company).select_related(
+        'actif_flotte', 'actif_flotte__vehicule', 'actif_flotte__engin',
+        'garage', 'echeance')
+    if actif_flotte_id is not None:
+        qs = qs.filter(actif_flotte_id=actif_flotte_id)
+    if garage_id is not None:
+        qs = qs.filter(garage_id=garage_id)
+    if statut:
+        qs = qs.filter(statut=statut)
+    if ouverts_only:
+        qs = qs.exclude(statut__in=OrdreReparation.STATUTS_CLOS)
+    return qs
+
+
+def couts_reparation(company, actif_flotte_id=None, garage_id=None,
+                     statut=None):
+    """FLOTTE17 — Synthèse des coûts de réparation d'une société (lecture seule).
+
+    Agrège les coûts des ``OrdreReparation`` (scopés société, filtrables par
+    actif / garage / statut) : totaux main d'œuvre, pièces, total, nombre d'OR,
+    et coût MOYEN par OR (garde-fou division par zéro : ``None`` si aucun OR).
+
+    Retourne un dict LECTURE SEULE ::
+
+        {
+          'nb_ordres', 'cout_main_oeuvre', 'cout_pieces', 'cout_total',
+          'cout_moyen',  # None si nb_ordres == 0
+        }
+
+    Tous les montants sont des ``float`` arrondis (issus de ``DecimalField``).
+    """
+    qs = ordres_reparation_de_la_societe(
+        company, actif_flotte_id=actif_flotte_id, garage_id=garage_id,
+        statut=statut)
+    agg = qs.aggregate(
+        nb=models.Count('id'),
+        mo=models.Sum('cout_main_oeuvre'),
+        pieces=models.Sum('cout_pieces'),
+        total=models.Sum('cout_total'),
+    )
+    nb = agg['nb'] or 0
+    total = float(agg['total'] or 0)
+    # Garde-fou division par zéro : aucun OR → pas de moyenne.
+    cout_moyen = round(total / nb, 2) if nb else None
+    return {
+        'nb_ordres': nb,
+        'cout_main_oeuvre': round(float(agg['mo'] or 0), 2),
+        'cout_pieces': round(float(agg['pieces'] or 0), 2),
+        'cout_total': round(total, 2),
+        'cout_moyen': cout_moyen,
+    }

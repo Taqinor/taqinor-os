@@ -9,7 +9,9 @@ from .models import (
     Departement,
     DocumentEmploye,
     DossierEmploye,
+    DotationEpi,
     ElementSortie,
+    EpiCatalogue,
     Habilitation,
     HeuresSupp,
     IncidentPresence,
@@ -172,3 +174,19 @@ class VisiteMedicaleAdmin(admin.ModelAdmin):
     list_filter = ('aptitude', 'actif')
     search_fields = ('employe__matricule', 'employe__nom', 'employe__prenom',
                      'medecin', 'organisme')
+
+
+@admin.register(EpiCatalogue)
+class EpiCatalogueAdmin(admin.ModelAdmin):
+    list_display = ('designation', 'type_epi', 'actif', 'company')
+    list_filter = ('type_epi', 'actif')
+    search_fields = ('designation',)
+
+
+@admin.register(DotationEpi)
+class DotationEpiAdmin(admin.ModelAdmin):
+    list_display = ('employe', 'epi', 'taille', 'date_dotation',
+                    'date_renouvellement', 'quantite', 'company')
+    list_filter = ('epi__type_epi',)
+    search_fields = ('employe__matricule', 'employe__nom', 'employe__prenom',
+                     'epi__designation', 'taille')

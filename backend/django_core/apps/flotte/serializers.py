@@ -14,6 +14,8 @@ from .models import (
     EcheanceEntretien,
     EnginRoulant,
     EtatDesLieux,
+    Garage,
+    OrdreReparation,
     PlanEntretien,
     PleinCarburant,
     ReferentielFlotte,
@@ -757,3 +759,106 @@ class EcheanceEntretienSerializer(serializers.ModelSerializer):
 
     def get_plan_type(self, obj):
         return obj.plan.type_entretien if obj.plan_id else None
+
+
+# ── FLOTTE17 — Garage / atelier + ordres de réparation (coûts) ────────────────
+
+class GarageSerializer(serializers.ModelSerializer):
+    """FLOTTE17 — Garage / atelier de réparation de la société.
+
+    ``company`` est posée côté serveur (jamais lue du corps de requête).
+    """
+
+    class Meta:
+        model = Garage
+        fields = [
+            'id', 'nom', 'adresse', 'telephone', 'actif', 'date_creation',
+        ]
+        read_only_fields = ['date_creation']
+
+
+class OrdreReparationSerializer(serializers.ModelSerializer):
+    """FLOTTE17 — Ordre de réparation d'un actif auprès d'un garage.
+
+    ``company`` est posée côté serveur (jamais lue du corps de requête). L'actif
+    (``actif_flotte``), le garage et l'échéance liés — quand fournis — doivent
+    appartenir à la société courante. ``cout_total`` est en LECTURE SEULE : il
+    est calculé côté modèle (``cout_main_oeuvre + cout_pieces``) à chaque save —
+    jamais accepté du corps de requête.
+
+    Champs lecture seule :
+    - ``actif_label``      : désignation de l'actif ciblé (véhicule ou engin).
+    - ``garage_nom``       : nom du garage (ou ``None``).
+    - ``statut_display``   : libellé du statut.
+    - ``cout_total``       : main d'œuvre + pièces (calculé).
+    """
+
+    actif_label = serializers.SerializerMethodField()
+    garage_nom = serializers.SerializerMethodField()
+    statut_display = serializers.CharField(
+        source='get_statut_display', read_only=True)
+
+    class Meta:
+        model = OrdreReparation
+        fields = [
+            'id', 'actif_flotte', 'actif_label', 'garage', 'garage_nom',
+            'echeance', 'description', 'date_ouverture', 'date_cloture',
+            'statut', 'statut_display', 'cout_main_oeuvre', 'cout_pieces',
+            'cout_total', 'notes', 'date_creation',
+        ]
+        # cout_total est dérivé côté modèle, jamais saisi.
+        read_only_fields = ['cout_total', 'date_creation']
+
+    def get_actif_label(self, obj):
+        return obj.actif_flotte.label if obj.actif_flotte_id else None
+
+    def get_garage_nom(self, obj):
+        return obj.garage.nom if obj.garage_id else None
+
+    def validate_cout_main_oeuvre(self, value):
+        if value is not None and value < 0:
+            raise serializers.ValidationError(
+                "Le coût de main d'œuvre ne peut pas être négatif.")
+        return value
+
+    def validate_cout_pieces(self, value):
+        if value is not None and value < 0:
+            raise serializers.ValidationError(
+                "Le coût des pièces ne peut pas être négatif.")
+        return value
+
+    def validate(self, attrs):
+        request = self.context.get('request')
+        company = getattr(getattr(request, 'user', None), 'company', None)
+
+        actif_flotte = attrs.get(
+            'actif_flotte', getattr(self.instance, 'actif_flotte', None))
+        garage = attrs.get('garage', getattr(self.instance, 'garage', None))
+        echeance = attrs.get(
+            'echeance', getattr(self.instance, 'echeance', None))
+        date_ouverture = attrs.get(
+            'date_ouverture', getattr(self.instance, 'date_ouverture', None))
+        date_cloture = attrs.get(
+            'date_cloture', getattr(self.instance, 'date_cloture', None))
+
+        if company is not None:
+            if actif_flotte is not None \
+                    and actif_flotte.company_id != company.id:
+                raise serializers.ValidationError(
+                    {'actif_flotte':
+                     "Cet actif n'appartient pas à votre société."})
+            if garage is not None and garage.company_id != company.id:
+                raise serializers.ValidationError(
+                    {'garage': "Ce garage n'appartient pas à votre société."})
+            if echeance is not None and echeance.company_id != company.id:
+                raise serializers.ValidationError(
+                    {'echeance':
+                     "Cette échéance n'appartient pas à votre société."})
+
+        if date_ouverture is not None and date_cloture is not None \
+                and date_cloture < date_ouverture:
+            raise serializers.ValidationError(
+                {'date_cloture':
+                 "La date de clôture ne peut pas précéder l'ouverture."})
+
+        return attrs

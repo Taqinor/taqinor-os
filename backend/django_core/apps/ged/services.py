@@ -638,3 +638,114 @@ def reject_demande(demande, *, user, commentaire=''):
     if document.statut == LIFECYCLE_REVUE:
         change_lifecycle_status(document, LIFECYCLE_BROUILLON, user=user)
     return dem
+
+
+# ── GED20 — Partage public d'un document par lien tokenisé ──────────
+
+def create_partage(*, document, company, created_by=None, expires_at=None,
+                   password=None, quota_max=None):
+    """GED20 — Crée un partage public tokenisé pour un document (côté gestion).
+
+    `company` est posée côté serveur et doit être celle du document (jamais lue
+    du corps de requête). Le `token` long/imprévisible est généré par le défaut
+    du modèle. Le mot de passe (optionnel) est HACHÉ via `set_password` — jamais
+    stocké en clair. `expires_at`/`quota_max` sont optionnels (NULL = pas de
+    limite). Renvoie le `PartageGed` créé.
+    """
+    from .models import PartageGed
+    if document.company_id != getattr(company, 'id', company):
+        raise ValueError("Le document doit appartenir à la même société.")
+    partage = PartageGed(
+        company=company,
+        document=document,
+        expires_at=expires_at,
+        quota_max=quota_max,
+        created_by=created_by,
+    )
+    partage.set_password(password)
+    partage.save()
+    return partage
+
+
+def revoke_partage(partage):
+    """GED20 — Révoque un partage (kill-switch : `actif=False`).
+
+    Idempotent : un partage déjà révoqué reste révoqué. Après révocation,
+    l'endpoint public renvoie 404 (lien mort) sans fuite."""
+    if partage.actif:
+        partage.actif = False
+        partage.save(update_fields=['actif', 'updated_at'])
+    return partage
+
+
+# Sentinelles de résultat pour la résolution publique (le SEUL chemin d'accès
+# public au document). Chaque cas mappe vers un code HTTP côté endpoint.
+PARTAGE_OK = 'ok'
+PARTAGE_INTROUVABLE = 'introuvable'        # jeton inconnu ou révoqué → 404
+PARTAGE_EXPIRE = 'expire'                  # expiré ou quota épuisé → 410
+PARTAGE_MDP_REQUIS = 'mot_de_passe_requis'  # mot de passe manquant/erroné → 403
+
+
+def resolve_partage_public(token, *, password=None):
+    """GED20 — Résout un partage public DEPUIS le seul jeton (aucune identité).
+
+    C'est le cœur sécurité de l'accès public : on ne fait JAMAIS confiance à une
+    société/identité venue de la requête — tout est résolu à partir du `token`
+    (qui ne référence qu'un seul document d'une seule société). Renvoie un tuple
+    `(statut, partage_ou_None)` où `statut` est l'une des sentinelles :
+
+      - PARTAGE_INTROUVABLE : jeton inconnu OU partage révoqué (actif=False).
+        → 404, sans distinguer les deux (pas de fuite « ce jeton existe »).
+      - PARTAGE_EXPIRE       : partage expiré OU quota de téléchargements épuisé.
+        → 410 Gone.
+      - PARTAGE_MDP_REQUIS   : un mot de passe protège le partage et le mot de
+        passe fourni est manquant ou erroné. → 403.
+      - PARTAGE_OK           : accès autorisé, `partage` est servable.
+
+    Note : un partage révoqué est traité comme INTROUVABLE (404) — révoquer doit
+    « faire disparaître » le lien, pas révéler qu'il a existé.
+    """
+    from .models import PartageGed
+    partage = (PartageGed.objects
+               .select_related('document', 'company')
+               .filter(token=token)
+               .first())
+    # Jeton inconnu OU partage révoqué → 404 indistinct (pas de fuite).
+    if partage is None or not partage.actif:
+        return PARTAGE_INTROUVABLE, None
+    # Expiré ou quota épuisé → 410 Gone.
+    if partage.is_expired or partage.quota_exhausted:
+        return PARTAGE_EXPIRE, partage
+    # Mot de passe (le cas échéant) — 403 si manquant/erroné.
+    if partage.has_password and not partage.check_password(password):
+        return PARTAGE_MDP_REQUIS, partage
+    return PARTAGE_OK, partage
+
+
+def consume_partage_download(partage):
+    """GED20 — Incrémente atomiquement le compteur de téléchargements.
+
+    Race-safe : incrément via F-expression + filtre conditionnel sur le quota
+    (un GET concurrent ne peut pas dépasser `quota_max`). Renvoie True si le
+    téléchargement a été comptabilisé, False si le quota venait d'être épuisé
+    par un accès concurrent (l'appelant doit alors renvoyer 410 et NE PAS
+    servir le document).
+
+    `quota_max=None` → quota illimité : on incrémente toujours sans condition.
+    """
+    from django.db.models import F
+    from .models import PartageGed
+    if partage.quota_max is None:
+        PartageGed.objects.filter(pk=partage.pk).update(
+            telechargements=F('telechargements') + 1)
+        partage.refresh_from_db(fields=['telechargements'])
+        return True
+    # Incrément CONDITIONNEL : ne passe que si le quota n'est pas déjà atteint.
+    # Sous concurrence, exactement `quota_max` GET réussissent l'update.
+    updated = PartageGed.objects.filter(
+        pk=partage.pk, telechargements__lt=partage.quota_max
+    ).update(telechargements=F('telechargements') + 1)
+    if not updated:
+        return False
+    partage.refresh_from_db(fields=['telechargements'])
+    return True

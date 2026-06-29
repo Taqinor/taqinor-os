@@ -1320,3 +1320,159 @@ class TariffEscalationProjectionTest(SimpleTestCase):
             horizon_years=5, discount_rate=-2.0)
         self.assertEqual(res["summary"]["discount_rate"], 0.0)
         self.assertTrue(any("actualisation" in w for w in res["warnings"]))
+
+
+# ── FG261 : optimisation de la puissance souscrite (C&I) après PV ─────────────
+class OptimizeSubscribedPowerTest(SimpleTestCase):
+    def _curves(self):
+        # Charge C&I : plateau de jour, creux la nuit ; pointe = 100 kW à 11 h.
+        load = [
+            10, 10, 10, 10, 10, 15,    # 00–05 h
+            40, 70, 90, 100, 100, 95,  # 06–11 h
+            80, 90, 95, 90, 70, 50,    # 12–17 h
+            30, 20, 15, 12, 10, 10,    # 18–23 h
+        ]
+        # PV : cloche centrée sur midi, ~85 kW de pointe à 11–12 h.
+        prod = [
+            0, 0, 0, 0, 0, 2,          # 00–05 h
+            15, 35, 60, 80, 85, 85,    # 06–11 h
+            85, 80, 60, 35, 15, 5,     # 12–17 h
+            1, 0, 0, 0, 0, 0,          # 18–23 h
+        ]
+        return load, prod
+
+    def test_post_pv_peak_below_pre_pv_peak(self):
+        load, prod = self._curves()
+        res = sd.optimize_subscribed_power(
+            load_curve=load, production_curve=prod,
+            current_subscribed_kva=110, capacity_tariff=480.0)
+        # Le PV écrête la pointe de soutirage réseau : post-PV < pré-PV.
+        self.assertEqual(res["peak_pre_pv_kw"], 100.0)
+        self.assertLess(res["peak_post_pv_kw"], res["peak_pre_pv_kw"])
+        self.assertGreater(res["peak_reduction_kw"], 0.0)
+
+    def test_recommended_power_at_least_peak_times_margin(self):
+        load, prod = self._curves()
+        margin = 1.10
+        res = sd.optimize_subscribed_power(
+            load_curve=load, production_curve=prod,
+            current_subscribed_kva=110, capacity_tariff=480.0,
+            safety_margin=margin)
+        # La recommandation couvre la pointe post-PV avec la marge (ceil).
+        self.assertGreaterEqual(
+            res["recommended_subscribed"],
+            res["peak_post_pv_demand"] * margin - 1e-9)
+        # Et reste sous la souscription actuelle (réduction réelle).
+        self.assertLess(res["recommended_subscribed"], 110)
+
+    def test_saving_from_reduction(self):
+        load, prod = self._curves()
+        res = sd.optimize_subscribed_power(
+            load_curve=load, production_curve=prod,
+            current_subscribed_kva=110, capacity_tariff=480.0,
+            tariff_period="year")
+        expected = round(
+            res["subscribed_reduction"] * 480.0, 2)
+        self.assertEqual(res["annual_saving"], expected)
+        self.assertGreater(res["annual_saving"], 0.0)
+        self.assertAlmostEqual(
+            res["monthly_saving"], res["annual_saving"] / 12.0, places=2)
+
+    def test_monthly_tariff_annualised(self):
+        load, prod = self._curves()
+        res = sd.optimize_subscribed_power(
+            load_curve=load, production_curve=prod,
+            current_subscribed_kva=110, capacity_tariff=40.0,
+            tariff_period="month")
+        # 40 MAD/kVA/mois → 480 MAD/kVA/an.
+        self.assertEqual(res["annual_capacity_tariff"], 480.0)
+        self.assertEqual(
+            res["annual_saving"],
+            round(res["subscribed_reduction"] * 480.0, 2))
+
+    def test_no_reduction_when_peak_unchanged(self):
+        # Pointe en pleine nuit (PV nul) : le PV n'écrête pas la pointe.
+        # 100 kW à 21 h (index 21) où TYPICAL_PV_PROFILE vaut exactement 0.
+        load = [10] * 21 + [100, 10, 10]
+        prod = sd.TYPICAL_PV_PROFILE[:]  # cloche diurne, nulle la nuit
+        res = sd.optimize_subscribed_power(
+            load_curve=load, production_curve=prod,
+            current_subscribed_kva=110, capacity_tariff=480.0)
+        self.assertEqual(res["peak_pre_pv_kw"], res["peak_post_pv_kw"])
+        self.assertEqual(res["peak_reduction_kw"], 0.0)
+        self.assertEqual(res["subscribed_reduction"], 0.0)
+        self.assertEqual(res["annual_saving"], 0.0)
+        self.assertTrue(any("écrête" in w for w in res["warnings"]))
+
+    def test_never_recommends_increase(self):
+        # Pointe post-PV (× marge) dépasse la souscription actuelle → on garde.
+        load = [200] * 24          # charge plate massive, pointe = 200 kW
+        prod = [10] * 24           # PV marginal
+        res = sd.optimize_subscribed_power(
+            load_curve=load, production_curve=prod,
+            current_subscribed_kva=120, capacity_tariff=480.0)
+        self.assertLessEqual(res["recommended_subscribed"], 120)
+        self.assertEqual(res["subscribed_reduction"], 0.0)
+        self.assertEqual(res["annual_saving"], 0.0)
+
+    def test_power_factor_converts_kw_to_kva(self):
+        load, prod = self._curves()
+        res = sd.optimize_subscribed_power(
+            load_curve=load, production_curve=prod,
+            current_subscribed_kva=140, capacity_tariff=480.0,
+            power_factor=0.8)
+        # kVA = kW / cos φ : la demande exprimée monte par rapport au kW brut.
+        self.assertEqual(res["demand_unit"], "kVA")
+        self.assertEqual(res["power_factor"], 0.8)
+        self.assertAlmostEqual(
+            res["peak_post_pv_demand"],
+            round(res["peak_post_pv_kw"] / 0.8, 3), places=3)
+
+    def test_invalid_power_factor_ignored(self):
+        load, prod = self._curves()
+        res = sd.optimize_subscribed_power(
+            load_curve=load, production_curve=prod,
+            current_subscribed_kva=110, power_factor=0.0)
+        # cos φ ≤ 0 ignoré : pas de conversion, pas de division par zéro.
+        self.assertIsNone(res["power_factor"])
+        self.assertEqual(res["peak_post_pv_demand"], res["peak_post_pv_kw"])
+
+    def test_empty_curves_safe(self):
+        res = sd.optimize_subscribed_power(
+            load_curve=[], production_curve=[],
+            current_subscribed_kva=0, capacity_tariff=480.0)
+        self.assertEqual(res["peak_pre_pv_kw"], 0.0)
+        self.assertEqual(res["peak_post_pv_kw"], 0.0)
+        self.assertEqual(res["subscribed_reduction"], 0.0)
+        self.assertEqual(res["annual_saving"], 0.0)
+
+    def test_degraded_inputs_never_raise(self):
+        res = sd.optimize_subscribed_power(
+            load_curve=[None, "x", -5, 50, 80],
+            production_curve=["y", 10, None, 30, 60],
+            current_subscribed_kva="abc", capacity_tariff="oops",
+            tariff_period="year", safety_margin="bad", power_factor="z")
+        self.assertIn("recommended_subscribed", res)
+        self.assertIn("annual_saving", res)
+        # Tarif illisible → 0, économie 0 ; marge illisible → défaut ≥ 1.0.
+        self.assertEqual(res["annual_capacity_tariff"], 0.0)
+        self.assertGreaterEqual(res["safety_margin"], 1.0)
+
+    def test_negative_load_values_floored(self):
+        # Une charge négative (saisie absurde) est ramenée à 0, jamais rejetée.
+        res = sd.optimize_subscribed_power(
+            load_curve=[-100, 50, 80, -20],
+            production_curve=[0, 10, 30, 0],
+            current_subscribed_kva=100, capacity_tariff=480.0)
+        self.assertEqual(res["peak_pre_pv_kw"], 80.0)
+        self.assertGreaterEqual(res["peak_post_pv_kw"], 0.0)
+
+    def test_no_subscription_uses_pre_pv_reference(self):
+        load, prod = self._curves()
+        res = sd.optimize_subscribed_power(
+            load_curve=load, production_curve=prod,
+            capacity_tariff=480.0)
+        # Souscription absente → pointe pré-PV comme référence, avertissement.
+        self.assertEqual(res["current_subscribed"], res["peak_pre_pv_kw"])
+        self.assertTrue(
+            any("référence" in w for w in res["warnings"]))

@@ -163,6 +163,8 @@ class InterventionViewSet(TenantMixin, viewsets.ModelViewSet):
             'plan_de_charge',
             # FG300 — détection de conflits d'affectation.
             'conflits_affectation',
+            # FG301 — nivellement de charge (resource levelling).
+            'nivellement_charge',
             # FG69 — signature client.
             'signer_client',
         ]:
@@ -1542,4 +1544,47 @@ class InterventionViewSet(TenantMixin, viewsets.ModelViewSet):
                 status=status.HTTP_400_BAD_REQUEST)
         data = selectors.conflits_affectation(
             request.user.company, debut, fin)
+        return Response(data)
+
+    # ── FG301 — nivellement de charge (resource levelling) ───────────────────
+    @action(detail=False, methods=['get'], url_path='nivellement-charge',
+            permission_classes=[IsAnyRole])
+    def nivellement_charge(self, request):
+        """FG301 — propose un rééquilibrage des interventions des techniciens
+        SUR-CHARGÉS (affecté > capacité) vers les SOUS-CHARGÉS, en évitant de
+        recréer un conflit FG300. Proposition LECTURE SEULE : rien n'est muté —
+        on renvoie la liste des déplacements suggérés (quelle intervention → quel
+        technicien). Construit sur FG299 (plan de charge) + FG300 (conflits).
+        Pure agrégation, scopée société, aucun nouveau modèle.
+        Params : ``debut``, ``fin`` (YYYY-MM-DD ; défaut = semaine en cours,
+        lundi→dimanche), ``heures_par_jour`` (défaut 8). Sortie JSON simple
+        (aucun ``?format=``)."""
+        from datetime import date, datetime, timedelta
+        from .. import selectors
+
+        def _parse(value):
+            try:
+                return datetime.strptime(value, '%Y-%m-%d').date()
+            except (TypeError, ValueError):
+                return None
+
+        params = request.query_params
+        debut = _parse(params.get('debut'))
+        fin = _parse(params.get('fin'))
+        if debut is None:
+            today = date.today()
+            debut = today - timedelta(days=today.weekday())  # lundi
+        if fin is None:
+            fin = debut + timedelta(days=6)  # dimanche
+        if fin < debut:
+            return Response(
+                {'detail': 'La fin de fenêtre précède le début.'},
+                status=status.HTTP_400_BAD_REQUEST)
+        heures = params.get('heures_par_jour')
+        try:
+            heures = float(heures) if heures not in (None, '') else 8.0
+        except (TypeError, ValueError):
+            heures = 8.0
+        data = selectors.nivellement_charge(
+            request.user.company, debut, fin, heures_par_jour=heures)
         return Response(data)
