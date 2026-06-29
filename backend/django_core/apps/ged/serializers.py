@@ -201,6 +201,13 @@ class DocumentSerializer(serializers.ModelSerializer):
     locked_by_nom = serializers.CharField(
         source='locked_by.username', read_only=True, default=None)
     is_locked = serializers.BooleanField(read_only=True)
+    # GED17 — cycle de vie documentaire (lecture seule : avancé via l'action
+    # `cycle-vie`, jamais muté par un PATCH direct). `transitions_autorisees`
+    # liste les statuts atteignables depuis le statut courant (pour l'UI).
+    statut_display = serializers.CharField(
+        source='get_statut_display', read_only=True)
+    transitions_autorisees = serializers.ListField(
+        child=serializers.CharField(), read_only=True)
 
     class Meta:
         model = Document
@@ -210,11 +217,13 @@ class DocumentSerializer(serializers.ModelSerializer):
             'custom_data', 'created_by', 'created_by_nom', 'version_count',
             'derniere_version', 'tags',
             'locked_by', 'locked_by_nom', 'locked_at', 'is_locked',
+            'statut', 'statut_display', 'transitions_autorisees',
             'created_at', 'updated_at',
         ]
         read_only_fields = [
             'created_by', 'created_at', 'updated_at',
             'locked_by', 'locked_at', 'is_locked',
+            'statut', 'transitions_autorisees',
         ]
 
     def get_version_count(self, obj):
