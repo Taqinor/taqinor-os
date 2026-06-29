@@ -772,6 +772,33 @@ def cnss_patronale(parametre, brut, affilie=True):
     return _q(cot)
 
 
+def amo_salariale(parametre, brut, affilie=True):
+    """Cotisation AMO NON PLAFONNÉE — part SALARIALE (PAIE19).
+
+    Assiette = brut intégral (l'AMO n'a pas de plafond) ; cotisation =
+    ``brut × taux_amo_salarial / 100``. Renvoie 0 si non affilié ou
+    ``parametre`` absent. Decimal au centime.
+    """
+    if parametre is None or not affilie:
+        return Decimal('0.00')
+    cot = Decimal(brut or 0) * Decimal(parametre.taux_amo_salarial or 0) / Decimal('100')
+    return _q(cot)
+
+
+def amo_patronale(parametre, brut, affilie=True):
+    """Cotisation AMO NON PLAFONNÉE — part PATRONALE (PAIE19).
+
+    Charge employeur sur le brut intégral (sans plafond) :
+    ``brut × taux_amo_patronal / 100``. N'entre pas dans le net du salarié ;
+    figure au bulletin pour information et déclaration. Renvoie 0 si non
+    affilié ou ``parametre`` absent. Decimal au centime.
+    """
+    if parametre is None or not affilie:
+        return Decimal('0.00')
+    cot = Decimal(brut or 0) * Decimal(parametre.taux_amo_patronal or 0) / Decimal('100')
+    return _q(cot)
+
+
 # ── PAIE12 — Moteur de calcul du bulletin ──────────────────────────────────
 
 _CENT = Decimal('0.01')
@@ -919,11 +946,9 @@ def calculer_bulletin(profil, periode, personnes_a_charge=0):
     cnss = cnss_salariale(parametre, brut, profil.affilie_cnss)
     cnss_pat = cnss_patronale(parametre, brut, profil.affilie_cnss)
 
-    # 3. AMO (non plafonnée).
-    amo = Decimal('0')
-    if parametre and profil.affilie_amo:
-        amo = brut * Decimal(parametre.taux_amo_salarial) / Decimal('100')
-    amo = _q(amo)
+    # 3. AMO non plafonnée — PAIE19 (part salariale ET patronale).
+    amo = amo_salariale(parametre, brut, profil.affilie_amo)
+    amo_pat = amo_patronale(parametre, brut, profil.affilie_amo)
 
     # 4. CIMR (taux propre au profil).
     cimr = Decimal('0')
@@ -960,8 +985,8 @@ def calculer_bulletin(profil, periode, personnes_a_charge=0):
     net_a_payer = brut - cnss - amo - cimr - ir - retenues_variables
     net_a_payer = _q(net_a_payer)
 
-    # PAIE18 — Total des charges patronales (coût employeur), informatif.
-    charges_patronales = _q(cnss_pat)
+    # PAIE18/PAIE19 — Total des charges patronales (coût employeur), informatif.
+    charges_patronales = _q(cnss_pat + amo_pat)
 
     return {
         'brut': _q(brut),
@@ -969,6 +994,7 @@ def calculer_bulletin(profil, periode, personnes_a_charge=0):
         'cnss_salariale': cnss,
         'cnss_patronale': cnss_pat,
         'amo_salariale': amo,
+        'amo_patronale': amo_pat,
         'cimr_salariale': cimr,
         'frais_professionnels': frais_pro,
         'net_imposable': net_imposable,
