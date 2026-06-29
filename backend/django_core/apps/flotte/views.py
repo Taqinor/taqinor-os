@@ -16,6 +16,7 @@ from authentication.permissions import IsAnyRole, IsResponsableOrAdmin
 from .models import (
     ActifFlotte,
     AffectationConducteur,
+    CarteCarburant,
     Conducteur,
     EnginRoulant,
     EtatDesLieux,
@@ -27,6 +28,7 @@ from .models import (
 from .serializers import (
     ActifFlotteSerializer,
     AffectationConducteurSerializer,
+    CarteCarburantSerializer,
     ConducteurSerializer,
     EnginRoulantSerializer,
     EtatDesLieuxSerializer,
@@ -36,7 +38,7 @@ from .serializers import (
     VehiculeSerializer,
 )
 
-READ_ACTIONS = ['list', 'retrieve', 'consommation']
+READ_ACTIONS = ['list', 'retrieve', 'consommation', 'anomalies']
 
 
 class _FlotteBaseViewSet(TenantMixin, viewsets.ModelViewSet):
@@ -350,3 +352,68 @@ class PleinCarburantViewSet(_FlotteBaseViewSet):
 
         from .selectors import consommation_vehicule
         return Response(consommation_vehicule(company, vehicule_id))
+
+
+class CarteCarburantViewSet(_FlotteBaseViewSet):
+    """Cartes carburant de la société + alertes d'anomalie (FLOTTE14).
+
+    CRUD scopé société (écriture responsable/admin). Filtrable par
+    ``?vehicule=<id>`` et ``?actif=true|false``. Recherche par numéro.
+
+    L'action de lecture ``GET /cartes/anomalies/`` liste les pleins suspects du
+    carnet de carburant (kilométrage incohérent / saut invraisemblable,
+    consommation aberrante vs la ligne de base du véhicule, dépassement du
+    plafond de carte). Optionnellement scopée à un ``?vehicule=<id>`` (404 si le
+    véhicule n'appartient pas à la société).
+    """
+    queryset = CarteCarburant.objects.select_related('vehicule', 'conducteur')
+    serializer_class = CarteCarburantSerializer
+    filter_backends = [filters.SearchFilter, filters.OrderingFilter]
+    search_fields = ['numero']
+    ordering_fields = ['numero', 'actif', 'plafond', 'date_creation']
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        params = self.request.query_params
+
+        vehicule = params.get('vehicule')
+        if vehicule:
+            try:
+                qs = qs.filter(vehicule_id=int(vehicule))
+            except (ValueError, TypeError):
+                pass
+
+        actif = params.get('actif')
+        if actif is not None:
+            qs = qs.filter(actif=actif.lower() in ('1', 'true', 'vrai', 'oui'))
+
+        return qs
+
+    @action(detail=False, methods=['get'])
+    def anomalies(self, request):
+        """FLOTTE14 — Pleins suspects (km incohérent / fraude).
+
+        Lecture seule, scopée société. ``?vehicule=<id>`` (facultatif) restreint
+        la détection à un véhicule, qui doit appartenir à la société courante
+        (sinon 404). Renvoie l'agrégat des anomalies (voir
+        ``selectors.anomalies_pleins``).
+        """
+        company = request.user.company
+        vehicule_id = None
+        vehicule_param = request.query_params.get('vehicule')
+        if vehicule_param:
+            try:
+                vehicule_id = int(vehicule_param)
+            except (ValueError, TypeError):
+                return Response(
+                    {'vehicule':
+                     "Le paramètre 'vehicule' doit être un entier."},
+                    status=400)
+            if not Vehicule.objects.filter(
+                    company=company, id=vehicule_id).exists():
+                return Response(
+                    {'vehicule': "Véhicule introuvable pour cette société."},
+                    status=404)
+
+        from .selectors import anomalies_pleins
+        return Response(anomalies_pleins(company, vehicule_id))

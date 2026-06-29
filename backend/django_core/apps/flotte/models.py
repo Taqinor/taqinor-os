@@ -677,3 +677,79 @@ class Conducteur(models.Model):
 
     def __str__(self):
         return self.nom
+
+
+# ── FLOTTE14 — Cartes carburant ───────────────────────────────────────────────
+
+class CarteCarburant(models.Model):
+    """Carte carburant rattachée à la société (et, en option, à un véhicule /
+    conducteur précis).
+
+    Une carte porte un ``numero`` (identifiant du fournisseur), un ``plafond``
+    facultatif (montant maximum d'un plein avant alerte « dépassement de
+    plafond »), et un drapeau ``actif``. Le rattachement à un ``vehicule`` ou un
+    ``conducteur`` est facultatif : une carte « parc » non rattachée reste
+    valide.
+
+    La détection d'anomalie/fraude au carnet de carburant (kilométrage
+    incohérent, consommation aberrante, dépassement de plafond) est un calcul
+    LECTURE SEULE exposé via ``selectors.anomalies_pleins`` — elle ne stocke
+    rien sur la carte.
+
+    Multi-tenant : ``company`` est posée côté serveur, jamais lue du corps de
+    requête.
+    """
+
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='cartes_carburant_flotte',
+        verbose_name='Société',
+    )
+    vehicule = models.ForeignKey(
+        'Vehicule',
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='cartes_carburant_flotte',
+        verbose_name='Véhicule attribué',
+    )
+    conducteur = models.ForeignKey(
+        'Conducteur',
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='cartes_carburant_flotte',
+        verbose_name='Conducteur attribué',
+    )
+    numero = models.CharField(
+        max_length=60, verbose_name='Numéro de carte')
+    plafond = models.DecimalField(
+        max_digits=12, decimal_places=2, null=True, blank=True,
+        verbose_name='Plafond par plein (MAD)',
+        help_text='Montant maximum toléré sur un plein avant alerte ; '
+                  'laisser vide pour aucun plafond.',
+    )
+    actif = models.BooleanField(default=True, verbose_name='Active')
+    notes = models.TextField(blank=True, verbose_name='Notes')
+    date_creation = models.DateTimeField(
+        auto_now_add=True, verbose_name='Créé le')
+
+    class Meta:
+        verbose_name = 'Carte carburant'
+        verbose_name_plural = 'Cartes carburant'
+        ordering = ['numero']
+        indexes = [
+            models.Index(
+                fields=['company', 'actif'],
+                name='flotte_carte_co_act_idx',
+            ),
+        ]
+
+    def clean(self):
+        if self.plafond is not None and self.plafond < 0:
+            raise ValidationError(
+                "Le plafond ne peut pas être négatif.")
+
+    def __str__(self):
+        return f'Carte {self.numero}'

@@ -11,6 +11,7 @@ from django.db import models
 from .models import (
     ActifFlotte,
     AffectationConducteur,
+    CarteCarburant,
     Conducteur,
     EnginRoulant,
     EtatDesLieux,
@@ -258,6 +259,200 @@ def consommation_vehicule(company, vehicule_id):
         'litres': _agrege(PleinCarburant.Unite.LITRE, 'conso_l_100km'),
         'kwh': _agrege(PleinCarburant.Unite.KWH, 'conso_kwh_100km'),
         'segments': segments,
+    }
+
+
+def cartes_de_la_societe(company, actif_only=False, vehicule_id=None):
+    """FLOTTE14 — Cartes carburant d'une société (queryset scopé).
+
+    ``actif_only=True`` ne retourne que les cartes actives ; ``vehicule_id``
+    filtre sur un véhicule attribué.
+    """
+    qs = CarteCarburant.objects.filter(company=company).select_related(
+        'vehicule', 'conducteur')
+    if actif_only:
+        qs = qs.filter(actif=True)
+    if vehicule_id is not None:
+        qs = qs.filter(vehicule_id=vehicule_id)
+    return qs
+
+
+# Seuils par défaut de la détection d'anomalie (FLOTTE14).
+# Un saut de kilométrage est jugé invraisemblable au-delà de cette distance
+# entre deux pleins consécutifs (compteur trafiqué / saisie erronée).
+ANOMALIE_SAUT_KM_MAX = 5000
+# Une consommation d'un segment est jugée aberrante si elle dépasse la ligne de
+# base du véhicule (médiane de ses segments) de plus de ce facteur.
+ANOMALIE_CONSO_FACTEUR = 2.0
+
+
+def _mediane(valeurs):
+    """Médiane d'une liste de nombres (``None`` si vide). Lecture seule."""
+    ordonnees = sorted(valeurs)
+    n = len(ordonnees)
+    if n == 0:
+        return None
+    milieu = n // 2
+    if n % 2 == 1:
+        return ordonnees[milieu]
+    return (ordonnees[milieu - 1] + ordonnees[milieu]) / 2.0
+
+
+def anomalies_pleins(company, vehicule_id=None, saut_km_max=ANOMALIE_SAUT_KM_MAX,
+                     conso_facteur=ANOMALIE_CONSO_FACTEUR):
+    """FLOTTE14 — Détecte les pleins suspects (km incohérent / fraude).
+
+    Parcourt le carnet de carburant (``PleinCarburant``) — scopé société, et
+    filtré sur un véhicule si ``vehicule_id`` est fourni — et signale trois
+    familles d'anomalie, sans rien écrire :
+
+    1. ``km_recul`` — le kilométrage d'un plein est INFÉRIEUR ou ÉGAL à celui du
+       plein chronologiquement précédent du même véhicule : le compteur a reculé
+       (ou stagné alors qu'on a refait le plein) → trafiquage probable.
+    2. ``km_saut`` — la distance entre deux pleins consécutifs dépasse
+       ``saut_km_max`` : saut de compteur invraisemblable.
+    3. ``conso_aberrante`` — la consommation du segment plein-à-plein (réutilise
+       la math FLOTTE13 : ``quantité du plein d'arrivée / distance × 100``)
+       dépasse la ligne de base du véhicule (médiane de ses segments de même
+       unité) multipliée par ``conso_facteur``. Le calcul est garde-fou contre
+       la division par zéro : un segment à distance nulle ne produit pas de
+       conso (il est déjà couvert par ``km_recul``).
+    4. ``plafond_depasse`` — le ``prix_total`` du plein dépasse le plafond de la
+       carte carburant active rattachée au véhicule (la PLUS BASSE des cartes
+       du véhicule, ou des cartes « parc » non rattachées). Aucune carte / aucun
+       plafond → aucune alerte.
+
+    Retourne un dict LECTURE SEULE scopé société ::
+
+        {
+          'vehicule_id': <id|None>,
+          'nb_pleins': <int>,
+          'nb_anomalies': <int>,
+          'anomalies': [
+            {'plein_id', 'vehicule_id', 'type', 'gravite', 'message',
+             'date_plein', 'kilometrage'}, …
+          ],
+        }
+
+    Plusieurs anomalies peuvent porter sur le même plein (une entrée chacune).
+    """
+    pleins = list(
+        PleinCarburant.objects
+        .filter(company=company)
+        .filter(**({'vehicule_id': vehicule_id}
+                   if vehicule_id is not None else {}))
+        .order_by('vehicule_id', 'date_plein', 'kilometrage', 'id')
+        .values('id', 'vehicule_id', 'kilometrage', 'quantite', 'unite',
+                'prix_total', 'date_plein')
+    )
+
+    # Regroupe par véhicule pour comparer des pleins comparables.
+    par_vehicule = {}
+    for plein in pleins:
+        par_vehicule.setdefault(plein['vehicule_id'], []).append(plein)
+
+    # Plafond effectif par véhicule (carte active la plus basse). Le plafond des
+    # cartes « parc » (sans véhicule) s'applique à tous les véhicules.
+    cartes = list(
+        CarteCarburant.objects
+        .filter(company=company, actif=True, plafond__isnull=False)
+        .values('vehicule_id', 'plafond')
+    )
+    plafond_global = None
+    plafond_par_vehicule = {}
+    for carte in cartes:
+        montant = float(carte['plafond'])
+        if carte['vehicule_id'] is None:
+            if plafond_global is None or montant < plafond_global:
+                plafond_global = montant
+        else:
+            actuel = plafond_par_vehicule.get(carte['vehicule_id'])
+            if actuel is None or montant < actuel:
+                plafond_par_vehicule[carte['vehicule_id']] = montant
+
+    anomalies = []
+
+    def _ajoute(plein, type_, gravite, message):
+        anomalies.append({
+            'plein_id': plein['id'],
+            'vehicule_id': plein['vehicule_id'],
+            'type': type_,
+            'gravite': gravite,
+            'message': message,
+            'date_plein': plein['date_plein'],
+            'kilometrage': plein['kilometrage'],
+        })
+
+    for veh_id, liste in par_vehicule.items():
+        plafond = plafond_par_vehicule.get(veh_id, plafond_global)
+
+        # Ligne de base de consommation : médiane des segments par unité.
+        consos_par_unite = {}
+        segments = []
+        for precedent, courant in zip(liste, liste[1:]):
+            distance = courant['kilometrage'] - precedent['kilometrage']
+            if distance <= 0:
+                segments.append((courant, None))
+                continue
+            quantite = float(courant['quantite'] or 0)
+            conso = quantite / distance * 100  # FLOTTE13 : pas de div/0 ici.
+            consos_par_unite.setdefault(courant['unite'], []).append(conso)
+            segments.append((courant, (distance, conso, courant['unite'])))
+        baselines = {
+            unite: _mediane(valeurs)
+            for unite, valeurs in consos_par_unite.items()
+        }
+
+        for index, plein in enumerate(liste):
+            # 1) / 2) Cohérence du kilométrage vs le plein précédent.
+            if index > 0:
+                precedent = liste[index - 1]
+                distance = plein['kilometrage'] - precedent['kilometrage']
+                if distance <= 0:
+                    _ajoute(
+                        plein, 'km_recul', 'haute',
+                        "Kilométrage en recul ou stagnant vs le plein précédent "
+                        f"({precedent['kilometrage']} km → "
+                        f"{plein['kilometrage']} km).",
+                    )
+                elif distance > saut_km_max:
+                    _ajoute(
+                        plein, 'km_saut', 'moyenne',
+                        f"Saut de kilométrage invraisemblable de {distance} km "
+                        f"(seuil {saut_km_max} km) depuis le plein précédent.",
+                    )
+
+            # 4) Dépassement de plafond carte.
+            if plafond is not None and float(plein['prix_total'] or 0) > plafond:
+                _ajoute(
+                    plein, 'plafond_depasse', 'moyenne',
+                    f"Montant du plein ({float(plein['prix_total'] or 0):.2f} "
+                    f"MAD) supérieur au plafond de la carte ({plafond:.2f} MAD).",
+                )
+
+        # 3) Consommation aberrante vs la ligne de base du véhicule.
+        for courant, seg in segments:
+            if seg is None:
+                continue
+            _distance, conso, unite = seg
+            base = baselines.get(unite)
+            if base is None or base <= 0:
+                continue
+            if conso > base * conso_facteur:
+                _ajoute(
+                    courant, 'conso_aberrante', 'moyenne',
+                    f"Consommation du segment ({conso:.1f}/100 km) anormalement "
+                    f"élevée vs la moyenne du véhicule ({base:.1f}/100 km).",
+                )
+
+    anomalies.sort(key=lambda a: (
+        str(a['date_plein']), a['plein_id'], a['type']))
+
+    return {
+        'vehicule_id': vehicule_id,
+        'nb_pleins': len(pleins),
+        'nb_anomalies': len(anomalies),
+        'anomalies': anomalies,
     }
 
 
