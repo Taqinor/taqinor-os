@@ -18,9 +18,10 @@ from apps.crm.models import Client
 from apps.records.models import Attachment
 from apps.ged import selectors, services
 from apps.ged.models import (
-    Cabinet, Coffre, DemandeApprobation, Document, DocumentChunk, DocumentLien,
-    DocumentTag, DocumentTagAssignment, DocumentVersion, Folder,
+    AclGed, Cabinet, Coffre, DemandeApprobation, Document, DocumentChunk,
+    DocumentLien, DocumentTag, DocumentTagAssignment, DocumentVersion, Folder,
 )
+from apps.roles.models import Role
 
 User = get_user_model()
 
@@ -2527,3 +2528,146 @@ class DemandeApprobationTests(GedBase):
         ids = {r['id'] for r in rows(resp)}
         self.assertIn(d2.id, ids)
         self.assertNotIn(d1.id, ids)
+
+
+# -- GED19 -- ACL par dossier/document (heritage + override) --
+class AclGedTests(GedBase):
+    """ACL GED19 : heritage depuis le dossier, override sur le document,
+    resolution en remontant le chemin, backward-compat sans ACL, scoping
+    societe, refuse vs autorise."""
+
+    def setUp(self):
+        super().setUp()
+        self.user_a = make_user(self.co_a, 'ged-user-a', 'normal')
+        self.user_a2 = make_user(self.co_a, 'ged-user-a2', 'normal')
+        self.user_b = make_user(self.co_b, 'ged-user-b', 'normal')
+        self.root = Folder.objects.create(
+            company=self.co_a, cabinet=self.cab_a, nom='Racine')
+        self.sub = Folder.objects.create(
+            company=self.co_a, cabinet=self.cab_a, parent=self.root, nom='Sous')
+        self.root.refresh_from_db()
+        self.sub.refresh_from_db()
+        self.doc = Document.objects.create(
+            company=self.co_a, folder=self.sub, nom='Contrat')
+
+    def test_inherited_from_folder(self):
+        AclGed.objects.create(
+            company=self.co_a, folder=self.root,
+            utilisateur=self.user_a, niveau='lecture', herite=True)
+        self.assertEqual(selectors.acl_effective(self.doc, self.user_a), 'lecture')
+        self.assertEqual(selectors.acl_effective(self.sub, self.user_a), 'lecture')
+
+    def test_document_override_beats_inherited(self):
+        AclGed.objects.create(
+            company=self.co_a, folder=self.root,
+            utilisateur=self.user_a, niveau='lecture', herite=True)
+        AclGed.objects.create(
+            company=self.co_a, document=self.doc,
+            utilisateur=self.user_a, niveau='gestion', herite=True)
+        self.assertEqual(selectors.acl_effective(self.doc, self.user_a), 'gestion')
+
+    def test_nearest_folder_wins_walk_up(self):
+        AclGed.objects.create(
+            company=self.co_a, folder=self.root,
+            utilisateur=self.user_a, niveau='lecture', herite=True)
+        AclGed.objects.create(
+            company=self.co_a, folder=self.sub,
+            utilisateur=self.user_a, niveau='ecriture', herite=True)
+        self.assertEqual(selectors.acl_effective(self.doc, self.user_a), 'ecriture')
+
+    def test_non_inherited_entry_does_not_propagate(self):
+        AclGed.objects.create(
+            company=self.co_a, folder=self.root,
+            utilisateur=self.user_a, niveau='gestion', herite=False)
+        self.assertIsNone(selectors.acl_effective(self.doc, self.user_a))
+        self.assertEqual(selectors.acl_effective(self.root, self.user_a), 'gestion')
+
+    def test_role_principal_resolution(self):
+        role = Role.objects.create(company=self.co_a, nom='Lecteurs')
+        self.user_a.role = role
+        self.user_a.save(update_fields=['role'])
+        AclGed.objects.create(
+            company=self.co_a, folder=self.root,
+            role=role, niveau='lecture', herite=True)
+        self.assertEqual(selectors.acl_effective(self.doc, self.user_a), 'lecture')
+        self.assertIsNone(selectors.acl_effective(self.doc, self.user_a2))
+
+    def test_most_permissive_at_same_scope(self):
+        role = Role.objects.create(company=self.co_a, nom='Editeurs')
+        self.user_a.role = role
+        self.user_a.save(update_fields=['role'])
+        AclGed.objects.create(
+            company=self.co_a, document=self.doc,
+            utilisateur=self.user_a, niveau='lecture', herite=True)
+        AclGed.objects.create(
+            company=self.co_a, document=self.doc,
+            role=role, niveau='ecriture', herite=True)
+        self.assertEqual(selectors.acl_effective(self.doc, self.user_a), 'ecriture')
+
+    def test_no_acl_returns_none(self):
+        self.assertIsNone(selectors.acl_effective(self.doc, self.user_a))
+        self.assertFalse(selectors.acl_governs_target(self.doc))
+
+    def test_admin_always_gestion(self):
+        AclGed.objects.create(
+            company=self.co_a, document=self.doc,
+            utilisateur=self.user_a, niveau='lecture', herite=True)
+        self.assertEqual(
+            selectors.acl_effective(self.doc, self.admin_a), 'gestion')
+
+    def test_denied_when_governed_and_no_grant(self):
+        AclGed.objects.create(
+            company=self.co_a, folder=self.root,
+            utilisateur=self.user_a, niveau='lecture', herite=True)
+        self.assertTrue(selectors.acl_governs_target(self.doc))
+        self.assertIsNone(selectors.acl_effective(self.doc, self.user_a2))
+
+    def test_company_scoping(self):
+        AclGed.objects.create(
+            company=self.co_a, document=self.doc,
+            utilisateur=self.user_a, niveau='gestion', herite=True)
+        self.assertIsNone(selectors.acl_effective(self.doc, self.user_b))
+
+    def test_visible_backward_compat_no_acl(self):
+        visible = selectors.documents_visible_to_user(self.user_a)
+        self.assertIn(self.doc.id, set(visible.values_list('id', flat=True)))
+
+    def test_visible_hides_denied_governed_document(self):
+        AclGed.objects.create(
+            company=self.co_a, folder=self.root,
+            utilisateur=self.user_a, niveau='lecture', herite=True)
+        vis_ok = selectors.documents_visible_to_user(self.user_a)
+        self.assertIn(self.doc.id, set(vis_ok.values_list('id', flat=True)))
+        vis_ko = selectors.documents_visible_to_user(self.user_a2)
+        self.assertNotIn(self.doc.id, set(vis_ko.values_list('id', flat=True)))
+
+    def test_visible_ungoverned_document_still_shown(self):
+        other = Document.objects.create(
+            company=self.co_a, folder=self.sub, nom='Libre')
+        AclGed.objects.create(
+            company=self.co_a, document=self.doc,
+            utilisateur=self.user_a, niveau='lecture', herite=True)
+        vis = selectors.documents_visible_to_user(self.user_a2)
+        ids = set(vis.values_list('id', flat=True))
+        self.assertNotIn(self.doc.id, ids)
+        self.assertIn(other.id, ids)
+
+    def test_clean_requires_exactly_one_target(self):
+        from django.core.exceptions import ValidationError
+        with self.assertRaises(ValidationError):
+            AclGed(company=self.co_a, utilisateur=self.user_a,
+                   niveau='lecture').clean()
+        with self.assertRaises(ValidationError):
+            AclGed(company=self.co_a, folder=self.root, document=self.doc,
+                   utilisateur=self.user_a, niveau='lecture').clean()
+
+    def test_clean_requires_a_principal(self):
+        from django.core.exceptions import ValidationError
+        with self.assertRaises(ValidationError):
+            AclGed(company=self.co_a, document=self.doc,
+                   niveau='lecture').clean()
+
+    def test_niveau_codes_fit_max_length(self):
+        field = AclGed._meta.get_field('niveau')
+        for code, _label in field.choices:
+            self.assertLessEqual(len(code), field.max_length)

@@ -5,8 +5,8 @@ LIRE la GED passe par ces fonctions plutôt que d'importer `ged.models`.
 Toutes les lectures sont bornées à une société.
 """
 from .models import (
-    Cabinet, Coffre, DemandeApprobation, Document, DocumentLien, DocumentTag,
-    DocumentVersion, Folder,
+    ACL_RANK, AclGed, Cabinet, Coffre, DemandeApprobation, Document,
+    DocumentLien, DocumentTag, DocumentVersion, Folder,
 )
 
 
@@ -68,11 +68,16 @@ def coffres_for_user(user):
 
 
 def documents_visible_to_user(user):
-    """GED8 — Documents d'une société FILTRÉS par l'ACL coffre-fort.
+    """GED8 + GED19 — Documents d'une société filtrés par l'ACL coffre-fort + GED19.
 
-    Les documents hors coffre (`coffre__isnull`) sont visibles de tout rôle ;
-    ceux dans un coffre ne sont visibles que du propriétaire du coffre et des
-    administrateurs. Borné à la société de l'utilisateur.
+    Couche 1 (GED8) : les documents hors coffre (`coffre__isnull`) sont visibles
+    de tout rôle ; ceux dans un coffre ne sont visibles que du propriétaire du
+    coffre et des administrateurs. Couche 2 (GED19, SOFT) : si un document — ou
+    un de ses dossiers ancêtres — porte une ACL GED19, l'utilisateur ne le voit
+    QUE s'il y a au moins « lecture » effective (`acl_effective`). Les documents
+    NON gouvernés par une ACL GED19 conservent strictement le comportement
+    existant (backward-compat). Borné à la société de l'utilisateur ; l'admin /
+    superuser voit tout.
     """
     from django.db.models import Q
     if not user.company_id and not user.is_superuser:
@@ -82,8 +87,23 @@ def documents_visible_to_user(user):
         qs = qs.filter(company_id=user.company_id)
     if getattr(user, 'is_admin_role', False) or user.is_superuser:
         return qs
-    # Non-admin : documents hors coffre OU dans un coffre dont il est proprio.
-    return qs.filter(Q(coffre__isnull=True) | Q(coffre__proprietaire_id=user.id))
+    # Couche 1 — ACL coffre-fort (GED8).
+    qs = qs.filter(Q(coffre__isnull=True) | Q(coffre__proprietaire_id=user.id))
+    # Couche 2 — ACL GED19 (SOFT, backward-compatible). Si AUCUNE entrée ACL
+    # n'existe dans la société, on n'a rien à filtrer : comportement existant
+    # préservé sans le moindre travail supplémentaire (court-circuit).
+    if not AclGed.objects.filter(company_id=user.company_id).exists():
+        return qs
+    # Sinon, on affine : on RETIRE les seuls documents gouvernés par une ACL
+    # GED19 sur lesquels l'utilisateur n'a aucun droit de lecture effectif. Les
+    # documents non gouvernés restent visibles tels quels.
+    refused = [
+        d.pk for d in qs.select_related('folder')
+        if acl_governs_target(d) and acl_effective(d, user) is None
+    ]
+    if refused:
+        qs = qs.exclude(pk__in=refused)
+    return qs
 
 
 def documents_in_coffre(coffre):
@@ -235,3 +255,160 @@ def pending_demande_for_document(document):
             .filter(company=document.company, document=document,
                     statut=APPROBATION_EN_ATTENTE)
             .first())
+
+
+# ── GED19 — ACL par dossier/document (héritage + override) ──────────────
+
+def _folder_chain_ids(folder):
+    """pk des dossiers de la cible (le plus PROCHE d'abord) → racine.
+
+    Décode le chemin matérialisé `Folder.path` ("/1/4/9/") en liste de pk du
+    plus proche (la cible elle-même) au plus lointain (la racine). Pas de
+    requête : la chaîne entière est portée par `path`.
+    """
+    if folder is None or not folder.path:
+        return [folder.pk] if folder is not None and folder.pk else []
+    ids = [int(p) for p in folder.path.strip('/').split('/') if p]
+    ids.reverse()  # plus proche (self) d'abord, racine en dernier
+    return ids
+
+
+def acl_entries_for_target(target):
+    """GED19 — Entrées ACL pertinentes pour une cible (document OU dossier).
+
+    Retourne un QuerySet `AclGed` borné à la société, couvrant :
+      * l'override direct sur la cible (document ou dossier), ET
+      * toute la chaîne de dossiers ancêtres (héritage), via `Folder.path`.
+    Ordonné du plus PROCHE (override) au plus lointain (racine) — la résolution
+    `acl_effective` n'a plus qu'à prendre le premier scope qui statue.
+    """
+    from django.db.models import Q
+    if isinstance(target, Document):
+        company = target.company
+        folder = target.folder
+        cond = Q(document=target)
+    else:  # Folder
+        company = target.company
+        folder = target
+        cond = Q()
+    chain = _folder_chain_ids(folder)
+    if chain:
+        cond = cond | Q(folder_id__in=chain)
+    if not cond:
+        return AclGed.objects.none()
+    return AclGed.objects.filter(cond, company=company)
+
+
+def _principal_matches(entry, user):
+    """True si l'entrée ACL s'applique à `user` (par utilisateur OU par rôle)."""
+    if entry.utilisateur_id and entry.utilisateur_id == user.id:
+        return True
+    if entry.role_id and getattr(user, 'role_id', None) == entry.role_id:
+        return True
+    return False
+
+
+def acl_effective(document_or_folder, user):
+    """GED19 — Niveau d'accès EFFECTIF d'un utilisateur sur un document/dossier.
+
+    Résout les droits en remontant la chaîne du chemin matérialisé `Folder.path`
+    (HÉRITAGE) et en appliquant l'OVERRIDE le plus proche :
+
+      * l'admin / superuser de la société a toujours « gestion » (jamais bloqué
+        par une ACL) ;
+      * le scope le PLUS PROCHE qui statue gagne — un override direct sur le
+        document l'emporte sur son dossier, un dossier proche sur un ancêtre ;
+      * à scope égal, le niveau le PLUS PERMISSIF parmi les entrées qui matchent
+        le principal (utilisateur ET/OU rôle) gagne ;
+      * une entrée d'un dossier ANCÊTRE ne se propage que si `herite=True` ; une
+        entrée posée DIRECTEMENT sur la cible (document, ou le dossier lui-même)
+        s'applique toujours, `herite` ou non.
+
+    BACKWARD-COMPAT : si AUCUNE entrée ne couvre la cible, on renvoie ``None``
+    (« pas d'ACL GED19 sur cette cible ») — l'appelant retombe alors sur le
+    comportement existant (ACL coffre-fort GED8 + scoping société). Renvoie
+    l'un de 'lecture'/'ecriture'/'gestion', ou ``None`` si non gouverné.
+
+    Toujours borné à la société ; jamais de fuite cross-société.
+    """
+    if user is None or not getattr(user, 'is_authenticated', False):
+        return None
+    # Hors société de la cible : non gouverné par cette ACL (le scoping société
+    # de l'appelant tranche). Superuser excepté.
+    target_company_id = getattr(document_or_folder, 'company_id', None)
+    if not user.is_superuser and user.company_id != target_company_id:
+        return None
+    if getattr(user, 'is_admin_role', False) or user.is_superuser:
+        return 'gestion'
+
+    is_document = isinstance(document_or_folder, Document)
+    if is_document:
+        direct_id = ('document', document_or_folder.pk)
+        chain = _folder_chain_ids(document_or_folder.folder)
+    else:
+        direct_id = ('folder', document_or_folder.pk)
+        chain = _folder_chain_ids(document_or_folder)
+
+    entries = list(acl_entries_for_target(document_or_folder))
+    if not entries:
+        return None
+
+    # Rang de proximité de chaque scope : 0 = override direct (le plus proche),
+    # puis 1, 2… en remontant la chaîne de dossiers vers la racine.
+    proximity = {}
+    if is_document:
+        proximity[('document', document_or_folder.pk)] = 0
+        for depth, fid in enumerate(chain):
+            proximity[('folder', fid)] = depth + 1
+    else:
+        for depth, fid in enumerate(chain):
+            proximity[('folder', fid)] = depth
+
+    best_scope = None       # rang de proximité le plus petit qui statue
+    best_rank = 0           # niveau le plus permissif à ce scope
+    for entry in entries:
+        if not _principal_matches(entry, user):
+            continue
+        scope = (('document', entry.document_id) if entry.document_id
+                 else ('folder', entry.folder_id))
+        prox = proximity.get(scope)
+        if prox is None:
+            continue
+        # Une entrée d'un ancêtre (pas le scope direct) ne compte que si elle
+        # est marquée héritée vers le bas.
+        is_direct = (scope == direct_id)
+        if not is_direct and not entry.herite:
+            continue
+        rank = ACL_RANK.get(entry.niveau, 0)
+        if best_scope is None or prox < best_scope:
+            best_scope = prox
+            best_rank = rank
+        elif prox == best_scope and rank > best_rank:
+            best_rank = rank
+
+    if best_scope is None:
+        return None
+    for code, r in ACL_RANK.items():
+        if r == best_rank:
+            return code
+    return None
+
+
+def acl_governs_target(target):
+    """GED19 — True si AU MOINS une entrée ACL couvre la cible (override/héritage).
+
+    Permet à l'appelant de savoir si la cible est gouvernée par une ACL GED19
+    (et donc si `acl_effective` est l'autorité) ou si elle retombe sur le
+    comportement existant (backward-compat).
+    """
+    return acl_entries_for_target(target).exists()
+
+
+def acls_for_document(document):
+    """GED19 — Entrées ACL posées DIRECTEMENT sur un document (QuerySet)."""
+    return AclGed.objects.filter(company=document.company, document=document)
+
+
+def acls_for_folder(folder):
+    """GED19 — Entrées ACL posées DIRECTEMENT sur un dossier (QuerySet)."""
+    return AclGed.objects.filter(company=folder.company, folder=folder)
