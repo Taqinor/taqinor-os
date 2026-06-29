@@ -57,6 +57,13 @@ class ParametrePaie(models.Model):
     taux_amo_patronal = models.DecimalField(
         max_digits=6, decimal_places=3, default=Decimal('2.26'),
         verbose_name='Taux AMO patronal')
+    # PAIE23 — Allocations familiales (prestations familiales CNSS) : charge
+    # PATRONALE NON PLAFONNÉE sur le brut, ~6,4 % au cadre marocain. C'est un
+    # coût employeur informatif — il n'est JAMAIS déduit du net du salarié.
+    # Valeur éditable par société.
+    taux_allocations_familiales = models.DecimalField(
+        max_digits=6, decimal_places=3, default=Decimal('6.4'),
+        verbose_name='Taux allocations familiales (patronal)')
     taux_formation_pro = models.DecimalField(
         max_digits=6, decimal_places=3, default=Decimal('1.6'),
         verbose_name='Taux formation professionnelle')
@@ -696,9 +703,9 @@ class BulletinPaie(models.Model):
     # que le bulletin est en brouillon, gelés dès la validation.
     SNAPSHOT_FIELDS = [
         'brut', 'brut_imposable', 'cnss_salariale', 'cnss_patronale',
-        'amo_salariale', 'amo_patronale', 'cimr_salariale',
-        'frais_professionnels', 'net_imposable', 'ir', 'retenues',
-        'prime_anciennete', 'charges_patronales', 'net_a_payer',
+        'amo_salariale', 'amo_patronale', 'allocations_familiales',
+        'cimr_salariale', 'frais_professionnels', 'net_imposable', 'ir',
+        'retenues', 'prime_anciennete', 'charges_patronales', 'net_a_payer',
         'personnes_a_charge',
     ]
 
@@ -747,6 +754,11 @@ class BulletinPaie(models.Model):
     amo_patronale = models.DecimalField(
         max_digits=14, decimal_places=2, default=Decimal('0'),
         verbose_name='AMO patronale')
+    # PAIE23 — Allocations familiales (charge patronale, informative — jamais
+    # déduite du net du salarié).
+    allocations_familiales = models.DecimalField(
+        max_digits=14, decimal_places=2, default=Decimal('0'),
+        verbose_name='Allocations familiales (patronal)')
     cimr_salariale = models.DecimalField(
         max_digits=14, decimal_places=2, default=Decimal('0'),
         verbose_name='CIMR salariale')

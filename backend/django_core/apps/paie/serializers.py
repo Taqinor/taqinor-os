@@ -35,7 +35,8 @@ class ParametrePaieSerializer(serializers.ModelSerializer):
         fields = [
             'id', 'date_effet', 'smig', 'smag', 'plafond_cnss',
             'taux_cnss_salarial', 'taux_cnss_patronal', 'taux_amo_salarial',
-            'taux_amo_patronal', 'taux_formation_pro',
+            'taux_amo_patronal', 'taux_allocations_familiales',
+            'taux_formation_pro',
             'seuil_frais_pro', 'taux_frais_pro_bas', 'plafond_frais_pro_bas',
             'taux_frais_pro_haut', 'plafond_frais_pro_haut',
             'deduction_par_personne_a_charge', 'plafond_personnes_a_charge',
@@ -270,7 +271,8 @@ class BulletinPaieSerializer(serializers.ModelSerializer):
         fields = [
             'id', 'periode', 'profil', 'statut', 'personnes_a_charge',
             'brut', 'brut_imposable', 'cnss_salariale', 'cnss_patronale',
-            'amo_salariale', 'amo_patronale', 'cimr_salariale',
+            'amo_salariale', 'amo_patronale', 'allocations_familiales',
+            'cimr_salariale',
             'frais_professionnels', 'net_imposable', 'ir', 'retenues',
             'prime_anciennete', 'charges_patronales', 'net_a_payer',
             'date_validation', 'date_creation', 'lignes',
