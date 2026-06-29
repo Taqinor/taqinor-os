@@ -19,6 +19,7 @@ from .models import (
     CarteCarburant,
     Conducteur,
     EcheanceEntretien,
+    EcheanceReglementaire,
     EnginRoulant,
     EtatDesLieux,
     Garage,
@@ -37,6 +38,7 @@ from .serializers import (
     CarteCarburantSerializer,
     ConducteurSerializer,
     EcheanceEntretienSerializer,
+    EcheanceReglementaireSerializer,
     EnginRoulantSerializer,
     EtatDesLieuxSerializer,
     GarageSerializer,
@@ -51,7 +53,7 @@ from .serializers import (
 )
 
 READ_ACTIONS = ['list', 'retrieve', 'consommation', 'anomalies', 'echeances',
-                'couts', 'synthese']
+                'couts', 'synthese', 'expirantes']
 
 
 class _FlotteBaseViewSet(TenantMixin, viewsets.ModelViewSet):
@@ -813,3 +815,70 @@ class PieceFlotteViewSet(_FlotteBaseViewSet):
         from .selectors import synthese_pneus_pieces_vehicule
         return Response(
             synthese_pneus_pieces_vehicule(company, vehicule_id))
+
+
+class EcheanceReglementaireViewSet(_FlotteBaseViewSet):
+    """Échéances réglementaires / administratives des actifs (FLOTTE19).
+
+    CRUD scopé société (écriture responsable/admin) des obligations légales :
+    visite technique, assurance, vignette / TSAV, carte grise, taxe à l'essieu…
+    Filtrable par ``?type=<…>``, ``?statut=<a_jour|a_renouveler|expire>`` et
+    ``?actif_flotte=<id>``. Recherche par organisme / notes. ``statut_calcule``
+    (état réel vs la date du jour) est exposé en lecture. L'actif lié doit
+    appartenir à la société (validé au sérialiseur).
+
+    Action ``GET /echeances-reglementaires/expirantes/?within=N`` (lecture tout
+    rôle) — échéances déjà expirées ou dues dans les ``N`` prochains jours
+    (défaut 30), de la plus urgente à la moins urgente.
+    """
+    queryset = EcheanceReglementaire.objects.select_related(
+        'actif_flotte', 'actif_flotte__vehicule', 'actif_flotte__engin')
+    serializer_class = EcheanceReglementaireSerializer
+    filter_backends = [filters.SearchFilter, filters.OrderingFilter]
+    search_fields = ['organisme', 'notes']
+    ordering_fields = ['type_echeance', 'date_echeance', 'statut', 'cout',
+                       'date_creation']
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        params = self.request.query_params
+
+        type_echeance = params.get('type')
+        if type_echeance:
+            qs = qs.filter(type_echeance=type_echeance)
+
+        statut = params.get('statut')
+        if statut:
+            qs = qs.filter(statut=statut)
+
+        actif_flotte = params.get('actif_flotte')
+        if actif_flotte:
+            try:
+                qs = qs.filter(actif_flotte_id=int(actif_flotte))
+            except (ValueError, TypeError):
+                pass
+
+        return qs
+
+    @action(detail=False, methods=['get'])
+    def expirantes(self, request):
+        """FLOTTE19 — Échéances expirées ou dues sous ``?within=N`` jours.
+
+        Lecture (tout rôle), scopée société. ``within`` défaut = 30 jours ;
+        une valeur invalide retombe sur 30. Renvoie la liste sérialisée, de la
+        plus urgente (déjà expirée) à la moins urgente.
+        """
+        company = request.user.company
+
+        within_param = request.query_params.get('within')
+        within = 30
+        if within_param:
+            try:
+                within = int(within_param)
+            except (ValueError, TypeError):
+                within = 30
+
+        from .selectors import echeances_reglementaires_expirantes
+        qs = echeances_reglementaires_expirantes(company, within=within)
+        serializer = self.get_serializer(qs, many=True)
+        return Response(serializer.data)
