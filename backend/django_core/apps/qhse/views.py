@@ -5,6 +5,7 @@ société côté serveur ; la non-conformité enregistre aussi son signaleur
 (``signale_par``) côté serveur.
 """
 from django.shortcuts import get_object_or_404
+from django.utils import timezone
 from rest_framework import filters, status, viewsets
 from rest_framework.decorators import action
 from rest_framework.response import Response
@@ -15,16 +16,17 @@ from authentication.permissions import IsResponsableOrAdmin
 from apps.ventes.utils.references import create_with_reference
 
 from .models import (
-    ActionCorrectivePreventive, Audit, CritereAudit, EvaluationRisque,
-    GrilleAudit, ItemNotation, LigneEvaluationRisque, NonConformite,
-    NotationFinChantier, PermisTravail, PlanInspectionChantier,
+    ActionCorrectivePreventive, Audit, ConsignationLoto, CritereAudit,
+    EvaluationRisque, GrilleAudit, ItemNotation, LigneEvaluationRisque,
+    NonConformite, NotationFinChantier, PermisTravail, PlanInspectionChantier,
     PlanInspectionModele, PointControleModele, ProcedureQualite,
     QhseChatterEntry, ReleveControle, ReleveCourbeIV, ReponseCritere,
     RetourClientQualite,
 )
 from .serializers import (
     ActionCorrectivePreventiveSerializer, AuditSerializer,
-    CritereAuditSerializer, EvaluationRisqueSerializer, GrilleAuditSerializer,
+    ConsignationLotoSerializer, CritereAuditSerializer,
+    EvaluationRisqueSerializer, GrilleAuditSerializer,
     ItemNotationSerializer, LigneEvaluationRisqueSerializer,
     NonConformiteSerializer, NotationFinChantierSerializer,
     PermisTravailSerializer, PlanInspectionChantierSerializer,
@@ -937,3 +939,75 @@ class PermisTravailViewSet(_QhseBaseViewSet):
         permis.statut = PermisTravail.Statut.CLOTURE
         permis.save(update_fields=['statut'])
         return Response(self.get_serializer(permis).data)
+
+
+class ConsignationLotoViewSet(_QhseBaseViewSet):
+    """Consignation électrique (LOTO) rattachée à un permis (QHSE24).
+
+    CRUD scopé société. ``company`` est posée côté serveur (jamais lue du
+    corps). La ``reference`` est attribuée côté serveur via
+    ``create_with_reference`` (plus haut numéro utilisé + 1, race-safe — jamais
+    count()+1). Filtres optionnels : ``?permis=`` / ``?statut=``. Recherche par
+    référence/équipement/point de consignation/consignateur.
+
+    Le ``statut`` et la ``date_deconsignation`` sont en lecture seule au CRUD et
+    ne sont pilotés que par une action détail :
+
+    * ``POST …/<id>/deconsigner/`` — passe ``consignee`` → ``deconsignee`` et
+      enregistre ``date_deconsignation`` (refuse si déjà déconsignée).
+    """
+    queryset = ConsignationLoto.objects.all()
+    serializer_class = ConsignationLotoSerializer
+    filter_backends = [filters.SearchFilter, filters.OrderingFilter]
+    search_fields = [
+        'reference', 'equipement', 'point_consignation', 'consignateur']
+    ordering_fields = [
+        'id', 'reference', 'date_consignation', 'date_deconsignation',
+        'date_creation']
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        permis = self.request.query_params.get('permis')
+        if permis not in (None, ''):
+            qs = qs.filter(permis_id=permis)
+        statut = self.request.query_params.get('statut')
+        if statut not in (None, ''):
+            qs = qs.filter(statut=statut)
+        return qs
+
+    def perform_create(self, serializer):
+        company = self.request.user.company
+        return create_with_reference(
+            ConsignationLoto, 'LOTO', company,
+            lambda reference: serializer.save(
+                company=company, reference=reference),
+        )
+
+    def create(self, request, *args, **kwargs):
+        serializer = self.get_serializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        consignation = self.perform_create(serializer)
+        out = self.get_serializer(consignation)
+        return Response(out.data, status=status.HTTP_201_CREATED)
+
+    @action(detail=True, methods=['post'])
+    def deconsigner(self, request, pk=None):
+        """Déconsigne (``consignee`` → ``deconsignee``), scopé société.
+
+        Enregistre ``date_deconsignation`` (maintenant côté serveur, sauf si
+        une date ISO est fournie au corps via ``date_deconsignation``) et bascule
+        le ``statut``. Refuse si la consignation est déjà déconsignée.
+        ``consignateur`` peut être complété au corps si vide.
+        """
+        consignation = self.get_object()
+        if consignation.statut == ConsignationLoto.Statut.DECONSIGNEE:
+            return Response(
+                {'detail': 'Consignation déjà déconsignée.'},
+                status=status.HTTP_400_BAD_REQUEST)
+        date_deconsignation = (
+            request.data.get('date_deconsignation') or timezone.now())
+        consignation.date_deconsignation = date_deconsignation
+        consignation.statut = ConsignationLoto.Statut.DECONSIGNEE
+        consignation.save(
+            update_fields=['statut', 'date_deconsignation'])
+        return Response(self.get_serializer(consignation).data)

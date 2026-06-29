@@ -1337,3 +1337,90 @@ class PermisTravail(models.Model):
 
     def __str__(self):
         return f'{self.reference or "PT"} — {self.titre}'
+
+
+class ConsignationLoto(models.Model):
+    """Consignation électrique (LOTO) rattachée à un permis de travail (QHSE24).
+
+    Trace le verrouillage / étiquetage (lockout-tagout, « LOTO ») d'une source
+    d'énergie électrique avant une intervention : quel équipement / point de
+    consignation est mis hors tension, qui l'a consigné (``consignateur``),
+    quand (``date_consignation``), avec quel cadenas (``cadenas_pose``) et quelle
+    étiquette (``etiquette``), et si l'absence de tension a été vérifiée (VAT).
+
+    Une consignation est toujours rattachée à un ``PermisTravail`` (typiquement
+    de type ``consignation_elec``). Cycle de vie : ``consignee`` →
+    ``deconsignee`` (la déconsignation enregistre ``date_deconsignation`` et
+    bascule le ``statut``).
+
+    Multi-société via ``company`` posée côté serveur (jamais lue du corps de
+    requête). La ``reference`` est attribuée côté serveur via
+    ``create_with_reference`` (plus haut numéro utilisé + 1, race-safe — jamais
+    count()+1). Entièrement additif.
+    """
+    class Statut(models.TextChoices):
+        CONSIGNEE = 'consignee', 'Consignée'
+        DECONSIGNEE = 'deconsignee', 'Déconsignée'
+
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='qhse_consignations_loto',
+        verbose_name='Société',
+    )
+    permis = models.ForeignKey(
+        'qhse.PermisTravail',
+        on_delete=models.CASCADE,
+        related_name='consignations_loto',
+        verbose_name='Permis de travail',
+    )
+    reference = models.CharField(
+        max_length=50, blank=True, default='', verbose_name='Référence')
+    equipement = models.CharField(
+        max_length=255, blank=True, default='', verbose_name='Équipement')
+    point_consignation = models.CharField(
+        max_length=255, blank=True, default='',
+        verbose_name='Point de consignation')
+    consignateur = models.CharField(
+        max_length=255, blank=True, default='', verbose_name='Consignateur')
+    date_consignation = models.DateTimeField(
+        null=True, blank=True, verbose_name='Date de consignation')
+    date_deconsignation = models.DateTimeField(
+        null=True, blank=True, verbose_name='Date de déconsignation')
+    cadenas_pose = models.CharField(
+        max_length=255, blank=True, default='', verbose_name='Cadenas posé')
+    etiquette = models.CharField(
+        max_length=255, blank=True, default='', verbose_name='Étiquette')
+    verifie_absence_tension = models.BooleanField(
+        default=False, verbose_name="Absence de tension vérifiée (VAT)")
+    statut = models.CharField(
+        max_length=12, choices=Statut.choices,
+        default=Statut.CONSIGNEE, verbose_name='Statut')
+    notes = models.TextField(
+        blank=True, default='', verbose_name='Notes')
+    date_creation = models.DateTimeField(
+        auto_now_add=True, verbose_name='Créé le')
+
+    class Meta:
+        verbose_name = 'Consignation électrique (LOTO)'
+        verbose_name_plural = 'Consignations électriques (LOTO)'
+        ordering = ['-id']
+        constraints = [
+            models.UniqueConstraint(
+                fields=['company', 'reference'],
+                name='qhse_consigloto_co_ref_uniq',
+            )
+        ]
+        indexes = [
+            models.Index(
+                fields=['company', 'permis'],
+                name='qhse_consigloto_co_permis',
+            ),
+            models.Index(
+                fields=['company', 'statut'],
+                name='qhse_consigloto_co_statut',
+            ),
+        ]
+
+    def __str__(self):
+        return f'{self.reference or "LOTO"} — {self.equipement or self.permis_id}'

@@ -824,6 +824,28 @@ def allocations_familiales_patronale(parametre, brut, affilie=True):
     return _q(cot)
 
 
+# ── PAIE24 — Taxe de formation professionnelle (charge patronale) ───────────
+
+def formation_professionnelle_patronale(parametre, brut, affilie=True):
+    """Taxe de formation professionnelle (TFP) — charge PATRONALE (PAIE24).
+
+    Taxe EMPLOYEUR NON PLAFONNÉE sur le brut intégral :
+    ``brut × taux_formation_pro / 100`` (taux réglementaire 1,6 %, éditable par
+    société). C'est une charge 100 % PATRONALE, collectée avec la CNSS : elle
+    figure au bulletin pour information et déclaration, mais N'ENTRE JAMAIS dans
+    le net du salarié (aucune part salariale, aucune retenue).
+
+    Le drapeau ``affilie`` reprend l'affiliation CNSS de l'employé
+    (``ProfilPaie.affilie_cnss``) — la TFP est collectée avec la CNSS. Renvoie
+    ``0`` si non affilié ou ``parametre`` absent. Decimal au centime.
+    """
+    if parametre is None or not affilie:
+        return Decimal('0.00')
+    taux = Decimal(parametre.taux_formation_pro or 0)
+    cot = Decimal(brut or 0) * taux / Decimal('100')
+    return _q(cot)
+
+
 # ── PAIE20 — Cotisation CIMR OPTIONNELLE (taux par employé adhérent) ─────────
 
 def cimr_salariale(brut, affilie=False, taux=Decimal('0')):
@@ -1011,6 +1033,12 @@ def calculer_bulletin(profil, periode, personnes_a_charge=0):
     alloc_fam = allocations_familiales_patronale(
         parametre, brut, profil.affilie_cnss)
 
+    # 3ter. Taxe de formation professionnelle — PAIE24 (charge 100 % PATRONALE,
+    # non plafonnée, 1,6 %). Collectée avec la CNSS → suit l'affiliation CNSS du
+    # profil. N'entre JAMAIS dans le net du salarié (aucune part salariale).
+    formation_pro = formation_professionnelle_patronale(
+        parametre, brut, profil.affilie_cnss)
+
     # 4. CIMR (PAIE20) — OPTIONNELLE : seuls les profils adhérents cotisent,
     # chacun avec SON taux propre. Non adhérent → 0 (défaut).
     cimr = cimr_salariale(brut, profil.affilie_cimr, profil.taux_cimr_salarial)
@@ -1044,9 +1072,10 @@ def calculer_bulletin(profil, periode, personnes_a_charge=0):
     net_a_payer = brut - cnss - amo - cimr - ir - retenues_variables
     net_a_payer = _q(net_a_payer)
 
-    # PAIE18/PAIE19/PAIE23 — Total des charges patronales (coût employeur),
-    # informatif : CNSS + AMO + allocations familiales patronales.
-    charges_patronales = _q(cnss_pat + amo_pat + alloc_fam)
+    # PAIE18/PAIE19/PAIE23/PAIE24 — Total des charges patronales (coût
+    # employeur), informatif : CNSS + AMO + allocations familiales + taxe de
+    # formation professionnelle patronales.
+    charges_patronales = _q(cnss_pat + amo_pat + alloc_fam + formation_pro)
 
     # PAIE23 — Ligne EMPLOYEUR informative pour les allocations familiales.
     # Type cotisation, marquée part patronale ; comme toute charge patronale
@@ -1059,6 +1088,17 @@ def calculer_bulletin(profil, periode, personnes_a_charge=0):
             'montant': alloc_fam,
         })
 
+    # PAIE24 — Ligne EMPLOYEUR informative pour la taxe de formation
+    # professionnelle (1,6 % patronal). Comme toute charge patronale elle ne
+    # diminue PAS le net (cf. calcul du net à payer plus haut).
+    if formation_pro > 0:
+        lignes.append({
+            'code': 'FORMATION_PRO',
+            'libelle': 'Taxe de formation professionnelle (part patronale)',
+            'type': Rubrique.TYPE_COTISATION,
+            'montant': formation_pro,
+        })
+
     return {
         'brut': _q(brut),
         'brut_imposable': _q(brut_imposable),
@@ -1067,6 +1107,7 @@ def calculer_bulletin(profil, periode, personnes_a_charge=0):
         'amo_salariale': amo,
         'amo_patronale': amo_pat,
         'allocations_familiales': alloc_fam,
+        'formation_professionnelle': formation_pro,
         'cimr_salariale': cimr,
         'frais_professionnels': frais_pro,
         'net_imposable': net_imposable,

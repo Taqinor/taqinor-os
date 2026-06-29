@@ -592,7 +592,7 @@ first run that ticks any `FG*` task refreshes CODEMAP §10 + `--write` in that c
 - [ ] FG201 — **Campagnes email & SMS** — segment ciblé → envoi groupé (Brevo) avec compteurs ouvertures/clics pour réveiller une base froide. (COST)
 - [ ] FG202 — **Séquences de relance automatisées (drip/nurture)** — enchaînement multi-étapes (J0 WhatsApp, J3 email, J7 appel) déclenché par l'entrée en étape. (COST)
 - [ ] FG203 — **Récupération des devis abandonnés** — détecter les devis envoyés non répondus après N jours + relance ciblée. (ROUTINE)
-- [ ] FG204 — **Tableau d'attribution multi-touch** — journal de points de contact par lead (Meta→site→WhatsApp→signature), au-delà du first-touch. (SCHEMA)
+- [x] FG204 — **Tableau d'attribution multi-touch** — journal de points de contact par lead (Meta→site→WhatsApp→signature), au-delà du first-touch. (SCHEMA)
 - [ ] FG205 — **Tracking d'ouverture des ShareLink devis/facture** — horodater vu/non-vu pour prioriser les relances. (SCHEMA)
 - [ ] FG206 — **Constructeur de formulaires / landing pages multiples** — plusieurs formulaires d'intake (pompage agricole, régularisation 82-21) pré-taguant le lead. (ARCH)
 - [ ] FG207 — **Capture de leads via WhatsApp (catalogue/chatbot)** — un message entrant crée un lead pré-qualifié (le client marocain démarre sur WhatsApp). (COST)
@@ -838,7 +838,7 @@ these overlap and SUPERSEDE the domain-list FG items as the module-organized hom
 - [x] PAIE21 — Frais professionnels & net imposable. (ROUTINE)
 - [x] PAIE22 — Calcul IR (barème progressif + charges de famille). (DECISION)
 - [x] PAIE23 — Allocations familiales (info patronale). (ROUTINE)
-- [ ] PAIE24 — Taxe de formation professionnelle (1,6 % patronal). (ROUTINE)
+- [x] PAIE24 — Taxe de formation professionnelle (1,6 % patronal). (ROUTINE)
 - [ ] PAIE25 — Provision congés payés (consomme les soldes RH). (DEP:RH-FG162)
 - [ ] PAIE26 — Paiement & décompte des congés/absences sur le bulletin. (ROUTINE)
 - [ ] PAIE27 — `CumulAnnuel` (brut/net imposable/IR/CNSS/congés). (SCHEMA)
@@ -1040,7 +1040,7 @@ these overlap and SUPERSEDE the domain-list FG items as the module-organized hom
 - [x] QHSE21 — `EvaluationRisque` (document unique / plan de prévention) + lignes. (SCHEMA)
 - [x] QHSE22 — Document unique requis avant pose (gate statut chantier). (DECISION)
 - [x] QHSE23 — `PermisTravail` (hauteur/élec-consignation/point chaud). (SCHEMA)
-- [ ] QHSE24 — Consignation électrique (LOTO) sur permis électrique. (ROUTINE)
+- [x] QHSE24 — Consignation électrique (LOTO) sur permis électrique. (ROUTINE)
 - [ ] QHSE25 — Alerte expiration de permis. (ROUTINE)
 - [ ] QHSE26 — `InductionSecurite` (accueil sécurité site, incl. sous-traitants). (SCHEMA)
 - [ ] QHSE27 — `CauserieSecurite` (toolbox talks + émargement). (SCHEMA)
@@ -1697,3 +1697,6 @@ Tracked here so they aren't lost:
 - 2026-06-29 — FG304 (apps/installations): Référentiel sous-traitants — modèle `SousTraitant` (métier/contact/ICE/RIB, drapeau `actif` d'archivage, défaut True quel que soit le type de contenu), DISTINCT des fournisseurs matériel ; société + créateur serveur. Migration installations 0020 additive, 15 tests.
 - 2026-06-29 — GED22 (apps/ged): Politiques de rétention — modèle `PolitiqueRetention` (durée + action à l'échéance, défaut NON destructif `signaler`) + sélecteur `documents_echus(company, today)` (politique la plus spécifique, today injectable) + commande `lister_documents_echus` ; ne supprime JAMAIS passivement. Migration ged 0016 additive, 23 tests.
 - 2026-06-29 — FLOTTE19 (apps/flotte): `EcheanceReglementaire` (modèle générique) — échéances réglementaires (visite technique/assurance/vignette/carte grise/taxe à l'essieu) sur `ActifFlotte`, statut a_jour/a_renouveler/expire (today injectable), action `expirantes/?within=N` ; distinct des échéances d'entretien FLOTTE16. Migration flotte 0017 additive, 18 tests.
+- 2026-06-29 — PAIE24 (apps/paie): Taxe de formation professionnelle (charge patronale) — réutilise le taux existant `ParametrePaie.taux_formation_pro` (1,6 %), ajoute le calcul `formation_professionnelle_patronale` + le snapshot `BulletinPaie.formation_professionnelle`, émis comme cotisation patronale (alimente charges_patronales, jamais déduit du net), lié à l'affiliation CNSS. Migration paie 0012 additive, 15 tests.
+- 2026-06-29 — QHSE24 (apps/qhse): Consignation électrique (LOTO) sur permis — modèle `ConsignationLoto` (FK `PermisTravail`, point de consignation/cadenas/étiquette/vérif absence tension, statut consignée/déconsignée, référence serveur race-safe), action `deconsigner`. Migration qhse 0016 additive, 18 tests.
+- 2026-06-29 — FG204 (apps/crm): Tableau d'attribution multi-touch — modèle `PointContact` (journal des points de contact par lead : canal réutilisant `Lead.Canal`, source, date, ordre, coût canal payant), sélecteur timeline + résumé first/last-touch, endpoints `points-contact/` + `leads/{id}/points-contact/` (action lecture ajoutée à la liste IsAnyRole). Migration crm 0030 additive, 26 tests.

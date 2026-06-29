@@ -5,7 +5,7 @@ from authentication.mixins import TenantMixin
 from authentication.scoping import scope_queryset, scope_client_queryset
 from .models import (
     Appointment, Client, ConcurrentPerte, Lead, LeadTag, MotifPerte, Canal,
-    Parrainage, MessageTemplate, ObjectifCommercial,
+    Parrainage, MessageTemplate, ObjectifCommercial, PointContact,
 )
 from .serializers import (
     AppointmentSerializer, ClientSerializer, ConcurrentPerteSerializer,
@@ -13,6 +13,7 @@ from .serializers import (
     LeadTagSerializer, MotifPerteSerializer, CanalSerializer,
     ParrainageSerializer, MessageTemplateSerializer, _tag_en_usage, _motif_en_usage,
     ObjectifCommercialSerializer, ObjectifAttainmentSerializer,
+    PointContactSerializer,
 )
 from . import activity
 from .services import default_responsable_for
@@ -337,7 +338,7 @@ class LeadViewSet(TenantMixin, viewsets.ModelViewSet):
                                           'check_duplicates', 'doublons',
                                           'export_xlsx', 'relances',
                                           'roi_sources', 'sla_breach',
-                                          'client_match']:
+                                          'client_match', 'points_contact']:
             return [IsAnyRole()]
         elif self.action in WRITE_ACTIONS + [
             'noter', 'devis_auto', 'archiver', 'restaurer', 'merge',
@@ -603,6 +604,25 @@ class LeadViewSet(TenantMixin, viewsets.ModelViewSet):
         lead = self.get_object()
         return Response(
             LeadActivitySerializer(lead.activites.all(), many=True).data)
+
+    @action(detail=True, methods=['get'], url_path='points-contact',
+            permission_classes=[IsAnyRole])
+    def points_contact(self, request, pk=None):
+        """FG204 — journal multi-touch ordonné + résumé d'attribution du lead
+        (first-touch vs last-touch). get_object() borne déjà à la société."""
+        from .selectors import lead_touchpoints_attribution
+        lead = self.get_object()
+        summary = lead_touchpoints_attribution(
+            lead, company=request.user.company)
+        return Response({
+            'lead_id': summary['lead_id'],
+            'count': summary['count'],
+            'first_touch': summary['first_touch'],
+            'last_touch': summary['last_touch'],
+            'cout_total': summary['cout_total'],
+            'timeline': PointContactSerializer(
+                summary['timeline'], many=True).data,
+        })
 
     @action(detail=True, methods=['post'], url_path='devis-auto',
             permission_classes=[IsResponsableOrAdmin])
@@ -1316,3 +1336,106 @@ class ConcurrentPerteViewSet(TenantMixin, viewsets.ModelViewSet):
             )
         except Exception:
             pass
+
+
+class PointContactViewSet(TenantMixin, viewsets.ModelViewSet):
+    """FG204 — journal multi-touch des points de contact d'un lead.
+
+    Au-delà du first-touch (``Lead.canal``), on consigne chaque point de contact
+    du parcours (Meta → site → WhatsApp → signature) pour une attribution
+    multi-touch.
+
+    Routes :
+      GET/POST  /crm/points-contact/                    (filtre ?lead=<id>)
+      GET/PATCH /crm/points-contact/{id}/
+      DELETE    /crm/points-contact/{id}/
+      GET       /crm/points-contact/attribution/?lead=  (résumé first/last-touch)
+
+    Lecture tout rôle, écriture responsable/admin. Toujours scopé par société
+    (TenantMixin) : la société et ``saisi_par`` sont posés côté serveur depuis
+    l'utilisateur actif — jamais lus du corps de requête (multi-tenant).
+    """
+    serializer_class = PointContactSerializer
+    queryset = PointContact.objects.select_related(
+        'lead', 'company', 'saisi_par').all()
+    filterset_fields = ['lead', 'canal']
+    ordering_fields = ['ordre', 'date_contact', 'saisi_le', 'cout']
+    ordering = ['ordre', 'date_contact', 'id']
+
+    def get_permissions(self):
+        if self.action in READ_ACTIONS or self.action == 'attribution':
+            return [IsAnyRole()]
+        return [IsResponsableOrAdmin()]
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        lead_id = self.request.query_params.get('lead')
+        if lead_id:
+            qs = qs.filter(lead_id=lead_id)
+        return qs
+
+    def perform_create(self, serializer):
+        """Société et saisi_par toujours posés côté serveur ; date par défaut
+        et ordre auto-incrémenté quand non fourni ; trace chatter."""
+        from django.utils import timezone
+        from django.db.models import Max
+        lead = serializer.validated_data.get('lead')
+        # date_contact par défaut : maintenant (le journal pose l'horodatage).
+        date_contact = serializer.validated_data.get('date_contact')
+        save_kwargs = {
+            'company': self.request.user.company,
+            'saisi_par': self.request.user,
+        }
+        if date_contact is None:
+            save_kwargs['date_contact'] = timezone.now()
+        # Ordre auto : si le client n'a pas posé d'ordre (>0), prend le max+1 du
+        # journal de ce lead (chaque point de contact suit le précédent).
+        ordre = serializer.validated_data.get('ordre') or 0
+        if ordre == 0 and lead is not None:
+            current_max = (
+                PointContact.objects.filter(
+                    company=self.request.user.company, lead=lead)
+                .aggregate(m=Max('ordre'))['m'] or 0
+            )
+            save_kwargs['ordre'] = current_max + 1
+        obj = serializer.save(**save_kwargs)
+        # Trace dans le chatter du lead (best-effort, ne casse jamais la création).
+        try:
+            from . import activity
+            activity.log_note(
+                obj.lead, self.request.user,
+                f"Point de contact ajouté : {obj.get_canal_display()}"
+                + (f" ({obj.source})" if obj.source else "")
+                + ".",
+            )
+        except Exception:
+            pass
+
+    @action(detail=False, methods=['get'], url_path='attribution',
+            permission_classes=[IsAnyRole])
+    def attribution(self, request):
+        """Résumé d'attribution multi-touch d'un lead : timeline ordonnée +
+        first-touch vs last-touch. Requiert ``?lead=<id>`` (borné société)."""
+        from .selectors import lead_touchpoints_attribution
+        lead_id = request.query_params.get('lead')
+        if not lead_id:
+            return Response(
+                {'detail': 'Paramètre ?lead=<id> requis.'},
+                status=status.HTTP_400_BAD_REQUEST)
+        lead = Lead.objects.filter(
+            pk=lead_id, company=request.user.company).first()
+        if lead is None:
+            return Response(
+                {'detail': 'Lead inconnu.'},
+                status=status.HTTP_404_NOT_FOUND)
+        summary = lead_touchpoints_attribution(
+            lead, company=request.user.company)
+        return Response({
+            'lead_id': summary['lead_id'],
+            'count': summary['count'],
+            'first_touch': summary['first_touch'],
+            'last_touch': summary['last_touch'],
+            'cout_total': summary['cout_total'],
+            'timeline': PointContactSerializer(
+                summary['timeline'], many=True).data,
+        })
