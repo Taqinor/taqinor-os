@@ -336,6 +336,54 @@ class ProjetViewSet(_GestionProjetBaseViewSet):
                 seuil = None
         return Response(selectors.retards_projet(projet, seuil_jours=seuil))
 
+    @action(detail=True, methods=['get'], url_path='couts-engages-reels')
+    def couts_engages_reels(self, request, pk=None):
+        """Coûts ENGAGÉS/RÉELS vs BUDGET (PROJ21) par catégorie (PROJ22).
+
+        Pour chaque catégorie (matériel / main-d'œuvre / sous-traitance /
+        divers) : budget prévisionnel, réel engagé, écart (budget − réel) et
+        écart % (None si budget == 0 — garde division-par-zéro), plus une note
+        quand une source de réel n'est pas disponible. Le réel de la
+        main-d'œuvre vient des affectations internes ; les factures
+        fournisseur/achats (matériel/sous-traitance) sont rattachées via
+        ``ProjetLien`` et DÉGRADENT proprement (réel à 0 + note) tant qu'aucune
+        app cible n'expose un sélecteur de montant — jamais d'import d'un modèle
+        d'une autre app (frontière cross-app).
+
+        La société est garantie par ``get_object`` (queryset scopé société) :
+        un projet d'une autre société → 404. Lecture seule.
+        """
+        projet = self.get_object()
+        data = selectors.couts_engages_vs_reels(
+            request.user.company, projet)
+        return Response({
+            'budget_id': data['budget_id'],
+            'budget_version': data['budget_version'],
+            'budget_statut': data['budget_statut'],
+            'nb_liens_depense': data['nb_liens_depense'],
+            'par_categorie': [
+                {
+                    'categorie': ligne['categorie'],
+                    'budget': str(ligne['budget']),
+                    'reel': str(ligne['reel']),
+                    'ecart': str(ligne['ecart']),
+                    'ecart_pct': (
+                        str(ligne['ecart_pct'])
+                        if ligne['ecart_pct'] is not None else None),
+                    'note': ligne['note'],
+                }
+                for ligne in data['par_categorie']
+            ],
+            'total': {
+                'budget': str(data['total']['budget']),
+                'reel': str(data['total']['reel']),
+                'ecart': str(data['total']['ecart']),
+                'ecart_pct': (
+                    str(data['total']['ecart_pct'])
+                    if data['total']['ecart_pct'] is not None else None),
+            },
+        })
+
 
 class ProjetChantierViewSet(_GestionProjetBaseViewSet):
     """Rattachements chantier ↔ projet (liens lâches)."""
