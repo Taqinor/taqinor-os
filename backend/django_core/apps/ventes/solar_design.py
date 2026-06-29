@@ -3190,7 +3190,11 @@ def clearsky_hourly_irradiance(daily_irradiation_kwh_m2):
     par cycle de marche. Tolérant : entrée illisible/négative → profil nul.
     """
     di = max(0.0, _safe_float(daily_irradiation_kwh_m2, 0.0))
-    return [round(di * frac, 5) for frac in _CLEARSKY_HOURLY_SHAPE]
+    # Normalise la forme pour que la somme du profil vaille EXACTEMENT
+    # l'irradiation journalière (la forme de référence peut ne pas sommer
+    # à 1.0 à l'arrondi près) — garantit « somme du profil = irradiation ».
+    total = sum(_CLEARSKY_HOURLY_SHAPE) or 1.0
+    return [round(di * frac / total, 5) for frac in _CLEARSKY_HOURLY_SHAPE]
 
 
 def pumping_cycle_yield(*, debit_hmt_m3h, pumping_hours=None,

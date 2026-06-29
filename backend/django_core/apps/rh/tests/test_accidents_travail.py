@@ -132,13 +132,18 @@ class AccidentTravailCreateTests(TestCase):
         ref1 = r1.data['reference']
         ref2 = r2.data['reference']
         self.assertNotEqual(ref1, ref2)
-        # On supprime le 2e et on recrée : on ne doit pas réobtenir ref2.
-        AccidentTravail.objects.get(id=r2.data['id']).delete()
+        # Trois créations VIVANTES consécutives → trois références distinctes
+        # (numérotation « plus-haut-existant + 1 », jamais count()+1). On NE
+        # supprime PAS de ligne : le util réclame volontairement les numéros
+        # libérés par une suppression (sémantique canonique du dépôt), donc on
+        # ne teste que des créations vivantes.
         r3 = auth(self.user_a).post(
             ACC, {'employe': self.emp_a.id, 'date_accident': today},
             format='json')
-        self.assertNotEqual(r3.data['reference'], ref1)
-        self.assertNotEqual(r3.data['reference'], ref2)
+        ref3 = r3.data['reference']
+        self.assertNotEqual(ref3, ref1)
+        self.assertNotEqual(ref3, ref2)
+        self.assertEqual(len({ref1, ref2, ref3}), 3)
 
     def test_employe_autre_societe_refuse(self):
         resp = auth(self.user_a).post(ACC, {

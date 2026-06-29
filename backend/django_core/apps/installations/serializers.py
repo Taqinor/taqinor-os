@@ -983,6 +983,12 @@ class SousTraitantSerializer(serializers.ModelSerializer):
     français du code de métier."""
     metier_display = serializers.CharField(
         source='get_metier_display', read_only=True, default=None)
+    # Un sous-traitant est ACTIF par défaut. Déclaré explicitement pour rester
+    # indépendant du type de contenu : en form-data, un BooleanField DRF absent
+    # est lu comme False (sémantique case à cocher), ce qui écraserait le
+    # défaut du modèle. `default=True` garantit « actif » à la création quel que
+    # soit le client ; l'archivage reste possible en envoyant `actif=false`.
+    actif = serializers.BooleanField(required=False, default=True)
 
     class Meta:
         model = SousTraitant
