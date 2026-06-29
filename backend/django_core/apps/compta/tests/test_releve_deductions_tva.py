@@ -197,7 +197,7 @@ class ReleveDeductionsApiTests(TestCase):
     def test_export_csv(self):
         resp = auth(self.user_a).get(
             '/api/django/compta/etats/releve-deductions-tva/'
-            '?date_debut=2026-01-01&date_fin=2026-01-31&format=csv')
+            '?date_debut=2026-01-01&date_fin=2026-01-31&export=csv')
         self.assertEqual(resp.status_code, 200)
         self.assertIn('text/csv', resp['Content-Type'])
         self.assertIn('attachment', resp['Content-Disposition'])

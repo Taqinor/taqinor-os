@@ -259,7 +259,7 @@ class EtatsComptablesViewSet(viewsets.ViewSet):
         TVA, taux), déduite du grand livre (comptes 3455…). La somme des TVA
         reconcilie avec la TVA déductible de la déclaration (FG137). Paramètres :
         ``date_debut`` / ``date_fin`` (la période de la déclaration), ``validees``
-        (1 → écritures validées seulement) et ``format=csv`` pour l'export CSV.
+        (1 → écritures validées seulement) et ``export=csv`` pour l'export CSV.
         Lecture seule, scopée société, Admin/Responsable.
         """
         periode = self._periode(request)
@@ -268,7 +268,7 @@ class EtatsComptablesViewSet(viewsets.ViewSet):
             company, date_debut=periode['date_debut'],
             date_fin=periode['date_fin'],
             validees_seulement=periode['validees_seulement'])
-        if request.query_params.get('format') == 'csv':
+        if request.query_params.get('export') == 'csv':
             return self._export_deductions_csv(data)
         return Response(data)
 
