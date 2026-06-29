@@ -754,6 +754,55 @@ class RessourceProfilViewSet(_GestionProjetBaseViewSet):
         return Response(selectors.conflits_affectation(
             request.user.company, debut, fin))
 
+    @action(detail=False, methods=['get'], url_path='nivellement-charge')
+    def nivellement_charge(self, request):
+        """Nivellement de charge : propose un rééquilibrage des ressources (PROJ20).
+
+        Paramètres de requête :
+            ``?debut=YYYY-MM-DD&fin=YYYY-MM-DD`` (OBLIGATOIRES) — fenêtre
+            INCLUSIVE des deux côtés. ``fin`` antérieure à ``debut`` → 400.
+            ``?heures_par_jour=N`` (optionnel, défaut 8) — heures d'un jour
+            ouvré ; valeur invalide → 400.
+
+        Lecture seule, NE MUTE RIEN : la société est imposée côté serveur
+        (``request.user.company``) — jamais lue du corps de requête. S'appuie sur
+        le plan de charge (PROJ18) pour classer les ressources SUR-CHARGÉES /
+        SOUS-CHARGÉES, puis propose de déplacer les affectations directes en
+        excès vers les ressources sous-chargées qui ont assez de marge SANS créer
+        de conflit de double-booking (PROJ19). Délègue au sélecteur
+        ``nivellement_charge`` (proposition pure, aucune écriture).
+        """
+        debut = _parse_date_param(request.query_params.get('debut'))
+        fin = _parse_date_param(request.query_params.get('fin'))
+        if debut is None or fin is None:
+            return Response(
+                {'detail': 'Les paramètres debut et fin (YYYY-MM-DD) sont '
+                           'obligatoires.'},
+                status=status.HTTP_400_BAD_REQUEST)
+        if fin < debut:
+            return Response(
+                {'detail': 'La date de fin ne peut pas être antérieure à la '
+                           'date de début.'},
+                status=status.HTTP_400_BAD_REQUEST)
+
+        heures_raw = request.query_params.get('heures_par_jour')
+        heures_par_jour = 8
+        if heures_raw is not None:
+            try:
+                heures_par_jour = float(heures_raw)
+            except (TypeError, ValueError):
+                return Response(
+                    {'detail': 'heures_par_jour doit être un nombre.'},
+                    status=status.HTTP_400_BAD_REQUEST)
+            if heures_par_jour < 0:
+                return Response(
+                    {'detail': 'heures_par_jour doit être positif.'},
+                    status=status.HTTP_400_BAD_REQUEST)
+
+        return Response(selectors.nivellement_charge(
+            request.user.company, debut, fin,
+            heures_par_jour=heures_par_jour))
+
 
 class EquipeViewSet(_GestionProjetBaseViewSet):
     """Équipes de ressources pour le planning — CRUD scopé société.

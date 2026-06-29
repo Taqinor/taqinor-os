@@ -1078,3 +1078,255 @@ def conflits_affectation(company, debut, fin):
         'nb_conflits': nb_conflits,
         'lignes': lignes,
     }
+
+
+# ── PROJ20 : Nivellement de charge (levelling) ───────────────────────────────
+
+
+def _periodes_se_chevauchent(a_debut, a_fin, b_debut, b_fin):
+    """True si deux fenêtres [a_debut, a_fin] / [b_debut, b_fin] se chevauchent.
+
+    Bornes INCLUSIVES des deux côtés (convention PROJ16/17/19) : deux fenêtres se
+    chevauchent dès que ``a_debut <= b_fin`` ET ``a_fin >= b_debut``. Sert à
+    garantir qu'un déplacement proposé ne crée PAS un conflit PROJ19 sur le
+    destinataire (jamais une fenêtre qui en recouvre une autre déjà posée).
+    """
+    return a_debut <= b_fin and a_fin >= b_debut
+
+
+def nivellement_charge(company, debut, fin,
+                       heures_par_jour=_HEURES_PAR_JOUR_DEFAUT):
+    """Propose un rééquilibrage des ressources SUR-CHARGÉES vers les SOUS-CHARGÉES.
+
+    PROJ20 — l'équivalent gestion-projet de FG301. S'appuie sur le plan de
+    charge (PROJ18, ``plan_de_charge`` : capacité = jours ouvrés L-V moins
+    indisponibilités × heures/jour ; affecté = somme proratée des affectations,
+    directes ET via équipe) pour classer chaque ``RessourceProfil`` ACTIVE :
+
+    * SUR-CHARGÉE : ``affecte_heures > capacite_heures`` (``surcharge=True``) ;
+    * SOUS-CHARGÉE : ``disponible_heures = capacite − affecté > 0``.
+
+    Pour chaque ressource sur-chargée, on examine ses affectations DIRECTES
+    (vecteur ``ressource``) chevauchant la fenêtre et propose de déplacer
+    celles-ci, en commençant par les plus TARDIVES (le début de fenêtre reste
+    stable), vers la ressource sous-chargée qui a LE PLUS de marge restante, à
+    condition que ce destinataire :
+
+      * ait assez de marge d'heures libres pour absorber la charge proratée de
+        l'affectation (sinon le déplacement re-créerait une surcharge) ;
+      * n'ait AUCUNE affectation (ni proposition déjà acceptée) dont la fenêtre
+        chevauche celle de l'affectation déplacée — sinon on recréerait un
+        conflit PROJ19 (double-booking) sur le destinataire.
+
+    L'état (marge restante + fenêtres occupées) est simulé EN MÉMOIRE au fil des
+    propositions pour rester équitable et anti-conflit ; rien n'est écrit en
+    base. Seules les affectations DIRECTES (personne) sont déplaçables : une
+    affectation d'équipe ou d'actif matériel n'est jamais proposée (on ne casse
+    pas une équipe, et un actif n'est pas une personne). Une affectation sans
+    ``charge_jours`` n'entre pas dans l'affecté (PROJ18) mais reste déplaçable —
+    sa charge proratée vaut alors 0, elle ne consomme aucune marge.
+
+    Lecture seule, NE MUTE RIEN, scopée société (toutes les données lues sont
+    filtrées sur ``company``). ``debut``/``fin`` sont des dates ; une fenêtre
+    VIDE (``fin < debut``) → aucune proposition (garde explicite). Garde
+    division-par-zéro / capacité nulle héritée de ``plan_de_charge``. Renvoie un
+    dict PLAT ::
+
+        {
+          "debut": "YYYY-MM-DD", "fin": "YYYY-MM-DD",
+          "heures_par_jour": float,
+          "surcharges": [                 # ressources sur-chargées
+            {"ressource": int, "nom": str, "role": str,
+             "capacite_heures": float, "affecte_heures": float,
+             "exces_heures": float},
+            ...
+          ],
+          "sous_charges": [               # ressources sous-chargées (marge > 0)
+            {"ressource": int, "nom": str, "role": str,
+             "capacite_heures": float, "affecte_heures": float,
+             "disponible_heures": float},
+            ...
+          ],
+          "propositions": [               # déplacements suggérés
+            {"affectation": int, "tache": int, "tache_libelle": str,
+             "projet": int | null,
+             "date_debut": "YYYY-MM-DD", "date_fin": "YYYY-MM-DD",
+             "charge_heures": float,
+             "de_ressource": int, "de_nom": str,
+             "vers_ressource": int, "vers_nom": str},
+            ...
+          ],
+          "totaux": {
+            "nb_surcharges": int, "nb_sous_charges": int,
+            "nb_propositions": int,
+            "nb_non_resolues": int,       # affectations en excès sans destinataire
+          },
+        }
+    """
+    plan = plan_de_charge(
+        company, debut, fin, heures_par_jour=heures_par_jour)
+
+    base = {
+        'debut': debut.isoformat(),
+        'fin': fin.isoformat(),
+        'heures_par_jour': plan['heures_par_jour'],
+        'surcharges': [],
+        'sous_charges': [],
+        'propositions': [],
+        'totaux': {
+            'nb_surcharges': 0,
+            'nb_sous_charges': 0,
+            'nb_propositions': 0,
+            'nb_non_resolues': 0,
+        },
+    }
+    # Fenêtre vide → rien à niveler (le plan de charge l'a déjà neutralisée mais
+    # on garde la sortie explicite et symétrique avec PROJ19).
+    if fin < debut:
+        return base
+
+    jours_ouvres = _JOURS_OUVRES_DEFAUT
+
+    # Index des lignes du plan par ressource pour classer sur/sous-chargées.
+    lignes_par_ressource = {ligne['ressource']: ligne
+                            for ligne in plan['lignes']}
+
+    surcharges = []
+    sous_charges = []
+    for ligne in plan['lignes']:
+        if ligne['surcharge']:
+            surcharges.append(ligne)
+        elif ligne['disponible_heures'] > 0:
+            sous_charges.append(ligne)
+
+    # Marge d'heures libres restante par destinataire sous-chargé, mutée au fil
+    # des propositions pour répartir équitablement (n'écrit RIEN en base).
+    marge = {ligne['ressource']: ligne['disponible_heures']
+             for ligne in sous_charges}
+
+    # Affectations DIRECTES (vecteur ressource) chevauchant la fenêtre, scopées
+    # société. On charge la tâche (pour le projet/libellé) en une requête.
+    affectations = list(
+        AffectationRessource.objects.filter(
+            company=company,
+            ressource__isnull=False,
+            date_debut__lte=fin,
+            date_fin__gte=debut,
+        ).select_related('tache'))
+
+    # {ressource_id: [AffectationRessource, ...]} pour les sources sur-chargées
+    # et {ressource_id: [(debut, fin), ...]} des fenêtres occupées de CHAQUE
+    # ressource (destinataires inclus) — anti-conflit PROJ19.
+    affectations_par_source = {}
+    fenetres_occupees = {}
+    for aff in affectations:
+        affectations_par_source.setdefault(
+            aff.ressource_id, []).append(aff)
+        fenetres_occupees.setdefault(aff.ressource_id, []).append(
+            (aff.date_debut, aff.date_fin))
+
+    propositions = []
+    nb_non_resolues = 0
+
+    # Traiter les sources les plus sur-chargées d'abord (excès décroissant).
+    surcharges_triees = sorted(
+        surcharges,
+        key=lambda s: (-(s['affecte_heures'] - s['capacite_heures']),
+                       s['nom'].lower(), s['ressource']))
+
+    for source in surcharges_triees:
+        src_id = source['ressource']
+        # Heures à dégager pour ramener la source sous sa capacité.
+        a_degager = source['affecte_heures'] - source['capacite_heures']
+        if a_degager <= 0:
+            continue
+        candidats = affectations_par_source.get(src_id, [])
+        # Déplacer en priorité les affectations les plus TARDIVES (garde le
+        # début de fenêtre stable) ; tri déterministe par début puis id.
+        candidats = sorted(
+            candidats, key=lambda a: (a.date_debut, a.id), reverse=True)
+        degage = 0.0
+        for aff in candidats:
+            if degage >= a_degager:
+                break
+            charge_h = _charge_affectee_periode(
+                aff, debut, fin, jours_ouvres)
+            # Destinataire : sous-chargé, marge suffisante, pas la source, pas
+            # de chevauchement de fenêtre (anti-conflit PROJ19). On choisit la
+            # plus grande marge restante (répartition équilibrée).
+            meilleur = None
+            meilleure_marge = 0.0
+            for dest_id, m in marge.items():
+                if dest_id == src_id:
+                    continue
+                if m < charge_h:
+                    continue
+                # Le destinataire ne doit avoir AUCUNE fenêtre qui chevauche
+                # celle de l'affectation déplacée (sinon nouveau conflit PROJ19).
+                conflit = False
+                for (od, of_) in fenetres_occupees.get(dest_id, []):
+                    if _periodes_se_chevauchent(
+                            aff.date_debut, aff.date_fin, od, of_):
+                        conflit = True
+                        break
+                if conflit:
+                    continue
+                if m > meilleure_marge:
+                    meilleure_marge = m
+                    meilleur = dest_id
+            if meilleur is None:
+                nb_non_resolues += 1
+                continue
+            tache = aff.tache
+            propositions.append({
+                'affectation': aff.id,
+                'tache': aff.tache_id,
+                'tache_libelle': tache.libelle if tache else '',
+                'projet': tache.projet_id if tache else None,
+                'date_debut': aff.date_debut.isoformat(),
+                'date_fin': aff.date_fin.isoformat(),
+                'charge_heures': round(charge_h, 2),
+                'de_ressource': src_id,
+                'de_nom': source['nom'],
+                'vers_ressource': meilleur,
+                'vers_nom': lignes_par_ressource[meilleur]['nom'],
+            })
+            # Met à jour l'état simulé pour les propositions suivantes (équité +
+            # anti-conflit) — n'écrit RIEN en base. Le destinataire « occupe »
+            # désormais la fenêtre déplacée.
+            marge[meilleur] -= charge_h
+            fenetres_occupees.setdefault(meilleur, []).append(
+                (aff.date_debut, aff.date_fin))
+            degage += charge_h
+
+    surcharges_out = [{
+        'ressource': s['ressource'],
+        'nom': s['nom'],
+        'role': s['role'],
+        'capacite_heures': s['capacite_heures'],
+        'affecte_heures': s['affecte_heures'],
+        'exces_heures': round(s['affecte_heures'] - s['capacite_heures'], 2),
+    } for s in surcharges_triees]
+
+    sous_charges_out = [{
+        'ressource': s['ressource'],
+        'nom': s['nom'],
+        'role': s['role'],
+        'capacite_heures': s['capacite_heures'],
+        'affecte_heures': s['affecte_heures'],
+        'disponible_heures': s['disponible_heures'],
+    } for s in sous_charges]
+
+    propositions.sort(key=lambda p: (p['date_debut'], p['de_nom'].lower(),
+                                     p['affectation']))
+
+    base['surcharges'] = surcharges_out
+    base['sous_charges'] = sous_charges_out
+    base['propositions'] = propositions
+    base['totaux'] = {
+        'nb_surcharges': len(surcharges_out),
+        'nb_sous_charges': len(sous_charges_out),
+        'nb_propositions': len(propositions),
+        'nb_non_resolues': nb_non_resolues,
+    }
+    return base
