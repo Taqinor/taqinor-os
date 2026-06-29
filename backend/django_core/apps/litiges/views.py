@@ -44,6 +44,25 @@ class ReclamationViewSet(_LitigesBaseViewSet):
         serializer.save(
             company=self.request.user.company, created_by=self.request.user)
 
+    # ── Tableau de bord (LITIGE6) ────────────────────────────────────────────
+    @action(detail=False, methods=['get'], url_path='tableau-bord')
+    def tableau_bord(self, request):
+        """Indicateurs litiges : ouverts, montant contesté, délai de résolution.
+
+        Lecture seule, scopée société. Fenêtre optionnelle via les paramètres
+        ``debut`` / ``fin`` (``YYYY-MM-DD``, bornes inclusives sur la date de
+        création). Le palier de permission est celui du viewset
+        (Administrateur/Responsable) — un rôle limité reçoit donc 403.
+        """
+        from . import selectors
+
+        data = selectors.tableau_bord_litiges(
+            request.user.company,
+            debut=request.query_params.get('debut'),
+            fin=request.query_params.get('fin'),
+        )
+        return Response(data)
+
     # ── Machine à états + chatter ────────────────────────────────────────────
     def _transition(self, request, *, allowed_from, target):
         """Applique une transition de statut si elle est légale, sinon 400.
