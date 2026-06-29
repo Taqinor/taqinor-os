@@ -1761,3 +1761,305 @@ def load_curve_from_xlsx(file_or_path, *, sheet=None, column=1,
     if skip_header and values:
         values = values[1:]
     return values[:max_rows]
+
+
+# ── FG259 — Économie net-metering / injection surplus (loi 13-09, MT/HT) ──────
+# Valorise le SURPLUS solaire INJECTÉ au réseau (issu de FG258 :
+# production − autoconsommation, heure par heure) selon la règle de
+# compensation marocaine (loi 13-09, moyenne/haute tension) et un tarif
+# TIME-OF-USE par tranche horaire (pointe / pleine / creuse).
+#
+# RÈGLE DE COMPENSATION (net-metering 13-09, modèle transparent) :
+#   * L'énergie INJECTÉE pendant une tranche n'est COMPENSÉE qu'à hauteur de
+#     l'énergie SOUTIRÉE (importée du réseau) dans la même tranche — c'est le
+#     principe du « net » : on solde les flux d'une même période tarifaire.
+#     Au-delà, le surplus est « excédentaire » (spill) : par défaut NON
+#     valorisé (la loi 13-09 ne rémunère pas l'excédent au MT), valorisable à
+#     un tarif résiduel facultatif ``spill_tariff`` si l'appelant le fournit.
+#   * Le surplus compensé est valorisé au TARIF de sa propre tranche (il efface
+#     un kWh qui aurait été facturé à ce tarif-là).
+#   * Un PLAFOND annuel global facultatif (``annual_cap_kwh``) borne l'énergie
+#     totale compensée (certains contrats limitent la compensation à un % de la
+#     conso annuelle) ; il s'applique sur l'énergie déjà éligible, tranche par
+#     tranche, des plus chères aux moins chères (maximise l'économie client).
+#   * Le réglage existant ``surplus_injecte_compense`` (toggle) : OFF →
+#     l'injection n'est PAS compensée du tout → économie 0 (et tout le surplus
+#     bascule en « non compensé »).
+#
+# Module PUR : aucune base, aucun réseau, aucun prix d'achat/marge. Les entrées
+# numériques ne sont JAMAIS rejetées (liberté de saisie du founder) — les
+# valeurs illisibles/négatives sont ramenées à 0, jamais d'exception, division
+# par zéro bornée.
+
+# ── Tranches time-of-use ONEE par défaut (MT général, ordre des heures) ───────
+# Affectation heure-de-journée → tranche (24 valeurs, index 0 = 00 h … 23 h).
+# Modèle marché courant : creuse la nuit, pleine en journée, pointe le soir
+# (18 h–22 h, le pic de demande nationale). Surchargeable via ``hour_tranches``.
+DEFAULT_HOUR_TRANCHES = [
+    "creuse", "creuse", "creuse", "creuse", "creuse", "creuse",  # 00–05 h
+    "creuse", "pleine", "pleine", "pleine", "pleine", "pleine",  # 06–11 h
+    "pleine", "pleine", "pleine", "pleine", "pleine", "pleine",  # 12–17 h
+    "pointe", "pointe", "pointe", "pointe", "pleine", "creuse",  # 18–23 h
+]
+
+# Tarifs TTC indicatifs (MAD/kWh) par tranche — valeurs marché conservatrices,
+# à CONFIRMER par le founder selon le contrat ONEE réel. Surchargeable via
+# ``tranche_tariffs``. La pointe est la plus chère, la creuse la moins chère.
+DEFAULT_TRANCHE_TARIFFS = {
+    "pointe": 1.45,
+    "pleine": 1.15,
+    "creuse": 0.85,
+}
+
+# Ordre canonique des tranches (du plus cher au moins cher) pour l'allocation
+# du plafond annuel : on compense d'abord les kWh les plus chers.
+_TRANCHE_ORDER = ["pointe", "pleine", "creuse"]
+
+
+def net_metering_savings(injected_curve=None, import_curve=None, *,
+                         hour_tranches=None, tranche_tariffs=None,
+                         surplus_injecte_compense=True,
+                         days_per_year=365, spill_tariff=None,
+                         annual_cap_kwh=None,
+                         compensation_ratio=1.0):
+    """FG259 — économie annuelle du surplus injecté, valorisé par tranche TOU.
+
+    Croise le SURPLUS INJECTÉ horaire (kWh/h, typiquement
+    ``production[h] − autoconsommé[h]`` issu de :func:`hourly_self_consumption`)
+    et le SOUTIRAGE RÉSEAU horaire (import, kWh/h) avec un découpage TIME-OF-USE
+    (pointe / pleine / creuse) pour appliquer la règle de compensation
+    net-metering (loi 13-09, MT/HT) :
+
+        compensé[tranche] = min(injecté[tranche],
+                                import[tranche] × compensation_ratio)
+        économie[tranche] = compensé[tranche] × tarif[tranche]
+
+    Le reste (``injecté − compensé``) est l'EXCÉDENT non absorbé par le
+    soutirage de la même tranche : non valorisé par défaut, ou au tarif
+    résiduel ``spill_tariff`` si fourni.
+
+    Paramètres
+    ----------
+    injected_curve : itérable du surplus injecté horaire (kWh/h) — n'importe
+        quelle longueur multiple de 24 (journée type, semaine, année 8760 h).
+        Les heures sont mappées sur ``hour_tranches`` modulo 24. Valeurs
+        illisibles/négatives → 0 (jamais de rejet).
+    import_curve : itérable du soutirage réseau horaire (kWh/h), même mapping.
+        Absent → soutirage nul → rien à compenser (économie 0).
+    hour_tranches : liste de 24 libellés de tranche par heure (défaut
+        ``DEFAULT_HOUR_TRANCHES``). Un libellé inconnu retombe sur « pleine ».
+    tranche_tariffs : dict ``{tranche: MAD/kWh}`` (défaut
+        ``DEFAULT_TRANCHE_TARIFFS``). Tarif manquant/illisible → 0.
+    surplus_injecte_compense : réglage EXISTANT (toggle). False → l'injection
+        n'est PAS compensée → économie 0, tout le surplus en « non compensé ».
+    days_per_year : facteur d'annualisation si la courbe est une journée type
+        (24 h → ×365). Si la courbe couvre déjà l'année (≥ 8760 h), passer 1.
+    spill_tariff : tarif résiduel (MAD/kWh) du surplus EXCÉDENTAIRE non
+        compensé (rachat éventuel) ; None → non valorisé (cas 13-09 MT).
+    annual_cap_kwh : plafond annuel d'énergie compensée (kWh/an) ; None → pas
+        de plafond. Appliqué des tranches les plus chères aux moins chères.
+    compensation_ratio : fraction du soutirage compensable par l'injection
+        (1.0 = compensation intégrale) ; borné à [0, 1].
+
+    Retourne un dict JSON-sérialisable ::
+
+        {compense, hours, periods, days_per_year,
+         tranches: {nom: {injected_kwh, import_kwh, compensated_kwh,
+                          spilled_kwh, tariff, savings_mad}},
+         injected_kwh, import_kwh, compensated_kwh, spilled_kwh,
+         annual_compensated_kwh, annual_injected_kwh,
+         savings_mad_per_period, annual_savings_mad,
+         annual_spill_value_mad, annual_cap_kwh, compensation_ratio,
+         warnings: []}
+
+    Ne lève jamais : toggle OFF / courbes vides / tarifs nuls → économie 0,
+    division par zéro bornée.
+    """
+    warnings = []
+
+    injected = _coerce_series(injected_curve)
+    imported = _coerce_series(import_curve)
+
+    tranches_by_hour = list(hour_tranches) if hour_tranches \
+        else list(DEFAULT_HOUR_TRANCHES)
+    if not tranches_by_hour:
+        tranches_by_hour = list(DEFAULT_HOUR_TRANCHES)
+
+    tariffs = {**DEFAULT_TRANCHE_TARIFFS, **(tranche_tariffs or {})}
+
+    def _tariff(name):
+        try:
+            t = float(tariffs.get(name, 0.0))
+        except (TypeError, ValueError):
+            return 0.0
+        return t if t >= 0 else 0.0
+
+    try:
+        ratio = float(compensation_ratio)
+    except (TypeError, ValueError):
+        ratio = 1.0
+    if ratio < 0.0:
+        ratio = 0.0
+    if ratio > 1.0:
+        ratio = 1.0
+
+    try:
+        days = float(days_per_year)
+    except (TypeError, ValueError):
+        days = 365.0
+    if days <= 0:
+        days = 1.0
+
+    # ── Agrégation des flux PAR TRANCHE (modèle sur la période fournie) ──
+    names = []
+    for label in tranches_by_hour:
+        key = (label or "pleine").lower()
+        if key not in names:
+            names.append(key)
+    # Toujours exposer les tranches tarifées même si la courbe ne les touche pas.
+    for key in tariffs:
+        k = (key or "").lower()
+        if k and k not in names:
+            names.append(k)
+
+    agg = {n: {"injected": 0.0, "import": 0.0} for n in names}
+
+    n_hours = max(len(injected), len(imported))
+    for h in range(n_hours):
+        inj = injected[h] if h < len(injected) else 0.0
+        imp = imported[h] if h < len(imported) else 0.0
+        label = tranches_by_hour[h % len(tranches_by_hour)]
+        key = (label or "pleine").lower()
+        if key not in agg:
+            key = "pleine"
+            if "pleine" not in agg:
+                agg["pleine"] = {"injected": 0.0, "import": 0.0}
+                names.append("pleine")
+        agg[key]["injected"] += inj
+        agg[key]["import"] += imp
+
+    compense = bool(surplus_injecte_compense)
+    if not compense:
+        warnings.append(
+            "compensation de l'injection désactivée "
+            "(surplus_injecte_compense = False) — économie nulle, surplus non "
+            "valorisé")
+
+    # ── Compensation par tranche (cap = soutirage de la tranche × ratio) ──
+    tranche_out = {}
+    total_injected = 0.0
+    total_import = 0.0
+    for name in names:
+        inj = round(agg[name]["injected"], 6)
+        imp = round(agg[name]["import"], 6)
+        total_injected += inj
+        total_import += imp
+        if compense:
+            compensable = min(inj, imp * ratio)
+            if compensable < 0.0:
+                compensable = 0.0
+        else:
+            compensable = 0.0
+        tranche_out[name] = {
+            "injected_kwh": round(inj, 3),
+            "import_kwh": round(imp, 3),
+            "eligible_kwh": round(compensable, 6),  # avant plafond annuel
+            "compensated_kwh": 0.0,
+            "spilled_kwh": 0.0,
+            "tariff": round(_tariff(name), 4),
+            "savings_mad": 0.0,
+        }
+
+    # ── Plafond annuel : allouer l'énergie compensée des tranches chères → pas ──
+    # Le plafond est exprimé en kWh/AN ; on le convertit en kWh sur la PÉRIODE
+    # fournie (÷ days) pour l'appliquer sur l'énergie de la période.
+    cap_period = None
+    try:
+        if annual_cap_kwh is not None:
+            cap_annual = float(annual_cap_kwh)
+            if cap_annual >= 0:
+                cap_period = cap_annual / days if days > 0 else cap_annual
+    except (TypeError, ValueError):
+        cap_period = None
+
+    # Ordre d'allocation : tranches connues du plus cher au moins cher, puis le
+    # reste par tarif décroissant (toute tranche custom).
+    def _alloc_key(name):
+        try:
+            rank = _TRANCHE_ORDER.index(name)
+        except ValueError:
+            rank = len(_TRANCHE_ORDER)
+        return (-_tariff(name), rank, name)
+
+    remaining_cap = cap_period
+    for name in sorted(names, key=_alloc_key):
+        out = tranche_out[name]
+        eligible = out["eligible_kwh"]
+        if remaining_cap is not None:
+            comp = min(eligible, max(0.0, remaining_cap))
+            remaining_cap = max(0.0, remaining_cap - comp)
+        else:
+            comp = eligible
+        spilled = max(0.0, out["injected_kwh"] - comp)
+        out["compensated_kwh"] = round(comp, 3)
+        out["spilled_kwh"] = round(spilled, 3)
+        out["savings_mad"] = round(comp * _tariff(name), 2)
+
+    if cap_period is not None and total_injected > 0:
+        total_eligible = sum(t["eligible_kwh"] for t in tranche_out.values())
+        if total_eligible > cap_period:
+            warnings.append(
+                "plafond annuel de compensation atteint — une partie du "
+                "surplus éligible n'est pas valorisée")
+
+    # ── Totaux sur la période + annualisation ──
+    period_compensated = round(
+        sum(t["compensated_kwh"] for t in tranche_out.values()), 3)
+    period_spilled = round(
+        sum(t["spilled_kwh"] for t in tranche_out.values()), 3)
+    savings_per_period = round(
+        sum(t["savings_mad"] for t in tranche_out.values()), 2)
+
+    # Valeur du surplus excédentaire (spill) au tarif résiduel facultatif.
+    spill_value_period = 0.0
+    spill_rate = None
+    if spill_tariff is not None:
+        try:
+            spill_rate = float(spill_tariff)
+        except (TypeError, ValueError):
+            spill_rate = None
+        if spill_rate is not None and spill_rate < 0:
+            spill_rate = 0.0
+    if spill_rate:
+        spill_value_period = round(period_spilled * spill_rate, 2)
+
+    annual_savings = round(savings_per_period * days, 2)
+    annual_spill_value = round(spill_value_period * days, 2)
+    annual_compensated = round(period_compensated * days, 3)
+    annual_injected = round(total_injected * days, 3)
+
+    if compense and total_injected > 0 and period_compensated <= 0:
+        warnings.append(
+            "surplus injecté mais aucun soutirage simultané par tranche à "
+            "compenser — vérifier la courbe d'import ou envisager du stockage")
+
+    return {
+        "compense": compense,
+        "hours": n_hours,
+        "periods": days,
+        "days_per_year": round(days, 2),
+        "tranches": tranche_out,
+        "injected_kwh": round(total_injected, 3),
+        "import_kwh": round(total_import, 3),
+        "compensated_kwh": period_compensated,
+        "spilled_kwh": period_spilled,
+        "annual_injected_kwh": annual_injected,
+        "annual_compensated_kwh": annual_compensated,
+        "savings_mad_per_period": savings_per_period,
+        "annual_savings_mad": annual_savings,
+        "annual_spill_value_mad": annual_spill_value,
+        "spill_tariff": spill_rate,
+        "annual_cap_kwh": annual_cap_kwh,
+        "compensation_ratio": round(ratio, 4),
+        "warnings": warnings,
+    }
