@@ -41,7 +41,7 @@ openpyxl==3.1.5
 # FG352 — RAG / DocQA : découpage de texte en fragments (free/open-source).
 # Importé défensivement dans apps/ged/services.chunk_text (repli pur Python si
 # absent), donc le code reste import-safe sans cette dépendance.
-langchain-text-splitters==0.3.2
+langchain-text-splitters==1.1.2
 
 # Image handling
 Pillow==10.4.0
