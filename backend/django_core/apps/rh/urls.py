@@ -2,6 +2,7 @@ from django.urls import include, path
 from rest_framework.routers import DefaultRouter
 
 from .views import (
+    AccidentTravailViewSet,
     AffectationRosterViewSet,
     CertificationViewSet,
     CompetenceEmployeViewSet,
@@ -51,6 +52,7 @@ router.register(r'visites-medicales', VisiteMedicaleViewSet)
 router.register(r'epi-catalogue', EpiCatalogueViewSet)
 router.register(r'dotations-epi', DotationEpiViewSet)
 router.register(r'echeances', EcheancesRhViewSet, basename='rh-echeances')
+router.register(r'accidents-travail', AccidentTravailViewSet)
 
 urlpatterns = [
     path('', include(router.urls)),
