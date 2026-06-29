@@ -2335,3 +2335,233 @@ def tariff_escalation_projection(*, annual_savings_year1,
         "summary": summary,
         "warnings": warnings,
     }
+
+
+# ── FG261 — Optimisation de la puissance souscrite (C&I) après PV ─────────────
+# Pour un client COMMERCIAL / INDUSTRIEL facturé sur une PUISSANCE SOUSCRITE
+# (kVA ou kW, « prime fixe » / redevance de puissance MT-BT) : le PV écrête la
+# pointe de soutirage RÉSEAU pendant les heures ensoleillées. En croisant la
+# courbe de charge horaire avec la production PV horaire, on calcule la demande
+# RÉSEAU nette heure par heure (charge − PV, plancher 0), on en tire la NOUVELLE
+# pointe de soutirage, et on recommande une puissance souscrite réduite. La
+# baisse de redevance de puissance (MAD/kVA/an) est alors chiffrée.
+#
+# RÈGLE :
+#   * demande_réseau[h] = max(0, charge[h] − production[h])  (en kW)
+#   * pointe_post_pv = max(demande_réseau)  ;  pointe_pre_pv = max(charge)
+#   * puissance recommandée = ceil(pointe_post_pv × marge_sécurité)
+#       — jamais SUPÉRIEURE à la souscription actuelle (on n'augmente pas) ;
+#       — bornée au plus à la souscription actuelle même si la pointe ne baisse
+#         pas (recommandation = pas de réduction → économie 0).
+#   * facteur de puissance / conversion kW→kVA : si ``power_factor`` est fourni
+#     (cos φ), la demande en kVA = demande_kW / cos φ ; sinon on raisonne dans
+#     l'unité de la souscription telle quelle (la souscription est déjà en kVA
+#     ou en kW selon le contrat — on ne convertit que si on a le cos φ).
+#   * économie annuelle = (souscription_actuelle − recommandée) × tarif_capacité.
+#     Le tarif est en MAD par unité de puissance et par AN (``capacity_tariff``,
+#     ``tariff_period="year"``) ou par MOIS (``tariff_period="month"`` → ×12).
+#
+# Module PUR : aucune base, aucun réseau, aucun prix d'achat/marge. Les entrées
+# numériques ne sont JAMAIS rejetées (liberté de saisie du founder) — les
+# valeurs illisibles/négatives sont ramenées à 0, jamais d'exception, division
+# par zéro bornée.
+
+# Marge de sécurité par défaut sur la pointe post-PV pour dimensionner la
+# souscription recommandée (aléas météo, croissance de charge, démarrages).
+DEFAULT_SUBSCRIBED_SAFETY_MARGIN = 1.10
+
+
+def optimize_subscribed_power(load_curve=None, production_curve=None, *,
+                              current_subscribed_kva=None,
+                              capacity_tariff=0.0,
+                              tariff_period="year",
+                              safety_margin=DEFAULT_SUBSCRIBED_SAFETY_MARGIN,
+                              power_factor=None,
+                              daily_load_kwh=None,
+                              daily_production_kwh=None,
+                              load_profile="commercial"):
+    """FG261 — recommande une puissance souscrite réduite après PV (C&I).
+
+    Croise la COURBE DE CHARGE horaire (kW/h ≈ kWh par heure) et la PRODUCTION
+    PV horaire (kW/h) pour calculer la demande RÉSEAU nette heure par heure
+    (``max(0, charge − PV)``), en déduit la pointe de soutirage POST-PV, puis
+    recommande une puissance souscrite réduite et chiffre l'économie sur la
+    redevance de puissance (prime fixe).
+
+    Paramètres
+    ----------
+    load_curve : itérable de demandes horaires (kW, ≈ kWh/h) — 24 h, 8760 h ou
+        toute longueur. Valeurs illisibles/négatives → 0 (jamais de rejet). Si
+        absent, on synthétise un profil type (``load_profile``) calé sur
+        ``daily_load_kwh``.
+    production_curve : production PV horaire (kW/h). Si absent, on synthétise
+        ``TYPICAL_PV_PROFILE`` calé sur ``daily_production_kwh``.
+    current_subscribed_kva : puissance souscrite ACTUELLE (kVA ou kW selon le
+        contrat). Si absente/illisible → la pointe pré-PV sert de référence.
+    capacity_tariff : redevance de puissance (MAD par unité de puissance et par
+        période ``tariff_period``).
+    tariff_period : ``"year"`` (défaut) ou ``"month"`` (×12 pour l'annuel).
+    safety_margin : marge sur la pointe post-PV pour dimensionner la
+        souscription recommandée (défaut 1.10). Bornée ≥ 1.0.
+    power_factor : cos φ facultatif — convertit la demande kW en kVA
+        (kVA = kW / cos φ) quand la souscription est en kVA. Si absent, on
+        raisonne dans l'unité de la souscription telle quelle.
+    daily_load_kwh / daily_production_kwh : énergies journalières pour générer
+        les profils type quand une courbe n'est pas fournie.
+    load_profile : clé de profil type de charge (repli) — ``"commercial"`` par
+        défaut (la cible C&I).
+
+    Retourne un dict JSON-sérialisable ::
+
+        {hours, peak_pre_pv_kw, peak_post_pv_kw, peak_reduction_kw,
+         peak_reduction_pct, demand_unit, power_factor,
+         peak_post_pv_demand, current_subscribed, recommended_subscribed,
+         subscribed_reduction, annual_capacity_tariff,
+         annual_saving, monthly_saving, load_source, production_source,
+         warnings: []}
+
+    Ne lève jamais : courbes vides → pointe 0 ; pas de réduction possible →
+    recommandation = souscription actuelle et économie 0 ; division par zéro
+    bornée (cos φ ≤ 0 ignoré).
+    """
+    warnings = []
+
+    load = _coerce_series(load_curve)
+    load_source = "courbe fournie"
+    if not load:
+        load = _scaled_typical_load(daily_load_kwh, load_profile)
+        load_source = f"profil type ({load_profile})"
+
+    prod = _coerce_series(production_curve)
+    production_source = "courbe fournie"
+    if not prod:
+        prod = _scaled_typical_pv(daily_production_kwh)
+        production_source = "profil type PV"
+
+    # Alignement des longueurs (on borne sur la plus courte).
+    n = min(len(load), len(prod)) if prod else len(load)
+    if load and prod and len(load) != len(prod):
+        warnings.append(
+            f"courbes de longueurs différentes (charge={len(load)} h, "
+            f"production={len(prod)} h) — alignées sur {n} h")
+
+    # ── Pointe de soutirage réseau pré-PV et post-PV (en kW) ──
+    peak_pre = 0.0
+    peak_post = 0.0
+    if prod:
+        for i in range(n):
+            c = load[i]
+            net = c - prod[i]
+            if net < 0.0:
+                net = 0.0
+            if c > peak_pre:
+                peak_pre = c
+            if net > peak_post:
+                peak_post = net
+    else:
+        # Aucune production fournie ni synthétisable : pointe post-PV = pré-PV.
+        for c in load:
+            if c > peak_pre:
+                peak_pre = c
+        peak_post = peak_pre
+
+    peak_pre = round(peak_pre, 3)
+    peak_post = round(peak_post, 3)
+    peak_reduction_kw = round(max(0.0, peak_pre - peak_post), 3)
+    peak_reduction_pct = (
+        round(peak_reduction_kw / peak_pre * 100.0, 1) if peak_pre > 0 else 0.0)
+
+    # ── Conversion kW → kVA si cos φ fourni (souscription en kVA) ──
+    pf = None
+    try:
+        pf_val = float(power_factor)
+        if 0.0 < pf_val <= 1.0:
+            pf = pf_val
+    except (TypeError, ValueError):
+        pf = None
+    if pf is not None:
+        demand_unit = "kVA"
+        peak_post_demand = round(peak_post / pf, 3)
+    else:
+        demand_unit = "kW/kVA"
+        peak_post_demand = peak_post
+
+    # ── Souscription actuelle (référence) ──
+    try:
+        current = float(current_subscribed_kva)
+    except (TypeError, ValueError):
+        current = None
+    if current is None or current <= 0:
+        # Pas de souscription fournie : on prend la pointe pré-PV convertie
+        # comme référence (l'économie est alors purement indicative).
+        ref = peak_pre / pf if pf else peak_pre
+        current = round(ref, 3)
+        if current > 0:
+            warnings.append(
+                "puissance souscrite actuelle non fournie — pointe pré-PV "
+                "utilisée comme référence (économie indicative)")
+
+    # ── Marge de sécurité ──
+    try:
+        margin = float(safety_margin)
+    except (TypeError, ValueError):
+        margin = DEFAULT_SUBSCRIBED_SAFETY_MARGIN
+    if margin < 1.0:
+        margin = 1.0
+
+    # Souscription recommandée = ceil(pointe post-PV × marge), bornée à la
+    # souscription actuelle (on ne RECOMMANDE jamais d'augmenter).
+    recommended_raw = peak_post_demand * margin
+    recommended = int(math.ceil(recommended_raw)) if recommended_raw > 0 else 0
+    if current > 0 and recommended > current:
+        # La pointe post-PV (× marge) dépasse déjà la souscription : aucune
+        # réduction possible — on garde la souscription actuelle.
+        recommended = round(current, 3)
+        warnings.append(
+            "la pointe réseau après PV (avec marge) atteint la puissance "
+            "souscrite actuelle — aucune réduction recommandée")
+
+    subscribed_reduction = round(max(0.0, current - recommended), 3)
+
+    # ── Tarif annuel de capacité ──
+    try:
+        tariff = float(capacity_tariff)
+    except (TypeError, ValueError):
+        tariff = 0.0
+    if tariff < 0.0:
+        tariff = 0.0
+    annual_tariff = tariff * 12.0 if (tariff_period or "year") == "month" \
+        else tariff
+
+    annual_saving = round(subscribed_reduction * annual_tariff, 2)
+    monthly_saving = round(annual_saving / 12.0, 2)
+
+    if peak_reduction_kw <= 0 and prod:
+        warnings.append(
+            "le PV n'écrête pas la pointe de soutirage (pointe hors heures "
+            "solaires) — pas de gain sur la puissance souscrite")
+    if subscribed_reduction > 0 and tariff <= 0:
+        warnings.append(
+            "réduction de puissance possible mais tarif de capacité non "
+            "fourni — économie non chiffrée (renseigner capacity_tariff)")
+
+    return {
+        "hours": n,
+        "peak_pre_pv_kw": peak_pre,
+        "peak_post_pv_kw": peak_post,
+        "peak_reduction_kw": peak_reduction_kw,
+        "peak_reduction_pct": peak_reduction_pct,
+        "demand_unit": demand_unit,
+        "power_factor": pf,
+        "peak_post_pv_demand": peak_post_demand,
+        "current_subscribed": round(current, 3),
+        "recommended_subscribed": recommended,
+        "subscribed_reduction": subscribed_reduction,
+        "safety_margin": round(margin, 4),
+        "annual_capacity_tariff": round(annual_tariff, 4),
+        "annual_saving": annual_saving,
+        "monthly_saving": monthly_saving,
+        "load_source": load_source,
+        "production_source": production_source,
+        "warnings": warnings,
+    }
