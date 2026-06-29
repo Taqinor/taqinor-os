@@ -30,10 +30,10 @@ from django.utils import timezone
 
 from .models import (
     BordereauRemise, Caisse, CessionImmobilisation, ClotureCaisse,
-    CompteComptable, DotationAmortissement, EcritureComptable, Effet,
-    ExerciceComptable, Immobilisation, Journal, LigneEcriture,
+    CompteComptable, CompteTresorerie, DotationAmortissement, EcritureComptable,
+    Effet, ExerciceComptable, Immobilisation, Journal, LigneEcriture,
     LignePrevisionnelTresorerie, LigneReleve, MouvementCaisse,
-    PaymentRun, PaymentRunLine, PeriodeComptable, PlanAmortissement,
+    NoteFrais, PaymentRun, PaymentRunLine, PeriodeComptable, PlanAmortissement,
     PlanComptable, PointageReleve, Rapprochement, RapprochementBancaire,
     VirementInterne,
 )
@@ -2167,3 +2167,194 @@ def fichier_virement(run):
         'nb_lignes': len(rows),
         'mode_paiement': run.mode_paiement,
     }
+
+
+# ── FG135 — Notes de frais & remboursements employés ───────────────────────
+
+# Compte de charge par défaut imputé à une note de frais validée (classe 6) :
+# 6143 « Déplacements, missions et réceptions » du barème CGNC.
+_COMPTE_NOTE_FRAIS_DEFAUT = '6143'
+# Compte personnel-créditeur (classe 4) : la dette de la société envers
+# l'employé qui a avancé le cash (4432 « Rémunérations dues au personnel »).
+_COMPTE_PERSONNEL_CREDITEUR = '4432'
+
+
+def creer_note_frais(company, *, employe, date_frais, montant, motif,
+                     categorie=None, justificatif=None, compte_charge=None,
+                     user=None):
+    """Crée une note de frais (FG135) en BROUILLON, référence posée côté serveur.
+
+    ``montant`` doit être strictement positif (validé par ``clean``). La
+    ``reference`` (NDF-YYYYMM-NNNN) est attribuée via la fabrique gap-free
+    race-safe (``apps.ventes.utils.references`` — jamais count()+1). ``company``
+    posée côté serveur. Renvoie la note.
+    """
+    note = NoteFrais(
+        company=company,
+        employe=employe,
+        date_frais=date_frais,
+        montant=Decimal(montant or 0),
+        motif=motif or '',
+        categorie=categorie or NoteFrais.Categorie.AUTRE,
+        compte_charge=compte_charge,
+        created_by=user,
+    )
+    if justificatif is not None:
+        note.justificatif = justificatif
+    note.full_clean(exclude=['reference', 'employe', 'created_by'])
+    from apps.ventes.utils.references import next_reference
+    note.reference = next_reference(NoteFrais, 'NDF', company)
+    note.save()
+    return note
+
+
+def soumettre_note_frais(note):
+    """Soumet une note pour validation (brouillon → soumise) — FG135."""
+    if note.statut not in (NoteFrais.Statut.BROUILLON,
+                           NoteFrais.Statut.REJETEE):
+        raise ValidationError(
+            "Seule une note en brouillon (ou rejetée) peut être soumise.")
+    note.statut = NoteFrais.Statut.SOUMISE
+    note.motif_rejet = ''
+    note.save(update_fields=['statut', 'motif_rejet'])
+    return note
+
+
+@transaction.atomic
+def valider_note_frais(note, *, user=None, compte_charge=None):
+    """Valide une note de frais et POSTE la charge au grand livre (FG135).
+
+    Écriture ÉQUILIBRÉE dans le journal OD, datée du jour de la dépense :
+    débit du compte de charge classe 6 (``compte_charge`` fourni, sinon celui
+    de la note, sinon 6143 par défaut) / crédit du compte personnel-créditeur
+    4432 (la dette envers l'employé). RESPECTE LE VERROU DE PÉRIODE (FG115).
+    Idempotent : une note déjà validée renvoie sa note inchangée. Renvoie la
+    note.
+    """
+    if note.statut == NoteFrais.Statut.VALIDEE:
+        return note
+    if note.statut != NoteFrais.Statut.SOUMISE:
+        raise ValidationError(
+            "Seule une note soumise peut être validée.")
+    company = note.company
+    montant = Decimal(note.montant or 0)
+    if montant <= 0:
+        raise ValidationError(
+            "Impossible de valider une note de frais de montant nul.")
+    if PeriodeComptable.date_verrouillee(company.id, note.date_frais):
+        raise ValidationError(
+            "Période comptable clôturée : impossible de valider la note de "
+            f"frais du {note.date_frais}.")
+    charge = compte_charge or note.compte_charge or _assurer_compte(
+        company, _COMPTE_NOTE_FRAIS_DEFAUT)
+    personnel = _assurer_compte(company, _COMPTE_PERSONNEL_CREDITEUR)
+    journal = _journal(company, Journal.Type.OPERATIONS_DIVERSES)
+    if journal is None:
+        seed_journaux(company)
+        journal = _journal(company, Journal.Type.OPERATIONS_DIVERSES)
+    libelle = f"Note de frais {note.reference} — {note.motif}"
+    lignes = [
+        {'compte': charge, 'debit': montant, 'credit': Decimal('0'),
+         'libelle': libelle},
+        {'compte': personnel, 'debit': Decimal('0'), 'credit': montant,
+         'libelle': libelle, 'tiers_type': 'employe',
+         'tiers_id': note.employe_id},
+    ]
+    ecriture = creer_ecriture(
+        company, journal, note.date_frais, libelle, lignes,
+        reference=note.reference or f'NDF-{note.id}',
+        source_type='note_frais', source_id=note.id,
+        created_by=user, statut=EcritureComptable.Statut.VALIDEE,
+    )
+    note.statut = NoteFrais.Statut.VALIDEE
+    note.compte_charge = charge
+    note.valide_par = user
+    note.date_validation = timezone.now()
+    note.ecriture_charge = ecriture
+    note.motif_rejet = ''
+    note.save(update_fields=[
+        'statut', 'compte_charge', 'valide_par', 'date_validation',
+        'ecriture_charge', 'motif_rejet'])
+    return note
+
+
+def rejeter_note_frais(note, *, motif_rejet='', user=None):
+    """Rejette une note soumise (soumise → rejetée), motif figé — FG135."""
+    if note.statut != NoteFrais.Statut.SOUMISE:
+        raise ValidationError(
+            "Seule une note soumise peut être rejetée.")
+    note.statut = NoteFrais.Statut.REJETEE
+    note.motif_rejet = motif_rejet or ''
+    note.save(update_fields=['statut', 'motif_rejet'])
+    return note
+
+
+@transaction.atomic
+def rembourser_note_frais(note, *, compte_tresorerie, date_remboursement=None,
+                          mode_remboursement=None, user=None):
+    """Rembourse une note validée et POSTE le paiement au grand livre (FG135).
+
+    Écriture ÉQUILIBRÉE dans le journal de trésorerie (BNK pour une banque, CSH
+    pour une caisse), datée du remboursement : débit du compte personnel-
+    créditeur 4432 (extinction de la dette) / crédit du compte comptable du
+    ``compte_tresorerie`` payeur. Le compte de trésorerie DOIT appartenir à la
+    société de la note. RESPECTE LE VERROU DE PÉRIODE (FG115). Idempotent : une
+    note déjà remboursée renvoie sa note inchangée. Renvoie la note.
+    """
+    if note.statut == NoteFrais.Statut.REMBOURSEE:
+        return note
+    if note.statut != NoteFrais.Statut.VALIDEE:
+        raise ValidationError(
+            "Seule une note validée peut être remboursée.")
+    company = note.company
+    if compte_tresorerie is None:
+        raise ValidationError(
+            "Un compte de trésorerie payeur est requis pour le remboursement.")
+    if compte_tresorerie.company_id != company.id:
+        raise ValidationError("Compte de trésorerie inconnu.")
+    montant = Decimal(note.montant or 0)
+    date_rbt = date_remboursement or note.date_frais
+    if PeriodeComptable.date_verrouillee(company.id, date_rbt):
+        raise ValidationError(
+            "Période comptable clôturée : impossible de rembourser la note de "
+            f"frais à la date du {date_rbt}.")
+    personnel = _assurer_compte(company, _COMPTE_PERSONNEL_CREDITEUR)
+    compte_treso = compte_tresorerie.compte_comptable
+    if compte_tresorerie.type_compte == CompteTresorerie.Type.CAISSE:
+        journal = _journal(company, Journal.Type.CAISSE)
+    else:
+        journal = _journal(company, Journal.Type.BANQUE)
+    if journal is None:
+        seed_journaux(company)
+        journal = _journal(
+            company,
+            Journal.Type.CAISSE
+            if compte_tresorerie.type_compte == CompteTresorerie.Type.CAISSE
+            else Journal.Type.BANQUE)
+    libelle = (f"Remboursement note de frais {note.reference} — "
+               f"{note.employe_id}")
+    lignes = [
+        {'compte': personnel, 'debit': montant, 'credit': Decimal('0'),
+         'libelle': libelle, 'tiers_type': 'employe',
+         'tiers_id': note.employe_id},
+        {'compte': compte_treso, 'debit': Decimal('0'), 'credit': montant,
+         'libelle': libelle},
+    ]
+    ecriture = creer_ecriture(
+        company, journal, date_rbt, libelle, lignes,
+        reference=note.reference or f'NDF-{note.id}',
+        source_type='note_frais_remboursement', source_id=note.id,
+        created_by=user, statut=EcritureComptable.Statut.VALIDEE,
+    )
+    note.statut = NoteFrais.Statut.REMBOURSEE
+    note.compte_tresorerie = compte_tresorerie
+    note.mode_remboursement = (
+        mode_remboursement or note.mode_remboursement
+        or NoteFrais.ModeRemboursement.VIREMENT)
+    note.date_remboursement = date_rbt
+    note.rembourse_par = user
+    note.ecriture_remboursement = ecriture
+    note.save(update_fields=[
+        'statut', 'compte_tresorerie', 'mode_remboursement',
+        'date_remboursement', 'rembourse_par', 'ecriture_remboursement'])
+    return note

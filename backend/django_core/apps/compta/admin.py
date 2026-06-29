@@ -4,8 +4,8 @@ from .models import (
     BordereauRemise, Caisse, ClotureCaisse, CompteComptable, CompteTresorerie,
     EcritureComptable, Effet, ExerciceComptable, Immobilisation, Journal,
     LigneEcriture, LignePrevisionnelTresorerie, LigneReleve, MouvementCaisse,
-    PaymentRun, PaymentRunLine, PeriodeComptable, PlanComptable, Rapprochement,
-    RapprochementBancaire, VirementInterne,
+    NoteFrais, PaymentRun, PaymentRunLine, PeriodeComptable, PlanComptable,
+    Rapprochement, RapprochementBancaire, VirementInterne,
 )
 
 
@@ -194,3 +194,11 @@ class PaymentRunLineAdmin(admin.ModelAdmin):
     list_display = ('id', 'payment_run', 'beneficiaire', 'reference', 'montant',
                     'date_echeance', 'company')
     search_fields = ('beneficiaire', 'reference')
+
+
+@admin.register(NoteFrais)
+class NoteFraisAdmin(admin.ModelAdmin):
+    list_display = ('id', 'reference', 'employe', 'date_frais', 'categorie',
+                    'montant', 'statut', 'date_remboursement', 'company')
+    list_filter = ('statut', 'categorie', 'mode_remboursement')
+    search_fields = ('reference', 'motif')

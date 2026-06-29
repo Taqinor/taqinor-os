@@ -1955,3 +1955,177 @@ class PaymentRunLine(models.Model):
             raise ValidationError(
                 "Le montant d'une ligne de règlement doit être strictement "
                 "positif.")
+
+
+# ── FG135 — Notes de frais & remboursements employés ───────────────────────
+
+class NoteFrais(models.Model):
+    """Note de frais d'un employé : dépense engagée à rembourser (FG135).
+
+    Un employé qui avance du cash sur le terrain (déplacement, repas, carburant,
+    petites fournitures…) saisit une note de frais avec un ``justificatif`` photo
+    (scan du ticket/reçu) et un ``montant`` TTC. La note suit un cycle de vie :
+
+    * ``brouillon`` — saisie en cours par l'employé ;
+    * ``soumise`` — envoyée pour validation ;
+    * ``validee`` — approuvée par un responsable (qui POSTE l'écriture de
+      constatation de la charge : débit compte de charge classe 6 / crédit du
+      compte personnel-créditeur 4432) ; le montant devient une dette envers
+      l'employé ;
+    * ``rejetee`` — refusée (motif figé) ;
+    * ``remboursee`` — l'avance est rendue à l'employé (écriture de paiement :
+      débit 4432 / crédit du compte de trésorerie payeur) ; état terminal.
+
+    Strictement additif. ``company`` posée côté serveur, jamais lue du corps de
+    requête. L'employé est un ``settings.AUTH_USER_MODEL`` (app fondation
+    authentication — import autorisé). Aucun montant d'achat interne (prix
+    d'achat/marge) n'apparaît ici.
+    """
+    class Categorie(models.TextChoices):
+        DEPLACEMENT = 'deplacement', 'Déplacement / transport'
+        CARBURANT = 'carburant', 'Carburant'
+        REPAS = 'repas', 'Repas / restauration'
+        HEBERGEMENT = 'hebergement', 'Hébergement'
+        FOURNITURES = 'fournitures', 'Petites fournitures'
+        PEAGE = 'peage', 'Péage / stationnement'
+        AUTRE = 'autre', 'Autre'
+
+    class Statut(models.TextChoices):
+        BROUILLON = 'brouillon', 'Brouillon'
+        SOUMISE = 'soumise', 'Soumise'
+        VALIDEE = 'validee', 'Validée'
+        REJETEE = 'rejetee', 'Rejetée'
+        REMBOURSEE = 'remboursee', 'Remboursée'
+
+    class ModeRemboursement(models.TextChoices):
+        VIREMENT = 'virement', 'Virement bancaire'
+        ESPECES = 'especes', 'Espèces'
+        CHEQUE = 'cheque', 'Chèque'
+
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='notes_frais',
+        verbose_name='Société',
+    )
+    # Référence interne par société (NDF-YYYYMM-NNNN), posée côté serveur via
+    # apps.ventes.utils.references (highest-used+1, jamais count()+1).
+    reference = models.CharField(
+        max_length=50, blank=True, default='', verbose_name='Référence')
+    # Employé qui a engagé la dépense (créancier une fois la note validée).
+    employe = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.PROTECT,
+        related_name='notes_frais',
+        verbose_name='Employé',
+    )
+    date_frais = models.DateField(verbose_name='Date de la dépense')
+    categorie = models.CharField(
+        max_length=15, choices=Categorie.choices,
+        default=Categorie.AUTRE, verbose_name='Catégorie')
+    montant = models.DecimalField(
+        max_digits=14, decimal_places=2, default=Decimal('0'),
+        verbose_name='Montant (TTC)')
+    motif = models.CharField(max_length=255, verbose_name='Motif')
+    # Justificatif PHOTO (scan du ticket/reçu) stocké via le storage projet.
+    justificatif = models.FileField(
+        upload_to='notes_frais/justificatifs/%Y/%m/',
+        blank=True, null=True, verbose_name='Justificatif (photo)')
+    statut = models.CharField(
+        max_length=12, choices=Statut.choices,
+        default=Statut.BROUILLON, verbose_name='Statut')
+    # Compte de charge (classe 6) imputé à la validation (défaut 6143).
+    compte_charge = models.ForeignKey(
+        CompteComptable,
+        on_delete=models.PROTECT,
+        null=True, blank=True,
+        related_name='notes_frais_charge',
+        verbose_name='Compte de charge',
+    )
+    # ── Validation (constatation de la charge / dette envers l'employé) ──
+    valide_par = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='notes_frais_validees',
+        verbose_name='Validée par',
+    )
+    date_validation = models.DateTimeField(
+        null=True, blank=True, verbose_name='Validée le')
+    ecriture_charge = models.ForeignKey(
+        EcritureComptable,
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='notes_frais_charge',
+        verbose_name='Écriture de charge',
+    )
+    motif_rejet = models.CharField(
+        max_length=255, blank=True, default='', verbose_name='Motif de rejet')
+    # ── Remboursement (paiement de l'avance à l'employé) ──
+    mode_remboursement = models.CharField(
+        max_length=10, choices=ModeRemboursement.choices,
+        default=ModeRemboursement.VIREMENT, verbose_name='Mode de remboursement')
+    compte_tresorerie = models.ForeignKey(
+        CompteTresorerie,
+        on_delete=models.PROTECT,
+        null=True, blank=True,
+        related_name='notes_frais',
+        verbose_name='Compte de trésorerie (payeur)',
+    )
+    date_remboursement = models.DateField(
+        null=True, blank=True, verbose_name='Date de remboursement')
+    rembourse_par = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='notes_frais_remboursees',
+        verbose_name='Remboursée par',
+    )
+    ecriture_remboursement = models.ForeignKey(
+        EcritureComptable,
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='notes_frais_remboursement',
+        verbose_name='Écriture de remboursement',
+    )
+    created_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='notes_frais_creees',
+        verbose_name='Saisie par',
+    )
+    date_creation = models.DateTimeField(
+        auto_now_add=True, verbose_name='Créé le')
+
+    class Meta:
+        verbose_name = 'Note de frais'
+        verbose_name_plural = 'Notes de frais'
+        ordering = ['-date_frais', '-id']
+        constraints = [
+            models.UniqueConstraint(
+                fields=['company', 'reference'],
+                condition=models.Q(reference__gt=''),
+                name='uniq_note_frais_reference',
+            ),
+        ]
+
+    def __str__(self):
+        return (f'{self.reference or "NDF"} — {self.motif} '
+                f'({self.montant})')
+
+    def clean(self):
+        super().clean()
+        if self.montant is not None and self.montant <= 0:
+            raise ValidationError(
+                "Le montant d'une note de frais doit être strictement positif.")
+
+    @property
+    def est_remboursable(self):
+        """Vrai si la note est validée et pas encore remboursée."""
+        return self.statut == self.Statut.VALIDEE
+
+    @property
+    def est_terminee(self):
+        """Vrai si la note est dans un état terminal (remboursée ou rejetée)."""
+        return self.statut in (self.Statut.REMBOURSEE, self.Statut.REJETEE)

@@ -12,9 +12,9 @@ from .models import (
     BordereauRemise, Caisse, CessionImmobilisation, ClotureCaisse,
     CompteComptable, CompteTresorerie, DotationAmortissement, EcritureComptable,
     Effet, ExerciceComptable, Immobilisation, Journal, LigneEcriture,
-    LignePrevisionnelTresorerie, LigneReleve, MouvementCaisse, PaymentRun,
-    PaymentRunLine, PeriodeComptable, PlanAmortissement, PlanComptable,
-    Rapprochement, RapprochementBancaire, VirementInterne,
+    LignePrevisionnelTresorerie, LigneReleve, MouvementCaisse, NoteFrais,
+    PaymentRun, PaymentRunLine, PeriodeComptable, PlanAmortissement,
+    PlanComptable, Rapprochement, RapprochementBancaire, VirementInterne,
 )
 
 
@@ -733,4 +733,49 @@ class PaymentRunSerializer(serializers.ModelSerializer):
                 CompteTresorerie.Type.BANQUE):
             raise serializers.ValidationError(
                 "Le règlement par virement se débite d'un compte bancaire.")
+        return value
+
+
+class NoteFraisSerializer(serializers.ModelSerializer):
+    """Note de frais employé (FG135).
+
+    La création n'expose que les champs de saisie (employé, dépense,
+    justificatif photo) ; ``company``/``reference``/statut et les écritures sont
+    posés côté serveur. Le cycle (soumise/validée/rejetée/remboursée) évolue par
+    les actions de service, jamais par écriture directe du corps.
+    """
+    categorie_display = serializers.CharField(
+        source='get_categorie_display', read_only=True)
+    statut_display = serializers.CharField(
+        source='get_statut_display', read_only=True)
+    employe_nom = serializers.CharField(
+        source='employe.get_full_name', read_only=True, default='')
+
+    class Meta:
+        model = NoteFrais
+        fields = [
+            'id', 'reference', 'employe', 'employe_nom', 'date_frais',
+            'categorie', 'categorie_display', 'montant', 'motif',
+            'justificatif', 'statut', 'statut_display', 'compte_charge',
+            'valide_par', 'date_validation', 'ecriture_charge', 'motif_rejet',
+            'mode_remboursement', 'compte_tresorerie', 'date_remboursement',
+            'rembourse_par', 'ecriture_remboursement', 'date_creation',
+        ]
+        read_only_fields = [
+            'reference', 'statut', 'valide_par', 'date_validation',
+            'ecriture_charge', 'motif_rejet', 'compte_tresorerie',
+            'date_remboursement', 'rembourse_par', 'ecriture_remboursement',
+            'date_creation',
+        ]
+
+    def validate_employe(self, value):
+        return _meme_societe(self, value, 'Employé')
+
+    def validate_compte_charge(self, value):
+        return _meme_societe(self, value, 'Compte de charge')
+
+    def validate_montant(self, value):
+        if value is not None and value <= 0:
+            raise serializers.ValidationError(
+                "Le montant d'une note de frais doit être strictement positif.")
         return value
