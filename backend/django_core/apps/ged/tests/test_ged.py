@@ -20,6 +20,7 @@ from apps.ged import selectors, services
 from apps.ged.models import (
     AclGed, Cabinet, Coffre, DemandeApprobation, Document, DocumentChunk,
     DocumentLien, DocumentTag, DocumentTagAssignment, DocumentVersion, Folder,
+    PartageGed,
 )
 from apps.roles.models import Role
 
@@ -2671,3 +2672,270 @@ class AclGedTests(GedBase):
         field = AclGed._meta.get_field('niveau')
         for code, _label in field.choices:
             self.assertLessEqual(len(code), field.max_length)
+
+
+# ── GED20 — Partage public d'un document par lien tokenisé ────────────
+class PartageGedTests(GedBase):
+    """GED20 — Lien public tokenisé (expiration / mot de passe / quota).
+
+    Couvre :
+    - création d'un partage côté gestion (company + created_by serveur, token
+      généré, document company-scopé) ;
+    - accès PUBLIC par jeton (sans login) → relaie le document (version courante) ;
+    - partage expiré → 410 ;
+    - partage révoqué → 404 ;
+    - quota épuisé → 410 ;
+    - mot de passe manquant/erroné → 403 ; correct → 200 ;
+    - le compteur de téléchargements s'incrémente ;
+    - le mot de passe n'est jamais renvoyé en clair (write-only + hash) ;
+    - isolation multi-tenant côté gestion (A ne voit/partage pas le doc de B) ;
+    - le jeton public ne tient compte d'AUCUNE société dans la requête ;
+    - jeton long et imprévisible (token_urlsafe).
+    """
+
+    def setUp(self):
+        super().setUp()
+        self.folder_a = Folder.objects.create(
+            company=self.co_a, cabinet=self.cab_a, nom='Docs A')
+        self.doc_a = Document.objects.create(
+            company=self.co_a, folder=self.folder_a, nom='Contrat A')
+        self.version_a = services.add_version(
+            self.doc_a, file_key='attachments/contrat-a.pdf',
+            company=self.co_a, filename='contrat-a.pdf', size=120,
+            mime='application/pdf', uploaded_by=self.admin_a)
+
+    def _public_url(self, token):
+        return f'/api/django/ged/public/{token}/'
+
+    def _make_partage(self, **kwargs):
+        return services.create_partage(
+            document=self.doc_a, company=self.co_a,
+            created_by=self.admin_a, **kwargs)
+
+    # ── Gestion (création / révocation) ──────────────────────────────
+    def test_create_partage_force_company_and_created_by_server_side(self):
+        api = auth(self.admin_a)
+        resp = api.post('/api/django/ged/partages/', {
+            'document': self.doc_a.id,
+            # Tentative d'injecter une autre société — doit être ignorée.
+            'company': self.co_b.id,
+            'created_by': self.admin_b.id,
+        }, format='json')
+        self.assertEqual(resp.status_code, 201, resp.data)
+        partage = PartageGed.objects.get(id=resp.data['id'])
+        self.assertEqual(partage.company_id, self.co_a.id)
+        self.assertEqual(partage.created_by_id, self.admin_a.id)
+        # Jeton généré côté serveur, jamais accepté du corps.
+        self.assertTrue(partage.token)
+
+    def test_create_partage_rejects_cross_tenant_document(self):
+        """On ne partage jamais le document d'un autre locataire."""
+        folder_b = Folder.objects.create(
+            company=self.co_b, cabinet=self.cab_b, nom='Docs B')
+        doc_b = Document.objects.create(
+            company=self.co_b, folder=folder_b, nom='Doc B')
+        api = auth(self.admin_a)
+        resp = api.post('/api/django/ged/partages/', {
+            'document': doc_b.id,
+        }, format='json')
+        self.assertEqual(resp.status_code, 400, resp.data)
+
+    def test_list_partages_tenant_isolation(self):
+        """A ne voit que ses propres partages, jamais ceux de B."""
+        mine = self._make_partage()
+        folder_b = Folder.objects.create(
+            company=self.co_b, cabinet=self.cab_b, nom='Docs B')
+        doc_b = Document.objects.create(
+            company=self.co_b, folder=folder_b, nom='Doc B')
+        theirs = services.create_partage(
+            document=doc_b, company=self.co_b, created_by=self.admin_b)
+        api = auth(self.admin_a)
+        resp = api.get('/api/django/ged/partages/')
+        ids = [r['id'] for r in rows(resp)]
+        self.assertIn(mine.id, ids)
+        self.assertNotIn(theirs.id, ids)
+
+    def test_cannot_retrieve_other_company_partage(self):
+        folder_b = Folder.objects.create(
+            company=self.co_b, cabinet=self.cab_b, nom='Docs B')
+        doc_b = Document.objects.create(
+            company=self.co_b, folder=folder_b, nom='Doc B')
+        theirs = services.create_partage(
+            document=doc_b, company=self.co_b, created_by=self.admin_b)
+        api = auth(self.admin_a)
+        resp = api.get(f'/api/django/ged/partages/{theirs.id}/')
+        self.assertEqual(resp.status_code, 404)
+
+    def test_password_never_returned_in_clear(self):
+        api = auth(self.admin_a)
+        resp = api.post('/api/django/ged/partages/', {
+            'document': self.doc_a.id,
+            'password': 'secret-mdp',
+        }, format='json')
+        self.assertEqual(resp.status_code, 201, resp.data)
+        # Le mot de passe en clair n'apparaît jamais dans la réponse.
+        self.assertNotIn('password', resp.data)
+        self.assertNotIn('password_hash', resp.data)
+        self.assertTrue(resp.data['has_password'])
+        partage = PartageGed.objects.get(id=resp.data['id'])
+        # Stocké haché, jamais en clair.
+        self.assertNotEqual(partage.password_hash, 'secret-mdp')
+        self.assertTrue(partage.check_password('secret-mdp'))
+
+    def test_revoke_via_action(self):
+        partage = self._make_partage()
+        api = auth(self.admin_a)
+        resp = api.post(
+            f'/api/django/ged/partages/{partage.id}/revoquer/', {},
+            format='json')
+        self.assertEqual(resp.status_code, 200, resp.data)
+        partage.refresh_from_db()
+        self.assertFalse(partage.actif)
+
+    # ── Accès public (token-only) ────────────────────────────────────
+    def test_public_access_streams_document(self):
+        from unittest import mock
+        partage = self._make_partage()
+        fake = b'%PDF-1.4 contrat'
+        # Aucune authentification : client public anonyme.
+        with mock.patch('apps.ged.views.fetch_attachment',
+                        return_value=(fake, None)):
+            resp = APIClient().get(self._public_url(partage.token))
+        self.assertEqual(resp.status_code, 200)
+        self.assertEqual(resp['Content-Type'], 'application/pdf')
+        self.assertIn('inline', resp['Content-Disposition'])
+        self.assertEqual(resp['X-Content-Type-Options'], 'nosniff')
+        self.assertEqual(resp.content, fake)
+        # Compteur de téléchargements incrémenté.
+        partage.refresh_from_db()
+        self.assertEqual(partage.telechargements, 1)
+
+    def test_public_unknown_token_returns_404(self):
+        resp = APIClient().get(self._public_url('jeton-inexistant'))
+        self.assertEqual(resp.status_code, 404)
+
+    def test_public_revoked_returns_404(self):
+        from unittest import mock
+        partage = self._make_partage()
+        services.revoke_partage(partage)
+        with mock.patch('apps.ged.views.fetch_attachment',
+                        return_value=(b'x', None)) as m:
+            resp = APIClient().get(self._public_url(partage.token))
+        self.assertEqual(resp.status_code, 404)
+        # Le fichier n'est jamais servi pour un lien révoqué.
+        m.assert_not_called()
+
+    def test_public_expired_returns_410(self):
+        from unittest import mock
+        from django.utils import timezone
+        from datetime import timedelta
+        partage = self._make_partage(
+            expires_at=timezone.now() - timedelta(hours=1))
+        with mock.patch('apps.ged.views.fetch_attachment',
+                        return_value=(b'x', None)) as m:
+            resp = APIClient().get(self._public_url(partage.token))
+        self.assertEqual(resp.status_code, 410)
+        m.assert_not_called()
+
+    def test_public_quota_exhausted_returns_410(self):
+        from unittest import mock
+        partage = self._make_partage(quota_max=1)
+        fake = b'%PDF-'
+        with mock.patch('apps.ged.views.fetch_attachment',
+                        return_value=(fake, None)):
+            # 1er accès : OK (quota = 1).
+            r1 = APIClient().get(self._public_url(partage.token))
+            self.assertEqual(r1.status_code, 200)
+            # 2e accès : quota épuisé → 410.
+            r2 = APIClient().get(self._public_url(partage.token))
+        self.assertEqual(r2.status_code, 410)
+        partage.refresh_from_db()
+        # Le compteur ne dépasse jamais le quota.
+        self.assertEqual(partage.telechargements, 1)
+
+    def test_public_wrong_password_returns_403(self):
+        from unittest import mock
+        partage = self._make_partage(password='mdp-correct')
+        with mock.patch('apps.ged.views.fetch_attachment',
+                        return_value=(b'x', None)) as m:
+            # Sans mot de passe.
+            r_none = APIClient().get(self._public_url(partage.token))
+            self.assertEqual(r_none.status_code, 403)
+            # Mauvais mot de passe.
+            r_bad = APIClient().get(
+                self._public_url(partage.token) + '?password=faux')
+        self.assertEqual(r_bad.status_code, 403)
+        m.assert_not_called()
+        # Aucun téléchargement comptabilisé sur un échec d'authentification.
+        partage.refresh_from_db()
+        self.assertEqual(partage.telechargements, 0)
+
+    def test_public_correct_password_streams(self):
+        from unittest import mock
+        partage = self._make_partage(password='mdp-correct')
+        fake = b'%PDF-ok'
+        with mock.patch('apps.ged.views.fetch_attachment',
+                        return_value=(fake, None)):
+            resp = APIClient().get(
+                self._public_url(partage.token) + '?password=mdp-correct')
+        self.assertEqual(resp.status_code, 200)
+        self.assertEqual(resp.content, fake)
+
+    def test_public_password_via_header(self):
+        from unittest import mock
+        partage = self._make_partage(password='entete')
+        fake = b'%PDF-h'
+        with mock.patch('apps.ged.views.fetch_attachment',
+                        return_value=(fake, None)):
+            resp = APIClient().get(
+                self._public_url(partage.token),
+                HTTP_X_PARTAGE_PASSWORD='entete')
+        self.assertEqual(resp.status_code, 200)
+        self.assertEqual(resp.content, fake)
+
+    def test_public_endpoint_ignores_request_company(self):
+        """SÉCURITÉ : le jeton public ne tient compte d'AUCUNE identité ni
+        société de la requête — même un utilisateur de B (avec son token JWT)
+        obtient le document de A si le jeton de partage est celui de A, et
+        seulement parce que le JETON l'autorise."""
+        from unittest import mock
+        partage = self._make_partage()
+        fake = b'%PDF-tenant'
+        # Client authentifié EN TANT QUE B : le jeton seul décide.
+        api_b = auth(self.admin_b)
+        with mock.patch('apps.ged.views.fetch_attachment',
+                        return_value=(fake, None)):
+            resp = api_b.get(self._public_url(partage.token))
+        self.assertEqual(resp.status_code, 200)
+        self.assertEqual(resp.content, fake)
+
+    def test_token_is_unguessable(self):
+        """Le jeton est long, URL-safe et imprévisible (token_urlsafe(32))."""
+        p1 = self._make_partage()
+        p2 = self._make_partage()
+        self.assertNotEqual(p1.token, p2.token)
+        # token_urlsafe(32) → ~43 caractères ; on exige largement > 30.
+        self.assertGreater(len(p1.token), 30)
+        # Caractères URL-safe uniquement.
+        self.assertRegex(p1.token, r'^[A-Za-z0-9_-]+$')
+
+    def test_password_hash_field_is_long_enough(self):
+        """Garde anti-troncature : le hash Django (long) tient dans le champ."""
+        from django.contrib.auth.hashers import make_password
+        h = make_password('un-mot-de-passe-quelconque')
+        partage = self._make_partage()
+        partage.password_hash = h
+        partage.save()
+        partage.refresh_from_db()
+        # TextField → aucune troncature, peu importe la longueur du hash.
+        self.assertEqual(partage.password_hash, h)
+
+    def test_public_requires_no_auth(self):
+        """L'endpoint public est AllowAny : un jeton valide sert sans login."""
+        from unittest import mock
+        partage = self._make_partage()
+        with mock.patch('apps.ged.views.fetch_attachment',
+                        return_value=(b'%PDF-', None)):
+            resp = APIClient().get(self._public_url(partage.token))
+        # Jamais 401/403 pour un jeton valide sans mot de passe.
+        self.assertEqual(resp.status_code, 200)

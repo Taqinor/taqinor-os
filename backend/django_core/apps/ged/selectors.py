@@ -6,7 +6,7 @@ Toutes les lectures sont bornées à une société.
 """
 from .models import (
     ACL_RANK, AclGed, Cabinet, Coffre, DemandeApprobation, Document,
-    DocumentLien, DocumentTag, DocumentVersion, Folder,
+    DocumentLien, DocumentTag, DocumentVersion, Folder, PartageGed,
 )
 
 
@@ -206,6 +206,14 @@ def documents_for_company(company):
 def latest_version(document):
     """Dernière version (numéro le plus élevé) d'un document, ou None."""
     return document.versions.order_by('-version').first()
+
+
+def partages_for_company(company):
+    """GED20 — Partages publics tokenisés d'une société (QuerySet).
+
+    Borné à la société — jamais de fuite cross-société. Sert le CRUD de gestion
+    (création/révocation/liste), distinct de l'accès public (token-only)."""
+    return PartageGed.objects.filter(company=company)
 
 
 def versions_for_document(document):

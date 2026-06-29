@@ -2,7 +2,7 @@ from rest_framework import serializers
 
 from .models import (
     Cabinet, Coffre, DemandeApprobation, Document, DocumentLien, DocumentTag,
-    DocumentTagAssignment, DocumentVersion, Folder,
+    DocumentTagAssignment, DocumentVersion, Folder, PartageGed,
 )
 from . import services
 
@@ -349,3 +349,80 @@ class DemandeApprobationSerializer(serializers.ModelSerializer):
             'demandeur', 'approbateur', 'statut', 'decision_le',
             'created_at', 'updated_at',
         ]
+
+
+class PartageGedSerializer(serializers.ModelSerializer):
+    """GED20 — Partage public d'un document par lien tokenisé.
+
+    Côté GESTION (création/révocation), tout est company-scopé : `company` et
+    `created_by` sont posés côté serveur (jamais lus du corps), et `document`
+    est borné à la société courante (`validate_document`). Le `token` est
+    généré côté serveur et n'est jamais accepté en entrée.
+
+    Le mot de passe est saisi via le champ `password` (write-only) et n'est
+    JAMAIS renvoyé en clair : seul `has_password` (booléen) est exposé. Le
+    `password_hash` stocké reste interne (jamais sérialisé). `public_url` donne
+    le chemin public à partager (le jeton EST le secret d'accès).
+    """
+    document_nom = serializers.CharField(
+        source='document.nom', read_only=True)
+    created_by_nom = serializers.CharField(
+        source='created_by.username', read_only=True, default=None)
+    # Mot de passe en clair, write-only : sert UNIQUEMENT à poser le hash.
+    password = serializers.CharField(
+        write_only=True, required=False, allow_blank=True,
+        style={'input_type': 'password'})
+    has_password = serializers.BooleanField(read_only=True)
+    is_expired = serializers.BooleanField(read_only=True)
+    quota_exhausted = serializers.BooleanField(read_only=True)
+    is_accessible = serializers.BooleanField(read_only=True)
+    public_url = serializers.SerializerMethodField()
+
+    class Meta:
+        model = PartageGed
+        fields = [
+            'id', 'document', 'document_nom', 'token', 'public_url',
+            'expires_at', 'password', 'has_password', 'quota_max',
+            'telechargements', 'quota_exhausted', 'is_expired', 'is_accessible',
+            'actif', 'created_by', 'created_by_nom', 'created_at', 'updated_at',
+        ]
+        read_only_fields = [
+            'token', 'telechargements', 'created_by',
+            'created_at', 'updated_at',
+        ]
+
+    def get_public_url(self, obj):
+        # Chemin public (relatif) — le jeton EST le secret d'accès.
+        return f'/api/django/ged/public/{obj.token}/'
+
+    def validate_document(self, value):
+        """Le document doit appartenir à la société courante — on ne partage
+        jamais le document d'un autre locataire."""
+        request = self.context.get('request')
+        if request is not None and value.company_id != request.user.company_id:
+            raise serializers.ValidationError('Document inconnu.')
+        return value
+
+    def _apply_password(self, instance, validated_data):
+        """Pose/retire le mot de passe (haché) si `password` est fourni."""
+        if 'password' in validated_data:
+            raw = validated_data.pop('password')
+            instance.set_password(raw)
+        return instance
+
+    def create(self, validated_data):
+        raw_password = validated_data.pop('password', None)
+        instance = PartageGed(**validated_data)
+        if raw_password is not None:
+            instance.set_password(raw_password)
+        instance.save()
+        return instance
+
+    def update(self, instance, validated_data):
+        # `password` fourni (même vide) → (re)pose/retire le hash explicitement.
+        if 'password' in validated_data:
+            instance.set_password(validated_data.pop('password'))
+        for attr, val in validated_data.items():
+            setattr(instance, attr, val)
+        instance.save()
+        return instance
