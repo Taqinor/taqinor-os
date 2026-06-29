@@ -699,12 +699,20 @@ class DocumentVersionViewSet(TenantMixin, viewsets.ModelViewSet):
         mime = version.mime or 'application/octet-stream'
         safe_name = (version.filename or 'document').replace('"', '')
 
-        # Formats affichables inline (PDF, images, texte). Tout le reste → attachment.
-        _INLINE_MIMES = {
-            'application/pdf',
-            'image/png', 'image/jpeg', 'image/webp', 'image/gif',
-            'text/plain', 'text/csv', 'text/html',
-        }
+        # GED21 — Contrôle de diffusion : si le document est marqué
+        # `watermark_diffusion`, on filigrane le CONTENU SERVI (best-effort,
+        # dégrade à l'original si la lib manque). Le flux reste byte-identique
+        # quand le drapeau est faux. Le filigrane est purement de rendu — le
+        # binaire stocké et le statut documentaire ne changent jamais.
+        document = version.document
+        if getattr(document, 'watermark_diffusion', False):
+            label = services.watermark_label(
+                company=document.company, user=request.user)
+            data, marked = services.apply_watermark(data, mime, label)
+            if marked and mime in services._WATERMARK_IMAGE_MIMES:
+                # Les images filigranées sont réémises en PNG (alpha préservé).
+                mime = 'image/png'
+
         disposition = (
             'inline' if mime in _INLINE_MIMES else 'attachment'
         )
@@ -1100,6 +1108,20 @@ def public_partage(request, token):
     mime = version.mime or 'application/octet-stream'
     safe_name = (version.filename or partage.document.nom
                  or 'document').replace('"', '')
+
+    # GED21 — Contrôle de diffusion sur le lien PUBLIC : on filigrane le contenu
+    # servi si CE partage est marqué (`partage.watermark`) OU si le document est
+    # globalement marqué (`document.watermark_diffusion`). La société vient du
+    # document (jamais de la requête publique). Best-effort : dégrade à
+    # l'original si la lib manque ; flux byte-identique quand aucun drapeau n'est
+    # posé. Aucun statut ni binaire stocké n'est modifié.
+    if (getattr(partage, 'watermark', False)
+            or getattr(partage.document, 'watermark_diffusion', False)):
+        label = services.watermark_label(company=partage.document.company)
+        data, marked = services.apply_watermark(data, mime, label)
+        if marked and mime in services._WATERMARK_IMAGE_MIMES:
+            mime = 'image/png'
+
     disposition = 'inline' if mime in _INLINE_MIMES else 'attachment'
 
     resp = HttpResponse(data, content_type=mime)
