@@ -21,6 +21,8 @@ from .models import (
     EcheanceEntretien,
     EnginRoulant,
     EtatDesLieux,
+    Garage,
+    OrdreReparation,
     PlanEntretien,
     PleinCarburant,
     ReferentielFlotte,
@@ -35,6 +37,8 @@ from .serializers import (
     EcheanceEntretienSerializer,
     EnginRoulantSerializer,
     EtatDesLieuxSerializer,
+    GarageSerializer,
+    OrdreReparationSerializer,
     PlanEntretienSerializer,
     PleinCarburantSerializer,
     ReferentielFlotteSerializer,
@@ -42,7 +46,8 @@ from .serializers import (
     VehiculeSerializer,
 )
 
-READ_ACTIONS = ['list', 'retrieve', 'consommation', 'anomalies', 'echeances']
+READ_ACTIONS = ['list', 'retrieve', 'consommation', 'anomalies', 'echeances',
+                'couts']
 
 
 class _FlotteBaseViewSet(TenantMixin, viewsets.ModelViewSet):
@@ -567,3 +572,125 @@ class EcheanceEntretienViewSet(_FlotteBaseViewSet):
             'nb_existantes': resultat['nb_existantes'],
             'echeances': serializer.data,
         })
+
+
+class GarageViewSet(_FlotteBaseViewSet):
+    """Garages / ateliers de réparation de la société (FLOTTE17).
+
+    CRUD scopé société (écriture responsable/admin). Filtrable par
+    ``?actif=true|false``. Recherche par nom / adresse / téléphone.
+    """
+    queryset = Garage.objects.all()
+    serializer_class = GarageSerializer
+    filter_backends = [filters.SearchFilter, filters.OrderingFilter]
+    search_fields = ['nom', 'adresse', 'telephone']
+    ordering_fields = ['nom', 'actif', 'date_creation']
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        actif = self.request.query_params.get('actif')
+        if actif is not None:
+            qs = qs.filter(actif=actif.lower() in ('1', 'true', 'vrai', 'oui'))
+        return qs
+
+
+class OrdreReparationViewSet(_FlotteBaseViewSet):
+    """Ordres de réparation atelier/garage + coûts (FLOTTE17).
+
+    CRUD scopé société (écriture responsable/admin). Filtrable par
+    ``?actif_flotte=<id>``, ``?garage=<id>``, ``?statut=<ouvert|en_cours|
+    cloture>`` et ``?ouverts=true`` (OR non clôturés). Recherche par description.
+    ``cout_total`` est calculé côté serveur (main d'œuvre + pièces).
+
+    Actions :
+    - ``GET /ordres-reparation/couts/`` (lecture tout rôle) — synthèse des coûts
+      (totaux + moyenne par OR), filtrable comme la liste.
+    - ``POST /ordres-reparation/<id>/cloturer/`` (écriture responsable/admin) —
+      clôture l'OR et, par défaut, l'échéance d'entretien liée (``fait``).
+      ``?cloturer_echeance=false`` ne touche pas l'échéance.
+    """
+    queryset = OrdreReparation.objects.select_related(
+        'actif_flotte', 'actif_flotte__vehicule', 'actif_flotte__engin',
+        'garage', 'echeance')
+    serializer_class = OrdreReparationSerializer
+    filter_backends = [filters.SearchFilter, filters.OrderingFilter]
+    search_fields = ['description', 'notes']
+    ordering_fields = ['date_ouverture', 'date_cloture', 'statut',
+                       'cout_total', 'date_creation']
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        params = self.request.query_params
+
+        actif_flotte = params.get('actif_flotte')
+        if actif_flotte:
+            try:
+                qs = qs.filter(actif_flotte_id=int(actif_flotte))
+            except (ValueError, TypeError):
+                pass
+
+        garage = params.get('garage')
+        if garage:
+            try:
+                qs = qs.filter(garage_id=int(garage))
+            except (ValueError, TypeError):
+                pass
+
+        statut = params.get('statut')
+        if statut:
+            qs = qs.filter(statut=statut)
+
+        ouverts = params.get('ouverts')
+        if ouverts is not None and ouverts.lower() in ('1', 'true', 'vrai',
+                                                       'oui'):
+            qs = qs.exclude(statut__in=OrdreReparation.STATUTS_CLOS)
+
+        return qs
+
+    @action(detail=False, methods=['get'])
+    def couts(self, request):
+        """FLOTTE17 — Synthèse des coûts de réparation (lecture seule).
+
+        Scopée société. Filtres facultatifs ``?actif_flotte=<id>``,
+        ``?garage=<id>``, ``?statut=<…>``. Renvoie totaux + coût moyen par OR
+        (``None`` s'il n'y a aucun OR — pas de division par zéro).
+        """
+        company = request.user.company
+        params = request.query_params
+
+        def _int(name):
+            value = params.get(name)
+            if not value:
+                return None
+            try:
+                return int(value)
+            except (ValueError, TypeError):
+                return None
+
+        from .selectors import couts_reparation
+        return Response(couts_reparation(
+            company,
+            actif_flotte_id=_int('actif_flotte'),
+            garage_id=_int('garage'),
+            statut=params.get('statut'),
+        ))
+
+    @action(detail=True, methods=['post'])
+    def cloturer(self, request, pk=None):
+        """FLOTTE17 — Clôture l'OR (et l'échéance liée par défaut).
+
+        Écriture (responsable/admin). ``?cloturer_echeance=false`` laisse
+        l'échéance d'entretien liée intacte. Renvoie l'OR clôturé sérialisé.
+        """
+        ordre = self.get_object()
+
+        param = request.query_params.get('cloturer_echeance')
+        cloturer_echeance = not (
+            param is not None
+            and param.lower() in ('0', 'false', 'faux', 'non'))
+
+        from .services import cloturer_ordre_reparation
+        cloturer_ordre_reparation(
+            ordre, cloturer_echeance=cloturer_echeance)
+        serializer = self.get_serializer(ordre)
+        return Response(serializer.data)
