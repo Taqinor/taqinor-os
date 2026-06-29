@@ -272,7 +272,10 @@ class VersionApiTests(TestCase):
         api = auth(autre_admin)
         res = api.get(f"{VERSIONS}?contrat={self.contrat.id}")
         self.assertEqual(res.status_code, 200)
-        self.assertEqual(len(res.data), 0)
+        # Réponse paginée (PageNumberPagination global) : la société tierce ne
+        # voit AUCUNE version de ce contrat (scoping TenantMixin).
+        self.assertEqual(res.data["count"], 0)
+        self.assertEqual(res.data["results"], [])
         # Et l'action creer-version est 404 sur un contrat hors société.
         res2 = api.post(
             f"{CONTRATS}{self.contrat.id}/creer-version/", {}, format="json")

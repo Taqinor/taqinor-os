@@ -177,7 +177,12 @@ class WorkflowTemplateEndpointTests(TestCase):
 
     def test_list_requires_auth(self):
         resp = self._list(None)
-        self.assertEqual(resp.status_code, status.HTTP_403_FORBIDDEN)
+        # Anonyme : l'accès est refusé. Sous JWT, DRF renvoie 401
+        # (NotAuthenticated) ; 403 avec d'autres authentificateurs — les deux
+        # prouvent que l'endpoint exige une authentification.
+        self.assertIn(
+            resp.status_code,
+            (status.HTTP_401_UNAUTHORIZED, status.HTTP_403_FORBIDDEN))
 
     def test_list_ok_for_authenticated_user(self):
         resp = self._list(self.limited)
