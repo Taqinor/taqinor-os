@@ -272,3 +272,91 @@ def recommend_next_action_ai(facts: dict, *, context: str = '') -> NextBestActio
         base.reason = res.data['text'].strip()
         base.source = res.provider
     return base
+
+
+# --- Mise en forme d'un fil d'activité (partagé FG353/FG354) -----------------
+
+def format_thread(messages: list[dict], *, limit: int = 40) -> str:
+    """Met un fil d'activité à plat en texte lisible pour un prompt LLM.
+
+    ``messages`` : liste de dicts génériques fournie par l'app appelante
+    (crm/installations/sav via ses selectors) — core n'importe AUCUN modèle.
+    Clés reconnues (toutes optionnelles) :
+
+      * ``auteur`` — qui a écrit / agi ;
+      * ``date`` — horodatage (str ou datetime, rendu tel quel) ;
+      * ``texte`` ou ``message`` ou ``contenu`` — le corps de l'entrée ;
+      * ``canal`` — 'email' | 'whatsapp' | 'note' | 'appel'… (facultatif).
+
+    Ne garde que les ``limit`` entrées les plus récentes (les dernières de la
+    liste) pour borner la taille du prompt. Une entrée vide est ignorée."""
+    lines: list[str] = []
+    for entry in (messages or [])[-limit:]:
+        if not isinstance(entry, dict):
+            entry = {'texte': str(entry)}
+        body = (entry.get('texte') or entry.get('message')
+                or entry.get('contenu') or '')
+        body = str(body).strip()
+        if not body:
+            continue
+        author = str(entry.get('auteur') or entry.get('author') or '').strip()
+        when = str(entry.get('date') or '').strip()
+        canal = str(entry.get('canal') or '').strip()
+        prefix_parts = [p for p in (when, author, canal) if p]
+        prefix = ' · '.join(prefix_parts)
+        lines.append(f"[{prefix}] {body}" if prefix else body)
+    return '\n'.join(lines)
+
+
+# --- FG353 — Résumé automatique d'un fil (lead/chantier/ticket) --------------
+
+@dataclass
+class ThreadSummary:
+    """Synthèse d'un fil d'activité (résumé + points clés)."""
+
+    ok: bool = False
+    configured: bool = False
+    summary: str = ''
+    source: str = 'noop'
+
+    @property
+    def available(self) -> bool:
+        """True si une vraie synthèse a été produite (LLM configuré)."""
+        return self.ok and bool(self.summary)
+
+
+def summarize_thread(messages: list[dict], *, context: str = '',
+                     max_tokens: int = 400) -> ThreadSummary:
+    """Synthétise en un clic un fil d'activité (lead / chantier / ticket).
+
+    ``messages`` : entrées génériques (voir :func:`format_thread`) — core
+    n'importe aucun modèle métier ; l'app appelante passe le fil depuis sa
+    couche selectors. ``context`` ajoute un cadre court (ex. « Lead solaire
+    résidentiel, étape Devis envoyé »).
+
+    NO-OP-safe : SANS clé LLM, ne fait AUCUN appel réseau et renvoie une
+    ``ThreadSummary`` ``configured=False`` (l'UI affiche « synthèse non
+    disponible » et l'utilisateur lit le fil à la main). Avec un LLM configuré,
+    ``summary`` porte la synthèse française."""
+    provider = get_provider('llm')
+    if getattr(provider, 'key', 'noop') == 'noop':
+        return ThreadSummary(ok=False, configured=False, summary='', source='noop')
+
+    thread = format_thread(messages)
+    if not thread:
+        # Rien à résumer — pas d'appel réseau inutile.
+        return ThreadSummary(ok=True, configured=True, summary='',
+                             source=provider.key)
+    system = (
+        "Tu es un assistant CRM. Résume en français, de façon concise et "
+        "factuelle, le fil d'activité ci-dessous : situation actuelle, points "
+        "importants et éventuels points à traiter. N'invente rien."
+    )
+    prompt = thread if not context else f"Contexte : {context}\n\n{thread}"
+    res = provider.complete(prompt=prompt, system=system, max_tokens=max_tokens)
+    if res.ok and res.data.get('text'):
+        return ThreadSummary(ok=True, configured=True,
+                             summary=res.data['text'].strip(),
+                             source=res.provider)
+    return ThreadSummary(ok=False, configured=True, summary='',
+                         source=res.provider)
