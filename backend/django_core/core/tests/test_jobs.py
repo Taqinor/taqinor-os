@@ -44,7 +44,7 @@ def _patch_schedule(schedule):
     (django-celery-beat absent → ``_from_periodic_tasks`` renvoie []).
     """
     return mock.patch.object(
-        jobs_infra.current_app.conf, 'beat_schedule', schedule, create=True,
+        jobs_infra, '_raw_beat_schedule', return_value=schedule,
     )
 
 

@@ -53,6 +53,15 @@ def _describe_schedule(schedule):
     return str(schedule)
 
 
+def _raw_beat_schedule():
+    """Lecture brute de la planification statique Celery (seam testable).
+
+    Isolé pour que les tests puissent injecter un ``beat_schedule`` sans patcher
+    l'objet ``Settings`` de Celery (qui ne supporte pas un delattr propre).
+    """
+    return getattr(current_app.conf, 'beat_schedule', None)
+
+
 def _from_beat_schedule():
     """Jobs issus de la planification statique ``conf.beat_schedule``.
 
@@ -60,7 +69,7 @@ def _from_beat_schedule():
     est ignorée plutôt que de tout faire échouer.
     """
     out = []
-    schedule = getattr(current_app.conf, 'beat_schedule', None) or {}
+    schedule = _raw_beat_schedule() or {}
     if not isinstance(schedule, dict):
         return out
     for name, entry in schedule.items():
