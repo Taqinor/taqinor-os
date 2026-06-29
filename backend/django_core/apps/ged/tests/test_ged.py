@@ -2939,3 +2939,303 @@ class PartageGedTests(GedBase):
             resp = APIClient().get(self._public_url(partage.token))
         # Jamais 401/403 pour un jeton valide sans mot de passe.
         self.assertEqual(resp.status_code, 200)
+
+
+# ── GED21 — Filigrane & contrôle de diffusion ───────────────────────────────
+class WatermarkServiceTests(TestCase):
+    """GED21 — `services.apply_watermark` / `watermark_label` (unitaire).
+
+    Couvre :
+    - le filigrane PDF appelle PyMuPDF quand il est présent (helper patché) ;
+    - le filigrane image appelle Pillow quand il est présent (helper patché) ;
+    - DÉGRADE PROPREMENT : sans la lib (import patché en ImportError), on
+      renvoie les octets d'origine + watermarked=False, sans lever ;
+    - un type non pris en charge (texte/zip) est renvoyé inchangé ;
+    - un contenu/texte vide laisse les octets inchangés ;
+    - l'étiquette de confidentialité est bien construite côté serveur.
+    """
+
+    def test_apply_watermark_pdf_uses_pdf_helper(self):
+        from unittest import mock
+        out = b'%PDF-filigrane'
+        with mock.patch('apps.ged.services._watermark_pdf',
+                        return_value=(out, True)) as m:
+            data, marked = services.apply_watermark(
+                b'%PDF-1.4 src', 'application/pdf', 'CONFIDENTIEL')
+        m.assert_called_once()
+        self.assertTrue(marked)
+        self.assertEqual(data, out)
+
+    def test_apply_watermark_image_uses_image_helper(self):
+        from unittest import mock
+        out = b'\x89PNG-filigrane'
+        with mock.patch('apps.ged.services._watermark_image',
+                        return_value=(out, True)) as m:
+            data, marked = services.apply_watermark(
+                b'\x89PNG src', 'image/png', 'CONFIDENTIEL')
+        m.assert_called_once()
+        self.assertTrue(marked)
+        self.assertEqual(data, out)
+
+    def test_apply_watermark_unsupported_type_unchanged(self):
+        """Un type non filigranable (texte/zip) est renvoyé tel quel."""
+        src = b'contenu texte'
+        data, marked = services.apply_watermark(
+            src, 'text/plain', 'CONFIDENTIEL')
+        self.assertFalse(marked)
+        self.assertEqual(data, src)
+        src2 = b'PK\x03\x04'
+        data2, marked2 = services.apply_watermark(
+            src2, 'application/zip', 'CONFIDENTIEL')
+        self.assertFalse(marked2)
+        self.assertEqual(data2, src2)
+
+    def test_apply_watermark_empty_inputs_unchanged(self):
+        self.assertEqual(
+            services.apply_watermark(b'', 'application/pdf', 'X'), (b'', False))
+        self.assertEqual(
+            services.apply_watermark(b'%PDF', 'application/pdf', ''),
+            (b'%PDF', False))
+
+    def test_pdf_degrades_when_pymupdf_absent(self):
+        """Sans PyMuPDF (`fitz` introuvable), on renvoie l'original sans lever."""
+        from unittest import mock
+        import builtins
+        real_import = builtins.__import__
+
+        def fake_import(name, *args, **kwargs):
+            if name == 'fitz':
+                raise ImportError('PyMuPDF non installé')
+            return real_import(name, *args, **kwargs)
+
+        src = b'%PDF-1.4 original'
+        with mock.patch.object(builtins, '__import__', side_effect=fake_import):
+            data, marked = services._watermark_pdf(src, 'CONFIDENTIEL')
+        # Dégrade : octets d'origine, jamais d'exception.
+        self.assertFalse(marked)
+        self.assertEqual(data, src)
+
+    def test_image_degrades_when_pillow_absent(self):
+        """Sans Pillow (PIL introuvable), on renvoie l'original sans lever."""
+        from unittest import mock
+        import builtins
+        real_import = builtins.__import__
+
+        def fake_import(name, *args, **kwargs):
+            if name == 'PIL' or name.startswith('PIL.'):
+                raise ImportError('Pillow non installé')
+            return real_import(name, *args, **kwargs)
+
+        src = b'\x89PNG original'
+        with mock.patch.object(builtins, '__import__', side_effect=fake_import):
+            data, marked = services._watermark_image(src, 'CONFIDENTIEL')
+        self.assertFalse(marked)
+        self.assertEqual(data, src)
+
+    def test_watermark_label_built_server_side(self):
+        co = make_company('wm-label', 'Société Label')
+        user = make_user(co, 'wm-user', 'admin')
+        label = services.watermark_label(company=co, user=user)
+        self.assertIn('CONFIDENTIEL', label)
+        self.assertIn('Société Label', label)
+        self.assertIn('wm-user', label)
+        # Aucun segment vide quand société/utilisateur manquent.
+        bare = services.watermark_label()
+        self.assertTrue(bare.startswith('CONFIDENTIEL'))
+
+
+class WatermarkApercuTests(GedBase):
+    """GED21 — Le filigrane se branche sur l'aperçu authentifié (GED14).
+
+    Couvre :
+    - drapeau OFF → flux byte-identique (backward-compat, aucun appel filigrane) ;
+    - drapeau ON + lib présente (helper patché) → contenu filigrané servi ;
+    - drapeau ON mais lib absente (apply_watermark dégrade) → original servi,
+      jamais d'erreur ;
+    - une image filigranée est réémise en image/png.
+    """
+
+    def setUp(self):
+        super().setUp()
+        self.folder_a = Folder.objects.create(
+            company=self.co_a, cabinet=self.cab_a, nom='Docs A')
+        self.doc_a = Document.objects.create(
+            company=self.co_a, folder=self.folder_a, nom='Contrat')
+        self.version_a = services.add_version(
+            self.doc_a, file_key='attachments/contrat.pdf',
+            company=self.co_a, filename='contrat.pdf', size=100,
+            mime='application/pdf', uploaded_by=self.admin_a)
+
+    def _url(self, version_id):
+        return f'/api/django/ged/versions/{version_id}/apercu/'
+
+    def test_flag_off_streams_identical_bytes(self):
+        """Drapeau désactivé → flux byte-identique (compat ascendante)."""
+        from unittest import mock
+        fake = b'%PDF-1.4 original'
+        api = auth(self.admin_a)
+        with mock.patch('apps.ged.views.fetch_attachment',
+                        return_value=(fake, None)), \
+                mock.patch('apps.ged.services.apply_watermark') as wm:
+            resp = api.get(self._url(self.version_a.id))
+        self.assertEqual(resp.status_code, 200)
+        self.assertEqual(resp.content, fake)
+        # Jamais filigrané quand le drapeau est faux.
+        wm.assert_not_called()
+
+    def test_flag_on_watermarks_pdf(self):
+        from unittest import mock
+        self.doc_a.watermark_diffusion = True
+        self.doc_a.save(update_fields=['watermark_diffusion'])
+        src = b'%PDF-1.4 original'
+        marked = b'%PDF-1.4 FILIGRANE'
+        api = auth(self.admin_a)
+        with mock.patch('apps.ged.views.fetch_attachment',
+                        return_value=(src, None)), \
+                mock.patch('apps.ged.services.apply_watermark',
+                           return_value=(marked, True)) as wm:
+            resp = api.get(self._url(self.version_a.id))
+        self.assertEqual(resp.status_code, 200)
+        self.assertEqual(resp.content, marked)
+        wm.assert_called_once()
+        # Toujours servi inline (PDF).
+        self.assertIn('inline', resp['Content-Disposition'])
+
+    def test_flag_on_but_lib_absent_serves_original(self):
+        """Drapeau ON mais filigrane indisponible → original servi, pas d'erreur."""
+        from unittest import mock
+        self.doc_a.watermark_diffusion = True
+        self.doc_a.save(update_fields=['watermark_diffusion'])
+        src = b'%PDF-1.4 original'
+        api = auth(self.admin_a)
+        # apply_watermark dégrade (lib absente) → renvoie l'original, marked=False.
+        with mock.patch('apps.ged.views.fetch_attachment',
+                        return_value=(src, None)), \
+                mock.patch('apps.ged.services.apply_watermark',
+                           return_value=(src, False)):
+            resp = api.get(self._url(self.version_a.id))
+        self.assertEqual(resp.status_code, 200)
+        self.assertEqual(resp.content, src)
+
+    def test_watermarked_image_becomes_png(self):
+        from unittest import mock
+        doc = Document.objects.create(
+            company=self.co_a, folder=self.folder_a, nom='Photo',
+            watermark_diffusion=True)
+        version_img = services.add_version(
+            doc, file_key='attachments/photo.jpg', company=self.co_a,
+            filename='photo.jpg', size=50, mime='image/jpeg',
+            uploaded_by=self.admin_a)
+        marked_png = b'\x89PNG filigrane'
+        api = auth(self.admin_a)
+        with mock.patch('apps.ged.views.fetch_attachment',
+                        return_value=(b'\xff\xd8 jpeg', None)), \
+                mock.patch('apps.ged.services.apply_watermark',
+                           return_value=(marked_png, True)):
+            resp = api.get(self._url(version_img.id))
+        self.assertEqual(resp.status_code, 200)
+        # Réémis en PNG (alpha du filigrane préservé).
+        self.assertEqual(resp['Content-Type'], 'image/png')
+        self.assertEqual(resp.content, marked_png)
+
+
+class WatermarkPublicPartageTests(GedBase):
+    """GED21 — Le filigrane se branche sur le téléchargement public (GED20).
+
+    Couvre :
+    - aucun drapeau → flux byte-identique (compat ascendante) ;
+    - `PartageGed.watermark=True` → contenu filigrané servi (helper patché) ;
+    - `Document.watermark_diffusion=True` → contenu filigrané même si le
+      partage n'est pas marqué ;
+    - la société du filigrane vient du DOCUMENT, jamais de la requête publique.
+    """
+
+    def setUp(self):
+        super().setUp()
+        self.folder_a = Folder.objects.create(
+            company=self.co_a, cabinet=self.cab_a, nom='Docs A')
+        self.doc_a = Document.objects.create(
+            company=self.co_a, folder=self.folder_a, nom='Contrat A')
+        self.version_a = services.add_version(
+            self.doc_a, file_key='attachments/contrat-a.pdf',
+            company=self.co_a, filename='contrat-a.pdf', size=120,
+            mime='application/pdf', uploaded_by=self.admin_a)
+
+    def _public_url(self, token):
+        return f'/api/django/ged/public/{token}/'
+
+    def test_no_flag_streams_identical_bytes(self):
+        from unittest import mock
+        partage = services.create_partage(
+            document=self.doc_a, company=self.co_a, created_by=self.admin_a)
+        fake = b'%PDF-1.4 original'
+        with mock.patch('apps.ged.views.fetch_attachment',
+                        return_value=(fake, None)), \
+                mock.patch('apps.ged.services.apply_watermark') as wm:
+            resp = APIClient().get(self._public_url(partage.token))
+        self.assertEqual(resp.status_code, 200)
+        self.assertEqual(resp.content, fake)
+        wm.assert_not_called()
+
+    def test_partage_watermark_flag_watermarks(self):
+        from unittest import mock
+        partage = services.create_partage(
+            document=self.doc_a, company=self.co_a,
+            created_by=self.admin_a, watermark=True)
+        self.assertTrue(partage.watermark)
+        src = b'%PDF-1.4 original'
+        marked = b'%PDF-1.4 FILIGRANE'
+        with mock.patch('apps.ged.views.fetch_attachment',
+                        return_value=(src, None)), \
+                mock.patch('apps.ged.services.apply_watermark',
+                           return_value=(marked, True)) as wm:
+            resp = APIClient().get(self._public_url(partage.token))
+        self.assertEqual(resp.status_code, 200)
+        self.assertEqual(resp.content, marked)
+        wm.assert_called_once()
+
+    def test_document_watermark_flag_watermarks_even_unmarked_partage(self):
+        from unittest import mock
+        self.doc_a.watermark_diffusion = True
+        self.doc_a.save(update_fields=['watermark_diffusion'])
+        partage = services.create_partage(
+            document=self.doc_a, company=self.co_a, created_by=self.admin_a)
+        self.assertFalse(partage.watermark)  # partage non marqué…
+        src = b'%PDF-1.4 original'
+        marked = b'%PDF-1.4 FILIGRANE'
+        with mock.patch('apps.ged.views.fetch_attachment',
+                        return_value=(src, None)), \
+                mock.patch('apps.ged.services.apply_watermark',
+                           return_value=(marked, True)) as wm:
+            resp = APIClient().get(self._public_url(partage.token))
+        self.assertEqual(resp.status_code, 200)
+        # …mais le document l'est → filigrané quand même.
+        self.assertEqual(resp.content, marked)
+        wm.assert_called_once()
+
+    def test_watermark_label_company_from_document_not_request(self):
+        """SÉCURITÉ : la société du filigrane vient du document partagé, jamais
+        d'une identité/société de la requête publique."""
+        from unittest import mock
+        partage = services.create_partage(
+            document=self.doc_a, company=self.co_a,
+            created_by=self.admin_a, watermark=True)
+        captured = {}
+
+        def fake_label(*, company=None, user=None):
+            captured['company'] = company
+            captured['user'] = user
+            return 'CONFIDENTIEL'
+
+        with mock.patch('apps.ged.views.fetch_attachment',
+                        return_value=(b'%PDF-1.4', None)), \
+                mock.patch('apps.ged.services.watermark_label',
+                           side_effect=fake_label), \
+                mock.patch('apps.ged.services.apply_watermark',
+                           return_value=(b'%PDF-wm', True)):
+            # Même authentifié EN TANT QUE B, c'est la société du document (A).
+            resp = auth(self.admin_b).get(self._public_url(partage.token))
+        self.assertEqual(resp.status_code, 200)
+        self.assertEqual(captured['company'].id, self.co_a.id)
+        # L'endpoint public ne passe aucun utilisateur de requête au filigrane.
+        self.assertIsNone(captured['user'])

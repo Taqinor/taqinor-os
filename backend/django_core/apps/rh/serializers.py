@@ -17,6 +17,7 @@ from .models import (
     DossierEmploye,
     DotationEpi,
     ElementSortie,
+    EmargementEpi,
     EpiCatalogue,
     FeuilleTemps,
     Habilitation,
@@ -843,10 +844,12 @@ class DotationEpiSerializer(serializers.ModelSerializer):
             'date_peremption', 'date_prochain_controle',
             'perime', 'a_controler',
             'quantite', 'note',
+            'accuse_remise', 'date_accuse',
             'date_creation', 'date_modification',
         ]
         read_only_fields = [
             'date_peremption', 'date_prochain_controle',
+            'accuse_remise', 'date_accuse',
             'date_creation', 'date_modification',
         ]
 
@@ -876,3 +879,54 @@ class DotationEpiSerializer(serializers.ModelSerializer):
                 {'date_renouvellement':
                  'La date de renouvellement précède la date de dotation.'})
         return attrs
+
+
+class EmargementEpiSerializer(serializers.ModelSerializer):
+    """Émargement de remise d'un EPI (FG180) — accusé signé, LECTURE seule.
+
+    Sérialise la preuve d'un émargement déjà enregistré : nom dactylographié
+    (fait foi — loi 53-05), rôle, méthode, date, mention et éléments de preuve
+    (IP, user agent). La société, l'utilisateur agissant et les preuves sont
+    posés CÔTÉ SERVEUR par le service ``emarger_dotation`` ; ce sérialiseur ne
+    sert qu'à renvoyer l'émargement créé / lister l'historique d'une dotation.
+    """
+    role_signataire_display = serializers.CharField(
+        source='get_role_signataire_display', read_only=True)
+    methode_display = serializers.CharField(
+        source='get_methode_display', read_only=True)
+
+    class Meta:
+        model = EmargementEpi
+        fields = [
+            'id', 'dotation', 'signataire_nom', 'signataire',
+            'role_signataire', 'role_signataire_display',
+            'methode', 'methode_display', 'mention',
+            'ip_adresse', 'user_agent', 'date_signature',
+        ]
+        read_only_fields = fields
+
+
+class EmargerEpiSerializer(serializers.Serializer):
+    """Corps de l'action ``emarger`` (FG180) — saisie de l'émargement.
+
+    Le client saisit ``signataire_nom`` (nom dactylographié, requis — loi
+    53-05), ``role_signataire`` (optionnel, ``employe`` par défaut), ``methode``
+    (optionnel, ``typed`` par défaut) et ``mention`` (optionnelle). La société,
+    l'utilisateur agissant et les preuves (IP, user agent) sont posés CÔTÉ
+    SERVEUR — jamais lus du corps.
+    """
+    signataire_nom = serializers.CharField(max_length=255)
+    role_signataire = serializers.ChoiceField(
+        choices=EmargementEpi.RoleSignataire.choices,
+        default=EmargementEpi.RoleSignataire.EMPLOYE)
+    methode = serializers.ChoiceField(
+        choices=EmargementEpi.Methode.choices,
+        default=EmargementEpi.Methode.TYPED)
+    mention = serializers.CharField(
+        max_length=255, required=False, allow_blank=True, default='')
+
+    def validate_signataire_nom(self, value):
+        if not (value or '').strip():
+            raise serializers.ValidationError(
+                'Le nom du signataire est requis (loi 53-05).')
+        return value.strip()

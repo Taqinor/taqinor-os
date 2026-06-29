@@ -218,6 +218,8 @@ class DocumentSerializer(serializers.ModelSerializer):
             'derniere_version', 'tags',
             'locked_by', 'locked_by_nom', 'locked_at', 'is_locked',
             'statut', 'statut_display', 'transitions_autorisees',
+            # GED21 — contrôle de diffusion (filigrane à la diffusion).
+            'watermark_diffusion',
             'created_at', 'updated_at',
         ]
         read_only_fields = [
@@ -384,6 +386,8 @@ class PartageGedSerializer(serializers.ModelSerializer):
             'id', 'document', 'document_nom', 'token', 'public_url',
             'expires_at', 'password', 'has_password', 'quota_max',
             'telechargements', 'quota_exhausted', 'is_expired', 'is_accessible',
+            # GED21 — filigrane ce lien public (contrôle de diffusion).
+            'watermark',
             'actif', 'created_by', 'created_by_nom', 'created_at', 'updated_at',
         ]
         read_only_fields = [

@@ -323,3 +323,65 @@ def annuler_demande(demande):
     demande.statut = DemandeConge.Statut.ANNULEE
     demande.save(update_fields=['statut'])
     return demande
+
+
+class EmargementError(Exception):
+    """Erreur métier d'un émargement de remise EPI (FG180)."""
+
+
+@transaction.atomic
+def emarger_dotation(dotation, *, signataire_nom, role_signataire=None,
+                     signataire=None, ip_adresse='', user_agent='',
+                     methode=None, mention=''):
+    """Enregistre l'émargement signé d'une remise d'EPI (FG180).
+
+    Crée un ``EmargementEpi`` portant le nom dactylographié (``signataire_nom``,
+    fait foi — loi 53-05), le rôle (employé bénéficiaire / remettant / témoin),
+    l'utilisateur agissant éventuel (``signataire``, NULL pour un employé sans
+    compte qui émarge sur place) et les preuves (``ip_adresse`` ≤ 45,
+    ``user_agent``, ``methode`` typed/draw, ``mention``). La société est posée
+    côté serveur (celle de la dotation) — jamais lue du corps de requête.
+
+    Marque ensuite la dotation ACCUSÉE (``accuse_remise = True`` +
+    ``date_accuse`` = maintenant) : l'accusé de réception prouve la remise de
+    l'EPI, pièce exigible en cas de contrôle CNSS / accident du travail. Une
+    dotation déjà émargée peut l'être à nouveau (p. ex. un témoin supplémentaire)
+    sans erreur — ``date_accuse`` n'est posée qu'au premier accusé.
+
+    Le nom du signataire est requis (loi 53-05) ; vide → ``EmargementError``.
+
+    Renvoie un dict ``{'emargement', 'deja_accusee'}`` : l'émargement créé et un
+    booléen indiquant si la dotation était DÉJÀ accusée avant cet appel.
+    """
+    from .models import EmargementEpi
+
+    nom = (signataire_nom or '').strip()
+    if not nom:
+        raise EmargementError(
+            "Le nom du signataire est requis (loi 53-05).")
+
+    if role_signataire is None:
+        role_signataire = EmargementEpi.RoleSignataire.EMPLOYE
+    if methode is None:
+        methode = EmargementEpi.Methode.TYPED
+
+    emargement = EmargementEpi.objects.create(
+        company=dotation.company,
+        dotation=dotation,
+        signataire_nom=nom,
+        signataire=signataire,
+        role_signataire=role_signataire,
+        ip_adresse=(ip_adresse or '')[:45],
+        user_agent=user_agent or '',
+        methode=methode,
+        mention=mention or '',
+    )
+
+    deja_accusee = bool(dotation.accuse_remise)
+    if not deja_accusee:
+        dotation.accuse_remise = True
+        dotation.date_accuse = timezone.now()
+        dotation.save(update_fields=[
+            'accuse_remise', 'date_accuse', 'date_modification'])
+
+    return {'emargement': emargement, 'deja_accusee': deja_accusee}

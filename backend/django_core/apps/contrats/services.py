@@ -663,8 +663,94 @@ def signer_contrat(contrat, *, signataire_nom, role_signataire,
                 contrat, today=today,
                 auteur=auteur if auteur is not None else signataire)
 
+    # CONTRAT18 — instantané IMMUABLE du rendu lors de la bascule « signé ».
+    # On fige le contenu du contrat au moment où il devient signé pour préserver
+    # l'état contractuellement engageant. L'instantané est best-effort : un échec
+    # du rendu ne doit jamais empêcher l'enregistrement de la signature.
+    if contrat_signe:
+        try:
+            creer_version(
+                contrat,
+                cree_par=auteur if auteur is not None else signataire,
+                motif='Signature du contrat',
+            )
+        except Exception:  # pragma: no cover - défensif (rendu best-effort)
+            pass
+
     return {
         'signature': signature,
         'contrat_signe': contrat_signe,
         'contrat_actif': contrat_actif,
     }
+
+
+# ---------------------------------------------------------------------------
+# CONTRAT18 — Versionnage IMMUABLE des rendus de contrat
+# ---------------------------------------------------------------------------
+
+
+def _prochaine_version(contrat):
+    """Numéro de la prochaine version d'un contrat (``max(version)+1``).
+
+    Lecture du plus haut numéro DÉJÀ utilisé pour ce contrat, +1. Repli sur 1
+    quand aucune version n'existe encore. À appeler SOUS verrou de ligne
+    (``select_for_update`` sur le contrat) pour rester sûr face aux courses —
+    JAMAIS un ``count()+1`` (qui collisionne après une suppression et en
+    concurrence, cf. la règle de numérotation du repo).
+    """
+    from django.db.models import Max
+
+    from .models import VersionContrat
+
+    plus_haut = (
+        VersionContrat.objects
+        .filter(contrat=contrat, company=contrat.company)
+        .aggregate(m=Max('version'))['m']
+    )
+    return (plus_haut or 0) + 1
+
+
+@transaction.atomic
+def creer_version(contrat, *, contenu=None, fichier_key='', motif='',
+                  cree_par=None):
+    """Fige un instantané IMMUABLE du rendu d'un contrat (CONTRAT18).
+
+    Crée une ``VersionContrat`` portant :
+
+    - ``contenu`` : le corps figé du contrat. Si ``None``, on le calcule au vol
+      via le rendu par fusion (``rendre_contrat`` — CONTRAT10) ; passer une
+      chaîne (même vide) court-circuite le rendu et fige exactement ce contenu.
+    - ``fichier_key`` : clé d'un rendu PDF stocké (MinIO), optionnelle.
+    - ``motif`` : justification facultative (signature, envoi client…).
+    - ``cree_par`` : utilisateur agissant, posé côté serveur (NULL pour un
+      instantané automatisé sans utilisateur).
+
+    NUMÉROTATION SÛRE FACE AUX COURSES : on verrouille la LIGNE du contrat
+    (``select_for_update``) puis on calcule ``max(version)+1`` — jamais un
+    ``count()+1``. Sous le verrou, deux créations concurrentes pour le même
+    contrat sont sérialisées et obtiennent des numéros distincts (la contrainte
+    d'unicité ``(contrat, version)`` reste le filet de sécurité ultime).
+
+    La société est déduite du contrat (posée côté serveur). Renvoie la
+    ``VersionContrat`` créée. Les versions sont IMMUABLES : aucune mise à jour ni
+    suppression n'est exposée par l'API.
+    """
+    from .models import Contrat, VersionContrat
+
+    # Verrou de ligne sur le contrat pour sérialiser la numérotation concurrente.
+    Contrat.objects.select_for_update().get(pk=contrat.pk)
+
+    if contenu is None:
+        contenu = rendre_contrat(contrat).get('rendu', '')
+
+    numero = _prochaine_version(contrat)
+
+    return VersionContrat.objects.create(
+        company=contrat.company,
+        contrat=contrat,
+        version=numero,
+        contenu=contenu or '',
+        fichier_key=fichier_key or '',
+        motif=motif or '',
+        cree_par=cree_par,
+    )

@@ -1281,6 +1281,89 @@ def bordereau_versement_ras(company, *, date_debut=None, date_fin=None,
     }
 
 
+def declaration_honoraires(company, annee, *, type_prestation=None):
+    """Déclaration annuelle des honoraires / état 9421 (FG143).
+
+    Obligation marocaine (DGI) : déclarer chaque année, par bénéficiaire, le
+    total des honoraires / rémunérations / commissions versés à des tiers, avec
+    l'identité fiscale du bénéficiaire (IF/ICE). On agrège ici, par tiers
+    (prestataire), les retenues à la source enregistrées (FG139,
+    ``RetenueSource``) dont la ``date_piece`` tombe dans l'année civile
+    ``annee`` : ce sont les paiements aux tiers ouvrant la déclaration. Pour
+    chaque bénéficiaire on restitue son IF/ICE, le montant brut versé (somme des
+    bases), la retenue à la source pratiquée le cas échéant et le net payé, plus
+    le nombre de pièces. Aucun nouveau modèle : tout est dérivé du grand livre
+    auxiliaire des RAS. Lecture seule, scopée société, bornée à l'année civile.
+
+    ``annee`` est borné sur ``[annee-01-01 ; annee-12-31]`` (date de pièce).
+    Renvoie ``{'annee', 'date_debut', 'date_fin', 'lignes': [...], 'totaux':
+    {'brut', 'retenue', 'net', 'nb_pieces'}, 'nb_beneficiaires'}`` où chaque
+    ligne porte ``tiers_type / tiers_id / tiers_nom / identifiant_fiscal /
+    brut / retenue / net / nb_pieces``. Trié par montant brut décroissant.
+    """
+    annee = int(annee)
+    date_debut = date(annee, 1, 1)
+    date_fin = date(annee, 12, 31)
+    qs = _retenues_qs(company, date_debut=date_debut, date_fin=date_fin)
+    if type_prestation:
+        qs = qs.filter(type_prestation=type_prestation)
+    qs = qs.order_by('tiers_id', 'id')
+
+    par_tiers = {}
+    ordre = []
+    for ras in qs:
+        # Regroupement par bénéficiaire : l'auxiliaire tiers s'il existe, sinon
+        # le couple (nom, identifiant fiscal) pour un prestataire saisi libre.
+        if ras.tiers_id is not None:
+            cle = ('tiers', ras.tiers_type, ras.tiers_id)
+        else:
+            cle = ('libre', ras.tiers_nom, ras.identifiant_fiscal)
+        entry = par_tiers.get(cle)
+        if entry is None:
+            entry = {
+                'tiers_type': ras.tiers_type,
+                'tiers_id': ras.tiers_id,
+                'tiers_nom': ras.tiers_nom,
+                'identifiant_fiscal': ras.identifiant_fiscal,
+                'brut': Decimal('0'),
+                'retenue': Decimal('0'),
+                'net': Decimal('0'),
+                'nb_pieces': 0,
+            }
+            par_tiers[cle] = entry
+            ordre.append(cle)
+        # Garde le nom/IF le plus renseigné rencontré pour ce bénéficiaire.
+        if not entry['tiers_nom'] and ras.tiers_nom:
+            entry['tiers_nom'] = ras.tiers_nom
+        if not entry['identifiant_fiscal'] and ras.identifiant_fiscal:
+            entry['identifiant_fiscal'] = ras.identifiant_fiscal
+        base = ras.base or Decimal('0')
+        retenue = ras.montant or Decimal('0')
+        entry['brut'] += base
+        entry['retenue'] += retenue
+        entry['net'] += base - retenue
+        entry['nb_pieces'] += 1
+
+    lignes = [par_tiers[cle] for cle in ordre]
+    lignes.sort(key=lambda e: e['brut'], reverse=True)
+    total_brut = sum((e['brut'] for e in lignes), Decimal('0'))
+    total_retenue = sum((e['retenue'] for e in lignes), Decimal('0'))
+    total_pieces = sum(e['nb_pieces'] for e in lignes)
+    return {
+        'annee': annee,
+        'date_debut': date_debut,
+        'date_fin': date_fin,
+        'lignes': lignes,
+        'totaux': {
+            'brut': total_brut,
+            'retenue': total_retenue,
+            'net': total_brut - total_retenue,
+            'nb_pieces': total_pieces,
+        },
+        'nb_beneficiaires': len(lignes),
+    }
+
+
 # ── FG140 — Aide au calcul de l'IS (impôt sur les sociétés) ─────────────────
 #
 # Aide à l'estimation de l'IS marocain depuis le CPC (résultat fiscal),

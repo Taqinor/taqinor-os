@@ -18,6 +18,7 @@ from .models import (
     PartieContrat,
     RegleApprobation,
     SignatureContrat,
+    VersionContrat,
 )
 
 
@@ -506,3 +507,40 @@ class SignerContratSerializer(serializers.Serializer):
             raise serializers.ValidationError(
                 'Le nom du signataire est requis (loi 53-05).')
         return value
+
+
+class VersionContratSerializer(serializers.ModelSerializer):
+    """Sérialiseur d'une ``VersionContrat`` (version immuable d'un rendu — CONTRAT18).
+
+    Lecture seule côté API : les versions sont créées exclusivement par l'action
+    ``creer-version`` du contrat (jamais en POST direct sur cette ressource), et
+    ne sont JAMAIS modifiées ni supprimées une fois figées. ``company``,
+    ``contrat``, ``version``, ``cree_par`` et ``cree_le`` sont posés côté serveur
+    — jamais lus du corps de requête.
+    """
+    cree_par_username = serializers.SerializerMethodField()
+
+    class Meta:
+        model = VersionContrat
+        fields = [
+            'id', 'contrat', 'version', 'contenu', 'fichier_key',
+            'motif', 'cree_par', 'cree_par_username', 'cree_le',
+        ]
+        read_only_fields = fields
+
+    def get_cree_par_username(self, obj):
+        return getattr(obj.cree_par, 'username', None)
+
+
+class CreerVersionSerializer(serializers.Serializer):
+    """Corps de POST /contrats/<id>/creer-version/ (CONTRAT18).
+
+    ``motif`` et ``fichier_key`` sont optionnels. Le ``contenu`` est figé côté
+    serveur (rendu par fusion du contrat) — jamais lu du corps : on ne laisse pas
+    le client falsifier l'instantané immuable. ``version``, ``company`` et
+    ``cree_par`` sont posés côté serveur.
+    """
+    motif = serializers.CharField(
+        max_length=255, required=False, allow_blank=True)
+    fichier_key = serializers.CharField(
+        max_length=512, required=False, allow_blank=True)

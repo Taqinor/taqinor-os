@@ -19,12 +19,20 @@ une couche de base (import-linter).
 """
 from rest_framework import status, viewsets
 from rest_framework.decorators import action
+from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 
-from authentication.permissions import IsAdminRole
+from authentication.permissions import (
+    IsAdminOrResponsableTier,
+    IsAdminRole,
+)
 
 from . import jobs as jobs_infra
-from .serializers import ScheduledJobSerializer
+from . import workflow_templates
+from .serializers import (
+    ScheduledJobSerializer,
+    WorkflowTemplateSerializer,
+)
 
 
 class ScheduledJobViewSet(viewsets.ViewSet):
@@ -69,4 +77,75 @@ class ScheduledJobViewSet(viewsets.ViewSet):
         return Response(
             {'task': task_name, 'task_id': task_id, 'status': 'envoyé'},
             status=status.HTTP_202_ACCEPTED,
+        )
+
+
+class WorkflowTemplateViewSet(viewsets.ViewSet):
+    """FG369 — bibliothèque de modèles de workflow installables en un clic.
+
+    Sans modèle propre : la source de vérité est le catalogue de DONNÉES
+    ``core.workflow_templates`` (templates GLOBAUX, sans société). L'install
+    matérialise un ``WorkflowDefinition`` FG366 + ses étapes POUR LA SOCIÉTÉ DE
+    L'UTILISATEUR (imposée côté serveur, jamais issue du corps de requête).
+
+      * ``GET  …/workflow-templates/``                — liste des modèles
+        disponibles (lecture seule, tout utilisateur authentifié) ;
+      * ``POST …/workflow-templates/installer/``      — installe un modèle
+        (corps ``{"code": "<code>"}``) pour la société de l'utilisateur ;
+        réservé au palier admin/responsable ; idempotent (re-install = no-op).
+
+    Découplage : aucune importation d'app domaine — seulement le catalogue de
+    données ``core.workflow_templates`` (qui ne touche que les modèles FG366).
+    ``core`` reste une couche de base (import-linter).
+    """
+
+    def get_permissions(self):
+        # Lecture : tout utilisateur authentifié ; install : admin/responsable.
+        if getattr(self, 'action', None) == 'installer':
+            return [IsAdminOrResponsableTier()]
+        return [IsAuthenticated()]
+
+    def list(self, request):
+        data = workflow_templates.liste_modeles_workflow()
+        return Response(WorkflowTemplateSerializer(data, many=True).data)
+
+    @action(detail=False, methods=['post'])
+    def installer(self, request):
+        """Installe un modèle de workflow pour la société de l'utilisateur.
+
+        Corps : ``{"code": "<code-du-modele>"}``. ``company`` est TOUJOURS
+        imposée côté serveur (``request.user.company``) — jamais lue du corps.
+        Idempotent : réinstaller un modèle déjà présent ne crée aucun doublon
+        et renvoie 200 (au lieu de 201).
+        """
+        code = (request.data or {}).get('code')
+        if not code:
+            return Response(
+                {'detail': "Champ « code » requis."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        company = getattr(request.user, 'company', None)
+        if company is None:
+            return Response(
+                {'detail': "Utilisateur sans société."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        try:
+            definition, created = workflow_templates.installer_modele_workflow(
+                company, code)
+        except workflow_templates.ModeleWorkflowInconnu as exc:
+            return Response(
+                {'detail': str(exc)},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        return Response(
+            {
+                'code': definition.code,
+                'nom': definition.nom,
+                'definition_id': definition.pk,
+                'created': created,
+                'nb_etapes': definition.steps.count(),
+            },
+            status=(status.HTTP_201_CREATED if created
+                    else status.HTTP_200_OK),
         )

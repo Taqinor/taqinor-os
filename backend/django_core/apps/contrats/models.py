@@ -972,3 +972,97 @@ class SignatureContrat(models.Model):
             f'{self.signataire_nom} ({self.get_role_signataire_display()}) '
             f'— contrat {self.contrat_id}'
         )
+
+
+class VersionContrat(models.Model):
+    """Version IMMUABLE d'un rendu de contrat (versionnage des rendus) — CONTRAT18.
+
+    Chaque ``VersionContrat`` fige un INSTANTANÉ du contenu d'un contrat à un
+    instant donné (corps fusionné via CONTRAT10) et, éventuellement, la clé du
+    rendu PDF stocké (MinIO). Le but est de PRÉSERVER les états antérieurs : une
+    fois créée, une version n'est plus jamais modifiée ni supprimée via l'API
+    (lecture seule), de sorte que l'historique des rendus reste fidèle même
+    quand le contrat évolue.
+
+    Numérotation par contrat : ``version`` démarre à 1 et s'incrémente de 1 à
+    chaque nouvel instantané d'un MÊME contrat. Le numéro est posé CÔTÉ SERVEUR
+    par ``services.creer_version`` qui calcule ``max(version)+1`` SOUS
+    ``select_for_update`` (verrou de ligne sur le contrat) — JAMAIS un
+    ``count()+1`` (qui entrait en collision en production, cf. la règle de
+    numérotation du repo).
+
+    Multi-tenant : ``company`` est posée côté serveur (jamais lue du corps de
+    requête). ``contrat`` est une référence interne à l'app `contrats`
+    (foundation), FK dur autorisé ; ``cree_par`` pointe vers ``AUTH_USER_MODEL``
+    (app foundation), FK autorisé et NULLABLE (un instantané déclenché
+    automatiquement — p. ex. à la signature — reste journalisable sans
+    utilisateur).
+
+    RUNTIME-SAFETY (leçon FG136) : ``contenu`` est un ``TextField`` (un rendu de
+    contrat peut être très long — aucune longueur maximale à dépasser et lever) ;
+    ``motif`` est un ``CharField`` borné (≤255) et ``fichier_key`` un
+    ``CharField`` borné (≤512, assez pour une clé d'objet MinIO). La contrainte
+    d'unicité ``(contrat, version)`` et l'index sont nommés explicitement
+    (≤30 chars) pour éviter la divergence d'auto-nommage Django.
+    """
+
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='contrats_versions',
+        verbose_name='Société',
+    )
+    contrat = models.ForeignKey(
+        Contrat,
+        on_delete=models.CASCADE,
+        related_name='versions',
+        verbose_name='Contrat',
+    )
+    # Numéro de version (1, 2, 3…) par contrat, posé côté serveur (max+1 sous
+    # verrou de ligne — jamais count()+1).
+    version = models.PositiveIntegerField(verbose_name='Version')
+    # Instantané IMMUABLE du corps fusionné du contrat. TextField : un rendu peut
+    # être long (leçon FG136). Reste vide si seul un rendu PDF est figé.
+    contenu = models.TextField(
+        blank=True, default='', verbose_name='Contenu figé')
+    # Clé du rendu PDF stocké (MinIO) — optionnelle. Borne large mais finie pour
+    # une clé d'objet (leçon FG136).
+    fichier_key = models.CharField(
+        max_length=512, blank=True, default='',
+        verbose_name='Clé du rendu PDF')
+    # Motif/justification facultatif de la version (ex. « signature », « envoi
+    # client », « révision juridique »). Borné (leçon FG136).
+    motif = models.CharField(
+        max_length=255, blank=True, default='', verbose_name='Motif')
+    cree_par = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='contrats_versions_creees',
+        verbose_name='Créée par',
+    )
+    cree_le = models.DateTimeField(
+        auto_now_add=True, verbose_name='Créée le')
+
+    class Meta:
+        verbose_name = 'Version de contrat'
+        verbose_name_plural = 'Versions de contrat'
+        # Plus récent d'abord par contrat (la dernière version en tête).
+        ordering = ['contrat_id', '-version', '-id']
+        constraints = [
+            # Un même numéro de version n'existe qu'une fois par contrat : filet
+            # de sécurité DB derrière le calcul max+1 sous verrou (creer_version).
+            models.UniqueConstraint(
+                fields=['contrat', 'version'],
+                name='contrats_version_uniq',
+            ),
+        ]
+        indexes = [
+            models.Index(
+                fields=['contrat', '-version'],
+                name='contrats_ver_ct_ver',
+            ),
+        ]
+
+    def __str__(self):
+        return f'Contrat {self.contrat_id} — version {self.version}'

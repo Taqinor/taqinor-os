@@ -23,7 +23,9 @@ from .models import (
     EtatDesLieux,
     Garage,
     OrdreReparation,
+    PieceFlotte,
     PlanEntretien,
+    Pneumatique,
     PleinCarburant,
     ReferentielFlotte,
     ReservationVehicule,
@@ -39,7 +41,9 @@ from .serializers import (
     EtatDesLieuxSerializer,
     GarageSerializer,
     OrdreReparationSerializer,
+    PieceFlotteSerializer,
     PlanEntretienSerializer,
+    PneumatiqueSerializer,
     PleinCarburantSerializer,
     ReferentielFlotteSerializer,
     ReservationVehiculeSerializer,
@@ -47,7 +51,7 @@ from .serializers import (
 )
 
 READ_ACTIONS = ['list', 'retrieve', 'consommation', 'anomalies', 'echeances',
-                'couts']
+                'couts', 'synthese']
 
 
 class _FlotteBaseViewSet(TenantMixin, viewsets.ModelViewSet):
@@ -694,3 +698,118 @@ class OrdreReparationViewSet(_FlotteBaseViewSet):
             ordre, cloturer_echeance=cloturer_echeance)
         serializer = self.get_serializer(ordre)
         return Response(serializer.data)
+
+
+class PneumatiqueViewSet(_FlotteBaseViewSet):
+    """Pneumatiques montés sur les véhicules du parc (FLOTTE18).
+
+    CRUD scopé société (écriture responsable/admin). Filtrable par
+    ``?vehicule=<id>``, ``?position=<av_g|av_d|ar_g|ar_d|secours>``,
+    ``?statut=<monte|depose|use>`` et ``?montes=true`` (pneus en service).
+    Recherche par marque / dimension. Le véhicule lié doit appartenir à la
+    société (validé au sérialiseur).
+    """
+    queryset = Pneumatique.objects.select_related('vehicule')
+    serializer_class = PneumatiqueSerializer
+    filter_backends = [filters.SearchFilter, filters.OrderingFilter]
+    search_fields = ['marque', 'dimension']
+    ordering_fields = ['position', 'statut', 'date_montage', 'km_montage',
+                       'date_creation']
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        params = self.request.query_params
+
+        vehicule = params.get('vehicule')
+        if vehicule:
+            try:
+                qs = qs.filter(vehicule_id=int(vehicule))
+            except (ValueError, TypeError):
+                pass
+
+        position = params.get('position')
+        if position:
+            qs = qs.filter(position=position)
+
+        statut = params.get('statut')
+        if statut:
+            qs = qs.filter(statut=statut)
+
+        montes = params.get('montes')
+        if montes is not None and montes.lower() in ('1', 'true', 'vrai',
+                                                     'oui'):
+            qs = qs.filter(statut__in=Pneumatique.STATUTS_MONTES)
+
+        return qs
+
+
+class PieceFlotteViewSet(_FlotteBaseViewSet):
+    """Pièces détachées posées sur les véhicules du parc (FLOTTE18).
+
+    CRUD scopé société (écriture responsable/admin). Filtrable par
+    ``?vehicule=<id>`` et ``?ordre_reparation=<id>``. Recherche par désignation /
+    référence. ``cout_total`` (quantité × coût unitaire) est calculé côté
+    serveur. Le véhicule et l'OR liés doivent appartenir à la société (validé au
+    sérialiseur).
+
+    Action ``GET /pieces/synthese/?vehicule=<id>`` (lecture tout rôle) — synthèse
+    pneus + pièces d'un véhicule (compteurs + coûts combinés).
+    """
+    queryset = PieceFlotte.objects.select_related(
+        'vehicule', 'ordre_reparation')
+    serializer_class = PieceFlotteSerializer
+    filter_backends = [filters.SearchFilter, filters.OrderingFilter]
+    search_fields = ['designation', 'reference']
+    ordering_fields = ['designation', 'date_pose', 'cout_unitaire',
+                       'date_creation']
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        params = self.request.query_params
+
+        vehicule = params.get('vehicule')
+        if vehicule:
+            try:
+                qs = qs.filter(vehicule_id=int(vehicule))
+            except (ValueError, TypeError):
+                pass
+
+        ordre = params.get('ordre_reparation')
+        if ordre:
+            try:
+                qs = qs.filter(ordre_reparation_id=int(ordre))
+            except (ValueError, TypeError):
+                pass
+
+        return qs
+
+    @action(detail=False, methods=['get'])
+    def synthese(self, request):
+        """FLOTTE18 — Synthèse pneus + pièces d'un véhicule (lecture seule).
+
+        ``?vehicule=<id>`` (obligatoire). Scopée société : le véhicule doit
+        appartenir à la société courante (sinon 404). Renvoie les compteurs et
+        coûts combinés (voir ``selectors.synthese_pneus_pieces_vehicule``).
+        """
+        company = request.user.company
+        vehicule_param = request.query_params.get('vehicule')
+        if not vehicule_param:
+            return Response(
+                {'vehicule': "Le paramètre 'vehicule' est obligatoire."},
+                status=400)
+        try:
+            vehicule_id = int(vehicule_param)
+        except (ValueError, TypeError):
+            return Response(
+                {'vehicule': "Le paramètre 'vehicule' doit être un entier."},
+                status=400)
+
+        if not Vehicule.objects.filter(
+                company=company, id=vehicule_id).exists():
+            return Response(
+                {'vehicule': "Véhicule introuvable pour cette société."},
+                status=404)
+
+        from .selectors import synthese_pneus_pieces_vehicule
+        return Response(
+            synthese_pneus_pieces_vehicule(company, vehicule_id))

@@ -525,7 +525,7 @@ first run that ticks any `FG*` task refreshes CODEMAP §10 + `--write` in that c
 - [x] FG140 — **Aide au calcul de l'IS** — estimation depuis le CPC + échéancier des 4 acomptes provisionnels + régularisation. (DECISION)
 - [x] FG141 — **Export FEC (fichier des écritures comptables)** — export structuré et ordonné des écritures au format auditable DGI (dépend du grand livre). (SCHEMA)
 - [x] FG142 — **Trousse liasse fiscale (états de synthèse)** — bilan + CPC + balance + tableaux annexes en un paquet pour le fiduciaire/DGI. (ARCH)
-- [ ] FG143 — **Déclaration des honoraires / état 9421** — déclaration annuelle des paiements aux tiers depuis les règlements fournisseurs. (ROUTINE)
+- [x] FG143 — **Déclaration des honoraires / état 9421** — déclaration annuelle des paiements aux tiers depuis les règlements fournisseurs. (ROUTINE)
 - [ ] FG144 — **Calcul du timbre fiscal sur encaissements espèces** — droit de timbre auto sur les factures payées en espèces. (SCHEMA)
 - [ ] FG145 — **Retenue de garantie & cautions sur marchés (RG / bonne fin)** — RG retenue sur les marchés + cautions bancaires (provisoire/définitive/restitution) avec dates de levée. (SCHEMA)
 - [ ] FG146 — **Reconnaissance du revenu par avancement (% completion)** — reconnaître le CA des chantiers pluri-tranches selon l'avancement réel. (DECISION)
@@ -565,7 +565,7 @@ first run that ticks any `FG*` task refreshes CODEMAP §10 + `--write` in that c
 - [x] FG177 — **Visite médicale du travail** — dernière/prochaine visite + aptitude + alerte (obligatoire pour le chantier). (SCHEMA)
 - [x] FG178 — **Catalogue & dotation EPI** — casque/harnais/gants isolants/chaussures attribués nominativement (taille, date). (SCHEMA)
 - [x] FG179 — **Suivi péremption/contrôle des EPI** — EPI à durée de vie (harnais, gants isolants) + alerte de remplacement/recontrôle. (SCHEMA)
-- [ ] FG180 — **Émargement de remise EPI (signature)** — accusé signé prouvant la dotation (exigible CNSS/accident). (ROUTINE)
+- [x] FG180 — **Émargement de remise EPI (signature)** — accusé signé prouvant la dotation (exigible CNSS/accident). (ROUTINE)
 - [ ] FG181 — **Registre HSE & accidents du travail** — déclaration (date/lieu/blessé/gravité/arrêt/photos) + export déclaration CNSS. (SCHEMA)
 - [ ] FG182 — **Presqu'accidents (near-miss)** — saisie rapide terrain pour pilotage proactif. (ROUTINE)
 - [ ] FG183 — **Causeries sécurité / toolbox talks** — quart d'heure sécurité avant chantier (thème/participants/émargement). (SCHEMA)
@@ -654,7 +654,7 @@ first run that ticks any `FG*` task refreshes CODEMAP §10 + `--write` in that c
 - [x] FG260 — **Modélisation escalade tarifaire ONEE sur 20–25 ans** — projeter facture/économies + VAN/TRI avec taux d'escalade éditable. (ROUTINE)
 - [x] FG261 — **Optimisation puissance souscrite (C&I)** — analyser la pointe et recommander une réduction de puissance souscrite post-PV. (ROUTINE)
 - [x] FG262 — **Modélisation dégradation modules sur la durée** — courbe de dégradation appliquée à la production projetée et garantie. (ROUTINE)
-- [ ] FG263 — **Modèle financier PPA / tiers-investisseur** — simuler un PPA (tarif MAD/kWh, revenus actualisés) pour les clients sans capex. (DECISION)
+- [x] FG263 — **Modèle financier PPA / tiers-investisseur** — simuler un PPA (tarif MAD/kWh, revenus actualisés) pour les clients sans capex. (DECISION)
 - [ ] FG264 — **Rendement pompage par cycle de marche** — volume d'eau journalier/mensuel selon irradiation horaire + durée de pompage (étend l'`etude_params` actuel). (ROUTINE)
 - [ ] FG265 — **Flux d'irradiance/météo pour simulations** — flux TMY/temps réel pour caler simulations et O&M sur le site. (DEP/COST)
 - [ ] FG266 — **Comparateur de scénarios de devis** — comparer plusieurs dimensionnements (kWc/batterie/orientation) sur production/économies/payback. (ROUTINE)
@@ -697,7 +697,7 @@ first run that ticks any `FG*` task refreshes CODEMAP §10 + `--write` in that c
 - [x] FG300 — **Détection de conflits d'affectation** — alerte si technicien/camionnette affecté deux fois sur le même créneau. (ROUTINE)
 - [x] FG301 — **Nivellement de charge (resource levelling)** — proposition de rééquilibrage des interventions surchargées. (ROUTINE)
 - [x] FG302 — **Calendrier de disponibilité ressources** — `IndisponibiliteRessource` (congé/formation/arrêt) excluant un technicien/véhicule. (SCHEMA)
-- [ ] FG303 — **Planning des camionnettes (capacité véhicule)** — affectation par véhicule sur le calendrier (cohérent avec `Intervention.camionnette`). (ROUTINE)
+- [x] FG303 — **Planning des camionnettes (capacité véhicule)** — affectation par véhicule sur le calendrier (cohérent avec `Intervention.camionnette`). (ROUTINE)
 - [ ] FG304 — **Référentiel sous-traitants** — `SousTraitant` (métier/contact/RIB/ICE), distinct des fournisseurs matériel. (ARCH)
 - [ ] FG305 — **Ordres de travaux sous-traitant** — `OrdreSousTraitance` (chantier/prestation/montant/échéance/statut). (ARCH)
 - [ ] FG306 — **Factures & règlements sous-traitant** — facture entrante + paiements (AP dédiée), montants jamais client-facing. (SCHEMA)
@@ -766,7 +766,7 @@ first run that ticks any `FG*` task refreshes CODEMAP §10 + `--write` in that c
 - [x] FG366 — **Moteur de workflow multi-étapes (BPM) + SLA/escalades** — `WorkflowDefinition/Instance/Step` pour chaînes d'approbation visuelles + minuteries SLA, au-delà des règles à déclencheur unique. (ARCH)
 - [x] FG367 — **Conditions multi-critères & branches dans les règles** — `AutomationRule` avec groupes ET/OU + plusieurs actions séquentielles. (SCHEMA)
 - [x] FG368 — **UI de gestion des tâches planifiées (jobs)** — écran Paramètres listant les jobs Celery Beat (digests/rapports/monitoring) avec statut + exécution manuelle. (ROUTINE)
-- [ ] FG369 — **Bibliothèque de modèles de workflow** — workflows pré-construits (relance devis, onboarding chantier, rappel garantie) installables en un clic. (ROUTINE)
+- [x] FG369 — **Bibliothèque de modèles de workflow** — workflows pré-construits (relance devis, onboarding chantier, rappel garantie) installables en un clic. (ROUTINE)
 - [ ] FG370 — **Passerelle de paiement CMI / Payzone** — paiement carte en ligne d'une facture + rapprochement vers `Paiement`. (AUTH)
 - [ ] FG371 — **Passerelle SMS marocaine** — brancher un vrai fournisseur SMS pour que le canal SMS cesse de no-op. (AUTH)
 - [ ] FG372 — **E-signature (Yousign/DocuSign)** — envoyer un Devis/contrat en signature électronique + enregistrer le statut/document signé. (AUTH)
@@ -958,7 +958,7 @@ these overlap and SUPERSEDE the domain-list FG items as the module-organized hom
 - [x] GED18 — Workflow d'approbation/revue. (SCHEMA)
 - [x] GED19 — ACL par dossier/document (héritage + override). (SCHEMA+DECISION)
 - [x] GED20 — Partage par lien tokenisé (expiry/mot de passe/quota). (SCHEMA+DECISION)
-- [ ] GED21 — Watermarking & contrôle de diffusion. (DEP)
+- [x] GED21 — Watermarking & contrôle de diffusion. (DEP)
 - [ ] GED22 — Politiques de rétention. (SCHEMA)
 - [ ] GED23 — Archivage légal à valeur probante (write-once/object-lock). (DECISION)
 - [ ] GED24 — Rétention légale / legal hold. (SCHEMA)
@@ -996,7 +996,7 @@ these overlap and SUPERSEDE the domain-list FG items as the module-organized hom
 - [x] FLOTTE15 — Plans d'entretien préventif (km/date/heures). (SCHEMA)
 - [x] FLOTTE16 — Génération d'échéances d'entretien dues + alertes. (ROUTINE)
 - [x] FLOTTE17 — Ordres de réparation + atelier/garage + coûts. (SCHEMA)
-- [ ] FLOTTE18 — Pneumatiques & pièces. (SCHEMA)
+- [x] FLOTTE18 — Pneumatiques & pièces. (SCHEMA)
 - [ ] FLOTTE19 — `EcheanceReglementaire` (modèle générique). (SCHEMA)
 - [ ] FLOTTE20 — Vignette / TSAV (barème CV/énergie, référentiel éditable). (ROUTINE)
 - [ ] FLOTTE21 — Assurance auto (police/échéance/attestation/franchise). (ROUTINE)
@@ -1077,7 +1077,7 @@ these overlap and SUPERSEDE the domain-list FG items as the module-organized hom
 - [x] CONTRAT15 — Chatter/journal du contrat (audit des transitions). (ROUTINE)
 - [x] CONTRAT16 — `SignatureContrat` (point e-sign + statut signé). (DECISION)
 - [x] CONTRAT17 — Transition automatique signé→actif sur signature. (ROUTINE)
-- [ ] CONTRAT18 — `VersionContrat` (versionnage immuable des rendus). (SCHEMA)
+- [x] CONTRAT18 — `VersionContrat` (versionnage immuable des rendus). (SCHEMA)
 - [ ] CONTRAT19 — Dépôt en GED des versions & PDF signés. (ROUTINE)
 - [ ] CONTRAT20 — Dates clés (début/fin/préavis) + tacite reconduction. (SCHEMA)
 - [ ] CONTRAT21 — Calcul des échéances & contrats « à renouveler ». (ROUTINE)
@@ -1676,3 +1676,11 @@ Tracked here so they aren't lost:
 - 2026-06-29 — PROJ20 (apps/gestion_projet): Nivellement de charge (levelling) — sélecteur `nivellement_charge` réutilise PROJ18 : propose de déplacer les affectations directes des ressources sur-allouées vers les sous-allouées sans créer de conflit PROJ19 (lecture seule), endpoint `ressources/nivellement-charge/`. Aucune migration, 14 tests.
 - 2026-06-29 — PAIE22 (apps/paie): Calcul IR (barème progressif + charges de famille) — DÉJÀ PRÉSENT (PAIE5 : `ir_bareme` progressif, `deduction_charges_famille` plafonnée, `compute_ir` câblé dans `calculer_bulletin` sur le net imposable) ; ajout de 30 tests comportementaux (toutes les tranches, plafond charges de famille, IR sur base réduite, scoping). Aucune migration. (already present — tests added)
 - 2026-06-29 — QHSE22 (apps/qhse): Document unique requis avant pose — sélecteur `document_unique_valide(company, chantier_id)` (vrai si ≥1 `EvaluationRisque` validée avec lignes) + service `exiger_document_unique` (lève ValidationError, consommable par installations pour gater la pose) + endpoint `evaluations-risque/document-unique-statut/`. Réf chantier par id chaîné (pas d'import installations). Aucune migration, 18 tests. (NOTE: DECISION — check + portail de gate ; l'enforcement côté installations est une tâche séparée.)
+- 2026-06-29 — FG143 (apps/compta): Déclaration des honoraires / état 9421 — sélecteur `declaration_honoraires(company, annee)` agrège par bénéficiaire les paiements aux tiers de l'année civile depuis le registre RAS (FG139) : brut/retenue/net + IF/ICE + nb pièces ; endpoint `etats/declaration-honoraires/` (?annee=, ?export=csv), réservé responsable/admin. Aucune migration, 14 tests.
+- 2026-06-29 — FG303 (apps/installations): Planning des camionnettes — sélecteur `planning_camionnettes(company, debut, fin)` regroupe par camionnette (via `Intervention.camionnette`) les interventions de la fenêtre + charge journalière, capacité zéro sur les indisponibilités FG302 (surréservation visible) ; endpoint `planning-camionnettes` (action lecture ajoutée à get_permissions, IsAnyRole). Aucune migration, 24 tests.
+- 2026-06-29 — FG263 (apps/ventes): Modèle financier PPA / tiers-investisseur — fonction pure `ppa_model` : applique la dégradation FG262, calcule les revenus investisseur (production × tarif PPA + escalade − O&M ; NPV/IRR/payback via FG260) et les économies client (tarif réseau − PPA), double perspective, chemin PDF intact. Aucune migration, 18 tests. (NOTE: DECISION — math pure ; écran/PDF dédiés restent une tâche séparée.)
+- 2026-06-29 — FG369 (core): Bibliothèque de modèles de workflow — catalogue de données `workflow_templates.py` (relance devis, onboarding chantier, rappel garantie) + service idempotent `installer_modele_workflow` matérialisant les `WorkflowDefinition`/`StepDefinition` FG366 par société (skip si déjà installé) ; `WorkflowTemplateViewSet` (liste authentifiée / installer admin-responsable), câblé à `/api/django/core/`. Aucune dépendance, import-linter respecté (core base), 17 tests.
+- 2026-06-29 — FG180 (apps/rh): Émargement de remise EPI (signature) — modèle `EmargementEpi` (e-sign loi 53-05 nom typé, preuve IP/user-agent côté serveur) + `accuse_remise`/`date_accuse` sur DotationEpi ; service `emarger_dotation` (société + acteur serveur, accusé figé à la première signature) ; endpoints `emarger`/`emargements`. Aucune dépendance e-sign externe. Migration rh 0020 additive, 15 tests.
+- 2026-06-29 — CONTRAT18 (apps/contrats): `VersionContrat` (versionnage immuable des rendus) — modèle versionné (numéro serveur max+1 select_for_update, jamais count()+1 ; contenu figé + clé MinIO), snapshot via service `creer_version` + auto-snapshot à la signature (best-effort, CONTRAT16/17 préservés), viewset lecture seule. Migration contrats 0014 additive, 19 tests.
+- 2026-06-29 — FLOTTE18 (apps/flotte): Pneumatiques & pièces — modèles `Pneumatique` (position/dimension/montage/dépose/statut/coût) et `PieceFlotte` (désignation/réf/quantité/coût, lien OrdreReparation), CRUD + action `synthese` pneus+pièces par véhicule. Migration flotte 0016 additive (index ≤30, related_name préfixés), 25 tests.
+- 2026-06-29 — GED21 (apps/ged): Watermarking & contrôle de diffusion — drapeaux `Document.watermark_diffusion`/`PartageGed.watermark` + service `apply_watermark` (Pillow pour images — déjà dépendance ; PyMuPDF pour PDF importé en lazy, dégradation propre si absent), câblé dans l'aperçu GED14 et le partage public GED20 (chemin sans filigrane identique). Migration ged 0015 additive, 17 tests. (NOTE: DEP — aucune dépendance dure ajoutée ; filigrane PDF actif seulement si PyMuPDF installé ultérieurement.)
