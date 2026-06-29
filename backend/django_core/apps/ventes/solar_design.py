@@ -1,4 +1,4 @@
-"""FG246 / FG247 / FG249 — Calculs d'ingénierie solaire (conception électrique).
+"""FG246 / FG247 / FG249 / … — Calculs d'ingénierie solaire (conception électrique).
 
 Module PUR (aucune écriture base, aucun effet de bord) regroupant trois
 calculateurs réutilisés par l'écran de devis et, à terme, le pont toiture 3D :
@@ -1073,5 +1073,255 @@ def ev_charger_sizing(*, borne_kw=7.4, phases=1, sessions_per_day=1,
             "charge_efficiency": _EV_CHARGE_EFFICIENCY,
         },
         "pv_impact": pv_impact,
+        "warnings": warnings,
+    }
+
+
+# ── FG256 — Étude de stockage & dispatch batterie (backup) ───────────────────
+# Dimensionne le parc batterie d'une installation PV pour DEUX objectifs
+# distincts, puis désigne la contrainte DIMENSIONNANTE (binding) :
+#
+#   (a) AUTOCONSOMMATION MAX — stocker le SURPLUS solaire de la journée pour le
+#       restituer le soir/la nuit. La capacité utile vise à absorber le surplus
+#       journalier (production − autoconsommation directe), elle-même bornée par
+#       l'énergie réellement déchargée la nuit (besoin du soir). La puissance
+#       utile suit le pic de décharge nocturne.
+#   (b) BACKUP N heures critiques — tenir une charge critique (kW) pendant un
+#       nombre d'heures de coupure. La capacité utile = charge critique × heures,
+#       la puissance utile = charge critique (avec une marge de pointe).
+#
+# On part toujours de la capacité UTILE (kWh utilisables) puis on remonte à la
+# capacité NOMINALE installée en divisant par la profondeur de décharge (DoD) et
+# le rendement aller-retour (round-trip) — deux pertes physiques bien réelles.
+# Module PUR : aucune base, aucun réseau, aucun prix. Les entrées numériques ne
+# sont JAMAIS rejetées (liberté de saisie du founder) — seules les valeurs
+# absurdes (≤ 0) sont bornées à un défaut sensé pour éviter une division par
+# zéro.
+
+# Profondeur de décharge utilisable par défaut (lithium LFP courant : 90 %).
+_BATTERY_DEFAULT_DOD = 0.90
+# Rendement aller-retour (charge → décharge) d'un parc lithium + onduleur.
+_BATTERY_DEFAULT_ROUND_TRIP = 0.90
+# Facteur de pointe pour la puissance backup (démarrages moteurs, appels).
+_BATTERY_BACKUP_PEAK_FACTOR = 1.25
+# Fraction du surplus journalier réellement restituée le soir si le besoin
+# nocturne n'est pas précisé (le reste serait réinjecté/perdu).
+_BATTERY_DEFAULT_NIGHT_FRACTION = 0.80
+
+
+def battery_storage_sizing(*, mode="autoconso",
+                           pv_daily_production_kwh=None,
+                           pv_self_consumption_kwh=None,
+                           daily_surplus_kwh=None,
+                           night_load_kwh=None,
+                           pv_kwc=None,
+                           productible_kwh_kwc_year=1700.0,
+                           critical_load_kw=None,
+                           backup_hours=None,
+                           evening_peak_kw=None,
+                           depth_of_discharge=_BATTERY_DEFAULT_DOD,
+                           round_trip_efficiency=_BATTERY_DEFAULT_ROUND_TRIP,
+                           system_voltage_v=48.0):
+    """FG256 — capacité (kWh) et puissance (kW) batterie utiles + nominales.
+
+    Calcule le dimensionnement pour le ou les objectifs demandés et désigne la
+    contrainte DIMENSIONNANTE (``binding_objective``).
+
+    Modes (``mode``) :
+
+    * ``"autoconso"`` — autoconsommation max : stocker le surplus journalier.
+    * ``"backup"`` — autonomie : tenir la charge critique N heures.
+    * ``"both"`` — calcule les deux ; la capacité retenue est la PLUS GRANDE et
+      ``binding_objective`` indique laquelle dimensionne le parc.
+
+    AUTOCONSOMMATION : le surplus journalier (``daily_surplus_kwh`` direct,
+    sinon production − autoconsommation directe, sinon déduit de ``pv_kwc`` via
+    ``productible_kwh_kwc_year``) est l'énergie EXCÉDENTAIRE de la journée. La
+    capacité UTILE visée est ``min(surplus, besoin nocturne)`` : inutile de
+    stocker plus que ce qui sera redéchargé le soir (``night_load_kwh`` ; à
+    défaut une fraction du surplus). La puissance UTILE suit le pic de décharge
+    nocturne (``evening_peak_kw`` si fourni, sinon estimée du besoin nocturne).
+
+    BACKUP : capacité UTILE = ``critical_load_kw`` × ``backup_hours`` ; puissance
+    UTILE = ``critical_load_kw`` × marge de pointe (``_BATTERY_BACKUP_PEAK_FACTOR``).
+
+    De l'UTILE au NOMINAL : la capacité nominale installée =
+    capacité utile ÷ (DoD × √rendement_round_trip) — la profondeur de décharge
+    limite la fraction exploitable et le rendement aller-retour ajoute des pertes
+    de stockage. Le courant batterie indicatif = puissance utile ÷ tension
+    système.
+
+    Toutes les sorties sont JSON-sérialisables et sûres sur entrées dégradées
+    (jamais d'exception, division par zéro bornée). Retourne ::
+
+        {mode, autoconso: {usable_kwh, usable_kw, nominal_kwh, ...} | None,
+         backup: {usable_kwh, usable_kw, nominal_kwh, ...} | None,
+         recommended: {usable_kwh, usable_kw, nominal_kwh, current_a},
+         binding_objective, depth_of_discharge, round_trip_efficiency,
+         warnings: []}
+    """
+    warnings = []
+
+    def _pos(value, default):
+        try:
+            v = float(value)
+        except (TypeError, ValueError):
+            return float(default)
+        return v if v > 0 else float(default)
+
+    def _nonneg(value):
+        try:
+            v = float(value)
+        except (TypeError, ValueError):
+            return None
+        return v if v >= 0 else None
+
+    # DoD et rendement bornés à ]0, 1] (jamais une division par zéro).
+    dod = _pos(depth_of_discharge, _BATTERY_DEFAULT_DOD)
+    if dod > 1.0:
+        dod = 1.0
+        warnings.append("profondeur de décharge plafonnée à 100 %")
+    rte = _pos(round_trip_efficiency, _BATTERY_DEFAULT_ROUND_TRIP)
+    if rte > 1.0:
+        rte = 1.0
+        warnings.append("rendement aller-retour plafonné à 100 %")
+    voltage = _pos(system_voltage_v, 48.0)
+
+    mode = (mode or "autoconso").lower()
+    want_autoconso = mode in ("autoconso", "both")
+    want_backup = mode in ("backup", "both")
+    if mode not in ("autoconso", "backup", "both"):
+        want_autoconso = True
+        warnings.append(
+            f"mode « {mode} » inconnu — autoconsommation par défaut")
+
+    def _usable_to_nominal(usable_kwh):
+        # Capacité nominale = utile / (DoD × √rendement aller-retour). Le √
+        # répartit la perte round-trip entre charge et décharge (modèle simple).
+        denom = dod * math.sqrt(rte)
+        return round(usable_kwh / denom, 2) if denom > 0 else None
+
+    # ── (a) AUTOCONSOMMATION MAX ──────────────────────────────────────────────
+    autoconso = None
+    if want_autoconso:
+        prod = _nonneg(pv_daily_production_kwh)
+        if prod is None:
+            kwc = _nonneg(pv_kwc)
+            if kwc is not None and kwc > 0:
+                prod = round(
+                    kwc * _pos(productible_kwh_kwc_year, 1700.0) / 365.0, 2)
+
+        surplus = _nonneg(daily_surplus_kwh)
+        base_self = _nonneg(pv_self_consumption_kwh)
+        if surplus is None and prod is not None and base_self is not None:
+            surplus = max(0.0, round(prod - base_self, 2))
+
+        if surplus is None:
+            autoconso = {
+                "usable_kwh": None, "usable_kw": None, "nominal_kwh": None,
+                "daily_surplus_kwh": None, "night_load_kwh": _nonneg(night_load_kwh),
+                "stored_kwh": None, "spilled_surplus_kwh": None,
+                "pv_daily_production_kwh": prod,
+            }
+            warnings.append(
+                "autoconsommation : surplus solaire inconnu — fournir production "
+                "+ autoconsommation, surplus direct, ou kWc")
+        else:
+            # Énergie redéchargée le soir : besoin nocturne fourni, sinon une
+            # fraction du surplus (le reste serait réinjecté/perdu).
+            night = _nonneg(night_load_kwh)
+            if night is None:
+                night = round(surplus * _BATTERY_DEFAULT_NIGHT_FRACTION, 2)
+            # On ne stocke pas plus que ce qui sera redéchargé (ni que le surplus).
+            usable_kwh = round(min(surplus, night), 2)
+            spilled = round(max(0.0, surplus - usable_kwh), 2)
+            # Pic de décharge nocturne : fourni, sinon ~le besoin réparti sur une
+            # soirée de pointe de 4 h (modèle simple).
+            peak = _nonneg(evening_peak_kw)
+            if peak is None or peak <= 0:
+                peak = round(usable_kwh / 4.0, 2) if usable_kwh > 0 else 0.0
+            autoconso = {
+                "usable_kwh": usable_kwh,
+                "usable_kw": round(peak, 2),
+                "nominal_kwh": _usable_to_nominal(usable_kwh),
+                "daily_surplus_kwh": round(surplus, 2),
+                "night_load_kwh": round(night, 2),
+                "stored_kwh": usable_kwh,
+                "spilled_surplus_kwh": spilled,
+                "pv_daily_production_kwh": prod,
+            }
+            if spilled > 0:
+                warnings.append(
+                    "autoconsommation : une partie du surplus dépasse le besoin "
+                    "nocturne et ne sera pas stockée (réinjection/écrêtage)")
+
+    # ── (b) BACKUP N heures critiques ─────────────────────────────────────────
+    backup = None
+    if want_backup:
+        crit_kw = _nonneg(critical_load_kw)
+        hours = _nonneg(backup_hours)
+        if crit_kw is None or hours is None:
+            backup = {
+                "usable_kwh": None, "usable_kw": None, "nominal_kwh": None,
+                "critical_load_kw": crit_kw, "backup_hours": hours,
+            }
+            warnings.append(
+                "backup : charge critique (kW) et heures d'autonomie requises")
+        else:
+            usable_kwh = round(crit_kw * hours, 2)
+            # Puissance utile = charge critique avec marge de pointe (appels
+            # moteurs, démarrages) — l'onduleur batterie doit la soutenir.
+            usable_kw = round(crit_kw * _BATTERY_BACKUP_PEAK_FACTOR, 2)
+            backup = {
+                "usable_kwh": usable_kwh,
+                "usable_kw": usable_kw,
+                "nominal_kwh": _usable_to_nominal(usable_kwh),
+                "critical_load_kw": round(crit_kw, 2),
+                "backup_hours": round(hours, 2),
+                "peak_factor": _BATTERY_BACKUP_PEAK_FACTOR,
+            }
+            if usable_kwh <= 0:
+                warnings.append(
+                    "backup : énergie d'autonomie nulle (charge ou heures à 0)")
+
+    # ── Contrainte dimensionnante (binding) ───────────────────────────────────
+    candidates = []
+    if autoconso and autoconso.get("usable_kwh") is not None:
+        candidates.append(("autoconso", autoconso))
+    if backup and backup.get("usable_kwh") is not None:
+        candidates.append(("backup", backup))
+
+    binding = None
+    recommended = {
+        "usable_kwh": None, "usable_kw": None,
+        "nominal_kwh": None, "current_a": None,
+    }
+    if candidates:
+        # La contrainte dimensionnante est celle qui exige la plus grande
+        # capacité utile ; la puissance retenue est le max des deux pics.
+        binding, chosen = max(
+            candidates, key=lambda c: c[1].get("usable_kwh") or 0.0)
+        usable_kwh = chosen.get("usable_kwh") or 0.0
+        usable_kw = max(
+            (c[1].get("usable_kw") or 0.0) for c in candidates)
+        nominal_kwh = _usable_to_nominal(usable_kwh)
+        current_a = round(usable_kw * 1000.0 / voltage, 1) \
+            if voltage > 0 and usable_kw else 0.0
+        recommended = {
+            "usable_kwh": round(usable_kwh, 2),
+            "usable_kw": round(usable_kw, 2),
+            "nominal_kwh": nominal_kwh,
+            "current_a": current_a,
+        }
+
+    return {
+        "mode": mode,
+        "autoconso": autoconso,
+        "backup": backup,
+        "recommended": recommended,
+        "binding_objective": binding,
+        "depth_of_discharge": round(dod, 4),
+        "round_trip_efficiency": round(rte, 4),
+        "system_voltage_v": round(voltage, 1),
         "warnings": warnings,
     }
