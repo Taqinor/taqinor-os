@@ -817,3 +817,17 @@ class InstallationViewSet(TenantMixin, viewsets.ModelViewSet):
             'nb_equipements': len(items),
             'equipements': items,
         })
+
+    # ── FG71 — synthèse coût / marge par chantier (INTERNE, admin-only) ──────
+    @action(detail=True, methods=['get'], url_path='cout',
+            permission_classes=[IsAdminRole])
+    def cout(self, request, pk=None):
+        """FG71 — synthèse de coût / marge du chantier : main-d'œuvre
+        (jours estimés/réels, coût si `?tarif_jour=` fourni), coût matériel prévu
+        (BoM gelé) vs réel (consommation terrain validée), total du devis et
+        marge résultante. STRICTEMENT INTERNE — réservé admin : s'appuie sur les
+        prix d'achat, qui ne doivent JAMAIS apparaître sur un document client."""
+        from ..services import compute_chantier_cout
+        inst = self.get_object()
+        tarif = request.query_params.get('tarif_jour')
+        return Response(compute_chantier_cout(inst, tarif_jour=tarif))

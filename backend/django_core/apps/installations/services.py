@@ -461,3 +461,155 @@ def instantiate_modele_projet(installation, modele, user=None):
         seed_reservations(installation)
 
     return {'jalons_crees': jalons_crees, 'bom_lignes_ajoutees': bom_ajoutees}
+
+
+# ── FG71 — Synthèse de coût / marge par chantier (INTERNE, jamais client) ─────
+# Assemble la main-d'œuvre (jours estimés/réels), le coût matériel prévu (BoM
+# gelé) vs réel (consommation terrain F11), et le total du devis, en une vue de
+# marge. STRICTEMENT INTERNE : s'appuie sur `Produit.prix_achat` (interdit de
+# bannière sur tout document client). Endpoint réservé admin (cf. la vue).
+
+def _dec(value):
+    from decimal import Decimal, InvalidOperation
+    if value is None:
+        return Decimal('0')
+    try:
+        return Decimal(str(value))
+    except (InvalidOperation, TypeError, ValueError):
+        return Decimal('0')
+
+
+def _bom_material_cost(installation):
+    """Coût matériel PRÉVU = somme(quantité BoM gelé × prix_achat catalogue).
+    Les lignes sans produit catalogue sont ignorées (pas de prix d'achat)."""
+    from decimal import Decimal
+    from apps.stock.selectors import get_produit_scoped
+    total = Decimal('0')
+    detail = []
+    for ligne in (installation.bom or []):
+        if not isinstance(ligne, dict):
+            continue
+        produit_id = ligne.get('produit_id')
+        if not produit_id:
+            continue
+        produit = get_produit_scoped(installation.company, produit_id)
+        if produit is None:
+            continue
+        qte = _dec(ligne.get('quantite'))
+        prix = _dec(getattr(produit, 'prix_achat', 0))
+        cout = qte * prix
+        total += cout
+        detail.append({
+            'produit_id': produit_id,
+            'designation': ligne.get('designation') or produit.nom,
+            'quantite': float(qte),
+            'prix_achat': float(prix),
+            'cout': float(cout),
+        })
+    return total, detail
+
+
+def _consommation_material_cost(installation):
+    """Coût matériel RÉEL = somme(quantité_utilisée × prix_achat) sur les
+    réconciliations de consommation VALIDÉES (F11) des interventions du chantier.
+    None si aucune réconciliation validée n'existe (→ on retombe sur le prévu)."""
+    from decimal import Decimal
+    lignes = []
+    has_validee = False
+    for interv in installation.interventions.all():
+        conso = getattr(interv, 'consommation', None)
+        if conso is None or not conso.valide:
+            continue
+        has_validee = True
+        lignes.extend(conso.lignes.select_related('produit').all())
+    if not has_validee:
+        return None, []
+    total = Decimal('0')
+    detail = []
+    for li in lignes:
+        produit = li.produit
+        prix = _dec(getattr(produit, 'prix_achat', 0)) if produit else Decimal('0')
+        qte = _dec(li.quantite_utilisee)
+        cout = qte * prix
+        total += cout
+        detail.append({
+            'produit_id': li.produit_id,
+            'designation': li.designation,
+            'quantite_utilisee': float(qte),
+            'prix_achat': float(prix),
+            'cout': float(cout),
+            'hors_nomenclature': li.hors_nomenclature,
+        })
+    return total, detail
+
+
+def compute_chantier_cout(installation, tarif_jour=None):
+    """FG71 — synthèse coût / marge d'un chantier (INTERNE, admin-only).
+
+    Renvoie un dict :
+      labour: jours estimés/réels + coût (si `tarif_jour` fourni, en MAD/jour) ;
+      materiel: coût prévu (BoM gelé) + coût réel (consommation validée, si
+        dispo) + écart ; chaque poste détaillé ;
+      devis_total_ht / devis_total_ttc : le total du devis source (None sans
+        devis) ;
+      marge: total_ht − coût matériel (réel si dispo sinon prévu) − coût
+        main-d'œuvre, + le taux (% du HT). None si le HT est inconnu.
+
+    `Produit.prix_achat` est INTERNE : ce résultat ne doit jamais alimenter un
+    document client (l'endpoint est réservé admin)."""
+    from decimal import Decimal
+    labour_estime = _dec(installation.labour_jours_estimes)
+    labour_reel = _dec(installation.labour_jours_reels)
+    tarif = _dec(tarif_jour) if tarif_jour not in (None, '') else None
+    labour_cout_estime = (labour_estime * tarif) if tarif is not None else None
+    labour_cout_reel = (labour_reel * tarif) if tarif is not None else None
+
+    cout_prevu, detail_prevu = _bom_material_cost(installation)
+    cout_reel, detail_reel = _consommation_material_cost(installation)
+    materiel_retenu = cout_reel if cout_reel is not None else cout_prevu
+
+    devis = installation.devis
+    total_ht = None
+    total_ttc = None
+    if devis is not None:
+        try:
+            total_ht = _dec(devis.total_ht)
+            total_ttc = _dec(devis.total_ttc)
+        except Exception:  # pragma: no cover - défensif
+            total_ht = None
+
+    marge = None
+    marge_taux = None
+    if total_ht is not None:
+        cout_mo = labour_cout_reel if labour_cout_reel is not None else Decimal('0')
+        marge = total_ht - materiel_retenu - cout_mo
+        if total_ht != 0:
+            marge_taux = float(round(marge / total_ht * 100, 1))
+
+    return {
+        'installation': installation.id,
+        'reference': installation.reference,
+        'labour': {
+            'jours_estimes': float(labour_estime),
+            'jours_reels': float(labour_reel),
+            'tarif_jour': float(tarif) if tarif is not None else None,
+            'cout_estime': float(labour_cout_estime)
+            if labour_cout_estime is not None else None,
+            'cout_reel': float(labour_cout_reel)
+            if labour_cout_reel is not None else None,
+        },
+        'materiel': {
+            'cout_prevu': float(cout_prevu),
+            'cout_reel': float(cout_reel) if cout_reel is not None else None,
+            'cout_retenu': float(materiel_retenu),
+            'source_retenue': 'reel' if cout_reel is not None else 'prevu',
+            'ecart': (float(cout_reel - cout_prevu)
+                      if cout_reel is not None else None),
+            'lignes_prevu': detail_prevu,
+            'lignes_reel': detail_reel,
+        },
+        'devis_total_ht': float(total_ht) if total_ht is not None else None,
+        'devis_total_ttc': float(total_ttc) if total_ttc is not None else None,
+        'marge': float(marge) if marge is not None else None,
+        'marge_taux': marge_taux,
+    }
