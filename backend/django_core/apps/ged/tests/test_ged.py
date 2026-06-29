@@ -18,8 +18,8 @@ from apps.crm.models import Client
 from apps.records.models import Attachment
 from apps.ged import selectors, services
 from apps.ged.models import (
-    Cabinet, Coffre, Document, DocumentChunk, DocumentLien, DocumentTag,
-    DocumentTagAssignment, DocumentVersion, Folder,
+    Cabinet, Coffre, DemandeApprobation, Document, DocumentChunk, DocumentLien,
+    DocumentTag, DocumentTagAssignment, DocumentVersion, Folder,
 )
 
 User = get_user_model()
@@ -2296,3 +2296,234 @@ class CycleDeVieTests(GedBase):
         noms = [r['nom'] for r in rows(resp)]
         self.assertIn('Doc cycle de vie', noms)
         self.assertNotIn('Encore brouillon', noms)
+
+
+# ── GED18 — Workflow d'approbation / revue documentaire ─────────────
+class DemandeApprobationTests(GedBase):
+    """Tests du workflow d'approbation/revue (GED18).
+
+    Couvre :
+      * lancer une revue crée une demande « en_attente » + met le doc en revue ;
+      * approuver fait avancer le doc « revue → approuvé » (réutilise GED17) ;
+      * rejeter renvoie le doc « revue → brouillon » ;
+      * une 2e demande en attente est refusée (garde duplication) ;
+      * décider une demande déjà décidée est refusé (garde illégale) ;
+      * isolation par société (service + endpoints 404/403) ;
+      * approbateur d'une autre société refusé ;
+      * endpoints demander-revue / approuver / rejeter / liste demandes.
+
+    Statuts LOCAUX à la GED — jamais le funnel STAGES.py.
+    """
+
+    def setUp(self):
+        super().setUp()
+        self.folder_a = Folder.objects.create(
+            company=self.co_a, cabinet=self.cab_a, nom="GED18-docs")
+        self.doc_a = Document.objects.create(
+            company=self.co_a, folder=self.folder_a, nom="Doc à valider")
+        self.folder_b = Folder.objects.create(
+            company=self.co_b, cabinet=self.cab_b, nom="GED18-docs-B")
+        self.doc_b = Document.objects.create(
+            company=self.co_b, folder=self.folder_b, nom="Doc B")
+
+    # ── service : lancer une revue ─────────────────────────────────────
+
+    def test_request_review_creates_pending_and_moves_to_review(self):
+        """request_review crée une demande en_attente et met le doc en revue."""
+        demande = services.request_review(self.doc_a, user=self.admin_a)
+        self.assertEqual(demande.statut, 'en_attente')
+        self.assertEqual(demande.company_id, self.co_a.id)
+        self.assertEqual(demande.demandeur_id, self.admin_a.id)
+        self.assertTrue(demande.is_pending)
+        self.doc_a.refresh_from_db()
+        self.assertEqual(self.doc_a.statut, 'revue')
+
+    def test_request_review_with_assigned_approver(self):
+        """L'approbateur assigné est posé côté serveur sur la demande."""
+        demande = services.request_review(
+            self.doc_a, user=self.admin_a, approbateur=self.admin_a)
+        self.assertEqual(demande.approbateur_id, self.admin_a.id)
+
+    def test_request_review_rejects_duplicate_pending(self):
+        """Une 2e demande alors qu'une est en attente lève ValueError."""
+        services.request_review(self.doc_a, user=self.admin_a)
+        with self.assertRaises(ValueError):
+            services.request_review(self.doc_a, user=self.admin_a)
+        self.assertEqual(
+            DemandeApprobation.objects.filter(document=self.doc_a).count(), 1)
+
+    def test_request_review_rejects_cross_company_approver(self):
+        """Un approbateur d'une autre société est refusé (ValueError)."""
+        with self.assertRaises(ValueError):
+            services.request_review(
+                self.doc_a, user=self.admin_a, approbateur=self.admin_b)
+
+    def test_request_review_rejects_other_company_user(self):
+        """Lancer une revue sur le doc d'une autre société → PermissionError."""
+        with self.assertRaises(PermissionError):
+            services.request_review(self.doc_a, user=self.admin_b)
+
+    # ── service : approbation / rejet ──────────────────────────────────
+
+    def test_approve_advances_document_to_approuve(self):
+        """approve_demande avance le doc « revue → approuvé » (réutilise GED17)."""
+        demande = services.request_review(self.doc_a, user=self.admin_a)
+        dem = services.approve_demande(
+            demande, user=self.admin_a, commentaire="OK pour moi")
+        self.assertEqual(dem.statut, 'approuve')
+        self.assertEqual(dem.approbateur_id, self.admin_a.id)
+        self.assertIsNotNone(dem.decision_le)
+        self.assertEqual(dem.commentaire, "OK pour moi")
+        self.doc_a.refresh_from_db()
+        self.assertEqual(self.doc_a.statut, 'approuve')
+
+    def test_reject_returns_document_to_brouillon(self):
+        """reject_demande renvoie le doc « revue → brouillon »."""
+        demande = services.request_review(self.doc_a, user=self.admin_a)
+        dem = services.reject_demande(
+            demande, user=self.admin_a, commentaire="À corriger")
+        self.assertEqual(dem.statut, 'rejete')
+        self.assertIsNotNone(dem.decision_le)
+        self.doc_a.refresh_from_db()
+        self.assertEqual(self.doc_a.statut, 'brouillon')
+
+    def test_cannot_decide_already_decided(self):
+        """Décider deux fois la même demande lève ValueError."""
+        demande = services.request_review(self.doc_a, user=self.admin_a)
+        services.approve_demande(demande, user=self.admin_a)
+        demande.refresh_from_db()
+        with self.assertRaises(ValueError):
+            services.reject_demande(demande, user=self.admin_a)
+        with self.assertRaises(ValueError):
+            services.approve_demande(demande, user=self.admin_a)
+
+    def test_approve_rejects_other_company_user(self):
+        """Approuver une demande d'une autre société → PermissionError."""
+        demande = services.request_review(self.doc_a, user=self.admin_a)
+        with self.assertRaises(PermissionError):
+            services.approve_demande(demande, user=self.admin_b)
+
+    def test_approve_non_revue_document_records_decision_only(self):
+        """Approuver alors que le doc n'est pas « revue » enregistre la décision
+        sans toucher au cycle de vie."""
+        # Document déjà approuvé (hors revue) : on crée une demande à la main.
+        services.change_lifecycle_status(self.doc_a, 'revue', user=self.admin_a)
+        services.change_lifecycle_status(
+            self.doc_a, 'approuve', user=self.admin_a)
+        demande = DemandeApprobation.objects.create(
+            company=self.co_a, document=self.doc_a, demandeur=self.admin_a)
+        dem = services.approve_demande(demande, user=self.admin_a)
+        self.assertEqual(dem.statut, 'approuve')
+        self.doc_a.refresh_from_db()
+        # Le statut documentaire reste « approuvé » (inchangé, pas d'erreur).
+        self.assertEqual(self.doc_a.statut, 'approuve')
+
+    # ── endpoints ──────────────────────────────────────────────────────
+
+    def test_endpoint_demander_revue(self):
+        """POST documents/<id>/demander-revue crée la demande + met en revue."""
+        api = auth(self.admin_a)
+        resp = api.post(
+            f'/api/django/ged/documents/{self.doc_a.id}/demander-revue/',
+            {'commentaire': 'Merci de relire'}, format='json')
+        self.assertEqual(resp.status_code, 201, resp.data)
+        self.assertEqual(resp.data['statut'], 'en_attente')
+        self.doc_a.refresh_from_db()
+        self.assertEqual(self.doc_a.statut, 'revue')
+
+    def test_endpoint_demander_revue_duplicate_400(self):
+        """Une 2e demande via l'endpoint renvoie 400."""
+        services.request_review(self.doc_a, user=self.admin_a)
+        api = auth(self.admin_a)
+        resp = api.post(
+            f'/api/django/ged/documents/{self.doc_a.id}/demander-revue/',
+            {}, format='json')
+        self.assertEqual(resp.status_code, 400, resp.data)
+
+    def test_endpoint_demander_revue_other_company_404(self):
+        """Lancer une revue sur le doc d'une autre société → 404."""
+        api = auth(self.admin_b)
+        resp = api.post(
+            f'/api/django/ged/documents/{self.doc_a.id}/demander-revue/',
+            {}, format='json')
+        self.assertEqual(resp.status_code, 404)
+
+    def test_endpoint_approuver(self):
+        """POST demandes-approbation/<id>/approuver avance le document."""
+        demande = services.request_review(self.doc_a, user=self.admin_a)
+        api = auth(self.admin_a)
+        resp = api.post(
+            f'/api/django/ged/demandes-approbation/{demande.id}/approuver/',
+            {'commentaire': 'Validé'}, format='json')
+        self.assertEqual(resp.status_code, 200, resp.data)
+        self.assertEqual(resp.data['statut'], 'approuve')
+        self.doc_a.refresh_from_db()
+        self.assertEqual(self.doc_a.statut, 'approuve')
+
+    def test_endpoint_rejeter(self):
+        """POST demandes-approbation/<id>/rejeter renvoie le doc en brouillon."""
+        demande = services.request_review(self.doc_a, user=self.admin_a)
+        api = auth(self.admin_a)
+        resp = api.post(
+            f'/api/django/ged/demandes-approbation/{demande.id}/rejeter/',
+            {}, format='json')
+        self.assertEqual(resp.status_code, 200, resp.data)
+        self.assertEqual(resp.data['statut'], 'rejete')
+        self.doc_a.refresh_from_db()
+        self.assertEqual(self.doc_a.statut, 'brouillon')
+
+    def test_endpoint_decide_already_decided_400(self):
+        """Décider via l'endpoint une demande déjà décidée renvoie 400."""
+        demande = services.request_review(self.doc_a, user=self.admin_a)
+        services.approve_demande(demande, user=self.admin_a)
+        api = auth(self.admin_a)
+        resp = api.post(
+            f'/api/django/ged/demandes-approbation/{demande.id}/approuver/',
+            {}, format='json')
+        self.assertEqual(resp.status_code, 400, resp.data)
+
+    def test_endpoint_decide_other_company_404(self):
+        """Un admin de B ne voit pas la demande de A (404 sur l'action)."""
+        demande = services.request_review(self.doc_a, user=self.admin_a)
+        api = auth(self.admin_b)
+        resp = api.post(
+            f'/api/django/ged/demandes-approbation/{demande.id}/approuver/',
+            {}, format='json')
+        self.assertEqual(resp.status_code, 404)
+        demande.refresh_from_db()
+        self.assertEqual(demande.statut, 'en_attente')
+
+    def test_demandes_list_tenant_isolation(self):
+        """La liste des demandes est bornée à la société de l'utilisateur."""
+        services.request_review(self.doc_a, user=self.admin_a)
+        services.request_review(self.doc_b, user=self.admin_b)
+        api = auth(self.admin_a)
+        resp = api.get('/api/django/ged/demandes-approbation/')
+        self.assertEqual(resp.status_code, 200, resp.data)
+        doc_ids = {r['document'] for r in rows(resp)}
+        self.assertIn(self.doc_a.id, doc_ids)
+        self.assertNotIn(self.doc_b.id, doc_ids)
+
+    def test_document_demandes_action(self):
+        """GET documents/<id>/demandes liste les demandes du document."""
+        services.request_review(self.doc_a, user=self.admin_a)
+        api = auth(self.admin_a)
+        resp = api.get(
+            f'/api/django/ged/documents/{self.doc_a.id}/demandes/')
+        self.assertEqual(resp.status_code, 200, resp.data)
+        self.assertEqual(len(rows(resp)), 1)
+        self.assertEqual(rows(resp)[0]['statut'], 'en_attente')
+
+    def test_filter_en_attente(self):
+        """?en_attente=1 ne renvoie que les demandes encore en attente."""
+        d1 = services.request_review(self.doc_a, user=self.admin_a)
+        services.approve_demande(d1, user=self.admin_a)
+        # Nouvelle demande en attente sur le même doc (désormais approuvé).
+        d2 = DemandeApprobation.objects.create(
+            company=self.co_a, document=self.doc_a, demandeur=self.admin_a)
+        api = auth(self.admin_a)
+        resp = api.get('/api/django/ged/demandes-approbation/?en_attente=1')
+        self.assertEqual(resp.status_code, 200, resp.data)
+        ids = {r['id'] for r in rows(resp)}
+        self.assertIn(d2.id, ids)
+        self.assertNotIn(d1.id, ids)

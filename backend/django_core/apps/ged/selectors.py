@@ -5,7 +5,7 @@ LIRE la GED passe par ces fonctions plutôt que d'importer `ged.models`.
 Toutes les lectures sont bornées à une société.
 """
 from .models import (
-    Cabinet, Coffre, Document, DocumentLien, DocumentTag,
+    Cabinet, Coffre, DemandeApprobation, Document, DocumentLien, DocumentTag,
     DocumentVersion, Folder,
 )
 
@@ -215,3 +215,23 @@ def liens_for_target(company, target):
     ct = ContentType.objects.get_for_model(type(target))
     return DocumentLien.objects.filter(
         company=company, content_type=ct, object_id=target.pk)
+
+
+def demandes_approbation_for_company(company):
+    """GED18 — Demandes d'approbation/revue d'une société (QuerySet)."""
+    return DemandeApprobation.objects.filter(company=company)
+
+
+def demandes_approbation_for_document(document):
+    """GED18 — Demandes d'approbation d'un document (QuerySet, récentes d'abord)."""
+    return DemandeApprobation.objects.filter(
+        company=document.company, document=document)
+
+
+def pending_demande_for_document(document):
+    """GED18 — Demande EN ATTENTE d'un document (au plus une), ou None."""
+    from .models import APPROBATION_EN_ATTENTE
+    return (DemandeApprobation.objects
+            .filter(company=document.company, document=document,
+                    statut=APPROBATION_EN_ATTENTE)
+            .first())

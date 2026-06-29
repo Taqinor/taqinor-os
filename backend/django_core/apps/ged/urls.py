@@ -2,9 +2,9 @@ from django.urls import include, path
 from rest_framework.routers import DefaultRouter
 
 from .views import (
-    CabinetViewSet, CoffreViewSet, DocumentLienViewSet,
-    DocumentTagAssignmentViewSet, DocumentTagViewSet, DocumentVersionViewSet,
-    DocumentViewSet, FolderViewSet,
+    CabinetViewSet, CoffreViewSet, DemandeApprobationViewSet,
+    DocumentLienViewSet, DocumentTagAssignmentViewSet, DocumentTagViewSet,
+    DocumentVersionViewSet, DocumentViewSet, FolderViewSet,
 )
 
 router = DefaultRouter()
@@ -16,6 +16,7 @@ router.register(r'versions', DocumentVersionViewSet)
 router.register(r'liens', DocumentLienViewSet)
 router.register(r'tags', DocumentTagViewSet)
 router.register(r'tag-assignments', DocumentTagAssignmentViewSet)
+router.register(r'demandes-approbation', DemandeApprobationViewSet)
 
 urlpatterns = [
     path('', include(router.urls)),
