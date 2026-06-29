@@ -16,6 +16,10 @@ from .projet import (
     JalonProjetViewSet, ModeleProjetViewSet, ReunionChantierViewSet,
 )
 from .document import DocumentProjetViewSet, RevisionDocumentViewSet
+from .program import (
+    ProjetViewSet, ProjetChantierViewSet,
+    ProjetDevisViewSet, ProjetTicketViewSet,
+)
 from .field_sync import FieldSyncView
 
 __all__ = [
@@ -32,5 +36,9 @@ __all__ = [
     'ReunionChantierViewSet',
     'DocumentProjetViewSet',
     'RevisionDocumentViewSet',
+    'ProjetViewSet',
+    'ProjetChantierViewSet',
+    'ProjetDevisViewSet',
+    'ProjetTicketViewSet',
     'FieldSyncView',
 ]
