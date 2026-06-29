@@ -864,3 +864,248 @@ class DemandeConge(models.Model):
     def __str__(self):
         return (f'{self.employe.matricule} — {self.type_absence.code} '
                 f'{self.date_debut}→{self.date_fin} ({self.get_statut_display()})')
+
+
+class AffectationRoster(models.Model):
+    """Planning d'équipes / roster (FG169) — affectation hebdomadaire d'un
+    technicien à une équipe et, optionnellement, à une camionnette.
+
+    Une ligne de roster affecte UN employé (``employe``) à UNE journée
+    (``date``) au sein d'une ``equipe`` (libellé normalisé d'équipe terrain,
+    p. ex. « Équipe Nord », « Pose A ») et, facultativement, à une camionnette
+    du parc (``vehicule_id`` — STRING-FK vers ``flotte.Vehicule`` : on ne
+    référence jamais ``flotte.models`` directement, exactement comme
+    ``FeuilleTemps.installation_id``). Le roster se construit semaine par semaine
+    (sept lignes/jour par technicien) ; ``semaine_du`` mémorise le lundi de la
+    semaine pour grouper l'affichage et les requêtes hebdomadaires.
+
+    DÉTECTION DE CONFLIT DE CONGÉS : un technicien ayant une demande de congé
+    VALIDÉE couvrant la journée d'affectation ne devrait PAS y être affecté.
+    Le champ ``conflit_conge`` matérialise ce conflit (calculé côté serveur à la
+    création/màj via ``services.detecter_conflit_conge`` qui réutilise le
+    sélecteur congés ``employe_absent_le``). Il n'est jamais lu du corps.
+
+    Multi-société : ``company`` est posée côté serveur (jamais lue du corps) ;
+    ``employe`` doit appartenir à la même société. Une seule affectation par
+    (société, employé, jour) — un technicien n'est pas sur deux équipes le même
+    jour (``unique_together``).
+    """
+    class Creneau(models.TextChoices):
+        JOURNEE = 'journee', 'Journée'
+        MATIN = 'matin', 'Matin'
+        APRES_MIDI = 'apres_midi', 'Après-midi'
+
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='rh_affectations_roster',
+        verbose_name='Société',
+    )
+    employe = models.ForeignKey(
+        DossierEmploye,
+        on_delete=models.CASCADE,
+        related_name='affectations_roster',
+        verbose_name='Employé',
+    )
+    equipe = models.CharField(max_length=120, verbose_name='Équipe')
+    # String FK cross-app vers flotte.Vehicule — jamais importer flotte.models.
+    vehicule_id = models.PositiveIntegerField(
+        null=True, blank=True, verbose_name='Camionnette (ID, optionnel)')
+    date = models.DateField(verbose_name="Date d'affectation")
+    # Lundi de la semaine concernée (posé côté serveur à partir de ``date``).
+    semaine_du = models.DateField(
+        null=True, blank=True, verbose_name='Semaine du (lundi)')
+    creneau = models.CharField(
+        max_length=10, choices=Creneau.choices,
+        default=Creneau.JOURNEE, verbose_name='Créneau')
+    # Conflit de congé : vrai si l'employé est en congé VALIDÉ ce jour-là.
+    # Calculé côté serveur (jamais lu du corps de requête).
+    conflit_conge = models.BooleanField(
+        default=False, verbose_name='Conflit de congé')
+    note = models.CharField(
+        max_length=255, blank=True, default='', verbose_name='Note')
+    date_creation = models.DateTimeField(
+        auto_now_add=True, verbose_name='Créé le')
+    date_modification = models.DateTimeField(
+        auto_now=True, verbose_name='Modifié le')
+
+    class Meta:
+        verbose_name = "Affectation roster"
+        verbose_name_plural = "Affectations roster"
+        unique_together = [('company', 'employe', 'date')]
+        ordering = ['-date', 'equipe', 'employe']
+        indexes = [
+            models.Index(
+                fields=['company', 'semaine_du'],
+                name='rh_roster_comp_semaine_idx'),
+            models.Index(
+                fields=['company', 'equipe'],
+                name='rh_roster_comp_equipe_idx'),
+            models.Index(
+                fields=['company', 'date'],
+                name='rh_roster_comp_date_idx'),
+        ]
+
+    def __str__(self):
+        return (f'{self.employe.matricule} — {self.equipe} '
+                f'{self.date} ({self.get_creneau_display()})')
+
+
+class PresenceChantier(models.Model):
+    """Registre de présence chantier journalier / émargement (FG170).
+
+    Trace QUI était présent sur QUEL chantier (``installation_id`` — STRING-FK
+    vers ``installations.Installation``, jamais ``installations.models``, comme
+    ``FeuilleTemps``) un jour donné. Sert de preuve en cas de litige et de base
+    de facturation main-d'œuvre. Une ligne par (société, employé, installation,
+    jour).
+
+    ÉMARGEMENT : ``emarge`` matérialise la signature/confirmation de présence
+    (avec ``emarge_le`` et ``emarge_par`` posés côté serveur via l'action
+    ``emarger``). Le ``statut`` distingue présent / absent / retard / parti tôt
+    (utile au croisement litiges/facturation). ``heure_arrivee``/``heure_depart``
+    sont des heures saisies sur site (facultatives, distinctes du clock-in/out
+    brut ``Pointage``). Multi-société : ``company`` posée côté serveur, jamais lue
+    du corps de requête ; ``employe`` doit appartenir à la même société.
+    """
+    class Statut(models.TextChoices):
+        PRESENT = 'present', 'Présent'
+        ABSENT = 'absent', 'Absent'
+        RETARD = 'retard', 'En retard'
+        PARTI_TOT = 'parti_tot', 'Parti tôt'
+
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='rh_presences_chantier',
+        verbose_name='Société',
+    )
+    employe = models.ForeignKey(
+        DossierEmploye,
+        on_delete=models.CASCADE,
+        related_name='presences_chantier',
+        verbose_name='Employé',
+    )
+    # String FK cross-app vers installations.Installation — jamais d'import.
+    installation_id = models.PositiveIntegerField(
+        verbose_name="Installation (ID)")
+    date = models.DateField(verbose_name='Date')
+    statut = models.CharField(
+        max_length=10, choices=Statut.choices,
+        default=Statut.PRESENT, verbose_name='Statut')
+    heure_arrivee = models.TimeField(
+        null=True, blank=True, verbose_name="Heure d'arrivée")
+    heure_depart = models.TimeField(
+        null=True, blank=True, verbose_name='Heure de départ')
+    # Émargement : signature/confirmation de présence (posée via l'action).
+    emarge = models.BooleanField(default=False, verbose_name='Émargé')
+    emarge_le = models.DateTimeField(
+        null=True, blank=True, verbose_name="Émargé le")
+    emarge_par = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='rh_presences_emargees',
+        verbose_name='Émargé par',
+    )
+    note = models.CharField(
+        max_length=255, blank=True, default='', verbose_name='Note')
+    date_creation = models.DateTimeField(
+        auto_now_add=True, verbose_name='Créé le')
+    date_modification = models.DateTimeField(
+        auto_now=True, verbose_name='Modifié le')
+
+    class Meta:
+        verbose_name = 'Présence chantier'
+        verbose_name_plural = 'Présences chantier'
+        unique_together = [('company', 'employe', 'installation_id', 'date')]
+        ordering = ['-date', 'installation_id', 'employe']
+        indexes = [
+            models.Index(
+                fields=['company', 'installation_id', 'date'],
+                name='rh_presence_inst_date_idx'),
+            models.Index(
+                fields=['company', 'employe', 'date'],
+                name='rh_presence_emp_date_idx'),
+        ]
+
+    def __str__(self):
+        return (f'{self.employe.matricule} — installation#{self.installation_id}'
+                f' {self.date} ({self.get_statut_display()})')
+
+
+class IncidentPresence(models.Model):
+    """Retards & absences injustifiées (FG171) — marquage + base de comptage.
+
+    Chaque ligne marque UN incident de présence d'un employé : un RETARD (avec
+    ``minutes_retard``) ou une ABSENCE INJUSTIFIÉE sur une ``date``. Sert de
+    socle disciplinaire et de pilotage : un compteur par employé/période se
+    calcule par agrégation (``selectors.compteur_incidents``) — on ne stocke pas
+    le total, on le dérive.
+
+    Un incident peut être RÉGULARISÉ a posteriori (``justifie=True`` + ``motif``
+    + ``justifie_par``/``justifie_le`` posés côté serveur) : un retard couvert
+    par un justificatif ou une absence finalement justifiée sort du décompte
+    disciplinaire sans perdre la trace. Multi-société : ``company`` posée côté
+    serveur (jamais lue du corps) ; ``employe`` doit appartenir à la même société.
+    """
+    class TypeIncident(models.TextChoices):
+        RETARD = 'retard', 'Retard'
+        ABSENCE_INJUSTIFIEE = 'absence_injustifiee', 'Absence injustifiée'
+        DEPART_ANTICIPE = 'depart_anticipe', 'Départ anticipé'
+
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='rh_incidents_presence',
+        verbose_name='Société',
+    )
+    employe = models.ForeignKey(
+        DossierEmploye,
+        on_delete=models.CASCADE,
+        related_name='incidents_presence',
+        verbose_name='Employé',
+    )
+    type_incident = models.CharField(
+        max_length=20, choices=TypeIncident.choices,
+        default=TypeIncident.RETARD, verbose_name="Type d'incident")
+    date = models.DateField(verbose_name='Date')
+    # Retard/départ anticipé : nombre de minutes (0 pour une absence).
+    minutes_retard = models.PositiveIntegerField(
+        default=0, verbose_name='Minutes de retard')
+    # Régularisation : un incident justifié sort du décompte disciplinaire.
+    justifie = models.BooleanField(default=False, verbose_name='Justifié')
+    motif = models.CharField(
+        max_length=255, blank=True, default='', verbose_name='Motif')
+    justifie_par = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='rh_incidents_justifies',
+        verbose_name='Justifié par',
+    )
+    justifie_le = models.DateTimeField(
+        null=True, blank=True, verbose_name='Justifié le')
+    note = models.CharField(
+        max_length=255, blank=True, default='', verbose_name='Note')
+    date_creation = models.DateTimeField(
+        auto_now_add=True, verbose_name='Créé le')
+    date_modification = models.DateTimeField(
+        auto_now=True, verbose_name='Modifié le')
+
+    class Meta:
+        verbose_name = 'Incident de présence'
+        verbose_name_plural = 'Incidents de présence'
+        ordering = ['-date', '-date_creation']
+        indexes = [
+            models.Index(
+                fields=['company', 'employe', 'date'],
+                name='rh_incident_emp_date_idx'),
+            models.Index(
+                fields=['company', 'type_incident'],
+                name='rh_incident_comp_type_idx'),
+        ]
+
+    def __str__(self):
+        return (f'{self.employe.matricule} — '
+                f'{self.get_type_incident_display()} {self.date}')

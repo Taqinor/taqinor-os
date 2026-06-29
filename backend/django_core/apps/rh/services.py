@@ -212,6 +212,45 @@ def appliquer_majoration(heures_supp):
     return heures_supp
 
 
+# ─────────────────────────────────────────────────────────────────────────
+# Planning d'équipes / roster (FG169) — affectation hebdo + conflit de congés.
+# ─────────────────────────────────────────────────────────────────────────
+def lundi_de_la_semaine(jour):
+    """Renvoie le lundi (début de semaine ISO) de la semaine contenant ``jour``.
+
+    Sert à grouper les lignes de roster par semaine (``semaine_du``). Renvoie
+    ``None`` si ``jour`` est absent.
+    """
+    if jour is None:
+        return None
+    from datetime import timedelta
+    return jour - timedelta(days=jour.weekday())
+
+
+def detecter_conflit_conge(company, employe_id, jour):
+    """Vrai si l'employé est en congé/absence VALIDÉE le ``jour`` d'affectation.
+
+    Réutilise le sélecteur congés ``selectors.employe_absent_le`` (FG165) : on
+    n'affecte pas un technicien au roster un jour où il a une demande de congé
+    validée. Toujours scopé société ; ``False`` si la société/employé manque.
+    """
+    from . import selectors
+    return selectors.employe_absent_le(company, employe_id, jour)
+
+
+def appliquer_roster(affectation):
+    """Pose ``semaine_du`` et ``conflit_conge`` sur une ``AffectationRoster``.
+
+    ``semaine_du`` = lundi de la semaine de ``date`` ; ``conflit_conge`` est
+    recalculé via ``detecter_conflit_conge`` (congé validé couvrant le jour).
+    L'objet n'est pas sauvegardé — l'appelant ``save()``.
+    """
+    affectation.semaine_du = lundi_de_la_semaine(affectation.date)
+    affectation.conflit_conge = detecter_conflit_conge(
+        affectation.company, affectation.employe_id, affectation.date)
+    return affectation
+
+
 def _solde_de_lannee(demande):
     """``SoldeConge`` (créé si besoin) de l'employé pour l'année de début."""
     from .models import SoldeConge
