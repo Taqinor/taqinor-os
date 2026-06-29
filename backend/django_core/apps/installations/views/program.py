@@ -25,10 +25,13 @@ from apps.ventes.utils.references import create_with_reference
 
 from ..models import (
     Projet, ProjetTache, ProjetChantier, ProjetDevis, ProjetTicket,
+    BudgetProjet, BudgetEngagement,
 )
+from ..selectors import budget_projet_synthese
 from ..serializers import (
     ProjetSerializer, ProjetTacheSerializer, ProjetChantierSerializer,
     ProjetDevisSerializer, ProjetTicketSerializer,
+    BudgetProjetSerializer, BudgetEngagementSerializer,
 )
 
 READ_ACTIONS = ['list', 'retrieve']
@@ -322,3 +325,82 @@ class ProjetTacheViewSet(TenantMixin, viewsets.ModelViewSet):
                 transaction.set_rollback(True)
                 raise ValidationError(
                     getattr(exc, 'message_dict', {'detail': exc.messages}))
+
+
+# ── FG294 — Budget projet vs réel (engagé / dépensé) ──────────────────────────
+
+class BudgetProjetViewSet(TenantMixin, viewsets.ModelViewSet):
+    """FG294 — budget d'un programme + synthèse vs réel.
+
+    CRUD du budget (enveloppes par catégorie, tarif main-d'œuvre, seuil
+    d'alerte) — INTERNE : ce budget compare des coûts d'achat, donc réservé
+    responsable/admin. La société et `created_by` sont posés côté serveur ; le
+    `projet` est validé tenant. L'action `synthese` agrège le RÉEL (devis du
+    programme + BCF/factures fournisseur rattachés + main-d'œuvre des chantiers)
+    et le compare au budget avec un drapeau de dépassement, via le sélecteur
+    `budget_projet_synthese` (lectures cross-app sans import de modèle).
+    Filtrable par `projet`."""
+    queryset = BudgetProjet.objects.select_related(
+        'projet', 'company').prefetch_related('engagements').all()
+    serializer_class = BudgetProjetSerializer
+
+    def get_permissions(self):
+        return [IsResponsableOrAdmin()]
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        projet = self.request.query_params.get('projet')
+        if projet:
+            qs = qs.filter(projet_id=projet)
+        return qs
+
+    def perform_create(self, serializer):
+        company = self.request.user.company
+        _check_projet_tenant(serializer, company)
+        serializer.save(company=company, created_by=self.request.user)
+
+    def perform_update(self, serializer):
+        company = self.request.user.company
+        _check_projet_tenant(serializer, company)
+        serializer.save(company=company)
+
+    @action(detail=True, methods=['get'])
+    def synthese(self, request, pk=None):
+        """FG294 — budget vs réel (engagé/dépensé) + alerte de dépassement."""
+        budget = self.get_object()
+        return Response(budget_projet_synthese(budget))
+
+
+class BudgetEngagementViewSet(TenantMixin, viewsets.ModelViewSet):
+    """FG294 — rattachement d'un coût fournisseur (BCF ou facture fournisseur)
+    à un budget de programme. INTERNE (responsable/admin). La société est posée
+    côté serveur ; le budget et l'objet stock rattaché sont validés tenant. Les
+    modèles stock ne sont JAMAIS importés : l'objet lié est résolu par DRF et on
+    lit son `company_id`. Filtrable par `budget`."""
+    queryset = BudgetEngagement.objects.select_related(
+        'budget', 'bon_commande', 'facture').all()
+    serializer_class = BudgetEngagementSerializer
+
+    def get_permissions(self):
+        return [IsResponsableOrAdmin()]
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        budget = self.request.query_params.get('budget')
+        if budget:
+            qs = qs.filter(budget_id=budget)
+        return qs
+
+    def perform_create(self, serializer):
+        company = self.request.user.company
+        _check_tenant(serializer, company, 'budget')
+        _check_tenant(serializer, company, 'bon_commande')
+        _check_tenant(serializer, company, 'facture')
+        serializer.save(company=company)
+
+    def perform_update(self, serializer):
+        company = self.request.user.company
+        _check_tenant(serializer, company, 'budget')
+        _check_tenant(serializer, company, 'bon_commande')
+        _check_tenant(serializer, company, 'facture')
+        serializer.save(company=company)

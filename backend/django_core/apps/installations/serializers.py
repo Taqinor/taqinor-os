@@ -13,6 +13,7 @@ from .models import (
     ReunionChantier,
     DocumentProjet, RevisionDocument,
     Projet, ProjetTache, ProjetChantier, ProjetDevis, ProjetTicket,
+    BudgetProjet, BudgetEngagement,
 )
 
 
@@ -834,3 +835,81 @@ class ProjetTacheSerializer(serializers.ModelSerializer):
 
     def get_nb_sous_taches(self, obj):
         return obj.sous_taches.count()
+
+
+# ── FG294 — Budget projet vs réel (engagé / dépensé) ──────────────────────────
+
+class BudgetEngagementSerializer(serializers.ModelSerializer):
+    """FG294 — rattachement d'un coût fournisseur (BCF ou facture fournisseur)
+    à un budget de programme, par string-FK (jamais d'import des modèles stock).
+    `source`/`categorie` ventilent la dépense ; la société est posée côté
+    serveur."""
+    source_display = serializers.CharField(
+        source='get_source_display', read_only=True, default=None)
+    categorie_display = serializers.CharField(
+        source='get_categorie_display', read_only=True, default=None)
+
+    class Meta:
+        model = BudgetEngagement
+        fields = [
+            'id', 'budget', 'source', 'source_display',
+            'categorie', 'categorie_display',
+            'bon_commande', 'facture', 'libelle', 'date_creation',
+        ]
+        read_only_fields = ['date_creation']
+
+    def validate(self, attrs):
+        """L'engagement doit pointer le bon objet selon `source` : un BCF pour
+        `bon_commande`, une facture pour `facture` — jamais les deux ni aucun."""
+        source = attrs.get(
+            'source', getattr(self.instance, 'source', None))
+        bon = attrs.get(
+            'bon_commande', getattr(self.instance, 'bon_commande', None))
+        facture = attrs.get(
+            'facture', getattr(self.instance, 'facture', None))
+        if source == BudgetEngagement.Source.BON_COMMANDE:
+            if bon is None:
+                raise serializers.ValidationError(
+                    {'bon_commande': 'Requis pour un engagement « bon de '
+                                     'commande ».'})
+            if facture is not None:
+                raise serializers.ValidationError(
+                    {'facture': 'À laisser vide pour un bon de commande.'})
+        elif source == BudgetEngagement.Source.FACTURE:
+            if facture is None:
+                raise serializers.ValidationError(
+                    {'facture': 'Requis pour un engagement « facture ».'})
+            if bon is not None:
+                raise serializers.ValidationError(
+                    {'bon_commande': 'À laisser vide pour une facture.'})
+        return attrs
+
+
+class BudgetProjetSerializer(serializers.ModelSerializer):
+    """FG294 — budget d'un programme (enveloppes par catégorie + seuil d'alerte).
+    La société et `created_by` sont posés côté serveur ; le `projet` est validé
+    tenant côté vue. Ne touche aucun statut. La synthèse vs réel (engagé/dépensé,
+    dépassement) est exposée par l'action `synthese` de la vue, calculée par le
+    sélecteur `budget_projet_synthese`."""
+    budget_total = serializers.SerializerMethodField()
+    engagements = BudgetEngagementSerializer(many=True, read_only=True)
+
+    class Meta:
+        model = BudgetProjet
+        fields = [
+            'id', 'projet', 'devise',
+            'budget_materiel', 'budget_main_oeuvre', 'budget_sous_traitance',
+            'budget_divers', 'budget_total', 'tarif_jour_mo',
+            'seuil_alerte_pct', 'note', 'engagements',
+            'date_creation', 'date_modification',
+        ]
+        read_only_fields = ['date_creation', 'date_modification']
+
+    def get_budget_total(self, obj):
+        return float(obj.budget_total)
+
+    def validate_seuil_alerte_pct(self, value):
+        if value is not None and (value < 0 or value > 100):
+            raise serializers.ValidationError(
+                'Le seuil d\'alerte doit être compris entre 0 et 100 %.')
+        return value

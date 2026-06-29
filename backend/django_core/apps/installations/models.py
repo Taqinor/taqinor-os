@@ -69,6 +69,8 @@ from .models_program import (
     ProjetChantier,
     ProjetDevis,
     ProjetTicket,
+    BudgetProjet,
+    BudgetEngagement,
 )
 
 __all__ = [
@@ -109,4 +111,6 @@ __all__ = [
     'ProjetChantier',
     'ProjetDevis',
     'ProjetTicket',
+    'BudgetProjet',
+    'BudgetEngagement',
 ]
