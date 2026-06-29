@@ -19,7 +19,7 @@ from . import activity
 from .models import (
     Equipement, Ticket, PieceConsommee,
     SavSlaSettings, MaintenanceChecklistTemplate, TicketChecklistItem,
-    WarrantyClaim, KbArticle,
+    WarrantyClaim, KbArticle, AlarmeOnduleur,
 )
 from .pdf import rapport_intervention_pdf
 from .serializers import (
@@ -29,6 +29,7 @@ from .serializers import (
     MaintenanceChecklistTemplateSerializer, TicketChecklistItemSerializer,
     WarrantyClaimSerializer,
     KbArticleSerializer,
+    AlarmeOnduleurSerializer,
 )
 
 READ_ACTIONS = ['list', 'retrieve']
@@ -735,6 +736,139 @@ class KbArticleViewSet(TenantMixin, viewsets.ModelViewSet):
         serializer.save(
             company=self.request.user.company,
             created_by=self.request.user)
+
+
+# ── FG280 — Alarmes / défauts onduleur ────────────────────────────────────────
+
+class AlarmeOnduleurViewSet(TenantMixin, viewsets.ModelViewSet):
+    """Alarmes / défauts onduleur (FG280) — DISTINCTES du ticket SAV.
+
+    Cycle de vie propre (active → acquittée → escaladée/résolue) avec
+    acquittement (utilisateur + horodatage posés côté serveur) et escalade
+    (ouvre/relie un ticket SAV). Lecture tout rôle ; écriture + actions
+    responsable/admin. Tout est scopé à la société."""
+    queryset = AlarmeOnduleur.objects.select_related(
+        'equipement', 'equipement__produit', 'ticket', 'acquittee_par',
+    ).all()
+    serializer_class = AlarmeOnduleurSerializer
+    filter_backends = [filters.SearchFilter, filters.OrderingFilter]
+    search_fields = ['code', 'libelle', 'description']
+    ordering_fields = [
+        'date_creation', 'date_detection', 'gravite', 'statut', 'code',
+    ]
+    ordering = ['-date_creation']
+
+    def get_permissions(self):
+        if self.action in ['list', 'retrieve']:
+            return [IsAnyRole()]
+        return [IsResponsableOrAdmin()]
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        params = self.request.query_params
+        gravite = params.get('gravite')
+        statut = params.get('statut')
+        equipement = params.get('equipement')
+        if gravite:
+            qs = qs.filter(gravite=gravite)
+        if statut:
+            qs = qs.filter(statut=statut)
+        if equipement:
+            qs = qs.filter(equipement_id=equipement)
+        return qs
+
+    def _check_tenant(self, serializer):
+        company = self.request.user.company
+        equipement = serializer.validated_data.get('equipement')
+        if equipement is not None and equipement.company_id != company.id:
+            raise ValidationError({'equipement': 'Équipement inconnu.'})
+
+    def perform_create(self, serializer):
+        self._check_tenant(serializer)
+        # date_detection par défaut = maintenant si non fournie.
+        date_detection = (
+            serializer.validated_data.get('date_detection') or timezone.now())
+        serializer.save(
+            company=self.request.user.company,
+            created_by=self.request.user,
+            date_detection=date_detection)
+
+    def perform_update(self, serializer):
+        self._check_tenant(serializer)
+        super().perform_update(serializer)
+
+    @action(detail=True, methods=['post'], url_path='acquitter',
+            permission_classes=[IsResponsableOrAdmin])
+    def acquitter(self, request, pk=None):
+        """Acquitte l'alarme (« j'ai vu ») — acteur + horodatage côté serveur.
+
+        Idempotent : si déjà acquittée/escaladée/résolue, ne ré-écrit pas
+        l'auteur d'acquittement. Ne touche PAS au cycle de vie du ticket."""
+        alarme = self.get_object()
+        if alarme.statut == AlarmeOnduleur.Statut.ACTIVE:
+            alarme.statut = AlarmeOnduleur.Statut.ACQUITTEE
+            alarme.acquittee_par = request.user
+            alarme.date_acquittement = timezone.now()
+            alarme.save(update_fields=[
+                'statut', 'acquittee_par', 'date_acquittement',
+                'date_modification'])
+        return Response(AlarmeOnduleurSerializer(alarme).data)
+
+    @action(detail=True, methods=['post'], url_path='escalader',
+            permission_classes=[IsResponsableOrAdmin])
+    def escalader(self, request, pk=None):
+        """Escalade l'alarme : relie un ticket SAV existant (`ticket` en body)
+        ou en ouvre un nouveau (correctif) pour traiter le défaut.
+
+        L'alarme reste l'enregistrement source : son statut passe à
+        « escaladée » et porte le lien `ticket`. Le cycle de vie du ticket
+        reste indépendant. Idempotent : une alarme déjà escaladée renvoie son
+        ticket existant sans en créer un second."""
+        alarme = self.get_object()
+        company = request.user.company
+        if alarme.ticket_id:
+            return Response(AlarmeOnduleurSerializer(alarme).data)
+
+        ticket_id = request.data.get('ticket')
+        if ticket_id:
+            ticket = Ticket.objects.filter(
+                id=ticket_id, company=company).first()
+            if ticket is None:
+                raise ValidationError({'ticket': 'Ticket inconnu.'})
+        else:
+            # Ouvre un ticket correctif. Le client/chantier sont déduits de
+            # l'équipement lié à l'alarme quand c'est possible.
+            equipement = alarme.equipement
+            installation = getattr(equipement, 'installation', None)
+            client = getattr(installation, 'client', None)
+            if client is None:
+                raise ValidationError({
+                    'ticket': "Aucun ticket fourni et l'alarme n'a pas "
+                              "d'équipement rattaché à un client — précisez "
+                              "un ticket existant."})
+            description = (
+                f'Escalade alarme onduleur {alarme.code} '
+                f'({alarme.get_gravite_display()})'
+                + (f' : {alarme.libelle}' if alarme.libelle else ''))
+            ticket = create_with_reference(
+                Ticket, 'SAV', company,
+                lambda ref: Ticket.objects.create(
+                    reference=ref, company=company,
+                    client=client, installation=installation,
+                    equipement=equipement,
+                    type=Ticket.Type.CORRECTIF,
+                    priorite=(
+                        Ticket.Priorite.URGENTE
+                        if alarme.gravite == AlarmeOnduleur.Gravite.CRITIQUE
+                        else Ticket.Priorite.NORMALE),
+                    description=description,
+                    date_ouverture=timezone.localdate(),
+                    created_by=request.user),
+            )
+        alarme.ticket = ticket
+        alarme.statut = AlarmeOnduleur.Statut.ESCALADEE
+        alarme.save(update_fields=['ticket', 'statut', 'date_modification'])
+        return Response(AlarmeOnduleurSerializer(alarme).data)
 
 
 # ── FG89 — Prévision pièces SAV ───────────────────────────────────────────────
