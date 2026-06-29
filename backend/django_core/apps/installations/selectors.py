@@ -562,6 +562,156 @@ def reserve_resume(reserve):
     }
 
 
+# ── FG300 — Détection de conflits d'affectation (double-booking) ─────────────
+# Alerte quand une MÊME ressource (technicien principal, membre d'équipe, ou
+# camionnette) est affectée à DEUX interventions ou plus dont les créneaux se
+# CHEVAUCHENT. Les interventions ne portent qu'une DATE (`date_prevue`, granularité
+# jour) — le « créneau » est donc la journée : deux interventions de la même
+# ressource le MÊME jour se chevauchent et constituent un conflit. Pure détection,
+# lecture seule, scopée société, AUCUN nouveau modèle. Distinct de FG299 (plan de
+# charge agrégé) : ici on liste les COLLISIONS concrètes à corriger.
+
+def conflits_affectation(company, debut, fin):
+    """FG300 — liste les conflits d'affectation (double-booking) d'une ressource
+    sur la fenêtre [debut, fin] inclusive.
+
+    Une ressource est un TECHNICIEN (principal OU membre d'équipe) ou une
+    CAMIONNETTE (`Intervention.camionnette`, un EmplacementStock). Un conflit
+    existe quand la même ressource porte ≥ 2 interventions dont le créneau se
+    chevauche ; les interventions n'ayant qu'une date prévue (granularité jour),
+    le chevauchement = même `date_prevue`. Seules les interventions dont
+    `date_prevue` tombe dans [debut, fin] sont considérées (les interventions
+    sans date prévue sont ignorées : pas de créneau ⇒ pas de collision).
+
+    Renvoie un dict PLAT (jamais d'instance de modèle) :
+      ``debut`` / ``fin`` (ISO ou None) ; ``conflits`` (liste triée par date puis
+      type de ressource puis nom), chaque entrée =
+        ``{type, ressource_id, ressource_nom, date, interventions: [{id,
+        installation_id, type_intervention, statut}], count}`` ;
+      ``totaux`` (``nb_conflits``, ``nb_techniciens``, ``nb_camionnettes``).
+    Lecture seule, scopée société. Garde les fenêtres vides/None : si la fenêtre
+    est absente ou inversée, renvoie une liste vide (jamais d'exception)."""
+    from collections import OrderedDict
+    from django.contrib.auth import get_user_model
+    from .models import Intervention
+
+    base = {
+        'debut': debut.isoformat() if debut is not None else None,
+        'fin': fin.isoformat() if fin is not None else None,
+        'conflits': [],
+        'totaux': {'nb_conflits': 0, 'nb_techniciens': 0, 'nb_camionnettes': 0},
+    }
+    # Fenêtre vide / None / inversée → aucune collision (garde explicite).
+    if debut is None or fin is None or fin < debut:
+        return base
+
+    qs = (Intervention.objects
+          .filter(company=company)
+          .filter(date_prevue__gte=debut, date_prevue__lte=fin)
+          .filter(date_prevue__isnull=False)
+          .select_related('camionnette')
+          .prefetch_related('equipe')
+          .only('id', 'installation_id', 'type_intervention', 'statut',
+                'date_prevue', 'technicien_id', 'camionnette_id',
+                'camionnette__nom'))
+
+    # (jour, type, ressource_id) → liste d'interventions partageant le créneau.
+    # OrderedDict pour un parcours déterministe (ordre d'insertion = tri date qs).
+    par_creneau = OrderedDict()
+    tech_ids = set()
+    # {camionnette_id: nom} — lu sur l'instance FK déjà chargée (select_related),
+    # sans importer le modèle de stock (couplage évité).
+    camion_noms = {}
+
+    def _add(jour, type_ressource, ressource_id, interv):
+        if ressource_id is None:
+            return
+        cle = (jour, type_ressource, ressource_id)
+        par_creneau.setdefault(cle, []).append(interv)
+
+    for interv in qs.order_by('date_prevue', 'id'):
+        jour = interv.date_prevue
+        if interv.technicien_id:
+            tech_ids.add(interv.technicien_id)
+            _add(jour, 'technicien', interv.technicien_id, interv)
+        for membre in interv.equipe.all():
+            tech_ids.add(membre.id)
+            _add(jour, 'technicien', membre.id, interv)
+        if interv.camionnette_id:
+            camion = getattr(interv, 'camionnette', None)
+            nom_camion = getattr(camion, 'nom', None) if camion else None
+            if nom_camion:
+                camion_noms[interv.camionnette_id] = nom_camion
+            _add(jour, 'camionnette', interv.camionnette_id, interv)
+
+    # Évite de compter deux fois une intervention où un technicien est À LA FOIS
+    # principal ET membre d'équipe sur le même créneau (dédoublonnage par id).
+    for cle, intervs in par_creneau.items():
+        seen = set()
+        uniques = []
+        for iv in intervs:
+            if iv.id not in seen:
+                seen.add(iv.id)
+                uniques.append(iv)
+        par_creneau[cle] = uniques
+
+    # Noms des techniciens (un seul accès DB).
+    User = get_user_model()
+    users = {u.id: u for u in User.objects.filter(id__in=tech_ids)} \
+        if tech_ids else {}
+
+    def _nom_user(uid):
+        user = users.get(uid)
+        if user is None:
+            return str(uid)
+        getter = getattr(user, 'get_full_name', None)
+        nom = ''
+        if callable(getter):
+            nom = (getter() or '').strip()
+        return nom or getattr(user, 'username', str(uid))
+
+    def _nom_camion(eid):
+        # Nom déjà capté sur l'instance FK chargée ; sinon repli sur l'id.
+        return camion_noms.get(eid) or f'#{eid}'
+
+    conflits = []
+    nb_tech = 0
+    nb_camion = 0
+    for (jour, type_ressource, ressource_id), intervs in par_creneau.items():
+        if len(intervs) < 2:
+            continue  # un seul créneau ⇒ pas de collision
+        if type_ressource == 'technicien':
+            nom = _nom_user(ressource_id)
+            nb_tech += 1
+        else:
+            nom = _nom_camion(ressource_id)
+            nb_camion += 1
+        conflits.append({
+            'type': type_ressource,
+            'ressource_id': ressource_id,
+            'ressource_nom': nom,
+            'date': jour.isoformat(),
+            'count': len(intervs),
+            'interventions': [{
+                'id': iv.id,
+                'installation_id': iv.installation_id,
+                'type_intervention': iv.type_intervention,
+                'statut': iv.statut,
+            } for iv in intervs],
+        })
+
+    conflits.sort(key=lambda c: (
+        c['date'], c['type'], c['ressource_nom'].lower(), c['ressource_id']))
+
+    base['conflits'] = conflits
+    base['totaux'] = {
+        'nb_conflits': len(conflits),
+        'nb_techniciens': nb_tech,
+        'nb_camionnettes': nb_camion,
+    }
+    return base
+
+
 def chantier_card(chantier_id, company):
     """S8 — fiche-carte LECTURE SEULE d'un chantier (Installation) pour le
     partage dans la messagerie. Scopée société : None si le chantier n'appartient

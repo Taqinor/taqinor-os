@@ -1505,3 +1505,39 @@ class InterventionViewSet(TenantMixin, viewsets.ModelViewSet):
         data = selectors.plan_de_charge_equipes(
             request.user.company, debut, fin, heures_par_jour=heures)
         return Response(data)
+
+    # ── FG300 — détection de conflits d'affectation (double-booking) ─────────
+    @action(detail=False, methods=['get'], url_path='conflits-affectation',
+            permission_classes=[IsAnyRole])
+    def conflits_affectation(self, request):
+        """FG300 — liste les conflits d'affectation : une même ressource
+        (technicien principal ou membre d'équipe, ou camionnette) affectée à ≥ 2
+        interventions dont le créneau se chevauche. Les interventions n'ayant
+        qu'une `date_prevue` (granularité jour), le chevauchement = même jour.
+        Pure détection, scopée société, aucun nouveau modèle.
+        Params : ``debut``, ``fin`` (YYYY-MM-DD ; défaut = semaine en cours,
+        lundi→dimanche). Sortie JSON simple (aucun ``?format=``)."""
+        from datetime import date, datetime, timedelta
+        from .. import selectors
+
+        def _parse(value):
+            try:
+                return datetime.strptime(value, '%Y-%m-%d').date()
+            except (TypeError, ValueError):
+                return None
+
+        params = request.query_params
+        debut = _parse(params.get('debut'))
+        fin = _parse(params.get('fin'))
+        if debut is None:
+            today = date.today()
+            debut = today - timedelta(days=today.weekday())  # lundi
+        if fin is None:
+            fin = debut + timedelta(days=6)  # dimanche
+        if fin < debut:
+            return Response(
+                {'detail': 'La fin de fenêtre précède le début.'},
+                status=status.HTTP_400_BAD_REQUEST)
+        data = selectors.conflits_affectation(
+            request.user.company, debut, fin)
+        return Response(data)
