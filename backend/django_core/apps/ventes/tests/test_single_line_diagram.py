@@ -20,6 +20,7 @@ from apps.ventes import single_line_diagram as sld
 from apps.ventes.models import Devis, LigneDevis
 from authentication.models import Company
 from apps.crm.models import Client
+from apps.stock.models import Produit
 
 User = get_user_model()
 
@@ -112,11 +113,20 @@ class SingleLineEndpointTest(TestCase):
         devis = Devis.objects.create(
             company=company, reference="DV-001", client=self.crm_client,
             etude_params={"phases": 3, "injection": True})
+        panneau = Produit.objects.create(
+            company=company, nom="Panneau PV 550W mono",
+            sku=f"PV-{company.id}", prix_vente=Decimal("1000"),
+            prix_achat=Decimal("1"), quantite_stock=100)
+        onduleur = Produit.objects.create(
+            company=company, nom="Onduleur réseau 10kW triphasé",
+            sku=f"OND-{company.id}", prix_vente=Decimal("12000"),
+            prix_achat=Decimal("1"), quantite_stock=100)
         LigneDevis.objects.create(
-            devis=devis, designation="Panneau PV 550W mono",
+            devis=devis, produit=panneau, designation="Panneau PV 550W mono",
             quantite=20, prix_unitaire=Decimal("1000"))
         LigneDevis.objects.create(
-            devis=devis, designation="Onduleur réseau 10kW triphasé",
+            devis=devis, produit=onduleur,
+            designation="Onduleur réseau 10kW triphasé",
             quantite=1, prix_unitaire=Decimal("12000"))
         return devis
 
