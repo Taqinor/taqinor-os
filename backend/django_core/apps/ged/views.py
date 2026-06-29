@@ -32,12 +32,14 @@ from . import selectors, services
 from .models import (
     Cabinet, Coffre, DemandeApprobation, Document, DocumentLien, DocumentTag,
     DocumentTagAssignment, DocumentVersion, Folder, PartageGed,
+    PolitiqueRetention,
 )
 from .serializers import (
     CabinetSerializer, CoffreSerializer, DemandeApprobationSerializer,
     DocumentLienSerializer, DocumentSerializer,
     DocumentTagAssignmentSerializer, DocumentTagSerializer,
     DocumentVersionSerializer, FolderSerializer, PartageGedSerializer,
+    PolitiqueRetentionSerializer,
 )
 
 READ_ACTIONS = ['list', 'retrieve']
@@ -1008,6 +1010,71 @@ class PartageGedViewSet(TenantMixin, viewsets.ModelViewSet):
         partage.refresh_from_db()
         return Response(
             PartageGedSerializer(partage, context={'request': request}).data)
+
+
+class PolitiqueRetentionViewSet(TenantMixin, viewsets.ModelViewSet):
+    """GED22 — CRUD des politiques de rétention (scopé société).
+
+    Une politique décrit la durée de conservation d'une classe de documents et
+    l'action à l'échéance (DÉFAUT « signaler », purement consultatif). `company`
+    et `created_by` sont posés côté serveur (jamais lus du corps de requête) ;
+    `cabinet`/`folder` sont bornés à la société courante par le serializer.
+
+    Lecture : tout rôle authentifié. Création/modification/suppression :
+    responsable/admin. L'action `echus` LISTE les documents échus au regard de
+    leur politique applicable — elle ne supprime ni ne modifie jamais rien.
+    """
+    queryset = PolitiqueRetention.objects.select_related(
+        'company', 'cabinet', 'folder', 'created_by').all()
+    serializer_class = PolitiqueRetentionSerializer
+    filter_backends = [filters.SearchFilter, filters.OrderingFilter]
+    search_fields = ['nom', 'description', 'type_document']
+    ordering_fields = ['nom', 'duree_conservation_jours', 'created_at']
+
+    def get_permissions(self):
+        if self.action in READ_ACTIONS + ['echus']:
+            return [IsAnyRole()]
+        return [IsResponsableOrAdmin()]
+
+    def get_queryset(self):
+        qs = selectors.politiques_retention_for_company(
+            self.request.user.company).select_related(
+            'company', 'cabinet', 'folder', 'created_by')
+        actif = self.request.query_params.get('actif')
+        if actif in ('1', 'true'):
+            qs = qs.filter(actif=True)
+        elif actif in ('0', 'false'):
+            qs = qs.filter(actif=False)
+        return qs
+
+    def perform_create(self, serializer):
+        # company + created_by posés côté serveur (jamais du corps).
+        serializer.save(
+            company=self.request.user.company,
+            created_by=self.request.user)
+
+    @action(detail=False, methods=['get'], url_path='echus')
+    def echus(self, request):
+        """GED22 — Liste les documents ÉCHUS au regard de leur politique.
+
+        `GET …/politiques-retention/echus/`. Pour chaque document de la société,
+        applique la politique de rétention ACTIVE la plus spécifique et renvoie
+        ceux dont l'âge dépasse la durée de conservation. Purement CONSULTATIF :
+        ne supprime ni ne modifie aucun document. Borné à la société."""
+        echus = selectors.documents_echus(request.user.company)
+        data = [
+            {
+                'document': doc.id,
+                'document_nom': doc.nom,
+                'politique': pol.id,
+                'politique_nom': pol.nom,
+                'action_echeance': pol.action_echeance,
+                'duree_conservation_jours': pol.duree_conservation_jours,
+                'jours_depasses': depasses,
+            }
+            for doc, pol, depasses in echus
+        ]
+        return Response(data)
 
 
 # ── GED20 — Endpoint PUBLIC (sans login) servant un document par jeton ───────

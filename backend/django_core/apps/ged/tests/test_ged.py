@@ -20,7 +20,7 @@ from apps.ged import selectors, services
 from apps.ged.models import (
     AclGed, Cabinet, Coffre, DemandeApprobation, Document, DocumentChunk,
     DocumentLien, DocumentTag, DocumentTagAssignment, DocumentVersion, Folder,
-    PartageGed,
+    PartageGed, PolitiqueRetention, RETENTION_SIGNALER, RETENTION_SUPPRIMER,
 )
 from apps.roles.models import Role
 
@@ -3239,3 +3239,263 @@ class WatermarkPublicPartageTests(GedBase):
         self.assertEqual(captured['company'].id, self.co_a.id)
         # L'endpoint public ne passe aucun utilisateur de requête au filigrane.
         self.assertIsNone(captured['user'])
+
+
+# ── GED22 — Politiques de rétention (durée + action à l'échéance) ─────────
+import datetime  # noqa: E402
+
+from django.utils import timezone  # noqa: E402
+
+
+class RetentionBase(GedBase):
+    """Fixtures partagées : un dossier + des documents d'âge maîtrisé.
+
+    `Document.created_at` est `auto_now_add` : pour maîtriser l'âge, on POSE la
+    date de création explicitement via un UPDATE en base (qui ne ré-applique pas
+    `auto_now_add`)."""
+
+    def setUp(self):
+        super().setUp()
+        self.folder_a = Folder.objects.create(
+            company=self.co_a, cabinet=self.cab_a, nom='Dossier A')
+        self.sub_a = Folder.objects.create(
+            company=self.co_a, cabinet=self.cab_a, parent=self.folder_a,
+            nom='Sous A')
+
+    def make_doc(self, *, folder=None, nom='Doc', age_jours=0,
+                 company=None, custom_data=None):
+        company = company or self.co_a
+        folder = folder or self.folder_a
+        doc = Document.objects.create(
+            company=company, folder=folder, nom=nom,
+            custom_data=custom_data or {})
+        if age_jours:
+            created = timezone.now() - datetime.timedelta(days=age_jours)
+            Document.objects.filter(pk=doc.pk).update(created_at=created)
+            doc.refresh_from_db()
+        return doc
+
+
+class PolitiqueRetentionModelTests(RetentionBase):
+    def test_default_action_is_signaler_not_destructive(self):
+        """Une politique naît « signaler » (consultatif) — jamais destructive."""
+        pol = PolitiqueRetention.objects.create(
+            company=self.co_a, nom='Standard', duree_conservation_jours=365)
+        self.assertEqual(pol.action_echeance, RETENTION_SIGNALER)
+        self.assertFalse(pol.is_destructive)
+
+    def test_scope_resolution(self):
+        glob = PolitiqueRetention.objects.create(
+            company=self.co_a, nom='G', duree_conservation_jours=10)
+        cab = PolitiqueRetention.objects.create(
+            company=self.co_a, nom='C', duree_conservation_jours=10,
+            cabinet=self.cab_a)
+        fol = PolitiqueRetention.objects.create(
+            company=self.co_a, nom='F', duree_conservation_jours=10,
+            folder=self.folder_a)
+        typ = PolitiqueRetention.objects.create(
+            company=self.co_a, nom='T', duree_conservation_jours=10,
+            type_document='contrat')
+        self.assertEqual(glob.scope, 'global')
+        self.assertEqual(cab.scope, 'cabinet')
+        self.assertEqual(fol.scope, 'dossier')
+        self.assertEqual(typ.scope, 'type')
+        # dossier > cabinet > type > global
+        self.assertGreater(fol.scope_rank, cab.scope_rank)
+        self.assertGreater(cab.scope_rank, typ.scope_rank)
+        self.assertGreater(typ.scope_rank, glob.scope_rank)
+
+    def test_clean_rejects_cabinet_and_folder_together(self):
+        from django.core.exceptions import ValidationError
+        pol = PolitiqueRetention(
+            company=self.co_a, nom='Bad', duree_conservation_jours=10,
+            cabinet=self.cab_a, folder=self.folder_a)
+        with self.assertRaises(ValidationError):
+            pol.clean()
+
+
+class DocumentsEchusTests(RetentionBase):
+    def test_picks_only_overdue_documents(self):
+        """Seuls les documents dont l'âge DÉPASSE la durée sont échus."""
+        PolitiqueRetention.objects.create(
+            company=self.co_a, nom='30 jours', duree_conservation_jours=30)
+        vieux = self.make_doc(nom='Vieux', age_jours=40)
+        jeune = self.make_doc(nom='Jeune', age_jours=10)
+        echus = selectors.documents_echus(self.co_a)
+        ids = [d.id for d, _, _ in echus]
+        self.assertIn(vieux.id, ids)
+        self.assertNotIn(jeune.id, ids)
+
+    def test_boundary_strictly_greater(self):
+        """Âge == durée n'est PAS échu ; âge > durée l'est."""
+        PolitiqueRetention.objects.create(
+            company=self.co_a, nom='30', duree_conservation_jours=30)
+        pile = self.make_doc(nom='Pile30', age_jours=30)
+        un_jour = self.make_doc(nom='31', age_jours=31)
+        ids = [d.id for d, _, _ in selectors.documents_echus(self.co_a)]
+        self.assertNotIn(pile.id, ids)
+        self.assertIn(un_jour.id, ids)
+
+    def test_most_specific_policy_wins(self):
+        """Une politique de dossier (plus spécifique) prime sur la globale."""
+        PolitiqueRetention.objects.create(
+            company=self.co_a, nom='Global 100', duree_conservation_jours=100)
+        PolitiqueRetention.objects.create(
+            company=self.co_a, nom='Dossier 10', duree_conservation_jours=10,
+            folder=self.folder_a)
+        doc = self.make_doc(folder=self.folder_a, nom='D', age_jours=20)
+        echus = selectors.documents_echus(self.co_a)
+        # 20 j > 10 (dossier) mais < 100 (global) → échu via la politique dossier.
+        match = [(d, p, n) for d, p, n in echus if d.id == doc.id]
+        self.assertEqual(len(match), 1)
+        self.assertEqual(match[0][1].nom, 'Dossier 10')
+
+    def test_folder_policy_covers_subtree(self):
+        """Une politique de dossier couvre aussi les sous-dossiers (chemin)."""
+        PolitiqueRetention.objects.create(
+            company=self.co_a, nom='Dossier 10', duree_conservation_jours=10,
+            folder=self.folder_a)
+        doc = self.make_doc(folder=self.sub_a, nom='Sub', age_jours=20)
+        ids = [d.id for d, _, _ in selectors.documents_echus(self.co_a)]
+        self.assertIn(doc.id, ids)
+
+    def test_today_is_injectable(self):
+        """Le paramètre `today` est propagé jusqu'au calcul d'âge."""
+        PolitiqueRetention.objects.create(
+            company=self.co_a, nom='30', duree_conservation_jours=30)
+        doc = self.make_doc(nom='D', age_jours=10)
+        # À aujourd'hui : 10 j < 30 → pas échu.
+        self.assertEqual(selectors.documents_echus(self.co_a), [])
+        # En projetant 60 jours dans le futur : 70 j > 30 → échu.
+        futur = timezone.localdate() + datetime.timedelta(days=60)
+        ids = [d.id for d, _, _ in selectors.documents_echus(
+            self.co_a, today=futur)]
+        self.assertIn(doc.id, ids)
+
+    def test_today_accepts_datetime(self):
+        """`today` accepte un datetime (ramené à une date)."""
+        PolitiqueRetention.objects.create(
+            company=self.co_a, nom='30', duree_conservation_jours=30)
+        doc = self.make_doc(nom='D', age_jours=40)
+        ids = [d.id for d, _, _ in selectors.documents_echus(
+            self.co_a, today=timezone.now())]
+        self.assertIn(doc.id, ids)
+
+    def test_inactive_policy_ignored(self):
+        """Une politique inactive ne rend aucun document échu."""
+        PolitiqueRetention.objects.create(
+            company=self.co_a, nom='Off', duree_conservation_jours=10,
+            actif=False)
+        self.make_doc(nom='D', age_jours=99)
+        self.assertEqual(selectors.documents_echus(self.co_a), [])
+
+    def test_no_policy_means_no_echus(self):
+        """Sans aucune politique, aucun document n'est échu (court-circuit)."""
+        self.make_doc(nom='D', age_jours=9999)
+        self.assertEqual(selectors.documents_echus(self.co_a), [])
+
+    def test_tenant_isolation(self):
+        """`documents_echus` ne voit jamais les documents d'une autre société."""
+        PolitiqueRetention.objects.create(
+            company=self.co_a, nom='30', duree_conservation_jours=30)
+        cab_b = Cabinet.objects.create(company=self.co_b, nom='Cab B')
+        folder_b = Folder.objects.create(
+            company=self.co_b, cabinet=cab_b, nom='Dossier B')
+        self.make_doc(company=self.co_b, folder=folder_b,
+                      nom='Etranger', age_jours=999)
+        echus = selectors.documents_echus(self.co_a)
+        self.assertEqual(echus, [])  # aucun doc de A échu, B jamais inclus
+
+    def test_supprimer_action_does_not_delete(self):
+        """Même une politique « supprimer » NE supprime jamais passivement."""
+        PolitiqueRetention.objects.create(
+            company=self.co_a, nom='Purge', duree_conservation_jours=10,
+            action_echeance=RETENTION_SUPPRIMER)
+        doc = self.make_doc(nom='D', age_jours=50)
+        echus = selectors.documents_echus(self.co_a)
+        ids = [d.id for d, _, _ in echus]
+        self.assertIn(doc.id, ids)
+        # Le document est LISTÉ mais TOUJOURS PRÉSENT — jamais effacé.
+        self.assertTrue(Document.objects.filter(pk=doc.pk).exists())
+
+
+class PolitiqueRetentionApiTests(RetentionBase):
+    URL = '/api/django/ged/politiques-retention/'
+
+    def test_create_force_company_server_side(self):
+        api = auth(self.admin_a)
+        resp = api.post(self.URL, {
+            'nom': 'Standard',
+            'duree_conservation_jours': 365,
+            # Tentative d'injecter une autre société — doit être ignorée.
+            'company': self.co_b.id,
+        }, format='json')
+        self.assertEqual(resp.status_code, 201, resp.data)
+        pol = PolitiqueRetention.objects.get(id=resp.data['id'])
+        self.assertEqual(pol.company_id, self.co_a.id)
+        self.assertEqual(pol.created_by_id, self.admin_a.id)
+        # Défaut consultatif : action « signaler ».
+        self.assertEqual(pol.action_echeance, RETENTION_SIGNALER)
+
+    def test_tenant_isolation_list(self):
+        PolitiqueRetention.objects.create(
+            company=self.co_a, nom='A', duree_conservation_jours=10)
+        PolitiqueRetention.objects.create(
+            company=self.co_b, nom='B', duree_conservation_jours=10)
+        resp = auth(self.admin_a).get(self.URL)
+        self.assertEqual(resp.status_code, 200)
+        noms = [r['nom'] for r in rows(resp)]
+        self.assertIn('A', noms)
+        self.assertNotIn('B', noms)
+
+    def test_rejects_zero_duration(self):
+        api = auth(self.admin_a)
+        resp = api.post(self.URL, {
+            'nom': 'Bad', 'duree_conservation_jours': 0,
+        }, format='json')
+        self.assertEqual(resp.status_code, 400, resp.data)
+
+    def test_rejects_cabinet_and_folder_together(self):
+        api = auth(self.admin_a)
+        resp = api.post(self.URL, {
+            'nom': 'Bad', 'duree_conservation_jours': 10,
+            'cabinet': self.cab_a.id, 'folder': self.folder_a.id,
+        }, format='json')
+        self.assertEqual(resp.status_code, 400, resp.data)
+
+    def test_rejects_cross_company_folder(self):
+        cab_b = Cabinet.objects.create(company=self.co_b, nom='Cab B')
+        folder_b = Folder.objects.create(
+            company=self.co_b, cabinet=cab_b, nom='B')
+        api = auth(self.admin_a)
+        resp = api.post(self.URL, {
+            'nom': 'X', 'duree_conservation_jours': 10, 'folder': folder_b.id,
+        }, format='json')
+        self.assertEqual(resp.status_code, 400, resp.data)
+
+    def test_write_requires_responsable_role(self):
+        """Création refusée (403) à un compte sans rôle d'écriture."""
+        viewer = make_user(self.co_a, 'ged22-viewer', 'normal')
+        api = auth(viewer)
+        resp = api.post(self.URL, {
+            'nom': 'NoRights', 'duree_conservation_jours': 10,
+        }, format='json')
+        self.assertEqual(resp.status_code, 403, resp.data)
+
+    def test_read_allowed_to_any_role(self):
+        PolitiqueRetention.objects.create(
+            company=self.co_a, nom='A', duree_conservation_jours=10)
+        viewer = make_user(self.co_a, 'ged22-viewer2', 'normal')
+        resp = auth(viewer).get(self.URL)
+        self.assertEqual(resp.status_code, 200, resp.data)
+
+    def test_echus_endpoint_lists_overdue(self):
+        PolitiqueRetention.objects.create(
+            company=self.co_a, nom='30', duree_conservation_jours=30)
+        doc = self.make_doc(nom='Vieux', age_jours=40)
+        resp = auth(self.admin_a).get(self.URL + 'echus/')
+        self.assertEqual(resp.status_code, 200, resp.data)
+        doc_ids = [row['document'] for row in resp.data]
+        self.assertIn(doc.id, doc_ids)
+        # Et le document existe toujours — l'endpoint ne supprime rien.
+        self.assertTrue(Document.objects.filter(pk=doc.pk).exists())

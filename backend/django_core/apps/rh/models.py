@@ -1914,3 +1914,113 @@ class EmargementEpi(models.Model):
 
     def __str__(self):
         return f'{self.signataire_nom} — {self.dotation_id}'
+
+
+class AccidentTravail(models.Model):
+    """Registre HSE & accidents du travail (FG181) — déclaration + export CNSS.
+
+    Matérialise la DÉCLARATION d'un accident du travail : qui (``employe``),
+    quand (``date_accident``), où (``lieu``), la GRAVITÉ (léger / grave /
+    mortel), la description des circonstances et l'éventuel ARRÊT DE TRAVAIL
+    (``arret_travail`` + ``nb_jours_arret``). C'est une pièce réglementaire :
+    au Maroc, l'employeur doit déclarer tout accident du travail (et de trajet)
+    à la CNSS et à l'inspection du travail dans les délais légaux — ce registre
+    en est le socle, et l'export ``?export=csv`` produit les champs d'une
+    déclaration d'accident CNSS.
+
+    Le suivi de la déclaration CNSS est porté par ``declare_cnss`` (la
+    déclaration a-t-elle été transmise) + ``date_declaration_cnss``. Le
+    ``statut`` (déclaré → clos) suit le cycle de vie du dossier d'accident.
+
+    Numérotation : ``reference`` (``AT-YYYYMM-NNNN``) est posée CÔTÉ SERVEUR de
+    façon race-safe via ``apps.ventes.utils.references.create_with_reference``
+    (plus-haut-utilisé+1 par société/mois, savepoint + retry) — JAMAIS
+    ``count()+1`` (qui collisionnait en production). Unique par société.
+
+    Photos : ``photo_key`` référence un objet MinIO optionnel (preuve
+    photographique des lieux/circonstances) — clé de stockage, pas un binaire.
+
+    Multi-société : ``company`` est posée côté serveur (jamais lue du corps de
+    requête) ; ``employe`` (le blessé) doit appartenir à la même société.
+
+    RUNTIME-SAFETY (leçon FG136) : les codes bornés ``gravite`` / ``statut``
+    ≤ 20 ; ``reference`` / ``lieu`` / ``photo_key`` plafonnés ; la description,
+    potentiellement longue, est un ``TextField`` (aucune limite à dépasser).
+    """
+
+    class Gravite(models.TextChoices):
+        LEGER = 'leger', 'Léger'
+        GRAVE = 'grave', 'Grave'
+        MORTEL = 'mortel', 'Mortel'
+
+    class Statut(models.TextChoices):
+        DECLARE = 'declare', 'Déclaré'
+        CLOS = 'clos', 'Clos'
+
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='rh_accidents',
+        verbose_name='Société',
+    )
+    employe = models.ForeignKey(
+        DossierEmploye,
+        on_delete=models.CASCADE,
+        related_name='rh_accidents',
+        verbose_name='Employé blessé',
+    )
+    # Référence séquentielle posée côté serveur (AT-YYYYMM-NNNN), unique par
+    # société. Race-safe (plus-haut-utilisé+1) — jamais count()+1.
+    reference = models.CharField(
+        max_length=30, verbose_name='Référence')
+    date_accident = models.DateField(verbose_name="Date de l'accident")
+    lieu = models.CharField(
+        max_length=255, blank=True, default='', verbose_name='Lieu')
+    gravite = models.CharField(
+        max_length=20, choices=Gravite.choices,
+        default=Gravite.LEGER, verbose_name='Gravité')
+    description = models.TextField(
+        blank=True, default='', verbose_name='Description des circonstances')
+    arret_travail = models.BooleanField(
+        default=False, verbose_name='Arrêt de travail')
+    nb_jours_arret = models.PositiveIntegerField(
+        default=0, verbose_name="Nombre de jours d'arrêt")
+    # Preuve photographique optionnelle (clé MinIO ; pas un binaire).
+    photo_key = models.CharField(
+        max_length=255, blank=True, default='', verbose_name='Photo (clé)')
+    # Suivi de la déclaration CNSS.
+    declare_cnss = models.BooleanField(
+        default=False, verbose_name='Déclaré à la CNSS')
+    date_declaration_cnss = models.DateField(
+        null=True, blank=True, verbose_name='Date de déclaration CNSS')
+    statut = models.CharField(
+        max_length=20, choices=Statut.choices,
+        default=Statut.DECLARE, verbose_name='Statut')
+    date_creation = models.DateTimeField(
+        auto_now_add=True, verbose_name='Créé le')
+    date_modification = models.DateTimeField(
+        auto_now=True, verbose_name='Modifié le')
+
+    class Meta:
+        verbose_name = 'Accident du travail'
+        verbose_name_plural = 'Accidents du travail'
+        ordering = ['-date_accident', '-date_creation']
+        constraints = [
+            models.UniqueConstraint(
+                fields=['company', 'reference'],
+                name='rh_accident_ref_unique'),
+        ]
+        indexes = [
+            models.Index(
+                fields=['company', 'date_accident'],
+                name='rh_accident_comp_date_idx'),
+            models.Index(
+                fields=['company', 'gravite'],
+                name='rh_accident_comp_grav_idx'),
+            models.Index(
+                fields=['company', 'statut'],
+                name='rh_accident_comp_stat_idx'),
+        ]
+
+    def __str__(self):
+        return f'{self.reference} — {self.employe_id} ({self.gravite})'

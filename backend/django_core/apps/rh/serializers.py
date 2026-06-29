@@ -7,6 +7,7 @@ appartenant à la société de l'utilisateur.
 from rest_framework import serializers
 
 from .models import (
+    AccidentTravail,
     AffectationRoster,
     Certification,
     Competence,
@@ -930,3 +931,57 @@ class EmargerEpiSerializer(serializers.Serializer):
             raise serializers.ValidationError(
                 'Le nom du signataire est requis (loi 53-05).')
         return value.strip()
+
+
+class AccidentTravailSerializer(serializers.ModelSerializer):
+    """Accident du travail (FG181) — déclaration HSE + suivi CNSS.
+
+    Le client saisit ``employe`` (le blessé), ``date_accident``, ``lieu``,
+    ``gravite`` (léger / grave / mortel), ``description``, ``arret_travail``
+    (+ ``nb_jours_arret``), ``photo_key`` (clé MinIO optionnelle), ``declare_cnss``
+    (+ ``date_declaration_cnss``) et ``statut``. ``company`` ET ``reference``
+    sont posées CÔTÉ SERVEUR (jamais lues du corps) ; ``employe`` doit appartenir
+    à la société de l'utilisateur. ``reference`` est en lecture seule (générée
+    race-safe à la création).
+    """
+    gravite_display = serializers.CharField(
+        source='get_gravite_display', read_only=True)
+    statut_display = serializers.CharField(
+        source='get_statut_display', read_only=True)
+    employe_nom = serializers.SerializerMethodField()
+
+    class Meta:
+        model = AccidentTravail
+        fields = [
+            'id', 'reference', 'employe', 'employe_nom',
+            'date_accident', 'lieu',
+            'gravite', 'gravite_display', 'description',
+            'arret_travail', 'nb_jours_arret', 'photo_key',
+            'declare_cnss', 'date_declaration_cnss',
+            'statut', 'statut_display',
+            'date_creation', 'date_modification',
+        ]
+        read_only_fields = [
+            'reference', 'date_creation', 'date_modification']
+
+    def get_employe_nom(self, obj):
+        return f'{obj.employe.nom} {obj.employe.prenom}'
+
+    def validate_employe(self, value):
+        return _meme_societe(self, value, 'Employé')
+
+    def validate(self, attrs):
+        # Cohérence : pas d'arrêt déclaré sans jours, et inversement un nombre
+        # de jours implique un arrêt. On corrige le couple plutôt que d'empiler
+        # une donnée incohérente (un arrêt à 0 jour ou des jours sans arrêt).
+        arret = attrs.get('arret_travail')
+        if arret is None:
+            arret = getattr(self.instance, 'arret_travail', False)
+        jours = attrs.get('nb_jours_arret')
+        if jours is None:
+            jours = getattr(self.instance, 'nb_jours_arret', 0)
+        if not arret and jours:
+            raise serializers.ValidationError(
+                {'nb_jours_arret':
+                 "Un nombre de jours d'arrêt implique un arrêt de travail."})
+        return attrs

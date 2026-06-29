@@ -14,6 +14,7 @@ from .models import (
     CarteCarburant,
     Conducteur,
     EcheanceEntretien,
+    EcheanceReglementaire,
     EnginRoulant,
     EtatDesLieux,
     Garage,
@@ -845,3 +846,115 @@ def synthese_pneus_pieces_vehicule(company, vehicule_id):
         'cout_pieces': cout_pieces,
         'cout_total': round(cout_pneus + cout_pieces, 2),
     }
+
+
+# ── FLOTTE19 — Échéances réglementaires (visite technique, assurance…) ─────────
+
+def echeances_reglementaires_de_la_societe(company, type_echeance=None,
+                                           statut=None, actif_flotte_id=None):
+    """FLOTTE19 — Échéances réglementaires d'une société (queryset scopé).
+
+    Filtres facultatifs : ``type_echeance`` (visite_technique | assurance |
+    vignette | carte_grise | taxe_essieu | autre), ``statut`` (statut STOCKÉ :
+    a_jour | a_renouveler | expire) et ``actif_flotte_id`` (un actif précis).
+    Lecture seule, scopée société.
+    """
+    qs = EcheanceReglementaire.objects.filter(company=company).select_related(
+        'actif_flotte', 'actif_flotte__vehicule', 'actif_flotte__engin')
+    if type_echeance:
+        qs = qs.filter(type_echeance=type_echeance)
+    if statut:
+        qs = qs.filter(statut=statut)
+    if actif_flotte_id is not None:
+        qs = qs.filter(actif_flotte_id=actif_flotte_id)
+    return qs
+
+
+def echeances_reglementaires_status(company, today=None):
+    """FLOTTE19 — État des échéances réglementaires d'une société (lecture seule).
+
+    Calcule, pour chaque ``EcheanceReglementaire`` de la société, son état RÉEL
+    vs ``today`` (date du jour par défaut, INJECTABLE pour les tests) via
+    ``EcheanceReglementaire.statut_calcule`` :
+
+    - ``overdue``  : la date d'échéance est déjà passée (``expire``) ;
+    - ``upcoming`` : la date tombe dans la fenêtre ``alerte_jours``
+      (``a_renouveler``) ;
+    - ``due``      : à jour (``a_jour``).
+
+    Retourne un dict LECTURE SEULE scopé société ::
+
+        {
+          'nb_total': <int>,
+          'nb_overdue': <int>,
+          'nb_upcoming': <int>,
+          'nb_ok': <int>,
+          'echeances': [
+            {'id', 'actif_flotte_id', 'actif_label', 'type_echeance',
+             'date_echeance', 'alerte_jours', 'statut_calcule'}, …
+          ],
+        }
+
+    Les échéances expirées sont listées en premier, puis les imminentes, puis le
+    reste — du plus urgent au moins urgent. Aucune écriture, aucun effet de bord.
+    """
+    if today is None:
+        today = datetime.date.today()
+
+    qs = echeances_reglementaires_de_la_societe(company)
+
+    resultats = []
+    nb_overdue = 0
+    nb_upcoming = 0
+    nb_ok = 0
+    for echeance in qs:
+        statut = echeance.statut_calcule(today=today)
+        if statut == EcheanceReglementaire.Statut.EXPIRE:
+            nb_overdue += 1
+        elif statut == EcheanceReglementaire.Statut.A_RENOUVELER:
+            nb_upcoming += 1
+        else:
+            nb_ok += 1
+        resultats.append({
+            'id': echeance.id,
+            'actif_flotte_id': echeance.actif_flotte_id,
+            'actif_label': echeance.actif_flotte.label
+            if echeance.actif_flotte_id else None,
+            'type_echeance': echeance.type_echeance,
+            'date_echeance': echeance.date_echeance,
+            'alerte_jours': echeance.alerte_jours,
+            'statut_calcule': statut,
+        })
+
+    ordre = {
+        EcheanceReglementaire.Statut.EXPIRE: 0,
+        EcheanceReglementaire.Statut.A_RENOUVELER: 1,
+        EcheanceReglementaire.Statut.A_JOUR: 2,
+    }
+    resultats.sort(key=lambda r: (ordre.get(r['statut_calcule'], 9),
+                                  r['date_echeance']
+                                  or datetime.date.max))
+
+    return {
+        'nb_total': len(resultats),
+        'nb_overdue': nb_overdue,
+        'nb_upcoming': nb_upcoming,
+        'nb_ok': nb_ok,
+        'echeances': resultats,
+    }
+
+
+def echeances_reglementaires_expirantes(company, within=30, today=None):
+    """FLOTTE19 — Échéances réglementaires DUES/EXPIRÉES sous ``within`` jours.
+
+    Retourne les ``EcheanceReglementaire`` de la société dont la date d'échéance
+    est déjà passée OU tombe dans les ``within`` prochains jours (inclusif), du
+    plus urgent au moins urgent. ``today`` est INJECTABLE (date du jour par
+    défaut). Lecture seule, scopée société.
+    """
+    if today is None:
+        today = datetime.date.today()
+    horizon = today + datetime.timedelta(days=within)
+    return echeances_reglementaires_de_la_societe(company).filter(
+        date_echeance__lte=horizon,
+    ).order_by('date_echeance', 'id')

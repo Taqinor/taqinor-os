@@ -37,7 +37,7 @@ from .models import (
     LignePrevisionnelTresorerie, LigneReleve, MouvementCaisse, NoteFrais,
     PaymentRun, PaymentRunLine, PeriodeComptable, PlanAmortissement,
     PlanComptable, PointageReleve, Rapprochement, RapprochementBancaire,
-    RetenueSource, VirementInterne,
+    RetenueSource, TimbreFiscal, VirementInterne,
 )
 
 
@@ -2761,3 +2761,78 @@ def marquer_ras_versee(retenue):
     retenue.statut = RetenueSource.Statut.VERSEE
     retenue.save(update_fields=['statut'])
     return retenue
+
+
+# ── FG144 — Droit de timbre sur encaissements en espèces ───────────────────
+# Mode de règlement « espèces » (miroir de apps.ventes.Paiement.Mode.ESPECES) —
+# repris par valeur (string-ref) et JAMAIS par import du modèle ventes.
+MODE_ESPECES = 'especes'
+
+
+def est_reglement_especes(mode_reglement):
+    """Vrai si le mode de règlement est « espèces » (cash) — sinon exonéré.
+
+    Le droit de timbre de quittance ne frappe QUE les encaissements en espèces ;
+    virement / chèque / carte / prélèvement / autre en sont exonérés."""
+    return (mode_reglement or '').strip().lower() == MODE_ESPECES
+
+
+def enregistrer_timbre_fiscal(company, *, date_encaissement, base,
+                              mode_reglement=MODE_ESPECES, taux=None,
+                              minimum=None, paiement_id=None, facture_ref='',
+                              tiers_type='', tiers_id=None, tiers_nom='',
+                              libelle='', user=None):
+    """Enregistre le droit de timbre sur un encaissement ESPÈCES (FG144).
+
+    Le droit de timbre marocain de quittance frappe la somme reçue EN ESPÈCES :
+    ``montant`` = max(base × taux %, minimum), FIGÉ dans un snapshot
+    ``TimbreFiscal`` en statut « à verser ». Le ``taux`` par défaut est
+    ``TimbreFiscal.TAUX_DEFAUT`` (0,25 %) et le ``minimum`` forfaitaire
+    ``TimbreFiscal.MINIMUM_DEFAUT`` ; tous deux sont configurables par appel. Un
+    règlement NON espèces est EXONÉRÉ : la fonction renvoie ``None`` sans rien
+    créer. La ``reference`` (TIMBRE-YYYYMM-NNNN) et la ``company`` sont posées côté
+    serveur (jamais lues du corps). Le paiement d'origine est référencé par
+    string-id (``paiement_id`` / ``facture_ref``) — jamais d'import cross-app de
+    modèle ventes. Renvoie le timbre, ou ``None`` si exonéré.
+    """
+    from apps.ventes.utils.references import create_with_reference
+
+    if not est_reglement_especes(mode_reglement):
+        # Règlement non espèces → exonéré : aucun droit de timbre.
+        return None
+
+    timbre = TimbreFiscal(
+        company=company,
+        date_encaissement=date_encaissement,
+        base=Decimal(base or 0),
+        taux=(Decimal(taux) if taux is not None
+              else TimbreFiscal.TAUX_DEFAUT),
+        minimum=(Decimal(minimum) if minimum is not None
+                 else TimbreFiscal.MINIMUM_DEFAUT),
+        mode_reglement=MODE_ESPECES,
+        paiement_id=paiement_id,
+        facture_ref=facture_ref or '',
+        tiers_type=tiers_type or '',
+        tiers_id=tiers_id,
+        tiers_nom=tiers_nom or '',
+        statut=TimbreFiscal.Statut.A_VERSER,
+        libelle=libelle or '',
+        created_by=user,
+    )
+    timbre.recalculer()
+    timbre.full_clean(exclude=['reference', 'created_by'])
+
+    def _save(reference):
+        timbre.reference = reference
+        timbre.save()
+        return timbre
+
+    # Savepoint + retry race-safe (highest-used+1, jamais count()+1).
+    return create_with_reference(TimbreFiscal, 'TIMBRE', company, _save)
+
+
+def marquer_timbre_verse(timbre):
+    """Marque un droit de timbre comme versé au Trésor (FG144)."""
+    timbre.statut = TimbreFiscal.Statut.VERSEE
+    timbre.save(update_fields=['statut'])
+    return timbre

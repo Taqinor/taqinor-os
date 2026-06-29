@@ -16,6 +16,8 @@ Tout est multi-société : chaque modèle porte un FK ``company`` posé côté s
 (jamais lu du corps de requête). Module entièrement additif — aucun comportement
 existant n'est modifié.
 """
+import datetime
+
 from django.conf import settings
 from django.core.exceptions import ValidationError
 from django.db import models
@@ -1310,3 +1312,145 @@ class PieceFlotte(models.Model):
 
     def __str__(self):
         return f'{self.designation} ×{self.quantite} — {self.vehicule}'
+
+
+# ── FLOTTE19 — Échéances réglementaires (visite technique, assurance…) ─────────
+
+class EcheanceReglementaire(models.Model):
+    """Échéance réglementaire / administrative DATÉE d'un actif de flotte (FLOTTE19).
+
+    Modèle GÉNÉRIQUE des obligations légales et administratives d'un actif :
+    visite technique, assurance, vignette / TSAV, carte grise, taxe à l'essieu,
+    etc. Chaque enregistrement porte une ``date_echeance`` (la date limite de
+    validité / renouvellement) et, optionnellement, la ``date_dernier_renouvellement``,
+    l'``organisme`` émetteur, le ``cout`` et une marge d'alerte ``alerte_jours``.
+
+    **Famille DISTINCTE de l'entretien** : ``EcheanceEntretien`` (FLOTTE16)
+    matérialise les échéances de MAINTENANCE (vidange, courroie…) générées depuis
+    un ``PlanEntretien``. ``EcheanceReglementaire`` couvre les obligations
+    LÉGALES/ADMINISTRATIVES, indépendantes du kilométrage — les deux familles ne
+    se confondent jamais.
+
+    **Statut** : ``statut`` est STOCKÉ (``a_jour`` par défaut) et peut être posé à
+    la main, mais ``statut_calcule(today)`` recalcule l'état réel vs une date
+    (``expire`` si la date est passée, ``a_renouveler`` si elle tombe dans la
+    fenêtre ``alerte_jours``, sinon ``a_jour``). Le sélecteur
+    ``echeances_reglementaires_status`` s'appuie sur ce calcul (date injectable).
+
+    **Multi-tenant** : ``company`` est posée côté serveur (jamais lue du corps de
+    requête). L'actif lié (``actif_flotte``, qui pointe vers un ``Vehicule`` OU un
+    ``EnginRoulant``) doit appartenir à la MÊME société (validé dans ``clean`` et
+    au sérialiseur).
+    """
+
+    class TypeEcheance(models.TextChoices):
+        VISITE_TECHNIQUE = 'visite_technique', 'Visite technique'
+        ASSURANCE = 'assurance', 'Assurance'
+        VIGNETTE = 'vignette', 'Vignette / TSAV'
+        CARTE_GRISE = 'carte_grise', 'Carte grise'
+        TAXE_ESSIEU = 'taxe_essieu', "Taxe à l'essieu"
+        AUTRE = 'autre', 'Autre'
+
+    class Statut(models.TextChoices):
+        A_JOUR = 'a_jour', 'À jour'
+        A_RENOUVELER = 'a_renouveler', 'À renouveler'
+        EXPIRE = 'expire', 'Expiré'
+
+    # Marge d'alerte par défaut (jours avant l'échéance → « à renouveler »).
+    ALERTE_JOURS_DEFAUT = 30
+
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='flotte_echeances_reglementaires',
+        verbose_name='Société',
+    )
+    actif_flotte = models.ForeignKey(
+        'ActifFlotte',
+        on_delete=models.CASCADE,
+        related_name='flotte_echeances_reglementaires',
+        verbose_name='Actif (véhicule ou engin)',
+    )
+    # Code court du type d'échéance — CharField borné : la valeur tient dans
+    # max_length (leçon FG136). 'visite_technique' (16) est le plus long code.
+    type_echeance = models.CharField(
+        max_length=20, choices=TypeEcheance.choices,
+        default=TypeEcheance.VISITE_TECHNIQUE, verbose_name="Type d'échéance")
+    date_echeance = models.DateField(verbose_name="Date d'échéance")
+    date_dernier_renouvellement = models.DateField(
+        null=True, blank=True, verbose_name='Dernier renouvellement')
+    organisme = models.CharField(
+        max_length=120, blank=True, verbose_name='Organisme')
+    cout = models.DecimalField(
+        max_digits=12, decimal_places=2, default=0,
+        verbose_name='Coût (MAD)')
+    # Marge d'alerte (jours) : si l'échéance tombe dans cette fenêtre, l'actif
+    # passe « à renouveler ». 'a_jour' (6) est le plus long code de statut.
+    alerte_jours = models.PositiveIntegerField(
+        default=ALERTE_JOURS_DEFAUT, verbose_name="Marge d'alerte (jours)")
+    statut = models.CharField(
+        max_length=12, choices=Statut.choices, default=Statut.A_JOUR,
+        verbose_name='Statut')
+    notes = models.TextField(blank=True, verbose_name='Notes')
+    date_creation = models.DateTimeField(
+        auto_now_add=True, verbose_name='Créé le')
+
+    class Meta:
+        verbose_name = 'Échéance réglementaire'
+        verbose_name_plural = 'Échéances réglementaires'
+        ordering = ['date_echeance', 'id']
+        indexes = [
+            models.Index(
+                fields=['company', 'statut'],
+                name='flotte_echreg_co_stat_idx',
+            ),
+            models.Index(
+                fields=['company', 'actif_flotte'],
+                name='flotte_echreg_co_actif_idx',
+            ),
+            models.Index(
+                fields=['company', 'date_echeance'],
+                name='flotte_echreg_co_date_idx',
+            ),
+        ]
+
+    def clean(self):
+        """Valide l'appartenance société de l'actif, la cohérence des dates et
+        le coût."""
+        if self.actif_flotte_id is not None \
+                and self.actif_flotte.company_id != self.company_id:
+            raise ValidationError(
+                "L'actif n'appartient pas à la même société.")
+        if self.date_echeance is not None \
+                and self.date_dernier_renouvellement is not None \
+                and self.date_echeance < self.date_dernier_renouvellement:
+            raise ValidationError(
+                "La date d'échéance ne peut pas précéder le dernier "
+                "renouvellement.")
+        if self.cout is not None and self.cout < 0:
+            raise ValidationError(
+                "Le coût ne peut pas être négatif.")
+
+    def statut_calcule(self, today=None):
+        """État RÉEL de l'échéance vs ``today`` (lecture seule, date injectable).
+
+        Retourne ``'expire'`` si la date d'échéance est déjà passée,
+        ``'a_renouveler'`` si elle tombe dans les ``alerte_jours`` prochains
+        jours (inclusif), sinon ``'a_jour'``. ``today`` défaut = date du jour.
+        """
+        if today is None:
+            today = datetime.date.today()
+        if self.date_echeance is None:
+            return self.Statut.A_JOUR
+        if self.date_echeance < today:
+            return self.Statut.EXPIRE
+        marge = self.alerte_jours \
+            if self.alerte_jours is not None else self.ALERTE_JOURS_DEFAUT
+        horizon = today + datetime.timedelta(days=marge)
+        if self.date_echeance <= horizon:
+            return self.Statut.A_RENOUVELER
+        return self.Statut.A_JOUR
+
+    def __str__(self):
+        return f'{self.get_type_echeance_display()} — {self.actif_flotte} ' \
+               f'({self.date_echeance})'

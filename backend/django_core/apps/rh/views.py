@@ -21,6 +21,7 @@ from authentication.permissions import HasPermission, IsResponsableOrAdmin
 
 from . import selectors, services
 from .models import (
+    AccidentTravail,
     AffectationRoster,
     Certification,
     Competence,
@@ -45,6 +46,7 @@ from .models import (
     VisiteMedicale,
 )
 from .serializers import (
+    AccidentTravailSerializer,
     AffectationRosterSerializer,
     CertificationSerializer,
     CompetenceEmployeSerializer,
@@ -1513,3 +1515,123 @@ class EcheancesRhViewSet(TenantMixin, viewsets.ViewSet):
         rows = selectors.echeances_rh(
             request.user.company, within_days=within)
         return Response(rows)
+
+
+class AccidentTravailViewSet(_RhBaseViewSet):
+    """Registre HSE & accidents du travail (FG181) — déclaration + export CNSS.
+
+    Société scopée + Administrateur/Responsable. ``company`` ET ``reference``
+    (``AT-YYYYMM-NNNN``, race-safe — jamais ``count()+1``) sont posées CÔTÉ
+    SERVEUR ; ``employe`` (le blessé) doit appartenir à la même société.
+    Déclare un accident du travail (date / lieu / blessé / gravité / arrêt /
+    photo) et suit la déclaration CNSS (``declare_cnss`` + date).
+
+    Filtres : ``?gravite=leger|grave|mortel``, ``?statut=declare|clos``,
+    ``?employe=<id>``. Recherche : référence, lieu.
+
+    Action :
+    * ``GET .../?export=csv`` (ou ``GET .../export-cnss/``) — export CSV des
+      champs d'une déclaration d'accident du travail CNSS, scopé société et
+      filtré comme la liste. ``?debut=`` / ``?fin=`` bornent la date d'accident.
+    """
+    queryset = AccidentTravail.objects.select_related('employe').all()
+    serializer_class = AccidentTravailSerializer
+    filter_backends = [filters.SearchFilter, filters.OrderingFilter]
+    search_fields = ['reference', 'lieu']
+    ordering_fields = [
+        'date_accident', 'gravite', 'statut', 'reference', 'date_creation']
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        employe = self.request.query_params.get('employe')
+        if employe:
+            qs = qs.filter(employe_id=employe)
+        gravite = self.request.query_params.get('gravite')
+        if gravite:
+            qs = qs.filter(gravite=gravite)
+        statut = self.request.query_params.get('statut')
+        if statut:
+            qs = qs.filter(statut=statut)
+        debut = self._parse_date(self.request.query_params.get('debut'))
+        if debut:
+            qs = qs.filter(date_accident__gte=debut)
+        fin = self._parse_date(self.request.query_params.get('fin'))
+        if fin:
+            qs = qs.filter(date_accident__lte=fin)
+        return qs
+
+    @staticmethod
+    def _parse_date(raw):
+        if not raw:
+            return None
+        from datetime import datetime
+        try:
+            return datetime.strptime(raw, '%Y-%m-%d').date()
+        except (TypeError, ValueError):
+            return None
+
+    def perform_create(self, serializer):
+        """Company + reference (race-safe) posées côté serveur (FG181)."""
+        services.creer_accident_travail(serializer, self.request.user.company)
+
+    def list(self, request, *args, **kwargs):
+        """Liste paginée OU export CSV de la déclaration CNSS (``?export=csv``).
+
+        On garde ``?export=`` (et NON ``?format=``, réservé par DRF et qui
+        renverrait un 404) comme déclencheur d'export.
+        """
+        if (request.query_params.get('export') or '').lower() == 'csv':
+            return self._export_cnss(request)
+        return super().list(request, *args, **kwargs)
+
+    @action(detail=False, methods=['get'], url_path='export-cnss')
+    def export_cnss(self, request):
+        """Export CSV des déclarations d'accident du travail CNSS (FG181)."""
+        return self._export_cnss(request)
+
+    def _export_cnss(self, request):
+        """Construit le CSV de déclaration CNSS, scopé société + filtré.
+
+        Colonnes = champs d'une déclaration d'accident du travail à la CNSS :
+        référence interne, matricule + identité + CIN du blessé, date et lieu
+        de l'accident, gravité, arrêt de travail et nombre de jours, état de la
+        déclaration CNSS + sa date, statut du dossier et description.
+        """
+        import csv
+
+        from django.http import HttpResponse
+
+        rows = self.filter_queryset(self.get_queryset())
+        response = HttpResponse(content_type='text/csv; charset=utf-8')
+        response['Content-Disposition'] = (
+            'attachment; filename="declaration-accidents-cnss.csv"')
+        # BOM UTF-8 pour qu'Excel ouvre correctement les accents.
+        response.write('﻿')
+        writer = csv.writer(response)
+        writer.writerow([
+            'Reference', 'Matricule', 'Nom', 'Prenom', 'CIN',
+            'Date accident', 'Lieu', 'Gravite',
+            'Arret travail', 'Jours arret',
+            'Declare CNSS', 'Date declaration CNSS',
+            'Statut', 'Description',
+        ])
+        for acc in rows:
+            emp = acc.employe
+            writer.writerow([
+                acc.reference,
+                emp.matricule,
+                emp.nom,
+                emp.prenom,
+                getattr(emp, 'cin', '') or '',
+                acc.date_accident.isoformat() if acc.date_accident else '',
+                acc.lieu,
+                acc.get_gravite_display(),
+                'Oui' if acc.arret_travail else 'Non',
+                acc.nb_jours_arret,
+                'Oui' if acc.declare_cnss else 'Non',
+                acc.date_declaration_cnss.isoformat()
+                if acc.date_declaration_cnss else '',
+                acc.get_statut_display(),
+                acc.description,
+            ])
+        return response

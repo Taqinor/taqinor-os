@@ -9,6 +9,7 @@ best-effort (échec non bloquant + journalisé).
 import hashlib
 import hmac
 import json
+import re
 from unittest import mock
 
 from django.contrib.auth import get_user_model
@@ -136,8 +137,13 @@ class NoBuyPriceTests(TestCase):
         blob = json.dumps(resp.data)
         # Jamais de prix d'achat / marge ; le prix de vente (900) est OK.
         self.assertNotIn('prix_achat', blob)
-        self.assertNotIn('500', blob)
         self.assertIn('900', blob)
+        # On retire les littéraux d'horodatage ISO avant le contrôle de valeur :
+        # « 500 » (prix d'achat) peut surgir PAR HASARD dans les microsecondes
+        # d'un `date_creation` (ex. ...T18:57:04.850057Z), ce qui rendait ce test
+        # flaky. Après ce nettoyage, un vrai 500 sérialisé reste détecté.
+        blob_sans_dates = re.sub(r'\d{4}-\d{2}-\d{2}T[0-9:.]+Z?', '', blob)
+        self.assertNotIn('500', blob_sans_dates)
 
 
 class CompletenessReadTests(TestCase):

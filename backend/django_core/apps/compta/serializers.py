@@ -16,7 +16,7 @@ from .models import (
     LignePrevisionnelTresorerie, LigneReleve, MouvementCaisse, NoteFrais,
     PaymentRun, PaymentRunLine, PeriodeComptable, PlanAmortissement,
     PlanComptable, Rapprochement, RapprochementBancaire, RetenueSource,
-    VirementInterne,
+    TimbreFiscal, VirementInterne,
 )
 
 
@@ -922,4 +922,47 @@ class RetenueSourceSerializer(serializers.ModelSerializer):
         if value is not None and (value < 0 or value > 100):
             raise serializers.ValidationError(
                 "Le taux de RAS doit être compris entre 0 et 100 %.")
+        return value
+
+
+class TimbreFiscalSerializer(serializers.ModelSerializer):
+    """Droit de timbre sur un encaissement en espèces (FG144).
+
+    À la création on accepte la saisie de l'encaissement (base, mode de règlement,
+    taux/minimum optionnels, paiement d'origine, payeur) ; le ``montant`` du timbre
+    est DÉRIVÉ côté serveur (max(base × taux %, minimum)) et reste en lecture seule,
+    comme ``company`` / ``reference`` / ``statut`` / ``created_by``. Le statut évolue
+    par l'action de service (versé), jamais par écriture directe du corps.
+    """
+    statut_display = serializers.CharField(
+        source='get_statut_display', read_only=True)
+
+    class Meta:
+        model = TimbreFiscal
+        fields = [
+            'id', 'reference', 'date_encaissement', 'paiement_id',
+            'facture_ref', 'mode_reglement', 'tiers_type', 'tiers_id',
+            'tiers_nom', 'base', 'taux', 'minimum', 'montant', 'statut',
+            'statut_display', 'libelle', 'created_by', 'date_creation',
+        ]
+        read_only_fields = [
+            'reference', 'montant', 'statut', 'created_by', 'date_creation',
+        ]
+
+    def validate_base(self, value):
+        if value is not None and value < 0:
+            raise serializers.ValidationError(
+                "Le montant encaissé ne peut pas être négatif.")
+        return value
+
+    def validate_taux(self, value):
+        if value is not None and (value < 0 or value > 100):
+            raise serializers.ValidationError(
+                "Le taux du droit de timbre doit être compris entre 0 et 100 %.")
+        return value
+
+    def validate_minimum(self, value):
+        if value is not None and value < 0:
+            raise serializers.ValidationError(
+                "Le minimum de perception ne peut pas être négatif.")
         return value

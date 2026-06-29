@@ -1,6 +1,7 @@
 from django.contrib import admin
 
 from .models import (
+    AccidentTravail,
     AffectationRoster,
     Certification,
     Competence,
@@ -201,3 +202,13 @@ class EmargementEpiAdmin(admin.ModelAdmin):
     list_filter = ('role_signataire', 'methode')
     search_fields = ('signataire_nom', 'dotation__employe__matricule',
                      'dotation__epi__designation')
+
+
+@admin.register(AccidentTravail)
+class AccidentTravailAdmin(admin.ModelAdmin):
+    list_display = ('reference', 'employe', 'date_accident', 'gravite',
+                    'arret_travail', 'nb_jours_arret', 'declare_cnss',
+                    'statut', 'company')
+    list_filter = ('gravite', 'statut', 'arret_travail', 'declare_cnss')
+    search_fields = ('reference', 'lieu', 'employe__matricule',
+                     'employe__nom', 'employe__prenom')
