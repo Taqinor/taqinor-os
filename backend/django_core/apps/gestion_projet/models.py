@@ -1056,3 +1056,117 @@ class ProjetActivity(models.Model):
 
     def __str__(self):
         return f'{self.projet_id} {self.old_value}→{self.new_value}'.strip()
+
+
+class BudgetProjet(models.Model):
+    """Budget INTERNE prévisionnel d'un ``Projet``, ventilé en lignes.
+
+    Un projet peut porter plusieurs budgets (versions successives) ; chaque
+    budget regroupe des lignes (``LigneBudgetProjet``) ventilées par catégorie
+    de coût (matériel, main-d'œuvre, sous-traitance, divers). Le total prévu est
+    la somme des ``montant_prevu`` des lignes (calculé par le sélecteur
+    ``budget_total``). C'est une donnée de PILOTAGE interne — jamais exposée au
+    client final, totalement DISTINCTE des montants des devis/factures.
+
+    Tout est multi-société : ``company`` est posée côté serveur, jamais lue du
+    corps de requête. Modèle entièrement additif.
+
+    NB — PROJ22 (« engagé vs réel ») est une couche SÉPARÉE et ultérieure : ce
+    modèle ne porte QUE le prévisionnel.
+    """
+    class Statut(models.TextChoices):
+        BROUILLON = 'brouillon', 'Brouillon'
+        VALIDE = 'valide', 'Validé'
+        ARCHIVE = 'archive', 'Archivé'
+
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='gestion_projet_budgets',
+        verbose_name='Société',
+    )
+    projet = models.ForeignKey(
+        Projet,
+        on_delete=models.CASCADE,
+        related_name='budgets',
+        verbose_name='Projet',
+    )
+    libelle = models.CharField(
+        max_length=200, blank=True, default='', verbose_name='Libellé')
+    version = models.PositiveIntegerField(default=1, verbose_name='Version')
+    statut = models.CharField(
+        max_length=10, choices=Statut.choices,
+        default=Statut.BROUILLON, verbose_name='Statut')
+    devise = models.CharField(
+        max_length=3, default='MAD', verbose_name='Devise')
+    date_creation = models.DateTimeField(
+        auto_now_add=True, verbose_name='Créé le')
+
+    class Meta:
+        verbose_name = 'Budget projet'
+        verbose_name_plural = 'Budgets projet'
+        ordering = ['projet', '-version', '-id']
+        indexes = [models.Index(
+            fields=['projet', 'version'],
+            name='gp_budget_proj_ver_idx')]
+
+    def __str__(self):
+        return f'{self.projet_id} budget v{self.version}'
+
+
+class LigneBudgetProjet(models.Model):
+    """Une ligne d'un ``BudgetProjet``, ventilée par catégorie de coût.
+
+    ``categorie`` classe la dépense prévue (matériel / main-d'œuvre /
+    sous-traitance / divers) ; ``montant_prevu`` est le montant prévisionnel de
+    la ligne. ``quantite`` et ``pu`` (prix unitaire) sont OPTIONNELS et
+    purement INDICATIFS : ils n'écrasent jamais ``montant_prevu`` (le total du
+    budget agrège les ``montant_prevu``, voir ``selectors.budget_total``).
+
+    Tout est multi-société : ``company`` est posée côté serveur, jamais lue du
+    corps de requête. Modèle entièrement additif.
+    """
+    class Categorie(models.TextChoices):
+        MATERIEL = 'materiel', 'Matériel'
+        MAIN_OEUVRE = 'main_oeuvre', "Main-d'œuvre"
+        SOUS_TRAITANCE = 'sous_traitance', 'Sous-traitance'
+        DIVERS = 'divers', 'Divers'
+
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='gestion_projet_lignes_budget',
+        verbose_name='Société',
+    )
+    budget = models.ForeignKey(
+        BudgetProjet,
+        on_delete=models.CASCADE,
+        related_name='lignes',
+        verbose_name='Budget',
+    )
+    categorie = models.CharField(
+        max_length=14, choices=Categorie.choices,
+        default=Categorie.MATERIEL, verbose_name='Catégorie')
+    libelle = models.CharField(max_length=200, verbose_name='Libellé')
+    quantite = models.DecimalField(
+        max_digits=12, decimal_places=2, null=True, blank=True,
+        verbose_name='Quantité')
+    pu = models.DecimalField(
+        max_digits=14, decimal_places=2, null=True, blank=True,
+        verbose_name='Prix unitaire')
+    montant_prevu = models.DecimalField(
+        max_digits=14, decimal_places=2, default=Decimal('0'),
+        verbose_name='Montant prévu')
+    date_creation = models.DateTimeField(
+        auto_now_add=True, verbose_name='Créé le')
+
+    class Meta:
+        verbose_name = 'Ligne de budget projet'
+        verbose_name_plural = 'Lignes de budget projet'
+        ordering = ['budget', 'categorie', 'id']
+        indexes = [models.Index(
+            fields=['budget', 'categorie'],
+            name='gp_ligne_bud_cat_idx')]
+
+    def __str__(self):
+        return f'{self.get_categorie_display()} — {self.libelle}'
