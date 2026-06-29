@@ -1766,3 +1766,158 @@ class PpaModelTest(SimpleTestCase):
         res = self._base(annual_production_kwh=-500.0)
         self.assertEqual(res["summary"]["production_year1"], 0.0)
         self.assertTrue(any("production" in w for w in res["warnings"]))
+
+
+# ── FG264 : rendement pompage par cycle de marche (calcul pur, SimpleTestCase) ─
+class PumpingCycleYieldTest(SimpleTestCase):
+    def test_flat_volume_is_debit_times_hours(self):
+        # Mode PLAT : volume journalier = débit@HMT × heures (identique à
+        # ``solar.js`` : m3_jour = round(debitHmt × heures)).
+        res = sd.pumping_cycle_yield(debit_hmt_m3h=12.0, pumping_hours=7)
+        self.assertEqual(res["mode"], "flat")
+        self.assertEqual(res["daily_m3"], 84.0)  # 12 × 7
+        self.assertEqual(res["effective_pumping_hours"], 7.0)
+
+    def test_backward_compatible_with_existing_m3_jour(self):
+        # Parité 1:1 avec le calcul existant pour des entrées de devis typiques :
+        # le m³/jour PLAT ne change pas (clé etude_params préservée).
+        for debit, heures in [(10.0, 7), (5.5, 6), (18.0, 8), (3.2, 7)]:
+            res = sd.pumping_cycle_yield(
+                debit_hmt_m3h=debit, pumping_hours=heures)
+            self.assertEqual(res["daily_m3"], round(debit * heures, 2))
+
+    def test_monthly_is_daily_times_days_in_month(self):
+        # Volume mensuel = volume journalier × jours du mois (janvier = 31).
+        res = sd.pumping_cycle_yield(debit_hmt_m3h=10.0, pumping_hours=7)
+        daily = res["daily_m3"]  # 70.0
+        self.assertEqual(len(res["monthly_m3"]), 12)
+        self.assertEqual(res["monthly_m3"][0], round(daily * 31, 1))   # janv
+        self.assertEqual(res["monthly_m3"][1], round(daily * 28, 1))   # févr
+        self.assertEqual(res["monthly_m3"][3], round(daily * 30, 1))   # avril
+        # Annuel = somme des 12 mois = daily × 365 (année non bissextile).
+        self.assertAlmostEqual(res["annual_m3"], round(daily * 365, 1),
+                               places=1)
+
+    def test_curveless_pump_returns_none_never_fabricates(self):
+        # Pompe sans courbe (débit inconnu) : AUCUN m³/jour inventé (parité
+        # écran/PDF one-page qui omet la carte m³/jour).
+        for bad in (None, 0, -3.0, "abc"):
+            res = sd.pumping_cycle_yield(debit_hmt_m3h=bad, pumping_hours=7)
+            self.assertIsNone(res["daily_m3"])
+            self.assertIsNone(res["monthly_m3"])
+            self.assertIsNone(res["annual_m3"])
+            self.assertEqual(res["mode"], "unknown")
+            self.assertTrue(res["warnings"])
+
+    def test_hourly_profile_integrates_debit_by_irradiation(self):
+        # Mode PROFIL : chaque heure pompe débit × (irr/pic). Une cloche
+        # symétrique donne moins que débit × heures-non-nulles (heures creuses
+        # sous le débit nominal).
+        profile = [0, 0, 0, 0, 0, 0,
+                   100, 300, 600, 800, 950, 1000,
+                   1000, 950, 800, 600, 300, 100,
+                   0, 0, 0, 0, 0, 0]
+        res = sd.pumping_cycle_yield(
+            debit_hmt_m3h=10.0, hourly_irradiance=profile)
+        self.assertEqual(res["mode"], "hourly")
+        self.assertIsNotNone(res["daily_m3"])
+        # Le débit horaire intégré reste sous (débit nominal × nb heures pleines).
+        full_hours = sum(1 for v in profile if v >= 1000 * 0.15)
+        self.assertLess(res["daily_m3"], 10.0 * full_hours)
+        # Le pic d'irradiation est bien à midi (index 11 ou 12, ici 11).
+        self.assertIn(res["peak_hour_index"], (11, 12))
+        # daily_by_hour est exposé et somme au volume journalier.
+        self.assertAlmostEqual(
+            sum(res["daily_by_hour"]), res["daily_m3"], places=1)
+
+    def test_higher_irradiation_pumps_more(self):
+        # À débit nominal égal, un profil plus ensoleillé pompe davantage.
+        low = [0, 0, 0, 0, 0, 0, 50, 100, 150, 200, 250, 300,
+               300, 250, 200, 150, 100, 50, 0, 0, 0, 0, 0, 0]
+        high = [v * 3 for v in low]
+        r_low = sd.pumping_cycle_yield(debit_hmt_m3h=8.0, hourly_irradiance=low)
+        r_high = sd.pumping_cycle_yield(
+            debit_hmt_m3h=8.0, hourly_irradiance=high)
+        # Profil plus fort → plus d'heures au-dessus du seuil / plus proches du
+        # débit nominal → volume supérieur ou égal.
+        self.assertGreaterEqual(r_high["daily_m3"], r_low["daily_m3"])
+
+    def test_debit_caps_per_hour_at_nominal(self):
+        # Même au pic, une heure ne dépasse jamais le débit nominal de la pompe.
+        flat_peak = [1000] * 24
+        res = sd.pumping_cycle_yield(
+            debit_hmt_m3h=6.0, hourly_irradiance=flat_peak)
+        # 24 h toutes au pic → 24 × 6 m³ exactement (jamais plus).
+        self.assertEqual(res["daily_m3"], round(6.0 * 24, 2))
+        for x in res["daily_by_hour"]:
+            self.assertLessEqual(x, 6.0 + 1e-9)
+
+    def test_pumping_hours_bounds_the_window(self):
+        # Une durée imposée ne garde que les heures les plus ensoleillées.
+        profile = [0, 0, 0, 0, 0, 0,
+                   100, 300, 600, 800, 950, 1000,
+                   1000, 950, 800, 600, 300, 100,
+                   0, 0, 0, 0, 0, 0]
+        full = sd.pumping_cycle_yield(
+            debit_hmt_m3h=10.0, hourly_irradiance=profile)
+        capped = sd.pumping_cycle_yield(
+            debit_hmt_m3h=10.0, hourly_irradiance=profile, pumping_hours=5)
+        # Fenêtre réduite → volume ≤ volume complet, heures effectives ≤ 5.
+        self.assertLessEqual(capped["daily_m3"], full["daily_m3"])
+        self.assertLessEqual(capped["effective_pumping_hours"], 5)
+
+    def test_clearsky_sentinel_builds_default_profile(self):
+        # "clearsky" + irradiation journalière → profil 24 h en cloche.
+        res = sd.pumping_cycle_yield(
+            debit_hmt_m3h=10.0, hourly_irradiance="clearsky",
+            daily_irradiation_kwh_m2=6.0)
+        self.assertEqual(res["mode"], "hourly")
+        self.assertIsNotNone(res["daily_m3"])
+        self.assertIsNotNone(res["peak_hour_index"])
+        # Helper public cohérent : somme du profil = irradiation journalière.
+        prof = sd.clearsky_hourly_irradiance(6.0)
+        self.assertEqual(len(prof), 24)
+        self.assertAlmostEqual(sum(prof), 6.0, places=1)
+
+    def test_daily_irradiation_as_equivalent_hours_when_no_duration(self):
+        # Sans durée NI profil : l'irradiation journalière sert d'heures
+        # plein-soleil-équivalentes (débit × kWh/m²/j).
+        res = sd.pumping_cycle_yield(
+            debit_hmt_m3h=10.0, daily_irradiation_kwh_m2=5.5)
+        self.assertEqual(res["mode"], "irradiation_equiv")
+        self.assertEqual(res["daily_m3"], round(10.0 * 5.5, 2))
+
+    def test_custom_days_and_seasonal_factor(self):
+        # Jours du mois personnalisés + facteur saisonnier multiplient le mois.
+        res = sd.pumping_cycle_yield(
+            debit_hmt_m3h=10.0, pumping_hours=7,
+            days_in_month=[30] * 12,
+            monthly_irradiation_factor=[0.5] + [1.0] * 11)
+        daily = res["daily_m3"]  # 70.0
+        self.assertEqual(res["monthly_m3"][0], round(daily * 30 * 0.5, 1))
+        self.assertEqual(res["monthly_m3"][1], round(daily * 30 * 1.0, 1))
+
+    def test_degraded_inputs_never_raise(self):
+        # Entrées illisibles : jamais d'exception, valeurs bornées sans rejet.
+        res = sd.pumping_cycle_yield(
+            debit_hmt_m3h="oops", pumping_hours="x",
+            hourly_irradiance=["a", -5, None, 3],
+            daily_irradiation_kwh_m2=object(),
+            days_in_month="bad", monthly_irradiation_factor=[None] * 12)
+        # débit illisible → volume None, structure cohérente, pas d'exception.
+        self.assertIsNone(res["daily_m3"])
+        self.assertIn("warnings", res)
+
+    def test_zero_irradiation_profile_yields_zero(self):
+        # Profil horaire entièrement nul → volume journalier nul, pas d'erreur.
+        res = sd.pumping_cycle_yield(
+            debit_hmt_m3h=10.0, hourly_irradiance=[0] * 24)
+        self.assertEqual(res["daily_m3"], 0.0)
+        self.assertEqual(res["annual_m3"], 0.0)
+        self.assertTrue(any("nul" in w for w in res["warnings"]))
+
+    def test_inputs_never_rejected_negative_debit(self):
+        # Débit négatif (saisie libre) ramené à « inconnu », jamais d'exception
+        # ni de volume négatif fabriqué.
+        res = sd.pumping_cycle_yield(debit_hmt_m3h=-12.0, pumping_hours=7)
+        self.assertIsNone(res["daily_m3"])
