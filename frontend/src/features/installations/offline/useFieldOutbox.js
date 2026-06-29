@@ -32,6 +32,9 @@ export function useFieldOutbox() {
   }, [refreshCount])
 
   useEffect(() => {
+    // Lecture initiale du compteur (état externe IndexedDB → React) ; c'est
+    // exactement le rôle d'un effet de synchronisation.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     refreshCount()
     const goOnline = () => { setOnline(true); flush() }
     const goOffline = () => setOnline(false)
