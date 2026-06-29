@@ -6,7 +6,7 @@ from .models import (
     ExerciceComptable, Immobilisation, IndemniteChantier, Journal,
     LigneEcriture, LignePrevisionnelTresorerie, LigneReleve, MouvementCaisse,
     NoteFrais, PaymentRun, PaymentRunLine, PeriodeComptable, PlanComptable,
-    Rapprochement, RapprochementBancaire, VirementInterne,
+    Rapprochement, RapprochementBancaire, RetenueSource, VirementInterne,
 )
 
 
@@ -229,3 +229,11 @@ class DeclarationTVAAdmin(admin.ModelAdmin):
                     'tva_a_declarer', 'statut', 'company')
     list_filter = ('regime', 'methode', 'statut')
     search_fields = ('reference', 'libelle')
+
+
+@admin.register(RetenueSource)
+class RetenueSourceAdmin(admin.ModelAdmin):
+    list_display = ('id', 'reference', 'date_piece', 'type_prestation',
+                    'tiers_nom', 'base', 'taux', 'montant', 'statut', 'company')
+    list_filter = ('type_prestation', 'statut')
+    search_fields = ('reference', 'piece', 'tiers_nom', 'identifiant_fiscal')

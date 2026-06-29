@@ -2503,3 +2503,130 @@ class DeclarationTVA(models.Model):
             self.tva_a_declarer = Decimal('0')
             self.credit_reportable = -net
         return self
+
+
+# ── FG139 — Retenue à la source (RAS) sur honoraires/prestations ────────────
+
+class RetenueSource(models.Model):
+    """Retenue à la source (RAS) sur une pièce d'honoraires/prestation (FG139).
+
+    Obligation marocaine : sur certaines prestations (honoraires, redevances,
+    rémunérations de prestataires), le débiteur (la société) doit RETENIR un
+    pourcentage du montant payé au prestataire/fournisseur et le REVERSER à la
+    DGT (déclaration sur bordereau de versement). On constate ici, par pièce et
+    par tiers, la ``base`` (assiette HT/TTC de la prestation), le ``taux`` de RAS
+    applicable et le ``montant`` retenu = base × taux (arrondi 2 décimales). Le
+    montant net réellement versé au prestataire = base − montant retenu.
+
+    Le tiers est référencé par un auxiliaire string-FK (``tiers_type`` /
+    ``tiers_id``) — JAMAIS un import cross-app de modèle — exactement comme une
+    ``LigneEcriture``. ``identifiant_fiscal`` porte l'IF/ICE du prestataire,
+    exigé sur le bordereau. Multi-société : ``company`` posée côté serveur,
+    jamais lue du corps de requête. Le snapshot (base/taux/montant) est FIGÉ au
+    moment de l'enregistrement et restitué à l'identique à l'écran et au CSV.
+    """
+    class TypePrestation(models.TextChoices):
+        HONORAIRES = 'honoraires', 'Honoraires'
+        REDEVANCES = 'redevances', 'Redevances'
+        LOYERS = 'loyers', 'Loyers'
+        PRESTATIONS = 'prestations', 'Prestations de services'
+        AUTRE = 'autre', 'Autre'
+
+    class Statut(models.TextChoices):
+        A_VERSER = 'a_verser', 'À verser'
+        VERSEE = 'versee', 'Versée'
+
+    # Taux légal usuel pour une RAS sur honoraires/prestations versés à un
+    # prestataire non patenté (informatif : le taux réel est saisi par pièce).
+    TAUX_DEFAUT = Decimal('10.00')
+
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='retenues_source',
+        verbose_name='Société',
+    )
+    reference = models.CharField(
+        max_length=50, blank=True, default='',
+        verbose_name='Référence')
+    # Pièce / facture fournisseur d'origine (texte libre, informatif).
+    piece = models.CharField(
+        max_length=80, blank=True, default='',
+        verbose_name='Pièce / facture')
+    date_piece = models.DateField(verbose_name='Date de la pièce')
+    type_prestation = models.CharField(
+        max_length=12, choices=TypePrestation.choices,
+        default=TypePrestation.HONORAIRES, verbose_name='Type de prestation')
+    # ── Tiers prestataire (auxiliaire string-FK, jamais d'import modèle) ──
+    tiers_type = models.CharField(
+        max_length=20, blank=True, default='', verbose_name='Type de tiers')
+    tiers_id = models.PositiveIntegerField(
+        null=True, blank=True, verbose_name='ID du tiers')
+    tiers_nom = models.CharField(
+        max_length=200, blank=True, default='',
+        verbose_name='Nom du prestataire')
+    identifiant_fiscal = models.CharField(
+        max_length=30, blank=True, default='',
+        verbose_name='Identifiant fiscal (IF/ICE)')
+    # ── Montants FIGÉS au calcul (snapshot auditable) ──
+    base = models.DecimalField(
+        max_digits=14, decimal_places=2, default=Decimal('0'),
+        verbose_name='Base imposable')
+    taux = models.DecimalField(
+        max_digits=5, decimal_places=2, default=TAUX_DEFAUT,
+        verbose_name='Taux de RAS (%)')
+    montant = models.DecimalField(
+        max_digits=14, decimal_places=2, default=Decimal('0'),
+        verbose_name='Montant retenu')
+    statut = models.CharField(
+        max_length=10, choices=Statut.choices,
+        default=Statut.A_VERSER, verbose_name='Statut')
+    libelle = models.CharField(
+        max_length=200, blank=True, default='', verbose_name='Libellé')
+    created_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='retenues_source_creees',
+        verbose_name='Enregistrée par',
+    )
+    date_creation = models.DateTimeField(
+        auto_now_add=True, verbose_name='Créé le')
+
+    class Meta:
+        verbose_name = 'Retenue à la source'
+        verbose_name_plural = 'Retenues à la source'
+        ordering = ['-date_piece', '-id']
+        constraints = [
+            models.UniqueConstraint(
+                fields=['company', 'reference'],
+                condition=models.Q(reference__gt=''),
+                name='uniq_ras_reference',
+            ),
+        ]
+
+    def __str__(self):
+        return (f'{self.reference or "RAS"} — '
+                f'{self.tiers_nom or self.piece} ({self.montant})')
+
+    @property
+    def net_a_payer(self):
+        """Montant net réellement versé au prestataire (base − retenue)."""
+        return (self.base or Decimal('0')) - (self.montant or Decimal('0'))
+
+    def clean(self):
+        super().clean()
+        if self.base is not None and self.base < 0:
+            raise ValidationError(
+                "La base imposable ne peut pas être négative.")
+        if self.taux is not None and (self.taux < 0 or self.taux > 100):
+            raise ValidationError(
+                "Le taux de RAS doit être compris entre 0 et 100 %.")
+
+    def recalculer(self):
+        """(Re)calcule le montant retenu = base × taux %, arrondi 2 décimales."""
+        base = self.base or Decimal('0')
+        taux = self.taux or Decimal('0')
+        self.montant = (base * taux / Decimal('100')).quantize(
+            Decimal('0.01'))
+        return self
