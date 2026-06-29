@@ -1243,3 +1243,114 @@ class CompetenceEmploye(models.Model):
     def __str__(self):
         return (f'{self.employe.matricule} — {self.competence.code} '
                 f'({self.get_niveau_display()})')
+
+
+class Habilitation(models.Model):
+    """Habilitation électrique par employé (FG173) — titre + validité/organisme.
+
+    Concept DISTINCT de la matrice de compétences (FG172,
+    ``Competence``/``CompetenceEmploye``) : une compétence situe un niveau de
+    savoir-faire ; une HABILITATION électrique est un TITRE réglementaire,
+    délivré par un organisme, avec une DATE DE VALIDITÉ (échéance) — exigé sur
+    tout chantier PV (norme NF C 18-510 : B0/H0 non-électricien, B1V/B2V
+    exécutant/chargé de travaux en BT, BR intervention BT générale, BC
+    consignation, H0/H1V/H2V/HC pour la HT…).
+
+    Une ligne par titre détenu par un employé. ``valide`` est CALCULÉ (le titre
+    est actif ET sa date de validité n'est pas dépassée — un titre sans échéance
+    reste valide tant qu'il est ``actif``). Un sélecteur/endpoint liste les
+    habilitations qui expirent bientôt ou sont déjà expirées (``?expire_within=``).
+
+    Multi-société : ``company`` posée côté serveur (jamais lue du corps) ;
+    ``employe`` doit appartenir à la même société.
+    """
+    class TypeHabilitation(models.TextChoices):
+        # Norme NF C 18-510 — basse tension (B) puis haute tension (H).
+        B0 = 'b0', "B0 — Non-électricien (travaux d'ordre non électrique BT)"
+        H0 = 'h0', 'H0 — Non-électricien (zone HT)'
+        H0V = 'h0v', 'H0V — Non-électricien (voisinage HT)'
+        B1 = 'b1', 'B1 — Exécutant électricien BT'
+        B1V = 'b1v', 'B1V — Exécutant électricien BT (voisinage)'
+        B2 = 'b2', 'B2 — Chargé de travaux BT'
+        B2V = 'b2v', 'B2V — Chargé de travaux BT (voisinage)'
+        BR = 'br', "BR — Chargé d'intervention générale BT"
+        BC = 'bc', 'BC — Chargé de consignation BT'
+        BE = 'be', "BE — Chargé d'opérations spécifiques BT"
+        H1 = 'h1', 'H1 — Exécutant électricien HT'
+        H1V = 'h1v', 'H1V — Exécutant électricien HT (voisinage)'
+        H2 = 'h2', 'H2 — Chargé de travaux HT'
+        H2V = 'h2v', 'H2V — Chargé de travaux HT (voisinage)'
+        HC = 'hc', 'HC — Chargé de consignation HT'
+        BP = 'bp', 'BP — Photovoltaïque (opérations sur installation PV)'
+        AUTRE = 'autre', 'Autre'
+
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='rh_habilitations',
+        verbose_name='Société',
+    )
+    employe = models.ForeignKey(
+        DossierEmploye,
+        on_delete=models.CASCADE,
+        related_name='habilitations',
+        verbose_name='Employé',
+    )
+    type_habilitation = models.CharField(
+        max_length=10, choices=TypeHabilitation.choices,
+        default=TypeHabilitation.B1V, verbose_name="Titre d'habilitation")
+    # Organisme délivrant le titre (centre de formation, employeur habilité…).
+    organisme = models.CharField(
+        max_length=160, blank=True, default='',
+        verbose_name='Organisme délivrant')
+    date_obtention = models.DateField(
+        null=True, blank=True, verbose_name="Date d'obtention")
+    # Échéance du titre : NULL = sans date de validité (rare ; reste valide tant
+    # que ``actif``). Un titre dont l'échéance est passée n'est plus ``valide``.
+    date_validite = models.DateField(
+        null=True, blank=True, verbose_name='Date de validité (échéance)')
+    actif = models.BooleanField(default=True, verbose_name='Actif')
+    note = models.CharField(
+        max_length=255, blank=True, default='', verbose_name='Note')
+    date_creation = models.DateTimeField(
+        auto_now_add=True, verbose_name='Créé le')
+    date_modification = models.DateTimeField(
+        auto_now=True, verbose_name='Modifié le')
+
+    class Meta:
+        verbose_name = 'Habilitation électrique'
+        verbose_name_plural = 'Habilitations électriques'
+        ordering = ['employe', 'type_habilitation']
+        constraints = [
+            # Un employé ne détient qu'UNE ligne par titre (on met à jour la
+            # validité plutôt que d'empiler des doublons).
+            models.UniqueConstraint(
+                fields=['employe', 'type_habilitation'],
+                name='rh_habil_emp_type_uniq'),
+        ]
+        indexes = [
+            models.Index(
+                fields=['company', 'employe'],
+                name='rh_habil_comp_emp_idx'),
+            models.Index(
+                fields=['company', 'date_validite'],
+                name='rh_habil_comp_valid_idx'),
+        ]
+
+    @property
+    def valide(self):
+        """Vrai si le titre est actif ET non expiré.
+
+        Un titre sans ``date_validite`` reste valide tant qu'il est ``actif``.
+        Sinon il est valide jusqu'au jour de l'échéance inclus.
+        """
+        if not self.actif:
+            return False
+        if self.date_validite is None:
+            return True
+        from django.utils import timezone
+        return self.date_validite >= timezone.localdate()
+
+    def __str__(self):
+        return (f'{self.employe.matricule} — '
+                f'{self.get_type_habilitation_display()}')

@@ -16,6 +16,7 @@ from .models import (
     DossierEmploye,
     ElementSortie,
     FeuilleTemps,
+    Habilitation,
     HeuresSupp,
     IncidentPresence,
     Pointage,
@@ -614,4 +615,65 @@ class CompetenceEmployeSerializer(serializers.ModelSerializer):
                 raise serializers.ValidationError(
                     'Un niveau existe déjà pour cet employé et cette '
                     'compétence.')
+        return attrs
+
+
+class HabilitationSerializer(serializers.ModelSerializer):
+    """Habilitation électrique par employé (FG173) — titre + validité/organisme.
+
+    Le client saisit ``employe``, ``type_habilitation``, ``organisme``,
+    ``date_obtention``, ``date_validite`` (échéance), ``actif`` et ``note``.
+    ``company`` est posée côté serveur (jamais lue du corps) ; ``employe`` doit
+    appartenir à la société de l'utilisateur. ``valide`` (actif ET non expiré)
+    est CALCULÉ — lecture seule. Une ligne par (employé, titre) : on met à jour
+    la validité plutôt que d'empiler.
+    """
+    type_habilitation_display = serializers.CharField(
+        source='get_type_habilitation_display', read_only=True)
+    employe_nom = serializers.SerializerMethodField()
+    valide = serializers.BooleanField(read_only=True)
+
+    class Meta:
+        model = Habilitation
+        fields = [
+            'id', 'employe', 'employe_nom',
+            'type_habilitation', 'type_habilitation_display',
+            'organisme', 'date_obtention', 'date_validite',
+            'actif', 'valide', 'note',
+            'date_creation', 'date_modification',
+        ]
+        read_only_fields = ['date_creation', 'date_modification', 'valide']
+
+    def get_employe_nom(self, obj):
+        return f'{obj.employe.nom} {obj.employe.prenom}'
+
+    def validate_employe(self, value):
+        return _meme_societe(self, value, 'Employé')
+
+    def validate(self, attrs):
+        # Cohérence des dates : l'échéance ne précède pas l'obtention.
+        obtention = attrs.get('date_obtention') \
+            or getattr(self.instance, 'date_obtention', None)
+        validite = attrs.get('date_validite') \
+            or getattr(self.instance, 'date_validite', None)
+        if obtention and validite and validite < obtention:
+            raise serializers.ValidationError(
+                {'date_validite':
+                 "La date de validité précède la date d'obtention."})
+        # Unicité (employé, titre) : ``company`` est posée côté serveur et n'est
+        # pas un champ du sérialiseur, donc on valide ici pour rendre un 400
+        # plutôt que de laisser remonter une IntegrityError 500.
+        employe = attrs.get('employe') \
+            or getattr(self.instance, 'employe', None)
+        type_habil = attrs.get('type_habilitation') \
+            or getattr(self.instance, 'type_habilitation', None)
+        if employe is not None and type_habil is not None:
+            qs = Habilitation.objects.filter(
+                employe=employe, type_habilitation=type_habil)
+            if self.instance is not None:
+                qs = qs.exclude(pk=self.instance.pk)
+            if qs.exists():
+                raise serializers.ValidationError(
+                    'Une habilitation de ce type existe déjà pour cet '
+                    'employé.')
         return attrs

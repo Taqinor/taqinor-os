@@ -30,6 +30,7 @@ from .models import (
     DossierEmploye,
     ElementSortie,
     FeuilleTemps,
+    Habilitation,
     HeuresSupp,
     IncidentPresence,
     Pointage,
@@ -49,6 +50,7 @@ from .serializers import (
     DossierEmployeSerializer,
     ElementSortieSerializer,
     FeuilleTempsSerializer,
+    HabilitationSerializer,
     HeuresSuppSerializer,
     IncidentPresenceSerializer,
     PointageSerializer,
@@ -1025,3 +1027,71 @@ class CompetenceEmployeViewSet(_RhBaseViewSet):
                 'niveau_display': ligne.get_niveau_display(),
             })
         return Response(list(matrice.values()))
+
+
+class HabilitationViewSet(_RhBaseViewSet):
+    """Habilitations électriques par employé (FG173) — titre + validité/organisme.
+
+    Société scopée + Administrateur/Responsable. ``company`` est posée côté
+    serveur (jamais lue du corps) ; ``employe`` doit appartenir à la même
+    société. Une ligne par (employé, titre) ; ``valide`` (actif ET non expiré)
+    est calculé. Concept DISTINCT de la matrice de compétences (FG172) : ici un
+    TITRE réglementaire avec échéance, exigé sur tout chantier PV.
+
+    Filtres : ``?employe=<id>``, ``?type_habilitation=``, ``?actif=0|1``.
+    Recherche : organisme.
+
+    Actions :
+    * ``GET .../expirantes/?expire_within=N&employe=&inclure_expirees=0`` —
+      habilitations qui expirent dans N jours (défaut 30) ou déjà expirées.
+    """
+    queryset = Habilitation.objects.select_related('employe').all()
+    serializer_class = HabilitationSerializer
+    filter_backends = [filters.SearchFilter, filters.OrderingFilter]
+    search_fields = ['organisme']
+    ordering_fields = [
+        'date_validite', 'date_obtention', 'type_habilitation',
+        'date_creation']
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        employe = self.request.query_params.get('employe')
+        if employe:
+            qs = qs.filter(employe_id=employe)
+        type_habilitation = self.request.query_params.get('type_habilitation')
+        if type_habilitation:
+            qs = qs.filter(type_habilitation=type_habilitation)
+        actif = self.request.query_params.get('actif')
+        if actif in ('0', 'false', 'False'):
+            qs = qs.filter(actif=False)
+        elif actif in ('1', 'true', 'True'):
+            qs = qs.filter(actif=True)
+        return qs
+
+    def perform_create(self, serializer):
+        """Company posée côté serveur ; employe validé via le sérialiseur."""
+        serializer.save(company=self.request.user.company)
+
+    @action(detail=False, methods=['get'])
+    def expirantes(self, request):
+        """Habilitations qui expirent bientôt ou sont déjà expirées (FG173).
+
+        ``?expire_within=N`` (défaut 30) fixe la fenêtre ; ``?employe=``
+        restreint à un employé ; ``?inclure_expirees=0`` ne garde que les
+        échéances à venir (par défaut on inclut aussi les titres déjà échus, qui
+        sont précisément ceux à signaler avant un chantier PV). S'appuie sur
+        ``selectors.habilitations_expirantes`` — scopé société.
+        """
+        within = request.query_params.get('expire_within', 30)
+        employe = request.query_params.get('employe') or None
+        inclure = request.query_params.get('inclure_expirees') \
+            not in ('0', 'false', 'False')
+        qs = selectors.habilitations_expirantes(
+            request.user.company, within_days=within,
+            inclure_expirees=inclure, employe_id=employe)
+        page = self.paginate_queryset(qs)
+        if page is not None:
+            serializer = self.get_serializer(page, many=True)
+            return self.get_paginated_response(serializer.data)
+        serializer = self.get_serializer(qs, many=True)
+        return Response(serializer.data)

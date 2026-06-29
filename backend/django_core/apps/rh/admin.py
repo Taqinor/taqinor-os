@@ -9,6 +9,7 @@ from .models import (
     DocumentEmploye,
     DossierEmploye,
     ElementSortie,
+    Habilitation,
     HeuresSupp,
     IncidentPresence,
     Pointage,
@@ -142,3 +143,12 @@ class CompetenceEmployeAdmin(admin.ModelAdmin):
     list_filter = ('niveau', 'competence__domaine')
     search_fields = ('employe__matricule', 'employe__nom',
                      'competence__code', 'competence__libelle')
+
+
+@admin.register(Habilitation)
+class HabilitationAdmin(admin.ModelAdmin):
+    list_display = ('employe', 'type_habilitation', 'organisme',
+                    'date_obtention', 'date_validite', 'actif', 'company')
+    list_filter = ('type_habilitation', 'actif')
+    search_fields = ('employe__matricule', 'employe__nom', 'employe__prenom',
+                     'organisme')
