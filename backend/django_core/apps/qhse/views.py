@@ -12,18 +12,20 @@ from rest_framework.response import Response
 from authentication.mixins import TenantMixin
 from authentication.permissions import IsResponsableOrAdmin
 
+from apps.ventes.utils.references import create_with_reference
+
 from .models import (
-    ActionCorrectivePreventive, Audit, CritereAudit, GrilleAudit,
-    ItemNotation, NonConformite, NotationFinChantier,
-    PlanInspectionChantier, PlanInspectionModele,
+    ActionCorrectivePreventive, Audit, CritereAudit, EvaluationRisque,
+    GrilleAudit, ItemNotation, LigneEvaluationRisque, NonConformite,
+    NotationFinChantier, PlanInspectionChantier, PlanInspectionModele,
     PointControleModele, ProcedureQualite, QhseChatterEntry,
     ReleveControle, ReleveCourbeIV, ReponseCritere, RetourClientQualite,
 )
 from .serializers import (
     ActionCorrectivePreventiveSerializer, AuditSerializer,
-    CritereAuditSerializer, GrilleAuditSerializer,
-    ItemNotationSerializer, NonConformiteSerializer,
-    NotationFinChantierSerializer,
+    CritereAuditSerializer, EvaluationRisqueSerializer, GrilleAuditSerializer,
+    ItemNotationSerializer, LigneEvaluationRisqueSerializer,
+    NonConformiteSerializer, NotationFinChantierSerializer,
     PlanInspectionChantierSerializer, PlanInspectionModeleSerializer,
     PointControleModeleSerializer, ProcedureQualiteSerializer,
     QhseChatterEntrySerializer,
@@ -33,9 +35,10 @@ from .serializers import (
 from . import chatter
 from .selectors import (
     capa_en_retard, chantier_peut_cloturer, courbes_iv_for_chantier,
-    hold_points_status, iso9001_readiness, photos_controle_par_phase,
-    procedure_qualite_courante, procedure_qualite_versions,
-    procedures_qualite_courantes, satisfaction_moyenne,
+    criticite_summary, hold_points_status, iso9001_readiness,
+    photos_controle_par_phase, procedure_qualite_courante,
+    procedure_qualite_versions, procedures_qualite_courantes,
+    satisfaction_moyenne,
 )
 from .services import (
     activer_procedure, calculer_score_audit, calculer_score_notation,
@@ -737,3 +740,86 @@ class Iso9001ReadinessViewSet(viewsets.ViewSet):
 
     def list(self, request):
         return Response(iso9001_readiness(request.user.company))
+
+
+# ── QHSE21 — Évaluation des risques (document unique) ───────────────────────
+
+class EvaluationRisqueViewSet(_QhseBaseViewSet):
+    """Évaluations des risques — document unique (QHSE21).
+
+    CRUD scopé société. ``company`` et ``evaluateur`` sont posés côté serveur
+    (jamais lus du corps). La ``reference`` est attribuée côté serveur via
+    ``create_with_reference`` (plus haut numéro utilisé + 1, race-safe — jamais
+    count()+1). Filtres optionnels : ``?statut=`` / ``?chantier_id=``. Recherche
+    par référence/titre, tri par date/référence.
+
+    Action ``GET …/<id>/criticite/`` — résumé de criticité (nb lignes, max,
+    moyenne avec garde-fou division par zéro, répartition par bande).
+    """
+    queryset = EvaluationRisque.objects.select_related(
+        'evaluateur').prefetch_related('lignes').all()
+    serializer_class = EvaluationRisqueSerializer
+    filter_backends = [filters.SearchFilter, filters.OrderingFilter]
+    search_fields = ['reference', 'titre', 'notes']
+    ordering_fields = ['id', 'reference', 'date_evaluation', 'date_creation']
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        statut = self.request.query_params.get('statut')
+        if statut not in (None, ''):
+            qs = qs.filter(statut=statut)
+        chantier_id = self.request.query_params.get('chantier_id')
+        if chantier_id not in (None, ''):
+            qs = qs.filter(chantier_id=chantier_id)
+        return qs
+
+    def perform_create(self, serializer):
+        company = self.request.user.company
+        return create_with_reference(
+            EvaluationRisque, 'DUER', company,
+            lambda reference: serializer.save(
+                company=company,
+                evaluateur=self.request.user,
+                reference=reference),
+        )
+
+    def create(self, request, *args, **kwargs):
+        serializer = self.get_serializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        evaluation = self.perform_create(serializer)
+        out = self.get_serializer(evaluation)
+        return Response(out.data, status=status.HTTP_201_CREATED)
+
+    @action(detail=True, methods=['get'])
+    def criticite(self, request, pk=None):
+        """Résumé de criticité de l'évaluation (``get_object`` scopé société).
+
+        Renvoie ``{nb_lignes, criticite_max, criticite_moyenne, par_niveau}``.
+        ``criticite_moyenne`` est ``None`` si aucune ligne (pas de division par
+        zéro).
+        """
+        evaluation = self.get_object()
+        return Response(criticite_summary(evaluation))
+
+
+class LigneEvaluationRisqueViewSet(_QhseBaseViewSet):
+    """Lignes d'une évaluation des risques (QHSE21).
+
+    CRUD scopé société. ``company`` posée côté serveur ; le FK ``evaluation``
+    est validé même-société par le sérialiseur. La ``criticite`` est calculée et
+    stockée côté serveur (gravité × probabilité) — jamais lue du corps. Filtre
+    optionnel par ``?evaluation=``. Tri par ordre/criticité.
+    """
+    queryset = LigneEvaluationRisque.objects.select_related(
+        'evaluation').all()
+    serializer_class = LigneEvaluationRisqueSerializer
+    filter_backends = [filters.SearchFilter, filters.OrderingFilter]
+    search_fields = ['danger', 'poste', 'activite']
+    ordering_fields = ['id', 'ordre', 'criticite', 'date_creation']
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        evaluation = self.request.query_params.get('evaluation')
+        if evaluation not in (None, ''):
+            qs = qs.filter(evaluation_id=evaluation)
+        return qs

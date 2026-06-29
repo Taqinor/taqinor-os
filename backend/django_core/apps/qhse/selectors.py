@@ -568,3 +568,40 @@ def iso9001_readiness(company):
         'nb_criteres_sans_donnee': sum(1 for c in criteres if c['no_data']),
         'criteres': criteres,
     }
+
+
+# ── QHSE21 — Résumé de criticité d'une évaluation des risques ───────────────
+
+def criticite_summary(evaluation):
+    """Résumé de criticité d'une ``EvaluationRisque`` (lecture seule, QHSE21).
+
+    Agrège les ``LigneEvaluationRisque`` de l'évaluation :
+
+    * ``nb_lignes`` — nombre de lignes ;
+    * ``criticite_max`` / ``criticite_moyenne`` — criticité maximale et moyenne
+      (None si aucune ligne — garde-fou division par zéro) ;
+    * ``par_niveau`` — répartition par bande de criticité (faible ≤ 4,
+      moyenne 5–9, élevée 10–15, critique ≥ 16).
+
+    Aucune mutation, aucun accès cross-app.
+    """
+    crits = list(
+        evaluation.lignes.values_list('criticite', flat=True))
+    nb = len(crits)
+    par_niveau = {'faible': 0, 'moyenne': 0, 'elevee': 0, 'critique': 0}
+    for c in crits:
+        if c <= 4:
+            par_niveau['faible'] += 1
+        elif c <= 9:
+            par_niveau['moyenne'] += 1
+        elif c <= 15:
+            par_niveau['elevee'] += 1
+        else:
+            par_niveau['critique'] += 1
+    moyenne = round(sum(crits) / nb, 2) if nb else None
+    return {
+        'nb_lignes': nb,
+        'criticite_max': max(crits) if nb else None,
+        'criticite_moyenne': moyenne,
+        'par_niveau': par_niveau,
+    }
