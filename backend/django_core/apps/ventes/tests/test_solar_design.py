@@ -1595,3 +1595,174 @@ class ModuleDegradationCurveTest(SimpleTestCase):
         for row in res["schedule"]:
             self.assertEqual(row["production_factor"], 1.0)
         self.assertFalse(res["summary"]["any_warranty_breach"])
+
+
+# ── FG263 : modèle financier PPA / tiers-investisseur (calcul pur) ────────────
+class PpaModelTest(SimpleTestCase):
+    def _base(self, **over):
+        common = dict(
+            annual_production_kwh=20000.0,
+            ppa_tariff=0.90,
+            grid_tariff=1.40,
+            ppa_escalation=0.02,
+            grid_escalation=0.06,
+            term_years=20,
+            capex=200000.0,
+            annual_om=4000.0,
+            om_escalation=0.02,
+            degradation_rate=0.005,
+            year1_degradation=0.02,
+            discount_rate=0.05,
+        )
+        common.update(over)
+        return sd.ppa_model(**common)
+
+    def test_investor_revenue_is_production_times_tariff(self):
+        # Année 1 sans escalade : revenu = production(1) × tarif PPA.
+        res = self._base(ppa_escalation=0.0, degradation_rate=0.0,
+                         year1_degradation=0.0, annual_om=0.0)
+        row1 = res["schedule"][0]
+        self.assertAlmostEqual(row1["production_kwh"], 20000.0, places=2)
+        self.assertAlmostEqual(row1["ppa_tariff_year"], 0.90, places=4)
+        self.assertAlmostEqual(row1["investor_revenue"], 20000.0 * 0.90,
+                               places=2)
+        # Sans O&M, le net = le revenu.
+        self.assertAlmostEqual(row1["investor_net"], row1["investor_revenue"],
+                               places=2)
+
+    def test_investor_om_subtracted_from_revenue(self):
+        res = self._base(degradation_rate=0.0, year1_degradation=0.0,
+                         ppa_escalation=0.0, om_escalation=0.0,
+                         annual_om=4000.0)
+        row1 = res["schedule"][0]
+        self.assertAlmostEqual(row1["investor_om"], 4000.0, places=2)
+        self.assertAlmostEqual(
+            row1["investor_net"],
+            row1["investor_revenue"] - 4000.0, places=2)
+
+    def test_client_savings_is_production_times_tariff_gap(self):
+        # Économie année 1 = production(1) × (réseau − PPA).
+        res = self._base(ppa_escalation=0.0, grid_escalation=0.0,
+                         degradation_rate=0.0, year1_degradation=0.0)
+        row1 = res["schedule"][0]
+        expected = 20000.0 * (1.40 - 0.90)
+        self.assertAlmostEqual(row1["client_savings"], expected, places=2)
+        self.assertAlmostEqual(res["client"]["savings_year1"], expected,
+                               places=2)
+        # Le client n'a aucun capex : bénéfice net = économies cumulées.
+        self.assertAlmostEqual(
+            res["client"]["net_benefit"],
+            res["client"]["total_savings"], places=2)
+
+    def test_grid_escalation_widens_client_savings(self):
+        # Le réseau monte plus vite que le PPA → l'économie s'élargit chaque an.
+        res = self._base(grid_escalation=0.08, ppa_escalation=0.0,
+                         degradation_rate=0.0, year1_degradation=0.0)
+        sav = [r["client_savings"] for r in res["schedule"]]
+        self.assertLess(sav[0], sav[-1])
+        self.assertGreater(res["schedule"][-1]["grid_tariff_year"],
+                           res["schedule"][0]["grid_tariff_year"])
+
+    def test_ppa_escalation_grows_investor_revenue(self):
+        # Le tarif PPA escalade → le revenu investisseur croît (sans dégrad.).
+        res = self._base(ppa_escalation=0.03, degradation_rate=0.0,
+                         year1_degradation=0.0)
+        rev = [r["investor_revenue"] for r in res["schedule"]]
+        self.assertLess(rev[0], rev[-1])
+        # Le tarif PPA de la dernière année a bien escaladé.
+        self.assertGreater(res["schedule"][-1]["ppa_tariff_year"], 0.90)
+
+    def test_degradation_erodes_production(self):
+        # Avec dégradation : la production décroît année après année.
+        res = self._base(degradation_rate=0.01, year1_degradation=0.02)
+        prod = [r["production_kwh"] for r in res["schedule"]]
+        self.assertLess(prod[-1], prod[0])
+        # Année 1 = prod1 × (1 - LID) (convention FG262).
+        self.assertAlmostEqual(prod[0], 20000.0 * 0.98, places=2)
+
+    def test_investor_npv_irr_and_payback(self):
+        # Un PPA bancable doit donner VAN finie, TRI dans [0, 1] et payback.
+        res = self._base()
+        inv = res["investor"]
+        self.assertIsInstance(inv["npv"], float)
+        self.assertIsNotNone(inv["irr"])
+        self.assertGreater(inv["irr"], 0.0)
+        self.assertLess(inv["irr"], 1.0)
+        self.assertIsNotNone(inv["payback_year"])
+        self.assertEqual(inv["capex"], 200000.0)
+
+    def test_npv_decreases_with_higher_discount_rate(self):
+        low = self._base(discount_rate=0.04)
+        high = self._base(discount_rate=0.12)
+        self.assertGreater(low["investor"]["npv"], high["investor"]["npv"])
+
+    def test_no_capex_no_payback_no_negative_flow(self):
+        # Sans capex : pas de payback (rien à rembourser), pas de TRI requis.
+        res = self._base(capex=0.0)
+        self.assertEqual(res["investor"]["capex"], 0.0)
+        self.assertIsNone(res["investor"]["payback_year"])
+
+    def test_without_grid_tariff_client_is_none(self):
+        # Sans tarif réseau : la perspective client n'est pas calculée.
+        res = self._base(grid_tariff=None)
+        self.assertIsNone(res["client"])
+        for row in res["schedule"]:
+            self.assertIsNone(row["client_savings"])
+            self.assertIsNone(row["grid_tariff_year"])
+        # Mais l'investisseur reste pleinement calculé.
+        self.assertIsInstance(res["investor"]["npv"], float)
+
+    def test_ppa_above_grid_warns(self):
+        # PPA ≥ réseau year-1 : économie client négative au départ, signalée.
+        res = self._base(ppa_tariff=1.50, grid_tariff=1.40,
+                         grid_escalation=0.0, ppa_escalation=0.0,
+                         degradation_rate=0.0, year1_degradation=0.0)
+        self.assertLess(res["schedule"][0]["client_savings"], 0.0)
+        self.assertTrue(any("réseau" in w for w in res["warnings"]))
+
+    def test_term_bounds_clamped(self):
+        low = self._base(term_years=0)
+        self.assertEqual(low["summary"]["term_years"], 1)
+        self.assertEqual(len(low["schedule"]), 1)
+        high = self._base(term_years=999)
+        self.assertEqual(high["summary"]["term_years"], 40)
+        self.assertEqual(len(high["schedule"]), 40)
+
+    def test_total_production_sums_schedule(self):
+        res = self._base(degradation_rate=0.005, year1_degradation=0.02)
+        summed = sum(r["production_kwh"] for r in res["schedule"])
+        self.assertAlmostEqual(
+            res["summary"]["total_production_kwh"], summed, places=0)
+
+    def test_zero_production_safe(self):
+        # Production nulle : revenus et économies nuls, aucune exception.
+        res = self._base(annual_production_kwh=0.0)
+        self.assertEqual(res["summary"]["total_production_kwh"], 0.0)
+        for row in res["schedule"]:
+            self.assertEqual(row["investor_revenue"], 0.0)
+            self.assertEqual(row["client_savings"], 0.0)
+
+    def test_degraded_inputs_never_raise(self):
+        res = sd.ppa_model(
+            annual_production_kwh="abc", ppa_tariff="x", grid_tariff="y",
+            ppa_escalation=None, grid_escalation="z", term_years="oops",
+            capex="bad", annual_om=None, om_escalation="nope",
+            degradation_rate="meh", year1_degradation=object(),
+            discount_rate="argh")
+        self.assertIn("schedule", res)
+        self.assertIn("investor", res)
+        self.assertIn("summary", res)
+        # production illisible → 0 ; le flux reste cohérent sans lever.
+        self.assertEqual(res["summary"]["total_production_kwh"], 0.0)
+
+    def test_extreme_discount_rate_guarded(self):
+        # Taux d'actualisation ≤ -100 % ramené à 0, jamais de division par zéro.
+        res = self._base(discount_rate=-1.5)
+        self.assertEqual(res["summary"]["discount_rate"], 0.0)
+        self.assertTrue(any("actualisation" in w for w in res["warnings"]))
+
+    def test_inputs_never_rejected_negative_production(self):
+        # Production négative ramenée à 0 (liberté de saisie, jamais de rejet).
+        res = self._base(annual_production_kwh=-500.0)
+        self.assertEqual(res["summary"]["production_year1"], 0.0)
+        self.assertTrue(any("production" in w for w in res["warnings"]))
