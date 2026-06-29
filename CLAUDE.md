@@ -285,6 +285,27 @@ Anything typed after the command is extra detail for that run.
   still-unchecked task. CI runs once at the end over the whole batch (see below), not
   per task or per agent. This processes EVERY unchecked task; it does NOT end the run
   after the first.
+- **DRAIN DEEP — advance the base between waves so the SAME lanes keep going; still
+  exactly ONE merge.** Do NOT stop after a single wave of disjoint apps and consider
+  the run done — keep launching waves until the queue drains or the session's
+  token/time budget genuinely caps out. `isolation: worktree` subagents branch from
+  the LOCAL `main`, so to let a later wave build the NEXT task in an already-touched
+  lane (e.g. compta FG132 right after FG131) **without migration-number or file
+  collisions**, after each wave folds clean **fast-forward LOCAL `main` to the run
+  branch tip (locally — NEVER push intermediate state)** before launching the next
+  wave. The next wave's worktrees then inherit every prior wave's migrations and code,
+  so same-lane depth and reuse of an already-touched app are safe. Refill freed slots
+  (work-stealing), longest lanes first. Optionally PIPELINE: build the next wave while
+  the prior batch's ~16-min CI runs. **A perceived "same-app migration collision" is
+  NEVER a reason to stop early** — it only happens if you wrongly branch every wave
+  from the same fixed base; advancing the base removes it, so never report it as a
+  hard limit. Advancing LOCAL `main` is NOT a merge: the "exactly one self-merge to
+  `origin/main` at the end" rule is unchanged — you still push ONE final merge. The
+  only real stop conditions remain queue-drained / usage-budget-cap / genuine blocker.
+  Keep validation efficient at that scale: rely on `makemigrations --check` + the
+  affected-app docker suites + the final CI gate rather than re-running everything per
+  wave. (This same advance-the-base rule applies to `work on error plan` and
+  `work on the web plan`.)
 - **Keep subagents lean — context discipline + model tiering.** Each lane subagent
   gets only its slice of the plan and **returns a short summary** (files touched,
   tests added, status) — never a full diff — so the orchestrator's context stays
