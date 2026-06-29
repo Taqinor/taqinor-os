@@ -8,6 +8,8 @@ from rest_framework import serializers
 
 from .models import (
     AffectationRoster,
+    Competence,
+    CompetenceEmploye,
     DemandeConge,
     Departement,
     DocumentEmploye,
@@ -521,3 +523,95 @@ class IncidentPresenceSerializer(serializers.ModelSerializer):
 
     def validate_employe(self, value):
         return _meme_societe(self, value, 'Employé')
+
+
+class CompetenceSerializer(serializers.ModelSerializer):
+    """Référentiel de compétences (FG172) — catalogue par société.
+
+    ``company`` est posée côté serveur (jamais lue du corps). Le couple
+    (société, ``code``) est unique : un même code ne peut exister deux fois dans
+    la même société.
+    """
+    domaine_display = serializers.CharField(
+        source='get_domaine_display', read_only=True)
+
+    class Meta:
+        model = Competence
+        fields = [
+            'id', 'code', 'libelle', 'domaine', 'domaine_display',
+            'description', 'actif', 'date_creation', 'date_modification',
+        ]
+        read_only_fields = ['date_creation', 'date_modification']
+
+    def validate_code(self, value):
+        # Unicité (société, code) : ``company`` n'est pas un champ du
+        # sérialiseur (posée côté serveur), donc on valide ici pour rendre
+        # un 400 plutôt que de laisser remonter une IntegrityError 500.
+        request = self.context.get('request')
+        if request is not None:
+            qs = Competence.objects.filter(
+                company_id=request.user.company_id, code=value)
+            if self.instance is not None:
+                qs = qs.exclude(pk=self.instance.pk)
+            if qs.exists():
+                raise serializers.ValidationError(
+                    'Une compétence avec ce code existe déjà.')
+        return value
+
+
+class CompetenceEmployeSerializer(serializers.ModelSerializer):
+    """Matrice de compétences — niveau d'un employé sur une compétence (FG172).
+
+    Le client saisit ``employe``, ``competence``, ``niveau`` et ``note``.
+    ``company`` est posée côté serveur (jamais lue du corps) ; ``employe`` ET
+    ``competence`` doivent appartenir à la société de l'utilisateur. L'évaluation
+    (``evalue_par``/``evalue_le``) est posée côté serveur — lecture seule.
+    """
+    niveau_display = serializers.CharField(
+        source='get_niveau_display', read_only=True)
+    employe_nom = serializers.SerializerMethodField()
+    competence_code = serializers.CharField(
+        source='competence.code', read_only=True)
+    competence_libelle = serializers.CharField(
+        source='competence.libelle', read_only=True)
+
+    class Meta:
+        model = CompetenceEmploye
+        fields = [
+            'id', 'employe', 'employe_nom',
+            'competence', 'competence_code', 'competence_libelle',
+            'niveau', 'niveau_display', 'note',
+            'evalue_par', 'evalue_le',
+            'date_creation', 'date_modification',
+        ]
+        read_only_fields = [
+            'evalue_par', 'evalue_le',
+            'date_creation', 'date_modification',
+        ]
+
+    def get_employe_nom(self, obj):
+        return f'{obj.employe.nom} {obj.employe.prenom}'
+
+    def validate_employe(self, value):
+        return _meme_societe(self, value, 'Employé')
+
+    def validate_competence(self, value):
+        return _meme_societe(self, value, 'Compétence')
+
+    def validate(self, attrs):
+        # Unicité (employé, compétence) : un employé n'a qu'une ligne par
+        # compétence — on met à jour plutôt que d'empiler.
+        employe = attrs.get('employe') \
+            or getattr(self.instance, 'employe', None)
+        competence = attrs.get('competence') \
+            or getattr(self.instance, 'competence', None)
+        if employe is not None and competence is not None:
+            qs = CompetenceEmploye.objects.filter(
+                employe=employe, competence=competence)
+            if self.instance is not None:
+                qs = qs.exclude(pk=self.instance.pk)
+            if qs.exists():
+                raise serializers.ValidationError(
+                    'Un niveau existe déjà pour cet employé et cette '
+                    'compétence.')
+        return attrs

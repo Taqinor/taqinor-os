@@ -1109,3 +1109,137 @@ class IncidentPresence(models.Model):
     def __str__(self):
         return (f'{self.employe.matricule} — '
                 f'{self.get_type_incident_display()} {self.date}')
+
+
+class Competence(models.Model):
+    """Référentiel de compétences métier (FG172) — catalogue par société.
+
+    Catalogue des savoir-faire techniques évalués chez les équipes terrain :
+    pose structure, raccordement DC/AC, MES onduleur, pompage, soudure… Chaque
+    compétence porte un ``domaine`` (regroupement métier) et un ``libelle``
+    libre. Le niveau d'un employé sur une compétence vit dans
+    ``CompetenceEmploye`` (la matrice). Multi-société : ``company`` posée côté
+    serveur (jamais lue du corps). Le couple (société, code) est unique.
+    """
+    class Domaine(models.TextChoices):
+        POSE_STRUCTURE = 'pose_structure', 'Pose structure'
+        RACCORDEMENT_DC = 'raccordement_dc', 'Raccordement DC'
+        RACCORDEMENT_AC = 'raccordement_ac', 'Raccordement AC'
+        MES_ONDULEUR = 'mes_onduleur', 'MES onduleur'
+        POMPAGE = 'pompage', 'Pompage'
+        SOUDURE = 'soudure', 'Soudure'
+        AUTRE = 'autre', 'Autre'
+
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='rh_competences',
+        verbose_name='Société',
+    )
+    code = models.CharField(max_length=40, verbose_name='Code')
+    libelle = models.CharField(max_length=120, verbose_name='Libellé')
+    domaine = models.CharField(
+        max_length=20, choices=Domaine.choices,
+        default=Domaine.AUTRE, verbose_name='Domaine')
+    description = models.CharField(
+        max_length=255, blank=True, default='', verbose_name='Description')
+    actif = models.BooleanField(default=True, verbose_name='Actif')
+    date_creation = models.DateTimeField(
+        auto_now_add=True, verbose_name='Créé le')
+    date_modification = models.DateTimeField(
+        auto_now=True, verbose_name='Modifié le')
+
+    class Meta:
+        verbose_name = 'Compétence'
+        verbose_name_plural = 'Compétences'
+        ordering = ['domaine', 'libelle']
+        constraints = [
+            models.UniqueConstraint(
+                fields=['company', 'code'],
+                name='rh_competence_uniq_code'),
+        ]
+        indexes = [
+            models.Index(
+                fields=['company', 'domaine'],
+                name='rh_competence_dom_idx'),
+        ]
+
+    def __str__(self):
+        return f'{self.code} — {self.libelle}'
+
+
+class CompetenceEmploye(models.Model):
+    """Matrice de compétences — niveau d'un employé sur une compétence (FG172).
+
+    Une ligne par (société, employé, compétence) : le ``niveau`` situe l'employé
+    sur l'échelle (0 non acquis → 4 expert). Le couple (employé, compétence) est
+    unique : on met à jour la ligne plutôt que d'en empiler. ``evalue_le`` /
+    ``evalue_par`` tracent la dernière évaluation côté serveur. Multi-société :
+    ``company`` posée côté serveur (jamais lue du corps) ; ``employe`` et
+    ``competence`` doivent appartenir à la même société.
+    """
+    class Niveau(models.IntegerChoices):
+        NON_ACQUIS = 0, 'Non acquis'
+        DEBUTANT = 1, 'Débutant'
+        INTERMEDIAIRE = 2, 'Intermédiaire'
+        CONFIRME = 3, 'Confirmé'
+        EXPERT = 4, 'Expert'
+
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='rh_competences_employe',
+        verbose_name='Société',
+    )
+    employe = models.ForeignKey(
+        DossierEmploye,
+        on_delete=models.CASCADE,
+        related_name='competences',
+        verbose_name='Employé',
+    )
+    competence = models.ForeignKey(
+        Competence,
+        on_delete=models.CASCADE,
+        related_name='niveaux_employes',
+        verbose_name='Compétence',
+    )
+    niveau = models.PositiveSmallIntegerField(
+        choices=Niveau.choices, default=Niveau.NON_ACQUIS,
+        verbose_name='Niveau')
+    note = models.CharField(
+        max_length=255, blank=True, default='', verbose_name='Note')
+    evalue_le = models.DateTimeField(
+        null=True, blank=True, verbose_name='Évalué le')
+    evalue_par = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='rh_competences_evaluees',
+        verbose_name='Évalué par',
+    )
+    date_creation = models.DateTimeField(
+        auto_now_add=True, verbose_name='Créé le')
+    date_modification = models.DateTimeField(
+        auto_now=True, verbose_name='Modifié le')
+
+    class Meta:
+        verbose_name = 'Niveau de compétence'
+        verbose_name_plural = 'Niveaux de compétence'
+        ordering = ['competence', '-niveau']
+        constraints = [
+            models.UniqueConstraint(
+                fields=['employe', 'competence'],
+                name='rh_competence_emp_uniq'),
+        ]
+        indexes = [
+            models.Index(
+                fields=['company', 'competence', 'niveau'],
+                name='rh_comp_emp_lvl_idx'),
+            models.Index(
+                fields=['company', 'employe'],
+                name='rh_comp_emp_idx'),
+        ]
+
+    def __str__(self):
+        return (f'{self.employe.matricule} — {self.competence.code} '
+                f'({self.get_niveau_display()})')

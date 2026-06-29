@@ -3,6 +3,8 @@ from rest_framework.routers import DefaultRouter
 
 from .views import (
     AffectationRosterViewSet,
+    CompetenceEmployeViewSet,
+    CompetenceViewSet,
     DemandeCongeViewSet,
     DepartementViewSet,
     DocumentEmployeViewSet,
@@ -35,6 +37,8 @@ router.register(r'heures-supp', HeuresSuppViewSet)
 router.register(r'roster', AffectationRosterViewSet)
 router.register(r'presences-chantier', PresenceChantierViewSet)
 router.register(r'incidents-presence', IncidentPresenceViewSet)
+router.register(r'competences', CompetenceViewSet)
+router.register(r'competences-employe', CompetenceEmployeViewSet)
 
 urlpatterns = [
     path('', include(router.urls)),
