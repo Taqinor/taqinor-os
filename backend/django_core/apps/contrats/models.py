@@ -89,6 +89,17 @@ class Contrat(models.Model):
     sav_contrat_maintenance_id = models.PositiveIntegerField(
         null=True, blank=True,
         verbose_name='ID du contrat de maintenance SAV')
+    # Gabarit dont ce contrat est issu (CONTRAT10) — référence interne à l'app
+    # `contrats` (foundation), donc FK dur autorisé. NULLABLE + SET_NULL :
+    # supprimer le gabarit n'efface jamais le contrat, il perd seulement le
+    # lien (le rendu par fusion retombe alors sur un gabarit par défaut).
+    modele = models.ForeignKey(
+        'ModeleContrat',
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='contrats_instancies',
+        verbose_name='Modèle source',
+    )
     date_debut = models.DateField(
         null=True, blank=True, verbose_name='Date de début')
     date_fin = models.DateField(
