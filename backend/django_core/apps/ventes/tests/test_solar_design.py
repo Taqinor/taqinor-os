@@ -1162,3 +1162,161 @@ class NetMeteringSavingsTest(SimpleTestCase):
         self.assertEqual(res["tranches"]["pointe"]["compensated_kwh"], 0.0)
         self.assertEqual(res["compensated_kwh"], 0.0)
         self.assertEqual(res["spilled_kwh"], 5.0)
+
+
+# ── FG260 : escalade tarifaire ONEE 20–25 ans + VAN/TRI (calcul pur) ──────────
+class TariffEscalationProjectionTest(SimpleTestCase):
+    def test_schedule_length_and_year1_savings(self):
+        res = sd.tariff_escalation_projection(
+            annual_savings_year1=10000, upfront_cost=80000,
+            escalation_rate=0.06, degradation_rate=0.005,
+            horizon_years=25, discount_rate=0.05)
+        self.assertEqual(len(res["schedule"]), 25)
+        # Année 1 : facteurs = 1, économie = base.
+        y1 = res["schedule"][0]
+        self.assertEqual(y1["year"], 1)
+        self.assertAlmostEqual(y1["escalated_tariff_factor"], 1.0)
+        self.assertAlmostEqual(y1["degradation_factor"], 1.0)
+        self.assertAlmostEqual(y1["annual_savings"], 10000.0, places=2)
+
+    def test_escalated_and_degraded_savings_year2(self):
+        # Année 2 : économie = base × (1.06) × (0.995).
+        res = sd.tariff_escalation_projection(
+            annual_savings_year1=10000, upfront_cost=0,
+            escalation_rate=0.06, degradation_rate=0.005,
+            horizon_years=5, discount_rate=0.05)
+        y2 = res["schedule"][1]
+        expected = 10000.0 * (1.06 ** 1) * (0.995 ** 1)
+        self.assertAlmostEqual(y2["annual_savings"], round(expected, 2),
+                               places=2)
+        # L'escalade dépasse la dégradation → économie année 2 > année 1.
+        self.assertGreater(y2["annual_savings"],
+                           res["schedule"][0]["annual_savings"])
+
+    def test_cumulative_savings_monotone_increasing(self):
+        res = sd.tariff_escalation_projection(
+            annual_savings_year1=5000, upfront_cost=20000,
+            horizon_years=20)
+        cums = [row["cumulative_savings"] for row in res["schedule"]]
+        for a, b in zip(cums, cums[1:]):
+            self.assertGreater(b, a)
+        # Le cumul final = total_savings du résumé.
+        self.assertAlmostEqual(cums[-1], res["summary"]["total_savings"],
+                               places=2)
+
+    def test_payback_year_detected(self):
+        # Économie ~10000/an, coût 30000 → payback vers l'année 3.
+        res = sd.tariff_escalation_projection(
+            annual_savings_year1=10000, upfront_cost=30000,
+            escalation_rate=0.06, degradation_rate=0.005,
+            horizon_years=25)
+        payback = res["summary"]["payback_year"]
+        self.assertIsNotNone(payback)
+        # Au payback, le net cumulé est ≥ 0 ; juste avant il était < 0.
+        row = res["schedule"][payback - 1]
+        self.assertGreaterEqual(row["net_cumulative"], 0.0)
+        if payback > 1:
+            self.assertLess(res["schedule"][payback - 2]["net_cumulative"], 0.0)
+
+    def test_payback_none_when_savings_never_cover_cost(self):
+        res = sd.tariff_escalation_projection(
+            annual_savings_year1=100, upfront_cost=1_000_000,
+            horizon_years=20)
+        self.assertIsNone(res["summary"]["payback_year"])
+        self.assertTrue(any("retour sur investissement" in w
+                            for w in res["warnings"]))
+
+    def test_npv_decreases_as_discount_rate_increases(self):
+        common = dict(annual_savings_year1=10000, upfront_cost=50000,
+                      escalation_rate=0.06, degradation_rate=0.005,
+                      horizon_years=25)
+        low = sd.tariff_escalation_projection(discount_rate=0.03, **common)
+        high = sd.tariff_escalation_projection(discount_rate=0.12, **common)
+        # Un taux d'actualisation plus élevé écrase la VAN.
+        self.assertGreater(low["summary"]["npv"], high["summary"]["npv"])
+
+    def test_npv_zero_at_irr(self):
+        # La VAN actualisée au TRI doit être ~0 (cohérence VAN/TRI).
+        res = sd.tariff_escalation_projection(
+            annual_savings_year1=12000, upfront_cost=70000,
+            escalation_rate=0.06, degradation_rate=0.005,
+            horizon_years=25, discount_rate=0.05)
+        irr = res["summary"]["irr"]
+        self.assertIsNotNone(irr)
+        # Reconstruit le flux et vérifie NPV(irr) ≈ 0.
+        cashflows = [-70000.0] + [row["annual_savings"]
+                                  for row in res["schedule"]]
+        self.assertAlmostEqual(sd._npv(irr, cashflows), 0.0, delta=1.0)
+
+    def test_irr_known_simple_cashflow(self):
+        # Flux classique : -100 puis +110 dans 1 an → TRI = 10 %.
+        irr = sd._irr([-100.0, 110.0])
+        self.assertIsNotNone(irr)
+        self.assertAlmostEqual(irr, 0.10, places=4)
+
+    def test_irr_none_without_sign_change(self):
+        # Aucun flux négatif → pas de TRI.
+        self.assertIsNone(sd._irr([100.0, 110.0, 120.0]))
+        # Aucun flux positif → pas de TRI.
+        self.assertIsNone(sd._irr([-100.0, -50.0]))
+
+    def test_irr_none_in_summary_for_all_positive(self):
+        # Coût initial nul → flux tous ≥ 0 → TRI None, pas d'avertissement coût.
+        res = sd.tariff_escalation_projection(
+            annual_savings_year1=10000, upfront_cost=0,
+            horizon_years=20)
+        self.assertIsNone(res["summary"]["irr"])
+
+    def test_horizon_clamped_to_bounds(self):
+        low = sd.tariff_escalation_projection(
+            annual_savings_year1=1000, horizon_years=0)
+        self.assertEqual(low["summary"]["horizon_years"], 1)
+        self.assertEqual(len(low["schedule"]), 1)
+        high = sd.tariff_escalation_projection(
+            annual_savings_year1=1000, horizon_years=999)
+        self.assertEqual(high["summary"]["horizon_years"], 40)
+        self.assertEqual(len(high["schedule"]), 40)
+
+    def test_projected_bill_when_baseline_given(self):
+        res = sd.tariff_escalation_projection(
+            annual_savings_year1=5000, upfront_cost=0,
+            escalation_rate=0.06, degradation_rate=0.0,
+            horizon_years=3, baseline_bill_year1=12000)
+        # Facture brute escalade au taux tarifaire (sans dégradation).
+        self.assertAlmostEqual(res["schedule"][0]["projected_bill"], 12000.0,
+                               places=2)
+        self.assertAlmostEqual(res["schedule"][1]["projected_bill"],
+                               round(12000.0 * 1.06, 2), places=2)
+        # Sans baseline, le champ reste None.
+        res2 = sd.tariff_escalation_projection(
+            annual_savings_year1=5000, horizon_years=2)
+        self.assertIsNone(res2["schedule"][0]["projected_bill"])
+
+    def test_garbage_inputs_do_not_raise(self):
+        # Liberté de saisie : valeurs illisibles → repli sûr, jamais d'exception.
+        res = sd.tariff_escalation_projection(
+            annual_savings_year1="abc", upfront_cost=None,
+            escalation_rate="xx", degradation_rate=None,
+            horizon_years="zz", discount_rate="oops")
+        self.assertIn("schedule", res)
+        self.assertIn("summary", res)
+        # Économie illisible → 0 ; aucun crash.
+        self.assertEqual(res["summary"]["savings_year1"], 0.0)
+
+    def test_zero_cost_npv_equals_discounted_savings(self):
+        # Sans coût initial, VAN = somme des économies actualisées.
+        res = sd.tariff_escalation_projection(
+            annual_savings_year1=8000, upfront_cost=0,
+            escalation_rate=0.06, degradation_rate=0.005,
+            horizon_years=10, discount_rate=0.05)
+        self.assertAlmostEqual(
+            res["summary"]["npv"],
+            res["summary"]["total_discounted_savings"], delta=1.0)
+
+    def test_extreme_discount_rate_guarded(self):
+        # Taux d'actualisation ≤ -100 % : ramené à 0, pas de division par zéro.
+        res = sd.tariff_escalation_projection(
+            annual_savings_year1=5000, upfront_cost=10000,
+            horizon_years=5, discount_rate=-2.0)
+        self.assertEqual(res["summary"]["discount_rate"], 0.0)
+        self.assertTrue(any("actualisation" in w for w in res["warnings"]))
