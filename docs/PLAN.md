@@ -526,7 +526,7 @@ first run that ticks any `FG*` task refreshes CODEMAP §10 + `--write` in that c
 - [x] FG141 — **Export FEC (fichier des écritures comptables)** — export structuré et ordonné des écritures au format auditable DGI (dépend du grand livre). (SCHEMA)
 - [x] FG142 — **Trousse liasse fiscale (états de synthèse)** — bilan + CPC + balance + tableaux annexes en un paquet pour le fiduciaire/DGI. (ARCH)
 - [x] FG143 — **Déclaration des honoraires / état 9421** — déclaration annuelle des paiements aux tiers depuis les règlements fournisseurs. (ROUTINE)
-- [ ] FG144 — **Calcul du timbre fiscal sur encaissements espèces** — droit de timbre auto sur les factures payées en espèces. (SCHEMA)
+- [x] FG144 — **Calcul du timbre fiscal sur encaissements espèces** — droit de timbre auto sur les factures payées en espèces. (SCHEMA)
 - [ ] FG145 — **Retenue de garantie & cautions sur marchés (RG / bonne fin)** — RG retenue sur les marchés + cautions bancaires (provisoire/définitive/restitution) avec dates de levée. (SCHEMA)
 - [ ] FG146 — **Reconnaissance du revenu par avancement (% completion)** — reconnaître le CA des chantiers pluri-tranches selon l'avancement réel. (DECISION)
 - [ ] FG147 — **Produits constatés d'avance & travaux en cours (WIP)** — acomptes non encore acquis en produits différés, coûts non facturés en travaux en cours. (SCHEMA)
@@ -566,7 +566,7 @@ first run that ticks any `FG*` task refreshes CODEMAP §10 + `--write` in that c
 - [x] FG178 — **Catalogue & dotation EPI** — casque/harnais/gants isolants/chaussures attribués nominativement (taille, date). (SCHEMA)
 - [x] FG179 — **Suivi péremption/contrôle des EPI** — EPI à durée de vie (harnais, gants isolants) + alerte de remplacement/recontrôle. (SCHEMA)
 - [x] FG180 — **Émargement de remise EPI (signature)** — accusé signé prouvant la dotation (exigible CNSS/accident). (ROUTINE)
-- [ ] FG181 — **Registre HSE & accidents du travail** — déclaration (date/lieu/blessé/gravité/arrêt/photos) + export déclaration CNSS. (SCHEMA)
+- [x] FG181 — **Registre HSE & accidents du travail** — déclaration (date/lieu/blessé/gravité/arrêt/photos) + export déclaration CNSS. (SCHEMA)
 - [ ] FG182 — **Presqu'accidents (near-miss)** — saisie rapide terrain pour pilotage proactif. (ROUTINE)
 - [ ] FG183 — **Causeries sécurité / toolbox talks** — quart d'heure sécurité avant chantier (thème/participants/émargement). (SCHEMA)
 - [ ] FG184 — **Analyse de risques chantier (plan de prévention)** — évaluation des risques par chantier avant démarrage (≠ checklist F18 par intervention). (SCHEMA)
@@ -655,7 +655,7 @@ first run that ticks any `FG*` task refreshes CODEMAP §10 + `--write` in that c
 - [x] FG261 — **Optimisation puissance souscrite (C&I)** — analyser la pointe et recommander une réduction de puissance souscrite post-PV. (ROUTINE)
 - [x] FG262 — **Modélisation dégradation modules sur la durée** — courbe de dégradation appliquée à la production projetée et garantie. (ROUTINE)
 - [x] FG263 — **Modèle financier PPA / tiers-investisseur** — simuler un PPA (tarif MAD/kWh, revenus actualisés) pour les clients sans capex. (DECISION)
-- [ ] FG264 — **Rendement pompage par cycle de marche** — volume d'eau journalier/mensuel selon irradiation horaire + durée de pompage (étend l'`etude_params` actuel). (ROUTINE)
+- [x] FG264 — **Rendement pompage par cycle de marche** — volume d'eau journalier/mensuel selon irradiation horaire + durée de pompage (étend l'`etude_params` actuel). (ROUTINE)
 - [ ] FG265 — **Flux d'irradiance/météo pour simulations** — flux TMY/temps réel pour caler simulations et O&M sur le site. (DEP/COST)
 - [ ] FG266 — **Comparateur de scénarios de devis** — comparer plusieurs dimensionnements (kWc/batterie/orientation) sur production/économies/payback. (ROUTINE)
 - [ ] FG267 — **Packs documentaires réglementaires par régime** — liste de pièces requises selon `regime_8221` (déclaration BT, accord raccordement, autorisation ANRE). (SCHEMA)
@@ -698,7 +698,7 @@ first run that ticks any `FG*` task refreshes CODEMAP §10 + `--write` in that c
 - [x] FG301 — **Nivellement de charge (resource levelling)** — proposition de rééquilibrage des interventions surchargées. (ROUTINE)
 - [x] FG302 — **Calendrier de disponibilité ressources** — `IndisponibiliteRessource` (congé/formation/arrêt) excluant un technicien/véhicule. (SCHEMA)
 - [x] FG303 — **Planning des camionnettes (capacité véhicule)** — affectation par véhicule sur le calendrier (cohérent avec `Intervention.camionnette`). (ROUTINE)
-- [ ] FG304 — **Référentiel sous-traitants** — `SousTraitant` (métier/contact/RIB/ICE), distinct des fournisseurs matériel. (ARCH)
+- [x] FG304 — **Référentiel sous-traitants** — `SousTraitant` (métier/contact/RIB/ICE), distinct des fournisseurs matériel. (ARCH)
 - [ ] FG305 — **Ordres de travaux sous-traitant** — `OrdreSousTraitance` (chantier/prestation/montant/échéance/statut). (ARCH)
 - [ ] FG306 — **Factures & règlements sous-traitant** — facture entrante + paiements (AP dédiée), montants jamais client-facing. (SCHEMA)
 - [ ] FG307 — **Attestations & assurances sous-traitant** — pièces obligatoires (CNSS, RC décennale, agrément) + expiration + blocage d'affectation. (SCHEMA)
@@ -959,7 +959,7 @@ these overlap and SUPERSEDE the domain-list FG items as the module-organized hom
 - [x] GED19 — ACL par dossier/document (héritage + override). (SCHEMA+DECISION)
 - [x] GED20 — Partage par lien tokenisé (expiry/mot de passe/quota). (SCHEMA+DECISION)
 - [x] GED21 — Watermarking & contrôle de diffusion. (DEP)
-- [ ] GED22 — Politiques de rétention. (SCHEMA)
+- [x] GED22 — Politiques de rétention. (SCHEMA)
 - [ ] GED23 — Archivage légal à valeur probante (write-once/object-lock). (DECISION)
 - [ ] GED24 — Rétention légale / legal hold. (SCHEMA)
 - [ ] GED25 — Purge automatique & tâche planifiée (dry-run d'abord). (DEP+DECISION)
@@ -997,7 +997,7 @@ these overlap and SUPERSEDE the domain-list FG items as the module-organized hom
 - [x] FLOTTE16 — Génération d'échéances d'entretien dues + alertes. (ROUTINE)
 - [x] FLOTTE17 — Ordres de réparation + atelier/garage + coûts. (SCHEMA)
 - [x] FLOTTE18 — Pneumatiques & pièces. (SCHEMA)
-- [ ] FLOTTE19 — `EcheanceReglementaire` (modèle générique). (SCHEMA)
+- [x] FLOTTE19 — `EcheanceReglementaire` (modèle générique). (SCHEMA)
 - [ ] FLOTTE20 — Vignette / TSAV (barème CV/énergie, référentiel éditable). (ROUTINE)
 - [ ] FLOTTE21 — Assurance auto (police/échéance/attestation/franchise). (ROUTINE)
 - [ ] FLOTTE22 — Visite technique (validité paramétrable). (ROUTINE)
@@ -1691,3 +1691,9 @@ Tracked here so they aren't lost:
 - 2026-06-29 — FG242 (apps/crm): Suivi des concurrents sur deals perdus — modèle `ConcurrentPerte` (lead perdu → concurrent gagnant + prix + devise + motif), acteur + société côté serveur, réutilise le flag `Lead.perdu` (aucun nom d'étape STAGES.py codé en dur), note chatter best-effort. Migration crm 0029 additive, 20 tests.
 - 2026-06-29 — FG280 (apps/sav): Gestion fine des alarmes/défauts onduleur — modèle `AlarmeOnduleur` DISTINCT du ticket SAV (code/gravité/équipement, statut active/acquittée/résolue/escaladée), actions `acquitter` (acteur + date serveur, idempotent) et `escalader` (lie/ouvre un ticket SAV). Migration sav 0011 additive, 18 tests.
 - 2026-06-29 — KB7 (apps/kb): Droits d'accès par rôle + suivi de lecture — modèles `KbArticleAcl` (rôle/niveau) + `KbLecture` ; filtre ACL câblé dans la queryset article (rétro-compatible : sans ACL → visible par tous, admin toujours visible), actions `marquer-lu` (idempotent) + `resume-lecture`. Migration kb 0005 additive, 17 tests.
+- 2026-06-29 — FG144 (apps/compta): Calcul du timbre fiscal sur encaissements espèces — modèle `TimbreFiscal` (droit de timbre 0,25 % + minimum statutaire sur les factures réglées EN ESPÈCES ; règlements non-espèces exonérés → None), paiement référencé par string-id (pas d'import ventes), pas d'écriture GL (snapshot façon FG139). Migration compta 0015 additive, 24 tests.
+- 2026-06-29 — FG181 (apps/rh): Registre HSE & accidents du travail — modèle `AccidentTravail` (référence serveur race-safe `AT-`, date/lieu/employé/gravité/arrêt+jours/photo, déclaration CNSS) + export CSV CNSS (`?export=csv`). Migration rh 0021 additive, 23 tests.
+- 2026-06-29 — FG264 (apps/ventes): Rendement pompage par cycle de marche — fonction pure `pumping_cycle_yield` : volume d'eau journalier/mensuel (mode plat = parité `solar.js`, mode profil = intégration horaire pondérée par l'irradiation, profil ciel-clair normalisé sur le total journalier) ; pompes sans courbe → None. Aucune migration, 14 tests, chemin PDF intact.
+- 2026-06-29 — FG304 (apps/installations): Référentiel sous-traitants — modèle `SousTraitant` (métier/contact/ICE/RIB, drapeau `actif` d'archivage, défaut True quel que soit le type de contenu), DISTINCT des fournisseurs matériel ; société + créateur serveur. Migration installations 0020 additive, 15 tests.
+- 2026-06-29 — GED22 (apps/ged): Politiques de rétention — modèle `PolitiqueRetention` (durée + action à l'échéance, défaut NON destructif `signaler`) + sélecteur `documents_echus(company, today)` (politique la plus spécifique, today injectable) + commande `lister_documents_echus` ; ne supprime JAMAIS passivement. Migration ged 0016 additive, 23 tests.
+- 2026-06-29 — FLOTTE19 (apps/flotte): `EcheanceReglementaire` (modèle générique) — échéances réglementaires (visite technique/assurance/vignette/carte grise/taxe à l'essieu) sur `ActifFlotte`, statut a_jour/a_renouveler/expire (today injectable), action `expirantes/?within=N` ; distinct des échéances d'entretien FLOTTE16. Migration flotte 0017 additive, 18 tests.
