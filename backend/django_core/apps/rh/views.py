@@ -40,6 +40,7 @@ from .models import (
     Remuneration,
     SoldeConge,
     TypeAbsence,
+    VisiteMedicale,
 )
 from .serializers import (
     AffectationRosterSerializer,
@@ -61,6 +62,7 @@ from .serializers import (
     RemunerationSerializer,
     SoldeCongeSerializer,
     TypeAbsenceSerializer,
+    VisiteMedicaleSerializer,
 )
 
 
@@ -1192,6 +1194,76 @@ class CertificationViewSet(_RhBaseViewSet):
         inclure = request.query_params.get('inclure_expirees') \
             not in ('0', 'false', 'False')
         qs = selectors.certifications_expirantes(
+            request.user.company, within_days=within,
+            inclure_expirees=inclure, employe_id=employe)
+        page = self.paginate_queryset(qs)
+        if page is not None:
+            serializer = self.get_serializer(page, many=True)
+            return self.get_paginated_response(serializer.data)
+        serializer = self.get_serializer(qs, many=True)
+        return Response(serializer.data)
+
+
+class VisiteMedicaleViewSet(_RhBaseViewSet):
+    """Visites médicales du travail par employé (FG177) — aptitude + échéance.
+
+    Société scopée + Administrateur/Responsable. ``company`` est posée côté
+    serveur (jamais lue du corps) ; ``employe`` doit appartenir à la même
+    société. On garde l'historique des visites (pas d'unicité) ; ``a_jour``
+    (active ET prochaine visite non dépassée) est calculé. Famille DISTINCTE des
+    habilitations (FG173) et certifications (FG174) : ici l'examen de la
+    médecine du travail prononçant l'aptitude (apte / apte avec restrictions /
+    inapte), obligatoire avant le chantier.
+
+    Filtres : ``?employe=<id>``, ``?aptitude=``, ``?actif=0|1``.
+    Recherche : médecin, organisme.
+
+    Actions :
+    * ``GET .../expirantes/?expire_within=N&employe=&inclure_expirees=0`` —
+      visites dont la prochaine échéance arrive dans N jours (défaut 30) ou est
+      déjà dépassée.
+    """
+    queryset = VisiteMedicale.objects.select_related('employe').all()
+    serializer_class = VisiteMedicaleSerializer
+    filter_backends = [filters.SearchFilter, filters.OrderingFilter]
+    search_fields = ['medecin', 'organisme']
+    ordering_fields = [
+        'prochaine_visite', 'date_visite', 'aptitude', 'date_creation']
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        employe = self.request.query_params.get('employe')
+        if employe:
+            qs = qs.filter(employe_id=employe)
+        aptitude = self.request.query_params.get('aptitude')
+        if aptitude:
+            qs = qs.filter(aptitude=aptitude)
+        actif = self.request.query_params.get('actif')
+        if actif in ('0', 'false', 'False'):
+            qs = qs.filter(actif=False)
+        elif actif in ('1', 'true', 'True'):
+            qs = qs.filter(actif=True)
+        return qs
+
+    def perform_create(self, serializer):
+        """Company posée côté serveur ; employe validé via le sérialiseur."""
+        serializer.save(company=self.request.user.company)
+
+    @action(detail=False, methods=['get'])
+    def expirantes(self, request):
+        """Visites médicales à renouveler bientôt ou déjà échues (FG177).
+
+        ``?expire_within=N`` (défaut 30) fixe la fenêtre ; ``?employe=``
+        restreint à un employé ; ``?inclure_expirees=0`` ne garde que les
+        échéances à venir (par défaut on inclut aussi les visites déjà échues,
+        qui sont précisément celles à signaler avant un chantier). S'appuie sur
+        ``selectors.visites_medicales_expirantes`` — scopé société.
+        """
+        within = request.query_params.get('expire_within', 30)
+        employe = request.query_params.get('employe') or None
+        inclure = request.query_params.get('inclure_expirees') \
+            not in ('0', 'false', 'False')
+        qs = selectors.visites_medicales_expirantes(
             request.user.company, within_days=within,
             inclure_expirees=inclure, employe_id=employe)
         page = self.paginate_queryset(qs)

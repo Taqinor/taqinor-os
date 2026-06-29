@@ -19,6 +19,7 @@ from .models import (
     Remuneration,
     SoldeConge,
     TypeAbsence,
+    VisiteMedicale,
 )
 
 
@@ -162,3 +163,12 @@ class CertificationAdmin(admin.ModelAdmin):
     list_filter = ('type_certification', 'actif')
     search_fields = ('employe__matricule', 'employe__nom', 'employe__prenom',
                      'organisme')
+
+
+@admin.register(VisiteMedicale)
+class VisiteMedicaleAdmin(admin.ModelAdmin):
+    list_display = ('employe', 'aptitude', 'date_visite', 'prochaine_visite',
+                    'medecin', 'organisme', 'actif', 'company')
+    list_filter = ('aptitude', 'actif')
+    search_fields = ('employe__matricule', 'employe__nom', 'employe__prenom',
+                     'medecin', 'organisme')

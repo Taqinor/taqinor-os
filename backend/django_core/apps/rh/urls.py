@@ -22,6 +22,7 @@ from .views import (
     RemunerationViewSet,
     SoldeCongeViewSet,
     TypeAbsenceViewSet,
+    VisiteMedicaleViewSet,
 )
 
 router = DefaultRouter()
@@ -44,6 +45,7 @@ router.register(r'competences', CompetenceViewSet)
 router.register(r'competences-employe', CompetenceEmployeViewSet)
 router.register(r'habilitations', HabilitationViewSet)
 router.register(r'certifications', CertificationViewSet)
+router.register(r'visites-medicales', VisiteMedicaleViewSet)
 router.register(r'echeances', EcheancesRhViewSet, basename='rh-echeances')
 
 urlpatterns = [
