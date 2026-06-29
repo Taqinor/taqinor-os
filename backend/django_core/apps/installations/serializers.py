@@ -15,6 +15,7 @@ from .models import (
     Projet, ProjetTache, ProjetChantier, ProjetDevis, ProjetTicket,
     BudgetProjet, BudgetEngagement,
     IndisponibiliteRessource,
+    SousTraitant,
 )
 
 
@@ -973,3 +974,29 @@ class IndisponibiliteRessourceSerializer(serializers.ModelSerializer):
                 {'date_fin': 'La date de fin doit être postérieure ou égale à '
                              'la date de début.'})
         return attrs
+
+
+class SousTraitantSerializer(serializers.ModelSerializer):
+    """FG304 — annuaire des sous-traitants chantier (main-d'œuvre sous-traitée),
+    DISTINCT des fournisseurs de matériel. La société et `created_by` sont posés
+    côté serveur (jamais lus du corps). `metier_display` expose le libellé
+    français du code de métier."""
+    metier_display = serializers.CharField(
+        source='get_metier_display', read_only=True, default=None)
+
+    class Meta:
+        model = SousTraitant
+        fields = [
+            'id', 'raison_sociale', 'metier', 'metier_display',
+            'contact_nom', 'telephone', 'email', 'ice', 'rib', 'adresse',
+            'actif', 'note',
+            'created_by', 'date_creation', 'date_modification',
+        ]
+        read_only_fields = ['created_by', 'date_creation', 'date_modification']
+
+    def validate_raison_sociale(self, value):
+        value = (value or '').strip()
+        if not value:
+            raise serializers.ValidationError(
+                'La raison sociale est obligatoire.')
+        return value

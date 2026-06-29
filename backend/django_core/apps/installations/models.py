@@ -75,6 +75,9 @@ from .models_program import (
 from .models_indispo import (
     IndisponibiliteRessource,
 )
+from .models_soustraitant import (
+    SousTraitant,
+)
 
 __all__ = [
     'Installation',
@@ -117,4 +120,5 @@ __all__ = [
     'BudgetProjet',
     'BudgetEngagement',
     'IndisponibiliteRessource',
+    'SousTraitant',
 ]
