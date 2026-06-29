@@ -1,7 +1,8 @@
 from django.urls import path, include
 from rest_framework.routers import DefaultRouter
 from .views import (
-    AppointmentViewSet, ClientViewSet, LeadViewSet, assignable_users,
+    AppointmentViewSet, ClientViewSet, ConcurrentPerteViewSet, LeadViewSet,
+    assignable_users,
     LeadTagViewSet, MotifPerteViewSet, CanalViewSet, ParrainageViewSet,
     MessageTemplateViewSet, ObjectifCommercialViewSet,
 )
@@ -18,6 +19,7 @@ router.register(r'parrainages', ParrainageViewSet)
 router.register(r'message-templates', MessageTemplateViewSet)  # FG36
 router.register(r'appointments', AppointmentViewSet)  # QJ20
 router.register(r'objectifs', ObjectifCommercialViewSet)  # FG39
+router.register(r'concurrents-perte', ConcurrentPerteViewSet)  # FG242
 
 urlpatterns = [
     # Récepteur des leads du site public (secret statique, voir webhooks.py)
