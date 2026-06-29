@@ -2,6 +2,7 @@ from rest_framework import serializers
 from .models import (
     Devis, LigneDevis, BonCommande, Facture, LigneFacture, Paiement,
     Avoir, LigneAvoir, DevisActivity, DevisPreset, RoofLayout,
+    FicheTechnique,
 )
 
 
@@ -582,4 +583,32 @@ class RoofLayoutSerializer(serializers.ModelSerializer):
         read_only_fields = [
             'id', 'panel_count', 'puissance_kwc',
             'created_by_nom', 'created_at', 'updated_at',
+        ]
+
+
+class FicheTechniqueSerializer(serializers.ModelSerializer):
+    """FG254 / DC35 — fiche technique normalisée d'un module/onduleur.
+
+    Ne porte QUE les paramètres électriques normalisés + un PDF datasheet : la
+    marque/description/garantie/courbe restent sur ``Produit`` (jamais
+    re-stockées ici). ``company`` et ``created_by`` sont forcés côté serveur
+    dans le viewset, jamais désérialisés depuis la requête. On expose en
+    lecture le nom du produit pour l'affichage, sans aucun prix.
+    """
+    produit_nom = serializers.CharField(
+        source='produit.nom', read_only=True, default=None)
+    created_by_nom = serializers.CharField(
+        source='created_by.username', read_only=True, default=None)
+
+    class Meta:
+        model = FicheTechnique
+        fields = [
+            'id', 'produit', 'produit_nom', 'type_fiche',
+            'pmax_w', 'voc_v', 'isc_a', 'vmp_v', 'imp_a', 'coef_temp_voc',
+            'datasheet_pdf',
+            'created_by_nom', 'created_at', 'updated_at',
+        ]
+        read_only_fields = [
+            'id', 'produit_nom', 'created_by_nom',
+            'created_at', 'updated_at',
         ]
