@@ -671,3 +671,140 @@ class BatteryStorageSizingTest(SimpleTestCase):
         self.assertIsNone(res["backup"])
         self.assertEqual(res["autoconso"]["usable_kwh"], 10.0)
         self.assertTrue(any("inconnu" in w for w in res["warnings"]))
+
+
+# ── FG257 : simulation bankable P50/P90 + PR (calcul pur, SimpleTestCase) ──────
+class SimulateBankableYieldTest(SimpleTestCase):
+    def test_pr_is_product_of_loss_complements(self):
+        # PR = (1-temp)(1-soil)(1-wire)(1-inv) avec UNIQUEMENT ces 4 postes.
+        losses = {"temperature": 0.10, "soiling": 0.05, "wiring": 0.02,
+                  "inverter": 0.03}
+        res = sd.simulate_bankable_yield(
+            10000, loss_factors=losses, annual_variability=0.0)
+        # On surcharge tous les postes par défaut, mais le défaut garde aussi
+        # mismatch/availability → on construit le PR attendu sur les 6 postes.
+        expected_pr = 1.0
+        for poste, default in sd.DEFAULT_LOSS_FACTORS.items():
+            expected_pr *= (1.0 - losses.get(poste, default))
+        self.assertAlmostEqual(res["performance_ratio"], round(expected_pr, 4),
+                               places=4)
+        # total_loss_pct = (1 - PR) × 100.
+        self.assertAlmostEqual(
+            res["total_loss_pct"], round((1 - res["performance_ratio"]) * 100, 2),
+            places=2)
+
+    def test_p50_is_base_times_pr(self):
+        res = sd.simulate_bankable_yield(
+            10000, loss_factors={"temperature": 0.0, "soiling": 0.0,
+                                 "wiring": 0.0, "inverter": 0.0,
+                                 "mismatch": 0.0, "availability": 0.0})
+        # Toutes pertes nulles → PR = 1 → P50 = base.
+        self.assertEqual(res["performance_ratio"], 1.0)
+        self.assertEqual(res["p50_kwh"], 10000.0)
+
+    def test_p90_below_p50_and_p75_between(self):
+        # Avec σ > 0, P90 < P75 < P50 (ordre des quantiles bas).
+        res = sd.simulate_bankable_yield(
+            10000, annual_variability=0.06)
+        self.assertLess(res["p90_kwh"], res["p50_kwh"])
+        self.assertLess(res["p90_kwh"], res["p75_kwh"])
+        self.assertLess(res["p75_kwh"], res["p50_kwh"])
+
+    def test_p90_formula_uses_z1282(self):
+        # P90 = P50 × (1 − 1.282 σ). Pertes nulles → P50 = base = 10000.
+        res = sd.simulate_bankable_yield(
+            10000, annual_variability=0.05,
+            loss_factors={"temperature": 0.0, "soiling": 0.0, "wiring": 0.0,
+                          "inverter": 0.0, "mismatch": 0.0, "availability": 0.0})
+        expected_p90 = round(10000 * (1 - 1.282 * 0.05), 1)
+        self.assertEqual(res["z_p90"], 1.282)
+        self.assertAlmostEqual(res["p90_kwh"], expected_p90, places=1)
+
+    def test_higher_sigma_lowers_p90(self):
+        # Plus la variabilité est forte, plus le P90 (bancable) descend.
+        low = sd.simulate_bankable_yield(10000, annual_variability=0.03)
+        high = sd.simulate_bankable_yield(10000, annual_variability=0.08)
+        self.assertEqual(low["p50_kwh"], high["p50_kwh"])  # même médiane
+        self.assertGreater(low["p90_kwh"], high["p90_kwh"])
+
+    def test_zero_sigma_means_p90_equals_p50(self):
+        res = sd.simulate_bankable_yield(10000, annual_variability=0.0)
+        self.assertEqual(res["p90_kwh"], res["p50_kwh"])
+        self.assertEqual(res["p75_kwh"], res["p50_kwh"])
+
+    def test_loss_factors_clamped_to_unit_interval(self):
+        # Facteur > 1 → borné à 1 (poste totalement perdu) ; < 0 → 0.
+        res = sd.simulate_bankable_yield(
+            10000, loss_factors={"temperature": 1.5, "soiling": -0.2},
+            annual_variability=0.0)
+        bd = res["loss_breakdown"]
+        self.assertEqual(bd["temperature"]["fraction"], 1.0)
+        self.assertEqual(bd["soiling"]["fraction"], 0.0)
+        # Un poste à 100 % de perte annule le PR → P50 = 0.
+        self.assertEqual(res["performance_ratio"], 0.0)
+        self.assertEqual(res["p50_kwh"], 0.0)
+
+    def test_default_losses_give_realistic_pr(self):
+        # Sans surcharge, le PR par défaut est dans une plage réaliste (~0.78).
+        res = sd.simulate_bankable_yield(10000)
+        self.assertGreater(res["performance_ratio"], 0.70)
+        self.assertLess(res["performance_ratio"], 0.90)
+        self.assertEqual(
+            set(res["applied_losses"]),
+            set(sd.DEFAULT_LOSS_FACTORS.keys()))
+
+    def test_specific_yield_when_kwc_given(self):
+        # specific_yield = P50 / kWc. Pertes nulles, base 17000, 10 kWc → 1700.
+        res = sd.simulate_bankable_yield(
+            17000, kwc=10, annual_variability=0.0,
+            loss_factors={"temperature": 0.0, "soiling": 0.0, "wiring": 0.0,
+                          "inverter": 0.0, "mismatch": 0.0, "availability": 0.0})
+        self.assertEqual(res["specific_yield_kwh_kwc"], 1700.0)
+
+    def test_no_kwc_means_no_specific_yield(self):
+        res = sd.simulate_bankable_yield(10000)
+        self.assertIsNone(res["specific_yield_kwh_kwc"])
+
+    def test_include_p75_false_omits_p75(self):
+        res = sd.simulate_bankable_yield(
+            10000, annual_variability=0.06, include_p75=False)
+        self.assertIsNone(res["p75_kwh"])
+
+    def test_extra_loss_poste_is_counted(self):
+        # Un poste inconnu (extensibilité) est accepté et ronge le PR.
+        without = sd.simulate_bankable_yield(10000, annual_variability=0.0)
+        with_extra = sd.simulate_bankable_yield(
+            10000, loss_factors={"shading": 0.05}, annual_variability=0.0)
+        self.assertIn("shading", with_extra["loss_breakdown"])
+        self.assertLess(with_extra["performance_ratio"],
+                        without["performance_ratio"])
+
+    def test_zero_base_safe(self):
+        res = sd.simulate_bankable_yield(0)
+        self.assertEqual(res["p50_kwh"], 0.0)
+        self.assertEqual(res["p90_kwh"], 0.0)
+        self.assertEqual(res["base_production_kwh"], 0.0)
+
+    def test_negative_base_clamped_and_warns(self):
+        res = sd.simulate_bankable_yield(-5000)
+        self.assertEqual(res["base_production_kwh"], 0.0)
+        self.assertEqual(res["p50_kwh"], 0.0)
+        self.assertTrue(any("négative" in w for w in res["warnings"]))
+
+    def test_degraded_inputs_never_raise(self):
+        # Entrées absurdes/None : bornées, jamais d'exception.
+        res = sd.simulate_bankable_yield(
+            "abc", loss_factors={"temperature": "x"},
+            annual_variability=-0.5, kwc=-3)
+        self.assertEqual(res["base_production_kwh"], 0.0)
+        # σ négatif borné à 0 → P90 = P50 (= 0 ici).
+        self.assertEqual(res["annual_variability"], 0.0)
+        self.assertEqual(res["p90_kwh"], res["p50_kwh"])
+        self.assertIsNone(res["specific_yield_kwh_kwc"])
+
+    def test_huge_sigma_never_negative_p90(self):
+        # σ énorme : 1 − z·σ deviendrait négatif → borné à 0, jamais < 0.
+        res = sd.simulate_bankable_yield(10000, annual_variability=0.95)
+        self.assertGreaterEqual(res["p90_kwh"], 0.0)
+        self.assertTrue(any("σ" in w or "variabilité" in w
+                            for w in res["warnings"]))
