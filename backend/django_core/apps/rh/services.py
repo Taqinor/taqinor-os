@@ -385,3 +385,24 @@ def emarger_dotation(dotation, *, signataire_nom, role_signataire=None,
             'accuse_remise', 'date_accuse', 'date_modification'])
 
     return {'emargement': emargement, 'deja_accusee': deja_accusee}
+
+
+def creer_accident_travail(serializer, company):
+    """Crée un AccidentTravail (FG181) avec une référence race-safe.
+
+    Pose ``company`` côté serveur et génère ``reference`` (``AT-YYYYMM-NNNN``)
+    de façon collision-proof via ``apps.ventes.utils.references`` (plus-haut-
+    utilisé+1 par société/mois, savepoint + retry) — JAMAIS ``count()+1``.
+    L'import est function-local : il franchit la frontière inter-app
+    (utilitaire partagé déjà réutilisé par compta/installations) sans créer de
+    cycle d'import au chargement.
+    """
+    from apps.ventes.utils.references import create_with_reference
+
+    from .models import AccidentTravail
+
+    return create_with_reference(
+        AccidentTravail, 'AT', company,
+        lambda reference: serializer.save(
+            company=company, reference=reference),
+    )
