@@ -94,6 +94,44 @@ def _apply_stock_statut_effects(inst, canon_old, canon_new, user):
                 f"(chantier clôturé).")
 
 
+def _apply_reception_handover(inst, canon_old, canon_new, user):
+    """FG70 — remise de garantie automatique au passage à « Réceptionné ».
+
+    Balaye la nomenclature gelée du chantier (`inst.bom`) et garantit un
+    équipement de parc (sans n° de série) par ligne de BoM ayant un produit
+    catalogue — la couverture de garantie ne dépend plus d'une saisie manuelle
+    de chaque n° de série. CROSS-APP : l'écriture passe par
+    `apps.sav.services` (jamais d'import direct des modèles SAV). Idempotent :
+    un re-passage à « Réceptionné » ne crée aucun doublon. Ajoute une note de
+    remise au chatter listant les équipements couverts."""
+    if canon_new == canon_old or canon_new != Installation.Statut.RECEPTIONNE:
+        return
+    from apps.sav.services import sweep_bom_to_parc
+    from apps.stock.selectors import get_produit_scoped
+
+    def _resolve(produit_id):
+        return get_produit_scoped(inst.company, produit_id)
+
+    date_pose = inst.date_reception or inst.date_pose_reelle or timezone.localdate()
+    resume = sweep_bom_to_parc(
+        installation=inst, company=inst.company, date_pose=date_pose,
+        created_by=user, resolve_produit=_resolve)
+    crees = resume['crees']
+    existants = resume['existants']
+    if crees or existants:
+        couverts = ', '.join(
+            ligne['designation'] for ligne in resume['lignes']
+            if ligne['designation'])
+        detail = f" — {couverts}" if couverts else ''
+        activity.log_note(
+            inst, user,
+            "Remise de garantie : "
+            f"{crees} équipement(s) ajouté(s) au parc"
+            + (f", {existants} déjà couvert(s)" if existants else "")
+            + detail + ".")
+    return resume
+
+
 def seed_types_intervention(company):
     if company is None or TypeIntervention.objects.filter(company=company).exists():
         return
@@ -191,6 +229,10 @@ class InstallationViewSet(TenantMixin, viewsets.ModelViewSet):
             'gantt',
             # FG75 — relevés de toiture / drone (lecture).
             'releves',
+            # FG70 — fiche de remise de garantie (lecture).
+            'remise_garantie',
+            # FG77 — contrôle de préparation avant pose (lecture).
+            'readiness',
         ]:
             return [IsAnyRole()]
         elif self.action in WRITE_ACTIONS + [
@@ -236,6 +278,10 @@ class InstallationViewSet(TenantMixin, viewsets.ModelViewSet):
             activity.log_note(
                 inst, self.request.user,
                 "Chantier réceptionné — système ajouté au parc installé.")
+        # FG70 — remise de garantie automatique : balaye le BoM gelé vers le
+        # parc SAV (un équipement par ligne, série optionnelle). Idempotent.
+        _apply_reception_handover(
+            inst, canon_old, canon_new, self.request.user)
         # N14 — applique les effets stock du changement de statut (consomme à
         # « Installé », libère à la clôture). Idempotent côté service.
         _apply_stock_statut_effects(
@@ -335,6 +381,9 @@ class InstallationViewSet(TenantMixin, viewsets.ModelViewSet):
         # changement (consommation des réservations). Sans cela le chantier
         # comptait au parc sans `date_reception` ni sortie de stock.
         _stamp_statut_dates(inst, old.statut)
+        # FG70 — « Mise en service » se rabat sur « Réceptionné » : la remise de
+        # garantie balaie le BoM gelé vers le parc SAV (idempotente côté service).
+        _apply_reception_handover(inst, canon_old, canon_new, request.user)
         _apply_stock_statut_effects(inst, canon_old, canon_new, request.user)
         activity.log_changes(old, inst, request.user)
         # Note de chatter explicite incluant les valeurs mesurées (production /
@@ -730,3 +779,71 @@ class InstallationViewSet(TenantMixin, viewsets.ModelViewSet):
                 existing_types.add(item.type_intervention_cle)
         return Response({'created': created, 'existants': existants},
                         status=status.HTTP_201_CREATED if created else status.HTTP_200_OK)
+
+    # ── FG70 — fiche de remise de garantie (handover summary / section PDF) ──
+    @action(detail=True, methods=['get'], url_path='remise-garantie',
+            permission_classes=[IsAnyRole])
+    def remise_garantie(self, request, pk=None):
+        """FG70 — résumé de remise de garantie du chantier réceptionné : la liste
+        des équipements de parc couverts (produit, n° de série optionnel, date de
+        pose, dates de fin de garantie matériel/production), pour la section de
+        remise du PV / d'un PDF client. Lecture seule. Aucun prix d'achat.
+
+        Les équipements sont matérialisés automatiquement au passage à
+        « Réceptionné » (un par ligne de BoM gelée, série optionnelle)."""
+        inst = self.get_object()
+        equipements = [
+            eq for eq in inst.equipements.all() if eq.statut != 'remplace'
+        ]
+        items = []
+        for eq in equipements:
+            produit = getattr(eq, 'produit', None)
+            items.append({
+                'equipement_id': eq.id,
+                'produit_id': eq.produit_id,
+                'produit_nom': getattr(produit, 'nom', None),
+                'marque': getattr(produit, 'marque', None),
+                'numero_serie': eq.numero_serie or None,
+                'date_pose': str(eq.date_pose) if eq.date_pose else None,
+                'date_fin_garantie': (
+                    str(eq.date_fin_garantie) if eq.date_fin_garantie else None),
+                'date_fin_garantie_production': (
+                    str(eq.date_fin_garantie_production)
+                    if eq.date_fin_garantie_production else None),
+            })
+        items.sort(key=lambda it: (it['produit_nom'] or '').lower())
+        return Response({
+            'installation': inst.id,
+            'reference': inst.reference,
+            'date_reception': (
+                str(inst.date_reception) if inst.date_reception else None),
+            'nb_equipements': len(items),
+            'equipements': items,
+        })
+
+    # ── FG71 — synthèse coût / marge par chantier (INTERNE, admin-only) ──────
+    @action(detail=True, methods=['get'], url_path='cout',
+            permission_classes=[IsAdminRole])
+    def cout(self, request, pk=None):
+        """FG71 — synthèse de coût / marge du chantier : main-d'œuvre
+        (jours estimés/réels, coût si `?tarif_jour=` fourni), coût matériel prévu
+        (BoM gelé) vs réel (consommation terrain validée), total du devis et
+        marge résultante. STRICTEMENT INTERNE — réservé admin : s'appuie sur les
+        prix d'achat, qui ne doivent JAMAIS apparaître sur un document client."""
+        from ..services import compute_chantier_cout
+        inst = self.get_object()
+        tarif = request.query_params.get('tarif_jour')
+        return Response(compute_chantier_cout(inst, tarif_jour=tarif))
+
+    # ── FG77 — contrôle de préparation avant pose (advisory) ────────────────
+    @action(detail=True, methods=['get'], url_path='readiness',
+            permission_classes=[IsAnyRole])
+    def readiness(self, request, pk=None):
+        """FG77 — état de préparation avant pose : manque matériel (besoin vs
+        stock), état du dossier réglementaire loi 82-21 et date de pose
+        planifiée, agrégés en une checklist + un verdict « prêt / non prêt » pour
+        une bannière. AVISORY (lecture seule) — n'empêche aucun changement de
+        statut ; le frontend peut proposer un override-à-confirmer."""
+        from ..services import compute_chantier_readiness
+        inst = self.get_object()
+        return Response(compute_chantier_readiness(inst))
