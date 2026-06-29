@@ -1807,3 +1807,151 @@ class Rapprochement(models.Model):
         """True si le rapprochement autorise le paiement (concordant ou
         explicitement validé)."""
         return self.statut in (self.Statut.CONCORDANT, self.Statut.VALIDE)
+
+
+# ── FG133 — Campagnes de règlement fournisseurs (payment run) ──────────────
+
+class PaymentRun(models.Model):
+    """Campagne de règlement fournisseurs (payment run, FG133).
+
+    Regroupe une sélection de dettes fournisseur DUES à régler en un lot : on
+    choisit les échéances à payer (lignes ``PaymentRunLine``), on retient un
+    ``mode_paiement`` (chèque/virement) et un compte de trésorerie payeur, puis
+    on POSTE le lot au grand livre en une seule écriture (débit 4411
+    Fournisseurs par ligne / crédit 5141 Banque pour le total) via
+    ``services.poster_payment_run``. Pour un run en virement, un fichier bancaire
+    peut ensuite être exporté (FG134).
+
+    Cycle de vie : ``brouillon`` (sélection en cours) → ``proposee`` (proposition
+    figée) → ``postee`` (écriture passée, irréversible). Les fournisseurs sont
+    référencés en string-FK (``tiers_type``/``tiers_id``) sur les lignes — jamais
+    d'import cross-app de modèle. ``company`` posée côté serveur. Strictement
+    additif ; ``related_name`` préfixés par le label d'app.
+    """
+    class ModePaiement(models.TextChoices):
+        VIREMENT = 'virement', 'Virement bancaire'
+        CHEQUE = 'cheque', 'Chèque'
+        ESPECES = 'especes', 'Espèces'
+
+    class Statut(models.TextChoices):
+        BROUILLON = 'brouillon', 'Brouillon'
+        PROPOSEE = 'proposee', 'Proposition figée'
+        POSTEE = 'postee', 'Postée au grand livre'
+
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='compta_payment_runs',
+        verbose_name='Société',
+    )
+    reference = models.CharField(
+        max_length=80, blank=True, default='', verbose_name='Référence')
+    mode_paiement = models.CharField(
+        max_length=10, choices=ModePaiement.choices,
+        default=ModePaiement.VIREMENT, verbose_name='Mode de paiement')
+    # Compte de trésorerie payeur (banque). Requis pour poster un virement/chèque.
+    compte_tresorerie = models.ForeignKey(
+        CompteTresorerie,
+        on_delete=models.PROTECT,
+        null=True, blank=True,
+        related_name='compta_payment_runs',
+        verbose_name='Compte de trésorerie (payeur)',
+    )
+    date_paiement = models.DateField(verbose_name='Date de paiement')
+    statut = models.CharField(
+        max_length=12, choices=Statut.choices,
+        default=Statut.BROUILLON, verbose_name='Statut')
+    total = models.DecimalField(
+        max_digits=14, decimal_places=2, default=Decimal('0'),
+        verbose_name='Total proposé')
+    posted = models.BooleanField(
+        default=False, verbose_name='Postée au grand livre')
+    ecriture = models.ForeignKey(
+        EcritureComptable,
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='compta_payment_runs',
+        verbose_name='Écriture comptable',
+    )
+    note = models.CharField(
+        max_length=255, blank=True, default='', verbose_name='Note')
+    created_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='compta_payment_runs_crees',
+        verbose_name='Créée par',
+    )
+    date_creation = models.DateTimeField(
+        auto_now_add=True, verbose_name='Créée le')
+
+    class Meta:
+        verbose_name = 'Campagne de règlement fournisseurs'
+        verbose_name_plural = 'Campagnes de règlement fournisseurs'
+        ordering = ['-date_creation', '-id']
+
+    def __str__(self):
+        return (f'Règlement {self.reference or self.id} '
+                f'({self.get_mode_paiement_display()}, {self.statut})')
+
+    @property
+    def est_postee(self):
+        return self.statut == self.Statut.POSTEE
+
+
+class PaymentRunLine(models.Model):
+    """Ligne d'une campagne de règlement : une échéance fournisseur à payer.
+
+    Porte le fournisseur (string-FK ``tiers_type``/``tiers_id``), le ``montant``
+    à régler, une ``reference`` de pièce (facture/échéance) et les coordonnées
+    bancaires (``rib``/``iban``) figées pour l'export du fichier de virement
+    (FG134). ``beneficiaire`` est le nom figé du fournisseur au moment de la
+    sélection. Strictement additif.
+    """
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='compta_payment_run_lines',
+        verbose_name='Société',
+    )
+    payment_run = models.ForeignKey(
+        PaymentRun,
+        on_delete=models.CASCADE,
+        related_name='lignes',
+        verbose_name='Campagne de règlement',
+    )
+    # Fournisseur en string-FK — jamais d'import cross-app de modèle.
+    tiers_type = models.CharField(
+        max_length=20, blank=True, default='fournisseur',
+        verbose_name='Type de tiers')
+    tiers_id = models.PositiveIntegerField(
+        null=True, blank=True, verbose_name='ID du tiers')
+    beneficiaire = models.CharField(
+        max_length=200, blank=True, default='', verbose_name='Bénéficiaire')
+    reference = models.CharField(
+        max_length=80, blank=True, default='',
+        verbose_name='Référence (facture / échéance)')
+    montant = models.DecimalField(
+        max_digits=14, decimal_places=2, default=Decimal('0'),
+        verbose_name='Montant à régler')
+    date_echeance = models.DateField(
+        null=True, blank=True, verbose_name="Date d'échéance")
+    rib = models.CharField(
+        max_length=40, blank=True, default='', verbose_name='RIB')
+    iban = models.CharField(
+        max_length=40, blank=True, default='', verbose_name='IBAN')
+
+    class Meta:
+        verbose_name = 'Ligne de règlement fournisseur'
+        verbose_name_plural = 'Lignes de règlement fournisseur'
+        ordering = ['date_echeance', 'id']
+
+    def __str__(self):
+        return f'{self.beneficiaire or self.tiers_id} — {self.montant}'
+
+    def clean(self):
+        super().clean()
+        if self.montant is not None and self.montant <= 0:
+            raise ValidationError(
+                "Le montant d'une ligne de règlement doit être strictement "
+                "positif.")

@@ -33,8 +33,9 @@ from .models import (
     CompteComptable, DotationAmortissement, EcritureComptable, Effet,
     ExerciceComptable, Immobilisation, Journal, LigneEcriture,
     LignePrevisionnelTresorerie, LigneReleve, MouvementCaisse,
-    PeriodeComptable, PlanAmortissement, PlanComptable, PointageReleve,
-    Rapprochement, RapprochementBancaire, VirementInterne,
+    PaymentRun, PaymentRunLine, PeriodeComptable, PlanAmortissement,
+    PlanComptable, PointageReleve, Rapprochement, RapprochementBancaire,
+    VirementInterne,
 )
 
 
@@ -1910,3 +1911,259 @@ def valider_rapprochement(rapprochement, *, user=None, commentaire=''):
     rapprochement.save(update_fields=[
         'statut', 'valide_par', 'date_validation', 'note'])
     return rapprochement
+
+
+# ── FG133 — Campagnes de règlement fournisseurs (payment run) ──────────────
+# Sélection de dettes fournisseur dues → proposition de paiement par échéance →
+# post EN LOT (une écriture : débit 4411 par ligne / crédit 5141 banque). Les
+# fournisseurs restent en string-FK ; on ne lit leur nom/coordonnées qu'à travers
+# le sélecteur de stock (jamais d'import de apps.stock.models).
+
+
+def _compte_fournisseurs(company):
+    return _assurer_compte(company, '4411')
+
+
+def _coordonnees_fournisseur(company, tiers_id):
+    """Nom + RIB/IBAN d'un fournisseur via le sélecteur de stock (cross-app).
+
+    N'importe JAMAIS ``apps.stock.models`` : passe par
+    ``apps.stock.selectors.get_fournisseur_by_id``. Renvoie un dict
+    ``{'nom', 'rib', 'iban'}`` (valeurs vides si le tiers/champ est inconnu).
+    """
+    nom = rib = iban = ''
+    if tiers_id is not None:
+        try:
+            from apps.stock.selectors import get_fournisseur_by_id
+            fournisseur = get_fournisseur_by_id(company, tiers_id)
+        except Exception:  # pragma: no cover - défensif
+            fournisseur = None
+        if fournisseur is not None:
+            nom = getattr(fournisseur, 'nom', '') or ''
+            rib = getattr(fournisseur, 'rib', '') or ''
+            iban = getattr(fournisseur, 'iban', '') or ''
+    return {'nom': nom, 'rib': rib, 'iban': iban}
+
+
+@transaction.atomic
+def creer_payment_run(company, *, date_paiement, mode_paiement=None,
+                      compte_tresorerie=None, reference='', note='',
+                      lignes=None, user=None):
+    """Crée une campagne de règlement fournisseurs et ses lignes (FG133).
+
+    ``lignes`` est une liste de dicts ``{'tiers_id', 'montant',
+    'reference'?, 'date_echeance'?, 'beneficiaire'?, 'rib'?, 'iban'?}``. Pour
+    chaque ligne sans bénéficiaire/coordonnées explicites, on complète depuis le
+    sélecteur de stock (nom + RIB/IBAN). Le ``compte_tresorerie``, s'il est
+    fourni, DOIT appartenir à la société. ``company`` posée côté serveur. La
+    campagne naît en ``brouillon`` ; le total est recalculé. Renvoie la campagne.
+    """
+    if compte_tresorerie is not None and compte_tresorerie.company_id != company.id:
+        raise ValidationError("Compte de trésorerie inconnu.")
+    run = PaymentRun.objects.create(
+        company=company,
+        reference=reference or '',
+        mode_paiement=mode_paiement or PaymentRun.ModePaiement.VIREMENT,
+        compte_tresorerie=compte_tresorerie,
+        date_paiement=date_paiement,
+        note=note or '',
+        created_by=user,
+    )
+    for ligne in (lignes or []):
+        ajouter_ligne_payment_run(run, **ligne)
+    _recalc_total_payment_run(run)
+    return run
+
+
+def ajouter_ligne_payment_run(run, *, tiers_id=None, montant,
+                              tiers_type='fournisseur', reference='',
+                              date_echeance=None, beneficiaire='', rib='',
+                              iban=''):
+    """Ajoute une ligne d'échéance à une campagne en ``brouillon`` (FG133).
+
+    Complète le bénéficiaire et les coordonnées bancaires manquants depuis le
+    sélecteur de stock. Refuse un montant non strictement positif et une campagne
+    déjà figée/postée. Renvoie la ligne.
+    """
+    if run.statut != PaymentRun.Statut.BROUILLON:
+        raise ValidationError(
+            "Une campagne figée ou postée ne peut plus être modifiée.")
+    montant = Decimal(montant or 0)
+    if montant <= 0:
+        raise ValidationError(
+            "Le montant d'une ligne de règlement doit être strictement "
+            "positif.")
+    if not (beneficiaire and (rib or iban)):
+        coord = _coordonnees_fournisseur(run.company, tiers_id)
+        beneficiaire = beneficiaire or coord['nom']
+        rib = rib or coord['rib']
+        iban = iban or coord['iban']
+    ligne = PaymentRunLine.objects.create(
+        company=run.company,
+        payment_run=run,
+        tiers_type=tiers_type or 'fournisseur',
+        tiers_id=tiers_id,
+        beneficiaire=beneficiaire or '',
+        reference=reference or '',
+        montant=montant,
+        date_echeance=date_echeance,
+        rib=rib or '',
+        iban=iban or '',
+    )
+    _recalc_total_payment_run(run)
+    return ligne
+
+
+def _recalc_total_payment_run(run):
+    total = run.lignes.aggregate(s=Sum('montant'))['s'] or Decimal('0')
+    run.total = total
+    run.save(update_fields=['total'])
+    return total
+
+
+def figer_payment_run(run):
+    """Fige la proposition d'une campagne : ``brouillon`` → ``proposee`` (FG133).
+
+    Idempotent (une campagne déjà figée reste figée). Refuse une campagne vide.
+    Renvoie la campagne.
+    """
+    if run.statut == PaymentRun.Statut.POSTEE:
+        raise ValidationError("Une campagne postée ne peut être refigée.")
+    if not run.lignes.exists():
+        raise ValidationError(
+            "Une campagne doit comporter au moins une ligne.")
+    _recalc_total_payment_run(run)
+    if run.statut == PaymentRun.Statut.BROUILLON:
+        run.statut = PaymentRun.Statut.PROPOSEE
+        run.save(update_fields=['statut'])
+    return run
+
+
+@transaction.atomic
+def poster_payment_run(run, *, user=None):
+    """Poste une campagne de règlement au grand livre EN LOT (FG133).
+
+    Une seule écriture (journal BNK) : un débit 4411 Fournisseurs par ligne (avec
+    l'auxiliaire tiers de la ligne) et un crédit 5141 Banque pour le total —
+    l'écriture solde les dettes fournisseur réglées. Requiert un compte de
+    trésorerie payeur (banque). Refusé en période close. Idempotent : une campagne
+    déjà postée renvoie son écriture. Renvoie l'écriture.
+    """
+    company = run.company
+    if run.posted and run.ecriture_id:
+        return run.ecriture
+    lignes = list(run.lignes.all())
+    if not lignes:
+        raise ValidationError(
+            "Une campagne doit comporter au moins une ligne.")
+    total = _recalc_total_payment_run(run)
+    if total <= 0:
+        raise ValidationError("Le total de la campagne est nul.")
+    if run.compte_tresorerie_id is None:
+        raise ValidationError(
+            "Un compte de trésorerie payeur est requis pour poster la "
+            "campagne.")
+    treso = run.compte_tresorerie
+    if treso.type_compte != 'banque':
+        raise ValidationError(
+            "Le règlement par virement se débite d'un compte bancaire.")
+    if PeriodeComptable.date_verrouillee(company.id, run.date_paiement):
+        raise ValidationError(
+            "Période comptable clôturée : impossible de poster la campagne "
+            f"du {run.date_paiement}.")
+    journal = _journal(company, Journal.Type.BANQUE)
+    if journal is None:
+        seed_journaux(company)
+        journal = _journal(company, Journal.Type.BANQUE)
+    compte_fourn = _compte_fournisseurs(company)
+    libelle = f'Règlement fournisseurs {run.reference or run.id}'
+    ecriture_lignes = []
+    for ligne in lignes:
+        ecriture_lignes.append({
+            'compte': compte_fourn,
+            'debit': Decimal(ligne.montant or 0),
+            'credit': Decimal('0'),
+            'libelle': (f'Règlement {ligne.beneficiaire or ligne.tiers_id} '
+                        f'{ligne.reference}').strip(),
+            'tiers_type': ligne.tiers_type,
+            'tiers_id': ligne.tiers_id,
+        })
+    ecriture_lignes.append({
+        'compte': treso.compte_comptable,
+        'debit': Decimal('0'),
+        'credit': total,
+        'libelle': libelle,
+    })
+    ecriture = creer_ecriture(
+        company, journal, run.date_paiement, libelle, ecriture_lignes,
+        reference=run.reference or f'PAYRUN-{run.id}',
+        source_type='payment_run', source_id=run.id,
+        created_by=user, statut=EcritureComptable.Statut.VALIDEE)
+    run.posted = True
+    run.ecriture = ecriture
+    run.statut = PaymentRun.Statut.POSTEE
+    run.save(update_fields=['posted', 'ecriture', 'statut'])
+    return ecriture
+
+
+# ── FG134 — Génération de fichier de virement bancaire ─────────────────────
+# Export d'un payment run (en virement) au format d'ordre de virement de la
+# banque. Format texte tabulé pivot, simple et lisible par la plupart des portails
+# bancaires marocains (import « multi-virements » CSV/délimité). LECTURE SEULE :
+# l'export ne modifie ni la campagne ni le grand livre.
+
+# En-tête du fichier de virement (champs d'un ordre de virement multiple).
+FICHIER_VIREMENT_HEADERS = [
+    'Beneficiaire', 'RIB', 'IBAN', 'Montant', 'Devise', 'Reference', 'Motif',
+]
+
+
+def fichier_virement(run):
+    """Construit le fichier de virement bancaire d'une campagne (FG134).
+
+    Une ligne par échéance EN VIREMENT de la campagne : bénéficiaire, RIB/IBAN,
+    montant au centime, devise (MAD), référence et motif. Renvoie
+    ``{'headers', 'rows', 'total', 'nb_lignes', 'mode_paiement'}`` — la vue se
+    charge de la sérialisation texte/CSV. Lecture seule.
+
+    Lève ``ValidationError`` si la campagne n'est pas un virement, ou si une
+    ligne n'a ni RIB ni IBAN (un virement sans coordonnées bancaires ne peut
+    être exécuté).
+    """
+    if run.mode_paiement != PaymentRun.ModePaiement.VIREMENT:
+        raise ValidationError(
+            "Le fichier de virement ne s'exporte que pour une campagne en "
+            "virement bancaire.")
+    lignes = list(run.lignes.all())
+    if not lignes:
+        raise ValidationError(
+            "La campagne ne comporte aucune ligne à exporter.")
+    rows = []
+    total = Decimal('0')
+    devise = 'MAD'
+    if run.compte_tresorerie_id is not None:
+        devise = run.compte_tresorerie.devise or 'MAD'
+    for ligne in lignes:
+        if not (ligne.rib or ligne.iban):
+            raise ValidationError(
+                "Coordonnées bancaires manquantes pour "
+                f"« {ligne.beneficiaire or ligne.tiers_id} » : un virement "
+                "exige un RIB ou un IBAN.")
+        montant = Decimal(ligne.montant or 0).quantize(Decimal('0.01'))
+        total += montant
+        rows.append([
+            ligne.beneficiaire or '',
+            ligne.rib or '',
+            ligne.iban or '',
+            str(montant),
+            devise,
+            ligne.reference or '',
+            f'Règlement {ligne.reference}'.strip() or 'Règlement fournisseur',
+        ])
+    return {
+        'headers': list(FICHIER_VIREMENT_HEADERS),
+        'rows': rows,
+        'total': total,
+        'nb_lignes': len(rows),
+        'mode_paiement': run.mode_paiement,
+    }
