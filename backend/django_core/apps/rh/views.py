@@ -29,8 +29,10 @@ from .models import (
     ElementSortie,
     FeuilleTemps,
     HeuresSupp,
+    IncidentPresence,
     Pointage,
     Poste,
+    PresenceChantier,
     Remuneration,
     SoldeConge,
     TypeAbsence,
@@ -44,8 +46,10 @@ from .serializers import (
     ElementSortieSerializer,
     FeuilleTempsSerializer,
     HeuresSuppSerializer,
+    IncidentPresenceSerializer,
     PointageSerializer,
     PosteSerializer,
+    PresenceChantierSerializer,
     RemunerationSerializer,
     SoldeCongeSerializer,
     TypeAbsenceSerializer,
@@ -702,3 +706,206 @@ class AffectationRosterViewSet(_RhBaseViewSet):
             return self.get_paginated_response(serializer.data)
         serializer = self.get_serializer(qs, many=True)
         return Response(serializer.data)
+
+
+class PresenceChantierViewSet(_RhBaseViewSet):
+    """Registre de présence chantier journalier / émargement (FG170).
+
+    Société scopée + Administrateur/Responsable. ``company`` est posée côté
+    serveur ; ``employe`` doit appartenir à la même société. Trace QUI était
+    présent sur QUEL chantier (preuve litige + base facturation main-d'œuvre).
+
+    Filtres : ``?employe=<id>``, ``?installation_id=<id>``,
+    ``?date=YYYY-MM-DD``, ``?statut=``, ``?emarge=0|1``,
+    ``?debut=`` / ``?fin=`` (plage).
+
+    Actions :
+    * ``POST <id>/emarger/`` — pose l'émargement (signature de présence) côté
+      serveur : ``emarge=True``, ``emarge_le=now``, ``emarge_par=user``.
+    * ``GET .../chantier/?installation_id=&debut=&fin=`` — registre d'un chantier.
+    """
+    queryset = PresenceChantier.objects.select_related('employe').all()
+    serializer_class = PresenceChantierSerializer
+    filter_backends = [filters.OrderingFilter]
+    ordering_fields = ['date', 'installation_id', 'date_creation']
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        employe = self.request.query_params.get('employe')
+        if employe:
+            qs = qs.filter(employe_id=employe)
+        installation_id = self.request.query_params.get('installation_id')
+        if installation_id:
+            qs = qs.filter(installation_id=installation_id)
+        statut = self.request.query_params.get('statut')
+        if statut:
+            qs = qs.filter(statut=statut)
+        emarge = self.request.query_params.get('emarge')
+        if emarge in ('0', 'false', 'False'):
+            qs = qs.filter(emarge=False)
+        elif emarge in ('1', 'true', 'True'):
+            qs = qs.filter(emarge=True)
+        date_str = self.request.query_params.get('date')
+        if date_str:
+            jour = self._parse_date(date_str)
+            if jour:
+                qs = qs.filter(date=jour)
+        debut = self._parse_date(self.request.query_params.get('debut'))
+        if debut:
+            qs = qs.filter(date__gte=debut)
+        fin = self._parse_date(self.request.query_params.get('fin'))
+        if fin:
+            qs = qs.filter(date__lte=fin)
+        return qs
+
+    @staticmethod
+    def _parse_date(raw):
+        if not raw:
+            return None
+        from datetime import datetime
+        try:
+            return datetime.strptime(raw, '%Y-%m-%d').date()
+        except (TypeError, ValueError):
+            return None
+
+    def perform_create(self, serializer):
+        """Company posée côté serveur ; employe validé via le sérialiseur."""
+        serializer.save(company=self.request.user.company)
+
+    @action(detail=True, methods=['post'])
+    def emarger(self, request, pk=None):
+        """Pose l'émargement (signature de présence) côté serveur.
+
+        ``emarge=True``, ``emarge_le=now``, ``emarge_par=user``. Idempotent :
+        ré-émarger ne change que l'horodatage/auteur. Société garantie par le
+        TenantMixin (un autre tenant reçoit 404).
+        """
+        presence = self.get_object()
+        presence.emarge = True
+        presence.emarge_le = timezone.now()
+        presence.emarge_par = request.user
+        presence.save(update_fields=[
+            'emarge', 'emarge_le', 'emarge_par', 'date_modification'])
+        return Response(self.get_serializer(presence).data)
+
+    @action(detail=False, methods=['get'])
+    def chantier(self, request):
+        """Registre de présence d'un chantier (``?installation_id=`` requis,
+        ``?debut=&fin=`` optionnels, ``?presents=1`` exclut les absents).
+        S'appuie sur ``selectors.presences_installation`` — scopé société."""
+        installation_id = request.query_params.get('installation_id')
+        if not installation_id:
+            return Response(
+                {'installation_id': "Paramètre 'installation_id' requis."},
+                status=status.HTTP_400_BAD_REQUEST)
+        debut = self._parse_date(request.query_params.get('debut'))
+        fin = self._parse_date(request.query_params.get('fin'))
+        presents = request.query_params.get('presents') in ('1', 'true', 'True')
+        qs = selectors.presences_installation(
+            request.user.company, installation_id,
+            date_debut=debut, date_fin=fin, presents_seulement=presents)
+        page = self.paginate_queryset(qs)
+        if page is not None:
+            serializer = self.get_serializer(page, many=True)
+            return self.get_paginated_response(serializer.data)
+        serializer = self.get_serializer(qs, many=True)
+        return Response(serializer.data)
+
+
+class IncidentPresenceViewSet(_RhBaseViewSet):
+    """Retards & absences injustifiées (FG171) — marquage + compteur.
+
+    Société scopée + Administrateur/Responsable. ``company`` est posée côté
+    serveur ; ``employe`` doit appartenir à la même société. Marque les
+    incidents disciplinaires (retard / absence injustifiée / départ anticipé) ;
+    le compteur par employé se dérive par agrégation, jamais stocké.
+
+    Filtres : ``?employe=<id>``, ``?type_incident=``, ``?justifie=0|1``,
+    ``?date=YYYY-MM-DD``, ``?debut=`` / ``?fin=`` (plage).
+
+    Actions :
+    * ``POST <id>/justifier/`` — régularise l'incident (``justifie=True``,
+      ``motif``, ``justifie_par=user``, ``justifie_le=now``) côté serveur.
+    * ``GET .../compteur/?debut=&fin=&employe=&inclure_justifies=1`` — compteur
+      d'incidents par employé (pilotage/disciplinaire).
+    """
+    queryset = IncidentPresence.objects.select_related('employe').all()
+    serializer_class = IncidentPresenceSerializer
+    filter_backends = [filters.OrderingFilter]
+    ordering_fields = ['date', 'type_incident', 'date_creation']
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        employe = self.request.query_params.get('employe')
+        if employe:
+            qs = qs.filter(employe_id=employe)
+        type_incident = self.request.query_params.get('type_incident')
+        if type_incident:
+            qs = qs.filter(type_incident=type_incident)
+        justifie = self.request.query_params.get('justifie')
+        if justifie in ('0', 'false', 'False'):
+            qs = qs.filter(justifie=False)
+        elif justifie in ('1', 'true', 'True'):
+            qs = qs.filter(justifie=True)
+        date_str = self.request.query_params.get('date')
+        if date_str:
+            jour = self._parse_date(date_str)
+            if jour:
+                qs = qs.filter(date=jour)
+        debut = self._parse_date(self.request.query_params.get('debut'))
+        if debut:
+            qs = qs.filter(date__gte=debut)
+        fin = self._parse_date(self.request.query_params.get('fin'))
+        if fin:
+            qs = qs.filter(date__lte=fin)
+        return qs
+
+    @staticmethod
+    def _parse_date(raw):
+        if not raw:
+            return None
+        from datetime import datetime
+        try:
+            return datetime.strptime(raw, '%Y-%m-%d').date()
+        except (TypeError, ValueError):
+            return None
+
+    def perform_create(self, serializer):
+        """Company posée côté serveur ; employe validé via le sérialiseur."""
+        serializer.save(company=self.request.user.company)
+
+    @action(detail=True, methods=['post'])
+    def justifier(self, request, pk=None):
+        """Régularise un incident (le sort du décompte disciplinaire).
+
+        Pose ``justifie=True``, ``motif`` (corps), ``justifie_par=user`` et
+        ``justifie_le=now`` côté serveur. Société garantie par le TenantMixin.
+        """
+        incident = self.get_object()
+        incident.justifie = True
+        motif = request.data.get('motif')
+        if motif is not None:
+            incident.motif = motif
+        incident.justifie_par = request.user
+        incident.justifie_le = timezone.now()
+        incident.save(update_fields=[
+            'justifie', 'motif', 'justifie_par', 'justifie_le',
+            'date_modification'])
+        return Response(self.get_serializer(incident).data)
+
+    @action(detail=False, methods=['get'])
+    def compteur(self, request):
+        """Compteur d'incidents par employé sur une période (``?debut=&fin=``,
+        défaut : 90 jours écoulés ; ``?employe=`` restreint ; ``?inclure_justifies=1``
+        rétablit le total brut). S'appuie sur ``selectors.compteur_incidents``."""
+        today = timezone.localdate()
+        debut = self._parse_date(request.query_params.get('debut')) \
+            or (today - timedelta(days=90))
+        fin = self._parse_date(request.query_params.get('fin')) or today
+        employe = request.query_params.get('employe') or None
+        inclure = request.query_params.get('inclure_justifies') in (
+            '1', 'true', 'True')
+        rows = selectors.compteur_incidents(
+            request.user.company, date_debut=debut, date_fin=fin,
+            employe_id=employe, inclure_justifies=inclure)
+        return Response(rows)

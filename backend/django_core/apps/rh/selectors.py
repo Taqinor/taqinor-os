@@ -14,7 +14,9 @@ from .models import (
     DossierEmploye,
     FeuilleTemps,
     HeuresSupp,
+    IncidentPresence,
     Poste,
+    PresenceChantier,
 )
 
 
@@ -281,6 +283,89 @@ def conflits_roster(company, date_debut=None, date_fin=None):
     if date_fin is not None:
         qs = qs.filter(date__lte=date_fin)
     return qs.select_related('employe').order_by('date', 'equipe', 'employe_id')
+
+
+def presences_installation(company, installation_id, date_debut=None,
+                           date_fin=None, presents_seulement=False):
+    """Présences chantier (FG170) d'une installation, optionnellement bornées.
+
+    Lecture cadrée société : qui était présent sur le chantier
+    ``installation_id`` (preuve litige + base facturation). ``date_debut`` /
+    ``date_fin`` bornent la plage si fournis ; ``presents_seulement`` exclut les
+    lignes ``ABSENT``. Trié par jour puis employé. Queryset vide si la société
+    ou l'installation manque.
+    """
+    if company is None or installation_id is None:
+        return PresenceChantier.objects.none()
+    qs = PresenceChantier.objects.filter(
+        company=company, installation_id=installation_id)
+    if date_debut is not None:
+        qs = qs.filter(date__gte=date_debut)
+    if date_fin is not None:
+        qs = qs.filter(date__lte=date_fin)
+    if presents_seulement:
+        qs = qs.exclude(statut=PresenceChantier.Statut.ABSENT)
+    return qs.select_related('employe').order_by('date', 'employe_id')
+
+
+def effectif_present_le(company, installation_id, jour):
+    """Nombre d'employés effectivement présents sur un chantier un jour donné
+    (FG170) — exclut les ABSENT. Brique de facturation/litige cadrée société ;
+    renvoie 0 si la société/installation manque."""
+    if company is None or installation_id is None or jour is None:
+        return 0
+    return PresenceChantier.objects.filter(
+        company=company, installation_id=installation_id, date=jour,
+    ).exclude(statut=PresenceChantier.Statut.ABSENT).count()
+
+
+def compteur_incidents(company, date_debut=None, date_fin=None,
+                       employe_id=None, inclure_justifies=False):
+    """Compteur d'incidents de présence par employé (FG171, pilotage RH).
+
+    Agrège les ``IncidentPresence`` (retards / absences injustifiées / départs
+    anticipés) par employé sur une période. Par défaut, n'INCLUT PAS les
+    incidents régularisés (``justifie=True``) — ce qui compte côté disciplinaire
+    est l'injustifié ; passer ``inclure_justifies=True`` rétablit le total brut.
+    Toujours scopé société. Renvoie une liste de dicts triée par employé :
+
+    ``{
+        'employe_id': int,
+        'retards': int, 'absences': int, 'departs_anticipes': int,
+        'total': int,
+        'minutes_retard_total': int,
+    }``
+    """
+    if company is None:
+        return []
+    qs = IncidentPresence.objects.filter(company=company)
+    if not inclure_justifies:
+        qs = qs.filter(justifie=False)
+    if date_debut is not None:
+        qs = qs.filter(date__gte=date_debut)
+    if date_fin is not None:
+        qs = qs.filter(date__lte=date_fin)
+    if employe_id is not None:
+        qs = qs.filter(employe_id=employe_id)
+    agg = {}
+    for inc in qs.only(
+            'employe_id', 'type_incident', 'minutes_retard'):
+        row = agg.setdefault(inc.employe_id, {
+            'employe_id': inc.employe_id,
+            'retards': 0, 'absences': 0, 'departs_anticipes': 0,
+            'total': 0, 'minutes_retard_total': 0,
+        })
+        if inc.type_incident == IncidentPresence.TypeIncident.RETARD:
+            row['retards'] += 1
+        elif inc.type_incident == \
+                IncidentPresence.TypeIncident.ABSENCE_INJUSTIFIEE:
+            row['absences'] += 1
+        elif inc.type_incident == \
+                IncidentPresence.TypeIncident.DEPART_ANTICIPE:
+            row['departs_anticipes'] += 1
+        row['total'] += 1
+        row['minutes_retard_total'] += inc.minutes_retard or 0
+    return [agg[k] for k in sorted(agg)]
 
 
 def poste_appartient_societe(company, poste_id):

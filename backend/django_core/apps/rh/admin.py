@@ -8,8 +8,10 @@ from .models import (
     DossierEmploye,
     ElementSortie,
     HeuresSupp,
+    IncidentPresence,
     Pointage,
     Poste,
+    PresenceChantier,
     Remuneration,
     SoldeConge,
     TypeAbsence,
@@ -107,3 +109,19 @@ class AffectationRosterAdmin(admin.ModelAdmin):
                     'conflit_conge', 'company')
     list_filter = ('creneau', 'conflit_conge')
     search_fields = ('employe__matricule', 'employe__nom', 'equipe')
+
+
+@admin.register(PresenceChantier)
+class PresenceChantierAdmin(admin.ModelAdmin):
+    list_display = ('employe', 'installation_id', 'date', 'statut', 'emarge',
+                    'company')
+    list_filter = ('statut', 'emarge')
+    search_fields = ('employe__matricule', 'employe__nom', 'employe__prenom')
+
+
+@admin.register(IncidentPresence)
+class IncidentPresenceAdmin(admin.ModelAdmin):
+    list_display = ('employe', 'type_incident', 'date', 'minutes_retard',
+                    'justifie', 'company')
+    list_filter = ('type_incident', 'justifie')
+    search_fields = ('employe__matricule', 'employe__nom', 'employe__prenom')
