@@ -301,6 +301,95 @@ class EtatsComptablesViewSet(viewsets.ViewSet):
             f"{data['date_debut'] or 'periode'}_{data['date_fin'] or ''}.csv\"")
         return resp
 
+    @action(detail=False, methods=['get'], url_path='aide-is')
+    def aide_is(self, request):
+        """Aide au calcul de l'IS — estimation + acomptes + régularisation (FG140).
+
+        Estime l'IS dû d'un exercice depuis le CPC (résultat fiscal × barème
+        progressif marocain, plancher de la cotisation minimale), l'échéancier
+        des 4 acomptes provisionnels (25 % de l'IS de référence chacun, échus
+        aux 3e/6e/9e/12e mois) et la régularisation (IS dû − acomptes). C'est
+        une aide indicative et lecture seule (aucune écriture). Paramètres :
+        ``exercice`` (id, requis), ``reintegrations`` / ``deductions``
+        (ajustements extra-comptables, défaut 0), ``is_reference`` (IS N-1 pour
+        les acomptes ; défaut = IS estimé courant), ``validees`` (1 → écritures
+        validées seulement) et ``export=csv``. Scopée société, Admin/Responsable.
+        """
+        company = request.user.company
+        params = request.query_params
+        exercice_id = params.get('exercice')
+        if not exercice_id:
+            return Response(
+                {'detail': "Le paramètre 'exercice' est requis."},
+                status=status.HTTP_400_BAD_REQUEST)
+        exercice = ExerciceComptable.objects.filter(
+            company=company, pk=exercice_id).first()
+        if exercice is None:
+            return Response(
+                {'detail': 'Exercice introuvable pour cette société.'},
+                status=status.HTTP_404_NOT_FOUND)
+        kwargs = {
+            'reintegrations': self._decimal_param(params, 'reintegrations'),
+            'deductions': self._decimal_param(params, 'deductions'),
+            'is_reference': self._decimal_param(params, 'is_reference'),
+            'validees_seulement': params.get('validees') == '1',
+        }
+        data = selectors.aide_calcul_is(company, exercice, **kwargs)
+        if params.get('export') == 'csv':
+            return self._export_aide_is_csv(exercice, data)
+        return Response(data)
+
+    @staticmethod
+    def _decimal_param(params, key):
+        """Parse un paramètre décimal optionnel (None si absent/invalide)."""
+        from decimal import Decimal, InvalidOperation
+        raw = params.get(key)
+        if raw in (None, ''):
+            return None
+        try:
+            return Decimal(str(raw))
+        except (InvalidOperation, TypeError, ValueError):
+            return None
+
+    @staticmethod
+    def _export_aide_is_csv(exercice, data):
+        """Sérialise l'aide au calcul de l'IS (FG140) en CSV."""
+        estimation = data['estimation']
+        echeancier = data['echeancier_acomptes']
+        regul = data['regularisation']
+        buffer = io.StringIO()
+        writer = csv.writer(buffer, delimiter=';')
+        writer.writerow(['Aide au calcul de l\'IS'])
+        writer.writerow(
+            ['Exercice', f"{exercice.date_debut} → {exercice.date_fin}"])
+        writer.writerow([])
+        writer.writerow(['Résultat comptable', estimation['resultat_comptable']])
+        writer.writerow(['Réintégrations', estimation['reintegrations']])
+        writer.writerow(['Déductions', estimation['deductions']])
+        writer.writerow(['Résultat fiscal', estimation['resultat_fiscal']])
+        writer.writerow(['IS au barème', estimation['bareme']['is_bareme']])
+        writer.writerow(
+            ['Cotisation minimale', estimation['cotisation_minimale']['cm']])
+        writer.writerow(
+            ['IS dû', estimation['is_du'], f"(base : {estimation['base_retenue']})"])
+        writer.writerow([])
+        writer.writerow(['Acomptes provisionnels', 'Échéance', 'Montant'])
+        for acompte in echeancier['acomptes']:
+            writer.writerow(
+                [f"Acompte {acompte['numero']}", acompte['date_echeance'],
+                 acompte['montant']])
+        writer.writerow(['Total acomptes', '', echeancier['total_acomptes']])
+        writer.writerow([])
+        writer.writerow(
+            ['Régularisation', regul['regularisation'], regul['sens']])
+        writer.writerow(
+            ['Date limite de paiement', regul['date_limite_paiement']])
+        resp = HttpResponse(
+            buffer.getvalue(), content_type='text/csv; charset=utf-8')
+        resp['Content-Disposition'] = (
+            f'attachment; filename="aide_is_exercice_{exercice.pk}.csv"')
+        return resp
+
 
 # ── FG115 — Périodes comptables verrouillables ─────────────────────────────
 
