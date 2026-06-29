@@ -774,3 +774,88 @@ class EtapeApprobation(models.Model):
             f'Étape {self.niveau} — {self.get_statut_display()} '
             f'(contrat {self.contrat_id})'
         )
+
+
+class ContratActivity(models.Model):
+    """Chatter / journal d'un contrat (audit des transitions) — CONTRAT15.
+
+    Historique « chatter » à la Odoo d'un ``Contrat``, modèle maison aligné sur
+    ``litiges.ReclamationActivity`` / ``crm.LeadActivity``. Deux familles
+    d'entrées :
+
+      - automatiques (``type=log``) : audit des transitions du contrat —
+        changement de ``statut`` (machine d'états CONTRAT12), changement de
+        ``confidentialite`` (CONTRAT6), et chaque pas du workflow d'approbation
+        interne (CONTRAT14 : lancement, approbation, rejet d'une étape). On
+        consigne le champ touché (``field``) et son ancien → nouveau état
+        (``old_value`` → ``new_value``) ;
+      - manuelles (``type=note``) : notes libres (``message``).
+
+    La société et l'auteur sont TOUJOURS posés côté serveur (jamais lus du corps
+    de requête) — les vues écrivent ces entrées, jamais le navigateur.
+
+    Multi-tenant : ``company`` est posée côté serveur. ``contrat`` est une
+    référence interne à l'app `contrats` (foundation), FK dur autorisé ;
+    ``auteur`` pointe vers ``AUTH_USER_MODEL`` (app foundation), FK autorisé et
+    nullable (un changement automatisé sans utilisateur reste journalisable).
+
+    RUNTIME-SAFETY (leçon FG136) : les instantanés ``old_value`` / ``new_value``
+    peuvent être longs (un commentaire d'approbation, un libellé de niveau de
+    confidentialité…) — ils sont en ``TextField`` pour ne JAMAIS dépasser une
+    longueur maximale et lever en base.
+    """
+
+    class Kind(models.TextChoices):
+        LOG = 'log', 'Transition'
+        NOTE = 'note', 'Note'
+
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='contrats_activites',
+        verbose_name='Société',
+    )
+    contrat = models.ForeignKey(
+        Contrat,
+        on_delete=models.CASCADE,
+        related_name='activites',
+        verbose_name='Contrat',
+    )
+    type = models.CharField(
+        max_length=10, choices=Kind.choices, verbose_name='Type')
+    # Champ concerné par une transition automatique (ex. ``statut``,
+    # ``confidentialite``, ``approbation``). Vide pour une note manuelle.
+    field = models.CharField(
+        max_length=100, blank=True, default='', verbose_name='Champ')
+    # Instantanés AVANT/APRÈS d'une transition. TextField (et non CharField) :
+    # ces valeurs peuvent être longues (commentaire d'approbation, etc.) — elles
+    # ne doivent jamais dépasser une longueur maximale et lever (leçon FG136).
+    old_value = models.TextField(
+        blank=True, default='', verbose_name='Ancienne valeur')
+    new_value = models.TextField(
+        blank=True, default='', verbose_name='Nouvelle valeur')
+    message = models.TextField(
+        blank=True, default='', verbose_name='Message')
+    auteur = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='contrats_activites',
+        verbose_name='Auteur',
+    )
+    date_creation = models.DateTimeField(
+        auto_now_add=True, verbose_name='Créé le')
+
+    class Meta:
+        verbose_name = 'Activité contrat'
+        verbose_name_plural = 'Activités contrat'
+        ordering = ['-date_creation', '-id']
+        indexes = [
+            models.Index(
+                fields=['contrat', '-date_creation'],
+                name='contrats_act_ct_date',
+            ),
+        ]
+
+    def __str__(self):
+        return f'{self.contrat_id} {self.type}'.strip()

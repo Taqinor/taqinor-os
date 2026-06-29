@@ -45,6 +45,7 @@ from .serializers import (
     ChangerStatutSerializer,
     ClauseContratSerializer,
     ClauseSerializer,
+    ContratActivitySerializer,
     ContratLienSerializer,
     ContratSerializer,
     DeciderEtapeSerializer,
@@ -52,6 +53,7 @@ from .serializers import (
     InstancierContratSerializer,
     ModeleContratClauseSerializer,
     ModeleContratSerializer,
+    NoterContratSerializer,
     PartieContratSerializer,
     RegleApprobationSerializer,
     RendreContratSerializer,
@@ -104,6 +106,21 @@ class ContratViewSet(_ContratsBaseViewSet):
     def perform_create(self, serializer):
         serializer.save(
             company=self.request.user.company, created_by=self.request.user)
+
+    def perform_update(self, serializer):
+        """Sauvegarde + audit du changement de confidentialité (CONTRAT15).
+
+        Le ``statut`` n'est jamais modifié par PUT/PATCH direct (read-only au
+        sérialiseur) ; sa transition est auditée par l'action ``changer-statut``.
+        Ici on journalise uniquement un changement effectif de
+        ``confidentialite`` (CONTRAT6), avec auteur et société posés côté serveur.
+        """
+        ancien = serializer.instance.confidentialite
+        contrat = serializer.save()
+        if contrat.confidentialite != ancien:
+            services.journaliser_transition(
+                contrat, field='confidentialite', old_value=ancien,
+                new_value=contrat.confidentialite, auteur=self.request.user)
 
     @action(detail=True, methods=['get'])
     def liens(self, request, pk=None):
@@ -159,11 +176,18 @@ class ContratViewSet(_ContratsBaseViewSet):
         body = ChangerStatutSerializer(data=request.data)
         body.is_valid(raise_exception=True)
         cible = body.validated_data['statut']
+        ancien = contrat.statut
         try:
             services.changer_statut(contrat, cible)
         except services.TransitionInterdite as exc:
             return Response(
                 {'detail': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+        # CONTRAT15 — audit de la transition de statut (sauf no-op). Auteur et
+        # société posés côté serveur.
+        if contrat.statut != ancien:
+            services.journaliser_transition(
+                contrat, field='statut', old_value=ancien,
+                new_value=contrat.statut, auteur=request.user)
         return Response(
             ContratSerializer(contrat, context={'request': request}).data)
 
@@ -175,6 +199,38 @@ class ContratViewSet(_ContratsBaseViewSet):
             'statut': contrat.statut,
             'suivants': services.statuts_suivants(contrat),
         })
+
+    @action(detail=True, methods=['get'], url_path='historique')
+    def historique(self, request, pk=None):
+        """Timeline du chatter (CONTRAT15) — du plus récent au plus ancien.
+
+        Réunit les transitions auditées automatiques (statut, confidentialité,
+        pas d'approbation) et les notes manuelles. La société est garantie par
+        ``get_object`` (queryset scopé société).
+        """
+        contrat = self.get_object()
+        return Response(
+            ContratActivitySerializer(
+                contrat.activites.all(), many=True).data)
+
+    @action(detail=True, methods=['post'], url_path='noter')
+    def noter(self, request, pk=None):
+        """Ajoute une note manuelle au chatter (CONTRAT15).
+
+        Corps : ``message`` (requis, non vide). L'auteur est l'utilisateur
+        courant et la société celle du contrat — tous deux posés côté serveur,
+        jamais lus du corps de requête.
+        """
+        contrat = self.get_object()
+        body = NoterContratSerializer(data=request.data)
+        body.is_valid(raise_exception=True)
+        act = services.noter_contrat(
+            contrat, message=body.validated_data['message'],
+            auteur=request.user)
+        return Response(
+            ContratActivitySerializer(act).data,
+            status=status.HTTP_201_CREATED,
+        )
 
     @action(detail=True, methods=['get'], url_path='etapes-approbation')
     def etapes_approbation(self, request, pk=None):
@@ -205,6 +261,11 @@ class ContratViewSet(_ContratsBaseViewSet):
         except services.ApprobationError as exc:
             return Response(
                 {'detail': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+        # CONTRAT15 — audit du lancement du workflow d'approbation (CONTRAT14).
+        services.journaliser_transition(
+            contrat, field='approbation', old_value='',
+            new_value=f'workflow lancé ({len(etapes)} étape(s))',
+            auteur=request.user)
         return Response(
             EtapeApprobationSerializer(
                 etapes, many=True, context={'request': request}).data,
@@ -255,6 +316,14 @@ class ContratViewSet(_ContratsBaseViewSet):
         except services.ApprobationError as exc:
             return Response(
                 {'detail': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+        # CONTRAT15 — audit du pas de workflow (approbation/rejet d'une étape).
+        # ``new_value`` porte le statut local de l'étape (approuve/rejete) ; le
+        # commentaire éventuel est consigné en message.
+        services.journaliser_transition(
+            contrat, field='approbation',
+            old_value=f'étape {etape.niveau} en attente',
+            new_value=f'étape {etape.niveau} {etape.statut}',
+            message=commentaire, auteur=request.user)
         return Response(
             EtapeApprobationSerializer(
                 etape, context={'request': request}).data)

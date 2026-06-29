@@ -10,6 +10,7 @@ from .models import (
     Clause,
     ClauseContrat,
     Contrat,
+    ContratActivity,
     ContratLien,
     EtapeApprobation,
     ModeleContrat,
@@ -17,6 +18,40 @@ from .models import (
     PartieContrat,
     RegleApprobation,
 )
+
+
+class ContratActivitySerializer(serializers.ModelSerializer):
+    """Entrée du chatter d'un contrat (transition automatique ou note manuelle).
+
+    Tous les champs sont en LECTURE SEULE côté API : les entrées sont créées
+    exclusivement côté serveur (transitions auditées, action ``noter``). La
+    société et l'auteur ne sont jamais lus du corps de requête (CONTRAT15).
+    """
+    type_display = serializers.CharField(
+        source='get_type_display', read_only=True)
+    auteur_nom = serializers.SerializerMethodField()
+
+    class Meta:
+        model = ContratActivity
+        fields = [
+            'id', 'contrat', 'type', 'type_display', 'field', 'old_value',
+            'new_value', 'message', 'auteur', 'auteur_nom', 'date_creation',
+        ]
+        read_only_fields = fields
+
+    def get_auteur_nom(self, obj):
+        return getattr(obj.auteur, 'username', None)
+
+
+class NoterContratSerializer(serializers.Serializer):
+    """Corps de l'action ``noter`` : une note manuelle libre (non vide)."""
+    message = serializers.CharField()
+
+    def validate_message(self, value):
+        value = (value or '').strip()
+        if not value:
+            raise serializers.ValidationError('Note vide.')
+        return value
 
 
 class ContratSerializer(serializers.ModelSerializer):

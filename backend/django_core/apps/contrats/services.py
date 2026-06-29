@@ -399,3 +399,54 @@ def workflow_complet(contrat):
         return False
     return not etapes.exclude(
         statut=EtapeApprobation.Statut.APPROUVE).exists()
+
+
+# ---------------------------------------------------------------------------
+# CONTRAT15 — Chatter / journal du contrat (audit des transitions)
+# ---------------------------------------------------------------------------
+
+
+def journaliser_transition(contrat, *, field, old_value='', new_value='',
+                           auteur=None, message=''):
+    """Écrit une entrée de chatter AUTOMATIQUE (``type=log``) — CONTRAT15.
+
+    Consigne une transition auditée du contrat : champ touché (``field``) et son
+    instantané AVANT → APRÈS (``old_value`` → ``new_value``). La société est
+    déduite du contrat (posée côté serveur) ; l'auteur est passé par la vue
+    appelante (utilisateur courant) et reste ``None`` pour un changement
+    automatisé sans utilisateur.
+
+    Les valeurs sont coercées en chaîne — les champs cibles sont des
+    ``TextField`` (aucune limite de longueur à dépasser, leçon FG136).
+
+    Renvoie l'entrée créée.
+    """
+    from .models import ContratActivity
+
+    return ContratActivity.objects.create(
+        company=contrat.company,
+        contrat=contrat,
+        type=ContratActivity.Kind.LOG,
+        field=field,
+        old_value='' if old_value is None else str(old_value),
+        new_value='' if new_value is None else str(new_value),
+        message=message or '',
+        auteur=auteur,
+    )
+
+
+def noter_contrat(contrat, *, message, auteur=None):
+    """Écrit une note manuelle (``type=note``) sur le chatter d'un contrat.
+
+    Société déduite du contrat (côté serveur) ; auteur = utilisateur courant
+    passé par la vue. Renvoie l'entrée créée.
+    """
+    from .models import ContratActivity
+
+    return ContratActivity.objects.create(
+        company=contrat.company,
+        contrat=contrat,
+        type=ContratActivity.Kind.NOTE,
+        message=message,
+        auteur=auteur,
+    )
