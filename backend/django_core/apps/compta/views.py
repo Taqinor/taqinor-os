@@ -25,7 +25,8 @@ from .models import (
     EcritureComptable, Effet, ExerciceComptable, Immobilisation,
     IndemniteChantier, Journal, LignePrevisionnelTresorerie, LigneReleve,
     MouvementCaisse, NoteFrais, PaymentRun, PeriodeComptable, PlanComptable,
-    Rapprochement, RapprochementBancaire, RetenueSource, VirementInterne,
+    Rapprochement, RapprochementBancaire, RetenueSource, TimbreFiscal,
+    VirementInterne,
 )
 from .serializers import (
     BaremeIndemniteSerializer, BordereauRemiseSerializer, CaisseSerializer,
@@ -38,7 +39,8 @@ from .serializers import (
     MouvementCaisseSerializer, NoteFraisSerializer, PaymentRunSerializer,
     PeriodeComptableSerializer, PlanAmortissementSerializer,
     PlanComptableSerializer, RapprochementBancaireSerializer,
-    RapprochementSerializer, RetenueSourceSerializer, VirementInterneSerializer,
+    RapprochementSerializer, RetenueSourceSerializer, TimbreFiscalSerializer,
+    VirementInterneSerializer,
 )
 
 
@@ -2158,5 +2160,120 @@ class RetenueSourceViewSet(_ComptaBaseViewSet):
             buffer.getvalue(), content_type='text/csv; charset=utf-8')
         resp['Content-Disposition'] = (
             'attachment; filename="retenues_source_'
+            f"{data['date_debut'] or 'periode'}_{data['date_fin'] or ''}.csv\"")
+        return resp
+
+
+class TimbreFiscalViewSet(_ComptaBaseViewSet):
+    """Droit de timbre sur les encaissements en espèces (FG144).
+
+    Enregistre/consulte les droits de timbre de quittance : la création POST
+    calcule le ``montant`` côté serveur (max(base × taux %, minimum)) — le corps
+    ne peut jamais l'imposer — et N'ENREGISTRE un timbre QUE pour un règlement en
+    espèces ; tout autre mode est EXONÉRÉ et renvoie 400. ``verser`` (POST) marque
+    un timbre comme versé ; ``export`` (GET, détail) liste les timbres de la
+    période en CSV (``?export=csv`` jamais ``?format=``). Société scopée, posée
+    côté serveur ; Admin/Responsable uniquement.
+    """
+    queryset = TimbreFiscal.objects.select_related('created_by').all()
+    serializer_class = TimbreFiscalSerializer
+    filter_backends = [filters.SearchFilter, filters.OrderingFilter]
+    search_fields = ['reference', 'facture_ref', 'tiers_nom']
+    ordering_fields = ['date_encaissement', 'montant', 'base', 'id']
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        params = self.request.query_params
+        statut = params.get('statut')
+        if statut:
+            qs = qs.filter(statut=statut)
+        date_debut = params.get('date_debut')
+        if date_debut:
+            qs = qs.filter(date_encaissement__gte=date_debut)
+        date_fin = params.get('date_fin')
+        if date_fin:
+            qs = qs.filter(date_encaissement__lte=date_fin)
+        return qs
+
+    def create(self, request, *args, **kwargs):
+        """POST = enregistre un droit de timbre (montant dérivé côté serveur).
+
+        Un règlement non espèces est exonéré : on renvoie 400 sans créer de
+        timbre."""
+        serializer = self.get_serializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        vd = serializer.validated_data
+        try:
+            timbre = services.enregistrer_timbre_fiscal(
+                request.user.company,
+                date_encaissement=vd['date_encaissement'],
+                base=vd.get('base') or 0,
+                mode_reglement=vd.get('mode_reglement') or services.MODE_ESPECES,
+                taux=vd.get('taux'),
+                minimum=vd.get('minimum'),
+                paiement_id=vd.get('paiement_id'),
+                facture_ref=vd.get('facture_ref', '') or '',
+                tiers_type=vd.get('tiers_type', '') or '',
+                tiers_id=vd.get('tiers_id'),
+                tiers_nom=vd.get('tiers_nom', '') or '',
+                libelle=vd.get('libelle', '') or '',
+                user=request.user)
+        except DjangoValidationError as exc:
+            return Response(
+                {'detail': exc.messages[0] if exc.messages else str(exc)},
+                status=status.HTTP_400_BAD_REQUEST)
+        if timbre is None:
+            return Response(
+                {'detail': "Le droit de timbre ne s'applique qu'aux "
+                           "encaissements en espèces."},
+                status=status.HTTP_400_BAD_REQUEST)
+        return Response(
+            self.get_serializer(timbre).data, status=status.HTTP_201_CREATED)
+
+    @action(detail=True, methods=['post'])
+    def verser(self, request, pk=None):
+        """Marque le droit de timbre comme versé au Trésor (FG144)."""
+        timbre = self.get_object()  # scopé société par TenantMixin.
+        services.marquer_timbre_verse(timbre)
+        return Response(self.get_serializer(timbre).data)
+
+    @action(detail=False, methods=['get'])
+    def export(self, request):
+        """Exporte le détail des droits de timbre d'une période en CSV (FG144).
+
+        Une ligne par timbre (date, référence, facture, payeur, base, taux,
+        minimum, droit de timbre). Paramètres : ``date_debut`` / ``date_fin`` /
+        ``statut``. Lecture seule, scopée société, Admin/Responsable.
+        """
+        params = request.query_params
+        data = selectors.timbres_fiscaux_periode(
+            request.user.company,
+            date_debut=params.get('date_debut') or None,
+            date_fin=params.get('date_fin') or None,
+            statut=params.get('statut') or None)
+        buffer = io.StringIO()
+        writer = csv.writer(buffer, delimiter=';')
+        writer.writerow(['Droits de timbre sur encaissements espèces (détail)'])
+        writer.writerow(
+            ['Période', f"{data['date_debut'] or ''} → {data['date_fin'] or ''}"])
+        writer.writerow([])
+        writer.writerow(
+            ['Date', 'Référence', 'Facture', 'Payeur', 'Base', 'Taux %',
+             'Minimum', 'Droit de timbre'])
+        for ligne in data['lignes']:
+            writer.writerow([
+                ligne['date_encaissement'], ligne['reference'],
+                ligne['facture_ref'], ligne['tiers_nom'], ligne['base'],
+                ligne['taux'], ligne['minimum'], ligne['montant']])
+        writer.writerow([])
+        writer.writerow(
+            ['Totaux', '', '', '', data['totaux']['base'], '', '',
+             data['totaux']['montant']])
+        writer.writerow(
+            ['Total à verser', '', '', '', '', '', '', data['total_a_verser']])
+        resp = HttpResponse(
+            buffer.getvalue(), content_type='text/csv; charset=utf-8')
+        resp['Content-Disposition'] = (
+            'attachment; filename="timbres_fiscaux_'
             f"{data['date_debut'] or 'periode'}_{data['date_fin'] or ''}.csv\"")
         return resp

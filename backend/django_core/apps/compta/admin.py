@@ -6,7 +6,8 @@ from .models import (
     ExerciceComptable, Immobilisation, IndemniteChantier, Journal,
     LigneEcriture, LignePrevisionnelTresorerie, LigneReleve, MouvementCaisse,
     NoteFrais, PaymentRun, PaymentRunLine, PeriodeComptable, PlanComptable,
-    Rapprochement, RapprochementBancaire, RetenueSource, VirementInterne,
+    Rapprochement, RapprochementBancaire, RetenueSource, TimbreFiscal,
+    VirementInterne,
 )
 
 
@@ -237,3 +238,12 @@ class RetenueSourceAdmin(admin.ModelAdmin):
                     'tiers_nom', 'base', 'taux', 'montant', 'statut', 'company')
     list_filter = ('type_prestation', 'statut')
     search_fields = ('reference', 'piece', 'tiers_nom', 'identifiant_fiscal')
+
+
+@admin.register(TimbreFiscal)
+class TimbreFiscalAdmin(admin.ModelAdmin):
+    list_display = ('id', 'reference', 'date_encaissement', 'facture_ref',
+                    'tiers_nom', 'base', 'taux', 'minimum', 'montant', 'statut',
+                    'company')
+    list_filter = ('statut', 'mode_reglement')
+    search_fields = ('reference', 'facture_ref', 'tiers_nom')

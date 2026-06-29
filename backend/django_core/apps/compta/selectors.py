@@ -13,6 +13,7 @@ from django.utils import timezone
 from .models import (
     Caisse, CompteComptable, CompteTresorerie, Effet, LigneEcriture,
     LignePrevisionnelTresorerie, MouvementCaisse, Rapprochement, RetenueSource,
+    TimbreFiscal,
 )
 
 
@@ -1361,6 +1362,76 @@ def declaration_honoraires(company, annee, *, type_prestation=None):
             'nb_pieces': total_pieces,
         },
         'nb_beneficiaires': len(lignes),
+    }
+
+
+# ── FG144 — Droit de timbre sur encaissements en espèces ───────────────────
+
+def _timbres_qs(company, *, date_debut=None, date_fin=None, statut=None):
+    """Droits de timbre d'une société, bornés sur la DATE D'ENCAISSEMENT.
+
+    Le bornage suit ``date_encaissement`` (le fait générateur du timbre) — c'est
+    ce qui définit la période de versement. Lecture seule, scopée société.
+    """
+    qs = TimbreFiscal.objects.filter(company=company)
+    if date_debut:
+        qs = qs.filter(date_encaissement__gte=date_debut)
+    if date_fin:
+        qs = qs.filter(date_encaissement__lte=date_fin)
+    if statut:
+        qs = qs.filter(statut=statut)
+    return qs
+
+
+def timbres_fiscaux_periode(company, *, date_debut=None, date_fin=None,
+                            statut=None):
+    """Liste détaillée des droits de timbre sur une période (FG144).
+
+    Renvoie ``{'date_debut', 'date_fin', 'lignes': [...], 'totaux':
+    {'base', 'montant', 'nb_pieces'}, 'total_a_verser'}`` où chaque ligne porte
+    le paiement d'origine (string-ref), le payeur, la base encaissée, le taux, le
+    minimum et le droit de timbre. Bornée sur ``date_encaissement``, lecture
+    seule, scopée société. ``total_a_verser`` = somme des droits de timbre — ce
+    que la société reverse au Trésor.
+    """
+    qs = _timbres_qs(
+        company, date_debut=date_debut, date_fin=date_fin, statut=statut,
+    ).order_by('date_encaissement', 'id')
+    lignes = []
+    total_base = total_montant = Decimal('0')
+    nb = 0
+    for tf in qs:
+        base = tf.base or Decimal('0')
+        montant = tf.montant or Decimal('0')
+        total_base += base
+        total_montant += montant
+        nb += 1
+        lignes.append({
+            'id': tf.id,
+            'reference': tf.reference,
+            'date_encaissement': tf.date_encaissement,
+            'paiement_id': tf.paiement_id,
+            'facture_ref': tf.facture_ref,
+            'mode_reglement': tf.mode_reglement,
+            'tiers_type': tf.tiers_type,
+            'tiers_id': tf.tiers_id,
+            'tiers_nom': tf.tiers_nom,
+            'base': base,
+            'taux': tf.taux or Decimal('0'),
+            'minimum': tf.minimum or Decimal('0'),
+            'montant': montant,
+            'statut': tf.statut,
+        })
+    return {
+        'date_debut': date_debut,
+        'date_fin': date_fin,
+        'lignes': lignes,
+        'totaux': {
+            'base': total_base,
+            'montant': total_montant,
+            'nb_pieces': nb,
+        },
+        'total_a_verser': total_montant,
     }
 
 

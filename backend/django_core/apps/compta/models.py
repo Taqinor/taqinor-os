@@ -2630,3 +2630,140 @@ class RetenueSource(models.Model):
         self.montant = (base * taux / Decimal('100')).quantize(
             Decimal('0.01'))
         return self
+
+
+# ── FG144 — Droit de timbre sur encaissements en espèces ───────────────────
+class TimbreFiscal(models.Model):
+    """Droit de timbre (stamp duty) sur un encaissement réglé en ESPÈCES (FG144).
+
+    Obligation marocaine (Code Général des Impôts, droit de timbre de quittance) :
+    tout paiement encaissé EN ESPÈCES est soumis à un droit de timbre proportionnel
+    — taux légal 0,25 % de la somme reçue, avec un MINIMUM forfaitaire par quittance.
+    Les règlements NON espèces (virement, chèque, carte, prélèvement…) en sont
+    EXONÉRÉS : ce snapshot n'existe donc que pour les encaissements cash. On fige
+    par encaissement la ``base`` (montant encaissé en espèces), le ``taux`` appliqué,
+    le ``minimum`` forfaitaire et le ``montant`` du timbre = max(base × taux %,
+    minimum), arrondi à 2 décimales.
+
+    Le paiement d'origine (``apps.ventes.Paiement``) est référencé UNIQUEMENT par
+    string-id (``paiement_id`` / ``facture_ref``) — JAMAIS un import cross-app de
+    modèle, exactement comme une ``LigneEcriture`` ou une ``RetenueSource``. Tout
+    est multi-société : ``company`` posée côté serveur, jamais lue du corps de
+    requête. Le snapshot (base/taux/minimum/montant) est FIGÉ au moment de
+    l'enregistrement et restitué à l'identique à l'écran et au CSV.
+    """
+    class Statut(models.TextChoices):
+        A_VERSER = 'a_verser', 'À verser'
+        VERSEE = 'versee', 'Versée'
+
+    # Taux légal du droit de timbre de quittance (espèces) : 0,25 %.
+    TAUX_DEFAUT = Decimal('0.25')
+    # Minimum forfaitaire de perception par quittance (statutaire).
+    MINIMUM_DEFAUT = Decimal('0.25')
+
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='timbres_fiscaux',
+        verbose_name='Société',
+    )
+    reference = models.CharField(
+        max_length=50, blank=True, default='',
+        verbose_name='Référence')
+    date_encaissement = models.DateField(verbose_name="Date d'encaissement")
+    # ── Paiement d'origine (string-ref, jamais d'import modèle ventes) ──
+    paiement_id = models.PositiveIntegerField(
+        null=True, blank=True, verbose_name="ID du paiement d'origine")
+    facture_ref = models.CharField(
+        max_length=80, blank=True, default='',
+        verbose_name='Facture / pièce')
+    mode_reglement = models.CharField(
+        max_length=20, blank=True, default='especes',
+        verbose_name='Mode de règlement')
+    # ── Tiers payeur (auxiliaire string-FK, jamais d'import modèle) ──
+    tiers_type = models.CharField(
+        max_length=20, blank=True, default='', verbose_name='Type de tiers')
+    tiers_id = models.PositiveIntegerField(
+        null=True, blank=True, verbose_name='ID du tiers')
+    tiers_nom = models.CharField(
+        max_length=200, blank=True, default='',
+        verbose_name='Nom du payeur')
+    # ── Montants FIGÉS au calcul (snapshot auditable) ──
+    base = models.DecimalField(
+        max_digits=14, decimal_places=2, default=Decimal('0'),
+        verbose_name='Montant encaissé (base)')
+    taux = models.DecimalField(
+        max_digits=5, decimal_places=2, default=TAUX_DEFAUT,
+        verbose_name='Taux du droit de timbre (%)')
+    minimum = models.DecimalField(
+        max_digits=8, decimal_places=2, default=MINIMUM_DEFAUT,
+        verbose_name='Minimum de perception')
+    montant = models.DecimalField(
+        max_digits=14, decimal_places=2, default=Decimal('0'),
+        verbose_name='Droit de timbre')
+    statut = models.CharField(
+        max_length=10, choices=Statut.choices,
+        default=Statut.A_VERSER, verbose_name='Statut')
+    libelle = models.CharField(
+        max_length=200, blank=True, default='', verbose_name='Libellé')
+    created_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='timbres_fiscaux_crees',
+        verbose_name='Enregistré par',
+    )
+    date_creation = models.DateTimeField(
+        auto_now_add=True, verbose_name='Créé le')
+
+    class Meta:
+        verbose_name = 'Droit de timbre'
+        verbose_name_plural = 'Droits de timbre'
+        ordering = ['-date_encaissement', '-id']
+        constraints = [
+            models.UniqueConstraint(
+                fields=['company', 'reference'],
+                condition=models.Q(reference__gt=''),
+                name='uniq_timbre_reference',
+            ),
+            # Idempotence : un même paiement espèces ne produit qu'un timbre par
+            # société (NULL paiement_id non contraint → saisies libres OK).
+            models.UniqueConstraint(
+                fields=['company', 'paiement_id'],
+                condition=models.Q(paiement_id__isnull=False),
+                name='uniq_timbre_paiement',
+            ),
+        ]
+
+    def __str__(self):
+        return (f'{self.reference or "TIMBRE"} — '
+                f'{self.tiers_nom or self.facture_ref} ({self.montant})')
+
+    def clean(self):
+        super().clean()
+        if self.base is not None and self.base < 0:
+            raise ValidationError(
+                "Le montant encaissé ne peut pas être négatif.")
+        if self.taux is not None and (self.taux < 0 or self.taux > 100):
+            raise ValidationError(
+                "Le taux du droit de timbre doit être compris entre 0 et 100 %.")
+        if self.minimum is not None and self.minimum < 0:
+            raise ValidationError(
+                "Le minimum de perception ne peut pas être négatif.")
+
+    def recalculer(self):
+        """(Re)calcule le droit de timbre = max(base × taux %, minimum).
+
+        Le droit de timbre proportionnel s'applique avec un plancher forfaitaire :
+        on retient le plus grand des deux, arrondi à 2 décimales. Une base nulle ne
+        génère aucun timbre (pas d'encaissement = pas de quittance)."""
+        base = self.base or Decimal('0')
+        taux = self.taux or Decimal('0')
+        minimum = self.minimum or Decimal('0')
+        if base <= 0:
+            self.montant = Decimal('0.00')
+            return self
+        proportionnel = (base * taux / Decimal('100')).quantize(
+            Decimal('0.01'))
+        self.montant = max(proportionnel, minimum.quantize(Decimal('0.01')))
+        return self
