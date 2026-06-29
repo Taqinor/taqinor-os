@@ -21,6 +21,7 @@ from authentication.permissions import HasPermission, IsResponsableOrAdmin
 
 from . import selectors, services
 from .models import (
+    AffectationRoster,
     DemandeConge,
     Departement,
     DocumentEmploye,
@@ -35,6 +36,7 @@ from .models import (
     TypeAbsence,
 )
 from .serializers import (
+    AffectationRosterSerializer,
     DemandeCongeSerializer,
     DepartementSerializer,
     DocumentEmployeSerializer,
@@ -600,3 +602,103 @@ class PointageViewSet(_RhBaseViewSet):
             pointage.note = note
         pointage.save()
         return Response(self.get_serializer(pointage).data)
+
+
+class AffectationRosterViewSet(_RhBaseViewSet):
+    """Planning d'équipes / roster (FG169) — affectation hebdo + conflit congés.
+
+    Société scopée + Administrateur/Responsable. ``company`` est posée côté
+    serveur ; ``employe`` doit appartenir à la même société. À la création ET à
+    la mise à jour, ``semaine_du`` (lundi de la semaine) et ``conflit_conge``
+    (congé validé couvrant le jour) sont CALCULÉS côté serveur via
+    ``services.appliquer_roster`` — jamais lus du corps.
+
+    Filtres : ``?employe=<id>``, ``?equipe=<libellé>``, ``?date=YYYY-MM-DD``,
+    ``?semaine=YYYY-MM-DD`` (lundi de semaine), ``?conflit=1`` (conflits seuls).
+
+    Actions :
+    * ``GET .../semaine/?lundi=YYYY-MM-DD`` — roster d'une semaine entière.
+    * ``GET .../conflits/?debut=&fin=`` — affectations en conflit de congé.
+    """
+    queryset = AffectationRoster.objects.select_related('employe').all()
+    serializer_class = AffectationRosterSerializer
+    filter_backends = [filters.SearchFilter, filters.OrderingFilter]
+    search_fields = ['equipe']
+    ordering_fields = ['date', 'equipe', 'date_creation']
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        employe = self.request.query_params.get('employe')
+        if employe:
+            qs = qs.filter(employe_id=employe)
+        equipe = self.request.query_params.get('equipe')
+        if equipe:
+            qs = qs.filter(equipe=equipe)
+        date_str = self.request.query_params.get('date')
+        if date_str:
+            jour = self._parse_date(date_str)
+            if jour:
+                qs = qs.filter(date=jour)
+        semaine = self._parse_date(self.request.query_params.get('semaine'))
+        if semaine:
+            lundi = services.lundi_de_la_semaine(semaine)
+            qs = qs.filter(semaine_du=lundi)
+        conflit = self.request.query_params.get('conflit')
+        if conflit in ('1', 'true', 'True'):
+            qs = qs.filter(conflit_conge=True)
+        return qs
+
+    @staticmethod
+    def _parse_date(raw):
+        if not raw:
+            return None
+        from datetime import datetime
+        try:
+            return datetime.strptime(raw, '%Y-%m-%d').date()
+        except (TypeError, ValueError):
+            return None
+
+    def perform_create(self, serializer):
+        """Company posée côté serveur ; semaine + conflit calculés côté serveur."""
+        instance = serializer.save(company=self.request.user.company)
+        services.appliquer_roster(instance)
+        instance.save(update_fields=['semaine_du', 'conflit_conge'])
+
+    def perform_update(self, serializer):
+        """Recalcule semaine + conflit de congé à chaque mise à jour."""
+        instance = serializer.save()
+        services.appliquer_roster(instance)
+        instance.save(update_fields=['semaine_du', 'conflit_conge'])
+
+    @action(detail=False, methods=['get'])
+    def semaine(self, request):
+        """Roster d'une semaine entière (``?lundi=YYYY-MM-DD``, défaut : semaine
+        courante). S'appuie sur ``selectors.roster_semaine`` — scopé société."""
+        lundi = self._parse_date(request.query_params.get('lundi'))
+        if lundi is None:
+            lundi = services.lundi_de_la_semaine(timezone.localdate())
+        else:
+            lundi = services.lundi_de_la_semaine(lundi)
+        qs = selectors.roster_semaine(request.user.company, lundi)
+        page = self.paginate_queryset(qs)
+        if page is not None:
+            serializer = self.get_serializer(page, many=True)
+            return self.get_paginated_response(serializer.data)
+        serializer = self.get_serializer(qs, many=True)
+        return Response(serializer.data)
+
+    @action(detail=False, methods=['get'])
+    def conflits(self, request):
+        """Affectations en CONFLIT de congé sur une plage (``?debut=&fin=``,
+        défaut : 30 jours à venir). S'appuie sur ``selectors.conflits_roster``."""
+        today = timezone.localdate()
+        debut = self._parse_date(request.query_params.get('debut')) or today
+        fin = self._parse_date(request.query_params.get('fin')) \
+            or (today + timedelta(days=30))
+        qs = selectors.conflits_roster(request.user.company, debut, fin)
+        page = self.paginate_queryset(qs)
+        if page is not None:
+            serializer = self.get_serializer(page, many=True)
+            return self.get_paginated_response(serializer.data)
+        serializer = self.get_serializer(qs, many=True)
+        return Response(serializer.data)

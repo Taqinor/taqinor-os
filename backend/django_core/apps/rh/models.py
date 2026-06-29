@@ -864,3 +864,88 @@ class DemandeConge(models.Model):
     def __str__(self):
         return (f'{self.employe.matricule} — {self.type_absence.code} '
                 f'{self.date_debut}→{self.date_fin} ({self.get_statut_display()})')
+
+
+class AffectationRoster(models.Model):
+    """Planning d'équipes / roster (FG169) — affectation hebdomadaire d'un
+    technicien à une équipe et, optionnellement, à une camionnette.
+
+    Une ligne de roster affecte UN employé (``employe``) à UNE journée
+    (``date``) au sein d'une ``equipe`` (libellé normalisé d'équipe terrain,
+    p. ex. « Équipe Nord », « Pose A ») et, facultativement, à une camionnette
+    du parc (``vehicule_id`` — STRING-FK vers ``flotte.Vehicule`` : on ne
+    référence jamais ``flotte.models`` directement, exactement comme
+    ``FeuilleTemps.installation_id``). Le roster se construit semaine par semaine
+    (sept lignes/jour par technicien) ; ``semaine_du`` mémorise le lundi de la
+    semaine pour grouper l'affichage et les requêtes hebdomadaires.
+
+    DÉTECTION DE CONFLIT DE CONGÉS : un technicien ayant une demande de congé
+    VALIDÉE couvrant la journée d'affectation ne devrait PAS y être affecté.
+    Le champ ``conflit_conge`` matérialise ce conflit (calculé côté serveur à la
+    création/màj via ``services.detecter_conflit_conge`` qui réutilise le
+    sélecteur congés ``employe_absent_le``). Il n'est jamais lu du corps.
+
+    Multi-société : ``company`` est posée côté serveur (jamais lue du corps) ;
+    ``employe`` doit appartenir à la même société. Une seule affectation par
+    (société, employé, jour) — un technicien n'est pas sur deux équipes le même
+    jour (``unique_together``).
+    """
+    class Creneau(models.TextChoices):
+        JOURNEE = 'journee', 'Journée'
+        MATIN = 'matin', 'Matin'
+        APRES_MIDI = 'apres_midi', 'Après-midi'
+
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='rh_affectations_roster',
+        verbose_name='Société',
+    )
+    employe = models.ForeignKey(
+        DossierEmploye,
+        on_delete=models.CASCADE,
+        related_name='affectations_roster',
+        verbose_name='Employé',
+    )
+    equipe = models.CharField(max_length=120, verbose_name='Équipe')
+    # String FK cross-app vers flotte.Vehicule — jamais importer flotte.models.
+    vehicule_id = models.PositiveIntegerField(
+        null=True, blank=True, verbose_name='Camionnette (ID, optionnel)')
+    date = models.DateField(verbose_name="Date d'affectation")
+    # Lundi de la semaine concernée (posé côté serveur à partir de ``date``).
+    semaine_du = models.DateField(
+        null=True, blank=True, verbose_name='Semaine du (lundi)')
+    creneau = models.CharField(
+        max_length=10, choices=Creneau.choices,
+        default=Creneau.JOURNEE, verbose_name='Créneau')
+    # Conflit de congé : vrai si l'employé est en congé VALIDÉ ce jour-là.
+    # Calculé côté serveur (jamais lu du corps de requête).
+    conflit_conge = models.BooleanField(
+        default=False, verbose_name='Conflit de congé')
+    note = models.CharField(
+        max_length=255, blank=True, default='', verbose_name='Note')
+    date_creation = models.DateTimeField(
+        auto_now_add=True, verbose_name='Créé le')
+    date_modification = models.DateTimeField(
+        auto_now=True, verbose_name='Modifié le')
+
+    class Meta:
+        verbose_name = "Affectation roster"
+        verbose_name_plural = "Affectations roster"
+        unique_together = [('company', 'employe', 'date')]
+        ordering = ['-date', 'equipe', 'employe']
+        indexes = [
+            models.Index(
+                fields=['company', 'semaine_du'],
+                name='rh_roster_comp_semaine_idx'),
+            models.Index(
+                fields=['company', 'equipe'],
+                name='rh_roster_comp_equipe_idx'),
+            models.Index(
+                fields=['company', 'date'],
+                name='rh_roster_comp_date_idx'),
+        ]
+
+    def __str__(self):
+        return (f'{self.employe.matricule} — {self.equipe} '
+                f'{self.date} ({self.get_creneau_display()})')

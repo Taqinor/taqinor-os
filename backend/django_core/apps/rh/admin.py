@@ -1,6 +1,7 @@
 from django.contrib import admin
 
 from .models import (
+    AffectationRoster,
     DemandeConge,
     Departement,
     DocumentEmploye,
@@ -98,3 +99,11 @@ class HeuresSuppAdmin(admin.ModelAdmin):
                     'hs_100', 'jour_repos_ferie', 'company')
     list_filter = ('jour_repos_ferie',)
     search_fields = ('employe__matricule', 'employe__nom', 'employe__prenom')
+
+
+@admin.register(AffectationRoster)
+class AffectationRosterAdmin(admin.ModelAdmin):
+    list_display = ('employe', 'equipe', 'date', 'creneau', 'vehicule_id',
+                    'conflit_conge', 'company')
+    list_filter = ('creneau', 'conflit_conge')
+    search_fields = ('employe__matricule', 'employe__nom', 'equipe')

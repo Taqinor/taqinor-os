@@ -7,6 +7,7 @@ appartenant à la société de l'utilisateur.
 from rest_framework import serializers
 
 from .models import (
+    AffectationRoster,
     DemandeConge,
     Departement,
     DocumentEmploye,
@@ -363,4 +364,61 @@ class PointageSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError(
                 {'heure_depart':
                  "L'heure de départ précède l'heure d'arrivée."})
+        return attrs
+
+
+class AffectationRosterSerializer(serializers.ModelSerializer):
+    """Affectation roster (FG169) — affectation hebdo technicien↔équipe/camionnette.
+
+    Le client saisit ``employe``, ``equipe``, ``date``, ``creneau`` et,
+    facultativement, ``vehicule_id`` et ``note``. ``company`` est posée côté
+    serveur (jamais lue du corps) ; ``employe`` doit appartenir à la société.
+    ``semaine_du`` (lundi de la semaine) et ``conflit_conge`` (congé validé
+    couvrant le jour) sont CALCULÉS et posés côté serveur — lecture seule.
+    """
+    creneau_display = serializers.CharField(
+        source='get_creneau_display', read_only=True)
+    employe_nom = serializers.SerializerMethodField()
+
+    class Meta:
+        model = AffectationRoster
+        fields = [
+            'id', 'employe', 'employe_nom', 'equipe', 'vehicule_id',
+            'date', 'semaine_du', 'creneau', 'creneau_display',
+            'conflit_conge', 'note',
+            'date_creation', 'date_modification',
+        ]
+        read_only_fields = [
+            'semaine_du', 'conflit_conge',
+            'date_creation', 'date_modification',
+        ]
+
+    def get_employe_nom(self, obj):
+        return f'{obj.employe.nom} {obj.employe.prenom}'
+
+    def validate_employe(self, value):
+        return _meme_societe(self, value, 'Employé')
+
+    def validate_equipe(self, value):
+        if not value or not value.strip():
+            raise serializers.ValidationError("L'équipe est obligatoire.")
+        return value
+
+    def validate(self, attrs):
+        # Unicité (société, employé, jour) : ``company`` n'est pas un champ du
+        # sérialiseur (posée côté serveur), donc DRF ne génère pas le validateur
+        # automatiquement — on le vérifie ici contre la société de l'utilisateur.
+        request = self.context.get('request')
+        employe = attrs.get('employe') or getattr(self.instance, 'employe', None)
+        jour = attrs.get('date') or getattr(self.instance, 'date', None)
+        if request is not None and employe is not None and jour is not None:
+            qs = AffectationRoster.objects.filter(
+                company_id=request.user.company_id,
+                employe=employe, date=jour)
+            if self.instance is not None:
+                qs = qs.exclude(pk=self.instance.pk)
+            if qs.exists():
+                raise serializers.ValidationError(
+                    {'date': "Une affectation existe déjà pour cet employé "
+                             "ce jour-là."})
         return attrs

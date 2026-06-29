@@ -8,6 +8,7 @@ from datetime import timedelta
 from django.utils import timezone
 
 from .models import (
+    AffectationRoster,
     DemandeConge,
     DocumentEmploye,
     DossierEmploye,
@@ -244,6 +245,42 @@ def employes_assignables(company, jour):
         .exclude(id__in=absents)
         .order_by('nom', 'prenom')
     )
+
+
+def roster_semaine(company, lundi):
+    """Affectations roster (FG169) d'une semaine donnée (du lundi au dimanche).
+
+    Lecture cadrée société : renvoie toutes les lignes de roster dont la ``date``
+    tombe dans la semaine commençant le ``lundi`` fourni (7 jours inclus). Trié
+    par jour puis équipe. Queryset vide si la société ou le lundi manque.
+    """
+    if company is None or lundi is None:
+        return AffectationRoster.objects.none()
+    fin = lundi + timedelta(days=6)
+    return (
+        AffectationRoster.objects
+        .filter(company=company, date__gte=lundi, date__lte=fin)
+        .select_related('employe')
+        .order_by('date', 'equipe', 'employe_id')
+    )
+
+
+def conflits_roster(company, date_debut=None, date_fin=None):
+    """Affectations roster (FG169) en CONFLIT de congé sur une plage.
+
+    Lecture cadrée société : ne retient que les lignes ``conflit_conge=True``
+    (technicien affecté alors qu'il a une demande de congé VALIDÉE couvrant ce
+    jour). ``date_debut``/``date_fin`` bornent la plage si fournis. Sert d'alerte
+    de dispatch (un planificateur revoit ces affectations). Trié par date.
+    """
+    if company is None:
+        return AffectationRoster.objects.none()
+    qs = AffectationRoster.objects.filter(company=company, conflit_conge=True)
+    if date_debut is not None:
+        qs = qs.filter(date__gte=date_debut)
+    if date_fin is not None:
+        qs = qs.filter(date__lte=date_fin)
+    return qs.select_related('employe').order_by('date', 'equipe', 'employe_id')
 
 
 def poste_appartient_societe(company, poste_id):
