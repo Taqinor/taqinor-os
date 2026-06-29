@@ -17,7 +17,7 @@ Capacités couvertes (toutes NO-OP par défaut) :
   * OCR document (FG355 CIN/contrat, FG356 bon de livraison) — ``OCRProvider``.
   * Transcription audio → texte (FG357 notes terrain) — ``STTProvider``.
   * Contrôle qualité vision sur photos (FG358) — ``VisionQAProvider``.
-  * Synthèse / brouillon LLM (FG353/FG354, futur) — ``LLMProvider``.
+  * Synthèse de fil (FG353) & brouillon de réponse (FG354) — ``LLMProvider``.
 
 Sélection : ``core.ai.registry.get_provider(capability)`` lit le réglage
 ``settings.AI_PROVIDERS`` (dict capacité→clé) et retombe sur ``'noop'``.
@@ -49,13 +49,19 @@ from core.ai.schemas import (
 )
 from core.ai.services import (
     DEFAULT_PHOTO_QA_CHECKLIST,
+    REPLY_CHANNELS,
     MatchedLine,
     NextBestAction,
+    ReplyDraft,
+    ThreadSummary,
+    draft_reply,
     extract_document,
+    format_thread,
     inspect_photo,
     match_ocr_lines,
     recommend_next_action,
     recommend_next_action_ai,
+    summarize_thread,
     transcribe_audio,
 )
 
@@ -90,4 +96,11 @@ __all__ = [
     'recommend_next_action',
     'recommend_next_action_ai',
     'NextBestAction',
+    # Synthèse de fil & brouillon de réponse (FG353/FG354)
+    'format_thread',
+    'summarize_thread',
+    'ThreadSummary',
+    'draft_reply',
+    'ReplyDraft',
+    'REPLY_CHANNELS',
 ]
