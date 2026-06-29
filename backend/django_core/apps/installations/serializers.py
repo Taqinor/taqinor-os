@@ -14,6 +14,7 @@ from .models import (
     DocumentProjet, RevisionDocument,
     Projet, ProjetTache, ProjetChantier, ProjetDevis, ProjetTicket,
     BudgetProjet, BudgetEngagement,
+    IndisponibiliteRessource,
 )
 
 
@@ -913,3 +914,62 @@ class BudgetProjetSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError(
                 'Le seuil d\'alerte doit être compris entre 0 et 100 %.')
         return value
+
+
+class IndisponibiliteRessourceSerializer(serializers.ModelSerializer):
+    """FG302 — créneau d'indisponibilité d'une ressource terrain (technicien OU
+    camionnette) sur [date_debut, date_fin]. La société et `created_by` sont
+    posés côté serveur ; la garde « exactement une cible + ordre des dates » est
+    validée ici (et re-validée côté modèle via `clean`)."""
+    type_indispo_display = serializers.CharField(
+        source='get_type_indispo_display', read_only=True, default=None)
+    technicien_nom = serializers.SerializerMethodField()
+    camionnette_nom = serializers.CharField(
+        source='camionnette.nom', read_only=True, default=None)
+
+    class Meta:
+        model = IndisponibiliteRessource
+        fields = [
+            'id', 'technicien', 'technicien_nom',
+            'camionnette', 'camionnette_nom',
+            'type_indispo', 'type_indispo_display',
+            'date_debut', 'date_fin', 'motif',
+            'created_by', 'date_creation', 'date_modification',
+        ]
+        read_only_fields = ['created_by', 'date_creation', 'date_modification']
+
+    def get_technicien_nom(self, obj):
+        user = getattr(obj, 'technicien', None)
+        if user is None:
+            return None
+        getter = getattr(user, 'get_full_name', None)
+        nom = (getter() or '').strip() if callable(getter) else ''
+        return nom or getattr(user, 'username', None)
+
+    def validate(self, attrs):
+        """Exactement UNE cible (technicien XOR camionnette) et `date_fin` ≥
+        `date_debut`. Sur une mise à jour partielle, on retombe sur la valeur
+        déjà persistée pour le champ non fourni."""
+        def _resolved(field):
+            if field in attrs:
+                return attrs[field]
+            return getattr(self.instance, field, None)
+
+        technicien = _resolved('technicien')
+        camionnette = _resolved('camionnette')
+        if technicien is None and camionnette is None:
+            raise serializers.ValidationError(
+                {'technicien': 'Indiquez une ressource (technicien ou '
+                               'camionnette).'})
+        if technicien is not None and camionnette is not None:
+            raise serializers.ValidationError(
+                {'camionnette': 'Une indisponibilité vise UNE seule ressource '
+                                '(technicien OU camionnette, pas les deux).'})
+
+        debut = _resolved('date_debut')
+        fin = _resolved('date_fin')
+        if debut is not None and fin is not None and fin < debut:
+            raise serializers.ValidationError(
+                {'date_fin': 'La date de fin doit être postérieure ou égale à '
+                             'la date de début.'})
+        return attrs

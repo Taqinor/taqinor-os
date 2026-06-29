@@ -1476,3 +1476,122 @@ class OptimizeSubscribedPowerTest(SimpleTestCase):
         self.assertEqual(res["current_subscribed"], res["peak_pre_pv_kw"])
         self.assertTrue(
             any("référence" in w for w in res["warnings"]))
+
+
+# ── FG262 : courbe de dégradation modules + garantie (calcul pur) ─────────────
+class ModuleDegradationCurveTest(SimpleTestCase):
+    def test_year1_factor_includes_lid(self):
+        # Année 1 : le facteur reflète la chute initiale (LID) — pas 1.0.
+        res = sd.module_degradation_curve(
+            10000, annual_degradation_rate=0.005, year1_degradation=0.02,
+            horizon_years=25)
+        first = res["schedule"][0]
+        self.assertEqual(first["year"], 1)
+        # facteur(1) = (1 - 0.02) × (1 - 0.005)^0 = 0.98 (compound).
+        self.assertAlmostEqual(first["production_factor"], 0.98, places=4)
+        self.assertAlmostEqual(first["production_kwh"], 9800.0, places=1)
+        self.assertEqual(res["summary"]["factor_year1"], 0.98)
+
+    def test_compound_vs_linear_diverge(self):
+        # Sur un long horizon, le composé reste au-dessus du linéaire (taux égal).
+        comp = sd.module_degradation_curve(
+            10000, annual_degradation_rate=0.01, year1_degradation=0.0,
+            horizon_years=25, curve="compound")
+        lin = sd.module_degradation_curve(
+            10000, annual_degradation_rate=0.01, year1_degradation=0.0,
+            horizon_years=25, curve="linear")
+        self.assertEqual(comp["summary"]["curve"], "compound")
+        self.assertEqual(lin["summary"]["curve"], "linear")
+        # Année 25 : composé (1-0.01)^24 ≈ 0.785 > linéaire 1-0.01×24 = 0.76.
+        c25 = comp["schedule"][-1]["production_factor"]
+        l25 = lin["schedule"][-1]["production_factor"]
+        self.assertGreater(c25, l25)
+        self.assertAlmostEqual(l25, 0.76, places=4)
+
+    def test_monotonic_decrease(self):
+        res = sd.module_degradation_curve(
+            10000, annual_degradation_rate=0.006, year1_degradation=0.02,
+            horizon_years=25)
+        factors = [row["production_factor"] for row in res["schedule"]]
+        for earlier, later in zip(factors, factors[1:]):
+            self.assertLessEqual(later, earlier)
+
+    def test_warranty_floor_breach_flagged(self):
+        # Dégradation agressive → le facteur tombe sous le plancher 80 % @ 25 ans.
+        res = sd.module_degradation_curve(
+            10000, annual_degradation_rate=0.02, year1_degradation=0.03,
+            horizon_years=25, warranty_floors={25: 0.80})
+        check25 = next(c for c in res["warranty_checks"] if c["year"] == 25)
+        self.assertFalse(check25["ok"])
+        self.assertGreater(check25["shortfall_pct"], 0.0)
+        self.assertIsNotNone(check25["first_breach_year"])
+        self.assertTrue(res["summary"]["any_warranty_breach"])
+        self.assertTrue(any("garantie" in w for w in res["warnings"]))
+        # L'année 25 du calendrier est marquée en infraction.
+        row25 = res["schedule"][24]
+        self.assertTrue(row25["warranty_breach"])
+
+    def test_year25_at_or_above_floor_default(self):
+        # Dégradation réaliste (0,5 %/an + 2 % LID) : ≥ 80 % à 25 ans (garantie OK).
+        res = sd.module_degradation_curve(
+            10000, annual_degradation_rate=0.005, year1_degradation=0.02,
+            horizon_years=25)
+        check25 = next(c for c in res["warranty_checks"] if c["year"] == 25)
+        self.assertTrue(check25["ok"])
+        self.assertGreaterEqual(check25["factor"], 0.80)
+        self.assertFalse(res["summary"]["any_warranty_breach"])
+        # Le jalon 10 ans (≥ 90 %) tient aussi.
+        check10 = next(c for c in res["warranty_checks"] if c["year"] == 10)
+        self.assertTrue(check10["ok"])
+
+    def test_percent_floor_normalized(self):
+        # Un plancher saisi en % (80 au lieu de 0.80) est normalisé en fraction.
+        res = sd.module_degradation_curve(
+            10000, annual_degradation_rate=0.005, year1_degradation=0.02,
+            horizon_years=25, warranty_floors={25: 80})
+        check25 = next(c for c in res["warranty_checks"] if c["year"] == 25)
+        self.assertAlmostEqual(check25["floor"], 0.80, places=6)
+
+    def test_factor_floored_at_zero_extreme_degradation(self):
+        # Linéaire avec taux énorme : le facteur ne devient JAMAIS négatif.
+        res = sd.module_degradation_curve(
+            10000, annual_degradation_rate=0.5, year1_degradation=0.1,
+            horizon_years=10, curve="linear")
+        for row in res["schedule"]:
+            self.assertGreaterEqual(row["production_factor"], 0.0)
+            self.assertGreaterEqual(row["production_kwh"], 0.0)
+
+    def test_no_production_gives_factors_only(self):
+        # Sans production year-1 : facteurs calculés, production absolue = None.
+        res = sd.module_degradation_curve(
+            None, annual_degradation_rate=0.005, horizon_years=5)
+        self.assertEqual(len(res["schedule"]), 5)
+        for row in res["schedule"]:
+            self.assertIsNone(row["production_kwh"])
+        self.assertIsNone(res["summary"]["total_production_kwh"])
+
+    def test_horizon_bounds_clamped(self):
+        low = sd.module_degradation_curve(10000, horizon_years=0)
+        self.assertEqual(low["summary"]["horizon_years"], 1)
+        high = sd.module_degradation_curve(10000, horizon_years=999)
+        self.assertEqual(high["summary"]["horizon_years"], 40)
+
+    def test_degraded_inputs_never_raise(self):
+        res = sd.module_degradation_curve(
+            "abc", annual_degradation_rate="x", year1_degradation=None,
+            horizon_years="oops", warranty_floors="bad", curve=42)
+        self.assertIn("schedule", res)
+        self.assertIn("summary", res)
+        self.assertIn("warranty_checks", res)
+        # production illisible → 0 ; floors illisibles → ignorées (avertissement).
+        self.assertEqual(res["summary"]["total_production_kwh"], 0.0)
+        self.assertEqual(res["warranty_checks"], [])
+
+    def test_zero_degradation_stays_full(self):
+        # Aucune dégradation ni LID : facteur constant 1.0, garantie toujours OK.
+        res = sd.module_degradation_curve(
+            10000, annual_degradation_rate=0.0, year1_degradation=0.0,
+            horizon_years=25)
+        for row in res["schedule"]:
+            self.assertEqual(row["production_factor"], 1.0)
+        self.assertFalse(res["summary"]["any_warranty_breach"])

@@ -35,8 +35,8 @@ from .serializers import (
 from . import chatter
 from .selectors import (
     capa_en_retard, chantier_peut_cloturer, courbes_iv_for_chantier,
-    criticite_summary, hold_points_status, iso9001_readiness,
-    photos_controle_par_phase, procedure_qualite_courante,
+    criticite_summary, document_unique_valide, hold_points_status,
+    iso9001_readiness, photos_controle_par_phase, procedure_qualite_courante,
     procedure_qualite_versions, procedures_qualite_courantes,
     satisfaction_moyenne,
 )
@@ -800,6 +800,31 @@ class EvaluationRisqueViewSet(_QhseBaseViewSet):
         """
         evaluation = self.get_object()
         return Response(criticite_summary(evaluation))
+
+    @action(detail=False, methods=['get'], url_path='document-unique-statut')
+    def document_unique_statut(self, request):
+        """État du « document unique requis avant pose » d'un chantier (QHSE22).
+
+        Gate advisory en lecture seule. Paramètre obligatoire ``?chantier_id=``
+        (entier). Renvoie le dict de ``document_unique_valide`` :
+        ``{chantier_id, valide, evaluation_id, reference, nb_validees,
+        nb_validees_avec_lignes, motif}``. Scopé société. ``installations`` peut
+        s'appuyer dessus (ou sur le service ``exiger_document_unique``) pour
+        GATER la transition vers la pose — l'enforcement reste côté appelant.
+        """
+        chantier_id = request.query_params.get('chantier_id')
+        if chantier_id in (None, ''):
+            return Response(
+                {'detail': 'chantier_id est requis.'},
+                status=status.HTTP_400_BAD_REQUEST)
+        try:
+            chantier_id = int(chantier_id)
+        except (TypeError, ValueError):
+            return Response(
+                {'detail': 'chantier_id doit être un entier.'},
+                status=status.HTTP_400_BAD_REQUEST)
+        return Response(
+            document_unique_valide(request.user.company, chantier_id))
 
 
 class LigneEvaluationRisqueViewSet(_QhseBaseViewSet):

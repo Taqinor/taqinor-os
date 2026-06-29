@@ -1534,3 +1534,60 @@ def _fin_de_mois(reference, mois_apres_debut):
     else:
         premier_suivant = date(annee, mois + 1, 1)
     return premier_suivant - timedelta(days=1)
+
+
+# ── FG142 — Trousse liasse fiscale (états de synthèse, paquet DGI) ──────────
+
+# Sections normalisées de la liasse fiscale (ordre figé pour l'export
+# multi-sections destiné au fiduciaire / à la DGI).
+LIASSE_SECTIONS = ['bilan', 'cpc', 'balance', 'annexe_tva']
+
+
+def liasse_fiscale(company, exercice, *, validees_seulement=False):
+    """Trousse « liasse fiscale » d'un exercice : les états de synthèse en un paquet.
+
+    Assemble — SANS rien recalculer — les états de synthèse déjà produits par les
+    sélecteurs existants, tous bornés à l'exercice (``date_debut``/``date_fin``) :
+
+    * ``bilan`` — actif/passif au format CGNC à la clôture (FG114, ``bilan``) ;
+    * ``cpc`` — compte de produits & charges de l'exercice (FG113, ``cpc``) ;
+    * ``balance`` — balance générale (trial balance) de l'exercice (FG111,
+      ``balance_generale``) ;
+    * ``annexe_tva`` — relevé de déductions de TVA, l'annexe DGI (FG138,
+      ``releve_deductions_tva``).
+
+    Le bilan se lit à la date de clôture (cumul depuis l'ouverture), tandis que le
+    CPC, la balance et l'annexe se bornent à l'intervalle de l'exercice — le même
+    cadrage que les états standalone, d'où des totaux strictement cohérents avec
+    eux. Lecture seule, scopée société ; aucune écriture n'est créée. Renvoie
+    ``{'exercice', 'date_debut', 'date_fin', 'sections', 'bilan', 'cpc',
+    'balance', 'annexe_tva', 'resultat', 'equilibre'}`` où ``sections`` =
+    ``LIASSE_SECTIONS`` (ordre de la trousse).
+    """
+    date_debut = exercice.date_debut
+    date_fin = exercice.date_fin
+    # On RÉUTILISE les sélecteurs existants — aucun recalcul ad hoc ici.
+    etat_bilan = bilan(
+        company, date_fin=date_fin, validees_seulement=validees_seulement)
+    etat_cpc = cpc(
+        company, date_debut=date_debut, date_fin=date_fin,
+        validees_seulement=validees_seulement)
+    etat_balance = balance_generale(
+        company, date_debut=date_debut, date_fin=date_fin,
+        validees_seulement=validees_seulement)
+    annexe_tva = releve_deductions_tva(
+        company, date_debut=date_debut, date_fin=date_fin,
+        validees_seulement=validees_seulement)
+    return {
+        'exercice': exercice.libelle or str(exercice.pk),
+        'date_debut': date_debut.isoformat(),
+        'date_fin': date_fin.isoformat(),
+        'sections': list(LIASSE_SECTIONS),
+        'bilan': etat_bilan,
+        'cpc': etat_cpc,
+        'balance': etat_balance,
+        'annexe_tva': annexe_tva,
+        # Indicateurs de tête repris des états (cohérence garantie 1:1).
+        'resultat': etat_cpc['resultat'],
+        'equilibre': etat_bilan['equilibre'] and etat_balance['equilibree'],
+    }

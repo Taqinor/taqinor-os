@@ -920,6 +920,60 @@ def conflits_affectation(company, debut, fin):
     return base
 
 
+# ── FG302 — Calendrier de disponibilité des ressources terrain ───────────────
+# ``IndisponibiliteRessource`` (congé/formation/arrêt/autre) marque une ressource
+# — TECHNICIEN (utilisateur) ou CAMIONNETTE (EmplacementStock) — comme absente sur
+# [date_debut, date_fin] inclusive. Le plan de charge (FG299), la détection de
+# conflits (FG300) et le nivellement (FG301) peuvent appeler ``ressource_indisponible``
+# pour EXCLURE une ressource absente. Pure lecture, scopée société.
+
+def ressource_indisponible(company, user_or_vehicle, debut, fin):
+    """FG302 — ``True`` si la ressource ``user_or_vehicle`` est marquée
+    indisponible (congé/formation/arrêt/autre) à un quelconque moment de la
+    fenêtre [debut, fin] inclusive, pour la société donnée.
+
+    ``user_or_vehicle`` accepte soit une instance (utilisateur OU
+    ``EmplacementStock`` camionnette), soit un id entier — interprété comme un
+    technicien quand c'est un entier (cas le plus courant côté FG299/300/301).
+    Une indisponibilité [d, f] CHEVAUCHE la fenêtre [debut, fin] dès que
+    ``d <= fin`` ET ``f >= debut`` (chevauchement d'intervalles inclusifs).
+
+    Garde les fenêtres None/inversées : renvoie ``False`` (aucune contrainte) si
+    la fenêtre est absente ou inversée, ou si la ressource est ``None``. Lecture
+    seule, scopée société (jamais d'indisponibilité d'une autre société)."""
+    from django.db.models import Q
+    from .models import IndisponibiliteRessource
+
+    if user_or_vehicle is None or debut is None or fin is None or fin < debut:
+        return False
+
+    # Résout la ressource en filtre technicien OU camionnette.
+    tech_id = None
+    camion_id = None
+    if isinstance(user_or_vehicle, int):
+        tech_id = user_or_vehicle
+    else:
+        meta = getattr(user_or_vehicle, '_meta', None)
+        model_name = getattr(meta, 'model_name', '') if meta else ''
+        if model_name == 'emplacementstock':
+            camion_id = getattr(user_or_vehicle, 'pk', None)
+        else:
+            # Utilisateur (ou tout autre objet porteur d'un pk) → technicien.
+            tech_id = getattr(user_or_vehicle, 'pk', None)
+
+    if tech_id is None and camion_id is None:
+        return False
+
+    cible = Q(technicien_id=tech_id) if tech_id is not None \
+        else Q(camionnette_id=camion_id)
+
+    return (IndisponibiliteRessource.objects
+            .filter(company=company)
+            .filter(cible)
+            .filter(date_debut__lte=fin, date_fin__gte=debut)
+            .exists())
+
+
 def chantier_card(chantier_id, company):
     """S8 — fiche-carte LECTURE SEULE d'un chantier (Installation) pour le
     partage dans la messagerie. Scopée société : None si le chantier n'appartient

@@ -447,6 +447,123 @@ class EtatsComptablesViewSet(viewsets.ViewSet):
             f'_{exercice.date_fin}.{extension}"')
         return resp
 
+    @action(detail=False, methods=['get'], url_path='liasse-fiscale')
+    def liasse_fiscale(self, request):
+        """Trousse liasse fiscale — états de synthèse en un paquet (FG142).
+
+        Assemble en un seul appel, pour un exercice, les états de synthèse déjà
+        produits par les sélecteurs existants (bilan + CPC + balance + annexe TVA
+        des déductions), sans rien recalculer. C'est le paquet remis au
+        fiduciaire / à la DGI. Paramètres : ``exercice`` (id, requis), ``validees``
+        (1 → écritures validées seulement) et ``export`` qui choisit le rendu —
+        ``export=csv`` produit un CSV multi-sections (une section après l'autre :
+        bilan, CPC, balance, annexe TVA) ; sans ``export``, renvoie le JSON
+        structuré. On utilise ``export=`` et JAMAIS le ``format=`` de DRF (qui
+        répond 404). Lecture seule, scopée société, Admin/Responsable.
+        """
+        company = request.user.company
+        exercice_id = request.query_params.get('exercice')
+        if not exercice_id:
+            return Response(
+                {'detail': "Le paramètre 'exercice' est requis."},
+                status=status.HTTP_400_BAD_REQUEST)
+        exercice = ExerciceComptable.objects.filter(
+            company=company, pk=exercice_id).first()
+        if exercice is None:
+            return Response(
+                {'detail': 'Exercice introuvable pour cette société.'},
+                status=status.HTTP_404_NOT_FOUND)
+        data = selectors.liasse_fiscale(
+            company, exercice,
+            validees_seulement=request.query_params.get('validees') == '1')
+        if request.query_params.get('export') == 'csv':
+            return self._export_liasse_csv(exercice, data)
+        return Response(data)
+
+    @staticmethod
+    def _export_liasse_csv(exercice, data):
+        """Sérialise la liasse fiscale (FG142) en CSV multi-sections (DGI)."""
+        buffer = io.StringIO()
+        writer = csv.writer(buffer, delimiter=';')
+        writer.writerow(['Liasse fiscale — États de synthèse'])
+        writer.writerow(
+            ['Exercice', f"{data['date_debut']} → {data['date_fin']}"])
+        writer.writerow(['Résultat de l\'exercice', data['resultat']])
+        writer.writerow(['Équilibré', 'oui' if data['equilibre'] else 'non'])
+        writer.writerow([])
+
+        # Section BILAN (actif / passif + résultat).
+        bilan = data['bilan']
+        writer.writerow(['BILAN'])
+        writer.writerow(['Actif', 'Numéro', 'Intitulé', 'Montant'])
+        for poste in bilan['actif']:
+            writer.writerow(
+                ['', poste['numero'], poste['intitule'], poste['montant']])
+        writer.writerow(['Total actif', '', '', bilan['total_actif']])
+        writer.writerow(['Passif', 'Numéro', 'Intitulé', 'Montant'])
+        for poste in bilan['passif']:
+            writer.writerow(
+                ['', poste['numero'], poste['intitule'], poste['montant']])
+        writer.writerow(['Total passif', '', '', bilan['total_passif']])
+        writer.writerow(['Résultat (porté au passif)', '', '', bilan['resultat']])
+        writer.writerow([])
+
+        # Section CPC (produits / charges + résultat).
+        cpc = data['cpc']
+        writer.writerow(['CPC (Compte de Produits et Charges)'])
+        writer.writerow(['Produits', 'Numéro', 'Intitulé', 'Montant'])
+        for poste in cpc['produits']:
+            writer.writerow(
+                ['', poste['numero'], poste['intitule'], poste['montant']])
+        writer.writerow(['Total produits', '', '', cpc['total_produits']])
+        writer.writerow(['Charges', 'Numéro', 'Intitulé', 'Montant'])
+        for poste in cpc['charges']:
+            writer.writerow(
+                ['', poste['numero'], poste['intitule'], poste['montant']])
+        writer.writerow(['Total charges', '', '', cpc['total_charges']])
+        writer.writerow(['Résultat', '', '', cpc['resultat']])
+        writer.writerow([])
+
+        # Section BALANCE générale (trial balance).
+        balance = data['balance']
+        writer.writerow(['BALANCE GÉNÉRALE'])
+        writer.writerow(
+            ['Numéro', 'Intitulé', 'Débit', 'Crédit', 'Solde débiteur',
+             'Solde créditeur'])
+        for ligne in balance['lignes']:
+            writer.writerow([
+                ligne['numero'], ligne['intitule'], ligne['debit'],
+                ligne['credit'], ligne['solde_debiteur'],
+                ligne['solde_crediteur']])
+        writer.writerow(
+            ['Totaux', '', balance['total_debit'], balance['total_credit'],
+             '', ''])
+        writer.writerow([])
+
+        # Section ANNEXE TVA (relevé de déductions, FG138).
+        annexe = data['annexe_tva']
+        writer.writerow(['ANNEXE — Relevé de déductions de TVA'])
+        writer.writerow(
+            ['Date', 'Référence', 'Journal', 'Libellé', 'Tiers', 'Base HT',
+             'TVA', 'Taux %'])
+        for ligne in annexe['lignes']:
+            taux = ligne['taux']
+            writer.writerow([
+                ligne['date'], ligne['reference'], ligne['journal'],
+                ligne['libelle'], ligne['tiers'], ligne['base_ht'],
+                ligne['tva'], '' if taux is None else taux])
+        writer.writerow(
+            ['Totaux', '', '', '', '', annexe['totaux']['base_ht'],
+             annexe['totaux']['tva'], ''])
+
+        resp = HttpResponse(
+            buffer.getvalue(), content_type='text/csv; charset=utf-8')
+        resp['Content-Disposition'] = (
+            'attachment; filename='
+            f'"liasse_fiscale_exercice_{exercice.pk}_{exercice.date_debut}'
+            f'_{exercice.date_fin}.csv"')
+        return resp
+
 
 # ── FG115 — Périodes comptables verrouillables ─────────────────────────────
 

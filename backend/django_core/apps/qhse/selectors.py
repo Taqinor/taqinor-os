@@ -23,9 +23,9 @@ un suivi à part : un appelant consulte cette porte, il ne la franchit pas ici.
 from django.db.models import Avg
 
 from .models import (
-    ActionCorrectivePreventive, Audit, NonConformite, NotationFinChantier,
-    PlanInspectionChantier, ProcedureQualite, ReleveControle, ReleveCourbeIV,
-    RetourClientQualite,
+    ActionCorrectivePreventive, Audit, EvaluationRisque, NonConformite,
+    NotationFinChantier, PlanInspectionChantier, ProcedureQualite,
+    ReleveControle, ReleveCourbeIV, RetourClientQualite,
 )
 
 
@@ -604,4 +604,68 @@ def criticite_summary(evaluation):
         'criticite_max': max(crits) if nb else None,
         'criticite_moyenne': moyenne,
         'par_niveau': par_niveau,
+    }
+
+
+# ── QHSE22 — Document unique requis avant pose (gate statut chantier) ───────
+
+def document_unique_valide(company, chantier_id):
+    """État du « document unique » (DUERP) d'un chantier (lecture seule, QHSE22).
+
+    DÉCISION (règle de blocage) — un chantier ne peut passer à la **pose** que
+    s'il dispose d'un document unique d'évaluation des risques *exploitable* :
+    au moins une ``EvaluationRisque`` ``validee`` portant **au moins une ligne**
+    de risque. Une évaluation en ``brouillon``/``archivee``, ou validée mais
+    vide (aucune ligne), ne lève PAS l'exigence.
+
+    Référence LÂCHE au chantier par ``chantier_id`` — aucun import cross-app de
+    ``installations``. Scopé société : ne regarde QUE les évaluations de
+    ``company``. Renvoie un dict détaillé :
+
+    * ``chantier_id`` — l'identifiant interrogé (entier) ;
+    * ``valide`` — ``True`` ssi un DUERP validé non vide existe ;
+    * ``evaluation_id`` — l'id de l'évaluation validée non vide la plus récente
+      qui lève l'exigence (``None`` si aucune) ;
+    * ``reference`` — sa référence (``''`` si aucune) ;
+    * ``nb_validees`` — nombre d'évaluations validées rattachées au chantier ;
+    * ``nb_validees_avec_lignes`` — combien d'entre elles portent ≥ 1 ligne ;
+    * ``motif`` — code de refus lisible quand ``valide`` est ``False``
+      (``aucune_evaluation`` / ``aucune_validee`` / ``validee_sans_lignes``),
+      ``None`` quand l'exigence est levée.
+
+    Aucune mutation, aucune dépendance cross-app.
+    """
+    from django.db.models import Count
+
+    validees = list(
+        EvaluationRisque.objects
+        .filter(company=company,
+                chantier_id=chantier_id,
+                statut=EvaluationRisque.Statut.VALIDEE)
+        .annotate(nb_lignes=Count('lignes'))
+        .order_by('-id'))
+
+    avec_lignes = [ev for ev in validees if ev.nb_lignes > 0]
+    leveuse = avec_lignes[0] if avec_lignes else None
+
+    total_chantier = EvaluationRisque.objects.filter(
+        company=company, chantier_id=chantier_id).exists()
+
+    if leveuse is not None:
+        motif = None
+    elif not total_chantier:
+        motif = 'aucune_evaluation'
+    elif not validees:
+        motif = 'aucune_validee'
+    else:
+        motif = 'validee_sans_lignes'
+
+    return {
+        'chantier_id': chantier_id,
+        'valide': leveuse is not None,
+        'evaluation_id': leveuse.id if leveuse is not None else None,
+        'reference': leveuse.reference if leveuse is not None else '',
+        'nb_validees': len(validees),
+        'nb_validees_avec_lignes': len(avec_lignes),
+        'motif': motif,
     }

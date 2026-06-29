@@ -806,7 +806,8 @@ class EpiCatalogueSerializer(serializers.ModelSerializer):
         model = EpiCatalogue
         fields = [
             'id', 'type_epi', 'type_epi_display',
-            'designation', 'actif',
+            'designation', 'duree_vie_mois', 'intervalle_controle_mois',
+            'actif',
             'date_creation', 'date_modification',
         ]
         read_only_fields = ['date_creation', 'date_modification']
@@ -828,6 +829,10 @@ class DotationEpiSerializer(serializers.ModelSerializer):
         source='epi.type_epi', read_only=True)
     type_epi_display = serializers.CharField(
         source='epi.get_type_epi_display', read_only=True)
+    # Échéances de cycle de vie DÉRIVÉES (FG179) : posées côté serveur à la
+    # sauvegarde (date_dotation + durées du catalogue) ; jamais saisies.
+    perime = serializers.SerializerMethodField()
+    a_controler = serializers.SerializerMethodField()
 
     class Meta:
         model = DotationEpi
@@ -835,13 +840,24 @@ class DotationEpiSerializer(serializers.ModelSerializer):
             'id', 'employe', 'employe_nom',
             'epi', 'epi_designation', 'type_epi', 'type_epi_display',
             'taille', 'date_dotation', 'date_renouvellement',
+            'date_peremption', 'date_prochain_controle',
+            'perime', 'a_controler',
             'quantite', 'note',
             'date_creation', 'date_modification',
         ]
-        read_only_fields = ['date_creation', 'date_modification']
+        read_only_fields = [
+            'date_peremption', 'date_prochain_controle',
+            'date_creation', 'date_modification',
+        ]
 
     def get_employe_nom(self, obj):
         return f'{obj.employe.nom} {obj.employe.prenom}'
+
+    def get_perime(self, obj):
+        return obj.perime()
+
+    def get_a_controler(self, obj):
+        return obj.a_controler()
 
     def validate_employe(self, value):
         return _meme_societe(self, value, 'Employé')
