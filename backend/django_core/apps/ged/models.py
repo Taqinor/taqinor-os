@@ -353,6 +353,14 @@ class Document(models.Model):
     statut = models.CharField(
         max_length=12, choices=LIFECYCLE_CHOICES, default=LIFECYCLE_BROUILLON,
         verbose_name="statut du cycle de vie")
+    # GED21 — Contrôle de diffusion : quand vrai, le contenu de ce document est
+    # FILIGRANÉ (watermark « CONFIDENTIEL ») à chaque diffusion (aperçu GED14 ET
+    # téléchargement public GED20). Défaut faux → comportement 1:1 inchangé : le
+    # flux reste byte-identique à l'original quand le filigrane est désactivé.
+    # Le filigrane est purement de RENDU (services.apply_watermark) ; il ne
+    # modifie jamais le binaire stocké en base/MinIO ni aucun statut.
+    watermark_diffusion = models.BooleanField(
+        default=False, verbose_name="filigraner à la diffusion")
     created_by = models.ForeignKey(
         settings.AUTH_USER_MODEL, on_delete=models.SET_NULL,
         null=True, blank=True, related_name='ged_documents_crees')
@@ -846,6 +854,12 @@ class PartageGed(models.Model):
         default=0, verbose_name="téléchargements")
     # Kill-switch : un partage révoqué (actif=False) est immédiatement mort.
     actif = models.BooleanField(default=True, verbose_name="actif")
+    # GED21 — Contrôle de diffusion au niveau du PARTAGE : force le filigrane sur
+    # CE lien public même si le document n'est pas globalement marqué. Le contenu
+    # public est filigrané si `watermark` (ce partage) OU
+    # `document.watermark_diffusion` est vrai. Défaut faux → flux byte-identique.
+    watermark = models.BooleanField(
+        default=False, verbose_name="filigraner le partage")
     created_by = models.ForeignKey(
         settings.AUTH_USER_MODEL, on_delete=models.SET_NULL,
         null=True, blank=True, related_name='ged_partages_crees')

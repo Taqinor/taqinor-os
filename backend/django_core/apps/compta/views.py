@@ -301,6 +301,63 @@ class EtatsComptablesViewSet(viewsets.ViewSet):
             f"{data['date_debut'] or 'periode'}_{data['date_fin'] or ''}.csv\"")
         return resp
 
+    @action(detail=False, methods=['get'], url_path='declaration-honoraires')
+    def declaration_honoraires(self, request):
+        """Déclaration annuelle des honoraires — état 9421 (FG143).
+
+        Agrège par bénéficiaire les paiements aux tiers (honoraires /
+        prestations) de l'année civile, depuis les retenues à la source
+        enregistrées (FG139). Chaque ligne porte l'identité fiscale du
+        bénéficiaire (IF/ICE), le montant brut versé, la retenue à la source
+        pratiquée et le net payé. Paramètres : ``annee`` (défaut année
+        courante), ``type_prestation`` (filtre optionnel) et ``export=csv``
+        pour le CSV (jamais ``?format=``). Lecture seule, scopée société,
+        Admin/Responsable.
+        """
+        from django.utils import timezone
+        params = request.query_params
+        annee_param = params.get('annee')
+        try:
+            annee = int(annee_param) if annee_param else timezone.now().year
+        except (TypeError, ValueError):
+            return Response(
+                {'detail': "Le paramètre 'annee' doit être une année valide."},
+                status=status.HTTP_400_BAD_REQUEST)
+        data = selectors.declaration_honoraires(
+            request.user.company, annee,
+            type_prestation=params.get('type_prestation') or None)
+        if params.get('export') == 'csv':
+            return self._export_declaration_honoraires_csv(data)
+        return Response(data)
+
+    @staticmethod
+    def _export_declaration_honoraires_csv(data):
+        """Sérialise la déclaration des honoraires (état 9421, FG143) en CSV."""
+        buffer = io.StringIO()
+        writer = csv.writer(buffer, delimiter=';')
+        writer.writerow(['Déclaration des honoraires (état 9421)'])
+        writer.writerow(['Année', data['annee']])
+        writer.writerow([])
+        writer.writerow(
+            ['Bénéficiaire', 'Identifiant fiscal (IF/ICE)', 'Nb pièces',
+             'Montant brut', 'Retenue à la source', 'Net payé'])
+        for ligne in data['lignes']:
+            writer.writerow([
+                ligne['tiers_nom'], ligne['identifiant_fiscal'],
+                ligne['nb_pieces'], ligne['brut'], ligne['retenue'],
+                ligne['net']])
+        writer.writerow([])
+        writer.writerow(
+            ['Totaux', '', data['totaux']['nb_pieces'],
+             data['totaux']['brut'], data['totaux']['retenue'],
+             data['totaux']['net']])
+        resp = HttpResponse(
+            buffer.getvalue(), content_type='text/csv; charset=utf-8')
+        resp['Content-Disposition'] = (
+            'attachment; filename="declaration_honoraires_9421_'
+            f"{data['annee']}.csv\"")
+        return resp
+
     @action(detail=False, methods=['get'], url_path='aide-is')
     def aide_is(self, request):
         """Aide au calcul de l'IS — estimation + acomptes + régularisation (FG140).

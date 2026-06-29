@@ -55,6 +55,8 @@ from .serializers import (
     DossierEmployeSerializer,
     DotationEpiSerializer,
     ElementSortieSerializer,
+    EmargementEpiSerializer,
+    EmargerEpiSerializer,
     EpiCatalogueSerializer,
     FeuilleTempsSerializer,
     HabilitationSerializer,
@@ -68,6 +70,21 @@ from .serializers import (
     TypeAbsenceSerializer,
     VisiteMedicaleSerializer,
 )
+
+
+def _client_ip(request):
+    """Adresse IP du client à partir de la requête (preuve d'émargement).
+
+    Préfère ``X-Forwarded-For`` (première IP de la chaîne) derrière un proxy,
+    sinon ``REMOTE_ADDR``. Tronquée à 45 caractères pour tenir dans le champ
+    ``ip_adresse`` (IPv6) — runtime-safety (leçon FG136).
+    """
+    forwarded = request.META.get('HTTP_X_FORWARDED_FOR', '')
+    if forwarded:
+        ip = forwarded.split(',')[0].strip()
+    else:
+        ip = request.META.get('REMOTE_ADDR', '') or ''
+    return ip[:45]
 
 
 class _RhBaseViewSet(TenantMixin, viewsets.ModelViewSet):
@@ -1330,6 +1347,9 @@ class DotationEpiViewSet(_RhBaseViewSet):
       de vie (FG179) dont la péremption OU le recontrôle arrive dans N jours
       (défaut 30) ou est déjà dépassé.
     * ``GET .../employe/?employe=<id>`` — dotations EPI d'un employé.
+    * ``POST .../<id>/emarger/`` — émargement signé de la remise (FG180) :
+      accusé de réception prouvant la dotation (exigible CNSS / accident).
+    * ``GET .../<id>/emargements/`` — historique des émargements d'une dotation.
     """
     queryset = DotationEpi.objects.select_related('employe', 'epi').all()
     serializer_class = DotationEpiSerializer
@@ -1413,6 +1433,61 @@ class DotationEpiViewSet(_RhBaseViewSet):
             serializer = self.get_serializer(page, many=True)
             return self.get_paginated_response(serializer.data)
         serializer = self.get_serializer(qs, many=True)
+        return Response(serializer.data)
+
+    @action(detail=True, methods=['post'], url_path='emarger')
+    def emarger(self, request, pk=None):
+        """Émargement signé de la remise d'un EPI (FG180) — accusé de réception.
+
+        Corps : ``signataire_nom`` (nom dactylographié, requis — loi 53-05),
+        ``role_signataire`` (employe/remettant/temoin, défaut ``employe``),
+        ``methode`` (typed/draw, défaut ``typed``), ``mention`` (optionnelle).
+        L'utilisateur agissant, la société et les preuves (IP, user agent) sont
+        posés CÔTÉ SERVEUR — jamais lus du corps. Marque la dotation ACCUSÉE
+        (``accuse_remise``), preuve exigible en cas de contrôle CNSS / accident
+        du travail. La société est garantie par ``get_object``.
+        """
+        dotation = self.get_object()
+        body = EmargerEpiSerializer(data=request.data)
+        body.is_valid(raise_exception=True)
+        data = body.validated_data
+        try:
+            resultat = services.emarger_dotation(
+                dotation,
+                signataire_nom=data['signataire_nom'],
+                role_signataire=data['role_signataire'],
+                methode=data['methode'],
+                mention=data.get('mention', ''),
+                signataire=request.user,
+                ip_adresse=_client_ip(request),
+                user_agent=request.META.get('HTTP_USER_AGENT', ''),
+            )
+        except services.EmargementError as exc:
+            return Response(
+                {'detail': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+        dotation.refresh_from_db()
+        return Response(
+            {
+                'emargement': EmargementEpiSerializer(
+                    resultat['emargement']).data,
+                'deja_accusee': resultat['deja_accusee'],
+                'accuse_remise': dotation.accuse_remise,
+                'date_accuse': dotation.date_accuse,
+            },
+            status=status.HTTP_201_CREATED,
+        )
+
+    @action(detail=True, methods=['get'], url_path='emargements')
+    def emargements(self, request, pk=None):
+        """Historique des émargements signés d'une dotation EPI (FG180).
+
+        Lecture seule, scopée société (``get_object``). Renvoie les preuves de
+        remise (nom dactylographié, rôle, méthode, mention, IP, date) du plus
+        récent au plus ancien.
+        """
+        dotation = self.get_object()
+        qs = dotation.emargements.all()
+        serializer = EmargementEpiSerializer(qs, many=True)
         return Response(serializer.data)
 
 

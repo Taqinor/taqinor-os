@@ -13,7 +13,20 @@ from .models import (
     EtapeApprobation,
     RegleApprobation,
     SignatureContrat,
+    VersionContrat,
 )
+
+
+def versions_contrat(contrat):
+    """Versions IMMUABLES d'un contrat (QuerySet scopé société, ordonné).
+
+    Lecture seule (CONTRAT18). Ordre par numéro de ``version`` DÉCROISSANT (la
+    dernière version en tête), cohérent avec ``Meta.ordering`` du modèle. La
+    société est portée par le contrat ; on filtre aussi sur ``contrat.company``
+    par sécurité même si le FK ``contrat`` la garantit.
+    """
+    return VersionContrat.objects.filter(
+        contrat=contrat, company=contrat.company).order_by('-version', '-id')
 
 
 def signatures_contrat(contrat):

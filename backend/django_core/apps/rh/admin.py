@@ -11,6 +11,7 @@ from .models import (
     DossierEmploye,
     DotationEpi,
     ElementSortie,
+    EmargementEpi,
     EpiCatalogue,
     Habilitation,
     HeuresSupp,
@@ -186,7 +187,17 @@ class EpiCatalogueAdmin(admin.ModelAdmin):
 @admin.register(DotationEpi)
 class DotationEpiAdmin(admin.ModelAdmin):
     list_display = ('employe', 'epi', 'taille', 'date_dotation',
-                    'date_renouvellement', 'quantite', 'company')
-    list_filter = ('epi__type_epi',)
+                    'date_renouvellement', 'quantite', 'accuse_remise',
+                    'company')
+    list_filter = ('epi__type_epi', 'accuse_remise')
     search_fields = ('employe__matricule', 'employe__nom', 'employe__prenom',
                      'epi__designation', 'taille')
+
+
+@admin.register(EmargementEpi)
+class EmargementEpiAdmin(admin.ModelAdmin):
+    list_display = ('signataire_nom', 'dotation', 'role_signataire',
+                    'methode', 'date_signature', 'company')
+    list_filter = ('role_signataire', 'methode')
+    search_fields = ('signataire_nom', 'dotation__employe__matricule',
+                     'dotation__epi__designation')

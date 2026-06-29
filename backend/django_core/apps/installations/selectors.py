@@ -974,6 +974,215 @@ def ressource_indisponible(company, user_or_vehicle, debut, fin):
             .exists())
 
 
+# ── FG303 — Planning des camionnettes (capacité véhicule) ────────────────────
+# Vue de PLANNING PAR VÉHICULE : sur une fenêtre de dates, on regroupe PAR
+# CAMIONNETTE (``Intervention.camionnette`` — un ``stock.EmplacementStock``) les
+# interventions qui lui sont affectées, avec leur date / chantier / technicien,
+# et on dérive une CHARGE JOURNALIÈRE (combien d'interventions par jour) en
+# EXCLUANT les jours où la camionnette est marquée INDISPONIBLE (FG302
+# ``IndisponibiliteRessource``). Pure agrégation — aucun nouveau modèle, lecture
+# seule, scopée société. Cohérent avec FG300 (conflits) : deux interventions le
+# MÊME jour sur la même camionnette sont une SUR-RÉSERVATION du véhicule.
+#
+# La granularité reste la JOURNÉE (les interventions ne portent qu'une
+# ``date_prevue``). La « capacité » d'une camionnette est, par jour ouvré
+# disponible, 1 intervention (proxy simple, comme FG299/FG301) ; au-delà le jour
+# est en SUR-RÉSERVATION. Un jour d'indisponibilité a une capacité nulle : toute
+# intervention ce jour-là est en sur-réservation (le véhicule est censé absent).
+
+def planning_camionnettes(company, debut, fin, capacite_jour=1):
+    """FG303 — planning par camionnette sur la fenêtre [debut, fin] inclusive.
+
+    Pour CHAQUE camionnette (``Intervention.camionnette`` — un EmplacementStock)
+    qui porte au moins une intervention datée dans la fenêtre, on renvoie :
+      * ``interventions`` : la liste (triée par date puis id) des interventions
+        affectées, chacune = {id, date, chantier_id, chantier_reference,
+        type_intervention, statut, technicien_id, technicien_nom} ;
+      * ``charge`` : la charge JOURNALIÈRE = liste {date, count, indisponible,
+        sur_reservation} pour chaque jour de la fenêtre où la camionnette a ≥ 1
+        intervention OU est indisponible ; ``indisponible`` reflète FG302,
+        ``sur_reservation`` est vrai quand ``count`` dépasse la capacité du jour
+        (0 si indisponible, sinon ``capacite_jour``) ;
+      * ``total_interventions`` / ``jours_sur_reservation`` (compteurs).
+
+    Une indisponibilité FG302 [d, f] retire la capacité du véhicule sur ces jours
+    (capacité 0) — toute intervention qui y tombe est donc en sur-réservation, et
+    un jour 100 % indisponible sans intervention apparaît quand même dans
+    ``charge`` (indisponible=True, count=0) pour la visibilité.
+
+    Renvoie un dict PLAT (jamais d'instance de modèle d'une autre app) :
+      ``debut`` / ``fin`` (ISO ou None) ; ``capacite_jour`` ;
+      ``camionnettes`` (liste triée par nom) ; ``totaux`` (nb_camionnettes,
+      nb_interventions, nb_jours_sur_reservation). Lecture seule, scopée société,
+      garde les fenêtres vides/None/inversées (renvoie des listes vides, jamais
+      d'exception). Le nom de la camionnette est lu sur l'instance FK déjà
+      chargée (``select_related``) — le modèle de stock n'est JAMAIS importé."""
+    from collections import OrderedDict
+    from django.contrib.auth import get_user_model
+    from .models import Intervention
+
+    try:
+        capacite_jour = int(capacite_jour)
+    except (TypeError, ValueError):
+        capacite_jour = 1
+    if capacite_jour < 0:
+        capacite_jour = 0
+
+    base = {
+        'debut': debut.isoformat() if debut is not None else None,
+        'fin': fin.isoformat() if fin is not None else None,
+        'capacite_jour': capacite_jour,
+        'camionnettes': [],
+        'totaux': {
+            'nb_camionnettes': 0,
+            'nb_interventions': 0,
+            'nb_jours_sur_reservation': 0,
+        },
+    }
+    # Fenêtre vide / None / inversée → rien à planifier (garde explicite).
+    if debut is None or fin is None or fin < debut:
+        return base
+
+    qs = (Intervention.objects
+          .filter(company=company)
+          .filter(date_prevue__gte=debut, date_prevue__lte=fin)
+          .filter(date_prevue__isnull=False)
+          .filter(camionnette__isnull=False)
+          .select_related('camionnette', 'installation', 'technicien')
+          .only('id', 'date_prevue', 'type_intervention', 'statut',
+                'technicien_id', 'camionnette_id', 'camionnette__nom',
+                'installation_id', 'installation__reference'))
+
+    # {camionnette_id: {'nom': str, 'interventions': [interv]}} — ordre stable.
+    par_camion = OrderedDict()
+    tech_ids = set()
+    for interv in qs.order_by('date_prevue', 'id'):
+        cid = interv.camionnette_id
+        camion = getattr(interv, 'camionnette', None)
+        nom = getattr(camion, 'nom', None) if camion else None
+        entree = par_camion.setdefault(
+            cid, {'nom': nom or f'#{cid}', 'interventions': []})
+        entree['interventions'].append(interv)
+        if interv.technicien_id:
+            tech_ids.add(interv.technicien_id)
+
+    # Noms des techniciens (un seul accès DB).
+    User = get_user_model()
+    users = {u.id: u for u in User.objects.filter(id__in=tech_ids)} \
+        if tech_ids else {}
+
+    def _nom_user(uid):
+        if uid is None:
+            return None
+        user = users.get(uid)
+        if user is None:
+            return str(uid)
+        getter = getattr(user, 'get_full_name', None)
+        nom = ''
+        if callable(getter):
+            nom = (getter() or '').strip()
+        return nom or getattr(user, 'username', str(uid))
+
+    # Jours d'indisponibilité par camionnette (FG302) recoupant la fenêtre.
+    indispo_jours = _camionnette_indispo_jours(
+        company, list(par_camion), debut, fin)
+
+    camionnettes = []
+    total_interventions = 0
+    total_jours_sur = 0
+    for cid, entree in par_camion.items():
+        intervs = entree['interventions']
+        total_interventions += len(intervs)
+        jours_indispo = indispo_jours.get(cid, set())
+
+        # Charge journalière : compte des interventions par jour.
+        par_jour = OrderedDict()
+        for interv in intervs:
+            jour = interv.date_prevue
+            par_jour[jour] = par_jour.get(jour, 0) + 1
+
+        # Réunit les jours « avec interventions » et les jours « indisponibles »
+        # (pour qu'un jour 100 % absent reste visible, count=0).
+        jours = set(par_jour) | jours_indispo
+        charge = []
+        for jour in sorted(jours):
+            count = par_jour.get(jour, 0)
+            indisponible = jour in jours_indispo
+            cap = 0 if indisponible else capacite_jour
+            sur_reservation = count > cap
+            if sur_reservation:
+                total_jours_sur += 1
+            charge.append({
+                'date': jour.isoformat(),
+                'count': count,
+                'indisponible': indisponible,
+                'sur_reservation': bool(sur_reservation),
+            })
+
+        interventions_out = [{
+            'id': interv.id,
+            'date': interv.date_prevue.isoformat(),
+            'chantier_id': interv.installation_id,
+            'chantier_reference': getattr(
+                getattr(interv, 'installation', None), 'reference', '') or '',
+            'type_intervention': interv.type_intervention,
+            'statut': interv.statut,
+            'technicien_id': interv.technicien_id,
+            'technicien_nom': _nom_user(interv.technicien_id),
+        } for interv in sorted(
+            intervs, key=lambda iv: (iv.date_prevue, iv.id))]
+
+        camionnettes.append({
+            'camionnette_id': cid,
+            'nom': entree['nom'],
+            'interventions': interventions_out,
+            'charge': charge,
+            'total_interventions': len(intervs),
+            'jours_sur_reservation': sum(
+                1 for c in charge if c['sur_reservation']),
+        })
+
+    camionnettes.sort(key=lambda c: (c['nom'].lower(), c['camionnette_id']))
+
+    base['camionnettes'] = camionnettes
+    base['totaux'] = {
+        'nb_camionnettes': len(camionnettes),
+        'nb_interventions': total_interventions,
+        'nb_jours_sur_reservation': total_jours_sur,
+    }
+    return base
+
+
+def _camionnette_indispo_jours(company, camion_ids, debut, fin):
+    """FG303 — pour un lot de camionnettes, l'ensemble des JOURS de la fenêtre
+    [debut, fin] inclusive où chacune est marquée indisponible (FG302
+    ``IndisponibiliteRessource`` de cible camionnette). Renvoie
+    {camionnette_id: set(date)}. Lecture seule, scopée société. Une
+    indisponibilité [d, f] est tronquée à la fenêtre demandée."""
+    import datetime
+    from .models import IndisponibiliteRessource
+
+    out = {}
+    if not camion_ids or debut is None or fin is None or fin < debut:
+        return out
+
+    rows = (IndisponibiliteRessource.objects
+            .filter(company=company)
+            .filter(camionnette_id__in=list(camion_ids))
+            .filter(date_debut__lte=fin, date_fin__gte=debut)
+            .values_list('camionnette_id', 'date_debut', 'date_fin'))
+    un = datetime.timedelta(days=1)
+    for cid, d_debut, d_fin in rows:
+        # Tronque l'indisponibilité à la fenêtre demandée (bornes inclusives).
+        jour = max(d_debut, debut)
+        borne = min(d_fin, fin)
+        jours = out.setdefault(cid, set())
+        while jour <= borne:
+            jours.add(jour)
+            jour += un
+    return out
+
+
 def chantier_card(chantier_id, company):
     """S8 — fiche-carte LECTURE SEULE d'un chantier (Installation) pour le
     partage dans la messagerie. Scopée société : None si le chantier n'appartient
