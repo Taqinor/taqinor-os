@@ -1252,3 +1252,96 @@ class Timesheet(models.Model):
 
     def __str__(self):
         return f'{self.ressource_id} {self.date} {self.heures} h'
+
+
+class Risque(models.Model):
+    """Une entrée du REGISTRE DES RISQUES d'un ``Projet`` (PROJ30).
+
+    Modélise un risque identifié sur un projet, évalué par sa ``probabilite`` et
+    son ``impact`` (échelle 1–5 chacun) ; la ``criticite`` (1–25) est le PRODUIT
+    des deux, calculé côté serveur — jamais lu du corps de requête. Le
+    ``statut`` suit le cycle de vie PROPRE au registre
+    (ouvert/surveille/maitrise/clos) — il ne réutilise NI n'importe AUCUNE
+    clé/étiquette de ``STAGES.py`` (règle #2), et est DISTINCT de tous les autres
+    statuts du module. ``mitigation`` porte le plan de réduction, ``proprietaire``
+    (optionnel) le responsable côté ERP.
+
+    Tout est multi-société : ``company`` est posée côté serveur, jamais lue du
+    corps de requête. Modèle entièrement additif.
+    """
+    class Statut(models.TextChoices):
+        OUVERT = 'ouvert', 'Ouvert'
+        SURVEILLE = 'surveille', 'Surveillé'
+        MAITRISE = 'maitrise', 'Maîtrisé'
+        CLOS = 'clos', 'Clos'
+
+    class Categorie(models.TextChoices):
+        TECHNIQUE = 'technique', 'Technique'
+        DELAI = 'delai', 'Délai'
+        COUT = 'cout', 'Coût'
+        FOURNISSEUR = 'fournisseur', 'Fournisseur'
+        REGLEMENTAIRE = 'reglementaire', 'Réglementaire'
+        SECURITE = 'securite', 'Sécurité'
+        AUTRE = 'autre', 'Autre'
+
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='gestion_projet_risques',
+        verbose_name='Société',
+    )
+    projet = models.ForeignKey(
+        Projet,
+        on_delete=models.CASCADE,
+        related_name='risques',
+        verbose_name='Projet',
+    )
+    libelle = models.CharField(max_length=200, verbose_name='Libellé')
+    description = models.TextField(
+        blank=True, default='', verbose_name='Description')
+    categorie = models.CharField(
+        max_length=14, choices=Categorie.choices,
+        default=Categorie.AUTRE, verbose_name='Catégorie')
+    # Échelles 1–5 ; criticité = probabilité × impact (1–25), figée au serveur.
+    probabilite = models.PositiveSmallIntegerField(
+        default=1,
+        validators=[MinValueValidator(1), MaxValueValidator(5)],
+        verbose_name='Probabilité (1–5)')
+    impact = models.PositiveSmallIntegerField(
+        default=1,
+        validators=[MinValueValidator(1), MaxValueValidator(5)],
+        verbose_name='Impact (1–5)')
+    criticite = models.PositiveSmallIntegerField(
+        default=1, verbose_name='Criticité (1–25)')
+    statut = models.CharField(
+        max_length=10, choices=Statut.choices,
+        default=Statut.OUVERT, verbose_name='Statut')
+    mitigation = models.TextField(
+        blank=True, default='', verbose_name='Plan de mitigation')
+    proprietaire = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='gestion_projet_risques',
+        verbose_name='Propriétaire',
+    )
+    date_creation = models.DateTimeField(
+        auto_now_add=True, verbose_name='Créé le')
+
+    class Meta:
+        verbose_name = 'Risque'
+        verbose_name_plural = 'Risques'
+        ordering = ['-criticite', '-id']
+        indexes = [
+            models.Index(
+                fields=['projet', '-criticite'],
+                name='gp_risque_proj_crit_idx'),
+        ]
+
+    def __str__(self):
+        return f'{self.libelle} (criticité {self.criticite})'
+
+    def save(self, *args, **kwargs):
+        # Criticité TOUJOURS recalculée côté serveur (jamais du corps de requête).
+        self.criticite = (self.probabilite or 0) * (self.impact or 0)
+        super().save(*args, **kwargs)

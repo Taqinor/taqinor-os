@@ -17,6 +17,7 @@ from .views import (
     ProjetLienViewSet,
     ProjetViewSet,
     RessourceProfilViewSet,
+    RisqueViewSet,
     TacheViewSet,
     TimesheetViewSet,
 )
@@ -39,6 +40,7 @@ router.register(r'indisponibilites', IndisponibiliteViewSet)
 router.register(r'budgets', BudgetProjetViewSet)
 router.register(r'lignes-budget', LigneBudgetProjetViewSet)
 router.register(r'timesheets', TimesheetViewSet)
+router.register(r'risques', RisqueViewSet)
 
 urlpatterns = [
     path('', include(router.urls)),

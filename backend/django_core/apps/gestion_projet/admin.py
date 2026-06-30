@@ -10,6 +10,7 @@ from .models import (
     ProjetActivity,
     ProjetChantier,
     ProjetLien,
+    Risque,
     Tache,
     Timesheet,
 )
@@ -99,3 +100,11 @@ class TimesheetAdmin(admin.ModelAdmin):
                     'cout', 'company')
     list_filter = ('company',)
     search_fields = ('commentaire',)
+
+
+@admin.register(Risque)
+class RisqueAdmin(admin.ModelAdmin):
+    list_display = ('id', 'projet', 'libelle', 'categorie', 'probabilite',
+                    'impact', 'criticite', 'statut', 'company')
+    list_filter = ('statut', 'categorie', 'company')
+    search_fields = ('libelle', 'description', 'mitigation')

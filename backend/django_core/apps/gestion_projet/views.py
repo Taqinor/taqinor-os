@@ -32,6 +32,7 @@ from .models import (
     ProjetChantier,
     ProjetLien,
     RessourceProfil,
+    Risque,
     Tache,
     Timesheet,
 )
@@ -52,6 +53,7 @@ from .serializers import (
     ProjetLienSerializer,
     ProjetSerializer,
     RessourceProfilSerializer,
+    RisqueSerializer,
     TacheSerializer,
     TimesheetSerializer,
 )
@@ -1337,4 +1339,40 @@ class TimesheetViewSet(_GestionProjetBaseViewSet):
         fin = self.request.query_params.get('fin')
         if debut and fin:
             qs = qs.filter(date__gte=debut, date__lte=fin)
+        return qs
+
+
+class RisqueViewSet(_GestionProjetBaseViewSet):
+    """Registre des risques d'un projet (PROJ30) — CRUD scopé société.
+
+    ``company`` est posée côté serveur (TenantMixin) ; le ``projet`` et le
+    ``proprietaire`` reçus sont validés même-société. La ``criticite`` est
+    FIGÉE côté serveur (probabilité × impact) — jamais lue du corps de requête.
+    Filtres optionnels : ``?projet=<id>``, ``?statut=<statut>``,
+    ``?categorie=<categorie>``, ``?criticite_min=<n>`` (criticité ≥ n).
+    Recherche par libellé / description ; tri par défaut criticité décroissante.
+    """
+    queryset = Risque.objects.select_related('projet', 'proprietaire').all()
+    serializer_class = RisqueSerializer
+    filter_backends = [filters.SearchFilter, filters.OrderingFilter]
+    search_fields = ['libelle', 'description', 'mitigation']
+    ordering_fields = ['criticite', 'probabilite', 'impact', 'statut', 'id']
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        projet = self.request.query_params.get('projet')
+        if projet:
+            qs = qs.filter(projet_id=projet)
+        statut = self.request.query_params.get('statut')
+        if statut:
+            qs = qs.filter(statut=statut)
+        categorie = self.request.query_params.get('categorie')
+        if categorie:
+            qs = qs.filter(categorie=categorie)
+        criticite_min = self.request.query_params.get('criticite_min')
+        if criticite_min:
+            try:
+                qs = qs.filter(criticite__gte=int(criticite_min))
+            except (TypeError, ValueError):
+                pass
         return qs

@@ -24,6 +24,7 @@ from .models import (
     ProjetChantier,
     ProjetLien,
     RessourceProfil,
+    Risque,
     Tache,
     Timesheet,
 )
@@ -666,3 +667,47 @@ class TimesheetSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError(
                 {'phase': 'La phase doit appartenir au même projet.'})
         return attrs
+
+
+class RisqueSerializer(serializers.ModelSerializer):
+    """Entrée du registre des risques d'un projet (PROJ30).
+
+    ``company`` n'est jamais exposée : elle est posée côté serveur. Le ``projet``
+    et le ``proprietaire`` (optionnel) reçus sont validés même-société. La
+    ``criticite`` est CALCULÉE côté serveur (probabilité × impact) et exposée en
+    LECTURE seule — jamais lue du corps de requête. Probabilité et impact sont
+    bornés à [1, 5].
+    """
+    projet_code = serializers.CharField(source='projet.code', read_only=True)
+    statut_display = serializers.CharField(
+        source='get_statut_display', read_only=True)
+    categorie_display = serializers.CharField(
+        source='get_categorie_display', read_only=True)
+
+    class Meta:
+        model = Risque
+        fields = [
+            'id', 'projet', 'projet_code', 'libelle', 'description',
+            'categorie', 'categorie_display', 'probabilite', 'impact',
+            'criticite', 'statut', 'statut_display', 'mitigation',
+            'proprietaire', 'date_creation',
+        ]
+        read_only_fields = ['criticite', 'date_creation']
+
+    def validate_projet(self, value):
+        return _meme_societe(self, value, 'Projet')
+
+    def _borne_1_5(self, value, champ):
+        if value is not None and not (1 <= value <= 5):
+            raise serializers.ValidationError(
+                f'{champ} doit être compris entre 1 et 5.')
+        return value
+
+    def validate_probabilite(self, value):
+        return self._borne_1_5(value, 'La probabilité')
+
+    def validate_impact(self, value):
+        return self._borne_1_5(value, "L'impact")
+
+    def validate_proprietaire(self, value):
+        return _meme_societe(self, value, 'Propriétaire')
