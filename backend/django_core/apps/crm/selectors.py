@@ -450,3 +450,33 @@ def lead_values_changed_since(stamp, company=None):
     courant = _lead_provenance_valeurs(lead)
     return [f for f in LEAD_PROVENANCE_FIELDS
             if f in valeurs and courant.get(f) != valeurs.get(f)]
+
+
+# DC13 — localisation chantier : lead d'abord, sinon repli sur le client ──────
+
+def site_location_for_devis(devis):
+    """DC13 — localisation du chantier à créer depuis un devis.
+
+    Renvoie ``{'site_adresse', 'site_ville', 'gps_lat', 'gps_lng'}``. Quand le
+    devis porte un lead, on reprend ses valeurs (comportement historique).
+    Pour un devis SANS lead, ``site_adresse`` retombe sur ``client.adresse`` au
+    lieu de rester vide (le client n'a ni ville ni GPS → restent None).
+    Point d'entrée cross-app LECTURE SEULE pour que ``installations`` n'importe
+    pas ``apps.crm.models`` ; ``create_installation_from_devis`` consomme ce
+    seul accesseur. Aucune donnée fabriquée.
+    """
+    lead = getattr(devis, 'lead', None)
+    if lead is not None:
+        return {
+            'site_adresse': lead.adresse,
+            'site_ville': lead.ville,
+            'gps_lat': lead.gps_lat,
+            'gps_lng': lead.gps_lng,
+        }
+    client = getattr(devis, 'client', None)
+    return {
+        'site_adresse': getattr(client, 'adresse', None) if client else None,
+        'site_ville': None,
+        'gps_lat': None,
+        'gps_lng': None,
+    }
