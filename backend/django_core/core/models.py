@@ -556,3 +556,60 @@ class CalendarSyncMapping(TimestampedModel):
 
     def __str__(self):
         return f'{self.provider}:{self.local_kind}/{self.local_id}'
+
+
+# ---------------------------------------------------------------------------
+# FG376 — Connecteur Zapier / Make : abonnements webhook (REST hooks) sortants.
+#
+# Modèle de FONDATION GÉNÉRIQUE : un outil no-code (Zapier/Make) s'abonne à un
+# nom d'événement (chaîne libre, ex. « devis_accepted ») en enregistrant une URL
+# cible. Quand l'événement se produit, ``core.webhooks.dispatch_event`` POSTe le
+# payload à chaque URL abonnée. AUCUN import d'app métier (contrat import-linter
+# ``core-foundation-is-a-base-layer``) : les apps émettrices passent un dict.
+# ---------------------------------------------------------------------------
+
+
+class WebhookSubscription(TimestampedModel):
+    """Abonnement webhook sortant (REST hook) pour Zapier/Make (FG376).
+
+    GÉNÉRIQUE : ``event`` est un nom d'événement en texte libre ; ``target_url``
+    reçoit le payload en POST. ``secret`` (optionnel) sert à signer le payload
+    (HMAC) pour que l'abonné vérifie l'authenticité. Multi-tenant : ``company``
+    obligatoire. Unique par ``(company, event, target_url)``.
+    """
+
+    company = models.ForeignKey(
+        'authentication.Company', on_delete=models.CASCADE,
+        related_name='webhook_subscriptions', verbose_name='Société')
+
+    event = models.CharField(
+        'Événement', max_length=80,
+        help_text='Nom d\'événement, ex. « devis_accepted ».')
+    target_url = models.URLField('URL cible', max_length=500)
+    secret = models.CharField(
+        'Secret de signature', max_length=120, blank=True, default='',
+        help_text='Optionnel : clé HMAC pour signer le payload (en-tête '
+                  'X-Taqinor-Signature).')
+    actif = models.BooleanField('Actif', default=True)
+
+    last_delivery_le = models.DateTimeField(
+        'Dernière livraison', null=True, blank=True)
+    last_status = models.IntegerField(
+        'Dernier statut HTTP', null=True, blank=True)
+
+    class Meta:
+        verbose_name = 'Abonnement webhook'
+        verbose_name_plural = 'Abonnements webhook'
+        ordering = ['event', 'id']
+        constraints = [
+            models.UniqueConstraint(
+                fields=['company', 'event', 'target_url'],
+                name='core_webhook_co_evt_url'),
+        ]
+        indexes = [
+            models.Index(fields=['company', 'event', 'actif'],
+                         name='core_webhook_co_evt_idx'),
+        ]
+
+    def __str__(self):
+        return f'{self.event} → {self.target_url}'
