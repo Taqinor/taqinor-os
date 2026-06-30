@@ -649,3 +649,41 @@ class TestAdditionalProviders(TestCase):
         keys = [p['key'] for p in r.data]
         self.assertIn('solaredge', keys)
         self.assertIn('solis', keys)
+
+
+class TestCo2Reporting(TestCase):
+    """FG286 — CO₂ évité par système & cumulé sur le parc."""
+
+    def setUp(self):
+        self.company = make_company('co2-co', 'CO2 Co')
+        self.user = User.objects.create_user(
+            username='co2_admin', password='x', role_legacy='admin',
+            company=self.company)
+        self.api = auth(self.user)
+        self.inst1, _ = make_installation(self.company, ref='CO2-1', kwc='5')
+        self.inst2, _ = make_installation(self.company, ref='CO2-2', kwc='10')
+        for inst in (self.inst1, self.inst2):
+            self.config = MonitoringConfig.objects.create(
+                company=self.company, installation=inst)
+            ProductionReading.objects.create(
+                company=self.company, installation=inst,
+                date=date(2026, 6, 1), period_days=30,
+                energy_kwh=Decimal('1000'))
+
+    def test_co2_per_system(self):
+        from apps.monitoring.selectors import co2_for_installation
+        r = co2_for_installation(self.inst1)
+        # 1000 kWh × 0.81 = 810 kg.
+        self.assertEqual(r['co2_kg'], Decimal('810.00'))
+
+    def test_co2_fleet_cumulative(self):
+        from apps.monitoring.selectors import co2_fleet
+        r = co2_fleet(self.company)
+        # 2000 kWh × 0.81 = 1620 kg.
+        self.assertEqual(r['total_co2_kg'], Decimal('1620.00'))
+        self.assertEqual(len(r['systems']), 2)
+
+    def test_co2_fleet_endpoint(self):
+        r = self.api.get('/api/django/monitoring/configs/co2-fleet/')
+        self.assertEqual(r.status_code, 200, r.data)
+        self.assertEqual(len(r.data['systems']), 2)

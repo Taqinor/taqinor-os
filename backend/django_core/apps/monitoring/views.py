@@ -188,6 +188,30 @@ class MonitoringConfigViewSet(TenantMixin, viewsets.ModelViewSet):
         window = min(int(request.query_params.get('window_days', 365)), 1825)
         return Response(om_metrics(config.installation, window_days=window))
 
+    @action(detail=True, methods=['get'], url_path='co2',
+            permission_classes=[IsAnyRole])
+    def co2(self, request, pk=None):
+        """FG286 — CO₂ évité (kg + tonnes) par ce système (toute la production
+        ou bornée par ?since=YYYY-MM-DD&until=YYYY-MM-DD)."""
+        from .selectors import co2_for_installation
+        config = self.get_object()
+        since = request.query_params.get('since') or None
+        until = request.query_params.get('until') or None
+        return Response(co2_for_installation(
+            config.installation, since=since, until=until))
+
+    @action(detail=False, methods=['get'], url_path='co2-fleet',
+            permission_classes=[IsAnyRole])
+    def co2_fleet(self, request):
+        """FG286 — CO₂ évité par système ET cumulé sur le parc de la société."""
+        from .selectors import co2_fleet
+        company = request.user.company
+        if company is None:
+            return Response({'systems': [], 'total_co2_kg': 0})
+        since = request.query_params.get('since') or None
+        until = request.query_params.get('until') or None
+        return Response(co2_fleet(company, since=since, until=until))
+
     @action(detail=True, methods=['get'], url_path='soiling',
             permission_classes=[IsAnyRole])
     def soiling(self, request, pk=None):
