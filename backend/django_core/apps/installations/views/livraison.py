@@ -50,6 +50,10 @@ class LivraisonViewSet(TenantMixin, viewsets.ModelViewSet):
         date_prevue = params.get('date_prevue')
         if date_prevue:
             qs = qs.filter(date_prevue=date_prevue)
+        # FG333 — filtre par mode d'acheminement (dépôt vs direct site).
+        mode = params.get('mode_acheminement')
+        if mode:
+            qs = qs.filter(mode_acheminement=mode)
         return qs
 
     def _check_tenant(self, serializer):

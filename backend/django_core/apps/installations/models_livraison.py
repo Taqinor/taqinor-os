@@ -26,6 +26,12 @@ class Livraison(models.Model):
         LIVREE = 'livree', 'Livrée'
         ANNULEE = 'annulee', 'Annulée'
 
+    class ModeAcheminement(models.TextChoices):
+        # FG333 — passe par le dépôt (décrémente l'emplacement dépôt) vs livré
+        # DIRECT sur site par le fournisseur (le dépôt n'est jamais décrémenté).
+        DEPOT = 'depot', 'Via le dépôt'
+        DIRECT_SITE = 'direct_site', 'Direct site'
+
     company = models.ForeignKey(
         'authentication.Company', on_delete=models.CASCADE,
         null=True, blank=True,
@@ -46,6 +52,13 @@ class Livraison(models.Model):
     cout_transport = models.DecimalField(
         max_digits=10, decimal_places=2, null=True, blank=True)
     date_prevue = models.DateField(null=True, blank=True)
+    # FG333 — mode d'acheminement : décide quel emplacement décrémenter (le
+    # dépôt en mode `depot`, AUCUN en `direct_site` où le matériel n'entre
+    # jamais au dépôt). La décrémentation réelle reste pilotée par le module
+    # stock ; ce drapeau lui indique la cible.
+    mode_acheminement = models.CharField(
+        max_length=20, choices=ModeAcheminement.choices,
+        default=ModeAcheminement.DEPOT)
     statut = models.CharField(
         max_length=20, choices=Statut.choices, default=Statut.PLANIFIEE)
     adresse_site = models.TextField(blank=True, null=True)

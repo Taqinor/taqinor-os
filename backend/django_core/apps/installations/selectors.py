@@ -1602,3 +1602,18 @@ def optimiser_tournee_livraison(company, jour, depart_lat=None,
         'sans_gps': sans_gps,
         'total': len(ordre) + len(sans_gps),
     }
+
+
+def emplacement_a_decrementer_livraison(livraison):
+    """FG333 - quel emplacement decrementer pour une livraison.
+
+    En mode `depot`, c'est le depot de la livraison (le materiel y transite et
+    en sort). En mode `direct_site`, le materiel est livre DIRECTEMENT sur site
+    par le fournisseur sans passer par le depot : aucun emplacement a
+    decrementer (retourne None). La decrementation reelle reste pilotee par le
+    module stock ; ce helper lui indique la cible.
+    """
+    from .models import Livraison
+    if livraison.mode_acheminement == Livraison.ModeAcheminement.DIRECT_SITE:
+        return None
+    return livraison.depot

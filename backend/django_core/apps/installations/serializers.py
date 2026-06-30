@@ -2115,6 +2115,8 @@ class LivraisonSerializer(serializers.ModelSerializer):
         source='transporteur.nom', read_only=True, default=None)
     statut_display = serializers.CharField(
         source='get_statut_display', read_only=True, default=None)
+    mode_acheminement_display = serializers.CharField(
+        source='get_mode_acheminement_display', read_only=True, default=None)
     lignes = LivraisonLigneSerializer(many=True, read_only=True)
 
     class Meta:
@@ -2122,7 +2124,8 @@ class LivraisonSerializer(serializers.ModelSerializer):
         fields = [
             'id', 'reference', 'installation', 'installation_reference',
             'depot', 'depot_nom', 'transporteur_nom', 'transporteur',
-            'transporteur_obj_nom', 'cout_transport', 'date_prevue', 'statut',
+            'transporteur_obj_nom', 'cout_transport', 'mode_acheminement',
+            'mode_acheminement_display', 'date_prevue', 'statut',
             'statut_display', 'adresse_site', 'note', 'lignes',
             'created_by', 'date_creation', 'date_modification',
         ]
