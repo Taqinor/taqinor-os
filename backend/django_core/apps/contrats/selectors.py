@@ -172,6 +172,19 @@ def engagements_sla_contrat(contrat):
         contrat=contrat, company=contrat.company).order_by('id')
 
 
+def retenues_garantie_contrat(contrat):
+    """Retenues de garantie d'un contrat (QuerySet scopé société) — CONTRAT28.
+
+    Lecture seule. Ordre par ``id`` décroissant (cohérent avec ``Meta.ordering``).
+    La société est portée par le contrat ; on filtre aussi sur ``contrat.company``
+    par sécurité même si le FK ``contrat`` la garantit.
+    """
+    from .models import RetenueGarantie
+
+    return RetenueGarantie.objects.filter(
+        contrat=contrat, company=contrat.company).order_by('-id')
+
+
 def signatures_contrat(contrat):
     """Signatures électroniques d'un contrat (QuerySet scopé société, ordonné).
 

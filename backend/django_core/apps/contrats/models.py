@@ -1816,3 +1816,96 @@ class EngagementSLA(models.Model):
         if self.penalite_max is not None and penalite > self.penalite_max:
             penalite = self.penalite_max
         return penalite.quantize(Decimal('0.01'))
+
+
+class RetenueGarantie(models.Model):
+    """Retenue de garantie d'un contrat + suivi de libération — CONTRAT28.
+
+    Une ``RetenueGarantie`` enregistre la RETENUE DE GARANTIE pratiquée sur un
+    ``Contrat`` (somme conservée par le maître d'ouvrage jusqu'à la levée des
+    réserves / fin de la période de garantie). Elle porte la base de calcul
+    (``montant_base``), le taux retenu (``taux``, en %) et le ``montant_retenu``
+    (calculé ``montant_base × taux %``, posé côté serveur). Le SUIVI DE
+    LIBÉRATION se fait via le ``statut`` LOCAL (``retenue`` → ``liberee`` /
+    ``annulee``) et les dates clés (``date_retenue``, ``date_liberation_prevue``,
+    ``date_liberation_effective``).
+
+    Le ``statut`` est PROPRE au suivi de la retenue : il ne touche JAMAIS le
+    ``Contrat.statut`` (CONTRAT12) ni le funnel ``STAGES.py`` (rule #2), et la
+    libération n'émet aucune facture/aucun mouvement comptable (déclaratif).
+
+    Multi-tenant : ``company`` est posée CÔTÉ SERVEUR (déduite du contrat).
+    ``contrat`` est une référence interne à l'app `contrats` (FK dur autorisé).
+
+    RUNTIME-SAFETY (leçon FG136) : ``note`` est un ``TextField`` ; les montants
+    sont des ``DecimalField`` bornés. L'index est NOMMÉ explicitement (≤30 chars).
+    """
+
+    class Statut(models.TextChoices):
+        RETENUE = 'retenue', 'Retenue'
+        LIBEREE = 'liberee', 'Libérée'
+        ANNULEE = 'annulee', 'Annulée'
+
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='contrats_retenues',
+        verbose_name='Société',
+    )
+    contrat = models.ForeignKey(
+        Contrat,
+        on_delete=models.CASCADE,
+        related_name='retenues_garantie',
+        verbose_name='Contrat',
+    )
+    # Base de calcul de la retenue (montant HT/TTC du marché ou d'une situation).
+    montant_base = models.DecimalField(
+        max_digits=14, decimal_places=2, default=Decimal('0'),
+        verbose_name='Montant de base')
+    # Taux de retenue en pourcentage (ex. 5.00 pour 5 %).
+    taux = models.DecimalField(
+        max_digits=6, decimal_places=2, default=Decimal('0'),
+        verbose_name='Taux de retenue (%)')
+    # Montant effectivement retenu (calculé côté serveur = base × taux %).
+    montant_retenu = models.DecimalField(
+        max_digits=14, decimal_places=2, default=Decimal('0'),
+        verbose_name='Montant retenu')
+    date_retenue = models.DateField(
+        null=True, blank=True, verbose_name='Date de retenue')
+    date_liberation_prevue = models.DateField(
+        null=True, blank=True, verbose_name='Libération prévue le')
+    date_liberation_effective = models.DateField(
+        null=True, blank=True, verbose_name='Libérée le')
+    statut = models.CharField(
+        max_length=20, choices=Statut.choices,
+        default=Statut.RETENUE, verbose_name='Statut')
+    note = models.TextField(blank=True, default='', verbose_name='Note')
+    date_creation = models.DateTimeField(
+        auto_now_add=True, verbose_name='Créée le')
+
+    class Meta:
+        verbose_name = 'Retenue de garantie'
+        verbose_name_plural = 'Retenues de garantie'
+        ordering = ['contrat_id', '-id']
+        indexes = [
+            models.Index(
+                fields=['company', 'statut'],
+                name='contrats_retg_co_st',
+            ),
+            models.Index(
+                fields=['contrat', 'date_liberation_prevue'],
+                name='contrats_retg_ct_dt',
+            ),
+        ]
+
+    def __str__(self):
+        return (
+            f'Retenue {self.montant_retenu} ({self.get_statut_display()}) '
+            f'— contrat {self.contrat_id}'
+        )
+
+    def calculer_montant_retenu(self):
+        """Montant retenu = ``montant_base × taux %`` (arrondi 2 décimales)."""
+        base = self.montant_base or Decimal('0')
+        taux = self.taux or Decimal('0')
+        return (base * taux / Decimal('100')).quantize(Decimal('0.01'))

@@ -1677,3 +1677,38 @@ def calculer_penalite_sla(sla, *, taux_realise=None, montant_contrat=None):
         'taux_cible': cible,
         'taux_realise': taux_realise,
     }
+
+
+# ---------------------------------------------------------------------------
+# CONTRAT28 — Retenue de garantie (suivi de libération)
+# ---------------------------------------------------------------------------
+
+
+def liberer_retenue(retenue, *, today=None, auteur=None):
+    """Libère une retenue de garantie (statut + date côté serveur) — CONTRAT28.
+
+    Pose ``statut=liberee`` et ``date_liberation_effective=today`` (date du jour
+    injectable). Idempotent : une retenue déjà ``liberee`` reste inchangée ; une
+    retenue ``annulee`` ne peut pas être libérée (lève ``ValueError``). Journalise
+    au chatter du contrat (CONTRAT15). Ne change AUCUN ``Contrat.statut`` et
+    n'émet aucune facture/aucun mouvement comptable (déclaratif). Renvoie la
+    retenue.
+    """
+    from .models import RetenueGarantie
+
+    if today is None:
+        today = timezone.localdate()
+    if retenue.statut == RetenueGarantie.Statut.LIBEREE:
+        return retenue
+    if retenue.statut == RetenueGarantie.Statut.ANNULEE:
+        raise ValueError("Une retenue annulée ne peut pas être libérée.")
+    ancien = retenue.statut
+    retenue.statut = RetenueGarantie.Statut.LIBEREE
+    retenue.date_liberation_effective = today
+    retenue.save(update_fields=['statut', 'date_liberation_effective'])
+    journaliser_transition(
+        retenue.contrat, field='retenue_statut', old_value=ancien,
+        new_value=retenue.statut,
+        message=f'Retenue de garantie libérée ({retenue.montant_retenu}).',
+        auteur=auteur)
+    return retenue

@@ -46,6 +46,7 @@ from .models import (
     PartieContrat,
     RegleApprobation,
     Resiliation,
+    RetenueGarantie,
     VersionContrat,
 )
 from .serializers import (
@@ -75,6 +76,7 @@ from .serializers import (
     RenouvelerContratSerializer,
     ResilierContratSerializer,
     ResiliationSerializer,
+    RetenueGarantieSerializer,
     ResoudreRegleApprobationSerializer,
     SemerAlertesSerializer,
     SignatureContratSerializer,
@@ -1249,3 +1251,69 @@ class EngagementSLAViewSet(_ContratsBaseViewSet):
                 str(resultat['taux_realise'])
                 if resultat['taux_realise'] is not None else None),
         })
+
+
+class RetenueGarantieViewSet(_ContratsBaseViewSet):
+    """Retenues de garantie des contrats de la société + suivi de libération (CONTRAT28).
+
+    Scopé société (``TenantMixin``) ; ``company`` posée CÔTÉ SERVEUR (déduite du
+    contrat). À la création, ``montant_retenu`` est CALCULÉ côté serveur
+    (= base × taux %). Action ``liberer`` pour pointer la libération (statut +
+    date côté serveur). Le ``statut`` est PROPRE au suivi de la retenue — il ne
+    touche JAMAIS le ``Contrat.statut`` (CONTRAT12) ni le funnel ``STAGES.py``
+    (rule #2), et n'émet aucune facture.
+
+    Filtres : ``?contrat=<id>``, ``?statut=<valeur>``.
+    """
+    queryset = RetenueGarantie.objects.select_related('contrat').all()
+    serializer_class = RetenueGarantieSerializer
+    filter_backends = [filters.OrderingFilter]
+    ordering_fields = ['date_retenue', 'date_liberation_prevue',
+                       'date_creation', 'id']
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        contrat_id = self.request.query_params.get('contrat')
+        if contrat_id:
+            qs = qs.filter(contrat_id=contrat_id)
+        statut = self.request.query_params.get('statut')
+        if statut:
+            qs = qs.filter(statut=statut)
+        return qs
+
+    def perform_create(self, serializer):
+        """Pose ``company`` (celle du contrat) + calcule ``montant_retenu``.
+
+        Le montant retenu est dérivé CÔTÉ SERVEUR (= base × taux %) — jamais lu
+        du corps de requête.
+        """
+        contrat = serializer.validated_data['contrat']
+        instance = serializer.save(company=contrat.company)
+        instance.montant_retenu = instance.calculer_montant_retenu()
+        instance.save(update_fields=['montant_retenu'])
+
+    def perform_update(self, serializer):
+        """Recalcule ``montant_retenu`` après une mise à jour base/taux."""
+        instance = serializer.save()
+        nouveau = instance.calculer_montant_retenu()
+        if instance.montant_retenu != nouveau:
+            instance.montant_retenu = nouveau
+            instance.save(update_fields=['montant_retenu'])
+
+    @action(detail=True, methods=['post'])
+    def liberer(self, request, pk=None):
+        """Libère la retenue (statut + date côté serveur — CONTRAT28).
+
+        Idempotent : une retenue déjà libérée reste inchangée. Une retenue
+        annulée ne peut pas être libérée (400). La date du jour et l'auteur sont
+        posés CÔTÉ SERVEUR. Ne change AUCUN ``Contrat.statut``.
+        """
+        retenue = self.get_object()
+        try:
+            retenue = services.liberer_retenue(retenue, auteur=request.user)
+        except ValueError as exc:
+            return Response(
+                {'detail': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+        return Response(
+            RetenueGarantieSerializer(
+                retenue, context={'request': request}).data)

@@ -23,6 +23,7 @@ from .models import (
     PartieContrat,
     RegleApprobation,
     Resiliation,
+    RetenueGarantie,
     SignatureContrat,
     VersionContrat,
 )
@@ -876,3 +877,43 @@ class PenaliteSLASerializer(serializers.Serializer):
     montant_contrat = serializers.DecimalField(
         max_digits=14, decimal_places=2, required=False, allow_null=True,
         min_value=0)
+
+
+class RetenueGarantieSerializer(serializers.ModelSerializer):
+    """Retenue de garantie & suivi de libération (CONTRAT28).
+
+    ``company`` n'est jamais exposée : elle est posée côté serveur (déduite du
+    contrat). Le ``contrat`` reçu est validé même-société. ``montant_retenu``
+    est CALCULÉ côté serveur (= base × taux %) et reste en lecture seule ; le
+    ``statut`` et ``date_liberation_effective`` sont posés côté serveur (action
+    ``liberer``) — un POST ne peut pas forcer une retenue « libérée ».
+    """
+    statut_display = serializers.CharField(
+        source='get_statut_display', read_only=True)
+
+    class Meta:
+        model = RetenueGarantie
+        fields = [
+            'id', 'contrat', 'montant_base', 'taux', 'montant_retenu',
+            'date_retenue', 'date_liberation_prevue',
+            'date_liberation_effective', 'statut', 'statut_display', 'note',
+            'date_creation',
+        ]
+        read_only_fields = [
+            'montant_retenu', 'date_liberation_effective', 'statut',
+            'statut_display', 'date_creation',
+        ]
+
+    def validate_contrat(self, contrat):
+        """Le contrat rattaché doit appartenir à la société de l'utilisateur."""
+        request = self.context.get('request')
+        if request is not None and contrat.company_id != request.user.company_id:
+            raise serializers.ValidationError(
+                "Ce contrat n'appartient pas à votre société.")
+        return contrat
+
+    def validate_taux(self, value):
+        if value is not None and not (0 <= value <= 100):
+            raise serializers.ValidationError(
+                'Le taux de retenue doit être compris entre 0 et 100.')
+        return value

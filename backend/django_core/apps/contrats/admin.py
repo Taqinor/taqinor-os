@@ -12,6 +12,7 @@ from .models import (
     Obligation,
     PartieContrat,
     RegleApprobation,
+    RetenueGarantie,
     SignatureContrat,
     VersionContrat,
 )
@@ -126,3 +127,14 @@ class EngagementSLAAdmin(admin.ModelAdmin):
     list_filter = ('mode_penalite', 'actif')
     search_fields = ('libelle', 'unite')
     readonly_fields = ('date_creation',)
+
+
+@admin.register(RetenueGarantie)
+class RetenueGarantieAdmin(admin.ModelAdmin):
+    list_display = ('id', 'contrat', 'montant_base', 'taux', 'montant_retenu',
+                    'date_retenue', 'date_liberation_prevue',
+                    'date_liberation_effective', 'statut', 'company')
+    list_filter = ('statut',)
+    search_fields = ('note',)
+    readonly_fields = ('montant_retenu', 'date_liberation_effective',
+                       'date_creation')
