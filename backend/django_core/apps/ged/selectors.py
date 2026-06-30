@@ -83,7 +83,10 @@ def documents_visible_to_user(user):
     from django.db.models import Q
     if not user.company_id and not user.is_superuser:
         return Document.objects.none()
-    qs = Document.objects.all()
+    # GED26 — la corbeille (soft-delete) est masquée par défaut : on ne liste que
+    # les documents NON supprimés (`supprime_le__isnull=True`). Les documents en
+    # corbeille restent en base (réversibles) mais hors des listes/recherches.
+    qs = Document.objects.filter(supprime_le__isnull=True)
     if user.company_id:
         qs = qs.filter(company_id=user.company_id)
     if getattr(user, 'is_admin_role', False) or user.is_superuser:
@@ -200,8 +203,32 @@ def documents_in_folder(folder):
 
 
 def documents_for_company(company):
-    """Documents d'une société (QuerySet)."""
+    """Documents d'une société (QuerySet) — corbeille INCLUSE.
+
+    Renvoie tous les documents de la société, y compris ceux en corbeille
+    (`supprime_le` renseigné). Pour la vue « actifs uniquement » de l'UI, passer
+    par `documents_visible_to_user` (qui exclut la corbeille)."""
     return Document.objects.filter(company=company)
+
+
+def documents_corbeille(user):
+    """GED26 — Documents EN CORBEILLE visibles de l'utilisateur (vue corbeille).
+
+    Symétrique de `documents_visible_to_user` mais ne renvoie QUE les documents
+    soft-supprimés (`supprime_le__isnull=False`) de la société de l'utilisateur,
+    en respectant l'ACL coffre-fort (GED8). Borné à la société — jamais de fuite
+    cross-société ; l'admin/superuser voit toute la corbeille de sa société."""
+    from django.db.models import Q
+    if not user.company_id and not user.is_superuser:
+        return Document.objects.none()
+    qs = Document.objects.filter(supprime_le__isnull=False)
+    if user.company_id:
+        qs = qs.filter(company_id=user.company_id)
+    if getattr(user, 'is_admin_role', False) or user.is_superuser:
+        return qs
+    # Couche 1 — ACL coffre-fort (GED8), comme `documents_visible_to_user`.
+    return qs.filter(
+        Q(coffre__isnull=True) | Q(coffre__proprietaire_id=user.id))
 
 
 def latest_version(document):

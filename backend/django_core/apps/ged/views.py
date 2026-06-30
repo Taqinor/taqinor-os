@@ -32,7 +32,8 @@ from . import selectors, services
 from .models import (
     ArchivageLegal, ArchivageLegalError, Cabinet, Coffre, DemandeApprobation,
     Document, DocumentLien, DocumentTag, DocumentTagAssignment,
-    DocumentVersion, Folder, LegalHold, PartageGed, PolitiqueRetention,
+    DocumentVersion, Folder, LegalHold, LegalHoldError, PartageGed,
+    PolitiqueRetention,
 )
 from .serializers import (
     ArchivageLegalSerializer, CabinetSerializer, CoffreSerializer,
@@ -203,7 +204,8 @@ class DocumentViewSet(TenantMixin, viewsets.ModelViewSet):
         # `recherche`/`semantique`/`historique`/`check_out`/`check_in` lisibles
         # par tout rôle authentifié ; écriture réservée aux responsables/admins.
         if self.action in READ_ACTIONS or self.action in (
-                'recherche', 'semantique', 'historique', 'demandes'):
+                'recherche', 'semantique', 'historique', 'demandes',
+                'corbeille'):
             return [IsAnyRole()]
         # check_out/check_in : tout rôle peut extraire/libérer ses propres docs.
         if self.action in ('check_out', 'check_in'):
@@ -292,19 +294,16 @@ class DocumentViewSet(TenantMixin, viewsets.ModelViewSet):
         services.index_document_chunks(document)
 
     def perform_destroy(self, instance):
-        # GED23 — write-once : un document archivé légalement ne se supprime pas.
-        if instance.est_archive_legalement:
-            from rest_framework.exceptions import PermissionDenied
-            from .models import ARCHIVE_LEGALE_MESSAGE
-            raise PermissionDenied(ARCHIVE_LEGALE_MESSAGE)
-        # GED24 — rétention légale : tant qu'un legal hold ACTIF couvre le
-        # document, sa suppression/purge est gelée (→ 403, jamais 500). Refus
-        # TÔT avec un message clair ; la garde modèle reste le filet ultime.
-        if instance.est_sous_legal_hold:
-            from rest_framework.exceptions import PermissionDenied
-            from .models import LEGAL_HOLD_MESSAGE
-            raise PermissionDenied(LEGAL_HOLD_MESSAGE)
-        return super().perform_destroy(instance)
+        # GED26 — DELETE = mise en CORBEILLE (soft-delete réversible) par défaut,
+        # PAS un effacement réel. Les gardes légales restent intactes : un
+        # document archivé légalement (GED23, write-once) ou sous legal hold
+        # actif (GED24) N'EST PAS mettable en corbeille → 403 (jamais 500). On
+        # mappe les erreurs typées levées par le service sur 403.
+        from rest_framework.exceptions import PermissionDenied
+        try:
+            services.mettre_en_corbeille(instance, self.request.user)
+        except (ArchivageLegalError, LegalHoldError) as exc:
+            raise PermissionDenied(str(exc))
 
     @action(detail=False, methods=['post'], url_path='televerser',
             parser_classes=[MultiPartParser, FormParser, JSONParser])
@@ -524,6 +523,99 @@ class DocumentViewSet(TenantMixin, viewsets.ModelViewSet):
             DocumentVersionSerializer(
                 new_version, context={'request': request}).data,
             status=status.HTTP_201_CREATED)
+
+    def _get_corbeille_object(self, request, pk):
+        """GED26 — Récupère un document EN CORBEILLE borné à la société/ACL.
+
+        `get_object()` s'appuie sur `get_queryset()` qui EXCLUT la corbeille ; les
+        actions de restauration/purge doivent au contraire cibler les documents
+        soft-supprimés. On résout donc le pk dans `documents_corbeille` (même
+        ACL coffre + société) — un document absent (autre société / pas en
+        corbeille) renvoie None (→ 404, jamais de fuite cross-société)."""
+        return selectors.documents_corbeille(request.user).filter(pk=pk).first()
+
+    @action(detail=False, methods=['get'], url_path='corbeille')
+    def corbeille(self, request):
+        """GED26 — Liste les documents EN CORBEILLE (soft-supprimés) de la société.
+
+        `GET …/documents/corbeille/`. Renvoie uniquement les documents mis en
+        corbeille (`supprime_le` renseigné), bornés à la société et à l'ACL
+        coffre-fort (GED8) de l'utilisateur. Paginé comme la liste standard."""
+        qs = (selectors.documents_corbeille(request.user)
+              .select_related('folder', 'coffre', 'created_by', 'supprime_par')
+              .order_by('-supprime_le', 'nom'))
+        page = self.paginate_queryset(qs)
+        if page is not None:
+            ser = DocumentSerializer(
+                page, many=True, context={'request': request})
+            return self.get_paginated_response(ser.data)
+        ser = DocumentSerializer(qs, many=True, context={'request': request})
+        return Response(ser.data)
+
+    @action(detail=True, methods=['post'], url_path='mettre-en-corbeille')
+    def mettre_en_corbeille(self, request, pk=None):
+        """GED26 — Met ce document dans la CORBEILLE (soft-delete réversible).
+
+        `POST …/documents/<id>/mettre-en-corbeille/`. Le document disparaît des
+        listes par défaut mais reste récupérable (`restaurer-corbeille`).
+        REFUS (403, jamais 500) si le document est archivé légalement (GED23,
+        write-once) ou sous rétention légale active (GED24, legal hold) — mêmes
+        gardes que la suppression. IDEMPOTENT. Écriture : responsable/admin."""
+        document = self.get_object()
+        try:
+            services.mettre_en_corbeille(document, request.user)
+        except (ArchivageLegalError, LegalHoldError) as exc:
+            return Response(
+                {'detail': str(exc)}, status=status.HTTP_403_FORBIDDEN)
+        document.refresh_from_db()
+        return Response(
+            DocumentSerializer(document, context={'request': request}).data)
+
+    @action(detail=True, methods=['post'], url_path='restaurer-corbeille')
+    def restaurer_corbeille(self, request, pk=None):
+        """GED26 — Restaure ce document DEPUIS la corbeille (annule le soft-delete).
+
+        `POST …/documents/<id>/restaurer-corbeille/`. Vide `supprime_le` : le
+        document réapparaît dans les listes. Le document cible est résolu dans la
+        corbeille de la société (un document absent / d'une autre société → 404).
+        IDEMPOTENT. Écriture : responsable/admin.
+
+        NB : distinct de `restaurer` (GED15) qui restaure une VERSION antérieure
+        d'un document vivant ; ici on sort le DOCUMENT de la corbeille."""
+        document = self._get_corbeille_object(request, pk)
+        if document is None:
+            return Response(
+                {'detail': 'Document introuvable dans la corbeille.'},
+                status=status.HTTP_404_NOT_FOUND)
+        services.restaurer_de_corbeille(document)
+        document.refresh_from_db()
+        return Response(
+            DocumentSerializer(document, context={'request': request}).data)
+
+    @action(detail=True, methods=['post'], url_path='purger')
+    def purger(self, request, pk=None):
+        """GED26 — Supprime DÉFINITIVEMENT ce document depuis la corbeille (réel).
+
+        `POST …/documents/<id>/purger/`. Effacement RÉEL et irréversible — exige
+        que le document soit DÉJÀ dans la corbeille (sinon 400). Les gardes
+        légales restent respectées : archivage légal (GED23) ou legal hold actif
+        (GED24) → 403 (jamais 500). Le document cible est résolu dans la
+        corbeille de la société (autre société / vivant → 404). Écriture :
+        responsable/admin."""
+        document = self._get_corbeille_object(request, pk)
+        if document is None:
+            return Response(
+                {'detail': 'Document introuvable dans la corbeille.'},
+                status=status.HTTP_404_NOT_FOUND)
+        try:
+            services.purger_definitivement(document)
+        except (ArchivageLegalError, LegalHoldError) as exc:
+            return Response(
+                {'detail': str(exc)}, status=status.HTTP_403_FORBIDDEN)
+        except ValueError as exc:
+            return Response(
+                {'detail': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+        return Response(status=status.HTTP_204_NO_CONTENT)
 
     @action(detail=True, methods=['post'], url_path='check-out')
     def check_out(self, request, pk=None):

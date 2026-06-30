@@ -1325,3 +1325,72 @@ def assert_not_legal_hold(document):
     from .models import LEGAL_HOLD_MESSAGE, LegalHoldError
     if _document_sous_legal_hold(document):
         raise LegalHoldError(LEGAL_HOLD_MESSAGE)
+
+
+# ── GED26 — Corbeille & restauration (soft-delete réversible) ────────────────
+
+def mettre_en_corbeille(document, user):
+    """GED26 — Place un document dans la CORBEILLE (soft-delete réversible).
+
+    Renseigne `supprime_le`/`supprime_par` côté serveur : le document disparaît
+    des listes par défaut (`documents_visible_to_user`) mais N'EST PAS effacé —
+    il reste intégralement récupérable via `restaurer_de_corbeille`.
+
+    Gardes (mêmes refus que la suppression réelle) :
+      * GED23 — un document archivé légalement (write-once) NE PEUT PAS être mis
+        en corbeille → lève `ArchivageLegalError` (→ 403, jamais 500) ;
+      * GED24 — un document sous rétention légale ACTIVE (legal hold) NE PEUT
+        PAS être mis en corbeille → lève `LegalHoldError` (→ 403).
+    On vérifie ces gardes AVANT toute écriture : `Document.save()` bloque déjà
+    toute écriture sur un document archivé (write-once), donc on refuse en amont
+    avec un message clair plutôt que de laisser remonter une 500.
+
+    IDEMPOTENT : un document déjà dans la corbeille est renvoyé tel quel (on ne
+    réécrase ni la date ni l'auteur d'origine). Renvoie le document.
+    """
+    assert_not_archive_legalement(document)   # GED23 → ArchivageLegalError
+    assert_not_legal_hold(document)           # GED24 → LegalHoldError
+    if document.supprime_le is not None:
+        # Déjà en corbeille : no-op (on préserve la trace d'origine).
+        return document
+    from django.utils import timezone
+    document.supprime_le = timezone.now()
+    document.supprime_par = user
+    document.save(update_fields=['supprime_le', 'supprime_par', 'updated_at'])
+    return document
+
+
+def restaurer_de_corbeille(document):
+    """GED26 — Restaure un document DEPUIS la corbeille (efface le soft-delete).
+
+    Vide `supprime_le`/`supprime_par` : le document réapparaît dans les listes
+    par défaut. IDEMPOTENT : un document qui n'est pas en corbeille est renvoyé
+    tel quel (no-op). Aucune garde légale ici — restaurer ne fait que ANNULER un
+    soft-delete (rien n'est effacé). Renvoie le document.
+    """
+    if document.supprime_le is None:
+        return document
+    document.supprime_le = None
+    document.supprime_par = None
+    document.save(update_fields=['supprime_le', 'supprime_par', 'updated_at'])
+    return document
+
+
+def purger_definitivement(document):
+    """GED26 — Supprime DÉFINITIVEMENT un document depuis la corbeille (réel delete).
+
+    Effacement RÉEL et irréversible — réservé aux documents DÉJÀ en corbeille
+    (on ne purge jamais un document « vivant » par cette voie : il faut le mettre
+    en corbeille d'abord). Les gardes légales restent respectées : `delete()` au
+    niveau modèle refuse encore un document archivé (GED23) ou sous legal hold
+    actif (GED24) → `ArchivageLegalError`/`LegalHoldError` (→ 403, jamais 500).
+
+    Lève `ValueError` si le document n'est pas dans la corbeille. Renvoie None.
+    """
+    if document.supprime_le is None:
+        raise ValueError(
+            "Le document doit d'abord être dans la corbeille avant la purge "
+            "définitive.")
+    # Les gardes légales (GED23/GED24) sont posées dans `Document.delete()` —
+    # filet ultime ; on les laisse lever telles quelles (traduites en 403).
+    document.delete()

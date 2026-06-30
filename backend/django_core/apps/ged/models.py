@@ -455,6 +455,19 @@ class Document(models.Model):
     # modifie jamais le binaire stocké en base/MinIO ni aucun statut.
     watermark_diffusion = models.BooleanField(
         default=False, verbose_name="filigraner à la diffusion")
+    # GED26 — Corbeille (soft-delete réversible). Un document « dans la
+    # corbeille » a `supprime_le` renseigné : il disparaît des listes par défaut
+    # mais N'EST PAS effacé (réversible via `restaurer_de_corbeille`). C'est une
+    # couche SÉPARÉE de l'archivage légal write-once (GED23) et du legal hold
+    # (GED24) — un document archivé/sous-hold n'est PAS mettable en corbeille
+    # (mêmes gardes 403). Posé/effacé côté serveur uniquement.
+    supprime_le = models.DateTimeField(
+        null=True, blank=True, db_index=True,
+        verbose_name="mis en corbeille le")
+    supprime_par = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL,
+        null=True, blank=True, related_name='ged_documents_corbeille',
+        verbose_name="mis en corbeille par")
     created_by = models.ForeignKey(
         settings.AUTH_USER_MODEL, on_delete=models.SET_NULL,
         null=True, blank=True, related_name='ged_documents_crees')
@@ -513,6 +526,16 @@ class Document(models.Model):
         if self.pk is None:
             return False
         return self.legal_holds.filter(actif=True).exists()
+
+    @property
+    def est_dans_corbeille(self):
+        """GED26 — True si ce document est actuellement dans la corbeille.
+
+        Un document est « en corbeille » dès que `supprime_le` est renseigné :
+        il est masqué des listes par défaut mais reste intégralement récupérable
+        (soft-delete réversible). Couche séparée des protections légales
+        (GED23/GED24)."""
+        return self.supprime_le is not None
 
     def save(self, *args, **kwargs):
         """GED23 — Refuse toute MODIFICATION d'un document archivé (write-once).
