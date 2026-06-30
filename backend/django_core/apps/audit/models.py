@@ -21,6 +21,8 @@ class AuditLog(models.Model):
         LOGIN = 'login', 'Connexion'
         LOGOUT = 'logout', 'Déconnexion'
         LOGIN_FAILED = 'login_failed', 'Échec de connexion'
+        # FG23 — alerte de sécurité (ex. trop d'échecs consécutifs → verrou).
+        SECURITY_ALERT = 'security_alert', 'Alerte de sécurité'
         PDF = 'pdf', 'PDF généré'
         EMAIL = 'email', 'Email envoyé'
         WHATSAPP = 'whatsapp', 'WhatsApp envoyé'

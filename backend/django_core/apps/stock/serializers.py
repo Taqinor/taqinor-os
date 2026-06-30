@@ -107,7 +107,16 @@ class ProduitSerializer(serializers.ModelSerializer):
         user = getattr(request, 'user', None)
         if user is not None and not getattr(user, 'can_view_buy_prices', True):
             fields.pop('prix_achat', None)
+        # FG20 — l'indicateur de MARGE (calculé) est une donnée sensible gardée
+        # par ``marge_voir`` (Directeur/Admin par défaut). Sans la permission, le
+        # champ est retiré complètement — jamais sur un document client.
+        if user is not None and not getattr(user, 'can_view_marge', True):
+            fields.pop('marge_pct', None)
         return fields
+    # FG20 — marge brute en % ((vente − achat)/vente), arrondie à 1 décimale.
+    # None si prix_vente nul/absent ou prix_achat à 0. Donnée sensible : le
+    # champ est entièrement retiré pour les rôles sans ``marge_voir``.
+    marge_pct = serializers.SerializerMethodField()
     is_low_stock = serializers.SerializerMethodField()
     # L578 — type d'équipement de la catégorie (additif, lecture seule) exposé à
     # plat pour permettre au picker d'équipement de chantier de filtrer un slot
@@ -171,6 +180,8 @@ class ProduitSerializer(serializers.ModelSerializer):
             'courbe_pompe',
             # Dates & data personnalisée
             'date_creation', 'date_mise_a_jour', 'custom_data',
+            # FG20 — indicateur de marge (gardé par marge_voir, cf. get_fields)
+            'marge_pct',
             # Champs dérivés / calculés (SerializerMethodField, lecture seule)
             'is_low_stock', 'categorie_type', 'categorie_type_display',
             'quantite_reservee', 'quantite_disponible',
@@ -193,6 +204,16 @@ class ProduitSerializer(serializers.ModelSerializer):
         cache = reserved_quantities(company) if company is not None else {}
         self._reserved_map_cache = cache
         return cache
+
+    def get_marge_pct(self, obj):
+        """Marge brute en % depuis prix_vente/prix_achat (None si indéfinie)."""
+        from decimal import Decimal, ROUND_HALF_UP
+        vente = obj.prix_vente or Decimal('0')
+        achat = obj.prix_achat or Decimal('0')
+        if vente <= 0 or achat <= 0:
+            return None
+        pct = (vente - achat) / vente * Decimal('100')
+        return str(pct.quantize(Decimal('0.1'), rounding=ROUND_HALF_UP))
 
     def get_quantite_reservee(self, obj):
         return self._reserved_map().get(obj.id, 0)

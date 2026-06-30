@@ -14,11 +14,79 @@ const selectCls =
   + 'transition-colors focus-visible:border-ring focus-visible:outline-none '
   + 'focus-visible:ring-2 focus-visible:ring-ring'
 
+// FG19 — construit l'arbre hiérarchique (org-chart) à partir du champ
+// `supervisor` des utilisateurs. Les racines sont les comptes sans superviseur
+// (ou dont le superviseur n'est pas dans la liste). Retourne une liste de
+// racines, chacune portant ses `children` (récursif), et un compteur
+// `subtreeCount` = nombre de personnes que ce nœud « voit » via son sous-arbre
+// (lui-même + tout ce qui lui remonte, récursivement). Robuste aux cycles
+// éventuels (un nœud n'est visité qu'une fois).
+function buildOrgTree(users) {
+  const byId = new Map(users.map((u) => [u.id, { ...u, children: [] }]))
+  const roots = []
+  for (const node of byId.values()) {
+    const sup = node.supervisor != null ? byId.get(node.supervisor) : null
+    if (sup && sup.id !== node.id) sup.children.push(node)
+    else roots.push(node)
+  }
+  const seen = new Set()
+  const countSubtree = (node) => {
+    if (seen.has(node.id)) return 0
+    seen.add(node.id)
+    let n = 1
+    for (const c of node.children) n += countSubtree(c)
+    node.subtreeCount = n
+    return n
+  }
+  // Compteur calculé sur un `seen` partagé pour neutraliser les cycles.
+  for (const r of roots) countSubtree(r)
+  // Tri stable des enfants par nom d'utilisateur pour un rendu déterministe.
+  const sortRec = (node) => {
+    node.children.sort((a, b) => a.username.localeCompare(b.username))
+    node.children.forEach(sortRec)
+  }
+  roots.sort((a, b) => a.username.localeCompare(b.username))
+  roots.forEach(sortRec)
+  return roots
+}
+
+function OrgNode({ node, depth }) {
+  return (
+    <li>
+      <div
+        className="flex items-center gap-2 rounded-md px-2 py-1.5 hover:bg-muted/40"
+        style={{ marginLeft: depth * 18 }}
+      >
+        {depth > 0 && (
+          <span aria-hidden className="text-muted-foreground/60">└</span>
+        )}
+        <span className="font-medium text-foreground">{node.username}</span>
+        <span className="text-xs text-muted-foreground">
+          {node.role_nom || '—'}
+        </span>
+        {node.children.length > 0 && (
+          <span className="ml-auto text-[11px] text-muted-foreground" title="Personnes vues via son sous-arbre (lui inclus)">
+            voit {node.subtreeCount}
+          </span>
+        )}
+      </div>
+      {node.children.length > 0 && (
+        <ul>
+          {node.children.map((c) => (
+            <OrgNode key={c.id} node={c} depth={depth + 1} />
+          ))}
+        </ul>
+      )}
+    </li>
+  )
+}
+
 export default function EquipeSection() {
   const [users, setUsers] = useState([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
   const [savingId, setSavingId] = useState(null)
+  const [view, setView] = useState('table')
 
   const load = async () => {
     setLoading(true)
@@ -58,11 +126,24 @@ export default function EquipeSection() {
 
   const th = 'px-4 py-2.5 text-left text-xs font-semibold text-muted-foreground'
 
+  const orgTree = view === 'tree' ? buildOrgTree(users) : []
+  const tabCls = (active) =>
+    'rounded-md px-3 py-1 text-xs font-medium transition-colors '
+    + (active
+      ? 'bg-primary text-primary-foreground'
+      : 'bg-muted/60 text-muted-foreground hover:bg-muted')
+
   return (
     <div className="flex flex-col gap-4">
       <Card>
         <CardContent className="pt-4 sm:pt-5">
-          <SectionTitle label="Hiérarchie d'équipe" icon={<><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></>}/>
+          <div className="flex items-center justify-between gap-2">
+            <SectionTitle label="Hiérarchie d'équipe" icon={<><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></>}/>
+            <div className="flex shrink-0 gap-1" role="tablist" aria-label="Affichage de la hiérarchie">
+              <button type="button" role="tab" aria-selected={view === 'table'} className={tabCls(view === 'table')} onClick={() => setView('table')}>Tableau</button>
+              <button type="button" role="tab" aria-selected={view === 'tree'} className={tabCls(view === 'tree')} onClick={() => setView('tree')}>Organigramme</button>
+            </div>
+          </div>
           <p className="mb-3.5 text-[12.5px] leading-relaxed text-muted-foreground">
             Assignez à chaque personne son <strong>superviseur direct</strong>.
             L'équipe d'un commercial/technicien = ceux qui partagent le même
@@ -85,6 +166,19 @@ export default function EquipeSection() {
             </div>
           ) : users.length === 0 ? (
             <EmptyState title="Aucun utilisateur" description="Ajoutez des employés dans Administration → Utilisateurs." />
+          ) : view === 'tree' ? (
+            <div className="text-sm">
+              <p className="mb-2 text-[12px] text-muted-foreground">
+                Vue lecture seule pour vérifier d'un coup d'œil la portée de
+                visibilité (« voit N » = personnes du sous-arbre, lui inclus).
+                Modifiez les liens dans la vue Tableau.
+              </p>
+              <ul>
+                {orgTree.map((r) => (
+                  <OrgNode key={r.id} node={r} depth={0} />
+                ))}
+              </ul>
+            </div>
           ) : (
             <div className="overflow-x-auto">
               <table className="w-full min-w-[480px] border-collapse text-sm">

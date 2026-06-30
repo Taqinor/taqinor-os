@@ -21,3 +21,6 @@ class ParametresConfig(AppConfig):
         # FG17 — modèles d'e-mail éditables (parité WhatsApp), fichier dédié
         # enregistré ici sans toucher models.py.
         import apps.parametres.models_email  # noqa: F401
+        # FG25 — politiques d'approbation configurables, fichier dédié
+        # enregistré ici sans toucher models.py.
+        import apps.parametres.models_approvals  # noqa: F401

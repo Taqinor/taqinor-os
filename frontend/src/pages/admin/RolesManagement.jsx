@@ -106,6 +106,9 @@ const PERMISSION_GROUPS = [
     label: 'Données sensibles',
     codes: [
       { code: 'prix_achat_voir', label: 'Voir prix d\'achat & marges' },
+      // FG20 — groupe « Données sensibles » curé : PII client + marge calculée.
+      { code: 'client_pii_voir', label: 'Voir les coordonnées client (tél/email/adresse/GPS)' },
+      { code: 'marge_voir', label: 'Voir l\'indicateur de marge' },
     ],
   },
   {
