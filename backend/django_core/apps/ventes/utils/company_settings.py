@@ -100,3 +100,85 @@ def tva_standard(company):
         return Decimal(str(val)) if val is not None else Decimal('20')
     except Exception:
         return Decimal('20')
+
+
+# ── DC1 — identité société pour le moteur de devis premium ──────────────────
+# Le moteur premium imprimait l'identité Taqinor EN DUR (RC/ICE/RIB/banque/
+# adresse/tél/nom). C'est multi-tenant FAUX et expose le RIB Taqinor à toute
+# société. `entreprise_for` renvoie ces champs depuis CompanyProfile en
+# REPLI sur les littéraux historiques : tant qu'une société n'a rien renseigné
+# (champs vides), chaque clé garde EXACTEMENT la valeur d'avant → le PDF reste
+# byte-identique pour Taqinor et les tests de régression ne bougent pas. Une
+# AUTRE société qui renseigne son profil voit SES coordonnées, jamais le RIB
+# Taqinor. (La voie facture lit déjà CompanyProfile ; on aligne le devis.)
+ENTREPRISE_DEFAULTS = {
+    'nom': 'TAQINOR',
+    'raison_sociale': 'Taqinor Solutions SARLAU',
+    'capital': '100 000 MAD',
+    'rc': '691213',
+    'ice': '003799642000067',
+    'identifiant_fiscal': '',
+    'patente': '',
+    'cnss': '',
+    'gerant': 'M. Reda Kasri',
+    'adresse': '5 Rue Ennoussour RDC, Casablanca',
+    'tribunal': 'Tribunal de Commerce de Casablanca',
+    'email': 'contact@taqinor.com',
+    'telephone': '+212 6 61 85 04 10',
+    'site_web': 'www.taqinor.ma',
+    'rib': '022 780 0002720029379418 74',
+    'banque': 'Saham Bank',
+    'bic': 'SGMBMAMCXXX',
+    'couleur_principale': '',
+}
+
+# Champs portés 1:1 par CompanyProfile (le reste garde le littéral historique
+# tant qu'aucun slot dédié n'existe sur le profil).
+_PROFILE_FIELD_MAP = {
+    'nom': 'nom',
+    'raison_sociale': 'nom',
+    'rc': 'rc',
+    'ice': 'ice',
+    'identifiant_fiscal': 'identifiant_fiscal',
+    'patente': 'patente',
+    'cnss': 'cnss',
+    'adresse': 'adresse',
+    'email': 'email',
+    'telephone': 'telephone',
+    'rib': 'rib',
+    'banque': 'banque',
+    'couleur_principale': 'couleur_principale',
+}
+
+
+def devise_defaut(company):
+    """Devise par défaut de la société (FG52). Code ISO 4217, défaut « MAD ».
+
+    Source UNIQUE de la devise par défaut côté ventes : préremplit les nouveaux
+    documents et sert de repli quand un document ne porte pas de devise. Tant
+    qu'aucune société n'a édité son profil → « MAD » (comportement inchangé)."""
+    prof = _profile(company)
+    val = getattr(prof, 'devise_defaut', None) if prof else None
+    val = (str(val).strip().upper() if val else '')
+    return val or 'MAD'
+
+
+def entreprise_for(company):
+    """Identité société (DC1) pour le moteur de devis premium.
+
+    Renvoie un dict JSON-sérialisable : pour chaque champ, la valeur renseignée
+    sur CompanyProfile, sinon le littéral historique (REPLI). Aucune valeur
+    n'est jamais None → les renderers peuvent l'utiliser directement. Sans
+    company ou sans profil, renvoie strictement les défauts historiques."""
+    out = dict(ENTREPRISE_DEFAULTS)
+    prof = _profile(company)
+    if prof is None:
+        return out
+    for out_key, field in _PROFILE_FIELD_MAP.items():
+        val = getattr(prof, field, None)
+        if val is None:
+            continue
+        val = str(val).strip()
+        if val:
+            out[out_key] = val
+    return out

@@ -218,29 +218,12 @@ class Devis(models.Model):
         par la formule d'origine (HT × taux, aucun arrondi par panier → figures
         historiques strictement identiques) ; taux mixtes → un panier par taux,
         chaque TVA arrondie au centime, dont la somme est le total TVA.
-        """
-        from decimal import Decimal, ROUND_HALF_UP
-        lignes = list(self.lignes.all())
-        buckets = {}
-        for ligne in lignes:
-            # Coercition Decimal du taux : un taux non encore relu de la base
-            # (défaut modèle) peut être un float — on garde des Decimals partout
-            # pour ne jamais mélanger Decimal et float dans le calcul.
-            rate = Decimal(str(ligne.taux_tva_effectif))
-            buckets[rate] = buckets.get(rate, Decimal('0')) + Decimal(ligne.total_ht)
-        if len(buckets) <= 1:
-            rate = next(iter(buckets), Decimal(str(self.taux_tva)))
-            base = sum((Decimal(li.total_ht) for li in lignes), Decimal('0'))
-            return [{'taux': rate, 'base_ht': base,
-                     'montant': base * rate / Decimal('100')}]
 
-        def q(x):
-            return x.quantize(Decimal('0.01'), rounding=ROUND_HALF_UP)
-        return [
-            {'taux': rate, 'base_ht': q(buckets[rate]),
-             'montant': q(buckets[rate] * rate / Decimal('100'))}
-            for rate in sorted(buckets)
-        ]
+        DC23 — délègue au selector unique ``tva_buckets`` (une seule logique de
+        bucket partagée par Devis/Facture/Avoir + exports DGI/FEC).
+        """
+        from .selectors import tva_buckets
+        return tva_buckets(self.lignes.all(), fallback_taux=self.taux_tva)
 
     @property
     def total_ttc(self):
@@ -661,32 +644,17 @@ class Facture(models.Model):
         un seul panier, calculé par la formule d'origine, rendu strictement
         inchangé. Taux mixtes (10/20) → un panier par taux, chaque TVA
         arrondie au centime, dont la somme est le total TVA.
-        """
-        from decimal import Decimal, ROUND_HALF_UP
-        # Facture de tranche (acompte) : montant figé, un seul panier.
-        if self.montant_tva is not None:
-            return [{'taux': self.taux_tva, 'base_ht': self.total_ht,
-                     'montant': self.montant_tva}]
-        lignes = list(self.lignes.all())
-        buckets = {}
-        for ligne in lignes:
-            rate = ligne.taux_tva_effectif
-            buckets[rate] = buckets.get(rate, Decimal('0')) + Decimal(ligne.total_ht)
-        if len(buckets) <= 1:
-            # Mono-taux : formule d'origine (HT × taux), aucun arrondi par
-            # panier → figures historiques strictement identiques.
-            rate = next(iter(buckets), self.taux_tva)
-            base = sum((Decimal(li.total_ht) for li in lignes), Decimal('0'))
-            return [{'taux': rate, 'base_ht': base,
-                     'montant': base * rate / Decimal('100')}]
 
-        def q(x):
-            return x.quantize(Decimal('0.01'), rounding=ROUND_HALF_UP)
-        return [
-            {'taux': rate, 'base_ht': q(buckets[rate]),
-             'montant': q(buckets[rate] * rate / Decimal('100'))}
-            for rate in sorted(buckets)
-        ]
+        DC23 — délègue au selector unique ``tva_buckets``. Facture de tranche
+        (montant figé) : panier figé passé via ``frozen``.
+        """
+        from .selectors import tva_buckets
+        frozen = None
+        if self.montant_tva is not None:
+            # Facture de tranche (acompte) : montant figé, un seul panier.
+            frozen = (self.taux_tva, self.total_ht, self.montant_tva)
+        return tva_buckets(
+            self.lignes.all(), fallback_taux=self.taux_tva, frozen=frozen)
 
     @property
     def total_ttc(self):
@@ -963,29 +931,15 @@ class Avoir(models.Model):
 
     @property
     def tva_par_taux(self):
-        """Ventilation TVA par taux — même logique exacte que Facture."""
-        from decimal import Decimal, ROUND_HALF_UP
-        if self.montant_tva is not None:
-            return [{'taux': self.taux_tva, 'base_ht': self.total_ht,
-                     'montant': self.montant_tva}]
-        lignes = list(self.lignes.all())
-        buckets = {}
-        for ligne in lignes:
-            rate = ligne.taux_tva_effectif
-            buckets[rate] = buckets.get(rate, Decimal('0')) + Decimal(ligne.total_ht)
-        if len(buckets) <= 1:
-            rate = next(iter(buckets), self.taux_tva)
-            base = sum((Decimal(li.total_ht) for li in lignes), Decimal('0'))
-            return [{'taux': rate, 'base_ht': base,
-                     'montant': base * rate / Decimal('100')}]
+        """Ventilation TVA par taux — même logique exacte que Facture.
 
-        def q(x):
-            return x.quantize(Decimal('0.01'), rounding=ROUND_HALF_UP)
-        return [
-            {'taux': rate, 'base_ht': q(buckets[rate]),
-             'montant': q(buckets[rate] * rate / Decimal('100'))}
-            for rate in sorted(buckets)
-        ]
+        DC23 — délègue au selector unique ``tva_buckets``."""
+        from .selectors import tva_buckets
+        frozen = None
+        if self.montant_tva is not None:
+            frozen = (self.taux_tva, self.total_ht, self.montant_tva)
+        return tva_buckets(
+            self.lignes.all(), fallback_taux=self.taux_tva, frozen=frozen)
 
     @property
     def total_ttc(self):
@@ -1010,6 +964,17 @@ class LigneAvoir(models.Model):
     class Meta:
         verbose_name = 'Ligne d\'avoir'
         verbose_name_plural = 'Lignes d\'avoir'
+
+    def clean(self):
+        # DC10 — le produit est OBLIGATOIRE à la création (traçabilité SKU). Le
+        # champ reste null=True/SET_NULL UNIQUEMENT pour survivre à une
+        # suppression de produit APRÈS coup ; on n'autorise jamais une ligne
+        # créée sans produit. (pk is None = nouvelle ligne non encore en base.)
+        from django.core.exceptions import ValidationError
+        if self.pk is None and self.produit_id is None:
+            raise ValidationError(
+                {'produit': "Le produit est requis à la création d'une ligne "
+                            "d'avoir (traçabilité SKU)."})
 
     @property
     def total_ht(self):

@@ -639,8 +639,22 @@ def build_quote_data(devis, pdf_options=None) -> dict:
 
     # Conditions de paiement par mode — réglage éditable de la société, repli
     # sur PAYMENT_TERMS_BY_MODE (défaut historique → PDF identique).
-    from apps.ventes.utils.company_settings import payment_terms_for
+    from apps.ventes.utils.company_settings import (
+        payment_terms_for, entreprise_for)
     payment_terms = payment_terms_for(getattr(devis, "company", None), mode)
+
+    # DC1 — identité société (RC/ICE/RIB/banque/adresse/tél/nom) résolue depuis
+    # CompanyProfile, en REPLI sur les littéraux historiques. Tant que rien n'est
+    # renseigné → valeurs Taqinor d'avant, PDF byte-identique ; une autre société
+    # voit SES coordonnées (plus de fuite du RIB Taqinor). Dict JSON-sérialisable.
+    entreprise = entreprise_for(getattr(devis, "company", None))
+
+    # DC25 — devise + taux résolus par l'UNIQUE source `selectors.devise_for`
+    # (devise document → défaut société → MAD). Sans devise renseignée → MAD,
+    # taux 1 (comportement inchangé). JSON-sérialisable.
+    from apps.ventes.selectors import devise_for
+    _devise, _taux_dec = devise_for(devis)
+    _taux_change = float(_taux_dec or 1)
 
     # D2/N60/N67/N59 — textes éditables du devis (en-têtes/CGV/validité/garanties
     # /BPA/tampon). SURCHARGES non vides seulement ; toute clé absente → le moteur
@@ -729,6 +743,8 @@ def build_quote_data(devis, pdf_options=None) -> dict:
         "_company_id": getattr(devis, "company_id", None),
         # D2/N60/N67/N59 — surcharges de texte éditables (vide → littéral moteur).
         "doc_texts": doc_texts,
+        # DC1 — identité société (repli sur littéraux historiques).
+        "entreprise": entreprise,
         # N26 — tampon d'acceptation : nom + date posés à l'acceptation du devis
         # (le moteur ne l'affiche QUE si les deux sont présents). Date au format
         # FR jj/mm/aaaa, vide sinon → devis byte-identique à aujourd'hui.
@@ -736,11 +752,12 @@ def build_quote_data(devis, pdf_options=None) -> dict:
         "date_acceptation": (
             devis.date_acceptation.strftime("%d/%m/%Y")
             if getattr(devis, "date_acceptation", None) else ""),
-        # FG52 — devise portée par le document (ISO 4217, défaut MAD).
+        # FG52/DC25 — devise + taux portés par le document, résolus par l'UNIQUE
+        # source `selectors.devise_for` (devise document → défaut société → MAD).
         # Aucun impact sur les montants en base (stockés en MAD) ; uniquement
         # affiché sur le PDF et porté dans l'export UBL.
-        "devise": (getattr(devis, "devise", None) or "MAD"),
-        "taux_change": float(getattr(devis, "taux_change", 1) or 1),
+        "devise": _devise,
+        "taux_change": _taux_change,
     }
     # Q5 — visuel « votre installation » : la clé MinIO du rendu 3D N'EST
     # ajoutée que si le devis en porte un. Sans rendu, aucune clé n'est
