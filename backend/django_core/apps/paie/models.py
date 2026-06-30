@@ -655,6 +655,21 @@ class ElementVariable(models.Model):
     montant = models.DecimalField(
         max_digits=14, decimal_places=2, default=Decimal('0'),
         verbose_name='Montant')
+    # PAIE26 — Paiement & décompte des congés/absences. Pour un élément
+    # ``TYPE_ABSENCE``, ``remunere`` distingue un congé PAYÉ (congé payé,
+    # maladie indemnisée…) d'une absence NON rémunérée (sans solde, absence
+    # injustifiée). Une absence rémunérée n'est NI déduite du salaire de base
+    # proraté, NI portée en retenue : le salarié est payé comme s'il était
+    # présent. Une absence non rémunérée (défaut) est décomptée comme aujourd'hui.
+    # Ignoré pour les autres types d'élément.
+    remunere = models.BooleanField(
+        default=False, verbose_name='Absence rémunérée')
+    # PAIE26 — Décompte du solde de congés. ``deduit_solde`` reprend la règle du
+    # TypeAbsence RH (FG164) : si vrai, la quantité de jours est retranchée du
+    # compteur de congés payés (informatif côté paie ; le décompte effectif du
+    # solde reste géré par RH). Ignoré hors absence.
+    deduit_solde = models.BooleanField(
+        default=False, verbose_name='Déduit du solde de congés')
     source = models.CharField(
         max_length=10, choices=SOURCE_CHOICES, default=SOURCE_MANUEL,
         verbose_name='Source')

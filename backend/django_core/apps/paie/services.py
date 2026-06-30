@@ -501,6 +501,11 @@ def calculer_salaire_base_periode(profil, periode, elements=None):
 
     for el in elements:
         if el.type == ElementVariable.TYPE_ABSENCE:
+            # PAIE26 — une absence RÉMUNÉRÉE (congé payé) ne réduit pas le
+            # salaire proraté : le salarié est payé comme présent. Seules les
+            # absences NON rémunérées sont décomptées des jours travaillés.
+            if getattr(el, 'remunere', False):
+                continue
             # Les absences sont en jours par convention dans ElementVariable.
             jours_absence += Decimal(el.quantite or 0)
         elif el.type == ElementVariable.TYPE_HEURES:
@@ -1068,6 +1073,12 @@ def calculer_bulletin(profil, periode, personnes_a_charge=0):
     for el in elements:
         montant = Decimal(el.montant or 0)
         rubrique = el.rubrique if el.rubrique_id else None
+        # PAIE26 — une absence RÉMUNÉRÉE (congé payé) ne génère aucune retenue :
+        # elle est déjà neutralisée dans la proration du salaire de base. On la
+        # saute ici pour ne pas la décompter une seconde fois.
+        if (el.type == ElementVariable.TYPE_ABSENCE
+                and getattr(el, 'remunere', False)):
+            continue
         if el.type == ElementVariable.TYPE_RETENUE or \
                 el.type == ElementVariable.TYPE_ABSENCE:
             retenues_variables += montant

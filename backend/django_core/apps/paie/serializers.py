@@ -233,7 +233,10 @@ class ElementVariableSerializer(serializers.ModelSerializer):
         fields = [
             'id', 'periode', 'profil', 'type', 'rubrique', 'libelle',
             # PAIE14 — categorie_hs : 'jour'|'nuit'|'ferie' (ignoré hors HS).
-            'quantite', 'categorie_hs', 'montant', 'source', 'date_creation',
+            'quantite', 'categorie_hs', 'montant',
+            # PAIE26 — drapeaux d'absence (rémunérée / décompte du solde).
+            'remunere', 'deduit_solde',
+            'source', 'date_creation',
         ]
         read_only_fields = ['date_creation']
 
