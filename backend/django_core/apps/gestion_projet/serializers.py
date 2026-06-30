@@ -10,6 +10,7 @@ from .models import (
     ActionProjet,
     AffectationRessource,
     BaselinePlanning,
+    CompteRenduReunion,
     BaselineTache,
     BudgetProjet,
     CalendrierProjet,
@@ -753,3 +754,28 @@ class ActionProjetSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError(
                 {'risque': 'Le risque lié doit appartenir au même projet.'})
         return attrs
+
+
+class CompteRenduReunionSerializer(serializers.ModelSerializer):
+    """Compte-rendu de réunion de chantier d'un projet (PROJ32).
+
+    ``company`` n'est jamais exposée : elle est posée côté serveur ; le
+    ``redacteur`` aussi (lecture seule). Le ``projet`` reçu est validé
+    même-société. Le ``chantier_id`` est une référence LÂCHE (aucun FK dur).
+    """
+    projet_code = serializers.CharField(source='projet.code', read_only=True)
+    redacteur_nom = serializers.CharField(
+        source='redacteur.username', read_only=True, default='')
+
+    class Meta:
+        model = CompteRenduReunion
+        fields = [
+            'id', 'projet', 'projet_code', 'chantier_id', 'titre',
+            'date_reunion', 'lieu', 'participants', 'ordre_du_jour',
+            'decisions', 'points_bloquants', 'date_prochaine_reunion',
+            'redacteur', 'redacteur_nom', 'date_creation',
+        ]
+        read_only_fields = ['redacteur', 'date_creation']
+
+    def validate_projet(self, value):
+        return _meme_societe(self, value, 'Projet')

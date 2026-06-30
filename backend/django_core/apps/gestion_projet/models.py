@@ -1426,3 +1426,69 @@ class ActionProjet(models.Model):
 
     def __str__(self):
         return f'{self.libelle} ({self.get_statut_display()})'
+
+
+class CompteRenduReunion(models.Model):
+    """Un COMPTE-RENDU de réunion de chantier d'un ``Projet`` (PROJ32).
+
+    Trace une réunion de chantier : ``date_reunion``, ``lieu``, liste libre des
+    ``participants`` (texte), ``ordre_du_jour``, ``decisions`` prises et
+    ``points_bloquants``, plus une ``date_prochaine_reunion`` optionnelle.
+    Le ``redacteur`` (optionnel) est posé côté serveur. Une réunion peut, en
+    option, être rattachée à un chantier (référence LÂCHE par identifiant —
+    jamais d'import de ``installations``).
+
+    Tout est multi-société : ``company`` est posée côté serveur, jamais lue du
+    corps de requête. Modèle entièrement additif.
+    """
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='gestion_projet_comptes_rendus',
+        verbose_name='Société',
+    )
+    projet = models.ForeignKey(
+        Projet,
+        on_delete=models.CASCADE,
+        related_name='comptes_rendus',
+        verbose_name='Projet',
+    )
+    # Référence LÂCHE optionnelle vers installations.Chantier (aucun FK dur).
+    chantier_id = models.PositiveIntegerField(
+        null=True, blank=True, verbose_name='ID du chantier')
+    titre = models.CharField(max_length=200, verbose_name='Titre')
+    date_reunion = models.DateField(verbose_name='Date de la réunion')
+    lieu = models.CharField(
+        max_length=200, blank=True, default='', verbose_name='Lieu')
+    participants = models.TextField(
+        blank=True, default='', verbose_name='Participants')
+    ordre_du_jour = models.TextField(
+        blank=True, default='', verbose_name='Ordre du jour')
+    decisions = models.TextField(
+        blank=True, default='', verbose_name='Décisions')
+    points_bloquants = models.TextField(
+        blank=True, default='', verbose_name='Points bloquants')
+    date_prochaine_reunion = models.DateField(
+        null=True, blank=True, verbose_name='Date de la prochaine réunion')
+    redacteur = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='gestion_projet_comptes_rendus',
+        verbose_name='Rédacteur',
+    )
+    date_creation = models.DateTimeField(
+        auto_now_add=True, verbose_name='Créé le')
+
+    class Meta:
+        verbose_name = 'Compte-rendu de réunion'
+        verbose_name_plural = 'Comptes-rendus de réunion'
+        ordering = ['-date_reunion', '-id']
+        indexes = [
+            models.Index(
+                fields=['projet', '-date_reunion'],
+                name='gp_cr_proj_date_idx'),
+        ]
+
+    def __str__(self):
+        return f'{self.titre} ({self.date_reunion})'

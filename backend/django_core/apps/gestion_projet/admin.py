@@ -3,6 +3,7 @@ from django.contrib import admin
 from .models import (
     ActionProjet,
     BudgetProjet,
+    CompteRenduReunion,
     DependanceTache,
     Jalon,
     LigneBudgetProjet,
@@ -117,3 +118,11 @@ class ActionProjetAdmin(admin.ModelAdmin):
                     'responsable', 'echeance', 'company')
     list_filter = ('statut', 'priorite', 'company')
     search_fields = ('libelle', 'description')
+
+
+@admin.register(CompteRenduReunion)
+class CompteRenduReunionAdmin(admin.ModelAdmin):
+    list_display = ('id', 'projet', 'titre', 'date_reunion', 'lieu',
+                    'redacteur', 'company')
+    list_filter = ('company',)
+    search_fields = ('titre', 'decisions', 'ordre_du_jour')

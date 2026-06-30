@@ -19,6 +19,7 @@ from .models import (
     ActionProjet,
     AffectationRessource,
     BaselinePlanning,
+    CompteRenduReunion,
     BudgetProjet,
     CalendrierProjet,
     DependanceTache,
@@ -41,6 +42,7 @@ from .serializers import (
     ActionProjetSerializer,
     AffectationRessourceSerializer,
     BaselinePlanningSerializer,
+    CompteRenduReunionSerializer,
     BudgetProjetSerializer,
     CalendrierProjetSerializer,
     DependanceTacheSerializer,
@@ -1414,4 +1416,39 @@ class ActionProjetViewSet(_GestionProjetBaseViewSet):
         if self.request.query_params.get('ouvertes') in ('1', 'true', 'True'):
             qs = qs.filter(statut__in=[
                 ActionProjet.Statut.A_FAIRE, ActionProjet.Statut.EN_COURS])
+        return qs
+
+
+class CompteRenduReunionViewSet(_GestionProjetBaseViewSet):
+    """Comptes-rendus de réunion de chantier (PROJ32) — CRUD scopé société.
+
+    ``company`` et ``redacteur`` sont posés côté serveur ; le ``projet`` reçu est
+    validé même-société. Filtres optionnels : ``?projet=<id>``,
+    ``?chantier=<id>``, ``?debut=YYYY-MM-DD&fin=YYYY-MM-DD`` (réunions dans la
+    fenêtre inclusive). Recherche par titre / décisions ; tri par défaut date de
+    réunion décroissante.
+    """
+    queryset = CompteRenduReunion.objects.select_related(
+        'projet', 'redacteur').all()
+    serializer_class = CompteRenduReunionSerializer
+    filter_backends = [filters.SearchFilter, filters.OrderingFilter]
+    search_fields = ['titre', 'decisions', 'ordre_du_jour', 'participants']
+    ordering_fields = ['date_reunion', 'id']
+
+    def perform_create(self, serializer):
+        serializer.save(
+            company=self.request.user.company, redacteur=self.request.user)
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        projet = self.request.query_params.get('projet')
+        if projet:
+            qs = qs.filter(projet_id=projet)
+        chantier = self.request.query_params.get('chantier')
+        if chantier:
+            qs = qs.filter(chantier_id=chantier)
+        debut = self.request.query_params.get('debut')
+        fin = self.request.query_params.get('fin')
+        if debut and fin:
+            qs = qs.filter(date_reunion__gte=debut, date_reunion__lte=fin)
         return qs
