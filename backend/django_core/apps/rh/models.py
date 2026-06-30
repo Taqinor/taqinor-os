@@ -2596,3 +2596,103 @@ class InscriptionFormation(models.Model):
 
     def __str__(self):
         return f'{self.participant} — {self.session}'
+
+
+class BesoinFormation(models.Model):
+    """Besoin de formation identifié pour un employé (FG188) — plan de formation.
+
+    Matérialise un BESOIN DE FORMATION repéré pour un ``employe``
+    (``DossierEmploye`` de la même société) : le ``theme`` à couvrir, sa
+    ``priorite`` (basse / moyenne / haute), une ``echeance`` souhaitée
+    (optionnelle), et un ``statut`` qui suit le besoin du repérage à sa
+    satisfaction (identifié → planifié → satisfait). Quand le besoin répond à
+    une OBLIGATION RÉGLEMENTAIRE marocaine (formations OFPPT / financement CSF),
+    ``obligation_reglementaire`` est vrai et ``type_obligation`` précise le
+    cadre (``ofppt`` / ``csf`` / autre). Le besoin peut être rattaché à une
+    ``session_liee`` (FK même app ``rh.SessionFormation``) qui le couvre : si
+    cette session est RÉALISÉE, le besoin peut basculer en ``satisfait``.
+
+    C'est, avec le registre par employé (sélecteur ``registre_formation_employe``
+    qui agrège ses ``InscriptionFormation``), le couple PLAN + REGISTRE de la
+    formation : le registre = l'historique réalisé, le besoin = ce qui reste à
+    planifier. Multi-société : ``company`` est posée CÔTÉ SERVEUR (jamais lue du
+    corps) ; ``employe`` et ``session_liee`` doivent appartenir à la même
+    société. Entièrement additif.
+
+    RUNTIME-SAFETY (leçon FG136) : codes bornés ``priorite`` / ``statut`` /
+    ``type_obligation`` ≤ 20 ; ``theme`` plafonné ; ``notes`` en ``TextField`` ;
+    index nommés explicitement (≤ 30 chars).
+    """
+
+    class Priorite(models.TextChoices):
+        BASSE = 'basse', 'Basse'
+        MOYENNE = 'moyenne', 'Moyenne'
+        HAUTE = 'haute', 'Haute'
+
+    class Statut(models.TextChoices):
+        IDENTIFIE = 'identifie', 'Identifié'
+        PLANIFIE = 'planifie', 'Planifié'
+        SATISFAIT = 'satisfait', 'Satisfait'
+
+    class TypeObligation(models.TextChoices):
+        OFPPT = 'ofppt', 'OFPPT'
+        CSF = 'csf', 'CSF (Contrats Spéciaux de Formation)'
+        AUTRE = 'autre', 'Autre'
+
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='rh_besoins_formation',
+        verbose_name='Société',
+    )
+    employe = models.ForeignKey(
+        'rh.DossierEmploye',
+        on_delete=models.CASCADE,
+        related_name='besoins_formation',
+        verbose_name='Employé',
+    )
+    theme = models.CharField(max_length=200, verbose_name='Thème')
+    priorite = models.CharField(
+        max_length=20, choices=Priorite.choices,
+        default=Priorite.MOYENNE, verbose_name='Priorité')
+    echeance = models.DateField(
+        null=True, blank=True, verbose_name='Échéance souhaitée')
+    obligation_reglementaire = models.BooleanField(
+        default=False, verbose_name='Obligation réglementaire')
+    type_obligation = models.CharField(
+        max_length=20, choices=TypeObligation.choices,
+        blank=True, default='', verbose_name='Type d\'obligation')
+    statut = models.CharField(
+        max_length=20, choices=Statut.choices,
+        default=Statut.IDENTIFIE, verbose_name='Statut')
+    # Session de formation qui couvre ce besoin (même société) — la
+    # satisfaction du besoin peut découler de sa réalisation.
+    session_liee = models.ForeignKey(
+        'rh.SessionFormation',
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='besoins_couverts',
+        verbose_name='Session liée',
+    )
+    notes = models.TextField(
+        blank=True, default='', verbose_name='Notes')
+    date_creation = models.DateTimeField(
+        auto_now_add=True, verbose_name='Créé le')
+    date_modification = models.DateTimeField(
+        auto_now=True, verbose_name='Modifié le')
+
+    class Meta:
+        verbose_name = 'Besoin de formation'
+        verbose_name_plural = 'Besoins de formation'
+        ordering = ['-priorite', 'echeance', '-date_creation']
+        indexes = [
+            models.Index(
+                fields=['company', 'statut'],
+                name='rh_bf_comp_stat_idx'),
+            models.Index(
+                fields=['company', 'employe'],
+                name='rh_bf_comp_emp_idx'),
+        ]
+
+    def __str__(self):
+        return f'{self.theme} — {self.employe}'
