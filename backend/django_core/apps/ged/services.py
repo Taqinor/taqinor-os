@@ -11,7 +11,7 @@ from django.contrib.postgres.search import SearchVector
 from django.db import transaction
 from django.db.models import Value
 
-from .models import Document, DocumentVersion, Folder
+from .models import Cabinet, Document, DocumentVersion, Folder
 
 
 def update_search_vector(document):
