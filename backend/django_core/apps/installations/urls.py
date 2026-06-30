@@ -37,6 +37,8 @@ from .views import (
     BinLocationViewSet,
     BinAffectationViewSet,
     PutAwayViewSet,
+    PickListViewSet,
+    PickListLigneViewSet,
 )
 
 router = DefaultRouter()
@@ -85,6 +87,8 @@ router.register(r'contrats-prix-lignes', ContratPrixLigneViewSet)
 router.register(r'bin-locations', BinLocationViewSet)
 router.register(r'bin-affectations', BinAffectationViewSet)
 router.register(r'putaways', PutAwayViewSet)
+router.register(r'pick-lists', PickListViewSet)
+router.register(r'pick-list-lignes', PickListLigneViewSet)
 
 urlpatterns = [
     # N91/F21 — synchro idempotente de la capture terrain hors-ligne.

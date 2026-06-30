@@ -40,6 +40,8 @@ from .models import (
     BinLocation,
     BinAffectation,
     PutAway,
+    PickList,
+    PickListLigne,
 )
 
 
@@ -1723,5 +1725,42 @@ class PutAwaySerializer(serializers.ModelSerializer):
         read_only_fields = [
             'bin_suggere', 'bin_effectif', 'statut', 'range_par',
             'date_rangement', 'created_by',
+            'date_creation', 'date_modification',
+        ]
+
+
+class PickListLigneSerializer(serializers.ModelSerializer):
+    """FG321 - ligne de prelevement (SKU + casier + avancement)."""
+    produit_nom = serializers.CharField(
+        source='produit.nom', read_only=True, default=None)
+    bin_code = serializers.CharField(
+        source='bin.code', read_only=True, default=None)
+
+    class Meta:
+        model = PickListLigne
+        fields = [
+            'id', 'pick_list', 'produit', 'produit_nom', 'designation',
+            'bin', 'bin_code', 'quantite_demandee', 'quantite_prelevee',
+            'ordre', 'preleve',
+        ]
+        read_only_fields = ['pick_list', 'ordre']
+
+
+class PickListSerializer(serializers.ModelSerializer):
+    """FG321 - bon de prelevement d'un chantier. La reference, la societe et
+    `created_by` sont poses COTE SERVEUR ; les lignes sont generees serveur
+    depuis les reservations (action `generer`) et imbriquees en lecture."""
+    statut_display = serializers.CharField(
+        source='get_statut_display', read_only=True, default=None)
+    lignes = PickListLigneSerializer(many=True, read_only=True)
+
+    class Meta:
+        model = PickList
+        fields = [
+            'id', 'reference', 'installation', 'statut', 'statut_display',
+            'note', 'lignes', 'created_by', 'date_creation', 'date_modification',
+        ]
+        read_only_fields = [
+            'reference', 'statut', 'created_by',
             'date_creation', 'date_modification',
         ]

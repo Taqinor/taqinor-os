@@ -724,3 +724,34 @@ def compute_chantier_readiness(installation):
             'defini': planning_defini,
         },
     }
+
+
+def generer_picklist_pour_chantier(installation, company, created_by=None,
+                                   reference=None):
+    """FG321 - genere un bon de prelevement depuis les reservations actives non
+    consommees d'un chantier, une ligne par SKU, ordonnee par casier.
+
+    Le casier de chaque produit est le casier affecte (FG319 BinAffectation) le
+    plus rempli ; son `ordre` de parcours est recopie sur la ligne (les SKU sans
+    casier passent en dernier). Ne touche jamais aux quantites canoniques.
+    """
+    from .models import (
+        PickList, PickListLigne, StockReservation, BinAffectation,
+    )
+    pick = PickList.objects.create(
+        company=company, installation=installation,
+        reference=reference or '', created_by=created_by)
+    reservations = StockReservation.objects.filter(
+        installation=installation, active=True, consomme=False,
+    ).select_related('produit')
+    for resa in reservations:
+        aff = BinAffectation.objects.filter(
+            company=company, produit=resa.produit, bin__archived=False,
+        ).select_related('bin').order_by('-quantite').first()
+        bin_loc = aff.bin if aff is not None else None
+        ordre = bin_loc.ordre if bin_loc is not None else 999999
+        PickListLigne.objects.create(
+            pick_list=pick, produit=resa.produit,
+            designation=getattr(resa.produit, 'nom', None),
+            bin=bin_loc, quantite_demandee=resa.quantite, ordre=ordre)
+    return pick

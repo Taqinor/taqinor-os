@@ -132,6 +132,10 @@ from .models_bin_location import (
 from .models_putaway import (
     PutAway,
 )
+from .models_picklist import (
+    PickList,
+    PickListLigne,
+)
 
 __all__ = [
     'Installation',
@@ -199,4 +203,6 @@ __all__ = [
     'BinLocation',
     'BinAffectation',
     'PutAway',
+    'PickList',
+    'PickListLigne',
 ]
