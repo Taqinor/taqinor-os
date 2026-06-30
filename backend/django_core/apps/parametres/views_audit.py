@@ -16,8 +16,11 @@ from .serializers import SettingsAuditLogSerializer
 def settings_audit_log(request):
     """Journal des changements de paramètres (qui, quoi, quand).
 
-    Filtres : `?section=profil|messages`, `?user=<id>`, `?limit=N`
-    (défaut 100, max 500). Company-scopé.
+    Filtres : `?section=...`, `?user=<id>`, `?limit=N` (défaut 100, max 500).
+    Company-scopé. Sections connues (FG18) :
+    `profil`, `messages`, `roles`, `utilisateurs`, `automatisations`.
+    L'endpoint `sections/` retourne la liste des sections présentes pour
+    alimenter le filtre côté UI.
     """
     company = request.user.company if request.user.company_id else None
     qs = SettingsAuditLog.objects.filter(company=company)
@@ -33,3 +36,33 @@ def settings_audit_log(request):
         limit = 100
     data = SettingsAuditLogSerializer(qs[:limit], many=True).data
     return Response({'count': len(data), 'results': data})
+
+
+# FG18 — sections connues du journal d'audit (pour alimenter le filtre UI).
+# Curées (ordre d'affichage) + complétées par celles réellement présentes en
+# base pour la société, afin que le filtre n'omette jamais une section.
+KNOWN_AUDIT_SECTIONS = [
+    {'value': 'profil', 'label': 'Profil entreprise'},
+    {'value': 'messages', 'label': 'Modèles de message'},
+    {'value': 'roles', 'label': 'Rôles & permissions'},
+    {'value': 'utilisateurs', 'label': 'Utilisateurs'},
+    {'value': 'automatisations', 'label': 'Automatisations'},
+]
+
+
+@api_view(['GET'])
+@permission_classes([IsAdminOrResponsableTier])
+def settings_audit_sections(request):
+    """Liste des sections du journal d'audit (filtre UI). Company-scopée.
+
+    Renvoie les sections curées connues + toute section supplémentaire
+    réellement présente en base (libellée par sa valeur brute)."""
+    company = request.user.company if request.user.company_id else None
+    present = set(
+        SettingsAuditLog.objects.filter(company=company)
+        .values_list('section', flat=True).distinct())
+    known_values = {s['value'] for s in KNOWN_AUDIT_SECTIONS}
+    sections = list(KNOWN_AUDIT_SECTIONS)
+    for extra in sorted(present - known_values):
+        sections.append({'value': extra, 'label': extra})
+    return Response({'sections': sections})

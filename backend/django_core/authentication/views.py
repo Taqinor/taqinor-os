@@ -432,8 +432,72 @@ class UserViewSet(viewsets.ModelViewSet):
             return CustomUser.objects.all().order_by('date_joined')
         return CustomUser.objects.none()
 
+    def _audit_user(self, field, label, old, new):
+        """FG18 — écrit une ligne au Journal d'audit des paramètres
+        (section='utilisateurs') pour un changement de gestion d'utilisateur.
+
+        Best-effort : ne casse jamais l'écriture utilisateur. Réutilise le
+        mécanisme ``SettingsAuditLog`` existant des Paramètres (acteur + société
+        posés côté serveur)."""
+        try:
+            from apps.parametres.models import SettingsAuditLog
+            actor = self.request.user
+            SettingsAuditLog.log_change(
+                company=getattr(actor, 'company', None), user=actor,
+                section='utilisateurs', field=field, field_label=label,
+                old=old, new=new,
+            )
+        except Exception:
+            pass
+
+    def _role_label(self, role_id):
+        """Libellé lisible d'un rôle (nom) à partir de son id, ou son id brut."""
+        if role_id in (None, '', 'null'):
+            return '—'
+        try:
+            from apps.roles.models import Role
+            role = Role.objects.filter(pk=role_id).first()
+            return role.nom if role else str(role_id)
+        except Exception:
+            return str(role_id)
+
     def perform_create(self, serializer):
-        serializer.save(company=self.request.user.company)
+        instance = serializer.save(company=self.request.user.company)
+        self._audit_user(
+            field=f'user:{instance.username}', label='Utilisateur créé',
+            old=None,
+            new=f'{instance.username} (rôle {self._role_label(instance.role_id)})',
+        )
+
+    def perform_update(self, serializer):
+        # FG18 — journaliser les changements de rôle / activation / superviseur.
+        target = serializer.instance
+        old_role_id = target.role_id
+        old_active = target.is_active
+        old_sup_id = target.supervisor_id
+        instance = serializer.save()
+        uname = instance.username
+        if instance.role_id != old_role_id:
+            self._audit_user(
+                field=f'user:{uname}:role', label='Rôle de l\'utilisateur',
+                old=self._role_label(old_role_id),
+                new=self._role_label(instance.role_id))
+        if instance.is_active != old_active:
+            self._audit_user(
+                field=f'user:{uname}:actif', label='Compte actif',
+                old='actif' if old_active else 'désactivé',
+                new='actif' if instance.is_active else 'désactivé')
+        if instance.supervisor_id != old_sup_id:
+            self._audit_user(
+                field=f'user:{uname}:superviseur', label='Superviseur',
+                old=old_sup_id, new=instance.supervisor_id)
+
+    def perform_destroy(self, instance):
+        uname = instance.username
+        super().perform_destroy(instance)
+        self._audit_user(
+            field=f'user:{uname}', label='Utilisateur supprimé',
+            old=uname, new=None)
 
     @action(detail=True, methods=['post'], url_path='avatar',
             parser_classes=[MultiPartParser])

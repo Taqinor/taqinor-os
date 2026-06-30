@@ -28,6 +28,8 @@ urlpatterns = [
     path('messages/', views.messages_endpoint),
     # Journal d'audit des changements de paramètres (admin, lecture seule).
     path('audit/', views.settings_audit_log),
+    # FG18 — sections connues du journal d'audit (filtre UI).
+    path('audit/sections/', views.settings_audit_sections),
     # D2/N60/N67/N26/N59 — modèles de documents éditables (textes du devis).
     path('document-templates/', views.get_document_templates),
     path('document-templates/update/', views.update_document_templates),
