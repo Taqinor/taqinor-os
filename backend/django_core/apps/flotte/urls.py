@@ -21,6 +21,7 @@ from .views import (
     PneumatiqueViewSet,
     PleinCarburantViewSet,
     ReferentielFlotteViewSet,
+    ReleveTelematiqueViewSet,
     ReservationVehiculeViewSet,
     SinistreViewSet,
     VehiculeViewSet,
@@ -51,6 +52,7 @@ router.register(r'visites-techniques', VisiteTechniqueViewSet)
 router.register(r'cartes-grises', CarteGriseVehiculeViewSet)
 router.register(r'sinistres', SinistreViewSet)
 router.register(r'infractions', InfractionViewSet)
+router.register(r'releves-telematiques', ReleveTelematiqueViewSet)
 
 urlpatterns = [
     path('', include(router.urls)),

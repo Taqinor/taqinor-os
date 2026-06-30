@@ -635,3 +635,14 @@ def legal_hold_actif_for_document(document):
             .filter(document=document, actif=True)
             .select_related('document', 'place_par')
             .first())
+
+
+def demandes_signature_for_company(company):
+    """GED30 — Demandes de signature électronique d'une société (QuerySet).
+
+    Lecture bornée à la société — jamais de fuite cross-société. Inclut tous les
+    statuts (en attente / signée / refusée / annulée) ; filtrer côté appelant au
+    besoin."""
+    from .models import DemandeSignatureDocument
+    return (DemandeSignatureDocument.objects.filter(company=company)
+            .select_related('document', 'created_by'))

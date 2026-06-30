@@ -42,6 +42,7 @@ from .models import (
     ModeleContratClause,
     PartieContrat,
     RegleApprobation,
+    Resiliation,
     VersionContrat,
 )
 from .serializers import (
@@ -65,6 +66,8 @@ from .serializers import (
     RegleApprobationSerializer,
     RendreContratSerializer,
     RenouvelerContratSerializer,
+    ResilierContratSerializer,
+    ResiliationSerializer,
     ResoudreRegleApprobationSerializer,
     SemerAlertesSerializer,
     SignatureContratSerializer,
@@ -601,6 +604,56 @@ class ContratViewSet(_ContratsBaseViewSet):
             status=status.HTTP_201_CREATED,
         )
 
+    @action(detail=True, methods=['get'], url_path='resiliations')
+    def resiliations(self, request, pk=None):
+        """Résiliations du contrat (CONTRAT25).
+
+        Lecture seule, la dernière résiliation en tête. La société est garantie
+        par ``get_object`` (queryset scopé société).
+        """
+        contrat = self.get_object()
+        resils = selectors.resiliations_contrat(contrat)
+        return Response(
+            ResiliationSerializer(
+                resils, many=True, context={'request': request}).data)
+
+    @action(detail=True, methods=['post'], url_path='resilier')
+    def resilier(self, request, pk=None):
+        """Résilie le contrat (motif / préavis / solde) — CONTRAT25.
+
+        Corps : ``motif`` (optionnel), ``date_effet`` (optionnel),
+        ``preavis_jours`` (optionnel), ``solde`` (optionnel — solde de tout
+        compte). Enregistre une ``Resiliation`` ET fait basculer le contrat vers
+        ``resilie`` via la machine d'états GARDÉE (jamais une écriture directe du
+        statut, jamais un funnel STAGES.py). Refuse (400) une résiliation depuis
+        un état non résiliable (la machine d'états enforce la garde) ou un contrat
+        ayant déjà une résiliation active. Fige un instantané (CONTRAT18) et
+        journalise (CONTRAT15). L'auteur, la société, la date de demande et le
+        statut sont posés CÔTÉ SERVEUR. La société est garantie par
+        ``get_object``.
+        """
+        contrat = self.get_object()
+        body = ResilierContratSerializer(data=request.data)
+        body.is_valid(raise_exception=True)
+        data = body.validated_data
+        try:
+            resiliation = services.resilier_contrat(
+                contrat,
+                motif=data.get('motif', ''),
+                date_effet=data.get('date_effet'),
+                preavis_jours=data.get('preavis_jours'),
+                solde=data.get('solde'),
+                auteur=request.user,
+            )
+        except services.ResiliationError as exc:
+            return Response(
+                {'detail': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+        return Response(
+            ResiliationSerializer(
+                resiliation, context={'request': request}).data,
+            status=status.HTTP_201_CREATED,
+        )
+
 
 class VersionContratViewSet(TenantMixin,
                             viewsets.ReadOnlyModelViewSet):
@@ -646,6 +699,34 @@ class AvenantViewSet(TenantMixin, viewsets.ReadOnlyModelViewSet):
         contrat_id = self.request.query_params.get('contrat')
         if contrat_id:
             qs = qs.filter(contrat_id=contrat_id)
+        return qs
+
+
+class ResiliationViewSet(TenantMixin, viewsets.ReadOnlyModelViewSet):
+    """Résiliations des contrats de la société (CONTRAT25) — LECTURE SEULE.
+
+    Récupération des résiliations : ``list`` (filtrable par ``?contrat=<id>`` et
+    ``?statut=<valeur>``) et ``retrieve``. AUCUNE création/mise à jour/suppression
+    n'est exposée ici — les résiliations sont créées exclusivement via l'action
+    ``resilier`` du contrat (qui fait aussi basculer le statut via la machine
+    d'états gardée). Scopé société (``TenantMixin``) ; accès réservé au palier
+    Administrateur/Responsable.
+    """
+    permission_classes = [IsResponsableOrAdmin]
+    queryset = Resiliation.objects.select_related(
+        'contrat', 'version_creee').all()
+    serializer_class = ResiliationSerializer
+    filter_backends = [filters.OrderingFilter]
+    ordering_fields = ['date_demande', 'date_effet', 'date_creation', 'id']
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        contrat_id = self.request.query_params.get('contrat')
+        if contrat_id:
+            qs = qs.filter(contrat_id=contrat_id)
+        statut = self.request.query_params.get('statut')
+        if statut:
+            qs = qs.filter(statut=statut)
         return qs
 
 

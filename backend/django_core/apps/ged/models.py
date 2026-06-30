@@ -1401,6 +1401,114 @@ class LegalHold(models.Model):
         return f'Legal hold — {self.document} ({etat})'
 
 
+# GED30 — Signature électronique (point d'intégration + stub no-op).
+#
+# Statuts LOCAUX à la GED d'une demande de signature électronique sur un
+# document. Couche GÉNÉRIQUE de signature de N'IMPORTE quel document GED —
+# SÉPARÉE et DISTINCTE de la signature des CONTRATS (`contrats.SignatureContrat`,
+# CONTRAT16) : on ne touche jamais l'app contrats. Ces statuts sont aussi sans
+# rapport avec le funnel commercial `STAGES.py` (rule #2) — on n'importe surtout
+# PAS `STAGES.py` ici.
+#
+#   en_attente ─▶ signe | refuse | annule
+#
+# KEY-GATED no-op (mirroir de l'embedding GED12) : tant qu'aucun provider e-sign
+# externe n'est configuré (`settings.ESIGN_ENABLED` faux), la demande est un STUB
+# purement LOCAL — aucun appel réseau, aucun coût, aucune dépendance nouvelle.
+SIGNATURE_EN_ATTENTE = 'en_attente'
+SIGNATURE_SIGNE = 'signe'
+SIGNATURE_REFUSE = 'refuse'
+SIGNATURE_ANNULE = 'annule'
+
+SIGNATURE_CHOICES = [
+    (SIGNATURE_EN_ATTENTE, 'En attente'),
+    (SIGNATURE_SIGNE, 'Signée'),
+    (SIGNATURE_REFUSE, 'Refusée'),
+    (SIGNATURE_ANNULE, 'Annulée'),
+]
+
+# Provider e-sign par défaut quand aucun n'est configuré : « aucun » (stub).
+SIGNATURE_PROVIDER_AUCUN = 'aucun'
+
+
+class DemandeSignatureDocument(models.Model):
+    """GED30 — Demande de signature électronique sur un document (point
+    d'intégration + STUB no-op).
+
+    Enregistre une demande de signature électronique d'UN document GED par UN
+    signataire (nom + email), et SUIT son statut (`en_attente` → `signe` /
+    `refuse` / `annule`). C'est un POINT D'INTÉGRATION générique vers un futur
+    fournisseur e-sign (DocuSign/Yousign/…), volontairement câblé comme un STUB :
+
+    KEY-GATED NO-OP (mirroir de l'embedding GED12) : tant que
+    `services.esign_active()` est faux (aucun `settings.ESIGN_ENABLED` +
+    provider configuré), `demander_signature` se contente de CRÉER la demande
+    `en_attente` côté serveur — AUCUN appel réseau, AUCUN coût, AUCUNE dépendance
+    nouvelle. Le `provider` reste « aucun » et `provider_ref` vide. Quand un
+    provider sera câblé (clé posée par le founder), le service appellera le
+    fournisseur et renseignera `provider`/`provider_ref` ; la complétion sera
+    enregistrée via `marquer_signe` (webhook/manuel).
+
+    Couche GÉNÉRIQUE de signature documentaire — SÉPARÉE et DISTINCTE de la
+    signature des CONTRATS (`contrats.SignatureContrat`, CONTRAT16, jamais
+    touchée ici) et du funnel commercial `STAGES.py` (rule #2 — jamais importé).
+
+    Multi-tenant : `company` & `created_by` posés CÔTÉ SERVEUR (jamais lus du
+    corps de requête) ; toutes les requêtes bornées à la société.
+    """
+    company = models.ForeignKey(
+        'authentication.Company', on_delete=models.CASCADE,
+        null=True, blank=True, related_name='ged_demandes_signature')
+    document = models.ForeignKey(
+        Document, on_delete=models.CASCADE, related_name='demandes_signature')
+    signataire_nom = models.CharField(
+        max_length=255, verbose_name='nom du signataire')
+    signataire_email = models.EmailField(
+        verbose_name='email du signataire')
+    statut = models.CharField(
+        max_length=10, choices=SIGNATURE_CHOICES,
+        default=SIGNATURE_EN_ATTENTE,
+        verbose_name='statut de la signature')
+    # Fournisseur e-sign utilisé. « aucun » = STUB no-op (aucun provider câblé).
+    provider = models.CharField(
+        max_length=40, default=SIGNATURE_PROVIDER_AUCUN,
+        verbose_name='fournisseur e-sign')
+    # Référence opaque de la demande côté provider (vide en mode stub).
+    provider_ref = models.CharField(
+        max_length=255, blank=True, default='',
+        verbose_name='référence fournisseur')
+    date_demande = models.DateTimeField(
+        auto_now_add=True, verbose_name='demandée le')
+    # Horodatage de la signature effective — NULL tant que non signée.
+    date_signature = models.DateTimeField(
+        null=True, blank=True, verbose_name='signée le')
+    created_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL,
+        null=True, blank=True, related_name='ged_demandes_signature_creees')
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ['-date_demande', '-id']
+        verbose_name = 'Demande de signature'
+        verbose_name_plural = 'Demandes de signature'
+        indexes = [
+            models.Index(fields=['company', 'document'],
+                         name='ged_sign_co_doc_idx'),
+            models.Index(fields=['company', 'statut'],
+                         name='ged_sign_co_statut_idx'),
+        ]
+
+    @property
+    def is_pending(self):
+        """True si la demande est encore en attente de signature."""
+        return self.statut == SIGNATURE_EN_ATTENTE
+
+    def __str__(self):
+        return f'Signature {self.document} → {self.signataire_nom} ' \
+               f'({self.statut})'
+
+
 class ModeleDocument(models.Model):
     """GED27 — Modèle de document avec fusion/mailing (corps → PDF WeasyPrint).
 

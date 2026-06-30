@@ -19,6 +19,7 @@ from .models import (
     ContratLien,
     EtapeApprobation,
     RegleApprobation,
+    Resiliation,
     SignatureContrat,
     VersionContrat,
 )
@@ -119,6 +120,18 @@ def avenants_contrat(contrat):
     """
     return Avenant.objects.filter(
         contrat=contrat, company=contrat.company).order_by('-numero', '-id')
+
+
+def resiliations_contrat(contrat):
+    """Résiliations d'un contrat (QuerySet scopé société, ordonné).
+
+    Lecture seule (CONTRAT25). Ordre par ``id`` DÉCROISSANT (la dernière
+    résiliation en tête), cohérent avec ``Meta.ordering`` du modèle. La société
+    est portée par le contrat ; on filtre aussi sur ``contrat.company`` par
+    sécurité même si le FK ``contrat`` la garantit.
+    """
+    return Resiliation.objects.filter(
+        contrat=contrat, company=contrat.company).order_by('-id')
 
 
 def signatures_contrat(contrat):
