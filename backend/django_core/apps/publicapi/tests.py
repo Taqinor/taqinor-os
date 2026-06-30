@@ -523,6 +523,99 @@ class DeliveryReplayTests(TestCase):
         self.assertEqual(resp.status_code, 404)
 
 
+# ── FG104 — Filtrage, tri & synchro incrémentale (?updated_since=) ───────────
+
+class PublicApiFilterTests(TestCase):
+    """Filtres liste blanche, tri natif et synchro incrémentale, company-scoped."""
+
+    def setUp(self):
+        self.co = make_company('flt', 'FLT')
+        self.client_obj = Client.objects.create(company=self.co, nom='Cli')
+        self.lead_new = Lead.objects.create(
+            company=self.co, nom='Neuf', stage='NEW', ville='Casablanca')
+        self.lead_signed = Lead.objects.create(
+            company=self.co, nom='Signé', stage='SIGNED', ville='Rabat')
+        self.facture_emise = Facture.objects.create(
+            company=self.co, reference='FA-E', client=self.client_obj,
+            statut=Facture.Statut.EMISE)
+        self.facture_payee = Facture.objects.create(
+            company=self.co, reference='FA-P', client=self.client_obj,
+            statut=Facture.Statut.PAYEE)
+        self.key, self.raw = ApiKey.issue(
+            company=self.co, label='flt',
+            scopes=[SCOPE_READ_LEADS, SCOPE_READ_FACTURES, SCOPE_READ_CHANTIERS])
+
+    def test_whitelisted_field_filter(self):
+        resp = key_client(self.raw).get('/api/public/leads/?stage=SIGNED')
+        self.assertEqual(resp.status_code, 200)
+        noms = [r['nom'] for r in rows(resp)]
+        self.assertEqual(noms, ['Signé'])
+
+    def test_second_whitelisted_filter(self):
+        resp = key_client(self.raw).get(
+            '/api/public/factures/?statut=payee')
+        self.assertEqual(resp.status_code, 200)
+        refs = [r['reference'] for r in rows(resp)]
+        self.assertEqual(refs, ['FA-P'])
+
+    def test_unknown_filter_is_400_not_500(self):
+        # Un paramètre hors liste blanche est refusé proprement (400).
+        resp = key_client(self.raw).get('/api/public/leads/?secret=x')
+        self.assertEqual(resp.status_code, 400)
+
+    def test_ordering_whitelisted(self):
+        resp = key_client(self.raw).get(
+            '/api/public/leads/?ordering=date_creation')
+        self.assertEqual(resp.status_code, 200)
+        noms = [r['nom'] for r in rows(resp)]
+        self.assertEqual(noms, ['Neuf', 'Signé'])
+
+    def test_ordering_non_whitelisted_is_ignored(self):
+        # Champ non listé → OrderingFilter natif l'ignore (pas de 500/fuite).
+        resp = key_client(self.raw).get('/api/public/leads/?ordering=email')
+        self.assertEqual(resp.status_code, 200)
+
+    def test_updated_since_filters_incrementally(self):
+        from django.utils import timezone
+        from datetime import timedelta
+        # Tout est récent : un seuil futur ne renvoie rien.
+        future = (timezone.now() + timedelta(days=1)).isoformat()
+        resp = key_client(self.raw).get(
+            f'/api/public/leads/?updated_since={future}')
+        self.assertEqual(resp.status_code, 200)
+        self.assertEqual(len(rows(resp)), 0)
+        # Un seuil passé renvoie les deux leads.
+        past = (timezone.now() - timedelta(days=1)).isoformat()
+        resp2 = key_client(self.raw).get(
+            f'/api/public/leads/?updated_since={past}')
+        self.assertEqual(len(rows(resp2)), 2)
+
+    def test_updated_since_accepts_plain_date(self):
+        resp = key_client(self.raw).get(
+            '/api/public/leads/?updated_since=2000-01-01')
+        self.assertEqual(resp.status_code, 200)
+        self.assertEqual(len(rows(resp)), 2)
+
+    def test_updated_since_invalid_is_400(self):
+        resp = key_client(self.raw).get(
+            '/api/public/leads/?updated_since=pas-une-date')
+        self.assertEqual(resp.status_code, 400)
+
+    def test_chantier_exposes_date_modification(self):
+        Installation.objects.create(
+            company=self.co, reference='CH-F', client=self.client_obj)
+        resp = key_client(self.raw).get('/api/public/chantiers/')
+        self.assertEqual(resp.status_code, 200)
+        self.assertIn('date_modification', rows(resp)[0])
+
+    def test_filter_stays_company_scoped(self):
+        other = make_company('flt-b', 'FLT B')
+        Lead.objects.create(company=other, nom='Étranger', stage='SIGNED')
+        resp = key_client(self.raw).get('/api/public/leads/?stage=SIGNED')
+        noms = [r['nom'] for r in rows(resp)]
+        self.assertNotIn('Étranger', noms)
+
+
 class WebhookTestPingTests(TestCase):
     """POST webhooks/{id}/test/ — ping synthétique."""
 
