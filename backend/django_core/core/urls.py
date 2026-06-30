@@ -18,11 +18,17 @@ fichier, donc non modifié par cette tâche « core-only ») :
 """
 from rest_framework.routers import DefaultRouter
 
-from .views import ScheduledJobViewSet, WorkflowTemplateViewSet
+from .views import (
+    DashboardViewSet,
+    ScheduledJobViewSet,
+    WorkflowTemplateViewSet,
+)
 
 router = DefaultRouter()
 router.register(r'jobs', ScheduledJobViewSet, basename='scheduled-job')
 router.register(r'workflow-templates', WorkflowTemplateViewSet,
                 basename='workflow-template')
+# FG381 — dashboards sans-code (CRUD multi-tenant, scoping perso/partagé).
+router.register(r'dashboards', DashboardViewSet, basename='dashboard')
 
 urlpatterns = router.urls
