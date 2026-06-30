@@ -1319,3 +1319,274 @@ class DataSubjectRequest(TimestampedModel):
 
     def __str__(self):
         return f'DSR {self.kind} — {self.subject_identifier} ({self.statut})'
+
+
+# ---------------------------------------------------------------------------
+# FG395 — Sauvegarde / restauration en libre-service (par société).
+#
+# Modèle de FONDATION GÉNÉRIQUE : trace une opération de sauvegarde (export) ou
+# de restauration (restore) d'un bundle de données société, à la demande ou
+# planifiée. ``core`` ne connaît AUCUN modèle métier (contrat import-linter
+# ``core-foundation-is-a-base-layer``) : les apps métier fournissent leurs
+# datasets via le registre ``core.data_explorer`` ; ce modèle ne porte que les
+# MÉTADONNÉES de l'opération (jamais le contenu métier). Le runner réel
+# (``core.backup``) matérialise/restaure le bundle ; sans destination
+# configurée il reste en no-op propre.
+# ---------------------------------------------------------------------------
+
+
+class BackupRun(TimestampedModel):
+    """Opération de sauvegarde/restauration d'une société (FG395).
+
+    GÉNÉRIQUE : ``kind`` = export (sauvegarde) ou restore (restauration) ;
+    ``mode`` = manuel ou planifié ; ``statut`` suit le cycle de vie. ``cron``
+    porte une planification éventuelle (interprétée par Celery Beat, hors core).
+    ``manifest`` résume le bundle (datasets + comptes de lignes) sans contenu
+    métier. Multi-tenant : ``company`` obligatoire, imposée côté serveur.
+    """
+
+    KIND_EXPORT = 'export'
+    KIND_RESTORE = 'restore'
+    KIND_CHOICES = [
+        (KIND_EXPORT, 'Sauvegarde'),
+        (KIND_RESTORE, 'Restauration'),
+    ]
+
+    MODE_MANUEL = 'manuel'
+    MODE_PLANIFIE = 'planifie'
+    MODE_CHOICES = [
+        (MODE_MANUEL, 'À la demande'),
+        (MODE_PLANIFIE, 'Planifié'),
+    ]
+
+    STATUT_EN_ATTENTE = 'en_attente'
+    STATUT_EN_COURS = 'en_cours'
+    STATUT_TERMINE = 'termine'
+    STATUT_ECHEC = 'echec'
+    STATUT_NON_CONFIGURE = 'non_configure'
+    STATUT_CHOICES = [
+        (STATUT_EN_ATTENTE, 'En attente'),
+        (STATUT_EN_COURS, 'En cours'),
+        (STATUT_TERMINE, 'Terminé'),
+        (STATUT_ECHEC, 'Échec'),
+        (STATUT_NON_CONFIGURE, 'Non configuré'),
+    ]
+
+    company = models.ForeignKey(
+        'authentication.Company', on_delete=models.CASCADE,
+        related_name='backup_runs', verbose_name='Société')
+
+    kind = models.CharField(
+        'Type', max_length=10, choices=KIND_CHOICES, default=KIND_EXPORT)
+    mode = models.CharField(
+        'Déclenchement', max_length=10, choices=MODE_CHOICES,
+        default=MODE_MANUEL)
+    statut = models.CharField(
+        'Statut', max_length=14, choices=STATUT_CHOICES,
+        default=STATUT_EN_ATTENTE)
+
+    datasets = models.JSONField(
+        'Datasets', default=list, blank=True,
+        help_text='Liste des datasets inclus (noms du registre data_explorer). '
+                  'Vide = tous les datasets de la société.')
+    cron = models.CharField(
+        'Planification (cron)', max_length=120, blank=True, default='',
+        help_text='Expression cron interprétée par Celery Beat (hors core).')
+    artifact_ref = models.CharField(
+        "Référence de l'artefact", max_length=500, blank=True, default='',
+        help_text='Chemin/URL de stockage du bundle (jamais le contenu).')
+    manifest = models.JSONField(
+        'Manifeste', default=dict, blank=True,
+        help_text='Résumé du bundle (datasets + comptes), sans contenu métier.')
+
+    declenche_par = models.ForeignKey(
+        'authentication.CustomUser', on_delete=models.SET_NULL,
+        null=True, blank=True, related_name='+',
+        verbose_name='Déclenché par')
+    termine_le = models.DateTimeField('Terminé le', null=True, blank=True)
+    detail = models.JSONField(
+        'Détail', default=dict, blank=True,
+        help_text="Compte-rendu d'exécution (erreurs, durées).")
+
+    class Meta:
+        verbose_name = 'Sauvegarde/restauration'
+        verbose_name_plural = 'Sauvegardes/restaurations'
+        ordering = ['-id']
+        indexes = [
+            models.Index(fields=['company', 'kind', 'statut'],
+                         name='core_backup_co_kind_st_idx'),
+        ]
+
+    def __str__(self):
+        return f'{self.get_kind_display()} société {self.company_id} ' \
+               f'({self.statut})'
+
+
+# ---------------------------------------------------------------------------
+# FG398 — Plans de tarif API & analytics d'usage (par clé d'API).
+#
+# Modèles de FONDATION GÉNÉRIQUES : un plan de quota par société et un journal
+# d'usage agrégé par clé d'API. La clé d'API vit dans l'app SATELLITE
+# ``publicapi`` — ``core`` ne l'IMPORTE JAMAIS (contrat import-linter
+# ``core-foundation-is-a-base-layer``) : le lien est une string-FK
+# ``'publicapi.ApiKey'`` (référence paresseuse, aucun import de module). ``core``
+# fournit le quota et le compteur ; ``publicapi`` les consomme via
+# ``core.api_usage`` (sélecteur/enregistreur), pas l'inverse.
+# ---------------------------------------------------------------------------
+
+
+class ApiUsagePlan(TimestampedModel):
+    """Plan de tarif/quota API d'une société (FG398).
+
+    GÉNÉRIQUE : porte des limites de débit (par minute) et de volume (par jour/
+    mois) appliquées aux clés d'API de la société. Multi-tenant : ``company``
+    obligatoire (OneToOne), imposée côté serveur. ``code`` nomme le palier
+    (libre, ex. « gratuit », « pro »).
+    """
+
+    company = models.OneToOneField(
+        'authentication.Company', on_delete=models.CASCADE,
+        related_name='api_usage_plan', verbose_name='Société')
+
+    code = models.CharField(
+        'Palier', max_length=40, blank=True, default='gratuit',
+        help_text='Nom du palier (libre, ex. « gratuit », « pro »).')
+    quota_par_minute = models.PositiveIntegerField(
+        'Quota / minute', default=60,
+        help_text='Requêtes max par minute et par clé (0 = illimité).')
+    quota_par_jour = models.PositiveIntegerField(
+        'Quota / jour', default=10000,
+        help_text='Requêtes max par jour et par société (0 = illimité).')
+    quota_par_mois = models.PositiveIntegerField(
+        'Quota / mois', default=300000,
+        help_text='Requêtes max par mois et par société (0 = illimité).')
+    actif = models.BooleanField('Actif', default=True)
+
+    class Meta:
+        verbose_name = "Plan d'usage API"
+        verbose_name_plural = "Plans d'usage API"
+        ordering = ['id']
+
+    def __str__(self):
+        return f'Plan API « {self.code} » — société {self.company_id}'
+
+
+class ApiUsageRecord(TimestampedModel):
+    """Compteur d'usage API agrégé par clé et par jour (FG398).
+
+    GÉNÉRIQUE : une ligne par ``(api_key, jour)`` agrège le nombre de requêtes
+    et d'erreurs. La clé est désignée par string-FK ``'publicapi.ApiKey'``
+    (aucun import). Multi-tenant : ``company`` obligatoire, imposée côté serveur
+    par l'enregistreur (``core.api_usage``).
+    """
+
+    company = models.ForeignKey(
+        'authentication.Company', on_delete=models.CASCADE,
+        related_name='api_usage_records', verbose_name='Société')
+    api_key = models.ForeignKey(
+        'publicapi.ApiKey', on_delete=models.CASCADE,
+        related_name='usage_records', verbose_name='Clé API')
+
+    jour = models.DateField('Jour', help_text="Jour d'agrégation (UTC).")
+    nb_requetes = models.PositiveIntegerField('Requêtes', default=0)
+    nb_erreurs = models.PositiveIntegerField('Erreurs', default=0)
+
+    class Meta:
+        verbose_name = 'Usage API'
+        verbose_name_plural = 'Usages API'
+        ordering = ['-jour', 'id']
+        constraints = [
+            models.UniqueConstraint(
+                fields=['api_key', 'jour'],
+                name='core_apiusage_key_jour'),
+        ]
+        indexes = [
+            models.Index(fields=['company', 'jour'],
+                         name='core_apiusage_co_jour_idx'),
+        ]
+
+    def __str__(self):
+        return f'Usage clé {self.api_key_id} le {self.jour} ' \
+               f'({self.nb_requetes} req.)'
+
+
+# ---------------------------------------------------------------------------
+# FG399 — Journal des nouveautés in-app (changelog) + suivi de lecture.
+#
+# Modèles de FONDATION GÉNÉRIQUES : un fil de notes de version (changelog)
+# GLOBAL au produit (pas de portée société — c'est l'éditeur du produit qui
+# publie) et un suivi de lecture PAR UTILISATEUR (multi-tenant via l'utilisateur
+# qui porte sa société). ``core`` ne connaît AUCUN modèle métier (contrat
+# import-linter ``core-foundation-is-a-base-layer``).
+# ---------------------------------------------------------------------------
+
+
+class ChangelogEntry(TimestampedModel):
+    """Note de version publiée dans le journal des nouveautés (FG399).
+
+    GLOBALE au produit (aucune portée société) : c'est l'éditeur qui publie. Le
+    suivi de lecture est porté par ``ChangelogRead`` (par utilisateur).
+    ``categorie`` classe la note (nouveauté/amélioration/correctif).
+    """
+
+    CAT_NOUVEAUTE = 'nouveaute'
+    CAT_AMELIORATION = 'amelioration'
+    CAT_CORRECTIF = 'correctif'
+    CAT_CHOICES = [
+        (CAT_NOUVEAUTE, 'Nouveauté'),
+        (CAT_AMELIORATION, 'Amélioration'),
+        (CAT_CORRECTIF, 'Correctif'),
+    ]
+
+    titre = models.CharField('Titre', max_length=200)
+    corps = models.TextField('Contenu', blank=True, default='')
+    version = models.CharField(
+        'Version', max_length=40, blank=True, default='',
+        help_text='Étiquette de version, ex. « 2026.06 ».')
+    categorie = models.CharField(
+        'Catégorie', max_length=14, choices=CAT_CHOICES,
+        default=CAT_NOUVEAUTE)
+    publie = models.BooleanField(
+        'Publié', default=False,
+        help_text="Une note non publiée n'apparaît pas dans le fil.")
+    publie_le = models.DateTimeField('Publié le', null=True, blank=True)
+
+    class Meta:
+        verbose_name = 'Note de version'
+        verbose_name_plural = 'Notes de version'
+        ordering = ['-publie_le', '-id']
+        indexes = [
+            models.Index(fields=['publie', 'publie_le'],
+                         name='core_changelog_pub_idx'),
+        ]
+
+    def __str__(self):
+        return f'{self.titre} ({self.version or "—"})'
+
+
+class ChangelogRead(TimestampedModel):
+    """Accusé de lecture d'une note de version par un utilisateur (FG399).
+
+    Une ligne par ``(user, entry)``. Permet d'afficher un badge « nouveautés non
+    lues » par utilisateur. ``user`` porte implicitement sa société.
+    """
+
+    user = models.ForeignKey(
+        'authentication.CustomUser', on_delete=models.CASCADE,
+        related_name='changelog_reads', verbose_name='Utilisateur')
+    entry = models.ForeignKey(
+        ChangelogEntry, on_delete=models.CASCADE,
+        related_name='reads', verbose_name='Note de version')
+
+    class Meta:
+        verbose_name = 'Lecture de note de version'
+        verbose_name_plural = 'Lectures de notes de version'
+        ordering = ['-id']
+        constraints = [
+            models.UniqueConstraint(
+                fields=['user', 'entry'],
+                name='core_changelogread_user_entry'),
+        ]
+
+    def __str__(self):
+        return f'Note {self.entry_id} lue par utilisateur {self.user_id}'
