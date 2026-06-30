@@ -63,6 +63,39 @@ def contrats_a_preavis(company, within_days=30, today=None):
     )
 
 
+def contrats_a_renouveler(company, within_days=30, today=None):
+    """Contrats dont l'ÉCHÉANCE (``date_fin``) approche (CONTRAT21).
+
+    Renvoie un QuerySet scopé société des contrats dont la date de fin
+    (``date_fin``) tombe dans la fenêtre ``[today, today + within_days]`` — ceux
+    qu'il faut bientôt RENOUVELER ou clôturer. Complémentaire de
+    ``contrats_a_preavis`` (CONTRAT20) : ce sélecteur regarde la FIN du contrat
+    elle-même, pas la date limite de préavis (``date_fin − preavis_jours``).
+
+    Sont exclus : les contrats sans ``date_fin`` (rien à échéancer) et les
+    contrats déjà résiliés/expirés (plus d'enjeu de renouvellement). Le drapeau
+    ``tacite_reconduction`` n'exclut PAS un contrat — il reste exposé par le
+    sérialiseur pour que l'UI sache qu'il se reconduit tout seul. Ordonné par
+    échéance la plus proche d'abord.
+
+    ``within_days`` < 0 est ramené à 0 (fenêtre vide vers le futur). ``today``
+    est injectable pour les tests.
+    """
+    if today is None:
+        today = timezone.localdate()
+    if within_days < 0:
+        within_days = 0
+    limite = today + timedelta(days=within_days)
+    return (
+        Contrat.objects.filter(company=company)
+        .exclude(date_fin__isnull=True)
+        .exclude(statut__in=[
+            Contrat.Statut.RESILIE, Contrat.Statut.EXPIRE])
+        .filter(date_fin__gte=today, date_fin__lte=limite)
+        .order_by('date_fin', 'id')
+    )
+
+
 def versions_contrat(contrat):
     """Versions IMMUABLES d'un contrat (QuerySet scopé société, ordonné).
 
