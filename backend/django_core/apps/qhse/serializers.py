@@ -9,9 +9,10 @@ from rest_framework import serializers
 from .models import (
     ActionCorrectivePreventive, AnalyseIncident, Audit, CauseIncident,
     ConsignationLoto, ContactUrgence,
-    BordereauSuiviDechet, ConformiteEnvironnementale,
+    BilanCarbone, BordereauSuiviDechet, ConformiteEnvironnementale,
     CritereAudit, Dechet, DeclarationCnss, EvaluationRisque, GrilleAudit,
     InductionSecurite,
+    LigneBilanCarbone,
     Incident, InspectionSecurite,
     ItemNotation, LigneEvaluationRisque, NonConformite, NotationFinChantier,
     PermisTravail, PlanInspectionChantier, PlanInspectionModele, PlanUrgence,
@@ -911,3 +912,54 @@ class ConformiteEnvironnementaleSerializer(serializers.ModelSerializer):
             if value.company_id != request.user.company_id:
                 raise serializers.ValidationError('Responsable inconnu.')
         return value
+
+
+class LigneBilanCarboneSerializer(serializers.ModelSerializer):
+    """Ligne d'émission d'un bilan carbone (QHSE39).
+
+    ``company`` posée côté serveur. ``tco2e`` (quantité × facteur) exposé en
+    lecture seule. Le FK ``bilan`` est validé même-société.
+    """
+    scope_display = serializers.CharField(
+        source='get_scope_display', read_only=True)
+    tco2e = serializers.DecimalField(
+        max_digits=18, decimal_places=3, read_only=True)
+
+    class Meta:
+        model = LigneBilanCarbone
+        fields = [
+            'id', 'bilan', 'libelle', 'scope', 'scope_display', 'categorie',
+            'quantite', 'unite', 'facteur_emission', 'tco2e', 'date_creation',
+        ]
+        read_only_fields = ['date_creation']
+
+    def validate_bilan(self, value):
+        return _meme_societe(self, value, 'Bilan')
+
+
+class BilanCarboneSerializer(serializers.ModelSerializer):
+    """Bilan carbone interne (scopes 1/2/3 — QHSE39).
+
+    ``company`` posée côté serveur. Les totaux par scope et le total global
+    (``total_scope_1/2/3`` / ``total_tco2e``) sont DÉRIVÉS des lignes — exposés
+    en lecture seule.
+    """
+    statut_display = serializers.CharField(
+        source='get_statut_display', read_only=True)
+    total_scope_1 = serializers.DecimalField(
+        max_digits=18, decimal_places=3, read_only=True)
+    total_scope_2 = serializers.DecimalField(
+        max_digits=18, decimal_places=3, read_only=True)
+    total_scope_3 = serializers.DecimalField(
+        max_digits=18, decimal_places=3, read_only=True)
+    total_tco2e = serializers.DecimalField(
+        max_digits=18, decimal_places=3, read_only=True)
+
+    class Meta:
+        model = BilanCarbone
+        fields = [
+            'id', 'libelle', 'annee', 'statut', 'statut_display',
+            'perimetre', 'notes', 'total_scope_1', 'total_scope_2',
+            'total_scope_3', 'total_tco2e', 'date_creation',
+        ]
+        read_only_fields = ['date_creation']

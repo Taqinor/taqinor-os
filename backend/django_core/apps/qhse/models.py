@@ -2608,3 +2608,163 @@ class ConformiteEnvironnementale(models.Model):
 
     def __str__(self):
         return f'{self.intitule} ({self.get_type_conformite_display()})'
+
+
+# ── QHSE39 — Bilan carbone interne (scopes 1 / 2 / 3) ──────────────────────
+
+class BilanCarbone(models.Model):
+    """Bilan carbone interne d'une société sur une période (QHSE39).
+
+    Inventaire des émissions de gaz à effet de serre (GES) de la société, agrégé
+    par les trois SCOPES du GHG Protocol :
+
+    * scope 1 — émissions directes (combustion carburant des véhicules, groupes
+      électrogènes, etc.) ;
+    * scope 2 — émissions indirectes liées à l'énergie achetée (électricité du
+      réseau) ;
+    * scope 3 — autres émissions indirectes (achats, transport amont/aval,
+      déplacements, déchets…).
+
+    Le bilan porte une ``annee`` (et un libellé), un ``statut`` (brouillon /
+    validé / archivé) et agrège ses lignes (``LigneBilanCarbone``) en totaux par
+    scope + total global (``total_tco2e`` / ``total_scope_*``), tous calculés à la
+    volée à partir des lignes — aucun champ dérivé stocké.
+
+    Multi-société via ``company`` posée côté serveur. Entièrement additif.
+    """
+    class Statut(models.TextChoices):
+        BROUILLON = 'brouillon', 'Brouillon'
+        VALIDE = 'valide', 'Validé'
+        ARCHIVE = 'archive', 'Archivé'
+
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='qhse_bilans_carbone',
+        verbose_name='Société',
+    )
+    libelle = models.CharField(max_length=255, verbose_name='Libellé')
+    annee = models.PositiveIntegerField(verbose_name='Année')
+    statut = models.CharField(
+        max_length=10, choices=Statut.choices,
+        default=Statut.BROUILLON, verbose_name='Statut')
+    perimetre = models.TextField(
+        blank=True, default='', verbose_name='Périmètre')
+    notes = models.TextField(
+        blank=True, default='', verbose_name='Notes')
+    date_creation = models.DateTimeField(
+        auto_now_add=True, verbose_name='Créé le')
+
+    class Meta:
+        verbose_name = 'Bilan carbone'
+        verbose_name_plural = 'Bilans carbone'
+        ordering = ['-annee', '-id']
+        constraints = [
+            models.UniqueConstraint(
+                fields=['company', 'annee', 'libelle'],
+                name='qhse_bilan_co_an_lib_uniq',
+            )
+        ]
+        indexes = [
+            models.Index(
+                fields=['company', 'annee'],
+                name='qhse_bilan_co_annee',
+            ),
+        ]
+
+    def _total(self, scope=None):
+        from decimal import Decimal
+        qs = self.lignes.all()
+        if scope is not None:
+            qs = qs.filter(scope=scope)
+        # tco2e est dérivé (quantite × facteur_emission) : on somme en Python
+        # pour réutiliser la propriété ``tco2e`` de chaque ligne.
+        return sum((ligne.tco2e for ligne in qs), Decimal('0'))
+
+    @property
+    def total_scope_1(self):
+        return self._total(LigneBilanCarbone.Scope.SCOPE_1)
+
+    @property
+    def total_scope_2(self):
+        return self._total(LigneBilanCarbone.Scope.SCOPE_2)
+
+    @property
+    def total_scope_3(self):
+        return self._total(LigneBilanCarbone.Scope.SCOPE_3)
+
+    @property
+    def total_tco2e(self):
+        return self._total()
+
+    def __str__(self):
+        return f'{self.libelle} ({self.annee})'
+
+
+class LigneBilanCarbone(models.Model):
+    """Ligne d'émission d'un bilan carbone, rattachée à un scope (QHSE39).
+
+    Chaque ligne décrit une SOURCE d'émission : sa ``categorie`` (carburant,
+    électricité, déplacements…), son ``scope`` (1 / 2 / 3), une ``quantite``
+    d'activité dans son ``unite`` et un ``facteur_emission`` (tCO₂e par unité).
+    Les émissions de la ligne (``tco2e``) sont DÉRIVÉES : ``quantite ×
+    facteur_emission`` — jamais stockées.
+
+    Le FK ``bilan`` reste intra-app (même module QHSE). ``company`` posée côté
+    serveur. Entièrement additif.
+    """
+    class Scope(models.TextChoices):
+        SCOPE_1 = 'scope_1', 'Scope 1 — émissions directes'
+        SCOPE_2 = 'scope_2', 'Scope 2 — énergie achetée'
+        SCOPE_3 = 'scope_3', 'Scope 3 — autres indirectes'
+
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='qhse_lignes_bilan_carbone',
+        verbose_name='Société',
+    )
+    bilan = models.ForeignKey(
+        BilanCarbone,
+        on_delete=models.CASCADE,
+        related_name='lignes',
+        verbose_name='Bilan',
+    )
+    libelle = models.CharField(max_length=255, verbose_name='Libellé')
+    scope = models.CharField(
+        max_length=10, choices=Scope.choices,
+        default=Scope.SCOPE_1, verbose_name='Scope')
+    categorie = models.CharField(
+        max_length=120, blank=True, default='', verbose_name='Catégorie')
+    quantite = models.DecimalField(
+        max_digits=14, decimal_places=3,
+        default=0, verbose_name="Quantité d'activité")
+    unite = models.CharField(
+        max_length=30, blank=True, default='', verbose_name='Unité')
+    facteur_emission = models.DecimalField(
+        max_digits=14, decimal_places=6,
+        default=0, verbose_name="Facteur d'émission (tCO₂e/unité)")
+    date_creation = models.DateTimeField(
+        auto_now_add=True, verbose_name='Créé le')
+
+    class Meta:
+        verbose_name = 'Ligne de bilan carbone'
+        verbose_name_plural = 'Lignes de bilan carbone'
+        ordering = ['scope', 'id']
+        indexes = [
+            models.Index(
+                fields=['bilan', 'scope'],
+                name='qhse_lbilan_bilan_scope',
+            ),
+        ]
+
+    @property
+    def tco2e(self):
+        """Émissions de la ligne (tCO₂e) = quantité × facteur d'émission."""
+        from decimal import Decimal
+        q = self.quantite or Decimal('0')
+        f = self.facteur_emission or Decimal('0')
+        return (q * f).quantize(Decimal('0.001'))
+
+    def __str__(self):
+        return f'{self.libelle} ({self.get_scope_display()})'

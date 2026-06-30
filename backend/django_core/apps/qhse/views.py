@@ -17,12 +17,13 @@ from apps.ventes.utils.references import create_with_reference
 
 from .models import (
     ActionCorrectivePreventive, AnalyseIncident, Audit,
-    BordereauSuiviDechet, CauseIncident,
+    BilanCarbone, BordereauSuiviDechet, CauseIncident,
     ConformiteEnvironnementale, ConsignationLoto, ContactUrgence,
     CritereAudit, Dechet, DeclarationCnss, EvaluationRisque, GrilleAudit,
     Incident,
     InductionSecurite, InspectionSecurite,
-    ItemNotation, LigneEvaluationRisque, NonConformite, NotationFinChantier,
+    ItemNotation, LigneBilanCarbone,
+    LigneEvaluationRisque, NonConformite, NotationFinChantier,
     PermisTravail, PlanInspectionChantier, PlanInspectionModele, PlanUrgence,
     PointControleModele, ProcedureQualite, QhseChatterEntry,
     RecyclageModule, ReleveControle,
@@ -30,7 +31,8 @@ from .models import (
 )
 from .serializers import (
     ActionCorrectivePreventiveSerializer, AnalyseIncidentSerializer,
-    AuditSerializer, BordereauSuiviDechetSerializer, CauseIncidentSerializer,
+    AuditSerializer, BilanCarboneSerializer, BordereauSuiviDechetSerializer,
+    CauseIncidentSerializer,
     ConformiteEnvironnementaleSerializer,
     ConsignationLotoSerializer, ContactUrgenceSerializer,
     CritereAuditSerializer, DechetSerializer, DeclarationCnssSerializer,
@@ -38,6 +40,7 @@ from .serializers import (
     IncidentSerializer,
     InductionSecuriteSerializer, InspectionSecuriteSerializer,
     ItemNotationSerializer,
+    LigneBilanCarboneSerializer,
     LigneEvaluationRisqueSerializer,
     NonConformiteSerializer, NotationFinChantierSerializer,
     PermisTravailSerializer, PlanInspectionChantierSerializer,
@@ -1782,3 +1785,51 @@ class ConformiteEnvironnementaleViewSet(_QhseBaseViewSet):
         """Relance les conformités à renouveler : notifie + digest (QHSE38)."""
         digest = relancer_conformites(request.user.company)
         return Response(digest)
+
+
+class BilanCarboneViewSet(_QhseBaseViewSet):
+    """Bilans carbone internes (scopes 1/2/3 — QHSE39).
+
+    CRUD scopé société. ``company`` posée côté serveur. Les totaux par scope et
+    le total global sont dérivés des lignes (lecture seule). Filtres optionnels :
+    ``?annee=`` / ``?statut=``. Recherche par libellé/périmètre.
+    """
+    queryset = BilanCarbone.objects.all()
+    serializer_class = BilanCarboneSerializer
+    filter_backends = [filters.SearchFilter, filters.OrderingFilter]
+    search_fields = ['libelle', 'perimetre']
+    ordering_fields = ['id', 'annee', 'date_creation']
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        annee = self.request.query_params.get('annee')
+        if annee not in (None, ''):
+            qs = qs.filter(annee=annee)
+        statut = self.request.query_params.get('statut')
+        if statut not in (None, ''):
+            qs = qs.filter(statut=statut)
+        return qs
+
+
+class LigneBilanCarboneViewSet(_QhseBaseViewSet):
+    """Lignes d'émission d'un bilan carbone (QHSE39).
+
+    CRUD scopé société. ``company`` posée côté serveur ; le FK ``bilan`` est
+    validé même-société. ``tco2e`` (quantité × facteur) est dérivé (lecture
+    seule). Filtres optionnels : ``?bilan=`` / ``?scope=``.
+    """
+    queryset = LigneBilanCarbone.objects.select_related('bilan').all()
+    serializer_class = LigneBilanCarboneSerializer
+    filter_backends = [filters.SearchFilter, filters.OrderingFilter]
+    search_fields = ['libelle', 'categorie']
+    ordering_fields = ['id', 'scope', 'date_creation']
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        bilan = self.request.query_params.get('bilan')
+        if bilan not in (None, ''):
+            qs = qs.filter(bilan_id=bilan)
+        scope = self.request.query_params.get('scope')
+        if scope not in (None, ''):
+            qs = qs.filter(scope=scope)
+        return qs

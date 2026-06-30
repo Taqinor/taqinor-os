@@ -1,10 +1,11 @@
 from django.contrib import admin
 
 from .models import (
-    ActionCorrectivePreventive, BordereauSuiviDechet,
+    ActionCorrectivePreventive, BilanCarbone, BordereauSuiviDechet,
     ConformiteEnvironnementale, ConsignationLoto,
     Dechet, EvaluationRisque,
     InspectionSecurite,
+    LigneBilanCarbone,
     LigneEvaluationRisque,
     NonConformite, PermisTravail, PlanInspectionChantier,
     PlanInspectionModele, PointControleModele, ProcedureQualite,
@@ -162,3 +163,19 @@ class ConformiteEnvironnementaleAdmin(admin.ModelAdmin):
                     'responsable', 'company', 'date_creation')
     list_filter = ('type_conformite', 'statut')
     search_fields = ('intitule', 'autorite', 'reference_dossier')
+
+
+@admin.register(BilanCarbone)
+class BilanCarboneAdmin(admin.ModelAdmin):
+    list_display = ('id', 'libelle', 'annee', 'statut', 'company',
+                    'date_creation')
+    list_filter = ('statut', 'annee')
+    search_fields = ('libelle', 'perimetre')
+
+
+@admin.register(LigneBilanCarbone)
+class LigneBilanCarboneAdmin(admin.ModelAdmin):
+    list_display = ('id', 'bilan', 'libelle', 'scope', 'categorie',
+                    'quantite', 'unite', 'facteur_emission', 'company')
+    list_filter = ('scope',)
+    search_fields = ('libelle', 'categorie')

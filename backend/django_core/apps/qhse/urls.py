@@ -3,7 +3,7 @@ from rest_framework.routers import DefaultRouter
 
 from .views import (
     ActionCorrectivePreventiveViewSet, AnalyseIncidentViewSet, AuditViewSet,
-    BordereauSuiviDechetViewSet,
+    BilanCarboneViewSet, BordereauSuiviDechetViewSet,
     CalendrierQhseViewSet,
     CauseIncidentViewSet, ConformiteEnvironnementaleViewSet,
     ConsignationLotoViewSet,
@@ -16,6 +16,7 @@ from .views import (
     NonConformiteViewSet, NotationFinChantierViewSet, PermisTravailViewSet,
     PlanInspectionChantierViewSet, PlanInspectionModeleViewSet,
     PlanUrgenceViewSet,
+    LigneBilanCarboneViewSet,
     PointControleModeleViewSet, ProcedureQualiteViewSet,
     QhseChatterEntryViewSet, RecyclageModuleViewSet,
     ReleveControleViewSet, ReleveCourbeIVViewSet, ReponseCritereViewSet,
@@ -57,6 +58,8 @@ router.register(r'bordereaux-dechets', BordereauSuiviDechetViewSet)
 router.register(r'recyclage-modules', RecyclageModuleViewSet)
 router.register(
     r'conformites-environnementales', ConformiteEnvironnementaleViewSet)
+router.register(r'bilans-carbone', BilanCarboneViewSet)
+router.register(r'lignes-bilan-carbone', LigneBilanCarboneViewSet)
 router.register(
     r'iso9001-readiness', Iso9001ReadinessViewSet,
     basename='iso9001-readiness')
