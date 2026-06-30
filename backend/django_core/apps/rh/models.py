@@ -3573,3 +3573,72 @@ class AvanceSalaire(models.Model):
 
     def __str__(self):
         return f'Avance {self.montant} — {self.employe}'
+
+
+class BulletinPaie(models.Model):
+    """Bulletin de paie déposé en LECTURE SEULE (FG196).
+
+    Dépôt mensuel du bulletin de paie (le PDF produit par le prestataire de
+    paie) rattaché à un ``employe`` (FK ``rh.DossierEmploye``, même société)
+    pour une période ``annee``/``mois``. AUCUN calcul légal n'est fait ici : ce
+    modèle ne fait que STOCKER et exposer en consultation le document fourni —
+    décision assumée (FG196). Le fichier RÉUTILISE le stockage objet existant de
+    ``records.Attachment`` (MinIO) : aucun nouveau stockage n'est construit. Le
+    couple (``employe``, ``annee``, ``mois``) est unique (un bulletin par mois).
+
+    Le collaborateur consulte SON bulletin via le portail self-service (FG199) ;
+    le dépôt et l'administration restent Administrateur/Responsable.
+
+    Multi-société : ``company`` posée CÔTÉ SERVEUR (jamais lue du corps) ;
+    ``employe`` doit appartenir à la même société. Additif.
+
+    RUNTIME-SAFETY (leçon FG136) : ``note`` plafonnée ; contrainte d'unicité +
+    index nommés (≤ 30 chars).
+    """
+
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='rh_bulletins_paie',
+        verbose_name='Société',
+    )
+    employe = models.ForeignKey(
+        DossierEmploye,
+        on_delete=models.CASCADE,
+        related_name='bulletins_paie',
+        verbose_name='Employé',
+    )
+    # Réutilise le stockage MinIO existant : aucun nouveau stockage de fichier.
+    attachment = models.OneToOneField(
+        'records.Attachment',
+        on_delete=models.CASCADE,
+        related_name='bulletin_paie',
+        verbose_name='Pièce jointe',
+    )
+    annee = models.PositiveIntegerField(verbose_name='Année')
+    mois = models.PositiveSmallIntegerField(verbose_name='Mois')
+    note = models.CharField(
+        max_length=255, blank=True, default='', verbose_name='Note')
+    date_creation = models.DateTimeField(
+        auto_now_add=True, verbose_name='Créé le')
+
+    class Meta:
+        verbose_name = 'Bulletin de paie'
+        verbose_name_plural = 'Bulletins de paie'
+        ordering = ['-annee', '-mois', 'employe']
+        constraints = [
+            models.UniqueConstraint(
+                fields=['employe', 'annee', 'mois'],
+                name='rh_bulletin_emp_an_mois_uniq'),
+        ]
+        indexes = [
+            models.Index(
+                fields=['company', 'annee', 'mois'],
+                name='rh_bulletin_comp_anmois_idx'),
+            models.Index(
+                fields=['company', 'employe'],
+                name='rh_bulletin_comp_emp_idx'),
+        ]
+
+    def __str__(self):
+        return f'Bulletin {self.mois:02d}/{self.annee} — {self.employe}'

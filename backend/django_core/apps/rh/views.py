@@ -17,7 +17,11 @@ from rest_framework.response import Response
 from apps.records.models import Attachment
 from apps.records.storage import delete_attachment, store_attachment
 from authentication.mixins import TenantMixin
-from authentication.permissions import HasPermission, IsResponsableOrAdmin
+from authentication.permissions import (
+    HasPermission,
+    IsAnyRole,
+    IsResponsableOrAdmin,
+)
 
 from . import selectors, services
 from .models import (
@@ -26,6 +30,7 @@ from .models import (
     AnalyseRisquesChantier,
     AvanceSalaire,
     BesoinFormation,
+    BulletinPaie,
     CampagneEvaluation,
     Candidature,
     CauserieParticipant,
@@ -67,6 +72,7 @@ from .serializers import (
     AnalyseRisquesChantierSerializer,
     AvanceSalaireSerializer,
     BesoinFormationSerializer,
+    BulletinPaieSerializer,
     CampagneEvaluationSerializer,
     CandidatureSerializer,
     CauserieParticipantSerializer,
@@ -2767,3 +2773,109 @@ class AvanceSalaireViewSet(_RhBaseViewSet):
             avance.save(update_fields=['statut', 'date_modification'])
         return Response(
             self.get_serializer(avance).data, status=status.HTTP_200_OK)
+
+
+class BulletinPaieViewSet(_RhBaseViewSet):
+    """Bulletins de paie en lecture seule (FG196) — dépôt mensuel.
+
+    Société scopée. Dépose le bulletin PDF mensuel (produit par le prestataire
+    de paie) rattaché à un employé pour une période (annee/mois) ; AUCUN calcul
+    légal n'est fait ici. La création est multipart (``employe`` + ``file`` +
+    ``annee`` + ``mois``) ; le fichier RÉUTILISE le stockage objet existant de
+    ``records.Attachment`` (MinIO). ``company`` et la pièce jointe sont posées
+    CÔTÉ SERVEUR. Le couple (employe, annee, mois) est unique.
+
+    Dépôt/administration : Administrateur/Responsable. Consultation par le
+    collaborateur : action ``mes-bulletins`` (rôle authentifié), qui ne renvoie
+    QUE les bulletins du dossier lié à son compte.
+
+    Filtres : ``?employe=<id>``, ``?annee=<n>``, ``?mois=<1-12>``.
+    """
+    queryset = BulletinPaie.objects.select_related(
+        'employe', 'attachment').all()
+    serializer_class = BulletinPaieSerializer
+    parser_classes = [MultiPartParser, JSONParser]
+    filter_backends = [filters.OrderingFilter]
+    ordering_fields = ['annee', 'mois', 'date_creation']
+
+    def get_permissions(self):
+        # Le collaborateur consulte SON bulletin sans être Responsable/Admin.
+        if self.action == 'mes_bulletins':
+            return [IsAnyRole()]
+        return super().get_permissions()
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        employe = self.request.query_params.get('employe')
+        if employe:
+            qs = qs.filter(employe_id=employe)
+        annee = self.request.query_params.get('annee')
+        if annee:
+            qs = qs.filter(annee=annee)
+        mois = self.request.query_params.get('mois')
+        if mois:
+            qs = qs.filter(mois=mois)
+        return qs
+
+    def create(self, request, *args, **kwargs):
+        """Téléverse le bulletin (MinIO via records.storage) puis l'enregistre.
+
+        ``employe`` doit appartenir à la société ; ``company`` et la pièce
+        jointe sont posées côté serveur (jamais lues du corps).
+        """
+        company = request.user.company
+        employe_id = request.data.get('employe')
+        try:
+            employe = DossierEmploye.objects.get(
+                pk=employe_id, company=company)
+        except (DossierEmploye.DoesNotExist, ValueError, TypeError):
+            return Response({'employe': 'Employé inconnu.'},
+                            status=status.HTTP_400_BAD_REQUEST)
+        file = request.FILES.get('file')
+        if not file:
+            return Response({'file': 'Aucun fichier fourni.'},
+                            status=status.HTTP_400_BAD_REQUEST)
+        ser = self.get_serializer(data=request.data)
+        ser.is_valid(raise_exception=True)
+
+        meta, err = store_attachment(file)
+        if err:
+            return Response({'file': err},
+                            status=status.HTTP_400_BAD_REQUEST)
+        ct = ContentType.objects.get_for_model(DossierEmploye)
+        attachment = Attachment.objects.create(
+            company=company, content_type=ct, object_id=employe.id,
+            uploaded_by=request.user, **meta)
+        bulletin = BulletinPaie.objects.create(
+            company=company, employe=employe, attachment=attachment,
+            annee=ser.validated_data['annee'],
+            mois=ser.validated_data['mois'],
+            note=ser.validated_data.get('note', ''))
+        return Response(self.get_serializer(bulletin).data,
+                        status=status.HTTP_201_CREATED)
+
+    def perform_destroy(self, instance):
+        att = instance.attachment
+        instance.delete()
+        if att is not None:
+            delete_attachment(att.file_key)
+            att.delete()
+
+    @action(detail=False, methods=['get'], url_path='mes-bulletins')
+    def mes_bulletins(self, request):
+        """Bulletins de paie du collaborateur connecté (FG196/FG199).
+
+        Ne renvoie QUE les bulletins du ``DossierEmploye`` lié au compte
+        appelant (même société). Si aucun dossier n'est lié, renvoie une liste
+        vide. Société garantie par le filtrage TenantMixin + le lien user.
+        """
+        dossier = DossierEmploye.objects.filter(
+            company=request.user.company, user=request.user).first()
+        if dossier is None:
+            return Response([])
+        qs = self.get_queryset().filter(employe=dossier)
+        page = self.paginate_queryset(qs)
+        if page is not None:
+            return self.get_paginated_response(
+                self.get_serializer(page, many=True).data)
+        return Response(self.get_serializer(qs, many=True).data)

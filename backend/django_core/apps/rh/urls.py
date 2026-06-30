@@ -7,6 +7,7 @@ from .views import (
     AnalyseRisquesChantierViewSet,
     AvanceSalaireViewSet,
     BesoinFormationViewSet,
+    BulletinPaieViewSet,
     CampagneEvaluationViewSet,
     CandidatureViewSet,
     CauserieSecuriteViewSet,
@@ -86,6 +87,7 @@ router.register(r'types-prime', TypePrimeViewSet)
 router.register(r'primes-attribuees', PrimeAttribueeViewSet)
 router.register(r'ordres-mission', OrdreMissionViewSet)
 router.register(r'avances-salaire', AvanceSalaireViewSet)
+router.register(r'bulletins-paie', BulletinPaieViewSet)
 
 urlpatterns = [
     path('', include(router.urls)),

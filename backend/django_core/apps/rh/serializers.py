@@ -12,6 +12,7 @@ from .models import (
     AnalyseRisquesChantier,
     AvanceSalaire,
     BesoinFormation,
+    BulletinPaie,
     CampagneEvaluation,
     Candidature,
     CauserieParticipant,
@@ -1745,6 +1746,56 @@ class AvanceSalaireSerializer(serializers.ModelSerializer):
 
     def validate_mois_deduction(self, value):
         if value is not None and not 1 <= value <= 12:
+            raise serializers.ValidationError(
+                'Le mois doit être compris entre 1 et 12.')
+        return value
+
+
+class BulletinPaieSerializer(serializers.ModelSerializer):
+    """Bulletin de paie déposé en lecture seule (FG196).
+
+    Lecture seule sur les métadonnées de la pièce jointe (nom/taille/mime/URL
+    de téléchargement même origine) ; le FICHIER reste dans MinIO via
+    ``records.Attachment``. Le client (vue) saisit ``employe``, ``annee``,
+    ``mois``, ``note`` + le fichier en multipart ; ``company`` et
+    ``attachment`` sont posés CÔTÉ SERVEUR (jamais lus du corps).
+    """
+    employe_nom = serializers.SerializerMethodField()
+    filename = serializers.CharField(
+        source='attachment.filename', read_only=True)
+    size = serializers.IntegerField(
+        source='attachment.size', read_only=True)
+    mime = serializers.CharField(
+        source='attachment.mime', read_only=True)
+    url = serializers.SerializerMethodField()
+
+    class Meta:
+        model = BulletinPaie
+        fields = [
+            'id', 'employe', 'employe_nom', 'annee', 'mois', 'note',
+            'filename', 'size', 'mime', 'url', 'date_creation',
+        ]
+        read_only_fields = [
+            'id', 'employe_nom', 'filename', 'size', 'mime', 'url',
+            'date_creation',
+        ]
+
+    def get_employe_nom(self, obj):
+        if not obj.employe_id:
+            return ''
+        return f'{obj.employe.nom} {obj.employe.prenom}'
+
+    def get_url(self, obj):
+        if obj.attachment_id:
+            return (f'/api/django/records/attachments/'
+                    f'{obj.attachment_id}/download/')
+        return None
+
+    def validate_employe(self, value):
+        return _meme_societe(self, value, 'Employé')
+
+    def validate_mois(self, value):
+        if not 1 <= value <= 12:
             raise serializers.ValidationError(
                 'Le mois doit être compris entre 1 et 12.')
         return value
