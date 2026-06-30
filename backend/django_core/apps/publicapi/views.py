@@ -44,6 +44,22 @@ class CatalogueView(APIView):
         return Response(scope_catalogue())
 
 
+class DocsView(APIView):
+    """FG105 — Référence STATIQUE (FR) de l'API publique.
+
+    Endpoints, authentification, scopes, évènements et recette de vérification
+    de signature HMAC. Aucune auto-génération (pas de Swagger/drf-spectacular) :
+    la référence est construite à la main à partir de `constants.py`. Réservée
+    au palier admin/responsable, comme le catalogue, car elle est consultée
+    depuis l'écran Paramètres → API & Webhooks.
+    """
+    permission_classes = [IsAdminOrResponsableTier]
+
+    def get(self, request):
+        from .docs import public_api_reference
+        return Response(public_api_reference())
+
+
 class ApiKeyViewSet(_CompanyScopedMixin, viewsets.ModelViewSet):
     """CRUD des clés API. La clé en clair n'est renvoyée qu'à la création.
 

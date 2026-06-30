@@ -262,6 +262,28 @@ class ManagementEndpointTests(TestCase):
         self.assertIn('scopes', resp.data)
         self.assertIn('events', resp.data)
 
+    def test_docs_reference_for_admin(self):
+        # FG105 — la référence FR statique est lisible et complète.
+        api = session_auth(self.admin)
+        resp = api.get('/api/django/publicapi/docs/')
+        self.assertEqual(resp.status_code, 200)
+        data = resp.data
+        self.assertIn('endpoints', data)
+        self.assertEqual(len(data['endpoints']), 4)
+        self.assertIn('authentification', data)
+        self.assertIn('Api-Key', data['authentification']['entete'])
+        self.assertIn('scopes', data)
+        # Recette HMAC présente + nom d'en-tête correct.
+        verif = data['webhooks']['verification_signature']
+        self.assertIn('hmac', verif['exemple_python'].lower())
+        self.assertEqual(
+            data['webhooks']['entetes']['signature'], 'X-Taqinor-Signature')
+
+    def test_docs_reference_non_admin_forbidden(self):
+        api = session_auth(self.normal)
+        resp = api.get('/api/django/publicapi/docs/')
+        self.assertEqual(resp.status_code, 403)
+
 
 class WebhookDeliveryTests(TestCase):
     def setUp(self):

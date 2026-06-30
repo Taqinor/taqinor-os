@@ -8,6 +8,9 @@ const publicapiApi = {
   // Catalogue des scopes & évènements (pour cocher les droits/abonnements).
   getCatalogue: () => api.get('/publicapi/catalogue/'),
 
+  // FG105 — référence statique FR de l'API publique (endpoints, auth, HMAC).
+  getDocs: () => api.get('/publicapi/docs/'),
+
   // ── Clés API ──
   getKeys: () => api.get('/publicapi/keys/'),
   createKey: (data) => api.post('/publicapi/keys/', data), // → { ...key, key }
