@@ -42,6 +42,8 @@ from .models import (
     PutAway,
     PickList,
     PickListLigne,
+    Colis,
+    ColisLigne,
 )
 
 
@@ -1763,4 +1765,48 @@ class PickListSerializer(serializers.ModelSerializer):
         read_only_fields = [
             'reference', 'statut', 'created_by',
             'date_creation', 'date_modification',
+        ]
+
+
+class ColisLigneSerializer(serializers.ModelSerializer):
+    """FG322 - article emballe dans un colis (SKU + quantite + controle OK)."""
+    produit_nom = serializers.CharField(
+        source='produit.nom', read_only=True, default=None)
+
+    class Meta:
+        model = ColisLigne
+        fields = [
+            'id', 'colis', 'produit', 'produit_nom', 'designation',
+            'quantite', 'controle_ok',
+        ]
+
+    def validate(self, attrs):
+        produit = attrs.get('produit') if 'produit' in attrs else getattr(
+            self.instance, 'produit', None)
+        designation = attrs.get('designation') if 'designation' in attrs else (
+            getattr(self.instance, 'designation', None))
+        if produit is None and not (designation or '').strip():
+            raise serializers.ValidationError(
+                {'designation': 'Indiquez un produit ou une designation.'})
+        return attrs
+
+
+class ColisSerializer(serializers.ModelSerializer):
+    """FG322 - colis de preparation d'un chantier. Reference/societe/`created_by`
+    poses COTE SERVEUR ; le statut avance via `controler`/`expedier` (qui posent
+    `controle_par`/date). Lignes imbriquees en lecture."""
+    statut_display = serializers.CharField(
+        source='get_statut_display', read_only=True, default=None)
+    lignes = ColisLigneSerializer(many=True, read_only=True)
+
+    class Meta:
+        model = Colis
+        fields = [
+            'id', 'reference', 'installation', 'statut', 'statut_display',
+            'poids_kg', 'note', 'lignes', 'controle_par', 'date_controle',
+            'created_by', 'date_creation', 'date_modification',
+        ]
+        read_only_fields = [
+            'reference', 'statut', 'controle_par', 'date_controle',
+            'created_by', 'date_creation', 'date_modification',
         ]

@@ -48,6 +48,7 @@ from .contrat_prix import (
 from .bin_location import BinLocationViewSet, BinAffectationViewSet
 from .putaway import PutAwayViewSet
 from .picklist import PickListViewSet, PickListLigneViewSet
+from .colisage import ColisViewSet, ColisLigneViewSet
 from .field_sync import FieldSyncView
 
 __all__ = [
@@ -100,5 +101,7 @@ __all__ = [
     'PutAwayViewSet',
     'PickListViewSet',
     'PickListLigneViewSet',
+    'ColisViewSet',
+    'ColisLigneViewSet',
     'FieldSyncView',
 ]
