@@ -7,7 +7,8 @@ appartenant à la société de l'utilisateur.
 from rest_framework import serializers
 
 from .models import (
-    ActionCorrectivePreventive, Audit, ConsignationLoto, ContactUrgence,
+    ActionCorrectivePreventive, AnalyseIncident, Audit, CauseIncident,
+    ConsignationLoto, ContactUrgence,
     CritereAudit, DeclarationCnss, EvaluationRisque, GrilleAudit,
     InductionSecurite,
     Incident,
@@ -652,6 +653,88 @@ class IncidentSerializer(serializers.ModelSerializer):
             'date_creation',
         ]
         read_only_fields = ['reference', 'declare_par', 'date_creation']
+
+
+class CauseIncidentSerializer(serializers.ModelSerializer):
+    """Nœud de l'arbre des causes d'une analyse d'incident (QHSE31).
+
+    ``company`` est posée côté serveur ; les FK ``analyse`` et ``parent`` sont
+    validés même-société. ``parent`` doit appartenir à la MÊME analyse (un arbre
+    ne mélange pas les analyses).
+    """
+    type_cause_display = serializers.CharField(
+        source='get_type_cause_display', read_only=True)
+
+    class Meta:
+        model = CauseIncident
+        fields = [
+            'id', 'analyse', 'parent', 'type_cause', 'type_cause_display',
+            'libelle', 'ordre', 'date_creation',
+        ]
+        read_only_fields = ['date_creation']
+
+    def validate_analyse(self, value):
+        return _meme_societe(self, value, "Analyse d'incident")
+
+    def validate_parent(self, value):
+        return _meme_societe(self, value, 'Cause parente')
+
+    def validate(self, attrs):
+        parent = attrs.get('parent')
+        if parent is None and self.instance is not None:
+            parent = self.instance.parent
+        analyse = attrs.get('analyse')
+        if analyse is None and self.instance is not None:
+            analyse = self.instance.analyse
+        if parent is not None and analyse is not None \
+                and parent.analyse_id != analyse.id:
+            raise serializers.ValidationError(
+                {'parent': 'La cause parente appartient à une autre analyse.'})
+        return attrs
+
+
+class AnalyseIncidentSerializer(serializers.ModelSerializer):
+    """Analyse des causes d'un incident — arbre des causes → CAPA (QHSE31).
+
+    ``company`` et ``analyste`` sont posés côté serveur (jamais lus du corps).
+    Le FK ``incident`` est validé même-société (et unique : une seule analyse par
+    incident). ``non_conformite`` (NCR-pont vers les CAPA) est piloté côté
+    serveur par le service ``generer_capa_depuis_analyse`` — lecture seule.
+    Expose les libellés lisibles et l'arbre des causes imbriqué en lecture.
+    """
+    methode_display = serializers.CharField(
+        source='get_methode_display', read_only=True)
+    statut_display = serializers.CharField(
+        source='get_statut_display', read_only=True)
+    analyste_nom = serializers.CharField(
+        source='analyste.username', read_only=True, default=None)
+    incident_reference = serializers.CharField(
+        source='incident.reference', read_only=True, default=None)
+    nb_causes = serializers.IntegerField(
+        source='causes.count', read_only=True)
+    nb_capa = serializers.SerializerMethodField()
+    causes = CauseIncidentSerializer(many=True, read_only=True)
+
+    class Meta:
+        model = AnalyseIncident
+        fields = [
+            'id', 'incident', 'incident_reference', 'methode',
+            'methode_display', 'description', 'synthese', 'statut',
+            'statut_display', 'date_analyse', 'analyste', 'analyste_nom',
+            'non_conformite', 'nb_causes', 'nb_capa', 'causes',
+            'date_creation',
+        ]
+        read_only_fields = [
+            'analyste', 'non_conformite', 'date_creation',
+        ]
+
+    def validate_incident(self, value):
+        return _meme_societe(self, value, 'Incident')
+
+    def get_nb_capa(self, obj):
+        if obj.non_conformite_id is None:
+            return 0
+        return obj.non_conformite.actions.count()
 
 
 class DeclarationCnssSerializer(serializers.ModelSerializer):
