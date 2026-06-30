@@ -376,3 +376,77 @@ def site_profile_for_client(client_id, company=None):
     if profile is None:
         return None
     return {f: getattr(profile, f) for f in SITE_PROFILE_FIELDS}
+
+
+# DC11 — provenance des valeurs énergie/toiture reprises du lead ──────────────
+
+# Valeurs énergie + toiture du lead recopiées dans le devis. Une divergence sur
+# l'une de ces clés (lead modifié APRÈS capture) déclenche la bannière
+# « valeurs du lead modifiées depuis » côté générateur. Source unique pour que
+# ``ventes`` n'ait pas à connaître la liste des champs du lead.
+LEAD_PROVENANCE_FIELDS = (
+    'facture_hiver', 'facture_ete', 'ete_differente', 'bill_kwh',
+    'type_toiture', 'surface_toiture_m2', 'orientation', 'inclinaison_deg',
+    'gps_lat', 'gps_lng',
+)
+
+
+def _lead_provenance_valeurs(lead):
+    """Snapshot {champ: valeur} des valeurs énergie/toiture d'un lead.
+
+    Les Decimal sont rendus en str (JSON-safe + comparaison stable), les autres
+    valeurs telles quelles. Lecture seule.
+    """
+    from decimal import Decimal
+    valeurs = {}
+    for f in LEAD_PROVENANCE_FIELDS:
+        v = getattr(lead, f, None)
+        valeurs[f] = str(v) if isinstance(v, Decimal) else v
+    return valeurs
+
+
+def lead_provenance_stamp(lead, captured_at=None):
+    """DC11 — estampille de provenance pour ``Devis.etude_params``.
+
+    Renvoie ``{'source_lead_id', 'captured_at', 'valeurs'}`` ou None si pas de
+    lead. ``captured_at`` (ISO) par défaut = maintenant. ``ventes`` appelle
+    ceci à la création/maj du devis pour tracer d'où viennent les valeurs
+    énergie/toiture re-saisies, sans importer ``apps.crm.models``.
+    """
+    if lead is None:
+        return None
+    from django.utils import timezone
+    ts = captured_at or timezone.now().isoformat()
+    return {
+        'source_lead_id': lead.pk,
+        'captured_at': ts,
+        'valeurs': _lead_provenance_valeurs(lead),
+    }
+
+
+def lead_values_changed_since(stamp, company=None):
+    """DC11 — le lead source a-t-il changé depuis la capture ?
+
+    ``stamp`` = dict produit par :func:`lead_provenance_stamp` (typiquement
+    ``devis.etude_params['provenance']``). Renvoie la liste des champs dont la
+    valeur courante du lead diffère de la valeur estampillée (liste vide = rien
+    n'a bougé). Renvoie ``[]`` si le stamp est absent/incomplet ou le lead
+    introuvable (pas de fausse alerte). Scopé société si fournie. Lecture seule
+    — alimente la bannière « valeurs du lead modifiées depuis ».
+    """
+    if not stamp:
+        return []
+    lead_id = stamp.get('source_lead_id')
+    valeurs = stamp.get('valeurs') or {}
+    if not lead_id or not valeurs:
+        return []
+    from .models import Lead
+    qs = Lead.objects.filter(pk=lead_id)
+    if company is not None:
+        qs = qs.filter(company=company)
+    lead = qs.first()
+    if lead is None:
+        return []
+    courant = _lead_provenance_valeurs(lead)
+    return [f for f in LEAD_PROVENANCE_FIELDS
+            if f in valeurs and courant.get(f) != valeurs.get(f)]
