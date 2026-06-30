@@ -648,6 +648,20 @@ class Parrainage(models.Model):
     def __str__(self):
         return f'Parrainage #{self.pk} (parrain {self.parrain_id})'
 
+    @property
+    def filleul_display_nom(self) -> str:
+        """DC14 — nom du filleul affiché, le FK étant la source prioritaire.
+
+        ``filleul_nom`` (texte libre) peut diverger du FK lié. Quand un
+        ``filleul_client`` ou ``filleul_lead`` est présent, on affiche SON nom
+        (source de vérité) ; sinon on retombe sur le texte libre saisi.
+        """
+        if self.filleul_client_id and self.filleul_client:
+            return self.filleul_client.nom
+        if self.filleul_lead_id and self.filleul_lead:
+            return self.filleul_lead.nom
+        return self.filleul_nom or ''
+
 
 class ObjectifCommercial(models.Model):
     """FG39 — Objectif commercial / KPI target (objectif vs réalisé).

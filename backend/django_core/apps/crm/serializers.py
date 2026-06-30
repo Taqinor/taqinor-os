@@ -397,12 +397,17 @@ class ParrainageSerializer(serializers.ModelSerializer):
         source='parrain.nom', read_only=True, default=None)
     statut_display = serializers.CharField(
         source='get_statut_display', read_only=True)
+    # DC14 — nom du filleul à afficher : le FK lié prime sur le texte libre
+    # (``filleul_nom`` peut diverger du client/lead réellement référencé).
+    filleul_display_nom = serializers.CharField(
+        source='filleul_display_nom', read_only=True)
 
     class Meta:
         model = Parrainage
         fields = [
             'id', 'company', 'parrain', 'parrain_nom', 'filleul_lead',
-            'filleul_client', 'filleul_nom', 'statut', 'statut_display',
+            'filleul_client', 'filleul_nom', 'filleul_display_nom',
+            'statut', 'statut_display',
             'recompense', 'notes', 'date_creation',
         ]
         read_only_fields = ['date_creation']
