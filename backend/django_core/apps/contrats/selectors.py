@@ -18,6 +18,8 @@ from .models import (
     Contrat,
     ContratLien,
     EtapeApprobation,
+    JalonContrat,
+    Obligation,
     RegleApprobation,
     Resiliation,
     SignatureContrat,
@@ -132,6 +134,29 @@ def resiliations_contrat(contrat):
     """
     return Resiliation.objects.filter(
         contrat=contrat, company=contrat.company).order_by('-id')
+
+
+def jalons_contrat(contrat):
+    """Jalons d'un contrat (QuerySet scopé société, ordonné) — CONTRAT26.
+
+    Lecture seule. Ordre par ``numero`` (cohérent avec ``Meta.ordering``). La
+    société est portée par le contrat ; on filtre aussi sur ``contrat.company``
+    par sécurité même si le FK ``contrat`` la garantit.
+    """
+    return JalonContrat.objects.filter(
+        contrat=contrat, company=contrat.company).order_by('numero', 'id')
+
+
+def obligations_contrat(contrat):
+    """Obligations (livrables) d'un contrat (QuerySet scopé société, ordonné) — CONTRAT26.
+
+    Lecture seule. Ordre par ``ordre`` puis ``date_echeance`` (cohérent avec
+    ``Meta.ordering``). La société est portée par le contrat ; on filtre aussi
+    sur ``contrat.company`` par sécurité même si le FK ``contrat`` la garantit.
+    """
+    return Obligation.objects.filter(
+        contrat=contrat, company=contrat.company).order_by(
+            'ordre', 'date_echeance', 'id')
 
 
 def signatures_contrat(contrat):

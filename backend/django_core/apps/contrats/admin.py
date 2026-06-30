@@ -7,6 +7,8 @@ from .models import (
     ContratActivity,
     ContratLien,
     EtapeApprobation,
+    JalonContrat,
+    Obligation,
     PartieContrat,
     RegleApprobation,
     SignatureContrat,
@@ -95,3 +97,21 @@ class AlerteContratAdmin(admin.ModelAdmin):
     list_filter = ('type_alerte', 'statut')
     search_fields = ('message',)
     readonly_fields = ('date_envoi', 'date_creation')
+
+
+@admin.register(JalonContrat)
+class JalonContratAdmin(admin.ModelAdmin):
+    list_display = ('id', 'contrat', 'numero', 'intitule', 'date_cible',
+                    'statut', 'date_atteinte', 'company')
+    list_filter = ('statut',)
+    search_fields = ('intitule', 'description')
+    readonly_fields = ('numero', 'date_creation')
+
+
+@admin.register(Obligation)
+class ObligationAdmin(admin.ModelAdmin):
+    list_display = ('id', 'contrat', 'jalon', 'intitule', 'redevable',
+                    'date_echeance', 'statut', 'date_realisation', 'company')
+    list_filter = ('statut', 'redevable')
+    search_fields = ('intitule', 'description')
+    readonly_fields = ('date_realisation', 'date_creation')

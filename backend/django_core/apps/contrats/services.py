@@ -1514,3 +1514,124 @@ def resilier_contrat(contrat, *, motif='', date_effet=None, preavis_jours=None,
             resiliation.save(update_fields=['version_creee'])
 
     return resiliation
+
+
+# ---------------------------------------------------------------------------
+# CONTRAT26 — Obligations (livrables) & jalons
+# ---------------------------------------------------------------------------
+
+
+def _prochain_numero_jalon(contrat):
+    """Numéro du prochain jalon d'un contrat (``max(numero)+1``).
+
+    Lecture du plus haut numéro DÉJÀ utilisé pour ce contrat, +1. Repli sur 1
+    quand aucun jalon n'existe encore. À appeler SOUS verrou de ligne
+    (``select_for_update`` sur le contrat) pour rester sûr face aux courses —
+    JAMAIS un ``count()+1`` (qui collisionne après une suppression et en
+    concurrence, cf. la règle de numérotation du repo).
+    """
+    from django.db.models import Max
+
+    from .models import JalonContrat
+
+    plus_haut = (
+        JalonContrat.objects
+        .filter(contrat=contrat, company=contrat.company)
+        .aggregate(m=Max('numero'))['m']
+    )
+    return (plus_haut or 0) + 1
+
+
+@transaction.atomic
+def creer_jalon(contrat, *, intitule, description='', date_cible=None,
+                auteur=None):
+    """Crée un JALON d'un contrat (étape clé datée) — CONTRAT26.
+
+    NUMÉROTATION SÛRE FACE AUX COURSES : on verrouille la LIGNE du contrat
+    (``select_for_update``) puis on calcule ``max(numero)+1`` — jamais un
+    ``count()+1``. Sous le verrou, deux créations concurrentes pour le même
+    contrat sont sérialisées (la contrainte d'unicité ``(contrat, numero)``
+    reste le filet de sécurité ultime).
+
+    La société est déduite du contrat (posée CÔTÉ SERVEUR). Le ``statut`` du
+    contrat n'est JAMAIS modifié (préservation des statuts — CONTRAT12) ;
+    aucun funnel ``STAGES.py`` n'intervient (rule #2). L'opération est journalisée
+    au chatter (CONTRAT15). Renvoie le ``JalonContrat`` créé.
+    """
+    from .models import Contrat, JalonContrat
+
+    nom = (intitule or '').strip()
+    if not nom:
+        raise ValueError("L'intitulé du jalon est requis.")
+
+    # Verrou de ligne sur le contrat pour sérialiser la numérotation concurrente.
+    Contrat.objects.select_for_update().get(pk=contrat.pk)
+
+    numero = _prochain_numero_jalon(contrat)
+
+    jalon = JalonContrat.objects.create(
+        company=contrat.company,
+        contrat=contrat,
+        numero=numero,
+        intitule=nom,
+        description=description or '',
+        date_cible=date_cible,
+    )
+
+    journaliser_transition(
+        contrat, field='jalon', old_value='',
+        new_value=f'Jalon n°{numero} — {nom}',
+        auteur=auteur)
+
+    return jalon
+
+
+def marquer_jalon_atteint(jalon, *, today=None, auteur=None):
+    """Marque un jalon ATTEINT (statut + date d'atteinte côté serveur) — CONTRAT26.
+
+    Pose ``statut=atteint`` et ``date_atteinte=today`` (date du jour injectable).
+    Idempotent : un jalon déjà ``atteint`` n'est pas re-touché. Journalise au
+    chatter du contrat (CONTRAT15). Ne change AUCUN ``Contrat.statut``. Renvoie
+    le jalon.
+    """
+    from .models import JalonContrat
+
+    if today is None:
+        today = timezone.localdate()
+    if jalon.statut == JalonContrat.Statut.ATTEINT:
+        return jalon
+    ancien = jalon.statut
+    jalon.statut = JalonContrat.Statut.ATTEINT
+    jalon.date_atteinte = today
+    jalon.save(update_fields=['statut', 'date_atteinte'])
+    journaliser_transition(
+        jalon.contrat, field='jalon_statut', old_value=ancien,
+        new_value=jalon.statut,
+        message=f'Jalon n°{jalon.numero} atteint.', auteur=auteur)
+    return jalon
+
+
+def marquer_obligation_faite(obligation, *, today=None, auteur=None):
+    """Marque une obligation RÉALISÉE (statut + date côté serveur) — CONTRAT26.
+
+    Pose ``statut=faite`` et ``date_realisation=today`` (date du jour injectable).
+    Idempotent : une obligation déjà ``faite`` n'est pas re-touchée. Journalise
+    au chatter du contrat (CONTRAT15). Ne change AUCUN ``Contrat.statut``. Renvoie
+    l'obligation.
+    """
+    from .models import Obligation
+
+    if today is None:
+        today = timezone.localdate()
+    if obligation.statut == Obligation.Statut.FAITE:
+        return obligation
+    ancien = obligation.statut
+    obligation.statut = Obligation.Statut.FAITE
+    obligation.date_realisation = today
+    obligation.save(update_fields=['statut', 'date_realisation'])
+    journaliser_transition(
+        obligation.contrat, field='obligation_statut', old_value=ancien,
+        new_value=obligation.statut,
+        message=f'Obligation « {obligation.intitule} » réalisée.',
+        auteur=auteur)
+    return obligation

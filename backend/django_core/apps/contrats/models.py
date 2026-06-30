@@ -1513,3 +1513,181 @@ class Resiliation(models.Model):
             f'Résiliation ({self.get_statut_display()}) '
             f'— contrat {self.contrat_id}'
         )
+
+
+class Obligation(models.Model):
+    """Obligation / livrable contractuel d'un contrat — CONTRAT26.
+
+    Une ``Obligation`` recense un ENGAGEMENT concret porté par un ``Contrat`` :
+    un livrable à fournir, une prestation à exécuter, une condition à remplir
+    (ex. « Mise en service de la centrale », « Remise du dossier ONEE »,
+    « Rapport de performance trimestriel »). Chaque obligation porte une partie
+    REDEVABLE (``redevable`` : prestataire / client), une échéance
+    (``date_echeance``) et un statut d'avancement LOCAL — propre au suivi des
+    obligations, sans AUCUN lien avec le ``Contrat.statut`` (machine d'états
+    CONTRAT12) ni le funnel ``STAGES.py`` (rule #2).
+
+    Une obligation peut être rattachée à un ``JalonContrat`` (regroupement par
+    jalon) — référence INTERNE à l'app `contrats` (FK dur autorisé), NULLABLE
+    (``SET_NULL``) : supprimer le jalon n'efface jamais l'obligation.
+
+    Multi-tenant : ``company`` est posée CÔTÉ SERVEUR (déduite du contrat) —
+    jamais lue du corps de requête. ``contrat`` est une référence interne à
+    l'app `contrats` (FK dur autorisé).
+
+    RUNTIME-SAFETY (leçon FG136) : ``intitule`` est un ``CharField`` borné
+    (≤255) et ``description`` un ``TextField`` (un descriptif de livrable peut
+    être long — aucune longueur maximale à dépasser et lever). L'index est NOMMÉ
+    explicitement (≤30 chars) pour éviter la divergence d'auto-nommage Django.
+    """
+
+    class Redevable(models.TextChoices):
+        PRESTATAIRE = 'prestataire', 'Prestataire'
+        CLIENT = 'client', 'Client'
+        AUTRE = 'autre', 'Autre'
+
+    class Statut(models.TextChoices):
+        A_FAIRE = 'a_faire', 'À faire'
+        EN_COURS = 'en_cours', 'En cours'
+        FAITE = 'faite', 'Réalisée'
+        EN_RETARD = 'en_retard', 'En retard'
+        ANNULEE = 'annulee', 'Annulée'
+
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='contrats_obligations',
+        verbose_name='Société',
+    )
+    contrat = models.ForeignKey(
+        Contrat,
+        on_delete=models.CASCADE,
+        related_name='obligations',
+        verbose_name='Contrat',
+    )
+    # Jalon de rattachement (optionnel) — référence interne à l'app contrats.
+    jalon = models.ForeignKey(
+        'JalonContrat',
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='obligations',
+        verbose_name='Jalon',
+    )
+    intitule = models.CharField(max_length=255, verbose_name='Intitulé')
+    description = models.TextField(
+        blank=True, default='', verbose_name='Description')
+    redevable = models.CharField(
+        max_length=20, choices=Redevable.choices,
+        default=Redevable.PRESTATAIRE, verbose_name='Partie redevable')
+    date_echeance = models.DateField(
+        null=True, blank=True, verbose_name="Date d'échéance")
+    statut = models.CharField(
+        max_length=20, choices=Statut.choices,
+        default=Statut.A_FAIRE, verbose_name='Statut')
+    # Date de réalisation effective (posée côté serveur quand l'obligation passe
+    # à ``faite``). NULL tant que non réalisée.
+    date_realisation = models.DateField(
+        null=True, blank=True, verbose_name='Réalisée le')
+    ordre = models.PositiveIntegerField(default=0, verbose_name='Ordre')
+    date_creation = models.DateTimeField(
+        auto_now_add=True, verbose_name='Créée le')
+
+    class Meta:
+        verbose_name = 'Obligation contractuelle'
+        verbose_name_plural = 'Obligations contractuelles'
+        ordering = ['contrat_id', 'ordre', 'date_echeance', 'id']
+        indexes = [
+            models.Index(
+                fields=['company', 'statut'],
+                name='contrats_oblig_co_st',
+            ),
+            models.Index(
+                fields=['contrat', 'date_echeance'],
+                name='contrats_oblig_ct_dt',
+            ),
+        ]
+
+    def __str__(self):
+        return f'{self.intitule} (contrat {self.contrat_id})'
+
+
+class JalonContrat(models.Model):
+    """Jalon / étape clé d'un contrat (regroupe des obligations) — CONTRAT26.
+
+    Un ``JalonContrat`` matérialise une ÉTAPE CLÉ datée du déroulé contractuel
+    (ex. « Signature », « Mise en service », « Réception définitive »,
+    « Fin de garantie ») à laquelle on rattache des ``Obligation`` (livrables).
+    Le jalon porte sa propre date cible (``date_cible``) et un statut LOCAL
+    d'avancement — propre au suivi des jalons, sans AUCUN lien avec le
+    ``Contrat.statut`` (CONTRAT12) ni le funnel ``STAGES.py`` (rule #2).
+
+    Numérotation par contrat : ``numero`` démarre à 1 et s'incrémente de 1 pour
+    chaque nouveau jalon d'un MÊME contrat. Le numéro est posé CÔTÉ SERVEUR par
+    ``services.creer_jalon`` qui calcule ``max(numero)+1`` SOUS
+    ``select_for_update`` (verrou de ligne sur le contrat) — JAMAIS un
+    ``count()+1`` (qui collisionne, cf. la règle de numérotation du repo).
+
+    Multi-tenant : ``company`` est posée CÔTÉ SERVEUR (déduite du contrat).
+    ``contrat`` est une référence interne à l'app `contrats` (FK dur autorisé).
+
+    RUNTIME-SAFETY (leçon FG136) : ``intitule`` est borné (≤255) et
+    ``description`` un ``TextField``. La contrainte d'unicité ``(contrat,
+    numero)`` et l'index sont NOMMÉS explicitement (≤30 chars).
+    """
+
+    class Statut(models.TextChoices):
+        A_VENIR = 'a_venir', 'À venir'
+        EN_COURS = 'en_cours', 'En cours'
+        ATTEINT = 'atteint', 'Atteint'
+        EN_RETARD = 'en_retard', 'En retard'
+        ANNULE = 'annule', 'Annulé'
+
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='contrats_jalons',
+        verbose_name='Société',
+    )
+    contrat = models.ForeignKey(
+        Contrat,
+        on_delete=models.CASCADE,
+        related_name='jalons',
+        verbose_name='Contrat',
+    )
+    # Numéro de jalon (1, 2, 3…) par contrat, posé côté serveur (max+1 sous
+    # verrou de ligne — jamais count()+1).
+    numero = models.PositiveIntegerField(verbose_name='Numéro de jalon')
+    intitule = models.CharField(max_length=255, verbose_name='Intitulé')
+    description = models.TextField(
+        blank=True, default='', verbose_name='Description')
+    date_cible = models.DateField(
+        null=True, blank=True, verbose_name='Date cible')
+    statut = models.CharField(
+        max_length=20, choices=Statut.choices,
+        default=Statut.A_VENIR, verbose_name='Statut')
+    # Date d'atteinte effective du jalon (posée côté serveur). NULL tant que
+    # non atteint.
+    date_atteinte = models.DateField(
+        null=True, blank=True, verbose_name='Atteint le')
+    date_creation = models.DateTimeField(
+        auto_now_add=True, verbose_name='Créé le')
+
+    class Meta:
+        verbose_name = 'Jalon de contrat'
+        verbose_name_plural = 'Jalons de contrat'
+        ordering = ['contrat_id', 'numero', 'id']
+        constraints = [
+            models.UniqueConstraint(
+                fields=['contrat', 'numero'],
+                name='contrats_jalon_uniq',
+            ),
+        ]
+        indexes = [
+            models.Index(
+                fields=['contrat', 'date_cible'],
+                name='contrats_jalon_ct_dt',
+            ),
+        ]
+
+    def __str__(self):
+        return f'Jalon n°{self.numero} — {self.intitule} (contrat {self.contrat_id})'

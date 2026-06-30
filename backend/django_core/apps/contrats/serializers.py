@@ -15,8 +15,10 @@ from .models import (
     ContratActivity,
     ContratLien,
     EtapeApprobation,
+    JalonContrat,
     ModeleContrat,
     ModeleContratClause,
+    Obligation,
     PartieContrat,
     RegleApprobation,
     Resiliation,
@@ -730,3 +732,79 @@ class ResilierContratSerializer(serializers.Serializer):
         required=False, allow_null=True, min_value=0)
     solde = serializers.DecimalField(
         max_digits=14, decimal_places=2, required=False, allow_null=True)
+
+
+class JalonContratSerializer(serializers.ModelSerializer):
+    """Jalon / étape clé d'un contrat (CONTRAT26).
+
+    ``company`` n'est jamais exposée : elle est posée côté serveur (déduite du
+    contrat). Le ``contrat`` reçu est validé même-société. ``numero``,
+    ``statut``, ``date_atteinte`` et ``date_creation`` sont posés côté serveur
+    (le jalon est créé via l'action ``creer-jalon`` ou marqué via
+    ``marquer-atteint``).
+    """
+    statut_display = serializers.CharField(
+        source='get_statut_display', read_only=True)
+
+    class Meta:
+        model = JalonContrat
+        fields = [
+            'id', 'contrat', 'numero', 'intitule', 'description', 'date_cible',
+            'statut', 'statut_display', 'date_atteinte', 'date_creation',
+        ]
+        read_only_fields = [
+            'numero', 'statut', 'statut_display', 'date_atteinte',
+            'date_creation',
+        ]
+
+    def validate_contrat(self, contrat):
+        """Le contrat rattaché doit appartenir à la société de l'utilisateur."""
+        request = self.context.get('request')
+        if request is not None and contrat.company_id != request.user.company_id:
+            raise serializers.ValidationError(
+                "Ce contrat n'appartient pas à votre société.")
+        return contrat
+
+
+class ObligationSerializer(serializers.ModelSerializer):
+    """Obligation / livrable contractuel (CONTRAT26).
+
+    ``company`` n'est jamais exposée : elle est posée côté serveur (déduite du
+    contrat). Le ``contrat`` et le ``jalon`` (optionnel) sont validés
+    même-société. ``date_realisation`` est posée côté serveur (action
+    ``marquer-faite``) et reste en lecture seule.
+    """
+    redevable_display = serializers.CharField(
+        source='get_redevable_display', read_only=True)
+    statut_display = serializers.CharField(
+        source='get_statut_display', read_only=True)
+
+    class Meta:
+        model = Obligation
+        fields = [
+            'id', 'contrat', 'jalon', 'intitule', 'description', 'redevable',
+            'redevable_display', 'date_echeance', 'statut', 'statut_display',
+            'date_realisation', 'ordre', 'date_creation',
+        ]
+        read_only_fields = [
+            'date_realisation', 'redevable_display', 'statut_display',
+            'date_creation',
+        ]
+
+    def validate_contrat(self, contrat):
+        """Le contrat rattaché doit appartenir à la société de l'utilisateur."""
+        request = self.context.get('request')
+        if request is not None and contrat.company_id != request.user.company_id:
+            raise serializers.ValidationError(
+                "Ce contrat n'appartient pas à votre société.")
+        return contrat
+
+    def validate_jalon(self, jalon):
+        """Le jalon rattaché (optionnel) doit appartenir à la même société."""
+        if jalon is None:
+            return jalon
+        request = self.context.get('request')
+        if request is not None and jalon.company_id != request.user.company_id:
+            raise serializers.ValidationError(
+                "Ce jalon n'appartient pas à votre société.")
+        return jalon

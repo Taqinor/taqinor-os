@@ -8,8 +8,10 @@ from .views import (
     ClauseViewSet,
     ContratLienViewSet,
     ContratViewSet,
+    JalonContratViewSet,
     ModeleContratClauseViewSet,
     ModeleContratViewSet,
+    ObligationViewSet,
     PartieContratViewSet,
     RegleApprobationViewSet,
     ResiliationViewSet,
@@ -29,6 +31,8 @@ router.register(r'versions', VersionContratViewSet)
 router.register(r'avenants', AvenantViewSet)
 router.register(r'resiliations', ResiliationViewSet)
 router.register(r'alertes', AlerteContratViewSet)
+router.register(r'jalons', JalonContratViewSet)
+router.register(r'obligations', ObligationViewSet)
 
 urlpatterns = [
     path('', include(router.urls)),

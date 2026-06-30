@@ -38,8 +38,10 @@ from .models import (
     ClauseContrat,
     Contrat,
     ContratLien,
+    JalonContrat,
     ModeleContrat,
     ModeleContratClause,
+    Obligation,
     PartieContrat,
     RegleApprobation,
     Resiliation,
@@ -59,9 +61,11 @@ from .serializers import (
     DeciderEtapeSerializer,
     EtapeApprobationSerializer,
     InstancierContratSerializer,
+    JalonContratSerializer,
     ModeleContratClauseSerializer,
     ModeleContratSerializer,
     NoterContratSerializer,
+    ObligationSerializer,
     PartieContratSerializer,
     RegleApprobationSerializer,
     RendreContratSerializer,
@@ -1072,3 +1076,115 @@ class AlerteContratViewSet(_ContratsBaseViewSet):
             },
             status=status.HTTP_201_CREATED,
         )
+
+
+class JalonContratViewSet(_ContratsBaseViewSet):
+    """Jalons / étapes clés des contrats de la société (CONTRAT26).
+
+    Scopé société (``TenantMixin``) ; ``company`` posée CÔTÉ SERVEUR (déduite du
+    contrat). La CRÉATION passe par ``services.creer_jalon`` (numéro = max+1 sous
+    verrou de ligne, jamais ``count()+1``). Action ``marquer-atteint`` pour
+    pointer un jalon comme atteint (statut + date côté serveur). Le ``statut``
+    d'un jalon est PROPRE au suivi des jalons — il ne touche JAMAIS le
+    ``Contrat.statut`` (CONTRAT12) ni le funnel ``STAGES.py`` (rule #2).
+
+    Filtres : ``?contrat=<id>``, ``?statut=<valeur>``.
+    """
+    queryset = JalonContrat.objects.select_related('contrat').all()
+    serializer_class = JalonContratSerializer
+    filter_backends = [filters.OrderingFilter]
+    ordering_fields = ['numero', 'date_cible', 'date_creation', 'id']
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        contrat_id = self.request.query_params.get('contrat')
+        if contrat_id:
+            qs = qs.filter(contrat_id=contrat_id)
+        statut = self.request.query_params.get('statut')
+        if statut:
+            qs = qs.filter(statut=statut)
+        return qs
+
+    def perform_create(self, serializer):
+        """Crée le jalon via le service (numérotation max+1 côté serveur).
+
+        La société est déduite du contrat (validé même-société par le
+        sérialiseur) — jamais lue du corps de requête.
+        """
+        contrat = serializer.validated_data['contrat']
+        jalon = services.creer_jalon(
+            contrat,
+            intitule=serializer.validated_data['intitule'],
+            description=serializer.validated_data.get('description', ''),
+            date_cible=serializer.validated_data.get('date_cible'),
+            auteur=self.request.user,
+        )
+        serializer.instance = jalon
+
+    @action(detail=True, methods=['post'], url_path='marquer-atteint')
+    def marquer_atteint(self, request, pk=None):
+        """Marque le jalon comme ATTEINT (statut + date côté serveur — CONTRAT26).
+
+        Idempotent : un jalon déjà atteint reste inchangé. La date du jour et
+        l'auteur sont posés CÔTÉ SERVEUR. Ne change AUCUN ``Contrat.statut``.
+        """
+        jalon = self.get_object()
+        jalon = services.marquer_jalon_atteint(jalon, auteur=request.user)
+        return Response(
+            JalonContratSerializer(
+                jalon, context={'request': request}).data)
+
+
+class ObligationViewSet(_ContratsBaseViewSet):
+    """Obligations / livrables des contrats de la société (CONTRAT26).
+
+    Scopé société (``TenantMixin``) ; ``company`` posée CÔTÉ SERVEUR (déduite du
+    contrat). CRUD complet plus une action ``marquer-faite`` qui pose
+    ``statut=faite`` + ``date_realisation`` côté serveur. Le ``statut`` d'une
+    obligation est PROPRE au suivi des livrables — il ne touche JAMAIS le
+    ``Contrat.statut`` (CONTRAT12) ni le funnel ``STAGES.py`` (rule #2).
+
+    Filtres : ``?contrat=<id>``, ``?jalon=<id>``, ``?statut=<valeur>``,
+    ``?redevable=<valeur>``.
+    """
+    queryset = Obligation.objects.select_related('contrat', 'jalon').all()
+    serializer_class = ObligationSerializer
+    filter_backends = [filters.SearchFilter, filters.OrderingFilter]
+    search_fields = ['intitule', 'description']
+    ordering_fields = ['ordre', 'date_echeance', 'date_creation', 'id']
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        contrat_id = self.request.query_params.get('contrat')
+        if contrat_id:
+            qs = qs.filter(contrat_id=contrat_id)
+        jalon_id = self.request.query_params.get('jalon')
+        if jalon_id:
+            qs = qs.filter(jalon_id=jalon_id)
+        statut = self.request.query_params.get('statut')
+        if statut:
+            qs = qs.filter(statut=statut)
+        redevable = self.request.query_params.get('redevable')
+        if redevable:
+            qs = qs.filter(redevable=redevable)
+        return qs
+
+    def perform_create(self, serializer):
+        """Pose ``company`` (celle du contrat) côté serveur."""
+        contrat = serializer.validated_data['contrat']
+        serializer.save(company=contrat.company)
+
+    @action(detail=True, methods=['post'], url_path='marquer-faite')
+    def marquer_faite(self, request, pk=None):
+        """Marque l'obligation comme RÉALISÉE (statut + date côté serveur — CONTRAT26).
+
+        Idempotent : une obligation déjà réalisée reste inchangée. La date du
+        jour et l'auteur sont posés CÔTÉ SERVEUR. Ne change AUCUN
+        ``Contrat.statut``.
+        """
+        obligation = self.get_object()
+        obligation = services.marquer_obligation_faite(
+            obligation, auteur=request.user)
+        return Response(
+            ObligationSerializer(
+                obligation, context={'request': request}).data)
