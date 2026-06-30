@@ -1388,3 +1388,129 @@ def creer_avenant(contrat, *, objet, description='', date_effet=None,
         auteur=auteur)
 
     return avenant
+
+
+# ---------------------------------------------------------------------------
+# CONTRAT25 — Résiliation (motif / préavis / solde) → statut « résilié »
+# ---------------------------------------------------------------------------
+
+
+class ResiliationError(Exception):
+    """Levée quand une résiliation de contrat est invalide.
+
+    Ex. : tenter de résilier un contrat depuis un état NON résiliable (la machine
+    d'états gardée refuse la transition ``→ resilie``), ou rouvrir une seconde
+    résiliation active alors qu'une résiliation non annulée existe déjà.
+    """
+
+
+def resiliation_active(contrat):
+    """Résiliation ACTIVE (non annulée) du contrat, ou ``None``.
+
+    Garde idempotente : on n'ouvre pas une seconde résiliation active sur un
+    contrat qui en porte déjà une (``demande`` ou ``effective``). Scopée société
+    (portée par le contrat).
+    """
+    from .models import Resiliation
+
+    return (
+        Resiliation.objects
+        .filter(contrat=contrat, company=contrat.company)
+        .exclude(statut=Resiliation.Statut.ANNULEE)
+        .order_by('-id')
+        .first()
+    )
+
+
+@transaction.atomic
+def resilier_contrat(contrat, *, motif='', date_effet=None, preavis_jours=None,
+                     solde=None, auteur=None, today=None, snapshot=True):
+    """Résilie un contrat (motif / préavis / solde) — CONTRAT25.
+
+    Enregistre une ``Resiliation`` (motif, date d'effet, préavis observé, solde
+    de tout compte éventuel) ET fait basculer le ``Contrat.statut`` vers
+    ``resilie`` via la machine d'états GARDÉE (``changer_statut``) — JAMAIS une
+    écriture directe du statut, JAMAIS un funnel ``STAGES.py`` (rule #2). La
+    machine d'états est l'UNIQUE gardienne de la résiliabilité : un contrat dans
+    un état d'où ``→ resilie`` n'est pas permis (p. ex. déjà ``resilie`` ou
+    ``expire``, états terminaux) fait lever ``ResiliationError`` et RIEN n'est
+    créé (la transaction protège l'atomicité).
+
+    Déroulé (tout est posé CÔTÉ SERVEUR, jamais lu d'un corps de requête) :
+
+    - GARDE D'IDEMPOTENCE : si une résiliation ACTIVE (non annulée) existe déjà
+      pour ce contrat, ``ResiliationError`` est levée (pas de doublon).
+    - GARDE DE TRANSITION : la transition ``statut courant → resilie`` doit être
+      permise par la machine d'états (``transition_permise``) ; sinon
+      ``ResiliationError``. La bascule passe par ``changer_statut`` (gardée).
+    - ENREGISTREMENT : création de la ``Resiliation`` (``statut=demande``), avec
+      ``date_demande`` = ``today`` (date du jour, injectable), la société déduite
+      du contrat.
+    - SNAPSHOT (si ``snapshot``) : un instantané immuable est figé via
+      ``creer_version(motif='Résiliation')`` (CONTRAT18) — best-effort : un échec
+      de rendu n'empêche jamais la résiliation. La version est reliée à la
+      résiliation (``version_creee``).
+    - AUDIT : la bascule de statut est journalisée dans le chatter (CONTRAT15),
+      auteur et société posés côté serveur.
+
+    Renvoie la ``Resiliation`` créée (``version_creee`` renseigné si snapshot).
+    """
+    from .models import Contrat, Resiliation
+
+    if today is None:
+        today = timezone.localdate()
+
+    # Garde d'idempotence : pas de seconde résiliation active.
+    if resiliation_active(contrat) is not None:
+        raise ResiliationError(
+            "Une résiliation est déjà en cours pour ce contrat.")
+
+    # Garde de transition : la machine d'états doit autoriser « → resilie » depuis
+    # l'état courant. On vérifie AVANT d'écrire quoi que ce soit (atomicité).
+    if not transition_permise(contrat.statut, Contrat.Statut.RESILIE):
+        raise ResiliationError(
+            f"Le contrat ne peut pas être résilié depuis l'état "
+            f"« {contrat.statut} ».")
+
+    ancien = contrat.statut
+
+    # Bascule de statut via la machine d'états GARDÉE (jamais un write direct).
+    try:
+        changer_statut(contrat, Contrat.Statut.RESILIE)
+    except TransitionInterdite as exc:
+        # La machine d'états refuse : on reformule et RIEN n'est persisté (la
+        # transaction est annulée par la levée).
+        raise ResiliationError(str(exc))
+
+    resiliation = Resiliation.objects.create(
+        company=contrat.company,
+        contrat=contrat,
+        motif=motif or '',
+        date_demande=today,
+        date_effet=date_effet,
+        preavis_jours=preavis_jours,
+        solde=solde,
+        statut=Resiliation.Statut.DEMANDE,
+        cree_par=auteur,
+    )
+
+    # CONTRAT15 — audit de la bascule de statut (ancien → resilie).
+    journaliser_transition(
+        contrat, field='statut', old_value=ancien,
+        new_value=contrat.statut,
+        message='Résiliation du contrat.',
+        auteur=auteur)
+
+    # CONTRAT18 — instantané immuable best-effort figeant l'état au moment de la
+    # résiliation. On relie la version à la résiliation.
+    if snapshot:
+        try:
+            version = creer_version(
+                contrat, cree_par=auteur, motif='Résiliation')
+        except Exception:  # pragma: no cover - défensif (rendu best-effort)
+            version = None
+        if version is not None:
+            resiliation.version_creee = version
+            resiliation.save(update_fields=['version_creee'])
+
+    return resiliation
