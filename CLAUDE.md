@@ -210,26 +210,54 @@ ONLY run model -- it OVERRIDES any older "waves", "one merge per wave", "one tas
 per session", or "stop after one task" wording anywhere, including in the plan
 files themselves.
 
+**THE COST MODEL (why the method below is the fast one -- internalize this).** The
+single dominant cost of a run is the GitHub CI `backend-tests` gate: **~40 minutes,
+serialized, per merge**. So the run's speed is set by ONE number: how many times you
+pay that 40 minutes. Pay it **ONCE per run**. Merging "a batch of 5" then waiting for
+its CI before starting the next 5 pays 40 min x N and is the slowest possible shape
+(it is the trap -- do not do it). Two levers, always:
+  (a) **Lane-draining** -- one agent drains a WHOLE app lane (8-10 tasks), so ~9
+      single-task waves collapse into ~1; and
+  (b) **One merge per run** -- accumulate every lane onto one branch and pay CI once.
+If a mid-run merge is ever unavoidable (e.g. a same-app lane needs a prior task on
+`origin/main` to chain migrations), then while that ONE CI runs you **pipeline the
+next lanes on DISJOINT apps** (build during CI, never idle on it), and you reuse ONE
+persistent local test DB across folds (`--keepdb`, same DB name -- a fresh full test
+DB is a ~13-min rebuild; reusing it makes each fold's check ~2 min).
+
 1. **Plan the lanes once.** At the start run `python scripts/plan_lanes.py
    <planfile>` to get the file-ownership + dependency graph. A **lane** = tasks
    that share a file/migration and must run in sequence; independent lanes run
    concurrently. (Drain `docs/PLAN2.md` before `docs/PLAN.md`.)
 
-2. **Run a work-stealing pool of up to 8 -- NO waves.** Keep up to 8 worktree
-   subagents (`isolation: worktree`) building at all times. **The moment ANY agent
-   finishes, immediately launch the next ready lane-head into the freed slot** --
-   never idle waiting for a wave to finish. A lane-head is "ready" once its
-   prerequisites are folded (step 4); each new agent branches from the **current
-   `dev` tip** so it inherits all finished work. Each subagent verifies the task
-   isn't already built, builds it with tests, commits to its own worktree branch,
-   and returns a SHORT summary (files / tests / status) -- never a diff.
+2. **Lane-draining is the unit of work: one agent OWNS one app and drains its
+   WHOLE lane.** Dispatch up to ~8 worktree subagents (`isolation: worktree`) in
+   parallel; **each agent owns one `apps/<x>` and drains that app's ENTIRE pending
+   queue in sequence in one go** -- for each task: verify-not-built -> build with
+   tests -> flake8 + compileall (LIGHTWEIGHT static checks ONLY) -> commit that task
+   by itself -> next, building on the last (its migrations chain inside its own
+   worktree). **One agent = many tasks, never one.** This is what collapses ~9
+   single-task waves into ~1. Give each agent the explicit ordered list of its app's
+   task IDs. A task that hits a true blocker is marked `[BLOCKED]` and SKIPPED -- the
+   lane keeps going. Agents do NOT build a full test DB or spawn Postgres/their own
+   containers (that thrashes the shared DB and OOM-kills it); the orchestrator runs
+   the ONE real combined test after folding. Cross-app: each agent keeps ALL its code
+   inside its own app, reading other apps only via their existing `selectors.py` or
+   string-FKs -- so file-disjoint lanes fold with zero conflict. When a same-app lane
+   tail needs a just-built prior task, that prior task must be on `origin/main` first
+   (worktree agents branch from `origin/main`) -- so order is: build a lane's
+   available head tasks, land them, then the tail; or split the lane across runs.
 
-3. **Review + locally test each task AS IT LANDS (streamed, not batched).** The
-   instant a task finishes, run (a) an adversarial review against the safety rules
-   + that task's acceptance criteria, and (b) its affected-app test suite in the
-   local prod docker image. Fix any issue before the task folds. This per-task
-   local loop is the real feedback -- it is NOT the GitHub CI, which runs only
-   once at the end.
+3. **Orchestrator reviews each lane + runs ONE combined local test after folding.**
+   As each lane agent returns, adversarially review its commits against the safety
+   rules + acceptance criteria. Fold all file-disjoint lanes onto the one accumulating
+   branch, then run a SINGLE combined test in the local prod docker image over all the
+   run's new test modules (reuse ONE persistent `--keepdb` test DB across folds). This
+   combined test is the real pre-merge feedback -- it has caught a real bug in most
+   runs (missing import, `clean()`-vs-`save()`, name clash, hard-vs-soft-delete, a
+   silently-swallowed effect). Fix any failure, re-run only the affected module
+   (`--keepdb` makes it seconds), then proceed to the single gate. It is NOT the
+   GitHub CI, which runs only once at the very end.
 
 4. **Fold continuously into ONE `dev` branch + advance LOCAL `main`.** As each
    reviewed+tested task passes: fold its branch into the single accumulating `dev`
@@ -303,6 +331,22 @@ run.
 - One run, one sync-safe self-merge to `main`, one deploy -- per "How a plan run
   works". Report once with the lane plan (how many ran in parallel and what each
   shipped) and what was skipped/blocked.
+- **Default shape: lane-draining.** Dispatch one worktree agent per app, each
+  draining its whole pending lane (8-10 tasks) in sequence; fold all lanes; run ONE
+  combined local docker test (persistent `--keepdb`); then ONE CI-gated merge + ONE
+  deploy for the whole run. Do NOT merge per wave/batch -- that pays the ~40-min CI
+  N times (see THE COST MODEL).
+
+### "loop work on the plan" (`/loop work on the plan`)
+
+This is the SAME run model, self-paced across wakeups -- NOT a merge per wakeup.
+Each `/loop` fire CONTINUES the one accumulating run: keep lane-draining onto the
+single branch and **merge exactly once when the lanes drain or a usage cap hits**,
+not every time the loop fires. While the one CI is running you are NOT idle -- you
+build the next lanes (disjoint apps) during it, and deploy once after the merge.
+The fire that finds nothing left to build is the one that does the final
+merge/deploy (or reports the queue already drained). The schedule wake-ups exist to
+resume a paused drain, never to chop the run into many small merges.
 
 ### "add to plan:" followed by tasks (one per line or separated by ;)
 - Append them as `[ ]` lines to `docs/PLAN.md`'s BUILD QUEUE, then refresh §10
