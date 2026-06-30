@@ -9,6 +9,8 @@ from rest_framework import serializers
 from .models import (
     AccidentTravail,
     AffectationRoster,
+    CauserieParticipant,
+    CauserieSecurite,
     Certification,
     Competence,
     CompetenceEmploye,
@@ -1027,3 +1029,101 @@ class PresquAccidentSerializer(serializers.ModelSerializer):
         user = obj.declare_par
         full = user.get_full_name() if hasattr(user, 'get_full_name') else ''
         return full or getattr(user, 'username', '') or ''
+
+
+class CauserieParticipantSerializer(serializers.ModelSerializer):
+    """Participant + émargement d'une causerie sécurité (FG183).
+
+    Le client saisit ``participant`` (un ``DossierEmploye`` de sa société) et,
+    en option, ``present``. ``company`` et ``causerie`` sont posées CÔTÉ SERVEUR
+    (jamais lues du corps) ; ``emarge`` / ``emarge_le`` sont en lecture seule
+    (posées via l'action ``emarger`` de la causerie).
+    """
+    participant_nom = serializers.SerializerMethodField()
+
+    class Meta:
+        model = CauserieParticipant
+        fields = [
+            'id', 'participant', 'participant_nom',
+            'present', 'emarge', 'emarge_le', 'date_creation',
+        ]
+        read_only_fields = ['emarge', 'emarge_le', 'date_creation']
+
+    def get_participant_nom(self, obj):
+        return f'{obj.participant.nom} {obj.participant.prenom}'
+
+    def validate_participant(self, value):
+        return _meme_societe(self, value, 'Participant')
+
+
+class CauserieSecuriteSerializer(serializers.ModelSerializer):
+    """Causerie sécurité / toolbox talk (FG183) — le quart d'heure sécurité.
+
+    Le client saisit ``theme``, ``date_causerie``, ``chantier_id`` (référence
+    chaîne optionnelle), ``animateur`` (un ``DossierEmploye`` de sa société),
+    ``lieu`` et ``notes``, plus une liste imbriquée ``participants`` (chacun avec
+    son ``participant``). ``company`` est posée CÔTÉ SERVEUR (jamais lue du
+    corps) ; ``animateur`` et chaque ``participant`` doivent appartenir à la
+    société de l'utilisateur. L'émargement de chaque participant se pose via
+    l'action ``emarger`` — il est en lecture seule ici.
+    """
+    animateur_nom = serializers.SerializerMethodField()
+    participants = CauserieParticipantSerializer(many=True, required=False)
+
+    class Meta:
+        model = CauserieSecurite
+        fields = [
+            'id', 'theme', 'date_causerie', 'chantier_id',
+            'animateur', 'animateur_nom', 'lieu', 'notes',
+            'participants',
+            'date_creation', 'date_modification',
+        ]
+        read_only_fields = ['date_creation', 'date_modification']
+
+    def get_animateur_nom(self, obj):
+        if not obj.animateur_id:
+            return ''
+        return f'{obj.animateur.nom} {obj.animateur.prenom}'
+
+    def validate_animateur(self, value):
+        return _meme_societe(self, value, 'Animateur')
+
+    def validate_participants(self, value):
+        # Chaque participant doit appartenir à la société de l'utilisateur, et
+        # aucun doublon dans la même causerie (contrainte d'unicité au modèle).
+        seen = set()
+        for item in value:
+            emp = item.get('participant')
+            _meme_societe(self, emp, 'Participant')
+            if emp is not None:
+                if emp.id in seen:
+                    raise serializers.ValidationError(
+                        'Un participant ne peut figurer qu’une fois.')
+                seen.add(emp.id)
+        return value
+
+    def create(self, validated_data):
+        # ``company`` est injectée par le TenantMixin (perform_create) ; on la
+        # propage aux participants enfants (jamais lue du corps).
+        participants = validated_data.pop('participants', [])
+        company = validated_data['company']
+        causerie = CauserieSecurite.objects.create(**validated_data)
+        for item in participants:
+            CauserieParticipant.objects.create(
+                company=company, causerie=causerie, **item)
+        return causerie
+
+    def update(self, instance, validated_data):
+        # Mise à jour des champs de la causerie ; si ``participants`` est fourni,
+        # on remplace la liste (les émargements existants sont réinitialisés —
+        # une nouvelle liste = une nouvelle feuille d'émargement).
+        participants = validated_data.pop('participants', None)
+        for attr, value in validated_data.items():
+            setattr(instance, attr, value)
+        instance.save()
+        if participants is not None:
+            instance.participants.all().delete()
+            for item in participants:
+                CauserieParticipant.objects.create(
+                    company=instance.company, causerie=instance, **item)
+        return instance

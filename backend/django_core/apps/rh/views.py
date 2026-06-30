@@ -23,6 +23,8 @@ from . import selectors, services
 from .models import (
     AccidentTravail,
     AffectationRoster,
+    CauserieParticipant,
+    CauserieSecurite,
     Certification,
     Competence,
     CompetenceEmploye,
@@ -49,6 +51,8 @@ from .models import (
 from .serializers import (
     AccidentTravailSerializer,
     AffectationRosterSerializer,
+    CauserieParticipantSerializer,
+    CauserieSecuriteSerializer,
     CertificationSerializer,
     CompetenceEmployeSerializer,
     CompetenceSerializer,
@@ -1709,3 +1713,94 @@ class PresquAccidentViewSet(_RhBaseViewSet):
             request.user.company, date_debut=debut, date_fin=fin,
             statut=statut)
         return Response(data)
+
+
+class CauserieSecuriteViewSet(_RhBaseViewSet):
+    """Causeries sécurité / toolbox talks (FG183) — le quart d'heure sécurité.
+
+    Société scopée + Administrateur/Responsable. Enregistre un briefing sécurité
+    court tenu AVANT chantier : thème, date, chantier (référence chaîne),
+    animateur (employé qui mène), lieu/notes, et la liste des participants avec
+    leur émargement individuel. ``company`` est posée CÔTÉ SERVEUR (jamais lue du
+    corps) ; ``animateur`` et chaque ``participant`` doivent appartenir à la
+    même société.
+
+    Filtres : ``?chantier=<ref>``, ``?animateur=<id>``. ``?debut=`` / ``?fin=``
+    bornent la date. Recherche : thème, lieu, chantier.
+
+    Action :
+    * ``POST .../{id}/emarger/`` — corps ``participant=<id>`` (ou
+      ``participant_id``) : marque ce participant comme ayant émargé (présence
+      signée), horodatage posé côté serveur. Le participant doit déjà figurer
+      sur la feuille de la causerie.
+    """
+    queryset = CauserieSecurite.objects.select_related('animateur') \
+        .prefetch_related('participants__participant').all()
+    serializer_class = CauserieSecuriteSerializer
+    filter_backends = [filters.SearchFilter, filters.OrderingFilter]
+    search_fields = ['theme', 'lieu', 'chantier_id']
+    ordering_fields = ['date_causerie', 'theme', 'date_creation']
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        chantier = self.request.query_params.get('chantier')
+        if chantier:
+            qs = qs.filter(chantier_id=chantier)
+        animateur = self.request.query_params.get('animateur')
+        if animateur:
+            qs = qs.filter(animateur_id=animateur)
+        debut = self._parse_date(self.request.query_params.get('debut'))
+        if debut:
+            qs = qs.filter(date_causerie__gte=debut)
+        fin = self._parse_date(self.request.query_params.get('fin'))
+        if fin:
+            qs = qs.filter(date_causerie__lte=fin)
+        return qs
+
+    @staticmethod
+    def _parse_date(raw):
+        if not raw:
+            return None
+        from datetime import datetime
+        try:
+            return datetime.strptime(raw, '%Y-%m-%d').date()
+        except (TypeError, ValueError):
+            return None
+
+    def perform_create(self, serializer):
+        """Company posée côté serveur ; FK validés via le sérialiseur."""
+        serializer.save(company=self.request.user.company)
+
+    @action(detail=True, methods=['post'], url_path='emarger')
+    def emarger(self, request, pk=None):
+        """Émargement d'un participant à la causerie (FG183) — présence signée.
+
+        Corps : ``participant`` (ou ``participant_id``) = l'id du
+        ``DossierEmploye`` qui signe. Le participant doit DÉJÀ figurer sur la
+        feuille de la causerie (sinon 400). Marque sa ligne ``emarge=True`` +
+        ``emarge_le`` (horodatage posé CÔTÉ SERVEUR). La société est garantie par
+        ``get_object`` ; l'horodatage n'est jamais lu du corps. Idempotent : ré-
+        émarger renvoie la même ligne sans dupliquer.
+        """
+        causerie = self.get_object()
+        participant_id = request.data.get('participant') \
+            or request.data.get('participant_id')
+        if not participant_id:
+            return Response(
+                {'detail': 'Le champ « participant » est requis.'},
+                status=status.HTTP_400_BAD_REQUEST)
+        try:
+            ligne = causerie.participants.get(participant_id=participant_id)
+        except CauserieParticipant.DoesNotExist:
+            return Response(
+                {'detail':
+                 "Ce participant ne figure pas sur cette causerie."},
+                status=status.HTTP_400_BAD_REQUEST)
+        if not ligne.emarge:
+            ligne.emarge = True
+            ligne.present = True
+            ligne.emarge_le = timezone.now()
+            ligne.save(update_fields=['emarge', 'present', 'emarge_le'])
+        return Response(
+            CauserieParticipantSerializer(ligne).data,
+            status=status.HTTP_200_OK)
