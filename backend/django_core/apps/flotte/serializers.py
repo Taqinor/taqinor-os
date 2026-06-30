@@ -26,6 +26,7 @@ from .models import (
     PleinCarburant,
     ReferentielFlotte,
     ReservationVehicule,
+    Sinistre,
     Vehicule,
     VisiteTechnique,
 )
@@ -1298,5 +1299,77 @@ class CarteGriseVehiculeSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError(
                 {'actif_flotte':
                  "Cet actif n'appartient pas à votre société."})
+
+        return attrs
+
+
+# ── FLOTTE25 — Sinistres (accident / constat / assurance) ──────────────────────
+
+class SinistreSerializer(serializers.ModelSerializer):
+    """FLOTTE25 — Sinistre d'un actif de flotte (accident, vol, bris de glace…).
+
+    ``company`` est posée côté serveur (jamais lue du corps de requête). L'actif
+    lié (``actif_flotte``) ET la police d'assurance liée (``assurance``, si
+    renseignée) doivent appartenir à la société courante. Les montants
+    (``montant_estime``, ``franchise``) doivent être ≥ 0.
+
+    Champs lecture seule :
+    - ``actif_label``           : désignation de l'actif (véhicule ou engin).
+    - ``type_sinistre_display`` : libellé du type de sinistre.
+    - ``statut_display``        : libellé du statut.
+    """
+
+    actif_label = serializers.SerializerMethodField()
+    type_sinistre_display = serializers.CharField(
+        source='get_type_sinistre_display', read_only=True)
+    statut_display = serializers.CharField(
+        source='get_statut_display', read_only=True)
+
+    class Meta:
+        model = Sinistre
+        fields = [
+            'id', 'actif_flotte', 'actif_label', 'assurance',
+            'date_sinistre', 'type_sinistre', 'type_sinistre_display',
+            'description', 'lieu', 'constat_fichier', 'numero_declaration',
+            'montant_estime', 'franchise', 'statut', 'statut_display',
+            'date_declaration', 'notes', 'date_creation',
+        ]
+        read_only_fields = ['date_creation']
+
+    def get_actif_label(self, obj):
+        return obj.actif_flotte.label if obj.actif_flotte_id else None
+
+    def validate_montant_estime(self, value):
+        if value is not None and value < 0:
+            raise serializers.ValidationError(
+                "Le montant estimé ne peut pas être négatif.")
+        return value
+
+    def validate_franchise(self, value):
+        if value is not None and value < 0:
+            raise serializers.ValidationError(
+                "La franchise ne peut pas être négative.")
+        return value
+
+    def validate(self, attrs):
+        request = self.context.get('request')
+        company = getattr(getattr(request, 'user', None), 'company', None)
+
+        actif_flotte = attrs.get(
+            'actif_flotte', getattr(self.instance, 'actif_flotte', None))
+        assurance = attrs.get(
+            'assurance', getattr(self.instance, 'assurance', None))
+
+        if company is not None and actif_flotte is not None \
+                and actif_flotte.company_id != company.id:
+            raise serializers.ValidationError(
+                {'actif_flotte':
+                 "Cet actif n'appartient pas à votre société."})
+
+        if company is not None and assurance is not None \
+                and assurance.company_id != company.id:
+            raise serializers.ValidationError(
+                {'assurance':
+                 "Cette police d'assurance n'appartient pas à votre société."})
 
         return attrs
