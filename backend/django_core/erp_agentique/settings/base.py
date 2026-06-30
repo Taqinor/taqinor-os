@@ -331,6 +331,29 @@ USE_PREMIUM_QUOTE_ENGINE = os.environ.get('USE_PREMIUM_QUOTE_ENGINE', '1') != '0
 # posant GED_EMBEDDING_ENABLED=1 + la clé du provider d'embeddings.
 GED_EMBEDDING_ENABLED = os.environ.get('GED_EMBEDDING_ENABLED', '0') == '1'
 
+# GED25 — purge automatique de la corbeille (GED26 soft-delete). DRY-RUN PAR
+# DÉFAUT : la tâche planifiée `ged.purge_corbeille_echue` ne SUPPRIME RIEN tant
+# que GED_PURGE_AUTO_APPLY n'est pas explicitement à 1 (elle se contente de
+# compter/logger). `GED_PURGE_GRACE_DAYS` est le délai de grâce (jours) qu'un
+# document doit passer EN CORBEILLE avant de devenir éligible (défaut 30). Les
+# gardes légales GED23 (write-once) / GED24 (legal hold) restent toujours
+# respectées — un document protégé n'est jamais purgé.
+GED_PURGE_AUTO_APPLY = os.environ.get('GED_PURGE_AUTO_APPLY', '0') == '1'
+GED_PURGE_GRACE_DAYS = int(os.environ.get('GED_PURGE_GRACE_DAYS', '30'))
+
+# GED33/GED34 — OCR de pièces + classification automatique. KEY-GATED : OFF par
+# défaut → tout est un no-op déterministe (aucun appel réseau, aucun coût, aucune
+# dépendance nouvelle). Le founder branchera un provider réel (Zhipu/…) en posant
+# le flag + la clé. Tant que c'est OFF, l'extraction OCR et la classification IA
+# se contentent de signaler « non disponible » sans rien inventer.
+GED_OCR_ENABLED = os.environ.get('GED_OCR_ENABLED', '0') == '1'
+GED_CLASSIFICATION_ENABLED = (
+    os.environ.get('GED_CLASSIFICATION_ENABLED', '0') == '1')
+
+# GED36 — quota de stockage par société (octets). 0 = illimité (défaut). Sert de
+# valeur PAR DÉFAUT quand une société n'a pas de quota explicite (`QuotaStockage`).
+GED_QUOTA_DEFAUT_OCTETS = int(os.environ.get('GED_QUOTA_DEFAUT_OCTETS', '0'))
+
 # Security headers (safe in all environments)
 SECURE_CONTENT_TYPE_NOSNIFF = True
 X_FRAME_OPTIONS = 'DENY'

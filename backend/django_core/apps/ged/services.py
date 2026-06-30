@@ -1396,6 +1396,146 @@ def purger_definitivement(document):
     document.delete()
 
 
+# ── GED25 — Purge automatique de la corbeille (DRY-RUN par défaut) ────────────
+#
+# Politique : la purge automatique n'efface JAMAIS un document « vivant ». Elle
+# ne considère QUE les documents DÉJÀ en corbeille (GED26, soft-delete) dont le
+# séjour en corbeille dépasse un délai de grâce (`PURGE_GRACE_DAYS`, défaut
+# 30 jours depuis `supprime_le`). Avant tout effacement, chaque candidat repasse
+# les gardes légales (GED23 write-once / GED24 legal hold actif) : un document
+# protégé est EXCLU silencieusement de la purge (jamais une 500). Tout est borné
+# à la société (multi-tenant) — jamais de fuite cross-société.
+#
+# DRY-RUN PAR DÉFAUT : `purger_corbeille_echue(..., apply=False)` ne fait que
+# COMPTER/LISTER ce qui SERAIT purgé sans rien effacer. L'effacement réel exige
+# un `apply=True` explicite (posé par la tâche planifiée ou la commande). C'est
+# une opération DESTRUCTIVE-mais-révertable au sens CLAUDE.md (revertable via
+# git pour le code ; les documents purgés étaient déjà en corbeille, soft-
+# supprimés et hors des listes — la purge ne fait que matérialiser un effacement
+# déjà demandé une fois le délai de grâce écoulé).
+
+# Délai de grâce par défaut (jours) avant qu'un document EN CORBEILLE devienne
+# éligible à la purge automatique. Lu de `settings.GED_PURGE_GRACE_DAYS` si
+# présent — sinon 30 jours. Toujours surchargeable par appel (`grace_days`).
+PURGE_GRACE_DEFAULT_DAYS = 30
+
+
+def _purge_grace_days(grace_days=None):
+    """GED25 — Résout le délai de grâce effectif (jours, entier positif).
+
+    Priorité : argument explicite > `settings.GED_PURGE_GRACE_DAYS` > défaut
+    (30 j). Un délai de grâce de 0 est REFUSÉ (on garde toujours un coussin) :
+    toute valeur non strictement positive retombe sur le défaut."""
+    from django.conf import settings
+    if grace_days is None:
+        grace_days = getattr(
+            settings, 'GED_PURGE_GRACE_DAYS', PURGE_GRACE_DEFAULT_DAYS)
+    try:
+        grace_days = int(grace_days)
+    except (TypeError, ValueError):
+        grace_days = PURGE_GRACE_DEFAULT_DAYS
+    return grace_days if grace_days > 0 else PURGE_GRACE_DEFAULT_DAYS
+
+
+def corbeille_purgeable(company, *, grace_days=None, now=None):
+    """GED25 — Documents EN CORBEILLE éligibles à la purge auto (société).
+
+    Renvoie un QuerySet (borné à la société) des documents dont :
+      * `supprime_le` est renseigné (déjà en corbeille, GED26) ; ET
+      * le séjour en corbeille dépasse le délai de grâce (`supprime_le` est
+        antérieur à `now - grace_days`).
+    Les gardes légales (GED23/GED24) NE sont PAS appliquées ici (elles le sont
+    au moment de l'effacement, document par document) — ce sélecteur n'est que la
+    présélection par âge. Aucun effacement : pur read.
+    """
+    import datetime
+
+    from django.utils import timezone
+
+    if now is None:
+        now = timezone.now()
+    seuil = now - datetime.timedelta(days=_purge_grace_days(grace_days))
+    return (Document.objects
+            .filter(company=company,
+                    supprime_le__isnull=False,
+                    supprime_le__lt=seuil)
+            .order_by('supprime_le', 'id'))
+
+
+def purger_corbeille_echue(company, *, grace_days=None, now=None, apply=False):
+    """GED25 — Purge auto de la corbeille échue d'une société (DRY-RUN par défaut).
+
+    Balaie les documents EN CORBEILLE dont le séjour dépasse le délai de grâce
+    (`corbeille_purgeable`) et, pour chacun, RE-VÉRIFIE les gardes légales avant
+    tout effacement :
+      * GED23 — archivé légalement (write-once) → EXCLU (compté `proteges`) ;
+      * GED24 — sous legal hold actif → EXCLU (compté `proteges`).
+    Un document protégé n'est JAMAIS purgé (jamais une 500) — il reste en
+    corbeille jusqu'à la levée de sa protection.
+
+    `apply=False` (DÉFAUT) = DRY-RUN : on COMPTE seulement ce qui serait purgé,
+    rien n'est effacé. `apply=True` efface réellement (via
+    `purger_definitivement`, qui respecte les mêmes gardes au niveau modèle —
+    double filet). L'effacement est idempotent et borné à la société.
+
+    Renvoie un dict de synthèse :
+      ``{'company_id', 'dry_run', 'eligibles', 'purges', 'proteges', 'ids'}``
+    où `eligibles` = candidats par âge, `purges` = réellement (ou virtuellement)
+    purgés, `proteges` = exclus par une garde légale, `ids` = ids purgés.
+    """
+    from .models import ArchivageLegalError, LegalHoldError
+
+    candidats = list(corbeille_purgeable(
+        company, grace_days=grace_days, now=now))
+    purges = 0
+    proteges = 0
+    ids = []
+    for document in candidats:
+        # Garde légale RE-vérifiée par document (état au moment de la purge).
+        if document.est_archive_legalement or document.est_sous_legal_hold:
+            proteges += 1
+            continue
+        if apply:
+            try:
+                purger_definitivement(document)
+            except (ArchivageLegalError, LegalHoldError):
+                # Filet ultime : course avec une protection posée entre-temps.
+                proteges += 1
+                continue
+        purges += 1
+        ids.append(document.pk)
+    return {
+        'company_id': getattr(company, 'id', None),
+        'dry_run': not apply,
+        'eligibles': len(candidats),
+        'purges': purges,
+        'proteges': proteges,
+        'ids': ids,
+    }
+
+
+def purger_corbeille_toutes_societes(*, grace_days=None, now=None, apply=False):
+    """GED25 — Purge auto de la corbeille échue de TOUTES les sociétés.
+
+    Itère société par société (chacune bornée à ses propres documents — jamais
+    de fuite cross-société) et agrège le résultat de `purger_corbeille_echue`.
+    DRY-RUN par défaut (`apply=False`). Renvoie un dict agrégé avec un détail par
+    société (`par_societe`)."""
+    from authentication.models import Company
+
+    total = {'dry_run': not apply, 'eligibles': 0, 'purges': 0,
+             'proteges': 0, 'par_societe': []}
+    for company in Company.objects.all():
+        res = purger_corbeille_echue(
+            company, grace_days=grace_days, now=now, apply=apply)
+        total['eligibles'] += res['eligibles']
+        total['purges'] += res['purges']
+        total['proteges'] += res['proteges']
+        if res['eligibles']:
+            total['par_societe'].append(res)
+    return total
+
+
 # ── GED27 — Modèles de documents (fusion/mailing → PDF WeasyPrint) ───────────
 #
 # Couche GÉNÉRIQUE de documents INTERNES (attestations, courriers, mailing) :
