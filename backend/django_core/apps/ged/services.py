@@ -2359,3 +2359,100 @@ def marquer_signe(demande, *, provider_ref=None, date_signature=None):
     if champs:
         demande.save(update_fields=champs)
     return demande
+
+
+# ── GED35 — Journal d'audit d'accès aux documents (lectures) ─────────────────
+
+def journaliser_acces(document, *, utilisateur=None, type_acces=None,
+                      adresse_ip=None):
+    """GED35 — Enregistre un accès EN LECTURE à un document (append-only).
+
+    `company` est posée CÔTÉ SERVEUR (toujours celle du document) — jamais lue
+    d'un corps de requête. `utilisateur` peut être None (accès public anonyme
+    via lien tokenisé GED20). Ne lève jamais (l'audit ne doit pas casser une
+    lecture) — toute erreur d'écriture du journal est silencieusement ignorée.
+
+    Renvoie l'entrée `JournalAcces` créée, ou None si la journalisation a échoué
+    (best-effort)."""
+    from .models import ACCES_CONSULTATION, JournalAcces
+
+    try:
+        return JournalAcces.objects.create(
+            company=document.company,
+            document=document,
+            utilisateur=utilisateur if getattr(
+                utilisateur, 'is_authenticated', False) else None,
+            type_acces=type_acces or ACCES_CONSULTATION,
+            adresse_ip=adresse_ip or None,
+        )
+    except Exception:  # robustesse : l'audit ne bloque jamais une lecture.
+        return None
+
+
+def _adresse_ip_requete(request):
+    """GED35 — Adresse IP best-effort d'une requête (ou None).
+
+    Lit `REMOTE_ADDR` (jamais d'en-tête X-Forwarded-For non fiable). Renvoie
+    None si indisponible — l'audit reste possible sans IP."""
+    if request is None:
+        return None
+    return (getattr(request, 'META', {}) or {}).get('REMOTE_ADDR') or None
+
+
+# ── GED36 — Quotas de stockage par société ──────────────────────────────────
+
+def usage_stockage_octets(company):
+    """GED36 — Total des octets stockés par une société (somme des versions).
+
+    Somme la taille (`DocumentVersion.size`) de TOUTES les versions de la
+    société — y compris les versions historiques (chaque version occupe de
+    l'espace objet). Borné à la société (jamais cross-société). Renvoie un entier
+    (0 si aucune version)."""
+    from django.db.models import Sum
+    agg = (DocumentVersion.objects
+           .filter(company=company)
+           .aggregate(total=Sum('size')))
+    return int(agg['total'] or 0)
+
+
+def quota_octets(company):
+    """GED36 — Quota (octets) effectif d'une société (0 = illimité).
+
+    Lit l'entrée `QuotaStockage` explicite de la société si elle existe ; sinon
+    retombe sur le défaut `settings.GED_QUOTA_DEFAUT_OCTETS` (0 = illimité)."""
+    from django.conf import settings
+    from .models import QuotaStockage
+    quota = QuotaStockage.objects.filter(company=company).first()
+    if quota is not None:
+        return int(quota.quota_octets or 0)
+    return int(getattr(settings, 'GED_QUOTA_DEFAUT_OCTETS', 0) or 0)
+
+
+def quota_restant_octets(company):
+    """GED36 — Octets restants avant d'atteindre le quota (None si illimité)."""
+    limite = quota_octets(company)
+    if limite <= 0:
+        return None  # illimité
+    return max(0, limite - usage_stockage_octets(company))
+
+
+def quota_depasse(company, *, octets_supplementaires=0):
+    """GED36 — True si la société dépasse (ou dépasserait) son quota.
+
+    `octets_supplementaires` simule l'ajout d'un dépôt à venir : on vérifie si
+    `usage + supplément > quota`. Un quota nul/illimité ne dépasse JAMAIS."""
+    limite = quota_octets(company)
+    if limite <= 0:
+        return False  # illimité
+    return (usage_stockage_octets(company)
+            + max(0, int(octets_supplementaires or 0))) > limite
+
+
+def assert_quota_disponible(company, *, octets_supplementaires=0):
+    """GED36 — Lève `QuotaDepasseError` si le dépôt ferait dépasser le quota.
+
+    Garde à poser AVANT un dépôt (la vue la traduit en 403, jamais 500). Un
+    quota illimité (0) ne lève jamais."""
+    from .models import QuotaDepasseError, QUOTA_DEPASSE_MESSAGE
+    if quota_depasse(company, octets_supplementaires=octets_supplementaires):
+        raise QuotaDepasseError(QUOTA_DEPASSE_MESSAGE)

@@ -32,16 +32,18 @@ from . import selectors, services
 from .models import (
     ArchivageLegal, ArchivageLegalError, Cabinet, Coffre, DemandeApprobation,
     DemandeSignatureDocument, Document, DocumentLien, DocumentTag,
-    DocumentTagAssignment, DocumentVersion, Folder, LegalHold, LegalHoldError,
-    ModeleDocument, PartageGed, PolitiqueRetention,
+    DocumentTagAssignment, DocumentVersion, Folder, JournalAcces, LegalHold,
+    LegalHoldError, ModeleDocument, PartageGed, PolitiqueRetention,
+    QuotaDepasseError, QuotaStockage,
 )
 from .serializers import (
     ArchivageLegalSerializer, CabinetSerializer, CoffreSerializer,
     DemandeApprobationSerializer, DemandeSignatureDocumentSerializer,
     DocumentLienSerializer, DocumentSerializer,
     DocumentTagAssignmentSerializer, DocumentTagSerializer,
-    DocumentVersionSerializer, FolderSerializer, LegalHoldSerializer,
-    ModeleDocumentSerializer, PartageGedSerializer, PolitiqueRetentionSerializer,
+    DocumentVersionSerializer, FolderSerializer, JournalAccesSerializer,
+    LegalHoldSerializer, ModeleDocumentSerializer, PartageGedSerializer,
+    PolitiqueRetentionSerializer, QuotaStockageSerializer,
 )
 
 READ_ACTIONS = ['list', 'retrieve']
@@ -335,6 +337,14 @@ class DocumentViewSet(TenantMixin, viewsets.ModelViewSet):
         if not file:
             return Response({'file': 'Aucun fichier fourni.'},
                             status=status.HTTP_400_BAD_REQUEST)
+        # GED36 — garde de quota AVANT le stockage (403, jamais 500). Un quota
+        # illimité (0) ne bloque jamais.
+        try:
+            services.assert_quota_disponible(
+                company, octets_supplementaires=getattr(file, 'size', 0))
+        except QuotaDepasseError as exc:
+            return Response({'detail': str(exc)},
+                            status=status.HTTP_403_FORBIDDEN)
         meta, err = store_attachment(file)
         if err:
             return Response({'file': err},
@@ -398,6 +408,15 @@ class DocumentViewSet(TenantMixin, viewsets.ModelViewSet):
         if not files:
             return Response({'files': 'Aucun fichier fourni.'},
                             status=status.HTTP_400_BAD_REQUEST)
+        # GED36 — garde de quota sur le LOT entier (somme des tailles), avant
+        # tout stockage (403, jamais 500). Quota illimité (0) ne bloque jamais.
+        total_octets = sum(getattr(f, 'size', 0) or 0 for f in files)
+        try:
+            services.assert_quota_disponible(
+                company, octets_supplementaires=total_octets)
+        except QuotaDepasseError as exc:
+            return Response({'detail': str(exc)},
+                            status=status.HTTP_403_FORBIDDEN)
         a_deposer = []
         erreurs = []
         for f in files:
@@ -767,6 +786,25 @@ class DocumentViewSet(TenantMixin, viewsets.ModelViewSet):
                 page, many=True, context={'request': request})
             return self.get_paginated_response(ser.data)
         ser = DocumentSerializer(qs, many=True, context={'request': request})
+        return Response(ser.data)
+
+    @action(detail=True, methods=['get'], url_path='journal-acces')
+    def journal_acces(self, request, pk=None):
+        """GED35 — Journal d'accès EN LECTURE de ce document (audit).
+
+        `GET …/documents/<id>/journal-acces/`. Liste les accès tracés (aperçu /
+        téléchargement / public / consultation) du document, bornés à la société.
+        Lecture réservée aux responsables/admins (l'audit est sensible). Paginé
+        comme la liste standard."""
+        document = self.get_object()
+        qs = selectors.journal_acces_for_company(
+            request.user.company, document=document)
+        page = self.paginate_queryset(qs)
+        if page is not None:
+            ser = JournalAccesSerializer(
+                page, many=True, context={'request': request})
+            return self.get_paginated_response(ser.data)
+        ser = JournalAccesSerializer(qs, many=True, context={'request': request})
         return Response(ser.data)
 
     @action(detail=True, methods=['post'], url_path='mettre-en-corbeille')
@@ -1149,6 +1187,14 @@ class DocumentVersionViewSet(TenantMixin, viewsets.ModelViewSet):
         disposition = (
             'inline' if mime in _INLINE_MIMES else 'attachment'
         )
+
+        # GED35 — journalise l'accès EN LECTURE (best-effort, ne bloque jamais).
+        from .models import ACCES_APERCU, ACCES_TELECHARGEMENT
+        services.journaliser_acces(
+            document, utilisateur=request.user,
+            type_acces=(ACCES_APERCU if disposition == 'inline'
+                        else ACCES_TELECHARGEMENT),
+            adresse_ip=services._adresse_ip_requete(request))
 
         resp = HttpResponse(data, content_type=mime)
         resp['Content-Disposition'] = f'{disposition}; filename="{safe_name}"'
@@ -1892,6 +1938,91 @@ class DemandeSignatureDocumentViewSet(TenantMixin,
             status=status.HTTP_200_OK)
 
 
+class JournalAccesViewSet(TenantMixin, mixins.ListModelMixin,
+                          mixins.RetrieveModelMixin, viewsets.GenericViewSet):
+    """GED35 — Journal d'audit d'accès aux documents (LECTURE SEULE).
+
+    Append-only : aucune création/modification/suppression via l'API (les
+    entrées sont posées côté serveur par `services.journaliser_acces` au moment
+    d'une lecture). Tout est borné à la société (TenantMixin). Filtrable par
+    `?document=<id>`, `?utilisateur=<id>`, `?type_acces=<code>`. Lecture réservée
+    aux responsables/admins (l'audit est sensible)."""
+    queryset = JournalAcces.objects.select_related(
+        'document', 'utilisateur').all()
+    serializer_class = JournalAccesSerializer
+    filter_backends = [filters.OrderingFilter]
+    ordering_fields = ['created_at', 'type_acces']
+
+    def get_permissions(self):
+        return [IsResponsableOrAdmin()]
+
+    def get_queryset(self):
+        company = self.request.user.company
+        qs = selectors.journal_acces_for_company(
+            company,
+            document=None,
+            type_acces=self.request.query_params.get('type_acces') or None)
+        document = self.request.query_params.get('document')
+        if document:
+            qs = qs.filter(document_id=document)
+        utilisateur = self.request.query_params.get('utilisateur')
+        if utilisateur:
+            qs = qs.filter(utilisateur_id=utilisateur)
+        return qs
+
+
+class QuotaStockageViewSet(TenantMixin, viewsets.ModelViewSet):
+    """GED36 — Quota de stockage de la société (consultation + réglage admin).
+
+    Au plus UNE entrée par société (OneToOne). `company` posée CÔTÉ SERVEUR
+    (jamais lue du corps). Lecture : tout rôle authentifié (voir l'usage/quota) ;
+    écriture (fixer le quota) : responsable/admin. Expose `usage`/`quota`/
+    `restant` via l'action `etat` (toujours disponible, même sans entrée)."""
+    queryset = QuotaStockage.objects.select_related('company').all()
+    serializer_class = QuotaStockageSerializer
+
+    def get_permissions(self):
+        if self.action in READ_ACTIONS or self.action == 'etat':
+            return [IsAnyRole()]
+        return [IsResponsableOrAdmin()]
+
+    def get_queryset(self):
+        return super().get_queryset().filter(
+            company=self.request.user.company)
+
+    def perform_create(self, serializer):
+        # OneToOne : on ne crée jamais un second quota pour la société. Si une
+        # entrée existe déjà, on met à jour la sienne (idempotent côté société).
+        company = self.request.user.company
+        existant = QuotaStockage.objects.filter(company=company).first()
+        if existant is not None:
+            existant.quota_octets = serializer.validated_data.get(
+                'quota_octets', existant.quota_octets)
+            existant.save(update_fields=['quota_octets', 'updated_at'])
+            serializer.instance = existant
+            return
+        serializer.save(company=company)
+
+    @action(detail=False, methods=['get'], url_path='etat')
+    def etat(self, request):
+        """GED36 — État du stockage de la société : usage / quota / restant.
+
+        `GET …/quotas-stockage/etat/`. Toujours disponible (même sans entrée
+        `QuotaStockage` explicite : le défaut `GED_QUOTA_DEFAUT_OCTETS`
+        s'applique). Renvoie `{usage_octets, quota_octets, restant_octets,
+        depasse, illimite}`."""
+        company = request.user.company
+        usage = services.usage_stockage_octets(company)
+        quota = services.quota_octets(company)
+        return Response({
+            'usage_octets': usage,
+            'quota_octets': quota,
+            'restant_octets': services.quota_restant_octets(company),
+            'depasse': services.quota_depasse(company),
+            'illimite': quota <= 0,
+        })
+
+
 # ── GED20 — Endpoint PUBLIC (sans login) servant un document par jeton ───────
 # AUTHENTIFIÉ UNIQUEMENT PAR LE JETON : aucune identité/société n'est lue de la
 # requête. Tout est résolu DEPUIS le jeton (qui ne référence qu'un seul document
@@ -2005,6 +2136,12 @@ def public_partage(request, token):
             mime = 'image/png'
 
     disposition = 'inline' if mime in _INLINE_MIMES else 'attachment'
+
+    # GED35 — journalise l'accès PUBLIC (utilisateur anonyme, best-effort).
+    from .models import ACCES_PUBLIC
+    services.journaliser_acces(
+        partage.document, utilisateur=None, type_acces=ACCES_PUBLIC,
+        adresse_ip=services._adresse_ip_requete(request))
 
     resp = HttpResponse(data, content_type=mime)
     resp['Content-Disposition'] = f'{disposition}; filename="{safe_name}"'

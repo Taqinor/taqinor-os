@@ -3,8 +3,8 @@ from rest_framework import serializers
 from .models import (
     ArchivageLegal, Cabinet, Coffre, DemandeApprobation,
     DemandeSignatureDocument, Document, DocumentLien, DocumentTag,
-    DocumentTagAssignment, DocumentVersion, Folder, LegalHold, ModeleDocument,
-    PartageGed, PolitiqueRetention,
+    DocumentTagAssignment, DocumentVersion, Folder, JournalAcces, LegalHold,
+    ModeleDocument, PartageGed, PolitiqueRetention, QuotaStockage,
 )
 from . import services
 
@@ -614,3 +614,49 @@ class ModeleDocumentSerializer(serializers.ModelSerializer):
             'created_by', 'created_by_nom', 'created_at', 'updated_at',
         ]
         read_only_fields = ['created_by', 'created_at', 'updated_at']
+
+
+class JournalAccesSerializer(serializers.ModelSerializer):
+    """GED35 — Entrée d'audit d'accès (LECTURE SEULE).
+
+    Le journal est append-only : il n'est JAMAIS créé/modifié via cette API
+    (l'écriture passe par `services.journaliser_acces`, côté serveur, au moment
+    d'une lecture). Tous les champs sont en lecture seule."""
+    document_nom = serializers.CharField(
+        source='document.nom', read_only=True, default=None)
+    utilisateur_nom = serializers.CharField(
+        source='utilisateur.username', read_only=True, default=None)
+
+    class Meta:
+        model = JournalAcces
+        fields = [
+            'id', 'document', 'document_nom',
+            'utilisateur', 'utilisateur_nom',
+            'type_acces', 'adresse_ip', 'created_at',
+        ]
+        read_only_fields = fields
+
+
+class QuotaStockageSerializer(serializers.ModelSerializer):
+    """GED36 — Quota de stockage d'une société.
+
+    `company` est posée CÔTÉ SERVEUR (jamais lue du corps). Expose en lecture
+    l'usage courant calculé (`utilise_octets`) et le dépassement éventuel —
+    purement informatifs/dérivés, jamais écrits du corps."""
+    utilise_octets = serializers.SerializerMethodField()
+    depasse = serializers.SerializerMethodField()
+
+    class Meta:
+        model = QuotaStockage
+        fields = [
+            'id', 'quota_octets', 'utilise_octets', 'depasse',
+            'created_at', 'updated_at',
+        ]
+        read_only_fields = ['utilise_octets', 'depasse',
+                            'created_at', 'updated_at']
+
+    def get_utilise_octets(self, obj):
+        return services.usage_stockage_octets(obj.company)
+
+    def get_depasse(self, obj):
+        return services.quota_depasse(obj.company)
