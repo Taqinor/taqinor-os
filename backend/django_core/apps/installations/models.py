@@ -94,6 +94,10 @@ from .models_evaluation_soustraitant import (
 from .models_retenue_garantie import (
     RetenueGarantieSousTraitant,
 )
+from .models_demande_achat import (
+    DemandeAchat,
+    DemandeAchatLigne,
+)
 
 __all__ = [
     'Installation',
@@ -143,4 +147,6 @@ __all__ = [
     'AttestationSousTraitant',
     'EvaluationSousTraitant',
     'RetenueGarantieSousTraitant',
+    'DemandeAchat',
+    'DemandeAchatLigne',
 ]

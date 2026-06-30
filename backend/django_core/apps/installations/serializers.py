@@ -22,6 +22,8 @@ from .models import (
     AttestationSousTraitant,
     EvaluationSousTraitant,
     RetenueGarantieSousTraitant,
+    DemandeAchat,
+    DemandeAchatLigne,
 )
 
 
@@ -1221,4 +1223,67 @@ class RetenueGarantieSousTraitantSerializer(serializers.ModelSerializer):
         if value is None or value < 0 or value > 100:
             raise serializers.ValidationError(
                 'Le pourcentage doit être compris entre 0 et 100.')
+        return value
+
+
+class DemandeAchatLigneSerializer(serializers.ModelSerializer):
+    """FG310 — ligne d'une demande d'achat (produit catalogue OU désignation
+    libre, quantité, prix estimé INTERNE)."""
+    produit_nom = serializers.CharField(
+        source='produit.nom', read_only=True, default=None)
+    total_estime = serializers.DecimalField(
+        max_digits=14, decimal_places=2, read_only=True)
+
+    class Meta:
+        model = DemandeAchatLigne
+        fields = [
+            'id', 'demande', 'produit', 'produit_nom', 'designation',
+            'quantite', 'prix_estime', 'total_estime',
+        ]
+
+    def validate(self, attrs):
+        produit = attrs.get('produit') if 'produit' in attrs else getattr(
+            self.instance, 'produit', None)
+        designation = attrs.get('designation') if 'designation' in attrs else (
+            getattr(self.instance, 'designation', None))
+        if produit is None and not (designation or '').strip():
+            raise serializers.ValidationError(
+                {'designation': 'Indiquez un produit ou une désignation.'})
+        return attrs
+
+
+class DemandeAchatSerializer(serializers.ModelSerializer):
+    """FG310 — réquisition d'achat soumise à approbation. La référence, la
+    société et `created_by` sont posés CÔTÉ SERVEUR ; `reference` est
+    anti-collision (`DA-YYYYMM-NNNN`). Le `statut`, l'approbateur et la date de
+    décision avancent via les actions de cycle de vie
+    (`soumettre`/`approuver`/`refuser`/`marquer_commandee`) — jamais écrits
+    librement. `montant_estime` est dérivé (INTERNE)."""
+    statut_display = serializers.CharField(
+        source='get_statut_display', read_only=True, default=None)
+    priorite_display = serializers.CharField(
+        source='get_priorite_display', read_only=True, default=None)
+    lignes = DemandeAchatLigneSerializer(many=True, read_only=True)
+    montant_estime = serializers.DecimalField(
+        max_digits=14, decimal_places=2, read_only=True)
+
+    class Meta:
+        model = DemandeAchat
+        fields = [
+            'id', 'reference', 'objet', 'chantier', 'programme',
+            'fournisseur_suggere', 'priorite', 'priorite_display',
+            'date_besoin', 'statut', 'statut_display', 'motif_refus',
+            'approuvee_par', 'date_decision', 'note', 'lignes',
+            'montant_estime',
+            'created_by', 'date_creation', 'date_modification',
+        ]
+        read_only_fields = [
+            'reference', 'statut', 'approuvee_par', 'date_decision',
+            'motif_refus', 'created_by', 'date_creation', 'date_modification',
+        ]
+
+    def validate_objet(self, value):
+        value = (value or '').strip()
+        if not value:
+            raise serializers.ValidationError("L'objet est obligatoire.")
         return value

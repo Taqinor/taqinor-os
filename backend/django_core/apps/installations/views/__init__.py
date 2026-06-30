@@ -30,6 +30,7 @@ from .facture_soustraitant import (
 from .attestation_soustraitant import AttestationSousTraitantViewSet
 from .evaluation_soustraitant import EvaluationSousTraitantViewSet
 from .retenue_garantie import RetenueGarantieSousTraitantViewSet
+from .demande_achat import DemandeAchatViewSet, DemandeAchatLigneViewSet
 from .field_sync import FieldSyncView
 
 __all__ = [
@@ -61,5 +62,7 @@ __all__ = [
     'AttestationSousTraitantViewSet',
     'EvaluationSousTraitantViewSet',
     'RetenueGarantieSousTraitantViewSet',
+    'DemandeAchatViewSet',
+    'DemandeAchatLigneViewSet',
     'FieldSyncView',
 ]
