@@ -113,3 +113,28 @@ class TestDC28CoutAchatCourant(DCBase):
         self.assertEqual(
             cout_achat_courant(self.produit),
             cout_achat_courant_with_source(self.produit)[0])
+
+
+class TestDC30DC31TiersIdentite(DCBase):
+    """DC30/DC31 — l'identité d'un compte auxiliaire (compta) / d'une partie au
+    contrat se DÉRIVE du Fournisseur via le sélecteur, jamais re-stockée."""
+
+    def test_selector_returns_identity(self):
+        from apps.stock.selectors import get_fournisseur_tiers_identity
+        ident = get_fournisseur_tiers_identity(self.company, self.fournisseur.id)
+        self.assertEqual(ident['nom'], 'Grossiste Solaire')
+        self.assertEqual(ident['ice'], '001234567000089')
+        self.assertEqual(ident['identifiant_fiscal'], 'IF12345')
+        self.assertEqual(ident['rc'], 'RC987')
+        self.assertEqual(ident['rib'], '011780000012345678901234')
+        self.assertEqual(ident['type_tiers'], 'fournisseur')
+
+    def test_selector_scoped_to_company(self):
+        from apps.stock.selectors import get_fournisseur_tiers_identity
+        ident = get_fournisseur_tiers_identity(self.other, self.fournisseur.id)
+        self.assertIsNone(ident)
+
+    def test_selector_missing_returns_none(self):
+        from apps.stock.selectors import get_fournisseur_tiers_identity
+        self.assertIsNone(
+            get_fournisseur_tiers_identity(self.company, 999999))
