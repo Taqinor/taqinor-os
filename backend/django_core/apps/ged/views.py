@@ -506,6 +506,10 @@ class DocumentViewSet(TenantMixin, viewsets.ModelViewSet):
         try:
             new_version = services.restore_version(
                 document, source_version, uploaded_by=request.user)
+        except ArchivageLegalError as exc:
+            # GED23 — document archivé légalement : write-once, pas de restauration.
+            return Response(
+                {'detail': str(exc)}, status=status.HTTP_403_FORBIDDEN)
         except ValueError as exc:
             return Response(
                 {'detail': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
@@ -527,6 +531,10 @@ class DocumentViewSet(TenantMixin, viewsets.ModelViewSet):
         document = self.get_object()
         try:
             doc = services.checkout_document(document, request.user)
+        except ArchivageLegalError as exc:
+            # GED23 — document archivé légalement : write-once, pas d'extraction.
+            return Response(
+                {'detail': str(exc)}, status=status.HTTP_403_FORBIDDEN)
         except PermissionError as exc:
             return Response(
                 {'detail': str(exc)}, status=status.HTTP_409_CONFLICT)
@@ -546,6 +554,10 @@ class DocumentViewSet(TenantMixin, viewsets.ModelViewSet):
         document = self.get_object()
         try:
             doc = services.checkin_document(document, request.user)
+        except ArchivageLegalError as exc:
+            # GED23 — document archivé légalement : write-once, save() bloqué.
+            return Response(
+                {'detail': str(exc)}, status=status.HTTP_403_FORBIDDEN)
         except PermissionError as exc:
             return Response(
                 {'detail': str(exc)}, status=status.HTTP_403_FORBIDDEN)

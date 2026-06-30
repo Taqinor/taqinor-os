@@ -1395,7 +1395,10 @@ def _mo_reelle(projet):
             if aff.ressource_id and aff.ressource.cout_horaire is not None
             else Decimal('0'))
         total += charge * heures_jour * cout_horaire
-    return total
+    # Quantize à 2 décimales : charge_jours/cout_horaire ont chacun 2 dp, leur
+    # produit en a 4 → la sérialisation `str()` rendrait « 800.0000 » au lieu de
+    # « 800.00 » (l'écart hérite de la même sur-précision). Aligne réel + écart.
+    return total.quantize(Decimal('0.01'))
 
 
 def _ecart_pct(budget_montant, reel_montant):
