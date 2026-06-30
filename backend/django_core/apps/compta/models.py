@@ -3706,3 +3706,626 @@ class EntiteConsolidation(models.Model):
                      or self.pourcentage_interet > 100)):
             raise ValidationError(
                 "Le pourcentage d'intérêt doit être entre 0 et 100 %.")
+
+
+# ── FG201 — Campagnes email & SMS (envoi groupé, Brevo, GATED) ──────────────
+
+class Campagne(models.Model):
+    """Campagne d'envoi groupé email / SMS vers un segment ciblé (FG201).
+
+    Sert à « réveiller » une base froide : on définit un segment (critères de
+    ciblage libres, stockés en JSON), un canal et un message, puis on déclenche
+    l'envoi groupé. L'envoi RÉEL passe par Brevo et n'a lieu que si l'intégration
+    est explicitement activée (réglage ``BREVO_ENABLED`` + clé) — sinon l'envoi
+    est un NO-OP (aucun appel payant, aucune dépendance dure). Les compteurs
+    d'ouvertures/clics sont stockés ici pour mesurer le réveil.
+    """
+    class Canal(models.TextChoices):
+        EMAIL = 'email', 'Email'
+        SMS = 'sms', 'SMS'
+
+    class Statut(models.TextChoices):
+        BROUILLON = 'brouillon', 'Brouillon'
+        ENVOYEE = 'envoyee', 'Envoyée'
+        ANNULEE = 'annulee', 'Annulée'
+
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='campagnes_marketing',
+        verbose_name='Société',
+    )
+    nom = models.CharField(max_length=200, verbose_name='Nom de la campagne')
+    canal = models.CharField(
+        max_length=8, choices=Canal.choices, default=Canal.EMAIL,
+        verbose_name='Canal')
+    objet = models.CharField(
+        max_length=255, blank=True, default='',
+        verbose_name='Objet (email)')
+    corps = models.TextField(blank=True, default='', verbose_name='Message')
+    segment = models.JSONField(
+        default=dict, blank=True,
+        verbose_name='Critères de segment (JSON)')
+    statut = models.CharField(
+        max_length=12, choices=Statut.choices, default=Statut.BROUILLON,
+        verbose_name='Statut')
+    # Compteurs de réveil — alimentés par les webhooks Brevo (gated).
+    nb_destinataires = models.PositiveIntegerField(
+        default=0, verbose_name='Destinataires')
+    nb_envois = models.PositiveIntegerField(default=0, verbose_name='Envoyés')
+    nb_ouvertures = models.PositiveIntegerField(
+        default=0, verbose_name='Ouvertures')
+    nb_clics = models.PositiveIntegerField(default=0, verbose_name='Clics')
+    envoyee_le = models.DateTimeField(
+        null=True, blank=True, verbose_name='Envoyée le')
+    date_creation = models.DateTimeField(
+        auto_now_add=True, verbose_name='Créée le')
+
+    class Meta:
+        verbose_name = 'Campagne email/SMS'
+        verbose_name_plural = 'Campagnes email/SMS'
+        ordering = ['-date_creation']
+
+    def __str__(self):
+        return f'{self.nom} ({self.canal})'
+
+
+# ── FG202 — Séquences de relance automatisées (drip / nurture) ─────────────
+
+class SequenceRelance(models.Model):
+    """Séquence multi-étapes déclenchée par l'entrée d'un lead en étape (FG202).
+
+    Exemple : J0 WhatsApp → J3 email → J7 appel. La séquence est attachée à un
+    déclencheur (l'entrée dans une étape du pipeline, désignée par sa CLÉ
+    canonique ``STAGES.py`` stockée en texte — jamais codée en dur ici). Les
+    étapes réelles (envoi WhatsApp/email) sont gated comme FG201 : tant que les
+    intégrations sont OFF, le moteur ne fait qu'enregistrer/planifier, sans
+    appel payant.
+    """
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='sequences_relance',
+        verbose_name='Société',
+    )
+    nom = models.CharField(max_length=200, verbose_name='Nom de la séquence')
+    # Clé de l'étape déclencheuse (vient de STAGES.py — stockée en texte, jamais
+    # hardcodée dans le code). Vide = manuelle.
+    stage_declencheur = models.CharField(
+        max_length=40, blank=True, default='',
+        verbose_name="Clé d'étape déclencheuse")
+    actif = models.BooleanField(default=True, verbose_name='Active')
+    date_creation = models.DateTimeField(
+        auto_now_add=True, verbose_name='Créée le')
+
+    class Meta:
+        verbose_name = 'Séquence de relance'
+        verbose_name_plural = 'Séquences de relance'
+        ordering = ['nom']
+
+    def __str__(self):
+        return self.nom
+
+
+class EtapeSequence(models.Model):
+    """Une étape d'une séquence de relance (FG202).
+
+    ``delai_jours`` = décalage depuis le déclenchement (J0, J3, J7…). ``canal``
+    = WhatsApp/email/appel. L'ordre détermine l'enchaînement.
+    """
+    class Canal(models.TextChoices):
+        WHATSAPP = 'whatsapp', 'WhatsApp'
+        EMAIL = 'email', 'Email'
+        APPEL = 'appel', 'Appel'
+
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='etapes_sequence',
+        verbose_name='Société',
+    )
+    sequence = models.ForeignKey(
+        SequenceRelance,
+        on_delete=models.CASCADE,
+        related_name='etapes',
+        verbose_name='Séquence',
+    )
+    ordre = models.PositiveIntegerField(default=1, verbose_name='Ordre')
+    delai_jours = models.PositiveIntegerField(
+        default=0, verbose_name='Délai (jours depuis le déclenchement)')
+    canal = models.CharField(
+        max_length=10, choices=Canal.choices, default=Canal.EMAIL,
+        verbose_name='Canal')
+    modele_message = models.TextField(
+        blank=True, default='', verbose_name='Modèle de message')
+
+    class Meta:
+        verbose_name = 'Étape de séquence'
+        verbose_name_plural = 'Étapes de séquence'
+        ordering = ['sequence', 'ordre']
+        constraints = [
+            models.UniqueConstraint(
+                fields=['sequence', 'ordre'],
+                name='uniq_etape_sequence_ordre',
+            ),
+        ]
+
+    def __str__(self):
+        return f'{self.sequence_id} #{self.ordre} ({self.canal}, J+{self.delai_jours})'
+
+
+# ── FG203 — Récupération des devis abandonnés ──────────────────────────────
+
+class RelanceDevisAbandonne(models.Model):
+    """Trace d'une relance sur un devis envoyé non répondu après N jours (FG203).
+
+    On ne touche JAMAIS le modèle Devis (ventes) : on le référence par sa
+    ``devis_reference`` (texte) et son ``devis_id`` (entier opaque), lus via les
+    selectors de ventes. Ce log consigne la relance émise (jamais l'envoi
+    lui-même), comme ``RelanceLog`` côté factures.
+    """
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='relances_devis_abandonnes',
+        verbose_name='Société',
+    )
+    devis_id = models.PositiveIntegerField(verbose_name='Devis (id ventes)')
+    devis_reference = models.CharField(
+        max_length=50, blank=True, default='', verbose_name='Référence devis')
+    jours_sans_reponse = models.PositiveIntegerField(
+        default=0, verbose_name='Jours sans réponse à la relance')
+    canal = models.CharField(
+        max_length=20, blank=True, default='', verbose_name='Canal de relance')
+    note = models.TextField(blank=True, default='', verbose_name='Note')
+    date_relance = models.DateTimeField(
+        auto_now_add=True, verbose_name='Relancé le')
+
+    class Meta:
+        verbose_name = 'Relance devis abandonné'
+        verbose_name_plural = 'Relances devis abandonnés'
+        ordering = ['-date_relance']
+
+    def __str__(self):
+        return f'Relance devis {self.devis_reference or self.devis_id}'
+
+
+# ── FG205 — Tracking d'ouverture des ShareLink devis/facture ───────────────
+
+class OuverturePartage(models.Model):
+    """Horodatage des ouvertures d'un lien de partage devis/facture (FG205).
+
+    Le ShareLink lui-même vit dans ventes ; on ne l'importe pas. On indexe ici
+    les ÉVÉNEMENTS d'ouverture par ``token`` (texte opaque) pour prioriser les
+    relances : premier vu, dernier vu, nombre de vues. Aucune donnée client
+    n'est dupliquée.
+    """
+    class Cible(models.TextChoices):
+        DEVIS = 'devis', 'Devis'
+        FACTURE = 'facture', 'Facture'
+
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='ouvertures_partage',
+        verbose_name='Société',
+    )
+    token = models.CharField(max_length=64, db_index=True,
+                             verbose_name='Token du lien de partage')
+    cible = models.CharField(
+        max_length=8, choices=Cible.choices, default=Cible.DEVIS,
+        verbose_name='Cible')
+    cible_reference = models.CharField(
+        max_length=50, blank=True, default='',
+        verbose_name='Référence document')
+    nb_ouvertures = models.PositiveIntegerField(
+        default=0, verbose_name="Nombre d'ouvertures")
+    premier_vu_le = models.DateTimeField(
+        null=True, blank=True, verbose_name='Premier vu le')
+    dernier_vu_le = models.DateTimeField(
+        null=True, blank=True, verbose_name='Dernier vu le')
+
+    class Meta:
+        verbose_name = "Ouverture de lien de partage"
+        verbose_name_plural = "Ouvertures de liens de partage"
+        ordering = ['-dernier_vu_le']
+        constraints = [
+            models.UniqueConstraint(
+                fields=['company', 'token'],
+                name='uniq_ouverture_partage_token',
+            ),
+        ]
+
+    def __str__(self):
+        return f'{self.cible} {self.token[:8]}… ({self.nb_ouvertures} vues)'
+
+
+# ── FG206 — Constructeur de formulaires / landing pages multiples ──────────
+
+class FormulaireIntake(models.Model):
+    """Définition d'un formulaire d'intake / landing page (FG206).
+
+    Plusieurs formulaires d'entrée (pompage agricole, régularisation 82-21…),
+    chacun pré-taguant le lead créé avec un ``tag_prefill`` et un
+    ``type_installation`` par défaut. Les champs sont décrits en JSON (libre).
+    Le slug tokenisé rend la page adressable publiquement (création de lead via
+    crm.services, jamais d'import de modèles crm).
+    """
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='formulaires_intake',
+        verbose_name='Société',
+    )
+    nom = models.CharField(max_length=200, verbose_name='Nom du formulaire')
+    slug = models.SlugField(max_length=80, verbose_name='Slug public')
+    tag_prefill = models.CharField(
+        max_length=80, blank=True, default='',
+        verbose_name='Tag pré-rempli sur le lead')
+    type_installation = models.CharField(
+        max_length=40, blank=True, default='',
+        verbose_name="Type d'installation par défaut")
+    champs = models.JSONField(
+        default=list, blank=True, verbose_name='Définition des champs (JSON)')
+    actif = models.BooleanField(default=True, verbose_name='Actif')
+    date_creation = models.DateTimeField(
+        auto_now_add=True, verbose_name='Créé le')
+
+    class Meta:
+        verbose_name = "Formulaire d'intake"
+        verbose_name_plural = "Formulaires d'intake"
+        ordering = ['nom']
+        constraints = [
+            models.UniqueConstraint(
+                fields=['company', 'slug'],
+                name='uniq_formulaire_intake_slug',
+            ),
+        ]
+
+    def __str__(self):
+        return self.nom
+
+
+# ── FG207 — Capture de leads via WhatsApp (inbound, GATED) ─────────────────
+
+class MessageWhatsAppEntrant(models.Model):
+    """Message WhatsApp entrant capturé pour créer un lead pré-qualifié (FG207).
+
+    L'intégration WhatsApp Business Cloud (Meta) est GATED : sans le jeton
+    fourni par le founder, le webhook entrant est inactif (NO-OP) et aucun
+    message n'est traité. Quand activé, chaque message crée/rattache un lead
+    DRAFT via ``crm.services`` (jamais d'import de modèles crm), en laissant le
+    funnel à NEW. Ce modèle journalise l'entrée pour audit/idempotence.
+    """
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='messages_whatsapp_entrants',
+        verbose_name='Société',
+    )
+    wa_message_id = models.CharField(
+        max_length=128, verbose_name='ID message WhatsApp')
+    expediteur = models.CharField(
+        max_length=32, verbose_name='Numéro expéditeur')
+    nom_profil = models.CharField(
+        max_length=200, blank=True, default='', verbose_name='Nom du profil')
+    texte = models.TextField(blank=True, default='', verbose_name='Texte')
+    # Id opaque du lead créé/rattaché côté crm (jamais un FK direct cross-app).
+    lead_id = models.PositiveIntegerField(
+        null=True, blank=True, verbose_name='Lead créé (id crm)')
+    traite = models.BooleanField(default=False, verbose_name='Traité')
+    date_reception = models.DateTimeField(
+        auto_now_add=True, verbose_name='Reçu le')
+
+    class Meta:
+        verbose_name = 'Message WhatsApp entrant'
+        verbose_name_plural = 'Messages WhatsApp entrants'
+        ordering = ['-date_reception']
+        constraints = [
+            models.UniqueConstraint(
+                fields=['company', 'wa_message_id'],
+                name='uniq_wa_message_entrant',
+            ),
+        ]
+
+    def __str__(self):
+        return f'WA {self.expediteur} ({self.wa_message_id[:10]}…)'
+
+
+# ── FG208 — Journal d'appels & click-to-call ───────────────────────────────
+
+class AppelTelephonique(models.Model):
+    """Consigne d'un appel téléphonique et de son issue (FG208).
+
+    Mesure l'effort téléphonique. Le bouton ``tel:`` (click-to-call) est un
+    rendu front pur ; côté backend on enregistre l'appel, sa direction, sa durée
+    et son issue. Le lead/contact est référencé par id opaque (jamais un FK
+    cross-app vers crm).
+    """
+    class Direction(models.TextChoices):
+        SORTANT = 'sortant', 'Sortant'
+        ENTRANT = 'entrant', 'Entrant'
+
+    class Issue(models.TextChoices):
+        REPONDU = 'repondu', 'Répondu'
+        SANS_REPONSE = 'sans_reponse', 'Sans réponse'
+        RAPPEL = 'rappel', 'À rappeler'
+        FAUX_NUMERO = 'faux_numero', 'Faux numéro'
+
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='appels_telephoniques',
+        verbose_name='Société',
+    )
+    auteur = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='appels_passes',
+        verbose_name='Auteur',
+    )
+    lead_id = models.PositiveIntegerField(
+        null=True, blank=True, verbose_name='Lead (id crm)')
+    numero = models.CharField(max_length=32, verbose_name='Numéro')
+    direction = models.CharField(
+        max_length=8, choices=Direction.choices, default=Direction.SORTANT,
+        verbose_name='Direction')
+    issue = models.CharField(
+        max_length=14, choices=Issue.choices, default=Issue.REPONDU,
+        verbose_name='Issue')
+    duree_secondes = models.PositiveIntegerField(
+        default=0, verbose_name='Durée (s)')
+    note = models.TextField(blank=True, default='', verbose_name='Note')
+    a_rappeler_le = models.DateField(
+        null=True, blank=True, verbose_name='À rappeler le')
+    date_appel = models.DateTimeField(
+        auto_now_add=True, verbose_name='Appelé le')
+
+    class Meta:
+        verbose_name = "Journal d'appel"
+        verbose_name_plural = "Journal d'appels"
+        ordering = ['-date_appel']
+
+    def __str__(self):
+        return f'{self.direction} {self.numero} ({self.issue})'
+
+
+# ── FG209 — Promotions & campagnes de remise (codes datés) ─────────────────
+
+class CodePromotion(models.Model):
+    """Code de remise daté applicable à un devis (FG209), traçable au ROI.
+
+    Exemple « -5 % Aïd » valable du… au… Le taux est plafonné 0–100 %. Le
+    compteur ``nb_utilisations`` et ``ca_genere`` permettent de mesurer le ROI.
+    L'application au devis est faite côté ventes ; ici on définit/valide le code.
+    """
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='codes_promotion',
+        verbose_name='Société',
+    )
+    code = models.CharField(max_length=40, verbose_name='Code')
+    libelle = models.CharField(
+        max_length=200, blank=True, default='', verbose_name='Libellé')
+    taux_remise = models.DecimalField(
+        max_digits=5, decimal_places=2, default=Decimal('0.00'),
+        verbose_name='Taux de remise (%)')
+    date_debut = models.DateField(verbose_name='Valable du')
+    date_fin = models.DateField(verbose_name='Valable au')
+    actif = models.BooleanField(default=True, verbose_name='Actif')
+    nb_utilisations = models.PositiveIntegerField(
+        default=0, verbose_name="Nombre d'utilisations")
+    ca_genere = models.DecimalField(
+        max_digits=14, decimal_places=2, default=Decimal('0.00'),
+        verbose_name='CA généré (TTC)')
+    date_creation = models.DateTimeField(
+        auto_now_add=True, verbose_name='Créé le')
+
+    class Meta:
+        verbose_name = 'Code de promotion'
+        verbose_name_plural = 'Codes de promotion'
+        ordering = ['-date_creation']
+        constraints = [
+            models.UniqueConstraint(
+                fields=['company', 'code'],
+                name='uniq_code_promotion',
+            ),
+        ]
+
+    def __str__(self):
+        return f'{self.code} (-{self.taux_remise} %)'
+
+    def clean(self):
+        super().clean()
+        if self.taux_remise is not None and (
+                self.taux_remise < 0 or self.taux_remise > 100):
+            raise ValidationError(
+                'Le taux de remise doit être entre 0 et 100 %.')
+        if (self.date_debut and self.date_fin
+                and self.date_fin < self.date_debut):
+            raise ValidationError(
+                'La date de fin doit être postérieure à la date de début.')
+
+
+# ── FG210 — Bibliothèque de modèles de devis ───────────────────────────────
+
+class ModeleDevis(models.Model):
+    """Modèle de devis réutilisable par marché (FG210).
+
+    Exemples : « Résidentiel 5 kWc », « Pompage 3 CV ». Les lignes-types sont
+    décrites en JSON (désignation/quantité/prix indicatif) : une amorce que le
+    commercial charge dans le générateur de devis. Ne crée aucun document ; ne
+    touche pas le modèle Devis.
+    """
+    class Marche(models.TextChoices):
+        RESIDENTIEL = 'residentiel', 'Résidentiel'
+        INDUSTRIEL = 'industriel', 'Industriel/Commercial'
+        AGRICOLE = 'agricole', 'Agricole (pompage)'
+
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='modeles_devis',
+        verbose_name='Société',
+    )
+    nom = models.CharField(max_length=200, verbose_name='Nom du modèle')
+    marche = models.CharField(
+        max_length=12, choices=Marche.choices, default=Marche.RESIDENTIEL,
+        verbose_name='Marché')
+    description = models.TextField(
+        blank=True, default='', verbose_name='Description')
+    lignes_type = models.JSONField(
+        default=list, blank=True, verbose_name='Lignes-types (JSON)')
+    actif = models.BooleanField(default=True, verbose_name='Actif')
+    date_creation = models.DateTimeField(
+        auto_now_add=True, verbose_name='Créé le')
+
+    class Meta:
+        verbose_name = 'Modèle de devis'
+        verbose_name_plural = 'Modèles de devis'
+        ordering = ['marche', 'nom']
+
+    def __str__(self):
+        return f'{self.nom} ({self.marche})'
+
+
+# ── FG211 — Configurateur d'options guidé (guided selling) ─────────────────
+
+class SessionGuidedSelling(models.Model):
+    """Session d'un assistant pas-à-pas de configuration de devis (FG211).
+
+    Persiste les réponses d'un commercial junior au fil des étapes ; un service
+    valide la cohérence (ex. kWc vs onduleur) et propose une composition. Ne
+    crée pas le devis lui-même.
+    """
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='sessions_guided_selling',
+        verbose_name='Société',
+    )
+    auteur = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='sessions_guided_selling',
+        verbose_name='Auteur',
+    )
+    marche = models.CharField(
+        max_length=12, default='residentiel', verbose_name='Marché')
+    reponses = models.JSONField(
+        default=dict, blank=True, verbose_name='Réponses (JSON)')
+    composition = models.JSONField(
+        default=dict, blank=True,
+        verbose_name='Composition proposée (JSON)')
+    complet = models.BooleanField(default=False, verbose_name='Complète')
+    date_creation = models.DateTimeField(
+        auto_now_add=True, verbose_name='Créée le')
+
+    class Meta:
+        verbose_name = 'Session de configuration guidée'
+        verbose_name_plural = 'Sessions de configuration guidée'
+        ordering = ['-date_creation']
+
+    def __str__(self):
+        return f'Guided selling {self.id} ({self.marche})'
+
+
+# ── FG213 — Routage d'approbation des configurations non-standard ──────────
+
+class DemandeApprobationConfig(models.Model):
+    """Demande d'approbation d'une composition de devis non-standard (FG213).
+
+    Quand la composition sort des règles (ex. kWc/onduleur incohérents), elle
+    part en validation. Le devis est référencé par id opaque (ventes). Workflow :
+    en_attente → approuvée/refusée, traçable (qui, quand, motif).
+    """
+    class Statut(models.TextChoices):
+        EN_ATTENTE = 'en_attente', 'En attente'
+        APPROUVEE = 'approuvee', 'Approuvée'
+        REFUSEE = 'refusee', 'Refusée'
+
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='approbations_config',
+        verbose_name='Société',
+    )
+    devis_id = models.PositiveIntegerField(
+        null=True, blank=True, verbose_name='Devis (id ventes)')
+    devis_reference = models.CharField(
+        max_length=50, blank=True, default='', verbose_name='Référence devis')
+    motif = models.TextField(
+        verbose_name='Motif de la non-conformité')
+    statut = models.CharField(
+        max_length=12, choices=Statut.choices, default=Statut.EN_ATTENTE,
+        verbose_name='Statut')
+    demandeur = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='approbations_demandees',
+        verbose_name='Demandeur',
+    )
+    decideur = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='approbations_decidees',
+        verbose_name='Décideur',
+    )
+    commentaire_decision = models.TextField(
+        blank=True, default='', verbose_name='Commentaire de décision')
+    date_creation = models.DateTimeField(
+        auto_now_add=True, verbose_name='Créée le')
+    date_decision = models.DateTimeField(
+        null=True, blank=True, verbose_name='Décidée le')
+
+    class Meta:
+        verbose_name = "Demande d'approbation de configuration"
+        verbose_name_plural = "Demandes d'approbation de configuration"
+        ordering = ['-date_creation']
+
+    def __str__(self):
+        return f'Approbation {self.devis_reference or self.devis_id} ({self.statut})'
+
+
+# ── FG214 — E-catalogue à prix publics (tokenisé) ──────────────────────────
+
+class ECatalogue(models.Model):
+    """Page catalogue publique tokenisée, prix public TTC SEULEMENT (FG214).
+
+    Jeton long/imprévisible/expirant. Le rendu n'expose JAMAIS le prix d'achat
+    (``prix_achat``) ni aucune marge — uniquement le prix public TTC, lu via les
+    selectors de stock. La sélection de produits est stockée en liste d'ids
+    opaques (jamais un FK cross-app vers stock).
+    """
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='ecatalogues',
+        verbose_name='Société',
+    )
+    titre = models.CharField(
+        max_length=200, default='Catalogue', verbose_name='Titre')
+    token = models.CharField(
+        max_length=64, unique=True, db_index=True,
+        verbose_name='Token public')
+    produit_ids = models.JSONField(
+        default=list, blank=True,
+        verbose_name='Produits exposés (ids stock)')
+    actif = models.BooleanField(default=True, verbose_name='Actif')
+    expire_le = models.DateTimeField(
+        null=True, blank=True, verbose_name='Expire le')
+    date_creation = models.DateTimeField(
+        auto_now_add=True, verbose_name='Créé le')
+
+    class Meta:
+        verbose_name = 'E-catalogue public'
+        verbose_name_plural = 'E-catalogues publics'
+        ordering = ['-date_creation']
+
+    def __str__(self):
+        return f'{self.titre} ({self.token[:8]}…)'

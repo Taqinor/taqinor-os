@@ -9,16 +9,22 @@ from decimal import Decimal
 from rest_framework import serializers
 
 from .models import (
-    AvancementRevenu, BaremeIndemnite, BordereauRemise, Budget, BudgetLigne,
-    Caisse, CautionBancaire, CentreCout, CessionImmobilisation, ClotureCaisse,
+    AppelTelephonique, AvancementRevenu, BaremeIndemnite, BordereauRemise,
+    Budget, BudgetLigne,
+    Caisse, Campagne, CautionBancaire, CentreCout, CessionImmobilisation,
+    ClotureCaisse, CodePromotion,
     CommissionPayoutLine, CommissionPayoutRun, CompteComptable,
-    CompteTresorerie, ContratAvancement, DeclarationTVA, DotationAmortissement,
-    EcritureComptable, Effet, EntiteConsolidation, ExerciceComptable,
+    CompteTresorerie, ContratAvancement, DeclarationTVA,
+    DemandeApprobationConfig, DotationAmortissement,
+    ECatalogue, EcritureComptable, Effet, EntiteConsolidation, EtapeSequence,
+    ExerciceComptable, FormulaireIntake,
     Immobilisation, IndemniteChantier, Journal, LigneEcriture,
-    LignePrevisionnelTresorerie, LigneReleve, MouvementCaisse, NoteFrais,
+    LignePrevisionnelTresorerie, LigneReleve, MessageWhatsAppEntrant,
+    ModeleDevis, MouvementCaisse, NoteFrais, OuverturePartage,
     PaymentRun, PaymentRunLine, PeriodeComptable, PlanAmortissement,
     PlanComptable, ProvisionCreance, Rapprochement, RapprochementBancaire,
-    RetenueGarantie, RetenueSource, TimbreFiscal, TravauxEnCours,
+    RelanceDevisAbandonne, RetenueGarantie, RetenueSource, SequenceRelance,
+    SessionGuidedSelling, TimbreFiscal, TravauxEnCours,
     VirementInterne,
 )
 
@@ -1289,3 +1295,219 @@ class EntiteConsolidationSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError(
                 "Le pourcentage d'intérêt doit être entre 0 et 100 %.")
         return value
+
+
+# ── FG201 — Campagnes email & SMS ──────────────────────────────────────────
+
+class CampagneSerializer(serializers.ModelSerializer):
+    canal_display = serializers.CharField(
+        source='get_canal_display', read_only=True)
+    statut_display = serializers.CharField(
+        source='get_statut_display', read_only=True)
+
+    class Meta:
+        model = Campagne
+        fields = [
+            'id', 'nom', 'canal', 'canal_display', 'objet', 'corps', 'segment',
+            'statut', 'statut_display', 'nb_destinataires', 'nb_envois',
+            'nb_ouvertures', 'nb_clics', 'envoyee_le', 'date_creation',
+        ]
+        read_only_fields = [
+            'statut', 'nb_destinataires', 'nb_envois', 'nb_ouvertures',
+            'nb_clics', 'envoyee_le', 'date_creation',
+        ]
+
+
+# ── FG202 — Séquences de relance automatisées ──────────────────────────────
+
+class EtapeSequenceSerializer(serializers.ModelSerializer):
+    canal_display = serializers.CharField(
+        source='get_canal_display', read_only=True)
+
+    class Meta:
+        model = EtapeSequence
+        fields = [
+            'id', 'sequence', 'ordre', 'delai_jours', 'canal', 'canal_display',
+            'modele_message',
+        ]
+
+    def validate_sequence(self, value):
+        return _meme_societe(self, value, 'séquence')
+
+
+class SequenceRelanceSerializer(serializers.ModelSerializer):
+    etapes = EtapeSequenceSerializer(many=True, read_only=True)
+
+    class Meta:
+        model = SequenceRelance
+        fields = [
+            'id', 'nom', 'stage_declencheur', 'actif', 'date_creation',
+            'etapes',
+        ]
+        read_only_fields = ['date_creation']
+
+
+# ── FG203 — Récupération des devis abandonnés ──────────────────────────────
+
+class RelanceDevisAbandonneSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = RelanceDevisAbandonne
+        fields = [
+            'id', 'devis_id', 'devis_reference', 'jours_sans_reponse',
+            'canal', 'note', 'date_relance',
+        ]
+        read_only_fields = ['date_relance']
+
+
+# ── FG205 — Tracking d'ouverture des ShareLink ─────────────────────────────
+
+class OuverturePartageSerializer(serializers.ModelSerializer):
+    cible_display = serializers.CharField(
+        source='get_cible_display', read_only=True)
+
+    class Meta:
+        model = OuverturePartage
+        fields = [
+            'id', 'token', 'cible', 'cible_display', 'cible_reference',
+            'nb_ouvertures', 'premier_vu_le', 'dernier_vu_le',
+        ]
+        read_only_fields = [
+            'nb_ouvertures', 'premier_vu_le', 'dernier_vu_le',
+        ]
+
+
+# ── FG206 — Formulaires d'intake / landing pages ───────────────────────────
+
+class FormulaireIntakeSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = FormulaireIntake
+        fields = [
+            'id', 'nom', 'slug', 'tag_prefill', 'type_installation', 'champs',
+            'actif', 'date_creation',
+        ]
+        read_only_fields = ['date_creation']
+
+
+# ── FG207 — Messages WhatsApp entrants (lecture) ───────────────────────────
+
+class MessageWhatsAppEntrantSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = MessageWhatsAppEntrant
+        fields = [
+            'id', 'wa_message_id', 'expediteur', 'nom_profil', 'texte',
+            'lead_id', 'traite', 'date_reception',
+        ]
+        read_only_fields = fields
+
+
+# ── FG208 — Journal d'appels & click-to-call ───────────────────────────────
+
+class AppelTelephoniqueSerializer(serializers.ModelSerializer):
+    direction_display = serializers.CharField(
+        source='get_direction_display', read_only=True)
+    issue_display = serializers.CharField(
+        source='get_issue_display', read_only=True)
+    auteur_nom = serializers.CharField(
+        source='auteur.username', read_only=True)
+
+    class Meta:
+        model = AppelTelephonique
+        fields = [
+            'id', 'auteur', 'auteur_nom', 'lead_id', 'numero', 'direction',
+            'direction_display', 'issue', 'issue_display', 'duree_secondes',
+            'note', 'a_rappeler_le', 'date_appel',
+        ]
+        read_only_fields = ['auteur', 'auteur_nom', 'date_appel']
+
+
+# ── FG209 — Codes de promotion ─────────────────────────────────────────────
+
+class CodePromotionSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = CodePromotion
+        fields = [
+            'id', 'code', 'libelle', 'taux_remise', 'date_debut', 'date_fin',
+            'actif', 'nb_utilisations', 'ca_genere', 'date_creation',
+        ]
+        read_only_fields = [
+            'nb_utilisations', 'ca_genere', 'date_creation',
+        ]
+
+    def validate_taux_remise(self, value):
+        if value is not None and (value < 0 or value > 100):
+            raise serializers.ValidationError(
+                'Le taux de remise doit être entre 0 et 100 %.')
+        return value
+
+    def validate(self, attrs):
+        debut = attrs.get('date_debut')
+        fin = attrs.get('date_fin')
+        if debut and fin and fin < debut:
+            raise serializers.ValidationError(
+                'La date de fin doit être postérieure à la date de début.')
+        return attrs
+
+
+# ── FG210 — Modèles de devis ───────────────────────────────────────────────
+
+class ModeleDevisSerializer(serializers.ModelSerializer):
+    marche_display = serializers.CharField(
+        source='get_marche_display', read_only=True)
+
+    class Meta:
+        model = ModeleDevis
+        fields = [
+            'id', 'nom', 'marche', 'marche_display', 'description',
+            'lignes_type', 'actif', 'date_creation',
+        ]
+        read_only_fields = ['date_creation']
+
+
+# ── FG211 — Sessions de configuration guidée ───────────────────────────────
+
+class SessionGuidedSellingSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = SessionGuidedSelling
+        fields = [
+            'id', 'auteur', 'marche', 'reponses', 'composition', 'complet',
+            'date_creation',
+        ]
+        read_only_fields = [
+            'auteur', 'composition', 'complet', 'date_creation',
+        ]
+
+
+# ── FG213 — Demandes d'approbation de configuration ────────────────────────
+
+class DemandeApprobationConfigSerializer(serializers.ModelSerializer):
+    statut_display = serializers.CharField(
+        source='get_statut_display', read_only=True)
+    demandeur_nom = serializers.CharField(
+        source='demandeur.username', read_only=True)
+    decideur_nom = serializers.CharField(
+        source='decideur.username', read_only=True)
+
+    class Meta:
+        model = DemandeApprobationConfig
+        fields = [
+            'id', 'devis_id', 'devis_reference', 'motif', 'statut',
+            'statut_display', 'demandeur', 'demandeur_nom', 'decideur',
+            'decideur_nom', 'commentaire_decision', 'date_creation',
+            'date_decision',
+        ]
+        read_only_fields = [
+            'statut', 'demandeur', 'demandeur_nom', 'decideur', 'decideur_nom',
+            'commentaire_decision', 'date_creation', 'date_decision',
+        ]
+
+
+# ── FG214 — E-catalogue public tokenisé ────────────────────────────────────
+
+class ECatalogueSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = ECatalogue
+        fields = [
+            'id', 'titre', 'token', 'produit_ids', 'actif', 'expire_le',
+            'date_creation',
+        ]
+        read_only_fields = ['token', 'date_creation']

@@ -31,15 +31,20 @@ from django.utils import timezone
 
 from .models import (
     AvancementRevenu, BaremeIndemnite, BordereauRemise, Budget, BudgetLigne,
-    Caisse, CautionBancaire, CentreCout, CessionImmobilisation, ClotureCaisse,
+    Caisse, Campagne, CautionBancaire, CentreCout, CessionImmobilisation,
+    ClotureCaisse,
     CommissionPayoutLine, CommissionPayoutRun, CompteComptable,
-    CompteTresorerie, ContratAvancement, DeclarationTVA, DotationAmortissement,
-    EcritureComptable, Effet, EntiteConsolidation, ExerciceComptable,
+    CompteTresorerie, ContratAvancement, DeclarationTVA,
+    DemandeApprobationConfig, DotationAmortissement,
+    ECatalogue, EcritureComptable, Effet, EntiteConsolidation,
+    ExerciceComptable, MessageWhatsAppEntrant,
     Immobilisation, IndemniteChantier, Journal, LigneEcriture,
     LignePrevisionnelTresorerie, LigneReleve, MouvementCaisse, NoteFrais,
+    OuverturePartage,
     PaymentRun, PaymentRunLine, PeriodeComptable, PlanAmortissement,
     PlanComptable, PointageReleve, ProvisionCreance, Rapprochement,
-    RapprochementBancaire, RetenueGarantie, RetenueSource, TimbreFiscal,
+    RapprochementBancaire, RelanceDevisAbandonne, RetenueSource,
+    RetenueGarantie, TimbreFiscal,
     TravauxEnCours, VirementInterne,
 )
 
@@ -3459,3 +3464,265 @@ def ajouter_entite_consolidation(company, *, entite, pourcentage_interet=None,
         },
     )
     return obj
+
+
+# ── FG201 — Envoi groupé email/SMS (Brevo, GATED, NO-OP par défaut) ─────────
+
+def brevo_actif():
+    """Toggle maître de l'intégration Brevo. OFF par défaut → envoi NO-OP.
+
+    Le founder active l'envoi réel en posant ``BREVO_ENABLED = True`` et une clé
+    ``BREVO_API_KEY`` (settings/env). Tant que c'est faux ou sans clé, aucun
+    appel payant n'est émis : ``envoyer_campagne`` se contente d'horodater la
+    campagne et de compter les destinataires (simulation), comme le NoOp des
+    autres intégrations gated.
+    """
+    return bool(getattr(settings, 'BREVO_ENABLED', False)
+                and getattr(settings, 'BREVO_API_KEY', ''))
+
+
+def envoyer_campagne(campagne, *, destinataires=None):
+    """Déclenche l'envoi groupé d'une campagne (FG201), idempotent.
+
+    ``destinataires`` = liste d'adresses/numéros (optionnelle, sinon 0). Si
+    l'intégration Brevo est inactive (défaut), c'est un NO-OP : on marque la
+    campagne ``envoyee`` et on enregistre le nombre de destinataires SANS
+    aucun appel réseau. Renvoie la campagne. Une campagne déjà envoyée ou
+    annulée n'est pas ré-envoyée.
+    """
+    if campagne.statut != Campagne.Statut.BROUILLON:
+        return campagne
+    cibles = list(destinataires or [])
+    campagne.nb_destinataires = len(cibles)
+    if brevo_actif() and cibles:
+        # Intégration réelle (future) — jamais appelée tant que le flag est OFF.
+        # On laisse le compteur d'envois aligné sur les destinataires ; les
+        # ouvertures/clics seront remontés par les webhooks Brevo.
+        campagne.nb_envois = len(cibles)
+    campagne.statut = Campagne.Statut.ENVOYEE
+    campagne.envoyee_le = timezone.now()
+    campagne.save(update_fields=[
+        'nb_destinataires', 'nb_envois', 'statut', 'envoyee_le'])
+    return campagne
+
+
+# ── FG202 — Déclenchement d'une séquence de relance (GATED, NO-OP) ──────────
+
+def whatsapp_actif():
+    """Toggle de l'intégration WhatsApp Business Cloud (Meta). OFF par défaut.
+
+    Le founder l'active en posant ``WHATSAPP_ENABLED = True`` et un jeton
+    ``WHATSAPP_ACCESS_TOKEN`` (settings/env). Tant que c'est faux/sans jeton,
+    toute action WhatsApp (séquence FG202, inbound FG207) est un NO-OP — aucun
+    appel Meta, aucune dépendance dure (CLAUDE.md règle #3 / blocage G2).
+    """
+    return bool(getattr(settings, 'WHATSAPP_ENABLED', False)
+                and getattr(settings, 'WHATSAPP_ACCESS_TOKEN', ''))
+
+
+def planifier_etapes_sequence(sequence, *, declenchee_le=None):
+    """Calcule le calendrier d'une séquence (FG202) sans rien envoyer.
+
+    Renvoie la liste des étapes avec leur date d'échéance (J0/J3/J7…). L'envoi
+    réel (WhatsApp/email) est gated et n'a lieu que via les intégrations
+    activées ; cette fonction est pure et NO-OP côté réseau. Sert au moteur de
+    drip et aux tests.
+    """
+    base = declenchee_le or timezone.now()
+    plan = []
+    for etape in sequence.etapes.all().order_by('ordre'):
+        echeance = base + timezone.timedelta(days=etape.delai_jours)
+        plan.append({
+            'etape_id': etape.id,
+            'ordre': etape.ordre,
+            'canal': etape.canal,
+            'delai_jours': etape.delai_jours,
+            'echeance': echeance,
+            'envoye': False,  # gated : jamais d'envoi réel ici
+        })
+    return plan
+
+
+# ── FG203 — Relance d'un devis abandonné ───────────────────────────────────
+
+def enregistrer_relance_devis_abandonne(company, *, devis_id, devis_reference='',
+                                        jours_sans_reponse=0, canal='',
+                                        note=''):
+    """Consigne une relance sur un devis envoyé non répondu (FG203).
+
+    Ne touche pas le modèle Devis ; on ne fait qu'enregistrer la relance émise
+    (comme un journal de recouvrement). ``devis_id`` est l'identifiant opaque
+    côté ventes, fourni par l'appelant.
+    """
+    return RelanceDevisAbandonne.objects.create(
+        company=company,
+        devis_id=devis_id,
+        devis_reference=devis_reference or '',
+        jours_sans_reponse=jours_sans_reponse or 0,
+        canal=canal or '',
+        note=note or '',
+    )
+
+
+# ── FG205 — Enregistrement d'une ouverture de lien de partage ──────────────
+
+def enregistrer_ouverture_partage(company, *, token, cible='devis',
+                                  cible_reference=''):
+    """Horodate une ouverture d'un ShareLink devis/facture (FG205), idempotent.
+
+    Incrémente le compteur et met à jour premier/dernier vu. Un seul
+    enregistrement par (société, token). Le ShareLink lui-même reste côté ventes
+    — on n'indexe ici que l'événement d'ouverture pour prioriser les relances.
+    """
+    maintenant = timezone.now()
+    obj, cree = OuverturePartage.objects.get_or_create(
+        company=company, token=token,
+        defaults={
+            'cible': cible or 'devis',
+            'cible_reference': cible_reference or '',
+            'nb_ouvertures': 1,
+            'premier_vu_le': maintenant,
+            'dernier_vu_le': maintenant,
+        },
+    )
+    if not cree:
+        obj.nb_ouvertures = (obj.nb_ouvertures or 0) + 1
+        obj.dernier_vu_le = maintenant
+        if obj.premier_vu_le is None:
+            obj.premier_vu_le = maintenant
+        if cible_reference and not obj.cible_reference:
+            obj.cible_reference = cible_reference
+        obj.save(update_fields=[
+            'nb_ouvertures', 'dernier_vu_le', 'premier_vu_le',
+            'cible_reference'])
+    return obj
+
+
+# ── FG207 — Capture d'un message WhatsApp entrant (GATED, NO-OP) ───────────
+
+def capturer_message_whatsapp(company, *, wa_message_id, expediteur,
+                              nom_profil='', texte='', user=None):
+    """Capture un message WhatsApp entrant → lead pré-qualifié (FG207), gated.
+
+    Si l'intégration WhatsApp est inactive (défaut), c'est un NO-OP strict :
+    aucun message n'est traité ni stocké. Quand activée, le message est
+    journalisé (idempotent par ``wa_message_id``) et un lead DRAFT est
+    créé/rattaché via ``crm.services`` (import function-local — jamais les
+    modèles crm), en laissant le funnel à NEW. Renvoie le log, ou ``None`` si
+    l'intégration est OFF.
+    """
+    if not whatsapp_actif():
+        return None
+    log, cree = MessageWhatsAppEntrant.objects.get_or_create(
+        company=company, wa_message_id=wa_message_id,
+        defaults={
+            'expediteur': expediteur,
+            'nom_profil': nom_profil or '',
+            'texte': texte or '',
+        },
+    )
+    if not cree or log.traite:
+        return log
+    # Création du lead DRAFT via le service crm (jamais ses modèles).
+    try:
+        from apps.crm import services as crm_services
+        lead = crm_services.create_draft_lead_from_ocr(
+            company=company, user=user,
+            fields={
+                # le service lit 'fournisseur'/'client' pour le nom du lead
+                'client': nom_profil or expediteur,
+                'telephone': expediteur,
+                'whatsapp': expediteur,
+            },
+        )
+        log.lead_id = getattr(lead, 'id', None)
+    except Exception:
+        # Le lead reste à créer manuellement ; le message est conservé.
+        log.lead_id = None
+    log.traite = True
+    log.save(update_fields=['lead_id', 'traite'])
+    return log
+
+
+# ── FG211 — Configurateur guidé : validation de cohérence ──────────────────
+
+def evaluer_session_guided_selling(reponses):
+    """Valide la cohérence d'une configuration guidée (FG211).
+
+    Vérifie des invariants simples (puissance onduleur vs kWc des panneaux,
+    présence batterie si hybride…) et renvoie ``(composition, complet, alertes)``.
+    Pur : ne crée aucun document. Sert l'assistant pas-à-pas commercial junior.
+    """
+    reponses = reponses or {}
+    alertes = []
+    composition = {}
+
+    def _num(cle):
+        try:
+            return Decimal(str(reponses.get(cle)))
+        except (TypeError, ValueError):
+            return None
+
+    kwc = _num('kwc')
+    onduleur_kw = _num('onduleur_kw')
+    if kwc is not None and onduleur_kw is not None:
+        # Onduleur cohérent : ~0.8×–1.2× la puissance crête.
+        if onduleur_kw < kwc * Decimal('0.7'):
+            alertes.append(
+                "Onduleur sous-dimensionné par rapport au champ PV (kWc).")
+        if onduleur_kw > kwc * Decimal('1.5'):
+            alertes.append(
+                "Onduleur sur-dimensionné par rapport au champ PV (kWc).")
+        composition['ratio_onduleur'] = float(
+            (onduleur_kw / kwc).quantize(Decimal('0.01')))
+
+    type_systeme = (reponses.get('type_systeme') or '').lower()
+    a_batterie = bool(reponses.get('batterie'))
+    if 'hybride' in type_systeme and not a_batterie:
+        alertes.append("Système hybride sans batterie déclarée.")
+
+    composition['type_systeme'] = type_systeme or 'reseau'
+    composition['kwc'] = float(kwc) if kwc is not None else None
+    complet = bool(kwc is not None and onduleur_kw is not None
+                   and not alertes)
+    return composition, complet, alertes
+
+
+# ── FG213 — Décision d'approbation d'une configuration non-standard ────────
+
+def decider_approbation_config(demande, *, approuver, user=None, commentaire=''):
+    """Approuve ou refuse une demande d'approbation de config (FG213).
+
+    Idempotent : une demande déjà décidée n'est pas re-décidée. Trace décideur,
+    date et commentaire.
+    """
+    if demande.statut != DemandeApprobationConfig.Statut.EN_ATTENTE:
+        return demande
+    demande.statut = (
+        DemandeApprobationConfig.Statut.APPROUVEE if approuver
+        else DemandeApprobationConfig.Statut.REFUSEE)
+    demande.decideur = user
+    demande.commentaire_decision = commentaire or ''
+    demande.date_decision = timezone.now()
+    demande.save(update_fields=[
+        'statut', 'decideur', 'commentaire_decision', 'date_decision'])
+    return demande
+
+
+# ── FG214 — Génération d'un token d'e-catalogue public ─────────────────────
+
+def generer_ecatalogue(company, *, titre='Catalogue', produit_ids=None,
+                       expire_le=None):
+    """Crée une page e-catalogue publique tokenisée (FG214).
+
+    Le token est long et imprévisible (secrets). La page n'exposera JAMAIS le
+    prix d'achat ni de marge — uniquement le prix public TTC (filtré au rendu).
+    """
+    import secrets
+    return ECatalogue.objects.create(
+        company=company,
+        titre=titre or 'Catalogue',
+        token=secrets.token_urlsafe(32),
+        produit_ids=list(produit_ids or []),
+        expire_le=expire_le,
+    )
