@@ -2,14 +2,19 @@ from django.urls import include, path
 from rest_framework.routers import DefaultRouter
 
 from .views import (
+    AvanceSalarieViewSet,
     BaremeIRViewSet,
     BulletinPaieViewSet,
+    CoffreFortBulletinViewSet,
+    CumulAnnuelViewSet,
     ElementVariableViewSet,
+    OrdreVirementViewSet,
     ParametrePaieViewSet,
     PeriodePaieViewSet,
     ProfilPaieViewSet,
     RubriqueEmployeViewSet,
     RubriqueViewSet,
+    SaisieArretViewSet,
 )
 
 router = DefaultRouter()
@@ -21,6 +26,12 @@ router.register(r'rubriques-employe', RubriqueEmployeViewSet)
 router.register(r'periodes', PeriodePaieViewSet)
 router.register(r'elements-variables', ElementVariableViewSet)
 router.register(r'bulletins', BulletinPaieViewSet)
+router.register(r'cumuls-annuels', CumulAnnuelViewSet)
+router.register(r'avances', AvanceSalarieViewSet)
+router.register(r'saisies', SaisieArretViewSet)
+router.register(r'ordres-virement', OrdreVirementViewSet)
+router.register(r'mes-bulletins', CoffreFortBulletinViewSet,
+                basename='coffrefort-bulletin')
 
 urlpatterns = [
     path('', include(router.urls)),

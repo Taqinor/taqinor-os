@@ -10,7 +10,9 @@ from django.utils import timezone
 from .models import (
     AccidentTravail,
     AffectationRoster,
+    AvanceSalaire,
     Certification,
+    Departement,
     DemandeConge,
     DocumentEmploye,
     DossierEmploye,
@@ -20,6 +22,7 @@ from .models import (
     HeuresSupp,
     IncidentPresence,
     InscriptionFormation,
+    PermisConduire,
     Poste,
     PresenceChantier,
     PresquAccident,
@@ -1251,3 +1254,216 @@ def registre_formation_employe(company, employe_id, today=None):
         'total': len(lignes),
         'total_realisees': total_realisees,
     }
+
+
+def avances_a_deduire(company, annee, mois, employe_id=None):
+    """Avances sur salaire APPROUVÉES à récupérer pour une période (FG195).
+
+    Renvoie les avances de la société à déduire pour le mois (``annee``,
+    ``mois``) — celles dont la déduction est planifiée à ce mois et qui ne sont
+    pas encore déduites/refusées. Sert à l'intégration avec l'export paie
+    (FG192 : alimentation des retenues mensuelles) et au module paie (PAIE28),
+    qui les consomment via ce sélecteur — jamais par import croisé de models.
+    Scopé société : ne renvoie jamais d'avance hors de ``company``.
+    """
+    qs = AvanceSalaire.objects.filter(
+        company=company,
+        statut=AvanceSalaire.Statut.APPROUVEE,
+        annee_deduction=annee,
+        mois_deduction=mois,
+    ).select_related('employe')
+    if employe_id:
+        qs = qs.filter(employe_id=employe_id)
+    return [
+        {
+            'id': av.id,
+            'employe': av.employe_id,
+            'matricule': av.employe.matricule if av.employe_id else '',
+            'montant': av.montant,
+            'date_demande': av.date_demande.isoformat()
+            if av.date_demande else None,
+        }
+        for av in qs
+    ]
+
+
+def peut_conduire(company, employe_id, *, le=None, categorie=None):
+    """Vrai si l'employé a un permis VALIDE pour conduire (FG197/FG198).
+
+    Un employé « peut conduire » s'il détient au moins un permis (scopé
+    société) dont la ``date_expiration`` est nulle (pas d'échéance) ou ≥ ``le``
+    (par défaut aujourd'hui). Si ``categorie`` est fournie, seul un permis de
+    cette catégorie compte. Sert de garde à l'affectation conducteur↔véhicule
+    (FG198) ; scopé société (jamais d'accès hors ``company``).
+    """
+    from django.db.models import Q
+
+    jour = le or timezone.localdate()
+    qs = PermisConduire.objects.filter(
+        company=company, employe_id=employe_id)
+    if categorie:
+        qs = qs.filter(categorie=categorie)
+    return qs.filter(
+        Q(date_expiration__isnull=True)
+        | Q(date_expiration__gte=jour)
+    ).exists()
+
+
+def permis_expirant_bientot(company, within_days=30):
+    """Permis de conduire de la société expirant dans ``within_days`` jours.
+
+    Exclut les permis sans échéance et ceux déjà expirés. Scopé société.
+    """
+    try:
+        within = int(within_days)
+    except (TypeError, ValueError):
+        within = 30
+    today = timezone.localdate()
+    limite = today + timedelta(days=within)
+    return PermisConduire.objects.filter(
+        company=company,
+        date_expiration__isnull=False,
+        date_expiration__gte=today,
+        date_expiration__lte=limite,
+    ).select_related('employe').order_by('date_expiration')
+
+
+def _masse_salariale_mensuelle(company):
+    """Masse salariale MENSUELLE estimée (FG200, GATED — donnée interne).
+
+    Somme, pour chaque employé ACTIF, de sa rémunération de base en vigueur
+    (la plus récente par ``date_effet``) normalisée en mensuel : un montant
+    annuel ÷ 12, un horaire × 173 h, un journalier × 22 j, un mensuel tel quel.
+    Donnée INTERNE (paie) : ne quitte JAMAIS une sortie client — elle n'est
+    renvoyée qu'au sein de l'API RH admin-gated. Scopé société.
+    """
+    from decimal import Decimal
+
+    from .models import Remuneration
+
+    facteurs = {
+        Remuneration.Periodicite.MENSUEL: Decimal('1'),
+        Remuneration.Periodicite.ANNUEL: Decimal('1') / Decimal('12'),
+        Remuneration.Periodicite.HORAIRE: Decimal('173'),
+        Remuneration.Periodicite.JOURNALIER: Decimal('22'),
+    }
+    actifs = DossierEmploye.objects.filter(
+        company=company, statut=DossierEmploye.Statut.ACTIF)
+    total = Decimal('0')
+    for emp in actifs:
+        rem = (Remuneration.objects
+               .filter(company=company, employe=emp)
+               .order_by('-date_effet', '-date_creation')
+               .first())
+        if rem is None:
+            continue
+        facteur = facteurs.get(rem.periodicite, Decimal('1'))
+        total += (rem.montant or Decimal('0')) * facteur
+    return total
+
+
+def cockpit_rh(company, *, inclure_masse_salariale=False):
+    """Cockpit RH — effectifs & coûts (FG200), agrégation scopée société.
+
+    Renvoie un tableau de bord en lecture :
+
+    * ``effectif_total`` — nombre d'employés non sortis ;
+    * ``par_statut`` / ``par_contrat`` / ``par_departement`` — répartitions ;
+    * ``pyramide_anciennete`` — tranches d'ancienneté (<1 an, 1-3, 3-5, 5-10,
+      10+ ans) sur la base de ``date_embauche`` ;
+    * ``turnover`` — entrées/sorties sur les 12 derniers mois + taux ;
+    * ``alertes`` — CDD à échéance (30 j), documents/permis/visites à expirer ;
+    * ``masse_salariale_mensuelle`` — UNIQUEMENT si ``inclure_masse_salariale``
+      (GATED : donnée interne paie, jamais côté client).
+
+    Tout est cadré société (jamais d'accès hors ``company``).
+    """
+    from datetime import date
+
+    today = timezone.localdate()
+    base = DossierEmploye.objects.filter(company=company)
+    non_sortis = base.exclude(statut=DossierEmploye.Statut.SORTI)
+
+    # Répartitions par statut / contrat.
+    par_statut = {}
+    for emp in base:
+        par_statut[emp.statut] = par_statut.get(emp.statut, 0) + 1
+    par_contrat = {}
+    for emp in non_sortis:
+        par_contrat[emp.type_contrat] = \
+            par_contrat.get(emp.type_contrat, 0) + 1
+
+    # Répartition par département (effectif non-sorti).
+    par_departement = []
+    for dep in Departement.objects.filter(company=company):
+        n = non_sortis.filter(departement=dep).count()
+        par_departement.append({
+            'departement': dep.id, 'nom': dep.nom, 'effectif': n})
+    sans_dep = non_sortis.filter(departement__isnull=True).count()
+    if sans_dep:
+        par_departement.append({
+            'departement': None, 'nom': 'Sans département',
+            'effectif': sans_dep})
+
+    # Pyramide d'ancienneté.
+    tranches = {'<1': 0, '1-3': 0, '3-5': 0, '5-10': 0, '10+': 0}
+    for emp in non_sortis:
+        if not emp.date_embauche:
+            continue
+        annees = (today - emp.date_embauche).days / 365.25
+        if annees < 1:
+            tranches['<1'] += 1
+        elif annees < 3:
+            tranches['1-3'] += 1
+        elif annees < 5:
+            tranches['3-5'] += 1
+        elif annees < 10:
+            tranches['5-10'] += 1
+        else:
+            tranches['10+'] += 1
+
+    # Turnover sur 12 mois glissants.
+    debut_periode = date(today.year - 1, today.month, 1)
+    entrees = base.filter(date_embauche__gte=debut_periode).count()
+    sorties = base.filter(
+        statut=DossierEmploye.Statut.SORTI,
+        date_sortie__gte=debut_periode).count()
+    effectif_total = non_sortis.count()
+    taux_turnover = round(
+        (sorties / effectif_total * 100), 1) if effectif_total else 0.0
+
+    # Alertes.
+    dans_30 = today + timedelta(days=30)
+    cdd_echeance = base.filter(
+        type_contrat=DossierEmploye.TypeContrat.CDD,
+        contrat_date_fin__isnull=False,
+        contrat_date_fin__gte=today,
+        contrat_date_fin__lte=dans_30,
+    ).count()
+    alertes = {
+        'cdd_a_echeance': cdd_echeance,
+        'documents_a_expirer': documents_expirant_bientot(
+            company, within_days=30).count(),
+        'permis_a_expirer': permis_expirant_bientot(
+            company, within_days=30).count(),
+        'visites_medicales_a_renouveler': visites_medicales_expirantes(
+            company, within_days=30, inclure_expirees=False).count(),
+    }
+
+    result = {
+        'effectif_total': effectif_total,
+        'par_statut': par_statut,
+        'par_contrat': par_contrat,
+        'par_departement': par_departement,
+        'pyramide_anciennete': tranches,
+        'turnover': {
+            'entrees_12m': entrees,
+            'sorties_12m': sorties,
+            'taux_pct': taux_turnover,
+        },
+        'alertes': alertes,
+    }
+    if inclure_masse_salariale:
+        result['masse_salariale_mensuelle'] = _masse_salariale_mensuelle(
+            company)
+    return result

@@ -501,6 +501,11 @@ def calculer_salaire_base_periode(profil, periode, elements=None):
 
     for el in elements:
         if el.type == ElementVariable.TYPE_ABSENCE:
+            # PAIE26 — une absence RÉMUNÉRÉE (congé payé) ne réduit pas le
+            # salaire proraté : le salarié est payé comme présent. Seules les
+            # absences NON rémunérées sont décomptées des jours travaillés.
+            if getattr(el, 'remunere', False):
+                continue
             # Les absences sont en jours par convention dans ElementVariable.
             jours_absence += Decimal(el.quantite or 0)
         elif el.type == ElementVariable.TYPE_HEURES:
@@ -846,6 +851,286 @@ def formation_professionnelle_patronale(parametre, brut, affilie=True):
     return _q(cot)
 
 
+# ── PAIE25 — Provision pour congés payés (charge patronale, consomme RH) ─────
+
+# Droit légal marocain : 1,5 jour ouvrable de congé payé acquis par mois de
+# service (18 jours/an). La provision mensuelle valorise ces jours acquis au
+# taux journalier du salarié. Éditable (constante de module — pas de migration).
+JOURS_CP_ACQUIS_PAR_MOIS = Decimal('1.5')
+
+
+def solde_conge_disponible(company, employe_id, annee):
+    """Jours de congés payés DISPONIBLES d'un employé pour une année (PAIE25).
+
+    Lecture du solde de congés RH (FG162) SANS importer ``rh.models`` : la paie
+    lit le ``SoldeConge`` (report + acquis − pris) par une référence STRING-FK
+    (``apps.get_model('rh', 'SoldeConge')``), toujours cadrée société. Renvoie
+    ``Decimal('0')`` si la société/employé manque ou si aucun solde n'existe
+    pour l'année.
+    """
+    from django.apps import apps as django_apps
+
+    if company is None or employe_id is None or annee is None:
+        return Decimal('0')
+    SoldeConge = django_apps.get_model('rh', 'SoldeConge')
+    solde = (
+        SoldeConge.objects
+        .filter(company=company, employe_id=employe_id, annee=annee)
+        .first()
+    )
+    if solde is None:
+        return Decimal('0')
+    disponible = (
+        (solde.report or Decimal('0'))
+        + (solde.acquis or Decimal('0'))
+        - (solde.pris or Decimal('0'))
+    )
+    return _q(disponible)
+
+
+def taux_journalier_profil(profil):
+    """Taux journalier de référence d'un profil (MAD/jour) — base de provision.
+
+    * **journalier** : ``salaire_base`` est déjà le taux journalier.
+    * **mensuel / forfait / horaire** : on dérive le taux journalier en divisant
+      le salaire mensuel de référence par la norme de jours travaillés du profil.
+      Pour un profil HORAIRE, ``salaire_base`` est un taux horaire → on le
+      ramène d'abord à un mensuel via la norme d'heures.
+
+    Renvoie un ``Decimal`` >= 0. Norme de jours nulle → 0.
+    """
+    from .models import ProfilPaie
+
+    salaire = Decimal(profil.salaire_base or 0)
+    jours_normes = Decimal(max(1, profil.jours_travail_mensuel or 26))
+
+    if profil.type_remuneration == ProfilPaie.TYPE_JOURNALIER:
+        return _q(salaire)
+    if profil.type_remuneration == ProfilPaie.TYPE_HORAIRE:
+        heures_normes = Decimal(max(1, profil.heures_travail_mensuel or 191))
+        mensuel = salaire * heures_normes
+        return _q(mensuel / jours_normes)
+    # Mensuel / forfait : salaire mensuel ÷ jours norme.
+    return _q(salaire / jours_normes)
+
+
+def provision_conges_payes(profil, periode, jours_acquis=None):
+    """Provision mensuelle pour congés payés d'un profil (PAIE25).
+
+    Engagement social PATRONAL : chaque mois, l'employeur provisionne le coût
+    des jours de CP acquis (par défaut ``JOURS_CP_ACQUIS_PAR_MOIS`` = 1,5 j/mois,
+    droit légal marocain) valorisés au taux journalier du salarié
+    (``taux_journalier_profil``). C'est une charge employeur informative — elle
+    n'est JAMAIS déduite du net du salarié.
+
+    ``jours_acquis`` permet de surcharger le nombre de jours acquis dans le mois
+    (p. ex. proraté pour un mois incomplet) ; sinon le droit standard s'applique.
+
+    Renvoie un ``Decimal`` >= 0 arrondi au centime.
+    """
+    if jours_acquis is None:
+        jours_acquis = JOURS_CP_ACQUIS_PAR_MOIS
+    jours_acquis = Decimal(jours_acquis or 0)
+    if jours_acquis <= 0:
+        return Decimal('0.00')
+    taux_jour = taux_journalier_profil(profil)
+    if taux_jour <= 0:
+        return Decimal('0.00')
+    return _q(jours_acquis * taux_jour)
+
+
+# ── PAIE28 — Avance / prêt salarié : échéance mensuelle déduite du bulletin ──
+
+def echeance_avance(avance, le_jour):
+    """Échéance retenue sur le bulletin pour une avance, au mois ``le_jour``.
+
+    Renvoie le montant à retenir pour le mois donné :
+
+    * ``0`` si l'avance est inactive, soldée, ou si sa retenue n'a pas encore
+      commencé (``date_debut`` postérieure au mois) ;
+    * sinon ``min(montant_echeance, solde_restant)`` — la dernière échéance ne
+      retient jamais plus que ce qui reste dû.
+
+    Pur (aucun effet de bord). Decimal au centime.
+    """
+    if avance is None or not avance.actif:
+        return Decimal('0.00')
+    if avance.solde_restant <= 0:
+        return Decimal('0.00')
+    if avance.date_debut is not None and avance.date_debut > le_jour:
+        return Decimal('0.00')
+    echeance = Decimal(avance.montant_echeance or 0)
+    if echeance <= 0:
+        return Decimal('0.00')
+    return _q(min(echeance, avance.solde_restant))
+
+
+def echeances_avances_periode(profil, periode):
+    """Total des échéances d'avances/prêts à retenir pour ``profil`` sur ``periode``.
+
+    Somme des ``echeance_avance`` de toutes les avances ACTIVES non soldées du
+    profil au 1ᵉʳ du mois de la période. Pur (lecture seule). Renvoie un
+    ``Decimal`` >= 0 au centime, et la liste des lignes
+    ``[(avance, montant), …]`` pour traçabilité.
+    """
+    from .models import AvanceSalarie
+
+    le_jour = date(periode.annee, periode.mois, 1)
+    total = Decimal('0')
+    lignes = []
+    avances = AvanceSalarie.objects.filter(
+        company=profil.company, profil=profil, actif=True)
+    for avance in avances:
+        montant = echeance_avance(avance, le_jour)
+        if montant > 0:
+            total += montant
+            lignes.append((avance, montant))
+    return _q(total), lignes
+
+
+def appliquer_remboursements_avances(profil, periode):
+    """Impute les échéances d'avances du mois (incrémente ``montant_rembourse``).
+
+    Effet de bord : pour chaque avance active non soldée, ajoute l'échéance du
+    mois à ``montant_rembourse`` (bornée au solde restant). À appeler UNE fois,
+    au moment où le bulletin est validé (jamais au simple recalcul d'un
+    brouillon, pour ne pas double-compter). Opération atomique. Renvoie le total
+    imputé (``Decimal``).
+    """
+    from .models import AvanceSalarie
+
+    le_jour = date(periode.annee, periode.mois, 1)
+    total = Decimal('0')
+    with transaction.atomic():
+        avances = (
+            AvanceSalarie.objects
+            .select_for_update()
+            .filter(company=profil.company, profil=profil, actif=True)
+        )
+        for avance in avances:
+            montant = echeance_avance(avance, le_jour)
+            if montant > 0:
+                avance.montant_rembourse = _q(
+                    Decimal(avance.montant_rembourse or 0) + montant)
+                avance.save(update_fields=['montant_rembourse'])
+                total += montant
+    return _q(total)
+
+
+# ── PAIE29 — Saisie-arrêt / cession : quotité saisissable ──────────────────
+
+# Barème de la quotité saisissable (DECISION — défaut éditable, consentement
+# fondateur). Cadre marocain (Code de procédure civile) : le salaire n'est
+# saisissable que par tranches progressives. Liste ordonnée de tuples
+# ``(borne_max, fraction)`` : pour la part du salaire NET comprise dans chaque
+# tranche, seule ``fraction`` est saisissable. La dernière tranche a une
+# ``borne_max`` à ``None`` (sans plafond). Valeurs ÉDITABLES — pur défaut.
+BAREME_QUOTITE_SAISISSABLE = [
+    (Decimal('2000'),  Decimal('0.05')),   # ≤ 2 000 : 1/20
+    (Decimal('4000'),  Decimal('0.10')),   # 2 000–4 000 : 1/10
+    (Decimal('6000'),  Decimal('0.20')),   # 4 000–6 000 : 1/5
+    (Decimal('10000'), Decimal('0.25')),   # 6 000–10 000 : 1/4
+    (None,             Decimal('0.333333')),  # > 10 000 : 1/3
+]
+
+
+def quotite_saisissable(net, bareme=None):
+    """Part SAISISSABLE d'un salaire net selon le barème progressif (PAIE29).
+
+    Applique ``bareme`` (défaut ``BAREME_QUOTITE_SAISISSABLE``) tranche par
+    tranche : pour la fraction du ``net`` comprise dans chaque tranche, seule la
+    ``fraction`` de cette tranche est saisissable ; on cumule. Le reste constitue
+    la part insaisissable (toujours versée au salarié). ``net`` négatif ou nul →
+    0. Renvoie un ``Decimal`` >= 0 au centime.
+    """
+    net = Decimal(net or 0)
+    if net <= 0:
+        return Decimal('0.00')
+    if bareme is None:
+        bareme = BAREME_QUOTITE_SAISISSABLE
+    saisissable = Decimal('0')
+    borne_basse = Decimal('0')
+    for borne_max, fraction in bareme:
+        if borne_max is None or net <= borne_max:
+            saisissable += (net - borne_basse) * fraction
+            break
+        saisissable += (borne_max - borne_basse) * fraction
+        borne_basse = borne_max
+    return _q(saisissable)
+
+
+def retenues_saisies_periode(profil, periode, net_a_payer):
+    """Retenues de saisies/cessions du mois, plafonnées à la quotité (PAIE29).
+
+    Pour ``profil`` sur ``periode``, parcourt les saisies ACTIVES non soldées
+    (prioritaires d'abord), et alloue à chacune une retenue dans la limite :
+
+    * de son ``montant_echeance`` souhaité (sinon tout le solde restant) ET de
+      son solde restant ;
+    * du PLAFOND GLOBAL = quotité saisissable du ``net_a_payer`` (la somme de
+      toutes les saisies du mois ne dépasse jamais la quotité — la fraction
+      insaisissable reste versée au salarié).
+
+    Calcul PUR (aucun effet de bord) : l'imputation effective de
+    ``montant_retenu`` se fait à la validation (``appliquer_saisies``). Renvoie
+    ``(total, lignes)`` où ``lignes = [(saisie, montant), …]``.
+    """
+    from .models import SaisieArret
+
+    le_jour = date(periode.annee, periode.mois, 1)
+    plafond = quotite_saisissable(net_a_payer)
+    restant_plafond = plafond
+    total = Decimal('0')
+    lignes = []
+    saisies = SaisieArret.objects.filter(
+        company=profil.company, profil=profil, actif=True
+    ).order_by('-prioritaire', 'date_debut', 'id')
+    for saisie in saisies:
+        if restant_plafond <= 0:
+            break
+        if saisie.solde_restant <= 0:
+            continue
+        if saisie.date_debut is not None and saisie.date_debut > le_jour:
+            continue
+        souhaite = saisie.montant_echeance
+        if souhaite is None or Decimal(souhaite) <= 0:
+            souhaite = saisie.solde_restant
+        montant = min(
+            Decimal(souhaite), saisie.solde_restant, restant_plafond)
+        montant = _q(montant)
+        if montant > 0:
+            total += montant
+            restant_plafond -= montant
+            lignes.append((saisie, montant))
+    return _q(total), lignes
+
+
+def appliquer_saisies(profil, periode, net_a_payer):
+    """Impute les retenues de saisies du mois (incrémente ``montant_retenu``).
+
+    Effet de bord : pour chaque saisie servie ce mois (cf.
+    ``retenues_saisies_periode``), ajoute le montant retenu à ``montant_retenu``.
+    À appeler UNE fois, à la validation du bulletin. Opération atomique. Renvoie
+    le total imputé (``Decimal``).
+    """
+    from .models import SaisieArret
+
+    _, lignes = retenues_saisies_periode(profil, periode, net_a_payer)
+    total = Decimal('0')
+    with transaction.atomic():
+        for saisie, montant in lignes:
+            verrou = (
+                SaisieArret.objects
+                .select_for_update()
+                .get(pk=saisie.pk)
+            )
+            verrou.montant_retenu = _q(
+                Decimal(verrou.montant_retenu or 0) + montant)
+            verrou.save(update_fields=['montant_retenu'])
+            total += montant
+    return _q(total)
+
+
 # ── PAIE20 — Cotisation CIMR OPTIONNELLE (taux par employé adhérent) ─────────
 
 def cimr_salariale(brut, affilie=False, taux=Decimal('0')):
@@ -980,6 +1265,12 @@ def calculer_bulletin(profil, periode, personnes_a_charge=0):
     for el in elements:
         montant = Decimal(el.montant or 0)
         rubrique = el.rubrique if el.rubrique_id else None
+        # PAIE26 — une absence RÉMUNÉRÉE (congé payé) ne génère aucune retenue :
+        # elle est déjà neutralisée dans la proration du salaire de base. On la
+        # saute ici pour ne pas la décompter une seconde fois.
+        if (el.type == ElementVariable.TYPE_ABSENCE
+                and getattr(el, 'remunere', False)):
+            continue
         if el.type == ElementVariable.TYPE_RETENUE or \
                 el.type == ElementVariable.TYPE_ABSENCE:
             retenues_variables += montant
@@ -1039,6 +1330,11 @@ def calculer_bulletin(profil, periode, personnes_a_charge=0):
     formation_pro = formation_professionnelle_patronale(
         parametre, brut, profil.affilie_cnss)
 
+    # 3quater. Provision pour congés payés — PAIE25 (charge 100 % PATRONALE,
+    # informative). Engagement social mensuel = jours CP acquis dans le mois ×
+    # taux journalier du salarié. N'entre JAMAIS dans le net du salarié.
+    provision_conges = provision_conges_payes(profil, periode)
+
     # 4. CIMR (PAIE20) — OPTIONNELLE : seuls les profils adhérents cotisent,
     # chacun avec SON taux propre. Non adhérent → 0 (défaut).
     cimr = cimr_salariale(brut, profil.affilie_cimr, profil.taux_cimr_salarial)
@@ -1068,9 +1364,43 @@ def calculer_bulletin(profil, periode, personnes_a_charge=0):
         ir = compute_ir(net_imposable, bareme, parametre, personnes_a_charge)
     ir = _q(ir)
 
+    # PAIE28 — Échéances d'avances/prêts salariés du mois : retenues nettes
+    # (après IR, comme toute retenue de net). Calcul PUR ici — l'imputation
+    # effective de ``montant_rembourse`` se fait à la validation du bulletin
+    # (``valider_bulletin`` → ``appliquer_remboursements_avances``).
+    _, lignes_avances = echeances_avances_periode(profil, periode)
+    for avance, montant in lignes_avances:
+        retenues_variables += montant
+        lignes.append({
+            'code': 'AVANCE',
+            'libelle': avance.libelle or avance.get_type_display(),
+            'type': Rubrique.TYPE_RETENUE,
+            'montant': _q(montant),
+        })
+
     # 8. Net à payer (− retenues variables type avances).
     net_a_payer = brut - cnss - amo - cimr - ir - retenues_variables
     net_a_payer = _q(net_a_payer)
+    # Net AVANT saisie : base de calcul de la quotité saisissable (conservé pour
+    # rejouer la même allocation à la validation).
+    net_avant_saisie = net_a_payer
+
+    # PAIE29 — Saisie-arrêt / cession : retenue PLAFONNÉE à la quotité
+    # saisissable du net à payer (la fraction insaisissable reste versée au
+    # salarié). Calculée sur le net AVANT saisie, puis défalquée. Calcul PUR —
+    # l'imputation effective (``montant_retenu``) se fait à la validation.
+    saisies_total, lignes_saisies = retenues_saisies_periode(
+        profil, periode, net_avant_saisie)
+    if saisies_total > 0:
+        retenues_variables += saisies_total
+        for saisie, montant in lignes_saisies:
+            lignes.append({
+                'code': 'SAISIE',
+                'libelle': saisie.creancier or saisie.get_type_display(),
+                'type': Rubrique.TYPE_RETENUE,
+                'montant': _q(montant),
+            })
+        net_a_payer = _q(net_a_payer - saisies_total)
 
     # PAIE18/PAIE19/PAIE23/PAIE24 — Total des charges patronales (coût
     # employeur), informatif : CNSS + AMO + allocations familiales + taxe de
@@ -1108,6 +1438,7 @@ def calculer_bulletin(profil, periode, personnes_a_charge=0):
         'amo_patronale': amo_pat,
         'allocations_familiales': alloc_fam,
         'formation_professionnelle': formation_pro,
+        'provision_conges': provision_conges,
         'cimr_salariale': cimr,
         'frais_professionnels': frais_pro,
         'net_imposable': net_imposable,
@@ -1117,6 +1448,9 @@ def calculer_bulletin(profil, periode, personnes_a_charge=0):
         'prime_anciennete': prime_anciennete,
         'charges_patronales': charges_patronales,
         'lignes': lignes,
+        # Interne (PAIE29) : net avant saisie, base de la quotité saisissable.
+        # Non persisté en bulletin — sert à rejouer l'imputation à la validation.
+        'net_avant_saisie': net_avant_saisie,
     }
 
 
@@ -1140,6 +1474,13 @@ def generer_bulletin(profil, periode, personnes_a_charge=0):
 
     if profil.company_id != periode.company_id:
         raise ValueError("Profil et période de sociétés différentes.")
+
+    # PAIE36 — Verrouillage de clôture : une période CLÔTURÉE est figée, aucun
+    # bulletin n'y est (re)généré. Les corrections passent par un bulletin
+    # RECTIFICATIF/RAPPEL sur une période ouverte (``creer_bulletin_rectificatif``).
+    if periode.statut == PeriodePaie.STATUT_CLOTUREE:
+        raise BulletinPaie.BulletinVerrouille(
+            'Période clôturée : génération de bulletin interdite.')
 
     resultat = calculer_bulletin(profil, periode, personnes_a_charge)
     lignes = resultat.get('lignes', [])
@@ -1181,6 +1522,82 @@ def generer_bulletin(profil, periode, personnes_a_charge=0):
         return bulletin
 
 
+# ── PAIE36 — Clôture mensuelle + bulletins rectificatifs / rappels ─────────
+
+def cloturer_periode_paie(periode, *, valider_brouillons=True):
+    """Clôture mensuelle d'une période de paie (PAIE36).
+
+    Verrouille DÉFINITIVEMENT une ``PeriodePaie`` :
+
+    1. (option) VALIDE tous les bulletins encore en brouillon de la période
+       (``valider_brouillons=True`` par défaut) — ils deviennent figés ;
+    2. fait avancer la période au statut ``cloturee`` (via ``changer_statut``,
+       cycle progressif) et pose ``date_cloture``.
+
+    Une fois clôturée, aucun nouveau bulletin n'est généré pour la période
+    (garde dans ``generer_bulletin``). Idempotent : re-clôturer une période déjà
+    clôturée ne valide rien et ne fait qu'un no-op de transition. Opération
+    atomique. Renvoie la période.
+    """
+    from .models import BulletinPaie
+
+    with transaction.atomic():
+        if valider_brouillons:
+            brouillons = BulletinPaie.objects.filter(
+                company=periode.company, periode=periode,
+                statut=BulletinPaie.STATUT_BROUILLON)
+            for bulletin in brouillons:
+                valider_bulletin(bulletin)
+        changer_statut(periode, PeriodePaie.STATUT_CLOTUREE)
+    return periode
+
+
+def creer_bulletin_rectificatif(bulletin_origine, periode_cible, *,
+                                type_bulletin=None, motif='',
+                                personnes_a_charge=None):
+    """Crée un bulletin RECTIFICATIF ou RAPPEL liant un bulletin d'origine (PAIE36).
+
+    Un bulletin validé/clôturé est FIGÉ : on ne le modifie jamais. Pour corriger
+    une erreur (rectificatif) ou verser un rattrapage (rappel), on émet un
+    NOUVEAU bulletin sur une ``periode_cible`` OUVERTE (≠ période d'origine, qui
+    peut être clôturée), rattaché au bulletin d'origine via ``rectifie`` et
+    portant un ``motif``. Le nouveau bulletin est recalculé normalement
+    (``generer_bulletin``) puis marqué de sa nature.
+
+    ``type_bulletin`` ∈ {rectificatif, rappel} (défaut : rectificatif).
+    ``periode_cible`` doit être de la même société que l'origine et ne PAS être
+    clôturée. Renvoie le bulletin rectificatif (en brouillon).
+    """
+    from .models import BulletinPaie
+
+    if type_bulletin is None:
+        type_bulletin = BulletinPaie.TYPE_RECTIFICATIF
+    if type_bulletin not in (BulletinPaie.TYPE_RECTIFICATIF,
+                             BulletinPaie.TYPE_RAPPEL):
+        raise ValueError(
+            "type_bulletin doit être 'rectificatif' ou 'rappel'.")
+    if periode_cible.company_id != bulletin_origine.company_id:
+        raise ValueError("Période cible d'une autre société.")
+    if periode_cible.pk == bulletin_origine.periode_id:
+        raise ValueError(
+            "Le rectificatif doit cibler une période différente de l'origine.")
+    if periode_cible.statut == PeriodePaie.STATUT_CLOTUREE:
+        raise ValueError("La période cible est clôturée.")
+
+    profil = bulletin_origine.profil
+    if personnes_a_charge is None:
+        personnes_a_charge = bulletin_origine.personnes_a_charge
+
+    with transaction.atomic():
+        bulletin = generer_bulletin(
+            profil, periode_cible, personnes_a_charge=personnes_a_charge)
+        bulletin.type_bulletin = type_bulletin
+        bulletin.rectifie = bulletin_origine
+        bulletin.motif = motif or ''
+        bulletin.save(update_fields=['type_bulletin', 'rectifie', 'motif'])
+    return bulletin
+
+
 def valider_bulletin(bulletin):
     """Valide un ``BulletinPaie`` → fige le snapshot (PAIE17).
 
@@ -1196,4 +1613,617 @@ def valider_bulletin(bulletin):
     bulletin.statut = BulletinPaie.STATUT_VALIDE
     bulletin.date_validation = timezone.now()
     bulletin.save(update_fields=['statut', 'date_validation'])
+    # Recalcule l'état du bulletin AVANT toute imputation, pour rejouer
+    # EXACTEMENT la même allocation que le snapshot (la base de la quotité
+    # saisissable, PAIE29, est figée ici avant que les avances ne bougent).
+    resultat = calculer_bulletin(bulletin.profil, bulletin.periode,
+                                 bulletin.personnes_a_charge)
+    # PAIE28 — Impute les échéances d'avances/prêts du mois (incrémente
+    # ``montant_rembourse``) UNE seule fois, à la validation (jamais au recalcul
+    # d'un brouillon). Le bulletin étant figé après validation, ce remboursement
+    # n'est pas rejoué.
+    appliquer_remboursements_avances(bulletin.profil, bulletin.periode)
+    # PAIE29 — Impute les saisies-arrêts/cessions du mois (incrémente
+    # ``montant_retenu``) une seule fois, à la validation, sur la base du net
+    # AVANT saisie figé ci-dessus.
+    appliquer_saisies(bulletin.profil, bulletin.periode,
+                      resultat['net_avant_saisie'])
     return bulletin
+
+
+# ── PAIE30 — Ordre de virement + fichier de virement banque ────────────────
+
+FICHIER_VIREMENT_PAIE_HEADERS = [
+    'Bénéficiaire', 'RIB', 'Montant', 'Devise', 'Référence', 'Motif',
+]
+
+
+def generer_ordre_virement(periode, *, date_execution=None, rib_emetteur=''):
+    """Génère (ou régénère) l'ordre de virement d'une période (PAIE30).
+
+    Regroupe tous les bulletins VALIDÉS de la ``periode`` au ``net_a_payer > 0``
+    en un ``OrdreVirement`` (une ``LigneVirement`` par salarié : bénéficiaire,
+    RIB du profil, net à payer). Recrée l'ordre s'il est en brouillon ; refuse de
+    régénérer un ordre déjà ÉMIS (figé). ``company`` posée côté serveur. Opération
+    atomique. Renvoie l'``OrdreVirement``.
+    """
+    from .models import (
+        BulletinPaie, LigneVirement, OrdreVirement,
+    )
+
+    with transaction.atomic():
+        ordre = (
+            OrdreVirement.objects
+            .select_for_update()
+            .filter(company=periode.company, periode=periode)
+            .first()
+        )
+        if ordre is not None and ordre.est_emis:
+            raise ValueError("Ordre de virement déjà émis : régénération interdite.")
+        if ordre is None:
+            ordre = OrdreVirement(company=periode.company, periode=periode)
+        ordre.statut = OrdreVirement.STATUT_BROUILLON
+        if date_execution is not None:
+            ordre.date_execution = date_execution
+        if rib_emetteur:
+            ordre.rib_emetteur = rib_emetteur
+        if not ordre.libelle:
+            ordre.libelle = f'Virement salaires {periode.mois:02d}/{periode.annee}'
+        ordre.save()
+
+        ordre.lignes.all().delete()
+        bulletins = (
+            BulletinPaie.objects
+            .filter(company=periode.company, periode=periode,
+                    statut=BulletinPaie.STATUT_VALIDE)
+            .select_related('profil', 'profil__employe')
+        )
+        total = Decimal('0')
+        nombre = 0
+        for bulletin in bulletins:
+            net = Decimal(bulletin.net_a_payer or 0)
+            if net <= 0:
+                continue
+            profil = bulletin.profil
+            employe = profil.employe
+            beneficiaire = f'{employe.nom} {employe.prenom}'.strip() \
+                if employe else f'Profil #{profil.id}'
+            reference = f'SAL-{periode.annee}-{periode.mois:02d}-{profil.id}'
+            LigneVirement.objects.create(
+                company=periode.company,
+                ordre=ordre,
+                bulletin=bulletin,
+                beneficiaire=beneficiaire or f'Profil #{profil.id}',
+                rib=profil.rib or '',
+                montant=_q(net),
+                reference=reference,
+            )
+            total += net
+            nombre += 1
+        ordre.total = _q(total)
+        ordre.nombre_lignes = nombre
+        ordre.save(update_fields=['total', 'nombre_lignes', 'libelle',
+                                  'date_execution', 'rib_emetteur'])
+        return ordre
+
+
+def emettre_ordre_virement(ordre):
+    """Émet l'ordre de virement → fige l'ordre (PAIE30).
+
+    Passe le statut ``brouillon → emis`` (irréversible) et pose
+    ``date_emission``. Re-émettre est un no-op. Renvoie l'ordre.
+    """
+    from .models import OrdreVirement
+
+    if ordre.statut == OrdreVirement.STATUT_EMIS:
+        return ordre
+    ordre.statut = OrdreVirement.STATUT_EMIS
+    ordre.date_emission = timezone.now()
+    ordre.save(update_fields=['statut', 'date_emission'])
+    return ordre
+
+
+def fichier_virement_paie(ordre):
+    """Construit le fichier de virement bancaire d'un ordre de paie (PAIE30).
+
+    Une ligne par bénéficiaire : nom, RIB, montant au centime, devise, référence
+    et motif. Renvoie ``{'headers', 'rows', 'total', 'nb_lignes'}`` — la vue
+    sérialise en texte/CSV. Lecture seule. Lève ``ValueError`` si l'ordre n'a
+    aucune ligne, ou si une ligne n'a pas de RIB (un virement sans coordonnées
+    bancaires ne peut être exécuté).
+    """
+    lignes = list(ordre.lignes.all())
+    if not lignes:
+        raise ValueError("L'ordre de virement ne comporte aucune ligne.")
+    devise = ordre.devise or 'MAD'
+    rows = []
+    total = Decimal('0')
+    for ligne in lignes:
+        if not ligne.rib:
+            raise ValueError(
+                f"RIB manquant pour « {ligne.beneficiaire} » : "
+                "un virement exige un RIB.")
+        montant = _q(ligne.montant)
+        total += montant
+        rows.append([
+            ligne.beneficiaire,
+            ligne.rib,
+            str(montant),
+            devise,
+            ligne.reference or '',
+            f'Salaire {ligne.reference}'.strip(),
+        ])
+    return {
+        'headers': list(FICHIER_VIREMENT_PAIE_HEADERS),
+        'rows': rows,
+        'total': _q(total),
+        'nb_lignes': len(rows),
+    }
+
+
+# ── PAIE31 — Déclaration CNSS (BDS / format DAMANCOM) ──────────────────────
+
+def declaration_cnss(periode):
+    """Bordereau de déclaration des salaires CNSS (BDS) d'une période (PAIE31).
+
+    Agrège, pour les bulletins VALIDÉS de la ``periode``, les éléments du BDS
+    par salarié affilié CNSS : numéro d'immatriculation CNSS, nom, nombre de
+    jours déclarés (plafonné réglementairement à 26 j/mois), salaire brut réel
+    et salaire PLAFONNÉ (base de cotisation, ``min(brut, plafond_cnss)``).
+    Calcule aussi les totaux et les cotisations (salariale + patronale CNSS, AMO,
+    allocations familiales, taxe de formation professionnelle).
+
+    Lecture seule (aucun effet de bord). Le ``numero_cnss`` est lu sur le
+    ``ProfilPaie`` (jamais sur ``rh.models``). Renvoie un dict ::
+
+        {'annee', 'mois', 'plafond_cnss', 'lignes': [...],
+         'total_brut', 'total_plafonne', 'total_cnss_salariale',
+         'total_cnss_patronale', 'total_amo_salariale', 'total_amo_patronale',
+         'total_allocations_familiales', 'total_formation_professionnelle',
+         'nombre_salaries'}
+    """
+    from .models import BulletinPaie
+
+    le_jour = date(periode.annee, periode.mois, 1)
+    parametre = parametre_en_vigueur(periode.company, le_jour)
+    plafond = Decimal(parametre.plafond_cnss or 0) if parametre else Decimal('0')
+
+    bulletins = (
+        BulletinPaie.objects
+        .filter(company=periode.company, periode=periode,
+                statut=BulletinPaie.STATUT_VALIDE)
+        .select_related('profil', 'profil__employe')
+    )
+    lignes = []
+    totaux = {
+        'total_brut': Decimal('0'),
+        'total_plafonne': Decimal('0'),
+        'total_cnss_salariale': Decimal('0'),
+        'total_cnss_patronale': Decimal('0'),
+        'total_amo_salariale': Decimal('0'),
+        'total_amo_patronale': Decimal('0'),
+        'total_allocations_familiales': Decimal('0'),
+        'total_formation_professionnelle': Decimal('0'),
+    }
+    for bulletin in bulletins:
+        profil = bulletin.profil
+        if not profil.affilie_cnss:
+            continue
+        brut = Decimal(bulletin.brut or 0)
+        plafonne = min(brut, plafond) if plafond > 0 else brut
+        employe = profil.employe
+        nom = f'{employe.nom} {employe.prenom}'.strip() if employe else ''
+        lignes.append({
+            'numero_cnss': profil.numero_cnss or '',
+            'matricule': getattr(employe, 'matricule', '') if employe else '',
+            'nom': nom,
+            'jours_declares': 26,  # mois plein déclaré par défaut (réglementaire)
+            'brut': _q(brut),
+            'plafonne': _q(plafonne),
+            'cnss_salariale': _q(bulletin.cnss_salariale),
+            'cnss_patronale': _q(bulletin.cnss_patronale),
+            'amo_salariale': _q(bulletin.amo_salariale),
+            'amo_patronale': _q(bulletin.amo_patronale),
+            'allocations_familiales': _q(bulletin.allocations_familiales),
+            'formation_professionnelle': _q(
+                bulletin.formation_professionnelle),
+        })
+        totaux['total_brut'] += brut
+        totaux['total_plafonne'] += plafonne
+        totaux['total_cnss_salariale'] += Decimal(bulletin.cnss_salariale or 0)
+        totaux['total_cnss_patronale'] += Decimal(bulletin.cnss_patronale or 0)
+        totaux['total_amo_salariale'] += Decimal(bulletin.amo_salariale or 0)
+        totaux['total_amo_patronale'] += Decimal(bulletin.amo_patronale or 0)
+        totaux['total_allocations_familiales'] += Decimal(
+            bulletin.allocations_familiales or 0)
+        totaux['total_formation_professionnelle'] += Decimal(
+            bulletin.formation_professionnelle or 0)
+
+    resultat = {
+        'annee': periode.annee,
+        'mois': periode.mois,
+        'plafond_cnss': _q(plafond),
+        'lignes': lignes,
+        'nombre_salaries': len(lignes),
+    }
+    for cle, valeur in totaux.items():
+        resultat[cle] = _q(valeur)
+    return resultat
+
+
+def fichier_damancom_cnss(periode):
+    """Fichier de télédéclaration CNSS au format DAMANCOM (PAIE31).
+
+    Génère les lignes texte du fichier DAMANCOM à partir de
+    ``declaration_cnss`` : une ligne d'en-tête société puis une ligne par
+    salarié (numéro CNSS, nom, jours, brut, plafonné). Format SIMPLIFIÉ,
+    séparateur ``;`` — la mise au format DAMANCOM strict (longueurs fixes) reste
+    à confirmer côté CNSS. Renvoie ``{'lignes': [str, …], 'nombre_salaries',
+    'total_brut', 'total_plafonne'}``. Lecture seule.
+    """
+    decl = declaration_cnss(periode)
+    lignes_txt = [
+        f'E;{periode.annee};{periode.mois:02d};'
+        f'{decl["nombre_salaries"]};{decl["total_plafonne"]}'
+    ]
+    for ligne in decl['lignes']:
+        lignes_txt.append(
+            f'S;{ligne["numero_cnss"]};{ligne["nom"]};'
+            f'{ligne["jours_declares"]};{ligne["brut"]};{ligne["plafonne"]}'
+        )
+    return {
+        'lignes': lignes_txt,
+        'nombre_salaries': decl['nombre_salaries'],
+        'total_brut': decl['total_brut'],
+        'total_plafonne': decl['total_plafonne'],
+    }
+
+
+# ── PAIE32 — État IR 9421 + retenues à la source ───────────────────────────
+
+def etat_ir_9421(periode):
+    """État IR 9421 (retenues à la source) d'une période (PAIE32).
+
+    État employeur des traitements & salaires et de l'IR retenu à la source pour
+    les bulletins VALIDÉS de la ``periode`` : par salarié, le brut imposable, le
+    net imposable, l'IR retenu et le nombre de personnes à charge. Calcule les
+    totaux. Le ``matricule`` est lu sur le dossier RH via la relation existante
+    (jamais via ``rh.models``).
+
+    Lecture seule. Renvoie un dict ::
+
+        {'annee', 'mois', 'lignes': [...], 'total_brut_imposable',
+         'total_net_imposable', 'total_ir', 'nombre_salaries'}
+    """
+    from .models import BulletinPaie
+
+    bulletins = (
+        BulletinPaie.objects
+        .filter(company=periode.company, periode=periode,
+                statut=BulletinPaie.STATUT_VALIDE)
+        .select_related('profil', 'profil__employe')
+    )
+    lignes = []
+    total_brut_imp = Decimal('0')
+    total_net_imp = Decimal('0')
+    total_ir = Decimal('0')
+    for bulletin in bulletins:
+        profil = bulletin.profil
+        employe = profil.employe
+        nom = f'{employe.nom} {employe.prenom}'.strip() if employe else ''
+        brut_imp = Decimal(bulletin.brut_imposable or 0)
+        net_imp = Decimal(bulletin.net_imposable or 0)
+        ir = Decimal(bulletin.ir or 0)
+        lignes.append({
+            'matricule': getattr(employe, 'matricule', '') if employe else '',
+            'nom': nom,
+            'brut_imposable': _q(brut_imp),
+            'net_imposable': _q(net_imp),
+            'ir': _q(ir),
+            'personnes_a_charge': bulletin.personnes_a_charge,
+            'frais_professionnels': _q(bulletin.frais_professionnels),
+        })
+        total_brut_imp += brut_imp
+        total_net_imp += net_imp
+        total_ir += ir
+
+    return {
+        'annee': periode.annee,
+        'mois': periode.mois,
+        'lignes': lignes,
+        'total_brut_imposable': _q(total_brut_imp),
+        'total_net_imposable': _q(total_net_imp),
+        'total_ir': _q(total_ir),
+        'nombre_salaries': len(lignes),
+    }
+
+
+def etat_ir_9421_annuel(company, annee):
+    """État IR 9421 ANNUEL (retenues à la source) pour une société (PAIE32).
+
+    Variante annuelle : agrège l'IR retenu sur TOUTES les périodes de l'année
+    ``annee``, par salarié (cumul brut imposable / net imposable / IR sur les
+    bulletins validés des 12 mois). Lecture seule. Renvoie un dict de même forme
+    que ``etat_ir_9421`` (sans ``mois``), trié par matricule.
+    """
+    from .models import BulletinPaie
+
+    bulletins = (
+        BulletinPaie.objects
+        .filter(company=company, periode__annee=annee,
+                statut=BulletinPaie.STATUT_VALIDE)
+        .select_related('profil', 'profil__employe')
+    )
+    par_profil = {}
+    for bulletin in bulletins:
+        profil = bulletin.profil
+        ligne = par_profil.setdefault(profil.id, {
+            'profil_id': profil.id,
+            'matricule': getattr(profil.employe, 'matricule', '')
+            if profil.employe else '',
+            'nom': f'{profil.employe.nom} {profil.employe.prenom}'.strip()
+            if profil.employe else '',
+            'brut_imposable': Decimal('0'),
+            'net_imposable': Decimal('0'),
+            'ir': Decimal('0'),
+            'nombre_bulletins': 0,
+        })
+        ligne['brut_imposable'] += Decimal(bulletin.brut_imposable or 0)
+        ligne['net_imposable'] += Decimal(bulletin.net_imposable or 0)
+        ligne['ir'] += Decimal(bulletin.ir or 0)
+        ligne['nombre_bulletins'] += 1
+
+    lignes = []
+    total_brut_imp = Decimal('0')
+    total_net_imp = Decimal('0')
+    total_ir = Decimal('0')
+    for ligne in par_profil.values():
+        ligne['brut_imposable'] = _q(ligne['brut_imposable'])
+        ligne['net_imposable'] = _q(ligne['net_imposable'])
+        ligne['ir'] = _q(ligne['ir'])
+        total_brut_imp += ligne['brut_imposable']
+        total_net_imp += ligne['net_imposable']
+        total_ir += ligne['ir']
+        lignes.append(ligne)
+    lignes.sort(key=lambda r: (r['matricule'], r['profil_id']))
+
+    return {
+        'annee': annee,
+        'lignes': lignes,
+        'total_brut_imposable': _q(total_brut_imp),
+        'total_net_imposable': _q(total_net_imp),
+        'total_ir': _q(total_ir),
+        'nombre_salaries': len(lignes),
+    }
+
+
+# ── PAIE33 — Livre de paie + journal de paie → écritures (via compta) ───────
+
+# Comptes CGNC utilisés par l'écriture de paie (barème CGNC marocain) :
+#  6171 Rémunérations du personnel (charge — brut)
+#  6174 Charges sociales (charge — parts patronales)
+#  4441 Caisses de sécurité sociale (dette CNSS/AMO sal. + pat.)
+#  4452 État, impôts & taxes à payer (dette IR retenu)
+#  4443 Caisses de retraite (dette CIMR)
+#  4432 Rémunérations dues au personnel (dette — net à payer)
+_COMPTE_REMUNERATION = '6171'
+_COMPTE_CHARGES_SOCIALES = '6174'
+_COMPTE_CNSS = '4441'
+_COMPTE_IR = '4452'
+_COMPTE_CIMR = '4443'
+_COMPTE_NET = '4432'
+
+
+def livre_de_paie(periode):
+    """Livre de paie d'une période (PAIE33) — registre récapitulatif.
+
+    Registre LECTURE SEULE de tous les bulletins VALIDÉS de la ``periode`` :
+    une ligne par salarié (brut, brut imposable, cotisations salariales &
+    patronales, IR, net à payer) plus les totaux généraux. Sert d'état légal du
+    livre de paie et de base au journal de paie. Renvoie un dict ``{'annee',
+    'mois', 'lignes': [...], 'totaux': {...}, 'nombre_salaries'}``.
+    """
+    from .models import BulletinPaie
+
+    bulletins = (
+        BulletinPaie.objects
+        .filter(company=periode.company, periode=periode,
+                statut=BulletinPaie.STATUT_VALIDE)
+        .select_related('profil', 'profil__employe')
+    )
+    champs = [
+        'brut', 'brut_imposable', 'cnss_salariale', 'cnss_patronale',
+        'amo_salariale', 'amo_patronale', 'cimr_salariale', 'ir',
+        'frais_professionnels', 'net_imposable', 'retenues', 'net_a_payer',
+        'charges_patronales',
+    ]
+    lignes = []
+    totaux = {champ: Decimal('0') for champ in champs}
+    for bulletin in bulletins:
+        employe = bulletin.profil.employe
+        ligne = {
+            'matricule': getattr(employe, 'matricule', '') if employe else '',
+            'nom': f'{employe.nom} {employe.prenom}'.strip()
+            if employe else '',
+        }
+        for champ in champs:
+            valeur = Decimal(getattr(bulletin, champ) or 0)
+            ligne[champ] = _q(valeur)
+            totaux[champ] += valeur
+        lignes.append(ligne)
+    return {
+        'annee': periode.annee,
+        'mois': periode.mois,
+        'lignes': lignes,
+        'totaux': {champ: _q(valeur) for champ, valeur in totaux.items()},
+        'nombre_salaries': len(lignes),
+    }
+
+
+def journal_de_paie(periode, *, created_by=None):
+    """Passe l'écriture comptable du journal de paie d'une période (PAIE33).
+
+    Agrège les bulletins VALIDÉS de la ``periode`` (via ``livre_de_paie``) et
+    crée UNE écriture de régularisation (OD) ÉQUILIBRÉE au 1ᵉʳ du mois suivant
+    (la fin de période) par ``compta.services.creer_ecriture_od`` — la paie
+    n'importe JAMAIS ``compta.models`` ni ``compta.views`` directement, elle
+    passe par la couche ``services`` de compta (cross-app WRITE autorisé).
+
+    Schéma de l'écriture (CGNC) :
+
+    * Débit 6171 Rémunérations du personnel = total BRUT ;
+    * Débit 6174 Charges sociales = total des charges PATRONALES ;
+    * Crédit 4441 Caisses de sécurité sociale = CNSS+AMO (salariales+patronales) ;
+    * Crédit 4452 État, impôts & taxes = IR retenu ;
+    * Crédit 4443 Caisses de retraite = CIMR salariale ;
+    * Crédit 4432 Rémunérations dues au personnel = net à payer + retenues.
+
+    L'écriture s'équilibre par construction (Σ débit = Σ crédit). Sème le plan
+    comptable au besoin. Renvoie l'écriture créée, ou ``None`` s'il n'y a aucun
+    bulletin validé (rien à passer).
+    """
+    from apps.compta import services as compta_services  # cross-app via services
+
+    registre = livre_de_paie(periode)
+    if registre['nombre_salaries'] == 0:
+        return None
+    totaux = registre['totaux']
+
+    company = periode.company
+    # Sème le plan comptable si un compte requis manque (idempotent).
+    requis = [
+        _COMPTE_REMUNERATION, _COMPTE_CHARGES_SOCIALES, _COMPTE_CNSS,
+        _COMPTE_IR, _COMPTE_CIMR, _COMPTE_NET,
+    ]
+    if any(compta_services.get_compte(company, num) is None for num in requis):
+        compta_services.seed_plan_comptable(company)
+
+    def compte(numero):
+        return compta_services.get_compte(company, numero)
+
+    brut = totaux['brut']
+    charges_pat = totaux['charges_patronales']
+    cnss_amo = (
+        totaux['cnss_salariale'] + totaux['cnss_patronale']
+        + totaux['amo_salariale'] + totaux['amo_patronale']
+    )
+    ir = totaux['ir']
+    cimr = totaux['cimr_salariale']
+
+    lignes = [
+        {'compte': compte(_COMPTE_REMUNERATION),
+         'libelle': 'Rémunérations du personnel', 'debit': brut, 'credit': 0},
+    ]
+    if charges_pat > 0:
+        lignes.append({
+            'compte': compte(_COMPTE_CHARGES_SOCIALES),
+            'libelle': 'Charges sociales patronales',
+            'debit': charges_pat, 'credit': 0})
+    if cnss_amo > 0:
+        lignes.append({
+            'compte': compte(_COMPTE_CNSS),
+            'libelle': 'CNSS / AMO à payer', 'debit': 0, 'credit': cnss_amo})
+    if ir > 0:
+        lignes.append({
+            'compte': compte(_COMPTE_IR),
+            'libelle': 'IR retenu à la source', 'debit': 0, 'credit': ir})
+    if cimr > 0:
+        lignes.append({
+            'compte': compte(_COMPTE_CIMR),
+            'libelle': 'CIMR à payer', 'debit': 0, 'credit': cimr})
+    # Net à payer = solde équilibrant (brut + charges pat − cotisations − IR
+    # − CIMR). On le calcule pour garantir l'équilibre exact même en cas
+    # d'arrondis.
+    total_debit = brut + (charges_pat if charges_pat > 0 else Decimal('0'))
+    total_credit_hors_net = (
+        (cnss_amo if cnss_amo > 0 else Decimal('0'))
+        + (ir if ir > 0 else Decimal('0'))
+        + (cimr if cimr > 0 else Decimal('0'))
+    )
+    net_equilibrant = _q(total_debit - total_credit_hors_net)
+    lignes.append({
+        'compte': compte(_COMPTE_NET),
+        'libelle': 'Rémunérations dues au personnel (net)',
+        'debit': 0, 'credit': net_equilibrant})
+
+    # Date de l'écriture = dernier jour du mois de paie (proxy : 28, toujours
+    # valide). Le détail jour exact n'a pas d'incidence comptable mensuelle.
+    date_ecriture = date(periode.annee, periode.mois, 28)
+    libelle = f'Journal de paie {periode.mois:02d}/{periode.annee}'
+    reference = f'PAIE-{periode.annee}-{periode.mois:02d}'
+    ecriture = compta_services.creer_ecriture_od(
+        company, date_ecriture, libelle, lignes,
+        reference=reference, created_by=created_by)
+    return ecriture
+
+
+# ── PAIE27 — Cumul annuel par employé (recalcul depuis bulletins validés) ────
+
+# Champs cumulés : (champ du CumulAnnuel, champ du BulletinPaie) sommés.
+_CUMUL_CHAMPS = [
+    'brut', 'brut_imposable', 'net_imposable', 'ir',
+    'cnss_salariale', 'amo_salariale', 'cimr_salariale',
+    'frais_professionnels', 'net_a_payer', 'charges_patronales',
+    'provision_conges',
+]
+
+
+def recalculer_cumul_annuel(profil, annee):
+    """Recalcule (idempotent) le ``CumulAnnuel`` d'un profil pour une année (PAIE27).
+
+    Agrège les montants des bulletins VALIDÉS du profil dont la période tombe sur
+    ``annee`` : brut, brut/net imposable, IR, CNSS/AMO/CIMR salariales, frais
+    professionnels, net à payer, charges patronales, provision congés. Le cumul
+    des jours de congés (acquis/pris) est lu via le solde RH (``SoldeConge``) par
+    référence STRING-FK — la paie n'importe jamais ``rh.models``.
+
+    Crée le ``CumulAnnuel`` s'il n'existe pas, sinon le met à jour ; clé stable
+    ``(company, profil, annee)``. Opération atomique. Renvoie le ``CumulAnnuel``.
+    """
+    from django.apps import apps as django_apps
+
+    from .models import BulletinPaie, CumulAnnuel
+
+    bulletins = (
+        BulletinPaie.objects
+        .filter(
+            company=profil.company,
+            profil=profil,
+            periode__annee=annee,
+            statut=BulletinPaie.STATUT_VALIDE,
+        )
+    )
+
+    totaux = {champ: Decimal('0') for champ in _CUMUL_CHAMPS}
+    nombre = 0
+    for bulletin in bulletins:
+        nombre += 1
+        for champ in _CUMUL_CHAMPS:
+            totaux[champ] += Decimal(getattr(bulletin, champ) or 0)
+
+    # Compteur de congés depuis le solde RH (string-FK, cadré société).
+    conges_acquis = Decimal('0')
+    conges_pris = Decimal('0')
+    SoldeConge = django_apps.get_model('rh', 'SoldeConge')
+    solde = (
+        SoldeConge.objects
+        .filter(company=profil.company, employe_id=profil.employe_id,
+                annee=annee)
+        .first()
+    )
+    if solde is not None:
+        conges_acquis = (solde.report or Decimal('0')) \
+            + (solde.acquis or Decimal('0'))
+        conges_pris = solde.pris or Decimal('0')
+
+    with transaction.atomic():
+        cumul, _ = CumulAnnuel.objects.select_for_update().get_or_create(
+            company=profil.company, profil=profil, annee=annee)
+        for champ in _CUMUL_CHAMPS:
+            setattr(cumul, champ, _q(totaux[champ]))
+        cumul.conges_acquis = _q(conges_acquis)
+        cumul.conges_pris = _q(conges_pris)
+        cumul.nombre_bulletins = nombre
+        cumul.date_calcul = timezone.now()
+        cumul.save()
+    return cumul

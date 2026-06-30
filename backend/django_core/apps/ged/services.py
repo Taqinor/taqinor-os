@@ -51,6 +51,288 @@ def set_ocr_text(document, texte):
     return document
 
 
+# ── GED33 — OCR de pièces (extraction de texte, KEY-GATED no-op) ─────────────
+#
+# Pipeline d'extraction de texte par OCR. KEY-GATED comme l'embedding (GED12) et
+# l'e-sign (GED30) : sans `settings.GED_OCR_ENABLED` à vrai, `ocr_extract_text`
+# est un NO-OP déterministe (renvoie '' — aucun appel réseau, aucun coût, aucune
+# dépendance nouvelle). Le founder branchera un provider réel (Zhipu OCR, déjà
+# utilisé par le service FastAPI IA) en posant le flag + la clé ; tant que ce
+# n'est pas fait, l'OCR ne fabrique jamais de texte fantôme.
+
+def ocr_enabled():
+    """GED33 — True si l'OCR de pièces est activé (clé OCR présente).
+
+    KEY-GATED : sans `settings.GED_OCR_ENABLED`, toute extraction est un no-op
+    (chaîne vide). Le founder l'active en posant le flag + la clé du provider."""
+    from django.conf import settings
+    return bool(getattr(settings, 'GED_OCR_ENABLED', False))
+
+
+def ocr_extract_text(file_bytes, *, mime=''):
+    """GED33 — Extrait le texte d'un fichier image/PDF par OCR (no-op sans clé).
+
+    NO-OP PAR DÉFAUT : renvoie '' tant que `ocr_enabled()` est faux — le
+    squelette d'appel provider est isolé ici pour un futur branchement (Zhipu OCR
+    via le service FastAPI IA) sans toucher au reste du module. Ne lève jamais
+    (robustesse : l'OCR ne doit pas casser un dépôt documentaire)."""
+    if not file_bytes or not ocr_enabled():
+        return ''
+    provider = None
+    try:  # pragma: no cover - dépend d'un provider externe non câblé ici.
+        from . import ocr_provider as provider  # noqa: F401
+    except ImportError:
+        provider = None
+    if provider is None:  # pragma: no cover
+        return ''
+    try:  # pragma: no cover
+        return provider.extract_text(file_bytes, mime=mime) or ''
+    except Exception:  # pragma: no cover - jamais bloquer un dépôt.
+        return ''
+
+
+def ocr_index_document(document, *, file_bytes=None, mime=''):
+    """GED33 — Lance l'OCR d'un document et indexe le texte extrait (no-op sans clé).
+
+    Si l'OCR est activé et qu'on a les octets du fichier, extrait le texte et le
+    pose via `set_ocr_text` (qui réindexe plein-texte + sémantique). Renvoie le
+    texte extrait ('' si OCR désactivé / aucun texte). Idempotent ; ne lève
+    jamais. `file_bytes` est fourni par l'appelant (jamais re-téléchargé ici
+    sans nécessité — l'appelant a souvent déjà les octets en main au dépôt)."""
+    if not ocr_enabled() or not file_bytes:
+        return ''
+    texte = ocr_extract_text(file_bytes, mime=mime)
+    if texte:
+        set_ocr_text(document, texte)
+    return texte
+
+
+# ── GED33 — Extraction de métadonnées de pièces (CIN / facture / BL) ─────────
+#
+# Couche DÉTERMINISTE (regex, AUCUNE clé, AUCUN appel réseau) qui parse un texte
+# (issu de l'OCR GED33 ou saisi) en métadonnées typées selon le type de pièce.
+# Sépare proprement l'EXTRACTION DE TEXTE (key-gated, ci-dessus) de l'ANALYSE
+# DU TEXTE (locale, gratuite). Marocaine : CIN (carte nationale), facture, BL
+# (bon de livraison). Renvoie un dict de champs reconnus — jamais d'invention :
+# un champ absent du texte est simplement omis.
+
+PIECE_CIN = 'cin'
+PIECE_FACTURE = 'facture'
+PIECE_BL = 'bl'
+PIECE_TYPES = (PIECE_CIN, PIECE_FACTURE, PIECE_BL)
+
+
+def _premier_match(pattern, texte, *, flags=0, group=1):
+    """Premier groupe capturé d'un motif dans le texte, ou '' (helper extraction)."""
+    import re
+    m = re.search(pattern, texte, flags)
+    return (m.group(group).strip() if m else '')
+
+
+def detecter_type_piece(texte):
+    """GED33 — Devine le type d'une pièce d'après son texte (heuristique locale).
+
+    Renvoie 'cin' | 'facture' | 'bl' | '' (inconnu). Purement déterministe :
+    cherche des marqueurs francophones/marocains usuels. Aucun appel externe."""
+    import re
+    if not texte:
+        return ''
+    t = texte.lower()
+    if re.search(r'carte\s+nationale|cin\b|c\.i\.n', t):
+        return PIECE_CIN
+    if re.search(r'bon\s+de\s+livraison|\bb\.?l\.?\b', t):
+        return PIECE_BL
+    if re.search(r'\bfacture\b|montant\s+t\.?t\.?c|total\s+ttc', t):
+        return PIECE_FACTURE
+    return ''
+
+
+def extraire_metadonnees_piece(texte, *, type_piece=None):
+    """GED33 — Extrait des métadonnées typées d'un texte de pièce (déterministe).
+
+    `type_piece` (optionnel) force le type ; sinon il est deviné
+    (`detecter_type_piece`). Renvoie `{'type_piece': <type>, ...champs}`. Les
+    champs reconnus selon le type :
+      * cin      : numero_cin (ex. AB123456) ;
+      * facture  : numero_facture, montant_ttc, date ;
+      * bl       : numero_bl, date.
+    AUCUNE invention : un champ non trouvé est omis. Aucune dépendance, aucun
+    appel réseau — pur parsing local (utilisable même OCR désactivé)."""
+    import re
+
+    texte = texte or ''
+    piece = type_piece or detecter_type_piece(texte)
+    meta = {}
+    if piece:
+        meta['type_piece'] = piece
+
+    if piece == PIECE_CIN:
+        # CIN marocaine : 1-2 lettres suivies de 5-6 chiffres.
+        num = _premier_match(
+            r'\b([A-Za-z]{1,2}\s?\d{5,6})\b', texte)
+        if num:
+            meta['numero_cin'] = num.replace(' ', '').upper()
+    elif piece == PIECE_FACTURE:
+        num = _premier_match(
+            r'facture\s*(?:n[°o]?\.?)?\s*[:#]?\s*([A-Za-z0-9\-/]+)',
+            texte, flags=re.IGNORECASE)
+        # AUCUNE invention : un vrai numéro de facture contient au moins un
+        # chiffre. Sans chiffre (p.ex. « FACTURE sans numéro » capture « sans »),
+        # on n'invente rien et on omet le champ.
+        if num and any(c.isdigit() for c in num):
+            meta['numero_facture'] = num
+        ttc = _premier_match(
+            r'(?:total\s+ttc|montant\s+t\.?t\.?c\.?)\s*[:=]?\s*'
+            r'([0-9][0-9\s.,]*)',
+            texte, flags=re.IGNORECASE)
+        if ttc:
+            meta['montant_ttc'] = ttc.strip().rstrip('.,')
+        date = _premier_match(r'\b(\d{2}[/-]\d{2}[/-]\d{4})\b', texte)
+        if date:
+            meta['date'] = date
+    elif piece == PIECE_BL:
+        num = _premier_match(
+            r'(?:bon\s+de\s+livraison|b\.?l\.?)\s*(?:n[°o]?\.?)?\s*[:#]?\s*'
+            r'([A-Za-z0-9\-/]+)',
+            texte, flags=re.IGNORECASE)
+        if num:
+            meta['numero_bl'] = num
+        date = _premier_match(r'\b(\d{2}[/-]\d{2}[/-]\d{4})\b', texte)
+        if date:
+            meta['date'] = date
+    return meta
+
+
+def ocr_piece_vers_metadonnees(document, *, file_bytes=None, mime='',
+                               type_piece=None, fusionner=True):
+    """GED33 — OCR une pièce puis extrait ses métadonnées (CIN/facture/BL).
+
+    Enchaîne `ocr_index_document` (extraction de texte, no-op sans clé) puis
+    `extraire_metadonnees_piece` (parsing local déterministe) sur le texte
+    disponible (OCR frais OU `document.texte_ocr` déjà présent). Si `fusionner`
+    est vrai, les champs reconnus sont fusionnés (additivement) dans
+    `document.custom_data` (jamais d'écrasement d'une clé existante non vide) et
+    persistés côté serveur.
+
+    Renvoie le dict de métadonnées extraites (vide si rien trouvé). Sans clé OCR
+    et sans `texte_ocr` préexistant, renvoie {} (jamais d'invention)."""
+    texte = ''
+    if file_bytes:
+        texte = ocr_index_document(
+            document, file_bytes=file_bytes, mime=mime)
+    if not texte:
+        # Retombe sur le texte OCR déjà indexé (ex. posé manuellement / GED12).
+        document.refresh_from_db(fields=['texte_ocr'])
+        texte = document.texte_ocr or ''
+    meta = extraire_metadonnees_piece(texte, type_piece=type_piece)
+    if meta and fusionner:
+        data = dict(document.custom_data or {})
+        for k, v in meta.items():
+            if not data.get(k):  # additif : ne jamais écraser une valeur posée.
+                data[k] = v
+        Document.objects.filter(pk=document.pk).update(custom_data=data)
+        document.custom_data = data
+    return meta
+
+
+# ── GED34 — Classification automatique (IA gated + heuristique locale) ───────
+#
+# Attribue une CATÉGORIE à un document. Deux étages, du moins coûteux au plus :
+#   1. HEURISTIQUE LOCALE (gratuite, déterministe) — mots-clés sur le nom +
+#      texte OCR, réutilise `detecter_type_piece` (GED33). TOUJOURS disponible.
+#   2. PROVIDER IA (KEY-GATED) — `classification_enabled()` ; sans
+#      `settings.GED_CLASSIFICATION_ENABLED`, c'est un NO-OP (aucun appel réseau,
+#      aucun coût) et on retombe sur l'heuristique locale.
+# La classification ne fait que SUGGÉRER (pose `custom_data['categorie']` de
+# façon additive) — elle ne déplace ni ne supprime jamais un document, et reste
+# LOCALE à la GED (séparée du funnel STAGES.py, rule #2).
+
+# Catégories locales reconnues par l'heuristique (mots-clés FR/marocains).
+CLASSIFICATION_KEYWORDS = {
+    'facture': ('facture', 'montant ttc', 'total ttc'),
+    'bon_livraison': ('bon de livraison', ' bl ', 'bordereau'),
+    'cin': ('carte nationale', 'cin', 'c.i.n'),
+    'contrat': ('contrat', 'convention', 'engagement'),
+    'devis': ('devis', 'proposition commerciale'),
+    'attestation': ('attestation', 'certificat'),
+    'photo': ('photo', 'image du chantier'),
+}
+
+
+def classification_enabled():
+    """GED34 — True si la classification IA est activée (clé présente).
+
+    KEY-GATED : sans `settings.GED_CLASSIFICATION_ENABLED`, le provider IA est un
+    no-op et la classification retombe sur l'heuristique locale (gratuite)."""
+    from django.conf import settings
+    return bool(getattr(settings, 'GED_CLASSIFICATION_ENABLED', False))
+
+
+def classer_heuristique(texte):
+    """GED34 — Catégorie déduite par mots-clés locaux (déterministe), ou ''.
+
+    Aucune clé, aucun appel réseau. Renvoie la première catégorie dont un
+    mot-clé apparaît dans le texte (nom + OCR), sinon '' (inconnu — jamais
+    d'invention)."""
+    if not texte:
+        return ''
+    t = f' {texte.lower()} '
+    for categorie, mots in CLASSIFICATION_KEYWORDS.items():
+        for mot in mots:
+            if mot in t:
+                return categorie
+    return ''
+
+
+def classer_ia(texte):  # pragma: no cover - dépend d'un provider externe non câblé.
+    """GED34 — Classification via le provider IA configuré, ou '' (no-op sans clé).
+
+    NO-OP PAR DÉFAUT : renvoie '' tant que `classification_enabled()` est faux.
+    Le squelette d'appel provider est isolé ici pour un futur branchement sans
+    toucher au reste du module. Ne lève jamais."""
+    if not texte or not classification_enabled():
+        return ''
+    provider = None
+    try:
+        from . import classification_provider as provider  # noqa: F401
+    except ImportError:
+        provider = None
+    if provider is None:
+        return ''
+    try:
+        return provider.classify(texte) or ''
+    except Exception:
+        return ''
+
+
+def classer_document(document, *, fusionner=True):
+    """GED34 — Classe un document (IA gated → fallback heuristique local).
+
+    Construit le texte de travail (`nom` + `texte_ocr`), tente d'abord le
+    provider IA (no-op sans clé) puis l'heuristique locale. Si `fusionner` est
+    vrai et qu'une catégorie est trouvée, la pose ADDITIVEMENT dans
+    `custom_data['categorie']` (jamais d'écrasement d'une valeur déjà posée) et
+    persiste côté serveur. Ne déplace ni ne supprime jamais le document.
+
+    Renvoie la catégorie (str) ou '' si indéterminée. Idempotent ; ne lève
+    jamais (la classification ne doit pas casser une écriture documentaire)."""
+    texte = f'{document.nom}\n{document.texte_ocr or ""}'.strip()
+    categorie = ''
+    try:
+        categorie = classer_ia(texte)
+    except Exception:  # pragma: no cover - robustesse.
+        categorie = ''
+    if not categorie:
+        categorie = classer_heuristique(texte)
+    if categorie and fusionner:
+        data = dict(document.custom_data or {})
+        if not data.get('categorie'):
+            data['categorie'] = categorie
+            Document.objects.filter(pk=document.pk).update(custom_data=data)
+            document.custom_data = data
+    return categorie
+
+
 # ── GED12 — Index OCR + recherche sémantique (pgvector, KEY-GATED no-op) ──
 
 def embedding_enabled():
@@ -562,6 +844,207 @@ def deposit_document(*, company, nom, source_type, source_id,
         filename=filename or '', size=size or 0, mime=mime or '',
         checksum=checksum or '', uploaded_by=created_by)
     return document, True
+
+
+# ── GED31 — Numérisation par lot (scan-to-DMS) + OCR ─────────────────────────
+#
+# Ingestion de PLUSIEURS fichiers scannés en UN appel : chaque fichier devient un
+# Document + sa version 1 dans le dossier cible (company-scopé), puis passe le
+# hook OCR (GED33, no-op sans clé) et l'indexation plein-texte/sémantique. On
+# RÉUTILISE intégralement les primitives existantes (`create_document`,
+# `add_version`, `records.storage`) — aucune nouvelle couche de stockage.
+
+def deposer_un_scan(*, company, folder, file_key, filename='', size=0, mime='',
+                    checksum='', nom='', description='', created_by=None,
+                    contenu_bytes=None):
+    """GED31 — Dépose UN fichier scanné comme Document + version 1 (+ OCR hook).
+
+    Le `folder` DOIT appartenir à la société (vérifié par `create_document`).
+    Société/créateur posés CÔTÉ SERVEUR (jamais lus d'un corps). Indexe le
+    plein-texte + l'embedding (no-op sans clé) et lance l'OCR (no-op sans clé)
+    si `contenu_bytes` est fourni. Renvoie le `Document` créé.
+    """
+    nom = (nom or filename or 'Scan').strip()
+    document = create_document(
+        company=company, folder=folder, nom=nom, description=description,
+        created_by=created_by)
+    add_version(
+        document, file_key=file_key or '', company=company,
+        filename=filename or '', size=size or 0, mime=mime or '',
+        checksum=checksum or '', uploaded_by=created_by)
+    # GED33 — OCR (no-op sans clé). Indexe le texte extrait si présent.
+    ocr_index_document(document, file_bytes=contenu_bytes, mime=mime)
+    # GED11/GED12 — indexation plein-texte + sémantique (no-op sans clé).
+    update_search_vector(document)
+    index_embedding(document)
+    index_document_chunks(document)
+    return document
+
+
+def deposer_lot_scans(*, company, folder, fichiers, created_by=None):
+    """GED31 — Dépose un LOT de fichiers scannés (scan-to-DMS) en un appel.
+
+    `fichiers` est une liste de dicts décrivant chaque scan déjà stocké
+    (`{file_key, filename, size, mime, checksum?, nom?, description?,
+    contenu_bytes?}`). Chaque entrée est déposée via `deposer_un_scan`
+    (Document + v1 + OCR hook + indexation). Société/créateur posés côté serveur
+    pour TOUS les éléments du lot.
+
+    Renvoie la liste des `Document` créés, dans l'ordre du lot. Un lot vide
+    renvoie une liste vide (jamais d'erreur).
+    """
+    documents = []
+    for f in (fichiers or []):
+        document = deposer_un_scan(
+            company=company, folder=folder,
+            file_key=f.get('file_key', ''),
+            filename=f.get('filename', ''),
+            size=f.get('size', 0),
+            mime=f.get('mime', ''),
+            checksum=f.get('checksum', ''),
+            nom=f.get('nom', ''),
+            description=f.get('description', ''),
+            created_by=created_by,
+            contenu_bytes=f.get('contenu_bytes'))
+        documents.append(document)
+    return documents
+
+
+# ── GED32 — Import en masse (CSV de métadonnées + ZIP de fichiers) ───────────
+#
+# Import gouverné de N documents en un appel : un CSV de MÉTADONNÉES (une ligne
+# par document : nom, description, et colonnes de champs personnalisés) crée les
+# documents, et un ZIP OPTIONNEL fournit les binaires (appariés par la colonne
+# `fichier` = nom de l'entrée dans le zip). Stdlib seulement (`csv`, `zipfile`,
+# `io`) — AUCUNE dépendance nouvelle. Tout est company-scopé côté serveur.
+
+# Colonnes CSV réservées (le reste = codes de champs personnalisés customfields).
+CSV_COL_NOM = 'nom'
+CSV_COL_DESCRIPTION = 'description'
+CSV_COL_FICHIER = 'fichier'
+CSV_COLS_RESERVEES = {CSV_COL_NOM, CSV_COL_DESCRIPTION, CSV_COL_FICHIER}
+
+
+def parser_csv_metadonnees(csv_text):
+    """GED32 — Parse un CSV de métadonnées en liste de dicts (stdlib `csv`).
+
+    Première ligne = en-têtes. Renvoie une liste de dicts (une par ligne), clés
+    normalisées (strip). Robuste à un CSV vide (renvoie []). Ne valide RIEN ici
+    (la validation métier — nom requis, custom_data — se fait à l'import)."""
+    import csv
+    import io
+
+    if not csv_text or not csv_text.strip():
+        return []
+    reader = csv.DictReader(io.StringIO(csv_text))
+    lignes = []
+    for row in reader:
+        lignes.append({(k or '').strip(): (v or '').strip()
+                       for k, v in row.items() if k is not None})
+    return lignes
+
+
+def _zip_entries(zip_bytes):
+    """GED32 — Dictionnaire {nom_entrée: octets} d'un ZIP (stdlib `zipfile`).
+
+    Ignore les répertoires. Renvoie {} si `zip_bytes` est vide/invalide (jamais
+    d'erreur — un import sans zip reste possible)."""
+    import io
+    import zipfile
+
+    entries = {}
+    if not zip_bytes:
+        return entries
+    try:
+        with zipfile.ZipFile(io.BytesIO(zip_bytes)) as zf:
+            for info in zf.infolist():
+                if info.is_dir():
+                    continue
+                entries[info.filename] = zf.read(info.filename)
+    except (zipfile.BadZipFile, OSError):
+        return {}
+    return entries
+
+
+def importer_en_masse(*, company, folder, lignes, zip_bytes=None,
+                      created_by=None, valider_custom=None):
+    """GED32 — Import en masse de documents depuis des métadonnées (+ZIP optionnel).
+
+    Pour chaque ligne (dict issu de `parser_csv_metadonnees`) :
+      * `nom` est REQUIS (ligne sans nom → erreur, ligne ignorée) ;
+      * `description` (optionnel) ;
+      * `fichier` (optionnel) = nom d'une entrée du ZIP → stockée comme binaire
+        de la version 1 ; absente du ZIP → erreur sur la ligne ;
+      * toute autre colonne = code de champ personnalisé → `custom_data`
+        (validé via `valider_custom(custom_data)` si fourni — un appelant passe
+        `customfields.serializers.validate_custom_data` borné société/module).
+
+    Société + créateur posés CÔTÉ SERVEUR pour tout le lot ; le `folder` doit
+    appartenir à la société (garde dans `create_document`). Une ligne en erreur
+    n'interrompt PAS le lot (collectée dans `erreurs`).
+
+    Renvoie `{'documents': [...], 'erreurs': [{'ligne', 'detail'}], 'crees': n}`.
+    """
+    entries = _zip_entries(zip_bytes)
+    documents = []
+    erreurs = []
+    for idx, ligne in enumerate(lignes or [], start=1):
+        nom = (ligne.get(CSV_COL_NOM) or '').strip()
+        if not nom:
+            erreurs.append({'ligne': idx, 'detail': 'Nom requis.'})
+            continue
+        # Champs personnalisés = colonnes hors réservées (valeurs non vides).
+        custom_data = {k: v for k, v in ligne.items()
+                       if k not in CSV_COLS_RESERVEES and v not in (None, '')}
+        if custom_data and valider_custom is not None:
+            try:
+                custom_data = valider_custom(custom_data)
+            except Exception as exc:  # validation customfields → erreur de ligne.
+                erreurs.append({'ligne': idx,
+                                'detail': f'Métadonnées invalides : {exc}'})
+                continue
+        # Binaire optionnel apparié par la colonne `fichier`.
+        fichier = (ligne.get(CSV_COL_FICHIER) or '').strip()
+        contenu_bytes = None
+        mime = ''
+        if fichier:
+            if fichier not in entries:
+                erreurs.append({
+                    'ligne': idx,
+                    'detail': f"Fichier « {fichier} » absent du ZIP."})
+                continue
+            contenu_bytes = entries[fichier]
+            mime = _guess_mime(fichier)
+        document = create_document(
+            company=company, folder=folder, nom=nom,
+            description=(ligne.get(CSV_COL_DESCRIPTION) or '').strip(),
+            created_by=created_by,
+            custom_data=custom_data or None)
+        file_key = ''
+        size = 0
+        checksum = ''
+        if contenu_bytes is not None:
+            file_key, store_meta = _store_bytes(
+                contenu_bytes, mime=mime or 'application/octet-stream')
+            size = store_meta.get('size', 0)
+            checksum = compute_checksum(contenu_bytes)
+        add_version(
+            document, file_key=file_key, company=company,
+            filename=fichier or '', size=size, mime=mime,
+            checksum=checksum, uploaded_by=created_by)
+        update_search_vector(document)
+        index_embedding(document)
+        index_document_chunks(document)
+        documents.append(document)
+    return {'documents': documents, 'erreurs': erreurs,
+            'crees': len(documents)}
+
+
+def _guess_mime(filename):
+    """GED32 — Devine le type MIME d'un nom de fichier (stdlib `mimetypes`)."""
+    import mimetypes
+    mime, _ = mimetypes.guess_type(filename)
+    return mime or ''
 
 
 # ── GED16 — Check-out / check-in (verrouillage optimiste) ──────────
@@ -1396,6 +1879,146 @@ def purger_definitivement(document):
     document.delete()
 
 
+# ── GED25 — Purge automatique de la corbeille (DRY-RUN par défaut) ────────────
+#
+# Politique : la purge automatique n'efface JAMAIS un document « vivant ». Elle
+# ne considère QUE les documents DÉJÀ en corbeille (GED26, soft-delete) dont le
+# séjour en corbeille dépasse un délai de grâce (`PURGE_GRACE_DAYS`, défaut
+# 30 jours depuis `supprime_le`). Avant tout effacement, chaque candidat repasse
+# les gardes légales (GED23 write-once / GED24 legal hold actif) : un document
+# protégé est EXCLU silencieusement de la purge (jamais une 500). Tout est borné
+# à la société (multi-tenant) — jamais de fuite cross-société.
+#
+# DRY-RUN PAR DÉFAUT : `purger_corbeille_echue(..., apply=False)` ne fait que
+# COMPTER/LISTER ce qui SERAIT purgé sans rien effacer. L'effacement réel exige
+# un `apply=True` explicite (posé par la tâche planifiée ou la commande). C'est
+# une opération DESTRUCTIVE-mais-révertable au sens CLAUDE.md (revertable via
+# git pour le code ; les documents purgés étaient déjà en corbeille, soft-
+# supprimés et hors des listes — la purge ne fait que matérialiser un effacement
+# déjà demandé une fois le délai de grâce écoulé).
+
+# Délai de grâce par défaut (jours) avant qu'un document EN CORBEILLE devienne
+# éligible à la purge automatique. Lu de `settings.GED_PURGE_GRACE_DAYS` si
+# présent — sinon 30 jours. Toujours surchargeable par appel (`grace_days`).
+PURGE_GRACE_DEFAULT_DAYS = 30
+
+
+def _purge_grace_days(grace_days=None):
+    """GED25 — Résout le délai de grâce effectif (jours, entier positif).
+
+    Priorité : argument explicite > `settings.GED_PURGE_GRACE_DAYS` > défaut
+    (30 j). Un délai de grâce de 0 est REFUSÉ (on garde toujours un coussin) :
+    toute valeur non strictement positive retombe sur le défaut."""
+    from django.conf import settings
+    if grace_days is None:
+        grace_days = getattr(
+            settings, 'GED_PURGE_GRACE_DAYS', PURGE_GRACE_DEFAULT_DAYS)
+    try:
+        grace_days = int(grace_days)
+    except (TypeError, ValueError):
+        grace_days = PURGE_GRACE_DEFAULT_DAYS
+    return grace_days if grace_days > 0 else PURGE_GRACE_DEFAULT_DAYS
+
+
+def corbeille_purgeable(company, *, grace_days=None, now=None):
+    """GED25 — Documents EN CORBEILLE éligibles à la purge auto (société).
+
+    Renvoie un QuerySet (borné à la société) des documents dont :
+      * `supprime_le` est renseigné (déjà en corbeille, GED26) ; ET
+      * le séjour en corbeille dépasse le délai de grâce (`supprime_le` est
+        antérieur à `now - grace_days`).
+    Les gardes légales (GED23/GED24) NE sont PAS appliquées ici (elles le sont
+    au moment de l'effacement, document par document) — ce sélecteur n'est que la
+    présélection par âge. Aucun effacement : pur read.
+    """
+    import datetime
+
+    from django.utils import timezone
+
+    if now is None:
+        now = timezone.now()
+    seuil = now - datetime.timedelta(days=_purge_grace_days(grace_days))
+    return (Document.objects
+            .filter(company=company,
+                    supprime_le__isnull=False,
+                    supprime_le__lt=seuil)
+            .order_by('supprime_le', 'id'))
+
+
+def purger_corbeille_echue(company, *, grace_days=None, now=None, apply=False):
+    """GED25 — Purge auto de la corbeille échue d'une société (DRY-RUN par défaut).
+
+    Balaie les documents EN CORBEILLE dont le séjour dépasse le délai de grâce
+    (`corbeille_purgeable`) et, pour chacun, RE-VÉRIFIE les gardes légales avant
+    tout effacement :
+      * GED23 — archivé légalement (write-once) → EXCLU (compté `proteges`) ;
+      * GED24 — sous legal hold actif → EXCLU (compté `proteges`).
+    Un document protégé n'est JAMAIS purgé (jamais une 500) — il reste en
+    corbeille jusqu'à la levée de sa protection.
+
+    `apply=False` (DÉFAUT) = DRY-RUN : on COMPTE seulement ce qui serait purgé,
+    rien n'est effacé. `apply=True` efface réellement (via
+    `purger_definitivement`, qui respecte les mêmes gardes au niveau modèle —
+    double filet). L'effacement est idempotent et borné à la société.
+
+    Renvoie un dict de synthèse :
+      ``{'company_id', 'dry_run', 'eligibles', 'purges', 'proteges', 'ids'}``
+    où `eligibles` = candidats par âge, `purges` = réellement (ou virtuellement)
+    purgés, `proteges` = exclus par une garde légale, `ids` = ids purgés.
+    """
+    from .models import ArchivageLegalError, LegalHoldError
+
+    candidats = list(corbeille_purgeable(
+        company, grace_days=grace_days, now=now))
+    purges = 0
+    proteges = 0
+    ids = []
+    for document in candidats:
+        # Garde légale RE-vérifiée par document (état au moment de la purge).
+        if document.est_archive_legalement or document.est_sous_legal_hold:
+            proteges += 1
+            continue
+        if apply:
+            try:
+                purger_definitivement(document)
+            except (ArchivageLegalError, LegalHoldError):
+                # Filet ultime : course avec une protection posée entre-temps.
+                proteges += 1
+                continue
+        purges += 1
+        ids.append(document.pk)
+    return {
+        'company_id': getattr(company, 'id', None),
+        'dry_run': not apply,
+        'eligibles': len(candidats),
+        'purges': purges,
+        'proteges': proteges,
+        'ids': ids,
+    }
+
+
+def purger_corbeille_toutes_societes(*, grace_days=None, now=None, apply=False):
+    """GED25 — Purge auto de la corbeille échue de TOUTES les sociétés.
+
+    Itère société par société (chacune bornée à ses propres documents — jamais
+    de fuite cross-société) et agrège le résultat de `purger_corbeille_echue`.
+    DRY-RUN par défaut (`apply=False`). Renvoie un dict agrégé avec un détail par
+    société (`par_societe`)."""
+    from authentication.models import Company
+
+    total = {'dry_run': not apply, 'eligibles': 0, 'purges': 0,
+             'proteges': 0, 'par_societe': []}
+    for company in Company.objects.all():
+        res = purger_corbeille_echue(
+            company, grace_days=grace_days, now=now, apply=apply)
+        total['eligibles'] += res['eligibles']
+        total['purges'] += res['purges']
+        total['proteges'] += res['proteges']
+        if res['eligibles']:
+            total['par_societe'].append(res)
+    return total
+
+
 # ── GED27 — Modèles de documents (fusion/mailing → PDF WeasyPrint) ───────────
 #
 # Couche GÉNÉRIQUE de documents INTERNES (attestations, courriers, mailing) :
@@ -1739,3 +2362,100 @@ def marquer_signe(demande, *, provider_ref=None, date_signature=None):
     if champs:
         demande.save(update_fields=champs)
     return demande
+
+
+# ── GED35 — Journal d'audit d'accès aux documents (lectures) ─────────────────
+
+def journaliser_acces(document, *, utilisateur=None, type_acces=None,
+                      adresse_ip=None):
+    """GED35 — Enregistre un accès EN LECTURE à un document (append-only).
+
+    `company` est posée CÔTÉ SERVEUR (toujours celle du document) — jamais lue
+    d'un corps de requête. `utilisateur` peut être None (accès public anonyme
+    via lien tokenisé GED20). Ne lève jamais (l'audit ne doit pas casser une
+    lecture) — toute erreur d'écriture du journal est silencieusement ignorée.
+
+    Renvoie l'entrée `JournalAcces` créée, ou None si la journalisation a échoué
+    (best-effort)."""
+    from .models import ACCES_CONSULTATION, JournalAcces
+
+    try:
+        return JournalAcces.objects.create(
+            company=document.company,
+            document=document,
+            utilisateur=utilisateur if getattr(
+                utilisateur, 'is_authenticated', False) else None,
+            type_acces=type_acces or ACCES_CONSULTATION,
+            adresse_ip=adresse_ip or None,
+        )
+    except Exception:  # robustesse : l'audit ne bloque jamais une lecture.
+        return None
+
+
+def _adresse_ip_requete(request):
+    """GED35 — Adresse IP best-effort d'une requête (ou None).
+
+    Lit `REMOTE_ADDR` (jamais d'en-tête X-Forwarded-For non fiable). Renvoie
+    None si indisponible — l'audit reste possible sans IP."""
+    if request is None:
+        return None
+    return (getattr(request, 'META', {}) or {}).get('REMOTE_ADDR') or None
+
+
+# ── GED36 — Quotas de stockage par société ──────────────────────────────────
+
+def usage_stockage_octets(company):
+    """GED36 — Total des octets stockés par une société (somme des versions).
+
+    Somme la taille (`DocumentVersion.size`) de TOUTES les versions de la
+    société — y compris les versions historiques (chaque version occupe de
+    l'espace objet). Borné à la société (jamais cross-société). Renvoie un entier
+    (0 si aucune version)."""
+    from django.db.models import Sum
+    agg = (DocumentVersion.objects
+           .filter(company=company)
+           .aggregate(total=Sum('size')))
+    return int(agg['total'] or 0)
+
+
+def quota_octets(company):
+    """GED36 — Quota (octets) effectif d'une société (0 = illimité).
+
+    Lit l'entrée `QuotaStockage` explicite de la société si elle existe ; sinon
+    retombe sur le défaut `settings.GED_QUOTA_DEFAUT_OCTETS` (0 = illimité)."""
+    from django.conf import settings
+    from .models import QuotaStockage
+    quota = QuotaStockage.objects.filter(company=company).first()
+    if quota is not None:
+        return int(quota.quota_octets or 0)
+    return int(getattr(settings, 'GED_QUOTA_DEFAUT_OCTETS', 0) or 0)
+
+
+def quota_restant_octets(company):
+    """GED36 — Octets restants avant d'atteindre le quota (None si illimité)."""
+    limite = quota_octets(company)
+    if limite <= 0:
+        return None  # illimité
+    return max(0, limite - usage_stockage_octets(company))
+
+
+def quota_depasse(company, *, octets_supplementaires=0):
+    """GED36 — True si la société dépasse (ou dépasserait) son quota.
+
+    `octets_supplementaires` simule l'ajout d'un dépôt à venir : on vérifie si
+    `usage + supplément > quota`. Un quota nul/illimité ne dépasse JAMAIS."""
+    limite = quota_octets(company)
+    if limite <= 0:
+        return False  # illimité
+    return (usage_stockage_octets(company)
+            + max(0, int(octets_supplementaires or 0))) > limite
+
+
+def assert_quota_disponible(company, *, octets_supplementaires=0):
+    """GED36 — Lève `QuotaDepasseError` si le dépôt ferait dépasser le quota.
+
+    Garde à poser AVANT un dépôt (la vue la traduit en 403, jamais 500). Un
+    quota illimité (0) ne lève jamais."""
+    from .models import QuotaDepasseError, QUOTA_DEPASSE_MESSAGE
+    if quota_depasse(company, octets_supplementaires=octets_supplementaires):
+        raise QuotaDepasseError(QUOTA_DEPASSE_MESSAGE)

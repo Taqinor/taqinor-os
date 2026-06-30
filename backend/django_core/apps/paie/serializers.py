@@ -7,15 +7,20 @@ appartenant à la société de l'utilisateur.
 from rest_framework import serializers
 
 from .models import (
+    AvanceSalarie,
     BaremeIR,
     BulletinPaie,
+    CumulAnnuel,
     ElementVariable,
     LigneBulletin,
+    LigneVirement,
+    OrdreVirement,
     ParametrePaie,
     PeriodePaie,
     ProfilPaie,
     Rubrique,
     RubriqueEmploye,
+    SaisieArret,
     TrancheIR,
 )
 
@@ -233,7 +238,10 @@ class ElementVariableSerializer(serializers.ModelSerializer):
         fields = [
             'id', 'periode', 'profil', 'type', 'rubrique', 'libelle',
             # PAIE14 — categorie_hs : 'jour'|'nuit'|'ferie' (ignoré hors HS).
-            'quantite', 'categorie_hs', 'montant', 'source', 'date_creation',
+            'quantite', 'categorie_hs', 'montant',
+            # PAIE26 — drapeaux d'absence (rémunérée / décompte du solde).
+            'remunere', 'deduit_solde',
+            'source', 'date_creation',
         ]
         read_only_fields = ['date_creation']
 
@@ -269,12 +277,113 @@ class BulletinPaieSerializer(serializers.ModelSerializer):
     class Meta:
         model = BulletinPaie
         fields = [
-            'id', 'periode', 'profil', 'statut', 'personnes_a_charge',
+            'id', 'periode', 'profil', 'statut',
+            'type_bulletin', 'rectifie', 'motif', 'personnes_a_charge',
             'brut', 'brut_imposable', 'cnss_salariale', 'cnss_patronale',
             'amo_salariale', 'amo_patronale', 'allocations_familiales',
-            'formation_professionnelle', 'cimr_salariale',
+            'formation_professionnelle', 'provision_conges', 'cimr_salariale',
             'frais_professionnels', 'net_imposable', 'ir', 'retenues',
             'prime_anciennete', 'charges_patronales', 'net_a_payer',
+            'provision_conges',
             'date_validation', 'date_creation', 'lignes',
+        ]
+        read_only_fields = fields
+
+
+class AvanceSalarieSerializer(serializers.ModelSerializer):
+    """Avance / prêt salarié remboursé par déduction mensuelle (PAIE28).
+
+    ``company`` posée côté serveur ; ``profil`` validé comme appartenant à la
+    société de l'utilisateur. ``montant_rembourse`` est en LECTURE SEULE : il
+    n'est jamais saisi côté client, il est incrémenté par le service à la
+    validation des bulletins (``appliquer_remboursements_avances``). Les
+    propriétés ``solde_restant`` / ``soldee`` sont exposées en lecture.
+    """
+    solde_restant = serializers.DecimalField(
+        max_digits=14, decimal_places=2, read_only=True)
+    soldee = serializers.BooleanField(read_only=True)
+
+    class Meta:
+        model = AvanceSalarie
+        fields = [
+            'id', 'profil', 'type', 'libelle', 'montant_total',
+            'montant_echeance', 'nombre_echeances', 'montant_rembourse',
+            'solde_restant', 'soldee', 'date_debut', 'actif', 'date_creation',
+        ]
+        read_only_fields = ['montant_rembourse', 'date_creation']
+
+    def validate_profil(self, value):
+        return _meme_societe(self, value, 'Profil')
+
+
+class LigneVirementSerializer(serializers.ModelSerializer):
+    """Ligne d'un ordre de virement (PAIE30) — lecture seule."""
+
+    class Meta:
+        model = LigneVirement
+        fields = [
+            'id', 'bulletin', 'beneficiaire', 'rib', 'montant', 'reference',
+        ]
+        read_only_fields = fields
+
+
+class OrdreVirementSerializer(serializers.ModelSerializer):
+    """Ordre de virement des salaires d'une période (PAIE30) — lecture seule.
+
+    Construit/regénéré par l'action ``generer`` (depuis les bulletins validés)
+    et figé par ``emettre``. Société scopée, palier paie. Les lignes sont
+    imbriquées.
+    """
+    lignes = LigneVirementSerializer(many=True, read_only=True)
+
+    class Meta:
+        model = OrdreVirement
+        fields = [
+            'id', 'periode', 'libelle', 'statut', 'date_execution',
+            'rib_emetteur', 'devise', 'total', 'nombre_lignes',
+            'date_emission', 'date_creation', 'lignes',
+        ]
+        read_only_fields = fields
+
+
+class SaisieArretSerializer(serializers.ModelSerializer):
+    """Saisie-arrêt / cession sur salaire (PAIE29).
+
+    ``company`` posée côté serveur ; ``profil`` validé société. ``montant_retenu``
+    est en LECTURE SEULE (cumulé par le service à la validation des bulletins).
+    Les propriétés ``solde_restant`` / ``soldee`` sont exposées en lecture.
+    """
+    solde_restant = serializers.DecimalField(
+        max_digits=14, decimal_places=2, read_only=True)
+    soldee = serializers.BooleanField(read_only=True)
+
+    class Meta:
+        model = SaisieArret
+        fields = [
+            'id', 'profil', 'type', 'creancier', 'reference', 'montant_total',
+            'montant_echeance', 'montant_retenu', 'solde_restant', 'soldee',
+            'prioritaire', 'date_debut', 'actif', 'date_creation',
+        ]
+        read_only_fields = ['montant_retenu', 'date_creation']
+
+    def validate_profil(self, value):
+        return _meme_societe(self, value, 'Profil')
+
+
+class CumulAnnuelSerializer(serializers.ModelSerializer):
+    """Cumul annuel de paie d'un employé (PAIE27) — LECTURE SEULE.
+
+    Agrégat recalculé depuis les bulletins validés par
+    ``services.recalculer_cumul_annuel`` (jamais saisi via l'API). Société
+    scopée, palier paie uniquement (donnée SENSIBLE).
+    """
+    class Meta:
+        model = CumulAnnuel
+        fields = [
+            'id', 'profil', 'annee', 'brut', 'brut_imposable', 'net_imposable',
+            'ir', 'cnss_salariale', 'amo_salariale', 'cimr_salariale',
+            'frais_professionnels', 'net_a_payer', 'charges_patronales',
+            'provision_conges', 'conges_acquis', 'conges_pris',
+            'nombre_bulletins', 'date_calcul', 'date_creation',
         ]
         read_only_fields = fields

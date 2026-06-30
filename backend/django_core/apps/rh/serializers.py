@@ -9,8 +9,11 @@ from rest_framework import serializers
 from .models import (
     AccidentTravail,
     AffectationRoster,
+    AffectationVehicule,
     AnalyseRisquesChantier,
+    AvanceSalaire,
     BesoinFormation,
+    BulletinPaie,
     CampagneEvaluation,
     Candidature,
     CauserieParticipant,
@@ -24,6 +27,7 @@ from .models import (
     DossierEmploye,
     DotationEpi,
     ElementSortie,
+    ElementsVariablesPaie,
     EmargementEpi,
     EvaluationEmploye,
     EpiCatalogue,
@@ -33,16 +37,22 @@ from .models import (
     IncidentPresence,
     InscriptionFormation,
     LigneRisqueChantier,
+    NoteDeFrais,
     ObjectifIndividuel,
+    OrdreMission,
     OuverturePoste,
+    PermisConduire,
     Pointage,
     Poste,
     PresenceChantier,
     PresquAccident,
+    PrimeAttribuee,
     Remuneration,
+    Sanction,
     SessionFormation,
     SoldeConge,
     TypeAbsence,
+    TypePrime,
     VisiteMedicale,
 )
 
@@ -1587,3 +1597,410 @@ class CampagneEvaluationSerializer(serializers.ModelSerializer):
             'date_creation', 'date_modification',
         ]
         read_only_fields = ['date_creation', 'date_modification']
+
+
+class SanctionSerializer(serializers.ModelSerializer):
+    """Sanction disciplinaire d'un collaborateur (FG191).
+
+    Le client saisit ``employe`` et ``auteur`` (des ``DossierEmploye`` de sa
+    société), ``type_sanction``, ``date_faits``, ``date_notification``,
+    ``duree_jours``, ``motif`` et ``statut``. ``company`` est posée CÔTÉ
+    SERVEUR (jamais lue du corps) ; ``employe`` / ``auteur`` doivent appartenir
+    à la société de l'utilisateur.
+    """
+    employe_nom = serializers.SerializerMethodField()
+    type_sanction_display = serializers.CharField(
+        source='get_type_sanction_display', read_only=True)
+    statut_display = serializers.CharField(
+        source='get_statut_display', read_only=True)
+
+    class Meta:
+        model = Sanction
+        fields = [
+            'id', 'employe', 'employe_nom', 'auteur',
+            'type_sanction', 'type_sanction_display',
+            'date_faits', 'date_notification', 'duree_jours',
+            'motif', 'statut', 'statut_display',
+            'date_creation', 'date_modification',
+        ]
+        read_only_fields = ['date_creation', 'date_modification']
+
+    def get_employe_nom(self, obj):
+        if not obj.employe_id:
+            return ''
+        return f'{obj.employe.nom} {obj.employe.prenom}'
+
+    def validate_employe(self, value):
+        return _meme_societe(self, value, 'Employé')
+
+    def validate_auteur(self, value):
+        return _meme_societe(self, value, 'Auteur')
+
+
+class ElementsVariablesPaieSerializer(serializers.ModelSerializer):
+    """Bordereau mensuel d'éléments variables de paie (FG192).
+
+    Le client saisit ``employe`` (un ``DossierEmploye`` de sa société),
+    ``annee``, ``mois``, les quantités (``heures_normales``, ``heures_supp``,
+    ``jours_absence``, ``jours_conges``), les montants (``primes``,
+    ``retenues``), un ``commentaire`` et le ``statut``. ``company`` et
+    ``date_export`` sont posées CÔTÉ SERVEUR (jamais lues du corps).
+    """
+    employe_nom = serializers.SerializerMethodField()
+    employe_matricule = serializers.CharField(
+        source='employe.matricule', read_only=True)
+    statut_display = serializers.CharField(
+        source='get_statut_display', read_only=True)
+
+    class Meta:
+        model = ElementsVariablesPaie
+        fields = [
+            'id', 'employe', 'employe_nom', 'employe_matricule',
+            'annee', 'mois',
+            'heures_normales', 'heures_supp',
+            'jours_absence', 'jours_conges',
+            'primes', 'retenues', 'commentaire',
+            'statut', 'statut_display', 'date_export',
+            'date_creation', 'date_modification',
+        ]
+        read_only_fields = ['date_export', 'date_creation', 'date_modification']
+
+    def get_employe_nom(self, obj):
+        if not obj.employe_id:
+            return ''
+        return f'{obj.employe.nom} {obj.employe.prenom}'
+
+    def validate_employe(self, value):
+        return _meme_societe(self, value, 'Employé')
+
+    def validate_mois(self, value):
+        if not 1 <= value <= 12:
+            raise serializers.ValidationError(
+                'Le mois doit être compris entre 1 et 12.')
+        return value
+
+
+class OrdreMissionSerializer(serializers.ModelSerializer):
+    """Ordre de mission / déplacement chantier (FG194).
+
+    Le client saisit ``employe`` (un ``DossierEmploye`` de sa société),
+    ``destination``, ``motif``, ``date_depart`` / ``date_retour``,
+    ``moyen_transport``, ``vehicule_id``, ``per_diem`` et ``statut``.
+    ``company`` et ``reference`` sont posées CÔTÉ SERVEUR (jamais lues du
+    corps) ; ``employe`` doit appartenir à la société de l'utilisateur.
+    """
+    employe_nom = serializers.SerializerMethodField()
+    statut_display = serializers.CharField(
+        source='get_statut_display', read_only=True)
+
+    class Meta:
+        model = OrdreMission
+        fields = [
+            'id', 'reference', 'employe', 'employe_nom',
+            'destination', 'motif',
+            'date_depart', 'date_retour', 'moyen_transport',
+            'vehicule_id', 'per_diem', 'statut', 'statut_display',
+            'date_creation', 'date_modification',
+        ]
+        read_only_fields = ['reference', 'date_creation', 'date_modification']
+
+    def get_employe_nom(self, obj):
+        if not obj.employe_id:
+            return ''
+        return f'{obj.employe.nom} {obj.employe.prenom}'
+
+    def validate_employe(self, value):
+        return _meme_societe(self, value, 'Employé')
+
+
+class AvanceSalaireSerializer(serializers.ModelSerializer):
+    """Avance sur salaire (FG195) — demande/validation/déduction.
+
+    Le client saisit ``employe`` (un ``DossierEmploye`` de sa société),
+    ``montant``, ``date_demande``, ``motif``, ``annee_deduction`` /
+    ``mois_deduction`` (par défaut le mois suivant la demande, posé côté
+    serveur si absent). ``company`` est posée CÔTÉ SERVEUR (jamais lue du
+    corps) ; ``employe`` / ``valideur`` doivent appartenir à la société de
+    l'utilisateur. ``statut`` et ``valideur`` évoluent via les actions dédiées.
+    """
+    employe_nom = serializers.SerializerMethodField()
+    statut_display = serializers.CharField(
+        source='get_statut_display', read_only=True)
+
+    class Meta:
+        model = AvanceSalaire
+        fields = [
+            'id', 'employe', 'employe_nom', 'valideur',
+            'montant', 'date_demande', 'motif',
+            'annee_deduction', 'mois_deduction',
+            'statut', 'statut_display',
+            'date_creation', 'date_modification',
+        ]
+        read_only_fields = [
+            'valideur', 'statut', 'date_creation', 'date_modification']
+
+    def get_employe_nom(self, obj):
+        if not obj.employe_id:
+            return ''
+        return f'{obj.employe.nom} {obj.employe.prenom}'
+
+    def validate_employe(self, value):
+        return _meme_societe(self, value, 'Employé')
+
+    def validate_mois_deduction(self, value):
+        if value is not None and not 1 <= value <= 12:
+            raise serializers.ValidationError(
+                'Le mois doit être compris entre 1 et 12.')
+        return value
+
+
+class BulletinPaieSerializer(serializers.ModelSerializer):
+    """Bulletin de paie déposé en lecture seule (FG196).
+
+    Lecture seule sur les métadonnées de la pièce jointe (nom/taille/mime/URL
+    de téléchargement même origine) ; le FICHIER reste dans MinIO via
+    ``records.Attachment``. Le client (vue) saisit ``employe``, ``annee``,
+    ``mois``, ``note`` + le fichier en multipart ; ``company`` et
+    ``attachment`` sont posés CÔTÉ SERVEUR (jamais lus du corps).
+    """
+    employe_nom = serializers.SerializerMethodField()
+    filename = serializers.CharField(
+        source='attachment.filename', read_only=True)
+    size = serializers.IntegerField(
+        source='attachment.size', read_only=True)
+    mime = serializers.CharField(
+        source='attachment.mime', read_only=True)
+    url = serializers.SerializerMethodField()
+
+    class Meta:
+        model = BulletinPaie
+        fields = [
+            'id', 'employe', 'employe_nom', 'annee', 'mois', 'note',
+            'filename', 'size', 'mime', 'url', 'date_creation',
+        ]
+        read_only_fields = [
+            'id', 'employe_nom', 'filename', 'size', 'mime', 'url',
+            'date_creation',
+        ]
+
+    def get_employe_nom(self, obj):
+        if not obj.employe_id:
+            return ''
+        return f'{obj.employe.nom} {obj.employe.prenom}'
+
+    def get_url(self, obj):
+        if obj.attachment_id:
+            return (f'/api/django/records/attachments/'
+                    f'{obj.attachment_id}/download/')
+        return None
+
+    def validate_employe(self, value):
+        return _meme_societe(self, value, 'Employé')
+
+    def validate_mois(self, value):
+        if not 1 <= value <= 12:
+            raise serializers.ValidationError(
+                'Le mois doit être compris entre 1 et 12.')
+        return value
+
+
+class PermisConduireSerializer(serializers.ModelSerializer):
+    """Permis de conduire & habilitation à conduire (FG197).
+
+    Le client saisit ``employe`` (un ``DossierEmploye`` de sa société),
+    ``categorie``, ``numero``, ``date_delivrance``, ``date_expiration``,
+    ``habilitation_conduite`` et ``note``. ``company`` est posée CÔTÉ SERVEUR
+    (jamais lue du corps) ; ``employe`` doit appartenir à la société de
+    l'utilisateur. Le couple (employe, categorie) est unique.
+    """
+    employe_nom = serializers.SerializerMethodField()
+    categorie_display = serializers.CharField(
+        source='get_categorie_display', read_only=True)
+    valide = serializers.SerializerMethodField()
+
+    class Meta:
+        model = PermisConduire
+        fields = [
+            'id', 'employe', 'employe_nom',
+            'categorie', 'categorie_display', 'numero',
+            'date_delivrance', 'date_expiration',
+            'habilitation_conduite', 'valide', 'note',
+            'date_creation', 'date_modification',
+        ]
+        read_only_fields = [
+            'employe_nom', 'categorie_display', 'valide',
+            'date_creation', 'date_modification']
+
+    def get_employe_nom(self, obj):
+        if not obj.employe_id:
+            return ''
+        return f'{obj.employe.nom} {obj.employe.prenom}'
+
+    def get_valide(self, obj):
+        from django.utils import timezone
+        if obj.date_expiration is None:
+            return True
+        return obj.date_expiration >= timezone.localdate()
+
+    def validate_employe(self, value):
+        return _meme_societe(self, value, 'Employé')
+
+
+class AffectationVehiculeSerializer(serializers.ModelSerializer):
+    """Affectation conducteur ↔ véhicule (FG198).
+
+    Le client saisit ``employe`` (un ``DossierEmploye`` de sa société),
+    ``vehicule_id`` (ID d'un ``flotte.Vehicule``), ``date_debut`` /
+    ``date_fin``, ``statut`` et ``note``. ``company`` et ``permis_verifie``
+    sont posées CÔTÉ SERVEUR (jamais lues du corps) ; ``employe`` doit
+    appartenir à la société de l'utilisateur. La GARDE PERMIS (FG198) est
+    appliquée côté serveur par la vue : pas de permis valide → 400.
+    """
+    employe_nom = serializers.SerializerMethodField()
+    statut_display = serializers.CharField(
+        source='get_statut_display', read_only=True)
+
+    class Meta:
+        model = AffectationVehicule
+        fields = [
+            'id', 'employe', 'employe_nom', 'vehicule_id',
+            'date_debut', 'date_fin', 'statut', 'statut_display',
+            'permis_verifie', 'note',
+            'date_creation', 'date_modification',
+        ]
+        read_only_fields = [
+            'employe_nom', 'permis_verifie',
+            'date_creation', 'date_modification']
+
+    def get_employe_nom(self, obj):
+        if not obj.employe_id:
+            return ''
+        return f'{obj.employe.nom} {obj.employe.prenom}'
+
+    def validate_employe(self, value):
+        return _meme_societe(self, value, 'Conducteur')
+
+
+class NoteDeFraisSerializer(serializers.ModelSerializer):
+    """Note de frais (FG199) — déclaration de frais par le collaborateur.
+
+    Le client saisit ``categorie``, ``montant``, ``date_frais`` et ``libelle``.
+    ``company``, ``employe`` et ``statut`` sont posés CÔTÉ SERVEUR : la note est
+    rattachée au dossier du compte appelant par la vue self-service ; le statut
+    suit le workflow d'approbation (soumise → approuvée → remboursée/refusée).
+    """
+    employe_nom = serializers.SerializerMethodField()
+    categorie_display = serializers.CharField(
+        source='get_categorie_display', read_only=True)
+    statut_display = serializers.CharField(
+        source='get_statut_display', read_only=True)
+
+    class Meta:
+        model = NoteDeFrais
+        fields = [
+            'id', 'employe', 'employe_nom',
+            'categorie', 'categorie_display',
+            'montant', 'date_frais', 'libelle',
+            'statut', 'statut_display',
+            'date_creation', 'date_modification',
+        ]
+        read_only_fields = [
+            'employe', 'employe_nom', 'statut',
+            'date_creation', 'date_modification']
+
+    def get_employe_nom(self, obj):
+        if not obj.employe_id:
+            return ''
+        return f'{obj.employe.nom} {obj.employe.prenom}'
+
+
+class MesInfosSerializer(serializers.ModelSerializer):
+    """Self-service employé (FG199) — fiche personnelle consultable/éditable.
+
+    Le collaborateur consulte ses informations et ne peut MODIFIER que ses
+    coordonnées personnelles et son contact d'urgence — JAMAIS son poste, son
+    contrat, son statut, son matricule ni le ``cout_horaire`` (interne). Tous
+    les champs sensibles sont en lecture seule.
+    """
+    type_contrat_display = serializers.CharField(
+        source='get_type_contrat_display', read_only=True)
+    statut_display = serializers.CharField(
+        source='get_statut_display', read_only=True)
+
+    class Meta:
+        model = DossierEmploye
+        fields = [
+            'id', 'matricule', 'nom', 'prenom', 'cin',
+            'poste', 'type_contrat', 'type_contrat_display',
+            'date_embauche', 'statut', 'statut_display',
+            # Éditables par le collaborateur :
+            'telephone', 'email',
+            'adresse_perso', 'telephone_perso', 'email_perso',
+            'urgence_nom', 'urgence_lien', 'urgence_telephone',
+        ]
+        read_only_fields = [
+            'id', 'matricule', 'nom', 'prenom', 'cin', 'poste',
+            'type_contrat', 'type_contrat_display',
+            'date_embauche', 'statut', 'statut_display',
+        ]
+
+
+class TypePrimeSerializer(serializers.ModelSerializer):
+    """Référentiel des primes & indemnités (FG193).
+
+    Le client saisit ``code``, ``libelle``, ``nature``, ``montant_defaut``,
+    ``imposable`` et ``actif``. ``company`` est posée CÔTÉ SERVEUR (jamais lue
+    du corps) ; le couple (company, code) est unique.
+    """
+    nature_display = serializers.CharField(
+        source='get_nature_display', read_only=True)
+
+    class Meta:
+        model = TypePrime
+        fields = [
+            'id', 'code', 'libelle', 'nature', 'nature_display',
+            'montant_defaut', 'imposable', 'actif', 'date_creation',
+        ]
+        read_only_fields = ['date_creation']
+
+
+class PrimeAttribueeSerializer(serializers.ModelSerializer):
+    """Prime/indemnité attribuée à un employé pour une période (FG193).
+
+    Le client saisit ``type_prime`` et ``employe`` (de sa société), ``annee``,
+    ``mois``, ``montant``, ``motif`` et ``statut``. ``company`` est posée CÔTÉ
+    SERVEUR (jamais lue du corps) ; ``type_prime`` / ``employe`` doivent
+    appartenir à la société de l'utilisateur.
+    """
+    employe_nom = serializers.SerializerMethodField()
+    type_prime_libelle = serializers.CharField(
+        source='type_prime.libelle', read_only=True)
+    statut_display = serializers.CharField(
+        source='get_statut_display', read_only=True)
+
+    class Meta:
+        model = PrimeAttribuee
+        fields = [
+            'id', 'type_prime', 'type_prime_libelle',
+            'employe', 'employe_nom', 'annee', 'mois',
+            'montant', 'motif', 'statut', 'statut_display',
+            'date_creation', 'date_modification',
+        ]
+        read_only_fields = ['date_creation', 'date_modification']
+
+    def get_employe_nom(self, obj):
+        if not obj.employe_id:
+            return ''
+        return f'{obj.employe.nom} {obj.employe.prenom}'
+
+    def validate_type_prime(self, value):
+        return _meme_societe(self, value, 'Type de prime')
+
+    def validate_employe(self, value):
+        return _meme_societe(self, value, 'Employé')
+
+    def validate_mois(self, value):
+        if not 1 <= value <= 12:
+            raise serializers.ValidationError(
+                'Le mois doit être compris entre 1 et 12.')
+        return value

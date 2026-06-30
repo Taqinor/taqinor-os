@@ -215,6 +215,23 @@ LEGAL_HOLD_MESSAGE = (
 )
 
 
+# GED36 — Quota de stockage par société.
+#
+# Message levé quand un dépôt ferait dépasser le quota de stockage de la société.
+QUOTA_DEPASSE_MESSAGE = (
+    "Quota de stockage atteint pour cette société : impossible de déposer un "
+    "nouveau fichier tant que de l'espace n'est pas libéré ou le quota relevé."
+)
+
+
+class QuotaDepasseError(Exception):
+    """GED36 — Levée quand un dépôt dépasserait le quota de stockage de la société.
+
+    Hérite d'``Exception`` (reconnaissable comme les erreurs GED23/GED24) ; la
+    vue la traduit en 403 (jamais 500). Garde purement APPLICATIVE posée avant
+    un dépôt — elle ne supprime jamais rien."""
+
+
 class LegalHoldError(Exception):
     """GED24 — Levée à toute tentative de suppression d'un document sous hold.
 
@@ -1577,3 +1594,92 @@ class ModeleDocument(models.Model):
 
     def __str__(self):
         return self.nom
+
+
+# GED35 — Journal d'audit d'accès aux documents (lectures).
+#
+# Trace chaque ACCÈS EN LECTURE à un document (aperçu inline GED14, téléchargement
+# public tokenisé GED20, consultation). Append-only par convention : on n'expose
+# ni update ni delete via l'API (lecture seule côté viewset). Multi-tenant :
+# `company` posée CÔTÉ SERVEUR (jamais lue du corps), bornée à la société du
+# document. Couche LOCALE à la GED — sans rapport avec le funnel `STAGES.py`.
+ACCES_APERCU = 'apercu'          # aperçu inline authentifié (GED14)
+ACCES_TELECHARGEMENT = 'telechargement'  # téléchargement (proxy)
+ACCES_PUBLIC = 'public'          # accès via lien public tokenisé (GED20)
+ACCES_CONSULTATION = 'consultation'      # ouverture de la fiche document
+
+ACCES_TYPE_CHOICES = [
+    (ACCES_APERCU, 'Aperçu'),
+    (ACCES_TELECHARGEMENT, 'Téléchargement'),
+    (ACCES_PUBLIC, 'Accès public (lien)'),
+    (ACCES_CONSULTATION, 'Consultation'),
+]
+
+
+class JournalAcces(models.Model):
+    """GED35 — Entrée d'audit d'un accès EN LECTURE à un document.
+
+    Enregistre QUI (utilisateur, NULL pour un accès public anonyme), QUAND, QUEL
+    document, et SOUS QUELLE forme (aperçu / téléchargement / public /
+    consultation). Append-only : aucune mise à jour ni suppression via l'API.
+    Multi-tenant : `company` posée côté serveur (cohérente avec celle du
+    document) — jamais lue du corps de requête."""
+    company = models.ForeignKey(
+        'authentication.Company', on_delete=models.CASCADE,
+        null=True, blank=True, related_name='ged_journaux_acces')
+    document = models.ForeignKey(
+        Document, on_delete=models.CASCADE, related_name='acces')
+    # NULL = accès PUBLIC anonyme (lien tokenisé GED20) — pas d'utilisateur connu.
+    utilisateur = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL,
+        null=True, blank=True, related_name='ged_acces_documents',
+        verbose_name='utilisateur')
+    type_acces = models.CharField(
+        max_length=14, choices=ACCES_TYPE_CHOICES, default=ACCES_CONSULTATION,
+        verbose_name="type d'accès")
+    # Métadonnées best-effort (jamais sensibles) : IP tronquée / user-agent court.
+    adresse_ip = models.GenericIPAddressField(
+        null=True, blank=True, verbose_name='adresse IP')
+    created_at = models.DateTimeField(auto_now_add=True, db_index=True)
+
+    class Meta:
+        ordering = ['-created_at', '-id']
+        verbose_name = "Accès au document (audit)"
+        verbose_name_plural = "Journal d'accès aux documents"
+        indexes = [
+            models.Index(fields=['company', 'document'],
+                         name='ged_acces_co_doc_idx'),
+            models.Index(fields=['company', 'created_at'],
+                         name='ged_acces_co_date_idx'),
+        ]
+
+    def __str__(self):
+        return f'{self.type_acces} #{self.document_id} @ {self.created_at}'
+
+
+class QuotaStockage(models.Model):
+    """GED36 — Quota de stockage documentaire d'une société (octets).
+
+    UNE entrée par société (OneToOne) fixe la capacité de stockage allouée
+    (`quota_octets` ; 0 = illimité). L'usage courant n'est PAS stocké ici (il est
+    calculé à la volée par `services.usage_stockage_octets` en sommant la taille
+    des versions de la société) — on évite un compteur dénormalisé qui dériverait.
+    Multi-tenant : `company` posée CÔTÉ SERVEUR (jamais lue du corps). Le quota
+    est CONSULTATIF par défaut (l'application le LIT pour bloquer un dépôt qui
+    dépasserait) — jamais une suppression automatique. Sans entrée explicite, le
+    défaut `settings.GED_QUOTA_DEFAUT_OCTETS` s'applique (0 = illimité)."""
+    company = models.OneToOneField(
+        'authentication.Company', on_delete=models.CASCADE,
+        related_name='ged_quota_stockage')
+    # Capacité allouée en octets. 0 = illimité (aucun plafond appliqué).
+    quota_octets = models.BigIntegerField(
+        default=0, verbose_name='quota (octets, 0 = illimité)')
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = 'Quota de stockage GED'
+        verbose_name_plural = 'Quotas de stockage GED'
+
+    def __str__(self):
+        return f'Quota {self.company_id}: {self.quota_octets} o'

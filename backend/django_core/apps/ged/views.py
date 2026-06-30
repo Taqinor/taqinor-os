@@ -32,16 +32,18 @@ from . import selectors, services
 from .models import (
     ArchivageLegal, ArchivageLegalError, Cabinet, Coffre, DemandeApprobation,
     DemandeSignatureDocument, Document, DocumentLien, DocumentTag,
-    DocumentTagAssignment, DocumentVersion, Folder, LegalHold, LegalHoldError,
-    ModeleDocument, PartageGed, PolitiqueRetention,
+    DocumentTagAssignment, DocumentVersion, Folder, JournalAcces, LegalHold,
+    LegalHoldError, ModeleDocument, PartageGed, PolitiqueRetention,
+    QuotaDepasseError, QuotaStockage,
 )
 from .serializers import (
     ArchivageLegalSerializer, CabinetSerializer, CoffreSerializer,
     DemandeApprobationSerializer, DemandeSignatureDocumentSerializer,
     DocumentLienSerializer, DocumentSerializer,
     DocumentTagAssignmentSerializer, DocumentTagSerializer,
-    DocumentVersionSerializer, FolderSerializer, LegalHoldSerializer,
-    ModeleDocumentSerializer, PartageGedSerializer, PolitiqueRetentionSerializer,
+    DocumentVersionSerializer, FolderSerializer, JournalAccesSerializer,
+    LegalHoldSerializer, ModeleDocumentSerializer, PartageGedSerializer,
+    PolitiqueRetentionSerializer, QuotaStockageSerializer,
 )
 
 READ_ACTIONS = ['list', 'retrieve']
@@ -335,6 +337,14 @@ class DocumentViewSet(TenantMixin, viewsets.ModelViewSet):
         if not file:
             return Response({'file': 'Aucun fichier fourni.'},
                             status=status.HTTP_400_BAD_REQUEST)
+        # GED36 — garde de quota AVANT le stockage (403, jamais 500). Un quota
+        # illimité (0) ne bloque jamais.
+        try:
+            services.assert_quota_disponible(
+                company, octets_supplementaires=getattr(file, 'size', 0))
+        except QuotaDepasseError as exc:
+            return Response({'detail': str(exc)},
+                            status=status.HTTP_403_FORBIDDEN)
         meta, err = store_attachment(file)
         if err:
             return Response({'file': err},
@@ -368,6 +378,123 @@ class DocumentViewSet(TenantMixin, viewsets.ModelViewSet):
         return Response(
             DocumentSerializer(document, context={'request': request}).data,
             status=status.HTTP_201_CREATED)
+
+    @action(detail=False, methods=['post'], url_path='scan-lot',
+            parser_classes=[MultiPartParser, FormParser])
+    def scan_lot(self, request):
+        """GED31 — Numérisation par LOT (scan-to-DMS) : N fichiers en un appel.
+
+        `POST …/documents/scan-lot/` (multipart) — corps :
+        `{folder: <id>, files: <binaire>[, files: <binaire> …]}`. Chaque fichier
+        est validé + stocké via `records.storage.store_attachment` (même pipeline
+        MinIO), puis déposé comme Document + version 1 via
+        `services.deposer_lot_scans` (OCR no-op sans clé + indexation). La société
+        et le créateur sont posés CÔTÉ SERVEUR (jamais lus du corps). Le dossier
+        cible est borné à la société (404 sinon). Écriture : responsable/admin.
+
+        Renvoie `{documents: [...], erreurs: [...]}` — un fichier au format refusé
+        est listé dans `erreurs` sans bloquer le reste du lot."""
+        company = request.user.company
+        folder_id = request.data.get('folder')
+        if not folder_id:
+            return Response({'folder': 'Le dossier cible est requis.'},
+                            status=status.HTTP_400_BAD_REQUEST)
+        folder = (Folder.objects.filter(company=company)
+                  .filter(pk=folder_id).first())
+        if folder is None:
+            return Response({'folder': 'Dossier inconnu.'},
+                            status=status.HTTP_404_NOT_FOUND)
+        files = request.FILES.getlist('files') or request.FILES.getlist('file')
+        if not files:
+            return Response({'files': 'Aucun fichier fourni.'},
+                            status=status.HTTP_400_BAD_REQUEST)
+        # GED36 — garde de quota sur le LOT entier (somme des tailles), avant
+        # tout stockage (403, jamais 500). Quota illimité (0) ne bloque jamais.
+        total_octets = sum(getattr(f, 'size', 0) or 0 for f in files)
+        try:
+            services.assert_quota_disponible(
+                company, octets_supplementaires=total_octets)
+        except QuotaDepasseError as exc:
+            return Response({'detail': str(exc)},
+                            status=status.HTTP_403_FORBIDDEN)
+        a_deposer = []
+        erreurs = []
+        for f in files:
+            meta, err = store_attachment(f)
+            if err:
+                erreurs.append({'filename': getattr(f, 'name', ''),
+                                'detail': err})
+                continue
+            a_deposer.append({
+                'file_key': meta['file_key'], 'filename': meta['filename'],
+                'size': meta['size'], 'mime': meta['mime'],
+            })
+        documents = services.deposer_lot_scans(
+            company=company, folder=folder, fichiers=a_deposer,
+            created_by=request.user)
+        ser = DocumentSerializer(
+            documents, many=True, context={'request': request})
+        http = (status.HTTP_201_CREATED if documents
+                else status.HTTP_400_BAD_REQUEST)
+        return Response({'documents': ser.data, 'erreurs': erreurs}, status=http)
+
+    @action(detail=False, methods=['post'], url_path='import-masse',
+            parser_classes=[MultiPartParser, FormParser])
+    def import_masse(self, request):
+        """GED32 — Import en MASSE depuis un CSV de métadonnées (+ ZIP optionnel).
+
+        `POST …/documents/import-masse/` (multipart) — corps :
+        `{folder: <id>, csv: <fichier .csv>[, zip: <fichier .zip>]}`. Le CSV
+        décrit une ligne par document (colonnes `nom`, `description`, `fichier`,
+        + codes de champs personnalisés). Le ZIP optionnel fournit les binaires
+        (appariés par la colonne `fichier`). Société + créateur posés CÔTÉ
+        SERVEUR ; les champs personnalisés sont validés bornés société/module.
+        Le dossier cible est borné à la société (404 sinon). Écriture :
+        responsable/admin.
+
+        Renvoie `{crees, documents: [...], erreurs: [...]}` — une ligne en erreur
+        n'interrompt pas l'import."""
+        company = request.user.company
+        folder_id = request.data.get('folder')
+        if not folder_id:
+            return Response({'folder': 'Le dossier cible est requis.'},
+                            status=status.HTTP_400_BAD_REQUEST)
+        folder = (Folder.objects.filter(company=company)
+                  .filter(pk=folder_id).first())
+        if folder is None:
+            return Response({'folder': 'Dossier inconnu.'},
+                            status=status.HTTP_404_NOT_FOUND)
+        csv_file = request.FILES.get('csv')
+        if not csv_file:
+            return Response({'csv': 'Un fichier CSV de métadonnées est requis.'},
+                            status=status.HTTP_400_BAD_REQUEST)
+        try:
+            csv_text = csv_file.read().decode('utf-8-sig')
+        except (UnicodeDecodeError, AttributeError):
+            return Response({'csv': 'CSV illisible (encodage attendu : UTF-8).'},
+                            status=status.HTTP_400_BAD_REQUEST)
+        lignes = services.parser_csv_metadonnees(csv_text)
+        if not lignes:
+            return Response({'csv': 'CSV vide ou sans ligne de données.'},
+                            status=status.HTTP_400_BAD_REQUEST)
+        zip_file = request.FILES.get('zip')
+        zip_bytes = zip_file.read() if zip_file else None
+
+        def _valider_custom(data):
+            from apps.customfields.serializers import validate_custom_data
+            return validate_custom_data('document', company, data)
+
+        result = services.importer_en_masse(
+            company=company, folder=folder, lignes=lignes,
+            zip_bytes=zip_bytes, created_by=request.user,
+            valider_custom=_valider_custom)
+        ser = DocumentSerializer(
+            result['documents'], many=True, context={'request': request})
+        http = (status.HTTP_201_CREATED if result['crees']
+                else status.HTTP_400_BAD_REQUEST)
+        return Response(
+            {'crees': result['crees'], 'documents': ser.data,
+             'erreurs': result['erreurs']}, status=http)
 
     @action(detail=False, methods=['post'], url_path='classer-apres-vente')
     def classer_apres_vente(self, request):
@@ -476,6 +603,69 @@ class DocumentViewSet(TenantMixin, viewsets.ModelViewSet):
         return Response({
             'enabled': services.embedding_enabled(),
             'results': results,
+        })
+
+    @action(detail=True, methods=['post'], url_path='ocr-piece')
+    def ocr_piece(self, request, pk=None):
+        """GED33 — OCR ce document (pièce : CIN/facture/BL) → métadonnées typées.
+
+        `POST …/documents/<id>/ocr-piece/` — corps optionnel
+        `{type_piece?: 'cin'|'facture'|'bl'}` (sinon deviné). Récupère le binaire
+        de la version courante, lance l'OCR (no-op sans clé) puis extrait des
+        métadonnées par parsing LOCAL déterministe (aucune clé requise pour le
+        parsing) et les fusionne ADDITIVEMENT dans `custom_data` (jamais
+        d'écrasement). Le document est company-scopé via `get_object()`.
+        Écriture : responsable/admin. Renvoie le document + `{metadonnees: {...},
+        ocr_enabled: <bool>}`."""
+        document = self.get_object()
+        # GED23 — write-once : pas de mutation de custom_data si archivé (403).
+        if document.est_archive_legalement:
+            from .models import ARCHIVE_LEGALE_MESSAGE
+            return Response({'detail': ARCHIVE_LEGALE_MESSAGE},
+                            status=status.HTTP_403_FORBIDDEN)
+        type_piece = (request.data.get('type_piece') or '').strip() or None
+        version = (DocumentVersion.objects
+                   .filter(document=document)
+                   .order_by('-version').first())
+        file_bytes = None
+        mime = ''
+        if version and version.file_key:
+            file_bytes, _err = fetch_attachment(version.file_key)
+            mime = version.mime or ''
+        meta = services.ocr_piece_vers_metadonnees(
+            document, file_bytes=file_bytes, mime=mime, type_piece=type_piece)
+        document.refresh_from_db()
+        services.update_search_vector(document)
+        return Response({
+            'document': DocumentSerializer(
+                document, context={'request': request}).data,
+            'metadonnees': meta,
+            'ocr_enabled': services.ocr_enabled(),
+        })
+
+    @action(detail=True, methods=['post'], url_path='classer')
+    def classer(self, request, pk=None):
+        """GED34 — Classe automatiquement ce document (IA gated → heuristique).
+
+        `POST …/documents/<id>/classer/` — aucun corps requis. Tente le provider
+        IA (no-op sans clé) puis retombe sur l'heuristique locale (mots-clés) et
+        pose ADDITIVEMENT `custom_data['categorie']` (jamais d'écrasement). Ne
+        déplace ni ne supprime jamais le document. Le document est company-scopé
+        via `get_object()`. Écriture : responsable/admin. Renvoie le document +
+        `{categorie: <str>, ia_enabled: <bool>}`."""
+        document = self.get_object()
+        if document.est_archive_legalement:
+            from .models import ARCHIVE_LEGALE_MESSAGE
+            return Response({'detail': ARCHIVE_LEGALE_MESSAGE},
+                            status=status.HTTP_403_FORBIDDEN)
+        categorie = services.classer_document(document)
+        document.refresh_from_db()
+        services.update_search_vector(document)
+        return Response({
+            'document': DocumentSerializer(
+                document, context={'request': request}).data,
+            'categorie': categorie,
+            'ia_enabled': services.classification_enabled(),
         })
 
     @action(detail=True, methods=['post'], url_path='deplacer')
@@ -596,6 +786,25 @@ class DocumentViewSet(TenantMixin, viewsets.ModelViewSet):
                 page, many=True, context={'request': request})
             return self.get_paginated_response(ser.data)
         ser = DocumentSerializer(qs, many=True, context={'request': request})
+        return Response(ser.data)
+
+    @action(detail=True, methods=['get'], url_path='journal-acces')
+    def journal_acces(self, request, pk=None):
+        """GED35 — Journal d'accès EN LECTURE de ce document (audit).
+
+        `GET …/documents/<id>/journal-acces/`. Liste les accès tracés (aperçu /
+        téléchargement / public / consultation) du document, bornés à la société.
+        Lecture réservée aux responsables/admins (l'audit est sensible). Paginé
+        comme la liste standard."""
+        document = self.get_object()
+        qs = selectors.journal_acces_for_company(
+            request.user.company, document=document)
+        page = self.paginate_queryset(qs)
+        if page is not None:
+            ser = JournalAccesSerializer(
+                page, many=True, context={'request': request})
+            return self.get_paginated_response(ser.data)
+        ser = JournalAccesSerializer(qs, many=True, context={'request': request})
         return Response(ser.data)
 
     @action(detail=True, methods=['post'], url_path='mettre-en-corbeille')
@@ -978,6 +1187,14 @@ class DocumentVersionViewSet(TenantMixin, viewsets.ModelViewSet):
         disposition = (
             'inline' if mime in _INLINE_MIMES else 'attachment'
         )
+
+        # GED35 — journalise l'accès EN LECTURE (best-effort, ne bloque jamais).
+        from .models import ACCES_APERCU, ACCES_TELECHARGEMENT
+        services.journaliser_acces(
+            document, utilisateur=request.user,
+            type_acces=(ACCES_APERCU if disposition == 'inline'
+                        else ACCES_TELECHARGEMENT),
+            adresse_ip=services._adresse_ip_requete(request))
 
         resp = HttpResponse(data, content_type=mime)
         resp['Content-Disposition'] = f'{disposition}; filename="{safe_name}"'
@@ -1721,6 +1938,91 @@ class DemandeSignatureDocumentViewSet(TenantMixin,
             status=status.HTTP_200_OK)
 
 
+class JournalAccesViewSet(TenantMixin, mixins.ListModelMixin,
+                          mixins.RetrieveModelMixin, viewsets.GenericViewSet):
+    """GED35 — Journal d'audit d'accès aux documents (LECTURE SEULE).
+
+    Append-only : aucune création/modification/suppression via l'API (les
+    entrées sont posées côté serveur par `services.journaliser_acces` au moment
+    d'une lecture). Tout est borné à la société (TenantMixin). Filtrable par
+    `?document=<id>`, `?utilisateur=<id>`, `?type_acces=<code>`. Lecture réservée
+    aux responsables/admins (l'audit est sensible)."""
+    queryset = JournalAcces.objects.select_related(
+        'document', 'utilisateur').all()
+    serializer_class = JournalAccesSerializer
+    filter_backends = [filters.OrderingFilter]
+    ordering_fields = ['created_at', 'type_acces']
+
+    def get_permissions(self):
+        return [IsResponsableOrAdmin()]
+
+    def get_queryset(self):
+        company = self.request.user.company
+        qs = selectors.journal_acces_for_company(
+            company,
+            document=None,
+            type_acces=self.request.query_params.get('type_acces') or None)
+        document = self.request.query_params.get('document')
+        if document:
+            qs = qs.filter(document_id=document)
+        utilisateur = self.request.query_params.get('utilisateur')
+        if utilisateur:
+            qs = qs.filter(utilisateur_id=utilisateur)
+        return qs
+
+
+class QuotaStockageViewSet(TenantMixin, viewsets.ModelViewSet):
+    """GED36 — Quota de stockage de la société (consultation + réglage admin).
+
+    Au plus UNE entrée par société (OneToOne). `company` posée CÔTÉ SERVEUR
+    (jamais lue du corps). Lecture : tout rôle authentifié (voir l'usage/quota) ;
+    écriture (fixer le quota) : responsable/admin. Expose `usage`/`quota`/
+    `restant` via l'action `etat` (toujours disponible, même sans entrée)."""
+    queryset = QuotaStockage.objects.select_related('company').all()
+    serializer_class = QuotaStockageSerializer
+
+    def get_permissions(self):
+        if self.action in READ_ACTIONS or self.action == 'etat':
+            return [IsAnyRole()]
+        return [IsResponsableOrAdmin()]
+
+    def get_queryset(self):
+        return super().get_queryset().filter(
+            company=self.request.user.company)
+
+    def perform_create(self, serializer):
+        # OneToOne : on ne crée jamais un second quota pour la société. Si une
+        # entrée existe déjà, on met à jour la sienne (idempotent côté société).
+        company = self.request.user.company
+        existant = QuotaStockage.objects.filter(company=company).first()
+        if existant is not None:
+            existant.quota_octets = serializer.validated_data.get(
+                'quota_octets', existant.quota_octets)
+            existant.save(update_fields=['quota_octets', 'updated_at'])
+            serializer.instance = existant
+            return
+        serializer.save(company=company)
+
+    @action(detail=False, methods=['get'], url_path='etat')
+    def etat(self, request):
+        """GED36 — État du stockage de la société : usage / quota / restant.
+
+        `GET …/quotas-stockage/etat/`. Toujours disponible (même sans entrée
+        `QuotaStockage` explicite : le défaut `GED_QUOTA_DEFAUT_OCTETS`
+        s'applique). Renvoie `{usage_octets, quota_octets, restant_octets,
+        depasse, illimite}`."""
+        company = request.user.company
+        usage = services.usage_stockage_octets(company)
+        quota = services.quota_octets(company)
+        return Response({
+            'usage_octets': usage,
+            'quota_octets': quota,
+            'restant_octets': services.quota_restant_octets(company),
+            'depasse': services.quota_depasse(company),
+            'illimite': quota <= 0,
+        })
+
+
 # ── GED20 — Endpoint PUBLIC (sans login) servant un document par jeton ───────
 # AUTHENTIFIÉ UNIQUEMENT PAR LE JETON : aucune identité/société n'est lue de la
 # requête. Tout est résolu DEPUIS le jeton (qui ne référence qu'un seul document
@@ -1834,6 +2136,12 @@ def public_partage(request, token):
             mime = 'image/png'
 
     disposition = 'inline' if mime in _INLINE_MIMES else 'attachment'
+
+    # GED35 — journalise l'accès PUBLIC (utilisateur anonyme, best-effort).
+    from .models import ACCES_PUBLIC
+    services.journaliser_acces(
+        partage.document, utilisateur=None, type_acces=ACCES_PUBLIC,
+        adresse_ip=services._adresse_ip_requete(request))
 
     resp = HttpResponse(data, content_type=mime)
     resp['Content-Disposition'] = f'{disposition}; filename="{safe_name}"'

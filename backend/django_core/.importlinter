@@ -56,6 +56,18 @@ source_modules =
 forbidden_modules =
     apps.audit
 
+[importlinter:contract:ged-models-decoupled]
+name = GED models never import a business-core domain's models (string FKs only — GED38)
+type = forbidden
+source_modules =
+    apps.ged.models
+forbidden_modules =
+    apps.crm.models
+    apps.ventes.models
+    apps.stock.models
+    apps.sav.models
+    apps.installations.models
+
 [importlinter:contract:core-foundation-is-a-base-layer]
 name = The core foundation app imports downward only (no domain-core or satellite app)
 type = forbidden

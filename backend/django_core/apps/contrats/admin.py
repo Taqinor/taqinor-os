@@ -2,13 +2,22 @@ from django.contrib import admin
 
 from .models import (
     AlerteContrat,
+    Caution,
     ClauseContrat,
     Contrat,
     ContratActivity,
     ContratLien,
+    EcheancierContrat,
+    EngagementSLA,
     EtapeApprobation,
+    IndexationPrix,
+    JalonContrat,
+    LigneEcheance,
+    Obligation,
     PartieContrat,
+    PieceConformite,
     RegleApprobation,
+    RetenueGarantie,
     SignatureContrat,
     VersionContrat,
 )
@@ -95,3 +104,93 @@ class AlerteContratAdmin(admin.ModelAdmin):
     list_filter = ('type_alerte', 'statut')
     search_fields = ('message',)
     readonly_fields = ('date_envoi', 'date_creation')
+
+
+@admin.register(JalonContrat)
+class JalonContratAdmin(admin.ModelAdmin):
+    list_display = ('id', 'contrat', 'numero', 'intitule', 'date_cible',
+                    'statut', 'date_atteinte', 'company')
+    list_filter = ('statut',)
+    search_fields = ('intitule', 'description')
+    readonly_fields = ('numero', 'date_creation')
+
+
+@admin.register(Obligation)
+class ObligationAdmin(admin.ModelAdmin):
+    list_display = ('id', 'contrat', 'jalon', 'intitule', 'redevable',
+                    'date_echeance', 'statut', 'date_realisation', 'company')
+    list_filter = ('statut', 'redevable')
+    search_fields = ('intitule', 'description')
+    readonly_fields = ('date_realisation', 'date_creation')
+
+
+@admin.register(EngagementSLA)
+class EngagementSLAAdmin(admin.ModelAdmin):
+    list_display = ('id', 'contrat', 'libelle', 'taux_cible', 'unite',
+                    'mode_penalite', 'valeur_penalite', 'penalite_max',
+                    'actif', 'company')
+    list_filter = ('mode_penalite', 'actif')
+    search_fields = ('libelle', 'unite')
+    readonly_fields = ('date_creation',)
+
+
+@admin.register(RetenueGarantie)
+class RetenueGarantieAdmin(admin.ModelAdmin):
+    list_display = ('id', 'contrat', 'montant_base', 'taux', 'montant_retenu',
+                    'date_retenue', 'date_liberation_prevue',
+                    'date_liberation_effective', 'statut', 'company')
+    list_filter = ('statut',)
+    search_fields = ('note',)
+    readonly_fields = ('montant_retenu', 'date_liberation_effective',
+                       'date_creation')
+
+
+@admin.register(Caution)
+class CautionAdmin(admin.ModelAdmin):
+    list_display = ('id', 'contrat', 'type_caution', 'garant', 'reference',
+                    'montant', 'devise', 'date_emission', 'date_expiration',
+                    'statut', 'company')
+    list_filter = ('type_caution', 'statut')
+    search_fields = ('garant', 'reference', 'note')
+    readonly_fields = ('date_creation',)
+
+
+@admin.register(EcheancierContrat)
+class EcheancierContratAdmin(admin.ModelAdmin):
+    list_display = ('id', 'contrat', 'libelle', 'periodicite',
+                    'montant_total', 'devise', 'statut', 'facturation_active',
+                    'company')
+    list_filter = ('periodicite', 'statut', 'facturation_active')
+    search_fields = ('libelle',)
+    readonly_fields = ('montant_total', 'date_creation')
+
+
+@admin.register(LigneEcheance)
+class LigneEcheanceAdmin(admin.ModelAdmin):
+    list_display = ('id', 'echeancier', 'numero', 'libelle', 'date_echeance',
+                    'montant', 'statut', 'date_paiement', 'facture_id',
+                    'company')
+    list_filter = ('statut',)
+    search_fields = ('libelle',)
+    readonly_fields = ('numero', 'date_paiement', 'facture_id',
+                       'date_creation')
+
+
+@admin.register(IndexationPrix)
+class IndexationPrixAdmin(admin.ModelAdmin):
+    list_display = ('id', 'contrat', 'libelle', 'indice', 'valeur_base',
+                    'part_fixe', 'periodicite', 'date_derniere_revision',
+                    'actif', 'company')
+    list_filter = ('periodicite', 'actif')
+    search_fields = ('libelle', 'indice')
+    readonly_fields = ('date_derniere_revision', 'date_creation')
+
+
+@admin.register(PieceConformite)
+class PieceConformiteAdmin(admin.ModelAdmin):
+    list_display = ('id', 'contrat', 'type_piece', 'libelle', 'obligatoire',
+                    'statut', 'ged_document_id', 'date_fourniture',
+                    'date_expiration', 'company')
+    list_filter = ('type_piece', 'statut', 'obligatoire')
+    search_fields = ('libelle', 'note')
+    readonly_fields = ('date_fourniture', 'date_creation')

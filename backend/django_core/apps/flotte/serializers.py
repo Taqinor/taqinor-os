@@ -14,6 +14,7 @@ from .models import (
     CarteCarburant,
     CarteGriseVehicule,
     Conducteur,
+    DemandeVehicule,
     EcheanceEntretien,
     EcheanceReglementaire,
     EnginRoulant,
@@ -29,6 +30,8 @@ from .models import (
     ReleveTelematique,
     ReservationVehicule,
     Sinistre,
+    TrajetChantier,
+    TrajetTelematique,
     Vehicule,
     VisiteTechnique,
 )
@@ -1508,4 +1511,190 @@ class ReleveTelematiqueSerializer(serializers.ModelSerializer):
                 {'actif_flotte':
                  "Cet actif n'appartient pas à votre société."})
 
+        return attrs
+
+
+# ── FLOTTE28 — Suivi de position & trajets télématiques ────────────────────────
+
+class TrajetTelematiqueSerializer(serializers.ModelSerializer):
+    """FLOTTE28 — Trajet télématique d'un actif de flotte.
+
+    ``company`` est posée côté serveur (jamais lue du corps de requête). L'actif
+    lié (``actif_flotte``) ET les relevés liés (``releve_depart`` /
+    ``releve_arrivee``, si renseignés) doivent appartenir à la société courante.
+    La fin doit être >= au début ; la distance >= 0.
+    """
+
+    actif_label = serializers.SerializerMethodField()
+    duree_minutes = serializers.ReadOnlyField()
+    vitesse_moyenne_kmh = serializers.ReadOnlyField()
+
+    class Meta:
+        model = TrajetTelematique
+        fields = [
+            'id', 'actif_flotte', 'actif_label', 'debut', 'fin',
+            'depart_lat', 'depart_lng', 'arrivee_lat', 'arrivee_lng',
+            'distance_km', 'duree_minutes', 'vitesse_moyenne_kmh',
+            'releve_depart', 'releve_arrivee', 'notes', 'date_creation',
+        ]
+        read_only_fields = ['date_creation']
+
+    def get_actif_label(self, obj):
+        return obj.actif_flotte.label if obj.actif_flotte_id else None
+
+    def validate_distance_km(self, value):
+        if value is not None and value < 0:
+            raise serializers.ValidationError(
+                "La distance parcourue ne peut pas être négative.")
+        return value
+
+    def validate(self, attrs):
+        request = self.context.get('request')
+        company = getattr(getattr(request, 'user', None), 'company', None)
+
+        actif_flotte = attrs.get(
+            'actif_flotte', getattr(self.instance, 'actif_flotte', None))
+        debut = attrs.get('debut', getattr(self.instance, 'debut', None))
+        fin = attrs.get('fin', getattr(self.instance, 'fin', None))
+
+        if company is not None and actif_flotte is not None \
+                and actif_flotte.company_id != company.id:
+            raise serializers.ValidationError(
+                {'actif_flotte':
+                 "Cet actif n'appartient pas à votre société."})
+
+        for champ in ('releve_depart', 'releve_arrivee'):
+            releve = attrs.get(champ, getattr(self.instance, champ, None))
+            if company is not None and releve is not None \
+                    and releve.company_id != company.id:
+                raise serializers.ValidationError(
+                    {champ: "Ce relevé n'appartient pas à votre société."})
+
+        if debut is not None and fin is not None and fin < debut:
+            raise serializers.ValidationError(
+                {'fin': "La fin du trajet ne peut pas précéder son début."})
+
+        return attrs
+
+
+# ── FLOTTE29 — Journal kilométrique & trajets imputés chantier ─────────────────
+
+class TrajetChantierSerializer(serializers.ModelSerializer):
+    """FLOTTE29 — Trajet d'un actif imputé à un chantier (journal kilométrique).
+
+    ``company`` est posée côté serveur (jamais lue du corps de requête). L'actif
+    lié (``actif_flotte``) doit appartenir à la société courante ; le chantier
+    (``installation_id``, optionnel) est validé via
+    ``installations.selectors.installation_scoped`` (même société). Le
+    kilométrage d'arrivée doit être >= celui de départ ; la distance >= 0.
+    """
+
+    actif_label = serializers.SerializerMethodField()
+    distance_calculee_km = serializers.ReadOnlyField()
+
+    class Meta:
+        model = TrajetChantier
+        fields = [
+            'id', 'actif_flotte', 'actif_label', 'installation_id',
+            'date_trajet', 'motif', 'km_depart', 'km_arrivee', 'distance_km',
+            'distance_calculee_km', 'notes', 'date_creation',
+        ]
+        read_only_fields = ['date_creation']
+
+    def get_actif_label(self, obj):
+        return obj.actif_flotte.label if obj.actif_flotte_id else None
+
+    def validate_distance_km(self, value):
+        if value is not None and value < 0:
+            raise serializers.ValidationError(
+                "La distance parcourue ne peut pas être négative.")
+        return value
+
+    def validate(self, attrs):
+        request = self.context.get('request')
+        company = getattr(getattr(request, 'user', None), 'company', None)
+
+        actif_flotte = attrs.get(
+            'actif_flotte', getattr(self.instance, 'actif_flotte', None))
+        km_depart = attrs.get(
+            'km_depart', getattr(self.instance, 'km_depart', None))
+        km_arrivee = attrs.get(
+            'km_arrivee', getattr(self.instance, 'km_arrivee', None))
+        installation_id = attrs.get(
+            'installation_id',
+            getattr(self.instance, 'installation_id', None))
+
+        if company is not None and actif_flotte is not None \
+                and actif_flotte.company_id != company.id:
+            raise serializers.ValidationError(
+                {'actif_flotte':
+                 "Cet actif n'appartient pas à votre société."})
+
+        if company is not None and installation_id is not None:
+            from apps.installations.selectors import installation_scoped
+            if installation_scoped(company, installation_id) is None:
+                raise serializers.ValidationError(
+                    {'installation_id':
+                     "Ce chantier n'appartient pas à votre société."})
+
+        if km_depart is not None and km_arrivee is not None \
+                and km_arrivee < km_depart:
+            raise serializers.ValidationError(
+                {'km_arrivee':
+                 "Le kilométrage d'arrivée ne peut pas être inférieur "
+                 "au kilométrage de départ."})
+
+        return attrs
+
+
+# ── FLOTTE32 — Pool de véhicules & demandes ────────────────────────────────────
+
+class DemandeVehiculeSerializer(serializers.ModelSerializer):
+    """FLOTTE32 — Demande d'un véhicule du pool partagé.
+
+    ``company`` est posée côté serveur (jamais lue du corps de requête). Le
+    demandeur (posé côté serveur à la création — l'utilisateur courant), le
+    décideur et le véhicule attribué doivent appartenir à la société courante.
+    La fin souhaitée doit être >= au début souhaité. L'approbation / le refus
+    passent par les actions dédiées (``approuver`` / ``refuser``) — les champs
+    de décision sont en lecture seule au sérialiseur.
+    """
+
+    demandeur_nom = serializers.SerializerMethodField()
+    vehicule_label = serializers.SerializerMethodField()
+    statut_display = serializers.CharField(
+        source='get_statut_display', read_only=True)
+
+    class Meta:
+        model = DemandeVehicule
+        fields = [
+            'id', 'demandeur', 'demandeur_nom', 'besoin',
+            'date_debut_souhaitee', 'date_fin_souhaitee', 'statut',
+            'statut_display', 'vehicule_attribue', 'vehicule_label',
+            'decide_par', 'date_decision', 'motif_decision', 'notes',
+            'date_creation',
+        ]
+        read_only_fields = [
+            'demandeur', 'statut', 'vehicule_attribue', 'decide_par',
+            'date_decision', 'motif_decision', 'date_creation',
+        ]
+
+    def get_demandeur_nom(self, obj):
+        return obj.demandeur.get_username() if obj.demandeur_id else None
+
+    def get_vehicule_label(self, obj):
+        return obj.vehicule_attribue.immatriculation \
+            if obj.vehicule_attribue_id else None
+
+    def validate(self, attrs):
+        debut = attrs.get(
+            'date_debut_souhaitee',
+            getattr(self.instance, 'date_debut_souhaitee', None))
+        fin = attrs.get(
+            'date_fin_souhaitee',
+            getattr(self.instance, 'date_fin_souhaitee', None))
+        if debut is not None and fin is not None and fin < debut:
+            raise serializers.ValidationError(
+                {'date_fin_souhaitee':
+                 "La fin souhaitée ne peut pas précéder le début souhaité."})
         return attrs

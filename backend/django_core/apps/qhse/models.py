@@ -2118,3 +2118,754 @@ class CauseIncident(models.Model):
 
     def __str__(self):
         return f'{self.get_type_cause_display()} — {self.libelle[:40]}'
+
+
+# ── QHSE33 — Inspection sécurité planifiée (→ NCR) ─────────────────────────
+
+class InspectionSecurite(models.Model):
+    """Inspection sécurité planifiée d'un chantier / site (QHSE33).
+
+    Une inspection sécurité (ronde / visite HSE) est PLANIFIÉE à une date
+    (``date_prevue``), réalisée (``date_realisee``) puis conclue ``conforme`` ou
+    ``non_conforme``. Quand l'inspection est jugée non conforme, elle peut
+    LEVER une non-conformité (NCR) via le service ``lever_ncr_inspection``
+    (idempotent : une seule NCR par inspection), lien tracé par ``ncr``.
+
+    Le rattachement au chantier se fait par référence LÂCHE (``chantier_id`` —
+    jamais un import cross-app du modèle ``installations.Chantier``). La NCR
+    générée est intra-app (FK ``qhse.NonConformite``).
+
+    Multi-société via ``company`` posée côté serveur (jamais lue du corps de
+    requête). La ``reference`` est attribuée côté serveur via
+    ``create_with_reference`` (plus haut numéro utilisé + 1, race-safe — jamais
+    count()+1). Entièrement additif.
+    """
+    class Statut(models.TextChoices):
+        PLANIFIEE = 'planifiee', 'Planifiée'
+        REALISEE = 'realisee', 'Réalisée'
+        ANNULEE = 'annulee', 'Annulée'
+
+    class Resultat(models.TextChoices):
+        EN_ATTENTE = 'en_attente', 'En attente'
+        CONFORME = 'conforme', 'Conforme'
+        NON_CONFORME = 'non_conforme', 'Non conforme'
+
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='qhse_inspections_securite',
+        verbose_name='Société',
+    )
+    reference = models.CharField(
+        max_length=50, blank=True, default='', verbose_name='Référence')
+    titre = models.CharField(max_length=255, verbose_name='Titre')
+    statut = models.CharField(
+        max_length=10, choices=Statut.choices,
+        default=Statut.PLANIFIEE, verbose_name='Statut')
+    resultat = models.CharField(
+        max_length=15, choices=Resultat.choices,
+        default=Resultat.EN_ATTENTE, verbose_name='Résultat')
+    # Référence LÂCHE au chantier (installations.Chantier) par id : jamais un
+    # import cross-app de modèle.
+    chantier_id = models.PositiveIntegerField(
+        null=True, blank=True, verbose_name='ID du chantier')
+    date_prevue = models.DateField(
+        null=True, blank=True, verbose_name='Date prévue')
+    date_realisee = models.DateField(
+        null=True, blank=True, verbose_name='Date réalisée')
+    inspecteur = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='qhse_inspections_securite',
+        verbose_name='Inspecteur',
+    )
+    observations = models.TextField(
+        blank=True, default='', verbose_name='Observations')
+    # NCR levée par cette inspection (QHSE33) — lien intra-app, idempotent.
+    ncr = models.ForeignKey(
+        NonConformite,
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='inspections_securite',
+        verbose_name='Non-conformité levée',
+    )
+    date_creation = models.DateTimeField(
+        auto_now_add=True, verbose_name='Créé le')
+
+    class Meta:
+        verbose_name = 'Inspection sécurité'
+        verbose_name_plural = 'Inspections sécurité'
+        ordering = ['-id']
+        constraints = [
+            models.UniqueConstraint(
+                fields=['company', 'reference'],
+                name='qhse_inspsec_co_ref_uniq',
+            )
+        ]
+        indexes = [
+            models.Index(
+                fields=['company', 'statut'],
+                name='qhse_inspsec_co_statut',
+            ),
+            models.Index(
+                fields=['company', 'date_prevue'],
+                name='qhse_inspsec_co_prevue',
+            ),
+            models.Index(
+                fields=['company', 'chantier_id'],
+                name='qhse_inspsec_co_chant',
+            ),
+        ]
+
+    def __str__(self):
+        return f'{self.reference or "INSP"} — {self.titre}'
+
+
+# ── QHSE36 — Déchets + bordereau de suivi (BSD, loi 28-00) ─────────────────
+
+class Dechet(models.Model):
+    """Type de déchet géré par la société (QHSE36, loi 28-00).
+
+    Référentiel des déchets produits sur les chantiers solaires : emballages,
+    chutes de câble, panneaux HS, batteries (DANGEREUX), huiles, etc. Chaque
+    entrée porte sa ``categorie`` (dangereux / non dangereux / inerte), un
+    ``code`` (catalogue marocain des déchets, optionnel), une ``unite`` de
+    quantité et la filière d'élimination prévue (``mode_traitement``).
+
+    La loi 28-00 (gestion des déchets et leur élimination) impose un suivi
+    formalisé des déchets DANGEREUX via un bordereau (cf.
+    ``BordereauSuiviDechet``). ``dangereux`` est dérivé de la catégorie.
+
+    Multi-société via ``company`` posée côté serveur. Entièrement additif.
+    """
+    class Categorie(models.TextChoices):
+        DANGEREUX = 'dangereux', 'Dangereux'
+        NON_DANGEREUX = 'non_dangereux', 'Non dangereux'
+        INERTE = 'inerte', 'Inerte'
+
+    class ModeTraitement(models.TextChoices):
+        RECYCLAGE = 'recyclage', 'Recyclage / valorisation'
+        ENFOUISSEMENT = 'enfouissement', 'Enfouissement'
+        INCINERATION = 'incineration', 'Incinération'
+        TRAITEMENT_SPECIALISE = 'traitement_specialise', \
+            'Traitement spécialisé'
+        AUTRE = 'autre', 'Autre'
+
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='qhse_dechets',
+        verbose_name='Société',
+    )
+    libelle = models.CharField(max_length=255, verbose_name='Libellé')
+    code = models.CharField(
+        max_length=30, blank=True, default='',
+        verbose_name='Code déchet')
+    categorie = models.CharField(
+        max_length=15, choices=Categorie.choices,
+        default=Categorie.NON_DANGEREUX, verbose_name='Catégorie')
+    unite = models.CharField(
+        max_length=20, blank=True, default='kg', verbose_name='Unité')
+    mode_traitement = models.CharField(
+        max_length=25, choices=ModeTraitement.choices,
+        default=ModeTraitement.RECYCLAGE, verbose_name='Mode de traitement')
+    description = models.TextField(
+        blank=True, default='', verbose_name='Description')
+    actif = models.BooleanField(default=True, verbose_name='Actif')
+    date_creation = models.DateTimeField(
+        auto_now_add=True, verbose_name='Créé le')
+
+    class Meta:
+        verbose_name = 'Déchet'
+        verbose_name_plural = 'Déchets'
+        ordering = ['libelle', 'id']
+        indexes = [
+            models.Index(
+                fields=['company', 'categorie'],
+                name='qhse_dechet_co_cat',
+            ),
+        ]
+
+    @property
+    def dangereux(self):
+        """Vrai si le déchet est de catégorie dangereuse (suivi BSD requis)."""
+        return self.categorie == self.Categorie.DANGEREUX
+
+    def __str__(self):
+        return f'{self.libelle} ({self.get_categorie_display()})'
+
+
+class BordereauSuiviDechet(models.Model):
+    """Bordereau de suivi des déchets (BSD, QHSE36, loi 28-00).
+
+    Pièce réglementaire qui trace le PARCOURS d'un lot de déchets dangereux du
+    producteur (la société) jusqu'à son élimination finale, en passant par le
+    transporteur et l'éliminateur. La loi 28-00 impose ce suivi pour les déchets
+    dangereux : ``Dechet.dangereux`` doit être vrai (garde-fou côté service).
+
+    Cycle : ``emis`` (créé par le producteur) → ``enleve`` (pris en charge par le
+    transporteur) → ``traite`` (éliminé / valorisé, bordereau soldé). Le
+    rattachement au chantier producteur se fait par référence LÂCHE
+    (``chantier_id`` — jamais un import cross-app de ``installations``).
+
+    Multi-société via ``company`` posée côté serveur. La ``reference`` est
+    attribuée côté serveur via ``create_with_reference`` (plus haut numéro
+    utilisé + 1, race-safe — jamais count()+1). Entièrement additif.
+    """
+    class Statut(models.TextChoices):
+        EMIS = 'emis', 'Émis'
+        ENLEVE = 'enleve', 'Enlevé'
+        TRAITE = 'traite', 'Traité'
+        ANNULE = 'annule', 'Annulé'
+
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='qhse_bsd',
+        verbose_name='Société',
+    )
+    reference = models.CharField(
+        max_length=50, blank=True, default='', verbose_name='Référence')
+    dechet = models.ForeignKey(
+        Dechet,
+        on_delete=models.PROTECT,
+        related_name='bordereaux',
+        verbose_name='Déchet',
+    )
+    statut = models.CharField(
+        max_length=10, choices=Statut.choices,
+        default=Statut.EMIS, verbose_name='Statut')
+    # Référence LÂCHE au chantier producteur (installations.Chantier) par id.
+    chantier_id = models.PositiveIntegerField(
+        null=True, blank=True, verbose_name='ID du chantier producteur')
+    quantite = models.DecimalField(
+        max_digits=12, decimal_places=3,
+        null=True, blank=True, verbose_name='Quantité')
+    producteur = models.CharField(
+        max_length=255, blank=True, default='', verbose_name='Producteur')
+    transporteur = models.CharField(
+        max_length=255, blank=True, default='', verbose_name='Transporteur')
+    eliminateur = models.CharField(
+        max_length=255, blank=True, default='', verbose_name='Éliminateur')
+    date_emission = models.DateField(
+        null=True, blank=True, verbose_name="Date d'émission")
+    date_enlevement = models.DateField(
+        null=True, blank=True, verbose_name="Date d'enlèvement")
+    date_traitement = models.DateField(
+        null=True, blank=True, verbose_name='Date de traitement')
+    notes = models.TextField(
+        blank=True, default='', verbose_name='Notes')
+    date_creation = models.DateTimeField(
+        auto_now_add=True, verbose_name='Créé le')
+
+    class Meta:
+        verbose_name = 'Bordereau de suivi des déchets'
+        verbose_name_plural = 'Bordereaux de suivi des déchets'
+        ordering = ['-id']
+        constraints = [
+            models.UniqueConstraint(
+                fields=['company', 'reference'],
+                name='qhse_bsd_co_ref_uniq',
+            )
+        ]
+        indexes = [
+            models.Index(
+                fields=['company', 'statut'],
+                name='qhse_bsd_co_statut',
+            ),
+            models.Index(
+                fields=['company', 'chantier_id'],
+                name='qhse_bsd_co_chant',
+            ),
+        ]
+
+    def __str__(self):
+        return f'{self.reference or "BSD"} — {self.dechet_id}'
+
+
+# ── QHSE37 — Recyclage des modules PV (fin de vie) ─────────────────────────
+
+class RecyclageModule(models.Model):
+    """Fin de vie / recyclage d'un lot de modules photovoltaïques (QHSE37).
+
+    Trace l'envoi en filière de recyclage de modules PV en fin de vie (casse,
+    déclassement, rénovation) : marque/modèle, nombre de modules, masse estimée,
+    motif de mise au rebut, filière/repreneur et cycle de vie
+    (``collecte`` → ``transporte`` → ``recycle``). Un panneau PV est un déchet
+    spécifique (verre + silicium + cadre alu + connectique) dont la valorisation
+    matière est encadrée : ce modèle est le pendant « modules » du BSD (QHSE36)
+    et peut citer un ``BordereauSuiviDechet`` quand le lot transite par un BSD.
+
+    Le rattachement au chantier d'origine se fait par référence LÂCHE
+    (``chantier_id`` — jamais un import cross-app de ``installations``). Le FK
+    ``bordereau`` reste intra-app (QHSE).
+
+    Multi-société via ``company`` posée côté serveur. La ``reference`` est
+    attribuée côté serveur via ``create_with_reference`` (plus haut numéro
+    utilisé + 1, race-safe — jamais count()+1). Entièrement additif.
+    """
+    class Motif(models.TextChoices):
+        CASSE = 'casse', 'Casse / bris'
+        DECLASSEMENT = 'declassement', 'Déclassement (performance)'
+        RENOVATION = 'renovation', 'Rénovation / remplacement'
+        FIN_DE_VIE = 'fin_de_vie', 'Fin de vie'
+        AUTRE = 'autre', 'Autre'
+
+    class Statut(models.TextChoices):
+        COLLECTE = 'collecte', 'Collecté'
+        TRANSPORTE = 'transporte', 'Transporté'
+        RECYCLE = 'recycle', 'Recyclé'
+        ANNULE = 'annule', 'Annulé'
+
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='qhse_recyclage_modules',
+        verbose_name='Société',
+    )
+    reference = models.CharField(
+        max_length=50, blank=True, default='', verbose_name='Référence')
+    marque = models.CharField(
+        max_length=120, blank=True, default='', verbose_name='Marque')
+    modele = models.CharField(
+        max_length=120, blank=True, default='', verbose_name='Modèle')
+    nombre_modules = models.PositiveIntegerField(
+        default=0, verbose_name='Nombre de modules')
+    masse_kg = models.DecimalField(
+        max_digits=10, decimal_places=2,
+        null=True, blank=True, verbose_name='Masse estimée (kg)')
+    motif = models.CharField(
+        max_length=15, choices=Motif.choices,
+        default=Motif.FIN_DE_VIE, verbose_name='Motif')
+    statut = models.CharField(
+        max_length=12, choices=Statut.choices,
+        default=Statut.COLLECTE, verbose_name='Statut')
+    filiere = models.CharField(
+        max_length=255, blank=True, default='',
+        verbose_name='Filière / repreneur')
+    # Référence LÂCHE au chantier d'origine (installations.Chantier) par id.
+    chantier_id = models.PositiveIntegerField(
+        null=True, blank=True, verbose_name="ID du chantier d'origine")
+    # Lien optionnel vers le bordereau de suivi (QHSE36) — intra-app.
+    bordereau = models.ForeignKey(
+        BordereauSuiviDechet,
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='recyclages_modules',
+        verbose_name='Bordereau de suivi',
+    )
+    date_collecte = models.DateField(
+        null=True, blank=True, verbose_name='Date de collecte')
+    date_recyclage = models.DateField(
+        null=True, blank=True, verbose_name='Date de recyclage')
+    notes = models.TextField(
+        blank=True, default='', verbose_name='Notes')
+    date_creation = models.DateTimeField(
+        auto_now_add=True, verbose_name='Créé le')
+
+    class Meta:
+        verbose_name = 'Recyclage de modules PV'
+        verbose_name_plural = 'Recyclages de modules PV'
+        ordering = ['-id']
+        constraints = [
+            models.UniqueConstraint(
+                fields=['company', 'reference'],
+                name='qhse_recyc_co_ref_uniq',
+            )
+        ]
+        indexes = [
+            models.Index(
+                fields=['company', 'statut'],
+                name='qhse_recyc_co_statut',
+            ),
+            models.Index(
+                fields=['company', 'chantier_id'],
+                name='qhse_recyc_co_chant',
+            ),
+        ]
+
+    def __str__(self):
+        return f'{self.reference or "REC"} — {self.nombre_modules} module(s)'
+
+
+# ── QHSE38 — Conformité environnementale + relances ────────────────────────
+
+class ConformiteEnvironnementale(models.Model):
+    """Obligation de conformité environnementale + échéance de renouvellement (QHSE38).
+
+    Suit les autorisations / obligations réglementaires environnementales d'une
+    société : autorisation environnementale, étude d'impact (EIE), enregistrement
+    déchets (loi 28-00), conformité rejets/eau/air, autre. Chaque entrée porte un
+    ``type_conformite``, l'``autorite`` qui la délivre, sa fenêtre de validité
+    (``date_obtention`` → ``date_expiration``) et un cycle de vie (``conforme`` /
+    ``a_renouveler`` / ``non_conforme`` / ``expire``).
+
+    Le ``statut_calcule(today)`` dérive l'état réel à une date : ``expire`` si
+    l'échéance est passée, ``a_renouveler`` si elle approche (dans
+    ``prealerte_jours``), sinon le ``statut`` enregistré. Le sélecteur
+    ``conformites_a_relancer`` (QHSE38) et le service ``relancer_conformites``
+    s'appuient dessus pour notifier les renouvellements à préparer.
+
+    Le rattachement éventuel au chantier se fait par référence LÂCHE
+    (``chantier_id`` — jamais un import cross-app de ``installations``).
+
+    Multi-société via ``company`` posée côté serveur. Entièrement additif.
+    """
+    PREALERTE_JOURS_DEFAUT = 60
+
+    class TypeConformite(models.TextChoices):
+        AUTORISATION = 'autorisation', 'Autorisation environnementale'
+        ETUDE_IMPACT = 'etude_impact', "Étude d'impact (EIE)"
+        ENREGISTREMENT_DECHETS = 'enregistrement_dechets', \
+            'Enregistrement déchets (loi 28-00)'
+        REJETS = 'rejets', 'Conformité rejets (eau / air)'
+        AUTRE = 'autre', 'Autre'
+
+    class Statut(models.TextChoices):
+        CONFORME = 'conforme', 'Conforme'
+        A_RENOUVELER = 'a_renouveler', 'À renouveler'
+        NON_CONFORME = 'non_conforme', 'Non conforme'
+        EXPIRE = 'expire', 'Expiré'
+
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='qhse_conformites_env',
+        verbose_name='Société',
+    )
+    intitule = models.CharField(max_length=255, verbose_name='Intitulé')
+    type_conformite = models.CharField(
+        max_length=25, choices=TypeConformite.choices,
+        default=TypeConformite.AUTORISATION, verbose_name='Type')
+    statut = models.CharField(
+        max_length=15, choices=Statut.choices,
+        default=Statut.CONFORME, verbose_name='Statut')
+    autorite = models.CharField(
+        max_length=255, blank=True, default='',
+        verbose_name='Autorité de tutelle')
+    reference_dossier = models.CharField(
+        max_length=120, blank=True, default='',
+        verbose_name='Référence du dossier')
+    # Référence LÂCHE au chantier (installations.Chantier) par id.
+    chantier_id = models.PositiveIntegerField(
+        null=True, blank=True, verbose_name='ID du chantier')
+    date_obtention = models.DateField(
+        null=True, blank=True, verbose_name="Date d'obtention")
+    date_expiration = models.DateField(
+        null=True, blank=True, verbose_name="Date d'expiration")
+    prealerte_jours = models.PositiveIntegerField(
+        default=PREALERTE_JOURS_DEFAUT,
+        verbose_name='Préalerte (jours)')
+    responsable = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='qhse_conformites_env',
+        verbose_name='Responsable',
+    )
+    notes = models.TextField(
+        blank=True, default='', verbose_name='Notes')
+    date_creation = models.DateTimeField(
+        auto_now_add=True, verbose_name='Créé le')
+
+    class Meta:
+        verbose_name = 'Conformité environnementale'
+        verbose_name_plural = 'Conformités environnementales'
+        ordering = ['-id']
+        indexes = [
+            models.Index(
+                fields=['company', 'statut'],
+                name='qhse_confenv_co_statut',
+            ),
+            models.Index(
+                fields=['company', 'date_expiration'],
+                name='qhse_confenv_co_exp',
+            ),
+        ]
+
+    def statut_calcule(self, today=None):
+        """État réel à une date : expiré / à renouveler / statut enregistré.
+
+        ``expire`` si l'échéance est passée ; ``a_renouveler`` si elle tombe dans
+        la fenêtre de préalerte ; sinon le ``statut`` enregistré. Sans échéance,
+        renvoie le ``statut`` enregistré tel quel.
+        """
+        from datetime import timedelta
+
+        from django.utils import timezone
+
+        if today is None:
+            today = timezone.localdate()
+        if self.date_expiration is None:
+            return self.statut
+        if self.date_expiration < today:
+            return self.Statut.EXPIRE
+        limite = today + timedelta(days=self.prealerte_jours or 0)
+        if self.date_expiration <= limite:
+            return self.Statut.A_RENOUVELER
+        return self.statut
+
+    def __str__(self):
+        return f'{self.intitule} ({self.get_type_conformite_display()})'
+
+
+# ── QHSE39 — Bilan carbone interne (scopes 1 / 2 / 3) ──────────────────────
+
+class BilanCarbone(models.Model):
+    """Bilan carbone interne d'une société sur une période (QHSE39).
+
+    Inventaire des émissions de gaz à effet de serre (GES) de la société, agrégé
+    par les trois SCOPES du GHG Protocol :
+
+    * scope 1 — émissions directes (combustion carburant des véhicules, groupes
+      électrogènes, etc.) ;
+    * scope 2 — émissions indirectes liées à l'énergie achetée (électricité du
+      réseau) ;
+    * scope 3 — autres émissions indirectes (achats, transport amont/aval,
+      déplacements, déchets…).
+
+    Le bilan porte une ``annee`` (et un libellé), un ``statut`` (brouillon /
+    validé / archivé) et agrège ses lignes (``LigneBilanCarbone``) en totaux par
+    scope + total global (``total_tco2e`` / ``total_scope_*``), tous calculés à la
+    volée à partir des lignes — aucun champ dérivé stocké.
+
+    Multi-société via ``company`` posée côté serveur. Entièrement additif.
+    """
+    class Statut(models.TextChoices):
+        BROUILLON = 'brouillon', 'Brouillon'
+        VALIDE = 'valide', 'Validé'
+        ARCHIVE = 'archive', 'Archivé'
+
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='qhse_bilans_carbone',
+        verbose_name='Société',
+    )
+    libelle = models.CharField(max_length=255, verbose_name='Libellé')
+    annee = models.PositiveIntegerField(verbose_name='Année')
+    statut = models.CharField(
+        max_length=10, choices=Statut.choices,
+        default=Statut.BROUILLON, verbose_name='Statut')
+    perimetre = models.TextField(
+        blank=True, default='', verbose_name='Périmètre')
+    notes = models.TextField(
+        blank=True, default='', verbose_name='Notes')
+    date_creation = models.DateTimeField(
+        auto_now_add=True, verbose_name='Créé le')
+
+    class Meta:
+        verbose_name = 'Bilan carbone'
+        verbose_name_plural = 'Bilans carbone'
+        ordering = ['-annee', '-id']
+        constraints = [
+            models.UniqueConstraint(
+                fields=['company', 'annee', 'libelle'],
+                name='qhse_bilan_co_an_lib_uniq',
+            )
+        ]
+        indexes = [
+            models.Index(
+                fields=['company', 'annee'],
+                name='qhse_bilan_co_annee',
+            ),
+        ]
+
+    def _total(self, scope=None):
+        from decimal import Decimal
+        qs = self.lignes.all()
+        if scope is not None:
+            qs = qs.filter(scope=scope)
+        # tco2e est dérivé (quantite × facteur_emission) : on somme en Python
+        # pour réutiliser la propriété ``tco2e`` de chaque ligne.
+        return sum((ligne.tco2e for ligne in qs), Decimal('0'))
+
+    @property
+    def total_scope_1(self):
+        return self._total(LigneBilanCarbone.Scope.SCOPE_1)
+
+    @property
+    def total_scope_2(self):
+        return self._total(LigneBilanCarbone.Scope.SCOPE_2)
+
+    @property
+    def total_scope_3(self):
+        return self._total(LigneBilanCarbone.Scope.SCOPE_3)
+
+    @property
+    def total_tco2e(self):
+        return self._total()
+
+    def __str__(self):
+        return f'{self.libelle} ({self.annee})'
+
+
+class LigneBilanCarbone(models.Model):
+    """Ligne d'émission d'un bilan carbone, rattachée à un scope (QHSE39).
+
+    Chaque ligne décrit une SOURCE d'émission : sa ``categorie`` (carburant,
+    électricité, déplacements…), son ``scope`` (1 / 2 / 3), une ``quantite``
+    d'activité dans son ``unite`` et un ``facteur_emission`` (tCO₂e par unité).
+    Les émissions de la ligne (``tco2e``) sont DÉRIVÉES : ``quantite ×
+    facteur_emission`` — jamais stockées.
+
+    Le FK ``bilan`` reste intra-app (même module QHSE). ``company`` posée côté
+    serveur. Entièrement additif.
+    """
+    class Scope(models.TextChoices):
+        SCOPE_1 = 'scope_1', 'Scope 1 — émissions directes'
+        SCOPE_2 = 'scope_2', 'Scope 2 — énergie achetée'
+        SCOPE_3 = 'scope_3', 'Scope 3 — autres indirectes'
+
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='qhse_lignes_bilan_carbone',
+        verbose_name='Société',
+    )
+    bilan = models.ForeignKey(
+        BilanCarbone,
+        on_delete=models.CASCADE,
+        related_name='lignes',
+        verbose_name='Bilan',
+    )
+    libelle = models.CharField(max_length=255, verbose_name='Libellé')
+    scope = models.CharField(
+        max_length=10, choices=Scope.choices,
+        default=Scope.SCOPE_1, verbose_name='Scope')
+    categorie = models.CharField(
+        max_length=120, blank=True, default='', verbose_name='Catégorie')
+    quantite = models.DecimalField(
+        max_digits=14, decimal_places=3,
+        default=0, verbose_name="Quantité d'activité")
+    unite = models.CharField(
+        max_length=30, blank=True, default='', verbose_name='Unité')
+    facteur_emission = models.DecimalField(
+        max_digits=14, decimal_places=6,
+        default=0, verbose_name="Facteur d'émission (tCO₂e/unité)")
+    date_creation = models.DateTimeField(
+        auto_now_add=True, verbose_name='Créé le')
+
+    class Meta:
+        verbose_name = 'Ligne de bilan carbone'
+        verbose_name_plural = 'Lignes de bilan carbone'
+        ordering = ['scope', 'id']
+        indexes = [
+            models.Index(
+                fields=['bilan', 'scope'],
+                name='qhse_lbilan_bilan_scope',
+            ),
+        ]
+
+    @property
+    def tco2e(self):
+        """Émissions de la ligne (tCO₂e) = quantité × facteur d'émission."""
+        from decimal import Decimal
+        q = self.quantite or Decimal('0')
+        f = self.facteur_emission or Decimal('0')
+        return (q * f).quantize(Decimal('0.001'))
+
+    def __str__(self):
+        return f'{self.libelle} ({self.get_scope_display()})'
+
+
+# ── QHSE40 — Indicateur ESG + export reporting ─────────────────────────────
+
+class IndicateurESG(models.Model):
+    """Indicateur ESG (Environnement / Social / Gouvernance) (QHSE40).
+
+    Mesure un indicateur extra-financier d'une société pour une période donnée,
+    classé par ``pilier`` ESG. Chaque indicateur porte un ``code`` (libre, ex.
+    ``E1`` / ``S2``), une ``valeur`` mesurée, une ``cible`` optionnelle, une
+    ``unite`` et une période (``annee`` + ``periode`` libre, ex. ``T1`` ou
+    ``2026``). ``atteinte_cible`` indique si la cible est tenue.
+
+    Le sélecteur ``export_esg`` (QHSE40) agrège ces indicateurs par pilier pour
+    le reporting (CSRD-like) ; un export plat est exposé côté vue. Le
+    rattachement éventuel au bilan carbone (QHSE39) reste un FK intra-app
+    optionnel.
+
+    Multi-société via ``company`` posée côté serveur. Entièrement additif.
+    """
+    class Pilier(models.TextChoices):
+        ENVIRONNEMENT = 'environnement', 'Environnement'
+        SOCIAL = 'social', 'Social'
+        GOUVERNANCE = 'gouvernance', 'Gouvernance'
+
+    class Tendance(models.TextChoices):
+        HAUSSE_FAVORABLE = 'hausse_favorable', 'Hausse favorable'
+        BAISSE_FAVORABLE = 'baisse_favorable', 'Baisse favorable'
+        NEUTRE = 'neutre', 'Neutre'
+
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='qhse_indicateurs_esg',
+        verbose_name='Société',
+    )
+    code = models.CharField(
+        max_length=30, blank=True, default='', verbose_name='Code')
+    libelle = models.CharField(max_length=255, verbose_name='Libellé')
+    pilier = models.CharField(
+        max_length=15, choices=Pilier.choices,
+        default=Pilier.ENVIRONNEMENT, verbose_name='Pilier ESG')
+    valeur = models.DecimalField(
+        max_digits=18, decimal_places=4,
+        null=True, blank=True, verbose_name='Valeur')
+    cible = models.DecimalField(
+        max_digits=18, decimal_places=4,
+        null=True, blank=True, verbose_name='Cible')
+    unite = models.CharField(
+        max_length=30, blank=True, default='', verbose_name='Unité')
+    annee = models.PositiveIntegerField(
+        null=True, blank=True, verbose_name='Année')
+    periode = models.CharField(
+        max_length=30, blank=True, default='', verbose_name='Période')
+    tendance_souhaitee = models.CharField(
+        max_length=20, choices=Tendance.choices,
+        default=Tendance.NEUTRE, verbose_name='Tendance souhaitée')
+    # Lien optionnel vers un bilan carbone (QHSE39) — intra-app.
+    bilan_carbone = models.ForeignKey(
+        BilanCarbone,
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='indicateurs_esg',
+        verbose_name='Bilan carbone lié',
+    )
+    notes = models.TextField(
+        blank=True, default='', verbose_name='Notes')
+    date_creation = models.DateTimeField(
+        auto_now_add=True, verbose_name='Créé le')
+
+    class Meta:
+        verbose_name = 'Indicateur ESG'
+        verbose_name_plural = 'Indicateurs ESG'
+        ordering = ['pilier', 'code', 'id']
+        indexes = [
+            models.Index(
+                fields=['company', 'pilier'],
+                name='qhse_esg_co_pilier',
+            ),
+            models.Index(
+                fields=['company', 'annee'],
+                name='qhse_esg_co_annee',
+            ),
+        ]
+
+    @property
+    def atteinte_cible(self):
+        """Cible atteinte ? ``None`` si valeur ou cible manquante.
+
+        Le sens dépend de la tendance souhaitée : pour une baisse favorable
+        (ex. accidents, émissions) la cible est tenue quand ``valeur <= cible`` ;
+        sinon (hausse favorable / neutre) quand ``valeur >= cible``.
+        """
+        if self.valeur is None or self.cible is None:
+            return None
+        if self.tendance_souhaitee == self.Tendance.BAISSE_FAVORABLE:
+            return self.valeur <= self.cible
+        return self.valeur >= self.cible
+
+    def __str__(self):
+        return f'{self.code or self.libelle} ({self.get_pilier_display()})'

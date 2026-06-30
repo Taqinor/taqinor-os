@@ -16,6 +16,7 @@ from .models import (
     CarteCarburant,
     CarteGriseVehicule,
     Conducteur,
+    DemandeVehicule,
     EcheanceEntretien,
     EcheanceReglementaire,
     EnginRoulant,
@@ -30,6 +31,8 @@ from .models import (
     ReleveTelematique,
     ReservationVehicule,
     Sinistre,
+    TrajetChantier,
+    TrajetTelematique,
     Vehicule,
     VisiteTechnique,
 )
@@ -1423,3 +1426,486 @@ def alertes_echeances_reglementaires(company, today=None):
         'buckets': buckets,
         'alertes': alertes,
     }
+
+
+# ── FLOTTE28 — Suivi de position & trajets télématiques ────────────────────────
+
+def trajets_telematiques_de_la_societe(company, actif_flotte_id=None,
+                                       date_debut=None, date_fin=None):
+    """FLOTTE28 — Trajets télématiques d'une société (queryset scopé).
+
+    Filtres facultatifs : ``actif_flotte_id`` (un actif précis), ``date_debut``
+    et ``date_fin`` (bornent le début du trajet, inclusif). Lecture seule,
+    scopée société, du plus récent au plus ancien.
+    """
+    qs = TrajetTelematique.objects.filter(company=company).select_related(
+        'actif_flotte', 'actif_flotte__vehicule', 'actif_flotte__engin',
+        'releve_depart', 'releve_arrivee')
+    if actif_flotte_id is not None:
+        qs = qs.filter(actif_flotte_id=actif_flotte_id)
+    if date_debut is not None:
+        qs = qs.filter(debut__date__gte=date_debut)
+    if date_fin is not None:
+        qs = qs.filter(debut__date__lte=date_fin)
+    return qs
+
+
+# ── FLOTTE29 — Journal kilométrique & trajets imputés chantier ─────────────────
+
+def trajets_chantier_de_la_societe(company, actif_flotte_id=None,
+                                   installation_id=None, date_debut=None,
+                                   date_fin=None):
+    """FLOTTE29 — Trajets imputés chantier d'une société (queryset scopé).
+
+    Filtres facultatifs : ``actif_flotte_id`` (un actif précis),
+    ``installation_id`` (un chantier précis), ``date_debut`` / ``date_fin``
+    (bornent ``date_trajet``, inclusif). Lecture seule, scopée société, du plus
+    récent au plus ancien.
+    """
+    qs = TrajetChantier.objects.filter(company=company).select_related(
+        'actif_flotte', 'actif_flotte__vehicule', 'actif_flotte__engin')
+    if actif_flotte_id is not None:
+        qs = qs.filter(actif_flotte_id=actif_flotte_id)
+    if installation_id is not None:
+        qs = qs.filter(installation_id=installation_id)
+    if date_debut is not None:
+        qs = qs.filter(date_trajet__gte=date_debut)
+    if date_fin is not None:
+        qs = qs.filter(date_trajet__lte=date_fin)
+    return qs
+
+
+def journal_kilometrique(company, actif_flotte_id=None, installation_id=None,
+                         date_debut=None, date_fin=None):
+    """FLOTTE29 — Journal kilométrique agrégé (lecture seule, scopé société).
+
+    Agrège les ``TrajetChantier`` de la société (filtrables par actif / chantier
+    / période) en distance totale parcourue et la VENTILE par chantier
+    (``installations.Installation`` via son id). Le libellé du chantier est
+    résolu à travers ``installations.selectors.installation_scoped`` (jamais
+    d'import croisé des modèles). Les trajets non imputés sont regroupés sous
+    ``installation_id=None``.
+
+    Retourne un dict LECTURE SEULE ::
+
+        {
+          'nb_trajets', 'distance_totale_km',
+          'par_chantier': [
+            {'installation_id', 'chantier_reference', 'nb_trajets',
+             'distance_km'}, …
+          ],
+        }
+
+    Les distances sont des ``float`` arrondis. Aucune écriture.
+    """
+    trajets = trajets_chantier_de_la_societe(
+        company, actif_flotte_id=actif_flotte_id,
+        installation_id=installation_id, date_debut=date_debut,
+        date_fin=date_fin)
+
+    par_chantier = {}
+    distance_totale = 0.0
+    nb_trajets = 0
+    for trajet in trajets:
+        nb_trajets += 1
+        distance = trajet.distance_calculee_km or 0
+        distance = float(distance)
+        distance_totale += distance
+        cle = trajet.installation_id
+        bloc = par_chantier.setdefault(
+            cle, {'installation_id': cle, 'nb_trajets': 0,
+                  'distance_km': 0.0})
+        bloc['nb_trajets'] += 1
+        bloc['distance_km'] += distance
+
+    # Résolution best-effort du libellé de chantier via le sélecteur d'installations.
+    from apps.installations.selectors import installation_scoped
+    lignes = []
+    for cle, bloc in par_chantier.items():
+        reference = None
+        if cle is not None:
+            chantier = installation_scoped(company, cle)
+            reference = getattr(chantier, 'reference', None) \
+                if chantier is not None else None
+        lignes.append({
+            'installation_id': cle,
+            'chantier_reference': reference,
+            'nb_trajets': bloc['nb_trajets'],
+            'distance_km': round(bloc['distance_km'], 2),
+        })
+    # Tri stable : chantiers imputés d'abord (id croissant), non imputé en fin.
+    lignes.sort(key=lambda ligne: (ligne['installation_id'] is None,
+                                   ligne['installation_id'] or 0))
+
+    return {
+        'nb_trajets': nb_trajets,
+        'distance_totale_km': round(distance_totale, 2),
+        'par_chantier': lignes,
+    }
+
+
+# ── FLOTTE30 — Amortissement (lien immobilisations comptables) ─────────────────
+
+def amortissement_vehicule(company, vehicule_id):
+    """FLOTTE30 — Amortissement (VNC) d'un véhicule via son immobilisation.
+
+    LECTURE cross-app du module comptable : pour un véhicule de la société, lit
+    son immobilisation comptable liée (``Vehicule.immobilisation`` →
+    ``compta.Immobilisation``, FK par chaîne) et résume son amortissement
+    (valeur d'origine, cumul des dotations, valeur nette comptable). La flotte
+    n'écrit JAMAIS le module comptable ; elle lit les attributs du plan
+    d'amortissement / des dotations existants (reverse-relations).
+
+    Retourne un dict LECTURE SEULE ::
+
+        {
+          'vehicule_id', 'immobilisation_id',
+          'valeur_origine', 'cumul_amortissements', 'valeur_nette_comptable',
+          'derniere_annee', 'amortissable',
+        }
+
+    ``amortissable`` est ``False`` (et les montants ``None``) quand le véhicule
+    n'est rattaché à aucune immobilisation. Tous les montants sont des
+    ``float`` arrondis. Aucune écriture, aucun effet de bord.
+    """
+    vehicule = (Vehicule.objects
+                .filter(company=company, id=vehicule_id)
+                .select_related('immobilisation')
+                .first())
+    if vehicule is None or vehicule.immobilisation_id is None:
+        return {
+            'vehicule_id': vehicule_id,
+            'immobilisation_id': None,
+            'valeur_origine': None,
+            'cumul_amortissements': None,
+            'valeur_nette_comptable': None,
+            'derniere_annee': None,
+            'amortissable': False,
+        }
+
+    immo = vehicule.immobilisation
+    valeur_origine = float(immo.cout or 0)
+    cumul = 0.0
+    vnc = valeur_origine
+    derniere_annee = None
+    # Dernière dotation (cumul + VNC déjà calculés par le module compta).
+    plan = getattr(immo, 'plan_amortissement', None)
+    if plan is not None:
+        derniere = plan.dotations.order_by('-annee').first()
+        if derniere is not None:
+            cumul = float(derniere.cumul or 0)
+            vnc = float(derniere.valeur_nette or 0)
+            derniere_annee = derniere.annee
+
+    return {
+        'vehicule_id': vehicule_id,
+        'immobilisation_id': immo.id,
+        'valeur_origine': round(valeur_origine, 2),
+        'cumul_amortissements': round(cumul, 2),
+        'valeur_nette_comptable': round(vnc, 2),
+        'derniere_annee': derniere_annee,
+        'amortissable': True,
+    }
+
+
+# ── FLOTTE31 — Coût total de possession (TCO) par véhicule ─────────────────────
+
+def tco_vehicule(company, vehicule_id):
+    """FLOTTE31 — Coût total de possession (TCO) d'un véhicule (lecture seule).
+
+    Agrège, pour un véhicule de la société, l'ensemble des coûts INTERNES déjà
+    saisis dans le module flotte :
+
+    * ``carburant``     — Σ ``PleinCarburant.prix_total`` (FLOTTE12) ;
+    * ``reparations``   — Σ coûts des ``OrdreReparation`` de l'actif (FLOTTE17) ;
+    * ``pneus_pieces``  — Σ coûts pneus + pièces du véhicule (FLOTTE18) ;
+    * ``infractions``   — Σ ``Infraction.montant_amende`` de l'actif (FLOTTE26) ;
+    * ``sinistres``     — Σ ``Sinistre.franchise`` à charge de l'actif (FLOTTE25).
+
+    Le ``cout_total`` somme ces postes. ``amortissement`` (cumul des dotations
+    via FLOTTE30) est rapporté à titre INDICATIF mais N'EST PAS sommé au total
+    (il chevauche la valeur d'acquisition, pas une dépense d'exploitation
+    récurrente). Retourne un dict LECTURE SEULE ::
+
+        {
+          'vehicule_id', 'actif_flotte_id',
+          'carburant', 'reparations', 'pneus_pieces', 'assurances',
+          'infractions', 'sinistres', 'cout_total',
+          'amortissement_cumule',  # indicatif, hors total
+          'distance_totale_km', 'cout_par_km',  # None si distance nulle
+        }
+
+    Tous les montants sont des ``float`` arrondis. Aucune écriture.
+    """
+    vehicule = (Vehicule.objects
+                .filter(company=company, id=vehicule_id)
+                .select_related('actif_flotte')
+                .first())
+    actif_flotte_id = None
+    if vehicule is not None:
+        actif_flotte_id = getattr(
+            getattr(vehicule, 'actif_flotte', None), 'id', None)
+
+    # Carburant (par véhicule).
+    carburant = float(
+        PleinCarburant.objects
+        .filter(company=company, vehicule_id=vehicule_id)
+        .aggregate(s=models.Sum('prix_total'))['s'] or 0)
+
+    # Réparations (par actif).
+    reparations = 0.0
+    infractions = 0.0
+    sinistres = 0.0
+    if actif_flotte_id is not None:
+        reparations = float(
+            OrdreReparation.objects
+            .filter(company=company, actif_flotte_id=actif_flotte_id)
+            .aggregate(s=models.Sum('cout_total'))['s'] or 0)
+        infractions = float(
+            Infraction.objects
+            .filter(company=company, actif_flotte_id=actif_flotte_id)
+            .aggregate(s=models.Sum('montant_amende'))['s'] or 0)
+        sinistres = float(
+            Sinistre.objects
+            .filter(company=company, actif_flotte_id=actif_flotte_id)
+            .aggregate(s=models.Sum('franchise'))['s'] or 0)
+
+    # Pneus + pièces (par véhicule) — réutilise la synthèse FLOTTE18.
+    synth = synthese_pneus_pieces_vehicule(company, vehicule_id)
+    pneus_pieces = float(synth.get('cout_total', 0) or 0)
+
+    cout_total = (carburant + reparations + pneus_pieces
+                  + infractions + sinistres)
+
+    # Distance totale (carnet de carburant, math FLOTTE13).
+    conso = consommation_vehicule(company, vehicule_id)
+    distance = conso.get('distance_totale_km', 0) or 0
+    cout_par_km = round(cout_total / distance, 3) if distance > 0 else None
+
+    amort = amortissement_vehicule(company, vehicule_id)
+
+    return {
+        'vehicule_id': vehicule_id,
+        'actif_flotte_id': actif_flotte_id,
+        'carburant': round(carburant, 2),
+        'reparations': round(reparations, 2),
+        'pneus_pieces': round(pneus_pieces, 2),
+        'infractions': round(infractions, 2),
+        'sinistres': round(sinistres, 2),
+        'cout_total': round(cout_total, 2),
+        'amortissement_cumule': amort.get('cumul_amortissements'),
+        'distance_totale_km': distance,
+        'cout_par_km': cout_par_km,
+    }
+
+
+# ── FLOTTE33 — Éco-conduite & CO₂ ──────────────────────────────────────────────
+
+# Facteurs d'émission de CO₂ (kg de CO₂ par litre de carburant brûlé). Valeurs
+# usuelles « tank-to-wheel » : Diesel ~2,68 kg/L, Essence ~2,31 kg/L. L'électrique
+# n'émet pas directement (émission tank-to-wheel nulle ; l'amont réseau n'est pas
+# compté ici). Référentiel figé côté code, modifiable au besoin.
+CO2_KG_PAR_LITRE = {
+    Vehicule.Energie.DIESEL: 2.68,
+    Vehicule.Energie.ESSENCE: 2.31,
+    Vehicule.Energie.HYBRIDE: 2.31,
+    Vehicule.Energie.ELECTRIQUE: 0.0,
+}
+
+
+def eco_conduite_co2(company, vehicule_id):
+    """FLOTTE33 — Éco-conduite & empreinte CO₂ d'un véhicule (lecture seule).
+
+    À partir du carnet de carburant (FLOTTE12/13) et de l'énergie du véhicule,
+    calcule :
+
+    * ``litres_total`` / ``kwh_total`` — carburant / électricité consommés ;
+    * ``co2_kg`` — émissions tank-to-wheel = litres × facteur d'émission de
+      l'énergie (0 pour l'électrique) ;
+    * ``conso_l_100km`` / ``conso_kwh_100km`` — consommation moyenne (FLOTTE13) ;
+    * ``co2_g_par_km`` — intensité carbone (g CO₂ / km), ou ``None`` sans distance ;
+    * ``score_eco`` — score d'éco-conduite 0–100 dérivé du nombre d'anomalies de
+      consommation (FLOTTE14) rapportées au nombre de pleins : moins il y a de
+      pleins en surconsommation, plus le score est haut (100 = aucune anomalie).
+
+    Retourne un dict LECTURE SEULE. Tous les nombres sont des ``float`` arrondis.
+    Aucune écriture, aucun effet de bord.
+    """
+    vehicule = (Vehicule.objects
+                .filter(company=company, id=vehicule_id)
+                .first())
+    energie = getattr(vehicule, 'energie', None)
+    facteur = CO2_KG_PAR_LITRE.get(energie, 0.0)
+
+    conso = consommation_vehicule(company, vehicule_id)
+    bloc_litres = conso.get('litres') or {}
+    bloc_kwh = conso.get('kwh') or {}
+    litres_total = float(bloc_litres.get('quantite', 0) or 0)
+    kwh_total = float(bloc_kwh.get('quantite', 0) or 0)
+    distance = conso.get('distance_totale_km', 0) or 0
+
+    co2_kg = round(litres_total * facteur, 2)
+    co2_g_par_km = round(co2_kg * 1000.0 / distance, 1) if distance > 0 \
+        else None
+
+    # Score d'éco-conduite : 100 − (part de pleins en surconsommation × 100).
+    nb_pleins = conso.get('nb_pleins', 0) or 0
+    anomalies = anomalies_pleins(company, vehicule_id=vehicule_id).get(
+        'anomalies', [])
+    nb_surconso = sum(
+        1 for a in anomalies if a.get('type') == 'conso_aberrante')
+    if nb_pleins > 0:
+        score_eco = round(max(0.0, 100.0 - (nb_surconso / nb_pleins) * 100.0),
+                          1)
+    else:
+        score_eco = None
+
+    return {
+        'vehicule_id': vehicule_id,
+        'energie': energie,
+        'facteur_co2_kg_par_litre': facteur,
+        'litres_total': round(litres_total, 2),
+        'kwh_total': round(kwh_total, 2),
+        'co2_kg': co2_kg,
+        'distance_totale_km': distance,
+        'conso_l_100km': bloc_litres.get('conso_l_100km'),
+        'conso_kwh_100km': bloc_kwh.get('conso_kwh_100km'),
+        'co2_g_par_km': co2_g_par_km,
+        'nb_pleins': nb_pleins,
+        'nb_surconsommation': nb_surconso,
+        'score_eco': score_eco,
+    }
+
+
+# ── FLOTTE34 — Documents véhicule (GED) ────────────────────────────────────────
+
+def documents_ged_pour_actif(company, actif_flotte_id):
+    """FLOTTE34 — Documents GED liés à un actif de flotte (lecture seule).
+
+    LECTURE cross-app de la GED : retourne les ``Document`` GED rattachés à un
+    ``ActifFlotte`` de la société, à travers
+    ``ged.selectors.documents_for_target`` (jamais d'import des modèles GED). Le
+    rattachement se fait côté GED via un ``DocumentLien`` (GenericForeignKey)
+    pointant l'``ActifFlotte``. Retourne un queryset vide si l'actif n'existe
+    pas dans la société ou si la GED n'est pas disponible.
+
+    Lecture seule, scopée société.
+    """
+    actif = (ActifFlotte.objects
+             .filter(company=company, id=actif_flotte_id)
+             .first())
+    if actif is None:
+        return ActifFlotte.objects.none()
+    try:
+        from apps.ged.selectors import documents_for_target
+    except Exception:
+        return ActifFlotte.objects.none()
+    return documents_for_target(company, actif)
+
+
+# ── FLOTTE35 — Tableau de bord flotte (dispo / échéances / coûts / conso) ──────
+
+def tableau_bord_flotte(company, today=None):
+    """FLOTTE35 — Tableau de bord synthétique de la flotte (lecture seule).
+
+    Agrège pour une société les indicateurs clés du parc :
+
+    * ``vehicules`` — total + ventilation par statut (actif / maintenance /
+      réformé) et ``disponibles`` (statut actif) ;
+    * ``engins`` — total + ventilation par statut ;
+    * ``echeances`` — synthèse du moteur d'alertes réglementaires (FLOTTE24) :
+      nombre total + par seau d'urgence (echu / j7 / j15 / j30) ;
+    * ``couts`` — coûts de réparation agrégés (FLOTTE17) + carburant total
+      (FLOTTE12) de la société ;
+    * ``entretien`` — nombre d'échéances d'entretien OUVERTES (FLOTTE16) ;
+    * ``pool`` — nombre de demandes de véhicule EN ATTENTE (FLOTTE32).
+
+    ``today`` est INJECTABLE (date du jour par défaut). Tout est scopé société.
+    Retourne un dict LECTURE SEULE. Aucune écriture, aucun effet de bord.
+    """
+    if today is None:
+        today = datetime.date.today()
+
+    # Véhicules par statut.
+    veh_par_statut = {
+        row['statut']: row['n']
+        for row in (Vehicule.objects.filter(company=company)
+                    .values('statut')
+                    .annotate(n=models.Count('id')))
+    }
+    nb_vehicules = sum(veh_par_statut.values())
+    disponibles = veh_par_statut.get(Vehicule.Statut.ACTIF, 0)
+
+    # Engins par statut.
+    eng_par_statut = {
+        row['statut']: row['n']
+        for row in (EnginRoulant.objects.filter(company=company)
+                    .values('statut')
+                    .annotate(n=models.Count('id')))
+    }
+    nb_engins = sum(eng_par_statut.values())
+
+    # Échéances réglementaires (moteur d'alertes FLOTTE24).
+    alertes = alertes_echeances_reglementaires(company, today=today)
+
+    # Coûts : réparations (FLOTTE17) + carburant total (FLOTTE12).
+    couts_rep = couts_reparation(company)
+    carburant_total = float(
+        PleinCarburant.objects.filter(company=company)
+        .aggregate(s=models.Sum('prix_total'))['s'] or 0)
+
+    # Entretien ouvert (FLOTTE16).
+    nb_entretien_ouvert = (
+        echeances_de_la_societe(company, ouvertes_only=True).count())
+
+    # Pool : demandes en attente (FLOTTE32).
+    nb_demandes_attente = DemandeVehicule.objects.filter(
+        company=company, statut=DemandeVehicule.Statut.DEMANDEE).count()
+
+    return {
+        'today': today,
+        'vehicules': {
+            'total': nb_vehicules,
+            'disponibles': disponibles,
+            'par_statut': veh_par_statut,
+        },
+        'engins': {
+            'total': nb_engins,
+            'par_statut': eng_par_statut,
+        },
+        'echeances': {
+            'total': alertes['nb_total'],
+            'echu': alertes['nb_echu'],
+            'j7': alertes['nb_j7'],
+            'j15': alertes['nb_j15'],
+            'j30': alertes['nb_j30'],
+        },
+        'couts': {
+            'reparations_total': couts_rep['cout_total'],
+            'carburant_total': round(carburant_total, 2),
+        },
+        'entretien': {
+            'echeances_ouvertes': nb_entretien_ouvert,
+        },
+        'pool': {
+            'demandes_en_attente': nb_demandes_attente,
+        },
+    }
+
+
+# ── FLOTTE32 — Pool de véhicules & demandes ────────────────────────────────────
+
+def demandes_vehicule_de_la_societe(company, statut=None, demandeur_id=None):
+    """FLOTTE32 — Demandes de véhicule (pool) d'une société (queryset scopé).
+
+    Filtres facultatifs : ``statut`` (demandee | approuvee | refusee | annulee)
+    et ``demandeur_id`` (un demandeur précis). Lecture seule, scopée société, de
+    la plus récente à la plus ancienne.
+    """
+    qs = DemandeVehicule.objects.filter(company=company).select_related(
+        'demandeur', 'vehicule_attribue', 'decide_par')
+    if statut:
+        qs = qs.filter(statut=statut)
+    if demandeur_id is not None:
+        qs = qs.filter(demandeur_id=demandeur_id)
+    return qs

@@ -31,7 +31,10 @@ app.conf.enable_utc = False
 #   - FG2 : balayage quotidien des déclencheurs temporels d'automatisation (08:05) —
 #     apps/automation/beat_tasks.py,
 #   - N79 : envoi des rapports sauvegardés dus, quotidien (06:00) et
-#     hebdomadaire le lundi (06:00) — apps/reporting/scheduled_reports.py.
+#     hebdomadaire le lundi (06:00) — apps/reporting/scheduled_reports.py,
+#   - GED25 : purge automatique de la corbeille échue (02:30) — apps/ged/tasks.py
+#     (DRY-RUN par défaut : n'efface rien tant que GED_PURGE_AUTO_APPLY n'est pas
+#     activé ; respecte le délai de grâce + les gardes légales GED23/GED24).
 app.conf.beat_schedule = {
     'ventes-check-overdue-factures': {
         'task': 'ventes.check_overdue_factures',
@@ -76,5 +79,11 @@ app.conf.beat_schedule = {
     'reporting-email-saved-reports-weekly': {
         'task': 'reporting.email_saved_reports',
         'schedule': crontab(hour=6, minute=0, day_of_week=1),
+    },
+    # GED25 — purge auto de la corbeille échue (DRY-RUN par défaut, opt-in réel
+    # via GED_PURGE_AUTO_APPLY). Tourne à 02:30 (heure creuse, Africa/Casablanca).
+    'ged-purge-corbeille-echue': {
+        'task': 'ged.purge_corbeille_echue',
+        'schedule': crontab(hour=2, minute=30),
     },
 }

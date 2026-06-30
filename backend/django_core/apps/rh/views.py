@@ -17,14 +17,21 @@ from rest_framework.response import Response
 from apps.records.models import Attachment
 from apps.records.storage import delete_attachment, store_attachment
 from authentication.mixins import TenantMixin
-from authentication.permissions import HasPermission, IsResponsableOrAdmin
+from authentication.permissions import (
+    HasPermission,
+    IsAnyRole,
+    IsResponsableOrAdmin,
+)
 
 from . import selectors, services
 from .models import (
     AccidentTravail,
     AffectationRoster,
+    AffectationVehicule,
     AnalyseRisquesChantier,
+    AvanceSalaire,
     BesoinFormation,
+    BulletinPaie,
     CampagneEvaluation,
     Candidature,
     CauserieParticipant,
@@ -38,28 +45,38 @@ from .models import (
     DossierEmploye,
     DotationEpi,
     ElementSortie,
+    ElementsVariablesPaie,
     EpiCatalogue,
     EvaluationEmploye,
     FeuilleTemps,
     Habilitation,
     HeuresSupp,
     IncidentPresence,
+    NoteDeFrais,
+    OrdreMission,
     OuverturePoste,
+    PermisConduire,
     Pointage,
     Poste,
     PresenceChantier,
     PresquAccident,
+    PrimeAttribuee,
     Remuneration,
+    Sanction,
     SessionFormation,
     SoldeConge,
     TypeAbsence,
+    TypePrime,
     VisiteMedicale,
 )
 from .serializers import (
     AccidentTravailSerializer,
     AffectationRosterSerializer,
+    AffectationVehiculeSerializer,
     AnalyseRisquesChantierSerializer,
+    AvanceSalaireSerializer,
     BesoinFormationSerializer,
+    BulletinPaieSerializer,
     CampagneEvaluationSerializer,
     CandidatureSerializer,
     CauserieParticipantSerializer,
@@ -74,6 +91,7 @@ from .serializers import (
     DossierEmployeSerializer,
     DotationEpiSerializer,
     ElementSortieSerializer,
+    ElementsVariablesPaieSerializer,
     EmargementEpiSerializer,
     EmargerEpiSerializer,
     EvaluationEmployeSerializer,
@@ -82,15 +100,22 @@ from .serializers import (
     HabilitationSerializer,
     HeuresSuppSerializer,
     IncidentPresenceSerializer,
+    MesInfosSerializer,
+    NoteDeFraisSerializer,
+    OrdreMissionSerializer,
     OuverturePosteSerializer,
+    PermisConduireSerializer,
     PointageSerializer,
     PosteSerializer,
     PresenceChantierSerializer,
     PresquAccidentSerializer,
+    PrimeAttribueeSerializer,
     RemunerationSerializer,
+    SanctionSerializer,
     SessionFormationSerializer,
     SoldeCongeSerializer,
     TypeAbsenceSerializer,
+    TypePrimeSerializer,
     VisiteMedicaleSerializer,
 )
 
@@ -2321,3 +2346,911 @@ class EvaluationEmployeViewSet(_RhBaseViewSet):
             evaluation.save(update_fields=['statut', 'date_modification'])
         return Response(
             self.get_serializer(evaluation).data, status=status.HTTP_200_OK)
+
+
+class SanctionViewSet(_RhBaseViewSet):
+    """Sanctions disciplinaires (FG191) — registre conforme au code du travail.
+
+    Société scopée + Administrateur/Responsable. Enregistre les mesures
+    disciplinaires (observation, avertissement, blâme, mise à pied, mutation,
+    rétrogradation, licenciement) notifiées à un collaborateur : employé,
+    auteur, type, date des faits, date de notification, durée (mise à pied),
+    motif, statut (notifiée → contestée → annulée). ``company`` est posée CÔTÉ
+    SERVEUR (jamais lue du corps) ; ``employe`` / ``auteur`` doivent appartenir
+    à la même société.
+
+    Filtres : ``?employe=<id>``, ``?type_sanction=...``,
+    ``?statut=notifiee|contestee|annulee``. Recherche : motif, matricule/nom de
+    l'employé.
+
+    Action :
+    * ``POST .../{id}/annuler/`` — passe la sanction en ``statut=annulee``.
+      Idempotent.
+    """
+    queryset = Sanction.objects.select_related('employe', 'auteur').all()
+    serializer_class = SanctionSerializer
+    filter_backends = [filters.SearchFilter, filters.OrderingFilter]
+    search_fields = ['motif', 'employe__matricule', 'employe__nom']
+    ordering_fields = ['date_notification', 'date_faits', 'statut',
+                       'date_creation']
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        employe = self.request.query_params.get('employe')
+        if employe:
+            qs = qs.filter(employe_id=employe)
+        type_sanction = self.request.query_params.get('type_sanction')
+        if type_sanction:
+            qs = qs.filter(type_sanction=type_sanction)
+        statut = self.request.query_params.get('statut')
+        if statut:
+            qs = qs.filter(statut=statut)
+        return qs
+
+    def perform_create(self, serializer):
+        """Company posée côté serveur ; FK validés via le sérialiseur."""
+        serializer.save(company=self.request.user.company)
+
+    @action(detail=True, methods=['post'], url_path='annuler')
+    def annuler(self, request, pk=None):
+        """Annule la sanction (FG191) — passe en ``statut=annulee``.
+
+        La société est garantie par ``get_object`` (un autre tenant reçoit
+        404). Idempotent : ré-annuler renvoie la même sanction sans erreur.
+        """
+        sanction = self.get_object()
+        if sanction.statut != Sanction.Statut.ANNULEE:
+            sanction.statut = Sanction.Statut.ANNULEE
+            sanction.save(update_fields=['statut', 'date_modification'])
+        return Response(
+            self.get_serializer(sanction).data, status=status.HTTP_200_OK)
+
+
+class ElementsVariablesPaieViewSet(_RhBaseViewSet):
+    """Éléments variables de paie mensuels (FG192) — export prestataire paie.
+
+    Société scopée + Administrateur/Responsable. Enregistre le bordereau
+    mensuel par employé (heures normales/supp, jours d'absence/congés, primes,
+    retenues, commentaire, statut) destiné au prestataire de paie — ce n'est
+    PAS un moteur de paie. ``company`` et ``date_export`` sont posées CÔTÉ
+    SERVEUR (jamais lues du corps) ; ``employe`` doit appartenir à la même
+    société. Le couple (employe, annee, mois) est unique.
+
+    Filtres : ``?employe=<id>``, ``?annee=<n>``, ``?mois=<1-12>``,
+    ``?statut=brouillon|valide|exporte``.
+
+    Actions :
+    * ``GET .../export-paie-csv/?annee=&mois=`` — CSV du bordereau (matricule,
+      identité, quantités, montants), scopé société + filtré.
+    * ``POST .../{id}/marquer-exporte/`` — passe en ``statut=exporte`` et pose
+      ``date_export`` côté serveur. Idempotent.
+    """
+    queryset = ElementsVariablesPaie.objects.select_related('employe').all()
+    serializer_class = ElementsVariablesPaieSerializer
+    filter_backends = [filters.SearchFilter, filters.OrderingFilter]
+    search_fields = ['employe__matricule', 'employe__nom', 'commentaire']
+    ordering_fields = ['annee', 'mois', 'statut', 'date_creation']
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        employe = self.request.query_params.get('employe')
+        if employe:
+            qs = qs.filter(employe_id=employe)
+        annee = self.request.query_params.get('annee')
+        if annee:
+            qs = qs.filter(annee=annee)
+        mois = self.request.query_params.get('mois')
+        if mois:
+            qs = qs.filter(mois=mois)
+        statut = self.request.query_params.get('statut')
+        if statut:
+            qs = qs.filter(statut=statut)
+        return qs
+
+    def perform_create(self, serializer):
+        """Company posée côté serveur ; FK validé via le sérialiseur."""
+        serializer.save(company=self.request.user.company)
+
+    @action(detail=False, methods=['get'], url_path='export-paie-csv')
+    def export_paie_csv(self, request):
+        """Export CSV du bordereau mensuel (FG192), scopé société + filtré.
+
+        On garde ``?export``/un endpoint dédié (et NON ``?format=``, réservé
+        par DRF) comme déclencheur d'export.
+        """
+        import csv
+
+        from django.http import HttpResponse
+
+        rows = self.filter_queryset(self.get_queryset())
+        response = HttpResponse(content_type='text/csv; charset=utf-8')
+        response['Content-Disposition'] = (
+            'attachment; filename="elements-variables-paie.csv"')
+        # BOM UTF-8 pour qu'Excel ouvre correctement les accents.
+        response.write('﻿')
+        writer = csv.writer(response)
+        writer.writerow([
+            'Matricule', 'Nom', 'Prenom', 'Annee', 'Mois',
+            'Heures normales', 'Heures supp',
+            'Jours absence', 'Jours conges',
+            'Primes', 'Retenues', 'Statut', 'Commentaire',
+        ])
+        for evp in rows:
+            emp = evp.employe
+            writer.writerow([
+                emp.matricule, emp.nom, emp.prenom,
+                evp.annee, evp.mois,
+                evp.heures_normales, evp.heures_supp,
+                evp.jours_absence, evp.jours_conges,
+                evp.primes, evp.retenues,
+                evp.get_statut_display(), evp.commentaire,
+            ])
+        return response
+
+    @action(detail=True, methods=['post'], url_path='marquer-exporte')
+    def marquer_exporte(self, request, pk=None):
+        """Marque le bordereau exporté (FG192) — ``statut=exporte`` + date.
+
+        La société est garantie par ``get_object`` (autre tenant → 404).
+        Idempotent : re-marquer renvoie le même bordereau sans réécrire la date.
+        """
+        evp = self.get_object()
+        if evp.statut != ElementsVariablesPaie.Statut.EXPORTE:
+            evp.statut = ElementsVariablesPaie.Statut.EXPORTE
+            evp.date_export = timezone.now()
+            evp.save(update_fields=[
+                'statut', 'date_export', 'date_modification'])
+        return Response(
+            self.get_serializer(evp).data, status=status.HTTP_200_OK)
+
+
+class TypePrimeViewSet(_RhBaseViewSet):
+    """Référentiel des primes & indemnités (FG193).
+
+    Société scopée + Administrateur/Responsable. Catalogue des types de primes
+    (rendement, chantier, panier, transport…) : code, libellé, nature, montant
+    par défaut, drapeaux imposable/actif. ``company`` est posée CÔTÉ SERVEUR
+    (jamais lue du corps) ; (company, code) est unique.
+
+    Filtres : ``?nature=prime|indemnite``, ``?actif=true|false``.
+    """
+    queryset = TypePrime.objects.all()
+    serializer_class = TypePrimeSerializer
+    filter_backends = [filters.SearchFilter, filters.OrderingFilter]
+    search_fields = ['code', 'libelle']
+    ordering_fields = ['libelle', 'code', 'date_creation']
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        nature = self.request.query_params.get('nature')
+        if nature:
+            qs = qs.filter(nature=nature)
+        actif = self.request.query_params.get('actif')
+        if actif is not None:
+            qs = qs.filter(actif=actif.lower() in ('1', 'true', 'oui'))
+        return qs
+
+    def perform_create(self, serializer):
+        """Company posée côté serveur."""
+        serializer.save(company=self.request.user.company)
+
+
+class PrimeAttribueeViewSet(_RhBaseViewSet):
+    """Primes/indemnités attribuées (FG193) — par employé et par période.
+
+    Société scopée + Administrateur/Responsable. Attribue un type de prime à un
+    employé pour une période (année/mois) avec un montant (par défaut celui du
+    type), un motif et un statut (proposée → validée → payée). ``company`` est
+    posée CÔTÉ SERVEUR (jamais lue du corps) ; ``type_prime`` / ``employe``
+    doivent appartenir à la même société. Si le montant n'est pas fourni (0),
+    il est initialisé au montant par défaut du type côté serveur.
+
+    Filtres : ``?employe=<id>``, ``?type_prime=<id>``, ``?annee=<n>``,
+    ``?mois=<1-12>``, ``?statut=proposee|validee|payee``.
+
+    Action :
+    * ``POST .../{id}/valider/`` — passe en ``statut=validee``. Idempotent.
+    """
+    queryset = PrimeAttribuee.objects.select_related(
+        'type_prime', 'employe').all()
+    serializer_class = PrimeAttribueeSerializer
+    filter_backends = [filters.SearchFilter, filters.OrderingFilter]
+    search_fields = ['motif', 'employe__matricule', 'type_prime__libelle']
+    ordering_fields = ['annee', 'mois', 'montant', 'statut', 'date_creation']
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        employe = self.request.query_params.get('employe')
+        if employe:
+            qs = qs.filter(employe_id=employe)
+        type_prime = self.request.query_params.get('type_prime')
+        if type_prime:
+            qs = qs.filter(type_prime_id=type_prime)
+        annee = self.request.query_params.get('annee')
+        if annee:
+            qs = qs.filter(annee=annee)
+        mois = self.request.query_params.get('mois')
+        if mois:
+            qs = qs.filter(mois=mois)
+        statut = self.request.query_params.get('statut')
+        if statut:
+            qs = qs.filter(statut=statut)
+        return qs
+
+    def perform_create(self, serializer):
+        """Company posée côté serveur ; montant par défaut du type si absent."""
+        montant = serializer.validated_data.get('montant') or 0
+        extra = {}
+        if not montant:
+            type_prime = serializer.validated_data.get('type_prime')
+            if type_prime is not None:
+                extra['montant'] = type_prime.montant_defaut
+        serializer.save(company=self.request.user.company, **extra)
+
+    @action(detail=True, methods=['post'], url_path='valider')
+    def valider(self, request, pk=None):
+        """Valide la prime (FG193) — passe en ``statut=validee``.
+
+        La société est garantie par ``get_object`` (autre tenant → 404).
+        Idempotent : revalider renvoie la même prime sans erreur.
+        """
+        prime = self.get_object()
+        if prime.statut != PrimeAttribuee.Statut.VALIDEE:
+            prime.statut = PrimeAttribuee.Statut.VALIDEE
+            prime.save(update_fields=['statut', 'date_modification'])
+        return Response(
+            self.get_serializer(prime).data, status=status.HTTP_200_OK)
+
+
+class OrdreMissionViewSet(_RhBaseViewSet):
+    """Ordres de mission / déplacements chantier (FG194).
+
+    Société scopée + Administrateur/Responsable. Enregistre un ordre de mission
+    (déplacement chantier) : employé, destination, motif, dates départ/retour,
+    moyen de transport, véhicule (ID flotte), per-diem, statut (brouillon →
+    émis → clôturé). ``company`` et ``reference`` (préfixe ``OM``, par société/
+    mois) sont posées CÔTÉ SERVEUR (jamais lues du corps) ; ``employe`` doit
+    appartenir à la même société.
+
+    Filtres : ``?employe=<id>``, ``?statut=brouillon|emis|cloture``. Recherche :
+    référence, destination, motif.
+
+    Actions :
+    * ``GET .../{id}/pdf/`` — restitue l'ordre de mission en PDF (streamé).
+    * ``POST .../{id}/emettre/`` — passe en ``statut=emis``. Idempotent.
+    """
+    queryset = OrdreMission.objects.select_related('employe').all()
+    serializer_class = OrdreMissionSerializer
+    filter_backends = [filters.SearchFilter, filters.OrderingFilter]
+    search_fields = ['reference', 'destination', 'motif',
+                     'employe__matricule', 'employe__nom']
+    ordering_fields = ['date_depart', 'reference', 'statut', 'date_creation']
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        employe = self.request.query_params.get('employe')
+        if employe:
+            qs = qs.filter(employe_id=employe)
+        statut = self.request.query_params.get('statut')
+        if statut:
+            qs = qs.filter(statut=statut)
+        return qs
+
+    def perform_create(self, serializer):
+        """Company + référence (préfixe ``OM``) posées côté serveur."""
+        from apps.ventes.utils.references import create_with_reference
+
+        company = self.request.user.company
+        create_with_reference(
+            OrdreMission, 'OM', company,
+            lambda reference: serializer.save(
+                company=company, reference=reference))
+
+    @action(detail=True, methods=['get'], url_path='pdf')
+    def pdf(self, request, pk=None):
+        """Restitue l'ordre de mission en PDF (FG194), scopé société.
+
+        La société est garantie par ``get_object`` (autre tenant → 404).
+        """
+        from django.http import HttpResponse
+
+        from . import mission_pdf
+
+        ordre = self.get_object()
+        pdf_bytes = mission_pdf.render_ordre_mission_pdf(ordre)
+        response = HttpResponse(pdf_bytes, content_type='application/pdf')
+        response['Content-Disposition'] = (
+            f'inline; filename="ordre-mission-{ordre.reference}.pdf"')
+        return response
+
+    @action(detail=True, methods=['post'], url_path='emettre')
+    def emettre(self, request, pk=None):
+        """Émet l'ordre de mission (FG194) — passe en ``statut=emis``.
+
+        La société est garantie par ``get_object`` (autre tenant → 404).
+        Idempotent : ré-émettre renvoie le même ordre sans erreur.
+        """
+        ordre = self.get_object()
+        if ordre.statut == OrdreMission.Statut.BROUILLON:
+            ordre.statut = OrdreMission.Statut.EMIS
+            ordre.save(update_fields=['statut', 'date_modification'])
+        return Response(
+            self.get_serializer(ordre).data, status=status.HTTP_200_OK)
+
+
+class AvanceSalaireViewSet(_RhBaseViewSet):
+    """Avances sur salaire (FG195) — demande, validation, déduction.
+
+    Société scopée + Administrateur/Responsable. Enregistre une demande
+    d'avance (employé, montant, date, motif, mois/année de déduction). Si le
+    mois de déduction n'est pas fourni, il est posé côté serveur au mois SUIVANT
+    la demande (l'avance est récupérée sur la paie suivante). ``company`` est
+    posée CÔTÉ SERVEUR (jamais lue du corps) ; ``employe`` doit appartenir à la
+    même société. Les avances APPROUVÉES alimentent l'export paie (FG192) via
+    le sélecteur ``avances_a_deduire``.
+
+    Filtres : ``?employe=<id>``, ``?statut=demandee|approuvee|deduite|refusee``,
+    ``?annee_deduction=<n>``, ``?mois_deduction=<1-12>``.
+
+    Actions :
+    * ``POST .../{id}/approuver/`` — passe en ``statut=approuvee`` et trace le
+      valideur (DossierEmploye du compte appelant si lié). Idempotent.
+    * ``POST .../{id}/refuser/`` — passe en ``statut=refusee``. Idempotent.
+    * ``POST .../{id}/marquer-deduite/`` — passe en ``statut=deduite`` (avance
+      récupérée sur paie). Idempotent.
+    """
+    queryset = AvanceSalaire.objects.select_related(
+        'employe', 'valideur').all()
+    serializer_class = AvanceSalaireSerializer
+    filter_backends = [filters.SearchFilter, filters.OrderingFilter]
+    search_fields = ['motif', 'employe__matricule', 'employe__nom']
+    ordering_fields = ['date_demande', 'montant', 'statut', 'date_creation']
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        employe = self.request.query_params.get('employe')
+        if employe:
+            qs = qs.filter(employe_id=employe)
+        statut = self.request.query_params.get('statut')
+        if statut:
+            qs = qs.filter(statut=statut)
+        annee = self.request.query_params.get('annee_deduction')
+        if annee:
+            qs = qs.filter(annee_deduction=annee)
+        mois = self.request.query_params.get('mois_deduction')
+        if mois:
+            qs = qs.filter(mois_deduction=mois)
+        return qs
+
+    def perform_create(self, serializer):
+        """Company posée côté serveur ; déduction par défaut = mois suivant."""
+        data = serializer.validated_data
+        extra = {}
+        if not data.get('mois_deduction') or not data.get('annee_deduction'):
+            base = data.get('date_demande') or timezone.localdate()
+            mois = base.month + 1
+            annee = base.year
+            if mois > 12:
+                mois = 1
+                annee += 1
+            extra['mois_deduction'] = mois
+            extra['annee_deduction'] = annee
+        serializer.save(company=self.request.user.company, **extra)
+
+    def _valideur_pour(self, request):
+        """DossierEmploye lié au compte appelant (même société) ou None."""
+        return DossierEmploye.objects.filter(
+            company=request.user.company, user=request.user).first()
+
+    @action(detail=True, methods=['post'], url_path='approuver')
+    def approuver(self, request, pk=None):
+        """Approuve l'avance (FG195) — ``statut=approuvee`` + valideur.
+
+        Garantie société par ``get_object`` (autre tenant → 404). Idempotent.
+        """
+        avance = self.get_object()
+        if avance.statut != AvanceSalaire.Statut.APPROUVEE:
+            avance.statut = AvanceSalaire.Statut.APPROUVEE
+            avance.valideur = self._valideur_pour(request)
+            avance.save(update_fields=[
+                'statut', 'valideur', 'date_modification'])
+        return Response(
+            self.get_serializer(avance).data, status=status.HTTP_200_OK)
+
+    @action(detail=True, methods=['post'], url_path='refuser')
+    def refuser(self, request, pk=None):
+        """Refuse l'avance (FG195) — ``statut=refusee``. Idempotent, 404 autre
+        tenant."""
+        avance = self.get_object()
+        if avance.statut != AvanceSalaire.Statut.REFUSEE:
+            avance.statut = AvanceSalaire.Statut.REFUSEE
+            avance.valideur = self._valideur_pour(request)
+            avance.save(update_fields=[
+                'statut', 'valideur', 'date_modification'])
+        return Response(
+            self.get_serializer(avance).data, status=status.HTTP_200_OK)
+
+    @action(detail=True, methods=['post'], url_path='marquer-deduite')
+    def marquer_deduite(self, request, pk=None):
+        """Marque l'avance déduite (FG195) — ``statut=deduite``. Idempotent,
+        404 autre tenant."""
+        avance = self.get_object()
+        if avance.statut != AvanceSalaire.Statut.DEDUITE:
+            avance.statut = AvanceSalaire.Statut.DEDUITE
+            avance.save(update_fields=['statut', 'date_modification'])
+        return Response(
+            self.get_serializer(avance).data, status=status.HTTP_200_OK)
+
+
+class BulletinPaieViewSet(_RhBaseViewSet):
+    """Bulletins de paie en lecture seule (FG196) — dépôt mensuel.
+
+    Société scopée. Dépose le bulletin PDF mensuel (produit par le prestataire
+    de paie) rattaché à un employé pour une période (annee/mois) ; AUCUN calcul
+    légal n'est fait ici. La création est multipart (``employe`` + ``file`` +
+    ``annee`` + ``mois``) ; le fichier RÉUTILISE le stockage objet existant de
+    ``records.Attachment`` (MinIO). ``company`` et la pièce jointe sont posées
+    CÔTÉ SERVEUR. Le couple (employe, annee, mois) est unique.
+
+    Dépôt/administration : Administrateur/Responsable. Consultation par le
+    collaborateur : action ``mes-bulletins`` (rôle authentifié), qui ne renvoie
+    QUE les bulletins du dossier lié à son compte.
+
+    Filtres : ``?employe=<id>``, ``?annee=<n>``, ``?mois=<1-12>``.
+    """
+    queryset = BulletinPaie.objects.select_related(
+        'employe', 'attachment').all()
+    serializer_class = BulletinPaieSerializer
+    parser_classes = [MultiPartParser, JSONParser]
+    filter_backends = [filters.OrderingFilter]
+    ordering_fields = ['annee', 'mois', 'date_creation']
+
+    def get_permissions(self):
+        # Le collaborateur consulte SON bulletin sans être Responsable/Admin.
+        if self.action == 'mes_bulletins':
+            return [IsAnyRole()]
+        return super().get_permissions()
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        employe = self.request.query_params.get('employe')
+        if employe:
+            qs = qs.filter(employe_id=employe)
+        annee = self.request.query_params.get('annee')
+        if annee:
+            qs = qs.filter(annee=annee)
+        mois = self.request.query_params.get('mois')
+        if mois:
+            qs = qs.filter(mois=mois)
+        return qs
+
+    def create(self, request, *args, **kwargs):
+        """Téléverse le bulletin (MinIO via records.storage) puis l'enregistre.
+
+        ``employe`` doit appartenir à la société ; ``company`` et la pièce
+        jointe sont posées côté serveur (jamais lues du corps).
+        """
+        company = request.user.company
+        employe_id = request.data.get('employe')
+        try:
+            employe = DossierEmploye.objects.get(
+                pk=employe_id, company=company)
+        except (DossierEmploye.DoesNotExist, ValueError, TypeError):
+            return Response({'employe': 'Employé inconnu.'},
+                            status=status.HTTP_400_BAD_REQUEST)
+        file = request.FILES.get('file')
+        if not file:
+            return Response({'file': 'Aucun fichier fourni.'},
+                            status=status.HTTP_400_BAD_REQUEST)
+        ser = self.get_serializer(data=request.data)
+        ser.is_valid(raise_exception=True)
+
+        meta, err = store_attachment(file)
+        if err:
+            return Response({'file': err},
+                            status=status.HTTP_400_BAD_REQUEST)
+        ct = ContentType.objects.get_for_model(DossierEmploye)
+        attachment = Attachment.objects.create(
+            company=company, content_type=ct, object_id=employe.id,
+            uploaded_by=request.user, **meta)
+        bulletin = BulletinPaie.objects.create(
+            company=company, employe=employe, attachment=attachment,
+            annee=ser.validated_data['annee'],
+            mois=ser.validated_data['mois'],
+            note=ser.validated_data.get('note', ''))
+        return Response(self.get_serializer(bulletin).data,
+                        status=status.HTTP_201_CREATED)
+
+    def perform_destroy(self, instance):
+        att = instance.attachment
+        instance.delete()
+        if att is not None:
+            delete_attachment(att.file_key)
+            att.delete()
+
+    @action(detail=False, methods=['get'], url_path='mes-bulletins')
+    def mes_bulletins(self, request):
+        """Bulletins de paie du collaborateur connecté (FG196/FG199).
+
+        Ne renvoie QUE les bulletins du ``DossierEmploye`` lié au compte
+        appelant (même société). Si aucun dossier n'est lié, renvoie une liste
+        vide. Société garantie par le filtrage TenantMixin + le lien user.
+        """
+        dossier = DossierEmploye.objects.filter(
+            company=request.user.company, user=request.user).first()
+        if dossier is None:
+            return Response([])
+        qs = self.get_queryset().filter(employe=dossier)
+        page = self.paginate_queryset(qs)
+        if page is not None:
+            return self.get_paginated_response(
+                self.get_serializer(page, many=True).data)
+        return Response(self.get_serializer(qs, many=True).data)
+
+
+class PermisConduireViewSet(_RhBaseViewSet):
+    """Permis de conduire & habilitation à conduire (FG197).
+
+    Société scopée + Administrateur/Responsable. Suit le permis d'un employé
+    (catégorie, numéro, dates de délivrance/expiration, habilitation interne).
+    ``company`` est posée CÔTÉ SERVEUR (jamais lue du corps) ; ``employe`` doit
+    appartenir à la même société. Le couple (employe, categorie) est unique.
+    Source de vérité du droit de conduire pour la garde d'affectation FG198.
+
+    Filtres : ``?employe=<id>``, ``?categorie=...``,
+    ``?habilitation_conduite=true|false``. Recherche : numéro, matricule/nom.
+
+    Action :
+    * ``GET .../expirant-bientot/?within=`` — permis qui expirent dans les
+      ``?within=`` prochains jours (défaut 30), scopés société.
+    """
+    queryset = PermisConduire.objects.select_related('employe').all()
+    serializer_class = PermisConduireSerializer
+    filter_backends = [filters.SearchFilter, filters.OrderingFilter]
+    search_fields = ['numero', 'employe__matricule', 'employe__nom']
+    ordering_fields = ['date_expiration', 'categorie', 'date_creation']
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        employe = self.request.query_params.get('employe')
+        if employe:
+            qs = qs.filter(employe_id=employe)
+        categorie = self.request.query_params.get('categorie')
+        if categorie:
+            qs = qs.filter(categorie=categorie)
+        hab = self.request.query_params.get('habilitation_conduite')
+        if hab is not None:
+            qs = qs.filter(
+                habilitation_conduite=hab.lower() in ('1', 'true', 'oui'))
+        return qs
+
+    def perform_create(self, serializer):
+        """Company posée côté serveur ; FK validé via le sérialiseur."""
+        serializer.save(company=self.request.user.company)
+
+    @action(detail=False, methods=['get'], url_path='expirant-bientot')
+    def expirant_bientot(self, request):
+        """Permis de la société expirant dans les ``?within=`` prochains jours
+        (défaut 30). S'appuie sur ``selectors.permis_expirant_bientot`` — scopé
+        société, exclut les permis sans échéance et déjà expirés."""
+        within = request.query_params.get('within', 30)
+        qs = selectors.permis_expirant_bientot(
+            request.user.company, within_days=within)
+        page = self.paginate_queryset(qs)
+        if page is not None:
+            return self.get_paginated_response(
+                self.get_serializer(page, many=True).data)
+        return Response(self.get_serializer(qs, many=True).data)
+
+
+class AffectationVehiculeViewSet(_RhBaseViewSet):
+    """Affectations conducteur ↔ véhicule (FG198) — garde permis valide.
+
+    Société scopée + Administrateur/Responsable. Lie un conducteur à un véhicule
+    du parc (``vehicule_id`` = ID flotte.Vehicule, STRING-FK) sur une période.
+    ``company`` est posée CÔTÉ SERVEUR (jamais lue du corps) ; ``employe`` doit
+    appartenir à la même société.
+
+    GARDE PERMIS (décision FG198) : à la création/màj, l'affectation est REFUSÉE
+    (400) si le conducteur n'a pas de permis VALIDE (FG197) — contrôle posé côté
+    serveur via ``services.controler_permis_affectation`` ; ``permis_verifie``
+    est alors posé à ``True``.
+
+    Filtres : ``?employe=<id>``, ``?vehicule_id=<id>``,
+    ``?statut=active|terminee``.
+
+    Action :
+    * ``POST .../{id}/terminer/`` — clôt l'affectation (``statut=terminee``,
+      pose ``date_fin`` si absente). Idempotent.
+    """
+    queryset = AffectationVehicule.objects.select_related('employe').all()
+    serializer_class = AffectationVehiculeSerializer
+    filter_backends = [filters.SearchFilter, filters.OrderingFilter]
+    search_fields = ['employe__matricule', 'employe__nom', 'note']
+    ordering_fields = ['date_debut', 'statut', 'date_creation']
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        employe = self.request.query_params.get('employe')
+        if employe:
+            qs = qs.filter(employe_id=employe)
+        vehicule = self.request.query_params.get('vehicule_id')
+        if vehicule:
+            qs = qs.filter(vehicule_id=vehicule)
+        statut = self.request.query_params.get('statut')
+        if statut:
+            qs = qs.filter(statut=statut)
+        return qs
+
+    def _verifier_permis(self, serializer):
+        """Refuse (400) si le conducteur n'a pas de permis valide (FG198)."""
+        from rest_framework.exceptions import ValidationError
+
+        company = self.request.user.company
+        employe = serializer.validated_data.get('employe')
+        le = serializer.validated_data.get('date_debut')
+        if employe is not None and not services.controler_permis_affectation(
+                company, employe.id, le=le):
+            raise ValidationError({
+                'employe': ("Affectation refusée : ce conducteur n'a pas de "
+                            'permis de conduire valide (FG197).')})
+
+    def perform_create(self, serializer):
+        """Company posée côté serveur ; garde permis valide (FG198)."""
+        self._verifier_permis(serializer)
+        serializer.save(
+            company=self.request.user.company, permis_verifie=True)
+
+    def perform_update(self, serializer):
+        """Re-contrôle le permis si l'employé/la date change (FG198)."""
+        if ('employe' in serializer.validated_data
+                or 'date_debut' in serializer.validated_data):
+            self._verifier_permis(serializer)
+            serializer.save(permis_verifie=True)
+        else:
+            serializer.save()
+
+    @action(detail=True, methods=['post'], url_path='terminer')
+    def terminer(self, request, pk=None):
+        """Clôt l'affectation (FG198) — ``statut=terminee`` + ``date_fin``.
+
+        La société est garantie par ``get_object`` (autre tenant → 404).
+        Idempotent : re-terminer renvoie la même affectation sans erreur.
+        """
+        affectation = self.get_object()
+        if affectation.statut != AffectationVehicule.Statut.TERMINEE:
+            affectation.statut = AffectationVehicule.Statut.TERMINEE
+            if affectation.date_fin is None:
+                affectation.date_fin = timezone.localdate()
+            affectation.save(update_fields=[
+                'statut', 'date_fin', 'date_modification'])
+        return Response(
+            self.get_serializer(affectation).data, status=status.HTTP_200_OK)
+
+
+class NoteDeFraisViewSet(_RhBaseViewSet):
+    """Notes de frais (FG199) — administration (Administrateur/Responsable).
+
+    Société scopée. Liste/administre TOUTES les notes de frais de la société et
+    pilote leur approbation. La SAISIE par le collaborateur passe par le portail
+    self-service (``portail/declarer-frais``). ``company`` est posée CÔTÉ
+    SERVEUR (jamais lue du corps).
+
+    Filtres : ``?employe=<id>``, ``?categorie=...``,
+    ``?statut=soumise|approuvee|remboursee|refusee``.
+
+    Actions :
+    * ``POST .../{id}/approuver/`` — ``statut=approuvee``. Idempotent.
+    * ``POST .../{id}/refuser/`` — ``statut=refusee``. Idempotent.
+    * ``POST .../{id}/marquer-remboursee/`` — ``statut=remboursee``. Idempotent.
+    """
+    queryset = NoteDeFrais.objects.select_related('employe').all()
+    serializer_class = NoteDeFraisSerializer
+    filter_backends = [filters.SearchFilter, filters.OrderingFilter]
+    search_fields = ['libelle', 'employe__matricule', 'employe__nom']
+    ordering_fields = ['date_frais', 'montant', 'statut', 'date_creation']
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        employe = self.request.query_params.get('employe')
+        if employe:
+            qs = qs.filter(employe_id=employe)
+        categorie = self.request.query_params.get('categorie')
+        if categorie:
+            qs = qs.filter(categorie=categorie)
+        statut = self.request.query_params.get('statut')
+        if statut:
+            qs = qs.filter(statut=statut)
+        return qs
+
+    def _set_statut(self, request, pk, nouveau):
+        note = self.get_object()
+        if note.statut != nouveau:
+            note.statut = nouveau
+            note.save(update_fields=['statut', 'date_modification'])
+        return Response(
+            self.get_serializer(note).data, status=status.HTTP_200_OK)
+
+    @action(detail=True, methods=['post'], url_path='approuver')
+    def approuver(self, request, pk=None):
+        """Approuve la note de frais (FG199). Idempotent, 404 autre tenant."""
+        return self._set_statut(request, pk, NoteDeFrais.Statut.APPROUVEE)
+
+    @action(detail=True, methods=['post'], url_path='refuser')
+    def refuser(self, request, pk=None):
+        """Refuse la note de frais (FG199). Idempotent, 404 autre tenant."""
+        return self._set_statut(request, pk, NoteDeFrais.Statut.REFUSEE)
+
+    @action(detail=True, methods=['post'], url_path='marquer-remboursee')
+    def marquer_remboursee(self, request, pk=None):
+        """Marque la note remboursée (FG199). Idempotent, 404 autre tenant."""
+        return self._set_statut(request, pk, NoteDeFrais.Statut.REMBOURSEE)
+
+
+class PortailSelfServiceViewSet(viewsets.ViewSet):
+    """Portail self-service employé (FG199) — accès du collaborateur connecté.
+
+    Permission : tout compte authentifié (``IsAnyRole``). TOUTES les données
+    sont résolues à partir du ``DossierEmploye`` LIÉ au compte appelant (même
+    société) — un collaborateur ne voit/édite JAMAIS les données d'un autre.
+    Si aucun dossier n'est lié au compte, les lectures renvoient une réponse
+    vide/404 et les écritures sont refusées (400).
+
+    Endpoints :
+    * ``GET portail/mes-infos/`` / ``PATCH portail/mes-infos/`` — fiche perso
+      (coordonnées + contact d'urgence éditables ; poste/contrat/statut en
+      lecture seule).
+    * ``GET portail/mes-soldes/`` — soldes de congés.
+    * ``GET portail/mes-conges/`` — ses demandes de congé.
+    * ``POST portail/demander-conge/`` — créer une demande de congé.
+    * ``GET portail/mes-frais/`` — ses notes de frais.
+    * ``POST portail/declarer-frais/`` — déclarer une note de frais.
+    * ``GET portail/mes-epi/`` — ses dotations EPI.
+    * ``GET portail/mes-habilitations/`` — ses habilitations.
+    * ``GET portail/mes-bulletins/`` — ses bulletins de paie.
+    """
+    permission_classes = [IsAnyRole]
+
+    def _dossier(self, request):
+        return DossierEmploye.objects.filter(
+            company=request.user.company, user=request.user).first()
+
+    @action(detail=False, methods=['get', 'patch'], url_path='mes-infos')
+    def mes_infos(self, request):
+        """Fiche perso du collaborateur (lecture/édition limitée)."""
+        dossier = self._dossier(request)
+        if dossier is None:
+            return Response(
+                {'detail': 'Aucun dossier employé lié à ce compte.'},
+                status=status.HTTP_404_NOT_FOUND)
+        if request.method == 'PATCH':
+            ser = MesInfosSerializer(dossier, data=request.data, partial=True)
+            ser.is_valid(raise_exception=True)
+            ser.save()
+            return Response(ser.data)
+        return Response(MesInfosSerializer(dossier).data)
+
+    @action(detail=False, methods=['get'], url_path='mes-soldes')
+    def mes_soldes(self, request):
+        dossier = self._dossier(request)
+        if dossier is None:
+            return Response([])
+        qs = SoldeConge.objects.filter(
+            company=request.user.company, employe=dossier)
+        return Response(SoldeCongeSerializer(qs, many=True).data)
+
+    @action(detail=False, methods=['get'], url_path='mes-conges')
+    def mes_conges(self, request):
+        dossier = self._dossier(request)
+        if dossier is None:
+            return Response([])
+        qs = DemandeConge.objects.filter(
+            company=request.user.company, employe=dossier).select_related(
+            'type_absence')
+        return Response(DemandeCongeSerializer(qs, many=True).data)
+
+    @action(detail=False, methods=['post'], url_path='demander-conge')
+    def demander_conge(self, request):
+        """Crée une demande de congé pour le collaborateur connecté.
+
+        ``employe`` et ``company`` sont posés CÔTÉ SERVEUR (jamais lus du
+        corps) à partir du dossier lié au compte.
+        """
+        dossier = self._dossier(request)
+        if dossier is None:
+            return Response(
+                {'detail': 'Aucun dossier employé lié à ce compte.'},
+                status=status.HTTP_400_BAD_REQUEST)
+        # ``employe`` est TOUJOURS forcé au dossier du compte appelant (jamais
+        # lu du corps) ; le serializer valide la cohérence société du type.
+        data = {k: v for k, v in request.data.items() if k != 'employe'}
+        data['employe'] = dossier.id
+        ser = DemandeCongeSerializer(
+            data=data, context={'request': request})
+        ser.is_valid(raise_exception=True)
+        # ``jours`` calculé côté serveur selon la règle de décompte du type.
+        jours = services.calculer_jours_demande(
+            ser.validated_data['type_absence'],
+            ser.validated_data['date_debut'],
+            ser.validated_data['date_fin'])
+        ser.save(company=request.user.company, jours=jours)
+        return Response(ser.data, status=status.HTTP_201_CREATED)
+
+    @action(detail=False, methods=['get'], url_path='mes-frais')
+    def mes_frais(self, request):
+        dossier = self._dossier(request)
+        if dossier is None:
+            return Response([])
+        qs = NoteDeFrais.objects.filter(
+            company=request.user.company, employe=dossier)
+        return Response(NoteDeFraisSerializer(qs, many=True).data)
+
+    @action(detail=False, methods=['post'], url_path='declarer-frais')
+    def declarer_frais(self, request):
+        """Déclare une note de frais pour le collaborateur connecté.
+
+        ``employe``, ``company`` et ``statut`` sont posés CÔTÉ SERVEUR.
+        """
+        dossier = self._dossier(request)
+        if dossier is None:
+            return Response(
+                {'detail': 'Aucun dossier employé lié à ce compte.'},
+                status=status.HTTP_400_BAD_REQUEST)
+        ser = NoteDeFraisSerializer(data=request.data)
+        ser.is_valid(raise_exception=True)
+        ser.save(company=request.user.company, employe=dossier)
+        return Response(ser.data, status=status.HTTP_201_CREATED)
+
+    @action(detail=False, methods=['get'], url_path='mes-epi')
+    def mes_epi(self, request):
+        dossier = self._dossier(request)
+        if dossier is None:
+            return Response([])
+        qs = DotationEpi.objects.filter(
+            company=request.user.company, employe=dossier)
+        return Response(DotationEpiSerializer(qs, many=True).data)
+
+    @action(detail=False, methods=['get'], url_path='mes-habilitations')
+    def mes_habilitations(self, request):
+        dossier = self._dossier(request)
+        if dossier is None:
+            return Response([])
+        qs = Habilitation.objects.filter(
+            company=request.user.company, employe=dossier)
+        return Response(HabilitationSerializer(qs, many=True).data)
+
+    @action(detail=False, methods=['get'], url_path='mes-bulletins')
+    def mes_bulletins(self, request):
+        dossier = self._dossier(request)
+        if dossier is None:
+            return Response([])
+        qs = BulletinPaie.objects.filter(
+            company=request.user.company, employe=dossier).select_related(
+            'attachment')
+        return Response(BulletinPaieSerializer(qs, many=True).data)
+
+
+class CockpitRhViewSet(viewsets.ViewSet):
+    """Cockpit RH — effectifs & coûts (FG200), tableau de bord en lecture.
+
+    Société scopée + Administrateur/Responsable (``IsResponsableOrAdmin``).
+    Agrège (sans rien stocker) l'effectif par statut/contrat/département, la
+    pyramide d'ancienneté, le turnover 12 mois et les alertes (CDD à échéance,
+    documents/permis/visites à expirer) via ``selectors.cockpit_rh``.
+
+    GATED — masse salariale : la ``masse_salariale_mensuelle`` (donnée INTERNE
+    paie) n'est incluse QUE si l'appelant porte la permission ``salaires_voir``
+    (palier RH), sinon elle est omise. Elle ne quitte jamais cette API admin.
+
+    Endpoint :
+    * ``GET cockpit/`` (list) — renvoie le tableau de bord agrégé.
+    """
+    permission_classes = [IsResponsableOrAdmin]
+
+    def list(self, request):
+        peut_voir_salaires = HasPermission('salaires_voir')().has_permission(
+            request, self)
+        data = selectors.cockpit_rh(
+            request.user.company,
+            inclure_masse_salariale=peut_voir_salaires)
+        return Response(data)
