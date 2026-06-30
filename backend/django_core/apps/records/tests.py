@@ -671,6 +671,18 @@ class TestTags(TestCase):
         self.assertEqual(len(data), 1)
         self.assertEqual(data[0]['nom'], 'Solar VIP')
 
+    def test_apply_tag_to_produit(self):
+        """DC27 — le produit catalogue est désormais une cible taggable."""
+        from apps.stock.models import Produit
+        produit = Produit.objects.create(
+            company=self.company, nom='Panneau 550W', prix_vente=1200)
+        tag = Tag.objects.create(company=self.company, nom='Catalogue VIP')
+        res = self.api.post('/api/django/records/tagged-items/', {
+            'model': 'stock.produit', 'id': produit.id, 'tag': tag.id,
+        }, format='json')
+        self.assertIn(res.status_code, (200, 201), getattr(res, 'data', res))
+        self.assertEqual(TaggedItem.objects.count(), 1)
+
 
 class TestAttachmentsAll(TestCase):
     """FG10 — Centre de pièces jointes de la société (GET records/attachments/all/)."""

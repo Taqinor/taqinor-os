@@ -26,6 +26,16 @@ ALLOWED_TARGETS = {
     ('installations', 'installation'),
     ('sav', 'ticket'),
     ('outillage', 'outillage'),
+    # DC27 — taxonomie de tags transversale : le produit catalogue devient
+    # une cible taggable (clients/devis/factures/chantiers/tickets l'étaient
+    # déjà), pour adosser tout le vocabulaire au registre `records.Tag`.
+    ('stock', 'produit'),
+    # DC33 — GED : liens polymorphes (DocumentLien) vers le fournisseur et la
+    # fiche employé, en plus des cibles Lead/Client/Devis/Facture/Chantier déjà
+    # présentes — l'identité n'est jamais recopiée sur le document, on ne fait
+    # que pointer via ContentType. (Active aussi tags/PJ sur ces objets.)
+    ('stock', 'fournisseur'),
+    ('rh', 'dossieremploye'),
     # QHSE8 — photos de contrôle (avant/pendant/après) rattachées à un relevé
     # de contrôle ITP, et pièces jointes d'une non-conformité (NCR).
     ('qhse', 'relevecontrole'),

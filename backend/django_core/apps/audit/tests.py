@@ -273,3 +273,32 @@ class TestAuditAnalytics(TestCase):
         self.assertEqual(resp.status_code, 200)
         self.assertEqual(len(resp.data['daily_counts']), 7)
         self.assertEqual(len(resp.data['failed_logins']), 7)
+
+
+class TestTrackedModelsCoverage(TestCase):
+    """FG15 — les écritures argent/sécurité sont désormais suivies par l'audit.
+
+    On vérifie (a) que les nouvelles paires sont déclarées et (b) qu'elles
+    résolvent toutes en un vrai modèle (anti-typo app_label/ModelName).
+    """
+    def test_money_and_security_models_are_tracked(self):
+        from apps.audit.signals import TRACKED_MODELS
+        attendus = {
+            ('ventes', 'BonCommande'),
+            ('ventes', 'Paiement'),
+            ('sav', 'ContratMaintenance'),
+            ('stock', 'BonCommandeFournisseur'),
+            ('stock', 'ReceptionFournisseur'),
+            ('stock', 'FactureFournisseur'),
+            ('stock', 'PaiementFournisseur'),
+            ('publicapi', 'ApiKey'),
+            ('publicapi', 'Webhook'),
+        }
+        self.assertTrue(attendus.issubset(set(TRACKED_MODELS)))
+
+    def test_all_tracked_models_resolve(self):
+        from django.apps import apps as django_apps
+        from apps.audit.signals import TRACKED_MODELS
+        for app_label, model_name in TRACKED_MODELS:
+            # Lève LookupError si la paire est erronée.
+            django_apps.get_model(app_label, model_name)
