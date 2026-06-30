@@ -656,12 +656,15 @@ def create_draft_lead_from_ocr(*, company, user, fields) -> Lead:
         company=company,
         nom=nom[:255],
         source=Lead.Source.OS_NATIVE,
-        canal=Canal.AUTRE,
+        canal=Lead.Canal.AUTRE,
         **extra,
     )
     activity.log_creation(lead, user)
+    # Note SYSTÈME (user=None) : annotation automatique, pas un contact manuel —
+    # sinon le récepteur QJ7 ferait avancer le lead NEW → CONTACTED alors que ce
+    # service CRÉE seulement et laisse le funnel à l'étape par défaut (NEW).
     activity.log_note(
-        lead, user,
+        lead, None,
         "Lead créé depuis un document OCR (brouillon à compléter).")
     recompute_lead_score(lead)
     return lead

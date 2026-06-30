@@ -501,7 +501,7 @@ def cout_achat_courant_with_source(produit):
 def cout_achat_courant(produit):
     """Coût d'achat courant d'un produit (Decimal), selon la précédence DC28.
     Accesseur UNIQUE pour marge / auto-fill / job-costing. INTERNE."""
-    return cout_achat_courant_with_source(produit)
+    return cout_achat_courant_with_source(produit)[0]
 
 
 def stock_valuation_by_location(company):

@@ -55,7 +55,8 @@ class RisqueModelTests(TestCase):
         self.assertEqual(risque.criticite, 12)
         risque.probabilite = 5
         risque.save()
-        self.assertEqual(risque.criticite, 25)
+        # impact reste 4 → criticité recalculée = 5 × 4 = 20 (≠ l'ancien 12).
+        self.assertEqual(risque.criticite, 20)
 
 
 class RisqueApiTests(TestCase):

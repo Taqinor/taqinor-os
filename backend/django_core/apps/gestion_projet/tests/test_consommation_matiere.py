@@ -106,7 +106,7 @@ class ConsommationMatiereApiTests(TestCase):
         api = auth(self.user_a)
         resp = api.get(f'{self.BASE}{self.projet.id}/consommation-matiere/')
         self.assertEqual(resp.status_code, 200)
-        self.assertEqual(resp.data['bom_prevu'], '1000')
+        self.assertEqual(resp.data['bom_prevu'], '1000.00')
         self.assertEqual(resp.data['consomme'], '0')
         self.assertEqual(resp.data['source'], 'degrade')
 

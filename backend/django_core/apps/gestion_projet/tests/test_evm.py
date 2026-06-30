@@ -107,7 +107,7 @@ class EvmApiTests(TestCase):
         api = auth(self.user_a)
         resp = api.get(f'{self.BASE}{self.projet.id}/evm/')
         self.assertEqual(resp.status_code, 200)
-        self.assertEqual(resp.data['bac'], '50000')
+        self.assertEqual(resp.data['bac'], '50000.00')
         self.assertIn('cpi', resp.data)
 
     def test_cross_tenant_404(self):

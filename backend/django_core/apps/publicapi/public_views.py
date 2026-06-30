@@ -92,6 +92,11 @@ class PublicReadOnlyViewSet(viewsets.ReadOnlyModelViewSet):
             return queryset
         # Accepte un datetime ISO-8601 ou une date simple (AAAA-MM-JJ).
         value = parse_datetime(raw) or parse_date(raw)
+        if value is None and ' ' in raw:
+            # Un '+' d'offset ISO-8601 non encodé est décodé en espace par
+            # l'URL ; on le restaure avant de lever une erreur.
+            fixed = raw.replace(' ', '+')
+            value = parse_datetime(fixed) or parse_date(fixed)
         if value is None:
             raise ValidationError({
                 'updated_since':

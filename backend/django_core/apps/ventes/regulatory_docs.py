@@ -77,7 +77,10 @@ def required_documents(regime_8221):
     libellé l'emporte en cas de collision). Un régime inconnu ou ``non_concerne``
     renvoie une liste possiblement vide (jamais d'exception).
     """
-    regime = (regime_8221 or '').strip()
+    if regime_8221 is None:
+        # Aucun régime sélectionné : rien à déposer.
+        return []
+    regime = regime_8221.strip()
     if regime == 'non_concerne':
         # Hors champ 82-21 : pas de dossier réglementaire à déposer.
         return []

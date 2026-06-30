@@ -33,7 +33,7 @@ class FG21OnboardingTest(TestCase):
     def test_register_sets_must_change_password(self):
         r = self.api.post('/api/django/register/', {
             'username': 'invited', 'password': 'Sup3rSecret!23',
-            'email': 'a@b.c', 'must_change_password': True,
+            'email': 'invited@example.com', 'must_change_password': True,
         }, format='json')
         self.assertIn(r.status_code, (200, 201), r.content)
         u = User.objects.get(username='invited')

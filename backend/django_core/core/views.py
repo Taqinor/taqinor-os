@@ -168,6 +168,7 @@ class DashboardViewSet(TenantMixin, viewsets.ModelViewSet):
     serializer_class = DashboardSerializer
     permission_classes = [IsAuthenticated]
     queryset = Dashboard.objects.all()
+    pagination_class = None  # petite liste par utilisateur — renvoyée à plat.
 
     def get_queryset(self):
         qs = super().get_queryset()  # déjà filtré par société (TenantMixin).

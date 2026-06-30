@@ -84,7 +84,7 @@ class ClotureServiceTests(TestCase):
         services.cloturer_projet(
             projet, date_cloture=date(2026, 6, 2), points_positifs='v2')
         self.assertEqual(ClotureProjet.objects.filter(projet=projet).count(), 1)
-        self.assertEqual(projet.cloture.points_positifs, 'v2')
+        self.assertEqual(ClotureProjet.objects.get(projet=projet).points_positifs, 'v2')
 
 
 class SousTraitanceApiTests(TestCase):

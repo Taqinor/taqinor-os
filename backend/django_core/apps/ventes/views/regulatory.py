@@ -88,7 +88,7 @@ class RegulatoryDossierViewSet(viewsets.ModelViewSet):
         company = self._resolve_company(devis)
         serializer.save(company=company)
 
-    @action(detail=True, methods=['post'])
+    @action(detail=True, methods=['post'], url_path='generer-checklist')
     def generer_checklist(self, request, pk=None):
         """POST /{id}/generer-checklist/ — crée les pièces manquantes du régime.
 
@@ -311,7 +311,7 @@ class Regularisation8221ViewSet(viewsets.ModelViewSet):
         company = self._resolve_company(devis)
         serializer.save(company=company)
 
-    @action(detail=True, methods=['post'])
+    @action(detail=True, methods=['post'], url_path='generer-declaration')
     def generer_declaration(self, request, pk=None):
         """POST /{id}/generer-declaration/ — marque la déclaration générée.
 

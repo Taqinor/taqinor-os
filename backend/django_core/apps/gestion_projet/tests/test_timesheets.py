@@ -181,5 +181,5 @@ class SyntheseTempsTests(TestCase):
         api = auth(self.user)
         resp = api.get(f'{self.BASE}{self.projet.id}/synthese-temps/')
         self.assertEqual(resp.status_code, 200)
-        self.assertEqual(resp.data['total_heures'], '5')
-        self.assertEqual(resp.data['total_cout'], '350')
+        self.assertEqual(resp.data['total_heures'], '5.00')
+        self.assertEqual(resp.data['total_cout'], '350.00')

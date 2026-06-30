@@ -58,7 +58,7 @@ class CalendrierReglementaireTest(TestCase):
         return DossierChecklistItem.objects.create(
             company=dossier.company, dossier=dossier,
             code=kw.pop('code', 'piece'), libelle=kw.pop('libelle', 'Pièce'),
-            etape='depot', statut='a_faire',
+            etape='depot', statut=kw.pop('statut', 'a_faire'),
             date_echeance=self.today + timedelta(days=days_offset), **kw)
 
     def test_overdue_and_imminent_and_future_buckets(self):

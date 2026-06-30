@@ -25,3 +25,21 @@ class ApprovalPolicySerializer(serializers.ModelSerializer):
             raise serializers.ValidationError(
                 'Le seuil ne peut pas être négatif.')
         return value
+
+    def validate(self, attrs):
+        # Unicité (company, action_type) validée ici → 400 propre plutôt qu'une
+        # IntegrityError 500 au save. company est dérivée du serveur (TenantMixin).
+        request = self.context.get('request')
+        company = getattr(getattr(request, 'user', None), 'company', None)
+        action_type = attrs.get(
+            'action_type', getattr(self.instance, 'action_type', None))
+        if company is not None and action_type is not None:
+            qs = ApprovalPolicy.objects.filter(
+                company=company, action_type=action_type)
+            if self.instance is not None:
+                qs = qs.exclude(pk=self.instance.pk)
+            if qs.exists():
+                raise serializers.ValidationError(
+                    {'action_type':
+                        'Une politique existe déjà pour cette action.'})
+        return attrs
