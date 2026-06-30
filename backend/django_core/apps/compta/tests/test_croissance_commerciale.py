@@ -144,7 +144,8 @@ class RelanceDevisAbandonneTests(TestCase):
         api = auth(self.user)
         resp = api.get('/api/django/compta/relances-devis-abandonnes/')
         self.assertEqual(resp.status_code, 200)
-        self.assertEqual(len(resp.data), 0)
+        # Réponse paginée → on lit le compte (l'isolation société renvoie 0).
+        self.assertEqual(resp.data['count'], 0)
 
 
 # ── FG205 — Tracking d'ouverture des ShareLink ─────────────────────────────

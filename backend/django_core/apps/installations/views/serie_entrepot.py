@@ -57,14 +57,35 @@ class SerieEntrepotViewSet(TenantMixin, viewsets.ModelViewSet):
                 raise ValidationError(
                     {field: f'{label} inconnu pour cette société.'})
 
+    def _check_unique_serial(self, serializer, instance=None):
+        """Garde l'unicité (société, produit, n° série) côté API → 400 propre
+        plutôt qu'une IntegrityError 500 au contact de la contrainte DB."""
+        produit = serializer.validated_data.get(
+            'produit', getattr(instance, 'produit', None))
+        numero = serializer.validated_data.get(
+            'numero_serie', getattr(instance, 'numero_serie', None))
+        if produit is None or not numero:
+            return
+        qs = SerieEntrepot.objects.filter(
+            company=self.request.user.company,
+            produit=produit, numero_serie=numero)
+        if instance is not None:
+            qs = qs.exclude(pk=instance.pk)
+        if qs.exists():
+            raise ValidationError(
+                {'numero_serie':
+                    'Ce numéro de série existe déjà pour ce produit.'})
+
     def perform_create(self, serializer):
         self._check_tenant(serializer)
+        self._check_unique_serial(serializer)
         serializer.save(
             company=self.request.user.company,
             created_by=self.request.user)
 
     def perform_update(self, serializer):
         self._check_tenant(serializer)
+        self._check_unique_serial(serializer, instance=serializer.instance)
         serializer.save(company=self.request.user.company)
 
     @action(detail=True, methods=['post'])
