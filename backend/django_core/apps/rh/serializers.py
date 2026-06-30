@@ -11,6 +11,7 @@ from .models import (
     AffectationRoster,
     AnalyseRisquesChantier,
     BesoinFormation,
+    CampagneEvaluation,
     Candidature,
     CauserieParticipant,
     CauserieSecurite,
@@ -24,6 +25,7 @@ from .models import (
     DotationEpi,
     ElementSortie,
     EmargementEpi,
+    EvaluationEmploye,
     EpiCatalogue,
     FeuilleTemps,
     Habilitation,
@@ -31,6 +33,7 @@ from .models import (
     IncidentPresence,
     InscriptionFormation,
     LigneRisqueChantier,
+    ObjectifIndividuel,
     OuverturePoste,
     Pointage,
     Poste,
@@ -1467,3 +1470,120 @@ class EmbaucherSerializer(serializers.Serializer):
     date_embauche = serializers.DateField(required=False)
     poste = serializers.CharField(
         max_length=120, required=False, allow_blank=True)
+
+
+class ObjectifIndividuelSerializer(serializers.ModelSerializer):
+    """Objectif individuel d'un entretien d'évaluation (FG190).
+
+    Le client saisit ``libelle``, ``ponderation``, ``cible``, ``atteinte`` et
+    ``note``. ``company`` et ``evaluation`` sont posées CÔTÉ SERVEUR (jamais
+    lues du corps) par le sérialiseur parent.
+    """
+
+    class Meta:
+        model = ObjectifIndividuel
+        fields = [
+            'id', 'libelle', 'ponderation', 'cible', 'atteinte', 'note',
+            'date_creation',
+        ]
+        read_only_fields = ['date_creation']
+
+
+class EvaluationEmployeSerializer(serializers.ModelSerializer):
+    """Entretien annuel d'évaluation d'un collaborateur (FG190).
+
+    Le client saisit ``campagne`` (une ``CampagneEvaluation`` de sa société),
+    ``employe`` et ``evaluateur`` (des ``DossierEmploye`` de sa société),
+    ``date_entretien``, ``note_globale``, ``synthese``, ``statut`` et une liste
+    imbriquée ``objectifs``. ``company`` est posée CÔTÉ SERVEUR (jamais lue du
+    corps) ; ``campagne`` / ``employe`` / ``evaluateur`` doivent appartenir à
+    la société de l'utilisateur, et ``company`` est propagée aux objectifs
+    enfants.
+    """
+    employe_nom = serializers.SerializerMethodField()
+    evaluateur_nom = serializers.SerializerMethodField()
+    statut_display = serializers.CharField(
+        source='get_statut_display', read_only=True)
+    objectifs = ObjectifIndividuelSerializer(many=True, required=False)
+
+    class Meta:
+        model = EvaluationEmploye
+        fields = [
+            'id', 'campagne', 'employe', 'employe_nom',
+            'evaluateur', 'evaluateur_nom',
+            'date_entretien', 'note_globale', 'synthese',
+            'statut', 'statut_display',
+            'objectifs',
+            'date_creation', 'date_modification',
+        ]
+        read_only_fields = ['date_creation', 'date_modification']
+
+    def get_employe_nom(self, obj):
+        if not obj.employe_id:
+            return ''
+        return f'{obj.employe.nom} {obj.employe.prenom}'
+
+    def get_evaluateur_nom(self, obj):
+        if not obj.evaluateur_id:
+            return ''
+        return f'{obj.evaluateur.nom} {obj.evaluateur.prenom}'
+
+    def validate_campagne(self, value):
+        return _meme_societe(self, value, 'Campagne')
+
+    def validate_employe(self, value):
+        return _meme_societe(self, value, 'Employé')
+
+    def validate_evaluateur(self, value):
+        return _meme_societe(self, value, 'Évaluateur')
+
+    def create(self, validated_data):
+        # ``company`` est injectée par le TenantMixin (perform_create) ; on la
+        # propage aux objectifs enfants (jamais lue du corps).
+        objectifs = validated_data.pop('objectifs', [])
+        company = validated_data['company']
+        evaluation = EvaluationEmploye.objects.create(**validated_data)
+        for item in objectifs:
+            ObjectifIndividuel.objects.create(
+                company=company, evaluation=evaluation, **item)
+        return evaluation
+
+    def update(self, instance, validated_data):
+        # Mise à jour des champs de l'entretien ; si ``objectifs`` est fourni,
+        # on remplace la liste.
+        objectifs = validated_data.pop('objectifs', None)
+        for attr, value in validated_data.items():
+            setattr(instance, attr, value)
+        instance.save()
+        if objectifs is not None:
+            instance.objectifs.all().delete()
+            for item in objectifs:
+                ObjectifIndividuel.objects.create(
+                    company=instance.company, evaluation=instance, **item)
+        return instance
+
+
+class CampagneEvaluationSerializer(serializers.ModelSerializer):
+    """Campagne d'appréciation annuelle (FG190) — entretiens & évaluations.
+
+    Le client saisit ``intitule``, ``annee``, ``periode``, ``date_debut`` /
+    ``date_fin``, ``statut`` et ``description``. La liste imbriquée
+    ``evaluations`` est en LECTURE SEULE ici : les entretiens individuels se
+    créent/modifient via leur propre endpoint. ``company`` est posée CÔTÉ
+    SERVEUR (jamais lue du corps).
+    """
+    statut_display = serializers.CharField(
+        source='get_statut_display', read_only=True)
+    evaluations = EvaluationEmployeSerializer(
+        many=True, read_only=True)
+
+    class Meta:
+        model = CampagneEvaluation
+        fields = [
+            'id', 'intitule', 'annee', 'periode',
+            'date_debut', 'date_fin',
+            'statut', 'statut_display', 'description',
+            'evaluations',
+            'date_creation', 'date_modification',
+        ]
+        read_only_fields = ['date_creation', 'date_modification']

@@ -25,6 +25,7 @@ from .models import (
     AffectationRoster,
     AnalyseRisquesChantier,
     BesoinFormation,
+    CampagneEvaluation,
     Candidature,
     CauserieParticipant,
     CauserieSecurite,
@@ -38,6 +39,7 @@ from .models import (
     DotationEpi,
     ElementSortie,
     EpiCatalogue,
+    EvaluationEmploye,
     FeuilleTemps,
     Habilitation,
     HeuresSupp,
@@ -58,6 +60,7 @@ from .serializers import (
     AffectationRosterSerializer,
     AnalyseRisquesChantierSerializer,
     BesoinFormationSerializer,
+    CampagneEvaluationSerializer,
     CandidatureSerializer,
     CauserieParticipantSerializer,
     CauserieSecuriteSerializer,
@@ -73,6 +76,7 @@ from .serializers import (
     ElementSortieSerializer,
     EmargementEpiSerializer,
     EmargerEpiSerializer,
+    EvaluationEmployeSerializer,
     EpiCatalogueSerializer,
     FeuilleTempsSerializer,
     HabilitationSerializer,
@@ -2197,3 +2201,123 @@ class CandidatureViewSet(_RhBaseViewSet):
         candidature.refresh_from_db()
         return Response(
             self.get_serializer(candidature).data, status=status.HTTP_200_OK)
+
+
+class CampagneEvaluationViewSet(_RhBaseViewSet):
+    """Campagnes d'appréciation annuelle (FG190) — entretiens & évaluations.
+
+    Société scopée + Administrateur/Responsable. Enregistre une campagne
+    d'appréciation (le cycle d'entretiens annuels) : intitulé, année, période,
+    dates, statut (ouverte → clôturée), description ; la liste imbriquée des
+    entretiens (``evaluations``) est exposée en lecture seule (chaque entretien
+    se gère via son propre endpoint). ``company`` est posée CÔTÉ SERVEUR
+    (jamais lue du corps). C'est une appréciation RH — DISTINCTE des objectifs
+    commerciaux de vente (FG39).
+
+    Filtres : ``?annee=<n>``, ``?statut=ouverte|cloturee``. Recherche :
+    intitulé, période, description.
+
+    Action :
+    * ``POST .../{id}/cloturer/`` — passe la campagne en ``statut=cloturee``.
+      Idempotent.
+    """
+    queryset = CampagneEvaluation.objects.prefetch_related(
+        'evaluations__objectifs',
+        'evaluations__employe', 'evaluations__evaluateur').all()
+    serializer_class = CampagneEvaluationSerializer
+    filter_backends = [filters.SearchFilter, filters.OrderingFilter]
+    search_fields = ['intitule', 'periode', 'description']
+    ordering_fields = ['annee', 'statut', 'date_debut', 'date_creation']
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        annee = self.request.query_params.get('annee')
+        if annee:
+            qs = qs.filter(annee=annee)
+        statut = self.request.query_params.get('statut')
+        if statut:
+            qs = qs.filter(statut=statut)
+        return qs
+
+    def perform_create(self, serializer):
+        """Company posée côté serveur."""
+        serializer.save(company=self.request.user.company)
+
+    @action(detail=True, methods=['post'], url_path='cloturer')
+    def cloturer(self, request, pk=None):
+        """Clôture la campagne (FG190) — passe en ``statut=cloturee``.
+
+        La société est garantie par ``get_object`` (un autre tenant reçoit
+        404). Idempotent : reclôturer renvoie la même campagne sans erreur.
+        """
+        campagne = self.get_object()
+        if campagne.statut != CampagneEvaluation.Statut.CLOTUREE:
+            campagne.statut = CampagneEvaluation.Statut.CLOTUREE
+            campagne.save(update_fields=['statut', 'date_modification'])
+        return Response(
+            self.get_serializer(campagne).data, status=status.HTTP_200_OK)
+
+
+class EvaluationEmployeViewSet(_RhBaseViewSet):
+    """Entretiens annuels d'évaluation (FG190) — appréciation par collaborateur.
+
+    Société scopée + Administrateur/Responsable. Enregistre l'entretien
+    d'évaluation d'un collaborateur dans une campagne : campagne, employé
+    évalué, évaluateur (manager), date d'entretien, note globale (1–5),
+    synthèse, statut (planifié → réalisé → validé) et la liste imbriquée des
+    objectifs individuels (libellé, pondération, cible, atteinte, note).
+    ``company`` est posée CÔTÉ SERVEUR (jamais lue du corps) ; ``campagne`` /
+    ``employe`` / ``evaluateur`` doivent appartenir à la même société, et
+    ``company`` est propagée aux objectifs. Le couple (campagne, employe) est
+    unique.
+
+    Filtres : ``?campagne=<id>``, ``?employe=<id>``, ``?evaluateur=<id>``,
+    ``?statut=planifie|realise|valide``. Recherche : synthèse, libellé d'un
+    objectif.
+
+    Action :
+    * ``POST .../{id}/valider/`` — passe l'entretien en ``statut=valide``.
+      Idempotent.
+    """
+    queryset = EvaluationEmploye.objects.select_related(
+        'campagne', 'employe', 'evaluateur').prefetch_related(
+        'objectifs').all()
+    serializer_class = EvaluationEmployeSerializer
+    filter_backends = [filters.SearchFilter, filters.OrderingFilter]
+    search_fields = ['synthese', 'objectifs__libelle']
+    ordering_fields = ['date_entretien', 'statut', 'note_globale',
+                       'date_creation']
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        campagne = self.request.query_params.get('campagne')
+        if campagne:
+            qs = qs.filter(campagne_id=campagne)
+        employe = self.request.query_params.get('employe')
+        if employe:
+            qs = qs.filter(employe_id=employe)
+        evaluateur = self.request.query_params.get('evaluateur')
+        if evaluateur:
+            qs = qs.filter(evaluateur_id=evaluateur)
+        statut = self.request.query_params.get('statut')
+        if statut:
+            qs = qs.filter(statut=statut)
+        return qs.distinct()
+
+    def perform_create(self, serializer):
+        """Company posée côté serveur ; FK validés via le sérialiseur."""
+        serializer.save(company=self.request.user.company)
+
+    @action(detail=True, methods=['post'], url_path='valider')
+    def valider(self, request, pk=None):
+        """Valide l'entretien (FG190) — passe en ``statut=valide``.
+
+        La société est garantie par ``get_object`` (un autre tenant reçoit
+        404). Idempotent : revalider renvoie le même entretien sans erreur.
+        """
+        evaluation = self.get_object()
+        if evaluation.statut != EvaluationEmploye.Statut.VALIDE:
+            evaluation.statut = EvaluationEmploye.Statut.VALIDE
+            evaluation.save(update_fields=['statut', 'date_modification'])
+        return Response(
+            self.get_serializer(evaluation).data, status=status.HTTP_200_OK)

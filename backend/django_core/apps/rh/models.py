@@ -2862,3 +2862,223 @@ class Candidature(models.Model):
 
     def __str__(self):
         return f'{self.nom} — {self.ouverture}'
+
+
+class CampagneEvaluation(models.Model):
+    """Campagne d'appréciation annuelle (FG190) — entretiens & évaluations RH.
+
+    Matérialise une CAMPAGNE D'APPRÉCIATION lancée par la société : le cycle
+    d'entretiens annuels d'évaluation de la performance des collaborateurs.
+    Chaque campagne porte un ``intitule`` (ex. « Entretiens annuels 2026 »),
+    une ``annee`` et une ``periode`` libre (ex. « S2 », « Q4 »), des dates
+    (``date_debut`` / ``date_fin``) qui bornent le cycle, une ``description``
+    et un ``statut`` (ouverte → clôturée). Les entretiens individuels vivent
+    dans le modèle enfant ``EvaluationEmploye`` (un par collaborateur évalué).
+
+    C'est une appréciation RH de la performance — DISTINCTE des OBJECTIFS
+    COMMERCIAUX de vente (FG39) : ici on évalue le collaborateur sur l'année,
+    on ne pilote pas un quota de chiffre d'affaires.
+
+    Multi-société : ``company`` est posée CÔTÉ SERVEUR (jamais lue du corps de
+    requête). Entièrement additif.
+
+    RUNTIME-SAFETY (leçon FG136) : le code borné ``statut`` ≤ 20 ; ``intitule``
+    / ``periode`` plafonnés ; la ``description``, potentiellement longue, est un
+    ``TextField`` ; index nommés explicitement (≤ 30 chars).
+    """
+
+    class Statut(models.TextChoices):
+        OUVERTE = 'ouverte', 'Ouverte'
+        CLOTUREE = 'cloturee', 'Clôturée'
+
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='rh_campagnes_evaluation',
+        verbose_name='Société',
+    )
+    intitule = models.CharField(max_length=255, verbose_name='Intitulé')
+    annee = models.PositiveIntegerField(verbose_name='Année')
+    periode = models.CharField(
+        max_length=60, blank=True, default='', verbose_name='Période')
+    date_debut = models.DateField(
+        null=True, blank=True, verbose_name='Date de début')
+    date_fin = models.DateField(
+        null=True, blank=True, verbose_name='Date de fin')
+    statut = models.CharField(
+        max_length=20, choices=Statut.choices,
+        default=Statut.OUVERTE, verbose_name='Statut')
+    description = models.TextField(
+        blank=True, default='', verbose_name='Description')
+    date_creation = models.DateTimeField(
+        auto_now_add=True, verbose_name='Créé le')
+    date_modification = models.DateTimeField(
+        auto_now=True, verbose_name='Modifié le')
+
+    class Meta:
+        verbose_name = "Campagne d'appréciation"
+        verbose_name_plural = "Campagnes d'appréciation"
+        ordering = ['-annee', '-date_creation']
+        indexes = [
+            models.Index(
+                fields=['company', 'annee'],
+                name='rh_camp_comp_annee_idx'),
+            models.Index(
+                fields=['company', 'statut'],
+                name='rh_camp_comp_stat_idx'),
+        ]
+
+    def __str__(self):
+        return f'{self.intitule} ({self.annee})'
+
+
+class EvaluationEmploye(models.Model):
+    """Entretien annuel d'évaluation d'un collaborateur (FG190).
+
+    Une ligne par COLLABORATEUR ÉVALUÉ dans une campagne (``campagne`` →
+    parent) : l'``employe`` apprécié (FK ``rh.DossierEmploye``, même société),
+    l'``evaluateur`` qui mène l'entretien (FK ``rh.DossierEmploye`` optionnel,
+    même société — typiquement le manager), la ``date_entretien``, une
+    ``note_globale`` de synthèse (échelle 1–5, ``Decimal`` pour autoriser les
+    demi-notes), une ``synthese`` libre (le commentaire de l'entretien) et un
+    ``statut`` (planifié → réalisé → validé). Le couple (campagne, employe) est
+    unique : un collaborateur n'est évalué qu'une fois par campagne (on met à
+    jour l'entretien plutôt que d'en empiler). Les objectifs individuels fixés
+    lors de l'entretien vivent dans le modèle enfant ``ObjectifIndividuel``.
+
+    Multi-société : ``company`` est posée CÔTÉ SERVEUR (jamais lue du corps),
+    celle de la campagne parente ; ``employe`` et ``evaluateur`` doivent
+    appartenir à la même société. Additif.
+
+    RUNTIME-SAFETY (leçon FG136) : le code borné ``statut`` ≤ 20 ; la
+    ``synthese``, potentiellement longue, est un ``TextField`` ;
+    ``note_globale`` est un ``DecimalField`` borné (max_digits=3,
+    decimal_places=1) ; index + contrainte d'unicité nommés (≤ 30 chars).
+    """
+
+    class Statut(models.TextChoices):
+        PLANIFIE = 'planifie', 'Planifié'
+        REALISE = 'realise', 'Réalisé'
+        VALIDE = 'valide', 'Validé'
+
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='rh_evaluations_employe',
+        verbose_name='Société',
+    )
+    campagne = models.ForeignKey(
+        CampagneEvaluation,
+        on_delete=models.CASCADE,
+        related_name='evaluations',
+        verbose_name='Campagne',
+    )
+    employe = models.ForeignKey(
+        DossierEmploye,
+        on_delete=models.CASCADE,
+        related_name='evaluations_recues',
+        verbose_name='Employé',
+    )
+    evaluateur = models.ForeignKey(
+        DossierEmploye,
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='evaluations_menees',
+        verbose_name='Évaluateur',
+    )
+    date_entretien = models.DateField(
+        null=True, blank=True, verbose_name="Date de l'entretien")
+    note_globale = models.DecimalField(
+        max_digits=3, decimal_places=1,
+        null=True, blank=True, verbose_name='Note globale')
+    synthese = models.TextField(
+        blank=True, default='', verbose_name='Synthèse')
+    statut = models.CharField(
+        max_length=20, choices=Statut.choices,
+        default=Statut.PLANIFIE, verbose_name='Statut')
+    date_creation = models.DateTimeField(
+        auto_now_add=True, verbose_name='Créé le')
+    date_modification = models.DateTimeField(
+        auto_now=True, verbose_name='Modifié le')
+
+    class Meta:
+        verbose_name = "Entretien d'évaluation"
+        verbose_name_plural = "Entretiens d'évaluation"
+        ordering = ['-date_creation']
+        constraints = [
+            models.UniqueConstraint(
+                fields=['campagne', 'employe'],
+                name='rh_eval_camp_emp_uniq'),
+        ]
+        indexes = [
+            models.Index(
+                fields=['company', 'campagne'],
+                name='rh_eval_comp_camp_idx'),
+            models.Index(
+                fields=['company', 'statut'],
+                name='rh_eval_comp_stat_idx'),
+        ]
+
+    def __str__(self):
+        return f'{self.employe} — {self.campagne}'
+
+
+class ObjectifIndividuel(models.Model):
+    """Objectif individuel fixé lors d'un entretien d'évaluation (FG190).
+
+    Une ligne par OBJECTIF fixé au collaborateur dans son entretien
+    (``evaluation`` → parent) : un ``libelle`` (l'intitulé de l'objectif), une
+    ``ponderation`` optionnelle (le poids relatif de l'objectif, en %), une
+    ``cible`` visée (texte libre — la valeur attendue), une ``atteinte``
+    constatée (le résultat observé) et une ``note`` optionnelle d'évaluation de
+    cet objectif (échelle 1–5, ``Decimal``).
+
+    C'est l'objectif RH de développement / performance du collaborateur —
+    DISTINCT de l'objectif COMMERCIAL de vente (FG39).
+
+    Multi-société : ``company`` est posée CÔTÉ SERVEUR (jamais lue du corps),
+    celle de l'évaluation parente. Additif.
+
+    RUNTIME-SAFETY (leçon FG136) : ``libelle`` / ``cible`` / ``atteinte``
+    plafonnés ; ``ponderation`` et ``note`` sont des ``DecimalField`` bornés ;
+    index nommé (≤ 30 chars).
+    """
+
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='rh_objectifs_individuels',
+        verbose_name='Société',
+    )
+    evaluation = models.ForeignKey(
+        EvaluationEmploye,
+        on_delete=models.CASCADE,
+        related_name='objectifs',
+        verbose_name='Évaluation',
+    )
+    libelle = models.CharField(max_length=255, verbose_name='Libellé')
+    ponderation = models.DecimalField(
+        max_digits=5, decimal_places=2,
+        null=True, blank=True, verbose_name='Pondération (%)')
+    cible = models.CharField(
+        max_length=255, blank=True, default='', verbose_name='Cible')
+    atteinte = models.CharField(
+        max_length=255, blank=True, default='', verbose_name='Atteinte')
+    note = models.DecimalField(
+        max_digits=3, decimal_places=1,
+        null=True, blank=True, verbose_name='Note')
+    date_creation = models.DateTimeField(
+        auto_now_add=True, verbose_name='Créé le')
+
+    class Meta:
+        verbose_name = 'Objectif individuel'
+        verbose_name_plural = 'Objectifs individuels'
+        ordering = ['id']
+        indexes = [
+            models.Index(
+                fields=['company', 'evaluation'],
+                name='rh_obj_comp_eval_idx'),
+        ]
+
+    def __str__(self):
+        return self.libelle
