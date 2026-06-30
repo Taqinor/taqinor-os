@@ -33,6 +33,7 @@ from authentication.permissions import IsResponsableOrAdmin
 from . import selectors, services
 from .models import (
     AlerteContrat,
+    Avenant,
     Clause,
     ClauseContrat,
     Contrat,
@@ -45,12 +46,14 @@ from .models import (
 )
 from .serializers import (
     AlerteContratSerializer,
+    AvenantSerializer,
     ChangerStatutSerializer,
     ClauseContratSerializer,
     ClauseSerializer,
     ContratActivitySerializer,
     ContratLienSerializer,
     ContratSerializer,
+    CreerAvenantSerializer,
     CreerVersionSerializer,
     DeciderEtapeSerializer,
     EtapeApprobationSerializer,
@@ -552,6 +555,52 @@ class ContratViewSet(_ContratsBaseViewSet):
             status=status.HTTP_201_CREATED,
         )
 
+    @action(detail=True, methods=['get'], url_path='avenants')
+    def avenants(self, request, pk=None):
+        """Avenants (amendements) du contrat (CONTRAT24).
+
+        Lecture seule, le dernier avenant en tête. La société est garantie par
+        ``get_object`` (queryset scopé société).
+        """
+        contrat = self.get_object()
+        avenants = selectors.avenants_contrat(contrat)
+        return Response(
+            AvenantSerializer(
+                avenants, many=True, context={'request': request}).data)
+
+    @action(detail=True, methods=['post'], url_path='creer-avenant')
+    def creer_avenant(self, request, pk=None):
+        """Enregistre un AVENANT (amendement) au contrat → nouvelle version (CONTRAT24).
+
+        Corps : ``objet`` (requis, titre court de l'amendement), ``description``
+        (optionnel), ``date_effet`` (optionnel), ``montant_delta`` (optionnel —
+        variation du montant, AJOUTÉE à ``Contrat.montant`` côté serveur quand
+        fournie). L'avenant produit un INSTANTANÉ IMMUABLE du contrat
+        (``VersionContrat`` — CONTRAT18) figeant son état amendé ; l'avenant
+        pointe vers cette version (``version_creee``). Le ``numero`` (max+1 sous
+        verrou de ligne, jamais ``count()+1``), la société et ``cree_par`` sont
+        posés côté serveur. Le ``statut`` n'est JAMAIS modifié (préservation des
+        statuts) ; jamais un funnel STAGES.py. La société est garantie par
+        ``get_object``.
+        """
+        contrat = self.get_object()
+        body = CreerAvenantSerializer(data=request.data)
+        body.is_valid(raise_exception=True)
+        data = body.validated_data
+        avenant = services.creer_avenant(
+            contrat,
+            objet=data['objet'],
+            description=data.get('description', ''),
+            date_effet=data.get('date_effet'),
+            montant_delta=data.get('montant_delta'),
+            auteur=request.user,
+        )
+        return Response(
+            AvenantSerializer(
+                avenant, context={'request': request}).data,
+            status=status.HTTP_201_CREATED,
+        )
+
 
 class VersionContratViewSet(TenantMixin,
                             viewsets.ReadOnlyModelViewSet):
@@ -568,6 +617,29 @@ class VersionContratViewSet(TenantMixin,
     serializer_class = VersionContratSerializer
     filter_backends = [filters.OrderingFilter]
     ordering_fields = ['version', 'cree_le', 'id']
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        contrat_id = self.request.query_params.get('contrat')
+        if contrat_id:
+            qs = qs.filter(contrat_id=contrat_id)
+        return qs
+
+
+class AvenantViewSet(TenantMixin, viewsets.ReadOnlyModelViewSet):
+    """Avenants (amendements) des contrats de la société (CONTRAT24) — LECTURE SEULE.
+
+    Récupération des avenants : ``list`` (filtrable par ``?contrat=<id>``) et
+    ``retrieve``. AUCUNE création/mise à jour/suppression n'est exposée ici — les
+    avenants sont créés exclusivement via l'action ``creer-avenant`` du contrat
+    (qui fige aussi la ``VersionContrat`` associée). Scopé société
+    (``TenantMixin``) ; accès réservé au palier Administrateur/Responsable.
+    """
+    permission_classes = [IsResponsableOrAdmin]
+    queryset = Avenant.objects.select_related('contrat', 'version_creee').all()
+    serializer_class = AvenantSerializer
+    filter_backends = [filters.OrderingFilter]
+    ordering_fields = ['numero', 'date_creation', 'id']
 
     def get_queryset(self):
         qs = super().get_queryset()

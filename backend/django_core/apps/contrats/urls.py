@@ -3,6 +3,7 @@ from rest_framework.routers import DefaultRouter
 
 from .views import (
     AlerteContratViewSet,
+    AvenantViewSet,
     ClauseContratViewSet,
     ClauseViewSet,
     ContratLienViewSet,
@@ -24,6 +25,7 @@ router.register(r'modele-clauses', ModeleContratClauseViewSet)
 router.register(r'clauses-contrat', ClauseContratViewSet)
 router.register(r'regles-approbation', RegleApprobationViewSet)
 router.register(r'versions', VersionContratViewSet)
+router.register(r'avenants', AvenantViewSet)
 router.register(r'alertes', AlerteContratViewSet)
 
 urlpatterns = [
