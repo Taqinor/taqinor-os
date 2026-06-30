@@ -23,6 +23,7 @@ from .models import (
     ProfilPaie,
     Rubrique,
     RubriqueEmploye,
+    SaisieArret,
 )
 from .serializers import (
     AvanceSalarieSerializer,
@@ -35,6 +36,7 @@ from .serializers import (
     ProfilPaieSerializer,
     RubriqueEmployeSerializer,
     RubriqueSerializer,
+    SaisieArretSerializer,
 )
 from .services import (
     TransitionPeriodeInterdite,
@@ -280,6 +282,19 @@ class AvanceSalarieViewSet(_PaieBaseViewSet):
     serializer_class = AvanceSalarieSerializer
     filter_backends = [filters.OrderingFilter]
     ordering_fields = ['date_debut', 'date_creation', 'id']
+
+
+class SaisieArretViewSet(_PaieBaseViewSet):
+    """Saisies-arrêts / cessions sur salaire (PAIE29) — société scopée, palier paie.
+
+    La retenue est plafonnée à la quotité saisissable du net (calcul dans
+    ``calculer_bulletin`` ; imputation effective à la validation du bulletin).
+    ``montant_retenu`` n'est jamais écrit via l'API.
+    """
+    queryset = SaisieArret.objects.select_related('profil').all()
+    serializer_class = SaisieArretSerializer
+    filter_backends = [filters.OrderingFilter]
+    ordering_fields = ['date_debut', 'prioritaire', 'date_creation', 'id']
 
 
 class CumulAnnuelViewSet(TenantMixin, viewsets.ReadOnlyModelViewSet):

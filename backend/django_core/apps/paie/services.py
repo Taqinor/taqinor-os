@@ -1017,6 +1017,120 @@ def appliquer_remboursements_avances(profil, periode):
     return _q(total)
 
 
+# ── PAIE29 — Saisie-arrêt / cession : quotité saisissable ──────────────────
+
+# Barème de la quotité saisissable (DECISION — défaut éditable, consentement
+# fondateur). Cadre marocain (Code de procédure civile) : le salaire n'est
+# saisissable que par tranches progressives. Liste ordonnée de tuples
+# ``(borne_max, fraction)`` : pour la part du salaire NET comprise dans chaque
+# tranche, seule ``fraction`` est saisissable. La dernière tranche a une
+# ``borne_max`` à ``None`` (sans plafond). Valeurs ÉDITABLES — pur défaut.
+BAREME_QUOTITE_SAISISSABLE = [
+    (Decimal('2000'),  Decimal('0.05')),   # ≤ 2 000 : 1/20
+    (Decimal('4000'),  Decimal('0.10')),   # 2 000–4 000 : 1/10
+    (Decimal('6000'),  Decimal('0.20')),   # 4 000–6 000 : 1/5
+    (Decimal('10000'), Decimal('0.25')),   # 6 000–10 000 : 1/4
+    (None,             Decimal('0.333333')),  # > 10 000 : 1/3
+]
+
+
+def quotite_saisissable(net, bareme=None):
+    """Part SAISISSABLE d'un salaire net selon le barème progressif (PAIE29).
+
+    Applique ``bareme`` (défaut ``BAREME_QUOTITE_SAISISSABLE``) tranche par
+    tranche : pour la fraction du ``net`` comprise dans chaque tranche, seule la
+    ``fraction`` de cette tranche est saisissable ; on cumule. Le reste constitue
+    la part insaisissable (toujours versée au salarié). ``net`` négatif ou nul →
+    0. Renvoie un ``Decimal`` >= 0 au centime.
+    """
+    net = Decimal(net or 0)
+    if net <= 0:
+        return Decimal('0.00')
+    if bareme is None:
+        bareme = BAREME_QUOTITE_SAISISSABLE
+    saisissable = Decimal('0')
+    borne_basse = Decimal('0')
+    for borne_max, fraction in bareme:
+        if borne_max is None or net <= borne_max:
+            saisissable += (net - borne_basse) * fraction
+            break
+        saisissable += (borne_max - borne_basse) * fraction
+        borne_basse = borne_max
+    return _q(saisissable)
+
+
+def retenues_saisies_periode(profil, periode, net_a_payer):
+    """Retenues de saisies/cessions du mois, plafonnées à la quotité (PAIE29).
+
+    Pour ``profil`` sur ``periode``, parcourt les saisies ACTIVES non soldées
+    (prioritaires d'abord), et alloue à chacune une retenue dans la limite :
+
+    * de son ``montant_echeance`` souhaité (sinon tout le solde restant) ET de
+      son solde restant ;
+    * du PLAFOND GLOBAL = quotité saisissable du ``net_a_payer`` (la somme de
+      toutes les saisies du mois ne dépasse jamais la quotité — la fraction
+      insaisissable reste versée au salarié).
+
+    Calcul PUR (aucun effet de bord) : l'imputation effective de
+    ``montant_retenu`` se fait à la validation (``appliquer_saisies``). Renvoie
+    ``(total, lignes)`` où ``lignes = [(saisie, montant), …]``.
+    """
+    from .models import SaisieArret
+
+    le_jour = date(periode.annee, periode.mois, 1)
+    plafond = quotite_saisissable(net_a_payer)
+    restant_plafond = plafond
+    total = Decimal('0')
+    lignes = []
+    saisies = SaisieArret.objects.filter(
+        company=profil.company, profil=profil, actif=True
+    ).order_by('-prioritaire', 'date_debut', 'id')
+    for saisie in saisies:
+        if restant_plafond <= 0:
+            break
+        if saisie.solde_restant <= 0:
+            continue
+        if saisie.date_debut is not None and saisie.date_debut > le_jour:
+            continue
+        souhaite = saisie.montant_echeance
+        if souhaite is None or Decimal(souhaite) <= 0:
+            souhaite = saisie.solde_restant
+        montant = min(
+            Decimal(souhaite), saisie.solde_restant, restant_plafond)
+        montant = _q(montant)
+        if montant > 0:
+            total += montant
+            restant_plafond -= montant
+            lignes.append((saisie, montant))
+    return _q(total), lignes
+
+
+def appliquer_saisies(profil, periode, net_a_payer):
+    """Impute les retenues de saisies du mois (incrémente ``montant_retenu``).
+
+    Effet de bord : pour chaque saisie servie ce mois (cf.
+    ``retenues_saisies_periode``), ajoute le montant retenu à ``montant_retenu``.
+    À appeler UNE fois, à la validation du bulletin. Opération atomique. Renvoie
+    le total imputé (``Decimal``).
+    """
+    from .models import SaisieArret
+
+    _, lignes = retenues_saisies_periode(profil, periode, net_a_payer)
+    total = Decimal('0')
+    with transaction.atomic():
+        for saisie, montant in lignes:
+            verrou = (
+                SaisieArret.objects
+                .select_for_update()
+                .get(pk=saisie.pk)
+            )
+            verrou.montant_retenu = _q(
+                Decimal(verrou.montant_retenu or 0) + montant)
+            verrou.save(update_fields=['montant_retenu'])
+            total += montant
+    return _q(total)
+
+
 # ── PAIE20 — Cotisation CIMR OPTIONNELLE (taux par employé adhérent) ─────────
 
 def cimr_salariale(brut, affilie=False, taux=Decimal('0')):
@@ -1268,6 +1382,26 @@ def calculer_bulletin(profil, periode, personnes_a_charge=0):
     # 8. Net à payer (− retenues variables type avances).
     net_a_payer = brut - cnss - amo - cimr - ir - retenues_variables
     net_a_payer = _q(net_a_payer)
+    # Net AVANT saisie : base de calcul de la quotité saisissable (conservé pour
+    # rejouer la même allocation à la validation).
+    net_avant_saisie = net_a_payer
+
+    # PAIE29 — Saisie-arrêt / cession : retenue PLAFONNÉE à la quotité
+    # saisissable du net à payer (la fraction insaisissable reste versée au
+    # salarié). Calculée sur le net AVANT saisie, puis défalquée. Calcul PUR —
+    # l'imputation effective (``montant_retenu``) se fait à la validation.
+    saisies_total, lignes_saisies = retenues_saisies_periode(
+        profil, periode, net_avant_saisie)
+    if saisies_total > 0:
+        retenues_variables += saisies_total
+        for saisie, montant in lignes_saisies:
+            lignes.append({
+                'code': 'SAISIE',
+                'libelle': saisie.creancier or saisie.get_type_display(),
+                'type': Rubrique.TYPE_RETENUE,
+                'montant': _q(montant),
+            })
+        net_a_payer = _q(net_a_payer - saisies_total)
 
     # PAIE18/PAIE19/PAIE23/PAIE24 — Total des charges patronales (coût
     # employeur), informatif : CNSS + AMO + allocations familiales + taxe de
@@ -1315,6 +1449,9 @@ def calculer_bulletin(profil, periode, personnes_a_charge=0):
         'prime_anciennete': prime_anciennete,
         'charges_patronales': charges_patronales,
         'lignes': lignes,
+        # Interne (PAIE29) : net avant saisie, base de la quotité saisissable.
+        # Non persisté en bulletin — sert à rejouer l'imputation à la validation.
+        'net_avant_saisie': net_avant_saisie,
     }
 
 
@@ -1394,11 +1531,21 @@ def valider_bulletin(bulletin):
     bulletin.statut = BulletinPaie.STATUT_VALIDE
     bulletin.date_validation = timezone.now()
     bulletin.save(update_fields=['statut', 'date_validation'])
+    # Recalcule l'état du bulletin AVANT toute imputation, pour rejouer
+    # EXACTEMENT la même allocation que le snapshot (la base de la quotité
+    # saisissable, PAIE29, est figée ici avant que les avances ne bougent).
+    resultat = calculer_bulletin(bulletin.profil, bulletin.periode,
+                                 bulletin.personnes_a_charge)
     # PAIE28 — Impute les échéances d'avances/prêts du mois (incrémente
     # ``montant_rembourse``) UNE seule fois, à la validation (jamais au recalcul
     # d'un brouillon). Le bulletin étant figé après validation, ce remboursement
     # n'est pas rejoué.
     appliquer_remboursements_avances(bulletin.profil, bulletin.periode)
+    # PAIE29 — Impute les saisies-arrêts/cessions du mois (incrémente
+    # ``montant_retenu``) une seule fois, à la validation, sur la base du net
+    # AVANT saisie figé ci-dessus.
+    appliquer_saisies(bulletin.profil, bulletin.periode,
+                      resultat['net_avant_saisie'])
     return bulletin
 
 

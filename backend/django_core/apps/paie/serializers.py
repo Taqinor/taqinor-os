@@ -18,6 +18,7 @@ from .models import (
     ProfilPaie,
     Rubrique,
     RubriqueEmploye,
+    SaisieArret,
     TrancheIR,
 )
 
@@ -307,6 +308,30 @@ class AvanceSalarieSerializer(serializers.ModelSerializer):
             'solde_restant', 'soldee', 'date_debut', 'actif', 'date_creation',
         ]
         read_only_fields = ['montant_rembourse', 'date_creation']
+
+    def validate_profil(self, value):
+        return _meme_societe(self, value, 'Profil')
+
+
+class SaisieArretSerializer(serializers.ModelSerializer):
+    """Saisie-arrêt / cession sur salaire (PAIE29).
+
+    ``company`` posée côté serveur ; ``profil`` validé société. ``montant_retenu``
+    est en LECTURE SEULE (cumulé par le service à la validation des bulletins).
+    Les propriétés ``solde_restant`` / ``soldee`` sont exposées en lecture.
+    """
+    solde_restant = serializers.DecimalField(
+        max_digits=14, decimal_places=2, read_only=True)
+    soldee = serializers.BooleanField(read_only=True)
+
+    class Meta:
+        model = SaisieArret
+        fields = [
+            'id', 'profil', 'type', 'creancier', 'reference', 'montant_total',
+            'montant_echeance', 'montant_retenu', 'solde_restant', 'soldee',
+            'prioritaire', 'date_debut', 'actif', 'date_creation',
+        ]
+        read_only_fields = ['montant_retenu', 'date_creation']
 
     def validate_profil(self, value):
         return _meme_societe(self, value, 'Profil')

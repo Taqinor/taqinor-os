@@ -1097,3 +1097,89 @@ class AvanceSalarie(models.Model):
     def soldee(self):
         """Vrai quand l'avance est entièrement remboursée."""
         return self.solde_restant <= 0
+
+
+# ── PAIE29 — Saisie-arrêt / cession sur salaire (quotité saisissable) ───────
+
+class SaisieArret(models.Model):
+    """Saisie-arrêt ou cession sur salaire d'un employé (PAIE29).
+
+    Retenue judiciaire (saisie-arrêt) ou volontaire (cession) opérée sur le
+    salaire au profit d'un créancier (pension alimentaire, dette…), DANS LA
+    LIMITE de la quotité saisissable (la part du salaire légalement saisissable
+    selon un barème progressif par tranche de revenu — cf.
+    ``services.quotite_saisissable``). La fraction insaisissable reste toujours
+    versée au salarié.
+
+    Une saisie est ACTIVE tant que ``actif`` est vrai et que le montant dû
+    (``montant_total − montant_retenu``) n'est pas épuisé. Le ``montant_retenu``
+    est cumulé par le service à la validation des bulletins (jamais saisi à la
+    main). Une saisie PRIORITAIRE (``prioritaire=True``, p. ex. pension
+    alimentaire) est servie avant les autres dans la limite de la quotité.
+
+    Multi-société : ``company`` posée côté serveur. ``profil`` rattache la saisie
+    à l'employé.
+    """
+    TYPE_SAISIE = 'saisie'
+    TYPE_CESSION = 'cession'
+    TYPE_CHOICES = [
+        (TYPE_SAISIE, 'Saisie-arrêt (judiciaire)'),
+        (TYPE_CESSION, 'Cession volontaire'),
+    ]
+
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='paie_saisies',
+        verbose_name='Société',
+    )
+    profil = models.ForeignKey(
+        ProfilPaie,
+        on_delete=models.CASCADE,
+        related_name='saisies',
+        verbose_name='Profil de paie',
+    )
+    type = models.CharField(
+        max_length=10, choices=TYPE_CHOICES, default=TYPE_SAISIE,
+        verbose_name='Type')
+    creancier = models.CharField(
+        max_length=160, blank=True, default='', verbose_name='Créancier')
+    reference = models.CharField(
+        max_length=80, blank=True, default='',
+        verbose_name='Référence (jugement/acte)')
+    montant_total = models.DecimalField(
+        max_digits=14, decimal_places=2, default=Decimal('0'),
+        verbose_name='Montant total à recouvrer')
+    montant_echeance = models.DecimalField(
+        max_digits=14, decimal_places=2, null=True, blank=True,
+        verbose_name='Échéance mensuelle souhaitée')
+    montant_retenu = models.DecimalField(
+        max_digits=14, decimal_places=2, default=Decimal('0'),
+        verbose_name='Montant déjà retenu')
+    prioritaire = models.BooleanField(
+        default=False, verbose_name='Prioritaire (ex. pension alimentaire)')
+    date_debut = models.DateField(verbose_name='Date de début de retenue')
+    actif = models.BooleanField(default=True, verbose_name='Actif')
+    date_creation = models.DateTimeField(
+        auto_now_add=True, verbose_name='Créé le')
+
+    class Meta:
+        verbose_name = 'Saisie-arrêt / cession'
+        verbose_name_plural = 'Saisies-arrêts / cessions'
+        # Saisies prioritaires d'abord, puis les plus anciennes.
+        ordering = ['-prioritaire', 'date_debut', 'id']
+
+    def __str__(self):
+        return f'{self.get_type_display()} {self.montant_total} → profil #{self.profil_id}'
+
+    @property
+    def solde_restant(self):
+        """Reste à recouvrer = montant total − montant déjà retenu (>= 0)."""
+        solde = (self.montant_total or Decimal('0')) \
+            - (self.montant_retenu or Decimal('0'))
+        return solde if solde > 0 else Decimal('0')
+
+    @property
+    def soldee(self):
+        """Vrai quand la saisie est entièrement recouvrée."""
+        return self.solde_restant <= 0
