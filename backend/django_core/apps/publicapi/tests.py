@@ -638,6 +638,83 @@ class PublicApiFilterTests(TestCase):
         self.assertNotIn('Étranger', noms)
 
 
+# ── FG106 — Passerelle OCR → lead / brouillon de devis ──────────────────────
+
+class OcrToCrmBridgeTests(TestCase):
+    """POST publicapi/ocr-to-crm/ — création company-scoped via services cibles."""
+
+    def setUp(self):
+        self.co = make_company('ocr', 'OCR')
+        self.admin = make_user(self.co, 'ocr-admin', 'admin')
+        self.normal = make_user(self.co, 'ocr-normal', 'normal')
+        self.fields = {
+            'fournisseur': 'Panneaux du Sud SARL',
+            'numero': 'FAC-2026-001',
+            'montant_ht': '12000',
+            'montant_ttc': '14400',
+            'date': '2026-06-30',
+        }
+
+    def test_creates_draft_lead(self):
+        from apps.crm.models import Lead
+        api = session_auth(self.admin)
+        resp = api.post('/api/django/publicapi/ocr-to-crm/',
+                        {'mode': 'lead', 'fields': self.fields}, format='json')
+        self.assertEqual(resp.status_code, 201)
+        lead = Lead.objects.get(id=resp.data['lead_id'])
+        self.assertEqual(lead.company, self.co)
+        self.assertEqual(lead.nom, 'Panneaux du Sud SARL')
+        # Le lead reste à l'étape par défaut (le service ne fait pas avancer le funnel).
+        self.assertEqual(lead.stage, Lead._meta.get_field('stage').default)
+
+    def test_creates_draft_lead_and_devis(self):
+        from apps.ventes.models import Devis
+        api = session_auth(self.admin)
+        resp = api.post('/api/django/publicapi/ocr-to-crm/',
+                        {'mode': 'devis', 'fields': self.fields}, format='json')
+        self.assertEqual(resp.status_code, 201)
+        self.assertIn('lead_id', resp.data)
+        devis = Devis.objects.get(id=resp.data['devis_id'])
+        self.assertEqual(devis.company, self.co)
+        self.assertEqual(devis.statut, Devis.Statut.BROUILLON)
+        # Le client est résolu depuis le lead (jamais null sur un devis).
+        self.assertIsNotNone(devis.client_id)
+        self.assertEqual(devis.lead_id, resp.data['lead_id'])
+        # Montants extraits consignés dans la note pour la saisie.
+        self.assertIn('14400', devis.note)
+
+    def test_unknown_mode_is_400(self):
+        api = session_auth(self.admin)
+        resp = api.post('/api/django/publicapi/ocr-to-crm/',
+                        {'mode': 'facture', 'fields': self.fields}, format='json')
+        self.assertEqual(resp.status_code, 400)
+
+    def test_empty_fields_is_400(self):
+        # Aucun nom exploitable → 400 (jamais un lead anonyme).
+        api = session_auth(self.admin)
+        resp = api.post('/api/django/publicapi/ocr-to-crm/',
+                        {'mode': 'lead', 'fields': {}}, format='json')
+        self.assertEqual(resp.status_code, 400)
+
+    def test_non_admin_forbidden(self):
+        api = session_auth(self.normal)
+        resp = api.post('/api/django/publicapi/ocr-to-crm/',
+                        {'mode': 'lead', 'fields': self.fields}, format='json')
+        self.assertEqual(resp.status_code, 403)
+
+    def test_company_comes_from_user_not_body(self):
+        from apps.crm.models import Lead
+        other = make_company('ocr-b', 'OCR B')
+        api = session_auth(self.admin)
+        # Une « company » dans le corps est ignorée : la société vient du user.
+        resp = api.post('/api/django/publicapi/ocr-to-crm/',
+                        {'mode': 'lead', 'fields': self.fields,
+                         'company': other.id}, format='json')
+        self.assertEqual(resp.status_code, 201)
+        lead = Lead.objects.get(id=resp.data['lead_id'])
+        self.assertEqual(lead.company, self.co)
+
+
 class WebhookTestPingTests(TestCase):
     """POST webhooks/{id}/test/ — ping synthétique."""
 

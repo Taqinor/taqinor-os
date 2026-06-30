@@ -6,7 +6,9 @@ Montées sous /api/django/publicapi/. Distinct de l'API publique de données
 from django.urls import path, include
 from rest_framework.routers import DefaultRouter
 
-from .views import ApiKeyViewSet, WebhookViewSet, CatalogueView, DocsView
+from .views import (
+    ApiKeyViewSet, WebhookViewSet, CatalogueView, DocsView, OcrToCrmView,
+)
 
 router = DefaultRouter()
 router.register(r'keys', ApiKeyViewSet, basename='apikey')
@@ -16,5 +18,7 @@ urlpatterns = [
     path('catalogue/', CatalogueView.as_view(), name='publicapi-catalogue'),
     # FG105 — référence statique FR de l'API publique (consultée depuis l'écran).
     path('docs/', DocsView.as_view(), name='publicapi-docs'),
+    # FG106 — passerelle OCR → lead/devis brouillon (écriture via services cibles).
+    path('ocr-to-crm/', OcrToCrmView.as_view(), name='publicapi-ocr-to-crm'),
     path('', include(router.urls)),
 ]

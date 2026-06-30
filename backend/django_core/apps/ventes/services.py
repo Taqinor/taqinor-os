@@ -11,6 +11,55 @@ import re
 logger = logging.getLogger(__name__)
 
 
+def create_draft_devis_from_ocr(*, company, user, lead, fields):
+    """FG106 — crée un DEVIS brouillon (sans lignes) à partir d'un document OCR.
+
+    Point d'entrée cross-app sanctionné (services.py) pour la passerelle
+    OCR → ventes (apps.publicapi). Le devis part TOUJOURS d'un lead (le client
+    est résolu côté serveur via crm.services, sans doublon — réutilise la même
+    règle que le générateur). Les lignes ne sont PAS créées : une LigneDevis
+    exige un Produit du catalogue, qu'un document OCR brut ne fournit pas — le
+    devis brouillon est laissé à compléter dans l'éditeur. Les montants/numéro
+    extraits sont consignés dans la note du devis pour aider la saisie.
+
+    Le devis reste ``brouillon`` : ce service CRÉE, il ne change aucun statut
+    aval (règle #4).
+    """
+    from apps.ventes.models import Devis
+    from apps.ventes.utils.references import create_with_reference
+    from apps.crm.services import resolve_client_for_lead
+
+    if lead is None:
+        raise ValueError("create_draft_devis_from_ocr requires a lead")
+    client = resolve_client_for_lead(lead)
+
+    fields = fields or {}
+    notes = ["Devis brouillon créé depuis un document OCR."]
+    for key, label in (('numero', 'N° document'), ('montant_ht', 'Montant HT'),
+                       ('montant_tva', 'Montant TVA'),
+                       ('montant_ttc', 'Montant TTC'), ('date', 'Date')):
+        val = fields.get(key)
+        if val not in (None, ''):
+            notes.append(f"{label} : {val}")
+    note = "\n".join(notes)
+
+    def _create(ref):
+        return Devis.objects.create(
+            company=company,
+            reference=ref,
+            client=client,
+            lead=lead,
+            statut=Devis.Statut.BROUILLON,
+            created_by=user,
+            note=note,
+        )
+
+    devis = create_with_reference(Devis, 'DEV', company, _create)
+    logger.info('FG106: devis brouillon %s créé depuis OCR (company %s)',
+                devis.reference, getattr(company, 'id', '?'))
+    return devis
+
+
 def lead_from_source_devis(document):
     """U12 — résout le lead d'origine d'une Facture / d'un BonCommande.
 
