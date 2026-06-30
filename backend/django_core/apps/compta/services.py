@@ -46,6 +46,7 @@ from .models import (
     RapprochementBancaire, RelanceDevisAbandonne, RetenueSource,
     RetenueGarantie, TimbreFiscal,
     TravauxEnCours, VirementInterne,
+    EcheanceAO, ResultatAO, ComptePortailClient,
 )
 
 
@@ -3725,4 +3726,190 @@ def generer_ecatalogue(company, *, titre='Catalogue', produit_ids=None,
         token=secrets.token_urlsafe(32),
         produit_ids=list(produit_ids or []),
         expire_le=expire_le,
+    )
+
+
+# ── FG216 — Création (gated) d'un lead depuis une simulation publique ───────
+
+def leads_depuis_simulation_actif():
+    """Toggle de la création automatique d'un lead depuis le simulateur public.
+
+    OFF par défaut → NO-OP (on enregistre seulement la simulation). Le founder
+    l'active en posant ``PUBLIC_SIM_LEAD_ENABLED = True`` (settings/env). Aligné
+    sur le pattern des autres intégrations gated (BREVO/WHATSAPP).
+    """
+    return bool(getattr(settings, 'PUBLIC_SIM_LEAD_ENABLED', False))
+
+
+def creer_lead_depuis_simulation(simulation, *, user=None):
+    """Crée un lead pré-rempli depuis une simulation publique (FG216), gated.
+
+    Si le flag ``PUBLIC_SIM_LEAD_ENABLED`` est OFF (défaut), c'est un NO-OP :
+    aucune création de lead. Quand il est ON et qu'un nom de prospect est
+    présent, on délègue au SERVICE crm (jamais ses modèles, CLAUDE.md règle de
+    modularité cross-app) via un import fonction-local. Idempotent : une
+    simulation qui a déjà un lead n'en recrée pas. Renvoie l'id du lead ou None.
+    """
+    if simulation.lead_cree:
+        return simulation.lead_id
+    if not leads_depuis_simulation_actif():
+        return None
+    nom = (simulation.nom_prospect or '').strip()
+    if not nom:
+        return None
+    from apps.crm import services as crm_services  # import local (anti-cycle)
+    lead = crm_services.create_draft_lead_from_ocr(
+        company=simulation.company,
+        user=user,
+        fields={'client': nom},
+    )
+    simulation.lead_cree = True
+    simulation.lead_id = lead.id
+    simulation.save(update_fields=['lead_cree', 'lead_id'])
+    return lead.id
+
+
+# ── FG217 — Calcul de mensualité crédit/leasing ────────────────────────────
+
+def calcul_mensualite(montant, duree_mois, taux_annuel):
+    """Mensualité d'un crédit amortissable (FG217), arrondie au centime.
+
+    Formule classique de l'annuité constante. Taux 0 → simple division. Renvoie
+    ``(mensualite, cout_total_credit)`` en Decimal. Pur, sans effet de bord.
+    """
+    montant = Decimal(montant or 0)
+    n = int(duree_mois or 0)
+    taux_annuel = Decimal(taux_annuel or 0)
+    if n <= 0 or montant <= 0:
+        return Decimal('0.00'), Decimal('0.00')
+    if taux_annuel == 0:
+        mensualite = montant / Decimal(n)
+    else:
+        taux_mensuel = taux_annuel / Decimal('100') / Decimal('12')
+        facteur = (Decimal('1') + taux_mensuel) ** n
+        mensualite = montant * taux_mensuel * facteur / (facteur - Decimal('1'))
+    mensualite = mensualite.quantize(Decimal('0.01'), rounding=ROUND_HALF_UP)
+    cout_total = (mensualite * Decimal(n) - montant).quantize(
+        Decimal('0.01'), rounding=ROUND_HALF_UP)
+    if cout_total < 0:
+        cout_total = Decimal('0.00')
+    return mensualite, cout_total
+
+
+def recalculer_simulation_financement(simulation):
+    """Recalcule mensualité + coût total d'une SimulationFinancement (FG217)."""
+    mensualite, cout_total = calcul_mensualite(
+        simulation.montant_finance, simulation.duree_mois,
+        simulation.taux_annuel)
+    simulation.mensualite = mensualite
+    simulation.cout_total_credit = cout_total
+    return simulation
+
+
+# ── FG221 — Comparateur cash vs financement (calcul pur) ───────────────────
+
+def comparer_cash_vs_financement(montant, duree_mois, taux_annuel,
+                                 *, economie_annuelle=Decimal('0')):
+    """Compare l'achat cash et le financement (FG221), calcul pur.
+
+    Renvoie un dict {cash, financement} avec coût total et payback (années)
+    estimé à partir de l'économie annuelle. Sert l'encart client anti-objection
+    prix. Aucun stockage.
+    """
+    montant = Decimal(montant or 0)
+    economie = Decimal(economie_annuelle or 0)
+    mensualite, cout_credit = calcul_mensualite(
+        montant, duree_mois, taux_annuel)
+    cout_total_finance = montant + cout_credit
+
+    def _payback(cout):
+        if economie <= 0:
+            return None
+        return (cout / economie).quantize(
+            Decimal('0.1'), rounding=ROUND_HALF_UP)
+
+    return {
+        'cash': {
+            'cout_total': montant,
+            'payback_annees': _payback(montant),
+        },
+        'financement': {
+            'mensualite': mensualite,
+            'cout_credit': cout_credit,
+            'cout_total': cout_total_finance,
+            'payback_annees': _payback(cout_total_finance),
+        },
+        'surcout_financement': cout_credit,
+    }
+
+
+# ── FG226 — Échéances d'AO dues (rappels) ──────────────────────────────────
+
+def echeances_ao_dues(company, *, a_la_date=None):
+    """Liste les échéances d'AO dont le rappel est dû (FG226), NON traitées.
+
+    Une échéance est due quand ``date_echeance - rappel_jours <= a_la_date`` et
+    qu'elle n'est pas encore traitée. Calcul pur (aucun envoi réseau) — sert au
+    moteur d'alertes et aux tests.
+    """
+    a_la_date = a_la_date or timezone.now().date()
+    dues = []
+    qs = EcheanceAO.objects.filter(
+        company=company, traitee=False).order_by('date_echeance')
+    for ech in qs:
+        seuil = ech.date_echeance - timezone.timedelta(days=ech.rappel_jours)
+        if seuil <= a_la_date:
+            dues.append(ech)
+    return dues
+
+
+# ── FG227 — Taux de réussite des appels d'offres ───────────────────────────
+
+def taux_reussite_ao(company):
+    """Taux de réussite gagné/perdu des AO (FG227).
+
+    Compte les résultats par issue et calcule le taux = gagnés / (gagnés +
+    perdus). Renvoie un dict d'agrégats. Lecture seule.
+    """
+    resultats = ResultatAO.objects.filter(company=company)
+    gagnes = resultats.filter(issue=ResultatAO.Issue.GAGNE).count()
+    perdus = resultats.filter(issue=ResultatAO.Issue.PERDU).count()
+    total_decides = gagnes + perdus
+    taux = Decimal('0.00')
+    if total_decides > 0:
+        taux = (Decimal(gagnes) / Decimal(total_decides) * Decimal('100')
+                ).quantize(Decimal('0.01'), rounding=ROUND_HALF_UP)
+    return {
+        'gagnes': gagnes,
+        'perdus': perdus,
+        'total_decides': total_decides,
+        'total_resultats': resultats.count(),
+        'taux_reussite_pct': taux,
+    }
+
+
+# ── FG228 — Provisionnement (gated) d'un compte portail client ─────────────
+
+def provisionner_compte_portail(company, *, client_id, email):
+    """Crée/active un compte portail client tokenisé (FG228).
+
+    Token long/imprévisible (secrets). Idempotent par (company, client_id) :
+    réactive et renvoie le compte existant plutôt que d'en dupliquer un. L'email
+    réutilise celui du client (DC32 — pas de 2ᵉ copie d'identité) ; le compte
+    NE duplique aucune donnée métier (devis/factures/chantiers lus à la volée
+    via les selectors des apps cibles).
+    """
+    import secrets
+    compte = ComptePortailClient.objects.filter(
+        company=company, client_id=client_id).first()
+    if compte is not None:
+        if not compte.actif:
+            compte.actif = True
+            compte.save(update_fields=['actif'])
+        return compte
+    return ComptePortailClient.objects.create(
+        company=company,
+        client_id=client_id,
+        email=email or '',
+        token_acces=secrets.token_urlsafe(32),
     )

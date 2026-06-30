@@ -36,6 +36,11 @@ from .models import (
     Rapprochement, RapprochementBancaire, RelanceDevisAbandonne,
     RetenueGarantie, RetenueSource, SequenceRelance, SessionGuidedSelling,
     TimbreFiscal, TravauxEnCours, VirementInterne,
+    DocumentProposition, SimulationPublique, SimulationFinancement,
+    OffreFinancement, LigneIncitation, EcheancierPaiement, TranchePaiement,
+    AppelOffre, BordereauPrix, LigneBordereau, CautionSoumission,
+    DossierSoumission, PieceSoumission, EcheanceAO, ResultatAO,
+    ComptePortailClient,
 )
 from .serializers import (
     AppelTelephoniqueSerializer, AvancementRevenuSerializer,
@@ -65,6 +70,13 @@ from .serializers import (
     SequenceRelanceSerializer, SessionGuidedSellingSerializer,
     TimbreFiscalSerializer,
     TravauxEnCoursSerializer, VirementInterneSerializer,
+    DocumentPropositionSerializer, SimulationPubliqueSerializer,
+    SimulationFinancementSerializer, OffreFinancementSerializer,
+    LigneIncitationSerializer, EcheancierPaiementSerializer,
+    TranchePaiementSerializer, AppelOffreSerializer, BordereauPrixSerializer,
+    LigneBordereauSerializer, CautionSoumissionSerializer,
+    DossierSoumissionSerializer, PieceSoumissionSerializer,
+    EcheanceAOSerializer, ResultatAOSerializer, ComptePortailClientSerializer,
 )
 
 
@@ -3190,3 +3202,243 @@ class ECatalogueViewSet(_ComptaBaseViewSet):
         serializer.save(
             company=self.request.user.company,
             token=secrets.token_urlsafe(32))
+
+
+# ── FG215 — Bibliothèque de documents de proposition ───────────────────────
+
+class DocumentPropositionViewSet(_ComptaBaseViewSet):
+    """Annexes réutilisables attachables au PDF de proposition (FG215)."""
+    queryset = DocumentProposition.objects.all()
+    serializer_class = DocumentPropositionSerializer
+    filter_backends = [filters.SearchFilter, filters.OrderingFilter]
+    search_fields = ['titre', 'contenu']
+    ordering_fields = ['type_document', 'ordre', 'date_creation']
+
+
+# ── FG216 — Simulateur public « configurez votre kit » → lead ──────────────
+
+class SimulationPubliqueViewSet(_ComptaBaseViewSet):
+    """Simulations publiques de kit → lead pré-rempli (FG216). L'action
+    ``creer_lead`` est GATED (NO-OP par défaut) : elle ne crée un lead via le
+    service crm que si ``PUBLIC_SIM_LEAD_ENABLED`` est activé."""
+    queryset = SimulationPublique.objects.all()
+    serializer_class = SimulationPubliqueSerializer
+    filter_backends = [filters.SearchFilter, filters.OrderingFilter]
+    search_fields = ['nom_prospect', 'email', 'telephone']
+    ordering_fields = ['date_creation', 'puissance_kwc']
+
+    @action(detail=True, methods=['post'])
+    def creer_lead(self, request, pk=None):
+        simulation = self.get_object()
+        lead_id = services.creer_lead_depuis_simulation(
+            simulation, user=request.user)
+        data = SimulationPubliqueSerializer(simulation).data
+        data['lead_id'] = lead_id
+        data['gated'] = not services.leads_depuis_simulation_actif()
+        return Response(data)
+
+
+# ── FG217 — Simulation de financement dans le devis ────────────────────────
+
+class SimulationFinancementViewSet(_ComptaBaseViewSet):
+    """Bloc mensualités crédit/leasing rattaché à un devis (FG217). La
+    mensualité et le coût total sont calculés côté serveur au save."""
+    queryset = SimulationFinancement.objects.all()
+    serializer_class = SimulationFinancementSerializer
+    filter_backends = [filters.OrderingFilter]
+    ordering_fields = ['date_creation']
+
+    def perform_create(self, serializer):
+        obj = serializer.save(company=self.request.user.company)
+        services.recalculer_simulation_financement(obj)
+        obj.save(update_fields=['mensualite', 'cout_total_credit'])
+
+    def perform_update(self, serializer):
+        obj = serializer.save(company=self.request.user.company)
+        services.recalculer_simulation_financement(obj)
+        obj.save(update_fields=['mensualite', 'cout_total_credit'])
+
+
+# ── FG218 — Offres de banques/partenaires de financement ───────────────────
+
+class OffreFinancementViewSet(_ComptaBaseViewSet):
+    """Catalogue d'offres de financement sélectionnables sur un devis (FG218)."""
+    queryset = OffreFinancement.objects.all()
+    serializer_class = OffreFinancementSerializer
+    filter_backends = [filters.SearchFilter, filters.OrderingFilter]
+    search_fields = ['partenaire', 'libelle']
+    ordering_fields = ['partenaire', 'taux_annuel', 'date_creation']
+
+
+# ── FG219 — Ligne d'incitation / subvention ────────────────────────────────
+
+class LigneIncitationViewSet(_ComptaBaseViewSet):
+    """Incitations/subventions (Tatwir/MASEN…) déductibles affichées sur un
+    devis (FG219). Encart informatif — n'altère pas le total du devis."""
+    queryset = LigneIncitation.objects.all()
+    serializer_class = LigneIncitationSerializer
+    filter_backends = [filters.OrderingFilter]
+    ordering_fields = ['date_creation']
+
+
+# ── FG220 — Paiement échelonné (type Tayssir) sur facture ──────────────────
+
+class EcheancierPaiementViewSet(_ComptaBaseViewSet):
+    """Échéanciers de tranches sur facture (FG220) avec suivi des versements."""
+    queryset = EcheancierPaiement.objects.prefetch_related('tranches').all()
+    serializer_class = EcheancierPaiementSerializer
+    filter_backends = [filters.OrderingFilter]
+    ordering_fields = ['date_creation']
+
+
+class TranchePaiementViewSet(_ComptaBaseViewSet):
+    """Tranches d'un échéancier de paiement (FG220). ``regler`` marque une
+    tranche payée (idempotent)."""
+    queryset = TranchePaiement.objects.all()
+    serializer_class = TranchePaiementSerializer
+    filter_backends = [filters.OrderingFilter]
+    ordering_fields = ['numero', 'date_echeance']
+
+    @action(detail=True, methods=['post'])
+    def regler(self, request, pk=None):
+        from django.utils import timezone
+        tranche = self.get_object()
+        montant = request.data.get('montant')
+        tranche.montant_regle = montant if montant is not None else tranche.montant
+        tranche.paye = True
+        tranche.date_reglement = timezone.now().date()
+        tranche.save(update_fields=[
+            'montant_regle', 'paye', 'date_reglement'])
+        return Response(TranchePaiementSerializer(tranche).data)
+
+
+# ── FG221 — Comparateur cash vs financement ────────────────────────────────
+
+class ComparateurCashFinancementViewSet(viewsets.ViewSet):
+    """Encart comparateur cash vs financement (FG221), LECTURE/CALCUL seul.
+    Aucun stockage : renvoie coûts totaux + payback pour lever l'objection
+    prix côté client."""
+    permission_classes = [IsResponsableOrAdmin]
+
+    @action(detail=False, methods=['get'])
+    def comparer(self, request):
+        from decimal import Decimal, InvalidOperation
+        params = request.query_params
+        try:
+            montant = Decimal(params.get('montant') or '0')
+            duree = int(params.get('duree_mois') or '0')
+            taux = Decimal(params.get('taux_annuel') or '0')
+            economie = Decimal(params.get('economie_annuelle') or '0')
+        except (InvalidOperation, ValueError, TypeError):
+            return Response(
+                {'detail': 'Paramètres numériques invalides.'},
+                status=status.HTTP_400_BAD_REQUEST)
+        resultat = services.comparer_cash_vs_financement(
+            montant, duree, taux, economie_annuelle=economie)
+        return Response(resultat)
+
+
+# ── FG222 — Gestion des appels d'offres ────────────────────────────────────
+
+class AppelOffreViewSet(_ComptaBaseViewSet):
+    """Objets appels d'offres public/privé (FG222)."""
+    queryset = AppelOffre.objects.all()
+    serializer_class = AppelOffreSerializer
+    filter_backends = [filters.SearchFilter, filters.OrderingFilter]
+    search_fields = ['reference', 'objet', 'acheteur', 'lot']
+    ordering_fields = ['date_creation', 'date_limite', 'statut']
+
+
+# ── FG223 — Bordereau des prix (BOQ) ───────────────────────────────────────
+
+class BordereauPrixViewSet(_ComptaBaseViewSet):
+    """Bordereaux des prix (BOQ) d'AO (FG223), séparés du devis client."""
+    queryset = BordereauPrix.objects.prefetch_related('lignes').all()
+    serializer_class = BordereauPrixSerializer
+    filter_backends = [filters.OrderingFilter]
+    ordering_fields = ['date_creation']
+
+
+class LigneBordereauViewSet(_ComptaBaseViewSet):
+    """Lignes chiffrées d'un BOQ (FG223)."""
+    queryset = LigneBordereau.objects.all()
+    serializer_class = LigneBordereauSerializer
+    filter_backends = [filters.OrderingFilter]
+    ordering_fields = ['numero']
+
+
+# ── FG224 — Cautions & garanties de soumission ─────────────────────────────
+
+class CautionSoumissionViewSet(_ComptaBaseViewSet):
+    """Cautions de soumission (provisoires/définitives) d'AO (FG224)."""
+    queryset = CautionSoumission.objects.all()
+    serializer_class = CautionSoumissionSerializer
+    filter_backends = [filters.OrderingFilter]
+    ordering_fields = ['date_creation', 'date_echeance', 'statut']
+
+
+# ── FG225 — Dossier de soumission (pièces administratives) ─────────────────
+
+class DossierSoumissionViewSet(_ComptaBaseViewSet):
+    """Dossiers de soumission d'AO (FG225) : checklist des pièces."""
+    queryset = DossierSoumission.objects.prefetch_related('pieces').all()
+    serializer_class = DossierSoumissionSerializer
+    filter_backends = [filters.OrderingFilter]
+    ordering_fields = ['date_creation']
+
+
+class PieceSoumissionViewSet(_ComptaBaseViewSet):
+    """Pièces administratives d'un dossier de soumission (FG225)."""
+    queryset = PieceSoumission.objects.all()
+    serializer_class = PieceSoumissionSerializer
+    filter_backends = [filters.OrderingFilter]
+    ordering_fields = ['libelle']
+
+
+# ── FG226 — Échéancier & alertes de deadline d'AO ──────────────────────────
+
+class EcheanceAOViewSet(_ComptaBaseViewSet):
+    """Dates clés d'un AO avec rappels (FG226). L'action ``dues`` liste les
+    échéances dont le rappel est échu et non traité."""
+    queryset = EcheanceAO.objects.all()
+    serializer_class = EcheanceAOSerializer
+    filter_backends = [filters.OrderingFilter]
+    ordering_fields = ['date_echeance', 'date_creation']
+
+    @action(detail=False, methods=['get'])
+    def dues(self, request):
+        dues = services.echeances_ao_dues(request.user.company)
+        return Response(EcheanceAOSerializer(dues, many=True).data)
+
+
+# ── FG227 — Analyse gagné/perdu des appels d'offres ────────────────────────
+
+class ResultatAOViewSet(_ComptaBaseViewSet):
+    """Résultats d'AO pour l'analyse gagné/perdu (FG227). L'action ``stats``
+    renvoie le taux de réussite consolidé."""
+    queryset = ResultatAO.objects.all()
+    serializer_class = ResultatAOSerializer
+    filter_backends = [filters.OrderingFilter]
+    ordering_fields = ['date_creation', 'date_resultat']
+
+    @action(detail=False, methods=['get'])
+    def stats(self, request):
+        return Response(services.taux_reussite_ao(request.user.company))
+
+
+# ── FG228 — Portail self-service client ────────────────────────────────────
+
+class ComptePortailClientViewSet(_ComptaBaseViewSet):
+    """Comptes d'accès au portail self-service client (FG228). Le token est
+    généré côté serveur ; le compte se lie au client par id (résolu via le
+    service crm) et ne duplique aucune donnée métier (DC32)."""
+    queryset = ComptePortailClient.objects.all()
+    serializer_class = ComptePortailClientSerializer
+    filter_backends = [filters.OrderingFilter]
+    ordering_fields = ['date_creation']
+
+    def perform_create(self, serializer):
+        import secrets
+        serializer.save(
+            company=self.request.user.company,
+            token_acces=secrets.token_urlsafe(32))
