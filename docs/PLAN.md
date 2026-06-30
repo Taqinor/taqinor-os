@@ -576,16 +576,16 @@ first run that ticks any `FG*` task refreshes CODEMAP §10 + `--write` in that c
 - [x] FG188 — **Plan & registre de formation** — historique par employé + besoins (obligations OFPPT/CSF). (ROUTINE)
 - [x] FG189 — **Recrutement (ATS-lite)** — postes ouverts, candidatures, pipeline, conversion en dossier employé à l'embauche. (ARCH)
 - [x] FG190 — **Entretiens & évaluations annuelles** — campagnes d'appréciation, objectifs individuels, notation (≠ objectifs commerciaux FG39). (SCHEMA)
-- [ ] FG191 — **Disciplinaire & sanctions** — registre avertissements/mises à pied conforme au code du travail. (SCHEMA)
-- [ ] FG192 — **Éléments variables de paie (export)** — agrégat mensuel par employé (heures/HS/absences/primes/retenues) exporté vers le prestataire de paie (pas un moteur de paie). (SCHEMA)
-- [ ] FG193 — **Primes & indemnités** — référentiel (rendement/chantier/panier/transport) attribuables par employé/période. (SCHEMA)
-- [ ] FG194 — **Ordre de mission (déplacement chantier)** — ordre daté (destination/motif/véhicule/per-diem) en PDF. (SCHEMA)
-- [ ] FG195 — **Avances sur salaire** — demande/validation + déduction au mois suivant (intégré à l'export paie). (SCHEMA)
-- [ ] FG196 — **Bulletin de paie (lecture seule)** — dépôt mensuel du bulletin PDF consultable par l'employé (pas de calcul légal interne). (DECISION)
-- [ ] FG197 — **Suivi des permis de conduire & habilitation à conduire** — catégorie/validité, condition pour affecter une camionnette. (SCHEMA)
-- [ ] FG198 — **Affectation conducteur ↔ véhicule** — lien flotte avec contrôle de permis valide à l'affectation. (DECISION)
-- [ ] FG199 — **Portail self-service employé** — voir/modifier ses infos, demander congés, déclarer frais, consulter soldes/bulletins/EPI/habilitations. (AUTH)
-- [ ] FG200 — **Cockpit RH (effectifs & coûts)** — effectif par département/contrat, pyramide d'ancienneté, masse salariale (gated), turnover, alertes. (ROUTINE)
+- [x] FG191 — **Disciplinaire & sanctions** — registre avertissements/mises à pied conforme au code du travail. (SCHEMA)
+- [x] FG192 — **Éléments variables de paie (export)** — agrégat mensuel par employé (heures/HS/absences/primes/retenues) exporté vers le prestataire de paie (pas un moteur de paie). (SCHEMA)
+- [x] FG193 — **Primes & indemnités** — référentiel (rendement/chantier/panier/transport) attribuables par employé/période. (SCHEMA)
+- [x] FG194 — **Ordre de mission (déplacement chantier)** — ordre daté (destination/motif/véhicule/per-diem) en PDF. (SCHEMA)
+- [x] FG195 — **Avances sur salaire** — demande/validation + déduction au mois suivant (intégré à l'export paie). (SCHEMA)
+- [x] FG196 — **Bulletin de paie (lecture seule)** — dépôt mensuel du bulletin PDF consultable par l'employé (pas de calcul légal interne). (DECISION)
+- [x] FG197 — **Suivi des permis de conduire & habilitation à conduire** — catégorie/validité, condition pour affecter une camionnette. (SCHEMA)
+- [x] FG198 — **Affectation conducteur ↔ véhicule** — lien flotte avec contrôle de permis valide à l'affectation. (DECISION)
+- [x] FG199 — **Portail self-service employé** — voir/modifier ses infos, demander congés, déclarer frais, consulter soldes/bulletins/EPI/habilitations. (AUTH)
+- [x] FG200 — **Cockpit RH (effectifs & coûts)** — effectif par département/contrat, pyramide d'ancienneté, masse salariale (gated), turnover, alertes. (ROUTINE)
 
 ### Croissance commerciale, marketing, CPQ, financement, appels d'offres & portail
 
@@ -839,18 +839,18 @@ these overlap and SUPERSEDE the domain-list FG items as the module-organized hom
 - [x] PAIE22 — Calcul IR (barème progressif + charges de famille). (DECISION)
 - [x] PAIE23 — Allocations familiales (info patronale). (ROUTINE)
 - [x] PAIE24 — Taxe de formation professionnelle (1,6 % patronal). (ROUTINE)
-- [ ] PAIE25 — Provision congés payés (consomme les soldes RH). (DEP:RH-FG162)
-- [ ] PAIE26 — Paiement & décompte des congés/absences sur le bulletin. (ROUTINE)
-- [ ] PAIE27 — `CumulAnnuel` (brut/net imposable/IR/CNSS/congés). (SCHEMA)
-- [ ] PAIE28 — `Avance`/`PretSalarie` + déduction mensuelle. (DEP:RH-FG195)
-- [ ] PAIE29 — Saisie-arrêt / cession sur salaire (quotité saisissable). (DECISION)
-- [ ] PAIE30 — `OrdreVirement` + fichier de virement banque. (ROUTINE)
-- [ ] PAIE31 — Déclaration CNSS (BDS / format DAMANCOM). (ROUTINE)
-- [ ] PAIE32 — État IR 9421 + retenues à la source. (ROUTINE)
-- [ ] PAIE33 — Livre de paie + journal de paie → écritures (via `compta.services`). (DEP:COMPTA)
-- [ ] PAIE34 — PDF bulletin conforme + attestations (salaire/travail/domiciliation) via `documents`. (ROUTINE)
-- [ ] PAIE35 — Coffre-fort bulletins (self-service employé, scopé à l'utilisateur). (AUTH)
-- [ ] PAIE36 — Clôture mensuelle + verrouillage + bulletins rectificatifs/rappels. (SCHEMA)
+- [x] PAIE25 — Provision congés payés (consomme les soldes RH). (DEP:RH-FG162)
+- [x] PAIE26 — Paiement & décompte des congés/absences sur le bulletin. (ROUTINE)
+- [x] PAIE27 — `CumulAnnuel` (brut/net imposable/IR/CNSS/congés). (SCHEMA)
+- [x] PAIE28 — `Avance`/`PretSalarie` + déduction mensuelle. (DEP:RH-FG195)
+- [x] PAIE29 — Saisie-arrêt / cession sur salaire (quotité saisissable). (DECISION)
+- [x] PAIE30 — `OrdreVirement` + fichier de virement banque. (ROUTINE)
+- [x] PAIE31 — Déclaration CNSS (BDS / format DAMANCOM). (ROUTINE)
+- [x] PAIE32 — État IR 9421 + retenues à la source. (ROUTINE)
+- [x] PAIE33 — Livre de paie + journal de paie → écritures (via `compta.services`). (DEP:COMPTA)
+- [x] PAIE34 — PDF bulletin conforme + attestations (salaire/travail/domiciliation) via `documents`. (ROUTINE)
+- [x] PAIE35 — Coffre-fort bulletins (self-service employé, scopé à l'utilisateur). (AUTH)
+- [x] PAIE36 — Clôture mensuelle + verrouillage + bulletins rectificatifs/rappels. (SCHEMA)
 
 ### Module Comptabilité générale (`apps/compta`) · COMPTA1–COMPTA40
 **But :** grand livre en partie double (plan CGNC, journaux, écritures auto-postées depuis les documents existants) produisant les états marocains (grand livre, balance, CPC, bilan, ESG/ETIC), FEC et piste d'audit inaltérable — sans devenir un chemin documentaire alternatif. **Intègre :** ventes/stock/paie/immo/trésorerie/reporting via services/selectors ; **statut-préservation** (ne mute jamais devis/facture). Recouvre/organise FG107–FG153.
@@ -962,20 +962,20 @@ these overlap and SUPERSEDE the domain-list FG items as the module-organized hom
 - [x] GED22 — Politiques de rétention. (SCHEMA)
 - [x] GED23 — Archivage légal à valeur probante (write-once/object-lock). (DECISION)
 - [x] GED24 — Rétention légale / legal hold. (SCHEMA)
-- [ ] GED25 — Purge automatique & tâche planifiée (dry-run d'abord). (DEP+DECISION)
+- [x] GED25 — Purge automatique & tâche planifiée (dry-run d'abord). (DEP+DECISION)
 - [x] GED26 — Corbeille & restauration. (SCHEMA)
 - [x] GED27 — Modèles de documents (fusion/mailing → PDF WeasyPrint, hors /proposal). (ROUTINE)
 - [x] GED28 — Génération de document → classement automatique. (ROUTINE)
 - [x] GED29 — Filage des PDF après-vente générés (depuis `documents`). (ROUTINE)
 - [x] GED30 — Signature électronique (point d'intégration + stub no-op). (DEP+DECISION)
-- [ ] GED31 — Numérisation par lot (scan-to-DMS) + OCR. (DEP)
-- [ ] GED32 — Import en masse (zip/CSV de métadonnées). (ROUTINE)
-- [ ] GED33 — OCR de pièces (CIN/factures/BL) → métadonnées. (DEP)
-- [ ] GED34 — Classification automatique (IA, no-op sans clé). (DEP)
-- [ ] GED35 — Journal d'audit d'accès aux documents (lectures). (SCHEMA)
-- [ ] GED36 — Quotas de stockage par société. (SCHEMA+DECISION)
-- [ ] GED37 — Permissions & garde-prix sur tous les endpoints. (ROUTINE)
-- [ ] GED38 — Contrats d'import + CODEMAP + tests. (ROUTINE)
+- [x] GED31 — Numérisation par lot (scan-to-DMS) + OCR. (DEP)
+- [x] GED32 — Import en masse (zip/CSV de métadonnées). (ROUTINE)
+- [x] GED33 — OCR de pièces (CIN/factures/BL) → métadonnées. (DEP)
+- [x] GED34 — Classification automatique (IA, no-op sans clé). (DEP)
+- [x] GED35 — Journal d'audit d'accès aux documents (lectures). (SCHEMA)
+- [x] GED36 — Quotas de stockage par société. (SCHEMA+DECISION)
+- [x] GED37 — Permissions & garde-prix sur tous les endpoints. (ROUTINE)
+- [x] GED38 — Contrats d'import + CODEMAP + tests. (ROUTINE)
 
 ### Module Gestion de flotte (`apps/flotte`) · FLOTTE1–FLOTTE35
 **But :** référentiel et opérations de tout ce qui roule (camionnettes, nacelles, groupes électrogènes) : immatriculation/compteurs, conducteurs+permis, carburant, entretien, échéances réglementaires marocaines (TSAV/assurance/visite technique), sinistres, télématique, trajets imputés chantier, TCO. Recouvre FG334–FG342.
@@ -1006,14 +1006,14 @@ these overlap and SUPERSEDE the domain-list FG items as the module-organized hom
 - [x] FLOTTE25 — `Sinistre` (accident/constat/assurance). (SCHEMA)
 - [x] FLOTTE26 — `Infraction` / PV de circulation. (SCHEMA)
 - [x] FLOTTE27 — Point d'intégration télématique (no-op sans fournisseur). (DEP)
-- [ ] FLOTTE28 — Suivi de position & trajets télématiques. (DEP)
-- [ ] FLOTTE29 — Journal kilométrique & trajets par chantier (via `installations.selectors`). (ROUTINE)
-- [ ] FLOTTE30 — Amortissement (lien immobilisations). (UNGATED 2026-06-21 — buildable once a compta/immobilisations sub-module exists; sequence it after the relevant COMPTA task. No founder input needed — it's an intra-plan dependency, not an external blocker.) (DEP)
-- [ ] FLOTTE31 — Coût total de possession (TCO) par véhicule (interne). (ROUTINE)
-- [ ] FLOTTE32 — Pool de véhicules & demandes. (ROUTINE)
-- [ ] FLOTTE33 — Éco-conduite & CO₂. (ROUTINE)
-- [ ] FLOTTE34 — Documents véhicule (GED). (DEP)
-- [ ] FLOTTE35 — Tableau de bord flotte (dispo/échéances/coûts/conso). (ROUTINE)
+- [x] FLOTTE28 — Suivi de position & trajets télématiques. (DEP)
+- [x] FLOTTE29 — Journal kilométrique & trajets par chantier (via `installations.selectors`). (ROUTINE)
+- [x] FLOTTE30 — Amortissement (lien immobilisations). (UNGATED 2026-06-21 — buildable once a compta/immobilisations sub-module exists; sequence it after the relevant COMPTA task. No founder input needed — it's an intra-plan dependency, not an external blocker.) (DEP)
+- [x] FLOTTE31 — Coût total de possession (TCO) par véhicule (interne). (ROUTINE)
+- [x] FLOTTE32 — Pool de véhicules & demandes. (ROUTINE)
+- [x] FLOTTE33 — Éco-conduite & CO₂. (ROUTINE)
+- [x] FLOTTE34 — Documents véhicule (GED). (DEP)
+- [x] FLOTTE35 — Tableau de bord flotte (dispo/échéances/coûts/conso). (ROUTINE)
 
 ### Module QHSE — qualité, hygiène, sécurité & environnement (`apps/qhse`) · QHSE1–QHSE40
 **But :** couche programme/site au-dessus de la checklist F18 : ITP + points d'arrêt + relevés (couples/polarité/isolement/I-V), NCR/CAPA, audits, document unique/permis de travail, incidents+CNSS, inspections/TF-TG, déchets (BSD loi 28-00)/recyclage modules, bilan carbone/ESG. **Garde F18 intacte.** Recouvre FG181–FG186, FG343–FG349.
@@ -1049,14 +1049,14 @@ these overlap and SUPERSEDE the domain-list FG items as the module-organized hom
 - [x] QHSE30 — Déclaration CNSS de l'accident du travail (échéance légale). (DECISION)
 - [x] QHSE31 — `AnalyseIncident` (arbre des causes) → CAPA. (SCHEMA)
 - [x] QHSE32 — Événement `incident_declared` sur le bus (escalade). (ROUTINE)
-- [ ] QHSE33 — `InspectionSecurite` planifiée (→ NCR). (SCHEMA)
-- [ ] QHSE34 — Statistiques TF / TG (heures travaillées depuis RH). (ROUTINE)
-- [ ] QHSE35 — Inspections/permis dans le digest + calendrier. (ROUTINE)
-- [ ] QHSE36 — `Dechet` + `BordereauSuiviDechet` (BSD, loi 28-00 déchets dangereux). (SCHEMA)
-- [ ] QHSE37 — `RecyclageModule` (fin de vie des modules PV). (SCHEMA)
-- [ ] QHSE38 — `ConformiteEnvironnementale` + relances. (ROUTINE)
-- [ ] QHSE39 — `BilanCarbone` interne (scopes 1/2/3). (SCHEMA)
-- [ ] QHSE40 — `IndicateurESG` + export reporting. (ROUTINE)
+- [x] QHSE33 — `InspectionSecurite` planifiée (→ NCR). (SCHEMA)
+- [x] QHSE34 — Statistiques TF / TG (heures travaillées depuis RH). (ROUTINE)
+- [x] QHSE35 — Inspections/permis dans le digest + calendrier. (ROUTINE)
+- [x] QHSE36 — `Dechet` + `BordereauSuiviDechet` (BSD, loi 28-00 déchets dangereux). (SCHEMA)
+- [x] QHSE37 — `RecyclageModule` (fin de vie des modules PV). (SCHEMA)
+- [x] QHSE38 — `ConformiteEnvironnementale` + relances. (ROUTINE)
+- [x] QHSE39 — `BilanCarbone` interne (scopes 1/2/3). (SCHEMA)
+- [x] QHSE40 — `IndicateurESG` + export reporting. (ROUTINE)
 
 ### Module Gestion des contrats — CLM (`apps/contrats`) · CONTRAT1–CONTRAT35
 **But :** référentiel multi-type de contrats (vente/O&M/monitoring/garantie/PPA/fournisseur/sous-traitance/location/emploi/NDA) : modèles+clauses, génération, approbation, e-sign, obligations/SLA/retenue de garantie, renouvellements/avenants/résiliation, facturation récurrente, tableau de bord. **Wrappe** `sav.ContratMaintenance` sans le casser ; parties = FK Client/Fournisseur/Employé. Recouvre FG243.
@@ -1085,16 +1085,16 @@ these overlap and SUPERSEDE the domain-list FG items as the module-organized hom
 - [x] CONTRAT23 — Renouvellement (manuel + reconduction tacite). (ROUTINE)
 - [x] CONTRAT24 — `Avenant` (amendements → nouvelle version). (SCHEMA)
 - [x] CONTRAT25 — `Resiliation` (motif/préavis/solde). (ROUTINE)
-- [ ] CONTRAT26 — `Obligation`/`JalonContrat` (livrables & jalons). (SCHEMA)
-- [ ] CONTRAT27 — SLA & pénalités (taux SLA, valeur pénalité). (ROUTINE)
-- [ ] CONTRAT28 — Retenue de garantie (suivi de libération). (SCHEMA)
-- [ ] CONTRAT29 — Registre des cautions/garanties liées. (SCHEMA)
-- [ ] CONTRAT30 — `EcheancierContrat` + `LigneEcheance`. (SCHEMA)
-- [ ] CONTRAT31 — Lien facturation récurrente (via `ventes.services`). (ROUTINE)
-- [ ] CONTRAT32 — `IndexationPrix` (indexation/révision de prix). (DECISION)
-- [ ] CONTRAT33 — Tableau de bord contrats (actifs/à renouveler/en risque/valeur·MRR). (ROUTINE)
-- [ ] CONTRAT34 — `PieceConformite` (pièces obligatoires & attestations). (SCHEMA)
-- [ ] CONTRAT35 — Reporting valeur contractuelle & taux de renouvellement. (ROUTINE)
+- [x] CONTRAT26 — `Obligation`/`JalonContrat` (livrables & jalons). (SCHEMA)
+- [x] CONTRAT27 — SLA & pénalités (taux SLA, valeur pénalité). (ROUTINE)
+- [x] CONTRAT28 — Retenue de garantie (suivi de libération). (SCHEMA)
+- [x] CONTRAT29 — Registre des cautions/garanties liées. (SCHEMA)
+- [x] CONTRAT30 — `EcheancierContrat` + `LigneEcheance`. (SCHEMA)
+- [x] CONTRAT31 — Lien facturation récurrente (via `ventes.services`). (ROUTINE)
+- [x] CONTRAT32 — `IndexationPrix` (indexation/révision de prix). (DECISION)
+- [x] CONTRAT33 — Tableau de bord contrats (actifs/à renouveler/en risque/valeur·MRR). (ROUTINE)
+- [x] CONTRAT34 — `PieceConformite` (pièces obligatoires & attestations). (SCHEMA)
+- [x] CONTRAT35 — Reporting valeur contractuelle & taux de renouvellement. (ROUTINE)
 
 ### Module Base de connaissances / Wiki technique (`apps/kb`) · KB1–KB7
 **But :** base documentaire interne searchable (SOP d'installation, procédures ONEE/raccordement, fiches techniques, guides de dépannage, onboarding) — alimente aussi le RAG/DocQA (FG352). Survey-recommended (priorité moyenne).
@@ -1742,3 +1742,10 @@ Tracked here so they aren't lost:
 - 2026-06-30 — QHSE32 (apps/qhse): Événement `incident_declared` sur le bus (escalade) — signal Django local qhse émis à la déclaration d'un Incident (QHSE29), abonné dans `apps.py ready()` (patron ventes→crm), escalade best-effort des incidents critiques (note chatter). Aucune migration. ~tests. (review: `Incident` ajouté à la table cible du chatter `_CIBLE_PAR_MODELE` — la note était silencieusement avalée.)
 - 2026-06-30 — CONTRAT25 (apps/contrats): `Resiliation` (motif/préavis/solde) — modèle `Resiliation` (contrainte d'unicité une résiliation active par contrat) + service `resilier_contrat` qui passe le contrat à `resilie` via la machine d'états gardée (`changer_statut`, jamais d'écriture directe du statut), snapshot de version, refus depuis un état terminal. Migration contrats 0019 additive, ~tests.
 - 2026-06-30 — GED30 (apps/ged): Signature électronique (point d'intégration + stub no-op) — modèle `DemandeSignatureDocument` + `esign_active()` (gated, défaut off — aucune dépendance) : stub local déterministe (provider 'aucun') sans appel réseau ; `marquer_signe` pour webhook/manuel. Distinct de `SignatureContrat` (CONTRAT16) ; contrats/`/proposal` non touchés. Migration ged 0022 additive, ~tests.
+- 2026-06-30 — **MEGA-DRAIN (méthode lane-draining : 6 agents drainent chacun toute la file d'une app → 57 tâches → UN seul merge).** ~446 tests locaux verts dans l'image docker prod (1 test combiné), makemigrations --check + import-linter 5/5 verts ; la revue a corrigé 5 bugs avant merge (comptes CGNC paie non semés → ajout 6171/6174/4432/4441/4443/4452 au seed compta ; flotte éco-conduite itérait un dict au lieu de `['anomalies']` ; obligation contrat créée `faite` sans date → tampon date ; ged extraction inventait `numero_facture='sans'` → exiger un chiffre). 35 migrations additives. Détail par lane :
+- 2026-06-30 — paie PAIE25–36 (12) : provision congés payés (lit RH), décompte congés/absences, cumul annuel, avance salarié, saisie-arrêt (barème quotité saisissable — DECISION), ordre de virement + fichier, déclaration CNSS/DAMANCOM, état IR 9421, livre/journal de paie (écriture OD via `compta.services`), PDF bulletin + attestations (WeasyPrint), coffre-fort self-service, clôture période + bulletin rectificatif. Migrations paie 0013–0019.
+- 2026-06-30 — rh FG191–200 (10) : sanctions, éléments variables de paie (export CSV), primes & indemnités, ordre de mission (PDF), avance sur salaire, dépôt bulletins (lecture), permis de conduire + garde d'affectation véhicule, portail self-service employé, cockpit RH (masse salariale gated `salaires_voir`). Migrations rh 0029–0037.
+- 2026-06-30 — contrats CONTRAT26–35 (10) : jalons & obligations, SLA & pénalités, retenue de garantie, cautions, échéancier + facturation récurrente (émet `ventes.Facture` via la frontière cross-app), indexation des prix (via avenant), tableau de bord (MRR/risque), pièces de conformité (lien GED), reporting (valeur/taux de renouvellement). Migrations contrats 0020–0027. NOTE : nouveau chemin d'écriture cross-app contrats→ventes (facture) + contrats→crm (client), imports fonction-locaux (patron `sav`), import-linter vert.
+- 2026-06-30 — qhse QHSE33–40 (8) : inspections sécurité (→NCR), stats TF/TG, calendrier QHSE, déchets + bordereau de suivi (loi 28-00), recyclage modules, conformité environnementale (relances), bilan carbone (scopes 1/2/3), indicateurs ESG. Migrations qhse 0022–0027.
+- 2026-06-30 — flotte FLOTTE28–35 (8) : position & trajets télématiques, journal kilométrique par chantier, amortissement (lien `compta.Immobilisation`), TCO par véhicule, pool & demandes de véhicule, éco-conduite & CO₂, documents véhicule (GED), tableau de bord flotte. Migrations flotte 0025–0028.
+- 2026-06-30 — ged GED25,31–38 (9) : purge auto corbeille (DRY-RUN par défaut + Celery beat, garde GED23/24/26), scan-to-DMS par lot, import en masse CSV+ZIP, OCR de pièces (gated), classification (gated + heuristique), journal d'audit d'accès, quotas de stockage, contrat de permissions, contrat import-linter `ged-models-decoupled`. Migration ged 0023. NOTE : entrée Celery beat + flags settings gated (off) ; `/proposal` non touché.
