@@ -167,6 +167,35 @@ class ContratViewSet(_ContratsBaseViewSet):
             ContratSerializer(
                 qs, many=True, context={'request': request}).data)
 
+    @action(detail=False, methods=['get'], url_path='a-renouveler')
+    def a_renouveler(self, request):
+        """Contrats dont l'ÉCHÉANCE (``date_fin``) approche (CONTRAT21).
+
+        Liste, scopée société, les contrats dont la date de fin tombe dans les
+        ``within`` prochains jours (défaut 30) — ceux à RENOUVELER ou clôturer.
+        Distinct de ``/preavis/`` (CONTRAT20) qui regarde la date limite de
+        préavis (``date_fin − preavis_jours``) : ici on regarde la fin du
+        contrat elle-même. Les contrats résiliés/expirés sont exclus ; un
+        contrat en tacite reconduction RESTE listé (le drapeau
+        ``tacite_reconduction`` du sérialiseur indique qu'il se reconduit seul).
+        Ordonnés par échéance la plus proche d'abord. Lecture seule : ne change
+        aucun statut.
+
+        Le queryset passe par ``get_queryset`` (filtre confidentialité hérité),
+        puis par le sélecteur — la société est toujours celle de l'utilisateur.
+        """
+        try:
+            within = int(request.query_params.get('within', 30))
+        except (TypeError, ValueError):
+            within = 30
+        base_ids = self.get_queryset().values_list('id', flat=True)
+        qs = selectors.contrats_a_renouveler(
+            request.user.company, within_days=within
+        ).filter(id__in=list(base_ids))
+        return Response(
+            ContratSerializer(
+                qs, many=True, context={'request': request}).data)
+
     @action(detail=True, methods=['get'])
     def liens(self, request, pk=None):
         """Liens du contrat ENRICHIS via les sélecteurs des apps cibles.

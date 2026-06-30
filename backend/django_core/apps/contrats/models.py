@@ -191,6 +191,22 @@ class Contrat(models.Model):
             today = timezone.localdate()
         return (echeance - today).days
 
+    def jours_avant_echeance(self, today=None):
+        """Nombre de jours restants avant la FIN du contrat (``date_fin``).
+
+        CONTRAT21. Distinct de ``jours_avant_preavis`` (CONTRAT20) qui compte
+        jusqu'à la date limite de préavis ; ici on compte jusqu'à l'échéance
+        du contrat lui-même (``date_fin``). Positif = à venir ; 0 = aujourd'hui ;
+        négatif = échéance dépassée. ``None`` si ``date_fin`` n'est pas
+        renseigné. ``today`` est injectable pour les tests.
+        """
+        if self.date_fin is None:
+            return None
+        if today is None:
+            from django.utils import timezone
+            today = timezone.localdate()
+        return (self.date_fin - today).days
+
     def valider_parties(self):
         """Vérifie qu'un contrat finalisable a au moins deux parties.
 
