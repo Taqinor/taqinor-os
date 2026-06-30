@@ -143,6 +143,10 @@ from .models_colisage import (
 from .models_serie_entrepot import (
     SerieEntrepot,
 )
+from .models_comptage import (
+    SessionComptage,
+    ComptageLigne,
+)
 
 __all__ = [
     'Installation',
@@ -215,4 +219,6 @@ __all__ = [
     'Colis',
     'ColisLigne',
     'SerieEntrepot',
+    'SessionComptage',
+    'ComptageLigne',
 ]

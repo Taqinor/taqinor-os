@@ -50,6 +50,7 @@ from .putaway import PutAwayViewSet
 from .picklist import PickListViewSet, PickListLigneViewSet
 from .colisage import ColisViewSet, ColisLigneViewSet
 from .serie_entrepot import SerieEntrepotViewSet
+from .comptage import SessionComptageViewSet, ComptageLigneViewSet
 from .field_sync import FieldSyncView
 
 __all__ = [
@@ -105,5 +106,7 @@ __all__ = [
     'ColisViewSet',
     'ColisLigneViewSet',
     'SerieEntrepotViewSet',
+    'SessionComptageViewSet',
+    'ComptageLigneViewSet',
     'FieldSyncView',
 ]

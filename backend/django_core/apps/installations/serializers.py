@@ -45,6 +45,8 @@ from .models import (
     Colis,
     ColisLigne,
     SerieEntrepot,
+    SessionComptage,
+    ComptageLigne,
 )
 
 
@@ -1841,3 +1843,41 @@ class SerieEntrepotSerializer(serializers.ModelSerializer):
         if not value:
             raise serializers.ValidationError('Le numero de serie est requis.')
         return value
+
+
+class ComptageLigneSerializer(serializers.ModelSerializer):
+    """FG324 - ligne de comptage (SKU + theorique snapshot + comptee + ecart)."""
+    produit_nom = serializers.CharField(
+        source='produit.nom', read_only=True, default=None)
+    ecart = serializers.IntegerField(read_only=True)
+
+    class Meta:
+        model = ComptageLigne
+        fields = [
+            'id', 'session', 'produit', 'produit_nom', 'designation',
+            'quantite_theorique', 'quantite_comptee', 'compte', 'ecart',
+        ]
+        read_only_fields = ['session', 'quantite_theorique']
+
+
+class SessionComptageSerializer(serializers.ModelSerializer):
+    """FG324 - session de comptage tournant. Reference/societe/`created_by`
+    poses COTE SERVEUR ; le statut avance via `demarrer`/`terminer` ; les
+    lignes sont generees serveur (action `generer-lignes`)."""
+    statut_display = serializers.CharField(
+        source='get_statut_display', read_only=True, default=None)
+    classe_abc_display = serializers.CharField(
+        source='get_classe_abc_display', read_only=True, default=None)
+    lignes = ComptageLigneSerializer(many=True, read_only=True)
+
+    class Meta:
+        model = SessionComptage
+        fields = [
+            'id', 'reference', 'intitule', 'emplacement', 'classe_abc',
+            'classe_abc_display', 'statut', 'statut_display', 'date_planifiee',
+            'note', 'lignes', 'created_by', 'date_creation', 'date_modification',
+        ]
+        read_only_fields = [
+            'reference', 'statut', 'created_by',
+            'date_creation', 'date_modification',
+        ]

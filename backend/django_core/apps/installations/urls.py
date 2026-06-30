@@ -42,6 +42,8 @@ from .views import (
     ColisViewSet,
     ColisLigneViewSet,
     SerieEntrepotViewSet,
+    SessionComptageViewSet,
+    ComptageLigneViewSet,
 )
 
 router = DefaultRouter()
@@ -95,6 +97,8 @@ router.register(r'pick-list-lignes', PickListLigneViewSet)
 router.register(r'colis', ColisViewSet)
 router.register(r'colis-lignes', ColisLigneViewSet)
 router.register(r'series-entrepot', SerieEntrepotViewSet)
+router.register(r'sessions-comptage', SessionComptageViewSet)
+router.register(r'comptage-lignes', ComptageLigneViewSet)
 
 urlpatterns = [
     # N91/F21 — synchro idempotente de la capture terrain hors-ligne.
