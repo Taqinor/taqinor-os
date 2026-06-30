@@ -1512,3 +1512,201 @@ class InductionSecurite(models.Model):
 
     def __str__(self):
         return f'Accueil sécurité — {self.personne_nom}'
+
+
+class PlanUrgence(models.Model):
+    """Plan d'urgence / premiers secours par chantier/site (QHSE28).
+
+    Regroupe pour un chantier/site donné les informations à afficher en cas
+    d'urgence : le ``point_rassemblement`` (point de rassemblement), l'hôpital
+    le plus proche optionnel (``hopital_proche`` + ``hopital_distance_km`` +
+    ``hopital_telephone``), une ``date_revision`` (dernière revue du plan) et un
+    ``statut`` de cycle de vie (``brouillon`` → ``actif`` → ``archive``). Les
+    contacts d'urgence (pompiers/SAMU/police + contacts internes) et les
+    secouristes désignés sont portés par les enfants ``ContactUrgence`` et
+    ``Secouriste``.
+
+    Le rattachement au chantier se fait par référence LÂCHE (``chantier_id`` —
+    jamais un import cross-app du modèle ``installations.Chantier``). La lecture
+    cross-app passe par les sélecteurs de l'app cible.
+
+    Multi-société via ``company`` posée côté serveur (jamais lue du corps de
+    requête). Entièrement additif.
+    """
+    class Statut(models.TextChoices):
+        BROUILLON = 'brouillon', 'Brouillon'
+        ACTIF = 'actif', 'Actif'
+        ARCHIVE = 'archive', 'Archivé'
+
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='qhse_plans_urgence',
+        verbose_name='Société',
+    )
+    # Référence LÂCHE au chantier (installations.Chantier) par id : jamais un
+    # import cross-app de modèle.
+    chantier_id = models.PositiveIntegerField(
+        null=True, blank=True, verbose_name='ID du chantier')
+    titre = models.CharField(max_length=255, verbose_name='Titre')
+    point_rassemblement = models.CharField(
+        max_length=255, blank=True, default='',
+        verbose_name='Point de rassemblement')
+    point_rassemblement_details = models.TextField(
+        blank=True, default='',
+        verbose_name='Point de rassemblement (détails)')
+    # Hôpital le plus proche — optionnel.
+    hopital_proche = models.CharField(
+        max_length=255, blank=True, default='',
+        verbose_name='Hôpital le plus proche')
+    hopital_distance_km = models.DecimalField(
+        max_digits=6, decimal_places=2, null=True, blank=True,
+        verbose_name='Distance hôpital (km)')
+    hopital_telephone = models.CharField(
+        max_length=40, blank=True, default='',
+        verbose_name='Téléphone hôpital')
+    date_revision = models.DateField(
+        null=True, blank=True, verbose_name='Date de révision')
+    statut = models.CharField(
+        max_length=10, choices=Statut.choices,
+        default=Statut.BROUILLON, verbose_name='Statut')
+    notes = models.TextField(
+        blank=True, default='', verbose_name='Notes')
+    date_creation = models.DateTimeField(
+        auto_now_add=True, verbose_name='Créé le')
+
+    class Meta:
+        verbose_name = "Plan d'urgence / premiers secours"
+        verbose_name_plural = "Plans d'urgence / premiers secours"
+        ordering = ['-id']
+        indexes = [
+            models.Index(
+                fields=['company', 'chantier_id'],
+                name='qhse_planurg_co_chant',
+            ),
+            models.Index(
+                fields=['company', 'statut'],
+                name='qhse_planurg_co_statut',
+            ),
+        ]
+
+    def __str__(self):
+        return f'Plan d\'urgence — {self.titre}'
+
+
+class ContactUrgence(models.Model):
+    """Contact d'urgence d'un ``PlanUrgence`` (QHSE28).
+
+    Un numéro à appeler en cas d'urgence : services externes (pompiers/SAMU/
+    police) ou contacts internes (chef de chantier, HSE…). ``type_contact``
+    classe la nature du contact ; ``nom`` et ``telephone`` portent l'essentiel.
+
+    Multi-société via ``company`` posée côté serveur. Entièrement additif.
+    """
+    class TypeContact(models.TextChoices):
+        POMPIERS = 'pompiers', 'Pompiers'
+        SAMU = 'samu', 'SAMU / urgences médicales'
+        POLICE = 'police', 'Police / gendarmerie'
+        INTERNE = 'interne', 'Contact interne'
+        AUTRE = 'autre', 'Autre'
+
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='qhse_contacts_urgence',
+        verbose_name='Société',
+    )
+    plan = models.ForeignKey(
+        PlanUrgence,
+        on_delete=models.CASCADE,
+        related_name='contacts',
+        verbose_name="Plan d'urgence",
+    )
+    type_contact = models.CharField(
+        max_length=10, choices=TypeContact.choices,
+        default=TypeContact.AUTRE, verbose_name='Type de contact')
+    nom = models.CharField(max_length=255, verbose_name='Nom / service')
+    telephone = models.CharField(max_length=40, verbose_name='Téléphone')
+    notes = models.CharField(
+        max_length=255, blank=True, default='', verbose_name='Notes')
+    ordre = models.PositiveIntegerField(default=0, verbose_name='Ordre')
+    date_creation = models.DateTimeField(
+        auto_now_add=True, verbose_name='Créé le')
+
+    class Meta:
+        verbose_name = "Contact d'urgence"
+        verbose_name_plural = "Contacts d'urgence"
+        ordering = ['plan', 'ordre', 'id']
+        indexes = [
+            models.Index(
+                fields=['company', 'plan'],
+                name='qhse_conturg_co_plan',
+            ),
+        ]
+
+    def __str__(self):
+        return f'{self.nom} ({self.telephone})'
+
+
+class Secouriste(models.Model):
+    """Secouriste désigné rattaché à un ``PlanUrgence`` (QHSE28).
+
+    Un sauveteur secouriste du travail (SST) désigné pour le site. Un salarié
+    interne est relié par FK-chaîne nullable vers ``rh.DossierEmploye`` (jamais
+    un import de modèle cross-app) ; pour un externe, ``nom`` libre suffit. La
+    certification et sa validité (``certification`` + ``validite``) sont
+    optionnelles.
+
+    Multi-société via ``company`` posée côté serveur. Entièrement additif.
+    """
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='qhse_secouristes',
+        verbose_name='Société',
+    )
+    plan = models.ForeignKey(
+        PlanUrgence,
+        on_delete=models.CASCADE,
+        related_name='secouristes',
+        verbose_name="Plan d'urgence",
+    )
+    # Salarié interne optionnel : FK-chaîne nullable, jamais un import de modèle.
+    secouriste = models.ForeignKey(
+        'rh.DossierEmploye',
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='qhse_secouristes',
+        verbose_name='Salarié (dossier RH)',
+    )
+    # Nom libre : couvre les externes (non salariés) ; complète l'affichage pour
+    # un salarié interne.
+    nom = models.CharField(
+        max_length=255, blank=True, default='',
+        verbose_name='Nom (si externe)')
+    telephone = models.CharField(
+        max_length=40, blank=True, default='', verbose_name='Téléphone')
+    certification = models.CharField(
+        max_length=255, blank=True, default='',
+        verbose_name='Certification (SST…)')
+    validite = models.DateField(
+        null=True, blank=True, verbose_name='Validité certification')
+    ordre = models.PositiveIntegerField(default=0, verbose_name='Ordre')
+    date_creation = models.DateTimeField(
+        auto_now_add=True, verbose_name='Créé le')
+
+    class Meta:
+        verbose_name = 'Secouriste désigné'
+        verbose_name_plural = 'Secouristes désignés'
+        ordering = ['plan', 'ordre', 'id']
+        indexes = [
+            models.Index(
+                fields=['company', 'plan'],
+                name='qhse_secour_co_plan',
+            ),
+        ]
+
+    def __str__(self):
+        if self.secouriste_id:
+            return f'Secouriste — {self.secouriste}'
+        return f'Secouriste — {self.nom or "?"}'

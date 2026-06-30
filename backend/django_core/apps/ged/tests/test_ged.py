@@ -295,7 +295,10 @@ class GedCrudTests(GedBase):
         api = auth(self.admin_a)
         resp = api.delete(f'/api/django/ged/documents/{doc.id}/')
         self.assertEqual(resp.status_code, 204)
-        self.assertFalse(Document.objects.filter(id=doc.id).exists())
+        # GED26 — le DELETE met désormais en corbeille (soft-delete) : la ligne
+        # subsiste avec supprime_le posé et disparaît de la liste par défaut.
+        doc.refresh_from_db()
+        self.assertIsNotNone(doc.supprime_le)
 
 
 # ── GED4 — déplacement via l'API (action `deplacer`, scopé société) ──

@@ -14,6 +14,7 @@ from .models import (
     AssuranceVehicule,
     BaremeVignette,
     CarteCarburant,
+    CarteGriseVehicule,
     Conducteur,
     EcheanceEntretien,
     EcheanceReglementaire,
@@ -1132,3 +1133,39 @@ def visites_techniques_expirantes(company, within=30, today=None):
     return visites_techniques_de_la_societe(company).filter(
         date_prochaine__lte=horizon,
     ).order_by('date_prochaine', 'id')
+
+
+# ── FLOTTE23 — Cartes grises & autorisations de circulation ────────────────────
+
+def cartes_grises_de_la_societe(company, statut=None, actif_flotte_id=None):
+    """FLOTTE23 — Cartes grises d'une société (queryset scopé).
+
+    Filtres facultatifs : ``statut`` (statut STOCKÉ : valide | a_renouveler |
+    expiree) et ``actif_flotte_id`` (un actif précis). Lecture seule, scopée
+    société.
+    """
+    qs = CarteGriseVehicule.objects.filter(company=company).select_related(
+        'actif_flotte', 'actif_flotte__vehicule', 'actif_flotte__engin')
+    if statut:
+        qs = qs.filter(statut=statut)
+    if actif_flotte_id is not None:
+        qs = qs.filter(actif_flotte_id=actif_flotte_id)
+    return qs
+
+
+def cartes_grises_expirantes(company, within=30, today=None):
+    """FLOTTE23 — Autorisations de circulation DUES/EXPIRÉES sous ``within`` j.
+
+    Retourne les ``CarteGriseVehicule`` de la société dont l'autorisation de
+    circulation a une date de validité déjà passée OU tombant dans les
+    ``within`` prochains jours (inclusif), du plus urgent au moins urgent. Les
+    cartes grises sans date de validité d'autorisation sont exclues. ``today``
+    est INJECTABLE (date du jour par défaut). Lecture seule, scopée société.
+    """
+    if today is None:
+        today = datetime.date.today()
+    horizon = today + datetime.timedelta(days=within)
+    return cartes_grises_de_la_societe(company).filter(
+        autorisation_date_validite__isnull=False,
+        autorisation_date_validite__lte=horizon,
+    ).order_by('autorisation_date_validite', 'id')

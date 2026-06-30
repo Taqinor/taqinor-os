@@ -27,6 +27,7 @@ from .views import (
     PresquAccidentViewSet,
     RemunerationViewSet,
     SoldeCongeViewSet,
+    TableauBordHseViewSet,
     TypeAbsenceViewSet,
     VisiteMedicaleViewSet,
 )
@@ -55,6 +56,8 @@ router.register(r'visites-medicales', VisiteMedicaleViewSet)
 router.register(r'epi-catalogue', EpiCatalogueViewSet)
 router.register(r'dotations-epi', DotationEpiViewSet)
 router.register(r'echeances', EcheancesRhViewSet, basename='rh-echeances')
+router.register(
+    r'tableau-bord-hse', TableauBordHseViewSet, basename='rh-tableau-bord-hse')
 router.register(r'accidents-travail', AccidentTravailViewSet)
 router.register(r'presqu-accidents', PresquAccidentViewSet)
 router.register(r'causeries-securite', CauserieSecuriteViewSet)

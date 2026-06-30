@@ -8,6 +8,7 @@ from datetime import timedelta
 from django.utils import timezone
 
 from .models import (
+    AccidentTravail,
     AffectationRoster,
     Certification,
     DemandeConge,
@@ -834,6 +835,200 @@ def echeances_rh(company, within_days=30, today=None):
 
     rows.sort(key=lambda r: (r['date_validite'], r['type'], r['employe_id']))
     return rows
+
+
+# Constantes des taux HSE normalisés (conventions internationales BIT/INRS).
+# Taux de fréquence = accidents avec arrêt × 1 000 000 / heures travaillées.
+# Taux de gravité   = journées d'arrêt × 1 000 / heures travaillées.
+_TF_BASE = 1_000_000
+_TG_BASE = 1_000
+
+
+def tableau_bord_hse(company, within_days=30, today=None):
+    """Tableau de bord HSE (FG185) — agrégation lecture seule des indicateurs.
+
+    Réunit en UN seul dict les indicateurs de pilotage Hygiène-Sécurité-
+    Environnement de la société, calculés à partir des modèles HSE du module RH
+    UNIQUEMENT (aucun import d'une autre app business-core). Tout est dérivé par
+    agrégation — aucun nouveau modèle, aucune écriture.
+
+    Indicateurs renvoyés :
+
+    * ``taux_frequence`` — taux de fréquence des accidents du travail
+      (FG181, ``AccidentTravail``) = nombre d'accidents AVEC arrêt de travail
+      (``arret_travail=True``) × 1 000 000, divisé par le total d'heures
+      travaillées de la période (somme des ``FeuilleTemps.heures``, FG167).
+      ``None`` si aucune heure travaillée n'est connue (division par zéro
+      gardée) — un taux n'a pas de sens sans base d'heures.
+    * ``taux_gravite`` — taux de gravité = somme des journées d'arrêt
+      (``nb_jours_arret``) × 1 000, divisée par le même total d'heures
+      travaillées. ``None`` si aucune heure travaillée (gardé).
+    * ``heures_travaillees`` — base de calcul des deux taux (float),
+      somme des ``FeuilleTemps.heures`` de la période.
+    * ``accidents_total`` / ``accidents_avec_arret`` / ``jours_arret_total`` —
+      compteurs bruts d'accidents du travail de la période.
+    * ``presqu_accidents_total`` — nombre de presqu'accidents (near-miss,
+      FG182, ``PresquAccident``) de la période.
+    * ``alertes`` — comptes de titres/EPI/visites qui expirent dans la fenêtre
+      ``within_days`` (ou déjà expirés) : ``habilitations`` (FG173),
+      ``certifications`` (FG174), ``visites_medicales`` (FG177),
+      ``epi`` (dotations à renouveler/à remplacer/à recontrôler, FG178/FG179,
+      lignes distinctes décomptées), et ``total`` (somme).
+    * ``incidents_par_chantier`` — liste ``[{chantier_id, nombre}]`` des
+      presqu'accidents (seuls événements HSE porteurs d'un ``chantier_id``)
+      regroupés par chantier, triés du plus grand au plus petit ; les
+      presqu'accidents sans chantier sont regroupés sous ``chantier_id=''``.
+
+    Sélecteur PUR (déterministe/testable) : la date de référence est le
+    paramètre ``today`` (défaut ``timezone.localdate()``). ``within_days`` borne
+    la période d'agrégation des accidents/presqu'accidents/heures (les
+    ``within_days`` derniers jours, aujourd'hui inclus) ET la fenêtre d'alerte
+    des échéances (les ``within_days`` prochains jours). Toujours scopé société
+    (jamais lu du corps de requête) ; renvoie une structure entièrement à zéro
+    (jamais de division par zéro) si la société est absente ou vide.
+    """
+    try:
+        within_days = int(within_days)
+    except (TypeError, ValueError):
+        within_days = 30
+    if within_days < 0:
+        within_days = 0
+    if today is None:
+        today = timezone.localdate()
+    debut = today - timedelta(days=within_days)
+    limite_alerte = today + timedelta(days=within_days)
+
+    vide = {
+        'taux_frequence': None,
+        'taux_gravite': None,
+        'heures_travaillees': 0.0,
+        'accidents_total': 0,
+        'accidents_avec_arret': 0,
+        'jours_arret_total': 0,
+        'presqu_accidents_total': 0,
+        'alertes': {
+            'habilitations': 0,
+            'certifications': 0,
+            'visites_medicales': 0,
+            'epi': 0,
+            'total': 0,
+        },
+        'incidents_par_chantier': [],
+        'periode_jours': within_days,
+    }
+    if company is None:
+        return vide
+
+    from django.db.models import Count, Sum
+
+    # --- Accidents du travail de la période (FG181). -----------------------
+    accidents = AccidentTravail.objects.filter(
+        company=company, date_accident__gte=debut, date_accident__lte=today)
+    acc_agg = accidents.aggregate(
+        total=Count('id'),
+        avec_arret=Count('id', filter=_q_arret()),
+        jours=Sum('nb_jours_arret', filter=_q_arret()),
+    )
+    accidents_total = acc_agg['total'] or 0
+    accidents_avec_arret = acc_agg['avec_arret'] or 0
+    jours_arret_total = acc_agg['jours'] or 0
+
+    # --- Heures travaillées de la période (FG167) = base des taux. ---------
+    heures_agg = FeuilleTemps.objects.filter(
+        company=company, date__gte=debut, date__lte=today
+    ).aggregate(total=Sum('heures'))
+    heures = heures_agg['total'] or 0
+    heures = float(heures)
+
+    # Taux normalisés — division par zéro GARDÉE (None si aucune heure).
+    if heures > 0:
+        taux_frequence = round(accidents_avec_arret * _TF_BASE / heures, 2)
+        taux_gravite = round(jours_arret_total * _TG_BASE / heures, 2)
+    else:
+        taux_frequence = None
+        taux_gravite = None
+
+    # --- Presqu'accidents (near-miss, FG182). ------------------------------
+    presqu = PresquAccident.objects.filter(
+        company=company, date_constat__gte=debut, date_constat__lte=today)
+    presqu_total = presqu.count()
+
+    # Incidents HSE par chantier : le presqu'accident est le seul événement HSE
+    # porteur d'un ``chantier_id`` (l'accident du travail n'a qu'un ``lieu``).
+    par_chantier = (
+        presqu.values('chantier_id')
+        .annotate(nombre=Count('id'))
+        .order_by('-nombre', 'chantier_id')
+    )
+    incidents_par_chantier = [
+        {'chantier_id': r['chantier_id'] or '', 'nombre': r['nombre']}
+        for r in par_chantier
+    ]
+
+    # --- Alertes d'expiration dans la fenêtre (réutilise les sélecteurs). --
+    hab_alertes = Habilitation.objects.filter(
+        company=company, actif=True,
+        date_validite__isnull=False, date_validite__lte=limite_alerte
+    ).count()
+    cert_alertes = Certification.objects.filter(
+        company=company, actif=True,
+        date_validite__isnull=False, date_validite__lte=limite_alerte
+    ).count()
+    vis_alertes = VisiteMedicale.objects.filter(
+        company=company, actif=True,
+        prochaine_visite__isnull=False,
+        prochaine_visite__lte=limite_alerte
+    ).count()
+    # EPI : renouvellement (FG178) + péremption/recontrôle (FG179). Une dotation
+    # peut cumuler plusieurs échéances ; on décompte les LIGNES distinctes en
+    # alerte (au moins une de leurs échéances tombe dans la fenêtre).
+    epi_alertes = DotationEpi.objects.filter(
+        _q_epi_echeance(limite_alerte), company=company
+    ).distinct().count()
+    alertes_total = hab_alertes + cert_alertes + vis_alertes + epi_alertes
+
+    return {
+        'taux_frequence': taux_frequence,
+        'taux_gravite': taux_gravite,
+        'heures_travaillees': round(heures, 2),
+        'accidents_total': accidents_total,
+        'accidents_avec_arret': accidents_avec_arret,
+        'jours_arret_total': int(jours_arret_total),
+        'presqu_accidents_total': presqu_total,
+        'alertes': {
+            'habilitations': hab_alertes,
+            'certifications': cert_alertes,
+            'visites_medicales': vis_alertes,
+            'epi': epi_alertes,
+            'total': alertes_total,
+        },
+        'incidents_par_chantier': incidents_par_chantier,
+        'periode_jours': within_days,
+    }
+
+
+def _q_arret():
+    """Filtre ORM : accidents AVEC arrêt de travail déclaré (FG185)."""
+    from django.db.models import Q
+    return Q(arret_travail=True)
+
+
+def _q_epi_echeance(limite):
+    """Filtre ORM : dotations EPI dont une échéance tombe dans la fenêtre.
+
+    Couvre le renouvellement (FG178, ``date_renouvellement``) ET la péremption /
+    le recontrôle à durée de vie (FG179, ``date_peremption`` /
+    ``date_prochain_controle``) — toute échéance ``<= limite`` met la dotation
+    en alerte.
+    """
+    from django.db.models import Q
+    return (
+        Q(date_renouvellement__isnull=False,
+          date_renouvellement__lte=limite)
+        | Q(date_peremption__isnull=False, date_peremption__lte=limite)
+        | Q(date_prochain_controle__isnull=False,
+            date_prochain_controle__lte=limite)
+    )
 
 
 # Garde d'affectation par habilitation (FG176) — type d'intervention → titres

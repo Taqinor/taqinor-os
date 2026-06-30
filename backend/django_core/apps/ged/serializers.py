@@ -209,6 +209,12 @@ class DocumentSerializer(serializers.ModelSerializer):
         source='get_statut_display', read_only=True)
     transitions_autorisees = serializers.ListField(
         child=serializers.CharField(), read_only=True)
+    # GED26 — corbeille (soft-delete) : champs de TRAÇABILITÉ en lecture seule.
+    # Posés/effacés côté serveur via les actions corbeille ; jamais mutés par un
+    # PATCH direct. `est_dans_corbeille` est un drapeau pratique pour l'UI.
+    supprime_par_nom = serializers.CharField(
+        source='supprime_par.username', read_only=True, default=None)
+    est_dans_corbeille = serializers.BooleanField(read_only=True)
 
     class Meta:
         model = Document
@@ -221,12 +227,16 @@ class DocumentSerializer(serializers.ModelSerializer):
             'statut', 'statut_display', 'transitions_autorisees',
             # GED21 — contrôle de diffusion (filigrane à la diffusion).
             'watermark_diffusion',
+            # GED26 — corbeille (soft-delete).
+            'supprime_le', 'supprime_par', 'supprime_par_nom',
+            'est_dans_corbeille',
             'created_at', 'updated_at',
         ]
         read_only_fields = [
             'created_by', 'created_at', 'updated_at',
             'locked_by', 'locked_at', 'is_locked',
             'statut', 'transitions_autorisees',
+            'supprime_le', 'supprime_par', 'est_dans_corbeille',
         ]
 
     def get_version_count(self, obj):

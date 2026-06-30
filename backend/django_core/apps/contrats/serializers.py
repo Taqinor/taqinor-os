@@ -78,6 +78,10 @@ class ContratSerializer(serializers.ModelSerializer):
     # jusque-là (négatif = échéance dépassée). ``None`` si non calculable.
     echeance_preavis = serializers.SerializerMethodField()
     jours_avant_preavis = serializers.SerializerMethodField()
+    # CONTRAT21 — nombre de jours restants jusqu'à la FIN du contrat
+    # (``date_fin``). Distinct de ``jours_avant_preavis`` (échéance de préavis).
+    # Négatif = échéance dépassée ; ``None`` si ``date_fin`` non renseignée.
+    jours_avant_echeance = serializers.SerializerMethodField()
 
     class Meta:
         model = Contrat
@@ -88,6 +92,7 @@ class ContratSerializer(serializers.ModelSerializer):
             'date_fin', 'preavis_jours', 'tacite_reconduction',
             'duree_reconduction_mois', 'preavis_traite',
             'echeance_preavis', 'jours_avant_preavis',
+            'jours_avant_echeance',
             'montant', 'devise',
             'confidentialite', 'confidentialite_display',
             'created_by', 'date_creation',
@@ -100,6 +105,9 @@ class ContratSerializer(serializers.ModelSerializer):
 
     def get_jours_avant_preavis(self, obj):
         return obj.jours_avant_preavis()
+
+    def get_jours_avant_echeance(self, obj):
+        return obj.jours_avant_echeance()
 
     def validate_modele(self, modele):
         """Le gabarit source (optionnel) doit appartenir à la société."""

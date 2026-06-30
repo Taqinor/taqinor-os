@@ -176,7 +176,10 @@ class LegalHoldApiTests(LegalHoldBase):
         self.assertEqual(r_lever.status_code, 200, r_lever.data)
         r_del = api.delete(f'/api/django/ged/documents/{self.doc_a.id}/')
         self.assertEqual(r_del.status_code, 204)
-        self.assertFalse(Document.objects.filter(pk=self.doc_a.pk).exists())
+        # GED26 — après levée du hold, le DELETE passe et met en corbeille
+        # (soft-delete) : la ligne subsiste avec supprime_le posé.
+        self.doc_a.refresh_from_db()
+        self.assertIsNotNone(self.doc_a.supprime_le)
 
     def test_placer_action_sets_company_server_side(self):
         """POST documents/<id>/placer-legal-hold/ pose company côté serveur."""

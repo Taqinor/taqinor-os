@@ -1525,6 +1525,38 @@ class EcheancesRhViewSet(TenantMixin, viewsets.ViewSet):
         return Response(rows)
 
 
+class TableauBordHseViewSet(TenantMixin, viewsets.ViewSet):
+    """Tableau de bord HSE (FG185) — agrégation lecture seule, admin-gated.
+
+    Société scopée + Administrateur/Responsable. Endpoint READ/agrégation pur
+    (aucun nouveau modèle, aucune écriture) qui synthétise les indicateurs
+    Hygiène-Sécurité-Environnement de la société : taux de fréquence / taux de
+    gravité des accidents du travail (FG181), compteurs bruts d'accidents et de
+    presqu'accidents (FG182), alertes d'expiration des habilitations (FG173),
+    certifications (FG174), visites médicales (FG177) et EPI (FG178/FG179), et
+    les presqu'accidents regroupés par chantier.
+
+    Action :
+    * ``GET .../tableau-bord-hse/?within=N`` (et le ``list`` du routeur) —
+      agrège sur les N derniers jours pour les événements et les N prochains
+      jours pour les alertes d'échéance (défaut 30). Délègue à
+      ``selectors.tableau_bord_hse`` ; division par zéro gardée (taux ``null``
+      si aucune heure travaillée). Réponse = un seul dict (non paginé).
+    """
+    permission_classes = [IsResponsableOrAdmin]
+
+    def list(self, request):
+        within = request.query_params.get('within', 30)
+        data = selectors.tableau_bord_hse(
+            request.user.company, within_days=within)
+        return Response(data)
+
+    @action(detail=False, methods=['get'], url_path='tableau-bord-hse')
+    def tableau_bord_hse(self, request):
+        """Alias explicite du tableau de bord HSE (FG185)."""
+        return self.list(request)
+
+
 class AccidentTravailViewSet(_RhBaseViewSet):
     """Registre HSE & accidents du travail (FG181) — déclaration + export CNSS.
 
