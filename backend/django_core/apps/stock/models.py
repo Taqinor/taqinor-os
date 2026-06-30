@@ -936,3 +936,63 @@ class KitComposant(models.Model):
 
     def __str__(self):
         return f'{self.kit_id}: {self.produit_id} × {self.quantite}'
+
+
+class FicheTechnique(models.Model):
+    """DC35 / FG254 — Fiche technique (datasheet) d'un produit.
+
+    Référence le ``Produit`` par FK et NE RE-STOCKE PAS l'identité ni les
+    caractéristiques déjà portées par le produit : marque, garantie, courbe de
+    pompe, description, prix, TVA vivent sur ``Produit`` et sont lus là-bas. La
+    fiche ne porte QUE :
+
+      • des paramètres ÉLECTRIQUES normalisés (Pmax / Voc / Isc / Vmp / Imp /
+        rendement) qui n'existent pas encore sur ``Produit`` — utiles pour le
+        dimensionnement / la comparaison sans dépendre du texte libre ;
+      • le PDF constructeur d'origine.
+
+    Un produit a au plus UNE fiche (OneToOne). Tout est optionnel : une fiche
+    peut ne porter que le PDF, ou que des paramètres. Entièrement additif —
+    aucun produit existant n'est impacté."""
+
+    company = models.ForeignKey(
+        'authentication.Company', on_delete=models.CASCADE,
+        null=True, blank=True, related_name='fiches_techniques')
+    produit = models.OneToOneField(
+        Produit, on_delete=models.CASCADE, related_name='fiche_technique')
+
+    # ── Paramètres électriques normalisés (Wc / V / A) — tous optionnels ──
+    pmax_wc = models.DecimalField(
+        max_digits=8, decimal_places=2, null=True, blank=True,
+        help_text='Puissance crête Pmax (Wc).')
+    voc_v = models.DecimalField(
+        max_digits=8, decimal_places=2, null=True, blank=True,
+        help_text='Tension circuit ouvert Voc (V).')
+    isc_a = models.DecimalField(
+        max_digits=8, decimal_places=2, null=True, blank=True,
+        help_text='Courant court-circuit Isc (A).')
+    vmp_v = models.DecimalField(
+        max_digits=8, decimal_places=2, null=True, blank=True,
+        help_text='Tension au point de puissance max Vmp (V).')
+    imp_a = models.DecimalField(
+        max_digits=8, decimal_places=2, null=True, blank=True,
+        help_text='Courant au point de puissance max Imp (A).')
+    rendement_pct = models.DecimalField(
+        max_digits=5, decimal_places=2, null=True, blank=True,
+        help_text='Rendement du module (%).')
+
+    # ── PDF constructeur d'origine (optionnel) ──
+    pdf = models.FileField(
+        upload_to='stock/fiches_techniques/%Y/%m/', null=True, blank=True,
+        help_text='Fiche technique PDF du constructeur.')
+
+    date_creation = models.DateTimeField(auto_now_add=True)
+    date_mise_a_jour = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = 'Fiche technique'
+        verbose_name_plural = 'Fiches techniques'
+        ordering = ['-date_mise_a_jour']
+
+    def __str__(self):
+        return f'Fiche technique — {self.produit_id}'
