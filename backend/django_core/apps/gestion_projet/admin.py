@@ -11,6 +11,7 @@ from .models import (
     ProjetChantier,
     ProjetLien,
     Tache,
+    Timesheet,
 )
 
 
@@ -90,3 +91,11 @@ class LigneBudgetProjetAdmin(admin.ModelAdmin):
                     'montant_prevu', 'company')
     list_filter = ('categorie', 'company')
     search_fields = ('libelle',)
+
+
+@admin.register(Timesheet)
+class TimesheetAdmin(admin.ModelAdmin):
+    list_display = ('id', 'projet', 'ressource', 'tache', 'date', 'heures',
+                    'cout', 'company')
+    list_filter = ('company',)
+    search_fields = ('commentaire',)

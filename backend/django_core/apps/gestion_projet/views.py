@@ -33,6 +33,7 @@ from .models import (
     ProjetLien,
     RessourceProfil,
     Tache,
+    Timesheet,
 )
 from .serializers import (
     AffectationRessourceSerializer,
@@ -52,6 +53,7 @@ from .serializers import (
     ProjetSerializer,
     RessourceProfilSerializer,
     TacheSerializer,
+    TimesheetSerializer,
 )
 
 
@@ -436,6 +438,41 @@ class ProjetViewSet(_GestionProjetBaseViewSet):
                     'niveau': a['niveau'],
                 }
                 for a in data['alertes']
+            ],
+        })
+
+    @action(detail=True, methods=['get'], url_path='synthese-temps')
+    def synthese_temps(self, request, pk=None):
+        """Synthèse des temps imputés au projet (PROJ24) — lecture seule.
+
+        Total heures + coût INTERNE figé, ventilé par ressource et par tâche.
+        La société est garantie par ``get_object`` (queryset scopé société) :
+        un projet d'une autre société → 404. Délègue au sélecteur
+        ``synthese_temps_projet``. Le coût est INTERNE — jamais exposé au client.
+        """
+        projet = self.get_object()
+        data = selectors.synthese_temps_projet(projet)
+        return Response({
+            'total_heures': str(data['total_heures']),
+            'total_cout': str(data['total_cout']),
+            'nb_saisies': data['nb_saisies'],
+            'par_ressource': [
+                {
+                    'ressource_id': r['ressource_id'],
+                    'ressource_nom': r['ressource_nom'],
+                    'heures': str(r['heures']),
+                    'cout': str(r['cout']),
+                }
+                for r in data['par_ressource']
+            ],
+            'par_tache': [
+                {
+                    'tache_id': t['tache_id'],
+                    'tache_libelle': t['tache_libelle'],
+                    'heures': str(t['heures']),
+                    'cout': str(t['cout']),
+                }
+                for t in data['par_tache']
             ],
         })
 
@@ -1080,4 +1117,53 @@ class LigneBudgetProjetViewSet(_GestionProjetBaseViewSet):
         categorie = self.request.query_params.get('categorie')
         if categorie:
             qs = qs.filter(categorie=categorie)
+        return qs
+
+
+class TimesheetViewSet(_GestionProjetBaseViewSet):
+    """Feuilles de temps internes imputées aux projets (PROJ24) — CRUD scopé.
+
+    ``company`` est posée côté serveur (TenantMixin) ; les FK reçus (``projet``,
+    ``tache``, ``phase``, ``ressource``) sont validés même-société par le
+    sérialiseur (cible d'une autre société → 400). Le ``cout`` est FIGÉ côté
+    serveur à la création/édition (``heures`` × coût horaire interne de la
+    ressource) — jamais lu du corps de requête, jamais exposé au client.
+    Filtres optionnels : ``?projet=<id>``, ``?tache=<id>``, ``?ressource=<id>``,
+    ``?debut=YYYY-MM-DD&fin=YYYY-MM-DD`` (saisies dans la fenêtre inclusive).
+    """
+    queryset = Timesheet.objects.select_related(
+        'projet', 'tache', 'phase', 'ressource').all()
+    serializer_class = TimesheetSerializer
+    filter_backends = [filters.SearchFilter, filters.OrderingFilter]
+    search_fields = ['commentaire']
+    ordering_fields = ['date', 'heures', 'cout', 'id']
+
+    def perform_create(self, serializer):
+        ressource = serializer.validated_data.get('ressource')
+        heures = serializer.validated_data.get('heures')
+        serializer.save(
+            company=self.request.user.company,
+            cout=services.cout_timesheet(ressource, heures))
+
+    def perform_update(self, serializer):
+        instance = serializer.instance
+        ressource = serializer.validated_data.get('ressource', instance.ressource)
+        heures = serializer.validated_data.get('heures', instance.heures)
+        serializer.save(cout=services.cout_timesheet(ressource, heures))
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        projet = self.request.query_params.get('projet')
+        if projet:
+            qs = qs.filter(projet_id=projet)
+        tache = self.request.query_params.get('tache')
+        if tache:
+            qs = qs.filter(tache_id=tache)
+        ressource = self.request.query_params.get('ressource')
+        if ressource:
+            qs = qs.filter(ressource_id=ressource)
+        debut = self.request.query_params.get('debut')
+        fin = self.request.query_params.get('fin')
+        if debut and fin:
+            qs = qs.filter(date__gte=debut, date__lte=fin)
         return qs

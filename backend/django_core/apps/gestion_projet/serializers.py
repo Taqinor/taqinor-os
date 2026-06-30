@@ -25,6 +25,7 @@ from .models import (
     ProjetLien,
     RessourceProfil,
     Tache,
+    Timesheet,
 )
 
 
@@ -609,3 +610,59 @@ class LigneBudgetProjetSerializer(serializers.ModelSerializer):
 
     def validate_budget(self, value):
         return _meme_societe(self, value, 'Budget')
+
+
+class TimesheetSerializer(serializers.ModelSerializer):
+    """Feuille de temps interne imputée à un projet (PROJ24).
+
+    ``company`` n'est jamais exposée : elle est posée côté serveur. Les FK reçus
+    (``projet``, ``tache``, ``phase``, ``ressource``) sont validés même-société ;
+    une tâche / phase reçue doit en outre cibler le MÊME projet. ``cout`` est
+    calculé côté serveur (``heures`` × ``cout_horaire`` interne de la ressource)
+    et exposé en LECTURE seule — jamais lu du corps de requête.
+    """
+    projet_code = serializers.CharField(source='projet.code', read_only=True)
+    ressource_nom = serializers.CharField(
+        source='ressource.nom', read_only=True)
+
+    class Meta:
+        model = Timesheet
+        fields = [
+            'id', 'projet', 'projet_code', 'tache', 'phase', 'ressource',
+            'ressource_nom', 'date', 'heures', 'cout', 'commentaire',
+            'date_creation',
+        ]
+        read_only_fields = ['cout', 'date_creation']
+
+    def validate_projet(self, value):
+        return _meme_societe(self, value, 'Projet')
+
+    def validate_tache(self, value):
+        return _meme_societe(self, value, 'Tâche')
+
+    def validate_phase(self, value):
+        return _meme_societe(self, value, 'Phase')
+
+    def validate_ressource(self, value):
+        return _meme_societe(self, value, 'Ressource')
+
+    def validate_heures(self, value):
+        if value is not None and value < 0:
+            raise serializers.ValidationError(
+                'Les heures ne peuvent pas être négatives.')
+        return value
+
+    def validate(self, attrs):
+        # ``projet`` peut manquer d'un PATCH partiel : on retombe sur l'instance.
+        projet = attrs.get('projet') or getattr(self.instance, 'projet', None)
+        tache = attrs.get('tache', getattr(self.instance, 'tache', None))
+        phase = attrs.get('phase', getattr(self.instance, 'phase', None))
+        if tache is not None and projet is not None \
+                and tache.projet_id != projet.id:
+            raise serializers.ValidationError(
+                {'tache': 'La tâche doit appartenir au même projet.'})
+        if phase is not None and projet is not None \
+                and phase.projet_id != projet.id:
+            raise serializers.ValidationError(
+                {'phase': 'La phase doit appartenir au même projet.'})
+        return attrs

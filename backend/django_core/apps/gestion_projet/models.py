@@ -1170,3 +1170,85 @@ class LigneBudgetProjet(models.Model):
 
     def __str__(self):
         return f'{self.get_categorie_display()} — {self.libelle}'
+
+
+class Timesheet(models.Model):
+    """Une feuille de temps INTERNE imputée à un ``Projet`` (PROJ24).
+
+    Saisie d'un nombre d'``heures`` passées par une ``RessourceProfil`` un jour
+    donné (``date``), imputées à un ``Projet`` et OPTIONNELLEMENT à une ``Tache``
+    et/ou une ``PhaseProjet`` du même projet. C'est une donnée 100 % INTERNE de
+    pilotage (comme le ``cout_horaire`` du profil) : elle alimente le suivi des
+    temps et le coût de main-d'œuvre RÉEL — jamais exposée au client final.
+
+    ``cout`` est un cache calculé côté serveur (``heures`` × ``cout_horaire``
+    interne de la ressource au moment de la saisie) : on le fige pour que le
+    coût historique survive à un changement de tarif de la ressource. Mis à 0
+    quand la ressource n'a pas de coût horaire.
+
+    Tout est multi-société : ``company`` est posée côté serveur, jamais lue du
+    corps de requête. La ressource / la tâche / la phase doivent appartenir au
+    MÊME projet et à la MÊME société (validé au sérialiseur). Modèle entièrement
+    additif.
+    """
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='gestion_projet_timesheets',
+        verbose_name='Société',
+    )
+    projet = models.ForeignKey(
+        Projet,
+        on_delete=models.CASCADE,
+        related_name='timesheets',
+        verbose_name='Projet',
+    )
+    # Rattachement OPTIONNEL à une tâche du projet.
+    tache = models.ForeignKey(
+        Tache,
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='timesheets',
+        verbose_name='Tâche',
+    )
+    # Rattachement OPTIONNEL à une phase du projet.
+    phase = models.ForeignKey(
+        PhaseProjet,
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='timesheets',
+        verbose_name='Phase',
+    )
+    ressource = models.ForeignKey(
+        RessourceProfil,
+        on_delete=models.CASCADE,
+        related_name='timesheets',
+        verbose_name='Ressource (profil)',
+    )
+    date = models.DateField(verbose_name='Date')
+    heures = models.DecimalField(
+        max_digits=6, decimal_places=2,
+        validators=[MinValueValidator(Decimal('0'))],
+        verbose_name='Heures')
+    # Coût INTERNE figé (heures × coût horaire) — jamais exposé au client.
+    cout = models.DecimalField(
+        max_digits=14, decimal_places=2, default=Decimal('0'),
+        verbose_name='Coût interne (figé)')
+    commentaire = models.TextField(
+        blank=True, default='', verbose_name='Commentaire')
+    date_creation = models.DateTimeField(
+        auto_now_add=True, verbose_name='Créé le')
+
+    class Meta:
+        verbose_name = 'Feuille de temps'
+        verbose_name_plural = 'Feuilles de temps'
+        ordering = ['-date', '-id']
+        indexes = [
+            models.Index(
+                fields=['projet', 'date'], name='gp_ts_proj_date_idx'),
+            models.Index(
+                fields=['ressource', 'date'], name='gp_ts_res_date_idx'),
+        ]
+
+    def __str__(self):
+        return f'{self.ressource_id} {self.date} {self.heures} h'

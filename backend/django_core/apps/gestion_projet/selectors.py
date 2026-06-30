@@ -27,6 +27,7 @@ from .models import (
     ProjetLien,
     RessourceProfil,
     Tache,
+    Timesheet,
 )
 
 
@@ -1637,4 +1638,60 @@ def alertes_depassement_budgetaire(company, projet, seuil_pct=None):
         'en_depassement': (
             niveau_total == 'depassement'
             or any(a['niveau'] == 'depassement' for a in alertes)),
+    }
+
+
+# ── Suivi des temps (PROJ24) ─────────────────────────────────────────────────
+def timesheets_for_projet(projet):
+    """Feuilles de temps d'un projet (QuerySet scopé société, plus récentes
+    d'abord)."""
+    return Timesheet.objects.filter(
+        projet=projet, company=projet.company).select_related(
+            'ressource', 'tache', 'phase').order_by('-date', '-id')
+
+
+def synthese_temps_projet(projet):
+    """Synthèse des temps imputés à un projet (PROJ24) — lecture seule.
+
+    Agrège les feuilles de temps (``Timesheet``) du projet : total des
+    ``heures`` et du ``cout`` INTERNE figé, puis ventilation par RESSOURCE et
+    par TÂCHE. Données 100 % INTERNES de pilotage — jamais exposées au client.
+    Le coût agrégé sert de source ALTERNATIVE de main-d'œuvre réelle (à côté des
+    affectations). Une seule passe en mémoire ; ne MODIFIE rien.
+    """
+    timesheets = list(timesheets_for_projet(projet))
+    total_heures = Decimal('0')
+    total_cout = Decimal('0')
+    par_ressource = {}
+    par_tache = {}
+    for ts in timesheets:
+        heures = ts.heures or Decimal('0')
+        cout = ts.cout or Decimal('0')
+        total_heures += heures
+        total_cout += cout
+        r = par_ressource.setdefault(ts.ressource_id, {
+            'ressource_id': ts.ressource_id,
+            'ressource_nom': ts.ressource.nom if ts.ressource_id else '',
+            'heures': Decimal('0'),
+            'cout': Decimal('0'),
+        })
+        r['heures'] += heures
+        r['cout'] += cout
+        if ts.tache_id is not None:
+            t = par_tache.setdefault(ts.tache_id, {
+                'tache_id': ts.tache_id,
+                'tache_libelle': ts.tache.libelle if ts.tache_id else '',
+                'heures': Decimal('0'),
+                'cout': Decimal('0'),
+            })
+            t['heures'] += heures
+            t['cout'] += cout
+    return {
+        'total_heures': total_heures,
+        'total_cout': total_cout,
+        'nb_saisies': len(timesheets),
+        'par_ressource': sorted(
+            par_ressource.values(), key=lambda x: x['ressource_id']),
+        'par_tache': sorted(
+            par_tache.values(), key=lambda x: x['tache_id']),
     }

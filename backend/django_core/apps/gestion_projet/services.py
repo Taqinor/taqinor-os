@@ -5,6 +5,7 @@ dérivée du ``projet`` (jamais lue d'un corps de requête) ; aucun import
 cross-app (on reste dans ``gestion_projet``).
 """
 from datetime import timedelta
+from decimal import Decimal
 
 from django.db import transaction
 
@@ -16,6 +17,20 @@ from .models import (
     Projet,
     Tache,
 )
+
+
+# ── Suivi des temps (PROJ24) ─────────────────────────────────────────────────
+def cout_timesheet(ressource, heures):
+    """Coût INTERNE d'une saisie de temps = ``heures`` × coût horaire interne.
+
+    ``cout_horaire`` est porté par la ``RessourceProfil`` ; absent ou nul → 0.
+    Renvoie un ``Decimal`` arrondi à 2 décimales. Donnée 100 % INTERNE de
+    pilotage (jamais exposée au client final).
+    """
+    if ressource is None or heures is None:
+        return Decimal('0.00')
+    cout_horaire = ressource.cout_horaire or Decimal('0')
+    return (Decimal(heures) * cout_horaire).quantize(Decimal('0.01'))
 
 
 # Décomposition standard d'un projet d'installation solaire (WBS), dans l'ordre
