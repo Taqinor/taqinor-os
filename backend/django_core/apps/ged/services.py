@@ -1549,3 +1549,74 @@ def generer_document(modele, contexte, *, company, created_by=None,
         folder_nom=folder_resolu,
         created_by=created_by,
     )
+
+
+# ── GED29 — Filage (classement) des PDF après-vente (SAV) générés ──────────
+
+def classer_document_apres_vente(*, company, file_key='', contenu_bytes=None,
+                                 nom, source_type, source_id,
+                                 cabinet='Après-vente', dossier='Après-vente',
+                                 created_by=None, mime='application/pdf',
+                                 description=''):
+    """GED29 — Classe (file) un PDF APRÈS-VENTE (SAV) DÉJÀ généré dans la GED.
+
+    Point d'entrée de RÉCEPTION côté GED : une autre app (le module SAV /
+    après-vente, câblé dans une tâche FUTURE) produit un PDF après-vente
+    (rapport d'intervention, bon de SAV, attestation de garantie…) puis appelle
+    ce service pour le DÉPOSER et le CLASSER automatiquement dans un cabinet/
+    dossier « Après-vente » dédié — SANS importer les modèles GED, en RÉUTILISANT
+    les primitives existantes (`deposit_document`, lui-même fondé sur
+    `create_document`/`add_version` et le stockage objet `records.storage`). On ne
+    réimplémente ni le stockage ni le versionnage ni l'idempotence.
+
+    Multi-tenant : `company` est posée CÔTÉ SERVEUR par l'appelant (jamais lue
+    d'un corps de requête) ; cabinet, dossier, document et version héritent tous
+    de cette société. Le cabinet et le dossier « Après-vente » sont auto-créés
+    s'ils manquent (`ensure_cabinet` / `ensure_root_folder`, idempotents — via
+    `deposit_document`).
+
+    Source du contenu (au moins l'une) :
+      - `file_key` : la clé d'un objet déjà stocké en MinIO (records.storage),
+        p.ex. un PDF que l'app SAV a déjà téléversé.
+      - `contenu_bytes` : des octets bruts (rendu PDF en mémoire) téléversés ici
+        via le même stockage objet que `records.storage`.
+      Si AUCUN n'est fourni, un document « pointeur vide » est tout de même créé
+      (trace), comportement hérité de `deposit_document`.
+
+    CLASSEMENT : sous-dossier contextuel TRIVIAL réutilisant la résolution sûre de
+    GED28 — le nom de `dossier` peut porter des jetons ``{{ champ }}`` (ici borné à
+    l'année, ex. « Après-vente {{ annee }} » → « Après-vente 2026 ») résolus par
+    `fusionner_modele` (substitution SÛRE, jamais d'exécution de code). L'année
+    courante est injectée dans le contexte ; un `dossier` sans jeton est laissé
+    tel quel.
+
+    IDEMPOTENCE : ancrée sur (`source_type`, `source_id`) — l'objet métier SAV
+    source (ex. 'sav.ticket' + pk, ou 'sav.rapportintervention' + pk). Un dépôt
+    répété pour le MÊME objet source ne crée JAMAIS un second document : on
+    retrouve et on renvoie l'existant (idempotence native de `deposit_document`).
+
+    Renvoie `(document, created)` : le `Document` GED et un booléen (`created` =
+    True s'il vient d'être créé, False = déposé idempotent / déjà présent).
+    """
+    from django.utils import timezone
+
+    cabinet_nom = (cabinet or '').strip() or 'Après-vente'
+    # Sous-dossier contextuel trivial (GED28) : résout les jetons {{ annee }}
+    # depuis un contexte borné (année courante). Un dossier sans jeton est inchangé.
+    brut = (dossier or '').strip()
+    contexte = {'annee': timezone.now().year}
+    folder_nom = (fusionner_modele(brut, contexte).strip() if brut else '') \
+        or 'Après-vente'
+    return deposit_document(
+        company=company,
+        nom=nom,
+        source_type=source_type,
+        source_id=source_id,
+        file_key=file_key or '',
+        contenu_bytes=contenu_bytes,
+        mime=mime or 'application/pdf',
+        description=description or '',
+        cabinet_nom=cabinet_nom,
+        folder_nom=folder_nom,
+        created_by=created_by,
+    )

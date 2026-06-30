@@ -368,6 +368,51 @@ class DocumentViewSet(TenantMixin, viewsets.ModelViewSet):
             DocumentSerializer(document, context={'request': request}).data,
             status=status.HTTP_201_CREATED)
 
+    @action(detail=False, methods=['post'], url_path='classer-apres-vente')
+    def classer_apres_vente(self, request):
+        """GED29 — Classe un PDF APRÈS-VENTE (SAV) déjà généré dans la GED.
+
+        `POST …/documents/classer-apres-vente/` — corps JSON :
+        `{nom, source_type, source_id, file_key?, cabinet?, dossier?,
+        description?}`. Le PDF référencé par `file_key` (déjà stocké en MinIO)
+        est déposé et classé dans le cabinet/dossier « Après-vente » dédié
+        (auto-créés si absents). La société et le créateur sont posés CÔTÉ
+        SERVEUR (jamais lus du corps). Idempotent par (`source_type`,
+        `source_id`) : un appel répété pour le MÊME objet SAV source renvoie le
+        document déjà déposé (200) au lieu d'en dupliquer un (201).
+
+        Point d'entrée de réception : le câblage SAV (appel à l'émission d'un
+        document après-vente) est une tâche FUTURE distincte."""
+        nom = (request.data.get('nom') or '').strip()
+        source_type = (request.data.get('source_type') or '').strip()
+        source_id = request.data.get('source_id')
+        if not nom:
+            return Response({'nom': 'Le nom du document est requis.'},
+                            status=status.HTTP_400_BAD_REQUEST)
+        if not source_type or source_id in (None, ''):
+            return Response(
+                {'detail': 'source_type et source_id sont requis '
+                           '(idempotence par objet SAV source).'},
+                status=status.HTTP_400_BAD_REQUEST)
+        file_key = (request.data.get('file_key') or '').strip()
+        document, created = services.classer_document_apres_vente(
+            company=request.user.company,
+            file_key=file_key,
+            nom=nom,
+            source_type=source_type,
+            source_id=source_id,
+            cabinet=(request.data.get('cabinet') or 'Après-vente'),
+            dossier=(request.data.get('dossier') or 'Après-vente'),
+            description=(request.data.get('description') or ''),
+            created_by=request.user,
+        )
+        # GED11/GED12 — indexe le document déposé (no-op sémantique sans clé).
+        services.update_search_vector(document)
+        services.index_embedding(document)
+        return Response(
+            DocumentSerializer(document, context={'request': request}).data,
+            status=status.HTTP_201_CREATED if created else status.HTTP_200_OK)
+
     @action(detail=False, methods=['get'], url_path='semantique')
     def semantique(self, request):
         """GED12 — Recherche sémantique (pgvector), KEY-GATED no-op.
