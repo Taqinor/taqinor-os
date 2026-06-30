@@ -27,6 +27,7 @@ from .models import (
     PleinCarburant,
     ReservationVehicule,
     Vehicule,
+    VisiteTechnique,
 )
 
 
@@ -1096,3 +1097,38 @@ def assurances_vehicule_expirantes(company, within=30, today=None):
     return assurances_vehicule_de_la_societe(company).filter(
         date_echeance__lte=horizon,
     ).order_by('date_echeance', 'id')
+
+
+# ── FLOTTE22 — Visites techniques ──────────────────────────────────────────────
+
+def visites_techniques_de_la_societe(company, statut=None,
+                                     actif_flotte_id=None):
+    """FLOTTE22 — Visites techniques d'une société (queryset scopé).
+
+    Filtres facultatifs : ``statut`` (statut STOCKÉ : valide | a_renouveler |
+    expiree) et ``actif_flotte_id`` (un actif précis). Lecture seule, scopée
+    société.
+    """
+    qs = VisiteTechnique.objects.filter(company=company).select_related(
+        'actif_flotte', 'actif_flotte__vehicule', 'actif_flotte__engin')
+    if statut:
+        qs = qs.filter(statut=statut)
+    if actif_flotte_id is not None:
+        qs = qs.filter(actif_flotte_id=actif_flotte_id)
+    return qs
+
+
+def visites_techniques_expirantes(company, within=30, today=None):
+    """FLOTTE22 — Visites techniques DUES/EXPIRÉES sous ``within`` jours.
+
+    Retourne les ``VisiteTechnique`` de la société dont la prochaine visite est
+    déjà passée OU tombe dans les ``within`` prochains jours (inclusif), du plus
+    urgent au moins urgent. ``today`` est INJECTABLE (date du jour par défaut).
+    Lecture seule, scopée société.
+    """
+    if today is None:
+        today = datetime.date.today()
+    horizon = today + datetime.timedelta(days=within)
+    return visites_techniques_de_la_societe(company).filter(
+        date_prochaine__lte=horizon,
+    ).order_by('date_prochaine', 'id')

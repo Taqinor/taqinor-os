@@ -26,6 +26,7 @@ from .models import (
     ReferentielFlotte,
     ReservationVehicule,
     Vehicule,
+    VisiteTechnique,
 )
 
 
@@ -1167,5 +1168,77 @@ class AssuranceVehiculeSerializer(serializers.ModelSerializer):
                 {'date_echeance':
                  "La date d'échéance ne peut pas précéder le début de "
                  "couverture."})
+
+        return attrs
+
+
+# ── FLOTTE22 — Visite technique (validité paramétrable) ────────────────────────
+
+class VisiteTechniqueSerializer(serializers.ModelSerializer):
+    """FLOTTE22 — Visite technique périodique d'un actif de flotte.
+
+    ``company`` est posée côté serveur (jamais lue du corps de requête). L'actif
+    lié (``actif_flotte``) doit appartenir à la société courante. La période de
+    validité ``validite_mois`` est PARAMÉTRABLE (12 par défaut). Si
+    ``date_prochaine`` n'est pas fournie, elle est calculée côté modèle depuis
+    ``date_visite`` + ``validite_mois`` (``clean``) — ``date_prochaine`` est donc
+    en lecture seule au sérialiseur.
+
+    Champs lecture seule :
+    - ``actif_label``     : désignation de l'actif (véhicule ou engin).
+    - ``resultat_display``: libellé du résultat.
+    - ``statut_display``  : libellé du statut stocké.
+    - ``statut_calcule``  : état RÉEL vs la date du jour
+      (``valide`` | ``a_renouveler`` | ``expiree``), calculé côté modèle.
+    - ``date_prochaine``  : calculée (date_visite + validite_mois).
+    """
+
+    actif_label = serializers.SerializerMethodField()
+    resultat_display = serializers.CharField(
+        source='get_resultat_display', read_only=True)
+    statut_display = serializers.CharField(
+        source='get_statut_display', read_only=True)
+    statut_calcule = serializers.SerializerMethodField()
+
+    class Meta:
+        model = VisiteTechnique
+        fields = [
+            'id', 'actif_flotte', 'actif_label', 'centre', 'date_visite',
+            'resultat', 'resultat_display', 'validite_mois', 'date_prochaine',
+            'cout', 'alerte_jours', 'statut', 'statut_display',
+            'statut_calcule', 'notes', 'date_creation',
+        ]
+        read_only_fields = ['date_prochaine', 'date_creation']
+
+    def get_actif_label(self, obj):
+        return obj.actif_flotte.label if obj.actif_flotte_id else None
+
+    def get_statut_calcule(self, obj):
+        return obj.statut_calcule()
+
+    def validate_cout(self, value):
+        if value is not None and value < 0:
+            raise serializers.ValidationError(
+                "Le coût ne peut pas être négatif.")
+        return value
+
+    def validate_validite_mois(self, value):
+        if value is not None and value <= 0:
+            raise serializers.ValidationError(
+                "La validité (mois) doit être strictement positive.")
+        return value
+
+    def validate(self, attrs):
+        request = self.context.get('request')
+        company = getattr(getattr(request, 'user', None), 'company', None)
+
+        actif_flotte = attrs.get(
+            'actif_flotte', getattr(self.instance, 'actif_flotte', None))
+
+        if company is not None and actif_flotte is not None \
+                and actif_flotte.company_id != company.id:
+            raise serializers.ValidationError(
+                {'actif_flotte':
+                 "Cet actif n'appartient pas à votre société."})
 
         return attrs
