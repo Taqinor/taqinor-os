@@ -22,15 +22,29 @@ TRACKED_MODELS = [
     ('ventes', 'Facture'),
     ('ventes', 'Avoir'),
     ('ventes', 'RelanceLog'),
+    # FG15 — écritures « argent » : bon de commande client + encaissements.
+    ('ventes', 'BonCommande'),
+    ('ventes', 'Paiement'),
     ('installations', 'Installation'),
     ('installations', 'Intervention'),
     ('sav', 'Ticket'),
     ('sav', 'Equipement'),
+    # FG15 — contrat de maintenance (engagement récurrent facturable).
+    ('sav', 'ContratMaintenance'),
     ('stock', 'Produit'),
     ('stock', 'MouvementStock'),
+    # FG15 — chaîne achats fournisseur (argent sortant : commande → réception
+    # → facture → paiement).
+    ('stock', 'BonCommandeFournisseur'),
+    ('stock', 'ReceptionFournisseur'),
+    ('stock', 'FactureFournisseur'),
+    ('stock', 'PaiementFournisseur'),
     ('parametres', 'CompanyProfile'),
     ('authentication', 'CustomUser'),
     ('roles', 'Role'),
+    # FG15 — sécurité : émission/révocation de clés API et de webhooks.
+    ('publicapi', 'ApiKey'),
+    ('publicapi', 'Webhook'),
 ]
 
 # Champs « statut » par modèle (libellé FR via get_<field>_display si dispo).
