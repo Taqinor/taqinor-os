@@ -6,7 +6,7 @@ from django.db import migrations, models
 class Migration(migrations.Migration):
 
     dependencies = [
-        ("crm", "0030_pointcontact"),
+        ("crm", "0031_siteprofile"),
     ]
 
     operations = [
