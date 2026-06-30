@@ -16,6 +16,11 @@ from .views import (
     RoofLayoutViewSet,  # FG245
     FicheTechniqueViewSet,  # FG254
     DevisPresetViewSet,  # QJ16-wiring
+    RegulatoryDossierViewSet,  # FG268
+    DossierChecklistItemViewSet,  # FG268
+    DossierExchangeViewSet,  # FG269
+    SubventionDossierViewSet,  # FG270
+    Regularisation8221ViewSet,  # FG271
 )
 from .recouvrement import (
     FollowupLevelViewSet,
@@ -52,6 +57,20 @@ router.register(r'niveaux-relance', FollowupLevelViewSet,
 # QJ16-wiring — presets de devis (list + destroy uniquement).
 # La création passe par POST /devis/{id}/save-preset/ sur le DevisViewSet.
 router.register(r'presets', DevisPresetViewSet, basename='devis-preset')
+# FG268 — dossiers réglementaires de raccordement + checklist par étape.
+router.register(r'dossiers-reglementaires', RegulatoryDossierViewSet,
+                basename='dossier-reglementaire')
+router.register(r'dossiers-checklist', DossierChecklistItemViewSet,
+                basename='dossier-checklist')
+# FG269 — journal de la navette opérateur (échanges ONEE/distributeur).
+router.register(r'dossiers-echanges', DossierExchangeViewSet,
+                basename='dossier-echange')
+# FG270 — éligibilité & suivi des subventions/incitations.
+router.register(r'subventions', SubventionDossierViewSet,
+                basename='subvention')
+# FG271 — workflow de régularisation Article 33 / déclarations 82-21.
+router.register(r'regularisations-8221', Regularisation8221ViewSet,
+                basename='regularisation-8221')
 
 urlpatterns = [
     # Q6/Q7 — Proposition web tokenisée (données JSON + e-signature). Jeton
