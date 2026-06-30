@@ -687,3 +687,48 @@ class TestCo2Reporting(TestCase):
         r = self.api.get('/api/django/monitoring/configs/co2-fleet/')
         self.assertEqual(r.status_code, 200, r.data)
         self.assertEqual(len(r.data['systems']), 2)
+
+
+class TestClientEnvironmentalPortal(TestCase):
+    """FG288 — tableau de bord environnemental client (portail)."""
+
+    def setUp(self):
+        self.company = make_company('portal-co', 'Portal Co')
+        self.user = User.objects.create_user(
+            username='portal_admin', password='x', role_legacy='admin',
+            company=self.company)
+        self.api = auth(self.user)
+        # Deux systèmes du MÊME client.
+        self.client_obj = Client.objects.create(
+            company=self.company, nom='Cli', prenom='Ent',
+            email='portal-cli@example.invalid')
+        self.inst1 = Installation.objects.create(
+            company=self.company, reference='P-1', client=self.client_obj,
+            puissance_installee_kwc=Decimal('5'))
+        self.inst2 = Installation.objects.create(
+            company=self.company, reference='P-2', client=self.client_obj,
+            puissance_installee_kwc=Decimal('5'))
+        for inst in (self.inst1, self.inst2):
+            ProductionReading.objects.create(
+                company=self.company, installation=inst,
+                date=date(2026, 6, 1), period_days=30,
+                energy_kwh=Decimal('1000'))
+
+    def test_cumulative_dashboard(self):
+        from apps.monitoring.selectors import client_environmental_dashboard
+        d = client_environmental_dashboard(self.company, self.client_obj.id)
+        self.assertEqual(d['total_production_kwh'], Decimal('2000.00'))
+        # 2000 × 1.4 = 2800 MAD ; 2000 × 0.81 = 1620 kg CO₂.
+        self.assertEqual(d['economies_mad'], Decimal('2800.00'))
+        self.assertEqual(d['co2_kg'], Decimal('1620.00'))
+        self.assertEqual(d['systems_count'], 2)
+
+    def test_portal_endpoint(self):
+        r = self.api.get(
+            f'/api/django/monitoring/configs/client-portal/?client={self.client_obj.id}')
+        self.assertEqual(r.status_code, 200, r.data)
+        self.assertEqual(r.data['systems_count'], 2)
+
+    def test_portal_requires_client(self):
+        r = self.api.get('/api/django/monitoring/configs/client-portal/')
+        self.assertEqual(r.status_code, 400, r.data)

@@ -188,6 +188,20 @@ class MonitoringConfigViewSet(TenantMixin, viewsets.ModelViewSet):
         window = min(int(request.query_params.get('window_days', 365)), 1825)
         return Response(om_metrics(config.installation, window_days=window))
 
+    @action(detail=False, methods=['get'], url_path='client-portal',
+            permission_classes=[IsAnyRole])
+    def client_portal(self, request):
+        """FG288 — synthèse environnementale cumulée des systèmes d'un client
+        (production / économies / CO₂). ?client=ID requis."""
+        from .selectors import client_environmental_dashboard
+        company = request.user.company
+        client_id = request.query_params.get('client')
+        if company is None or not client_id:
+            return Response(
+                {'detail': 'client requis.'},
+                status=status.HTTP_400_BAD_REQUEST)
+        return Response(client_environmental_dashboard(company, client_id))
+
     @action(detail=True, methods=['get'], url_path='co2',
             permission_classes=[IsAnyRole])
     def co2(self, request, pk=None):

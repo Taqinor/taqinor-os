@@ -22,6 +22,10 @@ from .services import _expected_recent_kwh
 # autoproduit). Même hypothèse que l'energy report (apps.installations) : on la
 # RECOPIE ici plutôt que d'importer un autre app domaine (frontière services).
 DEFAULT_CO2_KG_PAR_KWH = Decimal('0.81')
+# FG288 — tarif électricité par défaut (MAD/kWh) pour chiffrer les économies
+# côté portail client. Même hypothèse que l'energy report (recopiée, pas
+# importée).
+DEFAULT_TARIF_MAD_PAR_KWH = Decimal('1.40')
 
 
 def _q(value, places='0.01'):
@@ -152,4 +156,42 @@ def co2_fleet(company, *, since=None, until=None, co2_kg_par_kwh=None):
         'total_co2_tonnes': (total_co2_kg / Decimal('1000')).quantize(
             Decimal('0.001')),
         'systems': systems,
+    }
+
+
+def client_environmental_dashboard(company, client_id, *,
+                                   tarif_mad_par_kwh=None,
+                                   co2_kg_par_kwh=None):
+    """FG288 — synthèse environnementale CUMULÉE des systèmes d'un client.
+
+    Production / économies (MAD) / CO₂ évité cumulés sur tous les systèmes du
+    client de la société. Lecture via jointure string-FK
+    (`installation__client_id`), sans importer un autre app domaine. Scoping
+    société assuré par le filtre `company`.
+    """
+    tarif = Decimal(str(tarif_mad_par_kwh)) if tarif_mad_par_kwh is not None \
+        else DEFAULT_TARIF_MAD_PAR_KWH
+    factor = Decimal(str(co2_kg_par_kwh)) if co2_kg_par_kwh is not None \
+        else DEFAULT_CO2_KG_PAR_KWH
+
+    qs = ProductionReading.objects.filter(
+        company=company, installation__client_id=client_id)
+    total_kwh = qs.aggregate(s=Sum('energy_kwh'))['s'] or Decimal('0')
+    total_kwh = Decimal(str(total_kwh))
+
+    economies = total_kwh * tarif
+    co2_kg = total_kwh * factor
+
+    # Nombre de systèmes du client (distincts) dans le périmètre.
+    systems_count = (qs.values('installation_id').distinct().count())
+
+    return {
+        'client': int(client_id),
+        'systems_count': systems_count,
+        'total_production_kwh': _q(total_kwh),
+        'economies_mad': _q(economies),
+        'co2_kg': _q(co2_kg),
+        'co2_tonnes': (co2_kg / Decimal('1000')).quantize(Decimal('0.001')),
+        'tarif_mad_par_kwh': tarif,
+        'co2_kg_par_kwh': factor,
     }
