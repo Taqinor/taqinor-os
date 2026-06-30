@@ -53,6 +53,8 @@ from .models import (
     Kit,
     KitComposant,
     OrdreAssemblage,
+    Livraison,
+    LivraisonLigne,
 )
 
 
@@ -2074,3 +2076,52 @@ class OrdreAssemblageSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError(
                 'La quantite a assembler doit etre strictement positive.')
         return value
+
+
+class LivraisonLigneSerializer(serializers.ModelSerializer):
+    """FG329 - article d'une livraison (SKU + quantite)."""
+    produit_nom = serializers.CharField(
+        source='produit.nom', read_only=True, default=None)
+
+    class Meta:
+        model = LivraisonLigne
+        fields = [
+            'id', 'livraison', 'produit', 'produit_nom', 'designation',
+            'quantite',
+        ]
+
+    def validate(self, attrs):
+        produit = attrs.get('produit') if 'produit' in attrs else getattr(
+            self.instance, 'produit', None)
+        designation = attrs.get('designation') if 'designation' in attrs else (
+            getattr(self.instance, 'designation', None))
+        if produit is None and not (designation or '').strip():
+            raise serializers.ValidationError(
+                {'designation': 'Indiquez un produit ou une designation.'})
+        return attrs
+
+
+class LivraisonSerializer(serializers.ModelSerializer):
+    """FG329 - livraison planifiee depot -> site. Reference/societe/`created_by`
+    poses COTE SERVEUR ; le statut avance via les actions
+    `expedier`/`livrer`/`annuler`. Lignes imbriquees en lecture."""
+    installation_reference = serializers.CharField(
+        source='installation.reference', read_only=True, default=None)
+    depot_nom = serializers.CharField(
+        source='depot.nom', read_only=True, default=None)
+    statut_display = serializers.CharField(
+        source='get_statut_display', read_only=True, default=None)
+    lignes = LivraisonLigneSerializer(many=True, read_only=True)
+
+    class Meta:
+        model = Livraison
+        fields = [
+            'id', 'reference', 'installation', 'installation_reference',
+            'depot', 'depot_nom', 'transporteur_nom', 'date_prevue', 'statut',
+            'statut_display', 'adresse_site', 'note', 'lignes',
+            'created_by', 'date_creation', 'date_modification',
+        ]
+        read_only_fields = [
+            'reference', 'statut', 'created_by',
+            'date_creation', 'date_modification',
+        ]
