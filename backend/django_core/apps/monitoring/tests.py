@@ -418,3 +418,82 @@ class TestFleetOverview(TestCase):
         r = self.api.get('/api/django/monitoring/configs/fleet/')
         self.assertEqual(r.status_code, 200, r.data)
         self.assertEqual(r.data['systems_active'], 2)
+
+
+class TestProductionWarranty(TestCase):
+    """FG282 — garantie de production + compensation de manque."""
+
+    def setUp(self):
+        self.company = make_company('war-co', 'War Co')
+        self.user = User.objects.create_user(
+            username='war_admin', password='x', role_legacy='admin',
+            company=self.company)
+        self.api = auth(self.user)
+        self.inst, _ = make_installation(self.company, ref='W-1', kwc='10.00')
+
+    def _make_warranty(self, **kw):
+        from apps.monitoring.models import ProductionWarranty
+        defaults = dict(
+            company=self.company, installation=self.inst,
+            guaranteed_year1_kwh=Decimal('12000'),
+            degradation_pct_per_year=Decimal('0.50'),
+            start_year=2025,
+            compensation_mad_per_kwh=Decimal('1.4000'))
+        defaults.update(kw)
+        return ProductionWarranty.objects.create(**defaults)
+
+    def test_degraded_guarantee_year2(self):
+        w = self._make_warranty()
+        # Année 2 (2026) : 12000 × (1 - 0.005) = 11940.
+        g = w.guaranteed_kwh_for_year(2026)
+        self.assertEqual(g.quantize(Decimal('0.01')), Decimal('11940.00'))
+
+    def test_shortfall_and_compensation(self):
+        self._make_warranty()
+        ProductionReading.objects.create(
+            company=self.company, installation=self.inst,
+            date=date(2026, 6, 1), period_days=365, energy_kwh=Decimal('10000'))
+        from apps.monitoring.services import production_warranty_status
+        st = production_warranty_status(self.inst, year=2026)
+        self.assertTrue(st['has_warranty'])
+        # Manque = 11940 - 10000 = 1940 ; compensation = 1940 × 1.4 = 2716.
+        self.assertEqual(st['shortfall_kwh'], Decimal('1940.00'))
+        self.assertEqual(st['compensation_mad'], Decimal('2716.00'))
+
+    def test_no_shortfall_when_overproducing(self):
+        self._make_warranty()
+        ProductionReading.objects.create(
+            company=self.company, installation=self.inst,
+            date=date(2026, 6, 1), period_days=365, energy_kwh=Decimal('13000'))
+        from apps.monitoring.services import production_warranty_status
+        st = production_warranty_status(self.inst, year=2026)
+        self.assertEqual(st['shortfall_kwh'], Decimal('0.00'))
+        self.assertEqual(st['compensation_mad'], Decimal('0.00'))
+
+    def test_no_warranty_graceful(self):
+        from apps.monitoring.services import production_warranty_status
+        st = production_warranty_status(self.inst, year=2026)
+        self.assertFalse(st['has_warranty'])
+
+    def test_warranty_viewset_forces_company(self):
+        r = self.api.post('/api/django/monitoring/warranties/', {
+            'installation': self.inst.id,
+            'guaranteed_year1_kwh': '12000',
+            'degradation_pct_per_year': '0.5',
+            'start_year': 2025,
+            'compensation_mad_per_kwh': '1.4',
+        }, format='json')
+        self.assertEqual(r.status_code, 201, r.data)
+        from apps.monitoring.models import ProductionWarranty
+        w = ProductionWarranty.objects.get(id=r.data['id'])
+        self.assertEqual(w.company_id, self.company.id)
+
+    def test_status_endpoint(self):
+        w = self._make_warranty()
+        ProductionReading.objects.create(
+            company=self.company, installation=self.inst,
+            date=date(2026, 6, 1), period_days=365, energy_kwh=Decimal('10000'))
+        r = self.api.get(
+            f'/api/django/monitoring/warranties/{w.id}/status/?year=2026')
+        self.assertEqual(r.status_code, 200, r.data)
+        self.assertTrue(r.data['has_warranty'])

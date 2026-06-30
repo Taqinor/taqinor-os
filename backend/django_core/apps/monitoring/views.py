@@ -33,14 +33,17 @@ from authentication.permissions import IsAnyRole, IsResponsableOrAdmin
 
 from .models import (
     MonitoringConfig, MonitoringSettings, ProductionReading,
+    ProductionWarranty,
 )
 from .providers import available_providers
 from .serializers import (
     MonitoringConfigSerializer, MonitoringSettingsSerializer,
-    ProductionReadingSerializer,
+    ProductionReadingSerializer, ProductionWarrantySerializer,
 )
 from .analytics import om_metrics
-from .services import evaluate_underperformance, sync_system
+from .services import (
+    evaluate_underperformance, production_warranty_status, sync_system,
+)
 
 READ_ACTIONS = ['list', 'retrieve']
 
@@ -212,6 +215,37 @@ class ProductionReadingViewSet(TenantMixin, viewsets.ModelViewSet):
         # Après une saisie manuelle, ré-évaluer la sous-performance (N52).
         installation = serializer.instance.installation
         evaluate_underperformance(installation, user=self.request.user)
+
+
+class ProductionWarrantyViewSet(TenantMixin, viewsets.ModelViewSet):
+    """FG282 — garantie de production par système. Lecture tout rôle
+    (filtrable par ?installation=) ; écriture responsable/admin. Action
+    `status` : production réelle vs garanti dégradé → manque/compensation."""
+    queryset = ProductionWarranty.objects.select_related('installation').all()
+    serializer_class = ProductionWarrantySerializer
+
+    def get_permissions(self):
+        if self.action in READ_ACTIONS or self.action == 'status':
+            return [IsAnyRole()]
+        return [IsResponsableOrAdmin()]
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        inst = self.request.query_params.get('installation')
+        if inst:
+            qs = qs.filter(installation_id=inst)
+        return qs
+
+    @action(detail=True, methods=['get'], url_path='status',
+            permission_classes=[IsAnyRole])
+    def status(self, request, pk=None):
+        """Écart production réelle vs productible garanti dégradé d'une année
+        (?year=YYYY, défaut année courante) + compensation due."""
+        warranty = self.get_object()
+        year = request.query_params.get('year')
+        result = production_warranty_status(
+            warranty.installation, year=int(year) if year else None)
+        return Response(result)
 
 
 class MonitoringSettingsViewSet(TenantMixin, viewsets.ModelViewSet):

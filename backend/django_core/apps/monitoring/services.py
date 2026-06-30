@@ -20,7 +20,7 @@ from django.utils import timezone
 
 from .models import (
     MonitoringConfig, MonitoringSettings, ProductionReading,
-    UnderperformanceFlag,
+    ProductionWarranty, UnderperformanceFlag,
 )
 from .providers import _coerce_reading, get_provider
 
@@ -174,6 +174,58 @@ def evaluate_underperformance(installation, *, user=None, today=None):
                 open_flag.date_cloture = timezone.now()
                 open_flag.save(update_fields=['is_open', 'date_cloture'])
     return result
+
+
+def production_for_calendar_year(installation, year):
+    """Somme des relevés (kWh) d'une année calendaire pour un système."""
+    agg = ProductionReading.objects.filter(
+        installation=installation, date__year=year)
+    total = Decimal('0')
+    for r in agg.values_list('energy_kwh', flat=True):
+        total += Decimal(str(r))
+    return total
+
+
+def production_warranty_status(installation, *, year=None):
+    """FG282 — production réelle vs productible garanti (dégradé) d'une année.
+
+    Renvoie un dict {has_warranty, year, guaranteed_kwh, actual_kwh, shortfall_kwh,
+    compensation_mad, within_tolerance}. No-op gracieux (has_warranty=False) si
+    aucune garantie de production n'est configurée pour le système.
+    """
+    warranty = getattr(installation, 'production_warranty', None)
+    if warranty is None:
+        warranty = (ProductionWarranty.objects
+                    .filter(installation=installation).first())
+    if warranty is None:
+        return {'has_warranty': False}
+
+    year = int(year or timezone.localdate().year)
+    guaranteed = warranty.guaranteed_kwh_for_year(year)
+    actual = production_for_calendar_year(installation, year)
+
+    shortfall = guaranteed - actual
+    if shortfall < 0:
+        shortfall = Decimal('0')
+
+    tolerance_kwh = guaranteed * (Decimal(str(warranty.tolerance_pct))
+                                  / Decimal('100'))
+    within_tolerance = shortfall <= tolerance_kwh
+    # On ne compense que la part au-delà de la franchise contractuelle.
+    compensable = Decimal('0') if within_tolerance else (shortfall - tolerance_kwh)
+    compensation = (compensable
+                    * Decimal(str(warranty.compensation_mad_per_kwh)))
+
+    q2 = Decimal('0.01')
+    return {
+        'has_warranty': True,
+        'year': year,
+        'guaranteed_kwh': guaranteed.quantize(q2),
+        'actual_kwh': actual.quantize(q2),
+        'shortfall_kwh': shortfall.quantize(q2),
+        'within_tolerance': within_tolerance,
+        'compensation_mad': compensation.quantize(q2),
+    }
 
 
 def _create_underperf_ticket(installation, flag, user):

@@ -31,6 +31,10 @@ idempotent — jamais deux tickets pour un même drapeau ouvert.
 from django.conf import settings
 from django.db import models
 
+# FG282 — garantie de production (modèle additif en module dédié, re-exporté ici
+# pour que `monitoring.models.ProductionWarranty` reste l'import canonique).
+from .models_warranty import ProductionWarranty  # noqa: F401
+
 
 class MonitoringConfig(models.Model):
     """Configuration de supervision d'UN système installé (chantier).

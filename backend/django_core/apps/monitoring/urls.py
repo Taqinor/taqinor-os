@@ -3,12 +3,13 @@ from rest_framework.routers import DefaultRouter
 
 from .views import (
     MonitoringConfigViewSet, MonitoringSettingsViewSet,
-    ProductionReadingViewSet,
+    ProductionReadingViewSet, ProductionWarrantyViewSet,
 )
 
 router = DefaultRouter()
 router.register(r'configs', MonitoringConfigViewSet)
 router.register(r'readings', ProductionReadingViewSet)
+router.register(r'warranties', ProductionWarrantyViewSet)
 router.register(r'settings', MonitoringSettingsViewSet)
 
 urlpatterns = [
