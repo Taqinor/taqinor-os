@@ -664,6 +664,14 @@ class FactureViewSet(viewsets.ModelViewSet):
                     return Response(
                         {'detail': f'Ligne {i} : désignation requise.'},
                         status=status.HTTP_400_BAD_REQUEST)
+                # DC10 — exiger le produit à la CRÉATION (le SET_NULL ne sert
+                # qu'à survivre à une suppression produit ; sans produit à la
+                # création, la ligne perd sa traçabilité SKU dès le départ).
+                if ligne.get('produit') in (None, ''):
+                    return Response(
+                        {'detail': f'Ligne {i} : produit requis (traçabilité '
+                                   'SKU).'},
+                        status=status.HTTP_400_BAD_REQUEST)
                 try:
                     qte = Decimal(str(ligne.get('quantite')))
                     pu = Decimal(str(ligne.get('prix_unitaire')))
