@@ -574,7 +574,7 @@ first run that ticks any `FG*` task refreshes CODEMAP §10 + `--write` in that c
 - [x] FG186 — **Permis de travail (hauteur/électrique/consignation)** — délivrance/clôture par tâche à risque, trace la consignation avant intervention. (SCHEMA) [DONE (already present) 2026-06-30: déjà couvert par qhse `PermisTravail` (QHSE23) + `ConsignationLoto` (QHSE24) ; aucun doublon créé en rh.]
 - [x] FG187 — **Gestion de la formation** — sessions (interne/externe), inscriptions, présence, coût → alimente la matrice de compétences. (SCHEMA)
 - [x] FG188 — **Plan & registre de formation** — historique par employé + besoins (obligations OFPPT/CSF). (ROUTINE)
-- [ ] FG189 — **Recrutement (ATS-lite)** — postes ouverts, candidatures, pipeline, conversion en dossier employé à l'embauche. (ARCH)
+- [x] FG189 — **Recrutement (ATS-lite)** — postes ouverts, candidatures, pipeline, conversion en dossier employé à l'embauche. (ARCH)
 - [ ] FG190 — **Entretiens & évaluations annuelles** — campagnes d'appréciation, objectifs individuels, notation (≠ objectifs commerciaux FG39). (SCHEMA)
 - [ ] FG191 — **Disciplinaire & sanctions** — registre avertissements/mises à pied conforme au code du travail. (SCHEMA)
 - [ ] FG192 — **Éléments variables de paie (export)** — agrégat mensuel par employé (heures/HS/absences/primes/retenues) exporté vers le prestataire de paie (pas un moteur de paie). (SCHEMA)
@@ -966,7 +966,7 @@ these overlap and SUPERSEDE the domain-list FG items as the module-organized hom
 - [x] GED26 — Corbeille & restauration. (SCHEMA)
 - [x] GED27 — Modèles de documents (fusion/mailing → PDF WeasyPrint, hors /proposal). (ROUTINE)
 - [x] GED28 — Génération de document → classement automatique. (ROUTINE)
-- [ ] GED29 — Filage des PDF après-vente générés (depuis `documents`). (ROUTINE)
+- [x] GED29 — Filage des PDF après-vente générés (depuis `documents`). (ROUTINE)
 - [ ] GED30 — Signature électronique (point d'intégration + stub no-op). (DEP+DECISION)
 - [ ] GED31 — Numérisation par lot (scan-to-DMS) + OCR. (DEP)
 - [ ] GED32 — Import en masse (zip/CSV de métadonnées). (ROUTINE)
@@ -1004,7 +1004,7 @@ these overlap and SUPERSEDE the domain-list FG items as the module-organized hom
 - [x] FLOTTE23 — Carte grise & autorisation de circulation (GED). (SCHEMA)
 - [x] FLOTTE24 — Moteur d'alertes d'échéances réglementaires (J-30/15/7/échu). (ROUTINE)
 - [x] FLOTTE25 — `Sinistre` (accident/constat/assurance). (SCHEMA)
-- [ ] FLOTTE26 — `Infraction` / PV de circulation. (SCHEMA)
+- [x] FLOTTE26 — `Infraction` / PV de circulation. (SCHEMA)
 - [ ] FLOTTE27 — Point d'intégration télématique (no-op sans fournisseur). (DEP)
 - [ ] FLOTTE28 — Suivi de position & trajets télématiques. (DEP)
 - [ ] FLOTTE29 — Journal kilométrique & trajets par chantier (via `installations.selectors`). (ROUTINE)
@@ -1047,7 +1047,7 @@ these overlap and SUPERSEDE the domain-list FG items as the module-organized hom
 - [x] QHSE28 — `PlanUrgence` / premiers secours (contacts/secouristes/point de rassemblement). (SCHEMA)
 - [x] QHSE29 — Registre `Incident` (accident/presqu'accident/incident). (SCHEMA)
 - [x] QHSE30 — Déclaration CNSS de l'accident du travail (échéance légale). (DECISION)
-- [ ] QHSE31 — `AnalyseIncident` (arbre des causes) → CAPA. (SCHEMA)
+- [x] QHSE31 — `AnalyseIncident` (arbre des causes) → CAPA. (SCHEMA)
 - [ ] QHSE32 — Événement `incident_declared` sur le bus (escalade). (ROUTINE)
 - [ ] QHSE33 — `InspectionSecurite` planifiée (→ NCR). (SCHEMA)
 - [ ] QHSE34 — Statistiques TF / TG (heures travaillées depuis RH). (ROUTINE)
@@ -1083,7 +1083,7 @@ these overlap and SUPERSEDE the domain-list FG items as the module-organized hom
 - [x] CONTRAT21 — Calcul des échéances & contrats « à renouveler ». (ROUTINE)
 - [x] CONTRAT22 — `AlerteContrat` + rappels via notifications. (ROUTINE)
 - [x] CONTRAT23 — Renouvellement (manuel + reconduction tacite). (ROUTINE)
-- [ ] CONTRAT24 — `Avenant` (amendements → nouvelle version). (SCHEMA)
+- [x] CONTRAT24 — `Avenant` (amendements → nouvelle version). (SCHEMA)
 - [ ] CONTRAT25 — `Resiliation` (motif/préavis/solde). (ROUTINE)
 - [ ] CONTRAT26 — `Obligation`/`JalonContrat` (livrables & jalons). (SCHEMA)
 - [ ] CONTRAT27 — SLA & pénalités (taux SLA, valeur pénalité). (ROUTINE)
@@ -1732,3 +1732,8 @@ Tracked here so they aren't lost:
 - 2026-06-30 — QHSE30 (apps/qhse): Déclaration CNSS de l'accident du travail (échéance légale) — modèle `DeclarationCnss` (réf souple string-FK `rh.AccidentTravail`, `delai_jours` paramétrable défaut 2 j, `date_limite` calculée, statut à_déclarer/déclaré/hors_délai recalculé au save) + sélecteur `declarations_cnss_a_echeance` + action `a-echeance`. Complète `AccidentTravail` qui n'avait pas l'échéance légale. Migration qhse 0020 additive (dép. rh.0021), ~tests. (DECISION construite — auto-gating OFF.)
 - 2026-06-30 — CONTRAT23 (apps/contrats): Renouvellement (manuel + reconduction tacite) — services `renouveler_contrat` (étend date_fin, réinitialise préavis, snapshot version, journalise, refuse résilié/expiré) + `traiter_reconductions_tacites` (auto-renouvelle les contrats tacites échus, idempotent, rattrapage borné) + actions `renouveler`/`traiter-reconductions` ; champs d'audit `date_dernier_renouvellement`/`nb_renouvellements`. PERFORME le renouvellement (≠ CONTRAT20/21 qui ne font que lister). Migration contrats 0017 additive, ~tests.
 - 2026-06-30 — GED28 (apps/ged): Génération de document → classement automatique — `ModeleDocument.cabinet_cible`/`dossier_cible` (templaté `{{ }}` via la fusion GED27), `generer_document` dépose dans le cabinet/dossier résolu (auto-créé si absent), rétrocompatible (dossier par défaut sans cible), `/proposal` non touché. Migration ged 0021 additive, ~tests.
+- 2026-06-30 — FG189 (apps/rh): Recrutement (ATS-lite, ARCH) — modèles `OuverturePoste` (poste/département en réf, nombre de postes, statut) + `Candidature` (pipeline reçu→présélection→entretien→offre→embauché/rejeté, CV en FileField) + service `embaucher` (crée un `DossierEmploye` lié — matricule/nom/prénom satisfaits —, bascule l'ouverture en pourvu, idempotent). Migration rh 0027 additive, ~tests.
+- 2026-06-30 — FLOTTE26 (apps/flotte): `Infraction` / PV de circulation — modèle `Infraction` (actif, conducteur FLOTTE7 nullable, type excès/stationnement/feu rouge, référence PV en FileField, montant amende, statut à payer→payée/contestée/classée), viewset société-scopé + filtres. Migration flotte 0023 additive, ~tests.
+- 2026-06-30 — QHSE31 (apps/qhse): `AnalyseIncident` (arbre des causes) → CAPA — `AnalyseIncident` (OneToOne sur Incident QHSE29, méthode 5M/arbre/5 pourquoi) + `CauseIncident` (arbre parent/enfant fait→cause immédiate→profonde→racine) + service `generer_capa_depuis_analyse` qui crée un NC-pont (miroir exact de `lever_ncr_audit`, réutilisé, pas de NC dupliqué) puis la CAPA `ActionCorrectivePreventive`. Migration qhse 0021 additive, ~tests.
+- 2026-06-30 — CONTRAT24 (apps/contrats): `Avenant` (amendements → nouvelle version) — modèle `Avenant` (numéro max+1 verrouillé par contrat — PAS count()+1, objet, date d'effet, delta de montant appliqué au contrat) + service `creer_avenant` qui réutilise `creer_version` (motif « Avenant n°X ») et lie `version_creee`, statut du contrat non touché. Migration contrats 0018 additive, ~tests.
+- 2026-06-30 — GED29 (apps/ged): Filage des PDF après-vente générés — service ged `classer_document_apres_vente` (dépose un PDF SAV existant dans un cabinet/dossier « Après-vente » auto-créé via GED27/28, idempotent par source, sous-dossier templaté) + action `classer-apres-vente`. Aucune migration (réutilise les modèles GED) ; apps/sav, apps/documents et `/proposal` NON touchés. ~tests.
