@@ -11,6 +11,7 @@ from django.db import models
 from .models import (
     ActifFlotte,
     AffectationConducteur,
+    AssuranceVehicule,
     BaremeVignette,
     CarteCarburant,
     Conducteur,
@@ -1060,3 +1061,38 @@ def calcul_tsav(vehicule, annee=None):
             f"TSAV {candidat.montant} MAD (énergie « {energie} », {cv} CV, "
             f"tranche {candidat.cv_min}-{candidat.cv_max}).")
     return base
+
+
+# ── FLOTTE21 — Polices d'assurance auto ────────────────────────────────────────
+
+def assurances_vehicule_de_la_societe(company, statut=None,
+                                      actif_flotte_id=None):
+    """FLOTTE21 — Polices d'assurance d'une société (queryset scopé).
+
+    Filtres facultatifs : ``statut`` (statut STOCKÉ : valide | a_renouveler |
+    expiree) et ``actif_flotte_id`` (un actif précis). Lecture seule, scopée
+    société.
+    """
+    qs = AssuranceVehicule.objects.filter(company=company).select_related(
+        'actif_flotte', 'actif_flotte__vehicule', 'actif_flotte__engin')
+    if statut:
+        qs = qs.filter(statut=statut)
+    if actif_flotte_id is not None:
+        qs = qs.filter(actif_flotte_id=actif_flotte_id)
+    return qs
+
+
+def assurances_vehicule_expirantes(company, within=30, today=None):
+    """FLOTTE21 — Polices d'assurance DUES/EXPIRÉES sous ``within`` jours.
+
+    Retourne les ``AssuranceVehicule`` de la société dont la date d'échéance est
+    déjà passée OU tombe dans les ``within`` prochains jours (inclusif), du plus
+    urgent au moins urgent. ``today`` est INJECTABLE (date du jour par défaut).
+    Lecture seule, scopée société.
+    """
+    if today is None:
+        today = datetime.date.today()
+    horizon = today + datetime.timedelta(days=within)
+    return assurances_vehicule_de_la_societe(company).filter(
+        date_echeance__lte=horizon,
+    ).order_by('date_echeance', 'id')

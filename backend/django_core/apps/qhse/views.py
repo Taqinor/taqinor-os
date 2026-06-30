@@ -39,9 +39,9 @@ from . import chatter
 from .selectors import (
     capa_en_retard, chantier_peut_cloturer, courbes_iv_for_chantier,
     criticite_summary, document_unique_valide, hold_points_status,
-    iso9001_readiness, photos_controle_par_phase, procedure_qualite_courante,
-    procedure_qualite_versions, procedures_qualite_courantes,
-    satisfaction_moyenne,
+    iso9001_readiness, permis_travail_expirant, photos_controle_par_phase,
+    procedure_qualite_courante, procedure_qualite_versions,
+    procedures_qualite_courantes, satisfaction_moyenne,
 )
 from .services import (
     activer_procedure, calculer_score_audit, calculer_score_notation,
@@ -939,6 +939,31 @@ class PermisTravailViewSet(_QhseBaseViewSet):
         permis.statut = PermisTravail.Statut.CLOTURE
         permis.save(update_fields=['statut'])
         return Response(self.get_serializer(permis).data)
+
+    @action(detail=False, methods=['get'])
+    def expirant(self, request):
+        """Permis de travail qui expirent bientôt ou sont déjà expirés (QHSE25).
+
+        Alerte de renouvellement / clôture : ``?expire_within=N`` (défaut 30)
+        fixe la fenêtre en jours ; ``?inclure_expires=0`` ne garde que les
+        échéances encore à venir (par défaut on inclut aussi les permis dont la
+        fin de validité — ``date_fin`` — est déjà passée, qui sont précisément
+        ceux à solder). Les permis clôturés et ceux sans ``date_fin`` sont
+        exclus. S'appuie sur ``selectors.permis_travail_expirant`` — scopé
+        société.
+        """
+        within = request.query_params.get('expire_within', 30)
+        inclure = request.query_params.get('inclure_expires') \
+            not in ('0', 'false', 'False')
+        qs = permis_travail_expirant(
+            request.user.company, within_days=within,
+            inclure_expires=inclure)
+        page = self.paginate_queryset(qs)
+        if page is not None:
+            serializer = self.get_serializer(page, many=True)
+            return self.get_paginated_response(serializer.data)
+        serializer = self.get_serializer(qs, many=True)
+        return Response(serializer.data)
 
 
 class ConsignationLotoViewSet(_QhseBaseViewSet):

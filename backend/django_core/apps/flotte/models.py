@@ -1570,3 +1570,139 @@ class BaremeVignette(models.Model):
         return (f'TSAV {self.get_energie_display()} '
                 f'{self.cv_min}-{self.cv_max} CV : {self.montant} MAD '
                 f'({self.annee or "générique"})')
+
+
+# ── FLOTTE21 — Police d'assurance auto (police/échéance/attestation/franchise) ─
+
+class AssuranceVehicule(models.Model):
+    """Police d'assurance d'un actif de flotte (FLOTTE21).
+
+    Modèle DÉDIÉ au CONTRAT d'assurance auto : il porte les détails propres à
+    la police que l'``EcheanceReglementaire`` GÉNÉRIQUE (FLOTTE19) ne capture
+    pas — ``numero_police``, ``assureur``, période de couverture
+    (``date_debut`` → ``date_echeance``), ``franchise`` (montant à charge de
+    l'assuré en cas de sinistre) et l'``attestation`` (document scanné).
+
+    **Complémentaire, jamais doublon de FLOTTE19** :
+    ``EcheanceReglementaire`` (type ``assurance``) suit UNE date limite
+    administrative de façon générique (visite technique, vignette, assurance…),
+    sans numéro de police, assureur, franchise ni attestation. Ce modèle stocke
+    le CONTRAT lui-même. Les deux familles ne se confondent jamais : l'échéance
+    réglementaire reste le suivi calendaire transverse, l'assurance porte le
+    détail du contrat.
+
+    **Statut** : ``statut_calcule(today)`` recalcule l'état réel de la couverture
+    vs une date (``expiree`` si ``date_echeance`` est passée, ``a_renouveler`` si
+    elle tombe dans la fenêtre ``alerte_jours``, sinon ``valide``). La date est
+    injectable (lecture seule, ne change rien en base).
+
+    **Multi-tenant** : ``company`` est posée côté serveur (jamais lue du corps de
+    requête). L'actif lié (``actif_flotte``, véhicule OU engin) doit appartenir à
+    la MÊME société (validé dans ``clean`` et au sérialiseur).
+    """
+
+    class Statut(models.TextChoices):
+        VALIDE = 'valide', 'Valide'
+        A_RENOUVELER = 'a_renouveler', 'À renouveler'
+        EXPIREE = 'expiree', 'Expirée'
+
+    # Marge d'alerte par défaut (jours avant l'échéance → « à renouveler »).
+    ALERTE_JOURS_DEFAUT = 30
+
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='flotte_assurances_vehicule',
+        verbose_name='Société',
+    )
+    actif_flotte = models.ForeignKey(
+        'ActifFlotte',
+        on_delete=models.CASCADE,
+        related_name='flotte_assurances_vehicule',
+        verbose_name='Actif (véhicule ou engin)',
+    )
+    assureur = models.CharField(
+        max_length=120, verbose_name='Assureur / Compagnie')
+    numero_police = models.CharField(
+        max_length=80, verbose_name='Numéro de police')
+    date_debut = models.DateField(
+        null=True, blank=True, verbose_name='Début de couverture')
+    date_echeance = models.DateField(verbose_name="Date d'échéance")
+    franchise = models.DecimalField(
+        max_digits=12, decimal_places=2, default=0,
+        verbose_name='Franchise (MAD)')
+    # Attestation d'assurance scannée — stockée via le storage projet (même
+    # convention que ``compta.NoteFrais.justificatif``).
+    attestation = models.FileField(
+        upload_to='flotte/assurances/attestations/%Y/%m/',
+        blank=True, null=True, verbose_name="Attestation d'assurance")
+    # Marge d'alerte (jours) : si l'échéance tombe dans cette fenêtre, la police
+    # passe « à renouveler ». 'a_renouveler' (12) est le plus long code de statut.
+    alerte_jours = models.PositiveIntegerField(
+        default=ALERTE_JOURS_DEFAUT, verbose_name="Marge d'alerte (jours)")
+    statut = models.CharField(
+        max_length=12, choices=Statut.choices, default=Statut.VALIDE,
+        verbose_name='Statut')
+    notes = models.TextField(blank=True, verbose_name='Notes')
+    date_creation = models.DateTimeField(
+        auto_now_add=True, verbose_name='Créé le')
+
+    class Meta:
+        verbose_name = "Police d'assurance"
+        verbose_name_plural = "Polices d'assurance"
+        ordering = ['date_echeance', 'id']
+        indexes = [
+            models.Index(
+                fields=['company', 'statut'],
+                name='flotte_assur_co_stat_idx',
+            ),
+            models.Index(
+                fields=['company', 'actif_flotte'],
+                name='flotte_assur_co_actif_idx',
+            ),
+            models.Index(
+                fields=['company', 'date_echeance'],
+                name='flotte_assur_co_date_idx',
+            ),
+        ]
+
+    def clean(self):
+        """Valide l'appartenance société de l'actif, la cohérence des dates et
+        la franchise."""
+        if self.actif_flotte_id is not None \
+                and self.actif_flotte.company_id != self.company_id:
+            raise ValidationError(
+                "L'actif n'appartient pas à la même société.")
+        if self.date_echeance is not None \
+                and self.date_debut is not None \
+                and self.date_echeance < self.date_debut:
+            raise ValidationError(
+                "La date d'échéance ne peut pas précéder le début de "
+                "couverture.")
+        if self.franchise is not None and self.franchise < 0:
+            raise ValidationError(
+                "La franchise ne peut pas être négative.")
+
+    def statut_calcule(self, today=None):
+        """État RÉEL de la couverture vs ``today`` (lecture seule, date injectable).
+
+        Retourne ``'expiree'`` si la date d'échéance est déjà passée,
+        ``'a_renouveler'`` si elle tombe dans les ``alerte_jours`` prochains
+        jours (inclusif), sinon ``'valide'``. ``today`` défaut = date du jour.
+        """
+        if today is None:
+            today = datetime.date.today()
+        if self.date_echeance is None:
+            return self.Statut.VALIDE
+        if self.date_echeance < today:
+            return self.Statut.EXPIREE
+        marge = self.alerte_jours \
+            if self.alerte_jours is not None else self.ALERTE_JOURS_DEFAUT
+        horizon = today + datetime.timedelta(days=marge)
+        if self.date_echeance <= horizon:
+            return self.Statut.A_RENOUVELER
+        return self.Statut.VALIDE
+
+    def __str__(self):
+        return (f'Assurance {self.assureur} n°{self.numero_police} — '
+                f'{self.actif_flotte} ({self.date_echeance})')

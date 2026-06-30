@@ -9,6 +9,7 @@ from rest_framework import serializers
 from .models import (
     ActifFlotte,
     AffectationConducteur,
+    AssuranceVehicule,
     BaremeVignette,
     CarteCarburant,
     Conducteur,
@@ -1098,4 +1099,73 @@ class BaremeVignetteSerializer(serializers.ModelSerializer):
         if cv_min is not None and cv_max is not None and cv_min > cv_max:
             raise serializers.ValidationError(
                 {'cv_min': "Le CV min ne peut pas dépasser le CV max."})
+        return attrs
+
+
+class AssuranceVehiculeSerializer(serializers.ModelSerializer):
+    """FLOTTE21 — Police d'assurance d'un actif de flotte.
+
+    ``company`` est posée côté serveur (jamais lue du corps de requête). L'actif
+    lié (``actif_flotte``) doit appartenir à la société courante. La cohérence
+    des dates (échéance ≥ début de couverture) et la franchise (≥ 0) sont
+    validées.
+
+    Champs lecture seule :
+    - ``actif_label``    : désignation de l'actif (véhicule ou engin).
+    - ``statut_display`` : libellé du statut stocké.
+    - ``statut_calcule`` : état RÉEL vs la date du jour
+      (``valide`` | ``a_renouveler`` | ``expiree``), calculé côté modèle.
+    """
+
+    actif_label = serializers.SerializerMethodField()
+    statut_display = serializers.CharField(
+        source='get_statut_display', read_only=True)
+    statut_calcule = serializers.SerializerMethodField()
+
+    class Meta:
+        model = AssuranceVehicule
+        fields = [
+            'id', 'actif_flotte', 'actif_label', 'assureur', 'numero_police',
+            'date_debut', 'date_echeance', 'franchise', 'attestation',
+            'alerte_jours', 'statut', 'statut_display', 'statut_calcule',
+            'notes', 'date_creation',
+        ]
+        read_only_fields = ['date_creation']
+
+    def get_actif_label(self, obj):
+        return obj.actif_flotte.label if obj.actif_flotte_id else None
+
+    def get_statut_calcule(self, obj):
+        return obj.statut_calcule()
+
+    def validate_franchise(self, value):
+        if value is not None and value < 0:
+            raise serializers.ValidationError(
+                "La franchise ne peut pas être négative.")
+        return value
+
+    def validate(self, attrs):
+        request = self.context.get('request')
+        company = getattr(getattr(request, 'user', None), 'company', None)
+
+        actif_flotte = attrs.get(
+            'actif_flotte', getattr(self.instance, 'actif_flotte', None))
+        date_echeance = attrs.get(
+            'date_echeance', getattr(self.instance, 'date_echeance', None))
+        date_debut = attrs.get(
+            'date_debut', getattr(self.instance, 'date_debut', None))
+
+        if company is not None and actif_flotte is not None \
+                and actif_flotte.company_id != company.id:
+            raise serializers.ValidationError(
+                {'actif_flotte':
+                 "Cet actif n'appartient pas à votre société."})
+
+        if date_echeance is not None and date_debut is not None \
+                and date_echeance < date_debut:
+            raise serializers.ValidationError(
+                {'date_echeance':
+                 "La date d'échéance ne peut pas précéder le début de "
+                 "couverture."})
+
         return attrs

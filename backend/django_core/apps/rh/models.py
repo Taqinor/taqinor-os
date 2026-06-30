@@ -2143,3 +2143,135 @@ class PresquAccident(models.Model):
 
     def __str__(self):
         return f'{self.reference} ({self.gravite_potentielle})'
+
+
+class CauserieSecurite(models.Model):
+    """Causerie sécurité / toolbox talk (FG183) — le « quart d'heure sécurité ».
+
+    Matérialise un BRIEFING SÉCURITÉ court tenu AVANT le démarrage d'un chantier
+    (le « quart d'heure sécurité » / toolbox talk) : on rappelle un THÈME précis
+    (port du harnais, consignation électrique, gestes et postures…) à l'équipe
+    qui va intervenir. C'est une pierre angulaire de la prévention au quotidien
+    et une pièce traçable : en cas de contrôle CNSS / inspection du travail ou
+    après un accident, l'employeur prouve par l'émargement que l'équipe a bien
+    été sensibilisée au risque ce jour-là.
+
+    On capture l'essentiel : le THÈME (``theme``), la DATE (``date_causerie``),
+    le CHANTIER concerné (``chantier_id`` — référence chaîne optionnelle vers un
+    chantier d'une autre app, PAS de FK inter-app), l'ANIMATEUR qui a mené la
+    causerie (``animateur`` → ``DossierEmploye``, même société) et un ``lieu`` /
+    des ``notes`` libres. La liste des participants et leur émargement vit dans
+    le modèle enfant ``CauserieParticipant``.
+
+    Multi-société : ``company`` est posée CÔTÉ SERVEUR (jamais lue du corps de
+    requête) ; ``animateur`` doit appartenir à la même société.
+
+    RUNTIME-SAFETY (leçon FG136) : ``theme`` / ``lieu`` / ``chantier_id``
+    plafonnés ; les ``notes``, potentiellement longues, sont un ``TextField``
+    (aucune limite à dépasser). Entièrement additif.
+    """
+
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='rh_causeries_securite',
+        verbose_name='Société',
+    )
+    theme = models.CharField(max_length=255, verbose_name='Thème')
+    date_causerie = models.DateField(verbose_name='Date')
+    # Référence chaîne optionnelle vers un chantier d'une autre app (pas de FK
+    # inter-app) — saisie terrain libre.
+    chantier_id = models.CharField(
+        max_length=64, blank=True, default='',
+        verbose_name='Chantier (référence)')
+    # L'employé qui a animé la causerie (même société).
+    animateur = models.ForeignKey(
+        DossierEmploye,
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='rh_causeries_animees',
+        verbose_name='Animateur',
+    )
+    lieu = models.CharField(
+        max_length=255, blank=True, default='', verbose_name='Lieu')
+    notes = models.TextField(
+        blank=True, default='', verbose_name='Notes')
+    date_creation = models.DateTimeField(
+        auto_now_add=True, verbose_name='Créé le')
+    date_modification = models.DateTimeField(
+        auto_now=True, verbose_name='Modifié le')
+
+    class Meta:
+        verbose_name = 'Causerie sécurité'
+        verbose_name_plural = 'Causeries sécurité'
+        ordering = ['-date_causerie', '-date_creation']
+        indexes = [
+            models.Index(
+                fields=['company', 'date_causerie'],
+                name='rh_causerie_comp_date_idx'),
+        ]
+
+    def __str__(self):
+        return f'{self.theme} ({self.date_causerie})'
+
+
+class CauserieParticipant(models.Model):
+    """Participant + émargement d'une causerie sécurité (FG183).
+
+    Une ligne par personne PRÉSENTE à la causerie (``causerie`` → parent) avec
+    son émargement individuel : ``present`` (a-t-elle assisté), ``emarge`` (a-t-
+    elle signé l'accusé de présence) + ``emarge_le`` (horodatage posé CÔTÉ
+    SERVEUR via l'action ``emarger``). Le participant est un ``DossierEmploye``
+    de la même société.
+
+    L'émargement matérialise l'accusé : « j'ai bien reçu le briefing sécurité du
+    jour ». Posé via l'action dédiée, jamais déduit du corps brut.
+
+    Multi-société : ``company`` est posée CÔTÉ SERVEUR (jamais lue du corps),
+    celle de la causerie ; ``participant`` doit appartenir à la même société.
+    Additif.
+    """
+
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='rh_causerie_participants',
+        verbose_name='Société',
+    )
+    causerie = models.ForeignKey(
+        CauserieSecurite,
+        on_delete=models.CASCADE,
+        related_name='participants',
+        verbose_name='Causerie',
+    )
+    participant = models.ForeignKey(
+        DossierEmploye,
+        on_delete=models.CASCADE,
+        related_name='rh_causerie_participations',
+        verbose_name='Participant',
+    )
+    present = models.BooleanField(default=True, verbose_name='Présent')
+    # Émargement : signature/confirmation de présence (posée via l'action).
+    emarge = models.BooleanField(default=False, verbose_name='Émargé')
+    emarge_le = models.DateTimeField(
+        null=True, blank=True, verbose_name='Émargé le')
+    date_creation = models.DateTimeField(
+        auto_now_add=True, verbose_name='Créé le')
+
+    class Meta:
+        verbose_name = 'Participant causerie'
+        verbose_name_plural = 'Participants causerie'
+        ordering = ['id']
+        constraints = [
+            models.UniqueConstraint(
+                fields=['causerie', 'participant'],
+                name='rh_causerie_part_unique'),
+        ]
+        indexes = [
+            models.Index(
+                fields=['company', 'causerie'],
+                name='rh_causpart_comp_caus_idx'),
+        ]
+
+    def __str__(self):
+        return f'{self.participant_id} @ {self.causerie_id}'

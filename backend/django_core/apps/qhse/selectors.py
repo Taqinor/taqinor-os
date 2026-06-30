@@ -24,8 +24,8 @@ from django.db.models import Avg
 
 from .models import (
     ActionCorrectivePreventive, Audit, EvaluationRisque, NonConformite,
-    NotationFinChantier, PlanInspectionChantier, ProcedureQualite,
-    ReleveControle, ReleveCourbeIV, RetourClientQualite,
+    NotationFinChantier, PermisTravail, PlanInspectionChantier,
+    ProcedureQualite, ReleveControle, ReleveCourbeIV, RetourClientQualite,
 )
 
 
@@ -197,6 +197,57 @@ def capa_en_retard(company, today=None):
                     statut__in=STATUTS_CAPA_OUVERTS)
             .select_related('non_conformite', 'responsable')
             .order_by('echeance', 'id'))
+
+
+# ── QHSE25 — Alerte d'expiration des permis de travail ─────────────────────
+
+# Statuts de permis considérés comme NON résolus pour l'alerte d'expiration :
+# un permis CLÔTURÉ a déjà été soldé (travail terminé) et n'a plus à être
+# renouvelé ni signalé. On garde brouillon / validé / expiré, car un permis
+# expiré est précisément ce qui doit alerter pour clôture ou renouvellement.
+STATUTS_PERMIS_ALERTABLES = (
+    PermisTravail.Statut.BROUILLON,
+    PermisTravail.Statut.VALIDE,
+    PermisTravail.Statut.EXPIRE,
+)
+
+
+def permis_travail_expirant(company, within_days=30, inclure_expires=True):
+    """Permis de travail (QHSE25) qui expirent bientôt ou sont déjà expirés.
+
+    Lecture cadrée société : retient les permis NON clôturés (brouillon /
+    validé / expiré) dont la ``date_fin`` (fin de validité) est renseignée et
+    tombe au plus tard dans ``within_days`` jours (aujourd'hui + ``within_days``
+    inclus). Par défaut ``inclure_expires`` est vrai : les permis dont la fenêtre
+    de validité est déjà passée (``date_fin`` < aujourd'hui) sont également
+    renvoyés, car un permis périmé est exactement ce qui doit alerter pour être
+    clôturé ou renouvelé ; passer ``inclure_expires=False`` ne garde que les
+    échéances encore à venir dans la fenêtre. Les permis sans ``date_fin`` ou
+    déjà clôturés sont exclus. Toujours scopé société (jamais lu du corps de
+    requête) ; trié par échéance la plus proche d'abord.
+    """
+    from django.utils import timezone
+    from datetime import timedelta
+
+    if company is None:
+        return PermisTravail.objects.none()
+    try:
+        within_days = int(within_days)
+    except (TypeError, ValueError):
+        within_days = 30
+    if within_days < 0:
+        within_days = 0
+    today = timezone.localdate()
+    limite = today + timedelta(days=within_days)
+    qs = PermisTravail.objects.filter(
+        company=company,
+        statut__in=STATUTS_PERMIS_ALERTABLES,
+        date_fin__isnull=False,
+        date_fin__lte=limite,
+    )
+    if not inclure_expires:
+        qs = qs.filter(date_fin__gte=today)
+    return qs.order_by('date_fin', 'id')
 
 
 # ── QHSE17 — Gate de clôture (grille de notation fin de chantier) ───────────

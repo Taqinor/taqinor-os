@@ -568,7 +568,7 @@ first run that ticks any `FG*` task refreshes CODEMAP §10 + `--write` in that c
 - [x] FG180 — **Émargement de remise EPI (signature)** — accusé signé prouvant la dotation (exigible CNSS/accident). (ROUTINE)
 - [x] FG181 — **Registre HSE & accidents du travail** — déclaration (date/lieu/blessé/gravité/arrêt/photos) + export déclaration CNSS. (SCHEMA)
 - [x] FG182 — **Presqu'accidents (near-miss)** — saisie rapide terrain pour pilotage proactif. (ROUTINE)
-- [ ] FG183 — **Causeries sécurité / toolbox talks** — quart d'heure sécurité avant chantier (thème/participants/émargement). (SCHEMA)
+- [x] FG183 — **Causeries sécurité / toolbox talks** — quart d'heure sécurité avant chantier (thème/participants/émargement). (SCHEMA)
 - [ ] FG184 — **Analyse de risques chantier (plan de prévention)** — évaluation des risques par chantier avant démarrage (≠ checklist F18 par intervention). (SCHEMA)
 - [ ] FG185 — **Tableau de bord HSE** — taux fréquence/gravité, EPI/habilitations/visites en alerte, incidents par chantier. (ROUTINE)
 - [ ] FG186 — **Permis de travail (hauteur/électrique/consignation)** — délivrance/clôture par tâche à risque, trace la consignation avant intervention. (SCHEMA)
@@ -999,7 +999,7 @@ these overlap and SUPERSEDE the domain-list FG items as the module-organized hom
 - [x] FLOTTE18 — Pneumatiques & pièces. (SCHEMA)
 - [x] FLOTTE19 — `EcheanceReglementaire` (modèle générique). (SCHEMA)
 - [x] FLOTTE20 — Vignette / TSAV (barème CV/énergie, référentiel éditable). (ROUTINE)
-- [ ] FLOTTE21 — Assurance auto (police/échéance/attestation/franchise). (ROUTINE)
+- [x] FLOTTE21 — Assurance auto (police/échéance/attestation/franchise). (ROUTINE)
 - [ ] FLOTTE22 — Visite technique (validité paramétrable). (ROUTINE)
 - [ ] FLOTTE23 — Carte grise & autorisation de circulation (GED). (SCHEMA)
 - [ ] FLOTTE24 — Moteur d'alertes d'échéances réglementaires (J-30/15/7/échu). (ROUTINE)
@@ -1041,7 +1041,7 @@ these overlap and SUPERSEDE the domain-list FG items as the module-organized hom
 - [x] QHSE22 — Document unique requis avant pose (gate statut chantier). (DECISION)
 - [x] QHSE23 — `PermisTravail` (hauteur/élec-consignation/point chaud). (SCHEMA)
 - [x] QHSE24 — Consignation électrique (LOTO) sur permis électrique. (ROUTINE)
-- [ ] QHSE25 — Alerte expiration de permis. (ROUTINE)
+- [x] QHSE25 — Alerte expiration de permis. (ROUTINE)
 - [ ] QHSE26 — `InductionSecurite` (accueil sécurité site, incl. sous-traitants). (SCHEMA)
 - [ ] QHSE27 — `CauserieSecurite` (toolbox talks + émargement). (SCHEMA)
 - [ ] QHSE28 — `PlanUrgence` / premiers secours (contacts/secouristes/point de rassemblement). (SCHEMA)
@@ -1078,7 +1078,7 @@ these overlap and SUPERSEDE the domain-list FG items as the module-organized hom
 - [x] CONTRAT16 — `SignatureContrat` (point e-sign + statut signé). (DECISION)
 - [x] CONTRAT17 — Transition automatique signé→actif sur signature. (ROUTINE)
 - [x] CONTRAT18 — `VersionContrat` (versionnage immuable des rendus). (SCHEMA)
-- [ ] CONTRAT19 — Dépôt en GED des versions & PDF signés. (ROUTINE)
+- [x] CONTRAT19 — Dépôt en GED des versions & PDF signés. (ROUTINE)
 - [ ] CONTRAT20 — Dates clés (début/fin/préavis) + tacite reconduction. (SCHEMA)
 - [ ] CONTRAT21 — Calcul des échéances & contrats « à renouveler ». (ROUTINE)
 - [ ] CONTRAT22 — `AlerteContrat` + rappels via notifications. (ROUTINE)
@@ -1706,3 +1706,7 @@ Tracked here so they aren't lost:
 - 2026-06-30 — PROJ22 (apps/gestion_projet): Coûts engagés vs réels — sélecteur `couts_engages_vs_reels` (budget PROJ21 par catégorie vs réel : MO depuis AffectationRessource interne quantizée 2 décimales, matériel/sous-traitance via ProjetLien avec dégradation gracieuse), écart + écart % (division par zéro gardée), endpoint `projets/{id}/couts-engages-reels/`. Aucune migration, 24 tests.
 - 2026-06-30 — GED23 (apps/ged): Archivage légal à valeur probante (write-once) — modèle `ArchivageLegal` (hash SHA-256 d'intégrité, object-lock MinIO best-effort avec dégradation), immuabilité applicative une fois archivé (édition/suppression/nouvelle version/déplacement/cycle-de-vie/check-out/check-in bloqués → 403, jamais 500), aucune dépendance dure ajoutée. Migration ged 0017 additive, 21 tests.
 - 2026-06-30 — FLOTTE20 (apps/flotte): Vignette / TSAV (barème CV/énergie) — modèle `BaremeVignette` (référentiel éditable par société : énergie × tranche CV → montant, par année) + `Vehicule.puissance_fiscale`, sélecteur `calcul_tsav` (électrique exonéré, pas de tranche → None), seed idempotent du barème marocain standard. Migration flotte 0018 additive, 30 tests.
+- 2026-06-30 — FG183 (apps/rh): Causeries sécurité / toolbox talks — modèles `CauserieSecurite` (thème, chantier en string-ref façon PresquAccident, animateur, lieu/notes) + `CauserieParticipant` (présent/émargé + horodatage, unique causerie+participant), viewset société-scopé avec action `emarger`, sérialiseur à participants imbriqués. Migration rh 0023 additive, 14 tests.
+- 2026-06-30 — FLOTTE21 (apps/flotte): Assurance véhicule (police/échéance/attestation/franchise) — modèle dédié `AssuranceVehicule` (assureur, numéro de police, période de couverture, franchise MAD, attestation scannée), complémentaire de `EcheanceReglementaire` (jamais doublon), `statut_calcule(today)` valide/à-renouveler/expirée, action `expirantes/?within=N`, sélecteurs société-scopés. Migration flotte 0019 additive, 20 tests.
+- 2026-06-30 — QHSE25 (apps/qhse): Alerte expiration de permis de travail — sélecteur `permis_travail_expirant(company, within_days, inclure_expires)` (non clôturés dont `date_fin` tombe dans la fenêtre ou déjà périmés, société-scopé) + action `permis-travail/expirant/?expire_within=N&inclure_expires=`. Aucune migration (réutilise `PermisTravail.date_fin`), 14 tests.
+- 2026-06-30 — CONTRAT19 (apps/contrats): Dépôt en GED des versions & PDF signés — chaque `VersionContrat` créée (y compris l'instantané figé à la signature) atterrit dans la GED via `ged.services.deposit_document` (frontière cross-app, jamais d'import des modèles GED), idempotent (trace `source_type/source_id` dans `custom_data`, pas de doublon), best-effort (un échec GED ne casse jamais la création de version). Aucune migration (réutilise les modèles GED), 8 tests.

@@ -11,7 +11,7 @@ from django.contrib.postgres.search import SearchVector
 from django.db import transaction
 from django.db.models import Value
 
-from .models import Document, DocumentVersion, Folder
+from .models import Cabinet, Document, DocumentVersion, Folder
 
 
 def update_search_vector(document):
@@ -395,13 +395,173 @@ def find_duplicate(company, checksum):
             .first())
 
 
-def create_document(*, company, folder, nom, description='', created_by=None):
-    """Crée un document dans un dossier (société cohérente avec le dossier)."""
+def create_document(*, company, folder, nom, description='', created_by=None,
+                    custom_data=None):
+    """Crée un document dans un dossier (société cohérente avec le dossier).
+
+    `custom_data` (optionnel) permet de poser des métadonnées typées dès la
+    création (ex. la trace de l'objet métier source pour un dépôt cross-app) —
+    posées côté serveur, jamais lues d'un corps de requête.
+    """
     if folder.company_id != getattr(company, 'id', company):
         raise ValueError("Le dossier doit appartenir à la même société.")
     return Document.objects.create(
         company=company, folder=folder, nom=nom,
-        description=description, created_by=created_by)
+        description=description, created_by=created_by,
+        custom_data=custom_data if custom_data is not None else dict())
+
+
+# ── Dépôt cross-app : enregistrer un fichier/des octets existants en GED ─────
+
+# Clés réservées dans `Document.custom_data` qui tracent l'objet métier source
+# d'un document déposé par une AUTRE app (ex. contrats). Sert d'ancre
+# d'idempotence : un dépôt répété pour le même objet source retrouve le document
+# déjà créé au lieu d'en dupliquer un. Ces clés vivent dans le JSONField additif
+# `custom_data` — on n'invente aucun nouveau schéma de FK.
+SOURCE_TYPE_KEY = 'source_type'
+SOURCE_ID_KEY = 'source_id'
+
+
+def ensure_cabinet(company, nom):
+    """Retourne (ou crée) le cabinet `nom` d'une société (idempotent).
+
+    Sert l'auto-provisionnement d'un espace documentaire pour un dépôt cross-app
+    (ex. un cabinet « Contrats »). La société est posée côté serveur."""
+    cabinet, _ = Cabinet.objects.get_or_create(company=company, nom=nom)
+    return cabinet
+
+
+def ensure_root_folder(company, *, cabinet, nom):
+    """Retourne (ou crée) un dossier racine `nom` d'un cabinet (idempotent).
+
+    Cherche un dossier RACINE (sans parent) de ce nom dans le cabinet ; sinon le
+    crée. Société/cabinet posés côté serveur. Sert l'auto-provisionnement d'un
+    dossier de classement pour un dépôt cross-app."""
+    folder = Folder.objects.filter(
+        company=company, cabinet=cabinet, parent__isnull=True, nom=nom
+    ).first()
+    if folder is None:
+        folder = Folder.objects.create(
+            company=company, cabinet=cabinet, nom=nom)
+    return folder
+
+
+def find_document_by_source(company, *, source_type, source_id):
+    """Document déjà déposé pour cet objet métier source (idempotence), ou None.
+
+    Borné à la société et résolu DEPUIS la trace `custom_data` (`source_type` +
+    `source_id`) — jamais d'un corps de requête. Permet à un appelant cross-app
+    de ne pas re-déposer (dédupliquer) le même objet source."""
+    if source_type is None or source_id is None:
+        return None
+    return (Document.objects
+            .filter(company=company,
+                    custom_data__contains={
+                        SOURCE_TYPE_KEY: source_type,
+                        SOURCE_ID_KEY: source_id,
+                    })
+            .order_by('id')
+            .first())
+
+
+def _store_bytes(data, *, mime='application/pdf'):
+    """Téléverse des octets bruts dans le stockage objet et renvoie (clé, méta).
+
+    RÉUTILISE les conventions de `records.storage` (bucket
+    `settings.MINIO_BUCKET_UPLOADS`, clé `attachments/<uuid>.<ext>`,
+    `ensure_uploads_bucket`) — on ne réimplémente PAS de couche de stockage, on
+    reprend exactement le même client MinIO partagé. Import paresseux pour rester
+    import-safe (CI/dev sans MinIO) et éviter tout cycle d'import.
+
+    Renvoie `(file_key, {'filename', 'size', 'mime'})`.
+    """
+    import io
+    import uuid
+
+    from django.conf import settings
+
+    from apps.ventes.utils.minio_client import (
+        ensure_uploads_bucket, get_minio_client,
+    )
+
+    ext = 'pdf' if 'pdf' in (mime or '') else 'bin'
+    key = f'attachments/{uuid.uuid4().hex}.{ext}'
+    client = get_minio_client()
+    ensure_uploads_bucket()
+    client.upload_fileobj(
+        io.BytesIO(data), settings.MINIO_BUCKET_UPLOADS, key,
+        ExtraArgs={'ContentType': mime or 'application/octet-stream'})
+    return key, {'filename': f'{key.rsplit("/", 1)[-1]}',
+                 'size': len(data), 'mime': mime or ''}
+
+
+def deposit_document(*, company, nom, source_type, source_id,
+                     file_key='', filename='', size=0, mime='', checksum='',
+                     contenu_bytes=None, description='', cabinet_nom='Contrats',
+                     folder_nom='Contrats', created_by=None):
+    """Enregistre un fichier/des octets EXISTANTS comme document GED (cross-app).
+
+    Point d'entrée d'ÉCRITURE pour qu'une AUTRE app (ex. `contrats`) dépose un
+    document déjà produit (un PDF signé, un instantané de version…) dans le
+    référentiel central, SANS importer les modèles GED. On RÉUTILISE les
+    primitives existantes (`create_document`, `add_version`) et les conventions
+    de stockage `records.storage` — on ne réimplémente ni le stockage ni le
+    versionnage.
+
+    Multi-tenant : `company` est posée CÔTÉ SERVEUR par l'appelant (jamais lue
+    d'un corps de requête) ; le cabinet, le dossier, le document et sa version
+    héritent tous de cette société.
+
+    Source du contenu (au moins l'un) :
+      - `file_key` : la clé d'un objet déjà stocké en MinIO (records.storage).
+      - `contenu_bytes` : des octets bruts téléversés ici via `_store_bytes`
+        (mêmes conventions de stockage objet que `records.storage` : bucket
+        erp-uploads, clé `attachments/<uuid>.ext`). Utilisé quand l'appelant
+        n'a qu'un rendu en mémoire (ex. un PDF de contrat).
+      Si AUCUN n'est fourni, le document est tout de même créé avec une version
+      « pointeur vide » (file_key='') — utile pour tracer un instantané textuel
+      dont seul le contenu vit dans l'app source.
+
+    IDEMPOTENCE : `source_type`/`source_id` identifient l'objet métier source
+    (ex. 'contrats.versioncontrat' + pk). Un dépôt répété pour le MÊME objet
+    source ne crée JAMAIS un second document : on retrouve et on renvoie le
+    document déjà déposé (pas de doublon GED).
+
+    Renvoie `(document, created)` : le `Document` GED et un booléen indiquant
+    s'il vient d'être créé (False = déjà présent, dépôt idempotent).
+    """
+    # Idempotence : déjà déposé pour cet objet source ? On renvoie l'existant.
+    existant = find_document_by_source(
+        company, source_type=source_type, source_id=source_id)
+    if existant is not None:
+        return existant, False
+
+    # Si l'appelant fournit des octets bruts (sans clé), on les stocke via le
+    # MÊME stockage objet que `records.storage` (bucket erp-uploads, clé
+    # `attachments/<uuid>.ext`) — on RÉUTILISE les conventions de stockage sans
+    # réimplémenter de couche. Import paresseux pour rester import-safe sans
+    # MinIO et éviter tout cycle.
+    if not file_key and contenu_bytes is not None:
+        file_key, store_meta = _store_bytes(
+            contenu_bytes, mime=mime or 'application/pdf')
+        filename = filename or store_meta.get('filename', '')
+        size = size or store_meta.get('size', 0)
+        mime = mime or store_meta.get('mime', '')
+        checksum = checksum or compute_checksum(contenu_bytes)
+
+    cabinet = ensure_cabinet(company, cabinet_nom)
+    folder = ensure_root_folder(company, cabinet=cabinet, nom=folder_nom)
+    document = create_document(
+        company=company, folder=folder, nom=nom, description=description,
+        created_by=created_by,
+        custom_data={SOURCE_TYPE_KEY: source_type, SOURCE_ID_KEY: source_id})
+    # Première version : pointe vers le binaire (ou un pointeur vide si l'app
+    # source ne gère qu'un contenu textuel). Numéro auto (add_version, max+1).
+    add_version(
+        document, file_key=file_key or '', company=company,
+        filename=filename or '', size=size or 0, mime=mime or '',
+        checksum=checksum or '', uploaded_by=created_by)
+    return document, True
 
 
 # ── GED16 — Check-out / check-in (verrouillage optimiste) ──────────
