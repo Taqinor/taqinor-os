@@ -11,7 +11,7 @@ from .models import (
     ConsignationLoto, ContactUrgence,
     CritereAudit, DeclarationCnss, EvaluationRisque, GrilleAudit,
     InductionSecurite,
-    Incident,
+    Incident, InspectionSecurite,
     ItemNotation, LigneEvaluationRisque, NonConformite, NotationFinChantier,
     PermisTravail, PlanInspectionChantier, PlanInspectionModele, PlanUrgence,
     PointControleModele, ProcedureQualite, QhseChatterEntry, ReleveControle,
@@ -774,3 +774,28 @@ class DeclarationCnssSerializer(serializers.ModelSerializer):
         l'instance résolue par DRF, sans importer ``rh.models``.
         """
         return _meme_societe(self, value, 'Accident du travail')
+
+
+class InspectionSecuriteSerializer(serializers.ModelSerializer):
+    """Inspection sécurité planifiée → NCR (QHSE33).
+
+    ``company``/``inspecteur``/``reference``/``ncr`` sont posés côté serveur
+    (jamais lus du corps). Le rattachement au chantier reste une référence lâche
+    (``chantier_id``).
+    """
+    statut_display = serializers.CharField(
+        source='get_statut_display', read_only=True)
+    resultat_display = serializers.CharField(
+        source='get_resultat_display', read_only=True)
+
+    class Meta:
+        model = InspectionSecurite
+        fields = [
+            'id', 'reference', 'titre', 'statut', 'statut_display',
+            'resultat', 'resultat_display', 'chantier_id', 'date_prevue',
+            'date_realisee', 'inspecteur', 'observations', 'ncr',
+            'date_creation',
+        ]
+        read_only_fields = [
+            'reference', 'inspecteur', 'ncr', 'date_creation',
+        ]

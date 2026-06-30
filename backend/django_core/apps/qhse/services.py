@@ -529,3 +529,42 @@ def generer_capa_depuis_analyse(analyse, *, description=None,
         echeance=echeance,
     )
     return capa
+
+
+# ── QHSE33 — Inspection sécurité planifiée → NCR ───────────────────────────
+
+@transaction.atomic
+def lever_ncr_inspection(inspection, gravite=None, signale_par=None):
+    """Lève une non-conformité (NCR) depuis une inspection sécurité (QHSE33).
+
+    Conditionnée à un résultat NON CONFORME : une inspection conforme ou en
+    attente ne lève pas de NCR (``ValueError``). Idempotent : une seule NCR par
+    inspection — ré-appelée, elle renvoie ``(ncr, False)``. La NCR garde la
+    référence lâche au chantier (``chantier_id``) et reprend les observations
+    comme description. ``company``/``signale_par`` posés côté serveur.
+
+    Renvoie ``(ncr, created)``.
+    """
+    from .models import InspectionSecurite, NonConformite
+
+    if inspection.resultat != InspectionSecurite.Resultat.NON_CONFORME:
+        raise ValueError(
+            'Seule une inspection NON CONFORME peut lever une NCR.')
+
+    if inspection.ncr_id is not None:
+        return inspection.ncr, False
+
+    company = inspection.company
+    titre = f'Inspection sécurité — {inspection.titre}'[:255]
+    ncr = NonConformite.objects.create(
+        company=company,
+        titre=titre,
+        description=inspection.observations or '',
+        origine='Inspection sécurité',
+        gravite=gravite or NonConformite.Gravite.MINEURE,
+        chantier_id=inspection.chantier_id,
+        signale_par=signale_par,
+    )
+    inspection.ncr = ncr
+    inspection.save(update_fields=['ncr'])
+    return ncr, True

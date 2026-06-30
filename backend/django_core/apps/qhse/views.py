@@ -19,7 +19,7 @@ from .models import (
     ActionCorrectivePreventive, AnalyseIncident, Audit, CauseIncident,
     ConsignationLoto, ContactUrgence,
     CritereAudit, DeclarationCnss, EvaluationRisque, GrilleAudit, Incident,
-    InductionSecurite,
+    InductionSecurite, InspectionSecurite,
     ItemNotation, LigneEvaluationRisque, NonConformite, NotationFinChantier,
     PermisTravail, PlanInspectionChantier, PlanInspectionModele, PlanUrgence,
     PointControleModele, ProcedureQualite, QhseChatterEntry, ReleveControle,
@@ -32,7 +32,8 @@ from .serializers import (
     CritereAuditSerializer, DeclarationCnssSerializer,
     EvaluationRisqueSerializer, GrilleAuditSerializer,
     IncidentSerializer,
-    InductionSecuriteSerializer, ItemNotationSerializer,
+    InductionSecuriteSerializer, InspectionSecuriteSerializer,
+    ItemNotationSerializer,
     LigneEvaluationRisqueSerializer,
     NonConformiteSerializer, NotationFinChantierSerializer,
     PermisTravailSerializer, PlanInspectionChantierSerializer,
@@ -56,7 +57,8 @@ from .services import (
     activer_procedure, calculer_score_audit, calculer_score_notation,
     cloturer_ncr, creer_ncr_depuis_reserve, generer_capa_depuis_analyse,
     instancier_plan_chantier,
-    lever_ncr_audit, nouvelle_version_procedure, relancer_capa_en_retard,
+    lever_ncr_audit, lever_ncr_inspection, nouvelle_version_procedure,
+    relancer_capa_en_retard,
     verifier_efficacite_capa,
 )
 
@@ -1377,3 +1379,77 @@ class CauseIncidentViewSet(_QhseBaseViewSet):
         if type_cause not in (None, ''):
             qs = qs.filter(type_cause=type_cause)
         return qs
+
+
+class InspectionSecuriteViewSet(_QhseBaseViewSet):
+    """Inspections sécurité planifiées → NCR (QHSE33).
+
+    CRUD scopé société. ``company`` / ``inspecteur`` posés côté serveur (jamais
+    lus du corps). La ``reference`` est attribuée côté serveur via
+    ``create_with_reference`` (plus haut numéro utilisé + 1, race-safe — jamais
+    count()+1). Filtres optionnels : ``?statut=`` / ``?resultat=`` /
+    ``?chantier_id=``. Recherche par référence/titre/observations.
+
+    Action détail ``POST …/<id>/lever-ncr/`` — lève une non-conformité (QHSE9)
+    depuis une inspection NON CONFORME (idempotent : une seule NCR par
+    inspection ; ``gravite`` optionnelle au corps). 400 si l'inspection n'est
+    pas non conforme.
+    """
+    queryset = InspectionSecurite.objects.select_related(
+        'inspecteur', 'ncr').all()
+    serializer_class = InspectionSecuriteSerializer
+    filter_backends = [filters.SearchFilter, filters.OrderingFilter]
+    search_fields = ['reference', 'titre', 'observations']
+    ordering_fields = [
+        'id', 'reference', 'date_prevue', 'date_realisee', 'date_creation']
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        statut = self.request.query_params.get('statut')
+        if statut not in (None, ''):
+            qs = qs.filter(statut=statut)
+        resultat = self.request.query_params.get('resultat')
+        if resultat not in (None, ''):
+            qs = qs.filter(resultat=resultat)
+        chantier_id = self.request.query_params.get('chantier_id')
+        if chantier_id not in (None, ''):
+            qs = qs.filter(chantier_id=chantier_id)
+        return qs
+
+    def perform_create(self, serializer):
+        company = self.request.user.company
+        return create_with_reference(
+            InspectionSecurite, 'INSP', company,
+            lambda reference: serializer.save(
+                company=company,
+                inspecteur=self.request.user,
+                reference=reference),
+        )
+
+    def create(self, request, *args, **kwargs):
+        serializer = self.get_serializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        inspection = self.perform_create(serializer)
+        out = self.get_serializer(inspection)
+        return Response(out.data, status=status.HTTP_201_CREATED)
+
+    @action(detail=True, methods=['post'], url_path='lever-ncr')
+    def lever_ncr(self, request, pk=None):
+        """Lève une NCR depuis une inspection NON CONFORME (QHSE33).
+
+        Idempotent : une seule NCR par inspection. ``gravite`` optionnelle au
+        corps. 400 si l'inspection n'est pas non conforme.
+        """
+        inspection = self.get_object()
+        try:
+            ncr, created = lever_ncr_inspection(
+                inspection,
+                gravite=request.data.get('gravite') or None,
+                signale_par=request.user,
+            )
+        except ValueError as exc:
+            return Response(
+                {'detail': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+        code = status.HTTP_201_CREATED if created else status.HTTP_200_OK
+        from .serializers import NonConformiteSerializer
+        return Response(NonConformiteSerializer(ncr).data, status=code)

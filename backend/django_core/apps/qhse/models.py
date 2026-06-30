@@ -2118,3 +2118,105 @@ class CauseIncident(models.Model):
 
     def __str__(self):
         return f'{self.get_type_cause_display()} — {self.libelle[:40]}'
+
+
+# ── QHSE33 — Inspection sécurité planifiée (→ NCR) ─────────────────────────
+
+class InspectionSecurite(models.Model):
+    """Inspection sécurité planifiée d'un chantier / site (QHSE33).
+
+    Une inspection sécurité (ronde / visite HSE) est PLANIFIÉE à une date
+    (``date_prevue``), réalisée (``date_realisee``) puis conclue ``conforme`` ou
+    ``non_conforme``. Quand l'inspection est jugée non conforme, elle peut
+    LEVER une non-conformité (NCR) via le service ``lever_ncr_inspection``
+    (idempotent : une seule NCR par inspection), lien tracé par ``ncr``.
+
+    Le rattachement au chantier se fait par référence LÂCHE (``chantier_id`` —
+    jamais un import cross-app du modèle ``installations.Chantier``). La NCR
+    générée est intra-app (FK ``qhse.NonConformite``).
+
+    Multi-société via ``company`` posée côté serveur (jamais lue du corps de
+    requête). La ``reference`` est attribuée côté serveur via
+    ``create_with_reference`` (plus haut numéro utilisé + 1, race-safe — jamais
+    count()+1). Entièrement additif.
+    """
+    class Statut(models.TextChoices):
+        PLANIFIEE = 'planifiee', 'Planifiée'
+        REALISEE = 'realisee', 'Réalisée'
+        ANNULEE = 'annulee', 'Annulée'
+
+    class Resultat(models.TextChoices):
+        EN_ATTENTE = 'en_attente', 'En attente'
+        CONFORME = 'conforme', 'Conforme'
+        NON_CONFORME = 'non_conforme', 'Non conforme'
+
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='qhse_inspections_securite',
+        verbose_name='Société',
+    )
+    reference = models.CharField(
+        max_length=50, blank=True, default='', verbose_name='Référence')
+    titre = models.CharField(max_length=255, verbose_name='Titre')
+    statut = models.CharField(
+        max_length=10, choices=Statut.choices,
+        default=Statut.PLANIFIEE, verbose_name='Statut')
+    resultat = models.CharField(
+        max_length=15, choices=Resultat.choices,
+        default=Resultat.EN_ATTENTE, verbose_name='Résultat')
+    # Référence LÂCHE au chantier (installations.Chantier) par id : jamais un
+    # import cross-app de modèle.
+    chantier_id = models.PositiveIntegerField(
+        null=True, blank=True, verbose_name='ID du chantier')
+    date_prevue = models.DateField(
+        null=True, blank=True, verbose_name='Date prévue')
+    date_realisee = models.DateField(
+        null=True, blank=True, verbose_name='Date réalisée')
+    inspecteur = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='qhse_inspections_securite',
+        verbose_name='Inspecteur',
+    )
+    observations = models.TextField(
+        blank=True, default='', verbose_name='Observations')
+    # NCR levée par cette inspection (QHSE33) — lien intra-app, idempotent.
+    ncr = models.ForeignKey(
+        NonConformite,
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='inspections_securite',
+        verbose_name='Non-conformité levée',
+    )
+    date_creation = models.DateTimeField(
+        auto_now_add=True, verbose_name='Créé le')
+
+    class Meta:
+        verbose_name = 'Inspection sécurité'
+        verbose_name_plural = 'Inspections sécurité'
+        ordering = ['-id']
+        constraints = [
+            models.UniqueConstraint(
+                fields=['company', 'reference'],
+                name='qhse_inspsec_co_ref_uniq',
+            )
+        ]
+        indexes = [
+            models.Index(
+                fields=['company', 'statut'],
+                name='qhse_inspsec_co_statut',
+            ),
+            models.Index(
+                fields=['company', 'date_prevue'],
+                name='qhse_inspsec_co_prevue',
+            ),
+            models.Index(
+                fields=['company', 'chantier_id'],
+                name='qhse_inspsec_co_chant',
+            ),
+        ]
+
+    def __str__(self):
+        return f'{self.reference or "INSP"} — {self.titre}'

@@ -2,6 +2,7 @@ from django.contrib import admin
 
 from .models import (
     ActionCorrectivePreventive, ConsignationLoto, EvaluationRisque,
+    InspectionSecurite,
     LigneEvaluationRisque,
     NonConformite, PermisTravail, PlanInspectionChantier,
     PlanInspectionModele, PointControleModele, ProcedureQualite,
@@ -114,3 +115,12 @@ class ConsignationLotoAdmin(admin.ModelAdmin):
     list_filter = ('statut', 'verifie_absence_tension')
     search_fields = ('reference', 'equipement', 'point_consignation',
                      'consignateur')
+
+
+@admin.register(InspectionSecurite)
+class InspectionSecuriteAdmin(admin.ModelAdmin):
+    list_display = ('id', 'reference', 'titre', 'statut', 'resultat',
+                    'chantier_id', 'date_prevue', 'date_realisee',
+                    'inspecteur', 'ncr', 'company', 'date_creation')
+    list_filter = ('statut', 'resultat')
+    search_fields = ('reference', 'titre', 'observations')
