@@ -63,6 +63,20 @@ class ReclamationViewSet(_LitigesBaseViewSet):
         )
         return Response(data)
 
+    # ── Analyse concurrents sur deals perdus (LITIGE5) ───────────────────────
+    @action(detail=False, methods=['get'], url_path='analyse-concurrents')
+    def analyse_concurrents(self, request):
+        """Intelligence concurrentielle : qui nous bat, à quel prix, sur quel
+        motif (litiges portant un concurrent gagnant saisi).
+
+        Lecture seule, scopée société. Palier de permission du viewset
+        (Administrateur/Responsable) — un rôle limité reçoit donc 403.
+        """
+        from . import selectors
+
+        data = selectors.analyse_concurrents_perte(request.user.company)
+        return Response(data)
+
     # ── Machine à états + chatter ────────────────────────────────────────────
     def _transition(self, request, *, allowed_from, target):
         """Applique une transition de statut si elle est légale, sinon 400.
