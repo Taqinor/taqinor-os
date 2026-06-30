@@ -153,6 +153,9 @@ from .models_demande_transfert import (
 from .models_reappro import (
     RegleReappro,
 )
+from .models_consignation import (
+    MaterielConsigne,
+)
 
 __all__ = [
     'Installation',
@@ -229,4 +232,5 @@ __all__ = [
     'ComptageLigne',
     'DemandeTransfert',
     'RegleReappro',
+    'MaterielConsigne',
 ]

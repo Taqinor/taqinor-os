@@ -53,6 +53,7 @@ from .serie_entrepot import SerieEntrepotViewSet
 from .comptage import SessionComptageViewSet, ComptageLigneViewSet
 from .demande_transfert import DemandeTransfertViewSet
 from .reappro import RegleReapproViewSet
+from .consignation import MaterielConsigneViewSet
 from .field_sync import FieldSyncView
 
 __all__ = [
@@ -112,5 +113,6 @@ __all__ = [
     'ComptageLigneViewSet',
     'DemandeTransfertViewSet',
     'RegleReapproViewSet',
+    'MaterielConsigneViewSet',
     'FieldSyncView',
 ]

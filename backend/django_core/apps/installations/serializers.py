@@ -49,6 +49,7 @@ from .models import (
     ComptageLigne,
     DemandeTransfert,
     RegleReappro,
+    MaterielConsigne,
 )
 
 
@@ -1962,3 +1963,37 @@ class RegleReapproSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError(
                 {'seuil_max': 'Le seuil max doit etre >= au seuil min.'})
         return attrs
+
+
+class MaterielConsigneSerializer(serializers.ModelSerializer):
+    """FG327 - materiel consigne retournable. Societe/`created_by` poses COTE
+    SERVEUR ; le statut et la trace de retour avancent via l'action `retourner`.
+    `caution_totale` est derivee (INTERNE)."""
+    fournisseur_nom = serializers.CharField(
+        source='fournisseur.nom', read_only=True, default=None)
+    type_materiel_display = serializers.CharField(
+        source='get_type_materiel_display', read_only=True, default=None)
+    statut_display = serializers.CharField(
+        source='get_statut_display', read_only=True, default=None)
+    caution_totale = serializers.DecimalField(
+        max_digits=12, decimal_places=2, read_only=True)
+
+    class Meta:
+        model = MaterielConsigne
+        fields = [
+            'id', 'designation', 'type_materiel', 'type_materiel_display',
+            'fournisseur', 'fournisseur_nom', 'quantite', 'caution_unitaire',
+            'caution_totale', 'statut', 'statut_display', 'reference_externe',
+            'date_reception', 'date_retour', 'note', 'retourne_par',
+            'created_by', 'date_creation', 'date_modification',
+        ]
+        read_only_fields = [
+            'statut', 'date_retour', 'retourne_par', 'created_by',
+            'date_creation', 'date_modification',
+        ]
+
+    def validate_designation(self, value):
+        value = (value or '').strip()
+        if not value:
+            raise serializers.ValidationError('La designation est requise.')
+        return value
