@@ -226,3 +226,38 @@ class AuditLogViewSet(viewsets.ReadOnlyModelViewSet):
 
     def get_queryset(self):
         return _apply_filters(_company_qs(self.request), self.request.query_params)
+
+
+# FG23 — onglet « Sécurité » : réutilise le Journal d'activité, pré-filtré aux
+# évènements de sécurité (connexion, échec de connexion, alerte). Le frontend
+# peut aussi simplement passer ?action=... à AuditLogViewSet ; cet endpoint
+# offre un raccourci nommé. Mêmes filtres (user/from/to/search) et même garde.
+SECURITY_ACTIONS = [
+    AuditLog.Action.LOGIN,
+    AuditLog.Action.LOGIN_FAILED,
+    AuditLog.Action.SECURITY_ALERT,
+    AuditLog.Action.LOGOUT,
+]
+
+
+@api_view(['GET'])
+@permission_classes([CanViewActivityLog])
+def security_events(request):
+    """Évènements de sécurité (company-scopés, plus récent d'abord).
+
+    Filtres : ``?action=`` (restreint au sous-ensemble sécurité), ``?user=``,
+    ``?from=``/``?to=``, ``?search=``, ``?limit=`` (défaut 100, max 500)."""
+    qs = _apply_filters(_company_qs(request), request.query_params)
+    requested = (request.query_params.getlist('action')
+                 or request.query_params.getlist('action[]'))
+    allowed = {a.value for a in SECURITY_ACTIONS}
+    if requested:
+        qs = qs.filter(action__in=[a for a in requested if a in allowed])
+    else:
+        qs = qs.filter(action__in=list(allowed))
+    try:
+        limit = min(int(request.query_params.get('limit', 100)), 500)
+    except (TypeError, ValueError):
+        limit = 100
+    data = AuditLogSerializer(qs[:limit], many=True).data
+    return Response({'count': len(data), 'results': data})

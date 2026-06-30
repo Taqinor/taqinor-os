@@ -74,7 +74,8 @@ def register_failed_login(user):
         return  # verrouillage désactivé → comportement historique
     user.failed_login_count = (user.failed_login_count or 0) + 1
     fields = ['failed_login_count']
-    if user.failed_login_count >= max_attempts:
+    reached = user.failed_login_count >= max_attempts
+    if reached:
         minutes = getattr(profile, 'lockout_duration_minutes', 15) or 15
         user.locked_until = timezone.now() + timezone.timedelta(
             minutes=minutes)
@@ -84,6 +85,22 @@ def register_failed_login(user):
         user.save(update_fields=fields)
     except Exception:
         pass
+    # FG23 — alerte de sécurité quand le seuil d'échecs consécutifs est atteint
+    # (et que le compte vient d'être verrouillé). Best-effort : journalisée dans
+    # le Journal d'activité (action SECURITY_ALERT), visible dans l'onglet
+    # « Sécurité » réservé au Directeur. N'élève jamais.
+    if reached:
+        try:
+            from apps.audit.recorder import record
+            from apps.audit.models import AuditLog
+            record(
+                AuditLog.Action.SECURITY_ALERT, user=user,
+                actor_username=user.username,
+                company=getattr(user, 'company', None),
+                detail=(f'Compte verrouillé après {max_attempts} échecs de '
+                        'connexion consécutifs.'))
+        except Exception:
+            pass
 
 
 def reset_failed_login(user):
