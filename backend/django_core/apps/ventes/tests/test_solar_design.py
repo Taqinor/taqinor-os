@@ -1921,3 +1921,62 @@ class PumpingCycleYieldTest(SimpleTestCase):
         # ni de volume négatif fabriqué.
         res = sd.pumping_cycle_yield(debit_hmt_m3h=-12.0, pumping_hours=7)
         self.assertIsNone(res["daily_m3"])
+
+
+# ── FG266 : comparateur de scénarios de devis (calcul pur, SimpleTestCase) ─────
+class CompareScenariosTest(SimpleTestCase):
+    def test_ranks_by_production_savings_and_payback(self):
+        scenarios = [
+            {'label': 'A (5 kWc)', 'kwc': 5, 'productible_kwh_kwc': 1600,
+             'annual_savings': 9000, 'upfront_cost': 60000},
+            {'label': 'B (8 kWc)', 'kwc': 8, 'productible_kwh_kwc': 1600,
+             'annual_savings': 14000, 'upfront_cost': 95000},
+            {'label': 'C (3 kWc)', 'kwc': 3, 'productible_kwh_kwc': 1600,
+             'annual_savings': 5500, 'upfront_cost': 40000},
+        ]
+        res = sd.compare_scenarios(scenarios)
+        self.assertEqual(len(res['scenarios']), 3)
+        # Production : B (8 kWc) > A (5) > C (3).
+        self.assertEqual(res['ranking']['by_production'], [1, 0, 2])
+        # Économie : B > A > C.
+        self.assertEqual(res['ranking']['by_savings'], [1, 0, 2])
+        # Payback désigné et présent dans le classement.
+        self.assertIsNotNone(res['best_payback_index'])
+        self.assertEqual(len(res['ranking']['by_payback']), 3)
+
+    def test_orientation_factor_reduces_production(self):
+        base = {'kwc': 6, 'productible_kwh_kwc': 1600, 'annual_savings': 1}
+        full = sd.compare_scenarios([dict(base, orientation_factor=1.0)])
+        tilted = sd.compare_scenarios([dict(base, orientation_factor=0.85)])
+        self.assertGreater(
+            full['scenarios'][0]['annual_production_kwh'],
+            tilted['scenarios'][0]['annual_production_kwh'])
+
+    def test_explicit_production_overrides_kwc(self):
+        res = sd.compare_scenarios([
+            {'kwc': 5, 'annual_production_kwh': 12345, 'annual_savings': 1}])
+        self.assertEqual(
+            res['scenarios'][0]['annual_production_kwh'], 12345.0)
+
+    def test_zero_savings_scenario_has_no_payback(self):
+        res = sd.compare_scenarios([
+            {'label': 'X', 'kwc': 4, 'annual_savings': 0}])
+        self.assertIsNone(res['scenarios'][0]['payback_year'])
+        self.assertIsNone(res['best_payback_index'])
+        self.assertTrue(any('payback' in w for w in res['warnings']))
+
+    def test_empty_and_degraded_inputs_never_raise(self):
+        self.assertEqual(sd.compare_scenarios([])['scenarios'], [])
+        self.assertEqual(sd.compare_scenarios(None)['scenarios'], [])
+        # Scénarios non-dict / valeurs illisibles : bornés, pas d'exception.
+        res = sd.compare_scenarios([
+            'oops', {'kwc': 'x', 'annual_savings': 'y'}])
+        self.assertEqual(len(res['scenarios']), 2)
+        self.assertEqual(res['scenarios'][1]['annual_production_kwh'], 0.0)
+
+    def test_no_buy_price_or_margin_in_output(self):
+        res = sd.compare_scenarios([
+            {'kwc': 5, 'annual_savings': 9000, 'upfront_cost': 60000}])
+        blob = repr(res)
+        for forbidden in ('prix_achat', 'marge', 'margin', 'buy_price'):
+            self.assertNotIn(forbidden, blob)

@@ -3369,3 +3369,146 @@ def pumping_cycle_yield(*, debit_hmt_m3h, pumping_hours=None,
         "daily_by_hour": daily_by_hour,
         "warnings": warnings,
     }
+
+
+# ── FG266 — Comparateur de scénarios de devis ────────────────────────────────
+# Compare plusieurs DIMENSIONNEMENTS d'une même affaire (kWc / batterie /
+# orientation) sur trois axes décisionnels : PRODUCTION annuelle, ÉCONOMIES
+# annuelles et PAYBACK (retour sur investissement). Calcul PUR (aucune écriture
+# base, aucun changement de statut de devis) ; jamais aucun prix d'achat / marge
+# en sortie — seuls le coût TTC fourni et l'économie figurent. Réutilise
+# ``tariff_escalation_projection`` (FG260) pour le payback/VAN/TRI cohérent.
+
+
+def _scenario_annual_production(scenario):
+    """Production annuelle (kWh) d'un scénario.
+
+    Priorité à ``annual_production_kwh`` s'il est fourni ; sinon dérivée de
+    ``kwc`` × ``productible_kwh_kwc`` × facteur d'orientation. Le facteur
+    d'orientation (``orientation_factor``, base 1.0) module l'effet d'une
+    orientation/inclinaison non optimale. Renvoie un float ≥ 0.
+    """
+    direct = scenario.get('annual_production_kwh')
+    if direct is not None:
+        return max(0.0, _safe_float(direct, 0.0))
+    kwc = max(0.0, _safe_float(scenario.get('kwc'), 0.0))
+    productible = _safe_float(scenario.get('productible_kwh_kwc'), 1600.0)
+    orient = scenario.get('orientation_factor')
+    orient_f = _safe_float(orient, 1.0) if orient is not None else 1.0
+    orient_f = max(0.0, orient_f)
+    return round(kwc * productible * orient_f, 1)
+
+
+def compare_scenarios(scenarios, *, escalation_rate=None,
+                      degradation_rate=None, horizon_years=None,
+                      discount_rate=None):
+    """FG266 — compare des scénarios de dimensionnement et les classe.
+
+    Chaque scénario est un dict pouvant porter ::
+
+        {label, kwc, battery_kwh, orientation_factor, productible_kwh_kwc,
+         annual_production_kwh, annual_savings, upfront_cost}
+
+    Pour chaque scénario on calcule la production annuelle (kWh), l'économie
+    annuelle (MAD/an, telle que fournie), puis le payback / VAN / TRI via
+    ``tariff_escalation_projection`` (FG260) avec une convention COMMUNE
+    (mêmes taux d'escalade/dégradation/actualisation/horizon pour tous, pour une
+    comparaison équitable). On classe ensuite les scénarios par production,
+    économie et payback (le plus court d'abord) et on désigne le « meilleur »
+    payback (recommandation indicative, jamais bloquante).
+
+    Ne lève JAMAIS sur entrées dégradées ; jamais de prix d'achat/marge. Renvoie
+    un dict JSON-sérialisable ::
+
+        {scenarios: [{...metrics}], ranking: {by_production, by_savings,
+         by_payback}, best_payback_index, warnings}
+    """
+    warnings = []
+    if not isinstance(scenarios, (list, tuple)) or not scenarios:
+        return {
+            'scenarios': [],
+            'ranking': {'by_production': [], 'by_savings': [],
+                        'by_payback': []},
+            'best_payback_index': None,
+            'warnings': ['aucun scénario fourni'],
+        }
+
+    # Paramètres financiers communs (défauts FG260 si non fournis).
+    proj_kwargs = {}
+    if escalation_rate is not None:
+        proj_kwargs['escalation_rate'] = _safe_float(escalation_rate, None)
+    if degradation_rate is not None:
+        proj_kwargs['degradation_rate'] = _safe_float(degradation_rate, None)
+    if horizon_years is not None:
+        proj_kwargs['horizon_years'] = int(_safe_float(horizon_years, 25))
+    if discount_rate is not None:
+        proj_kwargs['discount_rate'] = _safe_float(discount_rate, None)
+
+    enriched = []
+    for idx, raw in enumerate(scenarios):
+        scenario = raw if isinstance(raw, dict) else {}
+        label = scenario.get('label') or f'Scénario {idx + 1}'
+        production = _scenario_annual_production(scenario)
+        annual_savings = max(0.0, _safe_float(scenario.get('annual_savings'),
+                                              0.0))
+        upfront = max(0.0, _safe_float(scenario.get('upfront_cost'), 0.0))
+
+        payback_year = None
+        npv = None
+        irr = None
+        if annual_savings > 0:
+            proj = tariff_escalation_projection(
+                annual_savings_year1=annual_savings,
+                upfront_cost=upfront,
+                **proj_kwargs)
+            summary = proj.get('summary', {})
+            payback_year = summary.get('payback_year')
+            npv = summary.get('npv')
+            irr = summary.get('irr')
+        else:
+            warnings.append(
+                f'{label} : économie annuelle nulle, payback non calculé')
+
+        enriched.append({
+            'index': idx,
+            'label': label,
+            'kwc': round(_safe_float(scenario.get('kwc'), 0.0), 2),
+            'battery_kwh': round(_safe_float(scenario.get('battery_kwh'),
+                                             0.0), 2),
+            'annual_production_kwh': production,
+            'annual_savings': round(annual_savings, 2),
+            'upfront_cost': round(upfront, 2),
+            'payback_year': payback_year,
+            'npv': npv,
+            'irr': irr,
+        })
+
+    # Classements (indices d'origine). Production/économie décroissantes ;
+    # payback croissant (None relégué en fin, jamais « meilleur »).
+    by_production = [s['index'] for s in sorted(
+        enriched, key=lambda s: s['annual_production_kwh'], reverse=True)]
+    by_savings = [s['index'] for s in sorted(
+        enriched, key=lambda s: s['annual_savings'], reverse=True)]
+
+    def _payback_key(s):
+        py = s['payback_year']
+        return (float('inf'), s['index']) if py is None else (py, s['index'])
+
+    by_payback = [s['index'] for s in sorted(enriched, key=_payback_key)]
+
+    best_payback_index = None
+    for s in sorted(enriched, key=_payback_key):
+        if s['payback_year'] is not None:
+            best_payback_index = s['index']
+            break
+
+    return {
+        'scenarios': enriched,
+        'ranking': {
+            'by_production': by_production,
+            'by_savings': by_savings,
+            'by_payback': by_payback,
+        },
+        'best_payback_index': best_payback_index,
+        'warnings': warnings,
+    }
