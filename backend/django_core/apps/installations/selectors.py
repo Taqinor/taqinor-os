@@ -1207,3 +1207,262 @@ def chantier_card(chantier_id, company):
         'subtitle': ' · '.join(p for p in parts if p),
         'url': f'/installations/{chantier.pk}',
     }
+
+
+def sous_traitant_attestations_manquantes(sous_traitant, a_la_date=None):
+    """FG307 — liste des pièces obligatoires expirées/manquantes d'un
+    sous-traitant à une date (aujourd'hui par défaut). Lecture seule.
+
+    Une pièce OBLIGATOIRE invalide (expirée) compte ; une attestation absente
+    n'est PAS énumérée ici (on ne devine pas le référentiel exigé), mais
+    ``sous_traitant_affectable`` ci-dessous traite l'absence totale comme un
+    blocage explicite côté appelant. Renvoie une liste de dicts
+    {type_piece, date_expiration}."""
+    manquantes = []
+    for att in sous_traitant.attestations.all():
+        if att.obligatoire and not att.est_valide(a_la_date):
+            manquantes.append({
+                'type_piece': att.type_piece,
+                'date_expiration': att.date_expiration,
+            })
+    return manquantes
+
+
+def sous_traitant_affectable(sous_traitant, a_la_date=None):
+    """FG307 — vrai si le sous-traitant peut être affecté à une date : actif ET
+    aucune pièce obligatoire expirée. Lecture seule, point d'entrée cross-app
+    (le planning/l'affectation lisent ce sélecteur plutôt que la table
+    d'attestations directement)."""
+    if not getattr(sous_traitant, 'actif', True):
+        return False
+    return not sous_traitant_attestations_manquantes(sous_traitant, a_la_date)
+
+
+def sous_traitant_scorecard(sous_traitant):
+    """FG308 — scorecard cumulée d'un sous-traitant : moyenne de chaque axe
+    (qualité / délai / sécurité) et note globale sur toutes ses évaluations.
+    Lecture seule, point d'entrée cross-app. Renvoie un dict (None si aucune
+    évaluation)."""
+    from django.db.models import Avg
+    agg = sous_traitant.evaluations.aggregate(
+        qualite=Avg('note_qualite'),
+        delai=Avg('note_delai'),
+        securite=Avg('note_securite'),
+    )
+    nb = sous_traitant.evaluations.count()
+    if nb == 0:
+        return {
+            'nb_evaluations': 0,
+            'note_qualite': None,
+            'note_delai': None,
+            'note_securite': None,
+            'note_globale': None,
+        }
+
+    def _r(v):
+        return round(v, 2) if v is not None else None
+
+    moyennes = [agg['qualite'], agg['delai'], agg['securite']]
+    valides = [m for m in moyennes if m is not None]
+    globale = round(sum(valides) / len(valides), 2) if valides else None
+    return {
+        'nb_evaluations': nb,
+        'note_qualite': _r(agg['qualite']),
+        'note_delai': _r(agg['delai']),
+        'note_securite': _r(agg['securite']),
+        'note_globale': globale,
+    }
+
+
+def rfq_comparatif(rfq):
+    """FG311 — comparatif des offres d'une RFQ : nombre d'offres, offre la moins
+    chère, offre la plus rapide (délai), offre retenue. Lecture seule, point
+    d'entrée cross-app. Montants INTERNES. Renvoie un dict."""
+    offres = list(rfq.offres.all())
+    if not offres:
+        return {
+            'nb_offres': 0,
+            'moins_chere_id': None,
+            'plus_rapide_id': None,
+            'retenue_id': None,
+        }
+    moins_chere = min(offres, key=lambda o: o.montant_ht)
+    avec_delai = [o for o in offres if o.delai_jours is not None]
+    plus_rapide = min(avec_delai, key=lambda o: o.delai_jours) if (
+        avec_delai) else None
+    retenue = next((o for o in offres if o.retenue), None)
+    return {
+        'nb_offres': len(offres),
+        'moins_chere_id': moins_chere.id,
+        'plus_rapide_id': plus_rapide.id if plus_rapide else None,
+        'retenue_id': retenue.id if retenue else None,
+    }
+
+
+def bcf_montant_achat(company, bcf_id):
+    """FG312 — total d'achat HT d'un bon de commande fournisseur scopé société
+    (0 si introuvable). Lu via ``apps.get_model`` — aucune arête d'import vers
+    ``stock`` au chargement. Montant INTERNE."""
+    from decimal import Decimal
+    from django.apps import apps as django_apps
+    model = django_apps.get_model('stock', 'BonCommandeFournisseur')
+    bcf = model.objects.filter(id=bcf_id, company=company).first()
+    if bcf is None:
+        return Decimal('0')
+    return _dec(bcf.total_achat)
+
+
+def seuil_approbation_bcf_actif(company):
+    """FG312 — le seuil d'approbation BCF actif d'une société (ou None). Lecture
+    seule."""
+    from .models import SeuilApprobationBCF
+    return (SeuilApprobationBCF.objects
+            .filter(company=company, actif=True)
+            .order_by('-date_creation')
+            .first())
+
+
+def palier_requis_bcf(company, montant):
+    """FG312 — palier requis (responsable/admin) pour approuver un BCF de
+    ``montant`` selon le seuil actif. Sans seuil configuré, le défaut est
+    « admin » (prudence : tout achat exige le palier le plus haut). Lecture
+    seule."""
+    from .models_approbation_bcf import PALIER_ADMIN
+    seuil = seuil_approbation_bcf_actif(company)
+    if seuil is None:
+        return PALIER_ADMIN
+    return seuil.palier_requis(montant)
+
+
+def controle_budgetaire_commande(company, montant, *, projet_id=None,
+                                 categorie='materiel'):
+    """FG313 — contrôle budgétaire AVANT de valider une commande : un montant
+    d'achat prévu tient-il dans le budget restant du programme ?
+
+    Compare ``montant`` au reste de la catégorie (``materiel`` par défaut) du
+    ``BudgetProjet`` du programme (engagé déjà déduit), et au reste total. Sans
+    budget configuré pour le programme, on n'a pas de référence : ``controle =
+    'non_configure'`` (l'appelant décide — on ne bloque pas faute de budget).
+    Lecture seule, import-linter safe. Montants INTERNES. Renvoie un dict plat."""
+    from decimal import Decimal
+    from .models import BudgetProjet
+
+    montant = _dec(montant)
+    if not projet_id:
+        return {
+            'controle': 'non_configure',
+            'depasse': False,
+            'reste_categorie': None,
+            'reste_total': None,
+            'montant': float(montant),
+        }
+    budget = (BudgetProjet.objects
+              .filter(company=company, projet_id=projet_id)
+              .select_related('projet')
+              .first())
+    if budget is None:
+        return {
+            'controle': 'non_configure',
+            'depasse': False,
+            'reste_categorie': None,
+            'reste_total': None,
+            'montant': float(montant),
+        }
+    synthese = budget_projet_synthese(budget)
+    budget_cat = Decimal(str(synthese['budget'].get(categorie, 0)))
+    engage_cat = Decimal(str(synthese['engage'].get(categorie, 0)))
+    reste_cat = budget_cat - engage_cat
+    reste_total = Decimal(str(synthese['budget']['total'])) - Decimal(
+        str(synthese['engage']['total']))
+    depasse = montant > reste_cat
+    return {
+        'controle': 'ok' if not depasse else 'depassement',
+        'depasse': depasse,
+        'categorie': categorie,
+        'reste_categorie': float(reste_cat),
+        'reste_total': float(reste_total),
+        'montant': float(montant),
+    }
+
+
+def landed_cost_dossier(dossier):
+    """FG316 — coût de revient débarqué (landed cost) d'un dossier d'import.
+
+    Répartit le TOTAL des frais (``FraisImport``) sur les lignes de SKU
+    (``LandedCostLigne``) AU PRORATA de leur valeur FOB, puis renvoie, par ligne,
+    la quote-part de frais, le coût débarqué total et le coût débarqué unitaire.
+    Montants INTERNES — jamais client-facing. Lecture seule, import-linter safe.
+    Renvoie un dict {total_fob, total_frais, total_landed, lignes:[...]}."""
+    from decimal import Decimal
+
+    lignes = list(dossier.landed_lignes.all())
+    total_frais = sum((f.montant for f in dossier.frais.all()), Decimal('0'))
+    total_fob = sum((ln.valeur_fob for ln in lignes), Decimal('0'))
+
+    details = []
+    total_landed = Decimal('0')
+    for ln in lignes:
+        if total_fob > 0:
+            quote_part = (total_frais * ln.valeur_fob / total_fob).quantize(
+                Decimal('0.01'))
+        else:
+            quote_part = Decimal('0')
+        landed_total = (ln.valeur_fob or Decimal('0')) + quote_part
+        q = ln.quantite or Decimal('0')
+        landed_unitaire = (
+            (landed_total / q).quantize(Decimal('0.01'))
+            if q else Decimal('0'))
+        total_landed += landed_total
+        details.append({
+            'ligne_id': ln.id,
+            'produit_id': ln.produit_id,
+            'designation': ln.designation,
+            'quantite': float(q),
+            'valeur_fob': float(ln.valeur_fob or Decimal('0')),
+            'quote_part_frais': float(quote_part),
+            'cout_debarque_total': float(landed_total),
+            'cout_debarque_unitaire': float(landed_unitaire),
+        })
+    return {
+        'dossier_id': dossier.id,
+        'total_fob': float(total_fob),
+        'total_frais': float(total_frais),
+        'total_landed': float(total_landed),
+        'lignes': details,
+    }
+
+
+def prix_convenu_fournisseur(company, produit_id, *, fournisseur_id=None,
+                             a_la_date=None):
+    """FG318 — prix convenu d'un produit auprès d'un fournisseur À UNE DATE,
+    d'après les contrats de prix EN VIGUEUR (actif + période couvrante). Si
+    plusieurs contrats matchent, on prend la plus haute version. Lecture seule,
+    montants INTERNES. Renvoie un dict (prix None si aucun accord en vigueur)."""
+    from .models import ContratPrixLigne
+
+    qs = (ContratPrixLigne.objects
+          .filter(contrat__company=company, produit_id=produit_id)
+          .select_related('contrat'))
+    if fournisseur_id:
+        qs = qs.filter(contrat__fournisseur_id=fournisseur_id)
+    candidates = [
+        ln for ln in qs if ln.contrat.est_en_vigueur(a_la_date)
+    ]
+    if not candidates:
+        return {
+            'produit_id': produit_id,
+            'prix_convenu': None,
+            'remise_pct': None,
+            'contrat_id': None,
+            'version': None,
+        }
+    meilleur = max(candidates, key=lambda ln: ln.contrat.version)
+    return {
+        'produit_id': produit_id,
+        'prix_convenu': float(meilleur.prix_convenu),
+        'remise_pct': (
+            float(meilleur.remise_pct)
+            if meilleur.remise_pct is not None else None),
+        'contrat_id': meilleur.contrat_id,
+        'version': meilleur.contrat.version,
+    }

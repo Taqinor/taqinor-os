@@ -24,6 +24,27 @@ from .program import (
 from .indispo import IndisponibiliteRessourceViewSet
 from .soustraitant import SousTraitantViewSet
 from .ordre_soustraitance import OrdreSousTraitanceViewSet
+from .facture_soustraitant import (
+    FactureSousTraitantViewSet, PaiementSousTraitantViewSet,
+)
+from .attestation_soustraitant import AttestationSousTraitantViewSet
+from .evaluation_soustraitant import EvaluationSousTraitantViewSet
+from .retenue_garantie import RetenueGarantieSousTraitantViewSet
+from .demande_achat import DemandeAchatViewSet, DemandeAchatLigneViewSet
+from .rfq import RFQViewSet, RFQOffreViewSet
+from .approbation_bcf import (
+    SeuilApprobationBCFViewSet, ApprobationBCFViewSet,
+)
+from .controle_budgetaire import ControleBudgetaireCommandeView
+from .commande_cadre import (
+    CommandeCadreViewSet, CommandeCadreLigneViewSet, AppelCommandeViewSet,
+)
+from .dossier_import import DossierImportViewSet
+from .landed_cost import FraisImportViewSet, LandedCostLigneViewSet
+from .gr_ir import ReceptionNonFactureeViewSet
+from .contrat_prix import (
+    ContratPrixFournisseurViewSet, ContratPrixLigneViewSet,
+)
 from .field_sync import FieldSyncView
 
 __all__ = [
@@ -50,5 +71,26 @@ __all__ = [
     'IndisponibiliteRessourceViewSet',
     'SousTraitantViewSet',
     'OrdreSousTraitanceViewSet',
+    'FactureSousTraitantViewSet',
+    'PaiementSousTraitantViewSet',
+    'AttestationSousTraitantViewSet',
+    'EvaluationSousTraitantViewSet',
+    'RetenueGarantieSousTraitantViewSet',
+    'DemandeAchatViewSet',
+    'DemandeAchatLigneViewSet',
+    'RFQViewSet',
+    'RFQOffreViewSet',
+    'SeuilApprobationBCFViewSet',
+    'ApprobationBCFViewSet',
+    'ControleBudgetaireCommandeView',
+    'CommandeCadreViewSet',
+    'CommandeCadreLigneViewSet',
+    'AppelCommandeViewSet',
+    'DossierImportViewSet',
+    'FraisImportViewSet',
+    'LandedCostLigneViewSet',
+    'ReceptionNonFactureeViewSet',
+    'ContratPrixFournisseurViewSet',
+    'ContratPrixLigneViewSet',
     'FieldSyncView',
 ]

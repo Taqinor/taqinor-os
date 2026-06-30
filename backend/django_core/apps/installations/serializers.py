@@ -17,6 +17,26 @@ from .models import (
     IndisponibiliteRessource,
     SousTraitant,
     OrdreSousTraitance,
+    FactureSousTraitant,
+    PaiementSousTraitant,
+    AttestationSousTraitant,
+    EvaluationSousTraitant,
+    RetenueGarantieSousTraitant,
+    DemandeAchat,
+    DemandeAchatLigne,
+    RFQ,
+    RFQOffre,
+    SeuilApprobationBCF,
+    ApprobationBCF,
+    CommandeCadre,
+    CommandeCadreLigne,
+    AppelCommande,
+    DossierImport,
+    FraisImport,
+    LandedCostLigne,
+    ReceptionNonFacturee,
+    ContratPrixFournisseur,
+    ContratPrixLigne,
 )
 
 
@@ -1054,4 +1074,581 @@ class OrdreSousTraitanceSerializer(serializers.ModelSerializer):
         if value is not None and value < 0:
             raise serializers.ValidationError(
                 'Le montant réalisé ne peut pas être négatif.')
+        return value
+
+
+class PaiementSousTraitantSerializer(serializers.ModelSerializer):
+    """FG306 — règlement imputé sur une facture sous-traitant. La société et
+    `created_by` sont posés CÔTÉ SERVEUR (jamais lus du corps). Le montant est
+    INTERNE — jamais client-facing."""
+    mode_display = serializers.CharField(
+        source='get_mode_display', read_only=True, default=None)
+
+    class Meta:
+        model = PaiementSousTraitant
+        fields = [
+            'id', 'facture', 'montant', 'date_paiement',
+            'mode', 'mode_display', 'reference_paiement', 'note',
+            'created_by', 'date_creation',
+        ]
+        read_only_fields = ['created_by', 'date_creation']
+
+    def validate_montant(self, value):
+        if value is not None and value <= 0:
+            raise serializers.ValidationError(
+                'Le montant du paiement doit être strictement positif.')
+        return value
+
+
+class FactureSousTraitantSerializer(serializers.ModelSerializer):
+    """FG306 — facture entrante d'un sous-traitant chantier (compte à payer
+    main-d'œuvre). La société et `created_by` sont posés CÔTÉ SERVEUR. Le `statut`
+    n'est pas écrit librement : il avance via les actions de cycle de vie
+    (`a_payer`/`payer`/`annuler`) et le reflet automatique des paiements. Tous les
+    montants sont INTERNES — jamais client-facing."""
+    statut_display = serializers.CharField(
+        source='get_statut_display', read_only=True, default=None)
+    sous_traitant_nom = serializers.CharField(
+        source='sous_traitant.raison_sociale', read_only=True, default=None)
+    total_paye = serializers.DecimalField(
+        max_digits=12, decimal_places=2, read_only=True)
+    reste_a_payer = serializers.DecimalField(
+        max_digits=12, decimal_places=2, read_only=True)
+    paiements = PaiementSousTraitantSerializer(many=True, read_only=True)
+
+    class Meta:
+        model = FactureSousTraitant
+        fields = [
+            'id', 'numero', 'sous_traitant', 'sous_traitant_nom',
+            'ordre', 'chantier',
+            'montant_ht', 'montant_tva', 'montant_ttc',
+            'date_facture', 'date_echeance',
+            'statut', 'statut_display', 'note',
+            'total_paye', 'reste_a_payer', 'paiements',
+            'created_by', 'date_creation', 'date_modification',
+        ]
+        # Le statut avance via les actions de cycle de vie / le reflet des
+        # paiements — jamais écrit librement.
+        read_only_fields = [
+            'statut', 'created_by', 'date_creation', 'date_modification',
+        ]
+
+    def validate_montant_ttc(self, value):
+        if value is not None and value < 0:
+            raise serializers.ValidationError(
+                'Le montant TTC ne peut pas être négatif.')
+        return value
+
+
+class AttestationSousTraitantSerializer(serializers.ModelSerializer):
+    """FG307 — pièce administrative obligatoire d'un sous-traitant (CNSS, RC
+    décennale, agrément…). La société et `created_by` sont posés CÔTÉ SERVEUR.
+    `est_valide` expose si la pièce est encore valide aujourd'hui (lecture
+    seule)."""
+    type_piece_display = serializers.CharField(
+        source='get_type_piece_display', read_only=True, default=None)
+    sous_traitant_nom = serializers.CharField(
+        source='sous_traitant.raison_sociale', read_only=True, default=None)
+    est_valide = serializers.SerializerMethodField()
+    obligatoire = serializers.BooleanField(required=False, default=True)
+
+    class Meta:
+        model = AttestationSousTraitant
+        fields = [
+            'id', 'sous_traitant', 'sous_traitant_nom',
+            'type_piece', 'type_piece_display', 'reference', 'organisme',
+            'date_emission', 'date_expiration', 'obligatoire', 'note',
+            'est_valide',
+            'created_by', 'date_creation', 'date_modification',
+        ]
+        read_only_fields = ['created_by', 'date_creation', 'date_modification']
+
+    def get_est_valide(self, obj):
+        return obj.est_valide()
+
+
+class EvaluationSousTraitantSerializer(serializers.ModelSerializer):
+    """FG308 — note de performance d'un sous-traitant (qualité/délai/sécurité,
+    1–5). La société et `evalue_par` sont posés CÔTÉ SERVEUR. `note_globale` est
+    la moyenne dérivée des trois axes (lecture seule)."""
+    sous_traitant_nom = serializers.CharField(
+        source='sous_traitant.raison_sociale', read_only=True, default=None)
+    note_globale = serializers.DecimalField(
+        max_digits=3, decimal_places=1, read_only=True)
+
+    class Meta:
+        model = EvaluationSousTraitant
+        fields = [
+            'id', 'sous_traitant', 'sous_traitant_nom', 'ordre', 'chantier',
+            'note_qualite', 'note_delai', 'note_securite', 'note_globale',
+            'commentaire', 'date_evaluation',
+            'evalue_par', 'date_creation', 'date_modification',
+        ]
+        read_only_fields = ['evalue_par', 'date_creation', 'date_modification']
+
+    def _validate_note(self, value, champ):
+        if value is None or value < 1 or value > 5:
+            raise serializers.ValidationError(
+                f'La note {champ} doit être comprise entre 1 et 5.')
+        return value
+
+    def validate_note_qualite(self, value):
+        return self._validate_note(value, 'qualité')
+
+    def validate_note_delai(self, value):
+        return self._validate_note(value, 'délai')
+
+    def validate_note_securite(self, value):
+        return self._validate_note(value, 'sécurité')
+
+
+class RetenueGarantieSousTraitantSerializer(serializers.ModelSerializer):
+    """FG309 — retenue de garantie (%) sur un ordre de sous-traitance, bloquée
+    jusqu'à la levée des réserves. La société et `created_by` sont posés CÔTÉ
+    SERVEUR. `levee`/`date_levee` n'avancent que par l'action `lever` —
+    `montant_retenu`/`montant_a_liberer` sont dérivés (lecture seule). Montants
+    INTERNES."""
+    ordre_reference = serializers.CharField(
+        source='ordre.reference', read_only=True, default=None)
+    montant_base = serializers.DecimalField(
+        max_digits=12, decimal_places=2, read_only=True)
+    montant_retenu = serializers.DecimalField(
+        max_digits=12, decimal_places=2, read_only=True)
+    montant_a_liberer = serializers.DecimalField(
+        max_digits=12, decimal_places=2, read_only=True)
+
+    class Meta:
+        model = RetenueGarantieSousTraitant
+        fields = [
+            'id', 'ordre', 'ordre_reference', 'pourcentage',
+            'levee', 'date_constitution', 'date_levee', 'note',
+            'montant_base', 'montant_retenu', 'montant_a_liberer',
+            'created_by', 'date_creation', 'date_modification',
+        ]
+        # La levée n'est jamais écrite librement : elle avance via l'action
+        # `lever`.
+        read_only_fields = [
+            'levee', 'date_levee', 'created_by',
+            'date_creation', 'date_modification',
+        ]
+
+    def validate_pourcentage(self, value):
+        if value is None or value < 0 or value > 100:
+            raise serializers.ValidationError(
+                'Le pourcentage doit être compris entre 0 et 100.')
+        return value
+
+
+class DemandeAchatLigneSerializer(serializers.ModelSerializer):
+    """FG310 — ligne d'une demande d'achat (produit catalogue OU désignation
+    libre, quantité, prix estimé INTERNE)."""
+    produit_nom = serializers.CharField(
+        source='produit.nom', read_only=True, default=None)
+    total_estime = serializers.DecimalField(
+        max_digits=14, decimal_places=2, read_only=True)
+
+    class Meta:
+        model = DemandeAchatLigne
+        fields = [
+            'id', 'demande', 'produit', 'produit_nom', 'designation',
+            'quantite', 'prix_estime', 'total_estime',
+        ]
+
+    def validate(self, attrs):
+        produit = attrs.get('produit') if 'produit' in attrs else getattr(
+            self.instance, 'produit', None)
+        designation = attrs.get('designation') if 'designation' in attrs else (
+            getattr(self.instance, 'designation', None))
+        if produit is None and not (designation or '').strip():
+            raise serializers.ValidationError(
+                {'designation': 'Indiquez un produit ou une désignation.'})
+        return attrs
+
+
+class DemandeAchatSerializer(serializers.ModelSerializer):
+    """FG310 — réquisition d'achat soumise à approbation. La référence, la
+    société et `created_by` sont posés CÔTÉ SERVEUR ; `reference` est
+    anti-collision (`DA-YYYYMM-NNNN`). Le `statut`, l'approbateur et la date de
+    décision avancent via les actions de cycle de vie
+    (`soumettre`/`approuver`/`refuser`/`marquer_commandee`) — jamais écrits
+    librement. `montant_estime` est dérivé (INTERNE)."""
+    statut_display = serializers.CharField(
+        source='get_statut_display', read_only=True, default=None)
+    priorite_display = serializers.CharField(
+        source='get_priorite_display', read_only=True, default=None)
+    lignes = DemandeAchatLigneSerializer(many=True, read_only=True)
+    montant_estime = serializers.DecimalField(
+        max_digits=14, decimal_places=2, read_only=True)
+
+    class Meta:
+        model = DemandeAchat
+        fields = [
+            'id', 'reference', 'objet', 'chantier', 'programme',
+            'fournisseur_suggere', 'priorite', 'priorite_display',
+            'date_besoin', 'statut', 'statut_display', 'motif_refus',
+            'approuvee_par', 'date_decision', 'note', 'lignes',
+            'montant_estime',
+            'created_by', 'date_creation', 'date_modification',
+        ]
+        read_only_fields = [
+            'reference', 'statut', 'approuvee_par', 'date_decision',
+            'motif_refus', 'created_by', 'date_creation', 'date_modification',
+        ]
+
+    def validate_objet(self, value):
+        value = (value or '').strip()
+        if not value:
+            raise serializers.ValidationError("L'objet est obligatoire.")
+        return value
+
+
+class RFQOffreSerializer(serializers.ModelSerializer):
+    """FG311 — réponse d'un fournisseur à une RFQ (montant HT, délai, validité).
+    La société est posée CÔTÉ SERVEUR ; `retenue` n'avance que par l'action
+    `retenir` de la RFQ (lecture seule ici). Montants INTERNES."""
+    fournisseur_nom = serializers.CharField(
+        source='fournisseur.nom', read_only=True, default=None)
+
+    class Meta:
+        model = RFQOffre
+        fields = [
+            'id', 'rfq', 'fournisseur', 'fournisseur_nom',
+            'fournisseur_nom_libre', 'montant_ht', 'delai_jours',
+            'validite_jours', 'retenue', 'note',
+            'date_creation', 'date_modification',
+        ]
+        read_only_fields = ['retenue', 'date_creation', 'date_modification']
+
+    def validate(self, attrs):
+        fournisseur = attrs.get('fournisseur') if 'fournisseur' in attrs else (
+            getattr(self.instance, 'fournisseur', None))
+        libre = attrs.get('fournisseur_nom_libre') if (
+            'fournisseur_nom_libre' in attrs) else getattr(
+            self.instance, 'fournisseur_nom_libre', None)
+        if fournisseur is None and not (libre or '').strip():
+            raise serializers.ValidationError(
+                {'fournisseur': 'Indiquez un fournisseur ou un nom libre.'})
+        return attrs
+
+    def validate_montant_ht(self, value):
+        if value is not None and value < 0:
+            raise serializers.ValidationError(
+                'Le montant HT ne peut pas être négatif.')
+        return value
+
+
+class RFQSerializer(serializers.ModelSerializer):
+    """FG311 — demande de prix multi-fournisseurs. La référence et la société
+    sont posées CÔTÉ SERVEUR ; `reference` est anti-collision
+    (`RFQ-YYYYMM-NNNN`). Le `statut` avance via `envoyer`/`cloturer`. Les offres
+    sont imbriquées en lecture ; `comparatif` résume moins-chère / plus-rapide /
+    retenue."""
+    statut_display = serializers.CharField(
+        source='get_statut_display', read_only=True, default=None)
+    offres = RFQOffreSerializer(many=True, read_only=True)
+    comparatif = serializers.SerializerMethodField()
+
+    class Meta:
+        model = RFQ
+        fields = [
+            'id', 'reference', 'objet', 'demande', 'date_limite_reponse',
+            'statut', 'statut_display', 'note', 'offres', 'comparatif',
+            'created_by', 'date_creation', 'date_modification',
+        ]
+        read_only_fields = [
+            'reference', 'statut', 'created_by',
+            'date_creation', 'date_modification',
+        ]
+
+    def get_comparatif(self, obj):
+        from . import selectors
+        return selectors.rfq_comparatif(obj)
+
+    def validate_objet(self, value):
+        value = (value or '').strip()
+        if not value:
+            raise serializers.ValidationError("L'objet est obligatoire.")
+        return value
+
+
+class SeuilApprobationBCFSerializer(serializers.ModelSerializer):
+    """FG312 — seuil (MAD) par société : un BCF au-dessus du seuil exige un
+    Administrateur. La société est posée CÔTÉ SERVEUR."""
+
+    class Meta:
+        model = SeuilApprobationBCF
+        fields = [
+            'id', 'seuil_responsable', 'actif',
+            'date_creation', 'date_modification',
+        ]
+        read_only_fields = ['date_creation', 'date_modification']
+
+    def validate_seuil_responsable(self, value):
+        if value is not None and value < 0:
+            raise serializers.ValidationError(
+                'Le seuil ne peut pas être négatif.')
+        return value
+
+
+class ApprobationBCFSerializer(serializers.ModelSerializer):
+    """FG312 — approbation d'un BCF (string-FK vers stock). Le palier, le montant
+    approuvé, l'approbateur et la société sont posés CÔTÉ SERVEUR par l'action
+    `approuver` ; ce serializer est essentiellement en lecture."""
+    palier_display = serializers.CharField(
+        source='get_palier_display', read_only=True, default=None)
+
+    class Meta:
+        model = ApprobationBCF
+        fields = [
+            'id', 'bcf', 'palier', 'palier_display', 'montant_approuve',
+            'approuve_par', 'note', 'date_approbation',
+        ]
+        read_only_fields = [
+            'palier', 'montant_approuve', 'approuve_par', 'date_approbation',
+        ]
+
+
+class CommandeCadreLigneSerializer(serializers.ModelSerializer):
+    """FG314 — ligne d'un contrat-cadre (SKU, prix négocié INTERNE, volume
+    engagé). `volume_consomme`/`volume_restant` sont dérivés (lecture seule)."""
+    produit_nom = serializers.CharField(
+        source='produit.nom', read_only=True, default=None)
+    volume_consomme = serializers.DecimalField(
+        max_digits=12, decimal_places=2, read_only=True)
+    volume_restant = serializers.DecimalField(
+        max_digits=12, decimal_places=2, read_only=True)
+
+    class Meta:
+        model = CommandeCadreLigne
+        fields = [
+            'id', 'commande_cadre', 'produit', 'produit_nom', 'designation',
+            'prix_negocie', 'volume_engage',
+            'volume_consomme', 'volume_restant',
+        ]
+
+    def validate(self, attrs):
+        produit = attrs.get('produit') if 'produit' in attrs else getattr(
+            self.instance, 'produit', None)
+        designation = attrs.get('designation') if 'designation' in attrs else (
+            getattr(self.instance, 'designation', None))
+        if produit is None and not (designation or '').strip():
+            raise serializers.ValidationError(
+                {'designation': 'Indiquez un produit ou une désignation.'})
+        return attrs
+
+
+class CommandeCadreSerializer(serializers.ModelSerializer):
+    """FG314 — contrat-cadre (prix négociés + volume engagé). La référence et la
+    société sont posées CÔTÉ SERVEUR ; `reference` est anti-collision
+    (`CC-YYYYMM-NNNN`). Le `statut` avance via `activer`/`cloturer`. Les lignes
+    sont imbriquées en lecture."""
+    statut_display = serializers.CharField(
+        source='get_statut_display', read_only=True, default=None)
+    fournisseur_nom = serializers.CharField(
+        source='fournisseur.nom', read_only=True, default=None)
+    lignes = CommandeCadreLigneSerializer(many=True, read_only=True)
+
+    class Meta:
+        model = CommandeCadre
+        fields = [
+            'id', 'reference', 'intitule', 'fournisseur', 'fournisseur_nom',
+            'date_debut', 'date_fin', 'statut', 'statut_display', 'note',
+            'lignes', 'created_by', 'date_creation', 'date_modification',
+        ]
+        read_only_fields = [
+            'reference', 'statut', 'created_by',
+            'date_creation', 'date_modification',
+        ]
+
+    def validate_intitule(self, value):
+        value = (value or '').strip()
+        if not value:
+            raise serializers.ValidationError("L'intitulé est obligatoire.")
+        return value
+
+
+class AppelCommandeSerializer(serializers.ModelSerializer):
+    """FG314 — commande d'appel sur une ligne de contrat-cadre. La société et
+    `created_by` sont posés CÔTÉ SERVEUR. `montant` est dérivé (quantité × prix
+    négocié, INTERNE)."""
+    montant = serializers.DecimalField(
+        max_digits=14, decimal_places=2, read_only=True)
+
+    class Meta:
+        model = AppelCommande
+        fields = [
+            'id', 'ligne', 'quantite', 'date_appel', 'chantier', 'note',
+            'montant', 'created_by', 'date_creation',
+        ]
+        read_only_fields = ['created_by', 'date_creation']
+
+    def validate_quantite(self, value):
+        if value is None or value <= 0:
+            raise serializers.ValidationError(
+                'La quantité appelée doit être strictement positive.')
+        return value
+
+
+class DossierImportSerializer(serializers.ModelSerializer):
+    """FG315 — dossier d'import / dédouanement d'un conteneur. La référence et la
+    société sont posées CÔTÉ SERVEUR ; `reference` est anti-collision
+    (`IMP-YYYYMM-NNNN`). Le `statut_douane` avance via l'action `avancer`."""
+    statut_douane_display = serializers.CharField(
+        source='get_statut_douane_display', read_only=True, default=None)
+    incoterm_display = serializers.CharField(
+        source='get_incoterm_display', read_only=True, default=None)
+    fournisseur_nom = serializers.CharField(
+        source='fournisseur.nom', read_only=True, default=None)
+
+    class Meta:
+        model = DossierImport
+        fields = [
+            'id', 'reference', 'designation', 'fournisseur', 'fournisseur_nom',
+            'bon_commande', 'incoterm', 'incoterm_display', 'numero_bl',
+            'numero_conteneur', 'port_arrivee', 'date_depart',
+            'date_arrivee_port', 'date_dedouanement',
+            'statut_douane', 'statut_douane_display', 'note',
+            'created_by', 'date_creation', 'date_modification',
+        ]
+        read_only_fields = [
+            'reference', 'statut_douane', 'created_by',
+            'date_creation', 'date_modification',
+        ]
+
+    def validate_designation(self, value):
+        value = (value or '').strip()
+        if not value:
+            raise serializers.ValidationError("La désignation est obligatoire.")
+        return value
+
+
+class FraisImportSerializer(serializers.ModelSerializer):
+    """FG316 — frais imputé à un dossier d'import (fret/douane/TVA import/
+    transit…). La société et `created_by` sont posés CÔTÉ SERVEUR. Montant
+    INTERNE."""
+    categorie_display = serializers.CharField(
+        source='get_categorie_display', read_only=True, default=None)
+
+    class Meta:
+        model = FraisImport
+        fields = [
+            'id', 'dossier', 'categorie', 'categorie_display', 'libelle',
+            'montant', 'date_frais', 'created_by', 'date_creation',
+        ]
+        read_only_fields = ['created_by', 'date_creation']
+
+    def validate_montant(self, value):
+        if value is not None and value < 0:
+            raise serializers.ValidationError(
+                'Le montant ne peut pas être négatif.')
+        return value
+
+
+class LandedCostLigneSerializer(serializers.ModelSerializer):
+    """FG316 — ligne de coût débarqué par SKU (valeur FOB + quantité). La société
+    est posée CÔTÉ SERVEUR. `cout_fob_unitaire` est dérivé ; la quote-part de
+    frais + le coût débarqué se lisent via l'action `landed-cost` du dossier."""
+    produit_nom = serializers.CharField(
+        source='produit.nom', read_only=True, default=None)
+    cout_fob_unitaire = serializers.DecimalField(
+        max_digits=12, decimal_places=2, read_only=True)
+
+    class Meta:
+        model = LandedCostLigne
+        fields = [
+            'id', 'dossier', 'produit', 'produit_nom', 'designation',
+            'quantite', 'valeur_fob', 'cout_fob_unitaire', 'date_creation',
+        ]
+        read_only_fields = ['date_creation']
+
+    def validate(self, attrs):
+        produit = attrs.get('produit') if 'produit' in attrs else getattr(
+            self.instance, 'produit', None)
+        designation = attrs.get('designation') if 'designation' in attrs else (
+            getattr(self.instance, 'designation', None))
+        if produit is None and not (designation or '').strip():
+            raise serializers.ValidationError(
+                {'designation': 'Indiquez un produit ou une désignation.'})
+        return attrs
+
+
+class ReceptionNonFactureeSerializer(serializers.ModelSerializer):
+    """FG317 — provision de dette latente (réceptionné-non-facturé). La société
+    et `created_by` sont posés CÔTÉ SERVEUR ; `lettre`/`date_lettrage`/`facture`
+    n'avancent que par l'action `lettrer`. `montant_a_provisionner` est dérivé
+    (0 une fois lettré). Montants INTERNES."""
+    montant_a_provisionner = serializers.DecimalField(
+        max_digits=12, decimal_places=2, read_only=True)
+
+    class Meta:
+        model = ReceptionNonFacturee
+        fields = [
+            'id', 'reception', 'bon_commande', 'facture', 'libelle',
+            'montant_provision', 'date_reception',
+            'lettre', 'date_lettrage', 'note', 'montant_a_provisionner',
+            'created_by', 'date_creation', 'date_modification',
+        ]
+        read_only_fields = [
+            'facture', 'lettre', 'date_lettrage', 'created_by',
+            'date_creation', 'date_modification',
+        ]
+
+    def validate_montant_provision(self, value):
+        if value is not None and value < 0:
+            raise serializers.ValidationError(
+                'Le montant provisionné ne peut pas être négatif.')
+        return value
+
+
+class ContratPrixLigneSerializer(serializers.ModelSerializer):
+    """FG318 — ligne de prix convenu d'un contrat fournisseur (SKU + prix
+    négocié INTERNE + remise % optionnelle)."""
+    produit_nom = serializers.CharField(
+        source='produit.nom', read_only=True, default=None)
+
+    class Meta:
+        model = ContratPrixLigne
+        fields = [
+            'id', 'contrat', 'produit', 'produit_nom', 'designation',
+            'prix_convenu', 'remise_pct',
+        ]
+
+    def validate(self, attrs):
+        produit = attrs.get('produit') if 'produit' in attrs else getattr(
+            self.instance, 'produit', None)
+        designation = attrs.get('designation') if 'designation' in attrs else (
+            getattr(self.instance, 'designation', None))
+        if produit is None and not (designation or '').strip():
+            raise serializers.ValidationError(
+                {'designation': 'Indiquez un produit ou une désignation.'})
+        return attrs
+
+
+class ContratPrixFournisseurSerializer(serializers.ModelSerializer):
+    """FG318 — contrat de prix fournisseur daté/versionné. La référence et la
+    société sont posées CÔTÉ SERVEUR ; `reference` est anti-collision
+    (`CPF-YYYYMM-NNNN`). Le `statut` avance via `activer`/`expirer`. Les lignes
+    sont imbriquées en lecture."""
+    statut_display = serializers.CharField(
+        source='get_statut_display', read_only=True, default=None)
+    fournisseur_nom = serializers.CharField(
+        source='fournisseur.nom', read_only=True, default=None)
+    lignes = ContratPrixLigneSerializer(many=True, read_only=True)
+
+    class Meta:
+        model = ContratPrixFournisseur
+        fields = [
+            'id', 'reference', 'intitule', 'fournisseur', 'fournisseur_nom',
+            'version', 'date_debut', 'date_fin', 'statut', 'statut_display',
+            'note', 'lignes', 'created_by', 'date_creation', 'date_modification',
+        ]
+        read_only_fields = [
+            'reference', 'statut', 'created_by',
+            'date_creation', 'date_modification',
+        ]
+
+    def validate_intitule(self, value):
+        value = (value or '').strip()
+        if not value:
+            raise serializers.ValidationError("L'intitulé est obligatoire.")
         return value
