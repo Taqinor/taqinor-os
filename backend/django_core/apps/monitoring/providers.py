@@ -97,10 +97,67 @@ class FusionSolarProvider(MonitoringProvider):
         return []
 
 
+class _CredentialGatedProvider(MonitoringProvider):
+    """FG285 — base commune des connecteurs SUPPLÉMENTAIRES.
+
+    Même contrat que FusionSolar : ne s'active QUE si des identifiants sont
+    configurés par système ET la config est activée ; sinon — ou en cas
+    d'erreur — NO-OPE (renvoie []), donc le système retombe sur la saisie
+    manuelle. Aucun appel réseau, aucun coût, aucune dépendance pip nouvelle
+    tant que le `_fetch` n'est pas câblé (squelette). Désactivés par défaut.
+    """
+
+    def fetch_recent(self, system, config):
+        creds = getattr(config, 'credentials', None) or {}
+        if not creds or not getattr(config, 'enabled', False):
+            return []
+        try:
+            return self._fetch(system, config, creds)
+        except Exception:  # noqa: BLE001 — un connecteur ne casse JAMAIS l'OS.
+            logger.warning(
+                '%s fetch a échoué pour le système %s (no-op).',
+                self.key, getattr(system, 'id', None), exc_info=True)
+            return []
+
+    def _fetch(self, system, config, creds):
+        """Squelette : aucune intégration câblée → no-op sûr ([])."""
+        return []
+
+
+class SolarEdgeProvider(_CredentialGatedProvider):
+    """Squelette connecteur SolarEdge (API monitoring). Gated, no-op par défaut.
+
+    Branchement futur : clé d'API + siteId depuis `credentials`, puis
+    /site/{siteId}/energy via `httpx` (déjà dépendance)."""
+
+    key = 'solaredge'
+    label = 'SolarEdge'
+    DEFAULT_BASE_URL = 'https://monitoringapi.solaredge.com'
+
+
+class SungrowProvider(_CredentialGatedProvider):
+    """Squelette connecteur Sungrow (iSolarCloud). Gated, no-op par défaut."""
+
+    key = 'sungrow'
+    label = 'Sungrow (iSolarCloud)'
+    DEFAULT_BASE_URL = 'https://gateway.isolarcloud.com'
+
+
+class SolisProvider(_CredentialGatedProvider):
+    """Squelette connecteur Solis (SolisCloud / Ginlong). Gated, no-op."""
+
+    key = 'solis'
+    label = 'Solis (SolisCloud)'
+    DEFAULT_BASE_URL = 'https://www.soliscloud.com:13333'
+
+
 # ── Registre des fournisseurs (swappable, comme l'OCR) ───────────────────────
 _REGISTRY = {
     NoOpProvider.key: NoOpProvider,
     FusionSolarProvider.key: FusionSolarProvider,
+    SolarEdgeProvider.key: SolarEdgeProvider,
+    SungrowProvider.key: SungrowProvider,
+    SolisProvider.key: SolisProvider,
 }
 
 

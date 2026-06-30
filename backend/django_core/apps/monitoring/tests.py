@@ -608,3 +608,44 @@ class TestWarrantyCurveOverlay(TestCase):
             f'/api/django/monitoring/warranties/{self.warranty.id}/curve/')
         self.assertEqual(r.status_code, 200, r.data)
         self.assertTrue(r.data['manufacturer_recourse'])
+
+
+class TestAdditionalProviders(TestCase):
+    """FG285 — adaptateurs SolarEdge/Sungrow/Solis (gated, no-op par défaut)."""
+
+    def setUp(self):
+        self.company = make_company('adp-co', 'Adp Co')
+        self.user = User.objects.create_user(
+            username='adp_admin', password='x', role_legacy='admin',
+            company=self.company)
+        self.api = auth(self.user)
+        self.inst, _ = make_installation(self.company, ref='ADP-1')
+
+    def test_new_providers_registered(self):
+        keys = dict(providers.available_providers())
+        for key in ('solaredge', 'sungrow', 'solis'):
+            self.assertIn(key, keys)
+
+    def test_provider_noop_without_credentials(self):
+        for key in ('solaredge', 'sungrow', 'solis'):
+            cfg = MonitoringConfig.objects.create(
+                company=self.company, installation=self.inst,
+                provider=key, enabled=True, credentials={})
+            prov = providers.get_provider(key)
+            self.assertEqual(prov.fetch_recent(self.inst, cfg), [])
+            cfg.delete()
+
+    def test_provider_noop_when_disabled_even_with_credentials(self):
+        cfg = MonitoringConfig.objects.create(
+            company=self.company, installation=self.inst,
+            provider='solaredge', enabled=False,
+            credentials={'api_key': 'x', 'site_id': '1'})
+        prov = providers.get_provider('solaredge')
+        self.assertEqual(prov.fetch_recent(self.inst, cfg), [])
+
+    def test_providers_endpoint_lists_new(self):
+        r = self.api.get('/api/django/monitoring/configs/providers/')
+        self.assertEqual(r.status_code, 200, r.data)
+        keys = [p['key'] for p in r.data]
+        self.assertIn('solaredge', keys)
+        self.assertIn('solis', keys)
