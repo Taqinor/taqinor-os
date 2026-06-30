@@ -44,10 +44,12 @@ from .services import (
     TransitionPeriodeInterdite,
     calculer_bulletin,
     changer_statut,
+    declaration_cnss,
     emettre_ordre_virement,
     ensure_defaults,
     ensure_rubriques_defaut,
     ensure_rubriques_standard,
+    fichier_damancom_cnss,
     fichier_virement_paie,
     generer_bulletin,
     generer_ordre_virement,
@@ -208,6 +210,19 @@ class PeriodePaieViewSet(_PaieBaseViewSet):
             pac = 0
         resultat = calculer_bulletin(profil, periode, personnes_a_charge=pac)
         return Response(resultat, status=status.HTTP_200_OK)
+
+    @action(detail=True, methods=['get'], url_path='declaration-cnss')
+    def declaration_cnss(self, request, pk=None):
+        """Bordereau de déclaration des salaires CNSS (BDS) de la période (PAIE31)."""
+        periode = self.get_object()
+        return Response(declaration_cnss(periode), status=status.HTTP_200_OK)
+
+    @action(detail=True, methods=['get'], url_path='fichier-damancom')
+    def fichier_damancom(self, request, pk=None):
+        """Fichier de télédéclaration CNSS au format DAMANCOM (PAIE31)."""
+        periode = self.get_object()
+        return Response(
+            fichier_damancom_cnss(periode), status=status.HTTP_200_OK)
 
 
 class ElementVariableViewSet(_PaieBaseViewSet):

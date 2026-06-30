@@ -1679,6 +1679,124 @@ def fichier_virement_paie(ordre):
     }
 
 
+# ── PAIE31 — Déclaration CNSS (BDS / format DAMANCOM) ──────────────────────
+
+def declaration_cnss(periode):
+    """Bordereau de déclaration des salaires CNSS (BDS) d'une période (PAIE31).
+
+    Agrège, pour les bulletins VALIDÉS de la ``periode``, les éléments du BDS
+    par salarié affilié CNSS : numéro d'immatriculation CNSS, nom, nombre de
+    jours déclarés (plafonné réglementairement à 26 j/mois), salaire brut réel
+    et salaire PLAFONNÉ (base de cotisation, ``min(brut, plafond_cnss)``).
+    Calcule aussi les totaux et les cotisations (salariale + patronale CNSS, AMO,
+    allocations familiales, taxe de formation professionnelle).
+
+    Lecture seule (aucun effet de bord). Le ``numero_cnss`` est lu sur le
+    ``ProfilPaie`` (jamais sur ``rh.models``). Renvoie un dict ::
+
+        {'annee', 'mois', 'plafond_cnss', 'lignes': [...],
+         'total_brut', 'total_plafonne', 'total_cnss_salariale',
+         'total_cnss_patronale', 'total_amo_salariale', 'total_amo_patronale',
+         'total_allocations_familiales', 'total_formation_professionnelle',
+         'nombre_salaries'}
+    """
+    from .models import BulletinPaie
+
+    le_jour = date(periode.annee, periode.mois, 1)
+    parametre = parametre_en_vigueur(periode.company, le_jour)
+    plafond = Decimal(parametre.plafond_cnss or 0) if parametre else Decimal('0')
+
+    bulletins = (
+        BulletinPaie.objects
+        .filter(company=periode.company, periode=periode,
+                statut=BulletinPaie.STATUT_VALIDE)
+        .select_related('profil', 'profil__employe')
+    )
+    lignes = []
+    totaux = {
+        'total_brut': Decimal('0'),
+        'total_plafonne': Decimal('0'),
+        'total_cnss_salariale': Decimal('0'),
+        'total_cnss_patronale': Decimal('0'),
+        'total_amo_salariale': Decimal('0'),
+        'total_amo_patronale': Decimal('0'),
+        'total_allocations_familiales': Decimal('0'),
+        'total_formation_professionnelle': Decimal('0'),
+    }
+    for bulletin in bulletins:
+        profil = bulletin.profil
+        if not profil.affilie_cnss:
+            continue
+        brut = Decimal(bulletin.brut or 0)
+        plafonne = min(brut, plafond) if plafond > 0 else brut
+        employe = profil.employe
+        nom = f'{employe.nom} {employe.prenom}'.strip() if employe else ''
+        lignes.append({
+            'numero_cnss': profil.numero_cnss or '',
+            'matricule': getattr(employe, 'matricule', '') if employe else '',
+            'nom': nom,
+            'jours_declares': 26,  # mois plein déclaré par défaut (réglementaire)
+            'brut': _q(brut),
+            'plafonne': _q(plafonne),
+            'cnss_salariale': _q(bulletin.cnss_salariale),
+            'cnss_patronale': _q(bulletin.cnss_patronale),
+            'amo_salariale': _q(bulletin.amo_salariale),
+            'amo_patronale': _q(bulletin.amo_patronale),
+            'allocations_familiales': _q(bulletin.allocations_familiales),
+            'formation_professionnelle': _q(
+                bulletin.formation_professionnelle),
+        })
+        totaux['total_brut'] += brut
+        totaux['total_plafonne'] += plafonne
+        totaux['total_cnss_salariale'] += Decimal(bulletin.cnss_salariale or 0)
+        totaux['total_cnss_patronale'] += Decimal(bulletin.cnss_patronale or 0)
+        totaux['total_amo_salariale'] += Decimal(bulletin.amo_salariale or 0)
+        totaux['total_amo_patronale'] += Decimal(bulletin.amo_patronale or 0)
+        totaux['total_allocations_familiales'] += Decimal(
+            bulletin.allocations_familiales or 0)
+        totaux['total_formation_professionnelle'] += Decimal(
+            bulletin.formation_professionnelle or 0)
+
+    resultat = {
+        'annee': periode.annee,
+        'mois': periode.mois,
+        'plafond_cnss': _q(plafond),
+        'lignes': lignes,
+        'nombre_salaries': len(lignes),
+    }
+    for cle, valeur in totaux.items():
+        resultat[cle] = _q(valeur)
+    return resultat
+
+
+def fichier_damancom_cnss(periode):
+    """Fichier de télédéclaration CNSS au format DAMANCOM (PAIE31).
+
+    Génère les lignes texte du fichier DAMANCOM à partir de
+    ``declaration_cnss`` : une ligne d'en-tête société puis une ligne par
+    salarié (numéro CNSS, nom, jours, brut, plafonné). Format SIMPLIFIÉ,
+    séparateur ``;`` — la mise au format DAMANCOM strict (longueurs fixes) reste
+    à confirmer côté CNSS. Renvoie ``{'lignes': [str, …], 'nombre_salaries',
+    'total_brut', 'total_plafonne'}``. Lecture seule.
+    """
+    decl = declaration_cnss(periode)
+    lignes_txt = [
+        f'E;{periode.annee};{periode.mois:02d};'
+        f'{decl["nombre_salaries"]};{decl["total_plafonne"]}'
+    ]
+    for ligne in decl['lignes']:
+        lignes_txt.append(
+            f'S;{ligne["numero_cnss"]};{ligne["nom"]};'
+            f'{ligne["jours_declares"]};{ligne["brut"]};{ligne["plafonne"]}'
+        )
+    return {
+        'lignes': lignes_txt,
+        'nombre_salaries': decl['nombre_salaries'],
+        'total_brut': decl['total_brut'],
+        'total_plafonne': decl['total_plafonne'],
+    }
+
+
 # ── PAIE27 — Cumul annuel par employé (recalcul depuis bulletins validés) ────
 
 # Champs cumulés : (champ du CumulAnnuel, champ du BulletinPaie) sommés.
