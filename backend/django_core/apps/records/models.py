@@ -26,6 +26,10 @@ ALLOWED_TARGETS = {
     ('installations', 'installation'),
     ('sav', 'ticket'),
     ('outillage', 'outillage'),
+    # DC27 — taxonomie de tags transversale : le produit catalogue devient
+    # une cible taggable (clients/devis/factures/chantiers/tickets l'étaient
+    # déjà), pour adosser tout le vocabulaire au registre `records.Tag`.
+    ('stock', 'produit'),
     # QHSE8 — photos de contrôle (avant/pendant/après) rattachées à un relevé
     # de contrôle ITP, et pièces jointes d'une non-conformité (NCR).
     ('qhse', 'relevecontrole'),
