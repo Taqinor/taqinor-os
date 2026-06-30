@@ -7,6 +7,7 @@ from .views import (
     BulletinPaieViewSet,
     CumulAnnuelViewSet,
     ElementVariableViewSet,
+    OrdreVirementViewSet,
     ParametrePaieViewSet,
     PeriodePaieViewSet,
     ProfilPaieViewSet,
@@ -27,6 +28,7 @@ router.register(r'bulletins', BulletinPaieViewSet)
 router.register(r'cumuls-annuels', CumulAnnuelViewSet)
 router.register(r'avances', AvanceSalarieViewSet)
 router.register(r'saisies', SaisieArretViewSet)
+router.register(r'ordres-virement', OrdreVirementViewSet)
 
 urlpatterns = [
     path('', include(router.urls)),

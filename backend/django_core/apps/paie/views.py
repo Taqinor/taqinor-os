@@ -18,6 +18,7 @@ from .models import (
     BulletinPaie,
     CumulAnnuel,
     ElementVariable,
+    OrdreVirement,
     ParametrePaie,
     PeriodePaie,
     ProfilPaie,
@@ -33,6 +34,7 @@ from .serializers import (
     ElementVariableSerializer,
     ParametrePaieSerializer,
     PeriodePaieSerializer,
+    OrdreVirementSerializer,
     ProfilPaieSerializer,
     RubriqueEmployeSerializer,
     RubriqueSerializer,
@@ -42,10 +44,13 @@ from .services import (
     TransitionPeriodeInterdite,
     calculer_bulletin,
     changer_statut,
+    emettre_ordre_virement,
     ensure_defaults,
     ensure_rubriques_defaut,
     ensure_rubriques_standard,
+    fichier_virement_paie,
     generer_bulletin,
+    generer_ordre_virement,
     importer_elements_rh,
     recalculer_cumul_annuel,
     valider_bulletin,
@@ -282,6 +287,70 @@ class AvanceSalarieViewSet(_PaieBaseViewSet):
     serializer_class = AvanceSalarieSerializer
     filter_backends = [filters.OrderingFilter]
     ordering_fields = ['date_debut', 'date_creation', 'id']
+
+
+class OrdreVirementViewSet(TenantMixin, viewsets.ReadOnlyModelViewSet):
+    """Ordres de virement des salaires (PAIE30) — lecture seule + actions.
+
+    L'ordre se construit/regénère par ``generer`` (depuis les bulletins validés
+    d'une période), se fige par ``emettre``, et le fichier banque s'obtient par
+    ``fichier``. Société scopée, palier paie uniquement.
+    """
+    permission_classes = [IsResponsableOrAdmin]
+    queryset = OrdreVirement.objects.select_related('periode').prefetch_related(
+        'lignes').all()
+    serializer_class = OrdreVirementSerializer
+    filter_backends = [filters.OrderingFilter]
+    ordering_fields = ['date_creation', 'periode', 'id']
+
+    @action(detail=False, methods=['post'], url_path='generer')
+    def generer(self, request):
+        """Génère (ou régénère) l'ordre de virement d'une période (PAIE30).
+
+        Corps : ``periode`` (id) requis ; ``date_execution`` / ``rib_emetteur``
+        facultatifs. Un ordre déjà ÉMIS ne peut être régénéré (400).
+        """
+        periode_id = request.data.get('periode')
+        if not periode_id:
+            return Response(
+                {'detail': 'Champ "periode" requis.'},
+                status=status.HTTP_400_BAD_REQUEST)
+        try:
+            periode = PeriodePaie.objects.get(
+                pk=periode_id, company=request.user.company)
+        except (PeriodePaie.DoesNotExist, ValueError):
+            return Response(
+                {'detail': 'Période inconnue.'},
+                status=status.HTTP_404_NOT_FOUND)
+        try:
+            ordre = generer_ordre_virement(
+                periode,
+                date_execution=request.data.get('date_execution') or None,
+                rib_emetteur=request.data.get('rib_emetteur', ''))
+        except ValueError as exc:
+            return Response(
+                {'detail': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+        return Response(
+            self.get_serializer(ordre).data, status=status.HTTP_200_OK)
+
+    @action(detail=True, methods=['post'], url_path='emettre')
+    def emettre(self, request, pk=None):
+        """Émet l'ordre de virement → fige l'ordre (PAIE30)."""
+        ordre = self.get_object()
+        emettre_ordre_virement(ordre)
+        return Response(
+            self.get_serializer(ordre).data, status=status.HTTP_200_OK)
+
+    @action(detail=True, methods=['get'], url_path='fichier')
+    def fichier(self, request, pk=None):
+        """Renvoie le fichier de virement banque (lignes + total, PAIE30)."""
+        ordre = self.get_object()
+        try:
+            fichier = fichier_virement_paie(ordre)
+        except ValueError as exc:
+            return Response(
+                {'detail': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+        return Response(fichier, status=status.HTTP_200_OK)
 
 
 class SaisieArretViewSet(_PaieBaseViewSet):

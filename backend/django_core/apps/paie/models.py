@@ -1183,3 +1183,115 @@ class SaisieArret(models.Model):
     def soldee(self):
         """Vrai quand la saisie est entièrement recouvrée."""
         return self.solde_restant <= 0
+
+
+# ── PAIE30 — Ordre de virement + fichier de virement banque ────────────────
+
+class OrdreVirement(models.Model):
+    """Ordre de virement des salaires d'une période (PAIE30).
+
+    Regroupe en UN ordre l'ensemble des bulletins VALIDÉS d'une ``PeriodePaie``
+    à payer par virement bancaire : chaque salarié devient une ``LigneVirement``
+    (RIB + net à payer). Sert à générer le fichier de virement remis à la banque
+    (``services.fichier_virement_paie``).
+
+    Cycle : ``brouillon`` (lignes éditables) → ``emis`` (transmis à la banque,
+    figé). Multi-société : ``company`` posée côté serveur. Le couple
+    ``(company, periode)`` est unique — un seul ordre de virement par période.
+    """
+    STATUT_BROUILLON = 'brouillon'
+    STATUT_EMIS = 'emis'
+    STATUT_CHOICES = [
+        (STATUT_BROUILLON, 'Brouillon'),
+        (STATUT_EMIS, 'Émis'),
+    ]
+
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='paie_ordres_virement',
+        verbose_name='Société',
+    )
+    periode = models.ForeignKey(
+        PeriodePaie,
+        on_delete=models.CASCADE,
+        related_name='ordres_virement',
+        verbose_name='Période',
+    )
+    libelle = models.CharField(
+        max_length=120, blank=True, default='', verbose_name='Libellé')
+    statut = models.CharField(
+        max_length=12, choices=STATUT_CHOICES, default=STATUT_BROUILLON,
+        verbose_name='Statut')
+    date_execution = models.DateField(
+        null=True, blank=True, verbose_name="Date d'exécution souhaitée")
+    rib_emetteur = models.CharField(
+        max_length=40, blank=True, default='', verbose_name='RIB émetteur')
+    devise = models.CharField(
+        max_length=3, default='MAD', verbose_name='Devise')
+    total = models.DecimalField(
+        max_digits=16, decimal_places=2, default=Decimal('0'),
+        verbose_name='Total à virer')
+    nombre_lignes = models.PositiveIntegerField(
+        default=0, verbose_name='Nombre de lignes')
+    date_emission = models.DateTimeField(
+        null=True, blank=True, verbose_name='Émis le')
+    date_creation = models.DateTimeField(
+        auto_now_add=True, verbose_name='Créé le')
+
+    class Meta:
+        verbose_name = 'Ordre de virement'
+        verbose_name_plural = 'Ordres de virement'
+        ordering = ['-date_creation']
+        unique_together = [('company', 'periode')]
+
+    def __str__(self):
+        return f'Ordre virement {self.periode} ({self.statut})'
+
+    @property
+    def est_emis(self):
+        return self.statut == self.STATUT_EMIS
+
+
+class LigneVirement(models.Model):
+    """Ligne d'un ``OrdreVirement`` (PAIE30) — un bénéficiaire / un net à virer.
+
+    Issue d'un ``BulletinPaie`` validé : bénéficiaire (nom du salarié), RIB,
+    montant (net à payer du bulletin) et référence. Multi-société : ``company``
+    posée côté serveur (héritée de l'ordre).
+    """
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='paie_lignes_virement',
+        verbose_name='Société',
+    )
+    ordre = models.ForeignKey(
+        OrdreVirement,
+        on_delete=models.CASCADE,
+        related_name='lignes',
+        verbose_name='Ordre de virement',
+    )
+    bulletin = models.ForeignKey(
+        BulletinPaie,
+        on_delete=models.PROTECT,
+        related_name='lignes_virement',
+        verbose_name='Bulletin',
+    )
+    beneficiaire = models.CharField(
+        max_length=160, verbose_name='Bénéficiaire')
+    rib = models.CharField(
+        max_length=40, blank=True, default='', verbose_name='RIB')
+    montant = models.DecimalField(
+        max_digits=14, decimal_places=2, default=Decimal('0'),
+        verbose_name='Montant')
+    reference = models.CharField(
+        max_length=80, blank=True, default='', verbose_name='Référence')
+
+    class Meta:
+        verbose_name = 'Ligne de virement'
+        verbose_name_plural = 'Lignes de virement'
+        ordering = ['ordre', 'beneficiaire', 'id']
+
+    def __str__(self):
+        return f'{self.beneficiaire} {self.montant} (ordre #{self.ordre_id})'

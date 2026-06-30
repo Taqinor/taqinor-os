@@ -13,6 +13,8 @@ from .models import (
     CumulAnnuel,
     ElementVariable,
     LigneBulletin,
+    LigneVirement,
+    OrdreVirement,
     ParametrePaie,
     PeriodePaie,
     ProfilPaie,
@@ -311,6 +313,36 @@ class AvanceSalarieSerializer(serializers.ModelSerializer):
 
     def validate_profil(self, value):
         return _meme_societe(self, value, 'Profil')
+
+
+class LigneVirementSerializer(serializers.ModelSerializer):
+    """Ligne d'un ordre de virement (PAIE30) — lecture seule."""
+
+    class Meta:
+        model = LigneVirement
+        fields = [
+            'id', 'bulletin', 'beneficiaire', 'rib', 'montant', 'reference',
+        ]
+        read_only_fields = fields
+
+
+class OrdreVirementSerializer(serializers.ModelSerializer):
+    """Ordre de virement des salaires d'une période (PAIE30) — lecture seule.
+
+    Construit/regénéré par l'action ``generer`` (depuis les bulletins validés)
+    et figé par ``emettre``. Société scopée, palier paie. Les lignes sont
+    imbriquées.
+    """
+    lignes = LigneVirementSerializer(many=True, read_only=True)
+
+    class Meta:
+        model = OrdreVirement
+        fields = [
+            'id', 'periode', 'libelle', 'statut', 'date_execution',
+            'rib_emetteur', 'devise', 'total', 'nombre_lignes',
+            'date_emission', 'date_creation', 'lignes',
+        ]
+        read_only_fields = fields
 
 
 class SaisieArretSerializer(serializers.ModelSerializer):

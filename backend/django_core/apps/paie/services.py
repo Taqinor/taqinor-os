@@ -1549,6 +1549,136 @@ def valider_bulletin(bulletin):
     return bulletin
 
 
+# ── PAIE30 — Ordre de virement + fichier de virement banque ────────────────
+
+FICHIER_VIREMENT_PAIE_HEADERS = [
+    'Bénéficiaire', 'RIB', 'Montant', 'Devise', 'Référence', 'Motif',
+]
+
+
+def generer_ordre_virement(periode, *, date_execution=None, rib_emetteur=''):
+    """Génère (ou régénère) l'ordre de virement d'une période (PAIE30).
+
+    Regroupe tous les bulletins VALIDÉS de la ``periode`` au ``net_a_payer > 0``
+    en un ``OrdreVirement`` (une ``LigneVirement`` par salarié : bénéficiaire,
+    RIB du profil, net à payer). Recrée l'ordre s'il est en brouillon ; refuse de
+    régénérer un ordre déjà ÉMIS (figé). ``company`` posée côté serveur. Opération
+    atomique. Renvoie l'``OrdreVirement``.
+    """
+    from .models import (
+        BulletinPaie, LigneVirement, OrdreVirement,
+    )
+
+    with transaction.atomic():
+        ordre = (
+            OrdreVirement.objects
+            .select_for_update()
+            .filter(company=periode.company, periode=periode)
+            .first()
+        )
+        if ordre is not None and ordre.est_emis:
+            raise ValueError("Ordre de virement déjà émis : régénération interdite.")
+        if ordre is None:
+            ordre = OrdreVirement(company=periode.company, periode=periode)
+        ordre.statut = OrdreVirement.STATUT_BROUILLON
+        if date_execution is not None:
+            ordre.date_execution = date_execution
+        if rib_emetteur:
+            ordre.rib_emetteur = rib_emetteur
+        if not ordre.libelle:
+            ordre.libelle = f'Virement salaires {periode.mois:02d}/{periode.annee}'
+        ordre.save()
+
+        ordre.lignes.all().delete()
+        bulletins = (
+            BulletinPaie.objects
+            .filter(company=periode.company, periode=periode,
+                    statut=BulletinPaie.STATUT_VALIDE)
+            .select_related('profil', 'profil__employe')
+        )
+        total = Decimal('0')
+        nombre = 0
+        for bulletin in bulletins:
+            net = Decimal(bulletin.net_a_payer or 0)
+            if net <= 0:
+                continue
+            profil = bulletin.profil
+            employe = profil.employe
+            beneficiaire = f'{employe.nom} {employe.prenom}'.strip() \
+                if employe else f'Profil #{profil.id}'
+            reference = f'SAL-{periode.annee}-{periode.mois:02d}-{profil.id}'
+            LigneVirement.objects.create(
+                company=periode.company,
+                ordre=ordre,
+                bulletin=bulletin,
+                beneficiaire=beneficiaire or f'Profil #{profil.id}',
+                rib=profil.rib or '',
+                montant=_q(net),
+                reference=reference,
+            )
+            total += net
+            nombre += 1
+        ordre.total = _q(total)
+        ordre.nombre_lignes = nombre
+        ordre.save(update_fields=['total', 'nombre_lignes', 'libelle',
+                                  'date_execution', 'rib_emetteur'])
+        return ordre
+
+
+def emettre_ordre_virement(ordre):
+    """Émet l'ordre de virement → fige l'ordre (PAIE30).
+
+    Passe le statut ``brouillon → emis`` (irréversible) et pose
+    ``date_emission``. Re-émettre est un no-op. Renvoie l'ordre.
+    """
+    from .models import OrdreVirement
+
+    if ordre.statut == OrdreVirement.STATUT_EMIS:
+        return ordre
+    ordre.statut = OrdreVirement.STATUT_EMIS
+    ordre.date_emission = timezone.now()
+    ordre.save(update_fields=['statut', 'date_emission'])
+    return ordre
+
+
+def fichier_virement_paie(ordre):
+    """Construit le fichier de virement bancaire d'un ordre de paie (PAIE30).
+
+    Une ligne par bénéficiaire : nom, RIB, montant au centime, devise, référence
+    et motif. Renvoie ``{'headers', 'rows', 'total', 'nb_lignes'}`` — la vue
+    sérialise en texte/CSV. Lecture seule. Lève ``ValueError`` si l'ordre n'a
+    aucune ligne, ou si une ligne n'a pas de RIB (un virement sans coordonnées
+    bancaires ne peut être exécuté).
+    """
+    lignes = list(ordre.lignes.all())
+    if not lignes:
+        raise ValueError("L'ordre de virement ne comporte aucune ligne.")
+    devise = ordre.devise or 'MAD'
+    rows = []
+    total = Decimal('0')
+    for ligne in lignes:
+        if not ligne.rib:
+            raise ValueError(
+                f"RIB manquant pour « {ligne.beneficiaire} » : "
+                "un virement exige un RIB.")
+        montant = _q(ligne.montant)
+        total += montant
+        rows.append([
+            ligne.beneficiaire,
+            ligne.rib,
+            str(montant),
+            devise,
+            ligne.reference or '',
+            f'Salaire {ligne.reference}'.strip(),
+        ])
+    return {
+        'headers': list(FICHIER_VIREMENT_PAIE_HEADERS),
+        'rows': rows,
+        'total': _q(total),
+        'nb_lignes': len(rows),
+    }
+
+
 # ── PAIE27 — Cumul annuel par employé (recalcul depuis bulletins validés) ────
 
 # Champs cumulés : (champ du CumulAnnuel, champ du BulletinPaie) sommés.
