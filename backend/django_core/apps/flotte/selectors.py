@@ -21,6 +21,7 @@ from .models import (
     EnginRoulant,
     EtatDesLieux,
     Garage,
+    Infraction,
     OrdreReparation,
     PieceFlotte,
     PlanEntretien,
@@ -1121,6 +1122,29 @@ def sinistres_de_la_societe(company, statut=None, actif_flotte_id=None,
         qs = qs.filter(actif_flotte_id=actif_flotte_id)
     if type_sinistre:
         qs = qs.filter(type_sinistre=type_sinistre)
+    return qs
+
+
+# ── FLOTTE26 — Infractions / PV de circulation ─────────────────────────────────
+
+def infractions_de_la_societe(company, statut=None, actif_flotte_id=None,
+                              type_infraction=None):
+    """FLOTTE26 — Infractions / PV de circulation d'une société (queryset scopé).
+
+    Filtres facultatifs : ``statut`` (a_payer | payee | contestee | classee),
+    ``actif_flotte_id`` (un actif précis) et ``type_infraction``
+    (exces_vitesse, stationnement, feu_rouge…). Lecture seule, scopée société,
+    du plus récent au plus ancien.
+    """
+    qs = Infraction.objects.filter(company=company).select_related(
+        'actif_flotte', 'actif_flotte__vehicule', 'actif_flotte__engin',
+        'conducteur')
+    if statut:
+        qs = qs.filter(statut=statut)
+    if actif_flotte_id is not None:
+        qs = qs.filter(actif_flotte_id=actif_flotte_id)
+    if type_infraction:
+        qs = qs.filter(type_infraction=type_infraction)
     return qs
 
 
