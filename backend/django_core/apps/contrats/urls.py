@@ -2,6 +2,7 @@ from django.urls import include, path
 from rest_framework.routers import DefaultRouter
 
 from .views import (
+    AlerteContratViewSet,
     ClauseContratViewSet,
     ClauseViewSet,
     ContratLienViewSet,
@@ -23,6 +24,7 @@ router.register(r'modele-clauses', ModeleContratClauseViewSet)
 router.register(r'clauses-contrat', ClauseContratViewSet)
 router.register(r'regles-approbation', RegleApprobationViewSet)
 router.register(r'versions', VersionContratViewSet)
+router.register(r'alertes', AlerteContratViewSet)
 
 urlpatterns = [
     path('', include(router.urls)),
