@@ -13,6 +13,7 @@ from .views_uploads import (
 )
 from .views_messages import messages_endpoint
 from .views_audit import settings_audit_log, settings_audit_sections
+from .views_config import config_export, config_import
 from .views_documents import (
     get_document_templates,
     update_document_templates,
@@ -34,6 +35,8 @@ __all__ = [
     'messages_endpoint',
     'settings_audit_log',
     'settings_audit_sections',
+    'config_export',
+    'config_import',
     'get_document_templates',
     'update_document_templates',
     'get_tariff_settings',

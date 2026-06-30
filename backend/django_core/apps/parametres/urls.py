@@ -30,6 +30,9 @@ urlpatterns = [
     path('audit/', views.settings_audit_log),
     # FG18 — sections connues du journal d'audit (filtre UI).
     path('audit/sections/', views.settings_audit_sections),
+    # FG24 — export/import de la configuration entre sociétés (admin).
+    path('config-export/', views.config_export),
+    path('config-import/', views.config_import),
     # D2/N60/N67/N26/N59 — modèles de documents éditables (textes du devis).
     path('document-templates/', views.get_document_templates),
     path('document-templates/update/', views.update_document_templates),
