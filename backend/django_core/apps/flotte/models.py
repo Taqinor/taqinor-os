@@ -1706,3 +1706,193 @@ class AssuranceVehicule(models.Model):
     def __str__(self):
         return (f'Assurance {self.assureur} n°{self.numero_police} — '
                 f'{self.actif_flotte} ({self.date_echeance})')
+
+
+# ── FLOTTE22 — Visite technique (validité paramétrable) ────────────────────────
+
+class VisiteTechnique(models.Model):
+    """Visite technique périodique d'un actif de flotte (FLOTTE22).
+
+    Modèle DÉDIÉ au contrôle technique : il porte les détails propres au passage
+    en centre que l'``EcheanceReglementaire`` GÉNÉRIQUE (FLOTTE19) ne capture
+    pas — le ``centre`` de visite, la ``date_visite`` (date du passage), le
+    ``resultat`` (favorable / défavorable / contre-visite), une période de
+    validité PARAMÉTRABLE ``validite_mois`` (12 ou 24 mois selon le véhicule) et
+    la ``date_prochaine`` calculée depuis ``date_visite`` + ``validite_mois``.
+
+    **Complémentaire, jamais doublon de FLOTTE19** : ``EcheanceReglementaire``
+    (type ``visite_technique``) ne suit qu'UNE date limite administrative de
+    façon générique — sans centre, résultat ni validité paramétrable. Ce modèle
+    stocke le PASSAGE lui-même et sa validité. Les deux familles ne se confondent
+    jamais : l'échéance réglementaire reste le suivi calendaire transverse, la
+    visite technique porte le détail du contrôle. (Même rapport que FLOTTE21
+    ``AssuranceVehicule`` entretient avec FLOTTE19.)
+
+    **Validité paramétrable** : ``date_prochaine`` est STOCKÉE ; si elle n'est
+    pas fournie, ``clean`` la calcule depuis ``date_visite`` + ``validite_mois``.
+    Le défaut de ``validite_mois`` est 12 mois (cas du contrôle annuel), mais il
+    est éditable (24 mois pour un véhicule neuf, etc.).
+
+    **Statut** : ``statut_calcule(today)`` recalcule l'état réel vs une date
+    (``expiree`` si ``date_prochaine`` est passée, ``a_renouveler`` si elle tombe
+    dans la fenêtre ``alerte_jours``, sinon ``valide``). La date est injectable
+    (lecture seule, ne change rien en base).
+
+    **Multi-tenant** : ``company`` est posée côté serveur (jamais lue du corps de
+    requête). L'actif lié (``actif_flotte``, véhicule OU engin) doit appartenir à
+    la MÊME société (validé dans ``clean`` et au sérialiseur).
+    """
+
+    class Resultat(models.TextChoices):
+        FAVORABLE = 'favorable', 'Favorable'
+        DEFAVORABLE = 'defavorable', 'Défavorable'
+        CONTRE_VISITE = 'contre_visite', 'Contre-visite'
+
+    class Statut(models.TextChoices):
+        VALIDE = 'valide', 'Valide'
+        A_RENOUVELER = 'a_renouveler', 'À renouveler'
+        EXPIREE = 'expiree', 'Expirée'
+
+    # Validité par défaut (mois) — contrôle technique annuel.
+    VALIDITE_MOIS_DEFAUT = 12
+    # Marge d'alerte par défaut (jours avant l'échéance → « à renouveler »).
+    ALERTE_JOURS_DEFAUT = 30
+
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='flotte_visites_techniques',
+        verbose_name='Société',
+    )
+    actif_flotte = models.ForeignKey(
+        'ActifFlotte',
+        on_delete=models.CASCADE,
+        related_name='flotte_visites_techniques',
+        verbose_name='Actif (véhicule ou engin)',
+    )
+    centre = models.CharField(
+        max_length=120, verbose_name='Centre de visite')
+    date_visite = models.DateField(verbose_name='Date de la visite')
+    # Code court du résultat — CharField borné : 'contre_visite' (13) est le plus
+    # long code (leçon FG136).
+    resultat = models.CharField(
+        max_length=16, choices=Resultat.choices, default=Resultat.FAVORABLE,
+        verbose_name='Résultat')
+    # Période de validité PARAMÉTRABLE (mois) — 12 (annuel) par défaut, éditable.
+    validite_mois = models.PositiveIntegerField(
+        default=VALIDITE_MOIS_DEFAUT, verbose_name='Validité (mois)')
+    # Prochaine visite due — calculée depuis date_visite + validite_mois si non
+    # fournie (voir ``clean``).
+    date_prochaine = models.DateField(
+        null=True, blank=True, verbose_name='Prochaine visite')
+    cout = models.DecimalField(
+        max_digits=12, decimal_places=2, default=0,
+        verbose_name='Coût (MAD)')
+    # Marge d'alerte (jours) : si la prochaine visite tombe dans cette fenêtre,
+    # la visite passe « à renouveler ».
+    alerte_jours = models.PositiveIntegerField(
+        default=ALERTE_JOURS_DEFAUT, verbose_name="Marge d'alerte (jours)")
+    statut = models.CharField(
+        max_length=12, choices=Statut.choices, default=Statut.VALIDE,
+        verbose_name='Statut')
+    notes = models.TextField(blank=True, verbose_name='Notes')
+    date_creation = models.DateTimeField(
+        auto_now_add=True, verbose_name='Créé le')
+
+    class Meta:
+        verbose_name = 'Visite technique'
+        verbose_name_plural = 'Visites techniques'
+        ordering = ['date_prochaine', 'id']
+        indexes = [
+            models.Index(
+                fields=['company', 'statut'],
+                name='flotte_vistec_co_stat_idx',
+            ),
+            models.Index(
+                fields=['company', 'actif_flotte'],
+                name='flotte_vistec_co_actif_idx',
+            ),
+            models.Index(
+                fields=['company', 'date_prochaine'],
+                name='flotte_vistec_co_proch_idx',
+            ),
+        ]
+
+    @staticmethod
+    def calculer_date_prochaine(date_visite, validite_mois):
+        """Calcule la prochaine visite = ``date_visite`` + ``validite_mois`` mois.
+
+        Gère proprement le débordement de fin de mois (ex. 31 janv. + 1 mois →
+        28/29 févr.) sans dépendance externe. Retourne ``None`` si les entrées
+        sont incomplètes.
+        """
+        if date_visite is None or not validite_mois:
+            return None
+        total = date_visite.month - 1 + int(validite_mois)
+        year = date_visite.year + total // 12
+        month = total % 12 + 1
+        # Dernier jour du mois cible (jour 0 du mois suivant).
+        if month == 12:
+            last_day = 31
+        else:
+            last_day = (datetime.date(year, month + 1, 1)
+                        - datetime.timedelta(days=1)).day
+        day = min(date_visite.day, last_day)
+        return datetime.date(year, month, day)
+
+    def clean(self):
+        """Valide l'appartenance société de l'actif, le coût, et calcule la
+        prochaine visite si elle n'est pas fournie."""
+        if self.actif_flotte_id is not None \
+                and self.actif_flotte.company_id != self.company_id:
+            raise ValidationError(
+                "L'actif n'appartient pas à la même société.")
+        if self.cout is not None and self.cout < 0:
+            raise ValidationError(
+                "Le coût ne peut pas être négatif.")
+        if self.date_prochaine is None:
+            self.date_prochaine = self.calculer_date_prochaine(
+                self.date_visite, self.validite_mois)
+        if self.date_visite is not None and self.date_prochaine is not None \
+                and self.date_prochaine < self.date_visite:
+            raise ValidationError(
+                "La prochaine visite ne peut pas précéder la visite.")
+
+    def save(self, *args, **kwargs):
+        # ``date_prochaine`` est calculée à l'enregistrement : le ``save()`` de
+        # DRF n'appelle pas ``clean()``, donc on garantit ici le calcul de la
+        # prochaine visite (validité paramétrable) sur tous les chemins de
+        # création/mise à jour, pas seulement les ModelForm/full_clean.
+        if self.date_prochaine is None and self.date_visite is not None \
+                and self.validite_mois:
+            self.date_prochaine = self.calculer_date_prochaine(
+                self.date_visite, self.validite_mois)
+        super().save(*args, **kwargs)
+
+    def statut_calcule(self, today=None):
+        """État RÉEL de la visite vs ``today`` (lecture seule, date injectable).
+
+        Retourne ``'expiree'`` si la prochaine visite est déjà passée,
+        ``'a_renouveler'`` si elle tombe dans les ``alerte_jours`` prochains
+        jours (inclusif), sinon ``'valide'``. ``today`` défaut = date du jour.
+        """
+        if today is None:
+            today = datetime.date.today()
+        echeance = self.date_prochaine
+        if echeance is None:
+            echeance = self.calculer_date_prochaine(
+                self.date_visite, self.validite_mois)
+        if echeance is None:
+            return self.Statut.VALIDE
+        if echeance < today:
+            return self.Statut.EXPIREE
+        marge = self.alerte_jours \
+            if self.alerte_jours is not None else self.ALERTE_JOURS_DEFAUT
+        horizon = today + datetime.timedelta(days=marge)
+        if echeance <= horizon:
+            return self.Statut.A_RENOUVELER
+        return self.Statut.VALIDE
+
+    def __str__(self):
+        return (f'Visite technique {self.actif_flotte} — '
+                f'{self.date_visite} ({self.get_resultat_display()})')

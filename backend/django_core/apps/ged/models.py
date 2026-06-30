@@ -205,6 +205,28 @@ class ArchivageLegalError(Exception):
     ET service, de sorte qu'aucun chemin d'écriture ne peut la contourner."""
 
 
+# GED24 — Rétention légale / legal hold.
+#
+# Message d'erreur levé quand on tente de supprimer/purger un document couvert
+# par une rétention légale active (gel anti-suppression pour contentieux).
+LEGAL_HOLD_MESSAGE = (
+    "Document sous rétention légale (legal hold) : sa suppression est gelée "
+    "tant qu'une mise sous séquestre active le couvre."
+)
+
+
+class LegalHoldError(Exception):
+    """GED24 — Levée à toute tentative de suppression d'un document sous hold.
+
+    Hérite d'``Exception`` (et non de ``PermissionError``/``ValidationError``)
+    pour rester explicitement reconnaissable ; les vues la traduisent en 403
+    (jamais 500), exactement comme `ArchivageLegalError` (GED23). Le gel est
+    posé au niveau modèle (`Document.delete()`) ET service, de sorte qu'aucun
+    chemin de suppression ne peut le contourner. À la DIFFÉRENCE de l'archivage
+    légal (write-once, permanent), une rétention légale est TEMPORAIRE et
+    LIABLE : on la lève (`actif=False`) et le document redevient supprimable."""
+
+
 class Cabinet(models.Model):
     """Espace documentaire racine (« armoire ») d'une société.
 
@@ -478,6 +500,20 @@ class Document(models.Model):
             return False
         return self.archivages_legaux.exists()
 
+    @property
+    def est_sous_legal_hold(self):
+        """GED24 — True si une rétention légale ACTIVE couvre ce document.
+
+        Lit en base l'existence d'un `LegalHold` `actif=True` rattaché à ce
+        document. Tant qu'un hold actif existe, le document NE PEUT PAS être
+        supprimé/purgé (gel anti-suppression pour contentieux), même si une
+        politique de rétention (GED22) suggérait une purge. À la différence de
+        l'archivage légal (GED23), le document reste ÉDITABLE — seul l'effacement
+        est gelé — et le gel est TEMPORAIRE (levable)."""
+        if self.pk is None:
+            return False
+        return self.legal_holds.filter(actif=True).exists()
+
     def save(self, *args, **kwargs):
         """GED23 — Refuse toute MODIFICATION d'un document archivé (write-once).
 
@@ -492,9 +528,19 @@ class Document(models.Model):
         super().save(*args, **kwargs)
 
     def delete(self, *args, **kwargs):
-        """GED23 — Refuse la SUPPRESSION d'un document archivé (write-once)."""
+        """GED23/GED24 — Refuse la SUPPRESSION d'un document protégé.
+
+        Deux gels indépendants bloquent l'effacement, posés au niveau modèle
+        comme filet de sécurité ultime (aucun chemin de suppression ne les
+        contourne) :
+          * GED23 — archivage légal write-once (permanent) ;
+          * GED24 — rétention légale / legal hold (temporaire, levable).
+        Les deux sont des couches SÉPARÉES : un document peut être sous l'une,
+        l'autre, ou les deux."""
         if self.pk is not None and self.est_archive_legalement:
             raise ArchivageLegalError(ARCHIVE_LEGALE_MESSAGE)
+        if self.pk is not None and self.est_sous_legal_hold:
+            raise LegalHoldError(LEGAL_HOLD_MESSAGE)
         return super().delete(*args, **kwargs)
 
     def __str__(self):
@@ -1268,3 +1314,65 @@ class ArchivageLegal(models.Model):
 
     def __str__(self):
         return f'Archivage légal — {self.document} ({self.archive_le:%Y-%m-%d})'
+
+
+class LegalHold(models.Model):
+    """GED24 — Rétention légale / legal hold sur un document (gel anti-suppression).
+
+    Pose un GEL TEMPORAIRE de la suppression sur un document — typiquement pour
+    un contentieux/litige — qui SURCLASSE toute purge de politique de rétention
+    (GED22) : tant qu'un hold ACTIF couvre le document, sa suppression/purge/
+    destruction de cycle de vie est BLOQUÉE (garde au niveau modèle
+    `Document.delete()` ET service, traduite en 403 côté vue — jamais 500).
+
+    Couche DISTINCTE et complémentaire des deux autres :
+      * GED22 `PolitiqueRetention` — durée + action à l'échéance (consultatif) ;
+        un legal hold prime sur toute intention de purge ;
+      * GED23 `ArchivageLegal` — write-once probant, PERMANENT, qui fige AUSSI
+        l'édition. Un legal hold, lui, est TEMPORAIRE et LEVABLE et ne gèle QUE
+        la suppression (le document reste éditable).
+
+    Un hold porte un motif, qui l'a posé (`place_par`) et quand (`date_pose`),
+    et un drapeau `actif`. La levée (`lever_legal_hold`) bascule `actif=False`
+    et trace `date_levee`/`leve_par` — on ne supprime jamais la trace d'un hold,
+    on la lève (historique conservé). Un même document peut accumuler plusieurs
+    holds (plusieurs litiges) : il reste gelé tant qu'AU MOINS un est actif.
+
+    Multi-tenant : `company`, `place_par` et `leve_par` sont posés CÔTÉ SERVEUR
+    (jamais lus du corps de requête) ; toutes les requêtes bornées à la société.
+    Couche LOCALE à la GED, séparée du funnel commercial `STAGES.py` (rule #2).
+    """
+    company = models.ForeignKey(
+        'authentication.Company', on_delete=models.CASCADE,
+        null=True, blank=True, related_name='ged_legal_holds')
+    document = models.ForeignKey(
+        Document, on_delete=models.CASCADE, related_name='legal_holds')
+    motif = models.TextField(blank=True, default='', verbose_name='motif')
+    place_par = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL,
+        null=True, blank=True, related_name='ged_legal_holds_poses',
+        verbose_name='placé par')
+    date_pose = models.DateTimeField(
+        auto_now_add=True, verbose_name='placé le')
+    # True tant que la rétention légale est en vigueur (gel actif). Levée → faux.
+    actif = models.BooleanField(default=True, verbose_name='actif')
+    date_levee = models.DateTimeField(
+        null=True, blank=True, verbose_name='levé le')
+    leve_par = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL,
+        null=True, blank=True, related_name='ged_legal_holds_leves',
+        verbose_name='levé par')
+
+    class Meta:
+        ordering = ['-date_pose', '-id']
+        verbose_name = 'Rétention légale (legal hold)'
+        verbose_name_plural = 'Rétentions légales (legal holds)'
+        indexes = [
+            # Filtre rapide « ce document est-il gelé ? » (par société + actif).
+            models.Index(fields=['company', 'document', 'actif'],
+                         name='ged_hold_co_doc_actif_idx'),
+        ]
+
+    def __str__(self):
+        etat = 'actif' if self.actif else 'levé'
+        return f'Legal hold — {self.document} ({etat})'

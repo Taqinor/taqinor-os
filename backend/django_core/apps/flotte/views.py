@@ -33,6 +33,7 @@ from .models import (
     ReferentielFlotte,
     ReservationVehicule,
     Vehicule,
+    VisiteTechnique,
 )
 from .serializers import (
     ActifFlotteSerializer,
@@ -54,6 +55,7 @@ from .serializers import (
     ReferentielFlotteSerializer,
     ReservationVehiculeSerializer,
     VehiculeSerializer,
+    VisiteTechniqueSerializer,
 )
 
 READ_ACTIONS = ['list', 'retrieve', 'consommation', 'anomalies', 'echeances',
@@ -1010,5 +1012,72 @@ class AssuranceVehiculeViewSet(_FlotteBaseViewSet):
 
         from .selectors import assurances_vehicule_expirantes
         qs = assurances_vehicule_expirantes(company, within=within)
+        serializer = self.get_serializer(qs, many=True)
+        return Response(serializer.data)
+
+
+class VisiteTechniqueViewSet(_FlotteBaseViewSet):
+    """Visites techniques des actifs de flotte (FLOTTE22).
+
+    CRUD scopé société (écriture responsable/admin) du passage en centre de
+    contrôle technique : centre, date de visite, résultat (favorable /
+    défavorable / contre-visite), validité PARAMÉTRABLE (``validite_mois``,
+    12 par défaut) et prochaine visite calculée automatiquement. Complète — sans
+    la dupliquer — l'``EcheanceReglementaire`` générique (FLOTTE19) qui ne porte
+    que la date limite administrative. Filtrable par
+    ``?statut=<valide|a_renouveler|expiree>`` et ``?actif_flotte=<id>``.
+    Recherche par centre / notes. ``statut_calcule`` (état réel vs la date du
+    jour) est exposé en lecture. L'actif lié doit appartenir à la société
+    (validé au sérialiseur).
+
+    Action ``GET /visites-techniques/expirantes/?within=N`` (lecture tout rôle)
+    — visites déjà expirées ou dues dans les ``N`` prochains jours (défaut 30),
+    de la plus urgente à la moins urgente.
+    """
+    queryset = VisiteTechnique.objects.select_related(
+        'actif_flotte', 'actif_flotte__vehicule', 'actif_flotte__engin')
+    serializer_class = VisiteTechniqueSerializer
+    filter_backends = [filters.SearchFilter, filters.OrderingFilter]
+    search_fields = ['centre', 'notes']
+    ordering_fields = ['centre', 'date_visite', 'date_prochaine', 'statut',
+                       'date_creation']
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        params = self.request.query_params
+
+        statut = params.get('statut')
+        if statut:
+            qs = qs.filter(statut=statut)
+
+        actif_flotte = params.get('actif_flotte')
+        if actif_flotte:
+            try:
+                qs = qs.filter(actif_flotte_id=int(actif_flotte))
+            except (ValueError, TypeError):
+                pass
+
+        return qs
+
+    @action(detail=False, methods=['get'])
+    def expirantes(self, request):
+        """FLOTTE22 — Visites expirées ou dues sous ``?within=N`` jours.
+
+        Lecture (tout rôle), scopée société. ``within`` défaut = 30 jours ;
+        une valeur invalide retombe sur 30. Renvoie la liste sérialisée, de la
+        plus urgente (déjà expirée) à la moins urgente.
+        """
+        company = request.user.company
+
+        within_param = request.query_params.get('within')
+        within = 30
+        if within_param:
+            try:
+                within = int(within_param)
+            except (ValueError, TypeError):
+                within = 30
+
+        from .selectors import visites_techniques_expirantes
+        qs = visites_techniques_expirantes(company, within=within)
         serializer = self.get_serializer(qs, many=True)
         return Response(serializer.data)

@@ -142,6 +142,31 @@ class ContratViewSet(_ContratsBaseViewSet):
                 contrat, field='confidentialite', old_value=ancien,
                 new_value=contrat.confidentialite, auteur=self.request.user)
 
+    @action(detail=False, methods=['get'])
+    def preavis(self, request):
+        """Contrats dont l'échéance de préavis approche (CONTRAT20).
+
+        Liste, scopée société, les contrats dont la date limite de préavis
+        (``date_fin − preavis_jours``) tombe dans les ``within`` prochains jours
+        (défaut 30) et dont le préavis n'est pas encore traité — pour agir avant
+        une éventuelle tacite reconduction. Ordonnés par urgence (échéance la
+        plus proche d'abord). Lecture seule : ne change aucun statut.
+
+        Le queryset passe par ``get_queryset`` (filtre confidentialité hérité),
+        puis par le sélecteur — la société est toujours celle de l'utilisateur.
+        """
+        try:
+            within = int(request.query_params.get('within', 30))
+        except (TypeError, ValueError):
+            within = 30
+        base_ids = self.get_queryset().values_list('id', flat=True)
+        qs = selectors.contrats_a_preavis(
+            request.user.company, within_days=within
+        ).filter(id__in=list(base_ids))
+        return Response(
+            ContratSerializer(
+                qs, many=True, context={'request': request}).data)
+
     @action(detail=True, methods=['get'])
     def liens(self, request, pk=None):
         """Liens du contrat ENRICHIS via les sélecteurs des apps cibles.

@@ -1227,3 +1227,101 @@ def assert_not_archive_legalement(document):
     from .models import ARCHIVE_LEGALE_MESSAGE, ArchivageLegalError
     if _document_archive_legalement(document):
         raise ArchivageLegalError(ARCHIVE_LEGALE_MESSAGE)
+
+
+# ── GED24 — Rétention légale / legal hold (gel anti-suppression) ─────────────
+
+def _document_sous_legal_hold(document):
+    """GED24 — True si une rétention légale ACTIVE couvre le document.
+
+    Helper interne partagé par les gardes de suppression. Lecture en base de
+    l'existence d'un `LegalHold` `actif=True` sur le document. Import paresseux
+    pour éviter tout cycle."""
+    from .models import LegalHold
+    if document.pk is None:
+        return False
+    return LegalHold.objects.filter(
+        document_id=document.pk, actif=True).exists()
+
+
+def placer_legal_hold(document, *, user, motif=''):
+    """GED24 — Place une RÉTENTION LÉGALE (legal hold) sur un document.
+
+    Pose un `LegalHold` ACTIF qui GÈLE la suppression/purge du document tant
+    qu'il reste actif (garde au niveau modèle `Document.delete()` + service).
+    Ce gel SURCLASSE toute purge de politique de rétention (GED22) et reste une
+    couche distincte de l'archivage write-once (GED23) — il ne fige QUE
+    l'effacement (le document reste éditable) et est TEMPORAIRE (levable).
+
+    Multi-tenant : `company` et `place_par` posés CÔTÉ SERVEUR (jamais lus du
+    corps). `PermissionError` si l'utilisateur n'est pas de la société du
+    document. IDEMPOTENT : si un hold actif existe déjà sur ce document, on le
+    renvoie tel quel sans en créer un second (on ne duplique pas le gel).
+
+    Renvoie le `LegalHold` actif (créé ou réutilisé).
+    """
+    from .models import LegalHold
+
+    if document.company_id != getattr(user, 'company_id', None):
+        raise PermissionError("Document inaccessible.")
+    with transaction.atomic():
+        # Idempotence : un hold actif existant tient lieu de gel — on ne pose
+        # pas de doublon (le document est déjà gelé).
+        existant = (LegalHold.objects
+                    .select_for_update()
+                    .filter(document=document, actif=True)
+                    .first())
+        if existant is not None:
+            return existant
+        return LegalHold.objects.create(
+            company=document.company,
+            document=document,
+            place_par=user,
+            motif=(motif or '').strip(),
+            actif=True,
+        )
+
+
+def lever_legal_hold(document, *, user):
+    """GED24 — Lève la/les rétention(s) légale(s) active(s) d'un document.
+
+    Bascule tous les `LegalHold` ACTIFS du document en `actif=False` et trace
+    `date_levee`/`leve_par` (on ne supprime jamais la trace d'un hold —
+    historique conservé). Une fois le dernier hold actif levé, le document
+    redevient supprimable (sauf autre protection, ex. GED23). IDEMPOTENT : sans
+    hold actif, l'appel est un no-op (renvoie 0).
+
+    Multi-tenant : `company` du document vérifiée côté serveur ; `leve_par`
+    posé côté serveur. `PermissionError` si l'utilisateur n'est pas de la
+    société du document.
+
+    Renvoie le nombre de holds levés.
+    """
+    from django.utils import timezone
+    from .models import LegalHold
+
+    if document.company_id != getattr(user, 'company_id', None):
+        raise PermissionError("Document inaccessible.")
+    with transaction.atomic():
+        actifs = list(LegalHold.objects
+                      .select_for_update()
+                      .filter(document=document, actif=True))
+        for hold in actifs:
+            hold.actif = False
+            hold.date_levee = timezone.now()
+            hold.leve_par = user
+            hold.save(update_fields=['actif', 'date_levee', 'leve_par'])
+        return len(actifs)
+
+
+def assert_not_legal_hold(document):
+    """GED24 — Garde : rejette la suppression si le document est sous hold actif.
+
+    À appeler côté service avant toute suppression/purge/destruction de cycle de
+    vie d'un document. La garde au niveau modèle (`Document.delete()`) est le
+    filet ultime ; cette fonction permet de refuser TÔT avec un message clair
+    (→ 403 dans la vue, jamais 500). Lève `LegalHoldError` si une rétention
+    légale active couvre le document."""
+    from .models import LEGAL_HOLD_MESSAGE, LegalHoldError
+    if _document_sous_legal_hold(document):
+        raise LegalHoldError(LEGAL_HOLD_MESSAGE)

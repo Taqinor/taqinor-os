@@ -32,14 +32,14 @@ from . import selectors, services
 from .models import (
     ArchivageLegal, ArchivageLegalError, Cabinet, Coffre, DemandeApprobation,
     Document, DocumentLien, DocumentTag, DocumentTagAssignment,
-    DocumentVersion, Folder, PartageGed, PolitiqueRetention,
+    DocumentVersion, Folder, LegalHold, PartageGed, PolitiqueRetention,
 )
 from .serializers import (
     ArchivageLegalSerializer, CabinetSerializer, CoffreSerializer,
     DemandeApprobationSerializer, DocumentLienSerializer, DocumentSerializer,
     DocumentTagAssignmentSerializer, DocumentTagSerializer,
-    DocumentVersionSerializer, FolderSerializer, PartageGedSerializer,
-    PolitiqueRetentionSerializer,
+    DocumentVersionSerializer, FolderSerializer, LegalHoldSerializer,
+    PartageGedSerializer, PolitiqueRetentionSerializer,
 )
 
 READ_ACTIONS = ['list', 'retrieve']
@@ -297,6 +297,13 @@ class DocumentViewSet(TenantMixin, viewsets.ModelViewSet):
             from rest_framework.exceptions import PermissionDenied
             from .models import ARCHIVE_LEGALE_MESSAGE
             raise PermissionDenied(ARCHIVE_LEGALE_MESSAGE)
+        # GED24 — rétention légale : tant qu'un legal hold ACTIF couvre le
+        # document, sa suppression/purge est gelée (→ 403, jamais 500). Refus
+        # TÔT avec un message clair ; la garde modèle reste le filet ultime.
+        if instance.est_sous_legal_hold:
+            from rest_framework.exceptions import PermissionDenied
+            from .models import LEGAL_HOLD_MESSAGE
+            raise PermissionDenied(LEGAL_HOLD_MESSAGE)
         return super().perform_destroy(instance)
 
     @action(detail=False, methods=['post'], url_path='televerser',
@@ -691,6 +698,47 @@ class DocumentViewSet(TenantMixin, viewsets.ModelViewSet):
             ArchivageLegalSerializer(
                 archivage, context={'request': request}).data,
             status=status.HTTP_201_CREATED)
+
+    @action(detail=True, methods=['post'], url_path='placer-legal-hold')
+    def placer_legal_hold(self, request, pk=None):
+        """GED24 — Place une RÉTENTION LÉGALE (legal hold) sur ce document.
+
+        `POST …/documents/<id>/placer-legal-hold/` — corps optionnel :
+        `{"motif": "<str?>"}`. Gèle la suppression/purge du document tant que le
+        hold reste actif (le document reste éditable — seul l'effacement est
+        gelé), surclassant toute purge de politique de rétention (GED22).
+        `company` et `place_par` sont posés CÔTÉ SERVEUR (jamais lus du corps).
+        IDEMPOTENT : un hold actif existant est renvoyé tel quel (pas de
+        doublon). Écriture : responsable/admin."""
+        document = self.get_object()
+        try:
+            hold = services.placer_legal_hold(
+                document, user=request.user,
+                motif=(request.data.get('motif') or '').strip())
+        except PermissionError as exc:
+            return Response(
+                {'detail': str(exc)}, status=status.HTTP_403_FORBIDDEN)
+        return Response(
+            LegalHoldSerializer(hold, context={'request': request}).data,
+            status=status.HTTP_201_CREATED)
+
+    @action(detail=True, methods=['post'], url_path='lever-legal-hold')
+    def lever_legal_hold(self, request, pk=None):
+        """GED24 — Lève la/les rétention(s) légale(s) active(s) de ce document.
+
+        `POST …/documents/<id>/lever-legal-hold/`. Bascule tout legal hold actif
+        en levé (trace `date_levee`/`leve_par` côté serveur — l'historique est
+        conservé, jamais supprimé). Le document redevient supprimable une fois
+        le dernier hold actif levé (sauf autre protection, ex. GED23).
+        IDEMPOTENT : sans hold actif, renvoie simplement `leves: 0`. Écriture :
+        responsable/admin."""
+        document = self.get_object()
+        try:
+            leves = services.lever_legal_hold(document, user=request.user)
+        except PermissionError as exc:
+            return Response(
+                {'detail': str(exc)}, status=status.HTTP_403_FORBIDDEN)
+        return Response({'leves': leves}, status=status.HTTP_200_OK)
 
 
 class DocumentVersionViewSet(TenantMixin, viewsets.ModelViewSet):
@@ -1230,6 +1278,92 @@ class ArchivageLegalViewSet(TenantMixin,
             ArchivageLegalSerializer(
                 archivage, context={'request': request}).data,
             status=status.HTTP_201_CREATED)
+
+
+class LegalHoldViewSet(TenantMixin,
+                       mixins.ListModelMixin,
+                       mixins.RetrieveModelMixin,
+                       mixins.CreateModelMixin,
+                       viewsets.GenericViewSet):
+    """GED24 — Rétentions légales / legal holds (lecture + pose/levée, scopé société).
+
+    Expose la LISTE/le DÉTAIL des holds (actifs ET levés — l'historique est
+    conservé) et permet d'en POSER un (création) ; il n'y a volontairement NI
+    `update`/`partial_update` (un hold ne se modifie pas — on le pose puis on le
+    lève), la levée passant par l'action dédiée `<id>/lever/` ou
+    `documents/<id>/lever-legal-hold/`. À la création, `company` et `place_par`
+    sont posés CÔTÉ SERVEUR via `services.placer_legal_hold` (jamais lus du
+    corps ; on lit seulement `document` + `motif`). Pose IDEMPOTENTE (pas de
+    doublon de hold actif).
+
+    Lecture : tout rôle authentifié. Pose/levée : responsable/admin.
+    """
+    queryset = LegalHold.objects.select_related(
+        'document', 'place_par', 'leve_par').all()
+    serializer_class = LegalHoldSerializer
+    filter_backends = [filters.OrderingFilter]
+    ordering_fields = ['date_pose', 'id']
+
+    def get_permissions(self):
+        if self.action in READ_ACTIONS:
+            return [IsAnyRole()]
+        return [IsResponsableOrAdmin()]
+
+    def get_queryset(self):
+        qs = selectors.legal_holds_for_company(self.request.user.company)
+        document = self.request.query_params.get('document')
+        if document:
+            qs = qs.filter(document_id=document)
+        actif = self.request.query_params.get('actif')
+        if actif in ('1', 'true'):
+            qs = qs.filter(actif=True)
+        elif actif in ('0', 'false'):
+            qs = qs.filter(actif=False)
+        return qs
+
+    def create(self, request, *args, **kwargs):
+        """Pose un legal hold sur un document de la société courante.
+
+        Body : `{"document": <id>, "motif": "<str?>"}`. Le document est borné à
+        la société (404 cross-société). `company`/`place_par` sont posés côté
+        serveur (jamais lus du corps). Pose IDEMPOTENTE (hold actif existant
+        renvoyé tel quel)."""
+        document_id = request.data.get('document')
+        if not document_id:
+            return Response(
+                {'document': 'Le document à geler est requis.'},
+                status=status.HTTP_400_BAD_REQUEST)
+        document = (Document.objects.filter(company=request.user.company)
+                    .filter(pk=document_id).first())
+        if document is None:
+            return Response(
+                {'document': 'Document inconnu.'},
+                status=status.HTTP_404_NOT_FOUND)
+        try:
+            hold = services.placer_legal_hold(
+                document, user=request.user,
+                motif=(request.data.get('motif') or '').strip())
+        except PermissionError as exc:
+            return Response(
+                {'detail': str(exc)}, status=status.HTTP_403_FORBIDDEN)
+        return Response(
+            LegalHoldSerializer(hold, context={'request': request}).data,
+            status=status.HTTP_201_CREATED)
+
+    @action(detail=True, methods=['post'], url_path='lever')
+    def lever(self, request, pk=None):
+        """GED24 — Lève ce hold (et tout autre hold actif du même document).
+
+        `POST …/legal-holds/<id>/lever/`. Délègue à `services.lever_legal_hold`
+        (qui lève TOUS les holds actifs du document — trace serveur). Renvoie le
+        nombre de holds levés. Idempotent. Écriture : responsable/admin."""
+        hold = self.get_object()
+        try:
+            leves = services.lever_legal_hold(hold.document, user=request.user)
+        except PermissionError as exc:
+            return Response(
+                {'detail': str(exc)}, status=status.HTTP_403_FORBIDDEN)
+        return Response({'leves': leves}, status=status.HTTP_200_OK)
 
 
 # ── GED20 — Endpoint PUBLIC (sans login) servant un document par jeton ───────

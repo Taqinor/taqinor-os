@@ -21,6 +21,7 @@ from .views import (
     ReferentielFlotteViewSet,
     ReservationVehiculeViewSet,
     VehiculeViewSet,
+    VisiteTechniqueViewSet,
 )
 
 router = DefaultRouter()
@@ -43,6 +44,7 @@ router.register(r'pieces', PieceFlotteViewSet)
 router.register(r'echeances-reglementaires', EcheanceReglementaireViewSet)
 router.register(r'baremes-vignette', BaremeVignetteViewSet)
 router.register(r'assurances', AssuranceVehiculeViewSet)
+router.register(r'visites-techniques', VisiteTechniqueViewSet)
 
 urlpatterns = [
     path('', include(router.urls)),
