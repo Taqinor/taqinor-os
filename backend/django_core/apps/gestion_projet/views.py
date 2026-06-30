@@ -539,6 +539,35 @@ class ProjetViewSet(_GestionProjetBaseViewSet):
             ],
         })
 
+    @action(detail=True, methods=['get'], url_path='jalons-facturables')
+    def jalons_facturables(self, request, pk=None):
+        """Jalons de facturation déclenchables par l'avancement (PROJ27).
+
+        Liste les jalons du projet avec leur ``facturation_pct``, leur statut,
+        s'ils sont ATTEINTS et donc FACTURABLES, et le montant théorique
+        (% × budget interne). La société est garantie par ``get_object``
+        (queryset scopé société) : un projet d'une autre société → 404. Lecture
+        seule. Le déclenchement effectif se fait via ``jalons/<id>/facturer/``.
+        """
+        projet = self.get_object()
+        data = selectors.jalons_facturables(projet)
+        return Response({
+            'base_montant': str(data['base_montant']),
+            'total_pct_facture': str(data['total_pct_facture']),
+            'jalons': [
+                {
+                    'id': j['id'],
+                    'libelle': j['libelle'],
+                    'facturation_pct': str(j['facturation_pct']),
+                    'statut': j['statut'],
+                    'atteint': j['atteint'],
+                    'facturable': j['facturable'],
+                    'montant': str(j['montant']),
+                }
+                for j in data['jalons']
+            ],
+        })
+
 
 class ProjetChantierViewSet(_GestionProjetBaseViewSet):
     """Rattachements chantier ↔ projet (liens lâches)."""
@@ -752,6 +781,31 @@ class JalonViewSet(_GestionProjetBaseViewSet):
         if facturation in ('1', 'true', 'True'):
             qs = qs.filter(facturation_pct__gt=0)
         return qs
+
+    @action(detail=True, methods=['post'], url_path='facturer')
+    def facturer(self, request, pk=None):
+        """Déclenche la facturation liée à ce jalon ATTEINT (PROJ27).
+
+        Le jalon doit être ATTEINT et porter un ``facturation_pct`` > 0 (sinon
+        400). L'écriture de la facture client passe par ``ventes.services``
+        (frontière cross-app) ; tant qu'aucune entrée dédiée n'y existe, on
+        renvoie une PROPOSITION (montant calculé, aucune facture créée). La
+        société est garantie par ``get_object`` (queryset scopé société) : un
+        jalon d'une autre société → 404.
+        """
+        jalon = self.get_object()
+        try:
+            data = services.declencher_facturation_jalon(jalon)
+        except services.FacturationJalonError as exc:
+            return Response(
+                {'detail': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+        return Response({
+            'jalon_id': data['jalon_id'],
+            'facturation_pct': str(data['facturation_pct']),
+            'montant': str(data['montant']),
+            'facture_creee': data['facture_creee'],
+            'note': data['note'],
+        })
 
 
 class CalendrierProjetViewSet(_GestionProjetBaseViewSet):

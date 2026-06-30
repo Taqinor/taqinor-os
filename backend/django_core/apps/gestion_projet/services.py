@@ -33,6 +33,69 @@ def cout_timesheet(ressource, heures):
     return (Decimal(heures) * cout_horaire).quantize(Decimal('0.01'))
 
 
+# ── Jalons de facturation liés à l'avancement (PROJ27) ───────────────────────
+class FacturationJalonError(Exception):
+    """Erreur métier au déclenchement de la facturation d'un jalon."""
+
+
+def declencher_facturation_jalon(jalon):
+    """Déclenche la facturation liée à un jalon ATTEINT (PROJ27).
+
+    Un jalon n'est facturable que s'il est ATTEINT (``statut == atteint``) et
+    porte un ``facturation_pct`` > 0 — sinon ``FacturationJalonError``. Le
+    montant théorique est ``facturation_pct`` % du ``budget_total`` du projet
+    (donnée INTERNE de pilotage).
+
+    L'écriture de la FACTURE client passe EXCLUSIVEMENT par ``ventes`` via son
+    ``services`` (frontière cross-app, CLAUDE.md ; import fonction-local) — ce
+    module n'importe JAMAIS les modèles/vues de ``ventes``. Aujourd'hui
+    ``ventes.services`` n'expose pas d'entrée « facturer un jalon de projet » :
+    on DÉGRADE proprement en renvoyant une PROPOSITION (aucune écriture
+    cross-app), avec ``facture_creee=False`` et une note. Le jour où
+    ``ventes.services`` exposera ``facturer_jalon_projet``, on l'appellera ici.
+
+    Renvoie un dict ``{jalon_id, facturation_pct, montant, facture_creee, note}``.
+    """
+    from .models import Jalon
+
+    if jalon.statut != Jalon.Statut.ATTEINT:
+        raise FacturationJalonError(
+            'Le jalon doit être atteint pour déclencher la facturation.')
+    pct = jalon.facturation_pct or Decimal('0')
+    if pct <= 0:
+        raise FacturationJalonError(
+            "Le jalon ne porte aucun pourcentage de facturation.")
+
+    base = jalon.projet.budget_total or Decimal('0')
+    montant = (base * pct / Decimal('100')).quantize(Decimal('0.01'))
+
+    # Route vers ventes.services si une entrée dédiée existe ; sinon dégrade.
+    facture_creee = False
+    note = ''
+    try:
+        from apps.ventes import services as ventes_services
+        facturer = getattr(
+            ventes_services, 'facturer_jalon_projet', None)
+    except Exception:  # pragma: no cover - ventes toujours importable
+        facturer = None
+    if callable(facturer):  # pragma: no cover - pas d'entrée ventes aujourd'hui
+        facturer(jalon=jalon, montant=montant)
+        facture_creee = True
+        note = 'Facture déclenchée via ventes.services.'
+    else:
+        note = (
+            "Aucune entrée ventes.services.facturer_jalon_projet — proposition "
+            "seule (aucune facture créée).")
+
+    return {
+        'jalon_id': jalon.id,
+        'facturation_pct': pct,
+        'montant': montant,
+        'facture_creee': facture_creee,
+        'note': note,
+    }
+
+
 # Décomposition standard d'un projet d'installation solaire (WBS), dans l'ordre
 # de réalisation. PROPRE à ce module — ne réutilise aucune clé de STAGES.py.
 PHASES_STANDARD = [

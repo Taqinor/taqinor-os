@@ -1853,3 +1853,45 @@ def pnl_projet(company, projet):
         'budget_version': couts['budget_version'],
         'couts_par_categorie': couts['par_categorie'],
     }
+
+
+# ── Jalons de facturation liés à l'avancement (PROJ27) ───────────────────────
+def jalons_facturables(projet):
+    """Jalons de FACTURATION d'un projet déclenchables par l'avancement (PROJ27).
+
+    Un jalon est « facturable » quand il porte un ``facturation_pct`` > 0 ET
+    qu'il est ATTEINT (``statut == atteint``). Le ``montant`` théorique est
+    ``facturation_pct`` % du ``budget_total`` du projet (donnée INTERNE de
+    pilotage) — le montant client réel reste piloté par ``ventes`` (le service
+    ``declencher_facturation_jalon`` route l'écriture vers ``ventes.services``).
+
+    Renvoie ``{base_montant, total_pct_facture, jalons: [...]}`` où chaque jalon
+    porte ``{id, libelle, facturation_pct, statut, atteint, facturable,
+    montant}``. ``atteint`` recoupe le statut ; ``facturable`` exige atteint +
+    pct > 0. Tout est scopé société via le projet. Lecture seule.
+    """
+    base = projet.budget_total or Decimal('0')
+    jalons = jalons_for_projet(projet)
+    lignes = []
+    total_pct_facture = Decimal('0')
+    for jalon in jalons:
+        pct = jalon.facturation_pct or Decimal('0')
+        atteint = jalon.statut == Jalon.Statut.ATTEINT
+        facturable = atteint and pct > 0
+        montant = (base * pct / Decimal('100')).quantize(Decimal('0.01'))
+        if facturable:
+            total_pct_facture += pct
+        lignes.append({
+            'id': jalon.id,
+            'libelle': jalon.libelle,
+            'facturation_pct': pct,
+            'statut': jalon.statut,
+            'atteint': atteint,
+            'facturable': facturable,
+            'montant': montant,
+        })
+    return {
+        'base_montant': base,
+        'total_pct_facture': total_pct_facture,
+        'jalons': lignes,
+    }
