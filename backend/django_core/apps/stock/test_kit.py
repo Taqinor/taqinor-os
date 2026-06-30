@@ -46,6 +46,29 @@ class KitBase(TestCase):
             kit=self.kit, produit=self.onduleur, quantite=Decimal('1'))
 
 
+class TestDC36KitSchema(KitBase):
+    """DC36 — le kit ne porte AUCUN prix / marque / TVA propre (tout vient des
+    composants) ; les composants sont des FK→Produit, explosés à l'insertion."""
+
+    def test_kit_has_no_price_brand_tva_fields(self):
+        field_names = {f.name for f in KitProduit._meta.get_fields()}
+        for forbidden in ('prix_vente', 'prix_achat', 'marque', 'tva'):
+            self.assertNotIn(forbidden, field_names,
+                             f'Le kit ne doit pas stocker {forbidden} (DC36).')
+
+    def test_composant_is_fk_to_produit(self):
+        c = self.kit.composants.first()
+        self.assertIsInstance(c.produit, Produit)
+
+    def test_composant_has_no_inline_price_brand_tva(self):
+        # DC36 — le composant ne recopie pas prix/marque/TVA : seuls le FK
+        # produit et la quantité sont portés.
+        field_names = {f.name for f in KitComposant._meta.get_fields()}
+        for forbidden in ('prix_vente', 'prix_achat', 'marque', 'tva'):
+            self.assertNotIn(forbidden, field_names)
+        self.assertEqual(field_names, {'id', 'kit', 'produit', 'quantite'})
+
+
 class TestKitExplosion(KitBase):
     """FG66 — l'explosion produit une ligne par composant, quantités × facteur,
     prix / TVA / marque LUS sur le Produit (DC36)."""
