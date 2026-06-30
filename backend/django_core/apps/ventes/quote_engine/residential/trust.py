@@ -174,14 +174,39 @@ def build(ctx) -> str:
         f'<span class="p3-cta-qr-t">Scannez pour signer</span></div>'
         if qr_uri else "")
 
-    # Legal identifier band — real company data (RC/ICE/capital from taqinor.ma).
-    legal = (
+    # Legal identifier band — DC1: société résolue depuis CompanyProfile (repli
+    # sur les littéraux historiques Taqinor). Plus de RC/ICE/RIB Taqinor codés en
+    # dur ; une autre société voit SES identifiants. Byte-identique tant que rien
+    # n'est renseigné. Gérant/tribunal/capital n'ont pas de slot dédié sur le
+    # profil → ils gardent le littéral historique via les défauts du builder.
+    ent = d.get("entreprise") or {}
+
+    def _ent(k, fallback):
+        v = ent.get(k)
+        return str(v) if v not in (None, "") else fallback
+
+    _gerant = _ent("gerant", "M. Reda Kasri")
+    _gerant_txt = f' &middot; Gérant : {_gerant}' if _gerant else ''
+    _legacy_legal = (
         '<b>TAQINOR Solutions SARLAU</b> au capital de 100 000,00 MAD'
         ' &middot; RC 691213 — Tribunal de Commerce de Casablanca'
         ' &middot; ICE 003799642000067 &middot; Gérant : M. Reda Kasri'
         ' &middot; contact@taqinor.com &middot; +212 6 61 85 04 10'
         ' &middot; taqinor.ma'
     )
+    legal = (
+        f'<b>{_ent("raison_sociale", "TAQINOR Solutions SARLAU")}</b>'
+        f' au capital de {_ent("capital", "100 000,00 MAD")}'
+        f' &middot; RC {_ent("rc", "691213")} '
+        f'{_ent("tribunal", "Tribunal de Commerce de Casablanca")}'
+        f' &middot; ICE {_ent("ice", "003799642000067")}{_gerant_txt}'
+        f' &middot; {_ent("email", "contact@taqinor.com")}'
+        f' &middot; {_ent("telephone", "+212 6 61 85 04 10")}'
+        f' &middot; {_ent("site_web", "taqinor.ma")}'
+    )
+    # Repli défensif : si la résolution société échoue, garder l'ancien bandeau.
+    if not ent:
+        legal = _legacy_legal
 
     return f"""
 <style>

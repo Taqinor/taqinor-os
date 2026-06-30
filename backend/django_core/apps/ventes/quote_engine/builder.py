@@ -639,8 +639,15 @@ def build_quote_data(devis, pdf_options=None) -> dict:
 
     # Conditions de paiement par mode — réglage éditable de la société, repli
     # sur PAYMENT_TERMS_BY_MODE (défaut historique → PDF identique).
-    from apps.ventes.utils.company_settings import payment_terms_for
+    from apps.ventes.utils.company_settings import (
+        payment_terms_for, entreprise_for)
     payment_terms = payment_terms_for(getattr(devis, "company", None), mode)
+
+    # DC1 — identité société (RC/ICE/RIB/banque/adresse/tél/nom) résolue depuis
+    # CompanyProfile, en REPLI sur les littéraux historiques. Tant que rien n'est
+    # renseigné → valeurs Taqinor d'avant, PDF byte-identique ; une autre société
+    # voit SES coordonnées (plus de fuite du RIB Taqinor). Dict JSON-sérialisable.
+    entreprise = entreprise_for(getattr(devis, "company", None))
 
     # D2/N60/N67/N59 — textes éditables du devis (en-têtes/CGV/validité/garanties
     # /BPA/tampon). SURCHARGES non vides seulement ; toute clé absente → le moteur
@@ -729,6 +736,8 @@ def build_quote_data(devis, pdf_options=None) -> dict:
         "_company_id": getattr(devis, "company_id", None),
         # D2/N60/N67/N59 — surcharges de texte éditables (vide → littéral moteur).
         "doc_texts": doc_texts,
+        # DC1 — identité société (repli sur littéraux historiques).
+        "entreprise": entreprise,
         # N26 — tampon d'acceptation : nom + date posés à l'acceptation du devis
         # (le moteur ne l'affiche QUE si les deux sont présents). Date au format
         # FR jj/mm/aaaa, vide sinon → devis byte-identique à aujourd'hui.
