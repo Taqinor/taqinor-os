@@ -52,6 +52,7 @@ from .models import (
     Habilitation,
     HeuresSupp,
     IncidentPresence,
+    NoteDeFrais,
     OrdreMission,
     OuverturePoste,
     PermisConduire,
@@ -99,6 +100,8 @@ from .serializers import (
     HabilitationSerializer,
     HeuresSuppSerializer,
     IncidentPresenceSerializer,
+    MesInfosSerializer,
+    NoteDeFraisSerializer,
     OrdreMissionSerializer,
     OuverturePosteSerializer,
     PermisConduireSerializer,
@@ -3023,3 +3026,205 @@ class AffectationVehiculeViewSet(_RhBaseViewSet):
                 'statut', 'date_fin', 'date_modification'])
         return Response(
             self.get_serializer(affectation).data, status=status.HTTP_200_OK)
+
+
+class NoteDeFraisViewSet(_RhBaseViewSet):
+    """Notes de frais (FG199) — administration (Administrateur/Responsable).
+
+    Société scopée. Liste/administre TOUTES les notes de frais de la société et
+    pilote leur approbation. La SAISIE par le collaborateur passe par le portail
+    self-service (``portail/declarer-frais``). ``company`` est posée CÔTÉ
+    SERVEUR (jamais lue du corps).
+
+    Filtres : ``?employe=<id>``, ``?categorie=...``,
+    ``?statut=soumise|approuvee|remboursee|refusee``.
+
+    Actions :
+    * ``POST .../{id}/approuver/`` — ``statut=approuvee``. Idempotent.
+    * ``POST .../{id}/refuser/`` — ``statut=refusee``. Idempotent.
+    * ``POST .../{id}/marquer-remboursee/`` — ``statut=remboursee``. Idempotent.
+    """
+    queryset = NoteDeFrais.objects.select_related('employe').all()
+    serializer_class = NoteDeFraisSerializer
+    filter_backends = [filters.SearchFilter, filters.OrderingFilter]
+    search_fields = ['libelle', 'employe__matricule', 'employe__nom']
+    ordering_fields = ['date_frais', 'montant', 'statut', 'date_creation']
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        employe = self.request.query_params.get('employe')
+        if employe:
+            qs = qs.filter(employe_id=employe)
+        categorie = self.request.query_params.get('categorie')
+        if categorie:
+            qs = qs.filter(categorie=categorie)
+        statut = self.request.query_params.get('statut')
+        if statut:
+            qs = qs.filter(statut=statut)
+        return qs
+
+    def _set_statut(self, request, pk, nouveau):
+        note = self.get_object()
+        if note.statut != nouveau:
+            note.statut = nouveau
+            note.save(update_fields=['statut', 'date_modification'])
+        return Response(
+            self.get_serializer(note).data, status=status.HTTP_200_OK)
+
+    @action(detail=True, methods=['post'], url_path='approuver')
+    def approuver(self, request, pk=None):
+        """Approuve la note de frais (FG199). Idempotent, 404 autre tenant."""
+        return self._set_statut(request, pk, NoteDeFrais.Statut.APPROUVEE)
+
+    @action(detail=True, methods=['post'], url_path='refuser')
+    def refuser(self, request, pk=None):
+        """Refuse la note de frais (FG199). Idempotent, 404 autre tenant."""
+        return self._set_statut(request, pk, NoteDeFrais.Statut.REFUSEE)
+
+    @action(detail=True, methods=['post'], url_path='marquer-remboursee')
+    def marquer_remboursee(self, request, pk=None):
+        """Marque la note remboursée (FG199). Idempotent, 404 autre tenant."""
+        return self._set_statut(request, pk, NoteDeFrais.Statut.REMBOURSEE)
+
+
+class PortailSelfServiceViewSet(viewsets.ViewSet):
+    """Portail self-service employé (FG199) — accès du collaborateur connecté.
+
+    Permission : tout compte authentifié (``IsAnyRole``). TOUTES les données
+    sont résolues à partir du ``DossierEmploye`` LIÉ au compte appelant (même
+    société) — un collaborateur ne voit/édite JAMAIS les données d'un autre.
+    Si aucun dossier n'est lié au compte, les lectures renvoient une réponse
+    vide/404 et les écritures sont refusées (400).
+
+    Endpoints :
+    * ``GET portail/mes-infos/`` / ``PATCH portail/mes-infos/`` — fiche perso
+      (coordonnées + contact d'urgence éditables ; poste/contrat/statut en
+      lecture seule).
+    * ``GET portail/mes-soldes/`` — soldes de congés.
+    * ``GET portail/mes-conges/`` — ses demandes de congé.
+    * ``POST portail/demander-conge/`` — créer une demande de congé.
+    * ``GET portail/mes-frais/`` — ses notes de frais.
+    * ``POST portail/declarer-frais/`` — déclarer une note de frais.
+    * ``GET portail/mes-epi/`` — ses dotations EPI.
+    * ``GET portail/mes-habilitations/`` — ses habilitations.
+    * ``GET portail/mes-bulletins/`` — ses bulletins de paie.
+    """
+    permission_classes = [IsAnyRole]
+
+    def _dossier(self, request):
+        return DossierEmploye.objects.filter(
+            company=request.user.company, user=request.user).first()
+
+    @action(detail=False, methods=['get', 'patch'], url_path='mes-infos')
+    def mes_infos(self, request):
+        """Fiche perso du collaborateur (lecture/édition limitée)."""
+        dossier = self._dossier(request)
+        if dossier is None:
+            return Response(
+                {'detail': 'Aucun dossier employé lié à ce compte.'},
+                status=status.HTTP_404_NOT_FOUND)
+        if request.method == 'PATCH':
+            ser = MesInfosSerializer(dossier, data=request.data, partial=True)
+            ser.is_valid(raise_exception=True)
+            ser.save()
+            return Response(ser.data)
+        return Response(MesInfosSerializer(dossier).data)
+
+    @action(detail=False, methods=['get'], url_path='mes-soldes')
+    def mes_soldes(self, request):
+        dossier = self._dossier(request)
+        if dossier is None:
+            return Response([])
+        qs = SoldeConge.objects.filter(
+            company=request.user.company, employe=dossier)
+        return Response(SoldeCongeSerializer(qs, many=True).data)
+
+    @action(detail=False, methods=['get'], url_path='mes-conges')
+    def mes_conges(self, request):
+        dossier = self._dossier(request)
+        if dossier is None:
+            return Response([])
+        qs = DemandeConge.objects.filter(
+            company=request.user.company, employe=dossier).select_related(
+            'type_absence')
+        return Response(DemandeCongeSerializer(qs, many=True).data)
+
+    @action(detail=False, methods=['post'], url_path='demander-conge')
+    def demander_conge(self, request):
+        """Crée une demande de congé pour le collaborateur connecté.
+
+        ``employe`` et ``company`` sont posés CÔTÉ SERVEUR (jamais lus du
+        corps) à partir du dossier lié au compte.
+        """
+        dossier = self._dossier(request)
+        if dossier is None:
+            return Response(
+                {'detail': 'Aucun dossier employé lié à ce compte.'},
+                status=status.HTTP_400_BAD_REQUEST)
+        # ``employe`` est TOUJOURS forcé au dossier du compte appelant (jamais
+        # lu du corps) ; le serializer valide la cohérence société du type.
+        data = {k: v for k, v in request.data.items() if k != 'employe'}
+        data['employe'] = dossier.id
+        ser = DemandeCongeSerializer(
+            data=data, context={'request': request})
+        ser.is_valid(raise_exception=True)
+        # ``jours`` calculé côté serveur selon la règle de décompte du type.
+        jours = services.calculer_jours_demande(
+            ser.validated_data['type_absence'],
+            ser.validated_data['date_debut'],
+            ser.validated_data['date_fin'])
+        ser.save(company=request.user.company, jours=jours)
+        return Response(ser.data, status=status.HTTP_201_CREATED)
+
+    @action(detail=False, methods=['get'], url_path='mes-frais')
+    def mes_frais(self, request):
+        dossier = self._dossier(request)
+        if dossier is None:
+            return Response([])
+        qs = NoteDeFrais.objects.filter(
+            company=request.user.company, employe=dossier)
+        return Response(NoteDeFraisSerializer(qs, many=True).data)
+
+    @action(detail=False, methods=['post'], url_path='declarer-frais')
+    def declarer_frais(self, request):
+        """Déclare une note de frais pour le collaborateur connecté.
+
+        ``employe``, ``company`` et ``statut`` sont posés CÔTÉ SERVEUR.
+        """
+        dossier = self._dossier(request)
+        if dossier is None:
+            return Response(
+                {'detail': 'Aucun dossier employé lié à ce compte.'},
+                status=status.HTTP_400_BAD_REQUEST)
+        ser = NoteDeFraisSerializer(data=request.data)
+        ser.is_valid(raise_exception=True)
+        ser.save(company=request.user.company, employe=dossier)
+        return Response(ser.data, status=status.HTTP_201_CREATED)
+
+    @action(detail=False, methods=['get'], url_path='mes-epi')
+    def mes_epi(self, request):
+        dossier = self._dossier(request)
+        if dossier is None:
+            return Response([])
+        qs = DotationEpi.objects.filter(
+            company=request.user.company, employe=dossier)
+        return Response(DotationEpiSerializer(qs, many=True).data)
+
+    @action(detail=False, methods=['get'], url_path='mes-habilitations')
+    def mes_habilitations(self, request):
+        dossier = self._dossier(request)
+        if dossier is None:
+            return Response([])
+        qs = Habilitation.objects.filter(
+            company=request.user.company, employe=dossier)
+        return Response(HabilitationSerializer(qs, many=True).data)
+
+    @action(detail=False, methods=['get'], url_path='mes-bulletins')
+    def mes_bulletins(self, request):
+        dossier = self._dossier(request)
+        if dossier is None:
+            return Response([])
+        qs = BulletinPaie.objects.filter(
+            company=request.user.company, employe=dossier).select_related(
+            'attachment')
+        return Response(BulletinPaieSerializer(qs, many=True).data)

@@ -29,10 +29,12 @@ from .views import (
     HabilitationViewSet,
     HeuresSuppViewSet,
     IncidentPresenceViewSet,
+    NoteDeFraisViewSet,
     OrdreMissionViewSet,
     OuverturePosteViewSet,
     PermisConduireViewSet,
     PointageViewSet,
+    PortailSelfServiceViewSet,
     PosteViewSet,
     PresenceChantierViewSet,
     PresquAccidentViewSet,
@@ -92,6 +94,9 @@ router.register(r'avances-salaire', AvanceSalaireViewSet)
 router.register(r'bulletins-paie', BulletinPaieViewSet)
 router.register(r'permis-conduire', PermisConduireViewSet)
 router.register(r'affectations-vehicule', AffectationVehiculeViewSet)
+router.register(r'notes-frais', NoteDeFraisViewSet)
+router.register(
+    r'portail', PortailSelfServiceViewSet, basename='rh-portail')
 
 urlpatterns = [
     path('', include(router.urls)),

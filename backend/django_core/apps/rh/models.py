@@ -3800,3 +3800,82 @@ class AffectationVehicule(models.Model):
 
     def __str__(self):
         return f'{self.employe} → véhicule {self.vehicule_id}'
+
+
+class NoteDeFrais(models.Model):
+    """Note de frais déclarée par un collaborateur (FG199).
+
+    Déclaration de frais professionnels par un ``employe`` (FK
+    ``rh.DossierEmploye``, même société) : la ``categorie`` (transport, repas,
+    hébergement, fournitures, autre), le ``montant``, la ``date_frais`` (date de
+    la dépense), un ``libelle`` descriptif et un ``statut`` de remboursement
+    (soumise → approuvée → remboursée, ou refusée). Saisie depuis le portail
+    self-service (FG199) par le collaborateur lui-même ; l'approbation reste
+    Administrateur/Responsable. Les notes approuvées peuvent alimenter les
+    retenues/primes du bordereau de paie (FG192) côté employeur.
+
+    Multi-société : ``company`` posée CÔTÉ SERVEUR (jamais lue du corps) ;
+    ``employe`` doit appartenir à la même société. Additif.
+
+    RUNTIME-SAFETY (leçon FG136) : ``categorie`` / ``statut`` ≤ 20 bornés ;
+    ``montant`` en ``DecimalField`` ; ``libelle`` plafonné ; index nommés
+    (≤ 30 chars).
+    """
+
+    class Categorie(models.TextChoices):
+        TRANSPORT = 'transport', 'Transport'
+        REPAS = 'repas', 'Repas'
+        HEBERGEMENT = 'hebergement', 'Hébergement'
+        FOURNITURES = 'fournitures', 'Fournitures'
+        AUTRE = 'autre', 'Autre'
+
+    class Statut(models.TextChoices):
+        SOUMISE = 'soumise', 'Soumise'
+        APPROUVEE = 'approuvee', 'Approuvée'
+        REMBOURSEE = 'remboursee', 'Remboursée'
+        REFUSEE = 'refusee', 'Refusée'
+
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='rh_notes_frais',
+        verbose_name='Société',
+    )
+    employe = models.ForeignKey(
+        DossierEmploye,
+        on_delete=models.CASCADE,
+        related_name='notes_frais',
+        verbose_name='Employé',
+    )
+    categorie = models.CharField(
+        max_length=20, choices=Categorie.choices,
+        default=Categorie.AUTRE, verbose_name='Catégorie')
+    montant = models.DecimalField(
+        max_digits=12, decimal_places=2, default=Decimal('0'),
+        verbose_name='Montant')
+    date_frais = models.DateField(
+        null=True, blank=True, verbose_name='Date de la dépense')
+    libelle = models.CharField(max_length=255, verbose_name='Libellé')
+    statut = models.CharField(
+        max_length=20, choices=Statut.choices,
+        default=Statut.SOUMISE, verbose_name='Statut')
+    date_creation = models.DateTimeField(
+        auto_now_add=True, verbose_name='Créé le')
+    date_modification = models.DateTimeField(
+        auto_now=True, verbose_name='Modifié le')
+
+    class Meta:
+        verbose_name = 'Note de frais'
+        verbose_name_plural = 'Notes de frais'
+        ordering = ['-date_frais', '-date_creation']
+        indexes = [
+            models.Index(
+                fields=['company', 'employe'],
+                name='rh_frais_comp_emp_idx'),
+            models.Index(
+                fields=['company', 'statut'],
+                name='rh_frais_comp_stat_idx'),
+        ]
+
+    def __str__(self):
+        return f'{self.libelle} — {self.montant} ({self.employe})'

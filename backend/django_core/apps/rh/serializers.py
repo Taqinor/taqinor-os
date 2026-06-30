@@ -37,6 +37,7 @@ from .models import (
     IncidentPresence,
     InscriptionFormation,
     LigneRisqueChantier,
+    NoteDeFrais,
     ObjectifIndividuel,
     OrdreMission,
     OuverturePoste,
@@ -1878,6 +1879,70 @@ class AffectationVehiculeSerializer(serializers.ModelSerializer):
 
     def validate_employe(self, value):
         return _meme_societe(self, value, 'Conducteur')
+
+
+class NoteDeFraisSerializer(serializers.ModelSerializer):
+    """Note de frais (FG199) — déclaration de frais par le collaborateur.
+
+    Le client saisit ``categorie``, ``montant``, ``date_frais`` et ``libelle``.
+    ``company``, ``employe`` et ``statut`` sont posés CÔTÉ SERVEUR : la note est
+    rattachée au dossier du compte appelant par la vue self-service ; le statut
+    suit le workflow d'approbation (soumise → approuvée → remboursée/refusée).
+    """
+    employe_nom = serializers.SerializerMethodField()
+    categorie_display = serializers.CharField(
+        source='get_categorie_display', read_only=True)
+    statut_display = serializers.CharField(
+        source='get_statut_display', read_only=True)
+
+    class Meta:
+        model = NoteDeFrais
+        fields = [
+            'id', 'employe', 'employe_nom',
+            'categorie', 'categorie_display',
+            'montant', 'date_frais', 'libelle',
+            'statut', 'statut_display',
+            'date_creation', 'date_modification',
+        ]
+        read_only_fields = [
+            'employe', 'employe_nom', 'statut',
+            'date_creation', 'date_modification']
+
+    def get_employe_nom(self, obj):
+        if not obj.employe_id:
+            return ''
+        return f'{obj.employe.nom} {obj.employe.prenom}'
+
+
+class MesInfosSerializer(serializers.ModelSerializer):
+    """Self-service employé (FG199) — fiche personnelle consultable/éditable.
+
+    Le collaborateur consulte ses informations et ne peut MODIFIER que ses
+    coordonnées personnelles et son contact d'urgence — JAMAIS son poste, son
+    contrat, son statut, son matricule ni le ``cout_horaire`` (interne). Tous
+    les champs sensibles sont en lecture seule.
+    """
+    type_contrat_display = serializers.CharField(
+        source='get_type_contrat_display', read_only=True)
+    statut_display = serializers.CharField(
+        source='get_statut_display', read_only=True)
+
+    class Meta:
+        model = DossierEmploye
+        fields = [
+            'id', 'matricule', 'nom', 'prenom', 'cin',
+            'poste', 'type_contrat', 'type_contrat_display',
+            'date_embauche', 'statut', 'statut_display',
+            # Éditables par le collaborateur :
+            'telephone', 'email',
+            'adresse_perso', 'telephone_perso', 'email_perso',
+            'urgence_nom', 'urgence_lien', 'urgence_telephone',
+        ]
+        read_only_fields = [
+            'id', 'matricule', 'nom', 'prenom', 'cin', 'poste',
+            'type_contrat', 'type_contrat_display',
+            'date_embauche', 'statut', 'statut_display',
+        ]
 
 
 class TypePrimeSerializer(serializers.ModelSerializer):
