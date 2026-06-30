@@ -2391,3 +2391,345 @@ class ReleveTelematique(models.Model):
     def __str__(self):
         return (f'Relevé {self.get_source_display()} — '
                 f'{self.actif_flotte} ({self.horodatage:%Y-%m-%d %H:%M})')
+
+
+# ── FLOTTE28 — Suivi de position & trajets télématiques ────────────────────────
+
+class TrajetTelematique(models.Model):
+    """Trajet télématique d'un actif du parc — un déplacement daté (FLOTTE28).
+
+    Matérialise un TRAJET (un déplacement de A à B) d'un véhicule ou d'un engin,
+    construit à partir des ``ReleveTelematique`` (FLOTTE27) successifs OU saisi
+    manuellement : horodatage et position de départ / d'arrivée, distance
+    parcourue (km), durée (minutes), vitesse moyenne. Le trajet peut, en option,
+    pointer son relevé de départ et d'arrivée (FK ``ReleveTelematique`` de la
+    MÊME société, nullable — un trajet saisi à la main n'en porte pas).
+
+    Le trajet est un MAGASIN : ``services.construire_trajets_telematiques``
+    agrège les relevés consécutifs d'un actif en trajets ; la saisie manuelle
+    reste toujours possible (aucun fournisseur requis).
+
+    Multi-tenant : ``company`` est posée côté serveur (jamais lue du corps de
+    requête). L'actif lié ET les relevés liés doivent appartenir à la MÊME
+    société (validé dans ``clean`` et au sérialiseur).
+    """
+
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='flotte_trajets_telematiques',
+        verbose_name='Société',
+    )
+    actif_flotte = models.ForeignKey(
+        'ActifFlotte',
+        on_delete=models.CASCADE,
+        related_name='flotte_trajets_telematiques',
+        verbose_name='Actif (véhicule ou engin)',
+    )
+    debut = models.DateTimeField(verbose_name='Début du trajet')
+    fin = models.DateTimeField(verbose_name='Fin du trajet')
+    depart_lat = models.DecimalField(
+        max_digits=9, decimal_places=6, null=True, blank=True,
+        verbose_name='Latitude de départ')
+    depart_lng = models.DecimalField(
+        max_digits=9, decimal_places=6, null=True, blank=True,
+        verbose_name='Longitude de départ')
+    arrivee_lat = models.DecimalField(
+        max_digits=9, decimal_places=6, null=True, blank=True,
+        verbose_name="Latitude d'arrivée")
+    arrivee_lng = models.DecimalField(
+        max_digits=9, decimal_places=6, null=True, blank=True,
+        verbose_name="Longitude d'arrivée")
+    distance_km = models.DecimalField(
+        max_digits=10, decimal_places=2, null=True, blank=True,
+        verbose_name='Distance parcourue (km)')
+    releve_depart = models.ForeignKey(
+        'ReleveTelematique',
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='trajets_depart',
+        verbose_name='Relevé de départ',
+    )
+    releve_arrivee = models.ForeignKey(
+        'ReleveTelematique',
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='trajets_arrivee',
+        verbose_name="Relevé d'arrivée",
+    )
+    notes = models.TextField(blank=True, verbose_name='Notes')
+    date_creation = models.DateTimeField(
+        auto_now_add=True, verbose_name='Créé le')
+
+    class Meta:
+        verbose_name = 'Trajet télématique'
+        verbose_name_plural = 'Trajets télématiques'
+        ordering = ['-debut', '-id']
+        indexes = [
+            models.Index(
+                fields=['company', 'actif_flotte'],
+                name='flotte_traj_co_actif_idx',
+            ),
+            models.Index(
+                fields=['company', 'debut'],
+                name='flotte_traj_co_debut_idx',
+            ),
+        ]
+
+    @property
+    def duree_minutes(self):
+        """Durée du trajet en minutes (float), ou ``None`` si bornes absentes."""
+        if self.debut is None or self.fin is None:
+            return None
+        return round((self.fin - self.debut).total_seconds() / 60.0, 1)
+
+    @property
+    def vitesse_moyenne_kmh(self):
+        """Vitesse moyenne (km/h), ou ``None`` si distance/durée inexploitable."""
+        if self.distance_km is None:
+            return None
+        minutes = self.duree_minutes
+        if not minutes or minutes <= 0:
+            return None
+        return round(float(self.distance_km) / (minutes / 60.0), 1)
+
+    def clean(self):
+        """Valide l'appartenance société de l'actif et des relevés liés, la
+        cohérence temporelle (fin ≥ début) et la distance (≥ 0)."""
+        if self.actif_flotte_id is not None \
+                and self.actif_flotte.company_id != self.company_id:
+            raise ValidationError(
+                "L'actif n'appartient pas à la même société.")
+        if self.debut is not None and self.fin is not None \
+                and self.fin < self.debut:
+            raise ValidationError(
+                "La fin du trajet ne peut pas précéder son début.")
+        if self.distance_km is not None and self.distance_km < 0:
+            raise ValidationError(
+                "La distance parcourue ne peut pas être négative.")
+        for champ in ('releve_depart', 'releve_arrivee'):
+            releve = getattr(self, champ, None)
+            releve_id = getattr(self, f'{champ}_id', None)
+            if releve_id is not None and releve is not None \
+                    and releve.company_id != self.company_id:
+                raise ValidationError(
+                    "Un relevé lié n'appartient pas à la même société.")
+
+    def __str__(self):
+        return (f'Trajet {self.actif_flotte} '
+                f'({self.debut:%Y-%m-%d %H:%M} → {self.fin:%H:%M})')
+
+
+# ── FLOTTE29 — Journal kilométrique & trajets imputés chantier ─────────────────
+
+class TrajetChantier(models.Model):
+    """Trajet d'un actif imputé à un chantier — journal kilométrique (FLOTTE29).
+
+    Tient un JOURNAL KILOMÉTRIQUE imputé chantier : un déplacement d'un véhicule
+    ou d'un engin du parc rattaché à un chantier (``installations.Installation``)
+    par son id NUMÉRIQUE — jamais un FK cross-app dur (modularité CLAUDE.md). La
+    validation « le chantier appartient à la société » se fait côté serveur via
+    ``installations.selectors.installation_scoped`` (au sérialiseur). Le trajet
+    porte la date, le motif, le kilométrage de départ / d'arrivée et la distance
+    parcourue (déduite ou saisie).
+
+    Multi-tenant : ``company`` est posée côté serveur (jamais lue du corps de
+    requête). L'actif lié doit appartenir à la MÊME société (validé dans
+    ``clean`` et au sérialiseur). ``installation_id`` reste un entier libre
+    (validé via le sélecteur d'``installations``) — null = trajet non imputé.
+    """
+
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='flotte_trajets_chantier',
+        verbose_name='Société',
+    )
+    actif_flotte = models.ForeignKey(
+        'ActifFlotte',
+        on_delete=models.CASCADE,
+        related_name='flotte_trajets_chantier',
+        verbose_name='Actif (véhicule ou engin)',
+    )
+    # FLOTTE29 — référence VERS un chantier (`installations.Installation`) par id
+    # NUMÉRIQUE, jamais un FK cross-app dur (modularité, voir CLAUDE.md). null =
+    # trajet non imputé à un chantier. La validation « même société » se fait
+    # côté serveur via `installations.selectors.installation_scoped`.
+    installation_id = models.PositiveIntegerField(
+        null=True, blank=True, verbose_name='Chantier (id)')
+    date_trajet = models.DateField(verbose_name='Date du trajet')
+    motif = models.CharField(
+        max_length=255, blank=True, verbose_name='Motif / objet du trajet')
+    km_depart = models.PositiveIntegerField(
+        null=True, blank=True, verbose_name='Kilométrage de départ')
+    km_arrivee = models.PositiveIntegerField(
+        null=True, blank=True, verbose_name="Kilométrage d'arrivée")
+    distance_km = models.DecimalField(
+        max_digits=10, decimal_places=2, null=True, blank=True,
+        verbose_name='Distance parcourue (km)')
+    notes = models.TextField(blank=True, verbose_name='Notes')
+    date_creation = models.DateTimeField(
+        auto_now_add=True, verbose_name='Créé le')
+
+    class Meta:
+        verbose_name = 'Trajet imputé chantier'
+        verbose_name_plural = 'Trajets imputés chantier'
+        ordering = ['-date_trajet', '-id']
+        indexes = [
+            models.Index(
+                fields=['company', 'actif_flotte'],
+                name='flotte_trch_co_actif_idx',
+            ),
+            models.Index(
+                fields=['company', 'installation_id'],
+                name='flotte_trch_co_inst_idx',
+            ),
+            models.Index(
+                fields=['company', 'date_trajet'],
+                name='flotte_trch_co_date_idx',
+            ),
+        ]
+
+    @property
+    def distance_calculee_km(self):
+        """Distance déduite du compteur (``km_arrivee - km_depart``) si possible,
+        sinon la ``distance_km`` saisie, sinon ``None``. Lecture seule."""
+        if self.km_depart is not None and self.km_arrivee is not None \
+                and self.km_arrivee >= self.km_depart:
+            return self.km_arrivee - self.km_depart
+        if self.distance_km is not None:
+            return float(self.distance_km)
+        return None
+
+    def clean(self):
+        """Valide l'appartenance société de l'actif, la cohérence du kilométrage
+        (arrivée ≥ départ) et de la distance (≥ 0). L'appartenance société du
+        chantier est validée au sérialiseur (sélecteur d'``installations``)."""
+        if self.actif_flotte_id is not None \
+                and self.actif_flotte.company_id != self.company_id:
+            raise ValidationError(
+                "L'actif n'appartient pas à la même société.")
+        if self.km_depart is not None and self.km_arrivee is not None \
+                and self.km_arrivee < self.km_depart:
+            raise ValidationError(
+                "Le kilométrage d'arrivée ne peut pas être inférieur "
+                "au kilométrage de départ.")
+        if self.distance_km is not None and self.distance_km < 0:
+            raise ValidationError(
+                "La distance parcourue ne peut pas être négative.")
+
+    def __str__(self):
+        return (f'Trajet chantier {self.actif_flotte} '
+                f'({self.date_trajet})')
+
+
+# ── FLOTTE32 — Pool de véhicules & demandes ────────────────────────────────────
+
+class DemandeVehicule(models.Model):
+    """Demande d'un véhicule du pool partagé (FLOTTE32).
+
+    Un collaborateur DEMANDE un véhicule du parc pour une période donnée (besoin,
+    période souhaitée, motif). Le responsable APPROUVE / REFUSE et, à
+    l'approbation, attribue un véhicule précis (FK ``Vehicule`` de la MÊME
+    société, posé seulement à l'approbation). La demande complète le couple
+    affectation/réservation (FLOTTE8/FLOTTE10) par la couche « pool » : qui a
+    besoin de quoi, quand, et la décision.
+
+    Multi-tenant : ``company`` est posée côté serveur (jamais lue du corps de
+    requête). Le demandeur (``authentication.User``), le décideur et le véhicule
+    attribué doivent appartenir à la MÊME société (validé dans ``clean`` et au
+    sérialiseur).
+    """
+
+    class Statut(models.TextChoices):
+        DEMANDEE = 'demandee', 'Demandée'
+        APPROUVEE = 'approuvee', 'Approuvée'
+        REFUSEE = 'refusee', 'Refusée'
+        ANNULEE = 'annulee', 'Annulée'
+
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='flotte_demandes_vehicule',
+        verbose_name='Société',
+    )
+    demandeur = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name='flotte_demandes_vehicule',
+        verbose_name='Demandeur',
+    )
+    besoin = models.CharField(
+        max_length=255, verbose_name='Besoin / objet de la demande')
+    date_debut_souhaitee = models.DateField(
+        verbose_name='Début souhaité')
+    date_fin_souhaitee = models.DateField(
+        verbose_name='Fin souhaitée')
+    # 'demandee' (8) est la valeur par défaut ; 'approuvee' (9) est le plus long
+    # code de statut.
+    statut = models.CharField(
+        max_length=9, choices=Statut.choices, default=Statut.DEMANDEE,
+        verbose_name='Statut')
+    # Véhicule attribué à l'approbation (du pool de la même société). null tant
+    # que la demande n'est pas approuvée (ou refusée / annulée).
+    vehicule_attribue = models.ForeignKey(
+        'Vehicule',
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='demandes_attribuees',
+        verbose_name='Véhicule attribué',
+    )
+    decide_par = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='flotte_demandes_vehicule_decidees',
+        verbose_name='Décidée par',
+    )
+    date_decision = models.DateTimeField(
+        null=True, blank=True, verbose_name='Date de décision')
+    motif_decision = models.TextField(
+        blank=True, verbose_name='Motif de la décision')
+    notes = models.TextField(blank=True, verbose_name='Notes')
+    date_creation = models.DateTimeField(
+        auto_now_add=True, verbose_name='Créé le')
+
+    class Meta:
+        verbose_name = 'Demande de véhicule (pool)'
+        verbose_name_plural = 'Demandes de véhicule (pool)'
+        ordering = ['-date_creation', '-id']
+        indexes = [
+            models.Index(
+                fields=['company', 'statut'],
+                name='flotte_dem_co_stat_idx',
+            ),
+            models.Index(
+                fields=['company', 'demandeur'],
+                name='flotte_dem_co_dem_idx',
+            ),
+        ]
+
+    def clean(self):
+        """Valide l'appartenance société du demandeur, du décideur et du
+        véhicule attribué, ainsi que la cohérence des dates (fin ≥ début)."""
+        if self.demandeur_id is not None \
+                and self.demandeur.company_id != self.company_id:
+            raise ValidationError(
+                "Le demandeur n'appartient pas à la même société.")
+        if self.decide_par_id is not None \
+                and self.decide_par.company_id != self.company_id:
+            raise ValidationError(
+                "Le décideur n'appartient pas à la même société.")
+        if self.vehicule_attribue_id is not None \
+                and self.vehicule_attribue.company_id != self.company_id:
+            raise ValidationError(
+                "Le véhicule attribué n'appartient pas à la même société.")
+        if self.date_debut_souhaitee is not None \
+                and self.date_fin_souhaitee is not None \
+                and self.date_fin_souhaitee < self.date_debut_souhaitee:
+            raise ValidationError(
+                "La fin souhaitée ne peut pas précéder le début souhaité.")
+
+    def __str__(self):
+        return (f'Demande {self.get_statut_display()} — '
+                f'{self.besoin} ({self.date_debut_souhaitee})')

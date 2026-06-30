@@ -448,3 +448,171 @@ def synchroniser_releves(company, *, actif_flotte=None, depuis=None):
     releves = provider.fetch_releves(  # pragma: no cover
         company, actif_flotte=actif_flotte, depuis=depuis)
     return len(releves or [])  # pragma: no cover
+
+
+# ── FLOTTE28 — Construction de trajets depuis les relevés télématiques ─────────
+
+def _distance_haversine_km(lat1, lng1, lat2, lng2):
+    """Distance à vol d'oiseau (km) entre deux points GPS (formule de Haversine).
+
+    Retourne ``None`` si l'une des coordonnées est absente. Lecture seule, pas
+    d'effet de bord. Sert d'estimation de distance d'un trajet à défaut d'un
+    odomètre fiable sur les relevés."""
+    if None in (lat1, lng1, lat2, lng2):
+        return None
+    import math
+    rayon = 6371.0  # rayon moyen de la Terre en km.
+    phi1 = math.radians(float(lat1))
+    phi2 = math.radians(float(lat2))
+    dphi = math.radians(float(lat2) - float(lat1))
+    dlambda = math.radians(float(lng2) - float(lng1))
+    a = (math.sin(dphi / 2) ** 2
+         + math.cos(phi1) * math.cos(phi2) * math.sin(dlambda / 2) ** 2)
+    return round(2 * rayon * math.asin(math.sqrt(a)), 3)
+
+
+def construire_trajets_telematiques(company, actif_flotte, *,
+                                    pause_minutes=15):
+    """FLOTTE28 — Construit des trajets depuis les relevés télématiques d'un actif.
+
+    Agrège les ``ReleveTelematique`` (FLOTTE27) consécutifs d'un actif (triés par
+    horodatage) en ``TrajetTelematique`` : un trajet regroupe les relevés tant
+    que l'écart entre deux relevés successifs reste sous ``pause_minutes`` ; un
+    écart plus grand CLÔT le trajet en cours et en démarre un nouveau. La
+    distance du trajet est ESTIMÉE par l'écart d'odomètre des relevés bornes si
+    disponible, sinon par la distance Haversine entre positions de départ et
+    d'arrivée. Un trajet d'un seul relevé (immobile) est ignoré.
+
+    IDEMPOTENT : on ne (re)construit que les trajets dont le relevé de départ
+    n'est pas déjà borne d'un trajet existant de l'actif — un second passage ne
+    duplique rien. Multi-tenant : ``company`` est posée côté serveur ; l'actif
+    fourni doit appartenir à la société (vérifié). Ne lève pas sur données vides.
+
+    Retourne la liste des ``TrajetTelematique`` nouvellement créés.
+    """
+    from .models import ReleveTelematique, TrajetTelematique
+
+    actif_id = getattr(actif_flotte, 'id', actif_flotte)
+    # Garde-fou société : ne construit que pour un actif de la société.
+    from .models import ActifFlotte
+    if not ActifFlotte.objects.filter(
+            company=company, id=actif_id).exists():
+        return []
+
+    releves = list(
+        ReleveTelematique.objects
+        .filter(company=company, actif_flotte_id=actif_id)
+        .order_by('horodatage', 'id'))
+    if len(releves) < 2:
+        return []
+
+    # Relevés déjà utilisés comme départ d'un trajet existant (idempotence).
+    deja_depart = set(
+        TrajetTelematique.objects
+        .filter(company=company, actif_flotte_id=actif_id,
+                releve_depart__isnull=False)
+        .values_list('releve_depart_id', flat=True))
+
+    # Découpe en segments selon la pause.
+    seuil = datetime.timedelta(minutes=pause_minutes)
+    groupes = []
+    courant = [releves[0]]
+    for precedent, suivant in zip(releves, releves[1:]):
+        if (suivant.horodatage - precedent.horodatage) <= seuil:
+            courant.append(suivant)
+        else:
+            groupes.append(courant)
+            courant = [suivant]
+    groupes.append(courant)
+
+    crees = []
+    for groupe in groupes:
+        if len(groupe) < 2:
+            continue  # actif immobile : pas de trajet.
+        depart = groupe[0]
+        arrivee = groupe[-1]
+        if depart.id in deja_depart:
+            continue  # déjà construit.
+
+        # Distance : écart d'odomètre si exploitable, sinon Haversine.
+        distance = None
+        if depart.odometre is not None and arrivee.odometre is not None \
+                and arrivee.odometre >= depart.odometre:
+            distance = arrivee.odometre - depart.odometre
+        else:
+            distance = _distance_haversine_km(
+                depart.position_lat, depart.position_lng,
+                arrivee.position_lat, arrivee.position_lng)
+
+        trajet = TrajetTelematique.objects.create(
+            company=company,
+            actif_flotte_id=actif_id,
+            debut=depart.horodatage,
+            fin=arrivee.horodatage,
+            depart_lat=depart.position_lat,
+            depart_lng=depart.position_lng,
+            arrivee_lat=arrivee.position_lat,
+            arrivee_lng=arrivee.position_lng,
+            distance_km=distance,
+            releve_depart=depart,
+            releve_arrivee=arrivee,
+        )
+        crees.append(trajet)
+        deja_depart.add(depart.id)
+
+    return crees
+
+
+# ── FLOTTE32 — Décision sur une demande de véhicule (pool) ─────────────────────
+
+def decider_demande_vehicule(demande, *, statut, decide_par=None,
+                             vehicule=None, motif=''):
+    """FLOTTE32 — Approuve / refuse / annule une demande de véhicule (pool).
+
+    Pose le ``statut`` cible (``approuvee`` | ``refusee`` | ``annulee``),
+    renseigne ``decide_par`` (utilisateur décideur), ``date_decision`` (maintenant)
+    et ``motif_decision``. À l'approbation, ``vehicule`` (un ``Vehicule`` de la
+    MÊME société) est attribué ; sur un refus / une annulation, l'attribution est
+    remise à ``None``. Vérifie l'appartenance société du décideur et du véhicule.
+
+    Multi-tenant : aucune société n'est lue du corps de requête ; la demande
+    porte déjà sa société côté serveur. Retourne la demande mise à jour. Lève
+    ``ValueError`` sur un statut cible invalide ou une incohérence de société.
+    """
+    from django.core.exceptions import ValidationError
+    from django.utils import timezone
+
+    from .models import DemandeVehicule
+
+    statuts_decision = {
+        DemandeVehicule.Statut.APPROUVEE,
+        DemandeVehicule.Statut.REFUSEE,
+        DemandeVehicule.Statut.ANNULEE,
+    }
+    if statut not in statuts_decision:
+        raise ValueError("Statut de décision invalide.")
+
+    if decide_par is not None \
+            and getattr(decide_par, 'company_id', None) != demande.company_id:
+        raise ValueError("Le décideur n'appartient pas à la même société.")
+
+    if statut == DemandeVehicule.Statut.APPROUVEE:
+        if vehicule is not None \
+                and getattr(vehicule, 'company_id', None) != demande.company_id:
+            raise ValueError(
+                "Le véhicule attribué n'appartient pas à la même société.")
+        demande.vehicule_attribue = vehicule
+    else:
+        # Refus / annulation : aucune attribution conservée.
+        demande.vehicule_attribue = None
+
+    demande.statut = statut
+    demande.decide_par = decide_par
+    demande.date_decision = timezone.now()
+    demande.motif_decision = motif or ''
+    try:
+        demande.full_clean()
+    except ValidationError as exc:
+        raise ValueError(str(exc))
+    demande.save()
+    return demande
