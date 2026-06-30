@@ -1297,3 +1297,38 @@ def rfq_comparatif(rfq):
         'plus_rapide_id': plus_rapide.id if plus_rapide else None,
         'retenue_id': retenue.id if retenue else None,
     }
+
+
+def bcf_montant_achat(company, bcf_id):
+    """FG312 — total d'achat HT d'un bon de commande fournisseur scopé société
+    (0 si introuvable). Lu via ``apps.get_model`` — aucune arête d'import vers
+    ``stock`` au chargement. Montant INTERNE."""
+    from decimal import Decimal
+    from django.apps import apps as django_apps
+    model = django_apps.get_model('stock', 'BonCommandeFournisseur')
+    bcf = model.objects.filter(id=bcf_id, company=company).first()
+    if bcf is None:
+        return Decimal('0')
+    return _dec(bcf.total_achat)
+
+
+def seuil_approbation_bcf_actif(company):
+    """FG312 — le seuil d'approbation BCF actif d'une société (ou None). Lecture
+    seule."""
+    from .models import SeuilApprobationBCF
+    return (SeuilApprobationBCF.objects
+            .filter(company=company, actif=True)
+            .order_by('-date_creation')
+            .first())
+
+
+def palier_requis_bcf(company, montant):
+    """FG312 — palier requis (responsable/admin) pour approuver un BCF de
+    ``montant`` selon le seuil actif. Sans seuil configuré, le défaut est
+    « admin » (prudence : tout achat exige le palier le plus haut). Lecture
+    seule."""
+    from .models_approbation_bcf import PALIER_ADMIN
+    seuil = seuil_approbation_bcf_actif(company)
+    if seuil is None:
+        return PALIER_ADMIN
+    return seuil.palier_requis(montant)

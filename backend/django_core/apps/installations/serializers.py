@@ -26,6 +26,8 @@ from .models import (
     DemandeAchatLigne,
     RFQ,
     RFQOffre,
+    SeuilApprobationBCF,
+    ApprobationBCF,
 )
 
 
@@ -1358,3 +1360,40 @@ class RFQSerializer(serializers.ModelSerializer):
         if not value:
             raise serializers.ValidationError("L'objet est obligatoire.")
         return value
+
+
+class SeuilApprobationBCFSerializer(serializers.ModelSerializer):
+    """FG312 — seuil (MAD) par société : un BCF au-dessus du seuil exige un
+    Administrateur. La société est posée CÔTÉ SERVEUR."""
+
+    class Meta:
+        model = SeuilApprobationBCF
+        fields = [
+            'id', 'seuil_responsable', 'actif',
+            'date_creation', 'date_modification',
+        ]
+        read_only_fields = ['date_creation', 'date_modification']
+
+    def validate_seuil_responsable(self, value):
+        if value is not None and value < 0:
+            raise serializers.ValidationError(
+                'Le seuil ne peut pas être négatif.')
+        return value
+
+
+class ApprobationBCFSerializer(serializers.ModelSerializer):
+    """FG312 — approbation d'un BCF (string-FK vers stock). Le palier, le montant
+    approuvé, l'approbateur et la société sont posés CÔTÉ SERVEUR par l'action
+    `approuver` ; ce serializer est essentiellement en lecture."""
+    palier_display = serializers.CharField(
+        source='get_palier_display', read_only=True, default=None)
+
+    class Meta:
+        model = ApprobationBCF
+        fields = [
+            'id', 'bcf', 'palier', 'palier_display', 'montant_approuve',
+            'approuve_par', 'note', 'date_approbation',
+        ]
+        read_only_fields = [
+            'palier', 'montant_approuve', 'approuve_par', 'date_approbation',
+        ]

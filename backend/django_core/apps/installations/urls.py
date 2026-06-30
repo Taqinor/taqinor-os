@@ -22,6 +22,8 @@ from .views import (
     DemandeAchatLigneViewSet,
     RFQViewSet,
     RFQOffreViewSet,
+    SeuilApprobationBCFViewSet,
+    ApprobationBCFViewSet,
 )
 
 router = DefaultRouter()
@@ -56,6 +58,8 @@ router.register(r'demandes-achat', DemandeAchatViewSet)
 router.register(r'demandes-achat-lignes', DemandeAchatLigneViewSet)
 router.register(r'rfq', RFQViewSet)
 router.register(r'rfq-offres', RFQOffreViewSet)
+router.register(r'seuils-approbation-bcf', SeuilApprobationBCFViewSet)
+router.register(r'approbations-bcf', ApprobationBCFViewSet)
 
 urlpatterns = [
     # N91/F21 — synchro idempotente de la capture terrain hors-ligne.

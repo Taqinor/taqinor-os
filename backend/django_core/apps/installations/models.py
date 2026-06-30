@@ -102,6 +102,10 @@ from .models_rfq import (
     RFQ,
     RFQOffre,
 )
+from .models_approbation_bcf import (
+    SeuilApprobationBCF,
+    ApprobationBCF,
+)
 
 __all__ = [
     'Installation',
@@ -155,4 +159,6 @@ __all__ = [
     'DemandeAchatLigne',
     'RFQ',
     'RFQOffre',
+    'SeuilApprobationBCF',
+    'ApprobationBCF',
 ]
