@@ -613,3 +613,57 @@ class WebhookSubscription(TimestampedModel):
 
     def __str__(self):
         return f'{self.event} → {self.target_url}'
+
+
+# ---------------------------------------------------------------------------
+# FG381 — Constructeur de graphiques/dashboards sans-code (drag-and-drop).
+#
+# Modèle de FONDATION GÉNÉRIQUE : persiste un dashboard sauvegardé par
+# utilisateur/société. La configuration (widgets, disposition, requêtes de
+# données) est un BLOB JSON OPAQUE pour ``core`` — il ne sait RIEN des modèles
+# métier interrogés (contrat import-linter ``core-foundation-is-a-base-layer``).
+# Le front (Recharts) interprète le JSON ; les données viennent d'endpoints
+# existants (reporting / pivot FG380). ``core`` ne fait que stocker/servir.
+# ---------------------------------------------------------------------------
+
+
+class Dashboard(TimestampedModel):
+    """Dashboard sans-code sauvegardé (FG381).
+
+    GÉNÉRIQUE : ``layout`` est un JSON opaque (widgets + disposition + specs de
+    requête). ``owner`` (optionnel) restreint un dashboard à un utilisateur ;
+    ``partage`` rend un dashboard visible à toute la société. Multi-tenant :
+    ``company`` obligatoire, imposée côté serveur.
+    """
+
+    company = models.ForeignKey(
+        'authentication.Company', on_delete=models.CASCADE,
+        related_name='dashboards', verbose_name='Société')
+    owner = models.ForeignKey(
+        'authentication.CustomUser', on_delete=models.CASCADE,
+        null=True, blank=True, related_name='dashboards',
+        verbose_name='Propriétaire',
+        help_text='Vide = dashboard de société (non personnel).')
+
+    titre = models.CharField('Titre', max_length=160)
+    description = models.TextField('Description', blank=True, default='')
+    layout = models.JSONField(
+        'Configuration', default=dict, blank=True,
+        help_text='Widgets + disposition + specs de données (opaque pour core).')
+    partage = models.BooleanField(
+        'Partagé', default=False,
+        help_text='Visible par toute la société (sinon personnel).')
+
+    class Meta:
+        verbose_name = 'Dashboard'
+        verbose_name_plural = 'Dashboards'
+        ordering = ['titre', 'id']
+        indexes = [
+            models.Index(fields=['company', 'owner'],
+                         name='core_dashboard_co_owner_idx'),
+            models.Index(fields=['company', 'partage'],
+                         name='core_dashboard_co_part_idx'),
+        ]
+
+    def __str__(self):
+        return self.titre
