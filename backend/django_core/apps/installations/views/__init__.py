@@ -59,6 +59,7 @@ from .kitting import (
 )
 from .livraison import LivraisonViewSet, LivraisonLigneViewSet
 from .pod import PreuveLivraisonViewSet
+from .transporteur import TransporteurViewSet
 from .field_sync import FieldSyncView
 
 __all__ = [
@@ -125,5 +126,6 @@ __all__ = [
     'LivraisonViewSet',
     'LivraisonLigneViewSet',
     'PreuveLivraisonViewSet',
+    'TransporteurViewSet',
     'FieldSyncView',
 ]

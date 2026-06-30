@@ -56,7 +56,8 @@ class LivraisonViewSet(TenantMixin, viewsets.ModelViewSet):
         company = self.request.user.company
         cid = getattr(company, 'id', None)
         for field, label in (
-                ('installation', 'Chantier'), ('depot', 'Dépôt')):
+                ('installation', 'Chantier'), ('depot', 'Dépôt'),
+                ('transporteur', 'Transporteur')):
             obj = serializer.validated_data.get(field)
             if obj is not None and getattr(obj, 'company_id', None) != cid:
                 raise ValidationError(

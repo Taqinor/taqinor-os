@@ -168,6 +168,9 @@ from .models_livraison import (
 from .models_pod import (
     PreuveLivraison,
 )
+from .models_transporteur import (
+    Transporteur,
+)
 
 __all__ = [
     'Installation',
@@ -251,4 +254,5 @@ __all__ = [
     'Livraison',
     'LivraisonLigne',
     'PreuveLivraison',
+    'Transporteur',
 ]

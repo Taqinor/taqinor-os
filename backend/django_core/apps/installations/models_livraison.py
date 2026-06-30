@@ -39,6 +39,12 @@ class Livraison(models.Model):
         null=True, blank=True,
         related_name='installations_livraisons')
     transporteur_nom = models.CharField(max_length=255, blank=True, null=True)
+    # FG331 — transporteur structuré (optionnel) + coût de course (INTERNE).
+    transporteur = models.ForeignKey(
+        'installations.Transporteur', on_delete=models.SET_NULL,
+        null=True, blank=True, related_name='livraisons')
+    cout_transport = models.DecimalField(
+        max_digits=10, decimal_places=2, null=True, blank=True)
     date_prevue = models.DateField(null=True, blank=True)
     statut = models.CharField(
         max_length=20, choices=Statut.choices, default=Statut.PLANIFIEE)

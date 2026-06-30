@@ -56,6 +56,7 @@ from .models import (
     Livraison,
     LivraisonLigne,
     PreuveLivraison,
+    Transporteur,
 )
 
 
@@ -2110,6 +2111,8 @@ class LivraisonSerializer(serializers.ModelSerializer):
         source='installation.reference', read_only=True, default=None)
     depot_nom = serializers.CharField(
         source='depot.nom', read_only=True, default=None)
+    transporteur_obj_nom = serializers.CharField(
+        source='transporteur.nom', read_only=True, default=None)
     statut_display = serializers.CharField(
         source='get_statut_display', read_only=True, default=None)
     lignes = LivraisonLigneSerializer(many=True, read_only=True)
@@ -2118,7 +2121,8 @@ class LivraisonSerializer(serializers.ModelSerializer):
         model = Livraison
         fields = [
             'id', 'reference', 'installation', 'installation_reference',
-            'depot', 'depot_nom', 'transporteur_nom', 'date_prevue', 'statut',
+            'depot', 'depot_nom', 'transporteur_nom', 'transporteur',
+            'transporteur_obj_nom', 'cout_transport', 'date_prevue', 'statut',
             'statut_display', 'adresse_site', 'note', 'lignes',
             'created_by', 'date_creation', 'date_modification',
         ]
@@ -2143,3 +2147,27 @@ class PreuveLivraisonSerializer(serializers.ModelSerializer):
         read_only_fields = [
             'created_by', 'date_creation', 'date_modification',
         ]
+
+
+class TransporteurSerializer(serializers.ModelSerializer):
+    """FG331 - transporteur (interne/tiers) + tarif de base (INTERNE). La
+    societe et `created_by` sont poses COTE SERVEUR."""
+    type_transporteur_display = serializers.CharField(
+        source='get_type_transporteur_display', read_only=True, default=None)
+
+    class Meta:
+        model = Transporteur
+        fields = [
+            'id', 'nom', 'type_transporteur', 'type_transporteur_display',
+            'contact', 'telephone', 'tarif_base', 'active', 'note',
+            'created_by', 'date_creation', 'date_modification',
+        ]
+        read_only_fields = [
+            'created_by', 'date_creation', 'date_modification',
+        ]
+
+    def validate_nom(self, value):
+        value = (value or '').strip()
+        if not value:
+            raise serializers.ValidationError('Le nom du transporteur est requis.')
+        return value
