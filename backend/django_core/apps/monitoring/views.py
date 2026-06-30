@@ -22,7 +22,7 @@ from datetime import timedelta
 
 from django.db.models import Sum
 from django.db.models.functions import TruncMonth
-from django.http import StreamingHttpResponse
+from django.http import HttpResponse, StreamingHttpResponse
 from django.utils import timezone
 from rest_framework import status, viewsets
 from rest_framework.decorators import action
@@ -32,14 +32,20 @@ from authentication.mixins import TenantMixin
 from authentication.permissions import IsAnyRole, IsResponsableOrAdmin
 
 from .models import (
-    MonitoringConfig, MonitoringSettings, ProductionReading,
+    CleaningEvent, MonitoringConfig, MonitoringSettings, ProductionReading,
+    ProductionWarranty,
 )
 from .providers import available_providers
 from .serializers import (
-    MonitoringConfigSerializer, MonitoringSettingsSerializer,
-    ProductionReadingSerializer,
+    CleaningEventSerializer, MonitoringConfigSerializer,
+    MonitoringSettingsSerializer, ProductionReadingSerializer,
+    ProductionWarrantySerializer,
 )
-from .services import evaluate_underperformance, sync_system
+from .analytics import om_metrics, soiling_assessment
+from .services import (
+    evaluate_underperformance, production_warranty_status,
+    sync_system, warranty_curve_overlay,
+)
 
 READ_ACTIONS = ['list', 'retrieve']
 
@@ -159,6 +165,133 @@ class MonitoringConfigViewSet(TenantMixin, viewsets.ModelViewSet):
             'data': rows,
         })
 
+    @action(detail=False, methods=['get'], url_path='fleet',
+            permission_classes=[IsAnyRole])
+    def fleet(self, request):
+        """FG281 — Tableau de bord parc/flotte multi-systèmes : production
+        totale, kWc installés, PR moyen et alertes ouvertes sur tous les
+        systèmes actifs de la société. ?window_days=365 (défaut)."""
+        from .selectors import fleet_overview
+        company = request.user.company
+        if company is None:
+            return Response({'systems': [], 'systems_active': 0})
+        window = min(int(request.query_params.get('window_days', 365)), 1825)
+        return Response(fleet_overview(company, window_days=window))
+
+    @action(detail=True, methods=['get'], url_path='om-metrics',
+            permission_classes=[IsAnyRole])
+    def om_metrics(self, request, pk=None):
+        """FG279 — Analytique O&M par système (PR, disponibilité, soiling,
+        dégradation) depuis `ProductionReading`. Fenêtre : ?window_days=365
+        (défaut, jusqu'à 1825 jours). 100 % lecture."""
+        config = self.get_object()
+        window = min(int(request.query_params.get('window_days', 365)), 1825)
+        return Response(om_metrics(config.installation, window_days=window))
+
+    @action(detail=False, methods=['get'], url_path='client-portal',
+            permission_classes=[IsAnyRole])
+    def client_portal(self, request):
+        """FG288 — synthèse environnementale cumulée des systèmes d'un client
+        (production / économies / CO₂). ?client=ID requis."""
+        from .selectors import client_environmental_dashboard
+        company = request.user.company
+        client_id = request.query_params.get('client')
+        if company is None or not client_id:
+            return Response(
+                {'detail': 'client requis.'},
+                status=status.HTTP_400_BAD_REQUEST)
+        return Response(client_environmental_dashboard(company, client_id))
+
+    @action(detail=True, methods=['get'], url_path='co2',
+            permission_classes=[IsAnyRole])
+    def co2(self, request, pk=None):
+        """FG286 — CO₂ évité (kg + tonnes) par ce système (toute la production
+        ou bornée par ?since=YYYY-MM-DD&until=YYYY-MM-DD)."""
+        from .selectors import co2_for_installation
+        config = self.get_object()
+        since = request.query_params.get('since') or None
+        until = request.query_params.get('until') or None
+        return Response(co2_for_installation(
+            config.installation, since=since, until=until))
+
+    @action(detail=False, methods=['get'], url_path='co2-fleet',
+            permission_classes=[IsAnyRole])
+    def co2_fleet(self, request):
+        """FG286 — CO₂ évité par système ET cumulé sur le parc de la société."""
+        from .selectors import co2_fleet
+        company = request.user.company
+        if company is None:
+            return Response({'systems': [], 'total_co2_kg': 0})
+        since = request.query_params.get('since') or None
+        until = request.query_params.get('until') or None
+        return Response(co2_fleet(company, since=since, until=until))
+
+    @action(detail=True, methods=['get'], url_path='soiling',
+            permission_classes=[IsAnyRole])
+    def soiling(self, request, pk=None):
+        """FG283 — perte estimée par salissure (chute de PR entre nettoyages)
+        + recommandation de nettoyage. ?window_days=365 (défaut)."""
+        config = self.get_object()
+        window = min(int(request.query_params.get('window_days', 365)), 1825)
+        return Response(
+            soiling_assessment(config.installation, window_days=window))
+
+    @action(detail=True, methods=['get'], url_path='om-report',
+            permission_classes=[IsAnyRole])
+    def om_report(self, request, pk=None):
+        """FG289 — rapport O&M périodique du système. ?period=monthly|quarterly.
+        ?format=pdf renvoie le PDF ; sinon les données JSON."""
+        from .report import build_om_report_data, render_om_report_pdf
+        config = self.get_object()
+        period = request.query_params.get('period', 'monthly')
+        if request.query_params.get('format') == 'pdf':
+            pdf = render_om_report_pdf(config.installation, period=period)
+            resp = HttpResponse(pdf, content_type='application/pdf')
+            ref = config.installation.reference or config.installation_id
+            resp['Content-Disposition'] = (
+                f'attachment; filename="rapport-om-{ref}.pdf"')
+            return resp
+        return Response(
+            build_om_report_data(config.installation, period=period))
+
+    @action(detail=True, methods=['post'], url_path='email-om-report',
+            permission_classes=[IsResponsableOrAdmin])
+    def email_om_report(self, request, pk=None):
+        """FG289 — envoie le rapport O&M périodique par e-mail (PDF joint).
+        Destinataire : body `recipient` sinon l'e-mail du client du système."""
+        from .report import email_om_report
+        config = self.get_object()
+        period = request.data.get('period', 'monthly')
+        recipient = request.data.get('recipient') or None
+        sent = email_om_report(
+            config.installation, period=period, recipient=recipient)
+        return Response({'sent': sent})
+
+
+class CleaningEventViewSet(TenantMixin, viewsets.ModelViewSet):
+    """FG283 — nettoyages de panneaux (bornes pour l'estimation de salissure).
+    Lecture tout rôle (filtrable par ?installation=) ; écriture
+    responsable/admin. `company` et `created_by` posés côté serveur."""
+    queryset = CleaningEvent.objects.select_related('installation').all()
+    serializer_class = CleaningEventSerializer
+
+    def get_permissions(self):
+        if self.action in READ_ACTIONS:
+            return [IsAnyRole()]
+        return [IsResponsableOrAdmin()]
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        inst = self.request.query_params.get('installation')
+        if inst:
+            qs = qs.filter(installation_id=inst)
+        return qs
+
+    def perform_create(self, serializer):
+        serializer.save(
+            company=self.request.user.company,
+            created_by=self.request.user)
+
 
 class ProductionReadingViewSet(TenantMixin, viewsets.ModelViewSet):
     """Relevés de production (N51). Lecture tout rôle (filtrable par
@@ -188,6 +321,52 @@ class ProductionReadingViewSet(TenantMixin, viewsets.ModelViewSet):
         # Après une saisie manuelle, ré-évaluer la sous-performance (N52).
         installation = serializer.instance.installation
         evaluate_underperformance(installation, user=self.request.user)
+
+
+class ProductionWarrantyViewSet(TenantMixin, viewsets.ModelViewSet):
+    """FG282 — garantie de production par système. Lecture tout rôle
+    (filtrable par ?installation=) ; écriture responsable/admin. Action
+    `status` : production réelle vs garanti dégradé → manque/compensation."""
+    queryset = ProductionWarranty.objects.select_related('installation').all()
+    serializer_class = ProductionWarrantySerializer
+
+    def get_permissions(self):
+        if self.action in READ_ACTIONS or self.action in ('status', 'curve'):
+            return [IsAnyRole()]
+        return [IsResponsableOrAdmin()]
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        inst = self.request.query_params.get('installation')
+        if inst:
+            qs = qs.filter(installation_id=inst)
+        return qs
+
+    @action(detail=True, methods=['get'], url_path='status',
+            permission_classes=[IsAnyRole])
+    def status(self, request, pk=None):
+        """Écart production réelle vs productible garanti dégradé d'une année
+        (?year=YYYY, défaut année courante) + compensation due."""
+        warranty = self.get_object()
+        year = request.query_params.get('year')
+        result = production_warranty_status(
+            warranty.installation, year=int(year) if year else None)
+        return Response(result)
+
+    @action(detail=True, methods=['get'], url_path='curve',
+            permission_classes=[IsAnyRole])
+    def curve(self, request, pk=None):
+        """FG284 — superpose production mesurée et courbe garantie de
+        dégradation par année → dérive anormale → recours fabricant.
+        ?years=N pour borner ; ?drift_threshold_pct=X pour le seuil."""
+        warranty = self.get_object()
+        years = request.query_params.get('years')
+        threshold = request.query_params.get('drift_threshold_pct')
+        result = warranty_curve_overlay(
+            warranty.installation,
+            years=int(years) if years else None,
+            drift_threshold_pct=threshold)
+        return Response(result)
 
 
 class MonitoringSettingsViewSet(TenantMixin, viewsets.ModelViewSet):
