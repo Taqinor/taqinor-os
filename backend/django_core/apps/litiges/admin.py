@@ -6,9 +6,11 @@ from .models import Reclamation, ReclamationActivity
 @admin.register(Reclamation)
 class ReclamationAdmin(admin.ModelAdmin):
     list_display = ('id', 'objet', 'type_reclamation', 'gravite', 'statut',
-                    'montant_conteste', 'company', 'date_creation')
+                    'montant_conteste', 'concurrent_nom', 'company',
+                    'date_creation')
     list_filter = ('type_reclamation', 'gravite', 'statut')
-    search_fields = ('reference', 'objet', 'description')
+    search_fields = ('reference', 'objet', 'description', 'concurrent_nom',
+                     'motif_perte')
 
 
 @admin.register(ReclamationActivity)

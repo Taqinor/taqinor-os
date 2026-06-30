@@ -50,7 +50,11 @@ class ReclamationSerializer(serializers.ModelSerializer):
             'gravite', 'gravite_display', 'objet', 'description',
             'source_type', 'source_id', 'montant_conteste', 'statut',
             'statut_display', 'bloque_relances', 'ncr_id', 'audit_id',
-            'ncr', 'audit', 'created_by', 'date_creation',
+            'ncr', 'audit',
+            # LITIGE5 — concurrent gagnant + motif sur deal perdu (étend FG242).
+            'concurrent_nom', 'concurrent_prix', 'concurrent_devise',
+            'motif_perte',
+            'created_by', 'date_creation',
         ]
         # ``statut`` ne se modifie pas par PATCH direct : le cycle de vie passe
         # par les actions de transition (prendre_en_charge/resoudre/rejeter)

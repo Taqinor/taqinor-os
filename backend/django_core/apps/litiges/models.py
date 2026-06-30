@@ -81,6 +81,29 @@ class Reclamation(models.Model):
     audit_id = models.PositiveIntegerField(
         null=True, blank=True,
         verbose_name="ID de l'audit fin de chantier QHSE")
+    # LITIGE5 — Capture du concurrent/motif sur deal perdu (étend FG242).
+    # Quand un deal perdu escalade en litige (typiquement commercial), on saisit
+    # ICI, au niveau du litige, le concurrent gagnant + son prix + le motif de la
+    # perte. Le lead perdu d'origine est référencé par le couple lâche déjà
+    # présent (``source_type='lead'`` / ``source_id``) — référence string-FK,
+    # jamais un import des modèles ``apps.crm``. Tous les champs sont optionnels
+    # (l'information n'est pas toujours connue) et entièrement additifs.
+    concurrent_nom = models.CharField(
+        max_length=200, blank=True, default='',
+        verbose_name='Concurrent gagnant',
+        help_text="Nom du concurrent qui a remporté l'affaire. Vide si inconnu.")
+    concurrent_prix = models.DecimalField(
+        max_digits=14, decimal_places=2,
+        null=True, blank=True,
+        verbose_name='Prix du concurrent',
+        help_text='Prix proposé par le concurrent. Vide si inconnu.')
+    concurrent_devise = models.CharField(
+        max_length=8, blank=True, default='MAD',
+        verbose_name='Devise du prix concurrent')
+    motif_perte = models.CharField(
+        max_length=255, blank=True, default='',
+        verbose_name='Motif de la perte',
+        help_text='Raison pour laquelle le deal a été perdu (texte libre).')
     created_by = models.ForeignKey(
         settings.AUTH_USER_MODEL,
         on_delete=models.SET_NULL,

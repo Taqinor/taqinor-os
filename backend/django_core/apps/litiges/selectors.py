@@ -179,3 +179,97 @@ def tableau_bord_litiges(company, debut=None, fin=None):
         'debut': d_debut.isoformat() if d_debut else None,
         'fin': d_fin.isoformat() if d_fin else None,
     }
+
+
+def analyse_concurrents_perte(company):
+    """LITIGE5 — Intelligence concurrentielle des litiges sur deals perdus.
+
+    Agrégation pure (lecture seule) sur les ``Reclamation`` de la société qui
+    portent un concurrent gagnant saisi (``concurrent_nom`` non vide). Étend le
+    concept FG242 (concurrent/motif sur deal perdu) au niveau du litige, sans
+    jamais importer ``apps.crm`` : le lead d'origine reste référencé par le
+    couple lâche ``source_type='lead'`` / ``source_id`` porté par la réclamation.
+
+    Multi-société : tout est scopé sur ``company`` (jamais lu du corps de
+    requête côté API).
+
+    Args:
+        company: instance ``authentication.Company`` à scoper.
+
+    Returns:
+        dict sérialisable ::
+
+            {
+                'total_litiges_avec_concurrent': int,
+                'par_concurrent': [          # trié, plus fréquent d'abord
+                    {
+                        'concurrent': str,
+                        'nombre': int,
+                        'prix_moyen': str | None,   # Decimal sérialisé ou None
+                        'devise': str | None,       # devise majoritaire
+                    },
+                    ...
+                ],
+                'par_motif': [               # trié, plus fréquent d'abord
+                    {'motif': str, 'nombre': int},
+                    ...
+                ],
+            }
+
+    Le prix moyen par concurrent ignore les prix non renseignés (None) ; si
+    aucun prix n'est connu pour un concurrent, ``prix_moyen`` vaut ``None``
+    (jamais de division par zéro). Les motifs vides sont ignorés.
+    """
+    from collections import Counter
+
+    from .models import Reclamation
+
+    qs = Reclamation.objects.filter(company=company).exclude(
+        concurrent_nom='')
+
+    # Agrégation côté Python : robuste, lisible, et le volume des litiges avec
+    # concurrent saisi reste modeste.
+    par_concurrent = {}      # nom -> {'nombre', 'somme_prix', 'nb_prix', devises}
+    motifs = Counter()
+    total = 0
+    for nom, prix, devise, motif in qs.values_list(
+            'concurrent_nom', 'concurrent_prix', 'concurrent_devise',
+            'motif_perte'):
+        total += 1
+        bucket = par_concurrent.setdefault(
+            nom, {'nombre': 0, 'somme_prix': Decimal('0'), 'nb_prix': 0,
+                  'devises': Counter()})
+        bucket['nombre'] += 1
+        if prix is not None:
+            bucket['somme_prix'] += prix
+            bucket['nb_prix'] += 1
+        if devise:
+            bucket['devises'][devise] += 1
+        if motif:
+            motifs[motif] += 1
+
+    par_concurrent_liste = []
+    for nom, b in par_concurrent.items():
+        prix_moyen = (
+            str((b['somme_prix'] / b['nb_prix']).quantize(Decimal('0.01')))
+            if b['nb_prix'] else None)
+        devise = b['devises'].most_common(1)[0][0] if b['devises'] else None
+        par_concurrent_liste.append({
+            'concurrent': nom,
+            'nombre': b['nombre'],
+            'prix_moyen': prix_moyen,
+            'devise': devise,
+        })
+    # Tri : plus fréquent d'abord, puis nom (déterministe).
+    par_concurrent_liste.sort(key=lambda d: (-d['nombre'], d['concurrent']))
+
+    par_motif_liste = [
+        {'motif': m, 'nombre': n}
+        for m, n in sorted(motifs.items(), key=lambda kv: (-kv[1], kv[0]))
+    ]
+
+    return {
+        'total_litiges_avec_concurrent': total,
+        'par_concurrent': par_concurrent_liste,
+        'par_motif': par_motif_liste,
+    }
