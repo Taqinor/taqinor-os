@@ -3270,3 +3270,135 @@ class ElementsVariablesPaie(models.Model):
 
     def __str__(self):
         return f'{self.employe} — {self.mois:02d}/{self.annee}'
+
+
+class TypePrime(models.Model):
+    """Référentiel des primes & indemnités (FG193).
+
+    Catalogue normalisé des primes/indemnités d'une société : prime de
+    rendement, indemnité de chantier, panier, transport, etc. Chaque type a un
+    ``code`` interne, un ``libelle`` affiché, une ``nature`` (prime de
+    performance / indemnité forfaitaire), un ``montant_defaut`` proposé à
+    l'attribution, un drapeau ``imposable`` (entre ou non dans l'assiette
+    fiscale, INDICATIF — le calcul légal reste au prestataire de paie) et un
+    drapeau ``actif``.
+
+    Multi-société : ``company`` est posée CÔTÉ SERVEUR (jamais lue du corps).
+    Le couple (``company``, ``code``) est unique. Additif.
+
+    RUNTIME-SAFETY (leçon FG136) : ``code`` ≤ 30 / ``nature`` ≤ 20 bornés ;
+    montant en ``DecimalField`` ; contrainte d'unicité nommée (≤ 30 chars).
+    """
+
+    class Nature(models.TextChoices):
+        PRIME = 'prime', 'Prime'
+        INDEMNITE = 'indemnite', 'Indemnité'
+
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='rh_types_prime',
+        verbose_name='Société',
+    )
+    code = models.CharField(max_length=30, verbose_name='Code')
+    libelle = models.CharField(max_length=120, verbose_name='Libellé')
+    nature = models.CharField(
+        max_length=20, choices=Nature.choices,
+        default=Nature.PRIME, verbose_name='Nature')
+    montant_defaut = models.DecimalField(
+        max_digits=12, decimal_places=2, default=Decimal('0'),
+        verbose_name='Montant par défaut')
+    imposable = models.BooleanField(
+        default=True, verbose_name='Imposable (indicatif)')
+    actif = models.BooleanField(default=True, verbose_name='Actif')
+    date_creation = models.DateTimeField(
+        auto_now_add=True, verbose_name='Créé le')
+
+    class Meta:
+        verbose_name = 'Type de prime/indemnité'
+        verbose_name_plural = 'Types de primes/indemnités'
+        ordering = ['libelle']
+        constraints = [
+            models.UniqueConstraint(
+                fields=['company', 'code'],
+                name='rh_typeprime_comp_code_uniq'),
+        ]
+
+    def __str__(self):
+        return self.libelle
+
+
+class PrimeAttribuee(models.Model):
+    """Prime/indemnité attribuée à un employé pour une période (FG193).
+
+    Une ligne par ATTRIBUTION : un ``type_prime`` (FK ``rh.TypePrime``, même
+    société) accordé à un ``employe`` (FK ``rh.DossierEmploye``, même société)
+    pour une période ``annee``/``mois``, avec un ``montant`` (initialisé au
+    montant par défaut du type mais modifiable) et un ``motif`` libre. Un
+    ``statut`` matérialise le cycle (proposée → validée → payée) ; les primes
+    validées alimentent le bordereau d'éléments variables de paie (FG192) côté
+    employeur.
+
+    Multi-société : ``company`` est posée CÔTÉ SERVEUR (jamais lue du corps) ;
+    ``type_prime`` et ``employe`` doivent appartenir à la même société. Additif.
+
+    RUNTIME-SAFETY (leçon FG136) : ``statut`` ≤ 20 borné ; ``montant`` en
+    ``DecimalField`` ; ``motif`` plafonné ; index nommés (≤ 30 chars).
+    """
+
+    class Statut(models.TextChoices):
+        PROPOSEE = 'proposee', 'Proposée'
+        VALIDEE = 'validee', 'Validée'
+        PAYEE = 'payee', 'Payée'
+
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='rh_primes_attribuees',
+        verbose_name='Société',
+    )
+    type_prime = models.ForeignKey(
+        TypePrime,
+        on_delete=models.PROTECT,
+        related_name='attributions',
+        verbose_name='Type de prime',
+    )
+    employe = models.ForeignKey(
+        DossierEmploye,
+        on_delete=models.CASCADE,
+        related_name='primes_attribuees',
+        verbose_name='Employé',
+    )
+    annee = models.PositiveIntegerField(verbose_name='Année')
+    mois = models.PositiveSmallIntegerField(verbose_name='Mois')
+    montant = models.DecimalField(
+        max_digits=12, decimal_places=2, default=Decimal('0'),
+        verbose_name='Montant')
+    motif = models.CharField(
+        max_length=255, blank=True, default='', verbose_name='Motif')
+    statut = models.CharField(
+        max_length=20, choices=Statut.choices,
+        default=Statut.PROPOSEE, verbose_name='Statut')
+    date_creation = models.DateTimeField(
+        auto_now_add=True, verbose_name='Créé le')
+    date_modification = models.DateTimeField(
+        auto_now=True, verbose_name='Modifié le')
+
+    class Meta:
+        verbose_name = 'Prime/indemnité attribuée'
+        verbose_name_plural = 'Primes/indemnités attribuées'
+        ordering = ['-annee', '-mois', 'employe']
+        indexes = [
+            models.Index(
+                fields=['company', 'annee', 'mois'],
+                name='rh_prime_comp_an_mois_idx'),
+            models.Index(
+                fields=['company', 'employe'],
+                name='rh_prime_comp_emp_idx'),
+            models.Index(
+                fields=['company', 'statut'],
+                name='rh_prime_comp_stat_idx'),
+        ]
+
+    def __str__(self):
+        return f'{self.type_prime} — {self.employe} ({self.mois:02d}/{self.annee})'

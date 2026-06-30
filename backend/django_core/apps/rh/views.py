@@ -50,11 +50,13 @@ from .models import (
     Poste,
     PresenceChantier,
     PresquAccident,
+    PrimeAttribuee,
     Remuneration,
     Sanction,
     SessionFormation,
     SoldeConge,
     TypeAbsence,
+    TypePrime,
     VisiteMedicale,
 )
 from .serializers import (
@@ -90,11 +92,13 @@ from .serializers import (
     PosteSerializer,
     PresenceChantierSerializer,
     PresquAccidentSerializer,
+    PrimeAttribueeSerializer,
     RemunerationSerializer,
     SanctionSerializer,
     SessionFormationSerializer,
     SoldeCongeSerializer,
     TypeAbsenceSerializer,
+    TypePrimeSerializer,
     VisiteMedicaleSerializer,
 )
 
@@ -2481,3 +2485,101 @@ class ElementsVariablesPaieViewSet(_RhBaseViewSet):
                 'statut', 'date_export', 'date_modification'])
         return Response(
             self.get_serializer(evp).data, status=status.HTTP_200_OK)
+
+
+class TypePrimeViewSet(_RhBaseViewSet):
+    """Référentiel des primes & indemnités (FG193).
+
+    Société scopée + Administrateur/Responsable. Catalogue des types de primes
+    (rendement, chantier, panier, transport…) : code, libellé, nature, montant
+    par défaut, drapeaux imposable/actif. ``company`` est posée CÔTÉ SERVEUR
+    (jamais lue du corps) ; (company, code) est unique.
+
+    Filtres : ``?nature=prime|indemnite``, ``?actif=true|false``.
+    """
+    queryset = TypePrime.objects.all()
+    serializer_class = TypePrimeSerializer
+    filter_backends = [filters.SearchFilter, filters.OrderingFilter]
+    search_fields = ['code', 'libelle']
+    ordering_fields = ['libelle', 'code', 'date_creation']
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        nature = self.request.query_params.get('nature')
+        if nature:
+            qs = qs.filter(nature=nature)
+        actif = self.request.query_params.get('actif')
+        if actif is not None:
+            qs = qs.filter(actif=actif.lower() in ('1', 'true', 'oui'))
+        return qs
+
+    def perform_create(self, serializer):
+        """Company posée côté serveur."""
+        serializer.save(company=self.request.user.company)
+
+
+class PrimeAttribueeViewSet(_RhBaseViewSet):
+    """Primes/indemnités attribuées (FG193) — par employé et par période.
+
+    Société scopée + Administrateur/Responsable. Attribue un type de prime à un
+    employé pour une période (année/mois) avec un montant (par défaut celui du
+    type), un motif et un statut (proposée → validée → payée). ``company`` est
+    posée CÔTÉ SERVEUR (jamais lue du corps) ; ``type_prime`` / ``employe``
+    doivent appartenir à la même société. Si le montant n'est pas fourni (0),
+    il est initialisé au montant par défaut du type côté serveur.
+
+    Filtres : ``?employe=<id>``, ``?type_prime=<id>``, ``?annee=<n>``,
+    ``?mois=<1-12>``, ``?statut=proposee|validee|payee``.
+
+    Action :
+    * ``POST .../{id}/valider/`` — passe en ``statut=validee``. Idempotent.
+    """
+    queryset = PrimeAttribuee.objects.select_related(
+        'type_prime', 'employe').all()
+    serializer_class = PrimeAttribueeSerializer
+    filter_backends = [filters.SearchFilter, filters.OrderingFilter]
+    search_fields = ['motif', 'employe__matricule', 'type_prime__libelle']
+    ordering_fields = ['annee', 'mois', 'montant', 'statut', 'date_creation']
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        employe = self.request.query_params.get('employe')
+        if employe:
+            qs = qs.filter(employe_id=employe)
+        type_prime = self.request.query_params.get('type_prime')
+        if type_prime:
+            qs = qs.filter(type_prime_id=type_prime)
+        annee = self.request.query_params.get('annee')
+        if annee:
+            qs = qs.filter(annee=annee)
+        mois = self.request.query_params.get('mois')
+        if mois:
+            qs = qs.filter(mois=mois)
+        statut = self.request.query_params.get('statut')
+        if statut:
+            qs = qs.filter(statut=statut)
+        return qs
+
+    def perform_create(self, serializer):
+        """Company posée côté serveur ; montant par défaut du type si absent."""
+        montant = serializer.validated_data.get('montant') or 0
+        extra = {}
+        if not montant:
+            type_prime = serializer.validated_data.get('type_prime')
+            if type_prime is not None:
+                extra['montant'] = type_prime.montant_defaut
+        serializer.save(company=self.request.user.company, **extra)
+
+    @action(detail=True, methods=['post'], url_path='valider')
+    def valider(self, request, pk=None):
+        """Valide la prime (FG193) — passe en ``statut=validee``.
+
+        La société est garantie par ``get_object`` (autre tenant → 404).
+        Idempotent : revalider renvoie la même prime sans erreur.
+        """
+        prime = self.get_object()
+        if prime.statut != PrimeAttribuee.Statut.VALIDEE:
+            prime.statut = PrimeAttribuee.Statut.VALIDEE
+            prime.save(update_fields=['statut', 'date_modification'])
+        return Response(
+            self.get_serializer(prime).data, status=status.HTTP_200_OK)

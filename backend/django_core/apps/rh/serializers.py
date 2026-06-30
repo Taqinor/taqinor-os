@@ -40,11 +40,13 @@ from .models import (
     Poste,
     PresenceChantier,
     PresquAccident,
+    PrimeAttribuee,
     Remuneration,
     Sanction,
     SessionFormation,
     SoldeConge,
     TypeAbsence,
+    TypePrime,
     VisiteMedicale,
 )
 
@@ -1661,6 +1663,67 @@ class ElementsVariablesPaieSerializer(serializers.ModelSerializer):
         if not obj.employe_id:
             return ''
         return f'{obj.employe.nom} {obj.employe.prenom}'
+
+    def validate_employe(self, value):
+        return _meme_societe(self, value, 'Employé')
+
+    def validate_mois(self, value):
+        if not 1 <= value <= 12:
+            raise serializers.ValidationError(
+                'Le mois doit être compris entre 1 et 12.')
+        return value
+
+
+class TypePrimeSerializer(serializers.ModelSerializer):
+    """Référentiel des primes & indemnités (FG193).
+
+    Le client saisit ``code``, ``libelle``, ``nature``, ``montant_defaut``,
+    ``imposable`` et ``actif``. ``company`` est posée CÔTÉ SERVEUR (jamais lue
+    du corps) ; le couple (company, code) est unique.
+    """
+    nature_display = serializers.CharField(
+        source='get_nature_display', read_only=True)
+
+    class Meta:
+        model = TypePrime
+        fields = [
+            'id', 'code', 'libelle', 'nature', 'nature_display',
+            'montant_defaut', 'imposable', 'actif', 'date_creation',
+        ]
+        read_only_fields = ['date_creation']
+
+
+class PrimeAttribueeSerializer(serializers.ModelSerializer):
+    """Prime/indemnité attribuée à un employé pour une période (FG193).
+
+    Le client saisit ``type_prime`` et ``employe`` (de sa société), ``annee``,
+    ``mois``, ``montant``, ``motif`` et ``statut``. ``company`` est posée CÔTÉ
+    SERVEUR (jamais lue du corps) ; ``type_prime`` / ``employe`` doivent
+    appartenir à la société de l'utilisateur.
+    """
+    employe_nom = serializers.SerializerMethodField()
+    type_prime_libelle = serializers.CharField(
+        source='type_prime.libelle', read_only=True)
+    statut_display = serializers.CharField(
+        source='get_statut_display', read_only=True)
+
+    class Meta:
+        model = PrimeAttribuee
+        fields = [
+            'id', 'type_prime', 'type_prime_libelle',
+            'employe', 'employe_nom', 'annee', 'mois',
+            'montant', 'motif', 'statut', 'statut_display',
+            'date_creation', 'date_modification',
+        ]
+        read_only_fields = ['date_creation', 'date_modification']
+
+    def get_employe_nom(self, obj):
+        if not obj.employe_id:
+            return ''
+        return f'{obj.employe.nom} {obj.employe.prenom}'
+
+    def validate_type_prime(self, value):
+        return _meme_societe(self, value, 'Type de prime')
 
     def validate_employe(self, value):
         return _meme_societe(self, value, 'Employé')
