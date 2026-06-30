@@ -81,6 +81,10 @@ from .models_soustraitant import (
 from .models_ordre_soustraitance import (
     OrdreSousTraitance,
 )
+from .models_facture_soustraitant import (
+    FactureSousTraitant,
+    PaiementSousTraitant,
+)
 
 __all__ = [
     'Installation',
@@ -125,4 +129,6 @@ __all__ = [
     'IndisponibiliteRessource',
     'SousTraitant',
     'OrdreSousTraitance',
+    'FactureSousTraitant',
+    'PaiementSousTraitant',
 ]

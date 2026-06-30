@@ -17,6 +17,8 @@ from .models import (
     IndisponibiliteRessource,
     SousTraitant,
     OrdreSousTraitance,
+    FactureSousTraitant,
+    PaiementSousTraitant,
 )
 
 
@@ -1054,4 +1056,67 @@ class OrdreSousTraitanceSerializer(serializers.ModelSerializer):
         if value is not None and value < 0:
             raise serializers.ValidationError(
                 'Le montant réalisé ne peut pas être négatif.')
+        return value
+
+
+class PaiementSousTraitantSerializer(serializers.ModelSerializer):
+    """FG306 — règlement imputé sur une facture sous-traitant. La société et
+    `created_by` sont posés CÔTÉ SERVEUR (jamais lus du corps). Le montant est
+    INTERNE — jamais client-facing."""
+    mode_display = serializers.CharField(
+        source='get_mode_display', read_only=True, default=None)
+
+    class Meta:
+        model = PaiementSousTraitant
+        fields = [
+            'id', 'facture', 'montant', 'date_paiement',
+            'mode', 'mode_display', 'reference_paiement', 'note',
+            'created_by', 'date_creation',
+        ]
+        read_only_fields = ['created_by', 'date_creation']
+
+    def validate_montant(self, value):
+        if value is not None and value <= 0:
+            raise serializers.ValidationError(
+                'Le montant du paiement doit être strictement positif.')
+        return value
+
+
+class FactureSousTraitantSerializer(serializers.ModelSerializer):
+    """FG306 — facture entrante d'un sous-traitant chantier (compte à payer
+    main-d'œuvre). La société et `created_by` sont posés CÔTÉ SERVEUR. Le `statut`
+    n'est pas écrit librement : il avance via les actions de cycle de vie
+    (`a_payer`/`payer`/`annuler`) et le reflet automatique des paiements. Tous les
+    montants sont INTERNES — jamais client-facing."""
+    statut_display = serializers.CharField(
+        source='get_statut_display', read_only=True, default=None)
+    sous_traitant_nom = serializers.CharField(
+        source='sous_traitant.raison_sociale', read_only=True, default=None)
+    total_paye = serializers.DecimalField(
+        max_digits=12, decimal_places=2, read_only=True)
+    reste_a_payer = serializers.DecimalField(
+        max_digits=12, decimal_places=2, read_only=True)
+    paiements = PaiementSousTraitantSerializer(many=True, read_only=True)
+
+    class Meta:
+        model = FactureSousTraitant
+        fields = [
+            'id', 'numero', 'sous_traitant', 'sous_traitant_nom',
+            'ordre', 'chantier',
+            'montant_ht', 'montant_tva', 'montant_ttc',
+            'date_facture', 'date_echeance',
+            'statut', 'statut_display', 'note',
+            'total_paye', 'reste_a_payer', 'paiements',
+            'created_by', 'date_creation', 'date_modification',
+        ]
+        # Le statut avance via les actions de cycle de vie / le reflet des
+        # paiements — jamais écrit librement.
+        read_only_fields = [
+            'statut', 'created_by', 'date_creation', 'date_modification',
+        ]
+
+    def validate_montant_ttc(self, value):
+        if value is not None and value < 0:
+            raise serializers.ValidationError(
+                'Le montant TTC ne peut pas être négatif.')
         return value
