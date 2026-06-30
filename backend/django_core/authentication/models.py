@@ -269,6 +269,30 @@ class CustomUser(AbstractUser):
         return True  # compte légacy sans rôle fin → comportement historique
 
     @property
+    def can_view_marge(self):
+        """FG20 — voir la marge interne calculée (donnée sensible). Permission
+        explicite ``marge_voir`` (Directeur/Admin par défaut), avec repli
+        historique pour les comptes SANS rôle fin (légacy) : on ne retire jamais
+        l'accès aux comptes hérités. Superuser toujours autorisé."""
+        if self.is_superuser:
+            return True
+        if self.role_id:
+            return 'marge_voir' in (self.role.permissions or [])
+        return True  # compte légacy sans rôle fin → comportement historique
+
+    @property
+    def can_view_client_pii(self):
+        """FG20 — voir les coordonnées personnelles d'un client/lead
+        (téléphone, email, adresse, WhatsApp, GPS). Permission ``client_pii_voir``
+        (accordée par défaut aux rôles opérationnels), repli historique pour les
+        comptes légacy. Superuser toujours autorisé."""
+        if self.is_superuser:
+            return True
+        if self.role_id:
+            return 'client_pii_voir' in (self.role.permissions or [])
+        return True  # compte légacy sans rôle fin → comportement historique
+
+    @property
     def can_view_activity_log(self):
         """Voir le Journal d'activité (Feature G). Permission explicite
         (Directeur par défaut). Superuser toujours autorisé."""

@@ -41,6 +41,10 @@ class ClientSerializer(serializers.ModelSerializer):
     created_by = serializers.PrimaryKeyRelatedField(read_only=True)
     created_by_nom = serializers.SerializerMethodField()
 
+    # FG20 — coordonnées personnelles masquées quand le rôle n'a pas
+    # ``client_pii_voir``. Source unique des champs PII partagée avec le Lead.
+    PII_FIELDS = ('telephone', 'email', 'adresse')
+
     def validate(self, attrs):
         # Champs personnalisés (T11, L808) : valider/nettoyer le custom_data du
         # client contre les définitions du module « client », même chemin que
@@ -55,6 +59,29 @@ class ClientSerializer(serializers.ModelSerializer):
                 attrs['custom_data'] = validate_custom_data(
                     'client', company, attrs.get('custom_data'))
         return attrs
+
+    def get_fields(self):
+        fields = super().get_fields()
+        # FG20 — masque la PII en LECTURE pour les rôles non autorisés. On rend
+        # les champs lecture-seule (plutôt que de les retirer) afin de ne jamais
+        # casser une écriture légitime, et on les vide à la sérialisation.
+        request = self.context.get('request')
+        user = getattr(request, 'user', None)
+        if user is not None and not getattr(user, 'can_view_client_pii', True):
+            for name in self.PII_FIELDS:
+                if name in fields:
+                    fields[name].read_only = True
+        return fields
+
+    def to_representation(self, instance):
+        data = super().to_representation(instance)
+        request = self.context.get('request')
+        user = getattr(request, 'user', None)
+        if user is not None and not getattr(user, 'can_view_client_pii', True):
+            for name in self.PII_FIELDS:
+                if name in data:
+                    data[name] = None
+        return data
 
     class Meta:
         model = Client
@@ -278,6 +305,30 @@ class LeadSerializer(serializers.ModelSerializer):
             # toiture épinglée du client ; jamais réécrits via un PATCH du corps.
             'roof_point', 'roof_outline', 'bill_kwh',
         ]
+
+    # FG20 — coordonnées personnelles masquées sans ``client_pii_voir``.
+    PII_FIELDS = ('telephone', 'email', 'adresse', 'whatsapp',
+                  'gps_lat', 'gps_lng')
+
+    def get_fields(self):
+        fields = super().get_fields()
+        request = self.context.get('request')
+        user = getattr(request, 'user', None)
+        if user is not None and not getattr(user, 'can_view_client_pii', True):
+            for name in self.PII_FIELDS:
+                if name in fields:
+                    fields[name].read_only = True
+        return fields
+
+    def to_representation(self, instance):
+        data = super().to_representation(instance)
+        request = self.context.get('request')
+        user = getattr(request, 'user', None)
+        if user is not None and not getattr(user, 'can_view_client_pii', True):
+            for name in self.PII_FIELDS:
+                if name in data:
+                    data[name] = None
+        return data
 
     def get_client_nom(self, obj):
         if not obj.client_id:

@@ -51,6 +51,17 @@ ALL_PERMISSIONS = [
     # historique). Donnée paie sensible : réservée au palier RH (Directeur +
     # Administrateur par défaut) ; ne fuit jamais dans une sortie client.
     'salaires_voir',
+    # ── Données sensibles (FG20) — groupe « Données sensibles » curé ──
+    # Permissions de LECTURE qui DÉMASQUENT une donnée sensible dans les
+    # sérialiseurs ; absentes → la donnée est masquée. ÉLEVÉES (octroi réservé à
+    # l'admin). Repli légacy : un compte SANS rôle fin garde l'accès historique
+    # (jamais de régression pour les comptes hérités).
+    # `client_pii_voir` : voir les coordonnées personnelles du client/lead
+    # (téléphone, email, adresse, WhatsApp, GPS). `marge_voir` : voir la marge
+    # interne calculée (indicateur générateur). Distinct de `prix_achat_voir`
+    # (prix d'achat brut), qui reste la garde du prix d'achat lui-même.
+    'client_pii_voir',
+    'marge_voir',
     # ── Portée de visibilité des enregistrements (Feature F) ──
     # Marqueurs de RÔLE (pas des cases « action ») : narrowing OPT-IN. Un rôle
     # SANS l'un de ces marqueurs voit tous les enregistrements de sa société
@@ -78,6 +89,11 @@ ELEVATED_PERMISSIONS = frozenset({
     'prix_achat_voir',
     'journal_activite_voir',
     'salaires_voir',
+    # FG20 — données sensibles : démasquer la marge interne est élevé (même
+    # niveau que le prix d'achat). La PII client n'est PAS élevée : voir les
+    # coordonnées d'un client est un besoin opérationnel courant (commercial),
+    # donc ``client_pii_voir`` reste octroyable par un Responsable.
+    'marge_voir',
 })
 
 RESPONSABLE_PERMISSIONS = [
@@ -106,6 +122,9 @@ RESPONSABLE_PERMISSIONS = [
     'parametres_voir',
     'users_voir',
     'reporting_voir',
+    # FG20 — la Commerciale/Responsable voit les coordonnées client (besoin
+    # opérationnel) ; comportement historique préservé.
+    'client_pii_voir',
 ]
 
 UTILISATEUR_PERMISSIONS = [
@@ -117,6 +136,8 @@ UTILISATEUR_PERMISSIONS = [
     'sav_voir',
     'parametres_voir',
     'reporting_voir',
+    # FG20 — préserve l'accès historique aux coordonnées client.
+    'client_pii_voir',
 ]
 
 
@@ -150,6 +171,7 @@ COMMERCIAL_RESP_PERMISSIONS = [
     'ventes_valider', 'ventes_pdf', 'ventes_export', 'ventes_reassign',
     'equipement_voir', 'sav_voir', 'sav_gerer', 'sav_export', 'sav_reassign',
     'parametres_voir', 'users_voir', 'reporting_voir', 'reporting_export',
+    'client_pii_voir',  # FG20 — coordonnées client (besoin commercial).
     SCOPE_SUBTREE,
 ]
 
@@ -161,6 +183,7 @@ COMMERCIAL_PERMISSIONS = [
     'ventes_pdf', 'ventes_export',
     'stock_voir', 'equipement_voir', 'sav_voir',
     'parametres_voir', 'reporting_voir',
+    'client_pii_voir',  # FG20 — coordonnées client (besoin commercial).
     SCOPE_TEAM,
 ]
 
@@ -174,6 +197,7 @@ TECHNICIEN_RESP_PERMISSIONS = [
     'stock_voir', 'stock_creer', 'stock_modifier', 'stock_mouvement',
     'stock_export',
     'parametres_voir', 'users_voir', 'reporting_voir', 'reporting_export',
+    'client_pii_voir',  # FG20 — coordonnées client (intervention terrain).
     SCOPE_SUBTREE,
 ]
 
@@ -184,6 +208,7 @@ TECHNICIEN_PERMISSIONS = [
     'equipement_voir', 'sav_voir', 'sav_gerer',
     'stock_voir', 'stock_mouvement',
     'parametres_voir', 'reporting_voir',
+    'client_pii_voir',  # FG20 — coordonnées client (intervention terrain).
     SCOPE_TEAM,
 ]
 
@@ -192,6 +217,7 @@ TECHNICIEN_PERMISSIONS = [
 VIEWER_PERMISSIONS = [
     'stock_voir', 'crm_voir', 'ventes_voir', 'installation_voir',
     'equipement_voir', 'sav_voir', 'parametres_voir', 'reporting_voir',
+    'client_pii_voir',  # FG20 — préserve l'accès historique aux coordonnées.
     SCOPE_TEAM,
 ]
 
