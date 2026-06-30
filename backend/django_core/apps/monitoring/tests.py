@@ -554,3 +554,57 @@ class TestSoiling(TestCase):
             f'/api/django/monitoring/configs/{self.config.id}/soiling/')
         self.assertEqual(r.status_code, 200, r.data)
         self.assertIn('recommend_cleaning', r.data)
+
+
+class TestWarrantyCurveOverlay(TestCase):
+    """FG284 — production mesurée vs courbe garantie → dérive → recours."""
+
+    def setUp(self):
+        self.company = make_company('curve-co', 'Curve Co')
+        self.user = User.objects.create_user(
+            username='curve_admin', password='x', role_legacy='admin',
+            company=self.company)
+        self.api = auth(self.user)
+        self.inst, _ = make_installation(self.company, ref='C-1', kwc='10.00')
+        from apps.monitoring.models import ProductionWarranty
+        self.warranty = ProductionWarranty.objects.create(
+            company=self.company, installation=self.inst,
+            guaranteed_year1_kwh=Decimal('12000'),
+            degradation_pct_per_year=Decimal('0.50'),
+            start_year=2025, tolerance_pct=Decimal('5'))
+        self.today = date(2026, 6, 30)
+
+    def test_anomalous_drift_flags_recourse(self):
+        ProductionReading.objects.create(
+            company=self.company, installation=self.inst,
+            date=date(2026, 6, 1), period_days=365, energy_kwh=Decimal('8000'))
+        from apps.monitoring.services import warranty_curve_overlay
+        ov = warranty_curve_overlay(self.inst, today=self.today)
+        self.assertTrue(ov['has_warranty'])
+        self.assertTrue(ov['manufacturer_recourse'])
+        p2026 = next(p for p in ov['points'] if p['year'] == 2026)
+        self.assertTrue(p2026['anomalous'])
+
+    def test_on_curve_no_recourse(self):
+        ProductionReading.objects.create(
+            company=self.company, installation=self.inst,
+            date=date(2026, 6, 1), period_days=365, energy_kwh=Decimal('11900'))
+        from apps.monitoring.services import warranty_curve_overlay
+        ov = warranty_curve_overlay(self.inst, today=self.today)
+        self.assertFalse(ov['manufacturer_recourse'])
+
+    def test_no_data_year_not_anomalous(self):
+        from apps.monitoring.services import warranty_curve_overlay
+        ov = warranty_curve_overlay(self.inst, today=self.today)
+        for p in ov['points']:
+            self.assertFalse(p['anomalous'])
+            self.assertIsNone(p['actual_kwh'])
+
+    def test_curve_endpoint(self):
+        ProductionReading.objects.create(
+            company=self.company, installation=self.inst,
+            date=date(2026, 6, 1), period_days=365, energy_kwh=Decimal('8000'))
+        r = self.api.get(
+            f'/api/django/monitoring/warranties/{self.warranty.id}/curve/')
+        self.assertEqual(r.status_code, 200, r.data)
+        self.assertTrue(r.data['manufacturer_recourse'])

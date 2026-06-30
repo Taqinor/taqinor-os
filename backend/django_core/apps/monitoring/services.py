@@ -228,6 +228,72 @@ def production_warranty_status(installation, *, year=None):
     }
 
 
+def warranty_curve_overlay(installation, *, years=None, today=None,
+                           drift_threshold_pct=None):
+    """FG284 — superpose production mesurée et courbe garantie de dégradation.
+
+    Pour chaque année écoulée depuis `start_year`, compare la production réelle
+    au productible garanti dégradé de cette année (depuis ProductionWarranty).
+    Une dérive ANORMALE = la production réelle tombe sous le garanti de plus de
+    `drift_threshold_pct` (au-delà de la tolérance contractuelle). Le drapeau
+    `manufacturer_recourse` signale un recours fabricant probable.
+
+    Renvoie {has_warranty, threshold_pct, manufacturer_recourse, points:[...]}.
+    No-op gracieux (has_warranty=False) sans garantie configurée. 100 % lecture.
+    """
+    warranty = getattr(installation, 'production_warranty', None)
+    if warranty is None:
+        warranty = (ProductionWarranty.objects
+                    .filter(installation=installation).first())
+    if warranty is None:
+        return {'has_warranty': False}
+
+    today = today or timezone.localdate()
+    last_year = today.year
+    start = int(warranty.start_year)
+    if years:
+        year_list = [int(start) + i for i in range(int(years))]
+    else:
+        year_list = list(range(start, last_year + 1))
+
+    threshold = Decimal(str(
+        drift_threshold_pct if drift_threshold_pct is not None
+        else warranty.tolerance_pct or 5))
+
+    points = []
+    recourse = False
+    for year in year_list:
+        guaranteed = warranty.guaranteed_kwh_for_year(year)
+        actual = production_for_calendar_year(installation, year)
+        has_data = ProductionReading.objects.filter(
+            installation=installation, date__year=year).exists()
+        drift_pct = None
+        anomalous = False
+        if has_data and guaranteed > 0:
+            # Dérive = (garanti - réel) / garanti × 100 (positive = sous-prod).
+            drift_pct = ((guaranteed - actual) / guaranteed) * Decimal('100')
+            anomalous = drift_pct > threshold
+            if anomalous:
+                recourse = True
+        points.append({
+            'year': year,
+            'guaranteed_kwh': guaranteed.quantize(Decimal('0.01')),
+            'actual_kwh': (actual.quantize(Decimal('0.01'))
+                           if has_data else None),
+            'drift_pct': (drift_pct.quantize(Decimal('0.01'))
+                          if drift_pct is not None else None),
+            'anomalous': anomalous,
+        })
+
+    return {
+        'has_warranty': True,
+        'installation': installation.id,
+        'threshold_pct': threshold.quantize(Decimal('0.01')),
+        'manufacturer_recourse': recourse,
+        'points': points,
+    }
+
+
 def _create_underperf_ticket(installation, flag, user):
     """Crée UN ticket SAV préventif pour un drapeau de sous-performance.
 

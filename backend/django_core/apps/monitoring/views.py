@@ -43,7 +43,8 @@ from .serializers import (
 )
 from .analytics import om_metrics, soiling_assessment
 from .services import (
-    evaluate_underperformance, production_warranty_status, sync_system,
+    evaluate_underperformance, production_warranty_status,
+    sync_system, warranty_curve_overlay,
 )
 
 READ_ACTIONS = ['list', 'retrieve']
@@ -261,7 +262,7 @@ class ProductionWarrantyViewSet(TenantMixin, viewsets.ModelViewSet):
     serializer_class = ProductionWarrantySerializer
 
     def get_permissions(self):
-        if self.action in READ_ACTIONS or self.action == 'status':
+        if self.action in READ_ACTIONS or self.action in ('status', 'curve'):
             return [IsAnyRole()]
         return [IsResponsableOrAdmin()]
 
@@ -281,6 +282,21 @@ class ProductionWarrantyViewSet(TenantMixin, viewsets.ModelViewSet):
         year = request.query_params.get('year')
         result = production_warranty_status(
             warranty.installation, year=int(year) if year else None)
+        return Response(result)
+
+    @action(detail=True, methods=['get'], url_path='curve',
+            permission_classes=[IsAnyRole])
+    def curve(self, request, pk=None):
+        """FG284 — superpose production mesurée et courbe garantie de
+        dégradation par année → dérive anormale → recours fabricant.
+        ?years=N pour borner ; ?drift_threshold_pct=X pour le seuil."""
+        warranty = self.get_object()
+        years = request.query_params.get('years')
+        threshold = request.query_params.get('drift_threshold_pct')
+        result = warranty_curve_overlay(
+            warranty.installation,
+            years=int(years) if years else None,
+            drift_threshold_pct=threshold)
         return Response(result)
 
 
