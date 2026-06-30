@@ -1638,7 +1638,8 @@ FICHIER_VIREMENT_PAIE_HEADERS = [
 ]
 
 
-def generer_ordre_virement(periode, *, date_execution=None, rib_emetteur=''):
+def generer_ordre_virement(periode, *, date_execution=None, rib_emetteur='',
+                           compte_emetteur=None):
     """Génère (ou régénère) l'ordre de virement d'une période (PAIE30).
 
     Regroupe tous les bulletins VALIDÉS de la ``periode`` au ``net_a_payer > 0``
@@ -1646,10 +1647,19 @@ def generer_ordre_virement(periode, *, date_execution=None, rib_emetteur=''):
     RIB du profil, net à payer). Recrée l'ordre s'il est en brouillon ; refuse de
     régénérer un ordre déjà ÉMIS (figé). ``company`` posée côté serveur. Opération
     atomique. Renvoie l'``OrdreVirement``.
+
+    DC20 — single-source du compte émetteur : ``compte_emetteur`` accepte soit
+    une instance ``compta.CompteTresorerie``, soit son id ; quand il est fourni
+    (et appartient à la même société), ``rib_emetteur`` et ``devise`` sont
+    DÉRIVÉS de ce référentiel — le RIB bancaire de l'entreprise est saisi UNE
+    fois dans la trésorerie, jamais re-tapé ici. Le paramètre ``rib_emetteur``
+    texte reste un repli quand aucun compte n'est câblé.
     """
     from .models import (
         BulletinPaie, LigneVirement, OrdreVirement,
     )
+
+    compte = _resoudre_compte_emetteur(periode.company, compte_emetteur)
 
     with transaction.atomic():
         ordre = (
@@ -1665,7 +1675,14 @@ def generer_ordre_virement(periode, *, date_execution=None, rib_emetteur=''):
         ordre.statut = OrdreVirement.STATUT_BROUILLON
         if date_execution is not None:
             ordre.date_execution = date_execution
-        if rib_emetteur:
+        if compte is not None:
+            # Source unique : le compte de trésorerie pilote RIB + devise.
+            ordre.compte_emetteur = compte
+            if compte.rib:
+                ordre.rib_emetteur = compte.rib
+            if compte.devise:
+                ordre.devise = compte.devise
+        elif rib_emetteur:
             ordre.rib_emetteur = rib_emetteur
         if not ordre.libelle:
             ordre.libelle = f'Virement salaires {periode.mois:02d}/{periode.annee}'
@@ -1703,8 +1720,33 @@ def generer_ordre_virement(periode, *, date_execution=None, rib_emetteur=''):
         ordre.total = _q(total)
         ordre.nombre_lignes = nombre
         ordre.save(update_fields=['total', 'nombre_lignes', 'libelle',
-                                  'date_execution', 'rib_emetteur'])
+                                  'date_execution', 'rib_emetteur',
+                                  'compte_emetteur', 'devise'])
         return ordre
+
+
+def _resoudre_compte_emetteur(company, compte_emetteur):
+    """Résout un ``compta.CompteTresorerie`` émetteur, borné à ``company`` (DC20).
+
+    Accepte ``None`` (pas de compte), une instance déjà chargée, ou un id. La
+    lecture passe par la couche ``selectors`` de compta (cross-app READ autorisé)
+    — la paie n'importe jamais ``compta.models``. Renvoie le compte ou ``None``
+    (id inconnu / autre société = ignoré silencieusement, le repli texte
+    s'applique).
+    """
+    if compte_emetteur is None:
+        return None
+    # Instance déjà résolue : on vérifie seulement l'appartenance société.
+    if hasattr(compte_emetteur, 'pk') and not isinstance(compte_emetteur, int):
+        return compte_emetteur if getattr(
+            compte_emetteur, 'company_id', None) == company.id else None
+    # Résolution par id via le référentiel compta (string-FK, jamais d'import de
+    # ``compta.models``). Le modèle est obtenu par le registre d'apps et borné à
+    # la société — un id inconnu / d'une autre société renvoie ``None``.
+    from django.apps import apps as django_apps
+    CompteTresorerie = django_apps.get_model('compta', 'CompteTresorerie')
+    return CompteTresorerie.objects.filter(
+        company=company, pk=compte_emetteur).first()
 
 
 def emettre_ordre_virement(ordre):
@@ -1753,11 +1795,22 @@ def fichier_virement_paie(ordre):
             ligne.reference or '',
             f'Salaire {ligne.reference}'.strip(),
         ])
+    # DC20 — coordonnées de l'émetteur lues du référentiel trésorerie quand il
+    # est câblé (RIB/IBAN/banque saisis une fois), repli sur le RIB texte.
+    compte = ordre.compte_emetteur
+    emetteur = {
+        'rib': (compte.rib if compte and compte.rib else ordre.rib_emetteur)
+        or '',
+        'banque': (compte.banque if compte else '') or '',
+        'iban': (compte.iban if compte else '') or '',
+        'libelle': (compte.libelle if compte else '') or '',
+    }
     return {
         'headers': list(FICHIER_VIREMENT_PAIE_HEADERS),
         'rows': rows,
         'total': _q(total),
         'nb_lignes': len(rows),
+        'emetteur': emetteur,
     }
 
 

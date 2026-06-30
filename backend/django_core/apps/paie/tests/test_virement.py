@@ -97,3 +97,52 @@ class OrdreVirementTests(TestCase):
         ordre = generer_ordre_virement(self.periode)
         with self.assertRaises(ValueError):
             fichier_virement_paie(ordre)
+
+    # ── DC20 — compte émetteur = référentiel compta.CompteTresorerie ────────
+
+    def _compte_tresorerie(self, *, company=None, rib='RIBEMET' + '0' * 13,
+                           devise='MAD'):
+        from apps.compta.models import CompteTresorerie
+        from apps.compta.services import get_compte, seed_plan_comptable
+
+        co = company or self.co
+        seed_plan_comptable(co)
+        cpt = get_compte(co, '5141')
+        return CompteTresorerie.objects.create(
+            company=co, type_compte=CompteTresorerie.Type.BANQUE,
+            libelle='BMCE Salaires', banque='BMCE',
+            rib=rib, iban='MA64' + '0' * 20, devise=devise,
+            compte_comptable=cpt)
+
+    def test_compte_emetteur_pilote_rib_et_devise(self):
+        p1 = self._employe('F1')
+        self._bulletin_valide(p1)
+        compte = self._compte_tresorerie(rib='R' + '9' * 19, devise='EUR')
+        ordre = generer_ordre_virement(
+            self.periode, compte_emetteur=compte.id)
+        self.assertEqual(ordre.compte_emetteur_id, compte.id)
+        # RIB + devise DÉRIVÉS du référentiel, jamais re-tapés.
+        self.assertEqual(ordre.rib_emetteur, 'R' + '9' * 19)
+        self.assertEqual(ordre.devise, 'EUR')
+        fichier = fichier_virement_paie(ordre)
+        self.assertEqual(fichier['emetteur']['rib'], 'R' + '9' * 19)
+        self.assertEqual(fichier['emetteur']['banque'], 'BMCE')
+
+    def test_compte_emetteur_autre_societe_ignore(self):
+        autre = make_company('ov-autre')
+        compte_autre = self._compte_tresorerie(
+            company=autre, rib='AUTRE' + '0' * 15)
+        p1 = self._employe('G1')
+        self._bulletin_valide(p1)
+        ordre = generer_ordre_virement(
+            self.periode, compte_emetteur=compte_autre.id)
+        # Compte d'une autre société → ignoré (pas de fuite cross-tenant).
+        self.assertIsNone(ordre.compte_emetteur_id)
+
+    def test_rib_emetteur_repli_sans_compte(self):
+        p1 = self._employe('H1')
+        self._bulletin_valide(p1)
+        ordre = generer_ordre_virement(
+            self.periode, rib_emetteur='REPLI' + '0' * 15)
+        self.assertEqual(ordre.rib_emetteur, 'REPLI' + '0' * 15)
+        self.assertIsNone(ordre.compte_emetteur_id)

@@ -1251,6 +1251,20 @@ class OrdreVirement(models.Model):
         verbose_name='Statut')
     date_execution = models.DateField(
         null=True, blank=True, verbose_name="Date d'exécution souhaitée")
+    # DC20 — UN référentiel `compta.CompteTresorerie` est la source unique du
+    # compte bancaire émetteur (RIB/IBAN/BIC/devise saisis UNE fois). Quand il
+    # est renseigné, ``rib_emetteur``/``devise`` sont dérivés de lui à la
+    # génération (cf. ``services.generer_ordre_virement``) ; ``rib_emetteur``
+    # reste un repli texte libre pour l'historique / les sociétés sans
+    # référentiel câblé. Référence par string-FK (jamais d'import de
+    # ``compta.models``) — la trésorerie reste propriété de l'app compta.
+    compte_emetteur = models.ForeignKey(
+        'compta.CompteTresorerie',
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='ordres_virement_paie',
+        verbose_name='Compte émetteur (trésorerie)',
+    )
     rib_emetteur = models.CharField(
         max_length=40, blank=True, default='', verbose_name='RIB émetteur')
     devise = models.CharField(

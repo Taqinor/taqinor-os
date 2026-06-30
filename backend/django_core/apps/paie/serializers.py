@@ -335,13 +335,20 @@ class OrdreVirementSerializer(serializers.ModelSerializer):
     imbriquées.
     """
     lignes = LigneVirementSerializer(many=True, read_only=True)
+    # DC20 — compte émetteur résolu depuis le référentiel `compta.CompteTresorerie`
+    # (libellé + banque) pour l'affichage, sans re-saisir le RIB.
+    compte_emetteur_libelle = serializers.CharField(
+        source='compte_emetteur.libelle', read_only=True, default='')
+    compte_emetteur_banque = serializers.CharField(
+        source='compte_emetteur.banque', read_only=True, default='')
 
     class Meta:
         model = OrdreVirement
         fields = [
             'id', 'periode', 'libelle', 'statut', 'date_execution',
-            'rib_emetteur', 'devise', 'total', 'nombre_lignes',
-            'date_emission', 'date_creation', 'lignes',
+            'compte_emetteur', 'compte_emetteur_libelle',
+            'compte_emetteur_banque', 'rib_emetteur', 'devise', 'total',
+            'nombre_lignes', 'date_emission', 'date_creation', 'lignes',
         ]
         read_only_fields = fields
 
