@@ -1345,3 +1345,84 @@ class Risque(models.Model):
         # Criticité TOUJOURS recalculée côté serveur (jamais du corps de requête).
         self.criticite = (self.probabilite or 0) * (self.impact or 0)
         super().save(*args, **kwargs)
+
+
+class ActionProjet(models.Model):
+    """Une entrée du REGISTRE D'ACTIONS d'un ``Projet`` (PROJ31).
+
+    Action de suivi (to-do de pilotage) rattachée à un projet, éventuellement à
+    un ``Risque`` (action de mitigation). ``statut`` suit un cycle PROPRE au
+    registre (a_faire/en_cours/fait/annule) — il ne réutilise NI n'importe AUCUNE
+    clé/étiquette de ``STAGES.py`` (règle #2). ``priorite`` (basse/moyenne/haute)
+    ordonne le registre ; ``responsable`` (optionnel) et ``echeance`` cadrent le
+    suivi.
+
+    Tout est multi-société : ``company`` est posée côté serveur, jamais lue du
+    corps de requête. Le risque lié (optionnel) doit appartenir au MÊME projet
+    (validé au sérialiseur). Modèle entièrement additif.
+    """
+    class Statut(models.TextChoices):
+        A_FAIRE = 'a_faire', 'À faire'
+        EN_COURS = 'en_cours', 'En cours'
+        FAIT = 'fait', 'Fait'
+        ANNULE = 'annule', 'Annulé'
+
+    class Priorite(models.TextChoices):
+        BASSE = 'basse', 'Basse'
+        MOYENNE = 'moyenne', 'Moyenne'
+        HAUTE = 'haute', 'Haute'
+
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='gestion_projet_actions',
+        verbose_name='Société',
+    )
+    projet = models.ForeignKey(
+        Projet,
+        on_delete=models.CASCADE,
+        related_name='actions',
+        verbose_name='Projet',
+    )
+    # Rattachement OPTIONNEL à un risque (action de mitigation).
+    risque = models.ForeignKey(
+        Risque,
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='actions',
+        verbose_name='Risque lié',
+    )
+    libelle = models.CharField(max_length=200, verbose_name='Libellé')
+    description = models.TextField(
+        blank=True, default='', verbose_name='Description')
+    statut = models.CharField(
+        max_length=10, choices=Statut.choices,
+        default=Statut.A_FAIRE, verbose_name='Statut')
+    priorite = models.CharField(
+        max_length=10, choices=Priorite.choices,
+        default=Priorite.MOYENNE, verbose_name='Priorité')
+    responsable = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='gestion_projet_actions',
+        verbose_name='Responsable',
+    )
+    echeance = models.DateField(
+        null=True, blank=True, verbose_name='Échéance')
+    date_cloture = models.DateField(
+        null=True, blank=True, verbose_name='Date de clôture')
+    date_creation = models.DateTimeField(
+        auto_now_add=True, verbose_name='Créé le')
+
+    class Meta:
+        verbose_name = 'Action projet'
+        verbose_name_plural = 'Actions projet'
+        ordering = ['statut', 'echeance', '-id']
+        indexes = [
+            models.Index(
+                fields=['projet', 'statut'], name='gp_action_proj_stat_idx'),
+        ]
+
+    def __str__(self):
+        return f'{self.libelle} ({self.get_statut_display()})'

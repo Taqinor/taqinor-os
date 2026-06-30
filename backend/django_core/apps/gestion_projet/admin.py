@@ -1,6 +1,7 @@
 from django.contrib import admin
 
 from .models import (
+    ActionProjet,
     BudgetProjet,
     DependanceTache,
     Jalon,
@@ -108,3 +109,11 @@ class RisqueAdmin(admin.ModelAdmin):
                     'impact', 'criticite', 'statut', 'company')
     list_filter = ('statut', 'categorie', 'company')
     search_fields = ('libelle', 'description', 'mitigation')
+
+
+@admin.register(ActionProjet)
+class ActionProjetAdmin(admin.ModelAdmin):
+    list_display = ('id', 'projet', 'libelle', 'statut', 'priorite',
+                    'responsable', 'echeance', 'company')
+    list_filter = ('statut', 'priorite', 'company')
+    search_fields = ('libelle', 'description')

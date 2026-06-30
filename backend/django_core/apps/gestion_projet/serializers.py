@@ -7,6 +7,7 @@ appartenant à la société de l'utilisateur.
 from rest_framework import serializers
 
 from .models import (
+    ActionProjet,
     AffectationRessource,
     BaselinePlanning,
     BaselineTache,
@@ -711,3 +712,44 @@ class RisqueSerializer(serializers.ModelSerializer):
 
     def validate_proprietaire(self, value):
         return _meme_societe(self, value, 'Propriétaire')
+
+
+class ActionProjetSerializer(serializers.ModelSerializer):
+    """Entrée du registre d'actions d'un projet (PROJ31).
+
+    ``company`` n'est jamais exposée : elle est posée côté serveur. Le ``projet``,
+    le ``risque`` (optionnel) et le ``responsable`` (optionnel) reçus sont
+    validés même-société ; un risque lié doit en outre cibler le MÊME projet.
+    """
+    projet_code = serializers.CharField(source='projet.code', read_only=True)
+    statut_display = serializers.CharField(
+        source='get_statut_display', read_only=True)
+    priorite_display = serializers.CharField(
+        source='get_priorite_display', read_only=True)
+
+    class Meta:
+        model = ActionProjet
+        fields = [
+            'id', 'projet', 'projet_code', 'risque', 'libelle', 'description',
+            'statut', 'statut_display', 'priorite', 'priorite_display',
+            'responsable', 'echeance', 'date_cloture', 'date_creation',
+        ]
+        read_only_fields = ['date_creation']
+
+    def validate_projet(self, value):
+        return _meme_societe(self, value, 'Projet')
+
+    def validate_risque(self, value):
+        return _meme_societe(self, value, 'Risque')
+
+    def validate_responsable(self, value):
+        return _meme_societe(self, value, 'Responsable')
+
+    def validate(self, attrs):
+        projet = attrs.get('projet') or getattr(self.instance, 'projet', None)
+        risque = attrs.get('risque', getattr(self.instance, 'risque', None))
+        if risque is not None and projet is not None \
+                and risque.projet_id != projet.id:
+            raise serializers.ValidationError(
+                {'risque': 'Le risque lié doit appartenir au même projet.'})
+        return attrs

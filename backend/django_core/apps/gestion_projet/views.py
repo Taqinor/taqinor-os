@@ -16,6 +16,7 @@ from authentication.permissions import IsResponsableOrAdmin
 
 from . import selectors, services
 from .models import (
+    ActionProjet,
     AffectationRessource,
     BaselinePlanning,
     BudgetProjet,
@@ -37,6 +38,7 @@ from .models import (
     Timesheet,
 )
 from .serializers import (
+    ActionProjetSerializer,
     AffectationRessourceSerializer,
     BaselinePlanningSerializer,
     BudgetProjetSerializer,
@@ -1375,4 +1377,41 @@ class RisqueViewSet(_GestionProjetBaseViewSet):
                 qs = qs.filter(criticite__gte=int(criticite_min))
             except (TypeError, ValueError):
                 pass
+        return qs
+
+
+class ActionProjetViewSet(_GestionProjetBaseViewSet):
+    """Registre d'actions d'un projet (PROJ31) — CRUD scopé société.
+
+    ``company`` est posée côté serveur (TenantMixin) ; le ``projet``, le
+    ``risque`` (optionnel) et le ``responsable`` (optionnel) reçus sont validés
+    même-société. Filtres optionnels : ``?projet=<id>``, ``?statut=<statut>``,
+    ``?priorite=<priorite>``, ``?risque=<id>``, ``?ouvertes=1`` (statut à faire /
+    en cours). Recherche par libellé / description ; tri par défaut statut puis
+    échéance.
+    """
+    queryset = ActionProjet.objects.select_related(
+        'projet', 'risque', 'responsable').all()
+    serializer_class = ActionProjetSerializer
+    filter_backends = [filters.SearchFilter, filters.OrderingFilter]
+    search_fields = ['libelle', 'description']
+    ordering_fields = ['statut', 'priorite', 'echeance', 'id']
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        projet = self.request.query_params.get('projet')
+        if projet:
+            qs = qs.filter(projet_id=projet)
+        statut = self.request.query_params.get('statut')
+        if statut:
+            qs = qs.filter(statut=statut)
+        priorite = self.request.query_params.get('priorite')
+        if priorite:
+            qs = qs.filter(priorite=priorite)
+        risque = self.request.query_params.get('risque')
+        if risque:
+            qs = qs.filter(risque_id=risque)
+        if self.request.query_params.get('ouvertes') in ('1', 'true', 'True'):
+            qs = qs.filter(statut__in=[
+                ActionProjet.Statut.A_FAIRE, ActionProjet.Statut.EN_COURS])
         return qs
