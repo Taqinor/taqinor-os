@@ -31,6 +31,7 @@ from .attestation_soustraitant import AttestationSousTraitantViewSet
 from .evaluation_soustraitant import EvaluationSousTraitantViewSet
 from .retenue_garantie import RetenueGarantieSousTraitantViewSet
 from .demande_achat import DemandeAchatViewSet, DemandeAchatLigneViewSet
+from .rfq import RFQViewSet, RFQOffreViewSet
 from .field_sync import FieldSyncView
 
 __all__ = [
@@ -64,5 +65,7 @@ __all__ = [
     'RetenueGarantieSousTraitantViewSet',
     'DemandeAchatViewSet',
     'DemandeAchatLigneViewSet',
+    'RFQViewSet',
+    'RFQOffreViewSet',
     'FieldSyncView',
 ]

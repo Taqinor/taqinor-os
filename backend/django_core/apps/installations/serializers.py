@@ -24,6 +24,8 @@ from .models import (
     RetenueGarantieSousTraitant,
     DemandeAchat,
     DemandeAchatLigne,
+    RFQ,
+    RFQOffre,
 )
 
 
@@ -1281,6 +1283,75 @@ class DemandeAchatSerializer(serializers.ModelSerializer):
             'reference', 'statut', 'approuvee_par', 'date_decision',
             'motif_refus', 'created_by', 'date_creation', 'date_modification',
         ]
+
+    def validate_objet(self, value):
+        value = (value or '').strip()
+        if not value:
+            raise serializers.ValidationError("L'objet est obligatoire.")
+        return value
+
+
+class RFQOffreSerializer(serializers.ModelSerializer):
+    """FG311 — réponse d'un fournisseur à une RFQ (montant HT, délai, validité).
+    La société est posée CÔTÉ SERVEUR ; `retenue` n'avance que par l'action
+    `retenir` de la RFQ (lecture seule ici). Montants INTERNES."""
+    fournisseur_nom = serializers.CharField(
+        source='fournisseur.nom', read_only=True, default=None)
+
+    class Meta:
+        model = RFQOffre
+        fields = [
+            'id', 'rfq', 'fournisseur', 'fournisseur_nom',
+            'fournisseur_nom_libre', 'montant_ht', 'delai_jours',
+            'validite_jours', 'retenue', 'note',
+            'date_creation', 'date_modification',
+        ]
+        read_only_fields = ['retenue', 'date_creation', 'date_modification']
+
+    def validate(self, attrs):
+        fournisseur = attrs.get('fournisseur') if 'fournisseur' in attrs else (
+            getattr(self.instance, 'fournisseur', None))
+        libre = attrs.get('fournisseur_nom_libre') if (
+            'fournisseur_nom_libre' in attrs) else getattr(
+            self.instance, 'fournisseur_nom_libre', None)
+        if fournisseur is None and not (libre or '').strip():
+            raise serializers.ValidationError(
+                {'fournisseur': 'Indiquez un fournisseur ou un nom libre.'})
+        return attrs
+
+    def validate_montant_ht(self, value):
+        if value is not None and value < 0:
+            raise serializers.ValidationError(
+                'Le montant HT ne peut pas être négatif.')
+        return value
+
+
+class RFQSerializer(serializers.ModelSerializer):
+    """FG311 — demande de prix multi-fournisseurs. La référence et la société
+    sont posées CÔTÉ SERVEUR ; `reference` est anti-collision
+    (`RFQ-YYYYMM-NNNN`). Le `statut` avance via `envoyer`/`cloturer`. Les offres
+    sont imbriquées en lecture ; `comparatif` résume moins-chère / plus-rapide /
+    retenue."""
+    statut_display = serializers.CharField(
+        source='get_statut_display', read_only=True, default=None)
+    offres = RFQOffreSerializer(many=True, read_only=True)
+    comparatif = serializers.SerializerMethodField()
+
+    class Meta:
+        model = RFQ
+        fields = [
+            'id', 'reference', 'objet', 'demande', 'date_limite_reponse',
+            'statut', 'statut_display', 'note', 'offres', 'comparatif',
+            'created_by', 'date_creation', 'date_modification',
+        ]
+        read_only_fields = [
+            'reference', 'statut', 'created_by',
+            'date_creation', 'date_modification',
+        ]
+
+    def get_comparatif(self, obj):
+        from . import selectors
+        return selectors.rfq_comparatif(obj)
 
     def validate_objet(self, value):
         value = (value or '').strip()

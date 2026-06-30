@@ -1272,3 +1272,28 @@ def sous_traitant_scorecard(sous_traitant):
         'note_securite': _r(agg['securite']),
         'note_globale': globale,
     }
+
+
+def rfq_comparatif(rfq):
+    """FG311 — comparatif des offres d'une RFQ : nombre d'offres, offre la moins
+    chère, offre la plus rapide (délai), offre retenue. Lecture seule, point
+    d'entrée cross-app. Montants INTERNES. Renvoie un dict."""
+    offres = list(rfq.offres.all())
+    if not offres:
+        return {
+            'nb_offres': 0,
+            'moins_chere_id': None,
+            'plus_rapide_id': None,
+            'retenue_id': None,
+        }
+    moins_chere = min(offres, key=lambda o: o.montant_ht)
+    avec_delai = [o for o in offres if o.delai_jours is not None]
+    plus_rapide = min(avec_delai, key=lambda o: o.delai_jours) if (
+        avec_delai) else None
+    retenue = next((o for o in offres if o.retenue), None)
+    return {
+        'nb_offres': len(offres),
+        'moins_chere_id': moins_chere.id,
+        'plus_rapide_id': plus_rapide.id if plus_rapide else None,
+        'retenue_id': retenue.id if retenue else None,
+    }

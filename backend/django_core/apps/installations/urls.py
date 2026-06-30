@@ -20,6 +20,8 @@ from .views import (
     RetenueGarantieSousTraitantViewSet,
     DemandeAchatViewSet,
     DemandeAchatLigneViewSet,
+    RFQViewSet,
+    RFQOffreViewSet,
 )
 
 router = DefaultRouter()
@@ -52,6 +54,8 @@ router.register(r'evaluations-sous-traitant', EvaluationSousTraitantViewSet)
 router.register(r'retenues-garantie-sous-traitant', RetenueGarantieSousTraitantViewSet)
 router.register(r'demandes-achat', DemandeAchatViewSet)
 router.register(r'demandes-achat-lignes', DemandeAchatLigneViewSet)
+router.register(r'rfq', RFQViewSet)
+router.register(r'rfq-offres', RFQOffreViewSet)
 
 urlpatterns = [
     # N91/F21 — synchro idempotente de la capture terrain hors-ligne.
