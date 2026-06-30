@@ -45,6 +45,7 @@ from .models import (
     Habilitation,
     HeuresSupp,
     IncidentPresence,
+    OrdreMission,
     OuverturePoste,
     Pointage,
     Poste,
@@ -87,6 +88,7 @@ from .serializers import (
     HabilitationSerializer,
     HeuresSuppSerializer,
     IncidentPresenceSerializer,
+    OrdreMissionSerializer,
     OuverturePosteSerializer,
     PointageSerializer,
     PosteSerializer,
@@ -2583,3 +2585,79 @@ class PrimeAttribueeViewSet(_RhBaseViewSet):
             prime.save(update_fields=['statut', 'date_modification'])
         return Response(
             self.get_serializer(prime).data, status=status.HTTP_200_OK)
+
+
+class OrdreMissionViewSet(_RhBaseViewSet):
+    """Ordres de mission / déplacements chantier (FG194).
+
+    Société scopée + Administrateur/Responsable. Enregistre un ordre de mission
+    (déplacement chantier) : employé, destination, motif, dates départ/retour,
+    moyen de transport, véhicule (ID flotte), per-diem, statut (brouillon →
+    émis → clôturé). ``company`` et ``reference`` (préfixe ``OM``, par société/
+    mois) sont posées CÔTÉ SERVEUR (jamais lues du corps) ; ``employe`` doit
+    appartenir à la même société.
+
+    Filtres : ``?employe=<id>``, ``?statut=brouillon|emis|cloture``. Recherche :
+    référence, destination, motif.
+
+    Actions :
+    * ``GET .../{id}/pdf/`` — restitue l'ordre de mission en PDF (streamé).
+    * ``POST .../{id}/emettre/`` — passe en ``statut=emis``. Idempotent.
+    """
+    queryset = OrdreMission.objects.select_related('employe').all()
+    serializer_class = OrdreMissionSerializer
+    filter_backends = [filters.SearchFilter, filters.OrderingFilter]
+    search_fields = ['reference', 'destination', 'motif',
+                     'employe__matricule', 'employe__nom']
+    ordering_fields = ['date_depart', 'reference', 'statut', 'date_creation']
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        employe = self.request.query_params.get('employe')
+        if employe:
+            qs = qs.filter(employe_id=employe)
+        statut = self.request.query_params.get('statut')
+        if statut:
+            qs = qs.filter(statut=statut)
+        return qs
+
+    def perform_create(self, serializer):
+        """Company + référence (préfixe ``OM``) posées côté serveur."""
+        from apps.ventes.utils.references import create_with_reference
+
+        company = self.request.user.company
+        create_with_reference(
+            OrdreMission, 'OM', company,
+            lambda reference: serializer.save(
+                company=company, reference=reference))
+
+    @action(detail=True, methods=['get'], url_path='pdf')
+    def pdf(self, request, pk=None):
+        """Restitue l'ordre de mission en PDF (FG194), scopé société.
+
+        La société est garantie par ``get_object`` (autre tenant → 404).
+        """
+        from django.http import HttpResponse
+
+        from . import mission_pdf
+
+        ordre = self.get_object()
+        pdf_bytes = mission_pdf.render_ordre_mission_pdf(ordre)
+        response = HttpResponse(pdf_bytes, content_type='application/pdf')
+        response['Content-Disposition'] = (
+            f'inline; filename="ordre-mission-{ordre.reference}.pdf"')
+        return response
+
+    @action(detail=True, methods=['post'], url_path='emettre')
+    def emettre(self, request, pk=None):
+        """Émet l'ordre de mission (FG194) — passe en ``statut=emis``.
+
+        La société est garantie par ``get_object`` (autre tenant → 404).
+        Idempotent : ré-émettre renvoie le même ordre sans erreur.
+        """
+        ordre = self.get_object()
+        if ordre.statut == OrdreMission.Statut.BROUILLON:
+            ordre.statut = OrdreMission.Statut.EMIS
+            ordre.save(update_fields=['statut', 'date_modification'])
+        return Response(
+            self.get_serializer(ordre).data, status=status.HTTP_200_OK)

@@ -35,6 +35,7 @@ from .models import (
     InscriptionFormation,
     LigneRisqueChantier,
     ObjectifIndividuel,
+    OrdreMission,
     OuverturePoste,
     Pointage,
     Poste,
@@ -1672,6 +1673,39 @@ class ElementsVariablesPaieSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError(
                 'Le mois doit être compris entre 1 et 12.')
         return value
+
+
+class OrdreMissionSerializer(serializers.ModelSerializer):
+    """Ordre de mission / déplacement chantier (FG194).
+
+    Le client saisit ``employe`` (un ``DossierEmploye`` de sa société),
+    ``destination``, ``motif``, ``date_depart`` / ``date_retour``,
+    ``moyen_transport``, ``vehicule_id``, ``per_diem`` et ``statut``.
+    ``company`` et ``reference`` sont posées CÔTÉ SERVEUR (jamais lues du
+    corps) ; ``employe`` doit appartenir à la société de l'utilisateur.
+    """
+    employe_nom = serializers.SerializerMethodField()
+    statut_display = serializers.CharField(
+        source='get_statut_display', read_only=True)
+
+    class Meta:
+        model = OrdreMission
+        fields = [
+            'id', 'reference', 'employe', 'employe_nom',
+            'destination', 'motif',
+            'date_depart', 'date_retour', 'moyen_transport',
+            'vehicule_id', 'per_diem', 'statut', 'statut_display',
+            'date_creation', 'date_modification',
+        ]
+        read_only_fields = ['reference', 'date_creation', 'date_modification']
+
+    def get_employe_nom(self, obj):
+        if not obj.employe_id:
+            return ''
+        return f'{obj.employe.nom} {obj.employe.prenom}'
+
+    def validate_employe(self, value):
+        return _meme_societe(self, value, 'Employé')
 
 
 class TypePrimeSerializer(serializers.ModelSerializer):

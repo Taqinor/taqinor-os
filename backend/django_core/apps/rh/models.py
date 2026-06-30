@@ -3402,3 +3402,88 @@ class PrimeAttribuee(models.Model):
 
     def __str__(self):
         return f'{self.type_prime} — {self.employe} ({self.mois:02d}/{self.annee})'
+
+
+class OrdreMission(models.Model):
+    """Ordre de mission / déplacement chantier (FG194).
+
+    Document daté autorisant le déplacement d'un collaborateur : la ``reference``
+    interne (posée côté serveur, unique par société), l'``employe`` missionné
+    (FK ``rh.DossierEmploye``, même société), la ``destination`` (le lieu /
+    chantier), le ``motif`` du déplacement, les dates ``date_depart`` →
+    ``date_retour``, le ``moyen_transport``, une éventuelle camionnette du parc
+    (``vehicule_id`` — STRING-FK vers ``flotte.Vehicule`` : on ne référence
+    jamais ``flotte.models`` directement, comme ``AffectationRoster``), le
+    ``per_diem`` (indemnité journalière de déplacement) et un ``statut``
+    (brouillon → émis → clôturé). Restituable en PDF via l'action dédiée.
+
+    Multi-société : ``company`` posée CÔTÉ SERVEUR (jamais lue du corps) ;
+    ``employe`` doit appartenir à la même société. ``reference`` est unique par
+    société. Additif.
+
+    RUNTIME-SAFETY (leçon FG136) : ``reference`` ≤ 40 / ``moyen_transport`` ≤ 60
+    / ``statut`` ≤ 20 bornés ; ``motif`` en ``TextField`` ; ``per_diem`` en
+    ``DecimalField`` ; contrainte d'unicité + index nommés (≤ 30 chars).
+    """
+
+    class Statut(models.TextChoices):
+        BROUILLON = 'brouillon', 'Brouillon'
+        EMIS = 'emis', 'Émis'
+        CLOTURE = 'cloture', 'Clôturé'
+
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='rh_ordres_mission',
+        verbose_name='Société',
+    )
+    reference = models.CharField(max_length=40, verbose_name='Référence')
+    employe = models.ForeignKey(
+        DossierEmploye,
+        on_delete=models.CASCADE,
+        related_name='ordres_mission',
+        verbose_name='Employé',
+    )
+    destination = models.CharField(max_length=255, verbose_name='Destination')
+    motif = models.TextField(blank=True, default='', verbose_name='Motif')
+    date_depart = models.DateField(
+        null=True, blank=True, verbose_name='Date de départ')
+    date_retour = models.DateField(
+        null=True, blank=True, verbose_name='Date de retour')
+    moyen_transport = models.CharField(
+        max_length=60, blank=True, default='',
+        verbose_name='Moyen de transport')
+    # String FK cross-app vers flotte.Vehicule — jamais importer flotte.models.
+    vehicule_id = models.PositiveIntegerField(
+        null=True, blank=True, verbose_name='Véhicule (ID, optionnel)')
+    per_diem = models.DecimalField(
+        max_digits=12, decimal_places=2, default=Decimal('0'),
+        verbose_name='Per-diem (par jour)')
+    statut = models.CharField(
+        max_length=20, choices=Statut.choices,
+        default=Statut.BROUILLON, verbose_name='Statut')
+    date_creation = models.DateTimeField(
+        auto_now_add=True, verbose_name='Créé le')
+    date_modification = models.DateTimeField(
+        auto_now=True, verbose_name='Modifié le')
+
+    class Meta:
+        verbose_name = 'Ordre de mission'
+        verbose_name_plural = 'Ordres de mission'
+        ordering = ['-date_depart', '-date_creation']
+        constraints = [
+            models.UniqueConstraint(
+                fields=['company', 'reference'],
+                name='rh_ordmiss_comp_ref_uniq'),
+        ]
+        indexes = [
+            models.Index(
+                fields=['company', 'employe'],
+                name='rh_ordmiss_comp_emp_idx'),
+            models.Index(
+                fields=['company', 'statut'],
+                name='rh_ordmiss_comp_stat_idx'),
+        ]
+
+    def __str__(self):
+        return f'{self.reference} — {self.destination}'

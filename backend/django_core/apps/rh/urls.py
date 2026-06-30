@@ -26,6 +26,7 @@ from .views import (
     HabilitationViewSet,
     HeuresSuppViewSet,
     IncidentPresenceViewSet,
+    OrdreMissionViewSet,
     OuverturePosteViewSet,
     PointageViewSet,
     PosteViewSet,
@@ -82,6 +83,7 @@ router.register(r'sanctions', SanctionViewSet)
 router.register(r'elements-variables-paie', ElementsVariablesPaieViewSet)
 router.register(r'types-prime', TypePrimeViewSet)
 router.register(r'primes-attribuees', PrimeAttribueeViewSet)
+router.register(r'ordres-mission', OrdreMissionViewSet)
 
 urlpatterns = [
     path('', include(router.urls)),
