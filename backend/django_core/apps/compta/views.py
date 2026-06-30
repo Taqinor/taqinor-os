@@ -20,33 +20,50 @@ from authentication.permissions import IsResponsableOrAdmin
 
 from . import selectors, services
 from .models import (
+    AppelTelephonique,
     BaremeIndemnite, BordereauRemise, Budget, BudgetLigne, Caisse,
-    CautionBancaire, CentreCout, CessionImmobilisation, CommissionPayoutRun,
+    Campagne, CautionBancaire, CentreCout, CessionImmobilisation, CodePromotion,
+    CommissionPayoutRun,
     CompteComptable, CompteTresorerie, ContratAvancement, DeclarationTVA,
-    DotationAmortissement, EcritureComptable, Effet, EntiteConsolidation,
-    ExerciceComptable, Immobilisation, IndemniteChantier, Journal,
-    LignePrevisionnelTresorerie, LigneReleve, MouvementCaisse, NoteFrais,
+    DemandeApprobationConfig,
+    DotationAmortissement, ECatalogue, EcritureComptable, Effet,
+    EntiteConsolidation, EtapeSequence,
+    ExerciceComptable, FormulaireIntake, Immobilisation, IndemniteChantier,
+    Journal,
+    LignePrevisionnelTresorerie, LigneReleve, MessageWhatsAppEntrant,
+    ModeleDevis, MouvementCaisse, NoteFrais, OuverturePartage,
     PaymentRun, PeriodeComptable, PlanComptable, ProvisionCreance,
-    Rapprochement, RapprochementBancaire, RetenueGarantie, RetenueSource,
+    Rapprochement, RapprochementBancaire, RelanceDevisAbandonne,
+    RetenueGarantie, RetenueSource, SequenceRelance, SessionGuidedSelling,
     TimbreFiscal, TravauxEnCours, VirementInterne,
 )
 from .serializers import (
-    AvancementRevenuSerializer, BaremeIndemniteSerializer,
+    AppelTelephoniqueSerializer, AvancementRevenuSerializer,
+    BaremeIndemniteSerializer,
     BordereauRemiseSerializer, BudgetSerializer, CaisseSerializer,
-    CautionBancaireSerializer, CentreCoutSerializer,
+    CampagneSerializer, CautionBancaireSerializer, CentreCoutSerializer,
     CessionImmobilisationSerializer, ClotureCaisseSerializer,
+    CodePromotionSerializer,
     CommissionPayoutRunSerializer, CompteComptableSerializer,
     CompteTresorerieSerializer, ContratAvancementSerializer,
-    DeclarationTVASerializer, DotationAmortissementSerializer,
+    DeclarationTVASerializer, DemandeApprobationConfigSerializer,
+    DotationAmortissementSerializer, ECatalogueSerializer,
     EcritureComptableSerializer, EffetSerializer, EntiteConsolidationSerializer,
-    ExerciceComptableSerializer, ImmobilisationSerializer,
+    EtapeSequenceSerializer,
+    ExerciceComptableSerializer, FormulaireIntakeSerializer,
+    ImmobilisationSerializer,
     IndemniteChantierSerializer, JournalSerializer,
     LignePrevisionnelTresorerieSerializer, LigneReleveSerializer,
-    MouvementCaisseSerializer, NoteFraisSerializer, PaymentRunSerializer,
+    MessageWhatsAppEntrantSerializer, ModeleDevisSerializer,
+    MouvementCaisseSerializer, NoteFraisSerializer, OuverturePartageSerializer,
+    PaymentRunSerializer,
     PeriodeComptableSerializer, PlanAmortissementSerializer,
     PlanComptableSerializer, ProvisionCreanceSerializer,
     RapprochementBancaireSerializer, RapprochementSerializer,
-    RetenueGarantieSerializer, RetenueSourceSerializer, TimbreFiscalSerializer,
+    RelanceDevisAbandonneSerializer,
+    RetenueGarantieSerializer, RetenueSourceSerializer,
+    SequenceRelanceSerializer, SessionGuidedSellingSerializer,
+    TimbreFiscalSerializer,
     TravauxEnCoursSerializer, VirementInterneSerializer,
 )
 
@@ -2922,3 +2939,254 @@ class PilotageViewSet(viewsets.ViewSet):
             date_debut=params.get('date_debut') or None,
             date_fin=params.get('date_fin') or None)
         return Response(data)
+
+
+# ── FG201 — Campagnes email & SMS ──────────────────────────────────────────
+
+class CampagneViewSet(_ComptaBaseViewSet):
+    """Campagnes email/SMS (FG201). L'action ``envoyer`` déclenche l'envoi
+    groupé — NO-OP gated (Brevo) tant que l'intégration est désactivée."""
+    queryset = Campagne.objects.all()
+    serializer_class = CampagneSerializer
+    filter_backends = [filters.SearchFilter, filters.OrderingFilter]
+    search_fields = ['nom', 'objet']
+    ordering_fields = ['date_creation', 'nom']
+
+    @action(detail=True, methods=['post'])
+    def envoyer(self, request, pk=None):
+        campagne = self.get_object()
+        destinataires = request.data.get('destinataires') or []
+        services.envoyer_campagne(campagne, destinataires=destinataires)
+        return Response(CampagneSerializer(campagne).data)
+
+
+# ── FG202 — Séquences de relance automatisées ──────────────────────────────
+
+class SequenceRelanceViewSet(_ComptaBaseViewSet):
+    """Séquences de relance drip/nurture (FG202). ``planifier`` calcule le
+    calendrier des étapes sans rien envoyer (envoi gated)."""
+    queryset = SequenceRelance.objects.prefetch_related('etapes').all()
+    serializer_class = SequenceRelanceSerializer
+
+    @action(detail=True, methods=['get'])
+    def planifier(self, request, pk=None):
+        sequence = self.get_object()
+        plan = services.planifier_etapes_sequence(sequence)
+        return Response({'etapes': plan})
+
+
+class EtapeSequenceViewSet(_ComptaBaseViewSet):
+    """Étapes d'une séquence de relance (FG202)."""
+    queryset = EtapeSequence.objects.select_related('sequence').all()
+    serializer_class = EtapeSequenceSerializer
+
+
+# ── FG203 — Récupération des devis abandonnés ──────────────────────────────
+
+class RelanceDevisAbandonneViewSet(_ComptaBaseViewSet):
+    """Journal des relances sur devis abandonnés (FG203). Référence le devis
+    par id/référence opaques (ventes) — jamais d'import de ses modèles."""
+    queryset = RelanceDevisAbandonne.objects.all()
+    serializer_class = RelanceDevisAbandonneSerializer
+    filter_backends = [filters.OrderingFilter]
+    ordering_fields = ['date_relance', 'jours_sans_reponse']
+
+
+# ── FG205 — Tracking d'ouverture des ShareLink ─────────────────────────────
+
+class OuverturePartageViewSet(_ComptaBaseViewSet):
+    """Index des ouvertures de liens de partage devis/facture (FG205).
+    ``ping`` horodate une ouverture (idempotent, incrémente le compteur)."""
+    queryset = OuverturePartage.objects.all()
+    serializer_class = OuverturePartageSerializer
+    filter_backends = [filters.OrderingFilter]
+    ordering_fields = ['dernier_vu_le', 'nb_ouvertures']
+
+    @action(detail=False, methods=['post'])
+    def ping(self, request):
+        token = request.data.get('token')
+        if not token:
+            return Response(
+                {'detail': 'token requis.'},
+                status=status.HTTP_400_BAD_REQUEST)
+        obj = services.enregistrer_ouverture_partage(
+            request.user.company,
+            token=token,
+            cible=request.data.get('cible') or 'devis',
+            cible_reference=request.data.get('cible_reference') or '')
+        return Response(OuverturePartageSerializer(obj).data)
+
+
+# ── FG206 — Formulaires d'intake / landing pages ───────────────────────────
+
+class FormulaireIntakeViewSet(_ComptaBaseViewSet):
+    """Formulaires d'intake multiples / landing pages (FG206), pré-taguant le
+    lead (pompage agricole, régularisation 82-21…)."""
+    queryset = FormulaireIntake.objects.all()
+    serializer_class = FormulaireIntakeSerializer
+    filter_backends = [filters.SearchFilter, filters.OrderingFilter]
+    search_fields = ['nom', 'slug', 'tag_prefill']
+    ordering_fields = ['nom', 'date_creation']
+
+
+# ── FG207 — Messages WhatsApp entrants (lecture seule) ─────────────────────
+
+class MessageWhatsAppEntrantViewSet(TenantMixin, viewsets.ReadOnlyModelViewSet):
+    """Messages WhatsApp entrants capturés (FG207). LECTURE SEULE : la capture
+    réelle passe par le webhook gated (NO-OP tant que Meta n'est pas
+    provisionné). Admin/Responsable uniquement."""
+    permission_classes = [IsResponsableOrAdmin]
+    queryset = MessageWhatsAppEntrant.objects.all()
+    serializer_class = MessageWhatsAppEntrantSerializer
+    filter_backends = [filters.OrderingFilter]
+    ordering_fields = ['date_reception']
+
+
+# ── FG208 — Journal d'appels & click-to-call ───────────────────────────────
+
+class AppelTelephoniqueViewSet(_ComptaBaseViewSet):
+    """Journal d'appels (FG208). L'auteur est posé côté serveur."""
+    queryset = AppelTelephonique.objects.select_related('auteur').all()
+    serializer_class = AppelTelephoniqueSerializer
+    filter_backends = [filters.SearchFilter, filters.OrderingFilter]
+    search_fields = ['numero', 'note']
+    ordering_fields = ['date_appel', 'duree_secondes']
+
+    def perform_create(self, serializer):
+        serializer.save(
+            company=self.request.user.company, auteur=self.request.user)
+
+
+# ── FG209 — Codes de promotion ─────────────────────────────────────────────
+
+class CodePromotionViewSet(_ComptaBaseViewSet):
+    """Codes de remise datés applicables au devis (FG209), traçables au ROI."""
+    queryset = CodePromotion.objects.all()
+    serializer_class = CodePromotionSerializer
+    filter_backends = [filters.SearchFilter, filters.OrderingFilter]
+    search_fields = ['code', 'libelle']
+    ordering_fields = ['date_creation', 'date_debut', 'date_fin']
+
+
+# ── FG210 — Bibliothèque de modèles de devis ───────────────────────────────
+
+class ModeleDevisViewSet(_ComptaBaseViewSet):
+    """Modèles de devis réutilisables par marché (FG210)."""
+    queryset = ModeleDevis.objects.all()
+    serializer_class = ModeleDevisSerializer
+    filter_backends = [filters.SearchFilter, filters.OrderingFilter]
+    search_fields = ['nom', 'description']
+    ordering_fields = ['marche', 'nom', 'date_creation']
+
+
+# ── FG211 — Configurateur d'options guidé ──────────────────────────────────
+
+class SessionGuidedSellingViewSet(_ComptaBaseViewSet):
+    """Assistant pas-à-pas guided selling (FG211). ``evaluer`` valide la
+    cohérence des réponses et renvoie une composition proposée."""
+    queryset = SessionGuidedSelling.objects.select_related('auteur').all()
+    serializer_class = SessionGuidedSellingSerializer
+
+    def perform_create(self, serializer):
+        serializer.save(
+            company=self.request.user.company, auteur=self.request.user)
+
+    @action(detail=True, methods=['post'])
+    def evaluer(self, request, pk=None):
+        session = self.get_object()
+        composition, complet, alertes = (
+            services.evaluer_session_guided_selling(session.reponses))
+        session.composition = composition
+        session.complet = complet
+        session.save(update_fields=['composition', 'complet'])
+        data = SessionGuidedSellingSerializer(session).data
+        data['alertes'] = alertes
+        return Response(data)
+
+
+# ── FG212 — Comparateur de versions de devis ───────────────────────────────
+
+class ComparateurDevisViewSet(viewsets.ViewSet):
+    """Comparateur côte-à-côte de deux versions de devis (FG212), LECTURE
+    SEULE. Lit les cartes devis via les selectors de ventes (jamais ses
+    modèles) et renvoie un diff champ-à-champ pour l'affichage UI."""
+    permission_classes = [IsResponsableOrAdmin]
+
+    @action(detail=False, methods=['get'])
+    def comparer(self, request):
+        company = request.user.company
+        a_id = request.query_params.get('a')
+        b_id = request.query_params.get('b')
+        if not a_id or not b_id:
+            return Response(
+                {'detail': 'Paramètres a et b (ids de devis) requis.'},
+                status=status.HTTP_400_BAD_REQUEST)
+        from apps.ventes import selectors as ventes_selectors
+        try:
+            carte_a = ventes_selectors.devis_card(int(a_id), company)
+            carte_b = ventes_selectors.devis_card(int(b_id), company)
+        except (ValueError, TypeError):
+            return Response(
+                {'detail': 'Identifiants de devis invalides.'},
+                status=status.HTTP_400_BAD_REQUEST)
+        if carte_a is None or carte_b is None:
+            return Response(
+                {'detail': 'Devis introuvable pour cette société.'},
+                status=status.HTTP_404_NOT_FOUND)
+        diff = {}
+        cles = set(carte_a) | set(carte_b)
+        for cle in cles:
+            va, vb = carte_a.get(cle), carte_b.get(cle)
+            if va != vb:
+                diff[cle] = {'a': va, 'b': vb}
+        return Response({'a': carte_a, 'b': carte_b, 'diff': diff})
+
+
+# ── FG213 — Routage d'approbation des configs non-standard ─────────────────
+
+class DemandeApprobationConfigViewSet(_ComptaBaseViewSet):
+    """Workflow d'approbation des compositions non-standard (FG213).
+    ``approuver`` / ``refuser`` clôturent la demande (idempotent)."""
+    queryset = DemandeApprobationConfig.objects.select_related(
+        'demandeur', 'decideur').all()
+    serializer_class = DemandeApprobationConfigSerializer
+    filter_backends = [filters.OrderingFilter]
+    ordering_fields = ['date_creation', 'statut']
+
+    def perform_create(self, serializer):
+        serializer.save(
+            company=self.request.user.company, demandeur=self.request.user)
+
+    @action(detail=True, methods=['post'])
+    def approuver(self, request, pk=None):
+        demande = self.get_object()
+        services.decider_approbation_config(
+            demande, approuver=True, user=request.user,
+            commentaire=request.data.get('commentaire') or '')
+        return Response(DemandeApprobationConfigSerializer(demande).data)
+
+    @action(detail=True, methods=['post'])
+    def refuser(self, request, pk=None):
+        demande = self.get_object()
+        services.decider_approbation_config(
+            demande, approuver=False, user=request.user,
+            commentaire=request.data.get('commentaire') or '')
+        return Response(DemandeApprobationConfigSerializer(demande).data)
+
+
+# ── FG214 — E-catalogue à prix publics (tokenisé) ──────────────────────────
+
+class ECatalogueViewSet(_ComptaBaseViewSet):
+    """E-catalogues publics tokenisés (FG214). Le token est généré côté serveur.
+    Le rendu public n'expose JAMAIS le prix d'achat ni de marge — uniquement le
+    prix public TTC (filtré au rendu)."""
+    queryset = ECatalogue.objects.all()
+    serializer_class = ECatalogueSerializer
+    filter_backends = [filters.OrderingFilter]
+    ordering_fields = ['date_creation']
+
+    def perform_create(self, serializer):
+        import secrets
+        serializer.save(
+            company=self.request.user.company,
+            token=secrets.token_urlsafe(32))

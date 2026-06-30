@@ -2,18 +2,27 @@ from django.urls import include, path
 from rest_framework.routers import DefaultRouter
 
 from .views import (
+    AppelTelephoniqueViewSet,
     BaremeIndemniteViewSet, BordereauRemiseViewSet, BudgetViewSet,
-    CaisseViewSet, CautionBancaireViewSet, CentreCoutViewSet,
-    CessionImmobilisationViewSet, CommissionPayoutRunViewSet,
+    CaisseViewSet, CampagneViewSet, CautionBancaireViewSet, CentreCoutViewSet,
+    CessionImmobilisationViewSet, CodePromotionViewSet,
+    CommissionPayoutRunViewSet, ComparateurDevisViewSet,
     CompteComptableViewSet, CompteTresorerieViewSet, ContratAvancementViewSet,
-    DeclarationTVAViewSet, DotationAmortissementViewSet,
+    DeclarationTVAViewSet, DemandeApprobationConfigViewSet,
+    DotationAmortissementViewSet, ECatalogueViewSet,
     EcritureComptableViewSet, EffetViewSet, EntiteConsolidationViewSet,
-    EtatsComptablesViewSet, ExerciceComptableViewSet, ImmobilisationViewSet,
+    EtapeSequenceViewSet,
+    EtatsComptablesViewSet, ExerciceComptableViewSet, FormulaireIntakeViewSet,
+    ImmobilisationViewSet,
     IndemniteChantierViewSet, JournalViewSet,
-    LignePrevisionnelTresorerieViewSet, NoteFraisViewSet, PaymentRunViewSet,
+    LignePrevisionnelTresorerieViewSet, MessageWhatsAppEntrantViewSet,
+    ModeleDevisViewSet, NoteFraisViewSet, OuverturePartageViewSet,
+    PaymentRunViewSet,
     PeriodeComptableViewSet, PilotageViewSet, PlanComptableViewSet,
     ProvisionCreanceViewSet, RapprochementBancaireViewSet, RapprochementViewSet,
-    RetenueGarantieViewSet, RetenueSourceViewSet, TimbreFiscalViewSet,
+    RelanceDevisAbandonneViewSet,
+    RetenueGarantieViewSet, RetenueSourceViewSet, SequenceRelanceViewSet,
+    SessionGuidedSellingViewSet, TimbreFiscalViewSet,
     TravauxEnCoursViewSet, VirementInterneViewSet,
 )
 
@@ -54,6 +63,23 @@ router.register(r'provisions-creances', ProvisionCreanceViewSet)
 router.register(r'entites-consolidation', EntiteConsolidationViewSet)
 router.register(r'pilotage', PilotageViewSet, basename='pilotage')
 router.register(r'etats', EtatsComptablesViewSet, basename='etats')
+# ── Croissance commerciale / marketing / CPQ (FG201–FG214) ──────────────────
+router.register(r'campagnes', CampagneViewSet)
+router.register(r'sequences-relance', SequenceRelanceViewSet)
+router.register(r'etapes-sequence', EtapeSequenceViewSet)
+router.register(r'relances-devis-abandonnes', RelanceDevisAbandonneViewSet)
+router.register(r'ouvertures-partage', OuverturePartageViewSet)
+router.register(r'formulaires-intake', FormulaireIntakeViewSet)
+router.register(r'messages-whatsapp', MessageWhatsAppEntrantViewSet,
+                basename='message-whatsapp')
+router.register(r'appels', AppelTelephoniqueViewSet)
+router.register(r'codes-promotion', CodePromotionViewSet)
+router.register(r'modeles-devis', ModeleDevisViewSet)
+router.register(r'guided-selling', SessionGuidedSellingViewSet)
+router.register(r'comparateur-devis', ComparateurDevisViewSet,
+                basename='comparateur-devis')
+router.register(r'approbations-config', DemandeApprobationConfigViewSet)
+router.register(r'ecatalogues', ECatalogueViewSet)
 
 urlpatterns = [
     path('', include(router.urls)),
