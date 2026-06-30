@@ -30,11 +30,13 @@ from authentication.permissions import (
 from django.db.models import Q
 
 from . import jobs as jobs_infra
+from . import payment as payment_infra
 from . import workflow_templates
 from .mixins import TenantMixin
-from .models import Dashboard
+from .models import Dashboard, PaymentTransaction
 from .serializers import (
     DashboardSerializer,
+    PaymentTransactionSerializer,
     ScheduledJobSerializer,
     WorkflowTemplateSerializer,
 )
@@ -187,3 +189,35 @@ class DashboardViewSet(TenantMixin, viewsets.ModelViewSet):
     def perform_update(self, serializer):
         # Ne jamais réécrire company/owner depuis le corps.
         serializer.save(company=self.request.user.company)
+
+
+class PaymentTransactionViewSet(TenantMixin, viewsets.ModelViewSet):
+    """FG370 — paiement carte en ligne d'une facture (CMI / Payzone).
+
+    Multi-tenant : ``TenantMixin`` filtre par société et impose ``company`` à
+    la création. La création initie la transaction auprès du PSP (no-op propre
+    si aucun compte marchand n'est configuré — la transaction reste « initiée »
+    avec un détail explicite, jamais d'appel réseau). Aucune importation d'app
+    domaine : la cible (facture) est désignée via ``content_type``/``object_id``
+    et le rapprochement comptable passe par l'événement ``payment_captured``.
+    """
+    serializer_class = PaymentTransactionSerializer
+    permission_classes = [IsAuthenticated]
+    queryset = PaymentTransaction.objects.all()
+
+    def perform_create(self, serializer):
+        # company imposée côté serveur ; on initie aussitôt auprès du PSP.
+        transaction = serializer.save(company=self.request.user.company)
+        payment_infra.initier(transaction)
+
+    @action(detail=True, methods=['post'])
+    def rafraichir(self, request, pk=None):
+        """Interroge le PSP et synchronise le statut (no-op si non configuré)."""
+        transaction = self.get_object()
+        provider = payment_infra._provider_for(transaction)
+        if provider is not None:
+            res = provider.fetch_status(transaction)
+            if res.get('ok') and res.get('statut'):
+                transaction.statut = res['statut']
+                transaction.save(update_fields=['statut', 'updated_at'])
+        return Response(self.get_serializer(transaction).data)

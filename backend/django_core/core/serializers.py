@@ -5,7 +5,7 @@ FG369 — forme de sortie des modèles de workflow installables (catalogue).
 """
 from rest_framework import serializers
 
-from .models import Dashboard
+from .models import Dashboard, PaymentTransaction
 
 
 class ScheduledJobSerializer(serializers.Serializer):
@@ -51,3 +51,25 @@ class DashboardSerializer(serializers.ModelSerializer):
             'created_at', 'updated_at',
         ]
         read_only_fields = ['id', 'owner', 'created_at', 'updated_at']
+
+
+class PaymentTransactionSerializer(serializers.ModelSerializer):
+    """FG370 — transaction de paiement carte en ligne (CMI / Payzone).
+
+    ``company`` n'est JAMAIS lu du corps (imposée côté serveur). Le statut, la
+    référence PSP et l'URL de redirection sont en lecture seule : ils ne
+    bougent que via le flux de paiement (``core.payment``), jamais par PATCH
+    direct. La cible (facture) est désignée de façon générique par
+    ``content_type``/``object_id``.
+    """
+    class Meta:
+        model = PaymentTransaction
+        fields = [
+            'id', 'provider', 'montant', 'devise', 'statut', 'external_ref',
+            'redirect_url', 'payeur_email', 'content_type', 'object_id',
+            'paye_le', 'detail', 'created_at', 'updated_at',
+        ]
+        read_only_fields = [
+            'id', 'statut', 'external_ref', 'redirect_url', 'paye_le',
+            'detail', 'created_at', 'updated_at',
+        ]

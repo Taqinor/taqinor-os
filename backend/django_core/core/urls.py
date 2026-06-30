@@ -20,6 +20,7 @@ from rest_framework.routers import DefaultRouter
 
 from .views import (
     DashboardViewSet,
+    PaymentTransactionViewSet,
     ScheduledJobViewSet,
     WorkflowTemplateViewSet,
 )
@@ -30,5 +31,8 @@ router.register(r'workflow-templates', WorkflowTemplateViewSet,
                 basename='workflow-template')
 # FG381 — dashboards sans-code (CRUD multi-tenant, scoping perso/partagé).
 router.register(r'dashboards', DashboardViewSet, basename='dashboard')
+# FG370 — paiement carte en ligne d'une facture (CMI / Payzone, gated).
+router.register(r'paiements-en-ligne', PaymentTransactionViewSet,
+                basename='payment-transaction')
 
 urlpatterns = router.urls

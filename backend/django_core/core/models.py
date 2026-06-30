@@ -667,3 +667,96 @@ class Dashboard(TimestampedModel):
 
     def __str__(self):
         return self.titre
+
+
+# ---------------------------------------------------------------------------
+# FG370 — Passerelle de paiement carte en ligne (CMI / Payzone).
+#
+# Modèle de FONDATION GÉNÉRIQUE : suit une transaction de paiement carte en
+# ligne pour N'IMPORTE QUEL document métier facturable (Facture, échéance…)
+# SANS importer l'app qui le produit (contrat import-linter
+# ``core-foundation-is-a-base-layer``). La cible est désignée via
+# ``contenttypes`` (content_type + object_id + GenericForeignKey) — fondation
+# Django. Le rapprochement vers ``Paiement`` est laissé à l'app comptable, qui
+# réagit à l'événement ``payment_captured`` du bus ``core.events`` — core ne
+# crée jamais lui-même un ``Paiement`` métier.
+#
+# ⚠ AUTH : la capture réelle exige un compte marchand CMI/Payzone + une clé
+# provisionnée par le fondateur (variable d'environnement via ``secret_ref`` de
+# ``IntegrationConfig``). Sans elle, le connecteur reste en no-op propre.
+# ---------------------------------------------------------------------------
+
+
+class PaymentTransaction(TimestampedModel):
+    """Transaction de paiement carte en ligne (FG370 — CMI / Payzone).
+
+    GÉNÉRIQUE : cible via ``contenttypes`` (aucun import métier). ``provider``
+    nomme le connecteur de paiement (``core.payment``) ; ``external_ref`` garde
+    la référence du PSP ; ``statut`` suit le cycle de vie. Multi-tenant :
+    ``company`` obligatoire, imposée côté serveur. Le rapprochement vers le
+    ``Paiement`` comptable se fait via l'événement ``payment_captured`` du bus
+    d'événements (``core.events``) — core ne touche aucun modèle métier.
+    """
+
+    STATUT_INITIE = 'initie'
+    STATUT_EN_ATTENTE = 'en_attente'
+    STATUT_PAYE = 'paye'
+    STATUT_ECHEC = 'echec'
+    STATUT_ANNULE = 'annule'
+    STATUT_REMBOURSE = 'rembourse'
+    STATUT_CHOICES = [
+        (STATUT_INITIE, 'Initié'),
+        (STATUT_EN_ATTENTE, 'En attente'),
+        (STATUT_PAYE, 'Payé'),
+        (STATUT_ECHEC, 'Échec'),
+        (STATUT_ANNULE, 'Annulé'),
+        (STATUT_REMBOURSE, 'Remboursé'),
+    ]
+
+    company = models.ForeignKey(
+        'authentication.Company', on_delete=models.CASCADE,
+        related_name='payment_transactions', verbose_name='Société')
+
+    # Cible générique — AUCUN import métier (contenttypes = fondation).
+    content_type = models.ForeignKey(
+        ContentType, on_delete=models.CASCADE, null=True, blank=True,
+        related_name='+', verbose_name='Type de document')
+    object_id = models.PositiveIntegerField(
+        'Identifiant du document', null=True, blank=True)
+    target = GenericForeignKey('content_type', 'object_id')
+
+    provider = models.CharField(
+        'Fournisseur', max_length=60, default='cmi',
+        help_text='Code du connecteur de paiement (ex. « cmi », « payzone »).')
+    montant = models.DecimalField(
+        'Montant', max_digits=12, decimal_places=2)
+    devise = models.CharField('Devise', max_length=3, default='MAD')
+    statut = models.CharField(
+        'Statut', max_length=16, choices=STATUT_CHOICES,
+        default=STATUT_INITIE)
+
+    external_ref = models.CharField(
+        'Référence PSP', max_length=128, blank=True, default='',
+        help_text='Identifiant retourné par le prestataire de paiement.')
+    redirect_url = models.URLField(
+        'URL de redirection', max_length=600, blank=True, default='',
+        help_text='URL de la page de paiement hébergée du PSP.')
+    payeur_email = models.EmailField('Email payeur', blank=True, default='')
+
+    paye_le = models.DateTimeField('Payé le', null=True, blank=True)
+    detail = models.JSONField('Détail', default=dict, blank=True)
+
+    class Meta:
+        verbose_name = 'Transaction de paiement'
+        verbose_name_plural = 'Transactions de paiement'
+        ordering = ['-id']
+        indexes = [
+            models.Index(fields=['company', 'statut'],
+                         name='core_pay_co_statut_idx'),
+            models.Index(fields=['provider', 'external_ref'],
+                         name='core_pay_ext_idx'),
+        ]
+
+    def __str__(self):
+        return (f'Paiement {self.provider} #{self.pk} '
+                f'({self.get_statut_display()})')
