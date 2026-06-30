@@ -6,6 +6,7 @@ from .views import (
     AffectationRosterViewSet,
     AnalyseRisquesChantierViewSet,
     BesoinFormationViewSet,
+    CampagneEvaluationViewSet,
     CandidatureViewSet,
     CauserieSecuriteViewSet,
     CertificationViewSet,
@@ -19,6 +20,7 @@ from .views import (
     EcheancesRhViewSet,
     ElementSortieViewSet,
     EpiCatalogueViewSet,
+    EvaluationEmployeViewSet,
     FeuilleTempsViewSet,
     HabilitationViewSet,
     HeuresSuppViewSet,
@@ -70,6 +72,8 @@ router.register(r'sessions-formation', SessionFormationViewSet)
 router.register(r'besoins-formation', BesoinFormationViewSet)
 router.register(r'ouvertures-poste', OuverturePosteViewSet)
 router.register(r'candidatures', CandidatureViewSet)
+router.register(r'campagnes-evaluation', CampagneEvaluationViewSet)
+router.register(r'evaluations-employe', EvaluationEmployeViewSet)
 
 urlpatterns = [
     path('', include(router.urls)),
