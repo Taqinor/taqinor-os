@@ -502,6 +502,43 @@ class ProjetViewSet(_GestionProjetBaseViewSet):
             'note': data['note'],
         })
 
+    @action(detail=True, methods=['get'], url_path='pnl')
+    def pnl(self, request, pk=None):
+        """Compte de résultat (P&L) CONSOLIDÉ du projet (PROJ26 — interne).
+
+        Revenu (devis/factures rattachés, dégradé cross-app) − coûts (budget
+        prévisionnel + réel consolidé affectations + timesheets), marges prév. /
+        réelle et marge % réelle (None si revenu nul). Donnée 100 % INTERNE de
+        pilotage — JAMAIS exposée au client. La société est garantie par
+        ``get_object`` (queryset scopé société) : un projet d'une autre société
+        → 404. Lecture seule.
+        """
+        projet = self.get_object()
+        data = selectors.pnl_projet(request.user.company, projet)
+        return Response({
+            'revenu': str(data['revenu']),
+            'note_revenu': data['note_revenu'],
+            'cout_budget': str(data['cout_budget']),
+            'cout_reel': str(data['cout_reel']),
+            'cout_reel_affectations': str(data['cout_reel_affectations']),
+            'cout_reel_timesheets': str(data['cout_reel_timesheets']),
+            'marge_prev': str(data['marge_prev']),
+            'marge_reelle': str(data['marge_reelle']),
+            'marge_pct_reelle': (
+                str(data['marge_pct_reelle'])
+                if data['marge_pct_reelle'] is not None else None),
+            'budget_id': data['budget_id'],
+            'budget_version': data['budget_version'],
+            'couts_par_categorie': [
+                {
+                    'categorie': ligne['categorie'],
+                    'budget': str(ligne['budget']),
+                    'reel': str(ligne['reel']),
+                }
+                for ligne in data['couts_par_categorie']
+            ],
+        })
+
 
 class ProjetChantierViewSet(_GestionProjetBaseViewSet):
     """Rattachements chantier ↔ projet (liens lâches)."""

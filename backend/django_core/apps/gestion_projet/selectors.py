@@ -1767,3 +1767,89 @@ def consommation_matiere_vs_bom(projet):
         'budget_id': budget_id,
         'budget_version': budget_version,
     }
+
+
+# ── P&L de projet consolidé (PROJ26 — interne/admin) ─────────────────────────
+def _revenu_projet_cross_app(projet):
+    """Revenu (CA) RÉEL d'un projet via les apps cibles (ou dégrade).
+
+    Agrège le chiffre d'affaires des devis/factures rattachés au projet
+    (``ProjetLien`` type devis/facture) en passant par un sélecteur de l'app
+    ``ventes`` — SANS jamais importer ses ``models``/``views`` (frontière
+    cross-app, CLAUDE.md ; import fonction-local). Aucune app cible n'expose
+    aujourd'hui de sélecteur de MONTANT par projet exploitable → DÉGRADE :
+    revenu à 0 + note (nb de liens devis/facture). Aucune exception ne remonte.
+
+    Renvoie ``(revenu: Decimal, note: str)``.
+    """
+    nb_liens_revenu = ProjetLien.objects.filter(
+        projet=projet, company=projet.company,
+        type_cible__in=(
+            ProjetLien.TypeCible.DEVIS,
+            ProjetLien.TypeCible.FACTURE)).count()
+    if nb_liens_revenu:
+        note = (
+            f"{nb_liens_revenu} devis/facture(s) rattaché(s) : montant non "
+            "disponible (aucun sélecteur cross-app) — revenu à 0.")
+    else:
+        note = "Aucun devis/facture rattaché — revenu à 0."
+    return Decimal('0'), note
+
+
+def pnl_projet(company, projet):
+    """Compte de résultat (P&L) CONSOLIDÉ d'un projet (PROJ26 — interne/admin).
+
+    Donnée 100 % INTERNE de pilotage — JAMAIS exposée au client final (rejoint
+    ``budget_total``, ``cout_horaire``). Consolide :
+
+      • ``revenu``   — CA des devis/factures rattachés (``ProjetLien``) via un
+        sélecteur ``ventes`` ; dégrade à 0 + note (frontière cross-app).
+      • ``cout_budget`` — total prévisionnel du budget de référence (PROJ21).
+      • ``cout_reel``   — réel consolidé : main-d'œuvre des affectations
+        (PROJ22) + coût figé des timesheets (PROJ24) + matériel/sous-traitance
+        des liens de dépense (dégradés à 0 tant qu'aucun sélecteur cross-app
+        n'expose le montant).
+      • ``marge_prev``  = revenu − cout_budget ; ``marge_reelle`` = revenu −
+        cout_reel ; ``marge_pct_reelle`` = marge_reelle / revenu × 100 (None si
+        revenu == 0 — garde division-par-zéro).
+
+    Tout est scopé société via le projet. Lecture seule (aucune écriture).
+    """
+    # Revenu (dégrade cross-app).
+    revenu, note_revenu = _revenu_projet_cross_app(projet)
+
+    # Coûts : budget prévisionnel + réel consolidé.
+    couts = couts_engages_vs_reels(company, projet)
+    cout_budget = couts['total']['budget']
+    cout_reel_affectations = couts['total']['reel']
+
+    # Réel issu des timesheets (PROJ24) — source interne complémentaire.
+    synthese_ts = synthese_temps_projet(projet)
+    cout_timesheets = synthese_ts['total_cout']
+
+    # Le réel consolidé additionne affectations (PROJ22) et timesheets (PROJ24) :
+    # ce sont deux sources INTERNES distinctes de main-d'œuvre réelle.
+    cout_reel = cout_reel_affectations + cout_timesheets
+
+    marge_prev = revenu - cout_budget
+    marge_reelle = revenu - cout_reel
+    if revenu and revenu != 0:
+        marge_pct_reelle = (
+            marge_reelle / revenu * Decimal('100')).quantize(Decimal('0.01'))
+    else:
+        marge_pct_reelle = None
+
+    return {
+        'revenu': revenu,
+        'note_revenu': note_revenu,
+        'cout_budget': cout_budget,
+        'cout_reel': cout_reel,
+        'cout_reel_affectations': cout_reel_affectations,
+        'cout_reel_timesheets': cout_timesheets,
+        'marge_prev': marge_prev,
+        'marge_reelle': marge_reelle,
+        'marge_pct_reelle': marge_pct_reelle,
+        'budget_id': couts['budget_id'],
+        'budget_version': couts['budget_version'],
+        'couts_par_categorie': couts['par_categorie'],
+    }
