@@ -19,8 +19,11 @@ fichier, donc non modifié par cette tâche « core-only ») :
 from rest_framework.routers import DefaultRouter
 
 from .views import (
+    ApiUsagePlanViewSet,
+    BackupRunViewSet,
     BrandedTemplateViewSet,
     BulkEditViewSet,
+    ChangelogViewSet,
     ConsentRecordViewSet,
     DashboardViewSet,
     DataSubjectRequestViewSet,
@@ -29,6 +32,7 @@ from .views import (
     SavedQueryViewSet,
     ScheduledExportViewSet,
     ScheduledJobViewSet,
+    SystemStatusViewSet,
     TenantThemeViewSet,
     TrashViewSet,
     WorkflowTemplateViewSet,
@@ -65,5 +69,13 @@ router.register(r'consent-records', ConsentRecordViewSet,
                 basename='consent-record')
 router.register(r'dsr-requests', DataSubjectRequestViewSet,
                 basename='dsr-request')
+# FG395 — sauvegarde/restauration en libre-service (par société).
+router.register(r'sauvegardes', BackupRunViewSet, basename='backup-run')
+# FG397 — page d'état / santé système (services + incidents récents).
+router.register(r'status', SystemStatusViewSet, basename='system-status')
+# FG398 — plan de tarif API & analytics d'usage (singleton + analytics).
+router.register(r'api-usage', ApiUsagePlanViewSet, basename='api-usage')
+# FG399 — journal des nouveautés in-app (changelog) + suivi de lecture.
+router.register(r'changelog', ChangelogViewSet, basename='changelog')
 
 urlpatterns = router.urls

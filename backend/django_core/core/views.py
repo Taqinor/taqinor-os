@@ -38,7 +38,11 @@ from . import trash as trash_infra
 from . import workflow_templates
 from .mixins import TenantMixin
 from .models import (
+    ApiUsagePlan,
+    BackupRun,
     BrandedTemplate,
+    ChangelogEntry,
+    ChangelogRead,
     ConsentRecord,
     Dashboard,
     DataSubjectRequest,
@@ -50,7 +54,10 @@ from .models import (
     TenantTheme,
 )
 from .serializers import (
+    ApiUsagePlanSerializer,
+    BackupRunSerializer,
     BrandedTemplateSerializer,
+    ChangelogEntrySerializer,
     ConsentRecordSerializer,
     DashboardSerializer,
     DataSubjectRequestSerializer,
@@ -529,3 +536,169 @@ class DataSubjectRequestViewSet(TenantMixin, viewsets.ModelViewSet):
         dsr_request = self.get_object()
         dsr.traiter_demande(dsr_request)
         return Response(self.get_serializer(dsr_request).data)
+
+
+class BackupRunViewSet(TenantMixin, viewsets.ModelViewSet):
+    """FG395 — sauvegarde/restauration en libre-service (par société).
+
+    Multi-tenant : ``TenantMixin`` filtre par société et impose ``company``.
+    Réservé au palier admin/responsable (opération sensible sur les données de
+    la société). ``declenche_par`` est positionné à l'utilisateur courant à la
+    création. Aucune importation d'app domaine : le runner ``core.backup``
+    n'agrège que des datasets enregistrés (déjà scopés société).
+
+      * ``POST …/sauvegardes/`` (kind=export) → crée + exécute la sauvegarde.
+      * ``POST …/sauvegardes/`` (kind=restore) → trace une restauration (no-op
+        tracé tant que le pipeline n'est pas branché — jamais d'écriture aveugle).
+      * ``POST …/sauvegardes/{id}/relancer/`` → ré-exécute l'opération.
+    """
+    serializer_class = BackupRunSerializer
+    permission_classes = [IsAdminOrResponsableTier]
+    queryset = BackupRun.objects.all()
+
+    def perform_create(self, serializer):
+        run = serializer.save(
+            company=self.request.user.company,
+            declenche_par=self.request.user)
+        self._executer(run)
+
+    def _executer(self, run):
+        from . import backup
+        if run.kind == BackupRun.KIND_RESTORE:
+            backup.executer_restauration(run)
+        else:
+            backup.executer_sauvegarde(run)
+
+    @action(detail=True, methods=['post'])
+    def relancer(self, request, pk=None):
+        run = self.get_object()
+        self._executer(run)
+        run.refresh_from_db()
+        return Response(self.get_serializer(run).data)
+
+
+class SystemStatusViewSet(viewsets.ViewSet):
+    """FG397 — page d'état / santé système (services + incidents récents).
+
+    Infra TRANSVERSE : la santé des services (db/cache/broker/stockage/
+    monitoring) est globale ; les incidents récents sont bornés à la société de
+    l'utilisateur. Ouvert à tout utilisateur authentifié (lecture seule).
+    Aucune importation d'app domaine : tout passe par ``core.health``.
+
+      * ``GET …/status/``  — santé des services + état global + incidents.
+    """
+    permission_classes = [IsAuthenticated]
+
+    def list(self, request):
+        from . import health
+        services = health.check_services()
+        company = getattr(request.user, 'company', None)
+        return Response({
+            'global': health.overall_status(services),
+            'services': services,
+            'incidents': health.recent_incidents(company=company),
+        })
+
+
+class ApiUsagePlanViewSet(TenantMixin, viewsets.GenericViewSet):
+    """FG398 — plan de tarif API & analytics d'usage (par société).
+
+    Multi-tenant : ``TenantMixin`` impose ``company``. Le plan est un SINGLETON
+    par société (OneToOne). Écriture admin/responsable ; lecture authentifiée.
+    Aucune importation d'app domaine : l'usage est agrégé via ``core.api_usage``
+    (la clé d'API est une string-FK).
+
+      * ``GET …/api-usage/plan/``        — plan de quota de la société.
+      * ``PUT/PATCH …/api-usage/plan/``  — met à jour le plan (admin/responsable).
+      * ``GET …/api-usage/analytics/``   — analytics d'usage (par clé + total).
+    """
+    serializer_class = ApiUsagePlanSerializer
+    queryset = ApiUsagePlan.objects.all()
+
+    def get_permissions(self):
+        if self.request.method in ('PUT', 'PATCH', 'POST'):
+            return [IsAdminOrResponsableTier()]
+        return [IsAuthenticated()]
+
+    @action(detail=False, methods=['get', 'put', 'patch'], url_path='plan')
+    def plan(self, request):
+        from . import api_usage
+        company = request.user.company
+        if request.method == 'GET':
+            plan = api_usage.plan_pour_societe(company)
+            return Response(ApiUsagePlanSerializer(plan).data)
+        plan = api_usage.plan_pour_societe(company)
+        partial = request.method == 'PATCH'
+        serializer = ApiUsagePlanSerializer(
+            plan, data=request.data, partial=partial)
+        serializer.is_valid(raise_exception=True)
+        serializer.save(company=company)
+        return Response(serializer.data)
+
+    @action(detail=False, methods=['get'])
+    def analytics(self, request):
+        from . import api_usage
+        return Response(api_usage.analytics(request.user.company))
+
+
+class ChangelogViewSet(viewsets.ModelViewSet):
+    """FG399 — journal des nouveautés in-app (changelog) + suivi de lecture.
+
+    Le changelog est GLOBAL au produit (aucune portée société) : la lecture est
+    ouverte à tout utilisateur authentifié et ne renvoie que les notes publiées ;
+    l'écriture (publication) est réservée au palier admin. Le suivi de lecture
+    est PAR UTILISATEUR. Aucune importation d'app domaine.
+
+      * ``GET …/changelog/``            — notes publiées + drapeau ``lu``.
+      * ``GET …/changelog/non_lues/``   — compte de notes non lues.
+      * ``POST …/changelog/{id}/marquer_lu/`` — accuse lecture d'une note.
+      * ``POST …/changelog/marquer_tout_lu/`` — accuse lecture de tout.
+    """
+    serializer_class = ChangelogEntrySerializer
+    pagination_class = None
+
+    def get_permissions(self):
+        if self.action in ('list', 'retrieve', 'non_lues', 'marquer_lu',
+                           'marquer_tout_lu'):
+            return [IsAuthenticated()]
+        return [IsAdminRole()]
+
+    def get_queryset(self):
+        qs = ChangelogEntry.objects.all()
+        # Les non-admins ne voient que les notes publiées.
+        user = self.request.user
+        if not (user.is_superuser or getattr(user, 'is_staff', False)):
+            if self.action in ('list', 'retrieve', 'non_lues'):
+                qs = qs.filter(publie=True)
+        return qs
+
+    def get_serializer_context(self):
+        ctx = super().get_serializer_context()
+        ids = set(
+            ChangelogRead.objects.filter(user=self.request.user)
+            .values_list('entry_id', flat=True))
+        ctx['entries_lues'] = ids
+        return ctx
+
+    @action(detail=False, methods=['get'])
+    def non_lues(self, request):
+        lues = set(
+            ChangelogRead.objects.filter(user=request.user)
+            .values_list('entry_id', flat=True))
+        total = ChangelogEntry.objects.filter(publie=True).exclude(
+            pk__in=lues).count()
+        return Response({'non_lues': total})
+
+    @action(detail=True, methods=['post'])
+    def marquer_lu(self, request, pk=None):
+        entry = self.get_object()
+        ChangelogRead.objects.get_or_create(user=request.user, entry=entry)
+        return Response({'lu': True})
+
+    @action(detail=False, methods=['post'])
+    def marquer_tout_lu(self, request):
+        entries = ChangelogEntry.objects.filter(publie=True)
+        for entry in entries:
+            ChangelogRead.objects.get_or_create(
+                user=request.user, entry=entry)
+        return Response({'non_lues': 0})

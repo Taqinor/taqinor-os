@@ -6,7 +6,10 @@ FG369 — forme de sortie des modèles de workflow installables (catalogue).
 from rest_framework import serializers
 
 from .models import (
+    ApiUsagePlan,
+    BackupRun,
     BrandedTemplate,
+    ChangelogEntry,
     ConsentRecord,
     Dashboard,
     DataSubjectRequest,
@@ -217,3 +220,60 @@ class DataSubjectRequestSerializer(serializers.ModelSerializer):
             'id', 'statut', 'resultat', 'traitee_le',
             'created_at', 'updated_at',
         ]
+
+
+class BackupRunSerializer(serializers.ModelSerializer):
+    """FG395 — opération de sauvegarde/restauration (libre-service).
+
+    ``company`` et ``declenche_par`` ne sont JAMAIS lus du corps (imposés côté
+    serveur). Le statut, le manifeste, l'horodatage de fin et le détail sont en
+    lecture seule : ils ne bougent que via le runner (``core.backup``).
+    """
+    class Meta:
+        model = BackupRun
+        fields = [
+            'id', 'kind', 'mode', 'statut', 'datasets', 'cron', 'artifact_ref',
+            'manifest', 'declenche_par', 'termine_le', 'detail',
+            'created_at', 'updated_at',
+        ]
+        read_only_fields = [
+            'id', 'statut', 'manifest', 'declenche_par', 'termine_le', 'detail',
+            'created_at', 'updated_at',
+        ]
+
+
+class ApiUsagePlanSerializer(serializers.ModelSerializer):
+    """FG398 — plan de tarif/quota API d'une société.
+
+    ``company`` n'est JAMAIS lu du corps (imposée côté serveur, OneToOne).
+    """
+    class Meta:
+        model = ApiUsagePlan
+        fields = [
+            'id', 'code', 'quota_par_minute', 'quota_par_jour',
+            'quota_par_mois', 'actif', 'created_at', 'updated_at',
+        ]
+        read_only_fields = ['id', 'created_at', 'updated_at']
+
+
+class ChangelogEntrySerializer(serializers.ModelSerializer):
+    """FG399 — note de version (journal des nouveautés).
+
+    Modèle GLOBAL au produit (pas de portée société). ``lu`` indique si
+    l'utilisateur courant a accusé lecture de la note (calculé en contexte).
+    """
+    lu = serializers.SerializerMethodField()
+
+    class Meta:
+        model = ChangelogEntry
+        fields = [
+            'id', 'titre', 'corps', 'version', 'categorie', 'publie',
+            'publie_le', 'lu', 'created_at', 'updated_at',
+        ]
+        read_only_fields = ['id', 'lu', 'created_at', 'updated_at']
+
+    def get_lu(self, obj):
+        lus = (self.context or {}).get('entries_lues')
+        if lus is None:
+            return False
+        return obj.pk in lus
