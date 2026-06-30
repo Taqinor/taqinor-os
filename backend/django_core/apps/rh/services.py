@@ -427,3 +427,87 @@ def creer_presqu_accident(serializer, company, declare_par=None):
         lambda reference: serializer.save(
             company=company, reference=reference, declare_par=declare_par),
     )
+
+
+@transaction.atomic
+def embaucher(candidature, matricule=None, **dossier_kwargs):
+    """Convertit une candidature EMBAUCHÉE en ``DossierEmploye`` (FG189 — ATS).
+
+    Quand un candidat est retenu, on crée son dossier employé (même société que
+    la candidature) à partir des données déjà saisies (``nom``, ``email``,
+    ``telephone`` et le ``poste_ref`` / ``departement`` de l'ouverture), enrichi
+    des ``dossier_kwargs`` fournis (ex. ``type_contrat``, ``date_embauche``,
+    ``poste``…). On passe l'``etape`` de la candidature à ``embauche`` et on lie
+    le dossier via ``employe_cree``. Si l'ouverture atteint son
+    ``nombre_postes`` de candidats embauchés, elle bascule en ``pourvu``.
+
+    IDEMPOTENT : si la candidature porte déjà un ``employe_cree``, on renvoie ce
+    dossier sans en créer un second. Les champs requis de ``DossierEmploye``
+    (``company``, ``matricule``, ``nom``, ``prenom``) sont garantis : la société
+    est celle de la candidature (jamais lue du corps), ``matricule`` est fourni
+    ou dérivé (``CAND-<id>``), ``nom`` / ``prenom`` proviennent de la
+    candidature (le ``nom`` complet est éclaté en prénom + nom à défaut de
+    précision). Transaction atomique. Entièrement additif.
+    """
+    from .models import Candidature, DossierEmploye, OuverturePoste
+
+    # Idempotence : ne jamais recréer un dossier déjà lié.
+    if candidature.employe_cree_id:
+        dossier = candidature.employe_cree
+        if candidature.etape != Candidature.Etape.EMBAUCHE:
+            candidature.etape = Candidature.Etape.EMBAUCHE
+            candidature.save(update_fields=['etape', 'date_modification'])
+        return dossier
+
+    company = candidature.company
+    ouverture = candidature.ouverture
+
+    # Éclate le nom complet en prénom + nom (les deux requis, non vides).
+    parts = (candidature.nom or '').strip().split()
+    if len(parts) >= 2:
+        prenom = parts[0]
+        nom = ' '.join(parts[1:])
+    else:
+        prenom = parts[0] if parts else 'Candidat'
+        nom = parts[0] if parts else 'Candidat'
+
+    if not matricule:
+        matricule = f'CAND-{candidature.id}'
+
+    champs = {
+        'company': company,
+        'matricule': matricule,
+        'nom': nom,
+        'prenom': prenom,
+        'email': candidature.email or '',
+        'telephone': candidature.telephone or '',
+        'statut': DossierEmploye.Statut.EMBAUCHE,
+    }
+    if ouverture is not None:
+        if ouverture.poste_ref_id:
+            champs['poste_ref_id'] = ouverture.poste_ref_id
+        if ouverture.departement_id:
+            champs['departement_id'] = ouverture.departement_id
+        if ouverture.intitule:
+            champs['poste'] = ouverture.intitule[:120]
+    # Les kwargs explicites priment sur les valeurs dérivées.
+    champs.update(dossier_kwargs)
+
+    dossier = DossierEmploye.objects.create(**champs)
+
+    candidature.employe_cree = dossier
+    candidature.etape = Candidature.Etape.EMBAUCHE
+    candidature.save(
+        update_fields=['employe_cree', 'etape', 'date_modification'])
+
+    # Bascule l'ouverture en POURVU si le nombre d'embauchés est atteint.
+    if ouverture is not None and \
+            ouverture.statut == OuverturePoste.Statut.OUVERT:
+        nb_embauches = ouverture.candidatures.filter(
+            etape=Candidature.Etape.EMBAUCHE,
+            employe_cree__isnull=False).count()
+        if nb_embauches >= ouverture.nombre_postes:
+            ouverture.statut = OuverturePoste.Statut.POURVU
+            ouverture.save(update_fields=['statut', 'date_modification'])
+
+    return dossier

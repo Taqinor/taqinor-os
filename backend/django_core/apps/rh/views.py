@@ -25,6 +25,7 @@ from .models import (
     AffectationRoster,
     AnalyseRisquesChantier,
     BesoinFormation,
+    Candidature,
     CauserieParticipant,
     CauserieSecurite,
     Certification,
@@ -41,6 +42,7 @@ from .models import (
     Habilitation,
     HeuresSupp,
     IncidentPresence,
+    OuverturePoste,
     Pointage,
     Poste,
     PresenceChantier,
@@ -56,9 +58,11 @@ from .serializers import (
     AffectationRosterSerializer,
     AnalyseRisquesChantierSerializer,
     BesoinFormationSerializer,
+    CandidatureSerializer,
     CauserieParticipantSerializer,
     CauserieSecuriteSerializer,
     CertificationSerializer,
+    EmbaucherSerializer,
     CompetenceEmployeSerializer,
     CompetenceSerializer,
     DemandeCongeSerializer,
@@ -74,6 +78,7 @@ from .serializers import (
     HabilitationSerializer,
     HeuresSuppSerializer,
     IncidentPresenceSerializer,
+    OuverturePosteSerializer,
     PointageSerializer,
     PosteSerializer,
     PresenceChantierSerializer,
@@ -2104,3 +2109,91 @@ class BesoinFormationViewSet(_RhBaseViewSet):
             besoin.save(update_fields=['statut', 'date_modification'])
         return Response(
             self.get_serializer(besoin).data, status=status.HTTP_200_OK)
+
+
+class OuverturePosteViewSet(_RhBaseViewSet):
+    """Ouvertures de poste / postes ouverts (FG189) — recrutement ATS-lite.
+
+    Société scopée + Administrateur/Responsable. Enregistre un POSTE OUVERT au
+    recrutement : intitulé, poste de référence (``rh.Poste``) et département
+    optionnels, description du profil, nombre de postes à pourvoir, statut
+    (ouvert → pourvu / clos / annulé) et dates d'ouverture / cible. La liste
+    imbriquée ``candidatures`` est exposée en lecture. ``company`` est posée
+    CÔTÉ SERVEUR (jamais lue du corps) ; ``poste_ref`` et ``departement``
+    doivent appartenir à la même société.
+
+    Filtres : ``?statut=ouvert|pourvu|clos|annule``, ``?departement=<id>``.
+    Recherche : intitulé. Tri : date de création, statut.
+    """
+    queryset = OuverturePoste.objects.select_related(
+        'poste_ref', 'departement').prefetch_related('candidatures').all()
+    serializer_class = OuverturePosteSerializer
+    filter_backends = [filters.SearchFilter, filters.OrderingFilter]
+    search_fields = ['intitule', 'description']
+    ordering_fields = ['date_creation', 'statut', 'date_cible']
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        statut = self.request.query_params.get('statut')
+        if statut:
+            qs = qs.filter(statut=statut)
+        departement = self.request.query_params.get('departement')
+        if departement:
+            qs = qs.filter(departement_id=departement)
+        return qs.distinct()
+
+
+class CandidatureViewSet(_RhBaseViewSet):
+    """Candidatures (FG189) — pipeline de recrutement ATS-lite.
+
+    Société scopée + Administrateur/Responsable. Enregistre un CANDIDAT
+    postulant à une ``ouverture`` (de la même société) : nom, e-mail,
+    téléphone, CV, source, note et son ``etape`` dans le pipeline (reçu →
+    présélection → entretien → offre → embauché / rejeté). ``company`` est posée
+    CÔTÉ SERVEUR (jamais lue du corps).
+
+    Filtres : ``?ouverture=<id>``, ``?etape=recu|preselection|entretien|offre|
+    embauche|rejete``. Recherche : nom, e-mail. Accepte le multipart pour le CV.
+
+    Action :
+    * ``POST .../{id}/embaucher/`` — convertit la candidature en
+      ``DossierEmploye`` (même société), lie ``employe_cree``, passe l'étape à
+      ``embauche`` et bascule l'ouverture en ``pourvu`` quand elle est
+      pourvue. ``matricule`` / ``type_contrat`` / ``date_embauche`` / ``poste``
+      sont renseignables. Idempotent (ne recrée jamais un dossier déjà lié).
+    """
+    queryset = Candidature.objects.select_related(
+        'ouverture', 'employe_cree').all()
+    serializer_class = CandidatureSerializer
+    parser_classes = [JSONParser, MultiPartParser]
+    filter_backends = [filters.SearchFilter, filters.OrderingFilter]
+    search_fields = ['nom', 'email']
+    ordering_fields = ['date_creation', 'etape', 'date_candidature']
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        ouverture = self.request.query_params.get('ouverture')
+        if ouverture:
+            qs = qs.filter(ouverture_id=ouverture)
+        etape = self.request.query_params.get('etape')
+        if etape:
+            qs = qs.filter(etape=etape)
+        return qs
+
+    @action(detail=True, methods=['post'], url_path='embaucher')
+    def embaucher(self, request, pk=None):
+        """Embauche le candidat : crée son ``DossierEmploye`` et le lie.
+
+        Délègue au service ``apps.rh.services.embaucher`` (transaction atomique,
+        idempotent). La société est garantie par ``get_object`` (un autre tenant
+        reçoit 404). Renvoie la candidature mise à jour (avec ``employe_cree``).
+        """
+        candidature = self.get_object()
+        in_ser = EmbaucherSerializer(data=request.data)
+        in_ser.is_valid(raise_exception=True)
+        kwargs = {k: v for k, v in in_ser.validated_data.items()
+                  if v not in (None, '')}
+        services.embaucher(candidature, **kwargs)
+        candidature.refresh_from_db()
+        return Response(
+            self.get_serializer(candidature).data, status=status.HTTP_200_OK)
