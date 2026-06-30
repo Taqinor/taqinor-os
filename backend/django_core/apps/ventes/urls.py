@@ -38,6 +38,7 @@ from .numbering_view import numerotation_audit, numerotation_preview
 from .extra_docs_views import lettre_relance_premium, fiche_remise_premium
 from .diagram_views import schema_unifilaire, schema_unifilaire_devis  # FG252
 from .roof_load_view import roof_load_check  # FG253
+from .connection_declaration_view import declaration_raccordement  # FG272
 
 router = DefaultRouter()
 router.register(r'devis', DevisViewSet)
@@ -113,6 +114,10 @@ urlpatterns = [
     path('devis/<int:pk>/schema-unifilaire/', schema_unifilaire_devis,
          name='devis-schema-unifilaire'),
     path('schema-unifilaire/', schema_unifilaire, name='schema-unifilaire'),
+    # FG272 — déclaration de raccordement BT/MT pré-remplie (JSON ou PDF).
+    # Placée AVANT le routeur pour ne pas être avalée par la route /devis/.
+    path('devis/<int:pk>/declaration-raccordement/',
+         declaration_raccordement, name='devis-declaration-raccordement'),
     # FG253 — aide au calcul de charge structure toiture (alerte dépassement).
     path('toiture/charge/', roof_load_check, name='toiture-charge'),
     # N87 — état du compte d'envoi email (informatif, lecture seule).
