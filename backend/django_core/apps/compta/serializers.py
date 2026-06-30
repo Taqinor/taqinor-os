@@ -26,6 +26,11 @@ from .models import (
     RelanceDevisAbandonne, RetenueGarantie, RetenueSource, SequenceRelance,
     SessionGuidedSelling, TimbreFiscal, TravauxEnCours,
     VirementInterne,
+    DocumentProposition, SimulationPublique, SimulationFinancement,
+    OffreFinancement, LigneIncitation, EcheancierPaiement, TranchePaiement,
+    AppelOffre, BordereauPrix, LigneBordereau, CautionSoumission,
+    DossierSoumission, PieceSoumission, EcheanceAO, ResultatAO,
+    ComptePortailClient,
 )
 
 
@@ -1511,3 +1516,256 @@ class ECatalogueSerializer(serializers.ModelSerializer):
             'date_creation',
         ]
         read_only_fields = ['token', 'date_creation']
+
+
+# ── FG215 — Documents de proposition ───────────────────────────────────────
+
+class DocumentPropositionSerializer(serializers.ModelSerializer):
+    type_document_display = serializers.CharField(
+        source='get_type_document_display', read_only=True)
+
+    class Meta:
+        model = DocumentProposition
+        fields = [
+            'id', 'titre', 'type_document', 'type_document_display', 'contenu',
+            'fichier', 'ordre', 'actif', 'date_creation',
+        ]
+        read_only_fields = ['date_creation']
+
+
+# ── FG216 — Simulations publiques ──────────────────────────────────────────
+
+class SimulationPubliqueSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = SimulationPublique
+        fields = [
+            'id', 'nom_prospect', 'telephone', 'email', 'puissance_kwc',
+            'facture_mensuelle', 'economie_annuelle', 'parametres',
+            'lead_cree', 'lead_id', 'date_creation',
+        ]
+        read_only_fields = ['lead_cree', 'lead_id', 'date_creation']
+
+
+# ── FG217 — Simulation de financement ──────────────────────────────────────
+
+class SimulationFinancementSerializer(serializers.ModelSerializer):
+    type_financement_display = serializers.CharField(
+        source='get_type_financement_display', read_only=True)
+
+    class Meta:
+        model = SimulationFinancement
+        fields = [
+            'id', 'devis_id', 'devis_reference', 'type_financement',
+            'type_financement_display', 'montant_finance', 'duree_mois',
+            'taux_annuel', 'mensualite', 'cout_total_credit', 'date_creation',
+        ]
+        read_only_fields = ['mensualite', 'cout_total_credit', 'date_creation']
+
+
+# ── FG218 — Offres de financement ──────────────────────────────────────────
+
+class OffreFinancementSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = OffreFinancement
+        fields = [
+            'id', 'partenaire', 'libelle', 'taux_annuel', 'duree_min_mois',
+            'duree_max_mois', 'montant_min', 'montant_max', 'apport_min_pct',
+            'actif', 'date_creation',
+        ]
+        read_only_fields = ['date_creation']
+
+
+# ── FG219 — Lignes d'incitation ────────────────────────────────────────────
+
+class LigneIncitationSerializer(serializers.ModelSerializer):
+    programme_display = serializers.CharField(
+        source='get_programme_display', read_only=True)
+    cout_net = serializers.DecimalField(
+        max_digits=14, decimal_places=2, read_only=True)
+
+    class Meta:
+        model = LigneIncitation
+        fields = [
+            'id', 'devis_id', 'devis_reference', 'programme',
+            'programme_display', 'libelle', 'montant_aide', 'cout_brut',
+            'cout_net', 'date_creation',
+        ]
+        read_only_fields = ['date_creation']
+
+
+# ── FG220 — Échéanciers et tranches de paiement ────────────────────────────
+
+class TranchePaiementSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = TranchePaiement
+        fields = [
+            'id', 'echeancier', 'numero', 'montant', 'date_echeance',
+            'montant_regle', 'date_reglement', 'paye',
+        ]
+
+
+class EcheancierPaiementSerializer(serializers.ModelSerializer):
+    tranches = TranchePaiementSerializer(many=True, read_only=True)
+    montant_regle = serializers.SerializerMethodField()
+    reste_a_payer = serializers.SerializerMethodField()
+
+    class Meta:
+        model = EcheancierPaiement
+        fields = [
+            'id', 'facture_id', 'facture_reference', 'montant_total', 'actif',
+            'tranches', 'montant_regle', 'reste_a_payer', 'date_creation',
+        ]
+        read_only_fields = ['date_creation']
+
+    def get_montant_regle(self, obj):
+        total = Decimal('0.00')
+        for tranche in obj.tranches.all():
+            total += tranche.montant_regle or Decimal('0.00')
+        return total
+
+    def get_reste_a_payer(self, obj):
+        return (obj.montant_total or Decimal('0.00')) - self.get_montant_regle(
+            obj)
+
+
+# ── FG222 — Appels d'offres ────────────────────────────────────────────────
+
+class AppelOffreSerializer(serializers.ModelSerializer):
+    type_marche_display = serializers.CharField(
+        source='get_type_marche_display', read_only=True)
+    statut_display = serializers.CharField(
+        source='get_statut_display', read_only=True)
+
+    class Meta:
+        model = AppelOffre
+        fields = [
+            'id', 'reference', 'objet', 'acheteur', 'type_marche',
+            'type_marche_display', 'lot', 'date_limite', 'montant_estime',
+            'caution_provisoire', 'statut', 'statut_display', 'lead_id',
+            'date_creation',
+        ]
+        read_only_fields = ['date_creation']
+
+
+# ── FG223 — Bordereaux des prix (BOQ) ──────────────────────────────────────
+
+class LigneBordereauSerializer(serializers.ModelSerializer):
+    montant_ht = serializers.DecimalField(
+        max_digits=16, decimal_places=2, read_only=True)
+
+    class Meta:
+        model = LigneBordereau
+        fields = [
+            'id', 'bordereau', 'numero', 'designation', 'unite', 'quantite',
+            'prix_unitaire', 'montant_ht',
+        ]
+
+
+class BordereauPrixSerializer(serializers.ModelSerializer):
+    lignes = LigneBordereauSerializer(many=True, read_only=True)
+    total_ht = serializers.DecimalField(
+        max_digits=18, decimal_places=2, read_only=True)
+    appel_offre_reference = serializers.CharField(
+        source='appel_offre.reference', read_only=True)
+
+    class Meta:
+        model = BordereauPrix
+        fields = [
+            'id', 'appel_offre', 'appel_offre_reference', 'intitule',
+            'lignes', 'total_ht', 'date_creation',
+        ]
+        read_only_fields = ['date_creation']
+
+
+# ── FG224 — Cautions de soumission ─────────────────────────────────────────
+
+class CautionSoumissionSerializer(serializers.ModelSerializer):
+    type_caution_display = serializers.CharField(
+        source='get_type_caution_display', read_only=True)
+    statut_display = serializers.CharField(
+        source='get_statut_display', read_only=True)
+
+    class Meta:
+        model = CautionSoumission
+        fields = [
+            'id', 'appel_offre', 'type_caution', 'type_caution_display',
+            'montant', 'banque', 'date_emission', 'date_echeance',
+            'date_restitution', 'statut', 'statut_display', 'date_creation',
+        ]
+        read_only_fields = ['date_creation']
+
+
+# ── FG225 — Dossiers et pièces de soumission ───────────────────────────────
+
+class PieceSoumissionSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = PieceSoumission
+        fields = [
+            'id', 'dossier', 'libelle', 'obligatoire', 'fournie', 'fichier',
+            'date_depot',
+        ]
+
+
+class DossierSoumissionSerializer(serializers.ModelSerializer):
+    pieces = PieceSoumissionSerializer(many=True, read_only=True)
+    complet = serializers.BooleanField(read_only=True)
+    appel_offre_reference = serializers.CharField(
+        source='appel_offre.reference', read_only=True)
+
+    class Meta:
+        model = DossierSoumission
+        fields = [
+            'id', 'appel_offre', 'appel_offre_reference', 'pieces', 'complet',
+            'date_creation',
+        ]
+        read_only_fields = ['date_creation']
+
+
+# ── FG226 — Échéances d'AO ─────────────────────────────────────────────────
+
+class EcheanceAOSerializer(serializers.ModelSerializer):
+    type_echeance_display = serializers.CharField(
+        source='get_type_echeance_display', read_only=True)
+
+    class Meta:
+        model = EcheanceAO
+        fields = [
+            'id', 'appel_offre', 'type_echeance', 'type_echeance_display',
+            'libelle', 'date_echeance', 'rappel_jours', 'traitee',
+            'date_creation',
+        ]
+        read_only_fields = ['date_creation']
+
+
+# ── FG227 — Résultats d'AO ─────────────────────────────────────────────────
+
+class ResultatAOSerializer(serializers.ModelSerializer):
+    issue_display = serializers.CharField(
+        source='get_issue_display', read_only=True)
+    ecart_prix = serializers.DecimalField(
+        max_digits=16, decimal_places=2, read_only=True, allow_null=True)
+    appel_offre_reference = serializers.CharField(
+        source='appel_offre.reference', read_only=True)
+
+    class Meta:
+        model = ResultatAO
+        fields = [
+            'id', 'appel_offre', 'appel_offre_reference', 'issue',
+            'issue_display', 'attributaire', 'notre_prix', 'prix_gagnant',
+            'ecart_prix', 'motif', 'date_resultat', 'date_creation',
+        ]
+        read_only_fields = ['date_creation']
+
+
+# ── FG228 — Comptes portail client ─────────────────────────────────────────
+
+class ComptePortailClientSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = ComptePortailClient
+        fields = [
+            'id', 'client_id', 'email', 'token_acces', 'actif',
+            'derniere_connexion', 'date_creation',
+        ]
+        read_only_fields = [
+            'token_acces', 'derniere_connexion', 'date_creation',
+        ]

@@ -24,6 +24,13 @@ from .views import (
     RetenueGarantieViewSet, RetenueSourceViewSet, SequenceRelanceViewSet,
     SessionGuidedSellingViewSet, TimbreFiscalViewSet,
     TravauxEnCoursViewSet, VirementInterneViewSet,
+    DocumentPropositionViewSet, SimulationPubliqueViewSet,
+    SimulationFinancementViewSet, OffreFinancementViewSet,
+    LigneIncitationViewSet, EcheancierPaiementViewSet, TranchePaiementViewSet,
+    ComparateurCashFinancementViewSet, AppelOffreViewSet, BordereauPrixViewSet,
+    LigneBordereauViewSet, CautionSoumissionViewSet, DossierSoumissionViewSet,
+    PieceSoumissionViewSet, EcheanceAOViewSet, ResultatAOViewSet,
+    ComptePortailClientViewSet,
 )
 
 router = DefaultRouter()
@@ -80,6 +87,25 @@ router.register(r'comparateur-devis', ComparateurDevisViewSet,
                 basename='comparateur-devis')
 router.register(r'approbations-config', DemandeApprobationConfigViewSet)
 router.register(r'ecatalogues', ECatalogueViewSet)
+# ── Financement, appels d'offres & portail (FG215–FG228) ────────────────────
+router.register(r'documents-proposition', DocumentPropositionViewSet)
+router.register(r'simulations-publiques', SimulationPubliqueViewSet)
+router.register(r'simulations-financement', SimulationFinancementViewSet)
+router.register(r'offres-financement', OffreFinancementViewSet)
+router.register(r'lignes-incitation', LigneIncitationViewSet)
+router.register(r'echeanciers-paiement', EcheancierPaiementViewSet)
+router.register(r'tranches-paiement', TranchePaiementViewSet)
+router.register(r'comparateur-financement', ComparateurCashFinancementViewSet,
+                basename='comparateur-financement')
+router.register(r'appels-offres', AppelOffreViewSet)
+router.register(r'bordereaux-prix', BordereauPrixViewSet)
+router.register(r'lignes-bordereau', LigneBordereauViewSet)
+router.register(r'cautions-soumission', CautionSoumissionViewSet)
+router.register(r'dossiers-soumission', DossierSoumissionViewSet)
+router.register(r'pieces-soumission', PieceSoumissionViewSet)
+router.register(r'echeances-ao', EcheanceAOViewSet)
+router.register(r'resultats-ao', ResultatAOViewSet)
+router.register(r'comptes-portail', ComptePortailClientViewSet)
 
 urlpatterns = [
     path('', include(router.urls)),
