@@ -1,6 +1,7 @@
 from django.contrib.contenttypes.fields import GenericForeignKey
 from django.contrib.contenttypes.models import ContentType
 from django.db import models
+from django.utils import timezone
 
 
 class TimestampedModel(models.Model):
@@ -14,6 +15,146 @@ class TimestampedModel(models.Model):
 
     class Meta:
         abstract = True
+
+
+# ---------------------------------------------------------------------------
+# FG388 — Corbeille / restauration (soft-delete + undo), standard partagé.
+#
+# Fondation GÉNÉRIQUE : ``SoftDeleteModel`` est un mixin ABSTRAIT que n'importe
+# quelle app métier peut faire hériter pour gagner un soft-delete uniforme
+# (``is_deleted`` + ``deleted_at`` + ``deleted_by``) + un manager qui masque les
+# supprimés par défaut. ``core`` reste fondation : ce mixin ne référence aucune
+# app métier (le ``deleted_by`` pointe ``authentication.CustomUser``, une app de
+# fondation). Le journal concret de corbeille/undo est ``DeletionRecord``
+# (plus bas), keyé via ``contenttypes`` — toujours sans import métier.
+# ---------------------------------------------------------------------------
+
+
+class SoftDeleteQuerySet(models.QuerySet):
+    """QuerySet avec helpers de soft-delete (masque les supprimés par défaut)."""
+
+    def alive(self):
+        return self.filter(is_deleted=False)
+
+    def dead(self):
+        return self.filter(is_deleted=True)
+
+
+class SoftDeleteManager(models.Manager):
+    """Manager par défaut : ne renvoie QUE les enregistrements vivants.
+
+    Le manager ``all_objects`` (déclaré sur le mixin) permet d'accéder aussi
+    aux supprimés (corbeille). ``get_queryset`` filtre ``is_deleted=False``.
+    """
+
+    def get_queryset(self):
+        return SoftDeleteQuerySet(self.model, using=self._db).filter(
+            is_deleted=False)
+
+
+class SoftDeleteModel(models.Model):
+    """Mixin abstrait de soft-delete réutilisable (FG388).
+
+    Hériter de ce mixin donne :
+      * ``is_deleted`` / ``deleted_at`` / ``deleted_by`` ;
+      * ``objects`` — vivants uniquement (corbeille masquée) ;
+      * ``all_objects`` — tout (pour la corbeille) ;
+      * ``soft_delete(user=None)`` / ``restore()`` — bascule + journal undo.
+
+    GÉNÉRIQUE : aucun import d'app métier. ``soft_delete`` écrit aussi un
+    ``DeletionRecord`` (corbeille par société + fenêtre d'undo) via
+    contenttypes.
+    """
+
+    is_deleted = models.BooleanField('Supprimé', default=False, db_index=True)
+    deleted_at = models.DateTimeField('Supprimé le', null=True, blank=True)
+    deleted_by = models.ForeignKey(
+        'authentication.CustomUser', on_delete=models.SET_NULL,
+        null=True, blank=True, related_name='+', verbose_name='Supprimé par')
+
+    objects = SoftDeleteManager()
+    all_objects = models.Manager()
+
+    class Meta:
+        abstract = True
+
+    def soft_delete(self, user=None, *, record=True):
+        """Marque l'objet supprimé (sans le détruire) + journalise pour l'undo.
+
+        ``record=True`` matérialise un ``DeletionRecord`` (corbeille/undo) si
+        l'objet porte une ``company`` (multi-tenant). Idempotent.
+        """
+        if self.is_deleted:
+            return self
+        self.is_deleted = True
+        self.deleted_at = timezone.now()
+        self.deleted_by = user
+        self.save(update_fields=['is_deleted', 'deleted_at', 'deleted_by'])
+        company = getattr(self, 'company', None)
+        if record and company is not None:
+            DeletionRecord.objects.create(
+                company=company,
+                content_type=ContentType.objects.get_for_model(type(self)),
+                object_id=self.pk,
+                label=str(self)[:255],
+                deleted_by=user,
+            )
+        return self
+
+    def restore(self):
+        """Restaure un objet soft-supprimé + ferme l'entrée de corbeille."""
+        if not self.is_deleted:
+            return self
+        self.is_deleted = False
+        self.deleted_at = None
+        self.deleted_by = None
+        self.save(update_fields=['is_deleted', 'deleted_at', 'deleted_by'])
+        ct = ContentType.objects.get_for_model(type(self))
+        (DeletionRecord.objects
+         .filter(content_type=ct, object_id=self.pk, restored_at__isnull=True)
+         .update(restored_at=timezone.now()))
+        return self
+
+
+class DeletionRecord(TimestampedModel):
+    """Entrée de corbeille / journal d'undo (FG388).
+
+    GÉNÉRIQUE : pointe l'objet supprimé via ``contenttypes`` (aucun import
+    métier). Une entrée par soft-delete, par société (multi-tenant). ``restore``
+    sur l'objet d'origine ferme l'entrée (``restored_at``). La « fenêtre d'undo »
+    globale est portée par ``DeletionRecord.objects.dans_fenetre(...)``
+    (service ``core.trash``).
+    """
+
+    company = models.ForeignKey(
+        'authentication.Company', on_delete=models.CASCADE,
+        related_name='deletion_records', verbose_name='Société')
+
+    content_type = models.ForeignKey(
+        ContentType, on_delete=models.CASCADE, related_name='+',
+        verbose_name='Type de document')
+    object_id = models.PositiveIntegerField('Identifiant du document')
+    target = GenericForeignKey('content_type', 'object_id')
+
+    label = models.CharField('Libellé', max_length=255, blank=True, default='')
+    deleted_by = models.ForeignKey(
+        'authentication.CustomUser', on_delete=models.SET_NULL,
+        null=True, blank=True, related_name='+', verbose_name='Supprimé par')
+    restored_at = models.DateTimeField('Restauré le', null=True, blank=True)
+
+    class Meta:
+        verbose_name = 'Entrée de corbeille'
+        verbose_name_plural = 'Entrées de corbeille'
+        ordering = ['-id']
+        indexes = [
+            models.Index(fields=['company', 'restored_at'],
+                         name='core_trash_co_restored_idx'),
+            models.Index(fields=['content_type', 'object_id'],
+                         name='core_trash_target_idx'),
+        ]
+
+    def __str__(self):
+        return f'Corbeille #{self.pk} — {self.label}'
 
 
 class AnomalyFlag(TimestampedModel):

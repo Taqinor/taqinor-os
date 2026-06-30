@@ -7,6 +7,7 @@ from rest_framework import serializers
 
 from .models import (
     Dashboard,
+    DeletionRecord,
     PaymentTransaction,
     SavedQuery,
     ScheduledExport,
@@ -111,3 +112,24 @@ class ScheduledExportSerializer(serializers.ModelSerializer):
             'id', 'derniere_execution_le', 'dernier_statut', 'dernier_detail',
             'created_at', 'updated_at',
         ]
+
+
+class DeletionRecordSerializer(serializers.ModelSerializer):
+    """FG388 — entrée de corbeille (lecture seule + restauration via action).
+
+    ``model_label`` expose le type de la cible (app.modele) sans révéler de
+    modèle métier côté core.
+    """
+    model_label = serializers.SerializerMethodField()
+
+    class Meta:
+        model = DeletionRecord
+        fields = [
+            'id', 'label', 'model_label', 'object_id', 'deleted_by',
+            'restored_at', 'created_at',
+        ]
+        read_only_fields = fields
+
+    def get_model_label(self, obj):
+        ct = obj.content_type
+        return f'{ct.app_label}.{ct.model}' if ct else ''

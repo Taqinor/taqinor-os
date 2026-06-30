@@ -33,16 +33,19 @@ from . import data_explorer
 from . import jobs as jobs_infra
 from . import payment as payment_infra
 from . import scheduled_export as scheduled_export_infra
+from . import trash as trash_infra
 from . import workflow_templates
 from .mixins import TenantMixin
 from .models import (
     Dashboard,
+    DeletionRecord,
     PaymentTransaction,
     SavedQuery,
     ScheduledExport,
 )
 from .serializers import (
     DashboardSerializer,
+    DeletionRecordSerializer,
     PaymentTransactionSerializer,
     SavedQuerySerializer,
     ScheduledExportSerializer,
@@ -320,3 +323,38 @@ class ScheduledExportViewSet(TenantMixin, viewsets.ModelViewSet):
         export = self.get_object()
         scheduled_export_infra.executer(export)
         return Response(self.get_serializer(export).data)
+
+
+class TrashViewSet(TenantMixin, viewsets.ReadOnlyModelViewSet):
+    """FG388 — corbeille par société + restauration + fenêtre d'undo.
+
+    Multi-tenant : ``TenantMixin`` filtre par société. Lecture seule + une
+    action de restauration ; aucune importation d'app domaine — la cible est
+    restaurée dynamiquement via ``content_type`` (``core.trash``).
+
+      * ``GET  …/corbeille/``            — entrées non restaurées de la société ;
+      * ``GET  …/corbeille/?undo=1``     — uniquement la fenêtre d'« annuler » ;
+      * ``POST …/corbeille/{id}/restaurer/`` — restaure l'objet d'origine.
+    """
+    serializer_class = DeletionRecordSerializer
+    permission_classes = [IsAuthenticated]
+    queryset = DeletionRecord.objects.all()
+    pagination_class = None
+
+    def get_queryset(self):
+        qs = super().get_queryset().filter(restored_at__isnull=True)
+        if self.request.query_params.get('undo'):
+            ids = trash_infra.dans_fenetre_undo(
+                self.request.user.company).values_list('id', flat=True)
+            qs = qs.filter(id__in=list(ids))
+        return qs
+
+    @action(detail=True, methods=['post'])
+    def restaurer(self, request, pk=None):
+        record = self.get_object()
+        obj = trash_infra.restaurer(record)
+        record.refresh_from_db()
+        return Response({
+            'restored': obj is not None,
+            'record': self.get_serializer(record).data,
+        })

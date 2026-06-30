@@ -24,6 +24,7 @@ from .views import (
     SavedQueryViewSet,
     ScheduledExportViewSet,
     ScheduledJobViewSet,
+    TrashViewSet,
     WorkflowTemplateViewSet,
 )
 
@@ -41,5 +42,7 @@ router.register(r'saved-queries', SavedQueryViewSet, basename='saved-query')
 # FG383 — extraits planifiés vers SFTP/S3 (gated).
 router.register(r'scheduled-exports', ScheduledExportViewSet,
                 basename='scheduled-export')
+# FG388 — corbeille par société + restauration + fenêtre d'undo.
+router.register(r'corbeille', TrashViewSet, basename='trash')
 
 urlpatterns = router.urls
