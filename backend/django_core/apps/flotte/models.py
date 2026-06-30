@@ -2162,3 +2162,125 @@ class Sinistre(models.Model):
     def __str__(self):
         return (f'Sinistre {self.get_type_sinistre_display()} — '
                 f'{self.actif_flotte} ({self.date_sinistre})')
+
+
+# ── FLOTTE26 — Infractions / PV de circulation ────────────────────────────────
+
+class Infraction(models.Model):
+    """PV de circulation / infraction routière contre un actif de flotte (FLOTTE26).
+
+    Enregistre un procès-verbal (PV) dressé contre un véhicule ou un engin du
+    parc : la date, le type (excès de vitesse, stationnement, feu rouge,
+    document, autre), le lieu, la référence du PV, le montant de l'amende, le PV
+    scanné (facultatif) et le statut de traitement (à payer → payée / contestée
+    / classée). Le conducteur tenu pour responsable au moment des faits est
+    optionnellement rattaché (FK ``Conducteur``, FLOTTE7, même app — nullable :
+    un PV peut être reçu sans conducteur identifié).
+
+    **Multi-tenant** : ``company`` est posée côté serveur (jamais lue du corps de
+    requête). L'actif lié (``actif_flotte``, véhicule OU engin) ET le conducteur
+    lié (si renseigné) doivent appartenir à la MÊME société (validé dans
+    ``clean`` et au sérialiseur).
+    """
+
+    class TypeInfraction(models.TextChoices):
+        EXCES_VITESSE = 'exces_vitesse', 'Excès de vitesse'
+        STATIONNEMENT = 'stationnement', 'Stationnement'
+        FEU_ROUGE = 'feu_rouge', 'Feu rouge'
+        DOCUMENT = 'document', 'Défaut de document'
+        AUTRE = 'autre', 'Autre'
+
+    class Statut(models.TextChoices):
+        A_PAYER = 'a_payer', 'À payer'
+        PAYEE = 'payee', 'Payée'
+        CONTESTEE = 'contestee', 'Contestée'
+        CLASSEE = 'classee', 'Classée'
+
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='flotte_infractions',
+        verbose_name='Société',
+    )
+    actif_flotte = models.ForeignKey(
+        'ActifFlotte',
+        on_delete=models.CASCADE,
+        related_name='flotte_infractions',
+        verbose_name='Actif (véhicule ou engin)',
+    )
+    conducteur = models.ForeignKey(
+        'Conducteur',
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='flotte_infractions',
+        verbose_name='Conducteur responsable',
+    )
+    date_infraction = models.DateField(verbose_name="Date de l'infraction")
+    # 'exces_vitesse' (13) est le plus long code de type.
+    type_infraction = models.CharField(
+        max_length=13, choices=TypeInfraction.choices,
+        default=TypeInfraction.EXCES_VITESSE,
+        verbose_name="Type d'infraction")
+    lieu = models.CharField(
+        max_length=255, blank=True, verbose_name='Lieu')
+    reference_pv = models.CharField(
+        max_length=80, blank=True, verbose_name='Référence du PV')
+    montant_amende = models.DecimalField(
+        max_digits=12, decimal_places=2, null=True, blank=True,
+        verbose_name="Montant de l'amende (MAD)")
+    # PV scanné — même convention de storage que les autres documents flotte
+    # (cf. ``Sinistre.constat_fichier``).
+    pv_fichier = models.FileField(
+        upload_to='flotte/infractions/pv/%Y/%m/',
+        blank=True, null=True, verbose_name='PV scanné')
+    # 'contestee' (9) est le plus long code de statut.
+    statut = models.CharField(
+        max_length=9, choices=Statut.choices, default=Statut.A_PAYER,
+        verbose_name='Statut')
+    date_paiement = models.DateField(
+        null=True, blank=True, verbose_name='Date de paiement')
+    notes = models.TextField(blank=True, verbose_name='Notes')
+    date_creation = models.DateTimeField(
+        auto_now_add=True, verbose_name='Créé le')
+
+    class Meta:
+        verbose_name = 'Infraction / PV'
+        verbose_name_plural = 'Infractions / PV'
+        ordering = ['-date_infraction', '-id']
+        indexes = [
+            models.Index(
+                fields=['company', 'statut'],
+                name='flotte_inf_co_stat_idx',
+            ),
+            models.Index(
+                fields=['company', 'actif_flotte'],
+                name='flotte_inf_co_actif_idx',
+            ),
+            models.Index(
+                fields=['company', 'type_infraction'],
+                name='flotte_inf_co_type_idx',
+            ),
+            models.Index(
+                fields=['company', 'date_infraction'],
+                name='flotte_inf_co_date_idx',
+            ),
+        ]
+
+    def clean(self):
+        """Valide l'appartenance société de l'actif et du conducteur liés, ainsi
+        que la cohérence du montant."""
+        if self.actif_flotte_id is not None \
+                and self.actif_flotte.company_id != self.company_id:
+            raise ValidationError(
+                "L'actif n'appartient pas à la même société.")
+        if self.conducteur_id is not None \
+                and self.conducteur.company_id != self.company_id:
+            raise ValidationError(
+                "Le conducteur n'appartient pas à la même société.")
+        if self.montant_amende is not None and self.montant_amende < 0:
+            raise ValidationError(
+                "Le montant de l'amende ne peut pas être négatif.")
+
+    def __str__(self):
+        return (f'PV {self.get_type_infraction_display()} — '
+                f'{self.actif_flotte} ({self.date_infraction})')
