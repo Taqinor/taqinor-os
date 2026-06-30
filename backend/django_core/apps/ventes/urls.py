@@ -39,6 +39,7 @@ from .extra_docs_views import lettre_relance_premium, fiche_remise_premium
 from .diagram_views import schema_unifilaire, schema_unifilaire_devis  # FG252
 from .roof_load_view import roof_load_check  # FG253
 from .connection_declaration_view import declaration_raccordement  # FG272
+from .calendrier_view import calendrier_reglementaire  # FG273
 
 router = DefaultRouter()
 router.register(r'devis', DevisViewSet)
@@ -137,5 +138,8 @@ urlpatterns = [
     path('dashboard/', dashboard_quote_to_cash, name='ventes-dashboard'),
     # FG47 — prévision cash-flow / encaissements à venir (lecture seule).
     path('insights/cash-flow/', cash_flow_forecast, name='ventes-cash-flow'),
+    # FG273 — calendrier réglementaire & alertes d'expiration (lecture seule).
+    path('calendrier-reglementaire/', calendrier_reglementaire,
+         name='calendrier-reglementaire'),
     path('', include(router.urls)),
 ]
