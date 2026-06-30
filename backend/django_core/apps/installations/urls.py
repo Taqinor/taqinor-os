@@ -24,6 +24,7 @@ from .views import (
     RFQOffreViewSet,
     SeuilApprobationBCFViewSet,
     ApprobationBCFViewSet,
+    ControleBudgetaireCommandeView,
 )
 
 router = DefaultRouter()
@@ -64,5 +65,8 @@ router.register(r'approbations-bcf', ApprobationBCFViewSet)
 urlpatterns = [
     # N91/F21 — synchro idempotente de la capture terrain hors-ligne.
     path('sync/', FieldSyncView.as_view(), name='installations-field-sync'),
+    # FG313 — contrôle budgétaire consultatif avant commande.
+    path('controle-budgetaire/', ControleBudgetaireCommandeView.as_view(),
+         name='installations-controle-budgetaire'),
     path('', include(router.urls)),
 ]

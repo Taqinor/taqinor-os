@@ -1332,3 +1332,54 @@ def palier_requis_bcf(company, montant):
     if seuil is None:
         return PALIER_ADMIN
     return seuil.palier_requis(montant)
+
+
+def controle_budgetaire_commande(company, montant, *, projet_id=None,
+                                 categorie='materiel'):
+    """FG313 — contrôle budgétaire AVANT de valider une commande : un montant
+    d'achat prévu tient-il dans le budget restant du programme ?
+
+    Compare ``montant`` au reste de la catégorie (``materiel`` par défaut) du
+    ``BudgetProjet`` du programme (engagé déjà déduit), et au reste total. Sans
+    budget configuré pour le programme, on n'a pas de référence : ``controle =
+    'non_configure'`` (l'appelant décide — on ne bloque pas faute de budget).
+    Lecture seule, import-linter safe. Montants INTERNES. Renvoie un dict plat."""
+    from decimal import Decimal
+    from .models import BudgetProjet
+
+    montant = _dec(montant)
+    if not projet_id:
+        return {
+            'controle': 'non_configure',
+            'depasse': False,
+            'reste_categorie': None,
+            'reste_total': None,
+            'montant': float(montant),
+        }
+    budget = (BudgetProjet.objects
+              .filter(company=company, projet_id=projet_id)
+              .select_related('projet')
+              .first())
+    if budget is None:
+        return {
+            'controle': 'non_configure',
+            'depasse': False,
+            'reste_categorie': None,
+            'reste_total': None,
+            'montant': float(montant),
+        }
+    synthese = budget_projet_synthese(budget)
+    budget_cat = Decimal(str(synthese['budget'].get(categorie, 0)))
+    engage_cat = Decimal(str(synthese['engage'].get(categorie, 0)))
+    reste_cat = budget_cat - engage_cat
+    reste_total = Decimal(str(synthese['budget']['total'])) - Decimal(
+        str(synthese['engage']['total']))
+    depasse = montant > reste_cat
+    return {
+        'controle': 'ok' if not depasse else 'depassement',
+        'depasse': depasse,
+        'categorie': categorie,
+        'reste_categorie': float(reste_cat),
+        'reste_total': float(reste_total),
+        'montant': float(montant),
+    }

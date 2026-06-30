@@ -35,6 +35,7 @@ from .rfq import RFQViewSet, RFQOffreViewSet
 from .approbation_bcf import (
     SeuilApprobationBCFViewSet, ApprobationBCFViewSet,
 )
+from .controle_budgetaire import ControleBudgetaireCommandeView
 from .field_sync import FieldSyncView
 
 __all__ = [
@@ -72,5 +73,6 @@ __all__ = [
     'RFQOffreViewSet',
     'SeuilApprobationBCFViewSet',
     'ApprobationBCFViewSet',
+    'ControleBudgetaireCommandeView',
     'FieldSyncView',
 ]
