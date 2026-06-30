@@ -570,7 +570,7 @@ first run that ticks any `FG*` task refreshes CODEMAP §10 + `--write` in that c
 - [x] FG182 — **Presqu'accidents (near-miss)** — saisie rapide terrain pour pilotage proactif. (ROUTINE)
 - [x] FG183 — **Causeries sécurité / toolbox talks** — quart d'heure sécurité avant chantier (thème/participants/émargement). (SCHEMA)
 - [x] FG184 — **Analyse de risques chantier (plan de prévention)** — évaluation des risques par chantier avant démarrage (≠ checklist F18 par intervention). (SCHEMA)
-- [ ] FG185 — **Tableau de bord HSE** — taux fréquence/gravité, EPI/habilitations/visites en alerte, incidents par chantier. (ROUTINE)
+- [x] FG185 — **Tableau de bord HSE** — taux fréquence/gravité, EPI/habilitations/visites en alerte, incidents par chantier. (ROUTINE)
 - [ ] FG186 — **Permis de travail (hauteur/électrique/consignation)** — délivrance/clôture par tâche à risque, trace la consignation avant intervention. (SCHEMA)
 - [ ] FG187 — **Gestion de la formation** — sessions (interne/externe), inscriptions, présence, coût → alimente la matrice de compétences. (SCHEMA)
 - [ ] FG188 — **Plan & registre de formation** — historique par employé + besoins (obligations OFPPT/CSF). (ROUTINE)
@@ -963,7 +963,7 @@ these overlap and SUPERSEDE the domain-list FG items as the module-organized hom
 - [x] GED23 — Archivage légal à valeur probante (write-once/object-lock). (DECISION)
 - [x] GED24 — Rétention légale / legal hold. (SCHEMA)
 - [ ] GED25 — Purge automatique & tâche planifiée (dry-run d'abord). (DEP+DECISION)
-- [ ] GED26 — Corbeille & restauration. (SCHEMA)
+- [x] GED26 — Corbeille & restauration. (SCHEMA)
 - [ ] GED27 — Modèles de documents (fusion/mailing → PDF WeasyPrint, hors /proposal). (ROUTINE)
 - [ ] GED28 — Génération de document → classement automatique. (ROUTINE)
 - [ ] GED29 — Filage des PDF après-vente générés (depuis `documents`). (ROUTINE)
@@ -1001,7 +1001,7 @@ these overlap and SUPERSEDE the domain-list FG items as the module-organized hom
 - [x] FLOTTE20 — Vignette / TSAV (barème CV/énergie, référentiel éditable). (ROUTINE)
 - [x] FLOTTE21 — Assurance auto (police/échéance/attestation/franchise). (ROUTINE)
 - [x] FLOTTE22 — Visite technique (validité paramétrable). (ROUTINE)
-- [ ] FLOTTE23 — Carte grise & autorisation de circulation (GED). (SCHEMA)
+- [x] FLOTTE23 — Carte grise & autorisation de circulation (GED). (SCHEMA)
 - [ ] FLOTTE24 — Moteur d'alertes d'échéances réglementaires (J-30/15/7/échu). (ROUTINE)
 - [ ] FLOTTE25 — `Sinistre` (accident/constat/assurance). (SCHEMA)
 - [ ] FLOTTE26 — `Infraction` / PV de circulation. (SCHEMA)
@@ -1043,8 +1043,8 @@ these overlap and SUPERSEDE the domain-list FG items as the module-organized hom
 - [x] QHSE24 — Consignation électrique (LOTO) sur permis électrique. (ROUTINE)
 - [x] QHSE25 — Alerte expiration de permis. (ROUTINE)
 - [x] QHSE26 — `InductionSecurite` (accueil sécurité site, incl. sous-traitants). (SCHEMA)
-- [ ] QHSE27 — `CauserieSecurite` (toolbox talks + émargement). (SCHEMA)
-- [ ] QHSE28 — `PlanUrgence` / premiers secours (contacts/secouristes/point de rassemblement). (SCHEMA)
+- [x] QHSE27 — `CauserieSecurite` (toolbox talks + émargement). (SCHEMA) [DONE (already present) 2026-06-30: déjà couvert par FG183 (`rh.CauserieSecurite` + `CauserieParticipant`, émargement) livré dans le même run ; aucun doublon créé en qhse.]
+- [x] QHSE28 — `PlanUrgence` / premiers secours (contacts/secouristes/point de rassemblement). (SCHEMA)
 - [ ] QHSE29 — Registre `Incident` (accident/presqu'accident/incident). (SCHEMA)
 - [ ] QHSE30 — Déclaration CNSS de l'accident du travail (échéance légale). (DECISION)
 - [ ] QHSE31 — `AnalyseIncident` (arbre des causes) → CAPA. (SCHEMA)
@@ -1080,7 +1080,7 @@ these overlap and SUPERSEDE the domain-list FG items as the module-organized hom
 - [x] CONTRAT18 — `VersionContrat` (versionnage immuable des rendus). (SCHEMA)
 - [x] CONTRAT19 — Dépôt en GED des versions & PDF signés. (ROUTINE)
 - [x] CONTRAT20 — Dates clés (début/fin/préavis) + tacite reconduction. (SCHEMA)
-- [ ] CONTRAT21 — Calcul des échéances & contrats « à renouveler ». (ROUTINE)
+- [x] CONTRAT21 — Calcul des échéances & contrats « à renouveler ». (ROUTINE)
 - [ ] CONTRAT22 — `AlerteContrat` + rappels via notifications. (ROUTINE)
 - [ ] CONTRAT23 — Renouvellement (manuel + reconduction tacite). (ROUTINE)
 - [ ] CONTRAT24 — `Avenant` (amendements → nouvelle version). (SCHEMA)
@@ -1715,3 +1715,9 @@ Tracked here so they aren't lost:
 - 2026-06-30 — QHSE26 (apps/qhse): InductionSecurite (accueil sécurité site, incl. sous-traitants) — modèle `InductionSecurite` (chantier string-ref, personne nommée — gère les externes via `est_sous_traitant`/`entreprise_externe` —, employé interne optionnel, thèmes, acquittement horodaté via action `acquitter`, validité optionnelle), viewset société-scopé. Migration qhse 0017 additive, ~17 tests.
 - 2026-06-30 — CONTRAT20 (apps/contrats): Dates clés (début/fin/préavis) + tacite reconduction — champs additifs sur `Contrat` (`preavis_jours`, `tacite_reconduction`, `duree_reconduction_mois`, `preavis_traite`) + méthodes `echeance_preavis`/`jours_avant_preavis`, sélecteur `contrats_a_preavis` + action `preavis/?within=N`. Migration contrats 0015 additive, ~20 tests. (review: annotation du sélecteur renommée `echeance_preavis_calc` pour ne pas masquer la méthode-modèle homonyme.)
 - 2026-06-30 — GED24 (apps/ged): Rétention légale / legal hold — modèle `LegalHold` (motif, posé par, actif, levée tracée), services `placer_legal_hold`/`lever_legal_hold` idempotents, blocage de suppression à DEUX niveaux (`Document.delete()` → `LegalHoldError`, `DocumentViewSet.perform_destroy` → 403 jamais 500), indépendant des politiques de rétention GED22 et de l'archivage GED23. Migration ged 0018 additive, ~30 tests.
+- 2026-06-30 — FG185 (apps/rh): Tableau de bord HSE — sélecteur d'agrégation `tableau_bord_hse(company, within_days)` (taux de fréquence/gravité BIT/INRS calculés sur les heures travaillées FeuilleTemps, division par zéro gardée → None ; alertes d'expiration habilitations/certifications/visites/EPI ; presqu'accidents groupés par chantier) + endpoint lecture seule `tableau-bord-hse`. Aucune migration (lecture seule), ~13 tests.
+- 2026-06-30 — FLOTTE23 (apps/flotte): Carte grise & autorisation de circulation — modèle `CarteGriseVehicule` (numéro carte grise, dates immatriculation/mise en circulation, autorisation de circulation + validité, fichiers scannés en FileField, `statut_calcule` + action `expirantes`), stocké côté flotte (pas de couplage GED). Migration flotte 0021 additive, ~25 tests.
+- 2026-06-30 — CONTRAT21 (apps/contrats): Calcul des échéances & contrats à renouveler — sélecteur `contrats_a_renouveler(company, within_days)` (contrats dont `date_fin` tombe dans la fenêtre, tacite reconduction exposée pas exclue) + méthode `jours_avant_echeance` + action `a-renouveler/?within=N`, complémentaire (pas doublon) du préavis CONTRAT20. Aucune migration (réutilise `date_fin`), ~20 tests.
+- 2026-06-30 — QHSE28 (apps/qhse): PlanUrgence / premiers secours — modèles `PlanUrgence` (point de rassemblement, hôpital proche, révision) + `ContactUrgence` (pompiers/SAMU/police/interne) + `Secouriste` (interne via `rh.DossierEmploye` ou externe nommé, certification/validité), viewsets société-scopés. Migration qhse 0018 additive, ~tests multi-classes.
+- 2026-06-30 — GED26 (apps/ged): Corbeille & restauration (soft-delete) — champs additifs `Document.supprime_le`/`supprime_par`, services `mettre_en_corbeille`/`restaurer_de_corbeille`/`purger_definitivement`, DELETE recâblé en soft-delete (la liste par défaut exclut la corbeille, endpoint `corbeille` + actions `restaurer`/`purger`), guards GED23 (archivage write-once) + GED24 (legal hold) préservés → 403 jamais 500. Migration ged 0019 additive, ~24 tests. (review: 2 tests ged préexistants qui supposaient le hard-delete mis à jour pour le soft-delete.)
+- 2026-06-30 — QHSE27 (apps/qhse): `CauserieSecurite` (toolbox talks + émargement) — `[x] (already present)` : déjà couvert par FG183 (`rh.CauserieSecurite` + `CauserieParticipant`, émargement) livré dans le même run ; pas de doublon créé en qhse.
