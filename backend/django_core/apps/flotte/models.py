@@ -82,6 +82,19 @@ class Vehicule(models.Model):
     # société » se fait côté serveur via le sélecteur de `apps.stock`.
     emplacement_stock_id = models.PositiveIntegerField(
         null=True, blank=True, verbose_name='Emplacement de stock (id)')
+    # FLOTTE30 — lien VERS l'immobilisation comptable (`compta.Immobilisation`)
+    # du véhicule, via un FK référencé par CHAÎNE (jamais un import croisé des
+    # modèles compta). null = véhicule non rattaché au registre des
+    # immobilisations. L'amortissement (VNC) du véhicule est LU au travers de
+    # `selectors.amortissement_vehicule`, qui passe par les sélecteurs de
+    # `apps.compta` — la flotte n'écrit jamais le module comptable.
+    immobilisation = models.ForeignKey(
+        'compta.Immobilisation',
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='vehicules_flotte',
+        verbose_name='Immobilisation comptable',
+    )
     date_creation = models.DateTimeField(
         auto_now_add=True, verbose_name='Créé le')
 
