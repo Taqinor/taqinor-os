@@ -1019,3 +1019,81 @@ class CumulAnnuel(models.Model):
 
     def __str__(self):
         return f'Cumul {self.annee} profil #{self.profil_id}'
+
+
+# ── PAIE28 — Avance / prêt salarié + déduction mensuelle ────────────────────
+
+class AvanceSalarie(models.Model):
+    """Avance ou prêt accordé à un salarié, remboursé par retenue (PAIE28).
+
+    Couvre l'avance PONCTUELLE (``nombre_echeances=1``) comme le PRÊT étalé sur
+    plusieurs mois (``nombre_echeances>1``). Chaque mois ouvré, une ÉCHÉANCE
+    (``montant_echeance``) est retenue sur le bulletin tant que le solde restant
+    n'est pas épuisé. Le ``montant_echeance`` est calculé à la création
+    (``montant_total / nombre_echeances``) mais reste éditable.
+
+    Le suivi du remboursement se fait par ``montant_rembourse`` (cumul retenu) :
+    le SOLDE restant = ``montant_total − montant_rembourse``. Une avance est
+    ACTIVE tant qu'elle n'est pas soldée (``solde > 0``) et que ``actif`` est vrai
+    et que la ``date_debut`` est atteinte. Multi-société : ``company`` posée côté
+    serveur. ``profil`` (FK ``ProfilPaie``) rattache l'avance à l'employé.
+    """
+    TYPE_AVANCE = 'avance'
+    TYPE_PRET = 'pret'
+    TYPE_CHOICES = [
+        (TYPE_AVANCE, 'Avance sur salaire'),
+        (TYPE_PRET, 'Prêt salarié'),
+    ]
+
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='paie_avances',
+        verbose_name='Société',
+    )
+    profil = models.ForeignKey(
+        ProfilPaie,
+        on_delete=models.CASCADE,
+        related_name='avances',
+        verbose_name='Profil de paie',
+    )
+    type = models.CharField(
+        max_length=10, choices=TYPE_CHOICES, default=TYPE_AVANCE,
+        verbose_name='Type')
+    libelle = models.CharField(
+        max_length=120, blank=True, default='', verbose_name='Libellé')
+    montant_total = models.DecimalField(
+        max_digits=14, decimal_places=2, default=Decimal('0'),
+        verbose_name='Montant total accordé')
+    montant_echeance = models.DecimalField(
+        max_digits=14, decimal_places=2, default=Decimal('0'),
+        verbose_name='Montant de l\'échéance mensuelle')
+    nombre_echeances = models.PositiveSmallIntegerField(
+        default=1, verbose_name='Nombre d\'échéances')
+    montant_rembourse = models.DecimalField(
+        max_digits=14, decimal_places=2, default=Decimal('0'),
+        verbose_name='Montant déjà remboursé')
+    date_debut = models.DateField(verbose_name='Date de début de retenue')
+    actif = models.BooleanField(default=True, verbose_name='Actif')
+    date_creation = models.DateTimeField(
+        auto_now_add=True, verbose_name='Créé le')
+
+    class Meta:
+        verbose_name = 'Avance / prêt salarié'
+        verbose_name_plural = 'Avances / prêts salariés'
+        ordering = ['-date_creation']
+
+    def __str__(self):
+        return f'{self.get_type_display()} {self.montant_total} → profil #{self.profil_id}'
+
+    @property
+    def solde_restant(self):
+        """Solde encore dû = montant total − montant déjà remboursé (>= 0)."""
+        solde = (self.montant_total or Decimal('0')) \
+            - (self.montant_rembourse or Decimal('0'))
+        return solde if solde > 0 else Decimal('0')
+
+    @property
+    def soldee(self):
+        """Vrai quand l'avance est entièrement remboursée."""
+        return self.solde_restant <= 0

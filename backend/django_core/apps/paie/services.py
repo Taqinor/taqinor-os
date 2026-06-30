@@ -939,6 +939,84 @@ def provision_conges_payes(profil, periode, jours_acquis=None):
     return _q(jours_acquis * taux_jour)
 
 
+# ── PAIE28 — Avance / prêt salarié : échéance mensuelle déduite du bulletin ──
+
+def echeance_avance(avance, le_jour):
+    """Échéance retenue sur le bulletin pour une avance, au mois ``le_jour``.
+
+    Renvoie le montant à retenir pour le mois donné :
+
+    * ``0`` si l'avance est inactive, soldée, ou si sa retenue n'a pas encore
+      commencé (``date_debut`` postérieure au mois) ;
+    * sinon ``min(montant_echeance, solde_restant)`` — la dernière échéance ne
+      retient jamais plus que ce qui reste dû.
+
+    Pur (aucun effet de bord). Decimal au centime.
+    """
+    if avance is None or not avance.actif:
+        return Decimal('0.00')
+    if avance.solde_restant <= 0:
+        return Decimal('0.00')
+    if avance.date_debut is not None and avance.date_debut > le_jour:
+        return Decimal('0.00')
+    echeance = Decimal(avance.montant_echeance or 0)
+    if echeance <= 0:
+        return Decimal('0.00')
+    return _q(min(echeance, avance.solde_restant))
+
+
+def echeances_avances_periode(profil, periode):
+    """Total des échéances d'avances/prêts à retenir pour ``profil`` sur ``periode``.
+
+    Somme des ``echeance_avance`` de toutes les avances ACTIVES non soldées du
+    profil au 1ᵉʳ du mois de la période. Pur (lecture seule). Renvoie un
+    ``Decimal`` >= 0 au centime, et la liste des lignes
+    ``[(avance, montant), …]`` pour traçabilité.
+    """
+    from .models import AvanceSalarie
+
+    le_jour = date(periode.annee, periode.mois, 1)
+    total = Decimal('0')
+    lignes = []
+    avances = AvanceSalarie.objects.filter(
+        company=profil.company, profil=profil, actif=True)
+    for avance in avances:
+        montant = echeance_avance(avance, le_jour)
+        if montant > 0:
+            total += montant
+            lignes.append((avance, montant))
+    return _q(total), lignes
+
+
+def appliquer_remboursements_avances(profil, periode):
+    """Impute les échéances d'avances du mois (incrémente ``montant_rembourse``).
+
+    Effet de bord : pour chaque avance active non soldée, ajoute l'échéance du
+    mois à ``montant_rembourse`` (bornée au solde restant). À appeler UNE fois,
+    au moment où le bulletin est validé (jamais au simple recalcul d'un
+    brouillon, pour ne pas double-compter). Opération atomique. Renvoie le total
+    imputé (``Decimal``).
+    """
+    from .models import AvanceSalarie
+
+    le_jour = date(periode.annee, periode.mois, 1)
+    total = Decimal('0')
+    with transaction.atomic():
+        avances = (
+            AvanceSalarie.objects
+            .select_for_update()
+            .filter(company=profil.company, profil=profil, actif=True)
+        )
+        for avance in avances:
+            montant = echeance_avance(avance, le_jour)
+            if montant > 0:
+                avance.montant_rembourse = _q(
+                    Decimal(avance.montant_rembourse or 0) + montant)
+                avance.save(update_fields=['montant_rembourse'])
+                total += montant
+    return _q(total)
+
+
 # ── PAIE20 — Cotisation CIMR OPTIONNELLE (taux par employé adhérent) ─────────
 
 def cimr_salariale(brut, affilie=False, taux=Decimal('0')):
@@ -1172,6 +1250,21 @@ def calculer_bulletin(profil, periode, personnes_a_charge=0):
         ir = compute_ir(net_imposable, bareme, parametre, personnes_a_charge)
     ir = _q(ir)
 
+    # PAIE28 — Échéances d'avances/prêts salariés du mois : retenues nettes
+    # (après IR, comme toute retenue de net). Calcul PUR ici — l'imputation
+    # effective de ``montant_rembourse`` se fait à la validation du bulletin
+    # (``valider_bulletin`` → ``appliquer_remboursements_avances``).
+    echeances_avances, lignes_avances = echeances_avances_periode(
+        profil, periode)
+    for avance, montant in lignes_avances:
+        retenues_variables += montant
+        lignes.append({
+            'code': 'AVANCE',
+            'libelle': avance.libelle or avance.get_type_display(),
+            'type': Rubrique.TYPE_RETENUE,
+            'montant': _q(montant),
+        })
+
     # 8. Net à payer (− retenues variables type avances).
     net_a_payer = brut - cnss - amo - cimr - ir - retenues_variables
     net_a_payer = _q(net_a_payer)
@@ -1301,6 +1394,11 @@ def valider_bulletin(bulletin):
     bulletin.statut = BulletinPaie.STATUT_VALIDE
     bulletin.date_validation = timezone.now()
     bulletin.save(update_fields=['statut', 'date_validation'])
+    # PAIE28 — Impute les échéances d'avances/prêts du mois (incrémente
+    # ``montant_rembourse``) UNE seule fois, à la validation (jamais au recalcul
+    # d'un brouillon). Le bulletin étant figé après validation, ce remboursement
+    # n'est pas rejoué.
+    appliquer_remboursements_avances(bulletin.profil, bulletin.periode)
     return bulletin
 
 

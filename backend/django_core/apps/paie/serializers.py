@@ -7,6 +7,7 @@ appartenant à la société de l'utilisateur.
 from rest_framework import serializers
 
 from .models import (
+    AvanceSalarie,
     BaremeIR,
     BulletinPaie,
     CumulAnnuel,
@@ -283,6 +284,32 @@ class BulletinPaieSerializer(serializers.ModelSerializer):
             'date_validation', 'date_creation', 'lignes',
         ]
         read_only_fields = fields
+
+
+class AvanceSalarieSerializer(serializers.ModelSerializer):
+    """Avance / prêt salarié remboursé par déduction mensuelle (PAIE28).
+
+    ``company`` posée côté serveur ; ``profil`` validé comme appartenant à la
+    société de l'utilisateur. ``montant_rembourse`` est en LECTURE SEULE : il
+    n'est jamais saisi côté client, il est incrémenté par le service à la
+    validation des bulletins (``appliquer_remboursements_avances``). Les
+    propriétés ``solde_restant`` / ``soldee`` sont exposées en lecture.
+    """
+    solde_restant = serializers.DecimalField(
+        max_digits=14, decimal_places=2, read_only=True)
+    soldee = serializers.BooleanField(read_only=True)
+
+    class Meta:
+        model = AvanceSalarie
+        fields = [
+            'id', 'profil', 'type', 'libelle', 'montant_total',
+            'montant_echeance', 'nombre_echeances', 'montant_rembourse',
+            'solde_restant', 'soldee', 'date_debut', 'actif', 'date_creation',
+        ]
+        read_only_fields = ['montant_rembourse', 'date_creation']
+
+    def validate_profil(self, value):
+        return _meme_societe(self, value, 'Profil')
 
 
 class CumulAnnuelSerializer(serializers.ModelSerializer):

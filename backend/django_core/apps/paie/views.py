@@ -13,6 +13,7 @@ from authentication.mixins import TenantMixin
 from authentication.permissions import IsResponsableOrAdmin
 
 from .models import (
+    AvanceSalarie,
     BaremeIR,
     BulletinPaie,
     CumulAnnuel,
@@ -24,6 +25,7 @@ from .models import (
     RubriqueEmploye,
 )
 from .serializers import (
+    AvanceSalarieSerializer,
     BaremeIRSerializer,
     BulletinPaieSerializer,
     CumulAnnuelSerializer,
@@ -265,6 +267,19 @@ class BulletinPaieViewSet(TenantMixin, viewsets.ReadOnlyModelViewSet):
         valider_bulletin(bulletin)
         return Response(
             self.get_serializer(bulletin).data, status=status.HTTP_200_OK)
+
+
+class AvanceSalarieViewSet(_PaieBaseViewSet):
+    """Avances / prêts salariés (PAIE28) — société scopée, palier paie.
+
+    L'avance se rembourse automatiquement par retenue mensuelle sur le bulletin
+    (calcul dans ``calculer_bulletin`` ; imputation effective à la validation du
+    bulletin). ``montant_rembourse`` n'est jamais écrit via l'API.
+    """
+    queryset = AvanceSalarie.objects.select_related('profil').all()
+    serializer_class = AvanceSalarieSerializer
+    filter_backends = [filters.OrderingFilter]
+    ordering_fields = ['date_debut', 'date_creation', 'id']
 
 
 class CumulAnnuelViewSet(TenantMixin, viewsets.ReadOnlyModelViewSet):
