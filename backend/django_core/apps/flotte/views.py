@@ -33,6 +33,7 @@ from .models import (
     PleinCarburant,
     ReferentielFlotte,
     ReservationVehicule,
+    Sinistre,
     Vehicule,
     VisiteTechnique,
 )
@@ -56,6 +57,7 @@ from .serializers import (
     PleinCarburantSerializer,
     ReferentielFlotteSerializer,
     ReservationVehiculeSerializer,
+    SinistreSerializer,
     VehiculeSerializer,
     VisiteTechniqueSerializer,
 )
@@ -1172,3 +1174,48 @@ class CarteGriseVehiculeViewSet(_FlotteBaseViewSet):
         qs = cartes_grises_expirantes(company, within=within)
         serializer = self.get_serializer(qs, many=True)
         return Response(serializer.data)
+
+
+class SinistreViewSet(_FlotteBaseViewSet):
+    """Sinistres des actifs de flotte (FLOTTE25).
+
+    CRUD scopé société (écriture responsable/admin) d'un incident impliquant un
+    véhicule ou un engin du parc : date, type (accident matériel/corporel, vol,
+    bris de glace, incendie, catastrophe naturelle, autre), description, lieu,
+    constat amiable scanné, police d'assurance liée (FLOTTE21, même app),
+    numéro de déclaration, montants (estimé, franchise) et statut du dossier
+    (déclaré → en cours → clos / indemnisé). Filtrable par
+    ``?statut=<declare|en_cours|clos|indemnise>``, ``?actif_flotte=<id>`` et
+    ``?type_sinistre=<...>``. Recherche par numéro de déclaration / description
+    / lieu / notes. L'actif lié ET la police d'assurance liée doivent appartenir
+    à la société (validé au sérialiseur).
+    """
+    queryset = Sinistre.objects.select_related(
+        'actif_flotte', 'actif_flotte__vehicule', 'actif_flotte__engin',
+        'assurance')
+    serializer_class = SinistreSerializer
+    filter_backends = [filters.SearchFilter, filters.OrderingFilter]
+    search_fields = ['numero_declaration', 'description', 'lieu', 'notes']
+    ordering_fields = ['date_sinistre', 'type_sinistre', 'statut',
+                       'montant_estime', 'date_creation']
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        params = self.request.query_params
+
+        statut = params.get('statut')
+        if statut:
+            qs = qs.filter(statut=statut)
+
+        type_sinistre = params.get('type_sinistre')
+        if type_sinistre:
+            qs = qs.filter(type_sinistre=type_sinistre)
+
+        actif_flotte = params.get('actif_flotte')
+        if actif_flotte:
+            try:
+                qs = qs.filter(actif_flotte_id=int(actif_flotte))
+            except (ValueError, TypeError):
+                pass
+
+        return qs

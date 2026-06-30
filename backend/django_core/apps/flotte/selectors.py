@@ -27,6 +27,7 @@ from .models import (
     Pneumatique,
     PleinCarburant,
     ReservationVehicule,
+    Sinistre,
     Vehicule,
     VisiteTechnique,
 )
@@ -1098,6 +1099,29 @@ def assurances_vehicule_expirantes(company, within=30, today=None):
     return assurances_vehicule_de_la_societe(company).filter(
         date_echeance__lte=horizon,
     ).order_by('date_echeance', 'id')
+
+
+# ── FLOTTE25 — Sinistres ───────────────────────────────────────────────────────
+
+def sinistres_de_la_societe(company, statut=None, actif_flotte_id=None,
+                            type_sinistre=None):
+    """FLOTTE25 — Sinistres d'une société (queryset scopé).
+
+    Filtres facultatifs : ``statut`` (declare | en_cours | clos | indemnise),
+    ``actif_flotte_id`` (un actif précis) et ``type_sinistre`` (accident_materiel,
+    vol, bris_de_glace…). Lecture seule, scopée société, du plus récent au plus
+    ancien.
+    """
+    qs = Sinistre.objects.filter(company=company).select_related(
+        'actif_flotte', 'actif_flotte__vehicule', 'actif_flotte__engin',
+        'assurance')
+    if statut:
+        qs = qs.filter(statut=statut)
+    if actif_flotte_id is not None:
+        qs = qs.filter(actif_flotte_id=actif_flotte_id)
+    if type_sinistre:
+        qs = qs.filter(type_sinistre=type_sinistre)
+    return qs
 
 
 # ── FLOTTE22 — Visites techniques ──────────────────────────────────────────────

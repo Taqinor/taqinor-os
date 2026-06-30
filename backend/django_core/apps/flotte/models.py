@@ -2032,3 +2032,133 @@ class CarteGriseVehicule(models.Model):
     def __str__(self):
         return (f'Carte grise n°{self.numero_carte_grise} — '
                 f'{self.actif_flotte}')
+
+
+# ── FLOTTE25 — Sinistres (accident / constat / assurance) ──────────────────────
+
+class Sinistre(models.Model):
+    """Sinistre d'un actif de flotte — accident, vol, bris de glace… (FLOTTE25).
+
+    Enregistre un incident impliquant un véhicule ou un engin du parc : la date,
+    le type (accident matériel/corporel, vol, bris de glace, catastrophe
+    naturelle, incendie, autre), une description, le lieu, le constat amiable
+    scanné (facultatif), la police d'assurance liée (``AssuranceVehicule``,
+    FLOTTE21, même app — facultative), le numéro de déclaration, les montants
+    (estimé, franchise à charge) et le statut du dossier
+    (déclaré → en cours → clos / indemnisé).
+
+    **Multi-tenant** : ``company`` est posée côté serveur (jamais lue du corps de
+    requête). L'actif lié (``actif_flotte``, véhicule OU engin) ET la police
+    d'assurance liée (si renseignée) doivent appartenir à la MÊME société (validé
+    dans ``clean`` et au sérialiseur).
+    """
+
+    class TypeSinistre(models.TextChoices):
+        ACCIDENT_MATERIEL = 'accident_materiel', 'Accident matériel'
+        ACCIDENT_CORPOREL = 'accident_corporel', 'Accident corporel'
+        VOL = 'vol', 'Vol'
+        BRIS_DE_GLACE = 'bris_de_glace', 'Bris de glace'
+        INCENDIE = 'incendie', 'Incendie'
+        CATASTROPHE = 'catastrophe', 'Catastrophe naturelle'
+        AUTRE = 'autre', 'Autre'
+
+    class Statut(models.TextChoices):
+        DECLARE = 'declare', 'Déclaré'
+        EN_COURS = 'en_cours', 'En cours'
+        CLOS = 'clos', 'Clos'
+        INDEMNISE = 'indemnise', 'Indemnisé'
+
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='flotte_sinistres',
+        verbose_name='Société',
+    )
+    actif_flotte = models.ForeignKey(
+        'ActifFlotte',
+        on_delete=models.CASCADE,
+        related_name='flotte_sinistres',
+        verbose_name='Actif (véhicule ou engin)',
+    )
+    assurance = models.ForeignKey(
+        'AssuranceVehicule',
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='flotte_sinistres',
+        verbose_name="Police d'assurance liée",
+    )
+    date_sinistre = models.DateField(verbose_name='Date du sinistre')
+    type_sinistre = models.CharField(
+        max_length=20, choices=TypeSinistre.choices,
+        default=TypeSinistre.ACCIDENT_MATERIEL,
+        verbose_name='Type de sinistre')
+    description = models.TextField(verbose_name='Description')
+    lieu = models.CharField(
+        max_length=255, blank=True, verbose_name='Lieu')
+    # Constat amiable scanné — même convention de storage que les autres
+    # documents flotte (cf. ``AssuranceVehicule.attestation``).
+    constat_fichier = models.FileField(
+        upload_to='flotte/sinistres/constats/%Y/%m/',
+        blank=True, null=True, verbose_name='Constat amiable')
+    numero_declaration = models.CharField(
+        max_length=80, blank=True, verbose_name='Numéro de déclaration')
+    montant_estime = models.DecimalField(
+        max_digits=12, decimal_places=2, null=True, blank=True,
+        verbose_name='Montant estimé des dommages (MAD)')
+    franchise = models.DecimalField(
+        max_digits=12, decimal_places=2, null=True, blank=True,
+        verbose_name='Franchise à charge (MAD)')
+    # 'indemnise' (9) est le plus long code de statut.
+    statut = models.CharField(
+        max_length=9, choices=Statut.choices, default=Statut.DECLARE,
+        verbose_name='Statut')
+    date_declaration = models.DateField(
+        null=True, blank=True, verbose_name='Date de déclaration')
+    notes = models.TextField(blank=True, verbose_name='Notes')
+    date_creation = models.DateTimeField(
+        auto_now_add=True, verbose_name='Créé le')
+
+    class Meta:
+        verbose_name = 'Sinistre'
+        verbose_name_plural = 'Sinistres'
+        ordering = ['-date_sinistre', '-id']
+        indexes = [
+            models.Index(
+                fields=['company', 'statut'],
+                name='flotte_sin_co_stat_idx',
+            ),
+            models.Index(
+                fields=['company', 'actif_flotte'],
+                name='flotte_sin_co_actif_idx',
+            ),
+            models.Index(
+                fields=['company', 'type_sinistre'],
+                name='flotte_sin_co_type_idx',
+            ),
+            models.Index(
+                fields=['company', 'date_sinistre'],
+                name='flotte_sin_co_date_idx',
+            ),
+        ]
+
+    def clean(self):
+        """Valide l'appartenance société de l'actif et de la police liée, ainsi
+        que la cohérence des montants."""
+        if self.actif_flotte_id is not None \
+                and self.actif_flotte.company_id != self.company_id:
+            raise ValidationError(
+                "L'actif n'appartient pas à la même société.")
+        if self.assurance_id is not None \
+                and self.assurance.company_id != self.company_id:
+            raise ValidationError(
+                "La police d'assurance n'appartient pas à la même société.")
+        if self.montant_estime is not None and self.montant_estime < 0:
+            raise ValidationError(
+                "Le montant estimé ne peut pas être négatif.")
+        if self.franchise is not None and self.franchise < 0:
+            raise ValidationError(
+                "La franchise ne peut pas être négative.")
+
+    def __str__(self):
+        return (f'Sinistre {self.get_type_sinistre_display()} — '
+                f'{self.actif_flotte} ({self.date_sinistre})')
