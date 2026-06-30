@@ -586,6 +586,44 @@ class DocumentViewSet(TenantMixin, viewsets.ModelViewSet):
             'results': results,
         })
 
+    @action(detail=True, methods=['post'], url_path='ocr-piece')
+    def ocr_piece(self, request, pk=None):
+        """GED33 — OCR ce document (pièce : CIN/facture/BL) → métadonnées typées.
+
+        `POST …/documents/<id>/ocr-piece/` — corps optionnel
+        `{type_piece?: 'cin'|'facture'|'bl'}` (sinon deviné). Récupère le binaire
+        de la version courante, lance l'OCR (no-op sans clé) puis extrait des
+        métadonnées par parsing LOCAL déterministe (aucune clé requise pour le
+        parsing) et les fusionne ADDITIVEMENT dans `custom_data` (jamais
+        d'écrasement). Le document est company-scopé via `get_object()`.
+        Écriture : responsable/admin. Renvoie le document + `{metadonnees: {...},
+        ocr_enabled: <bool>}`."""
+        document = self.get_object()
+        # GED23 — write-once : pas de mutation de custom_data si archivé (403).
+        if document.est_archive_legalement:
+            from .models import ARCHIVE_LEGALE_MESSAGE
+            return Response({'detail': ARCHIVE_LEGALE_MESSAGE},
+                            status=status.HTTP_403_FORBIDDEN)
+        type_piece = (request.data.get('type_piece') or '').strip() or None
+        version = (DocumentVersion.objects
+                   .filter(document=document)
+                   .order_by('-version').first())
+        file_bytes = None
+        mime = ''
+        if version and version.file_key:
+            file_bytes, _err = fetch_attachment(version.file_key)
+            mime = version.mime or ''
+        meta = services.ocr_piece_vers_metadonnees(
+            document, file_bytes=file_bytes, mime=mime, type_piece=type_piece)
+        document.refresh_from_db()
+        services.update_search_vector(document)
+        return Response({
+            'document': DocumentSerializer(
+                document, context={'request': request}).data,
+            'metadonnees': meta,
+            'ocr_enabled': services.ocr_enabled(),
+        })
+
     @action(detail=True, methods=['post'], url_path='deplacer')
     def deplacer(self, request, pk=None):
         """Déplace ce document dans un autre dossier (déplacement scopé société).

@@ -107,6 +107,131 @@ def ocr_index_document(document, *, file_bytes=None, mime=''):
     return texte
 
 
+# ── GED33 — Extraction de métadonnées de pièces (CIN / facture / BL) ─────────
+#
+# Couche DÉTERMINISTE (regex, AUCUNE clé, AUCUN appel réseau) qui parse un texte
+# (issu de l'OCR GED33 ou saisi) en métadonnées typées selon le type de pièce.
+# Sépare proprement l'EXTRACTION DE TEXTE (key-gated, ci-dessus) de l'ANALYSE
+# DU TEXTE (locale, gratuite). Marocaine : CIN (carte nationale), facture, BL
+# (bon de livraison). Renvoie un dict de champs reconnus — jamais d'invention :
+# un champ absent du texte est simplement omis.
+
+PIECE_CIN = 'cin'
+PIECE_FACTURE = 'facture'
+PIECE_BL = 'bl'
+PIECE_TYPES = (PIECE_CIN, PIECE_FACTURE, PIECE_BL)
+
+
+def _premier_match(pattern, texte, *, flags=0, group=1):
+    """Premier groupe capturé d'un motif dans le texte, ou '' (helper extraction)."""
+    import re
+    m = re.search(pattern, texte, flags)
+    return (m.group(group).strip() if m else '')
+
+
+def detecter_type_piece(texte):
+    """GED33 — Devine le type d'une pièce d'après son texte (heuristique locale).
+
+    Renvoie 'cin' | 'facture' | 'bl' | '' (inconnu). Purement déterministe :
+    cherche des marqueurs francophones/marocains usuels. Aucun appel externe."""
+    import re
+    if not texte:
+        return ''
+    t = texte.lower()
+    if re.search(r'carte\s+nationale|cin\b|c\.i\.n', t):
+        return PIECE_CIN
+    if re.search(r'bon\s+de\s+livraison|\bb\.?l\.?\b', t):
+        return PIECE_BL
+    if re.search(r'\bfacture\b|montant\s+t\.?t\.?c|total\s+ttc', t):
+        return PIECE_FACTURE
+    return ''
+
+
+def extraire_metadonnees_piece(texte, *, type_piece=None):
+    """GED33 — Extrait des métadonnées typées d'un texte de pièce (déterministe).
+
+    `type_piece` (optionnel) force le type ; sinon il est deviné
+    (`detecter_type_piece`). Renvoie `{'type_piece': <type>, ...champs}`. Les
+    champs reconnus selon le type :
+      * cin      : numero_cin (ex. AB123456) ;
+      * facture  : numero_facture, montant_ttc, date ;
+      * bl       : numero_bl, date.
+    AUCUNE invention : un champ non trouvé est omis. Aucune dépendance, aucun
+    appel réseau — pur parsing local (utilisable même OCR désactivé)."""
+    import re
+
+    texte = texte or ''
+    piece = type_piece or detecter_type_piece(texte)
+    meta = {}
+    if piece:
+        meta['type_piece'] = piece
+
+    if piece == PIECE_CIN:
+        # CIN marocaine : 1-2 lettres suivies de 5-6 chiffres.
+        num = _premier_match(
+            r'\b([A-Za-z]{1,2}\s?\d{5,6})\b', texte)
+        if num:
+            meta['numero_cin'] = num.replace(' ', '').upper()
+    elif piece == PIECE_FACTURE:
+        num = _premier_match(
+            r'facture\s*(?:n[°o]?\.?)?\s*[:#]?\s*([A-Za-z0-9\-/]+)',
+            texte, flags=re.IGNORECASE)
+        if num:
+            meta['numero_facture'] = num
+        ttc = _premier_match(
+            r'(?:total\s+ttc|montant\s+t\.?t\.?c\.?)\s*[:=]?\s*'
+            r'([0-9][0-9\s.,]*)',
+            texte, flags=re.IGNORECASE)
+        if ttc:
+            meta['montant_ttc'] = ttc.strip().rstrip('.,')
+        date = _premier_match(r'\b(\d{2}[/-]\d{2}[/-]\d{4})\b', texte)
+        if date:
+            meta['date'] = date
+    elif piece == PIECE_BL:
+        num = _premier_match(
+            r'(?:bon\s+de\s+livraison|b\.?l\.?)\s*(?:n[°o]?\.?)?\s*[:#]?\s*'
+            r'([A-Za-z0-9\-/]+)',
+            texte, flags=re.IGNORECASE)
+        if num:
+            meta['numero_bl'] = num
+        date = _premier_match(r'\b(\d{2}[/-]\d{2}[/-]\d{4})\b', texte)
+        if date:
+            meta['date'] = date
+    return meta
+
+
+def ocr_piece_vers_metadonnees(document, *, file_bytes=None, mime='',
+                               type_piece=None, fusionner=True):
+    """GED33 — OCR une pièce puis extrait ses métadonnées (CIN/facture/BL).
+
+    Enchaîne `ocr_index_document` (extraction de texte, no-op sans clé) puis
+    `extraire_metadonnees_piece` (parsing local déterministe) sur le texte
+    disponible (OCR frais OU `document.texte_ocr` déjà présent). Si `fusionner`
+    est vrai, les champs reconnus sont fusionnés (additivement) dans
+    `document.custom_data` (jamais d'écrasement d'une clé existante non vide) et
+    persistés côté serveur.
+
+    Renvoie le dict de métadonnées extraites (vide si rien trouvé). Sans clé OCR
+    et sans `texte_ocr` préexistant, renvoie {} (jamais d'invention)."""
+    texte = ''
+    if file_bytes:
+        texte = ocr_index_document(
+            document, file_bytes=file_bytes, mime=mime)
+    if not texte:
+        # Retombe sur le texte OCR déjà indexé (ex. posé manuellement / GED12).
+        document.refresh_from_db(fields=['texte_ocr'])
+        texte = document.texte_ocr or ''
+    meta = extraire_metadonnees_piece(texte, type_piece=type_piece)
+    if meta and fusionner:
+        data = dict(document.custom_data or {})
+        for k, v in meta.items():
+            if not data.get(k):  # additif : ne jamais écraser une valeur posée.
+                data[k] = v
+        Document.objects.filter(pk=document.pk).update(custom_data=data)
+        document.custom_data = data
+    return meta
+
+
 # ── GED12 — Index OCR + recherche sémantique (pgvector, KEY-GATED no-op) ──
 
 def embedding_enabled():
