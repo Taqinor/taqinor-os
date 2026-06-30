@@ -20,6 +20,7 @@ from .models import (
     FactureSousTraitant,
     PaiementSousTraitant,
     AttestationSousTraitant,
+    EvaluationSousTraitant,
 )
 
 
@@ -1148,3 +1149,38 @@ class AttestationSousTraitantSerializer(serializers.ModelSerializer):
 
     def get_est_valide(self, obj):
         return obj.est_valide()
+
+
+class EvaluationSousTraitantSerializer(serializers.ModelSerializer):
+    """FG308 — note de performance d'un sous-traitant (qualité/délai/sécurité,
+    1–5). La société et `evalue_par` sont posés CÔTÉ SERVEUR. `note_globale` est
+    la moyenne dérivée des trois axes (lecture seule)."""
+    sous_traitant_nom = serializers.CharField(
+        source='sous_traitant.raison_sociale', read_only=True, default=None)
+    note_globale = serializers.DecimalField(
+        max_digits=3, decimal_places=1, read_only=True)
+
+    class Meta:
+        model = EvaluationSousTraitant
+        fields = [
+            'id', 'sous_traitant', 'sous_traitant_nom', 'ordre', 'chantier',
+            'note_qualite', 'note_delai', 'note_securite', 'note_globale',
+            'commentaire', 'date_evaluation',
+            'evalue_par', 'date_creation', 'date_modification',
+        ]
+        read_only_fields = ['evalue_par', 'date_creation', 'date_modification']
+
+    def _validate_note(self, value, champ):
+        if value is None or value < 1 or value > 5:
+            raise serializers.ValidationError(
+                f'La note {champ} doit être comprise entre 1 et 5.')
+        return value
+
+    def validate_note_qualite(self, value):
+        return self._validate_note(value, 'qualité')
+
+    def validate_note_delai(self, value):
+        return self._validate_note(value, 'délai')
+
+    def validate_note_securite(self, value):
+        return self._validate_note(value, 'sécurité')

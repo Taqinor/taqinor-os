@@ -16,6 +16,7 @@ from .views import (
     FactureSousTraitantViewSet,
     PaiementSousTraitantViewSet,
     AttestationSousTraitantViewSet,
+    EvaluationSousTraitantViewSet,
 )
 
 router = DefaultRouter()
@@ -44,6 +45,7 @@ router.register(r'ordres-sous-traitance', OrdreSousTraitanceViewSet)
 router.register(r'factures-sous-traitant', FactureSousTraitantViewSet)
 router.register(r'paiements-sous-traitant', PaiementSousTraitantViewSet)
 router.register(r'attestations-sous-traitant', AttestationSousTraitantViewSet)
+router.register(r'evaluations-sous-traitant', EvaluationSousTraitantViewSet)
 
 urlpatterns = [
     # N91/F21 — synchro idempotente de la capture terrain hors-ligne.

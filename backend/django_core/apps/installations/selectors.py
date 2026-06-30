@@ -1236,3 +1236,39 @@ def sous_traitant_affectable(sous_traitant, a_la_date=None):
     if not getattr(sous_traitant, 'actif', True):
         return False
     return not sous_traitant_attestations_manquantes(sous_traitant, a_la_date)
+
+
+def sous_traitant_scorecard(sous_traitant):
+    """FG308 — scorecard cumulée d'un sous-traitant : moyenne de chaque axe
+    (qualité / délai / sécurité) et note globale sur toutes ses évaluations.
+    Lecture seule, point d'entrée cross-app. Renvoie un dict (None si aucune
+    évaluation)."""
+    from django.db.models import Avg
+    agg = sous_traitant.evaluations.aggregate(
+        qualite=Avg('note_qualite'),
+        delai=Avg('note_delai'),
+        securite=Avg('note_securite'),
+    )
+    nb = sous_traitant.evaluations.count()
+    if nb == 0:
+        return {
+            'nb_evaluations': 0,
+            'note_qualite': None,
+            'note_delai': None,
+            'note_securite': None,
+            'note_globale': None,
+        }
+
+    def _r(v):
+        return round(v, 2) if v is not None else None
+
+    moyennes = [agg['qualite'], agg['delai'], agg['securite']]
+    valides = [m for m in moyennes if m is not None]
+    globale = round(sum(valides) / len(valides), 2) if valides else None
+    return {
+        'nb_evaluations': nb,
+        'note_qualite': _r(agg['qualite']),
+        'note_delai': _r(agg['delai']),
+        'note_securite': _r(agg['securite']),
+        'note_globale': globale,
+    }
