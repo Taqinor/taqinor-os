@@ -5,7 +5,18 @@ FG369 — forme de sortie des modèles de workflow installables (catalogue).
 """
 from rest_framework import serializers
 
-from .models import Dashboard
+from .models import (
+    BrandedTemplate,
+    ConsentRecord,
+    Dashboard,
+    DataSubjectRequest,
+    DeletionRecord,
+    ModuleToggle,
+    PaymentTransaction,
+    SavedQuery,
+    ScheduledExport,
+    TenantTheme,
+)
 
 
 class ScheduledJobSerializer(serializers.Serializer):
@@ -51,3 +62,158 @@ class DashboardSerializer(serializers.ModelSerializer):
             'created_at', 'updated_at',
         ]
         read_only_fields = ['id', 'owner', 'created_at', 'updated_at']
+
+
+class PaymentTransactionSerializer(serializers.ModelSerializer):
+    """FG370 — transaction de paiement carte en ligne (CMI / Payzone).
+
+    ``company`` n'est JAMAIS lu du corps (imposée côté serveur). Le statut, la
+    référence PSP et l'URL de redirection sont en lecture seule : ils ne
+    bougent que via le flux de paiement (``core.payment``), jamais par PATCH
+    direct. La cible (facture) est désignée de façon générique par
+    ``content_type``/``object_id``.
+    """
+    class Meta:
+        model = PaymentTransaction
+        fields = [
+            'id', 'provider', 'montant', 'devise', 'statut', 'external_ref',
+            'redirect_url', 'payeur_email', 'content_type', 'object_id',
+            'paye_le', 'detail', 'created_at', 'updated_at',
+        ]
+        read_only_fields = [
+            'id', 'statut', 'external_ref', 'redirect_url', 'paye_le',
+            'detail', 'created_at', 'updated_at',
+        ]
+
+
+class SavedQuerySerializer(serializers.ModelSerializer):
+    """FG382 — requête d'analyse ad-hoc sauvegardée.
+
+    ``company`` et ``owner`` ne sont JAMAIS lus du corps (imposés côté serveur).
+    """
+    class Meta:
+        model = SavedQuery
+        fields = [
+            'id', 'titre', 'dataset', 'spec', 'partage', 'owner',
+            'created_at', 'updated_at',
+        ]
+        read_only_fields = ['id', 'owner', 'created_at', 'updated_at']
+
+
+class ScheduledExportSerializer(serializers.ModelSerializer):
+    """FG383 — extrait planifié vers SFTP/S3.
+
+    ``company`` n'est JAMAIS lu du corps (imposée côté serveur). Le résultat de
+    la dernière exécution est en lecture seule.
+    """
+    class Meta:
+        model = ScheduledExport
+        fields = [
+            'id', 'titre', 'dataset', 'spec', 'format', 'destination', 'cron',
+            'actif', 'derniere_execution_le', 'dernier_statut',
+            'dernier_detail', 'created_at', 'updated_at',
+        ]
+        read_only_fields = [
+            'id', 'derniere_execution_le', 'dernier_statut', 'dernier_detail',
+            'created_at', 'updated_at',
+        ]
+
+
+class DeletionRecordSerializer(serializers.ModelSerializer):
+    """FG388 — entrée de corbeille (lecture seule + restauration via action).
+
+    ``model_label`` expose le type de la cible (app.modele) sans révéler de
+    modèle métier côté core.
+    """
+    model_label = serializers.SerializerMethodField()
+
+    class Meta:
+        model = DeletionRecord
+        fields = [
+            'id', 'label', 'model_label', 'object_id', 'deleted_by',
+            'restored_at', 'created_at',
+        ]
+        read_only_fields = fields
+
+    def get_model_label(self, obj):
+        ct = obj.content_type
+        return f'{ct.app_label}.{ct.model}' if ct else ''
+
+
+class ModuleToggleSerializer(serializers.ModelSerializer):
+    """FG391 — activation/désactivation d'un module par société.
+
+    ``company`` n'est JAMAIS lu du corps (imposée côté serveur).
+    """
+    class Meta:
+        model = ModuleToggle
+        fields = ['id', 'module', 'actif', 'raison',
+                  'created_at', 'updated_at']
+        read_only_fields = ['id', 'created_at', 'updated_at']
+
+
+class TenantThemeSerializer(serializers.ModelSerializer):
+    """FG392 — thème white-label par société.
+
+    ``company`` n'est JAMAIS lu du corps (imposée côté serveur, OneToOne).
+    """
+    class Meta:
+        model = TenantTheme
+        fields = [
+            'id', 'logo_url', 'couleur_primaire', 'couleur_secondaire',
+            'domaine', 'nom_affichage', 'extra', 'created_at', 'updated_at',
+        ]
+        read_only_fields = ['id', 'created_at', 'updated_at']
+
+
+class BrandedTemplateSerializer(serializers.ModelSerializer):
+    """FG393 — modèle brandé éditable (PDF/email/WhatsApp).
+
+    ``company`` n'est JAMAIS lu du corps (imposée côté serveur). ``variables``
+    expose les placeholders détectés dans le corps (aide à l'éditeur).
+    """
+    variables = serializers.SerializerMethodField()
+
+    class Meta:
+        model = BrandedTemplate
+        fields = [
+            'id', 'kind', 'code', 'nom', 'sujet', 'corps', 'actif',
+            'variables', 'created_at', 'updated_at',
+        ]
+        read_only_fields = ['id', 'variables', 'created_at', 'updated_at']
+
+    def get_variables(self, obj):
+        from .templating import variables_utilisees
+        return variables_utilisees(f'{obj.sujet}\n{obj.corps}')
+
+
+class ConsentRecordSerializer(serializers.ModelSerializer):
+    """FG394 — entrée du registre de consentement.
+
+    ``company`` n'est JAMAIS lu du corps (imposée côté serveur).
+    """
+    class Meta:
+        model = ConsentRecord
+        fields = [
+            'id', 'subject_identifier', 'purpose', 'granted', 'source',
+            'occurred_at', 'created_at', 'updated_at',
+        ]
+        read_only_fields = ['id', 'created_at', 'updated_at']
+
+
+class DataSubjectRequestSerializer(serializers.ModelSerializer):
+    """FG394 — demande de personne concernée (accès / effacement).
+
+    ``company`` n'est JAMAIS lu du corps. Le statut et le résultat sont en
+    lecture seule : ils ne bougent que via le traitement (``core.dsr``).
+    """
+    class Meta:
+        model = DataSubjectRequest
+        fields = [
+            'id', 'subject_identifier', 'kind', 'statut', 'resultat',
+            'traitee_le', 'created_at', 'updated_at',
+        ]
+        read_only_fields = [
+            'id', 'statut', 'resultat', 'traitee_le',
+            'created_at', 'updated_at',
+        ]

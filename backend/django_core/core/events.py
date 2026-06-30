@@ -81,3 +81,9 @@ devis_refused = django.dispatch.Signal()
 # Abonné par le satellite audit (journalise AuditLog.Action.PDF), ce qui évite
 # que ventes importe apps.audit (suppression de l'arête montante ventes→audit).
 document_pdf_generated = django.dispatch.Signal()
+
+# Émis quand une transaction de paiement carte en ligne est capturée (FG370).
+# Arguments : transaction (core.PaymentTransaction), company.
+# Destiné à être abonné par l'app comptable pour matérialiser un ``Paiement``
+# et rapprocher la facture — core n'importe jamais l'app comptable lui-même.
+payment_captured = django.dispatch.Signal()

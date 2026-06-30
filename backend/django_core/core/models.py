@@ -1,6 +1,7 @@
 from django.contrib.contenttypes.fields import GenericForeignKey
 from django.contrib.contenttypes.models import ContentType
 from django.db import models
+from django.utils import timezone
 
 
 class TimestampedModel(models.Model):
@@ -14,6 +15,146 @@ class TimestampedModel(models.Model):
 
     class Meta:
         abstract = True
+
+
+# ---------------------------------------------------------------------------
+# FG388 — Corbeille / restauration (soft-delete + undo), standard partagé.
+#
+# Fondation GÉNÉRIQUE : ``SoftDeleteModel`` est un mixin ABSTRAIT que n'importe
+# quelle app métier peut faire hériter pour gagner un soft-delete uniforme
+# (``is_deleted`` + ``deleted_at`` + ``deleted_by``) + un manager qui masque les
+# supprimés par défaut. ``core`` reste fondation : ce mixin ne référence aucune
+# app métier (le ``deleted_by`` pointe ``authentication.CustomUser``, une app de
+# fondation). Le journal concret de corbeille/undo est ``DeletionRecord``
+# (plus bas), keyé via ``contenttypes`` — toujours sans import métier.
+# ---------------------------------------------------------------------------
+
+
+class SoftDeleteQuerySet(models.QuerySet):
+    """QuerySet avec helpers de soft-delete (masque les supprimés par défaut)."""
+
+    def alive(self):
+        return self.filter(is_deleted=False)
+
+    def dead(self):
+        return self.filter(is_deleted=True)
+
+
+class SoftDeleteManager(models.Manager):
+    """Manager par défaut : ne renvoie QUE les enregistrements vivants.
+
+    Le manager ``all_objects`` (déclaré sur le mixin) permet d'accéder aussi
+    aux supprimés (corbeille). ``get_queryset`` filtre ``is_deleted=False``.
+    """
+
+    def get_queryset(self):
+        return SoftDeleteQuerySet(self.model, using=self._db).filter(
+            is_deleted=False)
+
+
+class SoftDeleteModel(models.Model):
+    """Mixin abstrait de soft-delete réutilisable (FG388).
+
+    Hériter de ce mixin donne :
+      * ``is_deleted`` / ``deleted_at`` / ``deleted_by`` ;
+      * ``objects`` — vivants uniquement (corbeille masquée) ;
+      * ``all_objects`` — tout (pour la corbeille) ;
+      * ``soft_delete(user=None)`` / ``restore()`` — bascule + journal undo.
+
+    GÉNÉRIQUE : aucun import d'app métier. ``soft_delete`` écrit aussi un
+    ``DeletionRecord`` (corbeille par société + fenêtre d'undo) via
+    contenttypes.
+    """
+
+    is_deleted = models.BooleanField('Supprimé', default=False, db_index=True)
+    deleted_at = models.DateTimeField('Supprimé le', null=True, blank=True)
+    deleted_by = models.ForeignKey(
+        'authentication.CustomUser', on_delete=models.SET_NULL,
+        null=True, blank=True, related_name='+', verbose_name='Supprimé par')
+
+    objects = SoftDeleteManager()
+    all_objects = models.Manager()
+
+    class Meta:
+        abstract = True
+
+    def soft_delete(self, user=None, *, record=True):
+        """Marque l'objet supprimé (sans le détruire) + journalise pour l'undo.
+
+        ``record=True`` matérialise un ``DeletionRecord`` (corbeille/undo) si
+        l'objet porte une ``company`` (multi-tenant). Idempotent.
+        """
+        if self.is_deleted:
+            return self
+        self.is_deleted = True
+        self.deleted_at = timezone.now()
+        self.deleted_by = user
+        self.save(update_fields=['is_deleted', 'deleted_at', 'deleted_by'])
+        company = getattr(self, 'company', None)
+        if record and company is not None:
+            DeletionRecord.objects.create(
+                company=company,
+                content_type=ContentType.objects.get_for_model(type(self)),
+                object_id=self.pk,
+                label=str(self)[:255],
+                deleted_by=user,
+            )
+        return self
+
+    def restore(self):
+        """Restaure un objet soft-supprimé + ferme l'entrée de corbeille."""
+        if not self.is_deleted:
+            return self
+        self.is_deleted = False
+        self.deleted_at = None
+        self.deleted_by = None
+        self.save(update_fields=['is_deleted', 'deleted_at', 'deleted_by'])
+        ct = ContentType.objects.get_for_model(type(self))
+        (DeletionRecord.objects
+         .filter(content_type=ct, object_id=self.pk, restored_at__isnull=True)
+         .update(restored_at=timezone.now()))
+        return self
+
+
+class DeletionRecord(TimestampedModel):
+    """Entrée de corbeille / journal d'undo (FG388).
+
+    GÉNÉRIQUE : pointe l'objet supprimé via ``contenttypes`` (aucun import
+    métier). Une entrée par soft-delete, par société (multi-tenant). ``restore``
+    sur l'objet d'origine ferme l'entrée (``restored_at``). La « fenêtre d'undo »
+    globale est portée par ``DeletionRecord.objects.dans_fenetre(...)``
+    (service ``core.trash``).
+    """
+
+    company = models.ForeignKey(
+        'authentication.Company', on_delete=models.CASCADE,
+        related_name='deletion_records', verbose_name='Société')
+
+    content_type = models.ForeignKey(
+        ContentType, on_delete=models.CASCADE, related_name='+',
+        verbose_name='Type de document')
+    object_id = models.PositiveIntegerField('Identifiant du document')
+    target = GenericForeignKey('content_type', 'object_id')
+
+    label = models.CharField('Libellé', max_length=255, blank=True, default='')
+    deleted_by = models.ForeignKey(
+        'authentication.CustomUser', on_delete=models.SET_NULL,
+        null=True, blank=True, related_name='+', verbose_name='Supprimé par')
+    restored_at = models.DateTimeField('Restauré le', null=True, blank=True)
+
+    class Meta:
+        verbose_name = 'Entrée de corbeille'
+        verbose_name_plural = 'Entrées de corbeille'
+        ordering = ['-id']
+        indexes = [
+            models.Index(fields=['company', 'restored_at'],
+                         name='core_trash_co_restored_idx'),
+            models.Index(fields=['content_type', 'object_id'],
+                         name='core_trash_target_idx'),
+        ]
+
+    def __str__(self):
+        return f'Corbeille #{self.pk} — {self.label}'
 
 
 class AnomalyFlag(TimestampedModel):
@@ -667,3 +808,514 @@ class Dashboard(TimestampedModel):
 
     def __str__(self):
         return self.titre
+
+
+# ---------------------------------------------------------------------------
+# FG370 — Passerelle de paiement carte en ligne (CMI / Payzone).
+#
+# Modèle de FONDATION GÉNÉRIQUE : suit une transaction de paiement carte en
+# ligne pour N'IMPORTE QUEL document métier facturable (Facture, échéance…)
+# SANS importer l'app qui le produit (contrat import-linter
+# ``core-foundation-is-a-base-layer``). La cible est désignée via
+# ``contenttypes`` (content_type + object_id + GenericForeignKey) — fondation
+# Django. Le rapprochement vers ``Paiement`` est laissé à l'app comptable, qui
+# réagit à l'événement ``payment_captured`` du bus ``core.events`` — core ne
+# crée jamais lui-même un ``Paiement`` métier.
+#
+# ⚠ AUTH : la capture réelle exige un compte marchand CMI/Payzone + une clé
+# provisionnée par le fondateur (variable d'environnement via ``secret_ref`` de
+# ``IntegrationConfig``). Sans elle, le connecteur reste en no-op propre.
+# ---------------------------------------------------------------------------
+
+
+class PaymentTransaction(TimestampedModel):
+    """Transaction de paiement carte en ligne (FG370 — CMI / Payzone).
+
+    GÉNÉRIQUE : cible via ``contenttypes`` (aucun import métier). ``provider``
+    nomme le connecteur de paiement (``core.payment``) ; ``external_ref`` garde
+    la référence du PSP ; ``statut`` suit le cycle de vie. Multi-tenant :
+    ``company`` obligatoire, imposée côté serveur. Le rapprochement vers le
+    ``Paiement`` comptable se fait via l'événement ``payment_captured`` du bus
+    d'événements (``core.events``) — core ne touche aucun modèle métier.
+    """
+
+    STATUT_INITIE = 'initie'
+    STATUT_EN_ATTENTE = 'en_attente'
+    STATUT_PAYE = 'paye'
+    STATUT_ECHEC = 'echec'
+    STATUT_ANNULE = 'annule'
+    STATUT_REMBOURSE = 'rembourse'
+    STATUT_CHOICES = [
+        (STATUT_INITIE, 'Initié'),
+        (STATUT_EN_ATTENTE, 'En attente'),
+        (STATUT_PAYE, 'Payé'),
+        (STATUT_ECHEC, 'Échec'),
+        (STATUT_ANNULE, 'Annulé'),
+        (STATUT_REMBOURSE, 'Remboursé'),
+    ]
+
+    company = models.ForeignKey(
+        'authentication.Company', on_delete=models.CASCADE,
+        related_name='payment_transactions', verbose_name='Société')
+
+    # Cible générique — AUCUN import métier (contenttypes = fondation).
+    content_type = models.ForeignKey(
+        ContentType, on_delete=models.CASCADE, null=True, blank=True,
+        related_name='+', verbose_name='Type de document')
+    object_id = models.PositiveIntegerField(
+        'Identifiant du document', null=True, blank=True)
+    target = GenericForeignKey('content_type', 'object_id')
+
+    provider = models.CharField(
+        'Fournisseur', max_length=60, default='cmi',
+        help_text='Code du connecteur de paiement (ex. « cmi », « payzone »).')
+    montant = models.DecimalField(
+        'Montant', max_digits=12, decimal_places=2)
+    devise = models.CharField('Devise', max_length=3, default='MAD')
+    statut = models.CharField(
+        'Statut', max_length=16, choices=STATUT_CHOICES,
+        default=STATUT_INITIE)
+
+    external_ref = models.CharField(
+        'Référence PSP', max_length=128, blank=True, default='',
+        help_text='Identifiant retourné par le prestataire de paiement.')
+    redirect_url = models.URLField(
+        'URL de redirection', max_length=600, blank=True, default='',
+        help_text='URL de la page de paiement hébergée du PSP.')
+    payeur_email = models.EmailField('Email payeur', blank=True, default='')
+
+    paye_le = models.DateTimeField('Payé le', null=True, blank=True)
+    detail = models.JSONField('Détail', default=dict, blank=True)
+
+    class Meta:
+        verbose_name = 'Transaction de paiement'
+        verbose_name_plural = 'Transactions de paiement'
+        ordering = ['-id']
+        indexes = [
+            models.Index(fields=['company', 'statut'],
+                         name='core_pay_co_statut_idx'),
+            models.Index(fields=['provider', 'external_ref'],
+                         name='core_pay_ext_idx'),
+        ]
+
+    def __str__(self):
+        return (f'Paiement {self.provider} #{self.pk} '
+                f'({self.get_statut_display()})')
+
+
+# ---------------------------------------------------------------------------
+# FG382 — BI embarqué : explorateur de données (query builder sans SQL).
+#
+# Modèle de FONDATION GÉNÉRIQUE : persiste une spec de requête ad-hoc
+# (``dataset`` + ``spec`` JSON opaque : champs/filtres/agrégations) pour la
+# rejouer. ``core`` ne sait RIEN des modèles interrogés — les datasets sont
+# enregistrés par les apps métier (``core.data_explorer.register_dataset``) et
+# core n'importe aucune app métier (contrat import-linter
+# ``core-foundation-is-a-base-layer``).
+# ---------------------------------------------------------------------------
+
+
+class SavedQuery(TimestampedModel):
+    """Requête d'analyse ad-hoc sauvegardée (FG382).
+
+    GÉNÉRIQUE : ``dataset`` nomme un dataset enregistré ; ``spec`` est une spec
+    JSON opaque (sélection/filtres/agrégations) interprétée par
+    ``core.data_explorer.run_query``. Multi-tenant : ``company`` obligatoire,
+    imposée côté serveur. ``owner`` (optionnel) + ``partage`` gèrent la
+    visibilité personnelle/société, comme ``Dashboard``.
+    """
+
+    company = models.ForeignKey(
+        'authentication.Company', on_delete=models.CASCADE,
+        related_name='saved_queries', verbose_name='Société')
+    owner = models.ForeignKey(
+        'authentication.CustomUser', on_delete=models.CASCADE,
+        null=True, blank=True, related_name='saved_queries',
+        verbose_name='Propriétaire',
+        help_text='Vide = requête de société (non personnelle).')
+
+    titre = models.CharField('Titre', max_length=160)
+    dataset = models.CharField(
+        'Dataset', max_length=80,
+        help_text='Nom du dataset enregistré (core.data_explorer).')
+    spec = models.JSONField(
+        'Spécification', default=dict, blank=True,
+        help_text='Sélection/filtres/agrégations (opaque pour core).')
+    partage = models.BooleanField(
+        'Partagée', default=False,
+        help_text='Visible par toute la société (sinon personnelle).')
+
+    class Meta:
+        verbose_name = 'Requête sauvegardée'
+        verbose_name_plural = 'Requêtes sauvegardées'
+        ordering = ['titre', 'id']
+        indexes = [
+            models.Index(fields=['company', 'owner'],
+                         name='core_savedq_co_owner_idx'),
+            models.Index(fields=['company', 'dataset'],
+                         name='core_savedq_co_ds_idx'),
+        ]
+
+    def __str__(self):
+        return self.titre
+
+
+# ---------------------------------------------------------------------------
+# FG383 — Extraits planifiés vers entrepôt / SFTP / S3.
+#
+# Modèle de FONDATION GÉNÉRIQUE : planifie un extrait de données (dataset FG382
+# + spec opaque) au format CSV/parquet vers une destination externe (SFTP/S3).
+# ``core`` ne sait RIEN des modèles extraits (datasets enregistrés par les apps
+# métier) ni de l'infra de destination (connecteur enregistré) — aucun import
+# d'app métier (contrat import-linter ``core-foundation-is-a-base-layer``).
+# ---------------------------------------------------------------------------
+
+
+class ScheduledExport(TimestampedModel):
+    """Extrait de données planifié vers une destination externe (FG383).
+
+    GÉNÉRIQUE : ``dataset`` + ``spec`` désignent les données (explorateur FG382) ;
+    ``format`` = CSV/parquet ; ``destination`` = connecteur enregistré (SFTP/S3).
+    ``cron`` porte la planification (interprétée par l'infra Celery Beat, hors
+    core). Multi-tenant : ``company`` obligatoire, imposée côté serveur.
+
+    ⚠ AUTH : la livraison réelle exige des credentials provisionnés par le
+    fondateur ; sans eux le runner reste en no-op (``dernier_statut`` =
+    « non_configure »).
+    """
+
+    FORMAT_CSV = 'csv'
+    FORMAT_PARQUET = 'parquet'
+    FORMAT_CHOICES = [
+        (FORMAT_CSV, 'CSV'),
+        (FORMAT_PARQUET, 'Parquet'),
+    ]
+
+    DEST_SFTP = 'sftp'
+    DEST_S3 = 's3'
+    DEST_CHOICES = [
+        (DEST_SFTP, 'SFTP'),
+        (DEST_S3, 'Bucket S3'),
+    ]
+
+    company = models.ForeignKey(
+        'authentication.Company', on_delete=models.CASCADE,
+        related_name='scheduled_exports', verbose_name='Société')
+
+    titre = models.CharField('Titre', max_length=160)
+    dataset = models.CharField(
+        'Dataset', max_length=80,
+        help_text='Nom du dataset enregistré (core.data_explorer).')
+    spec = models.JSONField(
+        'Spécification', default=dict, blank=True,
+        help_text='Sélection/filtres (opaque pour core).')
+    format = models.CharField(
+        'Format', max_length=10, choices=FORMAT_CHOICES, default=FORMAT_CSV)
+    destination = models.CharField(
+        'Destination', max_length=20, choices=DEST_CHOICES, default=DEST_SFTP)
+    cron = models.CharField(
+        'Planification (cron)', max_length=120, blank=True, default='',
+        help_text='Expression cron interprétée par Celery Beat (hors core).')
+    actif = models.BooleanField('Actif', default=True)
+
+    derniere_execution_le = models.DateTimeField(
+        'Dernière exécution', null=True, blank=True)
+    dernier_statut = models.CharField(
+        'Dernier statut', max_length=20, blank=True, default='')
+    dernier_detail = models.JSONField('Dernier détail', default=dict, blank=True)
+
+    class Meta:
+        verbose_name = 'Extrait planifié'
+        verbose_name_plural = 'Extraits planifiés'
+        ordering = ['titre', 'id']
+        indexes = [
+            models.Index(fields=['company', 'actif'],
+                         name='core_schedexp_co_actif_idx'),
+        ]
+
+    def __str__(self):
+        return f'{self.titre} → {self.destination}'
+
+
+# ---------------------------------------------------------------------------
+# FG391 — Flags de fonctionnalités / modules par tenant (société).
+#
+# Modèle de FONDATION GÉNÉRIQUE : active/désactive un module par société.
+# ``module`` est une CLÉ LIBRE (chaîne, ex. « sav », « flotte ») — ``core`` ne
+# connaît AUCUN module métier (contrat import-linter
+# ``core-foundation-is-a-base-layer``). L'absence de ligne = comportement par
+# défaut (activé) ; une ligne ``actif=False`` désactive le module pour la
+# société. Le service ``core.feature_flags.module_actif`` lit cette table.
+# ---------------------------------------------------------------------------
+
+
+class ModuleToggle(TimestampedModel):
+    """Activation/désactivation d'un module par société (FG391).
+
+    GÉNÉRIQUE : ``module`` est une clé libre (aucun import métier). Unique par
+    ``(company, module)``. ``actif`` porte l'état ; ``raison`` documente une
+    coupure éventuelle. Multi-tenant : ``company`` obligatoire, imposée côté
+    serveur.
+    """
+
+    company = models.ForeignKey(
+        'authentication.Company', on_delete=models.CASCADE,
+        related_name='module_toggles', verbose_name='Société')
+
+    module = models.CharField(
+        'Module', max_length=60,
+        help_text='Clé du module, ex. « sav », « flotte » (libre).')
+    actif = models.BooleanField('Actif', default=True)
+    raison = models.CharField(
+        'Raison', max_length=255, blank=True, default='',
+        help_text='Note optionnelle (ex. « hors offre », « en pilote »).')
+
+    class Meta:
+        verbose_name = 'Activation de module'
+        verbose_name_plural = 'Activations de modules'
+        ordering = ['module', 'id']
+        constraints = [
+            models.UniqueConstraint(
+                fields=['company', 'module'],
+                name='core_moduletoggle_co_mod'),
+        ]
+        indexes = [
+            models.Index(fields=['company', 'actif'],
+                         name='core_modtog_co_actif_idx'),
+        ]
+
+    def __str__(self):
+        etat = 'activé' if self.actif else 'désactivé'
+        return f'{self.module} ({etat}) — société {self.company_id}'
+
+
+# ---------------------------------------------------------------------------
+# FG392 — Thème white-label par tenant (société).
+#
+# Modèle de FONDATION GÉNÉRIQUE : porte le branding par société (logo,
+# couleurs, domaine personnalisé) appliqué à la SPA et aux PDF, AU-DELÀ des
+# bases ``CompanyProfile`` (app parametres — JAMAIS importée ici : ``core`` reste
+# fondation, contrat import-linter ``core-foundation-is-a-base-layer``). Une
+# seule ligne par société (OneToOne).
+# ---------------------------------------------------------------------------
+
+
+class TenantTheme(TimestampedModel):
+    """Thème white-label d'une société (FG392).
+
+    GÉNÉRIQUE : aucun import métier. Logo (chemin/URL de stockage), couleurs
+    primaires/secondaires (hex), domaine personnalisé, et un blob ``extra`` JSON
+    pour des jetons de thème additionnels (police, rayon…). Multi-tenant :
+    ``company`` obligatoire, OneToOne, imposée côté serveur.
+    """
+
+    company = models.OneToOneField(
+        'authentication.Company', on_delete=models.CASCADE,
+        related_name='tenant_theme', verbose_name='Société')
+
+    logo_url = models.CharField(
+        'Logo (URL/chemin)', max_length=500, blank=True, default='',
+        help_text='URL ou chemin de stockage du logo white-label.')
+    couleur_primaire = models.CharField(
+        'Couleur primaire', max_length=9, blank=True, default='',
+        help_text='Code couleur hex (ex. « #1a3b8c »).')
+    couleur_secondaire = models.CharField(
+        'Couleur secondaire', max_length=9, blank=True, default='')
+    domaine = models.CharField(
+        'Domaine personnalisé', max_length=255, blank=True, default='',
+        help_text='Domaine white-label (ex. « erp.client.ma »).')
+    nom_affichage = models.CharField(
+        'Nom affiché', max_length=160, blank=True, default='',
+        help_text='Nom de marque affiché (sinon la raison sociale).')
+    extra = models.JSONField(
+        'Jetons additionnels', default=dict, blank=True,
+        help_text='Jetons de thème additionnels (opaque pour core).')
+
+    class Meta:
+        verbose_name = 'Thème white-label'
+        verbose_name_plural = 'Thèmes white-label'
+        ordering = ['id']
+
+    def __str__(self):
+        return f'Thème société {self.company_id}'
+
+
+# ---------------------------------------------------------------------------
+# FG393 — Éditeur de modèles imprimables / brandés (PDF / email / WhatsApp).
+#
+# Modèle de FONDATION GÉNÉRIQUE : persiste des modèles brandés éditables
+# (PDF/email/WhatsApp) avec des placeholders ``{{ variable }}`` rendus par un
+# moteur SÛR (``core.templating`` — substitution littérale, pas d'exécution de
+# code). ``core`` ne connaît AUCUN modèle métier (contrat import-linter
+# ``core-foundation-is-a-base-layer``) : les variables sont fournies par
+# l'appelant au moment du rendu. Nommé ``BrandedTemplate`` (et non
+# ``MessageTemplate``) pour ne PAS entrer en collision avec le
+# ``parametres.MessageTemplate`` WhatsApp existant (FR/Darija) — les deux
+# coexistent : celui-ci généralise l'éditeur multi-canal.
+# ---------------------------------------------------------------------------
+
+
+class BrandedTemplate(TimestampedModel):
+    """Modèle brandé éditable par société (FG393).
+
+    GÉNÉRIQUE : ``kind`` = pdf/email/whatsapp ; ``code`` identifie l'usage (ex.
+    « relance_devis ») ; ``sujet`` + ``corps`` portent le texte avec des
+    placeholders ``{{ variable }}``. Multi-tenant : ``company`` obligatoire,
+    imposée côté serveur. Unique par ``(company, kind, code)``.
+    """
+
+    KIND_PDF = 'pdf'
+    KIND_EMAIL = 'email'
+    KIND_WHATSAPP = 'whatsapp'
+    KIND_CHOICES = [
+        (KIND_PDF, 'PDF'),
+        (KIND_EMAIL, 'Email'),
+        (KIND_WHATSAPP, 'WhatsApp'),
+    ]
+
+    company = models.ForeignKey(
+        'authentication.Company', on_delete=models.CASCADE,
+        related_name='branded_templates', verbose_name='Société')
+
+    kind = models.CharField('Type', max_length=12, choices=KIND_CHOICES)
+    code = models.CharField(
+        'Code', max_length=80,
+        help_text="Identifiant d'usage, ex. « relance_devis » (libre).")
+    nom = models.CharField('Nom', max_length=160)
+    sujet = models.CharField(
+        'Sujet', max_length=255, blank=True, default='',
+        help_text='Objet (email) ou titre — supporte les placeholders.')
+    corps = models.TextField(
+        'Corps', blank=True, default='',
+        help_text='Texte avec placeholders ``{{ variable }}``.')
+    actif = models.BooleanField('Actif', default=True)
+
+    class Meta:
+        verbose_name = 'Modèle brandé'
+        verbose_name_plural = 'Modèles brandés'
+        ordering = ['kind', 'code', 'id']
+        constraints = [
+            models.UniqueConstraint(
+                fields=['company', 'kind', 'code'],
+                name='core_brandtpl_co_kind_code'),
+        ]
+        indexes = [
+            models.Index(fields=['company', 'kind', 'actif'],
+                         name='core_brandtpl_co_kind_idx'),
+        ]
+
+    def __str__(self):
+        return f'{self.kind}:{self.code} — {self.nom}'
+
+
+# ---------------------------------------------------------------------------
+# FG394 — Consentement & DSR (loi 09-08 / CNDP).
+#
+# Modèles de FONDATION GÉNÉRIQUES : registre de consentement + demandes de
+# personnes concernées (accès / effacement). La personne concernée est désignée
+# par un IDENTIFIANT générique (email ou téléphone) — ``core`` ne référence
+# AUCUN modèle métier (contrat import-linter
+# ``core-foundation-is-a-base-layer``). L'export/effacement réel des données
+# métier est délégué à des « fournisseurs DSR » que les apps enregistrent
+# (``core.dsr.register_dsr_provider``) — core orchestre sans rien importer.
+# ---------------------------------------------------------------------------
+
+
+class ConsentRecord(TimestampedModel):
+    """Entrée du registre de consentement (FG394, loi 09-08 / CNDP).
+
+    GÉNÉRIQUE : ``subject_identifier`` = email ou téléphone de la personne
+    concernée (aucun import métier). ``purpose`` = finalité (ex. « marketing »,
+    « whatsapp »). ``granted`` porte l'état ; ``source`` documente l'origine du
+    consentement. Multi-tenant : ``company`` obligatoire, imposée côté serveur.
+    """
+
+    company = models.ForeignKey(
+        'authentication.Company', on_delete=models.CASCADE,
+        related_name='consent_records', verbose_name='Société')
+
+    subject_identifier = models.CharField(
+        'Identifiant de la personne', max_length=255,
+        help_text='Email ou téléphone de la personne concernée.')
+    purpose = models.CharField(
+        'Finalité', max_length=80,
+        help_text='Finalité du traitement, ex. « marketing », « whatsapp ».')
+    granted = models.BooleanField('Consentement donné', default=True)
+    source = models.CharField(
+        'Source', max_length=120, blank=True, default='',
+        help_text='Origine du consentement (ex. « formulaire site », « devis »).')
+    occurred_at = models.DateTimeField(
+        'Horodatage', null=True, blank=True,
+        help_text='Date/heure du consentement (sur le consent_timestamp '
+                  'existant côté métier).')
+
+    class Meta:
+        verbose_name = 'Consentement'
+        verbose_name_plural = 'Registre de consentement'
+        ordering = ['-id']
+        indexes = [
+            models.Index(fields=['company', 'subject_identifier'],
+                         name='core_consent_co_subj_idx'),
+            models.Index(fields=['company', 'purpose', 'granted'],
+                         name='core_consent_co_purp_idx'),
+        ]
+
+    def __str__(self):
+        etat = 'accordé' if self.granted else 'retiré'
+        return f'{self.subject_identifier} — {self.purpose} ({etat})'
+
+
+class DataSubjectRequest(TimestampedModel):
+    """Demande de personne concernée — accès ou effacement (FG394).
+
+    GÉNÉRIQUE : ``subject_identifier`` désigne la personne (email/téléphone).
+    ``kind`` = accès (export) ou effacement. ``statut`` suit le cycle de vie ;
+    ``resultat`` porte le payload d'export (accès) ou le compte-rendu
+    d'effacement. Multi-tenant : ``company`` obligatoire, imposée côté serveur.
+    L'exécution réelle passe par les fournisseurs DSR enregistrés (``core.dsr``).
+    """
+
+    KIND_ACCESS = 'acces'
+    KIND_ERASURE = 'effacement'
+    KIND_CHOICES = [
+        (KIND_ACCESS, "Accès (export)"),
+        (KIND_ERASURE, 'Effacement'),
+    ]
+
+    STATUT_RECUE = 'recue'
+    STATUT_TRAITEE = 'traitee'
+    STATUT_REFUSEE = 'refusee'
+    STATUT_CHOICES = [
+        (STATUT_RECUE, 'Reçue'),
+        (STATUT_TRAITEE, 'Traitée'),
+        (STATUT_REFUSEE, 'Refusée'),
+    ]
+
+    company = models.ForeignKey(
+        'authentication.Company', on_delete=models.CASCADE,
+        related_name='dsr_requests', verbose_name='Société')
+
+    subject_identifier = models.CharField(
+        'Identifiant de la personne', max_length=255,
+        help_text='Email ou téléphone de la personne concernée.')
+    kind = models.CharField('Type', max_length=12, choices=KIND_CHOICES)
+    statut = models.CharField(
+        'Statut', max_length=12, choices=STATUT_CHOICES, default=STATUT_RECUE)
+    resultat = models.JSONField(
+        'Résultat', default=dict, blank=True,
+        help_text="Payload d'export (accès) ou compte-rendu d'effacement.")
+    traitee_le = models.DateTimeField('Traitée le', null=True, blank=True)
+
+    class Meta:
+        verbose_name = 'Demande de personne concernée'
+        verbose_name_plural = 'Demandes de personnes concernées'
+        ordering = ['-id']
+        indexes = [
+            models.Index(fields=['company', 'statut'],
+                         name='core_dsr_co_statut_idx'),
+            models.Index(fields=['company', 'subject_identifier'],
+                         name='core_dsr_co_subj_idx'),
+        ]
+
+    def __str__(self):
+        return f'DSR {self.kind} — {self.subject_identifier} ({self.statut})'
