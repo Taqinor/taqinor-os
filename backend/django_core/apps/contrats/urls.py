@@ -4,15 +4,24 @@ from rest_framework.routers import DefaultRouter
 from .views import (
     AlerteContratViewSet,
     AvenantViewSet,
+    CautionViewSet,
     ClauseContratViewSet,
     ClauseViewSet,
     ContratLienViewSet,
     ContratViewSet,
+    EcheancierContratViewSet,
+    EngagementSLAViewSet,
+    IndexationPrixViewSet,
+    JalonContratViewSet,
+    LigneEcheanceViewSet,
     ModeleContratClauseViewSet,
     ModeleContratViewSet,
+    ObligationViewSet,
     PartieContratViewSet,
+    PieceConformiteViewSet,
     RegleApprobationViewSet,
     ResiliationViewSet,
+    RetenueGarantieViewSet,
     VersionContratViewSet,
 )
 
@@ -29,6 +38,15 @@ router.register(r'versions', VersionContratViewSet)
 router.register(r'avenants', AvenantViewSet)
 router.register(r'resiliations', ResiliationViewSet)
 router.register(r'alertes', AlerteContratViewSet)
+router.register(r'jalons', JalonContratViewSet)
+router.register(r'obligations', ObligationViewSet)
+router.register(r'sla', EngagementSLAViewSet)
+router.register(r'retenues-garantie', RetenueGarantieViewSet)
+router.register(r'cautions', CautionViewSet)
+router.register(r'echeanciers', EcheancierContratViewSet)
+router.register(r'lignes-echeance', LigneEcheanceViewSet)
+router.register(r'indexations', IndexationPrixViewSet)
+router.register(r'pieces-conformite', PieceConformiteViewSet)
 
 urlpatterns = [
     path('', include(router.urls)),

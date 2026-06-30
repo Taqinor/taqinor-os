@@ -34,20 +34,31 @@ from . import selectors, services
 from .models import (
     AlerteContrat,
     Avenant,
+    Caution,
     Clause,
     ClauseContrat,
     Contrat,
     ContratLien,
+    EcheancierContrat,
+    EngagementSLA,
+    IndexationPrix,
+    JalonContrat,
+    LigneEcheance,
     ModeleContrat,
     ModeleContratClause,
+    Obligation,
     PartieContrat,
+    PieceConformite,
     RegleApprobation,
     Resiliation,
+    RetenueGarantie,
     VersionContrat,
 )
 from .serializers import (
+    AjouterLigneEcheanceSerializer,
     AlerteContratSerializer,
     AvenantSerializer,
+    CautionSerializer,
     ChangerStatutSerializer,
     ClauseContratSerializer,
     ClauseSerializer,
@@ -57,23 +68,41 @@ from .serializers import (
     CreerAvenantSerializer,
     CreerVersionSerializer,
     DeciderEtapeSerializer,
+    EcheancierContratSerializer,
+    EngagementSLASerializer,
     EtapeApprobationSerializer,
+    IndexationActionSerializer,
+    IndexationPrixSerializer,
+    LigneEcheanceSerializer,
+    MarquerPieceFournieSerializer,
     InstancierContratSerializer,
+    JalonContratSerializer,
     ModeleContratClauseSerializer,
     ModeleContratSerializer,
     NoterContratSerializer,
+    ObligationSerializer,
     PartieContratSerializer,
+    PenaliteSLASerializer,
+    PieceConformiteSerializer,
     RegleApprobationSerializer,
     RendreContratSerializer,
     RenouvelerContratSerializer,
     ResilierContratSerializer,
     ResiliationSerializer,
+    RetenueGarantieSerializer,
     ResoudreRegleApprobationSerializer,
     SemerAlertesSerializer,
     SignatureContratSerializer,
     SignerContratSerializer,
     VersionContratSerializer,
 )
+
+
+def _money(valeur):
+    """Formate un montant Decimal en chaîne à 2 décimales (sortie API stable)."""
+    from decimal import Decimal
+
+    return str((valeur or Decimal('0')).quantize(Decimal('0.01')))
 
 
 def _client_ip(request):
@@ -205,6 +234,55 @@ class ContratViewSet(_ContratsBaseViewSet):
         return Response(
             ContratSerializer(
                 qs, many=True, context={'request': request}).data)
+
+    @action(detail=False, methods=['get'], url_path='tableau-de-bord')
+    def tableau_de_bord(self, request):
+        """Tableau de bord des contrats (CONTRAT33).
+
+        Indicateurs scopés société (lecture seule) : total, répartition par
+        statut/type, contrats actifs, à renouveler, en risque, valeur active /
+        totale, et MRR (revenu mensuel récurrent des échéanciers actifs). Le
+        filtre ``?within=<jours>`` règle la fenêtre « à renouveler / en risque »
+        (défaut 30). La société est celle de l'utilisateur (posée côté serveur) ;
+        ne change AUCUN statut.
+        """
+        try:
+            within = int(request.query_params.get('within', 30))
+        except (TypeError, ValueError):
+            within = 30
+        data = selectors.tableau_de_bord_contrats(
+            request.user.company, within_days=within)
+        return Response({
+            'total': data['total'],
+            'par_statut': data['par_statut'],
+            'par_type': data['par_type'],
+            'actifs': data['actifs'],
+            'a_renouveler': data['a_renouveler'],
+            'en_risque': data['en_risque'],
+            'valeur_active': _money(data['valeur_active']),
+            'valeur_totale': _money(data['valeur_totale']),
+            'mrr': _money(data['mrr']),
+        })
+
+    @action(detail=False, methods=['get'])
+    def reporting(self, request):
+        """Reporting valeur contractuelle & taux de renouvellement (CONTRAT35).
+
+        Lecture seule, scopé société : valeur totale/active, valeur par type,
+        nombre de renouvellements, contrats renouvelés, contrats échus et taux de
+        renouvellement (%). Ne change AUCUN statut.
+        """
+        data = selectors.reporting_contrats(request.user.company)
+        return Response({
+            'valeur_totale': _money(data['valeur_totale']),
+            'valeur_active': _money(data['valeur_active']),
+            'valeur_par_type': {
+                k: _money(v) for k, v in data['valeur_par_type'].items()},
+            'nb_renouvellements': data['nb_renouvellements'],
+            'nb_contrats_renouveles': data['nb_contrats_renouveles'],
+            'nb_echus': data['nb_echus'],
+            'taux_renouvellement': str(data['taux_renouvellement']),
+        })
 
     @action(detail=True, methods=['post'])
     def renouveler(self, request, pk=None):
@@ -1072,3 +1150,552 @@ class AlerteContratViewSet(_ContratsBaseViewSet):
             },
             status=status.HTTP_201_CREATED,
         )
+
+
+class JalonContratViewSet(_ContratsBaseViewSet):
+    """Jalons / étapes clés des contrats de la société (CONTRAT26).
+
+    Scopé société (``TenantMixin``) ; ``company`` posée CÔTÉ SERVEUR (déduite du
+    contrat). La CRÉATION passe par ``services.creer_jalon`` (numéro = max+1 sous
+    verrou de ligne, jamais ``count()+1``). Action ``marquer-atteint`` pour
+    pointer un jalon comme atteint (statut + date côté serveur). Le ``statut``
+    d'un jalon est PROPRE au suivi des jalons — il ne touche JAMAIS le
+    ``Contrat.statut`` (CONTRAT12) ni le funnel ``STAGES.py`` (rule #2).
+
+    Filtres : ``?contrat=<id>``, ``?statut=<valeur>``.
+    """
+    queryset = JalonContrat.objects.select_related('contrat').all()
+    serializer_class = JalonContratSerializer
+    filter_backends = [filters.OrderingFilter]
+    ordering_fields = ['numero', 'date_cible', 'date_creation', 'id']
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        contrat_id = self.request.query_params.get('contrat')
+        if contrat_id:
+            qs = qs.filter(contrat_id=contrat_id)
+        statut = self.request.query_params.get('statut')
+        if statut:
+            qs = qs.filter(statut=statut)
+        return qs
+
+    def perform_create(self, serializer):
+        """Crée le jalon via le service (numérotation max+1 côté serveur).
+
+        La société est déduite du contrat (validé même-société par le
+        sérialiseur) — jamais lue du corps de requête.
+        """
+        contrat = serializer.validated_data['contrat']
+        jalon = services.creer_jalon(
+            contrat,
+            intitule=serializer.validated_data['intitule'],
+            description=serializer.validated_data.get('description', ''),
+            date_cible=serializer.validated_data.get('date_cible'),
+            auteur=self.request.user,
+        )
+        serializer.instance = jalon
+
+    @action(detail=True, methods=['post'], url_path='marquer-atteint')
+    def marquer_atteint(self, request, pk=None):
+        """Marque le jalon comme ATTEINT (statut + date côté serveur — CONTRAT26).
+
+        Idempotent : un jalon déjà atteint reste inchangé. La date du jour et
+        l'auteur sont posés CÔTÉ SERVEUR. Ne change AUCUN ``Contrat.statut``.
+        """
+        jalon = self.get_object()
+        jalon = services.marquer_jalon_atteint(jalon, auteur=request.user)
+        return Response(
+            JalonContratSerializer(
+                jalon, context={'request': request}).data)
+
+
+class ObligationViewSet(_ContratsBaseViewSet):
+    """Obligations / livrables des contrats de la société (CONTRAT26).
+
+    Scopé société (``TenantMixin``) ; ``company`` posée CÔTÉ SERVEUR (déduite du
+    contrat). CRUD complet plus une action ``marquer-faite`` qui pose
+    ``statut=faite`` + ``date_realisation`` côté serveur. Le ``statut`` d'une
+    obligation est PROPRE au suivi des livrables — il ne touche JAMAIS le
+    ``Contrat.statut`` (CONTRAT12) ni le funnel ``STAGES.py`` (rule #2).
+
+    Filtres : ``?contrat=<id>``, ``?jalon=<id>``, ``?statut=<valeur>``,
+    ``?redevable=<valeur>``.
+    """
+    queryset = Obligation.objects.select_related('contrat', 'jalon').all()
+    serializer_class = ObligationSerializer
+    filter_backends = [filters.SearchFilter, filters.OrderingFilter]
+    search_fields = ['intitule', 'description']
+    ordering_fields = ['ordre', 'date_echeance', 'date_creation', 'id']
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        contrat_id = self.request.query_params.get('contrat')
+        if contrat_id:
+            qs = qs.filter(contrat_id=contrat_id)
+        jalon_id = self.request.query_params.get('jalon')
+        if jalon_id:
+            qs = qs.filter(jalon_id=jalon_id)
+        statut = self.request.query_params.get('statut')
+        if statut:
+            qs = qs.filter(statut=statut)
+        redevable = self.request.query_params.get('redevable')
+        if redevable:
+            qs = qs.filter(redevable=redevable)
+        return qs
+
+    def perform_create(self, serializer):
+        """Pose ``company`` (celle du contrat) côté serveur."""
+        contrat = serializer.validated_data['contrat']
+        serializer.save(company=contrat.company)
+
+    @action(detail=True, methods=['post'], url_path='marquer-faite')
+    def marquer_faite(self, request, pk=None):
+        """Marque l'obligation comme RÉALISÉE (statut + date côté serveur — CONTRAT26).
+
+        Idempotent : une obligation déjà réalisée reste inchangée. La date du
+        jour et l'auteur sont posés CÔTÉ SERVEUR. Ne change AUCUN
+        ``Contrat.statut``.
+        """
+        obligation = self.get_object()
+        obligation = services.marquer_obligation_faite(
+            obligation, auteur=request.user)
+        return Response(
+            ObligationSerializer(
+                obligation, context={'request': request}).data)
+
+
+class EngagementSLAViewSet(_ContratsBaseViewSet):
+    """Engagements de niveau de service (SLA) & pénalités des contrats (CONTRAT27).
+
+    Scopé société (``TenantMixin``) ; ``company`` posée CÔTÉ SERVEUR (déduite du
+    contrat). CRUD complet plus une action ``penalite`` qui CALCULE (lecture
+    seule, déclaratif) la pénalité encourue — sans créer d'écriture, sans toucher
+    le ``Contrat.statut`` (CONTRAT12) ni le funnel ``STAGES.py`` (rule #2), et
+    sans émettre de facture.
+
+    Filtres : ``?contrat=<id>``, ``?actif=true/false``.
+    """
+    queryset = EngagementSLA.objects.select_related('contrat').all()
+    serializer_class = EngagementSLASerializer
+    filter_backends = [filters.SearchFilter, filters.OrderingFilter]
+    search_fields = ['libelle', 'unite']
+    ordering_fields = ['taux_cible', 'date_creation', 'id']
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        contrat_id = self.request.query_params.get('contrat')
+        if contrat_id:
+            qs = qs.filter(contrat_id=contrat_id)
+        actif = self.request.query_params.get('actif')
+        if actif is not None:
+            qs = qs.filter(actif=actif.lower() in ('1', 'true', 'oui'))
+        return qs
+
+    def perform_create(self, serializer):
+        """Pose ``company`` (celle du contrat) côté serveur."""
+        contrat = serializer.validated_data['contrat']
+        serializer.save(company=contrat.company)
+
+    @action(detail=True, methods=['post'])
+    def penalite(self, request, pk=None):
+        """Calcule la pénalité encourue pour ce SLA (lecture seule — CONTRAT27).
+
+        Corps : ``taux_realise`` (optionnel, %) et ``montant_contrat``
+        (optionnel). Déclaratif : ne crée AUCUNE écriture, ne change AUCUN
+        statut, n'émet aucune facture.
+        """
+        sla = self.get_object()
+        body = PenaliteSLASerializer(data=request.data)
+        body.is_valid(raise_exception=True)
+        resultat = services.calculer_penalite_sla(
+            sla,
+            taux_realise=body.validated_data.get('taux_realise'),
+            montant_contrat=body.validated_data.get('montant_contrat'),
+        )
+        return Response({
+            'penalite': str(resultat['penalite']),
+            'respecte': resultat['respecte'],
+            'taux_cible': str(resultat['taux_cible']),
+            'taux_realise': (
+                str(resultat['taux_realise'])
+                if resultat['taux_realise'] is not None else None),
+        })
+
+
+class RetenueGarantieViewSet(_ContratsBaseViewSet):
+    """Retenues de garantie des contrats de la société + suivi de libération (CONTRAT28).
+
+    Scopé société (``TenantMixin``) ; ``company`` posée CÔTÉ SERVEUR (déduite du
+    contrat). À la création, ``montant_retenu`` est CALCULÉ côté serveur
+    (= base × taux %). Action ``liberer`` pour pointer la libération (statut +
+    date côté serveur). Le ``statut`` est PROPRE au suivi de la retenue — il ne
+    touche JAMAIS le ``Contrat.statut`` (CONTRAT12) ni le funnel ``STAGES.py``
+    (rule #2), et n'émet aucune facture.
+
+    Filtres : ``?contrat=<id>``, ``?statut=<valeur>``.
+    """
+    queryset = RetenueGarantie.objects.select_related('contrat').all()
+    serializer_class = RetenueGarantieSerializer
+    filter_backends = [filters.OrderingFilter]
+    ordering_fields = ['date_retenue', 'date_liberation_prevue',
+                       'date_creation', 'id']
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        contrat_id = self.request.query_params.get('contrat')
+        if contrat_id:
+            qs = qs.filter(contrat_id=contrat_id)
+        statut = self.request.query_params.get('statut')
+        if statut:
+            qs = qs.filter(statut=statut)
+        return qs
+
+    def perform_create(self, serializer):
+        """Pose ``company`` (celle du contrat) + calcule ``montant_retenu``.
+
+        Le montant retenu est dérivé CÔTÉ SERVEUR (= base × taux %) — jamais lu
+        du corps de requête.
+        """
+        contrat = serializer.validated_data['contrat']
+        instance = serializer.save(company=contrat.company)
+        instance.montant_retenu = instance.calculer_montant_retenu()
+        instance.save(update_fields=['montant_retenu'])
+
+    def perform_update(self, serializer):
+        """Recalcule ``montant_retenu`` après une mise à jour base/taux."""
+        instance = serializer.save()
+        nouveau = instance.calculer_montant_retenu()
+        if instance.montant_retenu != nouveau:
+            instance.montant_retenu = nouveau
+            instance.save(update_fields=['montant_retenu'])
+
+    @action(detail=True, methods=['post'])
+    def liberer(self, request, pk=None):
+        """Libère la retenue (statut + date côté serveur — CONTRAT28).
+
+        Idempotent : une retenue déjà libérée reste inchangée. Une retenue
+        annulée ne peut pas être libérée (400). La date du jour et l'auteur sont
+        posés CÔTÉ SERVEUR. Ne change AUCUN ``Contrat.statut``.
+        """
+        retenue = self.get_object()
+        try:
+            retenue = services.liberer_retenue(retenue, auteur=request.user)
+        except ValueError as exc:
+            return Response(
+                {'detail': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+        return Response(
+            RetenueGarantieSerializer(
+                retenue, context={'request': request}).data)
+
+
+class CautionViewSet(_ContratsBaseViewSet):
+    """Registre des cautions / garanties liées aux contrats (CONTRAT29).
+
+    Scopé société (``TenantMixin``) ; ``company`` posée CÔTÉ SERVEUR (déduite du
+    contrat). CRUD complet. Le ``statut`` d'une caution est un simple champ de
+    registre (éditable) — il ne pilote AUCUNE machine d'états du contrat
+    (CONTRAT12) ni le funnel ``STAGES.py`` (rule #2).
+
+    Filtres : ``?contrat=<id>``, ``?statut=<valeur>``, ``?type_caution=<valeur>``.
+    Recherche : ``garant`` / ``reference``.
+    """
+    queryset = Caution.objects.select_related('contrat').all()
+    serializer_class = CautionSerializer
+    filter_backends = [filters.SearchFilter, filters.OrderingFilter]
+    search_fields = ['garant', 'reference']
+    ordering_fields = ['date_emission', 'date_expiration', 'montant',
+                       'date_creation', 'id']
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        contrat_id = self.request.query_params.get('contrat')
+        if contrat_id:
+            qs = qs.filter(contrat_id=contrat_id)
+        statut = self.request.query_params.get('statut')
+        if statut:
+            qs = qs.filter(statut=statut)
+        type_caution = self.request.query_params.get('type_caution')
+        if type_caution:
+            qs = qs.filter(type_caution=type_caution)
+        return qs
+
+    def perform_create(self, serializer):
+        """Pose ``company`` (celle du contrat) côté serveur."""
+        contrat = serializer.validated_data['contrat']
+        serializer.save(company=contrat.company)
+
+
+class EcheancierContratViewSet(_ContratsBaseViewSet):
+    """Échéanciers de paiement des contrats (en-tête + lignes) — CONTRAT30.
+
+    Scopé société (``TenantMixin``) ; ``company`` posée CÔTÉ SERVEUR (déduite du
+    contrat). CRUD de l'en-tête plus l'action ``ajouter-ligne`` qui crée une
+    ``LigneEcheance`` (numéro = max+1 sous verrou, jamais ``count()+1``) et
+    recalcule ``montant_total``. Le ``statut`` est PROPRE à l'échéancier — il ne
+    touche JAMAIS le ``Contrat.statut`` (CONTRAT12) ni le funnel ``STAGES.py``
+    (rule #2), et n'émet aucune facture (CONTRAT31 est séparé).
+
+    Filtres : ``?contrat=<id>``, ``?statut=<valeur>``.
+    """
+    queryset = EcheancierContrat.objects.select_related(
+        'contrat').prefetch_related('lignes').all()
+    serializer_class = EcheancierContratSerializer
+    filter_backends = [filters.OrderingFilter]
+    ordering_fields = ['date_creation', 'id']
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        contrat_id = self.request.query_params.get('contrat')
+        if contrat_id:
+            qs = qs.filter(contrat_id=contrat_id)
+        statut = self.request.query_params.get('statut')
+        if statut:
+            qs = qs.filter(statut=statut)
+        return qs
+
+    def perform_create(self, serializer):
+        """Pose ``company`` (celle du contrat) côté serveur."""
+        contrat = serializer.validated_data['contrat']
+        serializer.save(company=contrat.company)
+
+    @action(detail=True, methods=['post'], url_path='ajouter-ligne')
+    def ajouter_ligne(self, request, pk=None):
+        """Ajoute une ligne (échéance) à l'échéancier (CONTRAT30).
+
+        Corps : ``date_echeance`` (requis), ``montant`` (optionnel), ``libelle``
+        (optionnel). Le ``numero`` (max+1 sous verrou), la société et le statut
+        sont posés CÔTÉ SERVEUR ; ``montant_total`` est recalculé.
+        """
+        echeancier = self.get_object()
+        body = AjouterLigneEcheanceSerializer(data=request.data)
+        body.is_valid(raise_exception=True)
+        ligne = services.ajouter_ligne_echeance(
+            echeancier,
+            date_echeance=body.validated_data['date_echeance'],
+            montant=body.validated_data.get('montant'),
+            libelle=body.validated_data.get('libelle', ''),
+        )
+        return Response(
+            LigneEcheanceSerializer(
+                ligne, context={'request': request}).data,
+            status=status.HTTP_201_CREATED,
+        )
+
+
+class LigneEcheanceViewSet(TenantMixin, viewsets.ReadOnlyModelViewSet):
+    """Lignes (échéances) des échéanciers — LECTURE SEULE + pointage de paiement (CONTRAT30).
+
+    Récupération : ``list`` (filtrable par ``?echeancier=<id>``,
+    ``?statut=<valeur>``) et ``retrieve``. Les lignes sont créées exclusivement
+    via l'action ``ajouter-ligne`` de l'échéancier (numéro côté serveur). Action
+    ``pointer-paiement`` pour marquer une ligne payée (statut + date côté
+    serveur). Scopé société (``TenantMixin``) ; accès Administrateur/Responsable.
+    """
+    permission_classes = [IsResponsableOrAdmin]
+    queryset = LigneEcheance.objects.select_related('echeancier').all()
+    serializer_class = LigneEcheanceSerializer
+    filter_backends = [filters.OrderingFilter]
+    ordering_fields = ['numero', 'date_echeance', 'date_creation', 'id']
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        echeancier_id = self.request.query_params.get('echeancier')
+        if echeancier_id:
+            qs = qs.filter(echeancier_id=echeancier_id)
+        statut = self.request.query_params.get('statut')
+        if statut:
+            qs = qs.filter(statut=statut)
+        return qs
+
+    @action(detail=True, methods=['post'], url_path='pointer-paiement')
+    def pointer_paiement(self, request, pk=None):
+        """Marque la ligne d'échéance PAYÉE (statut + date côté serveur — CONTRAT30).
+
+        Idempotent : une ligne déjà payée reste inchangée. La date du jour est
+        posée CÔTÉ SERVEUR. Ne change AUCUN ``Contrat.statut`` et n'émet aucune
+        facture.
+        """
+        ligne = self.get_object()
+        ligne = services.pointer_paiement_echeance(ligne)
+        return Response(
+            LigneEcheanceSerializer(
+                ligne, context={'request': request}).data)
+
+    @action(detail=True, methods=['post'])
+    def facturer(self, request, pk=None):
+        """Émet une facture récurrente pour cette échéance (CONTRAT31).
+
+        Crée une ``ventes.Facture`` via la frontière cross-app (client résolu par
+        ``crm.selectors``, numérotation par ``ventes``) et relie la facture à la
+        ligne (``facture_id``). Refuse (400) si la facturation n'est pas activée
+        sur l'échéancier, si l'échéance est déjà facturée/annulée, si le montant
+        est nul, ou si le client est introuvable. Le ``Contrat.statut`` n'est
+        JAMAIS modifié. L'utilisateur et la société sont posés CÔTÉ SERVEUR.
+        """
+        ligne = self.get_object()
+        try:
+            facture = services.facturer_ligne_echeance(
+                ligne, user=request.user)
+        except services.FacturationError as exc:
+            return Response(
+                {'detail': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+        ligne.refresh_from_db()
+        return Response(
+            {
+                'facture_id': facture.id,
+                'facture_reference': facture.reference,
+                'ligne': LigneEcheanceSerializer(
+                    ligne, context={'request': request}).data,
+            },
+            status=status.HTTP_201_CREATED,
+        )
+
+
+class IndexationPrixViewSet(_ContratsBaseViewSet):
+    """Indexations / révisions de prix des contrats (CONTRAT32).
+
+    Scopé société (``TenantMixin``) ; ``company`` posée CÔTÉ SERVEUR (déduite du
+    contrat). CRUD des règles d'indexation plus deux actions :
+
+    - POST ``/indexations/<id>/simuler/`` : CALCULE (lecture seule, déclaratif)
+      le prix révisé pour une ``valeur_actuelle`` d'indice — aucune écriture.
+    - POST ``/indexations/<id>/appliquer/`` : APPLIQUE la révision via un AVENANT
+      (CONTRAT24) ajustant ``Contrat.montant`` du delta. Le ``Contrat.statut``
+      n'est JAMAIS modifié (CONTRAT12) ; jamais un funnel ``STAGES.py`` (rule #2).
+
+    Filtres : ``?contrat=<id>``, ``?actif=true/false``.
+    """
+    queryset = IndexationPrix.objects.select_related('contrat').all()
+    serializer_class = IndexationPrixSerializer
+    filter_backends = [filters.SearchFilter, filters.OrderingFilter]
+    search_fields = ['libelle', 'indice']
+    ordering_fields = ['date_creation', 'id']
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        contrat_id = self.request.query_params.get('contrat')
+        if contrat_id:
+            qs = qs.filter(contrat_id=contrat_id)
+        actif = self.request.query_params.get('actif')
+        if actif is not None:
+            qs = qs.filter(actif=actif.lower() in ('1', 'true', 'oui'))
+        return qs
+
+    def perform_create(self, serializer):
+        """Pose ``company`` (celle du contrat) côté serveur."""
+        contrat = serializer.validated_data['contrat']
+        serializer.save(company=contrat.company)
+
+    @action(detail=True, methods=['post'])
+    def simuler(self, request, pk=None):
+        """Simule le prix révisé pour une valeur d'indice (lecture seule — CONTRAT32)."""
+        indexation = self.get_object()
+        body = IndexationActionSerializer(data=request.data)
+        body.is_valid(raise_exception=True)
+        try:
+            resultat = services.calculer_prix_indexe(
+                indexation,
+                valeur_actuelle=body.validated_data['valeur_actuelle'],
+                prix_base=body.validated_data.get('prix_base'),
+            )
+        except ValueError as exc:
+            return Response(
+                {'detail': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+        return Response({
+            'prix_base': str(resultat['prix_base']),
+            'prix_revise': str(resultat['prix_revise']),
+            'delta': str(resultat['delta']),
+            'valeur_actuelle': str(resultat['valeur_actuelle']),
+        })
+
+    @action(detail=True, methods=['post'])
+    def appliquer(self, request, pk=None):
+        """Applique la révision via un avenant (CONTRAT32).
+
+        Corps : ``valeur_actuelle`` (requis). Crée un AVENANT ajustant
+        ``Contrat.montant`` du delta (ou aucun si delta nul) et trace la date de
+        révision. L'auteur et la société sont posés CÔTÉ SERVEUR.
+        """
+        indexation = self.get_object()
+        body = IndexationActionSerializer(data=request.data)
+        body.is_valid(raise_exception=True)
+        try:
+            resultat = services.appliquer_indexation(
+                indexation,
+                valeur_actuelle=body.validated_data['valeur_actuelle'],
+                auteur=request.user,
+            )
+        except ValueError as exc:
+            return Response(
+                {'detail': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+        avenant = resultat['avenant']
+        return Response({
+            'prix_base': str(resultat['prix_base']),
+            'prix_revise': str(resultat['prix_revise']),
+            'delta': str(resultat['delta']),
+            'avenant_id': avenant.id if avenant is not None else None,
+            'avenant_numero': avenant.numero if avenant is not None else None,
+        }, status=status.HTTP_200_OK)
+
+
+class PieceConformiteViewSet(_ContratsBaseViewSet):
+    """Pièces de conformité / attestations obligatoires des contrats (CONTRAT34).
+
+    Scopé société (``TenantMixin``) ; ``company`` posée CÔTÉ SERVEUR (déduite du
+    contrat). CRUD plus une action ``marquer-fournie`` qui pose ``statut=fournie``
+    + ``date_fourniture`` (et relie éventuellement un document GED par id LÂCHE).
+    Le ``statut`` est PROPRE au suivi de conformité — il ne touche JAMAIS le
+    ``Contrat.statut`` (CONTRAT12) ni le funnel ``STAGES.py`` (rule #2).
+
+    Filtres : ``?contrat=<id>``, ``?statut=<valeur>``, ``?type_piece=<valeur>``,
+    ``?obligatoire=true/false``.
+    """
+    queryset = PieceConformite.objects.select_related('contrat').all()
+    serializer_class = PieceConformiteSerializer
+    filter_backends = [filters.SearchFilter, filters.OrderingFilter]
+    search_fields = ['libelle', 'note']
+    ordering_fields = ['date_expiration', 'date_fourniture', 'date_creation',
+                       'id']
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        contrat_id = self.request.query_params.get('contrat')
+        if contrat_id:
+            qs = qs.filter(contrat_id=contrat_id)
+        statut = self.request.query_params.get('statut')
+        if statut:
+            qs = qs.filter(statut=statut)
+        type_piece = self.request.query_params.get('type_piece')
+        if type_piece:
+            qs = qs.filter(type_piece=type_piece)
+        obligatoire = self.request.query_params.get('obligatoire')
+        if obligatoire is not None:
+            qs = qs.filter(
+                obligatoire=obligatoire.lower() in ('1', 'true', 'oui'))
+        return qs
+
+    def perform_create(self, serializer):
+        """Pose ``company`` (celle du contrat) côté serveur."""
+        contrat = serializer.validated_data['contrat']
+        serializer.save(company=contrat.company)
+
+    @action(detail=True, methods=['post'], url_path='marquer-fournie')
+    def marquer_fournie(self, request, pk=None):
+        """Marque la pièce FOURNIE (statut + date côté serveur — CONTRAT34).
+
+        Corps optionnel : ``ged_document_id`` (lien LÂCHE vers un document GED),
+        ``date_expiration``. La date du jour et l'auteur sont posés CÔTÉ SERVEUR.
+        Ne change AUCUN ``Contrat.statut``.
+        """
+        piece = self.get_object()
+        body = MarquerPieceFournieSerializer(data=request.data)
+        body.is_valid(raise_exception=True)
+        piece = services.marquer_piece_fournie(
+            piece,
+            ged_document_id=body.validated_data.get('ged_document_id'),
+            date_expiration=body.validated_data.get('date_expiration'),
+            auteur=request.user,
+        )
+        return Response(
+            PieceConformiteSerializer(
+                piece, context={'request': request}).data)

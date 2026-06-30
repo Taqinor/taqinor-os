@@ -1513,3 +1513,896 @@ class Resiliation(models.Model):
             f'Résiliation ({self.get_statut_display()}) '
             f'— contrat {self.contrat_id}'
         )
+
+
+class Obligation(models.Model):
+    """Obligation / livrable contractuel d'un contrat — CONTRAT26.
+
+    Une ``Obligation`` recense un ENGAGEMENT concret porté par un ``Contrat`` :
+    un livrable à fournir, une prestation à exécuter, une condition à remplir
+    (ex. « Mise en service de la centrale », « Remise du dossier ONEE »,
+    « Rapport de performance trimestriel »). Chaque obligation porte une partie
+    REDEVABLE (``redevable`` : prestataire / client), une échéance
+    (``date_echeance``) et un statut d'avancement LOCAL — propre au suivi des
+    obligations, sans AUCUN lien avec le ``Contrat.statut`` (machine d'états
+    CONTRAT12) ni le funnel ``STAGES.py`` (rule #2).
+
+    Une obligation peut être rattachée à un ``JalonContrat`` (regroupement par
+    jalon) — référence INTERNE à l'app `contrats` (FK dur autorisé), NULLABLE
+    (``SET_NULL``) : supprimer le jalon n'efface jamais l'obligation.
+
+    Multi-tenant : ``company`` est posée CÔTÉ SERVEUR (déduite du contrat) —
+    jamais lue du corps de requête. ``contrat`` est une référence interne à
+    l'app `contrats` (FK dur autorisé).
+
+    RUNTIME-SAFETY (leçon FG136) : ``intitule`` est un ``CharField`` borné
+    (≤255) et ``description`` un ``TextField`` (un descriptif de livrable peut
+    être long — aucune longueur maximale à dépasser et lever). L'index est NOMMÉ
+    explicitement (≤30 chars) pour éviter la divergence d'auto-nommage Django.
+    """
+
+    class Redevable(models.TextChoices):
+        PRESTATAIRE = 'prestataire', 'Prestataire'
+        CLIENT = 'client', 'Client'
+        AUTRE = 'autre', 'Autre'
+
+    class Statut(models.TextChoices):
+        A_FAIRE = 'a_faire', 'À faire'
+        EN_COURS = 'en_cours', 'En cours'
+        FAITE = 'faite', 'Réalisée'
+        EN_RETARD = 'en_retard', 'En retard'
+        ANNULEE = 'annulee', 'Annulée'
+
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='contrats_obligations',
+        verbose_name='Société',
+    )
+    contrat = models.ForeignKey(
+        Contrat,
+        on_delete=models.CASCADE,
+        related_name='obligations',
+        verbose_name='Contrat',
+    )
+    # Jalon de rattachement (optionnel) — référence interne à l'app contrats.
+    jalon = models.ForeignKey(
+        'JalonContrat',
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='obligations',
+        verbose_name='Jalon',
+    )
+    intitule = models.CharField(max_length=255, verbose_name='Intitulé')
+    description = models.TextField(
+        blank=True, default='', verbose_name='Description')
+    redevable = models.CharField(
+        max_length=20, choices=Redevable.choices,
+        default=Redevable.PRESTATAIRE, verbose_name='Partie redevable')
+    date_echeance = models.DateField(
+        null=True, blank=True, verbose_name="Date d'échéance")
+    statut = models.CharField(
+        max_length=20, choices=Statut.choices,
+        default=Statut.A_FAIRE, verbose_name='Statut')
+    # Date de réalisation effective (posée côté serveur quand l'obligation passe
+    # à ``faite``). NULL tant que non réalisée.
+    date_realisation = models.DateField(
+        null=True, blank=True, verbose_name='Réalisée le')
+    ordre = models.PositiveIntegerField(default=0, verbose_name='Ordre')
+    date_creation = models.DateTimeField(
+        auto_now_add=True, verbose_name='Créée le')
+
+    class Meta:
+        verbose_name = 'Obligation contractuelle'
+        verbose_name_plural = 'Obligations contractuelles'
+        ordering = ['contrat_id', 'ordre', 'date_echeance', 'id']
+        indexes = [
+            models.Index(
+                fields=['company', 'statut'],
+                name='contrats_oblig_co_st',
+            ),
+            models.Index(
+                fields=['contrat', 'date_echeance'],
+                name='contrats_oblig_ct_dt',
+            ),
+        ]
+
+    def __str__(self):
+        return f'{self.intitule} (contrat {self.contrat_id})'
+
+
+class JalonContrat(models.Model):
+    """Jalon / étape clé d'un contrat (regroupe des obligations) — CONTRAT26.
+
+    Un ``JalonContrat`` matérialise une ÉTAPE CLÉ datée du déroulé contractuel
+    (ex. « Signature », « Mise en service », « Réception définitive »,
+    « Fin de garantie ») à laquelle on rattache des ``Obligation`` (livrables).
+    Le jalon porte sa propre date cible (``date_cible``) et un statut LOCAL
+    d'avancement — propre au suivi des jalons, sans AUCUN lien avec le
+    ``Contrat.statut`` (CONTRAT12) ni le funnel ``STAGES.py`` (rule #2).
+
+    Numérotation par contrat : ``numero`` démarre à 1 et s'incrémente de 1 pour
+    chaque nouveau jalon d'un MÊME contrat. Le numéro est posé CÔTÉ SERVEUR par
+    ``services.creer_jalon`` qui calcule ``max(numero)+1`` SOUS
+    ``select_for_update`` (verrou de ligne sur le contrat) — JAMAIS un
+    ``count()+1`` (qui collisionne, cf. la règle de numérotation du repo).
+
+    Multi-tenant : ``company`` est posée CÔTÉ SERVEUR (déduite du contrat).
+    ``contrat`` est une référence interne à l'app `contrats` (FK dur autorisé).
+
+    RUNTIME-SAFETY (leçon FG136) : ``intitule`` est borné (≤255) et
+    ``description`` un ``TextField``. La contrainte d'unicité ``(contrat,
+    numero)`` et l'index sont NOMMÉS explicitement (≤30 chars).
+    """
+
+    class Statut(models.TextChoices):
+        A_VENIR = 'a_venir', 'À venir'
+        EN_COURS = 'en_cours', 'En cours'
+        ATTEINT = 'atteint', 'Atteint'
+        EN_RETARD = 'en_retard', 'En retard'
+        ANNULE = 'annule', 'Annulé'
+
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='contrats_jalons',
+        verbose_name='Société',
+    )
+    contrat = models.ForeignKey(
+        Contrat,
+        on_delete=models.CASCADE,
+        related_name='jalons',
+        verbose_name='Contrat',
+    )
+    # Numéro de jalon (1, 2, 3…) par contrat, posé côté serveur (max+1 sous
+    # verrou de ligne — jamais count()+1).
+    numero = models.PositiveIntegerField(verbose_name='Numéro de jalon')
+    intitule = models.CharField(max_length=255, verbose_name='Intitulé')
+    description = models.TextField(
+        blank=True, default='', verbose_name='Description')
+    date_cible = models.DateField(
+        null=True, blank=True, verbose_name='Date cible')
+    statut = models.CharField(
+        max_length=20, choices=Statut.choices,
+        default=Statut.A_VENIR, verbose_name='Statut')
+    # Date d'atteinte effective du jalon (posée côté serveur). NULL tant que
+    # non atteint.
+    date_atteinte = models.DateField(
+        null=True, blank=True, verbose_name='Atteint le')
+    date_creation = models.DateTimeField(
+        auto_now_add=True, verbose_name='Créé le')
+
+    class Meta:
+        verbose_name = 'Jalon de contrat'
+        verbose_name_plural = 'Jalons de contrat'
+        ordering = ['contrat_id', 'numero', 'id']
+        constraints = [
+            models.UniqueConstraint(
+                fields=['contrat', 'numero'],
+                name='contrats_jalon_uniq',
+            ),
+        ]
+        indexes = [
+            models.Index(
+                fields=['contrat', 'date_cible'],
+                name='contrats_jalon_ct_dt',
+            ),
+        ]
+
+    def __str__(self):
+        return f'Jalon n°{self.numero} — {self.intitule} (contrat {self.contrat_id})'
+
+
+class EngagementSLA(models.Model):
+    """Engagement de niveau de service (SLA) & pénalités d'un contrat — CONTRAT27.
+
+    Un ``EngagementSLA`` déclare, pour un ``Contrat``, un ENGAGEMENT DE SERVICE
+    chiffré (ex. « disponibilité ≥ 98 % », « délai d'intervention ≤ 24 h »,
+    « PR ≥ 80 % ») et la PÉNALITÉ contractuelle encourue en cas de manquement.
+    Le ``taux_cible`` exprime l'objectif en pourcentage (0–100) ; ``unite``
+    qualifie la métrique (disponibilité, délai, performance…). La pénalité est
+    soit un MONTANT FIXE (``mode_penalite=fixe`` → ``valeur_penalite`` est un
+    montant en devise du contrat) soit un POURCENTAGE du montant du contrat
+    (``mode_penalite=pourcentage`` → ``valeur_penalite`` est un pourcentage,
+    plafonné par ``penalite_max`` optionnel).
+
+    Le calcul d'une pénalité encourue (``services.calculer_penalite_sla``) est
+    PUREMENT DÉCLARATIF : il ne crée aucune écriture, ne touche AUCUN
+    ``Contrat.statut`` (CONTRAT12) ni le funnel ``STAGES.py`` (rule #2), et
+    n'émet aucune facture — il renvoie un montant indicatif qu'un service
+    appelant peut consulter.
+
+    Multi-tenant : ``company`` est posée CÔTÉ SERVEUR (déduite du contrat).
+    ``contrat`` est une référence interne à l'app `contrats` (FK dur autorisé).
+
+    RUNTIME-SAFETY (leçon FG136) : ``libelle`` est borné (≤200), ``unite`` borné
+    (≤30) ; les pourcentages/montants sont des ``DecimalField`` bornés. L'index
+    est NOMMÉ explicitement (≤30 chars).
+    """
+
+    class ModePenalite(models.TextChoices):
+        FIXE = 'fixe', 'Montant fixe'
+        POURCENTAGE = 'pourcentage', 'Pourcentage du montant du contrat'
+
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='contrats_sla',
+        verbose_name='Société',
+    )
+    contrat = models.ForeignKey(
+        Contrat,
+        on_delete=models.CASCADE,
+        related_name='engagements_sla',
+        verbose_name='Contrat',
+    )
+    libelle = models.CharField(max_length=200, verbose_name='Libellé du SLA')
+    # Objectif chiffré en pourcentage (ex. 98.00 pour 98 %). Borné [0, 100] au
+    # niveau du modèle (``clean``) / sérialiseur.
+    taux_cible = models.DecimalField(
+        max_digits=6, decimal_places=2, default=Decimal('0'),
+        verbose_name='Taux cible (%)')
+    # Unité/métrique de l'engagement (libre, ex. « disponibilité », « délai »).
+    unite = models.CharField(
+        max_length=30, blank=True, default='', verbose_name='Unité / métrique')
+    mode_penalite = models.CharField(
+        max_length=20, choices=ModePenalite.choices,
+        default=ModePenalite.FIXE, verbose_name='Mode de pénalité')
+    # Valeur de la pénalité : montant (mode fixe) OU pourcentage (mode
+    # pourcentage). Interprétée selon ``mode_penalite``.
+    valeur_penalite = models.DecimalField(
+        max_digits=14, decimal_places=2, default=Decimal('0'),
+        verbose_name='Valeur de la pénalité')
+    # Plafond optionnel de la pénalité (montant en devise du contrat). NULL =
+    # aucun plafond.
+    penalite_max = models.DecimalField(
+        max_digits=14, decimal_places=2, null=True, blank=True,
+        verbose_name='Plafond de pénalité')
+    actif = models.BooleanField(default=True, verbose_name='Actif')
+    date_creation = models.DateTimeField(
+        auto_now_add=True, verbose_name='Créé le')
+
+    class Meta:
+        verbose_name = 'Engagement SLA'
+        verbose_name_plural = 'Engagements SLA'
+        ordering = ['contrat_id', 'id']
+        indexes = [
+            models.Index(
+                fields=['company', 'actif'],
+                name='contrats_sla_co_act',
+            ),
+        ]
+
+    def __str__(self):
+        return f'{self.libelle} (contrat {self.contrat_id})'
+
+    def clean(self):
+        """Valide la cohérence du taux cible et des valeurs de pénalité.
+
+        ``taux_cible`` doit rester dans [0, 100] ; en mode pourcentage,
+        ``valeur_penalite`` doit aussi rester dans [0, 100]. Les valeurs
+        négatives sont refusées.
+        """
+        if self.taux_cible is not None and not (
+                Decimal('0') <= self.taux_cible <= Decimal('100')):
+            raise ValidationError(
+                'Le taux cible doit être compris entre 0 et 100.')
+        if self.valeur_penalite is not None and self.valeur_penalite < 0:
+            raise ValidationError(
+                'La valeur de la pénalité ne peut pas être négative.')
+        if (self.mode_penalite == self.ModePenalite.POURCENTAGE
+                and self.valeur_penalite is not None
+                and self.valeur_penalite > Decimal('100')):
+            raise ValidationError(
+                'En mode pourcentage, la pénalité ne peut pas dépasser 100 %.')
+
+    def calculer_penalite(self, *, montant_contrat=None):
+        """Montant de pénalité encouru pour ce SLA (lecture seule, déclaratif).
+
+        - Mode ``fixe`` : renvoie ``valeur_penalite`` telle quelle.
+        - Mode ``pourcentage`` : renvoie ``valeur_penalite % × montant_contrat``
+          (``montant_contrat`` par défaut = ``self.contrat.montant``).
+        Le résultat est borné par ``penalite_max`` quand il est fixé. Ne crée
+        AUCUNE écriture et ne change AUCUN statut.
+        """
+        if montant_contrat is None:
+            montant_contrat = self.contrat.montant or Decimal('0')
+        montant_contrat = Decimal(str(montant_contrat))
+        if self.mode_penalite == self.ModePenalite.POURCENTAGE:
+            penalite = (montant_contrat * (self.valeur_penalite or Decimal('0'))
+                        / Decimal('100'))
+        else:
+            penalite = self.valeur_penalite or Decimal('0')
+        if self.penalite_max is not None and penalite > self.penalite_max:
+            penalite = self.penalite_max
+        return penalite.quantize(Decimal('0.01'))
+
+
+class RetenueGarantie(models.Model):
+    """Retenue de garantie d'un contrat + suivi de libération — CONTRAT28.
+
+    Une ``RetenueGarantie`` enregistre la RETENUE DE GARANTIE pratiquée sur un
+    ``Contrat`` (somme conservée par le maître d'ouvrage jusqu'à la levée des
+    réserves / fin de la période de garantie). Elle porte la base de calcul
+    (``montant_base``), le taux retenu (``taux``, en %) et le ``montant_retenu``
+    (calculé ``montant_base × taux %``, posé côté serveur). Le SUIVI DE
+    LIBÉRATION se fait via le ``statut`` LOCAL (``retenue`` → ``liberee`` /
+    ``annulee``) et les dates clés (``date_retenue``, ``date_liberation_prevue``,
+    ``date_liberation_effective``).
+
+    Le ``statut`` est PROPRE au suivi de la retenue : il ne touche JAMAIS le
+    ``Contrat.statut`` (CONTRAT12) ni le funnel ``STAGES.py`` (rule #2), et la
+    libération n'émet aucune facture/aucun mouvement comptable (déclaratif).
+
+    Multi-tenant : ``company`` est posée CÔTÉ SERVEUR (déduite du contrat).
+    ``contrat`` est une référence interne à l'app `contrats` (FK dur autorisé).
+
+    RUNTIME-SAFETY (leçon FG136) : ``note`` est un ``TextField`` ; les montants
+    sont des ``DecimalField`` bornés. L'index est NOMMÉ explicitement (≤30 chars).
+    """
+
+    class Statut(models.TextChoices):
+        RETENUE = 'retenue', 'Retenue'
+        LIBEREE = 'liberee', 'Libérée'
+        ANNULEE = 'annulee', 'Annulée'
+
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='contrats_retenues',
+        verbose_name='Société',
+    )
+    contrat = models.ForeignKey(
+        Contrat,
+        on_delete=models.CASCADE,
+        related_name='retenues_garantie',
+        verbose_name='Contrat',
+    )
+    # Base de calcul de la retenue (montant HT/TTC du marché ou d'une situation).
+    montant_base = models.DecimalField(
+        max_digits=14, decimal_places=2, default=Decimal('0'),
+        verbose_name='Montant de base')
+    # Taux de retenue en pourcentage (ex. 5.00 pour 5 %).
+    taux = models.DecimalField(
+        max_digits=6, decimal_places=2, default=Decimal('0'),
+        verbose_name='Taux de retenue (%)')
+    # Montant effectivement retenu (calculé côté serveur = base × taux %).
+    montant_retenu = models.DecimalField(
+        max_digits=14, decimal_places=2, default=Decimal('0'),
+        verbose_name='Montant retenu')
+    date_retenue = models.DateField(
+        null=True, blank=True, verbose_name='Date de retenue')
+    date_liberation_prevue = models.DateField(
+        null=True, blank=True, verbose_name='Libération prévue le')
+    date_liberation_effective = models.DateField(
+        null=True, blank=True, verbose_name='Libérée le')
+    statut = models.CharField(
+        max_length=20, choices=Statut.choices,
+        default=Statut.RETENUE, verbose_name='Statut')
+    note = models.TextField(blank=True, default='', verbose_name='Note')
+    date_creation = models.DateTimeField(
+        auto_now_add=True, verbose_name='Créée le')
+
+    class Meta:
+        verbose_name = 'Retenue de garantie'
+        verbose_name_plural = 'Retenues de garantie'
+        ordering = ['contrat_id', '-id']
+        indexes = [
+            models.Index(
+                fields=['company', 'statut'],
+                name='contrats_retg_co_st',
+            ),
+            models.Index(
+                fields=['contrat', 'date_liberation_prevue'],
+                name='contrats_retg_ct_dt',
+            ),
+        ]
+
+    def __str__(self):
+        return (
+            f'Retenue {self.montant_retenu} ({self.get_statut_display()}) '
+            f'— contrat {self.contrat_id}'
+        )
+
+    def calculer_montant_retenu(self):
+        """Montant retenu = ``montant_base × taux %`` (arrondi 2 décimales)."""
+        base = self.montant_base or Decimal('0')
+        taux = self.taux or Decimal('0')
+        return (base * taux / Decimal('100')).quantize(Decimal('0.01'))
+
+
+class Caution(models.Model):
+    """Caution / garantie bancaire liée à un contrat (registre) — CONTRAT29.
+
+    Une ``Caution`` recense une GARANTIE FINANCIÈRE liée à un ``Contrat`` :
+    caution de soumission, caution de bonne exécution/réalisation, caution de
+    restitution d'acompte, garantie de retenue de garantie, garantie de la
+    société mère, ou autre. Elle porte le ``type_caution``, l'organisme GARANT
+    (``garant`` — banque/assureur), une éventuelle référence d'acte
+    (``reference``), le ``montant`` garanti, les dates de validité
+    (``date_emission`` → ``date_expiration``) et un ``statut`` LOCAL de cycle de
+    vie (``active`` → ``mainlevee`` / ``appelee`` / ``expiree`` / ``annulee``).
+
+    Le ``statut`` est PROPRE au registre des cautions : il ne touche JAMAIS le
+    ``Contrat.statut`` (CONTRAT12) ni le funnel ``STAGES.py`` (rule #2).
+
+    Multi-tenant : ``company`` est posée CÔTÉ SERVEUR (déduite du contrat).
+    ``contrat`` est une référence interne à l'app `contrats` (FK dur autorisé).
+
+    RUNTIME-SAFETY (leçon FG136) : ``garant`` / ``reference`` sont des
+    ``CharField`` bornés et ``note`` un ``TextField``. Les index sont NOMMÉS
+    explicitement (≤30 chars).
+    """
+
+    class TypeCaution(models.TextChoices):
+        SOUMISSION = 'soumission', 'Caution de soumission'
+        BONNE_EXECUTION = 'bonne_execution', 'Caution de bonne exécution'
+        RESTITUTION_ACOMPTE = 'restitution_acompte', "Restitution d'acompte"
+        RETENUE_GARANTIE = 'retenue_garantie', 'Garantie de retenue'
+        SOCIETE_MERE = 'societe_mere', 'Garantie société mère'
+        AUTRE = 'autre', 'Autre'
+
+    class Statut(models.TextChoices):
+        ACTIVE = 'active', 'Active'
+        MAINLEVEE = 'mainlevee', 'Mainlevée'
+        APPELEE = 'appelee', 'Appelée'
+        EXPIREE = 'expiree', 'Expirée'
+        ANNULEE = 'annulee', 'Annulée'
+
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='contrats_cautions',
+        verbose_name='Société',
+    )
+    contrat = models.ForeignKey(
+        Contrat,
+        on_delete=models.CASCADE,
+        related_name='cautions',
+        verbose_name='Contrat',
+    )
+    type_caution = models.CharField(
+        max_length=30, choices=TypeCaution.choices,
+        default=TypeCaution.BONNE_EXECUTION, verbose_name='Type de caution')
+    # Organisme garant (banque, compagnie d'assurance, maison mère…).
+    garant = models.CharField(
+        max_length=200, blank=True, default='', verbose_name='Garant')
+    # Référence de l'acte de cautionnement (numéro bancaire…).
+    reference = models.CharField(
+        max_length=100, blank=True, default='', verbose_name='Référence')
+    montant = models.DecimalField(
+        max_digits=14, decimal_places=2, default=Decimal('0'),
+        verbose_name='Montant garanti')
+    devise = models.CharField(
+        max_length=3, default='MAD', verbose_name='Devise')
+    date_emission = models.DateField(
+        null=True, blank=True, verbose_name="Date d'émission")
+    date_expiration = models.DateField(
+        null=True, blank=True, verbose_name="Date d'expiration")
+    statut = models.CharField(
+        max_length=20, choices=Statut.choices,
+        default=Statut.ACTIVE, verbose_name='Statut')
+    note = models.TextField(blank=True, default='', verbose_name='Note')
+    date_creation = models.DateTimeField(
+        auto_now_add=True, verbose_name='Créée le')
+
+    class Meta:
+        verbose_name = 'Caution / garantie'
+        verbose_name_plural = 'Cautions / garanties'
+        ordering = ['contrat_id', '-id']
+        indexes = [
+            models.Index(
+                fields=['company', 'statut'],
+                name='contrats_caut_co_st',
+            ),
+            models.Index(
+                fields=['contrat', 'date_expiration'],
+                name='contrats_caut_ct_exp',
+            ),
+        ]
+
+    def __str__(self):
+        return (
+            f'{self.get_type_caution_display()} {self.montant} '
+            f'({self.get_statut_display()}) — contrat {self.contrat_id}'
+        )
+
+
+class EcheancierContrat(models.Model):
+    """Échéancier de paiement d'un contrat (en-tête) — CONTRAT30.
+
+    Un ``EcheancierContrat`` regroupe les ÉCHÉANCES de paiement d'un ``Contrat``
+    (plan de règlement). Il porte un ``libelle``, une ``periodicite`` indicative
+    (mensuelle, trimestrielle…) et un ``statut`` LOCAL (``brouillon`` →
+    ``actif`` → ``solde`` / ``annule``). Les montants détaillés vivent sur les
+    ``LigneEcheance`` rattachées ; ``montant_total`` met en cache la somme des
+    lignes (posé côté serveur).
+
+    Le ``statut`` est PROPRE à l'échéancier : il ne touche JAMAIS le
+    ``Contrat.statut`` (CONTRAT12) ni le funnel ``STAGES.py`` (rule #2), et
+    n'émet aucune facture (l'émission récurrente est CONTRAT31, séparée).
+
+    Multi-tenant : ``company`` est posée CÔTÉ SERVEUR (déduite du contrat).
+    ``contrat`` est une référence interne à l'app `contrats` (FK dur autorisé).
+
+    RUNTIME-SAFETY (leçon FG136) : ``libelle`` borné (≤200) ; l'index est NOMMÉ
+    explicitement (≤30 chars).
+    """
+
+    class Periodicite(models.TextChoices):
+        UNIQUE = 'unique', 'Paiement unique'
+        MENSUELLE = 'mensuelle', 'Mensuelle'
+        TRIMESTRIELLE = 'trimestrielle', 'Trimestrielle'
+        SEMESTRIELLE = 'semestrielle', 'Semestrielle'
+        ANNUELLE = 'annuelle', 'Annuelle'
+        PERSONNALISEE = 'personnalisee', 'Personnalisée'
+
+    class Statut(models.TextChoices):
+        BROUILLON = 'brouillon', 'Brouillon'
+        ACTIF = 'actif', 'Actif'
+        SOLDE = 'solde', 'Soldé'
+        ANNULE = 'annule', 'Annulé'
+
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='contrats_echeanciers',
+        verbose_name='Société',
+    )
+    contrat = models.ForeignKey(
+        Contrat,
+        on_delete=models.CASCADE,
+        related_name='echeanciers',
+        verbose_name='Contrat',
+    )
+    libelle = models.CharField(
+        max_length=200, blank=True, default='', verbose_name='Libellé')
+    periodicite = models.CharField(
+        max_length=20, choices=Periodicite.choices,
+        default=Periodicite.UNIQUE, verbose_name='Périodicité')
+    # Somme des lignes (cache posé côté serveur). Recalculé à chaque
+    # création/modification/suppression de ligne.
+    montant_total = models.DecimalField(
+        max_digits=14, decimal_places=2, default=Decimal('0'),
+        verbose_name='Montant total')
+    devise = models.CharField(
+        max_length=3, default='MAD', verbose_name='Devise')
+    statut = models.CharField(
+        max_length=20, choices=Statut.choices,
+        default=Statut.BROUILLON, verbose_name='Statut')
+    # CONTRAT31 — quand vrai, les lignes de cet échéancier peuvent ALIMENTER la
+    # facturation récurrente (émission d'une Facture via ``ventes`` à
+    # l'échéance). Faux par défaut : on n'émet jamais de facture tant que ce
+    # drapeau n'est pas posé. Aucune écriture automatique tant qu'on n'appelle
+    # pas explicitement le service de facturation.
+    facturation_active = models.BooleanField(
+        default=False, verbose_name='Facturation récurrente active')
+    date_creation = models.DateTimeField(
+        auto_now_add=True, verbose_name='Créé le')
+
+    class Meta:
+        verbose_name = 'Échéancier de contrat'
+        verbose_name_plural = 'Échéanciers de contrat'
+        ordering = ['contrat_id', '-id']
+        indexes = [
+            models.Index(
+                fields=['company', 'statut'],
+                name='contrats_ech_co_st',
+            ),
+        ]
+
+    def __str__(self):
+        return (
+            f'Échéancier {self.libelle or self.id} '
+            f'({self.get_statut_display()}) — contrat {self.contrat_id}'
+        )
+
+
+class LigneEcheance(models.Model):
+    """Ligne (échéance) d'un échéancier de paiement — CONTRAT30.
+
+    Une ``LigneEcheance`` est une ÉCHÉANCE datée d'un ``EcheancierContrat`` :
+    un montant à régler à une ``date_echeance`` donnée, avec un ``statut`` LOCAL
+    (``a_venir`` → ``payee`` / ``en_retard`` / ``annulee``). La date de
+    règlement effectif (``date_paiement``) est posée côté serveur lors du
+    pointage de paiement.
+
+    Numérotation par échéancier : ``numero`` démarre à 1 et s'incrémente de 1
+    pour chaque nouvelle ligne d'un MÊME échéancier. Le numéro est posé CÔTÉ
+    SERVEUR par ``services.ajouter_ligne_echeance`` qui calcule ``max(numero)+1``
+    SOUS ``select_for_update`` (verrou de ligne sur l'échéancier) — JAMAIS un
+    ``count()+1`` (qui collisionne, cf. la règle de numérotation du repo).
+
+    Le ``statut`` est PROPRE à la ligne : il ne touche JAMAIS le
+    ``Contrat.statut`` (CONTRAT12) ni le funnel ``STAGES.py`` (rule #2), et le
+    pointage de paiement n'émet aucune facture.
+
+    Multi-tenant : ``company`` est posée CÔTÉ SERVEUR (déduite de l'échéancier).
+    ``echeancier`` est une référence interne à l'app `contrats` (FK dur autorisé).
+
+    RUNTIME-SAFETY (leçon FG136) : ``libelle`` borné (≤200) ; la contrainte
+    d'unicité ``(echeancier, numero)`` et l'index sont NOMMÉS explicitement
+    (≤30 chars).
+    """
+
+    class Statut(models.TextChoices):
+        A_VENIR = 'a_venir', 'À venir'
+        PAYEE = 'payee', 'Payée'
+        EN_RETARD = 'en_retard', 'En retard'
+        ANNULEE = 'annulee', 'Annulée'
+
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='contrats_lignes_echeance',
+        verbose_name='Société',
+    )
+    echeancier = models.ForeignKey(
+        EcheancierContrat,
+        on_delete=models.CASCADE,
+        related_name='lignes',
+        verbose_name='Échéancier',
+    )
+    # Numéro de ligne (1, 2, 3…) par échéancier, posé côté serveur (max+1 sous
+    # verrou de ligne — jamais count()+1).
+    numero = models.PositiveIntegerField(verbose_name="Numéro d'échéance")
+    libelle = models.CharField(
+        max_length=200, blank=True, default='', verbose_name='Libellé')
+    date_echeance = models.DateField(verbose_name="Date d'échéance")
+    montant = models.DecimalField(
+        max_digits=14, decimal_places=2, default=Decimal('0'),
+        verbose_name='Montant')
+    statut = models.CharField(
+        max_length=20, choices=Statut.choices,
+        default=Statut.A_VENIR, verbose_name='Statut')
+    # Date de règlement effectif (posée côté serveur au pointage). NULL tant que
+    # non payée.
+    date_paiement = models.DateField(
+        null=True, blank=True, verbose_name='Payée le')
+    # CONTRAT31 — lien LÂCHE vers la Facture (``ventes.Facture``) émise pour
+    # cette échéance par la facturation récurrente : l'ID seul, jamais un FK dur
+    # ni un import de ``ventes.models``. NULL = aucune facture émise. Sert aussi
+    # de GARDE D'IDEMPOTENCE (on ne facture pas deux fois la même échéance).
+    facture_id = models.PositiveIntegerField(
+        null=True, blank=True, verbose_name='ID de la facture émise')
+    date_creation = models.DateTimeField(
+        auto_now_add=True, verbose_name='Créée le')
+
+    class Meta:
+        verbose_name = 'Ligne d\'échéance'
+        verbose_name_plural = 'Lignes d\'échéance'
+        ordering = ['echeancier_id', 'numero', 'id']
+        constraints = [
+            models.UniqueConstraint(
+                fields=['echeancier', 'numero'],
+                name='contrats_ligneech_uniq',
+            ),
+        ]
+        indexes = [
+            models.Index(
+                fields=['company', 'statut', 'date_echeance'],
+                name='contrats_ligneech_co_st',
+            ),
+        ]
+
+    def __str__(self):
+        return (
+            f'Échéance n°{self.numero} ({self.montant}, '
+            f'{self.date_echeance}) — échéancier {self.echeancier_id}'
+        )
+
+
+class IndexationPrix(models.Model):
+    """Indexation / révision de prix d'un contrat — CONTRAT32.
+
+    Une ``IndexationPrix`` déclare une RÈGLE DE RÉVISION du prix d'un ``Contrat``
+    par INDICE : un indice de référence nommé (``indice``, ex. « Index BTP »,
+    « IPC »), sa valeur de BASE au moment de la signature (``valeur_base``) et,
+    optionnellement, une part FIXE non révisable (``part_fixe``, en fraction
+    [0–1] de la formule). La révision applique la formule type :
+
+        prix_revisé = prix_base × (part_fixe + (1 − part_fixe) × valeur_actuelle
+                                   / valeur_base)
+
+    Quand ``part_fixe = 0`` cela revient à une simple proportion
+    ``valeur_actuelle / valeur_base``.
+
+    Le calcul (``services.calculer_prix_indexe``) est PUREMENT DÉCLARATIF : il
+    renvoie un prix révisé indicatif et n'écrit RIEN. L'APPLICATION d'une révision
+    (``services.appliquer_indexation``) passe par un AVENANT (CONTRAT24) qui ajuste
+    le ``Contrat.montant`` via ``creer_avenant`` (delta = prix_revisé − montant
+    actuel) — le ``Contrat.statut`` n'est JAMAIS modifié (CONTRAT12) et aucun
+    funnel ``STAGES.py`` n'intervient (rule #2).
+
+    Multi-tenant : ``company`` est posée CÔTÉ SERVEUR (déduite du contrat).
+    ``contrat`` est une référence interne à l'app `contrats` (FK dur autorisé).
+
+    RUNTIME-SAFETY (leçon FG136) : ``libelle`` / ``indice`` bornés ; les valeurs
+    sont des ``DecimalField`` bornés. ``date_derniere_revision`` trace la dernière
+    application. L'index est NOMMÉ explicitement (≤30 chars).
+    """
+
+    class Periodicite(models.TextChoices):
+        ANNUELLE = 'annuelle', 'Annuelle'
+        SEMESTRIELLE = 'semestrielle', 'Semestrielle'
+        TRIMESTRIELLE = 'trimestrielle', 'Trimestrielle'
+        A_LA_DEMANDE = 'a_la_demande', 'À la demande'
+
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='contrats_indexations',
+        verbose_name='Société',
+    )
+    contrat = models.ForeignKey(
+        Contrat,
+        on_delete=models.CASCADE,
+        related_name='indexations',
+        verbose_name='Contrat',
+    )
+    libelle = models.CharField(
+        max_length=200, blank=True, default='', verbose_name='Libellé')
+    # Nom de l'indice de référence (libre, ex. « Index BTP-01 », « IPC »).
+    indice = models.CharField(max_length=100, verbose_name='Indice de référence')
+    # Valeur de l'indice à la base (signature). Doit être strictement > 0 pour
+    # un calcul de proportion valide.
+    valeur_base = models.DecimalField(
+        max_digits=14, decimal_places=4, default=Decimal('0'),
+        verbose_name='Valeur de base')
+    # Part FIXE non révisable de la formule (fraction [0,1]). 0 = entièrement
+    # révisable.
+    part_fixe = models.DecimalField(
+        max_digits=5, decimal_places=4, default=Decimal('0'),
+        verbose_name='Part fixe (0–1)')
+    periodicite = models.CharField(
+        max_length=20, choices=Periodicite.choices,
+        default=Periodicite.ANNUELLE, verbose_name='Périodicité de révision')
+    # Trace de la dernière révision effectivement appliquée (posée côté serveur
+    # par ``appliquer_indexation``). NULL = jamais appliquée.
+    date_derniere_revision = models.DateField(
+        null=True, blank=True, verbose_name='Dernière révision le')
+    actif = models.BooleanField(default=True, verbose_name='Actif')
+    date_creation = models.DateTimeField(
+        auto_now_add=True, verbose_name='Créée le')
+
+    class Meta:
+        verbose_name = 'Indexation de prix'
+        verbose_name_plural = 'Indexations de prix'
+        ordering = ['contrat_id', '-id']
+        indexes = [
+            models.Index(
+                fields=['company', 'actif'],
+                name='contrats_idx_co_act',
+            ),
+        ]
+
+    def __str__(self):
+        return f'Indexation {self.indice} — contrat {self.contrat_id}'
+
+    def clean(self):
+        """Valide la cohérence des paramètres de la formule.
+
+        ``valeur_base`` doit être strictement positive (dénominateur) et
+        ``part_fixe`` doit rester dans [0, 1].
+        """
+        if self.valeur_base is not None and self.valeur_base <= 0:
+            raise ValidationError(
+                'La valeur de base doit être strictement positive.')
+        if self.part_fixe is not None and not (
+                Decimal('0') <= self.part_fixe <= Decimal('1')):
+            raise ValidationError(
+                'La part fixe doit être comprise entre 0 et 1.')
+
+    def calculer_prix_indexe(self, *, valeur_actuelle, prix_base=None):
+        """Prix révisé pour une ``valeur_actuelle`` d'indice (lecture seule).
+
+        ``prix_base`` par défaut = ``self.contrat.montant``. Applique la formule
+        ``prix_base × (part_fixe + (1 − part_fixe) × valeur_actuelle /
+        valeur_base)`` et arrondit à 2 décimales. Ne crée AUCUNE écriture.
+        """
+        if self.valeur_base is None or self.valeur_base <= 0:
+            raise ValueError('Valeur de base invalide pour l\'indexation.')
+        if prix_base is None:
+            prix_base = self.contrat.montant or Decimal('0')
+        prix_base = Decimal(str(prix_base))
+        valeur_actuelle = Decimal(str(valeur_actuelle))
+        part_fixe = self.part_fixe or Decimal('0')
+        coef = (part_fixe
+                + (Decimal('1') - part_fixe)
+                * valeur_actuelle / self.valeur_base)
+        return (prix_base * coef).quantize(Decimal('0.01'))
+
+
+class PieceConformite(models.Model):
+    """Pièce de conformité / attestation obligatoire d'un contrat — CONTRAT34.
+
+    Une ``PieceConformite`` recense une PIÈCE JUSTIFICATIVE attendue sur un
+    ``Contrat`` (attestation d'assurance RC/décennale, attestation fiscale, RIB,
+    KYC, certificat de conformité ONEE, PV de réception…). Elle porte un
+    ``type_piece``, un ``libelle``, un drapeau ``obligatoire`` et un ``statut``
+    LOCAL de complétude (``manquante`` → ``fournie`` → ``validee`` /
+    ``expiree`` / ``refusee``). La pièce déposée peut être reliée LÂCHEMENT à un
+    document GED par son id (``ged_document_id`` — id seul, jamais un FK dur ni
+    un import de ``ged.models``).
+
+    Le ``statut`` est PROPRE au suivi de conformité : il ne touche JAMAIS le
+    ``Contrat.statut`` (CONTRAT12) ni le funnel ``STAGES.py`` (rule #2).
+
+    Multi-tenant : ``company`` est posée CÔTÉ SERVEUR (déduite du contrat).
+    ``contrat`` est une référence interne à l'app `contrats` (FK dur autorisé).
+
+    RUNTIME-SAFETY (leçon FG136) : ``libelle`` borné (≤200) et ``note`` un
+    ``TextField`` ; les index sont NOMMÉS explicitement (≤30 chars).
+    """
+
+    class TypePiece(models.TextChoices):
+        ASSURANCE = 'assurance', 'Attestation d\'assurance'
+        FISCALE = 'fiscale', 'Attestation fiscale'
+        RIB = 'rib', 'RIB'
+        KYC = 'kyc', 'Pièce KYC / identité'
+        CERTIFICAT = 'certificat', 'Certificat de conformité'
+        PV_RECEPTION = 'pv_reception', 'PV de réception'
+        AUTRE = 'autre', 'Autre'
+
+    class Statut(models.TextChoices):
+        MANQUANTE = 'manquante', 'Manquante'
+        FOURNIE = 'fournie', 'Fournie'
+        VALIDEE = 'validee', 'Validée'
+        EXPIREE = 'expiree', 'Expirée'
+        REFUSEE = 'refusee', 'Refusée'
+
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='contrats_pieces_conformite',
+        verbose_name='Société',
+    )
+    contrat = models.ForeignKey(
+        Contrat,
+        on_delete=models.CASCADE,
+        related_name='pieces_conformite',
+        verbose_name='Contrat',
+    )
+    type_piece = models.CharField(
+        max_length=20, choices=TypePiece.choices,
+        default=TypePiece.AUTRE, verbose_name='Type de pièce')
+    libelle = models.CharField(max_length=200, verbose_name='Libellé')
+    obligatoire = models.BooleanField(
+        default=True, verbose_name='Obligatoire')
+    statut = models.CharField(
+        max_length=20, choices=Statut.choices,
+        default=Statut.MANQUANTE, verbose_name='Statut')
+    # Lien LÂCHE vers un document GED (id seul) — jamais un FK dur ni un import
+    # de ``ged.models``. NULL = aucune pièce déposée en GED.
+    ged_document_id = models.PositiveIntegerField(
+        null=True, blank=True, verbose_name='ID du document GED')
+    # Date de fourniture effective (posée côté serveur). NULL tant que non fournie.
+    date_fourniture = models.DateField(
+        null=True, blank=True, verbose_name='Fournie le')
+    # Date d'expiration de la pièce (ex. attestation annuelle). NULL = sans date.
+    date_expiration = models.DateField(
+        null=True, blank=True, verbose_name="Date d'expiration")
+    note = models.TextField(blank=True, default='', verbose_name='Note')
+    date_creation = models.DateTimeField(
+        auto_now_add=True, verbose_name='Créée le')
+
+    class Meta:
+        verbose_name = 'Pièce de conformité'
+        verbose_name_plural = 'Pièces de conformité'
+        ordering = ['contrat_id', 'id']
+        indexes = [
+            models.Index(
+                fields=['company', 'statut'],
+                name='contrats_piece_co_st',
+            ),
+            models.Index(
+                fields=['contrat', 'obligatoire'],
+                name='contrats_piece_ct_obl',
+            ),
+        ]
+
+    def __str__(self):
+        return (
+            f'{self.libelle} ({self.get_statut_display()}) '
+            f'— contrat {self.contrat_id}'
+        )

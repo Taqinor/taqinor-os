@@ -1514,3 +1514,528 @@ def resilier_contrat(contrat, *, motif='', date_effet=None, preavis_jours=None,
             resiliation.save(update_fields=['version_creee'])
 
     return resiliation
+
+
+# ---------------------------------------------------------------------------
+# CONTRAT26 — Obligations (livrables) & jalons
+# ---------------------------------------------------------------------------
+
+
+def _prochain_numero_jalon(contrat):
+    """Numéro du prochain jalon d'un contrat (``max(numero)+1``).
+
+    Lecture du plus haut numéro DÉJÀ utilisé pour ce contrat, +1. Repli sur 1
+    quand aucun jalon n'existe encore. À appeler SOUS verrou de ligne
+    (``select_for_update`` sur le contrat) pour rester sûr face aux courses —
+    JAMAIS un ``count()+1`` (qui collisionne après une suppression et en
+    concurrence, cf. la règle de numérotation du repo).
+    """
+    from django.db.models import Max
+
+    from .models import JalonContrat
+
+    plus_haut = (
+        JalonContrat.objects
+        .filter(contrat=contrat, company=contrat.company)
+        .aggregate(m=Max('numero'))['m']
+    )
+    return (plus_haut or 0) + 1
+
+
+@transaction.atomic
+def creer_jalon(contrat, *, intitule, description='', date_cible=None,
+                auteur=None):
+    """Crée un JALON d'un contrat (étape clé datée) — CONTRAT26.
+
+    NUMÉROTATION SÛRE FACE AUX COURSES : on verrouille la LIGNE du contrat
+    (``select_for_update``) puis on calcule ``max(numero)+1`` — jamais un
+    ``count()+1``. Sous le verrou, deux créations concurrentes pour le même
+    contrat sont sérialisées (la contrainte d'unicité ``(contrat, numero)``
+    reste le filet de sécurité ultime).
+
+    La société est déduite du contrat (posée CÔTÉ SERVEUR). Le ``statut`` du
+    contrat n'est JAMAIS modifié (préservation des statuts — CONTRAT12) ;
+    aucun funnel ``STAGES.py`` n'intervient (rule #2). L'opération est journalisée
+    au chatter (CONTRAT15). Renvoie le ``JalonContrat`` créé.
+    """
+    from .models import Contrat, JalonContrat
+
+    nom = (intitule or '').strip()
+    if not nom:
+        raise ValueError("L'intitulé du jalon est requis.")
+
+    # Verrou de ligne sur le contrat pour sérialiser la numérotation concurrente.
+    Contrat.objects.select_for_update().get(pk=contrat.pk)
+
+    numero = _prochain_numero_jalon(contrat)
+
+    jalon = JalonContrat.objects.create(
+        company=contrat.company,
+        contrat=contrat,
+        numero=numero,
+        intitule=nom,
+        description=description or '',
+        date_cible=date_cible,
+    )
+
+    journaliser_transition(
+        contrat, field='jalon', old_value='',
+        new_value=f'Jalon n°{numero} — {nom}',
+        auteur=auteur)
+
+    return jalon
+
+
+def marquer_jalon_atteint(jalon, *, today=None, auteur=None):
+    """Marque un jalon ATTEINT (statut + date d'atteinte côté serveur) — CONTRAT26.
+
+    Pose ``statut=atteint`` et ``date_atteinte=today`` (date du jour injectable).
+    Idempotent : un jalon déjà ``atteint`` n'est pas re-touché. Journalise au
+    chatter du contrat (CONTRAT15). Ne change AUCUN ``Contrat.statut``. Renvoie
+    le jalon.
+    """
+    from .models import JalonContrat
+
+    if today is None:
+        today = timezone.localdate()
+    if jalon.statut == JalonContrat.Statut.ATTEINT:
+        return jalon
+    ancien = jalon.statut
+    jalon.statut = JalonContrat.Statut.ATTEINT
+    jalon.date_atteinte = today
+    jalon.save(update_fields=['statut', 'date_atteinte'])
+    journaliser_transition(
+        jalon.contrat, field='jalon_statut', old_value=ancien,
+        new_value=jalon.statut,
+        message=f'Jalon n°{jalon.numero} atteint.', auteur=auteur)
+    return jalon
+
+
+def marquer_obligation_faite(obligation, *, today=None, auteur=None):
+    """Marque une obligation RÉALISÉE (statut + date côté serveur) — CONTRAT26.
+
+    Pose ``statut=faite`` et ``date_realisation=today`` (date du jour injectable).
+    Idempotent : une obligation déjà ``faite`` n'est pas re-touchée. Journalise
+    au chatter du contrat (CONTRAT15). Ne change AUCUN ``Contrat.statut``. Renvoie
+    l'obligation.
+    """
+    from .models import Obligation
+
+    if today is None:
+        today = timezone.localdate()
+    if obligation.statut == Obligation.Statut.FAITE:
+        return obligation
+    ancien = obligation.statut
+    obligation.statut = Obligation.Statut.FAITE
+    obligation.date_realisation = today
+    obligation.save(update_fields=['statut', 'date_realisation'])
+    journaliser_transition(
+        obligation.contrat, field='obligation_statut', old_value=ancien,
+        new_value=obligation.statut,
+        message=f'Obligation « {obligation.intitule} » réalisée.',
+        auteur=auteur)
+    return obligation
+
+
+# ---------------------------------------------------------------------------
+# CONTRAT27 — SLA & pénalités (taux SLA, valeur pénalité)
+# ---------------------------------------------------------------------------
+
+
+def calculer_penalite_sla(sla, *, taux_realise=None, montant_contrat=None):
+    """Calcule la pénalité encourue pour un ``EngagementSLA`` — CONTRAT27.
+
+    PUREMENT DÉCLARATIF (lecture seule) : ne crée AUCUNE écriture, ne touche
+    AUCUN ``Contrat.statut`` (CONTRAT12) ni le funnel ``STAGES.py`` (rule #2),
+    et n'émet aucune facture.
+
+    Si ``taux_realise`` est fourni et qu'il ATTEINT/dépasse le ``taux_cible`` du
+    SLA, AUCUNE pénalité n'est due (renvoie 0). Sinon (ou si ``taux_realise``
+    n'est pas fourni — calcul du barème théorique), la pénalité est calculée par
+    ``sla.calculer_penalite`` (montant fixe ou pourcentage du montant du contrat,
+    plafonné par ``penalite_max``).
+
+    Renvoie un dict ``{'penalite': Decimal, 'respecte': bool|None,
+    'taux_cible': Decimal, 'taux_realise': Decimal|None}``.
+    """
+    cible = sla.taux_cible or Decimal('0')
+    respecte = None
+    if taux_realise is not None:
+        taux_realise = Decimal(str(taux_realise))
+        respecte = taux_realise >= cible
+        if respecte:
+            return {
+                'penalite': Decimal('0.00'),
+                'respecte': True,
+                'taux_cible': cible,
+                'taux_realise': taux_realise,
+            }
+    penalite = sla.calculer_penalite(montant_contrat=montant_contrat)
+    return {
+        'penalite': penalite,
+        'respecte': respecte,
+        'taux_cible': cible,
+        'taux_realise': taux_realise,
+    }
+
+
+# ---------------------------------------------------------------------------
+# CONTRAT28 — Retenue de garantie (suivi de libération)
+# ---------------------------------------------------------------------------
+
+
+def liberer_retenue(retenue, *, today=None, auteur=None):
+    """Libère une retenue de garantie (statut + date côté serveur) — CONTRAT28.
+
+    Pose ``statut=liberee`` et ``date_liberation_effective=today`` (date du jour
+    injectable). Idempotent : une retenue déjà ``liberee`` reste inchangée ; une
+    retenue ``annulee`` ne peut pas être libérée (lève ``ValueError``). Journalise
+    au chatter du contrat (CONTRAT15). Ne change AUCUN ``Contrat.statut`` et
+    n'émet aucune facture/aucun mouvement comptable (déclaratif). Renvoie la
+    retenue.
+    """
+    from .models import RetenueGarantie
+
+    if today is None:
+        today = timezone.localdate()
+    if retenue.statut == RetenueGarantie.Statut.LIBEREE:
+        return retenue
+    if retenue.statut == RetenueGarantie.Statut.ANNULEE:
+        raise ValueError("Une retenue annulée ne peut pas être libérée.")
+    ancien = retenue.statut
+    retenue.statut = RetenueGarantie.Statut.LIBEREE
+    retenue.date_liberation_effective = today
+    retenue.save(update_fields=['statut', 'date_liberation_effective'])
+    journaliser_transition(
+        retenue.contrat, field='retenue_statut', old_value=ancien,
+        new_value=retenue.statut,
+        message=f'Retenue de garantie libérée ({retenue.montant_retenu}).',
+        auteur=auteur)
+    return retenue
+
+
+# ---------------------------------------------------------------------------
+# CONTRAT30 — Échéancier de paiement (en-tête + lignes)
+# ---------------------------------------------------------------------------
+
+
+def recalculer_total_echeancier(echeancier):
+    """Recalcule ``montant_total`` = somme des lignes non annulées — CONTRAT30.
+
+    Pose le total CÔTÉ SERVEUR (cache) à partir des montants des lignes dont le
+    statut n'est pas ``annulee``. Renvoie l'échéancier mis à jour. Ne change
+    AUCUN ``Contrat.statut``.
+    """
+    from django.db.models import Sum
+
+    from .models import LigneEcheance
+
+    total = (
+        LigneEcheance.objects
+        .filter(echeancier=echeancier, company=echeancier.company)
+        .exclude(statut=LigneEcheance.Statut.ANNULEE)
+        .aggregate(s=Sum('montant'))['s']
+    ) or Decimal('0')
+    echeancier.montant_total = total
+    echeancier.save(update_fields=['montant_total'])
+    return echeancier
+
+
+def _prochain_numero_ligne(echeancier):
+    """Numéro de la prochaine ligne d'un échéancier (``max(numero)+1``).
+
+    Lecture du plus haut numéro DÉJÀ utilisé, +1. Repli sur 1. À appeler SOUS
+    verrou de ligne (``select_for_update`` sur l'échéancier) — JAMAIS un
+    ``count()+1`` (qui collisionne, cf. la règle de numérotation du repo).
+    """
+    from django.db.models import Max
+
+    from .models import LigneEcheance
+
+    plus_haut = (
+        LigneEcheance.objects
+        .filter(echeancier=echeancier, company=echeancier.company)
+        .aggregate(m=Max('numero'))['m']
+    )
+    return (plus_haut or 0) + 1
+
+
+@transaction.atomic
+def ajouter_ligne_echeance(echeancier, *, date_echeance, montant=None,
+                           libelle=''):
+    """Ajoute une ligne (échéance) à un échéancier — CONTRAT30.
+
+    NUMÉROTATION SÛRE FACE AUX COURSES : on verrouille la LIGNE de l'échéancier
+    (``select_for_update``) puis on calcule ``max(numero)+1`` — jamais un
+    ``count()+1`` (la contrainte d'unicité ``(echeancier, numero)`` reste le
+    filet de sécurité ultime). La société est déduite de l'échéancier (posée
+    côté serveur). Recalcule ensuite ``montant_total``. Renvoie la
+    ``LigneEcheance`` créée.
+    """
+    from .models import EcheancierContrat, LigneEcheance
+
+    if date_echeance is None:
+        raise ValueError("La date d'échéance est requise.")
+
+    # Verrou de ligne sur l'échéancier pour sérialiser la numérotation.
+    EcheancierContrat.objects.select_for_update().get(pk=echeancier.pk)
+
+    numero = _prochain_numero_ligne(echeancier)
+
+    ligne = LigneEcheance.objects.create(
+        company=echeancier.company,
+        echeancier=echeancier,
+        numero=numero,
+        libelle=libelle or '',
+        date_echeance=date_echeance,
+        montant=montant if montant is not None else Decimal('0'),
+    )
+
+    recalculer_total_echeancier(echeancier)
+    return ligne
+
+
+def pointer_paiement_echeance(ligne, *, today=None):
+    """Pointe une ligne d'échéance comme PAYÉE (statut + date côté serveur) — CONTRAT30.
+
+    Pose ``statut=payee`` et ``date_paiement=today`` (date du jour injectable).
+    Idempotent : une ligne déjà ``payee`` reste inchangée. Ne change AUCUN
+    ``Contrat.statut`` et n'émet aucune facture. Renvoie la ligne.
+    """
+    from .models import LigneEcheance
+
+    if today is None:
+        today = timezone.localdate()
+    if ligne.statut == LigneEcheance.Statut.PAYEE:
+        return ligne
+    ligne.statut = LigneEcheance.Statut.PAYEE
+    ligne.date_paiement = today
+    ligne.save(update_fields=['statut', 'date_paiement'])
+    return ligne
+
+
+# ---------------------------------------------------------------------------
+# CONTRAT31 — Lien facturation récurrente (via ventes)
+# ---------------------------------------------------------------------------
+
+
+class FacturationError(Exception):
+    """Levée quand une échéance ne peut pas être facturée.
+
+    Ex. : facturation non activée sur l'échéancier, échéance déjà facturée
+    (garde d'idempotence), contrat sans client résolu, ou ligne au montant nul.
+    """
+
+
+@transaction.atomic
+def facturer_ligne_echeance(ligne, *, user=None, taux_tva=Decimal('20')):
+    """Émet une Facture récurrente pour une échéance — CONTRAT31.
+
+    Crée une ``ventes.Facture`` (statut émise) à partir d'une ``LigneEcheance``
+    d'un échéancier dont la ``facturation_active`` est vraie, et relie la facture
+    à la ligne (``ligne.facture_id`` — lien LÂCHE par id, jamais un FK dur).
+
+    FRONTIÈRE CROSS-APP (CLAUDE.md) : le CLIENT du contrat est résolu via le
+    sélecteur de lecture de l'app cible (``crm.selectors.get_company_client``) —
+    jamais un import du modèle ``crm.Client``. La Facture est créée via le
+    référentiel de numérotation de ``ventes``
+    (``ventes.utils.references.create_with_reference``) — même point d'entrée
+    qu'utilise déjà l'app ``sav`` pour ses factures de maintenance —, sans jamais
+    importer une ``view`` d'une autre app. Le ``montant`` de la ligne est traité
+    comme TTC (cohérent avec l'ERP 100 % TTC) et ventilé HT/TVA au ``taux_tva``.
+
+    GARDES (toutes lèvent ``FacturationError`` sans rien écrire — atomicité) :
+
+    - l'échéancier doit avoir ``facturation_active=True`` ;
+    - la ligne ne doit pas être déjà facturée (``facture_id`` non nul) ni
+      annulée ;
+    - le montant de la ligne doit être strictement positif ;
+    - le contrat doit porter un ``client_id`` résoluble en client de la société.
+
+    Le ``Contrat.statut`` n'est JAMAIS modifié (préservation des statuts —
+    CONTRAT12) ; aucun funnel ``STAGES.py`` (rule #2). La société est celle de la
+    ligne (posée côté serveur). Renvoie la Facture créée.
+    """
+    from decimal import ROUND_HALF_UP
+
+    from .models import LigneEcheance
+
+    echeancier = ligne.echeancier
+    if not echeancier.facturation_active:
+        raise FacturationError(
+            "La facturation récurrente n'est pas activée sur cet échéancier.")
+    if ligne.facture_id:
+        raise FacturationError("Cette échéance a déjà été facturée.")
+    if ligne.statut == LigneEcheance.Statut.ANNULEE:
+        raise FacturationError("Une échéance annulée ne peut pas être facturée.")
+    montant_ttc = ligne.montant or Decimal('0')
+    if montant_ttc <= 0:
+        raise FacturationError("Le montant de l'échéance doit être positif.")
+
+    contrat = echeancier.contrat
+    if not contrat.client_id:
+        raise FacturationError(
+            "Le contrat n'a pas de client : impossible d'émettre une facture.")
+
+    # Frontière cross-app : résolution du client via le sélecteur crm (lecture),
+    # jamais un import de crm.models.
+    from apps.crm.selectors import get_company_client
+
+    client = get_company_client(echeancier.company, contrat.client_id)
+    if client is None:
+        raise FacturationError(
+            "Le client du contrat est introuvable dans votre société.")
+
+    tva_pct = Decimal(str(taux_tva))
+    montant_ht = (montant_ttc / (1 + tva_pct / 100)).quantize(
+        Decimal('0.01'), rounding=ROUND_HALF_UP)
+    montant_tva = (montant_ttc - montant_ht).quantize(
+        Decimal('0.01'), rounding=ROUND_HALF_UP)
+    libelle = (
+        f'Échéance n°{ligne.numero} — contrat #{contrat.id} '
+        f'({echeancier.get_periodicite_display()})'
+    )
+
+    # Frontière cross-app : création de la Facture via le référentiel de
+    # numérotation de ventes (même point d'entrée qu'utilise sav), sans importer
+    # de view d'une autre app.
+    from apps.ventes.models import Facture
+    from apps.ventes.utils.references import create_with_reference
+
+    def _create(ref):
+        return Facture.objects.create(
+            reference=ref,
+            company=echeancier.company,
+            client=client,
+            statut=Facture.Statut.EMISE,
+            taux_tva=tva_pct,
+            montant_ht=montant_ht,
+            montant_tva=montant_tva,
+            montant_ttc=montant_ttc,
+            libelle=libelle,
+            created_by=user,
+        )
+
+    facture = create_with_reference(Facture, 'FAC', echeancier.company, _create)
+
+    # Lien LÂCHE retour (id seul) + garde d'idempotence.
+    ligne.facture_id = facture.id
+    ligne.save(update_fields=['facture_id'])
+
+    journaliser_transition(
+        contrat, field='facturation', old_value='',
+        new_value=f'Facture {facture.reference} (échéance n°{ligne.numero})',
+        message='Facturation récurrente d\'une échéance.', auteur=user)
+
+    return facture
+
+
+# ---------------------------------------------------------------------------
+# CONTRAT32 — Indexation / révision de prix
+# ---------------------------------------------------------------------------
+
+
+def calculer_prix_indexe(indexation, *, valeur_actuelle, prix_base=None):
+    """Calcule le prix révisé d'une indexation (lecture seule) — CONTRAT32.
+
+    PUREMENT DÉCLARATIF : ne crée AUCUNE écriture, ne change AUCUN statut. Délègue
+    à ``IndexationPrix.calculer_prix_indexe``. Renvoie un dict
+    ``{'prix_base': Decimal, 'prix_revise': Decimal, 'delta': Decimal,
+    'valeur_actuelle': Decimal}``.
+    """
+    if prix_base is None:
+        prix_base = indexation.contrat.montant or Decimal('0')
+    prix_base = Decimal(str(prix_base))
+    prix_revise = indexation.calculer_prix_indexe(
+        valeur_actuelle=valeur_actuelle, prix_base=prix_base)
+    return {
+        'prix_base': prix_base,
+        'prix_revise': prix_revise,
+        'delta': (prix_revise - prix_base).quantize(Decimal('0.01')),
+        'valeur_actuelle': Decimal(str(valeur_actuelle)),
+    }
+
+
+@transaction.atomic
+def appliquer_indexation(indexation, *, valeur_actuelle, auteur=None,
+                         today=None):
+    """Applique une révision de prix indexée via un AVENANT — CONTRAT32.
+
+    Calcule le prix révisé pour ``valeur_actuelle`` puis, si le delta est non nul,
+    crée un AVENANT (CONTRAT24) ajustant ``Contrat.montant`` du delta (la création
+    d'avenant passe par ``creer_avenant`` — numérotation max+1, instantané immuable,
+    audit chatter). Trace ``date_derniere_revision`` côté serveur. Le
+    ``Contrat.statut`` n'est JAMAIS modifié (préservation des statuts — CONTRAT12)
+    et aucun funnel ``STAGES.py`` n'intervient (rule #2).
+
+    Renvoie un dict ``{'avenant': Avenant|None, 'prix_base', 'prix_revise',
+    'delta'}``. ``avenant`` est ``None`` quand le delta est nul (aucune révision
+    nécessaire) — on trace tout de même la date de révision.
+    """
+    if today is None:
+        today = timezone.localdate()
+
+    calcul = calculer_prix_indexe(
+        indexation, valeur_actuelle=valeur_actuelle)
+    delta = calcul['delta']
+
+    avenant = None
+    if delta != Decimal('0'):
+        avenant = creer_avenant(
+            indexation.contrat,
+            objet=f'Indexation prix ({indexation.indice})',
+            description=(
+                f'Révision indexée : indice {indexation.indice} '
+                f'valeur {calcul["valeur_actuelle"]} (base '
+                f'{indexation.valeur_base}). '
+                f'Prix {calcul["prix_base"]} → {calcul["prix_revise"]}.'),
+            date_effet=today,
+            montant_delta=delta,
+            auteur=auteur)
+
+    indexation.date_derniere_revision = today
+    indexation.save(update_fields=['date_derniere_revision'])
+
+    return {
+        'avenant': avenant,
+        'prix_base': calcul['prix_base'],
+        'prix_revise': calcul['prix_revise'],
+        'delta': delta,
+    }
+
+
+# ---------------------------------------------------------------------------
+# CONTRAT34 — Pièces de conformité (pièces obligatoires & attestations)
+# ---------------------------------------------------------------------------
+
+
+def marquer_piece_fournie(piece, *, ged_document_id=None, date_expiration=None,
+                          today=None, auteur=None):
+    """Marque une pièce de conformité FOURNIE (statut + date côté serveur) — CONTRAT34.
+
+    Pose ``statut=fournie`` et ``date_fourniture=today`` (date du jour
+    injectable). Relie éventuellement la pièce à un document GED par son id seul
+    (``ged_document_id`` — lien LÂCHE, jamais un import de ``ged.models``) et fixe
+    une ``date_expiration`` si fournie. Journalise au chatter du contrat
+    (CONTRAT15). Ne change AUCUN ``Contrat.statut``. Renvoie la pièce.
+    """
+    from .models import PieceConformite
+
+    if today is None:
+        today = timezone.localdate()
+    ancien = piece.statut
+    piece.statut = PieceConformite.Statut.FOURNIE
+    piece.date_fourniture = today
+    champs = ['statut', 'date_fourniture']
+    if ged_document_id is not None:
+        piece.ged_document_id = ged_document_id
+        champs.append('ged_document_id')
+    if date_expiration is not None:
+        piece.date_expiration = date_expiration
+        champs.append('date_expiration')
+    piece.save(update_fields=champs)
+    journaliser_transition(
+        piece.contrat, field='piece_conformite', old_value=ancien,
+        new_value=piece.statut,
+        message=f'Pièce « {piece.libelle} » fournie.', auteur=auteur)
+    return piece

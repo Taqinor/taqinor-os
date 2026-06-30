@@ -9,17 +9,26 @@ from rest_framework import serializers
 from .models import (
     AlerteContrat,
     Avenant,
+    Caution,
     Clause,
     ClauseContrat,
     Contrat,
     ContratActivity,
     ContratLien,
+    EcheancierContrat,
+    EngagementSLA,
     EtapeApprobation,
+    IndexationPrix,
+    JalonContrat,
+    LigneEcheance,
     ModeleContrat,
     ModeleContratClause,
+    Obligation,
     PartieContrat,
+    PieceConformite,
     RegleApprobation,
     Resiliation,
+    RetenueGarantie,
     SignatureContrat,
     VersionContrat,
 )
@@ -730,3 +739,399 @@ class ResilierContratSerializer(serializers.Serializer):
         required=False, allow_null=True, min_value=0)
     solde = serializers.DecimalField(
         max_digits=14, decimal_places=2, required=False, allow_null=True)
+
+
+class JalonContratSerializer(serializers.ModelSerializer):
+    """Jalon / étape clé d'un contrat (CONTRAT26).
+
+    ``company`` n'est jamais exposée : elle est posée côté serveur (déduite du
+    contrat). Le ``contrat`` reçu est validé même-société. ``numero``,
+    ``statut``, ``date_atteinte`` et ``date_creation`` sont posés côté serveur
+    (le jalon est créé via l'action ``creer-jalon`` ou marqué via
+    ``marquer-atteint``).
+    """
+    statut_display = serializers.CharField(
+        source='get_statut_display', read_only=True)
+
+    class Meta:
+        model = JalonContrat
+        fields = [
+            'id', 'contrat', 'numero', 'intitule', 'description', 'date_cible',
+            'statut', 'statut_display', 'date_atteinte', 'date_creation',
+        ]
+        read_only_fields = [
+            'numero', 'statut', 'statut_display', 'date_atteinte',
+            'date_creation',
+        ]
+
+    def validate_contrat(self, contrat):
+        """Le contrat rattaché doit appartenir à la société de l'utilisateur."""
+        request = self.context.get('request')
+        if request is not None and contrat.company_id != request.user.company_id:
+            raise serializers.ValidationError(
+                "Ce contrat n'appartient pas à votre société.")
+        return contrat
+
+
+class ObligationSerializer(serializers.ModelSerializer):
+    """Obligation / livrable contractuel (CONTRAT26).
+
+    ``company`` n'est jamais exposée : elle est posée côté serveur (déduite du
+    contrat). Le ``contrat`` et le ``jalon`` (optionnel) sont validés
+    même-société. ``date_realisation`` est posée côté serveur (action
+    ``marquer-faite``) et reste en lecture seule.
+    """
+    redevable_display = serializers.CharField(
+        source='get_redevable_display', read_only=True)
+    statut_display = serializers.CharField(
+        source='get_statut_display', read_only=True)
+
+    class Meta:
+        model = Obligation
+        fields = [
+            'id', 'contrat', 'jalon', 'intitule', 'description', 'redevable',
+            'redevable_display', 'date_echeance', 'statut', 'statut_display',
+            'date_realisation', 'ordre', 'date_creation',
+        ]
+        read_only_fields = [
+            'date_realisation', 'redevable_display', 'statut_display',
+            'date_creation',
+        ]
+
+    def validate_contrat(self, contrat):
+        """Le contrat rattaché doit appartenir à la société de l'utilisateur."""
+        request = self.context.get('request')
+        if request is not None and contrat.company_id != request.user.company_id:
+            raise serializers.ValidationError(
+                "Ce contrat n'appartient pas à votre société.")
+        return contrat
+
+    def validate_jalon(self, jalon):
+        """Le jalon rattaché (optionnel) doit appartenir à la même société."""
+        if jalon is None:
+            return jalon
+        request = self.context.get('request')
+        if request is not None and jalon.company_id != request.user.company_id:
+            raise serializers.ValidationError(
+                "Ce jalon n'appartient pas à votre société.")
+        return jalon
+
+
+class EngagementSLASerializer(serializers.ModelSerializer):
+    """Engagement de niveau de service (SLA) & pénalités (CONTRAT27).
+
+    ``company`` n'est jamais exposée : elle est posée côté serveur (déduite du
+    contrat). Le ``contrat`` reçu est validé même-société. La validation des
+    bornes (taux cible ∈ [0,100], pénalité ≥ 0…) est relayée depuis
+    ``EngagementSLA.clean``.
+    """
+    mode_penalite_display = serializers.CharField(
+        source='get_mode_penalite_display', read_only=True)
+
+    class Meta:
+        model = EngagementSLA
+        fields = [
+            'id', 'contrat', 'libelle', 'taux_cible', 'unite',
+            'mode_penalite', 'mode_penalite_display', 'valeur_penalite',
+            'penalite_max', 'actif', 'date_creation',
+        ]
+        read_only_fields = ['date_creation']
+
+    def validate_contrat(self, contrat):
+        """Le contrat rattaché doit appartenir à la société de l'utilisateur."""
+        request = self.context.get('request')
+        if request is not None and contrat.company_id != request.user.company_id:
+            raise serializers.ValidationError(
+                "Ce contrat n'appartient pas à votre société.")
+        return contrat
+
+    def validate(self, attrs):
+        """Relaie la validation des bornes du modèle (``clean``).
+
+        Construit un objet de contrôle avec les valeurs courantes (instance en
+        update) surchargées par les valeurs entrantes, et appelle ``clean``.
+        """
+        from django.core.exceptions import ValidationError as DjangoVE
+
+        controle = EngagementSLA()
+        for field in ('taux_cible', 'valeur_penalite', 'mode_penalite'):
+            valeur = attrs.get(
+                field, getattr(self.instance, field, None)
+                if self.instance is not None else None)
+            if valeur is not None:
+                setattr(controle, field, valeur)
+        try:
+            controle.clean()
+        except DjangoVE as exc:
+            raise serializers.ValidationError(
+                exc.messages if hasattr(exc, 'messages') else str(exc))
+        return attrs
+
+
+class LigneEcheanceSerializer(serializers.ModelSerializer):
+    """Ligne (échéance) d'un échéancier — lecture seule (CONTRAT30).
+
+    Les lignes sont créées via l'action ``ajouter-ligne`` de l'échéancier
+    (numéro = max+1 côté serveur). ``date_paiement`` est posée côté serveur au
+    pointage (``pointer-paiement``). ``company``, ``numero`` et ``date_paiement``
+    ne sont jamais lus du corps de requête.
+    """
+    statut_display = serializers.CharField(
+        source='get_statut_display', read_only=True)
+
+    class Meta:
+        model = LigneEcheance
+        fields = [
+            'id', 'echeancier', 'numero', 'libelle', 'date_echeance',
+            'montant', 'statut', 'statut_display', 'date_paiement',
+            'facture_id', 'date_creation',
+        ]
+        read_only_fields = fields
+
+
+class EcheancierContratSerializer(serializers.ModelSerializer):
+    """Échéancier de paiement d'un contrat (en-tête) — CONTRAT30.
+
+    ``company`` n'est jamais exposée : elle est posée côté serveur (déduite du
+    contrat). Le ``contrat`` reçu est validé même-société. ``montant_total`` est
+    CALCULÉ côté serveur (somme des lignes) et reste en lecture seule. Les lignes
+    sont sérialisées en lecture seule (``lignes``).
+    """
+    periodicite_display = serializers.CharField(
+        source='get_periodicite_display', read_only=True)
+    statut_display = serializers.CharField(
+        source='get_statut_display', read_only=True)
+    lignes = LigneEcheanceSerializer(many=True, read_only=True)
+
+    class Meta:
+        model = EcheancierContrat
+        fields = [
+            'id', 'contrat', 'libelle', 'periodicite', 'periodicite_display',
+            'montant_total', 'devise', 'statut', 'statut_display',
+            'facturation_active', 'lignes', 'date_creation',
+        ]
+        read_only_fields = [
+            'montant_total', 'periodicite_display', 'statut_display',
+            'lignes', 'date_creation',
+        ]
+
+    def validate_contrat(self, contrat):
+        """Le contrat rattaché doit appartenir à la société de l'utilisateur."""
+        request = self.context.get('request')
+        if request is not None and contrat.company_id != request.user.company_id:
+            raise serializers.ValidationError(
+                "Ce contrat n'appartient pas à votre société.")
+        return contrat
+
+
+class AjouterLigneEcheanceSerializer(serializers.Serializer):
+    """Corps de POST /echeanciers/<id>/ajouter-ligne/ (CONTRAT30).
+
+    ``date_echeance`` requise ; ``montant`` et ``libelle`` optionnels. Le
+    ``numero``, la société et le statut sont posés CÔTÉ SERVEUR.
+    """
+    date_echeance = serializers.DateField()
+    montant = serializers.DecimalField(
+        max_digits=14, decimal_places=2, required=False, allow_null=True,
+        min_value=0)
+    libelle = serializers.CharField(
+        required=False, allow_blank=True, max_length=200)
+
+
+class IndexationPrixSerializer(serializers.ModelSerializer):
+    """Règle d'indexation / révision de prix d'un contrat (CONTRAT32).
+
+    ``company`` n'est jamais exposée : elle est posée côté serveur (déduite du
+    contrat). Le ``contrat`` reçu est validé même-société. ``date_derniere_revision``
+    est posée côté serveur (action ``appliquer``) et reste en lecture seule. La
+    validation des bornes (valeur de base > 0, part fixe ∈ [0,1]) est relayée
+    depuis ``IndexationPrix.clean``.
+    """
+    periodicite_display = serializers.CharField(
+        source='get_periodicite_display', read_only=True)
+
+    class Meta:
+        model = IndexationPrix
+        fields = [
+            'id', 'contrat', 'libelle', 'indice', 'valeur_base', 'part_fixe',
+            'periodicite', 'periodicite_display', 'date_derniere_revision',
+            'actif', 'date_creation',
+        ]
+        read_only_fields = [
+            'periodicite_display', 'date_derniere_revision', 'date_creation',
+        ]
+
+    def validate_contrat(self, contrat):
+        """Le contrat rattaché doit appartenir à la société de l'utilisateur."""
+        request = self.context.get('request')
+        if request is not None and contrat.company_id != request.user.company_id:
+            raise serializers.ValidationError(
+                "Ce contrat n'appartient pas à votre société.")
+        return contrat
+
+    def validate(self, attrs):
+        """Relaie la validation des bornes du modèle (``clean``)."""
+        from django.core.exceptions import ValidationError as DjangoVE
+
+        controle = IndexationPrix()
+        for field in ('valeur_base', 'part_fixe'):
+            valeur = attrs.get(
+                field, getattr(self.instance, field, None)
+                if self.instance is not None else None)
+            if valeur is not None:
+                setattr(controle, field, valeur)
+        try:
+            controle.clean()
+        except DjangoVE as exc:
+            raise serializers.ValidationError(
+                exc.messages if hasattr(exc, 'messages') else str(exc))
+        return attrs
+
+
+class IndexationActionSerializer(serializers.Serializer):
+    """Corps des actions simuler/appliquer d'une indexation (CONTRAT32).
+
+    ``valeur_actuelle`` (requis) : valeur courante de l'indice de référence.
+    ``prix_base`` (optionnel, simulation seulement) : base de calcul si différente
+    du montant du contrat.
+    """
+    valeur_actuelle = serializers.DecimalField(
+        max_digits=14, decimal_places=4, min_value=0)
+    prix_base = serializers.DecimalField(
+        max_digits=14, decimal_places=2, required=False, allow_null=True,
+        min_value=0)
+
+
+class PenaliteSLASerializer(serializers.Serializer):
+    """Corps de POST /sla/<id>/penalite/ (CONTRAT27).
+
+    ``taux_realise`` (optionnel) : taux de service effectivement réalisé en %.
+    Quand il atteint le taux cible, aucune pénalité n'est due. ``montant_contrat``
+    (optionnel) : montant de base pour le mode pourcentage (défaut = montant du
+    contrat). Lecture seule : ne crée aucune écriture.
+    """
+    taux_realise = serializers.DecimalField(
+        max_digits=6, decimal_places=2, required=False, allow_null=True,
+        min_value=0)
+    montant_contrat = serializers.DecimalField(
+        max_digits=14, decimal_places=2, required=False, allow_null=True,
+        min_value=0)
+
+
+class RetenueGarantieSerializer(serializers.ModelSerializer):
+    """Retenue de garantie & suivi de libération (CONTRAT28).
+
+    ``company`` n'est jamais exposée : elle est posée côté serveur (déduite du
+    contrat). Le ``contrat`` reçu est validé même-société. ``montant_retenu``
+    est CALCULÉ côté serveur (= base × taux %) et reste en lecture seule ; le
+    ``statut`` et ``date_liberation_effective`` sont posés côté serveur (action
+    ``liberer``) — un POST ne peut pas forcer une retenue « libérée ».
+    """
+    statut_display = serializers.CharField(
+        source='get_statut_display', read_only=True)
+
+    class Meta:
+        model = RetenueGarantie
+        fields = [
+            'id', 'contrat', 'montant_base', 'taux', 'montant_retenu',
+            'date_retenue', 'date_liberation_prevue',
+            'date_liberation_effective', 'statut', 'statut_display', 'note',
+            'date_creation',
+        ]
+        read_only_fields = [
+            'montant_retenu', 'date_liberation_effective', 'statut',
+            'statut_display', 'date_creation',
+        ]
+
+    def validate_contrat(self, contrat):
+        """Le contrat rattaché doit appartenir à la société de l'utilisateur."""
+        request = self.context.get('request')
+        if request is not None and contrat.company_id != request.user.company_id:
+            raise serializers.ValidationError(
+                "Ce contrat n'appartient pas à votre société.")
+        return contrat
+
+    def validate_taux(self, value):
+        if value is not None and not (0 <= value <= 100):
+            raise serializers.ValidationError(
+                'Le taux de retenue doit être compris entre 0 et 100.')
+        return value
+
+
+class CautionSerializer(serializers.ModelSerializer):
+    """Caution / garantie liée à un contrat — registre (CONTRAT29).
+
+    ``company`` n'est jamais exposée : elle est posée côté serveur (déduite du
+    contrat). Le ``contrat`` reçu est validé même-société. Le ``statut`` est un
+    simple champ de registre (éditable) — il ne pilote AUCUNE machine d'états du
+    contrat (CONTRAT12).
+    """
+    type_caution_display = serializers.CharField(
+        source='get_type_caution_display', read_only=True)
+    statut_display = serializers.CharField(
+        source='get_statut_display', read_only=True)
+
+    class Meta:
+        model = Caution
+        fields = [
+            'id', 'contrat', 'type_caution', 'type_caution_display', 'garant',
+            'reference', 'montant', 'devise', 'date_emission',
+            'date_expiration', 'statut', 'statut_display', 'note',
+            'date_creation',
+        ]
+        read_only_fields = [
+            'type_caution_display', 'statut_display', 'date_creation',
+        ]
+
+    def validate_contrat(self, contrat):
+        """Le contrat rattaché doit appartenir à la société de l'utilisateur."""
+        request = self.context.get('request')
+        if request is not None and contrat.company_id != request.user.company_id:
+            raise serializers.ValidationError(
+                "Ce contrat n'appartient pas à votre société.")
+        return contrat
+
+
+class PieceConformiteSerializer(serializers.ModelSerializer):
+    """Pièce de conformité / attestation obligatoire d'un contrat (CONTRAT34).
+
+    ``company`` n'est jamais exposée : elle est posée côté serveur (déduite du
+    contrat). Le ``contrat`` reçu est validé même-société. ``date_fourniture``
+    est posée côté serveur (action ``marquer-fournie``) et reste en lecture seule.
+    """
+    type_piece_display = serializers.CharField(
+        source='get_type_piece_display', read_only=True)
+    statut_display = serializers.CharField(
+        source='get_statut_display', read_only=True)
+
+    class Meta:
+        model = PieceConformite
+        fields = [
+            'id', 'contrat', 'type_piece', 'type_piece_display', 'libelle',
+            'obligatoire', 'statut', 'statut_display', 'ged_document_id',
+            'date_fourniture', 'date_expiration', 'note', 'date_creation',
+        ]
+        read_only_fields = [
+            'type_piece_display', 'statut_display', 'date_fourniture',
+            'date_creation',
+        ]
+
+    def validate_contrat(self, contrat):
+        """Le contrat rattaché doit appartenir à la société de l'utilisateur."""
+        request = self.context.get('request')
+        if request is not None and contrat.company_id != request.user.company_id:
+            raise serializers.ValidationError(
+                "Ce contrat n'appartient pas à votre société.")
+        return contrat
+
+
+class MarquerPieceFournieSerializer(serializers.Serializer):
+    """Corps de POST /pieces-conformite/<id>/marquer-fournie/ (CONTRAT34).
+
+    Tous les champs sont optionnels : ``ged_document_id`` (lien LÂCHE vers un
+    document GED), ``date_expiration``. Le ``statut`` et ``date_fourniture`` sont
+    posés CÔTÉ SERVEUR.
+    """
+    ged_document_id = serializers.IntegerField(
+        required=False, allow_null=True, min_value=1)
+    date_expiration = serializers.DateField(required=False, allow_null=True)
