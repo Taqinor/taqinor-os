@@ -760,3 +760,60 @@ class PaymentTransaction(TimestampedModel):
     def __str__(self):
         return (f'Paiement {self.provider} #{self.pk} '
                 f'({self.get_statut_display()})')
+
+
+# ---------------------------------------------------------------------------
+# FG382 — BI embarqué : explorateur de données (query builder sans SQL).
+#
+# Modèle de FONDATION GÉNÉRIQUE : persiste une spec de requête ad-hoc
+# (``dataset`` + ``spec`` JSON opaque : champs/filtres/agrégations) pour la
+# rejouer. ``core`` ne sait RIEN des modèles interrogés — les datasets sont
+# enregistrés par les apps métier (``core.data_explorer.register_dataset``) et
+# core n'importe aucune app métier (contrat import-linter
+# ``core-foundation-is-a-base-layer``).
+# ---------------------------------------------------------------------------
+
+
+class SavedQuery(TimestampedModel):
+    """Requête d'analyse ad-hoc sauvegardée (FG382).
+
+    GÉNÉRIQUE : ``dataset`` nomme un dataset enregistré ; ``spec`` est une spec
+    JSON opaque (sélection/filtres/agrégations) interprétée par
+    ``core.data_explorer.run_query``. Multi-tenant : ``company`` obligatoire,
+    imposée côté serveur. ``owner`` (optionnel) + ``partage`` gèrent la
+    visibilité personnelle/société, comme ``Dashboard``.
+    """
+
+    company = models.ForeignKey(
+        'authentication.Company', on_delete=models.CASCADE,
+        related_name='saved_queries', verbose_name='Société')
+    owner = models.ForeignKey(
+        'authentication.CustomUser', on_delete=models.CASCADE,
+        null=True, blank=True, related_name='saved_queries',
+        verbose_name='Propriétaire',
+        help_text='Vide = requête de société (non personnelle).')
+
+    titre = models.CharField('Titre', max_length=160)
+    dataset = models.CharField(
+        'Dataset', max_length=80,
+        help_text='Nom du dataset enregistré (core.data_explorer).')
+    spec = models.JSONField(
+        'Spécification', default=dict, blank=True,
+        help_text='Sélection/filtres/agrégations (opaque pour core).')
+    partage = models.BooleanField(
+        'Partagée', default=False,
+        help_text='Visible par toute la société (sinon personnelle).')
+
+    class Meta:
+        verbose_name = 'Requête sauvegardée'
+        verbose_name_plural = 'Requêtes sauvegardées'
+        ordering = ['titre', 'id']
+        indexes = [
+            models.Index(fields=['company', 'owner'],
+                         name='core_savedq_co_owner_idx'),
+            models.Index(fields=['company', 'dataset'],
+                         name='core_savedq_co_ds_idx'),
+        ]
+
+    def __str__(self):
+        return self.titre

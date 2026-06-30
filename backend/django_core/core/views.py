@@ -29,14 +29,16 @@ from authentication.permissions import (
 
 from django.db.models import Q
 
+from . import data_explorer
 from . import jobs as jobs_infra
 from . import payment as payment_infra
 from . import workflow_templates
 from .mixins import TenantMixin
-from .models import Dashboard, PaymentTransaction
+from .models import Dashboard, PaymentTransaction, SavedQuery
 from .serializers import (
     DashboardSerializer,
     PaymentTransactionSerializer,
+    SavedQuerySerializer,
     ScheduledJobSerializer,
     WorkflowTemplateSerializer,
 )
@@ -221,3 +223,65 @@ class PaymentTransactionViewSet(TenantMixin, viewsets.ModelViewSet):
                 transaction.statut = res['statut']
                 transaction.save(update_fields=['statut', 'updated_at'])
         return Response(self.get_serializer(transaction).data)
+
+
+class SavedQueryViewSet(TenantMixin, viewsets.ModelViewSet):
+    """FG382 — explorateur de données : requêtes ad-hoc sauvegardées + run.
+
+    Multi-tenant : ``TenantMixin`` filtre par société et impose ``company``.
+    Visibilité personnelle/société comme ``Dashboard``. Aucune importation
+    d'app domaine : l'exécution passe par ``core.data_explorer`` sur des
+    datasets enregistrés par les apps métier (querysets déjà scopés société).
+
+      * ``GET  …/saved-queries/datasets/`` — catalogue des datasets disponibles ;
+      * ``POST …/saved-queries/{id}/run/`` — exécute la requête sauvegardée ;
+      * ``POST …/saved-queries/run/``      — exécute une spec ad-hoc (corps
+        ``{"dataset": "...", "spec": {...}}``) sans sauvegarder.
+    """
+    serializer_class = SavedQuerySerializer
+    permission_classes = [IsAuthenticated]
+    queryset = SavedQuery.objects.all()
+    pagination_class = None
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        user = self.request.user
+        return qs.filter(
+            Q(owner=user) | Q(partage=True) | Q(owner__isnull=True)
+        ).distinct()
+
+    def perform_create(self, serializer):
+        serializer.save(company=self.request.user.company,
+                        owner=self.request.user)
+
+    def perform_update(self, serializer):
+        serializer.save(company=self.request.user.company)
+
+    @action(detail=False, methods=['get'])
+    def datasets(self, request):
+        return Response(data_explorer.list_datasets())
+
+    def _execute(self, dataset, spec):
+        try:
+            rows = data_explorer.run_query(
+                dataset, self.request.user.company, self.request.user, spec)
+        except data_explorer.DatasetInconnu as exc:
+            return Response({'detail': str(exc)},
+                            status=status.HTTP_404_NOT_FOUND)
+        except data_explorer.ChampNonAutorise as exc:
+            return Response({'detail': str(exc)},
+                            status=status.HTTP_400_BAD_REQUEST)
+        return Response({'rows': rows})
+
+    @action(detail=True, methods=['post'])
+    def run(self, request, pk=None):
+        obj = self.get_object()
+        return self._execute(obj.dataset, obj.spec)
+
+    @action(detail=False, methods=['post'], url_path='run')
+    def run_adhoc(self, request):
+        dataset = (request.data or {}).get('dataset')
+        if not dataset:
+            return Response({'detail': "Champ « dataset » requis."},
+                            status=status.HTTP_400_BAD_REQUEST)
+        return self._execute(dataset, (request.data or {}).get('spec') or {})

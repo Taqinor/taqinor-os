@@ -5,7 +5,7 @@ FG369 — forme de sortie des modèles de workflow installables (catalogue).
 """
 from rest_framework import serializers
 
-from .models import Dashboard, PaymentTransaction
+from .models import Dashboard, PaymentTransaction, SavedQuery
 
 
 class ScheduledJobSerializer(serializers.Serializer):
@@ -73,3 +73,17 @@ class PaymentTransactionSerializer(serializers.ModelSerializer):
             'id', 'statut', 'external_ref', 'redirect_url', 'paye_le',
             'detail', 'created_at', 'updated_at',
         ]
+
+
+class SavedQuerySerializer(serializers.ModelSerializer):
+    """FG382 — requête d'analyse ad-hoc sauvegardée.
+
+    ``company`` et ``owner`` ne sont JAMAIS lus du corps (imposés côté serveur).
+    """
+    class Meta:
+        model = SavedQuery
+        fields = [
+            'id', 'titre', 'dataset', 'spec', 'partage', 'owner',
+            'created_at', 'updated_at',
+        ]
+        read_only_fields = ['id', 'owner', 'created_at', 'updated_at']

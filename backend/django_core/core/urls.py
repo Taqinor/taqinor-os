@@ -21,6 +21,7 @@ from rest_framework.routers import DefaultRouter
 from .views import (
     DashboardViewSet,
     PaymentTransactionViewSet,
+    SavedQueryViewSet,
     ScheduledJobViewSet,
     WorkflowTemplateViewSet,
 )
@@ -34,5 +35,7 @@ router.register(r'dashboards', DashboardViewSet, basename='dashboard')
 # FG370 — paiement carte en ligne d'une facture (CMI / Payzone, gated).
 router.register(r'paiements-en-ligne', PaymentTransactionViewSet,
                 basename='payment-transaction')
+# FG382 — explorateur de données : requêtes ad-hoc sauvegardées + run.
+router.register(r'saved-queries', SavedQueryViewSet, basename='saved-query')
 
 urlpatterns = router.urls
