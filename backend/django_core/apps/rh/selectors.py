@@ -19,9 +19,11 @@ from .models import (
     Habilitation,
     HeuresSupp,
     IncidentPresence,
+    InscriptionFormation,
     Poste,
     PresenceChantier,
     PresquAccident,
+    SessionFormation,
     VisiteMedicale,
 )
 
@@ -1184,4 +1186,68 @@ def verifier_habilitation_requise(company, employe, type_requis, today=None):
         'manquantes': manquantes,
         'expirees': expirees,
         'message': message,
+    }
+
+
+def registre_formation_employe(company, employe_id, today=None):
+    """Registre de formation d'un employé (FG188) — historique des sessions.
+
+    Agrège l'HISTORIQUE DE FORMATION d'un employé : toutes ses inscriptions
+    (``InscriptionFormation``) avec le détail de la session liée (intitulé,
+    type, organisme, dates, lieu, statut, compétence visée), sa présence et
+    son résultat. La lecture est cadrée société : seules les inscriptions de
+    ``company`` sont renvoyées, triées de la session la plus récente à la plus
+    ancienne. ``today`` (optionnel) sert au compteur des sessions réalisées et
+    n'est jamais inventé côté serveur.
+
+    Renvoie un dict ``{employe, lignes, total, total_realisees}`` :
+    ``lignes`` est une liste de dicts prête à sérialiser ; ``total`` le nombre
+    d'inscriptions ; ``total_realisees`` celles dont la session est réalisée.
+    Un employé d'une autre société (ou inconnu) renvoie un registre vide.
+    """
+    if today is None:
+        today = timezone.localdate()
+
+    inscriptions = (
+        InscriptionFormation.objects
+        .filter(company=company, participant_id=employe_id)
+        .select_related('session', 'session__competence_visee')
+        .order_by('-session__date_debut', '-session__date_creation', 'id')
+    )
+
+    lignes = []
+    total_realisees = 0
+    for inscr in inscriptions:
+        session = inscr.session
+        realisee = session.statut == SessionFormation.Statut.REALISEE
+        if realisee:
+            total_realisees += 1
+        competence = session.competence_visee
+        lignes.append({
+            'inscription_id': inscr.id,
+            'session_id': session.id,
+            'intitule': session.intitule,
+            'type': session.type,
+            'type_display': session.get_type_display(),
+            'organisme': session.organisme,
+            'date_debut': session.date_debut,
+            'date_fin': session.date_fin,
+            'lieu': session.lieu,
+            'cout': session.cout,
+            'statut': session.statut,
+            'statut_display': session.get_statut_display(),
+            'realisee': realisee,
+            'competence_visee': competence.id if competence else None,
+            'competence_visee_libelle': competence.libelle if competence else '',
+            'present': inscr.present,
+            'resultat': inscr.resultat,
+            'resultat_display': inscr.get_resultat_display(),
+            'note': inscr.note,
+        })
+
+    return {
+        'employe': employe_id,
+        'lignes': lignes,
+        'total': len(lignes),
+        'total_realisees': total_realisees,
     }

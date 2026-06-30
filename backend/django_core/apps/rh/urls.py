@@ -5,6 +5,7 @@ from .views import (
     AccidentTravailViewSet,
     AffectationRosterViewSet,
     AnalyseRisquesChantierViewSet,
+    BesoinFormationViewSet,
     CauserieSecuriteViewSet,
     CertificationViewSet,
     CompetenceEmployeViewSet,
@@ -64,6 +65,7 @@ router.register(r'presqu-accidents', PresquAccidentViewSet)
 router.register(r'causeries-securite', CauserieSecuriteViewSet)
 router.register(r'analyses-risques-chantier', AnalyseRisquesChantierViewSet)
 router.register(r'sessions-formation', SessionFormationViewSet)
+router.register(r'besoins-formation', BesoinFormationViewSet)
 
 urlpatterns = [
     path('', include(router.urls)),
