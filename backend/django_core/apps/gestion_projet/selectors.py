@@ -1551,3 +1551,90 @@ def budget_total(budget):
         'par_categorie': par_categorie,
         'nb_lignes': nb_lignes,
     }
+
+
+# ── Alertes de dépassement budgétaire (PROJ23) ───────────────────────────────
+def alertes_depassement_budgetaire(company, projet, seuil_pct=None):
+    """Alertes de DÉPASSEMENT budgétaire d'un projet (PROJ23).
+
+    S'appuie sur ``couts_engages_vs_reels`` (PROJ22 — budget PROJ21 vs réel) :
+    pour CHAQUE catégorie budgétée (matériel / main-d'œuvre / sous-traitance /
+    divers) et pour le TOTAL, lève une alerte quand le réel consommé approche ou
+    dépasse le budget prévisionnel.
+
+    ``seuil_pct`` (0–100, défaut 90) est le seuil d'ALERTE de consommation : à
+    partir de ``seuil_pct`` % de consommation du budget, l'élément est signalé.
+    Deux niveaux :
+        • ``depassement`` — réel > budget (consommation > 100 %)
+        • ``alerte``      — seuil_pct ≤ consommation ≤ 100 %
+
+    Une catégorie au budget NUL (non budgétée) n'est jamais en alerte tant que
+    son réel reste nul ; dès qu'un réel est constaté sur un budget nul, c'est un
+    dépassement (consommation non bornée → ``None`` en %). Garde
+    anti-division-par-zéro partout. La société est imposée par l'appelant ; le
+    réel des catégories matériel/sous-traitance dégrade proprement à 0 tant
+    qu'aucune source cross-app n'expose un montant (frontière cross-app). Lecture
+    seule — aucune écriture.
+    """
+    if seuil_pct is None:
+        seuil_pct = Decimal('90')
+    else:
+        seuil_pct = Decimal(str(seuil_pct))
+    seuil_pct = max(Decimal('0'), min(Decimal('100'), seuil_pct))
+
+    data = couts_engages_vs_reels(company, projet)
+
+    def _evaluer(budget_montant, reel_montant):
+        """Renvoie ``(consommation_pct ou None, niveau)`` pour un couple."""
+        if budget_montant is None or budget_montant == 0:
+            # Budget nul : dépassement dès qu'un réel est constaté.
+            if reel_montant > 0:
+                return None, 'depassement'
+            return Decimal('0'), 'ok'
+        consommation = (
+            reel_montant / budget_montant * Decimal('100')).quantize(
+                Decimal('0.01'))
+        if reel_montant > budget_montant:
+            niveau = 'depassement'
+        elif consommation >= seuil_pct:
+            niveau = 'alerte'
+        else:
+            niveau = 'ok'
+        return consommation, niveau
+
+    alertes = []
+    for ligne in data['par_categorie']:
+        consommation, niveau = _evaluer(ligne['budget'], ligne['reel'])
+        if niveau != 'ok':
+            alertes.append({
+                'portee': 'categorie',
+                'categorie': ligne['categorie'],
+                'budget': ligne['budget'],
+                'reel': ligne['reel'],
+                'depassement': ligne['reel'] - ligne['budget'],
+                'consommation_pct': consommation,
+                'niveau': niveau,
+            })
+
+    total = data['total']
+    consommation_totale, niveau_total = _evaluer(
+        total['budget'], total['reel'])
+
+    return {
+        'budget_id': data['budget_id'],
+        'budget_version': data['budget_version'],
+        'budget_statut': data['budget_statut'],
+        'seuil_pct': seuil_pct,
+        'total': {
+            'budget': total['budget'],
+            'reel': total['reel'],
+            'depassement': total['reel'] - total['budget'],
+            'consommation_pct': consommation_totale,
+            'niveau': niveau_total,
+        },
+        'alertes': alertes,
+        'nb_alertes': len(alertes),
+        'en_depassement': (
+            niveau_total == 'depassement'
+            or any(a['niveau'] == 'depassement' for a in alertes)),
+    }

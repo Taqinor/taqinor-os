@@ -384,6 +384,61 @@ class ProjetViewSet(_GestionProjetBaseViewSet):
             },
         })
 
+    @action(detail=True, methods=['get'], url_path='alertes-budget')
+    def alertes_budget(self, request, pk=None):
+        """Alertes de DÉPASSEMENT budgétaire du projet (PROJ23).
+
+        Paramètre optionnel ``?seuil_pct=N`` (0–100, défaut 90) : seuil de
+        consommation à partir duquel une catégorie / le total est signalé en
+        ``alerte`` (et en ``depassement`` au-delà de 100 %). Un seuil invalide
+        (non numérique / hors borne) est ramené au défaut / borné.
+
+        La société est garantie par ``get_object`` (queryset scopé société) :
+        un projet d'une autre société → 404. Lecture seule. Délègue au sélecteur
+        ``alertes_depassement_budgetaire`` (s'appuie sur PROJ22).
+        """
+        projet = self.get_object()
+        seuil_raw = request.query_params.get('seuil_pct')
+        seuil = None
+        if seuil_raw is not None:
+            try:
+                seuil = float(seuil_raw)
+            except (TypeError, ValueError):
+                seuil = None
+        data = selectors.alertes_depassement_budgetaire(
+            request.user.company, projet, seuil_pct=seuil)
+
+        def _num(value):
+            return str(value) if value is not None else None
+
+        return Response({
+            'budget_id': data['budget_id'],
+            'budget_version': data['budget_version'],
+            'budget_statut': data['budget_statut'],
+            'seuil_pct': str(data['seuil_pct']),
+            'en_depassement': data['en_depassement'],
+            'nb_alertes': data['nb_alertes'],
+            'total': {
+                'budget': str(data['total']['budget']),
+                'reel': str(data['total']['reel']),
+                'depassement': str(data['total']['depassement']),
+                'consommation_pct': _num(data['total']['consommation_pct']),
+                'niveau': data['total']['niveau'],
+            },
+            'alertes': [
+                {
+                    'portee': a['portee'],
+                    'categorie': a['categorie'],
+                    'budget': str(a['budget']),
+                    'reel': str(a['reel']),
+                    'depassement': str(a['depassement']),
+                    'consommation_pct': _num(a['consommation_pct']),
+                    'niveau': a['niveau'],
+                }
+                for a in data['alertes']
+            ],
+        })
+
 
 class ProjetChantierViewSet(_GestionProjetBaseViewSet):
     """Rattachements chantier ↔ projet (liens lâches)."""
