@@ -46,6 +46,7 @@ from .serializers import (
 )
 from . import chatter
 from .selectors import (
+    calendrier_qhse,
     capa_en_retard, chantier_peut_cloturer, courbes_iv_for_chantier,
     criticite_summary, declarations_cnss_a_echeance, document_unique_valide,
     hold_points_status,
@@ -756,6 +757,26 @@ class Iso9001ReadinessViewSet(viewsets.ViewSet):
 
     def list(self, request):
         return Response(iso9001_readiness(request.user.company))
+
+
+# ── QHSE35 — Digest / calendrier QHSE (inspections + permis) ────────────────
+
+class CalendrierQhseViewSet(viewsets.ViewSet):
+    """Digest / calendrier QHSE unifié des échéances à venir (QHSE35).
+
+    ``GET …/calendrier/`` agrège, sur une fenêtre ``?within_days=N`` (défaut
+    30), les inspections sécurité planifiées (QHSE33), les permis de travail
+    expirant/expirés (QHSE25) et les déclarations CNSS à échéance (QHSE30) en
+    une liste homogène d'événements de calendrier triés par date, avec un
+    drapeau ``en_retard`` par échéance passée. Agrégation PURE des sélecteurs
+    QHSE existants — aucune mutation. Scopé société. Palier Responsable/Admin.
+    """
+    permission_classes = [IsResponsableOrAdmin]
+
+    def list(self, request):
+        within = request.query_params.get('within_days', 30)
+        return Response(
+            calendrier_qhse(request.user.company, within_days=within))
 
 
 # ── QHSE21 — Évaluation des risques (document unique) ───────────────────────

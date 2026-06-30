@@ -3,6 +3,7 @@ from rest_framework.routers import DefaultRouter
 
 from .views import (
     ActionCorrectivePreventiveViewSet, AnalyseIncidentViewSet, AuditViewSet,
+    CalendrierQhseViewSet,
     CauseIncidentViewSet, ConsignationLotoViewSet,
     ContactUrgenceViewSet,
     CritereAuditViewSet, DeclarationCnssViewSet,
@@ -52,6 +53,8 @@ router.register(r'inspections-securite', InspectionSecuriteViewSet)
 router.register(
     r'iso9001-readiness', Iso9001ReadinessViewSet,
     basename='iso9001-readiness')
+router.register(
+    r'calendrier', CalendrierQhseViewSet, basename='calendrier')
 
 urlpatterns = [
     path('', include(router.urls)),

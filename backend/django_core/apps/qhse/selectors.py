@@ -24,7 +24,7 @@ from django.db.models import Avg
 
 from .models import (
     ActionCorrectivePreventive, Audit, DeclarationCnss, EvaluationRisque,
-    Incident, NonConformite, NotationFinChantier,
+    Incident, InspectionSecurite, NonConformite, NotationFinChantier,
     PermisTravail, PlanInspectionChantier,
     ProcedureQualite, ReleveControle, ReleveCourbeIV, RetourClientQualite,
 )
@@ -867,4 +867,146 @@ def statistiques_tf_tg(company, heures_travaillees, date_debut=None,
             'debut': date_debut.isoformat() if date_debut else None,
             'fin': date_fin.isoformat() if date_fin else None,
         },
+    }
+
+
+# ── QHSE35 — Inspections / permis dans le digest + calendrier ──────────────
+
+# Statuts d'inspection encore « ouverts » pour le digest : une inspection
+# ANNULÉE n'a plus d'échéance à suivre.
+STATUTS_INSPECTION_OUVERTS = (
+    InspectionSecurite.Statut.PLANIFIEE,
+    InspectionSecurite.Statut.REALISEE,
+)
+
+
+def inspections_a_venir(company, within_days=30, today=None,
+                        inclure_passees=True):
+    """Inspections sécurité (QHSE33) planifiées dans la fenêtre du digest.
+
+    Lecture cadrée société : retient les inspections NON annulées dont la
+    ``date_prevue`` est renseignée et tombe au plus tard dans ``within_days``
+    jours (aujourd'hui + ``within_days`` inclus). Par défaut ``inclure_passees``
+    garde aussi les inspections dont la date prévue est déjà passée (à solder /
+    reprogrammer) ; ``inclure_passees=False`` ne garde que les échéances à venir.
+    Triée par date la plus proche d'abord. Lecture seule.
+    """
+    from datetime import timedelta
+
+    from django.utils import timezone
+
+    if company is None:
+        return InspectionSecurite.objects.none()
+    try:
+        within_days = int(within_days)
+    except (TypeError, ValueError):
+        within_days = 30
+    if within_days < 0:
+        within_days = 0
+    if today is None:
+        today = timezone.localdate()
+    limite = today + timedelta(days=within_days)
+    qs = InspectionSecurite.objects.filter(
+        company=company,
+        statut__in=STATUTS_INSPECTION_OUVERTS,
+        date_prevue__isnull=False,
+        date_prevue__lte=limite,
+    )
+    if not inclure_passees:
+        qs = qs.filter(date_prevue__gte=today)
+    return qs.order_by('date_prevue', 'id')
+
+
+def calendrier_qhse(company, within_days=30, today=None):
+    """Digest / calendrier QHSE unifié des échéances à venir (QHSE35).
+
+    Agrège, sur une seule fenêtre ``within_days``, les échéances QHSE
+    actionnables d'une société, chacune normalisée en *événement de calendrier* :
+
+    * inspections sécurité planifiées (``inspections_a_venir``) → ``date_prevue`` ;
+    * permis de travail expirant ou expirés (``permis_travail_expirant``) →
+      ``date_fin`` ;
+    * déclarations CNSS approchant l'échéance ou hors délai
+      (``declarations_cnss_a_echeance``) → ``date_limite``.
+
+    Chaque événement est un dict homogène :
+    ``{
+        'type': 'inspection' | 'permis' | 'declaration_cnss',
+        'id': int,
+        'titre': str,
+        'date': str (ISO),       # date de l'échéance
+        'en_retard': bool,       # échéance déjà passée
+        'reference': str,
+        'chantier_id': int|None,
+    }``
+
+    Le digest renvoyé : ``{'today': str, 'within_days': int, 'total': int,
+    'inspections': N, 'permis': M, 'declarations_cnss': K,
+    'evenements': [...]}`` — les événements triés par date croissante. Toujours
+    scopé société ; lecture seule, aucune mutation.
+    """
+    from django.utils import timezone
+
+    if today is None:
+        today = timezone.localdate()
+    try:
+        within_days = int(within_days)
+    except (TypeError, ValueError):
+        within_days = 30
+    if within_days < 0:
+        within_days = 0
+
+    evenements = []
+
+    for insp in inspections_a_venir(
+            company, within_days=within_days, today=today):
+        evenements.append({
+            'type': 'inspection',
+            'id': insp.id,
+            'titre': insp.titre,
+            'date': insp.date_prevue.isoformat(),
+            'en_retard': insp.date_prevue < today,
+            'reference': insp.reference,
+            'chantier_id': insp.chantier_id,
+        })
+
+    for permis in permis_travail_expirant(
+            company, within_days=within_days, inclure_expires=True):
+        evenements.append({
+            'type': 'permis',
+            'id': permis.id,
+            'titre': permis.titre,
+            'date': permis.date_fin.isoformat(),
+            'en_retard': permis.date_fin < today,
+            'reference': permis.reference,
+            'chantier_id': permis.chantier_id,
+        })
+
+    for decl in declarations_cnss_a_echeance(
+            company, within_days=within_days, today=today):
+        evenements.append({
+            'type': 'declaration_cnss',
+            'id': decl.id,
+            'titre': decl.numero_declaration or 'Déclaration CNSS',
+            'date': decl.date_limite.isoformat(),
+            'en_retard': decl.date_limite < today,
+            'reference': decl.numero_declaration or '',
+            'chantier_id': None,
+        })
+
+    evenements.sort(key=lambda e: (e['date'], e['type'], e['id']))
+
+    nb_inspections = sum(1 for e in evenements if e['type'] == 'inspection')
+    nb_permis = sum(1 for e in evenements if e['type'] == 'permis')
+    nb_cnss = sum(
+        1 for e in evenements if e['type'] == 'declaration_cnss')
+
+    return {
+        'today': today.isoformat(),
+        'within_days': within_days,
+        'total': len(evenements),
+        'inspections': nb_inspections,
+        'permis': nb_permis,
+        'declarations_cnss': nb_cnss,
+        'evenements': evenements,
     }
