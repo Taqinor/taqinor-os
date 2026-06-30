@@ -12,7 +12,9 @@ from .views_uploads import (
     upload_signature,
 )
 from .views_messages import messages_endpoint
-from .views_audit import settings_audit_log, settings_audit_sections
+from .views_audit import (
+    settings_audit_log, settings_audit_sections, purge_audit_retention,
+)
 from .views_config import config_export, config_import
 from .views_documents import (
     get_document_templates,
@@ -35,6 +37,7 @@ __all__ = [
     'messages_endpoint',
     'settings_audit_log',
     'settings_audit_sections',
+    'purge_audit_retention',
     'config_export',
     'config_import',
     'get_document_templates',

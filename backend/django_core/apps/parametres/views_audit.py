@@ -6,7 +6,7 @@ limité."""
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.response import Response
 
-from authentication.permissions import IsAdminOrResponsableTier
+from authentication.permissions import IsAdminOrResponsableTier, IsAdminRole
 from .models import SettingsAuditLog
 from .serializers import SettingsAuditLogSerializer
 
@@ -66,3 +66,21 @@ def settings_audit_sections(request):
     for extra in sorted(present - known_values):
         sections.append({'value': extra, 'label': extra})
     return Response({'sections': sections})
+
+
+@api_view(['POST'])
+@permission_classes([IsAdminRole])
+def purge_audit_retention(request):
+    """FG26 — purge le journal d'audit de la société au-delà de sa fenêtre de
+    rétention (``CompanyProfile.audit_retention_days``). Admin uniquement.
+
+    No-op (0, 0) si la société n'a pas fixé de fenêtre (rétention illimitée)."""
+    from .retention import purge_company_audit
+    company = request.user.company if request.user.company_id else None
+    if company is None:
+        return Response({'detail': 'Aucune société.'}, status=400)
+    audit_deleted, settings_deleted = purge_company_audit(company)
+    return Response({
+        'audit_deleted': audit_deleted,
+        'settings_deleted': settings_deleted,
+    })

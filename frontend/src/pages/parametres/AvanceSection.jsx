@@ -139,6 +139,12 @@ export default function AvanceSection({
                      name="password_expiry_days"
                      value={form.password_expiry_days} onChange={set} />
             </Field>
+            {/* FG26 — rétention RGPD du journal d'audit (0 = illimité). */}
+            <Field label="Rétention du journal d'audit (jours, 0 = illimité)" htmlFor="pe-audit-retention">
+              <Input id="pe-audit-retention" type="number" step="1" min="0"
+                     name="audit_retention_days"
+                     value={form.audit_retention_days} onChange={set} />
+            </Field>
             <label className="sm:col-span-2 flex items-center gap-2.5 text-sm text-foreground">
               <input type="checkbox" name="password_require_complexity"
                      checked={!!form.password_require_complexity} onChange={set} />

@@ -531,6 +531,8 @@ export default function ParametresEntreprise() {
       lockout_max_attempts: profile.lockout_max_attempts ?? 0,
       lockout_duration_minutes: profile.lockout_duration_minutes ?? 15,
       password_expiry_days: profile.password_expiry_days ?? 0,
+      // FG26 — rétention RGPD du journal d'audit.
+      audit_retention_days: profile.audit_retention_days ?? 0,
     })
   }, [profile])
 

@@ -241,6 +241,14 @@ class CompanyProfile(models.Model):
         default=0,
         help_text="Expiration du mot de passe en jours (0 = jamais).")
 
+    # ── FG26 — fenêtre de rétention du journal d'audit (RGPD) ──
+    # Au-delà de N jours, les lignes du Journal d'activité peuvent être purgées
+    # (commande/endpoint admin). 0 = conservation illimitée (défaut) → rien
+    # n'est jamais purgé tant que la société ne fixe pas de fenêtre.
+    audit_retention_days = models.PositiveIntegerField(
+        default=0,
+        help_text="Rétention du journal d'audit en jours (0 = illimité).")
+
     class Meta:
         verbose_name = 'Profil entreprise'
 

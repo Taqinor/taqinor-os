@@ -65,6 +65,11 @@ class Client(models.Model):
         verbose_name='Plafond de crédit (MAD TTC)',
         help_text='Seuil d\'encours client. Vide = pas de limite.',
     )
+    # FG26 — RGPD : un client anonymisé (droit à l'effacement) a ses PII
+    # scrubées tout en préservant l'intégrité comptable (devis/factures gardés).
+    # Le drapeau bloque toute ré-identification accidentelle et marque la ligne.
+    is_anonymized = models.BooleanField(default=False)
+    anonymized_at = models.DateTimeField(null=True, blank=True)
 
     class Meta:
         verbose_name = "Client"

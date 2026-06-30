@@ -36,6 +36,8 @@ urlpatterns = [
     path('audit/', views.settings_audit_log),
     # FG18 — sections connues du journal d'audit (filtre UI).
     path('audit/sections/', views.settings_audit_sections),
+    # FG26 — purge RGPD du journal d'audit selon la fenêtre de rétention.
+    path('audit/purge/', views.purge_audit_retention),
     # FG24 — export/import de la configuration entre sociétés (admin).
     path('config-export/', views.config_export),
     path('config-import/', views.config_import),
