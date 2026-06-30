@@ -151,6 +151,18 @@ _PROFILE_FIELD_MAP = {
 }
 
 
+def devise_defaut(company):
+    """Devise par défaut de la société (FG52). Code ISO 4217, défaut « MAD ».
+
+    Source UNIQUE de la devise par défaut côté ventes : préremplit les nouveaux
+    documents et sert de repli quand un document ne porte pas de devise. Tant
+    qu'aucune société n'a édité son profil → « MAD » (comportement inchangé)."""
+    prof = _profile(company)
+    val = getattr(prof, 'devise_defaut', None) if prof else None
+    val = (str(val).strip().upper() if val else '')
+    return val or 'MAD'
+
+
 def entreprise_for(company):
     """Identité société (DC1) pour le moteur de devis premium.
 
