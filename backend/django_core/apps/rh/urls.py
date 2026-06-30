@@ -12,6 +12,7 @@ from .views import (
     CampagneEvaluationViewSet,
     CandidatureViewSet,
     CauserieSecuriteViewSet,
+    CockpitRhViewSet,
     CertificationViewSet,
     CompetenceEmployeViewSet,
     CompetenceViewSet,
@@ -97,6 +98,7 @@ router.register(r'affectations-vehicule', AffectationVehiculeViewSet)
 router.register(r'notes-frais', NoteDeFraisViewSet)
 router.register(
     r'portail', PortailSelfServiceViewSet, basename='rh-portail')
+router.register(r'cockpit', CockpitRhViewSet, basename='rh-cockpit')
 
 urlpatterns = [
     path('', include(router.urls)),

@@ -3228,3 +3228,29 @@ class PortailSelfServiceViewSet(viewsets.ViewSet):
             company=request.user.company, employe=dossier).select_related(
             'attachment')
         return Response(BulletinPaieSerializer(qs, many=True).data)
+
+
+class CockpitRhViewSet(viewsets.ViewSet):
+    """Cockpit RH — effectifs & coûts (FG200), tableau de bord en lecture.
+
+    Société scopée + Administrateur/Responsable (``IsResponsableOrAdmin``).
+    Agrège (sans rien stocker) l'effectif par statut/contrat/département, la
+    pyramide d'ancienneté, le turnover 12 mois et les alertes (CDD à échéance,
+    documents/permis/visites à expirer) via ``selectors.cockpit_rh``.
+
+    GATED — masse salariale : la ``masse_salariale_mensuelle`` (donnée INTERNE
+    paie) n'est incluse QUE si l'appelant porte la permission ``salaires_voir``
+    (palier RH), sinon elle est omise. Elle ne quitte jamais cette API admin.
+
+    Endpoint :
+    * ``GET cockpit/`` (list) — renvoie le tableau de bord agrégé.
+    """
+    permission_classes = [IsResponsableOrAdmin]
+
+    def list(self, request):
+        peut_voir_salaires = HasPermission('salaires_voir')().has_permission(
+            request, self)
+        data = selectors.cockpit_rh(
+            request.user.company,
+            inclure_masse_salariale=peut_voir_salaires)
+        return Response(data)
