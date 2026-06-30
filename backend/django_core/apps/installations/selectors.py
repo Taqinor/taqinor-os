@@ -1207,3 +1207,32 @@ def chantier_card(chantier_id, company):
         'subtitle': ' · '.join(p for p in parts if p),
         'url': f'/installations/{chantier.pk}',
     }
+
+
+def sous_traitant_attestations_manquantes(sous_traitant, a_la_date=None):
+    """FG307 — liste des pièces obligatoires expirées/manquantes d'un
+    sous-traitant à une date (aujourd'hui par défaut). Lecture seule.
+
+    Une pièce OBLIGATOIRE invalide (expirée) compte ; une attestation absente
+    n'est PAS énumérée ici (on ne devine pas le référentiel exigé), mais
+    ``sous_traitant_affectable`` ci-dessous traite l'absence totale comme un
+    blocage explicite côté appelant. Renvoie une liste de dicts
+    {type_piece, date_expiration}."""
+    manquantes = []
+    for att in sous_traitant.attestations.all():
+        if att.obligatoire and not att.est_valide(a_la_date):
+            manquantes.append({
+                'type_piece': att.type_piece,
+                'date_expiration': att.date_expiration,
+            })
+    return manquantes
+
+
+def sous_traitant_affectable(sous_traitant, a_la_date=None):
+    """FG307 — vrai si le sous-traitant peut être affecté à une date : actif ET
+    aucune pièce obligatoire expirée. Lecture seule, point d'entrée cross-app
+    (le planning/l'affectation lisent ce sélecteur plutôt que la table
+    d'attestations directement)."""
+    if not getattr(sous_traitant, 'actif', True):
+        return False
+    return not sous_traitant_attestations_manquantes(sous_traitant, a_la_date)

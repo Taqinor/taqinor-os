@@ -27,6 +27,7 @@ from .ordre_soustraitance import OrdreSousTraitanceViewSet
 from .facture_soustraitant import (
     FactureSousTraitantViewSet, PaiementSousTraitantViewSet,
 )
+from .attestation_soustraitant import AttestationSousTraitantViewSet
 from .field_sync import FieldSyncView
 
 __all__ = [
@@ -55,5 +56,6 @@ __all__ = [
     'OrdreSousTraitanceViewSet',
     'FactureSousTraitantViewSet',
     'PaiementSousTraitantViewSet',
+    'AttestationSousTraitantViewSet',
     'FieldSyncView',
 ]

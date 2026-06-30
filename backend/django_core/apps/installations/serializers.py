@@ -19,6 +19,7 @@ from .models import (
     OrdreSousTraitance,
     FactureSousTraitant,
     PaiementSousTraitant,
+    AttestationSousTraitant,
 )
 
 
@@ -1120,3 +1121,30 @@ class FactureSousTraitantSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError(
                 'Le montant TTC ne peut pas être négatif.')
         return value
+
+
+class AttestationSousTraitantSerializer(serializers.ModelSerializer):
+    """FG307 — pièce administrative obligatoire d'un sous-traitant (CNSS, RC
+    décennale, agrément…). La société et `created_by` sont posés CÔTÉ SERVEUR.
+    `est_valide` expose si la pièce est encore valide aujourd'hui (lecture
+    seule)."""
+    type_piece_display = serializers.CharField(
+        source='get_type_piece_display', read_only=True, default=None)
+    sous_traitant_nom = serializers.CharField(
+        source='sous_traitant.raison_sociale', read_only=True, default=None)
+    est_valide = serializers.SerializerMethodField()
+    obligatoire = serializers.BooleanField(required=False, default=True)
+
+    class Meta:
+        model = AttestationSousTraitant
+        fields = [
+            'id', 'sous_traitant', 'sous_traitant_nom',
+            'type_piece', 'type_piece_display', 'reference', 'organisme',
+            'date_emission', 'date_expiration', 'obligatoire', 'note',
+            'est_valide',
+            'created_by', 'date_creation', 'date_modification',
+        ]
+        read_only_fields = ['created_by', 'date_creation', 'date_modification']
+
+    def get_est_valide(self, obj):
+        return obj.est_valide()
