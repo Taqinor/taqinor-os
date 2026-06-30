@@ -111,6 +111,9 @@ from .models_commande_cadre import (
     CommandeCadreLigne,
     AppelCommande,
 )
+from .models_dossier_import import (
+    DossierImport,
+)
 
 __all__ = [
     'Installation',
@@ -169,4 +172,5 @@ __all__ = [
     'CommandeCadre',
     'CommandeCadreLigne',
     'AppelCommande',
+    'DossierImport',
 ]

@@ -28,6 +28,7 @@ from .views import (
     CommandeCadreViewSet,
     CommandeCadreLigneViewSet,
     AppelCommandeViewSet,
+    DossierImportViewSet,
 )
 
 router = DefaultRouter()
@@ -67,6 +68,7 @@ router.register(r'approbations-bcf', ApprobationBCFViewSet)
 router.register(r'commandes-cadre', CommandeCadreViewSet)
 router.register(r'commandes-cadre-lignes', CommandeCadreLigneViewSet)
 router.register(r'appels-commande', AppelCommandeViewSet)
+router.register(r'dossiers-import', DossierImportViewSet)
 
 urlpatterns = [
     # N91/F21 — synchro idempotente de la capture terrain hors-ligne.

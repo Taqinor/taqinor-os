@@ -31,6 +31,7 @@ from .models import (
     CommandeCadre,
     CommandeCadreLigne,
     AppelCommande,
+    DossierImport,
 )
 
 
@@ -1480,4 +1481,37 @@ class AppelCommandeSerializer(serializers.ModelSerializer):
         if value is None or value <= 0:
             raise serializers.ValidationError(
                 'La quantité appelée doit être strictement positive.')
+        return value
+
+
+class DossierImportSerializer(serializers.ModelSerializer):
+    """FG315 — dossier d'import / dédouanement d'un conteneur. La référence et la
+    société sont posées CÔTÉ SERVEUR ; `reference` est anti-collision
+    (`IMP-YYYYMM-NNNN`). Le `statut_douane` avance via l'action `avancer`."""
+    statut_douane_display = serializers.CharField(
+        source='get_statut_douane_display', read_only=True, default=None)
+    incoterm_display = serializers.CharField(
+        source='get_incoterm_display', read_only=True, default=None)
+    fournisseur_nom = serializers.CharField(
+        source='fournisseur.nom', read_only=True, default=None)
+
+    class Meta:
+        model = DossierImport
+        fields = [
+            'id', 'reference', 'designation', 'fournisseur', 'fournisseur_nom',
+            'bon_commande', 'incoterm', 'incoterm_display', 'numero_bl',
+            'numero_conteneur', 'port_arrivee', 'date_depart',
+            'date_arrivee_port', 'date_dedouanement',
+            'statut_douane', 'statut_douane_display', 'note',
+            'created_by', 'date_creation', 'date_modification',
+        ]
+        read_only_fields = [
+            'reference', 'statut_douane', 'created_by',
+            'date_creation', 'date_modification',
+        ]
+
+    def validate_designation(self, value):
+        value = (value or '').strip()
+        if not value:
+            raise serializers.ValidationError("La désignation est obligatoire.")
         return value
