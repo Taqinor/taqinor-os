@@ -1,7 +1,7 @@
 from rest_framework import serializers
 from .models import (
     Appointment, Client, ConcurrentPerte, Lead, LeadActivity, MessageTemplate,
-    ObjectifCommercial, Parrainage, PointContact,
+    ObjectifCommercial, Parrainage, PointContact, SiteProfile,
 )
 from .devis_auto import champs_manquants, message_manquants
 from .scoring import compute_score, score_label
@@ -429,6 +429,38 @@ class ParrainageSerializer(serializers.ModelSerializer):
     def validate_filleul_lead(self, value):
         if value and not self._same_company(value):
             raise serializers.ValidationError('Lead inconnu.')
+        return value
+
+
+# DC12 — Profil site/énergie réutilisable par client ─────────────────────────
+
+class SiteProfileSerializer(serializers.ModelSerializer):
+    """DC12 — profil site/énergie réutilisable, attaché au client.
+
+    Société posée CÔTÉ SERVEUR (HiddenField — jamais lue du corps de requête,
+    multi-tenant). Le client référencé doit appartenir à la même société
+    (validate_client). Une seule fiche par client (OneToOne)."""
+    company = serializers.HiddenField(default=_CurrentCompanyDefault())
+
+    class Meta:
+        model = SiteProfile
+        fields = [
+            'id', 'company', 'client',
+            'facture_hiver', 'facture_ete', 'ete_differente',
+            'conso_mensuelle_kwh', 'tranche_onee', 'raccordement',
+            'regularisation_8221', 'type_installation',
+            'pompe_cv', 'pompe_hmt_m', 'pompe_debit_m3h',
+            'type_toiture', 'surface_toiture_m2', 'orientation',
+            'inclinaison_deg', 'ombrage', 'ombrage_notes',
+            'gps_lat', 'gps_lng',
+            'date_creation', 'date_modification',
+        ]
+        read_only_fields = ['date_creation', 'date_modification']
+
+    def validate_client(self, value):
+        req = self.context.get('request')
+        if req and value and value.company_id != req.user.company_id:
+            raise serializers.ValidationError('Client inconnu.')
         return value
 
 

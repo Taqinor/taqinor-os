@@ -1044,3 +1044,94 @@ class PointContact(models.Model):
             f'Point de contact {self.get_canal_display()} '
             f'(lead {self.lead_id})'
         )
+
+
+class SiteProfile(models.Model):
+    """DC12 — profil site/énergie RÉUTILISABLE, attaché au client.
+
+    Aujourd'hui le profil énergétique et toiture est re-saisi à chaque devis
+    (surtout pour les devis SANS lead, qui n'ont nulle part où puiser ces
+    valeurs). Ce modèle est la SOURCE UNIQUE par client : saisi une fois, le
+    générateur de devis le pré-remplit ensuite (consommé via
+    ``selectors.site_profile_for_client``).
+
+    Les taxonomies (raccordement, type de toiture, orientation, ombrage…) sont
+    RÉUTILISÉES depuis ``Lead`` — jamais redéclarées ici — pour éviter une
+    seconde liste de choix divergente. Borné société ; un seul profil par
+    client (OneToOne). Tous les champs sont optionnels et additifs.
+    """
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        null=True, blank=True,
+        related_name='site_profiles',
+    )
+    client = models.OneToOneField(
+        Client,
+        on_delete=models.CASCADE,
+        related_name='site_profile',
+        verbose_name='Client',
+    )
+
+    # ── Profil énergétique (mêmes champs que Lead) ──
+    facture_hiver = models.DecimalField(
+        max_digits=10, decimal_places=2, null=True, blank=True)
+    facture_ete = models.DecimalField(
+        max_digits=10, decimal_places=2, null=True, blank=True)
+    ete_differente = models.BooleanField(default=False)
+    conso_mensuelle_kwh = models.DecimalField(
+        max_digits=10, decimal_places=2, null=True, blank=True)
+    tranche_onee = models.CharField(max_length=100, blank=True, null=True)
+    raccordement = models.CharField(
+        max_length=12, choices=Lead.Raccordement.choices,
+        blank=True, null=True)
+    regularisation_8221 = models.BooleanField(default=False)
+    type_installation = models.CharField(
+        max_length=20, choices=Lead.TypeInstallation.choices,
+        blank=True, null=True)
+
+    # ── Pompage solaire (clients Agricole) ──
+    pompe_cv = models.DecimalField(
+        max_digits=6, decimal_places=2, null=True, blank=True)
+    pompe_hmt_m = models.DecimalField(
+        max_digits=8, decimal_places=2, null=True, blank=True)
+    pompe_debit_m3h = models.DecimalField(
+        max_digits=8, decimal_places=2, null=True, blank=True)
+
+    # ── Toiture & site ──
+    type_toiture = models.CharField(
+        max_length=20, choices=Lead.TypeToiture.choices,
+        blank=True, null=True)
+    surface_toiture_m2 = models.DecimalField(
+        max_digits=10, decimal_places=2, null=True, blank=True)
+    orientation = models.CharField(
+        max_length=12, choices=Lead.Orientation.choices,
+        blank=True, null=True)
+    inclinaison_deg = models.DecimalField(
+        max_digits=5, decimal_places=2, null=True, blank=True)
+    ombrage = models.CharField(
+        max_length=12, choices=Lead.Ombrage.choices, blank=True, null=True)
+    ombrage_notes = models.TextField(blank=True, null=True)
+
+    # ── Localisation du site (pour devis sans lead) ──
+    gps_lat = models.DecimalField(
+        max_digits=9, decimal_places=6, null=True, blank=True,
+        validators=[MinValueValidator(-90), MaxValueValidator(90)])
+    gps_lng = models.DecimalField(
+        max_digits=9, decimal_places=6, null=True, blank=True,
+        validators=[MinValueValidator(-180), MaxValueValidator(180)])
+
+    # Traçabilité (forcée côté serveur).
+    created_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL,
+        null=True, blank=True, related_name='+')
+    date_creation = models.DateTimeField(auto_now_add=True)
+    date_modification = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = 'Profil site'
+        verbose_name_plural = 'Profils site'
+        ordering = ['-date_modification']
+
+    def __str__(self):
+        return f'Profil site (client {self.client_id})'

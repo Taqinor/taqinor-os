@@ -5,7 +5,7 @@ from authentication.mixins import TenantMixin
 from authentication.scoping import scope_queryset, scope_client_queryset
 from .models import (
     Appointment, Client, ConcurrentPerte, Lead, LeadTag, MotifPerte, Canal,
-    Parrainage, MessageTemplate, ObjectifCommercial, PointContact,
+    Parrainage, MessageTemplate, ObjectifCommercial, PointContact, SiteProfile,
 )
 from .serializers import (
     AppointmentSerializer, ClientSerializer, ConcurrentPerteSerializer,
@@ -13,7 +13,7 @@ from .serializers import (
     LeadTagSerializer, MotifPerteSerializer, CanalSerializer,
     ParrainageSerializer, MessageTemplateSerializer, _tag_en_usage, _motif_en_usage,
     ObjectifCommercialSerializer, ObjectifAttainmentSerializer,
-    PointContactSerializer,
+    PointContactSerializer, SiteProfileSerializer,
 )
 from . import activity
 from .services import default_responsable_for
@@ -1089,6 +1089,37 @@ class ParrainageViewSet(TenantMixin, viewsets.ModelViewSet):
             'recompenses_total': str(rec_total),
             'recompenses_versees': str(rec_versee),
         })
+
+
+# ── DC12 — Profil site/énergie réutilisable par client ───────────────────────
+
+class SiteProfileViewSet(TenantMixin, viewsets.ModelViewSet):
+    """DC12 — profil site/énergie réutilisable, attaché au client.
+
+    Saisi une fois par client, le générateur de devis le pré-remplit ensuite
+    (y compris pour les devis sans lead). Société ET créateur forcés côté
+    serveur (jamais lus du corps de requête). Lecture tout rôle, écriture
+    responsable/admin. Filtrable par ?client=<id>."""
+    queryset = SiteProfile.objects.select_related('client').all()
+    serializer_class = SiteProfileSerializer
+
+    def get_permissions(self):
+        if self.action in READ_ACTIONS:
+            return [IsAnyRole()]
+        return [IsResponsableOrAdmin()]
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        client_id = self.request.query_params.get('client')
+        if client_id:
+            qs = qs.filter(client_id=client_id)
+        return qs
+
+    def perform_create(self, serializer):
+        serializer.save(
+            company=self.request.user.company,
+            created_by=self.request.user,
+        )
 
 
 # ── FG36 — Modèles de messages WhatsApp/SMS ───────────────────────────────────
