@@ -49,6 +49,8 @@ from .services import (
     TransitionPeriodeInterdite,
     calculer_bulletin,
     changer_statut,
+    cloturer_periode_paie,
+    creer_bulletin_rectificatif,
     declaration_cnss,
     emettre_ordre_virement,
     ensure_defaults,
@@ -211,6 +213,25 @@ class PeriodePaieViewSet(_PaieBaseViewSet):
         nouveau = request.data.get('statut')
         try:
             changer_statut(periode, nouveau)
+        except TransitionPeriodeInterdite as exc:
+            return Response(
+                {'detail': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+        return Response(
+            self.get_serializer(periode).data, status=status.HTTP_200_OK)
+
+    @action(detail=True, methods=['post'], url_path='cloturer')
+    def cloturer(self, request, pk=None):
+        """Clôture mensuelle + verrouillage de la période (PAIE36).
+
+        Valide les bulletins encore en brouillon (sauf
+        ``valider_brouillons=false`` dans le corps) puis fige la période
+        (statut → clôturée). Aucun bulletin ne peut plus y être généré.
+        """
+        periode = self.get_object()
+        valider = request.data.get('valider_brouillons', True)
+        try:
+            cloturer_periode_paie(
+                periode, valider_brouillons=bool(valider))
         except TransitionPeriodeInterdite as exc:
             return Response(
                 {'detail': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
@@ -387,6 +408,39 @@ class BulletinPaieViewSet(TenantMixin, viewsets.ReadOnlyModelViewSet):
         valider_bulletin(bulletin)
         return Response(
             self.get_serializer(bulletin).data, status=status.HTTP_200_OK)
+
+    @action(detail=True, methods=['post'], url_path='rectifier')
+    def rectifier(self, request, pk=None):
+        """Crée un bulletin RECTIFICATIF ou RAPPEL liant ce bulletin (PAIE36).
+
+        Corps : ``periode_cible`` (id d'une période OUVERTE ≠ origine) requis ;
+        ``type_bulletin`` ∈ {rectificatif, rappel} (défaut rectificatif) ;
+        ``motif`` facultatif. Le bulletin d'origine reste FIGÉ ; un nouveau
+        bulletin recalculé est émis sur la période cible.
+        """
+        origine = self.get_object()
+        periode_id = request.data.get('periode_cible')
+        if not periode_id:
+            return Response(
+                {'detail': 'Champ "periode_cible" requis.'},
+                status=status.HTTP_400_BAD_REQUEST)
+        try:
+            periode_cible = PeriodePaie.objects.get(
+                pk=periode_id, company=request.user.company)
+        except (PeriodePaie.DoesNotExist, ValueError):
+            return Response(
+                {'detail': 'Période cible inconnue.'},
+                status=status.HTTP_404_NOT_FOUND)
+        try:
+            rectif = creer_bulletin_rectificatif(
+                origine, periode_cible,
+                type_bulletin=request.data.get('type_bulletin'),
+                motif=request.data.get('motif', ''))
+        except ValueError as exc:
+            return Response(
+                {'detail': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+        return Response(
+            self.get_serializer(rectif).data, status=status.HTTP_200_OK)
 
     @action(detail=True, methods=['get'], url_path='pdf')
     def pdf(self, request, pk=None):

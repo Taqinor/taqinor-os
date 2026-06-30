@@ -1368,8 +1368,7 @@ def calculer_bulletin(profil, periode, personnes_a_charge=0):
     # (après IR, comme toute retenue de net). Calcul PUR ici — l'imputation
     # effective de ``montant_rembourse`` se fait à la validation du bulletin
     # (``valider_bulletin`` → ``appliquer_remboursements_avances``).
-    echeances_avances, lignes_avances = echeances_avances_periode(
-        profil, periode)
+    _, lignes_avances = echeances_avances_periode(profil, periode)
     for avance, montant in lignes_avances:
         retenues_variables += montant
         lignes.append({
@@ -1476,6 +1475,13 @@ def generer_bulletin(profil, periode, personnes_a_charge=0):
     if profil.company_id != periode.company_id:
         raise ValueError("Profil et période de sociétés différentes.")
 
+    # PAIE36 — Verrouillage de clôture : une période CLÔTURÉE est figée, aucun
+    # bulletin n'y est (re)généré. Les corrections passent par un bulletin
+    # RECTIFICATIF/RAPPEL sur une période ouverte (``creer_bulletin_rectificatif``).
+    if periode.statut == PeriodePaie.STATUT_CLOTUREE:
+        raise BulletinPaie.BulletinVerrouille(
+            'Période clôturée : génération de bulletin interdite.')
+
     resultat = calculer_bulletin(profil, periode, personnes_a_charge)
     lignes = resultat.get('lignes', [])
 
@@ -1514,6 +1520,82 @@ def generer_bulletin(profil, periode, personnes_a_charge=0):
                 ordre=ordre,
             )
         return bulletin
+
+
+# ── PAIE36 — Clôture mensuelle + bulletins rectificatifs / rappels ─────────
+
+def cloturer_periode_paie(periode, *, valider_brouillons=True):
+    """Clôture mensuelle d'une période de paie (PAIE36).
+
+    Verrouille DÉFINITIVEMENT une ``PeriodePaie`` :
+
+    1. (option) VALIDE tous les bulletins encore en brouillon de la période
+       (``valider_brouillons=True`` par défaut) — ils deviennent figés ;
+    2. fait avancer la période au statut ``cloturee`` (via ``changer_statut``,
+       cycle progressif) et pose ``date_cloture``.
+
+    Une fois clôturée, aucun nouveau bulletin n'est généré pour la période
+    (garde dans ``generer_bulletin``). Idempotent : re-clôturer une période déjà
+    clôturée ne valide rien et ne fait qu'un no-op de transition. Opération
+    atomique. Renvoie la période.
+    """
+    from .models import BulletinPaie
+
+    with transaction.atomic():
+        if valider_brouillons:
+            brouillons = BulletinPaie.objects.filter(
+                company=periode.company, periode=periode,
+                statut=BulletinPaie.STATUT_BROUILLON)
+            for bulletin in brouillons:
+                valider_bulletin(bulletin)
+        changer_statut(periode, PeriodePaie.STATUT_CLOTUREE)
+    return periode
+
+
+def creer_bulletin_rectificatif(bulletin_origine, periode_cible, *,
+                                type_bulletin=None, motif='',
+                                personnes_a_charge=None):
+    """Crée un bulletin RECTIFICATIF ou RAPPEL liant un bulletin d'origine (PAIE36).
+
+    Un bulletin validé/clôturé est FIGÉ : on ne le modifie jamais. Pour corriger
+    une erreur (rectificatif) ou verser un rattrapage (rappel), on émet un
+    NOUVEAU bulletin sur une ``periode_cible`` OUVERTE (≠ période d'origine, qui
+    peut être clôturée), rattaché au bulletin d'origine via ``rectifie`` et
+    portant un ``motif``. Le nouveau bulletin est recalculé normalement
+    (``generer_bulletin``) puis marqué de sa nature.
+
+    ``type_bulletin`` ∈ {rectificatif, rappel} (défaut : rectificatif).
+    ``periode_cible`` doit être de la même société que l'origine et ne PAS être
+    clôturée. Renvoie le bulletin rectificatif (en brouillon).
+    """
+    from .models import BulletinPaie
+
+    if type_bulletin is None:
+        type_bulletin = BulletinPaie.TYPE_RECTIFICATIF
+    if type_bulletin not in (BulletinPaie.TYPE_RECTIFICATIF,
+                             BulletinPaie.TYPE_RAPPEL):
+        raise ValueError(
+            "type_bulletin doit être 'rectificatif' ou 'rappel'.")
+    if periode_cible.company_id != bulletin_origine.company_id:
+        raise ValueError("Période cible d'une autre société.")
+    if periode_cible.pk == bulletin_origine.periode_id:
+        raise ValueError(
+            "Le rectificatif doit cibler une période différente de l'origine.")
+    if periode_cible.statut == PeriodePaie.STATUT_CLOTUREE:
+        raise ValueError("La période cible est clôturée.")
+
+    profil = bulletin_origine.profil
+    if personnes_a_charge is None:
+        personnes_a_charge = bulletin_origine.personnes_a_charge
+
+    with transaction.atomic():
+        bulletin = generer_bulletin(
+            profil, periode_cible, personnes_a_charge=personnes_a_charge)
+        bulletin.type_bulletin = type_bulletin
+        bulletin.rectifie = bulletin_origine
+        bulletin.motif = motif or ''
+        bulletin.save(update_fields=['type_bulletin', 'rectifie', 'motif'])
+    return bulletin
 
 
 def valider_bulletin(bulletin):

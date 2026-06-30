@@ -277,7 +277,8 @@ class BulletinPaieSerializer(serializers.ModelSerializer):
     class Meta:
         model = BulletinPaie
         fields = [
-            'id', 'periode', 'profil', 'statut', 'personnes_a_charge',
+            'id', 'periode', 'profil', 'statut',
+            'type_bulletin', 'rectifie', 'motif', 'personnes_a_charge',
             'brut', 'brut_imposable', 'cnss_salariale', 'cnss_patronale',
             'amo_salariale', 'amo_patronale', 'allocations_familiales',
             'formation_professionnelle', 'provision_conges', 'cimr_salariale',

@@ -714,6 +714,18 @@ class BulletinPaie(models.Model):
         (STATUT_VALIDE, 'Validé'),
     ]
 
+    # PAIE36 — Nature du bulletin : normal, RECTIFICATIF (corrige un bulletin
+    # déjà validé/clôturé, qui reste figé) ou RAPPEL (régularisation/rattrapage
+    # d'un mois antérieur sur un mois courant).
+    TYPE_NORMAL = 'normal'
+    TYPE_RECTIFICATIF = 'rectificatif'
+    TYPE_RAPPEL = 'rappel'
+    TYPE_BULLETIN_CHOICES = [
+        (TYPE_NORMAL, 'Normal'),
+        (TYPE_RECTIFICATIF, 'Rectificatif'),
+        (TYPE_RAPPEL, 'Rappel'),
+    ]
+
     # Champs de montant figés au moment du calcul (snapshot). Modifiables tant
     # que le bulletin est en brouillon, gelés dès la validation.
     SNAPSHOT_FIELDS = [
@@ -749,6 +761,20 @@ class BulletinPaie(models.Model):
     statut = models.CharField(
         max_length=12, choices=STATUT_CHOICES, default=STATUT_BROUILLON,
         verbose_name='Statut')
+    # PAIE36 — Nature du bulletin + lien vers le bulletin d'origine corrigé.
+    type_bulletin = models.CharField(
+        max_length=14, choices=TYPE_BULLETIN_CHOICES, default=TYPE_NORMAL,
+        verbose_name='Nature du bulletin')
+    rectifie = models.ForeignKey(
+        'self',
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='rectifications',
+        verbose_name="Bulletin d'origine corrigé",
+    )
+    motif = models.CharField(
+        max_length=200, blank=True, default='',
+        verbose_name='Motif (rectificatif / rappel)')
     personnes_a_charge = models.PositiveSmallIntegerField(
         default=0, verbose_name='Personnes à charge')
     # ── Snapshot des montants (Decimal au centime) ─────────────────────────
