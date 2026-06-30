@@ -31,6 +31,7 @@ from .views import (
     DossierImportViewSet,
     FraisImportViewSet,
     LandedCostLigneViewSet,
+    ReceptionNonFactureeViewSet,
 )
 
 router = DefaultRouter()
@@ -73,6 +74,7 @@ router.register(r'appels-commande', AppelCommandeViewSet)
 router.register(r'dossiers-import', DossierImportViewSet)
 router.register(r'frais-import', FraisImportViewSet)
 router.register(r'landed-cost-lignes', LandedCostLigneViewSet)
+router.register(r'receptions-non-facturees', ReceptionNonFactureeViewSet)
 
 urlpatterns = [
     # N91/F21 — synchro idempotente de la capture terrain hors-ligne.

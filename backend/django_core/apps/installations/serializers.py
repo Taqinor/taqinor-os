@@ -34,6 +34,7 @@ from .models import (
     DossierImport,
     FraisImport,
     LandedCostLigne,
+    ReceptionNonFacturee,
 )
 
 
@@ -1567,3 +1568,31 @@ class LandedCostLigneSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError(
                 {'designation': 'Indiquez un produit ou une désignation.'})
         return attrs
+
+
+class ReceptionNonFactureeSerializer(serializers.ModelSerializer):
+    """FG317 — provision de dette latente (réceptionné-non-facturé). La société
+    et `created_by` sont posés CÔTÉ SERVEUR ; `lettre`/`date_lettrage`/`facture`
+    n'avancent que par l'action `lettrer`. `montant_a_provisionner` est dérivé
+    (0 une fois lettré). Montants INTERNES."""
+    montant_a_provisionner = serializers.DecimalField(
+        max_digits=12, decimal_places=2, read_only=True)
+
+    class Meta:
+        model = ReceptionNonFacturee
+        fields = [
+            'id', 'reception', 'bon_commande', 'facture', 'libelle',
+            'montant_provision', 'date_reception',
+            'lettre', 'date_lettrage', 'note', 'montant_a_provisionner',
+            'created_by', 'date_creation', 'date_modification',
+        ]
+        read_only_fields = [
+            'facture', 'lettre', 'date_lettrage', 'created_by',
+            'date_creation', 'date_modification',
+        ]
+
+    def validate_montant_provision(self, value):
+        if value is not None and value < 0:
+            raise serializers.ValidationError(
+                'Le montant provisionné ne peut pas être négatif.')
+        return value

@@ -118,6 +118,9 @@ from .models_landed_cost import (
     FraisImport,
     LandedCostLigne,
 )
+from .models_gr_ir import (
+    ReceptionNonFacturee,
+)
 
 __all__ = [
     'Installation',
@@ -179,4 +182,5 @@ __all__ = [
     'DossierImport',
     'FraisImport',
     'LandedCostLigne',
+    'ReceptionNonFacturee',
 ]
