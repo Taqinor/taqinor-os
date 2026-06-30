@@ -3,9 +3,10 @@ from rest_framework.routers import DefaultRouter
 
 from .views import (
     ActionCorrectivePreventiveViewSet, AnalyseIncidentViewSet, AuditViewSet,
+    BordereauSuiviDechetViewSet,
     CalendrierQhseViewSet,
     CauseIncidentViewSet, ConsignationLotoViewSet,
-    ContactUrgenceViewSet,
+    ContactUrgenceViewSet, DechetViewSet,
     CritereAuditViewSet, DeclarationCnssViewSet,
     EvaluationRisqueViewSet, GrilleAuditViewSet, IncidentViewSet,
     InductionSecuriteViewSet, InspectionSecuriteViewSet,
@@ -50,6 +51,8 @@ router.register(r'declarations-cnss', DeclarationCnssViewSet)
 router.register(r'analyses-incident', AnalyseIncidentViewSet)
 router.register(r'causes-incident', CauseIncidentViewSet)
 router.register(r'inspections-securite', InspectionSecuriteViewSet)
+router.register(r'dechets', DechetViewSet)
+router.register(r'bordereaux-dechets', BordereauSuiviDechetViewSet)
 router.register(
     r'iso9001-readiness', Iso9001ReadinessViewSet,
     basename='iso9001-readiness')

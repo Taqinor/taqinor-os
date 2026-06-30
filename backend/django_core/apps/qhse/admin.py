@@ -1,7 +1,8 @@
 from django.contrib import admin
 
 from .models import (
-    ActionCorrectivePreventive, ConsignationLoto, EvaluationRisque,
+    ActionCorrectivePreventive, BordereauSuiviDechet, ConsignationLoto,
+    Dechet, EvaluationRisque,
     InspectionSecurite,
     LigneEvaluationRisque,
     NonConformite, PermisTravail, PlanInspectionChantier,
@@ -124,3 +125,20 @@ class InspectionSecuriteAdmin(admin.ModelAdmin):
                     'inspecteur', 'ncr', 'company', 'date_creation')
     list_filter = ('statut', 'resultat')
     search_fields = ('reference', 'titre', 'observations')
+
+
+@admin.register(Dechet)
+class DechetAdmin(admin.ModelAdmin):
+    list_display = ('id', 'libelle', 'code', 'categorie', 'mode_traitement',
+                    'unite', 'actif', 'company', 'date_creation')
+    list_filter = ('categorie', 'mode_traitement', 'actif')
+    search_fields = ('libelle', 'code')
+
+
+@admin.register(BordereauSuiviDechet)
+class BordereauSuiviDechetAdmin(admin.ModelAdmin):
+    list_display = ('id', 'reference', 'dechet', 'statut', 'chantier_id',
+                    'quantite', 'date_emission', 'date_traitement',
+                    'company', 'date_creation')
+    list_filter = ('statut',)
+    search_fields = ('reference', 'producteur', 'transporteur', 'eliminateur')

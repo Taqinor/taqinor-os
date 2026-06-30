@@ -2220,3 +2220,165 @@ class InspectionSecurite(models.Model):
 
     def __str__(self):
         return f'{self.reference or "INSP"} — {self.titre}'
+
+
+# ── QHSE36 — Déchets + bordereau de suivi (BSD, loi 28-00) ─────────────────
+
+class Dechet(models.Model):
+    """Type de déchet géré par la société (QHSE36, loi 28-00).
+
+    Référentiel des déchets produits sur les chantiers solaires : emballages,
+    chutes de câble, panneaux HS, batteries (DANGEREUX), huiles, etc. Chaque
+    entrée porte sa ``categorie`` (dangereux / non dangereux / inerte), un
+    ``code`` (catalogue marocain des déchets, optionnel), une ``unite`` de
+    quantité et la filière d'élimination prévue (``mode_traitement``).
+
+    La loi 28-00 (gestion des déchets et leur élimination) impose un suivi
+    formalisé des déchets DANGEREUX via un bordereau (cf.
+    ``BordereauSuiviDechet``). ``dangereux`` est dérivé de la catégorie.
+
+    Multi-société via ``company`` posée côté serveur. Entièrement additif.
+    """
+    class Categorie(models.TextChoices):
+        DANGEREUX = 'dangereux', 'Dangereux'
+        NON_DANGEREUX = 'non_dangereux', 'Non dangereux'
+        INERTE = 'inerte', 'Inerte'
+
+    class ModeTraitement(models.TextChoices):
+        RECYCLAGE = 'recyclage', 'Recyclage / valorisation'
+        ENFOUISSEMENT = 'enfouissement', 'Enfouissement'
+        INCINERATION = 'incineration', 'Incinération'
+        TRAITEMENT_SPECIALISE = 'traitement_specialise', \
+            'Traitement spécialisé'
+        AUTRE = 'autre', 'Autre'
+
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='qhse_dechets',
+        verbose_name='Société',
+    )
+    libelle = models.CharField(max_length=255, verbose_name='Libellé')
+    code = models.CharField(
+        max_length=30, blank=True, default='',
+        verbose_name='Code déchet')
+    categorie = models.CharField(
+        max_length=15, choices=Categorie.choices,
+        default=Categorie.NON_DANGEREUX, verbose_name='Catégorie')
+    unite = models.CharField(
+        max_length=20, blank=True, default='kg', verbose_name='Unité')
+    mode_traitement = models.CharField(
+        max_length=25, choices=ModeTraitement.choices,
+        default=ModeTraitement.RECYCLAGE, verbose_name='Mode de traitement')
+    description = models.TextField(
+        blank=True, default='', verbose_name='Description')
+    actif = models.BooleanField(default=True, verbose_name='Actif')
+    date_creation = models.DateTimeField(
+        auto_now_add=True, verbose_name='Créé le')
+
+    class Meta:
+        verbose_name = 'Déchet'
+        verbose_name_plural = 'Déchets'
+        ordering = ['libelle', 'id']
+        indexes = [
+            models.Index(
+                fields=['company', 'categorie'],
+                name='qhse_dechet_co_cat',
+            ),
+        ]
+
+    @property
+    def dangereux(self):
+        """Vrai si le déchet est de catégorie dangereuse (suivi BSD requis)."""
+        return self.categorie == self.Categorie.DANGEREUX
+
+    def __str__(self):
+        return f'{self.libelle} ({self.get_categorie_display()})'
+
+
+class BordereauSuiviDechet(models.Model):
+    """Bordereau de suivi des déchets (BSD, QHSE36, loi 28-00).
+
+    Pièce réglementaire qui trace le PARCOURS d'un lot de déchets dangereux du
+    producteur (la société) jusqu'à son élimination finale, en passant par le
+    transporteur et l'éliminateur. La loi 28-00 impose ce suivi pour les déchets
+    dangereux : ``Dechet.dangereux`` doit être vrai (garde-fou côté service).
+
+    Cycle : ``emis`` (créé par le producteur) → ``enleve`` (pris en charge par le
+    transporteur) → ``traite`` (éliminé / valorisé, bordereau soldé). Le
+    rattachement au chantier producteur se fait par référence LÂCHE
+    (``chantier_id`` — jamais un import cross-app de ``installations``).
+
+    Multi-société via ``company`` posée côté serveur. La ``reference`` est
+    attribuée côté serveur via ``create_with_reference`` (plus haut numéro
+    utilisé + 1, race-safe — jamais count()+1). Entièrement additif.
+    """
+    class Statut(models.TextChoices):
+        EMIS = 'emis', 'Émis'
+        ENLEVE = 'enleve', 'Enlevé'
+        TRAITE = 'traite', 'Traité'
+        ANNULE = 'annule', 'Annulé'
+
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='qhse_bsd',
+        verbose_name='Société',
+    )
+    reference = models.CharField(
+        max_length=50, blank=True, default='', verbose_name='Référence')
+    dechet = models.ForeignKey(
+        Dechet,
+        on_delete=models.PROTECT,
+        related_name='bordereaux',
+        verbose_name='Déchet',
+    )
+    statut = models.CharField(
+        max_length=10, choices=Statut.choices,
+        default=Statut.EMIS, verbose_name='Statut')
+    # Référence LÂCHE au chantier producteur (installations.Chantier) par id.
+    chantier_id = models.PositiveIntegerField(
+        null=True, blank=True, verbose_name='ID du chantier producteur')
+    quantite = models.DecimalField(
+        max_digits=12, decimal_places=3,
+        null=True, blank=True, verbose_name='Quantité')
+    producteur = models.CharField(
+        max_length=255, blank=True, default='', verbose_name='Producteur')
+    transporteur = models.CharField(
+        max_length=255, blank=True, default='', verbose_name='Transporteur')
+    eliminateur = models.CharField(
+        max_length=255, blank=True, default='', verbose_name='Éliminateur')
+    date_emission = models.DateField(
+        null=True, blank=True, verbose_name="Date d'émission")
+    date_enlevement = models.DateField(
+        null=True, blank=True, verbose_name="Date d'enlèvement")
+    date_traitement = models.DateField(
+        null=True, blank=True, verbose_name='Date de traitement')
+    notes = models.TextField(
+        blank=True, default='', verbose_name='Notes')
+    date_creation = models.DateTimeField(
+        auto_now_add=True, verbose_name='Créé le')
+
+    class Meta:
+        verbose_name = 'Bordereau de suivi des déchets'
+        verbose_name_plural = 'Bordereaux de suivi des déchets'
+        ordering = ['-id']
+        constraints = [
+            models.UniqueConstraint(
+                fields=['company', 'reference'],
+                name='qhse_bsd_co_ref_uniq',
+            )
+        ]
+        indexes = [
+            models.Index(
+                fields=['company', 'statut'],
+                name='qhse_bsd_co_statut',
+            ),
+            models.Index(
+                fields=['company', 'chantier_id'],
+                name='qhse_bsd_co_chant',
+            ),
+        ]
+
+    def __str__(self):
+        return f'{self.reference or "BSD"} — {self.dechet_id}'

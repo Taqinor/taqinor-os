@@ -9,7 +9,8 @@ from rest_framework import serializers
 from .models import (
     ActionCorrectivePreventive, AnalyseIncident, Audit, CauseIncident,
     ConsignationLoto, ContactUrgence,
-    CritereAudit, DeclarationCnss, EvaluationRisque, GrilleAudit,
+    BordereauSuiviDechet,
+    CritereAudit, Dechet, DeclarationCnss, EvaluationRisque, GrilleAudit,
     InductionSecurite,
     Incident, InspectionSecurite,
     ItemNotation, LigneEvaluationRisque, NonConformite, NotationFinChantier,
@@ -799,3 +800,52 @@ class InspectionSecuriteSerializer(serializers.ModelSerializer):
         read_only_fields = [
             'reference', 'inspecteur', 'ncr', 'date_creation',
         ]
+
+
+class DechetSerializer(serializers.ModelSerializer):
+    """Type de déchet du référentiel (QHSE36, loi 28-00).
+
+    ``company`` posée côté serveur. ``dangereux`` (dérivé de la catégorie) est
+    exposé en lecture seule.
+    """
+    categorie_display = serializers.CharField(
+        source='get_categorie_display', read_only=True)
+    mode_traitement_display = serializers.CharField(
+        source='get_mode_traitement_display', read_only=True)
+    dangereux = serializers.BooleanField(read_only=True)
+
+    class Meta:
+        model = Dechet
+        fields = [
+            'id', 'libelle', 'code', 'categorie', 'categorie_display',
+            'unite', 'mode_traitement', 'mode_traitement_display',
+            'description', 'actif', 'dangereux', 'date_creation',
+        ]
+        read_only_fields = ['date_creation']
+
+
+class BordereauSuiviDechetSerializer(serializers.ModelSerializer):
+    """Bordereau de suivi des déchets (BSD — QHSE36, loi 28-00).
+
+    ``company`` / ``reference`` posées côté serveur. Le FK ``dechet`` est validé
+    même-société. La règle « BSD réservé aux déchets DANGEREUX » (loi 28-00) est
+    appliquée côté vue/service à la création. Le ``statut`` est piloté par
+    actions détail, en lecture seule au CRUD.
+    """
+    statut_display = serializers.CharField(
+        source='get_statut_display', read_only=True)
+    dechet_libelle = serializers.CharField(
+        source='dechet.libelle', read_only=True)
+
+    class Meta:
+        model = BordereauSuiviDechet
+        fields = [
+            'id', 'reference', 'dechet', 'dechet_libelle', 'statut',
+            'statut_display', 'chantier_id', 'quantite', 'producteur',
+            'transporteur', 'eliminateur', 'date_emission',
+            'date_enlevement', 'date_traitement', 'notes', 'date_creation',
+        ]
+        read_only_fields = ['reference', 'statut', 'date_creation']
+
+    def validate_dechet(self, value):
+        return _meme_societe(self, value, 'Déchet')

@@ -16,9 +16,11 @@ from authentication.permissions import IsResponsableOrAdmin
 from apps.ventes.utils.references import create_with_reference
 
 from .models import (
-    ActionCorrectivePreventive, AnalyseIncident, Audit, CauseIncident,
+    ActionCorrectivePreventive, AnalyseIncident, Audit,
+    BordereauSuiviDechet, CauseIncident,
     ConsignationLoto, ContactUrgence,
-    CritereAudit, DeclarationCnss, EvaluationRisque, GrilleAudit, Incident,
+    CritereAudit, Dechet, DeclarationCnss, EvaluationRisque, GrilleAudit,
+    Incident,
     InductionSecurite, InspectionSecurite,
     ItemNotation, LigneEvaluationRisque, NonConformite, NotationFinChantier,
     PermisTravail, PlanInspectionChantier, PlanInspectionModele, PlanUrgence,
@@ -27,9 +29,9 @@ from .models import (
 )
 from .serializers import (
     ActionCorrectivePreventiveSerializer, AnalyseIncidentSerializer,
-    AuditSerializer, CauseIncidentSerializer,
+    AuditSerializer, BordereauSuiviDechetSerializer, CauseIncidentSerializer,
     ConsignationLotoSerializer, ContactUrgenceSerializer,
-    CritereAuditSerializer, DeclarationCnssSerializer,
+    CritereAuditSerializer, DechetSerializer, DeclarationCnssSerializer,
     EvaluationRisqueSerializer, GrilleAuditSerializer,
     IncidentSerializer,
     InductionSecuriteSerializer, InspectionSecuriteSerializer,
@@ -1514,3 +1516,124 @@ class InspectionSecuriteViewSet(_QhseBaseViewSet):
         code = status.HTTP_201_CREATED if created else status.HTTP_200_OK
         from .serializers import NonConformiteSerializer
         return Response(NonConformiteSerializer(ncr).data, status=code)
+
+
+class DechetViewSet(_QhseBaseViewSet):
+    """Référentiel des déchets (QHSE36, loi 28-00).
+
+    CRUD scopé société. ``company`` posée côté serveur. Filtres optionnels :
+    ``?categorie=`` / ``?actif=``. Recherche par libellé/code.
+    """
+    queryset = Dechet.objects.all()
+    serializer_class = DechetSerializer
+    filter_backends = [filters.SearchFilter, filters.OrderingFilter]
+    search_fields = ['libelle', 'code']
+    ordering_fields = ['id', 'libelle', 'date_creation']
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        categorie = self.request.query_params.get('categorie')
+        if categorie not in (None, ''):
+            qs = qs.filter(categorie=categorie)
+        actif = self.request.query_params.get('actif')
+        if actif not in (None, ''):
+            qs = qs.filter(actif=actif in ('1', 'true', 'True'))
+        return qs
+
+
+class BordereauSuiviDechetViewSet(_QhseBaseViewSet):
+    """Bordereaux de suivi des déchets (BSD — QHSE36, loi 28-00).
+
+    CRUD scopé société. ``company`` / ``reference`` posées côté serveur (jamais
+    lues du corps). La loi 28-00 réserve le BSD aux déchets DANGEREUX : la
+    création d'un bordereau sur un déchet NON dangereux est refusée (400).
+    Filtres optionnels : ``?statut=`` / ``?dechet=`` / ``?chantier_id=``.
+
+    Le ``statut`` est piloté par deux actions détail :
+
+    * ``POST …/<id>/enlever/`` — ``emis`` → ``enleve`` (prise en charge
+      transporteur) ;
+    * ``POST …/<id>/traiter/`` — ``enleve``/``emis`` → ``traite`` (bordereau
+      soldé).
+    """
+    queryset = BordereauSuiviDechet.objects.select_related('dechet').all()
+    serializer_class = BordereauSuiviDechetSerializer
+    filter_backends = [filters.SearchFilter, filters.OrderingFilter]
+    search_fields = ['reference', 'producteur', 'transporteur', 'eliminateur']
+    ordering_fields = [
+        'id', 'reference', 'date_emission', 'date_traitement', 'date_creation']
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        statut = self.request.query_params.get('statut')
+        if statut not in (None, ''):
+            qs = qs.filter(statut=statut)
+        dechet = self.request.query_params.get('dechet')
+        if dechet not in (None, ''):
+            qs = qs.filter(dechet_id=dechet)
+        chantier_id = self.request.query_params.get('chantier_id')
+        if chantier_id not in (None, ''):
+            qs = qs.filter(chantier_id=chantier_id)
+        return qs
+
+    def perform_create(self, serializer):
+        company = self.request.user.company
+        dechet = serializer.validated_data.get('dechet')
+        # Loi 28-00 : le BSD est réservé aux déchets DANGEREUX.
+        if dechet is not None and not dechet.dangereux:
+            from rest_framework.exceptions import ValidationError
+            raise ValidationError(
+                {'dechet': 'Le bordereau de suivi (BSD, loi 28-00) est '
+                           'réservé aux déchets dangereux.'})
+        return create_with_reference(
+            BordereauSuiviDechet, 'BSD', company,
+            lambda reference: serializer.save(
+                company=company, reference=reference),
+        )
+
+    def create(self, request, *args, **kwargs):
+        serializer = self.get_serializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        bsd = self.perform_create(serializer)
+        out = self.get_serializer(bsd)
+        return Response(out.data, status=status.HTTP_201_CREATED)
+
+    @action(detail=True, methods=['post'])
+    def enlever(self, request, pk=None):
+        """Marque le bordereau enlevé (``emis`` → ``enleve``), scopé société.
+
+        Refuse si le bordereau est déjà traité ou annulé. ``date_enlevement``
+        optionnelle au corps (sinon aujourd'hui).
+        """
+        bsd = self.get_object()
+        if bsd.statut in (
+                BordereauSuiviDechet.Statut.TRAITE,
+                BordereauSuiviDechet.Statut.ANNULE):
+            return Response(
+                {'detail': 'Bordereau déjà traité ou annulé.'},
+                status=status.HTTP_400_BAD_REQUEST)
+        bsd.statut = BordereauSuiviDechet.Statut.ENLEVE
+        bsd.date_enlevement = (
+            request.data.get('date_enlevement') or timezone.localdate())
+        bsd.save(update_fields=['statut', 'date_enlevement'])
+        return Response(self.get_serializer(bsd).data)
+
+    @action(detail=True, methods=['post'])
+    def traiter(self, request, pk=None):
+        """Marque le bordereau traité (→ ``traite``), scopé société.
+
+        Refuse si le bordereau est déjà traité ou annulé. ``date_traitement``
+        optionnelle au corps (sinon aujourd'hui).
+        """
+        bsd = self.get_object()
+        if bsd.statut in (
+                BordereauSuiviDechet.Statut.TRAITE,
+                BordereauSuiviDechet.Statut.ANNULE):
+            return Response(
+                {'detail': 'Bordereau déjà traité ou annulé.'},
+                status=status.HTTP_400_BAD_REQUEST)
+        bsd.statut = BordereauSuiviDechet.Statut.TRAITE
+        bsd.date_traitement = (
+            request.data.get('date_traitement') or timezone.localdate())
+        bsd.save(update_fields=['statut', 'date_traitement'])
+        return Response(self.get_serializer(bsd).data)
