@@ -95,6 +95,13 @@ from .serializers import (
 )
 
 
+def _money(valeur):
+    """Formate un montant Decimal en chaîne à 2 décimales (sortie API stable)."""
+    from decimal import Decimal
+
+    return str((valeur or Decimal('0')).quantize(Decimal('0.01')))
+
+
 def _client_ip(request):
     """Adresse IP du client à partir de la requête (preuve de signature).
 
@@ -224,6 +231,55 @@ class ContratViewSet(_ContratsBaseViewSet):
         return Response(
             ContratSerializer(
                 qs, many=True, context={'request': request}).data)
+
+    @action(detail=False, methods=['get'], url_path='tableau-de-bord')
+    def tableau_de_bord(self, request):
+        """Tableau de bord des contrats (CONTRAT33).
+
+        Indicateurs scopés société (lecture seule) : total, répartition par
+        statut/type, contrats actifs, à renouveler, en risque, valeur active /
+        totale, et MRR (revenu mensuel récurrent des échéanciers actifs). Le
+        filtre ``?within=<jours>`` règle la fenêtre « à renouveler / en risque »
+        (défaut 30). La société est celle de l'utilisateur (posée côté serveur) ;
+        ne change AUCUN statut.
+        """
+        try:
+            within = int(request.query_params.get('within', 30))
+        except (TypeError, ValueError):
+            within = 30
+        data = selectors.tableau_de_bord_contrats(
+            request.user.company, within_days=within)
+        return Response({
+            'total': data['total'],
+            'par_statut': data['par_statut'],
+            'par_type': data['par_type'],
+            'actifs': data['actifs'],
+            'a_renouveler': data['a_renouveler'],
+            'en_risque': data['en_risque'],
+            'valeur_active': _money(data['valeur_active']),
+            'valeur_totale': _money(data['valeur_totale']),
+            'mrr': _money(data['mrr']),
+        })
+
+    @action(detail=False, methods=['get'])
+    def reporting(self, request):
+        """Reporting valeur contractuelle & taux de renouvellement (CONTRAT35).
+
+        Lecture seule, scopé société : valeur totale/active, valeur par type,
+        nombre de renouvellements, contrats renouvelés, contrats échus et taux de
+        renouvellement (%). Ne change AUCUN statut.
+        """
+        data = selectors.reporting_contrats(request.user.company)
+        return Response({
+            'valeur_totale': _money(data['valeur_totale']),
+            'valeur_active': _money(data['valeur_active']),
+            'valeur_par_type': {
+                k: _money(v) for k, v in data['valeur_par_type'].items()},
+            'nb_renouvellements': data['nb_renouvellements'],
+            'nb_contrats_renouveles': data['nb_contrats_renouveles'],
+            'nb_echus': data['nb_echus'],
+            'taux_renouvellement': str(data['taux_renouvellement']),
+        })
 
     @action(detail=True, methods=['post'])
     def renouveler(self, request, pk=None):

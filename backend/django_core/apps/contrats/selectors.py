@@ -419,3 +419,190 @@ def liens_enrichis(contrat):
             'source': source,
         })
     return out
+
+
+# ---------------------------------------------------------------------------
+# CONTRAT33 — Tableau de bord contrats (actifs/à renouveler/en risque/valeur·MRR)
+# ---------------------------------------------------------------------------
+
+# Diviseur mensuel par périodicité d'échéancier : combien de mois couvre UNE
+# période (sert à ramener un montant total d'échéancier en MRR mensuel). Une
+# périodicité « unique »/« personnalisée » n'entre PAS dans le MRR (None).
+_MOIS_PAR_PERIODE = {
+    'mensuelle': 1,
+    'trimestrielle': 3,
+    'semestrielle': 6,
+    'annuelle': 12,
+}
+
+
+def mrr_contrats(company):
+    """MRR (revenu mensuel récurrent) des échéanciers actifs — CONTRAT33.
+
+    Somme, sur les ``EcheancierContrat`` dont la facturation récurrente est
+    active (``facturation_active=True``) et le statut ``actif``, du
+    ``montant_total`` ramené au MOIS selon la périodicité (mensuelle = ÷1,
+    trimestrielle = ÷3, semestrielle = ÷6, annuelle = ÷12). Les périodicités
+    ``unique``/``personnalisée`` n'entrent pas dans le MRR. Lecture seule, scopée
+    société. Renvoie un ``Decimal`` (arrondi 2 décimales).
+    """
+    from decimal import Decimal
+
+    from .models import EcheancierContrat
+
+    qs = EcheancierContrat.objects.filter(
+        company=company,
+        facturation_active=True,
+        statut=EcheancierContrat.Statut.ACTIF,
+    )
+    total = Decimal('0')
+    for ech in qs.only('montant_total', 'periodicite'):
+        mois = _MOIS_PAR_PERIODE.get(ech.periodicite)
+        if not mois:
+            continue
+        total += (ech.montant_total or Decimal('0')) / Decimal(mois)
+    return total.quantize(Decimal('0.01'))
+
+
+def contrats_en_risque(company, within_days=30, today=None):
+    """Contrats « EN RISQUE » : suspendus, en préavis dû, ou en résiliation active.
+
+    CONTRAT33. Renvoie un QuerySet DISTINCT scopé société des contrats à risque :
+    - statut ``suspendu`` ;
+    - OU une résiliation ACTIVE (``demande``/``effective``) ouverte ;
+    - OU une échéance de préavis dans la fenêtre ``[today, today+within_days]``
+      non encore traitée (réutilise ``contrats_a_preavis``).
+    Les contrats résiliés/expirés (terminaux) sont exclus. Lecture seule.
+    """
+    if today is None:
+        today = timezone.localdate()
+    preavis_ids = list(
+        contrats_a_preavis(company, within_days=within_days, today=today)
+        .values_list('id', flat=True))
+    from django.db.models import Q
+
+    from .models import Resiliation
+
+    resil_ids = list(
+        Resiliation.objects.filter(company=company)
+        .exclude(statut=Resiliation.Statut.ANNULEE)
+        .values_list('contrat_id', flat=True))
+    return (
+        Contrat.objects.filter(company=company)
+        .exclude(statut__in=[Contrat.Statut.RESILIE, Contrat.Statut.EXPIRE])
+        .filter(
+            Q(statut=Contrat.Statut.SUSPENDU)
+            | Q(id__in=preavis_ids)
+            | Q(id__in=resil_ids))
+        .distinct()
+        .order_by('-id')
+    )
+
+
+def tableau_de_bord_contrats(company, within_days=30, today=None):
+    """Agrégats du tableau de bord des contrats — CONTRAT33.
+
+    Renvoie un dict d'indicateurs scopés société (lecture seule, aucune écriture) :
+
+    - ``total`` : nombre total de contrats ;
+    - ``par_statut`` : répartition {statut: count} ;
+    - ``par_type`` : répartition {type_contrat: count} ;
+    - ``actifs`` : nombre de contrats ``actif`` ;
+    - ``a_renouveler`` : nombre de contrats dont la fin approche (CONTRAT21) ;
+    - ``en_risque`` : nombre de contrats à risque (``contrats_en_risque``) ;
+    - ``valeur_active`` : somme des ``montant`` des contrats ``actif`` ;
+    - ``valeur_totale`` : somme des ``montant`` de tous les contrats ;
+    - ``mrr`` : revenu mensuel récurrent (``mrr_contrats``).
+    """
+    from decimal import Decimal
+
+    from django.db.models import Count, Sum
+
+    base = Contrat.objects.filter(company=company)
+    par_statut = {
+        row['statut']: row['n']
+        for row in base.values('statut').annotate(n=Count('id'))
+    }
+    par_type = {
+        row['type_contrat']: row['n']
+        for row in base.values('type_contrat').annotate(n=Count('id'))
+    }
+    valeur_active = base.filter(
+        statut=Contrat.Statut.ACTIF).aggregate(s=Sum('montant'))['s'] \
+        or Decimal('0')
+    valeur_totale = base.aggregate(s=Sum('montant'))['s'] or Decimal('0')
+    return {
+        'total': base.count(),
+        'par_statut': par_statut,
+        'par_type': par_type,
+        'actifs': par_statut.get(Contrat.Statut.ACTIF, 0),
+        'a_renouveler': contrats_a_renouveler(
+            company, within_days=within_days, today=today).count(),
+        'en_risque': contrats_en_risque(
+            company, within_days=within_days, today=today).count(),
+        'valeur_active': valeur_active,
+        'valeur_totale': valeur_totale,
+        'mrr': mrr_contrats(company),
+    }
+
+
+# ---------------------------------------------------------------------------
+# CONTRAT35 — Reporting valeur contractuelle & taux de renouvellement
+# ---------------------------------------------------------------------------
+
+
+def reporting_contrats(company):
+    """Reporting valeur contractuelle & taux de renouvellement — CONTRAT35.
+
+    Lecture seule, scopée société. Renvoie un dict :
+
+    - ``valeur_totale`` : somme des ``montant`` de tous les contrats ;
+    - ``valeur_active`` : somme des ``montant`` des contrats ``actif`` ;
+    - ``valeur_par_type`` : {type_contrat: somme des montants} ;
+    - ``nb_renouvellements`` : total des renouvellements effectifs (somme de
+      ``nb_renouvellements`` — CONTRAT23) ;
+    - ``nb_contrats_renouveles`` : nombre de contrats ayant été renouvelés au
+      moins une fois ;
+    - ``nb_echus`` : nombre de contrats arrivés à échéance (résiliés/expirés OU
+      ``date_fin`` passée) — base du taux de renouvellement ;
+    - ``taux_renouvellement`` : ``nb_contrats_renouveles / nb_echus`` en %
+      (0 si aucun échu), arrondi 2 décimales.
+    """
+    from decimal import Decimal
+
+    from django.db.models import Q, Sum
+    from django.utils import timezone as _tz
+
+    today = _tz.localdate()
+    base = Contrat.objects.filter(company=company)
+
+    valeur_totale = base.aggregate(s=Sum('montant'))['s'] or Decimal('0')
+    valeur_active = base.filter(
+        statut=Contrat.Statut.ACTIF).aggregate(s=Sum('montant'))['s'] \
+        or Decimal('0')
+    valeur_par_type = {
+        row['type_contrat']: (row['s'] or Decimal('0'))
+        for row in base.values('type_contrat').annotate(s=Sum('montant'))
+    }
+
+    nb_renouvellements = base.aggregate(
+        s=Sum('nb_renouvellements'))['s'] or 0
+    nb_contrats_renouveles = base.filter(
+        nb_renouvellements__gt=0).count()
+    nb_echus = base.filter(
+        Q(statut__in=[Contrat.Statut.RESILIE, Contrat.Statut.EXPIRE])
+        | Q(date_fin__lt=today)).distinct().count()
+    taux = (
+        (Decimal(nb_contrats_renouveles) / Decimal(nb_echus) * Decimal('100'))
+        .quantize(Decimal('0.01'))
+        if nb_echus else Decimal('0.00')
+    )
+    return {
+        'valeur_totale': valeur_totale,
+        'valeur_active': valeur_active,
+        'valeur_par_type': valeur_par_type,
+        'nb_renouvellements': nb_renouvellements,
+        'nb_contrats_renouveles': nb_contrats_renouveles,
+        'nb_echus': nb_echus,
+        'taux_renouvellement': taux,
+    }
