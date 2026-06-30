@@ -8,7 +8,8 @@ from rest_framework import serializers
 
 from .models import (
     ActionCorrectivePreventive, Audit, ConsignationLoto, ContactUrgence,
-    CritereAudit, EvaluationRisque, GrilleAudit, InductionSecurite,
+    CritereAudit, DeclarationCnss, EvaluationRisque, GrilleAudit,
+    InductionSecurite,
     Incident,
     ItemNotation, LigneEvaluationRisque, NonConformite, NotationFinChantier,
     PermisTravail, PlanInspectionChantier, PlanInspectionModele, PlanUrgence,
@@ -651,3 +652,42 @@ class IncidentSerializer(serializers.ModelSerializer):
             'date_creation',
         ]
         read_only_fields = ['reference', 'declare_par', 'date_creation']
+
+
+class DeclarationCnssSerializer(serializers.ModelSerializer):
+    """Déclaration CNSS d'un accident du travail + échéance légale (QHSE30).
+
+    ``company`` est posée côté serveur (jamais lue du corps). La ``date_limite``
+    et le ``statut`` sont calculés côté serveur (``date_accident`` +
+    ``delai_jours`` / ``statut_calcule``) — exposés en lecture seule. Le FK
+    ``accident_travail`` pointe vers ``rh.AccidentTravail`` (FK-chaîne) : on
+    valide qu'il appartient à la même société sans importer le modèle ``rh``.
+    Expose aussi un ``statut_courant`` recalculé à la volée (utile si l'échéance
+    a basculé depuis le dernier enregistrement).
+    """
+    statut_display = serializers.CharField(
+        source='get_statut_display', read_only=True)
+    statut_courant = serializers.SerializerMethodField()
+
+    class Meta:
+        model = DeclarationCnss
+        fields = [
+            'id', 'accident_travail', 'date_accident', 'delai_jours',
+            'date_limite', 'date_declaration', 'numero_declaration',
+            'statut', 'statut_display', 'statut_courant', 'notes',
+            'date_creation', 'date_modification',
+        ]
+        read_only_fields = [
+            'date_limite', 'statut', 'date_creation', 'date_modification',
+        ]
+
+    def get_statut_courant(self, obj):
+        return obj.statut_calcule()
+
+    def validate_accident_travail(self, value):
+        """L'accident du travail doit appartenir à la société de l'utilisateur.
+
+        Référence cross-app par FK-chaîne : on lit ``company_id`` directement sur
+        l'instance résolue par DRF, sans importer ``rh.models``.
+        """
+        return _meme_societe(self, value, 'Accident du travail')

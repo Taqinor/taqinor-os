@@ -23,8 +23,8 @@ un suivi à part : un appelant consulte cette porte, il ne la franchit pas ici.
 from django.db.models import Avg
 
 from .models import (
-    ActionCorrectivePreventive, Audit, EvaluationRisque, NonConformite,
-    NotationFinChantier, PermisTravail, PlanInspectionChantier,
+    ActionCorrectivePreventive, Audit, DeclarationCnss, EvaluationRisque,
+    NonConformite, NotationFinChantier, PermisTravail, PlanInspectionChantier,
     ProcedureQualite, ReleveControle, ReleveCourbeIV, RetourClientQualite,
 )
 
@@ -248,6 +248,42 @@ def permis_travail_expirant(company, within_days=30, inclure_expires=True):
     if not inclure_expires:
         qs = qs.filter(date_fin__gte=today)
     return qs.order_by('date_fin', 'id')
+
+
+# ── QHSE30 — Déclarations CNSS à échéance (approchantes / hors délai) ───────
+
+def declarations_cnss_a_echeance(company, within_days=2, today=None):
+    """Déclarations CNSS d'accident du travail à échéance ou déjà hors délai (QHSE30).
+
+    Lecture cadrée société : retient les déclarations NON encore transmises
+    (``date_declaration`` vide) dont la ``date_limite`` (échéance légale) tombe au
+    plus tard dans ``within_days`` jours (aujourd'hui + ``within_days`` inclus).
+    Les déjà-déclarées et celles sans ``date_limite`` sont exclues. Une déclaration
+    dont l'échéance est DÉJÀ passée (hors délai) est incluse — c'est précisément
+    ce qui doit alerter. Toujours scopé société (jamais lu du corps de requête) ;
+    triée par échéance la plus proche d'abord.
+    """
+    from django.utils import timezone
+    from datetime import timedelta
+
+    if company is None:
+        return DeclarationCnss.objects.none()
+    try:
+        within_days = int(within_days)
+    except (TypeError, ValueError):
+        within_days = DeclarationCnss.DELAI_LEGAL_JOURS
+    if within_days < 0:
+        within_days = 0
+    if today is None:
+        today = timezone.localdate()
+    limite = today + timedelta(days=within_days)
+    return (DeclarationCnss.objects
+            .filter(company=company,
+                    date_declaration__isnull=True,
+                    date_limite__isnull=False,
+                    date_limite__lte=limite)
+            .select_related('accident_travail')
+            .order_by('date_limite', 'id'))
 
 
 # ── QHSE17 — Gate de clôture (grille de notation fin de chantier) ───────────
