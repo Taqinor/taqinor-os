@@ -160,6 +160,19 @@ class MonitoringConfigViewSet(TenantMixin, viewsets.ModelViewSet):
             'data': rows,
         })
 
+    @action(detail=False, methods=['get'], url_path='fleet',
+            permission_classes=[IsAnyRole])
+    def fleet(self, request):
+        """FG281 — Tableau de bord parc/flotte multi-systèmes : production
+        totale, kWc installés, PR moyen et alertes ouvertes sur tous les
+        systèmes actifs de la société. ?window_days=365 (défaut)."""
+        from .selectors import fleet_overview
+        company = request.user.company
+        if company is None:
+            return Response({'systems': [], 'systems_active': 0})
+        window = min(int(request.query_params.get('window_days', 365)), 1825)
+        return Response(fleet_overview(company, window_days=window))
+
     @action(detail=True, methods=['get'], url_path='om-metrics',
             permission_classes=[IsAnyRole])
     def om_metrics(self, request, pk=None):

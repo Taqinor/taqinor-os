@@ -366,3 +366,55 @@ class TestOmMetrics(TestCase):
         self.assertEqual(r.status_code, 200, r.data)
         self.assertIn('pr_pct', r.data)
         self.assertEqual(r.data['installation'], self.inst.id)
+
+
+class TestFleetOverview(TestCase):
+    """FG281 — tableau de bord parc/flotte multi-systèmes."""
+
+    def setUp(self):
+        self.company = make_company('fleet-co', 'Fleet Co')
+        self.other = make_company('fleet-other', 'Fleet Other')
+        self.user = User.objects.create_user(
+            username='fleet_admin', password='x', role_legacy='admin',
+            company=self.company)
+        self.api = auth(self.user)
+        self.today = date(2026, 6, 30)
+        self.inst1, _ = make_installation(self.company, ref='F-1', kwc='5.00')
+        self.inst2, _ = make_installation(self.company, ref='F-2', kwc='10.00')
+        for inst, exp in ((self.inst1, '6000'), (self.inst2, '12000')):
+            MonitoringConfig.objects.create(
+                company=self.company, installation=inst,
+                expected_annual_kwh=Decimal(exp))
+            ProductionReading.objects.create(
+                company=self.company, installation=inst,
+                date=date(2026, 6, 1), period_days=365,
+                energy_kwh=Decimal('5000'))
+
+    def test_fleet_totals(self):
+        from apps.monitoring.selectors import fleet_overview
+        ov = fleet_overview(self.company, today=self.today)
+        self.assertEqual(ov['systems_active'], 2)
+        self.assertEqual(ov['total_kwc'], Decimal('15.00'))
+        self.assertEqual(ov['total_production_kwh'], Decimal('10000.00'))
+        self.assertIsNotNone(ov['fleet_pr_pct'])
+
+    def test_inactive_system_excluded(self):
+        self.inst2.parc_actif = False
+        self.inst2.save(update_fields=['parc_actif'])
+        from apps.monitoring.selectors import fleet_overview
+        ov = fleet_overview(self.company, today=self.today)
+        self.assertEqual(ov['systems_active'], 1)
+
+    def test_fleet_endpoint_isolation(self):
+        # L'autre société ne voit pas les systèmes de la première.
+        other_user = User.objects.create_user(
+            username='fleet_other_admin', password='x', role_legacy='admin',
+            company=self.other)
+        r = auth(other_user).get('/api/django/monitoring/configs/fleet/')
+        self.assertEqual(r.status_code, 200, r.data)
+        self.assertEqual(r.data['systems_active'], 0)
+
+    def test_fleet_endpoint_ok(self):
+        r = self.api.get('/api/django/monitoring/configs/fleet/')
+        self.assertEqual(r.status_code, 200, r.data)
+        self.assertEqual(r.data['systems_active'], 2)
