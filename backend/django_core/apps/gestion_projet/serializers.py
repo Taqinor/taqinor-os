@@ -11,6 +11,7 @@ from .models import (
     AffectationRessource,
     BaselinePlanning,
     CompteRenduReunion,
+    DocumentProjet,
     BaselineTache,
     BudgetProjet,
     CalendrierProjet,
@@ -29,6 +30,7 @@ from .models import (
     Risque,
     Tache,
     Timesheet,
+    VersionDocument,
 )
 
 
@@ -776,6 +778,51 @@ class CompteRenduReunionSerializer(serializers.ModelSerializer):
             'redacteur', 'redacteur_nom', 'date_creation',
         ]
         read_only_fields = ['redacteur', 'date_creation']
+
+    def validate_projet(self, value):
+        return _meme_societe(self, value, 'Projet')
+
+
+class VersionDocumentSerializer(serializers.ModelSerializer):
+    """Version (révision) d'un document projet (PROJ33) — lecture seule.
+
+    Le ``version`` et l'``auteur`` sont posés côté serveur par le service de
+    dépôt ; ce sérialiseur n'expose donc que la lecture des révisions (le dépôt
+    se fait via l'action ``documents/<id>/deposer/``).
+    """
+    auteur_nom = serializers.CharField(
+        source='auteur.username', read_only=True, default='')
+
+    class Meta:
+        model = VersionDocument
+        fields = [
+            'id', 'document', 'version', 'fichier', 'commentaire', 'auteur',
+            'auteur_nom', 'date_creation',
+        ]
+        read_only_fields = fields
+
+
+class DocumentProjetSerializer(serializers.ModelSerializer):
+    """Document logique VERSIONNÉ d'un projet (PROJ33).
+
+    ``company`` n'est jamais exposée : elle est posée côté serveur. Le ``projet``
+    reçu est validé même-société. ``derniere_version`` est posée côté serveur
+    (cache du dernier dépôt) — lecture seule. Les versions sont exposées en
+    lecture seule (le dépôt se fait via ``documents/<id>/deposer/``).
+    """
+    projet_code = serializers.CharField(source='projet.code', read_only=True)
+    type_doc_display = serializers.CharField(
+        source='get_type_doc_display', read_only=True)
+    versions = VersionDocumentSerializer(many=True, read_only=True)
+
+    class Meta:
+        model = DocumentProjet
+        fields = [
+            'id', 'projet', 'projet_code', 'nom', 'type_doc',
+            'type_doc_display', 'description', 'derniere_version', 'versions',
+            'date_creation',
+        ]
+        read_only_fields = ['derniere_version', 'date_creation']
 
     def validate_projet(self, value):
         return _meme_societe(self, value, 'Projet')

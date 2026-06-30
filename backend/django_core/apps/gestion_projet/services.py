@@ -96,6 +96,38 @@ def declencher_facturation_jalon(jalon):
     }
 
 
+# ── Documents & plans versionnés (PROJ33) ────────────────────────────────────
+@transaction.atomic
+def deposer_version_document(document, fichier, commentaire='', auteur=None):
+    """Dépose une NOUVELLE version d'un ``DocumentProjet`` (PROJ33).
+
+    Le numéro de version est posé CÔTÉ SERVEUR : ``document.derniere_version`` +
+    1 (jamais lu du corps de requête) — les versions ne s'écrasent jamais. Le
+    cache ``document.derniere_version`` est avancé dans la même transaction
+    atomique. ``company`` est toujours celle du ``document`` (jamais lue d'un
+    corps) ; ``auteur`` est posé côté serveur. Renvoie la ``VersionDocument``
+    créée.
+    """
+    from .models import DocumentProjet, VersionDocument
+
+    if not isinstance(document, DocumentProjet):  # pragma: no cover - garde-fou
+        raise TypeError('document doit être une instance de DocumentProjet.')
+    # Verrou ligne pour sérialiser des dépôts concurrents sur le même document.
+    document = DocumentProjet.objects.select_for_update().get(pk=document.pk)
+    prochaine = (document.derniere_version or 0) + 1
+    version = VersionDocument.objects.create(
+        company=document.company,
+        document=document,
+        version=prochaine,
+        fichier=fichier,
+        commentaire=commentaire or '',
+        auteur=auteur,
+    )
+    document.derniere_version = prochaine
+    document.save(update_fields=['derniere_version'])
+    return version
+
+
 # Décomposition standard d'un projet d'installation solaire (WBS), dans l'ordre
 # de réalisation. PROPRE à ce module — ne réutilise aucune clé de STAGES.py.
 PHASES_STANDARD = [

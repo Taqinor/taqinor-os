@@ -1492,3 +1492,113 @@ class CompteRenduReunion(models.Model):
 
     def __str__(self):
         return f'{self.titre} ({self.date_reunion})'
+
+
+class DocumentProjet(models.Model):
+    """Un DOCUMENT logique (plan, note, PV…) d'un ``Projet`` (PROJ33).
+
+    Tête de série d'un document VERSIONNÉ : il porte le ``nom`` et le ``type_doc``
+    (plan/note/photo/contrat/autre) ; chaque révision est une ``VersionDocument``
+    (fichier + numéro de version). La ``derniere_version`` est mise en cache côté
+    serveur à chaque dépôt (jamais lue du corps de requête) pour afficher l'état
+    courant sans recompter.
+
+    Tout est multi-société : ``company`` est posée côté serveur, jamais lue du
+    corps de requête. Modèle entièrement additif.
+    """
+    class TypeDoc(models.TextChoices):
+        PLAN = 'plan', 'Plan'
+        NOTE = 'note', 'Note de calcul'
+        PHOTO = 'photo', 'Photo'
+        CONTRAT = 'contrat', 'Contrat'
+        PV = 'pv', 'Procès-verbal'
+        AUTRE = 'autre', 'Autre'
+
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='gestion_projet_documents',
+        verbose_name='Société',
+    )
+    projet = models.ForeignKey(
+        Projet,
+        on_delete=models.CASCADE,
+        related_name='documents',
+        verbose_name='Projet',
+    )
+    nom = models.CharField(max_length=200, verbose_name='Nom')
+    type_doc = models.CharField(
+        max_length=10, choices=TypeDoc.choices,
+        default=TypeDoc.AUTRE, verbose_name='Type de document')
+    description = models.TextField(
+        blank=True, default='', verbose_name='Description')
+    # Cache du dernier numéro de version déposé (posé côté serveur).
+    derniere_version = models.PositiveIntegerField(
+        default=0, verbose_name='Dernière version')
+    date_creation = models.DateTimeField(
+        auto_now_add=True, verbose_name='Créé le')
+
+    class Meta:
+        verbose_name = 'Document projet'
+        verbose_name_plural = 'Documents projet'
+        ordering = ['projet', 'nom', 'id']
+        indexes = [
+            models.Index(
+                fields=['projet', 'type_doc'], name='gp_doc_proj_type_idx'),
+        ]
+
+    def __str__(self):
+        return f'{self.nom} (v{self.derniere_version})'
+
+
+class VersionDocument(models.Model):
+    """Une VERSION (révision) d'un ``DocumentProjet`` (PROJ33).
+
+    Porte le fichier déposé (``fichier``), son ``version`` (entier croissant,
+    posé côté serveur = ``document.derniere_version`` + 1 — jamais lu du corps),
+    un ``commentaire`` de révision et l'``auteur`` (posé côté serveur). Les
+    versions ne s'écrasent jamais : chaque dépôt crée une nouvelle ligne, l'unique
+    ``(document, version)`` garantit l'absence de collision.
+
+    Tout est multi-société : ``company`` est posée côté serveur, jamais lue du
+    corps de requête. Modèle entièrement additif.
+    """
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='gestion_projet_versions_doc',
+        verbose_name='Société',
+    )
+    document = models.ForeignKey(
+        DocumentProjet,
+        on_delete=models.CASCADE,
+        related_name='versions',
+        verbose_name='Document',
+    )
+    version = models.PositiveIntegerField(verbose_name='Version')
+    fichier = models.FileField(
+        upload_to='gestion_projet/documents/', verbose_name='Fichier')
+    commentaire = models.TextField(
+        blank=True, default='', verbose_name='Commentaire de révision')
+    auteur = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='gestion_projet_versions_doc',
+        verbose_name='Auteur',
+    )
+    date_creation = models.DateTimeField(
+        auto_now_add=True, verbose_name='Créé le')
+
+    class Meta:
+        verbose_name = 'Version de document'
+        verbose_name_plural = 'Versions de document'
+        ordering = ['document', '-version', '-id']
+        unique_together = [('document', 'version')]
+        indexes = [
+            models.Index(
+                fields=['document', '-version'], name='gp_docver_doc_idx'),
+        ]
+
+    def __str__(self):
+        return f'{self.document_id} v{self.version}'

@@ -20,6 +20,7 @@ from .models import (
     AffectationRessource,
     BaselinePlanning,
     CompteRenduReunion,
+    DocumentProjet,
     BudgetProjet,
     CalendrierProjet,
     DependanceTache,
@@ -37,12 +38,15 @@ from .models import (
     Risque,
     Tache,
     Timesheet,
+    VersionDocument,
 )
 from .serializers import (
     ActionProjetSerializer,
     AffectationRessourceSerializer,
     BaselinePlanningSerializer,
     CompteRenduReunionSerializer,
+    DocumentProjetSerializer,
+    VersionDocumentSerializer,
     BudgetProjetSerializer,
     CalendrierProjetSerializer,
     DependanceTacheSerializer,
@@ -1452,3 +1456,63 @@ class CompteRenduReunionViewSet(_GestionProjetBaseViewSet):
         if debut and fin:
             qs = qs.filter(date_reunion__gte=debut, date_reunion__lte=fin)
         return qs
+
+
+class DocumentProjetViewSet(_GestionProjetBaseViewSet):
+    """Documents & plans VERSIONNÉS d'un projet (PROJ33) — CRUD scopé société.
+
+    ``company`` est posée côté serveur (TenantMixin) ; le ``projet`` reçu est
+    validé même-société. Le dépôt d'une nouvelle révision se fait via l'action
+    ``documents/<id>/deposer/`` (multipart, champ ``fichier`` + ``commentaire``
+    optionnel) : le numéro de version et l'``auteur`` sont posés CÔTÉ SERVEUR
+    (jamais du corps). Filtres optionnels : ``?projet=<id>``,
+    ``?type_doc=<type>``. Recherche par nom / description.
+    """
+    queryset = DocumentProjet.objects.select_related('projet').prefetch_related(
+        'versions').all()
+    serializer_class = DocumentProjetSerializer
+    filter_backends = [filters.SearchFilter, filters.OrderingFilter]
+    search_fields = ['nom', 'description']
+    ordering_fields = ['nom', 'type_doc', 'derniere_version', 'id']
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        projet = self.request.query_params.get('projet')
+        if projet:
+            qs = qs.filter(projet_id=projet)
+        type_doc = self.request.query_params.get('type_doc')
+        if type_doc:
+            qs = qs.filter(type_doc=type_doc)
+        return qs
+
+    @action(detail=True, methods=['post'], url_path='deposer')
+    def deposer(self, request, pk=None):
+        """Dépose une NOUVELLE version (révision) du document (PROJ33).
+
+        Corps multipart : ``fichier`` (obligatoire) + ``commentaire`` (optionnel).
+        Le numéro de version (``derniere_version`` + 1) et l'``auteur`` sont posés
+        côté serveur — jamais lus du corps. La société est garantie par
+        ``get_object`` (queryset scopé société) : un document d'une autre société
+        → 404. Renvoie la version créée (201).
+        """
+        document = self.get_object()
+        fichier = request.data.get('fichier')
+        if not fichier:
+            return Response(
+                {'fichier': 'Un fichier est obligatoire.'},
+                status=status.HTTP_400_BAD_REQUEST)
+        commentaire = request.data.get('commentaire', '') or ''
+        version = services.deposer_version_document(
+            document, fichier, commentaire=commentaire, auteur=request.user)
+        return Response(
+            VersionDocumentSerializer(version).data,
+            status=status.HTTP_201_CREATED)
+
+    @action(detail=True, methods=['get'], url_path='versions')
+    def versions(self, request, pk=None):
+        """Historique des versions du document (plus récentes d'abord)."""
+        document = self.get_object()
+        qs = VersionDocument.objects.filter(
+            document=document, company=document.company).select_related(
+                'auteur').order_by('-version', '-id')
+        return Response(VersionDocumentSerializer(qs, many=True).data)

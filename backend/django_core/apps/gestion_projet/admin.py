@@ -5,6 +5,7 @@ from .models import (
     BudgetProjet,
     CompteRenduReunion,
     DependanceTache,
+    DocumentProjet,
     Jalon,
     LigneBudgetProjet,
     PhaseProjet,
@@ -15,6 +16,7 @@ from .models import (
     Risque,
     Tache,
     Timesheet,
+    VersionDocument,
 )
 
 
@@ -126,3 +128,19 @@ class CompteRenduReunionAdmin(admin.ModelAdmin):
                     'redacteur', 'company')
     list_filter = ('company',)
     search_fields = ('titre', 'decisions', 'ordre_du_jour')
+
+
+@admin.register(DocumentProjet)
+class DocumentProjetAdmin(admin.ModelAdmin):
+    list_display = ('id', 'projet', 'nom', 'type_doc', 'derniere_version',
+                    'company')
+    list_filter = ('type_doc', 'company')
+    search_fields = ('nom', 'description')
+
+
+@admin.register(VersionDocument)
+class VersionDocumentAdmin(admin.ModelAdmin):
+    list_display = ('id', 'document', 'version', 'auteur', 'company',
+                    'date_creation')
+    list_filter = ('company',)
+    search_fields = ('commentaire',)
