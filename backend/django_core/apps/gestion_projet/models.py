@@ -9,11 +9,17 @@ Tout est multi-société : chaque modèle porte un FK ``company`` posé côté s
 (jamais lu du corps de requête). Aucun comportement existant n'est modifié — ce
 module est entièrement additif.
 """
+import secrets
 from decimal import Decimal
 
 from django.conf import settings
 from django.core.validators import MaxValueValidator, MinValueValidator
 from django.db import models
+
+
+def _generer_token_portail():
+    """Jeton URL-safe (256 bits) pour un lien de portail client."""
+    return secrets.token_urlsafe(32)
 
 
 class Projet(models.Model):
@@ -1170,3 +1176,811 @@ class LigneBudgetProjet(models.Model):
 
     def __str__(self):
         return f'{self.get_categorie_display()} — {self.libelle}'
+
+
+class Timesheet(models.Model):
+    """Une feuille de temps INTERNE imputée à un ``Projet`` (PROJ24).
+
+    Saisie d'un nombre d'``heures`` passées par une ``RessourceProfil`` un jour
+    donné (``date``), imputées à un ``Projet`` et OPTIONNELLEMENT à une ``Tache``
+    et/ou une ``PhaseProjet`` du même projet. C'est une donnée 100 % INTERNE de
+    pilotage (comme le ``cout_horaire`` du profil) : elle alimente le suivi des
+    temps et le coût de main-d'œuvre RÉEL — jamais exposée au client final.
+
+    ``cout`` est un cache calculé côté serveur (``heures`` × ``cout_horaire``
+    interne de la ressource au moment de la saisie) : on le fige pour que le
+    coût historique survive à un changement de tarif de la ressource. Mis à 0
+    quand la ressource n'a pas de coût horaire.
+
+    Tout est multi-société : ``company`` est posée côté serveur, jamais lue du
+    corps de requête. La ressource / la tâche / la phase doivent appartenir au
+    MÊME projet et à la MÊME société (validé au sérialiseur). Modèle entièrement
+    additif.
+    """
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='gestion_projet_timesheets',
+        verbose_name='Société',
+    )
+    projet = models.ForeignKey(
+        Projet,
+        on_delete=models.CASCADE,
+        related_name='timesheets',
+        verbose_name='Projet',
+    )
+    # Rattachement OPTIONNEL à une tâche du projet.
+    tache = models.ForeignKey(
+        Tache,
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='timesheets',
+        verbose_name='Tâche',
+    )
+    # Rattachement OPTIONNEL à une phase du projet.
+    phase = models.ForeignKey(
+        PhaseProjet,
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='timesheets',
+        verbose_name='Phase',
+    )
+    ressource = models.ForeignKey(
+        RessourceProfil,
+        on_delete=models.CASCADE,
+        related_name='timesheets',
+        verbose_name='Ressource (profil)',
+    )
+    date = models.DateField(verbose_name='Date')
+    heures = models.DecimalField(
+        max_digits=6, decimal_places=2,
+        validators=[MinValueValidator(Decimal('0'))],
+        verbose_name='Heures')
+    # Coût INTERNE figé (heures × coût horaire) — jamais exposé au client.
+    cout = models.DecimalField(
+        max_digits=14, decimal_places=2, default=Decimal('0'),
+        verbose_name='Coût interne (figé)')
+    commentaire = models.TextField(
+        blank=True, default='', verbose_name='Commentaire')
+    date_creation = models.DateTimeField(
+        auto_now_add=True, verbose_name='Créé le')
+
+    class Meta:
+        verbose_name = 'Feuille de temps'
+        verbose_name_plural = 'Feuilles de temps'
+        ordering = ['-date', '-id']
+        indexes = [
+            models.Index(
+                fields=['projet', 'date'], name='gp_ts_proj_date_idx'),
+            models.Index(
+                fields=['ressource', 'date'], name='gp_ts_res_date_idx'),
+        ]
+
+    def __str__(self):
+        return f'{self.ressource_id} {self.date} {self.heures} h'
+
+
+class Risque(models.Model):
+    """Une entrée du REGISTRE DES RISQUES d'un ``Projet`` (PROJ30).
+
+    Modélise un risque identifié sur un projet, évalué par sa ``probabilite`` et
+    son ``impact`` (échelle 1–5 chacun) ; la ``criticite`` (1–25) est le PRODUIT
+    des deux, calculé côté serveur — jamais lu du corps de requête. Le
+    ``statut`` suit le cycle de vie PROPRE au registre
+    (ouvert/surveille/maitrise/clos) — il ne réutilise NI n'importe AUCUNE
+    clé/étiquette de ``STAGES.py`` (règle #2), et est DISTINCT de tous les autres
+    statuts du module. ``mitigation`` porte le plan de réduction, ``proprietaire``
+    (optionnel) le responsable côté ERP.
+
+    Tout est multi-société : ``company`` est posée côté serveur, jamais lue du
+    corps de requête. Modèle entièrement additif.
+    """
+    class Statut(models.TextChoices):
+        OUVERT = 'ouvert', 'Ouvert'
+        SURVEILLE = 'surveille', 'Surveillé'
+        MAITRISE = 'maitrise', 'Maîtrisé'
+        CLOS = 'clos', 'Clos'
+
+    class Categorie(models.TextChoices):
+        TECHNIQUE = 'technique', 'Technique'
+        DELAI = 'delai', 'Délai'
+        COUT = 'cout', 'Coût'
+        FOURNISSEUR = 'fournisseur', 'Fournisseur'
+        REGLEMENTAIRE = 'reglementaire', 'Réglementaire'
+        SECURITE = 'securite', 'Sécurité'
+        AUTRE = 'autre', 'Autre'
+
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='gestion_projet_risques',
+        verbose_name='Société',
+    )
+    projet = models.ForeignKey(
+        Projet,
+        on_delete=models.CASCADE,
+        related_name='risques',
+        verbose_name='Projet',
+    )
+    libelle = models.CharField(max_length=200, verbose_name='Libellé')
+    description = models.TextField(
+        blank=True, default='', verbose_name='Description')
+    categorie = models.CharField(
+        max_length=14, choices=Categorie.choices,
+        default=Categorie.AUTRE, verbose_name='Catégorie')
+    # Échelles 1–5 ; criticité = probabilité × impact (1–25), figée au serveur.
+    probabilite = models.PositiveSmallIntegerField(
+        default=1,
+        validators=[MinValueValidator(1), MaxValueValidator(5)],
+        verbose_name='Probabilité (1–5)')
+    impact = models.PositiveSmallIntegerField(
+        default=1,
+        validators=[MinValueValidator(1), MaxValueValidator(5)],
+        verbose_name='Impact (1–5)')
+    criticite = models.PositiveSmallIntegerField(
+        default=1, verbose_name='Criticité (1–25)')
+    statut = models.CharField(
+        max_length=10, choices=Statut.choices,
+        default=Statut.OUVERT, verbose_name='Statut')
+    mitigation = models.TextField(
+        blank=True, default='', verbose_name='Plan de mitigation')
+    proprietaire = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='gestion_projet_risques',
+        verbose_name='Propriétaire',
+    )
+    date_creation = models.DateTimeField(
+        auto_now_add=True, verbose_name='Créé le')
+
+    class Meta:
+        verbose_name = 'Risque'
+        verbose_name_plural = 'Risques'
+        ordering = ['-criticite', '-id']
+        indexes = [
+            models.Index(
+                fields=['projet', '-criticite'],
+                name='gp_risque_proj_crit_idx'),
+        ]
+
+    def __str__(self):
+        return f'{self.libelle} (criticité {self.criticite})'
+
+    def save(self, *args, **kwargs):
+        # Criticité TOUJOURS recalculée côté serveur (jamais du corps de requête).
+        self.criticite = (self.probabilite or 0) * (self.impact or 0)
+        super().save(*args, **kwargs)
+
+
+class ActionProjet(models.Model):
+    """Une entrée du REGISTRE D'ACTIONS d'un ``Projet`` (PROJ31).
+
+    Action de suivi (to-do de pilotage) rattachée à un projet, éventuellement à
+    un ``Risque`` (action de mitigation). ``statut`` suit un cycle PROPRE au
+    registre (a_faire/en_cours/fait/annule) — il ne réutilise NI n'importe AUCUNE
+    clé/étiquette de ``STAGES.py`` (règle #2). ``priorite`` (basse/moyenne/haute)
+    ordonne le registre ; ``responsable`` (optionnel) et ``echeance`` cadrent le
+    suivi.
+
+    Tout est multi-société : ``company`` est posée côté serveur, jamais lue du
+    corps de requête. Le risque lié (optionnel) doit appartenir au MÊME projet
+    (validé au sérialiseur). Modèle entièrement additif.
+    """
+    class Statut(models.TextChoices):
+        A_FAIRE = 'a_faire', 'À faire'
+        EN_COURS = 'en_cours', 'En cours'
+        FAIT = 'fait', 'Fait'
+        ANNULE = 'annule', 'Annulé'
+
+    class Priorite(models.TextChoices):
+        BASSE = 'basse', 'Basse'
+        MOYENNE = 'moyenne', 'Moyenne'
+        HAUTE = 'haute', 'Haute'
+
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='gestion_projet_actions',
+        verbose_name='Société',
+    )
+    projet = models.ForeignKey(
+        Projet,
+        on_delete=models.CASCADE,
+        related_name='actions',
+        verbose_name='Projet',
+    )
+    # Rattachement OPTIONNEL à un risque (action de mitigation).
+    risque = models.ForeignKey(
+        Risque,
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='actions',
+        verbose_name='Risque lié',
+    )
+    libelle = models.CharField(max_length=200, verbose_name='Libellé')
+    description = models.TextField(
+        blank=True, default='', verbose_name='Description')
+    statut = models.CharField(
+        max_length=10, choices=Statut.choices,
+        default=Statut.A_FAIRE, verbose_name='Statut')
+    priorite = models.CharField(
+        max_length=10, choices=Priorite.choices,
+        default=Priorite.MOYENNE, verbose_name='Priorité')
+    responsable = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='gestion_projet_actions',
+        verbose_name='Responsable',
+    )
+    echeance = models.DateField(
+        null=True, blank=True, verbose_name='Échéance')
+    date_cloture = models.DateField(
+        null=True, blank=True, verbose_name='Date de clôture')
+    date_creation = models.DateTimeField(
+        auto_now_add=True, verbose_name='Créé le')
+
+    class Meta:
+        verbose_name = 'Action projet'
+        verbose_name_plural = 'Actions projet'
+        ordering = ['statut', 'echeance', '-id']
+        indexes = [
+            models.Index(
+                fields=['projet', 'statut'], name='gp_action_proj_stat_idx'),
+        ]
+
+    def __str__(self):
+        return f'{self.libelle} ({self.get_statut_display()})'
+
+
+class CompteRenduReunion(models.Model):
+    """Un COMPTE-RENDU de réunion de chantier d'un ``Projet`` (PROJ32).
+
+    Trace une réunion de chantier : ``date_reunion``, ``lieu``, liste libre des
+    ``participants`` (texte), ``ordre_du_jour``, ``decisions`` prises et
+    ``points_bloquants``, plus une ``date_prochaine_reunion`` optionnelle.
+    Le ``redacteur`` (optionnel) est posé côté serveur. Une réunion peut, en
+    option, être rattachée à un chantier (référence LÂCHE par identifiant —
+    jamais d'import de ``installations``).
+
+    Tout est multi-société : ``company`` est posée côté serveur, jamais lue du
+    corps de requête. Modèle entièrement additif.
+    """
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='gestion_projet_comptes_rendus',
+        verbose_name='Société',
+    )
+    projet = models.ForeignKey(
+        Projet,
+        on_delete=models.CASCADE,
+        related_name='comptes_rendus',
+        verbose_name='Projet',
+    )
+    # Référence LÂCHE optionnelle vers installations.Chantier (aucun FK dur).
+    chantier_id = models.PositiveIntegerField(
+        null=True, blank=True, verbose_name='ID du chantier')
+    titre = models.CharField(max_length=200, verbose_name='Titre')
+    date_reunion = models.DateField(verbose_name='Date de la réunion')
+    lieu = models.CharField(
+        max_length=200, blank=True, default='', verbose_name='Lieu')
+    participants = models.TextField(
+        blank=True, default='', verbose_name='Participants')
+    ordre_du_jour = models.TextField(
+        blank=True, default='', verbose_name='Ordre du jour')
+    decisions = models.TextField(
+        blank=True, default='', verbose_name='Décisions')
+    points_bloquants = models.TextField(
+        blank=True, default='', verbose_name='Points bloquants')
+    date_prochaine_reunion = models.DateField(
+        null=True, blank=True, verbose_name='Date de la prochaine réunion')
+    redacteur = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='gestion_projet_comptes_rendus',
+        verbose_name='Rédacteur',
+    )
+    date_creation = models.DateTimeField(
+        auto_now_add=True, verbose_name='Créé le')
+
+    class Meta:
+        verbose_name = 'Compte-rendu de réunion'
+        verbose_name_plural = 'Comptes-rendus de réunion'
+        ordering = ['-date_reunion', '-id']
+        indexes = [
+            models.Index(
+                fields=['projet', '-date_reunion'],
+                name='gp_cr_proj_date_idx'),
+        ]
+
+    def __str__(self):
+        return f'{self.titre} ({self.date_reunion})'
+
+
+class DocumentProjet(models.Model):
+    """Un DOCUMENT logique (plan, note, PV…) d'un ``Projet`` (PROJ33).
+
+    Tête de série d'un document VERSIONNÉ : il porte le ``nom`` et le ``type_doc``
+    (plan/note/photo/contrat/autre) ; chaque révision est une ``VersionDocument``
+    (fichier + numéro de version). La ``derniere_version`` est mise en cache côté
+    serveur à chaque dépôt (jamais lue du corps de requête) pour afficher l'état
+    courant sans recompter.
+
+    Tout est multi-société : ``company`` est posée côté serveur, jamais lue du
+    corps de requête. Modèle entièrement additif.
+    """
+    class TypeDoc(models.TextChoices):
+        PLAN = 'plan', 'Plan'
+        NOTE = 'note', 'Note de calcul'
+        PHOTO = 'photo', 'Photo'
+        CONTRAT = 'contrat', 'Contrat'
+        PV = 'pv', 'Procès-verbal'
+        AUTRE = 'autre', 'Autre'
+
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='gestion_projet_documents',
+        verbose_name='Société',
+    )
+    projet = models.ForeignKey(
+        Projet,
+        on_delete=models.CASCADE,
+        related_name='documents',
+        verbose_name='Projet',
+    )
+    nom = models.CharField(max_length=200, verbose_name='Nom')
+    type_doc = models.CharField(
+        max_length=10, choices=TypeDoc.choices,
+        default=TypeDoc.AUTRE, verbose_name='Type de document')
+    description = models.TextField(
+        blank=True, default='', verbose_name='Description')
+    # Cache du dernier numéro de version déposé (posé côté serveur).
+    derniere_version = models.PositiveIntegerField(
+        default=0, verbose_name='Dernière version')
+    date_creation = models.DateTimeField(
+        auto_now_add=True, verbose_name='Créé le')
+
+    class Meta:
+        verbose_name = 'Document projet'
+        verbose_name_plural = 'Documents projet'
+        ordering = ['projet', 'nom', 'id']
+        indexes = [
+            models.Index(
+                fields=['projet', 'type_doc'], name='gp_doc_proj_type_idx'),
+        ]
+
+    def __str__(self):
+        return f'{self.nom} (v{self.derniere_version})'
+
+
+class VersionDocument(models.Model):
+    """Une VERSION (révision) d'un ``DocumentProjet`` (PROJ33).
+
+    Porte le fichier déposé (``fichier``), son ``version`` (entier croissant,
+    posé côté serveur = ``document.derniere_version`` + 1 — jamais lu du corps),
+    un ``commentaire`` de révision et l'``auteur`` (posé côté serveur). Les
+    versions ne s'écrasent jamais : chaque dépôt crée une nouvelle ligne, l'unique
+    ``(document, version)`` garantit l'absence de collision.
+
+    Tout est multi-société : ``company`` est posée côté serveur, jamais lue du
+    corps de requête. Modèle entièrement additif.
+    """
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='gestion_projet_versions_doc',
+        verbose_name='Société',
+    )
+    document = models.ForeignKey(
+        DocumentProjet,
+        on_delete=models.CASCADE,
+        related_name='versions',
+        verbose_name='Document',
+    )
+    version = models.PositiveIntegerField(verbose_name='Version')
+    fichier = models.FileField(
+        upload_to='gestion_projet/documents/', verbose_name='Fichier')
+    commentaire = models.TextField(
+        blank=True, default='', verbose_name='Commentaire de révision')
+    auteur = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='gestion_projet_versions_doc',
+        verbose_name='Auteur',
+    )
+    date_creation = models.DateTimeField(
+        auto_now_add=True, verbose_name='Créé le')
+
+    class Meta:
+        verbose_name = 'Version de document'
+        verbose_name_plural = 'Versions de document'
+        ordering = ['document', '-version', '-id']
+        unique_together = [('document', 'version')]
+        indexes = [
+            models.Index(
+                fields=['document', '-version'], name='gp_docver_doc_idx'),
+        ]
+
+    def __str__(self):
+        return f'{self.document_id} v{self.version}'
+
+
+class CommentaireProjet(models.Model):
+    """Un COMMENTAIRE avec @mentions sur un objet d'un ``Projet`` (PROJ34).
+
+    Fil de discussion interne rattaché à un ``Projet`` et, OPTIONNELLEMENT, à un
+    objet précis du projet désigné par un couple typé ``(cible_type, cible_id)``
+    — tâche / risque / action / jalon / document — référence LÂCHE par
+    identifiant (jamais d'import inter-modèles). Le ``texte`` porte le message ;
+    les utilisateurs @mentionnés sont une M2M ``mentions`` — résolus côté serveur
+    et restreints à la MÊME société. ``auteur`` est posé côté serveur.
+
+    Tout est multi-société : ``company`` est posée côté serveur, jamais lue du
+    corps de requête. Modèle entièrement additif.
+    """
+    class CibleType(models.TextChoices):
+        PROJET = 'projet', 'Projet'
+        TACHE = 'tache', 'Tâche'
+        RISQUE = 'risque', 'Risque'
+        ACTION = 'action', 'Action'
+        JALON = 'jalon', 'Jalon'
+        DOCUMENT = 'document', 'Document'
+
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='gestion_projet_commentaires',
+        verbose_name='Société',
+    )
+    projet = models.ForeignKey(
+        Projet,
+        on_delete=models.CASCADE,
+        related_name='commentaires',
+        verbose_name='Projet',
+    )
+    # Cible OPTIONNELLE précise dans le projet (référence lâche typée).
+    cible_type = models.CharField(
+        max_length=10, choices=CibleType.choices,
+        default=CibleType.PROJET, verbose_name='Type de cible')
+    cible_id = models.PositiveIntegerField(
+        null=True, blank=True, verbose_name='ID de la cible')
+    texte = models.TextField(verbose_name='Texte')
+    auteur = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='gestion_projet_commentaires',
+        verbose_name='Auteur',
+    )
+    mentions = models.ManyToManyField(
+        settings.AUTH_USER_MODEL,
+        blank=True,
+        related_name='gestion_projet_mentions',
+        verbose_name='Personnes mentionnées',
+    )
+    date_creation = models.DateTimeField(
+        auto_now_add=True, verbose_name='Créé le')
+
+    class Meta:
+        verbose_name = 'Commentaire projet'
+        verbose_name_plural = 'Commentaires projet'
+        ordering = ['-date_creation', '-id']
+        indexes = [
+            models.Index(
+                fields=['projet', 'cible_type', 'cible_id'],
+                name='gp_comm_proj_cible_idx'),
+        ]
+
+    def __str__(self):
+        return f'commentaire {self.id} ({self.cible_type})'
+
+
+class ModeleProjet(models.Model):
+    """Un MODÈLE (template) de projet par type d'installation (PROJ35).
+
+    Décrit une trame réutilisable de phases + tâches pour un ``type_installation``
+    (résidentiel / industriel / agricole / autre) : appliqué à un ``Projet`` via
+    le service ``instancier_modele``, il y crée les phases standard nécessaires et
+    les tâches du modèle (``ModeleTache``). Le ``type_installation`` est un enum
+    PROPRE à ce module ; il ne réutilise NI n'importe AUCUNE clé/étiquette de
+    ``STAGES.py`` (règle #2).
+
+    Tout est multi-société : ``company`` est posée côté serveur, jamais lue du
+    corps de requête. Modèle entièrement additif.
+    """
+    class TypeInstallation(models.TextChoices):
+        RESIDENTIEL = 'residentiel', 'Résidentiel'
+        INDUSTRIEL = 'industriel', 'Industriel / Commercial'
+        AGRICOLE = 'agricole', 'Agricole (pompage)'
+        AUTRE = 'autre', 'Autre'
+
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='gestion_projet_modeles',
+        verbose_name='Société',
+    )
+    nom = models.CharField(max_length=200, verbose_name='Nom du modèle')
+    type_installation = models.CharField(
+        max_length=12, choices=TypeInstallation.choices,
+        default=TypeInstallation.RESIDENTIEL,
+        verbose_name="Type d'installation")
+    description = models.TextField(
+        blank=True, default='', verbose_name='Description')
+    actif = models.BooleanField(default=True, verbose_name='Actif')
+    date_creation = models.DateTimeField(
+        auto_now_add=True, verbose_name='Créé le')
+
+    class Meta:
+        verbose_name = 'Modèle de projet'
+        verbose_name_plural = 'Modèles de projet'
+        ordering = ['nom', 'id']
+        constraints = [
+            models.UniqueConstraint(
+                fields=['company', 'nom'],
+                name='gp_modele_company_nom_uniq'),
+        ]
+
+    def __str__(self):
+        return f'{self.nom} ({self.get_type_installation_display()})'
+
+
+class ModeleTache(models.Model):
+    """Une tâche-type d'un ``ModeleProjet`` (PROJ35).
+
+    Décrit une tâche à créer lors de l'instanciation du modèle, rattachée à un
+    ``type_phase`` standard (étude/appro/pose/MES/réception). ``libelle``,
+    ``ordre``, ``charge_estimee`` (jours-homme prévus, optionnelle) et
+    ``code_wbs`` (optionnel) sont copiés tels quels sur la ``Tache`` créée. Le
+    ``type_phase`` réutilise l'enum de ``PhaseProjet.TypePhase`` (même module).
+
+    Tout est multi-société : ``company`` est posée côté serveur, jamais lue du
+    corps de requête. Modèle entièrement additif.
+    """
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='gestion_projet_modele_taches',
+        verbose_name='Société',
+    )
+    modele = models.ForeignKey(
+        ModeleProjet,
+        on_delete=models.CASCADE,
+        related_name='taches',
+        verbose_name='Modèle',
+    )
+    type_phase = models.CharField(
+        max_length=12, choices=PhaseProjet.TypePhase.choices,
+        default=PhaseProjet.TypePhase.ETUDE,
+        verbose_name='Type de phase')
+    code_wbs = models.CharField(
+        max_length=50, blank=True, default='', verbose_name='Code WBS')
+    libelle = models.CharField(max_length=200, verbose_name='Libellé')
+    ordre = models.PositiveIntegerField(default=0, verbose_name='Ordre')
+    charge_estimee = models.DecimalField(
+        max_digits=8, decimal_places=2, null=True, blank=True,
+        verbose_name='Charge estimée (j-h)')
+    date_creation = models.DateTimeField(
+        auto_now_add=True, verbose_name='Créé le')
+
+    class Meta:
+        verbose_name = 'Tâche-type de modèle'
+        verbose_name_plural = 'Tâches-types de modèle'
+        ordering = ['modele', 'ordre', 'id']
+        indexes = [
+            models.Index(
+                fields=['modele', 'ordre'], name='gp_modtache_mod_idx'),
+        ]
+
+    def __str__(self):
+        return f'{self.modele_id} — {self.libelle}'
+
+
+class PortailProjetToken(models.Model):
+    """Jeton d'accès au PORTAIL D'AVANCEMENT CLIENT d'un ``Projet`` (PROJ37).
+
+    Donne au client un lien PUBLIC tokenisé (non authentifié) vers une vue
+    d'avancement SANS AUCUN coût, budget ni marge — données strictement internes
+    qui ne traversent jamais ce portail (voir ``selectors.portail_avancement_
+    client``). Le ``token`` (256 bits URL-safe) est généré côté serveur ;
+    ``actif`` permet de révoquer l'accès sans supprimer la ligne.
+
+    Tout est multi-société : ``company`` est posée côté serveur, jamais lue du
+    corps de requête. Relation 1–1 souple avec le projet. Modèle entièrement
+    additif.
+    """
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='gestion_projet_portail_tokens',
+        verbose_name='Société',
+    )
+    projet = models.OneToOneField(
+        Projet,
+        on_delete=models.CASCADE,
+        related_name='portail_token',
+        verbose_name='Projet',
+    )
+    token = models.CharField(
+        max_length=64, unique=True, default=_generer_token_portail,
+        verbose_name='Jeton')
+    actif = models.BooleanField(default=True, verbose_name='Actif')
+    date_creation = models.DateTimeField(
+        auto_now_add=True, verbose_name='Créé le')
+
+    class Meta:
+        verbose_name = 'Jeton de portail client'
+        verbose_name_plural = 'Jetons de portail client'
+        ordering = ['-id']
+        indexes = [
+            models.Index(fields=['token'], name='gp_portail_token_idx'),
+        ]
+
+    def __str__(self):
+        return f'portail {self.projet_id} ({"actif" if self.actif else "off"})'
+
+
+class SousTraitant(models.Model):
+    """Un SOUS-TRAITANT du carnet d'adresses de la société (PROJ38).
+
+    Annuaire léger de prestataires externes mobilisables sur les projets
+    (terrassement, électricité, levage…). ``specialite`` qualifie l'activité ;
+    ``contact`` / ``telephone`` / ``email`` sont les coordonnées. Données INTERNES
+    de pilotage — jamais exposées au client final.
+
+    Tout est multi-société : ``company`` est posée côté serveur, jamais lue du
+    corps de requête. Modèle entièrement additif.
+    """
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='gestion_projet_sous_traitants',
+        verbose_name='Société',
+    )
+    nom = models.CharField(max_length=200, verbose_name='Nom / raison sociale')
+    specialite = models.CharField(
+        max_length=150, blank=True, default='', verbose_name='Spécialité')
+    contact = models.CharField(
+        max_length=150, blank=True, default='', verbose_name='Contact')
+    telephone = models.CharField(
+        max_length=40, blank=True, default='', verbose_name='Téléphone')
+    email = models.EmailField(blank=True, default='', verbose_name='E-mail')
+    actif = models.BooleanField(default=True, verbose_name='Actif')
+    date_creation = models.DateTimeField(
+        auto_now_add=True, verbose_name='Créé le')
+
+    class Meta:
+        verbose_name = 'Sous-traitant'
+        verbose_name_plural = 'Sous-traitants'
+        ordering = ['nom', 'id']
+        constraints = [
+            models.UniqueConstraint(
+                fields=['company', 'nom'],
+                name='gp_soustraitant_co_nom_uniq'),
+        ]
+
+    def __str__(self):
+        return self.nom
+
+
+class LotSousTraitance(models.Model):
+    """Un LOT confié à un ``SousTraitant`` sur un ``Projet`` (PROJ38).
+
+    Représente une partie des travaux sous-traitée : ``libelle`` du lot,
+    ``montant`` (coût INTERNE de sous-traitance — jamais exposé au client),
+    période, et ``statut`` PROPRE au lot (prévu/en_cours/réceptionné/annulé) — il
+    ne réutilise NI n'importe AUCUNE clé/étiquette de ``STAGES.py`` (règle #2).
+
+    Tout est multi-société : ``company`` est posée côté serveur, jamais lue du
+    corps de requête. Le sous-traitant doit appartenir à la MÊME société (validé
+    au sérialiseur). Modèle entièrement additif.
+    """
+    class Statut(models.TextChoices):
+        PREVU = 'prevu', 'Prévu'
+        EN_COURS = 'en_cours', 'En cours'
+        RECEPTIONNE = 'receptionne', 'Réceptionné'
+        ANNULE = 'annule', 'Annulé'
+
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='gestion_projet_lots_st',
+        verbose_name='Société',
+    )
+    projet = models.ForeignKey(
+        Projet,
+        on_delete=models.CASCADE,
+        related_name='lots_sous_traitance',
+        verbose_name='Projet',
+    )
+    sous_traitant = models.ForeignKey(
+        SousTraitant,
+        on_delete=models.PROTECT,
+        related_name='lots',
+        verbose_name='Sous-traitant',
+    )
+    libelle = models.CharField(max_length=200, verbose_name='Libellé du lot')
+    description = models.TextField(
+        blank=True, default='', verbose_name='Description')
+    # Coût INTERNE de sous-traitance — jamais exposé au client.
+    montant = models.DecimalField(
+        max_digits=14, decimal_places=2, default=Decimal('0'),
+        verbose_name='Montant (interne)')
+    statut = models.CharField(
+        max_length=12, choices=Statut.choices,
+        default=Statut.PREVU, verbose_name='Statut')
+    date_debut = models.DateField(
+        null=True, blank=True, verbose_name='Date de début')
+    date_fin = models.DateField(
+        null=True, blank=True, verbose_name='Date de fin')
+    date_creation = models.DateTimeField(
+        auto_now_add=True, verbose_name='Créé le')
+
+    class Meta:
+        verbose_name = 'Lot de sous-traitance'
+        verbose_name_plural = 'Lots de sous-traitance'
+        ordering = ['projet', 'id']
+        indexes = [
+            models.Index(
+                fields=['projet', 'statut'], name='gp_lotst_proj_stat_idx'),
+        ]
+
+    def __str__(self):
+        return f'{self.libelle} ({self.sous_traitant_id})'
+
+
+class ClotureProjet(models.Model):
+    """Clôture d'un ``Projet`` + RETOUR D'EXPÉRIENCE (REX) (PROJ38).
+
+    Enregistre la réception/clôture d'un projet (``date_cloture``,
+    ``date_reception``) et capitalise le retour d'expérience : ``points_positifs``,
+    ``points_amelioration`` et ``recommandations`` pour les projets futurs.
+    ``cloture_par`` est posé côté serveur. Relation 1–1 avec le projet (une seule
+    clôture). Données INTERNES — jamais exposées au client.
+
+    Tout est multi-société : ``company`` est posée côté serveur, jamais lue du
+    corps de requête. Modèle entièrement additif.
+    """
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='gestion_projet_clotures',
+        verbose_name='Société',
+    )
+    projet = models.OneToOneField(
+        Projet,
+        on_delete=models.CASCADE,
+        related_name='cloture',
+        verbose_name='Projet',
+    )
+    date_cloture = models.DateField(verbose_name='Date de clôture')
+    date_reception = models.DateField(
+        null=True, blank=True, verbose_name='Date de réception')
+    points_positifs = models.TextField(
+        blank=True, default='', verbose_name='Points positifs')
+    points_amelioration = models.TextField(
+        blank=True, default='', verbose_name="Points d'amélioration")
+    recommandations = models.TextField(
+        blank=True, default='', verbose_name='Recommandations')
+    cloture_par = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='gestion_projet_clotures',
+        verbose_name='Clôturé par',
+    )
+    date_creation = models.DateTimeField(
+        auto_now_add=True, verbose_name='Créé le')
+
+    class Meta:
+        verbose_name = 'Clôture de projet'
+        verbose_name_plural = 'Clôtures de projet'
+        ordering = ['-date_cloture', '-id']
+
+    def __str__(self):
+        return f'clôture {self.projet_id} ({self.date_cloture})'

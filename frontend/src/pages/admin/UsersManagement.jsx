@@ -50,7 +50,7 @@ export default function UsersManagement() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
   const [showForm, setShowForm] = useState(false)
-  const [form, setForm] = useState({ username: '', email: '', password: '', role: '' })
+  const [form, setForm] = useState({ username: '', email: '', password: '', role: '', must_change_password: false })
   const [saving, setSaving] = useState(false)
   const [createError, setCreateError] = useState(null)
 
@@ -158,7 +158,7 @@ export default function UsersManagement() {
     setCreateError(null)
     try {
       await api.post('/users/', form)
-      setForm({ username: '', email: '', password: '', role: roles.find(r => r.nom === 'Utilisateur')?.id || roles[0]?.id || '' })
+      setForm({ username: '', email: '', password: '', role: roles.find(r => r.nom === 'Utilisateur')?.id || roles[0]?.id || '', must_change_password: false })
       setShowForm(false)
       toast.success('Utilisateur créé.')
       await load()
@@ -387,6 +387,20 @@ export default function UsersManagement() {
                       ))}
                     </SelectContent>
                   </Select>
+                </FormField>
+                {/* FG21 — onboarding : forcer le changement de mot de passe à
+                    la première connexion (case décochée par défaut). */}
+                <FormField label="Sécurité" htmlFor="new-must-change">
+                  <div className="flex items-center gap-2.5">
+                    <Switch
+                      id="new-must-change"
+                      checked={form.must_change_password}
+                      onCheckedChange={v => setForm(f => ({ ...f, must_change_password: v }))}
+                    />
+                    <Label htmlFor="new-must-change" className="text-sm font-normal text-muted-foreground">
+                      Demander un changement de mot de passe à la première connexion
+                    </Label>
+                  </div>
                 </FormField>
               </FormSection>
               {createError && (

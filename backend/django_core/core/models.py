@@ -343,3 +343,327 @@ class WorkflowStepInstance(TimestampedModel):
 
     def __str__(self):
         return f'{self.instance_id}/{self.ordre} ({self.get_statut_display()})'
+
+
+# ---------------------------------------------------------------------------
+# FG371+ — Configuration générique des INTÉGRATIONS externes (fondation).
+#
+# Modèle de FONDATION volontairement GÉNÉRIQUE : il stocke, PAR SOCIÉTÉ, le
+# paramétrage d'un connecteur externe (SMS, e-signature, IMAP, calendrier,
+# géocodage, Sage/CEGID, Odoo, open banking…) SANS référencer aucune app métier
+# (contrat import-linter ``core-foundation-is-a-base-layer``). Le connecteur
+# concret est désigné par deux chaînes — ``integration_type`` (ex. « sms ») +
+# ``provider`` (ex. « infobip ») — résolues via le registre ``core.integrations``.
+#
+# Sécurité : le secret réel (clé d'API…) N'EST JAMAIS stocké en clair. Le champ
+# ``secret_ref`` nomme une variable d'environnement (ex. « SMS_API_KEY ») d'où
+# le secret est lu à l'exécution (cf. ``core.integrations.resolve_secret``). Les
+# autres paramètres non sensibles vivent dans ``settings`` (JSON).
+# ---------------------------------------------------------------------------
+
+
+class IntegrationConfig(TimestampedModel):
+    """Paramétrage d'un connecteur d'intégration externe, par société (FG371+).
+
+    GÉNÉRIQUE : aucune FK métier. ``integration_type`` + ``provider`` pointent
+    un connecteur enregistré dans ``core.integrations`` ; ``settings`` porte les
+    paramètres non sensibles (JSON) ; ``secret_ref`` nomme la variable
+    d'environnement contenant le secret (jamais en clair). ``actif`` permet de
+    couper une intégration sans la supprimer.
+
+    Multi-tenant : ``company`` obligatoire, imposée côté serveur. Unique par
+    ``(company, integration_type, provider)``.
+    """
+
+    company = models.ForeignKey(
+        'authentication.Company', on_delete=models.CASCADE,
+        related_name='integration_configs', verbose_name='Société')
+
+    integration_type = models.CharField(
+        "Type d'intégration", max_length=40,
+        help_text='Catégorie, ex. « sms », « esign », « geocoding ».')
+    provider = models.CharField(
+        'Fournisseur', max_length=60,
+        help_text='Code du connecteur enregistré, ex. « infobip ».')
+    label = models.CharField('Libellé', max_length=120, blank=True, default='')
+
+    actif = models.BooleanField('Actif', default=True)
+    settings = models.JSONField(
+        'Paramètres', default=dict, blank=True,
+        help_text='Paramètres NON sensibles (JSON). Jamais de secret en clair.')
+    secret_ref = models.CharField(
+        "Référence du secret", max_length=120, blank=True, default='',
+        help_text="Nom de variable d'environnement contenant le secret.")
+
+    class Meta:
+        verbose_name = "Configuration d'intégration"
+        verbose_name_plural = "Configurations d'intégration"
+        ordering = ['integration_type', 'provider', 'id']
+        constraints = [
+            models.UniqueConstraint(
+                fields=['company', 'integration_type', 'provider'],
+                name='core_integration_co_type_prov'),
+        ]
+        indexes = [
+            models.Index(fields=['company', 'integration_type'],
+                         name='core_integ_co_type_idx'),
+            models.Index(fields=['company', 'actif'],
+                         name='core_integ_co_actif_idx'),
+        ]
+
+    def __str__(self):
+        return (f'{self.integration_type}/{self.provider} '
+                f'(société {self.company_id})')
+
+
+# ---------------------------------------------------------------------------
+# FG372 — Demande d'e-signature (Yousign/DocuSign…), suivi de statut.
+#
+# Modèle de FONDATION GÉNÉRIQUE : suit une demande de signature électronique
+# pour N'IMPORTE QUEL document métier (Devis, contrat…) SANS importer l'app qui
+# le produit (contrat import-linter ``core-foundation-is-a-base-layer``). La
+# cible est désignée via ``contenttypes`` (content_type + object_id +
+# GenericForeignKey) — fondation Django — donc aucun import descendant.
+# ---------------------------------------------------------------------------
+
+
+class EsignRequest(TimestampedModel):
+    """Demande de signature électronique d'un document (FG372).
+
+    GÉNÉRIQUE : cible via ``contenttypes`` (aucun import métier). ``provider``
+    nomme le connecteur e-sign (``core.esign``) ; ``external_id`` garde la
+    référence retournée par le fournisseur ; ``statut`` suit le cycle de vie.
+    Multi-tenant : ``company`` obligatoire, imposée côté serveur.
+    """
+
+    STATUT_BROUILLON = 'brouillon'
+    STATUT_ENVOYE = 'envoye'
+    STATUT_SIGNE = 'signe'
+    STATUT_REFUSE = 'refuse'
+    STATUT_EXPIRE = 'expire'
+    STATUT_ERREUR = 'erreur'
+    STATUT_CHOICES = [
+        (STATUT_BROUILLON, 'Brouillon'),
+        (STATUT_ENVOYE, 'Envoyé'),
+        (STATUT_SIGNE, 'Signé'),
+        (STATUT_REFUSE, 'Refusé'),
+        (STATUT_EXPIRE, 'Expiré'),
+        (STATUT_ERREUR, 'Erreur'),
+    ]
+
+    company = models.ForeignKey(
+        'authentication.Company', on_delete=models.CASCADE,
+        related_name='esign_requests', verbose_name='Société')
+
+    # Cible générique — AUCUN import métier (contenttypes = fondation).
+    content_type = models.ForeignKey(
+        ContentType, on_delete=models.CASCADE, null=True, blank=True,
+        related_name='+', verbose_name='Type de document')
+    object_id = models.PositiveIntegerField(
+        'Identifiant du document', null=True, blank=True)
+    target = GenericForeignKey('content_type', 'object_id')
+
+    provider = models.CharField('Fournisseur', max_length=60)
+    external_id = models.CharField(
+        'Référence externe', max_length=128, blank=True, default='',
+        help_text='Identifiant retourné par le fournisseur e-sign.')
+    statut = models.CharField(
+        'Statut', max_length=16, choices=STATUT_CHOICES,
+        default=STATUT_BROUILLON)
+
+    signataire_email = models.EmailField('Email signataire', blank=True, default='')
+    signataire_nom = models.CharField(
+        'Nom signataire', max_length=160, blank=True, default='')
+    signed_url = models.URLField('URL document signé', blank=True, default='')
+
+    sent_le = models.DateTimeField('Envoyé le', null=True, blank=True)
+    signed_le = models.DateTimeField('Signé le', null=True, blank=True)
+    detail = models.JSONField('Détail', default=dict, blank=True)
+
+    class Meta:
+        verbose_name = 'Demande de signature électronique'
+        verbose_name_plural = 'Demandes de signature électronique'
+        ordering = ['-id']
+        indexes = [
+            models.Index(fields=['company', 'statut'],
+                         name='core_esign_co_statut_idx'),
+            models.Index(fields=['provider', 'external_id'],
+                         name='core_esign_ext_idx'),
+        ]
+
+    def __str__(self):
+        return f'E-sign {self.provider} #{self.pk} ({self.get_statut_display()})'
+
+
+# ---------------------------------------------------------------------------
+# FG374 — Sync calendrier Google/Outlook (2-way) : table de correspondance.
+#
+# Modèle de FONDATION GÉNÉRIQUE : associe l'identité d'un événement LOCAL
+# (pose/intervention/visite — désigné de façon générique par
+# ``local_kind`` + ``local_id``, JAMAIS par une FK métier) à son équivalent
+# dans un calendrier externe (``provider`` + ``external_event_id``). ``core``
+# n'importe donc aucune app métier (contrat import-linter
+# ``core-foundation-is-a-base-layer``) : l'app ``reporting`` qui agrège les
+# événements passera de simples dicts au moteur de sync.
+# ---------------------------------------------------------------------------
+
+
+class CalendarSyncMapping(TimestampedModel):
+    """Correspondance événement local ↔ événement de calendrier externe (FG374).
+
+    GÉNÉRIQUE : ``local_kind`` (ex. « intervention ») + ``local_id`` (chaîne)
+    identifient l'événement local SANS FK métier. ``last_hash`` détecte les
+    changements pour ne pousser que les diffs (sync 2-way idempotente).
+    Multi-tenant : ``company`` obligatoire. Unique par
+    ``(company, provider, local_kind, local_id)``.
+    """
+
+    company = models.ForeignKey(
+        'authentication.Company', on_delete=models.CASCADE,
+        related_name='calendar_sync_mappings', verbose_name='Société')
+
+    provider = models.CharField('Fournisseur', max_length=60)
+    local_kind = models.CharField(
+        "Type local", max_length=40,
+        help_text="Catégorie d'événement local, ex. « intervention ».")
+    local_id = models.CharField("Identifiant local", max_length=64)
+    external_event_id = models.CharField(
+        "Identifiant externe", max_length=255, blank=True, default='')
+    external_calendar_id = models.CharField(
+        "Calendrier externe", max_length=255, blank=True, default='')
+
+    last_hash = models.CharField(
+        "Empreinte", max_length=64, blank=True, default='',
+        help_text='Hash du dernier état synchronisé (détection de diff).')
+    last_synced_le = models.DateTimeField(
+        'Dernière synchro', null=True, blank=True)
+
+    class Meta:
+        verbose_name = 'Correspondance calendrier'
+        verbose_name_plural = 'Correspondances calendrier'
+        ordering = ['-id']
+        constraints = [
+            models.UniqueConstraint(
+                fields=['company', 'provider', 'local_kind', 'local_id'],
+                name='core_calsync_co_prov_local'),
+        ]
+        indexes = [
+            models.Index(fields=['company', 'provider'],
+                         name='core_calsync_co_prov_idx'),
+            models.Index(fields=['provider', 'external_event_id'],
+                         name='core_calsync_ext_idx'),
+        ]
+
+    def __str__(self):
+        return f'{self.provider}:{self.local_kind}/{self.local_id}'
+
+
+# ---------------------------------------------------------------------------
+# FG376 — Connecteur Zapier / Make : abonnements webhook (REST hooks) sortants.
+#
+# Modèle de FONDATION GÉNÉRIQUE : un outil no-code (Zapier/Make) s'abonne à un
+# nom d'événement (chaîne libre, ex. « devis_accepted ») en enregistrant une URL
+# cible. Quand l'événement se produit, ``core.webhooks.dispatch_event`` POSTe le
+# payload à chaque URL abonnée. AUCUN import d'app métier (contrat import-linter
+# ``core-foundation-is-a-base-layer``) : les apps émettrices passent un dict.
+# ---------------------------------------------------------------------------
+
+
+class WebhookSubscription(TimestampedModel):
+    """Abonnement webhook sortant (REST hook) pour Zapier/Make (FG376).
+
+    GÉNÉRIQUE : ``event`` est un nom d'événement en texte libre ; ``target_url``
+    reçoit le payload en POST. ``secret`` (optionnel) sert à signer le payload
+    (HMAC) pour que l'abonné vérifie l'authenticité. Multi-tenant : ``company``
+    obligatoire. Unique par ``(company, event, target_url)``.
+    """
+
+    company = models.ForeignKey(
+        'authentication.Company', on_delete=models.CASCADE,
+        related_name='webhook_subscriptions', verbose_name='Société')
+
+    event = models.CharField(
+        'Événement', max_length=80,
+        help_text='Nom d\'événement, ex. « devis_accepted ».')
+    target_url = models.URLField('URL cible', max_length=500)
+    secret = models.CharField(
+        'Secret de signature', max_length=120, blank=True, default='',
+        help_text='Optionnel : clé HMAC pour signer le payload (en-tête '
+                  'X-Taqinor-Signature).')
+    actif = models.BooleanField('Actif', default=True)
+
+    last_delivery_le = models.DateTimeField(
+        'Dernière livraison', null=True, blank=True)
+    last_status = models.IntegerField(
+        'Dernier statut HTTP', null=True, blank=True)
+
+    class Meta:
+        verbose_name = 'Abonnement webhook'
+        verbose_name_plural = 'Abonnements webhook'
+        ordering = ['event', 'id']
+        constraints = [
+            models.UniqueConstraint(
+                fields=['company', 'event', 'target_url'],
+                name='core_webhook_co_evt_url'),
+        ]
+        indexes = [
+            models.Index(fields=['company', 'event', 'actif'],
+                         name='core_webhook_co_evt_idx'),
+        ]
+
+    def __str__(self):
+        return f'{self.event} → {self.target_url}'
+
+
+# ---------------------------------------------------------------------------
+# FG381 — Constructeur de graphiques/dashboards sans-code (drag-and-drop).
+#
+# Modèle de FONDATION GÉNÉRIQUE : persiste un dashboard sauvegardé par
+# utilisateur/société. La configuration (widgets, disposition, requêtes de
+# données) est un BLOB JSON OPAQUE pour ``core`` — il ne sait RIEN des modèles
+# métier interrogés (contrat import-linter ``core-foundation-is-a-base-layer``).
+# Le front (Recharts) interprète le JSON ; les données viennent d'endpoints
+# existants (reporting / pivot FG380). ``core`` ne fait que stocker/servir.
+# ---------------------------------------------------------------------------
+
+
+class Dashboard(TimestampedModel):
+    """Dashboard sans-code sauvegardé (FG381).
+
+    GÉNÉRIQUE : ``layout`` est un JSON opaque (widgets + disposition + specs de
+    requête). ``owner`` (optionnel) restreint un dashboard à un utilisateur ;
+    ``partage`` rend un dashboard visible à toute la société. Multi-tenant :
+    ``company`` obligatoire, imposée côté serveur.
+    """
+
+    company = models.ForeignKey(
+        'authentication.Company', on_delete=models.CASCADE,
+        related_name='dashboards', verbose_name='Société')
+    owner = models.ForeignKey(
+        'authentication.CustomUser', on_delete=models.CASCADE,
+        null=True, blank=True, related_name='dashboards',
+        verbose_name='Propriétaire',
+        help_text='Vide = dashboard de société (non personnel).')
+
+    titre = models.CharField('Titre', max_length=160)
+    description = models.TextField('Description', blank=True, default='')
+    layout = models.JSONField(
+        'Configuration', default=dict, blank=True,
+        help_text='Widgets + disposition + specs de données (opaque pour core).')
+    partage = models.BooleanField(
+        'Partagé', default=False,
+        help_text='Visible par toute la société (sinon personnel).')
+
+    class Meta:
+        verbose_name = 'Dashboard'
+        verbose_name_plural = 'Dashboards'
+        ordering = ['titre', 'id']
+        indexes = [
+            models.Index(fields=['company', 'owner'],
+                         name='core_dashboard_co_owner_idx'),
+            models.Index(fields=['company', 'partage'],
+                         name='core_dashboard_co_part_idx'),
+        ]
+
+    def __str__(self):
+        return self.titre

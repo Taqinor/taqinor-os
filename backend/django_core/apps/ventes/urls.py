@@ -16,6 +16,13 @@ from .views import (
     RoofLayoutViewSet,  # FG245
     FicheTechniqueViewSet,  # FG254
     DevisPresetViewSet,  # QJ16-wiring
+    RegulatoryDossierViewSet,  # FG268
+    DossierChecklistItemViewSet,  # FG268
+    DossierExchangeViewSet,  # FG269
+    SubventionDossierViewSet,  # FG270
+    Regularisation8221ViewSet,  # FG271
+    CommissioningTestViewSet,  # FG274
+    IVCurveCaptureViewSet,  # FG275
 )
 from .recouvrement import (
     FollowupLevelViewSet,
@@ -33,6 +40,8 @@ from .numbering_view import numerotation_audit, numerotation_preview
 from .extra_docs_views import lettre_relance_premium, fiche_remise_premium
 from .diagram_views import schema_unifilaire, schema_unifilaire_devis  # FG252
 from .roof_load_view import roof_load_check  # FG253
+from .connection_declaration_view import declaration_raccordement  # FG272
+from .calendrier_view import calendrier_reglementaire  # FG273
 
 router = DefaultRouter()
 router.register(r'devis', DevisViewSet)
@@ -52,6 +61,26 @@ router.register(r'niveaux-relance', FollowupLevelViewSet,
 # QJ16-wiring — presets de devis (list + destroy uniquement).
 # La création passe par POST /devis/{id}/save-preset/ sur le DevisViewSet.
 router.register(r'presets', DevisPresetViewSet, basename='devis-preset')
+# FG268 — dossiers réglementaires de raccordement + checklist par étape.
+router.register(r'dossiers-reglementaires', RegulatoryDossierViewSet,
+                basename='dossier-reglementaire')
+router.register(r'dossiers-checklist', DossierChecklistItemViewSet,
+                basename='dossier-checklist')
+# FG269 — journal de la navette opérateur (échanges ONEE/distributeur).
+router.register(r'dossiers-echanges', DossierExchangeViewSet,
+                basename='dossier-echange')
+# FG270 — éligibilité & suivi des subventions/incitations.
+router.register(r'subventions', SubventionDossierViewSet,
+                basename='subvention')
+# FG271 — workflow de régularisation Article 33 / déclarations 82-21.
+router.register(r'regularisations-8221', Regularisation8221ViewSet,
+                basename='regularisation-8221')
+# FG274 — fiches de recette IEC 62446 (mise en service).
+router.register(r'recettes-mes', CommissioningTestViewSet,
+                basename='recette-mes')
+# FG275 — captures de courbe I-V par string.
+router.register(r'courbes-iv', IVCurveCaptureViewSet,
+                basename='courbe-iv')
 
 urlpatterns = [
     # Q6/Q7 — Proposition web tokenisée (données JSON + e-signature). Jeton
@@ -94,6 +123,10 @@ urlpatterns = [
     path('devis/<int:pk>/schema-unifilaire/', schema_unifilaire_devis,
          name='devis-schema-unifilaire'),
     path('schema-unifilaire/', schema_unifilaire, name='schema-unifilaire'),
+    # FG272 — déclaration de raccordement BT/MT pré-remplie (JSON ou PDF).
+    # Placée AVANT le routeur pour ne pas être avalée par la route /devis/.
+    path('devis/<int:pk>/declaration-raccordement/',
+         declaration_raccordement, name='devis-declaration-raccordement'),
     # FG253 — aide au calcul de charge structure toiture (alerte dépassement).
     path('toiture/charge/', roof_load_check, name='toiture-charge'),
     # N87 — état du compte d'envoi email (informatif, lecture seule).
@@ -113,5 +146,8 @@ urlpatterns = [
     path('dashboard/', dashboard_quote_to_cash, name='ventes-dashboard'),
     # FG47 — prévision cash-flow / encaissements à venir (lecture seule).
     path('insights/cash-flow/', cash_flow_forecast, name='ventes-cash-flow'),
+    # FG273 — calendrier réglementaire & alertes d'expiration (lecture seule).
+    path('calendrier-reglementaire/', calendrier_reglementaire,
+         name='calendrier-reglementaire'),
     path('', include(router.urls)),
 ]

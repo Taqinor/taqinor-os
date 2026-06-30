@@ -343,3 +343,36 @@ def lead_card(lead_id, company):
         'subtitle': ' · '.join(parts),
         'url': f'/leads/{lead.pk}',
     }
+
+
+# DC12 — profil site/énergie réutilisable par client ─────────────────────────
+
+# Champs du profil que le générateur peut pré-remplir (source unique).
+SITE_PROFILE_FIELDS = (
+    'facture_hiver', 'facture_ete', 'ete_differente', 'conso_mensuelle_kwh',
+    'tranche_onee', 'raccordement', 'regularisation_8221', 'type_installation',
+    'pompe_cv', 'pompe_hmt_m', 'pompe_debit_m3h',
+    'type_toiture', 'surface_toiture_m2', 'orientation', 'inclinaison_deg',
+    'ombrage', 'ombrage_notes', 'gps_lat', 'gps_lng',
+)
+
+
+def site_profile_for_client(client_id, company=None):
+    """DC12 — profil site/énergie réutilisable d'un client, en dict.
+
+    Renvoie les valeurs à pré-remplir dans le générateur (clés =
+    ``SITE_PROFILE_FIELDS``), ou None si aucun profil n'existe. Scopé société
+    si fournie : un profil d'une autre société n'est jamais renvoyé. Lecture
+    seule — utilisé par le générateur de devis (y compris devis SANS lead) pour
+    ne plus re-saisir le profil à chaque fois.
+    """
+    if not client_id:
+        return None
+    from .models import SiteProfile
+    qs = SiteProfile.objects.filter(client_id=client_id)
+    if company is not None:
+        qs = qs.filter(company=company)
+    profile = qs.first()
+    if profile is None:
+        return None
+    return {f: getattr(profile, f) for f in SITE_PROFILE_FIELDS}

@@ -1,9 +1,10 @@
-import { useEffect, useState } from 'react'
-import { Download, Archive } from 'lucide-react'
+import { useEffect, useRef, useState } from 'react'
+import { Download, Archive, Settings, Upload } from 'lucide-react'
 import PageHeader from '../../components/layout/PageHeader'
 import {
   Card, CardContent, Button, Checkbox, Segmented, Spinner, toast,
 } from '../../ui'
+import api from '../../api/axios'
 import importApi, { downloadBlob, filenameFromResponse } from '../../api/importApi'
 
 const today = () => new Date().toISOString().slice(0, 10)
@@ -20,6 +21,39 @@ export default function ExportSauvegarde() {
   const [loading, setLoading] = useState(true)
   const [busy, setBusy] = useState(false)
   const [denied, setDenied] = useState(false)
+  // FG24 — export/import de la configuration entre sociétés.
+  const [cfgBusy, setCfgBusy] = useState(false)
+  const [cfgOverwrite, setCfgOverwrite] = useState(false)
+  const cfgFileRef = useRef(null)
+
+  const exportConfig = async () => {
+    setCfgBusy(true)
+    try {
+      const { data } = await api.get('/parametres/config-export/')
+      const blob = new Blob([JSON.stringify(data, null, 2)],
+        { type: 'application/json' })
+      downloadBlob(blob, `configuration_${today()}.json`)
+    } catch {
+      toast.error('L’export de configuration a échoué.')
+    } finally { setCfgBusy(false) }
+  }
+
+  const importConfig = async (file) => {
+    if (!file) return
+    setCfgBusy(true)
+    try {
+      const text = await file.text()
+      const bundle = JSON.parse(text)
+      const mode = cfgOverwrite ? '?mode=overwrite' : ''
+      await api.post(`/parametres/config-import/${mode}`, bundle)
+      toast.success('Configuration importée.')
+    } catch {
+      toast.error('Fichier de configuration invalide ou import refusé.')
+    } finally {
+      setCfgBusy(false)
+      if (cfgFileRef.current) cfgFileRef.current.value = ''
+    }
+  }
 
   useEffect(() => {
     importApi.getExportObjects()
@@ -167,6 +201,45 @@ export default function ExportSauvegarde() {
                 Aucun objet exportable.
               </div>
             )}
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* FG24 — Configuration (réplication entre sociétés). Jamais de secrets
+          ni de données métier ; import additif (admin uniquement). */}
+      <Card className="mt-4">
+        <CardContent className="pt-5 space-y-3">
+          <div className="flex items-center gap-2 text-sm font-semibold text-foreground">
+            <Settings className="h-4 w-4" /> Configuration (réplication entre sociétés)
+          </div>
+          <p className="text-[12.5px] text-muted-foreground">
+            Exporte/importe la <strong>configuration</strong> reproductible
+            (profil métier, rôles personnalisés, modèles de message, règles
+            d’automatisation, statuts, textes de documents) — jamais les
+            secrets (RIB, clés) ni les données métier. L’import est additif :
+            « fusionner » n’écrase rien, « écraser » met à jour l’existant.
+          </p>
+          <div className="flex flex-wrap items-center gap-3">
+            <Button variant="outline" onClick={exportConfig} loading={cfgBusy}>
+              <Download className="h-4 w-4" /> Exporter la configuration
+            </Button>
+            <input
+              ref={cfgFileRef} type="file" accept="application/json,.json"
+              className="hidden"
+              onChange={(e) => importConfig(e.target.files?.[0])}
+            />
+            <Button
+              variant="outline"
+              onClick={() => cfgFileRef.current?.click()}
+              loading={cfgBusy}
+            >
+              <Upload className="h-4 w-4" /> Importer un fichier
+            </Button>
+            <label className="flex items-center gap-2 text-sm text-muted-foreground">
+              <input type="checkbox" checked={cfgOverwrite}
+                     onChange={(e) => setCfgOverwrite(e.target.checked)} />
+              Écraser l’existant
+            </label>
           </div>
         </CardContent>
       </Card>

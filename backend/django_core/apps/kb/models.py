@@ -6,6 +6,14 @@ serveur (jamais lu du corps de requête). Entièrement additif.
 """
 from django.conf import settings
 from django.db import models
+from pgvector.django import VectorField
+
+# KB6 — dimension du vecteur d'embedding RAG/DocQA. Alignée 1:1 sur
+# ``apps.ged.models.EMBEDDING_DIM`` (1024) : les fragments d'articles partagent
+# le MÊME magasin pgvector et le MÊME provider d'embedding que la GED (FG352) —
+# pas un second magasin vectoriel. ``pgvector`` est déjà une dépendance dure du
+# projet (utilisée par la GED) : ce modèle n'introduit AUCUNE nouvelle dépendance.
+EMBEDDING_DIM = 1024
 
 
 class KbArticle(models.Model):
@@ -265,3 +273,66 @@ class KbLecture(models.Model):
 
     def __str__(self):
         return f'{self.utilisateur_id} a lu {self.article_id}'
+
+
+class KbArticleChunk(models.Model):
+    """KB6 — Fragment indexé d'un :class:`KbArticle` pour le RAG / DocQA (FG352).
+
+    Rend les articles de la base de connaissances exploitables par le pipeline
+    RAG/DocQA déjà construit dans ``apps.ged`` (FG352) : le texte de l'article
+    (titre + corps) est découpé en fragments (« chunks ») chevauchants et un
+    embedding par fragment est stocké ici, dans le MÊME type pgvector et avec le
+    MÊME provider d'embedding que ``ged.DocumentChunk`` — on ne dresse PAS un
+    second magasin vectoriel et on réutilise ``ged.services`` (chunk_text /
+    compute_embedding / embedding_enabled) plutôt que de réimplémenter.
+
+    KEY-GATED no-op (comme la GED) : sans clé d'embedding
+    (``ged.services.embedding_enabled()``), AUCUN fragment n'est embeddé ni
+    écrit (l'indexation est un no-op qui renvoie 0) — aucun appel réseau, aucun
+    coût, aucune nouvelle dépendance dure.
+
+    Multi-société : la company est posée côté serveur (celle de l'article),
+    jamais lue d'un corps de requête. ``chunk_index`` ordonne les fragments d'un
+    même article.
+    """
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        null=True, blank=True,
+        related_name='kb_app_article_chunks',
+        verbose_name='Société',
+    )
+    article = models.ForeignKey(
+        KbArticle,
+        on_delete=models.CASCADE,
+        related_name='chunks',
+        verbose_name='Article',
+    )
+    # Position du fragment dans l'article (0, 1, 2…) — posée côté serveur.
+    chunk_index = models.PositiveIntegerField(
+        default=0, verbose_name='Position du fragment')
+    # Texte brut du fragment (sert à renvoyer le passage récupéré à l'agent).
+    texte = models.TextField(blank=True, default='', verbose_name='Texte')
+    # Embedding du fragment (dimension EMBEDDING_DIM, alignée sur la GED). NULL
+    # tant que la clé d'embedding est absente (no-op). Même type pgvector que
+    # ``ged.DocumentChunk`` — pas un second magasin vectoriel.
+    embedding = VectorField(
+        dimensions=EMBEDDING_DIM, null=True, blank=True,
+        verbose_name='Embedding')
+    date_creation = models.DateTimeField(
+        auto_now_add=True, verbose_name='Créé le')
+
+    class Meta:
+        verbose_name = "Fragment d'article"
+        verbose_name_plural = "Fragments d'article"
+        ordering = ['article', 'chunk_index', 'id']
+        unique_together = [('article', 'chunk_index')]
+        indexes = [
+            # Nom EXPLICITE (≤30 car.) pour éviter toute divergence entre le
+            # nom haché déterministe de Django et celui de la migration.
+            models.Index(
+                fields=['company', 'article'], name='kb_chunk_co_article_idx'),
+        ]
+
+    def __str__(self):
+        return f'{self.article_id} #{self.chunk_index}'

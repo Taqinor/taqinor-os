@@ -19,6 +19,17 @@ from .roof_config import roof_config
 from .roof_layout import RoofLayoutViewSet  # FG245
 from .fiche_technique import FicheTechniqueViewSet  # FG254
 from .preset import DevisPresetViewSet  # QJ16-wiring
+from .regulatory import (  # FG268-FG271
+    RegulatoryDossierViewSet,
+    DossierChecklistItemViewSet,
+    DossierExchangeViewSet,
+    SubventionDossierViewSet,
+    Regularisation8221ViewSet,
+)
+from .commissioning import (  # FG274-FG275
+    CommissioningTestViewSet,
+    IVCurveCaptureViewSet,
+)
 
 __all__ = [
     'DevisViewSet',
@@ -36,4 +47,11 @@ __all__ = [
     'RoofLayoutViewSet',
     'FicheTechniqueViewSet',
     'DevisPresetViewSet',
+    'RegulatoryDossierViewSet',
+    'DossierChecklistItemViewSet',
+    'DossierExchangeViewSet',
+    'SubventionDossierViewSet',
+    'Regularisation8221ViewSet',
+    'CommissioningTestViewSet',
+    'IVCurveCaptureViewSet',
 ]

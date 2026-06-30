@@ -53,12 +53,60 @@ class AutomationRuleViewSet(TenantMixin, viewsets.ModelViewSet):
             qs = qs.filter(enabled=enabled in ('1', 'true'))
         return qs
 
+    def _audit_rule(self, field, label, old, new):
+        """FG18 — journalise une écriture de règle d'automatisation au Journal
+        d'audit des Paramètres (section='automatisations'). Best-effort : ne
+        casse jamais l'écriture de la règle. Acteur + société côté serveur."""
+        try:
+            from apps.parametres.models import SettingsAuditLog
+            actor = self.request.user
+            SettingsAuditLog.log_change(
+                company=getattr(actor, 'company', None), user=actor,
+                section='automatisations', field=field, field_label=label,
+                old=old, new=new,
+            )
+        except Exception:
+            pass
+
+    def perform_create(self, serializer):
+        # TenantMixin force la société côté serveur (jamais depuis la requête).
+        super().perform_create(serializer)
+        instance = serializer.instance
+        self._audit_rule(
+            field=f'rule:{instance.nom}', label='Règle créée', old=None,
+            new=f'{instance.nom} '
+                f'({"activée" if instance.enabled else "désactivée"})')
+
+    def perform_update(self, serializer):
+        old_enabled = serializer.instance.enabled
+        old_nom = serializer.instance.nom
+        super().perform_update(serializer)
+        instance = serializer.instance
+        if instance.enabled != old_enabled or instance.nom != old_nom:
+            self._audit_rule(
+                field=f'rule:{instance.nom}', label='Règle modifiée',
+                old=f'{old_nom} '
+                    f'({"activée" if old_enabled else "désactivée"})',
+                new=f'{instance.nom} '
+                    f'({"activée" if instance.enabled else "désactivée"})')
+
+    def perform_destroy(self, instance):
+        nom = instance.nom
+        super().perform_destroy(instance)
+        self._audit_rule(
+            field=f'rule:{nom}', label='Règle supprimée', old=nom, new=None)
+
     @action(detail=True, methods=['post'], permission_classes=[IsAdminRole])
     def toggle(self, request, pk=None):
         """Bascule l'état activé/désactivé de la règle."""
         rule = self.get_object()
+        old = rule.enabled
         rule.enabled = not rule.enabled
         rule.save(update_fields=['enabled', 'date_modification'])
+        self._audit_rule(
+            field=f'rule:{rule.nom}', label='Règle (bascule)',
+            old='activée' if old else 'désactivée',
+            new='activée' if rule.enabled else 'désactivée')
         return Response(self.get_serializer(rule).data)
 
 

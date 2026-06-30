@@ -2,15 +2,19 @@ from django.urls import include, path
 from rest_framework.routers import DefaultRouter
 
 from .views import (
-    BaremeIndemniteViewSet, BordereauRemiseViewSet, CaisseViewSet,
-    CautionBancaireViewSet, CessionImmobilisationViewSet, CompteComptableViewSet,
-    CompteTresorerieViewSet, DeclarationTVAViewSet, DotationAmortissementViewSet,
-    EcritureComptableViewSet, EffetViewSet, EtatsComptablesViewSet,
-    ExerciceComptableViewSet, ImmobilisationViewSet, IndemniteChantierViewSet,
-    JournalViewSet, LignePrevisionnelTresorerieViewSet, NoteFraisViewSet,
-    PaymentRunViewSet, PeriodeComptableViewSet, PlanComptableViewSet,
-    RapprochementBancaireViewSet, RapprochementViewSet, RetenueGarantieViewSet,
-    RetenueSourceViewSet, TimbreFiscalViewSet, VirementInterneViewSet,
+    BaremeIndemniteViewSet, BordereauRemiseViewSet, BudgetViewSet,
+    CaisseViewSet, CautionBancaireViewSet, CentreCoutViewSet,
+    CessionImmobilisationViewSet, CommissionPayoutRunViewSet,
+    CompteComptableViewSet, CompteTresorerieViewSet, ContratAvancementViewSet,
+    DeclarationTVAViewSet, DotationAmortissementViewSet,
+    EcritureComptableViewSet, EffetViewSet, EntiteConsolidationViewSet,
+    EtatsComptablesViewSet, ExerciceComptableViewSet, ImmobilisationViewSet,
+    IndemniteChantierViewSet, JournalViewSet,
+    LignePrevisionnelTresorerieViewSet, NoteFraisViewSet, PaymentRunViewSet,
+    PeriodeComptableViewSet, PilotageViewSet, PlanComptableViewSet,
+    ProvisionCreanceViewSet, RapprochementBancaireViewSet, RapprochementViewSet,
+    RetenueGarantieViewSet, RetenueSourceViewSet, TimbreFiscalViewSet,
+    TravauxEnCoursViewSet, VirementInterneViewSet,
 )
 
 router = DefaultRouter()
@@ -41,6 +45,14 @@ router.register(r'retenues-source', RetenueSourceViewSet)
 router.register(r'timbres-fiscaux', TimbreFiscalViewSet)
 router.register(r'retenues-garantie', RetenueGarantieViewSet)
 router.register(r'cautions-bancaires', CautionBancaireViewSet)
+router.register(r'contrats-avancement', ContratAvancementViewSet)
+router.register(r'travaux-en-cours', TravauxEnCoursViewSet)
+router.register(r'commission-payout-runs', CommissionPayoutRunViewSet)
+router.register(r'budgets', BudgetViewSet)
+router.register(r'centres-cout', CentreCoutViewSet)
+router.register(r'provisions-creances', ProvisionCreanceViewSet)
+router.register(r'entites-consolidation', EntiteConsolidationViewSet)
+router.register(r'pilotage', PilotageViewSet, basename='pilotage')
 router.register(r'etats', EtatsComptablesViewSet, basename='etats')
 
 urlpatterns = [

@@ -5,6 +5,8 @@ FG369 — forme de sortie des modèles de workflow installables (catalogue).
 """
 from rest_framework import serializers
 
+from .models import Dashboard
+
 
 class ScheduledJobSerializer(serializers.Serializer):
     """Job planifié normalisé (cf. ``core.jobs.list_jobs``)."""
@@ -33,3 +35,19 @@ class WorkflowTemplateSerializer(serializers.Serializer):
     description = serializers.CharField(allow_blank=True)
     nb_etapes = serializers.IntegerField()
     steps = WorkflowTemplateStepSerializer(many=True)
+
+
+class DashboardSerializer(serializers.ModelSerializer):
+    """FG381 — dashboard sans-code sauvegardé.
+
+    ``company`` et ``owner`` ne sont JAMAIS lus du corps : ``company`` est
+    imposée côté serveur (TenantMixin) et ``owner`` est positionné à
+    l'utilisateur courant à la création (voir la vue).
+    """
+    class Meta:
+        model = Dashboard
+        fields = [
+            'id', 'titre', 'description', 'layout', 'partage', 'owner',
+            'created_at', 'updated_at',
+        ]
+        read_only_fields = ['id', 'owner', 'created_at', 'updated_at']

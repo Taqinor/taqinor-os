@@ -5,6 +5,7 @@ dérivée du ``projet`` (jamais lue d'un corps de requête) ; aucun import
 cross-app (on reste dans ``gestion_projet``).
 """
 from datetime import timedelta
+from decimal import Decimal
 
 from django.db import transaction
 
@@ -16,6 +17,234 @@ from .models import (
     Projet,
     Tache,
 )
+
+
+# ── Suivi des temps (PROJ24) ─────────────────────────────────────────────────
+def cout_timesheet(ressource, heures):
+    """Coût INTERNE d'une saisie de temps = ``heures`` × coût horaire interne.
+
+    ``cout_horaire`` est porté par la ``RessourceProfil`` ; absent ou nul → 0.
+    Renvoie un ``Decimal`` arrondi à 2 décimales. Donnée 100 % INTERNE de
+    pilotage (jamais exposée au client final).
+    """
+    if ressource is None or heures is None:
+        return Decimal('0.00')
+    cout_horaire = ressource.cout_horaire or Decimal('0')
+    return (Decimal(heures) * cout_horaire).quantize(Decimal('0.01'))
+
+
+# ── Jalons de facturation liés à l'avancement (PROJ27) ───────────────────────
+class FacturationJalonError(Exception):
+    """Erreur métier au déclenchement de la facturation d'un jalon."""
+
+
+def declencher_facturation_jalon(jalon):
+    """Déclenche la facturation liée à un jalon ATTEINT (PROJ27).
+
+    Un jalon n'est facturable que s'il est ATTEINT (``statut == atteint``) et
+    porte un ``facturation_pct`` > 0 — sinon ``FacturationJalonError``. Le
+    montant théorique est ``facturation_pct`` % du ``budget_total`` du projet
+    (donnée INTERNE de pilotage).
+
+    L'écriture de la FACTURE client passe EXCLUSIVEMENT par ``ventes`` via son
+    ``services`` (frontière cross-app, CLAUDE.md ; import fonction-local) — ce
+    module n'importe JAMAIS les modèles/vues de ``ventes``. Aujourd'hui
+    ``ventes.services`` n'expose pas d'entrée « facturer un jalon de projet » :
+    on DÉGRADE proprement en renvoyant une PROPOSITION (aucune écriture
+    cross-app), avec ``facture_creee=False`` et une note. Le jour où
+    ``ventes.services`` exposera ``facturer_jalon_projet``, on l'appellera ici.
+
+    Renvoie un dict ``{jalon_id, facturation_pct, montant, facture_creee, note}``.
+    """
+    from .models import Jalon
+
+    if jalon.statut != Jalon.Statut.ATTEINT:
+        raise FacturationJalonError(
+            'Le jalon doit être atteint pour déclencher la facturation.')
+    pct = jalon.facturation_pct or Decimal('0')
+    if pct <= 0:
+        raise FacturationJalonError(
+            "Le jalon ne porte aucun pourcentage de facturation.")
+
+    base = jalon.projet.budget_total or Decimal('0')
+    montant = (base * pct / Decimal('100')).quantize(Decimal('0.01'))
+
+    # Route vers ventes.services si une entrée dédiée existe ; sinon dégrade.
+    facture_creee = False
+    note = ''
+    try:
+        from apps.ventes import services as ventes_services
+        facturer = getattr(
+            ventes_services, 'facturer_jalon_projet', None)
+    except Exception:  # pragma: no cover - ventes toujours importable
+        facturer = None
+    if callable(facturer):  # pragma: no cover - pas d'entrée ventes aujourd'hui
+        facturer(jalon=jalon, montant=montant)
+        facture_creee = True
+        note = 'Facture déclenchée via ventes.services.'
+    else:
+        note = (
+            "Aucune entrée ventes.services.facturer_jalon_projet — proposition "
+            "seule (aucune facture créée).")
+
+    return {
+        'jalon_id': jalon.id,
+        'facturation_pct': pct,
+        'montant': montant,
+        'facture_creee': facture_creee,
+        'note': note,
+    }
+
+
+# ── Documents & plans versionnés (PROJ33) ────────────────────────────────────
+@transaction.atomic
+def deposer_version_document(document, fichier, commentaire='', auteur=None):
+    """Dépose une NOUVELLE version d'un ``DocumentProjet`` (PROJ33).
+
+    Le numéro de version est posé CÔTÉ SERVEUR : ``document.derniere_version`` +
+    1 (jamais lu du corps de requête) — les versions ne s'écrasent jamais. Le
+    cache ``document.derniere_version`` est avancé dans la même transaction
+    atomique. ``company`` est toujours celle du ``document`` (jamais lue d'un
+    corps) ; ``auteur`` est posé côté serveur. Renvoie la ``VersionDocument``
+    créée.
+    """
+    from .models import DocumentProjet, VersionDocument
+
+    if not isinstance(document, DocumentProjet):  # pragma: no cover - garde-fou
+        raise TypeError('document doit être une instance de DocumentProjet.')
+    # Verrou ligne pour sérialiser des dépôts concurrents sur le même document.
+    document = DocumentProjet.objects.select_for_update().get(pk=document.pk)
+    prochaine = (document.derniere_version or 0) + 1
+    version = VersionDocument.objects.create(
+        company=document.company,
+        document=document,
+        version=prochaine,
+        fichier=fichier,
+        commentaire=commentaire or '',
+        auteur=auteur,
+    )
+    document.derniere_version = prochaine
+    document.save(update_fields=['derniere_version'])
+    return version
+
+
+# ── Templates de projet par type d'installation (PROJ35) ─────────────────────
+class ModeleProjetError(Exception):
+    """Erreur métier à l'instanciation d'un modèle de projet."""
+
+
+@transaction.atomic
+def instancier_modele(modele, projet):
+    """Applique un ``ModeleProjet`` à un ``Projet`` : crée phases + tâches (PROJ35).
+
+    Pour chaque tâche-type du modèle, s'assure que la ``PhaseProjet`` du
+    ``type_phase`` correspondant existe (création idempotente, mêmes libellés que
+    ``PHASES_STANDARD``) puis crée la ``Tache`` (libellé / code WBS / ordre /
+    charge copiés du modèle), rattachée à cette phase. ``company`` est TOUJOURS
+    celle du ``projet`` (jamais lue d'un corps) ; le modèle doit appartenir à la
+    MÊME société que le projet (sinon ``ModeleProjetError``). Écritures
+    atomiques. Renvoie la liste des ``Tache`` créées.
+
+    NB — opération ADDITIVE : elle n'écrase aucune phase/tâche existante (les
+    phases sont créées seulement si absentes ; les tâches sont toujours ajoutées).
+    """
+    from .models import ModeleProjet, PhaseProjet, Tache
+
+    if not isinstance(modele, ModeleProjet):  # pragma: no cover - garde-fou
+        raise TypeError('modele doit être une instance de ModeleProjet.')
+    if modele.company_id != projet.company_id:
+        raise ModeleProjetError(
+            'Le modèle et le projet doivent appartenir à la même société.')
+
+    # Libellés standard par type de phase (cohérent avec PHASES_STANDARD).
+    libelles_phase = {tp: lib for tp, lib in PHASES_STANDARD}
+    ordres_phase = {
+        tp: i for i, (tp, _) in enumerate(PHASES_STANDARD, start=1)}
+
+    # Phases déjà présentes sur le projet (par type).
+    phases_par_type = {
+        p.type_phase: p
+        for p in projet.phases.all()
+    }
+
+    def _phase_pour(type_phase):
+        phase = phases_par_type.get(type_phase)
+        if phase is None:
+            phase = PhaseProjet.objects.create(
+                company=projet.company,
+                projet=projet,
+                type_phase=type_phase,
+                libelle=libelles_phase.get(type_phase, ''),
+                ordre=ordres_phase.get(type_phase, 0),
+            )
+            phases_par_type[type_phase] = phase
+        return phase
+
+    creees = []
+    for mt in modele.taches.order_by('ordre', 'id'):
+        phase = _phase_pour(mt.type_phase)
+        tache = Tache.objects.create(
+            company=projet.company,
+            projet=projet,
+            phase=phase,
+            code_wbs=mt.code_wbs,
+            libelle=mt.libelle,
+            ordre=mt.ordre,
+            charge_estimee=mt.charge_estimee,
+        )
+        creees.append(tache)
+    return creees
+
+
+# ── Sous-traitance & clôture + REX (PROJ38) ──────────────────────────────────
+class ClotureError(Exception):
+    """Erreur métier à la clôture d'un projet."""
+
+
+@transaction.atomic
+def cloturer_projet(projet, *, date_cloture, date_reception=None,
+                    points_positifs='', points_amelioration='',
+                    recommandations='', auteur=None):
+    """Clôture un ``Projet`` + enregistre le RETOUR D'EXPÉRIENCE (PROJ38).
+
+    Crée (ou met à jour) la ``ClotureProjet`` 1–1 du projet avec le REX
+    (positifs / améliorations / recommandations) puis fait passer le projet au
+    statut TERMINÉ s'il ne l'est pas déjà (transition côté serveur, journalisée
+    dans ``ProjetActivity``). Un projet ANNULÉ ne peut pas être clôturé (lève
+    ``ClotureError``). ``company`` est TOUJOURS celle du projet ; ``cloture_par``
+    est posé côté serveur. Écritures atomiques. Renvoie la ``ClotureProjet``.
+    """
+    from .models import ClotureProjet, ProjetActivity
+
+    if projet.statut == Projet.Statut.ANNULE:
+        raise ClotureError("Un projet annulé ne peut pas être clôturé.")
+
+    cloture, _ = ClotureProjet.objects.update_or_create(
+        projet=projet,
+        defaults={
+            'company': projet.company,
+            'date_cloture': date_cloture,
+            'date_reception': date_reception,
+            'points_positifs': points_positifs or '',
+            'points_amelioration': points_amelioration or '',
+            'recommandations': recommandations or '',
+            'cloture_par': auteur,
+        },
+    )
+
+    # Transition vers TERMINÉ (journalisée), idempotente.
+    if projet.statut != Projet.Statut.TERMINE:
+        ancien = projet.statut
+        projet.statut = Projet.Statut.TERMINE
+        projet.save(update_fields=['statut'])
+        ProjetActivity.objects.create(
+            company=projet.company,
+            projet=projet,
+            old_value=ancien,
+            new_value=Projet.Statut.TERMINE,
+            auteur=auteur,
+        )
+    return cloture
 
 
 # Décomposition standard d'un projet d'installation solaire (WBS), dans l'ordre

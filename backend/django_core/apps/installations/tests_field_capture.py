@@ -59,7 +59,7 @@ def make_produit(company, nom, stock):
     n = next(_seq)
     return Produit.objects.create(
         company=company, nom=nom, sku=f'SKU-{company.id}-{n}',
-        prix_vente=Decimal('100'), prix_achat=Decimal('60'),
+        prix_vente=Decimal('100'), prix_achat=Decimal('73951'),
         quantite_stock=stock)
 
 
@@ -279,7 +279,10 @@ class TestConsommation(_Base):
         r = self.api.get(f'{self.url}/consommation/')
         body = str(r.data)
         self.assertNotIn('prix_achat', body)
-        self.assertNotIn('60', body.replace('600', ''))  # prix_achat = 60
+        # Valeur d'achat distinctive (5 chiffres) : ne peut pas coïncider avec
+        # un PK/quantité/décimale du corps comme le faisait l'ancien '60'
+        # (collision avec le produit n°160 en suite complète CI).
+        self.assertNotIn('73951', body)  # prix_achat — jamais exposé
 
 
 # ── F13/F14 — mémo vocal + transcription no-op ───────────────────────────────

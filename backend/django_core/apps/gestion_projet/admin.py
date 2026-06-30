@@ -1,16 +1,29 @@
 from django.contrib import admin
 
 from .models import (
+    ActionProjet,
     BudgetProjet,
+    ClotureProjet,
+    CommentaireProjet,
+    CompteRenduReunion,
     DependanceTache,
+    DocumentProjet,
+    LotSousTraitance,
     Jalon,
     LigneBudgetProjet,
+    ModeleProjet,
+    ModeleTache,
     PhaseProjet,
+    PortailProjetToken,
     Projet,
     ProjetActivity,
     ProjetChantier,
     ProjetLien,
+    Risque,
+    SousTraitant,
     Tache,
+    Timesheet,
+    VersionDocument,
 )
 
 
@@ -90,3 +103,104 @@ class LigneBudgetProjetAdmin(admin.ModelAdmin):
                     'montant_prevu', 'company')
     list_filter = ('categorie', 'company')
     search_fields = ('libelle',)
+
+
+@admin.register(Timesheet)
+class TimesheetAdmin(admin.ModelAdmin):
+    list_display = ('id', 'projet', 'ressource', 'tache', 'date', 'heures',
+                    'cout', 'company')
+    list_filter = ('company',)
+    search_fields = ('commentaire',)
+
+
+@admin.register(Risque)
+class RisqueAdmin(admin.ModelAdmin):
+    list_display = ('id', 'projet', 'libelle', 'categorie', 'probabilite',
+                    'impact', 'criticite', 'statut', 'company')
+    list_filter = ('statut', 'categorie', 'company')
+    search_fields = ('libelle', 'description', 'mitigation')
+
+
+@admin.register(ActionProjet)
+class ActionProjetAdmin(admin.ModelAdmin):
+    list_display = ('id', 'projet', 'libelle', 'statut', 'priorite',
+                    'responsable', 'echeance', 'company')
+    list_filter = ('statut', 'priorite', 'company')
+    search_fields = ('libelle', 'description')
+
+
+@admin.register(CompteRenduReunion)
+class CompteRenduReunionAdmin(admin.ModelAdmin):
+    list_display = ('id', 'projet', 'titre', 'date_reunion', 'lieu',
+                    'redacteur', 'company')
+    list_filter = ('company',)
+    search_fields = ('titre', 'decisions', 'ordre_du_jour')
+
+
+@admin.register(DocumentProjet)
+class DocumentProjetAdmin(admin.ModelAdmin):
+    list_display = ('id', 'projet', 'nom', 'type_doc', 'derniere_version',
+                    'company')
+    list_filter = ('type_doc', 'company')
+    search_fields = ('nom', 'description')
+
+
+@admin.register(VersionDocument)
+class VersionDocumentAdmin(admin.ModelAdmin):
+    list_display = ('id', 'document', 'version', 'auteur', 'company',
+                    'date_creation')
+    list_filter = ('company',)
+    search_fields = ('commentaire',)
+
+
+@admin.register(CommentaireProjet)
+class CommentaireProjetAdmin(admin.ModelAdmin):
+    list_display = ('id', 'projet', 'cible_type', 'cible_id', 'auteur',
+                    'company', 'date_creation')
+    list_filter = ('cible_type', 'company')
+    search_fields = ('texte',)
+
+
+@admin.register(ModeleProjet)
+class ModeleProjetAdmin(admin.ModelAdmin):
+    list_display = ('id', 'nom', 'type_installation', 'actif', 'company')
+    list_filter = ('type_installation', 'actif', 'company')
+    search_fields = ('nom', 'description')
+
+
+@admin.register(ModeleTache)
+class ModeleTacheAdmin(admin.ModelAdmin):
+    list_display = ('id', 'modele', 'type_phase', 'libelle', 'ordre',
+                    'company')
+    list_filter = ('type_phase', 'company')
+    search_fields = ('libelle',)
+
+
+@admin.register(PortailProjetToken)
+class PortailProjetTokenAdmin(admin.ModelAdmin):
+    list_display = ('id', 'projet', 'actif', 'company', 'date_creation')
+    list_filter = ('actif', 'company')
+    search_fields = ('token',)
+
+
+@admin.register(SousTraitant)
+class SousTraitantAdmin(admin.ModelAdmin):
+    list_display = ('id', 'nom', 'specialite', 'contact', 'actif', 'company')
+    list_filter = ('actif', 'company')
+    search_fields = ('nom', 'specialite', 'contact')
+
+
+@admin.register(LotSousTraitance)
+class LotSousTraitanceAdmin(admin.ModelAdmin):
+    list_display = ('id', 'projet', 'sous_traitant', 'libelle', 'montant',
+                    'statut', 'company')
+    list_filter = ('statut', 'company')
+    search_fields = ('libelle', 'description')
+
+
+@admin.register(ClotureProjet)
+class ClotureProjetAdmin(admin.ModelAdmin):
+    list_display = ('id', 'projet', 'date_cloture', 'date_reception',
+                    'cloture_par', 'company')
+    list_filter = ('company',)
+    search_fields = ('points_positifs', 'recommandations')

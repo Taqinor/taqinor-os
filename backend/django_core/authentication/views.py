@@ -144,6 +144,22 @@ class CustomTokenObtainPairView(TokenObtainPairView):
 
     def post(self, request, *args, **kwargs):
         from rest_framework.exceptions import ValidationError
+        from .password_policy import (
+            is_locked, register_failed_login, reset_failed_login,
+        )
+        # FG22 — verrouillage de compte (par société, opt-in). Résout le compte
+        # par username (insensible à la casse) pour vérifier l'état de verrou
+        # AVANT de tenter l'authentification. Inerte si la société n'a pas armé
+        # ``lockout_max_attempts`` (aucun compte n'a alors de ``locked_until``).
+        raw_uname0 = (request.data.get('username') or '').strip()
+        locked_user = CustomUser.objects.filter(
+            username__iexact=raw_uname0).first() if raw_uname0 else None
+        if locked_user is not None and is_locked(locked_user):
+            return Response(
+                {'detail': 'Compte temporairement verrouillé après trop de '
+                           'tentatives. Réessayez plus tard.'},
+                status=status.HTTP_403_FORBIDDEN,
+            )
         # Double authentification (2FA, N96) : si le mot de passe est bon mais
         # qu'un code TOTP est requis/invalide, on renvoie une réponse 401 au
         # contour stable (`otp_required: true`) que le frontend sait gérer —
@@ -162,6 +178,10 @@ class CustomTokenObtainPairView(TokenObtainPairView):
                     {'otp_required': True, 'detail': msg},
                     status=status.HTTP_401_UNAUTHORIZED,
                 )
+            # FG22 — échec d'identifiants : compte le tentative ratée et
+            # verrouille au seuil société. No-op si le verrouillage est off.
+            if locked_user is not None:
+                register_failed_login(locked_user)
             raise
         if response.status_code == 200:
             access = response.data.pop('access', None)
@@ -171,6 +191,20 @@ class CustomTokenObtainPairView(TokenObtainPairView):
             # le username (insensible à la casse), source d'autorité.
             raw_uname = (request.data.get('username') or '').strip()
             u = CustomUser.objects.filter(username__iexact=raw_uname).first()
+            # FG22 — connexion réussie : remet à zéro le compteur d'échecs et
+            # lève tout verrou éventuel. No-op si rien n'était posé.
+            reset_failed_login(u)
+            # FG22 — expiration du mot de passe : si dépassée (société l'a
+            # activée), on arme la rotation forcée à cette session (le frontend
+            # lit must_change_password dans /auth/me/). Inerte si expiry=0.
+            try:
+                from .password_policy import password_expired
+                if u is not None and not u.must_change_password \
+                        and password_expired(u):
+                    u.must_change_password = True
+                    u.save(update_fields=['must_change_password'])
+            except Exception:
+                pass
             # Sessions actives (N96) — tracer cette connexion par le jti du
             # jeton de rafraîchissement. Best-effort, ne bloque jamais le login.
             _record_session(u, refresh, request)
@@ -432,8 +466,72 @@ class UserViewSet(viewsets.ModelViewSet):
             return CustomUser.objects.all().order_by('date_joined')
         return CustomUser.objects.none()
 
+    def _audit_user(self, field, label, old, new):
+        """FG18 — écrit une ligne au Journal d'audit des paramètres
+        (section='utilisateurs') pour un changement de gestion d'utilisateur.
+
+        Best-effort : ne casse jamais l'écriture utilisateur. Réutilise le
+        mécanisme ``SettingsAuditLog`` existant des Paramètres (acteur + société
+        posés côté serveur)."""
+        try:
+            from apps.parametres.models import SettingsAuditLog
+            actor = self.request.user
+            SettingsAuditLog.log_change(
+                company=getattr(actor, 'company', None), user=actor,
+                section='utilisateurs', field=field, field_label=label,
+                old=old, new=new,
+            )
+        except Exception:
+            pass
+
+    def _role_label(self, role_id):
+        """Libellé lisible d'un rôle (nom) à partir de son id, ou son id brut."""
+        if role_id in (None, '', 'null'):
+            return '—'
+        try:
+            from apps.roles.models import Role
+            role = Role.objects.filter(pk=role_id).first()
+            return role.nom if role else str(role_id)
+        except Exception:
+            return str(role_id)
+
     def perform_create(self, serializer):
-        serializer.save(company=self.request.user.company)
+        instance = serializer.save(company=self.request.user.company)
+        self._audit_user(
+            field=f'user:{instance.username}', label='Utilisateur créé',
+            old=None,
+            new=f'{instance.username} (rôle {self._role_label(instance.role_id)})',
+        )
+
+    def perform_update(self, serializer):
+        # FG18 — journaliser les changements de rôle / activation / superviseur.
+        target = serializer.instance
+        old_role_id = target.role_id
+        old_active = target.is_active
+        old_sup_id = target.supervisor_id
+        instance = serializer.save()
+        uname = instance.username
+        if instance.role_id != old_role_id:
+            self._audit_user(
+                field=f'user:{uname}:role', label='Rôle de l\'utilisateur',
+                old=self._role_label(old_role_id),
+                new=self._role_label(instance.role_id))
+        if instance.is_active != old_active:
+            self._audit_user(
+                field=f'user:{uname}:actif', label='Compte actif',
+                old='actif' if old_active else 'désactivé',
+                new='actif' if instance.is_active else 'désactivé')
+        if instance.supervisor_id != old_sup_id:
+            self._audit_user(
+                field=f'user:{uname}:superviseur', label='Superviseur',
+                old=old_sup_id, new=instance.supervisor_id)
+
+    def perform_destroy(self, instance):
+        uname = instance.username
+        super().perform_destroy(instance)
+        self._audit_user(
+            field=f'user:{uname}', label='Utilisateur supprimé',
+            old=uname, new=None)
 
     @action(detail=True, methods=['post'], url_path='avatar',
             parser_classes=[MultiPartParser])
@@ -786,6 +884,16 @@ class ChangePasswordView(APIView):
         except DjValidationError as exc:
             return Response(
                 {'detail': ' '.join(exc.messages)},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        # FG22 — politique par société (longueur/complexité) en plus des
+        # validateurs Django. Inerte tant que la société n'a rien durci.
+        from .password_policy import validate_password_policy
+        policy_errors = validate_password_policy(
+            new, getattr(user, 'company', None))
+        if policy_errors:
+            return Response(
+                {'detail': ' '.join(policy_errors)},
                 status=status.HTTP_400_BAD_REQUEST,
             )
         user.set_password(new)

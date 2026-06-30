@@ -351,15 +351,15 @@ add-to-plan rule) — this audit branch only edits `docs/PLAN.md`.
 ### Paramètres / RBAC / auth & security
 
 - [x] FG17 — Email template management (parity with WhatsApp templates). Only WhatsApp templates are modelled; the automation email action falls back to a hardcoded "Notification Taqinor" subject. Add editable `sujet`+`corps` per `cle` (extend `MessageTemplate` or add `EmailTemplate`) with `{civilite}{nom}{reference}{lien}` placeholders + editor in `EmailSection.jsx`. (Gate: SCHEMA.)
-- [ ] FG18 — Settings-audit completeness. `SettingsAuditLog` covers only profil/messages; role-permission edits, user role/active/supervisor changes, and automation rule create/toggle/delete are **not** audited. Emit audit entries on those writes + add their sections to the audit filter. (Gate: ROUTINE.)
-- [ ] FG19 — Read-only org-chart / team hierarchy view. `EquipeSection.jsx` is a flat supervisor table; add a tree view fed by the existing `/users/` `supervisor` field (optionally a per-node "sees N records/people" hint from `visible_user_ids`) so the founder can verify record-visibility scoping at a glance. (Gate: ROUTINE — frontend only.)
-- [ ] FG20 — Per-field / sensitive-data role permissions. RBAC has only `prix_achat_voir`/`journal_activite_voir`; no PII/margin masking. Add a curated "Données sensibles" permission group (e.g. `client_pii_voir`, `marge_voir`) enforced in the relevant serializers (mask when absent). (Gate: DECISION on which fields; curated version SCHEMA-light, fully-dynamic version ARCH.)
-- [ ] FG21 — User invite / self-set-password onboarding. Admins must type a new user's plaintext password; `must_change_password` exists but the create form never sets it. Minimal: expose the checkbox on create (already serializer-writable). Fuller: invite-token + emailed set-password link. (Gate: AUTH.)
-- [ ] FG22 — Per-company password policy & account lockout. Only Django default validators + a fixed 5/min IP throttle. Add `CompanyProfile` policy fields (min length, complexity, lockout-after-N, expiry days) enforced in change-password/login + a "Sécurité" settings section. (Gate: AUTH + SCHEMA.)
-- [ ] FG23 — Security-events view + failed-login alerting. `login`/`login_failed` are captured but only via the Directeur-gated Journal, with no proactive alert. Add a filtered "Sécurité" tab (reuse `AuditLogViewSet`) + a `SECURITY_ALERT` event that fires after N consecutive failed logins. (Gate: AUTH.)
-- [ ] FG24 — Settings config export/import between companies. `ExportSauvegarde.jsx` exports business data only, never configuration. Add `GET parametres/config-export/` (profile, roles, message templates, automation rules, statut/intervention/checklist types — never secrets/business data) + admin-only additive `config-import/`. (Gate: DECISION on merge-vs-overwrite + ARCH-lite.)
-- [ ] FG25 — Configurable approval workflows beyond discount. The only first-class approval is discount; the generic `AutomationApproval` primitive isn't wired to other high-impact actions. Add an "Approbations" settings surface declaring policies (action type + threshold + approver tier) feeding the approval flow. (Gate: DECISION + SCHEMA.)
-- [ ] FG26 — Data-retention / GDPR tooling. No per-subject export, anonymize/erase, or retention window. Add `GET crm/clients/{id}/data-export/` (subject access bundle) + an admin-gated `clients/{id}/anonymize/` (scrubs PII, preserves accounting integrity) + optional `audit_retention_days` purge. (Gate: DECISION (erasure vs legal retention) + AUTH.)
+- [x] FG18 — Settings-audit completeness. `SettingsAuditLog` covers only profil/messages; role-permission edits, user role/active/supervisor changes, and automation rule create/toggle/delete are **not** audited. Emit audit entries on those writes + add their sections to the audit filter. (Gate: ROUTINE.)
+- [x] FG19 — Read-only org-chart / team hierarchy view. `EquipeSection.jsx` is a flat supervisor table; add a tree view fed by the existing `/users/` `supervisor` field (optionally a per-node "sees N records/people" hint from `visible_user_ids`) so the founder can verify record-visibility scoping at a glance. (Gate: ROUTINE — frontend only.)
+- [x] FG20 — Per-field / sensitive-data role permissions. RBAC has only `prix_achat_voir`/`journal_activite_voir`; no PII/margin masking. Add a curated "Données sensibles" permission group (e.g. `client_pii_voir`, `marge_voir`) enforced in the relevant serializers (mask when absent). (Gate: DECISION on which fields; curated version SCHEMA-light, fully-dynamic version ARCH.)
+- [x] FG21 — User invite / self-set-password onboarding. Admins must type a new user's plaintext password; `must_change_password` exists but the create form never sets it. Minimal: expose the checkbox on create (already serializer-writable). Fuller: invite-token + emailed set-password link. (Gate: AUTH.)
+- [x] FG22 — Per-company password policy & account lockout. Only Django default validators + a fixed 5/min IP throttle. Add `CompanyProfile` policy fields (min length, complexity, lockout-after-N, expiry days) enforced in change-password/login + a "Sécurité" settings section. (Gate: AUTH + SCHEMA.)
+- [x] FG23 — Security-events view + failed-login alerting. `login`/`login_failed` are captured but only via the Directeur-gated Journal, with no proactive alert. Add a filtered "Sécurité" tab (reuse `AuditLogViewSet`) + a `SECURITY_ALERT` event that fires after N consecutive failed logins. (Gate: AUTH.)
+- [x] FG24 — Settings config export/import between companies. `ExportSauvegarde.jsx` exports business data only, never configuration. Add `GET parametres/config-export/` (profile, roles, message templates, automation rules, statut/intervention/checklist types — never secrets/business data) + admin-only additive `config-import/`. (Gate: DECISION on merge-vs-overwrite + ARCH-lite.)
+- [x] FG25 — Configurable approval workflows beyond discount. The only first-class approval is discount; the generic `AutomationApproval` primitive isn't wired to other high-impact actions. Add an "Approbations" settings surface declaring policies (action type + threshold + approver tier) feeding the approval flow. (Gate: DECISION + SCHEMA.)
+- [x] FG26 — Data-retention / GDPR tooling. No per-subject export, anonymize/erase, or retention window. Add `GET crm/clients/{id}/data-export/` (subject access bundle) + an admin-gated `clients/{id}/anonymize/` (scrubs PII, preserves accounting integrity) + optional `audit_retention_days` purge. (Gate: DECISION (erasure vs legal retention) + AUTH.)
 
 ### CRM
 
@@ -408,8 +408,8 @@ add-to-plan rule) — this audit branch only edits `docs/PLAN.md`.
 - [x] FG63 — Inventory-count session workflow. `apply_inventory_count` posts adjustments immediately/irreversibly in one shot — no draft, partial save, or large-variance review for a real stock-take. Add `InventaireSession`+`LigneInventaire` (draft) with a `valider` action emitting the AJUSTEMENT movements + an écart report. (Gate: SCHEMA.)  [DONE 2026-06-21]
 - [x] FG64 — Battery/sealant expiry tracking. No expiry fields anywhere; lithium batteries and sealants have shelf-life/expiry and installing one out-of-date voids warranty. Add optional `LigneReceptionFournisseur.date_peremption`/lot + an "expiring soon" report (lighter subset of FG61). (Gate: SCHEMA.)  [DONE 2026-06-21]
 - [x] FG65 — Demand forecasting reorder quantities. `seuil_alerte`/reorder qty are static; `MouvementStock` SORTIE history is never used. Add a selector computing avg monthly consumption per SKU → suggested reorder qty feeding FG54. (Gate: ROUTINE; depends on FG54.)  [DONE 2026-06-21]
-- [ ] FG66 — Kit/BOM as a sellable catalogue product. No kit/nomenclature concept in stock (KitOutillage is durable tools only); standard configs ("Kit pompage 3CV", "Kit résidentiel 5kWc") must be quoted line-by-line each time. Add a `Produit.composition`/`KitProduit` that explodes into component SKUs at devis-line insertion (accurate reservation for the bundle). (Gate: DECISION — touches the quote engine + SCHEMA.)
-- [ ] FG67 — FIFO / landed-cost valuation option. Valuation is weighted-average only; no FIFO and no landed-cost (freight/customs), so imported-inverter true cost is understated. Add `LigneBonCommandeFournisseur.frais_annexes` folded into average_cost + an optional FIFO toggle (`CompanyProfile.stock_valuation_method`), internal only. (Gate: SCHEMA + DECISION on accounting method.)
+- [x] FG66 — Kit/BOM as a sellable catalogue product. No kit/nomenclature concept in stock (KitOutillage is durable tools only); standard configs ("Kit pompage 3CV", "Kit résidentiel 5kWc") must be quoted line-by-line each time. Add a `Produit.composition`/`KitProduit` that explodes into component SKUs at devis-line insertion (accurate reservation for the bundle). (Gate: DECISION — touches the quote engine + SCHEMA.)
+- [x] FG67 — FIFO / landed-cost valuation option. Valuation is weighted-average only; no FIFO and no landed-cost (freight/customs), so imported-inverter true cost is understated. Add `LigneBonCommandeFournisseur.frais_annexes` folded into average_cost + an optional FIFO toggle (`CompanyProfile.stock_valuation_method`), internal only. (Gate: SCHEMA + DECISION on accounting method.)
 
 ### Installations / field execution / outillage
 
@@ -458,9 +458,9 @@ add-to-plan rule) — this audit branch only edits `docs/PLAN.md`.
 
 - [x] FG102 — Webhook delivery log + retry/replay + test ping UI. `WebhookDelivery` records every attempt and the viewset exposes the last 50, but there's no replay/retry endpoint and `ApiWebhooksSection.jsx` never shows deliveries — a failed `facture.paid` is silently lost. Add `webhooks/{id}/deliveries/{id}/replay/` + `webhooks/{id}/test/` + the delivery history/status/replay/test UI. (Gate: ROUTINE.) [DONE 2026-06-27 (backend): company-scoped `webhooks/<id>/deliveries/`, `webhooks/<id>/deliveries/<did>/replay/` (re-sends original payload via the existing HMAC-signed delivery fn, records a new attempt, preserves the original), and `webhooks/<id>/test/` (synthetic `webhook.test` ping). Cross-company blocked (404). No migration (reuses existing models). 11 tests (HTTP mocked). Frontend history/replay/test UI = follow-up.]
 - [ ] FG103 — More webhook events. Only 4 terminal events exist (lead.created/devis.accepted/chantier.completed/facture.paid). Add codes + emitters for devis.sent, lead.lost/stage_changed, facture.created, intervention.completed, ticket.created/resolved, paiement.recorded (reuse the existing transition-diff pattern; the Paramètres checkbox list auto-updates). (Gate: ROUTINE.)
-- [ ] FG104 — Public API filtering, ordering & incremental sync. The public viewsets have no filter_backends and no `?updated_since=`, so a consumer must full-scan the company list every poll. Add DjangoFilterBackend+OrderingFilter + a whitelist of filter fields + `?updated_since=` against `date_modification` (add it to `PublicChantierSerializer`). (Gate: DEP:django-filter, or hand-rolled query-param filtering = ROUTINE.)
-- [ ] FG105 — Public API documentation page. No OpenAPI/Swagger anywhere; the API & Webhooks screen issues keys but documents no endpoints/scopes/`Api-Key` header/`X-Taqinor-Signature` HMAC recipe. Add a static FR reference page (endpoints, auth, scopes, events, HMAC-verify snippet) linked from the settings screen. (Gate: ROUTINE static doc; DEP:drf-spectacular only if auto-generated.)
-- [ ] FG106 — OCR → draft lead / draft devis action. OCR extracts structured supplier-quote/bill data but its only sink is the OCR table (+ the existing OCR→stock flow). Add a "Créer un lead / brouillon de devis depuis ce document" action on `OcrUpload.jsx` posting parsed fields to the existing CRM/ventes create endpoints. (Gate: ROUTINE.)
+- [x] FG104 — Public API filtering, ordering & incremental sync. The public viewsets have no filter_backends and no `?updated_since=`, so a consumer must full-scan the company list every poll. Add DjangoFilterBackend+OrderingFilter + a whitelist of filter fields + `?updated_since=` against `date_modification` (add it to `PublicChantierSerializer`). (Gate: DEP:django-filter, or hand-rolled query-param filtering = ROUTINE.)
+- [x] FG105 — Public API documentation page. No OpenAPI/Swagger anywhere; the API & Webhooks screen issues keys but documents no endpoints/scopes/`Api-Key` header/`X-Taqinor-Signature` HMAC recipe. Add a static FR reference page (endpoints, auth, scopes, events, HMAC-verify snippet) linked from the settings screen. (Gate: ROUTINE static doc; DEP:drf-spectacular only if auto-generated.)
+- [x] FG106 — OCR → draft lead / draft devis action. OCR extracts structured supplier-quote/bill data but its only sink is the OCR table (+ the existing OCR→stock flow). Add a "Créer un lead / brouillon de devis depuis ce document" action on `OcrUpload.jsx` posting parsed fields to the existing CRM/ventes create endpoints. (Gate: ROUTINE.)
 
 ---
 
@@ -528,14 +528,14 @@ first run that ticks any `FG*` task refreshes CODEMAP §10 + `--write` in that c
 - [x] FG143 — **Déclaration des honoraires / état 9421** — déclaration annuelle des paiements aux tiers depuis les règlements fournisseurs. (ROUTINE)
 - [x] FG144 — **Calcul du timbre fiscal sur encaissements espèces** — droit de timbre auto sur les factures payées en espèces. (SCHEMA)
 - [x] FG145 — **Retenue de garantie & cautions sur marchés (RG / bonne fin)** — RG retenue sur les marchés + cautions bancaires (provisoire/définitive/restitution) avec dates de levée. (SCHEMA)
-- [ ] FG146 — **Reconnaissance du revenu par avancement (% completion)** — reconnaître le CA des chantiers pluri-tranches selon l'avancement réel. (DECISION)
-- [ ] FG147 — **Produits constatés d'avance & travaux en cours (WIP)** — acomptes non encore acquis en produits différés, coûts non facturés en travaux en cours. (SCHEMA)
-- [ ] FG148 — **Campagnes de versement des commissions (payout run)** — transformer le calcul de commission (lecture seule aujourd'hui) en payable : relevé par commercial, validation, post. (SCHEMA)
-- [ ] FG149 — **Budgets annuels & suivi budget-vs-réalisé** — lignes de budget par compte/centre de coût + variance mensuelle. (SCHEMA)
-- [ ] FG150 — **Comptabilité analytique / centres de coût** — axe analytique (chantier/agence/marché/commercial) sur les écritures et documents. (ARCH)
+- [x] FG146 — **Reconnaissance du revenu par avancement (% completion)** — reconnaître le CA des chantiers pluri-tranches selon l'avancement réel. (DECISION)
+- [x] FG147 — **Produits constatés d'avance & travaux en cours (WIP)** — acomptes non encore acquis en produits différés, coûts non facturés en travaux en cours. (SCHEMA)
+- [x] FG148 — **Campagnes de versement des commissions (payout run)** — transformer le calcul de commission (lecture seule aujourd'hui) en payable : relevé par commercial, validation, post. (SCHEMA)
+- [x] FG149 — **Budgets annuels & suivi budget-vs-réalisé** — lignes de budget par compte/centre de coût + variance mensuelle. (SCHEMA)
+- [x] FG150 — **Comptabilité analytique / centres de coût** — axe analytique (chantier/agence/marché/commercial) sur les écritures et documents. (ARCH)
 - [ ] FG151 — **Tableau de bord financier directeur** — résultat du mois, position de trésorerie, DSO/DPO, marge brute %, top encours (≠ FG45 quote-to-cash). (ROUTINE)
-- [ ] FG152 — **Provisions pour créances douteuses** — provision calculée depuis la balance âgée + dotation au grand livre. (SCHEMA)
-- [ ] FG153 — **Inter-sociétés / consolidation multi-entités** — multi-entités (EI + SARL) avec élimination inter-co et CPC/bilan consolidés. (ARCH)
+- [x] FG152 — **Provisions pour créances douteuses** — provision calculée depuis la balance âgée + dotation au grand livre. (SCHEMA)
+- [x] FG153 — **Inter-sociétés / consolidation multi-entités** — multi-entités (EI + SARL) avec élimination inter-co et CPC/bilan consolidés. (ARCH)
 
 ### RH, terrain & HSE
 
@@ -656,17 +656,17 @@ first run that ticks any `FG*` task refreshes CODEMAP §10 + `--write` in that c
 - [x] FG262 — **Modélisation dégradation modules sur la durée** — courbe de dégradation appliquée à la production projetée et garantie. (ROUTINE)
 - [x] FG263 — **Modèle financier PPA / tiers-investisseur** — simuler un PPA (tarif MAD/kWh, revenus actualisés) pour les clients sans capex. (DECISION)
 - [x] FG264 — **Rendement pompage par cycle de marche** — volume d'eau journalier/mensuel selon irradiation horaire + durée de pompage (étend l'`etude_params` actuel). (ROUTINE)
-- [ ] FG265 — **Flux d'irradiance/météo pour simulations** — flux TMY/temps réel pour caler simulations et O&M sur le site. (DEP/COST)
-- [ ] FG266 — **Comparateur de scénarios de devis** — comparer plusieurs dimensionnements (kWc/batterie/orientation) sur production/économies/payback. (ROUTINE)
-- [ ] FG267 — **Packs documentaires réglementaires par régime** — liste de pièces requises selon `regime_8221` (déclaration BT, accord raccordement, autorisation ANRE). (SCHEMA)
-- [ ] FG268 — **Checklists & échéances de soumission ONEE/raccordement** — checklist par étape (dépôt, étude, convention, comptage) + dates limites + relances. (SCHEMA)
-- [ ] FG269 — **Suivi de soumission & navette opérateur** — journaliser les échanges ONEE/distributeur (envois/accusés/compléments/refus). (SCHEMA)
-- [ ] FG270 — **Éligibilité & suivi des subventions/incitations** — qualifier (MASEN/IRESEN/Tatwir) + suivre le dossier (statut/montant/pièces). (SCHEMA)
-- [ ] FG271 — **Workflow de régularisation Article 33 / déclarations 82-21** — régularisation des installations existantes (drapeau présent) + génération des déclarations. (SCHEMA)
-- [ ] FG272 — **Générateur de déclaration de raccordement BT/MT** — pré-remplir la demande (client/site/kWc/onduleur/schéma) en PDF depuis le chantier. (ROUTINE)
-- [ ] FG273 — **Calendrier réglementaire & alertes d'expiration de dossiers** — tableau par échéance (dépôt/validité d'accord/date limite MES) + alertes. (ROUTINE)
-- [ ] FG274 — **Protocole d'essais de mise en service IEC 62446** — fiche de recette (isolement/polarité/continuité terre/Voc-Isc par string/contrôle onduleur). (SCHEMA)
-- [ ] FG275 — **Capture de courbe I-V par string** — mesures I-V par chaîne comparées aux valeurs datasheet (détecte modules défectueux à la pose). (SCHEMA)
+- [x] FG265 — **Flux d'irradiance/météo pour simulations** — flux TMY/temps réel pour caler simulations et O&M sur le site. (DEP/COST)
+- [x] FG266 — **Comparateur de scénarios de devis** — comparer plusieurs dimensionnements (kWc/batterie/orientation) sur production/économies/payback. (ROUTINE)
+- [x] FG267 — **Packs documentaires réglementaires par régime** — liste de pièces requises selon `regime_8221` (déclaration BT, accord raccordement, autorisation ANRE). (SCHEMA)
+- [x] FG268 — **Checklists & échéances de soumission ONEE/raccordement** — checklist par étape (dépôt, étude, convention, comptage) + dates limites + relances. (SCHEMA)
+- [x] FG269 — **Suivi de soumission & navette opérateur** — journaliser les échanges ONEE/distributeur (envois/accusés/compléments/refus). (SCHEMA)
+- [x] FG270 — **Éligibilité & suivi des subventions/incitations** — qualifier (MASEN/IRESEN/Tatwir) + suivre le dossier (statut/montant/pièces). (SCHEMA)
+- [x] FG271 — **Workflow de régularisation Article 33 / déclarations 82-21** — régularisation des installations existantes (drapeau présent) + génération des déclarations. (SCHEMA)
+- [x] FG272 — **Générateur de déclaration de raccordement BT/MT** — pré-remplir la demande (client/site/kWc/onduleur/schéma) en PDF depuis le chantier. (ROUTINE)
+- [x] FG273 — **Calendrier réglementaire & alertes d'expiration de dossiers** — tableau par échéance (dépôt/validité d'accord/date limite MES) + alertes. (ROUTINE)
+- [x] FG274 — **Protocole d'essais de mise en service IEC 62446** — fiche de recette (isolement/polarité/continuité terre/Voc-Isc par string/contrôle onduleur). (SCHEMA)
+- [x] FG275 — **Capture de courbe I-V par string** — mesures I-V par chaîne comparées aux valeurs datasheet (détecte modules défectueux à la pose). (SCHEMA)
 - [ ] FG276 — **Pack documentaire « as-built »** — PDF assemblant plans/schéma/datasheets/séries/photos/PV de réception. (ROUTINE)
 - [ ] FG277 — **Attestation/certificat de conformité électrique** — attestation (référentiel/mesures/signataire) liée au chantier réceptionné. (ROUTINE)
 - [ ] FG278 — **Test de performance de réception (PR initial)** — PR mesuré à la MES vs attendu, archivé comme référence O&M/garantie. (ROUTINE)
@@ -700,19 +700,19 @@ first run that ticks any `FG*` task refreshes CODEMAP §10 + `--write` in that c
 - [x] FG303 — **Planning des camionnettes (capacité véhicule)** — affectation par véhicule sur le calendrier (cohérent avec `Intervention.camionnette`). (ROUTINE)
 - [x] FG304 — **Référentiel sous-traitants** — `SousTraitant` (métier/contact/RIB/ICE), distinct des fournisseurs matériel. (ARCH)
 - [x] FG305 — **Ordres de travaux sous-traitant** — `OrdreSousTraitance` (chantier/prestation/montant/échéance/statut). (ARCH)
-- [ ] FG306 — **Factures & règlements sous-traitant** — facture entrante + paiements (AP dédiée), montants jamais client-facing. (SCHEMA)
-- [ ] FG307 — **Attestations & assurances sous-traitant** — pièces obligatoires (CNSS, RC décennale, agrément) + expiration + blocage d'affectation. (SCHEMA)
-- [ ] FG308 — **Évaluation de performance sous-traitant** — note qualité/délai/sécurité par prestation + scorecard cumulée. (SCHEMA)
-- [ ] FG309 — **Retenue de garantie sur sous-traitant** — % bloqué jusqu'à levée des réserves (pratique BTP marocaine). (SCHEMA)
-- [ ] FG310 — **Demande d'achat (réquisition) → approbation** — `DemandeAchat` validée avant transformation en BCF. (ARCH)
-- [ ] FG311 — **RFQ multi-fournisseurs & comparatif d'offres** — demande de prix à plusieurs fournisseurs + tableau comparatif avant choix. (ARCH)
-- [ ] FG312 — **Paliers d'approbation de BCF par seuil** — workflow par montant (responsable < X, admin au-delà) avant envoi. (AUTH)
-- [ ] FG313 — **Contrôle budgétaire à la commande** — vérifie le budget projet/chantier restant avant de valider un BCF. (ROUTINE)
-- [ ] FG314 — **Commandes-cadres / contrats annuels (blanket orders)** — prix négociés/volume engagé déclinables en commandes d'appel. (SCHEMA)
-- [ ] FG315 — **Suivi import / dédouanement** — `DossierImport` (incoterm/BL/conteneur/dates port/statut douane) pour un container de panneaux. (ARCH)
-- [ ] FG316 — **Frais d'import & coût de revient débarqué (landed cost)** — ventilation fret + douane + TVA import + transit par SKU (étend FG67). (ARCH)
-- [ ] FG317 — **Réceptionné-non-facturé (GR/IR)** — marchandises reçues sans facture fournisseur → dette latente provisionnée. (SCHEMA)
-- [ ] FG318 — **Contrats & accords de prix fournisseur** — convention datée/versionnée par fournisseur/SKU (au-delà du dernier prix). (SCHEMA)
+- [x] FG306 — **Factures & règlements sous-traitant** — facture entrante + paiements (AP dédiée), montants jamais client-facing. (SCHEMA)
+- [x] FG307 — **Attestations & assurances sous-traitant** — pièces obligatoires (CNSS, RC décennale, agrément) + expiration + blocage d'affectation. (SCHEMA)
+- [x] FG308 — **Évaluation de performance sous-traitant** — note qualité/délai/sécurité par prestation + scorecard cumulée. (SCHEMA)
+- [x] FG309 — **Retenue de garantie sur sous-traitant** — % bloqué jusqu'à levée des réserves (pratique BTP marocaine). (SCHEMA)
+- [x] FG310 — **Demande d'achat (réquisition) → approbation** — `DemandeAchat` validée avant transformation en BCF. (ARCH)
+- [x] FG311 — **RFQ multi-fournisseurs & comparatif d'offres** — demande de prix à plusieurs fournisseurs + tableau comparatif avant choix. (ARCH)
+- [x] FG312 — **Paliers d'approbation de BCF par seuil** — workflow par montant (responsable < X, admin au-delà) avant envoi. (AUTH)
+- [x] FG313 — **Contrôle budgétaire à la commande** — vérifie le budget projet/chantier restant avant de valider un BCF. (ROUTINE)
+- [x] FG314 — **Commandes-cadres / contrats annuels (blanket orders)** — prix négociés/volume engagé déclinables en commandes d'appel. (SCHEMA)
+- [x] FG315 — **Suivi import / dédouanement** — `DossierImport` (incoterm/BL/conteneur/dates port/statut douane) pour un container de panneaux. (ARCH)
+- [x] FG316 — **Frais d'import & coût de revient débarqué (landed cost)** — ventilation fret + douane + TVA import + transit par SKU (étend FG67). (ARCH)
+- [x] FG317 — **Réceptionné-non-facturé (GR/IR)** — marchandises reçues sans facture fournisseur → dette latente provisionnée. (SCHEMA)
+- [x] FG318 — **Contrats & accords de prix fournisseur** — convention datée/versionnée par fournisseur/SKU (au-delà du dernier prix). (SCHEMA)
 - [ ] FG319 — **Emplacements fins zone/allée/casier (bin locations)** — sous-découpage adressable des `EmplacementStock` pour retrouver un onduleur précis. (ARCH)
 - [ ] FG320 — **Rangement guidé (put-away)** — à la réception, suggestion du casier + trace de mise en stock. (SCHEMA)
 - [ ] FG321 — **Bons de prélèvement (pick list) par chantier** — liste de picking depuis la réservation de stock, ordonnée par emplacement. (SCHEMA)
@@ -768,17 +768,17 @@ first run that ticks any `FG*` task refreshes CODEMAP §10 + `--write` in that c
 - [x] FG368 — **UI de gestion des tâches planifiées (jobs)** — écran Paramètres listant les jobs Celery Beat (digests/rapports/monitoring) avec statut + exécution manuelle. (ROUTINE)
 - [x] FG369 — **Bibliothèque de modèles de workflow** — workflows pré-construits (relance devis, onboarding chantier, rappel garantie) installables en un clic. (ROUTINE)
 - [ ] FG370 — **Passerelle de paiement CMI / Payzone** — paiement carte en ligne d'une facture + rapprochement vers `Paiement`. (AUTH)
-- [ ] FG371 — **Passerelle SMS marocaine** — brancher un vrai fournisseur SMS pour que le canal SMS cesse de no-op. (AUTH)
-- [ ] FG372 — **E-signature (Yousign/DocuSign)** — envoyer un Devis/contrat en signature électronique + enregistrer le statut/document signé. (AUTH)
-- [ ] FG373 — **Email entrant IMAP → leads/tickets** — interroger une boîte partagée et convertir les emails entrants en leads/tickets avec threading. (AUTH)
-- [ ] FG374 — **Sync calendrier Google/Outlook (2-way)** — synchroniser poses/interventions/visites (déjà agrégées dans `calendar.py`) avec les calendriers externes. (AUTH)
-- [ ] FG375 — **Géocodage & cartes (Maps)** — géocoder les adresses lead/client pour remplir les GPS consommés par la carte. (DEP:geocoding-api)
-- [ ] FG376 — **Connecteur Zapier / Make** — trigger-polling + actions sur l'API publique pour automatiser sans code. (ROUTINE)
-- [ ] FG377 — **Pont comptable Sage / CEGID (one-way)** — exporter les journaux ventes/achats au format importable Sage/CEGID. (ROUTINE)
-- [ ] FG378 — **Connecteur Odoo Compta (JSON-2, 2-way)** — pousser factures/paiements vers Odoo via son API JSON-2 uniquement (règle #1) + récupérer le statut de paiement. (AUTH)
-- [ ] FG379 — **Open banking (flux bancaire automatique)** — tirer les transactions d'un agrégateur bancaire pour alimenter le rapprochement. (AUTH)
-- [ ] FG380 — **Constructeur de tableau croisé (pivot)** — pivot/crosstab interactif sur les données scopées (lignes/colonnes/mesures). (ROUTINE)
-- [ ] FG381 — **Constructeur de graphiques/dashboards sans-code** — dashboard drag-and-drop sauvegardé par utilisateur/société (Recharts présent). (SCHEMA)
+- [x] FG371 — **Passerelle SMS marocaine** — brancher un vrai fournisseur SMS pour que le canal SMS cesse de no-op. (AUTH)
+- [x] FG372 — **E-signature (Yousign/DocuSign)** — envoyer un Devis/contrat en signature électronique + enregistrer le statut/document signé. (AUTH)
+- [x] FG373 — **Email entrant IMAP → leads/tickets** — interroger une boîte partagée et convertir les emails entrants en leads/tickets avec threading. (AUTH)
+- [x] FG374 — **Sync calendrier Google/Outlook (2-way)** — synchroniser poses/interventions/visites (déjà agrégées dans `calendar.py`) avec les calendriers externes. (AUTH)
+- [x] FG375 — **Géocodage & cartes (Maps)** — géocoder les adresses lead/client pour remplir les GPS consommés par la carte. (DEP:geocoding-api)
+- [x] FG376 — **Connecteur Zapier / Make** — trigger-polling + actions sur l'API publique pour automatiser sans code. (ROUTINE)
+- [x] FG377 — **Pont comptable Sage / CEGID (one-way)** — exporter les journaux ventes/achats au format importable Sage/CEGID. (ROUTINE)
+- [x] FG378 — **Connecteur Odoo Compta (JSON-2, 2-way)** — pousser factures/paiements vers Odoo via son API JSON-2 uniquement (règle #1) + récupérer le statut de paiement. (AUTH)
+- [x] FG379 — **Open banking (flux bancaire automatique)** — tirer les transactions d'un agrégateur bancaire pour alimenter le rapprochement. (AUTH)
+- [x] FG380 — **Constructeur de tableau croisé (pivot)** — pivot/crosstab interactif sur les données scopées (lignes/colonnes/mesures). (ROUTINE)
+- [x] FG381 — **Constructeur de graphiques/dashboards sans-code** — dashboard drag-and-drop sauvegardé par utilisateur/société (Recharts présent). (SCHEMA)
 - [ ] FG382 — **BI embarqué — explorateur de données** — query builder à sélection de champs sur l'API read pour l'analyse ad-hoc sans SQL. (ROUTINE)
 - [ ] FG383 — **Extraits planifiés vers entrepôt/SFTP/S3** — planifier des extraits CSV/parquet vers un bucket/SFTP externe. (AUTH)
 - [ ] FG384 — **Scan code-barres / QR (BarcodeDetector)** — scan dans la PWA pour rechercher produits et numéros de série sur site (réception/picking/série). (ROUTINE)
@@ -919,22 +919,22 @@ these overlap and SUPERSEDE the domain-list FG items as the module-organized hom
 - [x] PROJ20 — Nivellement de charge (levelling). (ROUTINE)
 - [x] PROJ21 — Budget projet (lignes : matériel/MO/sous-traitance/divers). (SCHEMA)
 - [x] PROJ22 — Coûts engagés vs réels (factures fournisseur + MO + sous-traitance). (ROUTINE)
-- [ ] PROJ23 — Alertes de dépassement budgétaire. (ROUTINE)
-- [ ] PROJ24 — Suivi des temps (timesheets imputés au projet). (SCHEMA)
-- [ ] PROJ25 — Consommation matière vs BoM (via selectors). (ROUTINE)
-- [ ] PROJ26 — P&L de projet consolidé (interne/admin). (ARCH)
-- [ ] PROJ27 — Jalons de facturation liés à l'avancement (via `ventes.services`). (ROUTINE)
-- [ ] PROJ28 — Suivi avancement vs facturé. (ROUTINE)
-- [ ] PROJ29 — EVM léger (valeur acquise) — optionnel. (ROUTINE)
-- [ ] PROJ30 — Registre des risques. (SCHEMA)
-- [ ] PROJ31 — Registre d'actions. (SCHEMA)
-- [ ] PROJ32 — Comptes-rendus de réunion de chantier. (SCHEMA)
-- [ ] PROJ33 — Documents & plans versionnés. (ARCH)
-- [ ] PROJ34 — Commentaires & @mentions. (SCHEMA)
-- [ ] PROJ35 — Templates de projet par type d'installation. (SCHEMA)
-- [ ] PROJ36 — Tableau de bord portefeuille (avancement/retards/marge/charge). (ROUTINE)
-- [ ] PROJ37 — Portail d'avancement client (sans coûts/marges). (ARCH)
-- [ ] PROJ38 — Sous-traitance & clôture + retour d'expérience. (ARCH)
+- [x] PROJ23 — Alertes de dépassement budgétaire. (ROUTINE)
+- [x] PROJ24 — Suivi des temps (timesheets imputés au projet). (SCHEMA)
+- [x] PROJ25 — Consommation matière vs BoM (via selectors). (ROUTINE)
+- [x] PROJ26 — P&L de projet consolidé (interne/admin). (ARCH)
+- [x] PROJ27 — Jalons de facturation liés à l'avancement (via `ventes.services`). (ROUTINE)
+- [x] PROJ28 — Suivi avancement vs facturé. (ROUTINE)
+- [x] PROJ29 — EVM léger (valeur acquise) — optionnel. (ROUTINE)
+- [x] PROJ30 — Registre des risques. (SCHEMA)
+- [x] PROJ31 — Registre d'actions. (SCHEMA)
+- [x] PROJ32 — Comptes-rendus de réunion de chantier. (SCHEMA)
+- [x] PROJ33 — Documents & plans versionnés. (ARCH)
+- [x] PROJ34 — Commentaires & @mentions. (SCHEMA)
+- [x] PROJ35 — Templates de projet par type d'installation. (SCHEMA)
+- [x] PROJ36 — Tableau de bord portefeuille (avancement/retards/marge/charge). (ROUTINE)
+- [x] PROJ37 — Portail d'avancement client (sans coûts/marges). (ARCH)
+- [x] PROJ38 — Sous-traitance & clôture + retour d'expérience. (ARCH)
 
 ### Module GED — gestion documentaire (`apps/ged`) · GED1–GED38
 **But :** DMS multi-tenant transformant les fichiers épars (`records.Attachment`) en référentiel gouverné : arborescence, métadonnées/tags, versionnage, recherche plein-texte+OCR (pgvector), liaison polymorphe, ACL + partage tokenisé, cycle de vie/approbation, rétention/archivage, modèles, scan-to-DMS, journal d'accès. **Réutilise** records.storage/OCR/WeasyPrint/notifications. Étend FG10.
@@ -1103,7 +1103,7 @@ these overlap and SUPERSEDE the domain-list FG items as the module-organized hom
 - [x] KB3 — Recherche plein-texte + filtres par catégorie/tag. (ROUTINE)
 - [x] KB4 — Lien article ↔ produit/équipement/type d'intervention (contextuel sur SAV/chantier). (SCHEMA)
 - [x] KB5 — Procédures/SOP d'installation & dossiers ONEE/82-21 (gabarits seedés). (ROUTINE) [DONE 2026-06-27: management command `seed_kb_templates [--company <slug>]` idempotent (clé stable (company, titre)) créant 5 gabarits KbArticle français — 3 procédures d'installation (résidentiel/industriel-commercial/pompage), checklist raccordement ONEE, checklist dossier loi 82-21 — contenu générique éditable (pas de spécificités réglementaires inventées). Pas de migration. 10 tests.]
-- [ ] KB6 — Source de contenu pour le RAG/DocQA (FG352) — indexation pgvector. (DEP)
+- [x] KB6 — Source de contenu pour le RAG/DocQA (FG352) — indexation pgvector. (DEP)
 - [x] KB7 — Droits d'accès par rôle + suivi de lecture. (SCHEMA)
 
 ### Module Réclamations & litiges (`apps/litiges`) · LITIGE1–LITIGE6
@@ -1112,7 +1112,7 @@ these overlap and SUPERSEDE the domain-list FG items as the module-organized hom
 - [x] LITIGE2 — Workflow statut (ouverte→en_traitement→résolue/rejetée) + chatter. (SCHEMA)
 - [x] LITIGE3 — Litige financier ↔ recouvrement : suspendre les relances d'une facture en litige. (ROUTINE) [DONE 2026-06-27: `Reclamation.bloque_relances` (défaut True) + selector `litiges.relances_suspendues_pour_facture(facture_id, company)` ; `ventes.scheduled.relance_reminders` saute une facture en litige bloquant via un import FONCTION-LOCAL de `litiges.selectors` (import-linter reste 4/4). Comportement inchangé sans litige. Migration litiges 0003 additive, 12 tests.]
 - [x] LITIGE4 — Litige qualité ↔ QHSE : lien NCR + audit fin de chantier. (ROUTINE)
-- [ ] LITIGE5 — Capture du concurrent/motif sur deal perdu (étend FG242). (SCHEMA)
+- [x] LITIGE5 — Capture du concurrent/motif sur deal perdu (étend FG242). (SCHEMA)
 - [x] LITIGE6 — Tableau de bord litiges (ouverts/montant contesté/délai de résolution). (ROUTINE)
 
 ---
@@ -1151,10 +1151,10 @@ RULES + gate legend as the FG queue. Same merge note (ticking a `DC*` task refre
 - [ ] DC9 — **Tableau GHI dupliqué** (`solar.js` & `quote_engine/constants.py`) + **productible incohérent** (1240 vs `CompanyProfile` 1600). Réconcilier (source unique ou mirroir documenté façon `stages.js`). (DECISION)
 - [ ] DC10 — **`LigneAvoir.produit` nullable (SET_NULL)** = maillon faible des snapshots → exiger `produit` à la création d'une ligne d'avoir + test (garder la traçabilité SKU). (ROUTINE)
 - [ ] DC11 — **`Devis.etude_params` sans provenance** : valeurs énergie/toiture re-saisies depuis le lead sans lien → estampiller `{source_lead_id, captured_at, valeurs}` + bannière « valeurs du lead modifiées depuis ». (ROUTINE)
-- [ ] DC12 — **Profil site/énergie re-saisi à chaque devis** (surtout devis sans lead) → profil réutilisable (sur `Lead` ou nouveau `crm.SiteProfile` par client) que le générateur pré-remplit. (SCHEMA+DECISION)
+- [x] DC12 — **Profil site/énergie re-saisi à chaque devis** (surtout devis sans lead) → profil réutilisable (sur `Lead` ou nouveau `crm.SiteProfile` par client) que le générateur pré-remplit. (SCHEMA+DECISION)
 - [ ] DC13 — **Chantier sans lead : `site_adresse`/GPS non repris** → fallback sur `client.adresse` dans `create_installation_from_devis`. (ROUTINE)
-- [ ] DC14 — **Parrainage : `filleul_nom` peut diverger du FK** → afficher le nom du `filleul_client`/`filleul_lead` quand présent (FK prioritaire). (ROUTINE) (@lane: apps/crm)
-- [ ] DC15 — **`Fournisseur` n'a ni ICE/IF/RC/RIB** → ajouter ces champs pour saisir l'identité légale fournisseur une fois (consommée par AP/PDF/compta/sous-traitant). (SCHEMA)
+- [x] DC14 — **Parrainage : `filleul_nom` peut diverger du FK** → afficher le nom du `filleul_client`/`filleul_lead` quand présent (FK prioritaire). (ROUTINE) (@lane: apps/crm)
+- [x] DC15 — **`Fournisseur` n'a ni ICE/IF/RC/RIB** → ajouter ces champs pour saisir l'identité légale fournisseur une fois (consommée par AP/PDF/compta/sous-traitant). (SCHEMA)
 - [ ] DC16 — **Montants `FactureFournisseur` saisis à la main** → les dériver de la réception (FG56) AVANT le rapprochement 3 voies (FG131) ; séquencer FG56 avant FG131. (ROUTINE)
 - [x] DC17 — **`CustomUser.poste` en texte libre** → référentiel `Poste`/`Departement` (FG160), migrer/dédupliquer les chaînes existantes, canonique sur `DossierEmploye`. (SCHEMA) (@lane: apps/authentication)
 - [x] DC18 — **Sujet email hardcodé « Notification Taqinor »** (`automation/actions.py`) → store de modèles email (FG17), un store par canal (WhatsApp/email/doc). (SCHEMA)
@@ -1170,18 +1170,18 @@ RULES + gate legend as the FG queue. Same merge note (ticking a `DC*` task refre
 - [ ] DC25 — **UNE source devise + taux de change** (FG52) consommée par devis/facture/compta/UBL ; remplacer le `'MAD'` hardcodé de `dgi_export.build_ubl_xml`. (SCHEMA+DECISION)
 - [ ] DC26 — **UN référentiel calendrier : jours ouvrés + fériés marocains** (FG5) + helper partagé `core/calendar.py` (`next_working_day`/`count_working_days`) consommé par congés/relance/maintenance/dispatch/paie. (SCHEMA+DECISION)
 - [ ] DC27 — **UNE taxonomie de tags transversale** (`records.Tag`/`TaggedItem`, FG9) sur clients/devis/factures/produits/chantiers/tickets ; adosser `Lead.tags` au vocabulaire partagé. (SCHEMA)
-- [ ] DC28 — **UN résolveur `cout_achat_courant`** (accord de prix actif → `PrixFournisseur` dernier payé → `Produit.prix_achat` fallback) ; documenter la précédence ; marge/auto-fill/job-costing lisent ce seul accesseur (réconcilier commande↔facturé après FG56/FG131). (DECISION)
+- [x] DC28 — **UN résolveur `cout_achat_courant`** (accord de prix actif → `PrixFournisseur` dernier payé → `Produit.prix_achat` fallback) ; documenter la précédence ; marge/auto-fill/job-costing lisent ce seul accesseur (réconcilier commande↔facturé après FG56/FG131). (DECISION)
 - [x] DC29 — **UN master employé : `DossierEmploye` OneToOne→`CustomUser`** (règle deux couches : identité sur User, emploi sur DossierEmploye) ; documenter et faire FK dessus depuis tout RH/Paie/QHSE/Contrats/Flotte/Projet — jamais re-saisir nom/CIN/RIB/poste/téléphone/qualifications. (ARCH)  [DONE 2026-06-22: DossierEmploye employee master shipped with RH (FG154); FK target for Paie/QHSE/Contrats/Flotte/Projet (per-module FK wiring = follow-up).]
 
 ### Contraintes de câblage des nouveaux modules (référencer les masters, ne pas re-saisir)
 
-- [ ] DC30 — **Compta comptes auxiliaires tiers** : dériver de `crm.Client` / `stock.Fournisseur` par FK via selectors, jamais recréer nom/ICE/RIB sur le compte. (ARCH)
-- [ ] DC31 — **Contrats** : parties = FK `crm.Client`/`stock.Fournisseur`/`DossierEmploye` (calquer `sav.ContratMaintenance.client`), identité jamais stockée inline. (ARCH)
+- [x] DC30 — **Compta comptes auxiliaires tiers** : dériver de `crm.Client` / `stock.Fournisseur` par FK via selectors, jamais recréer nom/ICE/RIB sur le compte. (ARCH)
+- [x] DC31 — **Contrats** : parties = FK `crm.Client`/`stock.Fournisseur`/`DossierEmploye` (calquer `sav.ContratMaintenance.client`), identité jamais stockée inline. (ARCH)
 - [ ] DC32 — **Portail client (FG228)** : le compte portail se lie à `crm.Client` par FK et réutilise `Client.email` — pas de 2ᵉ copie d'identité client. (AUTH+ARCH)
 - [ ] DC33 — **GED** : liens polymorphes (ContentType) vers Lead/Devis/Facture/Chantier/Client/Employé/Fournisseur (réutiliser le pattern `records.Attachment`) — aucune identité copiée sur le document. (ARCH)
 - [ ] DC34 — **Sous-traitant : pas de master fournisseur parallèle** → `Fournisseur.type` (matériel/service/mixte, défaut matériel) + `SousTraitantProfile` OneToOne satellite ; AP sous-traitant via la chaîne `FactureFournisseur`/`PaiementFournisseur` existante ; reformuler FG304–FG306. (DECISION)
 - [ ] DC35 — **Datasheet/fiches techniques (FG254)** : FK→`Produit`, ne re-stocke pas marque/garantie/specs/courbe (uniquement params normalisés Pmax/Voc/Isc + PDF). (SCHEMA)
-- [ ] DC36 — **Kit/BOM (FG66) & kitting (FG328)** : composants = FK→`Produit`, explosion en lignes à l'insertion ; aucun prix/marque/TVA stocké sur le kit (tout vient des composants). (SCHEMA/DECISION)
+- [x] DC36 — **Kit/BOM (FG66) & kitting (FG328)** : composants = FK→`Produit`, explosion en lignes à l'insertion ; aucun prix/marque/TVA stocké sur le kit (tout vient des composants). (SCHEMA/DECISION)
 - [ ] DC37 — **Serial-at-goods-in (FG61)** : `numeros_serie` sur la ligne de réception (gardant le FK `produit`), réconciliés à `sav.Equipement` par produit. (SCHEMA)
 - [ ] DC38 — **Landed cost (FG316/FG67)** : intégrer fret/douane/TVA-import au même `average_cost_with_source`, pas de champ de coût d'achat parallèle. (ARCH)
 - [ ] DC39 — **Référence unique pour tout nouveau module** (Paie/bulletins, Compta pièces/journaux, Contrats, Projet, QHSE NCR, docs 3-way) via `references.py create_with_reference`, jamais `count()+1` — critère d'acceptation. (ROUTINE)
@@ -1749,3 +1749,11 @@ Tracked here so they aren't lost:
 - 2026-06-30 — qhse QHSE33–40 (8) : inspections sécurité (→NCR), stats TF/TG, calendrier QHSE, déchets + bordereau de suivi (loi 28-00), recyclage modules, conformité environnementale (relances), bilan carbone (scopes 1/2/3), indicateurs ESG. Migrations qhse 0022–0027.
 - 2026-06-30 — flotte FLOTTE28–35 (8) : position & trajets télématiques, journal kilométrique par chantier, amortissement (lien `compta.Immobilisation`), TCO par véhicule, pool & demandes de véhicule, éco-conduite & CO₂, documents véhicule (GED), tableau de bord flotte. Migrations flotte 0025–0028.
 - 2026-06-30 — ged GED25,31–38 (9) : purge auto corbeille (DRY-RUN par défaut + Celery beat, garde GED23/24/26), scan-to-DMS par lot, import en masse CSV+ZIP, OCR de pièces (gated), classification (gated + heuristique), journal d'audit d'accès, quotas de stockage, contrat de permissions, contrat import-linter `ged-models-decoupled`. Migration ged 0023. NOTE : entrée Celery beat + flags settings gated (off) ; `/proposal` non touché.
+- 2026-06-30 — **ULTRA-DRAIN (méthode lane-draining : 11 agents drainent chacun toute la file d'une app → 81 tâches → UN seul merge, plancher ≥80 respecté).** Test combiné local dans l'image docker prod : 743 tests, toutes les défaillances réelles corrigées (la revue + le test combiné ont attrapé 11 bugs que flake8/check/import-linter laissaient passer — voir détail). 5 « échecs » openpyxl sont des faux-négatifs locaux uniquement (import fonction-local ; verts en CI). Bugs corrigés avant merge : crm `filleul_display_nom` (double `source=`), crm OCR-bridge utilisait le modèle `Canal` au lieu de `Lead.Canal`, stock `cout_achat_courant` renvoyait le tuple au lieu du scalaire, ventes `generer-checklist`/`generer-declaration` sans `url_path` (404), gestion_projet test risque criticité 25→20, migration crm 0031 en doublon de feuille (renumérotée 0032), dashboard core paginé alors que le test attend une liste à plat (`pagination_class=None`), `required_documents(None)` renvoyait les pièces communes au lieu de `[]`, publicapi `updated_since` 400 sur offset ISO `+` décodé en espace (parseur rendu tolérant), parametres approbations unicité (company, action_type) → 400 propre au lieu d'IntegrityError 500, et l'OCR-bridge loggait sa note avec un user → QJ7 faisait avancer le lead NEW→CONTACTED (note passée en SYSTÈME `user=None`). Détail par lane :
+- 2026-06-30 — core FG371–381 (11) : passerelle SMS marocaine, suivi e-signature (Yousign/DocuSign), email entrant IMAP → leads/tickets, sync calendrier Google/Outlook 2-way, géocodage & cartes (Nominatim gratuit + connecteur à clé), connecteur Zapier/Make (hooks REST sortants), pont Sage/CEGID (export), connecteur Odoo Compta (JSON-2 strict, règle #1, 2-way), open banking, constructeur pivot/crosstab, constructeur de dashboards sans-code (CRUD multi-tenant, `pagination_class=None`).
+- 2026-06-30 — ventes FG265–275 (11) : flux irradiance/météo TMY (PVGIS + repli), comparateur de scénarios de devis, packs documentaires réglementaires par régime, checklists & échéances de soumission ONEE, suivi de soumission & navette opérateur, éligibilité & suivi subventions, workflow de régularisation Article 33, générateur de déclaration de raccordement BT/MT, calendrier réglementaire & alertes d'expiration, protocole d'essais de mise en service IEC 62446, capture de courbe I-V par string. Couche additive : ni le PDF premium ni `/proposal` touchés, aucun statut de devis changé.
+- 2026-06-30 — installations FG306–318 (13) : factures & règlements sous-traitant (AP dédiée), attestations & assurances sous-traitant, évaluation de performance, retenue de garantie, demande d'achat → approbation, RFQ multi-fournisseurs & comparatif, paliers d'approbation de BCF par seuil, contrôle budgétaire à la commande, commandes-cadres (blanket orders), suivi import/dédouanement, frais d'import & coût de revient débarqué, réceptionné-non-facturé (GR/IR), contrats & accords de prix fournisseur.
+- 2026-06-30 — gestion_projet PROJ23–38 (16) : alertes de dépassement budgétaire, timesheets imputés au projet, consommation matière vs BoM (via selectors), P&L de projet consolidé (interne), suivi avancement vs facturé, jalons de facturation liés à l'avancement (via `ventes.services`), EVM léger (valeur acquise), registre des risques, registre d'actions, comptes-rendus de réunion de chantier, documents & plans versionnés, commentaires & @mentions, templates de projet par type d'installation, tableau de bord portefeuille, portail d'avancement client (sans coûts/marges), sous-traitance & clôture + retour d'expérience.
+- 2026-06-30 — parametres FG18–26 (9) : complétude de l'audit (rôles/users/automations), arbre d'org-chart en lecture seule, permissions de données sensibles (`client_pii_voir`/`marge_voir`), onboarding `must_change_password`, politique de mot de passe & verrouillage de compte, vue des security-events + alerte d'échec de connexion, export/import de config entre sociétés, politiques d'approbation configurables (unicité validée → 400), outillage data-retention/GDPR.
+- 2026-06-30 — stock FG66–67, DC15/DC28/DC30/DC36 (6) : kit/BOM vendable + explosion en lignes composant, coût débarqué + valorisation FIFO optionnelle, identité légale fournisseur (ICE/IF/RC/RIB), résolveur unique `cout_achat_courant` (scalaire), sélecteur d'identité tiers fournisseur, garde-fou schéma kit/BOM (aucune identité inline).
+- 2026-06-30 — crm DC12/DC14, publicapi FG104–106, kb KB6, litiges LITIGE5 (6) : profil site/énergie réutilisable par client (SiteProfile), affichage du nom du filleul via le FK, filtrage/tri & synchro incrémentale de l'API publique (`updated_since` tolérant), page de référence FR de l'API publique, passerelle OCR → lead/devis brouillon (note système, laisse le funnel à NEW), indexation RAG/DocQA pgvector (no-op sans clé), capture concurrent/motif sur deal perdu. NOTE : FG151 (tableau de bord financier directeur) NON construit — laissé `[ ]`.

@@ -10,7 +10,7 @@ cible n'a pas de sélecteur exploitable, on DÉGRADE proprement : on renvoie le
 from datetime import date as _date
 from datetime import timedelta
 
-from django.db.models import Q
+from django.db.models import Q, Sum
 
 from decimal import Decimal
 
@@ -24,9 +24,11 @@ from .models import (
     Indisponibilite,
     Jalon,
     LigneBudgetProjet,
+    Projet,
     ProjetLien,
     RessourceProfil,
     Tache,
+    Timesheet,
 )
 
 
@@ -1550,4 +1552,591 @@ def budget_total(budget):
         'total': total,
         'par_categorie': par_categorie,
         'nb_lignes': nb_lignes,
+    }
+
+
+# ── Alertes de dépassement budgétaire (PROJ23) ───────────────────────────────
+def alertes_depassement_budgetaire(company, projet, seuil_pct=None):
+    """Alertes de DÉPASSEMENT budgétaire d'un projet (PROJ23).
+
+    S'appuie sur ``couts_engages_vs_reels`` (PROJ22 — budget PROJ21 vs réel) :
+    pour CHAQUE catégorie budgétée (matériel / main-d'œuvre / sous-traitance /
+    divers) et pour le TOTAL, lève une alerte quand le réel consommé approche ou
+    dépasse le budget prévisionnel.
+
+    ``seuil_pct`` (0–100, défaut 90) est le seuil d'ALERTE de consommation : à
+    partir de ``seuil_pct`` % de consommation du budget, l'élément est signalé.
+    Deux niveaux :
+        • ``depassement`` — réel > budget (consommation > 100 %)
+        • ``alerte``      — seuil_pct ≤ consommation ≤ 100 %
+
+    Une catégorie au budget NUL (non budgétée) n'est jamais en alerte tant que
+    son réel reste nul ; dès qu'un réel est constaté sur un budget nul, c'est un
+    dépassement (consommation non bornée → ``None`` en %). Garde
+    anti-division-par-zéro partout. La société est imposée par l'appelant ; le
+    réel des catégories matériel/sous-traitance dégrade proprement à 0 tant
+    qu'aucune source cross-app n'expose un montant (frontière cross-app). Lecture
+    seule — aucune écriture.
+    """
+    if seuil_pct is None:
+        seuil_pct = Decimal('90')
+    else:
+        seuil_pct = Decimal(str(seuil_pct))
+    seuil_pct = max(Decimal('0'), min(Decimal('100'), seuil_pct))
+
+    data = couts_engages_vs_reels(company, projet)
+
+    def _evaluer(budget_montant, reel_montant):
+        """Renvoie ``(consommation_pct ou None, niveau)`` pour un couple."""
+        if budget_montant is None or budget_montant == 0:
+            # Budget nul : dépassement dès qu'un réel est constaté.
+            if reel_montant > 0:
+                return None, 'depassement'
+            return Decimal('0'), 'ok'
+        consommation = (
+            reel_montant / budget_montant * Decimal('100')).quantize(
+                Decimal('0.01'))
+        if reel_montant > budget_montant:
+            niveau = 'depassement'
+        elif consommation >= seuil_pct:
+            niveau = 'alerte'
+        else:
+            niveau = 'ok'
+        return consommation, niveau
+
+    alertes = []
+    for ligne in data['par_categorie']:
+        consommation, niveau = _evaluer(ligne['budget'], ligne['reel'])
+        if niveau != 'ok':
+            alertes.append({
+                'portee': 'categorie',
+                'categorie': ligne['categorie'],
+                'budget': ligne['budget'],
+                'reel': ligne['reel'],
+                'depassement': ligne['reel'] - ligne['budget'],
+                'consommation_pct': consommation,
+                'niveau': niveau,
+            })
+
+    total = data['total']
+    consommation_totale, niveau_total = _evaluer(
+        total['budget'], total['reel'])
+
+    return {
+        'budget_id': data['budget_id'],
+        'budget_version': data['budget_version'],
+        'budget_statut': data['budget_statut'],
+        'seuil_pct': seuil_pct,
+        'total': {
+            'budget': total['budget'],
+            'reel': total['reel'],
+            'depassement': total['reel'] - total['budget'],
+            'consommation_pct': consommation_totale,
+            'niveau': niveau_total,
+        },
+        'alertes': alertes,
+        'nb_alertes': len(alertes),
+        'en_depassement': (
+            niveau_total == 'depassement'
+            or any(a['niveau'] == 'depassement' for a in alertes)),
+    }
+
+
+# ── Suivi des temps (PROJ24) ─────────────────────────────────────────────────
+def timesheets_for_projet(projet):
+    """Feuilles de temps d'un projet (QuerySet scopé société, plus récentes
+    d'abord)."""
+    return Timesheet.objects.filter(
+        projet=projet, company=projet.company).select_related(
+            'ressource', 'tache', 'phase').order_by('-date', '-id')
+
+
+def synthese_temps_projet(projet):
+    """Synthèse des temps imputés à un projet (PROJ24) — lecture seule.
+
+    Agrège les feuilles de temps (``Timesheet``) du projet : total des
+    ``heures`` et du ``cout`` INTERNE figé, puis ventilation par RESSOURCE et
+    par TÂCHE. Données 100 % INTERNES de pilotage — jamais exposées au client.
+    Le coût agrégé sert de source ALTERNATIVE de main-d'œuvre réelle (à côté des
+    affectations). Une seule passe en mémoire ; ne MODIFIE rien.
+    """
+    timesheets = list(timesheets_for_projet(projet))
+    total_heures = Decimal('0')
+    total_cout = Decimal('0')
+    par_ressource = {}
+    par_tache = {}
+    for ts in timesheets:
+        heures = ts.heures or Decimal('0')
+        cout = ts.cout or Decimal('0')
+        total_heures += heures
+        total_cout += cout
+        r = par_ressource.setdefault(ts.ressource_id, {
+            'ressource_id': ts.ressource_id,
+            'ressource_nom': ts.ressource.nom if ts.ressource_id else '',
+            'heures': Decimal('0'),
+            'cout': Decimal('0'),
+        })
+        r['heures'] += heures
+        r['cout'] += cout
+        if ts.tache_id is not None:
+            t = par_tache.setdefault(ts.tache_id, {
+                'tache_id': ts.tache_id,
+                'tache_libelle': ts.tache.libelle if ts.tache_id else '',
+                'heures': Decimal('0'),
+                'cout': Decimal('0'),
+            })
+            t['heures'] += heures
+            t['cout'] += cout
+    return {
+        'total_heures': total_heures,
+        'total_cout': total_cout,
+        'nb_saisies': len(timesheets),
+        'par_ressource': sorted(
+            par_ressource.values(), key=lambda x: x['ressource_id']),
+        'par_tache': sorted(
+            par_tache.values(), key=lambda x: x['tache_id']),
+    }
+
+
+# ── Consommation matière vs BoM (PROJ25) ─────────────────────────────────────
+def _consommation_matiere_cross_app(projet):
+    """Consommation matière RÉELLE d'un projet via les apps cibles (ou dégrade).
+
+    Tente d'agréger la matière consommée sur les CHANTIERS rattachés au projet
+    (``ProjetChantier``) en appelant un sélecteur de l'app ``installations`` —
+    SANS jamais importer ses ``models``/``views`` (frontière cross-app,
+    CLAUDE.md ; import fonction-local). Aucune app cible n'expose aujourd'hui de
+    sélecteur de consommation matière par chantier exploitable ici → on DÉGRADE
+    proprement : montant consommé à 0 et une note. Aucune exception ne remonte.
+
+    Renvoie ``(montant_consomme: Decimal, source: str, note: str)``.
+    """
+    from .models import ProjetChantier
+    nb_chantiers = ProjetChantier.objects.filter(
+        projet=projet, company=projet.company).count()
+    nb_liens_achat = ProjetLien.objects.filter(
+        projet=projet, company=projet.company,
+        type_cible=ProjetLien.TypeCible.ACHAT).count()
+    # Pas de sélecteur cross-app de consommation matière disponible → dégrade.
+    if nb_chantiers or nb_liens_achat:
+        note = (
+            f"{nb_chantiers} chantier(s) et {nb_liens_achat} achat(s) "
+            "rattaché(s) : consommation matière non disponible (aucun "
+            "sélecteur cross-app) — consommé à 0.")
+    else:
+        note = ("Aucun chantier ni achat rattaché — consommé à 0.")
+    return Decimal('0'), 'degrade', note
+
+
+def consommation_matiere_vs_bom(projet):
+    """Consommation matière RÉELLE vs BoM PRÉVISIONNELLE d'un projet (PROJ25).
+
+    La BoM (Bill of Materials) prévisionnelle est ASSIMILÉE aux lignes de budget
+    de catégorie ``materiel`` du budget de référence (``budget_effectif``) : la
+    somme des ``montant_prevu`` matériel donne le PLANIFIÉ. La consommation
+    RÉELLE est agrégée via ``installations`` (chantiers rattachés) / ``stock``
+    (achats rattachés) — toujours en passant par un sélecteur de l'app cible,
+    jamais en important ses modèles (frontière cross-app, CLAUDE.md). Aucune
+    app cible n'expose aujourd'hui ce montant → DÉGRADE : consommé à 0 + note.
+
+    Renvoie ``{bom_prevu, consomme, ecart (prévu − consommé), ecart_pct (None si
+    prévu == 0 — garde division-par-zéro), source, note, budget_id,
+    budget_version}``. Tout est scopé société via le projet. Lecture seule.
+    """
+    budget = budget_effectif(projet)
+    if budget is not None:
+        agg = budget_total(budget)
+        bom_prevu = agg['par_categorie'].get(
+            LigneBudgetProjet.Categorie.MATERIEL, Decimal('0'))
+        budget_id = budget.id
+        budget_version = budget.version
+    else:
+        bom_prevu = Decimal('0')
+        budget_id = None
+        budget_version = None
+
+    consomme, source, note = _consommation_matiere_cross_app(projet)
+    ecart = bom_prevu - consomme
+    ecart_pct = _ecart_pct(bom_prevu, consomme)
+    return {
+        'bom_prevu': bom_prevu,
+        'consomme': consomme,
+        'ecart': ecart,
+        'ecart_pct': ecart_pct,
+        'source': source,
+        'note': note,
+        'budget_id': budget_id,
+        'budget_version': budget_version,
+    }
+
+
+# ── P&L de projet consolidé (PROJ26 — interne/admin) ─────────────────────────
+def _revenu_projet_cross_app(projet):
+    """Revenu (CA) RÉEL d'un projet via les apps cibles (ou dégrade).
+
+    Agrège le chiffre d'affaires des devis/factures rattachés au projet
+    (``ProjetLien`` type devis/facture) en passant par un sélecteur de l'app
+    ``ventes`` — SANS jamais importer ses ``models``/``views`` (frontière
+    cross-app, CLAUDE.md ; import fonction-local). Aucune app cible n'expose
+    aujourd'hui de sélecteur de MONTANT par projet exploitable → DÉGRADE :
+    revenu à 0 + note (nb de liens devis/facture). Aucune exception ne remonte.
+
+    Renvoie ``(revenu: Decimal, note: str)``.
+    """
+    nb_liens_revenu = ProjetLien.objects.filter(
+        projet=projet, company=projet.company,
+        type_cible__in=(
+            ProjetLien.TypeCible.DEVIS,
+            ProjetLien.TypeCible.FACTURE)).count()
+    if nb_liens_revenu:
+        note = (
+            f"{nb_liens_revenu} devis/facture(s) rattaché(s) : montant non "
+            "disponible (aucun sélecteur cross-app) — revenu à 0.")
+    else:
+        note = "Aucun devis/facture rattaché — revenu à 0."
+    return Decimal('0'), note
+
+
+def pnl_projet(company, projet):
+    """Compte de résultat (P&L) CONSOLIDÉ d'un projet (PROJ26 — interne/admin).
+
+    Donnée 100 % INTERNE de pilotage — JAMAIS exposée au client final (rejoint
+    ``budget_total``, ``cout_horaire``). Consolide :
+
+      • ``revenu``   — CA des devis/factures rattachés (``ProjetLien``) via un
+        sélecteur ``ventes`` ; dégrade à 0 + note (frontière cross-app).
+      • ``cout_budget`` — total prévisionnel du budget de référence (PROJ21).
+      • ``cout_reel``   — réel consolidé : main-d'œuvre des affectations
+        (PROJ22) + coût figé des timesheets (PROJ24) + matériel/sous-traitance
+        des liens de dépense (dégradés à 0 tant qu'aucun sélecteur cross-app
+        n'expose le montant).
+      • ``marge_prev``  = revenu − cout_budget ; ``marge_reelle`` = revenu −
+        cout_reel ; ``marge_pct_reelle`` = marge_reelle / revenu × 100 (None si
+        revenu == 0 — garde division-par-zéro).
+
+    Tout est scopé société via le projet. Lecture seule (aucune écriture).
+    """
+    # Revenu (dégrade cross-app).
+    revenu, note_revenu = _revenu_projet_cross_app(projet)
+
+    # Coûts : budget prévisionnel + réel consolidé.
+    couts = couts_engages_vs_reels(company, projet)
+    cout_budget = couts['total']['budget']
+    cout_reel_affectations = couts['total']['reel']
+
+    # Réel issu des timesheets (PROJ24) — source interne complémentaire.
+    synthese_ts = synthese_temps_projet(projet)
+    cout_timesheets = synthese_ts['total_cout']
+
+    # Le réel consolidé additionne affectations (PROJ22) et timesheets (PROJ24) :
+    # ce sont deux sources INTERNES distinctes de main-d'œuvre réelle.
+    cout_reel = cout_reel_affectations + cout_timesheets
+
+    marge_prev = revenu - cout_budget
+    marge_reelle = revenu - cout_reel
+    if revenu and revenu != 0:
+        marge_pct_reelle = (
+            marge_reelle / revenu * Decimal('100')).quantize(Decimal('0.01'))
+    else:
+        marge_pct_reelle = None
+
+    return {
+        'revenu': revenu,
+        'note_revenu': note_revenu,
+        'cout_budget': cout_budget,
+        'cout_reel': cout_reel,
+        'cout_reel_affectations': cout_reel_affectations,
+        'cout_reel_timesheets': cout_timesheets,
+        'marge_prev': marge_prev,
+        'marge_reelle': marge_reelle,
+        'marge_pct_reelle': marge_pct_reelle,
+        'budget_id': couts['budget_id'],
+        'budget_version': couts['budget_version'],
+        'couts_par_categorie': couts['par_categorie'],
+    }
+
+
+# ── Jalons de facturation liés à l'avancement (PROJ27) ───────────────────────
+def jalons_facturables(projet):
+    """Jalons de FACTURATION d'un projet déclenchables par l'avancement (PROJ27).
+
+    Un jalon est « facturable » quand il porte un ``facturation_pct`` > 0 ET
+    qu'il est ATTEINT (``statut == atteint``). Le ``montant`` théorique est
+    ``facturation_pct`` % du ``budget_total`` du projet (donnée INTERNE de
+    pilotage) — le montant client réel reste piloté par ``ventes`` (le service
+    ``declencher_facturation_jalon`` route l'écriture vers ``ventes.services``).
+
+    Renvoie ``{base_montant, total_pct_facture, jalons: [...]}`` où chaque jalon
+    porte ``{id, libelle, facturation_pct, statut, atteint, facturable,
+    montant}``. ``atteint`` recoupe le statut ; ``facturable`` exige atteint +
+    pct > 0. Tout est scopé société via le projet. Lecture seule.
+    """
+    base = projet.budget_total or Decimal('0')
+    jalons = jalons_for_projet(projet)
+    lignes = []
+    total_pct_facture = Decimal('0')
+    for jalon in jalons:
+        pct = jalon.facturation_pct or Decimal('0')
+        atteint = jalon.statut == Jalon.Statut.ATTEINT
+        facturable = atteint and pct > 0
+        montant = (base * pct / Decimal('100')).quantize(Decimal('0.01'))
+        if facturable:
+            total_pct_facture += pct
+        lignes.append({
+            'id': jalon.id,
+            'libelle': jalon.libelle,
+            'facturation_pct': pct,
+            'statut': jalon.statut,
+            'atteint': atteint,
+            'facturable': facturable,
+            'montant': montant,
+        })
+    return {
+        'base_montant': base,
+        'total_pct_facture': total_pct_facture,
+        'jalons': lignes,
+    }
+
+
+# ── Suivi avancement vs facturé (PROJ28) ─────────────────────────────────────
+def avancement_vs_facture(projet):
+    """Compare l'AVANCEMENT physique d'un projet à ce qui est FACTURÉ (PROJ28).
+
+    L'avancement PHYSIQUE est le roll-up pondéré par charge des tâches (PROJ9).
+    Le % FACTURÉ est la somme des ``facturation_pct`` des jalons de facturation
+    ATTEINTS (PROJ7/PROJ27) — borné à 100. L'``ecart_pct`` = avancement − facturé
+    indique :
+        • > 0 : on a AVANCÉ plus qu'on n'a facturé (sous-facturation, trésorerie
+          à rattraper) ;
+        • < 0 : on a FACTURÉ d'avance par rapport à l'avancement.
+
+    Renvoie ``{avancement_pct, facture_pct, ecart_pct, base_montant,
+    montant_facture, montant_avancement}`` où les montants sont des projections
+    INTERNES (% × ``budget_total``). Tout est scopé société via le projet.
+    Lecture seule (aucune écriture).
+    """
+    avancement = rollup_avancement(projet)
+    avancement_pct = Decimal(str(avancement['avancement_pct']))
+
+    facturables = jalons_facturables(projet)
+    facture_pct = min(
+        facturables['total_pct_facture'], Decimal('100'))
+
+    base = projet.budget_total or Decimal('0')
+    montant_facture = (
+        base * facture_pct / Decimal('100')).quantize(Decimal('0.01'))
+    montant_avancement = (
+        base * avancement_pct / Decimal('100')).quantize(Decimal('0.01'))
+
+    return {
+        'avancement_pct': avancement_pct,
+        'facture_pct': facture_pct,
+        'ecart_pct': avancement_pct - facture_pct,
+        'base_montant': base,
+        'montant_facture': montant_facture,
+        'montant_avancement': montant_avancement,
+    }
+
+
+# ── EVM léger — valeur acquise (PROJ29, optionnel) ───────────────────────────
+def evm_projet(company, projet, date_reference=None):
+    """Valeur acquise (EVM) LÉGER d'un projet (PROJ29) — interne/admin.
+
+    Indicateurs classiques (donnée 100 % INTERNE de pilotage) :
+        • BAC (Budget At Completion) = ``budget_total`` du projet.
+        • EV (Earned Value)  = avancement physique (PROJ9) × BAC.
+        • AC (Actual Cost)   = coût RÉEL consolidé (affectations PROJ22 +
+          timesheets PROJ24).
+        • PV (Planned Value) = fraction de calendrier ÉCOULÉE × BAC, calculée
+          entre ``date_debut`` et ``date_fin_prevue`` à la ``date_reference``
+          (défaut : aujourd'hui). Sans dates de projet, PV = None (EVM léger).
+        • CV = EV − AC ; SV = EV − PV ; CPI = EV / AC ; SPI = EV / PV.
+
+    Toutes les divisions sont gardées (dénominateur nul → indicateur None).
+    Tout est scopé société via le projet. Lecture seule (aucune écriture).
+    """
+    if date_reference is None:
+        date_reference = _date.today()
+
+    bac = projet.budget_total or Decimal('0')
+
+    # EV : avancement physique × BAC.
+    avancement = rollup_avancement(projet)
+    avancement_pct = Decimal(str(avancement['avancement_pct']))
+    ev = (bac * avancement_pct / Decimal('100')).quantize(Decimal('0.01'))
+
+    # AC : réel consolidé (affectations + timesheets).
+    couts = couts_engages_vs_reels(company, projet)
+    synthese_ts = synthese_temps_projet(projet)
+    ac = (couts['total']['reel'] + synthese_ts['total_cout'])
+
+    # PV : fraction de calendrier écoulée × BAC.
+    pv = None
+    fraction_ecoulee = None
+    debut = projet.date_debut
+    fin = projet.date_fin_prevue
+    if debut is not None and fin is not None and fin > debut:
+        if date_reference <= debut:
+            fraction = Decimal('0')
+        elif date_reference >= fin:
+            fraction = Decimal('1')
+        else:
+            ecoule = (date_reference - debut).days
+            total = (fin - debut).days
+            fraction = (Decimal(ecoule) / Decimal(total))
+        fraction_ecoulee = (fraction * Decimal('100')).quantize(Decimal('0.01'))
+        pv = (bac * fraction).quantize(Decimal('0.01'))
+
+    def _div(num, den):
+        if den is None or den == 0:
+            return None
+        return (num / den).quantize(Decimal('0.0001'))
+
+    cv = ev - ac
+    sv = (ev - pv) if pv is not None else None
+    cpi = _div(ev, ac)
+    spi = _div(ev, pv) if pv is not None else None
+
+    return {
+        'bac': bac,
+        'ev': ev,
+        'ac': ac,
+        'pv': pv,
+        'avancement_pct': avancement_pct,
+        'fraction_ecoulee_pct': fraction_ecoulee,
+        'cv': cv,
+        'sv': sv,
+        'cpi': cpi,
+        'spi': spi,
+        'date_reference': date_reference,
+    }
+
+
+# ── Tableau de bord portefeuille (PROJ36) ────────────────────────────────────
+def tableau_portefeuille(company, statut=None, seuil_jours=None):
+    """Tableau de bord PORTEFEUILLE de la société (PROJ36) — interne/admin.
+
+    Agrège, pour CHAQUE projet de la société (filtrable par ``statut``) :
+    l'avancement physique (PROJ9), le nombre de tâches/jalons EN RETARD et À
+    RISQUE (PROJ14, horizon ``seuil_jours``), la marge réelle (P&L PROJ26) et la
+    charge totale (somme des ``charge_estimee`` des tâches). Renvoie une ligne par
+    projet + des totaux portefeuille (nb projets, retards/risques cumulés, marge
+    réelle cumulée, charge totale). Donnée 100 % INTERNE de pilotage — jamais
+    exposée au client. Tout est scopé société. Lecture seule (aucune écriture).
+    """
+    projets = Projet.objects.filter(company=company)
+    if statut:
+        projets = projets.filter(statut=statut)
+    projets = projets.order_by('-id')
+
+    lignes = []
+    total_marge_reelle = Decimal('0')
+    total_charge = Decimal('0')
+    total_retards = 0
+    total_risques = 0
+    for projet in projets:
+        avancement = rollup_avancement(projet)
+        retards = retards_projet(projet, seuil_jours=seuil_jours)
+        pnl = pnl_projet(company, projet)
+        charge = Tache.objects.filter(
+            projet=projet, company=company,
+            charge_estimee__isnull=False).aggregate(
+                s=Sum('charge_estimee'))['s'] or Decimal('0')
+
+        nb_retards = (
+            retards['nb_taches_en_retard']
+            + retards['nb_jalons_en_retard'])
+        nb_risques = (
+            retards['nb_taches_a_risque']
+            + retards['nb_jalons_a_risque'])
+
+        total_marge_reelle += pnl['marge_reelle']
+        total_charge += charge
+        total_retards += nb_retards
+        total_risques += nb_risques
+
+        lignes.append({
+            'projet_id': projet.id,
+            'code': projet.code,
+            'nom': projet.nom,
+            'statut': projet.statut,
+            'avancement_pct': avancement['avancement_pct'],
+            'nb_retards': nb_retards,
+            'nb_risques': nb_risques,
+            'marge_reelle': pnl['marge_reelle'],
+            'charge_totale': charge,
+        })
+
+    return {
+        'nb_projets': len(lignes),
+        'total_marge_reelle': total_marge_reelle,
+        'total_charge': total_charge,
+        'total_retards': total_retards,
+        'total_risques': total_risques,
+        'projets': lignes,
+    }
+
+
+# ── Portail d'avancement client (PROJ37) ─────────────────────────────────────
+def portail_avancement_client(projet):
+    """Avancement d'un projet pour le PORTAIL CLIENT (PROJ37) — SANS coûts.
+
+    Renvoie une vue STRICTEMENT NON FINANCIÈRE de l'avancement, destinée à un
+    lien public client : avancement physique global (PROJ9), phases (libellé /
+    statut / avancement / dates prévues-réelles) et jalons (libellé / date /
+    statut). AUCUNE donnée interne ne traverse cette frontière :
+        • PAS de budget, coût, marge, P&L, criticité de risque ;
+        • PAS de ``facturation_pct`` des jalons (échéancier de paiement interne) ;
+        • PAS de ``charge_estimee`` ni de coût horaire.
+
+    La société est portée par le projet. Lecture seule (aucune écriture).
+    """
+    avancement = rollup_avancement(projet)
+
+    phases = [
+        {
+            'libelle': p.libelle or p.get_type_phase_display(),
+            'type_phase': p.type_phase,
+            'statut': p.statut,
+            'avancement_pct': int(p.avancement_pct),
+            'date_debut_prevue': (
+                p.date_debut_prevue.isoformat()
+                if p.date_debut_prevue else None),
+            'date_fin_prevue': (
+                p.date_fin_prevue.isoformat()
+                if p.date_fin_prevue else None),
+            'date_debut_reelle': (
+                p.date_debut_reelle.isoformat()
+                if p.date_debut_reelle else None),
+            'date_fin_reelle': (
+                p.date_fin_reelle.isoformat()
+                if p.date_fin_reelle else None),
+        }
+        for p in projet.phases.order_by('ordre', 'id')
+    ]
+
+    jalons = [
+        {
+            'libelle': j.libelle,
+            'date_prevue': j.date_prevue.isoformat() if j.date_prevue else None,
+            'date_reelle': j.date_reelle.isoformat() if j.date_reelle else None,
+            'statut': j.statut,
+        }
+        for j in jalons_for_projet(projet)
+    ]
+
+    return {
+        'projet': {
+            'code': projet.code,
+            'nom': projet.nom,
+            'statut': projet.statut,
+            'date_debut': (
+                projet.date_debut.isoformat() if projet.date_debut else None),
+            'date_fin_prevue': (
+                projet.date_fin_prevue.isoformat()
+                if projet.date_fin_prevue else None),
+        },
+        'avancement_pct': avancement['avancement_pct'],
+        'phases': phases,
+        'jalons': jalons,
     }

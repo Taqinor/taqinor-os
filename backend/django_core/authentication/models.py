@@ -269,6 +269,30 @@ class CustomUser(AbstractUser):
         return True  # compte légacy sans rôle fin → comportement historique
 
     @property
+    def can_view_marge(self):
+        """FG20 — voir la marge interne calculée (donnée sensible). Permission
+        explicite ``marge_voir`` (Directeur/Admin par défaut), avec repli
+        historique pour les comptes SANS rôle fin (légacy) : on ne retire jamais
+        l'accès aux comptes hérités. Superuser toujours autorisé."""
+        if self.is_superuser:
+            return True
+        if self.role_id:
+            return 'marge_voir' in (self.role.permissions or [])
+        return True  # compte légacy sans rôle fin → comportement historique
+
+    @property
+    def can_view_client_pii(self):
+        """FG20 — voir les coordonnées personnelles d'un client/lead
+        (téléphone, email, adresse, WhatsApp, GPS). Permission ``client_pii_voir``
+        (accordée par défaut aux rôles opérationnels), repli historique pour les
+        comptes légacy. Superuser toujours autorisé."""
+        if self.is_superuser:
+            return True
+        if self.role_id:
+            return 'client_pii_voir' in (self.role.permissions or [])
+        return True  # compte légacy sans rôle fin → comportement historique
+
+    @property
     def can_view_activity_log(self):
         """Voir le Journal d'activité (Feature G). Permission explicite
         (Directeur par défaut). Superuser toujours autorisé."""
@@ -299,6 +323,12 @@ class CustomUser(AbstractUser):
     # existant n'est jamais verrouillé ni forcé — comportement inchangé tant
     # qu'un admin ne l'active pas explicitement.
     must_change_password = models.BooleanField(default=False)
+    # ── FG22 — verrouillage de compte (par société, opt-in) ──────────────────
+    # Compteur d'échecs CONSÉCUTIFS de connexion (remis à 0 sur succès) et date
+    # de fin de verrouillage temporaire. Additifs, défaut inerte : tant que la
+    # société n'active pas ``lockout_max_attempts`` (>0), rien ne se verrouille.
+    failed_login_count = models.PositiveIntegerField(default=0)
+    locked_until = models.DateTimeField(null=True, blank=True)
     # Horodatage du dernier changement de mot de passe (informatif, affiché dans
     # l'onglet sécurité). Nullable : null pour tout compte qui n'a jamais changé
     # son mot de passe via le flux dédié — additif, aucun défaut imposé.

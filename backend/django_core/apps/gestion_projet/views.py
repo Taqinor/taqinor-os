@@ -16,8 +16,13 @@ from authentication.permissions import IsResponsableOrAdmin
 
 from . import selectors, services
 from .models import (
+    ActionProjet,
     AffectationRessource,
     BaselinePlanning,
+    ClotureProjet,
+    CommentaireProjet,
+    CompteRenduReunion,
+    DocumentProjet,
     BudgetProjet,
     CalendrierProjet,
     DependanceTache,
@@ -26,17 +31,33 @@ from .models import (
     Jalon,
     JourFerie,
     LigneBudgetProjet,
+    ModeleProjet,
+    ModeleTache,
     PhaseProjet,
+    PortailProjetToken,
     Projet,
     ProjetActivity,
     ProjetChantier,
     ProjetLien,
     RessourceProfil,
+    Risque,
+    SousTraitant,
+    LotSousTraitance,
     Tache,
+    Timesheet,
+    VersionDocument,
 )
 from .serializers import (
+    ActionProjetSerializer,
     AffectationRessourceSerializer,
     BaselinePlanningSerializer,
+    ClotureProjetSerializer,
+    CommentaireProjetSerializer,
+    CompteRenduReunionSerializer,
+    DocumentProjetSerializer,
+    LotSousTraitanceSerializer,
+    SousTraitantSerializer,
+    VersionDocumentSerializer,
     BudgetProjetSerializer,
     CalendrierProjetSerializer,
     DependanceTacheSerializer,
@@ -45,13 +66,18 @@ from .serializers import (
     JalonSerializer,
     JourFerieSerializer,
     LigneBudgetProjetSerializer,
+    ModeleProjetSerializer,
+    ModeleTacheSerializer,
     PhaseProjetSerializer,
+    PortailProjetTokenSerializer,
     ProjetActivitySerializer,
     ProjetChantierSerializer,
     ProjetLienSerializer,
     ProjetSerializer,
     RessourceProfilSerializer,
+    RisqueSerializer,
     TacheSerializer,
+    TimesheetSerializer,
 )
 
 
@@ -384,6 +410,320 @@ class ProjetViewSet(_GestionProjetBaseViewSet):
             },
         })
 
+    @action(detail=True, methods=['get'], url_path='alertes-budget')
+    def alertes_budget(self, request, pk=None):
+        """Alertes de DÉPASSEMENT budgétaire du projet (PROJ23).
+
+        Paramètre optionnel ``?seuil_pct=N`` (0–100, défaut 90) : seuil de
+        consommation à partir duquel une catégorie / le total est signalé en
+        ``alerte`` (et en ``depassement`` au-delà de 100 %). Un seuil invalide
+        (non numérique / hors borne) est ramené au défaut / borné.
+
+        La société est garantie par ``get_object`` (queryset scopé société) :
+        un projet d'une autre société → 404. Lecture seule. Délègue au sélecteur
+        ``alertes_depassement_budgetaire`` (s'appuie sur PROJ22).
+        """
+        projet = self.get_object()
+        seuil_raw = request.query_params.get('seuil_pct')
+        seuil = None
+        if seuil_raw is not None:
+            try:
+                seuil = float(seuil_raw)
+            except (TypeError, ValueError):
+                seuil = None
+        data = selectors.alertes_depassement_budgetaire(
+            request.user.company, projet, seuil_pct=seuil)
+
+        def _num(value):
+            return str(value) if value is not None else None
+
+        return Response({
+            'budget_id': data['budget_id'],
+            'budget_version': data['budget_version'],
+            'budget_statut': data['budget_statut'],
+            'seuil_pct': str(data['seuil_pct']),
+            'en_depassement': data['en_depassement'],
+            'nb_alertes': data['nb_alertes'],
+            'total': {
+                'budget': str(data['total']['budget']),
+                'reel': str(data['total']['reel']),
+                'depassement': str(data['total']['depassement']),
+                'consommation_pct': _num(data['total']['consommation_pct']),
+                'niveau': data['total']['niveau'],
+            },
+            'alertes': [
+                {
+                    'portee': a['portee'],
+                    'categorie': a['categorie'],
+                    'budget': str(a['budget']),
+                    'reel': str(a['reel']),
+                    'depassement': str(a['depassement']),
+                    'consommation_pct': _num(a['consommation_pct']),
+                    'niveau': a['niveau'],
+                }
+                for a in data['alertes']
+            ],
+        })
+
+    @action(detail=True, methods=['get'], url_path='synthese-temps')
+    def synthese_temps(self, request, pk=None):
+        """Synthèse des temps imputés au projet (PROJ24) — lecture seule.
+
+        Total heures + coût INTERNE figé, ventilé par ressource et par tâche.
+        La société est garantie par ``get_object`` (queryset scopé société) :
+        un projet d'une autre société → 404. Délègue au sélecteur
+        ``synthese_temps_projet``. Le coût est INTERNE — jamais exposé au client.
+        """
+        projet = self.get_object()
+        data = selectors.synthese_temps_projet(projet)
+        return Response({
+            'total_heures': str(data['total_heures']),
+            'total_cout': str(data['total_cout']),
+            'nb_saisies': data['nb_saisies'],
+            'par_ressource': [
+                {
+                    'ressource_id': r['ressource_id'],
+                    'ressource_nom': r['ressource_nom'],
+                    'heures': str(r['heures']),
+                    'cout': str(r['cout']),
+                }
+                for r in data['par_ressource']
+            ],
+            'par_tache': [
+                {
+                    'tache_id': t['tache_id'],
+                    'tache_libelle': t['tache_libelle'],
+                    'heures': str(t['heures']),
+                    'cout': str(t['cout']),
+                }
+                for t in data['par_tache']
+            ],
+        })
+
+    @action(detail=True, methods=['get'], url_path='consommation-matiere')
+    def consommation_matiere(self, request, pk=None):
+        """Consommation matière RÉELLE vs BoM prévisionnelle (PROJ25).
+
+        BoM prévisionnelle = lignes de budget « matériel » du budget de
+        référence ; consommé agrégé via les apps cibles (chantiers/achats) —
+        dégrade proprement à 0 + note tant qu'aucun sélecteur cross-app n'expose
+        ce montant (frontière cross-app). La société est garantie par
+        ``get_object`` (queryset scopé société) : un projet d'une autre société
+        → 404. Lecture seule.
+        """
+        projet = self.get_object()
+        data = selectors.consommation_matiere_vs_bom(projet)
+        return Response({
+            'budget_id': data['budget_id'],
+            'budget_version': data['budget_version'],
+            'bom_prevu': str(data['bom_prevu']),
+            'consomme': str(data['consomme']),
+            'ecart': str(data['ecart']),
+            'ecart_pct': (
+                str(data['ecart_pct'])
+                if data['ecart_pct'] is not None else None),
+            'source': data['source'],
+            'note': data['note'],
+        })
+
+    @action(detail=True, methods=['get'], url_path='pnl')
+    def pnl(self, request, pk=None):
+        """Compte de résultat (P&L) CONSOLIDÉ du projet (PROJ26 — interne).
+
+        Revenu (devis/factures rattachés, dégradé cross-app) − coûts (budget
+        prévisionnel + réel consolidé affectations + timesheets), marges prév. /
+        réelle et marge % réelle (None si revenu nul). Donnée 100 % INTERNE de
+        pilotage — JAMAIS exposée au client. La société est garantie par
+        ``get_object`` (queryset scopé société) : un projet d'une autre société
+        → 404. Lecture seule.
+        """
+        projet = self.get_object()
+        data = selectors.pnl_projet(request.user.company, projet)
+        return Response({
+            'revenu': str(data['revenu']),
+            'note_revenu': data['note_revenu'],
+            'cout_budget': str(data['cout_budget']),
+            'cout_reel': str(data['cout_reel']),
+            'cout_reel_affectations': str(data['cout_reel_affectations']),
+            'cout_reel_timesheets': str(data['cout_reel_timesheets']),
+            'marge_prev': str(data['marge_prev']),
+            'marge_reelle': str(data['marge_reelle']),
+            'marge_pct_reelle': (
+                str(data['marge_pct_reelle'])
+                if data['marge_pct_reelle'] is not None else None),
+            'budget_id': data['budget_id'],
+            'budget_version': data['budget_version'],
+            'couts_par_categorie': [
+                {
+                    'categorie': ligne['categorie'],
+                    'budget': str(ligne['budget']),
+                    'reel': str(ligne['reel']),
+                }
+                for ligne in data['couts_par_categorie']
+            ],
+        })
+
+    @action(detail=True, methods=['get'], url_path='jalons-facturables')
+    def jalons_facturables(self, request, pk=None):
+        """Jalons de facturation déclenchables par l'avancement (PROJ27).
+
+        Liste les jalons du projet avec leur ``facturation_pct``, leur statut,
+        s'ils sont ATTEINTS et donc FACTURABLES, et le montant théorique
+        (% × budget interne). La société est garantie par ``get_object``
+        (queryset scopé société) : un projet d'une autre société → 404. Lecture
+        seule. Le déclenchement effectif se fait via ``jalons/<id>/facturer/``.
+        """
+        projet = self.get_object()
+        data = selectors.jalons_facturables(projet)
+        return Response({
+            'base_montant': str(data['base_montant']),
+            'total_pct_facture': str(data['total_pct_facture']),
+            'jalons': [
+                {
+                    'id': j['id'],
+                    'libelle': j['libelle'],
+                    'facturation_pct': str(j['facturation_pct']),
+                    'statut': j['statut'],
+                    'atteint': j['atteint'],
+                    'facturable': j['facturable'],
+                    'montant': str(j['montant']),
+                }
+                for j in data['jalons']
+            ],
+        })
+
+    @action(detail=True, methods=['get'], url_path='avancement-vs-facture')
+    def avancement_vs_facture(self, request, pk=None):
+        """Compare l'avancement physique au % facturé du projet (PROJ28).
+
+        Avancement = roll-up pondéré par charge (PROJ9) ; facturé = somme des
+        ``facturation_pct`` des jalons atteints (bornée à 100). L'écart signale
+        une sous-facturation (> 0) ou une facturation d'avance (< 0). La société
+        est garantie par ``get_object`` (queryset scopé société) : un projet
+        d'une autre société → 404. Lecture seule.
+        """
+        projet = self.get_object()
+        data = selectors.avancement_vs_facture(projet)
+        return Response({
+            'avancement_pct': str(data['avancement_pct']),
+            'facture_pct': str(data['facture_pct']),
+            'ecart_pct': str(data['ecart_pct']),
+            'base_montant': str(data['base_montant']),
+            'montant_facture': str(data['montant_facture']),
+            'montant_avancement': str(data['montant_avancement']),
+        })
+
+    @action(detail=False, methods=['get'], url_path='portefeuille')
+    def portefeuille(self, request):
+        """Tableau de bord PORTEFEUILLE de la société (PROJ36) — interne/admin.
+
+        Une ligne par projet (avancement / retards / risques / marge réelle /
+        charge) + totaux portefeuille. Filtres : ``?statut=<statut>``,
+        ``?seuil_jours=N`` (horizon « à risque », défaut 7). La société est
+        imposée côté serveur (``request.user.company``) — jamais lue du corps.
+        Donnée 100 % INTERNE de pilotage. Lecture seule.
+        """
+        statut = request.query_params.get('statut') or None
+        seuil_raw = request.query_params.get('seuil_jours')
+        seuil = None
+        if seuil_raw is not None:
+            try:
+                seuil = max(0, int(seuil_raw))
+            except (ValueError, TypeError):
+                seuil = None
+        data = selectors.tableau_portefeuille(
+            request.user.company, statut=statut, seuil_jours=seuil)
+        return Response({
+            'nb_projets': data['nb_projets'],
+            'total_marge_reelle': str(data['total_marge_reelle']),
+            'total_charge': str(data['total_charge']),
+            'total_retards': data['total_retards'],
+            'total_risques': data['total_risques'],
+            'projets': [
+                {
+                    'projet_id': p['projet_id'],
+                    'code': p['code'],
+                    'nom': p['nom'],
+                    'statut': p['statut'],
+                    'avancement_pct': p['avancement_pct'],
+                    'nb_retards': p['nb_retards'],
+                    'nb_risques': p['nb_risques'],
+                    'marge_reelle': str(p['marge_reelle']),
+                    'charge_totale': str(p['charge_totale']),
+                }
+                for p in data['projets']
+            ],
+        })
+
+    @action(detail=True, methods=['get'], url_path='evm')
+    def evm(self, request, pk=None):
+        """Valeur acquise (EVM) LÉGER du projet (PROJ29) — interne/admin.
+
+        BAC / EV / AC / PV + CV / SV / CPI / SPI. PV s'appuie sur la fraction de
+        calendrier écoulée entre ``date_debut`` et ``date_fin_prevue`` à la
+        ``?date=YYYY-MM-DD`` (défaut aujourd'hui) ; sans dates de projet, PV et
+        SV/SPI sont None. Donnée 100 % INTERNE de pilotage. La société est
+        garantie par ``get_object`` (queryset scopé société) : un projet d'une
+        autre société → 404. Lecture seule.
+        """
+        projet = self.get_object()
+        date_ref = _parse_date_param(request.query_params.get('date'))
+        data = selectors.evm_projet(
+            request.user.company, projet, date_reference=date_ref)
+
+        def _num(value):
+            return str(value) if value is not None else None
+
+        return Response({
+            'bac': str(data['bac']),
+            'ev': str(data['ev']),
+            'ac': str(data['ac']),
+            'pv': _num(data['pv']),
+            'avancement_pct': str(data['avancement_pct']),
+            'fraction_ecoulee_pct': _num(data['fraction_ecoulee_pct']),
+            'cv': str(data['cv']),
+            'sv': _num(data['sv']),
+            'cpi': _num(data['cpi']),
+            'spi': _num(data['spi']),
+            'date_reference': data['date_reference'].isoformat(),
+        })
+
+    @action(detail=True, methods=['post'], url_path='cloturer')
+    def cloturer(self, request, pk=None):
+        """Clôture le projet + enregistre le RETOUR D'EXPÉRIENCE (PROJ38).
+
+        Corps : ``date_cloture`` (obligatoire, YYYY-MM-DD), ``date_reception``
+        (optionnelle), ``points_positifs`` / ``points_amelioration`` /
+        ``recommandations`` (REX). Crée/maj la clôture 1–1 et passe le projet à
+        TERMINÉ (transition journalisée). Un projet ANNULÉ → 400. ``cloture_par``
+        est posé côté serveur. La société est garantie par ``get_object``
+        (queryset scopé société) : un projet d'une autre société → 404.
+        """
+        projet = self.get_object()
+        date_cloture = _parse_date_param(request.data.get('date_cloture'))
+        if date_cloture is None:
+            return Response(
+                {'date_cloture': 'La date de clôture (YYYY-MM-DD) est '
+                                 'obligatoire.'},
+                status=status.HTTP_400_BAD_REQUEST)
+        date_reception = _parse_date_param(request.data.get('date_reception'))
+        try:
+            cloture = services.cloturer_projet(
+                projet,
+                date_cloture=date_cloture,
+                date_reception=date_reception,
+                points_positifs=request.data.get('points_positifs', '') or '',
+                points_amelioration=request.data.get(
+                    'points_amelioration', '') or '',
+                recommandations=request.data.get('recommandations', '') or '',
+                auteur=request.user)
+        except services.ClotureError as exc:
+            return Response(
+                {'detail': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+        return Response(
+            ClotureProjetSerializer(cloture).data,
+            status=status.HTTP_201_CREATED)
+
 
 class ProjetChantierViewSet(_GestionProjetBaseViewSet):
     """Rattachements chantier ↔ projet (liens lâches)."""
@@ -597,6 +937,31 @@ class JalonViewSet(_GestionProjetBaseViewSet):
         if facturation in ('1', 'true', 'True'):
             qs = qs.filter(facturation_pct__gt=0)
         return qs
+
+    @action(detail=True, methods=['post'], url_path='facturer')
+    def facturer(self, request, pk=None):
+        """Déclenche la facturation liée à ce jalon ATTEINT (PROJ27).
+
+        Le jalon doit être ATTEINT et porter un ``facturation_pct`` > 0 (sinon
+        400). L'écriture de la facture client passe par ``ventes.services``
+        (frontière cross-app) ; tant qu'aucune entrée dédiée n'y existe, on
+        renvoie une PROPOSITION (montant calculé, aucune facture créée). La
+        société est garantie par ``get_object`` (queryset scopé société) : un
+        jalon d'une autre société → 404.
+        """
+        jalon = self.get_object()
+        try:
+            data = services.declencher_facturation_jalon(jalon)
+        except services.FacturationJalonError as exc:
+            return Response(
+                {'detail': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+        return Response({
+            'jalon_id': data['jalon_id'],
+            'facturation_pct': str(data['facturation_pct']),
+            'montant': str(data['montant']),
+            'facture_creee': data['facture_creee'],
+            'note': data['note'],
+        })
 
 
 class CalendrierProjetViewSet(_GestionProjetBaseViewSet):
@@ -1025,4 +1390,452 @@ class LigneBudgetProjetViewSet(_GestionProjetBaseViewSet):
         categorie = self.request.query_params.get('categorie')
         if categorie:
             qs = qs.filter(categorie=categorie)
+        return qs
+
+
+class TimesheetViewSet(_GestionProjetBaseViewSet):
+    """Feuilles de temps internes imputées aux projets (PROJ24) — CRUD scopé.
+
+    ``company`` est posée côté serveur (TenantMixin) ; les FK reçus (``projet``,
+    ``tache``, ``phase``, ``ressource``) sont validés même-société par le
+    sérialiseur (cible d'une autre société → 400). Le ``cout`` est FIGÉ côté
+    serveur à la création/édition (``heures`` × coût horaire interne de la
+    ressource) — jamais lu du corps de requête, jamais exposé au client.
+    Filtres optionnels : ``?projet=<id>``, ``?tache=<id>``, ``?ressource=<id>``,
+    ``?debut=YYYY-MM-DD&fin=YYYY-MM-DD`` (saisies dans la fenêtre inclusive).
+    """
+    queryset = Timesheet.objects.select_related(
+        'projet', 'tache', 'phase', 'ressource').all()
+    serializer_class = TimesheetSerializer
+    filter_backends = [filters.SearchFilter, filters.OrderingFilter]
+    search_fields = ['commentaire']
+    ordering_fields = ['date', 'heures', 'cout', 'id']
+
+    def perform_create(self, serializer):
+        ressource = serializer.validated_data.get('ressource')
+        heures = serializer.validated_data.get('heures')
+        serializer.save(
+            company=self.request.user.company,
+            cout=services.cout_timesheet(ressource, heures))
+
+    def perform_update(self, serializer):
+        instance = serializer.instance
+        ressource = serializer.validated_data.get('ressource', instance.ressource)
+        heures = serializer.validated_data.get('heures', instance.heures)
+        serializer.save(cout=services.cout_timesheet(ressource, heures))
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        projet = self.request.query_params.get('projet')
+        if projet:
+            qs = qs.filter(projet_id=projet)
+        tache = self.request.query_params.get('tache')
+        if tache:
+            qs = qs.filter(tache_id=tache)
+        ressource = self.request.query_params.get('ressource')
+        if ressource:
+            qs = qs.filter(ressource_id=ressource)
+        debut = self.request.query_params.get('debut')
+        fin = self.request.query_params.get('fin')
+        if debut and fin:
+            qs = qs.filter(date__gte=debut, date__lte=fin)
+        return qs
+
+
+class RisqueViewSet(_GestionProjetBaseViewSet):
+    """Registre des risques d'un projet (PROJ30) — CRUD scopé société.
+
+    ``company`` est posée côté serveur (TenantMixin) ; le ``projet`` et le
+    ``proprietaire`` reçus sont validés même-société. La ``criticite`` est
+    FIGÉE côté serveur (probabilité × impact) — jamais lue du corps de requête.
+    Filtres optionnels : ``?projet=<id>``, ``?statut=<statut>``,
+    ``?categorie=<categorie>``, ``?criticite_min=<n>`` (criticité ≥ n).
+    Recherche par libellé / description ; tri par défaut criticité décroissante.
+    """
+    queryset = Risque.objects.select_related('projet', 'proprietaire').all()
+    serializer_class = RisqueSerializer
+    filter_backends = [filters.SearchFilter, filters.OrderingFilter]
+    search_fields = ['libelle', 'description', 'mitigation']
+    ordering_fields = ['criticite', 'probabilite', 'impact', 'statut', 'id']
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        projet = self.request.query_params.get('projet')
+        if projet:
+            qs = qs.filter(projet_id=projet)
+        statut = self.request.query_params.get('statut')
+        if statut:
+            qs = qs.filter(statut=statut)
+        categorie = self.request.query_params.get('categorie')
+        if categorie:
+            qs = qs.filter(categorie=categorie)
+        criticite_min = self.request.query_params.get('criticite_min')
+        if criticite_min:
+            try:
+                qs = qs.filter(criticite__gte=int(criticite_min))
+            except (TypeError, ValueError):
+                pass
+        return qs
+
+
+class ActionProjetViewSet(_GestionProjetBaseViewSet):
+    """Registre d'actions d'un projet (PROJ31) — CRUD scopé société.
+
+    ``company`` est posée côté serveur (TenantMixin) ; le ``projet``, le
+    ``risque`` (optionnel) et le ``responsable`` (optionnel) reçus sont validés
+    même-société. Filtres optionnels : ``?projet=<id>``, ``?statut=<statut>``,
+    ``?priorite=<priorite>``, ``?risque=<id>``, ``?ouvertes=1`` (statut à faire /
+    en cours). Recherche par libellé / description ; tri par défaut statut puis
+    échéance.
+    """
+    queryset = ActionProjet.objects.select_related(
+        'projet', 'risque', 'responsable').all()
+    serializer_class = ActionProjetSerializer
+    filter_backends = [filters.SearchFilter, filters.OrderingFilter]
+    search_fields = ['libelle', 'description']
+    ordering_fields = ['statut', 'priorite', 'echeance', 'id']
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        projet = self.request.query_params.get('projet')
+        if projet:
+            qs = qs.filter(projet_id=projet)
+        statut = self.request.query_params.get('statut')
+        if statut:
+            qs = qs.filter(statut=statut)
+        priorite = self.request.query_params.get('priorite')
+        if priorite:
+            qs = qs.filter(priorite=priorite)
+        risque = self.request.query_params.get('risque')
+        if risque:
+            qs = qs.filter(risque_id=risque)
+        if self.request.query_params.get('ouvertes') in ('1', 'true', 'True'):
+            qs = qs.filter(statut__in=[
+                ActionProjet.Statut.A_FAIRE, ActionProjet.Statut.EN_COURS])
+        return qs
+
+
+class CompteRenduReunionViewSet(_GestionProjetBaseViewSet):
+    """Comptes-rendus de réunion de chantier (PROJ32) — CRUD scopé société.
+
+    ``company`` et ``redacteur`` sont posés côté serveur ; le ``projet`` reçu est
+    validé même-société. Filtres optionnels : ``?projet=<id>``,
+    ``?chantier=<id>``, ``?debut=YYYY-MM-DD&fin=YYYY-MM-DD`` (réunions dans la
+    fenêtre inclusive). Recherche par titre / décisions ; tri par défaut date de
+    réunion décroissante.
+    """
+    queryset = CompteRenduReunion.objects.select_related(
+        'projet', 'redacteur').all()
+    serializer_class = CompteRenduReunionSerializer
+    filter_backends = [filters.SearchFilter, filters.OrderingFilter]
+    search_fields = ['titre', 'decisions', 'ordre_du_jour', 'participants']
+    ordering_fields = ['date_reunion', 'id']
+
+    def perform_create(self, serializer):
+        serializer.save(
+            company=self.request.user.company, redacteur=self.request.user)
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        projet = self.request.query_params.get('projet')
+        if projet:
+            qs = qs.filter(projet_id=projet)
+        chantier = self.request.query_params.get('chantier')
+        if chantier:
+            qs = qs.filter(chantier_id=chantier)
+        debut = self.request.query_params.get('debut')
+        fin = self.request.query_params.get('fin')
+        if debut and fin:
+            qs = qs.filter(date_reunion__gte=debut, date_reunion__lte=fin)
+        return qs
+
+
+class DocumentProjetViewSet(_GestionProjetBaseViewSet):
+    """Documents & plans VERSIONNÉS d'un projet (PROJ33) — CRUD scopé société.
+
+    ``company`` est posée côté serveur (TenantMixin) ; le ``projet`` reçu est
+    validé même-société. Le dépôt d'une nouvelle révision se fait via l'action
+    ``documents/<id>/deposer/`` (multipart, champ ``fichier`` + ``commentaire``
+    optionnel) : le numéro de version et l'``auteur`` sont posés CÔTÉ SERVEUR
+    (jamais du corps). Filtres optionnels : ``?projet=<id>``,
+    ``?type_doc=<type>``. Recherche par nom / description.
+    """
+    queryset = DocumentProjet.objects.select_related('projet').prefetch_related(
+        'versions').all()
+    serializer_class = DocumentProjetSerializer
+    filter_backends = [filters.SearchFilter, filters.OrderingFilter]
+    search_fields = ['nom', 'description']
+    ordering_fields = ['nom', 'type_doc', 'derniere_version', 'id']
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        projet = self.request.query_params.get('projet')
+        if projet:
+            qs = qs.filter(projet_id=projet)
+        type_doc = self.request.query_params.get('type_doc')
+        if type_doc:
+            qs = qs.filter(type_doc=type_doc)
+        return qs
+
+    @action(detail=True, methods=['post'], url_path='deposer')
+    def deposer(self, request, pk=None):
+        """Dépose une NOUVELLE version (révision) du document (PROJ33).
+
+        Corps multipart : ``fichier`` (obligatoire) + ``commentaire`` (optionnel).
+        Le numéro de version (``derniere_version`` + 1) et l'``auteur`` sont posés
+        côté serveur — jamais lus du corps. La société est garantie par
+        ``get_object`` (queryset scopé société) : un document d'une autre société
+        → 404. Renvoie la version créée (201).
+        """
+        document = self.get_object()
+        fichier = request.data.get('fichier')
+        if not fichier:
+            return Response(
+                {'fichier': 'Un fichier est obligatoire.'},
+                status=status.HTTP_400_BAD_REQUEST)
+        commentaire = request.data.get('commentaire', '') or ''
+        version = services.deposer_version_document(
+            document, fichier, commentaire=commentaire, auteur=request.user)
+        return Response(
+            VersionDocumentSerializer(version).data,
+            status=status.HTTP_201_CREATED)
+
+    @action(detail=True, methods=['get'], url_path='versions')
+    def versions(self, request, pk=None):
+        """Historique des versions du document (plus récentes d'abord)."""
+        document = self.get_object()
+        qs = VersionDocument.objects.filter(
+            document=document, company=document.company).select_related(
+                'auteur').order_by('-version', '-id')
+        return Response(VersionDocumentSerializer(qs, many=True).data)
+
+
+class CommentaireProjetViewSet(_GestionProjetBaseViewSet):
+    """Commentaires & @mentions sur les objets d'un projet (PROJ34) — CRUD scopé.
+
+    ``company`` et ``auteur`` sont posés côté serveur ; le ``projet`` reçu est
+    validé même-société et les ``mentions`` restreintes à la même société.
+    Filtres optionnels : ``?projet=<id>``, ``?cible_type=<type>``,
+    ``?cible_id=<id>`` (fil d'un objet précis), ``?mention=<user_id>``
+    (commentaires me mentionnant). Recherche par texte ; tri par défaut date
+    décroissante.
+    """
+    queryset = CommentaireProjet.objects.select_related(
+        'projet', 'auteur').prefetch_related('mentions').all()
+    serializer_class = CommentaireProjetSerializer
+    filter_backends = [filters.SearchFilter, filters.OrderingFilter]
+    search_fields = ['texte']
+    ordering_fields = ['date_creation', 'id']
+
+    def perform_create(self, serializer):
+        serializer.save(
+            company=self.request.user.company, auteur=self.request.user)
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        projet = self.request.query_params.get('projet')
+        if projet:
+            qs = qs.filter(projet_id=projet)
+        cible_type = self.request.query_params.get('cible_type')
+        if cible_type:
+            qs = qs.filter(cible_type=cible_type)
+        cible_id = self.request.query_params.get('cible_id')
+        if cible_id:
+            qs = qs.filter(cible_id=cible_id)
+        mention = self.request.query_params.get('mention')
+        if mention:
+            qs = qs.filter(mentions__id=mention)
+        return qs
+
+
+class ModeleProjetViewSet(_GestionProjetBaseViewSet):
+    """Modèles (templates) de projet par type d'installation (PROJ35).
+
+    ``company`` est posée côté serveur (TenantMixin). Filtres optionnels :
+    ``?type_installation=<type>``, ``?actif=1``. Recherche par nom / description.
+    L'action ``modeles/<id>/instancier/`` applique le modèle à un projet (corps :
+    ``projet``) — crée phases + tâches (additif). Les tâches-types se gèrent via
+    ``modele-taches/``.
+    """
+    queryset = ModeleProjet.objects.prefetch_related('taches').all()
+    serializer_class = ModeleProjetSerializer
+    filter_backends = [filters.SearchFilter, filters.OrderingFilter]
+    search_fields = ['nom', 'description']
+    ordering_fields = ['nom', 'type_installation', 'id']
+
+    def perform_create(self, serializer):
+        serializer.save(company=self.request.user.company)
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        type_installation = self.request.query_params.get('type_installation')
+        if type_installation:
+            qs = qs.filter(type_installation=type_installation)
+        actif = self.request.query_params.get('actif')
+        if actif in ('1', 'true', 'True'):
+            qs = qs.filter(actif=True)
+        elif actif in ('0', 'false', 'False'):
+            qs = qs.filter(actif=False)
+        return qs
+
+    @action(detail=True, methods=['post'], url_path='instancier')
+    def instancier(self, request, pk=None):
+        """Applique le modèle à un PROJET : crée phases + tâches (PROJ35).
+
+        Corps : ``projet`` (id, obligatoire). Le projet doit appartenir à la
+        société de l'utilisateur (sinon 400) — la société du modèle est garantie
+        par ``get_object`` (queryset scopé société). Opération ADDITIVE : aucune
+        phase/tâche existante n'est écrasée. Renvoie les tâches créées (201).
+        """
+        modele = self.get_object()
+        projet_id = request.data.get('projet')
+        if not projet_id:
+            return Response(
+                {'projet': 'Le projet est obligatoire.'},
+                status=status.HTTP_400_BAD_REQUEST)
+        projet = Projet.objects.filter(
+            id=projet_id, company=request.user.company).first()
+        if projet is None:
+            return Response(
+                {'projet': 'Projet inconnu.'},
+                status=status.HTTP_400_BAD_REQUEST)
+        try:
+            taches = services.instancier_modele(modele, projet)
+        except services.ModeleProjetError as exc:
+            return Response(
+                {'detail': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+        return Response(
+            TacheSerializer(taches, many=True).data,
+            status=status.HTTP_201_CREATED)
+
+
+class ModeleTacheViewSet(_GestionProjetBaseViewSet):
+    """Tâches-types d'un modèle de projet (PROJ35) — CRUD scopé société.
+
+    ``company`` est posée côté serveur (TenantMixin) ; le ``modele`` reçu est
+    validé même-société. Filtres optionnels : ``?modele=<id>``,
+    ``?type_phase=<type>``. Tri par défaut ``ordre`` puis ``id``.
+    """
+    queryset = ModeleTache.objects.select_related('modele').all()
+    serializer_class = ModeleTacheSerializer
+    filter_backends = [filters.OrderingFilter]
+    ordering_fields = ['ordre', 'type_phase', 'id']
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        modele = self.request.query_params.get('modele')
+        if modele:
+            qs = qs.filter(modele_id=modele)
+        type_phase = self.request.query_params.get('type_phase')
+        if type_phase:
+            qs = qs.filter(type_phase=type_phase)
+        return qs
+
+
+class PortailProjetTokenViewSet(_GestionProjetBaseViewSet):
+    """Jetons d'accès au portail d'avancement client (PROJ37) — CRUD scopé.
+
+    Côté ADMIN/Responsable : crée/révoque le lien public d'un projet. ``company``
+    est posée côté serveur ; le ``token`` est généré côté serveur ; le ``projet``
+    reçu est validé même-société (un seul jeton par projet). Filtre optionnel
+    ``?projet=<id>``. Le portail PUBLIC (non authentifié) est servi ailleurs
+    (``public_views.portail_avancement``) et n'expose AUCUN coût/marge.
+    """
+    queryset = PortailProjetToken.objects.select_related('projet').all()
+    serializer_class = PortailProjetTokenSerializer
+    filter_backends = [filters.OrderingFilter]
+    ordering_fields = ['id']
+
+    def perform_create(self, serializer):
+        serializer.save(company=self.request.user.company)
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        projet = self.request.query_params.get('projet')
+        if projet:
+            qs = qs.filter(projet_id=projet)
+        return qs
+
+
+class SousTraitantViewSet(_GestionProjetBaseViewSet):
+    """Carnet d'adresses des sous-traitants (PROJ38) — CRUD scopé société.
+
+    ``company`` est posée côté serveur (TenantMixin). Filtres optionnels :
+    ``?actif=1``, ``?specialite=<txt>``. Recherche par nom / spécialité /
+    contact. Données INTERNES — jamais exposées au client.
+    """
+    queryset = SousTraitant.objects.all()
+    serializer_class = SousTraitantSerializer
+    filter_backends = [filters.SearchFilter, filters.OrderingFilter]
+    search_fields = ['nom', 'specialite', 'contact', 'email']
+    ordering_fields = ['nom', 'specialite', 'actif', 'id']
+
+    def perform_create(self, serializer):
+        serializer.save(company=self.request.user.company)
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        actif = self.request.query_params.get('actif')
+        if actif in ('1', 'true', 'True'):
+            qs = qs.filter(actif=True)
+        elif actif in ('0', 'false', 'False'):
+            qs = qs.filter(actif=False)
+        specialite = self.request.query_params.get('specialite')
+        if specialite:
+            qs = qs.filter(specialite__icontains=specialite)
+        return qs
+
+
+class LotSousTraitanceViewSet(_GestionProjetBaseViewSet):
+    """Lots de sous-traitance d'un projet (PROJ38) — CRUD scopé société.
+
+    ``company`` est posée côté serveur (TenantMixin) ; le ``projet`` et le
+    ``sous_traitant`` reçus sont validés même-société. Le ``montant`` est un coût
+    INTERNE — jamais exposé au client. Filtres optionnels : ``?projet=<id>``,
+    ``?sous_traitant=<id>``, ``?statut=<statut>``. Recherche par libellé.
+    """
+    queryset = LotSousTraitance.objects.select_related(
+        'projet', 'sous_traitant').all()
+    serializer_class = LotSousTraitanceSerializer
+    filter_backends = [filters.SearchFilter, filters.OrderingFilter]
+    search_fields = ['libelle', 'description']
+    ordering_fields = ['statut', 'montant', 'date_debut', 'id']
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        projet = self.request.query_params.get('projet')
+        if projet:
+            qs = qs.filter(projet_id=projet)
+        sous_traitant = self.request.query_params.get('sous_traitant')
+        if sous_traitant:
+            qs = qs.filter(sous_traitant_id=sous_traitant)
+        statut = self.request.query_params.get('statut')
+        if statut:
+            qs = qs.filter(statut=statut)
+        return qs
+
+
+class ClotureProjetViewSet(_GestionProjetBaseViewSet):
+    """Clôtures de projet + retour d'expérience (PROJ38) — scopé société.
+
+    ``company`` et ``cloture_par`` sont posés côté serveur ; le ``projet`` reçu
+    est validé même-société. La clôture se prend de préférence via l'action
+    ``projets/<id>/cloturer/`` (transition serveur + REX) ; ce viewset gère la
+    lecture et l'édition du REX. Filtre optionnel ``?projet=<id>``.
+    """
+    queryset = ClotureProjet.objects.select_related(
+        'projet', 'cloture_par').all()
+    serializer_class = ClotureProjetSerializer
+    filter_backends = [filters.OrderingFilter]
+    ordering_fields = ['date_cloture', 'id']
+
+    def perform_create(self, serializer):
+        serializer.save(
+            company=self.request.user.company, cloture_par=self.request.user)
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        projet = self.request.query_params.get('projet')
+        if projet:
+            qs = qs.filter(projet_id=projet)
         return qs

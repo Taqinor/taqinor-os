@@ -81,6 +81,50 @@ from .models_soustraitant import (
 from .models_ordre_soustraitance import (
     OrdreSousTraitance,
 )
+from .models_facture_soustraitant import (
+    FactureSousTraitant,
+    PaiementSousTraitant,
+)
+from .models_attestation_soustraitant import (
+    AttestationSousTraitant,
+)
+from .models_evaluation_soustraitant import (
+    EvaluationSousTraitant,
+)
+from .models_retenue_garantie import (
+    RetenueGarantieSousTraitant,
+)
+from .models_demande_achat import (
+    DemandeAchat,
+    DemandeAchatLigne,
+)
+from .models_rfq import (
+    RFQ,
+    RFQOffre,
+)
+from .models_approbation_bcf import (
+    SeuilApprobationBCF,
+    ApprobationBCF,
+)
+from .models_commande_cadre import (
+    CommandeCadre,
+    CommandeCadreLigne,
+    AppelCommande,
+)
+from .models_dossier_import import (
+    DossierImport,
+)
+from .models_landed_cost import (
+    FraisImport,
+    LandedCostLigne,
+)
+from .models_gr_ir import (
+    ReceptionNonFacturee,
+)
+from .models_contrat_prix import (
+    ContratPrixFournisseur,
+    ContratPrixLigne,
+)
 
 __all__ = [
     'Installation',
@@ -125,4 +169,24 @@ __all__ = [
     'IndisponibiliteRessource',
     'SousTraitant',
     'OrdreSousTraitance',
+    'FactureSousTraitant',
+    'PaiementSousTraitant',
+    'AttestationSousTraitant',
+    'EvaluationSousTraitant',
+    'RetenueGarantieSousTraitant',
+    'DemandeAchat',
+    'DemandeAchatLigne',
+    'RFQ',
+    'RFQOffre',
+    'SeuilApprobationBCF',
+    'ApprobationBCF',
+    'CommandeCadre',
+    'CommandeCadreLigne',
+    'AppelCommande',
+    'DossierImport',
+    'FraisImport',
+    'LandedCostLigne',
+    'ReceptionNonFacturee',
+    'ContratPrixFournisseur',
+    'ContratPrixLigne',
 ]

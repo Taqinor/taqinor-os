@@ -27,9 +27,14 @@ from authentication.permissions import (
     IsAdminRole,
 )
 
+from django.db.models import Q
+
 from . import jobs as jobs_infra
 from . import workflow_templates
+from .mixins import TenantMixin
+from .models import Dashboard
 from .serializers import (
+    DashboardSerializer,
     ScheduledJobSerializer,
     WorkflowTemplateSerializer,
 )
@@ -149,3 +154,36 @@ class WorkflowTemplateViewSet(viewsets.ViewSet):
             status=(status.HTTP_201_CREATED if created
                     else status.HTTP_200_OK),
         )
+
+
+class DashboardViewSet(TenantMixin, viewsets.ModelViewSet):
+    """FG381 — dashboards sans-code, sauvegardés par utilisateur/société.
+
+    Multi-tenant : ``TenantMixin`` filtre déjà par société et impose
+    ``company`` à la création. On affine la lecture : un utilisateur voit SES
+    dashboards personnels + ceux PARTAGÉS de sa société (les dashboards
+    personnels d'autrui restent privés). ``owner`` est positionné à
+    l'utilisateur courant à la création (jamais lu du corps).
+    """
+    serializer_class = DashboardSerializer
+    permission_classes = [IsAuthenticated]
+    queryset = Dashboard.objects.all()
+    pagination_class = None  # petite liste par utilisateur — renvoyée à plat.
+
+    def get_queryset(self):
+        qs = super().get_queryset()  # déjà filtré par société (TenantMixin).
+        user = self.request.user
+        # Personnels de l'utilisateur + partagés société + dashboards société
+        # sans propriétaire.
+        return qs.filter(
+            Q(owner=user) | Q(partage=True) | Q(owner__isnull=True)
+        ).distinct()
+
+    def perform_create(self, serializer):
+        # company imposée côté serveur (TenantMixin) ; owner = utilisateur courant.
+        serializer.save(company=self.request.user.company,
+                        owner=self.request.user)
+
+    def perform_update(self, serializer):
+        # Ne jamais réécrire company/owner depuis le corps.
+        serializer.save(company=self.request.user.company)

@@ -1,7 +1,9 @@
 import { useState, useCallback, useEffect } from 'react'
 import { useDispatch, useSelector } from 'react-redux'
+import { useNavigate } from 'react-router-dom'
 import {
   FileText, Inbox, AlertCircle, Check, Copy, RefreshCw, Save, Trash2, ChevronDown,
+  UserPlus, FilePlus,
 } from 'lucide-react'
 import {
   Button,
@@ -17,6 +19,7 @@ import {
 } from '../../ui'
 import { FileUpload } from '../../ui/FileUpload'
 import { cn } from '../../lib/cn'
+import publicapiApi from '../../api/publicapiApi'
 import {
   processOcrDocument,
   saveOcrDocument,
@@ -63,11 +66,15 @@ function TypeBadge({ type }) {
 // ── Onglet Analyser ───────────────────────────────────────────────────────────
 function AnalyseTab({ canSave }) {
   const dispatch = useDispatch()
+  const navigate = useNavigate()
   const { ocrResult, ocrLoading, ocrError, savedDocumentId, saveLoading, saveError } =
     useSelector((s) => s.ia)
 
   const [currentFile, setCurrentFile] = useState(null)
   const [copied, setCopied] = useState(false)
+  // FG106 — création d'un lead / brouillon de devis depuis le document OCR.
+  const [crmLoading, setCrmLoading] = useState(false)
+  const [crmDone, setCrmDone] = useState(null) // { mode, devisReference? }
 
   const processFile = useCallback((file) => {
     if (!file) return
@@ -79,6 +86,30 @@ function AnalyseTab({ canSave }) {
     dispatch(clearOcrResult())
     setCurrentFile(null)
     setCopied(false)
+    setCrmDone(null)
+  }
+
+  // FG106 — POSTe les champs extraits vers la passerelle CRM/ventes côté
+  // serveur (qui crée un lead, ou un lead + brouillon de devis). On ne quitte
+  // l'écran que sur action explicite « Ouvrir ».
+  const createFromDocument = async (mode) => {
+    if (!ocrResult) return
+    setCrmLoading(true)
+    try {
+      const r = await publicapiApi.ocrToCrm({
+        mode,
+        fields: ocrResult.donnees_structurees ?? {},
+      })
+      setCrmDone({
+        mode,
+        leadId: r.data.lead_id,
+        devisReference: r.data.devis_reference,
+      })
+    } catch (e) {
+      alert(e?.response?.data?.detail ?? 'Création impossible depuis ce document.')
+    } finally {
+      setCrmLoading(false)
+    }
   }
 
   const handleCopy = () => {
@@ -236,6 +267,41 @@ function AnalyseTab({ canSave }) {
                 )}
                 {saveError && <span className="text-sm text-destructive">{saveError}</span>}
               </>
+            )}
+            {/* FG106 — créer un lead / brouillon de devis depuis ce document */}
+            {canSave && !crmDone && (
+              <>
+                <Button
+                  variant="outline" size="sm"
+                  onClick={() => createFromDocument('lead')}
+                  loading={crmLoading}
+                >
+                  {!crmLoading && <UserPlus />} Créer un lead
+                </Button>
+                <Button
+                  variant="outline" size="sm"
+                  onClick={() => createFromDocument('devis')}
+                  loading={crmLoading}
+                >
+                  {!crmLoading && <FilePlus />} Brouillon de devis
+                </Button>
+              </>
+            )}
+            {crmDone && (
+              <div className="flex flex-wrap items-center gap-2">
+                <Badge tone="success" className="gap-1.5 px-3 py-1.5 text-sm">
+                  <Check className="size-4" aria-hidden="true" />
+                  {crmDone.mode === 'devis'
+                    ? `Lead + devis brouillon créés${crmDone.devisReference ? ` (${crmDone.devisReference})` : ''}`
+                    : 'Lead brouillon créé'}
+                </Badge>
+                <Button
+                  variant="ghost" size="sm"
+                  onClick={() => navigate(crmDone.mode === 'devis' ? '/ventes/devis' : '/crm/leads')}
+                >
+                  {crmDone.mode === 'devis' ? 'Ouvrir les devis' : 'Ouvrir les leads'}
+                </Button>
+              </div>
             )}
             <Button variant="outline" size="sm" onClick={handleReset}>
               <RefreshCw /> Analyser un autre fichier

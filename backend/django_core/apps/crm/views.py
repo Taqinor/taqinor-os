@@ -5,7 +5,7 @@ from authentication.mixins import TenantMixin
 from authentication.scoping import scope_queryset, scope_client_queryset
 from .models import (
     Appointment, Client, ConcurrentPerte, Lead, LeadTag, MotifPerte, Canal,
-    Parrainage, MessageTemplate, ObjectifCommercial, PointContact,
+    Parrainage, MessageTemplate, ObjectifCommercial, PointContact, SiteProfile,
 )
 from .serializers import (
     AppointmentSerializer, ClientSerializer, ConcurrentPerteSerializer,
@@ -13,7 +13,7 @@ from .serializers import (
     LeadTagSerializer, MotifPerteSerializer, CanalSerializer,
     ParrainageSerializer, MessageTemplateSerializer, _tag_en_usage, _motif_en_usage,
     ObjectifCommercialSerializer, ObjectifAttainmentSerializer,
-    PointContactSerializer,
+    PointContactSerializer, SiteProfileSerializer,
 )
 from . import activity
 from .services import default_responsable_for
@@ -160,6 +160,77 @@ class ClientViewSet(TenantMixin, viewsets.ModelViewSet):
             'factures': factures,
             'chantiers': chantiers,
         })
+
+    @action(detail=True, methods=['get'], url_path='data-export',
+            permission_classes=[IsResponsableOrAdmin])
+    def data_export(self, request, pk=None):
+        """FG26 — bundle d'accès du sujet (RGPD) : toutes les données
+        personnelles détenues sur un client + la liste de ses documents liés.
+
+        Lecture seule, company-scopée (get_object passe par TenantMixin +
+        visibilité). Destiné à satisfaire une demande d'accès du sujet."""
+        client = self.get_object()
+        from apps.audit.recorder import record
+        from apps.audit.models import AuditLog
+        record(AuditLog.Action.EXPORT, instance=client,
+               detail='Export RGPD (accès du sujet)')
+        identite = {
+            'id': client.id,
+            'nom': client.nom, 'prenom': client.prenom,
+            'email': client.email, 'telephone': client.telephone,
+            'adresse': client.adresse, 'type_client': client.type_client,
+            'cin': client.cin, 'ice': client.ice,
+            'if_fiscal': client.if_fiscal, 'rc': client.rc,
+            'custom_data': client.custom_data,
+            'date_creation': client.date_creation.isoformat()
+            if client.date_creation else None,
+            'is_anonymized': client.is_anonymized,
+        }
+        documents = {
+            'devis': [
+                {'reference': d.reference, 'statut': getattr(d, 'statut', None),
+                 'total_ttc': str(d.total_ttc)}
+                for d in client.devis.all().order_by('-date_creation')
+            ],
+            'factures': [
+                {'reference': f.reference, 'statut': getattr(f, 'statut', None),
+                 'total_ttc': str(f.total_ttc)}
+                for f in client.factures.all().order_by('-date_emission')
+            ],
+        }
+        return Response({'identite': identite, 'documents': documents})
+
+    @action(detail=True, methods=['post'], url_path='anonymize',
+            permission_classes=[IsAdminRole])
+    def anonymize(self, request, pk=None):
+        """FG26 — droit à l'effacement : scrube les PII du client tout en
+        PRÉSERVANT l'intégrité comptable (devis/factures conservés, liés à une
+        identité neutralisée). Admin uniquement, irréversible, idempotent."""
+        from django.utils import timezone
+        client = self.get_object()
+        if client.is_anonymized:
+            return Response(
+                {'detail': 'Ce client est déjà anonymisé.'},
+                status=status.HTTP_400_BAD_REQUEST)
+        client.nom = f'Client anonymisé #{client.id}'
+        client.prenom = None
+        client.email = None
+        client.telephone = None
+        client.adresse = None
+        client.cin = None
+        client.ice = None
+        client.if_fiscal = None
+        client.rc = None
+        client.custom_data = None
+        client.is_anonymized = True
+        client.anonymized_at = timezone.now()
+        client.save()
+        from apps.audit.recorder import record
+        from apps.audit.models import AuditLog
+        record(AuditLog.Action.UPDATE, instance=client,
+               detail='Anonymisation RGPD (effacement des données personnelles)')
+        return Response(ClientSerializer(
+            client, context={'request': request}).data)
 
     def destroy(self, request, *args, **kwargs):
         # Un client avec des devis est PROTÉGÉ (pas de cascade) : message
@@ -1089,6 +1160,37 @@ class ParrainageViewSet(TenantMixin, viewsets.ModelViewSet):
             'recompenses_total': str(rec_total),
             'recompenses_versees': str(rec_versee),
         })
+
+
+# ── DC12 — Profil site/énergie réutilisable par client ───────────────────────
+
+class SiteProfileViewSet(TenantMixin, viewsets.ModelViewSet):
+    """DC12 — profil site/énergie réutilisable, attaché au client.
+
+    Saisi une fois par client, le générateur de devis le pré-remplit ensuite
+    (y compris pour les devis sans lead). Société ET créateur forcés côté
+    serveur (jamais lus du corps de requête). Lecture tout rôle, écriture
+    responsable/admin. Filtrable par ?client=<id>."""
+    queryset = SiteProfile.objects.select_related('client').all()
+    serializer_class = SiteProfileSerializer
+
+    def get_permissions(self):
+        if self.action in READ_ACTIONS:
+            return [IsAnyRole()]
+        return [IsResponsableOrAdmin()]
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        client_id = self.request.query_params.get('client')
+        if client_id:
+            qs = qs.filter(client_id=client_id)
+        return qs
+
+    def perform_create(self, serializer):
+        serializer.save(
+            company=self.request.user.company,
+            created_by=self.request.user,
+        )
 
 
 # ── FG36 — Modèles de messages WhatsApp/SMS ───────────────────────────────────

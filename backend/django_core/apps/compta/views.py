@@ -20,28 +20,34 @@ from authentication.permissions import IsResponsableOrAdmin
 
 from . import selectors, services
 from .models import (
-    BaremeIndemnite, BordereauRemise, Caisse, CautionBancaire,
-    CessionImmobilisation, CompteComptable, CompteTresorerie, DeclarationTVA,
-    DotationAmortissement, EcritureComptable, Effet, ExerciceComptable,
-    Immobilisation, IndemniteChantier, Journal, LignePrevisionnelTresorerie,
-    LigneReleve, MouvementCaisse, NoteFrais, PaymentRun, PeriodeComptable,
-    PlanComptable, Rapprochement, RapprochementBancaire, RetenueGarantie,
-    RetenueSource, TimbreFiscal, VirementInterne,
+    BaremeIndemnite, BordereauRemise, Budget, BudgetLigne, Caisse,
+    CautionBancaire, CentreCout, CessionImmobilisation, CommissionPayoutRun,
+    CompteComptable, CompteTresorerie, ContratAvancement, DeclarationTVA,
+    DotationAmortissement, EcritureComptable, Effet, EntiteConsolidation,
+    ExerciceComptable, Immobilisation, IndemniteChantier, Journal,
+    LignePrevisionnelTresorerie, LigneReleve, MouvementCaisse, NoteFrais,
+    PaymentRun, PeriodeComptable, PlanComptable, ProvisionCreance,
+    Rapprochement, RapprochementBancaire, RetenueGarantie, RetenueSource,
+    TimbreFiscal, TravauxEnCours, VirementInterne,
 )
 from .serializers import (
-    BaremeIndemniteSerializer, BordereauRemiseSerializer, CaisseSerializer,
+    AvancementRevenuSerializer, BaremeIndemniteSerializer,
+    BordereauRemiseSerializer, BudgetSerializer, CaisseSerializer,
+    CautionBancaireSerializer, CentreCoutSerializer,
     CessionImmobilisationSerializer, ClotureCaisseSerializer,
-    CompteComptableSerializer, CompteTresorerieSerializer,
+    CommissionPayoutRunSerializer, CompteComptableSerializer,
+    CompteTresorerieSerializer, ContratAvancementSerializer,
     DeclarationTVASerializer, DotationAmortissementSerializer,
-    EcritureComptableSerializer, EffetSerializer, ExerciceComptableSerializer,
-    ImmobilisationSerializer, IndemniteChantierSerializer, JournalSerializer,
+    EcritureComptableSerializer, EffetSerializer, EntiteConsolidationSerializer,
+    ExerciceComptableSerializer, ImmobilisationSerializer,
+    IndemniteChantierSerializer, JournalSerializer,
     LignePrevisionnelTresorerieSerializer, LigneReleveSerializer,
     MouvementCaisseSerializer, NoteFraisSerializer, PaymentRunSerializer,
     PeriodeComptableSerializer, PlanAmortissementSerializer,
-    PlanComptableSerializer, RapprochementBancaireSerializer,
-    CautionBancaireSerializer, RapprochementSerializer,
+    PlanComptableSerializer, ProvisionCreanceSerializer,
+    RapprochementBancaireSerializer, RapprochementSerializer,
     RetenueGarantieSerializer, RetenueSourceSerializer, TimbreFiscalSerializer,
-    VirementInterneSerializer,
+    TravauxEnCoursSerializer, VirementInterneSerializer,
 )
 
 
@@ -2496,4 +2502,423 @@ class CautionBancaireViewSet(_ComptaBaseViewSet):
             resp['Content-Disposition'] = (
                 'attachment; filename="cautions_bancaires_echeances.csv"')
             return resp
+        return Response(data)
+
+
+class ContratAvancementViewSet(_ComptaBaseViewSet):
+    """Contrats reconnus au pourcentage d'avancement (FG146).
+
+    Crée/consulte les contrats pluri-tranches ; ``company`` / ``reference`` /
+    ``statut`` sont posés côté serveur. ``constater`` (POST) ajoute un constat
+    d'avancement et reconnaît le CA cumulé (écriture OD) ; ``avancement``
+    (GET) renvoie la synthèse d'avancement/marge. Société scopée ;
+    Admin/Responsable uniquement.
+    """
+    queryset = ContratAvancement.objects.select_related('created_by').all()
+    serializer_class = ContratAvancementSerializer
+    filter_backends = [filters.SearchFilter, filters.OrderingFilter]
+    search_fields = ['reference', 'libelle', 'chantier_ref', 'marche_ref',
+                     'client_nom']
+    ordering_fields = ['date_creation', 'revenu_total', 'id']
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        statut = self.request.query_params.get('statut')
+        if statut:
+            qs = qs.filter(statut=statut)
+        return qs
+
+    def create(self, request, *args, **kwargs):
+        serializer = self.get_serializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        vd = serializer.validated_data
+        try:
+            contrat = services.creer_contrat_avancement(
+                request.user.company,
+                revenu_total=vd.get('revenu_total') or 0,
+                cout_total_estime=vd.get('cout_total_estime') or 0,
+                methode=vd.get('methode'),
+                libelle=vd.get('libelle', '') or '',
+                chantier_ref=vd.get('chantier_ref', '') or '',
+                marche_ref=vd.get('marche_ref', '') or '',
+                client_id=vd.get('client_id'),
+                client_nom=vd.get('client_nom', '') or '',
+                date_debut=vd.get('date_debut'),
+                date_fin_prevue=vd.get('date_fin_prevue'),
+                user=request.user)
+        except DjangoValidationError as exc:
+            return Response(
+                {'detail': exc.messages[0] if exc.messages else str(exc)},
+                status=status.HTTP_400_BAD_REQUEST)
+        return Response(
+            self.get_serializer(contrat).data,
+            status=status.HTTP_201_CREATED)
+
+    @action(detail=True, methods=['post'])
+    def constater(self, request, pk=None):
+        """Ajoute un constat d'avancement et reconnaît le CA cumulé (FG146)."""
+        contrat = self.get_object()  # scopé société par TenantMixin.
+        date_arrete = request.data.get('date_arrete')
+        if not date_arrete:
+            return Response(
+                {'detail': "La date d'arrêté est obligatoire."},
+                status=status.HTTP_400_BAD_REQUEST)
+        poster = request.data.get('poster', True)
+        if isinstance(poster, str):
+            poster = poster.lower() not in ('false', '0', 'no', '')
+        try:
+            constat = services.constater_avancement(
+                contrat, date_arrete=date_arrete,
+                pourcentage=request.data.get('pourcentage'),
+                cout_engage_cumule=request.data.get('cout_engage_cumule'),
+                libelle=request.data.get('libelle', '') or '',
+                poster=bool(poster), user=request.user)
+        except DjangoValidationError as exc:
+            return Response(
+                {'detail': exc.messages[0] if exc.messages else str(exc)},
+                status=status.HTTP_400_BAD_REQUEST)
+        return Response(
+            AvancementRevenuSerializer(constat).data,
+            status=status.HTTP_201_CREATED)
+
+    @action(detail=True, methods=['get'])
+    def avancement(self, request, pk=None):
+        """Synthèse d'avancement et de marge du contrat (FG146)."""
+        contrat = self.get_object()
+        return Response(selectors.avancement_contrat(
+            request.user.company, contrat))
+
+
+class TravauxEnCoursViewSet(_ComptaBaseViewSet):
+    """Régularisations de cut-off : PCA / WIP (FG147).
+
+    Crée/consulte les régularisations ; ``company`` / ``reference`` / ``statut``
+    sont posés côté serveur. La création passe l'écriture OD de constat (sauf
+    ``poster=false``) ; ``reprendre`` (POST) extourne à l'ouverture suivante.
+    Filtres ``nature`` / ``statut`` ; société scopée ; Admin/Responsable.
+    """
+    queryset = TravauxEnCours.objects.select_related('created_by').all()
+    serializer_class = TravauxEnCoursSerializer
+    filter_backends = [filters.SearchFilter, filters.OrderingFilter]
+    search_fields = ['reference', 'libelle', 'chantier_ref']
+    ordering_fields = ['date_arrete', 'montant', 'id']
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        params = self.request.query_params
+        nature = params.get('nature')
+        if nature:
+            qs = qs.filter(nature=nature)
+        statut = params.get('statut')
+        if statut:
+            qs = qs.filter(statut=statut)
+        return qs
+
+    def create(self, request, *args, **kwargs):
+        serializer = self.get_serializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        vd = serializer.validated_data
+        poster = request.data.get('poster', True)
+        if isinstance(poster, str):
+            poster = poster.lower() not in ('false', '0', 'no', '')
+        try:
+            reg = services.constater_regularisation(
+                request.user.company,
+                nature=vd.get('nature'),
+                montant=vd.get('montant') or 0,
+                date_arrete=vd['date_arrete'],
+                libelle=vd.get('libelle', '') or '',
+                chantier_ref=vd.get('chantier_ref', '') or '',
+                contrat_id=vd.get('contrat_id'),
+                poster=bool(poster), user=request.user)
+        except DjangoValidationError as exc:
+            return Response(
+                {'detail': exc.messages[0] if exc.messages else str(exc)},
+                status=status.HTTP_400_BAD_REQUEST)
+        return Response(
+            self.get_serializer(reg).data, status=status.HTTP_201_CREATED)
+
+    @action(detail=True, methods=['post'])
+    def reprendre(self, request, pk=None):
+        """Reprend (extourne) la régularisation à l'ouverture suivante."""
+        reg = self.get_object()
+        date_reprise = request.data.get('date_reprise') or None
+        services.reprendre_regularisation(
+            reg, date_reprise=date_reprise, user=request.user)
+        return Response(self.get_serializer(reg).data)
+
+
+class CommissionPayoutRunViewSet(_ComptaBaseViewSet):
+    """Campagnes de versement des commissions (FG148).
+
+    ``company`` / ``reference`` / ``statut`` / ``total`` posés côté serveur. La
+    création accepte un bloc ``lignes`` (commerciaux + montants). ``valider``
+    (POST) gèle les montants ; ``poster`` (POST) passe l'écriture OD au grand
+    livre. Filtre ``statut`` ; société scopée ; Admin/Responsable.
+    """
+    queryset = CommissionPayoutRun.objects.select_related(
+        'created_by').prefetch_related('lignes').all()
+    serializer_class = CommissionPayoutRunSerializer
+    filter_backends = [filters.SearchFilter, filters.OrderingFilter]
+    search_fields = ['reference', 'libelle', 'periode']
+    ordering_fields = ['date_run', 'total', 'id']
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        statut = self.request.query_params.get('statut')
+        if statut:
+            qs = qs.filter(statut=statut)
+        return qs
+
+    def create(self, request, *args, **kwargs):
+        serializer = self.get_serializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        vd = serializer.validated_data
+        run = services.creer_commission_run(
+            request.user.company,
+            date_run=vd['date_run'],
+            periode=vd.get('periode', '') or '',
+            libelle=vd.get('libelle', '') or '',
+            lignes=request.data.get('lignes') or [],
+            user=request.user)
+        return Response(
+            self.get_serializer(run).data, status=status.HTTP_201_CREATED)
+
+    @action(detail=True, methods=['post'])
+    def valider(self, request, pk=None):
+        """Valide le run (gèle les montants)."""
+        run = self.get_object()
+        try:
+            services.valider_commission_run(run)
+        except DjangoValidationError as exc:
+            return Response(
+                {'detail': exc.messages[0] if exc.messages else str(exc)},
+                status=status.HTTP_400_BAD_REQUEST)
+        return Response(self.get_serializer(run).data)
+
+    @action(detail=True, methods=['post'])
+    def poster(self, request, pk=None):
+        """Poste le run au grand livre (écriture OD)."""
+        run = self.get_object()
+        try:
+            services.poster_commission_run(run, user=request.user)
+        except DjangoValidationError as exc:
+            return Response(
+                {'detail': exc.messages[0] if exc.messages else str(exc)},
+                status=status.HTTP_400_BAD_REQUEST)
+        return Response(self.get_serializer(run).data)
+
+
+class BudgetViewSet(_ComptaBaseViewSet):
+    """Budgets annuels & suivi budget-vs-réalisé (FG149).
+
+    ``company`` posée côté serveur. La création accepte un bloc ``lignes``
+    (compte/centre de coût + 12 mois). ``vs_realise`` (GET) renvoie la variance
+    budget-vs-réalisé lue du grand livre (``?export=csv`` pour le CSV). Société
+    scopée ; Admin/Responsable.
+    """
+    queryset = Budget.objects.select_related(
+        'created_by').prefetch_related('lignes__compte').all()
+    serializer_class = BudgetSerializer
+    filter_backends = [filters.OrderingFilter]
+    ordering_fields = ['annee', 'id']
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        annee = self.request.query_params.get('annee')
+        if annee:
+            qs = qs.filter(annee=annee)
+        return qs
+
+    def create(self, request, *args, **kwargs):
+        serializer = self.get_serializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        vd = serializer.validated_data
+        lignes_in = request.data.get('lignes') or []
+        company = request.user.company
+        lignes = []
+        for lig in lignes_in:
+            compte = CompteComptable.objects.filter(
+                company=company, id=lig.get('compte')).first()
+            if compte is None:
+                return Response(
+                    {'detail': 'Compte inconnu.'},
+                    status=status.HTTP_400_BAD_REQUEST)
+            centre = None
+            if lig.get('centre_cout'):
+                centre = CentreCout.objects.filter(
+                    company=company, id=lig.get('centre_cout')).first()
+            entry = {'compte': compte, 'centre_cout': centre,
+                     'libelle': lig.get('libelle', '') or ''}
+            for m in BudgetLigne.MOIS:
+                entry[m] = lig.get(m) or 0
+            lignes.append(entry)
+        budget = services.creer_budget(
+            company, annee=vd['annee'], libelle=vd.get('libelle', '') or '',
+            lignes=lignes, user=request.user)
+        return Response(
+            self.get_serializer(budget).data,
+            status=status.HTTP_201_CREATED)
+
+    @action(detail=True, methods=['get'])
+    def vs_realise(self, request, pk=None):
+        """Variance budget-vs-réalisé lue du grand livre (FG149)."""
+        budget = self.get_object()
+        data = selectors.budget_vs_realise(request.user.company, budget)
+        if request.query_params.get('export') == 'csv':
+            buffer = io.StringIO()
+            writer = csv.writer(buffer, delimiter=';')
+            writer.writerow(
+                ['Budget vs réalisé', data['annee'], data['libelle']])
+            writer.writerow([])
+            writer.writerow(
+                ['Compte', 'Intitulé', 'Centre de coût', 'Budget', 'Réalisé',
+                 'Variance', 'Consommation %'])
+            for ligne in data['lignes']:
+                writer.writerow([
+                    ligne['compte_numero'], ligne['compte_intitule'],
+                    ligne['centre_cout'], ligne['budget'], ligne['realise'],
+                    ligne['variance'], ligne['taux_consommation']])
+            writer.writerow([])
+            writer.writerow(
+                ['Total', '', '', data['total_budget'],
+                 data['total_realise'], data['total_variance']])
+            resp = HttpResponse(
+                buffer.getvalue(), content_type='text/csv; charset=utf-8')
+            resp['Content-Disposition'] = (
+                'attachment; filename="budget_vs_realise.csv"')
+            return resp
+        return Response(data)
+
+
+class CentreCoutViewSet(_ComptaBaseViewSet):
+    """Référentiel des centres de coût / axes analytiques (FG150).
+
+    ``company`` posée côté serveur. ``resultat`` (GET, detail=False) renvoie le
+    résultat ventilé par centre de coût. Filtre ``axe`` / ``actif`` ; société
+    scopée ; Admin/Responsable.
+    """
+    queryset = CentreCout.objects.all()
+    serializer_class = CentreCoutSerializer
+    filter_backends = [filters.SearchFilter, filters.OrderingFilter]
+    search_fields = ['code', 'libelle']
+    ordering_fields = ['code', 'id']
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        params = self.request.query_params
+        axe = params.get('axe')
+        if axe:
+            qs = qs.filter(axe=axe)
+        actif = params.get('actif')
+        if actif in ('0', '1'):
+            qs = qs.filter(actif=(actif == '1'))
+        return qs
+
+    @action(detail=False, methods=['get'])
+    def resultat(self, request):
+        """Résultat (produits − charges) ventilé par centre de coût (FG150)."""
+        params = request.query_params
+        data = selectors.resultat_analytique(
+            request.user.company,
+            date_debut=params.get('date_debut') or None,
+            date_fin=params.get('date_fin') or None,
+            validees_seulement=params.get('validees') == '1')
+        return Response(data)
+
+
+class ProvisionCreanceViewSet(_ComptaBaseViewSet):
+    """Provisions pour créances douteuses (FG152).
+
+    La création calcule la ``dotation`` côté serveur (base × taux %) et passe
+    l'écriture OD (sauf ``poster=false``). ``reprendre`` (POST) reprend la
+    provision. ``company`` / ``reference`` / ``statut`` posés côté serveur ;
+    filtre ``statut`` ; société scopée ; Admin/Responsable.
+    """
+    queryset = ProvisionCreance.objects.select_related('created_by').all()
+    serializer_class = ProvisionCreanceSerializer
+    filter_backends = [filters.SearchFilter, filters.OrderingFilter]
+    search_fields = ['reference', 'tiers_nom']
+    ordering_fields = ['date_dotation', 'dotation', 'base', 'id']
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        statut = self.request.query_params.get('statut')
+        if statut:
+            qs = qs.filter(statut=statut)
+        return qs
+
+    def create(self, request, *args, **kwargs):
+        serializer = self.get_serializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        vd = serializer.validated_data
+        poster = request.data.get('poster', True)
+        if isinstance(poster, str):
+            poster = poster.lower() not in ('false', '0', 'no', '')
+        try:
+            prov = services.enregistrer_provision_creance(
+                request.user.company,
+                date_dotation=vd['date_dotation'],
+                base=vd.get('base') or 0,
+                taux=vd.get('taux'),
+                tiers_type=vd.get('tiers_type', '') or '',
+                tiers_id=vd.get('tiers_id'),
+                tiers_nom=vd.get('tiers_nom', '') or '',
+                anciennete_jours=vd.get('anciennete_jours') or 0,
+                libelle=vd.get('libelle', '') or '',
+                poster=bool(poster), user=request.user)
+        except DjangoValidationError as exc:
+            return Response(
+                {'detail': exc.messages[0] if exc.messages else str(exc)},
+                status=status.HTTP_400_BAD_REQUEST)
+        return Response(
+            self.get_serializer(prov).data, status=status.HTTP_201_CREATED)
+
+    @action(detail=True, methods=['post'])
+    def reprendre(self, request, pk=None):
+        """Reprend la provision (créance recouvrée/soldée)."""
+        prov = self.get_object()
+        date_reprise = request.data.get('date_reprise') or None
+        services.reprendre_provision_creance(
+            prov, date_reprise=date_reprise, user=request.user)
+        return Response(self.get_serializer(prov).data)
+
+
+class EntiteConsolidationViewSet(_ComptaBaseViewSet):
+    """Périmètre de consolidation multi-entités (FG153).
+
+    ``company`` (tête de groupe) posée côté serveur ; ``entite`` est une autre
+    société du groupe. ``cpc_consolide`` (GET, detail=False) renvoie le CPC
+    consolidé du périmètre. Société scopée ; Admin/Responsable.
+    """
+    queryset = EntiteConsolidation.objects.select_related('entite').all()
+    serializer_class = EntiteConsolidationSerializer
+
+    @action(detail=False, methods=['get'])
+    def cpc_consolide(self, request):
+        """CPC consolidé du périmètre de la société tête de groupe (FG153)."""
+        params = request.query_params
+        data = selectors.cpc_consolide(
+            request.user.company,
+            date_debut=params.get('date_debut') or None,
+            date_fin=params.get('date_fin') or None)
+        return Response(data)
+
+
+class PilotageViewSet(viewsets.ViewSet):
+    """Tableau de bord financier directeur (FG151) — LECTURE SEULE.
+
+    Distinct de FG45 (quote-to-cash) : agrège résultat du mois, position de
+    trésorerie, DSO/DPO, marge brute % et top encours depuis le grand livre.
+    Admin/Responsable uniquement, scopé société côté selector.
+    """
+    permission_classes = [IsResponsableOrAdmin]
+
+    @action(detail=False, methods=['get'])
+    def cockpit(self, request):
+        params = request.query_params
+        data = selectors.pilotage_financier(
+            request.user.company,
+            date_debut=params.get('date_debut') or None,
+            date_fin=params.get('date_fin') or None)
         return Response(data)

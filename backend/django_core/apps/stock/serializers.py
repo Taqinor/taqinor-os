@@ -7,6 +7,7 @@ from .models import (
     ReceptionFournisseur, LigneReceptionFournisseur,
     FactureFournisseur, LigneFactureFournisseur, PaiementFournisseur,
     InventaireSession, LigneInventaire,
+    KitProduit, KitComposant,
 )
 
 
@@ -106,7 +107,16 @@ class ProduitSerializer(serializers.ModelSerializer):
         user = getattr(request, 'user', None)
         if user is not None and not getattr(user, 'can_view_buy_prices', True):
             fields.pop('prix_achat', None)
+        # FG20 — l'indicateur de MARGE (calculé) est une donnée sensible gardée
+        # par ``marge_voir`` (Directeur/Admin par défaut). Sans la permission, le
+        # champ est retiré complètement — jamais sur un document client.
+        if user is not None and not getattr(user, 'can_view_marge', True):
+            fields.pop('marge_pct', None)
         return fields
+    # FG20 — marge brute en % ((vente − achat)/vente), arrondie à 1 décimale.
+    # None si prix_vente nul/absent ou prix_achat à 0. Donnée sensible : le
+    # champ est entièrement retiré pour les rôles sans ``marge_voir``.
+    marge_pct = serializers.SerializerMethodField()
     is_low_stock = serializers.SerializerMethodField()
     # L578 — type d'équipement de la catégorie (additif, lecture seule) exposé à
     # plat pour permettre au picker d'équipement de chantier de filtrer un slot
@@ -170,6 +180,8 @@ class ProduitSerializer(serializers.ModelSerializer):
             'courbe_pompe',
             # Dates & data personnalisée
             'date_creation', 'date_mise_a_jour', 'custom_data',
+            # FG20 — indicateur de marge (gardé par marge_voir, cf. get_fields)
+            'marge_pct',
             # Champs dérivés / calculés (SerializerMethodField, lecture seule)
             'is_low_stock', 'categorie_type', 'categorie_type_display',
             'quantite_reservee', 'quantite_disponible',
@@ -192,6 +204,16 @@ class ProduitSerializer(serializers.ModelSerializer):
         cache = reserved_quantities(company) if company is not None else {}
         self._reserved_map_cache = cache
         return cache
+
+    def get_marge_pct(self, obj):
+        """Marge brute en % depuis prix_vente/prix_achat (None si indéfinie)."""
+        from decimal import Decimal, ROUND_HALF_UP
+        vente = obj.prix_vente or Decimal('0')
+        achat = obj.prix_achat or Decimal('0')
+        if vente <= 0 or achat <= 0:
+            return None
+        pct = (vente - achat) / vente * Decimal('100')
+        return str(pct.quantize(Decimal('0.1'), rounding=ROUND_HALF_UP))
 
     def get_quantite_reservee(self, obj):
         return self._reserved_map().get(obj.id, 0)
@@ -365,8 +387,8 @@ class LigneBonCommandeFournisseurSerializer(serializers.ModelSerializer):
         model = LigneBonCommandeFournisseur
         fields = [
             'id', 'produit', 'produit_nom', 'produit_sku', 'quantite',
-            'prix_achat_unitaire', 'quantite_recue', 'quantite_restante',
-            'total_achat',
+            'prix_achat_unitaire', 'frais_annexes', 'quantite_recue',
+            'quantite_restante', 'total_achat',
         ]
         # quantite_recue n'est jamais posée librement : elle évolue uniquement
         # via l'action de réception (perform_create n'accepte que le reste).
@@ -708,4 +730,74 @@ class InventaireSessionSerializer(serializers.ModelSerializer):
             instance.lignes.all().delete()
             for ligne in lignes_data:
                 LigneInventaire.objects.create(session=instance, **ligne)
+        return instance
+
+
+# ── FG66 / DC36 — Kit / nomenclature (BOM) ────────────────────────────────────
+
+class KitComposantSerializer(serializers.ModelSerializer):
+    produit_nom = serializers.CharField(source='produit.nom', read_only=True)
+    produit_sku = serializers.CharField(source='produit.sku', read_only=True)
+    # DC36 — prix de vente catalogue affiché en LECTURE SEULE (jamais stocké sur
+    # le kit) ; aucun prix d'achat ici (interne).
+    prix_vente = serializers.DecimalField(
+        source='produit.prix_vente', max_digits=10, decimal_places=2,
+        read_only=True)
+
+    class Meta:
+        model = KitComposant
+        fields = ['id', 'produit', 'produit_nom', 'produit_sku', 'prix_vente',
+                  'quantite']
+
+    def validate_quantite(self, value):
+        if value is None or value <= 0:
+            raise serializers.ValidationError('La quantité doit être positive.')
+        return value
+
+
+class KitProduitSerializer(serializers.ModelSerializer):
+    composants = KitComposantSerializer(many=True)
+    nb_composants = serializers.SerializerMethodField()
+
+    class Meta:
+        model = KitProduit
+        # DC36 — un kit ne porte AUCUN champ prix / marque / TVA : tout vient
+        # des composants à l'explosion.
+        fields = ['id', 'nom', 'sku', 'description', 'is_archived',
+                  'composants', 'nb_composants', 'date_creation',
+                  'date_mise_a_jour']
+        read_only_fields = ['date_creation', 'date_mise_a_jour']
+
+    def get_nb_composants(self, obj):
+        return obj.composants.count()
+
+    def _validate_company(self, composants_data):
+        request = self.context.get('request')
+        company = getattr(getattr(request, 'user', None), 'company', None)
+        if company is None:
+            return
+        for c in composants_data:
+            if c['produit'].company_id != company.id:
+                raise serializers.ValidationError(
+                    {'composants': 'Produit hors de votre entreprise.'})
+
+    def create(self, validated_data):
+        composants_data = validated_data.pop('composants', [])
+        self._validate_company(composants_data)
+        kit = KitProduit.objects.create(**validated_data)
+        for c in composants_data:
+            KitComposant.objects.create(kit=kit, **c)
+        return kit
+
+    def update(self, instance, validated_data):
+        composants_data = validated_data.pop('composants', None)
+        if composants_data is not None:
+            self._validate_company(composants_data)
+        for attr, val in validated_data.items():
+            setattr(instance, attr, val)
+        instance.save()
+        if composants_data is not None:
+            instance.composants.all().delete()
+            for c in composants_data:
+                KitComposant.objects.create(kit=instance, **c)
         return instance

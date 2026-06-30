@@ -262,6 +262,28 @@ class ManagementEndpointTests(TestCase):
         self.assertIn('scopes', resp.data)
         self.assertIn('events', resp.data)
 
+    def test_docs_reference_for_admin(self):
+        # FG105 — la référence FR statique est lisible et complète.
+        api = session_auth(self.admin)
+        resp = api.get('/api/django/publicapi/docs/')
+        self.assertEqual(resp.status_code, 200)
+        data = resp.data
+        self.assertIn('endpoints', data)
+        self.assertEqual(len(data['endpoints']), 4)
+        self.assertIn('authentification', data)
+        self.assertIn('Api-Key', data['authentification']['entete'])
+        self.assertIn('scopes', data)
+        # Recette HMAC présente + nom d'en-tête correct.
+        verif = data['webhooks']['verification_signature']
+        self.assertIn('hmac', verif['exemple_python'].lower())
+        self.assertEqual(
+            data['webhooks']['entetes']['signature'], 'X-Taqinor-Signature')
+
+    def test_docs_reference_non_admin_forbidden(self):
+        api = session_auth(self.normal)
+        resp = api.get('/api/django/publicapi/docs/')
+        self.assertEqual(resp.status_code, 403)
+
 
 class WebhookDeliveryTests(TestCase):
     def setUp(self):
@@ -521,6 +543,176 @@ class DeliveryReplayTests(TestCase):
                f'/deliveries/999999/replay/')
         resp = api.post(url)
         self.assertEqual(resp.status_code, 404)
+
+
+# ── FG104 — Filtrage, tri & synchro incrémentale (?updated_since=) ───────────
+
+class PublicApiFilterTests(TestCase):
+    """Filtres liste blanche, tri natif et synchro incrémentale, company-scoped."""
+
+    def setUp(self):
+        self.co = make_company('flt', 'FLT')
+        self.client_obj = Client.objects.create(company=self.co, nom='Cli')
+        self.lead_new = Lead.objects.create(
+            company=self.co, nom='Neuf', stage='NEW', ville='Casablanca')
+        self.lead_signed = Lead.objects.create(
+            company=self.co, nom='Signé', stage='SIGNED', ville='Rabat')
+        self.facture_emise = Facture.objects.create(
+            company=self.co, reference='FA-E', client=self.client_obj,
+            statut=Facture.Statut.EMISE)
+        self.facture_payee = Facture.objects.create(
+            company=self.co, reference='FA-P', client=self.client_obj,
+            statut=Facture.Statut.PAYEE)
+        self.key, self.raw = ApiKey.issue(
+            company=self.co, label='flt',
+            scopes=[SCOPE_READ_LEADS, SCOPE_READ_FACTURES, SCOPE_READ_CHANTIERS])
+
+    def test_whitelisted_field_filter(self):
+        resp = key_client(self.raw).get('/api/public/leads/?stage=SIGNED')
+        self.assertEqual(resp.status_code, 200)
+        noms = [r['nom'] for r in rows(resp)]
+        self.assertEqual(noms, ['Signé'])
+
+    def test_second_whitelisted_filter(self):
+        resp = key_client(self.raw).get(
+            '/api/public/factures/?statut=payee')
+        self.assertEqual(resp.status_code, 200)
+        refs = [r['reference'] for r in rows(resp)]
+        self.assertEqual(refs, ['FA-P'])
+
+    def test_unknown_filter_is_400_not_500(self):
+        # Un paramètre hors liste blanche est refusé proprement (400).
+        resp = key_client(self.raw).get('/api/public/leads/?secret=x')
+        self.assertEqual(resp.status_code, 400)
+
+    def test_ordering_whitelisted(self):
+        resp = key_client(self.raw).get(
+            '/api/public/leads/?ordering=date_creation')
+        self.assertEqual(resp.status_code, 200)
+        noms = [r['nom'] for r in rows(resp)]
+        self.assertEqual(noms, ['Neuf', 'Signé'])
+
+    def test_ordering_non_whitelisted_is_ignored(self):
+        # Champ non listé → OrderingFilter natif l'ignore (pas de 500/fuite).
+        resp = key_client(self.raw).get('/api/public/leads/?ordering=email')
+        self.assertEqual(resp.status_code, 200)
+
+    def test_updated_since_filters_incrementally(self):
+        from django.utils import timezone
+        from datetime import timedelta
+        # Tout est récent : un seuil futur ne renvoie rien.
+        future = (timezone.now() + timedelta(days=1)).isoformat()
+        resp = key_client(self.raw).get(
+            f'/api/public/leads/?updated_since={future}')
+        self.assertEqual(resp.status_code, 200)
+        self.assertEqual(len(rows(resp)), 0)
+        # Un seuil passé renvoie les deux leads.
+        past = (timezone.now() - timedelta(days=1)).isoformat()
+        resp2 = key_client(self.raw).get(
+            f'/api/public/leads/?updated_since={past}')
+        self.assertEqual(len(rows(resp2)), 2)
+
+    def test_updated_since_accepts_plain_date(self):
+        resp = key_client(self.raw).get(
+            '/api/public/leads/?updated_since=2000-01-01')
+        self.assertEqual(resp.status_code, 200)
+        self.assertEqual(len(rows(resp)), 2)
+
+    def test_updated_since_invalid_is_400(self):
+        resp = key_client(self.raw).get(
+            '/api/public/leads/?updated_since=pas-une-date')
+        self.assertEqual(resp.status_code, 400)
+
+    def test_chantier_exposes_date_modification(self):
+        Installation.objects.create(
+            company=self.co, reference='CH-F', client=self.client_obj)
+        resp = key_client(self.raw).get('/api/public/chantiers/')
+        self.assertEqual(resp.status_code, 200)
+        self.assertIn('date_modification', rows(resp)[0])
+
+    def test_filter_stays_company_scoped(self):
+        other = make_company('flt-b', 'FLT B')
+        Lead.objects.create(company=other, nom='Étranger', stage='SIGNED')
+        resp = key_client(self.raw).get('/api/public/leads/?stage=SIGNED')
+        noms = [r['nom'] for r in rows(resp)]
+        self.assertNotIn('Étranger', noms)
+
+
+# ── FG106 — Passerelle OCR → lead / brouillon de devis ──────────────────────
+
+class OcrToCrmBridgeTests(TestCase):
+    """POST publicapi/ocr-to-crm/ — création company-scoped via services cibles."""
+
+    def setUp(self):
+        self.co = make_company('ocr', 'OCR')
+        self.admin = make_user(self.co, 'ocr-admin', 'admin')
+        self.normal = make_user(self.co, 'ocr-normal', 'normal')
+        self.fields = {
+            'fournisseur': 'Panneaux du Sud SARL',
+            'numero': 'FAC-2026-001',
+            'montant_ht': '12000',
+            'montant_ttc': '14400',
+            'date': '2026-06-30',
+        }
+
+    def test_creates_draft_lead(self):
+        from apps.crm.models import Lead
+        api = session_auth(self.admin)
+        resp = api.post('/api/django/publicapi/ocr-to-crm/',
+                        {'mode': 'lead', 'fields': self.fields}, format='json')
+        self.assertEqual(resp.status_code, 201)
+        lead = Lead.objects.get(id=resp.data['lead_id'])
+        self.assertEqual(lead.company, self.co)
+        self.assertEqual(lead.nom, 'Panneaux du Sud SARL')
+        # Le lead reste à l'étape par défaut (le service ne fait pas avancer le funnel).
+        self.assertEqual(lead.stage, Lead._meta.get_field('stage').default)
+
+    def test_creates_draft_lead_and_devis(self):
+        from apps.ventes.models import Devis
+        api = session_auth(self.admin)
+        resp = api.post('/api/django/publicapi/ocr-to-crm/',
+                        {'mode': 'devis', 'fields': self.fields}, format='json')
+        self.assertEqual(resp.status_code, 201)
+        self.assertIn('lead_id', resp.data)
+        devis = Devis.objects.get(id=resp.data['devis_id'])
+        self.assertEqual(devis.company, self.co)
+        self.assertEqual(devis.statut, Devis.Statut.BROUILLON)
+        # Le client est résolu depuis le lead (jamais null sur un devis).
+        self.assertIsNotNone(devis.client_id)
+        self.assertEqual(devis.lead_id, resp.data['lead_id'])
+        # Montants extraits consignés dans la note pour la saisie.
+        self.assertIn('14400', devis.note)
+
+    def test_unknown_mode_is_400(self):
+        api = session_auth(self.admin)
+        resp = api.post('/api/django/publicapi/ocr-to-crm/',
+                        {'mode': 'facture', 'fields': self.fields}, format='json')
+        self.assertEqual(resp.status_code, 400)
+
+    def test_empty_fields_is_400(self):
+        # Aucun nom exploitable → 400 (jamais un lead anonyme).
+        api = session_auth(self.admin)
+        resp = api.post('/api/django/publicapi/ocr-to-crm/',
+                        {'mode': 'lead', 'fields': {}}, format='json')
+        self.assertEqual(resp.status_code, 400)
+
+    def test_non_admin_forbidden(self):
+        api = session_auth(self.normal)
+        resp = api.post('/api/django/publicapi/ocr-to-crm/',
+                        {'mode': 'lead', 'fields': self.fields}, format='json')
+        self.assertEqual(resp.status_code, 403)
+
+    def test_company_comes_from_user_not_body(self):
+        from apps.crm.models import Lead
+        other = make_company('ocr-b', 'OCR B')
+        api = session_auth(self.admin)
+        # Une « company » dans le corps est ignorée : la société vient du user.
+        resp = api.post('/api/django/publicapi/ocr-to-crm/',
+                        {'mode': 'lead', 'fields': self.fields,
+                         'company': other.id}, format='json')
+        self.assertEqual(resp.status_code, 201)
+        lead = Lead.objects.get(id=resp.data['lead_id'])
+        self.assertEqual(lead.company, self.co)
 
 
 class WebhookTestPingTests(TestCase):
