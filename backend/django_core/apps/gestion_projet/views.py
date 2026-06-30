@@ -33,6 +33,7 @@ from .models import (
     ModeleProjet,
     ModeleTache,
     PhaseProjet,
+    PortailProjetToken,
     Projet,
     ProjetActivity,
     ProjetChantier,
@@ -62,6 +63,7 @@ from .serializers import (
     ModeleProjetSerializer,
     ModeleTacheSerializer,
     PhaseProjetSerializer,
+    PortailProjetTokenSerializer,
     ProjetActivitySerializer,
     ProjetChantierSerializer,
     ProjetLienSerializer,
@@ -1685,4 +1687,29 @@ class ModeleTacheViewSet(_GestionProjetBaseViewSet):
         type_phase = self.request.query_params.get('type_phase')
         if type_phase:
             qs = qs.filter(type_phase=type_phase)
+        return qs
+
+
+class PortailProjetTokenViewSet(_GestionProjetBaseViewSet):
+    """Jetons d'accès au portail d'avancement client (PROJ37) — CRUD scopé.
+
+    Côté ADMIN/Responsable : crée/révoque le lien public d'un projet. ``company``
+    est posée côté serveur ; le ``token`` est généré côté serveur ; le ``projet``
+    reçu est validé même-société (un seul jeton par projet). Filtre optionnel
+    ``?projet=<id>``. Le portail PUBLIC (non authentifié) est servi ailleurs
+    (``public_views.portail_avancement``) et n'expose AUCUN coût/marge.
+    """
+    queryset = PortailProjetToken.objects.select_related('projet').all()
+    serializer_class = PortailProjetTokenSerializer
+    filter_backends = [filters.OrderingFilter]
+    ordering_fields = ['id']
+
+    def perform_create(self, serializer):
+        serializer.save(company=self.request.user.company)
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        projet = self.request.query_params.get('projet')
+        if projet:
+            qs = qs.filter(projet_id=projet)
         return qs

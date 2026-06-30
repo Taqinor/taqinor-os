@@ -2075,3 +2075,68 @@ def tableau_portefeuille(company, statut=None, seuil_jours=None):
         'total_risques': total_risques,
         'projets': lignes,
     }
+
+
+# ── Portail d'avancement client (PROJ37) ─────────────────────────────────────
+def portail_avancement_client(projet):
+    """Avancement d'un projet pour le PORTAIL CLIENT (PROJ37) — SANS coûts.
+
+    Renvoie une vue STRICTEMENT NON FINANCIÈRE de l'avancement, destinée à un
+    lien public client : avancement physique global (PROJ9), phases (libellé /
+    statut / avancement / dates prévues-réelles) et jalons (libellé / date /
+    statut). AUCUNE donnée interne ne traverse cette frontière :
+        • PAS de budget, coût, marge, P&L, criticité de risque ;
+        • PAS de ``facturation_pct`` des jalons (échéancier de paiement interne) ;
+        • PAS de ``charge_estimee`` ni de coût horaire.
+
+    La société est portée par le projet. Lecture seule (aucune écriture).
+    """
+    avancement = rollup_avancement(projet)
+
+    phases = [
+        {
+            'libelle': p.libelle or p.get_type_phase_display(),
+            'type_phase': p.type_phase,
+            'statut': p.statut,
+            'avancement_pct': int(p.avancement_pct),
+            'date_debut_prevue': (
+                p.date_debut_prevue.isoformat()
+                if p.date_debut_prevue else None),
+            'date_fin_prevue': (
+                p.date_fin_prevue.isoformat()
+                if p.date_fin_prevue else None),
+            'date_debut_reelle': (
+                p.date_debut_reelle.isoformat()
+                if p.date_debut_reelle else None),
+            'date_fin_reelle': (
+                p.date_fin_reelle.isoformat()
+                if p.date_fin_reelle else None),
+        }
+        for p in projet.phases.order_by('ordre', 'id')
+    ]
+
+    jalons = [
+        {
+            'libelle': j.libelle,
+            'date_prevue': j.date_prevue.isoformat() if j.date_prevue else None,
+            'date_reelle': j.date_reelle.isoformat() if j.date_reelle else None,
+            'statut': j.statut,
+        }
+        for j in jalons_for_projet(projet)
+    ]
+
+    return {
+        'projet': {
+            'code': projet.code,
+            'nom': projet.nom,
+            'statut': projet.statut,
+            'date_debut': (
+                projet.date_debut.isoformat() if projet.date_debut else None),
+            'date_fin_prevue': (
+                projet.date_fin_prevue.isoformat()
+                if projet.date_fin_prevue else None),
+        },
+        'avancement_pct': avancement['avancement_pct'],
+        'phases': phases,
+        'jalons': jalons,
+    }

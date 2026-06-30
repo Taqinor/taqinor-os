@@ -9,11 +9,17 @@ Tout est multi-société : chaque modèle porte un FK ``company`` posé côté s
 (jamais lu du corps de requête). Aucun comportement existant n'est modifié — ce
 module est entièrement additif.
 """
+import secrets
 from decimal import Decimal
 
 from django.conf import settings
 from django.core.validators import MaxValueValidator, MinValueValidator
 from django.db import models
+
+
+def _generer_token_portail():
+    """Jeton URL-safe (256 bits) pour un lien de portail client."""
+    return secrets.token_urlsafe(32)
 
 
 class Projet(models.Model):
@@ -1773,3 +1779,47 @@ class ModeleTache(models.Model):
 
     def __str__(self):
         return f'{self.modele_id} — {self.libelle}'
+
+
+class PortailProjetToken(models.Model):
+    """Jeton d'accès au PORTAIL D'AVANCEMENT CLIENT d'un ``Projet`` (PROJ37).
+
+    Donne au client un lien PUBLIC tokenisé (non authentifié) vers une vue
+    d'avancement SANS AUCUN coût, budget ni marge — données strictement internes
+    qui ne traversent jamais ce portail (voir ``selectors.portail_avancement_
+    client``). Le ``token`` (256 bits URL-safe) est généré côté serveur ;
+    ``actif`` permet de révoquer l'accès sans supprimer la ligne.
+
+    Tout est multi-société : ``company`` est posée côté serveur, jamais lue du
+    corps de requête. Relation 1–1 souple avec le projet. Modèle entièrement
+    additif.
+    """
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='gestion_projet_portail_tokens',
+        verbose_name='Société',
+    )
+    projet = models.OneToOneField(
+        Projet,
+        on_delete=models.CASCADE,
+        related_name='portail_token',
+        verbose_name='Projet',
+    )
+    token = models.CharField(
+        max_length=64, unique=True, default=_generer_token_portail,
+        verbose_name='Jeton')
+    actif = models.BooleanField(default=True, verbose_name='Actif')
+    date_creation = models.DateTimeField(
+        auto_now_add=True, verbose_name='Créé le')
+
+    class Meta:
+        verbose_name = 'Jeton de portail client'
+        verbose_name_plural = 'Jetons de portail client'
+        ordering = ['-id']
+        indexes = [
+            models.Index(fields=['token'], name='gp_portail_token_idx'),
+        ]
+
+    def __str__(self):
+        return f'portail {self.projet_id} ({"actif" if self.actif else "off"})'

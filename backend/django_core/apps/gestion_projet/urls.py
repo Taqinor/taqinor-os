@@ -1,6 +1,7 @@
 from django.urls import include, path
 from rest_framework.routers import DefaultRouter
 
+from .public_views import portail_avancement
 from .views import (
     ActionProjetViewSet,
     AffectationRessourceViewSet,
@@ -19,6 +20,7 @@ from .views import (
     ModeleProjetViewSet,
     ModeleTacheViewSet,
     PhaseProjetViewSet,
+    PortailProjetTokenViewSet,
     ProjetChantierViewSet,
     ProjetLienViewSet,
     ProjetViewSet,
@@ -53,7 +55,12 @@ router.register(r'documents', DocumentProjetViewSet)
 router.register(r'commentaires', CommentaireProjetViewSet)
 router.register(r'modeles', ModeleProjetViewSet)
 router.register(r'modele-taches', ModeleTacheViewSet)
+router.register(r'portail-tokens', PortailProjetTokenViewSet)
 
 urlpatterns = [
+    # Portail PUBLIC (non authentifié) — placé AVANT le routeur pour éviter
+    # toute capture par un viewset ; expose uniquement l'avancement non
+    # financier d'un projet (PROJ37).
+    path('portail/<str:token>/', portail_avancement, name='portail-avancement'),
     path('', include(router.urls)),
 ]

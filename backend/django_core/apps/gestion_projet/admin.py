@@ -12,6 +12,7 @@ from .models import (
     ModeleProjet,
     ModeleTache,
     PhaseProjet,
+    PortailProjetToken,
     Projet,
     ProjetActivity,
     ProjetChantier,
@@ -170,3 +171,10 @@ class ModeleTacheAdmin(admin.ModelAdmin):
                     'company')
     list_filter = ('type_phase', 'company')
     search_fields = ('libelle',)
+
+
+@admin.register(PortailProjetToken)
+class PortailProjetTokenAdmin(admin.ModelAdmin):
+    list_display = ('id', 'projet', 'actif', 'company', 'date_creation')
+    list_filter = ('actif', 'company')
+    search_fields = ('token',)

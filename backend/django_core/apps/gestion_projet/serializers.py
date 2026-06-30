@@ -25,6 +25,7 @@ from .models import (
     ModeleProjet,
     ModeleTache,
     PhaseProjet,
+    PortailProjetToken,
     Projet,
     ProjetActivity,
     ProjetChantier,
@@ -909,3 +910,23 @@ class ModeleProjetSerializer(serializers.ModelSerializer):
             'description', 'actif', 'taches', 'nb_taches', 'date_creation',
         ]
         read_only_fields = ['date_creation']
+
+
+class PortailProjetTokenSerializer(serializers.ModelSerializer):
+    """Jeton d'accès au portail d'avancement client (PROJ37).
+
+    ``company`` n'est jamais exposée : elle est posée côté serveur. Le ``token``
+    est GÉNÉRÉ côté serveur (lecture seule). Le ``projet`` reçu est validé
+    même-société (un seul jeton par projet — OneToOne).
+    """
+    projet_code = serializers.CharField(source='projet.code', read_only=True)
+
+    class Meta:
+        model = PortailProjetToken
+        fields = [
+            'id', 'projet', 'projet_code', 'token', 'actif', 'date_creation',
+        ]
+        read_only_fields = ['token', 'date_creation']
+
+    def validate_projet(self, value):
+        return _meme_societe(self, value, 'Projet')
