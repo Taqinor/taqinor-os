@@ -27,6 +27,7 @@ from .models import (
     PlanEntretien,
     Pneumatique,
     PleinCarburant,
+    ReleveTelematique,
     ReservationVehicule,
     Sinistre,
     Vehicule,
@@ -1145,6 +1146,25 @@ def infractions_de_la_societe(company, statut=None, actif_flotte_id=None,
         qs = qs.filter(actif_flotte_id=actif_flotte_id)
     if type_infraction:
         qs = qs.filter(type_infraction=type_infraction)
+    return qs
+
+
+# ── FLOTTE27 — Relevés télématiques ────────────────────────────────────────────
+
+def releves_telematiques_de_la_societe(company, actif_flotte_id=None,
+                                       source=None):
+    """FLOTTE27 — Relevés télématiques d'une société (queryset scopé).
+
+    Filtres facultatifs : ``actif_flotte_id`` (un actif précis) et ``source``
+    (manuel | telematique). Lecture seule, scopée société, du plus récent au
+    plus ancien.
+    """
+    qs = ReleveTelematique.objects.filter(company=company).select_related(
+        'actif_flotte', 'actif_flotte__vehicule', 'actif_flotte__engin')
+    if actif_flotte_id is not None:
+        qs = qs.filter(actif_flotte_id=actif_flotte_id)
+    if source:
+        qs = qs.filter(source=source)
     return qs
 
 
