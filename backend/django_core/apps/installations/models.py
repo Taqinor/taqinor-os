@@ -156,6 +156,11 @@ from .models_reappro import (
 from .models_consignation import (
     MaterielConsigne,
 )
+from .models_kitting import (
+    Kit,
+    KitComposant,
+    OrdreAssemblage,
+)
 
 __all__ = [
     'Installation',
@@ -233,4 +238,7 @@ __all__ = [
     'DemandeTransfert',
     'RegleReappro',
     'MaterielConsigne',
+    'Kit',
+    'KitComposant',
+    'OrdreAssemblage',
 ]

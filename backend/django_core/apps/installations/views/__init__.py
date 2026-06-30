@@ -54,6 +54,9 @@ from .comptage import SessionComptageViewSet, ComptageLigneViewSet
 from .demande_transfert import DemandeTransfertViewSet
 from .reappro import RegleReapproViewSet
 from .consignation import MaterielConsigneViewSet
+from .kitting import (
+    KitViewSet, KitComposantViewSet, OrdreAssemblageViewSet,
+)
 from .field_sync import FieldSyncView
 
 __all__ = [
@@ -114,5 +117,8 @@ __all__ = [
     'DemandeTransfertViewSet',
     'RegleReapproViewSet',
     'MaterielConsigneViewSet',
+    'KitViewSet',
+    'KitComposantViewSet',
+    'OrdreAssemblageViewSet',
     'FieldSyncView',
 ]

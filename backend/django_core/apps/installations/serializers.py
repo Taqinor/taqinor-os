@@ -50,6 +50,9 @@ from .models import (
     DemandeTransfert,
     RegleReappro,
     MaterielConsigne,
+    Kit,
+    KitComposant,
+    OrdreAssemblage,
 )
 
 
@@ -1996,4 +1999,78 @@ class MaterielConsigneSerializer(serializers.ModelSerializer):
         value = (value or '').strip()
         if not value:
             raise serializers.ValidationError('La designation est requise.')
+        return value
+
+
+class KitComposantSerializer(serializers.ModelSerializer):
+    """FG328 - composant de la nomenclature d'un kit."""
+    produit_nom = serializers.CharField(
+        source='produit.nom', read_only=True, default=None)
+
+    class Meta:
+        model = KitComposant
+        fields = [
+            'id', 'kit', 'produit', 'produit_nom', 'designation', 'quantite',
+        ]
+
+    def validate(self, attrs):
+        produit = attrs.get('produit') if 'produit' in attrs else getattr(
+            self.instance, 'produit', None)
+        designation = attrs.get('designation') if 'designation' in attrs else (
+            getattr(self.instance, 'designation', None))
+        if produit is None and not (designation or '').strip():
+            raise serializers.ValidationError(
+                {'designation': 'Indiquez un produit ou une designation.'})
+        return attrs
+
+
+class KitSerializer(serializers.ModelSerializer):
+    """FG328 - definition d'un kit (article compose + nomenclature). Societe et
+    `created_by` poses COTE SERVEUR. Les composants sont imbriques en lecture."""
+    produit_compose_nom = serializers.CharField(
+        source='produit_compose.nom', read_only=True, default=None)
+    composants = KitComposantSerializer(many=True, read_only=True)
+
+    class Meta:
+        model = Kit
+        fields = [
+            'id', 'nom', 'reference_interne', 'produit_compose',
+            'produit_compose_nom', 'active', 'note', 'composants',
+            'created_by', 'date_creation', 'date_modification',
+        ]
+        read_only_fields = [
+            'created_by', 'date_creation', 'date_modification',
+        ]
+
+    def validate_nom(self, value):
+        value = (value or '').strip()
+        if not value:
+            raise serializers.ValidationError('Le nom du kit est requis.')
+        return value
+
+
+class OrdreAssemblageSerializer(serializers.ModelSerializer):
+    """FG328 - ordre d'assemblage de N kits. Reference/societe/`created_by`
+    poses COTE SERVEUR ; le statut avance via `demarrer`/`terminer`."""
+    kit_nom = serializers.CharField(
+        source='kit.nom', read_only=True, default=None)
+    statut_display = serializers.CharField(
+        source='get_statut_display', read_only=True, default=None)
+
+    class Meta:
+        model = OrdreAssemblage
+        fields = [
+            'id', 'reference', 'kit', 'kit_nom', 'quantite', 'statut',
+            'statut_display', 'note', 'date_terminaison',
+            'created_by', 'date_creation', 'date_modification',
+        ]
+        read_only_fields = [
+            'reference', 'statut', 'date_terminaison', 'created_by',
+            'date_creation', 'date_modification',
+        ]
+
+    def validate_quantite(self, value):
+        if value is None or value <= 0:
+            raise serializers.ValidationError(
+                'La quantite a assembler doit etre strictement positive.')
         return value
