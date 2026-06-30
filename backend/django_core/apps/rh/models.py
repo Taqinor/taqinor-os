@@ -2439,3 +2439,160 @@ class LigneRisqueChantier(models.Model):
 
     def __str__(self):
         return f'{self.danger} ({self.niveau})'
+
+
+class SessionFormation(models.Model):
+    """Session de formation (FG187) — gestion de la formation des équipes.
+
+    Matérialise une SESSION DE FORMATION organisée par la société :
+    interne (formateur maison) ou externe (organisme), avec son ``intitule``,
+    son ``type`` (interne / externe), l'``organisme`` éventuel, les dates
+    (``date_debut`` / ``date_fin``), le ``lieu``, le ``cout`` total et un
+    ``statut`` (planifiée → réalisée → annulée). La session peut viser une
+    ``competence_visee`` du référentiel (FK même app ``rh.Competence``) :
+    quand la session est marquée RÉALISÉE, le niveau de compétence des
+    participants présents peut alors être enregistré/mis à jour dans la matrice
+    (``CompetenceEmploye``) — c'est le lien formation → compétences.
+
+    La liste des participants vit dans le modèle enfant
+    ``InscriptionFormation`` (un par employé inscrit, avec présence et
+    résultat). Multi-société : ``company`` est posée CÔTÉ SERVEUR (jamais lue
+    du corps de requête) ; ``competence_visee`` doit appartenir à la même
+    société. Entièrement additif.
+
+    RUNTIME-SAFETY (leçon FG136) : le code borné ``type`` / ``statut`` ≤ 20 ;
+    ``intitule`` / ``organisme`` / ``lieu`` plafonnés ; les ``notes``,
+    potentiellement longues, sont un ``TextField``.
+    """
+
+    class TypeFormation(models.TextChoices):
+        INTERNE = 'interne', 'Interne'
+        EXTERNE = 'externe', 'Externe'
+
+    class Statut(models.TextChoices):
+        PLANIFIEE = 'planifiee', 'Planifiée'
+        REALISEE = 'realisee', 'Réalisée'
+        ANNULEE = 'annulee', 'Annulée'
+
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='rh_sessions_formation',
+        verbose_name='Société',
+    )
+    intitule = models.CharField(max_length=200, verbose_name='Intitulé')
+    type = models.CharField(
+        max_length=20, choices=TypeFormation.choices,
+        default=TypeFormation.INTERNE, verbose_name='Type')
+    organisme = models.CharField(
+        max_length=200, blank=True, default='', verbose_name='Organisme')
+    date_debut = models.DateField(verbose_name='Date de début')
+    date_fin = models.DateField(
+        null=True, blank=True, verbose_name='Date de fin')
+    lieu = models.CharField(
+        max_length=255, blank=True, default='', verbose_name='Lieu')
+    cout = models.DecimalField(
+        max_digits=12, decimal_places=2, default=Decimal('0'),
+        verbose_name='Coût')
+    # Compétence visée par la formation (même société) — alimente la matrice
+    # quand la session est réalisée.
+    competence_visee = models.ForeignKey(
+        Competence,
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='sessions_formation',
+        verbose_name='Compétence visée',
+    )
+    statut = models.CharField(
+        max_length=20, choices=Statut.choices,
+        default=Statut.PLANIFIEE, verbose_name='Statut')
+    notes = models.TextField(
+        blank=True, default='', verbose_name='Notes')
+    date_creation = models.DateTimeField(
+        auto_now_add=True, verbose_name='Créé le')
+    date_modification = models.DateTimeField(
+        auto_now=True, verbose_name='Modifié le')
+
+    class Meta:
+        verbose_name = 'Session de formation'
+        verbose_name_plural = 'Sessions de formation'
+        ordering = ['-date_debut', '-date_creation']
+        indexes = [
+            models.Index(
+                fields=['company', 'date_debut'],
+                name='rh_sf_comp_date_idx'),
+            models.Index(
+                fields=['company', 'statut'],
+                name='rh_sf_comp_stat_idx'),
+        ]
+
+    def __str__(self):
+        return f'{self.intitule} ({self.date_debut})'
+
+
+class InscriptionFormation(models.Model):
+    """Inscription d'un employé à une session de formation (FG187).
+
+    Une ligne par PARTICIPANT (``session`` → parent, ``participant`` →
+    ``DossierEmploye`` de la même société) : la ``present`` trace la présence,
+    ``resultat`` / ``note`` consignent l'issue (réussite, évaluation libre).
+    Le couple (session, participant) est unique : on met à jour l'inscription
+    plutôt que d'en empiler.
+
+    Multi-société : ``company`` est posée CÔTÉ SERVEUR (jamais lue du corps),
+    celle de la session parente ; ``participant`` doit appartenir à la même
+    société. Additif.
+
+    RUNTIME-SAFETY (leçon FG136) : le code borné ``resultat`` ≤ 20 ; ``note``,
+    potentiellement longue, est un ``TextField``.
+    """
+
+    class Resultat(models.TextChoices):
+        NON_EVALUE = 'non_evalue', 'Non évalué'
+        REUSSI = 'reussi', 'Réussi'
+        ECHEC = 'echec', 'Échec'
+
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='rh_inscriptions_formation',
+        verbose_name='Société',
+    )
+    session = models.ForeignKey(
+        SessionFormation,
+        on_delete=models.CASCADE,
+        related_name='inscriptions',
+        verbose_name='Session',
+    )
+    participant = models.ForeignKey(
+        DossierEmploye,
+        on_delete=models.CASCADE,
+        related_name='formations',
+        verbose_name='Participant',
+    )
+    present = models.BooleanField(default=False, verbose_name='Présent')
+    resultat = models.CharField(
+        max_length=20, choices=Resultat.choices,
+        default=Resultat.NON_EVALUE, verbose_name='Résultat')
+    note = models.TextField(
+        blank=True, default='', verbose_name='Note')
+    date_creation = models.DateTimeField(
+        auto_now_add=True, verbose_name='Créé le')
+
+    class Meta:
+        verbose_name = 'Inscription à une formation'
+        verbose_name_plural = 'Inscriptions aux formations'
+        ordering = ['id']
+        constraints = [
+            models.UniqueConstraint(
+                fields=['session', 'participant'],
+                name='rh_inscr_form_uniq'),
+        ]
+        indexes = [
+            models.Index(
+                fields=['company', 'session'],
+                name='rh_if_comp_sess_idx'),
+        ]
+
+    def __str__(self):
+        return f'{self.participant} — {self.session}'
