@@ -5,6 +5,7 @@ from .views import (
     AvanceSalarieViewSet,
     BaremeIRViewSet,
     BulletinPaieViewSet,
+    CoffreFortBulletinViewSet,
     CumulAnnuelViewSet,
     ElementVariableViewSet,
     OrdreVirementViewSet,
@@ -29,6 +30,8 @@ router.register(r'cumuls-annuels', CumulAnnuelViewSet)
 router.register(r'avances', AvanceSalarieViewSet)
 router.register(r'saisies', SaisieArretViewSet)
 router.register(r'ordres-virement', OrdreVirementViewSet)
+router.register(r'mes-bulletins', CoffreFortBulletinViewSet,
+                basename='coffrefort-bulletin')
 
 urlpatterns = [
     path('', include(router.urls)),

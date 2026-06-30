@@ -15,7 +15,7 @@ from rest_framework.response import Response
 from . import builders
 
 from authentication.mixins import TenantMixin
-from authentication.permissions import IsResponsableOrAdmin
+from authentication.permissions import IsAnyRole, IsResponsableOrAdmin
 
 from .models import (
     AvanceSalarie,
@@ -413,6 +413,50 @@ class AvanceSalarieViewSet(_PaieBaseViewSet):
     serializer_class = AvanceSalarieSerializer
     filter_backends = [filters.OrderingFilter]
     ordering_fields = ['date_debut', 'date_creation', 'id']
+
+
+class CoffreFortBulletinViewSet(viewsets.ReadOnlyModelViewSet):
+    """Coffre-fort des bulletins en self-service employé (PAIE35).
+
+    Accessible à TOUT utilisateur authentifié, mais STRICTEMENT scopé à
+    l'utilisateur : un salarié ne voit QUE ses propres bulletins VALIDÉS
+    (rapprochés par ``profil.employe.user == request.user``). Il peut consulter
+    la liste et télécharger le PDF de chacun, jamais ceux d'un collègue. Aucun
+    accès en écriture. Donnée SENSIBLE — la garde est dans ``get_queryset``
+    (jamais le ``company`` seul, sinon un employé verrait toute la société).
+    """
+    permission_classes = [IsAnyRole]
+    serializer_class = BulletinPaieSerializer
+    filter_backends = [filters.OrderingFilter]
+    ordering_fields = ['date_creation', 'periode', 'id']
+
+    def get_queryset(self):
+        user = self.request.user
+        # Scopé à l'employé rattaché à CE compte utilisateur (OneToOne
+        # rh.DossierEmploye.user), via la relation existante ProfilPaie.employe.
+        # Seuls les bulletins VALIDÉS (figés) sont exposés au salarié.
+        return (
+            BulletinPaie.objects
+            .filter(
+                profil__employe__user=user,
+                statut=BulletinPaie.STATUT_VALIDE,
+            )
+            .select_related('periode', 'profil')
+            .prefetch_related('lignes')
+        )
+
+    @action(detail=True, methods=['get'], url_path='pdf')
+    def pdf(self, request, pk=None):
+        """PDF du bulletin de l'employé (self-service, PAIE35)."""
+        bulletin = self.get_object()  # déjà scopé à l'utilisateur
+        try:
+            pdf = builders.render_bulletin_pdf(bulletin)
+        except RuntimeError as exc:
+            return Response(
+                {'detail': str(exc)},
+                status=status.HTTP_503_SERVICE_UNAVAILABLE)
+        nom = f'bulletin_{bulletin.periode.annee}_{bulletin.periode.mois:02d}.pdf'
+        return _pdf_response(pdf, nom)
 
 
 class OrdreVirementViewSet(TenantMixin, viewsets.ReadOnlyModelViewSet):
