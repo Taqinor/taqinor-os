@@ -32,6 +32,8 @@ from .models import (
     CommandeCadreLigne,
     AppelCommande,
     DossierImport,
+    FraisImport,
+    LandedCostLigne,
 )
 
 
@@ -1515,3 +1517,53 @@ class DossierImportSerializer(serializers.ModelSerializer):
         if not value:
             raise serializers.ValidationError("La désignation est obligatoire.")
         return value
+
+
+class FraisImportSerializer(serializers.ModelSerializer):
+    """FG316 — frais imputé à un dossier d'import (fret/douane/TVA import/
+    transit…). La société et `created_by` sont posés CÔTÉ SERVEUR. Montant
+    INTERNE."""
+    categorie_display = serializers.CharField(
+        source='get_categorie_display', read_only=True, default=None)
+
+    class Meta:
+        model = FraisImport
+        fields = [
+            'id', 'dossier', 'categorie', 'categorie_display', 'libelle',
+            'montant', 'date_frais', 'created_by', 'date_creation',
+        ]
+        read_only_fields = ['created_by', 'date_creation']
+
+    def validate_montant(self, value):
+        if value is not None and value < 0:
+            raise serializers.ValidationError(
+                'Le montant ne peut pas être négatif.')
+        return value
+
+
+class LandedCostLigneSerializer(serializers.ModelSerializer):
+    """FG316 — ligne de coût débarqué par SKU (valeur FOB + quantité). La société
+    est posée CÔTÉ SERVEUR. `cout_fob_unitaire` est dérivé ; la quote-part de
+    frais + le coût débarqué se lisent via l'action `landed-cost` du dossier."""
+    produit_nom = serializers.CharField(
+        source='produit.nom', read_only=True, default=None)
+    cout_fob_unitaire = serializers.DecimalField(
+        max_digits=12, decimal_places=2, read_only=True)
+
+    class Meta:
+        model = LandedCostLigne
+        fields = [
+            'id', 'dossier', 'produit', 'produit_nom', 'designation',
+            'quantite', 'valeur_fob', 'cout_fob_unitaire', 'date_creation',
+        ]
+        read_only_fields = ['date_creation']
+
+    def validate(self, attrs):
+        produit = attrs.get('produit') if 'produit' in attrs else getattr(
+            self.instance, 'produit', None)
+        designation = attrs.get('designation') if 'designation' in attrs else (
+            getattr(self.instance, 'designation', None))
+        if produit is None and not (designation or '').strip():
+            raise serializers.ValidationError(
+                {'designation': 'Indiquez un produit ou une désignation.'})
+        return attrs

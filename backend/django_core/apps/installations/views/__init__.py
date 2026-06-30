@@ -40,6 +40,7 @@ from .commande_cadre import (
     CommandeCadreViewSet, CommandeCadreLigneViewSet, AppelCommandeViewSet,
 )
 from .dossier_import import DossierImportViewSet
+from .landed_cost import FraisImportViewSet, LandedCostLigneViewSet
 from .field_sync import FieldSyncView
 
 __all__ = [
@@ -82,5 +83,7 @@ __all__ = [
     'CommandeCadreLigneViewSet',
     'AppelCommandeViewSet',
     'DossierImportViewSet',
+    'FraisImportViewSet',
+    'LandedCostLigneViewSet',
     'FieldSyncView',
 ]

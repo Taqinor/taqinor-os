@@ -29,6 +29,8 @@ from .views import (
     CommandeCadreLigneViewSet,
     AppelCommandeViewSet,
     DossierImportViewSet,
+    FraisImportViewSet,
+    LandedCostLigneViewSet,
 )
 
 router = DefaultRouter()
@@ -69,6 +71,8 @@ router.register(r'commandes-cadre', CommandeCadreViewSet)
 router.register(r'commandes-cadre-lignes', CommandeCadreLigneViewSet)
 router.register(r'appels-commande', AppelCommandeViewSet)
 router.register(r'dossiers-import', DossierImportViewSet)
+router.register(r'frais-import', FraisImportViewSet)
+router.register(r'landed-cost-lignes', LandedCostLigneViewSet)
 
 urlpatterns = [
     # N91/F21 — synchro idempotente de la capture terrain hors-ligne.

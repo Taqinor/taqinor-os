@@ -1383,3 +1383,50 @@ def controle_budgetaire_commande(company, montant, *, projet_id=None,
         'reste_total': float(reste_total),
         'montant': float(montant),
     }
+
+
+def landed_cost_dossier(dossier):
+    """FG316 — coût de revient débarqué (landed cost) d'un dossier d'import.
+
+    Répartit le TOTAL des frais (``FraisImport``) sur les lignes de SKU
+    (``LandedCostLigne``) AU PRORATA de leur valeur FOB, puis renvoie, par ligne,
+    la quote-part de frais, le coût débarqué total et le coût débarqué unitaire.
+    Montants INTERNES — jamais client-facing. Lecture seule, import-linter safe.
+    Renvoie un dict {total_fob, total_frais, total_landed, lignes:[...]}."""
+    from decimal import Decimal
+
+    lignes = list(dossier.landed_lignes.all())
+    total_frais = sum((f.montant for f in dossier.frais.all()), Decimal('0'))
+    total_fob = sum((ln.valeur_fob for ln in lignes), Decimal('0'))
+
+    details = []
+    total_landed = Decimal('0')
+    for ln in lignes:
+        if total_fob > 0:
+            quote_part = (total_frais * ln.valeur_fob / total_fob).quantize(
+                Decimal('0.01'))
+        else:
+            quote_part = Decimal('0')
+        landed_total = (ln.valeur_fob or Decimal('0')) + quote_part
+        q = ln.quantite or Decimal('0')
+        landed_unitaire = (
+            (landed_total / q).quantize(Decimal('0.01'))
+            if q else Decimal('0'))
+        total_landed += landed_total
+        details.append({
+            'ligne_id': ln.id,
+            'produit_id': ln.produit_id,
+            'designation': ln.designation,
+            'quantite': float(q),
+            'valeur_fob': float(ln.valeur_fob or Decimal('0')),
+            'quote_part_frais': float(quote_part),
+            'cout_debarque_total': float(landed_total),
+            'cout_debarque_unitaire': float(landed_unitaire),
+        })
+    return {
+        'dossier_id': dossier.id,
+        'total_fob': float(total_fob),
+        'total_frais': float(total_frais),
+        'total_landed': float(total_landed),
+        'lignes': details,
+    }

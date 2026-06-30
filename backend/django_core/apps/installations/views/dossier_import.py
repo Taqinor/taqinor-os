@@ -20,8 +20,9 @@ from apps.ventes.utils.references import create_with_reference
 
 from ..models import DossierImport
 from ..serializers import DossierImportSerializer
+from .. import selectors
 
-READ_ACTIONS = ['list', 'retrieve']
+READ_ACTIONS = ['list', 'retrieve', 'landed_cost']
 
 # Ordre canonique du statut douanier (jamais alphabétique).
 STATUT_ORDER = [
@@ -40,7 +41,8 @@ class DossierImportViewSet(TenantMixin, viewsets.ModelViewSet):
     fournisseur/bon_commande validés tenant. Filtrable par `statut_douane`,
     `fournisseur`. Progression du statut via `avancer`."""
     queryset = DossierImport.objects.select_related(
-        'fournisseur', 'bon_commande', 'created_by').all()
+        'fournisseur', 'bon_commande', 'created_by'
+    ).prefetch_related('frais', 'landed_lignes').all()
     serializer_class = DossierImportSerializer
 
     def get_permissions(self):
@@ -110,3 +112,11 @@ class DossierImportViewSet(TenantMixin, viewsets.ModelViewSet):
         dossier.statut_douane = nouveau
         dossier.save(update_fields=['statut_douane', 'date_modification'])
         return Response(self.get_serializer(dossier).data)
+
+    @action(detail=True, methods=['get'], url_path='landed-cost')
+    def landed_cost(self, request, pk=None):
+        """FG316 — coût de revient débarqué : répartit les frais d'import sur les
+        SKU au prorata FOB et renvoie le coût débarqué par ligne. Lecture seule,
+        montants INTERNES."""
+        dossier = self.get_object()
+        return Response(selectors.landed_cost_dossier(dossier))

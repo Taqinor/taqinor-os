@@ -114,6 +114,10 @@ from .models_commande_cadre import (
 from .models_dossier_import import (
     DossierImport,
 )
+from .models_landed_cost import (
+    FraisImport,
+    LandedCostLigne,
+)
 
 __all__ = [
     'Installation',
@@ -173,4 +177,6 @@ __all__ = [
     'CommandeCadreLigne',
     'AppelCommande',
     'DossierImport',
+    'FraisImport',
+    'LandedCostLigne',
 ]
