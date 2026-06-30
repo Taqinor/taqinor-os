@@ -1169,3 +1169,189 @@ def cartes_grises_expirantes(company, within=30, today=None):
         autorisation_date_validite__isnull=False,
         autorisation_date_validite__lte=horizon,
     ).order_by('autorisation_date_validite', 'id')
+
+
+# ── FLOTTE24 — Moteur d'alertes d'échéances réglementaires (J-30/15/7/échu) ────
+
+# Fenêtre maximale de l'alerteur : on ne remonte que les échéances déjà
+# expirées (échu) OU dues dans les 30 prochains jours (inclusif). Au-delà,
+# l'échéance est « hors fenêtre » et n'apparaît pas dans le moteur d'alertes.
+ALERTES_HORIZON_JOURS = 30
+
+# Bornes (en jours restants, inclusif) qui définissent chaque seau d'urgence.
+# Un seuil est choisi par ordre croissant : J-7 d'abord (≤ 7 j), puis J-15
+# (≤ 15 j), puis J-30 (≤ 30 j). Une date déjà passée tombe dans « échu ».
+ALERTES_BUCKETS = (
+    ('j7', 7),
+    ('j15', 15),
+    ('j30', 30),
+)
+
+
+def _bucket_pour_jours(jours_restants):
+    """FLOTTE24 — Range un nombre de jours restants dans un seau d'urgence.
+
+    Retourne ``'echu'`` si ``jours_restants`` est négatif (date passée), sinon
+    le premier seau (``'j7'`` → ``'j15'`` → ``'j30'``) dont la borne couvre la
+    valeur. Retourne ``None`` si la date est hors fenêtre (> 30 j). Lecture
+    seule, sans effet de bord.
+    """
+    if jours_restants is None:
+        return None
+    if jours_restants < 0:
+        return 'echu'
+    for nom, borne in ALERTES_BUCKETS:
+        if jours_restants <= borne:
+            return nom
+    return None
+
+
+def alertes_echeances_reglementaires(company, today=None):
+    """FLOTTE24 — Moteur unifié d'alertes d'échéances réglementaires (lecture seule).
+
+    Agrège, pour une société, TOUTES les échéances réglementaires DUES ou
+    IMMINENTES portées par les différents modèles flotte et les classe par
+    SEAU d'urgence : ``echu`` (date passée), ``j7`` (≤ 7 j), ``j15`` (≤ 15 j),
+    ``j30`` (≤ 30 j). Les échéances à plus de 30 jours (hors fenêtre) sont
+    EXCLUES.
+
+    Sources agrégées (chacune réutilise le sélecteur ``*_expirantes`` existant
+    quand il existe, sinon filtre directement le modèle) :
+
+    * ``echeance_reglementaire`` — ``EcheanceReglementaire.date_echeance``
+      (FLOTTE19, via ``echeances_reglementaires_expirantes``) ;
+    * ``assurance`` — ``AssuranceVehicule.date_echeance``
+      (FLOTTE21, via ``assurances_vehicule_expirantes``) ;
+    * ``visite_technique`` — ``VisiteTechnique.date_prochaine``
+      (FLOTTE22, via ``visites_techniques_expirantes``) ;
+    * ``carte_grise`` — ``CarteGriseVehicule.autorisation_date_validite``
+      (FLOTTE23, via ``cartes_grises_expirantes``) ;
+    * ``entretien`` — ``EcheanceEntretien.due_le`` des échéances OUVERTES
+      (FLOTTE16) — l'échéance de MAINTENANCE datée encore à traiter.
+
+    ``today`` est INJECTABLE (date du jour par défaut). Tout est scopé société.
+
+    Retourne un dict LECTURE SEULE ::
+
+        {
+          'today': <date>,
+          'horizon_jours': 30,
+          'nb_total': <int>,
+          'nb_echu': <int>, 'nb_j7': <int>, 'nb_j15': <int>, 'nb_j30': <int>,
+          'buckets': {
+            'echu': [ <alerte>, … ], 'j7': […], 'j15': […], 'j30': […],
+          },
+          'alertes': [ <alerte>, … ],   # liste plate triée par urgence
+        }
+
+    Chaque ``<alerte>`` est un dict ::
+
+        {'source', 'objet_id', 'actif_flotte_id', 'actif_label', 'type',
+         'libelle', 'date_echeance', 'jours_restants', 'bucket'}
+
+    La liste plate ``alertes`` est triée du plus urgent au moins urgent (échu
+    d'abord, puis par date d'échéance croissante). Aucune écriture, aucun effet
+    de bord.
+    """
+    if today is None:
+        today = datetime.date.today()
+
+    alertes = []
+
+    def _ajoute(source, objet_id, actif_flotte_id, actif_label, type_,
+                libelle, date_echeance):
+        """Ajoute une alerte si sa date tombe dans la fenêtre (échu .. J-30)."""
+        if date_echeance is None:
+            return
+        jours_restants = (date_echeance - today).days
+        bucket = _bucket_pour_jours(jours_restants)
+        if bucket is None:
+            return  # hors fenêtre (> 30 j).
+        alertes.append({
+            'source': source,
+            'objet_id': objet_id,
+            'actif_flotte_id': actif_flotte_id,
+            'actif_label': actif_label,
+            'type': type_,
+            'libelle': libelle,
+            'date_echeance': date_echeance,
+            'jours_restants': jours_restants,
+            'bucket': bucket,
+        })
+
+    horizon = ALERTES_HORIZON_JOURS
+
+    # 1) Échéances réglementaires génériques (FLOTTE19).
+    for ech in echeances_reglementaires_expirantes(
+            company, within=horizon, today=today):
+        _ajoute(
+            'echeance_reglementaire', ech.id, ech.actif_flotte_id,
+            ech.actif_flotte.label if ech.actif_flotte_id else None,
+            ech.type_echeance, ech.get_type_echeance_display(),
+            ech.date_echeance)
+
+    # 2) Polices d'assurance (FLOTTE21).
+    for assur in assurances_vehicule_expirantes(
+            company, within=horizon, today=today):
+        _ajoute(
+            'assurance', assur.id, assur.actif_flotte_id,
+            assur.actif_flotte.label if assur.actif_flotte_id else None,
+            'assurance',
+            f'Assurance {assur.assureur} n°{assur.numero_police}'.strip(),
+            assur.date_echeance)
+
+    # 3) Visites techniques (FLOTTE22).
+    for vt in visites_techniques_expirantes(
+            company, within=horizon, today=today):
+        _ajoute(
+            'visite_technique', vt.id, vt.actif_flotte_id,
+            vt.actif_flotte.label if vt.actif_flotte_id else None,
+            'visite_technique',
+            f'Visite technique {vt.centre}'.strip(),
+            vt.date_prochaine)
+
+    # 4) Cartes grises / autorisations de circulation (FLOTTE23).
+    for cg in cartes_grises_expirantes(
+            company, within=horizon, today=today):
+        _ajoute(
+            'carte_grise', cg.id, cg.actif_flotte_id,
+            cg.actif_flotte.label if cg.actif_flotte_id else None,
+            'carte_grise',
+            f'Autorisation de circulation n°{cg.numero_carte_grise}'.strip(),
+            cg.autorisation_date_validite)
+
+    # 5) Échéances d'entretien DATÉES encore ouvertes (FLOTTE16). Seules les
+    # échéances qui portent une ``due_le`` entrent dans l'alerteur calendaire.
+    entretiens = (
+        echeances_de_la_societe(company, ouvertes_only=True)
+        .filter(due_le__isnull=False)
+    )
+    for ee in entretiens:
+        _ajoute(
+            'entretien', ee.id, ee.actif_flotte_id,
+            ee.actif_flotte.label if ee.actif_flotte_id else None,
+            ee.type_entretien,
+            f'Entretien : {ee.type_entretien}'.strip(),
+            ee.due_le)
+
+    # Tri du plus urgent au moins urgent : par date d'échéance croissante (les
+    # échéances déjà passées, donc les plus anciennes, remontent naturellement
+    # en tête), puis par source/objet pour un ordre stable.
+    alertes.sort(key=lambda a: (a['date_echeance'], a['source'],
+                                a['objet_id']))
+
+    buckets = {'echu': [], 'j7': [], 'j15': [], 'j30': []}
+    for alerte in alertes:
+        buckets[alerte['bucket']].append(alerte)
+
+    return {
+        'today': today,
+        'horizon_jours': horizon,
+        'nb_total': len(alertes),
+        'nb_echu': len(buckets['echu']),
+        'nb_j7': len(buckets['j7']),
+        'nb_j15': len(buckets['j15']),
+        'nb_j30': len(buckets['j30']),
+        'buckets': buckets,
+        'alertes': alertes,
+    }

@@ -61,7 +61,7 @@ from .serializers import (
 )
 
 READ_ACTIONS = ['list', 'retrieve', 'consommation', 'anomalies', 'echeances',
-                'couts', 'synthese', 'expirantes', 'tsav']
+                'couts', 'synthese', 'expirantes', 'tsav', 'alertes_echeances']
 
 
 class _FlotteBaseViewSet(TenantMixin, viewsets.ModelViewSet):
@@ -862,6 +862,12 @@ class EcheanceReglementaireViewSet(_FlotteBaseViewSet):
     Action ``GET /echeances-reglementaires/expirantes/?within=N`` (lecture tout
     rôle) — échéances déjà expirées ou dues dans les ``N`` prochains jours
     (défaut 30), de la plus urgente à la moins urgente.
+
+    Action ``GET /echeances-reglementaires/alertes-echeances/`` (FLOTTE24,
+    lecture tout rôle) — moteur unifié d'alertes : agrège toutes les échéances
+    réglementaires DUES/IMMINENTES de la société (échéances réglementaires,
+    assurances, visites techniques, cartes grises, entretiens datés) et les
+    classe par seau d'urgence (``echu`` / ``j7`` / ``j15`` / ``j30``).
     """
     queryset = EcheanceReglementaire.objects.select_related(
         'actif_flotte', 'actif_flotte__vehicule', 'actif_flotte__engin')
@@ -914,6 +920,21 @@ class EcheanceReglementaireViewSet(_FlotteBaseViewSet):
         qs = echeances_reglementaires_expirantes(company, within=within)
         serializer = self.get_serializer(qs, many=True)
         return Response(serializer.data)
+
+    @action(detail=False, methods=['get'], url_path='alertes-echeances')
+    def alertes_echeances(self, request):
+        """FLOTTE24 — Moteur unifié d'alertes d'échéances réglementaires.
+
+        Lecture (tout rôle), scopée société. Agrège toutes les échéances
+        réglementaires DUES ou imminentes (échéances réglementaires,
+        assurances, visites techniques, cartes grises, entretiens datés) et les
+        classe par seau d'urgence : ``echu`` (date passée), ``j7`` (≤ 7 j),
+        ``j15`` (≤ 15 j), ``j30`` (≤ 30 j) — au-delà de 30 j : hors fenêtre.
+        Renvoie le dict du sélecteur (compteurs + seaux + liste plate triée).
+        """
+        company = request.user.company
+        from .selectors import alertes_echeances_reglementaires
+        return Response(alertes_echeances_reglementaires(company))
 
 
 class BaremeVignetteViewSet(_FlotteBaseViewSet):
