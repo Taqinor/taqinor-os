@@ -47,6 +47,7 @@ from .models import (
     RetenueGarantie, TimbreFiscal,
     TravauxEnCours, VirementInterne,
     EcheanceAO, ResultatAO, ComptePortailClient,
+    PaiementFacturePortail,
 )
 
 
@@ -3937,3 +3938,52 @@ def signer_acceptation_devis(acceptation, *, nom=None, ip=None):
     acceptation.save(update_fields=[
         'nom_signataire', 'signature_ip', 'accepte', 'signe_le'])
     return acceptation
+
+
+# ── FG230 — Paiement en ligne des factures (portail, GATED CMI) ────────────
+
+def cmi_actif():
+    """Toggle de la passerelle de paiement carte CMI. OFF par défaut → NO-OP.
+
+    Le founder l'active en posant ``CMI_ENABLED = True`` et une clé marchande
+    ``CMI_MERCHANT_KEY`` (settings/env). Tant que c'est faux/sans clé, initier un
+    paiement carte ne fait AUCUN appel réseau (intention reste « initie ») — le
+    rapprochement reste manuel, comme le virement (blocage G/COST FG230).
+    """
+    return bool(getattr(settings, 'CMI_ENABLED', False)
+                and getattr(settings, 'CMI_MERCHANT_KEY', ''))
+
+
+def initier_paiement_facture(paiement):
+    """Initie un paiement de facture portail (FG230), idempotent.
+
+    Pose une référence locale si absente. Si la méthode est carte et que CMI est
+    actif, l'intégration réelle (future) générerait l'URL de paiement ; tant que
+    CMI est OFF, c'est un NO-OP propre (aucun appel réseau). Renvoie le paiement.
+    """
+    if paiement.statut != PaiementFacturePortail.Statut.INITIE:
+        return paiement
+    if not paiement.reference:
+        import secrets
+        paiement.reference = f'PF-{secrets.token_hex(8)}'
+        paiement.save(update_fields=['reference'])
+    # NO-OP gated : l'appel CMI réel n'a lieu que si cmi_actif() est vrai.
+    return paiement
+
+
+def rapprocher_paiement_facture(paiement, *, reference=None):
+    """Marque un paiement de facture portail comme payé (FG230), idempotent.
+
+    Sert le rapprochement auto (webhook CMI) ET le rapprochement manuel d'un
+    virement reçu. Un paiement déjà payé/échoué n'est pas re-rapproché. Le
+    report vers un ``Paiement`` comptable reste à la charge de la chaîne ventes
+    via son service (cross-app) ; on ne touche jamais ses modèles ici.
+    """
+    if paiement.statut != PaiementFacturePortail.Statut.INITIE:
+        return paiement
+    if reference:
+        paiement.reference = reference
+    paiement.statut = PaiementFacturePortail.Statut.PAYE
+    paiement.paye_le = timezone.now()
+    paiement.save(update_fields=['reference', 'statut', 'paye_le'])
+    return paiement

@@ -40,7 +40,7 @@ from .models import (
     OffreFinancement, LigneIncitation, EcheancierPaiement, TranchePaiement,
     AppelOffre, BordereauPrix, LigneBordereau, CautionSoumission,
     DossierSoumission, PieceSoumission, EcheanceAO, ResultatAO,
-    ComptePortailClient, AcceptationDevisPortail,
+    ComptePortailClient, AcceptationDevisPortail, PaiementFacturePortail,
 )
 from .serializers import (
     AppelTelephoniqueSerializer, AvancementRevenuSerializer,
@@ -77,7 +77,7 @@ from .serializers import (
     LigneBordereauSerializer, CautionSoumissionSerializer,
     DossierSoumissionSerializer, PieceSoumissionSerializer,
     EcheanceAOSerializer, ResultatAOSerializer, ComptePortailClientSerializer,
-    AcceptationDevisPortailSerializer,
+    AcceptationDevisPortailSerializer, PaiementFacturePortailSerializer,
 )
 
 
@@ -3461,3 +3461,25 @@ class AcceptationDevisPortailViewSet(_ComptaBaseViewSet):
         ip = request.META.get('REMOTE_ADDR')
         services.signer_acceptation_devis(acceptation, nom=nom, ip=ip)
         return Response(self.get_serializer(acceptation).data)
+
+
+class PaiementFacturePortailViewSet(_ComptaBaseViewSet):
+    """Intentions de paiement en ligne d'une facture depuis le portail (FG230).
+    La société est posée côté serveur ; ``initier`` pose une référence (NO-OP
+    tant que CMI est OFF) et ``rapprocher`` marque le paiement comme payé
+    (rapprochement auto webhook CMI ou manuel virement)."""
+    queryset = PaiementFacturePortail.objects.all()
+    serializer_class = PaiementFacturePortailSerializer
+    filter_backends = [filters.OrderingFilter]
+    ordering_fields = ['date_creation', 'paye_le']
+
+    def perform_create(self, serializer):
+        paiement = serializer.save(company=self.request.user.company)
+        services.initier_paiement_facture(paiement)
+
+    @action(detail=True, methods=['post'])
+    def rapprocher(self, request, pk=None):
+        paiement = self.get_object()
+        reference = request.data.get('reference') or None
+        services.rapprocher_paiement_facture(paiement, reference=reference)
+        return Response(self.get_serializer(paiement).data)

@@ -5151,3 +5151,58 @@ class AcceptationDevisPortail(models.Model):
 
     def __str__(self):
         return f'Acceptation devis #{self.devis_id} — {self.nom_signataire}'
+
+
+# ── FG230 — Paiement en ligne des factures (portail) ───────────────────────
+
+class PaiementFacturePortail(models.Model):
+    """Intention de paiement en ligne d'une facture depuis le portail (FG230).
+
+    Le client clique « payer » (CMI carte ou virement) ; on enregistre une
+    intention de paiement scopée société, puis le rapprochement la passe de
+    ``initie`` à ``paye`` (manuel pour le virement, automatique via webhook CMI
+    quand l'intégration est branchée). Tant que la passerelle CMI est OFF
+    (``CMI_ENABLED``, défaut), aucun appel réseau payant n'est émis : l'intention
+    reste ``initie`` avec une référence locale. La facture est désignée par son
+    id (cross-app — jamais d'import du modèle ``ventes``).
+    """
+    class Methode(models.TextChoices):
+        CARTE = 'carte', 'Carte (CMI)'
+        VIREMENT = 'virement', 'Virement'
+
+    class Statut(models.TextChoices):
+        INITIE = 'initie', 'Initié'
+        PAYE = 'paye', 'Payé'
+        ECHOUE = 'echoue', 'Échoué'
+
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='paiements_facture_portail',
+        verbose_name='Société',
+    )
+    facture_id = models.PositiveIntegerField(verbose_name='Id de la facture')
+    montant = models.DecimalField(
+        max_digits=14, decimal_places=2, default=0,
+        verbose_name='Montant (MAD)')
+    methode = models.CharField(
+        max_length=8, choices=Methode.choices, default=Methode.CARTE,
+        verbose_name='Méthode')
+    statut = models.CharField(
+        max_length=8, choices=Statut.choices, default=Statut.INITIE,
+        verbose_name='Statut')
+    reference = models.CharField(
+        max_length=64, blank=True, default='',
+        verbose_name='Référence de transaction')
+    paye_le = models.DateTimeField(
+        null=True, blank=True, verbose_name='Payé le')
+    date_creation = models.DateTimeField(
+        auto_now_add=True, verbose_name='Créé le')
+
+    class Meta:
+        verbose_name = 'Paiement de facture (portail)'
+        verbose_name_plural = 'Paiements de facture (portail)'
+        ordering = ['-date_creation']
+
+    def __str__(self):
+        return f'Paiement facture #{self.facture_id} ({self.statut})'

@@ -30,7 +30,7 @@ from .models import (
     OffreFinancement, LigneIncitation, EcheancierPaiement, TranchePaiement,
     AppelOffre, BordereauPrix, LigneBordereau, CautionSoumission,
     DossierSoumission, PieceSoumission, EcheanceAO, ResultatAO,
-    ComptePortailClient, AcceptationDevisPortail,
+    ComptePortailClient, AcceptationDevisPortail, PaiementFacturePortail,
 )
 
 
@@ -1780,4 +1780,16 @@ class AcceptationDevisPortailSerializer(serializers.ModelSerializer):
         ]
         read_only_fields = [
             'signature_ip', 'accepte', 'signe_le', 'date_creation',
+        ]
+
+
+class PaiementFacturePortailSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = PaiementFacturePortail
+        fields = [
+            'id', 'facture_id', 'montant', 'methode', 'statut', 'reference',
+            'paye_le', 'date_creation',
+        ]
+        read_only_fields = [
+            'statut', 'reference', 'paye_le', 'date_creation',
         ]
