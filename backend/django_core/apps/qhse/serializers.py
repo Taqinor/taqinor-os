@@ -8,11 +8,11 @@ from rest_framework import serializers
 
 from .models import (
     ActionCorrectivePreventive, Audit, ConsignationLoto, CritereAudit,
-    EvaluationRisque, GrilleAudit, ItemNotation, LigneEvaluationRisque,
-    NonConformite, NotationFinChantier, PermisTravail, PlanInspectionChantier,
-    PlanInspectionModele, PointControleModele, ProcedureQualite,
-    QhseChatterEntry, ReleveControle, ReleveCourbeIV, ReponseCritere,
-    RetourClientQualite,
+    EvaluationRisque, GrilleAudit, InductionSecurite, ItemNotation,
+    LigneEvaluationRisque, NonConformite, NotationFinChantier, PermisTravail,
+    PlanInspectionChantier, PlanInspectionModele, PointControleModele,
+    ProcedureQualite, QhseChatterEntry, ReleveControle, ReleveCourbeIV,
+    ReponseCritere, RetourClientQualite,
 )
 
 
@@ -524,3 +524,29 @@ class ConsignationLotoSerializer(serializers.ModelSerializer):
 
     def validate_permis(self, value):
         return _meme_societe(self, value, 'Permis de travail')
+
+
+class InductionSecuriteSerializer(serializers.ModelSerializer):
+    """Accueil / induction sécurité préalable à l'accès au site (QHSE26).
+
+    ``company`` est posée côté serveur (jamais lue du corps). ``acquittement_le``
+    est en lecture seule au CRUD : il n'est posé que par l'action ``acquitter``.
+    Le ``employe`` (salarié interne optionnel) doit appartenir à la société de
+    l'utilisateur. Pour un sous-traitant externe, ``personne_nom`` (et le plus
+    souvent ``entreprise_externe``) suffisent — aucun dossier RH requis.
+    """
+    employe_nom = serializers.CharField(
+        source='employe.__str__', read_only=True)
+
+    class Meta:
+        model = InductionSecurite
+        fields = [
+            'id', 'chantier_id', 'personne_nom', 'est_sous_traitant',
+            'entreprise_externe', 'employe', 'employe_nom', 'date_induction',
+            'anime_par', 'themes', 'acquittement', 'acquittement_le',
+            'validite_jours', 'notes', 'date_creation',
+        ]
+        read_only_fields = ['acquittement_le', 'date_creation']
+
+    def validate_employe(self, value):
+        return _meme_societe(self, value, 'Salarié')
