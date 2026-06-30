@@ -31,13 +31,14 @@ from apps.records.serializers import resolve_target
 from . import selectors, services
 from .models import (
     ArchivageLegal, ArchivageLegalError, Cabinet, Coffre, DemandeApprobation,
-    Document, DocumentLien, DocumentTag, DocumentTagAssignment,
-    DocumentVersion, Folder, LegalHold, LegalHoldError, ModeleDocument,
-    PartageGed, PolitiqueRetention,
+    DemandeSignatureDocument, Document, DocumentLien, DocumentTag,
+    DocumentTagAssignment, DocumentVersion, Folder, LegalHold, LegalHoldError,
+    ModeleDocument, PartageGed, PolitiqueRetention,
 )
 from .serializers import (
     ArchivageLegalSerializer, CabinetSerializer, CoffreSerializer,
-    DemandeApprobationSerializer, DocumentLienSerializer, DocumentSerializer,
+    DemandeApprobationSerializer, DemandeSignatureDocumentSerializer,
+    DocumentLienSerializer, DocumentSerializer,
     DocumentTagAssignmentSerializer, DocumentTagSerializer,
     DocumentVersionSerializer, FolderSerializer, LegalHoldSerializer,
     ModeleDocumentSerializer, PartageGedSerializer, PolitiqueRetentionSerializer,
@@ -1618,6 +1619,106 @@ class ModeleDocumentViewSet(TenantMixin, viewsets.ModelViewSet):
             {'document': document.id, 'document_nom': document.nom,
              'created': created},
             status=status.HTTP_201_CREATED if created else status.HTTP_200_OK)
+
+
+class DemandeSignatureDocumentViewSet(TenantMixin,
+                                      mixins.ListModelMixin,
+                                      mixins.RetrieveModelMixin,
+                                      mixins.CreateModelMixin,
+                                      viewsets.GenericViewSet):
+    """GED30 — Demandes de signature électronique (point d'intégration + stub no-op).
+
+    Expose la LISTE/le DÉTAIL des demandes et permet d'en CRÉER une (création) ;
+    il n'y a volontairement NI `update`/`partial_update`/`destroy` (l'état évolue
+    via le service / l'action `marquer-signe`, jamais par mutation directe). À la
+    création, `company` et `created_by` sont posés CÔTÉ SERVEUR via
+    `services.demander_signature` (jamais lus du corps ; on lit seulement
+    `document`, `signataire_nom`, `signataire_email`). Le document est borné à la
+    société (404 cross-société).
+
+    KEY-GATED no-op : sans provider e-sign configuré (`services.esign_active()`
+    faux), la demande est un STUB purement local `en_attente` — aucun appel
+    réseau, aucun coût, aucune dépendance nouvelle. La complétion (webhook/manuel)
+    passe par l'action `<id>/marquer-signe/`. Couche distincte de la signature des
+    contrats (CONTRAT16) et du funnel `STAGES.py`.
+
+    Lecture : tout rôle authentifié. Création / marquage : responsable/admin."""
+    queryset = DemandeSignatureDocument.objects.select_related(
+        'document', 'created_by').all()
+    serializer_class = DemandeSignatureDocumentSerializer
+    filter_backends = [filters.OrderingFilter]
+    ordering_fields = ['date_demande', 'id']
+
+    def get_permissions(self):
+        if self.action in READ_ACTIONS:
+            return [IsAnyRole()]
+        return [IsResponsableOrAdmin()]
+
+    def get_queryset(self):
+        qs = selectors.demandes_signature_for_company(self.request.user.company)
+        document = self.request.query_params.get('document')
+        if document:
+            qs = qs.filter(document_id=document)
+        statut = self.request.query_params.get('statut')
+        if statut:
+            qs = qs.filter(statut=statut)
+        return qs
+
+    def create(self, request, *args, **kwargs):
+        """Crée une demande de signature sur un document de la société courante.
+
+        Body : `{"document": <id>, "signataire_nom": "<str>",
+        "signataire_email": "<email>"}`. Le document est borné à la société (404
+        cross-société). `company`/`created_by` posés côté serveur (jamais lus du
+        corps). Mode STUB no-op tant qu'aucun provider e-sign n'est configuré."""
+        document_id = request.data.get('document')
+        nom = (request.data.get('signataire_nom') or '').strip()
+        email = (request.data.get('signataire_email') or '').strip()
+        if not document_id:
+            return Response(
+                {'document': 'Le document à signer est requis.'},
+                status=status.HTTP_400_BAD_REQUEST)
+        if not nom or not email:
+            return Response(
+                {'signataire': 'Le nom et l\'email du signataire sont requis.'},
+                status=status.HTTP_400_BAD_REQUEST)
+        document = (Document.objects.filter(company=request.user.company)
+                    .filter(pk=document_id).first())
+        if document is None:
+            return Response(
+                {'document': 'Document inconnu.'},
+                status=status.HTTP_404_NOT_FOUND)
+        try:
+            demande = services.demander_signature(
+                document,
+                signataire_nom=nom,
+                signataire_email=email,
+                company=request.user.company,
+                created_by=request.user)
+        except PermissionError as exc:
+            return Response(
+                {'detail': str(exc)}, status=status.HTTP_403_FORBIDDEN)
+        return Response(
+            DemandeSignatureDocumentSerializer(
+                demande, context={'request': request}).data,
+            status=status.HTTP_201_CREATED)
+
+    @action(detail=True, methods=['post'], url_path='marquer-signe')
+    def marquer_signe(self, request, pk=None):
+        """GED30 — Enregistre la COMPLÉTION d'une signature (webhook/manuel).
+
+        `POST …/demandes-signature/<id>/marquer-signe/`. Bascule la demande en
+        `signe` et horodate `date_signature` via `services.marquer_signe`. Un
+        `provider_ref` optionnel (callback) est conservé. Idempotent. Écriture :
+        responsable/admin."""
+        demande = self.get_object()  # borné à la société (TenantMixin)
+        demande = services.marquer_signe(
+            demande,
+            provider_ref=(request.data.get('provider_ref') or '').strip())
+        return Response(
+            DemandeSignatureDocumentSerializer(
+                demande, context={'request': request}).data,
+            status=status.HTTP_200_OK)
 
 
 # ── GED20 — Endpoint PUBLIC (sans login) servant un document par jeton ───────

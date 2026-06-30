@@ -1620,3 +1620,122 @@ def classer_document_apres_vente(*, company, file_key='', contenu_bytes=None,
         folder_nom=folder_nom,
         created_by=created_by,
     )
+
+
+# ── GED30 — Signature électronique (point d'intégration + STUB no-op) ─────────
+
+def esign_active():
+    """GED30 — True si un fournisseur e-sign externe est activé (clé présente).
+
+    KEY-GATED (mirroir de `embedding_enabled()` GED12) : sans
+    `settings.ESIGN_ENABLED` à vrai, tout est un STUB no-op — `demander_signature`
+    se contente de créer une demande LOCALE `en_attente` (aucun appel réseau,
+    aucun coût, aucune dépendance nouvelle). Le founder activera un fournisseur
+    réel (DocuSign/Yousign/…) en posant le flag + la clé du provider dans
+    l'environnement ; tant que ce n'est pas fait, la GED reste 100 % locale."""
+    from django.conf import settings
+    return bool(getattr(settings, 'ESIGN_ENABLED', False))
+
+
+def esign_provider_name():
+    """GED30 — Nom du fournisseur e-sign configuré, ou « aucun » (stub).
+
+    Renvoie `settings.ESIGN_PROVIDER` seulement si l'e-sign est active ; sinon
+    « aucun » (mode stub). Aucune dépendance/import de provider ici."""
+    from django.conf import settings
+    from .models import SIGNATURE_PROVIDER_AUCUN
+    if not esign_active():
+        return SIGNATURE_PROVIDER_AUCUN
+    return getattr(settings, 'ESIGN_PROVIDER', SIGNATURE_PROVIDER_AUCUN) \
+        or SIGNATURE_PROVIDER_AUCUN
+
+
+def demander_signature(document, *, signataire_nom, signataire_email,
+                       company, created_by=None):
+    """GED30 — Demande une signature électronique sur un document (STUB no-op).
+
+    Crée une `DemandeSignatureDocument` `en_attente` rattachée au document. La
+    `company` est TOUJOURS fournie par l'appelant (résolue côté serveur depuis
+    `request.user.company`) — jamais lue d'un corps de requête ; elle doit
+    correspondre à celle du document (sinon `PermissionError`, traduit en 404/403
+    côté vue). `created_by` est posé côté serveur.
+
+    KEY-GATED NO-OP : quand `esign_active()` est faux, AUCUN appel réseau n'est
+    fait — la demande reste un enregistrement purement local `en_attente` avec
+    `provider='aucun'` et `provider_ref=''` (résultat déterministe, aucun coût,
+    aucune dépendance nouvelle). Quand un provider sera câblé (clé posée par le
+    founder), c'est ICI que l'appel fournisseur serait fait (squelette isolé
+    ci-dessous, jamais exécuté tant qu'aucun provider concret n'est importé) et
+    `provider`/`provider_ref` seraient renseignés.
+
+    Renvoie la `DemandeSignatureDocument` créée.
+    """
+    from .models import (
+        DemandeSignatureDocument, SIGNATURE_EN_ATTENTE, SIGNATURE_PROVIDER_AUCUN,
+    )
+
+    if document.company_id != getattr(company, 'id', None):
+        raise PermissionError("Document inaccessible.")
+
+    provider = SIGNATURE_PROVIDER_AUCUN
+    provider_ref = ''
+    if esign_active():  # pragma: no cover - dépend d'un provider externe non câblé.
+        # Branchement provider à venir (clé-gated). Tant qu'aucun fournisseur
+        # concret n'est importé, on reste no-op même flag activé — jamais d'appel
+        # fantôme ni de dépendance nouvelle.
+        prov = None
+        try:
+            from . import esign_provider as prov  # noqa: F401
+        except ImportError:
+            prov = None
+        if prov is not None:
+            provider = esign_provider_name()
+            provider_ref = prov.create_signature_request(
+                document=document,
+                signataire_nom=signataire_nom,
+                signataire_email=signataire_email,
+            ) or ''
+
+    return DemandeSignatureDocument.objects.create(
+        company=document.company,
+        document=document,
+        signataire_nom=(signataire_nom or '').strip(),
+        signataire_email=(signataire_email or '').strip(),
+        statut=SIGNATURE_EN_ATTENTE,
+        provider=provider,
+        provider_ref=provider_ref,
+        created_by=created_by,
+    )
+
+
+def marquer_signe(demande, *, provider_ref=None, date_signature=None):
+    """GED30 — Enregistre la COMPLÉTION d'une signature (webhook ou manuel).
+
+    Bascule la demande en `signe` et horodate `date_signature` (défaut : maintenant).
+    Point d'entrée pour un callback/webhook provider OU une saisie manuelle ;
+    aucune dépendance externe — purement une mise à jour locale. Idempotent : une
+    demande déjà signée reste signée. Si un `provider_ref` est fourni (callback),
+    on le conserve. Une demande annulée/refusée n'est pas re-basculée en signée.
+
+    Renvoie la `DemandeSignatureDocument` mise à jour.
+    """
+    from django.utils import timezone
+    from .models import (
+        SIGNATURE_ANNULE, SIGNATURE_REFUSE, SIGNATURE_SIGNE,
+    )
+
+    if demande.statut in (SIGNATURE_ANNULE, SIGNATURE_REFUSE):
+        return demande
+    champs = []
+    if demande.statut != SIGNATURE_SIGNE:
+        demande.statut = SIGNATURE_SIGNE
+        champs.append('statut')
+    if demande.date_signature is None:
+        demande.date_signature = date_signature or timezone.now()
+        champs.append('date_signature')
+    if provider_ref:
+        demande.provider_ref = provider_ref
+        champs.append('provider_ref')
+    if champs:
+        demande.save(update_fields=champs)
+    return demande

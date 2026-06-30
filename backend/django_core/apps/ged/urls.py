@@ -3,10 +3,11 @@ from rest_framework.routers import DefaultRouter
 
 from .views import (
     ArchivageLegalViewSet, CabinetViewSet, CoffreViewSet,
-    DemandeApprobationViewSet, DocumentLienViewSet,
-    DocumentTagAssignmentViewSet, DocumentTagViewSet, DocumentVersionViewSet,
-    DocumentViewSet, FolderViewSet, LegalHoldViewSet, ModeleDocumentViewSet,
-    PartageGedViewSet, PolitiqueRetentionViewSet, public_partage,
+    DemandeApprobationViewSet, DemandeSignatureDocumentViewSet,
+    DocumentLienViewSet, DocumentTagAssignmentViewSet, DocumentTagViewSet,
+    DocumentVersionViewSet, DocumentViewSet, FolderViewSet, LegalHoldViewSet,
+    ModeleDocumentViewSet, PartageGedViewSet, PolitiqueRetentionViewSet,
+    public_partage,
 )
 
 router = DefaultRouter()
@@ -24,6 +25,7 @@ router.register(r'politiques-retention', PolitiqueRetentionViewSet)
 router.register(r'archivages-legaux', ArchivageLegalViewSet)
 router.register(r'legal-holds', LegalHoldViewSet)
 router.register(r'modeles-document', ModeleDocumentViewSet)
+router.register(r'demandes-signature', DemandeSignatureDocumentViewSet)
 
 urlpatterns = [
     # GED20 — accès PUBLIC (sans login) à un document par jeton de partage.
