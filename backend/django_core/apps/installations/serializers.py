@@ -21,6 +21,7 @@ from .models import (
     PaiementSousTraitant,
     AttestationSousTraitant,
     EvaluationSousTraitant,
+    RetenueGarantieSousTraitant,
 )
 
 
@@ -1184,3 +1185,40 @@ class EvaluationSousTraitantSerializer(serializers.ModelSerializer):
 
     def validate_note_securite(self, value):
         return self._validate_note(value, 'sécurité')
+
+
+class RetenueGarantieSousTraitantSerializer(serializers.ModelSerializer):
+    """FG309 — retenue de garantie (%) sur un ordre de sous-traitance, bloquée
+    jusqu'à la levée des réserves. La société et `created_by` sont posés CÔTÉ
+    SERVEUR. `levee`/`date_levee` n'avancent que par l'action `lever` —
+    `montant_retenu`/`montant_a_liberer` sont dérivés (lecture seule). Montants
+    INTERNES."""
+    ordre_reference = serializers.CharField(
+        source='ordre.reference', read_only=True, default=None)
+    montant_base = serializers.DecimalField(
+        max_digits=12, decimal_places=2, read_only=True)
+    montant_retenu = serializers.DecimalField(
+        max_digits=12, decimal_places=2, read_only=True)
+    montant_a_liberer = serializers.DecimalField(
+        max_digits=12, decimal_places=2, read_only=True)
+
+    class Meta:
+        model = RetenueGarantieSousTraitant
+        fields = [
+            'id', 'ordre', 'ordre_reference', 'pourcentage',
+            'levee', 'date_constitution', 'date_levee', 'note',
+            'montant_base', 'montant_retenu', 'montant_a_liberer',
+            'created_by', 'date_creation', 'date_modification',
+        ]
+        # La levée n'est jamais écrite librement : elle avance via l'action
+        # `lever`.
+        read_only_fields = [
+            'levee', 'date_levee', 'created_by',
+            'date_creation', 'date_modification',
+        ]
+
+    def validate_pourcentage(self, value):
+        if value is None or value < 0 or value > 100:
+            raise serializers.ValidationError(
+                'Le pourcentage doit être compris entre 0 et 100.')
+        return value
