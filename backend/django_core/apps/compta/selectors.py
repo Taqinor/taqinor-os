@@ -12,9 +12,19 @@ from django.utils import timezone
 
 from .models import (
     Caisse, CautionBancaire, CompteComptable, CompteTresorerie, Effet,
-    LigneEcriture, LignePrevisionnelTresorerie, MouvementCaisse, Rapprochement,
-    RetenueGarantie, RetenueSource, TimbreFiscal,
+    EntiteConsolidation, LigneEcriture, LignePrevisionnelTresorerie,
+    MouvementCaisse, Rapprochement, RetenueGarantie, RetenueSource,
+    TimbreFiscal,
 )
+
+
+def _as_date(value):
+    """Normalise une date (str ISO ou ``date``) en ``date``, ou None."""
+    if value is None or value == '':
+        return None
+    if isinstance(value, date):
+        return value
+    return date.fromisoformat(str(value))
 
 
 def _lignes_qs(company, *, date_debut=None, date_fin=None, validees_seulement=False):
@@ -1835,4 +1845,307 @@ def cautions_a_echeance(company, *, jours=30, date_reference=None):
         'lignes': lignes,
         'total_montant': total,
         'nb': len(lignes),
+    }
+
+
+# ── FG146 — Reconnaissance du revenu par avancement (% completion) ──────────
+
+def avancement_contrat(company, contrat):
+    """Synthèse d'avancement et de marge d'un contrat (FG146).
+
+    Renvoie ``{'revenu_total', 'cout_total_estime', 'revenu_reconnu',
+    'reste_a_reconnaitre', 'dernier_pourcentage', 'marge_estimee',
+    'constats': [...]}``. Lecture seule, scopée société. ``constats`` liste
+    chaque arrêté avec son % et le revenu reconnu sur la période (snapshot
+    figé).
+    """
+    constats = list(
+        contrat.avancements.order_by('date_arrete', 'id'))
+    revenu_reconnu = sum(
+        (c.revenu_periode or Decimal('0') for c in constats), Decimal('0'))
+    revenu_total = contrat.revenu_total or Decimal('0')
+    cout = contrat.cout_total_estime or Decimal('0')
+    dernier_pct = constats[-1].pourcentage if constats else Decimal('0')
+    return {
+        'contrat_id': contrat.id,
+        'reference': contrat.reference,
+        'libelle': contrat.libelle,
+        'methode': contrat.methode,
+        'statut': contrat.statut,
+        'revenu_total': revenu_total,
+        'cout_total_estime': cout,
+        'marge_estimee': revenu_total - cout,
+        'revenu_reconnu': revenu_reconnu,
+        'reste_a_reconnaitre': revenu_total - revenu_reconnu,
+        'dernier_pourcentage': dernier_pct,
+        'constats': [
+            {
+                'id': c.id,
+                'date_arrete': c.date_arrete,
+                'pourcentage': c.pourcentage,
+                'cout_engage_cumule': c.cout_engage_cumule,
+                'revenu_cumule': c.revenu_cumule,
+                'revenu_periode': c.revenu_periode,
+                'ecriture_id': c.ecriture_id,
+            }
+            for c in constats
+        ],
+        'nb_constats': len(constats),
+    }
+
+
+# ── FG149 — Suivi budget-vs-réalisé ────────────────────────────────────────
+
+def budget_vs_realise(company, budget, *, date_fin=None):
+    """Variance budget-vs-réalisé d'un budget annuel (FG149).
+
+    Pour chaque ligne de budget : budget annuel (somme des mois) vs réalisé lu
+    du grand livre (solde du compte sur l'année du budget, débit − crédit pour
+    les charges, crédit − débit pour les produits). Renvoie
+    ``{'annee', 'lignes': [...], 'total_budget', 'total_realise',
+    'total_variance'}``. Lecture seule, scopée société.
+    """
+    annee = budget.annee
+    debut = date(annee, 1, 1)
+    fin = date_fin or date(annee, 12, 31)
+    lignes = []
+    total_budget = Decimal('0')
+    total_realise = Decimal('0')
+    for bl in budget.lignes.select_related('compte', 'centre_cout').all():
+        budgete = bl.montant_annuel
+        agg = LigneEcriture.objects.filter(
+            company=company, compte=bl.compte,
+            ecriture__date_ecriture__gte=debut,
+            ecriture__date_ecriture__lte=fin,
+        )
+        if bl.centre_cout_id:
+            agg = agg.filter(centre_cout=bl.centre_cout)
+        agg = agg.aggregate(debit=Sum('debit'), credit=Sum('credit'))
+        debit = agg['debit'] or Decimal('0')
+        credit = agg['credit'] or Decimal('0')
+        # Charge (classe 6) : solde débiteur ; produit (classe 7) : créditeur.
+        if bl.compte.classe == 7:
+            realise = credit - debit
+        else:
+            realise = debit - credit
+        variance = realise - budgete
+        total_budget += budgete
+        total_realise += realise
+        lignes.append({
+            'id': bl.id,
+            'compte_numero': bl.compte.numero,
+            'compte_intitule': bl.compte.intitule,
+            'centre_cout': bl.centre_cout.code if bl.centre_cout else '',
+            'libelle': bl.libelle,
+            'budget': budgete,
+            'realise': realise,
+            'variance': variance,
+            'taux_consommation': (
+                (realise / budgete * Decimal('100')).quantize(Decimal('0.01'))
+                if budgete else Decimal('0')),
+        })
+    return {
+        'budget_id': budget.id,
+        'annee': annee,
+        'libelle': budget.libelle,
+        'lignes': lignes,
+        'total_budget': total_budget,
+        'total_realise': total_realise,
+        'total_variance': total_realise - total_budget,
+    }
+
+
+# ── FG150 — Comptabilité analytique / centres de coût ──────────────────────
+
+def resultat_analytique(company, *, date_debut=None, date_fin=None,
+                        validees_seulement=False):
+    """Produits − charges ventilés par centre de coût (FG150).
+
+    Agrège les ``LigneEcriture`` de classes 6/7 portant un centre de coût et
+    renvoie le résultat (produits − charges) par axe analytique :
+    ``{'centres': [{'code', 'libelle', 'axe', 'produits', 'charges',
+    'resultat'}], 'sans_centre': {...}}``. Lecture seule, scopée société.
+    """
+    qs = _lignes_qs(company, date_debut=date_debut, date_fin=date_fin,
+                    validees_seulement=validees_seulement).filter(
+        compte__classe__in=[6, 7])
+    agg = qs.values(
+        'centre_cout', 'centre_cout__code', 'centre_cout__libelle',
+        'centre_cout__axe', 'compte__classe',
+    ).annotate(debit=Sum('debit'), credit=Sum('credit'))
+    centres = {}
+    sans_centre = {'produits': Decimal('0'), 'charges': Decimal('0')}
+    for row in agg:
+        debit = row['debit'] or Decimal('0')
+        credit = row['credit'] or Decimal('0')
+        cc_id = row['centre_cout']
+        if cc_id is None:
+            cible = sans_centre
+        else:
+            cible = centres.setdefault(cc_id, {
+                'code': row['centre_cout__code'],
+                'libelle': row['centre_cout__libelle'],
+                'axe': row['centre_cout__axe'],
+                'produits': Decimal('0'),
+                'charges': Decimal('0'),
+            })
+        if row['compte__classe'] == 7:
+            cible['produits'] += credit - debit
+        else:
+            cible['charges'] += debit - credit
+    liste = []
+    for data in centres.values():
+        data['resultat'] = data['produits'] - data['charges']
+        liste.append(data)
+    liste.sort(key=lambda d: d['code'])
+    sans_centre['resultat'] = (
+        sans_centre['produits'] - sans_centre['charges'])
+    return {
+        'centres': liste,
+        'sans_centre': sans_centre,
+    }
+
+
+# ── FG151 — Tableau de bord financier directeur ────────────────────────────
+
+def pilotage_financier(company, *, date_debut=None, date_fin=None):
+    """Cockpit directeur : résultat, trésorerie, DSO/DPO, marge brute (FG151).
+
+    Distinct de FG45 (quote-to-cash) : agrège des indicateurs financiers du
+    grand livre. Renvoie ``{'resultat_periode', 'tresorerie', 'marge_brute',
+    'marge_brute_pct', 'encours_clients', 'encours_fournisseurs', 'dso',
+    'dpo', 'top_encours_clients'}``. Lecture seule, scopée société.
+
+    DSO (Days Sales Outstanding) ≈ encours clients / CA × jours de période ;
+    DPO (Days Payable Outstanding) ≈ encours fournisseurs / achats × jours.
+    """
+    ref = _as_date(date_fin) or timezone.now().date()
+    debut = _as_date(date_debut) or date(ref.year, 1, 1)
+    nb_jours = max(1, (ref - debut).days + 1)
+
+    compte_resultat = cpc(company, date_debut=debut, date_fin=ref)
+    resultat = compte_resultat['resultat']
+    ca = compte_resultat['total_produits']
+    achats = compte_resultat['total_charges']
+    marge_brute = ca - achats
+    marge_pct = (
+        (marge_brute / ca * Decimal('100')).quantize(Decimal('0.01'))
+        if ca else Decimal('0'))
+
+    # Trésorerie = solde net des comptes de classe 5 à la date.
+    treso = LigneEcriture.objects.filter(
+        company=company, compte__classe=5,
+        ecriture__date_ecriture__lte=ref,
+    ).aggregate(debit=Sum('debit'), credit=Sum('credit'))
+    tresorerie = (treso['debit'] or Decimal('0')) - (
+        treso['credit'] or Decimal('0'))
+
+    # Encours clients (3421) / fournisseurs (4411) à la date.
+    def _encours(numero, sens_actif=True):
+        agg = LigneEcriture.objects.filter(
+            company=company, compte__numero=numero,
+            ecriture__date_ecriture__lte=ref,
+        ).aggregate(debit=Sum('debit'), credit=Sum('credit'))
+        d = agg['debit'] or Decimal('0')
+        c = agg['credit'] or Decimal('0')
+        return (d - c) if sens_actif else (c - d)
+
+    encours_clients = _encours('3421', sens_actif=True)
+    encours_fourn = _encours('4411', sens_actif=False)
+
+    dso = (
+        (encours_clients / ca * nb_jours).quantize(Decimal('1'))
+        if ca > 0 else Decimal('0'))
+    dpo = (
+        (encours_fourn / achats * nb_jours).quantize(Decimal('1'))
+        if achats > 0 else Decimal('0'))
+
+    # Top encours clients par tiers (auxiliaire 3421 non lettré).
+    top = LigneEcriture.objects.filter(
+        company=company, compte__numero='3421', lettrage='',
+        ecriture__date_ecriture__lte=ref,
+    ).values('tiers_id').annotate(
+        debit=Sum('debit'), credit=Sum('credit'))
+    top_clients = []
+    for row in top:
+        solde = (row['debit'] or Decimal('0')) - (
+            row['credit'] or Decimal('0'))
+        if solde > 0:
+            top_clients.append({
+                'tiers_id': row['tiers_id'],
+                'encours': solde,
+            })
+    top_clients.sort(key=lambda d: d['encours'], reverse=True)
+
+    return {
+        'date_debut': debut,
+        'date_fin': ref,
+        'resultat_periode': resultat,
+        'chiffre_affaires': ca,
+        'tresorerie': tresorerie,
+        'marge_brute': marge_brute,
+        'marge_brute_pct': marge_pct,
+        'encours_clients': encours_clients,
+        'encours_fournisseurs': encours_fourn,
+        'dso': dso,
+        'dpo': dpo,
+        'top_encours_clients': top_clients[:10],
+    }
+
+
+# ── FG153 — Consolidation multi-entités ────────────────────────────────────
+
+def cpc_consolide(company, *, date_debut=None, date_fin=None):
+    """CPC consolidé du périmètre d'une société tête de groupe (FG153).
+
+    Somme les CPC de CHAQUE entité du périmètre (tête + membres actifs), pondéré
+    par le pourcentage d'intérêt pour la mise en équivalence (intégration
+    globale = 100 %). NB : l'élimination des opérations inter-co fines est hors
+    périmètre de ce premier agrégat (un marqueur ``inter_co`` futur l'affinera).
+    Lecture seule. Renvoie ``{'entites': [...], 'total_produits',
+    'total_charges', 'resultat'}``.
+    """
+    entites = [{
+        'company_id': company.id,
+        'pourcentage': Decimal('100.00'),
+        'tete': True,
+    }]
+    membres = EntiteConsolidation.objects.filter(
+        company=company, actif=True).select_related('entite')
+    for m in membres:
+        pct = (
+            m.pourcentage_interet
+            if m.methode == EntiteConsolidation.Methode.MISE_EN_EQUIVALENCE
+            else Decimal('100.00'))
+        entites.append({
+            'company_id': m.entite_id,
+            'company_obj': m.entite,
+            'pourcentage': pct,
+            'methode': m.methode,
+            'tete': False,
+        })
+    total_produits = Decimal('0')
+    total_charges = Decimal('0')
+    detail = []
+    for ent in entites:
+        co = company if ent['tete'] else ent.get('company_obj')
+        compte = cpc(co, date_debut=date_debut, date_fin=date_fin)
+        pct = ent['pourcentage']
+        prod = (compte['total_produits'] * pct / Decimal('100'))
+        chg = (compte['total_charges'] * pct / Decimal('100'))
+        total_produits += prod
+        total_charges += chg
+        detail.append({
+            'company_id': ent['company_id'],
+            'pourcentage': pct,
+            'produits': prod,
+            'charges': chg,
+            'resultat': prod - chg,
+        })
+    return {
+        'tete_groupe': company.id,
+        'entites': detail,
+        'total_produits': total_produits,
+        'total_charges': total_charges,
+        'resultat': total_produits - total_charges,
     }

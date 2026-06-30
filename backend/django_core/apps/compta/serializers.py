@@ -9,14 +9,17 @@ from decimal import Decimal
 from rest_framework import serializers
 
 from .models import (
-    BaremeIndemnite, BordereauRemise, Caisse, CautionBancaire,
-    CessionImmobilisation, ClotureCaisse, CompteComptable, CompteTresorerie,
-    DeclarationTVA, DotationAmortissement, EcritureComptable, Effet,
-    ExerciceComptable, Immobilisation, IndemniteChantier, Journal,
-    LigneEcriture, LignePrevisionnelTresorerie, LigneReleve, MouvementCaisse,
-    NoteFrais, PaymentRun, PaymentRunLine, PeriodeComptable, PlanAmortissement,
-    PlanComptable, Rapprochement, RapprochementBancaire, RetenueGarantie,
-    RetenueSource, TimbreFiscal, VirementInterne,
+    AvancementRevenu, BaremeIndemnite, BordereauRemise, Budget, BudgetLigne,
+    Caisse, CautionBancaire, CentreCout, CessionImmobilisation, ClotureCaisse,
+    CommissionPayoutLine, CommissionPayoutRun, CompteComptable,
+    CompteTresorerie, ContratAvancement, DeclarationTVA, DotationAmortissement,
+    EcritureComptable, Effet, EntiteConsolidation, ExerciceComptable,
+    Immobilisation, IndemniteChantier, Journal, LigneEcriture,
+    LignePrevisionnelTresorerie, LigneReleve, MouvementCaisse, NoteFrais,
+    PaymentRun, PaymentRunLine, PeriodeComptable, PlanAmortissement,
+    PlanComptable, ProvisionCreance, Rapprochement, RapprochementBancaire,
+    RetenueGarantie, RetenueSource, TimbreFiscal, TravauxEnCours,
+    VirementInterne,
 )
 
 
@@ -79,10 +82,14 @@ class LigneEcritureSerializer(serializers.ModelSerializer):
         fields = [
             'id', 'compte', 'compte_numero', 'compte_intitule', 'libelle',
             'debit', 'credit', 'lettrage', 'tiers_type', 'tiers_id',
+            'centre_cout',
         ]
 
     def validate_compte(self, value):
         return _meme_societe(self, value, 'Compte')
+
+    def validate_centre_cout(self, value):
+        return _meme_societe(self, value, 'Centre de coût')
 
 
 class EcritureComptableSerializer(serializers.ModelSerializer):
@@ -1038,4 +1045,247 @@ class CautionBancaireSerializer(serializers.ModelSerializer):
         if value is not None and value < 0:
             raise serializers.ValidationError(
                 "Le montant de la caution ne peut pas être négatif.")
+        return value
+
+
+# ── FG146 — Reconnaissance du revenu par avancement (% completion) ──────────
+
+class ContratAvancementSerializer(serializers.ModelSerializer):
+    """Contrat reconnu au pourcentage d'avancement (FG146).
+
+    ``company`` / ``reference`` / ``statut`` / ``created_by`` sont posés côté
+    serveur. Le revenu reconnu et le reste sont dérivés en lecture seule.
+    """
+    methode_display = serializers.CharField(
+        source='get_methode_display', read_only=True)
+    statut_display = serializers.CharField(
+        source='get_statut_display', read_only=True)
+    revenu_reconnu = serializers.DecimalField(
+        max_digits=14, decimal_places=2, read_only=True)
+
+    class Meta:
+        model = ContratAvancement
+        fields = [
+            'id', 'reference', 'libelle', 'chantier_ref', 'marche_ref',
+            'client_id', 'client_nom', 'methode', 'methode_display',
+            'revenu_total', 'cout_total_estime', 'date_debut',
+            'date_fin_prevue', 'statut', 'statut_display', 'revenu_reconnu',
+            'created_by', 'date_creation',
+        ]
+        read_only_fields = [
+            'reference', 'statut', 'revenu_reconnu', 'created_by',
+            'date_creation',
+        ]
+
+    def validate_revenu_total(self, value):
+        if value is not None and value < 0:
+            raise serializers.ValidationError(
+                "Le revenu total ne peut pas être négatif.")
+        return value
+
+
+class AvancementRevenuSerializer(serializers.ModelSerializer):
+    """Constat périodique d'avancement et de revenu reconnu (FG146).
+
+    Le ``%``, le revenu cumulé/de la période et l'écriture OD sont DÉRIVÉS côté
+    serveur (jamais imposés par le corps).
+    """
+    class Meta:
+        model = AvancementRevenu
+        fields = [
+            'id', 'contrat', 'date_arrete', 'pourcentage',
+            'cout_engage_cumule', 'revenu_cumule', 'revenu_periode',
+            'ecriture_id', 'libelle', 'created_by', 'date_creation',
+        ]
+        read_only_fields = [
+            'pourcentage', 'revenu_cumule', 'revenu_periode', 'ecriture_id',
+            'created_by', 'date_creation',
+        ]
+
+
+# ── FG147 — Produits constatés d'avance & travaux en cours (WIP) ────────────
+
+class TravauxEnCoursSerializer(serializers.ModelSerializer):
+    """Régularisation de cut-off (PCA / WIP) — FG147.
+
+    ``company`` / ``reference`` / ``statut`` / écritures sont posés côté
+    serveur. Le montant est saisi ; le poste OD est dérivé par le service.
+    """
+    nature_display = serializers.CharField(
+        source='get_nature_display', read_only=True)
+    statut_display = serializers.CharField(
+        source='get_statut_display', read_only=True)
+
+    class Meta:
+        model = TravauxEnCours
+        fields = [
+            'id', 'reference', 'nature', 'nature_display', 'libelle',
+            'chantier_ref', 'contrat_id', 'montant', 'date_arrete', 'statut',
+            'statut_display', 'ecriture_id', 'ecriture_reprise_id',
+            'date_reprise', 'created_by', 'date_creation',
+        ]
+        read_only_fields = [
+            'reference', 'statut', 'ecriture_id', 'ecriture_reprise_id',
+            'date_reprise', 'created_by', 'date_creation',
+        ]
+
+    def validate_montant(self, value):
+        if value is not None and value < 0:
+            raise serializers.ValidationError(
+                "Le montant régularisé ne peut pas être négatif.")
+        return value
+
+
+# ── FG148 — Campagnes de versement des commissions (payout run) ─────────────
+
+class CommissionPayoutLineSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = CommissionPayoutLine
+        fields = [
+            'id', 'run', 'commercial_id', 'commercial_nom', 'base', 'taux',
+            'montant', 'libelle',
+        ]
+        read_only_fields = ['run']
+
+    def validate_montant(self, value):
+        if value is not None and value < 0:
+            raise serializers.ValidationError(
+                "Le montant de la commission ne peut pas être négatif.")
+        return value
+
+
+class CommissionPayoutRunSerializer(serializers.ModelSerializer):
+    """Campagne de versement des commissions (FG148).
+
+    ``company`` / ``reference`` / ``statut`` / ``total`` / ``ecriture_id`` sont
+    posés côté serveur. Le statut évolue par les actions (valider / poster).
+    """
+    statut_display = serializers.CharField(
+        source='get_statut_display', read_only=True)
+    lignes = CommissionPayoutLineSerializer(many=True, read_only=True)
+
+    class Meta:
+        model = CommissionPayoutRun
+        fields = [
+            'id', 'reference', 'libelle', 'periode', 'date_run', 'statut',
+            'statut_display', 'total', 'ecriture_id', 'date_validation',
+            'date_poste', 'lignes', 'created_by', 'date_creation',
+        ]
+        read_only_fields = [
+            'reference', 'statut', 'total', 'ecriture_id', 'date_validation',
+            'date_poste', 'created_by', 'date_creation',
+        ]
+
+
+# ── FG149 — Budgets annuels & suivi budget-vs-réalisé ──────────────────────
+
+class BudgetLigneSerializer(serializers.ModelSerializer):
+    compte_numero = serializers.CharField(
+        source='compte.numero', read_only=True)
+    montant_annuel = serializers.DecimalField(
+        max_digits=14, decimal_places=2, read_only=True)
+
+    class Meta:
+        model = BudgetLigne
+        fields = [
+            'id', 'budget', 'compte', 'compte_numero', 'centre_cout',
+            'libelle', 'm01', 'm02', 'm03', 'm04', 'm05', 'm06', 'm07', 'm08',
+            'm09', 'm10', 'm11', 'm12', 'montant_annuel',
+        ]
+        read_only_fields = ['budget']
+
+    def validate_compte(self, value):
+        return _meme_societe(self, value, 'Compte')
+
+    def validate_centre_cout(self, value):
+        return _meme_societe(self, value, 'Centre de coût')
+
+
+class BudgetSerializer(serializers.ModelSerializer):
+    statut_display = serializers.CharField(
+        source='get_statut_display', read_only=True)
+    lignes = BudgetLigneSerializer(many=True, read_only=True)
+
+    class Meta:
+        model = Budget
+        fields = [
+            'id', 'annee', 'libelle', 'statut', 'statut_display', 'lignes',
+            'created_by', 'date_creation',
+        ]
+        read_only_fields = ['statut', 'created_by', 'date_creation']
+
+
+# ── FG150 — Comptabilité analytique / centres de coût ──────────────────────
+
+class CentreCoutSerializer(serializers.ModelSerializer):
+    axe_display = serializers.CharField(
+        source='get_axe_display', read_only=True)
+
+    class Meta:
+        model = CentreCout
+        fields = [
+            'id', 'code', 'libelle', 'axe', 'axe_display', 'actif',
+            'date_creation',
+        ]
+        read_only_fields = ['date_creation']
+
+
+# ── FG152 — Provisions pour créances douteuses ─────────────────────────────
+
+class ProvisionCreanceSerializer(serializers.ModelSerializer):
+    """Provision pour créance douteuse (FG152).
+
+    ``dotation`` est DÉRIVÉE côté serveur (base × taux %) ; ``company`` /
+    ``reference`` / ``statut`` / écritures restent en lecture seule.
+    """
+    statut_display = serializers.CharField(
+        source='get_statut_display', read_only=True)
+
+    class Meta:
+        model = ProvisionCreance
+        fields = [
+            'id', 'reference', 'tiers_type', 'tiers_id', 'tiers_nom', 'base',
+            'taux', 'dotation', 'anciennete_jours', 'date_dotation', 'statut',
+            'statut_display', 'ecriture_id', 'ecriture_reprise_id',
+            'date_reprise', 'libelle', 'created_by', 'date_creation',
+        ]
+        read_only_fields = [
+            'reference', 'dotation', 'statut', 'ecriture_id',
+            'ecriture_reprise_id', 'date_reprise', 'created_by',
+            'date_creation',
+        ]
+
+    def validate_base(self, value):
+        if value is not None and value < 0:
+            raise serializers.ValidationError(
+                "La base de la provision ne peut pas être négative.")
+        return value
+
+    def validate_taux(self, value):
+        if value is not None and (value < 0 or value > 100):
+            raise serializers.ValidationError(
+                "Le taux de provision doit être compris entre 0 et 100 %.")
+        return value
+
+
+# ── FG153 — Inter-sociétés / consolidation multi-entités ───────────────────
+
+class EntiteConsolidationSerializer(serializers.ModelSerializer):
+    methode_display = serializers.CharField(
+        source='get_methode_display', read_only=True)
+    entite_nom = serializers.CharField(
+        source='entite.nom', read_only=True)
+
+    class Meta:
+        model = EntiteConsolidation
+        fields = [
+            'id', 'entite', 'entite_nom', 'libelle', 'pourcentage_interet',
+            'methode', 'methode_display', 'actif', 'date_creation',
+        ]
+        read_only_fields = ['date_creation']
+
+    def validate_pourcentage_interet(self, value):
+        if value is not None and (value < 0 or value > 100):
+            raise serializers.ValidationError(
+                "Le pourcentage d'intérêt doit être entre 0 et 100 %.")
         return value
