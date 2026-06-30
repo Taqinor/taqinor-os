@@ -5,7 +5,8 @@ from .views import (
     ActionCorrectivePreventiveViewSet, AuditViewSet, ConsignationLotoViewSet,
     ContactUrgenceViewSet,
     CritereAuditViewSet,
-    EvaluationRisqueViewSet, GrilleAuditViewSet, InductionSecuriteViewSet,
+    EvaluationRisqueViewSet, GrilleAuditViewSet, IncidentViewSet,
+    InductionSecuriteViewSet,
     Iso9001ReadinessViewSet,
     ItemNotationViewSet, LigneEvaluationRisqueViewSet,
     NonConformiteViewSet, NotationFinChantierViewSet, PermisTravailViewSet,
@@ -42,6 +43,7 @@ router.register(r'inductions-securite', InductionSecuriteViewSet)
 router.register(r'plans-urgence', PlanUrgenceViewSet)
 router.register(r'contacts-urgence', ContactUrgenceViewSet)
 router.register(r'secouristes', SecouristeViewSet)
+router.register(r'incidents', IncidentViewSet)
 router.register(
     r'iso9001-readiness', Iso9001ReadinessViewSet,
     basename='iso9001-readiness')

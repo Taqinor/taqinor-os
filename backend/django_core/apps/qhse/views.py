@@ -17,7 +17,7 @@ from apps.ventes.utils.references import create_with_reference
 
 from .models import (
     ActionCorrectivePreventive, Audit, ConsignationLoto, ContactUrgence,
-    CritereAudit, EvaluationRisque, GrilleAudit, InductionSecurite,
+    CritereAudit, EvaluationRisque, GrilleAudit, Incident, InductionSecurite,
     ItemNotation, LigneEvaluationRisque, NonConformite, NotationFinChantier,
     PermisTravail, PlanInspectionChantier, PlanInspectionModele, PlanUrgence,
     PointControleModele, ProcedureQualite, QhseChatterEntry, ReleveControle,
@@ -28,6 +28,7 @@ from .serializers import (
     ConsignationLotoSerializer, ContactUrgenceSerializer,
     CritereAuditSerializer,
     EvaluationRisqueSerializer, GrilleAuditSerializer,
+    IncidentSerializer,
     InductionSecuriteSerializer, ItemNotationSerializer,
     LigneEvaluationRisqueSerializer,
     NonConformiteSerializer, NotationFinChantierSerializer,
@@ -1171,3 +1172,54 @@ class SecouristeViewSet(_QhseBaseViewSet):
         if secouriste not in (None, ''):
             qs = qs.filter(secouriste_id=secouriste)
         return qs
+
+
+class IncidentViewSet(_QhseBaseViewSet):
+    """Registre des incidents HSE — accident / presqu'accident / incident (QHSE29).
+
+    CRUD scopé société. ``company`` et ``declare_par`` sont posés côté serveur
+    (jamais lus du corps). La ``reference`` est attribuée côté serveur via
+    ``create_with_reference`` (plus haut numéro utilisé + 1, race-safe — jamais
+    count()+1). Filtres optionnels : ``?type_incident=`` / ``?statut=`` /
+    ``?chantier_id=``. Recherche par référence/titre/description, tri par
+    date/référence.
+
+    Registre QHSE distinct du volet RH (``rh.AccidentTravail`` /
+    ``rh.PresquAccident`` — détail CNSS/blessure/salarié) : aucun import croisé.
+    """
+    queryset = Incident.objects.select_related('declare_par').all()
+    serializer_class = IncidentSerializer
+    filter_backends = [filters.SearchFilter, filters.OrderingFilter]
+    search_fields = ['reference', 'titre', 'description']
+    ordering_fields = [
+        'id', 'reference', 'date_incident', 'date_creation']
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        type_incident = self.request.query_params.get('type_incident')
+        if type_incident not in (None, ''):
+            qs = qs.filter(type_incident=type_incident)
+        statut = self.request.query_params.get('statut')
+        if statut not in (None, ''):
+            qs = qs.filter(statut=statut)
+        chantier_id = self.request.query_params.get('chantier_id')
+        if chantier_id not in (None, ''):
+            qs = qs.filter(chantier_id=chantier_id)
+        return qs
+
+    def perform_create(self, serializer):
+        company = self.request.user.company
+        return create_with_reference(
+            Incident, 'INC', company,
+            lambda reference: serializer.save(
+                company=company,
+                declare_par=self.request.user,
+                reference=reference),
+        )
+
+    def create(self, request, *args, **kwargs):
+        serializer = self.get_serializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        incident = self.perform_create(serializer)
+        out = self.get_serializer(incident)
+        return Response(out.data, status=status.HTTP_201_CREATED)
