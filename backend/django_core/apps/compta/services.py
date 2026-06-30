@@ -3913,3 +3913,27 @@ def provisionner_compte_portail(company, *, client_id, email):
         email=email or '',
         token_acces=secrets.token_urlsafe(32),
     )
+
+
+# ── FG229 — Acceptation / e-signature de devis dans le portail ─────────────
+
+def signer_acceptation_devis(acceptation, *, nom=None, ip=None):
+    """Matérialise la signature d'une acceptation de devis (FG229), idempotent.
+
+    Pose le nom du signataire (si fourni), l'IP, le drapeau ``accepte`` et
+    l'horodatage de signature. Une acceptation déjà signée n'est PAS resignée
+    (idempotent). Renvoie l'acceptation. L'effet sur le statut du devis côté
+    ``ventes`` (passage à ``accepte``) reste à la charge de l'app ventes via son
+    service ; on ne touche jamais ses modèles ici (cross-app).
+    """
+    if acceptation.accepte:
+        return acceptation
+    if nom:
+        acceptation.nom_signataire = nom
+    if ip:
+        acceptation.signature_ip = ip
+    acceptation.accepte = True
+    acceptation.signe_le = timezone.now()
+    acceptation.save(update_fields=[
+        'nom_signataire', 'signature_ip', 'accepte', 'signe_le'])
+    return acceptation

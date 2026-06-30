@@ -30,7 +30,7 @@ from .views import (
     ComparateurCashFinancementViewSet, AppelOffreViewSet, BordereauPrixViewSet,
     LigneBordereauViewSet, CautionSoumissionViewSet, DossierSoumissionViewSet,
     PieceSoumissionViewSet, EcheanceAOViewSet, ResultatAOViewSet,
-    ComptePortailClientViewSet,
+    ComptePortailClientViewSet, AcceptationDevisPortailViewSet,
 )
 
 router = DefaultRouter()
@@ -106,6 +106,8 @@ router.register(r'pieces-soumission', PieceSoumissionViewSet)
 router.register(r'echeances-ao', EcheanceAOViewSet)
 router.register(r'resultats-ao', ResultatAOViewSet)
 router.register(r'comptes-portail', ComptePortailClientViewSet)
+# ── Portail client, partenaires & fidélité (FG229–FG244) ────────────────────
+router.register(r'acceptations-devis-portail', AcceptationDevisPortailViewSet)
 
 urlpatterns = [
     path('', include(router.urls)),

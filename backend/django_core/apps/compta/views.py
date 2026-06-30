@@ -40,7 +40,7 @@ from .models import (
     OffreFinancement, LigneIncitation, EcheancierPaiement, TranchePaiement,
     AppelOffre, BordereauPrix, LigneBordereau, CautionSoumission,
     DossierSoumission, PieceSoumission, EcheanceAO, ResultatAO,
-    ComptePortailClient,
+    ComptePortailClient, AcceptationDevisPortail,
 )
 from .serializers import (
     AppelTelephoniqueSerializer, AvancementRevenuSerializer,
@@ -77,6 +77,7 @@ from .serializers import (
     LigneBordereauSerializer, CautionSoumissionSerializer,
     DossierSoumissionSerializer, PieceSoumissionSerializer,
     EcheanceAOSerializer, ResultatAOSerializer, ComptePortailClientSerializer,
+    AcceptationDevisPortailSerializer,
 )
 
 
@@ -3442,3 +3443,21 @@ class ComptePortailClientViewSet(_ComptaBaseViewSet):
         serializer.save(
             company=self.request.user.company,
             token_acces=secrets.token_urlsafe(32))
+
+
+class AcceptationDevisPortailViewSet(_ComptaBaseViewSet):
+    """Acceptations / e-signatures de devis depuis le portail (FG229). La
+    société est posée côté serveur ; l'action ``signer`` horodate la signature
+    et capture l'IP (preuve légère, loi 53-05)."""
+    queryset = AcceptationDevisPortail.objects.all()
+    serializer_class = AcceptationDevisPortailSerializer
+    filter_backends = [filters.OrderingFilter]
+    ordering_fields = ['date_creation', 'signe_le']
+
+    @action(detail=True, methods=['post'])
+    def signer(self, request, pk=None):
+        acceptation = self.get_object()
+        nom = request.data.get('nom_signataire') or None
+        ip = request.META.get('REMOTE_ADDR')
+        services.signer_acceptation_devis(acceptation, nom=nom, ip=ip)
+        return Response(self.get_serializer(acceptation).data)

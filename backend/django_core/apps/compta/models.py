@@ -5109,3 +5109,45 @@ class ComptePortailClient(models.Model):
 
     def __str__(self):
         return f'Portail {self.email}'
+
+
+# ── FG229 — Acceptation / e-signature de devis dans le portail ─────────────
+
+class AcceptationDevisPortail(models.Model):
+    """Acceptation en ligne d'un devis depuis le portail client (FG229).
+
+    Le client choisit une option (variante chiffrée) puis signe en saisissant
+    son nom ; on horodate et on capture l'IP comme preuve légère (loi 53-05 :
+    une signature nominative suffit pour un devis solaire résidentiel/PME). Le
+    devis est désigné par son id (jamais par import du modèle ``ventes`` —
+    cross-app via service/string-id) ; cet enregistrement matérialise
+    l'acceptation côté OS sans dupliquer le devis. Une e-signature certifiée
+    (Yousign, gated G7) reste optionnelle et hors périmètre ici.
+    """
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='acceptations_devis_portail',
+        verbose_name='Société',
+    )
+    devis_id = models.PositiveIntegerField(verbose_name='Id du devis')
+    option_choisie = models.CharField(
+        max_length=120, blank=True, default='',
+        verbose_name='Option choisie')
+    nom_signataire = models.CharField(
+        max_length=200, verbose_name='Nom du signataire')
+    signature_ip = models.GenericIPAddressField(
+        null=True, blank=True, verbose_name='IP de signature')
+    accepte = models.BooleanField(default=False, verbose_name='Accepté')
+    signe_le = models.DateTimeField(
+        null=True, blank=True, verbose_name='Signé le')
+    date_creation = models.DateTimeField(
+        auto_now_add=True, verbose_name='Créée le')
+
+    class Meta:
+        verbose_name = 'Acceptation de devis (portail)'
+        verbose_name_plural = 'Acceptations de devis (portail)'
+        ordering = ['-date_creation']
+
+    def __str__(self):
+        return f'Acceptation devis #{self.devis_id} — {self.nom_signataire}'
