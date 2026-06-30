@@ -1214,13 +1214,22 @@ class IncidentViewSet(_QhseBaseViewSet):
 
     def perform_create(self, serializer):
         company = self.request.user.company
-        return create_with_reference(
+        incident = create_with_reference(
             Incident, 'INC', company,
             lambda reference: serializer.save(
                 company=company,
                 declare_par=self.request.user,
                 reference=reference),
         )
+        # QHSE32 — émet l'événement métier incident_declared sur le bus de
+        # signaux (même patron que ventes→crm) pour que QHSE escalade les
+        # incidents critiques. Émission SYNCHRONE ; best-effort côté abonné, donc
+        # ne casse jamais la création.
+        from .receivers import incident_declared
+        incident_declared.send(
+            sender=Incident, incident=incident, company=company,
+            user=self.request.user, gravite=incident.gravite)
+        return incident
 
     def create(self, request, *args, **kwargs):
         serializer = self.get_serializer(data=request.data)
