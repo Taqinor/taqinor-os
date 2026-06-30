@@ -366,8 +366,8 @@ class LigneBonCommandeFournisseurSerializer(serializers.ModelSerializer):
         model = LigneBonCommandeFournisseur
         fields = [
             'id', 'produit', 'produit_nom', 'produit_sku', 'quantite',
-            'prix_achat_unitaire', 'quantite_recue', 'quantite_restante',
-            'total_achat',
+            'prix_achat_unitaire', 'frais_annexes', 'quantite_recue',
+            'quantite_restante', 'total_achat',
         ]
         # quantite_recue n'est jamais posée librement : elle évolue uniquement
         # via l'action de réception (perform_create n'accepte que le reste).

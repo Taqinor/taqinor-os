@@ -548,6 +548,16 @@ class LigneBonCommandeFournisseur(models.Model):
     prix_achat_unitaire = models.DecimalField(
         max_digits=10, decimal_places=2, default=0,
     )
+    # ── FG67 / DC38 — Coût débarqué (landed cost) ────────────────────────────
+    # Frais annexes TOTAUX de la LIGNE (fret + douane + TVA import + transit),
+    # à répartir sur les unités de la ligne. Le coût de revient débarqué
+    # unitaire = prix_achat_unitaire + frais_annexes / quantité. Replié dans le
+    # coût moyen pondéré (average_cost_with_source). INTERNE, jamais
+    # client-facing. Optionnel (0 = comportement historique inchangé).
+    frais_annexes = models.DecimalField(
+        max_digits=12, decimal_places=2, default=0,
+        help_text='Frais annexes TOTAUX de la ligne (fret/douane/TVA import/'
+                  'transit), répartis sur les unités. INTERNE.')
     quantite_recue = models.IntegerField(default=0)
 
     class Meta:
@@ -564,6 +574,18 @@ class LigneBonCommandeFournisseur(models.Model):
     @property
     def total_achat(self):
         return self.quantite * self.prix_achat_unitaire
+
+    @property
+    def cout_unitaire_debarque(self):
+        """FG67/DC38 — coût de revient débarqué unitaire = prix d'achat unitaire
+        + frais annexes répartis sur la quantité de la ligne. INTERNE."""
+        from decimal import Decimal
+        pu = self.prix_achat_unitaire or Decimal('0')
+        frais = self.frais_annexes or Decimal('0')
+        qte = self.quantite or 0
+        if qte and frais:
+            return pu + (frais / Decimal(str(qte)))
+        return pu
 
 
 class ReceptionFournisseur(models.Model):
