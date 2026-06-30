@@ -4,6 +4,7 @@ from rest_framework.routers import DefaultRouter
 from .views import (
     AccidentTravailViewSet,
     AffectationRosterViewSet,
+    AnalyseRisquesChantierViewSet,
     CauserieSecuriteViewSet,
     CertificationViewSet,
     CompetenceEmployeViewSet,
@@ -57,6 +58,7 @@ router.register(r'echeances', EcheancesRhViewSet, basename='rh-echeances')
 router.register(r'accidents-travail', AccidentTravailViewSet)
 router.register(r'presqu-accidents', PresquAccidentViewSet)
 router.register(r'causeries-securite', CauserieSecuriteViewSet)
+router.register(r'analyses-risques-chantier', AnalyseRisquesChantierViewSet)
 
 urlpatterns = [
     path('', include(router.urls)),
