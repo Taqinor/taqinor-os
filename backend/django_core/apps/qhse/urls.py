@@ -16,7 +16,7 @@ from .views import (
     PlanInspectionChantierViewSet, PlanInspectionModeleViewSet,
     PlanUrgenceViewSet,
     PointControleModeleViewSet, ProcedureQualiteViewSet,
-    QhseChatterEntryViewSet,
+    QhseChatterEntryViewSet, RecyclageModuleViewSet,
     ReleveControleViewSet, ReleveCourbeIVViewSet, ReponseCritereViewSet,
     RetourClientQualiteViewSet, SecouristeViewSet,
 )
@@ -53,6 +53,7 @@ router.register(r'causes-incident', CauseIncidentViewSet)
 router.register(r'inspections-securite', InspectionSecuriteViewSet)
 router.register(r'dechets', DechetViewSet)
 router.register(r'bordereaux-dechets', BordereauSuiviDechetViewSet)
+router.register(r'recyclage-modules', RecyclageModuleViewSet)
 router.register(
     r'iso9001-readiness', Iso9001ReadinessViewSet,
     basename='iso9001-readiness')

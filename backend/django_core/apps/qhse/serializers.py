@@ -15,7 +15,8 @@ from .models import (
     Incident, InspectionSecurite,
     ItemNotation, LigneEvaluationRisque, NonConformite, NotationFinChantier,
     PermisTravail, PlanInspectionChantier, PlanInspectionModele, PlanUrgence,
-    PointControleModele, ProcedureQualite, QhseChatterEntry, ReleveControle,
+    PointControleModele, ProcedureQualite, QhseChatterEntry,
+    RecyclageModule, ReleveControle,
     ReleveCourbeIV, ReponseCritere, RetourClientQualite, Secouriste,
 )
 
@@ -849,3 +850,29 @@ class BordereauSuiviDechetSerializer(serializers.ModelSerializer):
 
     def validate_dechet(self, value):
         return _meme_societe(self, value, 'Déchet')
+
+
+class RecyclageModuleSerializer(serializers.ModelSerializer):
+    """Recyclage / fin de vie d'un lot de modules PV (QHSE37).
+
+    ``company`` / ``reference`` posées côté serveur. Le FK ``bordereau`` (BSD
+    QHSE36) est validé même-société. Le ``statut`` est piloté par actions détail,
+    en lecture seule au CRUD.
+    """
+    motif_display = serializers.CharField(
+        source='get_motif_display', read_only=True)
+    statut_display = serializers.CharField(
+        source='get_statut_display', read_only=True)
+
+    class Meta:
+        model = RecyclageModule
+        fields = [
+            'id', 'reference', 'marque', 'modele', 'nombre_modules',
+            'masse_kg', 'motif', 'motif_display', 'statut', 'statut_display',
+            'filiere', 'chantier_id', 'bordereau', 'date_collecte',
+            'date_recyclage', 'notes', 'date_creation',
+        ]
+        read_only_fields = ['reference', 'statut', 'date_creation']
+
+    def validate_bordereau(self, value):
+        return _meme_societe(self, value, 'Bordereau de suivi')

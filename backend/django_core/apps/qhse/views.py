@@ -24,7 +24,8 @@ from .models import (
     InductionSecurite, InspectionSecurite,
     ItemNotation, LigneEvaluationRisque, NonConformite, NotationFinChantier,
     PermisTravail, PlanInspectionChantier, PlanInspectionModele, PlanUrgence,
-    PointControleModele, ProcedureQualite, QhseChatterEntry, ReleveControle,
+    PointControleModele, ProcedureQualite, QhseChatterEntry,
+    RecyclageModule, ReleveControle,
     ReleveCourbeIV, ReponseCritere, RetourClientQualite, Secouriste,
 )
 from .serializers import (
@@ -42,6 +43,7 @@ from .serializers import (
     PlanInspectionModeleSerializer, PlanUrgenceSerializer,
     PointControleModeleSerializer,
     ProcedureQualiteSerializer, QhseChatterEntrySerializer,
+    RecyclageModuleSerializer,
     ReleveControleSerializer, ReleveCourbeIVSerializer,
     ReponseCritereSerializer, RetourClientQualiteSerializer,
     SecouristeSerializer,
@@ -1637,3 +1639,90 @@ class BordereauSuiviDechetViewSet(_QhseBaseViewSet):
             request.data.get('date_traitement') or timezone.localdate())
         bsd.save(update_fields=['statut', 'date_traitement'])
         return Response(self.get_serializer(bsd).data)
+
+
+class RecyclageModuleViewSet(_QhseBaseViewSet):
+    """Recyclage / fin de vie des modules PV (QHSE37).
+
+    CRUD scopé société. ``company`` / ``reference`` posées côté serveur (jamais
+    lues du corps). Le FK ``bordereau`` (BSD QHSE36) est validé même-société.
+    Filtres optionnels : ``?statut=`` / ``?motif=`` / ``?chantier_id=``.
+    Recherche par référence/marque/modèle/filière.
+
+    Le ``statut`` est piloté par deux actions détail :
+
+    * ``POST …/<id>/transporter/`` — ``collecte`` → ``transporte`` ;
+    * ``POST …/<id>/recycler/`` — ``transporte``/``collecte`` → ``recycle``
+      (lot soldé, ``date_recyclage`` posée).
+    """
+    queryset = RecyclageModule.objects.select_related('bordereau').all()
+    serializer_class = RecyclageModuleSerializer
+    filter_backends = [filters.SearchFilter, filters.OrderingFilter]
+    search_fields = ['reference', 'marque', 'modele', 'filiere']
+    ordering_fields = [
+        'id', 'reference', 'date_collecte', 'date_recyclage', 'date_creation']
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        statut = self.request.query_params.get('statut')
+        if statut not in (None, ''):
+            qs = qs.filter(statut=statut)
+        motif = self.request.query_params.get('motif')
+        if motif not in (None, ''):
+            qs = qs.filter(motif=motif)
+        chantier_id = self.request.query_params.get('chantier_id')
+        if chantier_id not in (None, ''):
+            qs = qs.filter(chantier_id=chantier_id)
+        return qs
+
+    def perform_create(self, serializer):
+        company = self.request.user.company
+        return create_with_reference(
+            RecyclageModule, 'REC', company,
+            lambda reference: serializer.save(
+                company=company, reference=reference),
+        )
+
+    def create(self, request, *args, **kwargs):
+        serializer = self.get_serializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        rec = self.perform_create(serializer)
+        out = self.get_serializer(rec)
+        return Response(out.data, status=status.HTTP_201_CREATED)
+
+    @action(detail=True, methods=['post'])
+    def transporter(self, request, pk=None):
+        """Marque le lot transporté (``collecte`` → ``transporte``).
+
+        Refuse si déjà recyclé ou annulé.
+        """
+        rec = self.get_object()
+        if rec.statut in (
+                RecyclageModule.Statut.RECYCLE,
+                RecyclageModule.Statut.ANNULE):
+            return Response(
+                {'detail': 'Lot déjà recyclé ou annulé.'},
+                status=status.HTTP_400_BAD_REQUEST)
+        rec.statut = RecyclageModule.Statut.TRANSPORTE
+        rec.save(update_fields=['statut'])
+        return Response(self.get_serializer(rec).data)
+
+    @action(detail=True, methods=['post'])
+    def recycler(self, request, pk=None):
+        """Marque le lot recyclé (→ ``recycle``), ``date_recyclage`` posée.
+
+        Refuse si déjà recyclé ou annulé. ``date_recyclage`` optionnelle au
+        corps (sinon aujourd'hui).
+        """
+        rec = self.get_object()
+        if rec.statut in (
+                RecyclageModule.Statut.RECYCLE,
+                RecyclageModule.Statut.ANNULE):
+            return Response(
+                {'detail': 'Lot déjà recyclé ou annulé.'},
+                status=status.HTTP_400_BAD_REQUEST)
+        rec.statut = RecyclageModule.Statut.RECYCLE
+        rec.date_recyclage = (
+            request.data.get('date_recyclage') or timezone.localdate())
+        rec.save(update_fields=['statut', 'date_recyclage'])
+        return Response(self.get_serializer(rec).data)

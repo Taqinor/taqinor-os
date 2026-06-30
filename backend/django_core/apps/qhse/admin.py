@@ -7,6 +7,7 @@ from .models import (
     LigneEvaluationRisque,
     NonConformite, PermisTravail, PlanInspectionChantier,
     PlanInspectionModele, PointControleModele, ProcedureQualite,
+    RecyclageModule,
     ReleveControle, ReleveCourbeIV, RetourClientQualite,
 )
 
@@ -142,3 +143,12 @@ class BordereauSuiviDechetAdmin(admin.ModelAdmin):
                     'company', 'date_creation')
     list_filter = ('statut',)
     search_fields = ('reference', 'producteur', 'transporteur', 'eliminateur')
+
+
+@admin.register(RecyclageModule)
+class RecyclageModuleAdmin(admin.ModelAdmin):
+    list_display = ('id', 'reference', 'marque', 'modele', 'nombre_modules',
+                    'motif', 'statut', 'chantier_id', 'date_collecte',
+                    'date_recyclage', 'company', 'date_creation')
+    list_filter = ('motif', 'statut')
+    search_fields = ('reference', 'marque', 'modele', 'filiere')

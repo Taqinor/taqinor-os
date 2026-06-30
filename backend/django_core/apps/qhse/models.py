@@ -2382,3 +2382,108 @@ class BordereauSuiviDechet(models.Model):
 
     def __str__(self):
         return f'{self.reference or "BSD"} — {self.dechet_id}'
+
+
+# ── QHSE37 — Recyclage des modules PV (fin de vie) ─────────────────────────
+
+class RecyclageModule(models.Model):
+    """Fin de vie / recyclage d'un lot de modules photovoltaïques (QHSE37).
+
+    Trace l'envoi en filière de recyclage de modules PV en fin de vie (casse,
+    déclassement, rénovation) : marque/modèle, nombre de modules, masse estimée,
+    motif de mise au rebut, filière/repreneur et cycle de vie
+    (``collecte`` → ``transporte`` → ``recycle``). Un panneau PV est un déchet
+    spécifique (verre + silicium + cadre alu + connectique) dont la valorisation
+    matière est encadrée : ce modèle est le pendant « modules » du BSD (QHSE36)
+    et peut citer un ``BordereauSuiviDechet`` quand le lot transite par un BSD.
+
+    Le rattachement au chantier d'origine se fait par référence LÂCHE
+    (``chantier_id`` — jamais un import cross-app de ``installations``). Le FK
+    ``bordereau`` reste intra-app (QHSE).
+
+    Multi-société via ``company`` posée côté serveur. La ``reference`` est
+    attribuée côté serveur via ``create_with_reference`` (plus haut numéro
+    utilisé + 1, race-safe — jamais count()+1). Entièrement additif.
+    """
+    class Motif(models.TextChoices):
+        CASSE = 'casse', 'Casse / bris'
+        DECLASSEMENT = 'declassement', 'Déclassement (performance)'
+        RENOVATION = 'renovation', 'Rénovation / remplacement'
+        FIN_DE_VIE = 'fin_de_vie', 'Fin de vie'
+        AUTRE = 'autre', 'Autre'
+
+    class Statut(models.TextChoices):
+        COLLECTE = 'collecte', 'Collecté'
+        TRANSPORTE = 'transporte', 'Transporté'
+        RECYCLE = 'recycle', 'Recyclé'
+        ANNULE = 'annule', 'Annulé'
+
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='qhse_recyclage_modules',
+        verbose_name='Société',
+    )
+    reference = models.CharField(
+        max_length=50, blank=True, default='', verbose_name='Référence')
+    marque = models.CharField(
+        max_length=120, blank=True, default='', verbose_name='Marque')
+    modele = models.CharField(
+        max_length=120, blank=True, default='', verbose_name='Modèle')
+    nombre_modules = models.PositiveIntegerField(
+        default=0, verbose_name='Nombre de modules')
+    masse_kg = models.DecimalField(
+        max_digits=10, decimal_places=2,
+        null=True, blank=True, verbose_name='Masse estimée (kg)')
+    motif = models.CharField(
+        max_length=15, choices=Motif.choices,
+        default=Motif.FIN_DE_VIE, verbose_name='Motif')
+    statut = models.CharField(
+        max_length=12, choices=Statut.choices,
+        default=Statut.COLLECTE, verbose_name='Statut')
+    filiere = models.CharField(
+        max_length=255, blank=True, default='',
+        verbose_name='Filière / repreneur')
+    # Référence LÂCHE au chantier d'origine (installations.Chantier) par id.
+    chantier_id = models.PositiveIntegerField(
+        null=True, blank=True, verbose_name="ID du chantier d'origine")
+    # Lien optionnel vers le bordereau de suivi (QHSE36) — intra-app.
+    bordereau = models.ForeignKey(
+        BordereauSuiviDechet,
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='recyclages_modules',
+        verbose_name='Bordereau de suivi',
+    )
+    date_collecte = models.DateField(
+        null=True, blank=True, verbose_name='Date de collecte')
+    date_recyclage = models.DateField(
+        null=True, blank=True, verbose_name='Date de recyclage')
+    notes = models.TextField(
+        blank=True, default='', verbose_name='Notes')
+    date_creation = models.DateTimeField(
+        auto_now_add=True, verbose_name='Créé le')
+
+    class Meta:
+        verbose_name = 'Recyclage de modules PV'
+        verbose_name_plural = 'Recyclages de modules PV'
+        ordering = ['-id']
+        constraints = [
+            models.UniqueConstraint(
+                fields=['company', 'reference'],
+                name='qhse_recyc_co_ref_uniq',
+            )
+        ]
+        indexes = [
+            models.Index(
+                fields=['company', 'statut'],
+                name='qhse_recyc_co_statut',
+            ),
+            models.Index(
+                fields=['company', 'chantier_id'],
+                name='qhse_recyc_co_chant',
+            ),
+        ]
+
+    def __str__(self):
+        return f'{self.reference or "REC"} — {self.nombre_modules} module(s)'
