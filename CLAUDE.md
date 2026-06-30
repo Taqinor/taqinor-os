@@ -219,6 +219,15 @@ its CI before starting the next 5 pays 40 min x N and is the slowest possible sh
   (a) **Lane-draining** -- one agent drains a WHOLE app lane (8-10 tasks), so ~9
       single-task waves collapse into ~1; and
   (b) **One merge per run** -- accumulate every lane onto one branch and pay CI once.
+**MERGE FLOOR (founder rule, Reda): never merge to `main` with fewer than ~80
+completed tasks accumulated on the branch.** Keep draining more app lanes in parallel
+and folding them onto the one branch until you have ≥80 done; THEN run the single CI +
+merge + deploy. Merging a small handful (5, 13, …) is forbidden -- it pays the 40-min
+CI for almost nothing. The ONLY time you merge with fewer than 80 is when the buildable
+queue is genuinely exhausted (every remaining task is blocked/gated/deferred or in a
+concurrent session's dirty apps) -- then merge what you have. To reach ≥80 you will run
+MANY lanes (often 8 at the concurrency cap, refilled as they finish) across many apps in
+one run; that is expected and correct.
 If a mid-run merge is ever unavoidable (e.g. a same-app lane needs a prior task on
 `origin/main` to chain migrations), then while that ONE CI runs you **pipeline the
 next lanes on DISJOINT apps** (build during CI, never idle on it), and you reuse ONE
@@ -331,11 +340,15 @@ run.
 - One run, one sync-safe self-merge to `main`, one deploy -- per "How a plan run
   works". Report once with the lane plan (how many ran in parallel and what each
   shipped) and what was skipped/blocked.
-- **Default shape: lane-draining.** Dispatch one worktree agent per app, each
-  draining its whole pending lane (8-10 tasks) in sequence; fold all lanes; run ONE
-  combined local docker test (persistent `--keepdb`); then ONE CI-gated merge + ONE
-  deploy for the whole run. Do NOT merge per wave/batch -- that pays the ~40-min CI
-  N times (see THE COST MODEL).
+- **Default shape: lane-draining, ≥80 tasks per merge.** Dispatch one worktree agent
+  per app, each draining its whole pending lane (8-10 tasks) in sequence; keep folding
+  lanes onto ONE branch until **≥80 tasks are done** (drain many apps in parallel —
+  the rich self-contained lanes are rh/flotte/qhse/contrats/ged/paie, then
+  parametres/publicapi/kb/core/stock/sav/litiges/crm, then the rest); run ONE combined
+  local docker test (persistent `--keepdb`); then ONE CI-gated merge + ONE deploy for
+  the whole run. Do NOT merge per wave/batch and **do NOT merge under ~80 tasks** —
+  that pays the ~40-min CI N times (see THE COST MODEL + MERGE FLOOR). Merge under 80
+  only when the buildable queue is exhausted.
 
 ### "loop work on the plan" (`/loop work on the plan`)
 
