@@ -32,6 +32,7 @@ from authentication.permissions import IsResponsableOrAdmin
 
 from . import selectors, services
 from .models import (
+    AlerteContrat,
     Clause,
     ClauseContrat,
     Contrat,
@@ -43,6 +44,7 @@ from .models import (
     VersionContrat,
 )
 from .serializers import (
+    AlerteContratSerializer,
     ChangerStatutSerializer,
     ClauseContratSerializer,
     ClauseSerializer,
@@ -60,6 +62,7 @@ from .serializers import (
     RegleApprobationSerializer,
     RendreContratSerializer,
     ResoudreRegleApprobationSerializer,
+    SemerAlertesSerializer,
     SignatureContratSerializer,
     SignerContratSerializer,
     VersionContratSerializer,
@@ -777,3 +780,90 @@ class RegleApprobationViewSet(_ContratsBaseViewSet):
             if regle is not None else None
         )
         return Response({'regle': data})
+
+
+class AlerteContratViewSet(_ContratsBaseViewSet):
+    """Alertes/rappels planifiés sur les contrats de la société (CONTRAT22).
+
+    Scopé société (TenantMixin) ; ``company`` posée CÔTÉ SERVEUR (déduite du
+    contrat à la création). CRUD des alertes plus deux actions :
+
+    - POST ``/alertes/declencher/`` : dispatche toutes les alertes ``planifiee``
+      DUES de la société via le système de notifications, idempotent (jamais de
+      double-envoi). Optionnel : corps/param ``today`` n'est PAS accepté du
+      client (la date du jour est posée côté serveur).
+    - POST ``/alertes/semer-echeances/`` : sème des alertes ``preavis`` /
+      ``echeance`` à partir des contrats dont l'échéance approche (réutilise les
+      sélecteurs CONTRAT20/21), sans rien dispatcher. Param ``within`` (jours).
+
+    Filtres : ``?contrat=<id>``, ``?statut=<valeur>``, ``?type_alerte=<valeur>``.
+    """
+    queryset = AlerteContrat.objects.select_related('contrat').all()
+    serializer_class = AlerteContratSerializer
+    filter_backends = [filters.OrderingFilter]
+    ordering_fields = ['date_declenchement', 'date_creation', 'id']
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        contrat_id = self.request.query_params.get('contrat')
+        if contrat_id:
+            qs = qs.filter(contrat_id=contrat_id)
+        statut = self.request.query_params.get('statut')
+        if statut:
+            qs = qs.filter(statut=statut)
+        type_alerte = self.request.query_params.get('type_alerte')
+        if type_alerte:
+            qs = qs.filter(type_alerte=type_alerte)
+        return qs
+
+    def perform_create(self, serializer):
+        """Pose ``company`` (celle du contrat) et ``cree_par`` côté serveur.
+
+        Le ``contrat`` est déjà validé même-société par le sérialiseur ; on
+        déduit la société du contrat (jamais lue du corps de requête) — donc
+        cohérente avec le filtre TenantMixin de l'utilisateur.
+        """
+        contrat = serializer.validated_data['contrat']
+        serializer.save(
+            company=contrat.company, cree_par=self.request.user)
+
+    @action(detail=False, methods=['post'])
+    def declencher(self, request):
+        """Dispatche les alertes DUES de la société via les notifications.
+
+        Idempotent : seules les alertes ``planifiee`` dues (date ≤ aujourd'hui)
+        sont envoyées, puis marquées ``envoyee`` — un second appel ne re-notifie
+        rien. La date du jour et la société sont posées CÔTÉ SERVEUR.
+        """
+        resultat = services.declencher_alertes_contrat(request.user.company)
+        return Response({
+            'nb_dues': resultat['nb_dues'],
+            'nb_envoyees': resultat['nb_envoyees'],
+            'nb_notifications': resultat['nb_notifications'],
+            'alertes': AlerteContratSerializer(
+                resultat['alertes'], many=True,
+                context={'request': request}).data,
+        })
+
+    @action(detail=False, methods=['post'], url_path='semer-echeances')
+    def semer_echeances(self, request):
+        """Sème des alertes depuis les contrats dont l'échéance approche.
+
+        Réutilise les sélecteurs CONTRAT20/21 (préavis + renouvellement) pour
+        créer des alertes ``planifiee`` idempotentes. Ne dispatche rien. La
+        société est celle de l'utilisateur (posée côté serveur).
+        """
+        body = SemerAlertesSerializer(data=request.data)
+        body.is_valid(raise_exception=True)
+        within = body.validated_data.get('within', 30)
+        resultat = services.semer_alertes_echeances(
+            request.user.company, within_days=within, cree_par=request.user)
+        return Response(
+            {
+                'nb_creees': resultat['nb_creees'],
+                'alertes': AlerteContratSerializer(
+                    resultat['alertes'], many=True,
+                    context={'request': request}).data,
+            },
+            status=status.HTTP_201_CREATED,
+        )
