@@ -156,8 +156,9 @@ class CautionAdmin(admin.ModelAdmin):
 @admin.register(EcheancierContrat)
 class EcheancierContratAdmin(admin.ModelAdmin):
     list_display = ('id', 'contrat', 'libelle', 'periodicite',
-                    'montant_total', 'devise', 'statut', 'company')
-    list_filter = ('periodicite', 'statut')
+                    'montant_total', 'devise', 'statut', 'facturation_active',
+                    'company')
+    list_filter = ('periodicite', 'statut', 'facturation_active')
     search_fields = ('libelle',)
     readonly_fields = ('montant_total', 'date_creation')
 
@@ -165,7 +166,9 @@ class EcheancierContratAdmin(admin.ModelAdmin):
 @admin.register(LigneEcheance)
 class LigneEcheanceAdmin(admin.ModelAdmin):
     list_display = ('id', 'echeancier', 'numero', 'libelle', 'date_echeance',
-                    'montant', 'statut', 'date_paiement', 'company')
+                    'montant', 'statut', 'date_paiement', 'facture_id',
+                    'company')
     list_filter = ('statut',)
     search_fields = ('libelle',)
-    readonly_fields = ('numero', 'date_paiement', 'date_creation')
+    readonly_fields = ('numero', 'date_paiement', 'facture_id',
+                       'date_creation')

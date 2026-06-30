@@ -882,7 +882,7 @@ class LigneEcheanceSerializer(serializers.ModelSerializer):
         fields = [
             'id', 'echeancier', 'numero', 'libelle', 'date_echeance',
             'montant', 'statut', 'statut_display', 'date_paiement',
-            'date_creation',
+            'facture_id', 'date_creation',
         ]
         read_only_fields = fields
 
@@ -905,8 +905,8 @@ class EcheancierContratSerializer(serializers.ModelSerializer):
         model = EcheancierContrat
         fields = [
             'id', 'contrat', 'libelle', 'periodicite', 'periodicite_display',
-            'montant_total', 'devise', 'statut', 'statut_display', 'lignes',
-            'date_creation',
+            'montant_total', 'devise', 'statut', 'statut_display',
+            'facturation_active', 'lignes', 'date_creation',
         ]
         read_only_fields = [
             'montant_total', 'periodicite_display', 'statut_display',

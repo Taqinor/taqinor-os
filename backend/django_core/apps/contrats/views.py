@@ -1458,3 +1458,32 @@ class LigneEcheanceViewSet(TenantMixin, viewsets.ReadOnlyModelViewSet):
         return Response(
             LigneEcheanceSerializer(
                 ligne, context={'request': request}).data)
+
+    @action(detail=True, methods=['post'])
+    def facturer(self, request, pk=None):
+        """Émet une facture récurrente pour cette échéance (CONTRAT31).
+
+        Crée une ``ventes.Facture`` via la frontière cross-app (client résolu par
+        ``crm.selectors``, numérotation par ``ventes``) et relie la facture à la
+        ligne (``facture_id``). Refuse (400) si la facturation n'est pas activée
+        sur l'échéancier, si l'échéance est déjà facturée/annulée, si le montant
+        est nul, ou si le client est introuvable. Le ``Contrat.statut`` n'est
+        JAMAIS modifié. L'utilisateur et la société sont posés CÔTÉ SERVEUR.
+        """
+        ligne = self.get_object()
+        try:
+            facture = services.facturer_ligne_echeance(
+                ligne, user=request.user)
+        except services.FacturationError as exc:
+            return Response(
+                {'detail': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+        ligne.refresh_from_db()
+        return Response(
+            {
+                'facture_id': facture.id,
+                'facture_reference': facture.reference,
+                'ligne': LigneEcheanceSerializer(
+                    ligne, context={'request': request}).data,
+            },
+            status=status.HTTP_201_CREATED,
+        )

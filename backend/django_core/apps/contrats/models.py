@@ -2070,6 +2070,13 @@ class EcheancierContrat(models.Model):
     statut = models.CharField(
         max_length=20, choices=Statut.choices,
         default=Statut.BROUILLON, verbose_name='Statut')
+    # CONTRAT31 — quand vrai, les lignes de cet échéancier peuvent ALIMENTER la
+    # facturation récurrente (émission d'une Facture via ``ventes`` à
+    # l'échéance). Faux par défaut : on n'émet jamais de facture tant que ce
+    # drapeau n'est pas posé. Aucune écriture automatique tant qu'on n'appelle
+    # pas explicitement le service de facturation.
+    facturation_active = models.BooleanField(
+        default=False, verbose_name='Facturation récurrente active')
     date_creation = models.DateTimeField(
         auto_now_add=True, verbose_name='Créé le')
 
@@ -2152,6 +2159,12 @@ class LigneEcheance(models.Model):
     # non payée.
     date_paiement = models.DateField(
         null=True, blank=True, verbose_name='Payée le')
+    # CONTRAT31 — lien LÂCHE vers la Facture (``ventes.Facture``) émise pour
+    # cette échéance par la facturation récurrente : l'ID seul, jamais un FK dur
+    # ni un import de ``ventes.models``. NULL = aucune facture émise. Sert aussi
+    # de GARDE D'IDEMPOTENCE (on ne facture pas deux fois la même échéance).
+    facture_id = models.PositiveIntegerField(
+        null=True, blank=True, verbose_name='ID de la facture émise')
     date_creation = models.DateTimeField(
         auto_now_add=True, verbose_name='Créée le')
 

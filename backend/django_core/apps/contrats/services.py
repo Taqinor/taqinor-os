@@ -1812,3 +1812,119 @@ def pointer_paiement_echeance(ligne, *, today=None):
     ligne.date_paiement = today
     ligne.save(update_fields=['statut', 'date_paiement'])
     return ligne
+
+
+# ---------------------------------------------------------------------------
+# CONTRAT31 — Lien facturation récurrente (via ventes)
+# ---------------------------------------------------------------------------
+
+
+class FacturationError(Exception):
+    """Levée quand une échéance ne peut pas être facturée.
+
+    Ex. : facturation non activée sur l'échéancier, échéance déjà facturée
+    (garde d'idempotence), contrat sans client résolu, ou ligne au montant nul.
+    """
+
+
+@transaction.atomic
+def facturer_ligne_echeance(ligne, *, user=None, taux_tva=Decimal('20')):
+    """Émet une Facture récurrente pour une échéance — CONTRAT31.
+
+    Crée une ``ventes.Facture`` (statut émise) à partir d'une ``LigneEcheance``
+    d'un échéancier dont la ``facturation_active`` est vraie, et relie la facture
+    à la ligne (``ligne.facture_id`` — lien LÂCHE par id, jamais un FK dur).
+
+    FRONTIÈRE CROSS-APP (CLAUDE.md) : le CLIENT du contrat est résolu via le
+    sélecteur de lecture de l'app cible (``crm.selectors.get_company_client``) —
+    jamais un import du modèle ``crm.Client``. La Facture est créée via le
+    référentiel de numérotation de ``ventes``
+    (``ventes.utils.references.create_with_reference``) — même point d'entrée
+    qu'utilise déjà l'app ``sav`` pour ses factures de maintenance —, sans jamais
+    importer une ``view`` d'une autre app. Le ``montant`` de la ligne est traité
+    comme TTC (cohérent avec l'ERP 100 % TTC) et ventilé HT/TVA au ``taux_tva``.
+
+    GARDES (toutes lèvent ``FacturationError`` sans rien écrire — atomicité) :
+
+    - l'échéancier doit avoir ``facturation_active=True`` ;
+    - la ligne ne doit pas être déjà facturée (``facture_id`` non nul) ni
+      annulée ;
+    - le montant de la ligne doit être strictement positif ;
+    - le contrat doit porter un ``client_id`` résoluble en client de la société.
+
+    Le ``Contrat.statut`` n'est JAMAIS modifié (préservation des statuts —
+    CONTRAT12) ; aucun funnel ``STAGES.py`` (rule #2). La société est celle de la
+    ligne (posée côté serveur). Renvoie la Facture créée.
+    """
+    from decimal import ROUND_HALF_UP
+
+    from .models import LigneEcheance
+
+    echeancier = ligne.echeancier
+    if not echeancier.facturation_active:
+        raise FacturationError(
+            "La facturation récurrente n'est pas activée sur cet échéancier.")
+    if ligne.facture_id:
+        raise FacturationError("Cette échéance a déjà été facturée.")
+    if ligne.statut == LigneEcheance.Statut.ANNULEE:
+        raise FacturationError("Une échéance annulée ne peut pas être facturée.")
+    montant_ttc = ligne.montant or Decimal('0')
+    if montant_ttc <= 0:
+        raise FacturationError("Le montant de l'échéance doit être positif.")
+
+    contrat = echeancier.contrat
+    if not contrat.client_id:
+        raise FacturationError(
+            "Le contrat n'a pas de client : impossible d'émettre une facture.")
+
+    # Frontière cross-app : résolution du client via le sélecteur crm (lecture),
+    # jamais un import de crm.models.
+    from apps.crm.selectors import get_company_client
+
+    client = get_company_client(echeancier.company, contrat.client_id)
+    if client is None:
+        raise FacturationError(
+            "Le client du contrat est introuvable dans votre société.")
+
+    tva_pct = Decimal(str(taux_tva))
+    montant_ht = (montant_ttc / (1 + tva_pct / 100)).quantize(
+        Decimal('0.01'), rounding=ROUND_HALF_UP)
+    montant_tva = (montant_ttc - montant_ht).quantize(
+        Decimal('0.01'), rounding=ROUND_HALF_UP)
+    libelle = (
+        f'Échéance n°{ligne.numero} — contrat #{contrat.id} '
+        f'({echeancier.get_periodicite_display()})'
+    )
+
+    # Frontière cross-app : création de la Facture via le référentiel de
+    # numérotation de ventes (même point d'entrée qu'utilise sav), sans importer
+    # de view d'une autre app.
+    from apps.ventes.models import Facture
+    from apps.ventes.utils.references import create_with_reference
+
+    def _create(ref):
+        return Facture.objects.create(
+            reference=ref,
+            company=echeancier.company,
+            client=client,
+            statut=Facture.Statut.EMISE,
+            taux_tva=tva_pct,
+            montant_ht=montant_ht,
+            montant_tva=montant_tva,
+            montant_ttc=montant_ttc,
+            libelle=libelle,
+            created_by=user,
+        )
+
+    facture = create_with_reference(Facture, 'FAC', echeancier.company, _create)
+
+    # Lien LÂCHE retour (id seul) + garde d'idempotence.
+    ligne.facture_id = facture.id
+    ligne.save(update_fields=['facture_id'])
+
+    journaliser_transition(
+        contrat, field='facturation', old_value='',
+        new_value=f'Facture {facture.reference} (échéance n°{ligne.numero})',
+        message='Facturation récurrente d\'une échéance.', auteur=user)
+
+    return facture
