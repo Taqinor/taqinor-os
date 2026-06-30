@@ -1841,3 +1841,22 @@ class FicheTechnique(models.Model):
 
     def __str__(self):
         return f'Fiche {self.type_fiche} — produit {self.produit_id}'
+
+
+# FG268-FG271 — dossier réglementaire de raccordement (modèles déportés dans
+# models_regulatory.py pour garder ce module lisible ; ré-exportés ici pour que
+# Django les découvre et que `from apps.ventes.models import …` fonctionne).
+from .models_regulatory import (  # noqa: E402,F401
+    RegulatoryDossier,
+    DossierChecklistItem,
+    DossierExchange,
+    SubventionDossier,
+    Regularisation8221,
+)
+
+# FG274-FG275 — mise en service & recette IEC 62446 (modèles déportés dans
+# models_commissioning.py).
+from .models_commissioning import (  # noqa: E402,F401
+    CommissioningTest,
+    IVCurveCapture,
+)
