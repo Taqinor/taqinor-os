@@ -97,3 +97,84 @@ class OrdreVirementTests(TestCase):
         ordre = generer_ordre_virement(self.periode)
         with self.assertRaises(ValueError):
             fichier_virement_paie(ordre)
+
+    # ── DC20 — compte émetteur = référentiel compta.CompteTresorerie ────────
+
+    def _compte_tresorerie(self, *, company=None, rib='RIBEMET' + '0' * 13,
+                           devise='MAD'):
+        from apps.compta.models import CompteTresorerie
+        from apps.compta.services import get_compte, seed_plan_comptable
+
+        co = company or self.co
+        seed_plan_comptable(co)
+        cpt = get_compte(co, '5141')
+        return CompteTresorerie.objects.create(
+            company=co, type_compte=CompteTresorerie.Type.BANQUE,
+            libelle='BMCE Salaires', banque='BMCE',
+            rib=rib, iban='MA64' + '0' * 20, devise=devise,
+            compte_comptable=cpt)
+
+    def test_compte_emetteur_pilote_rib_et_devise(self):
+        p1 = self._employe('F1')
+        self._bulletin_valide(p1)
+        compte = self._compte_tresorerie(rib='R' + '9' * 19, devise='EUR')
+        ordre = generer_ordre_virement(
+            self.periode, compte_emetteur=compte.id)
+        self.assertEqual(ordre.compte_emetteur_id, compte.id)
+        # RIB + devise DÉRIVÉS du référentiel, jamais re-tapés.
+        self.assertEqual(ordre.rib_emetteur, 'R' + '9' * 19)
+        self.assertEqual(ordre.devise, 'EUR')
+        fichier = fichier_virement_paie(ordre)
+        self.assertEqual(fichier['emetteur']['rib'], 'R' + '9' * 19)
+        self.assertEqual(fichier['emetteur']['banque'], 'BMCE')
+
+    def test_compte_emetteur_autre_societe_ignore(self):
+        autre = make_company('ov-autre')
+        compte_autre = self._compte_tresorerie(
+            company=autre, rib='AUTRE' + '0' * 15)
+        p1 = self._employe('G1')
+        self._bulletin_valide(p1)
+        ordre = generer_ordre_virement(
+            self.periode, compte_emetteur=compte_autre.id)
+        # Compte d'une autre société → ignoré (pas de fuite cross-tenant).
+        self.assertIsNone(ordre.compte_emetteur_id)
+
+    def test_rib_emetteur_repli_sans_compte(self):
+        p1 = self._employe('H1')
+        self._bulletin_valide(p1)
+        ordre = generer_ordre_virement(
+            self.periode, rib_emetteur='REPLI' + '0' * 15)
+        self.assertEqual(ordre.rib_emetteur, 'REPLI' + '0' * 15)
+        self.assertIsNone(ordre.compte_emetteur_id)
+
+    # ── DC39 — référence unique générée via create_with_reference ──────────
+
+    def test_reference_generee_format(self):
+        p1 = self._employe('I1')
+        self._bulletin_valide(p1)
+        ordre = generer_ordre_virement(self.periode)
+        # OV-YYYYMM-NNNN — généré, jamais count()+1.
+        self.assertRegex(ordre.reference, r'^OV-\d{6}-\d{4}$')
+        self.assertTrue(ordre.reference.endswith('-0001'))
+
+    def test_reference_stable_a_la_regeneration(self):
+        p1 = self._employe('J1')
+        self._bulletin_valide(p1)
+        ordre = generer_ordre_virement(self.periode)
+        ref1 = ordre.reference
+        # Régénérer (brouillon) ne crée PAS une 2ᵉ référence : même ordre.
+        ordre2 = generer_ordre_virement(self.periode)
+        self.assertEqual(ordre2.id, ordre.id)
+        self.assertEqual(ordre2.reference, ref1)
+
+    def test_references_uniques_par_periode(self):
+        p1 = self._employe('K1')
+        self._bulletin_valide(p1)
+        ordre1 = generer_ordre_virement(self.periode)
+        periode2 = PeriodePaie.objects.create(
+            company=self.co, annee=2026, mois=7)
+        p2 = self._employe('K2')
+        b2 = generer_bulletin(p2, periode2)
+        valider_bulletin(b2)
+        ordre2 = generer_ordre_virement(periode2)
+        self.assertNotEqual(ordre1.reference, ordre2.reference)

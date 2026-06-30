@@ -1244,6 +1244,11 @@ class OrdreVirement(models.Model):
         related_name='ordres_virement',
         verbose_name='Période',
     )
+    # DC39 — référence unique générée par ``references.create_with_reference``
+    # (``OV-YYYYMM-NNNN``, plus-haut-utilisé+1 par société/mois, race-safe),
+    # JAMAIS ``count()+1``. Posée à la première création de l'ordre.
+    reference = models.CharField(
+        max_length=80, blank=True, default='', verbose_name='Référence')
     libelle = models.CharField(
         max_length=120, blank=True, default='', verbose_name='Libellé')
     statut = models.CharField(
@@ -1251,6 +1256,20 @@ class OrdreVirement(models.Model):
         verbose_name='Statut')
     date_execution = models.DateField(
         null=True, blank=True, verbose_name="Date d'exécution souhaitée")
+    # DC20 — UN référentiel `compta.CompteTresorerie` est la source unique du
+    # compte bancaire émetteur (RIB/IBAN/BIC/devise saisis UNE fois). Quand il
+    # est renseigné, ``rib_emetteur``/``devise`` sont dérivés de lui à la
+    # génération (cf. ``services.generer_ordre_virement``) ; ``rib_emetteur``
+    # reste un repli texte libre pour l'historique / les sociétés sans
+    # référentiel câblé. Référence par string-FK (jamais d'import de
+    # ``compta.models``) — la trésorerie reste propriété de l'app compta.
+    compte_emetteur = models.ForeignKey(
+        'compta.CompteTresorerie',
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='ordres_virement_paie',
+        verbose_name='Compte émetteur (trésorerie)',
+    )
     rib_emetteur = models.CharField(
         max_length=40, blank=True, default='', verbose_name='RIB émetteur')
     devise = models.CharField(
@@ -1270,6 +1289,17 @@ class OrdreVirement(models.Model):
         verbose_name_plural = 'Ordres de virement'
         ordering = ['-date_creation']
         unique_together = [('company', 'periode')]
+        constraints = [
+            # DC39 — la référence générée est unique par société (arbitre final
+            # des courses de numérotation) ; les ordres pré-référence (blanc)
+            # sont exclus.
+            models.UniqueConstraint(
+                fields=['company', 'reference'],
+                condition=models.Q(reference__isnull=False)
+                & ~models.Q(reference=''),
+                name='uniq_ordrevirement_ref_par_societe',
+            ),
+        ]
 
     def __str__(self):
         return f'Ordre virement {self.periode} ({self.statut})'
