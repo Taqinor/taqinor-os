@@ -3172,3 +3172,101 @@ class Sanction(models.Model):
 
     def __str__(self):
         return f'{self.get_type_sanction_display()} — {self.employe}'
+
+
+class ElementsVariablesPaie(models.Model):
+    """Éléments variables de paie mensuels par employé (FG192).
+
+    Agrégat MENSUEL par collaborateur destiné au PRESTATAIRE DE PAIE — ce
+    n'est PAS un moteur de paie : aucun calcul de net/brut légal n'est fait
+    ici. Une ligne par (``employe``, ``annee``, ``mois``) récapitulant les
+    éléments variables du mois : ``heures_normales``, ``heures_supp``,
+    ``jours_absence``, ``jours_conges``, ``primes`` (total des primes/indemnités
+    du mois), ``retenues`` (total des retenues : avances, sanctions…) et un
+    ``commentaire`` libre. Un ``statut`` matérialise le cycle d'export
+    (brouillon → validé → exporté) avec la ``date_export`` posée côté serveur
+    au moment de l'export.
+
+    DISTINCT de ``apps.paie.ElementVariable`` (PAIE11) : ce modèle est le
+    BORDEREAU récapitulatif RH côté employeur, alimenté manuellement ou par
+    agrégation des heures/absences ; le module paie le consomme via les
+    sélecteurs RH (jamais d'import croisé de models).
+
+    Multi-société : ``company`` posée CÔTÉ SERVEUR (jamais lue du corps) ;
+    ``employe`` doit appartenir à la même société. Le couple
+    (``employe``, ``annee``, ``mois``) est unique (un bordereau par mois). Additif.
+
+    RUNTIME-SAFETY (leçon FG136) : ``statut`` ≤ 20 ; montants/quantités en
+    ``DecimalField`` borné ; ``commentaire`` en ``TextField`` ; index +
+    contrainte d'unicité nommés (≤ 30 chars).
+    """
+
+    class Statut(models.TextChoices):
+        BROUILLON = 'brouillon', 'Brouillon'
+        VALIDE = 'valide', 'Validé'
+        EXPORTE = 'exporte', 'Exporté'
+
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='rh_elements_variables_paie',
+        verbose_name='Société',
+    )
+    employe = models.ForeignKey(
+        DossierEmploye,
+        on_delete=models.CASCADE,
+        related_name='elements_variables_paie',
+        verbose_name='Employé',
+    )
+    annee = models.PositiveIntegerField(verbose_name='Année')
+    mois = models.PositiveSmallIntegerField(verbose_name='Mois')
+    heures_normales = models.DecimalField(
+        max_digits=7, decimal_places=2, default=Decimal('0'),
+        verbose_name='Heures normales')
+    heures_supp = models.DecimalField(
+        max_digits=7, decimal_places=2, default=Decimal('0'),
+        verbose_name='Heures supplémentaires')
+    jours_absence = models.DecimalField(
+        max_digits=5, decimal_places=2, default=Decimal('0'),
+        verbose_name="Jours d'absence")
+    jours_conges = models.DecimalField(
+        max_digits=5, decimal_places=2, default=Decimal('0'),
+        verbose_name='Jours de congés')
+    primes = models.DecimalField(
+        max_digits=12, decimal_places=2, default=Decimal('0'),
+        verbose_name='Primes/indemnités (total)')
+    retenues = models.DecimalField(
+        max_digits=12, decimal_places=2, default=Decimal('0'),
+        verbose_name='Retenues (total)')
+    commentaire = models.TextField(
+        blank=True, default='', verbose_name='Commentaire')
+    statut = models.CharField(
+        max_length=20, choices=Statut.choices,
+        default=Statut.BROUILLON, verbose_name='Statut')
+    date_export = models.DateTimeField(
+        null=True, blank=True, verbose_name='Exporté le')
+    date_creation = models.DateTimeField(
+        auto_now_add=True, verbose_name='Créé le')
+    date_modification = models.DateTimeField(
+        auto_now=True, verbose_name='Modifié le')
+
+    class Meta:
+        verbose_name = 'Éléments variables de paie'
+        verbose_name_plural = 'Éléments variables de paie'
+        ordering = ['-annee', '-mois', 'employe']
+        constraints = [
+            models.UniqueConstraint(
+                fields=['employe', 'annee', 'mois'],
+                name='rh_evp_emp_an_mois_uniq'),
+        ]
+        indexes = [
+            models.Index(
+                fields=['company', 'annee', 'mois'],
+                name='rh_evp_comp_an_mois_idx'),
+            models.Index(
+                fields=['company', 'statut'],
+                name='rh_evp_comp_stat_idx'),
+        ]
+
+    def __str__(self):
+        return f'{self.employe} — {self.mois:02d}/{self.annee}'

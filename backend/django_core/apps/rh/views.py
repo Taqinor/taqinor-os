@@ -38,6 +38,7 @@ from .models import (
     DossierEmploye,
     DotationEpi,
     ElementSortie,
+    ElementsVariablesPaie,
     EpiCatalogue,
     EvaluationEmploye,
     FeuilleTemps,
@@ -75,6 +76,7 @@ from .serializers import (
     DossierEmployeSerializer,
     DotationEpiSerializer,
     ElementSortieSerializer,
+    ElementsVariablesPaieSerializer,
     EmargementEpiSerializer,
     EmargerEpiSerializer,
     EvaluationEmployeSerializer,
@@ -2381,3 +2383,101 @@ class SanctionViewSet(_RhBaseViewSet):
             sanction.save(update_fields=['statut', 'date_modification'])
         return Response(
             self.get_serializer(sanction).data, status=status.HTTP_200_OK)
+
+
+class ElementsVariablesPaieViewSet(_RhBaseViewSet):
+    """Éléments variables de paie mensuels (FG192) — export prestataire paie.
+
+    Société scopée + Administrateur/Responsable. Enregistre le bordereau
+    mensuel par employé (heures normales/supp, jours d'absence/congés, primes,
+    retenues, commentaire, statut) destiné au prestataire de paie — ce n'est
+    PAS un moteur de paie. ``company`` et ``date_export`` sont posées CÔTÉ
+    SERVEUR (jamais lues du corps) ; ``employe`` doit appartenir à la même
+    société. Le couple (employe, annee, mois) est unique.
+
+    Filtres : ``?employe=<id>``, ``?annee=<n>``, ``?mois=<1-12>``,
+    ``?statut=brouillon|valide|exporte``.
+
+    Actions :
+    * ``GET .../export-paie-csv/?annee=&mois=`` — CSV du bordereau (matricule,
+      identité, quantités, montants), scopé société + filtré.
+    * ``POST .../{id}/marquer-exporte/`` — passe en ``statut=exporte`` et pose
+      ``date_export`` côté serveur. Idempotent.
+    """
+    queryset = ElementsVariablesPaie.objects.select_related('employe').all()
+    serializer_class = ElementsVariablesPaieSerializer
+    filter_backends = [filters.SearchFilter, filters.OrderingFilter]
+    search_fields = ['employe__matricule', 'employe__nom', 'commentaire']
+    ordering_fields = ['annee', 'mois', 'statut', 'date_creation']
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        employe = self.request.query_params.get('employe')
+        if employe:
+            qs = qs.filter(employe_id=employe)
+        annee = self.request.query_params.get('annee')
+        if annee:
+            qs = qs.filter(annee=annee)
+        mois = self.request.query_params.get('mois')
+        if mois:
+            qs = qs.filter(mois=mois)
+        statut = self.request.query_params.get('statut')
+        if statut:
+            qs = qs.filter(statut=statut)
+        return qs
+
+    def perform_create(self, serializer):
+        """Company posée côté serveur ; FK validé via le sérialiseur."""
+        serializer.save(company=self.request.user.company)
+
+    @action(detail=False, methods=['get'], url_path='export-paie-csv')
+    def export_paie_csv(self, request):
+        """Export CSV du bordereau mensuel (FG192), scopé société + filtré.
+
+        On garde ``?export``/un endpoint dédié (et NON ``?format=``, réservé
+        par DRF) comme déclencheur d'export.
+        """
+        import csv
+
+        from django.http import HttpResponse
+
+        rows = self.filter_queryset(self.get_queryset())
+        response = HttpResponse(content_type='text/csv; charset=utf-8')
+        response['Content-Disposition'] = (
+            'attachment; filename="elements-variables-paie.csv"')
+        # BOM UTF-8 pour qu'Excel ouvre correctement les accents.
+        response.write('﻿')
+        writer = csv.writer(response)
+        writer.writerow([
+            'Matricule', 'Nom', 'Prenom', 'Annee', 'Mois',
+            'Heures normales', 'Heures supp',
+            'Jours absence', 'Jours conges',
+            'Primes', 'Retenues', 'Statut', 'Commentaire',
+        ])
+        for evp in rows:
+            emp = evp.employe
+            writer.writerow([
+                emp.matricule, emp.nom, emp.prenom,
+                evp.annee, evp.mois,
+                evp.heures_normales, evp.heures_supp,
+                evp.jours_absence, evp.jours_conges,
+                evp.primes, evp.retenues,
+                evp.get_statut_display(), evp.commentaire,
+            ])
+        return response
+
+    @action(detail=True, methods=['post'], url_path='marquer-exporte')
+    def marquer_exporte(self, request, pk=None):
+        """Marque le bordereau exporté (FG192) — ``statut=exporte`` + date.
+
+        La société est garantie par ``get_object`` (autre tenant → 404).
+        Idempotent : re-marquer renvoie le même bordereau sans réécrire la date.
+        """
+        evp = self.get_object()
+        if evp.statut != ElementsVariablesPaie.Statut.EXPORTE:
+            evp.statut = ElementsVariablesPaie.Statut.EXPORTE
+            evp.date_export = timezone.now()
+            evp.save(update_fields=[
+                'statut', 'date_export', 'date_modification'])
+        return Response(
+            self.get_serializer(evp).data, status=status.HTTP_200_OK)

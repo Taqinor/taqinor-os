@@ -19,6 +19,7 @@ from .views import (
     DotationEpiViewSet,
     EcheancesRhViewSet,
     ElementSortieViewSet,
+    ElementsVariablesPaieViewSet,
     EpiCatalogueViewSet,
     EvaluationEmployeViewSet,
     FeuilleTempsViewSet,
@@ -76,6 +77,7 @@ router.register(r'candidatures', CandidatureViewSet)
 router.register(r'campagnes-evaluation', CampagneEvaluationViewSet)
 router.register(r'evaluations-employe', EvaluationEmployeViewSet)
 router.register(r'sanctions', SanctionViewSet)
+router.register(r'elements-variables-paie', ElementsVariablesPaieViewSet)
 
 urlpatterns = [
     path('', include(router.urls)),

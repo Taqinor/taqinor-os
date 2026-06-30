@@ -24,6 +24,7 @@ from .models import (
     DossierEmploye,
     DotationEpi,
     ElementSortie,
+    ElementsVariablesPaie,
     EmargementEpi,
     EvaluationEmploye,
     EpiCatalogue,
@@ -1626,3 +1627,46 @@ class SanctionSerializer(serializers.ModelSerializer):
 
     def validate_auteur(self, value):
         return _meme_societe(self, value, 'Auteur')
+
+
+class ElementsVariablesPaieSerializer(serializers.ModelSerializer):
+    """Bordereau mensuel d'éléments variables de paie (FG192).
+
+    Le client saisit ``employe`` (un ``DossierEmploye`` de sa société),
+    ``annee``, ``mois``, les quantités (``heures_normales``, ``heures_supp``,
+    ``jours_absence``, ``jours_conges``), les montants (``primes``,
+    ``retenues``), un ``commentaire`` et le ``statut``. ``company`` et
+    ``date_export`` sont posées CÔTÉ SERVEUR (jamais lues du corps).
+    """
+    employe_nom = serializers.SerializerMethodField()
+    employe_matricule = serializers.CharField(
+        source='employe.matricule', read_only=True)
+    statut_display = serializers.CharField(
+        source='get_statut_display', read_only=True)
+
+    class Meta:
+        model = ElementsVariablesPaie
+        fields = [
+            'id', 'employe', 'employe_nom', 'employe_matricule',
+            'annee', 'mois',
+            'heures_normales', 'heures_supp',
+            'jours_absence', 'jours_conges',
+            'primes', 'retenues', 'commentaire',
+            'statut', 'statut_display', 'date_export',
+            'date_creation', 'date_modification',
+        ]
+        read_only_fields = ['date_export', 'date_creation', 'date_modification']
+
+    def get_employe_nom(self, obj):
+        if not obj.employe_id:
+            return ''
+        return f'{obj.employe.nom} {obj.employe.prenom}'
+
+    def validate_employe(self, value):
+        return _meme_societe(self, value, 'Employé')
+
+    def validate_mois(self, value):
+        if not 1 <= value <= 12:
+            raise serializers.ValidationError(
+                'Le mois doit être compris entre 1 et 12.')
+        return value
