@@ -4,11 +4,15 @@ from rest_framework.routers import DefaultRouter
 from .views import (
     AccidentTravailViewSet,
     AffectationRosterViewSet,
+    AffectationVehiculeViewSet,
     AnalyseRisquesChantierViewSet,
+    AvanceSalaireViewSet,
     BesoinFormationViewSet,
+    BulletinPaieViewSet,
     CampagneEvaluationViewSet,
     CandidatureViewSet,
     CauserieSecuriteViewSet,
+    CockpitRhViewSet,
     CertificationViewSet,
     CompetenceEmployeViewSet,
     CompetenceViewSet,
@@ -19,22 +23,30 @@ from .views import (
     DotationEpiViewSet,
     EcheancesRhViewSet,
     ElementSortieViewSet,
+    ElementsVariablesPaieViewSet,
     EpiCatalogueViewSet,
     EvaluationEmployeViewSet,
     FeuilleTempsViewSet,
     HabilitationViewSet,
     HeuresSuppViewSet,
     IncidentPresenceViewSet,
+    NoteDeFraisViewSet,
+    OrdreMissionViewSet,
     OuverturePosteViewSet,
+    PermisConduireViewSet,
     PointageViewSet,
+    PortailSelfServiceViewSet,
     PosteViewSet,
     PresenceChantierViewSet,
     PresquAccidentViewSet,
+    PrimeAttribueeViewSet,
     RemunerationViewSet,
+    SanctionViewSet,
     SessionFormationViewSet,
     SoldeCongeViewSet,
     TableauBordHseViewSet,
     TypeAbsenceViewSet,
+    TypePrimeViewSet,
     VisiteMedicaleViewSet,
 )
 
@@ -74,6 +86,19 @@ router.register(r'ouvertures-poste', OuverturePosteViewSet)
 router.register(r'candidatures', CandidatureViewSet)
 router.register(r'campagnes-evaluation', CampagneEvaluationViewSet)
 router.register(r'evaluations-employe', EvaluationEmployeViewSet)
+router.register(r'sanctions', SanctionViewSet)
+router.register(r'elements-variables-paie', ElementsVariablesPaieViewSet)
+router.register(r'types-prime', TypePrimeViewSet)
+router.register(r'primes-attribuees', PrimeAttribueeViewSet)
+router.register(r'ordres-mission', OrdreMissionViewSet)
+router.register(r'avances-salaire', AvanceSalaireViewSet)
+router.register(r'bulletins-paie', BulletinPaieViewSet)
+router.register(r'permis-conduire', PermisConduireViewSet)
+router.register(r'affectations-vehicule', AffectationVehiculeViewSet)
+router.register(r'notes-frais', NoteDeFraisViewSet)
+router.register(
+    r'portail', PortailSelfServiceViewSet, basename='rh-portail')
+router.register(r'cockpit', CockpitRhViewSet, basename='rh-cockpit')
 
 urlpatterns = [
     path('', include(router.urls)),

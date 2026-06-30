@@ -511,3 +511,17 @@ def embaucher(candidature, matricule=None, **dossier_kwargs):
             ouverture.save(update_fields=['statut', 'date_modification'])
 
     return dossier
+
+
+def controler_permis_affectation(company, employe_id, *, le=None):
+    """Contrôle le permis d'un conducteur avant affectation véhicule (FG198).
+
+    Renvoie ``True`` si le conducteur (scopé société) détient un permis VALIDE
+    à la date ``le`` (par défaut la date de début d'affectation ou aujourd'hui),
+    via ``selectors.peut_conduire`` (FG197). Renvoie ``False`` sinon — la vue
+    refuse alors l'affectation côté serveur. Lecture seule, sans effet de bord ;
+    cadre société (jamais d'accès hors ``company``).
+    """
+    from . import selectors
+
+    return selectors.peut_conduire(company, employe_id, le=le)

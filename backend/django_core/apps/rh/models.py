@@ -3082,3 +3082,800 @@ class ObjectifIndividuel(models.Model):
 
     def __str__(self):
         return self.libelle
+
+
+class Sanction(models.Model):
+    """Sanction disciplinaire d'un collaborateur (FG191).
+
+    Registre des mesures disciplinaires conforme au code du travail marocain
+    (loi 65-99) : observation, avertissement, blâme, mise à pied (avec durée
+    en jours), mutation, rétrogradation, licenciement. Une ligne par mesure
+    notifiée à un ``employe`` (FK ``rh.DossierEmploye``, même société) avec la
+    ``date_faits`` (date des faits reprochés), la ``date_notification`` (date de
+    remise de la sanction), le ``type_sanction``, une ``duree_jours`` (utile
+    pour les mises à pied), le ``motif`` (les faits reprochés) et un ``statut``
+    de procédure (notifiée → contestée → annulée). L'``auteur`` (le responsable
+    qui prononce la mesure, FK ``rh.DossierEmploye`` optionnel) est tracé.
+
+    Multi-société : ``company`` est posée CÔTÉ SERVEUR (jamais lue du corps) ;
+    ``employe`` et ``auteur`` doivent appartenir à la même société. Additif.
+
+    RUNTIME-SAFETY (leçon FG136) : codes ``type_sanction`` / ``statut`` ≤ 20 ;
+    ``motif`` (potentiellement long) en ``TextField`` ; ``duree_jours`` borné
+    (``PositiveIntegerField``) ; index nommés (≤ 30 chars).
+    """
+
+    class TypeSanction(models.TextChoices):
+        OBSERVATION = 'observation', 'Observation'
+        AVERTISSEMENT = 'avertissement', 'Avertissement'
+        BLAME = 'blame', 'Blâme'
+        MISE_A_PIED = 'mise_a_pied', 'Mise à pied'
+        MUTATION = 'mutation', 'Mutation disciplinaire'
+        RETROGRADATION = 'retrogradation', 'Rétrogradation'
+        LICENCIEMENT = 'licenciement', 'Licenciement'
+
+    class Statut(models.TextChoices):
+        NOTIFIEE = 'notifiee', 'Notifiée'
+        CONTESTEE = 'contestee', 'Contestée'
+        ANNULEE = 'annulee', 'Annulée'
+
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='rh_sanctions',
+        verbose_name='Société',
+    )
+    employe = models.ForeignKey(
+        DossierEmploye,
+        on_delete=models.CASCADE,
+        related_name='sanctions',
+        verbose_name='Employé',
+    )
+    auteur = models.ForeignKey(
+        DossierEmploye,
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='sanctions_prononcees',
+        verbose_name='Auteur',
+    )
+    type_sanction = models.CharField(
+        max_length=20, choices=TypeSanction.choices,
+        default=TypeSanction.AVERTISSEMENT, verbose_name='Type de sanction')
+    date_faits = models.DateField(
+        null=True, blank=True, verbose_name='Date des faits')
+    date_notification = models.DateField(
+        null=True, blank=True, verbose_name='Date de notification')
+    duree_jours = models.PositiveIntegerField(
+        default=0, verbose_name='Durée (jours)')
+    motif = models.TextField(
+        blank=True, default='', verbose_name='Motif')
+    statut = models.CharField(
+        max_length=20, choices=Statut.choices,
+        default=Statut.NOTIFIEE, verbose_name='Statut')
+    date_creation = models.DateTimeField(
+        auto_now_add=True, verbose_name='Créé le')
+    date_modification = models.DateTimeField(
+        auto_now=True, verbose_name='Modifié le')
+
+    class Meta:
+        verbose_name = 'Sanction disciplinaire'
+        verbose_name_plural = 'Sanctions disciplinaires'
+        ordering = ['-date_notification', '-date_creation']
+        indexes = [
+            models.Index(
+                fields=['company', 'employe'],
+                name='rh_sanc_comp_emp_idx'),
+            models.Index(
+                fields=['company', 'statut'],
+                name='rh_sanc_comp_stat_idx'),
+        ]
+
+    def __str__(self):
+        return f'{self.get_type_sanction_display()} — {self.employe}'
+
+
+class ElementsVariablesPaie(models.Model):
+    """Éléments variables de paie mensuels par employé (FG192).
+
+    Agrégat MENSUEL par collaborateur destiné au PRESTATAIRE DE PAIE — ce
+    n'est PAS un moteur de paie : aucun calcul de net/brut légal n'est fait
+    ici. Une ligne par (``employe``, ``annee``, ``mois``) récapitulant les
+    éléments variables du mois : ``heures_normales``, ``heures_supp``,
+    ``jours_absence``, ``jours_conges``, ``primes`` (total des primes/indemnités
+    du mois), ``retenues`` (total des retenues : avances, sanctions…) et un
+    ``commentaire`` libre. Un ``statut`` matérialise le cycle d'export
+    (brouillon → validé → exporté) avec la ``date_export`` posée côté serveur
+    au moment de l'export.
+
+    DISTINCT de ``apps.paie.ElementVariable`` (PAIE11) : ce modèle est le
+    BORDEREAU récapitulatif RH côté employeur, alimenté manuellement ou par
+    agrégation des heures/absences ; le module paie le consomme via les
+    sélecteurs RH (jamais d'import croisé de models).
+
+    Multi-société : ``company`` posée CÔTÉ SERVEUR (jamais lue du corps) ;
+    ``employe`` doit appartenir à la même société. Le couple
+    (``employe``, ``annee``, ``mois``) est unique (un bordereau par mois). Additif.
+
+    RUNTIME-SAFETY (leçon FG136) : ``statut`` ≤ 20 ; montants/quantités en
+    ``DecimalField`` borné ; ``commentaire`` en ``TextField`` ; index +
+    contrainte d'unicité nommés (≤ 30 chars).
+    """
+
+    class Statut(models.TextChoices):
+        BROUILLON = 'brouillon', 'Brouillon'
+        VALIDE = 'valide', 'Validé'
+        EXPORTE = 'exporte', 'Exporté'
+
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='rh_elements_variables_paie',
+        verbose_name='Société',
+    )
+    employe = models.ForeignKey(
+        DossierEmploye,
+        on_delete=models.CASCADE,
+        related_name='elements_variables_paie',
+        verbose_name='Employé',
+    )
+    annee = models.PositiveIntegerField(verbose_name='Année')
+    mois = models.PositiveSmallIntegerField(verbose_name='Mois')
+    heures_normales = models.DecimalField(
+        max_digits=7, decimal_places=2, default=Decimal('0'),
+        verbose_name='Heures normales')
+    heures_supp = models.DecimalField(
+        max_digits=7, decimal_places=2, default=Decimal('0'),
+        verbose_name='Heures supplémentaires')
+    jours_absence = models.DecimalField(
+        max_digits=5, decimal_places=2, default=Decimal('0'),
+        verbose_name="Jours d'absence")
+    jours_conges = models.DecimalField(
+        max_digits=5, decimal_places=2, default=Decimal('0'),
+        verbose_name='Jours de congés')
+    primes = models.DecimalField(
+        max_digits=12, decimal_places=2, default=Decimal('0'),
+        verbose_name='Primes/indemnités (total)')
+    retenues = models.DecimalField(
+        max_digits=12, decimal_places=2, default=Decimal('0'),
+        verbose_name='Retenues (total)')
+    commentaire = models.TextField(
+        blank=True, default='', verbose_name='Commentaire')
+    statut = models.CharField(
+        max_length=20, choices=Statut.choices,
+        default=Statut.BROUILLON, verbose_name='Statut')
+    date_export = models.DateTimeField(
+        null=True, blank=True, verbose_name='Exporté le')
+    date_creation = models.DateTimeField(
+        auto_now_add=True, verbose_name='Créé le')
+    date_modification = models.DateTimeField(
+        auto_now=True, verbose_name='Modifié le')
+
+    class Meta:
+        verbose_name = 'Éléments variables de paie'
+        verbose_name_plural = 'Éléments variables de paie'
+        ordering = ['-annee', '-mois', 'employe']
+        constraints = [
+            models.UniqueConstraint(
+                fields=['employe', 'annee', 'mois'],
+                name='rh_evp_emp_an_mois_uniq'),
+        ]
+        indexes = [
+            models.Index(
+                fields=['company', 'annee', 'mois'],
+                name='rh_evp_comp_an_mois_idx'),
+            models.Index(
+                fields=['company', 'statut'],
+                name='rh_evp_comp_stat_idx'),
+        ]
+
+    def __str__(self):
+        return f'{self.employe} — {self.mois:02d}/{self.annee}'
+
+
+class TypePrime(models.Model):
+    """Référentiel des primes & indemnités (FG193).
+
+    Catalogue normalisé des primes/indemnités d'une société : prime de
+    rendement, indemnité de chantier, panier, transport, etc. Chaque type a un
+    ``code`` interne, un ``libelle`` affiché, une ``nature`` (prime de
+    performance / indemnité forfaitaire), un ``montant_defaut`` proposé à
+    l'attribution, un drapeau ``imposable`` (entre ou non dans l'assiette
+    fiscale, INDICATIF — le calcul légal reste au prestataire de paie) et un
+    drapeau ``actif``.
+
+    Multi-société : ``company`` est posée CÔTÉ SERVEUR (jamais lue du corps).
+    Le couple (``company``, ``code``) est unique. Additif.
+
+    RUNTIME-SAFETY (leçon FG136) : ``code`` ≤ 30 / ``nature`` ≤ 20 bornés ;
+    montant en ``DecimalField`` ; contrainte d'unicité nommée (≤ 30 chars).
+    """
+
+    class Nature(models.TextChoices):
+        PRIME = 'prime', 'Prime'
+        INDEMNITE = 'indemnite', 'Indemnité'
+
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='rh_types_prime',
+        verbose_name='Société',
+    )
+    code = models.CharField(max_length=30, verbose_name='Code')
+    libelle = models.CharField(max_length=120, verbose_name='Libellé')
+    nature = models.CharField(
+        max_length=20, choices=Nature.choices,
+        default=Nature.PRIME, verbose_name='Nature')
+    montant_defaut = models.DecimalField(
+        max_digits=12, decimal_places=2, default=Decimal('0'),
+        verbose_name='Montant par défaut')
+    imposable = models.BooleanField(
+        default=True, verbose_name='Imposable (indicatif)')
+    actif = models.BooleanField(default=True, verbose_name='Actif')
+    date_creation = models.DateTimeField(
+        auto_now_add=True, verbose_name='Créé le')
+
+    class Meta:
+        verbose_name = 'Type de prime/indemnité'
+        verbose_name_plural = 'Types de primes/indemnités'
+        ordering = ['libelle']
+        constraints = [
+            models.UniqueConstraint(
+                fields=['company', 'code'],
+                name='rh_typeprime_comp_code_uniq'),
+        ]
+
+    def __str__(self):
+        return self.libelle
+
+
+class PrimeAttribuee(models.Model):
+    """Prime/indemnité attribuée à un employé pour une période (FG193).
+
+    Une ligne par ATTRIBUTION : un ``type_prime`` (FK ``rh.TypePrime``, même
+    société) accordé à un ``employe`` (FK ``rh.DossierEmploye``, même société)
+    pour une période ``annee``/``mois``, avec un ``montant`` (initialisé au
+    montant par défaut du type mais modifiable) et un ``motif`` libre. Un
+    ``statut`` matérialise le cycle (proposée → validée → payée) ; les primes
+    validées alimentent le bordereau d'éléments variables de paie (FG192) côté
+    employeur.
+
+    Multi-société : ``company`` est posée CÔTÉ SERVEUR (jamais lue du corps) ;
+    ``type_prime`` et ``employe`` doivent appartenir à la même société. Additif.
+
+    RUNTIME-SAFETY (leçon FG136) : ``statut`` ≤ 20 borné ; ``montant`` en
+    ``DecimalField`` ; ``motif`` plafonné ; index nommés (≤ 30 chars).
+    """
+
+    class Statut(models.TextChoices):
+        PROPOSEE = 'proposee', 'Proposée'
+        VALIDEE = 'validee', 'Validée'
+        PAYEE = 'payee', 'Payée'
+
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='rh_primes_attribuees',
+        verbose_name='Société',
+    )
+    type_prime = models.ForeignKey(
+        TypePrime,
+        on_delete=models.PROTECT,
+        related_name='attributions',
+        verbose_name='Type de prime',
+    )
+    employe = models.ForeignKey(
+        DossierEmploye,
+        on_delete=models.CASCADE,
+        related_name='primes_attribuees',
+        verbose_name='Employé',
+    )
+    annee = models.PositiveIntegerField(verbose_name='Année')
+    mois = models.PositiveSmallIntegerField(verbose_name='Mois')
+    montant = models.DecimalField(
+        max_digits=12, decimal_places=2, default=Decimal('0'),
+        verbose_name='Montant')
+    motif = models.CharField(
+        max_length=255, blank=True, default='', verbose_name='Motif')
+    statut = models.CharField(
+        max_length=20, choices=Statut.choices,
+        default=Statut.PROPOSEE, verbose_name='Statut')
+    date_creation = models.DateTimeField(
+        auto_now_add=True, verbose_name='Créé le')
+    date_modification = models.DateTimeField(
+        auto_now=True, verbose_name='Modifié le')
+
+    class Meta:
+        verbose_name = 'Prime/indemnité attribuée'
+        verbose_name_plural = 'Primes/indemnités attribuées'
+        ordering = ['-annee', '-mois', 'employe']
+        indexes = [
+            models.Index(
+                fields=['company', 'annee', 'mois'],
+                name='rh_prime_comp_an_mois_idx'),
+            models.Index(
+                fields=['company', 'employe'],
+                name='rh_prime_comp_emp_idx'),
+            models.Index(
+                fields=['company', 'statut'],
+                name='rh_prime_comp_stat_idx'),
+        ]
+
+    def __str__(self):
+        return f'{self.type_prime} — {self.employe} ({self.mois:02d}/{self.annee})'
+
+
+class OrdreMission(models.Model):
+    """Ordre de mission / déplacement chantier (FG194).
+
+    Document daté autorisant le déplacement d'un collaborateur : la ``reference``
+    interne (posée côté serveur, unique par société), l'``employe`` missionné
+    (FK ``rh.DossierEmploye``, même société), la ``destination`` (le lieu /
+    chantier), le ``motif`` du déplacement, les dates ``date_depart`` →
+    ``date_retour``, le ``moyen_transport``, une éventuelle camionnette du parc
+    (``vehicule_id`` — STRING-FK vers ``flotte.Vehicule`` : on ne référence
+    jamais ``flotte.models`` directement, comme ``AffectationRoster``), le
+    ``per_diem`` (indemnité journalière de déplacement) et un ``statut``
+    (brouillon → émis → clôturé). Restituable en PDF via l'action dédiée.
+
+    Multi-société : ``company`` posée CÔTÉ SERVEUR (jamais lue du corps) ;
+    ``employe`` doit appartenir à la même société. ``reference`` est unique par
+    société. Additif.
+
+    RUNTIME-SAFETY (leçon FG136) : ``reference`` ≤ 40 / ``moyen_transport`` ≤ 60
+    / ``statut`` ≤ 20 bornés ; ``motif`` en ``TextField`` ; ``per_diem`` en
+    ``DecimalField`` ; contrainte d'unicité + index nommés (≤ 30 chars).
+    """
+
+    class Statut(models.TextChoices):
+        BROUILLON = 'brouillon', 'Brouillon'
+        EMIS = 'emis', 'Émis'
+        CLOTURE = 'cloture', 'Clôturé'
+
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='rh_ordres_mission',
+        verbose_name='Société',
+    )
+    reference = models.CharField(max_length=40, verbose_name='Référence')
+    employe = models.ForeignKey(
+        DossierEmploye,
+        on_delete=models.CASCADE,
+        related_name='ordres_mission',
+        verbose_name='Employé',
+    )
+    destination = models.CharField(max_length=255, verbose_name='Destination')
+    motif = models.TextField(blank=True, default='', verbose_name='Motif')
+    date_depart = models.DateField(
+        null=True, blank=True, verbose_name='Date de départ')
+    date_retour = models.DateField(
+        null=True, blank=True, verbose_name='Date de retour')
+    moyen_transport = models.CharField(
+        max_length=60, blank=True, default='',
+        verbose_name='Moyen de transport')
+    # String FK cross-app vers flotte.Vehicule — jamais importer flotte.models.
+    vehicule_id = models.PositiveIntegerField(
+        null=True, blank=True, verbose_name='Véhicule (ID, optionnel)')
+    per_diem = models.DecimalField(
+        max_digits=12, decimal_places=2, default=Decimal('0'),
+        verbose_name='Per-diem (par jour)')
+    statut = models.CharField(
+        max_length=20, choices=Statut.choices,
+        default=Statut.BROUILLON, verbose_name='Statut')
+    date_creation = models.DateTimeField(
+        auto_now_add=True, verbose_name='Créé le')
+    date_modification = models.DateTimeField(
+        auto_now=True, verbose_name='Modifié le')
+
+    class Meta:
+        verbose_name = 'Ordre de mission'
+        verbose_name_plural = 'Ordres de mission'
+        ordering = ['-date_depart', '-date_creation']
+        constraints = [
+            models.UniqueConstraint(
+                fields=['company', 'reference'],
+                name='rh_ordmiss_comp_ref_uniq'),
+        ]
+        indexes = [
+            models.Index(
+                fields=['company', 'employe'],
+                name='rh_ordmiss_comp_emp_idx'),
+            models.Index(
+                fields=['company', 'statut'],
+                name='rh_ordmiss_comp_stat_idx'),
+        ]
+
+    def __str__(self):
+        return f'{self.reference} — {self.destination}'
+
+
+class AvanceSalaire(models.Model):
+    """Avance sur salaire (FG195) — demande, validation, déduction.
+
+    Une ligne par demande d'avance d'un ``employe`` (FK ``rh.DossierEmploye``,
+    même société) : le ``montant`` demandé, la ``date_demande``, le ``motif``,
+    le mois/année de déduction prévu (``annee_deduction`` / ``mois_deduction``,
+    par défaut le mois suivant — l'avance est récupérée sur la paie suivante) et
+    un ``statut`` (demandée → approuvée → déduite, ou refusée). Le ``valideur``
+    (FK ``rh.DossierEmploye`` optionnel) trace qui approuve.
+
+    INTÉGRATION EXPORT PAIE (FG192) : une avance APPROUVÉE constitue une retenue
+    sur le bordereau mensuel d'éléments variables ; le sélecteur
+    ``avances_a_deduire`` expose les avances à récupérer pour un mois donné.
+    DISTINCT du modèle ``apps.paie`` (PAIE28) qui consomme ces données via les
+    sélecteurs RH (jamais d'import croisé de models).
+
+    Multi-société : ``company`` posée CÔTÉ SERVEUR (jamais lue du corps) ;
+    ``employe`` / ``valideur`` doivent appartenir à la même société. Additif.
+
+    RUNTIME-SAFETY (leçon FG136) : ``statut`` ≤ 20 borné ; ``montant`` en
+    ``DecimalField`` ; ``motif`` en ``TextField`` ; index nommés (≤ 30 chars).
+    """
+
+    class Statut(models.TextChoices):
+        DEMANDEE = 'demandee', 'Demandée'
+        APPROUVEE = 'approuvee', 'Approuvée'
+        DEDUITE = 'deduite', 'Déduite'
+        REFUSEE = 'refusee', 'Refusée'
+
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='rh_avances_salaire',
+        verbose_name='Société',
+    )
+    employe = models.ForeignKey(
+        DossierEmploye,
+        on_delete=models.CASCADE,
+        related_name='avances_salaire',
+        verbose_name='Employé',
+    )
+    valideur = models.ForeignKey(
+        DossierEmploye,
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='avances_validees',
+        verbose_name='Valideur',
+    )
+    montant = models.DecimalField(
+        max_digits=12, decimal_places=2, default=Decimal('0'),
+        verbose_name='Montant')
+    date_demande = models.DateField(
+        null=True, blank=True, verbose_name='Date de demande')
+    motif = models.TextField(blank=True, default='', verbose_name='Motif')
+    annee_deduction = models.PositiveIntegerField(
+        null=True, blank=True, verbose_name='Année de déduction')
+    mois_deduction = models.PositiveSmallIntegerField(
+        null=True, blank=True, verbose_name='Mois de déduction')
+    statut = models.CharField(
+        max_length=20, choices=Statut.choices,
+        default=Statut.DEMANDEE, verbose_name='Statut')
+    date_creation = models.DateTimeField(
+        auto_now_add=True, verbose_name='Créé le')
+    date_modification = models.DateTimeField(
+        auto_now=True, verbose_name='Modifié le')
+
+    class Meta:
+        verbose_name = 'Avance sur salaire'
+        verbose_name_plural = 'Avances sur salaire'
+        ordering = ['-date_demande', '-date_creation']
+        indexes = [
+            models.Index(
+                fields=['company', 'employe'],
+                name='rh_avance_comp_emp_idx'),
+            models.Index(
+                fields=['company', 'statut'],
+                name='rh_avance_comp_stat_idx'),
+            models.Index(
+                fields=['company', 'annee_deduction', 'mois_deduction'],
+                name='rh_avance_comp_ded_idx'),
+        ]
+
+    def __str__(self):
+        return f'Avance {self.montant} — {self.employe}'
+
+
+class BulletinPaie(models.Model):
+    """Bulletin de paie déposé en LECTURE SEULE (FG196).
+
+    Dépôt mensuel du bulletin de paie (le PDF produit par le prestataire de
+    paie) rattaché à un ``employe`` (FK ``rh.DossierEmploye``, même société)
+    pour une période ``annee``/``mois``. AUCUN calcul légal n'est fait ici : ce
+    modèle ne fait que STOCKER et exposer en consultation le document fourni —
+    décision assumée (FG196). Le fichier RÉUTILISE le stockage objet existant de
+    ``records.Attachment`` (MinIO) : aucun nouveau stockage n'est construit. Le
+    couple (``employe``, ``annee``, ``mois``) est unique (un bulletin par mois).
+
+    Le collaborateur consulte SON bulletin via le portail self-service (FG199) ;
+    le dépôt et l'administration restent Administrateur/Responsable.
+
+    Multi-société : ``company`` posée CÔTÉ SERVEUR (jamais lue du corps) ;
+    ``employe`` doit appartenir à la même société. Additif.
+
+    RUNTIME-SAFETY (leçon FG136) : ``note`` plafonnée ; contrainte d'unicité +
+    index nommés (≤ 30 chars).
+    """
+
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='rh_bulletins_paie',
+        verbose_name='Société',
+    )
+    employe = models.ForeignKey(
+        DossierEmploye,
+        on_delete=models.CASCADE,
+        related_name='bulletins_paie',
+        verbose_name='Employé',
+    )
+    # Réutilise le stockage MinIO existant : aucun nouveau stockage de fichier.
+    attachment = models.OneToOneField(
+        'records.Attachment',
+        on_delete=models.CASCADE,
+        related_name='bulletin_paie',
+        verbose_name='Pièce jointe',
+    )
+    annee = models.PositiveIntegerField(verbose_name='Année')
+    mois = models.PositiveSmallIntegerField(verbose_name='Mois')
+    note = models.CharField(
+        max_length=255, blank=True, default='', verbose_name='Note')
+    date_creation = models.DateTimeField(
+        auto_now_add=True, verbose_name='Créé le')
+
+    class Meta:
+        verbose_name = 'Bulletin de paie'
+        verbose_name_plural = 'Bulletins de paie'
+        ordering = ['-annee', '-mois', 'employe']
+        constraints = [
+            models.UniqueConstraint(
+                fields=['employe', 'annee', 'mois'],
+                name='rh_bulletin_emp_an_mois_uniq'),
+        ]
+        indexes = [
+            models.Index(
+                fields=['company', 'annee', 'mois'],
+                name='rh_bulletin_comp_anmois_idx'),
+            models.Index(
+                fields=['company', 'employe'],
+                name='rh_bulletin_comp_emp_idx'),
+        ]
+
+    def __str__(self):
+        return f'Bulletin {self.mois:02d}/{self.annee} — {self.employe}'
+
+
+class PermisConduire(models.Model):
+    """Permis de conduire & habilitation à conduire d'un collaborateur (FG197).
+
+    Suit le droit de conduire d'un ``employe`` (FK ``rh.DossierEmploye``, même
+    société) : la ``categorie`` (catégorie de permis marocaine — B, C, D, EC…),
+    le ``numero`` du permis, la ``date_delivrance`` et la ``date_expiration``
+    (validité administrative ; un permis expiré n'autorise plus la conduite),
+    et un drapeau ``habilitation_conduite`` (habilitation interne à conduire un
+    véhicule de service, distincte du permis légal). C'est la SOURCE DE VÉRITÉ
+    du droit de conduire côté RH : la garde d'affectation conducteur↔véhicule
+    (FG198) la consulte via ``selectors.peut_conduire``.
+
+    Multi-société : ``company`` posée CÔTÉ SERVEUR (jamais lue du corps) ;
+    ``employe`` doit appartenir à la même société. Un permis par (société,
+    employé, catégorie) — un collaborateur peut détenir plusieurs catégories.
+    Additif.
+
+    RUNTIME-SAFETY (leçon FG136) : ``categorie`` ≤ 10 / ``numero`` ≤ 40
+    bornés ; contrainte d'unicité + index nommés (≤ 30 chars).
+    """
+
+    class Categorie(models.TextChoices):
+        A = 'A', 'A — Motos'
+        B = 'B', 'B — Véhicules légers'
+        C = 'C', 'C — Poids lourds'
+        D = 'D', 'D — Transport de personnes'
+        EB = 'EB', 'EB — Léger + remorque'
+        EC = 'EC', 'EC — Poids lourd + remorque'
+
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='rh_permis_conduire',
+        verbose_name='Société',
+    )
+    employe = models.ForeignKey(
+        DossierEmploye,
+        on_delete=models.CASCADE,
+        related_name='permis_conduire',
+        verbose_name='Employé',
+    )
+    categorie = models.CharField(
+        max_length=10, choices=Categorie.choices,
+        default=Categorie.B, verbose_name='Catégorie')
+    numero = models.CharField(
+        max_length=40, blank=True, default='', verbose_name='Numéro de permis')
+    date_delivrance = models.DateField(
+        null=True, blank=True, verbose_name='Date de délivrance')
+    date_expiration = models.DateField(
+        null=True, blank=True, verbose_name="Date d'expiration")
+    habilitation_conduite = models.BooleanField(
+        default=False, verbose_name='Habilitation à conduire (interne)')
+    note = models.CharField(
+        max_length=255, blank=True, default='', verbose_name='Note')
+    date_creation = models.DateTimeField(
+        auto_now_add=True, verbose_name='Créé le')
+    date_modification = models.DateTimeField(
+        auto_now=True, verbose_name='Modifié le')
+
+    class Meta:
+        verbose_name = 'Permis de conduire'
+        verbose_name_plural = 'Permis de conduire'
+        ordering = ['employe', 'categorie']
+        constraints = [
+            models.UniqueConstraint(
+                fields=['company', 'employe', 'categorie'],
+                name='rh_permis_comp_emp_cat_uniq'),
+        ]
+        indexes = [
+            models.Index(
+                fields=['company', 'employe'],
+                name='rh_permis_comp_emp_idx'),
+            models.Index(
+                fields=['company', 'date_expiration'],
+                name='rh_permis_comp_exp_idx'),
+        ]
+
+    def __str__(self):
+        return f'{self.employe} — permis {self.categorie}'
+
+
+class AffectationVehicule(models.Model):
+    """Affectation d'un conducteur à un véhicule (FG198).
+
+    Lie un ``employe`` conducteur (FK ``rh.DossierEmploye``, même société) à un
+    véhicule du parc (``vehicule_id`` — STRING-FK vers ``flotte.Vehicule`` : on
+    ne référence jamais ``flotte.models`` directement, comme
+    ``AffectationRoster`` / ``OrdreMission``) sur une période
+    (``date_debut`` → ``date_fin`` optionnelle pour une affectation ouverte).
+
+    GARDE PERMIS (décision FG198) : à la création/màj, le service
+    ``services.controler_permis_affectation`` REFUSE l'affectation si le
+    conducteur n'a pas de permis VALIDE (FG197 — via ``selectors.peut_conduire``).
+    Le contrôle est posé CÔTÉ SERVEUR ; le flag ``permis_verifie`` matérialise
+    qu'un permis valide existait à l'affectation.
+
+    Multi-société : ``company`` posée CÔTÉ SERVEUR (jamais lue du corps) ;
+    ``employe`` doit appartenir à la même société. Additif.
+
+    RUNTIME-SAFETY (leçon FG136) : ``statut`` ≤ 20 borné ; ``note`` plafonnée ;
+    index nommés (≤ 30 chars).
+    """
+
+    class Statut(models.TextChoices):
+        ACTIVE = 'active', 'Active'
+        TERMINEE = 'terminee', 'Terminée'
+
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='rh_affectations_vehicule',
+        verbose_name='Société',
+    )
+    employe = models.ForeignKey(
+        DossierEmploye,
+        on_delete=models.CASCADE,
+        related_name='affectations_vehicule',
+        verbose_name='Conducteur',
+    )
+    # String FK cross-app vers flotte.Vehicule — jamais importer flotte.models.
+    vehicule_id = models.PositiveIntegerField(verbose_name='Véhicule (ID)')
+    date_debut = models.DateField(
+        null=True, blank=True, verbose_name="Début d'affectation")
+    date_fin = models.DateField(
+        null=True, blank=True, verbose_name="Fin d'affectation")
+    statut = models.CharField(
+        max_length=20, choices=Statut.choices,
+        default=Statut.ACTIVE, verbose_name='Statut')
+    # Posé côté serveur : vrai si un permis valide existait à l'affectation.
+    permis_verifie = models.BooleanField(
+        default=False, verbose_name='Permis vérifié')
+    note = models.CharField(
+        max_length=255, blank=True, default='', verbose_name='Note')
+    date_creation = models.DateTimeField(
+        auto_now_add=True, verbose_name='Créé le')
+    date_modification = models.DateTimeField(
+        auto_now=True, verbose_name='Modifié le')
+
+    class Meta:
+        verbose_name = 'Affectation véhicule'
+        verbose_name_plural = 'Affectations véhicule'
+        ordering = ['-date_debut', '-date_creation']
+        indexes = [
+            models.Index(
+                fields=['company', 'employe'],
+                name='rh_affveh_comp_emp_idx'),
+            models.Index(
+                fields=['company', 'vehicule_id'],
+                name='rh_affveh_comp_veh_idx'),
+            models.Index(
+                fields=['company', 'statut'],
+                name='rh_affveh_comp_stat_idx'),
+        ]
+
+    def __str__(self):
+        return f'{self.employe} → véhicule {self.vehicule_id}'
+
+
+class NoteDeFrais(models.Model):
+    """Note de frais déclarée par un collaborateur (FG199).
+
+    Déclaration de frais professionnels par un ``employe`` (FK
+    ``rh.DossierEmploye``, même société) : la ``categorie`` (transport, repas,
+    hébergement, fournitures, autre), le ``montant``, la ``date_frais`` (date de
+    la dépense), un ``libelle`` descriptif et un ``statut`` de remboursement
+    (soumise → approuvée → remboursée, ou refusée). Saisie depuis le portail
+    self-service (FG199) par le collaborateur lui-même ; l'approbation reste
+    Administrateur/Responsable. Les notes approuvées peuvent alimenter les
+    retenues/primes du bordereau de paie (FG192) côté employeur.
+
+    Multi-société : ``company`` posée CÔTÉ SERVEUR (jamais lue du corps) ;
+    ``employe`` doit appartenir à la même société. Additif.
+
+    RUNTIME-SAFETY (leçon FG136) : ``categorie`` / ``statut`` ≤ 20 bornés ;
+    ``montant`` en ``DecimalField`` ; ``libelle`` plafonné ; index nommés
+    (≤ 30 chars).
+    """
+
+    class Categorie(models.TextChoices):
+        TRANSPORT = 'transport', 'Transport'
+        REPAS = 'repas', 'Repas'
+        HEBERGEMENT = 'hebergement', 'Hébergement'
+        FOURNITURES = 'fournitures', 'Fournitures'
+        AUTRE = 'autre', 'Autre'
+
+    class Statut(models.TextChoices):
+        SOUMISE = 'soumise', 'Soumise'
+        APPROUVEE = 'approuvee', 'Approuvée'
+        REMBOURSEE = 'remboursee', 'Remboursée'
+        REFUSEE = 'refusee', 'Refusée'
+
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='rh_notes_frais',
+        verbose_name='Société',
+    )
+    employe = models.ForeignKey(
+        DossierEmploye,
+        on_delete=models.CASCADE,
+        related_name='notes_frais',
+        verbose_name='Employé',
+    )
+    categorie = models.CharField(
+        max_length=20, choices=Categorie.choices,
+        default=Categorie.AUTRE, verbose_name='Catégorie')
+    montant = models.DecimalField(
+        max_digits=12, decimal_places=2, default=Decimal('0'),
+        verbose_name='Montant')
+    date_frais = models.DateField(
+        null=True, blank=True, verbose_name='Date de la dépense')
+    libelle = models.CharField(max_length=255, verbose_name='Libellé')
+    statut = models.CharField(
+        max_length=20, choices=Statut.choices,
+        default=Statut.SOUMISE, verbose_name='Statut')
+    date_creation = models.DateTimeField(
+        auto_now_add=True, verbose_name='Créé le')
+    date_modification = models.DateTimeField(
+        auto_now=True, verbose_name='Modifié le')
+
+    class Meta:
+        verbose_name = 'Note de frais'
+        verbose_name_plural = 'Notes de frais'
+        ordering = ['-date_frais', '-date_creation']
+        indexes = [
+            models.Index(
+                fields=['company', 'employe'],
+                name='rh_frais_comp_emp_idx'),
+            models.Index(
+                fields=['company', 'statut'],
+                name='rh_frais_comp_stat_idx'),
+        ]
+
+    def __str__(self):
+        return f'{self.libelle} — {self.montant} ({self.employe})'
