@@ -1928,3 +1928,77 @@ def facturer_ligne_echeance(ligne, *, user=None, taux_tva=Decimal('20')):
         message='Facturation récurrente d\'une échéance.', auteur=user)
 
     return facture
+
+
+# ---------------------------------------------------------------------------
+# CONTRAT32 — Indexation / révision de prix
+# ---------------------------------------------------------------------------
+
+
+def calculer_prix_indexe(indexation, *, valeur_actuelle, prix_base=None):
+    """Calcule le prix révisé d'une indexation (lecture seule) — CONTRAT32.
+
+    PUREMENT DÉCLARATIF : ne crée AUCUNE écriture, ne change AUCUN statut. Délègue
+    à ``IndexationPrix.calculer_prix_indexe``. Renvoie un dict
+    ``{'prix_base': Decimal, 'prix_revise': Decimal, 'delta': Decimal,
+    'valeur_actuelle': Decimal}``.
+    """
+    if prix_base is None:
+        prix_base = indexation.contrat.montant or Decimal('0')
+    prix_base = Decimal(str(prix_base))
+    prix_revise = indexation.calculer_prix_indexe(
+        valeur_actuelle=valeur_actuelle, prix_base=prix_base)
+    return {
+        'prix_base': prix_base,
+        'prix_revise': prix_revise,
+        'delta': (prix_revise - prix_base).quantize(Decimal('0.01')),
+        'valeur_actuelle': Decimal(str(valeur_actuelle)),
+    }
+
+
+@transaction.atomic
+def appliquer_indexation(indexation, *, valeur_actuelle, auteur=None,
+                         today=None):
+    """Applique une révision de prix indexée via un AVENANT — CONTRAT32.
+
+    Calcule le prix révisé pour ``valeur_actuelle`` puis, si le delta est non nul,
+    crée un AVENANT (CONTRAT24) ajustant ``Contrat.montant`` du delta (la création
+    d'avenant passe par ``creer_avenant`` — numérotation max+1, instantané immuable,
+    audit chatter). Trace ``date_derniere_revision`` côté serveur. Le
+    ``Contrat.statut`` n'est JAMAIS modifié (préservation des statuts — CONTRAT12)
+    et aucun funnel ``STAGES.py`` n'intervient (rule #2).
+
+    Renvoie un dict ``{'avenant': Avenant|None, 'prix_base', 'prix_revise',
+    'delta'}``. ``avenant`` est ``None`` quand le delta est nul (aucune révision
+    nécessaire) — on trace tout de même la date de révision.
+    """
+    if today is None:
+        today = timezone.localdate()
+
+    calcul = calculer_prix_indexe(
+        indexation, valeur_actuelle=valeur_actuelle)
+    delta = calcul['delta']
+
+    avenant = None
+    if delta != Decimal('0'):
+        avenant = creer_avenant(
+            indexation.contrat,
+            objet=f'Indexation prix ({indexation.indice})',
+            description=(
+                f'Révision indexée : indice {indexation.indice} '
+                f'valeur {calcul["valeur_actuelle"]} (base '
+                f'{indexation.valeur_base}). '
+                f'Prix {calcul["prix_base"]} → {calcul["prix_revise"]}.'),
+            date_effet=today,
+            montant_delta=delta,
+            auteur=auteur)
+
+    indexation.date_derniere_revision = today
+    indexation.save(update_fields=['date_derniere_revision'])
+
+    return {
+        'avenant': avenant,
+        'prix_base': calcul['prix_base'],
+        'prix_revise': calcul['prix_revise'],
+        'delta': delta,
+    }

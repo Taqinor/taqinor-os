@@ -10,6 +10,7 @@ from .models import (
     EcheancierContrat,
     EngagementSLA,
     EtapeApprobation,
+    IndexationPrix,
     JalonContrat,
     LigneEcheance,
     Obligation,
@@ -172,3 +173,13 @@ class LigneEcheanceAdmin(admin.ModelAdmin):
     search_fields = ('libelle',)
     readonly_fields = ('numero', 'date_paiement', 'facture_id',
                        'date_creation')
+
+
+@admin.register(IndexationPrix)
+class IndexationPrixAdmin(admin.ModelAdmin):
+    list_display = ('id', 'contrat', 'libelle', 'indice', 'valeur_base',
+                    'part_fixe', 'periodicite', 'date_derniere_revision',
+                    'actif', 'company')
+    list_filter = ('periodicite', 'actif')
+    search_fields = ('libelle', 'indice')
+    readonly_fields = ('date_derniere_revision', 'date_creation')

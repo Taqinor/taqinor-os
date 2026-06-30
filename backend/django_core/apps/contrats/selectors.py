@@ -224,6 +224,19 @@ def lignes_echeancier(echeancier):
             'numero', 'id')
 
 
+def indexations_contrat(contrat):
+    """Indexations de prix d'un contrat (QuerySet scopé société) — CONTRAT32.
+
+    Lecture seule. Ordre par ``id`` décroissant (cohérent avec ``Meta.ordering``).
+    La société est portée par le contrat ; on filtre aussi sur ``contrat.company``
+    par sécurité même si le FK ``contrat`` la garantit.
+    """
+    from .models import IndexationPrix
+
+    return IndexationPrix.objects.filter(
+        contrat=contrat, company=contrat.company).order_by('-id')
+
+
 def signatures_contrat(contrat):
     """Signatures électroniques d'un contrat (QuerySet scopé société, ordonné).
 

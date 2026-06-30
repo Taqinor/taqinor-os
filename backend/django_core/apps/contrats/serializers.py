@@ -18,6 +18,7 @@ from .models import (
     EcheancierContrat,
     EngagementSLA,
     EtapeApprobation,
+    IndexationPrix,
     JalonContrat,
     LigneEcheance,
     ModeleContrat,
@@ -934,6 +935,70 @@ class AjouterLigneEcheanceSerializer(serializers.Serializer):
         min_value=0)
     libelle = serializers.CharField(
         required=False, allow_blank=True, max_length=200)
+
+
+class IndexationPrixSerializer(serializers.ModelSerializer):
+    """Règle d'indexation / révision de prix d'un contrat (CONTRAT32).
+
+    ``company`` n'est jamais exposée : elle est posée côté serveur (déduite du
+    contrat). Le ``contrat`` reçu est validé même-société. ``date_derniere_revision``
+    est posée côté serveur (action ``appliquer``) et reste en lecture seule. La
+    validation des bornes (valeur de base > 0, part fixe ∈ [0,1]) est relayée
+    depuis ``IndexationPrix.clean``.
+    """
+    periodicite_display = serializers.CharField(
+        source='get_periodicite_display', read_only=True)
+
+    class Meta:
+        model = IndexationPrix
+        fields = [
+            'id', 'contrat', 'libelle', 'indice', 'valeur_base', 'part_fixe',
+            'periodicite', 'periodicite_display', 'date_derniere_revision',
+            'actif', 'date_creation',
+        ]
+        read_only_fields = [
+            'periodicite_display', 'date_derniere_revision', 'date_creation',
+        ]
+
+    def validate_contrat(self, contrat):
+        """Le contrat rattaché doit appartenir à la société de l'utilisateur."""
+        request = self.context.get('request')
+        if request is not None and contrat.company_id != request.user.company_id:
+            raise serializers.ValidationError(
+                "Ce contrat n'appartient pas à votre société.")
+        return contrat
+
+    def validate(self, attrs):
+        """Relaie la validation des bornes du modèle (``clean``)."""
+        from django.core.exceptions import ValidationError as DjangoVE
+
+        controle = IndexationPrix()
+        for field in ('valeur_base', 'part_fixe'):
+            valeur = attrs.get(
+                field, getattr(self.instance, field, None)
+                if self.instance is not None else None)
+            if valeur is not None:
+                setattr(controle, field, valeur)
+        try:
+            controle.clean()
+        except DjangoVE as exc:
+            raise serializers.ValidationError(
+                exc.messages if hasattr(exc, 'messages') else str(exc))
+        return attrs
+
+
+class IndexationActionSerializer(serializers.Serializer):
+    """Corps des actions simuler/appliquer d'une indexation (CONTRAT32).
+
+    ``valeur_actuelle`` (requis) : valeur courante de l'indice de référence.
+    ``prix_base`` (optionnel, simulation seulement) : base de calcul si différente
+    du montant du contrat.
+    """
+    valeur_actuelle = serializers.DecimalField(
+        max_digits=14, decimal_places=4, min_value=0)
+    prix_base = serializers.DecimalField(
+        max_digits=14, decimal_places=2, required=False, allow_null=True,
+        min_value=0)
 
 
 class PenaliteSLASerializer(serializers.Serializer):

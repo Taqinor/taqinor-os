@@ -2190,3 +2190,124 @@ class LigneEcheance(models.Model):
             f'Échéance n°{self.numero} ({self.montant}, '
             f'{self.date_echeance}) — échéancier {self.echeancier_id}'
         )
+
+
+class IndexationPrix(models.Model):
+    """Indexation / révision de prix d'un contrat — CONTRAT32.
+
+    Une ``IndexationPrix`` déclare une RÈGLE DE RÉVISION du prix d'un ``Contrat``
+    par INDICE : un indice de référence nommé (``indice``, ex. « Index BTP »,
+    « IPC »), sa valeur de BASE au moment de la signature (``valeur_base``) et,
+    optionnellement, une part FIXE non révisable (``part_fixe``, en fraction
+    [0–1] de la formule). La révision applique la formule type :
+
+        prix_revisé = prix_base × (part_fixe + (1 − part_fixe) × valeur_actuelle
+                                   / valeur_base)
+
+    Quand ``part_fixe = 0`` cela revient à une simple proportion
+    ``valeur_actuelle / valeur_base``.
+
+    Le calcul (``services.calculer_prix_indexe``) est PUREMENT DÉCLARATIF : il
+    renvoie un prix révisé indicatif et n'écrit RIEN. L'APPLICATION d'une révision
+    (``services.appliquer_indexation``) passe par un AVENANT (CONTRAT24) qui ajuste
+    le ``Contrat.montant`` via ``creer_avenant`` (delta = prix_revisé − montant
+    actuel) — le ``Contrat.statut`` n'est JAMAIS modifié (CONTRAT12) et aucun
+    funnel ``STAGES.py`` n'intervient (rule #2).
+
+    Multi-tenant : ``company`` est posée CÔTÉ SERVEUR (déduite du contrat).
+    ``contrat`` est une référence interne à l'app `contrats` (FK dur autorisé).
+
+    RUNTIME-SAFETY (leçon FG136) : ``libelle`` / ``indice`` bornés ; les valeurs
+    sont des ``DecimalField`` bornés. ``date_derniere_revision`` trace la dernière
+    application. L'index est NOMMÉ explicitement (≤30 chars).
+    """
+
+    class Periodicite(models.TextChoices):
+        ANNUELLE = 'annuelle', 'Annuelle'
+        SEMESTRIELLE = 'semestrielle', 'Semestrielle'
+        TRIMESTRIELLE = 'trimestrielle', 'Trimestrielle'
+        A_LA_DEMANDE = 'a_la_demande', 'À la demande'
+
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='contrats_indexations',
+        verbose_name='Société',
+    )
+    contrat = models.ForeignKey(
+        Contrat,
+        on_delete=models.CASCADE,
+        related_name='indexations',
+        verbose_name='Contrat',
+    )
+    libelle = models.CharField(
+        max_length=200, blank=True, default='', verbose_name='Libellé')
+    # Nom de l'indice de référence (libre, ex. « Index BTP-01 », « IPC »).
+    indice = models.CharField(max_length=100, verbose_name='Indice de référence')
+    # Valeur de l'indice à la base (signature). Doit être strictement > 0 pour
+    # un calcul de proportion valide.
+    valeur_base = models.DecimalField(
+        max_digits=14, decimal_places=4, default=Decimal('0'),
+        verbose_name='Valeur de base')
+    # Part FIXE non révisable de la formule (fraction [0,1]). 0 = entièrement
+    # révisable.
+    part_fixe = models.DecimalField(
+        max_digits=5, decimal_places=4, default=Decimal('0'),
+        verbose_name='Part fixe (0–1)')
+    periodicite = models.CharField(
+        max_length=20, choices=Periodicite.choices,
+        default=Periodicite.ANNUELLE, verbose_name='Périodicité de révision')
+    # Trace de la dernière révision effectivement appliquée (posée côté serveur
+    # par ``appliquer_indexation``). NULL = jamais appliquée.
+    date_derniere_revision = models.DateField(
+        null=True, blank=True, verbose_name='Dernière révision le')
+    actif = models.BooleanField(default=True, verbose_name='Actif')
+    date_creation = models.DateTimeField(
+        auto_now_add=True, verbose_name='Créée le')
+
+    class Meta:
+        verbose_name = 'Indexation de prix'
+        verbose_name_plural = 'Indexations de prix'
+        ordering = ['contrat_id', '-id']
+        indexes = [
+            models.Index(
+                fields=['company', 'actif'],
+                name='contrats_idx_co_act',
+            ),
+        ]
+
+    def __str__(self):
+        return f'Indexation {self.indice} — contrat {self.contrat_id}'
+
+    def clean(self):
+        """Valide la cohérence des paramètres de la formule.
+
+        ``valeur_base`` doit être strictement positive (dénominateur) et
+        ``part_fixe`` doit rester dans [0, 1].
+        """
+        if self.valeur_base is not None and self.valeur_base <= 0:
+            raise ValidationError(
+                'La valeur de base doit être strictement positive.')
+        if self.part_fixe is not None and not (
+                Decimal('0') <= self.part_fixe <= Decimal('1')):
+            raise ValidationError(
+                'La part fixe doit être comprise entre 0 et 1.')
+
+    def calculer_prix_indexe(self, *, valeur_actuelle, prix_base=None):
+        """Prix révisé pour une ``valeur_actuelle`` d'indice (lecture seule).
+
+        ``prix_base`` par défaut = ``self.contrat.montant``. Applique la formule
+        ``prix_base × (part_fixe + (1 − part_fixe) × valeur_actuelle /
+        valeur_base)`` et arrondit à 2 décimales. Ne crée AUCUNE écriture.
+        """
+        if self.valeur_base is None or self.valeur_base <= 0:
+            raise ValueError('Valeur de base invalide pour l\'indexation.')
+        if prix_base is None:
+            prix_base = self.contrat.montant or Decimal('0')
+        prix_base = Decimal(str(prix_base))
+        valeur_actuelle = Decimal(str(valeur_actuelle))
+        part_fixe = self.part_fixe or Decimal('0')
+        coef = (part_fixe
+                + (Decimal('1') - part_fixe)
+                * valeur_actuelle / self.valeur_base)
+        return (prix_base * coef).quantize(Decimal('0.01'))

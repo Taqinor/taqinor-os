@@ -11,6 +11,7 @@ from .views import (
     ContratViewSet,
     EcheancierContratViewSet,
     EngagementSLAViewSet,
+    IndexationPrixViewSet,
     JalonContratViewSet,
     LigneEcheanceViewSet,
     ModeleContratClauseViewSet,
@@ -43,6 +44,7 @@ router.register(r'retenues-garantie', RetenueGarantieViewSet)
 router.register(r'cautions', CautionViewSet)
 router.register(r'echeanciers', EcheancierContratViewSet)
 router.register(r'lignes-echeance', LigneEcheanceViewSet)
+router.register(r'indexations', IndexationPrixViewSet)
 
 urlpatterns = [
     path('', include(router.urls)),
