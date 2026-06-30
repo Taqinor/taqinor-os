@@ -732,3 +732,72 @@ class TestClientEnvironmentalPortal(TestCase):
     def test_portal_requires_client(self):
         r = self.api.get('/api/django/monitoring/configs/client-portal/')
         self.assertEqual(r.status_code, 400, r.data)
+
+
+class TestOmReport(TestCase):
+    """FG289 — rapport O&M périodique automatisé (données + email)."""
+
+    def setUp(self):
+        self.company = make_company('rep-co', 'Rep Co')
+        self.user = User.objects.create_user(
+            username='rep_admin', password='x', role_legacy='admin',
+            company=self.company)
+        self.api = auth(self.user)
+        self.client_obj = Client.objects.create(
+            company=self.company, nom='Cli', prenom='Rep',
+            email='rep-cli@example.invalid')
+        self.inst = Installation.objects.create(
+            company=self.company, reference='R-1', client=self.client_obj,
+            puissance_installee_kwc=Decimal('10'))
+        self.config = MonitoringConfig.objects.create(
+            company=self.company, installation=self.inst,
+            expected_annual_kwh=Decimal('12000'))
+        self.today = date(2026, 6, 30)
+        ProductionReading.objects.create(
+            company=self.company, installation=self.inst,
+            date=date(2026, 6, 10), period_days=30, energy_kwh=Decimal('900'))
+
+    def test_report_data(self):
+        from apps.monitoring.report import build_om_report_data
+        d = build_om_report_data(self.inst, period='monthly', today=self.today)
+        self.assertEqual(d['period_kwh'], Decimal('900.00'))
+        self.assertIn('recommendations', d)
+        self.assertTrue(len(d['recommendations']) >= 1)
+
+    def test_report_quarterly_window(self):
+        from apps.monitoring.report import build_om_report_data
+        d = build_om_report_data(
+            self.inst, period='quarterly', today=self.today)
+        self.assertEqual(d['period_days'], 91)
+
+    def test_email_no_recipient_is_noop(self):
+        from apps.monitoring.report import email_om_report
+        # Système sans client → no-op (False).
+        inst2 = Installation.objects.create(
+            company=self.company, reference='R-2',
+            puissance_installee_kwc=Decimal('5'))
+        self.assertFalse(email_om_report(inst2, today=self.today))
+
+    def test_email_sends_with_client_email(self):
+        from django.core import mail
+        from apps.monitoring.report import email_om_report
+        ok = email_om_report(self.inst, period='monthly', today=self.today)
+        self.assertTrue(ok)
+        self.assertEqual(len(mail.outbox), 1)
+        self.assertIn('rep-cli@example.invalid', mail.outbox[0].to)
+        self.assertEqual(len(mail.outbox[0].attachments), 1)
+
+    def test_report_json_endpoint(self):
+        r = self.api.get(
+            f'/api/django/monitoring/configs/{self.config.id}/om-report/')
+        self.assertEqual(r.status_code, 200, r.data)
+        self.assertIn('period_kwh', r.data)
+
+    def test_email_endpoint(self):
+        from django.core import mail
+        r = self.api.post(
+            f'/api/django/monitoring/configs/{self.config.id}/email-om-report/',
+            {'period': 'monthly'}, format='json')
+        self.assertEqual(r.status_code, 200, r.data)
+        self.assertTrue(r.data['sent'])
+        self.assertEqual(len(mail.outbox), 1)

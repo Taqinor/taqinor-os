@@ -22,7 +22,7 @@ from datetime import timedelta
 
 from django.db.models import Sum
 from django.db.models.functions import TruncMonth
-from django.http import StreamingHttpResponse
+from django.http import HttpResponse, StreamingHttpResponse
 from django.utils import timezone
 from rest_framework import status, viewsets
 from rest_framework.decorators import action
@@ -235,6 +235,37 @@ class MonitoringConfigViewSet(TenantMixin, viewsets.ModelViewSet):
         window = min(int(request.query_params.get('window_days', 365)), 1825)
         return Response(
             soiling_assessment(config.installation, window_days=window))
+
+    @action(detail=True, methods=['get'], url_path='om-report',
+            permission_classes=[IsAnyRole])
+    def om_report(self, request, pk=None):
+        """FG289 — rapport O&M périodique du système. ?period=monthly|quarterly.
+        ?format=pdf renvoie le PDF ; sinon les données JSON."""
+        from .report import build_om_report_data, render_om_report_pdf
+        config = self.get_object()
+        period = request.query_params.get('period', 'monthly')
+        if request.query_params.get('format') == 'pdf':
+            pdf = render_om_report_pdf(config.installation, period=period)
+            resp = HttpResponse(pdf, content_type='application/pdf')
+            ref = config.installation.reference or config.installation_id
+            resp['Content-Disposition'] = (
+                f'attachment; filename="rapport-om-{ref}.pdf"')
+            return resp
+        return Response(
+            build_om_report_data(config.installation, period=period))
+
+    @action(detail=True, methods=['post'], url_path='email-om-report',
+            permission_classes=[IsResponsableOrAdmin])
+    def email_om_report(self, request, pk=None):
+        """FG289 — envoie le rapport O&M périodique par e-mail (PDF joint).
+        Destinataire : body `recipient` sinon l'e-mail du client du système."""
+        from .report import email_om_report
+        config = self.get_object()
+        period = request.data.get('period', 'monthly')
+        recipient = request.data.get('recipient') or None
+        sent = email_om_report(
+            config.installation, period=period, recipient=recipient)
+        return Response({'sent': sent})
 
 
 class CleaningEventViewSet(TenantMixin, viewsets.ModelViewSet):
