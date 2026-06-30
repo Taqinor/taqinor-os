@@ -46,6 +46,7 @@ from .contrat_prix import (
     ContratPrixFournisseurViewSet, ContratPrixLigneViewSet,
 )
 from .bin_location import BinLocationViewSet, BinAffectationViewSet
+from .putaway import PutAwayViewSet
 from .field_sync import FieldSyncView
 
 __all__ = [
@@ -95,5 +96,6 @@ __all__ = [
     'ContratPrixLigneViewSet',
     'BinLocationViewSet',
     'BinAffectationViewSet',
+    'PutAwayViewSet',
     'FieldSyncView',
 ]

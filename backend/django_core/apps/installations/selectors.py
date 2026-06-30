@@ -1466,3 +1466,24 @@ def prix_convenu_fournisseur(company, produit_id, *, fournisseur_id=None,
         'contrat_id': meilleur.contrat_id,
         'version': meilleur.contrat.version,
     }
+
+
+def suggerer_bin_putaway(company, produit_id, emplacement_id=None):
+    """FG320 - casier suggere pour ranger un produit recu.
+
+    Priorite 1 : un casier deja affecte a ce produit (FG319 BinAffectation),
+    le plus rempli d'abord. Priorite 2 : le premier casier non archive de
+    l'emplacement (par ordre de parcours). Renvoie un BinLocation ou None.
+    """
+    from .models import BinLocation, BinAffectation
+    aff_qs = BinAffectation.objects.filter(
+        company=company, produit_id=produit_id, bin__archived=False)
+    if emplacement_id:
+        aff_qs = aff_qs.filter(bin__emplacement_id=emplacement_id)
+    aff = aff_qs.select_related('bin').order_by('-quantite').first()
+    if aff is not None:
+        return aff.bin
+    bin_qs = BinLocation.objects.filter(company=company, archived=False)
+    if emplacement_id:
+        bin_qs = bin_qs.filter(emplacement_id=emplacement_id)
+    return bin_qs.order_by('ordre', 'code').first()

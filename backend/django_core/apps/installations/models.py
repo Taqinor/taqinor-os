@@ -129,6 +129,9 @@ from .models_bin_location import (
     BinLocation,
     BinAffectation,
 )
+from .models_putaway import (
+    PutAway,
+)
 
 __all__ = [
     'Installation',
@@ -195,4 +198,5 @@ __all__ = [
     'ContratPrixLigne',
     'BinLocation',
     'BinAffectation',
+    'PutAway',
 ]

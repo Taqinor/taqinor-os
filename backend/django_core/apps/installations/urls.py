@@ -36,6 +36,7 @@ from .views import (
     ContratPrixLigneViewSet,
     BinLocationViewSet,
     BinAffectationViewSet,
+    PutAwayViewSet,
 )
 
 router = DefaultRouter()
@@ -83,6 +84,7 @@ router.register(r'contrats-prix-fournisseur', ContratPrixFournisseurViewSet)
 router.register(r'contrats-prix-lignes', ContratPrixLigneViewSet)
 router.register(r'bin-locations', BinLocationViewSet)
 router.register(r'bin-affectations', BinAffectationViewSet)
+router.register(r'putaways', PutAwayViewSet)
 
 urlpatterns = [
     # N91/F21 — synchro idempotente de la capture terrain hors-ligne.

@@ -39,6 +39,7 @@ from .models import (
     ContratPrixLigne,
     BinLocation,
     BinAffectation,
+    PutAway,
 )
 
 
@@ -1694,3 +1695,33 @@ class BinLocationSerializer(serializers.ModelSerializer):
         if not value:
             raise serializers.ValidationError('Le code du casier est requis.')
         return value
+
+
+class PutAwaySerializer(serializers.ModelSerializer):
+    """FG320 - rangement guide. La societe, `created_by`, `bin_suggere`, le
+    statut et les champs de tracage sont poses COTE SERVEUR. Le magasinier
+    confirme via l'action `ranger` (qui pose `bin_effectif`/`range_par`/date)."""
+    produit_nom = serializers.CharField(
+        source='produit.nom', read_only=True, default=None)
+    bin_suggere_code = serializers.CharField(
+        source='bin_suggere.code', read_only=True, default=None)
+    bin_effectif_code = serializers.CharField(
+        source='bin_effectif.code', read_only=True, default=None)
+    statut_display = serializers.CharField(
+        source='get_statut_display', read_only=True, default=None)
+
+    class Meta:
+        model = PutAway
+        fields = [
+            'id', 'produit', 'produit_nom', 'emplacement', 'quantite',
+            'bin_suggere', 'bin_suggere_code',
+            'bin_effectif', 'bin_effectif_code',
+            'statut', 'statut_display', 'reference_reception', 'note',
+            'range_par', 'date_rangement',
+            'created_by', 'date_creation', 'date_modification',
+        ]
+        read_only_fields = [
+            'bin_suggere', 'bin_effectif', 'statut', 'range_par',
+            'date_rangement', 'created_by',
+            'date_creation', 'date_modification',
+        ]
