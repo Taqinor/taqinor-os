@@ -1066,3 +1066,205 @@ def semer_alertes_echeances(company, *, within_days=30, today=None,
         'nb_creees': len(creees),
         'alertes': creees,
     }
+
+
+# ---------------------------------------------------------------------------
+# CONTRAT23 — Renouvellement (manuel + tacite reconduction)
+# ---------------------------------------------------------------------------
+
+
+class RenouvellementError(Exception):
+    """Levée quand un renouvellement de contrat est invalide.
+
+    Ex. : tenter de renouveler un contrat résilié/expiré (états terminaux —
+    plus rien à reconduire), ou demander une durée/date de reconduction qui ne
+    permet pas de calculer une nouvelle fin.
+    """
+
+
+# Statuts pour lesquels un renouvellement n'a PAS de sens (états terminaux de la
+# machine d'états CONTRAT12 : résilié / expiré). On refuse alors de renouveler.
+def _statuts_non_renouvelables():
+    from .models import Contrat
+
+    return {Contrat.Statut.RESILIE, Contrat.Statut.EXPIRE}
+
+
+@transaction.atomic
+def renouveler_contrat(contrat, *, nouvelle_date_fin=None, duree_mois=None,
+                       auteur=None, snapshot=True, today=None):
+    """Renouvelle EFFECTIVEMENT un contrat (action manuelle) — CONTRAT23.
+
+    Complémentaire de CONTRAT20 (alerte de préavis) et CONTRAT21 (liste des
+    contrats à échéance) qui ne font que SURFACER les contrats : ici on PROLONGE
+    réellement la période contractuelle.
+
+    Calcul de la nouvelle période :
+
+    - si ``nouvelle_date_fin`` est fournie, elle devient la nouvelle ``date_fin``
+      (priorité au choix explicite) ;
+    - sinon on décale ``date_fin`` (ou ``today`` si aucune fin n'est posée) de
+      ``duree_mois`` mois — ou, à défaut, de ``contrat.duree_reconduction_mois``
+      (durée déclarée de la tacite reconduction). Sans aucune durée exploitable,
+      ``RenouvellementError`` est levée.
+
+    Effets de bord (posés CÔTÉ SERVEUR, jamais lus d'un corps de requête) :
+
+    - ``date_debut`` est avancée à l'ancienne ``date_fin`` quand celle-ci existe
+      et précède la nouvelle fin (la nouvelle période démarre à la fin de
+      l'ancienne — comportement attendu d'une reconduction) ;
+    - ``date_fin`` reçoit la nouvelle échéance calculée ;
+    - ``preavis_traite`` est REMIS à ``False`` (un nouveau cycle de préavis
+      s'ouvre pour la nouvelle période) ;
+    - ``date_dernier_renouvellement`` = ``today`` (date du jour, injectable) ;
+    - ``nb_renouvellements`` est incrémenté de 1.
+
+    Le ``Contrat.statut`` n'est JAMAIS modifié (préservation des statuts —
+    CONTRAT12) et aucun funnel ``STAGES.py`` n'intervient (rule #2). Un contrat
+    résilié/expiré (état terminal) ne peut pas être renouvelé →
+    ``RenouvellementError``.
+
+    Si ``snapshot`` (défaut), un instantané immuable est figé via
+    ``creer_version(motif='Renouvellement')`` (CONTRAT18) — best-effort : un
+    échec de rendu n'empêche jamais le renouvellement. Le renouvellement est
+    journalisé dans le chatter (CONTRAT15), auteur posé côté serveur.
+
+    Renvoie le ``contrat`` rafraîchi.
+    """
+    from .models import Contrat
+
+    if contrat.statut in _statuts_non_renouvelables():
+        raise RenouvellementError(
+            "Un contrat résilié ou expiré ne peut pas être renouvelé.")
+
+    if today is None:
+        today = timezone.localdate()
+
+    ancienne_fin = contrat.date_fin
+
+    # Détermine la nouvelle date de fin.
+    if nouvelle_date_fin is not None:
+        nouvelle_fin = nouvelle_date_fin
+    else:
+        mois = duree_mois if duree_mois is not None else \
+            contrat.duree_reconduction_mois
+        if not mois or int(mois) <= 0:
+            raise RenouvellementError(
+                "Impossible de calculer la nouvelle échéance : fournir une "
+                "nouvelle date de fin, une durée en mois, ou une durée de "
+                "reconduction sur le contrat.")
+        base = ancienne_fin or today
+        nouvelle_fin = Contrat.ajouter_mois(base, int(mois))
+
+    # La nouvelle période démarre à la fin de l'ancienne (quand elle existe et
+    # précède la nouvelle fin) — sinon on laisse ``date_debut`` inchangée.
+    champs_maj = [
+        'date_fin', 'preavis_traite', 'date_dernier_renouvellement',
+        'nb_renouvellements',
+    ]
+    if (
+        ancienne_fin is not None
+        and nouvelle_fin is not None
+        and ancienne_fin < nouvelle_fin
+    ):
+        contrat.date_debut = ancienne_fin
+        champs_maj.append('date_debut')
+
+    contrat.date_fin = nouvelle_fin
+    contrat.preavis_traite = False
+    contrat.date_dernier_renouvellement = today
+    contrat.nb_renouvellements = (contrat.nb_renouvellements or 0) + 1
+    contrat.save(update_fields=champs_maj)
+
+    # CONTRAT15 — audit du renouvellement (ancienne → nouvelle fin).
+    journaliser_transition(
+        contrat, field='renouvellement',
+        old_value=_fmt_date(ancienne_fin),
+        new_value=_fmt_date(nouvelle_fin),
+        message='Renouvellement du contrat.',
+        auteur=auteur)
+
+    # CONTRAT18 — instantané immuable best-effort du contrat renouvelé.
+    if snapshot:
+        try:
+            creer_version(contrat, cree_par=auteur, motif='Renouvellement')
+        except Exception:  # pragma: no cover - défensif (rendu best-effort)
+            pass
+
+    return contrat
+
+
+def traiter_reconductions_tacites(company, today=None, *, auteur=None):
+    """Reconduit AUTOMATIQUEMENT les contrats en tacite reconduction dus — CONTRAT23.
+
+    Trouve les contrats de ``company`` :
+
+    - dont ``tacite_reconduction`` est vrai,
+    - non résiliés/expirés (états terminaux),
+    - avec une ``duree_reconduction_mois`` exploitable (> 0),
+    - dont l'échéance est ATTEINTE (``date_fin`` ≤ ``today``),
+
+    et les renouvelle chacun d'une période de ``duree_reconduction_mois`` via
+    ``renouveler_contrat`` (mêmes effets : avance ``date_fin``/``date_debut``,
+    remet ``preavis_traite=False``, snapshot, audit).
+
+    IDEMPOTENT : ``renouveler_contrat`` avance ``date_fin`` au-delà de ``today``,
+    donc un second passage le même jour ne re-sélectionne plus le contrat
+    (``date_fin`` n'est plus ≤ ``today``) — pas de double reconduction de la même
+    période. Boucle TANT QUE l'échéance reste dépassée pour rattraper plusieurs
+    périodes manquées (borne de sécurité pour éviter une boucle infinie).
+
+    Multi-tenant : ``company`` est posée côté serveur ; seuls les contrats de
+    cette société sont traités. Ne touche JAMAIS au ``Contrat.statut`` ni au
+    funnel ``STAGES.py`` (rule #2). ``today`` est injectable pour les tests.
+
+    Renvoie un dict ::
+
+        {'company_id', 'nb_traites', 'nb_renouvellements',
+         'contrats': [<Contrat>, …]}  # les contrats reconduits (au moins une fois)
+    """
+    from .models import Contrat
+
+    if today is None:
+        today = timezone.localdate()
+
+    dus = list(
+        Contrat.objects
+        .filter(company=company, tacite_reconduction=True,
+                date_fin__isnull=False, date_fin__lte=today)
+        .exclude(statut__in=list(_statuts_non_renouvelables()))
+        .filter(duree_reconduction_mois__isnull=False,
+                duree_reconduction_mois__gt=0)
+        .order_by('date_fin', 'id')
+    )
+
+    traites = []
+    nb_renouvellements = 0
+    for contrat in dus:
+        n = 0
+        # Rattrape les périodes manquées : on reconduit jusqu'à dépasser today.
+        # Borne dure (240 = 20 ans de reconductions mensuelles) anti-boucle.
+        while (
+            contrat.date_fin is not None
+            and contrat.date_fin <= today
+            and contrat.duree_reconduction_mois
+            and contrat.duree_reconduction_mois > 0
+            and n < 240
+        ):
+            renouveler_contrat(
+                contrat,
+                duree_mois=contrat.duree_reconduction_mois,
+                auteur=auteur,
+                today=today,
+            )
+            n += 1
+        if n:
+            traites.append(contrat)
+            nb_renouvellements += n
+
+    return {
+        'company_id': company.id,
+        'nb_traites': len(traites),
+        'nb_renouvellements': nb_renouvellements,
+        'contrats': traites,
+    }

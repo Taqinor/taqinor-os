@@ -92,13 +92,18 @@ class ContratSerializer(serializers.ModelSerializer):
             'sav_contrat_maintenance_id', 'modele', 'date_debut',
             'date_fin', 'preavis_jours', 'tacite_reconduction',
             'duree_reconduction_mois', 'preavis_traite',
+            # CONTRAT23 — audit du renouvellement (posés côté serveur).
+            'date_dernier_renouvellement', 'nb_renouvellements',
             'echeance_preavis', 'jours_avant_preavis',
             'jours_avant_echeance',
             'montant', 'devise',
             'confidentialite', 'confidentialite_display',
             'created_by', 'date_creation',
         ]
-        read_only_fields = ['created_by', 'date_creation']
+        read_only_fields = [
+            'created_by', 'date_creation',
+            'date_dernier_renouvellement', 'nb_renouvellements',
+        ]
 
     def get_echeance_preavis(self, obj):
         echeance = obj.echeance_preavis()
@@ -424,6 +429,24 @@ class ChangerStatutSerializer(serializers.Serializer):
     ``statut`` est le statut cible de la transition gardée.
     """
     statut = serializers.ChoiceField(choices=Contrat.Statut.choices)
+
+
+class RenouvelerContratSerializer(serializers.Serializer):
+    """Corps de POST /contrats/<id>/renouveler/ (CONTRAT23).
+
+    Détermine la nouvelle période de renouvellement. Les deux champs sont
+    optionnels mais l'UN au moins (ou une ``duree_reconduction_mois`` déjà posée
+    sur le contrat) est nécessaire pour calculer la nouvelle fin :
+
+    - ``nouvelle_date_fin`` : date de fin explicite (prioritaire) ;
+    - ``duree_mois``        : nombre de mois à ajouter à la fin courante.
+
+    L'auteur, la société et l'horodatage du renouvellement sont posés CÔTÉ
+    SERVEUR — jamais lus du corps de requête.
+    """
+    nouvelle_date_fin = serializers.DateField(required=False, allow_null=True)
+    duree_mois = serializers.IntegerField(
+        required=False, allow_null=True, min_value=1)
 
 
 class InstancierContratSerializer(serializers.Serializer):
