@@ -135,6 +135,39 @@ class ProductionReading(models.Model):
         return f'{self.installation_id} {self.date} {self.energy_kwh} kWh'
 
 
+class CleaningEvent(models.Model):
+    """FG283 — un NETTOYAGE de panneaux daté pour un système.
+
+    Sert de borne pour estimer la perte par salissure : la chute de PR depuis le
+    dernier nettoyage indique l'encrassement accumulé. Multi-tenant ; `company`
+    posée côté serveur, jamais lue du corps.
+    """
+
+    company = models.ForeignKey(
+        'authentication.Company', on_delete=models.CASCADE,
+        null=True, blank=True, related_name='cleaning_events')
+    installation = models.ForeignKey(
+        'installations.Installation', on_delete=models.CASCADE,
+        related_name='cleaning_events')
+    date = models.DateField()
+    note = models.TextField(blank=True, default='')
+    created_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL,
+        null=True, blank=True, related_name='cleaning_events')
+    date_creation = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        verbose_name = 'Nettoyage de panneaux'
+        verbose_name_plural = 'Nettoyages de panneaux'
+        ordering = ['-date', '-id']
+        indexes = [
+            models.Index(fields=['company', 'installation', '-date']),
+        ]
+
+    def __str__(self):
+        return f'Nettoyage #{self.installation_id} {self.date}'
+
+
 class MonitoringSettings(models.Model):
     """N52 — réglage de sous-performance PAR SOCIÉTÉ (singleton).
 

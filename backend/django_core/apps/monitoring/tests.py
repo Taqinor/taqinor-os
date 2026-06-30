@@ -28,7 +28,7 @@ from apps.sav.models import Ticket
 
 from apps.monitoring import providers, services
 from apps.monitoring.models import (
-    MonitoringConfig, MonitoringSettings, ProductionReading,
+    CleaningEvent, MonitoringConfig, MonitoringSettings, ProductionReading,
     UnderperformanceFlag,
 )
 
@@ -497,3 +497,60 @@ class TestProductionWarranty(TestCase):
             f'/api/django/monitoring/warranties/{w.id}/status/?year=2026')
         self.assertEqual(r.status_code, 200, r.data)
         self.assertTrue(r.data['has_warranty'])
+
+
+class TestSoiling(TestCase):
+    """FG283 — détection de pertes par salissure + reco de nettoyage."""
+
+    def setUp(self):
+        self.company = make_company('soil-co', 'Soil Co')
+        self.user = User.objects.create_user(
+            username='soil_admin', password='x', role_legacy='admin',
+            company=self.company)
+        self.api = auth(self.user)
+        self.inst, _ = make_installation(self.company, ref='S-1', kwc='10.00')
+        self.config = MonitoringConfig.objects.create(
+            company=self.company, installation=self.inst,
+            expected_annual_kwh=Decimal('12000'))
+        self.today = date(2026, 6, 30)
+
+    def _seed(self, kwh_by_month):
+        for offset, kwh in enumerate(kwh_by_month):
+            ProductionReading.objects.create(
+                company=self.company, installation=self.inst,
+                date=date(2026, 1, 15) + timedelta(days=30 * offset),
+                period_days=30, energy_kwh=Decimal(str(kwh)))
+
+    def test_pr_drop_recommends_cleaning(self):
+        # PR descend de 1000 → 700 (≈ -25 pts de PR), chute > seuil.
+        self._seed([1000, 950, 850, 700])
+        from apps.monitoring.analytics import soiling_assessment
+        a = soiling_assessment(self.inst, today=self.today)
+        self.assertIsNotNone(a['estimated_soiling_loss_pct'])
+        self.assertTrue(a['recommend_cleaning'])
+
+    def test_recent_cleaning_no_days_alert(self):
+        self._seed([1000, 1000, 1000])
+        CleaningEvent.objects.create(
+            company=self.company, installation=self.inst,
+            date=date(2026, 6, 1))
+        from apps.monitoring.analytics import soiling_assessment
+        a = soiling_assessment(self.inst, today=self.today)
+        self.assertEqual(a['days_since_cleaning'], 29)
+        self.assertFalse(a['recommend_cleaning'])
+
+    def test_cleaning_viewset_forces_company_and_user(self):
+        r = self.api.post('/api/django/monitoring/cleanings/', {
+            'installation': self.inst.id, 'date': '2026-06-15',
+        }, format='json')
+        self.assertEqual(r.status_code, 201, r.data)
+        ev = CleaningEvent.objects.get(id=r.data['id'])
+        self.assertEqual(ev.company_id, self.company.id)
+        self.assertEqual(ev.created_by_id, self.user.id)
+
+    def test_soiling_endpoint(self):
+        self._seed([1000, 700])
+        r = self.api.get(
+            f'/api/django/monitoring/configs/{self.config.id}/soiling/')
+        self.assertEqual(r.status_code, 200, r.data)
+        self.assertIn('recommend_cleaning', r.data)

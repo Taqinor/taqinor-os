@@ -28,11 +28,17 @@ from django.db.models import Sum
 from django.db.models.functions import TruncMonth
 from django.utils import timezone
 
-from .models import ProductionReading
+from .models import CleaningEvent, ProductionReading
 from .services import _expected_recent_kwh, get_or_create_config
 
 # Fenêtre par défaut (jours) d'analyse O&M.
 DEFAULT_WINDOW_DAYS = 365
+
+# FG283 — perte de PR (points de %) au-delà de laquelle on recommande un
+# nettoyage, et nombre de jours sans nettoyage déclenchant aussi la reco
+# (régions poussiéreuses).
+SOILING_PR_DROP_PCT = Decimal('5')
+SOILING_MAX_DAYS_SINCE_CLEAN = 120
 
 
 def _q(value, places='0.01'):
@@ -132,4 +138,59 @@ def om_metrics(installation, *, window_days=DEFAULT_WINDOW_DAYS, today=None):
         'degradation_pct_per_year': degradation_pct_per_year,
         'soiling_suspected': soiling_suspected,
         'monthly_pr': monthly_pr,
+    }
+
+
+def soiling_assessment(installation, *, window_days=DEFAULT_WINDOW_DAYS,
+                       today=None):
+    """FG283 — estime la perte par salissure et recommande un nettoyage.
+
+    Compare le PR mensuel le PLUS RÉCENT à la meilleure baseline de PR mensuel
+    de la fenêtre (proxy de l'état « propre »). La chute = perte estimée par
+    salissure (points de %). Recommande un nettoyage si la chute dépasse le
+    seuil OU si trop de jours se sont écoulés depuis le dernier nettoyage.
+    100 % lecture.
+    """
+    today = today or timezone.localdate()
+    metrics = om_metrics(installation, window_days=window_days, today=today)
+    monthly_pr = [m for m in metrics['monthly_pr'] if m['pr_pct'] is not None]
+
+    last_clean = (CleaningEvent.objects
+                  .filter(installation=installation, date__lte=today)
+                  .order_by('-date').first())
+    days_since_clean = (
+        (today - last_clean.date).days if last_clean else None)
+
+    pr_drop = None
+    current_pr = None
+    baseline_pr = None
+    if monthly_pr:
+        current_pr = monthly_pr[-1]['pr_pct']
+        baseline_pr = max(m['pr_pct'] for m in monthly_pr)
+        pr_drop = _q(baseline_pr - current_pr)
+
+    recommend = False
+    reasons = []
+    if pr_drop is not None and pr_drop >= SOILING_PR_DROP_PCT:
+        recommend = True
+        reasons.append('chute de PR significative')
+    if (days_since_clean is not None
+            and days_since_clean >= SOILING_MAX_DAYS_SINCE_CLEAN):
+        recommend = True
+        reasons.append('délai depuis le dernier nettoyage')
+    if last_clean is None and (days_since_clean is None) and monthly_pr:
+        # Jamais nettoyé et PR dégradé : on recommande aussi.
+        if pr_drop is not None and pr_drop >= SOILING_PR_DROP_PCT:
+            reasons.append('aucun nettoyage enregistré')
+
+    return {
+        'installation': installation.id,
+        'current_pr_pct': current_pr,
+        'baseline_pr_pct': baseline_pr,
+        'estimated_soiling_loss_pct': pr_drop,
+        'last_cleaning_date': (
+            last_clean.date.isoformat() if last_clean else None),
+        'days_since_cleaning': days_since_clean,
+        'recommend_cleaning': recommend,
+        'reasons': reasons,
     }

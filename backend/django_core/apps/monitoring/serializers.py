@@ -1,7 +1,7 @@
 from rest_framework import serializers
 
 from .models import (
-    MonitoringConfig, MonitoringSettings, ProductionReading,
+    CleaningEvent, MonitoringConfig, MonitoringSettings, ProductionReading,
     ProductionWarranty,
 )
 from .providers import available_providers
@@ -61,6 +61,21 @@ class ProductionReadingSerializer(serializers.ModelSerializer):
     def validate_energy_kwh(self, value):
         if value is None or value < 0:
             raise serializers.ValidationError('Énergie invalide.')
+        return value
+
+
+class CleaningEventSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = CleaningEvent
+        fields = [
+            'id', 'installation', 'date', 'note', 'date_creation',
+        ]
+        read_only_fields = ['date_creation']
+
+    def validate_installation(self, value):
+        request = self.context.get('request')
+        if request is not None and value.company_id != request.user.company_id:
+            raise serializers.ValidationError('Système inconnu.')
         return value
 
 

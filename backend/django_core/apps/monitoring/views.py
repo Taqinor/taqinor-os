@@ -32,15 +32,16 @@ from authentication.mixins import TenantMixin
 from authentication.permissions import IsAnyRole, IsResponsableOrAdmin
 
 from .models import (
-    MonitoringConfig, MonitoringSettings, ProductionReading,
+    CleaningEvent, MonitoringConfig, MonitoringSettings, ProductionReading,
     ProductionWarranty,
 )
 from .providers import available_providers
 from .serializers import (
-    MonitoringConfigSerializer, MonitoringSettingsSerializer,
-    ProductionReadingSerializer, ProductionWarrantySerializer,
+    CleaningEventSerializer, MonitoringConfigSerializer,
+    MonitoringSettingsSerializer, ProductionReadingSerializer,
+    ProductionWarrantySerializer,
 )
-from .analytics import om_metrics
+from .analytics import om_metrics, soiling_assessment
 from .services import (
     evaluate_underperformance, production_warranty_status, sync_system,
 )
@@ -185,6 +186,41 @@ class MonitoringConfigViewSet(TenantMixin, viewsets.ModelViewSet):
         config = self.get_object()
         window = min(int(request.query_params.get('window_days', 365)), 1825)
         return Response(om_metrics(config.installation, window_days=window))
+
+    @action(detail=True, methods=['get'], url_path='soiling',
+            permission_classes=[IsAnyRole])
+    def soiling(self, request, pk=None):
+        """FG283 — perte estimée par salissure (chute de PR entre nettoyages)
+        + recommandation de nettoyage. ?window_days=365 (défaut)."""
+        config = self.get_object()
+        window = min(int(request.query_params.get('window_days', 365)), 1825)
+        return Response(
+            soiling_assessment(config.installation, window_days=window))
+
+
+class CleaningEventViewSet(TenantMixin, viewsets.ModelViewSet):
+    """FG283 — nettoyages de panneaux (bornes pour l'estimation de salissure).
+    Lecture tout rôle (filtrable par ?installation=) ; écriture
+    responsable/admin. `company` et `created_by` posés côté serveur."""
+    queryset = CleaningEvent.objects.select_related('installation').all()
+    serializer_class = CleaningEventSerializer
+
+    def get_permissions(self):
+        if self.action in READ_ACTIONS:
+            return [IsAnyRole()]
+        return [IsResponsableOrAdmin()]
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        inst = self.request.query_params.get('installation')
+        if inst:
+            qs = qs.filter(installation_id=inst)
+        return qs
+
+    def perform_create(self, serializer):
+        serializer.save(
+            company=self.request.user.company,
+            created_by=self.request.user)
 
 
 class ProductionReadingViewSet(TenantMixin, viewsets.ModelViewSet):
