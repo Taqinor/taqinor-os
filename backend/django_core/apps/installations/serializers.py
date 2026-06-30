@@ -47,6 +47,7 @@ from .models import (
     SerieEntrepot,
     SessionComptage,
     ComptageLigne,
+    DemandeTransfert,
 )
 
 
@@ -1881,3 +1882,49 @@ class SessionComptageSerializer(serializers.ModelSerializer):
             'reference', 'statut', 'created_by',
             'date_creation', 'date_modification',
         ]
+
+
+class DemandeTransfertSerializer(serializers.ModelSerializer):
+    """FG325 - demande de transfert inter-emplacements. Reference/societe/
+    `created_by` poses COTE SERVEUR ; le statut et les champs d'approbation/
+    execution avancent via les actions `approuver`/`refuser`/`executer`."""
+    produit_nom = serializers.CharField(
+        source='produit.nom', read_only=True, default=None)
+    source_nom = serializers.CharField(
+        source='source.nom', read_only=True, default=None)
+    destination_nom = serializers.CharField(
+        source='destination.nom', read_only=True, default=None)
+    statut_display = serializers.CharField(
+        source='get_statut_display', read_only=True, default=None)
+
+    class Meta:
+        model = DemandeTransfert
+        fields = [
+            'id', 'reference', 'produit', 'produit_nom', 'source', 'source_nom',
+            'destination', 'destination_nom', 'quantite', 'statut',
+            'statut_display', 'motif', 'motif_refus', 'approuve_par',
+            'date_approbation', 'date_execution',
+            'created_by', 'date_creation', 'date_modification',
+        ]
+        read_only_fields = [
+            'reference', 'statut', 'motif_refus', 'approuve_par',
+            'date_approbation', 'date_execution', 'created_by',
+            'date_creation', 'date_modification',
+        ]
+
+    def validate_quantite(self, value):
+        if value is None or value <= 0:
+            raise serializers.ValidationError(
+                'La quantite demandee doit etre strictement positive.')
+        return value
+
+    def validate(self, attrs):
+        source = attrs.get('source') if 'source' in attrs else getattr(
+            self.instance, 'source', None)
+        destination = attrs.get('destination') if 'destination' in attrs else (
+            getattr(self.instance, 'destination', None))
+        if source is not None and destination is not None and (
+                source == destination):
+            raise serializers.ValidationError(
+                {'destination': 'La destination doit differer de la source.'})
+        return attrs

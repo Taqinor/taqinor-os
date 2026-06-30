@@ -147,6 +147,9 @@ from .models_comptage import (
     SessionComptage,
     ComptageLigne,
 )
+from .models_demande_transfert import (
+    DemandeTransfert,
+)
 
 __all__ = [
     'Installation',
@@ -221,4 +224,5 @@ __all__ = [
     'SerieEntrepot',
     'SessionComptage',
     'ComptageLigne',
+    'DemandeTransfert',
 ]

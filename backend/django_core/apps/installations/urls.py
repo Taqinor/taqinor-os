@@ -44,6 +44,7 @@ from .views import (
     SerieEntrepotViewSet,
     SessionComptageViewSet,
     ComptageLigneViewSet,
+    DemandeTransfertViewSet,
 )
 
 router = DefaultRouter()
@@ -99,6 +100,7 @@ router.register(r'colis-lignes', ColisLigneViewSet)
 router.register(r'series-entrepot', SerieEntrepotViewSet)
 router.register(r'sessions-comptage', SessionComptageViewSet)
 router.register(r'comptage-lignes', ComptageLigneViewSet)
+router.register(r'demandes-transfert', DemandeTransfertViewSet)
 
 urlpatterns = [
     # N91/F21 — synchro idempotente de la capture terrain hors-ligne.

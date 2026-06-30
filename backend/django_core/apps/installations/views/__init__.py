@@ -51,6 +51,7 @@ from .picklist import PickListViewSet, PickListLigneViewSet
 from .colisage import ColisViewSet, ColisLigneViewSet
 from .serie_entrepot import SerieEntrepotViewSet
 from .comptage import SessionComptageViewSet, ComptageLigneViewSet
+from .demande_transfert import DemandeTransfertViewSet
 from .field_sync import FieldSyncView
 
 __all__ = [
@@ -108,5 +109,6 @@ __all__ = [
     'SerieEntrepotViewSet',
     'SessionComptageViewSet',
     'ComptageLigneViewSet',
+    'DemandeTransfertViewSet',
     'FieldSyncView',
 ]
