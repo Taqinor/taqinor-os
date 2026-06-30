@@ -8,6 +8,7 @@ from rest_framework import serializers
 
 from .models import (
     AlerteContrat,
+    Avenant,
     Clause,
     ClauseContrat,
     Contrat,
@@ -630,3 +631,50 @@ class CreerVersionSerializer(serializers.Serializer):
         max_length=255, required=False, allow_blank=True)
     fichier_key = serializers.CharField(
         max_length=512, required=False, allow_blank=True)
+
+
+class AvenantSerializer(serializers.ModelSerializer):
+    """Sérialiseur d'un ``Avenant`` (amendement de contrat — CONTRAT24).
+
+    Lecture seule côté API : les avenants sont créés exclusivement par l'action
+    ``creer-avenant`` du contrat (jamais en POST direct sur cette ressource).
+    ``company``, ``contrat``, ``numero``, ``version_creee``, ``cree_par`` et
+    ``date_creation`` sont posés côté serveur — jamais lus du corps de requête.
+    """
+    cree_par_username = serializers.SerializerMethodField()
+
+    class Meta:
+        model = Avenant
+        fields = [
+            'id', 'contrat', 'numero', 'objet', 'description',
+            'date_effet', 'montant_delta', 'version_creee',
+            'cree_par', 'cree_par_username', 'date_creation',
+        ]
+        read_only_fields = fields
+
+    def get_cree_par_username(self, obj):
+        return getattr(obj.cree_par, 'username', None)
+
+
+class CreerAvenantSerializer(serializers.Serializer):
+    """Corps de POST /contrats/<id>/creer-avenant/ (CONTRAT24).
+
+    ``objet`` (titre court de l'amendement) est requis ; ``description``,
+    ``date_effet`` et ``montant_delta`` sont optionnels. Quand ``montant_delta``
+    est fourni, il est AJOUTÉ à ``Contrat.montant`` côté serveur. Le ``numero``,
+    la société, ``version_creee`` et ``cree_par`` sont posés côté serveur — jamais
+    lus du corps de requête.
+    """
+    objet = serializers.CharField(max_length=255)
+    description = serializers.CharField(
+        required=False, allow_blank=True, trim_whitespace=False)
+    date_effet = serializers.DateField(required=False, allow_null=True)
+    montant_delta = serializers.DecimalField(
+        max_digits=14, decimal_places=2, required=False, allow_null=True)
+
+    def validate_objet(self, value):
+        value = (value or '').strip()
+        if not value:
+            raise serializers.ValidationError(
+                "L'objet de l'avenant est requis.")
+        return value

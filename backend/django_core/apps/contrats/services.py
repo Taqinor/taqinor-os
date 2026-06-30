@@ -31,6 +31,7 @@ Contenu :
 """
 import html as _html
 import re
+from decimal import Decimal
 
 from django.db import transaction
 from django.utils import timezone
@@ -1268,3 +1269,122 @@ def traiter_reconductions_tacites(company, today=None, *, auteur=None):
         'nb_renouvellements': nb_renouvellements,
         'contrats': traites,
     }
+
+
+# ---------------------------------------------------------------------------
+# CONTRAT24 — Avenant (amendement → nouvelle version immuable)
+# ---------------------------------------------------------------------------
+
+
+def _prochain_numero_avenant(contrat):
+    """Numéro du prochain avenant d'un contrat (``max(numero)+1``).
+
+    Lecture du plus haut numéro DÉJÀ utilisé pour ce contrat, +1. Repli sur 1
+    quand aucun avenant n'existe encore. À appeler SOUS verrou de ligne
+    (``select_for_update`` sur le contrat) pour rester sûr face aux courses —
+    JAMAIS un ``count()+1`` (qui collisionne après une suppression et en
+    concurrence, cf. la règle de numérotation du repo).
+    """
+    from django.db.models import Max
+
+    from .models import Avenant
+
+    plus_haut = (
+        Avenant.objects
+        .filter(contrat=contrat, company=contrat.company)
+        .aggregate(m=Max('numero'))['m']
+    )
+    return (plus_haut or 0) + 1
+
+
+@transaction.atomic
+def creer_avenant(contrat, *, objet, description='', date_effet=None,
+                  montant_delta=None, auteur=None):
+    """Enregistre un AVENANT (amendement) à un contrat — CONTRAT24.
+
+    Un avenant recense une MODIFICATION apportée à un ``Contrat`` existant et
+    produit, dans la foulée, un INSTANTANÉ IMMUABLE du contrat (``VersionContrat``
+    — CONTRAT18) figeant son état au moment de l'amendement.
+
+    Déroulé (tout est posé CÔTÉ SERVEUR, jamais lu d'un corps de requête) :
+
+    - NUMÉROTATION SÛRE FACE AUX COURSES : on verrouille la LIGNE du contrat
+      (``select_for_update``) puis on calcule ``max(numero)+1`` — jamais un
+      ``count()+1``. Sous le verrou, deux créations concurrentes pour le même
+      contrat sont sérialisées et obtiennent des numéros distincts (la contrainte
+      d'unicité ``(contrat, numero)`` reste le filet de sécurité ultime).
+    - APPLICATION DU DELTA : si ``montant_delta`` est fourni (non ``None``), il
+      est AJOUTÉ à ``Contrat.montant`` (garde : on ne touche le montant que
+      lorsque le delta est explicitement passé) ; l'audit chatter consigne
+      l'ancien → nouveau montant. Un avenant rédactionnel (``montant_delta``
+      ``None``) ne modifie pas le montant.
+    - INSTANTANÉ : on appelle ``creer_version`` AVANT-AVENANT-aware (après
+      l'éventuelle application du delta, pour figer l'état amendé) avec le motif
+      ``« Avenant n°X — <objet> »`` et on relie la version à l'avenant
+      (``version_creee``).
+    - AUDIT : la création de l'avenant est journalisée dans le chatter (CONTRAT15)
+      avec l'auteur posé côté serveur.
+
+    Le ``Contrat.statut`` n'est JAMAIS modifié (préservation des statuts —
+    CONTRAT12) et aucun funnel ``STAGES.py`` n'intervient (rule #2). La société
+    est déduite du contrat. Renvoie l'``Avenant`` créé (``version_creee``
+    renseigné).
+    """
+    from .models import Avenant, Contrat
+
+    nom = (objet or '').strip()
+    if not nom:
+        raise ValueError("L'objet de l'avenant est requis.")
+
+    # Verrou de ligne sur le contrat pour sérialiser la numérotation concurrente
+    # (et l'éventuelle application du delta de montant).
+    Contrat.objects.select_for_update().get(pk=contrat.pk)
+
+    numero = _prochain_numero_avenant(contrat)
+
+    # Application du delta de montant côté serveur (gardée : seulement si fourni).
+    if montant_delta is not None:
+        ancien_montant = contrat.montant
+        contrat.montant = (contrat.montant or Decimal('0')) + montant_delta
+        contrat.save(update_fields=['montant'])
+        journaliser_transition(
+            contrat, field='montant',
+            old_value=_fmt_montant(ancien_montant, contrat.devise),
+            new_value=_fmt_montant(contrat.montant, contrat.devise),
+            message=f'Avenant n°{numero} — {nom}',
+            auteur=auteur)
+
+    avenant = Avenant.objects.create(
+        company=contrat.company,
+        contrat=contrat,
+        numero=numero,
+        objet=nom,
+        description=description or '',
+        date_effet=date_effet,
+        montant_delta=montant_delta,
+        cree_par=auteur,
+    )
+
+    # CONTRAT18 — instantané IMMUABLE figeant l'état amendé du contrat. On relie
+    # la version à l'avenant. Best-effort sur le rendu : un échec ne doit jamais
+    # empêcher l'enregistrement de l'avenant lui-même.
+    try:
+        version = creer_version(
+            contrat,
+            cree_par=auteur,
+            motif=f'Avenant n°{numero} — {nom}',
+        )
+    except Exception:  # pragma: no cover - défensif (rendu best-effort)
+        version = None
+
+    if version is not None:
+        avenant.version_creee = version
+        avenant.save(update_fields=['version_creee'])
+
+    # CONTRAT15 — audit de la création de l'avenant.
+    journaliser_transition(
+        contrat, field='avenant', old_value='',
+        new_value=f'Avenant n°{numero} — {nom}',
+        auteur=auteur)
+
+    return avenant
