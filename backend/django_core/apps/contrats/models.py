@@ -104,6 +104,32 @@ class Contrat(models.Model):
         null=True, blank=True, verbose_name='Date de début')
     date_fin = models.DateField(
         null=True, blank=True, verbose_name='Date de fin')
+    # CONTRAT20 — dates clés & tacite reconduction.
+    # Délai de préavis (en JOURS) à respecter AVANT ``date_fin`` pour notifier
+    # une non-reconduction / résiliation. NULL = aucun préavis exigé. La date
+    # limite de préavis se calcule ``date_fin − preavis_jours`` (voir
+    # ``echeance_preavis``). Un mois conventionnel se saisit en jours (ex. 30,
+    # 60, 90) — on garde une seule unité (jours) pour un calcul sans ambiguïté.
+    preavis_jours = models.PositiveIntegerField(
+        null=True, blank=True,
+        verbose_name='Préavis (jours avant la fin)')
+    # Le contrat se renouvelle-t-il par TACITE RECONDUCTION à ``date_fin`` si
+    # aucune partie ne dénonce dans le préavis ? Par défaut NON (sécurité : un
+    # contrat ne se prolonge pas tout seul tant qu'on ne l'a pas déclaré).
+    tacite_reconduction = models.BooleanField(
+        default=False, verbose_name='Tacite reconduction')
+    # Durée d'une période de reconduction, en MOIS (ex. 12 = reconduction
+    # annuelle). NULL = non précisée. Pertinent seulement si
+    # ``tacite_reconduction`` est vrai (purement déclaratif sinon).
+    duree_reconduction_mois = models.PositiveIntegerField(
+        null=True, blank=True,
+        verbose_name='Durée de reconduction (mois)')
+    # Drapeau métier : on a DÉJÀ AGI sur l'échéance de préavis de ce contrat
+    # (dénoncé / reconduit explicitement / traité). Tant qu'il est faux, le
+    # contrat remonte dans la liste « préavis à venir » (selectors.
+    # contrats_a_preavis). Posé côté serveur ; jamais une transition de statut.
+    preavis_traite = models.BooleanField(
+        default=False, verbose_name='Préavis traité')
     montant = models.DecimalField(
         max_digits=14, decimal_places=2, default=Decimal('0'),
         verbose_name='Montant')
@@ -137,6 +163,33 @@ class Contrat(models.Model):
 
     def __str__(self):
         return f'{self.objet} ({self.get_type_contrat_display()})'
+
+    def echeance_preavis(self):
+        """Date limite de préavis (``date_fin − preavis_jours``) ou ``None``.
+
+        CONTRAT20. Renvoie la date au plus tard à laquelle il faut dénoncer le
+        contrat pour éviter sa reconduction. ``None`` si ``date_fin`` ou
+        ``preavis_jours`` n'est pas renseigné (rien à calculer).
+        """
+        from datetime import timedelta
+        if self.date_fin is None or self.preavis_jours is None:
+            return None
+        return self.date_fin - timedelta(days=self.preavis_jours)
+
+    def jours_avant_preavis(self, today=None):
+        """Nombre de jours restants avant l'échéance de préavis (ou ``None``).
+
+        CONTRAT20. Positif = l'échéance est à venir ; 0 = aujourd'hui ; négatif =
+        l'échéance est dépassée. ``None`` si l'échéance n'est pas calculable
+        (voir ``echeance_preavis``). ``today`` est injectable pour les tests.
+        """
+        echeance = self.echeance_preavis()
+        if echeance is None:
+            return None
+        if today is None:
+            from django.utils import timezone
+            today = timezone.localdate()
+        return (echeance - today).days
 
     def valider_parties(self):
         """Vérifie qu'un contrat finalisable a au moins deux parties.

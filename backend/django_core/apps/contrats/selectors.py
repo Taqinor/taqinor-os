@@ -8,13 +8,58 @@ cycles. Quand une app cible n'a pas de sélecteur exploitable, on DÉGRADE
 proprement : on renvoie le ``libelle`` mis en cache et les ids stockés, sans
 rien importer.
 """
+from datetime import timedelta
+
+from django.db.models import ExpressionWrapper, F, fields
+from django.utils import timezone
+
 from .models import (
+    Contrat,
     ContratLien,
     EtapeApprobation,
     RegleApprobation,
     SignatureContrat,
     VersionContrat,
 )
+
+
+def contrats_a_preavis(company, within_days=30, today=None):
+    """Contrats dont l'échéance de préavis approche (CONTRAT20).
+
+    Renvoie un QuerySet scopé société des contrats dont la date limite de
+    préavis (``date_fin − preavis_jours``) tombe dans la fenêtre
+    ``[today, today + within_days]`` ET dont le préavis n'a pas encore été
+    traité (``preavis_traite=False``) — ceux sur lesquels il faut agir AVANT
+    une éventuelle tacite reconduction.
+
+    Sont exclus : les contrats sans ``date_fin`` ou sans ``preavis_jours`` (rien
+    à calculer), et les contrats déjà résiliés/expirés (plus d'enjeu de préavis).
+    Ordonné par urgence : l'échéance de préavis la plus proche d'abord.
+
+    ``within_days`` < 0 est ramené à 0 (fenêtre vide vers le futur). ``today``
+    est injectable pour les tests.
+    """
+    if today is None:
+        today = timezone.localdate()
+    if within_days < 0:
+        within_days = 0
+    limite = today + timedelta(days=within_days)
+    # Échéance de préavis calculée en base : date_fin − preavis_jours (jours).
+    echeance = ExpressionWrapper(
+        F('date_fin') - F('preavis_jours') * timedelta(days=1),
+        output_field=fields.DateField(),
+    )
+    return (
+        Contrat.objects.filter(company=company)
+        .exclude(date_fin__isnull=True)
+        .exclude(preavis_jours__isnull=True)
+        .exclude(preavis_traite=True)
+        .exclude(statut__in=[
+            Contrat.Statut.RESILIE, Contrat.Statut.EXPIRE])
+        .annotate(echeance_preavis=echeance)
+        .filter(echeance_preavis__gte=today, echeance_preavis__lte=limite)
+        .order_by('echeance_preavis', 'id')
+    )
 
 
 def versions_contrat(contrat):

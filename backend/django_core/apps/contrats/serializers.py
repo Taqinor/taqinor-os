@@ -73,6 +73,11 @@ class ContratSerializer(serializers.ModelSerializer):
         source='get_statut_display', read_only=True)
     confidentialite_display = serializers.CharField(
         source='get_confidentialite_display', read_only=True)
+    # CONTRAT20 — dates clés calculées (lecture seule) : la date limite de
+    # préavis (``date_fin − preavis_jours``) et le nombre de jours restants
+    # jusque-là (négatif = échéance dépassée). ``None`` si non calculable.
+    echeance_preavis = serializers.SerializerMethodField()
+    jours_avant_preavis = serializers.SerializerMethodField()
 
     class Meta:
         model = Contrat
@@ -80,11 +85,21 @@ class ContratSerializer(serializers.ModelSerializer):
             'id', 'reference', 'type_contrat', 'type_contrat_display',
             'objet', 'statut', 'statut_display', 'client_id',
             'sav_contrat_maintenance_id', 'modele', 'date_debut',
-            'date_fin', 'montant', 'devise',
+            'date_fin', 'preavis_jours', 'tacite_reconduction',
+            'duree_reconduction_mois', 'preavis_traite',
+            'echeance_preavis', 'jours_avant_preavis',
+            'montant', 'devise',
             'confidentialite', 'confidentialite_display',
             'created_by', 'date_creation',
         ]
         read_only_fields = ['created_by', 'date_creation']
+
+    def get_echeance_preavis(self, obj):
+        echeance = obj.echeance_preavis()
+        return echeance.isoformat() if echeance is not None else None
+
+    def get_jours_avant_preavis(self, obj):
+        return obj.jours_avant_preavis()
 
     def validate_modele(self, modele):
         """Le gabarit source (optionnel) doit appartenir à la société."""
