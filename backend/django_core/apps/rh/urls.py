@@ -31,6 +31,7 @@ from .views import (
     PresenceChantierViewSet,
     PresquAccidentViewSet,
     RemunerationViewSet,
+    SanctionViewSet,
     SessionFormationViewSet,
     SoldeCongeViewSet,
     TableauBordHseViewSet,
@@ -74,6 +75,7 @@ router.register(r'ouvertures-poste', OuverturePosteViewSet)
 router.register(r'candidatures', CandidatureViewSet)
 router.register(r'campagnes-evaluation', CampagneEvaluationViewSet)
 router.register(r'evaluations-employe', EvaluationEmployeViewSet)
+router.register(r'sanctions', SanctionViewSet)
 
 urlpatterns = [
     path('', include(router.urls)),

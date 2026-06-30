@@ -40,6 +40,7 @@ from .models import (
     PresenceChantier,
     PresquAccident,
     Remuneration,
+    Sanction,
     SessionFormation,
     SoldeConge,
     TypeAbsence,
@@ -1587,3 +1588,41 @@ class CampagneEvaluationSerializer(serializers.ModelSerializer):
             'date_creation', 'date_modification',
         ]
         read_only_fields = ['date_creation', 'date_modification']
+
+
+class SanctionSerializer(serializers.ModelSerializer):
+    """Sanction disciplinaire d'un collaborateur (FG191).
+
+    Le client saisit ``employe`` et ``auteur`` (des ``DossierEmploye`` de sa
+    société), ``type_sanction``, ``date_faits``, ``date_notification``,
+    ``duree_jours``, ``motif`` et ``statut``. ``company`` est posée CÔTÉ
+    SERVEUR (jamais lue du corps) ; ``employe`` / ``auteur`` doivent appartenir
+    à la société de l'utilisateur.
+    """
+    employe_nom = serializers.SerializerMethodField()
+    type_sanction_display = serializers.CharField(
+        source='get_type_sanction_display', read_only=True)
+    statut_display = serializers.CharField(
+        source='get_statut_display', read_only=True)
+
+    class Meta:
+        model = Sanction
+        fields = [
+            'id', 'employe', 'employe_nom', 'auteur',
+            'type_sanction', 'type_sanction_display',
+            'date_faits', 'date_notification', 'duree_jours',
+            'motif', 'statut', 'statut_display',
+            'date_creation', 'date_modification',
+        ]
+        read_only_fields = ['date_creation', 'date_modification']
+
+    def get_employe_nom(self, obj):
+        if not obj.employe_id:
+            return ''
+        return f'{obj.employe.nom} {obj.employe.prenom}'
+
+    def validate_employe(self, value):
+        return _meme_societe(self, value, 'Employé')
+
+    def validate_auteur(self, value):
+        return _meme_societe(self, value, 'Auteur')

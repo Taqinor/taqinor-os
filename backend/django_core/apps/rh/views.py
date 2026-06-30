@@ -50,6 +50,7 @@ from .models import (
     PresenceChantier,
     PresquAccident,
     Remuneration,
+    Sanction,
     SessionFormation,
     SoldeConge,
     TypeAbsence,
@@ -88,6 +89,7 @@ from .serializers import (
     PresenceChantierSerializer,
     PresquAccidentSerializer,
     RemunerationSerializer,
+    SanctionSerializer,
     SessionFormationSerializer,
     SoldeCongeSerializer,
     TypeAbsenceSerializer,
@@ -2321,3 +2323,61 @@ class EvaluationEmployeViewSet(_RhBaseViewSet):
             evaluation.save(update_fields=['statut', 'date_modification'])
         return Response(
             self.get_serializer(evaluation).data, status=status.HTTP_200_OK)
+
+
+class SanctionViewSet(_RhBaseViewSet):
+    """Sanctions disciplinaires (FG191) — registre conforme au code du travail.
+
+    Société scopée + Administrateur/Responsable. Enregistre les mesures
+    disciplinaires (observation, avertissement, blâme, mise à pied, mutation,
+    rétrogradation, licenciement) notifiées à un collaborateur : employé,
+    auteur, type, date des faits, date de notification, durée (mise à pied),
+    motif, statut (notifiée → contestée → annulée). ``company`` est posée CÔTÉ
+    SERVEUR (jamais lue du corps) ; ``employe`` / ``auteur`` doivent appartenir
+    à la même société.
+
+    Filtres : ``?employe=<id>``, ``?type_sanction=...``,
+    ``?statut=notifiee|contestee|annulee``. Recherche : motif, matricule/nom de
+    l'employé.
+
+    Action :
+    * ``POST .../{id}/annuler/`` — passe la sanction en ``statut=annulee``.
+      Idempotent.
+    """
+    queryset = Sanction.objects.select_related('employe', 'auteur').all()
+    serializer_class = SanctionSerializer
+    filter_backends = [filters.SearchFilter, filters.OrderingFilter]
+    search_fields = ['motif', 'employe__matricule', 'employe__nom']
+    ordering_fields = ['date_notification', 'date_faits', 'statut',
+                       'date_creation']
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        employe = self.request.query_params.get('employe')
+        if employe:
+            qs = qs.filter(employe_id=employe)
+        type_sanction = self.request.query_params.get('type_sanction')
+        if type_sanction:
+            qs = qs.filter(type_sanction=type_sanction)
+        statut = self.request.query_params.get('statut')
+        if statut:
+            qs = qs.filter(statut=statut)
+        return qs
+
+    def perform_create(self, serializer):
+        """Company posée côté serveur ; FK validés via le sérialiseur."""
+        serializer.save(company=self.request.user.company)
+
+    @action(detail=True, methods=['post'], url_path='annuler')
+    def annuler(self, request, pk=None):
+        """Annule la sanction (FG191) — passe en ``statut=annulee``.
+
+        La société est garantie par ``get_object`` (un autre tenant reçoit
+        404). Idempotent : ré-annuler renvoie la même sanction sans erreur.
+        """
+        sanction = self.get_object()
+        if sanction.statut != Sanction.Statut.ANNULEE:
+            sanction.statut = Sanction.Statut.ANNULEE
+            sanction.save(update_fields=['statut', 'date_modification'])
+        return Response(
+            self.get_serializer(sanction).data, status=status.HTTP_200_OK)

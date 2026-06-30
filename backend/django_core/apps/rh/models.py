@@ -3082,3 +3082,93 @@ class ObjectifIndividuel(models.Model):
 
     def __str__(self):
         return self.libelle
+
+
+class Sanction(models.Model):
+    """Sanction disciplinaire d'un collaborateur (FG191).
+
+    Registre des mesures disciplinaires conforme au code du travail marocain
+    (loi 65-99) : observation, avertissement, blâme, mise à pied (avec durée
+    en jours), mutation, rétrogradation, licenciement. Une ligne par mesure
+    notifiée à un ``employe`` (FK ``rh.DossierEmploye``, même société) avec la
+    ``date_faits`` (date des faits reprochés), la ``date_notification`` (date de
+    remise de la sanction), le ``type_sanction``, une ``duree_jours`` (utile
+    pour les mises à pied), le ``motif`` (les faits reprochés) et un ``statut``
+    de procédure (notifiée → contestée → annulée). L'``auteur`` (le responsable
+    qui prononce la mesure, FK ``rh.DossierEmploye`` optionnel) est tracé.
+
+    Multi-société : ``company`` est posée CÔTÉ SERVEUR (jamais lue du corps) ;
+    ``employe`` et ``auteur`` doivent appartenir à la même société. Additif.
+
+    RUNTIME-SAFETY (leçon FG136) : codes ``type_sanction`` / ``statut`` ≤ 20 ;
+    ``motif`` (potentiellement long) en ``TextField`` ; ``duree_jours`` borné
+    (``PositiveIntegerField``) ; index nommés (≤ 30 chars).
+    """
+
+    class TypeSanction(models.TextChoices):
+        OBSERVATION = 'observation', 'Observation'
+        AVERTISSEMENT = 'avertissement', 'Avertissement'
+        BLAME = 'blame', 'Blâme'
+        MISE_A_PIED = 'mise_a_pied', 'Mise à pied'
+        MUTATION = 'mutation', 'Mutation disciplinaire'
+        RETROGRADATION = 'retrogradation', 'Rétrogradation'
+        LICENCIEMENT = 'licenciement', 'Licenciement'
+
+    class Statut(models.TextChoices):
+        NOTIFIEE = 'notifiee', 'Notifiée'
+        CONTESTEE = 'contestee', 'Contestée'
+        ANNULEE = 'annulee', 'Annulée'
+
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='rh_sanctions',
+        verbose_name='Société',
+    )
+    employe = models.ForeignKey(
+        DossierEmploye,
+        on_delete=models.CASCADE,
+        related_name='sanctions',
+        verbose_name='Employé',
+    )
+    auteur = models.ForeignKey(
+        DossierEmploye,
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='sanctions_prononcees',
+        verbose_name='Auteur',
+    )
+    type_sanction = models.CharField(
+        max_length=20, choices=TypeSanction.choices,
+        default=TypeSanction.AVERTISSEMENT, verbose_name='Type de sanction')
+    date_faits = models.DateField(
+        null=True, blank=True, verbose_name='Date des faits')
+    date_notification = models.DateField(
+        null=True, blank=True, verbose_name='Date de notification')
+    duree_jours = models.PositiveIntegerField(
+        default=0, verbose_name='Durée (jours)')
+    motif = models.TextField(
+        blank=True, default='', verbose_name='Motif')
+    statut = models.CharField(
+        max_length=20, choices=Statut.choices,
+        default=Statut.NOTIFIEE, verbose_name='Statut')
+    date_creation = models.DateTimeField(
+        auto_now_add=True, verbose_name='Créé le')
+    date_modification = models.DateTimeField(
+        auto_now=True, verbose_name='Modifié le')
+
+    class Meta:
+        verbose_name = 'Sanction disciplinaire'
+        verbose_name_plural = 'Sanctions disciplinaires'
+        ordering = ['-date_notification', '-date_creation']
+        indexes = [
+            models.Index(
+                fields=['company', 'employe'],
+                name='rh_sanc_comp_emp_idx'),
+            models.Index(
+                fields=['company', 'statut'],
+                name='rh_sanc_comp_stat_idx'),
+        ]
+
+    def __str__(self):
+        return f'{self.get_type_sanction_display()} — {self.employe}'
