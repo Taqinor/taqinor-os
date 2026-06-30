@@ -1635,3 +1635,45 @@ def marquer_obligation_faite(obligation, *, today=None, auteur=None):
         message=f'Obligation « {obligation.intitule} » réalisée.',
         auteur=auteur)
     return obligation
+
+
+# ---------------------------------------------------------------------------
+# CONTRAT27 — SLA & pénalités (taux SLA, valeur pénalité)
+# ---------------------------------------------------------------------------
+
+
+def calculer_penalite_sla(sla, *, taux_realise=None, montant_contrat=None):
+    """Calcule la pénalité encourue pour un ``EngagementSLA`` — CONTRAT27.
+
+    PUREMENT DÉCLARATIF (lecture seule) : ne crée AUCUNE écriture, ne touche
+    AUCUN ``Contrat.statut`` (CONTRAT12) ni le funnel ``STAGES.py`` (rule #2),
+    et n'émet aucune facture.
+
+    Si ``taux_realise`` est fourni et qu'il ATTEINT/dépasse le ``taux_cible`` du
+    SLA, AUCUNE pénalité n'est due (renvoie 0). Sinon (ou si ``taux_realise``
+    n'est pas fourni — calcul du barème théorique), la pénalité est calculée par
+    ``sla.calculer_penalite`` (montant fixe ou pourcentage du montant du contrat,
+    plafonné par ``penalite_max``).
+
+    Renvoie un dict ``{'penalite': Decimal, 'respecte': bool|None,
+    'taux_cible': Decimal, 'taux_realise': Decimal|None}``.
+    """
+    cible = sla.taux_cible or Decimal('0')
+    respecte = None
+    if taux_realise is not None:
+        taux_realise = Decimal(str(taux_realise))
+        respecte = taux_realise >= cible
+        if respecte:
+            return {
+                'penalite': Decimal('0.00'),
+                'respecte': True,
+                'taux_cible': cible,
+                'taux_realise': taux_realise,
+            }
+    penalite = sla.calculer_penalite(montant_contrat=montant_contrat)
+    return {
+        'penalite': penalite,
+        'respecte': respecte,
+        'taux_cible': cible,
+        'taux_realise': taux_realise,
+    }

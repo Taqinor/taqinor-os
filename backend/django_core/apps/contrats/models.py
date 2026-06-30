@@ -1691,3 +1691,128 @@ class JalonContrat(models.Model):
 
     def __str__(self):
         return f'Jalon n°{self.numero} — {self.intitule} (contrat {self.contrat_id})'
+
+
+class EngagementSLA(models.Model):
+    """Engagement de niveau de service (SLA) & pénalités d'un contrat — CONTRAT27.
+
+    Un ``EngagementSLA`` déclare, pour un ``Contrat``, un ENGAGEMENT DE SERVICE
+    chiffré (ex. « disponibilité ≥ 98 % », « délai d'intervention ≤ 24 h »,
+    « PR ≥ 80 % ») et la PÉNALITÉ contractuelle encourue en cas de manquement.
+    Le ``taux_cible`` exprime l'objectif en pourcentage (0–100) ; ``unite``
+    qualifie la métrique (disponibilité, délai, performance…). La pénalité est
+    soit un MONTANT FIXE (``mode_penalite=fixe`` → ``valeur_penalite`` est un
+    montant en devise du contrat) soit un POURCENTAGE du montant du contrat
+    (``mode_penalite=pourcentage`` → ``valeur_penalite`` est un pourcentage,
+    plafonné par ``penalite_max`` optionnel).
+
+    Le calcul d'une pénalité encourue (``services.calculer_penalite_sla``) est
+    PUREMENT DÉCLARATIF : il ne crée aucune écriture, ne touche AUCUN
+    ``Contrat.statut`` (CONTRAT12) ni le funnel ``STAGES.py`` (rule #2), et
+    n'émet aucune facture — il renvoie un montant indicatif qu'un service
+    appelant peut consulter.
+
+    Multi-tenant : ``company`` est posée CÔTÉ SERVEUR (déduite du contrat).
+    ``contrat`` est une référence interne à l'app `contrats` (FK dur autorisé).
+
+    RUNTIME-SAFETY (leçon FG136) : ``libelle`` est borné (≤200), ``unite`` borné
+    (≤30) ; les pourcentages/montants sont des ``DecimalField`` bornés. L'index
+    est NOMMÉ explicitement (≤30 chars).
+    """
+
+    class ModePenalite(models.TextChoices):
+        FIXE = 'fixe', 'Montant fixe'
+        POURCENTAGE = 'pourcentage', 'Pourcentage du montant du contrat'
+
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='contrats_sla',
+        verbose_name='Société',
+    )
+    contrat = models.ForeignKey(
+        Contrat,
+        on_delete=models.CASCADE,
+        related_name='engagements_sla',
+        verbose_name='Contrat',
+    )
+    libelle = models.CharField(max_length=200, verbose_name='Libellé du SLA')
+    # Objectif chiffré en pourcentage (ex. 98.00 pour 98 %). Borné [0, 100] au
+    # niveau du modèle (``clean``) / sérialiseur.
+    taux_cible = models.DecimalField(
+        max_digits=6, decimal_places=2, default=Decimal('0'),
+        verbose_name='Taux cible (%)')
+    # Unité/métrique de l'engagement (libre, ex. « disponibilité », « délai »).
+    unite = models.CharField(
+        max_length=30, blank=True, default='', verbose_name='Unité / métrique')
+    mode_penalite = models.CharField(
+        max_length=20, choices=ModePenalite.choices,
+        default=ModePenalite.FIXE, verbose_name='Mode de pénalité')
+    # Valeur de la pénalité : montant (mode fixe) OU pourcentage (mode
+    # pourcentage). Interprétée selon ``mode_penalite``.
+    valeur_penalite = models.DecimalField(
+        max_digits=14, decimal_places=2, default=Decimal('0'),
+        verbose_name='Valeur de la pénalité')
+    # Plafond optionnel de la pénalité (montant en devise du contrat). NULL =
+    # aucun plafond.
+    penalite_max = models.DecimalField(
+        max_digits=14, decimal_places=2, null=True, blank=True,
+        verbose_name='Plafond de pénalité')
+    actif = models.BooleanField(default=True, verbose_name='Actif')
+    date_creation = models.DateTimeField(
+        auto_now_add=True, verbose_name='Créé le')
+
+    class Meta:
+        verbose_name = 'Engagement SLA'
+        verbose_name_plural = 'Engagements SLA'
+        ordering = ['contrat_id', 'id']
+        indexes = [
+            models.Index(
+                fields=['company', 'actif'],
+                name='contrats_sla_co_act',
+            ),
+        ]
+
+    def __str__(self):
+        return f'{self.libelle} (contrat {self.contrat_id})'
+
+    def clean(self):
+        """Valide la cohérence du taux cible et des valeurs de pénalité.
+
+        ``taux_cible`` doit rester dans [0, 100] ; en mode pourcentage,
+        ``valeur_penalite`` doit aussi rester dans [0, 100]. Les valeurs
+        négatives sont refusées.
+        """
+        if self.taux_cible is not None and not (
+                Decimal('0') <= self.taux_cible <= Decimal('100')):
+            raise ValidationError(
+                'Le taux cible doit être compris entre 0 et 100.')
+        if self.valeur_penalite is not None and self.valeur_penalite < 0:
+            raise ValidationError(
+                'La valeur de la pénalité ne peut pas être négative.')
+        if (self.mode_penalite == self.ModePenalite.POURCENTAGE
+                and self.valeur_penalite is not None
+                and self.valeur_penalite > Decimal('100')):
+            raise ValidationError(
+                'En mode pourcentage, la pénalité ne peut pas dépasser 100 %.')
+
+    def calculer_penalite(self, *, montant_contrat=None):
+        """Montant de pénalité encouru pour ce SLA (lecture seule, déclaratif).
+
+        - Mode ``fixe`` : renvoie ``valeur_penalite`` telle quelle.
+        - Mode ``pourcentage`` : renvoie ``valeur_penalite % × montant_contrat``
+          (``montant_contrat`` par défaut = ``self.contrat.montant``).
+        Le résultat est borné par ``penalite_max`` quand il est fixé. Ne crée
+        AUCUNE écriture et ne change AUCUN statut.
+        """
+        if montant_contrat is None:
+            montant_contrat = self.contrat.montant or Decimal('0')
+        montant_contrat = Decimal(str(montant_contrat))
+        if self.mode_penalite == self.ModePenalite.POURCENTAGE:
+            penalite = (montant_contrat * (self.valeur_penalite or Decimal('0'))
+                        / Decimal('100'))
+        else:
+            penalite = self.valeur_penalite or Decimal('0')
+        if self.penalite_max is not None and penalite > self.penalite_max:
+            penalite = self.penalite_max
+        return penalite.quantize(Decimal('0.01'))

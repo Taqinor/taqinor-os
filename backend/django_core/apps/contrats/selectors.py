@@ -159,6 +159,19 @@ def obligations_contrat(contrat):
             'ordre', 'date_echeance', 'id')
 
 
+def engagements_sla_contrat(contrat):
+    """Engagements SLA d'un contrat (QuerySet scopé société, ordonné) — CONTRAT27.
+
+    Lecture seule. Ordre par ``id`` (cohérent avec ``Meta.ordering``). La
+    société est portée par le contrat ; on filtre aussi sur ``contrat.company``
+    par sécurité même si le FK ``contrat`` la garantit.
+    """
+    from .models import EngagementSLA
+
+    return EngagementSLA.objects.filter(
+        contrat=contrat, company=contrat.company).order_by('id')
+
+
 def signatures_contrat(contrat):
     """Signatures électroniques d'un contrat (QuerySet scopé société, ordonné).
 

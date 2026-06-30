@@ -38,6 +38,7 @@ from .models import (
     ClauseContrat,
     Contrat,
     ContratLien,
+    EngagementSLA,
     JalonContrat,
     ModeleContrat,
     ModeleContratClause,
@@ -59,6 +60,7 @@ from .serializers import (
     CreerAvenantSerializer,
     CreerVersionSerializer,
     DeciderEtapeSerializer,
+    EngagementSLASerializer,
     EtapeApprobationSerializer,
     InstancierContratSerializer,
     JalonContratSerializer,
@@ -67,6 +69,7 @@ from .serializers import (
     NoterContratSerializer,
     ObligationSerializer,
     PartieContratSerializer,
+    PenaliteSLASerializer,
     RegleApprobationSerializer,
     RendreContratSerializer,
     RenouvelerContratSerializer,
@@ -1188,3 +1191,61 @@ class ObligationViewSet(_ContratsBaseViewSet):
         return Response(
             ObligationSerializer(
                 obligation, context={'request': request}).data)
+
+
+class EngagementSLAViewSet(_ContratsBaseViewSet):
+    """Engagements de niveau de service (SLA) & pénalités des contrats (CONTRAT27).
+
+    Scopé société (``TenantMixin``) ; ``company`` posée CÔTÉ SERVEUR (déduite du
+    contrat). CRUD complet plus une action ``penalite`` qui CALCULE (lecture
+    seule, déclaratif) la pénalité encourue — sans créer d'écriture, sans toucher
+    le ``Contrat.statut`` (CONTRAT12) ni le funnel ``STAGES.py`` (rule #2), et
+    sans émettre de facture.
+
+    Filtres : ``?contrat=<id>``, ``?actif=true/false``.
+    """
+    queryset = EngagementSLA.objects.select_related('contrat').all()
+    serializer_class = EngagementSLASerializer
+    filter_backends = [filters.SearchFilter, filters.OrderingFilter]
+    search_fields = ['libelle', 'unite']
+    ordering_fields = ['taux_cible', 'date_creation', 'id']
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        contrat_id = self.request.query_params.get('contrat')
+        if contrat_id:
+            qs = qs.filter(contrat_id=contrat_id)
+        actif = self.request.query_params.get('actif')
+        if actif is not None:
+            qs = qs.filter(actif=actif.lower() in ('1', 'true', 'oui'))
+        return qs
+
+    def perform_create(self, serializer):
+        """Pose ``company`` (celle du contrat) côté serveur."""
+        contrat = serializer.validated_data['contrat']
+        serializer.save(company=contrat.company)
+
+    @action(detail=True, methods=['post'])
+    def penalite(self, request, pk=None):
+        """Calcule la pénalité encourue pour ce SLA (lecture seule — CONTRAT27).
+
+        Corps : ``taux_realise`` (optionnel, %) et ``montant_contrat``
+        (optionnel). Déclaratif : ne crée AUCUNE écriture, ne change AUCUN
+        statut, n'émet aucune facture.
+        """
+        sla = self.get_object()
+        body = PenaliteSLASerializer(data=request.data)
+        body.is_valid(raise_exception=True)
+        resultat = services.calculer_penalite_sla(
+            sla,
+            taux_realise=body.validated_data.get('taux_realise'),
+            montant_contrat=body.validated_data.get('montant_contrat'),
+        )
+        return Response({
+            'penalite': str(resultat['penalite']),
+            'respecte': resultat['respecte'],
+            'taux_cible': str(resultat['taux_cible']),
+            'taux_realise': (
+                str(resultat['taux_realise'])
+                if resultat['taux_realise'] is not None else None),
+        })

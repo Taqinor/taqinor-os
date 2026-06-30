@@ -6,6 +6,7 @@ from .models import (
     Contrat,
     ContratActivity,
     ContratLien,
+    EngagementSLA,
     EtapeApprobation,
     JalonContrat,
     Obligation,
@@ -115,3 +116,13 @@ class ObligationAdmin(admin.ModelAdmin):
     list_filter = ('statut', 'redevable')
     search_fields = ('intitule', 'description')
     readonly_fields = ('date_realisation', 'date_creation')
+
+
+@admin.register(EngagementSLA)
+class EngagementSLAAdmin(admin.ModelAdmin):
+    list_display = ('id', 'contrat', 'libelle', 'taux_cible', 'unite',
+                    'mode_penalite', 'valeur_penalite', 'penalite_max',
+                    'actif', 'company')
+    list_filter = ('mode_penalite', 'actif')
+    search_fields = ('libelle', 'unite')
+    readonly_fields = ('date_creation',)

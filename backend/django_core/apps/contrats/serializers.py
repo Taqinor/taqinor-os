@@ -14,6 +14,7 @@ from .models import (
     Contrat,
     ContratActivity,
     ContratLien,
+    EngagementSLA,
     EtapeApprobation,
     JalonContrat,
     ModeleContrat,
@@ -808,3 +809,70 @@ class ObligationSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError(
                 "Ce jalon n'appartient pas à votre société.")
         return jalon
+
+
+class EngagementSLASerializer(serializers.ModelSerializer):
+    """Engagement de niveau de service (SLA) & pénalités (CONTRAT27).
+
+    ``company`` n'est jamais exposée : elle est posée côté serveur (déduite du
+    contrat). Le ``contrat`` reçu est validé même-société. La validation des
+    bornes (taux cible ∈ [0,100], pénalité ≥ 0…) est relayée depuis
+    ``EngagementSLA.clean``.
+    """
+    mode_penalite_display = serializers.CharField(
+        source='get_mode_penalite_display', read_only=True)
+
+    class Meta:
+        model = EngagementSLA
+        fields = [
+            'id', 'contrat', 'libelle', 'taux_cible', 'unite',
+            'mode_penalite', 'mode_penalite_display', 'valeur_penalite',
+            'penalite_max', 'actif', 'date_creation',
+        ]
+        read_only_fields = ['date_creation']
+
+    def validate_contrat(self, contrat):
+        """Le contrat rattaché doit appartenir à la société de l'utilisateur."""
+        request = self.context.get('request')
+        if request is not None and contrat.company_id != request.user.company_id:
+            raise serializers.ValidationError(
+                "Ce contrat n'appartient pas à votre société.")
+        return contrat
+
+    def validate(self, attrs):
+        """Relaie la validation des bornes du modèle (``clean``).
+
+        Construit un objet de contrôle avec les valeurs courantes (instance en
+        update) surchargées par les valeurs entrantes, et appelle ``clean``.
+        """
+        from django.core.exceptions import ValidationError as DjangoVE
+
+        controle = EngagementSLA()
+        for field in ('taux_cible', 'valeur_penalite', 'mode_penalite'):
+            valeur = attrs.get(
+                field, getattr(self.instance, field, None)
+                if self.instance is not None else None)
+            if valeur is not None:
+                setattr(controle, field, valeur)
+        try:
+            controle.clean()
+        except DjangoVE as exc:
+            raise serializers.ValidationError(
+                exc.messages if hasattr(exc, 'messages') else str(exc))
+        return attrs
+
+
+class PenaliteSLASerializer(serializers.Serializer):
+    """Corps de POST /sla/<id>/penalite/ (CONTRAT27).
+
+    ``taux_realise`` (optionnel) : taux de service effectivement réalisé en %.
+    Quand il atteint le taux cible, aucune pénalité n'est due. ``montant_contrat``
+    (optionnel) : montant de base pour le mode pourcentage (défaut = montant du
+    contrat). Lecture seule : ne crée aucune écriture.
+    """
+    taux_realise = serializers.DecimalField(
+        max_digits=6, decimal_places=2, required=False, allow_null=True,
+        min_value=0)
+    montant_contrat = serializers.DecimalField(
+        max_digits=14, decimal_places=2, required=False, allow_null=True,
+        min_value=0)
