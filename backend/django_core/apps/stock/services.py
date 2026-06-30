@@ -1363,3 +1363,57 @@ def previsions_reappro(company, nb_mois=6):
         })
     result.sort(key=lambda x: -x['consommation_mensuelle_moy'])
     return result
+
+
+# ── FG66 / DC36 — Explosion d'un kit (BOM) en lignes composant ────────────────
+# DC36 : aucun prix / marque / TVA n'est stocké sur le kit — l'explosion lit ces
+# attributs sur le Produit composant au moment de l'insertion. Point d'entrée
+# cross-app : `ventes` insère un kit dans un devis en appelant CE service (puis
+# crée ses propres lignes de devis), jamais en important le modèle stock.
+
+def exploser_kit(kit, quantite_kit=1):
+    """Explose un kit en ses lignes composant pour ``quantite_kit`` unités.
+
+    Renvoie une liste de dicts triés par désignation :
+      {produit_id, sku, designation, quantite, prix_vente_unitaire, tva,
+       marque, disponible}
+    où ``quantite`` = quantité du composant × ``quantite_kit``. Le PRIX, la TVA
+    et la MARQUE proviennent du ``Produit`` (DC36 — jamais stockés sur le kit).
+    ``prix_vente_unitaire`` est le prix de vente catalogue (client-facing OK).
+    Le prix d'ACHAT n'est jamais exposé ici. INTERNE/écran ; côté ventes c'est
+    cette liste qui devient des lignes de devis."""
+    from decimal import Decimal, InvalidOperation
+    try:
+        facteur = Decimal(str(quantite_kit))
+    except (InvalidOperation, TypeError, ValueError):
+        facteur = Decimal('1')
+    out = []
+    composants = (kit.composants
+                  .select_related('produit')
+                  .order_by('produit__nom'))
+    for c in composants:
+        p = c.produit
+        qte = (c.quantite or Decimal('0')) * facteur
+        out.append({
+            'produit_id': p.id,
+            'sku': p.sku or '',
+            'designation': p.nom,
+            'quantite': qte,
+            # DC36 — prix / TVA / marque lus sur le composant, jamais sur le kit.
+            'prix_vente_unitaire': p.prix_vente,
+            'tva': p.tva,
+            'marque': p.marque,
+            'disponible': p.quantite_stock,
+        })
+    return out
+
+
+def exploser_kit_par_id(company, kit_id, quantite_kit=1):
+    """Variante scopée société : explose le kit ``kit_id`` de ``company`` (ou
+    None si introuvable / archivé). Point d'entrée cross-app pour `ventes`."""
+    from .models import KitProduit
+    kit = KitProduit.objects.filter(
+        id=kit_id, company=company, is_archived=False).first()
+    if kit is None:
+        return None
+    return exploser_kit(kit, quantite_kit)

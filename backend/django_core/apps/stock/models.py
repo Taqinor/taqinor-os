@@ -852,3 +852,65 @@ class LigneInventaire(models.Model):
     @property
     def ecart(self):
         return self.quantite_comptee - self.quantite_theorique
+
+
+# ── FG66 / DC36 — Kit / nomenclature (BOM) vendable ───────────────────────────
+
+class KitProduit(models.Model):
+    """FG66 — Kit / nomenclature (BOM) : une configuration standard vendable
+    (« Kit pompage 3CV », « Kit résidentiel 5 kWc ») composée de produits du
+    catalogue.
+
+    DC36 — un kit NE STOCKE AUCUN prix / marque / TVA propre : tout est dérivé
+    de ses composants (``stock.Produit``) au moment de l'explosion. Le kit n'est
+    qu'un en-tête + une liste de composants (``KitComposant``). À l'insertion
+    dans un devis, le kit s'EXPLOSE en lignes composant (un SKU par ligne) pour
+    une réservation de stock exacte du bundle — l'explosion vit dans
+    ``services.exploser_kit`` (côté stock), consommée par ``ventes`` via la
+    couche services/string-FK (jamais d'import direct du modèle stock).
+
+    Multi-tenant : ``company`` toujours forcée côté serveur. Additif."""
+
+    company = models.ForeignKey(
+        'authentication.Company', on_delete=models.CASCADE,
+        null=True, blank=True, related_name='kits_produit')
+    nom = models.CharField(max_length=255)
+    sku = models.CharField(max_length=50, blank=True, null=True)
+    description = models.TextField(blank=True, null=True)
+    is_archived = models.BooleanField(default=False)
+    date_creation = models.DateTimeField(auto_now_add=True)
+    date_mise_a_jour = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = 'Kit / nomenclature'
+        verbose_name_plural = 'Kits / nomenclatures'
+        unique_together = [('company', 'sku')]
+        ordering = ['nom']
+
+    def __str__(self):
+        return self.nom
+
+
+class KitComposant(models.Model):
+    """Composant d'un kit (FG66/DC36) : un produit du catalogue + une quantité.
+
+    DC36 — le prix / la marque / la TVA ne sont JAMAIS recopiés ici : ils sont
+    lus sur le ``Produit`` lié au moment de l'explosion. On ne stocke que le FK
+    produit et la quantité dans le bundle."""
+
+    kit = models.ForeignKey(
+        KitProduit, on_delete=models.CASCADE, related_name='composants')
+    produit = models.ForeignKey(
+        Produit, on_delete=models.PROTECT, related_name='composants_kit')
+    quantite = models.DecimalField(
+        max_digits=12, decimal_places=2, default=1,
+        help_text='Quantité de ce produit dans une unité de kit.')
+
+    class Meta:
+        verbose_name = 'Composant de kit'
+        verbose_name_plural = 'Composants de kit'
+        unique_together = [('kit', 'produit')]
+        ordering = ['id']
+
+    def __str__(self):
+        return f'{self.kit_id}: {self.produit_id} × {self.quantite}'

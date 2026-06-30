@@ -7,6 +7,7 @@ from .models import (
     ReceptionFournisseur, LigneReceptionFournisseur,
     FactureFournisseur, LigneFactureFournisseur, PaiementFournisseur,
     InventaireSession, LigneInventaire,
+    KitProduit, KitComposant,
 )
 
 
@@ -708,4 +709,74 @@ class InventaireSessionSerializer(serializers.ModelSerializer):
             instance.lignes.all().delete()
             for ligne in lignes_data:
                 LigneInventaire.objects.create(session=instance, **ligne)
+        return instance
+
+
+# ── FG66 / DC36 — Kit / nomenclature (BOM) ────────────────────────────────────
+
+class KitComposantSerializer(serializers.ModelSerializer):
+    produit_nom = serializers.CharField(source='produit.nom', read_only=True)
+    produit_sku = serializers.CharField(source='produit.sku', read_only=True)
+    # DC36 — prix de vente catalogue affiché en LECTURE SEULE (jamais stocké sur
+    # le kit) ; aucun prix d'achat ici (interne).
+    prix_vente = serializers.DecimalField(
+        source='produit.prix_vente', max_digits=10, decimal_places=2,
+        read_only=True)
+
+    class Meta:
+        model = KitComposant
+        fields = ['id', 'produit', 'produit_nom', 'produit_sku', 'prix_vente',
+                  'quantite']
+
+    def validate_quantite(self, value):
+        if value is None or value <= 0:
+            raise serializers.ValidationError('La quantité doit être positive.')
+        return value
+
+
+class KitProduitSerializer(serializers.ModelSerializer):
+    composants = KitComposantSerializer(many=True)
+    nb_composants = serializers.SerializerMethodField()
+
+    class Meta:
+        model = KitProduit
+        # DC36 — un kit ne porte AUCUN champ prix / marque / TVA : tout vient
+        # des composants à l'explosion.
+        fields = ['id', 'nom', 'sku', 'description', 'is_archived',
+                  'composants', 'nb_composants', 'date_creation',
+                  'date_mise_a_jour']
+        read_only_fields = ['date_creation', 'date_mise_a_jour']
+
+    def get_nb_composants(self, obj):
+        return obj.composants.count()
+
+    def _validate_company(self, composants_data):
+        request = self.context.get('request')
+        company = getattr(getattr(request, 'user', None), 'company', None)
+        if company is None:
+            return
+        for c in composants_data:
+            if c['produit'].company_id != company.id:
+                raise serializers.ValidationError(
+                    {'composants': 'Produit hors de votre entreprise.'})
+
+    def create(self, validated_data):
+        composants_data = validated_data.pop('composants', [])
+        self._validate_company(composants_data)
+        kit = KitProduit.objects.create(**validated_data)
+        for c in composants_data:
+            KitComposant.objects.create(kit=kit, **c)
+        return kit
+
+    def update(self, instance, validated_data):
+        composants_data = validated_data.pop('composants', None)
+        if composants_data is not None:
+            self._validate_company(composants_data)
+        for attr, val in validated_data.items():
+            setattr(instance, attr, val)
+        instance.save()
+        if composants_data is not None:
+            instance.composants.all().delete()
+            for c in composants_data:
+                KitComposant.objects.create(kit=instance, **c)
         return instance
