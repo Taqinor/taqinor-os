@@ -1138,3 +1138,71 @@ class TenantTheme(TimestampedModel):
 
     def __str__(self):
         return f'Thème société {self.company_id}'
+
+
+# ---------------------------------------------------------------------------
+# FG393 — Éditeur de modèles imprimables / brandés (PDF / email / WhatsApp).
+#
+# Modèle de FONDATION GÉNÉRIQUE : persiste des modèles brandés éditables
+# (PDF/email/WhatsApp) avec des placeholders ``{{ variable }}`` rendus par un
+# moteur SÛR (``core.templating`` — substitution littérale, pas d'exécution de
+# code). ``core`` ne connaît AUCUN modèle métier (contrat import-linter
+# ``core-foundation-is-a-base-layer``) : les variables sont fournies par
+# l'appelant au moment du rendu. Nommé ``BrandedTemplate`` (et non
+# ``MessageTemplate``) pour ne PAS entrer en collision avec le
+# ``parametres.MessageTemplate`` WhatsApp existant (FR/Darija) — les deux
+# coexistent : celui-ci généralise l'éditeur multi-canal.
+# ---------------------------------------------------------------------------
+
+
+class BrandedTemplate(TimestampedModel):
+    """Modèle brandé éditable par société (FG393).
+
+    GÉNÉRIQUE : ``kind`` = pdf/email/whatsapp ; ``code`` identifie l'usage (ex.
+    « relance_devis ») ; ``sujet`` + ``corps`` portent le texte avec des
+    placeholders ``{{ variable }}``. Multi-tenant : ``company`` obligatoire,
+    imposée côté serveur. Unique par ``(company, kind, code)``.
+    """
+
+    KIND_PDF = 'pdf'
+    KIND_EMAIL = 'email'
+    KIND_WHATSAPP = 'whatsapp'
+    KIND_CHOICES = [
+        (KIND_PDF, 'PDF'),
+        (KIND_EMAIL, 'Email'),
+        (KIND_WHATSAPP, 'WhatsApp'),
+    ]
+
+    company = models.ForeignKey(
+        'authentication.Company', on_delete=models.CASCADE,
+        related_name='branded_templates', verbose_name='Société')
+
+    kind = models.CharField('Type', max_length=12, choices=KIND_CHOICES)
+    code = models.CharField(
+        'Code', max_length=80,
+        help_text="Identifiant d'usage, ex. « relance_devis » (libre).")
+    nom = models.CharField('Nom', max_length=160)
+    sujet = models.CharField(
+        'Sujet', max_length=255, blank=True, default='',
+        help_text='Objet (email) ou titre — supporte les placeholders.')
+    corps = models.TextField(
+        'Corps', blank=True, default='',
+        help_text='Texte avec placeholders ``{{ variable }}``.')
+    actif = models.BooleanField('Actif', default=True)
+
+    class Meta:
+        verbose_name = 'Modèle brandé'
+        verbose_name_plural = 'Modèles brandés'
+        ordering = ['kind', 'code', 'id']
+        constraints = [
+            models.UniqueConstraint(
+                fields=['company', 'kind', 'code'],
+                name='core_brandtpl_co_kind_code'),
+        ]
+        indexes = [
+            models.Index(fields=['company', 'kind', 'actif'],
+                         name='core_brandtpl_co_kind_idx'),
+        ]
+
+    def __str__(self):
+        return f'{self.kind}:{self.code} — {self.nom}'

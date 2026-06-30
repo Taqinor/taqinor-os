@@ -38,6 +38,7 @@ from . import trash as trash_infra
 from . import workflow_templates
 from .mixins import TenantMixin
 from .models import (
+    BrandedTemplate,
     Dashboard,
     DeletionRecord,
     ModuleToggle,
@@ -47,6 +48,7 @@ from .models import (
     TenantTheme,
 )
 from .serializers import (
+    BrandedTemplateSerializer,
     DashboardSerializer,
     DeletionRecordSerializer,
     ModuleToggleSerializer,
@@ -458,3 +460,32 @@ class TenantThemeViewSet(TenantMixin, viewsets.GenericViewSet):
         serializer.is_valid(raise_exception=True)
         serializer.save(company=company)
         return Response(serializer.data)
+
+
+class BrandedTemplateViewSet(TenantMixin, viewsets.ModelViewSet):
+    """FG393 — éditeur de modèles imprimables/brandés (PDF/email/WhatsApp).
+
+    Multi-tenant : ``TenantMixin`` filtre par société et impose ``company``.
+    L'écriture est réservée au palier admin/responsable ; la lecture est ouverte
+    à tout utilisateur authentifié. Aucune importation d'app domaine : le rendu
+    passe par le moteur SÛR ``core.templating`` (substitution littérale).
+
+      * ``POST …/branded-templates/{id}/preview/`` — rend le modèle avec un
+        contexte d'exemple (corps ``{"context": {...}}``).
+    """
+    serializer_class = BrandedTemplateSerializer
+    queryset = BrandedTemplate.objects.all()
+    pagination_class = None
+
+    def get_permissions(self):
+        if self.action in ('list', 'retrieve'):
+            return [IsAuthenticated()]
+        return [IsAdminOrResponsableTier()]
+
+    @action(detail=True, methods=['post'])
+    def preview(self, request, pk=None):
+        from . import templating
+        template = self.get_object()
+        context = (request.data or {}).get('context') or {}
+        sujet, corps = templating.rendre_modele(template, context)
+        return Response({'sujet': sujet, 'corps': corps})

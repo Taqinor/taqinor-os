@@ -19,6 +19,7 @@ fichier, donc non modifié par cette tâche « core-only ») :
 from rest_framework.routers import DefaultRouter
 
 from .views import (
+    BrandedTemplateViewSet,
     BulkEditViewSet,
     DashboardViewSet,
     ModuleToggleViewSet,
@@ -54,5 +55,8 @@ router.register(r'module-toggles', ModuleToggleViewSet,
                 basename='module-toggle')
 # FG392 — thème white-label par société (singleton, lecture/upsert).
 router.register(r'theme', TenantThemeViewSet, basename='tenant-theme')
+# FG393 — éditeur de modèles imprimables/brandés (PDF/email/WhatsApp).
+router.register(r'branded-templates', BrandedTemplateViewSet,
+                basename='branded-template')
 
 urlpatterns = router.urls

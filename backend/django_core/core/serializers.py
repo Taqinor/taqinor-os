@@ -6,6 +6,7 @@ FG369 — forme de sortie des modèles de workflow installables (catalogue).
 from rest_framework import serializers
 
 from .models import (
+    BrandedTemplate,
     Dashboard,
     DeletionRecord,
     ModuleToggle,
@@ -161,3 +162,24 @@ class TenantThemeSerializer(serializers.ModelSerializer):
             'domaine', 'nom_affichage', 'extra', 'created_at', 'updated_at',
         ]
         read_only_fields = ['id', 'created_at', 'updated_at']
+
+
+class BrandedTemplateSerializer(serializers.ModelSerializer):
+    """FG393 — modèle brandé éditable (PDF/email/WhatsApp).
+
+    ``company`` n'est JAMAIS lu du corps (imposée côté serveur). ``variables``
+    expose les placeholders détectés dans le corps (aide à l'éditeur).
+    """
+    variables = serializers.SerializerMethodField()
+
+    class Meta:
+        model = BrandedTemplate
+        fields = [
+            'id', 'kind', 'code', 'nom', 'sujet', 'corps', 'actif',
+            'variables', 'created_at', 'updated_at',
+        ]
+        read_only_fields = ['id', 'variables', 'created_at', 'updated_at']
+
+    def get_variables(self, obj):
+        from .templating import variables_utilisees
+        return variables_utilisees(f'{obj.sujet}\n{obj.corps}')
