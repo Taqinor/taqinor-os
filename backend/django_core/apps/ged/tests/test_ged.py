@@ -3736,17 +3736,17 @@ class ArchivageLegalApiTests(ArchivageLegalBase):
         self.assertEqual(resp.status_code, 403)
         self.assertTrue(Document.objects.filter(pk=self.doc_a.pk).exists())
 
-    def test_archived_document_checkout_returns_403(self):
-        """GED23 — check-out d'un document archivé renvoie 403, pas 500.
+    def test_archived_document_checkout_is_blocked(self):
+        """GED23 — check-out d'un document archivé est BLOQUÉ (409 write-once).
 
-        L'action traduit `ArchivageLegalError` (garde write-once du save) en 403
-        ; sans la traduction l'erreur remonterait en 500. Même classe de garde
-        que restaurer/check-in.
+        `checkout_document` garde déjà l'archivage et lève `PermissionError`, que
+        l'action traduit en 409 avec le message write-once — jamais 200, jamais
+        500 : le document immuable ne peut pas être extrait pour modification.
         """
         self._archive_via_service()
         resp = auth(self.admin_a).post(
             f'/api/django/ged/documents/{self.doc_a.id}/check-out/')
-        self.assertEqual(resp.status_code, 403, resp.data)
+        self.assertEqual(resp.status_code, 409, resp.data)
 
     def test_update_and_delete_not_allowed_on_archivage(self):
         """L'API archivages-legaux n'expose ni update ni delete (immuable)."""

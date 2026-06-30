@@ -531,11 +531,9 @@ class DocumentViewSet(TenantMixin, viewsets.ModelViewSet):
         document = self.get_object()
         try:
             doc = services.checkout_document(document, request.user)
-        except ArchivageLegalError as exc:
-            # GED23 — document archivé légalement : write-once, pas d'extraction.
-            return Response(
-                {'detail': str(exc)}, status=status.HTTP_403_FORBIDDEN)
         except PermissionError as exc:
+            # GED23 : check-out d'un document archivé légalement (write-once) →
+            # checkout_document lève PermissionError → 409 (bloqué, immuable).
             return Response(
                 {'detail': str(exc)}, status=status.HTTP_409_CONFLICT)
         doc.refresh_from_db()
