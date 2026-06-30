@@ -25,7 +25,8 @@ from django.db.models import Avg
 from .models import (
     ActionCorrectivePreventive, Audit, ConformiteEnvironnementale,
     DeclarationCnss, EvaluationRisque,
-    Incident, InspectionSecurite, NonConformite, NotationFinChantier,
+    Incident, IndicateurESG, InspectionSecurite, NonConformite,
+    NotationFinChantier,
     PermisTravail, PlanInspectionChantier,
     ProcedureQualite, ReleveControle, ReleveCourbeIV, RetourClientQualite,
 )
@@ -1043,3 +1044,72 @@ def conformites_a_relancer(company, today=None):
                 ConformiteEnvironnementale.Statut.EXPIRE):
             a_relancer.append(conf)
     return a_relancer
+
+
+# ── QHSE40 — Export reporting des indicateurs ESG ──────────────────────────
+
+def export_esg(company, annee=None):
+    """Export reporting des indicateurs ESG d'une société (QHSE40).
+
+    Agrège les ``IndicateurESG`` (lecture seule, scopée société) en un export
+    plat groupé par pilier (environnement / social / gouvernance), prêt pour un
+    reporting extra-financier (CSRD-like). Un filtre ``annee`` optionnel borne la
+    période. Chaque indicateur est normalisé en ligne homogène (code, libellé,
+    valeur, cible, unité, période, cible atteinte). Renvoie :
+
+    ``{
+        'annee': int|None,
+        'total': int,
+        'piliers': {
+            'environnement': {'nb': N, 'cibles_atteintes': M, 'lignes': [...]},
+            'social': {...},
+            'gouvernance': {...},
+        },
+        'lignes': [...],   # à plat, tous piliers confondus
+    }``. Aucune mutation, aucun import cross-app.
+    """
+    if company is None:
+        return {'annee': annee, 'total': 0, 'piliers': {}, 'lignes': []}
+
+    qs = IndicateurESG.objects.filter(company=company)
+    if annee not in (None, ''):
+        qs = qs.filter(annee=annee)
+    qs = qs.order_by('pilier', 'code', 'id')
+
+    piliers = {
+        IndicateurESG.Pilier.ENVIRONNEMENT: {
+            'nb': 0, 'cibles_atteintes': 0, 'lignes': []},
+        IndicateurESG.Pilier.SOCIAL: {
+            'nb': 0, 'cibles_atteintes': 0, 'lignes': []},
+        IndicateurESG.Pilier.GOUVERNANCE: {
+            'nb': 0, 'cibles_atteintes': 0, 'lignes': []},
+    }
+    lignes = []
+    for ind in qs:
+        atteinte = ind.atteinte_cible
+        ligne = {
+            'id': ind.id,
+            'pilier': ind.pilier,
+            'code': ind.code,
+            'libelle': ind.libelle,
+            'valeur': str(ind.valeur) if ind.valeur is not None else None,
+            'cible': str(ind.cible) if ind.cible is not None else None,
+            'unite': ind.unite,
+            'annee': ind.annee,
+            'periode': ind.periode,
+            'atteinte_cible': atteinte,
+        }
+        lignes.append(ligne)
+        bucket = piliers.get(ind.pilier)
+        if bucket is not None:
+            bucket['nb'] += 1
+            if atteinte:
+                bucket['cibles_atteintes'] += 1
+            bucket['lignes'].append(ligne)
+
+    return {
+        'annee': annee if annee not in (None, '') else None,
+        'total': len(lignes),
+        'piliers': piliers,
+        'lignes': lignes,
+    }

@@ -10,6 +10,7 @@ from .views import (
     ContactUrgenceViewSet, DechetViewSet,
     CritereAuditViewSet, DeclarationCnssViewSet,
     EvaluationRisqueViewSet, GrilleAuditViewSet, IncidentViewSet,
+    IndicateurESGViewSet,
     InductionSecuriteViewSet, InspectionSecuriteViewSet,
     Iso9001ReadinessViewSet,
     ItemNotationViewSet, LigneEvaluationRisqueViewSet,
@@ -60,6 +61,7 @@ router.register(
     r'conformites-environnementales', ConformiteEnvironnementaleViewSet)
 router.register(r'bilans-carbone', BilanCarboneViewSet)
 router.register(r'lignes-bilan-carbone', LigneBilanCarboneViewSet)
+router.register(r'indicateurs-esg', IndicateurESGViewSet)
 router.register(
     r'iso9001-readiness', Iso9001ReadinessViewSet,
     basename='iso9001-readiness')

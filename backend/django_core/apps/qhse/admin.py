@@ -4,6 +4,7 @@ from .models import (
     ActionCorrectivePreventive, BilanCarbone, BordereauSuiviDechet,
     ConformiteEnvironnementale, ConsignationLoto,
     Dechet, EvaluationRisque,
+    IndicateurESG,
     InspectionSecurite,
     LigneBilanCarbone,
     LigneEvaluationRisque,
@@ -179,3 +180,11 @@ class LigneBilanCarboneAdmin(admin.ModelAdmin):
                     'quantite', 'unite', 'facteur_emission', 'company')
     list_filter = ('scope',)
     search_fields = ('libelle', 'categorie')
+
+
+@admin.register(IndicateurESG)
+class IndicateurESGAdmin(admin.ModelAdmin):
+    list_display = ('id', 'code', 'libelle', 'pilier', 'valeur', 'cible',
+                    'unite', 'annee', 'periode', 'company', 'date_creation')
+    list_filter = ('pilier', 'annee')
+    search_fields = ('code', 'libelle')

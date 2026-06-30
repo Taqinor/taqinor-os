@@ -2768,3 +2768,104 @@ class LigneBilanCarbone(models.Model):
 
     def __str__(self):
         return f'{self.libelle} ({self.get_scope_display()})'
+
+
+# ── QHSE40 — Indicateur ESG + export reporting ─────────────────────────────
+
+class IndicateurESG(models.Model):
+    """Indicateur ESG (Environnement / Social / Gouvernance) (QHSE40).
+
+    Mesure un indicateur extra-financier d'une société pour une période donnée,
+    classé par ``pilier`` ESG. Chaque indicateur porte un ``code`` (libre, ex.
+    ``E1`` / ``S2``), une ``valeur`` mesurée, une ``cible`` optionnelle, une
+    ``unite`` et une période (``annee`` + ``periode`` libre, ex. ``T1`` ou
+    ``2026``). ``atteinte_cible`` indique si la cible est tenue.
+
+    Le sélecteur ``export_esg`` (QHSE40) agrège ces indicateurs par pilier pour
+    le reporting (CSRD-like) ; un export plat est exposé côté vue. Le
+    rattachement éventuel au bilan carbone (QHSE39) reste un FK intra-app
+    optionnel.
+
+    Multi-société via ``company`` posée côté serveur. Entièrement additif.
+    """
+    class Pilier(models.TextChoices):
+        ENVIRONNEMENT = 'environnement', 'Environnement'
+        SOCIAL = 'social', 'Social'
+        GOUVERNANCE = 'gouvernance', 'Gouvernance'
+
+    class Tendance(models.TextChoices):
+        HAUSSE_FAVORABLE = 'hausse_favorable', 'Hausse favorable'
+        BAISSE_FAVORABLE = 'baisse_favorable', 'Baisse favorable'
+        NEUTRE = 'neutre', 'Neutre'
+
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='qhse_indicateurs_esg',
+        verbose_name='Société',
+    )
+    code = models.CharField(
+        max_length=30, blank=True, default='', verbose_name='Code')
+    libelle = models.CharField(max_length=255, verbose_name='Libellé')
+    pilier = models.CharField(
+        max_length=15, choices=Pilier.choices,
+        default=Pilier.ENVIRONNEMENT, verbose_name='Pilier ESG')
+    valeur = models.DecimalField(
+        max_digits=18, decimal_places=4,
+        null=True, blank=True, verbose_name='Valeur')
+    cible = models.DecimalField(
+        max_digits=18, decimal_places=4,
+        null=True, blank=True, verbose_name='Cible')
+    unite = models.CharField(
+        max_length=30, blank=True, default='', verbose_name='Unité')
+    annee = models.PositiveIntegerField(
+        null=True, blank=True, verbose_name='Année')
+    periode = models.CharField(
+        max_length=30, blank=True, default='', verbose_name='Période')
+    tendance_souhaitee = models.CharField(
+        max_length=20, choices=Tendance.choices,
+        default=Tendance.NEUTRE, verbose_name='Tendance souhaitée')
+    # Lien optionnel vers un bilan carbone (QHSE39) — intra-app.
+    bilan_carbone = models.ForeignKey(
+        BilanCarbone,
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='indicateurs_esg',
+        verbose_name='Bilan carbone lié',
+    )
+    notes = models.TextField(
+        blank=True, default='', verbose_name='Notes')
+    date_creation = models.DateTimeField(
+        auto_now_add=True, verbose_name='Créé le')
+
+    class Meta:
+        verbose_name = 'Indicateur ESG'
+        verbose_name_plural = 'Indicateurs ESG'
+        ordering = ['pilier', 'code', 'id']
+        indexes = [
+            models.Index(
+                fields=['company', 'pilier'],
+                name='qhse_esg_co_pilier',
+            ),
+            models.Index(
+                fields=['company', 'annee'],
+                name='qhse_esg_co_annee',
+            ),
+        ]
+
+    @property
+    def atteinte_cible(self):
+        """Cible atteinte ? ``None`` si valeur ou cible manquante.
+
+        Le sens dépend de la tendance souhaitée : pour une baisse favorable
+        (ex. accidents, émissions) la cible est tenue quand ``valeur <= cible`` ;
+        sinon (hausse favorable / neutre) quand ``valeur >= cible``.
+        """
+        if self.valeur is None or self.cible is None:
+            return None
+        if self.tendance_souhaitee == self.Tendance.BAISSE_FAVORABLE:
+            return self.valeur <= self.cible
+        return self.valeur >= self.cible
+
+    def __str__(self):
+        return f'{self.code or self.libelle} ({self.get_pilier_display()})'

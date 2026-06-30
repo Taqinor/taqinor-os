@@ -11,7 +11,7 @@ from .models import (
     ConsignationLoto, ContactUrgence,
     BilanCarbone, BordereauSuiviDechet, ConformiteEnvironnementale,
     CritereAudit, Dechet, DeclarationCnss, EvaluationRisque, GrilleAudit,
-    InductionSecurite,
+    InductionSecurite, IndicateurESG,
     LigneBilanCarbone,
     Incident, InspectionSecurite,
     ItemNotation, LigneEvaluationRisque, NonConformite, NotationFinChantier,
@@ -963,3 +963,30 @@ class BilanCarboneSerializer(serializers.ModelSerializer):
             'total_scope_3', 'total_tco2e', 'date_creation',
         ]
         read_only_fields = ['date_creation']
+
+
+class IndicateurESGSerializer(serializers.ModelSerializer):
+    """Indicateur ESG (E/S/G) + export reporting (QHSE40).
+
+    ``company`` posée côté serveur. ``atteinte_cible`` (dérivé valeur/cible selon
+    la tendance souhaitée) exposé en lecture seule. Le FK ``bilan_carbone``
+    (QHSE39) est validé même-société.
+    """
+    pilier_display = serializers.CharField(
+        source='get_pilier_display', read_only=True)
+    tendance_souhaitee_display = serializers.CharField(
+        source='get_tendance_souhaitee_display', read_only=True)
+    atteinte_cible = serializers.BooleanField(read_only=True, allow_null=True)
+
+    class Meta:
+        model = IndicateurESG
+        fields = [
+            'id', 'code', 'libelle', 'pilier', 'pilier_display', 'valeur',
+            'cible', 'unite', 'annee', 'periode', 'tendance_souhaitee',
+            'tendance_souhaitee_display', 'atteinte_cible', 'bilan_carbone',
+            'notes', 'date_creation',
+        ]
+        read_only_fields = ['date_creation']
+
+    def validate_bilan_carbone(self, value):
+        return _meme_societe(self, value, 'Bilan carbone')

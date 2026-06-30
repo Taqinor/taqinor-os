@@ -20,7 +20,7 @@ from .models import (
     BilanCarbone, BordereauSuiviDechet, CauseIncident,
     ConformiteEnvironnementale, ConsignationLoto, ContactUrgence,
     CritereAudit, Dechet, DeclarationCnss, EvaluationRisque, GrilleAudit,
-    Incident,
+    Incident, IndicateurESG,
     InductionSecurite, InspectionSecurite,
     ItemNotation, LigneBilanCarbone,
     LigneEvaluationRisque, NonConformite, NotationFinChantier,
@@ -38,6 +38,7 @@ from .serializers import (
     CritereAuditSerializer, DechetSerializer, DeclarationCnssSerializer,
     EvaluationRisqueSerializer, GrilleAuditSerializer,
     IncidentSerializer,
+    IndicateurESGSerializer,
     InductionSecuriteSerializer, InspectionSecuriteSerializer,
     ItemNotationSerializer,
     LigneBilanCarboneSerializer,
@@ -58,6 +59,7 @@ from .selectors import (
     capa_en_retard, chantier_peut_cloturer, conformites_a_relancer,
     courbes_iv_for_chantier,
     criticite_summary, declarations_cnss_a_echeance, document_unique_valide,
+    export_esg,
     hold_points_status,
     heures_travaillees_chantiers,
     iso9001_readiness, permis_travail_expirant, photos_controle_par_phase,
@@ -1833,3 +1835,41 @@ class LigneBilanCarboneViewSet(_QhseBaseViewSet):
         if scope not in (None, ''):
             qs = qs.filter(scope=scope)
         return qs
+
+
+class IndicateurESGViewSet(_QhseBaseViewSet):
+    """Indicateurs ESG + export reporting (QHSE40).
+
+    CRUD scopé société. ``company`` posée côté serveur. Le FK ``bilan_carbone``
+    (QHSE39) est validé même-société. ``atteinte_cible`` est dérivé (lecture
+    seule). Filtres optionnels : ``?pilier=`` / ``?annee=``. Recherche par
+    code/libellé.
+
+    Action ``GET …/export/`` — export reporting groupé par pilier ESG
+    (``?annee=`` optionnel), via ``selectors.export_esg``, scopé société.
+    """
+    queryset = IndicateurESG.objects.select_related('bilan_carbone').all()
+    serializer_class = IndicateurESGSerializer
+    filter_backends = [filters.SearchFilter, filters.OrderingFilter]
+    search_fields = ['code', 'libelle']
+    ordering_fields = ['id', 'pilier', 'annee', 'date_creation']
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        pilier = self.request.query_params.get('pilier')
+        if pilier not in (None, ''):
+            qs = qs.filter(pilier=pilier)
+        annee = self.request.query_params.get('annee')
+        if annee not in (None, ''):
+            qs = qs.filter(annee=annee)
+        return qs
+
+    @action(detail=False, methods=['get'])
+    def export(self, request):
+        """Export reporting ESG groupé par pilier (QHSE40).
+
+        ``?annee=N`` borne la période. Agrège les indicateurs ESG de la société
+        en un export plat + par pilier (nb / cibles atteintes / lignes).
+        """
+        annee = request.query_params.get('annee') or None
+        return Response(export_esg(request.user.company, annee=annee))
