@@ -313,3 +313,56 @@ class TestUnderperformance(TestCase):
         self.assertEqual(
             UnderperformanceFlag.objects.filter(
                 installation=self.inst, is_open=True).count(), 1)
+
+
+class TestOmMetrics(TestCase):
+    """FG279 — analytique O&M (PR, disponibilité, soiling, dégradation)."""
+
+    def setUp(self):
+        self.company = make_company('om-co', 'OM Co')
+        self.user = User.objects.create_user(
+            username='om_admin', password='x', role_legacy='admin',
+            company=self.company)
+        self.api = auth(self.user)
+        self.inst, _ = make_installation(self.company, ref='CHT-OM-1', kwc='10.00')
+        self.config = MonitoringConfig.objects.create(
+            company=self.company, installation=self.inst,
+            expected_annual_kwh=Decimal('12000'))
+        self.today = date(2026, 6, 30)
+
+    def _seed_monthly(self, kwh_by_month):
+        for offset, kwh in enumerate(kwh_by_month):
+            ProductionReading.objects.create(
+                company=self.company, installation=self.inst,
+                date=date(2026, 1, 15) + timedelta(days=30 * offset),
+                period_days=30, energy_kwh=Decimal(str(kwh)))
+
+    def test_pr_and_availability_computed(self):
+        self._seed_monthly([1000, 1000, 1000])
+        from apps.monitoring.analytics import om_metrics
+        m = om_metrics(self.inst, window_days=365, today=self.today)
+        self.assertIsNotNone(m['pr_pct'])
+        self.assertIsNotNone(m['availability_pct'])
+        self.assertEqual(m['production_kwh'], Decimal('3000.00'))
+
+    def test_declining_pr_flags_soiling(self):
+        # PR mensuel qui décroît nettement → soiling suspecté.
+        self._seed_monthly([1000, 900, 800, 700, 600, 500])
+        from apps.monitoring.analytics import om_metrics
+        m = om_metrics(self.inst, window_days=365, today=self.today)
+        self.assertTrue(m['soiling_suspected'])
+        self.assertIsNotNone(m['degradation_pct_per_year'])
+
+    def test_no_data_graceful(self):
+        from apps.monitoring.analytics import om_metrics
+        m = om_metrics(self.inst, window_days=365, today=self.today)
+        self.assertEqual(m['production_kwh'], Decimal('0.00'))
+        self.assertEqual(m['monthly_pr'], [])
+
+    def test_om_metrics_endpoint(self):
+        self._seed_monthly([1000, 1000])
+        r = self.api.get(
+            f'/api/django/monitoring/configs/{self.config.id}/om-metrics/')
+        self.assertEqual(r.status_code, 200, r.data)
+        self.assertIn('pr_pct', r.data)
+        self.assertEqual(r.data['installation'], self.inst.id)

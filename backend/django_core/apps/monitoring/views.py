@@ -39,6 +39,7 @@ from .serializers import (
     MonitoringConfigSerializer, MonitoringSettingsSerializer,
     ProductionReadingSerializer,
 )
+from .analytics import om_metrics
 from .services import evaluate_underperformance, sync_system
 
 READ_ACTIONS = ['list', 'retrieve']
@@ -158,6 +159,16 @@ class MonitoringConfigViewSet(TenantMixin, viewsets.ModelViewSet):
                 float(expected_annual) if expected_annual else None),
             'data': rows,
         })
+
+    @action(detail=True, methods=['get'], url_path='om-metrics',
+            permission_classes=[IsAnyRole])
+    def om_metrics(self, request, pk=None):
+        """FG279 — Analytique O&M par système (PR, disponibilité, soiling,
+        dégradation) depuis `ProductionReading`. Fenêtre : ?window_days=365
+        (défaut, jusqu'à 1825 jours). 100 % lecture."""
+        config = self.get_object()
+        window = min(int(request.query_params.get('window_days', 365)), 1825)
+        return Response(om_metrics(config.installation, window_days=window))
 
 
 class ProductionReadingViewSet(TenantMixin, viewsets.ModelViewSet):
