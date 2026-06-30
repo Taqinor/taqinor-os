@@ -527,7 +527,7 @@ first run that ticks any `FG*` task refreshes CODEMAP §10 + `--write` in that c
 - [x] FG142 — **Trousse liasse fiscale (états de synthèse)** — bilan + CPC + balance + tableaux annexes en un paquet pour le fiduciaire/DGI. (ARCH)
 - [x] FG143 — **Déclaration des honoraires / état 9421** — déclaration annuelle des paiements aux tiers depuis les règlements fournisseurs. (ROUTINE)
 - [x] FG144 — **Calcul du timbre fiscal sur encaissements espèces** — droit de timbre auto sur les factures payées en espèces. (SCHEMA)
-- [ ] FG145 — **Retenue de garantie & cautions sur marchés (RG / bonne fin)** — RG retenue sur les marchés + cautions bancaires (provisoire/définitive/restitution) avec dates de levée. (SCHEMA)
+- [x] FG145 — **Retenue de garantie & cautions sur marchés (RG / bonne fin)** — RG retenue sur les marchés + cautions bancaires (provisoire/définitive/restitution) avec dates de levée. (SCHEMA)
 - [ ] FG146 — **Reconnaissance du revenu par avancement (% completion)** — reconnaître le CA des chantiers pluri-tranches selon l'avancement réel. (DECISION)
 - [ ] FG147 — **Produits constatés d'avance & travaux en cours (WIP)** — acomptes non encore acquis en produits différés, coûts non facturés en travaux en cours. (SCHEMA)
 - [ ] FG148 — **Campagnes de versement des commissions (payout run)** — transformer le calcul de commission (lecture seule aujourd'hui) en payable : relevé par commercial, validation, post. (SCHEMA)
@@ -567,7 +567,7 @@ first run that ticks any `FG*` task refreshes CODEMAP §10 + `--write` in that c
 - [x] FG179 — **Suivi péremption/contrôle des EPI** — EPI à durée de vie (harnais, gants isolants) + alerte de remplacement/recontrôle. (SCHEMA)
 - [x] FG180 — **Émargement de remise EPI (signature)** — accusé signé prouvant la dotation (exigible CNSS/accident). (ROUTINE)
 - [x] FG181 — **Registre HSE & accidents du travail** — déclaration (date/lieu/blessé/gravité/arrêt/photos) + export déclaration CNSS. (SCHEMA)
-- [ ] FG182 — **Presqu'accidents (near-miss)** — saisie rapide terrain pour pilotage proactif. (ROUTINE)
+- [x] FG182 — **Presqu'accidents (near-miss)** — saisie rapide terrain pour pilotage proactif. (ROUTINE)
 - [ ] FG183 — **Causeries sécurité / toolbox talks** — quart d'heure sécurité avant chantier (thème/participants/émargement). (SCHEMA)
 - [ ] FG184 — **Analyse de risques chantier (plan de prévention)** — évaluation des risques par chantier avant démarrage (≠ checklist F18 par intervention). (SCHEMA)
 - [ ] FG185 — **Tableau de bord HSE** — taux fréquence/gravité, EPI/habilitations/visites en alerte, incidents par chantier. (ROUTINE)
@@ -699,7 +699,7 @@ first run that ticks any `FG*` task refreshes CODEMAP §10 + `--write` in that c
 - [x] FG302 — **Calendrier de disponibilité ressources** — `IndisponibiliteRessource` (congé/formation/arrêt) excluant un technicien/véhicule. (SCHEMA)
 - [x] FG303 — **Planning des camionnettes (capacité véhicule)** — affectation par véhicule sur le calendrier (cohérent avec `Intervention.camionnette`). (ROUTINE)
 - [x] FG304 — **Référentiel sous-traitants** — `SousTraitant` (métier/contact/RIB/ICE), distinct des fournisseurs matériel. (ARCH)
-- [ ] FG305 — **Ordres de travaux sous-traitant** — `OrdreSousTraitance` (chantier/prestation/montant/échéance/statut). (ARCH)
+- [x] FG305 — **Ordres de travaux sous-traitant** — `OrdreSousTraitance` (chantier/prestation/montant/échéance/statut). (ARCH)
 - [ ] FG306 — **Factures & règlements sous-traitant** — facture entrante + paiements (AP dédiée), montants jamais client-facing. (SCHEMA)
 - [ ] FG307 — **Attestations & assurances sous-traitant** — pièces obligatoires (CNSS, RC décennale, agrément) + expiration + blocage d'affectation. (SCHEMA)
 - [ ] FG308 — **Évaluation de performance sous-traitant** — note qualité/délai/sécurité par prestation + scorecard cumulée. (SCHEMA)
@@ -918,7 +918,7 @@ these overlap and SUPERSEDE the domain-list FG items as the module-organized hom
 - [x] PROJ19 — Détection de conflits d'affectation. (ROUTINE)
 - [x] PROJ20 — Nivellement de charge (levelling). (ROUTINE)
 - [x] PROJ21 — Budget projet (lignes : matériel/MO/sous-traitance/divers). (SCHEMA)
-- [ ] PROJ22 — Coûts engagés vs réels (factures fournisseur + MO + sous-traitance). (ROUTINE)
+- [x] PROJ22 — Coûts engagés vs réels (factures fournisseur + MO + sous-traitance). (ROUTINE)
 - [ ] PROJ23 — Alertes de dépassement budgétaire. (ROUTINE)
 - [ ] PROJ24 — Suivi des temps (timesheets imputés au projet). (SCHEMA)
 - [ ] PROJ25 — Consommation matière vs BoM (via selectors). (ROUTINE)
@@ -960,7 +960,7 @@ these overlap and SUPERSEDE the domain-list FG items as the module-organized hom
 - [x] GED20 — Partage par lien tokenisé (expiry/mot de passe/quota). (SCHEMA+DECISION)
 - [x] GED21 — Watermarking & contrôle de diffusion. (DEP)
 - [x] GED22 — Politiques de rétention. (SCHEMA)
-- [ ] GED23 — Archivage légal à valeur probante (write-once/object-lock). (DECISION)
+- [x] GED23 — Archivage légal à valeur probante (write-once/object-lock). (DECISION)
 - [ ] GED24 — Rétention légale / legal hold. (SCHEMA)
 - [ ] GED25 — Purge automatique & tâche planifiée (dry-run d'abord). (DEP+DECISION)
 - [ ] GED26 — Corbeille & restauration. (SCHEMA)
@@ -998,7 +998,7 @@ these overlap and SUPERSEDE the domain-list FG items as the module-organized hom
 - [x] FLOTTE17 — Ordres de réparation + atelier/garage + coûts. (SCHEMA)
 - [x] FLOTTE18 — Pneumatiques & pièces. (SCHEMA)
 - [x] FLOTTE19 — `EcheanceReglementaire` (modèle générique). (SCHEMA)
-- [ ] FLOTTE20 — Vignette / TSAV (barème CV/énergie, référentiel éditable). (ROUTINE)
+- [x] FLOTTE20 — Vignette / TSAV (barème CV/énergie, référentiel éditable). (ROUTINE)
 - [ ] FLOTTE21 — Assurance auto (police/échéance/attestation/franchise). (ROUTINE)
 - [ ] FLOTTE22 — Visite technique (validité paramétrable). (ROUTINE)
 - [ ] FLOTTE23 — Carte grise & autorisation de circulation (GED). (SCHEMA)
@@ -1700,3 +1700,9 @@ Tracked here so they aren't lost:
 - 2026-06-29 — PAIE24 (apps/paie): Taxe de formation professionnelle (charge patronale) — réutilise le taux existant `ParametrePaie.taux_formation_pro` (1,6 %), ajoute le calcul `formation_professionnelle_patronale` + le snapshot `BulletinPaie.formation_professionnelle`, émis comme cotisation patronale (alimente charges_patronales, jamais déduit du net), lié à l'affiliation CNSS. Migration paie 0012 additive, 15 tests.
 - 2026-06-29 — QHSE24 (apps/qhse): Consignation électrique (LOTO) sur permis — modèle `ConsignationLoto` (FK `PermisTravail`, point de consignation/cadenas/étiquette/vérif absence tension, statut consignée/déconsignée, référence serveur race-safe), action `deconsigner`. Migration qhse 0016 additive, 18 tests.
 - 2026-06-29 — FG204 (apps/crm): Tableau d'attribution multi-touch — modèle `PointContact` (journal des points de contact par lead : canal réutilisant `Lead.Canal`, source, date, ordre, coût canal payant), sélecteur timeline + résumé first/last-touch, endpoints `points-contact/` + `leads/{id}/points-contact/` (action lecture ajoutée à la liste IsAnyRole). Migration crm 0030 additive, 26 tests.
+- 2026-06-30 — FG145 (apps/compta): Retenue de garantie & cautions bancaires — modèles `RetenueGarantie` (RG retenue sur marché, référence serveur race-safe, levée à échéance) + `CautionBancaire` (provisoire/définitive/restitution, banque, mainlevée), marché/facture en string-ref, actions `liberer`/`mainlevee`, sélecteurs d'échéance. Migration compta 0016 additive, 27 tests.
+- 2026-06-30 — FG182 (apps/rh): Presqu'accidents (near-miss) — modèle `PresquAccident` (référence serveur race-safe `NM-`, lieu/gravité potentielle/mesure corrective, déclarant serveur), plus léger que FG181 (ni blessé ni CNSS), sélecteur de stats par gravité. Migration rh 0022 additive, 22 tests.
+- 2026-06-30 — FG305 (apps/installations): Ordres de travaux sous-traitant — modèle `OrdreSousTraitance` (FK SousTraitant FG304 + chantier même-app, référence serveur race-safe `OST-`, prestation/montant/échéance, cycle brouillon→émis→en_cours→réceptionné→clos). Migration installations 0021 additive, 22 tests.
+- 2026-06-30 — PROJ22 (apps/gestion_projet): Coûts engagés vs réels — sélecteur `couts_engages_vs_reels` (budget PROJ21 par catégorie vs réel : MO depuis AffectationRessource interne quantizée 2 décimales, matériel/sous-traitance via ProjetLien avec dégradation gracieuse), écart + écart % (division par zéro gardée), endpoint `projets/{id}/couts-engages-reels/`. Aucune migration, 24 tests.
+- 2026-06-30 — GED23 (apps/ged): Archivage légal à valeur probante (write-once) — modèle `ArchivageLegal` (hash SHA-256 d'intégrité, object-lock MinIO best-effort avec dégradation), immuabilité applicative une fois archivé (édition/suppression/nouvelle version/déplacement/cycle-de-vie/check-out/check-in bloqués → 403, jamais 500), aucune dépendance dure ajoutée. Migration ged 0017 additive, 21 tests.
+- 2026-06-30 — FLOTTE20 (apps/flotte): Vignette / TSAV (barème CV/énergie) — modèle `BaremeVignette` (référentiel éditable par société : énergie × tranche CV → montant, par année) + `Vehicule.puissance_fiscale`, sélecteur `calcul_tsav` (électrique exonéré, pas de tranche → None), seed idempotent du barème marocain standard. Migration flotte 0018 additive, 30 tests.

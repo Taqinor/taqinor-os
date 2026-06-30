@@ -20,13 +20,13 @@ from authentication.permissions import IsResponsableOrAdmin
 
 from . import selectors, services
 from .models import (
-    BaremeIndemnite, BordereauRemise, Caisse, CessionImmobilisation,
-    CompteComptable, CompteTresorerie, DeclarationTVA, DotationAmortissement,
-    EcritureComptable, Effet, ExerciceComptable, Immobilisation,
-    IndemniteChantier, Journal, LignePrevisionnelTresorerie, LigneReleve,
-    MouvementCaisse, NoteFrais, PaymentRun, PeriodeComptable, PlanComptable,
-    Rapprochement, RapprochementBancaire, RetenueSource, TimbreFiscal,
-    VirementInterne,
+    BaremeIndemnite, BordereauRemise, Caisse, CautionBancaire,
+    CessionImmobilisation, CompteComptable, CompteTresorerie, DeclarationTVA,
+    DotationAmortissement, EcritureComptable, Effet, ExerciceComptable,
+    Immobilisation, IndemniteChantier, Journal, LignePrevisionnelTresorerie,
+    LigneReleve, MouvementCaisse, NoteFrais, PaymentRun, PeriodeComptable,
+    PlanComptable, Rapprochement, RapprochementBancaire, RetenueGarantie,
+    RetenueSource, TimbreFiscal, VirementInterne,
 )
 from .serializers import (
     BaremeIndemniteSerializer, BordereauRemiseSerializer, CaisseSerializer,
@@ -39,7 +39,8 @@ from .serializers import (
     MouvementCaisseSerializer, NoteFraisSerializer, PaymentRunSerializer,
     PeriodeComptableSerializer, PlanAmortissementSerializer,
     PlanComptableSerializer, RapprochementBancaireSerializer,
-    RapprochementSerializer, RetenueSourceSerializer, TimbreFiscalSerializer,
+    CautionBancaireSerializer, RapprochementSerializer,
+    RetenueGarantieSerializer, RetenueSourceSerializer, TimbreFiscalSerializer,
     VirementInterneSerializer,
 )
 
@@ -2277,3 +2278,222 @@ class TimbreFiscalViewSet(_ComptaBaseViewSet):
             'attachment; filename="timbres_fiscaux_'
             f"{data['date_debut'] or 'periode'}_{data['date_fin'] or ''}.csv\"")
         return resp
+
+
+class RetenueGarantieViewSet(_ComptaBaseViewSet):
+    """Retenue de garantie (RG / bonne fin) sur les marchés (FG145).
+
+    Enregistre/consulte les retenues de garantie prélevées sur les décomptes :
+    la création POST calcule le ``montant`` retenu côté serveur (base × taux %) —
+    le corps ne peut jamais l'imposer. ``liberer`` (POST) libère la RG à sa levée
+    (statut « libérée » + date de libération) ; ``echeances`` (GET) liste les RG
+    dont la levée prévue arrive sous ``jours`` (défaut 30, ``?export=csv`` pour le
+    CSV). Filtres ``statut`` ; société scopée posée côté serveur ;
+    Admin/Responsable uniquement.
+    """
+    queryset = RetenueGarantie.objects.select_related('created_by').all()
+    serializer_class = RetenueGarantieSerializer
+    filter_backends = [filters.SearchFilter, filters.OrderingFilter]
+    search_fields = ['reference', 'marche_ref', 'facture_ref', 'tiers_nom']
+    ordering_fields = [
+        'date_constitution', 'date_levee_prevue', 'montant', 'base', 'id']
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        params = self.request.query_params
+        statut = params.get('statut')
+        if statut:
+            qs = qs.filter(statut=statut)
+        date_debut = params.get('date_debut')
+        if date_debut:
+            qs = qs.filter(date_constitution__gte=date_debut)
+        date_fin = params.get('date_fin')
+        if date_fin:
+            qs = qs.filter(date_constitution__lte=date_fin)
+        return qs
+
+    def create(self, request, *args, **kwargs):
+        """POST = enregistre une RG (montant retenu dérivé côté serveur)."""
+        serializer = self.get_serializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        vd = serializer.validated_data
+        try:
+            rg = services.enregistrer_retenue_garantie(
+                request.user.company,
+                date_constitution=vd['date_constitution'],
+                base=vd.get('base') or 0,
+                taux=vd.get('taux'),
+                marche_ref=vd.get('marche_ref', '') or '',
+                facture_id=vd.get('facture_id'),
+                facture_ref=vd.get('facture_ref', '') or '',
+                tiers_type=vd.get('tiers_type', '') or '',
+                tiers_id=vd.get('tiers_id'),
+                tiers_nom=vd.get('tiers_nom', '') or '',
+                date_levee_prevue=vd.get('date_levee_prevue'),
+                libelle=vd.get('libelle', '') or '',
+                user=request.user)
+        except DjangoValidationError as exc:
+            return Response(
+                {'detail': exc.messages[0] if exc.messages else str(exc)},
+                status=status.HTTP_400_BAD_REQUEST)
+        return Response(
+            self.get_serializer(rg).data, status=status.HTTP_201_CREATED)
+
+    @action(detail=True, methods=['post'])
+    def liberer(self, request, pk=None):
+        """Libère (restitue) la retenue de garantie à sa levée (FG145)."""
+        rg = self.get_object()  # scopée société par TenantMixin.
+        date_liberation = request.data.get('date_liberation') or None
+        services.liberer_retenue_garantie(
+            rg, date_liberation=date_liberation)
+        return Response(self.get_serializer(rg).data)
+
+    @action(detail=False, methods=['get'])
+    def echeances(self, request):
+        """RG dont la levée prévue arrive à échéance sous ``jours`` (FG145).
+
+        Paramètre ``jours`` (défaut 30) ; ``?export=csv`` pour le CSV. Lecture
+        seule, scopée société, Admin/Responsable.
+        """
+        try:
+            jours = int(request.query_params.get('jours') or 30)
+        except (TypeError, ValueError):
+            jours = 30
+        data = selectors.retenues_garantie_a_echeance(
+            request.user.company, jours=jours)
+        if request.query_params.get('export') == 'csv':
+            buffer = io.StringIO()
+            writer = csv.writer(buffer, delimiter=';')
+            writer.writerow(
+                ['Retenues de garantie arrivant à échéance',
+                 f"≤ {data['jours']} j"])
+            writer.writerow([])
+            writer.writerow(
+                ['Référence', 'Marché', 'Facture', 'Maître d\'ouvrage', 'Base',
+                 'Taux %', 'Montant retenu', 'Constitution', 'Levée prévue',
+                 'En retard'])
+            for ligne in data['lignes']:
+                writer.writerow([
+                    ligne['reference'], ligne['marche_ref'],
+                    ligne['facture_ref'], ligne['tiers_nom'], ligne['base'],
+                    ligne['taux'], ligne['montant'],
+                    ligne['date_constitution'], ligne['date_levee_prevue'],
+                    'Oui' if ligne['en_retard'] else 'Non'])
+            writer.writerow([])
+            writer.writerow(['Total', '', '', '', '', '', data['total_montant']])
+            resp = HttpResponse(
+                buffer.getvalue(), content_type='text/csv; charset=utf-8')
+            resp['Content-Disposition'] = (
+                'attachment; filename="retenues_garantie_echeances.csv"')
+            return resp
+        return Response(data)
+
+
+class CautionBancaireViewSet(_ComptaBaseViewSet):
+    """Cautions / garanties bancaires émises sur les marchés (FG145).
+
+    Enregistre/consulte les cautions (provisoire/définitive/retenue de
+    garantie/restitution) : ``company`` / ``reference`` / ``statut`` sont posés
+    côté serveur. ``mainlevee`` (POST) lève la caution (mainlevée, ou restitution
+    si ``restituee=true``) avec la date de mainlevée ; ``echeances`` (GET) liste
+    les cautions actives arrivant à échéance sous ``jours`` (défaut 30,
+    ``?export=csv`` pour le CSV). Filtres ``statut`` / ``type_caution`` ; société
+    scopée ; Admin/Responsable uniquement.
+    """
+    queryset = CautionBancaire.objects.select_related('created_by').all()
+    serializer_class = CautionBancaireSerializer
+    filter_backends = [filters.SearchFilter, filters.OrderingFilter]
+    search_fields = ['reference', 'marche_ref', 'tiers_nom', 'banque']
+    ordering_fields = [
+        'date_emission', 'date_echeance', 'montant', 'id']
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        params = self.request.query_params
+        statut = params.get('statut')
+        if statut:
+            qs = qs.filter(statut=statut)
+        type_caution = params.get('type_caution')
+        if type_caution:
+            qs = qs.filter(type_caution=type_caution)
+        date_debut = params.get('date_debut')
+        if date_debut:
+            qs = qs.filter(date_emission__gte=date_debut)
+        date_fin = params.get('date_fin')
+        if date_fin:
+            qs = qs.filter(date_emission__lte=date_fin)
+        return qs
+
+    def create(self, request, *args, **kwargs):
+        """POST = enregistre une caution bancaire (référence côté serveur)."""
+        serializer = self.get_serializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        vd = serializer.validated_data
+        try:
+            caution = services.enregistrer_caution_bancaire(
+                request.user.company,
+                type_caution=vd.get('type_caution'),
+                date_emission=vd['date_emission'],
+                montant=vd.get('montant') or 0,
+                banque=vd.get('banque', '') or '',
+                marche_ref=vd.get('marche_ref', '') or '',
+                tiers_nom=vd.get('tiers_nom', '') or '',
+                date_echeance=vd.get('date_echeance'),
+                libelle=vd.get('libelle', '') or '',
+                user=request.user)
+        except DjangoValidationError as exc:
+            return Response(
+                {'detail': exc.messages[0] if exc.messages else str(exc)},
+                status=status.HTTP_400_BAD_REQUEST)
+        return Response(
+            self.get_serializer(caution).data,
+            status=status.HTTP_201_CREATED)
+
+    @action(detail=True, methods=['post'])
+    def mainlevee(self, request, pk=None):
+        """Lève (mainlevée) ou restitue la caution bancaire (FG145)."""
+        caution = self.get_object()  # scopée société par TenantMixin.
+        date_mainlevee = request.data.get('date_mainlevee') or None
+        restituee = bool(request.data.get('restituee'))
+        services.mainlevee_caution_bancaire(
+            caution, date_mainlevee=date_mainlevee, restituee=restituee)
+        return Response(self.get_serializer(caution).data)
+
+    @action(detail=False, methods=['get'])
+    def echeances(self, request):
+        """Cautions actives arrivant à échéance sous ``jours`` (FG145).
+
+        Paramètre ``jours`` (défaut 30) ; ``?export=csv`` pour le CSV. Lecture
+        seule, scopée société, Admin/Responsable.
+        """
+        try:
+            jours = int(request.query_params.get('jours') or 30)
+        except (TypeError, ValueError):
+            jours = 30
+        data = selectors.cautions_a_echeance(
+            request.user.company, jours=jours)
+        if request.query_params.get('export') == 'csv':
+            buffer = io.StringIO()
+            writer = csv.writer(buffer, delimiter=';')
+            writer.writerow(
+                ['Cautions bancaires arrivant à échéance',
+                 f"≤ {data['jours']} j"])
+            writer.writerow([])
+            writer.writerow(
+                ['Référence', 'Type', 'Marché', 'Bénéficiaire', 'Banque',
+                 'Montant', 'Émission', 'Échéance', 'En retard'])
+            for ligne in data['lignes']:
+                writer.writerow([
+                    ligne['reference'], ligne['type_caution'],
+                    ligne['marche_ref'], ligne['tiers_nom'], ligne['banque'],
+                    ligne['montant'], ligne['date_emission'],
+                    ligne['date_echeance'],
+                    'Oui' if ligne['en_retard'] else 'Non'])
+            writer.writerow([])
+            writer.writerow(['Total', '', '', '', '', data['total_montant']])
+            resp = HttpResponse(
+                buffer.getvalue(), content_type='text/csv; charset=utf-8')
+            resp['Content-Disposition'] = (
+                'attachment; filename="cautions_bancaires_echeances.csv"')
+            return resp
+        return Response(data)

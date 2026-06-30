@@ -6,7 +6,7 @@ Les dossiers (Folder) ont un chemin matérialisé recalculé côté serveur, et 
 versions de document sont numérotées + déduppées via `services`.
 """
 from django.http import HttpResponse
-from rest_framework import filters, status, viewsets
+from rest_framework import filters, mixins, status, viewsets
 from rest_framework.decorators import (
     action, api_view, permission_classes, throttle_classes,
 )
@@ -30,13 +30,13 @@ from apps.records.serializers import resolve_target
 
 from . import selectors, services
 from .models import (
-    Cabinet, Coffre, DemandeApprobation, Document, DocumentLien, DocumentTag,
-    DocumentTagAssignment, DocumentVersion, Folder, PartageGed,
-    PolitiqueRetention,
+    ArchivageLegal, ArchivageLegalError, Cabinet, Coffre, DemandeApprobation,
+    Document, DocumentLien, DocumentTag, DocumentTagAssignment,
+    DocumentVersion, Folder, PartageGed, PolitiqueRetention,
 )
 from .serializers import (
-    CabinetSerializer, CoffreSerializer, DemandeApprobationSerializer,
-    DocumentLienSerializer, DocumentSerializer,
+    ArchivageLegalSerializer, CabinetSerializer, CoffreSerializer,
+    DemandeApprobationSerializer, DocumentLienSerializer, DocumentSerializer,
     DocumentTagAssignmentSerializer, DocumentTagSerializer,
     DocumentVersionSerializer, FolderSerializer, PartageGedSerializer,
     PolitiqueRetentionSerializer,
@@ -277,6 +277,12 @@ class DocumentViewSet(TenantMixin, viewsets.ModelViewSet):
         services.index_document_chunks(document)
 
     def perform_update(self, serializer):
+        # GED23 — write-once : un document archivé légalement est immuable (403).
+        instance = getattr(serializer, 'instance', None)
+        if instance is not None and instance.est_archive_legalement:
+            from rest_framework.exceptions import PermissionDenied
+            from .models import ARCHIVE_LEGALE_MESSAGE
+            raise PermissionDenied(ARCHIVE_LEGALE_MESSAGE)
         document = serializer.save()
         # GED11 — réindexe après modification (nom/description/métadonnées).
         services.update_search_vector(document)
@@ -284,6 +290,14 @@ class DocumentViewSet(TenantMixin, viewsets.ModelViewSet):
         services.index_embedding(document)
         # FG352 — réindexe les fragments RAG/DocQA (no-op sans clé).
         services.index_document_chunks(document)
+
+    def perform_destroy(self, instance):
+        # GED23 — write-once : un document archivé légalement ne se supprime pas.
+        if instance.est_archive_legalement:
+            from rest_framework.exceptions import PermissionDenied
+            from .models import ARCHIVE_LEGALE_MESSAGE
+            raise PermissionDenied(ARCHIVE_LEGALE_MESSAGE)
+        return super().perform_destroy(instance)
 
     @action(detail=False, methods=['post'], url_path='televerser',
             parser_classes=[MultiPartParser, FormParser, JSONParser])
@@ -492,6 +506,10 @@ class DocumentViewSet(TenantMixin, viewsets.ModelViewSet):
         try:
             new_version = services.restore_version(
                 document, source_version, uploaded_by=request.user)
+        except ArchivageLegalError as exc:
+            # GED23 — document archivé légalement : write-once, pas de restauration.
+            return Response(
+                {'detail': str(exc)}, status=status.HTTP_403_FORBIDDEN)
         except ValueError as exc:
             return Response(
                 {'detail': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
@@ -514,6 +532,8 @@ class DocumentViewSet(TenantMixin, viewsets.ModelViewSet):
         try:
             doc = services.checkout_document(document, request.user)
         except PermissionError as exc:
+            # GED23 : check-out d'un document archivé légalement (write-once) →
+            # checkout_document lève PermissionError → 409 (bloqué, immuable).
             return Response(
                 {'detail': str(exc)}, status=status.HTTP_409_CONFLICT)
         doc.refresh_from_db()
@@ -532,6 +552,10 @@ class DocumentViewSet(TenantMixin, viewsets.ModelViewSet):
         document = self.get_object()
         try:
             doc = services.checkin_document(document, request.user)
+        except ArchivageLegalError as exc:
+            # GED23 — document archivé légalement : write-once, save() bloqué.
+            return Response(
+                {'detail': str(exc)}, status=status.HTTP_403_FORBIDDEN)
         except PermissionError as exc:
             return Response(
                 {'detail': str(exc)}, status=status.HTTP_403_FORBIDDEN)
@@ -625,6 +649,49 @@ class DocumentViewSet(TenantMixin, viewsets.ModelViewSet):
             qs, many=True, context={'request': request}).data
         return Response(data)
 
+    @action(detail=True, methods=['post'], url_path='archiver-legalement')
+    def archiver_legalement(self, request, pk=None):
+        """GED23 — Archive ce document à VALEUR PROBANTE (write-once / object-lock).
+
+        `POST …/documents/<id>/archiver-legalement/` — corps optionnel :
+        `{"motif": "<str?>", "retain_until": "<YYYY-MM-DD?>"}`.
+
+        Pose un `ArchivageLegal` qui rend le document (et ses versions) IMMUABLE
+        (write-once) : plus aucune modification ni suppression ensuite. Le
+        condensat d'intégrité (SHA-256) de la version courante est figé comme
+        preuve d'intégrité, et — en BONUS best-effort — un verrou objet
+        (object-lock retain-until) est tenté côté stockage (dégrade proprement
+        si non supporté). `company` et `archive_par` sont posés CÔTÉ SERVEUR
+        (jamais lus du corps). Un document déjà archivé renvoie 400. Écriture :
+        responsable/admin."""
+        document = self.get_object()
+        # `retain_until` optionnel — date du verrou objet (YYYY-MM-DD).
+        retain_until = None
+        raw_retain = request.data.get('retain_until')
+        if raw_retain not in (None, '', 'null'):
+            from django.utils.dateparse import parse_date
+            retain_until = parse_date(str(raw_retain))
+            if retain_until is None:
+                return Response(
+                    {'retain_until': 'Date invalide (format attendu : '
+                                     'AAAA-MM-JJ).'},
+                    status=status.HTTP_400_BAD_REQUEST)
+        try:
+            archivage = services.archiver_legalement(
+                document, user=request.user,
+                motif=(request.data.get('motif') or '').strip(),
+                retain_until=retain_until)
+        except ValueError as exc:
+            return Response(
+                {'detail': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+        except PermissionError as exc:
+            return Response(
+                {'detail': str(exc)}, status=status.HTTP_403_FORBIDDEN)
+        return Response(
+            ArchivageLegalSerializer(
+                archivage, context={'request': request}).data,
+            status=status.HTTP_201_CREATED)
+
 
 class DocumentVersionViewSet(TenantMixin, viewsets.ModelViewSet):
     """Versions d'un document. Le numéro de version et `uploaded_by` sont posés
@@ -653,6 +720,13 @@ class DocumentVersionViewSet(TenantMixin, viewsets.ModelViewSet):
     def perform_create(self, serializer):
         # Numéro de version auto-incrémenté + company/uploaded_by côté serveur.
         document = serializer.validated_data['document']
+        # GED23 — write-once : on n'ajoute jamais de version à un document
+        # archivé légalement (immuable). Refus TÔT avec un message clair (403).
+        try:
+            services.assert_not_archive_legalement(document)
+        except ArchivageLegalError as exc:
+            from rest_framework.exceptions import PermissionDenied
+            raise PermissionDenied(str(exc))
         # GED16 — bloque l'ajout d'une version si le document est extrait par
         # un autre utilisateur.
         try:
@@ -1075,6 +1149,87 @@ class PolitiqueRetentionViewSet(TenantMixin, viewsets.ModelViewSet):
             for doc, pol, depasses in echus
         ]
         return Response(data)
+
+
+class ArchivageLegalViewSet(TenantMixin,
+                            mixins.ListModelMixin,
+                            mixins.RetrieveModelMixin,
+                            mixins.CreateModelMixin,
+                            viewsets.GenericViewSet):
+    """GED23 — Archivages légaux (LECTURE + CRÉATION seulement, scopé société).
+
+    Trace IMMUABLE (write-once) : ce ViewSet expose la LISTE/le DÉTAIL et permet
+    de CRÉER un archivage — il n'y a volontairement NI `update`/`partial_update`
+    NI `destroy` (un archivage légal ne se modifie ni ne se supprime jamais).
+    À la création, `company`, `archive_par`, `version`, `hash_integrite` et le
+    verrou objet sont posés CÔTÉ SERVEUR via `services.archiver_legalement`
+    (jamais lus du corps ; on lit seulement `document` + `motif`/`retain_until`).
+
+    Lecture : tout rôle authentifié. Création : responsable/admin.
+    """
+    queryset = ArchivageLegal.objects.select_related(
+        'document', 'version', 'archive_par').all()
+    serializer_class = ArchivageLegalSerializer
+    filter_backends = [filters.OrderingFilter]
+    ordering_fields = ['archive_le', 'id']
+
+    def get_permissions(self):
+        if self.action in READ_ACTIONS:
+            return [IsAnyRole()]
+        return [IsResponsableOrAdmin()]
+
+    def get_queryset(self):
+        qs = selectors.archivages_legaux_for_company(
+            self.request.user.company)
+        document = self.request.query_params.get('document')
+        if document:
+            qs = qs.filter(document_id=document)
+        return qs
+
+    def create(self, request, *args, **kwargs):
+        """Crée un archivage légal pour un document de la société courante.
+
+        Body : `{"document": <id>, "motif": "<str?>",
+        "retain_until": "<YYYY-MM-DD?>"}`. Le document est borné à la société
+        (404 cross-société). `company`/`archive_par`/`version`/hash/object-lock
+        sont posés côté serveur (jamais lus du corps)."""
+        document_id = request.data.get('document')
+        if not document_id:
+            return Response(
+                {'document': 'Le document à archiver est requis.'},
+                status=status.HTTP_400_BAD_REQUEST)
+        # Borne à la société courante (jamais un document d'autrui).
+        document = (Document.objects.filter(company=request.user.company)
+                    .filter(pk=document_id).first())
+        if document is None:
+            return Response(
+                {'document': 'Document inconnu.'},
+                status=status.HTTP_404_NOT_FOUND)
+        retain_until = None
+        raw_retain = request.data.get('retain_until')
+        if raw_retain not in (None, '', 'null'):
+            from django.utils.dateparse import parse_date
+            retain_until = parse_date(str(raw_retain))
+            if retain_until is None:
+                return Response(
+                    {'retain_until': 'Date invalide (format attendu : '
+                                     'AAAA-MM-JJ).'},
+                    status=status.HTTP_400_BAD_REQUEST)
+        try:
+            archivage = services.archiver_legalement(
+                document, user=request.user,
+                motif=(request.data.get('motif') or '').strip(),
+                retain_until=retain_until)
+        except ValueError as exc:
+            return Response(
+                {'detail': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+        except PermissionError as exc:
+            return Response(
+                {'detail': str(exc)}, status=status.HTTP_403_FORBIDDEN)
+        return Response(
+            ArchivageLegalSerializer(
+                archivage, context={'request': request}).data,
+            status=status.HTTP_201_CREATED)
 
 
 # ── GED20 — Endpoint PUBLIC (sans login) servant un document par jeton ───────

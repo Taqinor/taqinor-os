@@ -2024,3 +2024,122 @@ class AccidentTravail(models.Model):
 
     def __str__(self):
         return f'{self.reference} — {self.employe_id} ({self.gravite})'
+
+
+class PresquAccident(models.Model):
+    """Registre des presqu'accidents (near-miss, FG182) — pilotage HSE proactif.
+
+    Un PRESQU'ACCIDENT (near-miss) est un événement qui aurait PU causer un
+    accident mais ne l'a pas fait : aucun blessé, aucune déclaration CNSS. Le
+    saisir vite sur le terrain est la base d'une prévention proactive — chaque
+    presqu'accident remonté est un accident évité demain. C'est volontairement
+    PLUS LÉGER que l'accident du travail (FG181, ``AccidentTravail``) : pas de
+    personne blessée, pas d'arrêt de travail, pas de cycle de déclaration CNSS.
+
+    On capture l'essentiel pour la saisie rapide : QUAND (``date_constat``), OÙ
+    (``lieu`` + ``chantier_id`` optionnel, simple référence chaîne vers un
+    chantier d'une autre app — pas de FK inter-app), CE QUI s'est passé
+    (``description``), la GRAVITÉ POTENTIELLE (``gravite_potentielle`` : faible /
+    moyenne / élevée — à quel point ça aurait pu mal tourner) et la MESURE
+    CORRECTIVE prise ou à prendre (``mesure_corrective``). Le ``statut``
+    (ouvert → traité) suit le traitement de l'action corrective.
+
+    Traçabilité : ``declare_par`` (l'utilisateur qui remonte le presqu'accident)
+    est posé CÔTÉ SERVEUR (jamais lu du corps de requête), nullable comme les
+    autres champs d'acteur du module (cf. ``evalue_par``).
+
+    Photos : ``photo_key`` référence un objet MinIO optionnel (preuve
+    photographique de la situation dangereuse) — clé de stockage, pas un binaire.
+
+    Numérotation : ``reference`` (``NM-YYYYMM-NNNN`` — *near-miss*) est posée
+    CÔTÉ SERVEUR de façon race-safe via
+    ``apps.ventes.utils.references.create_with_reference`` (plus-haut-utilisé+1
+    par société/mois, savepoint + retry) — JAMAIS ``count()+1`` (qui
+    collisionnait en production). Unique par société.
+
+    Multi-société : ``company`` est posée côté serveur (jamais lue du corps).
+
+    RUNTIME-SAFETY (leçon FG136) : les codes bornés ``gravite_potentielle`` /
+    ``statut`` ≤ 20 ; ``reference`` / ``lieu`` / ``chantier_id`` / ``photo_key``
+    plafonnés ; les descriptions, potentiellement longues, sont des
+    ``TextField`` (aucune limite à dépasser).
+    """
+
+    class GravitePotentielle(models.TextChoices):
+        FAIBLE = 'faible', 'Faible'
+        MOYENNE = 'moyenne', 'Moyenne'
+        ELEVEE = 'elevee', 'Élevée'
+
+    class Statut(models.TextChoices):
+        OUVERT = 'ouvert', 'Ouvert'
+        TRAITE = 'traite', 'Traité'
+
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='rh_presqu_accidents',
+        verbose_name='Société',
+    )
+    # Référence séquentielle posée côté serveur (NM-YYYYMM-NNNN), unique par
+    # société. Race-safe (plus-haut-utilisé+1) — jamais count()+1.
+    reference = models.CharField(
+        max_length=30, verbose_name='Référence')
+    date_constat = models.DateField(verbose_name='Date du constat')
+    lieu = models.CharField(
+        max_length=255, blank=True, default='', verbose_name='Lieu')
+    # Référence chaîne optionnelle vers un chantier d'une autre app (pas de FK
+    # inter-app) — saisie terrain libre.
+    chantier_id = models.CharField(
+        max_length=64, blank=True, default='',
+        verbose_name='Chantier (référence)')
+    description = models.TextField(
+        blank=True, default='',
+        verbose_name='Description de la situation')
+    gravite_potentielle = models.CharField(
+        max_length=20, choices=GravitePotentielle.choices,
+        default=GravitePotentielle.FAIBLE,
+        verbose_name='Gravité potentielle')
+    mesure_corrective = models.TextField(
+        blank=True, default='', verbose_name='Mesure corrective')
+    # Preuve photographique optionnelle (clé MinIO ; pas un binaire).
+    photo_key = models.CharField(
+        max_length=255, blank=True, default='', verbose_name='Photo (clé)')
+    # Qui a remonté le presqu'accident — posé côté serveur, jamais du corps.
+    declare_par = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='rh_presqu_accidents_declares',
+        verbose_name='Déclaré par',
+    )
+    statut = models.CharField(
+        max_length=20, choices=Statut.choices,
+        default=Statut.OUVERT, verbose_name='Statut')
+    date_creation = models.DateTimeField(
+        auto_now_add=True, verbose_name='Créé le')
+    date_modification = models.DateTimeField(
+        auto_now=True, verbose_name='Modifié le')
+
+    class Meta:
+        verbose_name = "Presqu'accident"
+        verbose_name_plural = "Presqu'accidents"
+        ordering = ['-date_constat', '-date_creation']
+        constraints = [
+            models.UniqueConstraint(
+                fields=['company', 'reference'],
+                name='rh_presqaccident_ref_uniq'),
+        ]
+        indexes = [
+            models.Index(
+                fields=['company', 'date_constat'],
+                name='rh_presqacc_comp_date_idx'),
+            models.Index(
+                fields=['company', 'gravite_potentielle'],
+                name='rh_presqacc_comp_grav_idx'),
+            models.Index(
+                fields=['company', 'statut'],
+                name='rh_presqacc_comp_stat_idx'),
+        ]
+
+    def __str__(self):
+        return f'{self.reference} ({self.gravite_potentielle})'

@@ -9,6 +9,7 @@ from rest_framework import serializers
 from .models import (
     ActifFlotte,
     AffectationConducteur,
+    BaremeVignette,
     CarteCarburant,
     Conducteur,
     EcheanceEntretien,
@@ -40,8 +41,8 @@ class VehiculeSerializer(serializers.ModelSerializer):
         model = Vehicule
         fields = [
             'id', 'immatriculation', 'marque', 'modele', 'energie',
-            'energie_display', 'kilometrage', 'valeur', 'statut',
-            'statut_display', 'categorie_permis_requise',
+            'energie_display', 'kilometrage', 'puissance_fiscale', 'valeur',
+            'statut', 'statut_display', 'categorie_permis_requise',
             'emplacement_stock_id', 'emplacement_stock_label',
             'date_creation',
         ]
@@ -1063,4 +1064,38 @@ class EcheanceReglementaireSerializer(serializers.ModelSerializer):
                  "La date d'échéance ne peut pas précéder le dernier "
                  "renouvellement."})
 
+        return attrs
+
+
+class BaremeVignetteSerializer(serializers.ModelSerializer):
+    """FLOTTE20 — Ligne de barème éditable de la vignette / TSAV.
+
+    ``company`` est posée côté serveur (jamais lue du corps de requête). La
+    tranche doit être cohérente (``cv_min ≤ cv_max``) et le montant positif.
+    ``energie_display`` est exposé en lecture.
+    """
+
+    energie_display = serializers.CharField(
+        source='get_energie_display', read_only=True)
+
+    class Meta:
+        model = BaremeVignette
+        fields = [
+            'id', 'energie', 'energie_display', 'cv_min', 'cv_max', 'montant',
+            'annee', 'actif', 'notes', 'date_creation',
+        ]
+        read_only_fields = ['date_creation']
+
+    def validate_montant(self, value):
+        if value is not None and value < 0:
+            raise serializers.ValidationError(
+                "Le montant ne peut pas être négatif.")
+        return value
+
+    def validate(self, attrs):
+        cv_min = attrs.get('cv_min', getattr(self.instance, 'cv_min', None))
+        cv_max = attrs.get('cv_max', getattr(self.instance, 'cv_max', None))
+        if cv_min is not None and cv_max is not None and cv_min > cv_max:
+            raise serializers.ValidationError(
+                {'cv_min': "Le CV min ne peut pas dépasser le CV max."})
         return attrs

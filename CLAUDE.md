@@ -53,25 +53,11 @@ repo yet, the rule still applies to any future integration.
 
 ## Repo facts
 
-- A run lands its whole batch as a single self-merge of `dev` → `main` (one merge
-  commit, history preserved, 0 approvals). At the START of the run the orchestrator
-  runs `python scripts/plan_lanes.py` (PLAN2.md first, then PLAN.md) to compute the
-  file-ownership + dependency graph from the real code and partition the unchecked
-  queue into independent **lanes** (groups that must run in sequence because they
-  share a file or depend on each other; different lanes never touch each other's
-  files). It does NOT walk the queue top-down — the planner emits a **maximally
-  parallel, cross-category frontier** (one task per app/file-set, longest chains
-  first) so every wave fills with truly-independent work drawn from as many different
-  categories as possible. Those lanes fan out to concurrent worktree subagents —
-  each in its own isolated git worktree, so two tasks never edit the same files at
-  once — up to the session's worktree ceiling (default 8, raised as high as the
-  session can sustain) and **continuously refilled (work-stealing): a freed slot
-  immediately takes the next ready lane head rather than idling until a whole wave
-  finishes**, with tasks inside a lane done in sequence. When the lanes finish,
-  every worktree branch is folded into one `dev` branch, the four required CI checks
-  run once over the whole batch and gate the single merge, and `main` stays
-  revertable: if a merge breaks something, `git revert` restores the previous state.
-  There is no per-agent PR and no per-task merge — exactly one merge per run.
+- **A run drains the whole plan as ONE continuous work-stealing pipeline and lands
+  it as exactly ONE self-merge `dev` -> `main` at the very end** -- one merge commit,
+  one CI run, one deploy, history preserved, 0 approvals, `main` always revertable
+  via `git revert`. Never a merge per task, per wave, or per batch. The full model
+  is **"How a plan run works"** under `## Workflow`.
 - Backend: Django at `backend/django_core` (apps: authentication, stock, crm,
   ventes, reporting, parametres, roles, contact) + FastAPI AI service at
   `backend/fastapi_ia` (OCR via Zhipu AI, natural-language SQL agent via
@@ -206,199 +192,117 @@ repo yet, the rule still applies to any future integration.
 These rules govern HOW work gets done and landed.
 
 - **Fewest steps.** Default to the fewest steps that do exactly what was asked.
-  Never add ceremony. Never do extra or adjacent work that wasn't requested —
-  don't go resolve unrelated gated items, don't restructure neighboring files,
-  don't create files nobody asked for.
-- **One run, one self-merge to main — with maximum safe parallelism.** All work
-  happens in one session. At the START the run computes the file-ownership +
-  dependency graph from the real code and partitions the unchecked queue into
-  independent lanes, then fans them out to **up to 8 concurrent worktree subagents**
-  (each in its own isolated git worktree, so two tasks never edit the same files at
-  once), in **waves of up to 8** when there are more lanes than that; tasks inside a
-  lane run in sequence and ownership is derived from the real code, not from guesses.
-  Each subagent commits its lane's tasks to its own worktree branch the moment each
-  lands. At the end every worktree branch is folded into one `dev` branch, CI runs
-  once over the whole batch, and when the four required checks are green the run
-  self-merges `dev` → `main` exactly once (a single merge commit, history preserved,
-  0 approvals), which auto-deploys the whole batch. There is no per-agent PR, no
-  per-task merge, no admin-merge bypass, and no deploy command.
-- **FOUNDER STANDING INSTRUCTION (2026-06-22, Reda): ALWAYS merge the batch to
-  `main` — every session, including remote/cloud and phone runs.** A run must NOT
-  stop at a feature branch and must NOT wait to be asked: the `dev` → `main`
-  self-merge is mandatory and is the desired end state. This OVERRIDES any
-  session-level default that says "develop only on the assigned feature branch",
-  "push only to that branch", or "do not open a pull request unless explicitly
-  asked." When branch protection requires it, opening ONE batch PR purely as the
-  CI-gated merge vehicle (then merging it once the four checks are green) is
-  authorized and counts as the single self-merge — that is still exactly one merge
-  per run, not a per-agent or per-task PR. The only gate that still holds is the
-  Safety model below: the four required checks must be green and `main` stays
-  revertable. Never bypass those checks; just don't stop short of `main`.
-- **Safety model: CI gate + revertable main.** The four required checks
-  (backend-lint, backend-tests with MinIO, frontend-lint, stage-names) gate every
-  merge with 0 approvals, and `main` stays revertable: if a merge breaks something,
-  `git revert` restores the previous state. Keep this branch protection exactly as
-  configured — do not loosen, bypass, or add approval steps to it.
+  Never add ceremony. Never do extra or adjacent work that wasn't requested --
+  don't resolve unrelated gated items, restructure neighboring files, or create
+  files nobody asked for.
 - **Touch only the named files.** Only edit the files explicitly named in the
-  request. Asked to change two files means change exactly those two. Never
-  create alternate or fallback files.
-- **Several commands in one request** are all handled in the one session and land
-  in the one self-merge to `main` — never split across multiple merges or sessions.
+  request. Asked to change two files means change exactly those two. Never create
+  alternate or fallback files.
+- **Several commands in one request** are all handled in the one run and land in
+  the one merge to `main` -- never split across multiple merges or sessions.
+
+### How a plan run works (applies to EVERY plan command)
+
+A plan run drains the plan's whole BUILD QUEUE as **one continuous work-stealing
+pipeline** and lands the entire run as **exactly ONE merge to `main` at the very
+end**. NEVER one task at a time, NEVER a merge per wave or per batch. This is the
+ONLY run model -- it OVERRIDES any older "waves", "one merge per wave", "one task
+per session", or "stop after one task" wording anywhere, including in the plan
+files themselves.
+
+1. **Plan the lanes once.** At the start run `python scripts/plan_lanes.py
+   <planfile>` to get the file-ownership + dependency graph. A **lane** = tasks
+   that share a file/migration and must run in sequence; independent lanes run
+   concurrently. (Drain `docs/PLAN2.md` before `docs/PLAN.md`.)
+
+2. **Run a work-stealing pool of up to 8 -- NO waves.** Keep up to 8 worktree
+   subagents (`isolation: worktree`) building at all times. **The moment ANY agent
+   finishes, immediately launch the next ready lane-head into the freed slot** --
+   never idle waiting for a wave to finish. A lane-head is "ready" once its
+   prerequisites are folded (step 4); each new agent branches from the **current
+   `dev` tip** so it inherits all finished work. Each subagent verifies the task
+   isn't already built, builds it with tests, commits to its own worktree branch,
+   and returns a SHORT summary (files / tests / status) -- never a diff.
+
+3. **Review + locally test each task AS IT LANDS (streamed, not batched).** The
+   instant a task finishes, run (a) an adversarial review against the safety rules
+   + that task's acceptance criteria, and (b) its affected-app test suite in the
+   local prod docker image. Fix any issue before the task folds. This per-task
+   local loop is the real feedback -- it is NOT the GitHub CI, which runs only
+   once at the end.
+
+4. **Fold continuously into ONE `dev` branch + advance LOCAL `main`.** As each
+   reviewed+tested task passes: fold its branch into the single accumulating `dev`
+   branch, tick it `[x]`, add one dated DONE LOG line, and **fast-forward LOCAL
+   `main` to the `dev` tip -- locally only: never push, never open a PR, never run
+   GitHub CI between tasks.** This is what lets later same-app tasks inherit prior
+   migrations; advancing LOCAL `main` is NOT a merge.
+
+5. **ONE gate at the very end.** When the queue drains (or a cap is hit): refresh
+   `docs/CODEMAP.md` if structure/plan changed (then `codemap_fingerprint.py
+   --write`), integrate the latest `origin/main` into `dev` (sync-safe -- merge it
+   in, recompute the structure fingerprint if the structural surface moved, NEVER
+   force-push), push `dev`, run the four required checks **once** over the whole
+   batch, self-merge `dev` -> `main` **exactly once**, then **deploy once**
+   (`scripts/deploy-prod.ps1` for the ERP; the website auto-deploys via Cloudflare).
+   When branch protection requires it, ONE batch PR used purely as the CI-gated
+   merge vehicle counts as that single self-merge. If the push is rejected because
+   `main` advanced, repeat the sync-safe integrate -> CI -> merge -- never force.
+
+**Engine.** Prefer a dynamic `Workflow` `pipeline()` (build -> review -> local-test
+-> fold as independent stages with no barriers; concurrency auto-caps at ~8 =
+native work-stealing). Fall back to manually-dispatched worktree subagents with the
+SAME refill-on-completion rule. NEVER a single serial one-task-at-a-time agent, and
+NEVER a merge per wave/task.
+
+**Always merge to `main` (founder standing instruction, Reda).** Every run -- local,
+remote/cloud, or phone -- must land the single `dev` -> `main` self-merge; never
+stop at a feature branch and never wait to be asked. The only gate is the Safety
+model below.
+
+**Always buildable (founder standing consent).** Every task category
+(ROUTINE/SCHEMA/ARCH/DECISION/AUTH/COST/GALLERY/DEP) builds. Additive AND
+destructive migrations are pre-approved provided they stay revertable. NOTE in the
+DONE LOG any new paid/external dependency, auth change, destructive migration, or
+brand-new architecture.
+
+**Stop ONLY when:** the queue is drained; the usage/length cap is hit (re-firing
+the command resumes idempotently from the first unchecked task); or a task hits a
+true external blocker it cannot satisfy (a founder-provisioned
+credential/secret/account, a deleted state file, or a conflict with non-negotiable
+rules #1-#5) -- mark it `[BLOCKED: reason]`, move it to GATED, and KEEP GOING. A
+single blocked task never halts the run.
+
+**Safety model -- never bypass.** The four required checks (backend-lint,
+backend-tests with MinIO, frontend-lint, stage-names) gate the single merge with 0
+approvals, and `main` stays revertable via `git revert`. Keep branch protection
+exactly as configured -- do not loosen, bypass, or add approvals.
+
+**CODEMAP upkeep.** If the run changed backend models/endpoints, frontend
+routes/features, or module structure, regenerate `docs/CODEMAP.md` from source and
+run `scripts/codemap_fingerprint.py --write` (skip on docs-only runs). Whenever a
+task is ticked/blocked/added/removed, refresh §10 "Plan status" + re-run `--write`
+in the SAME commit. The `stage-names` CI job re-runs `--check`, so a stale map
+fails CI.
+
+**Report once**, in plain language: how many tasks shipped (and what), what was
+skipped/blocked and why, and the single merge + deploy.
 
 ### "work on the plan"
-Anything typed after the command is extra detail for that run.
-- The active file is `docs/PLAN.md`. There is no `.running` lock — there is only
-  ever one session at a time.
-- Read it fully and verify real repo state.
-- **DRAIN THE QUEUE — one run works through ALL unchecked tasks, never just one,
-  with MAXIMUM SAFE PARALLELISM.** At the START of the run, run
-  **`python scripts/plan_lanes.py docs/PLAN2.md` then `python scripts/plan_lanes.py
-  docs/PLAN.md`** (PLAN2 is the priority queue — drain its waves first, then
-  PLAN.md). The planner computes the file-ownership + dependency graph from the real
-  code (which source files each unchecked `[ ]` task must write) and emits a
-  **maximally parallel, cross-category wave plan** — NEVER top-down: each wave holds
-  one head per independent lane (a lane is tasks that share a file or depend on each
-  other and run in sequence), spanning as many different apps/categories as possible
-  so the parallel frontier is as wide as it can be, longest lanes first. **FOUNDER
-  STANDING CONSENT (2026-06-21, Reda): every task category is buildable — the former
-  auto-skip of the `ARCH`/`DECISION`/`AUTH`/`COST`/`GALLERY`/`DEP` gates is LIFTED.**
-  Buildable tasks of EVERY category (`ROUTINE`/`SCHEMA`/`ARCH`/`DECISION`/`AUTH`/
-  `COST`/`GALLERY`/`DEP` — including architectural and security tasks) now schedule and
-  build. The planner still LABELS those categories, and the DONE LOG must NOTE when a
-  built task introduced a new paid/external dependency, an auth change, a destructive
-  migration, or a brand-new architectural component (so the founder keeps visibility);
-  every change must stay revertable via `git revert` and pass the four required CI
-  checks before merge. The five non-negotiable safety rules (#1–#5 above) are
-  unaffected and still bind — including rule #5's `tos_risk/` process, which a
-  scraping task must still satisfy. Any `UNASSIGNED` task needs a `@lane:`/`@files:`
-  tag (`plan_lanes.py --check` lists them). Process EVERY scheduled `[ ]` task in the BUILD QUEUE. **Fan each wave's
-  lanes out to concurrent subagents, each launched with worktree isolation
-  (`isolation: worktree`)** so no two ever edit the same files. Spawn them
-  concurrently — do NOT finish one before starting the next — up to the session's
-  worktree ceiling (**default 8, raised as high as the session can sustain**, passed
-  as `--max-lanes`), and **continuously refill (work-stealing): the moment a lane
-  finishes, hand its freed slot the next ready lane head — do not idle waiting for a
-  whole wave to complete.** **Tasks inside one lane run in sequence.** Each subagent
-  builds its lane's tasks completely with tests and, as each lands, commits it to
-  **its own worktree branch**, ticks it `[x]`, and adds one dated line to the DONE
-  LOG — so an interrupted run loses nothing and re-firing resumes from the first
-  still-unchecked task. CI runs once at the end over the whole batch (see below), not
-  per task or per agent. This processes EVERY unchecked task; it does NOT end the run
-  after the first.
-- **DRAIN DEEP — advance the base between waves so the SAME lanes keep going; still
-  exactly ONE merge.** Do NOT stop after a single wave of disjoint apps and consider
-  the run done — keep launching waves until the queue drains or the session's
-  token/time budget genuinely caps out. `isolation: worktree` subagents branch from
-  the LOCAL `main`, so to let a later wave build the NEXT task in an already-touched
-  lane (e.g. compta FG132 right after FG131) **without migration-number or file
-  collisions**, after each wave folds clean **fast-forward LOCAL `main` to the run
-  branch tip (locally — NEVER push intermediate state)** before launching the next
-  wave. The next wave's worktrees then inherit every prior wave's migrations and code,
-  so same-lane depth and reuse of an already-touched app are safe. Refill freed slots
-  (work-stealing), longest lanes first. Optionally PIPELINE: build the next wave while
-  the prior batch's ~16-min CI runs. **A perceived "same-app migration collision" is
-  NEVER a reason to stop early** — it only happens if you wrongly branch every wave
-  from the same fixed base; advancing the base removes it, so never report it as a
-  hard limit. Advancing LOCAL `main` is NOT a merge: the "exactly one self-merge to
-  `origin/main` at the end" rule is unchanged — you still push ONE final merge. The
-  only real stop conditions remain queue-drained / usage-budget-cap / genuine blocker.
-  Keep validation efficient at that scale: rely on `makemigrations --check` + the
-  affected-app docker suites + the final CI gate rather than re-running everything per
-  wave. (This same advance-the-base rule applies to `work on error plan` and
-  `work on the web plan`.)
-- **Keep subagents lean — context discipline + model tiering.** Each lane subagent
-  gets only its slice of the plan and **returns a short summary** (files touched,
-  tests added, status) — never a full diff — so the orchestrator's context stays
-  light enough to drive many waves. Run the orchestrator and the adversarial review
-  agent on the strongest model and the focused lane workers on a faster one when the
-  session allows it.
-- **Engine — default to a dynamic workflow with review; fall back to parallel
-  subagents; NEVER single-serial.** The default way to run the lanes is a
-  **dynamic workflow with a fan-out-and-verify shape**: one subagent per
-  independent task, each in its own git worktree, **plus a separate adversarial
-  review agent that checks every finished change against the standing safety
-  rules and that task's acceptance criteria before the change is eligible to
-  merge — nothing folds into `dev` or merges until its review passes.** When the
-  workflow engine isn't available (e.g. a phone or cloud session), **fall back to
-  the same lane-planned worktree subagents**, with the orchestrator itself
-  reviewing each lane against the safety rules before folding it in. **Never fall
-  back to a single serial, one-task-at-a-time agent** — parallel lanes with review
-  are the floor, not the ceiling.
-- **A run stops ONLY when one of these is true — nothing else licenses
-  stopping:**
-  1. **Queue drained** — no buildable unchecked `[ ]` tasks remain in the BUILD
-     QUEUE.
-  2. **Usage/length cap hit** — stopping here is fine; the plan is idempotent, so
-     re-firing "work on the plan" resumes from the first still-unchecked task.
-  3. **A task hits a genuine BLOCKER** — per the founder standing consent above,
-     task *categories* (`ARCH`/`AUTH`/`COST`/`DECISION`/`GALLERY`/`DEP`) no longer
-     stop a run; build them. A task is BLOCKED only by a true external
-     prerequisite the run cannot itself satisfy (a credential/secret/account the
-     founder must provision, e.g. a Meta token or a Cloudflare secret), a deleted
-     state file, or a direct conflict with a non-negotiable rule (#1–#5). Mark such
-     a task `[BLOCKED: <reason>]`, move it to GATED, and CONTINUE the remaining
-     tasks. A single blocked task must NEVER halt the whole run.
-- **There is no "one task per session" / "stop after one task" / "merge per task"
-  limit.** Any such wording anywhere — including older lines in `docs/PLAN.md`,
-  `docs/PLAN2.md`, or `docs/WEB_PLAN.md` — is overridden by this rule: keep going
-  until the queue is drained or a cap/limit above stops you. Do not invent a stop
-  after the first task, and do not merge after each task.
-- Database migrations a task needs (additive AND destructive) are approved, provided
-  they stay revertable. Per the founder standing consent above, new external/paid
-  dependencies, auth changes, cost changes, and brand-new architecture are likewise
-  approved to build — NOTE each in the DONE LOG. Only a truly missing external
-  prerequisite the run cannot satisfy (a founder-provisioned credential/secret/account)
-  or a conflict with a non-negotiable rule remains a stop-and-ask (condition 3).
-- **Refresh the code map when structure changed.** If the run added or changed any
-  backend models, API endpoints, frontend routes or features, or the service/module
-  structure, regenerate `docs/CODEMAP.md` from the actual source (re-derive the
-  facts and update its `Generated from commit` header), then run
-  `python scripts/codemap_fingerprint.py --write` so the stored
-  `Structure fingerprint:` updates together with the map, then commit both on `dev`
-  before the final merge. The required `stage-names` CI job re-runs that script in
-  `--check` mode, so a structural change that does not refresh the map (and its
-  fingerprint) fails CI and cannot merge. This is cheap and idempotent: SKIP it
-  entirely on docs-only runs and on any run that touched none of those — when
-  nothing structural moved, do not regenerate.
-- **Refresh the plan-status section whenever task states change — in the SAME
-  commit as the tick.** The moment a run ticks a task `[x]`, marks one `[BLOCKED]`,
-  or adds/removes a task in `docs/PLAN.md` or `docs/PLAN2.md`, regenerate §10 "Plan
-  status" of `docs/CODEMAP.md` from the plan files (paste
-  `python scripts/codemap_fingerprint.py --print-plan-status` into the section and
-  refresh its cross-check-vs-`main` notes + the `Generated from commit` stamp), then
-  run `python scripts/codemap_fingerprint.py --write` so the stored
-  `Plan fingerprint:` updates together with the section — and stage all of it in the
-  **same commit** as the task tick so the tick and the status refresh land
-  atomically. The required `stage-names` CI job re-runs that script in `--check`
-  mode, so a tick/add/remove that does not refresh §10 (and its plan fingerprint)
-  fails CI and cannot merge. Unlike the structure fingerprint, this is NOT
-  skippable on docs-only runs: ticking a task IS a plan-state change. (Editing only
-  a `[BLOCKED]` reason's wording, reordering the lists, or appending a DONE LOG line
-  does not move the plan fingerprint, so it needs no refresh.)
-- When the run stops, **fold every worktree branch into one `dev` branch**, get the
-  four required CI checks green over the whole batch, then self-merge `dev` → `main`
-  exactly once (a single merge commit, no per-agent PR, no per-task merge). This
-  merge auto-deploys only the **website** (Cloudflare). The ERP backend does NOT
-  auto-deploy — when a run needs to reach the live ERP, deploy it with
-  `scripts/deploy-prod.ps1` (see Repo facts); never run `wrangler` for the website.
-- **Sync-safe single merge — OS and web runs may run at the same time on this one
-  `main`.** The two commands own different folders so their code never collides,
-  but both land on the same `main` and both may touch shared files (`CLAUDE.md`,
-  the plan files, `docs/CODEMAP.md`). So the single self-merge is sync-safe:
-  **right before merging, fetch and integrate the latest `origin/main` into this
-  run's `dev`** (merge `main` in — do **not** rebase published history, **never
-  force-push**). If integrating `main` changed the code-structure surface,
-  **recompute the CODEMAP structure fingerprint on the integrated tree** (the same
-  fingerprint the `stage-names` check verifies) so it isn't stale on the merged
-  result. **Re-run the full CI suite once on the integrated state and self-merge
-  to `main` only when it is green.** If the push is rejected because `main`
-  advanced again, **repeat — fetch, integrate, recompute the fingerprint if
-  needed, re-run CI, push — never force, never overwrite the other run's
-  commits.** A run only ever edits the shared files (`CLAUDE.md` / **its own**
-  plan file / `docs/CODEMAP.md`) for **its own** command's lane, and ships that
-  small change inside this **same single merge**.
-- Report once, in plain language, and **include the lane plan**: how many lanes ran
-  in parallel and what each shipped, plus what was skipped and why.
+
+Drain `docs/PLAN2.md` (priority queue, first) then `docs/PLAN.md` using **"How a
+plan run works"** above. Anything typed after the command is extra detail for that
+run.
+
+- The active files are `docs/PLAN2.md` then `docs/PLAN.md`. There is no lock --
+  only ever one session at a time.
+- Read them fully and verify real repo state before building.
+- Process EVERY unchecked `[ ]` task in the BUILD QUEUE via the work-stealing
+  pipeline; verify each isn't already built first (if it is, mark
+  `[x] (already present)`), then tick `[x]` + add a dated DONE LOG line as it lands.
+- One run, one sync-safe self-merge to `main`, one deploy -- per "How a plan run
+  works". Report once with the lane plan (how many ran in parallel and what each
+  shipped) and what was skipped/blocked.
 
 ### "add to plan:" followed by tasks (one per line or separated by ;)
 - Append them as `[ ]` lines to `docs/PLAN.md`'s BUILD QUEUE, then refresh §10
@@ -408,123 +312,43 @@ Anything typed after the command is extra detail for that run.
   commit on `dev` and self-merge to `main`. Confirm in one line.
 
 ### "work on error plan"
-Identical to `work on the plan` in every respect — same
-**`scripts/plan_lanes.py`-driven, maximally-parallel cross-category lane plan** (run
-it on `docs/ERROR_PLAN.md`), same concurrent worktree subagents up to the session
-ceiling (default 8, raised as high as the session can sustain) continuously refilled
-(work-stealing), same
-dynamic-workflow-with-adversarial-review engine (fall back to parallel worktree
-subagents; never a single serial one-task-at-a-time agent), same stop conditions
-(queue drained / usage cap / a genuine stop-and-ask → mark `[BLOCKED: <reason>]`,
-move to GATED, and CONTINUE the rest), same verify-each-task-isn't-already-built
-step (mark `[x] (already present)` when it is), same commit-tick-DONE-LOG per task
-on each lane's own worktree branch, same CODEMAP refresh rules, and the same
-**sync-safe single self-merge `dev` → `main`** (integrate the latest `origin/main`
-first, recompute the structure fingerprint if the structural surface moved, re-run
-the full CI suite once over the whole batch, never force-push) — **with EXACTLY ONE
-difference: it drains `docs/ERROR_PLAN.md`** (the bug/error backlog) instead of
-`docs/PLAN.md` / `docs/PLAN2.md`. Anything typed after the command is extra detail
-for that run.
-- **No lock — same as `work on the plan`.** There is no `.running` lock; only ever
-  one session at a time, and the sync-safe single merge is what keeps `main`
-  collision-free even when an OS-plan, web-plan, or error-plan run lands
-  concurrently. (So there is no `reset the plan lock` to mirror.)
-- **Plan-status wiring.** `docs/ERROR_PLAN.md` is registered in
-  `scripts/codemap_fingerprint.py` (`PLAN_FILES`) exactly like the other plan files,
-  so ticking / adding / removing an `ERR*` task moves the plan fingerprint: refresh
-  §10 "Plan status" of `docs/CODEMAP.md` (paste `--print-plan-status`) and re-run
-  `python scripts/codemap_fingerprint.py --write` in the SAME commit as the tick, or
-  the required `stage-names` CI job fails.
-- **Headless-loop status.** When asked — or at the end of a run — print exactly
+
+Identical to **"work on the plan"** and **"How a plan run works"** in every respect
+-- EXCEPT it drains `docs/ERROR_PLAN.md` (the bug/error backlog). Run
+`python scripts/plan_lanes.py docs/ERROR_PLAN.md` to plan the lanes. Same
+work-stealing pool of up to 8, same per-task review + local test + fold, same
+single sync-safe self-merge + deploy at the end, same stop conditions, same
+verify-not-already-built (`[x] (already present)`). Anything typed after the
+command is extra detail.
+
+- `docs/ERROR_PLAN.md` is in the plan-fingerprint surface: ticking/adding/removing
+  an `ERR*` task means refresh §10 of `docs/CODEMAP.md` + re-run
+  `codemap_fingerprint.py --write` in the same commit.
+- **Headless status.** At the end (or when asked) print exactly
   `PLAN_STATUS: EMPTY` if no unchecked `[ ]` task remains in `docs/ERROR_PLAN.md`,
-  otherwise `PLAN_STATUS: MORE`, so the same headless loop that drives
-  `work on the plan` can drive this command too.
+  otherwise `PLAN_STATUS: MORE`.
 - Report once, in plain language, including the lane plan.
 
 ### "work on the web plan"
-The website autopilot stays strictly inside `apps/web/**` plus its own
-`docs/WEB_PLAN*` files. Anything typed after the command is extra detail.
-- The active file is `docs/WEB_PLAN.md`. There is no WEB_PLAN2.md and no
-  `.running` lock — only ever one session at a time.
-- Read it fully and verify real repo state. Scope: edit ONLY `apps/web/**` and
-  the `docs/WEB_PLAN*` files. NEVER touch anything outside apps/web.
-- **DRAIN THE QUEUE — one run works through ALL unchecked tasks, never just one,
-  with MAXIMUM SAFE PARALLELISM.** At the START of the run, run
-  **`python scripts/plan_lanes.py docs/WEB_PLAN.md`** to compute the file-ownership +
-  dependency graph from the real `apps/web` code and emit a **maximally parallel
-  wave plan** — NEVER top-down: each wave holds one head per independent lane (tasks
-  that share an `apps/web` file or depend on each other run in sequence), spanning as
-  many independent files as possible, longest lanes first. Process EVERY scheduled
-  `[ ]` task in the BUILD QUEUE. **Fan each wave's lanes out to concurrent subagents,
-  each launched with worktree isolation (`isolation: worktree`)** so no two ever edit
-  the same files. Spawn them concurrently — do NOT finish one before starting the
-  next — up to the session's worktree ceiling (**default 8, raised as high as the
-  session can sustain**, passed as `--max-lanes`), and **continuously refill
-  (work-stealing): the moment a lane finishes, hand its freed slot the next ready
-  lane head — do not idle waiting for a whole wave to complete.** **Tasks inside one
-  lane run in sequence.** Each subagent builds its lane's
-  tasks completely with tests and, as each lands, commits it to **its own worktree
-  branch**, ticks it `[x]`, and adds one dated line to the DONE LOG — so an
-  interrupted run loses nothing and re-firing resumes from the first still-unchecked
-  task. CI runs once at the end over the whole batch (see below), not per task or per
-  agent. This processes EVERY unchecked task; it does NOT end the run after the first.
-- **Engine — default to a dynamic workflow with review; fall back to parallel
-  subagents; NEVER single-serial.** The default way to run the lanes is a
-  **dynamic workflow with a fan-out-and-verify shape**: one subagent per
-  independent task, each in its own git worktree, **plus a separate adversarial
-  review agent that checks every finished change against the standing safety
-  rules and that task's acceptance criteria before the change is eligible to
-  merge — nothing folds into `dev` or merges until its review passes.** When the
-  workflow engine isn't available (e.g. a phone or cloud session), **fall back to
-  the same lane-planned worktree subagents**, with the orchestrator itself
-  reviewing each lane against the safety rules before folding it in. **Never fall
-  back to a single serial, one-task-at-a-time agent** — parallel lanes with review
-  are the floor, not the ceiling.
-- **A run stops ONLY when one of these is true — nothing else licenses
-  stopping:**
-  1. **Queue drained** — no unchecked `[ ]` tasks remain in the BUILD QUEUE.
-  2. **Usage/length cap hit** — stopping here is fine; the plan is idempotent, so
-     re-firing "work on the web plan" resumes from the still-unchecked tasks.
-  3. **A task hits a genuine stop-and-ask condition** — a new external
-     dependency, an auth or cost change, a new Cloudflare secret the founder
-     hasn't set, a deleted state file, or a brand-new architectural component.
-     SKIP that ONE task (leave it `[ ]` with a one-line note of why) and CONTINUE
-     the remaining tasks. A single stop-and-ask task must NEVER halt the whole
-     run.
-- **There is no "one task per session" / "stop after one task" / "merge per task"
-  limit** — and this rule explicitly OVERRIDES any contrary wording in
-  `docs/WEB_PLAN.md` itself (e.g. "exactly one task… and stops", "Do not start the
-  next task", "One session = one task"). Keep going until the queue is drained or a
-  cap/limit above stops you. Do not invent a stop after the first task, and do not
-  merge after each task.
-- Pre-approved: anything website-safe a task plainly needs. Stop-and-ask
-  (condition 3 — skip and list): new external dependencies, auth or cost changes,
-  deleted state files, brand-new architecture, anything touching the form's lead
-  data flow, anything outside apps/web.
-- When the run stops, **fold every worktree branch into one `dev` branch**, get CI
-  green over the whole batch, then self-merge `dev` → `main` exactly once (a single
-  merge commit, no per-agent PR, no per-task merge) — this auto-deploys the site via
-  Cloudflare on merge; never run a deploy command.
-- **Sync-safe single merge — OS and web runs may run at the same time on this one
-  `main`.** The two commands own different folders so their code never collides,
-  but both land on the same `main` and both may touch shared files (`CLAUDE.md`,
-  the plan files, `docs/CODEMAP.md`). So the single self-merge is sync-safe:
-  **right before merging, fetch and integrate the latest `origin/main` into this
-  run's `dev`** (merge `main` in — do **not** rebase published history, **never
-  force-push**). If integrating `main` changed the code-structure surface,
-  **recompute the CODEMAP structure fingerprint on the integrated tree** (the same
-  fingerprint the `stage-names` check verifies) so it isn't stale on the merged
-  result. **Re-run the full CI suite once on the integrated state and self-merge
-  to `main` only when it is green.** If the push is rejected because `main`
-  advanced again, **repeat — fetch, integrate, recompute the fingerprint if
-  needed, re-run CI, push — never force, never overwrite the other run's
-  commits.** A run only ever edits the shared files (`CLAUDE.md` / **its own**
-  plan file / `docs/CODEMAP.md`) for **its own** command's lane, and ships that
-  small change inside this **same single merge**.
-- Report in plain language (no diffs, no commit hashes), and **include the lane plan**
-  (how many lanes ran in parallel and what each shipped): every task that shipped,
-  what was skipped and why, and the exact preview URLs or live changes Reda can
-  click.
+
+Identical to **"How a plan run works"**, with three differences: it drains
+`docs/WEB_PLAN.md`, it edits ONLY `apps/web/**` and the `docs/WEB_PLAN*` files
+(NEVER touch anything outside `apps/web`), and the single merge **auto-deploys the
+website via Cloudflare on merge -- never run a deploy command or `wrangler`**. Run
+`python scripts/plan_lanes.py docs/WEB_PLAN.md` to plan the lanes. Same
+work-stealing pool of up to 8, same per-task review + local build/test + fold, same
+single sync-safe self-merge at the end. Anything typed after the command is extra
+detail.
+
+- The active file is `docs/WEB_PLAN.md` (no WEB_PLAN2.md, no lock).
+- `docs/WEB_PLAN.md` is NOT in the plan-fingerprint surface.
+- Pre-approved: anything website-safe a task plainly needs. Stop-and-ask (skip that
+  ONE task, leave it `[ ]` with a one-line note, and continue): a new external
+  dependency, an auth or cost change, a new Cloudflare secret, a deleted state file,
+  brand-new architecture, anything touching the form's lead-data flow, or anything
+  outside `apps/web`.
+- Report once, in plain language, with the lane plan and the exact preview URLs /
+  live changes Reda can click.
 
 ### "add to web plan:" followed by tasks (one per line or separated by ;)
 - Append them as `[ ]` lines to `docs/WEB_PLAN.md`'s BUILD QUEUE (there is no

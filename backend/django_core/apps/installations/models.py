@@ -78,6 +78,9 @@ from .models_indispo import (
 from .models_soustraitant import (
     SousTraitant,
 )
+from .models_ordre_soustraitance import (
+    OrdreSousTraitance,
+)
 
 __all__ = [
     'Installation',
@@ -121,4 +124,5 @@ __all__ = [
     'BudgetEngagement',
     'IndisponibiliteRessource',
     'SousTraitant',
+    'OrdreSousTraitance',
 ]

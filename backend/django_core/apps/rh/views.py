@@ -40,6 +40,7 @@ from .models import (
     Pointage,
     Poste,
     PresenceChantier,
+    PresquAccident,
     Remuneration,
     SoldeConge,
     TypeAbsence,
@@ -67,6 +68,7 @@ from .serializers import (
     PointageSerializer,
     PosteSerializer,
     PresenceChantierSerializer,
+    PresquAccidentSerializer,
     RemunerationSerializer,
     SoldeCongeSerializer,
     TypeAbsenceSerializer,
@@ -1635,3 +1637,75 @@ class AccidentTravailViewSet(_RhBaseViewSet):
                 acc.description,
             ])
         return response
+
+
+class PresquAccidentViewSet(_RhBaseViewSet):
+    """Registre des presqu'accidents / near-miss (FG182) — saisie rapide terrain.
+
+    Société scopée + Administrateur/Responsable. Pensé pour une SAISIE RAPIDE
+    sur le terrain : on remonte vite un événement à risque qui n'a pas blessé,
+    pour piloter la prévention de façon proactive. Plus léger que l'accident du
+    travail (FG181) : pas de blessé, pas d'arrêt, pas de déclaration CNSS.
+
+    ``company``, ``reference`` (``NM-YYYYMM-NNNN``, race-safe — jamais
+    ``count()+1``) ET ``declare_par`` (l'utilisateur qui remonte) sont posées
+    CÔTÉ SERVEUR ; jamais lues du corps de requête.
+
+    Filtres : ``?gravite=faible|moyenne|elevee``, ``?statut=ouvert|traite``.
+    ``?debut=`` / ``?fin=`` bornent la date de constat. Recherche : référence,
+    lieu, chantier.
+
+    Action :
+    * ``GET .../stats/`` — synthèse par gravité potentielle (total, ouverts,
+      ventilation par gravité), scopée société + bornée comme la liste
+      (``?debut=`` / ``?fin=`` / ``?statut=``).
+    """
+    queryset = PresquAccident.objects.select_related('declare_par').all()
+    serializer_class = PresquAccidentSerializer
+    filter_backends = [filters.SearchFilter, filters.OrderingFilter]
+    search_fields = ['reference', 'lieu', 'chantier_id']
+    ordering_fields = [
+        'date_constat', 'gravite_potentielle', 'statut',
+        'reference', 'date_creation']
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        gravite = self.request.query_params.get('gravite')
+        if gravite:
+            qs = qs.filter(gravite_potentielle=gravite)
+        statut = self.request.query_params.get('statut')
+        if statut:
+            qs = qs.filter(statut=statut)
+        debut = self._parse_date(self.request.query_params.get('debut'))
+        if debut:
+            qs = qs.filter(date_constat__gte=debut)
+        fin = self._parse_date(self.request.query_params.get('fin'))
+        if fin:
+            qs = qs.filter(date_constat__lte=fin)
+        return qs
+
+    @staticmethod
+    def _parse_date(raw):
+        if not raw:
+            return None
+        from datetime import datetime
+        try:
+            return datetime.strptime(raw, '%Y-%m-%d').date()
+        except (TypeError, ValueError):
+            return None
+
+    def perform_create(self, serializer):
+        """Company + reference (race-safe) + declare_par posées côté serveur."""
+        services.creer_presqu_accident(
+            serializer, self.request.user.company, self.request.user)
+
+    @action(detail=False, methods=['get'], url_path='stats')
+    def stats(self, request):
+        """Synthèse des presqu'accidents par gravité potentielle (FG182)."""
+        debut = self._parse_date(request.query_params.get('debut'))
+        fin = self._parse_date(request.query_params.get('fin'))
+        statut = request.query_params.get('statut') or None
+        data = selectors.stats_presqu_accidents(
+            request.user.company, date_debut=debut, date_fin=fin,
+            statut=statut)
+        return Response(data)

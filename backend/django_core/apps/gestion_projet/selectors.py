@@ -17,6 +17,7 @@ from decimal import Decimal
 from .models import (
     AffectationRessource,
     BaselinePlanning,
+    BudgetProjet,
     CalendrierProjet,
     DependanceTache,
     Equipe,
@@ -1333,6 +1334,187 @@ def nivellement_charge(company, debut, fin,
         'nb_non_resolues': nb_non_resolues,
     }
     return base
+
+
+# ── PROJ22 : Coûts engagés/réels vs budget prévisionnel (PROJ21) ─────────────
+
+# Types de ``ProjetLien`` qui matérialisent une dépense engagée (facture
+# fournisseur / achat). Ils alimentent — quand un montant est disponible — le
+# réel des catégories « matériel » et « sous-traitance ». Aujourd'hui aucune app
+# cible n'expose de sélecteur de MONTANT par projet (compta est un grand livre,
+# ventes n'expose qu'une carte de devis sans montant), donc ces sources DÉGRADENT
+# proprement : réel = 0 + une note, sans jamais importer un modèle d'une autre
+# app (frontière cross-app, CLAUDE.md). La structure ci-dessous est prête à
+# brancher un sélecteur de montant le jour où une app cible en exposera un.
+_LIENS_DEPENSE = (
+    ProjetLien.TypeCible.FACTURE,
+    ProjetLien.TypeCible.ACHAT,
+)
+
+
+def budget_effectif(projet):
+    """Budget de référence d'un projet pour la comparaison engagé/réel.
+
+    Choisit le budget VALIDÉ le plus récent (version la plus haute) s'il en
+    existe un ; sinon le budget le plus récent quel que soit son statut ; sinon
+    ``None`` (le projet n'a aucun budget). Toujours scopé société via le projet.
+    Lecture seule.
+    """
+    base = BudgetProjet.objects.filter(
+        projet=projet, company=projet.company)
+    valide = base.filter(
+        statut=BudgetProjet.Statut.VALIDE).order_by('-version', '-id').first()
+    if valide is not None:
+        return valide
+    return base.order_by('-version', '-id').first()
+
+
+def _mo_reelle(projet):
+    """Coût de main-d'œuvre RÉEL (interne) d'un projet, en MAD.
+
+    Agrège les affectations de RESSOURCES (personnes/rôles) du projet :
+    ``charge_jours`` (jours-homme) × ``cout_horaire`` interne du profil ×
+    ``_HEURES_PAR_JOUR_DEFAUT`` (8 h/j). Données 100 % INTERNES de pilotage
+    (jamais exposées au client) — aucune app externe n'est sollicitée. Une
+    affectation sans ``charge_jours`` ou sans coût horaire compte 0 ; les
+    affectations d'équipe ou d'actif (sans profil ressource) sont ignorées
+    (pas de coût horaire porté). Renvoie un ``Decimal``.
+    """
+    total = Decimal('0')
+    heures_jour = Decimal(_HEURES_PAR_JOUR_DEFAUT)
+    affectations = AffectationRessource.objects.filter(
+        company=projet.company,
+        tache__projet=projet,
+        ressource__isnull=False,
+        charge_jours__isnull=False,
+    ).select_related('ressource')
+    for aff in affectations:
+        charge = aff.charge_jours or Decimal('0')
+        cout_horaire = (
+            aff.ressource.cout_horaire
+            if aff.ressource_id and aff.ressource.cout_horaire is not None
+            else Decimal('0'))
+        total += charge * heures_jour * cout_horaire
+    # Quantize à 2 décimales : charge_jours/cout_horaire ont chacun 2 dp, leur
+    # produit en a 4 → la sérialisation `str()` rendrait « 800.0000 » au lieu de
+    # « 800.00 » (l'écart hérite de la même sur-précision). Aligne réel + écart.
+    return total.quantize(Decimal('0.01'))
+
+
+def _ecart_pct(budget_montant, reel_montant):
+    """Écart en % = (budget − réel) / budget × 100, ou ``None`` si budget == 0.
+
+    Garde anti division-par-zéro : un budget nul (catégorie non budgétée)
+    renvoie ``None`` plutôt que de diviser. Renvoie un ``Decimal`` arrondi à
+    deux décimales sinon.
+    """
+    if budget_montant is None or budget_montant == 0:
+        return None
+    ecart = budget_montant - reel_montant
+    return (ecart / budget_montant * Decimal('100')).quantize(Decimal('0.01'))
+
+
+def couts_engages_vs_reels(company, projet, budget=None):
+    """Comparaison BUDGET (PROJ21) vs RÉEL/engagé par catégorie pour un projet.
+
+    Pour CHAQUE catégorie canonique (matériel / main-d'œuvre / sous-traitance /
+    divers) renvoie : le ``budget`` prévisionnel (lignes ``LigneBudgetProjet`` du
+    budget de référence), le ``reel`` engagé, l'``ecart`` (budget − réel) et
+    l'``ecart_pct`` (None si budget == 0 — garde division-par-zéro), plus une
+    ``note`` quand une source de réel n'est pas disponible.
+
+    SOURCES du réel (jamais d'import d'un modèle d'une autre app — frontière
+    cross-app, CLAUDE.md) :
+      • ``main_oeuvre`` : 100 % INTERNE — affectations de ressources du projet
+        (``charge_jours`` × coût horaire interne × 8 h/j).
+      • ``materiel`` / ``sous_traitance`` : factures fournisseur / achats
+        rattachés via ``ProjetLien`` (type facture/achat). Aucune app cible
+        n'expose aujourd'hui de sélecteur de MONTANT par projet → DÉGRADE :
+        réel = 0 avec une ``note`` (nb de liens rattachés sans montant
+        exploitable). Aucune exception ne remonte.
+      • ``divers`` : pas de source automatique → réel = 0 avec une note.
+
+    Le ``budget`` peut être passé explicitement ; sinon on prend
+    ``budget_effectif(projet)`` (validé le plus récent, sinon le plus récent).
+    Si le projet n'a AUCUN budget, tous les budgets valent 0 (et ``ecart_pct``
+    est None). Tout est scopé société via le projet. Lecture seule.
+    """
+    if budget is None:
+        budget = budget_effectif(projet)
+
+    if budget is not None:
+        agg = budget_total(budget)
+        budget_par_cat = dict(agg['par_categorie'])
+        budget_total_montant = agg['total']
+        budget_id = budget.id
+        budget_version = budget.version
+        budget_statut = budget.statut
+    else:
+        budget_par_cat = {c: Decimal('0') for c in _BUDGET_CATEGORIES}
+        budget_total_montant = Decimal('0')
+        budget_id = None
+        budget_version = None
+        budget_statut = None
+
+    # Liens de dépense (facture/achat) rattachés au projet : on compte combien
+    # sont rattachés (le montant n'est pas exploitable aujourd'hui → note).
+    nb_liens_depense = ProjetLien.objects.filter(
+        projet=projet, company=projet.company,
+        type_cible__in=_LIENS_DEPENSE).count()
+
+    # Réel par catégorie.
+    reel_par_cat = {c: Decimal('0') for c in _BUDGET_CATEGORIES}
+    notes_par_cat = {c: '' for c in _BUDGET_CATEGORIES}
+
+    # main_oeuvre : source interne disponible (affectations × coût horaire).
+    reel_par_cat[LigneBudgetProjet.Categorie.MAIN_OEUVRE] = _mo_reelle(projet)
+
+    # materiel / sous_traitance : factures fournisseur/achats — pas de montant
+    # exploitable aujourd'hui → réel reste 0 + note si des liens existent.
+    if nb_liens_depense:
+        note_liens = (
+            f"{nb_liens_depense} facture(s)/achat(s) rattaché(s) : montant "
+            "non disponible (aucun sélecteur cross-app) — réel à 0.")
+        notes_par_cat[LigneBudgetProjet.Categorie.MATERIEL] = note_liens
+        notes_par_cat[LigneBudgetProjet.Categorie.SOUS_TRAITANCE] = note_liens
+    else:
+        note_aucun = "Aucune facture/achat rattaché — réel à 0."
+        notes_par_cat[LigneBudgetProjet.Categorie.MATERIEL] = note_aucun
+        notes_par_cat[LigneBudgetProjet.Categorie.SOUS_TRAITANCE] = note_aucun
+
+    # divers : pas de source automatique.
+    notes_par_cat[LigneBudgetProjet.Categorie.DIVERS] = (
+        "Pas de source automatique — réel à 0.")
+
+    par_categorie = []
+    reel_total_montant = Decimal('0')
+    for cat in _BUDGET_CATEGORIES:
+        budget_montant = budget_par_cat.get(cat, Decimal('0'))
+        reel_montant = reel_par_cat.get(cat, Decimal('0'))
+        reel_total_montant += reel_montant
+        par_categorie.append({
+            'categorie': cat,
+            'budget': budget_montant,
+            'reel': reel_montant,
+            'ecart': budget_montant - reel_montant,
+            'ecart_pct': _ecart_pct(budget_montant, reel_montant),
+            'note': notes_par_cat.get(cat, ''),
+        })
+
+    return {
+        'budget_id': budget_id,
+        'budget_version': budget_version,
+        'budget_statut': budget_statut,
+        'nb_liens_depense': nb_liens_depense,
+        'par_categorie': par_categorie,
+        'total': {
+            'budget': budget_total_montant,
+            'reel': reel_total_montant,
+            'ecart': budget_total_montant - reel_total_montant,
+            'ecart_pct': _ecart_pct(
+                budget_total_montant, reel_total_montant),
+        },
+    }
 
 
 # ── Budget projet (PROJ21) ───────────────────────────────────────────────────

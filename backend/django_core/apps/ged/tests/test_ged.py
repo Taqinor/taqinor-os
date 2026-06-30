@@ -18,9 +18,10 @@ from apps.crm.models import Client
 from apps.records.models import Attachment
 from apps.ged import selectors, services
 from apps.ged.models import (
-    AclGed, Cabinet, Coffre, DemandeApprobation, Document, DocumentChunk,
-    DocumentLien, DocumentTag, DocumentTagAssignment, DocumentVersion, Folder,
-    PartageGed, PolitiqueRetention, RETENTION_SIGNALER, RETENTION_SUPPRIMER,
+    AclGed, ArchivageLegal, ArchivageLegalError, Cabinet, Coffre,
+    DemandeApprobation, Document, DocumentChunk, DocumentLien, DocumentTag,
+    DocumentTagAssignment, DocumentVersion, Folder, PartageGed,
+    PolitiqueRetention, RETENTION_SIGNALER, RETENTION_SUPPRIMER,
 )
 from apps.roles.models import Role
 
@@ -3499,3 +3500,298 @@ class PolitiqueRetentionApiTests(RetentionBase):
         self.assertIn(doc.id, doc_ids)
         # Et le document existe toujours — l'endpoint ne supprime rien.
         self.assertTrue(Document.objects.filter(pk=doc.pk).exists())
+
+
+# ── GED23 — Archivage légal à valeur probante (write-once / object-lock) ──────
+class ArchivageLegalBase(GedBase):
+    """Fixtures : un dossier + un document avec une version (checksum figé).
+
+    Le `checksum` posé sur la version sert de repli au `hash_integrite` quand le
+    contenu MinIO n'est pas récupérable en test (degrade path de l'object-lock /
+    du recalcul). On force `fetch_attachment` à échouer partout ici pour rester
+    déterministe et hermétique au stockage."""
+
+    def setUp(self):
+        super().setUp()
+        self.folder_a = Folder.objects.create(
+            company=self.co_a, cabinet=self.cab_a, nom='Dossier A')
+        self.doc_a = Document.objects.create(
+            company=self.co_a, folder=self.folder_a, nom='Contrat')
+        self.cs = services.compute_checksum(b'contenu probant')
+        self.version_a = services.add_version(
+            self.doc_a, file_key='attachments/contrat.pdf', company=self.co_a,
+            checksum=self.cs, uploaded_by=self.admin_a)
+
+
+def _no_storage(*a, **k):
+    """fetch_attachment introuvable → force le repli sur version.checksum."""
+    return None, 'Fichier introuvable.'
+
+
+class ArchivageLegalServiceTests(ArchivageLegalBase):
+    def test_archive_records_hash_and_server_side_fields(self):
+        """archiver_legalement fige le hash + pose company/archive_par serveur."""
+        from unittest import mock
+        with mock.patch('apps.records.storage.fetch_attachment',
+                        side_effect=_no_storage):
+            arch = services.archiver_legalement(
+                self.doc_a, user=self.admin_a, motif='Clôture exercice')
+        self.assertEqual(arch.company_id, self.co_a.id)
+        self.assertEqual(arch.archive_par_id, self.admin_a.id)
+        self.assertEqual(arch.version_id, self.version_a.id)
+        # Hash d'intégrité = SHA-256 (repli sur le checksum de la version).
+        self.assertEqual(arch.hash_integrite, self.cs)
+        self.assertEqual(len(arch.hash_integrite), 64)
+        self.assertTrue(self.doc_a.est_archive_legalement)
+
+    def test_archive_recomputes_hash_from_stored_content(self):
+        """Quand le contenu est récupérable, le hash est recalculé dessus."""
+        from unittest import mock
+        contenu = b'octets reellement stockes'
+        attendu = services.compute_checksum(contenu)
+        with mock.patch('apps.records.storage.fetch_attachment',
+                        return_value=(contenu, None)):
+            arch = services.archiver_legalement(self.doc_a, user=self.admin_a)
+        self.assertEqual(arch.hash_integrite, attendu)
+
+    def test_write_once_blocks_document_edit(self):
+        """Un document archivé est IMMUABLE : save() est refusé (write-once)."""
+        from unittest import mock
+        with mock.patch('apps.records.storage.fetch_attachment',
+                        side_effect=_no_storage):
+            services.archiver_legalement(self.doc_a, user=self.admin_a)
+        self.doc_a.refresh_from_db()
+        self.doc_a.nom = 'Renommé'
+        with self.assertRaises(ArchivageLegalError):
+            self.doc_a.save()
+
+    def test_write_once_blocks_document_delete(self):
+        """Un document archivé ne peut pas être supprimé (write-once)."""
+        from unittest import mock
+        with mock.patch('apps.records.storage.fetch_attachment',
+                        side_effect=_no_storage):
+            services.archiver_legalement(self.doc_a, user=self.admin_a)
+        self.doc_a.refresh_from_db()
+        with self.assertRaises(ArchivageLegalError):
+            self.doc_a.delete()
+        self.assertTrue(Document.objects.filter(pk=self.doc_a.pk).exists())
+
+    def test_write_once_blocks_new_version(self):
+        """On n'ajoute plus de version à un document archivé."""
+        from unittest import mock
+        with mock.patch('apps.records.storage.fetch_attachment',
+                        side_effect=_no_storage):
+            services.archiver_legalement(self.doc_a, user=self.admin_a)
+        with self.assertRaises(ArchivageLegalError):
+            services.add_version(
+                self.doc_a, file_key='attachments/v2.pdf', company=self.co_a,
+                uploaded_by=self.admin_a)
+
+    def test_write_once_blocks_version_edit_and_delete(self):
+        """Les versions d'un document archivé sont figées (edit + delete)."""
+        from unittest import mock
+        with mock.patch('apps.records.storage.fetch_attachment',
+                        side_effect=_no_storage):
+            services.archiver_legalement(self.doc_a, user=self.admin_a)
+        self.version_a.refresh_from_db()
+        self.version_a.filename = 'autre.pdf'
+        with self.assertRaises(ArchivageLegalError):
+            self.version_a.save()
+        with self.assertRaises(ArchivageLegalError):
+            self.version_a.delete()
+
+    def test_write_once_blocks_lifecycle_and_checkout_and_move(self):
+        """Cycle de vie / check-out / déplacement refusés sur un doc archivé."""
+        from unittest import mock
+        with mock.patch('apps.records.storage.fetch_attachment',
+                        side_effect=_no_storage):
+            services.archiver_legalement(self.doc_a, user=self.admin_a)
+        self.doc_a.refresh_from_db()
+        with self.assertRaises(PermissionError):
+            services.change_lifecycle_status(
+                self.doc_a, 'revue', user=self.admin_a)
+        with self.assertRaises(PermissionError):
+            services.checkout_document(self.doc_a, self.admin_a)
+        autre = Folder.objects.create(
+            company=self.co_a, cabinet=self.cab_a, nom='Autre')
+        with self.assertRaises(ValueError):
+            services.move_document(self.doc_a, autre)
+
+    def test_archivage_record_is_immutable(self):
+        """L'enregistrement ArchivageLegal lui-même est immuable (create-only)."""
+        from unittest import mock
+        with mock.patch('apps.records.storage.fetch_attachment',
+                        side_effect=_no_storage):
+            arch = services.archiver_legalement(self.doc_a, user=self.admin_a)
+        arch.motif = 'modifié'
+        with self.assertRaises(ArchivageLegalError):
+            arch.save()
+        with self.assertRaises(ArchivageLegalError):
+            arch.delete()
+
+    def test_double_archive_rejected(self):
+        """Write-once : un document n'est archivé légalement qu'une seule fois."""
+        from unittest import mock
+        with mock.patch('apps.records.storage.fetch_attachment',
+                        side_effect=_no_storage):
+            services.archiver_legalement(self.doc_a, user=self.admin_a)
+            with self.assertRaises(ValueError):
+                services.archiver_legalement(self.doc_a, user=self.admin_a)
+
+    def test_cross_company_archive_rejected(self):
+        """On n'archive pas le document d'une autre société."""
+        with self.assertRaises(PermissionError):
+            services.archiver_legalement(self.doc_a, user=self.admin_b)
+
+    def test_object_lock_degrades_gracefully_when_unsupported(self):
+        """L'object-lock non supporté NE bloque PAS l'archivage (degrade)."""
+        from unittest import mock
+        today = timezone.localdate()
+        # Le client MinIO lève (object-lock non supporté) → on dégrade.
+        fake_client = mock.Mock()
+        fake_client.put_object_retention.side_effect = Exception('not supported')
+        with mock.patch('apps.records.storage.fetch_attachment',
+                        side_effect=_no_storage), \
+                mock.patch('apps.ventes.utils.minio_client.get_minio_client',
+                           return_value=fake_client):
+            arch = services.archiver_legalement(
+                self.doc_a, user=self.admin_a,
+                retain_until=today + datetime.timedelta(days=30))
+        # L'archivage existe et est valide ; seul le verrou objet a échoué.
+        self.assertTrue(self.doc_a.est_archive_legalement)
+        self.assertFalse(arch.object_lock_applique)
+        # La date de rétention demandée est néanmoins consignée.
+        self.assertEqual(arch.object_lock_retain_until,
+                         today + datetime.timedelta(days=30))
+
+    def test_object_lock_applied_when_supported(self):
+        """Quand le backend supporte l'object-lock, le verrou est marqué posé."""
+        from unittest import mock
+        today = timezone.localdate()
+        fake_client = mock.Mock()
+        fake_client.put_object_retention.return_value = {}
+        with mock.patch('apps.records.storage.fetch_attachment',
+                        side_effect=_no_storage), \
+                mock.patch('apps.ventes.utils.minio_client.get_minio_client',
+                           return_value=fake_client):
+            arch = services.archiver_legalement(
+                self.doc_a, user=self.admin_a,
+                retain_until=today + datetime.timedelta(days=10))
+        self.assertTrue(arch.object_lock_applique)
+        fake_client.put_object_retention.assert_called_once()
+
+
+class ArchivageLegalApiTests(ArchivageLegalBase):
+    URL = '/api/django/ged/archivages-legaux/'
+
+    def _archive_via_service(self):
+        from unittest import mock
+        with mock.patch('apps.records.storage.fetch_attachment',
+                        side_effect=_no_storage):
+            return services.archiver_legalement(self.doc_a, user=self.admin_a)
+
+    def test_create_action_archives_document(self):
+        """POST documents/<id>/archiver-legalement/ archive (company serveur)."""
+        from unittest import mock
+        api = auth(self.admin_a)
+        with mock.patch('apps.records.storage.fetch_attachment',
+                        side_effect=_no_storage):
+            resp = api.post(
+                f'/api/django/ged/documents/{self.doc_a.id}/'
+                'archiver-legalement/',
+                {'motif': 'Probant', 'company': self.co_b.id}, format='json')
+        self.assertEqual(resp.status_code, 201, resp.data)
+        arch = ArchivageLegal.objects.get(id=resp.data['id'])
+        self.assertEqual(arch.company_id, self.co_a.id)
+        self.assertEqual(arch.archive_par_id, self.admin_a.id)
+        self.assertEqual(arch.hash_integrite, self.cs)
+
+    def test_create_viewset_archives_document(self):
+        """POST archivages-legaux/ crée (company/archive_par côté serveur)."""
+        from unittest import mock
+        api = auth(self.admin_a)
+        with mock.patch('apps.records.storage.fetch_attachment',
+                        side_effect=_no_storage):
+            resp = api.post(self.URL, {
+                'document': self.doc_a.id,
+                'company': self.co_b.id,  # injection ignorée
+            }, format='json')
+        self.assertEqual(resp.status_code, 201, resp.data)
+        arch = ArchivageLegal.objects.get(id=resp.data['id'])
+        self.assertEqual(arch.company_id, self.co_a.id)
+
+    def test_archived_document_edit_returns_403(self):
+        """PATCH d'un document archivé renvoie 403 (write-once)."""
+        self._archive_via_service()
+        resp = auth(self.admin_a).patch(
+            f'/api/django/ged/documents/{self.doc_a.id}/',
+            {'nom': 'Hack'}, format='json')
+        self.assertEqual(resp.status_code, 403, resp.data)
+
+    def test_archived_document_delete_returns_403(self):
+        """DELETE d'un document archivé renvoie 403 (write-once)."""
+        self._archive_via_service()
+        resp = auth(self.admin_a).delete(
+            f'/api/django/ged/documents/{self.doc_a.id}/')
+        self.assertEqual(resp.status_code, 403)
+        self.assertTrue(Document.objects.filter(pk=self.doc_a.pk).exists())
+
+    def test_archived_document_checkout_is_blocked(self):
+        """GED23 — check-out d'un document archivé est BLOQUÉ (409 write-once).
+
+        `checkout_document` garde déjà l'archivage et lève `PermissionError`, que
+        l'action traduit en 409 avec le message write-once — jamais 200, jamais
+        500 : le document immuable ne peut pas être extrait pour modification.
+        """
+        self._archive_via_service()
+        resp = auth(self.admin_a).post(
+            f'/api/django/ged/documents/{self.doc_a.id}/check-out/')
+        self.assertEqual(resp.status_code, 409, resp.data)
+
+    def test_update_and_delete_not_allowed_on_archivage(self):
+        """L'API archivages-legaux n'expose ni update ni delete (immuable)."""
+        arch = self._archive_via_service()
+        api = auth(self.admin_a)
+        r_patch = api.patch(f'{self.URL}{arch.id}/', {'motif': 'x'},
+                            format='json')
+        self.assertEqual(r_patch.status_code, 405)
+        r_del = api.delete(f'{self.URL}{arch.id}/')
+        self.assertEqual(r_del.status_code, 405)
+
+    def test_tenant_isolation_list(self):
+        arch = self._archive_via_service()
+        # Un doc + archivage côté B.
+        doc_b = Document.objects.create(
+            company=self.co_b, folder=Folder.objects.create(
+                company=self.co_b, cabinet=self.cab_b, nom='Dos B'),
+            nom='Doc B')
+        ArchivageLegal.objects.create(company=self.co_b, document=doc_b)
+        resp = auth(self.admin_a).get(self.URL)
+        self.assertEqual(resp.status_code, 200)
+        ids = [r['id'] for r in rows(resp)]
+        self.assertIn(arch.id, ids)
+        self.assertNotIn(
+            ArchivageLegal.objects.get(document=doc_b).id, ids)
+
+    def test_create_requires_responsable_role(self):
+        """Archivage refusé (403) à un compte sans rôle d'écriture."""
+        viewer = make_user(self.co_a, 'ged23-viewer', 'normal')
+        resp = auth(viewer).post(self.URL, {'document': self.doc_a.id},
+                                 format='json')
+        self.assertEqual(resp.status_code, 403, resp.data)
+
+    def test_read_allowed_to_any_role(self):
+        self._archive_via_service()
+        viewer = make_user(self.co_a, 'ged23-viewer2', 'normal')
+        resp = auth(viewer).get(self.URL)
+        self.assertEqual(resp.status_code, 200, resp.data)
+
+    def test_create_rejects_cross_company_document(self):
+        """On n'archive pas le document d'une autre société via l'API."""
+        doc_b = Document.objects.create(
+            company=self.co_b, folder=Folder.objects.create(
+                company=self.co_b, cabinet=self.cab_b, nom='Dos B'),
+            nom='Doc B')
+        resp = auth(self.admin_a).post(
+            self.URL, {'document': doc_b.id}, format='json')
+        self.assertEqual(resp.status_code, 404, resp.data)

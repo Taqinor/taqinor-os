@@ -22,6 +22,7 @@ from .views import (
     PointageViewSet,
     PosteViewSet,
     PresenceChantierViewSet,
+    PresquAccidentViewSet,
     RemunerationViewSet,
     SoldeCongeViewSet,
     TypeAbsenceViewSet,
@@ -53,6 +54,7 @@ router.register(r'epi-catalogue', EpiCatalogueViewSet)
 router.register(r'dotations-epi', DotationEpiViewSet)
 router.register(r'echeances', EcheancesRhViewSet, basename='rh-echeances')
 router.register(r'accidents-travail', AccidentTravailViewSet)
+router.register(r'presqu-accidents', PresquAccidentViewSet)
 
 urlpatterns = [
     path('', include(router.urls)),

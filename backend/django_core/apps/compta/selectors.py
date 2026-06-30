@@ -11,9 +11,9 @@ from django.db.models import Sum
 from django.utils import timezone
 
 from .models import (
-    Caisse, CompteComptable, CompteTresorerie, Effet, LigneEcriture,
-    LignePrevisionnelTresorerie, MouvementCaisse, Rapprochement, RetenueSource,
-    TimbreFiscal,
+    Caisse, CautionBancaire, CompteComptable, CompteTresorerie, Effet,
+    LigneEcriture, LignePrevisionnelTresorerie, MouvementCaisse, Rapprochement,
+    RetenueGarantie, RetenueSource, TimbreFiscal,
 )
 
 
@@ -1744,4 +1744,95 @@ def liasse_fiscale(company, exercice, *, validees_seulement=False):
         # Indicateurs de tête repris des états (cohérence garantie 1:1).
         'resultat': etat_cpc['resultat'],
         'equilibre': etat_bilan['equilibre'] and etat_balance['equilibree'],
+    }
+
+
+# ── FG145 — Retenue de garantie & cautions bancaires sur marchés ───────────
+def retenues_garantie_a_echeance(company, *, jours=30, date_reference=None):
+    """RG dont la levée prévue arrive à échéance sous ``jours`` (FG145).
+
+    Liste les ``RetenueGarantie`` ENCORE retenues (non libérées) dont la
+    ``date_levee_prevue`` tombe entre ``date_reference`` (défaut = aujourd'hui) et
+    ``date_reference + jours``. Les RG en RETARD (levée prévue déjà passée et non
+    libérée) sont incluses (elles arrivent « à échéance » au plus tard). Lecture
+    seule, scopée société, ordonnée par échéance.
+    """
+    ref = date_reference or timezone.now().date()
+    limite = ref + timedelta(days=int(jours))
+    qs = RetenueGarantie.objects.filter(
+        company=company,
+        statut=RetenueGarantie.Statut.RETENUE,
+        date_levee_prevue__isnull=False,
+        date_levee_prevue__lte=limite,
+    ).order_by('date_levee_prevue', 'id')
+    lignes = []
+    total = Decimal('0')
+    for rg in qs:
+        en_retard = rg.date_levee_prevue < ref
+        lignes.append({
+            'id': rg.id,
+            'reference': rg.reference,
+            'marche_ref': rg.marche_ref,
+            'facture_ref': rg.facture_ref,
+            'tiers_nom': rg.tiers_nom,
+            'base': rg.base,
+            'taux': rg.taux,
+            'montant': rg.montant,
+            'date_constitution': rg.date_constitution,
+            'date_levee_prevue': rg.date_levee_prevue,
+            'statut': rg.statut,
+            'en_retard': en_retard,
+        })
+        total += rg.montant or Decimal('0')
+    return {
+        'date_reference': ref,
+        'jours': int(jours),
+        'date_limite': limite,
+        'lignes': lignes,
+        'total_montant': total,
+        'nb': len(lignes),
+    }
+
+
+def cautions_a_echeance(company, *, jours=30, date_reference=None):
+    """Cautions bancaires ACTIVES arrivant à échéance sous ``jours`` (FG145).
+
+    Liste les ``CautionBancaire`` encore ACTIVES (non mainlevées/restituées) dont
+    la ``date_echeance`` tombe entre ``date_reference`` (défaut = aujourd'hui) et
+    ``date_reference + jours`` (les échéances déjà dépassées et non levées sont
+    incluses). Lecture seule, scopée société, ordonnée par échéance.
+    """
+    ref = date_reference or timezone.now().date()
+    limite = ref + timedelta(days=int(jours))
+    qs = CautionBancaire.objects.filter(
+        company=company,
+        statut=CautionBancaire.Statut.ACTIVE,
+        date_echeance__isnull=False,
+        date_echeance__lte=limite,
+    ).order_by('date_echeance', 'id')
+    lignes = []
+    total = Decimal('0')
+    for c in qs:
+        en_retard = c.date_echeance < ref
+        lignes.append({
+            'id': c.id,
+            'reference': c.reference,
+            'type_caution': c.type_caution,
+            'marche_ref': c.marche_ref,
+            'tiers_nom': c.tiers_nom,
+            'banque': c.banque,
+            'montant': c.montant,
+            'date_emission': c.date_emission,
+            'date_echeance': c.date_echeance,
+            'statut': c.statut,
+            'en_retard': en_retard,
+        })
+        total += c.montant or Decimal('0')
+    return {
+        'date_reference': ref,
+        'jours': int(jours),
+        'date_limite': limite,
+        'lignes': lignes,
+        'total_montant': total,
+        'nb': len(lignes),
     }
