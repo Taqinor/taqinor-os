@@ -34,6 +34,27 @@ from .views import (
     ReceptionNonFactureeViewSet,
     ContratPrixFournisseurViewSet,
     ContratPrixLigneViewSet,
+    BinLocationViewSet,
+    BinAffectationViewSet,
+    PutAwayViewSet,
+    PickListViewSet,
+    PickListLigneViewSet,
+    ColisViewSet,
+    ColisLigneViewSet,
+    SerieEntrepotViewSet,
+    SessionComptageViewSet,
+    ComptageLigneViewSet,
+    DemandeTransfertViewSet,
+    RegleReapproViewSet,
+    MaterielConsigneViewSet,
+    KitViewSet,
+    KitComposantViewSet,
+    OrdreAssemblageViewSet,
+    LivraisonViewSet,
+    LivraisonLigneViewSet,
+    PreuveLivraisonViewSet,
+    TransporteurViewSet,
+    TourneeLivraisonView,
 )
 
 router = DefaultRouter()
@@ -79,6 +100,26 @@ router.register(r'landed-cost-lignes', LandedCostLigneViewSet)
 router.register(r'receptions-non-facturees', ReceptionNonFactureeViewSet)
 router.register(r'contrats-prix-fournisseur', ContratPrixFournisseurViewSet)
 router.register(r'contrats-prix-lignes', ContratPrixLigneViewSet)
+router.register(r'bin-locations', BinLocationViewSet)
+router.register(r'bin-affectations', BinAffectationViewSet)
+router.register(r'putaways', PutAwayViewSet)
+router.register(r'pick-lists', PickListViewSet)
+router.register(r'pick-list-lignes', PickListLigneViewSet)
+router.register(r'colis', ColisViewSet)
+router.register(r'colis-lignes', ColisLigneViewSet)
+router.register(r'series-entrepot', SerieEntrepotViewSet)
+router.register(r'sessions-comptage', SessionComptageViewSet)
+router.register(r'comptage-lignes', ComptageLigneViewSet)
+router.register(r'demandes-transfert', DemandeTransfertViewSet)
+router.register(r'regles-reappro', RegleReapproViewSet)
+router.register(r'materiels-consignes', MaterielConsigneViewSet)
+router.register(r'kits', KitViewSet)
+router.register(r'kit-composants', KitComposantViewSet)
+router.register(r'ordres-assemblage', OrdreAssemblageViewSet)
+router.register(r'livraisons', LivraisonViewSet)
+router.register(r'livraison-lignes', LivraisonLigneViewSet)
+router.register(r'preuves-livraison', PreuveLivraisonViewSet)
+router.register(r'transporteurs', TransporteurViewSet)
 
 urlpatterns = [
     # N91/F21 — synchro idempotente de la capture terrain hors-ligne.
@@ -86,5 +127,8 @@ urlpatterns = [
     # FG313 — contrôle budgétaire consultatif avant commande.
     path('controle-budgetaire/', ControleBudgetaireCommandeView.as_view(),
          name='installations-controle-budgetaire'),
+    # FG332 — tournée de livraison optimisée pour un jour (consultatif).
+    path('tournee-livraison/', TourneeLivraisonView.as_view(),
+         name='installations-tournee-livraison'),
     path('', include(router.urls)),
 ]

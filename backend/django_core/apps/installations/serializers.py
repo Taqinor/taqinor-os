@@ -37,6 +37,26 @@ from .models import (
     ReceptionNonFacturee,
     ContratPrixFournisseur,
     ContratPrixLigne,
+    BinLocation,
+    BinAffectation,
+    PutAway,
+    PickList,
+    PickListLigne,
+    Colis,
+    ColisLigne,
+    SerieEntrepot,
+    SessionComptage,
+    ComptageLigne,
+    DemandeTransfert,
+    RegleReappro,
+    MaterielConsigne,
+    Kit,
+    KitComposant,
+    OrdreAssemblage,
+    Livraison,
+    LivraisonLigne,
+    PreuveLivraison,
+    Transporteur,
 )
 
 
@@ -1651,4 +1671,506 @@ class ContratPrixFournisseurSerializer(serializers.ModelSerializer):
         value = (value or '').strip()
         if not value:
             raise serializers.ValidationError("L'intitulé est obligatoire.")
+        return value
+
+
+class BinAffectationSerializer(serializers.ModelSerializer):
+    """FG319 — affectation produit ↔ casier (quantité indicative)."""
+    produit_nom = serializers.CharField(
+        source='produit.nom', read_only=True, default=None)
+
+    class Meta:
+        model = BinAffectation
+        fields = [
+            'id', 'bin', 'produit', 'produit_nom', 'quantite',
+            'date_creation', 'date_modification',
+        ]
+        read_only_fields = ['date_creation', 'date_modification']
+
+
+class BinLocationSerializer(serializers.ModelSerializer):
+    """FG319 — casier de rangement adressable sous un `EmplacementStock`. La
+    societe et `created_by` sont poses COTE SERVEUR. Les affectations produit
+    sont imbriquees en lecture."""
+    emplacement_nom = serializers.CharField(
+        source='emplacement.nom', read_only=True, default=None)
+    affectations = BinAffectationSerializer(many=True, read_only=True)
+
+    class Meta:
+        model = BinLocation
+        fields = [
+            'id', 'emplacement', 'emplacement_nom', 'code', 'zone', 'allee',
+            'casier', 'ordre', 'note', 'archived', 'affectations',
+            'created_by', 'date_creation', 'date_modification',
+        ]
+        read_only_fields = [
+            'created_by', 'date_creation', 'date_modification',
+        ]
+
+    def validate_code(self, value):
+        value = (value or '').strip()
+        if not value:
+            raise serializers.ValidationError('Le code du casier est requis.')
+        return value
+
+
+class PutAwaySerializer(serializers.ModelSerializer):
+    """FG320 - rangement guide. La societe, `created_by`, `bin_suggere`, le
+    statut et les champs de tracage sont poses COTE SERVEUR. Le magasinier
+    confirme via l'action `ranger` (qui pose `bin_effectif`/`range_par`/date)."""
+    produit_nom = serializers.CharField(
+        source='produit.nom', read_only=True, default=None)
+    bin_suggere_code = serializers.CharField(
+        source='bin_suggere.code', read_only=True, default=None)
+    bin_effectif_code = serializers.CharField(
+        source='bin_effectif.code', read_only=True, default=None)
+    statut_display = serializers.CharField(
+        source='get_statut_display', read_only=True, default=None)
+
+    class Meta:
+        model = PutAway
+        fields = [
+            'id', 'produit', 'produit_nom', 'emplacement', 'quantite',
+            'bin_suggere', 'bin_suggere_code',
+            'bin_effectif', 'bin_effectif_code',
+            'statut', 'statut_display', 'reference_reception', 'note',
+            'range_par', 'date_rangement',
+            'created_by', 'date_creation', 'date_modification',
+        ]
+        read_only_fields = [
+            'bin_suggere', 'bin_effectif', 'statut', 'range_par',
+            'date_rangement', 'created_by',
+            'date_creation', 'date_modification',
+        ]
+
+
+class PickListLigneSerializer(serializers.ModelSerializer):
+    """FG321 - ligne de prelevement (SKU + casier + avancement)."""
+    produit_nom = serializers.CharField(
+        source='produit.nom', read_only=True, default=None)
+    bin_code = serializers.CharField(
+        source='bin.code', read_only=True, default=None)
+
+    class Meta:
+        model = PickListLigne
+        fields = [
+            'id', 'pick_list', 'produit', 'produit_nom', 'designation',
+            'bin', 'bin_code', 'quantite_demandee', 'quantite_prelevee',
+            'ordre', 'preleve',
+        ]
+        read_only_fields = ['pick_list', 'ordre']
+
+
+class PickListSerializer(serializers.ModelSerializer):
+    """FG321 - bon de prelevement d'un chantier. La reference, la societe et
+    `created_by` sont poses COTE SERVEUR ; les lignes sont generees serveur
+    depuis les reservations (action `generer`) et imbriquees en lecture."""
+    statut_display = serializers.CharField(
+        source='get_statut_display', read_only=True, default=None)
+    lignes = PickListLigneSerializer(many=True, read_only=True)
+
+    class Meta:
+        model = PickList
+        fields = [
+            'id', 'reference', 'installation', 'statut', 'statut_display',
+            'note', 'lignes', 'created_by', 'date_creation', 'date_modification',
+        ]
+        read_only_fields = [
+            'reference', 'statut', 'created_by',
+            'date_creation', 'date_modification',
+        ]
+
+
+class ColisLigneSerializer(serializers.ModelSerializer):
+    """FG322 - article emballe dans un colis (SKU + quantite + controle OK)."""
+    produit_nom = serializers.CharField(
+        source='produit.nom', read_only=True, default=None)
+
+    class Meta:
+        model = ColisLigne
+        fields = [
+            'id', 'colis', 'produit', 'produit_nom', 'designation',
+            'quantite', 'controle_ok',
+        ]
+
+    def validate(self, attrs):
+        produit = attrs.get('produit') if 'produit' in attrs else getattr(
+            self.instance, 'produit', None)
+        designation = attrs.get('designation') if 'designation' in attrs else (
+            getattr(self.instance, 'designation', None))
+        if produit is None and not (designation or '').strip():
+            raise serializers.ValidationError(
+                {'designation': 'Indiquez un produit ou une designation.'})
+        return attrs
+
+
+class ColisSerializer(serializers.ModelSerializer):
+    """FG322 - colis de preparation d'un chantier. Reference/societe/`created_by`
+    poses COTE SERVEUR ; le statut avance via `controler`/`expedier` (qui posent
+    `controle_par`/date). Lignes imbriquees en lecture."""
+    statut_display = serializers.CharField(
+        source='get_statut_display', read_only=True, default=None)
+    lignes = ColisLigneSerializer(many=True, read_only=True)
+
+    class Meta:
+        model = Colis
+        fields = [
+            'id', 'reference', 'installation', 'statut', 'statut_display',
+            'poids_kg', 'note', 'lignes', 'controle_par', 'date_controle',
+            'created_by', 'date_creation', 'date_modification',
+        ]
+        read_only_fields = [
+            'reference', 'statut', 'controle_par', 'date_controle',
+            'created_by', 'date_creation', 'date_modification',
+        ]
+
+
+class SerieEntrepotSerializer(serializers.ModelSerializer):
+    """FG323 - n0 de serie suivi en entrepot. La societe et `created_by` sont
+    poses COTE SERVEUR ; le statut avance via les actions `reserver`/`sortir`
+    (ou par mise a jour du `bin`)."""
+    produit_nom = serializers.CharField(
+        source='produit.nom', read_only=True, default=None)
+    bin_code = serializers.CharField(
+        source='bin.code', read_only=True, default=None)
+    statut_display = serializers.CharField(
+        source='get_statut_display', read_only=True, default=None)
+
+    class Meta:
+        model = SerieEntrepot
+        fields = [
+            'id', 'produit', 'produit_nom', 'numero_serie', 'emplacement',
+            'bin', 'bin_code', 'statut', 'statut_display', 'installation',
+            'reference_reception', 'note',
+            'created_by', 'date_creation', 'date_modification',
+        ]
+        read_only_fields = [
+            'statut', 'created_by', 'date_creation', 'date_modification',
+        ]
+
+    def validate_numero_serie(self, value):
+        value = (value or '').strip()
+        if not value:
+            raise serializers.ValidationError('Le numero de serie est requis.')
+        return value
+
+
+class ComptageLigneSerializer(serializers.ModelSerializer):
+    """FG324 - ligne de comptage (SKU + theorique snapshot + comptee + ecart)."""
+    produit_nom = serializers.CharField(
+        source='produit.nom', read_only=True, default=None)
+    ecart = serializers.IntegerField(read_only=True)
+
+    class Meta:
+        model = ComptageLigne
+        fields = [
+            'id', 'session', 'produit', 'produit_nom', 'designation',
+            'quantite_theorique', 'quantite_comptee', 'compte', 'ecart',
+        ]
+        read_only_fields = ['session', 'quantite_theorique']
+
+
+class SessionComptageSerializer(serializers.ModelSerializer):
+    """FG324 - session de comptage tournant. Reference/societe/`created_by`
+    poses COTE SERVEUR ; le statut avance via `demarrer`/`terminer` ; les
+    lignes sont generees serveur (action `generer-lignes`)."""
+    statut_display = serializers.CharField(
+        source='get_statut_display', read_only=True, default=None)
+    classe_abc_display = serializers.CharField(
+        source='get_classe_abc_display', read_only=True, default=None)
+    lignes = ComptageLigneSerializer(many=True, read_only=True)
+
+    class Meta:
+        model = SessionComptage
+        fields = [
+            'id', 'reference', 'intitule', 'emplacement', 'classe_abc',
+            'classe_abc_display', 'statut', 'statut_display', 'date_planifiee',
+            'note', 'lignes', 'created_by', 'date_creation', 'date_modification',
+        ]
+        read_only_fields = [
+            'reference', 'statut', 'created_by',
+            'date_creation', 'date_modification',
+        ]
+
+
+class DemandeTransfertSerializer(serializers.ModelSerializer):
+    """FG325 - demande de transfert inter-emplacements. Reference/societe/
+    `created_by` poses COTE SERVEUR ; le statut et les champs d'approbation/
+    execution avancent via les actions `approuver`/`refuser`/`executer`."""
+    produit_nom = serializers.CharField(
+        source='produit.nom', read_only=True, default=None)
+    source_nom = serializers.CharField(
+        source='source.nom', read_only=True, default=None)
+    destination_nom = serializers.CharField(
+        source='destination.nom', read_only=True, default=None)
+    statut_display = serializers.CharField(
+        source='get_statut_display', read_only=True, default=None)
+
+    class Meta:
+        model = DemandeTransfert
+        fields = [
+            'id', 'reference', 'produit', 'produit_nom', 'source', 'source_nom',
+            'destination', 'destination_nom', 'quantite', 'statut',
+            'statut_display', 'motif', 'motif_refus', 'approuve_par',
+            'date_approbation', 'date_execution',
+            'created_by', 'date_creation', 'date_modification',
+        ]
+        read_only_fields = [
+            'reference', 'statut', 'motif_refus', 'approuve_par',
+            'date_approbation', 'date_execution', 'created_by',
+            'date_creation', 'date_modification',
+        ]
+
+    def validate_quantite(self, value):
+        if value is None or value <= 0:
+            raise serializers.ValidationError(
+                'La quantite demandee doit etre strictement positive.')
+        return value
+
+    def validate(self, attrs):
+        source = attrs.get('source') if 'source' in attrs else getattr(
+            self.instance, 'source', None)
+        destination = attrs.get('destination') if 'destination' in attrs else (
+            getattr(self.instance, 'destination', None))
+        if source is not None and destination is not None and (
+                source == destination):
+            raise serializers.ValidationError(
+                {'destination': 'La destination doit differer de la source.'})
+        return attrs
+
+
+class RegleReapproSerializer(serializers.ModelSerializer):
+    """FG326 - regle min/max de reapprovisionnement. La societe et `created_by`
+    sont poses COTE SERVEUR. `seuil_max` doit etre >= `seuil_min`."""
+    produit_nom = serializers.CharField(
+        source='produit.nom', read_only=True, default=None)
+    emplacement_cible_nom = serializers.CharField(
+        source='emplacement_cible.nom', read_only=True, default=None)
+    emplacement_source_nom = serializers.CharField(
+        source='emplacement_source.nom', read_only=True, default=None)
+
+    class Meta:
+        model = RegleReappro
+        fields = [
+            'id', 'produit', 'produit_nom', 'emplacement_cible',
+            'emplacement_cible_nom', 'emplacement_source',
+            'emplacement_source_nom', 'seuil_min', 'seuil_max', 'active',
+            'note', 'created_by', 'date_creation', 'date_modification',
+        ]
+        read_only_fields = [
+            'created_by', 'date_creation', 'date_modification',
+        ]
+
+    def validate(self, attrs):
+        seuil_min = attrs.get('seuil_min') if 'seuil_min' in attrs else getattr(
+            self.instance, 'seuil_min', 0)
+        seuil_max = attrs.get('seuil_max') if 'seuil_max' in attrs else getattr(
+            self.instance, 'seuil_max', 0)
+        if seuil_max < seuil_min:
+            raise serializers.ValidationError(
+                {'seuil_max': 'Le seuil max doit etre >= au seuil min.'})
+        return attrs
+
+
+class MaterielConsigneSerializer(serializers.ModelSerializer):
+    """FG327 - materiel consigne retournable. Societe/`created_by` poses COTE
+    SERVEUR ; le statut et la trace de retour avancent via l'action `retourner`.
+    `caution_totale` est derivee (INTERNE)."""
+    fournisseur_nom = serializers.CharField(
+        source='fournisseur.nom', read_only=True, default=None)
+    type_materiel_display = serializers.CharField(
+        source='get_type_materiel_display', read_only=True, default=None)
+    statut_display = serializers.CharField(
+        source='get_statut_display', read_only=True, default=None)
+    caution_totale = serializers.DecimalField(
+        max_digits=12, decimal_places=2, read_only=True)
+
+    class Meta:
+        model = MaterielConsigne
+        fields = [
+            'id', 'designation', 'type_materiel', 'type_materiel_display',
+            'fournisseur', 'fournisseur_nom', 'quantite', 'caution_unitaire',
+            'caution_totale', 'statut', 'statut_display', 'reference_externe',
+            'date_reception', 'date_retour', 'note', 'retourne_par',
+            'created_by', 'date_creation', 'date_modification',
+        ]
+        read_only_fields = [
+            'statut', 'date_retour', 'retourne_par', 'created_by',
+            'date_creation', 'date_modification',
+        ]
+
+    def validate_designation(self, value):
+        value = (value or '').strip()
+        if not value:
+            raise serializers.ValidationError('La designation est requise.')
+        return value
+
+
+class KitComposantSerializer(serializers.ModelSerializer):
+    """FG328 - composant de la nomenclature d'un kit."""
+    produit_nom = serializers.CharField(
+        source='produit.nom', read_only=True, default=None)
+
+    class Meta:
+        model = KitComposant
+        fields = [
+            'id', 'kit', 'produit', 'produit_nom', 'designation', 'quantite',
+        ]
+
+    def validate(self, attrs):
+        produit = attrs.get('produit') if 'produit' in attrs else getattr(
+            self.instance, 'produit', None)
+        designation = attrs.get('designation') if 'designation' in attrs else (
+            getattr(self.instance, 'designation', None))
+        if produit is None and not (designation or '').strip():
+            raise serializers.ValidationError(
+                {'designation': 'Indiquez un produit ou une designation.'})
+        return attrs
+
+
+class KitSerializer(serializers.ModelSerializer):
+    """FG328 - definition d'un kit (article compose + nomenclature). Societe et
+    `created_by` poses COTE SERVEUR. Les composants sont imbriques en lecture."""
+    produit_compose_nom = serializers.CharField(
+        source='produit_compose.nom', read_only=True, default=None)
+    composants = KitComposantSerializer(many=True, read_only=True)
+
+    class Meta:
+        model = Kit
+        fields = [
+            'id', 'nom', 'reference_interne', 'produit_compose',
+            'produit_compose_nom', 'active', 'note', 'composants',
+            'created_by', 'date_creation', 'date_modification',
+        ]
+        read_only_fields = [
+            'created_by', 'date_creation', 'date_modification',
+        ]
+
+    def validate_nom(self, value):
+        value = (value or '').strip()
+        if not value:
+            raise serializers.ValidationError('Le nom du kit est requis.')
+        return value
+
+
+class OrdreAssemblageSerializer(serializers.ModelSerializer):
+    """FG328 - ordre d'assemblage de N kits. Reference/societe/`created_by`
+    poses COTE SERVEUR ; le statut avance via `demarrer`/`terminer`."""
+    kit_nom = serializers.CharField(
+        source='kit.nom', read_only=True, default=None)
+    statut_display = serializers.CharField(
+        source='get_statut_display', read_only=True, default=None)
+
+    class Meta:
+        model = OrdreAssemblage
+        fields = [
+            'id', 'reference', 'kit', 'kit_nom', 'quantite', 'statut',
+            'statut_display', 'note', 'date_terminaison',
+            'created_by', 'date_creation', 'date_modification',
+        ]
+        read_only_fields = [
+            'reference', 'statut', 'date_terminaison', 'created_by',
+            'date_creation', 'date_modification',
+        ]
+
+    def validate_quantite(self, value):
+        if value is None or value <= 0:
+            raise serializers.ValidationError(
+                'La quantite a assembler doit etre strictement positive.')
+        return value
+
+
+class LivraisonLigneSerializer(serializers.ModelSerializer):
+    """FG329 - article d'une livraison (SKU + quantite)."""
+    produit_nom = serializers.CharField(
+        source='produit.nom', read_only=True, default=None)
+
+    class Meta:
+        model = LivraisonLigne
+        fields = [
+            'id', 'livraison', 'produit', 'produit_nom', 'designation',
+            'quantite',
+        ]
+
+    def validate(self, attrs):
+        produit = attrs.get('produit') if 'produit' in attrs else getattr(
+            self.instance, 'produit', None)
+        designation = attrs.get('designation') if 'designation' in attrs else (
+            getattr(self.instance, 'designation', None))
+        if produit is None and not (designation or '').strip():
+            raise serializers.ValidationError(
+                {'designation': 'Indiquez un produit ou une designation.'})
+        return attrs
+
+
+class LivraisonSerializer(serializers.ModelSerializer):
+    """FG329 - livraison planifiee depot -> site. Reference/societe/`created_by`
+    poses COTE SERVEUR ; le statut avance via les actions
+    `expedier`/`livrer`/`annuler`. Lignes imbriquees en lecture."""
+    installation_reference = serializers.CharField(
+        source='installation.reference', read_only=True, default=None)
+    depot_nom = serializers.CharField(
+        source='depot.nom', read_only=True, default=None)
+    transporteur_obj_nom = serializers.CharField(
+        source='transporteur.nom', read_only=True, default=None)
+    statut_display = serializers.CharField(
+        source='get_statut_display', read_only=True, default=None)
+    mode_acheminement_display = serializers.CharField(
+        source='get_mode_acheminement_display', read_only=True, default=None)
+    lignes = LivraisonLigneSerializer(many=True, read_only=True)
+
+    class Meta:
+        model = Livraison
+        fields = [
+            'id', 'reference', 'installation', 'installation_reference',
+            'depot', 'depot_nom', 'transporteur_nom', 'transporteur',
+            'transporteur_obj_nom', 'cout_transport', 'mode_acheminement',
+            'mode_acheminement_display', 'date_prevue', 'statut',
+            'statut_display', 'adresse_site', 'note', 'lignes',
+            'created_by', 'date_creation', 'date_modification',
+        ]
+        read_only_fields = [
+            'reference', 'statut', 'created_by',
+            'date_creation', 'date_modification',
+        ]
+
+
+class PreuveLivraisonSerializer(serializers.ModelSerializer):
+    """FG330 - preuve de livraison (signature + photo + GPS horodate). La
+    societe et `created_by` sont poses COTE SERVEUR. Une seule preuve par
+    livraison (OneToOne)."""
+
+    class Meta:
+        model = PreuveLivraison
+        fields = [
+            'id', 'livraison', 'signataire_nom', 'signature_data', 'photo',
+            'gps_lat', 'gps_lng', 'horodatage', 'note',
+            'created_by', 'date_creation', 'date_modification',
+        ]
+        read_only_fields = [
+            'created_by', 'date_creation', 'date_modification',
+        ]
+
+
+class TransporteurSerializer(serializers.ModelSerializer):
+    """FG331 - transporteur (interne/tiers) + tarif de base (INTERNE). La
+    societe et `created_by` sont poses COTE SERVEUR."""
+    type_transporteur_display = serializers.CharField(
+        source='get_type_transporteur_display', read_only=True, default=None)
+
+    class Meta:
+        model = Transporteur
+        fields = [
+            'id', 'nom', 'type_transporteur', 'type_transporteur_display',
+            'contact', 'telephone', 'tarif_base', 'active', 'note',
+            'created_by', 'date_creation', 'date_modification',
+        ]
+        read_only_fields = [
+            'created_by', 'date_creation', 'date_modification',
+        ]
+
+    def validate_nom(self, value):
+        value = (value or '').strip()
+        if not value:
+            raise serializers.ValidationError('Le nom du transporteur est requis.')
         return value
