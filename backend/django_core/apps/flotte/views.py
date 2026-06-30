@@ -21,6 +21,7 @@ from .models import (
     CarteCarburant,
     CarteGriseVehicule,
     Conducteur,
+    DemandeVehicule,
     EcheanceEntretien,
     EcheanceReglementaire,
     EnginRoulant,
@@ -36,6 +37,8 @@ from .models import (
     ReleveTelematique,
     ReservationVehicule,
     Sinistre,
+    TrajetChantier,
+    TrajetTelematique,
     Vehicule,
     VisiteTechnique,
 )
@@ -58,16 +61,21 @@ from .serializers import (
     PlanEntretienSerializer,
     PneumatiqueSerializer,
     PleinCarburantSerializer,
+    DemandeVehiculeSerializer,
     ReferentielFlotteSerializer,
     ReleveTelematiqueSerializer,
     ReservationVehiculeSerializer,
     SinistreSerializer,
+    TrajetChantierSerializer,
+    TrajetTelematiqueSerializer,
     VehiculeSerializer,
     VisiteTechniqueSerializer,
 )
 
 READ_ACTIONS = ['list', 'retrieve', 'consommation', 'anomalies', 'echeances',
-                'couts', 'synthese', 'expirantes', 'tsav', 'alertes_echeances']
+                'couts', 'synthese', 'expirantes', 'tsav', 'alertes_echeances',
+                'tco', 'eco_conduite', 'documents', 'tableau_bord', 'journal',
+                'amortissement']
 
 
 class _FlotteBaseViewSet(TenantMixin, viewsets.ModelViewSet):
@@ -124,6 +132,55 @@ class VehiculeViewSet(_FlotteBaseViewSet):
 
         from .selectors import calcul_tsav
         return Response(calcul_tsav(vehicule, annee=annee))
+
+    @action(detail=True, methods=['get'])
+    def tco(self, request, pk=None):
+        """FLOTTE31 — Coût total de possession (TCO) du véhicule (tout rôle).
+
+        Agrège les coûts internes du véhicule (carburant, réparations, pneus/
+        pièces, infractions, sinistres) en un coût total + coût par km, via
+        ``selectors.tco_vehicule``. Lecture seule, scopée société.
+        """
+        vehicule = self.get_object()
+        from .selectors import tco_vehicule
+        return Response(tco_vehicule(request.user.company, vehicule.id))
+
+    @action(detail=True, methods=['get'], url_path='eco-conduite')
+    def eco_conduite(self, request, pk=None):
+        """FLOTTE33 — Éco-conduite & empreinte CO₂ du véhicule (tout rôle).
+
+        Calcule les émissions de CO₂ (tank-to-wheel), la consommation moyenne,
+        l'intensité carbone (g CO₂/km) et un score d'éco-conduite via
+        ``selectors.eco_conduite_co2``. Lecture seule, scopée société.
+        """
+        vehicule = self.get_object()
+        from .selectors import eco_conduite_co2
+        return Response(eco_conduite_co2(request.user.company, vehicule.id))
+
+    @action(detail=True, methods=['get'])
+    def amortissement(self, request, pk=None):
+        """FLOTTE30 — Amortissement (VNC) du véhicule via son immobilisation.
+
+        Lit l'amortissement comptable lié au véhicule (FLOTTE30) via
+        ``selectors.amortissement_vehicule`` (lecture cross-app du module compta,
+        jamais d'écriture). Lecture seule, scopée société.
+        """
+        vehicule = self.get_object()
+        from .selectors import amortissement_vehicule
+        return Response(
+            amortissement_vehicule(request.user.company, vehicule.id))
+
+    @action(detail=False, methods=['get'], url_path='tableau-bord')
+    def tableau_bord(self, request):
+        """FLOTTE35 — Tableau de bord flotte (dispo / échéances / coûts / conso).
+
+        Synthèse société : véhicules/engins par statut + disponibles, échéances
+        réglementaires par urgence (FLOTTE24), coûts réparations + carburant,
+        entretien ouvert et demandes de pool en attente, via
+        ``selectors.tableau_bord_flotte``. Lecture seule (tout rôle).
+        """
+        from .selectors import tableau_bord_flotte
+        return Response(tableau_bord_flotte(request.user.company))
 
 
 class EnginRoulantViewSet(_FlotteBaseViewSet):
@@ -228,6 +285,29 @@ class ActifFlotteViewSet(_FlotteBaseViewSet):
         elif type_actif == ActifFlotte.TYPE_ENGIN:
             qs = qs.filter(engin__isnull=False)
         return qs
+
+    @action(detail=True, methods=['get'])
+    def documents(self, request, pk=None):
+        """FLOTTE34 — Documents GED liés à l'actif (carte grise, assurance…).
+
+        Lecture (tout rôle), scopée société. Retourne les documents GED rattachés
+        à cet actif via ``selectors.documents_ged_pour_actif`` (lecture cross-app
+        de la GED, jamais d'écriture). Chaque entrée porte id / nom / statut /
+        date du document GED.
+        """
+        actif = self.get_object()
+        from .selectors import documents_ged_pour_actif
+        docs = documents_ged_pour_actif(request.user.company, actif.id)
+        data = [
+            {
+                'id': doc.id,
+                'nom': getattr(doc, 'nom', ''),
+                'statut': getattr(doc, 'statut', None),
+                'date_creation': getattr(doc, 'date_creation', None),
+            }
+            for doc in docs
+        ]
+        return Response(data)
 
 
 class AffectationConducteurViewSet(_FlotteBaseViewSet):
@@ -1335,3 +1415,253 @@ class InfractionViewSet(_FlotteBaseViewSet):
                 pass
 
         return qs
+
+
+# ── FLOTTE28 — Suivi de position & trajets télématiques ────────────────────────
+
+class TrajetTelematiqueViewSet(_FlotteBaseViewSet):
+    """Trajets télématiques des actifs de flotte (FLOTTE28).
+
+    CRUD scopé société (écriture responsable/admin) des trajets (déplacement de A
+    à B) d'un véhicule ou d'un engin : début/fin, positions de départ/arrivée,
+    distance, durée et vitesse moyenne (calculées). La saisie manuelle fonctionne
+    toujours. Filtrable par ``?actif_flotte=<id>``, ``?date_debut=YYYY-MM-DD`` et
+    ``?date_fin=YYYY-MM-DD``. L'actif lié doit appartenir à la société.
+
+    Action ``POST /trajets-telematiques/construire/`` (écriture
+    responsable/admin) : reconstruit les trajets d'un actif à partir de ses
+    relevés télématiques (FLOTTE27) successifs. Idempotente. ``?actif_flotte=<id>``
+    est REQUIS. Renvoie ``{'crees': <int>}``.
+    """
+    queryset = TrajetTelematique.objects.select_related(
+        'actif_flotte', 'actif_flotte__vehicule', 'actif_flotte__engin',
+        'releve_depart', 'releve_arrivee')
+    serializer_class = TrajetTelematiqueSerializer
+    filter_backends = [filters.OrderingFilter]
+    ordering_fields = ['debut', 'fin', 'distance_km', 'date_creation']
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        params = self.request.query_params
+
+        actif_flotte = params.get('actif_flotte')
+        if actif_flotte:
+            try:
+                qs = qs.filter(actif_flotte_id=int(actif_flotte))
+            except (ValueError, TypeError):
+                pass
+
+        date_debut = params.get('date_debut')
+        if date_debut:
+            qs = qs.filter(debut__date__gte=date_debut)
+        date_fin = params.get('date_fin')
+        if date_fin:
+            qs = qs.filter(debut__date__lte=date_fin)
+
+        return qs
+
+    @action(detail=False, methods=['post'])
+    def construire(self, request):
+        """FLOTTE28 — Construit les trajets d'un actif depuis ses relevés.
+
+        Écriture (responsable/admin), scopée société. ``?actif_flotte=<id>`` est
+        REQUIS (renvoie 400 sinon). Idempotente. Renvoie ``{'crees': <int>}``.
+        """
+        company = request.user.company
+        actif_param = request.query_params.get('actif_flotte')
+        if not actif_param:
+            return Response(
+                {'detail': "Le paramètre 'actif_flotte' est requis."},
+                status=400)
+        try:
+            actif_id = int(actif_param)
+        except (ValueError, TypeError):
+            return Response(
+                {'detail': "Le paramètre 'actif_flotte' est invalide."},
+                status=400)
+
+        if not ActifFlotte.objects.filter(
+                company=company, id=actif_id).exists():
+            return Response(
+                {'detail': "Cet actif n'appartient pas à votre société."},
+                status=404)
+
+        from .services import construire_trajets_telematiques
+        crees = construire_trajets_telematiques(company, actif_id)
+        return Response({'crees': len(crees)})
+
+
+# ── FLOTTE29 — Journal kilométrique & trajets imputés chantier ─────────────────
+
+class TrajetChantierViewSet(_FlotteBaseViewSet):
+    """Trajets imputés chantier des actifs de flotte (FLOTTE29).
+
+    CRUD scopé société (écriture responsable/admin) du journal kilométrique
+    imputé chantier : actif, chantier (``installation_id``, validé via
+    ``installations.selectors``), date, motif, km départ/arrivée, distance.
+    Filtrable par ``?actif_flotte=<id>``, ``?installation=<id>``,
+    ``?date_debut=YYYY-MM-DD`` et ``?date_fin=YYYY-MM-DD``.
+
+    Action ``GET /trajets-chantier/journal/`` (lecture tout rôle) : journal
+    kilométrique AGRÉGÉ ventilé par chantier. Mêmes filtres facultatifs.
+    """
+    queryset = TrajetChantier.objects.select_related(
+        'actif_flotte', 'actif_flotte__vehicule', 'actif_flotte__engin')
+    serializer_class = TrajetChantierSerializer
+    filter_backends = [filters.SearchFilter, filters.OrderingFilter]
+    search_fields = ['motif', 'notes']
+    ordering_fields = ['date_trajet', 'distance_km', 'date_creation']
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        params = self.request.query_params
+
+        actif_flotte = params.get('actif_flotte')
+        if actif_flotte:
+            try:
+                qs = qs.filter(actif_flotte_id=int(actif_flotte))
+            except (ValueError, TypeError):
+                pass
+
+        installation = params.get('installation')
+        if installation:
+            try:
+                qs = qs.filter(installation_id=int(installation))
+            except (ValueError, TypeError):
+                pass
+
+        date_debut = params.get('date_debut')
+        if date_debut:
+            qs = qs.filter(date_trajet__gte=date_debut)
+        date_fin = params.get('date_fin')
+        if date_fin:
+            qs = qs.filter(date_trajet__lte=date_fin)
+
+        return qs
+
+    @action(detail=False, methods=['get'])
+    def journal(self, request):
+        """FLOTTE29 — Journal kilométrique agrégé, ventilé par chantier.
+
+        Lecture (tout rôle), scopée société. Filtres facultatifs :
+        ``?actif_flotte=<id>``, ``?installation=<id>``, ``?date_debut=`` /
+        ``?date_fin=``. Renvoie distance totale + ventilation par chantier.
+        """
+        company = request.user.company
+        params = request.query_params
+
+        def _int(nom):
+            valeur = params.get(nom)
+            if not valeur:
+                return None
+            try:
+                return int(valeur)
+            except (ValueError, TypeError):
+                return None
+
+        from .selectors import journal_kilometrique
+        data = journal_kilometrique(
+            company,
+            actif_flotte_id=_int('actif_flotte'),
+            installation_id=_int('installation'),
+            date_debut=params.get('date_debut') or None,
+            date_fin=params.get('date_fin') or None,
+        )
+        return Response(data)
+
+
+# ── FLOTTE32 — Pool de véhicules & demandes ────────────────────────────────────
+
+class DemandeVehiculeViewSet(_FlotteBaseViewSet):
+    """Demandes de véhicule du pool partagé (FLOTTE32).
+
+    CRUD scopé société : un collaborateur DEMANDE un véhicule du pool pour une
+    période. ``company`` ET ``demandeur`` sont posés côté serveur (jamais du
+    body). Filtrable par ``?statut=<demandee|approuvee|refusee|annulee>`` et
+    ``?demandeur=<id>``. Lecture tout rôle ; création tout rôle (chacun peut
+    demander) ; décision responsable/admin via les actions dédiées.
+
+    Actions ``POST /demandes-vehicule/<id>/approuver/`` et ``…/refuser/``
+    (écriture responsable/admin) : approuvent (avec ``vehicule_attribue`` au
+    body, optionnel) ou refusent une demande, en posant le décideur côté serveur.
+    """
+    queryset = DemandeVehicule.objects.select_related(
+        'demandeur', 'vehicule_attribue', 'decide_par')
+    serializer_class = DemandeVehiculeSerializer
+    filter_backends = [filters.SearchFilter, filters.OrderingFilter]
+    search_fields = ['besoin', 'notes']
+    ordering_fields = ['date_debut_souhaitee', 'statut', 'date_creation']
+
+    def get_permissions(self):
+        # La création d'une demande est ouverte à tout rôle (chacun demande) ;
+        # la décision (approuver/refuser) reste responsable/admin.
+        if self.action == 'create':
+            return [IsAnyRole()]
+        return super().get_permissions()
+
+    def perform_create(self, serializer):
+        # company ET demandeur posés côté serveur (jamais du body).
+        serializer.save(
+            company=self.request.user.company,
+            demandeur=self.request.user)
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        params = self.request.query_params
+
+        statut = params.get('statut')
+        if statut:
+            qs = qs.filter(statut=statut)
+
+        demandeur = params.get('demandeur')
+        if demandeur:
+            try:
+                qs = qs.filter(demandeur_id=int(demandeur))
+            except (ValueError, TypeError):
+                pass
+
+        return qs
+
+    @action(detail=True, methods=['post'])
+    def approuver(self, request, pk=None):
+        """FLOTTE32 — Approuve la demande (responsable/admin).
+
+        ``vehicule_attribue`` (id, optionnel) et ``motif_decision`` (optionnel)
+        au body. Le véhicule attribué doit appartenir à la société. Le décideur
+        est l'utilisateur courant (posé côté serveur).
+        """
+        return self._decider(request, DemandeVehicule.Statut.APPROUVEE)
+
+    @action(detail=True, methods=['post'])
+    def refuser(self, request, pk=None):
+        """FLOTTE32 — Refuse la demande (responsable/admin).
+
+        ``motif_decision`` (optionnel) au body. Aucune attribution conservée. Le
+        décideur est l'utilisateur courant (posé côté serveur).
+        """
+        return self._decider(request, DemandeVehicule.Statut.REFUSEE)
+
+    def _decider(self, request, statut):
+        company = request.user.company
+        demande = self.get_object()
+
+        vehicule = None
+        veh_id = request.data.get('vehicule_attribue')
+        if statut == DemandeVehicule.Statut.APPROUVEE and veh_id:
+            vehicule = Vehicule.objects.filter(
+                company=company, id=veh_id).first()
+            if vehicule is None:
+                return Response(
+                    {'detail': "Ce véhicule n'appartient pas à votre société."},
+                    status=400)
+
+        from .services import decider_demande_vehicule
+        try:
+            decider_demande_vehicule(
+                demande, statut=statut, decide_par=request.user,
+                vehicule=vehicule,
+                motif=request.data.get('motif_decision', ''))
+        except ValueError as exc:
+            return Response({'detail': str(exc)}, status=400)
+
+        return Response(self.get_serializer(demande).data)
