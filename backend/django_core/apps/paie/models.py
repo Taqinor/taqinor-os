@@ -707,7 +707,7 @@ class BulletinPaie(models.Model):
         'formation_professionnelle',
         'cimr_salariale', 'frais_professionnels', 'net_imposable', 'ir',
         'retenues', 'prime_anciennete', 'charges_patronales', 'net_a_payer',
-        'personnes_a_charge',
+        'personnes_a_charge', 'provision_conges',
     ]
 
     class BulletinVerrouille(Exception):
@@ -765,6 +765,13 @@ class BulletinPaie(models.Model):
     formation_professionnelle = models.DecimalField(
         max_digits=14, decimal_places=2, default=Decimal('0'),
         verbose_name='Formation professionnelle (patronal)')
+    # PAIE25 — Provision pour congés payés : charge PATRONALE informative
+    # (engagement social) constituée chaque mois sur la base des jours de CP
+    # acquis dans le mois × le taux journalier du salarié. N'est JAMAIS déduite
+    # du net du salarié — c'est une provision comptable employeur.
+    provision_conges = models.DecimalField(
+        max_digits=14, decimal_places=2, default=Decimal('0'),
+        verbose_name='Provision congés payés (patronal)')
     cimr_salariale = models.DecimalField(
         max_digits=14, decimal_places=2, default=Decimal('0'),
         verbose_name='CIMR salariale')

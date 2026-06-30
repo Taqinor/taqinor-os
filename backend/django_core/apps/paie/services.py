@@ -846,6 +846,94 @@ def formation_professionnelle_patronale(parametre, brut, affilie=True):
     return _q(cot)
 
 
+# ── PAIE25 — Provision pour congés payés (charge patronale, consomme RH) ─────
+
+# Droit légal marocain : 1,5 jour ouvrable de congé payé acquis par mois de
+# service (18 jours/an). La provision mensuelle valorise ces jours acquis au
+# taux journalier du salarié. Éditable (constante de module — pas de migration).
+JOURS_CP_ACQUIS_PAR_MOIS = Decimal('1.5')
+
+
+def solde_conge_disponible(company, employe_id, annee):
+    """Jours de congés payés DISPONIBLES d'un employé pour une année (PAIE25).
+
+    Lecture du solde de congés RH (FG162) SANS importer ``rh.models`` : la paie
+    lit le ``SoldeConge`` (report + acquis − pris) par une référence STRING-FK
+    (``apps.get_model('rh', 'SoldeConge')``), toujours cadrée société. Renvoie
+    ``Decimal('0')`` si la société/employé manque ou si aucun solde n'existe
+    pour l'année.
+    """
+    from django.apps import apps as django_apps
+
+    if company is None or employe_id is None or annee is None:
+        return Decimal('0')
+    SoldeConge = django_apps.get_model('rh', 'SoldeConge')
+    solde = (
+        SoldeConge.objects
+        .filter(company=company, employe_id=employe_id, annee=annee)
+        .first()
+    )
+    if solde is None:
+        return Decimal('0')
+    disponible = (
+        (solde.report or Decimal('0'))
+        + (solde.acquis or Decimal('0'))
+        - (solde.pris or Decimal('0'))
+    )
+    return _q(disponible)
+
+
+def taux_journalier_profil(profil):
+    """Taux journalier de référence d'un profil (MAD/jour) — base de provision.
+
+    * **journalier** : ``salaire_base`` est déjà le taux journalier.
+    * **mensuel / forfait / horaire** : on dérive le taux journalier en divisant
+      le salaire mensuel de référence par la norme de jours travaillés du profil.
+      Pour un profil HORAIRE, ``salaire_base`` est un taux horaire → on le
+      ramène d'abord à un mensuel via la norme d'heures.
+
+    Renvoie un ``Decimal`` >= 0. Norme de jours nulle → 0.
+    """
+    from .models import ProfilPaie
+
+    salaire = Decimal(profil.salaire_base or 0)
+    jours_normes = Decimal(max(1, profil.jours_travail_mensuel or 26))
+
+    if profil.type_remuneration == ProfilPaie.TYPE_JOURNALIER:
+        return _q(salaire)
+    if profil.type_remuneration == ProfilPaie.TYPE_HORAIRE:
+        heures_normes = Decimal(max(1, profil.heures_travail_mensuel or 191))
+        mensuel = salaire * heures_normes
+        return _q(mensuel / jours_normes)
+    # Mensuel / forfait : salaire mensuel ÷ jours norme.
+    return _q(salaire / jours_normes)
+
+
+def provision_conges_payes(profil, periode, jours_acquis=None):
+    """Provision mensuelle pour congés payés d'un profil (PAIE25).
+
+    Engagement social PATRONAL : chaque mois, l'employeur provisionne le coût
+    des jours de CP acquis (par défaut ``JOURS_CP_ACQUIS_PAR_MOIS`` = 1,5 j/mois,
+    droit légal marocain) valorisés au taux journalier du salarié
+    (``taux_journalier_profil``). C'est une charge employeur informative — elle
+    n'est JAMAIS déduite du net du salarié.
+
+    ``jours_acquis`` permet de surcharger le nombre de jours acquis dans le mois
+    (p. ex. proraté pour un mois incomplet) ; sinon le droit standard s'applique.
+
+    Renvoie un ``Decimal`` >= 0 arrondi au centime.
+    """
+    if jours_acquis is None:
+        jours_acquis = JOURS_CP_ACQUIS_PAR_MOIS
+    jours_acquis = Decimal(jours_acquis or 0)
+    if jours_acquis <= 0:
+        return Decimal('0.00')
+    taux_jour = taux_journalier_profil(profil)
+    if taux_jour <= 0:
+        return Decimal('0.00')
+    return _q(jours_acquis * taux_jour)
+
+
 # ── PAIE20 — Cotisation CIMR OPTIONNELLE (taux par employé adhérent) ─────────
 
 def cimr_salariale(brut, affilie=False, taux=Decimal('0')):
@@ -1039,6 +1127,11 @@ def calculer_bulletin(profil, periode, personnes_a_charge=0):
     formation_pro = formation_professionnelle_patronale(
         parametre, brut, profil.affilie_cnss)
 
+    # 3quater. Provision pour congés payés — PAIE25 (charge 100 % PATRONALE,
+    # informative). Engagement social mensuel = jours CP acquis dans le mois ×
+    # taux journalier du salarié. N'entre JAMAIS dans le net du salarié.
+    provision_conges = provision_conges_payes(profil, periode)
+
     # 4. CIMR (PAIE20) — OPTIONNELLE : seuls les profils adhérents cotisent,
     # chacun avec SON taux propre. Non adhérent → 0 (défaut).
     cimr = cimr_salariale(brut, profil.affilie_cimr, profil.taux_cimr_salarial)
@@ -1108,6 +1201,7 @@ def calculer_bulletin(profil, periode, personnes_a_charge=0):
         'amo_patronale': amo_pat,
         'allocations_familiales': alloc_fam,
         'formation_professionnelle': formation_pro,
+        'provision_conges': provision_conges,
         'cimr_salariale': cimr,
         'frais_professionnels': frais_pro,
         'net_imposable': net_imposable,

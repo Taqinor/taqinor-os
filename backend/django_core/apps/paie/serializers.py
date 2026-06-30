@@ -272,7 +272,7 @@ class BulletinPaieSerializer(serializers.ModelSerializer):
             'id', 'periode', 'profil', 'statut', 'personnes_a_charge',
             'brut', 'brut_imposable', 'cnss_salariale', 'cnss_patronale',
             'amo_salariale', 'amo_patronale', 'allocations_familiales',
-            'formation_professionnelle', 'cimr_salariale',
+            'formation_professionnelle', 'provision_conges', 'cimr_salariale',
             'frais_professionnels', 'net_imposable', 'ir', 'retenues',
             'prime_anciennete', 'charges_patronales', 'net_a_payer',
             'date_validation', 'date_creation', 'lignes',
