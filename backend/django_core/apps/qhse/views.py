@@ -17,7 +17,8 @@ from apps.ventes.utils.references import create_with_reference
 
 from .models import (
     ActionCorrectivePreventive, Audit, ConsignationLoto, ContactUrgence,
-    CritereAudit, EvaluationRisque, GrilleAudit, Incident, InductionSecurite,
+    CritereAudit, DeclarationCnss, EvaluationRisque, GrilleAudit, Incident,
+    InductionSecurite,
     ItemNotation, LigneEvaluationRisque, NonConformite, NotationFinChantier,
     PermisTravail, PlanInspectionChantier, PlanInspectionModele, PlanUrgence,
     PointControleModele, ProcedureQualite, QhseChatterEntry, ReleveControle,
@@ -26,7 +27,7 @@ from .models import (
 from .serializers import (
     ActionCorrectivePreventiveSerializer, AuditSerializer,
     ConsignationLotoSerializer, ContactUrgenceSerializer,
-    CritereAuditSerializer,
+    CritereAuditSerializer, DeclarationCnssSerializer,
     EvaluationRisqueSerializer, GrilleAuditSerializer,
     IncidentSerializer,
     InductionSecuriteSerializer, ItemNotationSerializer,
@@ -43,7 +44,8 @@ from .serializers import (
 from . import chatter
 from .selectors import (
     capa_en_retard, chantier_peut_cloturer, courbes_iv_for_chantier,
-    criticite_summary, document_unique_valide, hold_points_status,
+    criticite_summary, declarations_cnss_a_echeance, document_unique_valide,
+    hold_points_status,
     iso9001_readiness, permis_travail_expirant, photos_controle_par_phase,
     procedure_qualite_courante, procedure_qualite_versions,
     procedures_qualite_courantes, satisfaction_moyenne,
@@ -1223,3 +1225,58 @@ class IncidentViewSet(_QhseBaseViewSet):
         incident = self.perform_create(serializer)
         out = self.get_serializer(incident)
         return Response(out.data, status=status.HTTP_201_CREATED)
+
+
+class DeclarationCnssViewSet(_QhseBaseViewSet):
+    """Déclarations CNSS d'accident du travail + échéance légale (QHSE30).
+
+    CRUD scopé société. ``company`` est posée côté serveur (jamais lue du
+    corps) ; la ``date_limite`` et le ``statut`` sont calculés côté serveur
+    (``date_accident`` + ``delai_jours`` / ``statut_calcule``) — jamais lus du
+    corps. Le FK ``accident_travail`` pointe vers ``rh.AccidentTravail``
+    (FK-chaîne) et est validé même-société par le sérialiseur. Filtres
+    optionnels : ``?statut=`` / ``?accident_travail=``. Recherche par
+    numéro/notes, tri par échéance/date.
+
+    Action ``GET …/a-echeance/`` — déclarations NON transmises qui approchent
+    de l'échéance ou sont déjà hors délai (``?within_days=N``, défaut = délai
+    légal), via ``selectors.declarations_cnss_a_echeance``, scopée société.
+    """
+    queryset = DeclarationCnss.objects.select_related('accident_travail').all()
+    serializer_class = DeclarationCnssSerializer
+    filter_backends = [filters.SearchFilter, filters.OrderingFilter]
+    search_fields = ['numero_declaration', 'notes']
+    ordering_fields = [
+        'id', 'date_limite', 'date_accident', 'date_declaration',
+        'date_creation']
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        statut = self.request.query_params.get('statut')
+        if statut not in (None, ''):
+            qs = qs.filter(statut=statut)
+        accident = self.request.query_params.get('accident_travail')
+        if accident not in (None, ''):
+            qs = qs.filter(accident_travail_id=accident)
+        return qs
+
+    @action(detail=False, methods=['get'], url_path='a-echeance')
+    def a_echeance(self, request):
+        """Déclarations CNSS à échéance ou hors délai (QHSE30).
+
+        Alerte de conformité : ``?within_days=N`` (défaut = délai légal CNSS)
+        fixe la fenêtre en jours ; retient les déclarations non transmises dont
+        l'échéance tombe au plus tard dans la fenêtre, y compris celles déjà hors
+        délai (qui sont précisément à régulariser). S'appuie sur
+        ``selectors.declarations_cnss_a_echeance`` — scopé société.
+        """
+        within = request.query_params.get(
+            'within_days', DeclarationCnss.DELAI_LEGAL_JOURS)
+        qs = declarations_cnss_a_echeance(
+            request.user.company, within_days=within)
+        page = self.paginate_queryset(qs)
+        if page is not None:
+            serializer = self.get_serializer(page, many=True)
+            return self.get_paginated_response(serializer.data)
+        serializer = self.get_serializer(qs, many=True)
+        return Response(serializer.data)

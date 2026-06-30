@@ -24,6 +24,7 @@ from .models import (
     AccidentTravail,
     AffectationRoster,
     AnalyseRisquesChantier,
+    BesoinFormation,
     CauserieParticipant,
     CauserieSecurite,
     Certification,
@@ -54,6 +55,7 @@ from .serializers import (
     AccidentTravailSerializer,
     AffectationRosterSerializer,
     AnalyseRisquesChantierSerializer,
+    BesoinFormationSerializer,
     CauserieParticipantSerializer,
     CauserieSecuriteSerializer,
     CertificationSerializer,
@@ -183,6 +185,22 @@ class DossierEmployeViewSet(_RhBaseViewSet):
         rapport = selectors.verifier_habilitation_requise(
             request.user.company, employe, types)
         return Response({'employe': employe.pk, **rapport})
+
+    @action(detail=True, methods=['get'], url_path='registre-formation')
+    def registre_formation(self, request, pk=None):
+        """Registre de formation de l'employé (FG188) — historique des sessions.
+
+        Agrège l'historique de formation de l'employé : toutes ses inscriptions
+        (``InscriptionFormation``) avec le détail de la session (intitulé,
+        type, organisme, dates, lieu, statut, compétence visée), présence et
+        résultat. L'employé est résolu via ``get_object`` (scopé société par
+        TenantMixin) — un employé d'une autre société renvoie 404. Lecture
+        seule ; renvoie ``{employe, lignes, total, total_realisees}``.
+        """
+        employe = self.get_object()
+        registre = selectors.registre_formation_employe(
+            request.user.company, employe.pk)
+        return Response(registre)
 
 
 class RemunerationViewSet(TenantMixin, viewsets.ModelViewSet):
@@ -2016,3 +2034,73 @@ class SessionFormationViewSet(_RhBaseViewSet):
                 )
         return Response(
             self.get_serializer(session).data, status=status.HTTP_200_OK)
+
+
+class BesoinFormationViewSet(_RhBaseViewSet):
+    """Besoins de formation (FG188) — plan de formation par employé.
+
+    Société scopée + Administrateur/Responsable. Enregistre un BESOIN DE
+    FORMATION repéré pour un employé : thème, priorité, échéance souhaitée,
+    drapeau d'obligation réglementaire (OFPPT / CSF) + son type, statut
+    (identifié → planifié → satisfait) et éventuelle session de formation qui
+    le couvre. ``company`` est posée CÔTÉ SERVEUR (jamais lue du corps) ;
+    ``employe`` et ``session_liee`` doivent appartenir à la même société.
+
+    Filtres : ``?employe=<id>``, ``?statut=identifie|planifie|satisfait``,
+    ``?priorite=basse|moyenne|haute``, ``?obligation=1`` (besoins réglementaires
+    uniquement), ``?type_obligation=ofppt|csf|autre``. Recherche : thème.
+
+    Action :
+    * ``POST .../{id}/satisfaire/`` — bascule le besoin en ``statut=satisfait``.
+      Si une ``session_liee`` est posée, elle doit être RÉALISÉE (sinon 400 :
+      on ne satisfait pas un besoin sur une session non tenue). Idempotent.
+    """
+    queryset = BesoinFormation.objects.select_related(
+        'employe', 'session_liee').all()
+    serializer_class = BesoinFormationSerializer
+    filter_backends = [filters.SearchFilter, filters.OrderingFilter]
+    search_fields = ['theme']
+    ordering_fields = ['priorite', 'echeance', 'statut', 'date_creation']
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        employe = self.request.query_params.get('employe')
+        if employe:
+            qs = qs.filter(employe_id=employe)
+        statut = self.request.query_params.get('statut')
+        if statut:
+            qs = qs.filter(statut=statut)
+        priorite = self.request.query_params.get('priorite')
+        if priorite:
+            qs = qs.filter(priorite=priorite)
+        type_obligation = self.request.query_params.get('type_obligation')
+        if type_obligation:
+            qs = qs.filter(type_obligation=type_obligation)
+        obligation = self.request.query_params.get('obligation')
+        if obligation in ('1', 'true', 'True'):
+            qs = qs.filter(obligation_reglementaire=True)
+        return qs
+
+    @action(detail=True, methods=['post'], url_path='satisfaire')
+    def satisfaire(self, request, pk=None):
+        """Marque le besoin SATISFAIT.
+
+        Passe ``statut`` → ``satisfait``. Garde-fou : si une ``session_liee``
+        est posée, elle doit être RÉALISÉE (sinon 400) — on ne satisfait pas un
+        besoin via une session non tenue. La société est garantie par
+        ``get_object`` (un autre tenant reçoit 404). Idempotent.
+        """
+        besoin = self.get_object()
+        session = besoin.session_liee
+        if session is not None and \
+                session.statut != SessionFormation.Statut.REALISEE:
+            return Response(
+                {'session_liee':
+                    'La session liée doit être réalisée pour satisfaire '
+                    'le besoin.'},
+                status=status.HTTP_400_BAD_REQUEST)
+        if besoin.statut != BesoinFormation.Statut.SATISFAIT:
+            besoin.statut = BesoinFormation.Statut.SATISFAIT
+            besoin.save(update_fields=['statut', 'date_modification'])
+        return Response(
+            self.get_serializer(besoin).data, status=status.HTTP_200_OK)

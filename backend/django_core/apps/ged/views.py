@@ -1541,11 +1541,15 @@ class ModeleDocumentViewSet(TenantMixin, viewsets.ModelViewSet):
 
     @action(detail=True, methods=['post'], url_path='generer')
     def generer(self, request, pk=None):
-        """GED27 — Fusionne, rend le PDF et le DÉPOSE comme document GED.
+        """GED27 + GED28 — Fusionne, rend le PDF et le DÉPOSE/CLASSE en GED.
 
         `POST …/modeles-document/<id>/generer/` body `{"contexte": {...}}`.
         Réutilise `services.generer_document` (dépôt via `deposit_document`,
-        idempotent par modèle). `company`/`created_by` posés côté serveur. Renvoie
+        idempotent par modèle). GED28 : le document est CLASSÉ automatiquement
+        dans le cabinet/dossier résolu depuis la règle du modèle
+        (`cabinet_cible`/`dossier_cible`, ce dernier templaté par le contexte) —
+        cabinet/dossier auto-créés si absents ; à défaut de cible, le dossier
+        par défaut historique. `company`/`created_by` posés côté serveur. Renvoie
         l'id du document GED créé. Écriture : responsable/admin."""
         modele = self.get_object()  # borné à la société (TenantMixin)
         try:

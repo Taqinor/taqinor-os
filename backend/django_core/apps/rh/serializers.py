@@ -10,6 +10,7 @@ from .models import (
     AccidentTravail,
     AffectationRoster,
     AnalyseRisquesChantier,
+    BesoinFormation,
     CauserieParticipant,
     CauserieSecurite,
     Certification,
@@ -1313,3 +1314,52 @@ class SessionFormationSerializer(serializers.ModelSerializer):
                 InscriptionFormation.objects.create(
                     company=instance.company, session=instance, **item)
         return instance
+
+
+class BesoinFormationSerializer(serializers.ModelSerializer):
+    """Besoin de formation (FG188) — plan de formation par employé.
+
+    Le client saisit ``employe`` (un ``DossierEmploye`` de sa société),
+    ``theme``, ``priorite``, ``echeance``, ``obligation_reglementaire`` +
+    ``type_obligation`` (OFPPT / CSF), ``statut``, une ``session_liee``
+    (``SessionFormation`` de sa société) et des ``notes``. ``company`` est posée
+    CÔTÉ SERVEUR (jamais lue du corps) ; ``employe`` et ``session_liee`` doivent
+    appartenir à la société de l'utilisateur.
+    """
+    employe_nom = serializers.SerializerMethodField()
+    priorite_display = serializers.CharField(
+        source='get_priorite_display', read_only=True)
+    statut_display = serializers.CharField(
+        source='get_statut_display', read_only=True)
+    type_obligation_display = serializers.CharField(
+        source='get_type_obligation_display', read_only=True)
+    session_liee_intitule = serializers.SerializerMethodField()
+
+    class Meta:
+        model = BesoinFormation
+        fields = [
+            'id', 'employe', 'employe_nom', 'theme',
+            'priorite', 'priorite_display',
+            'echeance', 'obligation_reglementaire',
+            'type_obligation', 'type_obligation_display',
+            'statut', 'statut_display',
+            'session_liee', 'session_liee_intitule',
+            'notes', 'date_creation', 'date_modification',
+        ]
+        read_only_fields = ['date_creation', 'date_modification']
+
+    def get_employe_nom(self, obj):
+        if not obj.employe_id:
+            return ''
+        return f'{obj.employe.nom} {obj.employe.prenom}'
+
+    def get_session_liee_intitule(self, obj):
+        if not obj.session_liee_id:
+            return ''
+        return obj.session_liee.intitule
+
+    def validate_employe(self, value):
+        return _meme_societe(self, value, 'Employé')
+
+    def validate_session_liee(self, value):
+        return _meme_societe(self, value, 'Session liée')

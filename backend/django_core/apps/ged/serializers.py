@@ -566,16 +566,19 @@ class LegalHoldSerializer(serializers.ModelSerializer):
 
 
 class ModeleDocumentSerializer(serializers.ModelSerializer):
-    """GED27 — Modèle de document (fusion/mailing). `company`/`created_by` posés
-    CÔTÉ SERVEUR (jamais lus du corps). Le corps HTML porte des jetons
-    ``{{ champ }}`` fusionnés au rendu (`services.rendre_modele`)."""
+    """GED27 + GED28 — Modèle de document (fusion/mailing). `company`/`created_by`
+    posés CÔTÉ SERVEUR (jamais lus du corps). Le corps HTML porte des jetons
+    ``{{ champ }}`` fusionnés au rendu (`services.rendre_modele`). GED28 :
+    `cabinet_cible`/`dossier_cible` portent la RÈGLE de classement automatique du
+    document généré (le dossier peut être templaté par le contexte de fusion)."""
     created_by_nom = serializers.CharField(
         source='created_by.username', read_only=True, default=None)
 
     class Meta:
         model = ModeleDocument
         fields = [
-            'id', 'nom', 'description', 'categorie', 'corps_html', 'actif',
+            'id', 'nom', 'description', 'categorie', 'corps_html',
+            'cabinet_cible', 'dossier_cible', 'actif',
             'created_by', 'created_by_nom', 'created_at', 'updated_at',
         ]
         read_only_fields = ['created_by', 'created_at', 'updated_at']
