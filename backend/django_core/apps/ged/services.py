@@ -176,7 +176,10 @@ def extraire_metadonnees_piece(texte, *, type_piece=None):
         num = _premier_match(
             r'facture\s*(?:n[°o]?\.?)?\s*[:#]?\s*([A-Za-z0-9\-/]+)',
             texte, flags=re.IGNORECASE)
-        if num:
+        # AUCUNE invention : un vrai numéro de facture contient au moins un
+        # chiffre. Sans chiffre (p.ex. « FACTURE sans numéro » capture « sans »),
+        # on n'invente rien et on omet le champ.
+        if num and any(c.isdigit() for c in num):
             meta['numero_facture'] = num
         ttc = _premier_match(
             r'(?:total\s+ttc|montant\s+t\.?t\.?c\.?)\s*[:=]?\s*'

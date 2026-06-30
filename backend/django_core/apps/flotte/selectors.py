@@ -1750,7 +1750,8 @@ def eco_conduite_co2(company, vehicule_id):
 
     # Score d'éco-conduite : 100 − (part de pleins en surconsommation × 100).
     nb_pleins = conso.get('nb_pleins', 0) or 0
-    anomalies = anomalies_pleins(company, vehicule_id=vehicule_id)
+    anomalies = anomalies_pleins(company, vehicule_id=vehicule_id).get(
+        'anomalies', [])
     nb_surconso = sum(
         1 for a in anomalies if a.get('type') == 'conso_aberrante')
     if nb_pleins > 0:

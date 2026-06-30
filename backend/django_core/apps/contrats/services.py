@@ -1623,11 +1623,14 @@ def marquer_obligation_faite(obligation, *, today=None, auteur=None):
 
     if today is None:
         today = timezone.localdate()
-    if obligation.statut == Obligation.Statut.FAITE:
+    # Déjà réalisée ET datée → rien à faire. Si elle a été créée directement
+    # avec statut=faite (POST) sans date, on POSE la date côté serveur ici.
+    if obligation.statut == Obligation.Statut.FAITE and \
+            obligation.date_realisation:
         return obligation
     ancien = obligation.statut
     obligation.statut = Obligation.Statut.FAITE
-    obligation.date_realisation = today
+    obligation.date_realisation = obligation.date_realisation or today
     obligation.save(update_fields=['statut', 'date_realisation'])
     journaliser_transition(
         obligation.contrat, field='obligation_statut', old_value=ancien,

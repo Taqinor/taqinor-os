@@ -71,6 +71,13 @@ _COMPTES_CGNC = [
     ('4415', 'Fournisseurs - effets à payer', True, True, 'passif'),
     ('4455', 'État - TVA facturée', False, False, 'passif'),
     ('44552', 'État - TVA due', False, False, 'passif'),
+    # Paie (CGNC 44x) — rémunérations dues + organismes sociaux & fiscaux
+    ('4432', 'Rémunérations dues au personnel', False, False, 'passif'),
+    ('4441', 'Caisse Nationale de Sécurité Sociale (CNSS)', False, False,
+     'passif'),
+    ('4443', 'Caisses de retraite (CIMR)', False, False, 'passif'),
+    ('4452', 'État - Impôts sur les rémunérations (IR)', False, False,
+     'passif'),
     # Classe 5 — Trésorerie
     ('5113', 'Effets à encaisser ou à l\'encaissement', False, False, 'actif'),
     ('5141', 'Banque', False, False, 'actif'),
@@ -79,6 +86,9 @@ _COMPTES_CGNC = [
      'charge'),
     # Classe 6 — Charges
     ('6111', 'Achats de marchandises', False, False, 'charge'),
+    ('6171', 'Rémunérations du personnel', False, False, 'charge'),
+    ('6174', 'Charges sociales (cotisations patronales)', False, False,
+     'charge'),
     ('6125', 'Achats de matières et fournitures consommables', False, False,
      'charge'),
     ('6191', 'Dotations d\'exploitation aux amortissements', False, False,
