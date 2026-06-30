@@ -1896,3 +1896,139 @@ class VisiteTechnique(models.Model):
     def __str__(self):
         return (f'Visite technique {self.actif_flotte} — '
                 f'{self.date_visite} ({self.get_resultat_display()})')
+
+
+# ── FLOTTE23 — Carte grise & autorisation de circulation ───────────────────────
+
+class CarteGriseVehicule(models.Model):
+    """Carte grise et autorisation de circulation d'un actif de flotte (FLOTTE23).
+
+    Modèle DÉDIÉ aux DOCUMENTS d'immatriculation de l'actif : il porte le numéro
+    de carte grise, la date d'immatriculation et la date de mise en circulation,
+    plus, le cas échéant, une autorisation de circulation (numéro + date de
+    validité). Les deux documents scannés (carte grise, autorisation) sont
+    stockés directement sur ce modèle via des ``FileField`` flotte — la note du
+    plan mentionne la GED, mais on reste 100 % flotte (aucun couplage à
+    ``apps.ged``) pour rester autonome.
+
+    **Complémentaire, jamais doublon de FLOTTE19/21/22** : ce modèle stocke les
+    PIÈCES d'immatriculation elles-mêmes (carte grise + autorisation), distinctes
+    de la police d'assurance (FLOTTE21), de la visite technique (FLOTTE22) et de
+    l'échéance réglementaire générique (FLOTTE19).
+
+    **Statut** : ``statut_calcule(today)`` recalcule l'état RÉEL de
+    l'autorisation de circulation vs une date — ``expiree`` si
+    ``autorisation_date_validite`` est passée, ``a_renouveler`` si elle tombe
+    dans la fenêtre ``alerte_jours``, sinon ``valide``. Quand aucune date de
+    validité n'est fournie (autorisation facultative), l'état reste ``valide``.
+    La date est injectable (lecture seule, ne change rien en base).
+
+    **Multi-tenant** : ``company`` est posée côté serveur (jamais lue du corps de
+    requête). L'actif lié (``actif_flotte``, véhicule OU engin) doit appartenir à
+    la MÊME société (validé dans ``clean`` et au sérialiseur).
+    """
+
+    class Statut(models.TextChoices):
+        VALIDE = 'valide', 'Valide'
+        A_RENOUVELER = 'a_renouveler', 'À renouveler'
+        EXPIREE = 'expiree', 'Expirée'
+
+    # Marge d'alerte par défaut (jours avant l'échéance → « à renouveler »).
+    ALERTE_JOURS_DEFAUT = 30
+
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='flotte_cartes_grises',
+        verbose_name='Société',
+    )
+    actif_flotte = models.ForeignKey(
+        'ActifFlotte',
+        on_delete=models.CASCADE,
+        related_name='flotte_cartes_grises',
+        verbose_name='Actif (véhicule ou engin)',
+    )
+    numero_carte_grise = models.CharField(
+        max_length=80, verbose_name='Numéro de carte grise')
+    date_immatriculation = models.DateField(
+        null=True, blank=True, verbose_name="Date d'immatriculation")
+    date_mise_circulation = models.DateField(
+        null=True, blank=True, verbose_name='Date de mise en circulation')
+    autorisation_circulation_numero = models.CharField(
+        max_length=80, blank=True,
+        verbose_name="Numéro d'autorisation de circulation")
+    autorisation_date_validite = models.DateField(
+        null=True, blank=True,
+        verbose_name="Validité de l'autorisation de circulation")
+    # Documents scannés — stockés via le storage projet (même convention que
+    # ``AssuranceVehicule.attestation``).
+    carte_grise_fichier = models.FileField(
+        upload_to='flotte/cartes_grises/%Y/%m/',
+        blank=True, null=True, verbose_name='Carte grise (scan)')
+    autorisation_fichier = models.FileField(
+        upload_to='flotte/autorisations_circulation/%Y/%m/',
+        blank=True, null=True,
+        verbose_name="Autorisation de circulation (scan)")
+    # Marge d'alerte (jours) : si la validité de l'autorisation tombe dans cette
+    # fenêtre, le document passe « à renouveler ». 'a_renouveler' (12) est le
+    # plus long code de statut.
+    alerte_jours = models.PositiveIntegerField(
+        default=ALERTE_JOURS_DEFAUT, verbose_name="Marge d'alerte (jours)")
+    statut = models.CharField(
+        max_length=12, choices=Statut.choices, default=Statut.VALIDE,
+        verbose_name='Statut')
+    notes = models.TextField(blank=True, verbose_name='Notes')
+    date_creation = models.DateTimeField(
+        auto_now_add=True, verbose_name='Créé le')
+
+    class Meta:
+        verbose_name = 'Carte grise / autorisation de circulation'
+        verbose_name_plural = 'Cartes grises / autorisations de circulation'
+        ordering = ['actif_flotte', 'id']
+        indexes = [
+            models.Index(
+                fields=['company', 'statut'],
+                name='flotte_cg_co_stat_idx',
+            ),
+            models.Index(
+                fields=['company', 'actif_flotte'],
+                name='flotte_cg_co_actif_idx',
+            ),
+            models.Index(
+                fields=['company', 'autorisation_date_validite'],
+                name='flotte_cg_co_autval_idx',
+            ),
+        ]
+
+    def clean(self):
+        """Valide l'appartenance société de l'actif."""
+        if self.actif_flotte_id is not None \
+                and self.actif_flotte.company_id != self.company_id:
+            raise ValidationError(
+                "L'actif n'appartient pas à la même société.")
+
+    def statut_calcule(self, today=None):
+        """État RÉEL de l'autorisation de circulation vs ``today``.
+
+        Lecture seule, date injectable. Retourne ``'expiree'`` si
+        ``autorisation_date_validite`` est déjà passée, ``'a_renouveler'`` si
+        elle tombe dans les ``alerte_jours`` prochains jours (inclusif), sinon
+        ``'valide'``. Sans date de validité (autorisation facultative), reste
+        ``'valide'``. ``today`` défaut = date du jour.
+        """
+        if today is None:
+            today = datetime.date.today()
+        if self.autorisation_date_validite is None:
+            return self.Statut.VALIDE
+        if self.autorisation_date_validite < today:
+            return self.Statut.EXPIREE
+        marge = self.alerte_jours \
+            if self.alerte_jours is not None else self.ALERTE_JOURS_DEFAUT
+        horizon = today + datetime.timedelta(days=marge)
+        if self.autorisation_date_validite <= horizon:
+            return self.Statut.A_RENOUVELER
+        return self.Statut.VALIDE
+
+    def __str__(self):
+        return (f'Carte grise n°{self.numero_carte_grise} — '
+                f'{self.actif_flotte}')
