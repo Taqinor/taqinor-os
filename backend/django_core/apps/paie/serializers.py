@@ -345,8 +345,8 @@ class OrdreVirementSerializer(serializers.ModelSerializer):
     class Meta:
         model = OrdreVirement
         fields = [
-            'id', 'periode', 'libelle', 'statut', 'date_execution',
-            'compte_emetteur', 'compte_emetteur_libelle',
+            'id', 'periode', 'reference', 'libelle', 'statut',
+            'date_execution', 'compte_emetteur', 'compte_emetteur_libelle',
             'compte_emetteur_banque', 'rib_emetteur', 'devise', 'total',
             'nombre_lignes', 'date_emission', 'date_creation', 'lignes',
         ]

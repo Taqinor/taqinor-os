@@ -146,3 +146,35 @@ class OrdreVirementTests(TestCase):
             self.periode, rib_emetteur='REPLI' + '0' * 15)
         self.assertEqual(ordre.rib_emetteur, 'REPLI' + '0' * 15)
         self.assertIsNone(ordre.compte_emetteur_id)
+
+    # ── DC39 — référence unique générée via create_with_reference ──────────
+
+    def test_reference_generee_format(self):
+        p1 = self._employe('I1')
+        self._bulletin_valide(p1)
+        ordre = generer_ordre_virement(self.periode)
+        # OV-YYYYMM-NNNN — généré, jamais count()+1.
+        self.assertRegex(ordre.reference, r'^OV-\d{6}-\d{4}$')
+        self.assertTrue(ordre.reference.endswith('-0001'))
+
+    def test_reference_stable_a_la_regeneration(self):
+        p1 = self._employe('J1')
+        self._bulletin_valide(p1)
+        ordre = generer_ordre_virement(self.periode)
+        ref1 = ordre.reference
+        # Régénérer (brouillon) ne crée PAS une 2ᵉ référence : même ordre.
+        ordre2 = generer_ordre_virement(self.periode)
+        self.assertEqual(ordre2.id, ordre.id)
+        self.assertEqual(ordre2.reference, ref1)
+
+    def test_references_uniques_par_periode(self):
+        p1 = self._employe('K1')
+        self._bulletin_valide(p1)
+        ordre1 = generer_ordre_virement(self.periode)
+        periode2 = PeriodePaie.objects.create(
+            company=self.co, annee=2026, mois=7)
+        p2 = self._employe('K2')
+        b2 = generer_bulletin(p2, periode2)
+        valider_bulletin(b2)
+        ordre2 = generer_ordre_virement(periode2)
+        self.assertNotEqual(ordre1.reference, ordre2.reference)

@@ -1244,6 +1244,11 @@ class OrdreVirement(models.Model):
         related_name='ordres_virement',
         verbose_name='Période',
     )
+    # DC39 — référence unique générée par ``references.create_with_reference``
+    # (``OV-YYYYMM-NNNN``, plus-haut-utilisé+1 par société/mois, race-safe),
+    # JAMAIS ``count()+1``. Posée à la première création de l'ordre.
+    reference = models.CharField(
+        max_length=80, blank=True, default='', verbose_name='Référence')
     libelle = models.CharField(
         max_length=120, blank=True, default='', verbose_name='Libellé')
     statut = models.CharField(
@@ -1284,6 +1289,17 @@ class OrdreVirement(models.Model):
         verbose_name_plural = 'Ordres de virement'
         ordering = ['-date_creation']
         unique_together = [('company', 'periode')]
+        constraints = [
+            # DC39 — la référence générée est unique par société (arbitre final
+            # des courses de numérotation) ; les ordres pré-référence (blanc)
+            # sont exclus.
+            models.UniqueConstraint(
+                fields=['company', 'reference'],
+                condition=models.Q(reference__isnull=False)
+                & ~models.Q(reference=''),
+                name='uniq_ordrevirement_ref_par_societe',
+            ),
+        ]
 
     def __str__(self):
         return f'Ordre virement {self.periode} ({self.statut})'

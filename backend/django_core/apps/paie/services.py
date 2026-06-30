@@ -1671,7 +1671,16 @@ def generer_ordre_virement(periode, *, date_execution=None, rib_emetteur='',
         if ordre is not None and ordre.est_emis:
             raise ValueError("Ordre de virement déjà émis : régénération interdite.")
         if ordre is None:
-            ordre = OrdreVirement(company=periode.company, periode=periode)
+            # DC39 — référence unique race-safe (OV-YYYYMM-NNNN), jamais
+            # count()+1. Générée UNE seule fois, à la première création.
+            from apps.ventes.utils.references import create_with_reference
+
+            ordre = create_with_reference(
+                OrdreVirement, 'OV', periode.company,
+                lambda reference: OrdreVirement.objects.create(
+                    company=periode.company, periode=periode,
+                    reference=reference),
+            )
         ordre.statut = OrdreVirement.STATUT_BROUILLON
         if date_execution is not None:
             ordre.date_execution = date_execution
