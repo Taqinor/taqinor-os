@@ -369,6 +369,56 @@ class DocumentViewSet(TenantMixin, viewsets.ModelViewSet):
             DocumentSerializer(document, context={'request': request}).data,
             status=status.HTTP_201_CREATED)
 
+    @action(detail=False, methods=['post'], url_path='scan-lot',
+            parser_classes=[MultiPartParser, FormParser])
+    def scan_lot(self, request):
+        """GED31 — Numérisation par LOT (scan-to-DMS) : N fichiers en un appel.
+
+        `POST …/documents/scan-lot/` (multipart) — corps :
+        `{folder: <id>, files: <binaire>[, files: <binaire> …]}`. Chaque fichier
+        est validé + stocké via `records.storage.store_attachment` (même pipeline
+        MinIO), puis déposé comme Document + version 1 via
+        `services.deposer_lot_scans` (OCR no-op sans clé + indexation). La société
+        et le créateur sont posés CÔTÉ SERVEUR (jamais lus du corps). Le dossier
+        cible est borné à la société (404 sinon). Écriture : responsable/admin.
+
+        Renvoie `{documents: [...], erreurs: [...]}` — un fichier au format refusé
+        est listé dans `erreurs` sans bloquer le reste du lot."""
+        company = request.user.company
+        folder_id = request.data.get('folder')
+        if not folder_id:
+            return Response({'folder': 'Le dossier cible est requis.'},
+                            status=status.HTTP_400_BAD_REQUEST)
+        folder = (Folder.objects.filter(company=company)
+                  .filter(pk=folder_id).first())
+        if folder is None:
+            return Response({'folder': 'Dossier inconnu.'},
+                            status=status.HTTP_404_NOT_FOUND)
+        files = request.FILES.getlist('files') or request.FILES.getlist('file')
+        if not files:
+            return Response({'files': 'Aucun fichier fourni.'},
+                            status=status.HTTP_400_BAD_REQUEST)
+        a_deposer = []
+        erreurs = []
+        for f in files:
+            meta, err = store_attachment(f)
+            if err:
+                erreurs.append({'filename': getattr(f, 'name', ''),
+                                'detail': err})
+                continue
+            a_deposer.append({
+                'file_key': meta['file_key'], 'filename': meta['filename'],
+                'size': meta['size'], 'mime': meta['mime'],
+            })
+        documents = services.deposer_lot_scans(
+            company=company, folder=folder, fichiers=a_deposer,
+            created_by=request.user)
+        ser = DocumentSerializer(
+            documents, many=True, context={'request': request})
+        http = (status.HTTP_201_CREATED if documents
+                else status.HTTP_400_BAD_REQUEST)
+        return Response({'documents': ser.data, 'erreurs': erreurs}, status=http)
+
     @action(detail=False, methods=['post'], url_path='classer-apres-vente')
     def classer_apres_vente(self, request):
         """GED29 — Classe un PDF APRÈS-VENTE (SAV) déjà généré dans la GED.

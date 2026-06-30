@@ -51,6 +51,62 @@ def set_ocr_text(document, texte):
     return document
 
 
+# ── GED33 — OCR de pièces (extraction de texte, KEY-GATED no-op) ─────────────
+#
+# Pipeline d'extraction de texte par OCR. KEY-GATED comme l'embedding (GED12) et
+# l'e-sign (GED30) : sans `settings.GED_OCR_ENABLED` à vrai, `ocr_extract_text`
+# est un NO-OP déterministe (renvoie '' — aucun appel réseau, aucun coût, aucune
+# dépendance nouvelle). Le founder branchera un provider réel (Zhipu OCR, déjà
+# utilisé par le service FastAPI IA) en posant le flag + la clé ; tant que ce
+# n'est pas fait, l'OCR ne fabrique jamais de texte fantôme.
+
+def ocr_enabled():
+    """GED33 — True si l'OCR de pièces est activé (clé OCR présente).
+
+    KEY-GATED : sans `settings.GED_OCR_ENABLED`, toute extraction est un no-op
+    (chaîne vide). Le founder l'active en posant le flag + la clé du provider."""
+    from django.conf import settings
+    return bool(getattr(settings, 'GED_OCR_ENABLED', False))
+
+
+def ocr_extract_text(file_bytes, *, mime=''):
+    """GED33 — Extrait le texte d'un fichier image/PDF par OCR (no-op sans clé).
+
+    NO-OP PAR DÉFAUT : renvoie '' tant que `ocr_enabled()` est faux — le
+    squelette d'appel provider est isolé ici pour un futur branchement (Zhipu OCR
+    via le service FastAPI IA) sans toucher au reste du module. Ne lève jamais
+    (robustesse : l'OCR ne doit pas casser un dépôt documentaire)."""
+    if not file_bytes or not ocr_enabled():
+        return ''
+    provider = None
+    try:  # pragma: no cover - dépend d'un provider externe non câblé ici.
+        from . import ocr_provider as provider  # noqa: F401
+    except ImportError:
+        provider = None
+    if provider is None:  # pragma: no cover
+        return ''
+    try:  # pragma: no cover
+        return provider.extract_text(file_bytes, mime=mime) or ''
+    except Exception:  # pragma: no cover - jamais bloquer un dépôt.
+        return ''
+
+
+def ocr_index_document(document, *, file_bytes=None, mime=''):
+    """GED33 — Lance l'OCR d'un document et indexe le texte extrait (no-op sans clé).
+
+    Si l'OCR est activé et qu'on a les octets du fichier, extrait le texte et le
+    pose via `set_ocr_text` (qui réindexe plein-texte + sémantique). Renvoie le
+    texte extrait ('' si OCR désactivé / aucun texte). Idempotent ; ne lève
+    jamais. `file_bytes` est fourni par l'appelant (jamais re-téléchargé ici
+    sans nécessité — l'appelant a souvent déjà les octets en main au dépôt)."""
+    if not ocr_enabled() or not file_bytes:
+        return ''
+    texte = ocr_extract_text(file_bytes, mime=mime)
+    if texte:
+        set_ocr_text(document, texte)
+    return texte
+
+
 # ── GED12 — Index OCR + recherche sémantique (pgvector, KEY-GATED no-op) ──
 
 def embedding_enabled():
@@ -562,6 +618,70 @@ def deposit_document(*, company, nom, source_type, source_id,
         filename=filename or '', size=size or 0, mime=mime or '',
         checksum=checksum or '', uploaded_by=created_by)
     return document, True
+
+
+# ── GED31 — Numérisation par lot (scan-to-DMS) + OCR ─────────────────────────
+#
+# Ingestion de PLUSIEURS fichiers scannés en UN appel : chaque fichier devient un
+# Document + sa version 1 dans le dossier cible (company-scopé), puis passe le
+# hook OCR (GED33, no-op sans clé) et l'indexation plein-texte/sémantique. On
+# RÉUTILISE intégralement les primitives existantes (`create_document`,
+# `add_version`, `records.storage`) — aucune nouvelle couche de stockage.
+
+def deposer_un_scan(*, company, folder, file_key, filename='', size=0, mime='',
+                    checksum='', nom='', description='', created_by=None,
+                    contenu_bytes=None):
+    """GED31 — Dépose UN fichier scanné comme Document + version 1 (+ OCR hook).
+
+    Le `folder` DOIT appartenir à la société (vérifié par `create_document`).
+    Société/créateur posés CÔTÉ SERVEUR (jamais lus d'un corps). Indexe le
+    plein-texte + l'embedding (no-op sans clé) et lance l'OCR (no-op sans clé)
+    si `contenu_bytes` est fourni. Renvoie le `Document` créé.
+    """
+    nom = (nom or filename or 'Scan').strip()
+    document = create_document(
+        company=company, folder=folder, nom=nom, description=description,
+        created_by=created_by)
+    add_version(
+        document, file_key=file_key or '', company=company,
+        filename=filename or '', size=size or 0, mime=mime or '',
+        checksum=checksum or '', uploaded_by=created_by)
+    # GED33 — OCR (no-op sans clé). Indexe le texte extrait si présent.
+    ocr_index_document(document, file_bytes=contenu_bytes, mime=mime)
+    # GED11/GED12 — indexation plein-texte + sémantique (no-op sans clé).
+    update_search_vector(document)
+    index_embedding(document)
+    index_document_chunks(document)
+    return document
+
+
+def deposer_lot_scans(*, company, folder, fichiers, created_by=None):
+    """GED31 — Dépose un LOT de fichiers scannés (scan-to-DMS) en un appel.
+
+    `fichiers` est une liste de dicts décrivant chaque scan déjà stocké
+    (`{file_key, filename, size, mime, checksum?, nom?, description?,
+    contenu_bytes?}`). Chaque entrée est déposée via `deposer_un_scan`
+    (Document + v1 + OCR hook + indexation). Société/créateur posés côté serveur
+    pour TOUS les éléments du lot.
+
+    Renvoie la liste des `Document` créés, dans l'ordre du lot. Un lot vide
+    renvoie une liste vide (jamais d'erreur).
+    """
+    documents = []
+    for f in (fichiers or []):
+        document = deposer_un_scan(
+            company=company, folder=folder,
+            file_key=f.get('file_key', ''),
+            filename=f.get('filename', ''),
+            size=f.get('size', 0),
+            mime=f.get('mime', ''),
+            checksum=f.get('checksum', ''),
+            nom=f.get('nom', ''),
+            description=f.get('description', ''),
+            created_by=created_by,
+            contenu_bytes=f.get('contenu_bytes'))
+        documents.append(document)
+    return documents
 
 
 # ── GED16 — Check-out / check-in (verrouillage optimiste) ──────────
