@@ -121,6 +121,10 @@ from .models_landed_cost import (
 from .models_gr_ir import (
     ReceptionNonFacturee,
 )
+from .models_contrat_prix import (
+    ContratPrixFournisseur,
+    ContratPrixLigne,
+)
 
 __all__ = [
     'Installation',
@@ -183,4 +187,6 @@ __all__ = [
     'FraisImport',
     'LandedCostLigne',
     'ReceptionNonFacturee',
+    'ContratPrixFournisseur',
+    'ContratPrixLigne',
 ]

@@ -35,6 +35,8 @@ from .models import (
     FraisImport,
     LandedCostLigne,
     ReceptionNonFacturee,
+    ContratPrixFournisseur,
+    ContratPrixLigne,
 )
 
 
@@ -1595,4 +1597,58 @@ class ReceptionNonFactureeSerializer(serializers.ModelSerializer):
         if value is not None and value < 0:
             raise serializers.ValidationError(
                 'Le montant provisionné ne peut pas être négatif.')
+        return value
+
+
+class ContratPrixLigneSerializer(serializers.ModelSerializer):
+    """FG318 — ligne de prix convenu d'un contrat fournisseur (SKU + prix
+    négocié INTERNE + remise % optionnelle)."""
+    produit_nom = serializers.CharField(
+        source='produit.nom', read_only=True, default=None)
+
+    class Meta:
+        model = ContratPrixLigne
+        fields = [
+            'id', 'contrat', 'produit', 'produit_nom', 'designation',
+            'prix_convenu', 'remise_pct',
+        ]
+
+    def validate(self, attrs):
+        produit = attrs.get('produit') if 'produit' in attrs else getattr(
+            self.instance, 'produit', None)
+        designation = attrs.get('designation') if 'designation' in attrs else (
+            getattr(self.instance, 'designation', None))
+        if produit is None and not (designation or '').strip():
+            raise serializers.ValidationError(
+                {'designation': 'Indiquez un produit ou une désignation.'})
+        return attrs
+
+
+class ContratPrixFournisseurSerializer(serializers.ModelSerializer):
+    """FG318 — contrat de prix fournisseur daté/versionné. La référence et la
+    société sont posées CÔTÉ SERVEUR ; `reference` est anti-collision
+    (`CPF-YYYYMM-NNNN`). Le `statut` avance via `activer`/`expirer`. Les lignes
+    sont imbriquées en lecture."""
+    statut_display = serializers.CharField(
+        source='get_statut_display', read_only=True, default=None)
+    fournisseur_nom = serializers.CharField(
+        source='fournisseur.nom', read_only=True, default=None)
+    lignes = ContratPrixLigneSerializer(many=True, read_only=True)
+
+    class Meta:
+        model = ContratPrixFournisseur
+        fields = [
+            'id', 'reference', 'intitule', 'fournisseur', 'fournisseur_nom',
+            'version', 'date_debut', 'date_fin', 'statut', 'statut_display',
+            'note', 'lignes', 'created_by', 'date_creation', 'date_modification',
+        ]
+        read_only_fields = [
+            'reference', 'statut', 'created_by',
+            'date_creation', 'date_modification',
+        ]
+
+    def validate_intitule(self, value):
+        value = (value or '').strip()
+        if not value:
+            raise serializers.ValidationError("L'intitulé est obligatoire.")
         return value

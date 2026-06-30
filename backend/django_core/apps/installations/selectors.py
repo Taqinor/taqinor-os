@@ -1430,3 +1430,39 @@ def landed_cost_dossier(dossier):
         'total_landed': float(total_landed),
         'lignes': details,
     }
+
+
+def prix_convenu_fournisseur(company, produit_id, *, fournisseur_id=None,
+                             a_la_date=None):
+    """FG318 — prix convenu d'un produit auprès d'un fournisseur À UNE DATE,
+    d'après les contrats de prix EN VIGUEUR (actif + période couvrante). Si
+    plusieurs contrats matchent, on prend la plus haute version. Lecture seule,
+    montants INTERNES. Renvoie un dict (prix None si aucun accord en vigueur)."""
+    from .models import ContratPrixLigne
+
+    qs = (ContratPrixLigne.objects
+          .filter(contrat__company=company, produit_id=produit_id)
+          .select_related('contrat'))
+    if fournisseur_id:
+        qs = qs.filter(contrat__fournisseur_id=fournisseur_id)
+    candidates = [
+        ln for ln in qs if ln.contrat.est_en_vigueur(a_la_date)
+    ]
+    if not candidates:
+        return {
+            'produit_id': produit_id,
+            'prix_convenu': None,
+            'remise_pct': None,
+            'contrat_id': None,
+            'version': None,
+        }
+    meilleur = max(candidates, key=lambda ln: ln.contrat.version)
+    return {
+        'produit_id': produit_id,
+        'prix_convenu': float(meilleur.prix_convenu),
+        'remise_pct': (
+            float(meilleur.remise_pct)
+            if meilleur.remise_pct is not None else None),
+        'contrat_id': meilleur.contrat_id,
+        'version': meilleur.contrat.version,
+    }
