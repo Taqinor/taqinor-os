@@ -7,9 +7,11 @@ from .models import (
     Contrat,
     ContratActivity,
     ContratLien,
+    EcheancierContrat,
     EngagementSLA,
     EtapeApprobation,
     JalonContrat,
+    LigneEcheance,
     Obligation,
     PartieContrat,
     RegleApprobation,
@@ -149,3 +151,21 @@ class CautionAdmin(admin.ModelAdmin):
     list_filter = ('type_caution', 'statut')
     search_fields = ('garant', 'reference', 'note')
     readonly_fields = ('date_creation',)
+
+
+@admin.register(EcheancierContrat)
+class EcheancierContratAdmin(admin.ModelAdmin):
+    list_display = ('id', 'contrat', 'libelle', 'periodicite',
+                    'montant_total', 'devise', 'statut', 'company')
+    list_filter = ('periodicite', 'statut')
+    search_fields = ('libelle',)
+    readonly_fields = ('montant_total', 'date_creation')
+
+
+@admin.register(LigneEcheance)
+class LigneEcheanceAdmin(admin.ModelAdmin):
+    list_display = ('id', 'echeancier', 'numero', 'libelle', 'date_echeance',
+                    'montant', 'statut', 'date_paiement', 'company')
+    list_filter = ('statut',)
+    search_fields = ('libelle',)
+    readonly_fields = ('numero', 'date_paiement', 'date_creation')

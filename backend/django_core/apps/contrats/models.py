@@ -2006,3 +2006,174 @@ class Caution(models.Model):
             f'{self.get_type_caution_display()} {self.montant} '
             f'({self.get_statut_display()}) — contrat {self.contrat_id}'
         )
+
+
+class EcheancierContrat(models.Model):
+    """Échéancier de paiement d'un contrat (en-tête) — CONTRAT30.
+
+    Un ``EcheancierContrat`` regroupe les ÉCHÉANCES de paiement d'un ``Contrat``
+    (plan de règlement). Il porte un ``libelle``, une ``periodicite`` indicative
+    (mensuelle, trimestrielle…) et un ``statut`` LOCAL (``brouillon`` →
+    ``actif`` → ``solde`` / ``annule``). Les montants détaillés vivent sur les
+    ``LigneEcheance`` rattachées ; ``montant_total`` met en cache la somme des
+    lignes (posé côté serveur).
+
+    Le ``statut`` est PROPRE à l'échéancier : il ne touche JAMAIS le
+    ``Contrat.statut`` (CONTRAT12) ni le funnel ``STAGES.py`` (rule #2), et
+    n'émet aucune facture (l'émission récurrente est CONTRAT31, séparée).
+
+    Multi-tenant : ``company`` est posée CÔTÉ SERVEUR (déduite du contrat).
+    ``contrat`` est une référence interne à l'app `contrats` (FK dur autorisé).
+
+    RUNTIME-SAFETY (leçon FG136) : ``libelle`` borné (≤200) ; l'index est NOMMÉ
+    explicitement (≤30 chars).
+    """
+
+    class Periodicite(models.TextChoices):
+        UNIQUE = 'unique', 'Paiement unique'
+        MENSUELLE = 'mensuelle', 'Mensuelle'
+        TRIMESTRIELLE = 'trimestrielle', 'Trimestrielle'
+        SEMESTRIELLE = 'semestrielle', 'Semestrielle'
+        ANNUELLE = 'annuelle', 'Annuelle'
+        PERSONNALISEE = 'personnalisee', 'Personnalisée'
+
+    class Statut(models.TextChoices):
+        BROUILLON = 'brouillon', 'Brouillon'
+        ACTIF = 'actif', 'Actif'
+        SOLDE = 'solde', 'Soldé'
+        ANNULE = 'annule', 'Annulé'
+
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='contrats_echeanciers',
+        verbose_name='Société',
+    )
+    contrat = models.ForeignKey(
+        Contrat,
+        on_delete=models.CASCADE,
+        related_name='echeanciers',
+        verbose_name='Contrat',
+    )
+    libelle = models.CharField(
+        max_length=200, blank=True, default='', verbose_name='Libellé')
+    periodicite = models.CharField(
+        max_length=20, choices=Periodicite.choices,
+        default=Periodicite.UNIQUE, verbose_name='Périodicité')
+    # Somme des lignes (cache posé côté serveur). Recalculé à chaque
+    # création/modification/suppression de ligne.
+    montant_total = models.DecimalField(
+        max_digits=14, decimal_places=2, default=Decimal('0'),
+        verbose_name='Montant total')
+    devise = models.CharField(
+        max_length=3, default='MAD', verbose_name='Devise')
+    statut = models.CharField(
+        max_length=20, choices=Statut.choices,
+        default=Statut.BROUILLON, verbose_name='Statut')
+    date_creation = models.DateTimeField(
+        auto_now_add=True, verbose_name='Créé le')
+
+    class Meta:
+        verbose_name = 'Échéancier de contrat'
+        verbose_name_plural = 'Échéanciers de contrat'
+        ordering = ['contrat_id', '-id']
+        indexes = [
+            models.Index(
+                fields=['company', 'statut'],
+                name='contrats_ech_co_st',
+            ),
+        ]
+
+    def __str__(self):
+        return (
+            f'Échéancier {self.libelle or self.id} '
+            f'({self.get_statut_display()}) — contrat {self.contrat_id}'
+        )
+
+
+class LigneEcheance(models.Model):
+    """Ligne (échéance) d'un échéancier de paiement — CONTRAT30.
+
+    Une ``LigneEcheance`` est une ÉCHÉANCE datée d'un ``EcheancierContrat`` :
+    un montant à régler à une ``date_echeance`` donnée, avec un ``statut`` LOCAL
+    (``a_venir`` → ``payee`` / ``en_retard`` / ``annulee``). La date de
+    règlement effectif (``date_paiement``) est posée côté serveur lors du
+    pointage de paiement.
+
+    Numérotation par échéancier : ``numero`` démarre à 1 et s'incrémente de 1
+    pour chaque nouvelle ligne d'un MÊME échéancier. Le numéro est posé CÔTÉ
+    SERVEUR par ``services.ajouter_ligne_echeance`` qui calcule ``max(numero)+1``
+    SOUS ``select_for_update`` (verrou de ligne sur l'échéancier) — JAMAIS un
+    ``count()+1`` (qui collisionne, cf. la règle de numérotation du repo).
+
+    Le ``statut`` est PROPRE à la ligne : il ne touche JAMAIS le
+    ``Contrat.statut`` (CONTRAT12) ni le funnel ``STAGES.py`` (rule #2), et le
+    pointage de paiement n'émet aucune facture.
+
+    Multi-tenant : ``company`` est posée CÔTÉ SERVEUR (déduite de l'échéancier).
+    ``echeancier`` est une référence interne à l'app `contrats` (FK dur autorisé).
+
+    RUNTIME-SAFETY (leçon FG136) : ``libelle`` borné (≤200) ; la contrainte
+    d'unicité ``(echeancier, numero)`` et l'index sont NOMMÉS explicitement
+    (≤30 chars).
+    """
+
+    class Statut(models.TextChoices):
+        A_VENIR = 'a_venir', 'À venir'
+        PAYEE = 'payee', 'Payée'
+        EN_RETARD = 'en_retard', 'En retard'
+        ANNULEE = 'annulee', 'Annulée'
+
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='contrats_lignes_echeance',
+        verbose_name='Société',
+    )
+    echeancier = models.ForeignKey(
+        EcheancierContrat,
+        on_delete=models.CASCADE,
+        related_name='lignes',
+        verbose_name='Échéancier',
+    )
+    # Numéro de ligne (1, 2, 3…) par échéancier, posé côté serveur (max+1 sous
+    # verrou de ligne — jamais count()+1).
+    numero = models.PositiveIntegerField(verbose_name="Numéro d'échéance")
+    libelle = models.CharField(
+        max_length=200, blank=True, default='', verbose_name='Libellé')
+    date_echeance = models.DateField(verbose_name="Date d'échéance")
+    montant = models.DecimalField(
+        max_digits=14, decimal_places=2, default=Decimal('0'),
+        verbose_name='Montant')
+    statut = models.CharField(
+        max_length=20, choices=Statut.choices,
+        default=Statut.A_VENIR, verbose_name='Statut')
+    # Date de règlement effectif (posée côté serveur au pointage). NULL tant que
+    # non payée.
+    date_paiement = models.DateField(
+        null=True, blank=True, verbose_name='Payée le')
+    date_creation = models.DateTimeField(
+        auto_now_add=True, verbose_name='Créée le')
+
+    class Meta:
+        verbose_name = 'Ligne d\'échéance'
+        verbose_name_plural = 'Lignes d\'échéance'
+        ordering = ['echeancier_id', 'numero', 'id']
+        constraints = [
+            models.UniqueConstraint(
+                fields=['echeancier', 'numero'],
+                name='contrats_ligneech_uniq',
+            ),
+        ]
+        indexes = [
+            models.Index(
+                fields=['company', 'statut', 'date_echeance'],
+                name='contrats_ligneech_co_st',
+            ),
+        ]
+
+    def __str__(self):
+        return (
+            f'Échéance n°{self.numero} ({self.montant}, '
+            f'{self.date_echeance}) — échéancier {self.echeancier_id}'
+        )

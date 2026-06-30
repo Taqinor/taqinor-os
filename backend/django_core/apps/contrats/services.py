@@ -1712,3 +1712,103 @@ def liberer_retenue(retenue, *, today=None, auteur=None):
         message=f'Retenue de garantie libérée ({retenue.montant_retenu}).',
         auteur=auteur)
     return retenue
+
+
+# ---------------------------------------------------------------------------
+# CONTRAT30 — Échéancier de paiement (en-tête + lignes)
+# ---------------------------------------------------------------------------
+
+
+def recalculer_total_echeancier(echeancier):
+    """Recalcule ``montant_total`` = somme des lignes non annulées — CONTRAT30.
+
+    Pose le total CÔTÉ SERVEUR (cache) à partir des montants des lignes dont le
+    statut n'est pas ``annulee``. Renvoie l'échéancier mis à jour. Ne change
+    AUCUN ``Contrat.statut``.
+    """
+    from django.db.models import Sum
+
+    from .models import LigneEcheance
+
+    total = (
+        LigneEcheance.objects
+        .filter(echeancier=echeancier, company=echeancier.company)
+        .exclude(statut=LigneEcheance.Statut.ANNULEE)
+        .aggregate(s=Sum('montant'))['s']
+    ) or Decimal('0')
+    echeancier.montant_total = total
+    echeancier.save(update_fields=['montant_total'])
+    return echeancier
+
+
+def _prochain_numero_ligne(echeancier):
+    """Numéro de la prochaine ligne d'un échéancier (``max(numero)+1``).
+
+    Lecture du plus haut numéro DÉJÀ utilisé, +1. Repli sur 1. À appeler SOUS
+    verrou de ligne (``select_for_update`` sur l'échéancier) — JAMAIS un
+    ``count()+1`` (qui collisionne, cf. la règle de numérotation du repo).
+    """
+    from django.db.models import Max
+
+    from .models import LigneEcheance
+
+    plus_haut = (
+        LigneEcheance.objects
+        .filter(echeancier=echeancier, company=echeancier.company)
+        .aggregate(m=Max('numero'))['m']
+    )
+    return (plus_haut or 0) + 1
+
+
+@transaction.atomic
+def ajouter_ligne_echeance(echeancier, *, date_echeance, montant=None,
+                           libelle=''):
+    """Ajoute une ligne (échéance) à un échéancier — CONTRAT30.
+
+    NUMÉROTATION SÛRE FACE AUX COURSES : on verrouille la LIGNE de l'échéancier
+    (``select_for_update``) puis on calcule ``max(numero)+1`` — jamais un
+    ``count()+1`` (la contrainte d'unicité ``(echeancier, numero)`` reste le
+    filet de sécurité ultime). La société est déduite de l'échéancier (posée
+    côté serveur). Recalcule ensuite ``montant_total``. Renvoie la
+    ``LigneEcheance`` créée.
+    """
+    from .models import EcheancierContrat, LigneEcheance
+
+    if date_echeance is None:
+        raise ValueError("La date d'échéance est requise.")
+
+    # Verrou de ligne sur l'échéancier pour sérialiser la numérotation.
+    EcheancierContrat.objects.select_for_update().get(pk=echeancier.pk)
+
+    numero = _prochain_numero_ligne(echeancier)
+
+    ligne = LigneEcheance.objects.create(
+        company=echeancier.company,
+        echeancier=echeancier,
+        numero=numero,
+        libelle=libelle or '',
+        date_echeance=date_echeance,
+        montant=montant if montant is not None else Decimal('0'),
+    )
+
+    recalculer_total_echeancier(echeancier)
+    return ligne
+
+
+def pointer_paiement_echeance(ligne, *, today=None):
+    """Pointe une ligne d'échéance comme PAYÉE (statut + date côté serveur) — CONTRAT30.
+
+    Pose ``statut=payee`` et ``date_paiement=today`` (date du jour injectable).
+    Idempotent : une ligne déjà ``payee`` reste inchangée. Ne change AUCUN
+    ``Contrat.statut`` et n'émet aucune facture. Renvoie la ligne.
+    """
+    from .models import LigneEcheance
+
+    if today is None:
+        today = timezone.localdate()
+    if ligne.statut == LigneEcheance.Statut.PAYEE:
+        return ligne
+    ligne.statut = LigneEcheance.Statut.PAYEE
+    ligne.date_paiement = today
+    ligne.save(update_fields=['statut', 'date_paiement'])
+    return ligne

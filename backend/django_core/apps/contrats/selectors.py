@@ -198,6 +198,32 @@ def cautions_contrat(contrat):
         contrat=contrat, company=contrat.company).order_by('-id')
 
 
+def echeanciers_contrat(contrat):
+    """Échéanciers de paiement d'un contrat (QuerySet scopé société) — CONTRAT30.
+
+    Lecture seule. Ordre par ``id`` décroissant (cohérent avec ``Meta.ordering``).
+    La société est portée par le contrat ; on filtre aussi sur ``contrat.company``
+    par sécurité même si le FK ``contrat`` la garantit.
+    """
+    from .models import EcheancierContrat
+
+    return EcheancierContrat.objects.filter(
+        contrat=contrat, company=contrat.company).order_by('-id')
+
+
+def lignes_echeancier(echeancier):
+    """Lignes (échéances) d'un échéancier (QuerySet scopé société) — CONTRAT30.
+
+    Lecture seule. Ordre par ``numero`` (cohérent avec ``Meta.ordering``). La
+    société est portée par l'échéancier.
+    """
+    from .models import LigneEcheance
+
+    return LigneEcheance.objects.filter(
+        echeancier=echeancier, company=echeancier.company).order_by(
+            'numero', 'id')
+
+
 def signatures_contrat(contrat):
     """Signatures électroniques d'un contrat (QuerySet scopé société, ordonné).
 

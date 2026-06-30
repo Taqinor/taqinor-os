@@ -15,9 +15,11 @@ from .models import (
     Contrat,
     ContratActivity,
     ContratLien,
+    EcheancierContrat,
     EngagementSLA,
     EtapeApprobation,
     JalonContrat,
+    LigneEcheance,
     ModeleContrat,
     ModeleContratClause,
     Obligation,
@@ -862,6 +864,76 @@ class EngagementSLASerializer(serializers.ModelSerializer):
             raise serializers.ValidationError(
                 exc.messages if hasattr(exc, 'messages') else str(exc))
         return attrs
+
+
+class LigneEcheanceSerializer(serializers.ModelSerializer):
+    """Ligne (échéance) d'un échéancier — lecture seule (CONTRAT30).
+
+    Les lignes sont créées via l'action ``ajouter-ligne`` de l'échéancier
+    (numéro = max+1 côté serveur). ``date_paiement`` est posée côté serveur au
+    pointage (``pointer-paiement``). ``company``, ``numero`` et ``date_paiement``
+    ne sont jamais lus du corps de requête.
+    """
+    statut_display = serializers.CharField(
+        source='get_statut_display', read_only=True)
+
+    class Meta:
+        model = LigneEcheance
+        fields = [
+            'id', 'echeancier', 'numero', 'libelle', 'date_echeance',
+            'montant', 'statut', 'statut_display', 'date_paiement',
+            'date_creation',
+        ]
+        read_only_fields = fields
+
+
+class EcheancierContratSerializer(serializers.ModelSerializer):
+    """Échéancier de paiement d'un contrat (en-tête) — CONTRAT30.
+
+    ``company`` n'est jamais exposée : elle est posée côté serveur (déduite du
+    contrat). Le ``contrat`` reçu est validé même-société. ``montant_total`` est
+    CALCULÉ côté serveur (somme des lignes) et reste en lecture seule. Les lignes
+    sont sérialisées en lecture seule (``lignes``).
+    """
+    periodicite_display = serializers.CharField(
+        source='get_periodicite_display', read_only=True)
+    statut_display = serializers.CharField(
+        source='get_statut_display', read_only=True)
+    lignes = LigneEcheanceSerializer(many=True, read_only=True)
+
+    class Meta:
+        model = EcheancierContrat
+        fields = [
+            'id', 'contrat', 'libelle', 'periodicite', 'periodicite_display',
+            'montant_total', 'devise', 'statut', 'statut_display', 'lignes',
+            'date_creation',
+        ]
+        read_only_fields = [
+            'montant_total', 'periodicite_display', 'statut_display',
+            'lignes', 'date_creation',
+        ]
+
+    def validate_contrat(self, contrat):
+        """Le contrat rattaché doit appartenir à la société de l'utilisateur."""
+        request = self.context.get('request')
+        if request is not None and contrat.company_id != request.user.company_id:
+            raise serializers.ValidationError(
+                "Ce contrat n'appartient pas à votre société.")
+        return contrat
+
+
+class AjouterLigneEcheanceSerializer(serializers.Serializer):
+    """Corps de POST /echeanciers/<id>/ajouter-ligne/ (CONTRAT30).
+
+    ``date_echeance`` requise ; ``montant`` et ``libelle`` optionnels. Le
+    ``numero``, la société et le statut sont posés CÔTÉ SERVEUR.
+    """
+    date_echeance = serializers.DateField()
+    montant = serializers.DecimalField(
+        max_digits=14, decimal_places=2, required=False, allow_null=True,
+        min_value=0)
+    libelle = serializers.CharField(
+        required=False, allow_blank=True, max_length=200)
 
 
 class PenaliteSLASerializer(serializers.Serializer):

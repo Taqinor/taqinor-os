@@ -39,8 +39,10 @@ from .models import (
     ClauseContrat,
     Contrat,
     ContratLien,
+    EcheancierContrat,
     EngagementSLA,
     JalonContrat,
+    LigneEcheance,
     ModeleContrat,
     ModeleContratClause,
     Obligation,
@@ -51,6 +53,7 @@ from .models import (
     VersionContrat,
 )
 from .serializers import (
+    AjouterLigneEcheanceSerializer,
     AlerteContratSerializer,
     AvenantSerializer,
     CautionSerializer,
@@ -63,8 +66,10 @@ from .serializers import (
     CreerAvenantSerializer,
     CreerVersionSerializer,
     DeciderEtapeSerializer,
+    EcheancierContratSerializer,
     EngagementSLASerializer,
     EtapeApprobationSerializer,
+    LigneEcheanceSerializer,
     InstancierContratSerializer,
     JalonContratSerializer,
     ModeleContratClauseSerializer,
@@ -1356,3 +1361,100 @@ class CautionViewSet(_ContratsBaseViewSet):
         """Pose ``company`` (celle du contrat) côté serveur."""
         contrat = serializer.validated_data['contrat']
         serializer.save(company=contrat.company)
+
+
+class EcheancierContratViewSet(_ContratsBaseViewSet):
+    """Échéanciers de paiement des contrats (en-tête + lignes) — CONTRAT30.
+
+    Scopé société (``TenantMixin``) ; ``company`` posée CÔTÉ SERVEUR (déduite du
+    contrat). CRUD de l'en-tête plus l'action ``ajouter-ligne`` qui crée une
+    ``LigneEcheance`` (numéro = max+1 sous verrou, jamais ``count()+1``) et
+    recalcule ``montant_total``. Le ``statut`` est PROPRE à l'échéancier — il ne
+    touche JAMAIS le ``Contrat.statut`` (CONTRAT12) ni le funnel ``STAGES.py``
+    (rule #2), et n'émet aucune facture (CONTRAT31 est séparé).
+
+    Filtres : ``?contrat=<id>``, ``?statut=<valeur>``.
+    """
+    queryset = EcheancierContrat.objects.select_related(
+        'contrat').prefetch_related('lignes').all()
+    serializer_class = EcheancierContratSerializer
+    filter_backends = [filters.OrderingFilter]
+    ordering_fields = ['date_creation', 'id']
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        contrat_id = self.request.query_params.get('contrat')
+        if contrat_id:
+            qs = qs.filter(contrat_id=contrat_id)
+        statut = self.request.query_params.get('statut')
+        if statut:
+            qs = qs.filter(statut=statut)
+        return qs
+
+    def perform_create(self, serializer):
+        """Pose ``company`` (celle du contrat) côté serveur."""
+        contrat = serializer.validated_data['contrat']
+        serializer.save(company=contrat.company)
+
+    @action(detail=True, methods=['post'], url_path='ajouter-ligne')
+    def ajouter_ligne(self, request, pk=None):
+        """Ajoute une ligne (échéance) à l'échéancier (CONTRAT30).
+
+        Corps : ``date_echeance`` (requis), ``montant`` (optionnel), ``libelle``
+        (optionnel). Le ``numero`` (max+1 sous verrou), la société et le statut
+        sont posés CÔTÉ SERVEUR ; ``montant_total`` est recalculé.
+        """
+        echeancier = self.get_object()
+        body = AjouterLigneEcheanceSerializer(data=request.data)
+        body.is_valid(raise_exception=True)
+        ligne = services.ajouter_ligne_echeance(
+            echeancier,
+            date_echeance=body.validated_data['date_echeance'],
+            montant=body.validated_data.get('montant'),
+            libelle=body.validated_data.get('libelle', ''),
+        )
+        return Response(
+            LigneEcheanceSerializer(
+                ligne, context={'request': request}).data,
+            status=status.HTTP_201_CREATED,
+        )
+
+
+class LigneEcheanceViewSet(TenantMixin, viewsets.ReadOnlyModelViewSet):
+    """Lignes (échéances) des échéanciers — LECTURE SEULE + pointage de paiement (CONTRAT30).
+
+    Récupération : ``list`` (filtrable par ``?echeancier=<id>``,
+    ``?statut=<valeur>``) et ``retrieve``. Les lignes sont créées exclusivement
+    via l'action ``ajouter-ligne`` de l'échéancier (numéro côté serveur). Action
+    ``pointer-paiement`` pour marquer une ligne payée (statut + date côté
+    serveur). Scopé société (``TenantMixin``) ; accès Administrateur/Responsable.
+    """
+    permission_classes = [IsResponsableOrAdmin]
+    queryset = LigneEcheance.objects.select_related('echeancier').all()
+    serializer_class = LigneEcheanceSerializer
+    filter_backends = [filters.OrderingFilter]
+    ordering_fields = ['numero', 'date_echeance', 'date_creation', 'id']
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        echeancier_id = self.request.query_params.get('echeancier')
+        if echeancier_id:
+            qs = qs.filter(echeancier_id=echeancier_id)
+        statut = self.request.query_params.get('statut')
+        if statut:
+            qs = qs.filter(statut=statut)
+        return qs
+
+    @action(detail=True, methods=['post'], url_path='pointer-paiement')
+    def pointer_paiement(self, request, pk=None):
+        """Marque la ligne d'échéance PAYÉE (statut + date côté serveur — CONTRAT30).
+
+        Idempotent : une ligne déjà payée reste inchangée. La date du jour est
+        posée CÔTÉ SERVEUR. Ne change AUCUN ``Contrat.statut`` et n'émet aucune
+        facture.
+        """
+        ligne = self.get_object()
+        ligne = services.pointer_paiement_echeance(ligne)
+        return Response(
+            LigneEcheanceSerializer(
+                ligne, context={'request': request}).data)
