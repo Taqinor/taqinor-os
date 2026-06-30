@@ -54,6 +54,7 @@ from .views import (
     LivraisonLigneViewSet,
     PreuveLivraisonViewSet,
     TransporteurViewSet,
+    TourneeLivraisonView,
 )
 
 router = DefaultRouter()
@@ -126,5 +127,8 @@ urlpatterns = [
     # FG313 — contrôle budgétaire consultatif avant commande.
     path('controle-budgetaire/', ControleBudgetaireCommandeView.as_view(),
          name='installations-controle-budgetaire'),
+    # FG332 — tournée de livraison optimisée pour un jour (consultatif).
+    path('tournee-livraison/', TourneeLivraisonView.as_view(),
+         name='installations-tournee-livraison'),
     path('', include(router.urls)),
 ]

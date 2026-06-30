@@ -1528,3 +1528,77 @@ def proposer_reapprovisionnement(company, quantites_actuelles=None):
                     'quantite_proposee': a_transferer,
                 })
     return propositions
+
+
+def _haversine_km(lat1, lng1, lat2, lng2):
+    """Distance approximative (km) entre deux points GPS (formule de Haversine)."""
+    from math import radians, sin, cos, asin, sqrt
+    lat1, lng1, lat2, lng2 = map(
+        lambda v: radians(float(v)), (lat1, lng1, lat2, lng2))
+    dlat = lat2 - lat1
+    dlng = lng2 - lng1
+    a = sin(dlat / 2) ** 2 + cos(lat1) * cos(lat2) * sin(dlng / 2) ** 2
+    return 2 * 6371.0 * asin(sqrt(a))
+
+
+def optimiser_tournee_livraison(company, jour, depart_lat=None,
+                                depart_lng=None):
+    """FG332 - ordonne les livraisons d'un jour par proximite (tournee).
+
+    Recupere les livraisons planifiees/en transit de `jour`, lit la position GPS
+    du SITE de chaque chantier, et les ordonne par plus proche voisin a partir
+    d'un point de depart (le depot, si fourni, sinon la premiere livraison
+    geolocalisee). Les livraisons sans GPS sont listees a la fin (non
+    ordonnables). Lecture seule, consultative - n'execute aucune livraison.
+    """
+    from .models import Livraison
+    qs = Livraison.objects.filter(
+        company=company, date_prevue=jour,
+        statut__in=[Livraison.Statut.PLANIFIEE, Livraison.Statut.EN_TRANSIT],
+    ).select_related('installation')
+
+    geolocalisees = []
+    sans_gps = []
+    for liv in qs:
+        inst = liv.installation
+        lat = getattr(inst, 'gps_lat', None)
+        lng = getattr(inst, 'gps_lng', None)
+        item = {
+            'livraison_id': liv.id,
+            'reference': liv.reference,
+            'installation_id': liv.installation_id,
+            'gps_lat': float(lat) if lat is not None else None,
+            'gps_lng': float(lng) if lng is not None else None,
+        }
+        if lat is not None and lng is not None:
+            geolocalisees.append(item)
+        else:
+            sans_gps.append(item)
+
+    ordre = []
+    restantes = list(geolocalisees)
+    if restantes:
+        if depart_lat is not None and depart_lng is not None:
+            cur_lat, cur_lng = float(depart_lat), float(depart_lng)
+        else:
+            premiere = restantes.pop(0)
+            premiere['ordre'] = 1
+            ordre.append(premiere)
+            cur_lat, cur_lng = premiere['gps_lat'], premiere['gps_lng']
+        while restantes:
+            prochain = min(restantes, key=lambda it: _haversine_km(
+                cur_lat, cur_lng, it['gps_lat'], it['gps_lng']))
+            prochain['ordre'] = len(ordre) + 1
+            ordre.append(prochain)
+            restantes.remove(prochain)
+            cur_lat, cur_lng = prochain['gps_lat'], prochain['gps_lng']
+
+    for item in sans_gps:
+        item['ordre'] = None
+
+    return {
+        'jour': str(jour),
+        'tournee': ordre,
+        'sans_gps': sans_gps,
+        'total': len(ordre) + len(sans_gps),
+    }
