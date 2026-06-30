@@ -1087,3 +1087,54 @@ class ModuleToggle(TimestampedModel):
     def __str__(self):
         etat = 'activé' if self.actif else 'désactivé'
         return f'{self.module} ({etat}) — société {self.company_id}'
+
+
+# ---------------------------------------------------------------------------
+# FG392 — Thème white-label par tenant (société).
+#
+# Modèle de FONDATION GÉNÉRIQUE : porte le branding par société (logo,
+# couleurs, domaine personnalisé) appliqué à la SPA et aux PDF, AU-DELÀ des
+# bases ``CompanyProfile`` (app parametres — JAMAIS importée ici : ``core`` reste
+# fondation, contrat import-linter ``core-foundation-is-a-base-layer``). Une
+# seule ligne par société (OneToOne).
+# ---------------------------------------------------------------------------
+
+
+class TenantTheme(TimestampedModel):
+    """Thème white-label d'une société (FG392).
+
+    GÉNÉRIQUE : aucun import métier. Logo (chemin/URL de stockage), couleurs
+    primaires/secondaires (hex), domaine personnalisé, et un blob ``extra`` JSON
+    pour des jetons de thème additionnels (police, rayon…). Multi-tenant :
+    ``company`` obligatoire, OneToOne, imposée côté serveur.
+    """
+
+    company = models.OneToOneField(
+        'authentication.Company', on_delete=models.CASCADE,
+        related_name='tenant_theme', verbose_name='Société')
+
+    logo_url = models.CharField(
+        'Logo (URL/chemin)', max_length=500, blank=True, default='',
+        help_text='URL ou chemin de stockage du logo white-label.')
+    couleur_primaire = models.CharField(
+        'Couleur primaire', max_length=9, blank=True, default='',
+        help_text='Code couleur hex (ex. « #1a3b8c »).')
+    couleur_secondaire = models.CharField(
+        'Couleur secondaire', max_length=9, blank=True, default='')
+    domaine = models.CharField(
+        'Domaine personnalisé', max_length=255, blank=True, default='',
+        help_text='Domaine white-label (ex. « erp.client.ma »).')
+    nom_affichage = models.CharField(
+        'Nom affiché', max_length=160, blank=True, default='',
+        help_text='Nom de marque affiché (sinon la raison sociale).')
+    extra = models.JSONField(
+        'Jetons additionnels', default=dict, blank=True,
+        help_text='Jetons de thème additionnels (opaque pour core).')
+
+    class Meta:
+        verbose_name = 'Thème white-label'
+        verbose_name_plural = 'Thèmes white-label'
+        ordering = ['id']
+
+    def __str__(self):
+        return f'Thème société {self.company_id}'

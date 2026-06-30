@@ -26,6 +26,7 @@ from .views import (
     SavedQueryViewSet,
     ScheduledExportViewSet,
     ScheduledJobViewSet,
+    TenantThemeViewSet,
     TrashViewSet,
     WorkflowTemplateViewSet,
 )
@@ -51,5 +52,7 @@ router.register(r'bulk-edit', BulkEditViewSet, basename='bulk-edit')
 # FG391 — flags de modules par société (activation/désactivation).
 router.register(r'module-toggles', ModuleToggleViewSet,
                 basename='module-toggle')
+# FG392 — thème white-label par société (singleton, lecture/upsert).
+router.register(r'theme', TenantThemeViewSet, basename='tenant-theme')
 
 urlpatterns = router.urls

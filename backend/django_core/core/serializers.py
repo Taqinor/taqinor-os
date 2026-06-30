@@ -12,6 +12,7 @@ from .models import (
     PaymentTransaction,
     SavedQuery,
     ScheduledExport,
+    TenantTheme,
 )
 
 
@@ -145,4 +146,18 @@ class ModuleToggleSerializer(serializers.ModelSerializer):
         model = ModuleToggle
         fields = ['id', 'module', 'actif', 'raison',
                   'created_at', 'updated_at']
+        read_only_fields = ['id', 'created_at', 'updated_at']
+
+
+class TenantThemeSerializer(serializers.ModelSerializer):
+    """FG392 — thème white-label par société.
+
+    ``company`` n'est JAMAIS lu du corps (imposée côté serveur, OneToOne).
+    """
+    class Meta:
+        model = TenantTheme
+        fields = [
+            'id', 'logo_url', 'couleur_primaire', 'couleur_secondaire',
+            'domaine', 'nom_affichage', 'extra', 'created_at', 'updated_at',
+        ]
         read_only_fields = ['id', 'created_at', 'updated_at']

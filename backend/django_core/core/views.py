@@ -44,6 +44,7 @@ from .models import (
     PaymentTransaction,
     SavedQuery,
     ScheduledExport,
+    TenantTheme,
 )
 from .serializers import (
     DashboardSerializer,
@@ -53,6 +54,7 @@ from .serializers import (
     SavedQuerySerializer,
     ScheduledExportSerializer,
     ScheduledJobSerializer,
+    TenantThemeSerializer,
     WorkflowTemplateSerializer,
 )
 
@@ -418,3 +420,41 @@ class ModuleToggleViewSet(TenantMixin, viewsets.ModelViewSet):
         if self.action in ('list', 'retrieve'):
             return [IsAuthenticated()]
         return [IsAdminOrResponsableTier()]
+
+
+class TenantThemeViewSet(TenantMixin, viewsets.GenericViewSet):
+    """FG392 — thème white-label par société (singleton, lecture/upsert).
+
+    Multi-tenant : ``TenantMixin`` filtre par société et impose ``company``.
+    Le thème est un SINGLETON par société (OneToOne) : on n'expose pas un CRUD
+    par id mais une action sur « le thème de ma société » :
+
+      * ``GET …/theme/courant/``  — thème de la société (défauts vides sinon),
+        ouvert à tout utilisateur authentifié (la SPA en a besoin) ;
+      * ``PUT/PATCH …/theme/courant/`` — crée/met à jour (admin/responsable).
+
+    Aucune importation d'app domaine : ``core`` reste fondation.
+    """
+    serializer_class = TenantThemeSerializer
+    queryset = TenantTheme.objects.all()
+
+    def get_permissions(self):
+        if self.request.method in ('PUT', 'PATCH', 'POST'):
+            return [IsAdminOrResponsableTier()]
+        return [IsAuthenticated()]
+
+    @action(detail=False, methods=['get', 'put', 'patch'], url_path='courant')
+    def courant(self, request):
+        company = request.user.company
+        theme = TenantTheme.objects.filter(company=company).first()
+        if request.method == 'GET':
+            if theme is None:
+                # Pas encore de thème : renvoyer des défauts vides (jamais 404).
+                return Response(TenantThemeSerializer(TenantTheme()).data)
+            return Response(TenantThemeSerializer(theme).data)
+        partial = request.method == 'PATCH'
+        serializer = TenantThemeSerializer(
+            theme, data=request.data, partial=partial or theme is None)
+        serializer.is_valid(raise_exception=True)
+        serializer.save(company=company)
+        return Response(serializer.data)
