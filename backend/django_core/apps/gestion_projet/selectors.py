@@ -10,7 +10,7 @@ cible n'a pas de sélecteur exploitable, on DÉGRADE proprement : on renvoie le
 from datetime import date as _date
 from datetime import timedelta
 
-from django.db.models import Q
+from django.db.models import Q, Sum
 
 from decimal import Decimal
 
@@ -24,6 +24,7 @@ from .models import (
     Indisponibilite,
     Jalon,
     LigneBudgetProjet,
+    Projet,
     ProjetLien,
     RessourceProfil,
     Tache,
@@ -2008,4 +2009,69 @@ def evm_projet(company, projet, date_reference=None):
         'cpi': cpi,
         'spi': spi,
         'date_reference': date_reference,
+    }
+
+
+# ── Tableau de bord portefeuille (PROJ36) ────────────────────────────────────
+def tableau_portefeuille(company, statut=None, seuil_jours=None):
+    """Tableau de bord PORTEFEUILLE de la société (PROJ36) — interne/admin.
+
+    Agrège, pour CHAQUE projet de la société (filtrable par ``statut``) :
+    l'avancement physique (PROJ9), le nombre de tâches/jalons EN RETARD et À
+    RISQUE (PROJ14, horizon ``seuil_jours``), la marge réelle (P&L PROJ26) et la
+    charge totale (somme des ``charge_estimee`` des tâches). Renvoie une ligne par
+    projet + des totaux portefeuille (nb projets, retards/risques cumulés, marge
+    réelle cumulée, charge totale). Donnée 100 % INTERNE de pilotage — jamais
+    exposée au client. Tout est scopé société. Lecture seule (aucune écriture).
+    """
+    projets = Projet.objects.filter(company=company)
+    if statut:
+        projets = projets.filter(statut=statut)
+    projets = projets.order_by('-id')
+
+    lignes = []
+    total_marge_reelle = Decimal('0')
+    total_charge = Decimal('0')
+    total_retards = 0
+    total_risques = 0
+    for projet in projets:
+        avancement = rollup_avancement(projet)
+        retards = retards_projet(projet, seuil_jours=seuil_jours)
+        pnl = pnl_projet(company, projet)
+        charge = Tache.objects.filter(
+            projet=projet, company=company,
+            charge_estimee__isnull=False).aggregate(
+                s=Sum('charge_estimee'))['s'] or Decimal('0')
+
+        nb_retards = (
+            retards['nb_taches_en_retard']
+            + retards['nb_jalons_en_retard'])
+        nb_risques = (
+            retards['nb_taches_a_risque']
+            + retards['nb_jalons_a_risque'])
+
+        total_marge_reelle += pnl['marge_reelle']
+        total_charge += charge
+        total_retards += nb_retards
+        total_risques += nb_risques
+
+        lignes.append({
+            'projet_id': projet.id,
+            'code': projet.code,
+            'nom': projet.nom,
+            'statut': projet.statut,
+            'avancement_pct': avancement['avancement_pct'],
+            'nb_retards': nb_retards,
+            'nb_risques': nb_risques,
+            'marge_reelle': pnl['marge_reelle'],
+            'charge_totale': charge,
+        })
+
+    return {
+        'nb_projets': len(lignes),
+        'total_marge_reelle': total_marge_reelle,
+        'total_charge': total_charge,
+        'total_retards': total_retards,
+        'total_risques': total_risques,
+        'projets': lignes,
     }

@@ -605,6 +605,48 @@ class ProjetViewSet(_GestionProjetBaseViewSet):
             'montant_avancement': str(data['montant_avancement']),
         })
 
+    @action(detail=False, methods=['get'], url_path='portefeuille')
+    def portefeuille(self, request):
+        """Tableau de bord PORTEFEUILLE de la société (PROJ36) — interne/admin.
+
+        Une ligne par projet (avancement / retards / risques / marge réelle /
+        charge) + totaux portefeuille. Filtres : ``?statut=<statut>``,
+        ``?seuil_jours=N`` (horizon « à risque », défaut 7). La société est
+        imposée côté serveur (``request.user.company``) — jamais lue du corps.
+        Donnée 100 % INTERNE de pilotage. Lecture seule.
+        """
+        statut = request.query_params.get('statut') or None
+        seuil_raw = request.query_params.get('seuil_jours')
+        seuil = None
+        if seuil_raw is not None:
+            try:
+                seuil = max(0, int(seuil_raw))
+            except (ValueError, TypeError):
+                seuil = None
+        data = selectors.tableau_portefeuille(
+            request.user.company, statut=statut, seuil_jours=seuil)
+        return Response({
+            'nb_projets': data['nb_projets'],
+            'total_marge_reelle': str(data['total_marge_reelle']),
+            'total_charge': str(data['total_charge']),
+            'total_retards': data['total_retards'],
+            'total_risques': data['total_risques'],
+            'projets': [
+                {
+                    'projet_id': p['projet_id'],
+                    'code': p['code'],
+                    'nom': p['nom'],
+                    'statut': p['statut'],
+                    'avancement_pct': p['avancement_pct'],
+                    'nb_retards': p['nb_retards'],
+                    'nb_risques': p['nb_risques'],
+                    'marge_reelle': str(p['marge_reelle']),
+                    'charge_totale': str(p['charge_totale']),
+                }
+                for p in data['projets']
+            ],
+        })
+
     @action(detail=True, methods=['get'], url_path='evm')
     def evm(self, request, pk=None):
         """Valeur acquise (EVM) LÉGER du projet (PROJ29) — interne/admin.
