@@ -3,18 +3,23 @@ from rest_framework.routers import DefaultRouter
 
 from .views import (
     ActionCorrectivePreventiveViewSet, AnalyseIncidentViewSet, AuditViewSet,
-    CauseIncidentViewSet, ConsignationLotoViewSet,
-    ContactUrgenceViewSet,
+    BilanCarboneViewSet, BordereauSuiviDechetViewSet,
+    CalendrierQhseViewSet,
+    CauseIncidentViewSet, ConformiteEnvironnementaleViewSet,
+    ConsignationLotoViewSet,
+    ContactUrgenceViewSet, DechetViewSet,
     CritereAuditViewSet, DeclarationCnssViewSet,
     EvaluationRisqueViewSet, GrilleAuditViewSet, IncidentViewSet,
-    InductionSecuriteViewSet,
+    IndicateurESGViewSet,
+    InductionSecuriteViewSet, InspectionSecuriteViewSet,
     Iso9001ReadinessViewSet,
     ItemNotationViewSet, LigneEvaluationRisqueViewSet,
     NonConformiteViewSet, NotationFinChantierViewSet, PermisTravailViewSet,
     PlanInspectionChantierViewSet, PlanInspectionModeleViewSet,
     PlanUrgenceViewSet,
+    LigneBilanCarboneViewSet,
     PointControleModeleViewSet, ProcedureQualiteViewSet,
-    QhseChatterEntryViewSet,
+    QhseChatterEntryViewSet, RecyclageModuleViewSet,
     ReleveControleViewSet, ReleveCourbeIVViewSet, ReponseCritereViewSet,
     RetourClientQualiteViewSet, SecouristeViewSet,
 )
@@ -48,9 +53,20 @@ router.register(r'incidents', IncidentViewSet)
 router.register(r'declarations-cnss', DeclarationCnssViewSet)
 router.register(r'analyses-incident', AnalyseIncidentViewSet)
 router.register(r'causes-incident', CauseIncidentViewSet)
+router.register(r'inspections-securite', InspectionSecuriteViewSet)
+router.register(r'dechets', DechetViewSet)
+router.register(r'bordereaux-dechets', BordereauSuiviDechetViewSet)
+router.register(r'recyclage-modules', RecyclageModuleViewSet)
+router.register(
+    r'conformites-environnementales', ConformiteEnvironnementaleViewSet)
+router.register(r'bilans-carbone', BilanCarboneViewSet)
+router.register(r'lignes-bilan-carbone', LigneBilanCarboneViewSet)
+router.register(r'indicateurs-esg', IndicateurESGViewSet)
 router.register(
     r'iso9001-readiness', Iso9001ReadinessViewSet,
     basename='iso9001-readiness')
+router.register(
+    r'calendrier', CalendrierQhseViewSet, basename='calendrier')
 
 urlpatterns = [
     path('', include(router.urls)),

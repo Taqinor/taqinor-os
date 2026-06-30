@@ -9,12 +9,15 @@ from rest_framework import serializers
 from .models import (
     ActionCorrectivePreventive, AnalyseIncident, Audit, CauseIncident,
     ConsignationLoto, ContactUrgence,
-    CritereAudit, DeclarationCnss, EvaluationRisque, GrilleAudit,
-    InductionSecurite,
-    Incident,
+    BilanCarbone, BordereauSuiviDechet, ConformiteEnvironnementale,
+    CritereAudit, Dechet, DeclarationCnss, EvaluationRisque, GrilleAudit,
+    InductionSecurite, IndicateurESG,
+    LigneBilanCarbone,
+    Incident, InspectionSecurite,
     ItemNotation, LigneEvaluationRisque, NonConformite, NotationFinChantier,
     PermisTravail, PlanInspectionChantier, PlanInspectionModele, PlanUrgence,
-    PointControleModele, ProcedureQualite, QhseChatterEntry, ReleveControle,
+    PointControleModele, ProcedureQualite, QhseChatterEntry,
+    RecyclageModule, ReleveControle,
     ReleveCourbeIV, ReponseCritere, RetourClientQualite, Secouriste,
 )
 
@@ -774,3 +777,216 @@ class DeclarationCnssSerializer(serializers.ModelSerializer):
         l'instance résolue par DRF, sans importer ``rh.models``.
         """
         return _meme_societe(self, value, 'Accident du travail')
+
+
+class InspectionSecuriteSerializer(serializers.ModelSerializer):
+    """Inspection sécurité planifiée → NCR (QHSE33).
+
+    ``company``/``inspecteur``/``reference``/``ncr`` sont posés côté serveur
+    (jamais lus du corps). Le rattachement au chantier reste une référence lâche
+    (``chantier_id``).
+    """
+    statut_display = serializers.CharField(
+        source='get_statut_display', read_only=True)
+    resultat_display = serializers.CharField(
+        source='get_resultat_display', read_only=True)
+
+    class Meta:
+        model = InspectionSecurite
+        fields = [
+            'id', 'reference', 'titre', 'statut', 'statut_display',
+            'resultat', 'resultat_display', 'chantier_id', 'date_prevue',
+            'date_realisee', 'inspecteur', 'observations', 'ncr',
+            'date_creation',
+        ]
+        read_only_fields = [
+            'reference', 'inspecteur', 'ncr', 'date_creation',
+        ]
+
+
+class DechetSerializer(serializers.ModelSerializer):
+    """Type de déchet du référentiel (QHSE36, loi 28-00).
+
+    ``company`` posée côté serveur. ``dangereux`` (dérivé de la catégorie) est
+    exposé en lecture seule.
+    """
+    categorie_display = serializers.CharField(
+        source='get_categorie_display', read_only=True)
+    mode_traitement_display = serializers.CharField(
+        source='get_mode_traitement_display', read_only=True)
+    dangereux = serializers.BooleanField(read_only=True)
+
+    class Meta:
+        model = Dechet
+        fields = [
+            'id', 'libelle', 'code', 'categorie', 'categorie_display',
+            'unite', 'mode_traitement', 'mode_traitement_display',
+            'description', 'actif', 'dangereux', 'date_creation',
+        ]
+        read_only_fields = ['date_creation']
+
+
+class BordereauSuiviDechetSerializer(serializers.ModelSerializer):
+    """Bordereau de suivi des déchets (BSD — QHSE36, loi 28-00).
+
+    ``company`` / ``reference`` posées côté serveur. Le FK ``dechet`` est validé
+    même-société. La règle « BSD réservé aux déchets DANGEREUX » (loi 28-00) est
+    appliquée côté vue/service à la création. Le ``statut`` est piloté par
+    actions détail, en lecture seule au CRUD.
+    """
+    statut_display = serializers.CharField(
+        source='get_statut_display', read_only=True)
+    dechet_libelle = serializers.CharField(
+        source='dechet.libelle', read_only=True)
+
+    class Meta:
+        model = BordereauSuiviDechet
+        fields = [
+            'id', 'reference', 'dechet', 'dechet_libelle', 'statut',
+            'statut_display', 'chantier_id', 'quantite', 'producteur',
+            'transporteur', 'eliminateur', 'date_emission',
+            'date_enlevement', 'date_traitement', 'notes', 'date_creation',
+        ]
+        read_only_fields = ['reference', 'statut', 'date_creation']
+
+    def validate_dechet(self, value):
+        return _meme_societe(self, value, 'Déchet')
+
+
+class RecyclageModuleSerializer(serializers.ModelSerializer):
+    """Recyclage / fin de vie d'un lot de modules PV (QHSE37).
+
+    ``company`` / ``reference`` posées côté serveur. Le FK ``bordereau`` (BSD
+    QHSE36) est validé même-société. Le ``statut`` est piloté par actions détail,
+    en lecture seule au CRUD.
+    """
+    motif_display = serializers.CharField(
+        source='get_motif_display', read_only=True)
+    statut_display = serializers.CharField(
+        source='get_statut_display', read_only=True)
+
+    class Meta:
+        model = RecyclageModule
+        fields = [
+            'id', 'reference', 'marque', 'modele', 'nombre_modules',
+            'masse_kg', 'motif', 'motif_display', 'statut', 'statut_display',
+            'filiere', 'chantier_id', 'bordereau', 'date_collecte',
+            'date_recyclage', 'notes', 'date_creation',
+        ]
+        read_only_fields = ['reference', 'statut', 'date_creation']
+
+    def validate_bordereau(self, value):
+        return _meme_societe(self, value, 'Bordereau de suivi')
+
+
+class ConformiteEnvironnementaleSerializer(serializers.ModelSerializer):
+    """Conformité environnementale + échéance (QHSE38).
+
+    ``company`` posée côté serveur. ``statut_courant`` recalcule l'état réel à la
+    volée (expiré / à renouveler / statut enregistré). Le FK ``responsable`` est
+    validé comme appartenant à la même société.
+    """
+    type_conformite_display = serializers.CharField(
+        source='get_type_conformite_display', read_only=True)
+    statut_display = serializers.CharField(
+        source='get_statut_display', read_only=True)
+    statut_courant = serializers.SerializerMethodField()
+
+    class Meta:
+        model = ConformiteEnvironnementale
+        fields = [
+            'id', 'intitule', 'type_conformite', 'type_conformite_display',
+            'statut', 'statut_display', 'statut_courant', 'autorite',
+            'reference_dossier', 'chantier_id', 'date_obtention',
+            'date_expiration', 'prealerte_jours', 'responsable', 'notes',
+            'date_creation',
+        ]
+        read_only_fields = ['date_creation']
+
+    def get_statut_courant(self, obj):
+        return obj.statut_calcule()
+
+    def validate_responsable(self, value):
+        request = self.context.get('request')
+        if value is not None and request is not None:
+            if value.company_id != request.user.company_id:
+                raise serializers.ValidationError('Responsable inconnu.')
+        return value
+
+
+class LigneBilanCarboneSerializer(serializers.ModelSerializer):
+    """Ligne d'émission d'un bilan carbone (QHSE39).
+
+    ``company`` posée côté serveur. ``tco2e`` (quantité × facteur) exposé en
+    lecture seule. Le FK ``bilan`` est validé même-société.
+    """
+    scope_display = serializers.CharField(
+        source='get_scope_display', read_only=True)
+    tco2e = serializers.DecimalField(
+        max_digits=18, decimal_places=3, read_only=True)
+
+    class Meta:
+        model = LigneBilanCarbone
+        fields = [
+            'id', 'bilan', 'libelle', 'scope', 'scope_display', 'categorie',
+            'quantite', 'unite', 'facteur_emission', 'tco2e', 'date_creation',
+        ]
+        read_only_fields = ['date_creation']
+
+    def validate_bilan(self, value):
+        return _meme_societe(self, value, 'Bilan')
+
+
+class BilanCarboneSerializer(serializers.ModelSerializer):
+    """Bilan carbone interne (scopes 1/2/3 — QHSE39).
+
+    ``company`` posée côté serveur. Les totaux par scope et le total global
+    (``total_scope_1/2/3`` / ``total_tco2e``) sont DÉRIVÉS des lignes — exposés
+    en lecture seule.
+    """
+    statut_display = serializers.CharField(
+        source='get_statut_display', read_only=True)
+    total_scope_1 = serializers.DecimalField(
+        max_digits=18, decimal_places=3, read_only=True)
+    total_scope_2 = serializers.DecimalField(
+        max_digits=18, decimal_places=3, read_only=True)
+    total_scope_3 = serializers.DecimalField(
+        max_digits=18, decimal_places=3, read_only=True)
+    total_tco2e = serializers.DecimalField(
+        max_digits=18, decimal_places=3, read_only=True)
+
+    class Meta:
+        model = BilanCarbone
+        fields = [
+            'id', 'libelle', 'annee', 'statut', 'statut_display',
+            'perimetre', 'notes', 'total_scope_1', 'total_scope_2',
+            'total_scope_3', 'total_tco2e', 'date_creation',
+        ]
+        read_only_fields = ['date_creation']
+
+
+class IndicateurESGSerializer(serializers.ModelSerializer):
+    """Indicateur ESG (E/S/G) + export reporting (QHSE40).
+
+    ``company`` posée côté serveur. ``atteinte_cible`` (dérivé valeur/cible selon
+    la tendance souhaitée) exposé en lecture seule. Le FK ``bilan_carbone``
+    (QHSE39) est validé même-société.
+    """
+    pilier_display = serializers.CharField(
+        source='get_pilier_display', read_only=True)
+    tendance_souhaitee_display = serializers.CharField(
+        source='get_tendance_souhaitee_display', read_only=True)
+    atteinte_cible = serializers.BooleanField(read_only=True, allow_null=True)
+
+    class Meta:
+        model = IndicateurESG
+        fields = [
+            'id', 'code', 'libelle', 'pilier', 'pilier_display', 'valeur',
+            'cible', 'unite', 'annee', 'periode', 'tendance_souhaitee',
+            'tendance_souhaitee_display', 'atteinte_cible', 'bilan_carbone',
+            'notes', 'date_creation',
+        ]
+        read_only_fields = ['date_creation']
+
+    def validate_bilan_carbone(self, value):
+        return _meme_societe(self, value, 'Bilan carbone')

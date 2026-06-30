@@ -16,47 +16,62 @@ from authentication.permissions import IsResponsableOrAdmin
 from apps.ventes.utils.references import create_with_reference
 
 from .models import (
-    ActionCorrectivePreventive, AnalyseIncident, Audit, CauseIncident,
-    ConsignationLoto, ContactUrgence,
-    CritereAudit, DeclarationCnss, EvaluationRisque, GrilleAudit, Incident,
-    InductionSecurite,
-    ItemNotation, LigneEvaluationRisque, NonConformite, NotationFinChantier,
+    ActionCorrectivePreventive, AnalyseIncident, Audit,
+    BilanCarbone, BordereauSuiviDechet, CauseIncident,
+    ConformiteEnvironnementale, ConsignationLoto, ContactUrgence,
+    CritereAudit, Dechet, DeclarationCnss, EvaluationRisque, GrilleAudit,
+    Incident, IndicateurESG,
+    InductionSecurite, InspectionSecurite,
+    ItemNotation, LigneBilanCarbone,
+    LigneEvaluationRisque, NonConformite, NotationFinChantier,
     PermisTravail, PlanInspectionChantier, PlanInspectionModele, PlanUrgence,
-    PointControleModele, ProcedureQualite, QhseChatterEntry, ReleveControle,
+    PointControleModele, ProcedureQualite, QhseChatterEntry,
+    RecyclageModule, ReleveControle,
     ReleveCourbeIV, ReponseCritere, RetourClientQualite, Secouriste,
 )
 from .serializers import (
     ActionCorrectivePreventiveSerializer, AnalyseIncidentSerializer,
-    AuditSerializer, CauseIncidentSerializer,
+    AuditSerializer, BilanCarboneSerializer, BordereauSuiviDechetSerializer,
+    CauseIncidentSerializer,
+    ConformiteEnvironnementaleSerializer,
     ConsignationLotoSerializer, ContactUrgenceSerializer,
-    CritereAuditSerializer, DeclarationCnssSerializer,
+    CritereAuditSerializer, DechetSerializer, DeclarationCnssSerializer,
     EvaluationRisqueSerializer, GrilleAuditSerializer,
     IncidentSerializer,
-    InductionSecuriteSerializer, ItemNotationSerializer,
+    IndicateurESGSerializer,
+    InductionSecuriteSerializer, InspectionSecuriteSerializer,
+    ItemNotationSerializer,
+    LigneBilanCarboneSerializer,
     LigneEvaluationRisqueSerializer,
     NonConformiteSerializer, NotationFinChantierSerializer,
     PermisTravailSerializer, PlanInspectionChantierSerializer,
     PlanInspectionModeleSerializer, PlanUrgenceSerializer,
     PointControleModeleSerializer,
     ProcedureQualiteSerializer, QhseChatterEntrySerializer,
+    RecyclageModuleSerializer,
     ReleveControleSerializer, ReleveCourbeIVSerializer,
     ReponseCritereSerializer, RetourClientQualiteSerializer,
     SecouristeSerializer,
 )
 from . import chatter
 from .selectors import (
-    capa_en_retard, chantier_peut_cloturer, courbes_iv_for_chantier,
+    calendrier_qhse,
+    capa_en_retard, chantier_peut_cloturer, conformites_a_relancer,
+    courbes_iv_for_chantier,
     criticite_summary, declarations_cnss_a_echeance, document_unique_valide,
+    export_esg,
     hold_points_status,
+    heures_travaillees_chantiers,
     iso9001_readiness, permis_travail_expirant, photos_controle_par_phase,
     procedure_qualite_courante, procedure_qualite_versions,
-    procedures_qualite_courantes, satisfaction_moyenne,
+    procedures_qualite_courantes, satisfaction_moyenne, statistiques_tf_tg,
 )
 from .services import (
     activer_procedure, calculer_score_audit, calculer_score_notation,
     cloturer_ncr, creer_ncr_depuis_reserve, generer_capa_depuis_analyse,
     instancier_plan_chantier,
-    lever_ncr_audit, nouvelle_version_procedure, relancer_capa_en_retard,
+    lever_ncr_audit, lever_ncr_inspection, nouvelle_version_procedure,
+    relancer_capa_en_retard, relancer_conformites,
     verifier_efficacite_capa,
 )
 
@@ -755,6 +770,26 @@ class Iso9001ReadinessViewSet(viewsets.ViewSet):
         return Response(iso9001_readiness(request.user.company))
 
 
+# ── QHSE35 — Digest / calendrier QHSE (inspections + permis) ────────────────
+
+class CalendrierQhseViewSet(viewsets.ViewSet):
+    """Digest / calendrier QHSE unifié des échéances à venir (QHSE35).
+
+    ``GET …/calendrier/`` agrège, sur une fenêtre ``?within_days=N`` (défaut
+    30), les inspections sécurité planifiées (QHSE33), les permis de travail
+    expirant/expirés (QHSE25) et les déclarations CNSS à échéance (QHSE30) en
+    une liste homogène d'événements de calendrier triés par date, avec un
+    drapeau ``en_retard`` par échéance passée. Agrégation PURE des sélecteurs
+    QHSE existants — aucune mutation. Scopé société. Palier Responsable/Admin.
+    """
+    permission_classes = [IsResponsableOrAdmin]
+
+    def list(self, request):
+        within = request.query_params.get('within_days', 30)
+        return Response(
+            calendrier_qhse(request.user.company, within_days=within))
+
+
 # ── QHSE21 — Évaluation des risques (document unique) ───────────────────────
 
 class EvaluationRisqueViewSet(_QhseBaseViewSet):
@@ -1238,6 +1273,45 @@ class IncidentViewSet(_QhseBaseViewSet):
         out = self.get_serializer(incident)
         return Response(out.data, status=status.HTTP_201_CREATED)
 
+    @action(detail=False, methods=['get'], url_path='statistiques-tf-tg')
+    def statistiques_tf_tg(self, request):
+        """Statistiques TF / TG des accidents du travail (QHSE34).
+
+        TF = (accidents avec arrêt × 1 000 000) / heures travaillées ;
+        TG = (jours d'arrêt × 1 000) / heures travaillées.
+
+        Heures travaillées : ``?heures=`` (nombre) OU ``?chantier_ids=1,2,3``
+        (sommées depuis RH via le sélecteur ``labour_hours_for_installation``).
+        ``?jours_perdus=`` (défaut 0), ``?date_debut=`` / ``?date_fin=``
+        (AAAA-MM-JJ) bornent la période. Le compte d'accidents vient du registre
+        QHSE (``Incident`` de type ``accident``), scopé société.
+        """
+        company = request.user.company
+
+        chantier_ids_raw = request.query_params.get('chantier_ids')
+        heures_raw = request.query_params.get('heures')
+        if heures_raw not in (None, ''):
+            heures = heures_raw
+        elif chantier_ids_raw not in (None, ''):
+            chantier_ids = [
+                c.strip() for c in chantier_ids_raw.split(',') if c.strip()]
+            heures = heures_travaillees_chantiers(chantier_ids, company=company)
+        else:
+            heures = 0
+
+        stats = statistiques_tf_tg(
+            company,
+            heures_travaillees=heures,
+            date_debut=request.query_params.get('date_debut') or None,
+            date_fin=request.query_params.get('date_fin') or None,
+            jours_perdus=request.query_params.get('jours_perdus'),
+        )
+        # Sérialise les Decimal en chaînes pour un JSON stable.
+        stats['heures_travaillees'] = str(stats['heures_travaillees'])
+        stats['tf'] = None if stats['tf'] is None else str(stats['tf'])
+        stats['tg'] = None if stats['tg'] is None else str(stats['tg'])
+        return Response(stats)
+
 
 class DeclarationCnssViewSet(_QhseBaseViewSet):
     """Déclarations CNSS d'accident du travail + échéance légale (QHSE30).
@@ -1377,3 +1451,425 @@ class CauseIncidentViewSet(_QhseBaseViewSet):
         if type_cause not in (None, ''):
             qs = qs.filter(type_cause=type_cause)
         return qs
+
+
+class InspectionSecuriteViewSet(_QhseBaseViewSet):
+    """Inspections sécurité planifiées → NCR (QHSE33).
+
+    CRUD scopé société. ``company`` / ``inspecteur`` posés côté serveur (jamais
+    lus du corps). La ``reference`` est attribuée côté serveur via
+    ``create_with_reference`` (plus haut numéro utilisé + 1, race-safe — jamais
+    count()+1). Filtres optionnels : ``?statut=`` / ``?resultat=`` /
+    ``?chantier_id=``. Recherche par référence/titre/observations.
+
+    Action détail ``POST …/<id>/lever-ncr/`` — lève une non-conformité (QHSE9)
+    depuis une inspection NON CONFORME (idempotent : une seule NCR par
+    inspection ; ``gravite`` optionnelle au corps). 400 si l'inspection n'est
+    pas non conforme.
+    """
+    queryset = InspectionSecurite.objects.select_related(
+        'inspecteur', 'ncr').all()
+    serializer_class = InspectionSecuriteSerializer
+    filter_backends = [filters.SearchFilter, filters.OrderingFilter]
+    search_fields = ['reference', 'titre', 'observations']
+    ordering_fields = [
+        'id', 'reference', 'date_prevue', 'date_realisee', 'date_creation']
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        statut = self.request.query_params.get('statut')
+        if statut not in (None, ''):
+            qs = qs.filter(statut=statut)
+        resultat = self.request.query_params.get('resultat')
+        if resultat not in (None, ''):
+            qs = qs.filter(resultat=resultat)
+        chantier_id = self.request.query_params.get('chantier_id')
+        if chantier_id not in (None, ''):
+            qs = qs.filter(chantier_id=chantier_id)
+        return qs
+
+    def perform_create(self, serializer):
+        company = self.request.user.company
+        return create_with_reference(
+            InspectionSecurite, 'INSP', company,
+            lambda reference: serializer.save(
+                company=company,
+                inspecteur=self.request.user,
+                reference=reference),
+        )
+
+    def create(self, request, *args, **kwargs):
+        serializer = self.get_serializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        inspection = self.perform_create(serializer)
+        out = self.get_serializer(inspection)
+        return Response(out.data, status=status.HTTP_201_CREATED)
+
+    @action(detail=True, methods=['post'], url_path='lever-ncr')
+    def lever_ncr(self, request, pk=None):
+        """Lève une NCR depuis une inspection NON CONFORME (QHSE33).
+
+        Idempotent : une seule NCR par inspection. ``gravite`` optionnelle au
+        corps. 400 si l'inspection n'est pas non conforme.
+        """
+        inspection = self.get_object()
+        try:
+            ncr, created = lever_ncr_inspection(
+                inspection,
+                gravite=request.data.get('gravite') or None,
+                signale_par=request.user,
+            )
+        except ValueError as exc:
+            return Response(
+                {'detail': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+        code = status.HTTP_201_CREATED if created else status.HTTP_200_OK
+        from .serializers import NonConformiteSerializer
+        return Response(NonConformiteSerializer(ncr).data, status=code)
+
+
+class DechetViewSet(_QhseBaseViewSet):
+    """Référentiel des déchets (QHSE36, loi 28-00).
+
+    CRUD scopé société. ``company`` posée côté serveur. Filtres optionnels :
+    ``?categorie=`` / ``?actif=``. Recherche par libellé/code.
+    """
+    queryset = Dechet.objects.all()
+    serializer_class = DechetSerializer
+    filter_backends = [filters.SearchFilter, filters.OrderingFilter]
+    search_fields = ['libelle', 'code']
+    ordering_fields = ['id', 'libelle', 'date_creation']
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        categorie = self.request.query_params.get('categorie')
+        if categorie not in (None, ''):
+            qs = qs.filter(categorie=categorie)
+        actif = self.request.query_params.get('actif')
+        if actif not in (None, ''):
+            qs = qs.filter(actif=actif in ('1', 'true', 'True'))
+        return qs
+
+
+class BordereauSuiviDechetViewSet(_QhseBaseViewSet):
+    """Bordereaux de suivi des déchets (BSD — QHSE36, loi 28-00).
+
+    CRUD scopé société. ``company`` / ``reference`` posées côté serveur (jamais
+    lues du corps). La loi 28-00 réserve le BSD aux déchets DANGEREUX : la
+    création d'un bordereau sur un déchet NON dangereux est refusée (400).
+    Filtres optionnels : ``?statut=`` / ``?dechet=`` / ``?chantier_id=``.
+
+    Le ``statut`` est piloté par deux actions détail :
+
+    * ``POST …/<id>/enlever/`` — ``emis`` → ``enleve`` (prise en charge
+      transporteur) ;
+    * ``POST …/<id>/traiter/`` — ``enleve``/``emis`` → ``traite`` (bordereau
+      soldé).
+    """
+    queryset = BordereauSuiviDechet.objects.select_related('dechet').all()
+    serializer_class = BordereauSuiviDechetSerializer
+    filter_backends = [filters.SearchFilter, filters.OrderingFilter]
+    search_fields = ['reference', 'producteur', 'transporteur', 'eliminateur']
+    ordering_fields = [
+        'id', 'reference', 'date_emission', 'date_traitement', 'date_creation']
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        statut = self.request.query_params.get('statut')
+        if statut not in (None, ''):
+            qs = qs.filter(statut=statut)
+        dechet = self.request.query_params.get('dechet')
+        if dechet not in (None, ''):
+            qs = qs.filter(dechet_id=dechet)
+        chantier_id = self.request.query_params.get('chantier_id')
+        if chantier_id not in (None, ''):
+            qs = qs.filter(chantier_id=chantier_id)
+        return qs
+
+    def perform_create(self, serializer):
+        company = self.request.user.company
+        dechet = serializer.validated_data.get('dechet')
+        # Loi 28-00 : le BSD est réservé aux déchets DANGEREUX.
+        if dechet is not None and not dechet.dangereux:
+            from rest_framework.exceptions import ValidationError
+            raise ValidationError(
+                {'dechet': 'Le bordereau de suivi (BSD, loi 28-00) est '
+                           'réservé aux déchets dangereux.'})
+        return create_with_reference(
+            BordereauSuiviDechet, 'BSD', company,
+            lambda reference: serializer.save(
+                company=company, reference=reference),
+        )
+
+    def create(self, request, *args, **kwargs):
+        serializer = self.get_serializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        bsd = self.perform_create(serializer)
+        out = self.get_serializer(bsd)
+        return Response(out.data, status=status.HTTP_201_CREATED)
+
+    @action(detail=True, methods=['post'])
+    def enlever(self, request, pk=None):
+        """Marque le bordereau enlevé (``emis`` → ``enleve``), scopé société.
+
+        Refuse si le bordereau est déjà traité ou annulé. ``date_enlevement``
+        optionnelle au corps (sinon aujourd'hui).
+        """
+        bsd = self.get_object()
+        if bsd.statut in (
+                BordereauSuiviDechet.Statut.TRAITE,
+                BordereauSuiviDechet.Statut.ANNULE):
+            return Response(
+                {'detail': 'Bordereau déjà traité ou annulé.'},
+                status=status.HTTP_400_BAD_REQUEST)
+        bsd.statut = BordereauSuiviDechet.Statut.ENLEVE
+        bsd.date_enlevement = (
+            request.data.get('date_enlevement') or timezone.localdate())
+        bsd.save(update_fields=['statut', 'date_enlevement'])
+        return Response(self.get_serializer(bsd).data)
+
+    @action(detail=True, methods=['post'])
+    def traiter(self, request, pk=None):
+        """Marque le bordereau traité (→ ``traite``), scopé société.
+
+        Refuse si le bordereau est déjà traité ou annulé. ``date_traitement``
+        optionnelle au corps (sinon aujourd'hui).
+        """
+        bsd = self.get_object()
+        if bsd.statut in (
+                BordereauSuiviDechet.Statut.TRAITE,
+                BordereauSuiviDechet.Statut.ANNULE):
+            return Response(
+                {'detail': 'Bordereau déjà traité ou annulé.'},
+                status=status.HTTP_400_BAD_REQUEST)
+        bsd.statut = BordereauSuiviDechet.Statut.TRAITE
+        bsd.date_traitement = (
+            request.data.get('date_traitement') or timezone.localdate())
+        bsd.save(update_fields=['statut', 'date_traitement'])
+        return Response(self.get_serializer(bsd).data)
+
+
+class RecyclageModuleViewSet(_QhseBaseViewSet):
+    """Recyclage / fin de vie des modules PV (QHSE37).
+
+    CRUD scopé société. ``company`` / ``reference`` posées côté serveur (jamais
+    lues du corps). Le FK ``bordereau`` (BSD QHSE36) est validé même-société.
+    Filtres optionnels : ``?statut=`` / ``?motif=`` / ``?chantier_id=``.
+    Recherche par référence/marque/modèle/filière.
+
+    Le ``statut`` est piloté par deux actions détail :
+
+    * ``POST …/<id>/transporter/`` — ``collecte`` → ``transporte`` ;
+    * ``POST …/<id>/recycler/`` — ``transporte``/``collecte`` → ``recycle``
+      (lot soldé, ``date_recyclage`` posée).
+    """
+    queryset = RecyclageModule.objects.select_related('bordereau').all()
+    serializer_class = RecyclageModuleSerializer
+    filter_backends = [filters.SearchFilter, filters.OrderingFilter]
+    search_fields = ['reference', 'marque', 'modele', 'filiere']
+    ordering_fields = [
+        'id', 'reference', 'date_collecte', 'date_recyclage', 'date_creation']
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        statut = self.request.query_params.get('statut')
+        if statut not in (None, ''):
+            qs = qs.filter(statut=statut)
+        motif = self.request.query_params.get('motif')
+        if motif not in (None, ''):
+            qs = qs.filter(motif=motif)
+        chantier_id = self.request.query_params.get('chantier_id')
+        if chantier_id not in (None, ''):
+            qs = qs.filter(chantier_id=chantier_id)
+        return qs
+
+    def perform_create(self, serializer):
+        company = self.request.user.company
+        return create_with_reference(
+            RecyclageModule, 'REC', company,
+            lambda reference: serializer.save(
+                company=company, reference=reference),
+        )
+
+    def create(self, request, *args, **kwargs):
+        serializer = self.get_serializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        rec = self.perform_create(serializer)
+        out = self.get_serializer(rec)
+        return Response(out.data, status=status.HTTP_201_CREATED)
+
+    @action(detail=True, methods=['post'])
+    def transporter(self, request, pk=None):
+        """Marque le lot transporté (``collecte`` → ``transporte``).
+
+        Refuse si déjà recyclé ou annulé.
+        """
+        rec = self.get_object()
+        if rec.statut in (
+                RecyclageModule.Statut.RECYCLE,
+                RecyclageModule.Statut.ANNULE):
+            return Response(
+                {'detail': 'Lot déjà recyclé ou annulé.'},
+                status=status.HTTP_400_BAD_REQUEST)
+        rec.statut = RecyclageModule.Statut.TRANSPORTE
+        rec.save(update_fields=['statut'])
+        return Response(self.get_serializer(rec).data)
+
+    @action(detail=True, methods=['post'])
+    def recycler(self, request, pk=None):
+        """Marque le lot recyclé (→ ``recycle``), ``date_recyclage`` posée.
+
+        Refuse si déjà recyclé ou annulé. ``date_recyclage`` optionnelle au
+        corps (sinon aujourd'hui).
+        """
+        rec = self.get_object()
+        if rec.statut in (
+                RecyclageModule.Statut.RECYCLE,
+                RecyclageModule.Statut.ANNULE):
+            return Response(
+                {'detail': 'Lot déjà recyclé ou annulé.'},
+                status=status.HTTP_400_BAD_REQUEST)
+        rec.statut = RecyclageModule.Statut.RECYCLE
+        rec.date_recyclage = (
+            request.data.get('date_recyclage') or timezone.localdate())
+        rec.save(update_fields=['statut', 'date_recyclage'])
+        return Response(self.get_serializer(rec).data)
+
+
+class ConformiteEnvironnementaleViewSet(_QhseBaseViewSet):
+    """Conformités environnementales + relances (QHSE38).
+
+    CRUD scopé société. ``company`` posée côté serveur. Le FK ``responsable``
+    est validé même-société. Filtres optionnels : ``?statut=`` /
+    ``?type_conformite=`` / ``?chantier_id=``. Recherche par
+    intitulé/autorité/référence dossier.
+
+    Actions :
+
+    * ``GET …/a-relancer/`` — conformités à renouveler ou expirées
+      (``selectors.conformites_a_relancer``), scopé société ;
+    * ``POST …/relancer/`` — notifie les responsables des conformités à
+      renouveler et renvoie le digest (``services.relancer_conformites``).
+    """
+    queryset = ConformiteEnvironnementale.objects.select_related(
+        'responsable').all()
+    serializer_class = ConformiteEnvironnementaleSerializer
+    filter_backends = [filters.SearchFilter, filters.OrderingFilter]
+    search_fields = ['intitule', 'autorite', 'reference_dossier']
+    ordering_fields = [
+        'id', 'date_expiration', 'date_obtention', 'date_creation']
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        statut = self.request.query_params.get('statut')
+        if statut not in (None, ''):
+            qs = qs.filter(statut=statut)
+        type_conformite = self.request.query_params.get('type_conformite')
+        if type_conformite not in (None, ''):
+            qs = qs.filter(type_conformite=type_conformite)
+        chantier_id = self.request.query_params.get('chantier_id')
+        if chantier_id not in (None, ''):
+            qs = qs.filter(chantier_id=chantier_id)
+        return qs
+
+    @action(detail=False, methods=['get'], url_path='a-relancer')
+    def a_relancer(self, request):
+        """Conformités environnementales à renouveler ou expirées (QHSE38)."""
+        confs = conformites_a_relancer(request.user.company)
+        page = self.paginate_queryset(confs)
+        if page is not None:
+            serializer = self.get_serializer(page, many=True)
+            return self.get_paginated_response(serializer.data)
+        serializer = self.get_serializer(confs, many=True)
+        return Response(serializer.data)
+
+    @action(detail=False, methods=['post'])
+    def relancer(self, request):
+        """Relance les conformités à renouveler : notifie + digest (QHSE38)."""
+        digest = relancer_conformites(request.user.company)
+        return Response(digest)
+
+
+class BilanCarboneViewSet(_QhseBaseViewSet):
+    """Bilans carbone internes (scopes 1/2/3 — QHSE39).
+
+    CRUD scopé société. ``company`` posée côté serveur. Les totaux par scope et
+    le total global sont dérivés des lignes (lecture seule). Filtres optionnels :
+    ``?annee=`` / ``?statut=``. Recherche par libellé/périmètre.
+    """
+    queryset = BilanCarbone.objects.all()
+    serializer_class = BilanCarboneSerializer
+    filter_backends = [filters.SearchFilter, filters.OrderingFilter]
+    search_fields = ['libelle', 'perimetre']
+    ordering_fields = ['id', 'annee', 'date_creation']
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        annee = self.request.query_params.get('annee')
+        if annee not in (None, ''):
+            qs = qs.filter(annee=annee)
+        statut = self.request.query_params.get('statut')
+        if statut not in (None, ''):
+            qs = qs.filter(statut=statut)
+        return qs
+
+
+class LigneBilanCarboneViewSet(_QhseBaseViewSet):
+    """Lignes d'émission d'un bilan carbone (QHSE39).
+
+    CRUD scopé société. ``company`` posée côté serveur ; le FK ``bilan`` est
+    validé même-société. ``tco2e`` (quantité × facteur) est dérivé (lecture
+    seule). Filtres optionnels : ``?bilan=`` / ``?scope=``.
+    """
+    queryset = LigneBilanCarbone.objects.select_related('bilan').all()
+    serializer_class = LigneBilanCarboneSerializer
+    filter_backends = [filters.SearchFilter, filters.OrderingFilter]
+    search_fields = ['libelle', 'categorie']
+    ordering_fields = ['id', 'scope', 'date_creation']
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        bilan = self.request.query_params.get('bilan')
+        if bilan not in (None, ''):
+            qs = qs.filter(bilan_id=bilan)
+        scope = self.request.query_params.get('scope')
+        if scope not in (None, ''):
+            qs = qs.filter(scope=scope)
+        return qs
+
+
+class IndicateurESGViewSet(_QhseBaseViewSet):
+    """Indicateurs ESG + export reporting (QHSE40).
+
+    CRUD scopé société. ``company`` posée côté serveur. Le FK ``bilan_carbone``
+    (QHSE39) est validé même-société. ``atteinte_cible`` est dérivé (lecture
+    seule). Filtres optionnels : ``?pilier=`` / ``?annee=``. Recherche par
+    code/libellé.
+
+    Action ``GET …/export/`` — export reporting groupé par pilier ESG
+    (``?annee=`` optionnel), via ``selectors.export_esg``, scopé société.
+    """
+    queryset = IndicateurESG.objects.select_related('bilan_carbone').all()
+    serializer_class = IndicateurESGSerializer
+    filter_backends = [filters.SearchFilter, filters.OrderingFilter]
+    search_fields = ['code', 'libelle']
+    ordering_fields = ['id', 'pilier', 'annee', 'date_creation']
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        pilier = self.request.query_params.get('pilier')
+        if pilier not in (None, ''):
+            qs = qs.filter(pilier=pilier)
+        annee = self.request.query_params.get('annee')
+        if annee not in (None, ''):
+            qs = qs.filter(annee=annee)
+        return qs
+
+    @action(detail=False, methods=['get'])
+    def export(self, request):
+        """Export reporting ESG groupé par pilier (QHSE40).
+
+        ``?annee=N`` borne la période. Agrège les indicateurs ESG de la société
+        en un export plat + par pilier (nb / cibles atteintes / lignes).
+        """
+        annee = request.query_params.get('annee') or None
+        return Response(export_esg(request.user.company, annee=annee))

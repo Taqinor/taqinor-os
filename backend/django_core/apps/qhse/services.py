@@ -529,3 +529,108 @@ def generer_capa_depuis_analyse(analyse, *, description=None,
         echeance=echeance,
     )
     return capa
+
+
+# ── QHSE33 — Inspection sécurité planifiée → NCR ───────────────────────────
+
+@transaction.atomic
+def lever_ncr_inspection(inspection, gravite=None, signale_par=None):
+    """Lève une non-conformité (NCR) depuis une inspection sécurité (QHSE33).
+
+    Conditionnée à un résultat NON CONFORME : une inspection conforme ou en
+    attente ne lève pas de NCR (``ValueError``). Idempotent : une seule NCR par
+    inspection — ré-appelée, elle renvoie ``(ncr, False)``. La NCR garde la
+    référence lâche au chantier (``chantier_id``) et reprend les observations
+    comme description. ``company``/``signale_par`` posés côté serveur.
+
+    Renvoie ``(ncr, created)``.
+    """
+    from .models import InspectionSecurite, NonConformite
+
+    if inspection.resultat != InspectionSecurite.Resultat.NON_CONFORME:
+        raise ValueError(
+            'Seule une inspection NON CONFORME peut lever une NCR.')
+
+    if inspection.ncr_id is not None:
+        return inspection.ncr, False
+
+    company = inspection.company
+    titre = f'Inspection sécurité — {inspection.titre}'[:255]
+    ncr = NonConformite.objects.create(
+        company=company,
+        titre=titre,
+        description=inspection.observations or '',
+        origine='Inspection sécurité',
+        gravite=gravite or NonConformite.Gravite.MINEURE,
+        chantier_id=inspection.chantier_id,
+        signale_par=signale_par,
+    )
+    inspection.ncr = ncr
+    inspection.save(update_fields=['ncr'])
+    return ncr, True
+
+
+# ── QHSE38 — Relances des conformités environnementales ────────────────────
+
+def relancer_conformites(company, today=None):
+    """Relance les conformités environnementales à renouveler / expirées (QHSE38).
+
+    Pour chaque conformité à relancer (cf. ``selectors.conformites_a_relancer``),
+    émet une notification in-app au responsable (best-effort via
+    ``notifications.notify`` — jamais d'exception remontée ; une conformité sans
+    responsable est comptée mais non notifiée). Réutilise l'``EventType``
+    existant ``MAINTENANCE_DUE`` (échéance interne) pour rester additif.
+
+    Renvoie un *digest* : ``{'total': N, 'notifiees': M, 'sans_responsable': K,
+    'items': [...]}`` où ``items`` résume chaque conformité (id, intitulé,
+    échéance, état recalculé, responsable). Ne mute aucune conformité.
+    """
+    from django.utils import timezone
+
+    from apps.qhse.selectors import conformites_a_relancer
+
+    if today is None:
+        today = timezone.localdate()
+    confs = list(conformites_a_relancer(company, today=today))
+
+    notifiees = 0
+    sans_responsable = 0
+    items = []
+    for conf in confs:
+        etat = conf.statut_calcule(today)
+        echeance = conf.date_expiration
+        titre = 'Conformité environnementale à renouveler'
+        corps = (
+            f"La conformité « {conf.intitule} » "
+            f"(échéance {echeance.isoformat() if echeance else '—'}) "
+            f"est à l'état « {conf.Statut(etat).label} ».")
+        if conf.responsable_id is not None:
+            _notifier_conformite(conf.responsable, titre, corps, company)
+            notifiees += 1
+        else:
+            sans_responsable += 1
+        items.append({
+            'conformite_id': conf.id,
+            'intitule': conf.intitule,
+            'echeance': echeance.isoformat() if echeance else None,
+            'etat': etat,
+            'responsable_id': conf.responsable_id,
+        })
+
+    return {
+        'total': len(confs),
+        'notifiees': notifiees,
+        'sans_responsable': sans_responsable,
+        'items': items,
+    }
+
+
+def _notifier_conformite(user, titre, corps, company):
+    """Notifie un responsable d'une conformité à renouveler (best-effort)."""
+    try:
+        from apps.notifications.models import EventType
+        from apps.notifications.services import notify
+        notify(user, EventType.MAINTENANCE_DUE, titre, body=corps,
+               link='/qhse/conformites-environnementales', company=company)
+    except Exception:  # pragma: no cover - défensif
+        pass

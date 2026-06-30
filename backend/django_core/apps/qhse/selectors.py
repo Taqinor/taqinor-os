@@ -23,8 +23,11 @@ un suivi à part : un appelant consulte cette porte, il ne la franchit pas ici.
 from django.db.models import Avg
 
 from .models import (
-    ActionCorrectivePreventive, Audit, DeclarationCnss, EvaluationRisque,
-    NonConformite, NotationFinChantier, PermisTravail, PlanInspectionChantier,
+    ActionCorrectivePreventive, Audit, ConformiteEnvironnementale,
+    DeclarationCnss, EvaluationRisque,
+    Incident, IndicateurESG, InspectionSecurite, NonConformite,
+    NotationFinChantier,
+    PermisTravail, PlanInspectionChantier,
     ProcedureQualite, ReleveControle, ReleveCourbeIV, RetourClientQualite,
 )
 
@@ -755,4 +758,358 @@ def document_unique_valide(company, chantier_id):
         'nb_validees': len(validees),
         'nb_validees_avec_lignes': len(avec_lignes),
         'motif': motif,
+    }
+
+
+# ── QHSE34 — Statistiques TF / TG (taux de fréquence / gravité) ────────────
+
+# Constantes normatives des indicateurs sécurité du travail (OIT / usage).
+# TF = (accidents avec arrêt × 1 000 000) / heures travaillées.
+# TG = (jours d'arrêt × 1 000) / heures travaillées.
+TF_BASE_HEURES = 1_000_000
+TG_BASE_HEURES = 1_000
+
+
+def heures_travaillees_chantiers(chantier_ids, company=None):
+    """Somme des heures travaillées de plusieurs chantiers, lue depuis RH.
+
+    Lecture cross-app CONFORME : les heures de main-d'œuvre vivent dans ``rh``
+    (``FeuilleTemps``) et sont lues via le SÉLECTEUR ``rh`` lecture-seule
+    ``labour_hours_for_installation`` (FG167) — jamais par un import de
+    ``rh.models``. Chaque chantier (référence lâche par id) est sommé ; le total
+    est renvoyé en ``Decimal``. Une liste vide renvoie ``Decimal('0')``.
+
+    Sert d'entrée « heures travaillées depuis RH » au calcul TF / TG (QHSE34).
+    """
+    from decimal import Decimal
+
+    total = Decimal('0')
+    if not chantier_ids:
+        return total
+    # Import function-local pour éviter tout cycle d'import au démarrage.
+    from apps.rh.selectors import labour_hours_for_installation
+
+    for cid in chantier_ids:
+        if cid in (None, ''):
+            continue
+        try:
+            res = labour_hours_for_installation(cid, company=company)
+        except Exception:  # pragma: no cover - défensif (RH absent / erreur)
+            continue
+        total += res.get('total_heures') or Decimal('0')
+    return total
+
+
+def statistiques_tf_tg(company, heures_travaillees, date_debut=None,
+                       date_fin=None, jours_perdus=None):
+    """Taux de fréquence (TF) et de gravité (TG) des accidents (QHSE34).
+
+    Indicateurs sécurité standards calculés sur le registre QHSE des incidents
+    (``Incident`` — QHSE29), scopé société :
+
+    * ``TF`` = (accidents avec arrêt × ``1 000 000``) / heures travaillées ;
+    * ``TG`` = (jours d'arrêt × ``1 000``) / heures travaillées.
+
+    Les ``heures_travaillees`` sont fournies en entrée — typiquement la somme des
+    feuilles de temps RH (cf. ``heures_travaillees_chantiers``, qui lit ``rh`` via
+    son sélecteur, jamais par import de modèle). Le nombre d'accidents AVEC ARRÊT
+    est dérivé du registre QHSE : on retient les ``Incident`` de type
+    ``accident`` sur la période. Le QHSE ne stocke pas les jours d'arrêt
+    (détail RH) : ``jours_perdus`` est donc fourni en entrée (0 par défaut) — le
+    TG reste calculable dès qu'il est connu.
+
+    Renvoie un dict (TF / TG ``None`` si ``heures_travaillees`` ≤ 0, indéfini) :
+    ``{
+        'heures_travaillees': Decimal,
+        'accidents_avec_arret': int,
+        'jours_perdus': int,
+        'tf': Decimal | None,
+        'tg': Decimal | None,
+        'periode': {'debut': str|None, 'fin': str|None},
+    }``. Lecture seule, aucune mutation, aucun import cross-app de modèle.
+    """
+    from decimal import Decimal
+
+    try:
+        heures = Decimal(str(heures_travaillees or 0))
+    except (TypeError, ValueError, ArithmeticError):
+        heures = Decimal('0')
+
+    qs = Incident.objects.filter(
+        company=company, type_incident=Incident.TypeIncident.ACCIDENT)
+    if date_debut is not None:
+        qs = qs.filter(date_incident__gte=date_debut)
+    if date_fin is not None:
+        qs = qs.filter(date_incident__lte=date_fin)
+    accidents = qs.count()
+
+    try:
+        jours = int(jours_perdus) if jours_perdus is not None else 0
+    except (TypeError, ValueError):
+        jours = 0
+    if jours < 0:
+        jours = 0
+
+    if heures > 0:
+        tf = (Decimal(accidents) * TF_BASE_HEURES / heures).quantize(
+            Decimal('0.01'))
+        tg = (Decimal(jours) * TG_BASE_HEURES / heures).quantize(
+            Decimal('0.01'))
+    else:
+        tf = None
+        tg = None
+
+    return {
+        'heures_travaillees': heures,
+        'accidents_avec_arret': accidents,
+        'jours_perdus': jours,
+        'tf': tf,
+        'tg': tg,
+        'periode': {
+            'debut': date_debut.isoformat() if date_debut else None,
+            'fin': date_fin.isoformat() if date_fin else None,
+        },
+    }
+
+
+# ── QHSE35 — Inspections / permis dans le digest + calendrier ──────────────
+
+# Statuts d'inspection encore « ouverts » pour le digest : une inspection
+# ANNULÉE n'a plus d'échéance à suivre.
+STATUTS_INSPECTION_OUVERTS = (
+    InspectionSecurite.Statut.PLANIFIEE,
+    InspectionSecurite.Statut.REALISEE,
+)
+
+
+def inspections_a_venir(company, within_days=30, today=None,
+                        inclure_passees=True):
+    """Inspections sécurité (QHSE33) planifiées dans la fenêtre du digest.
+
+    Lecture cadrée société : retient les inspections NON annulées dont la
+    ``date_prevue`` est renseignée et tombe au plus tard dans ``within_days``
+    jours (aujourd'hui + ``within_days`` inclus). Par défaut ``inclure_passees``
+    garde aussi les inspections dont la date prévue est déjà passée (à solder /
+    reprogrammer) ; ``inclure_passees=False`` ne garde que les échéances à venir.
+    Triée par date la plus proche d'abord. Lecture seule.
+    """
+    from datetime import timedelta
+
+    from django.utils import timezone
+
+    if company is None:
+        return InspectionSecurite.objects.none()
+    try:
+        within_days = int(within_days)
+    except (TypeError, ValueError):
+        within_days = 30
+    if within_days < 0:
+        within_days = 0
+    if today is None:
+        today = timezone.localdate()
+    limite = today + timedelta(days=within_days)
+    qs = InspectionSecurite.objects.filter(
+        company=company,
+        statut__in=STATUTS_INSPECTION_OUVERTS,
+        date_prevue__isnull=False,
+        date_prevue__lte=limite,
+    )
+    if not inclure_passees:
+        qs = qs.filter(date_prevue__gte=today)
+    return qs.order_by('date_prevue', 'id')
+
+
+def calendrier_qhse(company, within_days=30, today=None):
+    """Digest / calendrier QHSE unifié des échéances à venir (QHSE35).
+
+    Agrège, sur une seule fenêtre ``within_days``, les échéances QHSE
+    actionnables d'une société, chacune normalisée en *événement de calendrier* :
+
+    * inspections sécurité planifiées (``inspections_a_venir``) → ``date_prevue`` ;
+    * permis de travail expirant ou expirés (``permis_travail_expirant``) →
+      ``date_fin`` ;
+    * déclarations CNSS approchant l'échéance ou hors délai
+      (``declarations_cnss_a_echeance``) → ``date_limite``.
+
+    Chaque événement est un dict homogène :
+    ``{
+        'type': 'inspection' | 'permis' | 'declaration_cnss',
+        'id': int,
+        'titre': str,
+        'date': str (ISO),       # date de l'échéance
+        'en_retard': bool,       # échéance déjà passée
+        'reference': str,
+        'chantier_id': int|None,
+    }``
+
+    Le digest renvoyé : ``{'today': str, 'within_days': int, 'total': int,
+    'inspections': N, 'permis': M, 'declarations_cnss': K,
+    'evenements': [...]}`` — les événements triés par date croissante. Toujours
+    scopé société ; lecture seule, aucune mutation.
+    """
+    from django.utils import timezone
+
+    if today is None:
+        today = timezone.localdate()
+    try:
+        within_days = int(within_days)
+    except (TypeError, ValueError):
+        within_days = 30
+    if within_days < 0:
+        within_days = 0
+
+    evenements = []
+
+    for insp in inspections_a_venir(
+            company, within_days=within_days, today=today):
+        evenements.append({
+            'type': 'inspection',
+            'id': insp.id,
+            'titre': insp.titre,
+            'date': insp.date_prevue.isoformat(),
+            'en_retard': insp.date_prevue < today,
+            'reference': insp.reference,
+            'chantier_id': insp.chantier_id,
+        })
+
+    for permis in permis_travail_expirant(
+            company, within_days=within_days, inclure_expires=True):
+        evenements.append({
+            'type': 'permis',
+            'id': permis.id,
+            'titre': permis.titre,
+            'date': permis.date_fin.isoformat(),
+            'en_retard': permis.date_fin < today,
+            'reference': permis.reference,
+            'chantier_id': permis.chantier_id,
+        })
+
+    for decl in declarations_cnss_a_echeance(
+            company, within_days=within_days, today=today):
+        evenements.append({
+            'type': 'declaration_cnss',
+            'id': decl.id,
+            'titre': decl.numero_declaration or 'Déclaration CNSS',
+            'date': decl.date_limite.isoformat(),
+            'en_retard': decl.date_limite < today,
+            'reference': decl.numero_declaration or '',
+            'chantier_id': None,
+        })
+
+    evenements.sort(key=lambda e: (e['date'], e['type'], e['id']))
+
+    nb_inspections = sum(1 for e in evenements if e['type'] == 'inspection')
+    nb_permis = sum(1 for e in evenements if e['type'] == 'permis')
+    nb_cnss = sum(
+        1 for e in evenements if e['type'] == 'declaration_cnss')
+
+    return {
+        'today': today.isoformat(),
+        'within_days': within_days,
+        'total': len(evenements),
+        'inspections': nb_inspections,
+        'permis': nb_permis,
+        'declarations_cnss': nb_cnss,
+        'evenements': evenements,
+    }
+
+
+# ── QHSE38 — Conformités environnementales à relancer ──────────────────────
+
+def conformites_a_relancer(company, today=None):
+    """Conformités environnementales à renouveler ou expirées (QHSE38).
+
+    Lecture cadrée société : retient les conformités dont la ``date_expiration``
+    est renseignée et dont l'état RÉEL recalculé (``statut_calcule(today)``) est
+    ``a_renouveler`` (échéance dans la fenêtre de préalerte) ou ``expire``
+    (échéance déjà passée — ce qui doit alerter le plus). Les conformités sans
+    échéance ou encore largement valides sont exclues. Triée par échéance la plus
+    proche d'abord. Lecture seule.
+    """
+    from django.utils import timezone
+
+    if company is None:
+        return []
+    if today is None:
+        today = timezone.localdate()
+    qs = (ConformiteEnvironnementale.objects
+          .filter(company=company, date_expiration__isnull=False)
+          .select_related('responsable')
+          .order_by('date_expiration', 'id'))
+    a_relancer = []
+    for conf in qs:
+        etat = conf.statut_calcule(today)
+        if etat in (
+                ConformiteEnvironnementale.Statut.A_RENOUVELER,
+                ConformiteEnvironnementale.Statut.EXPIRE):
+            a_relancer.append(conf)
+    return a_relancer
+
+
+# ── QHSE40 — Export reporting des indicateurs ESG ──────────────────────────
+
+def export_esg(company, annee=None):
+    """Export reporting des indicateurs ESG d'une société (QHSE40).
+
+    Agrège les ``IndicateurESG`` (lecture seule, scopée société) en un export
+    plat groupé par pilier (environnement / social / gouvernance), prêt pour un
+    reporting extra-financier (CSRD-like). Un filtre ``annee`` optionnel borne la
+    période. Chaque indicateur est normalisé en ligne homogène (code, libellé,
+    valeur, cible, unité, période, cible atteinte). Renvoie :
+
+    ``{
+        'annee': int|None,
+        'total': int,
+        'piliers': {
+            'environnement': {'nb': N, 'cibles_atteintes': M, 'lignes': [...]},
+            'social': {...},
+            'gouvernance': {...},
+        },
+        'lignes': [...],   # à plat, tous piliers confondus
+    }``. Aucune mutation, aucun import cross-app.
+    """
+    if company is None:
+        return {'annee': annee, 'total': 0, 'piliers': {}, 'lignes': []}
+
+    qs = IndicateurESG.objects.filter(company=company)
+    if annee not in (None, ''):
+        qs = qs.filter(annee=annee)
+    qs = qs.order_by('pilier', 'code', 'id')
+
+    piliers = {
+        IndicateurESG.Pilier.ENVIRONNEMENT: {
+            'nb': 0, 'cibles_atteintes': 0, 'lignes': []},
+        IndicateurESG.Pilier.SOCIAL: {
+            'nb': 0, 'cibles_atteintes': 0, 'lignes': []},
+        IndicateurESG.Pilier.GOUVERNANCE: {
+            'nb': 0, 'cibles_atteintes': 0, 'lignes': []},
+    }
+    lignes = []
+    for ind in qs:
+        atteinte = ind.atteinte_cible
+        ligne = {
+            'id': ind.id,
+            'pilier': ind.pilier,
+            'code': ind.code,
+            'libelle': ind.libelle,
+            'valeur': str(ind.valeur) if ind.valeur is not None else None,
+            'cible': str(ind.cible) if ind.cible is not None else None,
+            'unite': ind.unite,
+            'annee': ind.annee,
+            'periode': ind.periode,
+            'atteinte_cible': atteinte,
+        }
+        lignes.append(ligne)
+        bucket = piliers.get(ind.pilier)
+        if bucket is not None:
+            bucket['nb'] += 1
+            if atteinte:
+                bucket['cibles_atteintes'] += 1
+            bucket['lignes'].append(ligne)
+
+    return {
+        'annee': annee if annee not in (None, '') else None,
+        'total': len(lignes),
+        'piliers': piliers,
+        'lignes': lignes,
     }
