@@ -130,6 +130,20 @@ class Contrat(models.Model):
     # contrats_a_preavis). Posé côté serveur ; jamais une transition de statut.
     preavis_traite = models.BooleanField(
         default=False, verbose_name='Préavis traité')
+    # CONTRAT23 — renouvellement (manuel + tacite reconduction).
+    # Date du DERNIER renouvellement effectif (manuel ou tacite). NULL = jamais
+    # renouvelé. Posée côté serveur par ``services.renouveler_contrat`` — sert
+    # à tracer qui/quand a été agi et de GARDE D'IDEMPOTENCE pour la tacite
+    # reconduction (on ne re-reconduit pas une même période deux fois le même
+    # jour). Jamais une transition de statut (préservation des statuts CONTRAT12).
+    date_dernier_renouvellement = models.DateField(
+        null=True, blank=True,
+        verbose_name='Date du dernier renouvellement')
+    # Nombre de renouvellements effectifs subis par le contrat (manuels +
+    # tacites). Incrémenté de 1 à chaque renouvellement. Purement informatif /
+    # audit ; n'entre dans aucune machine d'états.
+    nb_renouvellements = models.PositiveIntegerField(
+        default=0, verbose_name='Nombre de renouvellements')
     montant = models.DecimalField(
         max_digits=14, decimal_places=2, default=Decimal('0'),
         verbose_name='Montant')
@@ -206,6 +220,24 @@ class Contrat(models.Model):
             from django.utils import timezone
             today = timezone.localdate()
         return (self.date_fin - today).days
+
+    @staticmethod
+    def ajouter_mois(base, mois):
+        """Renvoie ``base`` décalée de ``mois`` mois (sans dépendance externe).
+
+        CONTRAT23. Décale une date d'un nombre entier de mois en gérant le
+        débordement d'année et en bornant le jour au dernier jour du mois cible
+        (ex. 31 janvier + 1 mois → 28/29 février). N'utilise que la bibliothèque
+        standard (``calendar``) — pas de ``dateutil``.
+        """
+        import calendar
+
+        total = (base.month - 1) + int(mois)
+        annee = base.year + total // 12
+        mois_cible = total % 12 + 1
+        dernier_jour = calendar.monthrange(annee, mois_cible)[1]
+        jour = min(base.day, dernier_jour)
+        return base.replace(year=annee, month=mois_cible, day=jour)
 
     def valider_parties(self):
         """Vérifie qu'un contrat finalisable a au moins deux parties.

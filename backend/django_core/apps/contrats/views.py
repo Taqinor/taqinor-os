@@ -61,6 +61,7 @@ from .serializers import (
     PartieContratSerializer,
     RegleApprobationSerializer,
     RendreContratSerializer,
+    RenouvelerContratSerializer,
     ResoudreRegleApprobationSerializer,
     SemerAlertesSerializer,
     SignatureContratSerializer,
@@ -198,6 +199,57 @@ class ContratViewSet(_ContratsBaseViewSet):
         return Response(
             ContratSerializer(
                 qs, many=True, context={'request': request}).data)
+
+    @action(detail=True, methods=['post'])
+    def renouveler(self, request, pk=None):
+        """Renouvelle EFFECTIVEMENT le contrat (action manuelle — CONTRAT23).
+
+        Prolonge la période contractuelle : ``nouvelle_date_fin`` explicite OU
+        ``duree_mois`` (à défaut, la ``duree_reconduction_mois`` du contrat).
+        Avance ``date_fin`` (et ``date_debut`` à l'ancienne fin), remet
+        ``preavis_traite=False``, fige un instantané (CONTRAT18) et journalise
+        (CONTRAT15). Refuse (400) un contrat résilié/expiré ou un calcul
+        impossible (aucune durée). Le ``statut`` n'est JAMAIS modifié
+        (préservation des statuts) ; jamais un funnel STAGES.py. L'auteur et la
+        société sont posés côté serveur. La société est garantie par
+        ``get_object``.
+        """
+        contrat = self.get_object()
+        body = RenouvelerContratSerializer(data=request.data)
+        body.is_valid(raise_exception=True)
+        try:
+            contrat = services.renouveler_contrat(
+                contrat,
+                nouvelle_date_fin=body.validated_data.get('nouvelle_date_fin'),
+                duree_mois=body.validated_data.get('duree_mois'),
+                auteur=request.user,
+            )
+        except services.RenouvellementError as exc:
+            return Response(
+                {'detail': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+        return Response(
+            ContratSerializer(contrat, context={'request': request}).data)
+
+    @action(detail=False, methods=['post'], url_path='traiter-reconductions')
+    def traiter_reconductions(self, request):
+        """Reconduit automatiquement les contrats en tacite reconduction dus (CONTRAT23).
+
+        Trouve les contrats ``tacite_reconduction=True`` non résiliés/expirés
+        dont l'échéance (``date_fin``) est atteinte et qui portent une durée de
+        reconduction, et les renouvelle chacun de leur ``duree_reconduction_mois``
+        (idempotent : un second appel le même jour ne re-reconduit pas la même
+        période). La date du jour et la société sont posées CÔTÉ SERVEUR. Ne
+        change AUCUN statut de contrat.
+        """
+        resultat = services.traiter_reconductions_tacites(
+            request.user.company, auteur=request.user)
+        return Response({
+            'nb_traites': resultat['nb_traites'],
+            'nb_renouvellements': resultat['nb_renouvellements'],
+            'contrats': ContratSerializer(
+                resultat['contrats'], many=True,
+                context={'request': request}).data,
+        })
 
     @action(detail=True, methods=['get'])
     def liens(self, request, pk=None):
