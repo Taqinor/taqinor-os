@@ -16,6 +16,8 @@ from .views import (
     JalonViewSet,
     JourFerieViewSet,
     LigneBudgetProjetViewSet,
+    ModeleProjetViewSet,
+    ModeleTacheViewSet,
     PhaseProjetViewSet,
     ProjetChantierViewSet,
     ProjetLienViewSet,
@@ -49,6 +51,8 @@ router.register(r'actions', ActionProjetViewSet)
 router.register(r'comptes-rendus', CompteRenduReunionViewSet)
 router.register(r'documents', DocumentProjetViewSet)
 router.register(r'commentaires', CommentaireProjetViewSet)
+router.register(r'modeles', ModeleProjetViewSet)
+router.register(r'modele-taches', ModeleTacheViewSet)
 
 urlpatterns = [
     path('', include(router.urls)),

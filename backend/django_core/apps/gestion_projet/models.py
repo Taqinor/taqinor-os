@@ -1672,3 +1672,104 @@ class CommentaireProjet(models.Model):
 
     def __str__(self):
         return f'commentaire {self.id} ({self.cible_type})'
+
+
+class ModeleProjet(models.Model):
+    """Un MODÈLE (template) de projet par type d'installation (PROJ35).
+
+    Décrit une trame réutilisable de phases + tâches pour un ``type_installation``
+    (résidentiel / industriel / agricole / autre) : appliqué à un ``Projet`` via
+    le service ``instancier_modele``, il y crée les phases standard nécessaires et
+    les tâches du modèle (``ModeleTache``). Le ``type_installation`` est un enum
+    PROPRE à ce module ; il ne réutilise NI n'importe AUCUNE clé/étiquette de
+    ``STAGES.py`` (règle #2).
+
+    Tout est multi-société : ``company`` est posée côté serveur, jamais lue du
+    corps de requête. Modèle entièrement additif.
+    """
+    class TypeInstallation(models.TextChoices):
+        RESIDENTIEL = 'residentiel', 'Résidentiel'
+        INDUSTRIEL = 'industriel', 'Industriel / Commercial'
+        AGRICOLE = 'agricole', 'Agricole (pompage)'
+        AUTRE = 'autre', 'Autre'
+
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='gestion_projet_modeles',
+        verbose_name='Société',
+    )
+    nom = models.CharField(max_length=200, verbose_name='Nom du modèle')
+    type_installation = models.CharField(
+        max_length=12, choices=TypeInstallation.choices,
+        default=TypeInstallation.RESIDENTIEL,
+        verbose_name="Type d'installation")
+    description = models.TextField(
+        blank=True, default='', verbose_name='Description')
+    actif = models.BooleanField(default=True, verbose_name='Actif')
+    date_creation = models.DateTimeField(
+        auto_now_add=True, verbose_name='Créé le')
+
+    class Meta:
+        verbose_name = 'Modèle de projet'
+        verbose_name_plural = 'Modèles de projet'
+        ordering = ['nom', 'id']
+        constraints = [
+            models.UniqueConstraint(
+                fields=['company', 'nom'],
+                name='gp_modele_company_nom_uniq'),
+        ]
+
+    def __str__(self):
+        return f'{self.nom} ({self.get_type_installation_display()})'
+
+
+class ModeleTache(models.Model):
+    """Une tâche-type d'un ``ModeleProjet`` (PROJ35).
+
+    Décrit une tâche à créer lors de l'instanciation du modèle, rattachée à un
+    ``type_phase`` standard (étude/appro/pose/MES/réception). ``libelle``,
+    ``ordre``, ``charge_estimee`` (jours-homme prévus, optionnelle) et
+    ``code_wbs`` (optionnel) sont copiés tels quels sur la ``Tache`` créée. Le
+    ``type_phase`` réutilise l'enum de ``PhaseProjet.TypePhase`` (même module).
+
+    Tout est multi-société : ``company`` est posée côté serveur, jamais lue du
+    corps de requête. Modèle entièrement additif.
+    """
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='gestion_projet_modele_taches',
+        verbose_name='Société',
+    )
+    modele = models.ForeignKey(
+        ModeleProjet,
+        on_delete=models.CASCADE,
+        related_name='taches',
+        verbose_name='Modèle',
+    )
+    type_phase = models.CharField(
+        max_length=12, choices=PhaseProjet.TypePhase.choices,
+        default=PhaseProjet.TypePhase.ETUDE,
+        verbose_name='Type de phase')
+    code_wbs = models.CharField(
+        max_length=50, blank=True, default='', verbose_name='Code WBS')
+    libelle = models.CharField(max_length=200, verbose_name='Libellé')
+    ordre = models.PositiveIntegerField(default=0, verbose_name='Ordre')
+    charge_estimee = models.DecimalField(
+        max_digits=8, decimal_places=2, null=True, blank=True,
+        verbose_name='Charge estimée (j-h)')
+    date_creation = models.DateTimeField(
+        auto_now_add=True, verbose_name='Créé le')
+
+    class Meta:
+        verbose_name = 'Tâche-type de modèle'
+        verbose_name_plural = 'Tâches-types de modèle'
+        ordering = ['modele', 'ordre', 'id']
+        indexes = [
+            models.Index(
+                fields=['modele', 'ordre'], name='gp_modtache_mod_idx'),
+        ]
+
+    def __str__(self):
+        return f'{self.modele_id} — {self.libelle}'

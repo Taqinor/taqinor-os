@@ -30,6 +30,8 @@ from .models import (
     Jalon,
     JourFerie,
     LigneBudgetProjet,
+    ModeleProjet,
+    ModeleTache,
     PhaseProjet,
     Projet,
     ProjetActivity,
@@ -57,6 +59,8 @@ from .serializers import (
     JalonSerializer,
     JourFerieSerializer,
     LigneBudgetProjetSerializer,
+    ModeleProjetSerializer,
+    ModeleTacheSerializer,
     PhaseProjetSerializer,
     ProjetActivitySerializer,
     ProjetChantierSerializer,
@@ -1555,4 +1559,88 @@ class CommentaireProjetViewSet(_GestionProjetBaseViewSet):
         mention = self.request.query_params.get('mention')
         if mention:
             qs = qs.filter(mentions__id=mention)
+        return qs
+
+
+class ModeleProjetViewSet(_GestionProjetBaseViewSet):
+    """Modèles (templates) de projet par type d'installation (PROJ35).
+
+    ``company`` est posée côté serveur (TenantMixin). Filtres optionnels :
+    ``?type_installation=<type>``, ``?actif=1``. Recherche par nom / description.
+    L'action ``modeles/<id>/instancier/`` applique le modèle à un projet (corps :
+    ``projet``) — crée phases + tâches (additif). Les tâches-types se gèrent via
+    ``modele-taches/``.
+    """
+    queryset = ModeleProjet.objects.prefetch_related('taches').all()
+    serializer_class = ModeleProjetSerializer
+    filter_backends = [filters.SearchFilter, filters.OrderingFilter]
+    search_fields = ['nom', 'description']
+    ordering_fields = ['nom', 'type_installation', 'id']
+
+    def perform_create(self, serializer):
+        serializer.save(company=self.request.user.company)
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        type_installation = self.request.query_params.get('type_installation')
+        if type_installation:
+            qs = qs.filter(type_installation=type_installation)
+        actif = self.request.query_params.get('actif')
+        if actif in ('1', 'true', 'True'):
+            qs = qs.filter(actif=True)
+        elif actif in ('0', 'false', 'False'):
+            qs = qs.filter(actif=False)
+        return qs
+
+    @action(detail=True, methods=['post'], url_path='instancier')
+    def instancier(self, request, pk=None):
+        """Applique le modèle à un PROJET : crée phases + tâches (PROJ35).
+
+        Corps : ``projet`` (id, obligatoire). Le projet doit appartenir à la
+        société de l'utilisateur (sinon 400) — la société du modèle est garantie
+        par ``get_object`` (queryset scopé société). Opération ADDITIVE : aucune
+        phase/tâche existante n'est écrasée. Renvoie les tâches créées (201).
+        """
+        modele = self.get_object()
+        projet_id = request.data.get('projet')
+        if not projet_id:
+            return Response(
+                {'projet': 'Le projet est obligatoire.'},
+                status=status.HTTP_400_BAD_REQUEST)
+        projet = Projet.objects.filter(
+            id=projet_id, company=request.user.company).first()
+        if projet is None:
+            return Response(
+                {'projet': 'Projet inconnu.'},
+                status=status.HTTP_400_BAD_REQUEST)
+        try:
+            taches = services.instancier_modele(modele, projet)
+        except services.ModeleProjetError as exc:
+            return Response(
+                {'detail': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+        return Response(
+            TacheSerializer(taches, many=True).data,
+            status=status.HTTP_201_CREATED)
+
+
+class ModeleTacheViewSet(_GestionProjetBaseViewSet):
+    """Tâches-types d'un modèle de projet (PROJ35) — CRUD scopé société.
+
+    ``company`` est posée côté serveur (TenantMixin) ; le ``modele`` reçu est
+    validé même-société. Filtres optionnels : ``?modele=<id>``,
+    ``?type_phase=<type>``. Tri par défaut ``ordre`` puis ``id``.
+    """
+    queryset = ModeleTache.objects.select_related('modele').all()
+    serializer_class = ModeleTacheSerializer
+    filter_backends = [filters.OrderingFilter]
+    ordering_fields = ['ordre', 'type_phase', 'id']
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        modele = self.request.query_params.get('modele')
+        if modele:
+            qs = qs.filter(modele_id=modele)
+        type_phase = self.request.query_params.get('type_phase')
+        if type_phase:
+            qs = qs.filter(type_phase=type_phase)
         return qs

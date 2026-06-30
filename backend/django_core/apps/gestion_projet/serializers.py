@@ -22,6 +22,8 @@ from .models import (
     Jalon,
     JourFerie,
     LigneBudgetProjet,
+    ModeleProjet,
+    ModeleTache,
     PhaseProjet,
     Projet,
     ProjetActivity,
@@ -863,3 +865,47 @@ class CommentaireProjetSerializer(serializers.ModelSerializer):
                     raise serializers.ValidationError(
                         f'Utilisateur #{membre.id} inconnu.')
         return value
+
+
+class ModeleTacheSerializer(serializers.ModelSerializer):
+    """Tâche-type d'un modèle de projet (PROJ35).
+
+    ``company`` n'est jamais exposée : elle est posée côté serveur. Le ``modele``
+    reçu est validé même-société.
+    """
+    type_phase_display = serializers.CharField(
+        source='get_type_phase_display', read_only=True)
+
+    class Meta:
+        model = ModeleTache
+        fields = [
+            'id', 'modele', 'type_phase', 'type_phase_display', 'code_wbs',
+            'libelle', 'ordre', 'charge_estimee', 'date_creation',
+        ]
+        read_only_fields = ['date_creation']
+
+    def validate_modele(self, value):
+        return _meme_societe(self, value, 'Modèle')
+
+
+class ModeleProjetSerializer(serializers.ModelSerializer):
+    """Modèle (template) de projet par type d'installation (PROJ35).
+
+    ``company`` n'est jamais exposée : elle est posée côté serveur. Les
+    tâches-types sont exposées en lecture seule (créées via leur propre endpoint
+    ``modele-taches/``). L'instanciation sur un projet se fait via
+    ``modeles/<id>/instancier/``.
+    """
+    type_installation_display = serializers.CharField(
+        source='get_type_installation_display', read_only=True)
+    taches = ModeleTacheSerializer(many=True, read_only=True)
+    nb_taches = serializers.IntegerField(
+        source='taches.count', read_only=True)
+
+    class Meta:
+        model = ModeleProjet
+        fields = [
+            'id', 'nom', 'type_installation', 'type_installation_display',
+            'description', 'actif', 'taches', 'nb_taches', 'date_creation',
+        ]
+        read_only_fields = ['date_creation']

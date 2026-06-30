@@ -9,6 +9,8 @@ from .models import (
     DocumentProjet,
     Jalon,
     LigneBudgetProjet,
+    ModeleProjet,
+    ModeleTache,
     PhaseProjet,
     Projet,
     ProjetActivity,
@@ -153,3 +155,18 @@ class CommentaireProjetAdmin(admin.ModelAdmin):
                     'company', 'date_creation')
     list_filter = ('cible_type', 'company')
     search_fields = ('texte',)
+
+
+@admin.register(ModeleProjet)
+class ModeleProjetAdmin(admin.ModelAdmin):
+    list_display = ('id', 'nom', 'type_installation', 'actif', 'company')
+    list_filter = ('type_installation', 'actif', 'company')
+    search_fields = ('nom', 'description')
+
+
+@admin.register(ModeleTache)
+class ModeleTacheAdmin(admin.ModelAdmin):
+    list_display = ('id', 'modele', 'type_phase', 'libelle', 'ordre',
+                    'company')
+    list_filter = ('type_phase', 'company')
+    search_fields = ('libelle',)

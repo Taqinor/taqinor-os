@@ -128,6 +128,74 @@ def deposer_version_document(document, fichier, commentaire='', auteur=None):
     return version
 
 
+# ── Templates de projet par type d'installation (PROJ35) ─────────────────────
+class ModeleProjetError(Exception):
+    """Erreur métier à l'instanciation d'un modèle de projet."""
+
+
+@transaction.atomic
+def instancier_modele(modele, projet):
+    """Applique un ``ModeleProjet`` à un ``Projet`` : crée phases + tâches (PROJ35).
+
+    Pour chaque tâche-type du modèle, s'assure que la ``PhaseProjet`` du
+    ``type_phase`` correspondant existe (création idempotente, mêmes libellés que
+    ``PHASES_STANDARD``) puis crée la ``Tache`` (libellé / code WBS / ordre /
+    charge copiés du modèle), rattachée à cette phase. ``company`` est TOUJOURS
+    celle du ``projet`` (jamais lue d'un corps) ; le modèle doit appartenir à la
+    MÊME société que le projet (sinon ``ModeleProjetError``). Écritures
+    atomiques. Renvoie la liste des ``Tache`` créées.
+
+    NB — opération ADDITIVE : elle n'écrase aucune phase/tâche existante (les
+    phases sont créées seulement si absentes ; les tâches sont toujours ajoutées).
+    """
+    from .models import ModeleProjet, PhaseProjet, Tache
+
+    if not isinstance(modele, ModeleProjet):  # pragma: no cover - garde-fou
+        raise TypeError('modele doit être une instance de ModeleProjet.')
+    if modele.company_id != projet.company_id:
+        raise ModeleProjetError(
+            'Le modèle et le projet doivent appartenir à la même société.')
+
+    # Libellés standard par type de phase (cohérent avec PHASES_STANDARD).
+    libelles_phase = {tp: lib for tp, lib in PHASES_STANDARD}
+    ordres_phase = {
+        tp: i for i, (tp, _) in enumerate(PHASES_STANDARD, start=1)}
+
+    # Phases déjà présentes sur le projet (par type).
+    phases_par_type = {
+        p.type_phase: p
+        for p in projet.phases.all()
+    }
+
+    def _phase_pour(type_phase):
+        phase = phases_par_type.get(type_phase)
+        if phase is None:
+            phase = PhaseProjet.objects.create(
+                company=projet.company,
+                projet=projet,
+                type_phase=type_phase,
+                libelle=libelles_phase.get(type_phase, ''),
+                ordre=ordres_phase.get(type_phase, 0),
+            )
+            phases_par_type[type_phase] = phase
+        return phase
+
+    creees = []
+    for mt in modele.taches.order_by('ordre', 'id'):
+        phase = _phase_pour(mt.type_phase)
+        tache = Tache.objects.create(
+            company=projet.company,
+            projet=projet,
+            phase=phase,
+            code_wbs=mt.code_wbs,
+            libelle=mt.libelle,
+            ordre=mt.ordre,
+            charge_estimee=mt.charge_estimee,
+        )
+        creees.append(tache)
+    return creees
+
+
 # Décomposition standard d'un projet d'installation solaire (WBS), dans l'ordre
 # de réalisation. PROPRE à ce module — ne réutilise aucune clé de STAGES.py.
 PHASES_STANDARD = [
