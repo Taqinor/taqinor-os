@@ -29,6 +29,7 @@ from authentication.permissions import (
 
 from django.db.models import Q
 
+from . import bulk_edit as bulk_edit_infra
 from . import data_explorer
 from . import jobs as jobs_infra
 from . import payment as payment_infra
@@ -358,3 +359,41 @@ class TrashViewSet(TenantMixin, viewsets.ReadOnlyModelViewSet):
             'restored': obj is not None,
             'record': self.get_serializer(record).data,
         })
+
+
+class BulkEditViewSet(viewsets.ViewSet):
+    """FG389 — édition de champ en masse, généralisée (sans modèle propre).
+
+    Aucune importation d'app domaine : opère sur des cibles ENREGISTRÉES par les
+    apps métier (``core.bulk_edit``), chacune fournissant un queryset déjà scopé
+    société + une liste blanche de champs modifiables. L'écriture est bornée au
+    queryset scopé (un id hors société est ignoré).
+
+      * ``GET  …/bulk-edit/targets/`` — cibles éditables + champs autorisés ;
+      * ``POST …/bulk-edit/appliquer/`` — corps
+        ``{"target": "...", "ids": [...], "changes": {champ: valeur}}``.
+    """
+    permission_classes = [IsAuthenticated]
+
+    @action(detail=False, methods=['get'])
+    def targets(self, request):
+        return Response(bulk_edit_infra.list_bulk_targets())
+
+    @action(detail=False, methods=['post'])
+    def appliquer(self, request):
+        body = request.data or {}
+        target = body.get('target')
+        if not target:
+            return Response({'detail': "Champ « target » requis."},
+                            status=status.HTTP_400_BAD_REQUEST)
+        try:
+            count = bulk_edit_infra.apply_bulk_edit(
+                target, request.user.company, request.user,
+                body.get('ids') or [], body.get('changes') or {})
+        except bulk_edit_infra.CibleInconnue as exc:
+            return Response({'detail': str(exc)},
+                            status=status.HTTP_404_NOT_FOUND)
+        except bulk_edit_infra.ChampNonModifiable as exc:
+            return Response({'detail': str(exc)},
+                            status=status.HTTP_400_BAD_REQUEST)
+        return Response({'modifies': count})

@@ -19,6 +19,7 @@ fichier, donc non modifié par cette tâche « core-only ») :
 from rest_framework.routers import DefaultRouter
 
 from .views import (
+    BulkEditViewSet,
     DashboardViewSet,
     PaymentTransactionViewSet,
     SavedQueryViewSet,
@@ -44,5 +45,7 @@ router.register(r'scheduled-exports', ScheduledExportViewSet,
                 basename='scheduled-export')
 # FG388 — corbeille par société + restauration + fenêtre d'undo.
 router.register(r'corbeille', TrashViewSet, basename='trash')
+# FG389 — édition de champ en masse, généralisée (cibles enregistrées).
+router.register(r'bulk-edit', BulkEditViewSet, basename='bulk-edit')
 
 urlpatterns = router.urls
