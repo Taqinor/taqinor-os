@@ -384,3 +384,67 @@ def cloturer_ordre_reparation(ordre, date_cloture=None,
             echeance_close = echeance
 
     return ordre, echeance_close
+
+
+# ── FLOTTE27 — Point d'intégration télématique (KEY-GATED no-op) ──────────────
+
+def telematique_active():
+    """FLOTTE27 — True si l'intégration télématique est activée (gated, off).
+
+    KEY-GATED : sans ``settings.TELEMATIQUE_ENABLED`` à vrai, tout l'aspect
+    fournisseur est un NO-OP (aucun appel réseau, aucune dépendance, aucun coût).
+    Le founder active la fonctionnalité en posant le drapeau + la clé du
+    fournisseur dans l'environnement. Tant que le flag est faux, ``synchroniser_
+    releves`` ne fait rien et l'ingestion MANUELLE des relevés reste la seule
+    voie (et elle marche toujours).
+
+    Pour rester réellement no-op même drapeau activé tant qu'aucun fournisseur
+    concret n'est câblé, on exige AUSSI qu'un module fournisseur soit importable
+    (``telematique_provider``) — sinon on reste off. On ne lève jamais.
+    """
+    from django.conf import settings
+    if not bool(getattr(settings, 'TELEMATIQUE_ENABLED', False)):
+        return False
+    # Drapeau activé : un fournisseur concret doit être câblé pour sortir du
+    # no-op. Import GARDÉ — tant qu'aucun module fournisseur n'existe, on reste
+    # off (jamais d'appel fantôme, aucune dépendance dure introduite ici).
+    try:  # pragma: no cover - dépend d'un provider externe non câblé ici.
+        from . import telematique_provider as provider  # noqa: F401
+    except ImportError:
+        return False
+    return provider is not None  # pragma: no cover
+
+
+def synchroniser_releves(company, *, actif_flotte=None, depuis=None):
+    """FLOTTE27 — Synchronise les relevés télématiques depuis le fournisseur.
+
+    POINT D'INTÉGRATION : tire les relevés (odomètre, position, carburant,
+    heures moteur) d'un fournisseur GPS/télématique externe et les enregistre
+    comme ``ReleveTelematique`` de la société.
+
+    NO-OP par défaut : tant que ``telematique_active()`` est faux (aucun
+    fournisseur configuré), cette fonction ne fait RIEN — aucun appel réseau,
+    aucune dépendance, aucun coût — et renvoie ``0`` (nombre de relevés
+    importés). Le squelette d'appel fournisseur est isolé ici pour un futur
+    branchement sans toucher au reste du module ; l'ingestion MANUELLE d'un
+    ``ReleveTelematique`` (``source='manuel'``) ne dépend jamais de ce chemin.
+
+    Multi-tenant : ``company`` est toujours posée côté serveur ; tout relevé
+    importé hériterait de cette société (jamais lue d'un corps de requête).
+    ``actif_flotte`` (optionnel) restreint la synchro à un actif ; ``depuis``
+    (optionnel) borne la fenêtre temporelle. Ne lève jamais — une synchro
+    indisponible renvoie simplement ``0``.
+
+    Retourne le nombre de relevés nouvellement importés (``0`` en mode no-op).
+    """
+    if not telematique_active():
+        # Aucun fournisseur configuré → no-op total : on ne touche rien.
+        return 0
+    # Branchement fournisseur à venir (clé-gated). Tant qu'aucun fournisseur
+    # concret n'est câblé, ``telematique_active`` renvoie déjà False ; ce bloc
+    # n'est donc jamais atteint en l'état (no-op garanti). Laissé en squelette
+    # pour le futur branchement.
+    from . import telematique_provider as provider  # pragma: no cover
+    releves = provider.fetch_releves(  # pragma: no cover
+        company, actif_flotte=actif_flotte, depuis=depuis)
+    return len(releves or [])  # pragma: no cover

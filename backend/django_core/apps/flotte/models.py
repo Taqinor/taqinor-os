@@ -2284,3 +2284,110 @@ class Infraction(models.Model):
     def __str__(self):
         return (f'PV {self.get_type_infraction_display()} — '
                 f'{self.actif_flotte} ({self.date_infraction})')
+
+
+# ── FLOTTE27 — Relevés télématiques (point d'intégration GPS, no-op) ───────────
+
+class ReleveTelematique(models.Model):
+    """Relevé télématique d'un actif du parc (FLOTTE27 — point d'intégration GPS).
+
+    Stocke une LECTURE issue d'un boîtier GPS / d'un fournisseur télématique
+    externe : odomètre, position GPS, niveau de carburant, heures moteur. Chaque
+    relevé est rattaché à un ``ActifFlotte`` (FLOTTE5 — véhicule OU engin) de la
+    MÊME société et horodaté.
+
+    POINT D'INTÉGRATION KEY-GATED / NO-OP : ce modèle est le MAGASIN des relevés.
+    La SYNCHRONISATION depuis un fournisseur externe
+    (``services.synchroniser_releves``) est un NO-OP tant qu'aucun fournisseur
+    n'est configuré (``settings.TELEMATIQUE_ENABLED`` faux par défaut) — aucun
+    appel réseau, aucune dépendance, aucun coût. L'INGESTION MANUELLE (créer un
+    ``ReleveTelematique`` directement, ``source='manuel'``) fonctionne toujours,
+    fournisseur ou pas.
+
+    Multi-tenant : ``company`` est posée côté serveur (jamais lue du corps de
+    requête). L'actif lié doit appartenir à la MÊME société (validé dans
+    ``clean`` et au sérialiseur).
+    """
+
+    class Source(models.TextChoices):
+        MANUEL = 'manuel', 'Saisie manuelle'
+        TELEMATIQUE = 'telematique', 'Fournisseur télématique'
+
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='flotte_releves_telematiques',
+        verbose_name='Société',
+    )
+    actif_flotte = models.ForeignKey(
+        'ActifFlotte',
+        on_delete=models.CASCADE,
+        related_name='flotte_releves_telematiques',
+        verbose_name='Actif (véhicule ou engin)',
+    )
+    horodatage = models.DateTimeField(verbose_name='Horodatage du relevé')
+    odometre = models.DecimalField(
+        max_digits=12, decimal_places=1, null=True, blank=True,
+        verbose_name='Odomètre (km)')
+    position_lat = models.DecimalField(
+        max_digits=9, decimal_places=6, null=True, blank=True,
+        verbose_name='Latitude')
+    position_lng = models.DecimalField(
+        max_digits=9, decimal_places=6, null=True, blank=True,
+        verbose_name='Longitude')
+    niveau_carburant = models.DecimalField(
+        max_digits=5, decimal_places=1, null=True, blank=True,
+        verbose_name='Niveau de carburant (%)')
+    heures_moteur = models.DecimalField(
+        max_digits=10, decimal_places=1, null=True, blank=True,
+        verbose_name='Heures moteur')
+    # Origine du relevé : 'manuel' (saisi à la main, toujours possible) ou
+    # 'telematique' (poussé par un fournisseur, via la synchro no-op-gated).
+    # CharField borné : 'telematique' (11) est le plus long code (leçon FG136).
+    source = models.CharField(
+        max_length=20, choices=Source.choices, default=Source.MANUEL,
+        verbose_name='Source')
+    # Charge brute renvoyée par le fournisseur (additive, jamais figée) — utile
+    # pour tracer ce que le boîtier a remonté sans inventer de schéma de colonnes.
+    raw_payload = models.JSONField(
+        default=dict, blank=True, verbose_name='Charge brute (fournisseur)')
+    date_creation = models.DateTimeField(
+        auto_now_add=True, verbose_name='Créé le')
+
+    class Meta:
+        verbose_name = 'Relevé télématique'
+        verbose_name_plural = 'Relevés télématiques'
+        ordering = ['-horodatage', '-id']
+        indexes = [
+            models.Index(
+                fields=['company', 'actif_flotte'],
+                name='flotte_tel_co_actif_idx',
+            ),
+            models.Index(
+                fields=['company', 'horodatage'],
+                name='flotte_tel_co_horo_idx',
+            ),
+        ]
+
+    def clean(self):
+        """Valide l'appartenance société de l'actif lié et la cohérence des
+        relevés numériques (odomètre / heures non négatifs ; carburant 0–100 %).
+        """
+        if self.actif_flotte_id is not None \
+                and self.actif_flotte.company_id != self.company_id:
+            raise ValidationError(
+                "L'actif n'appartient pas à la même société.")
+        if self.odometre is not None and self.odometre < 0:
+            raise ValidationError(
+                "L'odomètre ne peut pas être négatif.")
+        if self.heures_moteur is not None and self.heures_moteur < 0:
+            raise ValidationError(
+                "Les heures moteur ne peuvent pas être négatives.")
+        if self.niveau_carburant is not None \
+                and not (0 <= self.niveau_carburant <= 100):
+            raise ValidationError(
+                "Le niveau de carburant doit être compris entre 0 et 100 %.")
+
+    def __str__(self):
+        return (f'Relevé {self.get_source_display()} — '
+                f'{self.actif_flotte} ({self.horodatage:%Y-%m-%d %H:%M})')

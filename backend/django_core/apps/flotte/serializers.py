@@ -26,6 +26,7 @@ from .models import (
     Pneumatique,
     PleinCarburant,
     ReferentielFlotte,
+    ReleveTelematique,
     ReservationVehicule,
     Sinistre,
     Vehicule,
@@ -1443,5 +1444,68 @@ class InfractionSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError(
                 {'conducteur':
                  "Ce conducteur n'appartient pas à votre société."})
+
+        return attrs
+
+
+class ReleveTelematiqueSerializer(serializers.ModelSerializer):
+    """FLOTTE27 — Relevé télématique d'un actif de flotte.
+
+    ``company`` est posée côté serveur (jamais lue du corps de requête). L'actif
+    lié (``actif_flotte``) doit appartenir à la société courante. Les valeurs
+    numériques sont bornées (odomètre / heures ≥ 0 ; carburant 0–100 %).
+
+    Champs lecture seule :
+    - ``actif_label``     : désignation de l'actif (véhicule ou engin).
+    - ``source_display``  : libellé de la source du relevé.
+    """
+
+    actif_label = serializers.SerializerMethodField()
+    source_display = serializers.CharField(
+        source='get_source_display', read_only=True)
+
+    class Meta:
+        model = ReleveTelematique
+        fields = [
+            'id', 'actif_flotte', 'actif_label', 'horodatage', 'odometre',
+            'position_lat', 'position_lng', 'niveau_carburant',
+            'heures_moteur', 'source', 'source_display', 'raw_payload',
+            'date_creation',
+        ]
+        read_only_fields = ['date_creation']
+
+    def get_actif_label(self, obj):
+        return obj.actif_flotte.label if obj.actif_flotte_id else None
+
+    def validate_odometre(self, value):
+        if value is not None and value < 0:
+            raise serializers.ValidationError(
+                "L'odomètre ne peut pas être négatif.")
+        return value
+
+    def validate_heures_moteur(self, value):
+        if value is not None and value < 0:
+            raise serializers.ValidationError(
+                "Les heures moteur ne peuvent pas être négatives.")
+        return value
+
+    def validate_niveau_carburant(self, value):
+        if value is not None and not (0 <= value <= 100):
+            raise serializers.ValidationError(
+                "Le niveau de carburant doit être compris entre 0 et 100 %.")
+        return value
+
+    def validate(self, attrs):
+        request = self.context.get('request')
+        company = getattr(getattr(request, 'user', None), 'company', None)
+
+        actif_flotte = attrs.get(
+            'actif_flotte', getattr(self.instance, 'actif_flotte', None))
+
+        if company is not None and actif_flotte is not None \
+                and actif_flotte.company_id != company.id:
+            raise serializers.ValidationError(
+                {'actif_flotte':
+                 "Cet actif n'appartient pas à votre société."})
 
         return attrs

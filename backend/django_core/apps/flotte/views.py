@@ -33,6 +33,7 @@ from .models import (
     Pneumatique,
     PleinCarburant,
     ReferentielFlotte,
+    ReleveTelematique,
     ReservationVehicule,
     Sinistre,
     Vehicule,
@@ -58,6 +59,7 @@ from .serializers import (
     PneumatiqueSerializer,
     PleinCarburantSerializer,
     ReferentielFlotteSerializer,
+    ReleveTelematiqueSerializer,
     ReservationVehiculeSerializer,
     SinistreSerializer,
     VehiculeSerializer,
@@ -1221,6 +1223,74 @@ class SinistreViewSet(_FlotteBaseViewSet):
                 pass
 
         return qs
+
+
+class ReleveTelematiqueViewSet(_FlotteBaseViewSet):
+    """Relevés télématiques des actifs de flotte (FLOTTE27 — point d'intégration).
+
+    CRUD scopé société (écriture responsable/admin) du MAGASIN de relevés GPS /
+    télématiques : odomètre, position, niveau de carburant, heures moteur,
+    source et charge brute du fournisseur. L'ingestion MANUELLE (POST direct,
+    ``source='manuel'``) fonctionne toujours. Filtrable par ``?actif_flotte=<id>``
+    et ``?source=<manuel|telematique>``. L'actif lié doit appartenir à la société
+    (validé au sérialiseur).
+
+    Action ``POST /releves-telematiques/synchroniser/`` (écriture
+    responsable/admin) : déclenche la synchronisation depuis le fournisseur
+    externe. KEY-GATED / NO-OP — tant qu'aucun fournisseur n'est configuré
+    (``settings.TELEMATIQUE_ENABLED`` faux par défaut), elle ne fait RIEN (aucun
+    appel réseau, aucun coût) et renvoie ``{'active': false, 'importes': 0}``.
+    """
+    queryset = ReleveTelematique.objects.select_related(
+        'actif_flotte', 'actif_flotte__vehicule', 'actif_flotte__engin')
+    serializer_class = ReleveTelematiqueSerializer
+    filter_backends = [filters.OrderingFilter]
+    ordering_fields = ['horodatage', 'odometre', 'source', 'date_creation']
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        params = self.request.query_params
+
+        actif_flotte = params.get('actif_flotte')
+        if actif_flotte:
+            try:
+                qs = qs.filter(actif_flotte_id=int(actif_flotte))
+            except (ValueError, TypeError):
+                pass
+
+        source = params.get('source')
+        if source:
+            qs = qs.filter(source=source)
+
+        return qs
+
+    @action(detail=False, methods=['post'])
+    def synchroniser(self, request):
+        """FLOTTE27 — Synchronise les relevés depuis le fournisseur (no-op gated).
+
+        Écriture (responsable/admin). Scopée société : la synchro pose toujours
+        la société côté serveur. NO-OP tant qu'aucun fournisseur n'est configuré
+        (``settings.TELEMATIQUE_ENABLED`` faux) — aucun appel réseau, aucun coût.
+        ``?actif_flotte=<id>`` restreint la synchro à un actif. Renvoie
+        ``{'active', 'importes'}``.
+        """
+        company = request.user.company
+
+        actif_flotte_id = None
+        actif_param = request.query_params.get('actif_flotte')
+        if actif_param:
+            try:
+                actif_flotte_id = int(actif_param)
+            except (ValueError, TypeError):
+                actif_flotte_id = None
+
+        from .services import synchroniser_releves, telematique_active
+        importes = synchroniser_releves(
+            company, actif_flotte=actif_flotte_id)
+        return Response({
+            'active': telematique_active(),
+            'importes': importes,
+        })
 
 
 class InfractionViewSet(_FlotteBaseViewSet):
