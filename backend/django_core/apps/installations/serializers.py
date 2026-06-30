@@ -55,6 +55,7 @@ from .models import (
     OrdreAssemblage,
     Livraison,
     LivraisonLigne,
+    PreuveLivraison,
 )
 
 
@@ -2124,4 +2125,21 @@ class LivraisonSerializer(serializers.ModelSerializer):
         read_only_fields = [
             'reference', 'statut', 'created_by',
             'date_creation', 'date_modification',
+        ]
+
+
+class PreuveLivraisonSerializer(serializers.ModelSerializer):
+    """FG330 - preuve de livraison (signature + photo + GPS horodate). La
+    societe et `created_by` sont poses COTE SERVEUR. Une seule preuve par
+    livraison (OneToOne)."""
+
+    class Meta:
+        model = PreuveLivraison
+        fields = [
+            'id', 'livraison', 'signataire_nom', 'signature_data', 'photo',
+            'gps_lat', 'gps_lng', 'horodatage', 'note',
+            'created_by', 'date_creation', 'date_modification',
+        ]
+        read_only_fields = [
+            'created_by', 'date_creation', 'date_modification',
         ]

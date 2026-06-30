@@ -52,6 +52,7 @@ from .views import (
     OrdreAssemblageViewSet,
     LivraisonViewSet,
     LivraisonLigneViewSet,
+    PreuveLivraisonViewSet,
 )
 
 router = DefaultRouter()
@@ -115,6 +116,7 @@ router.register(r'kit-composants', KitComposantViewSet)
 router.register(r'ordres-assemblage', OrdreAssemblageViewSet)
 router.register(r'livraisons', LivraisonViewSet)
 router.register(r'livraison-lignes', LivraisonLigneViewSet)
+router.register(r'preuves-livraison', PreuveLivraisonViewSet)
 
 urlpatterns = [
     # N91/F21 — synchro idempotente de la capture terrain hors-ligne.
