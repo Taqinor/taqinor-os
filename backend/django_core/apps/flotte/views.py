@@ -19,6 +19,7 @@ from .models import (
     AssuranceVehicule,
     BaremeVignette,
     CarteCarburant,
+    CarteGriseVehicule,
     Conducteur,
     EcheanceEntretien,
     EcheanceReglementaire,
@@ -41,6 +42,7 @@ from .serializers import (
     AssuranceVehiculeSerializer,
     BaremeVignetteSerializer,
     CarteCarburantSerializer,
+    CarteGriseVehiculeSerializer,
     ConducteurSerializer,
     EcheanceEntretienSerializer,
     EcheanceReglementaireSerializer,
@@ -1079,5 +1081,73 @@ class VisiteTechniqueViewSet(_FlotteBaseViewSet):
 
         from .selectors import visites_techniques_expirantes
         qs = visites_techniques_expirantes(company, within=within)
+        serializer = self.get_serializer(qs, many=True)
+        return Response(serializer.data)
+
+
+class CarteGriseVehiculeViewSet(_FlotteBaseViewSet):
+    """Cartes grises & autorisations de circulation des actifs (FLOTTE23).
+
+    CRUD scopé société (écriture responsable/admin) des DOCUMENTS
+    d'immatriculation : numéro de carte grise, dates d'immatriculation / de mise
+    en circulation, autorisation de circulation (numéro + date de validité,
+    facultatifs) et les deux documents scannés (carte grise, autorisation). Reste
+    100 % flotte (aucun couplage à ``apps.ged``). Filtrable par
+    ``?statut=<valide|a_renouveler|expiree>`` et ``?actif_flotte=<id>``.
+    Recherche par numéro de carte grise / numéro d'autorisation / notes.
+    ``statut_calcule`` (état réel de l'autorisation vs la date du jour) est exposé
+    en lecture. L'actif lié doit appartenir à la société (validé au sérialiseur).
+
+    Action ``GET /cartes-grises/expirantes/?within=N`` (lecture tout rôle) —
+    autorisations de circulation déjà expirées ou dues dans les ``N`` prochains
+    jours (défaut 30), de la plus urgente à la moins urgente.
+    """
+    queryset = CarteGriseVehicule.objects.select_related(
+        'actif_flotte', 'actif_flotte__vehicule', 'actif_flotte__engin')
+    serializer_class = CarteGriseVehiculeSerializer
+    filter_backends = [filters.SearchFilter, filters.OrderingFilter]
+    search_fields = ['numero_carte_grise', 'autorisation_circulation_numero',
+                     'notes']
+    ordering_fields = ['numero_carte_grise', 'date_immatriculation',
+                       'autorisation_date_validite', 'statut', 'date_creation']
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        params = self.request.query_params
+
+        statut = params.get('statut')
+        if statut:
+            qs = qs.filter(statut=statut)
+
+        actif_flotte = params.get('actif_flotte')
+        if actif_flotte:
+            try:
+                qs = qs.filter(actif_flotte_id=int(actif_flotte))
+            except (ValueError, TypeError):
+                pass
+
+        return qs
+
+    @action(detail=False, methods=['get'])
+    def expirantes(self, request):
+        """FLOTTE23 — Autorisations expirées ou dues sous ``?within=N`` jours.
+
+        Lecture (tout rôle), scopée société. ``within`` défaut = 30 jours ;
+        une valeur invalide retombe sur 30. Renvoie la liste sérialisée, de la
+        plus urgente (déjà expirée) à la moins urgente. Les cartes grises sans
+        date de validité d'autorisation sont exclues.
+        """
+        company = request.user.company
+
+        within_param = request.query_params.get('within')
+        within = 30
+        if within_param:
+            try:
+                within = int(within_param)
+            except (ValueError, TypeError):
+                within = 30
+
+        from .selectors import cartes_grises_expirantes
+        qs = cartes_grises_expirantes(company, within=within)
         serializer = self.get_serializer(qs, many=True)
         return Response(serializer.data)

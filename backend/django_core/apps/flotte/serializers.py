@@ -12,6 +12,7 @@ from .models import (
     AssuranceVehicule,
     BaremeVignette,
     CarteCarburant,
+    CarteGriseVehicule,
     Conducteur,
     EcheanceEntretien,
     EcheanceReglementaire,
@@ -1227,6 +1228,63 @@ class VisiteTechniqueSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError(
                 "La validité (mois) doit être strictement positive.")
         return value
+
+    def validate(self, attrs):
+        request = self.context.get('request')
+        company = getattr(getattr(request, 'user', None), 'company', None)
+
+        actif_flotte = attrs.get(
+            'actif_flotte', getattr(self.instance, 'actif_flotte', None))
+
+        if company is not None and actif_flotte is not None \
+                and actif_flotte.company_id != company.id:
+            raise serializers.ValidationError(
+                {'actif_flotte':
+                 "Cet actif n'appartient pas à votre société."})
+
+        return attrs
+
+
+# ── FLOTTE23 — Carte grise & autorisation de circulation ───────────────────────
+
+class CarteGriseVehiculeSerializer(serializers.ModelSerializer):
+    """FLOTTE23 — Carte grise & autorisation de circulation d'un actif.
+
+    ``company`` est posée côté serveur (jamais lue du corps de requête). L'actif
+    lié (``actif_flotte``) doit appartenir à la société courante. Stocke le
+    numéro de carte grise, les dates d'immatriculation / de mise en circulation,
+    l'autorisation de circulation (numéro + date de validité, facultatifs) et les
+    deux documents scannés (``carte_grise_fichier``, ``autorisation_fichier``).
+
+    Champs lecture seule :
+    - ``actif_label``    : désignation de l'actif (véhicule ou engin).
+    - ``statut_display`` : libellé du statut stocké.
+    - ``statut_calcule`` : état RÉEL de l'autorisation vs la date du jour
+      (``valide`` | ``a_renouveler`` | ``expiree``), calculé côté modèle.
+    """
+
+    actif_label = serializers.SerializerMethodField()
+    statut_display = serializers.CharField(
+        source='get_statut_display', read_only=True)
+    statut_calcule = serializers.SerializerMethodField()
+
+    class Meta:
+        model = CarteGriseVehicule
+        fields = [
+            'id', 'actif_flotte', 'actif_label', 'numero_carte_grise',
+            'date_immatriculation', 'date_mise_circulation',
+            'autorisation_circulation_numero', 'autorisation_date_validite',
+            'carte_grise_fichier', 'autorisation_fichier', 'alerte_jours',
+            'statut', 'statut_display', 'statut_calcule', 'notes',
+            'date_creation',
+        ]
+        read_only_fields = ['date_creation']
+
+    def get_actif_label(self, obj):
+        return obj.actif_flotte.label if obj.actif_flotte_id else None
+
+    def get_statut_calcule(self, obj):
+        return obj.statut_calcule()
 
     def validate(self, attrs):
         request = self.context.get('request')
