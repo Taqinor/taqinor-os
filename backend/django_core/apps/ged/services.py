@@ -232,6 +232,104 @@ def ocr_piece_vers_metadonnees(document, *, file_bytes=None, mime='',
     return meta
 
 
+# ── GED34 — Classification automatique (IA gated + heuristique locale) ───────
+#
+# Attribue une CATÉGORIE à un document. Deux étages, du moins coûteux au plus :
+#   1. HEURISTIQUE LOCALE (gratuite, déterministe) — mots-clés sur le nom +
+#      texte OCR, réutilise `detecter_type_piece` (GED33). TOUJOURS disponible.
+#   2. PROVIDER IA (KEY-GATED) — `classification_enabled()` ; sans
+#      `settings.GED_CLASSIFICATION_ENABLED`, c'est un NO-OP (aucun appel réseau,
+#      aucun coût) et on retombe sur l'heuristique locale.
+# La classification ne fait que SUGGÉRER (pose `custom_data['categorie']` de
+# façon additive) — elle ne déplace ni ne supprime jamais un document, et reste
+# LOCALE à la GED (séparée du funnel STAGES.py, rule #2).
+
+# Catégories locales reconnues par l'heuristique (mots-clés FR/marocains).
+CLASSIFICATION_KEYWORDS = {
+    'facture': ('facture', 'montant ttc', 'total ttc'),
+    'bon_livraison': ('bon de livraison', ' bl ', 'bordereau'),
+    'cin': ('carte nationale', 'cin', 'c.i.n'),
+    'contrat': ('contrat', 'convention', 'engagement'),
+    'devis': ('devis', 'proposition commerciale'),
+    'attestation': ('attestation', 'certificat'),
+    'photo': ('photo', 'image du chantier'),
+}
+
+
+def classification_enabled():
+    """GED34 — True si la classification IA est activée (clé présente).
+
+    KEY-GATED : sans `settings.GED_CLASSIFICATION_ENABLED`, le provider IA est un
+    no-op et la classification retombe sur l'heuristique locale (gratuite)."""
+    from django.conf import settings
+    return bool(getattr(settings, 'GED_CLASSIFICATION_ENABLED', False))
+
+
+def classer_heuristique(texte):
+    """GED34 — Catégorie déduite par mots-clés locaux (déterministe), ou ''.
+
+    Aucune clé, aucun appel réseau. Renvoie la première catégorie dont un
+    mot-clé apparaît dans le texte (nom + OCR), sinon '' (inconnu — jamais
+    d'invention)."""
+    if not texte:
+        return ''
+    t = f' {texte.lower()} '
+    for categorie, mots in CLASSIFICATION_KEYWORDS.items():
+        for mot in mots:
+            if mot in t:
+                return categorie
+    return ''
+
+
+def classer_ia(texte):  # pragma: no cover - dépend d'un provider externe non câblé.
+    """GED34 — Classification via le provider IA configuré, ou '' (no-op sans clé).
+
+    NO-OP PAR DÉFAUT : renvoie '' tant que `classification_enabled()` est faux.
+    Le squelette d'appel provider est isolé ici pour un futur branchement sans
+    toucher au reste du module. Ne lève jamais."""
+    if not texte or not classification_enabled():
+        return ''
+    provider = None
+    try:
+        from . import classification_provider as provider  # noqa: F401
+    except ImportError:
+        provider = None
+    if provider is None:
+        return ''
+    try:
+        return provider.classify(texte) or ''
+    except Exception:
+        return ''
+
+
+def classer_document(document, *, fusionner=True):
+    """GED34 — Classe un document (IA gated → fallback heuristique local).
+
+    Construit le texte de travail (`nom` + `texte_ocr`), tente d'abord le
+    provider IA (no-op sans clé) puis l'heuristique locale. Si `fusionner` est
+    vrai et qu'une catégorie est trouvée, la pose ADDITIVEMENT dans
+    `custom_data['categorie']` (jamais d'écrasement d'une valeur déjà posée) et
+    persiste côté serveur. Ne déplace ni ne supprime jamais le document.
+
+    Renvoie la catégorie (str) ou '' si indéterminée. Idempotent ; ne lève
+    jamais (la classification ne doit pas casser une écriture documentaire)."""
+    texte = f'{document.nom}\n{document.texte_ocr or ""}'.strip()
+    categorie = ''
+    try:
+        categorie = classer_ia(texte)
+    except Exception:  # pragma: no cover - robustesse.
+        categorie = ''
+    if not categorie:
+        categorie = classer_heuristique(texte)
+    if categorie and fusionner:
+        data = dict(document.custom_data or {})
+        if not data.get('categorie'):
+            data['categorie'] = categorie
+            Document.objects.filter(pk=document.pk).update(custom_data=data)
+            document.custom_data = data
+    return categorie
+
+
 # ── GED12 — Index OCR + recherche sémantique (pgvector, KEY-GATED no-op) ──
 
 def embedding_enabled():

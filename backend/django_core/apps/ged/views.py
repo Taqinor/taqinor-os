@@ -624,6 +624,31 @@ class DocumentViewSet(TenantMixin, viewsets.ModelViewSet):
             'ocr_enabled': services.ocr_enabled(),
         })
 
+    @action(detail=True, methods=['post'], url_path='classer')
+    def classer(self, request, pk=None):
+        """GED34 — Classe automatiquement ce document (IA gated → heuristique).
+
+        `POST …/documents/<id>/classer/` — aucun corps requis. Tente le provider
+        IA (no-op sans clé) puis retombe sur l'heuristique locale (mots-clés) et
+        pose ADDITIVEMENT `custom_data['categorie']` (jamais d'écrasement). Ne
+        déplace ni ne supprime jamais le document. Le document est company-scopé
+        via `get_object()`. Écriture : responsable/admin. Renvoie le document +
+        `{categorie: <str>, ia_enabled: <bool>}`."""
+        document = self.get_object()
+        if document.est_archive_legalement:
+            from .models import ARCHIVE_LEGALE_MESSAGE
+            return Response({'detail': ARCHIVE_LEGALE_MESSAGE},
+                            status=status.HTTP_403_FORBIDDEN)
+        categorie = services.classer_document(document)
+        document.refresh_from_db()
+        services.update_search_vector(document)
+        return Response({
+            'document': DocumentSerializer(
+                document, context={'request': request}).data,
+            'categorie': categorie,
+            'ia_enabled': services.classification_enabled(),
+        })
+
     @action(detail=True, methods=['post'], url_path='deplacer')
     def deplacer(self, request, pk=None):
         """Déplace ce document dans un autre dossier (déplacement scopé société).
