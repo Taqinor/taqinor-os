@@ -5,7 +5,12 @@ FG369 — forme de sortie des modèles de workflow installables (catalogue).
 """
 from rest_framework import serializers
 
-from .models import Dashboard, PaymentTransaction, SavedQuery
+from .models import (
+    Dashboard,
+    PaymentTransaction,
+    SavedQuery,
+    ScheduledExport,
+)
 
 
 class ScheduledJobSerializer(serializers.Serializer):
@@ -87,3 +92,22 @@ class SavedQuerySerializer(serializers.ModelSerializer):
             'created_at', 'updated_at',
         ]
         read_only_fields = ['id', 'owner', 'created_at', 'updated_at']
+
+
+class ScheduledExportSerializer(serializers.ModelSerializer):
+    """FG383 — extrait planifié vers SFTP/S3.
+
+    ``company`` n'est JAMAIS lu du corps (imposée côté serveur). Le résultat de
+    la dernière exécution est en lecture seule.
+    """
+    class Meta:
+        model = ScheduledExport
+        fields = [
+            'id', 'titre', 'dataset', 'spec', 'format', 'destination', 'cron',
+            'actif', 'derniere_execution_le', 'dernier_statut',
+            'dernier_detail', 'created_at', 'updated_at',
+        ]
+        read_only_fields = [
+            'id', 'derniere_execution_le', 'dernier_statut', 'dernier_detail',
+            'created_at', 'updated_at',
+        ]

@@ -22,6 +22,7 @@ from .views import (
     DashboardViewSet,
     PaymentTransactionViewSet,
     SavedQueryViewSet,
+    ScheduledExportViewSet,
     ScheduledJobViewSet,
     WorkflowTemplateViewSet,
 )
@@ -37,5 +38,8 @@ router.register(r'paiements-en-ligne', PaymentTransactionViewSet,
                 basename='payment-transaction')
 # FG382 — explorateur de données : requêtes ad-hoc sauvegardées + run.
 router.register(r'saved-queries', SavedQueryViewSet, basename='saved-query')
+# FG383 — extraits planifiés vers SFTP/S3 (gated).
+router.register(r'scheduled-exports', ScheduledExportViewSet,
+                basename='scheduled-export')
 
 urlpatterns = router.urls

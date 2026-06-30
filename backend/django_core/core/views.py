@@ -32,13 +32,20 @@ from django.db.models import Q
 from . import data_explorer
 from . import jobs as jobs_infra
 from . import payment as payment_infra
+from . import scheduled_export as scheduled_export_infra
 from . import workflow_templates
 from .mixins import TenantMixin
-from .models import Dashboard, PaymentTransaction, SavedQuery
+from .models import (
+    Dashboard,
+    PaymentTransaction,
+    SavedQuery,
+    ScheduledExport,
+)
 from .serializers import (
     DashboardSerializer,
     PaymentTransactionSerializer,
     SavedQuerySerializer,
+    ScheduledExportSerializer,
     ScheduledJobSerializer,
     WorkflowTemplateSerializer,
 )
@@ -285,3 +292,31 @@ class SavedQueryViewSet(TenantMixin, viewsets.ModelViewSet):
             return Response({'detail': "Champ « dataset » requis."},
                             status=status.HTTP_400_BAD_REQUEST)
         return self._execute(dataset, (request.data or {}).get('spec') or {})
+
+
+class ScheduledExportViewSet(TenantMixin, viewsets.ModelViewSet):
+    """FG383 — extraits planifiés vers SFTP/S3 (CRUD + run manuel, gated).
+
+    Multi-tenant : ``TenantMixin`` filtre par société et impose ``company``.
+    L'écriture (création/planification) est réservée au palier admin/responsable
+    (une destination externe est sensible). Aucune importation d'app domaine :
+    données via ``core.data_explorer`` (datasets enregistrés), livraison via le
+    runner ``core.scheduled_export`` (no-op propre si non configuré).
+
+      * ``POST …/scheduled-exports/{id}/executer/`` — exécute l'extrait
+        maintenant (no-op si la destination n'est pas configurée).
+    """
+    serializer_class = ScheduledExportSerializer
+    queryset = ScheduledExport.objects.all()
+    pagination_class = None
+
+    def get_permissions(self):
+        if self.action in ('list', 'retrieve'):
+            return [IsAuthenticated()]
+        return [IsAdminOrResponsableTier()]
+
+    @action(detail=True, methods=['post'])
+    def executer(self, request, pk=None):
+        export = self.get_object()
+        scheduled_export_infra.executer(export)
+        return Response(self.get_serializer(export).data)

@@ -817,3 +817,80 @@ class SavedQuery(TimestampedModel):
 
     def __str__(self):
         return self.titre
+
+
+# ---------------------------------------------------------------------------
+# FG383 — Extraits planifiés vers entrepôt / SFTP / S3.
+#
+# Modèle de FONDATION GÉNÉRIQUE : planifie un extrait de données (dataset FG382
+# + spec opaque) au format CSV/parquet vers une destination externe (SFTP/S3).
+# ``core`` ne sait RIEN des modèles extraits (datasets enregistrés par les apps
+# métier) ni de l'infra de destination (connecteur enregistré) — aucun import
+# d'app métier (contrat import-linter ``core-foundation-is-a-base-layer``).
+# ---------------------------------------------------------------------------
+
+
+class ScheduledExport(TimestampedModel):
+    """Extrait de données planifié vers une destination externe (FG383).
+
+    GÉNÉRIQUE : ``dataset`` + ``spec`` désignent les données (explorateur FG382) ;
+    ``format`` = CSV/parquet ; ``destination`` = connecteur enregistré (SFTP/S3).
+    ``cron`` porte la planification (interprétée par l'infra Celery Beat, hors
+    core). Multi-tenant : ``company`` obligatoire, imposée côté serveur.
+
+    ⚠ AUTH : la livraison réelle exige des credentials provisionnés par le
+    fondateur ; sans eux le runner reste en no-op (``dernier_statut`` =
+    « non_configure »).
+    """
+
+    FORMAT_CSV = 'csv'
+    FORMAT_PARQUET = 'parquet'
+    FORMAT_CHOICES = [
+        (FORMAT_CSV, 'CSV'),
+        (FORMAT_PARQUET, 'Parquet'),
+    ]
+
+    DEST_SFTP = 'sftp'
+    DEST_S3 = 's3'
+    DEST_CHOICES = [
+        (DEST_SFTP, 'SFTP'),
+        (DEST_S3, 'Bucket S3'),
+    ]
+
+    company = models.ForeignKey(
+        'authentication.Company', on_delete=models.CASCADE,
+        related_name='scheduled_exports', verbose_name='Société')
+
+    titre = models.CharField('Titre', max_length=160)
+    dataset = models.CharField(
+        'Dataset', max_length=80,
+        help_text='Nom du dataset enregistré (core.data_explorer).')
+    spec = models.JSONField(
+        'Spécification', default=dict, blank=True,
+        help_text='Sélection/filtres (opaque pour core).')
+    format = models.CharField(
+        'Format', max_length=10, choices=FORMAT_CHOICES, default=FORMAT_CSV)
+    destination = models.CharField(
+        'Destination', max_length=20, choices=DEST_CHOICES, default=DEST_SFTP)
+    cron = models.CharField(
+        'Planification (cron)', max_length=120, blank=True, default='',
+        help_text='Expression cron interprétée par Celery Beat (hors core).')
+    actif = models.BooleanField('Actif', default=True)
+
+    derniere_execution_le = models.DateTimeField(
+        'Dernière exécution', null=True, blank=True)
+    dernier_statut = models.CharField(
+        'Dernier statut', max_length=20, blank=True, default='')
+    dernier_detail = models.JSONField('Dernier détail', default=dict, blank=True)
+
+    class Meta:
+        verbose_name = 'Extrait planifié'
+        verbose_name_plural = 'Extraits planifiés'
+        ordering = ['titre', 'id']
+        indexes = [
+            models.Index(fields=['company', 'actif'],
+                         name='core_schedexp_co_actif_idx'),
+        ]
+
+    def __str__(self):
+        return f'{self.titre} → {self.destination}'
