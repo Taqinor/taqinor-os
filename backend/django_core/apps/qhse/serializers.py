@@ -7,12 +7,12 @@ appartenant à la société de l'utilisateur.
 from rest_framework import serializers
 
 from .models import (
-    ActionCorrectivePreventive, Audit, ConsignationLoto, CritereAudit,
-    EvaluationRisque, GrilleAudit, InductionSecurite, ItemNotation,
-    LigneEvaluationRisque, NonConformite, NotationFinChantier, PermisTravail,
-    PlanInspectionChantier, PlanInspectionModele, PointControleModele,
-    ProcedureQualite, QhseChatterEntry, ReleveControle, ReleveCourbeIV,
-    ReponseCritere, RetourClientQualite,
+    ActionCorrectivePreventive, Audit, ConsignationLoto, ContactUrgence,
+    CritereAudit, EvaluationRisque, GrilleAudit, InductionSecurite,
+    ItemNotation, LigneEvaluationRisque, NonConformite, NotationFinChantier,
+    PermisTravail, PlanInspectionChantier, PlanInspectionModele, PlanUrgence,
+    PointControleModele, ProcedureQualite, QhseChatterEntry, ReleveControle,
+    ReleveCourbeIV, ReponseCritere, RetourClientQualite, Secouriste,
 )
 
 
@@ -550,3 +550,75 @@ class InductionSecuriteSerializer(serializers.ModelSerializer):
 
     def validate_employe(self, value):
         return _meme_societe(self, value, 'Salarié')
+
+
+class ContactUrgenceSerializer(serializers.ModelSerializer):
+    """Contact d'urgence d'un plan d'urgence (QHSE28).
+
+    ``company`` est posée côté serveur ; le FK ``plan`` est validé même-société.
+    """
+    type_contact_display = serializers.CharField(
+        source='get_type_contact_display', read_only=True)
+
+    class Meta:
+        model = ContactUrgence
+        fields = [
+            'id', 'plan', 'type_contact', 'type_contact_display', 'nom',
+            'telephone', 'notes', 'ordre', 'date_creation',
+        ]
+        read_only_fields = ['date_creation']
+
+    def validate_plan(self, value):
+        return _meme_societe(self, value, "Plan d'urgence")
+
+
+class SecouristeSerializer(serializers.ModelSerializer):
+    """Secouriste désigné rattaché à un plan d'urgence (QHSE28).
+
+    ``company`` est posée côté serveur ; les FK ``plan`` et ``secouriste``
+    (salarié interne optionnel) sont validés même-société. Pour un externe,
+    ``nom`` libre suffit — aucun dossier RH requis.
+    """
+    secouriste_nom = serializers.CharField(
+        source='secouriste.__str__', read_only=True)
+
+    class Meta:
+        model = Secouriste
+        fields = [
+            'id', 'plan', 'secouriste', 'secouriste_nom', 'nom', 'telephone',
+            'certification', 'validite', 'ordre', 'date_creation',
+        ]
+        read_only_fields = ['date_creation']
+
+    def validate_plan(self, value):
+        return _meme_societe(self, value, "Plan d'urgence")
+
+    def validate_secouriste(self, value):
+        return _meme_societe(self, value, 'Salarié')
+
+
+class PlanUrgenceSerializer(serializers.ModelSerializer):
+    """Plan d'urgence / premiers secours par chantier (QHSE28).
+
+    ``company`` est posée côté serveur (jamais lue du corps). Expose en lecture
+    seule les contacts d'urgence et les secouristes imbriqués, plus leur nombre.
+    """
+    statut_display = serializers.CharField(
+        source='get_statut_display', read_only=True)
+    contacts = ContactUrgenceSerializer(many=True, read_only=True)
+    secouristes = SecouristeSerializer(many=True, read_only=True)
+    nb_contacts = serializers.IntegerField(
+        source='contacts.count', read_only=True)
+    nb_secouristes = serializers.IntegerField(
+        source='secouristes.count', read_only=True)
+
+    class Meta:
+        model = PlanUrgence
+        fields = [
+            'id', 'chantier_id', 'titre', 'point_rassemblement',
+            'point_rassemblement_details', 'hopital_proche',
+            'hopital_distance_km', 'hopital_telephone', 'date_revision',
+            'statut', 'statut_display', 'notes', 'contacts', 'secouristes',
+            'nb_contacts', 'nb_secouristes', 'date_creation',
+        ]
+        read_only_fields = ['date_creation']
