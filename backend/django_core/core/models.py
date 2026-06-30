@@ -493,3 +493,66 @@ class EsignRequest(TimestampedModel):
 
     def __str__(self):
         return f'E-sign {self.provider} #{self.pk} ({self.get_statut_display()})'
+
+
+# ---------------------------------------------------------------------------
+# FG374 — Sync calendrier Google/Outlook (2-way) : table de correspondance.
+#
+# Modèle de FONDATION GÉNÉRIQUE : associe l'identité d'un événement LOCAL
+# (pose/intervention/visite — désigné de façon générique par
+# ``local_kind`` + ``local_id``, JAMAIS par une FK métier) à son équivalent
+# dans un calendrier externe (``provider`` + ``external_event_id``). ``core``
+# n'importe donc aucune app métier (contrat import-linter
+# ``core-foundation-is-a-base-layer``) : l'app ``reporting`` qui agrège les
+# événements passera de simples dicts au moteur de sync.
+# ---------------------------------------------------------------------------
+
+
+class CalendarSyncMapping(TimestampedModel):
+    """Correspondance événement local ↔ événement de calendrier externe (FG374).
+
+    GÉNÉRIQUE : ``local_kind`` (ex. « intervention ») + ``local_id`` (chaîne)
+    identifient l'événement local SANS FK métier. ``last_hash`` détecte les
+    changements pour ne pousser que les diffs (sync 2-way idempotente).
+    Multi-tenant : ``company`` obligatoire. Unique par
+    ``(company, provider, local_kind, local_id)``.
+    """
+
+    company = models.ForeignKey(
+        'authentication.Company', on_delete=models.CASCADE,
+        related_name='calendar_sync_mappings', verbose_name='Société')
+
+    provider = models.CharField('Fournisseur', max_length=60)
+    local_kind = models.CharField(
+        "Type local", max_length=40,
+        help_text="Catégorie d'événement local, ex. « intervention ».")
+    local_id = models.CharField("Identifiant local", max_length=64)
+    external_event_id = models.CharField(
+        "Identifiant externe", max_length=255, blank=True, default='')
+    external_calendar_id = models.CharField(
+        "Calendrier externe", max_length=255, blank=True, default='')
+
+    last_hash = models.CharField(
+        "Empreinte", max_length=64, blank=True, default='',
+        help_text='Hash du dernier état synchronisé (détection de diff).')
+    last_synced_le = models.DateTimeField(
+        'Dernière synchro', null=True, blank=True)
+
+    class Meta:
+        verbose_name = 'Correspondance calendrier'
+        verbose_name_plural = 'Correspondances calendrier'
+        ordering = ['-id']
+        constraints = [
+            models.UniqueConstraint(
+                fields=['company', 'provider', 'local_kind', 'local_id'],
+                name='core_calsync_co_prov_local'),
+        ]
+        indexes = [
+            models.Index(fields=['company', 'provider'],
+                         name='core_calsync_co_prov_idx'),
+            models.Index(fields=['provider', 'external_event_id'],
+                         name='core_calsync_ext_idx'),
+        ]
+
+    def __str__(self):
+        return f'{self.provider}:{self.local_kind}/{self.local_id}'
