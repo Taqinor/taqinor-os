@@ -1437,6 +1437,20 @@ class ModeleDocument(models.Model):
     # Fusionné côté serveur via le moteur de gabarit Django (contexte borné).
     corps_html = models.TextField(
         blank=True, default='', verbose_name='corps HTML (avec {{ champs }})')
+    # GED28 — Classement automatique : où DÉPOSER le document généré.
+    # `cabinet_cible` = nom du cabinet de destination (auto-créé si absent) ;
+    # `dossier_cible` = nom du dossier racine de destination, qui peut porter des
+    # jetons ``{{ champ }}`` résolus depuis le CONTEXTE de fusion (ex.
+    # « Attestations {{ annee }} ») — permettant de router par année/client. Vide
+    # = comportement rétro-compatible (le dossier par défaut de l'appelant).
+    # Purement un classement documentaire interne — sans rapport avec le funnel
+    # commercial `STAGES.py` (rule #2).
+    cabinet_cible = models.CharField(
+        max_length=120, blank=True, default='Documents',
+        verbose_name='cabinet de classement')
+    dossier_cible = models.CharField(
+        max_length=200, blank=True, default='',
+        verbose_name='dossier de classement (avec {{ champs }})')
     actif = models.BooleanField(default=True, verbose_name='actif')
     created_by = models.ForeignKey(
         settings.AUTH_USER_MODEL, on_delete=models.SET_NULL,

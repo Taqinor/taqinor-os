@@ -7,7 +7,11 @@ Couvre :
     rendu vide ; aucune exécution de code arbitraire) ;
   * rendu PDF non vide (commence par %PDF) — via le service ET l'action `rendre` ;
   * dépôt en GED (action `generer`) idempotent par modèle ;
-  * isolation société sur les actions de rendu (404 cross-société).
+  * isolation société sur les actions de rendu (404 cross-société) ;
+  * GED28 — classement automatique : le document généré atterrit dans le
+    cabinet/dossier résolu depuis la règle du modèle (`cabinet_cible` /
+    `dossier_cible` templaté par le contexte), auto-créé si absent ; dossier par
+    défaut conservé sans cible ; isolation société du provisionnement.
 
 `/proposal` (moteur premium de devis) n'est JAMAIS sollicité ici — GED27 est une
 couche générique de documents internes, distincte (rule #4).
@@ -19,7 +23,7 @@ from rest_framework_simplejwt.tokens import AccessToken
 
 from authentication.models import Company
 from apps.ged import services
-from apps.ged.models import Document, ModeleDocument
+from apps.ged.models import Cabinet, Document, Folder, ModeleDocument
 
 User = get_user_model()
 
@@ -194,3 +198,133 @@ class ModeleDocumentApiTests(ModeleDocumentBase):
         self.assertEqual(resp.status_code, 201, getattr(resp, 'data', resp))
         doc = Document.objects.get(pk=resp.data['document'])
         self.assertEqual(doc.company_id, self.co_a.id)
+
+
+class ClassementServiceTests(ModeleDocumentBase):
+    """GED28 — Classement automatique du document généré (`resoudre_classement`
+    + `generer_document`). Le rendu PDF réel passe par WeasyPrint (image prod)."""
+
+    def test_resoudre_classement_utilise_la_cible_du_modele(self):
+        modele = ModeleDocument.objects.create(
+            company=self.co_a, nom='Attestation',
+            cabinet_cible='Attestations', dossier_cible='Clients')
+        cab, fold = services.resoudre_classement(modele, {})
+        self.assertEqual(cab, 'Attestations')
+        self.assertEqual(fold, 'Clients')
+
+    def test_resoudre_classement_dossier_templaté_depuis_le_contexte(self):
+        # Le nom de dossier porte un jeton `{{ }}` résolu depuis le contexte.
+        modele = ModeleDocument.objects.create(
+            company=self.co_a, nom='Attestation',
+            cabinet_cible='Attestations',
+            dossier_cible='Attestations {{ annee }}')
+        cab, fold = services.resoudre_classement(modele, {'annee': '2026'})
+        self.assertEqual(cab, 'Attestations')
+        self.assertEqual(fold, 'Attestations 2026')
+
+    def test_resoudre_classement_retombe_sur_les_defauts_sans_cible(self):
+        # Aucune cible (dossier vide) → on garde les défauts de l'appelant.
+        modele = ModeleDocument.objects.create(
+            company=self.co_a, nom='Sans cible',
+            cabinet_cible='', dossier_cible='')
+        cab, fold = services.resoudre_classement(
+            modele, {}, cabinet_defaut='Modèles', folder_defaut='Mailing')
+        self.assertEqual(cab, 'Modèles')
+        self.assertEqual(fold, 'Mailing')
+
+    def test_resoudre_classement_jeton_resolu_vide_retombe_sur_defaut(self):
+        # Un dossier templaté qui se résout en chaîne vide retombe sur le défaut
+        # (jamais un dossier au nom vide).
+        modele = ModeleDocument.objects.create(
+            company=self.co_a, nom='X',
+            cabinet_cible='Docs', dossier_cible='{{ manquant }}')
+        cab, fold = services.resoudre_classement(
+            modele, {}, folder_defaut='Mailing')
+        self.assertEqual(cab, 'Docs')
+        self.assertEqual(fold, 'Mailing')
+
+    def test_generer_document_classe_dans_la_cible_creee_si_absente(self):
+        modele = ModeleDocument.objects.create(
+            company=self.co_a, nom='Attestation',
+            corps_html='<p>Atteste {{ nom }}</p>',
+            cabinet_cible='Attestations',
+            dossier_cible='Attestations {{ annee }}')
+        # Le cabinet/dossier cibles n'existent pas encore.
+        self.assertFalse(
+            Cabinet.objects.filter(
+                company=self.co_a, nom='Attestations').exists())
+        doc, created = services.generer_document(
+            modele, {'nom': 'Bennani', 'annee': '2026'},
+            company=self.co_a, created_by=self.admin_a)
+        self.assertTrue(created)
+        # Le document a bien atterri dans le cabinet/dossier templaté, auto-créés.
+        self.assertEqual(doc.folder.cabinet.nom, 'Attestations')
+        self.assertEqual(doc.folder.nom, 'Attestations 2026')
+        self.assertEqual(doc.folder.company_id, self.co_a.id)
+        self.assertEqual(doc.folder.cabinet.company_id, self.co_a.id)
+
+    def test_generer_document_sans_cible_garde_le_dossier_par_defaut(self):
+        # Rétro-compatibilité : un modèle SANS cible (dossier vide) retombe sur
+        # le dossier par défaut historique (« Modèles » / « Mailing »).
+        modele = ModeleDocument.objects.create(
+            company=self.co_a, nom='Mailing',
+            corps_html='<p>{{ x }}</p>',
+            cabinet_cible='', dossier_cible='')
+        doc, created = services.generer_document(
+            modele, {'x': '1'}, company=self.co_a, created_by=self.admin_a)
+        self.assertTrue(created)
+        self.assertEqual(doc.folder.cabinet.nom, 'Modèles')
+        self.assertEqual(doc.folder.nom, 'Mailing')
+
+    def test_generer_document_reutilise_le_dossier_cible_existant(self):
+        # Idempotence du provisionnement : deux modèles vers la même cible
+        # partagent le même cabinet/dossier (pas de doublon de dossier).
+        modele1 = ModeleDocument.objects.create(
+            company=self.co_a, nom='M1', corps_html='<p>{{ a }}</p>',
+            cabinet_cible='Attestations', dossier_cible='Clients')
+        modele2 = ModeleDocument.objects.create(
+            company=self.co_a, nom='M2', corps_html='<p>{{ a }}</p>',
+            cabinet_cible='Attestations', dossier_cible='Clients')
+        doc1, _ = services.generer_document(
+            modele1, {'a': '1'}, company=self.co_a, created_by=self.admin_a)
+        doc2, _ = services.generer_document(
+            modele2, {'a': '2'}, company=self.co_a, created_by=self.admin_a)
+        self.assertEqual(doc1.folder_id, doc2.folder_id)
+        self.assertEqual(
+            Folder.objects.filter(
+                company=self.co_a, cabinet__nom='Attestations',
+                nom='Clients', parent__isnull=True).count(),
+            1)
+
+    def test_classement_isolation_societe(self):
+        # Le classement d'un modèle de A ne touche jamais le référentiel de B :
+        # cabinet/dossier sont créés sous la société du modèle.
+        modele_a = ModeleDocument.objects.create(
+            company=self.co_a, nom='A', corps_html='<p>{{ x }}</p>',
+            cabinet_cible='Partagé', dossier_cible='Commun')
+        modele_b = ModeleDocument.objects.create(
+            company=self.co_b, nom='B', corps_html='<p>{{ x }}</p>',
+            cabinet_cible='Partagé', dossier_cible='Commun')
+        doc_a, _ = services.generer_document(
+            modele_a, {'x': '1'}, company=self.co_a, created_by=self.admin_a)
+        doc_b, _ = services.generer_document(
+            modele_b, {'x': '2'}, company=self.co_b, created_by=self.admin_b)
+        # Deux cabinets/dossiers homonymes mais distincts, un par société.
+        self.assertNotEqual(doc_a.folder.cabinet_id, doc_b.folder.cabinet_id)
+        self.assertEqual(doc_a.folder.cabinet.company_id, self.co_a.id)
+        self.assertEqual(doc_b.folder.cabinet.company_id, self.co_b.id)
+
+    def test_action_generer_classe_dans_la_cible_du_modele(self):
+        modele = ModeleDocument.objects.create(
+            company=self.co_a, nom='Courrier',
+            corps_html='<p>{{ objet }}</p>',
+            cabinet_cible='Courriers', dossier_cible='Sortants {{ annee }}')
+        api = auth(self.admin_a)
+        resp = api.post(
+            f'/api/django/ged/modeles-document/{modele.id}/generer/',
+            {'contexte': {'objet': 'Relance', 'annee': '2026'}},
+            format='json')
+        self.assertEqual(resp.status_code, 201, getattr(resp, 'data', resp))
+        doc = Document.objects.get(pk=resp.data['document'])
+        self.assertEqual(doc.folder.cabinet.nom, 'Courriers')
+        self.assertEqual(doc.folder.nom, 'Sortants 2026')
