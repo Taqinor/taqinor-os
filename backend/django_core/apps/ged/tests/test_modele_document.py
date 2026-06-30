@@ -67,7 +67,10 @@ class FusionServiceTests(ModeleDocumentBase):
         # Un jeton sans valeur dans le contexte est rendu vide — jamais une fuite.
         html = services.fusionner_modele(
             "Bonjour {{ inconnu }}fin", {})
-        self.assertEqual(html.strip(), 'Bonjourfin')
+        # Le jeton inconnu est rendu vide (aucune fuite du nom de variable) ;
+        # le texte littéral et son espace sont préservés.
+        self.assertNotIn('inconnu', html)
+        self.assertEqual(html.strip(), 'Bonjour fin')
 
     def test_pas_d_execution_de_code_arbitraire(self):
         # Le contexte est un dict de DONNÉES : une expression Python n'est jamais
