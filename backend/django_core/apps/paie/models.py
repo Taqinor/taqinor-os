@@ -655,6 +655,21 @@ class ElementVariable(models.Model):
     montant = models.DecimalField(
         max_digits=14, decimal_places=2, default=Decimal('0'),
         verbose_name='Montant')
+    # PAIE26 — Paiement & décompte des congés/absences. Pour un élément
+    # ``TYPE_ABSENCE``, ``remunere`` distingue un congé PAYÉ (congé payé,
+    # maladie indemnisée…) d'une absence NON rémunérée (sans solde, absence
+    # injustifiée). Une absence rémunérée n'est NI déduite du salaire de base
+    # proraté, NI portée en retenue : le salarié est payé comme s'il était
+    # présent. Une absence non rémunérée (défaut) est décomptée comme aujourd'hui.
+    # Ignoré pour les autres types d'élément.
+    remunere = models.BooleanField(
+        default=False, verbose_name='Absence rémunérée')
+    # PAIE26 — Décompte du solde de congés. ``deduit_solde`` reprend la règle du
+    # TypeAbsence RH (FG164) : si vrai, la quantité de jours est retranchée du
+    # compteur de congés payés (informatif côté paie ; le décompte effectif du
+    # solde reste géré par RH). Ignoré hors absence.
+    deduit_solde = models.BooleanField(
+        default=False, verbose_name='Déduit du solde de congés')
     source = models.CharField(
         max_length=10, choices=SOURCE_CHOICES, default=SOURCE_MANUEL,
         verbose_name='Source')
@@ -699,6 +714,18 @@ class BulletinPaie(models.Model):
         (STATUT_VALIDE, 'Validé'),
     ]
 
+    # PAIE36 — Nature du bulletin : normal, RECTIFICATIF (corrige un bulletin
+    # déjà validé/clôturé, qui reste figé) ou RAPPEL (régularisation/rattrapage
+    # d'un mois antérieur sur un mois courant).
+    TYPE_NORMAL = 'normal'
+    TYPE_RECTIFICATIF = 'rectificatif'
+    TYPE_RAPPEL = 'rappel'
+    TYPE_BULLETIN_CHOICES = [
+        (TYPE_NORMAL, 'Normal'),
+        (TYPE_RECTIFICATIF, 'Rectificatif'),
+        (TYPE_RAPPEL, 'Rappel'),
+    ]
+
     # Champs de montant figés au moment du calcul (snapshot). Modifiables tant
     # que le bulletin est en brouillon, gelés dès la validation.
     SNAPSHOT_FIELDS = [
@@ -707,7 +734,7 @@ class BulletinPaie(models.Model):
         'formation_professionnelle',
         'cimr_salariale', 'frais_professionnels', 'net_imposable', 'ir',
         'retenues', 'prime_anciennete', 'charges_patronales', 'net_a_payer',
-        'personnes_a_charge',
+        'personnes_a_charge', 'provision_conges',
     ]
 
     class BulletinVerrouille(Exception):
@@ -734,6 +761,20 @@ class BulletinPaie(models.Model):
     statut = models.CharField(
         max_length=12, choices=STATUT_CHOICES, default=STATUT_BROUILLON,
         verbose_name='Statut')
+    # PAIE36 — Nature du bulletin + lien vers le bulletin d'origine corrigé.
+    type_bulletin = models.CharField(
+        max_length=14, choices=TYPE_BULLETIN_CHOICES, default=TYPE_NORMAL,
+        verbose_name='Nature du bulletin')
+    rectifie = models.ForeignKey(
+        'self',
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='rectifications',
+        verbose_name="Bulletin d'origine corrigé",
+    )
+    motif = models.CharField(
+        max_length=200, blank=True, default='',
+        verbose_name='Motif (rectificatif / rappel)')
     personnes_a_charge = models.PositiveSmallIntegerField(
         default=0, verbose_name='Personnes à charge')
     # ── Snapshot des montants (Decimal au centime) ─────────────────────────
@@ -765,6 +806,13 @@ class BulletinPaie(models.Model):
     formation_professionnelle = models.DecimalField(
         max_digits=14, decimal_places=2, default=Decimal('0'),
         verbose_name='Formation professionnelle (patronal)')
+    # PAIE25 — Provision pour congés payés : charge PATRONALE informative
+    # (engagement social) constituée chaque mois sur la base des jours de CP
+    # acquis dans le mois × le taux journalier du salarié. N'est JAMAIS déduite
+    # du net du salarié — c'est une provision comptable employeur.
+    provision_conges = models.DecimalField(
+        max_digits=14, decimal_places=2, default=Decimal('0'),
+        verbose_name='Provision congés payés (patronal)')
     cimr_salariale = models.DecimalField(
         max_digits=14, decimal_places=2, default=Decimal('0'),
         verbose_name='CIMR salariale')
@@ -909,3 +957,367 @@ class LigneBulletin(models.Model):
             raise BulletinPaie.BulletinVerrouille(
                 'Bulletin validé : lignes figées (suppression interdite).')
         return super().delete(*args, **kwargs)
+
+
+# ── PAIE27 — Cumul annuel par employé (brut/net imposable/IR/CNSS/congés) ────
+
+class CumulAnnuel(models.Model):
+    """Cumul annuel de paie d'un employé (PAIE27) — totaux d'une année civile.
+
+    Agrégat MATÉRIALISÉ des montants clés d'un salarié sur une année :
+    brut, brut imposable, net imposable, IR, CNSS/AMO/CIMR salariales, frais
+    professionnels, net à payer, charges patronales, provision congés, et le
+    cumul de jours de congés acquis/pris (alimenté côté RH). Sert de base aux
+    déclarations annuelles (état IR 9421, attestations) et au contrôle de
+    cohérence mensuelle.
+
+    Recalculé (idempotent) à partir des bulletins VALIDÉS de l'année par
+    ``services.recalculer_cumul_annuel`` : un cumul n'est jamais saisi à la main.
+    Multi-société : ``company`` posée côté serveur. Le couple
+    ``(company, profil, annee)`` est unique — un seul cumul par employé et par
+    année.
+    """
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='paie_cumuls_annuels',
+        verbose_name='Société',
+    )
+    profil = models.ForeignKey(
+        ProfilPaie,
+        on_delete=models.CASCADE,
+        related_name='cumuls_annuels',
+        verbose_name='Profil de paie',
+    )
+    annee = models.PositiveIntegerField(verbose_name='Année')
+    brut = models.DecimalField(
+        max_digits=16, decimal_places=2, default=Decimal('0'),
+        verbose_name='Cumul brut')
+    brut_imposable = models.DecimalField(
+        max_digits=16, decimal_places=2, default=Decimal('0'),
+        verbose_name='Cumul brut imposable')
+    net_imposable = models.DecimalField(
+        max_digits=16, decimal_places=2, default=Decimal('0'),
+        verbose_name='Cumul net imposable')
+    ir = models.DecimalField(
+        max_digits=16, decimal_places=2, default=Decimal('0'),
+        verbose_name='Cumul IR')
+    cnss_salariale = models.DecimalField(
+        max_digits=16, decimal_places=2, default=Decimal('0'),
+        verbose_name='Cumul CNSS salariale')
+    amo_salariale = models.DecimalField(
+        max_digits=16, decimal_places=2, default=Decimal('0'),
+        verbose_name='Cumul AMO salariale')
+    cimr_salariale = models.DecimalField(
+        max_digits=16, decimal_places=2, default=Decimal('0'),
+        verbose_name='Cumul CIMR salariale')
+    frais_professionnels = models.DecimalField(
+        max_digits=16, decimal_places=2, default=Decimal('0'),
+        verbose_name='Cumul frais professionnels')
+    net_a_payer = models.DecimalField(
+        max_digits=16, decimal_places=2, default=Decimal('0'),
+        verbose_name='Cumul net à payer')
+    charges_patronales = models.DecimalField(
+        max_digits=16, decimal_places=2, default=Decimal('0'),
+        verbose_name='Cumul charges patronales')
+    provision_conges = models.DecimalField(
+        max_digits=16, decimal_places=2, default=Decimal('0'),
+        verbose_name='Cumul provision congés payés')
+    # Compteur de congés (alimenté côté RH, informatif).
+    conges_acquis = models.DecimalField(
+        max_digits=8, decimal_places=2, default=Decimal('0'),
+        verbose_name='Congés acquis (jours)')
+    conges_pris = models.DecimalField(
+        max_digits=8, decimal_places=2, default=Decimal('0'),
+        verbose_name='Congés pris (jours)')
+    nombre_bulletins = models.PositiveIntegerField(
+        default=0, verbose_name='Nombre de bulletins cumulés')
+    date_calcul = models.DateTimeField(
+        null=True, blank=True, verbose_name='Recalculé le')
+    date_creation = models.DateTimeField(
+        auto_now_add=True, verbose_name='Créé le')
+
+    class Meta:
+        verbose_name = 'Cumul annuel'
+        verbose_name_plural = 'Cumuls annuels'
+        ordering = ['-annee', 'profil']
+        unique_together = [('company', 'profil', 'annee')]
+
+    def __str__(self):
+        return f'Cumul {self.annee} profil #{self.profil_id}'
+
+
+# ── PAIE28 — Avance / prêt salarié + déduction mensuelle ────────────────────
+
+class AvanceSalarie(models.Model):
+    """Avance ou prêt accordé à un salarié, remboursé par retenue (PAIE28).
+
+    Couvre l'avance PONCTUELLE (``nombre_echeances=1``) comme le PRÊT étalé sur
+    plusieurs mois (``nombre_echeances>1``). Chaque mois ouvré, une ÉCHÉANCE
+    (``montant_echeance``) est retenue sur le bulletin tant que le solde restant
+    n'est pas épuisé. Le ``montant_echeance`` est calculé à la création
+    (``montant_total / nombre_echeances``) mais reste éditable.
+
+    Le suivi du remboursement se fait par ``montant_rembourse`` (cumul retenu) :
+    le SOLDE restant = ``montant_total − montant_rembourse``. Une avance est
+    ACTIVE tant qu'elle n'est pas soldée (``solde > 0``) et que ``actif`` est vrai
+    et que la ``date_debut`` est atteinte. Multi-société : ``company`` posée côté
+    serveur. ``profil`` (FK ``ProfilPaie``) rattache l'avance à l'employé.
+    """
+    TYPE_AVANCE = 'avance'
+    TYPE_PRET = 'pret'
+    TYPE_CHOICES = [
+        (TYPE_AVANCE, 'Avance sur salaire'),
+        (TYPE_PRET, 'Prêt salarié'),
+    ]
+
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='paie_avances',
+        verbose_name='Société',
+    )
+    profil = models.ForeignKey(
+        ProfilPaie,
+        on_delete=models.CASCADE,
+        related_name='avances',
+        verbose_name='Profil de paie',
+    )
+    type = models.CharField(
+        max_length=10, choices=TYPE_CHOICES, default=TYPE_AVANCE,
+        verbose_name='Type')
+    libelle = models.CharField(
+        max_length=120, blank=True, default='', verbose_name='Libellé')
+    montant_total = models.DecimalField(
+        max_digits=14, decimal_places=2, default=Decimal('0'),
+        verbose_name='Montant total accordé')
+    montant_echeance = models.DecimalField(
+        max_digits=14, decimal_places=2, default=Decimal('0'),
+        verbose_name='Montant de l\'échéance mensuelle')
+    nombre_echeances = models.PositiveSmallIntegerField(
+        default=1, verbose_name='Nombre d\'échéances')
+    montant_rembourse = models.DecimalField(
+        max_digits=14, decimal_places=2, default=Decimal('0'),
+        verbose_name='Montant déjà remboursé')
+    date_debut = models.DateField(verbose_name='Date de début de retenue')
+    actif = models.BooleanField(default=True, verbose_name='Actif')
+    date_creation = models.DateTimeField(
+        auto_now_add=True, verbose_name='Créé le')
+
+    class Meta:
+        verbose_name = 'Avance / prêt salarié'
+        verbose_name_plural = 'Avances / prêts salariés'
+        ordering = ['-date_creation']
+
+    def __str__(self):
+        return f'{self.get_type_display()} {self.montant_total} → profil #{self.profil_id}'
+
+    @property
+    def solde_restant(self):
+        """Solde encore dû = montant total − montant déjà remboursé (>= 0)."""
+        solde = (self.montant_total or Decimal('0')) \
+            - (self.montant_rembourse or Decimal('0'))
+        return solde if solde > 0 else Decimal('0')
+
+    @property
+    def soldee(self):
+        """Vrai quand l'avance est entièrement remboursée."""
+        return self.solde_restant <= 0
+
+
+# ── PAIE29 — Saisie-arrêt / cession sur salaire (quotité saisissable) ───────
+
+class SaisieArret(models.Model):
+    """Saisie-arrêt ou cession sur salaire d'un employé (PAIE29).
+
+    Retenue judiciaire (saisie-arrêt) ou volontaire (cession) opérée sur le
+    salaire au profit d'un créancier (pension alimentaire, dette…), DANS LA
+    LIMITE de la quotité saisissable (la part du salaire légalement saisissable
+    selon un barème progressif par tranche de revenu — cf.
+    ``services.quotite_saisissable``). La fraction insaisissable reste toujours
+    versée au salarié.
+
+    Une saisie est ACTIVE tant que ``actif`` est vrai et que le montant dû
+    (``montant_total − montant_retenu``) n'est pas épuisé. Le ``montant_retenu``
+    est cumulé par le service à la validation des bulletins (jamais saisi à la
+    main). Une saisie PRIORITAIRE (``prioritaire=True``, p. ex. pension
+    alimentaire) est servie avant les autres dans la limite de la quotité.
+
+    Multi-société : ``company`` posée côté serveur. ``profil`` rattache la saisie
+    à l'employé.
+    """
+    TYPE_SAISIE = 'saisie'
+    TYPE_CESSION = 'cession'
+    TYPE_CHOICES = [
+        (TYPE_SAISIE, 'Saisie-arrêt (judiciaire)'),
+        (TYPE_CESSION, 'Cession volontaire'),
+    ]
+
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='paie_saisies',
+        verbose_name='Société',
+    )
+    profil = models.ForeignKey(
+        ProfilPaie,
+        on_delete=models.CASCADE,
+        related_name='saisies',
+        verbose_name='Profil de paie',
+    )
+    type = models.CharField(
+        max_length=10, choices=TYPE_CHOICES, default=TYPE_SAISIE,
+        verbose_name='Type')
+    creancier = models.CharField(
+        max_length=160, blank=True, default='', verbose_name='Créancier')
+    reference = models.CharField(
+        max_length=80, blank=True, default='',
+        verbose_name='Référence (jugement/acte)')
+    montant_total = models.DecimalField(
+        max_digits=14, decimal_places=2, default=Decimal('0'),
+        verbose_name='Montant total à recouvrer')
+    montant_echeance = models.DecimalField(
+        max_digits=14, decimal_places=2, null=True, blank=True,
+        verbose_name='Échéance mensuelle souhaitée')
+    montant_retenu = models.DecimalField(
+        max_digits=14, decimal_places=2, default=Decimal('0'),
+        verbose_name='Montant déjà retenu')
+    prioritaire = models.BooleanField(
+        default=False, verbose_name='Prioritaire (ex. pension alimentaire)')
+    date_debut = models.DateField(verbose_name='Date de début de retenue')
+    actif = models.BooleanField(default=True, verbose_name='Actif')
+    date_creation = models.DateTimeField(
+        auto_now_add=True, verbose_name='Créé le')
+
+    class Meta:
+        verbose_name = 'Saisie-arrêt / cession'
+        verbose_name_plural = 'Saisies-arrêts / cessions'
+        # Saisies prioritaires d'abord, puis les plus anciennes.
+        ordering = ['-prioritaire', 'date_debut', 'id']
+
+    def __str__(self):
+        return f'{self.get_type_display()} {self.montant_total} → profil #{self.profil_id}'
+
+    @property
+    def solde_restant(self):
+        """Reste à recouvrer = montant total − montant déjà retenu (>= 0)."""
+        solde = (self.montant_total or Decimal('0')) \
+            - (self.montant_retenu or Decimal('0'))
+        return solde if solde > 0 else Decimal('0')
+
+    @property
+    def soldee(self):
+        """Vrai quand la saisie est entièrement recouvrée."""
+        return self.solde_restant <= 0
+
+
+# ── PAIE30 — Ordre de virement + fichier de virement banque ────────────────
+
+class OrdreVirement(models.Model):
+    """Ordre de virement des salaires d'une période (PAIE30).
+
+    Regroupe en UN ordre l'ensemble des bulletins VALIDÉS d'une ``PeriodePaie``
+    à payer par virement bancaire : chaque salarié devient une ``LigneVirement``
+    (RIB + net à payer). Sert à générer le fichier de virement remis à la banque
+    (``services.fichier_virement_paie``).
+
+    Cycle : ``brouillon`` (lignes éditables) → ``emis`` (transmis à la banque,
+    figé). Multi-société : ``company`` posée côté serveur. Le couple
+    ``(company, periode)`` est unique — un seul ordre de virement par période.
+    """
+    STATUT_BROUILLON = 'brouillon'
+    STATUT_EMIS = 'emis'
+    STATUT_CHOICES = [
+        (STATUT_BROUILLON, 'Brouillon'),
+        (STATUT_EMIS, 'Émis'),
+    ]
+
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='paie_ordres_virement',
+        verbose_name='Société',
+    )
+    periode = models.ForeignKey(
+        PeriodePaie,
+        on_delete=models.CASCADE,
+        related_name='ordres_virement',
+        verbose_name='Période',
+    )
+    libelle = models.CharField(
+        max_length=120, blank=True, default='', verbose_name='Libellé')
+    statut = models.CharField(
+        max_length=12, choices=STATUT_CHOICES, default=STATUT_BROUILLON,
+        verbose_name='Statut')
+    date_execution = models.DateField(
+        null=True, blank=True, verbose_name="Date d'exécution souhaitée")
+    rib_emetteur = models.CharField(
+        max_length=40, blank=True, default='', verbose_name='RIB émetteur')
+    devise = models.CharField(
+        max_length=3, default='MAD', verbose_name='Devise')
+    total = models.DecimalField(
+        max_digits=16, decimal_places=2, default=Decimal('0'),
+        verbose_name='Total à virer')
+    nombre_lignes = models.PositiveIntegerField(
+        default=0, verbose_name='Nombre de lignes')
+    date_emission = models.DateTimeField(
+        null=True, blank=True, verbose_name='Émis le')
+    date_creation = models.DateTimeField(
+        auto_now_add=True, verbose_name='Créé le')
+
+    class Meta:
+        verbose_name = 'Ordre de virement'
+        verbose_name_plural = 'Ordres de virement'
+        ordering = ['-date_creation']
+        unique_together = [('company', 'periode')]
+
+    def __str__(self):
+        return f'Ordre virement {self.periode} ({self.statut})'
+
+    @property
+    def est_emis(self):
+        return self.statut == self.STATUT_EMIS
+
+
+class LigneVirement(models.Model):
+    """Ligne d'un ``OrdreVirement`` (PAIE30) — un bénéficiaire / un net à virer.
+
+    Issue d'un ``BulletinPaie`` validé : bénéficiaire (nom du salarié), RIB,
+    montant (net à payer du bulletin) et référence. Multi-société : ``company``
+    posée côté serveur (héritée de l'ordre).
+    """
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='paie_lignes_virement',
+        verbose_name='Société',
+    )
+    ordre = models.ForeignKey(
+        OrdreVirement,
+        on_delete=models.CASCADE,
+        related_name='lignes',
+        verbose_name='Ordre de virement',
+    )
+    bulletin = models.ForeignKey(
+        BulletinPaie,
+        on_delete=models.PROTECT,
+        related_name='lignes_virement',
+        verbose_name='Bulletin',
+    )
+    beneficiaire = models.CharField(
+        max_length=160, verbose_name='Bénéficiaire')
+    rib = models.CharField(
+        max_length=40, blank=True, default='', verbose_name='RIB')
+    montant = models.DecimalField(
+        max_digits=14, decimal_places=2, default=Decimal('0'),
+        verbose_name='Montant')
+    reference = models.CharField(
+        max_length=80, blank=True, default='', verbose_name='Référence')
+
+    class Meta:
+        verbose_name = 'Ligne de virement'
+        verbose_name_plural = 'Lignes de virement'
+        ordering = ['ordre', 'beneficiaire', 'id']
+
+    def __str__(self):
+        return f'{self.beneficiaire} {self.montant} (ordre #{self.ordre_id})'
