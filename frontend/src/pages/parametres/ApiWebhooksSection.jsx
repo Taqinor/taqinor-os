@@ -5,7 +5,7 @@
 // re-affiché après coup : on régénère ou on supprime.
 import { useEffect, useState } from 'react'
 import {
-  KeyRound, Webhook as WebhookIcon, Plus, Trash2, Copy, Check, Ban,
+  KeyRound, Webhook as WebhookIcon, Plus, Trash2, Copy, Check, Ban, BookOpen,
 } from 'lucide-react'
 import publicapiApi from '../../api/publicapiApi'
 import {
@@ -33,6 +33,124 @@ function RevealOnce({ label, value, onDismiss }) {
         <Button type="button" size="sm" variant="ghost" onClick={onDismiss}>OK</Button>
       </div>
     </div>
+  )
+}
+
+// FG105 — Référence de l'API publique (endpoints, auth, scopes, évènements,
+// recette HMAC). Chargée à la demande depuis /publicapi/docs/ (page statique
+// servie par le backend, sans dépendance d'auto-génération).
+function DocsReference() {
+  const [open, setOpen] = useState(false)
+  const [doc, setDoc] = useState(null)
+  const [error, setError] = useState(false)
+
+  const toggle = () => {
+    const next = !open
+    setOpen(next)
+    if (next && !doc) {
+      publicapiApi.getDocs()
+        .then(r => setDoc(r.data))
+        .catch(() => setError(true))
+    }
+  }
+
+  return (
+    <Card>
+      <CardContent className="pt-4 sm:pt-5">
+        <div className="flex items-center justify-between gap-2">
+          <SectionTitle icon={<BookOpen className="size-4" />} label="Référence de l'API" />
+          <Button type="button" size="sm" variant="outline" onClick={toggle}>
+            {open ? 'Masquer' : 'Voir la référence'}
+          </Button>
+        </div>
+        <p className="mb-3 text-sm text-muted-foreground">
+          Documentation des endpoints en lecture seule, de l'authentification par
+          clé (<code>Authorization: Api-Key …</code>), des scopes, des évènements
+          webhook et de la vérification de signature HMAC.
+        </p>
+
+        {open && error && (
+          <p className="text-sm text-destructive">
+            Référence indisponible pour le moment.
+          </p>
+        )}
+        {open && !doc && !error && (
+          <p className="text-sm text-muted-foreground">
+            <Spinner /> Chargement de la référence…
+          </p>
+        )}
+        {open && doc && (
+          <div className="flex flex-col gap-4 text-sm">
+            <p className="text-muted-foreground">{doc.introduction}</p>
+
+            <div>
+              <p className="font-medium">Authentification</p>
+              <p className="text-muted-foreground">{doc.authentification?.methode}</p>
+              <code className="mt-1 block break-all rounded bg-background px-2 py-1 text-xs">
+                {doc.authentification?.entete}
+              </code>
+              <p className="mt-1 text-xs text-muted-foreground">
+                {doc.authentification?.note_societe}
+              </p>
+            </div>
+
+            <div>
+              <p className="font-medium">Endpoints (lecture seule)</p>
+              <div className="mt-1 flex flex-col gap-2">
+                {(doc.endpoints || []).map(ep => (
+                  <div key={ep.chemin} className="rounded-lg border border-border p-2">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <code className="text-xs">GET {ep.chemin}</code>
+                      <Badge variant="secondary">{ep.scope}</Badge>
+                    </div>
+                    <p className="text-xs text-muted-foreground">{ep.description}</p>
+                    <p className="mt-1 text-xs text-muted-foreground">
+                      Filtres : {(ep.filtres || []).join(', ') || '—'} · Tri :{' '}
+                      {(ep.tri || []).join(', ') || '—'} ·{' '}
+                      <code>?updated_since={ep.updated_since}</code>
+                    </p>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            <div>
+              <p className="font-medium">Synchro incrémentale &amp; filtres</p>
+              <p className="text-xs text-muted-foreground">
+                {doc.parametres_communs?.synchro_incrementale}
+              </p>
+              <p className="text-xs text-muted-foreground">
+                {doc.parametres_communs?.filtres}
+              </p>
+            </div>
+
+            <div>
+              <p className="font-medium">Évènements webhook</p>
+              <p className="text-xs text-muted-foreground">{doc.webhooks?.description}</p>
+              <p className="mt-1 text-xs text-muted-foreground">
+                Entêtes : <code>{doc.webhooks?.entetes?.signature}</code> ·{' '}
+                <code>{doc.webhooks?.entetes?.evenement}</code>
+              </p>
+              <ul className="mt-1 list-inside list-disc text-xs text-muted-foreground">
+                {(doc.webhooks?.evenements || []).map(ev => (
+                  <li key={ev.code}><code>{ev.code}</code> — {ev.libelle}</li>
+                ))}
+              </ul>
+            </div>
+
+            <div>
+              <p className="font-medium">Vérification de la signature HMAC</p>
+              <p className="text-xs text-muted-foreground">
+                {doc.webhooks?.verification_signature?.algorithme}
+              </p>
+              <pre className="mt-1 overflow-x-auto rounded bg-background px-2 py-1 text-xs">
+                <code>{doc.webhooks?.verification_signature?.exemple_python}</code>
+              </pre>
+            </div>
+          </div>
+        )}
+      </CardContent>
+    </Card>
   )
 }
 
@@ -264,6 +382,9 @@ export default function ApiWebhooksSection() {
           </div>
         </CardContent>
       </Card>
+
+      {/* ── Référence de l'API (FG105) ── */}
+      <DocsReference />
     </>
   )
 }

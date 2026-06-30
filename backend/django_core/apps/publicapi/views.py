@@ -44,6 +44,66 @@ class CatalogueView(APIView):
         return Response(scope_catalogue())
 
 
+class DocsView(APIView):
+    """FG105 — Référence STATIQUE (FR) de l'API publique.
+
+    Endpoints, authentification, scopes, évènements et recette de vérification
+    de signature HMAC. Aucune auto-génération (pas de Swagger/drf-spectacular) :
+    la référence est construite à la main à partir de `constants.py`. Réservée
+    au palier admin/responsable, comme le catalogue, car elle est consultée
+    depuis l'écran Paramètres → API & Webhooks.
+    """
+    permission_classes = [IsAdminOrResponsableTier]
+
+    def get(self, request):
+        from .docs import public_api_reference
+        return Response(public_api_reference())
+
+
+class OcrToCrmView(APIView):
+    """FG106 — passerelle « Créer un lead / brouillon de devis depuis ce document ».
+
+    Reçoit les champs structurés extraits par l'OCR et crée, côté CRM/ventes, un
+    lead brouillon (mode ``lead``) ou un lead + un devis brouillon (mode
+    ``devis``). L'ÉCRITURE cross-app passe TOUJOURS par les services.py des apps
+    cibles (crm.services / ventes.services), via import paresseux local — jamais
+    par leurs models/views. La société vient toujours de l'utilisateur connecté.
+    Réservée au palier admin/responsable (même portée que la validation OCR).
+    """
+    permission_classes = [IsAdminOrResponsableTier]
+
+    def post(self, request):
+        # Imports paresseux locaux : pas d'import des models/views des apps cibles.
+        from apps.crm.services import create_draft_lead_from_ocr
+        from apps.ventes.services import create_draft_devis_from_ocr
+
+        company = request.user.company
+        mode = (request.data.get('mode') or 'lead').strip().lower()
+        fields = request.data.get('fields') or {}
+        if not isinstance(fields, dict):
+            return Response(
+                {'detail': "Le champ « fields » doit être un objet."},
+                status=status.HTTP_400_BAD_REQUEST)
+        if mode not in ('lead', 'devis'):
+            return Response(
+                {'detail': "Mode invalide (attendu « lead » ou « devis »)."},
+                status=status.HTTP_400_BAD_REQUEST)
+
+        try:
+            lead = create_draft_lead_from_ocr(
+                company=company, user=request.user, fields=fields)
+            payload = {'mode': mode, 'lead_id': lead.id}
+            if mode == 'devis':
+                devis = create_draft_devis_from_ocr(
+                    company=company, user=request.user, lead=lead, fields=fields)
+                payload['devis_id'] = devis.id
+                payload['devis_reference'] = devis.reference
+        except ValueError as exc:
+            return Response({'detail': str(exc)},
+                            status=status.HTTP_400_BAD_REQUEST)
+        return Response(payload, status=status.HTTP_201_CREATED)
+
+
 class ApiKeyViewSet(_CompanyScopedMixin, viewsets.ModelViewSet):
     """CRUD des clés API. La clé en clair n'est renvoyée qu'à la création.
 

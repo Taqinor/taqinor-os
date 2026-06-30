@@ -623,6 +623,50 @@ def resolve_client_for_lead(lead: Lead) -> Client:
     return client
 
 
+def create_draft_lead_from_ocr(*, company, user, fields) -> Lead:
+    """FG106 — crée un LEAD brouillon à partir de champs extraits par l'OCR.
+
+    Point d'entrée cross-app sanctionné (services.py) pour la passerelle
+    OCR → CRM (apps.publicapi). La société vient TOUJOURS du serveur (jamais du
+    corps), l'attribution du propriétaire suit la même règle que la création
+    normale d'un lead, et la création est tracée dans le chatter. ``fields`` est
+    le dict de données structurées OCR ; seuls des champs sûrs y sont lus —
+    aucune confiance n'est accordée à des clés inattendues.
+
+    Le lead reste à l'étape par défaut (NEW) : ce service CRÉE, il ne fait pas
+    avancer le funnel.
+    """
+    fields = fields or {}
+    nom = (fields.get('fournisseur') or fields.get('client') or '').strip()
+    if not nom:
+        raise ValueError("Aucun nom de fournisseur/client exploitable dans le document.")
+
+    extra = {}
+    # Même règle d'attribution que LeadViewSet.perform_create : un compte à
+    # portée restreinte garde la propriété de ce qu'il crée.
+    if user is not None and getattr(user, 'record_scope', None) and \
+            user.record_scope() != 'all':
+        extra['owner'] = user
+    else:
+        default = default_responsable_for(company)
+        if default is not None:
+            extra['owner'] = default
+
+    lead = Lead.objects.create(
+        company=company,
+        nom=nom[:255],
+        source=Lead.Source.OS_NATIVE,
+        canal=Canal.AUTRE,
+        **extra,
+    )
+    activity.log_creation(lead, user)
+    activity.log_note(
+        lead, user,
+        "Lead créé depuis un document OCR (brouillon à compléter).")
+    recompute_lead_score(lead)
+    return lead
+
+
 def noter_devis_ouvert(devis_reference: str, lead) -> None:
     """QJ1 — Consigne « Le client a ouvert le devis » dans le chatter du lead.
 

@@ -97,5 +97,7 @@ class PublicChantierSerializer(serializers.ModelSerializer):
             'id', 'reference', 'client', 'devis', 'lead', 'statut',
             'site_ville', 'puissance_installee_kwc', 'raccordement',
             'type_installation',
+            # FG104 — exposé pour la synchro incrémentale (?updated_since=).
+            'date_creation', 'date_modification',
         ]
         read_only_fields = fields

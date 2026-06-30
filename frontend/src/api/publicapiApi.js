@@ -8,6 +8,14 @@ const publicapiApi = {
   // Catalogue des scopes & évènements (pour cocher les droits/abonnements).
   getCatalogue: () => api.get('/publicapi/catalogue/'),
 
+  // FG105 — référence statique FR de l'API publique (endpoints, auth, HMAC).
+  getDocs: () => api.get('/publicapi/docs/'),
+
+  // FG106 — crée un lead (mode 'lead') ou un lead + devis brouillon
+  // (mode 'devis') depuis les champs extraits par l'OCR. L'écriture passe par
+  // les services CRM/ventes côté serveur. → { lead_id, devis_id?, ... }
+  ocrToCrm: (payload) => api.post('/publicapi/ocr-to-crm/', payload),
+
   // ── Clés API ──
   getKeys: () => api.get('/publicapi/keys/'),
   createKey: (data) => api.post('/publicapi/keys/', data), // → { ...key, key }
