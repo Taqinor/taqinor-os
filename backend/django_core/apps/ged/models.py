@@ -1399,3 +1399,59 @@ class LegalHold(models.Model):
     def __str__(self):
         etat = 'actif' if self.actif else 'levé'
         return f'Legal hold — {self.document} ({etat})'
+
+
+class ModeleDocument(models.Model):
+    """GED27 — Modèle de document avec fusion/mailing (corps → PDF WeasyPrint).
+
+    Un modèle stocke un CORPS HTML (`corps_html`) contenant des champs de fusion
+    de la forme ``{{ placeholder }}`` (ex. « Cher {{ nom }}, … »). Fusionné avec
+    un dictionnaire de données fourni, il rend un document final puis un PDF via
+    WeasyPrint (rendu direct dans `services.rendre_modele`). C'est une couche
+    GÉNÉRIQUE pour les documents INTERNES/administratifs (attestations, courriers,
+    mailing) — elle est SÉPARÉE et DISTINCTE du chemin `/proposal` (rule #4), qui
+    reste l'UNIQUE chemin des PDF de DEVIS client : un modèle GED27 ne produit
+    JAMAIS un PDF de devis et ne route jamais par le moteur premium.
+
+    SÉCURITÉ DE FUSION : la substitution des jetons utilise le moteur de gabarit
+    Django dans un CONTEXTE EXPLICITE et borné (`services.rendre_modele`) — jamais
+    d'``eval``/exécution de code arbitraire. Les jetons inconnus sont rendus vides
+    (comportement standard du moteur), jamais une fuite d'objet Python.
+
+    Multi-tenant : `company` posée CÔTÉ SERVEUR (jamais lue du corps de requête) ;
+    toutes les requêtes bornées à la société. `categorie` est une étiquette libre
+    de classement (ex. « attestation », « courrier ») — purement informative,
+    sans rapport avec le funnel commercial `STAGES.py` (rule #2). `actif` permet
+    de désactiver un modèle sans le supprimer.
+    """
+    company = models.ForeignKey(
+        'authentication.Company', on_delete=models.CASCADE,
+        null=True, blank=True, related_name='ged_modeles_document')
+    nom = models.CharField(max_length=255)
+    description = models.TextField(blank=True, default='')
+    # Étiquette libre de classement (ex. « attestation », « courrier »,
+    # « mailing »). Purement informative — jamais un statut de pipeline.
+    categorie = models.CharField(
+        max_length=80, blank=True, default='', verbose_name='catégorie')
+    # Corps HTML du modèle avec des champs de fusion ``{{ placeholder }}``.
+    # Fusionné côté serveur via le moteur de gabarit Django (contexte borné).
+    corps_html = models.TextField(
+        blank=True, default='', verbose_name='corps HTML (avec {{ champs }})')
+    actif = models.BooleanField(default=True, verbose_name='actif')
+    created_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL,
+        null=True, blank=True, related_name='ged_modeles_document_crees')
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ['nom', 'id']
+        verbose_name = 'Modèle de document'
+        verbose_name_plural = 'Modèles de document'
+        indexes = [
+            models.Index(fields=['company', 'actif'],
+                         name='ged_modele_co_actif_idx'),
+        ]
+
+    def __str__(self):
+        return self.nom
