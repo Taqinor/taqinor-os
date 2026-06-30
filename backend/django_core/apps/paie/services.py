@@ -1302,3 +1302,75 @@ def valider_bulletin(bulletin):
     bulletin.date_validation = timezone.now()
     bulletin.save(update_fields=['statut', 'date_validation'])
     return bulletin
+
+
+# ── PAIE27 — Cumul annuel par employé (recalcul depuis bulletins validés) ────
+
+# Champs cumulés : (champ du CumulAnnuel, champ du BulletinPaie) sommés.
+_CUMUL_CHAMPS = [
+    'brut', 'brut_imposable', 'net_imposable', 'ir',
+    'cnss_salariale', 'amo_salariale', 'cimr_salariale',
+    'frais_professionnels', 'net_a_payer', 'charges_patronales',
+    'provision_conges',
+]
+
+
+def recalculer_cumul_annuel(profil, annee):
+    """Recalcule (idempotent) le ``CumulAnnuel`` d'un profil pour une année (PAIE27).
+
+    Agrège les montants des bulletins VALIDÉS du profil dont la période tombe sur
+    ``annee`` : brut, brut/net imposable, IR, CNSS/AMO/CIMR salariales, frais
+    professionnels, net à payer, charges patronales, provision congés. Le cumul
+    des jours de congés (acquis/pris) est lu via le solde RH (``SoldeConge``) par
+    référence STRING-FK — la paie n'importe jamais ``rh.models``.
+
+    Crée le ``CumulAnnuel`` s'il n'existe pas, sinon le met à jour ; clé stable
+    ``(company, profil, annee)``. Opération atomique. Renvoie le ``CumulAnnuel``.
+    """
+    from django.apps import apps as django_apps
+
+    from .models import BulletinPaie, CumulAnnuel
+
+    bulletins = (
+        BulletinPaie.objects
+        .filter(
+            company=profil.company,
+            profil=profil,
+            periode__annee=annee,
+            statut=BulletinPaie.STATUT_VALIDE,
+        )
+    )
+
+    totaux = {champ: Decimal('0') for champ in _CUMUL_CHAMPS}
+    nombre = 0
+    for bulletin in bulletins:
+        nombre += 1
+        for champ in _CUMUL_CHAMPS:
+            totaux[champ] += Decimal(getattr(bulletin, champ) or 0)
+
+    # Compteur de congés depuis le solde RH (string-FK, cadré société).
+    conges_acquis = Decimal('0')
+    conges_pris = Decimal('0')
+    SoldeConge = django_apps.get_model('rh', 'SoldeConge')
+    solde = (
+        SoldeConge.objects
+        .filter(company=profil.company, employe_id=profil.employe_id,
+                annee=annee)
+        .first()
+    )
+    if solde is not None:
+        conges_acquis = (solde.report or Decimal('0')) \
+            + (solde.acquis or Decimal('0'))
+        conges_pris = solde.pris or Decimal('0')
+
+    with transaction.atomic():
+        cumul, _ = CumulAnnuel.objects.select_for_update().get_or_create(
+            company=profil.company, profil=profil, annee=annee)
+        for champ in _CUMUL_CHAMPS:
+            setattr(cumul, champ, _q(totaux[champ]))
+        cumul.conges_acquis = _q(conges_acquis)
+        cumul.conges_pris = _q(conges_pris)
+        cumul.nombre_bulletins = nombre
+        cumul.date_calcul = timezone.now()
+        cumul.save()
+    return cumul

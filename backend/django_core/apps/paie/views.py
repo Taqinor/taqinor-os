@@ -15,6 +15,7 @@ from authentication.permissions import IsResponsableOrAdmin
 from .models import (
     BaremeIR,
     BulletinPaie,
+    CumulAnnuel,
     ElementVariable,
     ParametrePaie,
     PeriodePaie,
@@ -25,6 +26,7 @@ from .models import (
 from .serializers import (
     BaremeIRSerializer,
     BulletinPaieSerializer,
+    CumulAnnuelSerializer,
     ElementVariableSerializer,
     ParametrePaieSerializer,
     PeriodePaieSerializer,
@@ -41,6 +43,7 @@ from .services import (
     ensure_rubriques_standard,
     generer_bulletin,
     importer_elements_rh,
+    recalculer_cumul_annuel,
     valider_bulletin,
 )
 
@@ -262,3 +265,42 @@ class BulletinPaieViewSet(TenantMixin, viewsets.ReadOnlyModelViewSet):
         valider_bulletin(bulletin)
         return Response(
             self.get_serializer(bulletin).data, status=status.HTTP_200_OK)
+
+
+class CumulAnnuelViewSet(TenantMixin, viewsets.ReadOnlyModelViewSet):
+    """Cumuls annuels de paie par employé (PAIE27) — lecture seule.
+
+    Le cumul est un agrégat MATÉRIALISÉ recalculé depuis les bulletins validés
+    via l'action ``recalculer`` (corps : ``profil`` id, ``annee``). Jamais saisi
+    directement. Société scopée, palier paie uniquement (donnée SENSIBLE).
+    """
+    permission_classes = [IsResponsableOrAdmin]
+    queryset = CumulAnnuel.objects.select_related('profil').all()
+    serializer_class = CumulAnnuelSerializer
+    filter_backends = [filters.OrderingFilter]
+    ordering_fields = ['annee', 'profil', 'date_calcul', 'id']
+
+    @action(detail=False, methods=['post'], url_path='recalculer')
+    def recalculer(self, request):
+        """Recalcule le cumul annuel d'un profil pour une année (PAIE27).
+
+        Corps : ``profil`` (id) et ``annee`` requis. Agrège les bulletins
+        validés de l'année. Idempotent.
+        """
+        profil_id = request.data.get('profil')
+        annee = request.data.get('annee')
+        if not profil_id or not annee:
+            return Response(
+                {'detail': 'Champs "profil" et "annee" requis.'},
+                status=status.HTTP_400_BAD_REQUEST)
+        try:
+            profil = ProfilPaie.objects.get(
+                pk=profil_id, company=request.user.company)
+            annee = int(annee)
+        except (ProfilPaie.DoesNotExist, ValueError, TypeError):
+            return Response(
+                {'detail': 'Profil ou année invalide.'},
+                status=status.HTTP_404_NOT_FOUND)
+        cumul = recalculer_cumul_annuel(profil, annee)
+        return Response(
+            self.get_serializer(cumul).data, status=status.HTTP_200_OK)

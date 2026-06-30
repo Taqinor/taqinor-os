@@ -9,6 +9,7 @@ from rest_framework import serializers
 from .models import (
     BaremeIR,
     BulletinPaie,
+    CumulAnnuel,
     ElementVariable,
     LigneBulletin,
     ParametrePaie,
@@ -278,6 +279,26 @@ class BulletinPaieSerializer(serializers.ModelSerializer):
             'formation_professionnelle', 'provision_conges', 'cimr_salariale',
             'frais_professionnels', 'net_imposable', 'ir', 'retenues',
             'prime_anciennete', 'charges_patronales', 'net_a_payer',
+            'provision_conges',
             'date_validation', 'date_creation', 'lignes',
+        ]
+        read_only_fields = fields
+
+
+class CumulAnnuelSerializer(serializers.ModelSerializer):
+    """Cumul annuel de paie d'un employé (PAIE27) — LECTURE SEULE.
+
+    Agrégat recalculé depuis les bulletins validés par
+    ``services.recalculer_cumul_annuel`` (jamais saisi via l'API). Société
+    scopée, palier paie uniquement (donnée SENSIBLE).
+    """
+    class Meta:
+        model = CumulAnnuel
+        fields = [
+            'id', 'profil', 'annee', 'brut', 'brut_imposable', 'net_imposable',
+            'ir', 'cnss_salariale', 'amo_salariale', 'cimr_salariale',
+            'frais_professionnels', 'net_a_payer', 'charges_patronales',
+            'provision_conges', 'conges_acquis', 'conges_pris',
+            'nombre_bulletins', 'date_calcul', 'date_creation',
         ]
         read_only_fields = fields

@@ -931,3 +931,91 @@ class LigneBulletin(models.Model):
             raise BulletinPaie.BulletinVerrouille(
                 'Bulletin validé : lignes figées (suppression interdite).')
         return super().delete(*args, **kwargs)
+
+
+# ── PAIE27 — Cumul annuel par employé (brut/net imposable/IR/CNSS/congés) ────
+
+class CumulAnnuel(models.Model):
+    """Cumul annuel de paie d'un employé (PAIE27) — totaux d'une année civile.
+
+    Agrégat MATÉRIALISÉ des montants clés d'un salarié sur une année :
+    brut, brut imposable, net imposable, IR, CNSS/AMO/CIMR salariales, frais
+    professionnels, net à payer, charges patronales, provision congés, et le
+    cumul de jours de congés acquis/pris (alimenté côté RH). Sert de base aux
+    déclarations annuelles (état IR 9421, attestations) et au contrôle de
+    cohérence mensuelle.
+
+    Recalculé (idempotent) à partir des bulletins VALIDÉS de l'année par
+    ``services.recalculer_cumul_annuel`` : un cumul n'est jamais saisi à la main.
+    Multi-société : ``company`` posée côté serveur. Le couple
+    ``(company, profil, annee)`` est unique — un seul cumul par employé et par
+    année.
+    """
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='paie_cumuls_annuels',
+        verbose_name='Société',
+    )
+    profil = models.ForeignKey(
+        ProfilPaie,
+        on_delete=models.CASCADE,
+        related_name='cumuls_annuels',
+        verbose_name='Profil de paie',
+    )
+    annee = models.PositiveIntegerField(verbose_name='Année')
+    brut = models.DecimalField(
+        max_digits=16, decimal_places=2, default=Decimal('0'),
+        verbose_name='Cumul brut')
+    brut_imposable = models.DecimalField(
+        max_digits=16, decimal_places=2, default=Decimal('0'),
+        verbose_name='Cumul brut imposable')
+    net_imposable = models.DecimalField(
+        max_digits=16, decimal_places=2, default=Decimal('0'),
+        verbose_name='Cumul net imposable')
+    ir = models.DecimalField(
+        max_digits=16, decimal_places=2, default=Decimal('0'),
+        verbose_name='Cumul IR')
+    cnss_salariale = models.DecimalField(
+        max_digits=16, decimal_places=2, default=Decimal('0'),
+        verbose_name='Cumul CNSS salariale')
+    amo_salariale = models.DecimalField(
+        max_digits=16, decimal_places=2, default=Decimal('0'),
+        verbose_name='Cumul AMO salariale')
+    cimr_salariale = models.DecimalField(
+        max_digits=16, decimal_places=2, default=Decimal('0'),
+        verbose_name='Cumul CIMR salariale')
+    frais_professionnels = models.DecimalField(
+        max_digits=16, decimal_places=2, default=Decimal('0'),
+        verbose_name='Cumul frais professionnels')
+    net_a_payer = models.DecimalField(
+        max_digits=16, decimal_places=2, default=Decimal('0'),
+        verbose_name='Cumul net à payer')
+    charges_patronales = models.DecimalField(
+        max_digits=16, decimal_places=2, default=Decimal('0'),
+        verbose_name='Cumul charges patronales')
+    provision_conges = models.DecimalField(
+        max_digits=16, decimal_places=2, default=Decimal('0'),
+        verbose_name='Cumul provision congés payés')
+    # Compteur de congés (alimenté côté RH, informatif).
+    conges_acquis = models.DecimalField(
+        max_digits=8, decimal_places=2, default=Decimal('0'),
+        verbose_name='Congés acquis (jours)')
+    conges_pris = models.DecimalField(
+        max_digits=8, decimal_places=2, default=Decimal('0'),
+        verbose_name='Congés pris (jours)')
+    nombre_bulletins = models.PositiveIntegerField(
+        default=0, verbose_name='Nombre de bulletins cumulés')
+    date_calcul = models.DateTimeField(
+        null=True, blank=True, verbose_name='Recalculé le')
+    date_creation = models.DateTimeField(
+        auto_now_add=True, verbose_name='Créé le')
+
+    class Meta:
+        verbose_name = 'Cumul annuel'
+        verbose_name_plural = 'Cumuls annuels'
+        ordering = ['-annee', 'profil']
+        unique_together = [('company', 'profil', 'annee')]
+
+    def __str__(self):
+        return f'Cumul {self.annee} profil #{self.profil_id}'

@@ -4,6 +4,7 @@ from rest_framework.routers import DefaultRouter
 from .views import (
     BaremeIRViewSet,
     BulletinPaieViewSet,
+    CumulAnnuelViewSet,
     ElementVariableViewSet,
     ParametrePaieViewSet,
     PeriodePaieViewSet,
@@ -21,6 +22,7 @@ router.register(r'rubriques-employe', RubriqueEmployeViewSet)
 router.register(r'periodes', PeriodePaieViewSet)
 router.register(r'elements-variables', ElementVariableViewSet)
 router.register(r'bulletins', BulletinPaieViewSet)
+router.register(r'cumuls-annuels', CumulAnnuelViewSet)
 
 urlpatterns = [
     path('', include(router.urls)),
