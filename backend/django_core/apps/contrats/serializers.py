@@ -25,6 +25,7 @@ from .models import (
     ModeleContratClause,
     Obligation,
     PartieContrat,
+    PieceConformite,
     RegleApprobation,
     Resiliation,
     RetenueGarantie,
@@ -1089,3 +1090,48 @@ class CautionSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError(
                 "Ce contrat n'appartient pas à votre société.")
         return contrat
+
+
+class PieceConformiteSerializer(serializers.ModelSerializer):
+    """Pièce de conformité / attestation obligatoire d'un contrat (CONTRAT34).
+
+    ``company`` n'est jamais exposée : elle est posée côté serveur (déduite du
+    contrat). Le ``contrat`` reçu est validé même-société. ``date_fourniture``
+    est posée côté serveur (action ``marquer-fournie``) et reste en lecture seule.
+    """
+    type_piece_display = serializers.CharField(
+        source='get_type_piece_display', read_only=True)
+    statut_display = serializers.CharField(
+        source='get_statut_display', read_only=True)
+
+    class Meta:
+        model = PieceConformite
+        fields = [
+            'id', 'contrat', 'type_piece', 'type_piece_display', 'libelle',
+            'obligatoire', 'statut', 'statut_display', 'ged_document_id',
+            'date_fourniture', 'date_expiration', 'note', 'date_creation',
+        ]
+        read_only_fields = [
+            'type_piece_display', 'statut_display', 'date_fourniture',
+            'date_creation',
+        ]
+
+    def validate_contrat(self, contrat):
+        """Le contrat rattaché doit appartenir à la société de l'utilisateur."""
+        request = self.context.get('request')
+        if request is not None and contrat.company_id != request.user.company_id:
+            raise serializers.ValidationError(
+                "Ce contrat n'appartient pas à votre société.")
+        return contrat
+
+
+class MarquerPieceFournieSerializer(serializers.Serializer):
+    """Corps de POST /pieces-conformite/<id>/marquer-fournie/ (CONTRAT34).
+
+    Tous les champs sont optionnels : ``ged_document_id`` (lien LÂCHE vers un
+    document GED), ``date_expiration``. Le ``statut`` et ``date_fourniture`` sont
+    posés CÔTÉ SERVEUR.
+    """
+    ged_document_id = serializers.IntegerField(
+        required=False, allow_null=True, min_value=1)
+    date_expiration = serializers.DateField(required=False, allow_null=True)

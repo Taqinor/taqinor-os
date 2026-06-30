@@ -18,6 +18,7 @@ from .views import (
     ModeleContratViewSet,
     ObligationViewSet,
     PartieContratViewSet,
+    PieceConformiteViewSet,
     RegleApprobationViewSet,
     ResiliationViewSet,
     RetenueGarantieViewSet,
@@ -45,6 +46,7 @@ router.register(r'cautions', CautionViewSet)
 router.register(r'echeanciers', EcheancierContratViewSet)
 router.register(r'lignes-echeance', LigneEcheanceViewSet)
 router.register(r'indexations', IndexationPrixViewSet)
+router.register(r'pieces-conformite', PieceConformiteViewSet)
 
 urlpatterns = [
     path('', include(router.urls)),

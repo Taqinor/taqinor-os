@@ -15,6 +15,7 @@ from .models import (
     LigneEcheance,
     Obligation,
     PartieContrat,
+    PieceConformite,
     RegleApprobation,
     RetenueGarantie,
     SignatureContrat,
@@ -183,3 +184,13 @@ class IndexationPrixAdmin(admin.ModelAdmin):
     list_filter = ('periodicite', 'actif')
     search_fields = ('libelle', 'indice')
     readonly_fields = ('date_derniere_revision', 'date_creation')
+
+
+@admin.register(PieceConformite)
+class PieceConformiteAdmin(admin.ModelAdmin):
+    list_display = ('id', 'contrat', 'type_piece', 'libelle', 'obligatoire',
+                    'statut', 'ged_document_id', 'date_fourniture',
+                    'date_expiration', 'company')
+    list_filter = ('type_piece', 'statut', 'obligatoire')
+    search_fields = ('libelle', 'note')
+    readonly_fields = ('date_fourniture', 'date_creation')

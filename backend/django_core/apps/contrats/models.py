@@ -2311,3 +2311,98 @@ class IndexationPrix(models.Model):
                 + (Decimal('1') - part_fixe)
                 * valeur_actuelle / self.valeur_base)
         return (prix_base * coef).quantize(Decimal('0.01'))
+
+
+class PieceConformite(models.Model):
+    """Pièce de conformité / attestation obligatoire d'un contrat — CONTRAT34.
+
+    Une ``PieceConformite`` recense une PIÈCE JUSTIFICATIVE attendue sur un
+    ``Contrat`` (attestation d'assurance RC/décennale, attestation fiscale, RIB,
+    KYC, certificat de conformité ONEE, PV de réception…). Elle porte un
+    ``type_piece``, un ``libelle``, un drapeau ``obligatoire`` et un ``statut``
+    LOCAL de complétude (``manquante`` → ``fournie`` → ``validee`` /
+    ``expiree`` / ``refusee``). La pièce déposée peut être reliée LÂCHEMENT à un
+    document GED par son id (``ged_document_id`` — id seul, jamais un FK dur ni
+    un import de ``ged.models``).
+
+    Le ``statut`` est PROPRE au suivi de conformité : il ne touche JAMAIS le
+    ``Contrat.statut`` (CONTRAT12) ni le funnel ``STAGES.py`` (rule #2).
+
+    Multi-tenant : ``company`` est posée CÔTÉ SERVEUR (déduite du contrat).
+    ``contrat`` est une référence interne à l'app `contrats` (FK dur autorisé).
+
+    RUNTIME-SAFETY (leçon FG136) : ``libelle`` borné (≤200) et ``note`` un
+    ``TextField`` ; les index sont NOMMÉS explicitement (≤30 chars).
+    """
+
+    class TypePiece(models.TextChoices):
+        ASSURANCE = 'assurance', 'Attestation d\'assurance'
+        FISCALE = 'fiscale', 'Attestation fiscale'
+        RIB = 'rib', 'RIB'
+        KYC = 'kyc', 'Pièce KYC / identité'
+        CERTIFICAT = 'certificat', 'Certificat de conformité'
+        PV_RECEPTION = 'pv_reception', 'PV de réception'
+        AUTRE = 'autre', 'Autre'
+
+    class Statut(models.TextChoices):
+        MANQUANTE = 'manquante', 'Manquante'
+        FOURNIE = 'fournie', 'Fournie'
+        VALIDEE = 'validee', 'Validée'
+        EXPIREE = 'expiree', 'Expirée'
+        REFUSEE = 'refusee', 'Refusée'
+
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='contrats_pieces_conformite',
+        verbose_name='Société',
+    )
+    contrat = models.ForeignKey(
+        Contrat,
+        on_delete=models.CASCADE,
+        related_name='pieces_conformite',
+        verbose_name='Contrat',
+    )
+    type_piece = models.CharField(
+        max_length=20, choices=TypePiece.choices,
+        default=TypePiece.AUTRE, verbose_name='Type de pièce')
+    libelle = models.CharField(max_length=200, verbose_name='Libellé')
+    obligatoire = models.BooleanField(
+        default=True, verbose_name='Obligatoire')
+    statut = models.CharField(
+        max_length=20, choices=Statut.choices,
+        default=Statut.MANQUANTE, verbose_name='Statut')
+    # Lien LÂCHE vers un document GED (id seul) — jamais un FK dur ni un import
+    # de ``ged.models``. NULL = aucune pièce déposée en GED.
+    ged_document_id = models.PositiveIntegerField(
+        null=True, blank=True, verbose_name='ID du document GED')
+    # Date de fourniture effective (posée côté serveur). NULL tant que non fournie.
+    date_fourniture = models.DateField(
+        null=True, blank=True, verbose_name='Fournie le')
+    # Date d'expiration de la pièce (ex. attestation annuelle). NULL = sans date.
+    date_expiration = models.DateField(
+        null=True, blank=True, verbose_name="Date d'expiration")
+    note = models.TextField(blank=True, default='', verbose_name='Note')
+    date_creation = models.DateTimeField(
+        auto_now_add=True, verbose_name='Créée le')
+
+    class Meta:
+        verbose_name = 'Pièce de conformité'
+        verbose_name_plural = 'Pièces de conformité'
+        ordering = ['contrat_id', 'id']
+        indexes = [
+            models.Index(
+                fields=['company', 'statut'],
+                name='contrats_piece_co_st',
+            ),
+            models.Index(
+                fields=['contrat', 'obligatoire'],
+                name='contrats_piece_ct_obl',
+            ),
+        ]
+
+    def __str__(self):
+        return (
+            f'{self.libelle} ({self.get_statut_display()}) '
+            f'— contrat {self.contrat_id}'
+        )

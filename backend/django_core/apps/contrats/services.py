@@ -2002,3 +2002,40 @@ def appliquer_indexation(indexation, *, valeur_actuelle, auteur=None,
         'prix_revise': calcul['prix_revise'],
         'delta': delta,
     }
+
+
+# ---------------------------------------------------------------------------
+# CONTRAT34 — Pièces de conformité (pièces obligatoires & attestations)
+# ---------------------------------------------------------------------------
+
+
+def marquer_piece_fournie(piece, *, ged_document_id=None, date_expiration=None,
+                          today=None, auteur=None):
+    """Marque une pièce de conformité FOURNIE (statut + date côté serveur) — CONTRAT34.
+
+    Pose ``statut=fournie`` et ``date_fourniture=today`` (date du jour
+    injectable). Relie éventuellement la pièce à un document GED par son id seul
+    (``ged_document_id`` — lien LÂCHE, jamais un import de ``ged.models``) et fixe
+    une ``date_expiration`` si fournie. Journalise au chatter du contrat
+    (CONTRAT15). Ne change AUCUN ``Contrat.statut``. Renvoie la pièce.
+    """
+    from .models import PieceConformite
+
+    if today is None:
+        today = timezone.localdate()
+    ancien = piece.statut
+    piece.statut = PieceConformite.Statut.FOURNIE
+    piece.date_fourniture = today
+    champs = ['statut', 'date_fourniture']
+    if ged_document_id is not None:
+        piece.ged_document_id = ged_document_id
+        champs.append('ged_document_id')
+    if date_expiration is not None:
+        piece.date_expiration = date_expiration
+        champs.append('date_expiration')
+    piece.save(update_fields=champs)
+    journaliser_transition(
+        piece.contrat, field='piece_conformite', old_value=ancien,
+        new_value=piece.statut,
+        message=f'Pièce « {piece.libelle} » fournie.', auteur=auteur)
+    return piece

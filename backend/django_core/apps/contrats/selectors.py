@@ -237,6 +237,38 @@ def indexations_contrat(contrat):
         contrat=contrat, company=contrat.company).order_by('-id')
 
 
+def pieces_conformite_contrat(contrat):
+    """Pièces de conformité d'un contrat (QuerySet scopé société) — CONTRAT34.
+
+    Lecture seule. Ordre par ``id`` (cohérent avec ``Meta.ordering``). La société
+    est portée par le contrat ; on filtre aussi sur ``contrat.company`` par
+    sécurité même si le FK ``contrat`` la garantit.
+    """
+    from .models import PieceConformite
+
+    return PieceConformite.objects.filter(
+        contrat=contrat, company=contrat.company).order_by('id')
+
+
+def pieces_obligatoires_manquantes(contrat):
+    """Pièces OBLIGATOIRES non encore fournies/validées d'un contrat — CONTRAT34.
+
+    Lecture seule. Sous-ensemble des pièces ``obligatoire=True`` dont le statut
+    n'est ni ``fournie`` ni ``validee`` (donc manquante/expirée/refusée) — la
+    liste des pièces à réclamer. Scopée société.
+    """
+    from .models import PieceConformite
+
+    return (
+        PieceConformite.objects
+        .filter(contrat=contrat, company=contrat.company, obligatoire=True)
+        .exclude(statut__in=[
+            PieceConformite.Statut.FOURNIE,
+            PieceConformite.Statut.VALIDEE])
+        .order_by('id')
+    )
+
+
 def signatures_contrat(contrat):
     """Signatures électroniques d'un contrat (QuerySet scopé société, ordonné).
 

@@ -48,6 +48,7 @@ from .models import (
     ModeleContratClause,
     Obligation,
     PartieContrat,
+    PieceConformite,
     RegleApprobation,
     Resiliation,
     RetenueGarantie,
@@ -73,6 +74,7 @@ from .serializers import (
     IndexationActionSerializer,
     IndexationPrixSerializer,
     LigneEcheanceSerializer,
+    MarquerPieceFournieSerializer,
     InstancierContratSerializer,
     JalonContratSerializer,
     ModeleContratClauseSerializer,
@@ -81,6 +83,7 @@ from .serializers import (
     ObligationSerializer,
     PartieContratSerializer,
     PenaliteSLASerializer,
+    PieceConformiteSerializer,
     RegleApprobationSerializer,
     RendreContratSerializer,
     RenouvelerContratSerializer,
@@ -1633,3 +1636,66 @@ class IndexationPrixViewSet(_ContratsBaseViewSet):
             'avenant_id': avenant.id if avenant is not None else None,
             'avenant_numero': avenant.numero if avenant is not None else None,
         }, status=status.HTTP_200_OK)
+
+
+class PieceConformiteViewSet(_ContratsBaseViewSet):
+    """Pièces de conformité / attestations obligatoires des contrats (CONTRAT34).
+
+    Scopé société (``TenantMixin``) ; ``company`` posée CÔTÉ SERVEUR (déduite du
+    contrat). CRUD plus une action ``marquer-fournie`` qui pose ``statut=fournie``
+    + ``date_fourniture`` (et relie éventuellement un document GED par id LÂCHE).
+    Le ``statut`` est PROPRE au suivi de conformité — il ne touche JAMAIS le
+    ``Contrat.statut`` (CONTRAT12) ni le funnel ``STAGES.py`` (rule #2).
+
+    Filtres : ``?contrat=<id>``, ``?statut=<valeur>``, ``?type_piece=<valeur>``,
+    ``?obligatoire=true/false``.
+    """
+    queryset = PieceConformite.objects.select_related('contrat').all()
+    serializer_class = PieceConformiteSerializer
+    filter_backends = [filters.SearchFilter, filters.OrderingFilter]
+    search_fields = ['libelle', 'note']
+    ordering_fields = ['date_expiration', 'date_fourniture', 'date_creation',
+                       'id']
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        contrat_id = self.request.query_params.get('contrat')
+        if contrat_id:
+            qs = qs.filter(contrat_id=contrat_id)
+        statut = self.request.query_params.get('statut')
+        if statut:
+            qs = qs.filter(statut=statut)
+        type_piece = self.request.query_params.get('type_piece')
+        if type_piece:
+            qs = qs.filter(type_piece=type_piece)
+        obligatoire = self.request.query_params.get('obligatoire')
+        if obligatoire is not None:
+            qs = qs.filter(
+                obligatoire=obligatoire.lower() in ('1', 'true', 'oui'))
+        return qs
+
+    def perform_create(self, serializer):
+        """Pose ``company`` (celle du contrat) côté serveur."""
+        contrat = serializer.validated_data['contrat']
+        serializer.save(company=contrat.company)
+
+    @action(detail=True, methods=['post'], url_path='marquer-fournie')
+    def marquer_fournie(self, request, pk=None):
+        """Marque la pièce FOURNIE (statut + date côté serveur — CONTRAT34).
+
+        Corps optionnel : ``ged_document_id`` (lien LÂCHE vers un document GED),
+        ``date_expiration``. La date du jour et l'auteur sont posés CÔTÉ SERVEUR.
+        Ne change AUCUN ``Contrat.statut``.
+        """
+        piece = self.get_object()
+        body = MarquerPieceFournieSerializer(data=request.data)
+        body.is_valid(raise_exception=True)
+        piece = services.marquer_piece_fournie(
+            piece,
+            ged_document_id=body.validated_data.get('ged_document_id'),
+            date_expiration=body.validated_data.get('date_expiration'),
+            auteur=request.user,
+        )
+        return Response(
+            PieceConformiteSerializer(
+                piece, context={'request': request}).data)
