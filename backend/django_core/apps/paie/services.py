@@ -1797,6 +1797,124 @@ def fichier_damancom_cnss(periode):
     }
 
 
+# ── PAIE32 — État IR 9421 + retenues à la source ───────────────────────────
+
+def etat_ir_9421(periode):
+    """État IR 9421 (retenues à la source) d'une période (PAIE32).
+
+    État employeur des traitements & salaires et de l'IR retenu à la source pour
+    les bulletins VALIDÉS de la ``periode`` : par salarié, le brut imposable, le
+    net imposable, l'IR retenu et le nombre de personnes à charge. Calcule les
+    totaux. Le ``matricule`` est lu sur le dossier RH via la relation existante
+    (jamais via ``rh.models``).
+
+    Lecture seule. Renvoie un dict ::
+
+        {'annee', 'mois', 'lignes': [...], 'total_brut_imposable',
+         'total_net_imposable', 'total_ir', 'nombre_salaries'}
+    """
+    from .models import BulletinPaie
+
+    bulletins = (
+        BulletinPaie.objects
+        .filter(company=periode.company, periode=periode,
+                statut=BulletinPaie.STATUT_VALIDE)
+        .select_related('profil', 'profil__employe')
+    )
+    lignes = []
+    total_brut_imp = Decimal('0')
+    total_net_imp = Decimal('0')
+    total_ir = Decimal('0')
+    for bulletin in bulletins:
+        profil = bulletin.profil
+        employe = profil.employe
+        nom = f'{employe.nom} {employe.prenom}'.strip() if employe else ''
+        brut_imp = Decimal(bulletin.brut_imposable or 0)
+        net_imp = Decimal(bulletin.net_imposable or 0)
+        ir = Decimal(bulletin.ir or 0)
+        lignes.append({
+            'matricule': getattr(employe, 'matricule', '') if employe else '',
+            'nom': nom,
+            'brut_imposable': _q(brut_imp),
+            'net_imposable': _q(net_imp),
+            'ir': _q(ir),
+            'personnes_a_charge': bulletin.personnes_a_charge,
+            'frais_professionnels': _q(bulletin.frais_professionnels),
+        })
+        total_brut_imp += brut_imp
+        total_net_imp += net_imp
+        total_ir += ir
+
+    return {
+        'annee': periode.annee,
+        'mois': periode.mois,
+        'lignes': lignes,
+        'total_brut_imposable': _q(total_brut_imp),
+        'total_net_imposable': _q(total_net_imp),
+        'total_ir': _q(total_ir),
+        'nombre_salaries': len(lignes),
+    }
+
+
+def etat_ir_9421_annuel(company, annee):
+    """État IR 9421 ANNUEL (retenues à la source) pour une société (PAIE32).
+
+    Variante annuelle : agrège l'IR retenu sur TOUTES les périodes de l'année
+    ``annee``, par salarié (cumul brut imposable / net imposable / IR sur les
+    bulletins validés des 12 mois). Lecture seule. Renvoie un dict de même forme
+    que ``etat_ir_9421`` (sans ``mois``), trié par matricule.
+    """
+    from .models import BulletinPaie
+
+    bulletins = (
+        BulletinPaie.objects
+        .filter(company=company, periode__annee=annee,
+                statut=BulletinPaie.STATUT_VALIDE)
+        .select_related('profil', 'profil__employe')
+    )
+    par_profil = {}
+    for bulletin in bulletins:
+        profil = bulletin.profil
+        ligne = par_profil.setdefault(profil.id, {
+            'profil_id': profil.id,
+            'matricule': getattr(profil.employe, 'matricule', '')
+            if profil.employe else '',
+            'nom': f'{profil.employe.nom} {profil.employe.prenom}'.strip()
+            if profil.employe else '',
+            'brut_imposable': Decimal('0'),
+            'net_imposable': Decimal('0'),
+            'ir': Decimal('0'),
+            'nombre_bulletins': 0,
+        })
+        ligne['brut_imposable'] += Decimal(bulletin.brut_imposable or 0)
+        ligne['net_imposable'] += Decimal(bulletin.net_imposable or 0)
+        ligne['ir'] += Decimal(bulletin.ir or 0)
+        ligne['nombre_bulletins'] += 1
+
+    lignes = []
+    total_brut_imp = Decimal('0')
+    total_net_imp = Decimal('0')
+    total_ir = Decimal('0')
+    for ligne in par_profil.values():
+        ligne['brut_imposable'] = _q(ligne['brut_imposable'])
+        ligne['net_imposable'] = _q(ligne['net_imposable'])
+        ligne['ir'] = _q(ligne['ir'])
+        total_brut_imp += ligne['brut_imposable']
+        total_net_imp += ligne['net_imposable']
+        total_ir += ligne['ir']
+        lignes.append(ligne)
+    lignes.sort(key=lambda r: (r['matricule'], r['profil_id']))
+
+    return {
+        'annee': annee,
+        'lignes': lignes,
+        'total_brut_imposable': _q(total_brut_imp),
+        'total_net_imposable': _q(total_net_imp),
+        'total_ir': _q(total_ir),
+        'nombre_salaries': len(lignes),
+    }
+
+
 # ── PAIE27 — Cumul annuel par employé (recalcul depuis bulletins validés) ────
 
 # Champs cumulés : (champ du CumulAnnuel, champ du BulletinPaie) sommés.

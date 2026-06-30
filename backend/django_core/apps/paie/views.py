@@ -49,6 +49,8 @@ from .services import (
     ensure_defaults,
     ensure_rubriques_defaut,
     ensure_rubriques_standard,
+    etat_ir_9421,
+    etat_ir_9421_annuel,
     fichier_damancom_cnss,
     fichier_virement_paie,
     generer_bulletin,
@@ -223,6 +225,29 @@ class PeriodePaieViewSet(_PaieBaseViewSet):
         periode = self.get_object()
         return Response(
             fichier_damancom_cnss(periode), status=status.HTTP_200_OK)
+
+    @action(detail=True, methods=['get'], url_path='etat-ir')
+    def etat_ir(self, request, pk=None):
+        """État IR 9421 (retenues à la source) de la période (PAIE32)."""
+        periode = self.get_object()
+        return Response(etat_ir_9421(periode), status=status.HTTP_200_OK)
+
+    @action(detail=False, methods=['get'], url_path='etat-ir-annuel')
+    def etat_ir_annuel(self, request):
+        """État IR 9421 ANNUEL d'une société (PAIE32).
+
+        Paramètre de requête ``annee`` requis : cumule l'IR retenu sur toutes
+        les périodes de l'année.
+        """
+        try:
+            annee = int(request.query_params.get('annee'))
+        except (TypeError, ValueError):
+            return Response(
+                {'detail': 'Paramètre "annee" requis.'},
+                status=status.HTTP_400_BAD_REQUEST)
+        return Response(
+            etat_ir_9421_annuel(request.user.company, annee),
+            status=status.HTTP_200_OK)
 
 
 class ElementVariableViewSet(_PaieBaseViewSet):
