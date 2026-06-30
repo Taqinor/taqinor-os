@@ -34,6 +34,7 @@ from . import selectors, services
 from .models import (
     AlerteContrat,
     Avenant,
+    Caution,
     Clause,
     ClauseContrat,
     Contrat,
@@ -52,6 +53,7 @@ from .models import (
 from .serializers import (
     AlerteContratSerializer,
     AvenantSerializer,
+    CautionSerializer,
     ChangerStatutSerializer,
     ClauseContratSerializer,
     ClauseSerializer,
@@ -1317,3 +1319,40 @@ class RetenueGarantieViewSet(_ContratsBaseViewSet):
         return Response(
             RetenueGarantieSerializer(
                 retenue, context={'request': request}).data)
+
+
+class CautionViewSet(_ContratsBaseViewSet):
+    """Registre des cautions / garanties liées aux contrats (CONTRAT29).
+
+    Scopé société (``TenantMixin``) ; ``company`` posée CÔTÉ SERVEUR (déduite du
+    contrat). CRUD complet. Le ``statut`` d'une caution est un simple champ de
+    registre (éditable) — il ne pilote AUCUNE machine d'états du contrat
+    (CONTRAT12) ni le funnel ``STAGES.py`` (rule #2).
+
+    Filtres : ``?contrat=<id>``, ``?statut=<valeur>``, ``?type_caution=<valeur>``.
+    Recherche : ``garant`` / ``reference``.
+    """
+    queryset = Caution.objects.select_related('contrat').all()
+    serializer_class = CautionSerializer
+    filter_backends = [filters.SearchFilter, filters.OrderingFilter]
+    search_fields = ['garant', 'reference']
+    ordering_fields = ['date_emission', 'date_expiration', 'montant',
+                       'date_creation', 'id']
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        contrat_id = self.request.query_params.get('contrat')
+        if contrat_id:
+            qs = qs.filter(contrat_id=contrat_id)
+        statut = self.request.query_params.get('statut')
+        if statut:
+            qs = qs.filter(statut=statut)
+        type_caution = self.request.query_params.get('type_caution')
+        if type_caution:
+            qs = qs.filter(type_caution=type_caution)
+        return qs
+
+    def perform_create(self, serializer):
+        """Pose ``company`` (celle du contrat) côté serveur."""
+        contrat = serializer.validated_data['contrat']
+        serializer.save(company=contrat.company)

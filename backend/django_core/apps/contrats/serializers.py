@@ -9,6 +9,7 @@ from rest_framework import serializers
 from .models import (
     AlerteContrat,
     Avenant,
+    Caution,
     Clause,
     ClauseContrat,
     Contrat,
@@ -917,3 +918,37 @@ class RetenueGarantieSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError(
                 'Le taux de retenue doit être compris entre 0 et 100.')
         return value
+
+
+class CautionSerializer(serializers.ModelSerializer):
+    """Caution / garantie liée à un contrat — registre (CONTRAT29).
+
+    ``company`` n'est jamais exposée : elle est posée côté serveur (déduite du
+    contrat). Le ``contrat`` reçu est validé même-société. Le ``statut`` est un
+    simple champ de registre (éditable) — il ne pilote AUCUNE machine d'états du
+    contrat (CONTRAT12).
+    """
+    type_caution_display = serializers.CharField(
+        source='get_type_caution_display', read_only=True)
+    statut_display = serializers.CharField(
+        source='get_statut_display', read_only=True)
+
+    class Meta:
+        model = Caution
+        fields = [
+            'id', 'contrat', 'type_caution', 'type_caution_display', 'garant',
+            'reference', 'montant', 'devise', 'date_emission',
+            'date_expiration', 'statut', 'statut_display', 'note',
+            'date_creation',
+        ]
+        read_only_fields = [
+            'type_caution_display', 'statut_display', 'date_creation',
+        ]
+
+    def validate_contrat(self, contrat):
+        """Le contrat rattaché doit appartenir à la société de l'utilisateur."""
+        request = self.context.get('request')
+        if request is not None and contrat.company_id != request.user.company_id:
+            raise serializers.ValidationError(
+                "Ce contrat n'appartient pas à votre société.")
+        return contrat

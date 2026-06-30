@@ -185,6 +185,19 @@ def retenues_garantie_contrat(contrat):
         contrat=contrat, company=contrat.company).order_by('-id')
 
 
+def cautions_contrat(contrat):
+    """Cautions/garanties liées à un contrat (QuerySet scopé société) — CONTRAT29.
+
+    Lecture seule. Ordre par ``id`` décroissant (cohérent avec ``Meta.ordering``).
+    La société est portée par le contrat ; on filtre aussi sur ``contrat.company``
+    par sécurité même si le FK ``contrat`` la garantit.
+    """
+    from .models import Caution
+
+    return Caution.objects.filter(
+        contrat=contrat, company=contrat.company).order_by('-id')
+
+
 def signatures_contrat(contrat):
     """Signatures électroniques d'un contrat (QuerySet scopé société, ordonné).
 

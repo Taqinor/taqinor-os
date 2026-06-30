@@ -1909,3 +1909,100 @@ class RetenueGarantie(models.Model):
         base = self.montant_base or Decimal('0')
         taux = self.taux or Decimal('0')
         return (base * taux / Decimal('100')).quantize(Decimal('0.01'))
+
+
+class Caution(models.Model):
+    """Caution / garantie bancaire liée à un contrat (registre) — CONTRAT29.
+
+    Une ``Caution`` recense une GARANTIE FINANCIÈRE liée à un ``Contrat`` :
+    caution de soumission, caution de bonne exécution/réalisation, caution de
+    restitution d'acompte, garantie de retenue de garantie, garantie de la
+    société mère, ou autre. Elle porte le ``type_caution``, l'organisme GARANT
+    (``garant`` — banque/assureur), une éventuelle référence d'acte
+    (``reference``), le ``montant`` garanti, les dates de validité
+    (``date_emission`` → ``date_expiration``) et un ``statut`` LOCAL de cycle de
+    vie (``active`` → ``mainlevee`` / ``appelee`` / ``expiree`` / ``annulee``).
+
+    Le ``statut`` est PROPRE au registre des cautions : il ne touche JAMAIS le
+    ``Contrat.statut`` (CONTRAT12) ni le funnel ``STAGES.py`` (rule #2).
+
+    Multi-tenant : ``company`` est posée CÔTÉ SERVEUR (déduite du contrat).
+    ``contrat`` est une référence interne à l'app `contrats` (FK dur autorisé).
+
+    RUNTIME-SAFETY (leçon FG136) : ``garant`` / ``reference`` sont des
+    ``CharField`` bornés et ``note`` un ``TextField``. Les index sont NOMMÉS
+    explicitement (≤30 chars).
+    """
+
+    class TypeCaution(models.TextChoices):
+        SOUMISSION = 'soumission', 'Caution de soumission'
+        BONNE_EXECUTION = 'bonne_execution', 'Caution de bonne exécution'
+        RESTITUTION_ACOMPTE = 'restitution_acompte', "Restitution d'acompte"
+        RETENUE_GARANTIE = 'retenue_garantie', 'Garantie de retenue'
+        SOCIETE_MERE = 'societe_mere', 'Garantie société mère'
+        AUTRE = 'autre', 'Autre'
+
+    class Statut(models.TextChoices):
+        ACTIVE = 'active', 'Active'
+        MAINLEVEE = 'mainlevee', 'Mainlevée'
+        APPELEE = 'appelee', 'Appelée'
+        EXPIREE = 'expiree', 'Expirée'
+        ANNULEE = 'annulee', 'Annulée'
+
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='contrats_cautions',
+        verbose_name='Société',
+    )
+    contrat = models.ForeignKey(
+        Contrat,
+        on_delete=models.CASCADE,
+        related_name='cautions',
+        verbose_name='Contrat',
+    )
+    type_caution = models.CharField(
+        max_length=30, choices=TypeCaution.choices,
+        default=TypeCaution.BONNE_EXECUTION, verbose_name='Type de caution')
+    # Organisme garant (banque, compagnie d'assurance, maison mère…).
+    garant = models.CharField(
+        max_length=200, blank=True, default='', verbose_name='Garant')
+    # Référence de l'acte de cautionnement (numéro bancaire…).
+    reference = models.CharField(
+        max_length=100, blank=True, default='', verbose_name='Référence')
+    montant = models.DecimalField(
+        max_digits=14, decimal_places=2, default=Decimal('0'),
+        verbose_name='Montant garanti')
+    devise = models.CharField(
+        max_length=3, default='MAD', verbose_name='Devise')
+    date_emission = models.DateField(
+        null=True, blank=True, verbose_name="Date d'émission")
+    date_expiration = models.DateField(
+        null=True, blank=True, verbose_name="Date d'expiration")
+    statut = models.CharField(
+        max_length=20, choices=Statut.choices,
+        default=Statut.ACTIVE, verbose_name='Statut')
+    note = models.TextField(blank=True, default='', verbose_name='Note')
+    date_creation = models.DateTimeField(
+        auto_now_add=True, verbose_name='Créée le')
+
+    class Meta:
+        verbose_name = 'Caution / garantie'
+        verbose_name_plural = 'Cautions / garanties'
+        ordering = ['contrat_id', '-id']
+        indexes = [
+            models.Index(
+                fields=['company', 'statut'],
+                name='contrats_caut_co_st',
+            ),
+            models.Index(
+                fields=['contrat', 'date_expiration'],
+                name='contrats_caut_ct_exp',
+            ),
+        ]
+
+    def __str__(self):
+        return (
+            f'{self.get_type_caution_display()} {self.montant} '
+            f'({self.get_statut_display()}) — contrat {self.contrat_id}'
+        )

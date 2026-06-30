@@ -4,6 +4,7 @@ from rest_framework.routers import DefaultRouter
 from .views import (
     AlerteContratViewSet,
     AvenantViewSet,
+    CautionViewSet,
     ClauseContratViewSet,
     ClauseViewSet,
     ContratLienViewSet,
@@ -37,6 +38,7 @@ router.register(r'jalons', JalonContratViewSet)
 router.register(r'obligations', ObligationViewSet)
 router.register(r'sla', EngagementSLAViewSet)
 router.register(r'retenues-garantie', RetenueGarantieViewSet)
+router.register(r'cautions', CautionViewSet)
 
 urlpatterns = [
     path('', include(router.urls)),

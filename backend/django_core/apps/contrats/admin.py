@@ -2,6 +2,7 @@ from django.contrib import admin
 
 from .models import (
     AlerteContrat,
+    Caution,
     ClauseContrat,
     Contrat,
     ContratActivity,
@@ -138,3 +139,13 @@ class RetenueGarantieAdmin(admin.ModelAdmin):
     search_fields = ('note',)
     readonly_fields = ('montant_retenu', 'date_liberation_effective',
                        'date_creation')
+
+
+@admin.register(Caution)
+class CautionAdmin(admin.ModelAdmin):
+    list_display = ('id', 'contrat', 'type_caution', 'garant', 'reference',
+                    'montant', 'devise', 'date_emission', 'date_expiration',
+                    'statut', 'company')
+    list_filter = ('type_caution', 'statut')
+    search_fields = ('garant', 'reference', 'note')
+    readonly_fields = ('date_creation',)
