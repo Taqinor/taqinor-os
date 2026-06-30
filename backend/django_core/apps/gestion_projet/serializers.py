@@ -10,6 +10,7 @@ from .models import (
     ActionProjet,
     AffectationRessource,
     BaselinePlanning,
+    CommentaireProjet,
     CompteRenduReunion,
     DocumentProjet,
     BaselineTache,
@@ -826,3 +827,39 @@ class DocumentProjetSerializer(serializers.ModelSerializer):
 
     def validate_projet(self, value):
         return _meme_societe(self, value, 'Projet')
+
+
+class CommentaireProjetSerializer(serializers.ModelSerializer):
+    """Commentaire avec @mentions sur un objet d'un projet (PROJ34).
+
+    ``company`` et ``auteur`` sont posés côté serveur (lecture seule). Le
+    ``projet`` reçu est validé même-société ; les utilisateurs ``mentions``
+    reçus sont restreints à la MÊME société. La cible précise est une référence
+    LÂCHE typée ``(cible_type, cible_id)``.
+    """
+    projet_code = serializers.CharField(source='projet.code', read_only=True)
+    auteur_nom = serializers.CharField(
+        source='auteur.username', read_only=True, default='')
+    cible_type_display = serializers.CharField(
+        source='get_cible_type_display', read_only=True)
+
+    class Meta:
+        model = CommentaireProjet
+        fields = [
+            'id', 'projet', 'projet_code', 'cible_type', 'cible_type_display',
+            'cible_id', 'texte', 'auteur', 'auteur_nom', 'mentions',
+            'date_creation',
+        ]
+        read_only_fields = ['auteur', 'date_creation']
+
+    def validate_projet(self, value):
+        return _meme_societe(self, value, 'Projet')
+
+    def validate_mentions(self, value):
+        request = self.context.get('request')
+        if request is not None:
+            for membre in value:
+                if membre.company_id != request.user.company_id:
+                    raise serializers.ValidationError(
+                        f'Utilisateur #{membre.id} inconnu.')
+        return value

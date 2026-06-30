@@ -3,6 +3,7 @@ from django.contrib import admin
 from .models import (
     ActionProjet,
     BudgetProjet,
+    CommentaireProjet,
     CompteRenduReunion,
     DependanceTache,
     DocumentProjet,
@@ -144,3 +145,11 @@ class VersionDocumentAdmin(admin.ModelAdmin):
                     'date_creation')
     list_filter = ('company',)
     search_fields = ('commentaire',)
+
+
+@admin.register(CommentaireProjet)
+class CommentaireProjetAdmin(admin.ModelAdmin):
+    list_display = ('id', 'projet', 'cible_type', 'cible_id', 'auteur',
+                    'company', 'date_creation')
+    list_filter = ('cible_type', 'company')
+    search_fields = ('texte',)

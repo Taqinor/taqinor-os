@@ -19,6 +19,7 @@ from .models import (
     ActionProjet,
     AffectationRessource,
     BaselinePlanning,
+    CommentaireProjet,
     CompteRenduReunion,
     DocumentProjet,
     BudgetProjet,
@@ -44,6 +45,7 @@ from .serializers import (
     ActionProjetSerializer,
     AffectationRessourceSerializer,
     BaselinePlanningSerializer,
+    CommentaireProjetSerializer,
     CompteRenduReunionSerializer,
     DocumentProjetSerializer,
     VersionDocumentSerializer,
@@ -1516,3 +1518,41 @@ class DocumentProjetViewSet(_GestionProjetBaseViewSet):
             document=document, company=document.company).select_related(
                 'auteur').order_by('-version', '-id')
         return Response(VersionDocumentSerializer(qs, many=True).data)
+
+
+class CommentaireProjetViewSet(_GestionProjetBaseViewSet):
+    """Commentaires & @mentions sur les objets d'un projet (PROJ34) — CRUD scopé.
+
+    ``company`` et ``auteur`` sont posés côté serveur ; le ``projet`` reçu est
+    validé même-société et les ``mentions`` restreintes à la même société.
+    Filtres optionnels : ``?projet=<id>``, ``?cible_type=<type>``,
+    ``?cible_id=<id>`` (fil d'un objet précis), ``?mention=<user_id>``
+    (commentaires me mentionnant). Recherche par texte ; tri par défaut date
+    décroissante.
+    """
+    queryset = CommentaireProjet.objects.select_related(
+        'projet', 'auteur').prefetch_related('mentions').all()
+    serializer_class = CommentaireProjetSerializer
+    filter_backends = [filters.SearchFilter, filters.OrderingFilter]
+    search_fields = ['texte']
+    ordering_fields = ['date_creation', 'id']
+
+    def perform_create(self, serializer):
+        serializer.save(
+            company=self.request.user.company, auteur=self.request.user)
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        projet = self.request.query_params.get('projet')
+        if projet:
+            qs = qs.filter(projet_id=projet)
+        cible_type = self.request.query_params.get('cible_type')
+        if cible_type:
+            qs = qs.filter(cible_type=cible_type)
+        cible_id = self.request.query_params.get('cible_id')
+        if cible_id:
+            qs = qs.filter(cible_id=cible_id)
+        mention = self.request.query_params.get('mention')
+        if mention:
+            qs = qs.filter(mentions__id=mention)
+        return qs

@@ -1602,3 +1602,73 @@ class VersionDocument(models.Model):
 
     def __str__(self):
         return f'{self.document_id} v{self.version}'
+
+
+class CommentaireProjet(models.Model):
+    """Un COMMENTAIRE avec @mentions sur un objet d'un ``Projet`` (PROJ34).
+
+    Fil de discussion interne rattaché à un ``Projet`` et, OPTIONNELLEMENT, à un
+    objet précis du projet désigné par un couple typé ``(cible_type, cible_id)``
+    — tâche / risque / action / jalon / document — référence LÂCHE par
+    identifiant (jamais d'import inter-modèles). Le ``texte`` porte le message ;
+    les utilisateurs @mentionnés sont une M2M ``mentions`` — résolus côté serveur
+    et restreints à la MÊME société. ``auteur`` est posé côté serveur.
+
+    Tout est multi-société : ``company`` est posée côté serveur, jamais lue du
+    corps de requête. Modèle entièrement additif.
+    """
+    class CibleType(models.TextChoices):
+        PROJET = 'projet', 'Projet'
+        TACHE = 'tache', 'Tâche'
+        RISQUE = 'risque', 'Risque'
+        ACTION = 'action', 'Action'
+        JALON = 'jalon', 'Jalon'
+        DOCUMENT = 'document', 'Document'
+
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='gestion_projet_commentaires',
+        verbose_name='Société',
+    )
+    projet = models.ForeignKey(
+        Projet,
+        on_delete=models.CASCADE,
+        related_name='commentaires',
+        verbose_name='Projet',
+    )
+    # Cible OPTIONNELLE précise dans le projet (référence lâche typée).
+    cible_type = models.CharField(
+        max_length=10, choices=CibleType.choices,
+        default=CibleType.PROJET, verbose_name='Type de cible')
+    cible_id = models.PositiveIntegerField(
+        null=True, blank=True, verbose_name='ID de la cible')
+    texte = models.TextField(verbose_name='Texte')
+    auteur = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='gestion_projet_commentaires',
+        verbose_name='Auteur',
+    )
+    mentions = models.ManyToManyField(
+        settings.AUTH_USER_MODEL,
+        blank=True,
+        related_name='gestion_projet_mentions',
+        verbose_name='Personnes mentionnées',
+    )
+    date_creation = models.DateTimeField(
+        auto_now_add=True, verbose_name='Créé le')
+
+    class Meta:
+        verbose_name = 'Commentaire projet'
+        verbose_name_plural = 'Commentaires projet'
+        ordering = ['-date_creation', '-id']
+        indexes = [
+            models.Index(
+                fields=['projet', 'cible_type', 'cible_id'],
+                name='gp_comm_proj_cible_idx'),
+        ]
+
+    def __str__(self):
+        return f'commentaire {self.id} ({self.cible_type})'
