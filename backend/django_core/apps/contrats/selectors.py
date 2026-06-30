@@ -14,6 +14,7 @@ from django.db.models import ExpressionWrapper, F, fields
 from django.utils import timezone
 
 from .models import (
+    Avenant,
     Contrat,
     ContratLien,
     EtapeApprobation,
@@ -106,6 +107,18 @@ def versions_contrat(contrat):
     """
     return VersionContrat.objects.filter(
         contrat=contrat, company=contrat.company).order_by('-version', '-id')
+
+
+def avenants_contrat(contrat):
+    """Avenants (amendements) d'un contrat (QuerySet scopé société, ordonné).
+
+    Lecture seule (CONTRAT24). Ordre par numéro d'avenant DÉCROISSANT (le dernier
+    avenant en tête), cohérent avec ``Meta.ordering`` du modèle. La société est
+    portée par le contrat ; on filtre aussi sur ``contrat.company`` par sécurité
+    même si le FK ``contrat`` la garantit.
+    """
+    return Avenant.objects.filter(
+        contrat=contrat, company=contrat.company).order_by('-numero', '-id')
 
 
 def signatures_contrat(contrat):

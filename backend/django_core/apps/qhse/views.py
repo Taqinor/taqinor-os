@@ -16,7 +16,8 @@ from authentication.permissions import IsResponsableOrAdmin
 from apps.ventes.utils.references import create_with_reference
 
 from .models import (
-    ActionCorrectivePreventive, Audit, ConsignationLoto, ContactUrgence,
+    ActionCorrectivePreventive, AnalyseIncident, Audit, CauseIncident,
+    ConsignationLoto, ContactUrgence,
     CritereAudit, DeclarationCnss, EvaluationRisque, GrilleAudit, Incident,
     InductionSecurite,
     ItemNotation, LigneEvaluationRisque, NonConformite, NotationFinChantier,
@@ -25,7 +26,8 @@ from .models import (
     ReleveCourbeIV, ReponseCritere, RetourClientQualite, Secouriste,
 )
 from .serializers import (
-    ActionCorrectivePreventiveSerializer, AuditSerializer,
+    ActionCorrectivePreventiveSerializer, AnalyseIncidentSerializer,
+    AuditSerializer, CauseIncidentSerializer,
     ConsignationLotoSerializer, ContactUrgenceSerializer,
     CritereAuditSerializer, DeclarationCnssSerializer,
     EvaluationRisqueSerializer, GrilleAuditSerializer,
@@ -52,7 +54,8 @@ from .selectors import (
 )
 from .services import (
     activer_procedure, calculer_score_audit, calculer_score_notation,
-    cloturer_ncr, creer_ncr_depuis_reserve, instancier_plan_chantier,
+    cloturer_ncr, creer_ncr_depuis_reserve, generer_capa_depuis_analyse,
+    instancier_plan_chantier,
     lever_ncr_audit, nouvelle_version_procedure, relancer_capa_en_retard,
     verifier_efficacite_capa,
 )
@@ -1280,3 +1283,88 @@ class DeclarationCnssViewSet(_QhseBaseViewSet):
             return self.get_paginated_response(serializer.data)
         serializer = self.get_serializer(qs, many=True)
         return Response(serializer.data)
+
+
+class AnalyseIncidentViewSet(_QhseBaseViewSet):
+    """Analyses d'incident — arbre des causes → CAPA (QHSE31).
+
+    CRUD scopé société. ``company`` et ``analyste`` sont posés côté serveur
+    (jamais lus du corps). Le FK ``incident`` est validé même-société (une seule
+    analyse par incident). ``non_conformite`` (NCR-pont vers les CAPA) est piloté
+    côté serveur. Filtres optionnels : ``?statut=`` / ``?incident=``.
+
+    Action ``POST …/<id>/generer-capa/`` — génère une CAPA depuis l'analyse
+    (``generer_capa_depuis_analyse`` : NCR-pont depuis l'incident + CAPA, mirroir
+    du linkage NCR→CAPA existant). Corps optionnel : ``description``,
+    ``type_action``, ``echeance``.
+    """
+    queryset = AnalyseIncident.objects.select_related(
+        'incident', 'analyste', 'non_conformite').prefetch_related(
+        'causes').all()
+    serializer_class = AnalyseIncidentSerializer
+    filter_backends = [filters.SearchFilter, filters.OrderingFilter]
+    search_fields = ['description', 'synthese']
+    ordering_fields = ['id', 'date_analyse', 'date_creation']
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        statut = self.request.query_params.get('statut')
+        if statut not in (None, ''):
+            qs = qs.filter(statut=statut)
+        incident = self.request.query_params.get('incident')
+        if incident not in (None, ''):
+            qs = qs.filter(incident_id=incident)
+        return qs
+
+    def perform_create(self, serializer):
+        return serializer.save(
+            company=self.request.user.company,
+            analyste=self.request.user)
+
+    @action(detail=True, methods=['post'], url_path='generer-capa')
+    def generer_capa(self, request, pk=None):
+        """Génère une CAPA à partir de l'analyse (QHSE31).
+
+        ``get_object`` scopé société (404 hors société). NCR-pont créée à la
+        première génération puis réutilisée. Renvoie la CAPA créée.
+        """
+        analyse = self.get_object()
+        echeance = request.data.get('echeance') or None
+        capa = generer_capa_depuis_analyse(
+            analyse,
+            description=request.data.get('description') or None,
+            type_action=request.data.get('type_action') or None,
+            echeance=echeance,
+        )
+        return Response(
+            ActionCorrectivePreventiveSerializer(capa).data,
+            status=status.HTTP_201_CREATED)
+
+
+class CauseIncidentViewSet(_QhseBaseViewSet):
+    """Causes (arbre des causes) d'une analyse d'incident (QHSE31).
+
+    CRUD scopé société. ``company`` posée côté serveur ; les FK ``analyse`` /
+    ``parent`` sont validés même-société par le sérialiseur, et ``parent`` doit
+    appartenir à la même analyse (hiérarchie de l'arbre). Filtres optionnels :
+    ``?analyse=`` / ``?parent=`` / ``?type_cause=``.
+    """
+    queryset = CauseIncident.objects.select_related(
+        'analyse', 'parent').all()
+    serializer_class = CauseIncidentSerializer
+    filter_backends = [filters.SearchFilter, filters.OrderingFilter]
+    search_fields = ['libelle']
+    ordering_fields = ['id', 'ordre', 'date_creation']
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        analyse = self.request.query_params.get('analyse')
+        if analyse not in (None, ''):
+            qs = qs.filter(analyse_id=analyse)
+        parent = self.request.query_params.get('parent')
+        if parent not in (None, ''):
+            qs = qs.filter(parent_id=parent)
+        type_cause = self.request.query_params.get('type_cause')
+        if type_cause not in (None, ''):
+            qs = qs.filter(type_cause=type_cause)
+        return qs

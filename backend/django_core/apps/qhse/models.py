@@ -1964,3 +1964,157 @@ class DeclarationCnss(models.Model):
     def __str__(self):
         return (f'Décl. CNSS accident#{self.accident_travail_id} — '
                 f'{self.get_statut_display()}')
+
+
+# ── QHSE31 — Analyse d'incident (arbre des causes) → CAPA ───────────────────
+
+class AnalyseIncident(models.Model):
+    """Analyse des causes d'un ``Incident`` (arbre des causes) → CAPA (QHSE31).
+
+    Pour un incident HSE (``Incident``, QHSE29), conduit une analyse de causes
+    racines : la ``methode`` employée (cinq M / arbre des causes / cinq
+    pourquoi), une ``description`` du déroulé et une ``synthese`` des
+    enseignements, son ``analyste`` et son cycle de vie (``statut`` : en cours →
+    clos).
+
+    L'arbre des causes lui-même vit dans ``CauseIncident`` (relation 1-N
+    auto-référencée pour la hiérarchie faits → causes immédiates → causes
+    profondes → cause racine). Les actions correctives générées sont des
+    ``ActionCorrectivePreventive`` (CAPA) du même module : conformément au
+    modèle existant (la CAPA porte un FK NON nul vers ``NonConformite``), le
+    service ``generer_capa_depuis_analyse`` crée d'abord une NCR-pont depuis
+    l'incident puis la CAPA dessus, et rattache cette NCR à l'analyse via
+    ``non_conformite`` — on réutilise le modèle CAPA tel quel, sans linkage
+    divergent (cf. ``lever_ncr_audit``).
+
+    Une seule analyse par incident (contrainte d'unicité ``OneToOne`` logique).
+    Multi-société via ``company`` posée côté serveur (jamais lue du corps).
+    Entièrement additif.
+    """
+    class Methode(models.TextChoices):
+        CINQ_M = '5m', 'Cinq M (Ishikawa)'
+        ARBRE_DES_CAUSES = 'arbre_des_causes', 'Arbre des causes'
+        CINQ_POURQUOI = '5pourquoi', 'Cinq pourquoi'
+
+    class Statut(models.TextChoices):
+        EN_COURS = 'en_cours', 'En cours'
+        CLOS = 'clos', 'Clos'
+
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='qhse_analyses_incident',
+        verbose_name='Société',
+    )
+    incident = models.OneToOneField(
+        Incident,
+        on_delete=models.CASCADE,
+        related_name='analyse',
+        verbose_name='Incident',
+    )
+    methode = models.CharField(
+        max_length=20, choices=Methode.choices,
+        default=Methode.ARBRE_DES_CAUSES, verbose_name="Méthode d'analyse")
+    description = models.TextField(
+        blank=True, default='', verbose_name='Description')
+    synthese = models.TextField(
+        blank=True, default='', verbose_name='Synthèse')
+    statut = models.CharField(
+        max_length=10, choices=Statut.choices,
+        default=Statut.EN_COURS, verbose_name='Statut')
+    date_analyse = models.DateField(
+        null=True, blank=True, verbose_name="Date de l'analyse")
+    analyste = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='qhse_analyses_incident',
+        verbose_name='Analyste',
+    )
+    # NCR-pont (QHSE31) : la CAPA existante porte un FK NON nul vers
+    # ``NonConformite`` ; le service crée donc une NCR depuis l'incident et la
+    # rattache ici pour relier l'analyse à ses CAPA — réutilisation du modèle
+    # CAPA tel quel (jamais un linkage divergent).
+    non_conformite = models.ForeignKey(
+        NonConformite,
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='analyses_incident',
+        verbose_name='Non-conformité liée',
+    )
+    date_creation = models.DateTimeField(
+        auto_now_add=True, verbose_name='Créé le')
+
+    class Meta:
+        verbose_name = "Analyse d'incident"
+        verbose_name_plural = "Analyses d'incident"
+        ordering = ['-id']
+        indexes = [
+            models.Index(
+                fields=['company', 'statut'],
+                name='qhse_analyse_co_statut',
+            ),
+        ]
+
+    def __str__(self):
+        return f'Analyse incident#{self.incident_id} ({self.get_methode_display()})'
+
+
+class CauseIncident(models.Model):
+    """Nœud de l'arbre des causes d'une ``AnalyseIncident`` (QHSE31).
+
+    Chaque cause porte son ``type_cause`` (fait / cause immédiate / cause
+    profonde / cause racine), un ``libelle`` et un ``parent`` optionnel
+    (auto-référencé, même analyse) qui construit la HIÉRARCHIE de l'arbre : un
+    fait peut enfanter une cause immédiate, qui enfante une cause profonde, qui
+    remonte à la cause racine. ``ordre`` ordonne les frères.
+
+    Multi-société via ``company`` posée côté serveur. Le FK ``analyse`` et le FK
+    ``parent`` restent intra-app (même module QHSE) — additif.
+    """
+    class TypeCause(models.TextChoices):
+        FAIT = 'fait', 'Fait'
+        CAUSE_IMMEDIATE = 'cause_immediate', 'Cause immédiate'
+        CAUSE_PROFONDE = 'cause_profonde', 'Cause profonde'
+        CAUSE_RACINE = 'cause_racine', 'Cause racine'
+
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='qhse_causes_incident',
+        verbose_name='Société',
+    )
+    analyse = models.ForeignKey(
+        AnalyseIncident,
+        on_delete=models.CASCADE,
+        related_name='causes',
+        verbose_name='Analyse',
+    )
+    parent = models.ForeignKey(
+        'self',
+        on_delete=models.CASCADE,
+        null=True, blank=True,
+        related_name='enfants',
+        verbose_name='Cause parente',
+    )
+    type_cause = models.CharField(
+        max_length=20, choices=TypeCause.choices,
+        default=TypeCause.FAIT, verbose_name='Type de cause')
+    libelle = models.CharField(max_length=255, verbose_name='Libellé')
+    ordre = models.PositiveIntegerField(default=0, verbose_name='Ordre')
+    date_creation = models.DateTimeField(
+        auto_now_add=True, verbose_name='Créé le')
+
+    class Meta:
+        verbose_name = "Cause d'incident"
+        verbose_name_plural = "Causes d'incident"
+        ordering = ['ordre', 'id']
+        indexes = [
+            models.Index(
+                fields=['analyse', 'parent'],
+                name='qhse_cause_analyse_par',
+            ),
+        ]
+
+    def __str__(self):
+        return f'{self.get_type_cause_display()} — {self.libelle[:40]}'

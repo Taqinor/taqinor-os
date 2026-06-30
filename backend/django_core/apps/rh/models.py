@@ -2696,3 +2696,169 @@ class BesoinFormation(models.Model):
 
     def __str__(self):
         return f'{self.theme} — {self.employe}'
+
+
+class OuverturePoste(models.Model):
+    """Ouverture de poste / poste ouvert au recrutement (FG189) — ATS-lite.
+
+    Matérialise un POSTE OUVERT au recrutement : un ``intitule`` libre,
+    rattachable optionnellement à un ``poste_ref`` (référentiel ``rh.Poste``,
+    FG160) et à un ``departement`` (``rh.Departement``), une ``description`` du
+    profil recherché, le ``nombre_postes`` à pourvoir (défaut 1) et un
+    ``statut`` qui suit le cycle de vie de l'ouverture (ouvert → pourvu / clos /
+    annulé). ``date_ouverture`` (défaut aujourd'hui) et ``date_cible``
+    (échéance d'embauche souhaitée, optionnelle) bornent le besoin.
+
+    Les CANDIDATURES (``Candidature``) sont rattachées à une ouverture ; quand
+    le nombre de candidats EMBAUCHÉS atteint ``nombre_postes``, l'ouverture peut
+    basculer en ``pourvu`` (service ``apps.rh.services.embaucher``). Multi-
+    société : ``company`` est posée CÔTÉ SERVEUR (jamais lue du corps) ;
+    ``poste_ref`` et ``departement`` doivent appartenir à la même société.
+    Entièrement additif.
+
+    RUNTIME-SAFETY (leçon FG136) : code borné ``statut`` ≤ 20 ; ``intitule``
+    plafonné ; ``description`` en ``TextField`` ; index nommés (≤ 30 chars).
+    """
+
+    class Statut(models.TextChoices):
+        OUVERT = 'ouvert', 'Ouvert'
+        POURVU = 'pourvu', 'Pourvu'
+        CLOS = 'clos', 'Clos'
+        ANNULE = 'annule', 'Annulé'
+
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='rh_ouvertures_poste',
+        verbose_name='Société',
+    )
+    intitule = models.CharField(max_length=200, verbose_name='Intitulé')
+    poste_ref = models.ForeignKey(
+        'rh.Poste',
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='ouvertures',
+        verbose_name='Poste',
+    )
+    departement = models.ForeignKey(
+        'rh.Departement',
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='ouvertures',
+        verbose_name='Département',
+    )
+    description = models.TextField(
+        blank=True, default='', verbose_name='Description')
+    nombre_postes = models.PositiveIntegerField(
+        default=1, verbose_name='Nombre de postes')
+    statut = models.CharField(
+        max_length=20, choices=Statut.choices,
+        default=Statut.OUVERT, verbose_name='Statut')
+    date_ouverture = models.DateField(
+        null=True, blank=True, verbose_name="Date d'ouverture")
+    date_cible = models.DateField(
+        null=True, blank=True, verbose_name='Date cible')
+    date_creation = models.DateTimeField(
+        auto_now_add=True, verbose_name='Créé le')
+    date_modification = models.DateTimeField(
+        auto_now=True, verbose_name='Modifié le')
+
+    class Meta:
+        verbose_name = 'Ouverture de poste'
+        verbose_name_plural = 'Ouvertures de poste'
+        ordering = ['-date_creation']
+        indexes = [
+            models.Index(
+                fields=['company', 'statut'],
+                name='rh_op_comp_stat_idx'),
+        ]
+
+    def __str__(self):
+        return self.intitule
+
+
+class Candidature(models.Model):
+    """Candidature à une ouverture de poste (FG189) — ATS-lite.
+
+    Représente un CANDIDAT postulant à une ``ouverture`` : son ``nom``,
+    ``email`` / ``telephone``, un ``cv_fichier`` (optionnel), une ``source``
+    (origine de la candidature : LinkedIn, ANAPEC, cooptation…), une ``note``
+    libre, et son ``etape`` dans le pipeline de recrutement (reçu →
+    présélection → entretien → offre → embauché / rejeté). ``date_candidature``
+    (défaut aujourd'hui) horodate la réception.
+
+    Quand le candidat atteint l'étape ``embauche`` via le service
+    ``apps.rh.services.embaucher``, un ``DossierEmploye`` (même société) est
+    créé et lié par ``employe_cree`` (``SET_NULL`` — conserve la candidature si
+    le dossier est supprimé). L'opération est idempotente : un second appel ne
+    recrée pas le dossier. Multi-société : ``company`` est posée CÔTÉ SERVEUR
+    (jamais lue du corps), celle de l'ouverture parente ; ``ouverture`` et
+    ``employe_cree`` appartiennent à la même société. Entièrement additif.
+
+    RUNTIME-SAFETY (leçon FG136) : code borné ``etape`` ≤ 20 ; ``nom`` /
+    ``telephone`` / ``source`` plafonnés ; ``note`` en ``TextField`` ; index
+    nommés (≤ 30 chars).
+    """
+
+    class Etape(models.TextChoices):
+        RECU = 'recu', 'Reçu'
+        PRESELECTION = 'preselection', 'Présélection'
+        ENTRETIEN = 'entretien', 'Entretien'
+        OFFRE = 'offre', 'Offre'
+        EMBAUCHE = 'embauche', 'Embauché'
+        REJETE = 'rejete', 'Rejeté'
+
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='rh_candidatures',
+        verbose_name='Société',
+    )
+    ouverture = models.ForeignKey(
+        OuverturePoste,
+        on_delete=models.CASCADE,
+        related_name='candidatures',
+        verbose_name='Ouverture',
+    )
+    nom = models.CharField(max_length=160, verbose_name='Nom')
+    email = models.EmailField(blank=True, default='', verbose_name='E-mail')
+    telephone = models.CharField(
+        max_length=30, blank=True, default='', verbose_name='Téléphone')
+    cv_fichier = models.FileField(
+        upload_to='rh/candidatures/cv/', null=True, blank=True,
+        verbose_name='CV')
+    source = models.CharField(
+        max_length=80, blank=True, default='', verbose_name='Source')
+    note = models.TextField(blank=True, default='', verbose_name='Note')
+    etape = models.CharField(
+        max_length=20, choices=Etape.choices,
+        default=Etape.RECU, verbose_name='Étape')
+    employe_cree = models.ForeignKey(
+        'rh.DossierEmploye',
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='candidatures_origine',
+        verbose_name='Employé créé',
+    )
+    date_candidature = models.DateField(
+        null=True, blank=True, verbose_name='Date de candidature')
+    date_creation = models.DateTimeField(
+        auto_now_add=True, verbose_name='Créé le')
+    date_modification = models.DateTimeField(
+        auto_now=True, verbose_name='Modifié le')
+
+    class Meta:
+        verbose_name = 'Candidature'
+        verbose_name_plural = 'Candidatures'
+        ordering = ['-date_creation']
+        indexes = [
+            models.Index(
+                fields=['company', 'etape'],
+                name='rh_cand_comp_etap_idx'),
+            models.Index(
+                fields=['company', 'ouverture'],
+                name='rh_cand_comp_ouv_idx'),
+        ]
+
+    def __str__(self):
+        return f'{self.nom} — {self.ouverture}'

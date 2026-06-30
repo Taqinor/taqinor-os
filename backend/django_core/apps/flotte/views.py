@@ -26,6 +26,7 @@ from .models import (
     EnginRoulant,
     EtatDesLieux,
     Garage,
+    Infraction,
     OrdreReparation,
     PieceFlotte,
     PlanEntretien,
@@ -50,6 +51,7 @@ from .serializers import (
     EnginRoulantSerializer,
     EtatDesLieuxSerializer,
     GarageSerializer,
+    InfractionSerializer,
     OrdreReparationSerializer,
     PieceFlotteSerializer,
     PlanEntretienSerializer,
@@ -1210,6 +1212,50 @@ class SinistreViewSet(_FlotteBaseViewSet):
         type_sinistre = params.get('type_sinistre')
         if type_sinistre:
             qs = qs.filter(type_sinistre=type_sinistre)
+
+        actif_flotte = params.get('actif_flotte')
+        if actif_flotte:
+            try:
+                qs = qs.filter(actif_flotte_id=int(actif_flotte))
+            except (ValueError, TypeError):
+                pass
+
+        return qs
+
+
+class InfractionViewSet(_FlotteBaseViewSet):
+    """Infractions / PV de circulation des actifs de flotte (FLOTTE26).
+
+    CRUD scopé société (écriture responsable/admin) d'un procès-verbal dressé
+    contre un véhicule ou un engin du parc : date, type (excès de vitesse,
+    stationnement, feu rouge, défaut de document, autre), lieu, référence du PV,
+    montant de l'amende, PV scanné, conducteur responsable (FLOTTE7, même app),
+    statut (à payer → payée / contestée / classée) et date de paiement.
+    Filtrable par ``?statut=<a_payer|payee|contestee|classee>``,
+    ``?actif_flotte=<id>`` et ``?type_infraction=<...>``. Recherche par
+    référence du PV / lieu / notes. L'actif lié ET le conducteur lié doivent
+    appartenir à la société (validé au sérialiseur).
+    """
+    queryset = Infraction.objects.select_related(
+        'actif_flotte', 'actif_flotte__vehicule', 'actif_flotte__engin',
+        'conducteur')
+    serializer_class = InfractionSerializer
+    filter_backends = [filters.SearchFilter, filters.OrderingFilter]
+    search_fields = ['reference_pv', 'lieu', 'notes']
+    ordering_fields = ['date_infraction', 'type_infraction', 'statut',
+                       'montant_amende', 'date_creation']
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        params = self.request.query_params
+
+        statut = params.get('statut')
+        if statut:
+            qs = qs.filter(statut=statut)
+
+        type_infraction = params.get('type_infraction')
+        if type_infraction:
+            qs = qs.filter(type_infraction=type_infraction)
 
         actif_flotte = params.get('actif_flotte')
         if actif_flotte:

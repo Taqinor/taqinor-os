@@ -1275,3 +1275,117 @@ class AlerteContrat(models.Model):
             f'Alerte {self.get_type_alerte_display()} '
             f'(contrat {self.contrat_id}, {self.date_declenchement})'
         )
+
+
+class Avenant(models.Model):
+    """Avenant (amendement) à un contrat → fige une nouvelle version — CONTRAT24.
+
+    Un ``Avenant`` enregistre une MODIFICATION contractuelle apportée à un
+    ``Contrat`` existant (changement d'objet, de montant, de périmètre…). Chaque
+    avenant produit en aval un INSTANTANÉ IMMUABLE (``VersionContrat`` — CONTRAT18)
+    figeant l'état du contrat AU MOMENT de l'amendement, de sorte que l'historique
+    contractuel reste fidèle (l'avenant pointe vers la version créée via
+    ``version_creee``). La création passe EXCLUSIVEMENT par
+    ``services.creer_avenant`` (qui réutilise ``creer_version``) — jamais par un
+    POST direct sur la ressource.
+
+    Numérotation par contrat : ``numero`` démarre à 1 et s'incrémente de 1 pour
+    chaque nouvel avenant d'un MÊME contrat. Le numéro est posé CÔTÉ SERVEUR par
+    ``services.creer_avenant`` qui calcule ``max(numero)+1`` SOUS
+    ``select_for_update`` (verrou de ligne sur le contrat) — JAMAIS un
+    ``count()+1`` (qui entrait en collision en production, cf. la règle de
+    numérotation du repo).
+
+    ``montant_delta`` (optionnel) porte la VARIATION du montant du contrat
+    introduite par l'avenant : quand il est fourni, ``services.creer_avenant``
+    l'ajoute à ``Contrat.montant`` (côté serveur). Un avenant purement
+    rédactionnel (sans impact financier) laisse ce champ ``NULL`` et ne touche
+    pas le montant.
+
+    Multi-tenant : ``company`` est posée côté serveur (jamais lue du corps de
+    requête). ``contrat`` et ``version_creee`` sont des références INTERNES à
+    l'app `contrats` (FK durs autorisés) ; ``version_creee`` est NULLABLE
+    (``SET_NULL``) pour ne jamais perdre l'avenant si la version est purgée.
+    ``cree_par`` pointe vers ``AUTH_USER_MODEL`` (app foundation), FK autorisé et
+    NULLABLE (un avenant créé par un automatisme reste traçable sans utilisateur).
+
+    RUNTIME-SAFETY (leçon FG136) : ``objet`` est un ``CharField`` borné (≤255) et
+    ``description`` un ``TextField`` (un descriptif d'amendement peut être long —
+    aucune longueur maximale à dépasser et lever). La contrainte d'unicité
+    ``(contrat, numero)`` et les index sont NOMMÉS explicitement (≤30 chars) pour
+    éviter la divergence d'auto-nommage Django. Cet objet ne touche JAMAIS le
+    funnel ``STAGES.py`` (rule #2) ni le ``Contrat.statut`` (préservation des
+    statuts — CONTRAT12).
+    """
+
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='contrats_avenants',
+        verbose_name='Société',
+    )
+    contrat = models.ForeignKey(
+        Contrat,
+        on_delete=models.CASCADE,
+        related_name='avenants',
+        verbose_name='Contrat',
+    )
+    # Numéro d'avenant (1, 2, 3…) par contrat, posé côté serveur (max+1 sous
+    # verrou de ligne — jamais count()+1).
+    numero = models.PositiveIntegerField(verbose_name="Numéro d'avenant")
+    # Objet court de l'amendement (titre). Borné (leçon FG136).
+    objet = models.CharField(max_length=255, verbose_name="Objet de l'avenant")
+    # Description détaillée de la modification. TextField : peut être long sans
+    # jamais lever (leçon FG136).
+    description = models.TextField(
+        blank=True, default='', verbose_name='Description')
+    # Date de prise d'effet de l'avenant.
+    date_effet = models.DateField(
+        null=True, blank=True, verbose_name="Date d'effet")
+    # Variation du montant du contrat introduite par l'avenant (optionnelle).
+    # Appliquée à ``Contrat.montant`` côté serveur quand fournie. NULL = avenant
+    # rédactionnel sans impact financier.
+    montant_delta = models.DecimalField(
+        max_digits=14, decimal_places=2,
+        null=True, blank=True, verbose_name='Variation de montant')
+    # Instantané immuable (CONTRAT18) figé par cet avenant. SET_NULL : on ne perd
+    # jamais l'avenant si la version est supprimée.
+    version_creee = models.ForeignKey(
+        'VersionContrat',
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='avenant',
+        verbose_name='Version figée',
+    )
+    cree_par = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='contrats_avenants_crees',
+        verbose_name='Créé par',
+    )
+    date_creation = models.DateTimeField(
+        auto_now_add=True, verbose_name='Créé le')
+
+    class Meta:
+        verbose_name = 'Avenant de contrat'
+        verbose_name_plural = 'Avenants de contrat'
+        # Plus récent d'abord par contrat (le dernier avenant en tête).
+        ordering = ['contrat_id', '-numero', '-id']
+        constraints = [
+            # Un même numéro d'avenant n'existe qu'une fois par contrat : filet
+            # de sécurité DB derrière le calcul max+1 sous verrou (creer_avenant).
+            models.UniqueConstraint(
+                fields=['contrat', 'numero'],
+                name='contrats_avenant_uniq',
+            ),
+        ]
+        indexes = [
+            models.Index(
+                fields=['contrat', '-numero'],
+                name='contrats_aven_ct_num',
+            ),
+        ]
+
+    def __str__(self):
+        return f'Avenant n°{self.numero} — contrat {self.contrat_id}'

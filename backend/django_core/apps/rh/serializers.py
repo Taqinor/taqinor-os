@@ -11,6 +11,7 @@ from .models import (
     AffectationRoster,
     AnalyseRisquesChantier,
     BesoinFormation,
+    Candidature,
     CauserieParticipant,
     CauserieSecurite,
     Certification,
@@ -30,6 +31,7 @@ from .models import (
     IncidentPresence,
     InscriptionFormation,
     LigneRisqueChantier,
+    OuverturePoste,
     Pointage,
     Poste,
     PresenceChantier,
@@ -1363,3 +1365,105 @@ class BesoinFormationSerializer(serializers.ModelSerializer):
 
     def validate_session_liee(self, value):
         return _meme_societe(self, value, 'Session liée')
+
+
+class CandidatureSerializer(serializers.ModelSerializer):
+    """Candidature à une ouverture de poste (FG189) — ATS-lite.
+
+    Le client saisit ``ouverture`` (une ``OuverturePoste`` de sa société),
+    ``nom``, ``email``, ``telephone``, ``cv_fichier``, ``source``, ``note`` et
+    l'``etape`` du pipeline. ``company`` est posée CÔTÉ SERVEUR (jamais lue du
+    corps) ; ``ouverture`` doit appartenir à la société de l'utilisateur.
+    ``employe_cree`` est en lecture seule (posé par le service ``embaucher``).
+    """
+    etape_display = serializers.CharField(
+        source='get_etape_display', read_only=True)
+    ouverture_intitule = serializers.SerializerMethodField()
+    employe_cree_nom = serializers.SerializerMethodField()
+
+    class Meta:
+        model = Candidature
+        fields = [
+            'id', 'ouverture', 'ouverture_intitule',
+            'nom', 'email', 'telephone', 'cv_fichier', 'source', 'note',
+            'etape', 'etape_display',
+            'employe_cree', 'employe_cree_nom',
+            'date_candidature', 'date_creation', 'date_modification',
+        ]
+        read_only_fields = [
+            'employe_cree', 'date_creation', 'date_modification']
+
+    def get_ouverture_intitule(self, obj):
+        if not obj.ouverture_id:
+            return ''
+        return obj.ouverture.intitule
+
+    def get_employe_cree_nom(self, obj):
+        if not obj.employe_cree_id:
+            return ''
+        return f'{obj.employe_cree.nom} {obj.employe_cree.prenom}'
+
+    def validate_ouverture(self, value):
+        return _meme_societe(self, value, 'Ouverture')
+
+
+class OuverturePosteSerializer(serializers.ModelSerializer):
+    """Ouverture de poste / poste ouvert (FG189) — ATS-lite.
+
+    Le client saisit ``intitule``, un ``poste_ref`` (référentiel ``rh.Poste``
+    de sa société) et un ``departement`` optionnels, ``description``,
+    ``nombre_postes``, ``statut``, ``date_ouverture`` / ``date_cible``. La liste
+    imbriquée ``candidatures`` est en LECTURE SEULE (gérée via l'endpoint
+    dédié). ``company`` est posée CÔTÉ SERVEUR (jamais lue du corps) ;
+    ``poste_ref`` et ``departement`` doivent appartenir à la même société.
+    """
+    statut_display = serializers.CharField(
+        source='get_statut_display', read_only=True)
+    poste_ref_intitule = serializers.SerializerMethodField()
+    departement_nom = serializers.SerializerMethodField()
+    candidatures = CandidatureSerializer(many=True, read_only=True)
+
+    class Meta:
+        model = OuverturePoste
+        fields = [
+            'id', 'intitule',
+            'poste_ref', 'poste_ref_intitule',
+            'departement', 'departement_nom',
+            'description', 'nombre_postes',
+            'statut', 'statut_display',
+            'date_ouverture', 'date_cible',
+            'candidatures',
+            'date_creation', 'date_modification',
+        ]
+        read_only_fields = ['date_creation', 'date_modification']
+
+    def get_poste_ref_intitule(self, obj):
+        if not obj.poste_ref_id:
+            return ''
+        return obj.poste_ref.intitule
+
+    def get_departement_nom(self, obj):
+        if not obj.departement_id:
+            return ''
+        return obj.departement.nom
+
+    def validate_poste_ref(self, value):
+        return _meme_societe(self, value, 'Poste')
+
+    def validate_departement(self, value):
+        return _meme_societe(self, value, 'Département')
+
+
+class EmbaucherSerializer(serializers.Serializer):
+    """Entrée de l'action ``embaucher`` d'une candidature (FG189).
+
+    Tous les champs sont optionnels : ``matricule`` (sinon dérivé ``CAND-<id>``)
+    et quelques champs de dossier renseignables à l'embauche.
+    """
+    matricule = serializers.CharField(
+        max_length=30, required=False, allow_blank=True)
+    type_contrat = serializers.ChoiceField(
+        choices=DossierEmploye.TypeContrat.choices, required=False)
+    date_embauche = serializers.DateField(required=False)
+    poste = serializers.CharField(
+        max_length=120, required=False, allow_blank=True)

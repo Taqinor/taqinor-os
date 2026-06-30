@@ -19,6 +19,7 @@ from .models import (
     EnginRoulant,
     EtatDesLieux,
     Garage,
+    Infraction,
     OrdreReparation,
     PieceFlotte,
     PlanEntretien,
@@ -1371,5 +1372,76 @@ class SinistreSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError(
                 {'assurance':
                  "Cette police d'assurance n'appartient pas à votre société."})
+
+        return attrs
+
+
+# ── FLOTTE26 — Infractions / PV de circulation ─────────────────────────────────
+
+class InfractionSerializer(serializers.ModelSerializer):
+    """FLOTTE26 — Infraction / PV de circulation contre un actif de flotte.
+
+    ``company`` est posée côté serveur (jamais lue du corps de requête). L'actif
+    lié (``actif_flotte``) ET le conducteur lié (``conducteur``, si renseigné)
+    doivent appartenir à la société courante. Le montant de l'amende
+    (``montant_amende``) doit être ≥ 0.
+
+    Champs lecture seule :
+    - ``actif_label``             : désignation de l'actif (véhicule ou engin).
+    - ``conducteur_nom``          : nom du conducteur responsable (ou None).
+    - ``type_infraction_display`` : libellé du type d'infraction.
+    - ``statut_display``          : libellé du statut.
+    """
+
+    actif_label = serializers.SerializerMethodField()
+    conducteur_nom = serializers.SerializerMethodField()
+    type_infraction_display = serializers.CharField(
+        source='get_type_infraction_display', read_only=True)
+    statut_display = serializers.CharField(
+        source='get_statut_display', read_only=True)
+
+    class Meta:
+        model = Infraction
+        fields = [
+            'id', 'actif_flotte', 'actif_label', 'conducteur',
+            'conducteur_nom', 'date_infraction', 'type_infraction',
+            'type_infraction_display', 'lieu', 'reference_pv',
+            'montant_amende', 'pv_fichier', 'statut', 'statut_display',
+            'date_paiement', 'notes', 'date_creation',
+        ]
+        read_only_fields = ['date_creation']
+
+    def get_actif_label(self, obj):
+        return obj.actif_flotte.label if obj.actif_flotte_id else None
+
+    def get_conducteur_nom(self, obj):
+        return obj.conducteur.nom if obj.conducteur_id else None
+
+    def validate_montant_amende(self, value):
+        if value is not None and value < 0:
+            raise serializers.ValidationError(
+                "Le montant de l'amende ne peut pas être négatif.")
+        return value
+
+    def validate(self, attrs):
+        request = self.context.get('request')
+        company = getattr(getattr(request, 'user', None), 'company', None)
+
+        actif_flotte = attrs.get(
+            'actif_flotte', getattr(self.instance, 'actif_flotte', None))
+        conducteur = attrs.get(
+            'conducteur', getattr(self.instance, 'conducteur', None))
+
+        if company is not None and actif_flotte is not None \
+                and actif_flotte.company_id != company.id:
+            raise serializers.ValidationError(
+                {'actif_flotte':
+                 "Cet actif n'appartient pas à votre société."})
+
+        if company is not None and conducteur is not None \
+                and conducteur.company_id != company.id:
+            raise serializers.ValidationError(
+                {'conducteur':
+                 "Ce conducteur n'appartient pas à votre société."})
 
         return attrs
