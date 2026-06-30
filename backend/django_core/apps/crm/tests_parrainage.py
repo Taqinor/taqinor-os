@@ -59,6 +59,35 @@ class TestParrainage(TestCase):
         rows = r.data['results'] if isinstance(r.data, dict) else r.data
         self.assertEqual(len(rows), 1)
 
+    def test_filleul_display_nom_prefers_fk(self):
+        """DC14 — le nom du FK filleul prime sur le texte libre divergent."""
+        from apps.crm.models import Lead
+        filleul_cli = Client.objects.create(
+            company=self.company, nom='Vrai Nom Client')
+        p = Parrainage.objects.create(
+            company=self.company, parrain=self.parrain,
+            filleul_client=filleul_cli, filleul_nom='Nom Perimé')
+        r = self.api.get('/api/django/crm/parrainages/')
+        self.assertEqual(r.status_code, 200)
+        rows = r.data['results'] if isinstance(r.data, dict) else r.data
+        row = next(x for x in rows if x['id'] == p.id)
+        self.assertEqual(row['filleul_display_nom'], 'Vrai Nom Client')
+        # Le texte libre stocké reste exposé tel quel (traçabilité).
+        self.assertEqual(row['filleul_nom'], 'Nom Perimé')
+
+        # FK lead pris en compte quand pas de client.
+        lead = Lead.objects.create(company=self.company, nom='Nom Lead')
+        p2 = Parrainage.objects.create(
+            company=self.company, parrain=self.parrain,
+            filleul_lead=lead, filleul_nom='Autre')
+        self.assertEqual(p2.filleul_display_nom, 'Nom Lead')
+
+        # Sans FK, on retombe sur le texte libre.
+        p3 = Parrainage.objects.create(
+            company=self.company, parrain=self.parrain,
+            filleul_nom='Seulement Texte')
+        self.assertEqual(p3.filleul_display_nom, 'Seulement Texte')
+
     def test_stats_endpoint(self):
         Parrainage.objects.create(
             company=self.company, parrain=self.parrain,
