@@ -46,7 +46,7 @@ class FG18UserAuditTest(TestCase):
 
     def test_role_change_is_audited(self):
         r = self.api.patch(
-            f'/api/django/auth/users/{self.target.id}/',
+            f'/api/django/users/{self.target.id}/',
             {'role': self.admin_role.id}, format='json')
         self.assertEqual(r.status_code, 200, r.content)
         row = self._user_rows().filter(
@@ -57,7 +57,7 @@ class FG18UserAuditTest(TestCase):
 
     def test_deactivation_is_audited(self):
         r = self.api.patch(
-            f'/api/django/auth/users/{self.target.id}/',
+            f'/api/django/users/{self.target.id}/',
             {'is_active': False}, format='json')
         self.assertEqual(r.status_code, 200, r.content)
         row = self._user_rows().filter(
@@ -67,7 +67,7 @@ class FG18UserAuditTest(TestCase):
 
     def test_supervisor_change_is_audited(self):
         r = self.api.patch(
-            f'/api/django/auth/users/{self.target.id}/',
+            f'/api/django/users/{self.target.id}/',
             {'supervisor': self.admin.id}, format='json')
         self.assertEqual(r.status_code, 200, r.content)
         row = self._user_rows().filter(
@@ -77,7 +77,7 @@ class FG18UserAuditTest(TestCase):
 
     def test_user_delete_is_audited(self):
         uname = self.target.username
-        r = self.api.delete(f'/api/django/auth/users/{self.target.id}/')
+        r = self.api.delete(f'/api/django/users/{self.target.id}/')
         self.assertEqual(r.status_code, 204, r.content)
         row = self._user_rows().filter(field=f'user:{uname}').first()
         self.assertIsNotNone(row)
@@ -85,7 +85,7 @@ class FG18UserAuditTest(TestCase):
 
     def test_unchanged_user_writes_nothing(self):
         self.api.patch(
-            f'/api/django/auth/users/{self.target.id}/',
+            f'/api/django/users/{self.target.id}/',
             {'email': 'x@y.z'}, format='json')
         # Pas de changement rôle/actif/superviseur → aucune ligne d'audit.
         self.assertEqual(

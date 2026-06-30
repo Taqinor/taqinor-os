@@ -72,11 +72,17 @@ class RegisterSerializer(serializers.ModelSerializer):
         read_only=True,
     )
 
+    # FG21 — onboarding : l'admin peut cocher « doit changer son mot de passe à
+    # la première connexion ». Optionnel, défaut False → comportement inchangé
+    # (l'admin pose un mot de passe utilisable tel quel tant qu'il ne coche pas).
+    must_change_password = serializers.BooleanField(
+        required=False, default=False)
+
     class Meta:
         model = CustomUser
         fields = (
             'username', 'password', 'email',
-            'first_name', 'last_name', 'role',
+            'first_name', 'last_name', 'role', 'must_change_password',
         )
 
     def create(self, validated_data):
@@ -91,6 +97,7 @@ class RegisterSerializer(serializers.ModelSerializer):
             ).first()
 
         validated_data.pop('role', None)
+        must_change = validated_data.pop('must_change_password', False)
         # role_legacy doit suivre le palier du Role assigné (Administrateur →
         # 'admin', Responsable → 'responsable', sinon 'normal'). Le figer à
         # 'normal' donnait à tort le menu limité aux comptes admin/responsable.
@@ -105,6 +112,10 @@ class RegisterSerializer(serializers.ModelSerializer):
             role=role,
             company=company,
         )
+        # FG21 — force la rotation à la première connexion si demandé.
+        if must_change:
+            user.must_change_password = True
+            user.save(update_fields=['must_change_password'])
         return user
 
 
