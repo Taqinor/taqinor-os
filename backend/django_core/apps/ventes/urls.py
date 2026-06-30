@@ -21,6 +21,8 @@ from .views import (
     DossierExchangeViewSet,  # FG269
     SubventionDossierViewSet,  # FG270
     Regularisation8221ViewSet,  # FG271
+    CommissioningTestViewSet,  # FG274
+    IVCurveCaptureViewSet,  # FG275
 )
 from .recouvrement import (
     FollowupLevelViewSet,
@@ -73,6 +75,12 @@ router.register(r'subventions', SubventionDossierViewSet,
 # FG271 — workflow de régularisation Article 33 / déclarations 82-21.
 router.register(r'regularisations-8221', Regularisation8221ViewSet,
                 basename='regularisation-8221')
+# FG274 — fiches de recette IEC 62446 (mise en service).
+router.register(r'recettes-mes', CommissioningTestViewSet,
+                basename='recette-mes')
+# FG275 — captures de courbe I-V par string.
+router.register(r'courbes-iv', IVCurveCaptureViewSet,
+                basename='courbe-iv')
 
 urlpatterns = [
     # Q6/Q7 — Proposition web tokenisée (données JSON + e-signature). Jeton

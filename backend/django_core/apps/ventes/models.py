@@ -1853,3 +1853,10 @@ from .models_regulatory import (  # noqa: E402,F401
     SubventionDossier,
     Regularisation8221,
 )
+
+# FG274-FG275 — mise en service & recette IEC 62446 (modèles déportés dans
+# models_commissioning.py).
+from .models_commissioning import (  # noqa: E402,F401
+    CommissioningTest,
+    IVCurveCapture,
+)
