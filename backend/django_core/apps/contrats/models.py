@@ -1135,3 +1135,111 @@ class VersionContrat(models.Model):
 
     def __str__(self):
         return f'Contrat {self.contrat_id} — version {self.version}'
+
+
+class AlerteContrat(models.Model):
+    """Rappel/alerte planifié sur un contrat, dispatché via les notifications — CONTRAT22.
+
+    Une ``AlerteContrat`` enregistre un RAPPEL daté pour un ``Contrat`` :
+    approche d'une échéance de préavis (``preavis`` — CONTRAT20), approche de la
+    fin/renouvellement du contrat (``echeance`` — CONTRAT21), ou une date
+    personnalisée (``personnalise``). À la date de déclenchement, le service
+    ``declencher_alertes_contrat`` diffuse chaque alerte DUE via le SEUL point
+    d'entrée de notification existant (``apps.notifications.services.notify`` —
+    frontière cross-app : jamais d'import des modèles/vues de l'app
+    notifications) puis marque l'alerte ``envoyee`` (avec ``date_envoi``).
+
+    IDEMPOTENCE : seul un statut ``planifiee`` est dispatché ; une fois passé à
+    ``envoyee`` une alerte n'est plus jamais renvoyée. Un statut ``annulee``
+    sort définitivement l'alerte du circuit de déclenchement.
+
+    Multi-tenant : ``company`` est posée CÔTÉ SERVEUR (jamais lue du corps de
+    requête). ``contrat`` est une référence interne à l'app `contrats`
+    (foundation), FK dur autorisé ; ``cree_par`` pointe vers ``AUTH_USER_MODEL``
+    (app foundation), FK autorisé et NULLABLE (une alerte semée
+    automatiquement — p. ex. à partir des sélecteurs préavis/renouvellement —
+    reste journalisable sans utilisateur).
+
+    RUNTIME-SAFETY (leçon FG136) : ``message`` est un ``TextField`` (un libellé
+    d'alerte peut être long — aucune longueur maximale à dépasser et lever).
+    Ces alertes sont PROPRES au module contrats : elles ne touchent jamais le
+    funnel ``STAGES.py`` (rule #2) ni le ``Contrat.statut`` (préservation des
+    statuts — CONTRAT12).
+    """
+
+    class TypeAlerte(models.TextChoices):
+        PREAVIS = 'preavis', 'Échéance de préavis'
+        ECHEANCE = 'echeance', 'Échéance / renouvellement'
+        PERSONNALISE = 'personnalise', 'Date personnalisée'
+
+    class Statut(models.TextChoices):
+        PLANIFIEE = 'planifiee', 'Planifiée'
+        ENVOYEE = 'envoyee', 'Envoyée'
+        ANNULEE = 'annulee', 'Annulée'
+
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='contrats_alertes',
+        verbose_name='Société',
+    )
+    contrat = models.ForeignKey(
+        Contrat,
+        on_delete=models.CASCADE,
+        related_name='alertes',
+        verbose_name='Contrat',
+    )
+    type_alerte = models.CharField(
+        max_length=20,
+        choices=TypeAlerte.choices,
+        default=TypeAlerte.PERSONNALISE,
+        verbose_name="Type d'alerte",
+    )
+    # Date à laquelle l'alerte doit se déclencher (jour). Une alerte est DUE dès
+    # que ``date_declenchement`` ≤ aujourd'hui ET ``statut == planifiee``.
+    date_declenchement = models.DateField(
+        verbose_name='Date de déclenchement')
+    # Libellé de l'alerte affiché dans la notification. TextField : peut être
+    # long sans jamais lever (leçon FG136).
+    message = models.TextField(
+        blank=True, default='', verbose_name='Message')
+    statut = models.CharField(
+        max_length=20,
+        choices=Statut.choices,
+        default=Statut.PLANIFIEE,
+        verbose_name='Statut',
+    )
+    # Horodatage de l'envoi effectif (posé côté serveur lors du dispatch). NULL
+    # tant que l'alerte n'a pas été envoyée.
+    date_envoi = models.DateTimeField(
+        null=True, blank=True, verbose_name='Envoyée le')
+    cree_par = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='contrats_alertes_creees',
+        verbose_name='Créée par',
+    )
+    date_creation = models.DateTimeField(
+        auto_now_add=True, verbose_name='Créée le')
+
+    class Meta:
+        verbose_name = 'Alerte de contrat'
+        verbose_name_plural = 'Alertes de contrat'
+        ordering = ['date_declenchement', 'id']
+        indexes = [
+            models.Index(
+                fields=['company', 'statut', 'date_declenchement'],
+                name='contrats_alerte_co_st_dt',
+            ),
+            models.Index(
+                fields=['contrat', 'statut'],
+                name='contrats_alerte_ct_st',
+            ),
+        ]
+
+    def __str__(self):
+        return (
+            f'Alerte {self.get_type_alerte_display()} '
+            f'(contrat {self.contrat_id}, {self.date_declenchement})'
+        )

@@ -838,3 +838,231 @@ def deposer_contrat_signe_en_ged(signature):
     if derniere is None:
         return None
     return deposer_version_en_ged(derniere)
+
+
+# ---------------------------------------------------------------------------
+# CONTRAT22 — Alertes de contrat + rappels via le système de notifications
+# ---------------------------------------------------------------------------
+
+# Lien vers le contrat dans l'ERP (rappel cliquable depuis la notification).
+def _lien_contrat(contrat):
+    return f'/contrats/{contrat.pk}'
+
+
+def creer_alerte(contrat, *, type_alerte=None, date_declenchement,
+                 message='', cree_par=None):
+    """Crée une ``AlerteContrat`` planifiée pour un contrat (CONTRAT22).
+
+    La société est TOUJOURS déduite du contrat (posée côté serveur) — jamais
+    lue du corps de requête. ``type_alerte`` par défaut ``personnalise``.
+    L'alerte naît ``planifiee`` ; elle sera dispatchée à
+    ``date_declenchement`` par ``declencher_alertes_contrat``.
+
+    Renvoie l'``AlerteContrat`` créée.
+    """
+    from .models import AlerteContrat
+
+    if type_alerte is None:
+        type_alerte = AlerteContrat.TypeAlerte.PERSONNALISE
+    return AlerteContrat.objects.create(
+        company=contrat.company,
+        contrat=contrat,
+        type_alerte=type_alerte,
+        date_declenchement=date_declenchement,
+        message=message or '',
+        statut=AlerteContrat.Statut.PLANIFIEE,
+        cree_par=cree_par,
+    )
+
+
+def _message_alerte_defaut(alerte):
+    """Libellé par défaut d'une alerte (français) si aucun message saisi."""
+    from .models import AlerteContrat
+
+    contrat = alerte.contrat
+    base = (contrat.reference or contrat.objet or f'contrat #{contrat.pk}')
+    if alerte.type_alerte == AlerteContrat.TypeAlerte.PREAVIS:
+        return (
+            f"Échéance de préavis à venir pour le {base} "
+            f"(à traiter avant le {alerte.date_declenchement.isoformat()})."
+        )
+    if alerte.type_alerte == AlerteContrat.TypeAlerte.ECHEANCE:
+        return (
+            f"Le {base} arrive à échéance — à renouveler ou clôturer "
+            f"(le {alerte.date_declenchement.isoformat()})."
+        )
+    return (
+        f"Rappel sur le {base} "
+        f"(le {alerte.date_declenchement.isoformat()})."
+    )
+
+
+def _alerter_destinataires(alerte):
+    """Diffuse UNE alerte de contrat via le point d'entrée notifications.
+
+    Frontière cross-app (CLAUDE.md) : on appelle EXCLUSIVEMENT le helper
+    ``apps.notifications.services.notify`` / ``notify_many`` et le résolveur de
+    destinataires ``resolve_recipients`` — jamais d'import des modèles/vues de
+    l'app notifications. Imports FONCTION-LOCAUX pour éviter tout cycle au
+    chargement et dégrader proprement si l'app notifications est absente.
+
+    Best-effort : toute erreur est avalée — une alerte ratée ne doit jamais
+    interrompre le balayage des autres alertes ni casser une transaction.
+    Renvoie le nombre de notifications créées (0 si l'app est indisponible ou
+    s'il n'y a aucun destinataire).
+    """
+    from .models import AlerteContrat
+
+    try:
+        from apps.notifications.services import (
+            notify_many, resolve_recipients,
+        )
+    except Exception:  # pragma: no cover - app notifications absente
+        return 0
+
+    # Événement de notification générique « récapitulatif/rappel » : un rappel
+    # de contrat n'a pas d'événement métier dédié — on réutilise l'événement
+    # existant DIGEST (« Récapitulatif »), valide dans EventType, sans en
+    # inventer un nouveau (frontière cross-app respectée).
+    event_type = 'digest'
+
+    titres = {
+        AlerteContrat.TypeAlerte.PREAVIS: 'Rappel : échéance de préavis',
+        AlerteContrat.TypeAlerte.ECHEANCE: 'Rappel : contrat à renouveler',
+        AlerteContrat.TypeAlerte.PERSONNALISE: 'Rappel de contrat',
+    }
+    contrat = alerte.contrat
+    title = titres.get(alerte.type_alerte, 'Rappel de contrat')
+    body = alerte.message or _message_alerte_defaut(alerte)
+
+    try:
+        recipients = resolve_recipients(alerte.company, event_type)
+        created = notify_many(
+            recipients, event_type, title, body=body,
+            link=_lien_contrat(contrat), company=alerte.company)
+        return len(created)
+    except Exception:  # pragma: no cover - défensif (best-effort)
+        return 0
+
+
+@transaction.atomic
+def declencher_alertes_contrat(company, today=None):
+    """Dispatche les ``AlerteContrat`` DUES d'une société (CONTRAT22).
+
+    Trouve les alertes ``planifiee`` dont la ``date_declenchement`` est ≤
+    ``today`` (scopées société) et, pour chacune, diffuse un rappel via le
+    système de notifications (``_alerter_destinataires`` → ``notify_many``),
+    puis marque l'alerte ``envoyee`` avec ``date_envoi``.
+
+    IDEMPOTENT : une alerte n'est dispatchée qu'une fois — un second appel ne
+    re-notifie aucune alerte déjà ``envoyee`` (filtre sur ``planifiee``). Le
+    marquage ``envoyee`` est posé MÊME si la diffusion best-effort n'a touché
+    aucun destinataire (sinon l'alerte serait re-tentée indéfiniment) — la
+    diffusion elle-même reste best-effort et ne lève jamais.
+
+    Multi-tenant : ``company`` est toujours posée côté serveur ; on ne dispatche
+    que les alertes de cette société. ``today`` est injectable pour les tests.
+
+    Ne touche JAMAIS au ``Contrat.statut`` ni au funnel STAGES.py (rule #2).
+
+    Renvoie un dict ::
+
+        {'company_id', 'nb_dues', 'nb_envoyees', 'nb_notifications',
+         'alertes': [<AlerteContrat>, …]}  # les alertes marquées envoyées
+    """
+    from .models import AlerteContrat
+
+    if today is None:
+        today = timezone.localdate()
+
+    dues = list(
+        AlerteContrat.objects
+        .filter(company=company,
+                statut=AlerteContrat.Statut.PLANIFIEE,
+                date_declenchement__lte=today)
+        .select_related('contrat')
+        .order_by('date_declenchement', 'id')
+    )
+
+    envoyees = []
+    nb_notifications = 0
+    maintenant = timezone.now()
+    for alerte in dues:
+        nb_notifications += _alerter_destinataires(alerte)
+        alerte.statut = AlerteContrat.Statut.ENVOYEE
+        alerte.date_envoi = maintenant
+        alerte.save(update_fields=['statut', 'date_envoi'])
+        envoyees.append(alerte)
+
+    return {
+        'company_id': company.id,
+        'nb_dues': len(dues),
+        'nb_envoyees': len(envoyees),
+        'nb_notifications': nb_notifications,
+        'alertes': envoyees,
+    }
+
+
+def semer_alertes_echeances(company, *, within_days=30, today=None,
+                            cree_par=None):
+    """Sème des ``AlerteContrat`` à partir des contrats dont l'échéance approche.
+
+    Réutilise les sélecteurs existants (CONTRAT20/21) :
+    - ``selectors.contrats_a_preavis`` → une alerte ``preavis`` datée à
+      l'échéance de préavis (``date_fin − preavis_jours``) ;
+    - ``selectors.contrats_a_renouveler`` → une alerte ``echeance`` datée à la
+      fin du contrat (``date_fin``).
+
+    IDEMPOTENT : on ne crée pas de doublon — pour un contrat donné, un type
+    d'alerte donné et une date de déclenchement donnée, si une alerte
+    NON-annulée existe déjà on la saute. La société est posée côté serveur
+    (celle de chaque contrat, garantie identique par les sélecteurs scopés).
+
+    Ne dispatche RIEN : sème seulement des alertes ``planifiee`` (le dispatch
+    est le rôle de ``declencher_alertes_contrat``). ``today`` est injectable.
+
+    Renvoie un dict ``{'company_id', 'nb_creees', 'alertes': [...]}``.
+    """
+    from . import selectors
+    from .models import AlerteContrat
+
+    if today is None:
+        today = timezone.localdate()
+
+    creees = []
+
+    def _semer(contrat, type_alerte, date_decl):
+        if date_decl is None:
+            return
+        existe = AlerteContrat.objects.filter(
+            company=contrat.company,
+            contrat=contrat,
+            type_alerte=type_alerte,
+            date_declenchement=date_decl,
+        ).exclude(statut=AlerteContrat.Statut.ANNULEE).exists()
+        if existe:
+            return
+        creees.append(creer_alerte(
+            contrat,
+            type_alerte=type_alerte,
+            date_declenchement=date_decl,
+            cree_par=cree_par,
+        ))
+
+    for contrat in selectors.contrats_a_preavis(
+            company, within_days=within_days, today=today):
+        _semer(
+            contrat, AlerteContrat.TypeAlerte.PREAVIS,
+            contrat.echeance_preavis())
+
+    for contrat in selectors.contrats_a_renouveler(
+            company, within_days=within_days, today=today):
+        _semer(
+            contrat, AlerteContrat.TypeAlerte.ECHEANCE,
+            contrat.date_fin)
+
+    return {
+        'company_id': company.id,
+        'nb_creees': len(creees),
+        'alertes': creees,
+    }

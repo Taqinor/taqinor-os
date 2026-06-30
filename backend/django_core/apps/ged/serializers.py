@@ -3,7 +3,7 @@ from rest_framework import serializers
 from .models import (
     ArchivageLegal, Cabinet, Coffre, DemandeApprobation, Document,
     DocumentLien, DocumentTag, DocumentTagAssignment, DocumentVersion, Folder,
-    LegalHold, PartageGed, PolitiqueRetention,
+    LegalHold, ModeleDocument, PartageGed, PolitiqueRetention,
 )
 from . import services
 
@@ -563,3 +563,19 @@ class LegalHoldSerializer(serializers.ModelSerializer):
             'actif', 'date_pose', 'place_par',
             'date_levee', 'leve_par',
         ]
+
+
+class ModeleDocumentSerializer(serializers.ModelSerializer):
+    """GED27 — Modèle de document (fusion/mailing). `company`/`created_by` posés
+    CÔTÉ SERVEUR (jamais lus du corps). Le corps HTML porte des jetons
+    ``{{ champ }}`` fusionnés au rendu (`services.rendre_modele`)."""
+    created_by_nom = serializers.CharField(
+        source='created_by.username', read_only=True, default=None)
+
+    class Meta:
+        model = ModeleDocument
+        fields = [
+            'id', 'nom', 'description', 'categorie', 'corps_html', 'actif',
+            'created_by', 'created_by_nom', 'created_at', 'updated_at',
+        ]
+        read_only_fields = ['created_by', 'created_at', 'updated_at']

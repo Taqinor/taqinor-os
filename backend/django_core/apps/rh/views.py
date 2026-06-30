@@ -45,6 +45,7 @@ from .models import (
     PresenceChantier,
     PresquAccident,
     Remuneration,
+    SessionFormation,
     SoldeConge,
     TypeAbsence,
     VisiteMedicale,
@@ -76,6 +77,7 @@ from .serializers import (
     PresenceChantierSerializer,
     PresquAccidentSerializer,
     RemunerationSerializer,
+    SessionFormationSerializer,
     SoldeCongeSerializer,
     TypeAbsenceSerializer,
     VisiteMedicaleSerializer,
@@ -1916,3 +1918,101 @@ class AnalyseRisquesChantierViewSet(_RhBaseViewSet):
             analyse.save(update_fields=['statut', 'date_modification'])
         return Response(
             self.get_serializer(analyse).data, status=status.HTTP_200_OK)
+
+
+class SessionFormationViewSet(_RhBaseViewSet):
+    """Sessions de formation (FG187) — gestion de la formation des équipes.
+
+    Société scopée + Administrateur/Responsable. Enregistre une session de
+    formation (interne / externe), son organisme, ses dates, son lieu, son
+    coût, la compétence visée et la liste des participants inscrits (présence,
+    résultat). ``company`` est posée CÔTÉ SERVEUR (jamais lue du corps) ;
+    ``competence_visee`` et chaque ``participant`` doivent appartenir à la même
+    société, et ``company`` est propagée aux inscriptions.
+
+    Filtres : ``?type=interne|externe``, ``?statut=planifiee|realisee|annulee``,
+    ``?competence=<id>``. ``?debut=`` / ``?fin=`` bornent la date de début.
+    Recherche : intitulé, organisme, lieu.
+
+    Action :
+    * ``POST .../{id}/marquer-realisee/`` — passe la session en
+      ``statut=realisee``. Si une ``competence_visee`` est définie, met à jour
+      (upsert) le niveau de compétence des participants PRÉSENTS dans la
+      matrice (``CompetenceEmploye``, même société). ``?niveau=`` (0–4, défaut
+      3 « Confirmé ») fixe le niveau attribué. Idempotent.
+    """
+    queryset = SessionFormation.objects.select_related('competence_visee') \
+        .prefetch_related('inscriptions').all()
+    serializer_class = SessionFormationSerializer
+    filter_backends = [filters.SearchFilter, filters.OrderingFilter]
+    search_fields = ['intitule', 'organisme', 'lieu']
+    ordering_fields = ['date_debut', 'statut', 'cout', 'date_creation']
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        type_param = self.request.query_params.get('type')
+        if type_param:
+            qs = qs.filter(type=type_param)
+        statut = self.request.query_params.get('statut')
+        if statut:
+            qs = qs.filter(statut=statut)
+        competence = self.request.query_params.get('competence')
+        if competence:
+            qs = qs.filter(competence_visee_id=competence)
+        debut = self._parse_date(self.request.query_params.get('debut'))
+        if debut:
+            qs = qs.filter(date_debut__gte=debut)
+        fin = self._parse_date(self.request.query_params.get('fin'))
+        if fin:
+            qs = qs.filter(date_debut__lte=fin)
+        return qs.distinct()
+
+    @staticmethod
+    def _parse_date(raw):
+        if not raw:
+            return None
+        from datetime import datetime
+        try:
+            return datetime.strptime(raw, '%Y-%m-%d').date()
+        except (TypeError, ValueError):
+            return None
+
+    @action(detail=True, methods=['post'], url_path='marquer-realisee')
+    def marquer_realisee(self, request, pk=None):
+        """Marque la session RÉALISÉE et alimente la matrice de compétences.
+
+        Passe ``statut`` → ``realisee`` (horodatage côté serveur). Si la
+        session vise une ``competence_visee``, on met à jour (upsert) le niveau
+        de chaque participant PRÉSENT dans ``CompetenceEmploye`` (même société,
+        évalué par l'utilisateur courant) — c'est le lien formation →
+        compétences. ``?niveau=`` (0–4, défaut 3) fixe le niveau attribué. La
+        société est garantie par ``get_object`` (un autre tenant reçoit 404).
+        Idempotent.
+        """
+        session = self.get_object()
+        if session.statut != SessionFormation.Statut.REALISEE:
+            session.statut = SessionFormation.Statut.REALISEE
+            session.save(update_fields=['statut', 'date_modification'])
+
+        # Upsert de la matrice de compétences pour les présents (gardé : ne
+        # fait rien sans compétence visée).
+        if session.competence_visee_id:
+            try:
+                niveau = int(request.query_params.get('niveau', 3))
+            except (TypeError, ValueError):
+                niveau = 3
+            niveau = max(0, min(4, niveau))
+            now = timezone.now()
+            for inscr in session.inscriptions.filter(present=True):
+                CompetenceEmploye.objects.update_or_create(
+                    employe_id=inscr.participant_id,
+                    competence_id=session.competence_visee_id,
+                    defaults={
+                        'company': session.company,
+                        'niveau': niveau,
+                        'evalue_le': now,
+                        'evalue_par': request.user,
+                    },
+                )
+        return Response(
+            self.get_serializer(session).data, status=status.HTTP_200_OK)

@@ -27,12 +27,14 @@ from .models import (
     Habilitation,
     HeuresSupp,
     IncidentPresence,
+    InscriptionFormation,
     LigneRisqueChantier,
     Pointage,
     Poste,
     PresenceChantier,
     PresquAccident,
     Remuneration,
+    SessionFormation,
     SoldeConge,
     TypeAbsence,
     VisiteMedicale,
@@ -1216,4 +1218,98 @@ class AnalyseRisquesChantierSerializer(serializers.ModelSerializer):
             for item in risques:
                 LigneRisqueChantier.objects.create(
                     company=instance.company, analyse=instance, **item)
+        return instance
+
+
+class InscriptionFormationSerializer(serializers.ModelSerializer):
+    """Inscription d'un employé à une session de formation (FG187).
+
+    Le client saisit ``participant`` (un ``DossierEmploye`` de sa société),
+    ``present``, ``resultat`` et ``note``. ``company`` et ``session`` sont
+    posées CÔTÉ SERVEUR (jamais lues du corps) par le sérialiseur parent.
+    """
+    participant_nom = serializers.SerializerMethodField()
+    resultat_display = serializers.CharField(
+        source='get_resultat_display', read_only=True)
+
+    class Meta:
+        model = InscriptionFormation
+        fields = [
+            'id', 'participant', 'participant_nom',
+            'present', 'resultat', 'resultat_display', 'note',
+            'date_creation',
+        ]
+        read_only_fields = ['date_creation']
+
+    def get_participant_nom(self, obj):
+        if not obj.participant_id:
+            return ''
+        return f'{obj.participant.nom} {obj.participant.prenom}'
+
+    def validate_participant(self, value):
+        return _meme_societe(self, value, 'Participant')
+
+
+class SessionFormationSerializer(serializers.ModelSerializer):
+    """Session de formation (FG187) — gestion de la formation des équipes.
+
+    Le client saisit ``intitule``, ``type`` (interne / externe),
+    ``organisme``, ``date_debut`` / ``date_fin``, ``lieu``, ``cout``,
+    ``competence_visee`` (une ``Competence`` de sa société), ``statut``,
+    ``notes`` et une liste imbriquée ``inscriptions`` (chacune avec son
+    participant / présence / résultat). ``company`` est posée CÔTÉ SERVEUR
+    (jamais lue du corps) ; ``competence_visee`` et chaque ``participant``
+    doivent appartenir à la société de l'utilisateur, et ``company`` est
+    propagée aux inscriptions enfants.
+    """
+    type_display = serializers.CharField(
+        source='get_type_display', read_only=True)
+    statut_display = serializers.CharField(
+        source='get_statut_display', read_only=True)
+    competence_visee_libelle = serializers.SerializerMethodField()
+    inscriptions = InscriptionFormationSerializer(many=True, required=False)
+
+    class Meta:
+        model = SessionFormation
+        fields = [
+            'id', 'intitule', 'type', 'type_display',
+            'organisme', 'date_debut', 'date_fin', 'lieu', 'cout',
+            'competence_visee', 'competence_visee_libelle',
+            'statut', 'statut_display', 'notes',
+            'inscriptions',
+            'date_creation', 'date_modification',
+        ]
+        read_only_fields = ['date_creation', 'date_modification']
+
+    def get_competence_visee_libelle(self, obj):
+        if not obj.competence_visee_id:
+            return ''
+        return obj.competence_visee.libelle
+
+    def validate_competence_visee(self, value):
+        return _meme_societe(self, value, 'Compétence visée')
+
+    def create(self, validated_data):
+        # ``company`` est injectée par le TenantMixin (perform_create) ; on la
+        # propage aux inscriptions enfants (jamais lue du corps).
+        inscriptions = validated_data.pop('inscriptions', [])
+        company = validated_data['company']
+        session = SessionFormation.objects.create(**validated_data)
+        for item in inscriptions:
+            InscriptionFormation.objects.create(
+                company=company, session=session, **item)
+        return session
+
+    def update(self, instance, validated_data):
+        # Mise à jour des champs de la session ; si ``inscriptions`` est
+        # fourni, on remplace la liste.
+        inscriptions = validated_data.pop('inscriptions', None)
+        for attr, value in validated_data.items():
+            setattr(instance, attr, value)
+        instance.save()
+        if inscriptions is not None:
+            instance.inscriptions.all().delete()
+            for item in inscriptions:
+                InscriptionFormation.objects.create(
+                    company=instance.company, session=instance, **item)
         return instance

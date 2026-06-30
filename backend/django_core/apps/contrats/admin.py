@@ -1,6 +1,7 @@
 from django.contrib import admin
 
 from .models import (
+    AlerteContrat,
     ClauseContrat,
     Contrat,
     ContratActivity,
@@ -85,3 +86,12 @@ class VersionContratAdmin(admin.ModelAdmin):
     list_filter = ('version',)
     search_fields = ('motif', 'fichier_key')
     readonly_fields = ('version', 'cree_le')
+
+
+@admin.register(AlerteContrat)
+class AlerteContratAdmin(admin.ModelAdmin):
+    list_display = ('id', 'contrat', 'type_alerte', 'date_declenchement',
+                    'statut', 'date_envoi', 'cree_par', 'company')
+    list_filter = ('type_alerte', 'statut')
+    search_fields = ('message',)
+    readonly_fields = ('date_envoi', 'date_creation')

@@ -1710,3 +1710,109 @@ class Secouriste(models.Model):
         if self.secouriste_id:
             return f'Secouriste — {self.secouriste}'
         return f'Secouriste — {self.nom or "?"}'
+
+
+# ── QHSE29 — Registre des incidents (HSE) ──────────────────────────────────
+
+class Incident(models.Model):
+    """Registre HSE unifié des incidents au niveau site (QHSE29).
+
+    Capture, dans un registre unique côté QHSE, les événements de terrain :
+    ``accident``, ``presqu_accident`` (near-miss) et ``incident``. Chaque entrée
+    décrit son ``type_incident``, sa ``date_incident``, l'éventuel chantier
+    concerné, sa ``gravite``, une ``description``, l'``action_immediate`` prise
+    et son cycle de vie (``statut`` : ouvert → en cours → clos).
+
+    DISTINCT du volet RH : ``rh`` tient ses propres modèles d'accident du travail
+    (``AccidentTravail`` / ``PresquAccident``) avec le détail CNSS / blessure /
+    salarié. Ce registre QHSE est le volet SÉCURITÉ DE SITE et ne référence
+    JAMAIS ``rh`` par import — les deux couches restent séparées.
+
+    Le rattachement au chantier se fait par référence LÂCHE (``chantier_id`` —
+    jamais un import cross-app du modèle ``installations.Chantier``).
+
+    Multi-société via ``company`` posée côté serveur (jamais lue du corps de
+    requête). La ``reference`` est attribuée côté serveur via
+    ``create_with_reference`` (plus haut numéro utilisé + 1, race-safe — jamais
+    count()+1). Entièrement additif.
+    """
+    class TypeIncident(models.TextChoices):
+        ACCIDENT = 'accident', 'Accident'
+        PRESQU_ACCIDENT = 'presqu_accident', 'Presqu’accident'
+        INCIDENT = 'incident', 'Incident'
+
+    class Gravite(models.TextChoices):
+        MINEURE = 'mineure', 'Mineure'
+        MAJEURE = 'majeure', 'Majeure'
+        CRITIQUE = 'critique', 'Critique'
+
+    class Statut(models.TextChoices):
+        OUVERT = 'ouvert', 'Ouvert'
+        EN_COURS = 'en_cours', 'En cours'
+        CLOS = 'clos', 'Clos'
+
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='qhse_incidents',
+        verbose_name='Société',
+    )
+    reference = models.CharField(
+        max_length=50, blank=True, default='', verbose_name='Référence')
+    titre = models.CharField(max_length=255, verbose_name='Titre')
+    type_incident = models.CharField(
+        max_length=20, choices=TypeIncident.choices,
+        default=TypeIncident.INCIDENT, verbose_name="Type d'événement")
+    gravite = models.CharField(
+        max_length=10, choices=Gravite.choices,
+        default=Gravite.MINEURE, verbose_name='Gravité')
+    statut = models.CharField(
+        max_length=10, choices=Statut.choices,
+        default=Statut.OUVERT, verbose_name='Statut')
+    # Référence LÂCHE au chantier (installations.Chantier) par id : jamais un
+    # import cross-app de modèle.
+    chantier_id = models.PositiveIntegerField(
+        null=True, blank=True, verbose_name='ID du chantier')
+    date_incident = models.DateField(
+        null=True, blank=True, verbose_name="Date de l'événement")
+    description = models.TextField(
+        blank=True, default='', verbose_name='Description')
+    action_immediate = models.TextField(
+        blank=True, default='', verbose_name='Action immédiate')
+    declare_par = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='qhse_incidents_declares',
+        verbose_name='Déclaré par',
+    )
+    date_creation = models.DateTimeField(
+        auto_now_add=True, verbose_name='Créé le')
+
+    class Meta:
+        verbose_name = 'Incident HSE'
+        verbose_name_plural = 'Incidents HSE'
+        ordering = ['-id']
+        constraints = [
+            models.UniqueConstraint(
+                fields=['company', 'reference'],
+                name='qhse_incident_co_ref_uniq',
+            )
+        ]
+        indexes = [
+            models.Index(
+                fields=['company', 'statut'],
+                name='qhse_incident_co_statut',
+            ),
+            models.Index(
+                fields=['company', 'type_incident'],
+                name='qhse_incident_co_type',
+            ),
+            models.Index(
+                fields=['company', 'chantier_id'],
+                name='qhse_incident_co_chant',
+            ),
+        ]
+
+    def __str__(self):
+        return f'{self.reference or "INC"} — {self.titre}'

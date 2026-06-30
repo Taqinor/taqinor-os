@@ -7,6 +7,7 @@ serveur.
 from rest_framework import serializers
 
 from .models import (
+    AlerteContrat,
     Clause,
     ClauseContrat,
     Contrat,
@@ -143,6 +144,45 @@ class PartieContratSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError(
                 "Ce contrat n'appartient pas à votre société.")
         return contrat
+
+
+class AlerteContratSerializer(serializers.ModelSerializer):
+    """Alerte/rappel planifié sur un contrat (CONTRAT22).
+
+    ``company`` n'est jamais exposée : elle est posée côté serveur (déduite du
+    contrat). Le ``contrat`` reçu est validé comme appartenant à la société de
+    l'utilisateur. ``statut`` / ``date_envoi`` / ``cree_par`` sont en lecture
+    seule (posés côté serveur lors de la création ou du dispatch).
+    """
+    type_alerte_display = serializers.CharField(
+        source='get_type_alerte_display', read_only=True)
+    statut_display = serializers.CharField(
+        source='get_statut_display', read_only=True)
+
+    class Meta:
+        model = AlerteContrat
+        fields = [
+            'id', 'contrat', 'type_alerte', 'type_alerte_display',
+            'date_declenchement', 'message', 'statut', 'statut_display',
+            'date_envoi', 'cree_par', 'date_creation',
+        ]
+        read_only_fields = [
+            'statut', 'statut_display', 'date_envoi', 'cree_par',
+            'date_creation',
+        ]
+
+    def validate_contrat(self, contrat):
+        """Le contrat rattaché doit appartenir à la société de l'utilisateur."""
+        request = self.context.get('request')
+        if request is not None and contrat.company_id != request.user.company_id:
+            raise serializers.ValidationError(
+                "Ce contrat n'appartient pas à votre société.")
+        return contrat
+
+
+class SemerAlertesSerializer(serializers.Serializer):
+    """Corps de l'action ``semer-echeances`` : fenêtre de jours (optionnelle)."""
+    within = serializers.IntegerField(required=False, min_value=0, default=30)
 
 
 class ContratLienSerializer(serializers.ModelSerializer):

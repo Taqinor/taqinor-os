@@ -9,6 +9,7 @@ from rest_framework import serializers
 from .models import (
     ActionCorrectivePreventive, Audit, ConsignationLoto, ContactUrgence,
     CritereAudit, EvaluationRisque, GrilleAudit, InductionSecurite,
+    Incident,
     ItemNotation, LigneEvaluationRisque, NonConformite, NotationFinChantier,
     PermisTravail, PlanInspectionChantier, PlanInspectionModele, PlanUrgence,
     PointControleModele, ProcedureQualite, QhseChatterEntry, ReleveControle,
@@ -622,3 +623,31 @@ class PlanUrgenceSerializer(serializers.ModelSerializer):
             'nb_contacts', 'nb_secouristes', 'date_creation',
         ]
         read_only_fields = ['date_creation']
+
+
+class IncidentSerializer(serializers.ModelSerializer):
+    """Registre des incidents HSE (QHSE29).
+
+    ``company`` et ``declare_par`` sont posés côté serveur (jamais lus du corps) ;
+    la ``reference`` est attribuée côté serveur (jamais lue du corps). Expose les
+    libellés lisibles de ``type_incident``, ``gravite`` et ``statut``.
+    """
+    type_incident_display = serializers.CharField(
+        source='get_type_incident_display', read_only=True)
+    gravite_display = serializers.CharField(
+        source='get_gravite_display', read_only=True)
+    statut_display = serializers.CharField(
+        source='get_statut_display', read_only=True)
+    declare_par_nom = serializers.CharField(
+        source='declare_par.username', read_only=True, default=None)
+
+    class Meta:
+        model = Incident
+        fields = [
+            'id', 'reference', 'titre', 'type_incident',
+            'type_incident_display', 'gravite', 'gravite_display', 'statut',
+            'statut_display', 'chantier_id', 'date_incident', 'description',
+            'action_immediate', 'declare_par', 'declare_par_nom',
+            'date_creation',
+        ]
+        read_only_fields = ['reference', 'declare_par', 'date_creation']
