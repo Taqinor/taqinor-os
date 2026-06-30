@@ -1389,3 +1389,127 @@ class Avenant(models.Model):
 
     def __str__(self):
         return f'Avenant n°{self.numero} — contrat {self.contrat_id}'
+
+
+class Resiliation(models.Model):
+    """Résiliation d'un contrat (motif / préavis / solde) — CONTRAT25.
+
+    Une ``Resiliation`` enregistre la RÉSILIATION d'un ``Contrat`` : le motif
+    (``motif``), le préavis observé (``preavis_jours``), la date de prise d'effet
+    (``date_effet``) et un éventuel solde de tout compte (``solde`` — montant de
+    règlement/indemnité). Sa création passe EXCLUSIVEMENT par
+    ``services.resilier_contrat``, qui fait basculer le ``Contrat.statut`` vers
+    ``resilie`` via la machine d'états GARDÉE (``machine_etats.changer_statut``)
+    — JAMAIS une écriture directe du statut, JAMAIS un funnel ``STAGES.py``
+    (rule #2). L'état ``resilie`` est TERMINAL dans la machine d'états (CONTRAT12)
+    et la résiliation n'est atteignable que depuis un état résiliable (la machine
+    d'états en est l'unique gardienne).
+
+    Statut LOCAL de la résiliation (``statut``) :
+    - ``demande`` : la résiliation est demandée (préavis en cours) ;
+    - ``effective`` : la résiliation a pris effet ;
+    - ``annulee`` : la résiliation a été annulée (sort du circuit).
+
+    UNE SEULE résiliation ACTIVE par contrat : une contrainte d'unicité PARTIELLE
+    (``statut != annulee``) empêche d'ouvrir deux résiliations actives sur un même
+    contrat ; une résiliation ``annulee`` ne bloque pas une nouvelle demande.
+
+    Multi-tenant : ``company`` est posée CÔTÉ SERVEUR (celle du contrat) — jamais
+    lue du corps de requête. ``contrat`` et ``version_creee`` sont des références
+    INTERNES à l'app `contrats` (FK durs autorisés) ; ``version_creee`` est
+    NULLABLE (``SET_NULL``) pour ne jamais perdre la résiliation si la version est
+    purgée. ``cree_par`` pointe vers ``AUTH_USER_MODEL`` (app foundation), FK
+    autorisé et NULLABLE (une résiliation déclenchée par un automatisme reste
+    traçable sans utilisateur).
+
+    RUNTIME-SAFETY (leçon FG136) : ``motif`` est un ``TextField`` (un motif de
+    résiliation peut être long — aucune longueur maximale à dépasser et lever) ;
+    ``solde`` est un ``DecimalField`` nullable. La contrainte d'unicité partielle
+    et l'index sont NOMMÉS explicitement (≤30 chars) pour éviter la divergence
+    d'auto-nommage Django.
+    """
+
+    class Statut(models.TextChoices):
+        DEMANDE = 'demande', 'Demandée'
+        EFFECTIVE = 'effective', 'Effective'
+        ANNULEE = 'annulee', 'Annulée'
+
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='contrats_resiliations',
+        verbose_name='Société',
+    )
+    contrat = models.ForeignKey(
+        Contrat,
+        on_delete=models.CASCADE,
+        related_name='resiliations',
+        verbose_name='Contrat',
+    )
+    # Motif/justification de la résiliation. TextField : peut être long sans
+    # jamais lever (leçon FG136).
+    motif = models.TextField(
+        blank=True, default='', verbose_name='Motif de la résiliation')
+    # Date de DEMANDE de la résiliation (posée côté serveur, défaut aujourd'hui).
+    date_demande = models.DateField(
+        null=True, blank=True, verbose_name='Date de demande')
+    # Date de PRISE D'EFFET de la résiliation (après le préavis observé).
+    date_effet = models.DateField(
+        null=True, blank=True, verbose_name="Date d'effet")
+    # Préavis (en JOURS) observé pour cette résiliation. NULL = non précisé.
+    preavis_jours = models.PositiveIntegerField(
+        null=True, blank=True, verbose_name='Préavis (jours)')
+    # Solde de tout compte / indemnité (montant de règlement). NULL = aucun solde.
+    solde = models.DecimalField(
+        max_digits=14, decimal_places=2,
+        null=True, blank=True, verbose_name='Solde / règlement')
+    statut = models.CharField(
+        max_length=20,
+        choices=Statut.choices,
+        default=Statut.DEMANDE,
+        verbose_name='Statut',
+    )
+    # Instantané immuable (CONTRAT18) figé au moment de la résiliation. SET_NULL :
+    # on ne perd jamais la résiliation si la version est supprimée.
+    version_creee = models.ForeignKey(
+        'VersionContrat',
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='resiliation',
+        verbose_name='Version figée',
+    )
+    cree_par = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='contrats_resiliations_creees',
+        verbose_name='Créée par',
+    )
+    date_creation = models.DateTimeField(
+        auto_now_add=True, verbose_name='Créée le')
+
+    class Meta:
+        verbose_name = 'Résiliation de contrat'
+        verbose_name_plural = 'Résiliations de contrat'
+        ordering = ['contrat_id', '-id']
+        constraints = [
+            # UNE SEULE résiliation ACTIVE (non annulée) par contrat : filet de
+            # sécurité DB derrière la garde idempotente du service.
+            models.UniqueConstraint(
+                fields=['contrat'],
+                condition=~models.Q(statut='annulee'),
+                name='contrats_resil_active_uniq',
+            ),
+        ]
+        indexes = [
+            models.Index(
+                fields=['contrat', 'statut'],
+                name='contrats_resil_ct_st',
+            ),
+        ]
+
+    def __str__(self):
+        return (
+            f'Résiliation ({self.get_statut_display()}) '
+            f'— contrat {self.contrat_id}'
+        )

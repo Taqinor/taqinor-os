@@ -19,6 +19,7 @@ from .models import (
     ModeleContratClause,
     PartieContrat,
     RegleApprobation,
+    Resiliation,
     SignatureContrat,
     VersionContrat,
 )
@@ -678,3 +679,54 @@ class CreerAvenantSerializer(serializers.Serializer):
             raise serializers.ValidationError(
                 "L'objet de l'avenant est requis.")
         return value
+
+
+class ResiliationSerializer(serializers.ModelSerializer):
+    """Sérialiseur d'une ``Resiliation`` (résiliation de contrat — CONTRAT25).
+
+    Lecture seule côté API : les résiliations sont créées exclusivement par
+    l'action ``resilier`` du contrat (jamais en POST direct sur cette ressource).
+    ``company``, ``contrat``, ``statut``, ``date_demande``, ``version_creee``,
+    ``cree_par`` et ``date_creation`` sont posés côté serveur — jamais lus du
+    corps de requête.
+    """
+    statut_display = serializers.CharField(
+        source='get_statut_display', read_only=True)
+    cree_par_username = serializers.SerializerMethodField()
+
+    class Meta:
+        model = Resiliation
+        fields = [
+            'id', 'contrat', 'motif', 'date_demande', 'date_effet',
+            'preavis_jours', 'solde', 'statut', 'statut_display',
+            'version_creee', 'cree_par', 'cree_par_username', 'date_creation',
+        ]
+        read_only_fields = fields
+
+    def get_cree_par_username(self, obj):
+        return getattr(obj.cree_par, 'username', None)
+
+
+class ResilierContratSerializer(serializers.Serializer):
+    """Corps de POST /contrats/<id>/resilier/ (CONTRAT25).
+
+    Enregistre la résiliation et fait basculer le contrat vers ``resilie`` via la
+    machine d'états gardée (jamais un funnel STAGES.py). Tous les champs sont
+    optionnels :
+
+    - ``motif``         : motif/justification de la résiliation ;
+    - ``date_effet``    : date de prise d'effet (après préavis) ;
+    - ``preavis_jours`` : préavis observé, en jours ;
+    - ``solde``         : solde de tout compte / indemnité.
+
+    Le ``statut`` de la résiliation, sa ``date_demande``, la société,
+    ``version_creee`` et ``cree_par`` sont posés CÔTÉ SERVEUR — jamais lus du
+    corps de requête.
+    """
+    motif = serializers.CharField(
+        required=False, allow_blank=True, trim_whitespace=False)
+    date_effet = serializers.DateField(required=False, allow_null=True)
+    preavis_jours = serializers.IntegerField(
+        required=False, allow_null=True, min_value=0)
+    solde = serializers.DecimalField(
+        max_digits=14, decimal_places=2, required=False, allow_null=True)
