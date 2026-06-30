@@ -17,17 +17,18 @@ from apps.ventes.utils.references import create_with_reference
 
 from .models import (
     ActionCorrectivePreventive, Audit, ConsignationLoto, CritereAudit,
-    EvaluationRisque, GrilleAudit, ItemNotation, LigneEvaluationRisque,
-    NonConformite, NotationFinChantier, PermisTravail, PlanInspectionChantier,
-    PlanInspectionModele, PointControleModele, ProcedureQualite,
-    QhseChatterEntry, ReleveControle, ReleveCourbeIV, ReponseCritere,
-    RetourClientQualite,
+    EvaluationRisque, GrilleAudit, InductionSecurite, ItemNotation,
+    LigneEvaluationRisque, NonConformite, NotationFinChantier, PermisTravail,
+    PlanInspectionChantier, PlanInspectionModele, PointControleModele,
+    ProcedureQualite, QhseChatterEntry, ReleveControle, ReleveCourbeIV,
+    ReponseCritere, RetourClientQualite,
 )
 from .serializers import (
     ActionCorrectivePreventiveSerializer, AuditSerializer,
     ConsignationLotoSerializer, CritereAuditSerializer,
     EvaluationRisqueSerializer, GrilleAuditSerializer,
-    ItemNotationSerializer, LigneEvaluationRisqueSerializer,
+    InductionSecuriteSerializer, ItemNotationSerializer,
+    LigneEvaluationRisqueSerializer,
     NonConformiteSerializer, NotationFinChantierSerializer,
     PermisTravailSerializer, PlanInspectionChantierSerializer,
     PlanInspectionModeleSerializer, PointControleModeleSerializer,
@@ -1036,3 +1037,58 @@ class ConsignationLotoViewSet(_QhseBaseViewSet):
         consignation.save(
             update_fields=['statut', 'date_deconsignation'])
         return Response(self.get_serializer(consignation).data)
+
+
+class InductionSecuriteViewSet(_QhseBaseViewSet):
+    """Accueil / induction sécurité préalable à l'accès au site (QHSE26).
+
+    CRUD scopé société. ``company`` est posée côté serveur (jamais lue du
+    corps). Couvre les salariés ET les sous-traitants externes : ``personne_nom``
+    est libre, et un externe est tracé par ``est_sous_traitant`` +
+    ``entreprise_externe`` (un salarié interne peut en plus être relié par
+    ``employe``, FK-chaîne vers ``rh.DossierEmploye``). Filtres optionnels :
+    ``?chantier_id=`` / ``?est_sous_traitant=`` / ``?employe=``. Recherche par
+    personne/entreprise/animateur/thèmes, tri par date.
+
+    L'``acquittement_le`` est en lecture seule au CRUD et n'est posé que par une
+    action détail :
+
+    * ``POST …/<id>/acquitter/`` — passe ``acquittement`` à vrai et horodate
+      ``acquittement_le`` (date ISO optionnelle au corps via ``acquittement_le``).
+    """
+    queryset = InductionSecurite.objects.all()
+    serializer_class = InductionSecuriteSerializer
+    filter_backends = [filters.SearchFilter, filters.OrderingFilter]
+    search_fields = [
+        'personne_nom', 'entreprise_externe', 'anime_par', 'themes']
+    ordering_fields = ['id', 'date_induction', 'date_creation']
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        chantier_id = self.request.query_params.get('chantier_id')
+        if chantier_id not in (None, ''):
+            qs = qs.filter(chantier_id=chantier_id)
+        est_sous_traitant = self.request.query_params.get('est_sous_traitant')
+        if est_sous_traitant not in (None, ''):
+            qs = qs.filter(
+                est_sous_traitant=est_sous_traitant in ('1', 'true', 'True'))
+        employe = self.request.query_params.get('employe')
+        if employe not in (None, ''):
+            qs = qs.filter(employe_id=employe)
+        return qs
+
+    @action(detail=True, methods=['post'])
+    def acquitter(self, request, pk=None):
+        """Enregistre l'acquittement / signature de l'accueil, scopé société.
+
+        Passe ``acquittement`` à vrai et horodate ``acquittement_le`` (maintenant
+        côté serveur, sauf si une date ISO est fournie au corps via
+        ``acquittement_le``).
+        """
+        induction = self.get_object()
+        acquittement_le = (
+            request.data.get('acquittement_le') or timezone.now())
+        induction.acquittement = True
+        induction.acquittement_le = acquittement_le
+        induction.save(update_fields=['acquittement', 'acquittement_le'])
+        return Response(self.get_serializer(induction).data)

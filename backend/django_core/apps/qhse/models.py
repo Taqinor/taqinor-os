@@ -1424,3 +1424,91 @@ class ConsignationLoto(models.Model):
 
     def __str__(self):
         return f'{self.reference or "LOTO"} — {self.equipement or self.permis_id}'
+
+
+class InductionSecurite(models.Model):
+    """Accueil / induction sécurité préalable à l'accès au chantier (QHSE26).
+
+    Trace une session d'accueil sécurité donnée à une personne AVANT qu'elle
+    n'accède au site : le chantier concerné, la personne accueillie (un salarié
+    OU un sous-traitant externe — d'où ``personne_nom`` libre + ``est_sous_traitant``
+    et ``entreprise_externe`` puisqu'un externe n'est pas un salarié), la date,
+    qui a animé l'accueil (``anime_par``), les thèmes couverts (``themes``) et
+    l'acquittement / signature de la personne (``acquittement`` + son horodatage
+    ``acquittement_le``). Une fenêtre de validité optionnelle (``validite_jours``)
+    permet d'exiger un nouvel accueil après N jours.
+
+    Le rattachement au chantier se fait par référence LÂCHE (``chantier_id`` —
+    jamais un import cross-app du modèle ``installations.Chantier``). Le lien vers
+    un salarié interne est optionnel et exprimé par FK-chaîne nullable vers
+    ``rh.DossierEmploye`` (jamais d'import de modèle cross-app).
+
+    Multi-société via ``company`` posée côté serveur (jamais lue du corps de
+    requête). Entièrement additif.
+    """
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='qhse_inductions_securite',
+        verbose_name='Société',
+    )
+    # Référence LÂCHE au chantier (installations.Chantier) par id : jamais un
+    # import cross-app de modèle.
+    chantier_id = models.PositiveIntegerField(
+        null=True, blank=True, verbose_name='ID du chantier')
+    # La personne accueillie : nom libre (couvre les externes qui ne sont pas
+    # des salariés). Si c'est un salarié interne, on relie en plus le dossier.
+    personne_nom = models.CharField(
+        max_length=255, verbose_name='Personne accueillie')
+    est_sous_traitant = models.BooleanField(
+        default=False, verbose_name='Sous-traitant externe')
+    entreprise_externe = models.CharField(
+        max_length=255, blank=True, default='',
+        verbose_name='Entreprise externe')
+    # Salarié interne optionnel : FK-chaîne nullable, jamais un import de modèle.
+    employe = models.ForeignKey(
+        'rh.DossierEmploye',
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='qhse_inductions_securite',
+        verbose_name='Salarié (dossier RH)',
+    )
+    date_induction = models.DateField(
+        null=True, blank=True, verbose_name="Date de l'accueil")
+    anime_par = models.CharField(
+        max_length=255, blank=True, default='', verbose_name='Animé par')
+    themes = models.TextField(
+        blank=True, default='', verbose_name='Thèmes couverts')
+    acquittement = models.BooleanField(
+        default=False, verbose_name='Acquittement / signature')
+    acquittement_le = models.DateTimeField(
+        null=True, blank=True, verbose_name="Acquitté le")
+    # Fenêtre de validité optionnelle : nombre de jours avant un nouvel accueil.
+    validite_jours = models.PositiveIntegerField(
+        null=True, blank=True, verbose_name='Validité (jours)')
+    notes = models.TextField(
+        blank=True, default='', verbose_name='Notes')
+    date_creation = models.DateTimeField(
+        auto_now_add=True, verbose_name='Créé le')
+
+    class Meta:
+        verbose_name = 'Accueil sécurité (induction)'
+        verbose_name_plural = 'Accueils sécurité (inductions)'
+        ordering = ['-id']
+        indexes = [
+            models.Index(
+                fields=['company', 'chantier_id'],
+                name='qhse_induc_co_chant',
+            ),
+            models.Index(
+                fields=['company', 'est_sous_traitant'],
+                name='qhse_induc_co_stt',
+            ),
+            models.Index(
+                fields=['company', 'date_induction'],
+                name='qhse_induc_co_date',
+            ),
+        ]
+
+    def __str__(self):
+        return f'Accueil sécurité — {self.personne_nom}'
