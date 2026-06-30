@@ -1695,3 +1695,75 @@ def synthese_temps_projet(projet):
         'par_tache': sorted(
             par_tache.values(), key=lambda x: x['tache_id']),
     }
+
+
+# ── Consommation matière vs BoM (PROJ25) ─────────────────────────────────────
+def _consommation_matiere_cross_app(projet):
+    """Consommation matière RÉELLE d'un projet via les apps cibles (ou dégrade).
+
+    Tente d'agréger la matière consommée sur les CHANTIERS rattachés au projet
+    (``ProjetChantier``) en appelant un sélecteur de l'app ``installations`` —
+    SANS jamais importer ses ``models``/``views`` (frontière cross-app,
+    CLAUDE.md ; import fonction-local). Aucune app cible n'expose aujourd'hui de
+    sélecteur de consommation matière par chantier exploitable ici → on DÉGRADE
+    proprement : montant consommé à 0 et une note. Aucune exception ne remonte.
+
+    Renvoie ``(montant_consomme: Decimal, source: str, note: str)``.
+    """
+    from .models import ProjetChantier
+    nb_chantiers = ProjetChantier.objects.filter(
+        projet=projet, company=projet.company).count()
+    nb_liens_achat = ProjetLien.objects.filter(
+        projet=projet, company=projet.company,
+        type_cible=ProjetLien.TypeCible.ACHAT).count()
+    # Pas de sélecteur cross-app de consommation matière disponible → dégrade.
+    if nb_chantiers or nb_liens_achat:
+        note = (
+            f"{nb_chantiers} chantier(s) et {nb_liens_achat} achat(s) "
+            "rattaché(s) : consommation matière non disponible (aucun "
+            "sélecteur cross-app) — consommé à 0.")
+    else:
+        note = ("Aucun chantier ni achat rattaché — consommé à 0.")
+    return Decimal('0'), 'degrade', note
+
+
+def consommation_matiere_vs_bom(projet):
+    """Consommation matière RÉELLE vs BoM PRÉVISIONNELLE d'un projet (PROJ25).
+
+    La BoM (Bill of Materials) prévisionnelle est ASSIMILÉE aux lignes de budget
+    de catégorie ``materiel`` du budget de référence (``budget_effectif``) : la
+    somme des ``montant_prevu`` matériel donne le PLANIFIÉ. La consommation
+    RÉELLE est agrégée via ``installations`` (chantiers rattachés) / ``stock``
+    (achats rattachés) — toujours en passant par un sélecteur de l'app cible,
+    jamais en important ses modèles (frontière cross-app, CLAUDE.md). Aucune
+    app cible n'expose aujourd'hui ce montant → DÉGRADE : consommé à 0 + note.
+
+    Renvoie ``{bom_prevu, consomme, ecart (prévu − consommé), ecart_pct (None si
+    prévu == 0 — garde division-par-zéro), source, note, budget_id,
+    budget_version}``. Tout est scopé société via le projet. Lecture seule.
+    """
+    budget = budget_effectif(projet)
+    if budget is not None:
+        agg = budget_total(budget)
+        bom_prevu = agg['par_categorie'].get(
+            LigneBudgetProjet.Categorie.MATERIEL, Decimal('0'))
+        budget_id = budget.id
+        budget_version = budget.version
+    else:
+        bom_prevu = Decimal('0')
+        budget_id = None
+        budget_version = None
+
+    consomme, source, note = _consommation_matiere_cross_app(projet)
+    ecart = bom_prevu - consomme
+    ecart_pct = _ecart_pct(bom_prevu, consomme)
+    return {
+        'bom_prevu': bom_prevu,
+        'consomme': consomme,
+        'ecart': ecart,
+        'ecart_pct': ecart_pct,
+        'source': source,
+        'note': note,
+        'budget_id': budget_id,
+        'budget_version': budget_version,
+    }

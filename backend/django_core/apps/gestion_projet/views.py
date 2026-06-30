@@ -476,6 +476,32 @@ class ProjetViewSet(_GestionProjetBaseViewSet):
             ],
         })
 
+    @action(detail=True, methods=['get'], url_path='consommation-matiere')
+    def consommation_matiere(self, request, pk=None):
+        """Consommation matière RÉELLE vs BoM prévisionnelle (PROJ25).
+
+        BoM prévisionnelle = lignes de budget « matériel » du budget de
+        référence ; consommé agrégé via les apps cibles (chantiers/achats) —
+        dégrade proprement à 0 + note tant qu'aucun sélecteur cross-app n'expose
+        ce montant (frontière cross-app). La société est garantie par
+        ``get_object`` (queryset scopé société) : un projet d'une autre société
+        → 404. Lecture seule.
+        """
+        projet = self.get_object()
+        data = selectors.consommation_matiere_vs_bom(projet)
+        return Response({
+            'budget_id': data['budget_id'],
+            'budget_version': data['budget_version'],
+            'bom_prevu': str(data['bom_prevu']),
+            'consomme': str(data['consomme']),
+            'ecart': str(data['ecart']),
+            'ecart_pct': (
+                str(data['ecart_pct'])
+                if data['ecart_pct'] is not None else None),
+            'source': data['source'],
+            'note': data['note'],
+        })
+
 
 class ProjetChantierViewSet(_GestionProjetBaseViewSet):
     """Rattachements chantier ↔ projet (liens lâches)."""
