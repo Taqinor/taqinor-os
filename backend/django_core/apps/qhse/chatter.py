@@ -10,7 +10,8 @@ du corps de requête). ``log_note`` est manuel ; ``log_creation`` /
 ``log_field_change`` tracent automatiquement les champs suivis.
 """
 from .models import (
-    ActionCorrectivePreventive, Audit, NonConformite, QhseChatterEntry,
+    ActionCorrectivePreventive, Audit, Incident, NonConformite,
+    QhseChatterEntry,
 )
 
 # Mappe une classe de modèle QHSE → sa valeur ``Cible`` du chatter.
@@ -18,6 +19,7 @@ _CIBLE_PAR_MODELE = {
     NonConformite: QhseChatterEntry.Cible.NCR,
     ActionCorrectivePreventive: QhseChatterEntry.Cible.CAPA,
     Audit: QhseChatterEntry.Cible.AUDIT,
+    Incident: QhseChatterEntry.Cible.INCIDENT,
 }
 
 
