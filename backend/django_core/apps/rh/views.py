@@ -23,6 +23,7 @@ from . import selectors, services
 from .models import (
     AccidentTravail,
     AffectationRoster,
+    AnalyseRisquesChantier,
     CauserieParticipant,
     CauserieSecurite,
     Certification,
@@ -51,6 +52,7 @@ from .models import (
 from .serializers import (
     AccidentTravailSerializer,
     AffectationRosterSerializer,
+    AnalyseRisquesChantierSerializer,
     CauserieParticipantSerializer,
     CauserieSecuriteSerializer,
     CertificationSerializer,
@@ -1804,3 +1806,81 @@ class CauserieSecuriteViewSet(_RhBaseViewSet):
         return Response(
             CauserieParticipantSerializer(ligne).data,
             status=status.HTTP_200_OK)
+
+
+class AnalyseRisquesChantierViewSet(_RhBaseViewSet):
+    """Analyses de risques chantier / plans de prévention (FG184) — AVANT travaux.
+
+    Société scopée + Administrateur/Responsable. Enregistre le plan de
+    prévention d'un chantier établi AVANT le démarrage : chantier (référence
+    chaîne), date, rédacteur (employé qui mène l'analyse), lieu/notes, statut
+    (brouillon → validé), et la liste des risques identifiés (danger, gravité,
+    probabilité, niveau, mesure de prévention). C'est distinct de la check-list
+    par intervention (F18) et de la causerie du jour (FG183) : on évalue ici les
+    risques EN AMONT. ``company`` est posée CÔTÉ SERVEUR (jamais lue du corps) ;
+    ``redacteur`` doit appartenir à la même société, et ``company`` est propagée
+    aux lignes de risque.
+
+    Filtres : ``?chantier=<ref>``, ``?redacteur=<id>``, ``?statut=brouillon|
+    valide``. ``?debut=`` / ``?fin=`` bornent la date. Recherche : lieu,
+    chantier, danger d'une ligne.
+
+    Action :
+    * ``POST .../{id}/valider/`` — passe l'analyse en ``statut=valide`` (le plan
+      de prévention est arrêté). Idempotent.
+    """
+    queryset = AnalyseRisquesChantier.objects.select_related('redacteur') \
+        .prefetch_related('risques').all()
+    serializer_class = AnalyseRisquesChantierSerializer
+    filter_backends = [filters.SearchFilter, filters.OrderingFilter]
+    search_fields = ['lieu', 'chantier_id', 'risques__danger']
+    ordering_fields = ['date_analyse', 'statut', 'date_creation']
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        chantier = self.request.query_params.get('chantier')
+        if chantier:
+            qs = qs.filter(chantier_id=chantier)
+        redacteur = self.request.query_params.get('redacteur')
+        if redacteur:
+            qs = qs.filter(redacteur_id=redacteur)
+        statut = self.request.query_params.get('statut')
+        if statut:
+            qs = qs.filter(statut=statut)
+        debut = self._parse_date(self.request.query_params.get('debut'))
+        if debut:
+            qs = qs.filter(date_analyse__gte=debut)
+        fin = self._parse_date(self.request.query_params.get('fin'))
+        if fin:
+            qs = qs.filter(date_analyse__lte=fin)
+        return qs.distinct()
+
+    @staticmethod
+    def _parse_date(raw):
+        if not raw:
+            return None
+        from datetime import datetime
+        try:
+            return datetime.strptime(raw, '%Y-%m-%d').date()
+        except (TypeError, ValueError):
+            return None
+
+    def perform_create(self, serializer):
+        """Company posée côté serveur ; FK validés via le sérialiseur."""
+        serializer.save(company=self.request.user.company)
+
+    @action(detail=True, methods=['post'], url_path='valider')
+    def valider(self, request, pk=None):
+        """Valide le plan de prévention (FG184) — passe en ``statut=valide``.
+
+        Le plan de prévention est arrêté : ``statut`` → ``valide`` (horodatage
+        de modification posé côté serveur). La société est garantie par
+        ``get_object`` (un autre tenant reçoit 404). Idempotent : revalider
+        renvoie la même analyse sans erreur.
+        """
+        analyse = self.get_object()
+        if analyse.statut != AnalyseRisquesChantier.Statut.VALIDE:
+            analyse.statut = AnalyseRisquesChantier.Statut.VALIDE
+            analyse.save(update_fields=['statut', 'date_modification'])
+        return Response(
+            self.get_serializer(analyse).data, status=status.HTTP_200_OK)

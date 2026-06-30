@@ -9,6 +9,7 @@ from rest_framework import serializers
 from .models import (
     AccidentTravail,
     AffectationRoster,
+    AnalyseRisquesChantier,
     CauserieParticipant,
     CauserieSecurite,
     Certification,
@@ -26,6 +27,7 @@ from .models import (
     Habilitation,
     HeuresSupp,
     IncidentPresence,
+    LigneRisqueChantier,
     Pointage,
     Poste,
     PresenceChantier,
@@ -1126,4 +1128,92 @@ class CauserieSecuriteSerializer(serializers.ModelSerializer):
             for item in participants:
                 CauserieParticipant.objects.create(
                     company=instance.company, causerie=instance, **item)
+        return instance
+
+
+class LigneRisqueChantierSerializer(serializers.ModelSerializer):
+    """Ligne de risque d'une analyse de risques chantier (FG184).
+
+    Le client saisit ``danger``, ``description``, ``gravite``, ``probabilite``,
+    ``niveau`` et ``mesure_prevention``. ``company`` et ``analyse`` sont posées
+    CÔTÉ SERVEUR (jamais lues du corps) par le sérialiseur parent.
+    """
+    gravite_display = serializers.CharField(
+        source='get_gravite_display', read_only=True)
+    probabilite_display = serializers.CharField(
+        source='get_probabilite_display', read_only=True)
+    niveau_display = serializers.CharField(
+        source='get_niveau_display', read_only=True)
+
+    class Meta:
+        model = LigneRisqueChantier
+        fields = [
+            'id', 'danger', 'description',
+            'gravite', 'gravite_display',
+            'probabilite', 'probabilite_display',
+            'niveau', 'niveau_display',
+            'mesure_prevention', 'date_creation',
+        ]
+        read_only_fields = ['date_creation']
+
+
+class AnalyseRisquesChantierSerializer(serializers.ModelSerializer):
+    """Analyse de risques chantier / plan de prévention (FG184) — AVANT travaux.
+
+    Le client saisit ``chantier_id`` (référence chaîne optionnelle),
+    ``date_analyse``, ``redacteur`` (un ``DossierEmploye`` de sa société),
+    ``lieu``, ``statut``, ``notes`` et une liste imbriquée ``risques`` (chacun
+    avec son danger / gravité / probabilité / niveau / mesure de prévention).
+    ``company`` est posée CÔTÉ SERVEUR (jamais lue du corps) ; ``redacteur``
+    doit appartenir à la société de l'utilisateur, et ``company`` est propagée
+    aux lignes de risque enfants.
+    """
+    redacteur_nom = serializers.SerializerMethodField()
+    statut_display = serializers.CharField(
+        source='get_statut_display', read_only=True)
+    risques = LigneRisqueChantierSerializer(many=True, required=False)
+
+    class Meta:
+        model = AnalyseRisquesChantier
+        fields = [
+            'id', 'chantier_id', 'date_analyse',
+            'redacteur', 'redacteur_nom',
+            'lieu', 'statut', 'statut_display', 'notes',
+            'risques',
+            'date_creation', 'date_modification',
+        ]
+        read_only_fields = ['date_creation', 'date_modification']
+
+    def get_redacteur_nom(self, obj):
+        if not obj.redacteur_id:
+            return ''
+        return f'{obj.redacteur.nom} {obj.redacteur.prenom}'
+
+    def validate_redacteur(self, value):
+        return _meme_societe(self, value, 'Rédacteur')
+
+    def create(self, validated_data):
+        # ``company`` est injectée par le TenantMixin (perform_create) ; on la
+        # propage aux lignes de risque enfants (jamais lue du corps).
+        risques = validated_data.pop('risques', [])
+        company = validated_data['company']
+        analyse = AnalyseRisquesChantier.objects.create(**validated_data)
+        for item in risques:
+            LigneRisqueChantier.objects.create(
+                company=company, analyse=analyse, **item)
+        return analyse
+
+    def update(self, instance, validated_data):
+        # Mise à jour des champs de l'analyse ; si ``risques`` est fourni, on
+        # remplace la liste (une nouvelle analyse de risques = une nouvelle
+        # liste).
+        risques = validated_data.pop('risques', None)
+        for attr, value in validated_data.items():
+            setattr(instance, attr, value)
+        instance.save()
+        if risques is not None:
+            instance.risques.all().delete()
+            for item in risques:
+                LigneRisqueChantier.objects.create(
+                    company=instance.company, analyse=instance, **item)
         return instance

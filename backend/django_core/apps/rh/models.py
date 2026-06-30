@@ -2275,3 +2275,167 @@ class CauserieParticipant(models.Model):
 
     def __str__(self):
         return f'{self.participant_id} @ {self.causerie_id}'
+
+
+class AnalyseRisquesChantier(models.Model):
+    """Analyse de risques chantier / plan de prévention (FG184) — AVANT travaux.
+
+    Matérialise le PLAN DE PRÉVENTION d'un chantier : l'évaluation des risques
+    réalisée AVANT le démarrage des travaux. C'est distinct de la check-list
+    sécurité par intervention (F18, faite SUR le terrain au fil de l'eau) et de
+    la causerie sécurité (FG183, le briefing du jour) : ici on identifie EN
+    AMONT les dangers propres au chantier et les mesures de prévention à mettre
+    en place avant que quiconque ne travaille. Réglementairement, l'employeur
+    doit évaluer les risques et organiser la prévention sur chaque chantier ;
+    ce plan en est le socle traçable.
+
+    On capture l'essentiel : le CHANTIER concerné (``chantier_id`` — référence
+    chaîne optionnelle vers un chantier d'une autre app, PAS de FK inter-app),
+    la DATE de l'analyse (``date_analyse``), le RÉDACTEUR qui l'a menée
+    (``redacteur`` → ``DossierEmploye``, même société), un ``lieu`` / des
+    ``notes`` libres et le ``statut`` (brouillon → validé). La liste des risques
+    identifiés vit dans le modèle enfant ``LigneRisqueChantier`` : chacun porte
+    un danger, sa gravité × probabilité, un niveau de risque et la mesure de
+    prévention associée.
+
+    Multi-société : ``company`` est posée CÔTÉ SERVEUR (jamais lue du corps de
+    requête) ; ``redacteur`` doit appartenir à la même société.
+
+    RUNTIME-SAFETY (leçon FG136) : le code borné ``statut`` ≤ 20 ; ``lieu`` /
+    ``chantier_id`` plafonnés ; les ``notes``, potentiellement longues, sont un
+    ``TextField`` (aucune limite à dépasser). Entièrement additif.
+    """
+
+    class Statut(models.TextChoices):
+        BROUILLON = 'brouillon', 'Brouillon'
+        VALIDE = 'valide', 'Validé'
+
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='rh_analyses_risques_chantier',
+        verbose_name='Société',
+    )
+    # Référence chaîne optionnelle vers un chantier d'une autre app (pas de FK
+    # inter-app) — saisie terrain libre.
+    chantier_id = models.CharField(
+        max_length=64, blank=True, default='',
+        verbose_name='Chantier (référence)')
+    date_analyse = models.DateField(verbose_name="Date de l'analyse")
+    # L'employé qui a rédigé l'analyse de risques (même société).
+    redacteur = models.ForeignKey(
+        DossierEmploye,
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='rh_analyses_risques_redigees',
+        verbose_name='Rédacteur',
+    )
+    lieu = models.CharField(
+        max_length=255, blank=True, default='', verbose_name='Lieu')
+    statut = models.CharField(
+        max_length=20, choices=Statut.choices,
+        default=Statut.BROUILLON, verbose_name='Statut')
+    notes = models.TextField(
+        blank=True, default='', verbose_name='Notes')
+    date_creation = models.DateTimeField(
+        auto_now_add=True, verbose_name='Créé le')
+    date_modification = models.DateTimeField(
+        auto_now=True, verbose_name='Modifié le')
+
+    class Meta:
+        verbose_name = 'Analyse de risques chantier'
+        verbose_name_plural = 'Analyses de risques chantier'
+        ordering = ['-date_analyse', '-date_creation']
+        indexes = [
+            models.Index(
+                fields=['company', 'date_analyse'],
+                name='rh_arc_comp_date_idx'),
+            models.Index(
+                fields=['company', 'statut'],
+                name='rh_arc_comp_stat_idx'),
+        ]
+
+    def __str__(self):
+        return f'Analyse risques {self.chantier_id or "—"} ' \
+               f'({self.date_analyse})'
+
+
+class LigneRisqueChantier(models.Model):
+    """Risque identifié dans une analyse de risques chantier (FG184).
+
+    Une ligne par RISQUE identifié sur le chantier (``analyse`` → parent) : le
+    DANGER (``danger`` — la nature du risque, ex. « travail en hauteur »), une
+    ``description`` détaillée, la GRAVITÉ (``gravite``) et la PROBABILITÉ
+    (``probabilite``) estimées, le NIVEAU de risque qui en découle (``niveau`` —
+    faible / moyen / élevé / critique) et la MESURE DE PRÉVENTION à appliquer
+    (``mesure_prevention``).
+
+    Le ``niveau`` est saisi (et non strictement calculé) pour laisser le
+    rédacteur arbitrer : gravité × probabilité oriente, mais l'évaluateur
+    tranche selon le contexte chantier.
+
+    Multi-société : ``company`` est posée CÔTÉ SERVEUR (jamais lue du corps),
+    celle de l'analyse parente. Additif.
+
+    RUNTIME-SAFETY (leçon FG136) : les codes bornés ``gravite`` /
+    ``probabilite`` / ``niveau`` ≤ 20 ; ``danger`` plafonné ; ``description`` /
+    ``mesure_prevention``, potentiellement longues, sont des ``TextField``.
+    """
+
+    class Gravite(models.TextChoices):
+        FAIBLE = 'faible', 'Faible'
+        MOYENNE = 'moyenne', 'Moyenne'
+        ELEVEE = 'elevee', 'Élevée'
+
+    class Probabilite(models.TextChoices):
+        FAIBLE = 'faible', 'Faible'
+        MOYENNE = 'moyenne', 'Moyenne'
+        ELEVEE = 'elevee', 'Élevée'
+
+    class Niveau(models.TextChoices):
+        FAIBLE = 'faible', 'Faible'
+        MOYEN = 'moyen', 'Moyen'
+        ELEVE = 'eleve', 'Élevé'
+        CRITIQUE = 'critique', 'Critique'
+
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='rh_lignes_risque_chantier',
+        verbose_name='Société',
+    )
+    analyse = models.ForeignKey(
+        AnalyseRisquesChantier,
+        on_delete=models.CASCADE,
+        related_name='risques',
+        verbose_name='Analyse',
+    )
+    danger = models.CharField(max_length=255, verbose_name='Danger')
+    description = models.TextField(
+        blank=True, default='', verbose_name='Description')
+    gravite = models.CharField(
+        max_length=20, choices=Gravite.choices,
+        default=Gravite.MOYENNE, verbose_name='Gravité')
+    probabilite = models.CharField(
+        max_length=20, choices=Probabilite.choices,
+        default=Probabilite.MOYENNE, verbose_name='Probabilité')
+    niveau = models.CharField(
+        max_length=20, choices=Niveau.choices,
+        default=Niveau.MOYEN, verbose_name='Niveau de risque')
+    mesure_prevention = models.TextField(
+        blank=True, default='', verbose_name='Mesure de prévention')
+    date_creation = models.DateTimeField(
+        auto_now_add=True, verbose_name='Créé le')
+
+    class Meta:
+        verbose_name = 'Risque chantier'
+        verbose_name_plural = 'Risques chantier'
+        ordering = ['id']
+        indexes = [
+            models.Index(
+                fields=['company', 'analyse'],
+                name='rh_lrc_comp_analyse_idx'),
+        ]
+
+    def __str__(self):
+        return f'{self.danger} ({self.niveau})'
