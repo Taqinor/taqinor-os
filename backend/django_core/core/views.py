@@ -40,6 +40,7 @@ from .mixins import TenantMixin
 from .models import (
     Dashboard,
     DeletionRecord,
+    ModuleToggle,
     PaymentTransaction,
     SavedQuery,
     ScheduledExport,
@@ -47,6 +48,7 @@ from .models import (
 from .serializers import (
     DashboardSerializer,
     DeletionRecordSerializer,
+    ModuleToggleSerializer,
     PaymentTransactionSerializer,
     SavedQuerySerializer,
     ScheduledExportSerializer,
@@ -397,3 +399,22 @@ class BulkEditViewSet(viewsets.ViewSet):
             return Response({'detail': str(exc)},
                             status=status.HTTP_400_BAD_REQUEST)
         return Response({'modifies': count})
+
+
+class ModuleToggleViewSet(TenantMixin, viewsets.ModelViewSet):
+    """FG391 — flags de modules par société (activation/désactivation).
+
+    Multi-tenant : ``TenantMixin`` filtre par société et impose ``company``.
+    L'écriture est réservée au palier admin/responsable (paramétrage société) ;
+    la lecture est ouverte à tout utilisateur authentifié pour que la SPA sache
+    quels modules afficher. Aucune importation d'app domaine : ``module`` est
+    une clé libre.
+    """
+    serializer_class = ModuleToggleSerializer
+    queryset = ModuleToggle.objects.all()
+    pagination_class = None
+
+    def get_permissions(self):
+        if self.action in ('list', 'retrieve'):
+            return [IsAuthenticated()]
+        return [IsAdminOrResponsableTier()]

@@ -1035,3 +1035,55 @@ class ScheduledExport(TimestampedModel):
 
     def __str__(self):
         return f'{self.titre} → {self.destination}'
+
+
+# ---------------------------------------------------------------------------
+# FG391 — Flags de fonctionnalités / modules par tenant (société).
+#
+# Modèle de FONDATION GÉNÉRIQUE : active/désactive un module par société.
+# ``module`` est une CLÉ LIBRE (chaîne, ex. « sav », « flotte ») — ``core`` ne
+# connaît AUCUN module métier (contrat import-linter
+# ``core-foundation-is-a-base-layer``). L'absence de ligne = comportement par
+# défaut (activé) ; une ligne ``actif=False`` désactive le module pour la
+# société. Le service ``core.feature_flags.module_actif`` lit cette table.
+# ---------------------------------------------------------------------------
+
+
+class ModuleToggle(TimestampedModel):
+    """Activation/désactivation d'un module par société (FG391).
+
+    GÉNÉRIQUE : ``module`` est une clé libre (aucun import métier). Unique par
+    ``(company, module)``. ``actif`` porte l'état ; ``raison`` documente une
+    coupure éventuelle. Multi-tenant : ``company`` obligatoire, imposée côté
+    serveur.
+    """
+
+    company = models.ForeignKey(
+        'authentication.Company', on_delete=models.CASCADE,
+        related_name='module_toggles', verbose_name='Société')
+
+    module = models.CharField(
+        'Module', max_length=60,
+        help_text='Clé du module, ex. « sav », « flotte » (libre).')
+    actif = models.BooleanField('Actif', default=True)
+    raison = models.CharField(
+        'Raison', max_length=255, blank=True, default='',
+        help_text='Note optionnelle (ex. « hors offre », « en pilote »).')
+
+    class Meta:
+        verbose_name = 'Activation de module'
+        verbose_name_plural = 'Activations de modules'
+        ordering = ['module', 'id']
+        constraints = [
+            models.UniqueConstraint(
+                fields=['company', 'module'],
+                name='core_moduletoggle_co_mod'),
+        ]
+        indexes = [
+            models.Index(fields=['company', 'actif'],
+                         name='core_modtog_co_actif_idx'),
+        ]
+
+    def __str__(self):
+        etat = 'activé' if self.actif else 'désactivé'
+        return f'{self.module} ({etat}) — société {self.company_id}'

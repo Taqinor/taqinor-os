@@ -8,6 +8,7 @@ from rest_framework import serializers
 from .models import (
     Dashboard,
     DeletionRecord,
+    ModuleToggle,
     PaymentTransaction,
     SavedQuery,
     ScheduledExport,
@@ -133,3 +134,15 @@ class DeletionRecordSerializer(serializers.ModelSerializer):
     def get_model_label(self, obj):
         ct = obj.content_type
         return f'{ct.app_label}.{ct.model}' if ct else ''
+
+
+class ModuleToggleSerializer(serializers.ModelSerializer):
+    """FG391 — activation/désactivation d'un module par société.
+
+    ``company`` n'est JAMAIS lu du corps (imposée côté serveur).
+    """
+    class Meta:
+        model = ModuleToggle
+        fields = ['id', 'module', 'actif', 'raison',
+                  'created_at', 'updated_at']
+        read_only_fields = ['id', 'created_at', 'updated_at']

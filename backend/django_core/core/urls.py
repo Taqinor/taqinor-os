@@ -21,6 +21,7 @@ from rest_framework.routers import DefaultRouter
 from .views import (
     BulkEditViewSet,
     DashboardViewSet,
+    ModuleToggleViewSet,
     PaymentTransactionViewSet,
     SavedQueryViewSet,
     ScheduledExportViewSet,
@@ -47,5 +48,8 @@ router.register(r'scheduled-exports', ScheduledExportViewSet,
 router.register(r'corbeille', TrashViewSet, basename='trash')
 # FG389 — édition de champ en masse, généralisée (cibles enregistrées).
 router.register(r'bulk-edit', BulkEditViewSet, basename='bulk-edit')
+# FG391 — flags de modules par société (activation/désactivation).
+router.register(r'module-toggles', ModuleToggleViewSet,
+                basename='module-toggle')
 
 urlpatterns = router.urls
