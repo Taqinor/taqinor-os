@@ -1,9 +1,10 @@
 from rest_framework import serializers
 
 from .models import (
-    ArchivageLegal, Cabinet, Coffre, DemandeApprobation, Document,
-    DocumentLien, DocumentTag, DocumentTagAssignment, DocumentVersion, Folder,
-    LegalHold, ModeleDocument, PartageGed, PolitiqueRetention,
+    ArchivageLegal, Cabinet, Coffre, DemandeApprobation,
+    DemandeSignatureDocument, Document, DocumentLien, DocumentTag,
+    DocumentTagAssignment, DocumentVersion, Folder, LegalHold, ModeleDocument,
+    PartageGed, PolitiqueRetention,
 )
 from . import services
 
@@ -562,6 +563,37 @@ class LegalHoldSerializer(serializers.ModelSerializer):
         read_only_fields = [
             'actif', 'date_pose', 'place_par',
             'date_levee', 'leve_par',
+        ]
+
+
+class DemandeSignatureDocumentSerializer(serializers.ModelSerializer):
+    """GED30 — Demande de signature électronique (point d'intégration + stub no-op).
+
+    En CRÉATION : seuls `document`, `signataire_nom` et `signataire_email` sont
+    lus du corps — `company` et `created_by` sont posés CÔTÉ SERVEUR via
+    `services.demander_signature` (jamais lus du corps). Tous les champs d'état
+    (`statut`, `provider`, `provider_ref`, `date_demande`, `date_signature`) sont
+    en LECTURE SEULE : ils évoluent via le service / l'action `marquer-signe`
+    (webhook/manuel), jamais par mutation directe de l'API. Couche distincte de
+    la signature des contrats (CONTRAT16) et du funnel `STAGES.py`."""
+    document_nom = serializers.CharField(
+        source='document.nom', read_only=True, default=None)
+    created_by_nom = serializers.CharField(
+        source='created_by.username', read_only=True, default=None)
+
+    class Meta:
+        model = DemandeSignatureDocument
+        fields = [
+            'id', 'document', 'document_nom',
+            'signataire_nom', 'signataire_email',
+            'statut', 'provider', 'provider_ref',
+            'date_demande', 'date_signature',
+            'created_by', 'created_by_nom', 'created_at', 'updated_at',
+        ]
+        read_only_fields = [
+            'statut', 'provider', 'provider_ref',
+            'date_demande', 'date_signature',
+            'created_by', 'created_at', 'updated_at',
         ]
 
 
