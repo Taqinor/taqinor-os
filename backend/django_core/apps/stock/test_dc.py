@@ -12,12 +12,13 @@ INTERNE : les prix d'achat ne sont jamais client-facing.
 Run :
     python manage.py test apps.stock.test_dc -v 2
 """
+from datetime import date
 from decimal import Decimal
 
 from django.contrib.auth import get_user_model
 from django.test import TestCase
 
-from apps.stock.models import Produit, Fournisseur
+from apps.stock.models import Produit, Fournisseur, PrixFournisseur
 
 User = get_user_model()
 
@@ -58,3 +59,57 @@ class TestDC15FournisseurIdentite(DCBase):
         self.assertIsNone(f.identifiant_fiscal)
         self.assertIsNone(f.rc)
         self.assertIsNone(f.rib)
+
+
+class TestDC28CoutAchatCourant(DCBase):
+    """DC28 — un seul résolveur de coût d'achat courant, précédence documentée :
+    PrixFournisseur (dernier payé) → Produit.prix_achat (fallback)."""
+
+    def test_fallback_to_catalogue(self):
+        from apps.stock.services import cout_achat_courant_with_source
+        cout, source = cout_achat_courant_with_source(self.produit)
+        self.assertEqual(cout, Decimal('600'))
+        self.assertEqual(source, 'catalogue')
+
+    def test_prix_fournisseur_takes_precedence(self):
+        from apps.stock.services import cout_achat_courant_with_source
+        PrixFournisseur.objects.create(
+            company=self.company, produit=self.produit,
+            fournisseur=self.fournisseur, prix_achat=Decimal('550'),
+            date_dernier_achat=date(2026, 1, 1))
+        cout, source = cout_achat_courant_with_source(self.produit)
+        self.assertEqual(cout, Decimal('550'))
+        self.assertEqual(source, 'prix_fournisseur')
+
+    def test_latest_paid_wins_over_older(self):
+        from apps.stock.services import cout_achat_courant_with_source
+        f2 = Fournisseur.objects.create(company=self.company, nom='Autre four')
+        PrixFournisseur.objects.create(
+            company=self.company, produit=self.produit,
+            fournisseur=self.fournisseur, prix_achat=Decimal('580'),
+            date_dernier_achat=date(2026, 1, 1))
+        PrixFournisseur.objects.create(
+            company=self.company, produit=self.produit,
+            fournisseur=f2, prix_achat=Decimal('520'),
+            date_dernier_achat=date(2026, 5, 1))
+        cout, source = cout_achat_courant_with_source(self.produit)
+        # Dernier payé = mai (520), pas le moins cher.
+        self.assertEqual(cout, Decimal('520'))
+        self.assertEqual(source, 'prix_fournisseur')
+
+    def test_zero_price_fournisseur_ignored(self):
+        from apps.stock.services import cout_achat_courant_with_source
+        PrixFournisseur.objects.create(
+            company=self.company, produit=self.produit,
+            fournisseur=self.fournisseur, prix_achat=Decimal('0'),
+            date_dernier_achat=date(2026, 1, 1))
+        cout, source = cout_achat_courant_with_source(self.produit)
+        self.assertEqual(cout, Decimal('600'))
+        self.assertEqual(source, 'catalogue')
+
+    def test_scalar_accessor_matches_source_value(self):
+        from apps.stock.services import (
+            cout_achat_courant, cout_achat_courant_with_source)
+        self.assertEqual(
+            cout_achat_courant(self.produit),
+            cout_achat_courant_with_source(self.produit)[0])

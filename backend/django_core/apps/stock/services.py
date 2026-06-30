@@ -384,6 +384,45 @@ def average_cost(produit):
     return average_cost_with_source(produit)[0]
 
 
+# ── DC28 — UN seul résolveur du coût d'achat courant ─────────────────────────
+# Précédence DOCUMENTÉE, une seule porte d'entrée pour marge / auto-fill /
+# job-costing (ils lisent CET accesseur, jamais Produit.prix_achat en direct) :
+#
+#   1. accord de prix fournisseur actif (modèle à venir : aucun accord
+#      n'existe encore au catalogue → étape inerte aujourd'hui, point
+#      d'extension réservé) ;
+#   2. PrixFournisseur — le DERNIER PAYÉ (date_dernier_achat la plus récente,
+#      prix > 0) chez n'importe quel fournisseur de ce produit ;
+#   3. repli : Produit.prix_achat (prix d'achat catalogue).
+#
+# INTERNE — jamais client-facing (règle marges). Renvoie (cout, source) où
+# source ∈ {'accord', 'prix_fournisseur', 'catalogue'}.
+
+def cout_achat_courant_with_source(produit):
+    """Coût d'achat courant d'un produit + sa SOURCE, selon la précédence DC28.
+
+    Renvoie ``(Decimal, source)`` avec ``source`` ∈ {'accord',
+    'prix_fournisseur', 'catalogue'}. Accesseur UNIQUE — marge / auto-fill /
+    job-costing passent par ici. INTERNE."""
+    # 1. Accord de prix actif — point d'extension réservé (aucun modèle d'accord
+    #    n'existe encore ; quand il arrivera, le brancher ici en priorité).
+    # 2. PrixFournisseur : dernier payé (date la plus récente), prix > 0.
+    dernier = (produit.prix_fournisseurs
+               .filter(prix_achat__gt=0)
+               .order_by('-date_dernier_achat', '-id')
+               .first())
+    if dernier is not None:
+        return (Decimal(str(dernier.prix_achat)), 'prix_fournisseur')
+    # 3. Repli catalogue.
+    return (produit.prix_achat or Decimal('0'), 'catalogue')
+
+
+def cout_achat_courant(produit):
+    """Coût d'achat courant d'un produit (Decimal), selon la précédence DC28.
+    Accesseur UNIQUE pour marge / auto-fill / job-costing. INTERNE."""
+    return cout_achat_courant_with_source(produit)
+
+
 def stock_valuation_by_location(company):
     """Valorisation du stock par emplacement au coût moyen d'achat (N18).
 
