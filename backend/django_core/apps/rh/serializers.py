@@ -10,6 +10,7 @@ from .models import (
     AccidentTravail,
     AffectationRoster,
     AnalyseRisquesChantier,
+    AvanceSalaire,
     BesoinFormation,
     CampagneEvaluation,
     Candidature,
@@ -1706,6 +1707,47 @@ class OrdreMissionSerializer(serializers.ModelSerializer):
 
     def validate_employe(self, value):
         return _meme_societe(self, value, 'Employé')
+
+
+class AvanceSalaireSerializer(serializers.ModelSerializer):
+    """Avance sur salaire (FG195) — demande/validation/déduction.
+
+    Le client saisit ``employe`` (un ``DossierEmploye`` de sa société),
+    ``montant``, ``date_demande``, ``motif``, ``annee_deduction`` /
+    ``mois_deduction`` (par défaut le mois suivant la demande, posé côté
+    serveur si absent). ``company`` est posée CÔTÉ SERVEUR (jamais lue du
+    corps) ; ``employe`` / ``valideur`` doivent appartenir à la société de
+    l'utilisateur. ``statut`` et ``valideur`` évoluent via les actions dédiées.
+    """
+    employe_nom = serializers.SerializerMethodField()
+    statut_display = serializers.CharField(
+        source='get_statut_display', read_only=True)
+
+    class Meta:
+        model = AvanceSalaire
+        fields = [
+            'id', 'employe', 'employe_nom', 'valideur',
+            'montant', 'date_demande', 'motif',
+            'annee_deduction', 'mois_deduction',
+            'statut', 'statut_display',
+            'date_creation', 'date_modification',
+        ]
+        read_only_fields = [
+            'valideur', 'statut', 'date_creation', 'date_modification']
+
+    def get_employe_nom(self, obj):
+        if not obj.employe_id:
+            return ''
+        return f'{obj.employe.nom} {obj.employe.prenom}'
+
+    def validate_employe(self, value):
+        return _meme_societe(self, value, 'Employé')
+
+    def validate_mois_deduction(self, value):
+        if value is not None and not 1 <= value <= 12:
+            raise serializers.ValidationError(
+                'Le mois doit être compris entre 1 et 12.')
+        return value
 
 
 class TypePrimeSerializer(serializers.ModelSerializer):

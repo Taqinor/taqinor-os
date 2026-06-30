@@ -3487,3 +3487,89 @@ class OrdreMission(models.Model):
 
     def __str__(self):
         return f'{self.reference} — {self.destination}'
+
+
+class AvanceSalaire(models.Model):
+    """Avance sur salaire (FG195) — demande, validation, déduction.
+
+    Une ligne par demande d'avance d'un ``employe`` (FK ``rh.DossierEmploye``,
+    même société) : le ``montant`` demandé, la ``date_demande``, le ``motif``,
+    le mois/année de déduction prévu (``annee_deduction`` / ``mois_deduction``,
+    par défaut le mois suivant — l'avance est récupérée sur la paie suivante) et
+    un ``statut`` (demandée → approuvée → déduite, ou refusée). Le ``valideur``
+    (FK ``rh.DossierEmploye`` optionnel) trace qui approuve.
+
+    INTÉGRATION EXPORT PAIE (FG192) : une avance APPROUVÉE constitue une retenue
+    sur le bordereau mensuel d'éléments variables ; le sélecteur
+    ``avances_a_deduire`` expose les avances à récupérer pour un mois donné.
+    DISTINCT du modèle ``apps.paie`` (PAIE28) qui consomme ces données via les
+    sélecteurs RH (jamais d'import croisé de models).
+
+    Multi-société : ``company`` posée CÔTÉ SERVEUR (jamais lue du corps) ;
+    ``employe`` / ``valideur`` doivent appartenir à la même société. Additif.
+
+    RUNTIME-SAFETY (leçon FG136) : ``statut`` ≤ 20 borné ; ``montant`` en
+    ``DecimalField`` ; ``motif`` en ``TextField`` ; index nommés (≤ 30 chars).
+    """
+
+    class Statut(models.TextChoices):
+        DEMANDEE = 'demandee', 'Demandée'
+        APPROUVEE = 'approuvee', 'Approuvée'
+        DEDUITE = 'deduite', 'Déduite'
+        REFUSEE = 'refusee', 'Refusée'
+
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='rh_avances_salaire',
+        verbose_name='Société',
+    )
+    employe = models.ForeignKey(
+        DossierEmploye,
+        on_delete=models.CASCADE,
+        related_name='avances_salaire',
+        verbose_name='Employé',
+    )
+    valideur = models.ForeignKey(
+        DossierEmploye,
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='avances_validees',
+        verbose_name='Valideur',
+    )
+    montant = models.DecimalField(
+        max_digits=12, decimal_places=2, default=Decimal('0'),
+        verbose_name='Montant')
+    date_demande = models.DateField(
+        null=True, blank=True, verbose_name='Date de demande')
+    motif = models.TextField(blank=True, default='', verbose_name='Motif')
+    annee_deduction = models.PositiveIntegerField(
+        null=True, blank=True, verbose_name='Année de déduction')
+    mois_deduction = models.PositiveSmallIntegerField(
+        null=True, blank=True, verbose_name='Mois de déduction')
+    statut = models.CharField(
+        max_length=20, choices=Statut.choices,
+        default=Statut.DEMANDEE, verbose_name='Statut')
+    date_creation = models.DateTimeField(
+        auto_now_add=True, verbose_name='Créé le')
+    date_modification = models.DateTimeField(
+        auto_now=True, verbose_name='Modifié le')
+
+    class Meta:
+        verbose_name = 'Avance sur salaire'
+        verbose_name_plural = 'Avances sur salaire'
+        ordering = ['-date_demande', '-date_creation']
+        indexes = [
+            models.Index(
+                fields=['company', 'employe'],
+                name='rh_avance_comp_emp_idx'),
+            models.Index(
+                fields=['company', 'statut'],
+                name='rh_avance_comp_stat_idx'),
+            models.Index(
+                fields=['company', 'annee_deduction', 'mois_deduction'],
+                name='rh_avance_comp_ded_idx'),
+        ]
+
+    def __str__(self):
+        return f'Avance {self.montant} — {self.employe}'

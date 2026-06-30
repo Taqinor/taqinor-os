@@ -10,6 +10,7 @@ from django.utils import timezone
 from .models import (
     AccidentTravail,
     AffectationRoster,
+    AvanceSalaire,
     Certification,
     DemandeConge,
     DocumentEmploye,
@@ -1251,3 +1252,34 @@ def registre_formation_employe(company, employe_id, today=None):
         'total': len(lignes),
         'total_realisees': total_realisees,
     }
+
+
+def avances_a_deduire(company, annee, mois, employe_id=None):
+    """Avances sur salaire APPROUVÉES à récupérer pour une période (FG195).
+
+    Renvoie les avances de la société à déduire pour le mois (``annee``,
+    ``mois``) — celles dont la déduction est planifiée à ce mois et qui ne sont
+    pas encore déduites/refusées. Sert à l'intégration avec l'export paie
+    (FG192 : alimentation des retenues mensuelles) et au module paie (PAIE28),
+    qui les consomment via ce sélecteur — jamais par import croisé de models.
+    Scopé société : ne renvoie jamais d'avance hors de ``company``.
+    """
+    qs = AvanceSalaire.objects.filter(
+        company=company,
+        statut=AvanceSalaire.Statut.APPROUVEE,
+        annee_deduction=annee,
+        mois_deduction=mois,
+    ).select_related('employe')
+    if employe_id:
+        qs = qs.filter(employe_id=employe_id)
+    return [
+        {
+            'id': av.id,
+            'employe': av.employe_id,
+            'matricule': av.employe.matricule if av.employe_id else '',
+            'montant': av.montant,
+            'date_demande': av.date_demande.isoformat()
+            if av.date_demande else None,
+        }
+        for av in qs
+    ]

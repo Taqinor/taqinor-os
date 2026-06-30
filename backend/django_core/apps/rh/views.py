@@ -24,6 +24,7 @@ from .models import (
     AccidentTravail,
     AffectationRoster,
     AnalyseRisquesChantier,
+    AvanceSalaire,
     BesoinFormation,
     CampagneEvaluation,
     Candidature,
@@ -64,6 +65,7 @@ from .serializers import (
     AccidentTravailSerializer,
     AffectationRosterSerializer,
     AnalyseRisquesChantierSerializer,
+    AvanceSalaireSerializer,
     BesoinFormationSerializer,
     CampagneEvaluationSerializer,
     CandidatureSerializer,
@@ -2661,3 +2663,107 @@ class OrdreMissionViewSet(_RhBaseViewSet):
             ordre.save(update_fields=['statut', 'date_modification'])
         return Response(
             self.get_serializer(ordre).data, status=status.HTTP_200_OK)
+
+
+class AvanceSalaireViewSet(_RhBaseViewSet):
+    """Avances sur salaire (FG195) — demande, validation, déduction.
+
+    Société scopée + Administrateur/Responsable. Enregistre une demande
+    d'avance (employé, montant, date, motif, mois/année de déduction). Si le
+    mois de déduction n'est pas fourni, il est posé côté serveur au mois SUIVANT
+    la demande (l'avance est récupérée sur la paie suivante). ``company`` est
+    posée CÔTÉ SERVEUR (jamais lue du corps) ; ``employe`` doit appartenir à la
+    même société. Les avances APPROUVÉES alimentent l'export paie (FG192) via
+    le sélecteur ``avances_a_deduire``.
+
+    Filtres : ``?employe=<id>``, ``?statut=demandee|approuvee|deduite|refusee``,
+    ``?annee_deduction=<n>``, ``?mois_deduction=<1-12>``.
+
+    Actions :
+    * ``POST .../{id}/approuver/`` — passe en ``statut=approuvee`` et trace le
+      valideur (DossierEmploye du compte appelant si lié). Idempotent.
+    * ``POST .../{id}/refuser/`` — passe en ``statut=refusee``. Idempotent.
+    * ``POST .../{id}/marquer-deduite/`` — passe en ``statut=deduite`` (avance
+      récupérée sur paie). Idempotent.
+    """
+    queryset = AvanceSalaire.objects.select_related(
+        'employe', 'valideur').all()
+    serializer_class = AvanceSalaireSerializer
+    filter_backends = [filters.SearchFilter, filters.OrderingFilter]
+    search_fields = ['motif', 'employe__matricule', 'employe__nom']
+    ordering_fields = ['date_demande', 'montant', 'statut', 'date_creation']
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        employe = self.request.query_params.get('employe')
+        if employe:
+            qs = qs.filter(employe_id=employe)
+        statut = self.request.query_params.get('statut')
+        if statut:
+            qs = qs.filter(statut=statut)
+        annee = self.request.query_params.get('annee_deduction')
+        if annee:
+            qs = qs.filter(annee_deduction=annee)
+        mois = self.request.query_params.get('mois_deduction')
+        if mois:
+            qs = qs.filter(mois_deduction=mois)
+        return qs
+
+    def perform_create(self, serializer):
+        """Company posée côté serveur ; déduction par défaut = mois suivant."""
+        data = serializer.validated_data
+        extra = {}
+        if not data.get('mois_deduction') or not data.get('annee_deduction'):
+            base = data.get('date_demande') or timezone.localdate()
+            mois = base.month + 1
+            annee = base.year
+            if mois > 12:
+                mois = 1
+                annee += 1
+            extra['mois_deduction'] = mois
+            extra['annee_deduction'] = annee
+        serializer.save(company=self.request.user.company, **extra)
+
+    def _valideur_pour(self, request):
+        """DossierEmploye lié au compte appelant (même société) ou None."""
+        return DossierEmploye.objects.filter(
+            company=request.user.company, user=request.user).first()
+
+    @action(detail=True, methods=['post'], url_path='approuver')
+    def approuver(self, request, pk=None):
+        """Approuve l'avance (FG195) — ``statut=approuvee`` + valideur.
+
+        Garantie société par ``get_object`` (autre tenant → 404). Idempotent.
+        """
+        avance = self.get_object()
+        if avance.statut != AvanceSalaire.Statut.APPROUVEE:
+            avance.statut = AvanceSalaire.Statut.APPROUVEE
+            avance.valideur = self._valideur_pour(request)
+            avance.save(update_fields=[
+                'statut', 'valideur', 'date_modification'])
+        return Response(
+            self.get_serializer(avance).data, status=status.HTTP_200_OK)
+
+    @action(detail=True, methods=['post'], url_path='refuser')
+    def refuser(self, request, pk=None):
+        """Refuse l'avance (FG195) — ``statut=refusee``. Idempotent, 404 autre
+        tenant."""
+        avance = self.get_object()
+        if avance.statut != AvanceSalaire.Statut.REFUSEE:
+            avance.statut = AvanceSalaire.Statut.REFUSEE
+            avance.valideur = self._valideur_pour(request)
+            avance.save(update_fields=[
+                'statut', 'valideur', 'date_modification'])
+        return Response(
+            self.get_serializer(avance).data, status=status.HTTP_200_OK)
+
+    @action(detail=True, methods=['post'], url_path='marquer-deduite')
+    def marquer_deduite(self, request, pk=None):
+        """Marque l'avance déduite (FG195) — ``statut=deduite``. Idempotent,
+        404 autre tenant."""
+        avance = self.get_object()
+        if avance.statut != AvanceSalaire.Statut.DEDUITE:
+            avance.statut = AvanceSalaire.Statut.DEDUITE
+            avance.save(update_fields=['statut', 'date_modification'])
+        return Response(
+            self.get_serializer(avance).data, status=status.HTTP_200_OK)
