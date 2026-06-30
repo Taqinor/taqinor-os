@@ -4,6 +4,7 @@ from rest_framework.routers import DefaultRouter
 from .views import (
     ActifFlotteViewSet,
     AffectationConducteurViewSet,
+    AssuranceVehiculeViewSet,
     BaremeVignetteViewSet,
     CarteCarburantViewSet,
     ConducteurViewSet,
@@ -41,6 +42,7 @@ router.register(r'pneumatiques', PneumatiqueViewSet)
 router.register(r'pieces', PieceFlotteViewSet)
 router.register(r'echeances-reglementaires', EcheanceReglementaireViewSet)
 router.register(r'baremes-vignette', BaremeVignetteViewSet)
+router.register(r'assurances', AssuranceVehiculeViewSet)
 
 urlpatterns = [
     path('', include(router.urls)),
