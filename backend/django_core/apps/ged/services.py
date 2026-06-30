@@ -1473,9 +1473,40 @@ def rendre_modele(modele, contexte):
     return weasyprint.HTML(string=html_str).write_pdf()
 
 
+def resoudre_classement(modele, contexte, *, cabinet_defaut='Modèles',
+                        folder_defaut='Mailing'):
+    """GED28 — Résout le (cabinet, dossier) de CLASSEMENT d'un modèle généré.
+
+    Décide OÙ déposer le document produit par `generer_document`, à partir de la
+    règle de classement portée par le modèle :
+
+      * `cabinet_cible` : nom du cabinet de destination. Vide → `cabinet_defaut`
+        (comportement rétro-compatible de l'appelant).
+      * `dossier_cible` : nom du dossier racine de destination, qui peut porter
+        des jetons ``{{ champ }}`` résolus DEPUIS le `contexte` de fusion via
+        `fusionner_modele` (substitution SÛRE — jamais d'exécution de code), p.ex.
+        « Attestations {{ annee }} » → « Attestations 2026 ». Vide (ou résolu
+        vide) → `folder_defaut`.
+
+    Renvoie `(cabinet_nom, folder_nom)` — deux chaînes non vides, prêtes pour
+    `ensure_cabinet`/`ensure_root_folder`. Ne crée RIEN ici (résolution pure).
+    """
+    cabinet_nom = (getattr(modele, 'cabinet_cible', '') or '').strip() \
+        or cabinet_defaut
+    brut = (getattr(modele, 'dossier_cible', '') or '').strip()
+    if brut:
+        # Le nom de dossier est un mini-gabarit : on réutilise EXACTEMENT la
+        # substitution sûre de GED27 (contexte borné, jamais d'exécution de code).
+        folder_nom = fusionner_modele(brut, contexte).strip()
+    else:
+        folder_nom = ''
+    folder_nom = folder_nom or folder_defaut
+    return cabinet_nom, folder_nom
+
+
 def generer_document(modele, contexte, *, company, created_by=None,
                      nom=None, cabinet_nom='Modèles', folder_nom='Mailing'):
-    """GED27 — Rend un modèle en PDF et le DÉPOSE comme document GED.
+    """GED27 + GED28 — Rend un modèle en PDF, le CLASSE et le DÉPOSE en GED.
 
     Fusionne + rend le PDF (`rendre_modele`) puis l'enregistre dans le
     référentiel GED en RÉUTILISANT le service de dépôt existant
@@ -1483,6 +1514,15 @@ def generer_document(modele, contexte, *, company, created_by=None,
     stockage objet `records.storage`) — on ne duplique ni le stockage ni le
     versionnage. Multi-tenant : `company` posée CÔTÉ SERVEUR (jamais lue du corps
     de requête), cohérente avec le modèle.
+
+    GED28 — CLASSEMENT AUTOMATIQUE : le cabinet et le dossier de destination sont
+    résolus depuis la RÈGLE de classement du modèle (`cabinet_cible` /
+    `dossier_cible` — ce dernier pouvant porter des jetons ``{{ champ }}``
+    résolus depuis le contexte, ex. par année/client) via `resoudre_classement`.
+    Le cabinet et le dossier sont auto-créés s'ils manquent (`ensure_cabinet` /
+    `ensure_root_folder`, idempotents). RÉTRO-COMPATIBLE : un modèle SANS cible
+    retombe sur les dossiers `cabinet_nom`/`folder_nom` passés par l'appelant
+    (défauts inchangés « Modèles » / « Mailing »).
 
     L'idempotence du dépôt est ancrée sur (`source_type`='ged.modeledocument',
     `source_id`=pk du modèle) : un mailing répété pour le MÊME modèle retrouve le
@@ -1493,6 +1533,10 @@ def generer_document(modele, contexte, *, company, created_by=None,
             and modele.company_id != getattr(company, 'id', company):
         raise ValueError("Le modèle doit appartenir à la même société.")
     pdf_bytes = rendre_modele(modele, contexte)
+    # GED28 : où classer ? Règle du modèle (cible templatée) sinon défauts appelant.
+    cabinet_resolu, folder_resolu = resoudre_classement(
+        modele, contexte,
+        cabinet_defaut=cabinet_nom, folder_defaut=folder_nom)
     return deposit_document(
         company=company,
         nom=nom or modele.nom,
@@ -1501,7 +1545,7 @@ def generer_document(modele, contexte, *, company, created_by=None,
         contenu_bytes=pdf_bytes,
         mime='application/pdf',
         description=modele.description or '',
-        cabinet_nom=cabinet_nom,
-        folder_nom=folder_nom,
+        cabinet_nom=cabinet_resolu,
+        folder_nom=folder_resolu,
         created_by=created_by,
     )
