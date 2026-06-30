@@ -1487,3 +1487,44 @@ def suggerer_bin_putaway(company, produit_id, emplacement_id=None):
     if emplacement_id:
         bin_qs = bin_qs.filter(emplacement_id=emplacement_id)
     return bin_qs.order_by('ordre', 'code').first()
+
+
+def proposer_reapprovisionnement(company, quantites_actuelles=None):
+    """FG326 - propositions de reapprovisionnement multi-depots.
+
+    Pour chaque regle active dont le stock courant de l'emplacement cible passe
+    sous `seuil_min`, propose un transfert depuis `emplacement_source` pour
+    remonter a `seuil_max`. `quantites_actuelles` est un dict optionnel
+    {regle_id: quantite} fourni par l'appelant ; a defaut, on lit le stock total
+    du produit via stock.selectors (proxy consultatif). Couche de PROPOSITION :
+    n'execute aucun mouvement.
+    """
+    from .models import RegleReappro
+    from apps.stock import selectors as stock_selectors
+    quantites_actuelles = quantites_actuelles or {}
+    regles = RegleReappro.objects.filter(
+        company=company, active=True,
+    ).select_related('produit', 'emplacement_cible', 'emplacement_source')
+    propositions = []
+    for regle in regles:
+        if regle.id in quantites_actuelles:
+            actuel = quantites_actuelles[regle.id]
+        else:
+            produit = stock_selectors.get_produit_scoped(
+                company, regle.produit_id)
+            actuel = getattr(produit, 'quantite_stock', 0) or 0
+        if actuel < regle.seuil_min:
+            a_transferer = max(regle.seuil_max - actuel, 0)
+            if a_transferer > 0:
+                propositions.append({
+                    'regle_id': regle.id,
+                    'produit_id': regle.produit_id,
+                    'produit_nom': getattr(regle.produit, 'nom', None),
+                    'emplacement_cible_id': regle.emplacement_cible_id,
+                    'emplacement_source_id': regle.emplacement_source_id,
+                    'quantite_actuelle': actuel,
+                    'seuil_min': regle.seuil_min,
+                    'seuil_max': regle.seuil_max,
+                    'quantite_proposee': a_transferer,
+                })
+    return propositions

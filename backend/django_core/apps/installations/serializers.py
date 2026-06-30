@@ -48,6 +48,7 @@ from .models import (
     SessionComptage,
     ComptageLigne,
     DemandeTransfert,
+    RegleReappro,
 )
 
 
@@ -1927,4 +1928,37 @@ class DemandeTransfertSerializer(serializers.ModelSerializer):
                 source == destination):
             raise serializers.ValidationError(
                 {'destination': 'La destination doit differer de la source.'})
+        return attrs
+
+
+class RegleReapproSerializer(serializers.ModelSerializer):
+    """FG326 - regle min/max de reapprovisionnement. La societe et `created_by`
+    sont poses COTE SERVEUR. `seuil_max` doit etre >= `seuil_min`."""
+    produit_nom = serializers.CharField(
+        source='produit.nom', read_only=True, default=None)
+    emplacement_cible_nom = serializers.CharField(
+        source='emplacement_cible.nom', read_only=True, default=None)
+    emplacement_source_nom = serializers.CharField(
+        source='emplacement_source.nom', read_only=True, default=None)
+
+    class Meta:
+        model = RegleReappro
+        fields = [
+            'id', 'produit', 'produit_nom', 'emplacement_cible',
+            'emplacement_cible_nom', 'emplacement_source',
+            'emplacement_source_nom', 'seuil_min', 'seuil_max', 'active',
+            'note', 'created_by', 'date_creation', 'date_modification',
+        ]
+        read_only_fields = [
+            'created_by', 'date_creation', 'date_modification',
+        ]
+
+    def validate(self, attrs):
+        seuil_min = attrs.get('seuil_min') if 'seuil_min' in attrs else getattr(
+            self.instance, 'seuil_min', 0)
+        seuil_max = attrs.get('seuil_max') if 'seuil_max' in attrs else getattr(
+            self.instance, 'seuil_max', 0)
+        if seuil_max < seuil_min:
+            raise serializers.ValidationError(
+                {'seuil_max': 'Le seuil max doit etre >= au seuil min.'})
         return attrs

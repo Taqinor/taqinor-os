@@ -150,6 +150,9 @@ from .models_comptage import (
 from .models_demande_transfert import (
     DemandeTransfert,
 )
+from .models_reappro import (
+    RegleReappro,
+)
 
 __all__ = [
     'Installation',
@@ -225,4 +228,5 @@ __all__ = [
     'SessionComptage',
     'ComptageLigne',
     'DemandeTransfert',
+    'RegleReappro',
 ]
