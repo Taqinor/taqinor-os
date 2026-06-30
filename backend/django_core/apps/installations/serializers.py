@@ -44,6 +44,7 @@ from .models import (
     PickListLigne,
     Colis,
     ColisLigne,
+    SerieEntrepot,
 )
 
 
@@ -1810,3 +1811,33 @@ class ColisSerializer(serializers.ModelSerializer):
             'reference', 'statut', 'controle_par', 'date_controle',
             'created_by', 'date_creation', 'date_modification',
         ]
+
+
+class SerieEntrepotSerializer(serializers.ModelSerializer):
+    """FG323 - n0 de serie suivi en entrepot. La societe et `created_by` sont
+    poses COTE SERVEUR ; le statut avance via les actions `reserver`/`sortir`
+    (ou par mise a jour du `bin`)."""
+    produit_nom = serializers.CharField(
+        source='produit.nom', read_only=True, default=None)
+    bin_code = serializers.CharField(
+        source='bin.code', read_only=True, default=None)
+    statut_display = serializers.CharField(
+        source='get_statut_display', read_only=True, default=None)
+
+    class Meta:
+        model = SerieEntrepot
+        fields = [
+            'id', 'produit', 'produit_nom', 'numero_serie', 'emplacement',
+            'bin', 'bin_code', 'statut', 'statut_display', 'installation',
+            'reference_reception', 'note',
+            'created_by', 'date_creation', 'date_modification',
+        ]
+        read_only_fields = [
+            'statut', 'created_by', 'date_creation', 'date_modification',
+        ]
+
+    def validate_numero_serie(self, value):
+        value = (value or '').strip()
+        if not value:
+            raise serializers.ValidationError('Le numero de serie est requis.')
+        return value

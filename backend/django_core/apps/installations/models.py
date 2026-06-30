@@ -140,6 +140,9 @@ from .models_colisage import (
     Colis,
     ColisLigne,
 )
+from .models_serie_entrepot import (
+    SerieEntrepot,
+)
 
 __all__ = [
     'Installation',
@@ -211,4 +214,5 @@ __all__ = [
     'PickListLigne',
     'Colis',
     'ColisLigne',
+    'SerieEntrepot',
 ]

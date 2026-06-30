@@ -49,6 +49,7 @@ from .bin_location import BinLocationViewSet, BinAffectationViewSet
 from .putaway import PutAwayViewSet
 from .picklist import PickListViewSet, PickListLigneViewSet
 from .colisage import ColisViewSet, ColisLigneViewSet
+from .serie_entrepot import SerieEntrepotViewSet
 from .field_sync import FieldSyncView
 
 __all__ = [
@@ -103,5 +104,6 @@ __all__ = [
     'PickListLigneViewSet',
     'ColisViewSet',
     'ColisLigneViewSet',
+    'SerieEntrepotViewSet',
     'FieldSyncView',
 ]
