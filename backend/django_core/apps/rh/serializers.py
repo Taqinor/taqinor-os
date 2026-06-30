@@ -39,6 +39,7 @@ from .models import (
     ObjectifIndividuel,
     OrdreMission,
     OuverturePoste,
+    PermisConduire,
     Pointage,
     Poste,
     PresenceChantier,
@@ -1799,6 +1800,48 @@ class BulletinPaieSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError(
                 'Le mois doit être compris entre 1 et 12.')
         return value
+
+
+class PermisConduireSerializer(serializers.ModelSerializer):
+    """Permis de conduire & habilitation à conduire (FG197).
+
+    Le client saisit ``employe`` (un ``DossierEmploye`` de sa société),
+    ``categorie``, ``numero``, ``date_delivrance``, ``date_expiration``,
+    ``habilitation_conduite`` et ``note``. ``company`` est posée CÔTÉ SERVEUR
+    (jamais lue du corps) ; ``employe`` doit appartenir à la société de
+    l'utilisateur. Le couple (employe, categorie) est unique.
+    """
+    employe_nom = serializers.SerializerMethodField()
+    categorie_display = serializers.CharField(
+        source='get_categorie_display', read_only=True)
+    valide = serializers.SerializerMethodField()
+
+    class Meta:
+        model = PermisConduire
+        fields = [
+            'id', 'employe', 'employe_nom',
+            'categorie', 'categorie_display', 'numero',
+            'date_delivrance', 'date_expiration',
+            'habilitation_conduite', 'valide', 'note',
+            'date_creation', 'date_modification',
+        ]
+        read_only_fields = [
+            'employe_nom', 'categorie_display', 'valide',
+            'date_creation', 'date_modification']
+
+    def get_employe_nom(self, obj):
+        if not obj.employe_id:
+            return ''
+        return f'{obj.employe.nom} {obj.employe.prenom}'
+
+    def get_valide(self, obj):
+        from django.utils import timezone
+        if obj.date_expiration is None:
+            return True
+        return obj.date_expiration >= timezone.localdate()
+
+    def validate_employe(self, value):
+        return _meme_societe(self, value, 'Employé')
 
 
 class TypePrimeSerializer(serializers.ModelSerializer):

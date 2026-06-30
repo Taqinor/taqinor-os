@@ -3642,3 +3642,84 @@ class BulletinPaie(models.Model):
 
     def __str__(self):
         return f'Bulletin {self.mois:02d}/{self.annee} — {self.employe}'
+
+
+class PermisConduire(models.Model):
+    """Permis de conduire & habilitation à conduire d'un collaborateur (FG197).
+
+    Suit le droit de conduire d'un ``employe`` (FK ``rh.DossierEmploye``, même
+    société) : la ``categorie`` (catégorie de permis marocaine — B, C, D, EC…),
+    le ``numero`` du permis, la ``date_delivrance`` et la ``date_expiration``
+    (validité administrative ; un permis expiré n'autorise plus la conduite),
+    et un drapeau ``habilitation_conduite`` (habilitation interne à conduire un
+    véhicule de service, distincte du permis légal). C'est la SOURCE DE VÉRITÉ
+    du droit de conduire côté RH : la garde d'affectation conducteur↔véhicule
+    (FG198) la consulte via ``selectors.peut_conduire``.
+
+    Multi-société : ``company`` posée CÔTÉ SERVEUR (jamais lue du corps) ;
+    ``employe`` doit appartenir à la même société. Un permis par (société,
+    employé, catégorie) — un collaborateur peut détenir plusieurs catégories.
+    Additif.
+
+    RUNTIME-SAFETY (leçon FG136) : ``categorie`` ≤ 10 / ``numero`` ≤ 40
+    bornés ; contrainte d'unicité + index nommés (≤ 30 chars).
+    """
+
+    class Categorie(models.TextChoices):
+        A = 'A', 'A — Motos'
+        B = 'B', 'B — Véhicules légers'
+        C = 'C', 'C — Poids lourds'
+        D = 'D', 'D — Transport de personnes'
+        EB = 'EB', 'EB — Léger + remorque'
+        EC = 'EC', 'EC — Poids lourd + remorque'
+
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='rh_permis_conduire',
+        verbose_name='Société',
+    )
+    employe = models.ForeignKey(
+        DossierEmploye,
+        on_delete=models.CASCADE,
+        related_name='permis_conduire',
+        verbose_name='Employé',
+    )
+    categorie = models.CharField(
+        max_length=10, choices=Categorie.choices,
+        default=Categorie.B, verbose_name='Catégorie')
+    numero = models.CharField(
+        max_length=40, blank=True, default='', verbose_name='Numéro de permis')
+    date_delivrance = models.DateField(
+        null=True, blank=True, verbose_name='Date de délivrance')
+    date_expiration = models.DateField(
+        null=True, blank=True, verbose_name="Date d'expiration")
+    habilitation_conduite = models.BooleanField(
+        default=False, verbose_name='Habilitation à conduire (interne)')
+    note = models.CharField(
+        max_length=255, blank=True, default='', verbose_name='Note')
+    date_creation = models.DateTimeField(
+        auto_now_add=True, verbose_name='Créé le')
+    date_modification = models.DateTimeField(
+        auto_now=True, verbose_name='Modifié le')
+
+    class Meta:
+        verbose_name = 'Permis de conduire'
+        verbose_name_plural = 'Permis de conduire'
+        ordering = ['employe', 'categorie']
+        constraints = [
+            models.UniqueConstraint(
+                fields=['company', 'employe', 'categorie'],
+                name='rh_permis_comp_emp_cat_uniq'),
+        ]
+        indexes = [
+            models.Index(
+                fields=['company', 'employe'],
+                name='rh_permis_comp_emp_idx'),
+            models.Index(
+                fields=['company', 'date_expiration'],
+                name='rh_permis_comp_exp_idx'),
+        ]
+
+    def __str__(self):
+        return f'{self.employe} — permis {self.categorie}'

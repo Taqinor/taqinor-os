@@ -53,6 +53,7 @@ from .models import (
     IncidentPresence,
     OrdreMission,
     OuverturePoste,
+    PermisConduire,
     Pointage,
     Poste,
     PresenceChantier,
@@ -98,6 +99,7 @@ from .serializers import (
     IncidentPresenceSerializer,
     OrdreMissionSerializer,
     OuverturePosteSerializer,
+    PermisConduireSerializer,
     PointageSerializer,
     PosteSerializer,
     PresenceChantierSerializer,
@@ -2874,6 +2876,61 @@ class BulletinPaieViewSet(_RhBaseViewSet):
         if dossier is None:
             return Response([])
         qs = self.get_queryset().filter(employe=dossier)
+        page = self.paginate_queryset(qs)
+        if page is not None:
+            return self.get_paginated_response(
+                self.get_serializer(page, many=True).data)
+        return Response(self.get_serializer(qs, many=True).data)
+
+
+class PermisConduireViewSet(_RhBaseViewSet):
+    """Permis de conduire & habilitation à conduire (FG197).
+
+    Société scopée + Administrateur/Responsable. Suit le permis d'un employé
+    (catégorie, numéro, dates de délivrance/expiration, habilitation interne).
+    ``company`` est posée CÔTÉ SERVEUR (jamais lue du corps) ; ``employe`` doit
+    appartenir à la même société. Le couple (employe, categorie) est unique.
+    Source de vérité du droit de conduire pour la garde d'affectation FG198.
+
+    Filtres : ``?employe=<id>``, ``?categorie=...``,
+    ``?habilitation_conduite=true|false``. Recherche : numéro, matricule/nom.
+
+    Action :
+    * ``GET .../expirant-bientot/?within=`` — permis qui expirent dans les
+      ``?within=`` prochains jours (défaut 30), scopés société.
+    """
+    queryset = PermisConduire.objects.select_related('employe').all()
+    serializer_class = PermisConduireSerializer
+    filter_backends = [filters.SearchFilter, filters.OrderingFilter]
+    search_fields = ['numero', 'employe__matricule', 'employe__nom']
+    ordering_fields = ['date_expiration', 'categorie', 'date_creation']
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        employe = self.request.query_params.get('employe')
+        if employe:
+            qs = qs.filter(employe_id=employe)
+        categorie = self.request.query_params.get('categorie')
+        if categorie:
+            qs = qs.filter(categorie=categorie)
+        hab = self.request.query_params.get('habilitation_conduite')
+        if hab is not None:
+            qs = qs.filter(
+                habilitation_conduite=hab.lower() in ('1', 'true', 'oui'))
+        return qs
+
+    def perform_create(self, serializer):
+        """Company posée côté serveur ; FK validé via le sérialiseur."""
+        serializer.save(company=self.request.user.company)
+
+    @action(detail=False, methods=['get'], url_path='expirant-bientot')
+    def expirant_bientot(self, request):
+        """Permis de la société expirant dans les ``?within=`` prochains jours
+        (défaut 30). S'appuie sur ``selectors.permis_expirant_bientot`` — scopé
+        société, exclut les permis sans échéance et déjà expirés."""
+        within = request.query_params.get('within', 30)
+        qs = selectors.permis_expirant_bientot(
+            request.user.company, within_days=within)
         page = self.paginate_queryset(qs)
         if page is not None:
             return self.get_paginated_response(

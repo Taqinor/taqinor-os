@@ -21,6 +21,7 @@ from .models import (
     HeuresSupp,
     IncidentPresence,
     InscriptionFormation,
+    PermisConduire,
     Poste,
     PresenceChantier,
     PresquAccident,
@@ -1283,3 +1284,44 @@ def avances_a_deduire(company, annee, mois, employe_id=None):
         }
         for av in qs
     ]
+
+
+def peut_conduire(company, employe_id, *, le=None, categorie=None):
+    """Vrai si l'employé a un permis VALIDE pour conduire (FG197/FG198).
+
+    Un employé « peut conduire » s'il détient au moins un permis (scopé
+    société) dont la ``date_expiration`` est nulle (pas d'échéance) ou ≥ ``le``
+    (par défaut aujourd'hui). Si ``categorie`` est fournie, seul un permis de
+    cette catégorie compte. Sert de garde à l'affectation conducteur↔véhicule
+    (FG198) ; scopé société (jamais d'accès hors ``company``).
+    """
+    from django.db.models import Q
+
+    jour = le or timezone.localdate()
+    qs = PermisConduire.objects.filter(
+        company=company, employe_id=employe_id)
+    if categorie:
+        qs = qs.filter(categorie=categorie)
+    return qs.filter(
+        Q(date_expiration__isnull=True)
+        | Q(date_expiration__gte=jour)
+    ).exists()
+
+
+def permis_expirant_bientot(company, within_days=30):
+    """Permis de conduire de la société expirant dans ``within_days`` jours.
+
+    Exclut les permis sans échéance et ceux déjà expirés. Scopé société.
+    """
+    try:
+        within = int(within_days)
+    except (TypeError, ValueError):
+        within = 30
+    today = timezone.localdate()
+    limite = today + timedelta(days=within)
+    return PermisConduire.objects.filter(
+        company=company,
+        date_expiration__isnull=False,
+        date_expiration__gte=today,
+        date_expiration__lte=limite,
+    ).select_related('employe').order_by('date_expiration')
