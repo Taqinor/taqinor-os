@@ -3,7 +3,7 @@ from rest_framework import serializers
 from .models import (
     ArchivageLegal, Cabinet, Coffre, DemandeApprobation, Document,
     DocumentLien, DocumentTag, DocumentTagAssignment, DocumentVersion, Folder,
-    PartageGed, PolitiqueRetention,
+    LegalHold, PartageGed, PolitiqueRetention,
 )
 from . import services
 
@@ -521,4 +521,35 @@ class ArchivageLegalSerializer(serializers.ModelSerializer):
         read_only_fields = [
             'version', 'archive_le', 'archive_par',
             'hash_integrite', 'object_lock_applique',
+        ]
+
+
+class LegalHoldSerializer(serializers.ModelSerializer):
+    """GED24 — Rétention légale / legal hold (gel anti-suppression).
+
+    En CRÉATION : seuls `document` (et `motif` optionnel) sont lus du corps —
+    `company` et `place_par` sont posés CÔTÉ SERVEUR via
+    `services.placer_legal_hold` (jamais lus du corps). En LECTURE : expose la
+    trace complète (qui a posé/levé, quand, état). La pose/levée passe par les
+    actions dédiées (`placer`/`lever`) ou le viewset ; tous les champs d'état
+    (`actif`, `date_pose`, `place_par`, `date_levee`, `leve_par`) sont en
+    lecture seule ici."""
+    document_nom = serializers.CharField(
+        source='document.nom', read_only=True, default=None)
+    place_par_nom = serializers.CharField(
+        source='place_par.username', read_only=True, default=None)
+    leve_par_nom = serializers.CharField(
+        source='leve_par.username', read_only=True, default=None)
+
+    class Meta:
+        model = LegalHold
+        fields = [
+            'id', 'document', 'document_nom',
+            'motif', 'actif',
+            'date_pose', 'place_par', 'place_par_nom',
+            'date_levee', 'leve_par', 'leve_par_nom',
+        ]
+        read_only_fields = [
+            'actif', 'date_pose', 'place_par',
+            'date_levee', 'leve_par',
         ]

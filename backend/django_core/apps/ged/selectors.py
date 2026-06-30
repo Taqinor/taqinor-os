@@ -6,8 +6,8 @@ Toutes les lectures sont bornées à une société.
 """
 from .models import (
     ACL_RANK, AclGed, ArchivageLegal, Cabinet, Coffre, DemandeApprobation,
-    Document, DocumentLien, DocumentTag, DocumentVersion, Folder, PartageGed,
-    PolitiqueRetention,
+    Document, DocumentLien, DocumentTag, DocumentVersion, Folder, LegalHold,
+    PartageGed, PolitiqueRetention,
 )
 
 
@@ -589,4 +589,22 @@ def archivage_legal_for_document(document):
     return (ArchivageLegal.objects
             .filter(document=document)
             .select_related('document', 'version', 'archive_par')
+            .first())
+
+
+def legal_holds_for_company(company):
+    """GED24 — Rétentions légales (legal holds) d'une société (QuerySet).
+
+    Lecture bornée à la société — jamais de fuite cross-société. Inclut les
+    holds actifs ET levés (l'historique est conservé) ; filtrer sur `actif` au
+    besoin côté appelant."""
+    return (LegalHold.objects.filter(company=company)
+            .select_related('document', 'place_par', 'leve_par'))
+
+
+def legal_hold_actif_for_document(document):
+    """GED24 — Premier legal hold ACTIF d'un document (ou None s'il est libre)."""
+    return (LegalHold.objects
+            .filter(document=document, actif=True)
+            .select_related('document', 'place_par')
             .first())
