@@ -745,7 +745,7 @@ def creer_version(contrat, *, contenu=None, fichier_key='', motif='',
 
     numero = _prochaine_version(contrat)
 
-    return VersionContrat.objects.create(
+    version = VersionContrat.objects.create(
         company=contrat.company,
         contrat=contrat,
         version=numero,
@@ -754,3 +754,87 @@ def creer_version(contrat, *, contenu=None, fichier_key='', motif='',
         motif=motif or '',
         cree_par=cree_par,
     )
+
+    # CONTRAT19 — dépôt automatique de la version dans la GED (référentiel
+    # documentaire central). Best-effort + idempotent : un échec (stockage
+    # indisponible, GED absente…) ne doit JAMAIS empêcher la création de la
+    # version. Le dépôt est délégué à `ged.services` (frontière cross-app).
+    try:
+        deposer_version_en_ged(version)
+    except Exception:  # pragma: no cover - défensif (dépôt best-effort)
+        pass
+
+    return version
+
+
+# ---------------------------------------------------------------------------
+# CONTRAT19 — Dépôt en GED des versions & PDF signés
+# ---------------------------------------------------------------------------
+
+
+def deposer_version_en_ged(version):
+    """Dépose une ``VersionContrat`` dans la GED (référentiel central) — CONTRAT19.
+
+    Chaque instantané de version d'un contrat (y compris l'instantané figé à la
+    SIGNATURE) est enregistré comme document GED, de sorte que les contrats
+    versionnés et signés vivent dans le magasin documentaire central. L'écriture
+    cross-app passe par ``ged.services.deposit_document`` (frontière cross-app :
+    jamais d'import des modèles/vues de la GED) — import paresseux/fonction-local
+    pour éviter tout cycle.
+
+    Le dépôt est IDEMPOTENT : ``deposit_document`` déduplique sur l'objet source
+    (``contrats.versioncontrat`` + pk), donc redéposer la même version ne crée
+    jamais de doublon GED. Si la version porte une clé de rendu PDF stocké
+    (``fichier_key``), on dépose ce binaire ; sinon on dépose un pointeur de
+    version traçant l'instantané (le contenu textuel reste dans l'app source).
+
+    La société est posée CÔTÉ SERVEUR (celle du contrat) — jamais lue d'un corps
+    de requête. Renvoie ``(document, created)`` tel que renvoyé par la GED.
+    """
+    from apps.ged import services as ged_services
+
+    contrat = version.contrat
+    ref = (contrat.reference or '').strip()
+    objet = (contrat.objet or '').strip()
+    base = ref or objet or f'Contrat {contrat.pk}'
+    nom = f'{base} — version {version.version}'
+    if version.motif:
+        nom = f'{nom} ({version.motif})'
+
+    return ged_services.deposit_document(
+        company=contrat.company,
+        nom=nom,
+        source_type='contrats.versioncontrat',
+        source_id=version.pk,
+        file_key=version.fichier_key or '',
+        mime='application/pdf' if version.fichier_key else '',
+        description=f'Contrat {base} — instantané de version (CONTRAT18).',
+        created_by=version.cree_par,
+    )
+
+
+def deposer_contrat_signe_en_ged(signature):
+    """Dépose le contrat SIGNÉ d'une ``SignatureContrat`` dans la GED — CONTRAT19.
+
+    La signature elle-même ne porte pas de PDF : c'est la bascule « signé » qui
+    fige un instantané immuable du contrat (``creer_version`` avec le motif
+    « Signature du contrat »). On dépose donc la DERNIÈRE version de ce contrat
+    (l'instantané de signature) dans la GED via ``deposer_version_en_ged`` —
+    idempotent (pas de doublon si la version est déjà déposée).
+
+    Renvoie ``(document, created)`` ou ``None`` si le contrat n'a encore aucune
+    version figée (rien à déposer). Société posée côté serveur (celle du
+    contrat). Best-effort par construction (délègue au dépôt idempotent GED).
+    """
+    from .models import VersionContrat
+
+    contrat = signature.contrat
+    derniere = (
+        VersionContrat.objects
+        .filter(contrat=contrat, company=contrat.company)
+        .order_by('-version', '-id')
+        .first()
+    )
+    if derniere is None:
+        return None
+    return deposer_version_en_ged(derniere)
