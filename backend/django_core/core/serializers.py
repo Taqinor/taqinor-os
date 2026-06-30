@@ -7,7 +7,9 @@ from rest_framework import serializers
 
 from .models import (
     BrandedTemplate,
+    ConsentRecord,
     Dashboard,
+    DataSubjectRequest,
     DeletionRecord,
     ModuleToggle,
     PaymentTransaction,
@@ -183,3 +185,35 @@ class BrandedTemplateSerializer(serializers.ModelSerializer):
     def get_variables(self, obj):
         from .templating import variables_utilisees
         return variables_utilisees(f'{obj.sujet}\n{obj.corps}')
+
+
+class ConsentRecordSerializer(serializers.ModelSerializer):
+    """FG394 — entrée du registre de consentement.
+
+    ``company`` n'est JAMAIS lu du corps (imposée côté serveur).
+    """
+    class Meta:
+        model = ConsentRecord
+        fields = [
+            'id', 'subject_identifier', 'purpose', 'granted', 'source',
+            'occurred_at', 'created_at', 'updated_at',
+        ]
+        read_only_fields = ['id', 'created_at', 'updated_at']
+
+
+class DataSubjectRequestSerializer(serializers.ModelSerializer):
+    """FG394 — demande de personne concernée (accès / effacement).
+
+    ``company`` n'est JAMAIS lu du corps. Le statut et le résultat sont en
+    lecture seule : ils ne bougent que via le traitement (``core.dsr``).
+    """
+    class Meta:
+        model = DataSubjectRequest
+        fields = [
+            'id', 'subject_identifier', 'kind', 'statut', 'resultat',
+            'traitee_le', 'created_at', 'updated_at',
+        ]
+        read_only_fields = [
+            'id', 'statut', 'resultat', 'traitee_le',
+            'created_at', 'updated_at',
+        ]

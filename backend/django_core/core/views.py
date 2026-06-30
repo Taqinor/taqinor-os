@@ -39,7 +39,9 @@ from . import workflow_templates
 from .mixins import TenantMixin
 from .models import (
     BrandedTemplate,
+    ConsentRecord,
     Dashboard,
+    DataSubjectRequest,
     DeletionRecord,
     ModuleToggle,
     PaymentTransaction,
@@ -49,7 +51,9 @@ from .models import (
 )
 from .serializers import (
     BrandedTemplateSerializer,
+    ConsentRecordSerializer,
     DashboardSerializer,
+    DataSubjectRequestSerializer,
     DeletionRecordSerializer,
     ModuleToggleSerializer,
     PaymentTransactionSerializer,
@@ -489,3 +493,39 @@ class BrandedTemplateViewSet(TenantMixin, viewsets.ModelViewSet):
         context = (request.data or {}).get('context') or {}
         sujet, corps = templating.rendre_modele(template, context)
         return Response({'sujet': sujet, 'corps': corps})
+
+
+class ConsentRecordViewSet(TenantMixin, viewsets.ModelViewSet):
+    """FG394 — registre de consentement par société (loi 09-08 / CNDP).
+
+    Multi-tenant : ``TenantMixin`` filtre par société et impose ``company``.
+    Réservé au palier admin/responsable (donnée de conformité sensible). Aucune
+    importation d'app domaine : la personne est désignée par un identifiant
+    générique (email/téléphone).
+    """
+    serializer_class = ConsentRecordSerializer
+    permission_classes = [IsAdminOrResponsableTier]
+    queryset = ConsentRecord.objects.all()
+
+
+class DataSubjectRequestViewSet(TenantMixin, viewsets.ModelViewSet):
+    """FG394 — demandes de personnes concernées (accès/effacement).
+
+    Multi-tenant : ``TenantMixin`` filtre par société et impose ``company``.
+    Réservé au palier admin/responsable. Aucune importation d'app domaine :
+    l'export/effacement réel passe par les fournisseurs DSR enregistrés
+    (``core.dsr``) — core agrège sans rien importer.
+
+      * ``POST …/dsr-requests/{id}/traiter/`` — exécute la demande (accès →
+        export agrégé ; effacement → suppression/anonymisation agrégée).
+    """
+    serializer_class = DataSubjectRequestSerializer
+    permission_classes = [IsAdminOrResponsableTier]
+    queryset = DataSubjectRequest.objects.all()
+
+    @action(detail=True, methods=['post'])
+    def traiter(self, request, pk=None):
+        from . import dsr
+        dsr_request = self.get_object()
+        dsr.traiter_demande(dsr_request)
+        return Response(self.get_serializer(dsr_request).data)

@@ -1206,3 +1206,116 @@ class BrandedTemplate(TimestampedModel):
 
     def __str__(self):
         return f'{self.kind}:{self.code} — {self.nom}'
+
+
+# ---------------------------------------------------------------------------
+# FG394 — Consentement & DSR (loi 09-08 / CNDP).
+#
+# Modèles de FONDATION GÉNÉRIQUES : registre de consentement + demandes de
+# personnes concernées (accès / effacement). La personne concernée est désignée
+# par un IDENTIFIANT générique (email ou téléphone) — ``core`` ne référence
+# AUCUN modèle métier (contrat import-linter
+# ``core-foundation-is-a-base-layer``). L'export/effacement réel des données
+# métier est délégué à des « fournisseurs DSR » que les apps enregistrent
+# (``core.dsr.register_dsr_provider``) — core orchestre sans rien importer.
+# ---------------------------------------------------------------------------
+
+
+class ConsentRecord(TimestampedModel):
+    """Entrée du registre de consentement (FG394, loi 09-08 / CNDP).
+
+    GÉNÉRIQUE : ``subject_identifier`` = email ou téléphone de la personne
+    concernée (aucun import métier). ``purpose`` = finalité (ex. « marketing »,
+    « whatsapp »). ``granted`` porte l'état ; ``source`` documente l'origine du
+    consentement. Multi-tenant : ``company`` obligatoire, imposée côté serveur.
+    """
+
+    company = models.ForeignKey(
+        'authentication.Company', on_delete=models.CASCADE,
+        related_name='consent_records', verbose_name='Société')
+
+    subject_identifier = models.CharField(
+        'Identifiant de la personne', max_length=255,
+        help_text='Email ou téléphone de la personne concernée.')
+    purpose = models.CharField(
+        'Finalité', max_length=80,
+        help_text='Finalité du traitement, ex. « marketing », « whatsapp ».')
+    granted = models.BooleanField('Consentement donné', default=True)
+    source = models.CharField(
+        'Source', max_length=120, blank=True, default='',
+        help_text='Origine du consentement (ex. « formulaire site », « devis »).')
+    occurred_at = models.DateTimeField(
+        'Horodatage', null=True, blank=True,
+        help_text='Date/heure du consentement (sur le consent_timestamp '
+                  'existant côté métier).')
+
+    class Meta:
+        verbose_name = 'Consentement'
+        verbose_name_plural = 'Registre de consentement'
+        ordering = ['-id']
+        indexes = [
+            models.Index(fields=['company', 'subject_identifier'],
+                         name='core_consent_co_subj_idx'),
+            models.Index(fields=['company', 'purpose', 'granted'],
+                         name='core_consent_co_purp_idx'),
+        ]
+
+    def __str__(self):
+        etat = 'accordé' if self.granted else 'retiré'
+        return f'{self.subject_identifier} — {self.purpose} ({etat})'
+
+
+class DataSubjectRequest(TimestampedModel):
+    """Demande de personne concernée — accès ou effacement (FG394).
+
+    GÉNÉRIQUE : ``subject_identifier`` désigne la personne (email/téléphone).
+    ``kind`` = accès (export) ou effacement. ``statut`` suit le cycle de vie ;
+    ``resultat`` porte le payload d'export (accès) ou le compte-rendu
+    d'effacement. Multi-tenant : ``company`` obligatoire, imposée côté serveur.
+    L'exécution réelle passe par les fournisseurs DSR enregistrés (``core.dsr``).
+    """
+
+    KIND_ACCESS = 'acces'
+    KIND_ERASURE = 'effacement'
+    KIND_CHOICES = [
+        (KIND_ACCESS, "Accès (export)"),
+        (KIND_ERASURE, 'Effacement'),
+    ]
+
+    STATUT_RECUE = 'recue'
+    STATUT_TRAITEE = 'traitee'
+    STATUT_REFUSEE = 'refusee'
+    STATUT_CHOICES = [
+        (STATUT_RECUE, 'Reçue'),
+        (STATUT_TRAITEE, 'Traitée'),
+        (STATUT_REFUSEE, 'Refusée'),
+    ]
+
+    company = models.ForeignKey(
+        'authentication.Company', on_delete=models.CASCADE,
+        related_name='dsr_requests', verbose_name='Société')
+
+    subject_identifier = models.CharField(
+        'Identifiant de la personne', max_length=255,
+        help_text='Email ou téléphone de la personne concernée.')
+    kind = models.CharField('Type', max_length=12, choices=KIND_CHOICES)
+    statut = models.CharField(
+        'Statut', max_length=12, choices=STATUT_CHOICES, default=STATUT_RECUE)
+    resultat = models.JSONField(
+        'Résultat', default=dict, blank=True,
+        help_text="Payload d'export (accès) ou compte-rendu d'effacement.")
+    traitee_le = models.DateTimeField('Traitée le', null=True, blank=True)
+
+    class Meta:
+        verbose_name = 'Demande de personne concernée'
+        verbose_name_plural = 'Demandes de personnes concernées'
+        ordering = ['-id']
+        indexes = [
+            models.Index(fields=['company', 'statut'],
+                         name='core_dsr_co_statut_idx'),
+            models.Index(fields=['company', 'subject_identifier'],
+                         name='core_dsr_co_subj_idx'),
+        ]
+
+    def __str__(self):
+        return f'DSR {self.kind} — {self.subject_identifier} ({self.statut})'

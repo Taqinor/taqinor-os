@@ -21,7 +21,9 @@ from rest_framework.routers import DefaultRouter
 from .views import (
     BrandedTemplateViewSet,
     BulkEditViewSet,
+    ConsentRecordViewSet,
     DashboardViewSet,
+    DataSubjectRequestViewSet,
     ModuleToggleViewSet,
     PaymentTransactionViewSet,
     SavedQueryViewSet,
@@ -58,5 +60,10 @@ router.register(r'theme', TenantThemeViewSet, basename='tenant-theme')
 # FG393 — éditeur de modèles imprimables/brandés (PDF/email/WhatsApp).
 router.register(r'branded-templates', BrandedTemplateViewSet,
                 basename='branded-template')
+# FG394 — consentement & DSR (loi 09-08 / CNDP).
+router.register(r'consent-records', ConsentRecordViewSet,
+                basename='consent-record')
+router.register(r'dsr-requests', DataSubjectRequestViewSet,
+                basename='dsr-request')
 
 urlpatterns = router.urls
