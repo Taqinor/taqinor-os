@@ -589,6 +589,39 @@ class ProjetViewSet(_GestionProjetBaseViewSet):
             'montant_avancement': str(data['montant_avancement']),
         })
 
+    @action(detail=True, methods=['get'], url_path='evm')
+    def evm(self, request, pk=None):
+        """Valeur acquise (EVM) LÉGER du projet (PROJ29) — interne/admin.
+
+        BAC / EV / AC / PV + CV / SV / CPI / SPI. PV s'appuie sur la fraction de
+        calendrier écoulée entre ``date_debut`` et ``date_fin_prevue`` à la
+        ``?date=YYYY-MM-DD`` (défaut aujourd'hui) ; sans dates de projet, PV et
+        SV/SPI sont None. Donnée 100 % INTERNE de pilotage. La société est
+        garantie par ``get_object`` (queryset scopé société) : un projet d'une
+        autre société → 404. Lecture seule.
+        """
+        projet = self.get_object()
+        date_ref = _parse_date_param(request.query_params.get('date'))
+        data = selectors.evm_projet(
+            request.user.company, projet, date_reference=date_ref)
+
+        def _num(value):
+            return str(value) if value is not None else None
+
+        return Response({
+            'bac': str(data['bac']),
+            'ev': str(data['ev']),
+            'ac': str(data['ac']),
+            'pv': _num(data['pv']),
+            'avancement_pct': str(data['avancement_pct']),
+            'fraction_ecoulee_pct': _num(data['fraction_ecoulee_pct']),
+            'cv': str(data['cv']),
+            'sv': _num(data['sv']),
+            'cpi': _num(data['cpi']),
+            'spi': _num(data['spi']),
+            'date_reference': data['date_reference'].isoformat(),
+        })
+
 
 class ProjetChantierViewSet(_GestionProjetBaseViewSet):
     """Rattachements chantier ↔ projet (liens lâches)."""

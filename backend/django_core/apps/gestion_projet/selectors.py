@@ -1935,3 +1935,77 @@ def avancement_vs_facture(projet):
         'montant_facture': montant_facture,
         'montant_avancement': montant_avancement,
     }
+
+
+# ── EVM léger — valeur acquise (PROJ29, optionnel) ───────────────────────────
+def evm_projet(company, projet, date_reference=None):
+    """Valeur acquise (EVM) LÉGER d'un projet (PROJ29) — interne/admin.
+
+    Indicateurs classiques (donnée 100 % INTERNE de pilotage) :
+        • BAC (Budget At Completion) = ``budget_total`` du projet.
+        • EV (Earned Value)  = avancement physique (PROJ9) × BAC.
+        • AC (Actual Cost)   = coût RÉEL consolidé (affectations PROJ22 +
+          timesheets PROJ24).
+        • PV (Planned Value) = fraction de calendrier ÉCOULÉE × BAC, calculée
+          entre ``date_debut`` et ``date_fin_prevue`` à la ``date_reference``
+          (défaut : aujourd'hui). Sans dates de projet, PV = None (EVM léger).
+        • CV = EV − AC ; SV = EV − PV ; CPI = EV / AC ; SPI = EV / PV.
+
+    Toutes les divisions sont gardées (dénominateur nul → indicateur None).
+    Tout est scopé société via le projet. Lecture seule (aucune écriture).
+    """
+    if date_reference is None:
+        date_reference = _date.today()
+
+    bac = projet.budget_total or Decimal('0')
+
+    # EV : avancement physique × BAC.
+    avancement = rollup_avancement(projet)
+    avancement_pct = Decimal(str(avancement['avancement_pct']))
+    ev = (bac * avancement_pct / Decimal('100')).quantize(Decimal('0.01'))
+
+    # AC : réel consolidé (affectations + timesheets).
+    couts = couts_engages_vs_reels(company, projet)
+    synthese_ts = synthese_temps_projet(projet)
+    ac = (couts['total']['reel'] + synthese_ts['total_cout'])
+
+    # PV : fraction de calendrier écoulée × BAC.
+    pv = None
+    fraction_ecoulee = None
+    debut = projet.date_debut
+    fin = projet.date_fin_prevue
+    if debut is not None and fin is not None and fin > debut:
+        if date_reference <= debut:
+            fraction = Decimal('0')
+        elif date_reference >= fin:
+            fraction = Decimal('1')
+        else:
+            ecoule = (date_reference - debut).days
+            total = (fin - debut).days
+            fraction = (Decimal(ecoule) / Decimal(total))
+        fraction_ecoulee = (fraction * Decimal('100')).quantize(Decimal('0.01'))
+        pv = (bac * fraction).quantize(Decimal('0.01'))
+
+    def _div(num, den):
+        if den is None or den == 0:
+            return None
+        return (num / den).quantize(Decimal('0.0001'))
+
+    cv = ev - ac
+    sv = (ev - pv) if pv is not None else None
+    cpi = _div(ev, ac)
+    spi = _div(ev, pv) if pv is not None else None
+
+    return {
+        'bac': bac,
+        'ev': ev,
+        'ac': ac,
+        'pv': pv,
+        'avancement_pct': avancement_pct,
+        'fraction_ecoulee_pct': fraction_ecoulee,
+        'cv': cv,
+        'sv': sv,
+        'cpi': cpi,
+        'spi': spi,
+        'date_reference': date_reference,
+    }
