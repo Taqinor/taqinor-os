@@ -67,6 +67,26 @@ class Fournisseur(models.Model):
     telephone = models.CharField(max_length=20, blank=True, null=True)
     adresse = models.TextField(blank=True, null=True)
 
+    # ── DC15 — Identité légale du fournisseur (saisie une seule fois) ─────────
+    # ICE / IF / RC / RIB sont les identifiants légaux marocains du fournisseur.
+    # Saisis ici une fois, ils sont CONSOMMÉS par les comptes auxiliaires de la
+    # comptabilité (DC30), les parties au contrat (DC31), les PDF de facture
+    # fournisseur (AP) et les profils sous-traitant — sans jamais re-saisir
+    # l'identité ailleurs. Tous optionnels (compat ascendante : aucun
+    # fournisseur existant n'est impacté). Aucun montant / prix d'achat ici.
+    ice = models.CharField(
+        max_length=20, blank=True, null=True,
+        help_text="Identifiant Commun de l'Entreprise (ICE).")
+    identifiant_fiscal = models.CharField(
+        max_length=20, blank=True, null=True,
+        help_text='Identifiant Fiscal (IF).')
+    rc = models.CharField(
+        max_length=40, blank=True, null=True,
+        help_text='Numéro du Registre du Commerce (RC).')
+    rib = models.CharField(
+        max_length=50, blank=True, null=True,
+        help_text='RIB / IBAN du fournisseur (règlements AP).')
+
     class Meta:
         verbose_name = "Fournisseur"
         verbose_name_plural = "Fournisseurs"
