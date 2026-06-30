@@ -3,6 +3,8 @@ from django.contrib import admin
 from .models import (
     AccidentTravail,
     AffectationRoster,
+    CauserieParticipant,
+    CauserieSecurite,
     Certification,
     Competence,
     CompetenceEmploye,
@@ -221,3 +223,28 @@ class PresquAccidentAdmin(admin.ModelAdmin):
                     'gravite_potentielle', 'statut', 'declare_par', 'company')
     list_filter = ('gravite_potentielle', 'statut')
     search_fields = ('reference', 'lieu', 'chantier_id')
+
+
+class CauserieParticipantInline(admin.TabularInline):
+    model = CauserieParticipant
+    extra = 0
+    fields = ('participant', 'present', 'emarge', 'emarge_le')
+    readonly_fields = ('emarge_le',)
+
+
+@admin.register(CauserieSecurite)
+class CauserieSecuriteAdmin(admin.ModelAdmin):
+    list_display = ('theme', 'date_causerie', 'chantier_id', 'animateur',
+                    'lieu', 'company')
+    list_filter = ('date_causerie',)
+    search_fields = ('theme', 'lieu', 'chantier_id')
+    inlines = [CauserieParticipantInline]
+
+
+@admin.register(CauserieParticipant)
+class CauserieParticipantAdmin(admin.ModelAdmin):
+    list_display = ('causerie', 'participant', 'present', 'emarge',
+                    'emarge_le', 'company')
+    list_filter = ('present', 'emarge')
+    search_fields = ('participant__matricule', 'participant__nom',
+                     'causerie__theme')
