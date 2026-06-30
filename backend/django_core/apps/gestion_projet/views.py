@@ -568,6 +568,27 @@ class ProjetViewSet(_GestionProjetBaseViewSet):
             ],
         })
 
+    @action(detail=True, methods=['get'], url_path='avancement-vs-facture')
+    def avancement_vs_facture(self, request, pk=None):
+        """Compare l'avancement physique au % facturé du projet (PROJ28).
+
+        Avancement = roll-up pondéré par charge (PROJ9) ; facturé = somme des
+        ``facturation_pct`` des jalons atteints (bornée à 100). L'écart signale
+        une sous-facturation (> 0) ou une facturation d'avance (< 0). La société
+        est garantie par ``get_object`` (queryset scopé société) : un projet
+        d'une autre société → 404. Lecture seule.
+        """
+        projet = self.get_object()
+        data = selectors.avancement_vs_facture(projet)
+        return Response({
+            'avancement_pct': str(data['avancement_pct']),
+            'facture_pct': str(data['facture_pct']),
+            'ecart_pct': str(data['ecart_pct']),
+            'base_montant': str(data['base_montant']),
+            'montant_facture': str(data['montant_facture']),
+            'montant_avancement': str(data['montant_avancement']),
+        })
+
 
 class ProjetChantierViewSet(_GestionProjetBaseViewSet):
     """Rattachements chantier ↔ projet (liens lâches)."""

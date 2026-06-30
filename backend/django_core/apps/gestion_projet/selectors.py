@@ -1895,3 +1895,43 @@ def jalons_facturables(projet):
         'total_pct_facture': total_pct_facture,
         'jalons': lignes,
     }
+
+
+# ── Suivi avancement vs facturé (PROJ28) ─────────────────────────────────────
+def avancement_vs_facture(projet):
+    """Compare l'AVANCEMENT physique d'un projet à ce qui est FACTURÉ (PROJ28).
+
+    L'avancement PHYSIQUE est le roll-up pondéré par charge des tâches (PROJ9).
+    Le % FACTURÉ est la somme des ``facturation_pct`` des jalons de facturation
+    ATTEINTS (PROJ7/PROJ27) — borné à 100. L'``ecart_pct`` = avancement − facturé
+    indique :
+        • > 0 : on a AVANCÉ plus qu'on n'a facturé (sous-facturation, trésorerie
+          à rattraper) ;
+        • < 0 : on a FACTURÉ d'avance par rapport à l'avancement.
+
+    Renvoie ``{avancement_pct, facture_pct, ecart_pct, base_montant,
+    montant_facture, montant_avancement}`` où les montants sont des projections
+    INTERNES (% × ``budget_total``). Tout est scopé société via le projet.
+    Lecture seule (aucune écriture).
+    """
+    avancement = rollup_avancement(projet)
+    avancement_pct = Decimal(str(avancement['avancement_pct']))
+
+    facturables = jalons_facturables(projet)
+    facture_pct = min(
+        facturables['total_pct_facture'], Decimal('100'))
+
+    base = projet.budget_total or Decimal('0')
+    montant_facture = (
+        base * facture_pct / Decimal('100')).quantize(Decimal('0.01'))
+    montant_avancement = (
+        base * avancement_pct / Decimal('100')).quantize(Decimal('0.01'))
+
+    return {
+        'avancement_pct': avancement_pct,
+        'facture_pct': facture_pct,
+        'ecart_pct': avancement_pct - facture_pct,
+        'base_montant': base,
+        'montant_facture': montant_facture,
+        'montant_avancement': montant_avancement,
+    }
