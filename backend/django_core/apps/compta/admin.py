@@ -1,13 +1,15 @@
 from django.contrib import admin
 
 from .models import (
-    BaremeIndemnite, BordereauRemise, Caisse, CautionBancaire, ClotureCaisse,
-    CompteComptable, CompteTresorerie, DeclarationTVA, EcritureComptable, Effet,
+    AvancementRevenu, BaremeIndemnite, BordereauRemise, Budget, BudgetLigne,
+    Caisse, CautionBancaire, CentreCout, ClotureCaisse, CommissionPayoutLine,
+    CommissionPayoutRun, CompteComptable, CompteTresorerie, ContratAvancement,
+    DeclarationTVA, EcritureComptable, Effet, EntiteConsolidation,
     ExerciceComptable, Immobilisation, IndemniteChantier, Journal,
     LigneEcriture, LignePrevisionnelTresorerie, LigneReleve, MouvementCaisse,
     NoteFrais, PaymentRun, PaymentRunLine, PeriodeComptable, PlanComptable,
-    Rapprochement, RapprochementBancaire, RetenueGarantie, RetenueSource,
-    TimbreFiscal, VirementInterne,
+    ProvisionCreance, Rapprochement, RapprochementBancaire, RetenueGarantie,
+    RetenueSource, TimbreFiscal, TravauxEnCours, VirementInterne,
 )
 
 
@@ -265,3 +267,79 @@ class CautionBancaireAdmin(admin.ModelAdmin):
                     'date_echeance', 'statut', 'company')
     list_filter = ('type_caution', 'statut')
     search_fields = ('reference', 'marche_ref', 'tiers_nom', 'banque')
+
+
+@admin.register(ContratAvancement)
+class ContratAvancementAdmin(admin.ModelAdmin):
+    list_display = ('id', 'reference', 'libelle', 'chantier_ref', 'methode',
+                    'revenu_total', 'cout_total_estime', 'statut', 'company')
+    list_filter = ('methode', 'statut')
+    search_fields = ('reference', 'libelle', 'chantier_ref', 'marche_ref',
+                     'client_nom')
+
+
+@admin.register(AvancementRevenu)
+class AvancementRevenuAdmin(admin.ModelAdmin):
+    list_display = ('id', 'contrat', 'date_arrete', 'pourcentage',
+                    'revenu_cumule', 'revenu_periode', 'ecriture_id', 'company')
+    list_filter = ('date_arrete',)
+    search_fields = ('contrat__reference',)
+
+
+@admin.register(TravauxEnCours)
+class TravauxEnCoursAdmin(admin.ModelAdmin):
+    list_display = ('id', 'reference', 'nature', 'libelle', 'montant',
+                    'date_arrete', 'statut', 'company')
+    list_filter = ('nature', 'statut')
+    search_fields = ('reference', 'libelle', 'chantier_ref')
+
+
+class CommissionPayoutLineInline(admin.TabularInline):
+    model = CommissionPayoutLine
+    extra = 0
+    fields = ('commercial_nom', 'base', 'taux', 'montant', 'libelle')
+
+
+@admin.register(CommissionPayoutRun)
+class CommissionPayoutRunAdmin(admin.ModelAdmin):
+    list_display = ('id', 'reference', 'periode', 'date_run', 'statut',
+                    'total', 'ecriture_id', 'company')
+    list_filter = ('statut',)
+    search_fields = ('reference', 'libelle', 'periode')
+    inlines = [CommissionPayoutLineInline]
+
+
+class BudgetLigneInline(admin.TabularInline):
+    model = BudgetLigne
+    extra = 0
+    fields = ('compte', 'centre_cout', 'libelle')
+
+
+@admin.register(Budget)
+class BudgetAdmin(admin.ModelAdmin):
+    list_display = ('id', 'annee', 'libelle', 'statut', 'company')
+    list_filter = ('annee', 'statut')
+    search_fields = ('libelle',)
+    inlines = [BudgetLigneInline]
+
+
+@admin.register(CentreCout)
+class CentreCoutAdmin(admin.ModelAdmin):
+    list_display = ('id', 'code', 'libelle', 'axe', 'actif', 'company')
+    list_filter = ('axe', 'actif')
+    search_fields = ('code', 'libelle')
+
+
+@admin.register(ProvisionCreance)
+class ProvisionCreanceAdmin(admin.ModelAdmin):
+    list_display = ('id', 'reference', 'tiers_nom', 'base', 'taux',
+                    'dotation', 'date_dotation', 'statut', 'company')
+    list_filter = ('statut',)
+    search_fields = ('reference', 'tiers_nom')
+
+
+@admin.register(EntiteConsolidation)
+class EntiteConsolidationAdmin(admin.ModelAdmin):
+    list_display = ('id', 'company', 'entite', 'pourcentage_interet',
+                    'methode', 'actif')
+    list_filter = ('methode', 'actif')

@@ -30,15 +30,17 @@ from django.db.models import Sum
 from django.utils import timezone
 
 from .models import (
-    BaremeIndemnite, BordereauRemise, Caisse, CessionImmobilisation,
-    ClotureCaisse, CompteComptable, CompteTresorerie, DeclarationTVA,
-    DotationAmortissement, EcritureComptable, Effet, ExerciceComptable,
+    AvancementRevenu, BaremeIndemnite, BordereauRemise, Budget, BudgetLigne,
+    Caisse, CautionBancaire, CentreCout, CessionImmobilisation, ClotureCaisse,
+    CommissionPayoutLine, CommissionPayoutRun, CompteComptable,
+    CompteTresorerie, ContratAvancement, DeclarationTVA, DotationAmortissement,
+    EcritureComptable, Effet, EntiteConsolidation, ExerciceComptable,
     Immobilisation, IndemniteChantier, Journal, LigneEcriture,
     LignePrevisionnelTresorerie, LigneReleve, MouvementCaisse, NoteFrais,
     PaymentRun, PaymentRunLine, PeriodeComptable, PlanAmortissement,
-    CautionBancaire, PlanComptable, PointageReleve, Rapprochement,
+    PlanComptable, PointageReleve, ProvisionCreance, Rapprochement,
     RapprochementBancaire, RetenueGarantie, RetenueSource, TimbreFiscal,
-    VirementInterne,
+    TravauxEnCours, VirementInterne,
 )
 
 
@@ -64,13 +66,20 @@ _COMPTES_CGNC = [
     # Classe 3 — Actif circulant
     ('3421', 'Clients', True, True, 'actif'),
     ('3425', 'Clients - effets à recevoir', True, True, 'actif'),
+    ('3427', 'Clients - factures à établir', True, True, 'actif'),
+    ('3424', 'Clients douteux ou litigieux', True, True, 'actif'),
+    ('3134', 'Travaux en cours', False, False, 'actif'),
     ('3455', 'État - TVA récupérable', False, False, 'actif'),
     ('34552', 'État - TVA récupérable sur charges', False, False, 'actif'),
+    ('3942', 'Provisions pour dépréciation des clients', False, False,
+     'actif'),
     # Classe 4 — Passif circulant
     ('4411', 'Fournisseurs', True, True, 'passif'),
     ('4415', 'Fournisseurs - effets à payer', True, True, 'passif'),
     ('4455', 'État - TVA facturée', False, False, 'passif'),
     ('44552', 'État - TVA due', False, False, 'passif'),
+    ('4491', "Produits constatés d'avance", False, False, 'passif'),
+    ('4486', 'Fournisseurs - factures non parvenues', True, True, 'passif'),
     # Paie (CGNC 44x) — rémunérations dues + organismes sociaux & fiscaux
     ('4432', 'Rémunérations dues au personnel', False, False, 'passif'),
     ('4441', 'Caisse Nationale de Sécurité Sociale (CNSS)', False, False,
@@ -95,9 +104,15 @@ _COMPTES_CGNC = [
      'charge'),
     ('6193', 'Dotations d\'exploitation aux amortissements des immobilisations '
      'corporelles', False, False, 'charge'),
+    ('6196', 'Dotations aux provisions pour dépréciation de l\'actif '
+     'circulant', False, False, 'charge'),
     # Classe 7 — Produits
     ('7111', 'Ventes de marchandises', False, False, 'produit'),
     ('7121', 'Ventes de biens et services produits', False, False, 'produit'),
+    ('7196', 'Reprises sur provisions pour dépréciation de l\'actif '
+     'circulant', False, False, 'produit'),
+    ('7132', 'Variation des stocks de travaux en cours', False, False,
+     'produit'),
 ]
 
 
@@ -206,6 +221,7 @@ def creer_ecriture(company, journal, date_ecriture, libelle, lignes, *,
             credit=Decimal(ligne.get('credit') or 0),
             tiers_type=ligne.get('tiers_type', '') or '',
             tiers_id=ligne.get('tiers_id'),
+            centre_cout=ligne.get('centre_cout'),
         )
     # Garde-fou final : revalide l'équilibre côté modèle.
     ecriture.clean()
@@ -2959,3 +2975,487 @@ def mainlevee_caution_bancaire(caution, *, date_mainlevee=None,
                       else CautionBancaire.Statut.LEVEE)
     caution.save(update_fields=['statut', 'date_mainlevee'])
     return caution
+
+
+# ── FG146 — Reconnaissance du revenu par avancement (% completion) ──────────
+
+def creer_contrat_avancement(company, *, revenu_total, cout_total_estime=0,
+                             methode=None, libelle='', chantier_ref='',
+                             marche_ref='', client_id=None, client_nom='',
+                             date_debut=None, date_fin_prevue=None, user=None):
+    """Crée un contrat reconnu au pourcentage d'avancement (FG146).
+
+    Fige le revenu total contractuel et le coût total estimé. La ``reference``
+    (CONTRAT-YYYYMM-NNNN) et la ``company`` sont posées côté serveur. Le
+    chantier/marché/client est référencé par string-ref — jamais d'import
+    cross-app de modèle. Renvoie le contrat.
+    """
+    from apps.ventes.utils.references import create_with_reference
+
+    contrat = ContratAvancement(
+        company=company,
+        revenu_total=Decimal(revenu_total or 0),
+        cout_total_estime=Decimal(cout_total_estime or 0),
+        methode=methode or ContratAvancement.Methode.COUTS,
+        libelle=libelle or '',
+        chantier_ref=chantier_ref or '',
+        marche_ref=marche_ref or '',
+        client_id=client_id,
+        client_nom=client_nom or '',
+        date_debut=date_debut,
+        date_fin_prevue=date_fin_prevue,
+        statut=ContratAvancement.Statut.EN_COURS,
+        created_by=user,
+    )
+    contrat.full_clean(exclude=['reference', 'created_by'])
+
+    def _save(reference):
+        contrat.reference = reference
+        contrat.save()
+        return contrat
+
+    return create_with_reference(
+        ContratAvancement, 'CONTRAT', company, _save)
+
+
+def _pourcentage_avancement(contrat, *, pourcentage=None,
+                            cout_engage_cumule=None):
+    """Détermine le % d'avancement cumulé selon la méthode du contrat.
+
+    Méthode « couts » (cost-to-cost) = coût engagé cumulé / coût total estimé,
+    plafonné à 100 %. Méthode « saisie » = pourcentage saisi tel quel. Renvoie
+    un ``Decimal`` 0–100 arrondi à 2 décimales.
+    """
+    if contrat.methode == ContratAvancement.Methode.COUTS:
+        total = contrat.cout_total_estime or Decimal('0')
+        engage = Decimal(cout_engage_cumule or 0)
+        if total <= 0:
+            pct = Decimal('0')
+        else:
+            pct = (engage / total * Decimal('100'))
+    else:
+        pct = Decimal(pourcentage or 0)
+    if pct < 0:
+        pct = Decimal('0')
+    if pct > 100:
+        pct = Decimal('100')
+    return pct.quantize(Decimal('0.01'))
+
+
+@transaction.atomic
+def constater_avancement(contrat, *, date_arrete, pourcentage=None,
+                         cout_engage_cumule=None, libelle='', poster=True,
+                         user=None):
+    """Constate l'avancement à une date et reconnaît le CA cumulé (FG146).
+
+    Calcule le revenu cumulé à reconnaître = ``revenu_total`` × % d'avancement,
+    fige le DELTA (``revenu_periode``) par rapport au cumul déjà reconnu, et —
+    si ``poster`` — passe l'écriture OD de reconnaissance (3427 « clients -
+    factures à établir » au débit / 71xx « ventes » au crédit pour le delta
+    positif, et l'inverse si négatif). Le ``%`` et le revenu sont DÉRIVÉS côté
+    serveur (jamais imposés par le corps). Renvoie le constat.
+    """
+    company = contrat.company
+    pct = _pourcentage_avancement(
+        contrat, pourcentage=pourcentage,
+        cout_engage_cumule=cout_engage_cumule)
+    revenu_cumule = (
+        (contrat.revenu_total or Decimal('0')) * pct / Decimal('100')
+    ).quantize(Decimal('0.01'))
+    deja = contrat.revenu_reconnu
+    revenu_periode = (revenu_cumule - deja).quantize(Decimal('0.01'))
+    constat = AvancementRevenu(
+        company=company,
+        contrat=contrat,
+        date_arrete=date_arrete,
+        pourcentage=pct,
+        cout_engage_cumule=Decimal(cout_engage_cumule or 0),
+        revenu_cumule=revenu_cumule,
+        revenu_periode=revenu_periode,
+        libelle=libelle or '',
+        created_by=user,
+    )
+    constat.full_clean(exclude=['created_by', 'libelle'])
+    constat.save()
+    if poster and revenu_periode != 0:
+        comptes = _comptes_requis(company)
+        compte_fae = get_compte(company, '3427')
+        compte_ventes = comptes['ventes']
+        montant = abs(revenu_periode)
+        if revenu_periode > 0:
+            lignes = [
+                {'compte': compte_fae, 'debit': montant,
+                 'credit': Decimal('0'),
+                 'libelle': f'Avancement {pct}%'},
+                {'compte': compte_ventes, 'debit': Decimal('0'),
+                 'credit': montant,
+                 'libelle': f'Avancement {pct}%'},
+            ]
+        else:
+            lignes = [
+                {'compte': compte_ventes, 'debit': montant,
+                 'credit': Decimal('0'),
+                 'libelle': f'Avancement {pct}%'},
+                {'compte': compte_fae, 'debit': Decimal('0'),
+                 'credit': montant,
+                 'libelle': f'Avancement {pct}%'},
+            ]
+        ecriture = creer_ecriture_od(
+            company, date_arrete,
+            (f'Reconnaissance revenu avancement '
+             f'{contrat.reference} — {pct}%'),
+            lignes, created_by=user)
+        constat.ecriture_id = ecriture.id
+        constat.save(update_fields=['ecriture_id'])
+    return constat
+
+
+# ── FG147 — Produits constatés d'avance & travaux en cours (WIP) ────────────
+
+# (compte_débit, compte_crédit) de chaque nature de régularisation.
+_TEC_COMPTES = {
+    TravauxEnCours.Nature.PCA: ('7121', '4491'),
+    TravauxEnCours.Nature.WIP: ('3134', '7132'),
+}
+
+
+@transaction.atomic
+def constater_regularisation(company, *, nature, montant, date_arrete,
+                             libelle='', chantier_ref='', contrat_id=None,
+                             poster=True, user=None):
+    """Constate une régularisation de cut-off (PCA ou WIP) — FG147.
+
+    Fige le ``montant`` régularisé et — si ``poster`` — passe l'écriture OD de
+    constat (PCA : 7121 débit / 4491 crédit ; WIP : 3134 débit / 7132 crédit).
+    La ``reference`` (REG-YYYYMM-NNNN) et la ``company`` sont posées côté
+    serveur. Renvoie la régularisation.
+    """
+    from apps.ventes.utils.references import create_with_reference
+
+    nature = nature or TravauxEnCours.Nature.WIP
+    reg = TravauxEnCours(
+        company=company,
+        nature=nature,
+        montant=Decimal(montant or 0),
+        date_arrete=date_arrete,
+        libelle=libelle or '',
+        chantier_ref=chantier_ref or '',
+        contrat_id=contrat_id,
+        statut=TravauxEnCours.Statut.CONSTATE,
+        created_by=user,
+    )
+    reg.full_clean(exclude=['reference', 'created_by', 'libelle'])
+
+    def _save(reference):
+        reg.reference = reference
+        reg.save()
+        return reg
+
+    reg = create_with_reference(TravauxEnCours, 'REG', company, _save)
+    if poster and reg.montant > 0:
+        _comptes_requis(company)
+        num_debit, num_credit = _TEC_COMPTES[nature]
+        compte_debit = get_compte(company, num_debit)
+        compte_credit = get_compte(company, num_credit)
+        ecriture = creer_ecriture_od(
+            company, date_arrete,
+            f'Régularisation {reg.get_nature_display()} {reg.reference}',
+            [
+                {'compte': compte_debit, 'debit': reg.montant,
+                 'credit': Decimal('0'), 'libelle': reg.libelle},
+                {'compte': compte_credit, 'debit': Decimal('0'),
+                 'credit': reg.montant, 'libelle': reg.libelle},
+            ],
+            created_by=user)
+        reg.ecriture_id = ecriture.id
+        reg.save(update_fields=['ecriture_id'])
+    return reg
+
+
+@transaction.atomic
+def reprendre_regularisation(reg, *, date_reprise=None, poster=True,
+                             user=None):
+    """Reprend (extourne) une régularisation à l'ouverture suivante (FG147).
+
+    Passe l'écriture OD inverse (crédit ↔ débit) puis pose le statut « repris ».
+    Idempotent : ne reprend pas deux fois. Renvoie la régularisation.
+    """
+    if reg.statut == TravauxEnCours.Statut.REPRIS:
+        return reg
+    date_reprise = date_reprise or timezone.now().date()
+    if poster and reg.montant > 0:
+        _comptes_requis(reg.company)
+        num_debit, num_credit = _TEC_COMPTES[reg.nature]
+        # Extourne : on inverse débit/crédit.
+        compte_debit = get_compte(reg.company, num_debit)
+        compte_credit = get_compte(reg.company, num_credit)
+        ecriture = creer_ecriture_od(
+            reg.company, date_reprise,
+            f'Reprise régularisation {reg.reference}',
+            [
+                {'compte': compte_credit, 'debit': reg.montant,
+                 'credit': Decimal('0'), 'libelle': reg.libelle},
+                {'compte': compte_debit, 'debit': Decimal('0'),
+                 'credit': reg.montant, 'libelle': reg.libelle},
+            ],
+            created_by=user)
+        reg.ecriture_reprise_id = ecriture.id
+    reg.statut = TravauxEnCours.Statut.REPRIS
+    reg.date_reprise = date_reprise
+    reg.save(update_fields=['statut', 'date_reprise', 'ecriture_reprise_id'])
+    return reg
+
+
+# ── FG148 — Campagnes de versement des commissions (payout run) ─────────────
+
+@transaction.atomic
+def creer_commission_run(company, *, date_run, periode='', libelle='',
+                         lignes=None, user=None):
+    """Crée une campagne de versement de commissions (FG148).
+
+    ``lignes`` est une liste de dicts ``{'commercial_id'?, 'commercial_nom',
+    'base'?, 'taux'?, 'montant', 'libelle'?}``. La ``reference``
+    (COMM-YYYYMM-NNNN) et la ``company`` sont posées côté serveur. Le total est
+    recalculé. Le commercial est référencé par string-ref — jamais d'import
+    cross-app. Renvoie le run.
+    """
+    from apps.ventes.utils.references import create_with_reference
+
+    run = CommissionPayoutRun(
+        company=company,
+        date_run=date_run,
+        periode=periode or '',
+        libelle=libelle or '',
+        statut=CommissionPayoutRun.Statut.BROUILLON,
+        created_by=user,
+    )
+
+    def _save(reference):
+        run.reference = reference
+        run.save()
+        return run
+
+    run = create_with_reference(
+        CommissionPayoutRun, 'COMM', company, _save)
+    for ligne in (lignes or []):
+        CommissionPayoutLine.objects.create(
+            company=company,
+            run=run,
+            commercial_id=ligne.get('commercial_id'),
+            commercial_nom=ligne.get('commercial_nom', '') or '',
+            base=Decimal(ligne.get('base') or 0),
+            taux=Decimal(ligne.get('taux') or 0),
+            montant=Decimal(ligne.get('montant') or 0),
+            libelle=ligne.get('libelle', '') or '',
+        )
+    run.recalculer_total()
+    run.save(update_fields=['total'])
+    return run
+
+
+@transaction.atomic
+def valider_commission_run(run):
+    """Valide un run de commissions : gèle les montants (FG148).
+
+    Refuse si le run n'est pas en brouillon. Renvoie le run.
+    """
+    if run.statut != CommissionPayoutRun.Statut.BROUILLON:
+        raise ValidationError(
+            "Seul un run en brouillon peut être validé.")
+    run.recalculer_total()
+    run.statut = CommissionPayoutRun.Statut.VALIDE
+    run.date_validation = timezone.now()
+    run.save(update_fields=['statut', 'date_validation', 'total'])
+    return run
+
+
+@transaction.atomic
+def poster_commission_run(run, *, user=None):
+    """Poste un run de commissions au grand livre (FG148).
+
+    Passe l'écriture OD (débit 6171 « rémunérations du personnel » / crédit
+    4432 « rémunérations dues au personnel ») pour le total du run. Refuse si le
+    run n'est pas validé ; idempotent (ne reposte pas). Renvoie le run.
+    """
+    if run.statut == CommissionPayoutRun.Statut.POSTE:
+        return run
+    if run.statut != CommissionPayoutRun.Statut.VALIDE:
+        raise ValidationError(
+            "Seul un run validé peut être posté au grand livre.")
+    company = run.company
+    run.recalculer_total()
+    if run.total > 0:
+        _comptes_requis(company)
+        compte_charge = get_compte(company, '6171')
+        compte_dette = get_compte(company, '4432')
+        ecriture = creer_ecriture_od(
+            company, run.date_run,
+            f'Commissions commerciales {run.reference} — {run.periode}',
+            [
+                {'compte': compte_charge, 'debit': run.total,
+                 'credit': Decimal('0'), 'libelle': run.libelle},
+                {'compte': compte_dette, 'debit': Decimal('0'),
+                 'credit': run.total, 'libelle': run.libelle},
+            ],
+            created_by=user)
+        run.ecriture_id = ecriture.id
+    run.statut = CommissionPayoutRun.Statut.POSTE
+    run.date_poste = timezone.now()
+    run.save(update_fields=['statut', 'date_poste', 'ecriture_id', 'total'])
+    return run
+
+
+# ── FG149 — Budgets annuels & suivi budget-vs-réalisé ──────────────────────
+
+@transaction.atomic
+def creer_budget(company, *, annee, libelle='', lignes=None, user=None):
+    """Crée un budget annuel et ses lignes (FG149).
+
+    ``lignes`` est une liste de dicts ``{'compte', 'centre_cout'?, 'libelle'?,
+    'm01'…'m12'?}``. ``company`` posée côté serveur. Renvoie le budget.
+    """
+    budget = Budget.objects.create(
+        company=company, annee=int(annee), libelle=libelle or '',
+        created_by=user)
+    for ligne in (lignes or []):
+        champs = {m: Decimal(ligne.get(m) or 0) for m in BudgetLigne.MOIS}
+        BudgetLigne.objects.create(
+            company=company,
+            budget=budget,
+            compte=ligne['compte'],
+            centre_cout=ligne.get('centre_cout'),
+            libelle=ligne.get('libelle', '') or '',
+            **champs,
+        )
+    return budget
+
+
+# ── FG150 — Comptabilité analytique / centres de coût ──────────────────────
+
+def creer_centre_cout(company, *, code, libelle, axe=None):
+    """Crée (ou récupère) un centre de coût (idempotent par code) — FG150."""
+    centre, _ = CentreCout.objects.get_or_create(
+        company=company, code=code,
+        defaults={
+            'libelle': libelle,
+            'axe': axe or CentreCout.Axe.CHANTIER,
+        },
+    )
+    return centre
+
+
+# ── FG152 — Provisions pour créances douteuses ─────────────────────────────
+
+@transaction.atomic
+def enregistrer_provision_creance(company, *, date_dotation, base, taux=None,
+                                  tiers_type='', tiers_id=None, tiers_nom='',
+                                  anciennete_jours=0, libelle='', poster=True,
+                                  user=None):
+    """Enregistre une dotation de provision pour créance douteuse (FG152).
+
+    Calcule la ``dotation`` = base × taux % (arrondi) et — si ``poster`` —
+    passe l'écriture OD (débit 6196 « dotations aux provisions » / crédit 3942
+    « provisions pour dépréciation des clients »). La ``reference``
+    (PROV-YYYYMM-NNNN) et la ``company`` sont posées côté serveur. Le client est
+    référencé par string-ref. Renvoie la provision.
+    """
+    from apps.ventes.utils.references import create_with_reference
+
+    prov = ProvisionCreance(
+        company=company,
+        date_dotation=date_dotation,
+        base=Decimal(base or 0),
+        taux=(Decimal(taux) if taux is not None else Decimal('0')),
+        tiers_type=tiers_type or '',
+        tiers_id=tiers_id,
+        tiers_nom=tiers_nom or '',
+        anciennete_jours=int(anciennete_jours or 0),
+        statut=ProvisionCreance.Statut.DOTATION,
+        libelle=libelle or '',
+        created_by=user,
+    )
+    prov.recalculer()
+    prov.full_clean(exclude=['reference', 'created_by', 'libelle'])
+
+    def _save(reference):
+        prov.reference = reference
+        prov.save()
+        return prov
+
+    prov = create_with_reference(ProvisionCreance, 'PROV', company, _save)
+    if poster and prov.dotation > 0:
+        _comptes_requis(company)
+        compte_charge = get_compte(company, '6196')
+        compte_prov = get_compte(company, '3942')
+        ecriture = creer_ecriture_od(
+            company, date_dotation,
+            f'Dotation provision créance douteuse {prov.reference}',
+            [
+                {'compte': compte_charge, 'debit': prov.dotation,
+                 'credit': Decimal('0'), 'libelle': prov.tiers_nom},
+                {'compte': compte_prov, 'debit': Decimal('0'),
+                 'credit': prov.dotation, 'libelle': prov.tiers_nom,
+                 'tiers_type': prov.tiers_type, 'tiers_id': prov.tiers_id},
+            ],
+            created_by=user)
+        prov.ecriture_id = ecriture.id
+        prov.save(update_fields=['ecriture_id'])
+    return prov
+
+
+@transaction.atomic
+def reprendre_provision_creance(prov, *, date_reprise=None, poster=True,
+                                user=None):
+    """Reprend une provision (créance recouvrée/soldée) — FG152.
+
+    Passe l'écriture OD inverse (débit 3942 / crédit 7196 « reprises sur
+    provisions ») puis pose le statut « reprise ». Idempotent. Renvoie la
+    provision.
+    """
+    if prov.statut == ProvisionCreance.Statut.REPRISE:
+        return prov
+    date_reprise = date_reprise or timezone.now().date()
+    if poster and prov.dotation > 0:
+        _comptes_requis(prov.company)
+        compte_prov = get_compte(prov.company, '3942')
+        compte_reprise = get_compte(prov.company, '7196')
+        ecriture = creer_ecriture_od(
+            prov.company, date_reprise,
+            f'Reprise provision créance {prov.reference}',
+            [
+                {'compte': compte_prov, 'debit': prov.dotation,
+                 'credit': Decimal('0'), 'libelle': prov.tiers_nom},
+                {'compte': compte_reprise, 'debit': Decimal('0'),
+                 'credit': prov.dotation, 'libelle': prov.tiers_nom},
+            ],
+            created_by=user)
+        prov.ecriture_reprise_id = ecriture.id
+    prov.statut = ProvisionCreance.Statut.REPRISE
+    prov.date_reprise = date_reprise
+    prov.save(update_fields=[
+        'statut', 'date_reprise', 'ecriture_reprise_id'])
+    return prov
+
+
+# ── FG153 — Inter-sociétés / consolidation multi-entités ───────────────────
+
+def ajouter_entite_consolidation(company, *, entite, pourcentage_interet=None,
+                                 methode=None, libelle=''):
+    """Rattache une entité au périmètre de consolidation (FG153, idempotent).
+
+    ``company`` = société tête de groupe (posée côté serveur) ; ``entite`` =
+    société membre (FK ``authentication.Company``). Renvoie l'entité de
+    consolidation.
+    """
+    obj, _ = EntiteConsolidation.objects.get_or_create(
+        company=company, entite=entite,
+        defaults={
+            'pourcentage_interet': (
+                Decimal(pourcentage_interet)
+                if pourcentage_interet is not None else Decimal('100.00')),
+            'methode': (
+                methode or EntiteConsolidation.Methode.INTEGRATION_GLOBALE),
+            'libelle': libelle or '',
+        },
+    )
+    return obj
