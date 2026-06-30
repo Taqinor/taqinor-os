@@ -34,6 +34,8 @@ from .views import (
     ReceptionNonFactureeViewSet,
     ContratPrixFournisseurViewSet,
     ContratPrixLigneViewSet,
+    BinLocationViewSet,
+    BinAffectationViewSet,
 )
 
 router = DefaultRouter()
@@ -79,6 +81,8 @@ router.register(r'landed-cost-lignes', LandedCostLigneViewSet)
 router.register(r'receptions-non-facturees', ReceptionNonFactureeViewSet)
 router.register(r'contrats-prix-fournisseur', ContratPrixFournisseurViewSet)
 router.register(r'contrats-prix-lignes', ContratPrixLigneViewSet)
+router.register(r'bin-locations', BinLocationViewSet)
+router.register(r'bin-affectations', BinAffectationViewSet)
 
 urlpatterns = [
     # N91/F21 — synchro idempotente de la capture terrain hors-ligne.

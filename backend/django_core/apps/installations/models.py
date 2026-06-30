@@ -125,6 +125,10 @@ from .models_contrat_prix import (
     ContratPrixFournisseur,
     ContratPrixLigne,
 )
+from .models_bin_location import (
+    BinLocation,
+    BinAffectation,
+)
 
 __all__ = [
     'Installation',
@@ -189,4 +193,6 @@ __all__ = [
     'ReceptionNonFacturee',
     'ContratPrixFournisseur',
     'ContratPrixLigne',
+    'BinLocation',
+    'BinAffectation',
 ]

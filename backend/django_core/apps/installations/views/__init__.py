@@ -45,6 +45,7 @@ from .gr_ir import ReceptionNonFactureeViewSet
 from .contrat_prix import (
     ContratPrixFournisseurViewSet, ContratPrixLigneViewSet,
 )
+from .bin_location import BinLocationViewSet, BinAffectationViewSet
 from .field_sync import FieldSyncView
 
 __all__ = [
@@ -92,5 +93,7 @@ __all__ = [
     'ReceptionNonFactureeViewSet',
     'ContratPrixFournisseurViewSet',
     'ContratPrixLigneViewSet',
+    'BinLocationViewSet',
+    'BinAffectationViewSet',
     'FieldSyncView',
 ]

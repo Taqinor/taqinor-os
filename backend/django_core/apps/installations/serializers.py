@@ -37,6 +37,8 @@ from .models import (
     ReceptionNonFacturee,
     ContratPrixFournisseur,
     ContratPrixLigne,
+    BinLocation,
+    BinAffectation,
 )
 
 
@@ -1651,4 +1653,44 @@ class ContratPrixFournisseurSerializer(serializers.ModelSerializer):
         value = (value or '').strip()
         if not value:
             raise serializers.ValidationError("L'intitulé est obligatoire.")
+        return value
+
+
+class BinAffectationSerializer(serializers.ModelSerializer):
+    """FG319 — affectation produit ↔ casier (quantité indicative)."""
+    produit_nom = serializers.CharField(
+        source='produit.nom', read_only=True, default=None)
+
+    class Meta:
+        model = BinAffectation
+        fields = [
+            'id', 'bin', 'produit', 'produit_nom', 'quantite',
+            'date_creation', 'date_modification',
+        ]
+        read_only_fields = ['date_creation', 'date_modification']
+
+
+class BinLocationSerializer(serializers.ModelSerializer):
+    """FG319 — casier de rangement adressable sous un `EmplacementStock`. La
+    societe et `created_by` sont poses COTE SERVEUR. Les affectations produit
+    sont imbriquees en lecture."""
+    emplacement_nom = serializers.CharField(
+        source='emplacement.nom', read_only=True, default=None)
+    affectations = BinAffectationSerializer(many=True, read_only=True)
+
+    class Meta:
+        model = BinLocation
+        fields = [
+            'id', 'emplacement', 'emplacement_nom', 'code', 'zone', 'allee',
+            'casier', 'ordre', 'note', 'archived', 'affectations',
+            'created_by', 'date_creation', 'date_modification',
+        ]
+        read_only_fields = [
+            'created_by', 'date_creation', 'date_modification',
+        ]
+
+    def validate_code(self, value):
+        value = (value or '').strip()
+        if not value:
+            raise serializers.ValidationError('Le code du casier est requis.')
         return value
