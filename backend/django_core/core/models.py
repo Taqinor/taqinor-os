@@ -414,3 +414,82 @@ class IntegrationConfig(TimestampedModel):
     def __str__(self):
         return (f'{self.integration_type}/{self.provider} '
                 f'(société {self.company_id})')
+
+
+# ---------------------------------------------------------------------------
+# FG372 — Demande d'e-signature (Yousign/DocuSign…), suivi de statut.
+#
+# Modèle de FONDATION GÉNÉRIQUE : suit une demande de signature électronique
+# pour N'IMPORTE QUEL document métier (Devis, contrat…) SANS importer l'app qui
+# le produit (contrat import-linter ``core-foundation-is-a-base-layer``). La
+# cible est désignée via ``contenttypes`` (content_type + object_id +
+# GenericForeignKey) — fondation Django — donc aucun import descendant.
+# ---------------------------------------------------------------------------
+
+
+class EsignRequest(TimestampedModel):
+    """Demande de signature électronique d'un document (FG372).
+
+    GÉNÉRIQUE : cible via ``contenttypes`` (aucun import métier). ``provider``
+    nomme le connecteur e-sign (``core.esign``) ; ``external_id`` garde la
+    référence retournée par le fournisseur ; ``statut`` suit le cycle de vie.
+    Multi-tenant : ``company`` obligatoire, imposée côté serveur.
+    """
+
+    STATUT_BROUILLON = 'brouillon'
+    STATUT_ENVOYE = 'envoye'
+    STATUT_SIGNE = 'signe'
+    STATUT_REFUSE = 'refuse'
+    STATUT_EXPIRE = 'expire'
+    STATUT_ERREUR = 'erreur'
+    STATUT_CHOICES = [
+        (STATUT_BROUILLON, 'Brouillon'),
+        (STATUT_ENVOYE, 'Envoyé'),
+        (STATUT_SIGNE, 'Signé'),
+        (STATUT_REFUSE, 'Refusé'),
+        (STATUT_EXPIRE, 'Expiré'),
+        (STATUT_ERREUR, 'Erreur'),
+    ]
+
+    company = models.ForeignKey(
+        'authentication.Company', on_delete=models.CASCADE,
+        related_name='esign_requests', verbose_name='Société')
+
+    # Cible générique — AUCUN import métier (contenttypes = fondation).
+    content_type = models.ForeignKey(
+        ContentType, on_delete=models.CASCADE, null=True, blank=True,
+        related_name='+', verbose_name='Type de document')
+    object_id = models.PositiveIntegerField(
+        'Identifiant du document', null=True, blank=True)
+    target = GenericForeignKey('content_type', 'object_id')
+
+    provider = models.CharField('Fournisseur', max_length=60)
+    external_id = models.CharField(
+        'Référence externe', max_length=128, blank=True, default='',
+        help_text='Identifiant retourné par le fournisseur e-sign.')
+    statut = models.CharField(
+        'Statut', max_length=16, choices=STATUT_CHOICES,
+        default=STATUT_BROUILLON)
+
+    signataire_email = models.EmailField('Email signataire', blank=True, default='')
+    signataire_nom = models.CharField(
+        'Nom signataire', max_length=160, blank=True, default='')
+    signed_url = models.URLField('URL document signé', blank=True, default='')
+
+    sent_le = models.DateTimeField('Envoyé le', null=True, blank=True)
+    signed_le = models.DateTimeField('Signé le', null=True, blank=True)
+    detail = models.JSONField('Détail', default=dict, blank=True)
+
+    class Meta:
+        verbose_name = 'Demande de signature électronique'
+        verbose_name_plural = 'Demandes de signature électronique'
+        ordering = ['-id']
+        indexes = [
+            models.Index(fields=['company', 'statut'],
+                         name='core_esign_co_statut_idx'),
+            models.Index(fields=['provider', 'external_id'],
+                         name='core_esign_ext_idx'),
+        ]
+
+    def __str__(self):
+        return f'E-sign {self.provider} #{self.pk} ({self.get_statut_display()})'
