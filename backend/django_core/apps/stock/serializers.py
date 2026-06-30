@@ -8,6 +8,7 @@ from .models import (
     FactureFournisseur, LigneFactureFournisseur, PaiementFournisseur,
     InventaireSession, LigneInventaire,
     KitProduit, KitComposant,
+    FicheTechnique,
 )
 
 
@@ -801,3 +802,35 @@ class KitProduitSerializer(serializers.ModelSerializer):
             for c in composants_data:
                 KitComposant.objects.create(kit=instance, **c)
         return instance
+
+
+class FicheTechniqueSerializer(serializers.ModelSerializer):
+    """DC35 — datasheet rattachée à un produit. Expose en LECTURE quelques
+    champs du produit (marque/garantie/nom) pour éviter au front de re-saisir
+    ou re-stocker l'identité : elle vit sur ``Produit`` et n'est jamais copiée
+    sur la fiche."""
+    produit_nom = serializers.CharField(source='produit.nom', read_only=True)
+    produit_marque = serializers.CharField(
+        source='produit.marque', read_only=True)
+    produit_garantie = serializers.CharField(
+        source='produit.garantie', read_only=True)
+
+    class Meta:
+        model = FicheTechnique
+        fields = [
+            'id', 'produit', 'produit_nom', 'produit_marque',
+            'produit_garantie', 'pmax_wc', 'voc_v', 'isc_a', 'vmp_v', 'imp_a',
+            'rendement_pct', 'pdf', 'date_creation', 'date_mise_a_jour',
+        ]
+        # company is force-assigned in perform_create — never from the body.
+        read_only_fields = ['company', 'date_creation', 'date_mise_a_jour']
+
+    def validate_produit(self, value):
+        """Le produit doit appartenir à la société du demandeur (anti
+        cross-tenant)."""
+        request = self.context.get('request')
+        company = getattr(getattr(request, 'user', None), 'company', None)
+        if company is not None and value.company_id != company.id:
+            raise serializers.ValidationError(
+                'Produit hors de votre entreprise.')
+        return value

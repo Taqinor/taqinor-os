@@ -7,6 +7,7 @@ from .views import (
     RetourFournisseurViewSet, ReceptionFournisseurViewSet,
     FactureFournisseurViewSet, PaiementFournisseurViewSet,
     InventaireSessionViewSet, KitProduitViewSet,
+    FicheTechniqueViewSet,
 )
 
 router = DefaultRouter()
@@ -25,6 +26,7 @@ router.register(r'factures-fournisseur', FactureFournisseurViewSet)
 router.register(r'paiements-fournisseur', PaiementFournisseurViewSet)
 router.register(r'inventaire-sessions', InventaireSessionViewSet)
 router.register(r'kits', KitProduitViewSet)
+router.register(r'fiches-techniques', FicheTechniqueViewSet)
 
 urlpatterns = [
     path('', include(router.urls)),
