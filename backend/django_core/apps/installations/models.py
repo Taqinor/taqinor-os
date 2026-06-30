@@ -106,6 +106,11 @@ from .models_approbation_bcf import (
     SeuilApprobationBCF,
     ApprobationBCF,
 )
+from .models_commande_cadre import (
+    CommandeCadre,
+    CommandeCadreLigne,
+    AppelCommande,
+)
 
 __all__ = [
     'Installation',
@@ -161,4 +166,7 @@ __all__ = [
     'RFQOffre',
     'SeuilApprobationBCF',
     'ApprobationBCF',
+    'CommandeCadre',
+    'CommandeCadreLigne',
+    'AppelCommande',
 ]

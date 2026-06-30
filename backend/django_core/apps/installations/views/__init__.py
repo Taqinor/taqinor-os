@@ -36,6 +36,9 @@ from .approbation_bcf import (
     SeuilApprobationBCFViewSet, ApprobationBCFViewSet,
 )
 from .controle_budgetaire import ControleBudgetaireCommandeView
+from .commande_cadre import (
+    CommandeCadreViewSet, CommandeCadreLigneViewSet, AppelCommandeViewSet,
+)
 from .field_sync import FieldSyncView
 
 __all__ = [
@@ -74,5 +77,8 @@ __all__ = [
     'SeuilApprobationBCFViewSet',
     'ApprobationBCFViewSet',
     'ControleBudgetaireCommandeView',
+    'CommandeCadreViewSet',
+    'CommandeCadreLigneViewSet',
+    'AppelCommandeViewSet',
     'FieldSyncView',
 ]
