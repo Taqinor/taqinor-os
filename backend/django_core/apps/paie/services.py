@@ -1915,6 +1915,166 @@ def etat_ir_9421_annuel(company, annee):
     }
 
 
+# ── PAIE33 — Livre de paie + journal de paie → écritures (via compta) ───────
+
+# Comptes CGNC utilisés par l'écriture de paie (barème CGNC marocain) :
+#  6171 Rémunérations du personnel (charge — brut)
+#  6174 Charges sociales (charge — parts patronales)
+#  4441 Caisses de sécurité sociale (dette CNSS/AMO sal. + pat.)
+#  4452 État, impôts & taxes à payer (dette IR retenu)
+#  4443 Caisses de retraite (dette CIMR)
+#  4432 Rémunérations dues au personnel (dette — net à payer)
+_COMPTE_REMUNERATION = '6171'
+_COMPTE_CHARGES_SOCIALES = '6174'
+_COMPTE_CNSS = '4441'
+_COMPTE_IR = '4452'
+_COMPTE_CIMR = '4443'
+_COMPTE_NET = '4432'
+
+
+def livre_de_paie(periode):
+    """Livre de paie d'une période (PAIE33) — registre récapitulatif.
+
+    Registre LECTURE SEULE de tous les bulletins VALIDÉS de la ``periode`` :
+    une ligne par salarié (brut, brut imposable, cotisations salariales &
+    patronales, IR, net à payer) plus les totaux généraux. Sert d'état légal du
+    livre de paie et de base au journal de paie. Renvoie un dict ``{'annee',
+    'mois', 'lignes': [...], 'totaux': {...}, 'nombre_salaries'}``.
+    """
+    from .models import BulletinPaie
+
+    bulletins = (
+        BulletinPaie.objects
+        .filter(company=periode.company, periode=periode,
+                statut=BulletinPaie.STATUT_VALIDE)
+        .select_related('profil', 'profil__employe')
+    )
+    champs = [
+        'brut', 'brut_imposable', 'cnss_salariale', 'cnss_patronale',
+        'amo_salariale', 'amo_patronale', 'cimr_salariale', 'ir',
+        'frais_professionnels', 'net_imposable', 'retenues', 'net_a_payer',
+        'charges_patronales',
+    ]
+    lignes = []
+    totaux = {champ: Decimal('0') for champ in champs}
+    for bulletin in bulletins:
+        employe = bulletin.profil.employe
+        ligne = {
+            'matricule': getattr(employe, 'matricule', '') if employe else '',
+            'nom': f'{employe.nom} {employe.prenom}'.strip()
+            if employe else '',
+        }
+        for champ in champs:
+            valeur = Decimal(getattr(bulletin, champ) or 0)
+            ligne[champ] = _q(valeur)
+            totaux[champ] += valeur
+        lignes.append(ligne)
+    return {
+        'annee': periode.annee,
+        'mois': periode.mois,
+        'lignes': lignes,
+        'totaux': {champ: _q(valeur) for champ, valeur in totaux.items()},
+        'nombre_salaries': len(lignes),
+    }
+
+
+def journal_de_paie(periode, *, created_by=None):
+    """Passe l'écriture comptable du journal de paie d'une période (PAIE33).
+
+    Agrège les bulletins VALIDÉS de la ``periode`` (via ``livre_de_paie``) et
+    crée UNE écriture de régularisation (OD) ÉQUILIBRÉE au 1ᵉʳ du mois suivant
+    (la fin de période) par ``compta.services.creer_ecriture_od`` — la paie
+    n'importe JAMAIS ``compta.models`` ni ``compta.views`` directement, elle
+    passe par la couche ``services`` de compta (cross-app WRITE autorisé).
+
+    Schéma de l'écriture (CGNC) :
+
+    * Débit 6171 Rémunérations du personnel = total BRUT ;
+    * Débit 6174 Charges sociales = total des charges PATRONALES ;
+    * Crédit 4441 Caisses de sécurité sociale = CNSS+AMO (salariales+patronales) ;
+    * Crédit 4452 État, impôts & taxes = IR retenu ;
+    * Crédit 4443 Caisses de retraite = CIMR salariale ;
+    * Crédit 4432 Rémunérations dues au personnel = net à payer + retenues.
+
+    L'écriture s'équilibre par construction (Σ débit = Σ crédit). Sème le plan
+    comptable au besoin. Renvoie l'écriture créée, ou ``None`` s'il n'y a aucun
+    bulletin validé (rien à passer).
+    """
+    from apps.compta import services as compta_services  # cross-app via services
+
+    registre = livre_de_paie(periode)
+    if registre['nombre_salaries'] == 0:
+        return None
+    totaux = registre['totaux']
+
+    company = periode.company
+    # Sème le plan comptable si un compte requis manque (idempotent).
+    requis = [
+        _COMPTE_REMUNERATION, _COMPTE_CHARGES_SOCIALES, _COMPTE_CNSS,
+        _COMPTE_IR, _COMPTE_CIMR, _COMPTE_NET,
+    ]
+    if any(compta_services.get_compte(company, num) is None for num in requis):
+        compta_services.seed_plan_comptable(company)
+
+    def compte(numero):
+        return compta_services.get_compte(company, numero)
+
+    brut = totaux['brut']
+    charges_pat = totaux['charges_patronales']
+    cnss_amo = (
+        totaux['cnss_salariale'] + totaux['cnss_patronale']
+        + totaux['amo_salariale'] + totaux['amo_patronale']
+    )
+    ir = totaux['ir']
+    cimr = totaux['cimr_salariale']
+
+    lignes = [
+        {'compte': compte(_COMPTE_REMUNERATION),
+         'libelle': 'Rémunérations du personnel', 'debit': brut, 'credit': 0},
+    ]
+    if charges_pat > 0:
+        lignes.append({
+            'compte': compte(_COMPTE_CHARGES_SOCIALES),
+            'libelle': 'Charges sociales patronales',
+            'debit': charges_pat, 'credit': 0})
+    if cnss_amo > 0:
+        lignes.append({
+            'compte': compte(_COMPTE_CNSS),
+            'libelle': 'CNSS / AMO à payer', 'debit': 0, 'credit': cnss_amo})
+    if ir > 0:
+        lignes.append({
+            'compte': compte(_COMPTE_IR),
+            'libelle': 'IR retenu à la source', 'debit': 0, 'credit': ir})
+    if cimr > 0:
+        lignes.append({
+            'compte': compte(_COMPTE_CIMR),
+            'libelle': 'CIMR à payer', 'debit': 0, 'credit': cimr})
+    # Net à payer = solde équilibrant (brut + charges pat − cotisations − IR
+    # − CIMR). On le calcule pour garantir l'équilibre exact même en cas
+    # d'arrondis.
+    total_debit = brut + (charges_pat if charges_pat > 0 else Decimal('0'))
+    total_credit_hors_net = (
+        (cnss_amo if cnss_amo > 0 else Decimal('0'))
+        + (ir if ir > 0 else Decimal('0'))
+        + (cimr if cimr > 0 else Decimal('0'))
+    )
+    net_equilibrant = _q(total_debit - total_credit_hors_net)
+    lignes.append({
+        'compte': compte(_COMPTE_NET),
+        'libelle': 'Rémunérations dues au personnel (net)',
+        'debit': 0, 'credit': net_equilibrant})
+
+    # Date de l'écriture = dernier jour du mois de paie (proxy : 28, toujours
+    # valide). Le détail jour exact n'a pas d'incidence comptable mensuelle.
+    date_ecriture = date(periode.annee, periode.mois, 28)
+    libelle = f'Journal de paie {periode.mois:02d}/{periode.annee}'
+    reference = f'PAIE-{periode.annee}-{periode.mois:02d}'
+    ecriture = compta_services.creer_ecriture_od(
+        company, date_ecriture, libelle, lignes,
+        reference=reference, created_by=created_by)
+    return ecriture
+
+
 # ── PAIE27 — Cumul annuel par employé (recalcul depuis bulletins validés) ────
 
 # Champs cumulés : (champ du CumulAnnuel, champ du BulletinPaie) sommés.

@@ -5,6 +5,8 @@ réservé au palier Administrateur/Responsable (``IsResponsableOrAdmin``).
 Les viewsets filtrent par ``request.user.company`` (TenantMixin) et posent la
 société côté serveur.
 """
+from django.core.exceptions import ValidationError as DjangoValidationError
+
 from rest_framework import filters, status, viewsets
 from rest_framework.decorators import action
 from rest_framework.response import Response
@@ -56,6 +58,8 @@ from .services import (
     generer_bulletin,
     generer_ordre_virement,
     importer_elements_rh,
+    journal_de_paie,
+    livre_de_paie,
     recalculer_cumul_annuel,
     valider_bulletin,
 )
@@ -231,6 +235,36 @@ class PeriodePaieViewSet(_PaieBaseViewSet):
         """État IR 9421 (retenues à la source) de la période (PAIE32)."""
         periode = self.get_object()
         return Response(etat_ir_9421(periode), status=status.HTTP_200_OK)
+
+    @action(detail=True, methods=['get'], url_path='livre-de-paie')
+    def livre_de_paie(self, request, pk=None):
+        """Livre de paie (registre récapitulatif) de la période (PAIE33)."""
+        periode = self.get_object()
+        return Response(livre_de_paie(periode), status=status.HTTP_200_OK)
+
+    @action(detail=True, methods=['post'], url_path='journal-de-paie')
+    def journal_de_paie(self, request, pk=None):
+        """Passe l'écriture comptable du journal de paie (PAIE33).
+
+        Agrège les bulletins validés et crée une écriture OD équilibrée via
+        ``compta.services``. Renvoie l'id de l'écriture (ou 400 s'il n'y a aucun
+        bulletin validé ou si la période comptable est verrouillée).
+        """
+        periode = self.get_object()
+        try:
+            ecriture = journal_de_paie(periode, created_by=request.user)
+        except DjangoValidationError as exc:  # période comptable verrouillée…
+            return Response(
+                {'detail': exc.messages if hasattr(exc, 'messages')
+                 else str(exc)},
+                status=status.HTTP_400_BAD_REQUEST)
+        if ecriture is None:
+            return Response(
+                {'detail': 'Aucun bulletin validé : rien à comptabiliser.'},
+                status=status.HTTP_400_BAD_REQUEST)
+        return Response(
+            {'ecriture_id': ecriture.id, 'reference': ecriture.reference},
+            status=status.HTTP_200_OK)
 
     @action(detail=False, methods=['get'], url_path='etat-ir-annuel')
     def etat_ir_annuel(self, request):
