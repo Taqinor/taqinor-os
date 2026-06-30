@@ -1816,3 +1816,151 @@ class Incident(models.Model):
 
     def __str__(self):
         return f'{self.reference or "INC"} — {self.titre}'
+
+
+# ── QHSE30 — Déclaration CNSS de l'accident du travail (échéance légale) ─────
+
+class DeclarationCnss(models.Model):
+    """Suivi de la déclaration CNSS d'un accident du travail + échéance légale (QHSE30).
+
+    Au Maroc, l'employeur doit déclarer tout accident du travail à la CNSS dans
+    un délai légal court (quelques jours après l'accident). Ce modèle PILOTE ce
+    suivi côté QHSE : pour un accident du travail donné, il calcule la
+    ``date_limite`` (= ``date_accident`` + ``delai_jours``), enregistre la
+    déclaration effective (``date_declaration`` + ``numero_declaration``) et
+    expose un ``statut`` (à déclarer / déclaré / hors délai) afin de faire
+    remonter les déclarations qui approchent de l'échéance ou la dépassent.
+
+    L'accident lui-même vit dans ``rh`` (``rh.AccidentTravail``, FG181) et n'est
+    référencé QUE par FK-CHAÎNE (``'rh.AccidentTravail'``) — jamais par import du
+    modèle ``rh`` (cf. ``InductionSecurite.employe``). Le détail blessure /
+    salarié / CNSS-côté-RH reste dans ``rh`` ; cette couche QHSE est le PILOTAGE
+    de l'échéance réglementaire, séparé et additif.
+
+    La ``date_accident`` est COPIÉE / saisie à la création (base du calcul de
+    l'échéance) : on ne lit pas en boucle l'accident RH pour ne pas coupler les
+    deux apps. Le ``delai_jours`` est paramétrable (défaut ``DELAI_LEGAL_JOURS``)
+    pour absorber une évolution réglementaire sans migration.
+
+    ``statut_calcule(today)`` dérive l'état réel à une date donnée : ``declare``
+    si une déclaration est enregistrée, sinon ``hors_delai`` si l'échéance est
+    dépassée, sinon ``a_declarer``. Le ``statut`` stocké est rafraîchi côté
+    serveur (``save``) à partir de ce calcul tant qu'aucune déclaration n'a été
+    saisie — une fois déclaré, l'état est figé sur ``declare``.
+
+    Multi-société : ``company`` est posée côté serveur (jamais lue du corps de
+    requête). Une seule déclaration par (société, accident) — ``unique_together``.
+
+    RUNTIME-SAFETY (leçon FG136) : les codes bornés ``statut`` ≤ 20 ;
+    ``numero_declaration`` plafonné ; les notes, potentiellement longues, sont un
+    ``TextField`` (aucune limite à dépasser).
+    """
+
+    # Délai légal CNSS par défaut (jours) — paramétrable par déclaration.
+    DELAI_LEGAL_JOURS = 2
+
+    class Statut(models.TextChoices):
+        A_DECLARER = 'a_declarer', 'À déclarer'
+        DECLARE = 'declare', 'Déclaré'
+        HORS_DELAI = 'hors_delai', 'Hors délai'
+
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='qhse_declarations_cnss',
+        verbose_name='Société',
+    )
+    # FK-CHAÎNE cross-app vers l'accident du travail (rh.AccidentTravail, FG181) :
+    # jamais un import du modèle rh.
+    accident_travail = models.ForeignKey(
+        'rh.AccidentTravail',
+        on_delete=models.CASCADE,
+        related_name='qhse_declarations_cnss',
+        verbose_name='Accident du travail',
+    )
+    # Base du calcul de l'échéance : copiée / saisie à la création (pas de lecture
+    # en boucle de l'accident RH).
+    date_accident = models.DateField(verbose_name="Date de l'accident")
+    # Délai légal CNSS (jours) — paramétrable pour absorber une évolution
+    # réglementaire sans migration.
+    delai_jours = models.PositiveSmallIntegerField(
+        default=DELAI_LEGAL_JOURS, verbose_name='Délai légal (jours)')
+    # Échéance calculée côté serveur (= date_accident + delai_jours) — jamais lue
+    # du corps de requête.
+    date_limite = models.DateField(
+        null=True, blank=True, verbose_name='Date limite de déclaration')
+    # Déclaration effective : date + référence CNSS (vides tant que non déclaré).
+    date_declaration = models.DateField(
+        null=True, blank=True, verbose_name='Date de déclaration')
+    numero_declaration = models.CharField(
+        max_length=80, blank=True, default='',
+        verbose_name='N° / référence de déclaration')
+    statut = models.CharField(
+        max_length=20, choices=Statut.choices,
+        default=Statut.A_DECLARER, verbose_name='Statut')
+    notes = models.TextField(
+        blank=True, default='', verbose_name='Notes')
+    date_creation = models.DateTimeField(
+        auto_now_add=True, verbose_name='Créé le')
+    date_modification = models.DateTimeField(
+        auto_now=True, verbose_name='Modifié le')
+
+    class Meta:
+        verbose_name = "Déclaration CNSS d'accident du travail"
+        verbose_name_plural = "Déclarations CNSS d'accident du travail"
+        ordering = ['-id']
+        unique_together = [('company', 'accident_travail')]
+        indexes = [
+            models.Index(
+                fields=['company', 'statut'],
+                name='qhse_declcnss_co_statut',
+            ),
+            models.Index(
+                fields=['company', 'date_limite'],
+                name='qhse_declcnss_co_limite',
+            ),
+        ]
+
+    def calcul_date_limite(self):
+        """Échéance légale = ``date_accident`` + ``delai_jours`` (ou None)."""
+        from datetime import timedelta
+        if self.date_accident is None:
+            return None
+        return self.date_accident + timedelta(days=self.delai_jours or 0)
+
+    def statut_calcule(self, today=None):
+        """État réel de la déclaration à une date donnée.
+
+        * ``declare`` — une déclaration est enregistrée (``date_declaration``
+          renseignée) ; l'état est alors figé, indépendamment de l'échéance ;
+        * ``hors_delai`` — pas (encore) déclaré ET ``date_limite`` strictement
+          dépassée (``< today``) ;
+        * ``a_declarer`` — pas déclaré et l'échéance n'est pas (encore) dépassée.
+
+        Lecture seule, aucune mutation.
+        """
+        from django.utils import timezone
+        if self.date_declaration is not None:
+            return self.Statut.DECLARE
+        if today is None:
+            today = timezone.localdate()
+        limite = self.date_limite or self.calcul_date_limite()
+        if limite is not None and limite < today:
+            return self.Statut.HORS_DELAI
+        return self.Statut.A_DECLARER
+
+    def save(self, *args, **kwargs):
+        """Recalcule l'échéance et rafraîchit le statut côté serveur.
+
+        La ``date_limite`` est TOUJOURS dérivée de ``date_accident`` +
+        ``delai_jours`` (jamais lue du corps). Le ``statut`` est aligné sur
+        ``statut_calcule()`` — déclaré si une déclaration existe, sinon hors
+        délai/à déclarer selon l'échéance.
+        """
+        self.date_limite = self.calcul_date_limite()
+        self.statut = self.statut_calcule()
+        super().save(*args, **kwargs)
+
+    def __str__(self):
+        return (f'Décl. CNSS accident#{self.accident_travail_id} — '
+                f'{self.get_statut_display()}')
