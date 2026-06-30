@@ -363,15 +363,26 @@ def average_cost_with_source(produit):
 
     Renvoie (cout, source) où source vaut 'achats' (dérivé des réceptions de
     bons de commande fournisseur) ou 'catalogue' (repli sur prix_achat quand
-    aucun achat reçu). INTERNE."""
+    aucun achat reçu). INTERNE.
+
+    FG67/DC38 — le coût intègre les FRAIS ANNEXES (fret/douane/TVA import/
+    transit) de chaque ligne via le coût débarqué unitaire : aucun champ de
+    coût parallèle, les frais sont repliés dans CE même coût moyen. Une ligne
+    sans frais annexes (0) garde exactement le comportement historique."""
     from .models import LigneBonCommandeFournisseur
     lignes = LigneBonCommandeFournisseur.objects.filter(
         produit=produit, quantite_recue__gt=0).values_list(
-        'quantite_recue', 'prix_achat_unitaire')
+        'quantite_recue', 'prix_achat_unitaire', 'quantite', 'frais_annexes')
     total_q, total_v = 0, Decimal('0')
-    for q, pu in lignes:
-        total_q += q
-        total_v += q * (pu or Decimal('0'))
+    for q_recue, pu, q_ligne, frais in lignes:
+        pu = pu or Decimal('0')
+        frais = frais or Decimal('0')
+        # Coût débarqué unitaire : frais annexes répartis sur la quantité
+        # COMMANDÉE de la ligne (q_ligne), valorisés sur la quantité REÇUE.
+        if q_ligne and frais:
+            pu = pu + (frais / Decimal(str(q_ligne)))
+        total_q += q_recue
+        total_v += q_recue * pu
     if total_q:
         return (total_v / total_q).quantize(Decimal('0.01')), 'achats'
     return (produit.prix_achat or Decimal('0')), 'catalogue'
@@ -382,6 +393,115 @@ def average_cost(produit):
     réceptions de bons de commande fournisseur ; repli sur le prix d'achat
     catalogue si aucun achat reçu. INTERNE."""
     return average_cost_with_source(produit)[0]
+
+
+# ── FG67 — Méthode de valorisation : coût moyen pondéré (défaut) ou FIFO ──────
+# La méthode est un réglage société (CompanyProfile.stock_valuation_method,
+# 'wavg' par défaut). Le toggle CHAMP vit dans `parametres` (foundation) ; ce
+# module le LIT prudemment via getattr et retombe sur 'wavg' si le champ
+# n'existe pas encore — on ne crée aucun champ hors de stock. INTERNE.
+
+VALUATION_WAVG = 'wavg'
+VALUATION_FIFO = 'fifo'
+
+
+def stock_valuation_method(company):
+    """Méthode de valorisation choisie par la société : 'wavg' (coût moyen
+    pondéré, défaut) ou 'fifo'. Lit CompanyProfile.stock_valuation_method si
+    présent (couche parametres), repli prudent sur 'wavg' sinon. Lecture seule."""
+    if company is None:
+        return VALUATION_WAVG
+    try:
+        from apps.parametres.models_company import CompanyProfile
+        profile = CompanyProfile.objects.filter(company=company).first()
+    except Exception:  # parametres absent / champ pas encore migré
+        profile = None
+    method = getattr(profile, 'stock_valuation_method', None)
+    return method if method in (VALUATION_WAVG, VALUATION_FIFO) else VALUATION_WAVG
+
+
+def fifo_cost_with_source(produit):
+    """Coût FIFO unitaire d'un produit + sa SOURCE (FG67).
+
+    FIFO : le stock restant est valorisé aux coûts d'achat débarqués des
+    réceptions les PLUS RÉCENTES (les premières entrées sont consommées en
+    premier ; il reste donc les dernières). On reconstitue le coût unitaire des
+    `quantite_stock` dernières unités reçues. Repli sur le prix d'achat
+    catalogue ('catalogue') si aucune réception. INTERNE — jamais client-facing.
+
+    Renvoie (cout_unitaire_moyen_des_couches_restantes, source)."""
+    from .models import LigneBonCommandeFournisseur
+    # Couches d'entrée, de la plus récente à la plus ancienne (FIFO -> il reste
+    # les dernières entrées). On valorise au coût débarqué unitaire.
+    lignes = (LigneBonCommandeFournisseur.objects
+              .filter(produit=produit, quantite_recue__gt=0)
+              .order_by('-bon_commande__date_creation', '-id'))
+    restant = produit.quantite_stock or 0
+    if restant <= 0:
+        return (produit.prix_achat or Decimal('0')), 'catalogue'
+    pris_q, pris_v = 0, Decimal('0')
+    for ligne in lignes:
+        if restant <= 0:
+            break
+        couche_q = min(ligne.quantite_recue, restant)
+        pris_q += couche_q
+        pris_v += couche_q * ligne.cout_unitaire_debarque
+        restant -= couche_q
+    if pris_q == 0:
+        return (produit.prix_achat or Decimal('0')), 'catalogue'
+    cout = (pris_v / pris_q).quantize(Decimal('0.01'))
+    return cout, 'achats'
+
+
+def valuation_cost_with_source(produit, method=None):
+    """Coût unitaire de valorisation d'un produit selon la méthode société
+    (FG67). 'wavg' -> coût moyen pondéré débarqué ; 'fifo' -> couches FIFO
+    restantes. Si `method` n'est pas fourni, on lit le réglage société.
+    Renvoie (cout, source). INTERNE."""
+    if method is None:
+        method = stock_valuation_method(produit.company)
+    if method == VALUATION_FIFO:
+        return fifo_cost_with_source(produit)
+    return average_cost_with_source(produit)
+
+
+# ── DC28 — UN seul résolveur du coût d'achat courant ─────────────────────────
+# Précédence DOCUMENTÉE, une seule porte d'entrée pour marge / auto-fill /
+# job-costing (ils lisent CET accesseur, jamais Produit.prix_achat en direct) :
+#
+#   1. accord de prix fournisseur actif (modèle à venir : aucun accord
+#      n'existe encore au catalogue → étape inerte aujourd'hui, point
+#      d'extension réservé) ;
+#   2. PrixFournisseur — le DERNIER PAYÉ (date_dernier_achat la plus récente,
+#      prix > 0) chez n'importe quel fournisseur de ce produit ;
+#   3. repli : Produit.prix_achat (prix d'achat catalogue).
+#
+# INTERNE — jamais client-facing (règle marges). Renvoie (cout, source) où
+# source ∈ {'accord', 'prix_fournisseur', 'catalogue'}.
+
+def cout_achat_courant_with_source(produit):
+    """Coût d'achat courant d'un produit + sa SOURCE, selon la précédence DC28.
+
+    Renvoie ``(Decimal, source)`` avec ``source`` ∈ {'accord',
+    'prix_fournisseur', 'catalogue'}. Accesseur UNIQUE — marge / auto-fill /
+    job-costing passent par ici. INTERNE."""
+    # 1. Accord de prix actif — point d'extension réservé (aucun modèle d'accord
+    #    n'existe encore ; quand il arrivera, le brancher ici en priorité).
+    # 2. PrixFournisseur : dernier payé (date la plus récente), prix > 0.
+    dernier = (produit.prix_fournisseurs
+               .filter(prix_achat__gt=0)
+               .order_by('-date_dernier_achat', '-id')
+               .first())
+    if dernier is not None:
+        return (Decimal(str(dernier.prix_achat)), 'prix_fournisseur')
+    # 3. Repli catalogue.
+    return (produit.prix_achat or Decimal('0'), 'catalogue')
+
+
+def cout_achat_courant(produit):
+    """Coût d'achat courant d'un produit (Decimal), selon la précédence DC28.
+    Accesseur UNIQUE pour marge / auto-fill / job-costing. INTERNE."""
+    return cout_achat_courant_with_source(produit)
 
 
 def stock_valuation_by_location(company):
@@ -400,10 +520,13 @@ def stock_valuation_by_location(company):
                      'valeur': Decimal('0')} for e in emplacements}
     lignes = []
     grand_total = Decimal('0')
+    # FG67 — méthode société (coût moyen pondéré débarqué ou FIFO), résolue une
+    # seule fois pour toute la passe.
+    method = stock_valuation_method(company)
     produits = (Produit.objects.filter(company=company, is_archived=False)
                 .prefetch_related('stocks_emplacement'))
     for p in produits:
-        cout, source = average_cost_with_source(p)
+        cout, source = valuation_cost_with_source(p, method=method)
         for b in stock_breakdown(p):
             if b['quantite'] == 0:
                 continue
@@ -1324,3 +1447,57 @@ def previsions_reappro(company, nb_mois=6):
         })
     result.sort(key=lambda x: -x['consommation_mensuelle_moy'])
     return result
+
+
+# ── FG66 / DC36 — Explosion d'un kit (BOM) en lignes composant ────────────────
+# DC36 : aucun prix / marque / TVA n'est stocké sur le kit — l'explosion lit ces
+# attributs sur le Produit composant au moment de l'insertion. Point d'entrée
+# cross-app : `ventes` insère un kit dans un devis en appelant CE service (puis
+# crée ses propres lignes de devis), jamais en important le modèle stock.
+
+def exploser_kit(kit, quantite_kit=1):
+    """Explose un kit en ses lignes composant pour ``quantite_kit`` unités.
+
+    Renvoie une liste de dicts triés par désignation :
+      {produit_id, sku, designation, quantite, prix_vente_unitaire, tva,
+       marque, disponible}
+    où ``quantite`` = quantité du composant × ``quantite_kit``. Le PRIX, la TVA
+    et la MARQUE proviennent du ``Produit`` (DC36 — jamais stockés sur le kit).
+    ``prix_vente_unitaire`` est le prix de vente catalogue (client-facing OK).
+    Le prix d'ACHAT n'est jamais exposé ici. INTERNE/écran ; côté ventes c'est
+    cette liste qui devient des lignes de devis."""
+    from decimal import Decimal, InvalidOperation
+    try:
+        facteur = Decimal(str(quantite_kit))
+    except (InvalidOperation, TypeError, ValueError):
+        facteur = Decimal('1')
+    out = []
+    composants = (kit.composants
+                  .select_related('produit')
+                  .order_by('produit__nom'))
+    for c in composants:
+        p = c.produit
+        qte = (c.quantite or Decimal('0')) * facteur
+        out.append({
+            'produit_id': p.id,
+            'sku': p.sku or '',
+            'designation': p.nom,
+            'quantite': qte,
+            # DC36 — prix / TVA / marque lus sur le composant, jamais sur le kit.
+            'prix_vente_unitaire': p.prix_vente,
+            'tva': p.tva,
+            'marque': p.marque,
+            'disponible': p.quantite_stock,
+        })
+    return out
+
+
+def exploser_kit_par_id(company, kit_id, quantite_kit=1):
+    """Variante scopée société : explose le kit ``kit_id`` de ``company`` (ou
+    None si introuvable / archivé). Point d'entrée cross-app pour `ventes`."""
+    from .models import KitProduit
+    kit = KitProduit.objects.filter(
+        id=kit_id, company=company, is_archived=False).first()
+    if kit is None:
+        return None
+    return exploser_kit(kit, quantite_kit)

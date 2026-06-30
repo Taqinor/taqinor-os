@@ -61,6 +61,39 @@ def get_fournisseur_by_id(company, fournisseur_id):
         id=fournisseur_id, company=company).first()
 
 
+# ── DC30 / DC31 — Identité tiers fournisseur DÉRIVÉE (jamais re-stockée) ──────
+# La Comptabilité (comptes auxiliaires tiers, DC30) et les Contrats (parties,
+# DC31) ne RECOPIENT JAMAIS nom/ICE/IF/RC/RIB d'un fournisseur sur leur propre
+# modèle : ils gardent une référence (FK chaîne ``stock.Fournisseur`` ou couple
+# typé tiers_type='fournisseur'/tiers_id) et LISENT l'identité au vol via ce
+# sélecteur. Identité = source unique sur Fournisseur (DC15). LECTURE SEULE.
+
+def get_fournisseur_tiers_identity(company, fournisseur_id):
+    """Identité légale d'un fournisseur (tiers) pour un compte auxiliaire compta
+    (DC30) ou une partie au contrat (DC31), scopée société.
+
+    Renvoie ``{type_tiers, id, nom, ice, identifiant_fiscal, rc, rib, email,
+    telephone, adresse}`` ou ``None`` si le fournisseur n'appartient pas à la
+    société. Aucune de ces valeurs ne doit être recopiée sur le compte/la
+    partie : c'est l'accesseur unique d'identité tiers fournisseur. LECTURE
+    SEULE."""
+    f = get_fournisseur_by_id(company, fournisseur_id)
+    if f is None:
+        return None
+    return {
+        'type_tiers': 'fournisseur',
+        'id': f.id,
+        'nom': f.nom,
+        'ice': f.ice,
+        'identifiant_fiscal': f.identifiant_fiscal,
+        'rc': f.rc,
+        'rib': f.rib,
+        'email': f.email,
+        'telephone': f.telephone,
+        'adresse': f.adresse,
+    }
+
+
 # ── FG131 — Achats / AP : données pour le rapprochement 3 voies ──────────────
 # Point d'entrée cross-app LECTURE SEULE pour la Comptabilité (apps.compta) : le
 # rapprochement 3 voies (BC ↔ réception ↔ facture fournisseur) lit les trois
