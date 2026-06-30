@@ -24,7 +24,8 @@ from django.db.models import Avg
 
 from .models import (
     ActionCorrectivePreventive, Audit, DeclarationCnss, EvaluationRisque,
-    NonConformite, NotationFinChantier, PermisTravail, PlanInspectionChantier,
+    Incident, NonConformite, NotationFinChantier,
+    PermisTravail, PlanInspectionChantier,
     ProcedureQualite, ReleveControle, ReleveCourbeIV, RetourClientQualite,
 )
 
@@ -755,4 +756,115 @@ def document_unique_valide(company, chantier_id):
         'nb_validees': len(validees),
         'nb_validees_avec_lignes': len(avec_lignes),
         'motif': motif,
+    }
+
+
+# ── QHSE34 — Statistiques TF / TG (taux de fréquence / gravité) ────────────
+
+# Constantes normatives des indicateurs sécurité du travail (OIT / usage).
+# TF = (accidents avec arrêt × 1 000 000) / heures travaillées.
+# TG = (jours d'arrêt × 1 000) / heures travaillées.
+TF_BASE_HEURES = 1_000_000
+TG_BASE_HEURES = 1_000
+
+
+def heures_travaillees_chantiers(chantier_ids, company=None):
+    """Somme des heures travaillées de plusieurs chantiers, lue depuis RH.
+
+    Lecture cross-app CONFORME : les heures de main-d'œuvre vivent dans ``rh``
+    (``FeuilleTemps``) et sont lues via le SÉLECTEUR ``rh`` lecture-seule
+    ``labour_hours_for_installation`` (FG167) — jamais par un import de
+    ``rh.models``. Chaque chantier (référence lâche par id) est sommé ; le total
+    est renvoyé en ``Decimal``. Une liste vide renvoie ``Decimal('0')``.
+
+    Sert d'entrée « heures travaillées depuis RH » au calcul TF / TG (QHSE34).
+    """
+    from decimal import Decimal
+
+    total = Decimal('0')
+    if not chantier_ids:
+        return total
+    # Import function-local pour éviter tout cycle d'import au démarrage.
+    from apps.rh.selectors import labour_hours_for_installation
+
+    for cid in chantier_ids:
+        if cid in (None, ''):
+            continue
+        try:
+            res = labour_hours_for_installation(cid, company=company)
+        except Exception:  # pragma: no cover - défensif (RH absent / erreur)
+            continue
+        total += res.get('total_heures') or Decimal('0')
+    return total
+
+
+def statistiques_tf_tg(company, heures_travaillees, date_debut=None,
+                       date_fin=None, jours_perdus=None):
+    """Taux de fréquence (TF) et de gravité (TG) des accidents (QHSE34).
+
+    Indicateurs sécurité standards calculés sur le registre QHSE des incidents
+    (``Incident`` — QHSE29), scopé société :
+
+    * ``TF`` = (accidents avec arrêt × ``1 000 000``) / heures travaillées ;
+    * ``TG`` = (jours d'arrêt × ``1 000``) / heures travaillées.
+
+    Les ``heures_travaillees`` sont fournies en entrée — typiquement la somme des
+    feuilles de temps RH (cf. ``heures_travaillees_chantiers``, qui lit ``rh`` via
+    son sélecteur, jamais par import de modèle). Le nombre d'accidents AVEC ARRÊT
+    est dérivé du registre QHSE : on retient les ``Incident`` de type
+    ``accident`` sur la période. Le QHSE ne stocke pas les jours d'arrêt
+    (détail RH) : ``jours_perdus`` est donc fourni en entrée (0 par défaut) — le
+    TG reste calculable dès qu'il est connu.
+
+    Renvoie un dict (TF / TG ``None`` si ``heures_travaillees`` ≤ 0, indéfini) :
+    ``{
+        'heures_travaillees': Decimal,
+        'accidents_avec_arret': int,
+        'jours_perdus': int,
+        'tf': Decimal | None,
+        'tg': Decimal | None,
+        'periode': {'debut': str|None, 'fin': str|None},
+    }``. Lecture seule, aucune mutation, aucun import cross-app de modèle.
+    """
+    from decimal import Decimal
+
+    try:
+        heures = Decimal(str(heures_travaillees or 0))
+    except (TypeError, ValueError, ArithmeticError):
+        heures = Decimal('0')
+
+    qs = Incident.objects.filter(
+        company=company, type_incident=Incident.TypeIncident.ACCIDENT)
+    if date_debut is not None:
+        qs = qs.filter(date_incident__gte=date_debut)
+    if date_fin is not None:
+        qs = qs.filter(date_incident__lte=date_fin)
+    accidents = qs.count()
+
+    try:
+        jours = int(jours_perdus) if jours_perdus is not None else 0
+    except (TypeError, ValueError):
+        jours = 0
+    if jours < 0:
+        jours = 0
+
+    if heures > 0:
+        tf = (Decimal(accidents) * TF_BASE_HEURES / heures).quantize(
+            Decimal('0.01'))
+        tg = (Decimal(jours) * TG_BASE_HEURES / heures).quantize(
+            Decimal('0.01'))
+    else:
+        tf = None
+        tg = None
+
+    return {
+        'heures_travaillees': heures,
+        'accidents_avec_arret': accidents,
+        'jours_perdus': jours,
+        'tf': tf,
+        'tg': tg,
+        'periode': {
+            'debut': date_debut.isoformat() if date_debut else None,
+            'fin': date_fin.isoformat() if date_fin else None,
+        },
     }

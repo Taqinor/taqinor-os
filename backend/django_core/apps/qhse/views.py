@@ -49,9 +49,10 @@ from .selectors import (
     capa_en_retard, chantier_peut_cloturer, courbes_iv_for_chantier,
     criticite_summary, declarations_cnss_a_echeance, document_unique_valide,
     hold_points_status,
+    heures_travaillees_chantiers,
     iso9001_readiness, permis_travail_expirant, photos_controle_par_phase,
     procedure_qualite_courante, procedure_qualite_versions,
-    procedures_qualite_courantes, satisfaction_moyenne,
+    procedures_qualite_courantes, satisfaction_moyenne, statistiques_tf_tg,
 )
 from .services import (
     activer_procedure, calculer_score_audit, calculer_score_notation,
@@ -1239,6 +1240,45 @@ class IncidentViewSet(_QhseBaseViewSet):
         incident = self.perform_create(serializer)
         out = self.get_serializer(incident)
         return Response(out.data, status=status.HTTP_201_CREATED)
+
+    @action(detail=False, methods=['get'], url_path='statistiques-tf-tg')
+    def statistiques_tf_tg(self, request):
+        """Statistiques TF / TG des accidents du travail (QHSE34).
+
+        TF = (accidents avec arrêt × 1 000 000) / heures travaillées ;
+        TG = (jours d'arrêt × 1 000) / heures travaillées.
+
+        Heures travaillées : ``?heures=`` (nombre) OU ``?chantier_ids=1,2,3``
+        (sommées depuis RH via le sélecteur ``labour_hours_for_installation``).
+        ``?jours_perdus=`` (défaut 0), ``?date_debut=`` / ``?date_fin=``
+        (AAAA-MM-JJ) bornent la période. Le compte d'accidents vient du registre
+        QHSE (``Incident`` de type ``accident``), scopé société.
+        """
+        company = request.user.company
+
+        chantier_ids_raw = request.query_params.get('chantier_ids')
+        heures_raw = request.query_params.get('heures')
+        if heures_raw not in (None, ''):
+            heures = heures_raw
+        elif chantier_ids_raw not in (None, ''):
+            chantier_ids = [
+                c.strip() for c in chantier_ids_raw.split(',') if c.strip()]
+            heures = heures_travaillees_chantiers(chantier_ids, company=company)
+        else:
+            heures = 0
+
+        stats = statistiques_tf_tg(
+            company,
+            heures_travaillees=heures,
+            date_debut=request.query_params.get('date_debut') or None,
+            date_fin=request.query_params.get('date_fin') or None,
+            jours_perdus=request.query_params.get('jours_perdus'),
+        )
+        # Sérialise les Decimal en chaînes pour un JSON stable.
+        stats['heures_travaillees'] = str(stats['heures_travaillees'])
+        stats['tf'] = None if stats['tf'] is None else str(stats['tf'])
+        stats['tg'] = None if stats['tg'] is None else str(stats['tg'])
+        return Response(stats)
 
 
 class DeclarationCnssViewSet(_QhseBaseViewSet):
