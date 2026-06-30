@@ -1394,3 +1394,114 @@ def purger_definitivement(document):
     # Les gardes légales (GED23/GED24) sont posées dans `Document.delete()` —
     # filet ultime ; on les laisse lever telles quelles (traduites en 403).
     document.delete()
+
+
+# ── GED27 — Modèles de documents (fusion/mailing → PDF WeasyPrint) ───────────
+#
+# Couche GÉNÉRIQUE de documents INTERNES (attestations, courriers, mailing) :
+# un modèle porte un corps HTML avec des jetons ``{{ champ }}``, fusionné avec un
+# dictionnaire de données puis rendu en PDF via WeasyPrint. SÉPARÉE et DISTINCTE
+# du chemin `/proposal` (rule #4) — qui reste l'UNIQUE chemin des PDF de DEVIS
+# client. On n'importe ni ne route jamais par le moteur premium ici.
+
+
+def fusionner_modele(corps_html, contexte):
+    """GED27 — Fusionne un corps HTML avec un contexte (substitution SÛRE).
+
+    Substitue les jetons ``{{ champ }}`` du corps par les valeurs de `contexte`
+    via le moteur de gabarit Django dans un contexte EXPLICITE et borné — JAMAIS
+    d'``eval`` ni d'exécution de code arbitraire. Un jeton inconnu est rendu vide
+    (comportement standard du moteur), jamais une fuite d'objet Python.
+
+    Le `contexte` est un dictionnaire plat fourni par l'appelant (les données de
+    fusion d'un courrier/mailing). Renvoie le HTML fusionné (str).
+    """
+    from django.template import Context, Template
+    if not corps_html:
+        return ''
+    safe_contexte = dict(contexte or {})
+    template = Template(str(corps_html))
+    return template.render(Context(safe_contexte))
+
+
+def _modele_html_document(modele, contexte):
+    """GED27 — Construit le HTML complet (en-tête + corps fusionné) d'un modèle.
+
+    Enrobe le corps fusionné dans un squelette HTML imprimable minimal (police,
+    marges) — même esprit que le PDF interne de `contrats` (hors `/proposal`).
+    """
+    corps = fusionner_modele(modele.corps_html, contexte)
+    titre = (modele.nom or 'Document').replace('<', '&lt;').replace('>', '&gt;')
+    return (
+        "<!DOCTYPE html><html lang='fr'><head><meta charset='utf-8'>"
+        "<style>"
+        "body{font-family:sans-serif;font-size:11pt;color:#1a1a1a;"
+        "margin:2cm;line-height:1.5;}"
+        "h1{font-size:16pt;border-bottom:2px solid #2b5cab;padding-bottom:6px;}"
+        "</style></head><body>"
+        f"<h1>{titre}</h1>"
+        f"<div class='corps'>{corps}</div>"
+        "</body></html>"
+    )
+
+
+def rendre_modele(modele, contexte):
+    """GED27 — Fusionne un modèle avec un contexte et rend un PDF (bytes).
+
+    Substitue les jetons ``{{ champ }}`` du `corps_html` (via `fusionner_modele`,
+    contexte borné, jamais d'exécution de code), enrobe le résultat dans un
+    squelette HTML imprimable, puis rend un PDF via WeasyPrint.
+
+    PDF INTERNE/administratif (attestation, courrier, mailing) — ce N'EST PAS un
+    PDF de devis : `/proposal` reste l'unique chemin des PDF de devis client
+    (rule #4). On n'importe ni ne route jamais par le moteur premium.
+
+    Import de WeasyPrint FONCTION-LOCAL et gardé : la lib est lourde (chargée à
+    la demande) et le module reste import-safe là où WeasyPrint n'est pas
+    chargeable. WeasyPrint EST une dépendance du projet ; s'il venait à manquer
+    on lève une `RuntimeError` claire (jamais un crash silencieux).
+
+    Renvoie les octets du PDF (commençant par ``%PDF``).
+    """
+    try:
+        import weasyprint  # import local : lib lourde, chargée à la demande.
+    except Exception as exc:  # pragma: no cover - WeasyPrint est installé.
+        raise RuntimeError(
+            "WeasyPrint est requis pour rendre un modèle de document en PDF "
+            f"mais n'a pas pu être chargé : {exc}")
+    html_str = _modele_html_document(modele, contexte)
+    return weasyprint.HTML(string=html_str).write_pdf()
+
+
+def generer_document(modele, contexte, *, company, created_by=None,
+                     nom=None, cabinet_nom='Modèles', folder_nom='Mailing'):
+    """GED27 — Rend un modèle en PDF et le DÉPOSE comme document GED.
+
+    Fusionne + rend le PDF (`rendre_modele`) puis l'enregistre dans le
+    référentiel GED en RÉUTILISANT le service de dépôt existant
+    (`deposit_document`, lui-même fondé sur `create_document`/`add_version` et le
+    stockage objet `records.storage`) — on ne duplique ni le stockage ni le
+    versionnage. Multi-tenant : `company` posée CÔTÉ SERVEUR (jamais lue du corps
+    de requête), cohérente avec le modèle.
+
+    L'idempotence du dépôt est ancrée sur (`source_type`='ged.modeledocument',
+    `source_id`=pk du modèle) : un mailing répété pour le MÊME modèle retrouve le
+    document déjà déposé au lieu d'en dupliquer un (comportement standard de
+    `deposit_document`). Renvoie `(document, created)`.
+    """
+    if modele.company_id is not None \
+            and modele.company_id != getattr(company, 'id', company):
+        raise ValueError("Le modèle doit appartenir à la même société.")
+    pdf_bytes = rendre_modele(modele, contexte)
+    return deposit_document(
+        company=company,
+        nom=nom or modele.nom,
+        source_type='ged.modeledocument',
+        source_id=modele.pk,
+        contenu_bytes=pdf_bytes,
+        mime='application/pdf',
+        description=modele.description or '',
+        cabinet_nom=cabinet_nom,
+        folder_nom=folder_nom,
+        created_by=created_by,
+    )

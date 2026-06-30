@@ -32,15 +32,15 @@ from . import selectors, services
 from .models import (
     ArchivageLegal, ArchivageLegalError, Cabinet, Coffre, DemandeApprobation,
     Document, DocumentLien, DocumentTag, DocumentTagAssignment,
-    DocumentVersion, Folder, LegalHold, LegalHoldError, PartageGed,
-    PolitiqueRetention,
+    DocumentVersion, Folder, LegalHold, LegalHoldError, ModeleDocument,
+    PartageGed, PolitiqueRetention,
 )
 from .serializers import (
     ArchivageLegalSerializer, CabinetSerializer, CoffreSerializer,
     DemandeApprobationSerializer, DocumentLienSerializer, DocumentSerializer,
     DocumentTagAssignmentSerializer, DocumentTagSerializer,
     DocumentVersionSerializer, FolderSerializer, LegalHoldSerializer,
-    PartageGedSerializer, PolitiqueRetentionSerializer,
+    ModeleDocumentSerializer, PartageGedSerializer, PolitiqueRetentionSerializer,
 )
 
 READ_ACTIONS = ['list', 'retrieve']
@@ -1456,6 +1456,119 @@ class LegalHoldViewSet(TenantMixin,
             return Response(
                 {'detail': str(exc)}, status=status.HTTP_403_FORBIDDEN)
         return Response({'leves': leves}, status=status.HTTP_200_OK)
+
+
+class ModeleDocumentViewSet(TenantMixin, viewsets.ModelViewSet):
+    """GED27 — Modèles de documents (fusion/mailing → PDF WeasyPrint, scopé société).
+
+    CRUD complet d'un `ModeleDocument` (corps HTML avec jetons ``{{ champ }}``) +
+    deux actions de fusion :
+      * `rendre`  — fusionne le modèle avec un `contexte` fourni et RENVOIE le PDF
+        (téléchargement direct), sans rien stocker ;
+      * `generer` — fusionne, rend le PDF et le DÉPOSE comme document GED (réutilise
+        `services.deposit_document`).
+
+    Couche GÉNÉRIQUE de documents INTERNES (attestations, courriers, mailing) —
+    SÉPARÉE et DISTINCTE du chemin `/proposal` (rule #4), qui reste l'UNIQUE
+    chemin des PDF de DEVIS client. La société est posée CÔTÉ SERVEUR (TenantMixin)
+    — jamais lue du corps. Lecture : tout rôle authentifié ; écriture/rendu :
+    responsable/admin."""
+    queryset = ModeleDocument.objects.select_related(
+        'company', 'created_by').all()
+    serializer_class = ModeleDocumentSerializer
+    filter_backends = [filters.SearchFilter, filters.OrderingFilter]
+    search_fields = ['nom', 'description', 'categorie']
+    ordering_fields = ['nom', 'created_at']
+
+    def get_permissions(self):
+        if self.action in READ_ACTIONS:
+            return [IsAnyRole()]
+        return [IsResponsableOrAdmin()]
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        actif = self.request.query_params.get('actif')
+        if actif in ('1', 'true'):
+            qs = qs.filter(actif=True)
+        elif actif in ('0', 'false'):
+            qs = qs.filter(actif=False)
+        return qs
+
+    def perform_create(self, serializer):
+        # company + created_by posés côté serveur (jamais du corps).
+        serializer.save(
+            company=self.request.user.company,
+            created_by=self.request.user)
+
+    def _contexte_from_request(self, request):
+        """Extrait le dictionnaire de fusion du corps de requête (`contexte`).
+
+        Accepte `{"contexte": {...}}`. Garde stricte : le contexte doit être un
+        objet (dict) — tout autre type est rejeté (400)."""
+        contexte = request.data.get('contexte', {})
+        if contexte in (None, ''):
+            return {}
+        if not isinstance(contexte, dict):
+            raise ValueError(
+                "Le champ « contexte » doit être un objet de données de fusion.")
+        return contexte
+
+    @action(detail=True, methods=['post'], url_path='rendre')
+    def rendre(self, request, pk=None):
+        """GED27 — Fusionne ce modèle avec un `contexte` et renvoie le PDF.
+
+        `POST …/modeles-document/<id>/rendre/` body `{"contexte": {...}}`.
+        Substitution SÛRE (moteur de gabarit Django, contexte borné, jamais
+        d'exécution de code) puis rendu WeasyPrint. Le PDF est renvoyé en
+        téléchargement direct — rien n'est stocké. Écriture : responsable/admin."""
+        modele = self.get_object()  # borné à la société (TenantMixin)
+        try:
+            contexte = self._contexte_from_request(request)
+        except ValueError as exc:
+            return Response(
+                {'detail': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+        try:
+            pdf_bytes = services.rendre_modele(modele, contexte)
+        except RuntimeError as exc:
+            return Response(
+                {'detail': str(exc)},
+                status=status.HTTP_503_SERVICE_UNAVAILABLE)
+        safe_name = (modele.nom or 'document').replace('"', '')
+        resp = HttpResponse(pdf_bytes, content_type='application/pdf')
+        resp['Content-Disposition'] = f'attachment; filename="{safe_name}.pdf"'
+        resp['X-Content-Type-Options'] = 'nosniff'
+        return resp
+
+    @action(detail=True, methods=['post'], url_path='generer')
+    def generer(self, request, pk=None):
+        """GED27 — Fusionne, rend le PDF et le DÉPOSE comme document GED.
+
+        `POST …/modeles-document/<id>/generer/` body `{"contexte": {...}}`.
+        Réutilise `services.generer_document` (dépôt via `deposit_document`,
+        idempotent par modèle). `company`/`created_by` posés côté serveur. Renvoie
+        l'id du document GED créé. Écriture : responsable/admin."""
+        modele = self.get_object()  # borné à la société (TenantMixin)
+        try:
+            contexte = self._contexte_from_request(request)
+        except ValueError as exc:
+            return Response(
+                {'detail': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+        try:
+            document, created = services.generer_document(
+                modele, contexte,
+                company=request.user.company,
+                created_by=request.user)
+        except RuntimeError as exc:
+            return Response(
+                {'detail': str(exc)},
+                status=status.HTTP_503_SERVICE_UNAVAILABLE)
+        except ValueError as exc:
+            return Response(
+                {'detail': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+        return Response(
+            {'document': document.id, 'document_nom': document.nom,
+             'created': created},
+            status=status.HTTP_201_CREATED if created else status.HTTP_200_OK)
 
 
 # ── GED20 — Endpoint PUBLIC (sans login) servant un document par jeton ───────
