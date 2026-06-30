@@ -6,6 +6,7 @@ from .views import (
     AffectationRosterViewSet,
     AnalyseRisquesChantierViewSet,
     BesoinFormationViewSet,
+    CandidatureViewSet,
     CauserieSecuriteViewSet,
     CertificationViewSet,
     CompetenceEmployeViewSet,
@@ -22,6 +23,7 @@ from .views import (
     HabilitationViewSet,
     HeuresSuppViewSet,
     IncidentPresenceViewSet,
+    OuverturePosteViewSet,
     PointageViewSet,
     PosteViewSet,
     PresenceChantierViewSet,
@@ -66,6 +68,8 @@ router.register(r'causeries-securite', CauserieSecuriteViewSet)
 router.register(r'analyses-risques-chantier', AnalyseRisquesChantierViewSet)
 router.register(r'sessions-formation', SessionFormationViewSet)
 router.register(r'besoins-formation', BesoinFormationViewSet)
+router.register(r'ouvertures-poste', OuverturePosteViewSet)
+router.register(r'candidatures', CandidatureViewSet)
 
 urlpatterns = [
     path('', include(router.urls)),
