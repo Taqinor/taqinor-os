@@ -3,16 +3,18 @@ from rest_framework.routers import DefaultRouter
 
 from .views import (
     ActionCorrectivePreventiveViewSet, AuditViewSet, ConsignationLotoViewSet,
+    ContactUrgenceViewSet,
     CritereAuditViewSet,
     EvaluationRisqueViewSet, GrilleAuditViewSet, InductionSecuriteViewSet,
     Iso9001ReadinessViewSet,
     ItemNotationViewSet, LigneEvaluationRisqueViewSet,
     NonConformiteViewSet, NotationFinChantierViewSet, PermisTravailViewSet,
     PlanInspectionChantierViewSet, PlanInspectionModeleViewSet,
+    PlanUrgenceViewSet,
     PointControleModeleViewSet, ProcedureQualiteViewSet,
     QhseChatterEntryViewSet,
     ReleveControleViewSet, ReleveCourbeIVViewSet, ReponseCritereViewSet,
-    RetourClientQualiteViewSet,
+    RetourClientQualiteViewSet, SecouristeViewSet,
 )
 
 router = DefaultRouter()
@@ -37,6 +39,9 @@ router.register(r'lignes-evaluation-risque', LigneEvaluationRisqueViewSet)
 router.register(r'permis-travail', PermisTravailViewSet)
 router.register(r'consignations-loto', ConsignationLotoViewSet)
 router.register(r'inductions-securite', InductionSecuriteViewSet)
+router.register(r'plans-urgence', PlanUrgenceViewSet)
+router.register(r'contacts-urgence', ContactUrgenceViewSet)
+router.register(r'secouristes', SecouristeViewSet)
 router.register(
     r'iso9001-readiness', Iso9001ReadinessViewSet,
     basename='iso9001-readiness')

@@ -16,25 +16,28 @@ from authentication.permissions import IsResponsableOrAdmin
 from apps.ventes.utils.references import create_with_reference
 
 from .models import (
-    ActionCorrectivePreventive, Audit, ConsignationLoto, CritereAudit,
-    EvaluationRisque, GrilleAudit, InductionSecurite, ItemNotation,
-    LigneEvaluationRisque, NonConformite, NotationFinChantier, PermisTravail,
-    PlanInspectionChantier, PlanInspectionModele, PointControleModele,
-    ProcedureQualite, QhseChatterEntry, ReleveControle, ReleveCourbeIV,
-    ReponseCritere, RetourClientQualite,
+    ActionCorrectivePreventive, Audit, ConsignationLoto, ContactUrgence,
+    CritereAudit, EvaluationRisque, GrilleAudit, InductionSecurite,
+    ItemNotation, LigneEvaluationRisque, NonConformite, NotationFinChantier,
+    PermisTravail, PlanInspectionChantier, PlanInspectionModele, PlanUrgence,
+    PointControleModele, ProcedureQualite, QhseChatterEntry, ReleveControle,
+    ReleveCourbeIV, ReponseCritere, RetourClientQualite, Secouriste,
 )
 from .serializers import (
     ActionCorrectivePreventiveSerializer, AuditSerializer,
-    ConsignationLotoSerializer, CritereAuditSerializer,
+    ConsignationLotoSerializer, ContactUrgenceSerializer,
+    CritereAuditSerializer,
     EvaluationRisqueSerializer, GrilleAuditSerializer,
     InductionSecuriteSerializer, ItemNotationSerializer,
     LigneEvaluationRisqueSerializer,
     NonConformiteSerializer, NotationFinChantierSerializer,
     PermisTravailSerializer, PlanInspectionChantierSerializer,
-    PlanInspectionModeleSerializer, PointControleModeleSerializer,
+    PlanInspectionModeleSerializer, PlanUrgenceSerializer,
+    PointControleModeleSerializer,
     ProcedureQualiteSerializer, QhseChatterEntrySerializer,
     ReleveControleSerializer, ReleveCourbeIVSerializer,
     ReponseCritereSerializer, RetourClientQualiteSerializer,
+    SecouristeSerializer,
 )
 from . import chatter
 from .selectors import (
@@ -1092,3 +1095,79 @@ class InductionSecuriteViewSet(_QhseBaseViewSet):
         induction.acquittement_le = acquittement_le
         induction.save(update_fields=['acquittement', 'acquittement_le'])
         return Response(self.get_serializer(induction).data)
+
+
+class PlanUrgenceViewSet(_QhseBaseViewSet):
+    """Plans d'urgence / premiers secours par chantier/site (QHSE28).
+
+    CRUD scopé société. ``company`` est posée côté serveur (jamais lue du
+    corps). Regroupe le point de rassemblement, l'hôpital le plus proche
+    optionnel, les contacts d'urgence et les secouristes désignés (enfants
+    imbriqués en lecture). Filtres optionnels : ``?chantier_id=`` / ``?statut=``.
+    Recherche par titre/point de rassemblement/hôpital, tri par date.
+    """
+    queryset = PlanUrgence.objects.prefetch_related(
+        'contacts', 'secouristes').all()
+    serializer_class = PlanUrgenceSerializer
+    filter_backends = [filters.SearchFilter, filters.OrderingFilter]
+    search_fields = ['titre', 'point_rassemblement', 'hopital_proche']
+    ordering_fields = ['id', 'date_revision', 'date_creation']
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        chantier_id = self.request.query_params.get('chantier_id')
+        if chantier_id not in (None, ''):
+            qs = qs.filter(chantier_id=chantier_id)
+        statut = self.request.query_params.get('statut')
+        if statut not in (None, ''):
+            qs = qs.filter(statut=statut)
+        return qs
+
+
+class ContactUrgenceViewSet(_QhseBaseViewSet):
+    """Contacts d'urgence d'un plan d'urgence (QHSE28).
+
+    CRUD scopé société. ``company`` posée côté serveur ; le FK ``plan`` est
+    validé même-société par le sérialiseur. Filtres optionnels : ``?plan=`` /
+    ``?type_contact=``. Recherche par nom/téléphone, tri par ordre.
+    """
+    queryset = ContactUrgence.objects.select_related('plan').all()
+    serializer_class = ContactUrgenceSerializer
+    filter_backends = [filters.SearchFilter, filters.OrderingFilter]
+    search_fields = ['nom', 'telephone']
+    ordering_fields = ['id', 'ordre', 'date_creation']
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        plan = self.request.query_params.get('plan')
+        if plan not in (None, ''):
+            qs = qs.filter(plan_id=plan)
+        type_contact = self.request.query_params.get('type_contact')
+        if type_contact not in (None, ''):
+            qs = qs.filter(type_contact=type_contact)
+        return qs
+
+
+class SecouristeViewSet(_QhseBaseViewSet):
+    """Secouristes désignés d'un plan d'urgence (QHSE28).
+
+    CRUD scopé société. ``company`` posée côté serveur ; les FK ``plan`` et
+    ``secouriste`` (salarié interne optionnel) sont validés même-société par le
+    sérialiseur. Filtres optionnels : ``?plan=`` / ``?secouriste=``. Recherche
+    par nom/certification, tri par ordre.
+    """
+    queryset = Secouriste.objects.select_related('plan', 'secouriste').all()
+    serializer_class = SecouristeSerializer
+    filter_backends = [filters.SearchFilter, filters.OrderingFilter]
+    search_fields = ['nom', 'certification']
+    ordering_fields = ['id', 'ordre', 'date_creation']
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        plan = self.request.query_params.get('plan')
+        if plan not in (None, ''):
+            qs = qs.filter(plan_id=plan)
+        secouriste = self.request.query_params.get('secouriste')
+        if secouriste not in (None, ''):
+            qs = qs.filter(secouriste_id=secouriste)
+        return qs
