@@ -106,6 +106,48 @@ export default function AvanceSection({
         </CardContent>
       </Card>
 
+      {/* FG22 — Politique de sécurité (mot de passe & verrouillage), par
+          société. Tous les défauts sont inertes : rien ne change tant que
+          vous ne durcissez pas la politique. */}
+      <Card>
+        <CardContent className="pt-4 sm:pt-5">
+          <SectionTitle label="Sécurité — mots de passe & verrouillage" icon={<><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></>}/>
+          <p className="mb-3.5 text-[11.5px] text-muted-foreground">
+            Règles appliquées aux mots de passe et aux connexions de votre
+            société. Valeurs par défaut sans effet (longueur 8, complexité non
+            exigée, verrouillage désactivé, expiration jamais) — la connexion
+            reste identique tant que vous ne modifiez rien.
+          </p>
+          <div className="pe-grid-2">
+            <Field label="Longueur minimale du mot de passe" htmlFor="pe-pw-min">
+              <Input id="pe-pw-min" type="number" step="1" min="1"
+                     name="password_min_length"
+                     value={form.password_min_length} onChange={set} />
+            </Field>
+            <Field label="Verrouillage après N échecs (0 = désactivé)" htmlFor="pe-lockout-n">
+              <Input id="pe-lockout-n" type="number" step="1" min="0"
+                     name="lockout_max_attempts"
+                     value={form.lockout_max_attempts} onChange={set} />
+            </Field>
+            <Field label="Durée du verrouillage (minutes)" htmlFor="pe-lockout-min">
+              <Input id="pe-lockout-min" type="number" step="1" min="1"
+                     name="lockout_duration_minutes"
+                     value={form.lockout_duration_minutes} onChange={set} />
+            </Field>
+            <Field label="Expiration du mot de passe (jours, 0 = jamais)" htmlFor="pe-pw-expiry">
+              <Input id="pe-pw-expiry" type="number" step="1" min="0"
+                     name="password_expiry_days"
+                     value={form.password_expiry_days} onChange={set} />
+            </Field>
+            <label className="sm:col-span-2 flex items-center gap-2.5 text-sm text-foreground">
+              <input type="checkbox" name="password_require_complexity"
+                     checked={!!form.password_require_complexity} onChange={set} />
+              Exiger un mélange majuscule / minuscule / chiffre / caractère spécial
+            </label>
+          </div>
+        </CardContent>
+      </Card>
+
       {/* Logique de devis (avancé) — paramètres implicites du simulateur (D5) */}
       <Card>
         <CardContent className="pt-4 sm:pt-5">

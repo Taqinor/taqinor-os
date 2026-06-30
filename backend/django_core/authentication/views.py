@@ -144,6 +144,22 @@ class CustomTokenObtainPairView(TokenObtainPairView):
 
     def post(self, request, *args, **kwargs):
         from rest_framework.exceptions import ValidationError
+        from .password_policy import (
+            is_locked, register_failed_login, reset_failed_login,
+        )
+        # FG22 — verrouillage de compte (par société, opt-in). Résout le compte
+        # par username (insensible à la casse) pour vérifier l'état de verrou
+        # AVANT de tenter l'authentification. Inerte si la société n'a pas armé
+        # ``lockout_max_attempts`` (aucun compte n'a alors de ``locked_until``).
+        raw_uname0 = (request.data.get('username') or '').strip()
+        locked_user = CustomUser.objects.filter(
+            username__iexact=raw_uname0).first() if raw_uname0 else None
+        if locked_user is not None and is_locked(locked_user):
+            return Response(
+                {'detail': 'Compte temporairement verrouillé après trop de '
+                           'tentatives. Réessayez plus tard.'},
+                status=status.HTTP_403_FORBIDDEN,
+            )
         # Double authentification (2FA, N96) : si le mot de passe est bon mais
         # qu'un code TOTP est requis/invalide, on renvoie une réponse 401 au
         # contour stable (`otp_required: true`) que le frontend sait gérer —
@@ -162,6 +178,10 @@ class CustomTokenObtainPairView(TokenObtainPairView):
                     {'otp_required': True, 'detail': msg},
                     status=status.HTTP_401_UNAUTHORIZED,
                 )
+            # FG22 — échec d'identifiants : compte le tentative ratée et
+            # verrouille au seuil société. No-op si le verrouillage est off.
+            if locked_user is not None:
+                register_failed_login(locked_user)
             raise
         if response.status_code == 200:
             access = response.data.pop('access', None)
@@ -171,6 +191,20 @@ class CustomTokenObtainPairView(TokenObtainPairView):
             # le username (insensible à la casse), source d'autorité.
             raw_uname = (request.data.get('username') or '').strip()
             u = CustomUser.objects.filter(username__iexact=raw_uname).first()
+            # FG22 — connexion réussie : remet à zéro le compteur d'échecs et
+            # lève tout verrou éventuel. No-op si rien n'était posé.
+            reset_failed_login(u)
+            # FG22 — expiration du mot de passe : si dépassée (société l'a
+            # activée), on arme la rotation forcée à cette session (le frontend
+            # lit must_change_password dans /auth/me/). Inerte si expiry=0.
+            try:
+                from .password_policy import password_expired
+                if u is not None and not u.must_change_password \
+                        and password_expired(u):
+                    u.must_change_password = True
+                    u.save(update_fields=['must_change_password'])
+            except Exception:
+                pass
             # Sessions actives (N96) — tracer cette connexion par le jti du
             # jeton de rafraîchissement. Best-effort, ne bloque jamais le login.
             _record_session(u, refresh, request)
@@ -850,6 +884,16 @@ class ChangePasswordView(APIView):
         except DjValidationError as exc:
             return Response(
                 {'detail': ' '.join(exc.messages)},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        # FG22 — politique par société (longueur/complexité) en plus des
+        # validateurs Django. Inerte tant que la société n'a rien durci.
+        from .password_policy import validate_password_policy
+        policy_errors = validate_password_policy(
+            new, getattr(user, 'company', None))
+        if policy_errors:
+            return Response(
+                {'detail': ' '.join(policy_errors)},
                 status=status.HTTP_400_BAD_REQUEST,
             )
         user.set_password(new)

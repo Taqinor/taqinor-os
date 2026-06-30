@@ -213,6 +213,34 @@ class CompanyProfile(models.Model):
                   'sur un nouveau lead. 0 = SLA désactivé.'
     )
 
+    # ── FG22 — Politique de mot de passe & verrouillage de compte ──
+    # Tous ADDITIFS et désactivés par défaut → comportement de connexion/
+    # changement de mot de passe strictement inchangé tant que rien n'est édité.
+    # Longueur minimale exigée (en plus des validateurs Django). Défaut 8 =
+    # aligné sur le validateur Django standard (aucune exigence supplémentaire).
+    password_min_length = models.PositiveSmallIntegerField(
+        default=8,
+        help_text='Longueur minimale du mot de passe (FG22).')
+    # Exiger un mélange majuscule/minuscule + chiffre + caractère spécial.
+    # False par défaut = aucune exigence de complexité supplémentaire.
+    password_require_complexity = models.BooleanField(
+        default=False,
+        help_text='Exiger maj./min./chiffre/caractère spécial (FG22).')
+    # Verrouillage après N échecs consécutifs. 0 = verrouillage désactivé
+    # (défaut) → seul le throttle IP historique s'applique.
+    lockout_max_attempts = models.PositiveSmallIntegerField(
+        default=0,
+        help_text="Nombre d'échecs consécutifs avant verrouillage (0 = off).")
+    # Durée du verrouillage en minutes (quand lockout_max_attempts > 0).
+    lockout_duration_minutes = models.PositiveSmallIntegerField(
+        default=15,
+        help_text='Durée du verrouillage temporaire (minutes).')
+    # Expiration du mot de passe (jours). 0 = jamais (défaut) → aucun compte
+    # n'est jamais forcé de changer pour ancienneté.
+    password_expiry_days = models.PositiveSmallIntegerField(
+        default=0,
+        help_text="Expiration du mot de passe en jours (0 = jamais).")
+
     class Meta:
         verbose_name = 'Profil entreprise'
 

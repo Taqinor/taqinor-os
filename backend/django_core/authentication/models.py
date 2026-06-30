@@ -323,6 +323,12 @@ class CustomUser(AbstractUser):
     # existant n'est jamais verrouillé ni forcé — comportement inchangé tant
     # qu'un admin ne l'active pas explicitement.
     must_change_password = models.BooleanField(default=False)
+    # ── FG22 — verrouillage de compte (par société, opt-in) ──────────────────
+    # Compteur d'échecs CONSÉCUTIFS de connexion (remis à 0 sur succès) et date
+    # de fin de verrouillage temporaire. Additifs, défaut inerte : tant que la
+    # société n'active pas ``lockout_max_attempts`` (>0), rien ne se verrouille.
+    failed_login_count = models.PositiveIntegerField(default=0)
+    locked_until = models.DateTimeField(null=True, blank=True)
     # Horodatage du dernier changement de mot de passe (informatif, affiché dans
     # l'onglet sécurité). Nullable : null pour tout compte qui n'a jamais changé
     # son mot de passe via le flux dédié — additif, aucun défaut imposé.

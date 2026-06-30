@@ -525,6 +525,12 @@ export default function ParametresEntreprise() {
       commission_valeur: profile.commission_valeur ?? '',
       referral_enabled: profile.referral_enabled ?? false,
       referral_reward: profile.referral_reward ?? '',
+      // FG22 — politique de sécurité (défauts inertes).
+      password_min_length: profile.password_min_length ?? 8,
+      password_require_complexity: profile.password_require_complexity ?? false,
+      lockout_max_attempts: profile.lockout_max_attempts ?? 0,
+      lockout_duration_minutes: profile.lockout_duration_minutes ?? 15,
+      password_expiry_days: profile.password_expiry_days ?? 0,
     })
   }, [profile])
 
@@ -537,7 +543,12 @@ export default function ParametresEntreprise() {
     }
   }, [saveSuccess, dispatch])
 
-  const set = (e) => setForm(p => ({ ...p, [e.target.name]: e.target.value }))
+  const set = (e) => setForm(p => ({
+    ...p,
+    // FG22 — gère aussi les cases à cocher (booléens) sans changer le reste.
+    [e.target.name]: e.target.type === 'checkbox'
+      ? e.target.checked : e.target.value,
+  }))
   const setPT = (mode, key, val) => setForm(p => ({
     ...p, payment_terms: { ...p.payment_terms,
       [mode]: { ...p.payment_terms[mode], [key]: val } } }))
