@@ -6,9 +6,11 @@ from .views import (
     ActionProjetViewSet,
     AffectationRessourceViewSet,
     BaselinePlanningViewSet,
+    ClotureProjetViewSet,
     CommentaireProjetViewSet,
     CompteRenduReunionViewSet,
     DocumentProjetViewSet,
+    LotSousTraitanceViewSet,
     BudgetProjetViewSet,
     CalendrierProjetViewSet,
     DependanceTacheViewSet,
@@ -26,6 +28,7 @@ from .views import (
     ProjetViewSet,
     RessourceProfilViewSet,
     RisqueViewSet,
+    SousTraitantViewSet,
     TacheViewSet,
     TimesheetViewSet,
 )
@@ -56,6 +59,9 @@ router.register(r'commentaires', CommentaireProjetViewSet)
 router.register(r'modeles', ModeleProjetViewSet)
 router.register(r'modele-taches', ModeleTacheViewSet)
 router.register(r'portail-tokens', PortailProjetTokenViewSet)
+router.register(r'sous-traitants', SousTraitantViewSet)
+router.register(r'lots-sous-traitance', LotSousTraitanceViewSet)
+router.register(r'clotures', ClotureProjetViewSet)
 
 urlpatterns = [
     # Portail PUBLIC (non authentifié) — placé AVANT le routeur pour éviter

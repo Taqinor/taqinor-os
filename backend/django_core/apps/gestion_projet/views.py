@@ -19,6 +19,7 @@ from .models import (
     ActionProjet,
     AffectationRessource,
     BaselinePlanning,
+    ClotureProjet,
     CommentaireProjet,
     CompteRenduReunion,
     DocumentProjet,
@@ -40,6 +41,8 @@ from .models import (
     ProjetLien,
     RessourceProfil,
     Risque,
+    SousTraitant,
+    LotSousTraitance,
     Tache,
     Timesheet,
     VersionDocument,
@@ -48,9 +51,12 @@ from .serializers import (
     ActionProjetSerializer,
     AffectationRessourceSerializer,
     BaselinePlanningSerializer,
+    ClotureProjetSerializer,
     CommentaireProjetSerializer,
     CompteRenduReunionSerializer,
     DocumentProjetSerializer,
+    LotSousTraitanceSerializer,
+    SousTraitantSerializer,
     VersionDocumentSerializer,
     BudgetProjetSerializer,
     CalendrierProjetSerializer,
@@ -681,6 +687,42 @@ class ProjetViewSet(_GestionProjetBaseViewSet):
             'spi': _num(data['spi']),
             'date_reference': data['date_reference'].isoformat(),
         })
+
+    @action(detail=True, methods=['post'], url_path='cloturer')
+    def cloturer(self, request, pk=None):
+        """Clôture le projet + enregistre le RETOUR D'EXPÉRIENCE (PROJ38).
+
+        Corps : ``date_cloture`` (obligatoire, YYYY-MM-DD), ``date_reception``
+        (optionnelle), ``points_positifs`` / ``points_amelioration`` /
+        ``recommandations`` (REX). Crée/maj la clôture 1–1 et passe le projet à
+        TERMINÉ (transition journalisée). Un projet ANNULÉ → 400. ``cloture_par``
+        est posé côté serveur. La société est garantie par ``get_object``
+        (queryset scopé société) : un projet d'une autre société → 404.
+        """
+        projet = self.get_object()
+        date_cloture = _parse_date_param(request.data.get('date_cloture'))
+        if date_cloture is None:
+            return Response(
+                {'date_cloture': 'La date de clôture (YYYY-MM-DD) est '
+                                 'obligatoire.'},
+                status=status.HTTP_400_BAD_REQUEST)
+        date_reception = _parse_date_param(request.data.get('date_reception'))
+        try:
+            cloture = services.cloturer_projet(
+                projet,
+                date_cloture=date_cloture,
+                date_reception=date_reception,
+                points_positifs=request.data.get('points_positifs', '') or '',
+                points_amelioration=request.data.get(
+                    'points_amelioration', '') or '',
+                recommandations=request.data.get('recommandations', '') or '',
+                auteur=request.user)
+        except services.ClotureError as exc:
+            return Response(
+                {'detail': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+        return Response(
+            ClotureProjetSerializer(cloture).data,
+            status=status.HTTP_201_CREATED)
 
 
 class ProjetChantierViewSet(_GestionProjetBaseViewSet):
@@ -1706,6 +1748,90 @@ class PortailProjetTokenViewSet(_GestionProjetBaseViewSet):
 
     def perform_create(self, serializer):
         serializer.save(company=self.request.user.company)
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        projet = self.request.query_params.get('projet')
+        if projet:
+            qs = qs.filter(projet_id=projet)
+        return qs
+
+
+class SousTraitantViewSet(_GestionProjetBaseViewSet):
+    """Carnet d'adresses des sous-traitants (PROJ38) — CRUD scopé société.
+
+    ``company`` est posée côté serveur (TenantMixin). Filtres optionnels :
+    ``?actif=1``, ``?specialite=<txt>``. Recherche par nom / spécialité /
+    contact. Données INTERNES — jamais exposées au client.
+    """
+    queryset = SousTraitant.objects.all()
+    serializer_class = SousTraitantSerializer
+    filter_backends = [filters.SearchFilter, filters.OrderingFilter]
+    search_fields = ['nom', 'specialite', 'contact', 'email']
+    ordering_fields = ['nom', 'specialite', 'actif', 'id']
+
+    def perform_create(self, serializer):
+        serializer.save(company=self.request.user.company)
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        actif = self.request.query_params.get('actif')
+        if actif in ('1', 'true', 'True'):
+            qs = qs.filter(actif=True)
+        elif actif in ('0', 'false', 'False'):
+            qs = qs.filter(actif=False)
+        specialite = self.request.query_params.get('specialite')
+        if specialite:
+            qs = qs.filter(specialite__icontains=specialite)
+        return qs
+
+
+class LotSousTraitanceViewSet(_GestionProjetBaseViewSet):
+    """Lots de sous-traitance d'un projet (PROJ38) — CRUD scopé société.
+
+    ``company`` est posée côté serveur (TenantMixin) ; le ``projet`` et le
+    ``sous_traitant`` reçus sont validés même-société. Le ``montant`` est un coût
+    INTERNE — jamais exposé au client. Filtres optionnels : ``?projet=<id>``,
+    ``?sous_traitant=<id>``, ``?statut=<statut>``. Recherche par libellé.
+    """
+    queryset = LotSousTraitance.objects.select_related(
+        'projet', 'sous_traitant').all()
+    serializer_class = LotSousTraitanceSerializer
+    filter_backends = [filters.SearchFilter, filters.OrderingFilter]
+    search_fields = ['libelle', 'description']
+    ordering_fields = ['statut', 'montant', 'date_debut', 'id']
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        projet = self.request.query_params.get('projet')
+        if projet:
+            qs = qs.filter(projet_id=projet)
+        sous_traitant = self.request.query_params.get('sous_traitant')
+        if sous_traitant:
+            qs = qs.filter(sous_traitant_id=sous_traitant)
+        statut = self.request.query_params.get('statut')
+        if statut:
+            qs = qs.filter(statut=statut)
+        return qs
+
+
+class ClotureProjetViewSet(_GestionProjetBaseViewSet):
+    """Clôtures de projet + retour d'expérience (PROJ38) — scopé société.
+
+    ``company`` et ``cloture_par`` sont posés côté serveur ; le ``projet`` reçu
+    est validé même-société. La clôture se prend de préférence via l'action
+    ``projets/<id>/cloturer/`` (transition serveur + REX) ; ce viewset gère la
+    lecture et l'édition du REX. Filtre optionnel ``?projet=<id>``.
+    """
+    queryset = ClotureProjet.objects.select_related(
+        'projet', 'cloture_par').all()
+    serializer_class = ClotureProjetSerializer
+    filter_backends = [filters.OrderingFilter]
+    ordering_fields = ['date_cloture', 'id']
+
+    def perform_create(self, serializer):
+        serializer.save(
+            company=self.request.user.company, cloture_par=self.request.user)
 
     def get_queryset(self):
         qs = super().get_queryset()

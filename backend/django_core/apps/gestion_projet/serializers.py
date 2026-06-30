@@ -10,6 +10,7 @@ from .models import (
     ActionProjet,
     AffectationRessource,
     BaselinePlanning,
+    ClotureProjet,
     CommentaireProjet,
     CompteRenduReunion,
     DocumentProjet,
@@ -32,6 +33,8 @@ from .models import (
     ProjetLien,
     RessourceProfil,
     Risque,
+    SousTraitant,
+    LotSousTraitance,
     Tache,
     Timesheet,
     VersionDocument,
@@ -927,6 +930,74 @@ class PortailProjetTokenSerializer(serializers.ModelSerializer):
             'id', 'projet', 'projet_code', 'token', 'actif', 'date_creation',
         ]
         read_only_fields = ['token', 'date_creation']
+
+    def validate_projet(self, value):
+        return _meme_societe(self, value, 'Projet')
+
+
+class SousTraitantSerializer(serializers.ModelSerializer):
+    """Sous-traitant du carnet d'adresses (PROJ38).
+
+    ``company`` n'est jamais exposée : elle est posée côté serveur.
+    """
+    class Meta:
+        model = SousTraitant
+        fields = [
+            'id', 'nom', 'specialite', 'contact', 'telephone', 'email',
+            'actif', 'date_creation',
+        ]
+        read_only_fields = ['date_creation']
+
+
+class LotSousTraitanceSerializer(serializers.ModelSerializer):
+    """Lot confié à un sous-traitant sur un projet (PROJ38).
+
+    ``company`` n'est jamais exposée : elle est posée côté serveur. Le ``projet``
+    et le ``sous_traitant`` reçus sont validés même-société. Le ``montant`` est
+    un coût INTERNE — jamais exposé au client.
+    """
+    projet_code = serializers.CharField(source='projet.code', read_only=True)
+    sous_traitant_nom = serializers.CharField(
+        source='sous_traitant.nom', read_only=True)
+    statut_display = serializers.CharField(
+        source='get_statut_display', read_only=True)
+
+    class Meta:
+        model = LotSousTraitance
+        fields = [
+            'id', 'projet', 'projet_code', 'sous_traitant',
+            'sous_traitant_nom', 'libelle', 'description', 'montant', 'statut',
+            'statut_display', 'date_debut', 'date_fin', 'date_creation',
+        ]
+        read_only_fields = ['date_creation']
+
+    def validate_projet(self, value):
+        return _meme_societe(self, value, 'Projet')
+
+    def validate_sous_traitant(self, value):
+        return _meme_societe(self, value, 'Sous-traitant')
+
+
+class ClotureProjetSerializer(serializers.ModelSerializer):
+    """Clôture de projet + retour d'expérience (PROJ38).
+
+    ``company`` et ``cloture_par`` sont posés côté serveur (lecture seule). Le
+    ``projet`` reçu est validé même-société. La clôture se prend de préférence
+    via l'action ``projets/<id>/cloturer/`` (transition serveur + REX) ; ce
+    sérialiseur sert l'affichage et l'édition du REX.
+    """
+    projet_code = serializers.CharField(source='projet.code', read_only=True)
+    cloture_par_nom = serializers.CharField(
+        source='cloture_par.username', read_only=True, default='')
+
+    class Meta:
+        model = ClotureProjet
+        fields = [
+            'id', 'projet', 'projet_code', 'date_cloture', 'date_reception',
+            'points_positifs', 'points_amelioration', 'recommandations',
+            'cloture_par', 'cloture_par_nom', 'date_creation',
+        ]
+        read_only_fields = ['cloture_par', 'date_creation']
 
     def validate_projet(self, value):
         return _meme_societe(self, value, 'Projet')

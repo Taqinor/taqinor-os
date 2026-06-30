@@ -1823,3 +1823,164 @@ class PortailProjetToken(models.Model):
 
     def __str__(self):
         return f'portail {self.projet_id} ({"actif" if self.actif else "off"})'
+
+
+class SousTraitant(models.Model):
+    """Un SOUS-TRAITANT du carnet d'adresses de la société (PROJ38).
+
+    Annuaire léger de prestataires externes mobilisables sur les projets
+    (terrassement, électricité, levage…). ``specialite`` qualifie l'activité ;
+    ``contact`` / ``telephone`` / ``email`` sont les coordonnées. Données INTERNES
+    de pilotage — jamais exposées au client final.
+
+    Tout est multi-société : ``company`` est posée côté serveur, jamais lue du
+    corps de requête. Modèle entièrement additif.
+    """
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='gestion_projet_sous_traitants',
+        verbose_name='Société',
+    )
+    nom = models.CharField(max_length=200, verbose_name='Nom / raison sociale')
+    specialite = models.CharField(
+        max_length=150, blank=True, default='', verbose_name='Spécialité')
+    contact = models.CharField(
+        max_length=150, blank=True, default='', verbose_name='Contact')
+    telephone = models.CharField(
+        max_length=40, blank=True, default='', verbose_name='Téléphone')
+    email = models.EmailField(blank=True, default='', verbose_name='E-mail')
+    actif = models.BooleanField(default=True, verbose_name='Actif')
+    date_creation = models.DateTimeField(
+        auto_now_add=True, verbose_name='Créé le')
+
+    class Meta:
+        verbose_name = 'Sous-traitant'
+        verbose_name_plural = 'Sous-traitants'
+        ordering = ['nom', 'id']
+        constraints = [
+            models.UniqueConstraint(
+                fields=['company', 'nom'],
+                name='gp_soustraitant_co_nom_uniq'),
+        ]
+
+    def __str__(self):
+        return self.nom
+
+
+class LotSousTraitance(models.Model):
+    """Un LOT confié à un ``SousTraitant`` sur un ``Projet`` (PROJ38).
+
+    Représente une partie des travaux sous-traitée : ``libelle`` du lot,
+    ``montant`` (coût INTERNE de sous-traitance — jamais exposé au client),
+    période, et ``statut`` PROPRE au lot (prévu/en_cours/réceptionné/annulé) — il
+    ne réutilise NI n'importe AUCUNE clé/étiquette de ``STAGES.py`` (règle #2).
+
+    Tout est multi-société : ``company`` est posée côté serveur, jamais lue du
+    corps de requête. Le sous-traitant doit appartenir à la MÊME société (validé
+    au sérialiseur). Modèle entièrement additif.
+    """
+    class Statut(models.TextChoices):
+        PREVU = 'prevu', 'Prévu'
+        EN_COURS = 'en_cours', 'En cours'
+        RECEPTIONNE = 'receptionne', 'Réceptionné'
+        ANNULE = 'annule', 'Annulé'
+
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='gestion_projet_lots_st',
+        verbose_name='Société',
+    )
+    projet = models.ForeignKey(
+        Projet,
+        on_delete=models.CASCADE,
+        related_name='lots_sous_traitance',
+        verbose_name='Projet',
+    )
+    sous_traitant = models.ForeignKey(
+        SousTraitant,
+        on_delete=models.PROTECT,
+        related_name='lots',
+        verbose_name='Sous-traitant',
+    )
+    libelle = models.CharField(max_length=200, verbose_name='Libellé du lot')
+    description = models.TextField(
+        blank=True, default='', verbose_name='Description')
+    # Coût INTERNE de sous-traitance — jamais exposé au client.
+    montant = models.DecimalField(
+        max_digits=14, decimal_places=2, default=Decimal('0'),
+        verbose_name='Montant (interne)')
+    statut = models.CharField(
+        max_length=12, choices=Statut.choices,
+        default=Statut.PREVU, verbose_name='Statut')
+    date_debut = models.DateField(
+        null=True, blank=True, verbose_name='Date de début')
+    date_fin = models.DateField(
+        null=True, blank=True, verbose_name='Date de fin')
+    date_creation = models.DateTimeField(
+        auto_now_add=True, verbose_name='Créé le')
+
+    class Meta:
+        verbose_name = 'Lot de sous-traitance'
+        verbose_name_plural = 'Lots de sous-traitance'
+        ordering = ['projet', 'id']
+        indexes = [
+            models.Index(
+                fields=['projet', 'statut'], name='gp_lotst_proj_stat_idx'),
+        ]
+
+    def __str__(self):
+        return f'{self.libelle} ({self.sous_traitant_id})'
+
+
+class ClotureProjet(models.Model):
+    """Clôture d'un ``Projet`` + RETOUR D'EXPÉRIENCE (REX) (PROJ38).
+
+    Enregistre la réception/clôture d'un projet (``date_cloture``,
+    ``date_reception``) et capitalise le retour d'expérience : ``points_positifs``,
+    ``points_amelioration`` et ``recommandations`` pour les projets futurs.
+    ``cloture_par`` est posé côté serveur. Relation 1–1 avec le projet (une seule
+    clôture). Données INTERNES — jamais exposées au client.
+
+    Tout est multi-société : ``company`` est posée côté serveur, jamais lue du
+    corps de requête. Modèle entièrement additif.
+    """
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='gestion_projet_clotures',
+        verbose_name='Société',
+    )
+    projet = models.OneToOneField(
+        Projet,
+        on_delete=models.CASCADE,
+        related_name='cloture',
+        verbose_name='Projet',
+    )
+    date_cloture = models.DateField(verbose_name='Date de clôture')
+    date_reception = models.DateField(
+        null=True, blank=True, verbose_name='Date de réception')
+    points_positifs = models.TextField(
+        blank=True, default='', verbose_name='Points positifs')
+    points_amelioration = models.TextField(
+        blank=True, default='', verbose_name="Points d'amélioration")
+    recommandations = models.TextField(
+        blank=True, default='', verbose_name='Recommandations')
+    cloture_par = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='gestion_projet_clotures',
+        verbose_name='Clôturé par',
+    )
+    date_creation = models.DateTimeField(
+        auto_now_add=True, verbose_name='Créé le')
+
+    class Meta:
+        verbose_name = 'Clôture de projet'
+        verbose_name_plural = 'Clôtures de projet'
+        ordering = ['-date_cloture', '-id']
+
+    def __str__(self):
+        return f'clôture {self.projet_id} ({self.date_cloture})'

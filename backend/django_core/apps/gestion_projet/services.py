@@ -196,6 +196,57 @@ def instancier_modele(modele, projet):
     return creees
 
 
+# ── Sous-traitance & clôture + REX (PROJ38) ──────────────────────────────────
+class ClotureError(Exception):
+    """Erreur métier à la clôture d'un projet."""
+
+
+@transaction.atomic
+def cloturer_projet(projet, *, date_cloture, date_reception=None,
+                    points_positifs='', points_amelioration='',
+                    recommandations='', auteur=None):
+    """Clôture un ``Projet`` + enregistre le RETOUR D'EXPÉRIENCE (PROJ38).
+
+    Crée (ou met à jour) la ``ClotureProjet`` 1–1 du projet avec le REX
+    (positifs / améliorations / recommandations) puis fait passer le projet au
+    statut TERMINÉ s'il ne l'est pas déjà (transition côté serveur, journalisée
+    dans ``ProjetActivity``). Un projet ANNULÉ ne peut pas être clôturé (lève
+    ``ClotureError``). ``company`` est TOUJOURS celle du projet ; ``cloture_par``
+    est posé côté serveur. Écritures atomiques. Renvoie la ``ClotureProjet``.
+    """
+    from .models import ClotureProjet, ProjetActivity
+
+    if projet.statut == Projet.Statut.ANNULE:
+        raise ClotureError("Un projet annulé ne peut pas être clôturé.")
+
+    cloture, _ = ClotureProjet.objects.update_or_create(
+        projet=projet,
+        defaults={
+            'company': projet.company,
+            'date_cloture': date_cloture,
+            'date_reception': date_reception,
+            'points_positifs': points_positifs or '',
+            'points_amelioration': points_amelioration or '',
+            'recommandations': recommandations or '',
+            'cloture_par': auteur,
+        },
+    )
+
+    # Transition vers TERMINÉ (journalisée), idempotente.
+    if projet.statut != Projet.Statut.TERMINE:
+        ancien = projet.statut
+        projet.statut = Projet.Statut.TERMINE
+        projet.save(update_fields=['statut'])
+        ProjetActivity.objects.create(
+            company=projet.company,
+            projet=projet,
+            old_value=ancien,
+            new_value=Projet.Statut.TERMINE,
+            auteur=auteur,
+        )
+    return cloture
+
+
 # Décomposition standard d'un projet d'installation solaire (WBS), dans l'ordre
 # de réalisation. PROPRE à ce module — ne réutilise aucune clé de STAGES.py.
 PHASES_STANDARD = [

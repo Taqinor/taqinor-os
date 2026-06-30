@@ -3,10 +3,12 @@ from django.contrib import admin
 from .models import (
     ActionProjet,
     BudgetProjet,
+    ClotureProjet,
     CommentaireProjet,
     CompteRenduReunion,
     DependanceTache,
     DocumentProjet,
+    LotSousTraitance,
     Jalon,
     LigneBudgetProjet,
     ModeleProjet,
@@ -18,6 +20,7 @@ from .models import (
     ProjetChantier,
     ProjetLien,
     Risque,
+    SousTraitant,
     Tache,
     Timesheet,
     VersionDocument,
@@ -178,3 +181,26 @@ class PortailProjetTokenAdmin(admin.ModelAdmin):
     list_display = ('id', 'projet', 'actif', 'company', 'date_creation')
     list_filter = ('actif', 'company')
     search_fields = ('token',)
+
+
+@admin.register(SousTraitant)
+class SousTraitantAdmin(admin.ModelAdmin):
+    list_display = ('id', 'nom', 'specialite', 'contact', 'actif', 'company')
+    list_filter = ('actif', 'company')
+    search_fields = ('nom', 'specialite', 'contact')
+
+
+@admin.register(LotSousTraitance)
+class LotSousTraitanceAdmin(admin.ModelAdmin):
+    list_display = ('id', 'projet', 'sous_traitant', 'libelle', 'montant',
+                    'statut', 'company')
+    list_filter = ('statut', 'company')
+    search_fields = ('libelle', 'description')
+
+
+@admin.register(ClotureProjet)
+class ClotureProjetAdmin(admin.ModelAdmin):
+    list_display = ('id', 'projet', 'date_cloture', 'date_reception',
+                    'cloture_par', 'company')
+    list_filter = ('company',)
+    search_fields = ('points_positifs', 'recommandations')
