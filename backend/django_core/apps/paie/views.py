@@ -6,10 +6,13 @@ Les viewsets filtrent par ``request.user.company`` (TenantMixin) et posent la
 société côté serveur.
 """
 from django.core.exceptions import ValidationError as DjangoValidationError
+from django.http import HttpResponse
 
 from rest_framework import filters, status, viewsets
 from rest_framework.decorators import action
 from rest_framework.response import Response
+
+from . import builders
 
 from authentication.mixins import TenantMixin
 from authentication.permissions import IsResponsableOrAdmin
@@ -63,6 +66,13 @@ from .services import (
     recalculer_cumul_annuel,
     valider_bulletin,
 )
+
+
+def _pdf_response(pdf_bytes, filename):
+    """Réponse HTTP de téléchargement PDF (pièce jointe)."""
+    resp = HttpResponse(pdf_bytes, content_type='application/pdf')
+    resp['Content-Disposition'] = f'attachment; filename="{filename}"'
+    return resp
 
 
 class _PaieBaseViewSet(TenantMixin, viewsets.ModelViewSet):
@@ -142,6 +152,35 @@ class ProfilPaieViewSet(_PaieBaseViewSet):
     filter_backends = [filters.SearchFilter, filters.OrderingFilter]
     search_fields = ['employe__nom', 'employe__prenom', 'employe__matricule']
     ordering_fields = ['date_creation', 'id']
+
+    @action(detail=True, methods=['get'], url_path='attestation')
+    def attestation(self, request, pk=None):
+        """Attestation salaire/travail/domiciliation au format PDF (PAIE34).
+
+        Paramètre de requête ``type`` ∈ {salaire, travail, domiciliation}
+        (défaut ``travail``). L'attestation de salaire s'appuie sur le dernier
+        bulletin VALIDÉ du profil.
+        """
+        profil = self.get_object()
+        type_att = request.query_params.get('type', builders.TYPE_TRAVAIL)
+        bulletin = (
+            BulletinPaie.objects
+            .filter(company=request.user.company, profil=profil,
+                    statut=BulletinPaie.STATUT_VALIDE)
+            .order_by('-periode__annee', '-periode__mois')
+            .first()
+        )
+        try:
+            pdf = builders.render_attestation_pdf(
+                type_att, profil, bulletin=bulletin)
+        except ValueError as exc:
+            return Response(
+                {'detail': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+        except RuntimeError as exc:
+            return Response(
+                {'detail': str(exc)},
+                status=status.HTTP_503_SERVICE_UNAVAILABLE)
+        return _pdf_response(pdf, f'attestation_{type_att}_{profil.id}.pdf')
 
 
 class RubriqueEmployeViewSet(_PaieBaseViewSet):
@@ -348,6 +387,19 @@ class BulletinPaieViewSet(TenantMixin, viewsets.ReadOnlyModelViewSet):
         valider_bulletin(bulletin)
         return Response(
             self.get_serializer(bulletin).data, status=status.HTTP_200_OK)
+
+    @action(detail=True, methods=['get'], url_path='pdf')
+    def pdf(self, request, pk=None):
+        """Bulletin de paie au format PDF conforme (PAIE34)."""
+        bulletin = self.get_object()
+        try:
+            pdf = builders.render_bulletin_pdf(bulletin)
+        except RuntimeError as exc:
+            return Response(
+                {'detail': str(exc)},
+                status=status.HTTP_503_SERVICE_UNAVAILABLE)
+        nom = f'bulletin_{bulletin.periode.annee}_{bulletin.periode.mois:02d}_{bulletin.id}.pdf'
+        return _pdf_response(pdf, nom)
 
 
 class AvanceSalarieViewSet(_PaieBaseViewSet):
