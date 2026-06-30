@@ -19,13 +19,17 @@ from rest_framework_simplejwt.tokens import AccessToken
 
 from authentication.models import Company
 from apps.crm.models import Client, Lead
-from apps.ventes.models import Devis, LigneDevis, Facture
-from apps.installations.models import Installation
+from apps.ventes.models import Devis, LigneDevis, Facture, Paiement
+from apps.installations.models import Installation, Intervention
+from apps.sav.models import Ticket
 from apps.stock.models import Produit
 
 from .constants import (
     SCOPE_READ_LEADS, SCOPE_READ_DEVIS, SCOPE_READ_FACTURES,
     SCOPE_READ_CHANTIERS, EVENT_LEAD_CREATED, EVENT_FACTURE_PAID,
+    EVENT_LEAD_LOST, EVENT_LEAD_STAGE_CHANGED, EVENT_DEVIS_SENT,
+    EVENT_FACTURE_CREATED, EVENT_PAIEMENT_RECORDED,
+    EVENT_INTERVENTION_COMPLETED, EVENT_TICKET_CREATED, EVENT_TICKET_RESOLVED,
 )
 from .models import ApiKey, Webhook, WebhookDelivery, hash_key
 from . import delivery
@@ -378,6 +382,86 @@ class SignalTriggerTests(TestCase):
             facture.note = 'edit'
             facture.save()
         d.assert_not_called()
+
+
+class ExtraEventTriggerTests(TestCase):
+    """FG103 — nouveaux évènements webhook (devis.sent, lead.lost/stage_changed,
+    facture.created, intervention.completed, ticket.created/resolved,
+    paiement.recorded)."""
+    def setUp(self):
+        self.co = make_company('pa-ev', 'PA EV')
+        self.client_obj = Client.objects.create(company=self.co, nom='Cli')
+
+    def _events(self, dispatch_mock):
+        return [c.args[1] for c in dispatch_mock.call_args_list]
+
+    def test_devis_sent_transition_dispatches(self):
+        devis = Devis.objects.create(
+            company=self.co, reference='DV-1', client=self.client_obj,
+            statut=Devis.Statut.BROUILLON)
+        with mock.patch('apps.publicapi.signals.delivery.dispatch_event') as d:
+            devis.statut = Devis.Statut.ENVOYE
+            devis.save()
+        self.assertIn(EVENT_DEVIS_SENT, self._events(d))
+
+    def test_lead_lost_dispatches(self):
+        lead = Lead.objects.create(company=self.co, nom='Perdu')
+        with mock.patch('apps.publicapi.signals.delivery.dispatch_event') as d:
+            lead.perdu = True
+            lead.motif_perte = 'budget'
+            lead.save()
+        self.assertIn(EVENT_LEAD_LOST, self._events(d))
+
+    def test_lead_stage_changed_dispatches(self):
+        from apps.crm.stages import STAGES, NEW
+        # Première étape canonique ≠ NEW (sans hardcoder de nom d'étape).
+        next_stage = next(s for s in STAGES if s != NEW)
+        lead = Lead.objects.create(company=self.co, nom='Étape')
+        with mock.patch('apps.publicapi.signals.delivery.dispatch_event') as d:
+            lead.stage = next_stage
+            lead.save()
+        self.assertIn(EVENT_LEAD_STAGE_CHANGED, self._events(d))
+
+    def test_facture_created_dispatches(self):
+        with mock.patch('apps.publicapi.signals.delivery.dispatch_event') as d:
+            Facture.objects.create(
+                company=self.co, reference='FA-EV', client=self.client_obj,
+                statut=Facture.Statut.EMISE)
+        self.assertIn(EVENT_FACTURE_CREATED, self._events(d))
+
+    def test_paiement_recorded_dispatches(self):
+        import datetime
+        facture = Facture.objects.create(
+            company=self.co, reference='FA-PAY', client=self.client_obj,
+            statut=Facture.Statut.EMISE)
+        with mock.patch('apps.publicapi.signals.delivery.dispatch_event') as d:
+            Paiement.objects.create(
+                company=self.co, facture=facture, montant=100,
+                date_paiement=datetime.date(2026, 1, 1))
+        self.assertIn(EVENT_PAIEMENT_RECORDED, self._events(d))
+
+    def test_intervention_completed_dispatches(self):
+        inst = Installation.objects.create(
+            company=self.co, reference='CH-EV', client=self.client_obj)
+        interv = Intervention.objects.create(
+            company=self.co, installation=inst,
+            type_intervention=Intervention.Type.POSE,
+            statut=Intervention.Statut.SUR_SITE)
+        with mock.patch('apps.publicapi.signals.delivery.dispatch_event') as d:
+            interv.statut = Intervention.Statut.TERMINEE
+            interv.save()
+        self.assertIn(EVENT_INTERVENTION_COMPLETED, self._events(d))
+
+    def test_ticket_created_and_resolved_dispatch(self):
+        with mock.patch('apps.publicapi.signals.delivery.dispatch_event') as d:
+            ticket = Ticket.objects.create(
+                company=self.co, reference='TK-1', client=self.client_obj,
+                statut=Ticket.Statut.NOUVEAU)
+        self.assertIn(EVENT_TICKET_CREATED, self._events(d))
+        with mock.patch('apps.publicapi.signals.delivery.dispatch_event') as d:
+            ticket.statut = Ticket.Statut.RESOLU
+            ticket.save()
+        self.assertIn(EVENT_TICKET_RESOLVED, self._events(d))
 
 
 class WebhookSSRFGuardTests(TestCase):
