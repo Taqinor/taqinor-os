@@ -1,7 +1,8 @@
 from django.contrib import admin
 
 from .models import (
-    ActionCorrectivePreventive, BordereauSuiviDechet, ConsignationLoto,
+    ActionCorrectivePreventive, BordereauSuiviDechet,
+    ConformiteEnvironnementale, ConsignationLoto,
     Dechet, EvaluationRisque,
     InspectionSecurite,
     LigneEvaluationRisque,
@@ -152,3 +153,12 @@ class RecyclageModuleAdmin(admin.ModelAdmin):
                     'date_recyclage', 'company', 'date_creation')
     list_filter = ('motif', 'statut')
     search_fields = ('reference', 'marque', 'modele', 'filiere')
+
+
+@admin.register(ConformiteEnvironnementale)
+class ConformiteEnvironnementaleAdmin(admin.ModelAdmin):
+    list_display = ('id', 'intitule', 'type_conformite', 'statut',
+                    'autorite', 'date_expiration', 'prealerte_jours',
+                    'responsable', 'company', 'date_creation')
+    list_filter = ('type_conformite', 'statut')
+    search_fields = ('intitule', 'autorite', 'reference_dossier')

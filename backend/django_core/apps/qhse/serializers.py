@@ -9,7 +9,7 @@ from rest_framework import serializers
 from .models import (
     ActionCorrectivePreventive, AnalyseIncident, Audit, CauseIncident,
     ConsignationLoto, ContactUrgence,
-    BordereauSuiviDechet,
+    BordereauSuiviDechet, ConformiteEnvironnementale,
     CritereAudit, Dechet, DeclarationCnss, EvaluationRisque, GrilleAudit,
     InductionSecurite,
     Incident, InspectionSecurite,
@@ -876,3 +876,38 @@ class RecyclageModuleSerializer(serializers.ModelSerializer):
 
     def validate_bordereau(self, value):
         return _meme_societe(self, value, 'Bordereau de suivi')
+
+
+class ConformiteEnvironnementaleSerializer(serializers.ModelSerializer):
+    """Conformité environnementale + échéance (QHSE38).
+
+    ``company`` posée côté serveur. ``statut_courant`` recalcule l'état réel à la
+    volée (expiré / à renouveler / statut enregistré). Le FK ``responsable`` est
+    validé comme appartenant à la même société.
+    """
+    type_conformite_display = serializers.CharField(
+        source='get_type_conformite_display', read_only=True)
+    statut_display = serializers.CharField(
+        source='get_statut_display', read_only=True)
+    statut_courant = serializers.SerializerMethodField()
+
+    class Meta:
+        model = ConformiteEnvironnementale
+        fields = [
+            'id', 'intitule', 'type_conformite', 'type_conformite_display',
+            'statut', 'statut_display', 'statut_courant', 'autorite',
+            'reference_dossier', 'chantier_id', 'date_obtention',
+            'date_expiration', 'prealerte_jours', 'responsable', 'notes',
+            'date_creation',
+        ]
+        read_only_fields = ['date_creation']
+
+    def get_statut_courant(self, obj):
+        return obj.statut_calcule()
+
+    def validate_responsable(self, value):
+        request = self.context.get('request')
+        if value is not None and request is not None:
+            if value.company_id != request.user.company_id:
+                raise serializers.ValidationError('Responsable inconnu.')
+        return value

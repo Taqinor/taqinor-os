@@ -2487,3 +2487,124 @@ class RecyclageModule(models.Model):
 
     def __str__(self):
         return f'{self.reference or "REC"} — {self.nombre_modules} module(s)'
+
+
+# ── QHSE38 — Conformité environnementale + relances ────────────────────────
+
+class ConformiteEnvironnementale(models.Model):
+    """Obligation de conformité environnementale + échéance de renouvellement (QHSE38).
+
+    Suit les autorisations / obligations réglementaires environnementales d'une
+    société : autorisation environnementale, étude d'impact (EIE), enregistrement
+    déchets (loi 28-00), conformité rejets/eau/air, autre. Chaque entrée porte un
+    ``type_conformite``, l'``autorite`` qui la délivre, sa fenêtre de validité
+    (``date_obtention`` → ``date_expiration``) et un cycle de vie (``conforme`` /
+    ``a_renouveler`` / ``non_conforme`` / ``expire``).
+
+    Le ``statut_calcule(today)`` dérive l'état réel à une date : ``expire`` si
+    l'échéance est passée, ``a_renouveler`` si elle approche (dans
+    ``prealerte_jours``), sinon le ``statut`` enregistré. Le sélecteur
+    ``conformites_a_relancer`` (QHSE38) et le service ``relancer_conformites``
+    s'appuient dessus pour notifier les renouvellements à préparer.
+
+    Le rattachement éventuel au chantier se fait par référence LÂCHE
+    (``chantier_id`` — jamais un import cross-app de ``installations``).
+
+    Multi-société via ``company`` posée côté serveur. Entièrement additif.
+    """
+    PREALERTE_JOURS_DEFAUT = 60
+
+    class TypeConformite(models.TextChoices):
+        AUTORISATION = 'autorisation', 'Autorisation environnementale'
+        ETUDE_IMPACT = 'etude_impact', "Étude d'impact (EIE)"
+        ENREGISTREMENT_DECHETS = 'enregistrement_dechets', \
+            'Enregistrement déchets (loi 28-00)'
+        REJETS = 'rejets', 'Conformité rejets (eau / air)'
+        AUTRE = 'autre', 'Autre'
+
+    class Statut(models.TextChoices):
+        CONFORME = 'conforme', 'Conforme'
+        A_RENOUVELER = 'a_renouveler', 'À renouveler'
+        NON_CONFORME = 'non_conforme', 'Non conforme'
+        EXPIRE = 'expire', 'Expiré'
+
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='qhse_conformites_env',
+        verbose_name='Société',
+    )
+    intitule = models.CharField(max_length=255, verbose_name='Intitulé')
+    type_conformite = models.CharField(
+        max_length=25, choices=TypeConformite.choices,
+        default=TypeConformite.AUTORISATION, verbose_name='Type')
+    statut = models.CharField(
+        max_length=15, choices=Statut.choices,
+        default=Statut.CONFORME, verbose_name='Statut')
+    autorite = models.CharField(
+        max_length=255, blank=True, default='',
+        verbose_name='Autorité de tutelle')
+    reference_dossier = models.CharField(
+        max_length=120, blank=True, default='',
+        verbose_name='Référence du dossier')
+    # Référence LÂCHE au chantier (installations.Chantier) par id.
+    chantier_id = models.PositiveIntegerField(
+        null=True, blank=True, verbose_name='ID du chantier')
+    date_obtention = models.DateField(
+        null=True, blank=True, verbose_name="Date d'obtention")
+    date_expiration = models.DateField(
+        null=True, blank=True, verbose_name="Date d'expiration")
+    prealerte_jours = models.PositiveIntegerField(
+        default=PREALERTE_JOURS_DEFAUT,
+        verbose_name='Préalerte (jours)')
+    responsable = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='qhse_conformites_env',
+        verbose_name='Responsable',
+    )
+    notes = models.TextField(
+        blank=True, default='', verbose_name='Notes')
+    date_creation = models.DateTimeField(
+        auto_now_add=True, verbose_name='Créé le')
+
+    class Meta:
+        verbose_name = 'Conformité environnementale'
+        verbose_name_plural = 'Conformités environnementales'
+        ordering = ['-id']
+        indexes = [
+            models.Index(
+                fields=['company', 'statut'],
+                name='qhse_confenv_co_statut',
+            ),
+            models.Index(
+                fields=['company', 'date_expiration'],
+                name='qhse_confenv_co_exp',
+            ),
+        ]
+
+    def statut_calcule(self, today=None):
+        """État réel à une date : expiré / à renouveler / statut enregistré.
+
+        ``expire`` si l'échéance est passée ; ``a_renouveler`` si elle tombe dans
+        la fenêtre de préalerte ; sinon le ``statut`` enregistré. Sans échéance,
+        renvoie le ``statut`` enregistré tel quel.
+        """
+        from datetime import timedelta
+
+        from django.utils import timezone
+
+        if today is None:
+            today = timezone.localdate()
+        if self.date_expiration is None:
+            return self.statut
+        if self.date_expiration < today:
+            return self.Statut.EXPIRE
+        limite = today + timedelta(days=self.prealerte_jours or 0)
+        if self.date_expiration <= limite:
+            return self.Statut.A_RENOUVELER
+        return self.statut
+
+    def __str__(self):
+        return f'{self.intitule} ({self.get_type_conformite_display()})'

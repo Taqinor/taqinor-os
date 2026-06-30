@@ -23,7 +23,8 @@ un suivi à part : un appelant consulte cette porte, il ne la franchit pas ici.
 from django.db.models import Avg
 
 from .models import (
-    ActionCorrectivePreventive, Audit, DeclarationCnss, EvaluationRisque,
+    ActionCorrectivePreventive, Audit, ConformiteEnvironnementale,
+    DeclarationCnss, EvaluationRisque,
     Incident, InspectionSecurite, NonConformite, NotationFinChantier,
     PermisTravail, PlanInspectionChantier,
     ProcedureQualite, ReleveControle, ReleveCourbeIV, RetourClientQualite,
@@ -1010,3 +1011,35 @@ def calendrier_qhse(company, within_days=30, today=None):
         'declarations_cnss': nb_cnss,
         'evenements': evenements,
     }
+
+
+# ── QHSE38 — Conformités environnementales à relancer ──────────────────────
+
+def conformites_a_relancer(company, today=None):
+    """Conformités environnementales à renouveler ou expirées (QHSE38).
+
+    Lecture cadrée société : retient les conformités dont la ``date_expiration``
+    est renseignée et dont l'état RÉEL recalculé (``statut_calcule(today)``) est
+    ``a_renouveler`` (échéance dans la fenêtre de préalerte) ou ``expire``
+    (échéance déjà passée — ce qui doit alerter le plus). Les conformités sans
+    échéance ou encore largement valides sont exclues. Triée par échéance la plus
+    proche d'abord. Lecture seule.
+    """
+    from django.utils import timezone
+
+    if company is None:
+        return []
+    if today is None:
+        today = timezone.localdate()
+    qs = (ConformiteEnvironnementale.objects
+          .filter(company=company, date_expiration__isnull=False)
+          .select_related('responsable')
+          .order_by('date_expiration', 'id'))
+    a_relancer = []
+    for conf in qs:
+        etat = conf.statut_calcule(today)
+        if etat in (
+                ConformiteEnvironnementale.Statut.A_RENOUVELER,
+                ConformiteEnvironnementale.Statut.EXPIRE):
+            a_relancer.append(conf)
+    return a_relancer

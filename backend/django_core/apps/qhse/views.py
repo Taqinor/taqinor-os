@@ -18,7 +18,7 @@ from apps.ventes.utils.references import create_with_reference
 from .models import (
     ActionCorrectivePreventive, AnalyseIncident, Audit,
     BordereauSuiviDechet, CauseIncident,
-    ConsignationLoto, ContactUrgence,
+    ConformiteEnvironnementale, ConsignationLoto, ContactUrgence,
     CritereAudit, Dechet, DeclarationCnss, EvaluationRisque, GrilleAudit,
     Incident,
     InductionSecurite, InspectionSecurite,
@@ -31,6 +31,7 @@ from .models import (
 from .serializers import (
     ActionCorrectivePreventiveSerializer, AnalyseIncidentSerializer,
     AuditSerializer, BordereauSuiviDechetSerializer, CauseIncidentSerializer,
+    ConformiteEnvironnementaleSerializer,
     ConsignationLotoSerializer, ContactUrgenceSerializer,
     CritereAuditSerializer, DechetSerializer, DeclarationCnssSerializer,
     EvaluationRisqueSerializer, GrilleAuditSerializer,
@@ -51,7 +52,8 @@ from .serializers import (
 from . import chatter
 from .selectors import (
     calendrier_qhse,
-    capa_en_retard, chantier_peut_cloturer, courbes_iv_for_chantier,
+    capa_en_retard, chantier_peut_cloturer, conformites_a_relancer,
+    courbes_iv_for_chantier,
     criticite_summary, declarations_cnss_a_echeance, document_unique_valide,
     hold_points_status,
     heures_travaillees_chantiers,
@@ -64,7 +66,7 @@ from .services import (
     cloturer_ncr, creer_ncr_depuis_reserve, generer_capa_depuis_analyse,
     instancier_plan_chantier,
     lever_ncr_audit, lever_ncr_inspection, nouvelle_version_procedure,
-    relancer_capa_en_retard,
+    relancer_capa_en_retard, relancer_conformites,
     verifier_efficacite_capa,
 )
 
@@ -1726,3 +1728,57 @@ class RecyclageModuleViewSet(_QhseBaseViewSet):
             request.data.get('date_recyclage') or timezone.localdate())
         rec.save(update_fields=['statut', 'date_recyclage'])
         return Response(self.get_serializer(rec).data)
+
+
+class ConformiteEnvironnementaleViewSet(_QhseBaseViewSet):
+    """Conformités environnementales + relances (QHSE38).
+
+    CRUD scopé société. ``company`` posée côté serveur. Le FK ``responsable``
+    est validé même-société. Filtres optionnels : ``?statut=`` /
+    ``?type_conformite=`` / ``?chantier_id=``. Recherche par
+    intitulé/autorité/référence dossier.
+
+    Actions :
+
+    * ``GET …/a-relancer/`` — conformités à renouveler ou expirées
+      (``selectors.conformites_a_relancer``), scopé société ;
+    * ``POST …/relancer/`` — notifie les responsables des conformités à
+      renouveler et renvoie le digest (``services.relancer_conformites``).
+    """
+    queryset = ConformiteEnvironnementale.objects.select_related(
+        'responsable').all()
+    serializer_class = ConformiteEnvironnementaleSerializer
+    filter_backends = [filters.SearchFilter, filters.OrderingFilter]
+    search_fields = ['intitule', 'autorite', 'reference_dossier']
+    ordering_fields = [
+        'id', 'date_expiration', 'date_obtention', 'date_creation']
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        statut = self.request.query_params.get('statut')
+        if statut not in (None, ''):
+            qs = qs.filter(statut=statut)
+        type_conformite = self.request.query_params.get('type_conformite')
+        if type_conformite not in (None, ''):
+            qs = qs.filter(type_conformite=type_conformite)
+        chantier_id = self.request.query_params.get('chantier_id')
+        if chantier_id not in (None, ''):
+            qs = qs.filter(chantier_id=chantier_id)
+        return qs
+
+    @action(detail=False, methods=['get'], url_path='a-relancer')
+    def a_relancer(self, request):
+        """Conformités environnementales à renouveler ou expirées (QHSE38)."""
+        confs = conformites_a_relancer(request.user.company)
+        page = self.paginate_queryset(confs)
+        if page is not None:
+            serializer = self.get_serializer(page, many=True)
+            return self.get_paginated_response(serializer.data)
+        serializer = self.get_serializer(confs, many=True)
+        return Response(serializer.data)
+
+    @action(detail=False, methods=['post'])
+    def relancer(self, request):
+        """Relance les conformités à renouveler : notifie + digest (QHSE38)."""
+        digest = relancer_conformites(request.user.company)
+        return Response(digest)
