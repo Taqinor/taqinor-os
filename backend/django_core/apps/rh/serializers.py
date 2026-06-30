@@ -9,6 +9,7 @@ from rest_framework import serializers
 from .models import (
     AccidentTravail,
     AffectationRoster,
+    AffectationVehicule,
     AnalyseRisquesChantier,
     AvanceSalaire,
     BesoinFormation,
@@ -1842,6 +1843,41 @@ class PermisConduireSerializer(serializers.ModelSerializer):
 
     def validate_employe(self, value):
         return _meme_societe(self, value, 'Employé')
+
+
+class AffectationVehiculeSerializer(serializers.ModelSerializer):
+    """Affectation conducteur ↔ véhicule (FG198).
+
+    Le client saisit ``employe`` (un ``DossierEmploye`` de sa société),
+    ``vehicule_id`` (ID d'un ``flotte.Vehicule``), ``date_debut`` /
+    ``date_fin``, ``statut`` et ``note``. ``company`` et ``permis_verifie``
+    sont posées CÔTÉ SERVEUR (jamais lues du corps) ; ``employe`` doit
+    appartenir à la société de l'utilisateur. La GARDE PERMIS (FG198) est
+    appliquée côté serveur par la vue : pas de permis valide → 400.
+    """
+    employe_nom = serializers.SerializerMethodField()
+    statut_display = serializers.CharField(
+        source='get_statut_display', read_only=True)
+
+    class Meta:
+        model = AffectationVehicule
+        fields = [
+            'id', 'employe', 'employe_nom', 'vehicule_id',
+            'date_debut', 'date_fin', 'statut', 'statut_display',
+            'permis_verifie', 'note',
+            'date_creation', 'date_modification',
+        ]
+        read_only_fields = [
+            'employe_nom', 'permis_verifie',
+            'date_creation', 'date_modification']
+
+    def get_employe_nom(self, obj):
+        if not obj.employe_id:
+            return ''
+        return f'{obj.employe.nom} {obj.employe.prenom}'
+
+    def validate_employe(self, value):
+        return _meme_societe(self, value, 'Conducteur')
 
 
 class TypePrimeSerializer(serializers.ModelSerializer):

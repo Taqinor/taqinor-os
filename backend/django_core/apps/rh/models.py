@@ -3723,3 +3723,80 @@ class PermisConduire(models.Model):
 
     def __str__(self):
         return f'{self.employe} — permis {self.categorie}'
+
+
+class AffectationVehicule(models.Model):
+    """Affectation d'un conducteur à un véhicule (FG198).
+
+    Lie un ``employe`` conducteur (FK ``rh.DossierEmploye``, même société) à un
+    véhicule du parc (``vehicule_id`` — STRING-FK vers ``flotte.Vehicule`` : on
+    ne référence jamais ``flotte.models`` directement, comme
+    ``AffectationRoster`` / ``OrdreMission``) sur une période
+    (``date_debut`` → ``date_fin`` optionnelle pour une affectation ouverte).
+
+    GARDE PERMIS (décision FG198) : à la création/màj, le service
+    ``services.controler_permis_affectation`` REFUSE l'affectation si le
+    conducteur n'a pas de permis VALIDE (FG197 — via ``selectors.peut_conduire``).
+    Le contrôle est posé CÔTÉ SERVEUR ; le flag ``permis_verifie`` matérialise
+    qu'un permis valide existait à l'affectation.
+
+    Multi-société : ``company`` posée CÔTÉ SERVEUR (jamais lue du corps) ;
+    ``employe`` doit appartenir à la même société. Additif.
+
+    RUNTIME-SAFETY (leçon FG136) : ``statut`` ≤ 20 borné ; ``note`` plafonnée ;
+    index nommés (≤ 30 chars).
+    """
+
+    class Statut(models.TextChoices):
+        ACTIVE = 'active', 'Active'
+        TERMINEE = 'terminee', 'Terminée'
+
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='rh_affectations_vehicule',
+        verbose_name='Société',
+    )
+    employe = models.ForeignKey(
+        DossierEmploye,
+        on_delete=models.CASCADE,
+        related_name='affectations_vehicule',
+        verbose_name='Conducteur',
+    )
+    # String FK cross-app vers flotte.Vehicule — jamais importer flotte.models.
+    vehicule_id = models.PositiveIntegerField(verbose_name='Véhicule (ID)')
+    date_debut = models.DateField(
+        null=True, blank=True, verbose_name="Début d'affectation")
+    date_fin = models.DateField(
+        null=True, blank=True, verbose_name="Fin d'affectation")
+    statut = models.CharField(
+        max_length=20, choices=Statut.choices,
+        default=Statut.ACTIVE, verbose_name='Statut')
+    # Posé côté serveur : vrai si un permis valide existait à l'affectation.
+    permis_verifie = models.BooleanField(
+        default=False, verbose_name='Permis vérifié')
+    note = models.CharField(
+        max_length=255, blank=True, default='', verbose_name='Note')
+    date_creation = models.DateTimeField(
+        auto_now_add=True, verbose_name='Créé le')
+    date_modification = models.DateTimeField(
+        auto_now=True, verbose_name='Modifié le')
+
+    class Meta:
+        verbose_name = 'Affectation véhicule'
+        verbose_name_plural = 'Affectations véhicule'
+        ordering = ['-date_debut', '-date_creation']
+        indexes = [
+            models.Index(
+                fields=['company', 'employe'],
+                name='rh_affveh_comp_emp_idx'),
+            models.Index(
+                fields=['company', 'vehicule_id'],
+                name='rh_affveh_comp_veh_idx'),
+            models.Index(
+                fields=['company', 'statut'],
+                name='rh_affveh_comp_stat_idx'),
+        ]
+
+    def __str__(self):
+        return f'{self.employe} → véhicule {self.vehicule_id}'

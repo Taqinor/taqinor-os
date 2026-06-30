@@ -27,6 +27,7 @@ from . import selectors, services
 from .models import (
     AccidentTravail,
     AffectationRoster,
+    AffectationVehicule,
     AnalyseRisquesChantier,
     AvanceSalaire,
     BesoinFormation,
@@ -70,6 +71,7 @@ from .models import (
 from .serializers import (
     AccidentTravailSerializer,
     AffectationRosterSerializer,
+    AffectationVehiculeSerializer,
     AnalyseRisquesChantierSerializer,
     AvanceSalaireSerializer,
     BesoinFormationSerializer,
@@ -2936,3 +2938,88 @@ class PermisConduireViewSet(_RhBaseViewSet):
             return self.get_paginated_response(
                 self.get_serializer(page, many=True).data)
         return Response(self.get_serializer(qs, many=True).data)
+
+
+class AffectationVehiculeViewSet(_RhBaseViewSet):
+    """Affectations conducteur ↔ véhicule (FG198) — garde permis valide.
+
+    Société scopée + Administrateur/Responsable. Lie un conducteur à un véhicule
+    du parc (``vehicule_id`` = ID flotte.Vehicule, STRING-FK) sur une période.
+    ``company`` est posée CÔTÉ SERVEUR (jamais lue du corps) ; ``employe`` doit
+    appartenir à la même société.
+
+    GARDE PERMIS (décision FG198) : à la création/màj, l'affectation est REFUSÉE
+    (400) si le conducteur n'a pas de permis VALIDE (FG197) — contrôle posé côté
+    serveur via ``services.controler_permis_affectation`` ; ``permis_verifie``
+    est alors posé à ``True``.
+
+    Filtres : ``?employe=<id>``, ``?vehicule_id=<id>``,
+    ``?statut=active|terminee``.
+
+    Action :
+    * ``POST .../{id}/terminer/`` — clôt l'affectation (``statut=terminee``,
+      pose ``date_fin`` si absente). Idempotent.
+    """
+    queryset = AffectationVehicule.objects.select_related('employe').all()
+    serializer_class = AffectationVehiculeSerializer
+    filter_backends = [filters.SearchFilter, filters.OrderingFilter]
+    search_fields = ['employe__matricule', 'employe__nom', 'note']
+    ordering_fields = ['date_debut', 'statut', 'date_creation']
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        employe = self.request.query_params.get('employe')
+        if employe:
+            qs = qs.filter(employe_id=employe)
+        vehicule = self.request.query_params.get('vehicule_id')
+        if vehicule:
+            qs = qs.filter(vehicule_id=vehicule)
+        statut = self.request.query_params.get('statut')
+        if statut:
+            qs = qs.filter(statut=statut)
+        return qs
+
+    def _verifier_permis(self, serializer):
+        """Refuse (400) si le conducteur n'a pas de permis valide (FG198)."""
+        from rest_framework.exceptions import ValidationError
+
+        company = self.request.user.company
+        employe = serializer.validated_data.get('employe')
+        le = serializer.validated_data.get('date_debut')
+        if employe is not None and not services.controler_permis_affectation(
+                company, employe.id, le=le):
+            raise ValidationError({
+                'employe': ("Affectation refusée : ce conducteur n'a pas de "
+                            'permis de conduire valide (FG197).')})
+
+    def perform_create(self, serializer):
+        """Company posée côté serveur ; garde permis valide (FG198)."""
+        self._verifier_permis(serializer)
+        serializer.save(
+            company=self.request.user.company, permis_verifie=True)
+
+    def perform_update(self, serializer):
+        """Re-contrôle le permis si l'employé/la date change (FG198)."""
+        if ('employe' in serializer.validated_data
+                or 'date_debut' in serializer.validated_data):
+            self._verifier_permis(serializer)
+            serializer.save(permis_verifie=True)
+        else:
+            serializer.save()
+
+    @action(detail=True, methods=['post'], url_path='terminer')
+    def terminer(self, request, pk=None):
+        """Clôt l'affectation (FG198) — ``statut=terminee`` + ``date_fin``.
+
+        La société est garantie par ``get_object`` (autre tenant → 404).
+        Idempotent : re-terminer renvoie la même affectation sans erreur.
+        """
+        affectation = self.get_object()
+        if affectation.statut != AffectationVehicule.Statut.TERMINEE:
+            affectation.statut = AffectationVehicule.Statut.TERMINEE
+            if affectation.date_fin is None:
+                affectation.date_fin = timezone.localdate()
+            affectation.save(update_fields=[
+                'statut', 'date_fin', 'date_modification'])
+        return Response(
+            self.get_serializer(affectation).data, status=status.HTTP_200_OK)
