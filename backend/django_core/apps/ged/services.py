@@ -684,6 +684,143 @@ def deposer_lot_scans(*, company, folder, fichiers, created_by=None):
     return documents
 
 
+# ── GED32 — Import en masse (CSV de métadonnées + ZIP de fichiers) ───────────
+#
+# Import gouverné de N documents en un appel : un CSV de MÉTADONNÉES (une ligne
+# par document : nom, description, et colonnes de champs personnalisés) crée les
+# documents, et un ZIP OPTIONNEL fournit les binaires (appariés par la colonne
+# `fichier` = nom de l'entrée dans le zip). Stdlib seulement (`csv`, `zipfile`,
+# `io`) — AUCUNE dépendance nouvelle. Tout est company-scopé côté serveur.
+
+# Colonnes CSV réservées (le reste = codes de champs personnalisés customfields).
+CSV_COL_NOM = 'nom'
+CSV_COL_DESCRIPTION = 'description'
+CSV_COL_FICHIER = 'fichier'
+CSV_COLS_RESERVEES = {CSV_COL_NOM, CSV_COL_DESCRIPTION, CSV_COL_FICHIER}
+
+
+def parser_csv_metadonnees(csv_text):
+    """GED32 — Parse un CSV de métadonnées en liste de dicts (stdlib `csv`).
+
+    Première ligne = en-têtes. Renvoie une liste de dicts (une par ligne), clés
+    normalisées (strip). Robuste à un CSV vide (renvoie []). Ne valide RIEN ici
+    (la validation métier — nom requis, custom_data — se fait à l'import)."""
+    import csv
+    import io
+
+    if not csv_text or not csv_text.strip():
+        return []
+    reader = csv.DictReader(io.StringIO(csv_text))
+    lignes = []
+    for row in reader:
+        lignes.append({(k or '').strip(): (v or '').strip()
+                       for k, v in row.items() if k is not None})
+    return lignes
+
+
+def _zip_entries(zip_bytes):
+    """GED32 — Dictionnaire {nom_entrée: octets} d'un ZIP (stdlib `zipfile`).
+
+    Ignore les répertoires. Renvoie {} si `zip_bytes` est vide/invalide (jamais
+    d'erreur — un import sans zip reste possible)."""
+    import io
+    import zipfile
+
+    entries = {}
+    if not zip_bytes:
+        return entries
+    try:
+        with zipfile.ZipFile(io.BytesIO(zip_bytes)) as zf:
+            for info in zf.infolist():
+                if info.is_dir():
+                    continue
+                entries[info.filename] = zf.read(info.filename)
+    except (zipfile.BadZipFile, OSError):
+        return {}
+    return entries
+
+
+def importer_en_masse(*, company, folder, lignes, zip_bytes=None,
+                      created_by=None, valider_custom=None):
+    """GED32 — Import en masse de documents depuis des métadonnées (+ZIP optionnel).
+
+    Pour chaque ligne (dict issu de `parser_csv_metadonnees`) :
+      * `nom` est REQUIS (ligne sans nom → erreur, ligne ignorée) ;
+      * `description` (optionnel) ;
+      * `fichier` (optionnel) = nom d'une entrée du ZIP → stockée comme binaire
+        de la version 1 ; absente du ZIP → erreur sur la ligne ;
+      * toute autre colonne = code de champ personnalisé → `custom_data`
+        (validé via `valider_custom(custom_data)` si fourni — un appelant passe
+        `customfields.serializers.validate_custom_data` borné société/module).
+
+    Société + créateur posés CÔTÉ SERVEUR pour tout le lot ; le `folder` doit
+    appartenir à la société (garde dans `create_document`). Une ligne en erreur
+    n'interrompt PAS le lot (collectée dans `erreurs`).
+
+    Renvoie `{'documents': [...], 'erreurs': [{'ligne', 'detail'}], 'crees': n}`.
+    """
+    entries = _zip_entries(zip_bytes)
+    documents = []
+    erreurs = []
+    for idx, ligne in enumerate(lignes or [], start=1):
+        nom = (ligne.get(CSV_COL_NOM) or '').strip()
+        if not nom:
+            erreurs.append({'ligne': idx, 'detail': 'Nom requis.'})
+            continue
+        # Champs personnalisés = colonnes hors réservées (valeurs non vides).
+        custom_data = {k: v for k, v in ligne.items()
+                       if k not in CSV_COLS_RESERVEES and v not in (None, '')}
+        if custom_data and valider_custom is not None:
+            try:
+                custom_data = valider_custom(custom_data)
+            except Exception as exc:  # validation customfields → erreur de ligne.
+                erreurs.append({'ligne': idx,
+                                'detail': f'Métadonnées invalides : {exc}'})
+                continue
+        # Binaire optionnel apparié par la colonne `fichier`.
+        fichier = (ligne.get(CSV_COL_FICHIER) or '').strip()
+        contenu_bytes = None
+        mime = ''
+        if fichier:
+            if fichier not in entries:
+                erreurs.append({
+                    'ligne': idx,
+                    'detail': f"Fichier « {fichier} » absent du ZIP."})
+                continue
+            contenu_bytes = entries[fichier]
+            mime = _guess_mime(fichier)
+        document = create_document(
+            company=company, folder=folder, nom=nom,
+            description=(ligne.get(CSV_COL_DESCRIPTION) or '').strip(),
+            created_by=created_by,
+            custom_data=custom_data or None)
+        file_key = ''
+        size = 0
+        checksum = ''
+        if contenu_bytes is not None:
+            file_key, store_meta = _store_bytes(
+                contenu_bytes, mime=mime or 'application/octet-stream')
+            size = store_meta.get('size', 0)
+            checksum = compute_checksum(contenu_bytes)
+        add_version(
+            document, file_key=file_key, company=company,
+            filename=fichier or '', size=size, mime=mime,
+            checksum=checksum, uploaded_by=created_by)
+        update_search_vector(document)
+        index_embedding(document)
+        index_document_chunks(document)
+        documents.append(document)
+    return {'documents': documents, 'erreurs': erreurs,
+            'crees': len(documents)}
+
+
+def _guess_mime(filename):
+    """GED32 — Devine le type MIME d'un nom de fichier (stdlib `mimetypes`)."""
+    import mimetypes
+    mime, _ = mimetypes.guess_type(filename)
+    return mime or ''
+
+
 # ── GED16 — Check-out / check-in (verrouillage optimiste) ──────────
 
 def checkout_document(document, user):

@@ -419,6 +419,64 @@ class DocumentViewSet(TenantMixin, viewsets.ModelViewSet):
                 else status.HTTP_400_BAD_REQUEST)
         return Response({'documents': ser.data, 'erreurs': erreurs}, status=http)
 
+    @action(detail=False, methods=['post'], url_path='import-masse',
+            parser_classes=[MultiPartParser, FormParser])
+    def import_masse(self, request):
+        """GED32 — Import en MASSE depuis un CSV de métadonnées (+ ZIP optionnel).
+
+        `POST …/documents/import-masse/` (multipart) — corps :
+        `{folder: <id>, csv: <fichier .csv>[, zip: <fichier .zip>]}`. Le CSV
+        décrit une ligne par document (colonnes `nom`, `description`, `fichier`,
+        + codes de champs personnalisés). Le ZIP optionnel fournit les binaires
+        (appariés par la colonne `fichier`). Société + créateur posés CÔTÉ
+        SERVEUR ; les champs personnalisés sont validés bornés société/module.
+        Le dossier cible est borné à la société (404 sinon). Écriture :
+        responsable/admin.
+
+        Renvoie `{crees, documents: [...], erreurs: [...]}` — une ligne en erreur
+        n'interrompt pas l'import."""
+        company = request.user.company
+        folder_id = request.data.get('folder')
+        if not folder_id:
+            return Response({'folder': 'Le dossier cible est requis.'},
+                            status=status.HTTP_400_BAD_REQUEST)
+        folder = (Folder.objects.filter(company=company)
+                  .filter(pk=folder_id).first())
+        if folder is None:
+            return Response({'folder': 'Dossier inconnu.'},
+                            status=status.HTTP_404_NOT_FOUND)
+        csv_file = request.FILES.get('csv')
+        if not csv_file:
+            return Response({'csv': 'Un fichier CSV de métadonnées est requis.'},
+                            status=status.HTTP_400_BAD_REQUEST)
+        try:
+            csv_text = csv_file.read().decode('utf-8-sig')
+        except (UnicodeDecodeError, AttributeError):
+            return Response({'csv': 'CSV illisible (encodage attendu : UTF-8).'},
+                            status=status.HTTP_400_BAD_REQUEST)
+        lignes = services.parser_csv_metadonnees(csv_text)
+        if not lignes:
+            return Response({'csv': 'CSV vide ou sans ligne de données.'},
+                            status=status.HTTP_400_BAD_REQUEST)
+        zip_file = request.FILES.get('zip')
+        zip_bytes = zip_file.read() if zip_file else None
+
+        def _valider_custom(data):
+            from apps.customfields.serializers import validate_custom_data
+            return validate_custom_data('document', company, data)
+
+        result = services.importer_en_masse(
+            company=company, folder=folder, lignes=lignes,
+            zip_bytes=zip_bytes, created_by=request.user,
+            valider_custom=_valider_custom)
+        ser = DocumentSerializer(
+            result['documents'], many=True, context={'request': request})
+        http = (status.HTTP_201_CREATED if result['crees']
+                else status.HTTP_400_BAD_REQUEST)
+        return Response(
+            {'crees': result['crees'], 'documents': ser.data,
+             'erreurs': result['erreurs']}, status=http)
+
     @action(detail=False, methods=['post'], url_path='classer-apres-vente')
     def classer_apres_vente(self, request):
         """GED29 — Classe un PDF APRÈS-VENTE (SAV) déjà généré dans la GED.
