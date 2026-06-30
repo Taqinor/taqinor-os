@@ -2,7 +2,8 @@ from django.urls import include, path
 from rest_framework.routers import DefaultRouter
 
 from .views import (
-    ActionCorrectivePreventiveViewSet, AuditViewSet, ConsignationLotoViewSet,
+    ActionCorrectivePreventiveViewSet, AnalyseIncidentViewSet, AuditViewSet,
+    CauseIncidentViewSet, ConsignationLotoViewSet,
     ContactUrgenceViewSet,
     CritereAuditViewSet, DeclarationCnssViewSet,
     EvaluationRisqueViewSet, GrilleAuditViewSet, IncidentViewSet,
@@ -45,6 +46,8 @@ router.register(r'contacts-urgence', ContactUrgenceViewSet)
 router.register(r'secouristes', SecouristeViewSet)
 router.register(r'incidents', IncidentViewSet)
 router.register(r'declarations-cnss', DeclarationCnssViewSet)
+router.register(r'analyses-incident', AnalyseIncidentViewSet)
+router.register(r'causes-incident', CauseIncidentViewSet)
 router.register(
     r'iso9001-readiness', Iso9001ReadinessViewSet,
     basename='iso9001-readiness')

@@ -11,9 +11,9 @@ from decimal import Decimal
 from django.db import transaction
 
 from .models import (
-    ActionCorrectivePreventive, NonConformite, NotationFinChantier,
-    PlanInspectionChantier, PointControleModele, ProcedureQualite,
-    ReponseCritere, ReleveControle,
+    ActionCorrectivePreventive, CauseIncident, NonConformite,
+    NotationFinChantier, PlanInspectionChantier, PointControleModele,
+    ProcedureQualite, ReponseCritere, ReleveControle,
 )
 
 
@@ -471,3 +471,61 @@ def exiger_document_unique(company, chantier_id):
             "avant la pose.")
         raise ValidationError(message, code=statut['motif'] or 'duer_requis')
     return statut
+
+
+# ── QHSE31 — Analyse d'incident (arbre des causes) → CAPA ───────────────────
+
+@transaction.atomic
+def generer_capa_depuis_analyse(analyse, *, description=None,
+                                type_action=None, responsable=None,
+                                echeance=None, cause_racine=None):
+    """Génère une CAPA à partir d'une analyse d'incident (QHSE31).
+
+    Mirroir EXACT du linkage NCR → CAPA déjà en place (cf. ``lever_ncr_audit`` /
+    ``creer_ncr_depuis_reserve``) : la ``ActionCorrectivePreventive`` existante
+    porte un FK NON nul vers ``NonConformite``. On crée donc, à la PREMIÈRE
+    génération, une NCR-pont depuis l'``Incident`` de l'analyse (origine
+    « Analyse d'incident »), on la rattache à l'analyse (``analyse.non_conformite``)
+    puis on crée la CAPA sur cette NCR. Les générations suivantes RÉUTILISENT la
+    NCR-pont (jamais de doublon) et ajoutent une CAPA de plus.
+
+    La ``cause_racine`` de la CAPA est, par défaut, le libellé de la cause racine
+    de l'arbre (si présente), sinon la synthèse de l'analyse. Renvoie la CAPA
+    créée.
+    """
+    company = analyse.company
+    incident = analyse.incident
+
+    ncr = analyse.non_conformite
+    if ncr is None:
+        titre = f'Analyse incident — {incident.titre}'[:255]
+        ncr = NonConformite.objects.create(
+            company=company,
+            titre=titre,
+            description=analyse.synthese or analyse.description or '',
+            origine="Analyse d'incident",
+            gravite=NonConformite.Gravite.MINEURE,
+            chantier_id=incident.chantier_id,
+            signale_par=analyse.analyste,
+        )
+        analyse.non_conformite = ncr
+        analyse.save(update_fields=['non_conformite'])
+
+    if cause_racine is None:
+        racine = analyse.causes.filter(
+            type_cause=CauseIncident.TypeCause.CAUSE_RACINE).first()
+        cause_racine = racine.libelle if racine else (analyse.synthese or '')
+
+    capa = ActionCorrectivePreventive.objects.create(
+        company=company,
+        non_conformite=ncr,
+        type_action=(
+            type_action or ActionCorrectivePreventive.Type.CORRECTIVE),
+        description=description or (
+            f"Action corrective suite à l'analyse de l'incident "
+            f"« {incident.titre} »."),
+        cause_racine=cause_racine or '',
+        responsable=responsable,
+        echeance=echeance,
+    )
+    return capa
