@@ -1858,6 +1858,17 @@ class VisiteTechnique(models.Model):
             raise ValidationError(
                 "La prochaine visite ne peut pas précéder la visite.")
 
+    def save(self, *args, **kwargs):
+        # ``date_prochaine`` est calculée à l'enregistrement : le ``save()`` de
+        # DRF n'appelle pas ``clean()``, donc on garantit ici le calcul de la
+        # prochaine visite (validité paramétrable) sur tous les chemins de
+        # création/mise à jour, pas seulement les ModelForm/full_clean.
+        if self.date_prochaine is None and self.date_visite is not None \
+                and self.validite_mois:
+            self.date_prochaine = self.calculer_date_prochaine(
+                self.date_visite, self.validite_mois)
+        super().save(*args, **kwargs)
+
     def statut_calcule(self, today=None):
         """État RÉEL de la visite vs ``today`` (lecture seule, date injectable).
 

@@ -56,9 +56,10 @@ def contrats_a_preavis(company, within_days=30, today=None):
         .exclude(preavis_traite=True)
         .exclude(statut__in=[
             Contrat.Statut.RESILIE, Contrat.Statut.EXPIRE])
-        .annotate(echeance_preavis=echeance)
-        .filter(echeance_preavis__gte=today, echeance_preavis__lte=limite)
-        .order_by('echeance_preavis', 'id')
+        .annotate(echeance_preavis_calc=echeance)
+        .filter(echeance_preavis_calc__gte=today,
+                echeance_preavis_calc__lte=limite)
+        .order_by('echeance_preavis_calc', 'id')
     )
 
 
