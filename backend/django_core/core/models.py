@@ -343,3 +343,74 @@ class WorkflowStepInstance(TimestampedModel):
 
     def __str__(self):
         return f'{self.instance_id}/{self.ordre} ({self.get_statut_display()})'
+
+
+# ---------------------------------------------------------------------------
+# FG371+ — Configuration générique des INTÉGRATIONS externes (fondation).
+#
+# Modèle de FONDATION volontairement GÉNÉRIQUE : il stocke, PAR SOCIÉTÉ, le
+# paramétrage d'un connecteur externe (SMS, e-signature, IMAP, calendrier,
+# géocodage, Sage/CEGID, Odoo, open banking…) SANS référencer aucune app métier
+# (contrat import-linter ``core-foundation-is-a-base-layer``). Le connecteur
+# concret est désigné par deux chaînes — ``integration_type`` (ex. « sms ») +
+# ``provider`` (ex. « infobip ») — résolues via le registre ``core.integrations``.
+#
+# Sécurité : le secret réel (clé d'API…) N'EST JAMAIS stocké en clair. Le champ
+# ``secret_ref`` nomme une variable d'environnement (ex. « SMS_API_KEY ») d'où
+# le secret est lu à l'exécution (cf. ``core.integrations.resolve_secret``). Les
+# autres paramètres non sensibles vivent dans ``settings`` (JSON).
+# ---------------------------------------------------------------------------
+
+
+class IntegrationConfig(TimestampedModel):
+    """Paramétrage d'un connecteur d'intégration externe, par société (FG371+).
+
+    GÉNÉRIQUE : aucune FK métier. ``integration_type`` + ``provider`` pointent
+    un connecteur enregistré dans ``core.integrations`` ; ``settings`` porte les
+    paramètres non sensibles (JSON) ; ``secret_ref`` nomme la variable
+    d'environnement contenant le secret (jamais en clair). ``actif`` permet de
+    couper une intégration sans la supprimer.
+
+    Multi-tenant : ``company`` obligatoire, imposée côté serveur. Unique par
+    ``(company, integration_type, provider)``.
+    """
+
+    company = models.ForeignKey(
+        'authentication.Company', on_delete=models.CASCADE,
+        related_name='integration_configs', verbose_name='Société')
+
+    integration_type = models.CharField(
+        "Type d'intégration", max_length=40,
+        help_text='Catégorie, ex. « sms », « esign », « geocoding ».')
+    provider = models.CharField(
+        'Fournisseur', max_length=60,
+        help_text='Code du connecteur enregistré, ex. « infobip ».')
+    label = models.CharField('Libellé', max_length=120, blank=True, default='')
+
+    actif = models.BooleanField('Actif', default=True)
+    settings = models.JSONField(
+        'Paramètres', default=dict, blank=True,
+        help_text='Paramètres NON sensibles (JSON). Jamais de secret en clair.')
+    secret_ref = models.CharField(
+        "Référence du secret", max_length=120, blank=True, default='',
+        help_text="Nom de variable d'environnement contenant le secret.")
+
+    class Meta:
+        verbose_name = "Configuration d'intégration"
+        verbose_name_plural = "Configurations d'intégration"
+        ordering = ['integration_type', 'provider', 'id']
+        constraints = [
+            models.UniqueConstraint(
+                fields=['company', 'integration_type', 'provider'],
+                name='core_integration_co_type_prov'),
+        ]
+        indexes = [
+            models.Index(fields=['company', 'integration_type'],
+                         name='core_integ_co_type_idx'),
+            models.Index(fields=['company', 'actif'],
+                         name='core_integ_co_actif_idx'),
+        ]
+
+    def __str__(self):
+        return (f'{self.integration_type}/{self.provider} '
+                f'(société {self.company_id})')
