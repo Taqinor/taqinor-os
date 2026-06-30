@@ -23,6 +23,10 @@ from .views import (
     Regularisation8221ViewSet,  # FG271
     CommissioningTestViewSet,  # FG274
     IVCurveCaptureViewSet,  # FG275
+    AsBuiltPackViewSet,  # FG276
+    AttestationConformiteViewSet,  # FG277
+    TestPerformanceReceptionViewSet,  # FG278
+    AttestationREViewSet,  # FG287
 )
 from .recouvrement import (
     FollowupLevelViewSet,
@@ -81,6 +85,18 @@ router.register(r'recettes-mes', CommissioningTestViewSet,
 # FG275 — captures de courbe I-V par string.
 router.register(r'courbes-iv', IVCurveCaptureViewSet,
                 basename='courbe-iv')
+# FG276 — packs documentaires as-built.
+router.register(r'packs-asbuilt', AsBuiltPackViewSet,
+                basename='pack-asbuilt')
+# FG277 — attestations de conformité électrique.
+router.register(r'attestations-conformite', AttestationConformiteViewSet,
+                basename='attestation-conformite')
+# FG278 — tests de performance de réception (PR initial).
+router.register(r'tests-pr-reception', TestPerformanceReceptionViewSet,
+                basename='test-pr-reception')
+# FG287 — attestations d'énergie renouvelable.
+router.register(r'attestations-re', AttestationREViewSet,
+                basename='attestation-re')
 
 urlpatterns = [
     # Q6/Q7 — Proposition web tokenisée (données JSON + e-signature). Jeton

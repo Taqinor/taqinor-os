@@ -6,7 +6,9 @@ acceptés du corps. Aucun prix exposé.
 """
 from rest_framework import serializers
 
-from .models import CommissioningTest, IVCurveCapture
+from .models import (
+    CommissioningTest, IVCurveCapture, AsBuiltPack, AttestationConformite,
+    TestPerformanceReception, AttestationRE)
 
 
 class IVCurveCaptureSerializer(serializers.ModelSerializer):
@@ -46,5 +48,76 @@ class CommissioningTestSerializer(serializers.ModelSerializer):
         # ``resultat`` est dérivé des essais côté serveur ; jamais du corps.
         read_only_fields = [
             'id', 'resultat', 'resultat_label', 'iv_curves',
+            'created_at', 'updated_at',
+        ]
+
+
+class AsBuiltPackSerializer(serializers.ModelSerializer):
+    """FG276 — pack documentaire as-built ; ``company`` forcée serveur."""
+
+    class Meta:
+        model = AsBuiltPack
+        fields = [
+            'id', 'chantier', 'devis', 'recette', 'titre', 'pieces',
+            'notes', 'created_at', 'updated_at',
+        ]
+        read_only_fields = ['id', 'created_at', 'updated_at']
+
+
+class AttestationConformiteSerializer(serializers.ModelSerializer):
+    """FG277 — attestation de conformité électrique."""
+    statut_label = serializers.CharField(
+        source='get_statut_display', read_only=True)
+
+    class Meta:
+        model = AttestationConformite
+        fields = [
+            'id', 'chantier', 'recette', 'reference', 'referentiel',
+            'mesures', 'signataire_nom', 'signataire_qualite',
+            'signataire_habilitation', 'date_emission', 'statut',
+            'statut_label', 'observations', 'created_at', 'updated_at',
+        ]
+        read_only_fields = [
+            'id', 'statut_label', 'created_at', 'updated_at',
+        ]
+
+
+class TestPerformanceReceptionSerializer(serializers.ModelSerializer):
+    """FG278 — PR de réception ; pr_mesure/ecart/verdict dérivés serveur."""
+    verdict_label = serializers.CharField(
+        source='get_verdict_display', read_only=True)
+
+    class Meta:
+        model = TestPerformanceReception
+        fields = [
+            'id', 'chantier', 'recette', 'date_mesure',
+            'energie_mesuree_kwh', 'energie_attendue_kwh',
+            'pr_mesure', 'pr_attendu', 'pr_seuil_acceptation',
+            'ecart_pct', 'verdict', 'verdict_label', 'observations',
+            'created_at', 'updated_at',
+        ]
+        # pr_mesure (si dérivé), ecart_pct et verdict TOUJOURS calculés serveur.
+        read_only_fields = [
+            'id', 'ecart_pct', 'verdict', 'verdict_label',
+            'created_at', 'updated_at',
+        ]
+
+
+class AttestationRESerializer(serializers.ModelSerializer):
+    """FG287 — attestation d'énergie renouvelable ; CO₂ dérivé serveur."""
+    statut_label = serializers.CharField(
+        source='get_statut_display', read_only=True)
+
+    class Meta:
+        model = AttestationRE
+        fields = [
+            'id', 'chantier', 'reference', 'periode_debut', 'periode_fin',
+            'energie_kwh', 'facteur_co2_kg_kwh', 'co2_evite_t',
+            'signataire_nom', 'date_emission', 'statut', 'statut_label',
+            'observations', 'created_at', 'updated_at',
+        ]
+        # facteur & co2_evite_t TOUJOURS recalculés serveur (jamais du corps).
+        read_only_fields = [
+            'id', 'facteur_co2_kg_kwh', 'co2_evite_t', 'statut_label',
             'created_at', 'updated_at',
         ]

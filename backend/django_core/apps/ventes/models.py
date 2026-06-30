@@ -1859,4 +1859,8 @@ from .models_regulatory import (  # noqa: E402,F401
 from .models_commissioning import (  # noqa: E402,F401
     CommissioningTest,
     IVCurveCapture,
+    AsBuiltPack,                # FG276
+    AttestationConformite,      # FG277
+    TestPerformanceReception,   # FG278
+    AttestationRE,              # FG287
 )
