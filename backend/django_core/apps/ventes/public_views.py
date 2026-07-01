@@ -422,6 +422,87 @@ def proposal_pdf(request, token):
 @api_view(['POST'])
 @permission_classes([AllowAny])
 @throttle_classes([PublicLinkRateThrottle])
+def proposal_contact_request(request, token):
+    """QJ27 — Le client demande à être contacté (« Être rappelé » côté client).
+
+    Endpoint PUBLIC tokenisé (même jeton ShareLink que la proposition — long,
+    imprévisible, expirant). Consigne la demande dans le chatter du lead lié
+    (via les services crm — jamais d'import de ``crm.models``) et notifie le
+    RESPONSABLE du lead ET son SUPÉRIEUR (repli : managers « Commercial
+    responsable » / « Directeur » de la société) via ``notify()``. Sans lead,
+    le créateur du devis + son supérieur sont notifiés et la demande est
+    consignée dans le chatter du devis.
+
+    Idempotent / rate-sane : en plus du throttle par IP+jeton, une même
+    demande n'est transmise qu'une fois par heure et par lien (verrou cache) —
+    un double clic répond « déjà transmise » sans re-notifier.
+    """
+    link = _resolve_proposal_link(token)
+    if link is None:
+        return _not_found()
+
+    canal = (str(request.data.get('canal') or '')).strip()[:20]
+    message = (str(request.data.get('message') or '')).strip()[:500]
+
+    # Verrou idempotence (1 h par lien) — cache.add est atomique : False si la
+    # demande a déjà été transmise récemment.
+    already = False
+    try:
+        from django.core.cache import cache
+        already = not cache.add(f'qj27-contact:{link.pk}', True, 3600)
+    except Exception:  # noqa: BLE001 — un cache indisponible ne bloque rien
+        already = False
+    if already:
+        return _noindex(Response({
+            'detail': ('Votre demande a déjà été transmise. '
+                       'Nous vous recontactons très vite.'),
+            'already_sent': True,
+        }))
+
+    devis = link.devis
+    try:
+        lead = getattr(devis, 'lead', None)
+        if lead is not None:
+            from apps.crm.services import notify_client_contact_request
+            notify_client_contact_request(
+                devis.reference, lead, canal=canal, message=message)
+        else:
+            # Pas de lead : chatter devis + notification créateur + supérieur.
+            from apps.crm.services import user_and_superior_recipients
+            from apps.notifications.services import notify_many
+            from . import activity
+            note = f'Le client demande à être contacté ({devis.reference})'
+            if message:
+                note += f' : « {message} »'
+            activity.log_devis_note(devis, None, note)
+            recipients = user_and_superior_recipients(
+                getattr(devis, 'created_by', None), devis.company)
+            if recipients:
+                client_nom = str(devis.client) if devis.client_id else 'Le client'
+                body = (f'{client_nom} demande à être contacté au sujet du '
+                        f'devis {devis.reference}.')
+                if message:
+                    body += f'\nMessage : « {message} »'
+                notify_many(
+                    recipients, 'client_contact_request',
+                    f'Le client demande à être contacté — {devis.reference}',
+                    body=body,
+                    link='/ventes/devis',
+                    company=devis.company,
+                )
+    except Exception:  # noqa: BLE001 — jamais d'erreur interne exposée
+        pass
+
+    return _noindex(Response({
+        'detail': ('Votre demande a bien été transmise. '
+                   'Nous vous recontactons très vite.'),
+        'already_sent': False,
+    }))
+
+
+@api_view(['POST'])
+@permission_classes([AllowAny])
+@throttle_classes([PublicLinkRateThrottle])
 def proposal_request_otp(request, token):
     """QJ11 — Demande l'envoi d'un OTP au contact du devis (toggle ESIGN_OTP_ENABLED).
 

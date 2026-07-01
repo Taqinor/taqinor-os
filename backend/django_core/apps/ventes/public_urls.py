@@ -2,7 +2,7 @@ from django.urls import path
 from .public_views import (
     public_document, pay_page, pay_webhook,
     proposal_data, proposal_pdf, proposal_accept,
-    proposal_request_otp,
+    proposal_contact_request, proposal_request_otp,
 )
 
 urlpatterns = [
@@ -10,6 +10,9 @@ urlpatterns = [
     # Q6/Q7 — proposition tokenisée (données + PDF + e-signature).
     path('proposal/<str:token>/data/', proposal_data, name='public-proposal-data'),
     path('proposal/<str:token>/pdf/', proposal_pdf, name='public-proposal-pdf'),
+    # QJ27 — le client demande à être contacté (notifie handler + supérieur).
+    path('proposal/<str:token>/contact/', proposal_contact_request,
+         name='public-proposal-contact'),
     # QJ11 — demande d'OTP (toggle ESIGN_OTP_ENABLED).
     path('proposal/<str:token>/otp/', proposal_request_otp,
          name='public-proposal-otp'),
