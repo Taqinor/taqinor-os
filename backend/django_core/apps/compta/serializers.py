@@ -122,10 +122,12 @@ class EcritureComptableSerializer(serializers.ModelSerializer):
             'id', 'journal', 'journal_code', 'reference', 'date_ecriture',
             'libelle', 'statut', 'source_type', 'source_id', 'lignes',
             'total_debit', 'total_credit', 'date_creation',
+            # COMPTA40 — traçabilité du second regard (lecture seule).
+            'valide_par', 'date_validation',
         ]
         read_only_fields = [
             'date_creation', 'source_type', 'source_id', 'total_debit',
-            'total_credit',
+            'total_credit', 'valide_par', 'date_validation',
         ]
 
     def get_total_debit(self, obj):

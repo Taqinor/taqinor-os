@@ -103,6 +103,22 @@ class _ComptaBaseViewSet(TenantMixin, viewsets.ModelViewSet):
     permission_classes = [IsResponsableOrAdmin]
 
 
+def _peut(user, code):
+    """COMPTA40 — L'utilisateur porte-t-il la permission comptable ``code`` ?
+
+    Repli historique (comme ``HasPermissionOrLegacy``) : un compte SANS rôle fin
+    garde l'accès Responsable/Admin d'avant — aucune régression pour les comptes
+    hérités. Un compte AVEC rôle fin est jugé sur ses permissions granulaires.
+    """
+    if not (user and user.is_authenticated):
+        return False
+    if user.is_superuser:
+        return True
+    if getattr(user, 'role_id', None):
+        return user.has_erp_permission(code)
+    return user.is_responsable
+
+
 class PlanComptableViewSet(_ComptaBaseViewSet):
     """Plan(s) comptable(s) de la société (FG107). Action ``seed`` pour amorcer
     le plan CGNC + les journaux standards (idempotent)."""
@@ -186,6 +202,29 @@ class EcritureComptableViewSet(_ComptaBaseViewSet):
         return Response(
             EcritureComptableSerializer(extourne).data,
             status=status.HTTP_201_CREATED)
+
+    @action(detail=True, methods=['post'])
+    def valider(self, request, pk=None):
+        """COMPTA40 — Valide l'écriture (second regard, séparation des tâches).
+
+        Le saisisseur (``created_by``) ne peut JAMAIS valider sa propre
+        écriture : la garde est posée côté service. Requiert la permission
+        ``compta_valider`` (repli historique : Responsable/Admin pour les
+        comptes sans rôle fin). En cas de violation de la séparation ou d'une
+        écriture déjà validée, renvoie 400 avec un message explicite.
+        """
+        if not _peut(request.user, 'compta_valider'):
+            return Response(
+                {'detail': "Vous n'êtes pas habilité à valider une écriture."},
+                status=status.HTTP_403_FORBIDDEN)
+        ecriture = self.get_object()
+        try:
+            services.valider_ecriture(ecriture, user=request.user)
+        except DjangoValidationError as exc:
+            return Response(
+                {'detail': exc.messages[0] if exc.messages else str(exc)},
+                status=status.HTTP_400_BAD_REQUEST)
+        return Response(EcritureComptableSerializer(ecriture).data)
 
 
 class CompteTresorerieViewSet(_ComptaBaseViewSet):
@@ -812,6 +851,11 @@ class PeriodeComptableViewSet(_ComptaBaseViewSet):
 
     @action(detail=True, methods=['post'])
     def cloturer(self, request, pk=None):
+        # COMPTA40 — la clôture est une action de gouvernance dédiée.
+        if not _peut(request.user, 'compta_cloturer'):
+            return Response(
+                {'detail': "Vous n'êtes pas habilité à clôturer une période."},
+                status=status.HTTP_403_FORBIDDEN)
         periode = self.get_object()
         services.cloturer_periode(periode, user=request.user)
         return Response(self.get_serializer(periode).data)
@@ -844,6 +888,11 @@ class ExerciceComptableViewSet(_ComptaBaseViewSet):
 
     @action(detail=True, methods=['post'])
     def cloturer(self, request, pk=None):
+        # COMPTA40 — la clôture est une action de gouvernance dédiée.
+        if not _peut(request.user, 'compta_cloturer'):
+            return Response(
+                {'detail': "Vous n'êtes pas habilité à clôturer un exercice."},
+                status=status.HTTP_403_FORBIDDEN)
         exercice = self.get_object()
         services.cloturer_exercice(exercice, user=request.user)
         return Response(self.get_serializer(exercice).data)
