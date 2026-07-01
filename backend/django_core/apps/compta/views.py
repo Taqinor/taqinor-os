@@ -46,6 +46,7 @@ from .models import (
     TerritoireCommercial, EnqueteNPS, AvisClient,
     CompteFidelite, MouvementFidelite, RegleUpsell,
     AbonnementMonitoring,
+    MappingCompte, CompteAuxiliaire, PieceJustificative,
 )
 from .serializers import (
     AppelTelephoniqueSerializer, AvancementRevenuSerializer,
@@ -90,6 +91,8 @@ from .serializers import (
     EnqueteNPSSerializer, AvisClientSerializer,
     CompteFideliteSerializer, MouvementFideliteSerializer,
     RegleUpsellSerializer, AbonnementMonitoringSerializer,
+    MappingCompteSerializer, CompteAuxiliaireSerializer,
+    PieceJustificativeSerializer,
 )
 
 
@@ -161,6 +164,26 @@ class EcritureComptableViewSet(_ComptaBaseViewSet):
     def perform_create(self, serializer):
         serializer.save(
             company=self.request.user.company, created_by=self.request.user)
+
+    @action(detail=True, methods=['post'])
+    def extourner(self, request, pk=None):
+        """COMPTA11 — Passe l'écriture d'extourne (contre-passation).
+
+        Ne supprime JAMAIS l'écriture d'origine : crée l'écriture inverse.
+        Idempotent. Corps optionnel : ``{'date_extourne': 'YYYY-MM-DD'}``.
+        """
+        ecriture = self.get_object()
+        date_extourne = request.data.get('date_extourne') or None
+        try:
+            extourne = services.extourner_ecriture(
+                ecriture, date_extourne=date_extourne, user=request.user)
+        except DjangoValidationError as exc:
+            return Response(
+                {'detail': exc.messages},
+                status=status.HTTP_400_BAD_REQUEST)
+        return Response(
+            EcritureComptableSerializer(extourne).data,
+            status=status.HTTP_201_CREATED)
 
 
 class CompteTresorerieViewSet(_ComptaBaseViewSet):
@@ -3868,3 +3891,99 @@ class AbonnementMonitoringViewSet(_ComptaBaseViewSet):
             return self.get_paginated_response(
                 self.get_serializer(page, many=True).data)
         return Response(self.get_serializer(qs, many=True).data)
+
+
+# ── COMPTA2 — Mapping document → compte ────────────────────────────────────
+
+class MappingCompteViewSet(_ComptaBaseViewSet):
+    """Mappings document→compte de la société (COMPTA2). Filtrable par type de
+    clef. Action ``seed`` pour semer les correspondances par défaut."""
+    queryset = MappingCompte.objects.select_related('compte').all()
+    serializer_class = MappingCompteSerializer
+    filter_backends = [filters.OrderingFilter]
+    ordering_fields = ['type_clef', 'clef']
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        type_clef = self.request.query_params.get('type_clef')
+        if type_clef:
+            qs = qs.filter(type_clef=type_clef)
+        return qs
+
+    @action(detail=False, methods=['post'])
+    def seed(self, request):
+        mappings = services.seed_mappings_defaut(request.user.company)
+        return Response(
+            MappingCompteSerializer(mappings, many=True).data)
+
+
+# ── COMPTA3 — Comptes auxiliaires tiers ────────────────────────────────────
+
+class CompteAuxiliaireViewSet(_ComptaBaseViewSet):
+    """Comptes auxiliaires clients/fournisseurs (COMPTA3). Le ``code`` est posé
+    côté serveur ; création via l'action ``assurer`` (idempotente, validée par
+    les sélecteurs crm/stock)."""
+    queryset = CompteAuxiliaire.objects.select_related(
+        'compte_collectif').all()
+    serializer_class = CompteAuxiliaireSerializer
+    filter_backends = [filters.OrderingFilter]
+    ordering_fields = ['type_tiers', 'code']
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        type_tiers = self.request.query_params.get('type_tiers')
+        if type_tiers:
+            qs = qs.filter(type_tiers=type_tiers)
+        return qs
+
+    @action(detail=False, methods=['post'])
+    def assurer(self, request):
+        """Crée (ou récupère) l'auxiliaire d'un tiers.
+
+        Corps : ``{'type_tiers': 'client'|'fournisseur', 'tiers_id': <int>}``.
+        Le tiers est validé scopé société par les sélecteurs crm/stock.
+        """
+        company = request.user.company
+        type_tiers = request.data.get('type_tiers')
+        tiers_id = request.data.get('tiers_id')
+        if not tiers_id:
+            return Response(
+                {'detail': 'tiers_id requis.'},
+                status=status.HTTP_400_BAD_REQUEST)
+        if type_tiers == CompteAuxiliaire.TypeTiers.CLIENT:
+            aux = services.assurer_compte_auxiliaire_client(company, tiers_id)
+        elif type_tiers == CompteAuxiliaire.TypeTiers.FOURNISSEUR:
+            aux = services.assurer_compte_auxiliaire_fournisseur(
+                company, tiers_id)
+        else:
+            return Response(
+                {'detail': "type_tiers doit être 'client' ou 'fournisseur'."},
+                status=status.HTTP_400_BAD_REQUEST)
+        if aux is None:
+            return Response(
+                {'detail': 'Tiers introuvable pour cette société.'},
+                status=status.HTTP_404_NOT_FOUND)
+        return Response(CompteAuxiliaireSerializer(aux).data)
+
+
+# ── COMPTA10 — Pièces justificatives sur écriture ──────────────────────────
+
+class PieceJustificativeViewSet(_ComptaBaseViewSet):
+    """Pièces justificatives attachées aux écritures (COMPTA10). Filtrable par
+    écriture. ``ajoute_par`` est posé côté serveur."""
+    queryset = PieceJustificative.objects.select_related('ecriture').all()
+    serializer_class = PieceJustificativeSerializer
+    filter_backends = [filters.OrderingFilter]
+    ordering_fields = ['date_creation']
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        ecriture = self.request.query_params.get('ecriture')
+        if ecriture:
+            qs = qs.filter(ecriture_id=ecriture)
+        return qs
+
+    def perform_create(self, serializer):
+        serializer.save(
+            company=self.request.user.company,
+            ajoute_par=self.request.user)

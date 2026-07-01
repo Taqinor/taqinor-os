@@ -48,6 +48,7 @@ from .models import (
     TravauxEnCours, VirementInterne,
     EcheanceAO, ResultatAO, ComptePortailClient,
     PaiementFacturePortail,
+    MappingCompte, CompteAuxiliaire,
 )
 
 
@@ -4223,3 +4224,226 @@ def renouveler_abonnement_monitoring(abonnement, *, today=None):
         base, abonnement.periodicite)
     abonnement.save(update_fields=['date_debut', 'prochaine_echeance'])
     return abonnement
+
+
+# ── COMPTA2 — Mapping document → compte comptable ──────────────────────────
+
+# Correspondances par défaut « clef documentaire → numéro de compte CGNC ».
+# Semées de façon idempotente, elles rendent le posting paramétrable sans coder
+# les comptes en dur. (type_clef, clef, numéro, libellé.)
+_MAPPINGS_DEFAUT = [
+    # Familles de produit → comptes de produits (classe 7)
+    ('famille', 'panneau', '7121', 'Ventes panneaux'),
+    ('famille', 'onduleur', '7121', 'Ventes onduleurs'),
+    ('famille', 'batterie', '7121', 'Ventes batteries'),
+    ('famille', 'pompe', '7121', 'Ventes pompage'),
+    ('famille', 'installation', '7121', 'Prestations installation'),
+    # Taux de TVA → comptes de TVA facturée (classe 4)
+    ('tva', '20', '4455', 'TVA facturée 20 %'),
+    ('tva', '14', '4455', 'TVA facturée 14 %'),
+    ('tva', '10', '4455', 'TVA facturée 10 %'),
+    ('tva', '7', '4455', 'TVA facturée 7 %'),
+    ('tva', '0', '4455', 'TVA facturée 0 %'),
+    # Modes de paiement → comptes de trésorerie (classe 5)
+    ('paiement', 'virement', '5141', 'Banque (virement)'),
+    ('paiement', 'cheque', '5141', 'Banque (chèque)'),
+    ('paiement', 'carte', '5141', 'Banque (carte)'),
+    ('paiement', 'especes', '5161', 'Caisse (espèces)'),
+]
+
+
+@transaction.atomic
+def seed_mappings_defaut(company):
+    """Sème les mappings document→compte par défaut (idempotent, additif).
+
+    Ne touche JAMAIS un mapping existant : le founder peut redéfinir un compte
+    pour une clef sans que le seed ne l'écrase. Sème le plan comptable au besoin
+    (les comptes cibles doivent exister). Renvoie la liste des mappings.
+    """
+    if not PlanComptable.objects.filter(company=company).exists():
+        seed_plan_comptable(company)
+    created = []
+    for type_clef, clef, numero, libelle in _MAPPINGS_DEFAUT:
+        compte = get_compte(company, numero)
+        if compte is None:
+            continue
+        mapping, _ = MappingCompte.objects.get_or_create(
+            company=company, type_clef=type_clef, clef=clef,
+            defaults={'compte': compte, 'libelle': libelle},
+        )
+        created.append(mapping)
+    return created
+
+
+def compte_pour_clef(company, type_clef, clef, *, defaut=None):
+    """Compte mappé pour ``(type_clef, clef)`` d'une société, ou ``defaut``.
+
+    Lecture seule. ``clef`` est normalisée (str, minuscules, sans espaces) pour
+    tolérer les variations de casse. Un mapping inactif est ignoré.
+    """
+    if clef is None:
+        return defaut
+    clef_norm = str(clef).strip().lower()
+    mapping = MappingCompte.objects.filter(
+        company=company, type_clef=type_clef, clef__iexact=clef_norm,
+        actif=True,
+    ).select_related('compte').first()
+    return mapping.compte if mapping else defaut
+
+
+# ── COMPTA3 — Comptes auxiliaires tiers (via selectors crm/stock) ──────────
+
+def _prochain_code_auxiliaire(company, type_tiers):
+    """Prochain code auxiliaire libre (C0001/F0001…) pour un type de tiers.
+
+    Basé sur le plus grand suffixe numérique déjà utilisé + 1 (jamais count()+1)
+    — cohérent avec la politique de numérotation du projet. Scopé société.
+    """
+    import re
+    prefixe = 'C' if type_tiers == CompteAuxiliaire.TypeTiers.CLIENT else 'F'
+    codes = CompteAuxiliaire.objects.filter(
+        company=company, type_tiers=type_tiers,
+    ).values_list('code', flat=True)
+    plus_haut = 0
+    for code in codes:
+        m = re.search(r'(\d+)$', code or '')
+        if m:
+            plus_haut = max(plus_haut, int(m.group(1)))
+    return f'{prefixe}{plus_haut + 1:04d}'
+
+
+@transaction.atomic
+def assurer_compte_auxiliaire_client(company, client_id):
+    """Compte auxiliaire du client (crée s'il manque), ou None si client inconnu.
+
+    Le client est VALIDÉ scopé société via ``crm.selectors.get_company_client``
+    (jamais un import de ``crm.models``). Rattaché au compte collectif 3421.
+    Idempotent : un même client ne produit qu'un auxiliaire par société.
+    """
+    from apps.crm.selectors import get_company_client
+    client = get_company_client(company, client_id)
+    if client is None:
+        return None
+    existant = CompteAuxiliaire.objects.filter(
+        company=company, type_tiers=CompteAuxiliaire.TypeTiers.CLIENT,
+        tiers_id=client_id,
+    ).first()
+    if existant:
+        return existant
+    collectif = get_compte(company, '3421')
+    if collectif is None:
+        seed_plan_comptable(company)
+        collectif = get_compte(company, '3421')
+    return CompteAuxiliaire.objects.create(
+        company=company,
+        compte_collectif=collectif,
+        type_tiers=CompteAuxiliaire.TypeTiers.CLIENT,
+        tiers_id=client_id,
+        code=_prochain_code_auxiliaire(
+            company, CompteAuxiliaire.TypeTiers.CLIENT),
+    )
+
+
+@transaction.atomic
+def assurer_compte_auxiliaire_fournisseur(company, fournisseur_id):
+    """Compte auxiliaire du fournisseur (crée s'il manque), ou None si inconnu.
+
+    Le fournisseur est VALIDÉ scopé société via
+    ``stock.selectors.get_fournisseur_tiers_identity`` (jamais un import de
+    ``stock.models``). Rattaché au compte collectif 4411. Idempotent.
+    """
+    from apps.stock.selectors import get_fournisseur_tiers_identity
+    identite = get_fournisseur_tiers_identity(company, fournisseur_id)
+    if identite is None:
+        return None
+    existant = CompteAuxiliaire.objects.filter(
+        company=company, type_tiers=CompteAuxiliaire.TypeTiers.FOURNISSEUR,
+        tiers_id=fournisseur_id,
+    ).first()
+    if existant:
+        return existant
+    collectif = get_compte(company, '4411')
+    if collectif is None:
+        seed_plan_comptable(company)
+        collectif = get_compte(company, '4411')
+    return CompteAuxiliaire.objects.create(
+        company=company,
+        compte_collectif=collectif,
+        type_tiers=CompteAuxiliaire.TypeTiers.FOURNISSEUR,
+        tiers_id=fournisseur_id,
+        code=_prochain_code_auxiliaire(
+            company, CompteAuxiliaire.TypeTiers.FOURNISSEUR),
+    )
+
+
+# ── COMPTA9 — Numérotation séquentielle des pièces (references.py) ─────────
+
+def creer_ecriture_numerotee(company, journal, date_ecriture, libelle, lignes,
+                             *, prefixe=None, created_by=None, statut=None,
+                             source_type='', source_id=None):
+    """Comme ``creer_ecriture`` mais attribue une référence de pièce SÉQUENTIELLE.
+
+    La référence (ex. ``PC-202607-0001``) est générée par
+    ``apps.ventes.utils.references.create_with_reference`` (plus-haut-utilisé + 1,
+    savepoint + retry sur course) — JAMAIS ``count()+1``. Le préfixe par défaut
+    dérive du code du journal (``PC-<CODE>``). Renvoie l'écriture équilibrée.
+    """
+    from apps.ventes.utils.references import create_with_reference
+    pref = prefixe or f'PC-{journal.code}'
+
+    def _save(reference):
+        return creer_ecriture(
+            company, journal, date_ecriture, libelle, lignes,
+            reference=reference, source_type=source_type, source_id=source_id,
+            created_by=created_by, statut=statut,
+        )
+
+    return create_with_reference(
+        EcritureComptable, pref, company, _save)
+
+
+# ── COMPTA11 — Extourne / contre-passation d'une écriture validée ──────────
+
+@transaction.atomic
+def extourner_ecriture(ecriture, *, date_extourne=None, user=None,
+                       libelle=None):
+    """Crée l'écriture d'extourne (contre-passation) d'une écriture existante.
+
+    On NE SUPPRIME JAMAIS une écriture validée : on passe une écriture inverse
+    (débit↔crédit permutés) au même journal, ce qui solde comptablement
+    l'originale tout en gardant la piste d'audit. Idempotent via
+    ``source_type='extourne'`` + ``source_id`` = id de l'écriture d'origine.
+
+    Refuse d'extourner une écriture dont la date d'extourne tombe dans une
+    période verrouillée (garde-fou hérité de ``EcritureComptable.save``).
+    Renvoie l'écriture d'extourne (existante ou nouvelle).
+    """
+    company = ecriture.company
+    if date_extourne is None:
+        date_extourne = timezone.localdate()
+    # Idempotence : une écriture n'a qu'une seule extourne par société.
+    existante = _ecriture_existante(company, 'extourne', ecriture.id)
+    if existante:
+        return existante
+    lignes = []
+    for lig in ecriture.lignes.all():
+        # Permute débit et crédit pour annuler la ligne d'origine.
+        lignes.append({
+            'compte': lig.compte,
+            'debit': lig.credit,
+            'credit': lig.debit,
+            'libelle': f'Extourne — {lig.libelle}' if lig.libelle else 'Extourne',
+            'tiers_type': lig.tiers_type,
+            'tiers_id': lig.tiers_id,
+            'centre_cout': lig.centre_cout,
+        })
+    if not lignes:
+        raise ValidationError(
+            "Impossible d'extourner une écriture sans ligne.")
+    lib = libelle or f'Extourne de : {ecriture.libelle}'
+    return creer_ecriture(
+        company, ecriture.journal, date_extourne, lib, lignes,
+        reference=f'EXT-{ecriture.reference}' if ecriture.reference else '',
+        source_type='extourne', source_id=ecriture.id,
+        created_by=user, statut=EcritureComptable.Statut.VALIDEE,
+    )
