@@ -38,6 +38,8 @@ from .views import (
     EnqueteNPSViewSet, AvisClientViewSet,
     CompteFideliteViewSet, MouvementFideliteViewSet,
     RegleUpsellViewSet, AbonnementMonitoringViewSet,
+    MappingCompteViewSet, CompteAuxiliaireViewSet,
+    PieceJustificativeViewSet,
 )
 
 router = DefaultRouter()
@@ -129,6 +131,10 @@ router.register(r'comptes-fidelite', CompteFideliteViewSet)
 router.register(r'mouvements-fidelite', MouvementFideliteViewSet)
 router.register(r'regles-upsell', RegleUpsellViewSet)
 router.register(r'abonnements-monitoring', AbonnementMonitoringViewSet)
+# ── Comptabilité générale — mappings, auxiliaires & pièces (COMPTA2/3/10) ────
+router.register(r'mappings-compte', MappingCompteViewSet)
+router.register(r'comptes-auxiliaires', CompteAuxiliaireViewSet)
+router.register(r'pieces-justificatives', PieceJustificativeViewSet)
 
 urlpatterns = [
     path('', include(router.urls)),

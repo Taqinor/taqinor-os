@@ -36,6 +36,7 @@ from .models import (
     TerritoireCommercial, EnqueteNPS, AvisClient,
     CompteFidelite, MouvementFidelite, RegleUpsell,
     AbonnementMonitoring,
+    MappingCompte, CompteAuxiliaire, PieceJustificative,
 )
 
 
@@ -1946,3 +1947,58 @@ class AbonnementMonitoringSerializer(serializers.ModelSerializer):
         read_only_fields = [
             'statut', 'date_debut', 'prochaine_echeance', 'date_creation',
         ]
+
+
+# ── COMPTA2 — Mapping document → compte ────────────────────────────────────
+
+class MappingCompteSerializer(serializers.ModelSerializer):
+    type_clef_display = serializers.CharField(
+        source='get_type_clef_display', read_only=True)
+    compte_numero = serializers.CharField(
+        source='compte.numero', read_only=True)
+
+    class Meta:
+        model = MappingCompte
+        fields = [
+            'id', 'type_clef', 'type_clef_display', 'clef', 'compte',
+            'compte_numero', 'libelle', 'actif', 'date_creation',
+        ]
+        read_only_fields = ['date_creation']
+
+    def validate_compte(self, value):
+        return _meme_societe(self, value, 'Compte')
+
+
+# ── COMPTA3 — Comptes auxiliaires tiers ────────────────────────────────────
+
+class CompteAuxiliaireSerializer(serializers.ModelSerializer):
+    type_tiers_display = serializers.CharField(
+        source='get_type_tiers_display', read_only=True)
+    compte_collectif_numero = serializers.CharField(
+        source='compte_collectif.numero', read_only=True)
+
+    class Meta:
+        model = CompteAuxiliaire
+        fields = [
+            'id', 'compte_collectif', 'compte_collectif_numero', 'type_tiers',
+            'type_tiers_display', 'tiers_id', 'code', 'actif', 'date_creation',
+        ]
+        read_only_fields = ['code', 'date_creation']
+
+    def validate_compte_collectif(self, value):
+        return _meme_societe(self, value, 'Compte collectif')
+
+
+# ── COMPTA10 — Pièces justificatives sur écriture ──────────────────────────
+
+class PieceJustificativeSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = PieceJustificative
+        fields = [
+            'id', 'ecriture', 'libelle', 'fichier', 'ajoute_par',
+            'date_creation',
+        ]
+        read_only_fields = ['ajoute_par', 'date_creation']
+
+    def validate_ecriture(self, value):
+        return _meme_societe(self, value, 'Écriture')

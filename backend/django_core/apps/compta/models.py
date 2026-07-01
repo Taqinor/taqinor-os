@@ -5841,3 +5841,155 @@ class AbonnementMonitoring(models.Model):
 
     def __str__(self):
         return f'Monitoring client #{self.client_id} ({self.periodicite})'
+
+
+# ── COMPTA2 — Mapping document → compte comptable par société ──────────────
+
+class MappingCompte(models.Model):
+    """Règle de correspondance « clef documentaire → compte comptable ».
+
+    Le posting automatique (facture/paiement/avoir) a besoin de savoir QUEL
+    compte utiliser pour une famille de produit, un taux de TVA ou un mode de
+    paiement donné. Plutôt que de coder ces comptes en dur, on les paramètre
+    par société : chaque ligne dit « pour ce type de clef et cette valeur,
+    utilise ce compte ». Purement additif : tant qu'aucun mapping n'existe, le
+    posting garde son comportement historique (comptes par défaut du plan).
+
+    Exemples :
+      * ``type_clef='famille'``, ``clef='panneau'`` → 7111 (ventes panneaux)
+      * ``type_clef='tva'``, ``clef='20'``          → 4455 (TVA 20 %)
+      * ``type_clef='paiement'``, ``clef='cheque'`` → 5141 (banque)
+    """
+    class TypeClef(models.TextChoices):
+        FAMILLE = 'famille', 'Famille de produit'
+        TVA = 'tva', 'Taux de TVA'
+        PAIEMENT = 'paiement', 'Mode de paiement'
+
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='mappings_compte',
+        verbose_name='Société',
+    )
+    type_clef = models.CharField(
+        max_length=10, choices=TypeClef.choices, verbose_name='Type de clef')
+    clef = models.CharField(
+        max_length=60,
+        verbose_name='Clef (famille / taux / mode)')
+    compte = models.ForeignKey(
+        CompteComptable,
+        on_delete=models.PROTECT,
+        related_name='mappings',
+        verbose_name='Compte comptable',
+    )
+    libelle = models.CharField(
+        max_length=120, blank=True, default='', verbose_name='Libellé')
+    actif = models.BooleanField(default=True, verbose_name='Actif')
+    date_creation = models.DateTimeField(
+        auto_now_add=True, verbose_name='Créé le')
+
+    class Meta:
+        verbose_name = 'Mapping document → compte'
+        verbose_name_plural = 'Mappings document → compte'
+        ordering = ['type_clef', 'clef']
+        unique_together = [('company', 'type_clef', 'clef')]
+
+    def __str__(self):
+        return f'{self.get_type_clef_display()} {self.clef} → {self.compte.numero}'
+
+
+# ── COMPTA3 — Comptes auxiliaires tiers (clients / fournisseurs) ───────────
+
+class CompteAuxiliaire(models.Model):
+    """Compte auxiliaire de tiers (client ou fournisseur), rattaché à un compte
+    collectif de classe 4 (3421 clients / 4411 fournisseurs).
+
+    L'identité du tiers (nom, ICE, IF, RC…) N'EST JAMAIS recopiée ici : on garde
+    seulement la référence typée (``tiers_type`` + ``tiers_id``) et on lit
+    l'identité au vol via les sélecteurs de ``crm``/``stock`` (jamais un import
+    de leurs modèles). Le ``code`` auxiliaire (ex. ``C0001``/``F0001``) permet de
+    lettrer et d'éditer une balance auxiliaire par tiers.
+    """
+    class TypeTiers(models.TextChoices):
+        CLIENT = 'client', 'Client'
+        FOURNISSEUR = 'fournisseur', 'Fournisseur'
+
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='comptes_auxiliaires',
+        verbose_name='Société',
+    )
+    # Compte collectif de rattachement (3421 clients / 4411 fournisseurs).
+    compte_collectif = models.ForeignKey(
+        CompteComptable,
+        on_delete=models.PROTECT,
+        related_name='auxiliaires',
+        verbose_name='Compte collectif',
+    )
+    type_tiers = models.CharField(
+        max_length=12, choices=TypeTiers.choices, verbose_name='Type de tiers')
+    # Référence typée vers le tiers — jamais un import de modèle cross-app.
+    tiers_id = models.PositiveIntegerField(verbose_name='ID du tiers')
+    code = models.CharField(max_length=20, verbose_name='Code auxiliaire')
+    actif = models.BooleanField(default=True, verbose_name='Actif')
+    date_creation = models.DateTimeField(
+        auto_now_add=True, verbose_name='Créé le')
+
+    class Meta:
+        verbose_name = 'Compte auxiliaire'
+        verbose_name_plural = 'Comptes auxiliaires'
+        ordering = ['type_tiers', 'code']
+        unique_together = [
+            ('company', 'type_tiers', 'tiers_id'),
+            ('company', 'code'),
+        ]
+
+    def __str__(self):
+        return f'{self.code} ({self.get_type_tiers_display()} #{self.tiers_id})'
+
+
+# ── COMPTA10 — Pièces justificatives sur écriture comptable ────────────────
+
+class PieceJustificative(models.Model):
+    """Document justificatif attaché à une écriture comptable (scan, PDF…).
+
+    Une écriture peut porter plusieurs pièces (facture scannée, reçu, contrat).
+    Le fichier est stocké via le storage projet (MinIO/S3). Multi-société :
+    la pièce porte sa propre ``company`` (posée côté serveur) et pointe une
+    écriture de la MÊME société (validé au niveau serializer).
+    """
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='pieces_justificatives',
+        verbose_name='Société',
+    )
+    ecriture = models.ForeignKey(
+        EcritureComptable,
+        on_delete=models.CASCADE,
+        related_name='pieces',
+        verbose_name='Écriture',
+    )
+    libelle = models.CharField(
+        max_length=200, blank=True, default='', verbose_name='Libellé')
+    fichier = models.FileField(
+        upload_to='compta/pieces/%Y/%m/',
+        verbose_name='Fichier justificatif')
+    ajoute_par = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='pieces_justificatives_ajoutees',
+        verbose_name='Ajouté par',
+    )
+    date_creation = models.DateTimeField(
+        auto_now_add=True, verbose_name='Créé le')
+
+    class Meta:
+        verbose_name = 'Pièce justificative'
+        verbose_name_plural = 'Pièces justificatives'
+        ordering = ['-date_creation', '-id']
+
+    def __str__(self):
+        return self.libelle or f'Pièce #{self.pk} (écriture {self.ecriture_id})'

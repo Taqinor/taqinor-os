@@ -60,8 +60,9 @@ class PlanComptableSeedTests(TestCase):
     def test_seed_journaux_idempotent(self):
         services.seed_journaux(self.co)
         services.seed_journaux(self.co)
-        self.assertEqual(Journal.objects.filter(company=self.co).count(), 5)
-        for code in ('VTE', 'ACH', 'BNK', 'CSH', 'OD'):
+        # COMPTA4 — 6 journaux CGNC standards : VTE/ACH/BNK/CSH/OD/AN.
+        self.assertEqual(Journal.objects.filter(company=self.co).count(), 6)
+        for code in ('VTE', 'ACH', 'BNK', 'CSH', 'OD', 'AN'):
             self.assertTrue(
                 Journal.objects.filter(company=self.co, code=code).exists())
 
