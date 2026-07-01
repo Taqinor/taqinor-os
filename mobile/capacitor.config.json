@@ -1,0 +1,17 @@
+{
+  "appId": "ma.taqinor.erp",
+  "appName": "TAQINOR",
+  "webDir": "www",
+  "server": {
+    "androidScheme": "https",
+    "iosScheme": "https"
+  },
+  "ios": {
+    "contentInset": "always",
+    "backgroundColor": "#0f172a"
+  },
+  "android": {
+    "backgroundColor": "#0f172a",
+    "allowMixedContent": false
+  }
+}
