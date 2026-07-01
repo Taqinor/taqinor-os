@@ -412,6 +412,17 @@ def website_lead_webhook(request):
                     'website_lead_webhook: notify_new_lead échoué (lead #%s) : %s',
                     lead.pk, _exc)
 
+        # QK6 — photo de facture/compteur/toiture jointe à la capture :
+        # attachée au lead (+ OCR si configuré), best-effort — une photo
+        # invalide ou un stockage en panne ne remet JAMAIS le lead en cause.
+        try:
+            from .intake_photo import attach_capture_photo
+            attach_capture_photo(lead, data)
+        except Exception as _exc:  # noqa: BLE001 — le lead prime sur la photo
+            logger.warning(
+                'website_lead_webhook: photo non jointe (lead #%s) : %s',
+                lead.pk, _exc)
+
         raw.lead = lead
         raw.processed = True
         raw.save(update_fields=['lead', 'processed'])
