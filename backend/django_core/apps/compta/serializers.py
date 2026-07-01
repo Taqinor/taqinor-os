@@ -1769,10 +1769,13 @@ class ResultatAOSerializer(serializers.ModelSerializer):
 # ── FG228 — Comptes portail client ─────────────────────────────────────────
 
 class ComptePortailClientSerializer(serializers.ModelSerializer):
+    # DC32 — l'email est lu depuis le client (source unique), jamais stocké.
+    email = serializers.EmailField(source='client.email', read_only=True)
+
     class Meta:
         model = ComptePortailClient
         fields = [
-            'id', 'client_id', 'email', 'token_acces', 'actif',
+            'id', 'client', 'email', 'token_acces', 'actif',
             'derniere_connexion', 'date_creation',
         ]
         read_only_fields = [

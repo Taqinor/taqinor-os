@@ -662,7 +662,21 @@ class FactureFournisseurSerializer(serializers.ModelSerializer):
                 'Bon de commande hors de votre entreprise.')
         return value
 
+    # DC16 — une facture rattachée à un bon de commande doit être créée via
+    # « facturer une réception » (FG56) pour que ses montants soient DÉRIVÉS de
+    # la réception (jamais saisis à la main) AVANT le rapprochement 3 voies
+    # (FG131) ; on refuse donc la saisie manuelle sur une FF liée à un BCF.
+    _MSG_DC16_CREATE = (
+        'Une facture rattachée à un bon de commande doit être créée via '
+        '« facturer une réception » (receptions-fournisseur/{id}/facturer/) : '
+        'ses montants sont dérivés de la réception, jamais saisis à la main.')
+    _MSG_DC16_UPDATE = (
+        'Les montants d\'une facture liée à un bon de commande sont dérivés de '
+        'la réception (FG56) et ne sont pas modifiables à la main.')
+
     def create(self, validated_data):
+        if validated_data.get('bon_commande'):
+            raise serializers.ValidationError({'bon_commande': self._MSG_DC16_CREATE})
         lignes_data = validated_data.pop('lignes', [])
         facture = FactureFournisseur.objects.create(**validated_data)
         for ligne in lignes_data:
@@ -670,6 +684,14 @@ class FactureFournisseurSerializer(serializers.ModelSerializer):
         return facture
 
     def update(self, instance, validated_data):
+        # DC16 — sur une FF déjà liée à un BCF (typiquement issue de FG56), les
+        # montants restent ceux dérivés de la réception : on rejette toute
+        # tentative de les écraser à la main.
+        if instance.bon_commande_id:
+            for champ in ('montant_ht', 'montant_tva', 'montant_ttc'):
+                if champ in validated_data and validated_data[champ] != getattr(
+                        instance, champ):
+                    raise serializers.ValidationError({champ: self._MSG_DC16_UPDATE})
         lignes_data = validated_data.pop('lignes', None)
         for attr, val in validated_data.items():
             setattr(instance, attr, val)
