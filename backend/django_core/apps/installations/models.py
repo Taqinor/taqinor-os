@@ -35,6 +35,7 @@ from .models_intervention import (
 from .models_chantier import (
     ChecklistTemplate,
     ChecklistEtapeModele,
+    StageModele,
     StockReservation,
     ChantierChecklistItem,
     ShotListSlot,
@@ -185,6 +186,7 @@ __all__ = [
     'TypeInterventionPlan',
     'ChecklistTemplate',
     'ChecklistEtapeModele',
+    'StageModele',
     'StockReservation',
     'ChantierChecklistItem',
     'ShotListSlot',

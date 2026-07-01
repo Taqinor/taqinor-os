@@ -9,7 +9,7 @@ Référence sans collision via l'utilitaire commun (jamais count()+1).
 from apps.ventes.utils.references import create_with_reference
 from .models import (
     Installation, ChecklistTemplate, ChecklistEtapeModele,
-    ChantierChecklistItem, StockReservation,
+    ChantierChecklistItem, StageModele, StockReservation,
 )
 
 
@@ -613,6 +613,138 @@ def compute_chantier_cout(installation, tarif_jour=None):
         'marge': float(marge) if marge is not None else None,
         'marge_taux': marge_taux,
     }
+
+
+# ── CH1 — Étapes/gates configurables du cycle de vie chantier ─────────────────
+# Le cycle de vie PV INTERNATIONAL est amorcé par société (idempotent, additif),
+# puis entièrement configurable par le Directeur (ajout/retrait/réordonnancement,
+# bloquant/consultatif, éléments requis). L'enum historique à 7 statuts
+# (`Installation.statut`) N'EST PAS supprimé : chaque étape porte le statut
+# hérité correspondant (`statut_legacy`), si bien que les effets de bord
+# existants (consommation du stock à « Installé », remise de garantie/parc à
+# « Réceptionné ») continuent de tirer, inchangés, sur les gates mappés.
+
+_S = Installation.Statut
+
+# (cle, libelle, statut_legacy, bloquant, exigences) — cycle de vie PV
+# international. Toutes « système » (protégées contre la suppression, mais
+# désactivables/réordonnables).
+DEFAULT_STAGES = [
+    ('etude_site', 'Visite technique (étude de site)', _S.SIGNE, False, {}),
+    ('conception', 'Conception & ingénierie', _S.SIGNE, False, {}),
+    ('autorisations', 'Autorisations & dossier 82-21', _S.SIGNE, True,
+     {'exige_dossier': True}),
+    ('approvisionnement', 'Approvisionnement matériel', _S.MATERIEL_COMMANDE,
+     True, {'exige_materiel': True}),
+    ('montage_mecanique', 'Montage mécanique (structure & panneaux)',
+     _S.EN_COURS, False, {}),
+    ('installation_electrique', 'Installation électrique', _S.EN_COURS,
+     False, {}),
+    ('mise_en_service', 'Mise en service & essais (IEC 62446-1)', _S.INSTALLE,
+     True, {'exige_tests': True}),
+    ('inspection_raccordement', 'Inspection & raccordement réseau (PTO)',
+     _S.INSTALLE, False, {}),
+    ('remise_client', 'Remise au client (handover)', _S.RECEPTIONNE, True,
+     {'exige_checklist': True, 'exige_series': True, 'exige_pack': True}),
+    ('exploitation_maintenance', 'Exploitation & maintenance (O&M)',
+     _S.CLOTURE, False, {}),
+]
+
+# Statut hérité CANONIQUE → clé de l'étape amorcée correspondante. Les statuts
+# hérités hors entonnoir (a_planifier, pose…) passent d'abord par
+# `Installation.canonical_statut`. Chaque statut historique mappe PROPREMENT
+# sur une étape — aucun chantier existant n'est orphelin.
+LEGACY_STATUT_TO_STAGE = {
+    _S.SIGNE: 'etude_site',
+    _S.MATERIEL_COMMANDE: 'approvisionnement',
+    _S.PLANIFIE: 'montage_mecanique',
+    _S.EN_COURS: 'montage_mecanique',
+    _S.INSTALLE: 'mise_en_service',
+    _S.RECEPTIONNE: 'remise_client',
+    _S.CLOTURE: 'exploitation_maintenance',
+}
+
+
+def seed_stages(company):
+    """CH1 — amorce le cycle de vie PV international de la société (idempotent,
+    additif : ne touche jamais une étape existante — libellés, ordre, drapeaux
+    et exigences édités par le Directeur sont préservés)."""
+    if company is None:
+        return []
+    created = []
+    for i, (cle, libelle, statut_legacy, bloquant, exiges) in enumerate(
+            DEFAULT_STAGES):
+        stage, was_created = StageModele.objects.get_or_create(
+            company=company, cle=cle,
+            defaults={
+                'libelle': libelle, 'ordre': i, 'bloquant': bloquant,
+                'statut_legacy': statut_legacy, 'protege': True,
+                'actif': True, **exiges,
+            })
+        if was_created:
+            created.append(stage)
+    return created
+
+
+def stages_actifs(company):
+    """Étapes ACTIVES de la société, ordonnées (amorce d'abord si vide)."""
+    if company is None:
+        return []
+    if not StageModele.objects.filter(company=company).exists():
+        seed_stages(company)
+    return list(StageModele.objects.filter(company=company, actif=True)
+                .order_by('ordre', 'id'))
+
+
+def stages_configures(company):
+    """True si la société a AU MOINS une étape définie — c'est l'interrupteur
+    de l'application des gates (CH2) : une société qui n'a jamais touché aux
+    étapes garde EXACTEMENT le comportement historique (aucun blocage)."""
+    if company is None:
+        return False
+    return StageModele.objects.filter(company=company, actif=True).exists()
+
+
+def stage_pour_statut(company, statut):
+    """Étape mappée pour un statut hérité (canonique ou non) — ou None.
+
+    Résolution : la clé du mapping LEGACY_STATUT_TO_STAGE si l'étape existe et
+    est active, sinon la PREMIÈRE étape active portant ce `statut_legacy`
+    (couvre les étapes renommées/personnalisées par le Directeur)."""
+    if company is None or not statut:
+        return None
+    canon = Installation.canonical_statut(statut)
+    cle = LEGACY_STATUT_TO_STAGE.get(canon)
+    if cle:
+        stage = StageModele.objects.filter(
+            company=company, cle=cle, actif=True).first()
+        if stage is not None:
+            return stage
+    return (StageModele.objects
+            .filter(company=company, statut_legacy=canon, actif=True)
+            .order_by('ordre', 'id').first())
+
+
+def etape_courante(installation):
+    """Étape courante d'un chantier : son pointeur `etape` s'il est posé (et
+    actif, même société), sinon l'étape DÉRIVÉE de son statut hérité — les
+    chantiers d'avant CH1 fonctionnent donc sans migration de données."""
+    stage = installation.etape
+    if (stage is not None and stage.actif
+            and stage.company_id == installation.company_id):
+        return stage
+    return stage_pour_statut(installation.company, installation.statut)
+
+
+def sync_etape_from_statut(installation):
+    """Aligne le pointeur `etape` sur le statut hérité après un changement de
+    statut par l'ancien flux (PATCH statut / mise-en-service) : les deux
+    couches ne divergent jamais. Sans étape configurée → no-op."""
+    stage = stage_pour_statut(installation.company, installation.statut)
+    if stage is not None and installation.etape_id != stage.id:
+        installation.etape = stage
+        installation.save(update_fields=['etape'])
+    return stage
 
 
 # ── FG77 — Contrôle de préparation avant pose (readiness) ─────────────────────

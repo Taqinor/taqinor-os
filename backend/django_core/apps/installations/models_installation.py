@@ -132,6 +132,16 @@ class Installation(models.Model):
     statut = models.CharField(
         max_length=20, choices=Statut.choices, default=Statut.SIGNE)
 
+    # ── CH1 — étape CONFIGURABLE du cycle de vie (gates). Pointeur vers la
+    #    définition d'étape de la société (StageModele) ; nullable : un chantier
+    #    sans pointeur dérive son étape du statut hérité via le mapping des
+    #    services (aucune perte de donnée, l'enum `statut` reste la source des
+    #    effets de bord existants). SET_NULL : supprimer une étape de la config
+    #    ne casse jamais un chantier. Additif. ──
+    etape = models.ForeignKey(
+        'installations.StageModele', on_delete=models.SET_NULL,
+        null=True, blank=True, related_name='chantiers')
+
     # ── Charge de main-d'œuvre (N1) — jours-homme estimés vs réels. ──
     labour_jours_estimes = models.DecimalField(
         max_digits=6, decimal_places=1, null=True, blank=True)

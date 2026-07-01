@@ -97,6 +97,66 @@ class ChecklistEtapeModele(models.Model):
         return self.libelle
 
 
+class StageModele(models.Model):
+    """CH1 — étape/gate CONFIGURABLE du cycle de vie chantier, par société.
+
+    Étend le motif ChecklistTemplate/ChecklistEtapeModele : une liste ordonnée
+    d'étapes (« stages ») éditable dans Paramètres (Directeur uniquement),
+    amorcée au cycle de vie PV international (étude de site → conception →
+    autorisations/82-21 → approvisionnement → montage mécanique → installation
+    électrique → mise en service IEC 62446-1 → inspection/raccordement →
+    remise client → O&M).
+
+    Chaque étape est un GATE : `bloquant` rend son franchissement OBLIGATOIREMENT
+    conditionné aux exigences cochées (`exige_*` — checklist faite, photos,
+    n° de série, essais de mise en service, matériel disponible, dossier 82-21,
+    pièces de remise) — plus les points d'arrêt QHSE (toujours vérifiés pour un
+    gate bloquant, cf. CH2). Une étape non bloquante reste PUREMENT consultative.
+
+    `statut_legacy` rabat l'étape sur l'entonnoir HISTORIQUE à 7 statuts de
+    `Installation.statut` (JAMAIS supprimé) : l'arrivée sur une étape synchronise
+    le statut hérité, ce qui préserve 1:1 les effets de bord existants
+    (consommation du stock à « Installé », remise de garantie/parc à
+    « Réceptionné » — FG70/N14) et toutes les vues/filtres actuels.
+    Additif — company-scopée, aucune migration destructive."""
+    company = models.ForeignKey(
+        'authentication.Company', on_delete=models.CASCADE,
+        null=True, blank=True, related_name='stages_chantier')
+    cle = models.CharField(max_length=40)
+    libelle = models.CharField(max_length=120)
+    ordre = models.PositiveIntegerField(default=0)
+    # Gate BLOQUANT : le franchissement exige les éléments requis ci-dessous
+    # + la levée des points d'arrêt QHSE. Non bloquant = consultatif.
+    bloquant = models.BooleanField(default=False)
+    # ── Éléments REQUIS pour franchir le gate (si bloquant) ──
+    exige_checklist = models.BooleanField(default=False)
+    exige_photos = models.BooleanField(default=False)
+    exige_series = models.BooleanField(default=False)
+    exige_tests = models.BooleanField(default=False)
+    exige_materiel = models.BooleanField(default=False)
+    exige_dossier = models.BooleanField(default=False)
+    exige_pack = models.BooleanField(default=False)
+    # Statut HÉRITÉ (enum 7 étapes, jamais supprimé) que porte un chantier
+    # arrivé sur cette étape — c'est le pont qui fait tirer les effets de bord
+    # existants (stock/garantie) sur les gates mappés.
+    statut_legacy = models.CharField(
+        max_length=20, choices=Installation.Statut.choices,
+        null=True, blank=True)
+    actif = models.BooleanField(default=True)
+    # `protege` verrouille une étape système contre la suppression (comme les
+    # étapes de checklist) ; elle reste désactivable/réordonnable.
+    protege = models.BooleanField(default=False)
+
+    class Meta:
+        ordering = ['ordre', 'id']
+        unique_together = [('company', 'cle')]
+        verbose_name = 'Étape de chantier (gate)'
+        verbose_name_plural = 'Étapes de chantier (gates)'
+
+    def __str__(self):
+        return f'{self.ordre} · {self.libelle}'
+
+
 class StockReservation(models.Model):
     """N14 — réservation de stock d'un chantier sur un SKU (produit catalogue).
 
