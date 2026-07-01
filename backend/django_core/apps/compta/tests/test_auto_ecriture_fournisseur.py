@@ -22,7 +22,7 @@ from authentication.models import Company
 
 from apps.compta import services
 from apps.compta.models import (
-    CompteComptable, EcritureComptable, MappingCompte,
+    CompteComptable, EcritureComptable, MappingCompte, PlanComptable,
 )
 
 
@@ -105,9 +105,10 @@ class AutoEcritureFactureFournisseurTests(TestCase):
 
     def test_mapping_dc22_route_la_charge(self):
         # DC22 : famille 'transport' → compte 6142 (mappé) plutôt que 6111.
+        plan = PlanComptable.objects.get(company=self.co)
         compte_transport, _ = CompteComptable.objects.get_or_create(
             company=self.co, numero='6142',
-            defaults={'intitule': 'Transports', 'classe': 6})
+            defaults={'intitule': 'Transports', 'classe': 6, 'plan': plan})
         MappingCompte.objects.create(
             company=self.co, type_clef=MappingCompte.TypeClef.FAMILLE,
             clef='transport', compte=compte_transport)
