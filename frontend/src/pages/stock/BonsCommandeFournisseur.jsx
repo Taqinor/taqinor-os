@@ -3,7 +3,7 @@ import { useLocation, useNavigate } from 'react-router-dom'
 import { Plus, FileText, Undo2, Package, Trash2 } from 'lucide-react'
 import stockApi from '../../api/stockApi'
 import BcfProduitPicker from './BcfProduitPicker'
-import { downloadBlob } from '../../utils/downloadBlob'
+import { ouvrirPdfBlob, estBlobPdf, messageErreurBlob } from '../../utils/pdfBlob'
 import {
   Button, IconButton, StatusPill, DataTable,
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter,
@@ -38,6 +38,7 @@ function frBcfError(err, fallback = 'Une erreur est survenue. Réessayez.') {
   }
   return fallback
 }
+
 
 const fmtMad = (v) => {
   const n = Number(v) || 0
@@ -154,7 +155,8 @@ function RetourModal({ bcf, onClose, onDone }) {
 }
 
 // ── Modal de création / consultation / réception d'un BCF ──
-function BcfDetail({ bcf, fournisseurs, produits, onClose, onSaved }) {
+// Export nommé : testé directement (QS1 — bouton « PDF (interne) »).
+export function BcfDetail({ bcf, fournisseurs, produits, onClose, onSaved }) {
   const isNew = !bcf?.id
   const statut = bcf?.statut ?? 'brouillon'
   const editableLignes = isNew || statut === 'brouillon'
@@ -291,11 +293,26 @@ function BcfDetail({ bcf, fournisseurs, produits, onClose, onSaved }) {
     } finally { setBusy(false) }
   }
 
+  // QS1 — PDF fournisseur : ouvre le PDF dans un nouvel onglet (repli :
+  // téléchargement si popup bloquée) et fait remonter la VRAIE erreur
+  // serveur au lieu d'un « PDF indisponible » générique.
   const telechargerPdf = async () => {
+    setError(null)
     try {
       const r = await stockApi.bcfPdf(bcf.id)
-      downloadBlob(r.data, `${bcf.reference ?? 'BCF'}.pdf`)
-    } catch { setError('PDF indisponible.') }
+      const blob = r.data
+      // Garde-fou : si la réponse n'est pas un PDF (page HTML d'erreur…),
+      // on le dit honnêtement au lieu d'ouvrir un fichier corrompu.
+      if (!estBlobPdf(blob)) {
+        setError('Le serveur n\'a pas renvoyé de PDF (réponse inattendue). Réessayez ou contactez un administrateur.')
+        return
+      }
+      ouvrirPdfBlob(blob, `${bcf.reference ?? 'BCF'}.pdf`)
+    } catch (err) {
+      setError(await messageErreurBlob(err, {
+        fallback: 'La génération du PDF a échoué. Réessayez.',
+      }))
+    }
   }
 
   return (

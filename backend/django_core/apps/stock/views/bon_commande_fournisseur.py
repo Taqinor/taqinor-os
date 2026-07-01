@@ -60,10 +60,14 @@ class BonCommandeFournisseurViewSet(TenantMixin, viewsets.ModelViewSet):
     ordering = ['-date_creation']
 
     def get_permissions(self):
-        if self.action in READ_ACTIONS:
+        # QS1 — le PDF (interne) est une LECTURE : il rend exactement les
+        # données que `retrieve` expose déjà à tout rôle authentifié. Le
+        # laisser en IsResponsableOrAdmin faisait échouer (403) le bouton
+        # « PDF (interne) » pour les rôles normaux qui voient pourtant le BCF.
+        if self.action in READ_ACTIONS + ['generer_pdf']:
             return [IsAnyRole()]
         elif self.action in WRITE_ACTIONS + [
-            'envoyer', 'recevoir', 'annuler', 'generer_pdf',
+            'envoyer', 'recevoir', 'annuler',
         ]:
             return [IsResponsableOrAdmin()]
         elif self.action == 'destroy':
