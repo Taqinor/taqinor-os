@@ -33,7 +33,7 @@ from .models import (
     ComptePortailClient, AcceptationDevisPortail, PaiementFacturePortail,
     DocumentClientPortail, JalonChantierPortail, DemandeTicketPortail,
     Partenaire, SoumissionLeadPartenaire, CommissionPartenaire,
-    TerritoireCommercial,
+    TerritoireCommercial, EnqueteNPS,
 )
 
 
@@ -1875,3 +1875,17 @@ class TerritoireCommercialSerializer(serializers.ModelSerializer):
             'date_creation',
         ]
         read_only_fields = ['date_creation']
+
+
+class EnqueteNPSSerializer(serializers.ModelSerializer):
+    categorie = serializers.CharField(read_only=True)
+
+    class Meta:
+        model = EnqueteNPS
+        fields = [
+            'id', 'client_id', 'chantier_id', 'score', 'commentaire',
+            'statut', 'categorie', 'envoi_reel', 'envoyee_le', 'repondue_le',
+        ]
+        read_only_fields = [
+            'statut', 'categorie', 'envoi_reel', 'envoyee_le', 'repondue_le',
+        ]

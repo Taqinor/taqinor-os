@@ -5559,3 +5559,61 @@ class TerritoireCommercial(models.Model):
             if mot and (mot == cible or mot in cible or cible in mot):
                 return True
         return False
+
+
+# ── FG238 — Enquêtes NPS / satisfaction post-installation ──────────────────
+
+class EnqueteNPS(models.Model):
+    """Enquête de satisfaction / NPS post-installation (FG238).
+
+    Envoyée automatiquement après réception d'un chantier (envoi RÉEL gated
+    Brevo — NO-OP tant que ``BREVO_ENABLED`` est OFF). Le client répond une note
+    0–10 : promoteur (9–10), passif (7–8), détracteur (0–6). Le score NPS
+    consolidé = % promoteurs − % détracteurs. Client/chantier référencés par id
+    (cross-app). Scopée société.
+    """
+    class Statut(models.TextChoices):
+        ENVOYEE = 'envoyee', 'Envoyée'
+        REPONDUE = 'repondue', 'Répondue'
+
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='enquetes_nps',
+        verbose_name='Société',
+    )
+    client_id = models.PositiveIntegerField(verbose_name='Id du client')
+    chantier_id = models.PositiveIntegerField(
+        null=True, blank=True, verbose_name='Id du chantier')
+    score = models.PositiveSmallIntegerField(
+        null=True, blank=True, verbose_name='Note (0–10)')
+    commentaire = models.TextField(
+        blank=True, default='', verbose_name='Commentaire')
+    statut = models.CharField(
+        max_length=8, choices=Statut.choices, default=Statut.ENVOYEE,
+        verbose_name='Statut')
+    envoi_reel = models.BooleanField(
+        default=False, verbose_name='Envoi réel effectué (Brevo)')
+    envoyee_le = models.DateTimeField(
+        auto_now_add=True, verbose_name='Envoyée le')
+    repondue_le = models.DateTimeField(
+        null=True, blank=True, verbose_name='Répondue le')
+
+    class Meta:
+        verbose_name = 'Enquête NPS'
+        verbose_name_plural = 'Enquêtes NPS'
+        ordering = ['-envoyee_le']
+
+    def __str__(self):
+        return f'NPS client #{self.client_id} ({self.statut})'
+
+    @property
+    def categorie(self):
+        """Catégorie NPS de la réponse (promoteur/passif/détracteur)."""
+        if self.score is None:
+            return None
+        if self.score >= 9:
+            return 'promoteur'
+        if self.score >= 7:
+            return 'passif'
+        return 'detracteur'

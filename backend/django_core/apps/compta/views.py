@@ -43,7 +43,7 @@ from .models import (
     ComptePortailClient, AcceptationDevisPortail, PaiementFacturePortail,
     DocumentClientPortail, JalonChantierPortail, DemandeTicketPortail,
     Partenaire, SoumissionLeadPartenaire, CommissionPartenaire,
-    TerritoireCommercial,
+    TerritoireCommercial, EnqueteNPS,
 )
 from .serializers import (
     AppelTelephoniqueSerializer, AvancementRevenuSerializer,
@@ -85,6 +85,7 @@ from .serializers import (
     DemandeTicketPortailSerializer,
     PartenaireSerializer, SoumissionLeadPartenaireSerializer,
     CommissionPartenaireSerializer, TerritoireCommercialSerializer,
+    EnqueteNPSSerializer,
 )
 
 
@@ -3680,3 +3681,35 @@ class TerritoireCommercialViewSet(_ComptaBaseViewSet):
             'nom': territoire.nom,
             'owner_user_id': territoire.owner_user_id,
         })
+
+
+class EnqueteNPSViewSet(_ComptaBaseViewSet):
+    """Enquêtes NPS / satisfaction post-installation (FG238). La société est
+    posée côté serveur ; l'envoi réel est gated Brevo (NO-OP par défaut).
+    ``repondre`` enregistre la note client ; ``score`` renvoie le NPS
+    consolidé."""
+    queryset = EnqueteNPS.objects.all()
+    serializer_class = EnqueteNPSSerializer
+    filter_backends = [filters.OrderingFilter]
+    ordering_fields = ['envoyee_le']
+
+    def perform_create(self, serializer):
+        enquete = serializer.save(company=self.request.user.company)
+        services.envoyer_enquete_nps(enquete)
+
+    @action(detail=True, methods=['post'])
+    def repondre(self, request, pk=None):
+        enquete = self.get_object()
+        score = request.data.get('score')
+        if score is None:
+            return Response(
+                {'detail': 'score requis (0–10).'},
+                status=status.HTTP_400_BAD_REQUEST)
+        commentaire = request.data.get('commentaire')
+        services.repondre_enquete_nps(
+            enquete, score=score, commentaire=commentaire)
+        return Response(self.get_serializer(enquete).data)
+
+    @action(detail=False, methods=['get'])
+    def score(self, request):
+        return Response(services.score_nps(request.user.company))

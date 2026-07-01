@@ -4033,3 +4033,61 @@ def affecter_territoire(company, ville):
         if t.matche_ville(ville):
             return t
     return None
+
+
+# ── FG238 — Enquêtes NPS / satisfaction (envoi gated, score consolidé) ─────
+
+def envoyer_enquete_nps(enquete):
+    """Marque l'envoi d'une enquête NPS (FG238), gated Brevo (NO-OP par défaut).
+
+    Si Brevo est actif (``brevo_actif()``), l'intégration réelle (future)
+    enverrait l'email et ``envoi_reel`` passerait à vrai. Tant que c'est OFF,
+    l'enquête est créée/marquée « envoyée » SANS appel réseau. Idempotent.
+    """
+    if brevo_actif():
+        enquete.envoi_reel = True
+        enquete.save(update_fields=['envoi_reel'])
+    return enquete
+
+
+def repondre_enquete_nps(enquete, *, score, commentaire=None):
+    """Enregistre la réponse d'un client à une enquête NPS (FG238).
+
+    ``score`` est borné 0–10. Passe l'enquête à « répondue » et horodate.
+    Renvoie l'enquête. Une enquête déjà répondue n'est pas ré-écrite.
+    """
+    from .models import EnqueteNPS
+    if enquete.statut == EnqueteNPS.Statut.REPONDUE:
+        return enquete
+    note = max(0, min(10, int(score)))
+    enquete.score = note
+    if commentaire is not None:
+        enquete.commentaire = commentaire
+    enquete.statut = EnqueteNPS.Statut.REPONDUE
+    enquete.repondue_le = timezone.now()
+    enquete.save(update_fields=[
+        'score', 'commentaire', 'statut', 'repondue_le'])
+    return enquete
+
+
+def score_nps(company):
+    """Score NPS consolidé (FG238) = %promoteurs − %détracteurs, scopé société.
+
+    Ne compte que les enquêtes répondues (score non nul). Renvoie un dict avec
+    le score NPS (entier, −100..100), les compteurs et le nombre de réponses.
+    Zéro réponse → score None.
+    """
+    from .models import EnqueteNPS
+    reponses = EnqueteNPS.objects.filter(
+        company=company, statut=EnqueteNPS.Statut.REPONDUE,
+        score__isnull=False)
+    total = reponses.count()
+    if total == 0:
+        return {'nps': None, 'total': 0, 'promoteurs': 0, 'passifs': 0,
+                'detracteurs': 0}
+    promoteurs = reponses.filter(score__gte=9).count()
+    detracteurs = reponses.filter(score__lte=6).count()
+    passifs = total - promoteurs - detracteurs
+    nps = round((promoteurs - detracteurs) * 100 / total)
+    return {'nps': nps, 'total': total, 'promoteurs': promoteurs,
+            'passifs': passifs, 'detracteurs': detracteurs}

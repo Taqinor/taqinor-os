@@ -31,7 +31,7 @@ from apps.compta.models import (
     AcceptationDevisPortail, PaiementFacturePortail, DocumentClientPortail,
     JalonChantierPortail, DemandeTicketPortail,
     Partenaire, SoumissionLeadPartenaire, CommissionPartenaire,
-    TerritoireCommercial,
+    TerritoireCommercial, EnqueteNPS,
 )
 
 User = get_user_model()
@@ -518,3 +518,58 @@ class OnboardingPartenaireTests(TestCase):
         self.assertEqual(p.statut_onboarding, 'agree')
         self.assertTrue(p.actif)
         self.assertIsNotNone(p.date_activation)
+
+
+# ── FG238 — Enquêtes NPS / satisfaction post-installation ──────────────────
+
+class EnqueteNPSTests(TestCase):
+    def setUp(self):
+        self.co = make_company('fg238', 'FG238')
+        self.user = make_user(self.co, 'fg238-user')
+
+    @override_settings(BREVO_ENABLED=False)
+    def test_creation_envoi_noop(self):
+        api = auth(self.user)
+        resp = api.post('/api/django/compta/enquetes-nps/', {
+            'client_id': 47001, 'chantier_id': 88,
+            'company': 12321,  # ignoré
+        }, format='json')
+        self.assertEqual(resp.status_code, 201, resp.content)
+        e = EnqueteNPS.objects.get(id=resp.data['id'])
+        self.assertEqual(e.company_id, self.co.id)
+        self.assertEqual(e.statut, EnqueteNPS.Statut.ENVOYEE)
+        # NO-OP gated : pas d'envoi réel tant que Brevo est OFF.
+        self.assertFalse(e.envoi_reel)
+
+    def test_repondre_borne_score_et_categorie(self):
+        api = auth(self.user)
+        e = EnqueteNPS.objects.create(company=self.co, client_id=47002)
+        resp = api.post(
+            f'/api/django/compta/enquetes-nps/{e.id}/repondre/',
+            {'score': 15, 'commentaire': 'Excellent'}, format='json')
+        self.assertEqual(resp.status_code, 200, resp.content)
+        e.refresh_from_db()
+        # borné à 10.
+        self.assertEqual(e.score, 10)
+        self.assertEqual(e.statut, EnqueteNPS.Statut.REPONDUE)
+        self.assertEqual(e.categorie, 'promoteur')
+
+    def test_score_consolide(self):
+        # 3 promoteurs, 1 détracteur → NPS = (3-1)/4*100 = 50.
+        for _ in range(3):
+            e = EnqueteNPS.objects.create(company=self.co, client_id=1)
+            services.repondre_enquete_nps(e, score=10)
+        e = EnqueteNPS.objects.create(company=self.co, client_id=2)
+        services.repondre_enquete_nps(e, score=3)
+        api = auth(self.user)
+        resp = api.get('/api/django/compta/enquetes-nps/score/')
+        self.assertEqual(resp.status_code, 200, resp.content)
+        self.assertEqual(resp.data['total'], 4)
+        self.assertEqual(resp.data['nps'], 50)
+
+    def test_isolation_societe(self):
+        autre = make_company('fg238-b', 'FG238B')
+        EnqueteNPS.objects.create(company=autre, client_id=47003)
+        api = auth(self.user)
+        resp = api.get('/api/django/compta/enquetes-nps/')
+        self.assertEqual(resp.data['count'], 0)
