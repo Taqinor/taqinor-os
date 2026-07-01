@@ -5,6 +5,10 @@
 // The premium PDF engine computes its own figures server-side — never fed here.
 
 // ── Constantes Maroc (irradiance GHI mensuelle + tarif ONEE) ──────────────────
+// DC9 — MIROIR de la source Python unique
+// (backend apps/ventes/quote_engine/constants.py GHI). Les deux tables DOIVENT
+// rester identiques : un test de parité (test_dc9_ghi_parity.py) échoue sinon.
+// Ne jamais éditer l'une sans répercuter l'autre à l'identique.
 export const GHI = [
   83.99, 96.79, 133.43, 155.30, 175.28, 179.62,
   179.56, 161.17, 137.03, 111.59, 81.91, 74.61,
@@ -126,11 +130,21 @@ export const isReseauInverter = (d) => {
 }
 export const isPanel = (d) => _norm(d).includes('panneau')
 
+// Défauts TVA (réforme : 10 % panneaux PV, 20 % le reste).
+export const TVA_PANNEAUX_DEFAUT = 10
+export const TVA_STANDARD_DEFAUT = 20
+
 // Taux TVA attendu d'après la désignation (réforme : 10 % panneaux PV, 20 % le
 // reste). Sert UNIQUEMENT à signaler une incohérence à l'écran — jamais à
 // recaler la valeur tapée (la frappe reste souveraine).
-export function expectedTvaForDesignation(designation) {
-  return isPanel(designation) ? 10 : 20
+// DC4 — un objet {tvaPanneaux, tvaStandard} (repères société, Paramètres) peut
+// surcharger les défauts ; sans lui, comportement historique inchangé.
+export function expectedTvaForDesignation(designation, tvaConfig) {
+  const panneaux = Number(tvaConfig?.tvaPanneaux) > 0
+    ? Number(tvaConfig.tvaPanneaux) : TVA_PANNEAUX_DEFAUT
+  const standard = Number(tvaConfig?.tvaStandard) > 0
+    ? Number(tvaConfig.tvaStandard) : TVA_STANDARD_DEFAUT
+  return isPanel(designation) ? panneaux : standard
 }
 
 // La désignation tapée correspond-elle encore au produit choisi du stock ?
@@ -203,24 +217,31 @@ export function classifyProduct(nom) {
   return null
 }
 
-// Prix TTC affiché depuis le prix de vente HT du stock (TVA 20 %)
-export function ttcFromHt(prixVenteHt, tauxTva = 20) {
-  const factor = 1 + (parseFloat(tauxTva) || 20) / 100
+// Prix TTC affiché depuis le prix de vente HT du stock.
+// DC6 — le taux 20 n'est qu'un DÉFAUT de repli ; le taux réel (10 % panneaux,
+// 20 % le reste, ou le taux standard édité de la société) est toujours passé
+// par l'appelant via tauxTva.
+export function ttcFromHt(prixVenteHt, tauxTva = TVA_STANDARD_DEFAUT) {
+  const factor = 1 + (parseFloat(tauxTva) || TVA_STANDARD_DEFAUT) / 100
   return Math.round((parseFloat(prixVenteHt) || 0) * factor)
 }
 
 // Taux TVA d'un produit (réforme 2024–2026 : 10 % panneaux PV, 20 % le reste).
-// Produit sans taux renseigné → 20.
-export function tauxTvaOf(produit) {
+// DC7 — `Produit.tva` est la source AUTORITAIRE par ligne ; on la prend telle
+// quelle quand elle est renseignée. DC6 — le repli n'est plus 20 en dur : il
+// suit le taux standard de la société (tvaStandard, Paramètres), défaut 20.
+export function tauxTvaOf(produit, tvaStandard) {
   const t = parseFloat(produit?.tva)
-  return Number.isFinite(t) && t > 0 ? t : 20
+  if (Number.isFinite(t) && t > 0) return t
+  const std = Number(tvaStandard) > 0 ? Number(tvaStandard) : TVA_STANDARD_DEFAUT
+  return std
 }
 
 // Conversion inverse au moment de l'enregistrement : le modèle stocke des
 // prix HT à 2 décimales. Pour tout TTC saisi à la dirham près, l'aller-retour
 // TTC → HT(2 déc.) → TTC réaffiché redonne exactement la valeur tapée.
-export function htFromTtc(ttc, tauxTva = 20) {
-  const factor = 1 + (parseFloat(tauxTva) || 20) / 100
+export function htFromTtc(ttc, tauxTva = TVA_STANDARD_DEFAUT) {
+  const factor = 1 + (parseFloat(tauxTva) || TVA_STANDARD_DEFAUT) / 100
   return ((parseFloat(ttc) || 0) / factor).toFixed(2)
 }
 
@@ -459,9 +480,15 @@ export function autoFillLines(produits, { kwp, panelW, structureType }) {
 // ══ Multi-marchés (2026-06) ═══════════════════════════════════════════════════
 
 // ── Étude industrielle / commerciale (autoconsommation) ──────────────────────
-export function computeEtudeIndustrielle({ kwp, consoMensuelleKwh, dayUsagePct, totalTtc }) {
+// DC3 — kwhPrice/efficiency sont threadés EXACTEMENT comme computeROI : le tarif
+// ONEE et le rendement de la société (Paramètres → Avancé) pilotent l'étude à
+// l'écran, plus seulement le PDF. Sans valeur → constantes historiques
+// (parité simulateur garantie).
+export function computeEtudeIndustrielle({ kwp, consoMensuelleKwh, dayUsagePct, totalTtc, kwhPrice, efficiency }) {
   if (!kwp || kwp <= 0) return null
-  const prodM = GHI.map(g => g * kwp * EFFICIENCY)
+  const PRICE = (Number.isFinite(Number(kwhPrice)) && Number(kwhPrice) > 0) ? Number(kwhPrice) : KWH_PRICE
+  const EFF = (Number.isFinite(Number(efficiency)) && Number(efficiency) > 0) ? Number(efficiency) : EFFICIENCY
+  const prodM = GHI.map(g => g * kwp * EFF)
   const prodA = prodM.reduce((a, b) => a + b, 0)
   const consoMois = parseFloat(consoMensuelleKwh) || 0
   const consoA = consoMois > 0 ? consoMois * 12 : 0
@@ -476,7 +503,7 @@ export function computeEtudeIndustrielle({ kwp, consoMensuelleKwh, dayUsagePct, 
     autoconsomme = prodA * dayPct
     tauxAuto = dayPct * 100
   }
-  const economies = autoconsomme * KWH_PRICE
+  const economies = autoconsomme * PRICE
   const payback = (economies > 0 && totalTtc > 0)
     ? Math.round(totalTtc / economies * 10) / 10 : null
   return {

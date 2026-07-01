@@ -59,14 +59,19 @@ def build_ubl_xml(facture, profile=None, currency=None):
     est résolu depuis la société de la facture. La portée société est garantie
     par l'appelant (commande/endpoint) ; cette fonction ne fait que rendre.
 
-    FG52 — ``currency`` est résolu (dans l'ordre) depuis :
+    FG52 / DC25 — ``currency`` est résolu (dans l'ordre) depuis :
       1. Le paramètre explicite ``currency`` (rétro-compat appels existants).
       2. Le champ ``facture.devise`` (défaut « MAD » sur les factures existantes).
-      3. Le repli ultime « MAD ».
+      3. La devise par défaut de la société (``CompanyProfile.devise_defaut``).
+      4. Le repli ultime « MAD ».
     """
-    if currency is None:
-        currency = getattr(facture, 'devise', None) or 'MAD'
     profile = _resolve_profile(facture, profile)
+    if currency is None:
+        # DC25 — plus de « MAD » codé en dur : on prend la devise du document,
+        # puis celle par défaut de la société, et seulement en dernier « MAD ».
+        currency = (getattr(facture, 'devise', None)
+                    or getattr(profile, 'devise_defaut', None)
+                    or 'MAD')
     for prefix, uri in NS.items():
         ET.register_namespace(prefix, uri)
     inv_ns = NS['']

@@ -693,8 +693,22 @@ class FactureViewSet(viewsets.ModelViewSet):
                             status=status.HTTP_400_BAD_REQUEST)
                 else:
                     taux_tva = None
+                # DC10 — produit REQUIS sur une nouvelle ligne d'avoir (lien
+                # snapshot fort). Le FK reste nullable en base pour l'historique,
+                # mais toute ligne saisie ici doit désigner un produit de la
+                # société.
+                produit_id = ligne.get('produit') or None
+                if produit_id is None:
+                    return Response(
+                        {'detail': f'Ligne {i} : produit requis.'},
+                        status=status.HTTP_400_BAD_REQUEST)
+                from apps.stock.selectors import get_produit_scoped
+                if get_produit_scoped(company, produit_id) is None:
+                    return Response(
+                        {'detail': f'Ligne {i} : produit inconnu.'},
+                        status=status.HTTP_400_BAD_REQUEST)
                 clean_lignes.append({
-                    'produit_id': ligne.get('produit') or None,
+                    'produit_id': produit_id,
                     'designation': designation[:255],
                     'quantite': qte, 'prix_unitaire': pu,
                     'remise': remise, 'taux_tva': taux_tva,

@@ -39,13 +39,18 @@ def _q2(value):
 def build_ubl_xml(facture, profile, currency=None):
     """Construit le XML UBL 2.1 d'une facture. Renvoie une chaîne (str).
 
-    FG52 — ``currency`` est résolu (dans l'ordre) depuis :
+    FG52 / DC25 — ``currency`` est résolu (dans l'ordre) depuis :
       1. Le paramètre explicite ``currency`` (rétro-compat).
       2. Le champ ``facture.devise`` (défaut « MAD » sur les factures existantes).
-      3. Le repli ultime « MAD ».
+      3. La devise par défaut de la société (``CompanyProfile.devise_defaut``).
+      4. Le repli ultime « MAD ».
     """
     if currency is None:
-        currency = getattr(facture, 'devise', None) or 'MAD'
+        # DC25 — plus de « MAD » codé en dur : devise du document, puis devise
+        # par défaut de la société (profile), et seulement en dernier « MAD ».
+        currency = (getattr(facture, 'devise', None)
+                    or getattr(profile, 'devise_defaut', None)
+                    or 'MAD')
     for prefix, uri in NS.items():
         ET.register_namespace(prefix, uri)
     inv_ns = NS['']

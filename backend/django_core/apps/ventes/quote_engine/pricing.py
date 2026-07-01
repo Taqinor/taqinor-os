@@ -68,6 +68,12 @@ AUTOCONSO_AVEC = 0.85   # avec batterie de stockage — idem
 # présenté comme une ESTIMATION approximative, jamais comme un chiffre précis.
 _FALLBACK_KWH_PRICE = 1.20   # MAD/kWh — tranche milieu ONEE (à confirmer)
 
+# Productible annuel de repli (kWh/kWc/an) — GHI moyen Maroc. Défaut historique
+# 1240 CONSERVÉ pour byte-identité ; le builder peut le surcharger avec
+# CompanyProfile.productible_kwh_kwc (DC2), auquel cas la production annuelle et
+# le ROI suivent le repère de la société.
+_DEFAULT_PRODUCTIBLE = 1240
+
 # Label affiché quand on dégrade en estimation (pas de données tarifaires)
 ESTIMATION_LABEL = "estimation"
 
@@ -153,6 +159,8 @@ def calculate_savings_roi(
     tranches_override: list | None = None,
     autoconso_sans: float = AUTOCONSO_SANS,
     autoconso_avec: float = AUTOCONSO_AVEC,
+    productible: float | None = None,
+    fallback_tarif_kwh: float | None = None,
 ) -> dict:
     """Auto-compute annual production, savings and ROI — loi 82-21 model.
 
@@ -184,7 +192,11 @@ def calculate_savings_roi(
       ``tarif_kwh``           Effective kWh price used for the calculation.
       ``utility``             Distributor name resolved (or None).
     """
-    production_annuelle = round(puissance_kwc * 1240)
+    # DC2 — productible : repère société (CompanyProfile.productible_kwh_kwc)
+    # quand fourni, sinon défaut historique 1240 (byte-identique).
+    prod_factor = float(productible) if productible and productible > 0 \
+        else _DEFAULT_PRODUCTIBLE
+    production_annuelle = round(puissance_kwc * prod_factor)
 
     # Tariff resolution
     if tarif_kwh_override is not None and tarif_kwh_override > 0:
@@ -193,6 +205,11 @@ def calculate_savings_roi(
     else:
         prix_kwh, savings_estimated = _avg_kwh_price_from_tranches(
             conso_annuelle_kwh, utility, tranches_override)
+        # DC2 — quand aucune donnée tarifaire n'existe (repli 1.20 « estimation »),
+        # préférer le tarif ONEE de la société (CompanyProfile.onee_tarif_kwh) s'il
+        # est fourni. Reste marqué « estimation » (pas de données de conso).
+        if savings_estimated and fallback_tarif_kwh and fallback_tarif_kwh > 0:
+            prix_kwh = float(fallback_tarif_kwh)
 
     # Self-consumption-first savings (loi 82-21: only self-consumed kWh valued)
     economie_opt1 = round(production_annuelle * autoconso_sans * prix_kwh)

@@ -311,6 +311,7 @@ test('auto-fill petit système 5 panneaux : onduleur 5 kW Monophasé préféré'
 import {
   computeEtudeIndustrielle, computePompage, autoFillPompage,
   prixParKwc, discountForTarget, computeBuyCost, CV_TO_KW,
+  expectedTvaForDesignation,
 } from './solar.js'
 
 const POMPAGE_FIXTURE = [
@@ -343,6 +344,22 @@ test('étude industrielle : taux autoconsommation / couverture cohérents', () =
   assert.equal(e.prix_kwc, 9000)
   assert.equal(e.prod_mensuelle.length, 12)
   assert.equal(e.conso_mensuelle.length, 12)
+})
+
+// ── DC3 — étude industrielle prend kwhPrice/efficiency (comme computeROI) ──────
+test('DC3 étude industrielle : kwhPrice/efficiency de la société pilotent le calcul', () => {
+  const base = { kwp: 50, consoMensuelleKwh: 10000, dayUsagePct: 80, totalTtc: 450000 }
+  const def = computeEtudeIndustrielle(base)
+  // Tarif ONEE doublé → économies doublées exactement (autoconsommé inchangé).
+  const dbl = computeEtudeIndustrielle({ ...base, kwhPrice: 3.5 })
+  assert.ok(Math.abs(dbl.economies_annuelles - def.economies_annuelles * 2) <= 2)
+  // Rendement réduit de moitié → production annuelle de moitié.
+  const half = computeEtudeIndustrielle({ ...base, efficiency: 0.4 })
+  assert.ok(Math.abs(half.production_annuelle - def.production_annuelle / 2) <= 1)
+  // Override invalide (0 / NaN) → repli sur les constantes historiques.
+  const fb = computeEtudeIndustrielle({ ...base, kwhPrice: 0, efficiency: -1 })
+  assert.equal(fb.production_annuelle, def.production_annuelle)
+  assert.equal(fb.economies_annuelles, def.economies_annuelles)
 })
 
 test('pompage : 5.5 CV tri → variateur 5.5 tri + champ ≈1.4× pompe, sans batterie/onduleur', () => {
@@ -515,4 +532,29 @@ test('marge : affichée seulement quand des prix d\'achat existent', () => {
   // un prix d'achat renseigné → coût TTC de cette ligne
   produits[0].prix_achat = '1000'
   assert.equal(computeBuyCost(lines, produits), Math.round(10 * 1000 * 1.2))
+})
+
+// ── DC4 — TVA panneaux société surcharge le défaut, sinon 10 %/20 % ───────────
+test('DC4 expectedTvaForDesignation : config société surcharge, défauts sinon', () => {
+  // Défauts réforme : panneau 10, autre 20
+  assert.equal(expectedTvaForDesignation('Panneau 710W'), 10)
+  assert.equal(expectedTvaForDesignation('Onduleur réseau'), 20)
+  // Config société : panneaux 7, standard 19
+  const cfg = { tvaPanneaux: 7, tvaStandard: 19 }
+  assert.equal(expectedTvaForDesignation('Panneau 710W', cfg), 7)
+  assert.equal(expectedTvaForDesignation('Onduleur', cfg), 19)
+  // Config invalide (0/NaN) → repli défauts
+  assert.equal(expectedTvaForDesignation('Panneau', { tvaPanneaux: 0 }), 10)
+})
+
+// ── DC6/DC7 — tauxTvaOf : produit.tva autoritaire, repli sur standard société ─
+test('DC6/DC7 tauxTvaOf : Produit.tva prioritaire, repli standard société', () => {
+  // DC7 — produit.tva renseigné = autoritaire, ignore le standard société
+  assert.equal(tauxTvaOf({ tva: '10' }, 19), 10)
+  assert.equal(tauxTvaOf({ tva: '20' }), 20)
+  // DC6 — sans taux produit, repli sur le standard société (défaut 20)
+  assert.equal(tauxTvaOf({}, 19), 19)
+  assert.equal(tauxTvaOf({}), 20)
+  // repli invalide (0) → 20
+  assert.equal(tauxTvaOf({}, 0), 20)
 })
