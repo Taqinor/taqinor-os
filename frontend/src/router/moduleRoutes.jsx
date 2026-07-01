@@ -1,7 +1,3 @@
-/* eslint-disable react-refresh/only-export-components --
-   Fichier d'agrégation de configuration (glob + construction de routes), pas un
-   module de composants : le fast-refresh ne s'y applique pas. */
-
 /* UX1 — Registre de modules ERP.
    ----------------------------------------------------------------------------
    Chaque module « coquille » (Comptabilité, Paie, RH, Flotte, QHSE, Contrats,
@@ -61,7 +57,11 @@ export const moduleSectionLabels = Object.assign(
    pour éviter un cycle d'import et garder tout `<Suspense>` hors de `index.jsx`.
    `WithLayout` monte déjà une frontière Suspense : le composant lazy du module y
    est simplement rendu comme enfant. */
-export function buildModuleRoutes({ WithLayout, authLoader, roleLoader }) {
+export function buildModuleRoutes(deps) {
+  const { authLoader, roleLoader } = deps
+  // Variable PascalCase (couverte par varsIgnorePattern '^[A-Z_]') plutôt qu'un
+  // argument déstructuré : le lint local ne compte pas l'usage JSX seul.
+  const WithLayout = deps.WithLayout
   return configs.flatMap((c) =>
     (c.routes ?? []).map((r) => {
       const Comp = r.component
