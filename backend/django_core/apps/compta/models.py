@@ -5788,3 +5788,56 @@ class RegleUpsell(models.Model):
 
     def __str__(self):
         return f'{self.get_declencheur_display()} → {self.produit_suggere}'
+
+
+# ── FG244 — Abonnements de monitoring (revenu récurrent) ───────────────────
+
+class AbonnementMonitoring(models.Model):
+    """Abonnement de supervision (monitoring) mensuel/annuel (FG244).
+
+    Offre de revenu récurrent adossée au module monitoring : le client paie une
+    supervision périodique de son installation. Client/installation référencés
+    par id (cross-app — jamais d'import monitoring/crm). ``prochaine_echeance``
+    est recalculée à chaque renouvellement selon la périodicité. Scopé société.
+    """
+    class Periodicite(models.TextChoices):
+        MENSUEL = 'mensuel', 'Mensuel'
+        ANNUEL = 'annuel', 'Annuel'
+
+    class Statut(models.TextChoices):
+        ACTIF = 'actif', 'Actif'
+        SUSPENDU = 'suspendu', 'Suspendu'
+        RESILIE = 'resilie', 'Résilié'
+
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='abonnements_monitoring',
+        verbose_name='Société',
+    )
+    client_id = models.PositiveIntegerField(verbose_name='Id du client')
+    installation_id = models.PositiveIntegerField(
+        null=True, blank=True, verbose_name="Id de l'installation")
+    periodicite = models.CharField(
+        max_length=8, choices=Periodicite.choices, default=Periodicite.MENSUEL,
+        verbose_name='Périodicité')
+    montant = models.DecimalField(
+        max_digits=12, decimal_places=2, default=0,
+        verbose_name='Montant par période (MAD)')
+    statut = models.CharField(
+        max_length=8, choices=Statut.choices, default=Statut.ACTIF,
+        verbose_name='Statut')
+    date_debut = models.DateField(
+        null=True, blank=True, verbose_name='Date de début')
+    prochaine_echeance = models.DateField(
+        null=True, blank=True, verbose_name='Prochaine échéance')
+    date_creation = models.DateTimeField(
+        auto_now_add=True, verbose_name='Créé le')
+
+    class Meta:
+        verbose_name = 'Abonnement de monitoring'
+        verbose_name_plural = 'Abonnements de monitoring'
+        ordering = ['prochaine_echeance', 'id']
+
+    def __str__(self):
+        return f'Monitoring client #{self.client_id} ({self.periodicite})'

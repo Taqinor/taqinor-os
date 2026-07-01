@@ -4177,3 +4177,49 @@ def suggestions_upsell(company, contexte):
         RegleUpsell.objects
         .filter(company=company, actif=True, declencheur__in=actives_vraies)
         .order_by('-priorite', 'id'))
+
+
+# ── FG244 — Abonnements de monitoring (échéance récurrente) ────────────────
+
+def _ajouter_mois(d, mois):
+    """Ajoute ``mois`` mois à une date en bornant le jour à la fin de mois."""
+    import calendar
+    total = d.month - 1 + mois
+    annee = d.year + total // 12
+    mois_final = total % 12 + 1
+    jour = min(d.day, calendar.monthrange(annee, mois_final)[1])
+    return d.replace(year=annee, month=mois_final, day=jour)
+
+
+def prochaine_echeance_abonnement(depuis, periodicite):
+    """Prochaine échéance d'un abonnement monitoring (FG244) depuis ``depuis``.
+
+    Mensuel → +1 mois ; annuel → +12 mois. ``depuis`` est une date.
+    """
+    from .models import AbonnementMonitoring
+    pas = 12 if periodicite == AbonnementMonitoring.Periodicite.ANNUEL else 1
+    return _ajouter_mois(depuis, pas)
+
+
+def renouveler_abonnement_monitoring(abonnement, *, today=None):
+    """Renouvelle un abonnement monitoring (FG244) : avance l'échéance.
+
+    Actif uniquement. Pose ``date_debut`` si absente, puis fixe
+    ``prochaine_echeance`` à une période après la base (échéance courante si
+    future, sinon aujourd'hui). Idempotence à la charge de l'appelant. Renvoie
+    l'abonnement.
+    """
+    from .models import AbonnementMonitoring
+    if abonnement.statut != AbonnementMonitoring.Statut.ACTIF:
+        return abonnement
+    if today is None:
+        today = timezone.localdate()
+    if abonnement.date_debut is None:
+        abonnement.date_debut = today
+    base = abonnement.prochaine_echeance or today
+    if base < today:
+        base = today
+    abonnement.prochaine_echeance = prochaine_echeance_abonnement(
+        base, abonnement.periodicite)
+    abonnement.save(update_fields=['date_debut', 'prochaine_echeance'])
+    return abonnement

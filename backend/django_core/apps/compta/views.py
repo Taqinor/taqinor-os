@@ -45,6 +45,7 @@ from .models import (
     Partenaire, SoumissionLeadPartenaire, CommissionPartenaire,
     TerritoireCommercial, EnqueteNPS, AvisClient,
     CompteFidelite, MouvementFidelite, RegleUpsell,
+    AbonnementMonitoring,
 )
 from .serializers import (
     AppelTelephoniqueSerializer, AvancementRevenuSerializer,
@@ -88,7 +89,7 @@ from .serializers import (
     CommissionPartenaireSerializer, TerritoireCommercialSerializer,
     EnqueteNPSSerializer, AvisClientSerializer,
     CompteFideliteSerializer, MouvementFideliteSerializer,
-    RegleUpsellSerializer,
+    RegleUpsellSerializer, AbonnementMonitoringSerializer,
 )
 
 
@@ -3809,3 +3810,61 @@ class RegleUpsellViewSet(_ComptaBaseViewSet):
                 status=status.HTTP_400_BAD_REQUEST)
         regles = services.suggestions_upsell(request.user.company, contexte)
         return Response(self.get_serializer(regles, many=True).data)
+
+
+class AbonnementMonitoringViewSet(_ComptaBaseViewSet):
+    """Abonnements de monitoring (supervision récurrente, FG244). La société est
+    posée côté serveur ; la 1re échéance est calculée à la création ;
+    ``renouveler`` avance l'échéance ; ``suspendre`` / ``resilier`` changent le
+    statut ; ``a_echeance`` liste les abonnements arrivant à échéance."""
+    queryset = AbonnementMonitoring.objects.all()
+    serializer_class = AbonnementMonitoringSerializer
+    filter_backends = [filters.OrderingFilter]
+    ordering_fields = ['prochaine_echeance', 'date_creation']
+
+    def perform_create(self, serializer):
+        abonnement = serializer.save(company=self.request.user.company)
+        services.renouveler_abonnement_monitoring(abonnement)
+
+    @action(detail=True, methods=['post'])
+    def renouveler(self, request, pk=None):
+        abonnement = self.get_object()
+        services.renouveler_abonnement_monitoring(abonnement)
+        return Response(self.get_serializer(abonnement).data)
+
+    @action(detail=True, methods=['post'])
+    def suspendre(self, request, pk=None):
+        abonnement = self.get_object()
+        if abonnement.statut == AbonnementMonitoring.Statut.ACTIF:
+            abonnement.statut = AbonnementMonitoring.Statut.SUSPENDU
+            abonnement.save(update_fields=['statut'])
+        return Response(self.get_serializer(abonnement).data)
+
+    @action(detail=True, methods=['post'])
+    def resilier(self, request, pk=None):
+        abonnement = self.get_object()
+        abonnement.statut = AbonnementMonitoring.Statut.RESILIE
+        abonnement.save(update_fields=['statut'])
+        return Response(self.get_serializer(abonnement).data)
+
+    @action(detail=False, methods=['get'])
+    def a_echeance(self, request):
+        """Abonnements actifs dont l'échéance tombe dans ``within`` jours."""
+        from datetime import timedelta
+        from django.utils import timezone
+        try:
+            within = int(request.query_params.get('within', 30))
+        except (TypeError, ValueError):
+            within = 30
+        today = timezone.localdate()
+        limite = today + timedelta(days=max(0, within))
+        qs = (self.get_queryset()
+              .filter(statut=AbonnementMonitoring.Statut.ACTIF,
+                      prochaine_echeance__isnull=False,
+                      prochaine_echeance__lte=limite)
+              .order_by('prochaine_echeance'))
+        page = self.paginate_queryset(qs)
+        if page is not None:
+            return self.get_paginated_response(
+                self.get_serializer(page, many=True).data)
+        return Response(self.get_serializer(qs, many=True).data)

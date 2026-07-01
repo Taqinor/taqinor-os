@@ -33,6 +33,7 @@ from apps.compta.models import (
     Partenaire, SoumissionLeadPartenaire, CommissionPartenaire,
     TerritoireCommercial, EnqueteNPS, AvisClient,
     CompteFidelite, MouvementFidelite, RegleUpsell,
+    AbonnementMonitoring,
 )
 
 User = get_user_model()
@@ -767,4 +768,90 @@ class RegleUpsellTests(TestCase):
             produit_suggere='X')
         api = auth(self.user)
         resp = api.get('/api/django/compta/regles-upsell/')
+        self.assertEqual(resp.data['count'], 0)
+
+
+# ── FG244 — Abonnements de monitoring (revenu récurrent) ───────────────────
+
+class AbonnementMonitoringTests(TestCase):
+    def setUp(self):
+        self.co = make_company('fg244', 'FG244')
+        self.user = make_user(self.co, 'fg244-user')
+
+    def test_creation_pose_company_et_echeance(self):
+        api = auth(self.user)
+        resp = api.post('/api/django/compta/abonnements-monitoring/', {
+            'client_id': 50001, 'installation_id': 12,
+            'periodicite': 'mensuel', 'montant': '199.00',
+            'company': 41414,  # ignoré
+        }, format='json')
+        self.assertEqual(resp.status_code, 201, resp.content)
+        a = AbonnementMonitoring.objects.get(id=resp.data['id'])
+        self.assertEqual(a.company_id, self.co.id)
+        self.assertEqual(a.statut, AbonnementMonitoring.Statut.ACTIF)
+        # 1re échéance calculée à la création.
+        self.assertIsNotNone(a.prochaine_echeance)
+        self.assertIsNotNone(a.date_debut)
+
+    def test_prochaine_echeance_mensuel_vs_annuel(self):
+        from datetime import date
+        m = services.prochaine_echeance_abonnement(
+            date(2026, 1, 31), 'mensuel')
+        self.assertEqual(m, date(2026, 2, 28))  # borné fin de mois.
+        a = services.prochaine_echeance_abonnement(
+            date(2026, 3, 15), 'annuel')
+        self.assertEqual(a, date(2027, 3, 15))
+
+    def test_renouveler_avance_echeance(self):
+        from datetime import date
+        api = auth(self.user)
+        a = AbonnementMonitoring.objects.create(
+            company=self.co, client_id=50002, periodicite='mensuel',
+            date_debut=date(2026, 1, 1),
+            prochaine_echeance=date(2030, 1, 1))
+        avant = a.prochaine_echeance
+        resp = api.post(
+            f'/api/django/compta/abonnements-monitoring/{a.id}/renouveler/',
+            {}, format='json')
+        self.assertEqual(resp.status_code, 200, resp.content)
+        a.refresh_from_db()
+        self.assertGreater(a.prochaine_echeance, avant)
+
+    def test_suspendre_bloque_renouvellement(self):
+        api = auth(self.user)
+        a = AbonnementMonitoring.objects.create(
+            company=self.co, client_id=50003, periodicite='mensuel')
+        api.post(
+            f'/api/django/compta/abonnements-monitoring/{a.id}/suspendre/',
+            {}, format='json')
+        a.refresh_from_db()
+        self.assertEqual(a.statut, AbonnementMonitoring.Statut.SUSPENDU)
+        # Renouveler un abonnement non-actif est un NO-OP.
+        avant = a.prochaine_echeance
+        services.renouveler_abonnement_monitoring(a)
+        a.refresh_from_db()
+        self.assertEqual(a.prochaine_echeance, avant)
+
+    def test_a_echeance_liste_les_proches(self):
+        from datetime import date, timedelta
+        from django.utils import timezone
+        today = timezone.localdate()
+        AbonnementMonitoring.objects.create(
+            company=self.co, client_id=50004, periodicite='mensuel',
+            prochaine_echeance=today + timedelta(days=5))
+        AbonnementMonitoring.objects.create(
+            company=self.co, client_id=50005, periodicite='mensuel',
+            prochaine_echeance=date(2099, 1, 1))
+        api = auth(self.user)
+        resp = api.get(
+            '/api/django/compta/abonnements-monitoring/a_echeance/?within=30')
+        self.assertEqual(resp.status_code, 200, resp.content)
+        self.assertEqual(resp.data['count'], 1)
+
+    def test_isolation_societe(self):
+        autre = make_company('fg244-b', 'FG244B')
+        AbonnementMonitoring.objects.create(
+            company=autre, client_id=50006, periodicite='mensuel')
+        api = auth(self.user)
+        resp = api.get('/api/django/compta/abonnements-monitoring/')
         self.assertEqual(resp.data['count'], 0)

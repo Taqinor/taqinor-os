@@ -35,6 +35,7 @@ from .models import (
     Partenaire, SoumissionLeadPartenaire, CommissionPartenaire,
     TerritoireCommercial, EnqueteNPS, AvisClient,
     CompteFidelite, MouvementFidelite, RegleUpsell,
+    AbonnementMonitoring,
 )
 
 
@@ -1933,3 +1934,15 @@ class RegleUpsellSerializer(serializers.ModelSerializer):
             'actif', 'date_creation',
         ]
         read_only_fields = ['date_creation']
+
+
+class AbonnementMonitoringSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = AbonnementMonitoring
+        fields = [
+            'id', 'client_id', 'installation_id', 'periodicite', 'montant',
+            'statut', 'date_debut', 'prochaine_echeance', 'date_creation',
+        ]
+        read_only_fields = [
+            'statut', 'date_debut', 'prochaine_echeance', 'date_creation',
+        ]
