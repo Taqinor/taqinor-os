@@ -13,6 +13,7 @@ from django.http import HttpResponse
 
 from rest_framework import filters, status, viewsets
 from rest_framework.decorators import action
+from rest_framework.exceptions import ValidationError
 from rest_framework.response import Response
 
 from authentication.mixins import TenantMixin
@@ -3625,8 +3626,16 @@ class ComptePortailClientViewSet(_ComptaBaseViewSet):
 
     def perform_create(self, serializer):
         import secrets
+        # DC32 — le client est lié PAR FK ; on vérifie qu'il est bien dans la
+        # société de l'utilisateur (jamais un client d'un autre tenant).
+        client = serializer.validated_data.get('client')
+        company = self.request.user.company
+        if client is not None and getattr(
+                client, 'company_id', None) != getattr(company, 'id', None):
+            raise ValidationError(
+                {'client': 'Client inconnu pour cette société.'})
         serializer.save(
-            company=self.request.user.company,
+            company=company,
             token_acces=secrets.token_urlsafe(32))
 
 

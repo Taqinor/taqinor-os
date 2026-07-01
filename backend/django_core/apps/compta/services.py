@@ -4046,14 +4046,14 @@ def taux_reussite_ao(company):
 
 # ── FG228 — Provisionnement (gated) d'un compte portail client ─────────────
 
-def provisionner_compte_portail(company, *, client_id, email):
+def provisionner_compte_portail(company, *, client_id):
     """Crée/active un compte portail client tokenisé (FG228).
 
-    Token long/imprévisible (secrets). Idempotent par (company, client_id) :
-    réactive et renvoie le compte existant plutôt que d'en dupliquer un. L'email
-    réutilise celui du client (DC32 — pas de 2ᵉ copie d'identité) ; le compte
-    NE duplique aucune donnée métier (devis/factures/chantiers lus à la volée
-    via les selectors des apps cibles).
+    Token long/imprévisible (secrets). Idempotent par (company, client) :
+    réactive et renvoie le compte existant plutôt que d'en dupliquer un. Le
+    compte se lie au client PAR FK (``crm.Client``) et réutilise son email
+    (DC32 — pas de 2ᵉ copie d'identité) ; il NE duplique aucune donnée métier
+    (devis/factures/chantiers lus à la volée via les selectors des apps cibles).
     """
     import secrets
     compte = ComptePortailClient.objects.filter(
@@ -4066,7 +4066,6 @@ def provisionner_compte_portail(company, *, client_id, email):
     return ComptePortailClient.objects.create(
         company=company,
         client_id=client_id,
-        email=email or '',
         token_acces=secrets.token_urlsafe(32),
     )
 
