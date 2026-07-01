@@ -11,6 +11,7 @@ from .views import (
     ProjetDevisViewSet, ProjetTicketViewSet,
     BudgetProjetViewSet, BudgetEngagementViewSet,
     IndisponibiliteRessourceViewSet,
+    EquipeViewSet,
     SousTraitantViewSet,
     OrdreSousTraitanceViewSet,
     FactureSousTraitantViewSet,
@@ -78,6 +79,7 @@ router.register(r'programme-tickets', ProjetTicketViewSet)
 router.register(r'programme-budgets', BudgetProjetViewSet)
 router.register(r'programme-engagements', BudgetEngagementViewSet)
 router.register(r'indisponibilites-ressource', IndisponibiliteRessourceViewSet)
+router.register(r'equipes', EquipeViewSet)
 router.register(r'sous-traitants', SousTraitantViewSet)
 router.register(r'ordres-sous-traitance', OrdreSousTraitanceViewSet)
 router.register(r'factures-sous-traitant', FactureSousTraitantViewSet)
