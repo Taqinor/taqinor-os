@@ -654,6 +654,18 @@ def build_quote_data(devis, pdf_options=None) -> dict:
     except Exception:  # noqa: BLE001 — un PDF ne doit jamais casser là-dessus
         doc_texts = {}
 
+    # DC1 — identité société (multi-tenant) : nom/RC/ICE/RIB/banque/adresse/tel/
+    # couleur lus depuis CompanyProfile via le sélecteur parametres. Le moteur
+    # premium retombe sur ses littéraux historiques (Taqinor) pour toute valeur
+    # vide, donc un devis sans profil enrichi reste rendu strictement à
+    # l'identique. Fuite multi-tenant corrigée : plus aucune identité en dur.
+    entreprise = {}
+    try:
+        from apps.parametres.selectors import company_identity
+        entreprise = company_identity(getattr(devis, "company", None))
+    except Exception:  # noqa: BLE001 — un PDF ne doit jamais casser là-dessus
+        entreprise = {}
+
     tva_label = int(tva_pct) if tva_pct == int(tva_pct) else tva_pct
     # Texte TVA UNIQUE, partagé par toutes les notes/conditions des PDF.
     # Réforme (taux par ligne) : le texte décrit la règle 10/20 ; devis
@@ -729,6 +741,9 @@ def build_quote_data(devis, pdf_options=None) -> dict:
         "_company_id": getattr(devis, "company_id", None),
         # D2/N60/N67/N59 — surcharges de texte éditables (vide → littéral moteur).
         "doc_texts": doc_texts,
+        # DC1 — identité société (multi-tenant). Champs vides → le moteur premium
+        # applique ses littéraux historiques (aucune fuite d'un autre tenant).
+        "entreprise": entreprise,
         # N26 — tampon d'acceptation : nom + date posés à l'acceptation du devis
         # (le moteur ne l'affiche QUE si les deux sont présents). Date au format
         # FR jj/mm/aaaa, vide sinon → devis byte-identique à aujourd'hui.

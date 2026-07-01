@@ -9,7 +9,7 @@ Page 1 : white-background v1 layout
 Pages 2-3 : v4 premium dark design
 Usage : python generate_devis_premium.py
 """
-import base64, html, io, json, subprocess, sys, tempfile, threading
+import base64, html, io, json, re, subprocess, sys, tempfile, threading
 from pathlib import Path
 
 
@@ -131,6 +131,10 @@ CG2 = "#EAECF0"
 CG4 = "#9BA3AE"
 CG7 = "#374151"
 CGR = "#16A34A"
+# DC1 — couleur d'accent par défaut (Taqinor). CA peut être surchargée par la
+# couleur de charte de la société (CompanyProfile.couleur_principale) au rendu ;
+# on la réinitialise depuis ce défaut au début de chaque rendu.
+_CA_DEFAULT = CA
 
 # ═══════════════════════════════════════════════════════════════════════════════
 # QUOTE_INPUT — seule section à modifier pour changer un devis
@@ -294,6 +298,111 @@ TOTAUX_ALL = None              # totaux canoniques toutes-lignes (one-page)
 PAY_A, PAY_M, PAY_S = 30, 60, 10
 # Devis deux-options rendu en une page : option 1 seule + mention discrète.
 ONEPAGE_NOTE_BATTERIE = False
+
+# ── DC1 — identité société (multi-tenant) ──────────────────────────────────────
+# Chaque littéral d'identité (nom de marque du footer, coordonnées, ligne légale
+# RC/ICE/adresse, ligne RIB) devient une variable pilotée par ENT (posée depuis
+# data["entreprise"] = CompanyProfile). Les DÉFAUTS ci-dessous reproduisent
+# EXACTEMENT les littéraux Taqinor historiques : tant qu'aucun profil enrichi
+# n'est fourni, le PDF reste byte-identique. Un devis d'un AUTRE tenant affiche
+# désormais SON identité — plus de fuite de l'ICE/RIB/RC de Taqinor.
+ENT_NOM_MARQUE = "TAQINOR"                       # nom affiché dans les footers
+# Ligne de coordonnées (email · téléphone · site) — littéral historique exact.
+ENT_CONTACT_LINE = ("contact@taqinor.com &nbsp;&#183;&nbsp; "
+                    "+212&#160;6&#160;61&#160;85&#160;04&#160;10 "
+                    "&nbsp;&#183;&nbsp; www.taqinor.ma")
+# Ligne légale du footer page 3 (raison sociale · RC · ICE · capital · siège).
+ENT_LEGAL_LINE = ("Taqinor Solutions SARLAU &middot; RC 691213 &middot; "
+                  "ICE 003799642000067 &middot; Capital 100&#8239;000 MAD "
+                  "&middot; Siège : 5 Rue Ennoussour RDC, Casablanca")
+# Ligne RIB (bénéficiaire · banque · RIB · BIC) — littéral historique exact.
+ENT_RIB_LINE = ('<strong style="color:{cg7}">TAQINOR SOLUTION</strong> '
+                '· Saham Bank · '
+                'RIB 022 780 0002720029379418 74 '
+                '· BIC SGMBMAMCXXX')
+
+# Snapshot des DÉFAUTS Taqinor : les ENT_* actifs sont réinitialisés depuis eux
+# au début de chaque rendu (sous _RENDER_LOCK) avant surcharge par le profil,
+# pour qu'aucune identité de tenant ne persiste d'un rendu au suivant.
+_ENT_DEFAULT_NOM_MARQUE = ENT_NOM_MARQUE
+_ENT_DEFAULT_CONTACT_LINE = ENT_CONTACT_LINE
+_ENT_DEFAULT_LEGAL_LINE = ENT_LEGAL_LINE
+_ENT_DEFAULT_RIB_LINE = ENT_RIB_LINE
+
+
+def _apply_entreprise(ent):
+    """DC1 — pose les variables d'identité société depuis data["entreprise"].
+
+    ``ent`` est le dict renvoyé par ``parametres.selectors.company_identity``.
+    Toute valeur vide laisse le littéral Taqinor historique (byte-identique) ;
+    dès qu'une valeur est renseignée, elle remplace la ligne correspondante et
+    le devis d'un autre tenant n'affiche plus jamais l'identité de Taqinor.
+    """
+    global ENT_NOM_MARQUE, ENT_CONTACT_LINE, ENT_LEGAL_LINE, ENT_RIB_LINE
+    global CA
+    # Réinitialise TOUJOURS depuis les défauts d'abord : pas de fuite d'un rendu
+    # précédent (les globals sont mutés sous _RENDER_LOCK).
+    ENT_NOM_MARQUE = _ENT_DEFAULT_NOM_MARQUE
+    ENT_CONTACT_LINE = _ENT_DEFAULT_CONTACT_LINE
+    ENT_LEGAL_LINE = _ENT_DEFAULT_LEGAL_LINE
+    ENT_RIB_LINE = _ENT_DEFAULT_RIB_LINE
+    CA = _CA_DEFAULT
+    if not isinstance(ent, dict):
+        return
+    nom = (ent.get("nom") or "").strip()
+    adresse = (ent.get("adresse") or "").strip()
+    email = (ent.get("email") or "").strip()
+    tel = (ent.get("telephone") or "").strip()
+    ice = (ent.get("ice") or "").strip()
+    rc = (ent.get("rc") or "").strip()
+    if_ = (ent.get("identifiant_fiscal") or "").strip()
+    patente = (ent.get("patente") or "").strip()
+    rib = (ent.get("rib") or "").strip()
+    banque = (ent.get("banque") or "").strip()
+
+    # Aucun champ d'identité renseigné → on ne touche à rien (byte-identique).
+    if not any([nom, adresse, email, tel, ice, rc, if_, patente, rib, banque]):
+        return
+
+    if nom:
+        ENT_NOM_MARQUE = _esc(nom.upper())
+
+    # Ligne de contact : reconstruite dès qu'un contact est fourni.
+    if email or tel:
+        parts = [p for p in (_esc(email), _esc(tel)) if p]
+        ENT_CONTACT_LINE = " &nbsp;&#183;&nbsp; ".join(parts)
+
+    # Ligne légale : raison sociale · RC · ICE · IF · Patente · Siège.
+    legal_bits = []
+    if nom:
+        legal_bits.append(_esc(nom))
+    if rc:
+        legal_bits.append("RC " + _esc(rc))
+    if ice:
+        legal_bits.append("ICE " + _esc(ice))
+    if if_:
+        legal_bits.append("IF " + _esc(if_))
+    if patente:
+        legal_bits.append("Patente " + _esc(patente))
+    if adresse:
+        legal_bits.append("Siège : " + _esc(adresse))
+    if legal_bits:
+        ENT_LEGAL_LINE = " &middot; ".join(legal_bits)
+
+    # Ligne RIB : reconstruite dès qu'un RIB ou une banque est fourni.
+    if rib or banque:
+        benef = _esc(nom) if nom else "Virement"
+        rib_bits = [f'<strong style="color:{{cg7}}">{benef}</strong>']
+        if banque:
+            rib_bits.append(_esc(banque))
+        if rib:
+            rib_bits.append("RIB " + _esc(rib))
+        ENT_RIB_LINE = " · ".join(rib_bits)
+
+    # Couleur de charte (accent) — surcharge CA quand un hex valide est fourni.
+    couleur = (ent.get("couleur_principale") or "").strip()
+    if re.fullmatch(r"#[0-9A-Fa-f]{6}", couleur):
+        CA = couleur
 
 # ═══════════════════════════════════════════════════════════════════════════════
 # DOC_TEXTS — portions de TEXTE éditables du devis (D2/N60/N67/N26/N59)
@@ -555,9 +664,9 @@ def footer_p1():
     """Page 1 footer — white background."""
     return (f'<div style="background:white;padding:7px 24px;flex-shrink:0;display:flex;'
             f'align-items:center;justify-content:space-between;border-top:1px solid {CG2};">'
-            f'<div style="font-size:9pt;font-weight:800;color:{CA};letter-spacing:1px;">TAQINOR</div>'
+            f'<div style="font-size:9pt;font-weight:800;color:{CA};letter-spacing:1px;">{ENT_NOM_MARQUE}</div>'
             f'<div style="font-size:7pt;color:#888888;text-align:center;">'
-            f'contact@taqinor.com &nbsp;&#183;&nbsp; +212&#160;6&#160;61&#160;85&#160;04&#160;10 &nbsp;&#183;&nbsp; www.taqinor.ma</div>'
+            f'{ENT_CONTACT_LINE}</div>'
             f'<div style="font-size:7pt;color:#888888;">Page 1&nbsp;/&nbsp;{PAGES_TOTAL} &nbsp;|&nbsp; R\u00e9f.&nbsp;{REF}</div>'
             f'</div>')
 
@@ -566,9 +675,9 @@ def footer(n, total=None):
     total = total or PAGES_TOTAL
     return (f'<div style="background:{CN};padding:7px 24px;flex-shrink:0;display:flex;'
             f'align-items:center;justify-content:space-between;">'
-            f'<div style="font-size:9pt;font-weight:800;color:{CA};letter-spacing:1px;">TAQINOR</div>'
+            f'<div style="font-size:9pt;font-weight:800;color:{CA};letter-spacing:1px;">{ENT_NOM_MARQUE}</div>'
             f'<div style="font-size:7pt;color:#888;text-align:center;">'
-            f'contact@taqinor.com &nbsp;&#183;&nbsp; +212&#160;6&#160;61&#160;85&#160;04&#160;10 &nbsp;&#183;&nbsp; www.taqinor.ma</div>'
+            f'{ENT_CONTACT_LINE}</div>'
             f'<div style="font-size:7pt;color:#888;">Page {n}&nbsp;/&nbsp;{total} &nbsp;|&nbsp; R\u00e9f.&nbsp;{REF}</div>'
             f'</div>')
 
@@ -576,14 +685,13 @@ def footer_p3(extra_style=""):
     """Page 3 footer — dark navy + legal identity line."""
     return (f'<div style="{extra_style}background:{CN};padding:6px 24px 5px;flex-shrink:0;">'
             f'<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px;">'
-            f'<div style="font-size:9pt;font-weight:800;color:{CA};letter-spacing:1px;">TAQINOR</div>'
+            f'<div style="font-size:9pt;font-weight:800;color:{CA};letter-spacing:1px;">{ENT_NOM_MARQUE}</div>'
             f'<div style="font-size:7pt;color:#888;text-align:center;">'
-            f'contact@taqinor.com &nbsp;&#183;&nbsp; +212&#160;6&#160;61&#160;85&#160;04&#160;10 &nbsp;&#183;&nbsp; www.taqinor.ma</div>'
+            f'{ENT_CONTACT_LINE}</div>'
             f'<div style="font-size:7pt;color:#888;">Page {PAGE3_NUM}&nbsp;/&nbsp;{PAGES_TOTAL} &nbsp;|&nbsp; R\u00e9f.&nbsp;{REF}</div>'
             f'</div>'
             f'<div style="font-size:7.5px;color:#888;text-align:center;font-style:italic;">'
-            f'Taqinor Solutions SARLAU &middot; RC 691213 &middot; ICE 003799642000067 &middot; '
-            f'Capital 100&#8239;000 MAD &middot; Si\u00e8ge\u00a0: 5 Rue Ennoussour RDC, Casablanca'
+            f'{ENT_LEGAL_LINE}'
             f'</div>'
             f'</div>')
 
@@ -1345,8 +1453,7 @@ def page3():
             # RIB bar
             f'<div style="background:{CG1};border-radius:5px;padding:4px 10px;margin-bottom:5px;">'
             f'<div style="font-size:7pt;color:{CG4};">Virement bancaire\u00a0: '
-            f'<strong style="color:{CG7};">TAQINOR SOLUTION</strong> \u00b7 Saham Bank \u00b7 '
-            f'RIB 022\u2009780\u20090002720029379418\u200974 \u00b7 BIC SGMBMAMCXXX</div>'
+            f'{ENT_RIB_LINE.format(cg7=CG7)}</div>'
             f'</div>'
             f'</div>'
         )
@@ -1640,7 +1747,7 @@ def page_etude():
   </div>
 
   <div style="background:{CN};padding:6px 24px 5px;flex-shrink:0;display:flex;align-items:center;justify-content:space-between;">
-    <div style="font-size:9pt;font-weight:800;color:{CA};letter-spacing:1px;">TAQINOR</div>
+    <div style="font-size:9pt;font-weight:800;color:{CA};letter-spacing:1px;">{ENT_NOM_MARQUE}</div>
     <div style="font-size:7pt;color:#888;">contact@taqinor.com &nbsp;\u00b7&nbsp; www.taqinor.ma</div>
     <div style="font-size:7pt;color:#888;">\u00c9tude \u2014 R\u00e9f.\u00a0{REF}</div>
   </div>
@@ -1903,15 +2010,14 @@ def page_onepage(items):
   <!-- FOOTER: navy + legal identity, toujours en bas de page, jamais chevauché -->
   <div style="position:absolute;left:0;right:0;bottom:0;background:{CN};padding:6px 24px 5px;">
     <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px;">
-      <div style="font-size:9pt;font-weight:800;color:{CA};letter-spacing:1px;">TAQINOR</div>
+      <div style="font-size:9pt;font-weight:800;color:{CA};letter-spacing:1px;">{ENT_NOM_MARQUE}</div>
       <div style="font-size:7pt;color:#888;text-align:center;">
-        contact@taqinor.com &nbsp;&#183;&nbsp; +212&#160;6&#160;61&#160;85&#160;04&#160;10 &nbsp;&#183;&nbsp; www.taqinor.ma
+        {ENT_CONTACT_LINE}
       </div>
       <div style="font-size:7pt;color:#888;">R&#233;f.&#160;{REF}</div>
     </div>
     <div style="font-size:7.5px;color:#888;text-align:center;font-style:italic;">
-      Taqinor Solutions SARLAU &middot; RC 691213 &middot; ICE 003799642000067 &middot;
-      Capital 100&#8239;000 MAD &middot; Si&#232;ge&#160;: 5 Rue Ennoussour RDC, Casablanca
+      {ENT_LEGAL_LINE}
     </div>
   </div>
 
@@ -2038,6 +2144,10 @@ def _render_premium_pdf(data: dict, out_path) -> str:
         f"TVA {_tva_lbl} % appliquée sur l'ensemble des équipements et travaux.")
     # FG52 — devise portée par le document (défaut MAD = comportement inchangé).
     DEVISE         = (data.get("devise") or "MAD").strip().upper()
+    # DC1 — identité société (multi-tenant) : réinitialise les défauts puis
+    # applique le profil de la société du devis. Champs vides → littéraux
+    # Taqinor historiques (byte-identique) ; sinon SON identité s'affiche.
+    _apply_entreprise(data.get("entreprise"))
 
     # Totaux canoniques (une seule source pour toutes les pages). À défaut
     # (anciens appels), reconstruits une fois ici avec la même chaîne.
