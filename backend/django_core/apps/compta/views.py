@@ -252,6 +252,45 @@ class EtatsComptablesViewSet(viewsets.ViewSet):
             validees_seulement=periode['validees_seulement'])
         return Response(data)
 
+    @action(detail=False, methods=['get'])
+    def esg(self, request):
+        """ESG — état des soldes de gestion (SIG) CGNC (COMPTA29).
+
+        Cascade marge → valeur ajoutée → EBE → résultat courant → résultat net,
+        déduite du grand livre (comptes de gestion classes 6 & 7). Paramètres :
+        ``date_debut``/``date_fin`` (bornes), ``validees`` (1 → validées).
+        Lecture seule, scopée société, Admin/Responsable.
+        """
+        data = selectors.esg(request.user.company, **self._periode(request))
+        return Response(data)
+
+    @action(detail=False, methods=['get'])
+    def etic(self, request):
+        """ETIC — état des informations complémentaires CGNC (COMPTA29).
+
+        Paquet des tableaux annexes (principes & méthodes, immobilisations,
+        provisions, engagements hors-bilan, rappel du résultat) pour un exercice,
+        assemblé sans recalcul depuis les sélecteurs existants. Paramètres :
+        ``exercice`` (id, requis), ``validees`` (1 → validées). Lecture seule,
+        scopée société, Admin/Responsable.
+        """
+        company = request.user.company
+        exercice_id = request.query_params.get('exercice')
+        if not exercice_id:
+            return Response(
+                {'detail': "Le paramètre 'exercice' est requis."},
+                status=status.HTTP_400_BAD_REQUEST)
+        exercice = ExerciceComptable.objects.filter(
+            company=company, pk=exercice_id).first()
+        if exercice is None:
+            return Response(
+                {'detail': 'Exercice introuvable pour cette société.'},
+                status=status.HTTP_404_NOT_FOUND)
+        data = selectors.etic(
+            company, exercice,
+            validees_seulement=request.query_params.get('validees') == '1')
+        return Response(data)
+
     @action(detail=False, methods=['get'], url_path='position-tresorerie')
     def position_tresorerie(self, request):
         """Position de trésorerie consolidée + projection nette (FG122).
