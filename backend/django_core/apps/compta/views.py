@@ -41,7 +41,7 @@ from .models import (
     AppelOffre, BordereauPrix, LigneBordereau, CautionSoumission,
     DossierSoumission, PieceSoumission, EcheanceAO, ResultatAO,
     ComptePortailClient, AcceptationDevisPortail, PaiementFacturePortail,
-    DocumentClientPortail,
+    DocumentClientPortail, JalonChantierPortail,
 )
 from .serializers import (
     AppelTelephoniqueSerializer, AvancementRevenuSerializer,
@@ -79,7 +79,7 @@ from .serializers import (
     DossierSoumissionSerializer, PieceSoumissionSerializer,
     EcheanceAOSerializer, ResultatAOSerializer, ComptePortailClientSerializer,
     AcceptationDevisPortailSerializer, PaiementFacturePortailSerializer,
-    DocumentClientPortailSerializer,
+    DocumentClientPortailSerializer, JalonChantierPortailSerializer,
 )
 
 
@@ -3503,3 +3503,24 @@ class DocumentClientPortailViewSet(_ComptaBaseViewSet):
             doc.traite = True
             doc.save(update_fields=['traite'])
         return Response(self.get_serializer(doc).data)
+
+
+class JalonChantierPortailViewSet(_ComptaBaseViewSet):
+    """Jalons d'avancement de chantier exposés au client (FG232). La société est
+    posée côté serveur ; ``marquer_atteint`` avance un jalon (côté interne). Le
+    client lit la timeline en lecture-seule côté portail."""
+    queryset = JalonChantierPortail.objects.all()
+    serializer_class = JalonChantierPortailSerializer
+    filter_backends = [filters.OrderingFilter]
+    ordering_fields = ['ordre', 'date_jalon', 'chantier_id']
+
+    @action(detail=True, methods=['post'])
+    def marquer_atteint(self, request, pk=None):
+        jalon = self.get_object()
+        if not jalon.atteint:
+            from django.utils import timezone
+            jalon.atteint = True
+            if not jalon.date_jalon:
+                jalon.date_jalon = timezone.localdate()
+            jalon.save(update_fields=['atteint', 'date_jalon'])
+        return Response(self.get_serializer(jalon).data)

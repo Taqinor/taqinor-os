@@ -27,6 +27,7 @@ from authentication.models import Company
 from apps.compta import services
 from apps.compta.models import (
     AcceptationDevisPortail, PaiementFacturePortail, DocumentClientPortail,
+    JalonChantierPortail,
 )
 
 User = get_user_model()
@@ -187,4 +188,55 @@ class DocumentClientPortailTests(TestCase):
         DocumentClientPortail.objects.create(company=autre, client_id=43003)
         api = auth(self.user)
         resp = api.get('/api/django/compta/documents-client-portail/')
+        self.assertEqual(resp.data['count'], 0)
+
+
+# ── FG232 — Suivi d'avancement du chantier côté client ─────────────────────
+
+class JalonChantierPortailTests(TestCase):
+    def setUp(self):
+        self.co = make_company('fg232', 'FG232')
+        self.user = make_user(self.co, 'fg232-user')
+
+    def test_creation_pose_company_serveur(self):
+        api = auth(self.user)
+        resp = api.post('/api/django/compta/jalons-chantier-portail/', {
+            'chantier_id': 44001, 'libelle': 'Installation', 'ordre': 3,
+            'company': 66666,  # doit être ignoré
+        }, format='json')
+        self.assertEqual(resp.status_code, 201, resp.content)
+        jalon = JalonChantierPortail.objects.get(id=resp.data['id'])
+        self.assertEqual(jalon.company_id, self.co.id)
+        self.assertFalse(jalon.atteint)
+
+    def test_marquer_atteint_pose_date(self):
+        api = auth(self.user)
+        jalon = JalonChantierPortail.objects.create(
+            company=self.co, chantier_id=44002, libelle='Réception')
+        resp = api.post(
+            f'/api/django/compta/jalons-chantier-portail/{jalon.id}'
+            '/marquer_atteint/', {}, format='json')
+        self.assertEqual(resp.status_code, 200, resp.content)
+        jalon.refresh_from_db()
+        self.assertTrue(jalon.atteint)
+        self.assertIsNotNone(jalon.date_jalon)
+
+    def test_timeline_ordonnee(self):
+        JalonChantierPortail.objects.create(
+            company=self.co, chantier_id=44003, libelle='B', ordre=2)
+        JalonChantierPortail.objects.create(
+            company=self.co, chantier_id=44003, libelle='A', ordre=1)
+        api = auth(self.user)
+        resp = api.get(
+            '/api/django/compta/jalons-chantier-portail/?ordering=ordre')
+        self.assertEqual(resp.data['count'], 2)
+        libelles = [r['libelle'] for r in resp.data['results']]
+        self.assertEqual(libelles, ['A', 'B'])
+
+    def test_isolation_societe(self):
+        autre = make_company('fg232-b', 'FG232B')
+        JalonChantierPortail.objects.create(
+            company=autre, chantier_id=44004, libelle='X')
+        api = auth(self.user)
+        resp = api.get('/api/django/compta/jalons-chantier-portail/')
         self.assertEqual(resp.data['count'], 0)

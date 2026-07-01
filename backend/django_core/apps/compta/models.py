@@ -5252,3 +5252,38 @@ class DocumentClientPortail(models.Model):
 
     def __str__(self):
         return f'{self.get_type_document_display()} — client #{self.client_id}'
+
+
+# ── FG232 — Suivi d'avancement du chantier côté client (timeline) ──────────
+
+class JalonChantierPortail(models.Model):
+    """Jalon d'avancement d'un chantier exposé au client dans le portail (FG232).
+
+    Timeline lecture-seule côté client : étude → commande → livraison →
+    installation → mise en service → réception. Chaque jalon porte un libellé,
+    un ordre, un état atteint/non-atteint et une date. Le chantier est désigné
+    par son id (cross-app — jamais d'import ``installations``). Scopé société ;
+    aucune donnée financière n'est exposée ici.
+    """
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='jalons_chantier_portail',
+        verbose_name='Société',
+    )
+    chantier_id = models.PositiveIntegerField(verbose_name='Id du chantier')
+    libelle = models.CharField(max_length=120, verbose_name='Jalon')
+    ordre = models.PositiveIntegerField(default=0, verbose_name='Ordre')
+    atteint = models.BooleanField(default=False, verbose_name='Atteint')
+    date_jalon = models.DateField(
+        null=True, blank=True, verbose_name='Date du jalon')
+    date_creation = models.DateTimeField(
+        auto_now_add=True, verbose_name='Créé le')
+
+    class Meta:
+        verbose_name = 'Jalon de chantier (portail)'
+        verbose_name_plural = 'Jalons de chantier (portail)'
+        ordering = ['chantier_id', 'ordre', 'id']
+
+    def __str__(self):
+        return f'Chantier #{self.chantier_id} — {self.libelle}'

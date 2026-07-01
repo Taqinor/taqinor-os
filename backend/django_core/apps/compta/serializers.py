@@ -31,7 +31,7 @@ from .models import (
     AppelOffre, BordereauPrix, LigneBordereau, CautionSoumission,
     DossierSoumission, PieceSoumission, EcheanceAO, ResultatAO,
     ComptePortailClient, AcceptationDevisPortail, PaiementFacturePortail,
-    DocumentClientPortail,
+    DocumentClientPortail, JalonChantierPortail,
 )
 
 
@@ -1804,3 +1804,13 @@ class DocumentClientPortailSerializer(serializers.ModelSerializer):
             'fichier', 'traite', 'date_depot',
         ]
         read_only_fields = ['traite', 'date_depot']
+
+
+class JalonChantierPortailSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = JalonChantierPortail
+        fields = [
+            'id', 'chantier_id', 'libelle', 'ordre', 'atteint', 'date_jalon',
+            'date_creation',
+        ]
+        read_only_fields = ['date_creation']
