@@ -35,6 +35,7 @@ import { DataTableDemo } from './DataTableDemo'
 import {
   runValidation, errorSummary, isDirty, required, email,
 } from '../../ui/form-utils'
+import { ModuleDashboard, ListShell, EcheanceCenter, statusPill } from '../../ui/module'
 
 // Données de démonstration pour les sélecteurs G23.
 const VILLES = [
@@ -878,10 +879,74 @@ export function UIShowcase() {
             </ul>
             <DataTableDemo />
           </section>
+
+          {/* ── UX1 — Kit « coquille de module ERP » ──────────────────────────── */}
+          <section id="module-kit" className="scroll-mt-6">
+            <h2 className="font-display text-lg font-semibold tracking-tight">
+              Kit module ERP (UX1)
+            </h2>
+            <p className="mt-0.5 text-sm text-muted-foreground">
+              Coquilles partagées par les modules back-office (contrats, SAV, flotte, QHSE, GED…) :
+              tableau de bord de KPI, coquille de liste, centre d’échéances (tri « urgent d’abord »)
+              et pastilles de statut par module. Un seul import : <Code>@/ui/module</Code>.
+            </p>
+            <Separator className="my-3" />
+            <ModuleDashboard
+              stats={[
+                { label: 'Contrats actifs', value: formatNumber(42), delta: { value: '+4', direction: 'up' }, hint: 'ce mois', icon: Bell },
+                { label: 'À renouveler (30 j)', value: formatNumber(7), hint: 'échéances proches' },
+                { label: 'Interventions SAV', value: formatNumber(13), delta: { value: '-2', direction: 'down' }, hint: 'ouvertes' },
+                { label: 'Encaissé', value: formatMAD(284500), hint: 'ce mois' },
+              ]}
+            />
+            <div className="mt-6 grid gap-4 lg:grid-cols-[1fr_320px]">
+              <ListShell
+                title="Contrats"
+                subtitle="Coquille de liste (PageHeader + DataTable) — passe-plat fin."
+                actions={<Button size="sm"><Plus /> Nouveau contrat</Button>}
+                columns={[
+                  { id: 'ref', header: 'Référence', accessor: (r) => r.ref, width: 140 },
+                  { id: 'client', header: 'Client', accessor: (r) => r.client },
+                  {
+                    id: 'statut', header: 'Statut', accessor: (r) => r.statut, searchable: false, width: 130,
+                    cell: (v) => <StatutContratDemo status={v} />,
+                  },
+                  {
+                    id: 'montant', header: 'Montant', accessor: (r) => r.montant, align: 'right', numeric: true, width: 150,
+                    searchable: false, cell: (v) => formatMAD(v),
+                  },
+                ]}
+                rows={[
+                  { id: 1, ref: 'CT-2026-001', client: 'Reda Kasri', statut: 'actif', montant: 120000 },
+                  { id: 2, ref: 'CT-2026-002', client: 'Meryem B', statut: 'expire', montant: 84000 },
+                  { id: 3, ref: 'CT-2026-003', client: 'Karim T', statut: 'resilie', montant: 46000 },
+                ]}
+                searchable={false}
+                exportName="contrats-demo"
+                emptyTitle="Aucun contrat"
+              />
+              <EcheanceCenter
+                title="Échéances à venir"
+                items={[
+                  { id: 'a', label: 'CT-2026-002 — renouvellement', meta: 'Meryem B', daysLeft: -3 },
+                  { id: 'b', label: 'Garantie SAV #418', meta: 'Onduleur Huawei', daysLeft: 5 },
+                  { id: 'c', label: 'Contrôle QHSE trimestriel', meta: 'Site Rabat', daysLeft: 21 },
+                  { id: 'd', label: 'Entretien flotte — Dacia', meta: 'AB-1234-56', daysLeft: 62 },
+                ]}
+              />
+            </div>
+          </section>
         </div>
       </div>
     </TooltipProvider>
   )
 }
+
+/* UX1 — Démo : une taxonomie de statut de module via la fabrique statusPill. */
+const StatutContratDemo = statusPill({
+  actif: { label: 'Actif', tone: 'success' },
+  expire: { label: 'Expiré', tone: 'warning' },
+  resilie: { label: 'Résilié', tone: 'danger' },
+})
 
 export default UIShowcase

@@ -12,6 +12,7 @@ from .models_company import CompanyProfile
 from .models_messages import MESSAGE_TEMPLATE_DEFAULTS, MessageTemplate
 from .models_audit import SettingsAuditLog
 from .models_tariff import DEFAULT_RESIDENTIAL_TIERS, TariffSettings
+from .models_translations import TranslationOverride
 
 __all__ = [
     'CompanyProfile',
@@ -20,4 +21,5 @@ __all__ = [
     'SettingsAuditLog',
     'TariffSettings',
     'DEFAULT_RESIDENTIAL_TIERS',
+    'TranslationOverride',
 ]

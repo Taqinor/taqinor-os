@@ -22,6 +22,9 @@ Django (``app_label``, noms de table, migrations) restent strictement
 inchangés.
 """
 from .models_installation import Installation
+from .models_equipe import (
+    Equipe,
+)
 from .models_intervention import (
     TypeIntervention,
     Intervention,
@@ -174,6 +177,7 @@ from .models_transporteur import (
 
 __all__ = [
     'Installation',
+    'Equipe',
     'TypeIntervention',
     'Intervention',
     'InterventionActivity',

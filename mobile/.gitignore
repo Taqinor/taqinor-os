@@ -1,0 +1,14 @@
+# Dépendances (déclarées dans package.json, jamais commitées)
+node_modules/
+
+# Copie du build PWA (régénérée par `npm run build`)
+www/
+
+# Projets natifs générés par `npx cap add ios/android`
+# (Xcode / Android Studio les régénèrent ; on ne versionne pas ici)
+ios/
+android/
+
+# Divers
+.DS_Store
+*.log

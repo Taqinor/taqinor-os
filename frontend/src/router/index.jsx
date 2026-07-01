@@ -15,6 +15,10 @@ import RouteFallback from '../components/RouteFallback'
 // L880 — Error-boundary de route globale : écran FR de récupération au lieu
 // d'une application blanche sur une erreur de rendu non capturée.
 import RouteErrorBoundary from '../components/RouteErrorBoundary'
+// UX1 — Registre de modules : chaque module « coquille » (Compta, Paie, RH,
+// Flotte, QHSE, Contrats, Projet, GED, KB, Litiges…) enregistre ses routes via
+// un fichier `features/<module>/module.config.jsx`, sans toucher ce fichier.
+import { buildModuleRoutes } from './moduleRoutes'
 
 // ── Pages lazy ────────────────────────────────────────────────────────────────
 const Landing = lazy(() => import('../pages/Landing'))
@@ -222,6 +226,10 @@ const router = createBrowserRouter([
   { path: '/parametres/export', loader: authLoader, element: <WithLayout><ExportSauvegarde /></WithLayout> },
   { path: '/parametres/notifications', loader: authLoader, element: <WithLayout><NotificationsPreferences /></WithLayout> },
   { path: '/journal', loader: roleLoader(['normal', 'responsable', 'admin'], 'journal_activite_voir'), element: <WithLayout><Journal /></WithLayout> },
+
+  // UX1 — Routes des modules « coquille » enregistrées via le registre. Chaque
+  // route est gatée par le même authLoader/roleLoader que le reste de l'app.
+  ...buildModuleRoutes({ WithLayout, authLoader, roleLoader }),
 
   // Catch-all
   { path: '*', element: <Navigate to="/dashboard" replace /> },

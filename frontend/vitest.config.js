@@ -12,6 +12,13 @@ export default defineConfig({
     include: ['src/**/*.test.jsx'],
     setupFiles: ['./src/test/setup.js'],
     css: false,
+    // Le premier rendu d'un test paie un coût de transformation « à froid »
+    // élevé sous jsdom (glob des module.config, barrels ui/charts, catalogues
+    // i18n) qui dépasse parfois le défaut de 5 s (surtout sous Windows / en
+    // charge parallèle). On relève le délai pour supprimer cette classe de flake
+    // sans masquer de vraie régression (un vrai blocage échoue toujours).
+    testTimeout: 20000,
+    hookTimeout: 20000,
     coverage: {
       // `npm run test:coverage` → un % visible des composants/UX couverts.
       provider: 'v8',

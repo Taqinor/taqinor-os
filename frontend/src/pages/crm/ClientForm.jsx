@@ -9,6 +9,7 @@ import { ResponsiveDialog } from '../../ui/ResponsiveDialog'
 import { toast } from '../../ui/confirm'
 import { canonicalPhoneMA } from '../../lib/format'
 import AttachmentsPanel from '../../components/AttachmentsPanel'
+import { useT } from '../../i18n'
 
 // Avertissements NON bloquants sur les identifiants marocains. Renvoie une
 // chaîne d'aide (ou null) — n'empêche JAMAIS l'enregistrement, sert juste à
@@ -44,6 +45,7 @@ function cinWarning(value) {
 
 export default function ClientForm({ client = null, onClose }) {
   const dispatch = useDispatch()
+  const t = useT()
   const isEdit = !!client
 
   const [saving, setSaving] = useState(false)
@@ -62,6 +64,8 @@ export default function ClientForm({ client = null, onClose }) {
     ice:         client?.ice         ?? '',
     if_fiscal:   client?.if_fiscal   ?? '',
     rc:          client?.rc          ?? '',
+    // N93 — langue des documents client-facing (facture / devis). FR par défaut.
+    langue_document: client?.langue_document ?? 'fr',
   }), [client])
 
   const [fields, setFields] = useState(initial)
@@ -142,6 +146,8 @@ export default function ClientForm({ client = null, onClose }) {
         ice:       isEntreprise ? (fields.ice.trim() || null) : null,
         if_fiscal: isEntreprise ? (fields.if_fiscal.trim() || null) : null,
         rc:        isEntreprise ? (fields.rc.trim() || null) : null,
+        // N93 — langue des documents (facture / devis) pour ce client.
+        langue_document: fields.langue_document,
       }
       if (isEdit) {
         await dispatch(updateClient({ id: client.id, data: payload })).unwrap()
@@ -313,6 +319,27 @@ export default function ClientForm({ client = null, onClose }) {
                   onChange={e => setField('adresse', e.target.value)}
                   placeholder="Rue, ville, code postal..."
                 />
+              </FormField>
+
+              {/* N93 — langue des documents (facture / devis) pour ce client.
+                  FR par défaut. Le RENDU arabe du PDF est un chantier de suivi
+                  distinct ; ce champ ne fait que porter la préférence. */}
+              <FormField
+                label={t('client.langue_document.label')}
+                htmlFor="cf-langue-document"
+                fullWidth
+              >
+                <Segmented
+                  value={fields.langue_document}
+                  onChange={(v) => setField('langue_document', v)}
+                  options={[
+                    { value: 'fr', label: t('client.langue_document.fr') },
+                    { value: 'ar', label: t('client.langue_document.ar') },
+                  ]}
+                />
+                <p className="form-hint" data-testid="cf-langue-document-hint">
+                  {t('client.langue_document.help')}
+                </p>
               </FormField>
             </FormSection>
 

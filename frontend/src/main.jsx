@@ -14,6 +14,9 @@ import { initTheme } from './design/theme'
 import { Toaster } from './ui/Toaster'
 import { ConfirmProvider } from './providers/ConfirmProvider'
 import { SessionProvider } from './providers/SessionProvider'
+// N93 — cadre i18n (langue d'interface + RTL). Monté HAUT dans l'arbre pour
+// que toutes les routes disposent de `t()` / de la locale. FR par défaut.
+import { I18nProvider } from './i18n'
 import './index.css'
 
 // Applique la préférence de thème/densité avant le rendu (aucun flash). Inerte
@@ -23,15 +26,17 @@ initTheme()
 createRoot(document.getElementById('root')).render(
   <StrictMode>
     <Provider store={store}>
-      <ThemeProvider>
-        <ConfirmProvider>
-          <SessionProvider>
-            <RouterProvider router={router} />
-          </SessionProvider>
-        </ConfirmProvider>
-        <Toaster />
-        <PwaPrompts />
-      </ThemeProvider>
+      <I18nProvider>
+        <ThemeProvider>
+          <ConfirmProvider>
+            <SessionProvider>
+              <RouterProvider router={router} />
+            </SessionProvider>
+          </ConfirmProvider>
+          <Toaster />
+          <PwaPrompts />
+        </ThemeProvider>
+      </I18nProvider>
     </Provider>
   </StrictMode>,
 )

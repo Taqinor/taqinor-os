@@ -105,6 +105,15 @@ class Intervention(models.Model):
         settings.AUTH_USER_MODEL, blank=True,
         related_name='interventions_equipe',
     )
+    # DC40 — équipe terrain CANONIQUE assignée (FK nullable vers ``Equipe``).
+    # ADDITIF : l'ancien M2M ``equipe`` ci-dessus reste intact (rien ne casse).
+    # Quand ``equipe_ref`` est posée, les membres de l'intervention se résolvent
+    # via l'équipe canonique (``selectors.membres_intervention``) ; sinon on
+    # retombe sur le M2M ad-hoc historique. Une seule DÉFINITION d'équipe.
+    equipe_ref = models.ForeignKey(
+        'installations.Equipe', on_delete=models.SET_NULL,
+        null=True, blank=True, related_name='interventions',
+    )
     # F3 — camionnette assignée : un emplacement de stock (dépôt/camionnette).
     camionnette = models.ForeignKey(
         'stock.EmplacementStock', on_delete=models.SET_NULL,
