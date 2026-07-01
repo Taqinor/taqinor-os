@@ -772,9 +772,13 @@ class TestOmReport(TestCase):
 
     def test_email_no_recipient_is_noop(self):
         from apps.monitoring.report import email_om_report
-        # Système sans client → no-op (False).
+        # Client sans email → aucun destinataire → no-op (False).
+        # (Installation exige un client ; le cas « sans destinataire » réel est
+        # un client dont l'email est vide, pas une installation sans client.)
+        client_sans_email = Client.objects.create(
+            company=self.company, nom='SansMail', prenom='X', email='')
         inst2 = Installation.objects.create(
-            company=self.company, reference='R-2',
+            company=self.company, reference='R-2', client=client_sans_email,
             puissance_installee_kwc=Decimal('5'))
         self.assertFalse(email_om_report(inst2, today=self.today))
 

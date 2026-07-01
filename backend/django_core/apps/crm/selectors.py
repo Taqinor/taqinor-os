@@ -448,8 +448,21 @@ def lead_values_changed_since(stamp, company=None):
     if lead is None:
         return []
     courant = _lead_provenance_valeurs(lead)
+
+    def _norm(x):
+        # Compare les nombres par VALEUR : '800' (capture en mémoire) et
+        # '800.00' (relu de la base, decimal_places appliqués) sont ÉGAUX,
+        # sinon chaque champ décimal non modifié lèverait une fausse alerte.
+        from decimal import Decimal, InvalidOperation
+        if x is None or isinstance(x, bool):
+            return x
+        try:
+            return Decimal(str(x))
+        except (InvalidOperation, ValueError):
+            return x
+
     return [f for f in LEAD_PROVENANCE_FIELDS
-            if f in valeurs and courant.get(f) != valeurs.get(f)]
+            if f in valeurs and _norm(courant.get(f)) != _norm(valeurs.get(f))]
 
 
 # DC13 — localisation chantier : lead d'abord, sinon repli sur le client ──────
