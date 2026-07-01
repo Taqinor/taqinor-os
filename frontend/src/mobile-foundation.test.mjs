@@ -91,3 +91,31 @@ test('MB1: pas de padding-top « dégage-en-tête » sur .layout-content (les ba
     'un padding-top de 52px doublerait la réserve de l\'en-tête (trou mort ~66px mesuré à 375×812)',
   )
 })
+
+/* ── MB2 — pas de débordement horizontal (« grandes pages ») ────────────── */
+
+test('MB2: le garde global anti-défilement horizontal (U2) est en place', () => {
+  assert.match(css, /html,\s*body\s*\{[^}]*max-width:\s*100%;\s*overflow-x:\s*clip/, 'html/body doivent garder max-width:100% + overflow-x: clip')
+})
+
+test('MB2: .pp-pop épouse son déclencheur — min(100%, 380px), jamais max()', () => {
+  const pop = ruleBody(css, '.pp-pop') ?? ''
+  assert.match(pop, /width:\s*min\(100%,\s*380px\)/, '.pp-pop doit utiliser min(100%, 380px)')
+  assert.doesNotMatch(css, /\.pp-pop\s*\{[^}]*width:\s*max\(/, 'max(100%, 380px) = 380px sur un téléphone de 375px (débordement)')
+  // L'ancien garde-fou mobile 92vw (≈345px > carte-ligne ~326px) ne doit pas revenir.
+  assert.doesNotMatch(css, /\.pp-pop\s*\{[^}]*92vw/, 'le garde-fou 92vw débordait encore de la carte-ligne mobile')
+})
+
+test('MB2: le catalogue passe en une seule colonne sous 768px', () => {
+  const mobile = mobileShellBlock()
+  assert.match(ruleBody(mobile, '.cat-row') ?? '', /grid-template-columns:\s*1fr\s*;/, '.cat-row doit être mono-colonne sur mobile')
+  assert.match(mobile, /\.cat-row-spec,\s*\.cat-row-stock,\s*\.cat-row-prix,\s*\.cat-row-actions\s*\{[^}]*grid-column:\s*1/, 'toutes les cellules du catalogue doivent occuper la colonne unique')
+})
+
+test('MB2: les largeurs fixes héritées ont leur garde mobile', () => {
+  const mobile = mobileShellBlock()
+  assert.match(ruleBody(mobile, '.gen-page') ?? '', /max-width:\s*100%/, '.gen-page doit être borné à 100% sur mobile')
+  assert.match(ruleBody(mobile, '.lead-bill-input') ?? '', /width:\s*auto/, '.lead-bill-input ne doit plus être figé à 110px sur mobile')
+  assert.match(ruleBody(mobile, '.devis-totals') ?? '', /min-width:\s*0/, '.devis-totals (min-width 260px) doit pouvoir rétrécir sur mobile')
+  assert.match(ruleBody(mobile, '.nb-panel') ?? '', /min\(320px,\s*calc\(100vw - 16px\)\)/, '.nb-panel (320px fixe) doit être borné au viewport sur mobile')
+})

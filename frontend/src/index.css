@@ -1714,7 +1714,10 @@ textarea.form-control {
   z-index: 300;
   top: calc(100% + 4px);
   left: 0;
-  width: max(100%, 380px);
+  /* MB2 — min(), jamais max() : max(100%, 380px) imposait 380px de large sur
+     un téléphone de 375px (débordement horizontal garanti). min() épouse le
+     déclencheur et plafonne à 380px partout. */
+  width: min(100%, 380px);
   background: #fff;
   border: 1px solid #cbd5e1;
   border-top: 2px solid var(--cat-gold);
@@ -2127,7 +2130,9 @@ textarea.form-control {
   .lines-table td .form-control-sm,
   .lines-table td .form-select-sm { max-width: 60%; }
   .lines-table td:not([data-label]) .form-control-sm { max-width: 100%; width: 100%; }
-  .pp-pop { width: min(92vw, 380px); }
+  /* MB2 — l'ancien garde-fou mobile `width: min(92vw, 380px)` est retiré :
+     92vw (≈345px) débordait encore de la carte-ligne (~326px). La règle de
+     base `min(100%, 380px)` épouse désormais exactement le déclencheur. */
 
   /* ── Boutons d'action du générateur : footer collant ── */
   .gen-actions-sticky {
@@ -2156,6 +2161,21 @@ textarea.form-control {
 
   /* Catalogue : actions tactiles */
   .cat-row-actions .btn-sm { min-height: 44px; }
+
+  /* MB2 — Catalogue : la grille `1fr auto` du palier 920px garde une colonne
+     `auto` dimensionnée par son contenu (prix/actions) qui peut pousser la
+     rangée au-delà de 375px. Sous 768px : UNE seule colonne, tout à gauche. */
+  .cat-row { grid-template-columns: 1fr; }
+  .cat-row-spec, .cat-row-stock, .cat-row-prix, .cat-row-actions { grid-column: 1; }
+  .cat-row-prix { text-align: left; }
+  .cat-row-actions { justify-content: flex-start; }
+
+  /* MB2 — Largeurs fixes héritées sans garde mobile (audit index.css) : on les
+     assouplit sous 768px pour qu'aucun écran ne déborde horizontalement. */
+  .gen-page { max-width: 100%; }
+  .lead-bill-input { width: auto; flex: 1 1 110px; min-width: 0; max-width: 200px; }
+  .devis-totals { min-width: 0; width: 100%; }
+  .nb-panel { width: min(320px, calc(100vw - 16px)); }
 }
 
 /* ── Utility ──────────────────────────────────────────── */
