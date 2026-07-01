@@ -163,6 +163,11 @@ _JOURNAUX = [
     ('BNK', 'Journal de banque', Journal.Type.BANQUE),
     ('CSH', 'Journal de caisse', Journal.Type.CAISSE),
     ('OD', 'Opérations diverses', Journal.Type.OPERATIONS_DIVERSES),
+    # COMPTA4 — journal des à-nouveaux (report de bilan) semé d'office. Il était
+    # créé à la demande par ``reporter_a_nouveaux`` ; on l'ajoute au seed
+    # standard pour que les 6 journaux CGNC (VTE/ACH/BNK/CSH/OD/AN) existent dès
+    # l'amorçage. Idempotent : ``get_or_create`` ne duplique jamais.
+    ('AN', 'À-nouveaux', Journal.Type.A_NOUVEAUX),
 ]
 
 
@@ -4400,6 +4405,19 @@ def creer_ecriture_numerotee(company, journal, date_ecriture, libelle, lignes,
 
     return create_with_reference(
         EcritureComptable, pref, company, _save)
+
+
+def sequence_piece_journal(company, journal, *, prefixe=None):
+    """COMPTA4 — Prochain numéro de pièce SÉQUENTIEL d'un journal (aperçu).
+
+    Renvoie la prochaine référence libre (ex. ``PC-VTE-202607-0003``) pour le
+    journal sans créer d'écriture — pratique pour afficher le numéro qui SERA
+    attribué. S'appuie sur ``references.next_reference`` (plus-haut+1, scopé
+    société/mois), donc chaque journal a sa propre séquence via son préfixe.
+    """
+    from apps.ventes.utils.references import next_reference
+    pref = prefixe or f'PC-{journal.code}'
+    return next_reference(EcritureComptable, pref, company)
 
 
 # ── COMPTA11 — Extourne / contre-passation d'une écriture validée ──────────

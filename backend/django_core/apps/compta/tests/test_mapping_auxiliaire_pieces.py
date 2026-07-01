@@ -51,6 +51,41 @@ def rows(resp):
     return data['results'] if isinstance(data, dict) and 'results' in data else data
 
 
+# ── COMPTA4 — Journaux paramétrables (VTE/ACH/BNK/CSH/OD/AN) + séquences ────
+
+class JournalSequenceTests(TestCase):
+    def setUp(self):
+        self.co = make_company('jrn-a', 'Jrn A')
+        services.seed_plan_comptable(self.co)
+
+    def test_seed_inclut_les_six_journaux_dont_an(self):
+        services.seed_journaux(self.co)
+        for code in ('VTE', 'ACH', 'BNK', 'CSH', 'OD', 'AN'):
+            self.assertTrue(
+                Journal.objects.filter(company=self.co, code=code).exists(),
+                f'journal {code} manquant')
+        self.assertEqual(Journal.objects.filter(company=self.co).count(), 6)
+
+    def test_sequence_piece_journal_par_journal(self):
+        services.seed_journaux(self.co)
+        vte = Journal.objects.get(company=self.co, code='VTE')
+        # Aperçu : première pièce du journal VTE.
+        ref = services.sequence_piece_journal(self.co, vte)
+        self.assertIn('VTE', ref)
+        self.assertTrue(ref.endswith('0001'))
+
+    def test_journal_paramétrable_via_api(self):
+        api = auth(make_user(self.co, 'jrn-user'))
+        resp = api.post('/api/django/compta/journaux/', {
+            'code': 'VTE2', 'libelle': 'Ventes export',
+            'type_journal': 'VTE',
+        }, format='json')
+        self.assertEqual(resp.status_code, 201, resp.data)
+        self.assertEqual(
+            Journal.objects.get(company=self.co, code='VTE2').company_id,
+            self.co.id)
+
+
 # ── COMPTA2 — Mapping document → compte ────────────────────────────────────
 
 class MappingCompteTests(TestCase):
