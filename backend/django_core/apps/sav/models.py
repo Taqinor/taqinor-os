@@ -651,7 +651,14 @@ class ContratMaintenance(models.Model):
         return f'Contrat #{self.pk} — {self.client_id}'
 
     def prochaine_visite(self):
-        """Date de la prochaine visite (dernière visite ou début + période)."""
+        """Date de la prochaine visite (dernière visite ou début + période).
+
+        DC19 — la date calculée est reportée au prochain JOUR OUVRÉ de la
+        société (week-end/férié → jour ouvré suivant) via le référentiel
+        calendrier partagé : une visite de maintenance n'est jamais planifiée
+        un jour non ouvré. Repli silencieux sur la date brute si le calendrier
+        est indisponible.
+        """
         from datetime import date
         base = self.derniere_visite or self.date_debut
         m = self.MONTHS.get(self.periodicite, 12)
@@ -660,7 +667,12 @@ class ContratMaintenance(models.Model):
         y += (mo - 1) // 12
         mo = ((mo - 1) % 12) + 1
         day = min(base.day, 28)
-        return date(y, mo, day)
+        cible = date(y, mo, day)
+        try:
+            from apps.notifications.calendar_utils import prochain_jour_ouvre
+            return prochain_jour_ouvre(cible, self.company)
+        except Exception:  # noqa: BLE001 — calendrier absent → date brute
+            return cible
 
     def is_due(self, today=None):
         # Bucket « aujourd'hui » sur le fuseau de l'app (Africa/Casablanca) :
