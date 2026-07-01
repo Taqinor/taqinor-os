@@ -3987,3 +3987,27 @@ def rapprocher_paiement_facture(paiement, *, reference=None):
     paiement.paye_le = timezone.now()
     paiement.save(update_fields=['reference', 'statut', 'paye_le'])
     return paiement
+
+
+# ── FG235 — Commissions partenaires ────────────────────────────────────────
+
+def calculer_montant_commission(base_ht, taux):
+    """Calcule le montant d'une commission = base_ht × taux%, arrondi 2 déc."""
+    base = Decimal(base_ht or 0)
+    t = Decimal(taux or 0)
+    montant = (base * t / Decimal('100')).quantize(
+        Decimal('0.01'), rounding=ROUND_HALF_UP)
+    return montant
+
+
+def enregistrer_commission(commission):
+    """Recalcule et fige le montant d'une commission (FG235) depuis base×taux.
+
+    Idempotent : appelable à la création et à chaque mise à jour. Renvoie la
+    commission. Si le taux n'est pas fourni, on retombe sur celui du partenaire.
+    """
+    if not commission.taux and commission.partenaire_id:
+        commission.taux = commission.partenaire.taux_commission
+    commission.montant = calculer_montant_commission(
+        commission.base_ht, commission.taux)
+    return commission

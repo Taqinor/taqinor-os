@@ -42,7 +42,7 @@ from .models import (
     DossierSoumission, PieceSoumission, EcheanceAO, ResultatAO,
     ComptePortailClient, AcceptationDevisPortail, PaiementFacturePortail,
     DocumentClientPortail, JalonChantierPortail, DemandeTicketPortail,
-    Partenaire, SoumissionLeadPartenaire,
+    Partenaire, SoumissionLeadPartenaire, CommissionPartenaire,
 )
 from .serializers import (
     AppelTelephoniqueSerializer, AvancementRevenuSerializer,
@@ -83,6 +83,7 @@ from .serializers import (
     DocumentClientPortailSerializer, JalonChantierPortailSerializer,
     DemandeTicketPortailSerializer,
     PartenaireSerializer, SoumissionLeadPartenaireSerializer,
+    CommissionPartenaireSerializer,
 )
 
 
@@ -3585,3 +3586,59 @@ class SoumissionLeadPartenaireViewSet(_ComptaBaseViewSet):
                 soumission.lead_id = lead_id
             soumission.save(update_fields=['statut', 'lead_id'])
         return Response(self.get_serializer(soumission).data)
+
+
+class CommissionPartenaireViewSet(_ComptaBaseViewSet):
+    """Commissions dues aux partenaires (FG235). Le montant est calculé côté
+    serveur (base×taux) ; ``marquer_payee`` solde une commission ; ``releve``
+    agrège le dû/payé par partenaire (relevé)."""
+    queryset = CommissionPartenaire.objects.all()
+    serializer_class = CommissionPartenaireSerializer
+    filter_backends = [filters.OrderingFilter]
+    ordering_fields = ['date_creation']
+
+    def perform_create(self, serializer):
+        commission = serializer.save(company=self.request.user.company)
+        services.enregistrer_commission(commission)
+        commission.save(update_fields=['taux', 'montant'])
+
+    def perform_update(self, serializer):
+        commission = serializer.save(company=self.request.user.company)
+        services.enregistrer_commission(commission)
+        commission.save(update_fields=['taux', 'montant'])
+
+    @action(detail=True, methods=['post'])
+    def marquer_payee(self, request, pk=None):
+        commission = self.get_object()
+        if commission.statut == CommissionPartenaire.Statut.DUE:
+            from django.utils import timezone
+            commission.statut = CommissionPartenaire.Statut.PAYEE
+            commission.paye_le = timezone.localdate()
+            commission.save(update_fields=['statut', 'paye_le'])
+        return Response(self.get_serializer(commission).data)
+
+    @action(detail=False, methods=['get'])
+    def releve(self, request):
+        """Relevé agrégé par partenaire : dû / payé / total."""
+        from django.db.models import Sum
+        rows = (
+            self.get_queryset()
+            .values('partenaire', 'partenaire__nom', 'statut')
+            .annotate(total=Sum('montant'))
+            .order_by('partenaire')
+        )
+        releve = {}
+        for r in rows:
+            pid = r['partenaire']
+            entry = releve.setdefault(pid, {
+                'partenaire': pid, 'nom': r['partenaire__nom'],
+                'due': 0, 'payee': 0, 'total': 0,
+            })
+            montant = float(r['total'] or 0)
+            if r['statut'] == CommissionPartenaire.Statut.DUE:
+                entry['due'] += montant
+            elif r['statut'] == CommissionPartenaire.Statut.PAYEE:
+                entry['payee'] += montant
+            if r['statut'] != CommissionPartenaire.Statut.ANNULEE:
+                entry['total'] += montant
+        return Response(list(releve.values()))

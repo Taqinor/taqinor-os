@@ -17,6 +17,8 @@ Couvrent, par tâche (tous scopés société, ``company`` jamais lue du corps) :
 * FG241 Moteur d'upsell / cross-sell.
 * FG244 Abonnements de monitoring (revenu récurrent).
 """
+from decimal import Decimal
+
 from django.contrib.auth import get_user_model
 from django.test import TestCase, override_settings
 from rest_framework.test import APIClient
@@ -28,7 +30,7 @@ from apps.compta import services
 from apps.compta.models import (
     AcceptationDevisPortail, PaiementFacturePortail, DocumentClientPortail,
     JalonChantierPortail, DemandeTicketPortail,
-    Partenaire, SoumissionLeadPartenaire,
+    Partenaire, SoumissionLeadPartenaire, CommissionPartenaire,
 )
 
 User = get_user_model()
@@ -348,4 +350,77 @@ class PartenaireTests(TestCase):
             company=autre, nom='Z', token_acces='tok-fg234-d')
         api = auth(self.user)
         resp = api.get('/api/django/compta/partenaires/')
+        self.assertEqual(resp.data['count'], 0)
+
+
+# ── FG235 — Suivi des commissions partenaires ──────────────────────────────
+
+class CommissionPartenaireTests(TestCase):
+    def setUp(self):
+        self.co = make_company('fg235', 'FG235')
+        self.user = make_user(self.co, 'fg235-user')
+        self.p = Partenaire.objects.create(
+            company=self.co, nom='P235', taux_commission=Decimal('4.00'),
+            token_acces='tok-fg235-a')
+
+    def test_creation_calcule_montant(self):
+        api = auth(self.user)
+        resp = api.post('/api/django/compta/commissions-partenaire/', {
+            'partenaire': self.p.id, 'devis_id': 46001,
+            'base_ht': '100000.00', 'taux': '5.00',
+            'company': 22222,  # ignoré
+        }, format='json')
+        self.assertEqual(resp.status_code, 201, resp.content)
+        c = CommissionPartenaire.objects.get(id=resp.data['id'])
+        self.assertEqual(c.company_id, self.co.id)
+        self.assertEqual(c.montant, Decimal('5000.00'))
+
+    def test_taux_defaut_du_partenaire(self):
+        api = auth(self.user)
+        resp = api.post('/api/django/compta/commissions-partenaire/', {
+            'partenaire': self.p.id, 'base_ht': '50000.00',
+        }, format='json')
+        self.assertEqual(resp.status_code, 201, resp.content)
+        c = CommissionPartenaire.objects.get(id=resp.data['id'])
+        # taux non fourni → celui du partenaire (4 %) : 50000×4% = 2000.
+        self.assertEqual(c.montant, Decimal('2000.00'))
+
+    def test_marquer_payee(self):
+        api = auth(self.user)
+        c = CommissionPartenaire.objects.create(
+            company=self.co, partenaire=self.p, base_ht=1000, taux=10,
+            montant=100)
+        resp = api.post(
+            '/api/django/compta/commissions-partenaire/'
+            f'{c.id}/marquer_payee/', {}, format='json')
+        self.assertEqual(resp.status_code, 200, resp.content)
+        c.refresh_from_db()
+        self.assertEqual(c.statut, CommissionPartenaire.Statut.PAYEE)
+        self.assertIsNotNone(c.paye_le)
+
+    def test_releve_agrege_par_partenaire(self):
+        CommissionPartenaire.objects.create(
+            company=self.co, partenaire=self.p, base_ht=1000, taux=10,
+            montant=Decimal('100'),
+            statut=CommissionPartenaire.Statut.DUE)
+        CommissionPartenaire.objects.create(
+            company=self.co, partenaire=self.p, base_ht=2000, taux=10,
+            montant=Decimal('200'),
+            statut=CommissionPartenaire.Statut.PAYEE)
+        api = auth(self.user)
+        resp = api.get('/api/django/compta/commissions-partenaire/releve/')
+        self.assertEqual(resp.status_code, 200, resp.content)
+        entry = next(r for r in resp.data if r['partenaire'] == self.p.id)
+        self.assertEqual(entry['due'], 100)
+        self.assertEqual(entry['payee'], 200)
+        self.assertEqual(entry['total'], 300)
+
+    def test_isolation_societe(self):
+        autre = make_company('fg235-b', 'FG235B')
+        p2 = Partenaire.objects.create(
+            company=autre, nom='PB', token_acces='tok-fg235-b')
+        CommissionPartenaire.objects.create(
+            company=autre, partenaire=p2, base_ht=1, taux=1, montant=1)
+        api = auth(self.user)
+        resp = api.get('/api/django/compta/commissions-partenaire/')
         self.assertEqual(resp.data['count'], 0)

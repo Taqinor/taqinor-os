@@ -5434,3 +5434,60 @@ class SoumissionLeadPartenaire(models.Model):
 
     def __str__(self):
         return f'{self.nom_prospect} — {self.partenaire.nom}'
+
+
+# ── FG235 — Suivi des commissions partenaires ──────────────────────────────
+
+class CommissionPartenaire(models.Model):
+    """Commission due à un partenaire sur un devis signé/lead converti (FG235).
+
+    Calculée sur une base HT × taux (%). Le devis est référencé par id
+    (cross-app — jamais d'import ventes). Statut de règlement (due → payée). Le
+    relevé par partenaire s'obtient en agrégeant ces lignes (action ``releve``).
+    Scopée société.
+    """
+    class Statut(models.TextChoices):
+        DUE = 'due', 'Due'
+        PAYEE = 'payee', 'Payée'
+        ANNULEE = 'annulee', 'Annulée'
+
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='commissions_partenaire',
+        verbose_name='Société',
+    )
+    partenaire = models.ForeignKey(
+        Partenaire,
+        on_delete=models.CASCADE,
+        related_name='commissions',
+        verbose_name='Partenaire',
+    )
+    devis_id = models.PositiveIntegerField(
+        null=True, blank=True, verbose_name='Id du devis signé')
+    lead_id = models.PositiveIntegerField(
+        null=True, blank=True, verbose_name='Id du lead')
+    base_ht = models.DecimalField(
+        max_digits=14, decimal_places=2, default=0,
+        verbose_name='Base HT (MAD)')
+    taux = models.DecimalField(
+        max_digits=5, decimal_places=2, default=0,
+        verbose_name='Taux de commission (%)')
+    montant = models.DecimalField(
+        max_digits=14, decimal_places=2, default=0,
+        verbose_name='Montant de commission (MAD)')
+    statut = models.CharField(
+        max_length=8, choices=Statut.choices, default=Statut.DUE,
+        verbose_name='Statut')
+    paye_le = models.DateField(
+        null=True, blank=True, verbose_name='Payée le')
+    date_creation = models.DateTimeField(
+        auto_now_add=True, verbose_name='Créée le')
+
+    class Meta:
+        verbose_name = 'Commission partenaire'
+        verbose_name_plural = 'Commissions partenaire'
+        ordering = ['-date_creation']
+
+    def __str__(self):
+        return f'Commission {self.montant} — {self.partenaire.nom}'
