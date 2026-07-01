@@ -591,6 +591,25 @@ def build_quote_data(devis, pdf_options=None) -> dict:
         if puissance_kwc > 0:
             etude["prix_kwc"] = round(_ref_total / puissance_kwc)
 
+    # ── QF2 — modèle « deux factures » (économies réelles, par tranche) ──────
+    # Le modèle effectivement utilisé pour les économies affichées :
+    #   'factures'   — facture_sans − facture_avec, par tranche (données réelles)
+    #   'etude'      — économies imposées par l'étude stockée (bloc ci-dessus)
+    #   'estimation' — ancienne approximation production × autoconso × prix,
+    #                  toujours étiquetée comme estimation (aucun chiffre inventé).
+    savings_model = roi.get("savings_model", "estimation")
+    if etude.get("production_annuelle") and etude.get("economies_annuelles"):
+        savings_model = "etude"
+    if savings_model == "factures":
+        # Persistance dans les paramètres d'étude RENDUS : la page étude et la
+        # proposition web reprennent exactement les mêmes chiffres (une seule
+        # source). Rendu seulement — aucun statut, aucune écriture en base.
+        etude["facture_annuelle_sans_solaire"] = roi["facture_sans"]
+        etude["facture_annuelle_avec_solaire_opt1"] = roi["facture_avec_s"]
+        etude["facture_annuelle_avec_solaire_opt2"] = roi["facture_avec_a"]
+        etude["economie_reelle_opt1"] = roi["eco_s_ann"]
+        etude["economie_reelle_opt2"] = roi["eco_a_ann"]
+
     # ONEE monthly bill proxy (bars sit above the savings curves): full-price bill
     # ≈ Option-2 monthly savings / 0.85 autoconsumption.
     factures_mensuelles = [round(v / 0.85) for v in roi["eco_a_monthly"]]
@@ -722,6 +741,19 @@ def build_quote_data(devis, pdf_options=None) -> dict:
         # QJ13 — honest-number guard: True when savings are an estimate (no tariff data)
         "savings_estimated": roi.get("savings_estimated", False),
         "tarif_kwh": roi.get("tarif_kwh"),
+        # QF2 — modèle « deux factures » : les deux factures annuelles et le
+        # modèle d'économie réellement utilisé ('factures'/'etude'/'estimation').
+        # Les factures sont None hors modèle 'factures' — jamais inventées.
+        "savings_model": savings_model,
+        "facture_sans_solaire": (
+            roi.get("facture_sans") if savings_model == "factures" else None),
+        "facture_avec_solaire_s": (
+            roi.get("facture_avec_s") if savings_model == "factures" else None),
+        "facture_avec_solaire_a": (
+            roi.get("facture_avec_a") if savings_model == "factures" else None),
+        "factures_approximatif": (
+            bool(roi.get("factures_approximatif"))
+            if savings_model == "factures" else False),
         "factures_mensuelles": factures_mensuelles,
         "sans_items": sans_items,
         "avec_items": avec_items,

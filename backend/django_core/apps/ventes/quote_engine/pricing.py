@@ -269,6 +269,61 @@ def _avg_kwh_price_from_tranches(
     return prix, False
 
 
+def two_bills_savings(
+    production_kwh,
+    conso_annuelle_kwh,
+    autoconso_ratio,
+    utility=None,
+    tranches_override=None,
+) -> dict | None:
+    """QF2 — Modèle « deux factures » (économies RÉELLES, par tranche).
+
+    facture annuelle SANS solaire  = consommation valorisée par tranche ;
+    facture annuelle AVEC solaire = consommation résiduelle (après les kWh
+    autoconsommés) valorisée par tranche ;
+    économie = facture_sans − facture_avec.
+
+    Self-consumption-first (loi 82-21) : seuls les kWh autoconsommés réduisent
+    la facture — le surplus injecté ne vaut rien (tarif ANRE BT non publié).
+
+    Retourne ``None`` quand il manque une VRAIE donnée (pas de table tarifaire,
+    pas de consommation, pas de production) : l'appelant dégrade alors vers
+    l'ancienne estimation, étiquetée comme telle. Fonction pure.
+
+    Returns dict:
+        facture_sans   int  — facture annuelle TTC sans solaire (MAD).
+        facture_avec   int  — facture annuelle TTC avec solaire (MAD).
+        economie       int  — facture_sans − facture_avec (≥ 0).
+        autoconso_kwh  int  — kWh autoconsommés retenus (plafonnés à la conso).
+        approximatif   bool — table distributeur estimée (Lydec/Redal).
+    """
+    table, approx = _resolve_tranches(utility, tranches_override)
+    if table is None:
+        return None
+    try:
+        conso = float(conso_annuelle_kwh or 0)
+        prod = float(production_kwh or 0)
+        ratio = float(autoconso_ratio or 0)
+    except (TypeError, ValueError):
+        return None
+    if conso <= 0 or prod <= 0 or ratio <= 0:
+        return None
+
+    facture_sans = round(_monthly_bill_from_kwh(conso / 12, table) * 12)
+    autoconso_kwh = min(prod * ratio, conso)
+    residuel = max(0.0, conso - autoconso_kwh)
+    facture_avec = round(_monthly_bill_from_kwh(residuel / 12, table) * 12)
+    # Économie dérivée des factures ARRONDIES : la chaîne affichée
+    # facture_sans − facture_avec = économie est exacte au dirham.
+    return {
+        "facture_sans": facture_sans,
+        "facture_avec": facture_avec,
+        "economie": max(0, facture_sans - facture_avec),
+        "autoconso_kwh": round(autoconso_kwh),
+        "approximatif": approx,
+    }
+
+
 def calculate_savings_roi(
     puissance_kwc: float,
     total_sans: float,
@@ -336,6 +391,31 @@ def calculate_savings_roi(
     economie_opt1 = round(production_annuelle * autoconso_sans * prix_kwh)
     economie_opt2 = round(production_annuelle * autoconso_avec * prix_kwh)
 
+    # QF2 — modèle « deux factures » (réel, par tranche) : quand une VRAIE
+    # consommation ET une table tarifaire existent (et qu'aucun prix plat
+    # vendeur ne force l'ancien modèle), l'économie devient
+    # facture_sans − facture_avec, les deux factures valorisées PAR TRANCHE.
+    # Sinon : ancienne approximation production × autoconso × prix, étiquetée
+    # « estimation » — aucun chiffre inventé.
+    savings_model = "estimation"
+    facture_sans = facture_avec_s = facture_avec_a = None
+    factures_approximatif = False
+    if not (tarif_kwh_override is not None and tarif_kwh_override > 0):
+        _tb_s = two_bills_savings(
+            production_annuelle, conso_annuelle_kwh, autoconso_sans,
+            utility=utility, tranches_override=tranches_override)
+        _tb_a = two_bills_savings(
+            production_annuelle, conso_annuelle_kwh, autoconso_avec,
+            utility=utility, tranches_override=tranches_override)
+        if _tb_s and _tb_a:
+            savings_model = "factures"
+            economie_opt1 = _tb_s["economie"]
+            economie_opt2 = _tb_a["economie"]
+            facture_sans = _tb_s["facture_sans"]
+            facture_avec_s = _tb_s["facture_avec"]
+            facture_avec_a = _tb_a["facture_avec"]
+            factures_approximatif = _tb_s["approximatif"]
+
     # Retour sur investissement (années)
     roi_opt1 = round(total_sans / economie_opt1, 1) if economie_opt1 > 0 else 0.0
     roi_opt2 = round(total_avec / economie_opt2, 1) if economie_opt2 > 0 else 0.0
@@ -361,4 +441,13 @@ def calculate_savings_roi(
         "autoconso_avec":   autoconso_avec,
         "tarif_kwh":        prix_kwh,
         "utility":          utility,
+        # QF2 — modèle « deux factures » : 'factures' quand l'économie vient de
+        # facture_sans − facture_avec (par tranche), 'estimation' sinon.
+        "savings_model":    savings_model,
+        "facture_sans":     facture_sans,
+        "facture_avec_s":   facture_avec_s,
+        "facture_avec_a":   facture_avec_a,
+        "factures_approximatif": factures_approximatif,
+        # QK4 — productible réellement utilisé (kWh/kWc/an), pour transparence.
+        "productible":      prod_factor,
     }
