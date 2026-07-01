@@ -5,7 +5,11 @@
 // `PAGE_TITLES` est ordonné du plus spécifique au plus général : on prend la
 // PREMIÈRE clé dont `pathname` commence par elle (les sous-routes d'abord).
 
-export const PAGE_TITLES = [
+// UX1 — Titres/libellés des modules « coquille », fournis par chaque
+// `features/<module>/module.config.jsx` (aucun couplage ici).
+import { moduleTitles, moduleSectionLabels } from '../../router/moduleRoutes'
+
+const BASE_PAGE_TITLES = [
   ['/dashboard', 'Tableau de bord'],
 
   // Stock
@@ -65,6 +69,11 @@ export const PAGE_TITLES = [
   ['/parametres', 'Paramètres'],
 ]
 
+// Les titres des modules (préfixes distincts, ex. `/comptabilite`) sont ajoutés
+// APRÈS les titres de base : `titleFor` prend la première correspondance, et les
+// modules ordonnent déjà leurs propres titres du plus spécifique au plus général.
+export const PAGE_TITLES = [...BASE_PAGE_TITLES, ...moduleTitles]
+
 // Libellé de la section parente (premier segment) pour le fil d'Ariane.
 export const SECTION_LABELS = {
   stock: 'Stock',
@@ -83,6 +92,9 @@ export const SECTION_LABELS = {
   activites: 'CRM',
   calendrier: 'CRM',
   dashboard: 'Tableau de bord',
+  // UX1 — libellés de section des modules « coquille » (fusionnés, jamais en
+  // conflit : chaque module a un premier segment distinct).
+  ...moduleSectionLabels,
 }
 
 // Titre de page : première entrée dont le pathname commence par la clé.

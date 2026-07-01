@@ -9,6 +9,9 @@ import {
   Briefcase, User as UserIcon, FolderOpen,
 } from 'lucide-react'
 import { logoutUser } from '../../features/auth/store/authSlice'
+// UX1 — Sections de navigation des modules « coquille », enregistrées par
+// chaque module via `features/<module>/module.config.jsx` (aucun couplage ici).
+import { moduleNavSections } from '../../router/moduleRoutes'
 
 // FG16 — ancres du guide d'accueil : map `to` → valeur `data-coach` posée sur
 // le lien correspondant, pour que le spotlight des coachmarks puisse le cibler.
@@ -190,6 +193,18 @@ export default function Sidebar({ collapsed, onToggle, onNavigate }) {
   const companyName = useSelector((s) => s.parametres.profile?.nom) || 'TAQINOR ERP'
   const roleMeta    = ROLE_META[role] ?? ROLE_META.normal
 
+  // UX1 — Les modules « coquille » s'insèrent JUSTE AVANT « Administration »
+  // (qui reste la dernière section), sans que la Sidebar connaisse chaque module.
+  const sections = (() => {
+    const adminIdx = NAV_SECTIONS.findIndex((s) => s.label === 'ADMINISTRATION')
+    if (adminIdx < 0) return [...NAV_SECTIONS, ...moduleNavSections]
+    return [
+      ...NAV_SECTIONS.slice(0, adminIdx),
+      ...moduleNavSections,
+      ...NAV_SECTIONS.slice(adminIdx),
+    ]
+  })()
+
   const handleLogout = async () => {
     await dispatch(logoutUser())
     navigate('/login')
@@ -234,7 +249,7 @@ export default function Sidebar({ collapsed, onToggle, onNavigate }) {
 
       {/* ── Navigation ─────────────────────────── */}
       <nav className="sidebar-nav">
-        {NAV_SECTIONS.map((section, si) => {
+        {sections.map((section, si) => {
           const items = section.items.filter(it =>
             it.roles.includes(role) && (!it.perm || permissions.includes(it.perm)))
           if (items.length === 0) return null
