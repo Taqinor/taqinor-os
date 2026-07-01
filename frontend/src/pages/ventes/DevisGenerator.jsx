@@ -822,6 +822,7 @@ export default function DevisGenerator({
     ? computeEtudeIndustrielle({
         kwp, consoMensuelleKwh: consoKwhDerivee,
         dayUsagePct: dayUsage, totalTtc: kpiTotal,
+        kwhPrice: quoteLogic.kwhPrice, efficiency: quoteLogic.efficiency,
       })
     : null
 

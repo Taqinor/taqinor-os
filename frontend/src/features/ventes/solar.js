@@ -459,9 +459,15 @@ export function autoFillLines(produits, { kwp, panelW, structureType }) {
 // ══ Multi-marchés (2026-06) ═══════════════════════════════════════════════════
 
 // ── Étude industrielle / commerciale (autoconsommation) ──────────────────────
-export function computeEtudeIndustrielle({ kwp, consoMensuelleKwh, dayUsagePct, totalTtc }) {
+// DC3 — kwhPrice/efficiency sont threadés EXACTEMENT comme computeROI : le tarif
+// ONEE et le rendement de la société (Paramètres → Avancé) pilotent l'étude à
+// l'écran, plus seulement le PDF. Sans valeur → constantes historiques
+// (parité simulateur garantie).
+export function computeEtudeIndustrielle({ kwp, consoMensuelleKwh, dayUsagePct, totalTtc, kwhPrice, efficiency }) {
   if (!kwp || kwp <= 0) return null
-  const prodM = GHI.map(g => g * kwp * EFFICIENCY)
+  const PRICE = (Number.isFinite(Number(kwhPrice)) && Number(kwhPrice) > 0) ? Number(kwhPrice) : KWH_PRICE
+  const EFF = (Number.isFinite(Number(efficiency)) && Number(efficiency) > 0) ? Number(efficiency) : EFFICIENCY
+  const prodM = GHI.map(g => g * kwp * EFF)
   const prodA = prodM.reduce((a, b) => a + b, 0)
   const consoMois = parseFloat(consoMensuelleKwh) || 0
   const consoA = consoMois > 0 ? consoMois * 12 : 0
@@ -476,7 +482,7 @@ export function computeEtudeIndustrielle({ kwp, consoMensuelleKwh, dayUsagePct, 
     autoconsomme = prodA * dayPct
     tauxAuto = dayPct * 100
   }
-  const economies = autoconsomme * KWH_PRICE
+  const economies = autoconsomme * PRICE
   const payback = (economies > 0 && totalTtc > 0)
     ? Math.round(totalTtc / economies * 10) / 10 : null
   return {

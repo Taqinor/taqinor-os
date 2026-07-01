@@ -345,6 +345,22 @@ test('étude industrielle : taux autoconsommation / couverture cohérents', () =
   assert.equal(e.conso_mensuelle.length, 12)
 })
 
+// ── DC3 — étude industrielle prend kwhPrice/efficiency (comme computeROI) ──────
+test('DC3 étude industrielle : kwhPrice/efficiency de la société pilotent le calcul', () => {
+  const base = { kwp: 50, consoMensuelleKwh: 10000, dayUsagePct: 80, totalTtc: 450000 }
+  const def = computeEtudeIndustrielle(base)
+  // Tarif ONEE doublé → économies doublées exactement (autoconsommé inchangé).
+  const dbl = computeEtudeIndustrielle({ ...base, kwhPrice: 3.5 })
+  assert.ok(Math.abs(dbl.economies_annuelles - def.economies_annuelles * 2) <= 2)
+  // Rendement réduit de moitié → production annuelle de moitié.
+  const half = computeEtudeIndustrielle({ ...base, efficiency: 0.4 })
+  assert.ok(Math.abs(half.production_annuelle - def.production_annuelle / 2) <= 1)
+  // Override invalide (0 / NaN) → repli sur les constantes historiques.
+  const fb = computeEtudeIndustrielle({ ...base, kwhPrice: 0, efficiency: -1 })
+  assert.equal(fb.production_annuelle, def.production_annuelle)
+  assert.equal(fb.economies_annuelles, def.economies_annuelles)
+})
+
 test('pompage : 5.5 CV tri → variateur 5.5 tri + champ ≈1.4× pompe, sans batterie/onduleur', () => {
   const dims = computePompage(5.5)
   assert.ok(Math.abs(dims.kw - 5.5 * CV_TO_KW) < 0.01)
