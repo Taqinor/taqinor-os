@@ -31,7 +31,7 @@ from apps.compta.models import (
     AcceptationDevisPortail, PaiementFacturePortail, DocumentClientPortail,
     JalonChantierPortail, DemandeTicketPortail,
     Partenaire, SoumissionLeadPartenaire, CommissionPartenaire,
-    TerritoireCommercial, EnqueteNPS,
+    TerritoireCommercial, EnqueteNPS, AvisClient,
 )
 
 User = get_user_model()
@@ -572,4 +572,70 @@ class EnqueteNPSTests(TestCase):
         EnqueteNPS.objects.create(company=autre, client_id=47003)
         api = auth(self.user)
         resp = api.get('/api/django/compta/enquetes-nps/')
+        self.assertEqual(resp.data['count'], 0)
+
+
+# ── FG239 — Capture d'avis + push Google Reviews ───────────────────────────
+
+class AvisClientTests(TestCase):
+    def setUp(self):
+        self.co = make_company('fg239', 'FG239')
+        self.user = make_user(self.co, 'fg239-user')
+
+    def test_creation_pose_company_serveur(self):
+        api = auth(self.user)
+        resp = api.post('/api/django/compta/avis-clients/', {
+            'client_id': 48001,
+            'company': 32123,  # ignoré
+        }, format='json')
+        self.assertEqual(resp.status_code, 201, resp.content)
+        a = AvisClient.objects.get(id=resp.data['id'])
+        self.assertEqual(a.company_id, self.co.id)
+        self.assertEqual(a.statut, AvisClient.Statut.SOLLICITE)
+
+    def test_recevoir_borne_note(self):
+        api = auth(self.user)
+        a = AvisClient.objects.create(company=self.co, client_id=48002)
+        resp = api.post(
+            f'/api/django/compta/avis-clients/{a.id}/recevoir/',
+            {'note': 9, 'temoignage': 'Super équipe'}, format='json')
+        self.assertEqual(resp.status_code, 200, resp.content)
+        a.refresh_from_db()
+        self.assertEqual(a.note, 5)  # borné à 5.
+        self.assertEqual(a.statut, AvisClient.Statut.RECU)
+
+    @override_settings(GOOGLE_REVIEW_URL='')
+    def test_push_google_noop_sans_url(self):
+        api = auth(self.user)
+        a = AvisClient.objects.create(
+            company=self.co, client_id=48003,
+            statut=AvisClient.Statut.RECU)
+        resp = api.post(
+            f'/api/django/compta/avis-clients/{a.id}/pousser_google/', {},
+            format='json')
+        self.assertEqual(resp.status_code, 200, resp.content)
+        a.refresh_from_db()
+        # NO-OP : pas d'URL configurée → statut inchangé, pas de lien.
+        self.assertEqual(a.statut, AvisClient.Statut.RECU)
+        self.assertEqual(a.google_review_url, '')
+
+    @override_settings(GOOGLE_REVIEW_URL='https://g.page/r/abc/review')
+    def test_push_google_route_quand_configure(self):
+        api = auth(self.user)
+        a = AvisClient.objects.create(
+            company=self.co, client_id=48004,
+            statut=AvisClient.Statut.RECU)
+        resp = api.post(
+            f'/api/django/compta/avis-clients/{a.id}/pousser_google/', {},
+            format='json')
+        self.assertEqual(resp.status_code, 200, resp.content)
+        a.refresh_from_db()
+        self.assertEqual(a.statut, AvisClient.Statut.PUBLIE_GOOGLE)
+        self.assertTrue(a.google_review_url)
+
+    def test_isolation_societe(self):
+        autre = make_company('fg239-b', 'FG239B')
+        AvisClient.objects.create(company=autre, client_id=48005)
+        api = auth(self.user)
+        resp = api.get('/api/django/compta/avis-clients/')
         self.assertEqual(resp.data['count'], 0)

@@ -43,7 +43,7 @@ from .models import (
     ComptePortailClient, AcceptationDevisPortail, PaiementFacturePortail,
     DocumentClientPortail, JalonChantierPortail, DemandeTicketPortail,
     Partenaire, SoumissionLeadPartenaire, CommissionPartenaire,
-    TerritoireCommercial, EnqueteNPS,
+    TerritoireCommercial, EnqueteNPS, AvisClient,
 )
 from .serializers import (
     AppelTelephoniqueSerializer, AvancementRevenuSerializer,
@@ -85,7 +85,7 @@ from .serializers import (
     DemandeTicketPortailSerializer,
     PartenaireSerializer, SoumissionLeadPartenaireSerializer,
     CommissionPartenaireSerializer, TerritoireCommercialSerializer,
-    EnqueteNPSSerializer,
+    EnqueteNPSSerializer, AvisClientSerializer,
 )
 
 
@@ -3713,3 +3713,34 @@ class EnqueteNPSViewSet(_ComptaBaseViewSet):
     @action(detail=False, methods=['get'])
     def score(self, request):
         return Response(services.score_nps(request.user.company))
+
+
+class AvisClientViewSet(_ComptaBaseViewSet):
+    """Avis / témoignages clients + push Google Reviews (FG239). La société est
+    posée côté serveur ; ``recevoir`` enregistre la note/témoignage ;
+    ``pousser_google`` route l'avis vers Google (NO-OP si l'URL société n'est
+    pas configurée — aucune API payante)."""
+    queryset = AvisClient.objects.all()
+    serializer_class = AvisClientSerializer
+    filter_backends = [filters.OrderingFilter]
+    ordering_fields = ['date_creation']
+
+    @action(detail=True, methods=['post'])
+    def recevoir(self, request, pk=None):
+        avis = self.get_object()
+        if avis.statut == AvisClient.Statut.SOLLICITE:
+            note = request.data.get('note')
+            temoignage = request.data.get('temoignage')
+            if note is not None:
+                avis.note = max(1, min(5, int(note)))
+            if temoignage is not None:
+                avis.temoignage = temoignage
+            avis.statut = AvisClient.Statut.RECU
+            avis.save(update_fields=['note', 'temoignage', 'statut'])
+        return Response(self.get_serializer(avis).data)
+
+    @action(detail=True, methods=['post'])
+    def pousser_google(self, request, pk=None):
+        avis = self.get_object()
+        services.pousser_avis_google(avis)
+        return Response(self.get_serializer(avis).data)

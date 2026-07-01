@@ -35,7 +35,7 @@ from .views import (
     JalonChantierPortailViewSet, DemandeTicketPortailViewSet,
     PartenaireViewSet, SoumissionLeadPartenaireViewSet,
     CommissionPartenaireViewSet, TerritoireCommercialViewSet,
-    EnqueteNPSViewSet,
+    EnqueteNPSViewSet, AvisClientViewSet,
 )
 
 router = DefaultRouter()
@@ -122,6 +122,7 @@ router.register(r'soumissions-lead-partenaire', SoumissionLeadPartenaireViewSet)
 router.register(r'commissions-partenaire', CommissionPartenaireViewSet)
 router.register(r'territoires-commerciaux', TerritoireCommercialViewSet)
 router.register(r'enquetes-nps', EnqueteNPSViewSet)
+router.register(r'avis-clients', AvisClientViewSet)
 
 urlpatterns = [
     path('', include(router.urls)),

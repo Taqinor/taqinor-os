@@ -33,7 +33,7 @@ from .models import (
     ComptePortailClient, AcceptationDevisPortail, PaiementFacturePortail,
     DocumentClientPortail, JalonChantierPortail, DemandeTicketPortail,
     Partenaire, SoumissionLeadPartenaire, CommissionPartenaire,
-    TerritoireCommercial, EnqueteNPS,
+    TerritoireCommercial, EnqueteNPS, AvisClient,
 )
 
 
@@ -1888,4 +1888,16 @@ class EnqueteNPSSerializer(serializers.ModelSerializer):
         ]
         read_only_fields = [
             'statut', 'categorie', 'envoi_reel', 'envoyee_le', 'repondue_le',
+        ]
+
+
+class AvisClientSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = AvisClient
+        fields = [
+            'id', 'client_id', 'note', 'temoignage', 'statut',
+            'google_review_url', 'date_creation',
+        ]
+        read_only_fields = [
+            'statut', 'google_review_url', 'date_creation',
         ]

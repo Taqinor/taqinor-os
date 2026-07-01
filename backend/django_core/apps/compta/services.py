@@ -4091,3 +4091,31 @@ def score_nps(company):
     nps = round((promoteurs - detracteurs) * 100 / total)
     return {'nps': nps, 'total': total, 'promoteurs': promoteurs,
             'passifs': passifs, 'detracteurs': detracteurs}
+
+
+# ── FG239 — Push Google Reviews (routage, gated par URL société) ───────────
+
+def google_review_url_configuree():
+    """Lien de dépôt d'avis Google configuré (paramètre ``GOOGLE_REVIEW_URL``).
+
+    Pas d'API payante — juste une URL « place review » à laquelle on route le
+    client. Vide → le push est un NO-OP propre.
+    """
+    return str(getattr(settings, 'GOOGLE_REVIEW_URL', '') or '')
+
+
+def pousser_avis_google(avis):
+    """Route un avis client vers Google Reviews (FG239), idempotent.
+
+    Si un lien Google est configuré, on le pose sur l'avis et on passe le statut
+    à « routé vers Google ». Sinon NO-OP (aucun lien, statut inchangé). Renvoie
+    l'avis. On ne publie jamais rien via une API payante — on fournit le lien.
+    """
+    from .models import AvisClient
+    url = google_review_url_configuree()
+    if not url:
+        return avis
+    avis.google_review_url = url
+    avis.statut = AvisClient.Statut.PUBLIE_GOOGLE
+    avis.save(update_fields=['google_review_url', 'statut'])
+    return avis

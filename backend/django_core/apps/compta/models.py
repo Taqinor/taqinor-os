@@ -5617,3 +5617,47 @@ class EnqueteNPS(models.Model):
         if self.score >= 7:
             return 'passif'
         return 'detracteur'
+
+
+# ── FG239 — Capture d'avis/témoignages + push Google Reviews ───────────────
+
+class AvisClient(models.Model):
+    """Avis / témoignage client + routage vers Google Reviews (FG239).
+
+    On sollicite un avis (in-app), on capture la note + le témoignage, puis on
+    ROUTE le client satisfait vers Google (preuve sociale) via un lien de dépôt
+    d'avis Google (paramètre société ``GOOGLE_REVIEW_URL`` — pas d'API payante,
+    juste une URL). Le push est un NO-OP propre si l'URL n'est pas configurée.
+    Client référencé par id (cross-app). Scopé société.
+    """
+    class Statut(models.TextChoices):
+        SOLLICITE = 'sollicite', 'Sollicité'
+        RECU = 'recu', 'Reçu'
+        PUBLIE_GOOGLE = 'publie_google', 'Routé vers Google'
+
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='avis_clients',
+        verbose_name='Société',
+    )
+    client_id = models.PositiveIntegerField(verbose_name='Id du client')
+    note = models.PositiveSmallIntegerField(
+        null=True, blank=True, verbose_name='Note (1–5)')
+    temoignage = models.TextField(
+        blank=True, default='', verbose_name='Témoignage')
+    statut = models.CharField(
+        max_length=14, choices=Statut.choices, default=Statut.SOLLICITE,
+        verbose_name='Statut')
+    google_review_url = models.URLField(
+        blank=True, default='', verbose_name='Lien Google Reviews')
+    date_creation = models.DateTimeField(
+        auto_now_add=True, verbose_name='Créé le')
+
+    class Meta:
+        verbose_name = 'Avis client'
+        verbose_name_plural = 'Avis clients'
+        ordering = ['-date_creation']
+
+    def __str__(self):
+        return f'Avis client #{self.client_id} ({self.statut})'
