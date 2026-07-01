@@ -30,7 +30,12 @@ from .models import (
     OffreFinancement, LigneIncitation, EcheancierPaiement, TranchePaiement,
     AppelOffre, BordereauPrix, LigneBordereau, CautionSoumission,
     DossierSoumission, PieceSoumission, EcheanceAO, ResultatAO,
-    ComptePortailClient,
+    ComptePortailClient, AcceptationDevisPortail, PaiementFacturePortail,
+    DocumentClientPortail, JalonChantierPortail, DemandeTicketPortail,
+    Partenaire, SoumissionLeadPartenaire, CommissionPartenaire,
+    TerritoireCommercial, EnqueteNPS, AvisClient,
+    CompteFidelite, MouvementFidelite, RegleUpsell,
+    AbonnementMonitoring,
 )
 
 
@@ -1768,4 +1773,176 @@ class ComptePortailClientSerializer(serializers.ModelSerializer):
         ]
         read_only_fields = [
             'token_acces', 'derniere_connexion', 'date_creation',
+        ]
+
+
+class AcceptationDevisPortailSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = AcceptationDevisPortail
+        fields = [
+            'id', 'devis_id', 'option_choisie', 'nom_signataire',
+            'signature_ip', 'accepte', 'signe_le', 'date_creation',
+        ]
+        read_only_fields = [
+            'signature_ip', 'accepte', 'signe_le', 'date_creation',
+        ]
+
+
+class PaiementFacturePortailSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = PaiementFacturePortail
+        fields = [
+            'id', 'facture_id', 'montant', 'methode', 'statut', 'reference',
+            'paye_le', 'date_creation',
+        ]
+        read_only_fields = [
+            'statut', 'reference', 'paye_le', 'date_creation',
+        ]
+
+
+class DocumentClientPortailSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = DocumentClientPortail
+        fields = [
+            'id', 'client_id', 'lead_id', 'type_document', 'libelle',
+            'fichier', 'traite', 'date_depot',
+        ]
+        read_only_fields = ['traite', 'date_depot']
+
+
+class JalonChantierPortailSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = JalonChantierPortail
+        fields = [
+            'id', 'chantier_id', 'libelle', 'ordre', 'atteint', 'date_jalon',
+            'date_creation',
+        ]
+        read_only_fields = ['date_creation']
+
+
+class DemandeTicketPortailSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = DemandeTicketPortail
+        fields = [
+            'id', 'client_id', 'chantier_id', 'sujet', 'description',
+            'statut', 'ticket_id', 'date_creation',
+        ]
+        read_only_fields = ['statut', 'ticket_id', 'date_creation']
+
+
+class PartenaireSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Partenaire
+        fields = [
+            'id', 'nom', 'type_partenaire', 'email', 'telephone',
+            'taux_commission', 'token_acces', 'actif',
+            'statut_onboarding', 'numero_agrement', 'zone', 'date_activation',
+            'date_creation',
+        ]
+        read_only_fields = ['token_acces', 'date_activation', 'date_creation']
+
+
+class SoumissionLeadPartenaireSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = SoumissionLeadPartenaire
+        fields = [
+            'id', 'partenaire', 'nom_prospect', 'telephone_prospect',
+            'email_prospect', 'ville', 'note', 'statut', 'lead_id',
+            'date_soumission',
+        ]
+        read_only_fields = ['statut', 'lead_id', 'date_soumission']
+
+    def validate_partenaire(self, value):
+        return _meme_societe(self, value, 'Partenaire')
+
+
+class CommissionPartenaireSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = CommissionPartenaire
+        fields = [
+            'id', 'partenaire', 'devis_id', 'lead_id', 'base_ht', 'taux',
+            'montant', 'statut', 'paye_le', 'date_creation',
+        ]
+        read_only_fields = ['montant', 'paye_le', 'date_creation']
+
+    def validate_partenaire(self, value):
+        return _meme_societe(self, value, 'Partenaire')
+
+
+class TerritoireCommercialSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = TerritoireCommercial
+        fields = [
+            'id', 'nom', 'villes', 'owner_user_id', 'priorite', 'actif',
+            'date_creation',
+        ]
+        read_only_fields = ['date_creation']
+
+
+class EnqueteNPSSerializer(serializers.ModelSerializer):
+    categorie = serializers.CharField(read_only=True)
+
+    class Meta:
+        model = EnqueteNPS
+        fields = [
+            'id', 'client_id', 'chantier_id', 'score', 'commentaire',
+            'statut', 'categorie', 'envoi_reel', 'envoyee_le', 'repondue_le',
+        ]
+        read_only_fields = [
+            'statut', 'categorie', 'envoi_reel', 'envoyee_le', 'repondue_le',
+        ]
+
+
+class AvisClientSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = AvisClient
+        fields = [
+            'id', 'client_id', 'note', 'temoignage', 'statut',
+            'google_review_url', 'date_creation',
+        ]
+        read_only_fields = [
+            'statut', 'google_review_url', 'date_creation',
+        ]
+
+
+class CompteFideliteSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = CompteFidelite
+        fields = [
+            'id', 'client_id', 'points', 'palier', 'date_creation',
+        ]
+        read_only_fields = ['points', 'palier', 'date_creation']
+
+
+class MouvementFideliteSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = MouvementFidelite
+        fields = [
+            'id', 'compte', 'points', 'motif', 'date_creation',
+        ]
+        read_only_fields = ['date_creation']
+
+    def validate_compte(self, value):
+        return _meme_societe(self, value, 'Compte de fidélité')
+
+
+class RegleUpsellSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = RegleUpsell
+        fields = [
+            'id', 'declencheur', 'produit_suggere', 'message', 'priorite',
+            'actif', 'date_creation',
+        ]
+        read_only_fields = ['date_creation']
+
+
+class AbonnementMonitoringSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = AbonnementMonitoring
+        fields = [
+            'id', 'client_id', 'installation_id', 'periodicite', 'montant',
+            'statut', 'date_debut', 'prochaine_echeance', 'date_creation',
+        ]
+        read_only_fields = [
+            'statut', 'date_debut', 'prochaine_echeance', 'date_creation',
         ]

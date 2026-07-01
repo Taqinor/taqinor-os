@@ -5109,3 +5109,735 @@ class ComptePortailClient(models.Model):
 
     def __str__(self):
         return f'Portail {self.email}'
+
+
+# ── FG229 — Acceptation / e-signature de devis dans le portail ─────────────
+
+class AcceptationDevisPortail(models.Model):
+    """Acceptation en ligne d'un devis depuis le portail client (FG229).
+
+    Le client choisit une option (variante chiffrée) puis signe en saisissant
+    son nom ; on horodate et on capture l'IP comme preuve légère (loi 53-05 :
+    une signature nominative suffit pour un devis solaire résidentiel/PME). Le
+    devis est désigné par son id (jamais par import du modèle ``ventes`` —
+    cross-app via service/string-id) ; cet enregistrement matérialise
+    l'acceptation côté OS sans dupliquer le devis. Une e-signature certifiée
+    (Yousign, gated G7) reste optionnelle et hors périmètre ici.
+    """
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='acceptations_devis_portail',
+        verbose_name='Société',
+    )
+    devis_id = models.PositiveIntegerField(verbose_name='Id du devis')
+    option_choisie = models.CharField(
+        max_length=120, blank=True, default='',
+        verbose_name='Option choisie')
+    nom_signataire = models.CharField(
+        max_length=200, verbose_name='Nom du signataire')
+    signature_ip = models.GenericIPAddressField(
+        null=True, blank=True, verbose_name='IP de signature')
+    accepte = models.BooleanField(default=False, verbose_name='Accepté')
+    signe_le = models.DateTimeField(
+        null=True, blank=True, verbose_name='Signé le')
+    date_creation = models.DateTimeField(
+        auto_now_add=True, verbose_name='Créée le')
+
+    class Meta:
+        verbose_name = 'Acceptation de devis (portail)'
+        verbose_name_plural = 'Acceptations de devis (portail)'
+        ordering = ['-date_creation']
+
+    def __str__(self):
+        return f'Acceptation devis #{self.devis_id} — {self.nom_signataire}'
+
+
+# ── FG230 — Paiement en ligne des factures (portail) ───────────────────────
+
+class PaiementFacturePortail(models.Model):
+    """Intention de paiement en ligne d'une facture depuis le portail (FG230).
+
+    Le client clique « payer » (CMI carte ou virement) ; on enregistre une
+    intention de paiement scopée société, puis le rapprochement la passe de
+    ``initie`` à ``paye`` (manuel pour le virement, automatique via webhook CMI
+    quand l'intégration est branchée). Tant que la passerelle CMI est OFF
+    (``CMI_ENABLED``, défaut), aucun appel réseau payant n'est émis : l'intention
+    reste ``initie`` avec une référence locale. La facture est désignée par son
+    id (cross-app — jamais d'import du modèle ``ventes``).
+    """
+    class Methode(models.TextChoices):
+        CARTE = 'carte', 'Carte (CMI)'
+        VIREMENT = 'virement', 'Virement'
+
+    class Statut(models.TextChoices):
+        INITIE = 'initie', 'Initié'
+        PAYE = 'paye', 'Payé'
+        ECHOUE = 'echoue', 'Échoué'
+
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='paiements_facture_portail',
+        verbose_name='Société',
+    )
+    facture_id = models.PositiveIntegerField(verbose_name='Id de la facture')
+    montant = models.DecimalField(
+        max_digits=14, decimal_places=2, default=0,
+        verbose_name='Montant (MAD)')
+    methode = models.CharField(
+        max_length=8, choices=Methode.choices, default=Methode.CARTE,
+        verbose_name='Méthode')
+    statut = models.CharField(
+        max_length=8, choices=Statut.choices, default=Statut.INITIE,
+        verbose_name='Statut')
+    reference = models.CharField(
+        max_length=64, blank=True, default='',
+        verbose_name='Référence de transaction')
+    paye_le = models.DateTimeField(
+        null=True, blank=True, verbose_name='Payé le')
+    date_creation = models.DateTimeField(
+        auto_now_add=True, verbose_name='Créé le')
+
+    class Meta:
+        verbose_name = 'Paiement de facture (portail)'
+        verbose_name_plural = 'Paiements de facture (portail)'
+        ordering = ['-date_creation']
+
+    def __str__(self):
+        return f'Paiement facture #{self.facture_id} ({self.statut})'
+
+
+# ── FG231 — Dépôt de documents / factures ONEE par le client ───────────────
+
+class DocumentClientPortail(models.Model):
+    """Document téléversé par le client depuis le portail (FG231).
+
+    Le client dépose ses factures ONEE (ou autre justificatif) pour affiner
+    l'étude solaire — l'app y lit la consommation. Scopé société ; lié au client
+    par id (cross-app, jamais d'import crm) et, optionnellement, au lead. Le
+    fichier va dans le stockage objet (MinIO/S3) ; aucun prix/marge ici.
+    """
+    class TypeDoc(models.TextChoices):
+        FACTURE_ONEE = 'facture_onee', 'Facture ONEE'
+        PLAN = 'plan', 'Plan / schéma'
+        AUTRE = 'autre', 'Autre'
+
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='documents_client_portail',
+        verbose_name='Société',
+    )
+    client_id = models.PositiveIntegerField(verbose_name='Id du client')
+    lead_id = models.PositiveIntegerField(
+        null=True, blank=True, verbose_name='Id du lead')
+    type_document = models.CharField(
+        max_length=14, choices=TypeDoc.choices, default=TypeDoc.FACTURE_ONEE,
+        verbose_name='Type de document')
+    libelle = models.CharField(
+        max_length=200, blank=True, default='', verbose_name='Libellé')
+    fichier = models.FileField(
+        upload_to='compta/portail_docs/', null=True, blank=True,
+        verbose_name='Fichier')
+    traite = models.BooleanField(
+        default=False, verbose_name='Traité (intégré à l\'étude)')
+    date_depot = models.DateTimeField(
+        auto_now_add=True, verbose_name='Déposé le')
+
+    class Meta:
+        verbose_name = 'Document client (portail)'
+        verbose_name_plural = 'Documents client (portail)'
+        ordering = ['-date_depot']
+
+    def __str__(self):
+        return f'{self.get_type_document_display()} — client #{self.client_id}'
+
+
+# ── FG232 — Suivi d'avancement du chantier côté client (timeline) ──────────
+
+class JalonChantierPortail(models.Model):
+    """Jalon d'avancement d'un chantier exposé au client dans le portail (FG232).
+
+    Timeline lecture-seule côté client : étude → commande → livraison →
+    installation → mise en service → réception. Chaque jalon porte un libellé,
+    un ordre, un état atteint/non-atteint et une date. Le chantier est désigné
+    par son id (cross-app — jamais d'import ``installations``). Scopé société ;
+    aucune donnée financière n'est exposée ici.
+    """
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='jalons_chantier_portail',
+        verbose_name='Société',
+    )
+    chantier_id = models.PositiveIntegerField(verbose_name='Id du chantier')
+    libelle = models.CharField(max_length=120, verbose_name='Jalon')
+    ordre = models.PositiveIntegerField(default=0, verbose_name='Ordre')
+    atteint = models.BooleanField(default=False, verbose_name='Atteint')
+    date_jalon = models.DateField(
+        null=True, blank=True, verbose_name='Date du jalon')
+    date_creation = models.DateTimeField(
+        auto_now_add=True, verbose_name='Créé le')
+
+    class Meta:
+        verbose_name = 'Jalon de chantier (portail)'
+        verbose_name_plural = 'Jalons de chantier (portail)'
+        ordering = ['chantier_id', 'ordre', 'id']
+
+    def __str__(self):
+        return f'Chantier #{self.chantier_id} — {self.libelle}'
+
+
+# ── FG233 — Ouverture de ticket SAV depuis le portail ──────────────────────
+
+class DemandeTicketPortail(models.Model):
+    """Demande de ticket SAV/garantie ouverte par le client via le portail
+    (FG233).
+
+    Le client décrit un problème ; on enregistre la demande scopée société,
+    puis le SAV la prend en charge en créant le vrai ticket (app ``sav``, via
+    son service — jamais d'import de ses modèles ici). ``ticket_id`` référence
+    le ticket SAV créé (cross-app par id). Le client suit l'état de sa demande
+    en lecture depuis le portail.
+    """
+    class Statut(models.TextChoices):
+        SOUMISE = 'soumise', 'Soumise'
+        PRISE_EN_CHARGE = 'prise_en_charge', 'Prise en charge'
+        RESOLUE = 'resolue', 'Résolue'
+        REFUSEE = 'refusee', 'Refusée'
+
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='demandes_ticket_portail',
+        verbose_name='Société',
+    )
+    client_id = models.PositiveIntegerField(verbose_name='Id du client')
+    chantier_id = models.PositiveIntegerField(
+        null=True, blank=True, verbose_name='Id du chantier')
+    sujet = models.CharField(max_length=200, verbose_name='Sujet')
+    description = models.TextField(
+        blank=True, default='', verbose_name='Description')
+    statut = models.CharField(
+        max_length=16, choices=Statut.choices, default=Statut.SOUMISE,
+        verbose_name='Statut')
+    ticket_id = models.PositiveIntegerField(
+        null=True, blank=True, verbose_name='Id du ticket SAV créé')
+    date_creation = models.DateTimeField(
+        auto_now_add=True, verbose_name='Créée le')
+
+    class Meta:
+        verbose_name = 'Demande de ticket SAV (portail)'
+        verbose_name_plural = 'Demandes de ticket SAV (portail)'
+        ordering = ['-date_creation']
+
+    def __str__(self):
+        return f'Demande SAV #{self.client_id} — {self.sujet}'
+
+
+# ── FG234 — Portail apporteurs / sous-revendeurs ───────────────────────────
+
+class Partenaire(models.Model):
+    """Partenaire commercial : apporteur d'affaires ou sous-revendeur (FG234).
+
+    Fiche minimale ici (compte + accès tokenisé + taux de commission). FG237
+    enrichit la fiche (statut d'agrément, zone, onboarding). Un partenaire
+    soumet des leads via le portail (``SoumissionLeadPartenaire``) et suit leur
+    statut. Scopé société ; le token d'accès est posé côté serveur.
+    """
+    class Type(models.TextChoices):
+        APPORTEUR = 'apporteur', "Apporteur d'affaires"
+        SOUS_REVENDEUR = 'sous_revendeur', 'Sous-revendeur'
+        INSTALLATEUR = 'installateur', 'Installateur'
+
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='partenaires',
+        verbose_name='Société',
+    )
+    nom = models.CharField(max_length=200, verbose_name='Nom / raison sociale')
+    type_partenaire = models.CharField(
+        max_length=16, choices=Type.choices, default=Type.APPORTEUR,
+        verbose_name='Type de partenaire')
+    email = models.EmailField(blank=True, default='', verbose_name='Email')
+    telephone = models.CharField(
+        max_length=30, blank=True, default='', verbose_name='Téléphone')
+    taux_commission = models.DecimalField(
+        max_digits=5, decimal_places=2, default=0,
+        verbose_name='Taux de commission (%)')
+    token_acces = models.CharField(
+        max_length=64, unique=True, db_index=True,
+        verbose_name="Token d'accès")
+    actif = models.BooleanField(default=True, verbose_name='Actif')
+    # FG237 — Annuaire & onboarding installateurs partenaires.
+    statut_onboarding = models.CharField(
+        max_length=12,
+        choices=[
+            ('prospect', 'Prospect'),
+            ('en_cours', "En cours d'agrément"),
+            ('agree', 'Agréé (activé)'),
+            ('suspendu', 'Suspendu'),
+        ],
+        default='prospect',
+        verbose_name="Statut d'onboarding")
+    numero_agrement = models.CharField(
+        max_length=60, blank=True, default='',
+        verbose_name="Numéro d'agrément")
+    zone = models.CharField(
+        max_length=120, blank=True, default='',
+        verbose_name='Zone géographique')
+    date_activation = models.DateField(
+        null=True, blank=True, verbose_name="Date d'activation")
+    date_creation = models.DateTimeField(
+        auto_now_add=True, verbose_name='Créé le')
+
+    class Meta:
+        verbose_name = 'Partenaire commercial'
+        verbose_name_plural = 'Partenaires commerciaux'
+        ordering = ['nom']
+
+    def __str__(self):
+        return f'{self.nom} ({self.get_type_partenaire_display()})'
+
+
+class SoumissionLeadPartenaire(models.Model):
+    """Lead soumis par un partenaire via le portail (FG234).
+
+    Le partenaire renseigne les coordonnées d'un prospect ; on enregistre la
+    soumission scopée société. Après qualification, le lead réel est créé dans
+    ``crm`` (via son service, jamais importé ici) et référencé par ``lead_id``.
+    Le partenaire suit le statut de sa soumission.
+    """
+    class Statut(models.TextChoices):
+        SOUMIS = 'soumis', 'Soumis'
+        QUALIFIE = 'qualifie', 'Qualifié'
+        CONVERTI = 'converti', 'Converti'
+        REJETE = 'rejete', 'Rejeté'
+
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='soumissions_lead_partenaire',
+        verbose_name='Société',
+    )
+    partenaire = models.ForeignKey(
+        Partenaire,
+        on_delete=models.CASCADE,
+        related_name='soumissions',
+        verbose_name='Partenaire',
+    )
+    nom_prospect = models.CharField(
+        max_length=200, verbose_name='Nom du prospect')
+    telephone_prospect = models.CharField(
+        max_length=30, blank=True, default='',
+        verbose_name='Téléphone du prospect')
+    email_prospect = models.EmailField(
+        blank=True, default='', verbose_name='Email du prospect')
+    ville = models.CharField(
+        max_length=120, blank=True, default='', verbose_name='Ville')
+    note = models.TextField(blank=True, default='', verbose_name='Note')
+    statut = models.CharField(
+        max_length=10, choices=Statut.choices, default=Statut.SOUMIS,
+        verbose_name='Statut')
+    lead_id = models.PositiveIntegerField(
+        null=True, blank=True, verbose_name='Id du lead créé')
+    date_soumission = models.DateTimeField(
+        auto_now_add=True, verbose_name='Soumis le')
+
+    class Meta:
+        verbose_name = 'Soumission de lead (partenaire)'
+        verbose_name_plural = 'Soumissions de lead (partenaire)'
+        ordering = ['-date_soumission']
+
+    def __str__(self):
+        return f'{self.nom_prospect} — {self.partenaire.nom}'
+
+
+# ── FG235 — Suivi des commissions partenaires ──────────────────────────────
+
+class CommissionPartenaire(models.Model):
+    """Commission due à un partenaire sur un devis signé/lead converti (FG235).
+
+    Calculée sur une base HT × taux (%). Le devis est référencé par id
+    (cross-app — jamais d'import ventes). Statut de règlement (due → payée). Le
+    relevé par partenaire s'obtient en agrégeant ces lignes (action ``releve``).
+    Scopée société.
+    """
+    class Statut(models.TextChoices):
+        DUE = 'due', 'Due'
+        PAYEE = 'payee', 'Payée'
+        ANNULEE = 'annulee', 'Annulée'
+
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='commissions_partenaire',
+        verbose_name='Société',
+    )
+    partenaire = models.ForeignKey(
+        Partenaire,
+        on_delete=models.CASCADE,
+        related_name='commissions',
+        verbose_name='Partenaire',
+    )
+    devis_id = models.PositiveIntegerField(
+        null=True, blank=True, verbose_name='Id du devis signé')
+    lead_id = models.PositiveIntegerField(
+        null=True, blank=True, verbose_name='Id du lead')
+    base_ht = models.DecimalField(
+        max_digits=14, decimal_places=2, default=0,
+        verbose_name='Base HT (MAD)')
+    taux = models.DecimalField(
+        max_digits=5, decimal_places=2, default=0,
+        verbose_name='Taux de commission (%)')
+    montant = models.DecimalField(
+        max_digits=14, decimal_places=2, default=0,
+        verbose_name='Montant de commission (MAD)')
+    statut = models.CharField(
+        max_length=8, choices=Statut.choices, default=Statut.DUE,
+        verbose_name='Statut')
+    paye_le = models.DateField(
+        null=True, blank=True, verbose_name='Payée le')
+    date_creation = models.DateTimeField(
+        auto_now_add=True, verbose_name='Créée le')
+
+    class Meta:
+        verbose_name = 'Commission partenaire'
+        verbose_name_plural = 'Commissions partenaire'
+        ordering = ['-date_creation']
+
+    def __str__(self):
+        return f'Commission {self.montant} — {self.partenaire.nom}'
+
+
+# ── FG236 — Gestion des territoires / zones commerciales ───────────────────
+
+class TerritoireCommercial(models.Model):
+    """Zone commerciale : découpage géographique + affectation auto (FG236).
+
+    Un territoire regroupe des villes/régions (liste de mots-clés en minuscules)
+    et un commercial responsable (par id — ``owner_user_id``, jamais un import
+    hors foundation). Le service ``affecter_territoire`` associe un lead à la
+    zone qui matche sa ville, en respectant la priorité (plus haute d'abord).
+    Scopé société.
+    """
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='territoires_commerciaux',
+        verbose_name='Société',
+    )
+    nom = models.CharField(max_length=120, verbose_name='Nom du territoire')
+    villes = models.JSONField(
+        default=list, blank=True,
+        verbose_name='Villes / régions (liste)')
+    owner_user_id = models.PositiveIntegerField(
+        null=True, blank=True, verbose_name='Commercial responsable (id)')
+    priorite = models.IntegerField(
+        default=0, verbose_name='Priorité (haute = prioritaire)')
+    actif = models.BooleanField(default=True, verbose_name='Actif')
+    date_creation = models.DateTimeField(
+        auto_now_add=True, verbose_name='Créé le')
+
+    class Meta:
+        verbose_name = 'Territoire commercial'
+        verbose_name_plural = 'Territoires commerciaux'
+        ordering = ['-priorite', 'nom']
+
+    def __str__(self):
+        return self.nom
+
+    def matche_ville(self, ville):
+        """True si ``ville`` correspond à l'une des villes/régions du zonage."""
+        if not ville:
+            return False
+        cible = str(ville).strip().lower()
+        for v in (self.villes or []):
+            mot = str(v).strip().lower()
+            if mot and (mot == cible or mot in cible or cible in mot):
+                return True
+        return False
+
+
+# ── FG238 — Enquêtes NPS / satisfaction post-installation ──────────────────
+
+class EnqueteNPS(models.Model):
+    """Enquête de satisfaction / NPS post-installation (FG238).
+
+    Envoyée automatiquement après réception d'un chantier (envoi RÉEL gated
+    Brevo — NO-OP tant que ``BREVO_ENABLED`` est OFF). Le client répond une note
+    0–10 : promoteur (9–10), passif (7–8), détracteur (0–6). Le score NPS
+    consolidé = % promoteurs − % détracteurs. Client/chantier référencés par id
+    (cross-app). Scopée société.
+    """
+    class Statut(models.TextChoices):
+        ENVOYEE = 'envoyee', 'Envoyée'
+        REPONDUE = 'repondue', 'Répondue'
+
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='enquetes_nps',
+        verbose_name='Société',
+    )
+    client_id = models.PositiveIntegerField(verbose_name='Id du client')
+    chantier_id = models.PositiveIntegerField(
+        null=True, blank=True, verbose_name='Id du chantier')
+    score = models.PositiveSmallIntegerField(
+        null=True, blank=True, verbose_name='Note (0–10)')
+    commentaire = models.TextField(
+        blank=True, default='', verbose_name='Commentaire')
+    statut = models.CharField(
+        max_length=8, choices=Statut.choices, default=Statut.ENVOYEE,
+        verbose_name='Statut')
+    envoi_reel = models.BooleanField(
+        default=False, verbose_name='Envoi réel effectué (Brevo)')
+    envoyee_le = models.DateTimeField(
+        auto_now_add=True, verbose_name='Envoyée le')
+    repondue_le = models.DateTimeField(
+        null=True, blank=True, verbose_name='Répondue le')
+
+    class Meta:
+        verbose_name = 'Enquête NPS'
+        verbose_name_plural = 'Enquêtes NPS'
+        ordering = ['-envoyee_le']
+
+    def __str__(self):
+        return f'NPS client #{self.client_id} ({self.statut})'
+
+    @property
+    def categorie(self):
+        """Catégorie NPS de la réponse (promoteur/passif/détracteur)."""
+        if self.score is None:
+            return None
+        if self.score >= 9:
+            return 'promoteur'
+        if self.score >= 7:
+            return 'passif'
+        return 'detracteur'
+
+
+# ── FG239 — Capture d'avis/témoignages + push Google Reviews ───────────────
+
+class AvisClient(models.Model):
+    """Avis / témoignage client + routage vers Google Reviews (FG239).
+
+    On sollicite un avis (in-app), on capture la note + le témoignage, puis on
+    ROUTE le client satisfait vers Google (preuve sociale) via un lien de dépôt
+    d'avis Google (paramètre société ``GOOGLE_REVIEW_URL`` — pas d'API payante,
+    juste une URL). Le push est un NO-OP propre si l'URL n'est pas configurée.
+    Client référencé par id (cross-app). Scopé société.
+    """
+    class Statut(models.TextChoices):
+        SOLLICITE = 'sollicite', 'Sollicité'
+        RECU = 'recu', 'Reçu'
+        PUBLIE_GOOGLE = 'publie_google', 'Routé vers Google'
+
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='avis_clients',
+        verbose_name='Société',
+    )
+    client_id = models.PositiveIntegerField(verbose_name='Id du client')
+    note = models.PositiveSmallIntegerField(
+        null=True, blank=True, verbose_name='Note (1–5)')
+    temoignage = models.TextField(
+        blank=True, default='', verbose_name='Témoignage')
+    statut = models.CharField(
+        max_length=14, choices=Statut.choices, default=Statut.SOLLICITE,
+        verbose_name='Statut')
+    google_review_url = models.URLField(
+        blank=True, default='', verbose_name='Lien Google Reviews')
+    date_creation = models.DateTimeField(
+        auto_now_add=True, verbose_name='Créé le')
+
+    class Meta:
+        verbose_name = 'Avis client'
+        verbose_name_plural = 'Avis clients'
+        ordering = ['-date_creation']
+
+    def __str__(self):
+        return f'Avis client #{self.client_id} ({self.statut})'
+
+
+# ── FG240 — Programme de fidélité / parrainage étendu ──────────────────────
+
+class CompteFidelite(models.Model):
+    """Compte de fidélité d'un client : solde de points + palier (FG240).
+
+    Étend le parrainage simple existant (``crm.Parrainage``) avec des POINTS
+    cumulables et des PALIERS (bronze/argent/or/platine) recalculés depuis le
+    solde. Client référencé par id (cross-app — jamais d'import crm). Un compte
+    par client et par société. Les mouvements (gains/dépenses) vivent dans
+    ``MouvementFidelite``.
+    """
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='comptes_fidelite',
+        verbose_name='Société',
+    )
+    client_id = models.PositiveIntegerField(verbose_name='Id du client')
+    points = models.IntegerField(default=0, verbose_name='Solde de points')
+    palier = models.CharField(
+        max_length=10,
+        choices=[
+            ('bronze', 'Bronze'),
+            ('argent', 'Argent'),
+            ('or', 'Or'),
+            ('platine', 'Platine'),
+        ],
+        default='bronze',
+        verbose_name='Palier')
+    date_creation = models.DateTimeField(
+        auto_now_add=True, verbose_name='Créé le')
+
+    class Meta:
+        verbose_name = 'Compte de fidélité'
+        verbose_name_plural = 'Comptes de fidélité'
+        ordering = ['-points']
+        constraints = [
+            models.UniqueConstraint(
+                fields=['company', 'client_id'],
+                name='uniq_compte_fidelite_client',
+            ),
+        ]
+
+    def __str__(self):
+        return f'Fidélité client #{self.client_id} — {self.points} pts'
+
+
+class MouvementFidelite(models.Model):
+    """Mouvement de points sur un compte de fidélité (FG240).
+
+    ``points`` positif = gain (parrainage réussi, achat…), négatif = dépense
+    (remise convertie). Le solde et le palier du compte sont recalculés par le
+    service à chaque mouvement. Scopé société.
+    """
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='mouvements_fidelite',
+        verbose_name='Société',
+    )
+    compte = models.ForeignKey(
+        CompteFidelite,
+        on_delete=models.CASCADE,
+        related_name='mouvements',
+        verbose_name='Compte de fidélité',
+    )
+    points = models.IntegerField(verbose_name='Points (+ gain / − dépense)')
+    motif = models.CharField(
+        max_length=200, blank=True, default='', verbose_name='Motif')
+    date_creation = models.DateTimeField(
+        auto_now_add=True, verbose_name='Créé le')
+
+    class Meta:
+        verbose_name = 'Mouvement de fidélité'
+        verbose_name_plural = 'Mouvements de fidélité'
+        ordering = ['-date_creation']
+
+    def __str__(self):
+        return f'{self.points:+d} pts — client #{self.compte.client_id}'
+
+
+# ── FG241 — Moteur d'upsell / cross-sell ───────────────────────────────────
+
+class RegleUpsell(models.Model):
+    """Règle de suggestion contextuelle d'upsell / cross-sell (FG241).
+
+    Chaque règle porte un DÉCLENCHEUR (clé de contexte, ex. ``sans_batterie``,
+    ``site_unique``, ``sans_contrat_om``) et une SUGGESTION (libellé produit /
+    service + message commercial). Le service ``suggestions_upsell`` évalue un
+    contexte client (dict de drapeaux) et renvoie les suggestions actives dont
+    le déclencheur est vrai, triées par priorité. Scopée société.
+    """
+    class Declencheur(models.TextChoices):
+        SANS_BATTERIE = 'sans_batterie', 'Client sans batterie'
+        SITE_UNIQUE = 'site_unique', 'Un seul site équipé'
+        SANS_CONTRAT_OM = 'sans_contrat_om', 'Sans contrat O&M'
+        INSTALLATION_ANCIENNE = 'installation_ancienne', 'Installation ancienne'
+
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='regles_upsell',
+        verbose_name='Société',
+    )
+    declencheur = models.CharField(
+        max_length=24, choices=Declencheur.choices,
+        verbose_name='Déclencheur de contexte')
+    produit_suggere = models.CharField(
+        max_length=200, verbose_name='Produit / service suggéré')
+    message = models.CharField(
+        max_length=255, blank=True, default='',
+        verbose_name='Message commercial')
+    priorite = models.IntegerField(
+        default=0, verbose_name='Priorité (haute = affichée en premier)')
+    actif = models.BooleanField(default=True, verbose_name='Active')
+    date_creation = models.DateTimeField(
+        auto_now_add=True, verbose_name='Créée le')
+
+    class Meta:
+        verbose_name = "Règle d'upsell / cross-sell"
+        verbose_name_plural = "Règles d'upsell / cross-sell"
+        ordering = ['-priorite', 'id']
+
+    def __str__(self):
+        return f'{self.get_declencheur_display()} → {self.produit_suggere}'
+
+
+# ── FG244 — Abonnements de monitoring (revenu récurrent) ───────────────────
+
+class AbonnementMonitoring(models.Model):
+    """Abonnement de supervision (monitoring) mensuel/annuel (FG244).
+
+    Offre de revenu récurrent adossée au module monitoring : le client paie une
+    supervision périodique de son installation. Client/installation référencés
+    par id (cross-app — jamais d'import monitoring/crm). ``prochaine_echeance``
+    est recalculée à chaque renouvellement selon la périodicité. Scopé société.
+    """
+    class Periodicite(models.TextChoices):
+        MENSUEL = 'mensuel', 'Mensuel'
+        ANNUEL = 'annuel', 'Annuel'
+
+    class Statut(models.TextChoices):
+        ACTIF = 'actif', 'Actif'
+        SUSPENDU = 'suspendu', 'Suspendu'
+        RESILIE = 'resilie', 'Résilié'
+
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='abonnements_monitoring',
+        verbose_name='Société',
+    )
+    client_id = models.PositiveIntegerField(verbose_name='Id du client')
+    installation_id = models.PositiveIntegerField(
+        null=True, blank=True, verbose_name="Id de l'installation")
+    periodicite = models.CharField(
+        max_length=8, choices=Periodicite.choices, default=Periodicite.MENSUEL,
+        verbose_name='Périodicité')
+    montant = models.DecimalField(
+        max_digits=12, decimal_places=2, default=0,
+        verbose_name='Montant par période (MAD)')
+    statut = models.CharField(
+        max_length=8, choices=Statut.choices, default=Statut.ACTIF,
+        verbose_name='Statut')
+    date_debut = models.DateField(
+        null=True, blank=True, verbose_name='Date de début')
+    prochaine_echeance = models.DateField(
+        null=True, blank=True, verbose_name='Prochaine échéance')
+    date_creation = models.DateTimeField(
+        auto_now_add=True, verbose_name='Créé le')
+
+    class Meta:
+        verbose_name = 'Abonnement de monitoring'
+        verbose_name_plural = 'Abonnements de monitoring'
+        ordering = ['prochaine_echeance', 'id']
+
+    def __str__(self):
+        return f'Monitoring client #{self.client_id} ({self.periodicite})'

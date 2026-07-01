@@ -47,6 +47,7 @@ from .models import (
     RetenueGarantie, TimbreFiscal,
     TravauxEnCours, VirementInterne,
     EcheanceAO, ResultatAO, ComptePortailClient,
+    PaiementFacturePortail,
 )
 
 
@@ -3913,3 +3914,312 @@ def provisionner_compte_portail(company, *, client_id, email):
         email=email or '',
         token_acces=secrets.token_urlsafe(32),
     )
+
+
+# ── FG229 — Acceptation / e-signature de devis dans le portail ─────────────
+
+def signer_acceptation_devis(acceptation, *, nom=None, ip=None):
+    """Matérialise la signature d'une acceptation de devis (FG229), idempotent.
+
+    Pose le nom du signataire (si fourni), l'IP, le drapeau ``accepte`` et
+    l'horodatage de signature. Une acceptation déjà signée n'est PAS resignée
+    (idempotent). Renvoie l'acceptation. L'effet sur le statut du devis côté
+    ``ventes`` (passage à ``accepte``) reste à la charge de l'app ventes via son
+    service ; on ne touche jamais ses modèles ici (cross-app).
+    """
+    if acceptation.accepte:
+        return acceptation
+    if nom:
+        acceptation.nom_signataire = nom
+    if ip:
+        acceptation.signature_ip = ip
+    acceptation.accepte = True
+    acceptation.signe_le = timezone.now()
+    acceptation.save(update_fields=[
+        'nom_signataire', 'signature_ip', 'accepte', 'signe_le'])
+    return acceptation
+
+
+# ── FG230 — Paiement en ligne des factures (portail, GATED CMI) ────────────
+
+def cmi_actif():
+    """Toggle de la passerelle de paiement carte CMI. OFF par défaut → NO-OP.
+
+    Le founder l'active en posant ``CMI_ENABLED = True`` et une clé marchande
+    ``CMI_MERCHANT_KEY`` (settings/env). Tant que c'est faux/sans clé, initier un
+    paiement carte ne fait AUCUN appel réseau (intention reste « initie ») — le
+    rapprochement reste manuel, comme le virement (blocage G/COST FG230).
+    """
+    return bool(getattr(settings, 'CMI_ENABLED', False)
+                and getattr(settings, 'CMI_MERCHANT_KEY', ''))
+
+
+def initier_paiement_facture(paiement):
+    """Initie un paiement de facture portail (FG230), idempotent.
+
+    Pose une référence locale si absente. Si la méthode est carte et que CMI est
+    actif, l'intégration réelle (future) générerait l'URL de paiement ; tant que
+    CMI est OFF, c'est un NO-OP propre (aucun appel réseau). Renvoie le paiement.
+    """
+    if paiement.statut != PaiementFacturePortail.Statut.INITIE:
+        return paiement
+    if not paiement.reference:
+        import secrets
+        paiement.reference = f'PF-{secrets.token_hex(8)}'
+        paiement.save(update_fields=['reference'])
+    # NO-OP gated : l'appel CMI réel n'a lieu que si cmi_actif() est vrai.
+    return paiement
+
+
+def rapprocher_paiement_facture(paiement, *, reference=None):
+    """Marque un paiement de facture portail comme payé (FG230), idempotent.
+
+    Sert le rapprochement auto (webhook CMI) ET le rapprochement manuel d'un
+    virement reçu. Un paiement déjà payé/échoué n'est pas re-rapproché. Le
+    report vers un ``Paiement`` comptable reste à la charge de la chaîne ventes
+    via son service (cross-app) ; on ne touche jamais ses modèles ici.
+    """
+    if paiement.statut != PaiementFacturePortail.Statut.INITIE:
+        return paiement
+    if reference:
+        paiement.reference = reference
+    paiement.statut = PaiementFacturePortail.Statut.PAYE
+    paiement.paye_le = timezone.now()
+    paiement.save(update_fields=['reference', 'statut', 'paye_le'])
+    return paiement
+
+
+# ── FG235 — Commissions partenaires ────────────────────────────────────────
+
+def calculer_montant_commission(base_ht, taux):
+    """Calcule le montant d'une commission = base_ht × taux%, arrondi 2 déc."""
+    base = Decimal(base_ht or 0)
+    t = Decimal(taux or 0)
+    montant = (base * t / Decimal('100')).quantize(
+        Decimal('0.01'), rounding=ROUND_HALF_UP)
+    return montant
+
+
+def enregistrer_commission(commission):
+    """Recalcule et fige le montant d'une commission (FG235) depuis base×taux.
+
+    Idempotent : appelable à la création et à chaque mise à jour. Renvoie la
+    commission. Si le taux n'est pas fourni, on retombe sur celui du partenaire.
+    """
+    if not commission.taux and commission.partenaire_id:
+        commission.taux = commission.partenaire.taux_commission
+    commission.montant = calculer_montant_commission(
+        commission.base_ht, commission.taux)
+    return commission
+
+
+# ── FG236 — Affectation automatique par territoire commercial ──────────────
+
+def affecter_territoire(company, ville):
+    """Renvoie le territoire commercial (scopé société) matchant ``ville``.
+
+    Parcourt les territoires ACTIFS par priorité décroissante et renvoie le
+    premier dont le zonage matche la ville, ou ``None``. Sert l'affectation auto
+    d'un lead (FG236) — le lead réel est rattaché par l'app crm ; ici on résout
+    seulement la zone/commercial cible (pas d'import crm).
+    """
+    from .models import TerritoireCommercial
+    if not ville:
+        return None
+    territoires = (TerritoireCommercial.objects
+                   .filter(company=company, actif=True)
+                   .order_by('-priorite', 'nom'))
+    for t in territoires:
+        if t.matche_ville(ville):
+            return t
+    return None
+
+
+# ── FG238 — Enquêtes NPS / satisfaction (envoi gated, score consolidé) ─────
+
+def envoyer_enquete_nps(enquete):
+    """Marque l'envoi d'une enquête NPS (FG238), gated Brevo (NO-OP par défaut).
+
+    Si Brevo est actif (``brevo_actif()``), l'intégration réelle (future)
+    enverrait l'email et ``envoi_reel`` passerait à vrai. Tant que c'est OFF,
+    l'enquête est créée/marquée « envoyée » SANS appel réseau. Idempotent.
+    """
+    if brevo_actif():
+        enquete.envoi_reel = True
+        enquete.save(update_fields=['envoi_reel'])
+    return enquete
+
+
+def repondre_enquete_nps(enquete, *, score, commentaire=None):
+    """Enregistre la réponse d'un client à une enquête NPS (FG238).
+
+    ``score`` est borné 0–10. Passe l'enquête à « répondue » et horodate.
+    Renvoie l'enquête. Une enquête déjà répondue n'est pas ré-écrite.
+    """
+    from .models import EnqueteNPS
+    if enquete.statut == EnqueteNPS.Statut.REPONDUE:
+        return enquete
+    note = max(0, min(10, int(score)))
+    enquete.score = note
+    if commentaire is not None:
+        enquete.commentaire = commentaire
+    enquete.statut = EnqueteNPS.Statut.REPONDUE
+    enquete.repondue_le = timezone.now()
+    enquete.save(update_fields=[
+        'score', 'commentaire', 'statut', 'repondue_le'])
+    return enquete
+
+
+def score_nps(company):
+    """Score NPS consolidé (FG238) = %promoteurs − %détracteurs, scopé société.
+
+    Ne compte que les enquêtes répondues (score non nul). Renvoie un dict avec
+    le score NPS (entier, −100..100), les compteurs et le nombre de réponses.
+    Zéro réponse → score None.
+    """
+    from .models import EnqueteNPS
+    reponses = EnqueteNPS.objects.filter(
+        company=company, statut=EnqueteNPS.Statut.REPONDUE,
+        score__isnull=False)
+    total = reponses.count()
+    if total == 0:
+        return {'nps': None, 'total': 0, 'promoteurs': 0, 'passifs': 0,
+                'detracteurs': 0}
+    promoteurs = reponses.filter(score__gte=9).count()
+    detracteurs = reponses.filter(score__lte=6).count()
+    passifs = total - promoteurs - detracteurs
+    nps = round((promoteurs - detracteurs) * 100 / total)
+    return {'nps': nps, 'total': total, 'promoteurs': promoteurs,
+            'passifs': passifs, 'detracteurs': detracteurs}
+
+
+# ── FG239 — Push Google Reviews (routage, gated par URL société) ───────────
+
+def google_review_url_configuree():
+    """Lien de dépôt d'avis Google configuré (paramètre ``GOOGLE_REVIEW_URL``).
+
+    Pas d'API payante — juste une URL « place review » à laquelle on route le
+    client. Vide → le push est un NO-OP propre.
+    """
+    return str(getattr(settings, 'GOOGLE_REVIEW_URL', '') or '')
+
+
+def pousser_avis_google(avis):
+    """Route un avis client vers Google Reviews (FG239), idempotent.
+
+    Si un lien Google est configuré, on le pose sur l'avis et on passe le statut
+    à « routé vers Google ». Sinon NO-OP (aucun lien, statut inchangé). Renvoie
+    l'avis. On ne publie jamais rien via une API payante — on fournit le lien.
+    """
+    from .models import AvisClient
+    url = google_review_url_configuree()
+    if not url:
+        return avis
+    avis.google_review_url = url
+    avis.statut = AvisClient.Statut.PUBLIE_GOOGLE
+    avis.save(update_fields=['google_review_url', 'statut'])
+    return avis
+
+
+# ── FG240 — Programme de fidélité étendu (points + paliers) ────────────────
+
+def palier_pour_points(points):
+    """Palier de fidélité (FG240) déduit d'un solde de points.
+
+    Bronze <500, Argent 500–1999, Or 2000–4999, Platine ≥5000.
+    """
+    p = int(points or 0)
+    if p >= 5000:
+        return 'platine'
+    if p >= 2000:
+        return 'or'
+    if p >= 500:
+        return 'argent'
+    return 'bronze'
+
+
+def appliquer_mouvement_fidelite(compte, *, points, motif=''):
+    """Applique un mouvement de points (FG240) et recalcule solde + palier.
+
+    Crée un ``MouvementFidelite`` (idempotence à la charge de l'appelant), met à
+    jour le solde et le palier du compte de façon atomique. Le solde ne descend
+    jamais sous 0. Renvoie le mouvement créé.
+    """
+    from .models import MouvementFidelite
+    delta = int(points or 0)
+    with transaction.atomic():
+        mouvement = MouvementFidelite.objects.create(
+            company=compte.company, compte=compte, points=delta, motif=motif)
+        compte.points = max(0, compte.points + delta)
+        compte.palier = palier_pour_points(compte.points)
+        compte.save(update_fields=['points', 'palier'])
+    return mouvement
+
+
+# ── FG241 — Moteur d'upsell / cross-sell ───────────────────────────────────
+
+def suggestions_upsell(company, contexte):
+    """Suggestions d'upsell/cross-sell (FG241) pour un contexte client.
+
+    ``contexte`` est un dict de drapeaux booléens dont les CLÉS sont des valeurs
+    de ``RegleUpsell.Declencheur`` (ex. ``{'sans_batterie': True,
+    'site_unique': True}``). Renvoie la liste des règles ACTIVES (scopées
+    société) dont le déclencheur est vrai dans le contexte, triées par priorité
+    décroissante. Fonction pure (pas d'effet de bord, pas d'import cross-app).
+    """
+    from .models import RegleUpsell
+    contexte = contexte or {}
+    actives_vraies = [
+        cle for cle, val in contexte.items() if val]
+    if not actives_vraies:
+        return []
+    return list(
+        RegleUpsell.objects
+        .filter(company=company, actif=True, declencheur__in=actives_vraies)
+        .order_by('-priorite', 'id'))
+
+
+# ── FG244 — Abonnements de monitoring (échéance récurrente) ────────────────
+
+def _ajouter_mois(d, mois):
+    """Ajoute ``mois`` mois à une date en bornant le jour à la fin de mois."""
+    import calendar
+    total = d.month - 1 + mois
+    annee = d.year + total // 12
+    mois_final = total % 12 + 1
+    jour = min(d.day, calendar.monthrange(annee, mois_final)[1])
+    return d.replace(year=annee, month=mois_final, day=jour)
+
+
+def prochaine_echeance_abonnement(depuis, periodicite):
+    """Prochaine échéance d'un abonnement monitoring (FG244) depuis ``depuis``.
+
+    Mensuel → +1 mois ; annuel → +12 mois. ``depuis`` est une date.
+    """
+    from .models import AbonnementMonitoring
+    pas = 12 if periodicite == AbonnementMonitoring.Periodicite.ANNUEL else 1
+    return _ajouter_mois(depuis, pas)
+
+
+def renouveler_abonnement_monitoring(abonnement, *, today=None):
+    """Renouvelle un abonnement monitoring (FG244) : avance l'échéance.
+
+    Actif uniquement. Pose ``date_debut`` si absente, puis fixe
+    ``prochaine_echeance`` à une période après la base (échéance courante si
+    future, sinon aujourd'hui). Idempotence à la charge de l'appelant. Renvoie
+    l'abonnement.
+    """
+    from .models import AbonnementMonitoring
+    if abonnement.statut != AbonnementMonitoring.Statut.ACTIF:
+        return abonnement
+    if today is None:
+        today = timezone.localdate()
+    if abonnement.date_debut is None:
+        abonnement.date_debut = today
+    base = abonnement.prochaine_echeance or today
+    if base < today:
+        base = today
+    abonnement.prochaine_echeance = prochaine_echeance_abonnement(
+        base, abonnement.periodicite)
+    abonnement.save(update_fields=['date_debut', 'prochaine_echeance'])
+    return abonnement

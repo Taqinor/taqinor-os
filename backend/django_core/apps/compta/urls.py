@@ -30,7 +30,14 @@ from .views import (
     ComparateurCashFinancementViewSet, AppelOffreViewSet, BordereauPrixViewSet,
     LigneBordereauViewSet, CautionSoumissionViewSet, DossierSoumissionViewSet,
     PieceSoumissionViewSet, EcheanceAOViewSet, ResultatAOViewSet,
-    ComptePortailClientViewSet,
+    ComptePortailClientViewSet, AcceptationDevisPortailViewSet,
+    PaiementFacturePortailViewSet, DocumentClientPortailViewSet,
+    JalonChantierPortailViewSet, DemandeTicketPortailViewSet,
+    PartenaireViewSet, SoumissionLeadPartenaireViewSet,
+    CommissionPartenaireViewSet, TerritoireCommercialViewSet,
+    EnqueteNPSViewSet, AvisClientViewSet,
+    CompteFideliteViewSet, MouvementFideliteViewSet,
+    RegleUpsellViewSet, AbonnementMonitoringViewSet,
 )
 
 router = DefaultRouter()
@@ -106,6 +113,22 @@ router.register(r'pieces-soumission', PieceSoumissionViewSet)
 router.register(r'echeances-ao', EcheanceAOViewSet)
 router.register(r'resultats-ao', ResultatAOViewSet)
 router.register(r'comptes-portail', ComptePortailClientViewSet)
+# ── Portail client, partenaires & fidélité (FG229–FG244) ────────────────────
+router.register(r'acceptations-devis-portail', AcceptationDevisPortailViewSet)
+router.register(r'paiements-facture-portail', PaiementFacturePortailViewSet)
+router.register(r'documents-client-portail', DocumentClientPortailViewSet)
+router.register(r'jalons-chantier-portail', JalonChantierPortailViewSet)
+router.register(r'demandes-ticket-portail', DemandeTicketPortailViewSet)
+router.register(r'partenaires', PartenaireViewSet)
+router.register(r'soumissions-lead-partenaire', SoumissionLeadPartenaireViewSet)
+router.register(r'commissions-partenaire', CommissionPartenaireViewSet)
+router.register(r'territoires-commerciaux', TerritoireCommercialViewSet)
+router.register(r'enquetes-nps', EnqueteNPSViewSet)
+router.register(r'avis-clients', AvisClientViewSet)
+router.register(r'comptes-fidelite', CompteFideliteViewSet)
+router.register(r'mouvements-fidelite', MouvementFideliteViewSet)
+router.register(r'regles-upsell', RegleUpsellViewSet)
+router.register(r'abonnements-monitoring', AbonnementMonitoringViewSet)
 
 urlpatterns = [
     path('', include(router.urls)),

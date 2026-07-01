@@ -40,7 +40,12 @@ from .models import (
     OffreFinancement, LigneIncitation, EcheancierPaiement, TranchePaiement,
     AppelOffre, BordereauPrix, LigneBordereau, CautionSoumission,
     DossierSoumission, PieceSoumission, EcheanceAO, ResultatAO,
-    ComptePortailClient,
+    ComptePortailClient, AcceptationDevisPortail, PaiementFacturePortail,
+    DocumentClientPortail, JalonChantierPortail, DemandeTicketPortail,
+    Partenaire, SoumissionLeadPartenaire, CommissionPartenaire,
+    TerritoireCommercial, EnqueteNPS, AvisClient,
+    CompteFidelite, MouvementFidelite, RegleUpsell,
+    AbonnementMonitoring,
 )
 from .serializers import (
     AppelTelephoniqueSerializer, AvancementRevenuSerializer,
@@ -77,6 +82,14 @@ from .serializers import (
     LigneBordereauSerializer, CautionSoumissionSerializer,
     DossierSoumissionSerializer, PieceSoumissionSerializer,
     EcheanceAOSerializer, ResultatAOSerializer, ComptePortailClientSerializer,
+    AcceptationDevisPortailSerializer, PaiementFacturePortailSerializer,
+    DocumentClientPortailSerializer, JalonChantierPortailSerializer,
+    DemandeTicketPortailSerializer,
+    PartenaireSerializer, SoumissionLeadPartenaireSerializer,
+    CommissionPartenaireSerializer, TerritoireCommercialSerializer,
+    EnqueteNPSSerializer, AvisClientSerializer,
+    CompteFideliteSerializer, MouvementFideliteSerializer,
+    RegleUpsellSerializer, AbonnementMonitoringSerializer,
 )
 
 
@@ -3442,3 +3455,416 @@ class ComptePortailClientViewSet(_ComptaBaseViewSet):
         serializer.save(
             company=self.request.user.company,
             token_acces=secrets.token_urlsafe(32))
+
+
+class AcceptationDevisPortailViewSet(_ComptaBaseViewSet):
+    """Acceptations / e-signatures de devis depuis le portail (FG229). La
+    société est posée côté serveur ; l'action ``signer`` horodate la signature
+    et capture l'IP (preuve légère, loi 53-05)."""
+    queryset = AcceptationDevisPortail.objects.all()
+    serializer_class = AcceptationDevisPortailSerializer
+    filter_backends = [filters.OrderingFilter]
+    ordering_fields = ['date_creation', 'signe_le']
+
+    @action(detail=True, methods=['post'])
+    def signer(self, request, pk=None):
+        acceptation = self.get_object()
+        nom = request.data.get('nom_signataire') or None
+        ip = request.META.get('REMOTE_ADDR')
+        services.signer_acceptation_devis(acceptation, nom=nom, ip=ip)
+        return Response(self.get_serializer(acceptation).data)
+
+
+class PaiementFacturePortailViewSet(_ComptaBaseViewSet):
+    """Intentions de paiement en ligne d'une facture depuis le portail (FG230).
+    La société est posée côté serveur ; ``initier`` pose une référence (NO-OP
+    tant que CMI est OFF) et ``rapprocher`` marque le paiement comme payé
+    (rapprochement auto webhook CMI ou manuel virement)."""
+    queryset = PaiementFacturePortail.objects.all()
+    serializer_class = PaiementFacturePortailSerializer
+    filter_backends = [filters.OrderingFilter]
+    ordering_fields = ['date_creation', 'paye_le']
+
+    def perform_create(self, serializer):
+        paiement = serializer.save(company=self.request.user.company)
+        services.initier_paiement_facture(paiement)
+
+    @action(detail=True, methods=['post'])
+    def rapprocher(self, request, pk=None):
+        paiement = self.get_object()
+        reference = request.data.get('reference') or None
+        services.rapprocher_paiement_facture(paiement, reference=reference)
+        return Response(self.get_serializer(paiement).data)
+
+
+class DocumentClientPortailViewSet(_ComptaBaseViewSet):
+    """Documents (factures ONEE…) téléversés par le client depuis le portail
+    (FG231). La société est posée côté serveur ; ``marquer_traite`` signale
+    qu'un document a été intégré à l'étude."""
+    queryset = DocumentClientPortail.objects.all()
+    serializer_class = DocumentClientPortailSerializer
+    filter_backends = [filters.OrderingFilter]
+    ordering_fields = ['date_depot']
+
+    @action(detail=True, methods=['post'])
+    def marquer_traite(self, request, pk=None):
+        doc = self.get_object()
+        if not doc.traite:
+            doc.traite = True
+            doc.save(update_fields=['traite'])
+        return Response(self.get_serializer(doc).data)
+
+
+class JalonChantierPortailViewSet(_ComptaBaseViewSet):
+    """Jalons d'avancement de chantier exposés au client (FG232). La société est
+    posée côté serveur ; ``marquer_atteint`` avance un jalon (côté interne). Le
+    client lit la timeline en lecture-seule côté portail."""
+    queryset = JalonChantierPortail.objects.all()
+    serializer_class = JalonChantierPortailSerializer
+    filter_backends = [filters.OrderingFilter]
+    ordering_fields = ['ordre', 'date_jalon', 'chantier_id']
+
+    @action(detail=True, methods=['post'])
+    def marquer_atteint(self, request, pk=None):
+        jalon = self.get_object()
+        if not jalon.atteint:
+            from django.utils import timezone
+            jalon.atteint = True
+            if not jalon.date_jalon:
+                jalon.date_jalon = timezone.localdate()
+            jalon.save(update_fields=['atteint', 'date_jalon'])
+        return Response(self.get_serializer(jalon).data)
+
+
+class DemandeTicketPortailViewSet(_ComptaBaseViewSet):
+    """Demandes de ticket SAV ouvertes par le client depuis le portail (FG233).
+    La société est posée côté serveur ; ``prendre_en_charge`` avance la demande
+    et référence le ticket SAV créé (par id — le vrai ticket vit dans l'app sav,
+    créé via son service, jamais importée ici)."""
+    queryset = DemandeTicketPortail.objects.all()
+    serializer_class = DemandeTicketPortailSerializer
+    filter_backends = [filters.OrderingFilter]
+    ordering_fields = ['date_creation']
+
+    @action(detail=True, methods=['post'])
+    def prendre_en_charge(self, request, pk=None):
+        demande = self.get_object()
+        ticket_id = request.data.get('ticket_id')
+        if demande.statut == DemandeTicketPortail.Statut.SOUMISE:
+            demande.statut = DemandeTicketPortail.Statut.PRISE_EN_CHARGE
+            if ticket_id:
+                demande.ticket_id = ticket_id
+            demande.save(update_fields=['statut', 'ticket_id'])
+        return Response(self.get_serializer(demande).data)
+
+
+class PartenaireViewSet(_ComptaBaseViewSet):
+    """Partenaires commerciaux (apporteurs / sous-revendeurs / installateurs,
+    FG234/FG237). La société et le token d'accès sont posés côté serveur."""
+    queryset = Partenaire.objects.all()
+    serializer_class = PartenaireSerializer
+    filter_backends = [filters.OrderingFilter]
+    ordering_fields = ['nom', 'date_creation']
+
+    def perform_create(self, serializer):
+        import secrets
+        serializer.save(
+            company=self.request.user.company,
+            token_acces=secrets.token_urlsafe(32))
+
+    @action(detail=True, methods=['post'])
+    def activer(self, request, pk=None):
+        """Active (agrée) un partenaire installateur (FG237) — pose le statut
+        ``agree``, l'actif et la date d'activation."""
+        from django.utils import timezone
+        partenaire = self.get_object()
+        partenaire.statut_onboarding = 'agree'
+        partenaire.actif = True
+        if not partenaire.date_activation:
+            partenaire.date_activation = timezone.localdate()
+        partenaire.save(update_fields=[
+            'statut_onboarding', 'actif', 'date_activation'])
+        return Response(self.get_serializer(partenaire).data)
+
+
+class SoumissionLeadPartenaireViewSet(_ComptaBaseViewSet):
+    """Leads soumis par un partenaire via le portail (FG234). La société est
+    posée côté serveur ; ``qualifier`` avance la soumission et référence le lead
+    créé (par id — le vrai lead vit dans crm, jamais importé ici)."""
+    queryset = SoumissionLeadPartenaire.objects.all()
+    serializer_class = SoumissionLeadPartenaireSerializer
+    filter_backends = [filters.OrderingFilter]
+    ordering_fields = ['date_soumission']
+
+    @action(detail=True, methods=['post'])
+    def qualifier(self, request, pk=None):
+        soumission = self.get_object()
+        lead_id = request.data.get('lead_id')
+        if soumission.statut == SoumissionLeadPartenaire.Statut.SOUMIS:
+            soumission.statut = SoumissionLeadPartenaire.Statut.QUALIFIE
+            if lead_id:
+                soumission.lead_id = lead_id
+            soumission.save(update_fields=['statut', 'lead_id'])
+        return Response(self.get_serializer(soumission).data)
+
+
+class CommissionPartenaireViewSet(_ComptaBaseViewSet):
+    """Commissions dues aux partenaires (FG235). Le montant est calculé côté
+    serveur (base×taux) ; ``marquer_payee`` solde une commission ; ``releve``
+    agrège le dû/payé par partenaire (relevé)."""
+    queryset = CommissionPartenaire.objects.all()
+    serializer_class = CommissionPartenaireSerializer
+    filter_backends = [filters.OrderingFilter]
+    ordering_fields = ['date_creation']
+
+    def perform_create(self, serializer):
+        commission = serializer.save(company=self.request.user.company)
+        services.enregistrer_commission(commission)
+        commission.save(update_fields=['taux', 'montant'])
+
+    def perform_update(self, serializer):
+        commission = serializer.save(company=self.request.user.company)
+        services.enregistrer_commission(commission)
+        commission.save(update_fields=['taux', 'montant'])
+
+    @action(detail=True, methods=['post'])
+    def marquer_payee(self, request, pk=None):
+        commission = self.get_object()
+        if commission.statut == CommissionPartenaire.Statut.DUE:
+            from django.utils import timezone
+            commission.statut = CommissionPartenaire.Statut.PAYEE
+            commission.paye_le = timezone.localdate()
+            commission.save(update_fields=['statut', 'paye_le'])
+        return Response(self.get_serializer(commission).data)
+
+    @action(detail=False, methods=['get'])
+    def releve(self, request):
+        """Relevé agrégé par partenaire : dû / payé / total."""
+        from django.db.models import Sum
+        rows = (
+            self.get_queryset()
+            .values('partenaire', 'partenaire__nom', 'statut')
+            .annotate(total=Sum('montant'))
+            .order_by('partenaire')
+        )
+        releve = {}
+        for r in rows:
+            pid = r['partenaire']
+            entry = releve.setdefault(pid, {
+                'partenaire': pid, 'nom': r['partenaire__nom'],
+                'due': 0, 'payee': 0, 'total': 0,
+            })
+            montant = float(r['total'] or 0)
+            if r['statut'] == CommissionPartenaire.Statut.DUE:
+                entry['due'] += montant
+            elif r['statut'] == CommissionPartenaire.Statut.PAYEE:
+                entry['payee'] += montant
+            if r['statut'] != CommissionPartenaire.Statut.ANNULEE:
+                entry['total'] += montant
+        return Response(list(releve.values()))
+
+
+class TerritoireCommercialViewSet(_ComptaBaseViewSet):
+    """Territoires / zones commerciales (FG236). La société est posée côté
+    serveur ; ``affecter`` résout le territoire (et son commercial) matchant une
+    ville donnée, pour l'affectation auto d'un lead."""
+    queryset = TerritoireCommercial.objects.all()
+    serializer_class = TerritoireCommercialSerializer
+    filter_backends = [filters.OrderingFilter]
+    ordering_fields = ['priorite', 'nom']
+
+    @action(detail=False, methods=['get'])
+    def affecter(self, request):
+        ville = request.query_params.get('ville', '')
+        territoire = services.affecter_territoire(
+            request.user.company, ville)
+        if territoire is None:
+            return Response({'territoire': None, 'owner_user_id': None})
+        return Response({
+            'territoire': territoire.id,
+            'nom': territoire.nom,
+            'owner_user_id': territoire.owner_user_id,
+        })
+
+
+class EnqueteNPSViewSet(_ComptaBaseViewSet):
+    """Enquêtes NPS / satisfaction post-installation (FG238). La société est
+    posée côté serveur ; l'envoi réel est gated Brevo (NO-OP par défaut).
+    ``repondre`` enregistre la note client ; ``score`` renvoie le NPS
+    consolidé."""
+    queryset = EnqueteNPS.objects.all()
+    serializer_class = EnqueteNPSSerializer
+    filter_backends = [filters.OrderingFilter]
+    ordering_fields = ['envoyee_le']
+
+    def perform_create(self, serializer):
+        enquete = serializer.save(company=self.request.user.company)
+        services.envoyer_enquete_nps(enquete)
+
+    @action(detail=True, methods=['post'])
+    def repondre(self, request, pk=None):
+        enquete = self.get_object()
+        score = request.data.get('score')
+        if score is None:
+            return Response(
+                {'detail': 'score requis (0–10).'},
+                status=status.HTTP_400_BAD_REQUEST)
+        commentaire = request.data.get('commentaire')
+        services.repondre_enquete_nps(
+            enquete, score=score, commentaire=commentaire)
+        return Response(self.get_serializer(enquete).data)
+
+    @action(detail=False, methods=['get'])
+    def score(self, request):
+        return Response(services.score_nps(request.user.company))
+
+
+class AvisClientViewSet(_ComptaBaseViewSet):
+    """Avis / témoignages clients + push Google Reviews (FG239). La société est
+    posée côté serveur ; ``recevoir`` enregistre la note/témoignage ;
+    ``pousser_google`` route l'avis vers Google (NO-OP si l'URL société n'est
+    pas configurée — aucune API payante)."""
+    queryset = AvisClient.objects.all()
+    serializer_class = AvisClientSerializer
+    filter_backends = [filters.OrderingFilter]
+    ordering_fields = ['date_creation']
+
+    @action(detail=True, methods=['post'])
+    def recevoir(self, request, pk=None):
+        avis = self.get_object()
+        if avis.statut == AvisClient.Statut.SOLLICITE:
+            note = request.data.get('note')
+            temoignage = request.data.get('temoignage')
+            if note is not None:
+                avis.note = max(1, min(5, int(note)))
+            if temoignage is not None:
+                avis.temoignage = temoignage
+            avis.statut = AvisClient.Statut.RECU
+            avis.save(update_fields=['note', 'temoignage', 'statut'])
+        return Response(self.get_serializer(avis).data)
+
+    @action(detail=True, methods=['post'])
+    def pousser_google(self, request, pk=None):
+        avis = self.get_object()
+        services.pousser_avis_google(avis)
+        return Response(self.get_serializer(avis).data)
+
+
+class CompteFideliteViewSet(_ComptaBaseViewSet):
+    """Comptes de fidélité clients (points + paliers, FG240). La société est
+    posée côté serveur ; points/palier sont recalculés côté serveur depuis les
+    mouvements. ``crediter`` ajoute des points (parrainage étendu, achat…)."""
+    queryset = CompteFidelite.objects.all()
+    serializer_class = CompteFideliteSerializer
+    filter_backends = [filters.OrderingFilter]
+    ordering_fields = ['points', 'date_creation']
+
+    @action(detail=True, methods=['post'])
+    def crediter(self, request, pk=None):
+        compte = self.get_object()
+        points = request.data.get('points')
+        if points is None:
+            return Response(
+                {'detail': 'points requis.'},
+                status=status.HTTP_400_BAD_REQUEST)
+        motif = request.data.get('motif', '')
+        services.appliquer_mouvement_fidelite(
+            compte, points=int(points), motif=motif)
+        compte.refresh_from_db()
+        return Response(self.get_serializer(compte).data)
+
+
+class MouvementFideliteViewSet(_ComptaBaseViewSet):
+    """Mouvements de points de fidélité (FG240). La création recalcule le solde
+    et le palier du compte côté serveur (jamais depuis le corps)."""
+    queryset = MouvementFidelite.objects.all()
+    serializer_class = MouvementFideliteSerializer
+    filter_backends = [filters.OrderingFilter]
+    ordering_fields = ['date_creation']
+
+    def perform_create(self, serializer):
+        # On ne persiste PAS via serializer.save() : le service crée le
+        # mouvement ET recalcule le compte de façon atomique.
+        data = serializer.validated_data
+        mouvement = services.appliquer_mouvement_fidelite(
+            data['compte'], points=data['points'],
+            motif=data.get('motif', ''))
+        serializer.instance = mouvement
+
+
+class RegleUpsellViewSet(_ComptaBaseViewSet):
+    """Règles d'upsell / cross-sell (FG241). La société est posée côté serveur ;
+    ``suggestions`` évalue un contexte client (drapeaux) et renvoie les
+    suggestions actives déclenchées, triées par priorité."""
+    queryset = RegleUpsell.objects.all()
+    serializer_class = RegleUpsellSerializer
+    filter_backends = [filters.OrderingFilter]
+    ordering_fields = ['priorite', 'date_creation']
+
+    @action(detail=False, methods=['post'])
+    def suggestions(self, request):
+        contexte = request.data.get('contexte') or {}
+        if not isinstance(contexte, dict):
+            return Response(
+                {'detail': 'contexte doit être un objet de drapeaux.'},
+                status=status.HTTP_400_BAD_REQUEST)
+        regles = services.suggestions_upsell(request.user.company, contexte)
+        return Response(self.get_serializer(regles, many=True).data)
+
+
+class AbonnementMonitoringViewSet(_ComptaBaseViewSet):
+    """Abonnements de monitoring (supervision récurrente, FG244). La société est
+    posée côté serveur ; la 1re échéance est calculée à la création ;
+    ``renouveler`` avance l'échéance ; ``suspendre`` / ``resilier`` changent le
+    statut ; ``a_echeance`` liste les abonnements arrivant à échéance."""
+    queryset = AbonnementMonitoring.objects.all()
+    serializer_class = AbonnementMonitoringSerializer
+    filter_backends = [filters.OrderingFilter]
+    ordering_fields = ['prochaine_echeance', 'date_creation']
+
+    def perform_create(self, serializer):
+        abonnement = serializer.save(company=self.request.user.company)
+        services.renouveler_abonnement_monitoring(abonnement)
+
+    @action(detail=True, methods=['post'])
+    def renouveler(self, request, pk=None):
+        abonnement = self.get_object()
+        services.renouveler_abonnement_monitoring(abonnement)
+        return Response(self.get_serializer(abonnement).data)
+
+    @action(detail=True, methods=['post'])
+    def suspendre(self, request, pk=None):
+        abonnement = self.get_object()
+        if abonnement.statut == AbonnementMonitoring.Statut.ACTIF:
+            abonnement.statut = AbonnementMonitoring.Statut.SUSPENDU
+            abonnement.save(update_fields=['statut'])
+        return Response(self.get_serializer(abonnement).data)
+
+    @action(detail=True, methods=['post'])
+    def resilier(self, request, pk=None):
+        abonnement = self.get_object()
+        abonnement.statut = AbonnementMonitoring.Statut.RESILIE
+        abonnement.save(update_fields=['statut'])
+        return Response(self.get_serializer(abonnement).data)
+
+    @action(detail=False, methods=['get'])
+    def a_echeance(self, request):
+        """Abonnements actifs dont l'échéance tombe dans ``within`` jours."""
+        from datetime import timedelta
+        from django.utils import timezone
+        try:
+            within = int(request.query_params.get('within', 30))
+        except (TypeError, ValueError):
+            within = 30
+        today = timezone.localdate()
+        limite = today + timedelta(days=max(0, within))
+        qs = (self.get_queryset()
+              .filter(statut=AbonnementMonitoring.Statut.ACTIF,
+                      prochaine_echeance__isnull=False,
+                      prochaine_echeance__lte=limite)
+              .order_by('prochaine_echeance'))
+        page = self.paginate_queryset(qs)
+        if page is not None:
+            return self.get_paginated_response(
+                self.get_serializer(page, many=True).data)
+        return Response(self.get_serializer(qs, many=True).data)
