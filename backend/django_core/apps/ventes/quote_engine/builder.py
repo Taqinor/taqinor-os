@@ -544,6 +544,19 @@ def build_quote_data(devis, pdf_options=None) -> dict:
     _autoconso_sans = float(etude.get("autoconso_sans") or 0) or None
     _autoconso_avec = float(etude.get("autoconso_avec") or 0) or None
     from .pricing import AUTOCONSO_SANS, AUTOCONSO_AVEC
+    # DC2 — repères ROI de la société (source unique CompanyProfile via le
+    # sélecteur parametres) : productible annuel et tarif ONEE de repli. Le
+    # productible pilote la production annuelle et donc le ROI, même à l'écran ;
+    # le tarif ONEE ne s'applique qu'en dernier repli (aucune donnée de conso),
+    # de sorte que le simulateur et le PDF ne divergent plus.
+    _tariff = {}
+    try:
+        from apps.parametres.selectors import tariff_for
+        _tariff = tariff_for(getattr(devis, "company", None))
+    except Exception:  # noqa: BLE001 — un PDF/une liste ne casse jamais ici
+        _tariff = {}
+    _productible = _tariff.get("productible_kwh_kwc") or None
+    _onee_tarif = _tariff.get("onee_tarif_kwh") or None
     roi_kwargs = dict(
         conso_annuelle_kwh=float(_conso_annuelle) if _conso_annuelle else None,
         utility=_utility or None,
@@ -551,6 +564,8 @@ def build_quote_data(devis, pdf_options=None) -> dict:
         tranches_override=_tranches_override or None,
         autoconso_sans=_autoconso_sans if _autoconso_sans else AUTOCONSO_SANS,
         autoconso_avec=_autoconso_avec if _autoconso_avec else AUTOCONSO_AVEC,
+        productible=_productible,
+        fallback_tarif_kwh=_onee_tarif,
     )
     roi = calculate_savings_roi(puissance_kwc, total_sans, total_avec, **roi_kwargs)
     if etude.get("production_annuelle"):
