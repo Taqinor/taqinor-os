@@ -12,8 +12,10 @@ import GlobalSearch from './GlobalSearch'
 import NotificationBell from './NotificationBell'
 import ChatBell from './ChatBell'
 import Breadcrumbs from './Breadcrumbs'
+import LanguageSwitcher from './LanguageSwitcher'
 import { titleFor } from './routes.meta'
 import { ThemeToggle } from '../../design/ThemeToggle'
+import { useT } from '../../i18n'
 
 // I35 — Déclenche la palette de commandes (⌘K) construite par l'autre lane,
 // qui écoute cet événement exact. On ne construit PAS la palette ici.
@@ -28,8 +30,11 @@ export default function Header({ onMenu }) {
   const navigate = useNavigate()
   const dispatch = useDispatch()
   const user = useSelector((state) => state.auth.user)
+  const t = useT()
 
-  const title = titleFor(location.pathname)
+  // N93 — titre de page traduit via t() ; FR reste le repli (titleFor accepte
+  // le traducteur et retombe sur le libellé FR pour tout titre non couvert).
+  const title = titleFor(location.pathname, t)
   const username = user?.username ?? 'Utilisateur'
 
   // Le raccourci clavier global ⌘K / Ctrl+K est capté dans GlobalSearch (monté
@@ -77,6 +82,8 @@ export default function Header({ onMenu }) {
         </button>
 
         <div className="header-user">
+          {/* N93 — sélecteur de langue d'interface (FR / EN / العربية). */}
+          <LanguageSwitcher />
           <ThemeToggle />
           {/* FG350 — bascule du tiroir Copilote (agent FastAPI) accessible
               partout dans l'app shell. */}

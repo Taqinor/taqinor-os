@@ -12,6 +12,8 @@ import { logoutUser } from '../../features/auth/store/authSlice'
 // UX1 — Sections de navigation des modules « coquille », enregistrées par
 // chaque module via `features/<module>/module.config.jsx` (aucun couplage ici).
 import { moduleNavSections } from '../../router/moduleRoutes'
+// N93 — libellés de la coquille traduits (nav + sections). FR = repli.
+import { useT } from '../../i18n'
 
 // FG16 — ancres du guide d'accueil : map `to` → valeur `data-coach` posée sur
 // le lien correspondant, pour que le spotlight des coachmarks puisse le cibler.
@@ -84,103 +86,106 @@ const ROLE_META = {
   normal:      { label: 'Utilisateur',    icon: I.user_single },
 }
 
+// N93 — chaque libellé porte une clé i18n `k` (nav.*) et chaque section une
+// `labelKey` (nav.section.*). Le libellé FR reste en dur comme REPLI (rendu
+// identique quand locale=fr, et si une clé venait à manquer).
 const NAV_SECTIONS = [
   {
     label: null,
     items: [
-      { to: '/dashboard',            label: 'Dashboard',        icon: I.dashboard,    roles: ['normal','responsable','admin'] },
-      { to: '/messages',             label: 'Messages',         icon: I.messages,     roles: ['normal','responsable','admin'] },
+      { to: '/dashboard',            label: 'Dashboard',        k: 'nav.dashboard',  icon: I.dashboard,    roles: ['normal','responsable','admin'] },
+      { to: '/messages',             label: 'Messages',         k: 'nav.messages',   icon: I.messages,     roles: ['normal','responsable','admin'] },
     ],
   },
   {
-    label: 'STOCK',
+    label: 'STOCK', labelKey: 'nav.section.stock',
     items: [
-      { to: '/stock',                label: 'Produits',         icon: I.produits,     roles: ['normal','responsable','admin'] },
-      { to: '/stock/categories',     label: 'Catégories & marques', icon: I.equipements, roles: ['responsable','admin'] },
-      { to: '/stock/fournisseurs',   label: 'Fournisseurs',     icon: I.fournisseurs, roles: ['responsable','admin'] },
-      { to: '/stock/mouvements',     label: 'Mouvements',       icon: I.mouvements,   roles: ['normal','responsable','admin'] },
-      { to: '/stock/bons-commande-fournisseur', label: 'Commandes fournisseur', icon: I.cmd_fourn, roles: ['responsable','admin'] },
-      { to: '/stock/receptions-fournisseur', label: 'Réceptions fournisseur', icon: I.reception, roles: ['responsable','admin'] },
-      { to: '/stock/factures-fournisseur', label: 'Factures fournisseur', icon: I.factures, roles: ['responsable','admin'] },
-      { to: '/stock/retours-fournisseur', label: 'Retours fournisseur', icon: I.retour, roles: ['responsable','admin'] },
-      { to: '/stock/ocr-import',     label: 'Import OCR',       icon: I.ocr_import,   roles: ['responsable','admin'] },
+      { to: '/stock',                label: 'Produits',         k: 'nav.produits',   icon: I.produits,     roles: ['normal','responsable','admin'] },
+      { to: '/stock/categories',     label: 'Catégories & marques', k: 'nav.categories', icon: I.equipements, roles: ['responsable','admin'] },
+      { to: '/stock/fournisseurs',   label: 'Fournisseurs',     k: 'nav.fournisseurs', icon: I.fournisseurs, roles: ['responsable','admin'] },
+      { to: '/stock/mouvements',     label: 'Mouvements',       k: 'nav.mouvements', icon: I.mouvements,   roles: ['normal','responsable','admin'] },
+      { to: '/stock/bons-commande-fournisseur', label: 'Commandes fournisseur', k: 'nav.commandes_fournisseur', icon: I.cmd_fourn, roles: ['responsable','admin'] },
+      { to: '/stock/receptions-fournisseur', label: 'Réceptions fournisseur', k: 'nav.receptions_fournisseur', icon: I.reception, roles: ['responsable','admin'] },
+      { to: '/stock/factures-fournisseur', label: 'Factures fournisseur', k: 'nav.factures_fournisseur', icon: I.factures, roles: ['responsable','admin'] },
+      { to: '/stock/retours-fournisseur', label: 'Retours fournisseur', k: 'nav.retours_fournisseur', icon: I.retour, roles: ['responsable','admin'] },
+      { to: '/stock/ocr-import',     label: 'Import OCR',       k: 'nav.import_ocr', icon: I.ocr_import,   roles: ['responsable','admin'] },
     ],
   },
   {
-    label: 'CRM',
+    label: 'CRM', labelKey: 'nav.section.crm',
     items: [
-      { to: '/activites',            label: 'Mes activités',    icon: I.agenda,       roles: ['normal','responsable','admin'] },
-      { to: '/calendrier',           label: 'Calendrier',       icon: I.calendrier,   roles: ['normal','responsable','admin'] },
-      { to: '/crm',                  label: 'Clients',          icon: I.clients,      roles: ['normal','responsable','admin'] },
-      { to: '/crm/leads',            label: 'Leads',            icon: I.leads,        roles: ['normal','responsable','admin'] },
-      { to: '/carte',                label: 'Carte',            icon: I.carte,        roles: ['normal','responsable','admin'] },
-      { to: '/crm/parrainage',       label: 'Parrainage',       icon: I.parrainage,   roles: ['normal','responsable','admin'] },
+      { to: '/activites',            label: 'Mes activités',    k: 'nav.activites',  icon: I.agenda,       roles: ['normal','responsable','admin'] },
+      { to: '/calendrier',           label: 'Calendrier',       k: 'nav.calendrier', icon: I.calendrier,   roles: ['normal','responsable','admin'] },
+      { to: '/crm',                  label: 'Clients',          k: 'nav.clients',    icon: I.clients,      roles: ['normal','responsable','admin'] },
+      { to: '/crm/leads',            label: 'Leads',            k: 'nav.leads',      icon: I.leads,        roles: ['normal','responsable','admin'] },
+      { to: '/carte',                label: 'Carte',            k: 'nav.carte',      icon: I.carte,        roles: ['normal','responsable','admin'] },
+      { to: '/crm/parrainage',       label: 'Parrainage',       k: 'nav.parrainage', icon: I.parrainage,   roles: ['normal','responsable','admin'] },
     ],
   },
   {
-    label: 'VENTES',
+    label: 'VENTES', labelKey: 'nav.section.ventes',
     items: [
-      { to: '/ventes/devis',         label: 'Devis',            icon: I.devis,        roles: ['normal','responsable','admin'] },
-      { to: '/ventes/bons-commande', label: 'Bons de commande', icon: I.bons_cmd,     roles: ['normal','responsable','admin'] },
-      { to: '/ventes/factures',      label: 'Factures',         icon: I.factures,     roles: ['normal','responsable','admin'] },
-      { to: '/ventes/avoirs',        label: 'Avoirs',           icon: I.avoir,        roles: ['normal','responsable','admin'] },
-      { to: '/ventes/paiements',     label: 'Encaissements',    icon: I.wallet,       roles: ['normal','responsable','admin'] },
-      { to: '/ventes/relances',      label: 'Relances / Impayés', icon: I.agenda,     roles: ['responsable','admin'] },
+      { to: '/ventes/devis',         label: 'Devis',            k: 'nav.devis',      icon: I.devis,        roles: ['normal','responsable','admin'] },
+      { to: '/ventes/bons-commande', label: 'Bons de commande', k: 'nav.bons_commande', icon: I.bons_cmd,  roles: ['normal','responsable','admin'] },
+      { to: '/ventes/factures',      label: 'Factures',         k: 'nav.factures',   icon: I.factures,     roles: ['normal','responsable','admin'] },
+      { to: '/ventes/avoirs',        label: 'Avoirs',           k: 'nav.avoirs',     icon: I.avoir,        roles: ['normal','responsable','admin'] },
+      { to: '/ventes/paiements',     label: 'Encaissements',    k: 'nav.encaissements', icon: I.wallet,    roles: ['normal','responsable','admin'] },
+      { to: '/ventes/relances',      label: 'Relances / Impayés', k: 'nav.relances', icon: I.agenda,      roles: ['responsable','admin'] },
     ],
   },
   {
-    label: 'CHANTIERS',
+    label: 'CHANTIERS', labelKey: 'nav.section.chantiers',
     items: [
-      { to: '/ma-journee',           label: 'Ma journée',       icon: I.agenda,       roles: ['normal','responsable','admin'] },
-      { to: '/chantiers',            label: 'Chantiers',        icon: I.chantiers,    roles: ['normal','responsable','admin'] },
-      { to: '/interventions',        label: 'Interventions',    icon: I.outillage,    roles: ['normal','responsable','admin'] },
-      { to: '/parc',                 label: 'Parc installé',    icon: I.equipements,  roles: ['normal','responsable','admin'] },
-      { to: '/production',           label: 'Production',       icon: I.production,   roles: ['normal','responsable','admin'] },
-      { to: '/outillage',            label: 'Outillage',        icon: I.outillage,    roles: ['normal','responsable','admin'] },
+      { to: '/ma-journee',           label: 'Ma journée',       k: 'nav.ma_journee', icon: I.agenda,       roles: ['normal','responsable','admin'] },
+      { to: '/chantiers',            label: 'Chantiers',        k: 'nav.chantiers',  icon: I.chantiers,    roles: ['normal','responsable','admin'] },
+      { to: '/interventions',        label: 'Interventions',    k: 'nav.interventions', icon: I.outillage, roles: ['normal','responsable','admin'] },
+      { to: '/parc',                 label: 'Parc installé',    k: 'nav.parc',       icon: I.equipements,  roles: ['normal','responsable','admin'] },
+      { to: '/production',           label: 'Production',       k: 'nav.production', icon: I.production,   roles: ['normal','responsable','admin'] },
+      { to: '/outillage',            label: 'Outillage',        k: 'nav.outillage',  icon: I.outillage,    roles: ['normal','responsable','admin'] },
     ],
   },
   {
-    label: 'APRÈS-VENTE',
+    label: 'APRÈS-VENTE', labelKey: 'nav.section.apres_vente',
     items: [
-      { to: '/equipements',          label: 'Équipements',      icon: I.equipements,  roles: ['normal','responsable','admin'] },
-      { to: '/sav',                  label: 'Tickets SAV',      icon: I.sav,          roles: ['normal','responsable','admin'] },
-      { to: '/sav/contrats',         label: 'Contrats maintenance', icon: I.sav,      roles: ['responsable','admin'] },
+      { to: '/equipements',          label: 'Équipements',      k: 'nav.equipements', icon: I.equipements, roles: ['normal','responsable','admin'] },
+      { to: '/sav',                  label: 'Tickets SAV',      k: 'nav.tickets_sav', icon: I.sav,         roles: ['normal','responsable','admin'] },
+      { to: '/sav/contrats',         label: 'Contrats maintenance', k: 'nav.contrats_maintenance', icon: I.sav, roles: ['responsable','admin'] },
     ],
   },
   {
-    label: 'DOCUMENTS',
+    label: 'DOCUMENTS', labelKey: 'nav.section.documents',
     items: [
-      { to: '/ged',                  label: 'Documents (GED)',  icon: I.documents,    roles: ['normal','responsable','admin'] },
+      { to: '/ged',                  label: 'Documents (GED)',  k: 'nav.documents_ged', icon: I.documents, roles: ['normal','responsable','admin'] },
     ],
   },
   {
-    label: 'INTELLIGENCE',
+    label: 'INTELLIGENCE', labelKey: 'nav.section.intelligence',
     items: [
-      { to: '/ia/ocr',               label: 'OCR',              icon: I.ocr,          roles: ['responsable','admin'] },
-      { to: '/ia/agent',             label: 'Agent IA',         icon: I.agent_ia,     roles: ['admin'] },
+      { to: '/ia/ocr',               label: 'OCR',              k: 'nav.ocr',        icon: I.ocr,          roles: ['responsable','admin'] },
+      { to: '/ia/agent',             label: 'Agent IA',         k: 'nav.agent_ia',   icon: I.agent_ia,     roles: ['admin'] },
     ],
   },
   {
-    label: 'ANALYSE',
+    label: 'ANALYSE', labelKey: 'nav.section.analyse',
     items: [
-      { to: '/reporting',            label: 'Reporting',        icon: I.reporting,    roles: ['responsable','admin'] },
-      { to: '/rapports',             label: 'Rapports',         icon: I.reporting,    roles: ['responsable','admin'] },
-      { to: '/reporting/balance-agee', label: 'Balance âgée',   icon: I.reporting,    roles: ['responsable','admin'] },
-      { to: '/reporting/commercial', label: 'Tableau commercial', icon: I.reporting,  roles: ['responsable','admin'] },
+      { to: '/reporting',            label: 'Reporting',        k: 'nav.reporting',  icon: I.reporting,    roles: ['responsable','admin'] },
+      { to: '/rapports',             label: 'Rapports',         k: 'nav.rapports',   icon: I.reporting,    roles: ['responsable','admin'] },
+      { to: '/reporting/balance-agee', label: 'Balance âgée',   k: 'nav.balance_agee', icon: I.reporting,  roles: ['responsable','admin'] },
+      { to: '/reporting/commercial', label: 'Tableau commercial', k: 'nav.tableau_commercial', icon: I.reporting, roles: ['responsable','admin'] },
     ],
   },
   {
-    label: 'ADMINISTRATION',
+    label: 'ADMINISTRATION', labelKey: 'nav.section.administration',
     items: [
-      { to: '/admin/users',          label: 'Utilisateurs',     icon: I.utilisateurs,  roles: ['responsable','admin'] },
-      { to: '/admin/roles',          label: 'Rôles',            icon: I.roles_icon,    roles: ['responsable','admin'] },
+      { to: '/admin/users',          label: 'Utilisateurs',     k: 'nav.utilisateurs', icon: I.utilisateurs, roles: ['responsable','admin'] },
+      { to: '/admin/roles',          label: 'Rôles',            k: 'nav.roles',      icon: I.roles_icon,    roles: ['responsable','admin'] },
       // Journal d'activité — visible UNIQUEMENT avec la permission dédiée
       // (Directeur par défaut), indépendamment du palier de menu.
-      { to: '/journal',              label: "Journal d'activité", icon: I.journal,    roles: ['normal','responsable','admin'], perm: 'journal_activite_voir' },
-      { to: '/parametres',           label: 'Paramètres',       icon: I.parametres,    roles: ['responsable','admin'] },
+      { to: '/journal',              label: "Journal d'activité", k: 'nav.journal',  icon: I.journal,    roles: ['normal','responsable','admin'], perm: 'journal_activite_voir' },
+      { to: '/parametres',           label: 'Paramètres',       k: 'nav.parametres', icon: I.parametres,    roles: ['responsable','admin'] },
       // N97 — export configurable & sauvegarde : réservé à l'administrateur
       // (l'endpoint backend exige le rôle admin).
-      { to: '/parametres/export',    label: 'Export / Sauvegarde', icon: I.export, roles: ['admin'] },
+      { to: '/parametres/export',    label: 'Export / Sauvegarde', k: 'nav.export_sauvegarde', icon: I.export, roles: ['admin'] },
     ],
   },
 ]
@@ -192,6 +197,11 @@ export default function Sidebar({ collapsed, onToggle, onNavigate }) {
   const permissions = useSelector((s) => s.auth.permissions) || []
   const companyName = useSelector((s) => s.parametres.profile?.nom) || 'TAQINOR ERP'
   const roleMeta    = ROLE_META[role] ?? ROLE_META.normal
+  const t           = useT()
+
+  // N93 — traduit un libellé de la coquille via sa clé i18n, en gardant le
+  // libellé FR en dur comme repli (modules « coquille » sans clé → FR inchangé).
+  const tr = (key, fallback) => (key ? t(key) : fallback)
 
   // UX1 — Les modules « coquille » s'insèrent JUSTE AVANT « Administration »
   // (qui reste la dernière section), sans que la Sidebar connaisse chaque module.
@@ -256,9 +266,11 @@ export default function Sidebar({ collapsed, onToggle, onNavigate }) {
           return (
             <div key={si} className="sidebar-section">
               {section.label && !collapsed && (
-                <div className="sidebar-section-label">{section.label}</div>
+                <div className="sidebar-section-label">{tr(section.labelKey, section.label)}</div>
               )}
-              {items.map(item => (
+              {items.map(item => {
+                const label = tr(item.k, item.label)
+                return (
                 <NavLink
                   key={item.to}
                   to={item.to}
@@ -266,7 +278,7 @@ export default function Sidebar({ collapsed, onToggle, onNavigate }) {
                   // FG16 — ancres du guide d'accueil (coachmarks) sur quelques
                   // liens clés : le spotlight cible ces attributs `data-coach`.
                   data-coach={COACH_ANCHORS[item.to]}
-                  title={collapsed ? item.label : undefined}
+                  title={collapsed ? label : undefined}
                   onClick={onNavigate}
                   // I135 — l'item actif porte aria-current="page" : NavLink le
                   // pose automatiquement sur le lien actif (valeur par défaut
@@ -274,9 +286,10 @@ export default function Sidebar({ collapsed, onToggle, onNavigate }) {
                   className={({ isActive }) => `sidebar-nav-item${isActive ? ' active' : ''}`}
                 >
                   <span className="sidebar-nav-icon">{item.icon}</span>
-                  {!collapsed && <span className="sidebar-nav-label">{item.label}</span>}
+                  {!collapsed && <span className="sidebar-nav-label">{label}</span>}
                 </NavLink>
-              ))}
+                )
+              })}
             </div>
           )
         })}
