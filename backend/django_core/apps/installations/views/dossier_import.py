@@ -131,7 +131,13 @@ class DossierImportViewSet(TenantMixin, viewsets.ModelViewSet):
         dossier = self.get_object()
         try:
             resultat = appliquer_landed_cost_au_stock(dossier)
-        except ValueError as exc:
-            return Response({'detail': str(exc)},
-                            status=status.HTTP_400_BAD_REQUEST)
+        except ValueError:
+            # Message fixe et contrôlé (jamais le texte brut de l'exception —
+            # évite toute fuite d'information ; seul ce cas est levé par le
+            # service : dossier sans bon de commande).
+            return Response(
+                {'detail': "Le dossier d'import doit être rattaché à un bon de "
+                           "commande fournisseur pour reporter le coût débarqué "
+                           "dans le coût d'achat."},
+                status=status.HTTP_400_BAD_REQUEST)
         return Response(resultat, status=status.HTTP_200_OK)
