@@ -5,6 +5,10 @@
 // The premium PDF engine computes its own figures server-side — never fed here.
 
 // ── Constantes Maroc (irradiance GHI mensuelle + tarif ONEE) ──────────────────
+// DC9 — MIROIR de la source Python unique
+// (backend apps/ventes/quote_engine/constants.py GHI). Les deux tables DOIVENT
+// rester identiques : un test de parité (test_dc9_ghi_parity.py) échoue sinon.
+// Ne jamais éditer l'une sans répercuter l'autre à l'identique.
 export const GHI = [
   83.99, 96.79, 133.43, 155.30, 175.28, 179.62,
   179.56, 161.17, 137.03, 111.59, 81.91, 74.61,
