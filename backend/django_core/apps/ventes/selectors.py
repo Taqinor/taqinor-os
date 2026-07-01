@@ -75,35 +75,6 @@ TAUX_TVA_REFERENTIEL = {
 }
 
 
-# ── DC25 — UNE source devise + taux de change (FG52) ────────────────────────
-# La devise et le taux de change sont PORTÉS par chaque document (devis/facture)
-# depuis FG52 ; `devise_for` est l'UNIQUE résolveur consommé par devis/facture
-# et l'export UBL/DGI : devise du document → devise par défaut de la société
-# (CompanyProfile.devise_defaut) → repli « MAD ». Les montants restent stockés
-# en MAD (la devise est informative / portée par le document) ; ce résolveur
-# n'introduit AUCUNE conversion — il unifie seulement la SOURCE de la devise,
-# remplaçant les `getattr(..., 'devise') or 'MAD'` épars (dont celui de
-# `dgi_export.build_ubl_xml`).
-def devise_for(document):
-    """Devise + taux de change canoniques d'un document (devis/facture/avoir).
-
-    Renvoie ``(devise, taux_change)`` : la devise portée par le document, sinon
-    la devise par défaut de sa société, sinon « MAD » ; le taux de change porté
-    par le document, sinon 1 (aucune conversion). Source UNIQUE — tout consommateur
-    (PDF, UBL/DGI) doit passer par ici plutôt que lire le champ en direct."""
-    from decimal import Decimal
-    from apps.ventes.utils.company_settings import devise_defaut
-    devise = (getattr(document, 'devise', None) or '').strip().upper()
-    if not devise:
-        devise = devise_defaut(getattr(document, 'company', None))
-    taux = getattr(document, 'taux_change', None)
-    try:
-        taux = Decimal(str(taux)) if taux is not None else Decimal('1')
-    except Exception:
-        taux = Decimal('1')
-    return devise, taux
-
-
 def tva_buckets(lignes, *, fallback_taux, frozen=None):
     """Ventilation TVA canonique (DC23). UNE seule implémentation partagée.
 
