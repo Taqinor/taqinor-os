@@ -120,3 +120,18 @@ class DossierImportViewSet(TenantMixin, viewsets.ModelViewSet):
         montants INTERNES."""
         dossier = self.get_object()
         return Response(selectors.landed_cost_dossier(dossier))
+
+    @action(detail=True, methods=['post'], url_path='appliquer-cout-stock')
+    def appliquer_cout_stock(self, request, pk=None):
+        """DC38 — reporte le coût débarqué (FG316) dans le coût d'achat stock :
+        écrit la quote-part de frais de chaque SKU dans les frais annexes de la
+        ligne du bon de commande d'origine (intégrée au coût moyen pondéré par
+        FG67). Écriture responsable/admin. Montants INTERNES."""
+        from ..services import appliquer_landed_cost_au_stock
+        dossier = self.get_object()
+        try:
+            resultat = appliquer_landed_cost_au_stock(dossier)
+        except ValueError as exc:
+            return Response({'detail': str(exc)},
+                            status=status.HTTP_400_BAD_REQUEST)
+        return Response(resultat, status=status.HTTP_200_OK)

@@ -755,3 +755,46 @@ def generer_picklist_pour_chantier(installation, company, created_by=None,
             designation=getattr(resa.produit, 'nom', None),
             bin=bin_loc, quantite_demandee=resa.quantite, ordre=ordre)
     return pick
+
+
+def appliquer_landed_cost_au_stock(dossier):
+    """DC38 — replie le coût débarqué (FG316) d'un dossier d'import dans le coût
+    d'achat stock : pour chaque ligne de coût débarqué, écrit sa quote-part de
+    frais dans `LigneBonCommandeFournisseur.frais_annexes` du BON DE COMMANDE
+    d'origine, que `stock.average_cost_with_source` intègre déjà (FG67) — aucun
+    champ de coût parallèle (l'intention de DC38).
+
+    Sens de dépendance préservé : on LIT le coût débarqué via nos selectors et on
+    ÉCRIT via `stock.services` (installations → stock). Nécessite un dossier lié à
+    un bon de commande. Renvoie un dict {bon_commande_id, lignes_maj, lignes}.
+    """
+    from apps.stock.services import definir_frais_annexes_ligne_bcf
+    from . import selectors
+
+    bcf_id = dossier.bon_commande_id
+    if not bcf_id:
+        raise ValueError(
+            "Le dossier d'import doit être rattaché à un bon de commande "
+            "fournisseur pour reporter le coût débarqué dans le coût d'achat.")
+
+    landed = selectors.landed_cost_dossier(dossier)
+    lignes_maj = 0
+    detail = []
+    for ligne in landed['lignes']:
+        produit_id = ligne.get('produit_id')
+        if not produit_id:
+            continue
+        n = definir_frais_annexes_ligne_bcf(
+            dossier.company, bcf_id, produit_id,
+            ligne.get('quote_part_frais') or 0)
+        lignes_maj += n
+        detail.append({
+            'produit_id': produit_id,
+            'quote_part_frais': ligne.get('quote_part_frais'),
+            'lignes_bcf_maj': n,
+        })
+    return {
+        'bon_commande_id': bcf_id,
+        'lignes_maj': lignes_maj,
+        'lignes': detail,
+    }
