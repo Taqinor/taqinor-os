@@ -5,6 +5,7 @@ from . import views
 from .views_statuses import StatutConfigViewSet
 from .views_email import EmailTemplateViewSet
 from .views_approvals import ApprovalPolicyViewSet
+from .views_translations import TranslationOverrideViewSet
 
 # N58 — configuration d'affichage des statuts métier (chantier/SAV/BC).
 # Routeur isolé (registre dédié) pour ne pas perturber les vues fonctions.
@@ -22,6 +23,11 @@ emails_router.register(r'email-templates', EmailTemplateViewSet,
 approvals_router = DefaultRouter()
 approvals_router.register(r'approbations', ApprovalPolicyViewSet,
                           basename='approval-policy')
+
+# N94 — surcharges de traduction de l'interface (par langue/clé). Routeur isolé.
+translations_router = DefaultRouter()
+translations_router.register(r'traductions', TranslationOverrideViewSet,
+                             basename='translation-override')
 
 urlpatterns = [
     path('', views.get_profile),
@@ -55,4 +61,6 @@ urlpatterns = [
     path('', include(emails_router.urls)),
     # FG25 — politiques d'approbation configurables (CRUD).
     path('', include(approvals_router.urls)),
+    # N94 — surcharges de traduction de l'interface (CRUD + bulk + effective).
+    path('', include(translations_router.urls)),
 ]

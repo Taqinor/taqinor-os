@@ -71,6 +71,22 @@ class Client(models.Model):
     is_anonymized = models.BooleanField(default=False)
     anonymized_at = models.DateTimeField(null=True, blank=True)
 
+    # N93 — langue des documents client-facing (facture / devis). Sert à marquer,
+    # par client, la langue dans laquelle ses PDF doivent être produits. Le RENDU
+    # Arabe du PDF (RTL + police arabe dans le moteur premium) est un chantier de
+    # suivi distinct ; ce champ ne fait que porter la préférence. FR par défaut.
+    class LangueDocument(models.TextChoices):
+        FR = 'fr', 'Français'
+        AR = 'ar', 'العربية'
+
+    langue_document = models.CharField(
+        max_length=2,
+        choices=LangueDocument.choices,
+        default=LangueDocument.FR,
+        verbose_name='Langue des documents',
+        help_text='Langue des factures / devis générés pour ce client.',
+    )
+
     class Meta:
         verbose_name = "Client"
         verbose_name_plural = "Clients"

@@ -410,6 +410,32 @@ def _jours_ouvres(debut, fin):
     return jours
 
 
+def membres_intervention(interv):
+    """DC40 — membres (ids d'utilisateurs) affectés à une intervention, résolus
+    via l'équipe terrain CANONIQUE.
+
+    Une seule DÉFINITION d'équipe : quand ``equipe_ref`` (FK → ``Equipe``) est
+    posée, les membres proviennent de l'équipe canonique (``Equipe.membres``) ;
+    sinon on retombe sur le M2M ad-hoc historique (``Intervention.equipe``). Le
+    ``technicien`` principal est toujours inclus s'il existe. Utilise les caches
+    de prefetch (``.all()``) — jamais de requête par intervention (pas de N+1).
+
+    Renvoie un ``set`` d'ids d'utilisateurs (sans doublon)."""
+    membres = set()
+    if interv.technicien_id:
+        membres.add(interv.technicien_id)
+    equipe_ref = getattr(interv, 'equipe_ref', None)
+    if equipe_ref is not None:
+        # Équipe CANONIQUE : les membres proviennent d'``Equipe.membres``.
+        for membre in equipe_ref.membres.all():
+            membres.add(membre.id)
+    else:
+        # Repli sur le M2M ad-hoc historique de l'intervention.
+        for membre in interv.equipe.all():
+            membres.add(membre.id)
+    return membres
+
+
 def plan_de_charge_equipes(company, debut, fin, heures_par_jour=8):
     """FG299 — plan de charge des équipes terrain : capacité vs affecté par
     technicien sur la fenêtre [debut, fin] inclusive, avec drapeau de
@@ -449,24 +475,22 @@ def plan_de_charge_equipes(company, debut, fin, heures_par_jour=8):
     jours_ouvres = _jours_ouvres(debut, fin)
     capacite_heures = jours_ouvres * heures_par_jour
 
+    # DC40 — on résout les membres via l'équipe terrain CANONIQUE
+    # (``equipe_ref``) quand elle est posée, sinon via le M2M ad-hoc historique.
+    # On prefetch les DEUX pour éviter tout N+1 (``membres_intervention``).
     qs = (Intervention.objects
           .filter(company=company)
           .filter(date_prevue__gte=debut, date_prevue__lte=fin)
-          .prefetch_related('equipe')
-          .only('id', 'technicien_id', 'date_prevue'))
+          .prefetch_related('equipe', 'equipe_ref__membres')
+          .only('id', 'technicien_id', 'date_prevue', 'equipe_ref_id'))
 
     # {user_id|None: set(intervention_id)} — un set évite de compter deux fois
     # une intervention où un technicien est À LA FOIS principal et membre.
     affecte = OrderedDict()
     non_assigne = set()
     for interv in qs:
-        membres = set()
-        if interv.technicien_id:
-            membres.add(interv.technicien_id)
-        # Utilise le cache de prefetch (``.all()``) plutôt qu'un values_list qui
-        # rejouerait une requête par intervention (N+1).
-        for membre in interv.equipe.all():
-            membres.add(membre.id)
+        # Membres résolus via l'équipe canonique (repli M2M ad-hoc) — DC40.
+        membres = membres_intervention(interv)
         if not membres:
             non_assigne.add(interv.id)
             continue
@@ -607,13 +631,14 @@ def nivellement_charge(company, debut, fin, heures_par_jour=8):
     if debut is None or fin is None or fin < debut:
         return base
 
+    # DC40 — résolution des membres via l'équipe CANONIQUE (repli M2M ad-hoc).
     qs = (Intervention.objects
           .filter(company=company)
           .filter(date_prevue__gte=debut, date_prevue__lte=fin)
           .filter(date_prevue__isnull=False)
-          .prefetch_related('equipe')
+          .prefetch_related('equipe', 'equipe_ref__membres')
           .only('id', 'installation_id', 'type_intervention',
-                'technicien_id', 'date_prevue'))
+                'technicien_id', 'date_prevue', 'equipe_ref_id'))
 
     # {user_id: OrderedDict{intervention_id: interv}} — affectation par technicien.
     # Un OrderedDict évite de compter deux fois une intervention où un technicien
@@ -624,11 +649,7 @@ def nivellement_charge(company, debut, fin, heures_par_jour=8):
     jours_occupes = {}
 
     for interv in qs.order_by('date_prevue', 'id'):
-        membres = set()
-        if interv.technicien_id:
-            membres.add(interv.technicien_id)
-        for membre in interv.equipe.all():
-            membres.add(membre.id)
+        membres = membres_intervention(interv)
         for membre_id in membres:
             affecte.setdefault(membre_id, OrderedDict())[interv.id] = interv
             jours_occupes.setdefault(membre_id, set()).add(interv.date_prevue)
@@ -813,15 +834,16 @@ def conflits_affectation(company, debut, fin):
     if debut is None or fin is None or fin < debut:
         return base
 
+    # DC40 — membres résolus via l'équipe CANONIQUE (repli M2M ad-hoc).
     qs = (Intervention.objects
           .filter(company=company)
           .filter(date_prevue__gte=debut, date_prevue__lte=fin)
           .filter(date_prevue__isnull=False)
           .select_related('camionnette')
-          .prefetch_related('equipe')
+          .prefetch_related('equipe', 'equipe_ref__membres')
           .only('id', 'installation_id', 'type_intervention', 'statut',
                 'date_prevue', 'technicien_id', 'camionnette_id',
-                'camionnette__nom'))
+                'equipe_ref_id', 'camionnette__nom'))
 
     # (jour, type, ressource_id) → liste d'interventions partageant le créneau.
     # OrderedDict pour un parcours déterministe (ordre d'insertion = tri date qs).
@@ -839,12 +861,11 @@ def conflits_affectation(company, debut, fin):
 
     for interv in qs.order_by('date_prevue', 'id'):
         jour = interv.date_prevue
-        if interv.technicien_id:
-            tech_ids.add(interv.technicien_id)
-            _add(jour, 'technicien', interv.technicien_id, interv)
-        for membre in interv.equipe.all():
-            tech_ids.add(membre.id)
-            _add(jour, 'technicien', membre.id, interv)
+        # Membres = technicien principal + équipe canonique (repli ad-hoc) —
+        # ``_add`` déduplique déjà par créneau, mais on couvre chaque membre.
+        for membre_id in membres_intervention(interv):
+            tech_ids.add(membre_id)
+            _add(jour, 'technicien', membre_id, interv)
         if interv.camionnette_id:
             camion = getattr(interv, 'camionnette', None)
             nom_camion = getattr(camion, 'nom', None) if camion else None

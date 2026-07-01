@@ -43,11 +43,15 @@ import EmailSection from './EmailSection'
 import ApiWebhooksSection from './ApiWebhooksSection'
 import AvanceSection from './AvanceSection'
 import SecuriteCompteSection from './SecuriteCompteSection'
+import TraductionsSection from './TraductionsSection'
 
 // N96 — onglet « Sécurité du compte » (double authentification 2FA, opt-in).
 // Ajouté localement (sans modifier la liste partagée peConstants.TABS) pour
 // rester dans le périmètre de ce fichier.
 const SECURITE_COMPTE_TAB = { key: 'securite_compte', label: 'Sécurité du compte' }
+// N94 — onglet « Traductions » (surcharges d'interface par langue, sans code).
+// Ajouté localement, même logique que l'onglet N96 (hors peConstants.TABS).
+const TRADUCTIONS_TAB = { key: 'traductions', label: 'Traductions' }
 
 // ── Conteneur de la page Paramètres (D1) ───────────────────────────────────────
 // Toute la logique (état du formulaire, chargements, handlers) vit ici, dans un
@@ -65,8 +69,8 @@ export default function ParametresEntreprise() {
   // L790 — recherche de réglage : saute à l'onglet contenant un libellé.
   const [search, setSearch] = useState('')
   const searchResults = searchSettings(search)
-  // Liste d'onglets affichée = onglets partagés + l'onglet N96 (sécurité 2FA).
-  const allTabs = [...TABS, SECURITE_COMPTE_TAB]
+  // Liste d'onglets affichée = onglets partagés + N96 (2FA) + N94 (traductions).
+  const allTabs = [...TABS, SECURITE_COMPTE_TAB, TRADUCTIONS_TAB]
   const tabLabel = (key) => (allTabs.find(t => t.key === key)?.label ?? key)
   const jumpToTab = (key) => { setTab(key); setSearch('') }
 
@@ -806,6 +810,8 @@ export default function ParametresEntreprise() {
           {tab === 'avance'   && <AvanceSection {...ctx} />}
           {/* N96 — double authentification (2FA, opt-in). Section autonome. */}
           {tab === 'securite_compte' && <SecuriteCompteSection />}
+          {/* N94 — traductions d'interface éditables par langue (autonome). */}
+          {tab === 'traductions' && <TraductionsSection />}
 
           {/* Bouton d'enregistrement du profil (onglets porteurs de champs) */}
           {showSave && saveButton}

@@ -22,6 +22,7 @@ from .program import (
     BudgetProjetViewSet, BudgetEngagementViewSet,
 )
 from .indispo import IndisponibiliteRessourceViewSet
+from .equipe import EquipeViewSet
 from .soustraitant import SousTraitantViewSet
 from .ordre_soustraitance import OrdreSousTraitanceViewSet
 from .facture_soustraitant import (
@@ -85,6 +86,7 @@ __all__ = [
     'BudgetProjetViewSet',
     'BudgetEngagementViewSet',
     'IndisponibiliteRessourceViewSet',
+    'EquipeViewSet',
     'SousTraitantViewSet',
     'OrdreSousTraitanceViewSet',
     'FactureSousTraitantViewSet',
