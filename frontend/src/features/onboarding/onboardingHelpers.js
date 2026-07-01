@@ -24,6 +24,24 @@ export function hasSeenCoachmarks() {
   }
 }
 
+// Sous automatisation navigateur (Playwright / CI e2e), ne PAS ouvrir le guide
+// automatiquement : son fond plein écran intercepterait les clics des tests, et
+// une ouverture auto n'a de sens que pour un humain. Le rejeu manuel depuis les
+// Paramètres reste toujours possible.
+function isAutomatedBrowser() {
+  try {
+    return typeof navigator !== 'undefined' && navigator.webdriver === true
+  } catch {
+    return false
+  }
+}
+
+// Faut-il ouvrir le guide automatiquement au montage ? Seulement si jamais vu
+// ET hors automatisation navigateur.
+export function shouldAutoOpenCoachmarks() {
+  return !hasSeenCoachmarks() && !isAutomatedBrowser()
+}
+
 export function markCoachmarksSeen() {
   try {
     window.localStorage.setItem(SEEN_KEY, String(COACHMARK_VERSION))

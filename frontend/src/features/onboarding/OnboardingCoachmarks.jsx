@@ -13,7 +13,7 @@ import { createPortal } from 'react-dom'
 import { X, ArrowRight, ArrowLeft, Check } from 'lucide-react'
 import { Button } from '../../ui'
 import {
-  hasSeenCoachmarks, markCoachmarksSeen, REPLAY_EVENT,
+  shouldAutoOpenCoachmarks, markCoachmarksSeen, REPLAY_EVENT,
 } from './onboardingHelpers'
 
 // Étapes du guide (texte 100 % français). `target` = sélecteur CSS optionnel.
@@ -54,7 +54,7 @@ const STEPS = [
 const PAD = 8 // marge du halo autour de la cible
 
 export default function OnboardingCoachmarks() {
-  const [open, setOpen] = useState(() => !hasSeenCoachmarks())
+  const [open, setOpen] = useState(() => shouldAutoOpenCoachmarks())
   const [step, setStep] = useState(0)
   const [rect, setRect] = useState(null)
 
