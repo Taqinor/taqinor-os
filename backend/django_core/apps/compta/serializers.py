@@ -32,6 +32,7 @@ from .models import (
     DossierSoumission, PieceSoumission, EcheanceAO, ResultatAO,
     ComptePortailClient, AcceptationDevisPortail, PaiementFacturePortail,
     DocumentClientPortail, JalonChantierPortail, DemandeTicketPortail,
+    Partenaire, SoumissionLeadPartenaire,
 )
 
 
@@ -1824,3 +1825,27 @@ class DemandeTicketPortailSerializer(serializers.ModelSerializer):
             'statut', 'ticket_id', 'date_creation',
         ]
         read_only_fields = ['statut', 'ticket_id', 'date_creation']
+
+
+class PartenaireSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Partenaire
+        fields = [
+            'id', 'nom', 'type_partenaire', 'email', 'telephone',
+            'taux_commission', 'token_acces', 'actif', 'date_creation',
+        ]
+        read_only_fields = ['token_acces', 'date_creation']
+
+
+class SoumissionLeadPartenaireSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = SoumissionLeadPartenaire
+        fields = [
+            'id', 'partenaire', 'nom_prospect', 'telephone_prospect',
+            'email_prospect', 'ville', 'note', 'statut', 'lead_id',
+            'date_soumission',
+        ]
+        read_only_fields = ['statut', 'lead_id', 'date_soumission']
+
+    def validate_partenaire(self, value):
+        return _meme_societe(self, value, 'Partenaire')

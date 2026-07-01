@@ -33,6 +33,7 @@ from .views import (
     ComptePortailClientViewSet, AcceptationDevisPortailViewSet,
     PaiementFacturePortailViewSet, DocumentClientPortailViewSet,
     JalonChantierPortailViewSet, DemandeTicketPortailViewSet,
+    PartenaireViewSet, SoumissionLeadPartenaireViewSet,
 )
 
 router = DefaultRouter()
@@ -114,6 +115,8 @@ router.register(r'paiements-facture-portail', PaiementFacturePortailViewSet)
 router.register(r'documents-client-portail', DocumentClientPortailViewSet)
 router.register(r'jalons-chantier-portail', JalonChantierPortailViewSet)
 router.register(r'demandes-ticket-portail', DemandeTicketPortailViewSet)
+router.register(r'partenaires', PartenaireViewSet)
+router.register(r'soumissions-lead-partenaire', SoumissionLeadPartenaireViewSet)
 
 urlpatterns = [
     path('', include(router.urls)),

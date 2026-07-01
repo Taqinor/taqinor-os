@@ -28,6 +28,7 @@ from apps.compta import services
 from apps.compta.models import (
     AcceptationDevisPortail, PaiementFacturePortail, DocumentClientPortail,
     JalonChantierPortail, DemandeTicketPortail,
+    Partenaire, SoumissionLeadPartenaire,
 )
 
 User = get_user_model()
@@ -279,4 +280,72 @@ class DemandeTicketPortailTests(TestCase):
             company=autre, client_id=45003, sujet='Y')
         api = auth(self.user)
         resp = api.get('/api/django/compta/demandes-ticket-portail/')
+        self.assertEqual(resp.data['count'], 0)
+
+
+# ── FG234 — Portail apporteurs / sous-revendeurs ───────────────────────────
+
+class PartenaireTests(TestCase):
+    def setUp(self):
+        self.co = make_company('fg234', 'FG234')
+        self.user = make_user(self.co, 'fg234-user')
+
+    def test_creation_pose_company_et_token(self):
+        api = auth(self.user)
+        resp = api.post('/api/django/compta/partenaires/', {
+            'nom': 'Apporteur Rabat', 'type_partenaire': 'apporteur',
+            'taux_commission': '5.00',
+            'company': 33333, 'token_acces': 'tricher',  # ignorés
+        }, format='json')
+        self.assertEqual(resp.status_code, 201, resp.content)
+        p = Partenaire.objects.get(id=resp.data['id'])
+        self.assertEqual(p.company_id, self.co.id)
+        self.assertTrue(p.token_acces)
+        self.assertNotEqual(p.token_acces, 'tricher')
+
+    def test_soumission_lead_pose_company(self):
+        api = auth(self.user)
+        p = Partenaire.objects.create(
+            company=self.co, nom='P', token_acces='tok-fg234-a')
+        resp = api.post(
+            '/api/django/compta/soumissions-lead-partenaire/', {
+                'partenaire': p.id, 'nom_prospect': 'M. Client',
+                'ville': 'Casablanca',
+            }, format='json')
+        self.assertEqual(resp.status_code, 201, resp.content)
+        s = SoumissionLeadPartenaire.objects.get(id=resp.data['id'])
+        self.assertEqual(s.company_id, self.co.id)
+        self.assertEqual(s.statut, SoumissionLeadPartenaire.Statut.SOUMIS)
+
+    def test_soumission_partenaire_autre_societe_rejetee(self):
+        autre = make_company('fg234-b', 'FG234B')
+        p_autre = Partenaire.objects.create(
+            company=autre, nom='PA', token_acces='tok-fg234-b')
+        api = auth(self.user)
+        resp = api.post(
+            '/api/django/compta/soumissions-lead-partenaire/', {
+                'partenaire': p_autre.id, 'nom_prospect': 'X',
+            }, format='json')
+        self.assertEqual(resp.status_code, 400)
+
+    def test_qualifier_reference_lead(self):
+        api = auth(self.user)
+        p = Partenaire.objects.create(
+            company=self.co, nom='P', token_acces='tok-fg234-c')
+        s = SoumissionLeadPartenaire.objects.create(
+            company=self.co, partenaire=p, nom_prospect='Y')
+        resp = api.post(
+            '/api/django/compta/soumissions-lead-partenaire/'
+            f'{s.id}/qualifier/', {'lead_id': 707}, format='json')
+        self.assertEqual(resp.status_code, 200, resp.content)
+        s.refresh_from_db()
+        self.assertEqual(s.statut, SoumissionLeadPartenaire.Statut.QUALIFIE)
+        self.assertEqual(s.lead_id, 707)
+
+    def test_isolation_societe(self):
+        autre = make_company('fg234-c', 'FG234C')
+        Partenaire.objects.create(
+            company=autre, nom='Z', token_acces='tok-fg234-d')
+        api = auth(self.user)
+        resp = api.get('/api/django/compta/partenaires/')
         self.assertEqual(resp.data['count'], 0)

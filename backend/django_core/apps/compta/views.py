@@ -42,6 +42,7 @@ from .models import (
     DossierSoumission, PieceSoumission, EcheanceAO, ResultatAO,
     ComptePortailClient, AcceptationDevisPortail, PaiementFacturePortail,
     DocumentClientPortail, JalonChantierPortail, DemandeTicketPortail,
+    Partenaire, SoumissionLeadPartenaire,
 )
 from .serializers import (
     AppelTelephoniqueSerializer, AvancementRevenuSerializer,
@@ -81,6 +82,7 @@ from .serializers import (
     AcceptationDevisPortailSerializer, PaiementFacturePortailSerializer,
     DocumentClientPortailSerializer, JalonChantierPortailSerializer,
     DemandeTicketPortailSerializer,
+    PartenaireSerializer, SoumissionLeadPartenaireSerializer,
 )
 
 
@@ -3547,3 +3549,39 @@ class DemandeTicketPortailViewSet(_ComptaBaseViewSet):
                 demande.ticket_id = ticket_id
             demande.save(update_fields=['statut', 'ticket_id'])
         return Response(self.get_serializer(demande).data)
+
+
+class PartenaireViewSet(_ComptaBaseViewSet):
+    """Partenaires commerciaux (apporteurs / sous-revendeurs / installateurs,
+    FG234/FG237). La société et le token d'accès sont posés côté serveur."""
+    queryset = Partenaire.objects.all()
+    serializer_class = PartenaireSerializer
+    filter_backends = [filters.OrderingFilter]
+    ordering_fields = ['nom', 'date_creation']
+
+    def perform_create(self, serializer):
+        import secrets
+        serializer.save(
+            company=self.request.user.company,
+            token_acces=secrets.token_urlsafe(32))
+
+
+class SoumissionLeadPartenaireViewSet(_ComptaBaseViewSet):
+    """Leads soumis par un partenaire via le portail (FG234). La société est
+    posée côté serveur ; ``qualifier`` avance la soumission et référence le lead
+    créé (par id — le vrai lead vit dans crm, jamais importé ici)."""
+    queryset = SoumissionLeadPartenaire.objects.all()
+    serializer_class = SoumissionLeadPartenaireSerializer
+    filter_backends = [filters.OrderingFilter]
+    ordering_fields = ['date_soumission']
+
+    @action(detail=True, methods=['post'])
+    def qualifier(self, request, pk=None):
+        soumission = self.get_object()
+        lead_id = request.data.get('lead_id')
+        if soumission.statut == SoumissionLeadPartenaire.Statut.SOUMIS:
+            soumission.statut = SoumissionLeadPartenaire.Statut.QUALIFIE
+            if lead_id:
+                soumission.lead_id = lead_id
+            soumission.save(update_fields=['statut', 'lead_id'])
+        return Response(self.get_serializer(soumission).data)

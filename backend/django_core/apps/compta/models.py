@@ -5334,3 +5334,103 @@ class DemandeTicketPortail(models.Model):
 
     def __str__(self):
         return f'Demande SAV #{self.client_id} — {self.sujet}'
+
+
+# ── FG234 — Portail apporteurs / sous-revendeurs ───────────────────────────
+
+class Partenaire(models.Model):
+    """Partenaire commercial : apporteur d'affaires ou sous-revendeur (FG234).
+
+    Fiche minimale ici (compte + accès tokenisé + taux de commission). FG237
+    enrichit la fiche (statut d'agrément, zone, onboarding). Un partenaire
+    soumet des leads via le portail (``SoumissionLeadPartenaire``) et suit leur
+    statut. Scopé société ; le token d'accès est posé côté serveur.
+    """
+    class Type(models.TextChoices):
+        APPORTEUR = 'apporteur', "Apporteur d'affaires"
+        SOUS_REVENDEUR = 'sous_revendeur', 'Sous-revendeur'
+        INSTALLATEUR = 'installateur', 'Installateur'
+
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='partenaires',
+        verbose_name='Société',
+    )
+    nom = models.CharField(max_length=200, verbose_name='Nom / raison sociale')
+    type_partenaire = models.CharField(
+        max_length=16, choices=Type.choices, default=Type.APPORTEUR,
+        verbose_name='Type de partenaire')
+    email = models.EmailField(blank=True, default='', verbose_name='Email')
+    telephone = models.CharField(
+        max_length=30, blank=True, default='', verbose_name='Téléphone')
+    taux_commission = models.DecimalField(
+        max_digits=5, decimal_places=2, default=0,
+        verbose_name='Taux de commission (%)')
+    token_acces = models.CharField(
+        max_length=64, unique=True, db_index=True,
+        verbose_name="Token d'accès")
+    actif = models.BooleanField(default=True, verbose_name='Actif')
+    date_creation = models.DateTimeField(
+        auto_now_add=True, verbose_name='Créé le')
+
+    class Meta:
+        verbose_name = 'Partenaire commercial'
+        verbose_name_plural = 'Partenaires commerciaux'
+        ordering = ['nom']
+
+    def __str__(self):
+        return f'{self.nom} ({self.get_type_partenaire_display()})'
+
+
+class SoumissionLeadPartenaire(models.Model):
+    """Lead soumis par un partenaire via le portail (FG234).
+
+    Le partenaire renseigne les coordonnées d'un prospect ; on enregistre la
+    soumission scopée société. Après qualification, le lead réel est créé dans
+    ``crm`` (via son service, jamais importé ici) et référencé par ``lead_id``.
+    Le partenaire suit le statut de sa soumission.
+    """
+    class Statut(models.TextChoices):
+        SOUMIS = 'soumis', 'Soumis'
+        QUALIFIE = 'qualifie', 'Qualifié'
+        CONVERTI = 'converti', 'Converti'
+        REJETE = 'rejete', 'Rejeté'
+
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='soumissions_lead_partenaire',
+        verbose_name='Société',
+    )
+    partenaire = models.ForeignKey(
+        Partenaire,
+        on_delete=models.CASCADE,
+        related_name='soumissions',
+        verbose_name='Partenaire',
+    )
+    nom_prospect = models.CharField(
+        max_length=200, verbose_name='Nom du prospect')
+    telephone_prospect = models.CharField(
+        max_length=30, blank=True, default='',
+        verbose_name='Téléphone du prospect')
+    email_prospect = models.EmailField(
+        blank=True, default='', verbose_name='Email du prospect')
+    ville = models.CharField(
+        max_length=120, blank=True, default='', verbose_name='Ville')
+    note = models.TextField(blank=True, default='', verbose_name='Note')
+    statut = models.CharField(
+        max_length=10, choices=Statut.choices, default=Statut.SOUMIS,
+        verbose_name='Statut')
+    lead_id = models.PositiveIntegerField(
+        null=True, blank=True, verbose_name='Id du lead créé')
+    date_soumission = models.DateTimeField(
+        auto_now_add=True, verbose_name='Soumis le')
+
+    class Meta:
+        verbose_name = 'Soumission de lead (partenaire)'
+        verbose_name_plural = 'Soumissions de lead (partenaire)'
+        ordering = ['-date_soumission']
+
+    def __str__(self):
+        return f'{self.nom_prospect} — {self.partenaire.nom}'
