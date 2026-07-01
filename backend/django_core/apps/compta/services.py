@@ -20,6 +20,7 @@ Trois blocs :
 * ``creer_exercice`` / ``reporter_a_nouveaux`` (FG117) — ouverture d'exercice et
   report des soldes de bilan dans le nouvel exercice (à-nouveaux).
 """
+import hashlib
 from decimal import ROUND_HALF_UP, Decimal
 from math import asin, cos, radians, sin, sqrt
 
@@ -31,16 +32,25 @@ from django.utils import timezone
 
 from .models import (
     AvancementRevenu, BaremeIndemnite, BordereauRemise, Budget, BudgetLigne,
-    Caisse, CautionBancaire, CentreCout, CessionImmobilisation, ClotureCaisse,
+    Caisse, Campagne, CautionBancaire, CentreCout, CessionImmobilisation,
+    ClotureCaisse,
     CommissionPayoutLine, CommissionPayoutRun, CompteComptable,
-    CompteTresorerie, ContratAvancement, DeclarationTVA, DotationAmortissement,
-    EcritureComptable, Effet, EntiteConsolidation, ExerciceComptable,
+    CompteTresorerie, ContratAvancement, DeclarationTVA,
+    DemandeApprobationConfig, DotationAmortissement,
+    ECatalogue, EcritureComptable, Effet, EntiteConsolidation,
+    ExerciceComptable, MessageWhatsAppEntrant,
     Immobilisation, IndemniteChantier, Journal, LigneEcriture,
     LignePrevisionnelTresorerie, LigneReleve, MouvementCaisse, NoteFrais,
+    OuverturePartage,
     PaymentRun, PaymentRunLine, PeriodeComptable, PlanAmortissement,
     PlanComptable, PointageReleve, ProvisionCreance, Rapprochement,
-    RapprochementBancaire, RetenueGarantie, RetenueSource, TimbreFiscal,
+    RapprochementBancaire, RelanceDevisAbandonne, RetenueSource,
+    RetenueGarantie, TimbreFiscal,
     TravauxEnCours, VirementInterne,
+    EcheanceAO, ResultatAO, ComptePortailClient,
+    PaiementFacturePortail,
+    MappingCompte, CompteAuxiliaire,
+    PisteAuditComptable,
 )
 
 
@@ -155,6 +165,11 @@ _JOURNAUX = [
     ('BNK', 'Journal de banque', Journal.Type.BANQUE),
     ('CSH', 'Journal de caisse', Journal.Type.CAISSE),
     ('OD', 'Opérations diverses', Journal.Type.OPERATIONS_DIVERSES),
+    # COMPTA4 — journal des à-nouveaux (report de bilan) semé d'office. Il était
+    # créé à la demande par ``reporter_a_nouveaux`` ; on l'ajoute au seed
+    # standard pour que les 6 journaux CGNC (VTE/ACH/BNK/CSH/OD/AN) existent dès
+    # l'amorçage. Idempotent : ``get_or_create`` ne duplique jamais.
+    ('AN', 'À-nouveaux', Journal.Type.A_NOUVEAUX),
 ]
 
 
@@ -398,6 +413,119 @@ def ecriture_pour_avoir(avoir, *, force=False, user=None):
         f'Avoir client {avoir.reference}', lignes,
         reference=avoir.reference, source_type='avoir', source_id=avoir.id,
         created_by=user, statut=EcritureComptable.Statut.VALIDEE,
+    )
+
+
+# ── COMPTA15 — Auto-écriture depuis une facture fournisseur (achat) ─────────
+# Symétrique de ``ecriture_pour_facture`` (vente), mais côté ACHAT : la facture
+# reçue d'un fournisseur débite une charge (61xx) + la TVA récupérable (3455x)
+# et crédite le compte collectif fournisseurs (4411). ``facture`` est une
+# instance ``stock.FactureFournisseur`` : on lit UNIQUEMENT ses attributs
+# publics (montant_ht/montant_tva/montant_ttc, reference, fournisseur_id,
+# date_facture) — aucun import du modèle d'une autre app. Idempotent, gardé par
+# le toggle ``COMPTA_AUTO_ECRITURES`` (OFF par défaut). Le compte de charge peut
+# être surchargé via le mapping DC22 (``type_clef='famille'``).
+
+@transaction.atomic
+def ecriture_pour_facture_fournisseur(facture, *, force=False, user=None,
+                                      famille_charge=None):
+    """Génère l'écriture d'achat d'une facture fournisseur (61xx/3455 → 4411).
+
+    Débit 61xx Achats/Charges (HT) + 3455 TVA récupérable (TVA), crédit 4411
+    Fournisseurs (TTC). Idempotent : ne recrée pas l'écriture d'une facture déjà
+    passée. Renvoie l'écriture (existante ou nouvelle), ou None si désactivé/non
+    applicable. ``famille_charge`` (optionnel) consulte le mapping DC22 pour
+    router vers un compte de charge précis (défaut : 6111 Achats).
+    """
+    if not force and not auto_ecritures_actif():
+        return None
+    company = facture.company
+    if company is None:
+        return None
+    existante = _ecriture_existante(company, 'facture_fournisseur', facture.id)
+    if existante:
+        return existante
+    comptes = _comptes_requis(company)
+    journal = _journal(company, Journal.Type.ACHAT)
+    ht = Decimal(getattr(facture, 'montant_ht', 0) or 0)
+    tva = Decimal(getattr(facture, 'montant_tva', 0) or 0)
+    ttc = Decimal(getattr(facture, 'montant_ttc', 0) or 0)
+    fournisseur_id = getattr(facture, 'fournisseur_id', None)
+    reference = getattr(facture, 'reference', '') or ''
+    # DC22 : famille de charge → compte 6x (défaut 6111 si non mappé).
+    compte_charge = compte_pour_clef(
+        company, MappingCompte.TypeClef.FAMILLE, famille_charge,
+        defaut=comptes['achats']) if famille_charge else comptes['achats']
+    lignes = [
+        {'compte': compte_charge, 'debit': ht, 'credit': Decimal('0'),
+         'libelle': f'Achat {reference}'},
+    ]
+    if tva:
+        lignes.append({
+            'compte': comptes['tva_recuperable'], 'debit': tva,
+            'credit': Decimal('0'),
+            'libelle': f'TVA récupérable {reference}'})
+    lignes.append({
+        'compte': comptes['fournisseurs'], 'debit': Decimal('0'), 'credit': ttc,
+        'libelle': f'Facture fournisseur {reference}',
+        'tiers_type': 'fournisseur', 'tiers_id': fournisseur_id})
+    return creer_ecriture(
+        company, journal, getattr(facture, 'date_facture', None),
+        f'Facture fournisseur {reference}', lignes,
+        reference=reference, source_type='facture_fournisseur',
+        source_id=facture.id, created_by=user,
+        statut=EcritureComptable.Statut.VALIDEE,
+    )
+
+
+# ── COMPTA16 — Auto-écriture depuis un paiement fournisseur ─────────────────
+# Symétrique de ``ecriture_pour_paiement`` (encaissement client) : le règlement
+# d'une facture fournisseur débite 4411 Fournisseurs (on solde la dette) et
+# crédite la trésorerie (banque/caisse selon le mode). ``paiement`` est une
+# instance ``stock.PaiementFournisseur`` — lecture des seuls attributs publics.
+
+@transaction.atomic
+def ecriture_pour_paiement_fournisseur(paiement, *, force=False, user=None):
+    """Génère l'écriture d'un paiement fournisseur (4411 → 514x/516x).
+
+    Débit 4411 Fournisseurs (on solde la dette), crédit trésorerie (banque, ou
+    caisse si mode ``especes``). Idempotent. Renvoie l'écriture, ou None si
+    désactivé/non applicable.
+    """
+    if not force and not auto_ecritures_actif():
+        return None
+    company = paiement.company
+    if company is None:
+        return None
+    existante = _ecriture_existante(
+        company, 'paiement_fournisseur', paiement.id)
+    if existante:
+        return existante
+    comptes = _comptes_requis(company)
+    mode = getattr(paiement, 'mode', '')
+    if mode == 'especes':
+        compte_treso = comptes['caisse']
+        journal = _journal(company, Journal.Type.CAISSE)
+    else:
+        compte_treso = comptes['banque']
+        journal = _journal(company, Journal.Type.BANQUE)
+    montant = Decimal(getattr(paiement, 'montant', 0) or 0)
+    facture = getattr(paiement, 'facture', None)
+    fournisseur_id = getattr(facture, 'fournisseur_id', None)
+    ref = getattr(facture, 'reference', '') or ''
+    lignes = [
+        {'compte': comptes['fournisseurs'], 'debit': montant,
+         'credit': Decimal('0'), 'libelle': f'Règlement {ref}',
+         'tiers_type': 'fournisseur', 'tiers_id': fournisseur_id},
+        {'compte': compte_treso, 'debit': Decimal('0'), 'credit': montant,
+         'libelle': f'Décaissement {ref}'},
+    ]
+    return creer_ecriture(
+        company, journal, getattr(paiement, 'date_paiement', None),
+        f'Paiement fournisseur {ref}', lignes,
+        reference=ref, source_type='paiement_fournisseur',
+        source_id=paiement.id, created_by=user,
+        statut=EcritureComptable.Statut.VALIDEE,
     )
 
 
@@ -3459,3 +3587,1093 @@ def ajouter_entite_consolidation(company, *, entite, pourcentage_interet=None,
         },
     )
     return obj
+
+
+# ── FG201 — Envoi groupé email/SMS (Brevo, GATED, NO-OP par défaut) ─────────
+
+def brevo_actif():
+    """Toggle maître de l'intégration Brevo. OFF par défaut → envoi NO-OP.
+
+    Le founder active l'envoi réel en posant ``BREVO_ENABLED = True`` et une clé
+    ``BREVO_API_KEY`` (settings/env). Tant que c'est faux ou sans clé, aucun
+    appel payant n'est émis : ``envoyer_campagne`` se contente d'horodater la
+    campagne et de compter les destinataires (simulation), comme le NoOp des
+    autres intégrations gated.
+    """
+    return bool(getattr(settings, 'BREVO_ENABLED', False)
+                and getattr(settings, 'BREVO_API_KEY', ''))
+
+
+def envoyer_campagne(campagne, *, destinataires=None):
+    """Déclenche l'envoi groupé d'une campagne (FG201), idempotent.
+
+    ``destinataires`` = liste d'adresses/numéros (optionnelle, sinon 0). Si
+    l'intégration Brevo est inactive (défaut), c'est un NO-OP : on marque la
+    campagne ``envoyee`` et on enregistre le nombre de destinataires SANS
+    aucun appel réseau. Renvoie la campagne. Une campagne déjà envoyée ou
+    annulée n'est pas ré-envoyée.
+    """
+    if campagne.statut != Campagne.Statut.BROUILLON:
+        return campagne
+    cibles = list(destinataires or [])
+    campagne.nb_destinataires = len(cibles)
+    if brevo_actif() and cibles:
+        # Intégration réelle (future) — jamais appelée tant que le flag est OFF.
+        # On laisse le compteur d'envois aligné sur les destinataires ; les
+        # ouvertures/clics seront remontés par les webhooks Brevo.
+        campagne.nb_envois = len(cibles)
+    campagne.statut = Campagne.Statut.ENVOYEE
+    campagne.envoyee_le = timezone.now()
+    campagne.save(update_fields=[
+        'nb_destinataires', 'nb_envois', 'statut', 'envoyee_le'])
+    return campagne
+
+
+# ── FG202 — Déclenchement d'une séquence de relance (GATED, NO-OP) ──────────
+
+def whatsapp_actif():
+    """Toggle de l'intégration WhatsApp Business Cloud (Meta). OFF par défaut.
+
+    Le founder l'active en posant ``WHATSAPP_ENABLED = True`` et un jeton
+    ``WHATSAPP_ACCESS_TOKEN`` (settings/env). Tant que c'est faux/sans jeton,
+    toute action WhatsApp (séquence FG202, inbound FG207) est un NO-OP — aucun
+    appel Meta, aucune dépendance dure (CLAUDE.md règle #3 / blocage G2).
+    """
+    return bool(getattr(settings, 'WHATSAPP_ENABLED', False)
+                and getattr(settings, 'WHATSAPP_ACCESS_TOKEN', ''))
+
+
+def planifier_etapes_sequence(sequence, *, declenchee_le=None):
+    """Calcule le calendrier d'une séquence (FG202) sans rien envoyer.
+
+    Renvoie la liste des étapes avec leur date d'échéance (J0/J3/J7…). L'envoi
+    réel (WhatsApp/email) est gated et n'a lieu que via les intégrations
+    activées ; cette fonction est pure et NO-OP côté réseau. Sert au moteur de
+    drip et aux tests.
+    """
+    base = declenchee_le or timezone.now()
+    plan = []
+    for etape in sequence.etapes.all().order_by('ordre'):
+        echeance = base + timezone.timedelta(days=etape.delai_jours)
+        plan.append({
+            'etape_id': etape.id,
+            'ordre': etape.ordre,
+            'canal': etape.canal,
+            'delai_jours': etape.delai_jours,
+            'echeance': echeance,
+            'envoye': False,  # gated : jamais d'envoi réel ici
+        })
+    return plan
+
+
+# ── FG203 — Relance d'un devis abandonné ───────────────────────────────────
+
+def enregistrer_relance_devis_abandonne(company, *, devis_id, devis_reference='',
+                                        jours_sans_reponse=0, canal='',
+                                        note=''):
+    """Consigne une relance sur un devis envoyé non répondu (FG203).
+
+    Ne touche pas le modèle Devis ; on ne fait qu'enregistrer la relance émise
+    (comme un journal de recouvrement). ``devis_id`` est l'identifiant opaque
+    côté ventes, fourni par l'appelant.
+    """
+    return RelanceDevisAbandonne.objects.create(
+        company=company,
+        devis_id=devis_id,
+        devis_reference=devis_reference or '',
+        jours_sans_reponse=jours_sans_reponse or 0,
+        canal=canal or '',
+        note=note or '',
+    )
+
+
+# ── FG205 — Enregistrement d'une ouverture de lien de partage ──────────────
+
+def enregistrer_ouverture_partage(company, *, token, cible='devis',
+                                  cible_reference=''):
+    """Horodate une ouverture d'un ShareLink devis/facture (FG205), idempotent.
+
+    Incrémente le compteur et met à jour premier/dernier vu. Un seul
+    enregistrement par (société, token). Le ShareLink lui-même reste côté ventes
+    — on n'indexe ici que l'événement d'ouverture pour prioriser les relances.
+    """
+    maintenant = timezone.now()
+    obj, cree = OuverturePartage.objects.get_or_create(
+        company=company, token=token,
+        defaults={
+            'cible': cible or 'devis',
+            'cible_reference': cible_reference or '',
+            'nb_ouvertures': 1,
+            'premier_vu_le': maintenant,
+            'dernier_vu_le': maintenant,
+        },
+    )
+    if not cree:
+        obj.nb_ouvertures = (obj.nb_ouvertures or 0) + 1
+        obj.dernier_vu_le = maintenant
+        if obj.premier_vu_le is None:
+            obj.premier_vu_le = maintenant
+        if cible_reference and not obj.cible_reference:
+            obj.cible_reference = cible_reference
+        obj.save(update_fields=[
+            'nb_ouvertures', 'dernier_vu_le', 'premier_vu_le',
+            'cible_reference'])
+    return obj
+
+
+# ── FG207 — Capture d'un message WhatsApp entrant (GATED, NO-OP) ───────────
+
+def capturer_message_whatsapp(company, *, wa_message_id, expediteur,
+                              nom_profil='', texte='', user=None):
+    """Capture un message WhatsApp entrant → lead pré-qualifié (FG207), gated.
+
+    Si l'intégration WhatsApp est inactive (défaut), c'est un NO-OP strict :
+    aucun message n'est traité ni stocké. Quand activée, le message est
+    journalisé (idempotent par ``wa_message_id``) et un lead DRAFT est
+    créé/rattaché via ``crm.services`` (import function-local — jamais les
+    modèles crm), en laissant le funnel à NEW. Renvoie le log, ou ``None`` si
+    l'intégration est OFF.
+    """
+    if not whatsapp_actif():
+        return None
+    log, cree = MessageWhatsAppEntrant.objects.get_or_create(
+        company=company, wa_message_id=wa_message_id,
+        defaults={
+            'expediteur': expediteur,
+            'nom_profil': nom_profil or '',
+            'texte': texte or '',
+        },
+    )
+    if not cree or log.traite:
+        return log
+    # Création du lead DRAFT via le service crm (jamais ses modèles).
+    try:
+        from apps.crm import services as crm_services
+        lead = crm_services.create_draft_lead_from_ocr(
+            company=company, user=user,
+            fields={
+                # le service lit 'fournisseur'/'client' pour le nom du lead
+                'client': nom_profil or expediteur,
+                'telephone': expediteur,
+                'whatsapp': expediteur,
+            },
+        )
+        log.lead_id = getattr(lead, 'id', None)
+    except Exception:
+        # Le lead reste à créer manuellement ; le message est conservé.
+        log.lead_id = None
+    log.traite = True
+    log.save(update_fields=['lead_id', 'traite'])
+    return log
+
+
+# ── FG211 — Configurateur guidé : validation de cohérence ──────────────────
+
+def evaluer_session_guided_selling(reponses):
+    """Valide la cohérence d'une configuration guidée (FG211).
+
+    Vérifie des invariants simples (puissance onduleur vs kWc des panneaux,
+    présence batterie si hybride…) et renvoie ``(composition, complet, alertes)``.
+    Pur : ne crée aucun document. Sert l'assistant pas-à-pas commercial junior.
+    """
+    reponses = reponses or {}
+    alertes = []
+    composition = {}
+
+    def _num(cle):
+        try:
+            return Decimal(str(reponses.get(cle)))
+        except (TypeError, ValueError):
+            return None
+
+    kwc = _num('kwc')
+    onduleur_kw = _num('onduleur_kw')
+    if kwc is not None and onduleur_kw is not None:
+        # Onduleur cohérent : ~0.8×–1.2× la puissance crête.
+        if onduleur_kw < kwc * Decimal('0.7'):
+            alertes.append(
+                "Onduleur sous-dimensionné par rapport au champ PV (kWc).")
+        if onduleur_kw > kwc * Decimal('1.5'):
+            alertes.append(
+                "Onduleur sur-dimensionné par rapport au champ PV (kWc).")
+        composition['ratio_onduleur'] = float(
+            (onduleur_kw / kwc).quantize(Decimal('0.01')))
+
+    type_systeme = (reponses.get('type_systeme') or '').lower()
+    a_batterie = bool(reponses.get('batterie'))
+    if 'hybride' in type_systeme and not a_batterie:
+        alertes.append("Système hybride sans batterie déclarée.")
+
+    composition['type_systeme'] = type_systeme or 'reseau'
+    composition['kwc'] = float(kwc) if kwc is not None else None
+    complet = bool(kwc is not None and onduleur_kw is not None
+                   and not alertes)
+    return composition, complet, alertes
+
+
+# ── FG213 — Décision d'approbation d'une configuration non-standard ────────
+
+def decider_approbation_config(demande, *, approuver, user=None, commentaire=''):
+    """Approuve ou refuse une demande d'approbation de config (FG213).
+
+    Idempotent : une demande déjà décidée n'est pas re-décidée. Trace décideur,
+    date et commentaire.
+    """
+    if demande.statut != DemandeApprobationConfig.Statut.EN_ATTENTE:
+        return demande
+    demande.statut = (
+        DemandeApprobationConfig.Statut.APPROUVEE if approuver
+        else DemandeApprobationConfig.Statut.REFUSEE)
+    demande.decideur = user
+    demande.commentaire_decision = commentaire or ''
+    demande.date_decision = timezone.now()
+    demande.save(update_fields=[
+        'statut', 'decideur', 'commentaire_decision', 'date_decision'])
+    return demande
+
+
+# ── FG214 — Génération d'un token d'e-catalogue public ─────────────────────
+
+def generer_ecatalogue(company, *, titre='Catalogue', produit_ids=None,
+                       expire_le=None):
+    """Crée une page e-catalogue publique tokenisée (FG214).
+
+    Le token est long et imprévisible (secrets). La page n'exposera JAMAIS le
+    prix d'achat ni de marge — uniquement le prix public TTC (filtré au rendu).
+    """
+    import secrets
+    return ECatalogue.objects.create(
+        company=company,
+        titre=titre or 'Catalogue',
+        token=secrets.token_urlsafe(32),
+        produit_ids=list(produit_ids or []),
+        expire_le=expire_le,
+    )
+
+
+# ── FG216 — Création (gated) d'un lead depuis une simulation publique ───────
+
+def leads_depuis_simulation_actif():
+    """Toggle de la création automatique d'un lead depuis le simulateur public.
+
+    OFF par défaut → NO-OP (on enregistre seulement la simulation). Le founder
+    l'active en posant ``PUBLIC_SIM_LEAD_ENABLED = True`` (settings/env). Aligné
+    sur le pattern des autres intégrations gated (BREVO/WHATSAPP).
+    """
+    return bool(getattr(settings, 'PUBLIC_SIM_LEAD_ENABLED', False))
+
+
+def creer_lead_depuis_simulation(simulation, *, user=None):
+    """Crée un lead pré-rempli depuis une simulation publique (FG216), gated.
+
+    Si le flag ``PUBLIC_SIM_LEAD_ENABLED`` est OFF (défaut), c'est un NO-OP :
+    aucune création de lead. Quand il est ON et qu'un nom de prospect est
+    présent, on délègue au SERVICE crm (jamais ses modèles, CLAUDE.md règle de
+    modularité cross-app) via un import fonction-local. Idempotent : une
+    simulation qui a déjà un lead n'en recrée pas. Renvoie l'id du lead ou None.
+    """
+    if simulation.lead_cree:
+        return simulation.lead_id
+    if not leads_depuis_simulation_actif():
+        return None
+    nom = (simulation.nom_prospect or '').strip()
+    if not nom:
+        return None
+    from apps.crm import services as crm_services  # import local (anti-cycle)
+    lead = crm_services.create_draft_lead_from_ocr(
+        company=simulation.company,
+        user=user,
+        fields={'client': nom},
+    )
+    simulation.lead_cree = True
+    simulation.lead_id = lead.id
+    simulation.save(update_fields=['lead_cree', 'lead_id'])
+    return lead.id
+
+
+# ── FG217 — Calcul de mensualité crédit/leasing ────────────────────────────
+
+def calcul_mensualite(montant, duree_mois, taux_annuel):
+    """Mensualité d'un crédit amortissable (FG217), arrondie au centime.
+
+    Formule classique de l'annuité constante. Taux 0 → simple division. Renvoie
+    ``(mensualite, cout_total_credit)`` en Decimal. Pur, sans effet de bord.
+    """
+    montant = Decimal(montant or 0)
+    n = int(duree_mois or 0)
+    taux_annuel = Decimal(taux_annuel or 0)
+    if n <= 0 or montant <= 0:
+        return Decimal('0.00'), Decimal('0.00')
+    if taux_annuel == 0:
+        mensualite = montant / Decimal(n)
+    else:
+        taux_mensuel = taux_annuel / Decimal('100') / Decimal('12')
+        facteur = (Decimal('1') + taux_mensuel) ** n
+        mensualite = montant * taux_mensuel * facteur / (facteur - Decimal('1'))
+    mensualite = mensualite.quantize(Decimal('0.01'), rounding=ROUND_HALF_UP)
+    cout_total = (mensualite * Decimal(n) - montant).quantize(
+        Decimal('0.01'), rounding=ROUND_HALF_UP)
+    if cout_total < 0:
+        cout_total = Decimal('0.00')
+    return mensualite, cout_total
+
+
+def recalculer_simulation_financement(simulation):
+    """Recalcule mensualité + coût total d'une SimulationFinancement (FG217)."""
+    mensualite, cout_total = calcul_mensualite(
+        simulation.montant_finance, simulation.duree_mois,
+        simulation.taux_annuel)
+    simulation.mensualite = mensualite
+    simulation.cout_total_credit = cout_total
+    return simulation
+
+
+# ── FG221 — Comparateur cash vs financement (calcul pur) ───────────────────
+
+def comparer_cash_vs_financement(montant, duree_mois, taux_annuel,
+                                 *, economie_annuelle=Decimal('0')):
+    """Compare l'achat cash et le financement (FG221), calcul pur.
+
+    Renvoie un dict {cash, financement} avec coût total et payback (années)
+    estimé à partir de l'économie annuelle. Sert l'encart client anti-objection
+    prix. Aucun stockage.
+    """
+    montant = Decimal(montant or 0)
+    economie = Decimal(economie_annuelle or 0)
+    mensualite, cout_credit = calcul_mensualite(
+        montant, duree_mois, taux_annuel)
+    cout_total_finance = montant + cout_credit
+
+    def _payback(cout):
+        if economie <= 0:
+            return None
+        return (cout / economie).quantize(
+            Decimal('0.1'), rounding=ROUND_HALF_UP)
+
+    return {
+        'cash': {
+            'cout_total': montant,
+            'payback_annees': _payback(montant),
+        },
+        'financement': {
+            'mensualite': mensualite,
+            'cout_credit': cout_credit,
+            'cout_total': cout_total_finance,
+            'payback_annees': _payback(cout_total_finance),
+        },
+        'surcout_financement': cout_credit,
+    }
+
+
+# ── FG226 — Échéances d'AO dues (rappels) ──────────────────────────────────
+
+def echeances_ao_dues(company, *, a_la_date=None):
+    """Liste les échéances d'AO dont le rappel est dû (FG226), NON traitées.
+
+    Une échéance est due quand ``date_echeance - rappel_jours <= a_la_date`` et
+    qu'elle n'est pas encore traitée. Calcul pur (aucun envoi réseau) — sert au
+    moteur d'alertes et aux tests.
+    """
+    a_la_date = a_la_date or timezone.now().date()
+    dues = []
+    qs = EcheanceAO.objects.filter(
+        company=company, traitee=False).order_by('date_echeance')
+    for ech in qs:
+        seuil = ech.date_echeance - timezone.timedelta(days=ech.rappel_jours)
+        if seuil <= a_la_date:
+            dues.append(ech)
+    return dues
+
+
+# ── FG227 — Taux de réussite des appels d'offres ───────────────────────────
+
+def taux_reussite_ao(company):
+    """Taux de réussite gagné/perdu des AO (FG227).
+
+    Compte les résultats par issue et calcule le taux = gagnés / (gagnés +
+    perdus). Renvoie un dict d'agrégats. Lecture seule.
+    """
+    resultats = ResultatAO.objects.filter(company=company)
+    gagnes = resultats.filter(issue=ResultatAO.Issue.GAGNE).count()
+    perdus = resultats.filter(issue=ResultatAO.Issue.PERDU).count()
+    total_decides = gagnes + perdus
+    taux = Decimal('0.00')
+    if total_decides > 0:
+        taux = (Decimal(gagnes) / Decimal(total_decides) * Decimal('100')
+                ).quantize(Decimal('0.01'), rounding=ROUND_HALF_UP)
+    return {
+        'gagnes': gagnes,
+        'perdus': perdus,
+        'total_decides': total_decides,
+        'total_resultats': resultats.count(),
+        'taux_reussite_pct': taux,
+    }
+
+
+# ── FG228 — Provisionnement (gated) d'un compte portail client ─────────────
+
+def provisionner_compte_portail(company, *, client_id, email):
+    """Crée/active un compte portail client tokenisé (FG228).
+
+    Token long/imprévisible (secrets). Idempotent par (company, client_id) :
+    réactive et renvoie le compte existant plutôt que d'en dupliquer un. L'email
+    réutilise celui du client (DC32 — pas de 2ᵉ copie d'identité) ; le compte
+    NE duplique aucune donnée métier (devis/factures/chantiers lus à la volée
+    via les selectors des apps cibles).
+    """
+    import secrets
+    compte = ComptePortailClient.objects.filter(
+        company=company, client_id=client_id).first()
+    if compte is not None:
+        if not compte.actif:
+            compte.actif = True
+            compte.save(update_fields=['actif'])
+        return compte
+    return ComptePortailClient.objects.create(
+        company=company,
+        client_id=client_id,
+        email=email or '',
+        token_acces=secrets.token_urlsafe(32),
+    )
+
+
+# ── FG229 — Acceptation / e-signature de devis dans le portail ─────────────
+
+def signer_acceptation_devis(acceptation, *, nom=None, ip=None):
+    """Matérialise la signature d'une acceptation de devis (FG229), idempotent.
+
+    Pose le nom du signataire (si fourni), l'IP, le drapeau ``accepte`` et
+    l'horodatage de signature. Une acceptation déjà signée n'est PAS resignée
+    (idempotent). Renvoie l'acceptation. L'effet sur le statut du devis côté
+    ``ventes`` (passage à ``accepte``) reste à la charge de l'app ventes via son
+    service ; on ne touche jamais ses modèles ici (cross-app).
+    """
+    if acceptation.accepte:
+        return acceptation
+    if nom:
+        acceptation.nom_signataire = nom
+    if ip:
+        acceptation.signature_ip = ip
+    acceptation.accepte = True
+    acceptation.signe_le = timezone.now()
+    acceptation.save(update_fields=[
+        'nom_signataire', 'signature_ip', 'accepte', 'signe_le'])
+    return acceptation
+
+
+# ── FG230 — Paiement en ligne des factures (portail, GATED CMI) ────────────
+
+def cmi_actif():
+    """Toggle de la passerelle de paiement carte CMI. OFF par défaut → NO-OP.
+
+    Le founder l'active en posant ``CMI_ENABLED = True`` et une clé marchande
+    ``CMI_MERCHANT_KEY`` (settings/env). Tant que c'est faux/sans clé, initier un
+    paiement carte ne fait AUCUN appel réseau (intention reste « initie ») — le
+    rapprochement reste manuel, comme le virement (blocage G/COST FG230).
+    """
+    return bool(getattr(settings, 'CMI_ENABLED', False)
+                and getattr(settings, 'CMI_MERCHANT_KEY', ''))
+
+
+def initier_paiement_facture(paiement):
+    """Initie un paiement de facture portail (FG230), idempotent.
+
+    Pose une référence locale si absente. Si la méthode est carte et que CMI est
+    actif, l'intégration réelle (future) générerait l'URL de paiement ; tant que
+    CMI est OFF, c'est un NO-OP propre (aucun appel réseau). Renvoie le paiement.
+    """
+    if paiement.statut != PaiementFacturePortail.Statut.INITIE:
+        return paiement
+    if not paiement.reference:
+        import secrets
+        paiement.reference = f'PF-{secrets.token_hex(8)}'
+        paiement.save(update_fields=['reference'])
+    # NO-OP gated : l'appel CMI réel n'a lieu que si cmi_actif() est vrai.
+    return paiement
+
+
+def rapprocher_paiement_facture(paiement, *, reference=None):
+    """Marque un paiement de facture portail comme payé (FG230), idempotent.
+
+    Sert le rapprochement auto (webhook CMI) ET le rapprochement manuel d'un
+    virement reçu. Un paiement déjà payé/échoué n'est pas re-rapproché. Le
+    report vers un ``Paiement`` comptable reste à la charge de la chaîne ventes
+    via son service (cross-app) ; on ne touche jamais ses modèles ici.
+    """
+    if paiement.statut != PaiementFacturePortail.Statut.INITIE:
+        return paiement
+    if reference:
+        paiement.reference = reference
+    paiement.statut = PaiementFacturePortail.Statut.PAYE
+    paiement.paye_le = timezone.now()
+    paiement.save(update_fields=['reference', 'statut', 'paye_le'])
+    return paiement
+
+
+# ── FG235 — Commissions partenaires ────────────────────────────────────────
+
+def calculer_montant_commission(base_ht, taux):
+    """Calcule le montant d'une commission = base_ht × taux%, arrondi 2 déc."""
+    base = Decimal(base_ht or 0)
+    t = Decimal(taux or 0)
+    montant = (base * t / Decimal('100')).quantize(
+        Decimal('0.01'), rounding=ROUND_HALF_UP)
+    return montant
+
+
+def enregistrer_commission(commission):
+    """Recalcule et fige le montant d'une commission (FG235) depuis base×taux.
+
+    Idempotent : appelable à la création et à chaque mise à jour. Renvoie la
+    commission. Si le taux n'est pas fourni, on retombe sur celui du partenaire.
+    """
+    if not commission.taux and commission.partenaire_id:
+        commission.taux = commission.partenaire.taux_commission
+    commission.montant = calculer_montant_commission(
+        commission.base_ht, commission.taux)
+    return commission
+
+
+# ── FG236 — Affectation automatique par territoire commercial ──────────────
+
+def affecter_territoire(company, ville):
+    """Renvoie le territoire commercial (scopé société) matchant ``ville``.
+
+    Parcourt les territoires ACTIFS par priorité décroissante et renvoie le
+    premier dont le zonage matche la ville, ou ``None``. Sert l'affectation auto
+    d'un lead (FG236) — le lead réel est rattaché par l'app crm ; ici on résout
+    seulement la zone/commercial cible (pas d'import crm).
+    """
+    from .models import TerritoireCommercial
+    if not ville:
+        return None
+    territoires = (TerritoireCommercial.objects
+                   .filter(company=company, actif=True)
+                   .order_by('-priorite', 'nom'))
+    for t in territoires:
+        if t.matche_ville(ville):
+            return t
+    return None
+
+
+# ── FG238 — Enquêtes NPS / satisfaction (envoi gated, score consolidé) ─────
+
+def envoyer_enquete_nps(enquete):
+    """Marque l'envoi d'une enquête NPS (FG238), gated Brevo (NO-OP par défaut).
+
+    Si Brevo est actif (``brevo_actif()``), l'intégration réelle (future)
+    enverrait l'email et ``envoi_reel`` passerait à vrai. Tant que c'est OFF,
+    l'enquête est créée/marquée « envoyée » SANS appel réseau. Idempotent.
+    """
+    if brevo_actif():
+        enquete.envoi_reel = True
+        enquete.save(update_fields=['envoi_reel'])
+    return enquete
+
+
+def repondre_enquete_nps(enquete, *, score, commentaire=None):
+    """Enregistre la réponse d'un client à une enquête NPS (FG238).
+
+    ``score`` est borné 0–10. Passe l'enquête à « répondue » et horodate.
+    Renvoie l'enquête. Une enquête déjà répondue n'est pas ré-écrite.
+    """
+    from .models import EnqueteNPS
+    if enquete.statut == EnqueteNPS.Statut.REPONDUE:
+        return enquete
+    note = max(0, min(10, int(score)))
+    enquete.score = note
+    if commentaire is not None:
+        enquete.commentaire = commentaire
+    enquete.statut = EnqueteNPS.Statut.REPONDUE
+    enquete.repondue_le = timezone.now()
+    enquete.save(update_fields=[
+        'score', 'commentaire', 'statut', 'repondue_le'])
+    return enquete
+
+
+def score_nps(company):
+    """Score NPS consolidé (FG238) = %promoteurs − %détracteurs, scopé société.
+
+    Ne compte que les enquêtes répondues (score non nul). Renvoie un dict avec
+    le score NPS (entier, −100..100), les compteurs et le nombre de réponses.
+    Zéro réponse → score None.
+    """
+    from .models import EnqueteNPS
+    reponses = EnqueteNPS.objects.filter(
+        company=company, statut=EnqueteNPS.Statut.REPONDUE,
+        score__isnull=False)
+    total = reponses.count()
+    if total == 0:
+        return {'nps': None, 'total': 0, 'promoteurs': 0, 'passifs': 0,
+                'detracteurs': 0}
+    promoteurs = reponses.filter(score__gte=9).count()
+    detracteurs = reponses.filter(score__lte=6).count()
+    passifs = total - promoteurs - detracteurs
+    nps = round((promoteurs - detracteurs) * 100 / total)
+    return {'nps': nps, 'total': total, 'promoteurs': promoteurs,
+            'passifs': passifs, 'detracteurs': detracteurs}
+
+
+# ── FG239 — Push Google Reviews (routage, gated par URL société) ───────────
+
+def google_review_url_configuree():
+    """Lien de dépôt d'avis Google configuré (paramètre ``GOOGLE_REVIEW_URL``).
+
+    Pas d'API payante — juste une URL « place review » à laquelle on route le
+    client. Vide → le push est un NO-OP propre.
+    """
+    return str(getattr(settings, 'GOOGLE_REVIEW_URL', '') or '')
+
+
+def pousser_avis_google(avis):
+    """Route un avis client vers Google Reviews (FG239), idempotent.
+
+    Si un lien Google est configuré, on le pose sur l'avis et on passe le statut
+    à « routé vers Google ». Sinon NO-OP (aucun lien, statut inchangé). Renvoie
+    l'avis. On ne publie jamais rien via une API payante — on fournit le lien.
+    """
+    from .models import AvisClient
+    url = google_review_url_configuree()
+    if not url:
+        return avis
+    avis.google_review_url = url
+    avis.statut = AvisClient.Statut.PUBLIE_GOOGLE
+    avis.save(update_fields=['google_review_url', 'statut'])
+    return avis
+
+
+# ── FG240 — Programme de fidélité étendu (points + paliers) ────────────────
+
+def palier_pour_points(points):
+    """Palier de fidélité (FG240) déduit d'un solde de points.
+
+    Bronze <500, Argent 500–1999, Or 2000–4999, Platine ≥5000.
+    """
+    p = int(points or 0)
+    if p >= 5000:
+        return 'platine'
+    if p >= 2000:
+        return 'or'
+    if p >= 500:
+        return 'argent'
+    return 'bronze'
+
+
+def appliquer_mouvement_fidelite(compte, *, points, motif=''):
+    """Applique un mouvement de points (FG240) et recalcule solde + palier.
+
+    Crée un ``MouvementFidelite`` (idempotence à la charge de l'appelant), met à
+    jour le solde et le palier du compte de façon atomique. Le solde ne descend
+    jamais sous 0. Renvoie le mouvement créé.
+    """
+    from .models import MouvementFidelite
+    delta = int(points or 0)
+    with transaction.atomic():
+        mouvement = MouvementFidelite.objects.create(
+            company=compte.company, compte=compte, points=delta, motif=motif)
+        compte.points = max(0, compte.points + delta)
+        compte.palier = palier_pour_points(compte.points)
+        compte.save(update_fields=['points', 'palier'])
+    return mouvement
+
+
+# ── FG241 — Moteur d'upsell / cross-sell ───────────────────────────────────
+
+def suggestions_upsell(company, contexte):
+    """Suggestions d'upsell/cross-sell (FG241) pour un contexte client.
+
+    ``contexte`` est un dict de drapeaux booléens dont les CLÉS sont des valeurs
+    de ``RegleUpsell.Declencheur`` (ex. ``{'sans_batterie': True,
+    'site_unique': True}``). Renvoie la liste des règles ACTIVES (scopées
+    société) dont le déclencheur est vrai dans le contexte, triées par priorité
+    décroissante. Fonction pure (pas d'effet de bord, pas d'import cross-app).
+    """
+    from .models import RegleUpsell
+    contexte = contexte or {}
+    actives_vraies = [
+        cle for cle, val in contexte.items() if val]
+    if not actives_vraies:
+        return []
+    return list(
+        RegleUpsell.objects
+        .filter(company=company, actif=True, declencheur__in=actives_vraies)
+        .order_by('-priorite', 'id'))
+
+
+# ── FG244 — Abonnements de monitoring (échéance récurrente) ────────────────
+
+def _ajouter_mois(d, mois):
+    """Ajoute ``mois`` mois à une date en bornant le jour à la fin de mois."""
+    import calendar
+    total = d.month - 1 + mois
+    annee = d.year + total // 12
+    mois_final = total % 12 + 1
+    jour = min(d.day, calendar.monthrange(annee, mois_final)[1])
+    return d.replace(year=annee, month=mois_final, day=jour)
+
+
+def prochaine_echeance_abonnement(depuis, periodicite):
+    """Prochaine échéance d'un abonnement monitoring (FG244) depuis ``depuis``.
+
+    Mensuel → +1 mois ; annuel → +12 mois. ``depuis`` est une date.
+    """
+    from .models import AbonnementMonitoring
+    pas = 12 if periodicite == AbonnementMonitoring.Periodicite.ANNUEL else 1
+    return _ajouter_mois(depuis, pas)
+
+
+def renouveler_abonnement_monitoring(abonnement, *, today=None):
+    """Renouvelle un abonnement monitoring (FG244) : avance l'échéance.
+
+    Actif uniquement. Pose ``date_debut`` si absente, puis fixe
+    ``prochaine_echeance`` à une période après la base (échéance courante si
+    future, sinon aujourd'hui). Idempotence à la charge de l'appelant. Renvoie
+    l'abonnement.
+    """
+    from .models import AbonnementMonitoring
+    if abonnement.statut != AbonnementMonitoring.Statut.ACTIF:
+        return abonnement
+    if today is None:
+        today = timezone.localdate()
+    if abonnement.date_debut is None:
+        abonnement.date_debut = today
+    base = abonnement.prochaine_echeance or today
+    if base < today:
+        base = today
+    abonnement.prochaine_echeance = prochaine_echeance_abonnement(
+        base, abonnement.periodicite)
+    abonnement.save(update_fields=['date_debut', 'prochaine_echeance'])
+    return abonnement
+
+
+# ── COMPTA2 — Mapping document → compte comptable ──────────────────────────
+
+# Correspondances par défaut « clef documentaire → numéro de compte CGNC ».
+# Semées de façon idempotente, elles rendent le posting paramétrable sans coder
+# les comptes en dur. (type_clef, clef, numéro, libellé.)
+_MAPPINGS_DEFAUT = [
+    # Familles de produit → comptes de produits (classe 7)
+    ('famille', 'panneau', '7121', 'Ventes panneaux'),
+    ('famille', 'onduleur', '7121', 'Ventes onduleurs'),
+    ('famille', 'batterie', '7121', 'Ventes batteries'),
+    ('famille', 'pompe', '7121', 'Ventes pompage'),
+    ('famille', 'installation', '7121', 'Prestations installation'),
+    # Taux de TVA → comptes de TVA facturée (classe 4)
+    ('tva', '20', '4455', 'TVA facturée 20 %'),
+    ('tva', '14', '4455', 'TVA facturée 14 %'),
+    ('tva', '10', '4455', 'TVA facturée 10 %'),
+    ('tva', '7', '4455', 'TVA facturée 7 %'),
+    ('tva', '0', '4455', 'TVA facturée 0 %'),
+    # Modes de paiement → comptes de trésorerie (classe 5)
+    ('paiement', 'virement', '5141', 'Banque (virement)'),
+    ('paiement', 'cheque', '5141', 'Banque (chèque)'),
+    ('paiement', 'carte', '5141', 'Banque (carte)'),
+    ('paiement', 'especes', '5161', 'Caisse (espèces)'),
+]
+
+
+@transaction.atomic
+def seed_mappings_defaut(company):
+    """Sème les mappings document→compte par défaut (idempotent, additif).
+
+    Ne touche JAMAIS un mapping existant : le founder peut redéfinir un compte
+    pour une clef sans que le seed ne l'écrase. Sème le plan comptable au besoin
+    (les comptes cibles doivent exister). Renvoie la liste des mappings.
+    """
+    if not PlanComptable.objects.filter(company=company).exists():
+        seed_plan_comptable(company)
+    created = []
+    for type_clef, clef, numero, libelle in _MAPPINGS_DEFAUT:
+        compte = get_compte(company, numero)
+        if compte is None:
+            continue
+        mapping, _ = MappingCompte.objects.get_or_create(
+            company=company, type_clef=type_clef, clef=clef,
+            defaults={'compte': compte, 'libelle': libelle},
+        )
+        created.append(mapping)
+    return created
+
+
+def compte_pour_clef(company, type_clef, clef, *, defaut=None):
+    """Compte mappé pour ``(type_clef, clef)`` d'une société, ou ``defaut``.
+
+    Lecture seule. ``clef`` est normalisée (str, minuscules, sans espaces) pour
+    tolérer les variations de casse. Un mapping inactif est ignoré.
+    """
+    if clef is None:
+        return defaut
+    clef_norm = str(clef).strip().lower()
+    mapping = MappingCompte.objects.filter(
+        company=company, type_clef=type_clef, clef__iexact=clef_norm,
+        actif=True,
+    ).select_related('compte').first()
+    return mapping.compte if mapping else defaut
+
+
+# ── COMPTA3 — Comptes auxiliaires tiers (via selectors crm/stock) ──────────
+
+def _prochain_code_auxiliaire(company, type_tiers):
+    """Prochain code auxiliaire libre (C0001/F0001…) pour un type de tiers.
+
+    Basé sur le plus grand suffixe numérique déjà utilisé + 1 (jamais count()+1)
+    — cohérent avec la politique de numérotation du projet. Scopé société.
+    """
+    import re
+    prefixe = 'C' if type_tiers == CompteAuxiliaire.TypeTiers.CLIENT else 'F'
+    codes = CompteAuxiliaire.objects.filter(
+        company=company, type_tiers=type_tiers,
+    ).values_list('code', flat=True)
+    plus_haut = 0
+    for code in codes:
+        m = re.search(r'(\d+)$', code or '')
+        if m:
+            plus_haut = max(plus_haut, int(m.group(1)))
+    return f'{prefixe}{plus_haut + 1:04d}'
+
+
+@transaction.atomic
+def assurer_compte_auxiliaire_client(company, client_id):
+    """Compte auxiliaire du client (crée s'il manque), ou None si client inconnu.
+
+    Le client est VALIDÉ scopé société via ``crm.selectors.get_company_client``
+    (jamais un import de ``crm.models``). Rattaché au compte collectif 3421.
+    Idempotent : un même client ne produit qu'un auxiliaire par société.
+    """
+    from apps.crm.selectors import get_company_client
+    client = get_company_client(company, client_id)
+    if client is None:
+        return None
+    existant = CompteAuxiliaire.objects.filter(
+        company=company, type_tiers=CompteAuxiliaire.TypeTiers.CLIENT,
+        tiers_id=client_id,
+    ).first()
+    if existant:
+        return existant
+    collectif = get_compte(company, '3421')
+    if collectif is None:
+        seed_plan_comptable(company)
+        collectif = get_compte(company, '3421')
+    return CompteAuxiliaire.objects.create(
+        company=company,
+        compte_collectif=collectif,
+        type_tiers=CompteAuxiliaire.TypeTiers.CLIENT,
+        tiers_id=client_id,
+        code=_prochain_code_auxiliaire(
+            company, CompteAuxiliaire.TypeTiers.CLIENT),
+    )
+
+
+@transaction.atomic
+def assurer_compte_auxiliaire_fournisseur(company, fournisseur_id):
+    """Compte auxiliaire du fournisseur (crée s'il manque), ou None si inconnu.
+
+    Le fournisseur est VALIDÉ scopé société via
+    ``stock.selectors.get_fournisseur_tiers_identity`` (jamais un import de
+    ``stock.models``). Rattaché au compte collectif 4411. Idempotent.
+    """
+    from apps.stock.selectors import get_fournisseur_tiers_identity
+    identite = get_fournisseur_tiers_identity(company, fournisseur_id)
+    if identite is None:
+        return None
+    existant = CompteAuxiliaire.objects.filter(
+        company=company, type_tiers=CompteAuxiliaire.TypeTiers.FOURNISSEUR,
+        tiers_id=fournisseur_id,
+    ).first()
+    if existant:
+        return existant
+    collectif = get_compte(company, '4411')
+    if collectif is None:
+        seed_plan_comptable(company)
+        collectif = get_compte(company, '4411')
+    return CompteAuxiliaire.objects.create(
+        company=company,
+        compte_collectif=collectif,
+        type_tiers=CompteAuxiliaire.TypeTiers.FOURNISSEUR,
+        tiers_id=fournisseur_id,
+        code=_prochain_code_auxiliaire(
+            company, CompteAuxiliaire.TypeTiers.FOURNISSEUR),
+    )
+
+
+# ── COMPTA9 — Numérotation séquentielle des pièces (references.py) ─────────
+
+def creer_ecriture_numerotee(company, journal, date_ecriture, libelle, lignes,
+                             *, prefixe=None, created_by=None, statut=None,
+                             source_type='', source_id=None):
+    """Comme ``creer_ecriture`` mais attribue une référence de pièce SÉQUENTIELLE.
+
+    La référence (ex. ``PC-202607-0001``) est générée par
+    ``apps.ventes.utils.references.create_with_reference`` (plus-haut-utilisé + 1,
+    savepoint + retry sur course) — JAMAIS ``count()+1``. Le préfixe par défaut
+    dérive du code du journal (``PC-<CODE>``). Renvoie l'écriture équilibrée.
+    """
+    from apps.ventes.utils.references import create_with_reference
+    pref = prefixe or f'PC-{journal.code}'
+
+    def _save(reference):
+        return creer_ecriture(
+            company, journal, date_ecriture, libelle, lignes,
+            reference=reference, source_type=source_type, source_id=source_id,
+            created_by=created_by, statut=statut,
+        )
+
+    return create_with_reference(
+        EcritureComptable, pref, company, _save)
+
+
+def sequence_piece_journal(company, journal, *, prefixe=None):
+    """COMPTA4 — Prochain numéro de pièce SÉQUENTIEL d'un journal (aperçu).
+
+    Renvoie la prochaine référence libre (ex. ``PC-VTE-202607-0003``) pour le
+    journal sans créer d'écriture — pratique pour afficher le numéro qui SERA
+    attribué. S'appuie sur ``references.next_reference`` (plus-haut+1, scopé
+    société/mois), donc chaque journal a sa propre séquence via son préfixe.
+    """
+    from apps.ventes.utils.references import next_reference
+    pref = prefixe or f'PC-{journal.code}'
+    return next_reference(EcritureComptable, pref, company)
+
+
+# ── COMPTA11 — Extourne / contre-passation d'une écriture validée ──────────
+
+@transaction.atomic
+def extourner_ecriture(ecriture, *, date_extourne=None, user=None,
+                       libelle=None):
+    """Crée l'écriture d'extourne (contre-passation) d'une écriture existante.
+
+    On NE SUPPRIME JAMAIS une écriture validée : on passe une écriture inverse
+    (débit↔crédit permutés) au même journal, ce qui solde comptablement
+    l'originale tout en gardant la piste d'audit. Idempotent via
+    ``source_type='extourne'`` + ``source_id`` = id de l'écriture d'origine.
+
+    Refuse d'extourner une écriture dont la date d'extourne tombe dans une
+    période verrouillée (garde-fou hérité de ``EcritureComptable.save``).
+    Renvoie l'écriture d'extourne (existante ou nouvelle).
+    """
+    company = ecriture.company
+    if date_extourne is None:
+        date_extourne = timezone.localdate()
+    # Idempotence : une écriture n'a qu'une seule extourne par société.
+    existante = _ecriture_existante(company, 'extourne', ecriture.id)
+    if existante:
+        return existante
+    lignes = []
+    for lig in ecriture.lignes.all():
+        # Permute débit et crédit pour annuler la ligne d'origine.
+        lignes.append({
+            'compte': lig.compte,
+            'debit': lig.credit,
+            'credit': lig.debit,
+            'libelle': f'Extourne — {lig.libelle}' if lig.libelle else 'Extourne',
+            'tiers_type': lig.tiers_type,
+            'tiers_id': lig.tiers_id,
+            'centre_cout': lig.centre_cout,
+        })
+    if not lignes:
+        raise ValidationError(
+            "Impossible d'extourner une écriture sans ligne.")
+    lib = libelle or f'Extourne de : {ecriture.libelle}'
+    return creer_ecriture(
+        company, ecriture.journal, date_extourne, lib, lignes,
+        reference=f'EXT-{ecriture.reference}' if ecriture.reference else '',
+        source_type='extourne', source_id=ecriture.id,
+        created_by=user, statut=EcritureComptable.Statut.VALIDEE,
+    )
+
+
+# ── COMPTA39 — Piste d'audit comptable inaltérable (hash-chaînée) ──────────
+# Chaque écriture validée est scellée dans un maillon append-only enchaîné au
+# précédent : hash = SHA256(hash_precedent + empreinte_contenu). Toute altération
+# d'une écriture déjà scellée casse la chaîne à la vérification. Purement additif :
+# aucun scellement n'a lieu tant que ``enregistrer_piste_audit`` n'est pas appelé.
+
+def _empreinte_ecriture(ecriture):
+    """Empreinte SHA-256 déterministe du contenu d'une écriture (+ ses lignes).
+
+    On sérialise les champs de tête (référence, date, journal, libellé, statut,
+    source) et chaque ligne (compte, débit, crédit, tiers) dans un ordre stable,
+    puis on hache. Toute modification ultérieure d'un de ces champs change
+    l'empreinte — donc casse la chaîne. Lecture seule.
+    """
+    parties = [
+        str(ecriture.company_id),
+        str(ecriture.reference or ''),
+        ecriture.date_ecriture.isoformat() if ecriture.date_ecriture else '',
+        str(ecriture.journal_id),
+        str(ecriture.libelle or ''),
+        str(ecriture.statut or ''),
+        str(ecriture.source_type or ''),
+        str(ecriture.source_id or ''),
+    ]
+    lignes = ecriture.lignes.order_by('id').values_list(
+        'compte__numero', 'debit', 'credit', 'tiers_type', 'tiers_id')
+    for numero, debit, credit, t_type, t_id in lignes:
+        parties.append(
+            f'{numero}|{debit}|{credit}|{t_type or ""}|{t_id or ""}')
+    charge = '\n'.join(parties).encode('utf-8')
+    return hashlib.sha256(charge).hexdigest()
+
+
+@transaction.atomic
+def enregistrer_piste_audit(ecriture):
+    """Scelle une écriture dans la piste d'audit hash-chaînée (idempotent).
+
+    Crée UN maillon enchaîné au dernier maillon de la société. Si l'écriture est
+    déjà scellée, renvoie son maillon existant sans rien récrire (append-only).
+    ``company`` déduite de l'écriture. Renvoie le maillon.
+    """
+    company = ecriture.company
+    if company is None:
+        return None
+    existant = PisteAuditComptable.objects.filter(
+        company=company, ecriture=ecriture).first()
+    if existant:
+        return existant
+    dernier = PisteAuditComptable.objects.filter(
+        company=company).order_by('-sequence').first()
+    hash_precedent = dernier.hash if dernier else ''
+    sequence = (dernier.sequence + 1) if dernier else 1
+    empreinte = _empreinte_ecriture(ecriture)
+    hash_maillon = hashlib.sha256(
+        (hash_precedent + empreinte).encode('utf-8')).hexdigest()
+    return PisteAuditComptable.objects.create(
+        company=company,
+        ecriture=ecriture,
+        sequence=sequence,
+        empreinte_contenu=empreinte,
+        hash_precedent=hash_precedent,
+        hash=hash_maillon,
+    )
+
+
+def verifier_integrite_piste(company):
+    """Vérifie l'intégrité de la piste d'audit hash-chaînée d'une société.
+
+    Recalcule chaque maillon dans l'ordre : l'empreinte doit correspondre au
+    contenu ACTUEL de l'écriture et le hash chaîné doit recoller au maillon
+    précédent. Renvoie ``{'valide': bool, 'nb_maillons': int, 'rupture': …}`` où
+    ``rupture`` est le rang du premier maillon incohérent (None si tout est
+    intègre). Lecture seule.
+    """
+    maillons = list(PisteAuditComptable.objects.filter(
+        company=company).select_related('ecriture').order_by('sequence'))
+    hash_precedent = ''
+    for maillon in maillons:
+        empreinte = _empreinte_ecriture(maillon.ecriture)
+        attendu = hashlib.sha256(
+            (hash_precedent + empreinte).encode('utf-8')).hexdigest()
+        if (empreinte != maillon.empreinte_contenu
+                or maillon.hash_precedent != hash_precedent
+                or maillon.hash != attendu):
+            return {
+                'valide': False,
+                'nb_maillons': len(maillons),
+                'rupture': maillon.sequence,
+            }
+        hash_precedent = maillon.hash
+    return {
+        'valide': True,
+        'nb_maillons': len(maillons),
+        'rupture': None,
+    }

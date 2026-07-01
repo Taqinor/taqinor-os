@@ -26,9 +26,13 @@ from .regulatory import (  # FG268-FG271
     SubventionDossierViewSet,
     Regularisation8221ViewSet,
 )
-from .commissioning import (  # FG274-FG275
+from .commissioning import (  # FG274-FG278, FG287
     CommissioningTestViewSet,
     IVCurveCaptureViewSet,
+    AsBuiltPackViewSet,
+    AttestationConformiteViewSet,
+    TestPerformanceReceptionViewSet,
+    AttestationREViewSet,
 )
 
 __all__ = [
@@ -54,4 +58,8 @@ __all__ = [
     'Regularisation8221ViewSet',
     'CommissioningTestViewSet',
     'IVCurveCaptureViewSet',
+    'AsBuiltPackViewSet',
+    'AttestationConformiteViewSet',
+    'TestPerformanceReceptionViewSet',
+    'AttestationREViewSet',
 ]

@@ -28,7 +28,7 @@ from apps.sav.models import Ticket
 
 from apps.monitoring import providers, services
 from apps.monitoring.models import (
-    MonitoringConfig, MonitoringSettings, ProductionReading,
+    CleaningEvent, MonitoringConfig, MonitoringSettings, ProductionReading,
     UnderperformanceFlag,
 )
 
@@ -313,3 +313,495 @@ class TestUnderperformance(TestCase):
         self.assertEqual(
             UnderperformanceFlag.objects.filter(
                 installation=self.inst, is_open=True).count(), 1)
+
+
+class TestOmMetrics(TestCase):
+    """FG279 — analytique O&M (PR, disponibilité, soiling, dégradation)."""
+
+    def setUp(self):
+        self.company = make_company('om-co', 'OM Co')
+        self.user = User.objects.create_user(
+            username='om_admin', password='x', role_legacy='admin',
+            company=self.company)
+        self.api = auth(self.user)
+        self.inst, _ = make_installation(self.company, ref='CHT-OM-1', kwc='10.00')
+        self.config = MonitoringConfig.objects.create(
+            company=self.company, installation=self.inst,
+            expected_annual_kwh=Decimal('12000'))
+        self.today = date(2026, 6, 30)
+
+    def _seed_monthly(self, kwh_by_month):
+        for offset, kwh in enumerate(kwh_by_month):
+            ProductionReading.objects.create(
+                company=self.company, installation=self.inst,
+                date=date(2026, 1, 15) + timedelta(days=30 * offset),
+                period_days=30, energy_kwh=Decimal(str(kwh)))
+
+    def test_pr_and_availability_computed(self):
+        self._seed_monthly([1000, 1000, 1000])
+        from apps.monitoring.analytics import om_metrics
+        m = om_metrics(self.inst, window_days=365, today=self.today)
+        self.assertIsNotNone(m['pr_pct'])
+        self.assertIsNotNone(m['availability_pct'])
+        self.assertEqual(m['production_kwh'], Decimal('3000.00'))
+
+    def test_declining_pr_flags_soiling(self):
+        # PR mensuel qui décroît nettement → soiling suspecté.
+        self._seed_monthly([1000, 900, 800, 700, 600, 500])
+        from apps.monitoring.analytics import om_metrics
+        m = om_metrics(self.inst, window_days=365, today=self.today)
+        self.assertTrue(m['soiling_suspected'])
+        self.assertIsNotNone(m['degradation_pct_per_year'])
+
+    def test_no_data_graceful(self):
+        from apps.monitoring.analytics import om_metrics
+        m = om_metrics(self.inst, window_days=365, today=self.today)
+        self.assertEqual(m['production_kwh'], Decimal('0.00'))
+        self.assertEqual(m['monthly_pr'], [])
+
+    def test_om_metrics_endpoint(self):
+        self._seed_monthly([1000, 1000])
+        r = self.api.get(
+            f'/api/django/monitoring/configs/{self.config.id}/om-metrics/')
+        self.assertEqual(r.status_code, 200, r.data)
+        self.assertIn('pr_pct', r.data)
+        self.assertEqual(r.data['installation'], self.inst.id)
+
+
+class TestFleetOverview(TestCase):
+    """FG281 — tableau de bord parc/flotte multi-systèmes."""
+
+    def setUp(self):
+        self.company = make_company('fleet-co', 'Fleet Co')
+        self.other = make_company('fleet-other', 'Fleet Other')
+        self.user = User.objects.create_user(
+            username='fleet_admin', password='x', role_legacy='admin',
+            company=self.company)
+        self.api = auth(self.user)
+        self.today = date(2026, 6, 30)
+        self.inst1, _ = make_installation(self.company, ref='F-1', kwc='5.00')
+        self.inst2, _ = make_installation(self.company, ref='F-2', kwc='10.00')
+        for inst, exp in ((self.inst1, '6000'), (self.inst2, '12000')):
+            MonitoringConfig.objects.create(
+                company=self.company, installation=inst,
+                expected_annual_kwh=Decimal(exp))
+            ProductionReading.objects.create(
+                company=self.company, installation=inst,
+                date=date(2026, 6, 1), period_days=365,
+                energy_kwh=Decimal('5000'))
+
+    def test_fleet_totals(self):
+        from apps.monitoring.selectors import fleet_overview
+        ov = fleet_overview(self.company, today=self.today)
+        self.assertEqual(ov['systems_active'], 2)
+        self.assertEqual(ov['total_kwc'], Decimal('15.00'))
+        self.assertEqual(ov['total_production_kwh'], Decimal('10000.00'))
+        self.assertIsNotNone(ov['fleet_pr_pct'])
+
+    def test_inactive_system_excluded(self):
+        self.inst2.parc_actif = False
+        self.inst2.save(update_fields=['parc_actif'])
+        from apps.monitoring.selectors import fleet_overview
+        ov = fleet_overview(self.company, today=self.today)
+        self.assertEqual(ov['systems_active'], 1)
+
+    def test_fleet_endpoint_isolation(self):
+        # L'autre société ne voit pas les systèmes de la première.
+        other_user = User.objects.create_user(
+            username='fleet_other_admin', password='x', role_legacy='admin',
+            company=self.other)
+        r = auth(other_user).get('/api/django/monitoring/configs/fleet/')
+        self.assertEqual(r.status_code, 200, r.data)
+        self.assertEqual(r.data['systems_active'], 0)
+
+    def test_fleet_endpoint_ok(self):
+        r = self.api.get('/api/django/monitoring/configs/fleet/')
+        self.assertEqual(r.status_code, 200, r.data)
+        self.assertEqual(r.data['systems_active'], 2)
+
+
+class TestProductionWarranty(TestCase):
+    """FG282 — garantie de production + compensation de manque."""
+
+    def setUp(self):
+        self.company = make_company('war-co', 'War Co')
+        self.user = User.objects.create_user(
+            username='war_admin', password='x', role_legacy='admin',
+            company=self.company)
+        self.api = auth(self.user)
+        self.inst, _ = make_installation(self.company, ref='W-1', kwc='10.00')
+
+    def _make_warranty(self, **kw):
+        from apps.monitoring.models import ProductionWarranty
+        defaults = dict(
+            company=self.company, installation=self.inst,
+            guaranteed_year1_kwh=Decimal('12000'),
+            degradation_pct_per_year=Decimal('0.50'),
+            start_year=2025,
+            compensation_mad_per_kwh=Decimal('1.4000'))
+        defaults.update(kw)
+        return ProductionWarranty.objects.create(**defaults)
+
+    def test_degraded_guarantee_year2(self):
+        w = self._make_warranty()
+        # Année 2 (2026) : 12000 × (1 - 0.005) = 11940.
+        g = w.guaranteed_kwh_for_year(2026)
+        self.assertEqual(g.quantize(Decimal('0.01')), Decimal('11940.00'))
+
+    def test_shortfall_and_compensation(self):
+        self._make_warranty()
+        ProductionReading.objects.create(
+            company=self.company, installation=self.inst,
+            date=date(2026, 6, 1), period_days=365, energy_kwh=Decimal('10000'))
+        from apps.monitoring.services import production_warranty_status
+        st = production_warranty_status(self.inst, year=2026)
+        self.assertTrue(st['has_warranty'])
+        # Manque = 11940 - 10000 = 1940 ; compensation = 1940 × 1.4 = 2716.
+        self.assertEqual(st['shortfall_kwh'], Decimal('1940.00'))
+        self.assertEqual(st['compensation_mad'], Decimal('2716.00'))
+
+    def test_no_shortfall_when_overproducing(self):
+        self._make_warranty()
+        ProductionReading.objects.create(
+            company=self.company, installation=self.inst,
+            date=date(2026, 6, 1), period_days=365, energy_kwh=Decimal('13000'))
+        from apps.monitoring.services import production_warranty_status
+        st = production_warranty_status(self.inst, year=2026)
+        self.assertEqual(st['shortfall_kwh'], Decimal('0.00'))
+        self.assertEqual(st['compensation_mad'], Decimal('0.00'))
+
+    def test_no_warranty_graceful(self):
+        from apps.monitoring.services import production_warranty_status
+        st = production_warranty_status(self.inst, year=2026)
+        self.assertFalse(st['has_warranty'])
+
+    def test_warranty_viewset_forces_company(self):
+        r = self.api.post('/api/django/monitoring/warranties/', {
+            'installation': self.inst.id,
+            'guaranteed_year1_kwh': '12000',
+            'degradation_pct_per_year': '0.5',
+            'start_year': 2025,
+            'compensation_mad_per_kwh': '1.4',
+        }, format='json')
+        self.assertEqual(r.status_code, 201, r.data)
+        from apps.monitoring.models import ProductionWarranty
+        w = ProductionWarranty.objects.get(id=r.data['id'])
+        self.assertEqual(w.company_id, self.company.id)
+
+    def test_status_endpoint(self):
+        w = self._make_warranty()
+        ProductionReading.objects.create(
+            company=self.company, installation=self.inst,
+            date=date(2026, 6, 1), period_days=365, energy_kwh=Decimal('10000'))
+        r = self.api.get(
+            f'/api/django/monitoring/warranties/{w.id}/status/?year=2026')
+        self.assertEqual(r.status_code, 200, r.data)
+        self.assertTrue(r.data['has_warranty'])
+
+
+class TestSoiling(TestCase):
+    """FG283 — détection de pertes par salissure + reco de nettoyage."""
+
+    def setUp(self):
+        self.company = make_company('soil-co', 'Soil Co')
+        self.user = User.objects.create_user(
+            username='soil_admin', password='x', role_legacy='admin',
+            company=self.company)
+        self.api = auth(self.user)
+        self.inst, _ = make_installation(self.company, ref='S-1', kwc='10.00')
+        self.config = MonitoringConfig.objects.create(
+            company=self.company, installation=self.inst,
+            expected_annual_kwh=Decimal('12000'))
+        self.today = date(2026, 6, 30)
+
+    def _seed(self, kwh_by_month):
+        for offset, kwh in enumerate(kwh_by_month):
+            ProductionReading.objects.create(
+                company=self.company, installation=self.inst,
+                date=date(2026, 1, 15) + timedelta(days=30 * offset),
+                period_days=30, energy_kwh=Decimal(str(kwh)))
+
+    def test_pr_drop_recommends_cleaning(self):
+        # PR descend de 1000 → 700 (≈ -25 pts de PR), chute > seuil.
+        self._seed([1000, 950, 850, 700])
+        from apps.monitoring.analytics import soiling_assessment
+        a = soiling_assessment(self.inst, today=self.today)
+        self.assertIsNotNone(a['estimated_soiling_loss_pct'])
+        self.assertTrue(a['recommend_cleaning'])
+
+    def test_recent_cleaning_no_days_alert(self):
+        self._seed([1000, 1000, 1000])
+        CleaningEvent.objects.create(
+            company=self.company, installation=self.inst,
+            date=date(2026, 6, 1))
+        from apps.monitoring.analytics import soiling_assessment
+        a = soiling_assessment(self.inst, today=self.today)
+        self.assertEqual(a['days_since_cleaning'], 29)
+        self.assertFalse(a['recommend_cleaning'])
+
+    def test_cleaning_viewset_forces_company_and_user(self):
+        r = self.api.post('/api/django/monitoring/cleanings/', {
+            'installation': self.inst.id, 'date': '2026-06-15',
+        }, format='json')
+        self.assertEqual(r.status_code, 201, r.data)
+        ev = CleaningEvent.objects.get(id=r.data['id'])
+        self.assertEqual(ev.company_id, self.company.id)
+        self.assertEqual(ev.created_by_id, self.user.id)
+
+    def test_soiling_endpoint(self):
+        self._seed([1000, 700])
+        r = self.api.get(
+            f'/api/django/monitoring/configs/{self.config.id}/soiling/')
+        self.assertEqual(r.status_code, 200, r.data)
+        self.assertIn('recommend_cleaning', r.data)
+
+
+class TestWarrantyCurveOverlay(TestCase):
+    """FG284 — production mesurée vs courbe garantie → dérive → recours."""
+
+    def setUp(self):
+        self.company = make_company('curve-co', 'Curve Co')
+        self.user = User.objects.create_user(
+            username='curve_admin', password='x', role_legacy='admin',
+            company=self.company)
+        self.api = auth(self.user)
+        self.inst, _ = make_installation(self.company, ref='C-1', kwc='10.00')
+        from apps.monitoring.models import ProductionWarranty
+        self.warranty = ProductionWarranty.objects.create(
+            company=self.company, installation=self.inst,
+            guaranteed_year1_kwh=Decimal('12000'),
+            degradation_pct_per_year=Decimal('0.50'),
+            start_year=2025, tolerance_pct=Decimal('5'))
+        self.today = date(2026, 6, 30)
+
+    def test_anomalous_drift_flags_recourse(self):
+        ProductionReading.objects.create(
+            company=self.company, installation=self.inst,
+            date=date(2026, 6, 1), period_days=365, energy_kwh=Decimal('8000'))
+        from apps.monitoring.services import warranty_curve_overlay
+        ov = warranty_curve_overlay(self.inst, today=self.today)
+        self.assertTrue(ov['has_warranty'])
+        self.assertTrue(ov['manufacturer_recourse'])
+        p2026 = next(p for p in ov['points'] if p['year'] == 2026)
+        self.assertTrue(p2026['anomalous'])
+
+    def test_on_curve_no_recourse(self):
+        ProductionReading.objects.create(
+            company=self.company, installation=self.inst,
+            date=date(2026, 6, 1), period_days=365, energy_kwh=Decimal('11900'))
+        from apps.monitoring.services import warranty_curve_overlay
+        ov = warranty_curve_overlay(self.inst, today=self.today)
+        self.assertFalse(ov['manufacturer_recourse'])
+
+    def test_no_data_year_not_anomalous(self):
+        from apps.monitoring.services import warranty_curve_overlay
+        ov = warranty_curve_overlay(self.inst, today=self.today)
+        for p in ov['points']:
+            self.assertFalse(p['anomalous'])
+            self.assertIsNone(p['actual_kwh'])
+
+    def test_curve_endpoint(self):
+        ProductionReading.objects.create(
+            company=self.company, installation=self.inst,
+            date=date(2026, 6, 1), period_days=365, energy_kwh=Decimal('8000'))
+        r = self.api.get(
+            f'/api/django/monitoring/warranties/{self.warranty.id}/curve/')
+        self.assertEqual(r.status_code, 200, r.data)
+        self.assertTrue(r.data['manufacturer_recourse'])
+
+
+class TestAdditionalProviders(TestCase):
+    """FG285 — adaptateurs SolarEdge/Sungrow/Solis (gated, no-op par défaut)."""
+
+    def setUp(self):
+        self.company = make_company('adp-co', 'Adp Co')
+        self.user = User.objects.create_user(
+            username='adp_admin', password='x', role_legacy='admin',
+            company=self.company)
+        self.api = auth(self.user)
+        self.inst, _ = make_installation(self.company, ref='ADP-1')
+
+    def test_new_providers_registered(self):
+        keys = dict(providers.available_providers())
+        for key in ('solaredge', 'sungrow', 'solis'):
+            self.assertIn(key, keys)
+
+    def test_provider_noop_without_credentials(self):
+        for key in ('solaredge', 'sungrow', 'solis'):
+            cfg = MonitoringConfig.objects.create(
+                company=self.company, installation=self.inst,
+                provider=key, enabled=True, credentials={})
+            prov = providers.get_provider(key)
+            self.assertEqual(prov.fetch_recent(self.inst, cfg), [])
+            cfg.delete()
+
+    def test_provider_noop_when_disabled_even_with_credentials(self):
+        cfg = MonitoringConfig.objects.create(
+            company=self.company, installation=self.inst,
+            provider='solaredge', enabled=False,
+            credentials={'api_key': 'x', 'site_id': '1'})
+        prov = providers.get_provider('solaredge')
+        self.assertEqual(prov.fetch_recent(self.inst, cfg), [])
+
+    def test_providers_endpoint_lists_new(self):
+        r = self.api.get('/api/django/monitoring/configs/providers/')
+        self.assertEqual(r.status_code, 200, r.data)
+        keys = [p['key'] for p in r.data]
+        self.assertIn('solaredge', keys)
+        self.assertIn('solis', keys)
+
+
+class TestCo2Reporting(TestCase):
+    """FG286 — CO₂ évité par système & cumulé sur le parc."""
+
+    def setUp(self):
+        self.company = make_company('co2-co', 'CO2 Co')
+        self.user = User.objects.create_user(
+            username='co2_admin', password='x', role_legacy='admin',
+            company=self.company)
+        self.api = auth(self.user)
+        self.inst1, _ = make_installation(self.company, ref='CO2-1', kwc='5')
+        self.inst2, _ = make_installation(self.company, ref='CO2-2', kwc='10')
+        for inst in (self.inst1, self.inst2):
+            self.config = MonitoringConfig.objects.create(
+                company=self.company, installation=inst)
+            ProductionReading.objects.create(
+                company=self.company, installation=inst,
+                date=date(2026, 6, 1), period_days=30,
+                energy_kwh=Decimal('1000'))
+
+    def test_co2_per_system(self):
+        from apps.monitoring.selectors import co2_for_installation
+        r = co2_for_installation(self.inst1)
+        # 1000 kWh × 0.81 = 810 kg.
+        self.assertEqual(r['co2_kg'], Decimal('810.00'))
+
+    def test_co2_fleet_cumulative(self):
+        from apps.monitoring.selectors import co2_fleet
+        r = co2_fleet(self.company)
+        # 2000 kWh × 0.81 = 1620 kg.
+        self.assertEqual(r['total_co2_kg'], Decimal('1620.00'))
+        self.assertEqual(len(r['systems']), 2)
+
+    def test_co2_fleet_endpoint(self):
+        r = self.api.get('/api/django/monitoring/configs/co2-fleet/')
+        self.assertEqual(r.status_code, 200, r.data)
+        self.assertEqual(len(r.data['systems']), 2)
+
+
+class TestClientEnvironmentalPortal(TestCase):
+    """FG288 — tableau de bord environnemental client (portail)."""
+
+    def setUp(self):
+        self.company = make_company('portal-co', 'Portal Co')
+        self.user = User.objects.create_user(
+            username='portal_admin', password='x', role_legacy='admin',
+            company=self.company)
+        self.api = auth(self.user)
+        # Deux systèmes du MÊME client.
+        self.client_obj = Client.objects.create(
+            company=self.company, nom='Cli', prenom='Ent',
+            email='portal-cli@example.invalid')
+        self.inst1 = Installation.objects.create(
+            company=self.company, reference='P-1', client=self.client_obj,
+            puissance_installee_kwc=Decimal('5'))
+        self.inst2 = Installation.objects.create(
+            company=self.company, reference='P-2', client=self.client_obj,
+            puissance_installee_kwc=Decimal('5'))
+        for inst in (self.inst1, self.inst2):
+            ProductionReading.objects.create(
+                company=self.company, installation=inst,
+                date=date(2026, 6, 1), period_days=30,
+                energy_kwh=Decimal('1000'))
+
+    def test_cumulative_dashboard(self):
+        from apps.monitoring.selectors import client_environmental_dashboard
+        d = client_environmental_dashboard(self.company, self.client_obj.id)
+        self.assertEqual(d['total_production_kwh'], Decimal('2000.00'))
+        # 2000 × 1.4 = 2800 MAD ; 2000 × 0.81 = 1620 kg CO₂.
+        self.assertEqual(d['economies_mad'], Decimal('2800.00'))
+        self.assertEqual(d['co2_kg'], Decimal('1620.00'))
+        self.assertEqual(d['systems_count'], 2)
+
+    def test_portal_endpoint(self):
+        r = self.api.get(
+            f'/api/django/monitoring/configs/client-portal/?client={self.client_obj.id}')
+        self.assertEqual(r.status_code, 200, r.data)
+        self.assertEqual(r.data['systems_count'], 2)
+
+    def test_portal_requires_client(self):
+        r = self.api.get('/api/django/monitoring/configs/client-portal/')
+        self.assertEqual(r.status_code, 400, r.data)
+
+
+class TestOmReport(TestCase):
+    """FG289 — rapport O&M périodique automatisé (données + email)."""
+
+    def setUp(self):
+        self.company = make_company('rep-co', 'Rep Co')
+        self.user = User.objects.create_user(
+            username='rep_admin', password='x', role_legacy='admin',
+            company=self.company)
+        self.api = auth(self.user)
+        self.client_obj = Client.objects.create(
+            company=self.company, nom='Cli', prenom='Rep',
+            email='rep-cli@example.invalid')
+        self.inst = Installation.objects.create(
+            company=self.company, reference='R-1', client=self.client_obj,
+            puissance_installee_kwc=Decimal('10'))
+        self.config = MonitoringConfig.objects.create(
+            company=self.company, installation=self.inst,
+            expected_annual_kwh=Decimal('12000'))
+        self.today = date(2026, 6, 30)
+        ProductionReading.objects.create(
+            company=self.company, installation=self.inst,
+            date=date(2026, 6, 10), period_days=30, energy_kwh=Decimal('900'))
+
+    def test_report_data(self):
+        from apps.monitoring.report import build_om_report_data
+        d = build_om_report_data(self.inst, period='monthly', today=self.today)
+        self.assertEqual(d['period_kwh'], Decimal('900.00'))
+        self.assertIn('recommendations', d)
+        self.assertTrue(len(d['recommendations']) >= 1)
+
+    def test_report_quarterly_window(self):
+        from apps.monitoring.report import build_om_report_data
+        d = build_om_report_data(
+            self.inst, period='quarterly', today=self.today)
+        self.assertEqual(d['period_days'], 91)
+
+    def test_email_no_recipient_is_noop(self):
+        from apps.monitoring.report import email_om_report
+        # Client sans email → aucun destinataire → no-op (False).
+        # (Installation exige un client ; le cas « sans destinataire » réel est
+        # un client dont l'email est vide, pas une installation sans client.)
+        client_sans_email = Client.objects.create(
+            company=self.company, nom='SansMail', prenom='X', email='')
+        inst2 = Installation.objects.create(
+            company=self.company, reference='R-2', client=client_sans_email,
+            puissance_installee_kwc=Decimal('5'))
+        self.assertFalse(email_om_report(inst2, today=self.today))
+
+    def test_email_sends_with_client_email(self):
+        from django.core import mail
+        from apps.monitoring.report import email_om_report
+        ok = email_om_report(self.inst, period='monthly', today=self.today)
+        self.assertTrue(ok)
+        self.assertEqual(len(mail.outbox), 1)
+        self.assertIn('rep-cli@example.invalid', mail.outbox[0].to)
+        self.assertEqual(len(mail.outbox[0].attachments), 1)
+
+    def test_report_json_endpoint(self):
+        r = self.api.get(
+            f'/api/django/monitoring/configs/{self.config.id}/om-report/')
+        self.assertEqual(r.status_code, 200, r.data)
+        self.assertIn('period_kwh', r.data)
+
+    def test_email_endpoint(self):
+        from django.core import mail
+        r = self.api.post(
+            f'/api/django/monitoring/configs/{self.config.id}/email-om-report/',
+            {'period': 'monthly'}, format='json')
+        self.assertEqual(r.status_code, 200, r.data)
+        self.assertTrue(r.data['sent'])
+        self.assertEqual(len(mail.outbox), 1)

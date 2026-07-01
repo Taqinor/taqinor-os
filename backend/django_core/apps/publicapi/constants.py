@@ -23,14 +23,30 @@ ALL_SCOPES = [code for code, _ in SCOPE_CHOICES]
 
 # ── Évènements webhook ───────────────────────────────────────────────────────
 EVENT_LEAD_CREATED = 'lead.created'
+EVENT_LEAD_LOST = 'lead.lost'
+EVENT_LEAD_STAGE_CHANGED = 'lead.stage_changed'
+EVENT_DEVIS_SENT = 'devis.sent'
 EVENT_DEVIS_ACCEPTED = 'devis.accepted'
-EVENT_CHANTIER_COMPLETED = 'chantier.completed'
+EVENT_FACTURE_CREATED = 'facture.created'
 EVENT_FACTURE_PAID = 'facture.paid'
+EVENT_PAIEMENT_RECORDED = 'paiement.recorded'
+EVENT_CHANTIER_COMPLETED = 'chantier.completed'
+EVENT_INTERVENTION_COMPLETED = 'intervention.completed'
+EVENT_TICKET_CREATED = 'ticket.created'
+EVENT_TICKET_RESOLVED = 'ticket.resolved'
 
 EVENT_CHOICES = [
     (EVENT_LEAD_CREATED, 'Nouveau lead'),
+    (EVENT_LEAD_LOST, 'Lead perdu'),
+    (EVENT_LEAD_STAGE_CHANGED, "Lead — étape changée"),
+    (EVENT_DEVIS_SENT, 'Devis envoyé'),
     (EVENT_DEVIS_ACCEPTED, 'Devis accepté'),
-    (EVENT_CHANTIER_COMPLETED, 'Chantier clôturé'),
+    (EVENT_FACTURE_CREATED, 'Facture créée'),
     (EVENT_FACTURE_PAID, 'Facture payée'),
+    (EVENT_PAIEMENT_RECORDED, 'Paiement enregistré'),
+    (EVENT_CHANTIER_COMPLETED, 'Chantier clôturé'),
+    (EVENT_INTERVENTION_COMPLETED, 'Intervention terminée'),
+    (EVENT_TICKET_CREATED, 'Ticket SAV créé'),
+    (EVENT_TICKET_RESOLVED, 'Ticket SAV résolu'),
 ]
 ALL_EVENTS = [code for code, _ in EVENT_CHOICES]

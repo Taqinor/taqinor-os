@@ -532,7 +532,10 @@ class OrdreVirementViewSet(TenantMixin, viewsets.ReadOnlyModelViewSet):
         """Génère (ou régénère) l'ordre de virement d'une période (PAIE30).
 
         Corps : ``periode`` (id) requis ; ``date_execution`` / ``rib_emetteur``
-        facultatifs. Un ordre déjà ÉMIS ne peut être régénéré (400).
+        / ``compte_emetteur`` (id `compta.CompteTresorerie`, DC20) facultatifs.
+        Un compte émetteur fourni dérive le RIB + la devise du référentiel
+        trésorerie (source unique). Un ordre déjà ÉMIS ne peut être régénéré
+        (400).
         """
         periode_id = request.data.get('periode')
         if not periode_id:
@@ -550,7 +553,8 @@ class OrdreVirementViewSet(TenantMixin, viewsets.ReadOnlyModelViewSet):
             ordre = generer_ordre_virement(
                 periode,
                 date_execution=request.data.get('date_execution') or None,
-                rib_emetteur=request.data.get('rib_emetteur', ''))
+                rib_emetteur=request.data.get('rib_emetteur', ''),
+                compte_emetteur=request.data.get('compte_emetteur') or None)
         except ValueError as exc:
             return Response(
                 {'detail': str(exc)}, status=status.HTTP_400_BAD_REQUEST)

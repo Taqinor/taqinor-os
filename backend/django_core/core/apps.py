@@ -16,3 +16,9 @@ class CoreConfig(AppConfig):
     default_auto_field = 'django.db.models.BigAutoField'
     name = 'core'
     verbose_name = 'Fondation'
+
+    def ready(self):
+        # FG396 — supervision d'erreurs (Sentry), gardée par DSN. No-op total
+        # sans ``SENTRY_DSN`` (aucune dépendance chargée, aucun appel réseau).
+        from . import monitoring
+        monitoring.init_sentry()

@@ -51,3 +51,65 @@ def devis_card(devis_id, company):
         'subtitle': ' · '.join(p for p in parts if p),
         'url': f'/devis/{devis.pk}',
     }
+
+
+# ── DC23 — UN référentiel TVA + UN selector `tva_par_taux` ──────────────────
+# La ventilation de la TVA par taux était copiée à l'identique dans trois
+# propriétés (Devis/Facture/Avoir) ; FEC (exports.py) et DGI (dgi/) la
+# reconsommaient. `tva_buckets` est désormais l'UNIQUE implémentation : un
+# panier par taux effectif, réconcilié au centime. Les trois modèles et les
+# exports DGI/FEC y délèguent → une seule logique de bucket, comportement
+# strictement identique (mono-taux : formule d'origine HT×taux sans arrondi par
+# panier → figures historiques inchangées ; taux mixtes : panier arrondi au
+# centime dont la somme = total TVA).
+
+# Référentiel des taux de TVA marocains (réforme 2024–2026). Source unique de
+# vérité côté backend pour les contrôles/labels ; les taux EFFECTIFS d'un
+# document restent portés par chaque ligne (taux_tva_effectif) ou le profil
+# société (CompanyProfile.tva_standard / tva_panneaux). Ne fixe AUCUNE valeur
+# en dur dans les calculs — sert de table de référence partagée.
+TAUX_TVA_REFERENTIEL = {
+    'standard': 20,     # équipements et prestations
+    'panneaux': 10,     # panneaux photovoltaïques (réforme)
+    'exonere': 0,       # opérations exonérées
+}
+
+
+def tva_buckets(lignes, *, fallback_taux, frozen=None):
+    """Ventilation TVA canonique (DC23). UNE seule implémentation partagée.
+
+    Args:
+        lignes: itérable de lignes exposant ``total_ht`` (Decimal-coercible) et
+            ``taux_tva_effectif`` (taux %).
+        fallback_taux: taux à utiliser quand il n'y a aucune ligne (mono-taux du
+            document).
+        frozen: tuple optionnel ``(taux, base_ht, montant)`` pour un montant figé
+            (facture de tranche / acompte) — renvoyé tel quel en un seul panier.
+
+    Returns: liste de paniers ``{'taux', 'base_ht', 'montant'}``. Mono-taux :
+        formule d'origine (HT × taux, aucun arrondi par panier). Taux mixtes :
+        un panier par taux, chaque TVA arrondie au centime.
+    """
+    from decimal import Decimal, ROUND_HALF_UP
+    if frozen is not None:
+        taux, base_ht, montant = frozen
+        return [{'taux': taux, 'base_ht': base_ht, 'montant': montant}]
+
+    lignes = list(lignes)
+    buckets = {}
+    for ligne in lignes:
+        rate = Decimal(str(ligne.taux_tva_effectif))
+        buckets[rate] = buckets.get(rate, Decimal('0')) + Decimal(ligne.total_ht)
+    if len(buckets) <= 1:
+        rate = next(iter(buckets), Decimal(str(fallback_taux)))
+        base = sum((Decimal(li.total_ht) for li in lignes), Decimal('0'))
+        return [{'taux': rate, 'base_ht': base,
+                 'montant': base * rate / Decimal('100')}]
+
+    def q(x):
+        return x.quantize(Decimal('0.01'), rounding=ROUND_HALF_UP)
+    return [
+        {'taux': rate, 'base_ht': q(buckets[rate]),
+         'montant': q(buckets[rate] * rate / Decimal('100'))}
+        for rate in sorted(buckets)
+    ]

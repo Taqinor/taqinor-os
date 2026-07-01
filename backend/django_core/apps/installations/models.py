@@ -125,6 +125,52 @@ from .models_contrat_prix import (
     ContratPrixFournisseur,
     ContratPrixLigne,
 )
+from .models_bin_location import (
+    BinLocation,
+    BinAffectation,
+)
+from .models_putaway import (
+    PutAway,
+)
+from .models_picklist import (
+    PickList,
+    PickListLigne,
+)
+from .models_colisage import (
+    Colis,
+    ColisLigne,
+)
+from .models_serie_entrepot import (
+    SerieEntrepot,
+)
+from .models_comptage import (
+    SessionComptage,
+    ComptageLigne,
+)
+from .models_demande_transfert import (
+    DemandeTransfert,
+)
+from .models_reappro import (
+    RegleReappro,
+)
+from .models_consignation import (
+    MaterielConsigne,
+)
+from .models_kitting import (
+    Kit,
+    KitComposant,
+    OrdreAssemblage,
+)
+from .models_livraison import (
+    Livraison,
+    LivraisonLigne,
+)
+from .models_pod import (
+    PreuveLivraison,
+)
+from .models_transporteur import (
+    Transporteur,
+)
 
 __all__ = [
     'Installation',
@@ -189,4 +235,24 @@ __all__ = [
     'ReceptionNonFacturee',
     'ContratPrixFournisseur',
     'ContratPrixLigne',
+    'BinLocation',
+    'BinAffectation',
+    'PutAway',
+    'PickList',
+    'PickListLigne',
+    'Colis',
+    'ColisLigne',
+    'SerieEntrepot',
+    'SessionComptage',
+    'ComptageLigne',
+    'DemandeTransfert',
+    'RegleReappro',
+    'MaterielConsigne',
+    'Kit',
+    'KitComposant',
+    'OrdreAssemblage',
+    'Livraison',
+    'LivraisonLigne',
+    'PreuveLivraison',
+    'Transporteur',
 ]

@@ -71,3 +71,56 @@ class JournalPaieTests(TestCase):
     def test_journal_de_paie_sans_bulletin(self):
         # Aucun bulletin validé → rien à comptabiliser.
         self.assertIsNone(journal_de_paie(self.periode))
+
+    # ── DC21 — aucun numéro de compte écrit en dur : tout passe par le
+    #          référentiel `compta.CompteComptable` (plan comptable unique). ──
+
+    def test_journal_resout_les_comptes_du_referentiel(self):
+        """Chaque ligne de l'écriture porte un FK `CompteComptable` réel.
+
+        DC21 : la paie ne stocke jamais un numéro de compte en dur ; elle
+        RÉSOUT chaque compte d'imputation par ``compta.services.get_compte``
+        contre le plan comptable canonique. On vérifie qu'aucune ligne ne porte
+        un compte « inventé » hors référentiel.
+        """
+        from apps.compta.models import CompteComptable
+
+        self._bulletin_valide('C1')
+        ecriture = journal_de_paie(self.periode)
+        self.assertIsNotNone(ecriture)
+        comptes_referentiel = set(
+            CompteComptable.objects
+            .filter(company=self.co)
+            .values_list('id', flat=True))
+        lignes = list(ecriture.lignes.all())
+        self.assertGreater(len(lignes), 0)
+        for ligne in lignes:
+            # Le compte est un FK réel (jamais None / jamais une chaîne brute).
+            self.assertIsNotNone(ligne.compte_id)
+            self.assertIn(ligne.compte_id, comptes_referentiel)
+            self.assertEqual(ligne.compte.company_id, self.co.id)
+
+    def test_comptes_paie_existent_dans_le_plan(self):
+        """Tous les comptes d'imputation paie sont des numéros du référentiel.
+
+        Garantit que les clés ``_COMPTE_*`` sont de simples NUMÉROS résolus
+        contre le plan comptable (semé au besoin), pas des comptes ad-hoc.
+        """
+        from apps.compta.services import get_compte
+        from apps.paie import services as paie_services
+
+        numeros = [
+            paie_services._COMPTE_REMUNERATION,
+            paie_services._COMPTE_CHARGES_SOCIALES,
+            paie_services._COMPTE_CNSS,
+            paie_services._COMPTE_IR,
+            paie_services._COMPTE_CIMR,
+            paie_services._COMPTE_NET,
+        ]
+        # Déclenche le seed idempotent via une écriture, puis vérifie.
+        self._bulletin_valide('D1')
+        journal_de_paie(self.periode)
+        for num in numeros:
+            self.assertIsNotNone(
+                get_compte(self.co, num),
+                f'Compte {num} absent du plan comptable (référentiel DC21).')

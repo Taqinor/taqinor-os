@@ -10,11 +10,16 @@ from rest_framework import viewsets
 from rest_framework.exceptions import ValidationError
 
 from authentication.permissions import IsAnyRole, IsResponsableOrAdmin
-from ..models import CommissioningTest, IVCurveCapture
+from ..models import (
+    CommissioningTest, IVCurveCapture, AsBuiltPack, AttestationConformite,
+    TestPerformanceReception, AttestationRE)
 from ..serializers_commissioning import (
-    CommissioningTestSerializer, IVCurveCaptureSerializer)
+    CommissioningTestSerializer, IVCurveCaptureSerializer,
+    AsBuiltPackSerializer, AttestationConformiteSerializer,
+    TestPerformanceReceptionSerializer, AttestationRESerializer)
 from ..commissioning import (
-    compute_commissioning_result, evaluate_iv_curve)
+    compute_commissioning_result, evaluate_iv_curve, compute_reception_pr,
+    compute_co2_evite)
 
 READ_ACTIONS = ['list', 'retrieve']
 
@@ -170,3 +175,222 @@ class IVCurveCaptureViewSet(viewsets.ModelViewSet):
         recette = instance.recette
         instance.delete()
         _refresh_recette_result(recette)
+
+
+def _resolve_company_from_links(user, *objects):
+    """Société depuis le 1er objet lié non nul, bornée à l'utilisateur.
+
+    Chaque objet (chantier/devis/recette) fourni doit appartenir à la société de
+    l'utilisateur ; sinon ValidationError. Renvoie la société de l'utilisateur,
+    ou (superuser sans société) celle d'un objet lié. ValidationError si aucune.
+    """
+    company = _company_or_none(user)
+    for obj in objects:
+        if obj is not None and company is not None \
+                and getattr(obj, 'company_id', None) != company.id:
+            raise ValidationError({'detail': 'Référence inconnue.'})
+    if company is not None:
+        return company
+    for obj in objects:
+        if obj is not None and getattr(obj, 'company_id', None):
+            return obj.company
+    raise ValidationError({'company': 'Aucune société : opération impossible.'})
+
+
+class AsBuiltPackViewSet(viewsets.ModelViewSet):
+    """FG276 — CRUD pack documentaire as-built ; ``company`` forcée serveur."""
+
+    queryset = AsBuiltPack.objects.select_related(
+        'chantier', 'devis', 'recette', 'created_by').all()
+    serializer_class = AsBuiltPackSerializer
+
+    def get_permissions(self):
+        if self.action in READ_ACTIONS:
+            return [IsAnyRole()]
+        return [IsResponsableOrAdmin()]
+
+    def get_queryset(self):
+        user = self.request.user
+        qs = super().get_queryset()
+        if getattr(user, 'company_id', None):
+            qs = qs.filter(company=user.company)
+        elif not user.is_superuser:
+            return qs.none()
+        chantier_id = self.request.query_params.get('chantier')
+        if chantier_id:
+            qs = qs.filter(chantier_id=chantier_id)
+        return qs
+
+    def _company(self, validated, instance=None):
+        chantier = validated.get(
+            'chantier', getattr(instance, 'chantier', None))
+        devis = validated.get('devis', getattr(instance, 'devis', None))
+        recette = validated.get('recette', getattr(instance, 'recette', None))
+        return _resolve_company_from_links(
+            self.request.user, chantier, devis, recette)
+
+    def perform_create(self, serializer):
+        company = self._company(serializer.validated_data)
+        serializer.save(company=company, created_by=self.request.user)
+
+    def perform_update(self, serializer):
+        company = self._company(
+            serializer.validated_data, serializer.instance)
+        serializer.save(company=company)
+
+
+class AttestationConformiteViewSet(viewsets.ModelViewSet):
+    """FG277 — CRUD attestation de conformité électrique."""
+
+    queryset = AttestationConformite.objects.select_related(
+        'chantier', 'recette', 'created_by').all()
+    serializer_class = AttestationConformiteSerializer
+
+    def get_permissions(self):
+        if self.action in READ_ACTIONS:
+            return [IsAnyRole()]
+        return [IsResponsableOrAdmin()]
+
+    def get_queryset(self):
+        user = self.request.user
+        qs = super().get_queryset()
+        if getattr(user, 'company_id', None):
+            qs = qs.filter(company=user.company)
+        elif not user.is_superuser:
+            return qs.none()
+        chantier_id = self.request.query_params.get('chantier')
+        if chantier_id:
+            qs = qs.filter(chantier_id=chantier_id)
+        statut = self.request.query_params.get('statut')
+        if statut:
+            qs = qs.filter(statut=statut)
+        return qs
+
+    def _company(self, validated, instance=None):
+        chantier = validated.get(
+            'chantier', getattr(instance, 'chantier', None))
+        recette = validated.get('recette', getattr(instance, 'recette', None))
+        return _resolve_company_from_links(
+            self.request.user, chantier, recette)
+
+    def perform_create(self, serializer):
+        company = self._company(serializer.validated_data)
+        serializer.save(company=company, created_by=self.request.user)
+
+    def perform_update(self, serializer):
+        company = self._company(
+            serializer.validated_data, serializer.instance)
+        serializer.save(company=company)
+
+
+class TestPerformanceReceptionViewSet(viewsets.ModelViewSet):
+    """FG278 — CRUD test PR de réception ; pr/ecart/verdict dérivés serveur."""
+
+    queryset = TestPerformanceReception.objects.select_related(
+        'chantier', 'recette', 'created_by').all()
+    serializer_class = TestPerformanceReceptionSerializer
+
+    def get_permissions(self):
+        if self.action in READ_ACTIONS:
+            return [IsAnyRole()]
+        return [IsResponsableOrAdmin()]
+
+    def get_queryset(self):
+        user = self.request.user
+        qs = super().get_queryset()
+        if getattr(user, 'company_id', None):
+            qs = qs.filter(company=user.company)
+        elif not user.is_superuser:
+            return qs.none()
+        chantier_id = self.request.query_params.get('chantier')
+        if chantier_id:
+            qs = qs.filter(chantier_id=chantier_id)
+        verdict = self.request.query_params.get('verdict')
+        if verdict:
+            qs = qs.filter(verdict=verdict)
+        return qs
+
+    def _company(self, validated, instance=None):
+        chantier = validated.get(
+            'chantier', getattr(instance, 'chantier', None))
+        recette = validated.get('recette', getattr(instance, 'recette', None))
+        return _resolve_company_from_links(
+            self.request.user, chantier, recette)
+
+    def _derive(self, serializer):
+        v = serializer.validated_data
+        inst = serializer.instance
+
+        def _get(field):
+            return v.get(field, getattr(inst, field, None))
+
+        return compute_reception_pr(
+            energie_mesuree_kwh=_get('energie_mesuree_kwh'),
+            energie_attendue_kwh=_get('energie_attendue_kwh'),
+            pr_mesure=_get('pr_mesure'),
+            pr_attendu=_get('pr_attendu'),
+            pr_seuil_acceptation=_get('pr_seuil_acceptation'))
+
+    def perform_create(self, serializer):
+        company = self._company(serializer.validated_data)
+        pr_m, ecart, verdict = self._derive(serializer)
+        serializer.save(company=company, created_by=self.request.user,
+                        pr_mesure=pr_m, ecart_pct=ecart, verdict=verdict)
+
+    def perform_update(self, serializer):
+        company = self._company(
+            serializer.validated_data, serializer.instance)
+        pr_m, ecart, verdict = self._derive(serializer)
+        serializer.save(company=company, pr_mesure=pr_m,
+                        ecart_pct=ecart, verdict=verdict)
+
+
+class AttestationREViewSet(viewsets.ModelViewSet):
+    """FG287 — CRUD attestation d'énergie renouvelable ; CO₂ dérivé serveur."""
+
+    queryset = AttestationRE.objects.select_related(
+        'chantier', 'created_by').all()
+    serializer_class = AttestationRESerializer
+
+    def get_permissions(self):
+        if self.action in READ_ACTIONS:
+            return [IsAnyRole()]
+        return [IsResponsableOrAdmin()]
+
+    def get_queryset(self):
+        user = self.request.user
+        qs = super().get_queryset()
+        if getattr(user, 'company_id', None):
+            qs = qs.filter(company=user.company)
+        elif not user.is_superuser:
+            return qs.none()
+        chantier_id = self.request.query_params.get('chantier')
+        if chantier_id:
+            qs = qs.filter(chantier_id=chantier_id)
+        statut = self.request.query_params.get('statut')
+        if statut:
+            qs = qs.filter(statut=statut)
+        return qs
+
+    def _company(self, validated, instance=None):
+        chantier = validated.get(
+            'chantier', getattr(instance, 'chantier', None))
+        return _resolve_company_from_links(self.request.user, chantier)
+
+    def _derive(self, serializer):
+        energie = serializer.validated_data.get(
+            'energie_kwh', getattr(serializer.instance, 'energie_kwh', None))
+        return compute_co2_evite(energie_kwh=energie)
+
+    def perform_create(self, serializer):
+        company = self._company(serializer.validated_data)
+        facteur, co2 = self._derive(serializer)
+        serializer.save(company=company, created_by=self.request.user,
+                        facteur_co2_kg_kwh=facteur, co2_evite_t=co2)
+
+    def perform_update(self, serializer):
+        company = self._company(
+            serializer.validated_data, serializer.instance)
+        facteur, co2 = self._derive(serializer)
+        serializer.save(company=company, facteur_co2_kg_kwh=facteur,
+                        co2_evite_t=co2)

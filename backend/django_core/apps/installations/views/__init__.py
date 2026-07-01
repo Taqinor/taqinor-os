@@ -45,6 +45,22 @@ from .gr_ir import ReceptionNonFactureeViewSet
 from .contrat_prix import (
     ContratPrixFournisseurViewSet, ContratPrixLigneViewSet,
 )
+from .bin_location import BinLocationViewSet, BinAffectationViewSet
+from .putaway import PutAwayViewSet
+from .picklist import PickListViewSet, PickListLigneViewSet
+from .colisage import ColisViewSet, ColisLigneViewSet
+from .serie_entrepot import SerieEntrepotViewSet
+from .comptage import SessionComptageViewSet, ComptageLigneViewSet
+from .demande_transfert import DemandeTransfertViewSet
+from .reappro import RegleReapproViewSet
+from .consignation import MaterielConsigneViewSet
+from .kitting import (
+    KitViewSet, KitComposantViewSet, OrdreAssemblageViewSet,
+)
+from .livraison import LivraisonViewSet, LivraisonLigneViewSet
+from .pod import PreuveLivraisonViewSet
+from .transporteur import TransporteurViewSet
+from .tournee import TourneeLivraisonView
 from .field_sync import FieldSyncView
 
 __all__ = [
@@ -92,5 +108,26 @@ __all__ = [
     'ReceptionNonFactureeViewSet',
     'ContratPrixFournisseurViewSet',
     'ContratPrixLigneViewSet',
+    'BinLocationViewSet',
+    'BinAffectationViewSet',
+    'PutAwayViewSet',
+    'PickListViewSet',
+    'PickListLigneViewSet',
+    'ColisViewSet',
+    'ColisLigneViewSet',
+    'SerieEntrepotViewSet',
+    'SessionComptageViewSet',
+    'ComptageLigneViewSet',
+    'DemandeTransfertViewSet',
+    'RegleReapproViewSet',
+    'MaterielConsigneViewSet',
+    'KitViewSet',
+    'KitComposantViewSet',
+    'OrdreAssemblageViewSet',
+    'LivraisonViewSet',
+    'LivraisonLigneViewSet',
+    'PreuveLivraisonViewSet',
+    'TransporteurViewSet',
+    'TourneeLivraisonView',
     'FieldSyncView',
 ]

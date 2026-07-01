@@ -60,7 +60,8 @@ class ComptaApiTests(TestCase):
         self.assertEqual(resp.status_code, 200)
         self.assertTrue(
             CompteComptable.objects.filter(company=co, numero='3421').exists())
-        self.assertEqual(Journal.objects.filter(company=co).count(), 5)
+        # COMPTA4 — 6 journaux standards (VTE/ACH/BNK/CSH/OD/AN).
+        self.assertEqual(Journal.objects.filter(company=co).count(), 6)
 
     def test_comptes_isolation(self):
         api = auth(self.user_a)
