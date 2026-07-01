@@ -19,6 +19,7 @@ import {
 } from '../../ui'
 import { formatDateTime } from '../../lib/format'
 import { withOfflineFallback, FIELD_OPS } from './offline/fieldOutbox'
+import CameraCapture from '../pwa/CameraCapture'
 
 // N91/F21 — message commun quand une action a été MISE EN FILE (hors-ligne) :
 // elle se synchronisera toute seule au retour du réseau.
@@ -280,6 +281,8 @@ export function PhotosPanel({ intervention, onChanged }) {
   const [busy, setBusy] = useState(false)
   const fileRef = useRef(null)
   const pendingSlot = useRef(null)
+  // FG385 — créneau dont la caméra en direct est ouverte (null = aucune).
+  const [camSlot, setCamSlot] = useState(null)
 
   const load = useCallback(() => installationsApi.getPhotos(id)
     .then((r) => setData(r.data))
@@ -288,18 +291,22 @@ export function PhotosPanel({ intervention, onChanged }) {
   useEffect(() => { load() }, [load])
 
   const pick = (slot) => { pendingSlot.current = slot; fileRef.current?.click() }
-  const onFile = async (e) => {
-    const file = e.target.files?.[0]
-    e.target.value = ''
+  // Flux d'upload commun (choix de fichier ET capture caméra en direct).
+  const uploadPhoto = async (file, slot) => {
     if (!file) return
     setBusy(true)
     try {
-      await installationsApi.ajouterPhoto(id, file, pendingSlot.current)
+      await installationsApi.ajouterPhoto(id, file, slot)
       toast.success('Photo ajoutée.')
       await load(); onChanged?.()
     } catch (err) {
       toast.error(err?.response?.data?.detail ?? 'Téléversement impossible.')
     } finally { setBusy(false) }
+  }
+  const onFile = async (e) => {
+    const file = e.target.files?.[0]
+    e.target.value = ''
+    await uploadPhoto(file, pendingSlot.current)
   }
   const remove = async (photoId) => {
     setBusy(true)
@@ -351,11 +358,27 @@ export function PhotosPanel({ intervention, onChanged }) {
                     {slot.libelle}
                     {slot.obligatoire && <Badge tone="danger">Obligatoire</Badge>}
                   </span>
-                  <Button size="sm" variant="outline" disabled={busy}
-                    onClick={() => pick(slot.cle)}>
-                    <Camera className="size-4" aria-hidden="true" /> Photo
-                  </Button>
+                  <div className="flex items-center gap-1.5">
+                    <Button size="sm" variant="outline" disabled={busy}
+                      onClick={() => pick(slot.cle)}>
+                      <Camera className="size-4" aria-hidden="true" /> Photo
+                    </Button>
+                    <Button size="sm" variant="outline" disabled={busy}
+                      onClick={() => setCamSlot((s) => (s === slot.cle ? null : slot.cle))}
+                      title="Prendre une photo avec la caméra en direct">
+                      <Camera className="size-4" aria-hidden="true" />
+                      {camSlot === slot.cle ? 'Fermer' : 'Caméra'}
+                    </Button>
+                  </div>
                 </div>
+                {camSlot === slot.cle && (
+                  <div className="mb-2 max-w-sm">
+                    <CameraCapture
+                      onCapture={(file) => uploadPhoto(file, slot.cle)}
+                      onClose={() => setCamSlot(null)}
+                    />
+                  </div>
+                )}
                 {slot.photos.length === 0
                   ? <span className="text-[12px] text-muted-foreground">Aucune photo.</span>
                   : (
