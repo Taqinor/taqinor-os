@@ -237,14 +237,9 @@ html, body {{ font-family:{FONT_SANS}; color:{C['ink']}; -weasy-hyphens:none; }}
 
 def page_footer(data: dict) -> str:
     site = data.get("site_url", "taqinor.ma")
-    # DC1 — nom/email/tél société résolus (repli sur littéraux historiques).
-    ent = data.get("entreprise") or {}
-    nom = ent.get("nom") or "TAQINOR"
-    email = ent.get("email") or "contact@taqinor.com"
-    tel = ent.get("telephone") or "+212 6 61 85 04 10"
     return f"""
 <div class="foot">
-  <div><b>{nom}</b> &nbsp;·&nbsp; {email} &nbsp;·&nbsp; {tel}</div>
+  <div><b>TAQINOR</b> &nbsp;·&nbsp; contact@taqinor.com &nbsp;·&nbsp; +212 6 61 85 04 10</div>
   <div>Page {{page}} / 3 &nbsp;·&nbsp; Réf. {data['ref']} &nbsp;·&nbsp; <a>{site}</a></div>
 </div>
 """

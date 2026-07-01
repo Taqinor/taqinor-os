@@ -132,28 +132,6 @@ CG4 = "#9BA3AE"
 CG7 = "#374151"
 CGR = "#16A34A"
 
-# DC1 — identité société : littéraux historiques Taqinor. Le builder résout les
-# vraies valeurs (CompanyProfile en repli sur ceux-ci) ; ce dict ne sert que de
-# repli local quand le générateur est appelé directement (tests/legacy) sans la
-# clé `entreprise`. ENTREPRISE est rempli par render au runtime (jamais lu ici).
-_ENTREPRISE_FALLBACK = {
-    'nom': 'TAQINOR',
-    'raison_sociale': 'Taqinor Solutions SARLAU',
-    'capital': '100 000 MAD',
-    'rc': '691213',
-    'ice': '003799642000067',
-    'gerant': 'M. Reda Kasri',
-    'adresse': '5 Rue Ennoussour RDC, Casablanca',
-    'tribunal': 'Tribunal de Commerce de Casablanca',
-    'email': 'contact@taqinor.com',
-    'telephone': '+212 6 61 85 04 10',
-    'site_web': 'www.taqinor.ma',
-    'rib': '022 780 0002720029379418 74',
-    'banque': 'Saham Bank',
-    'bic': 'SGMBMAMCXXX',
-}
-ENTREPRISE = dict(_ENTREPRISE_FALLBACK)
-
 # ═══════════════════════════════════════════════════════════════════════════════
 # QUOTE_INPUT — seule section à modifier pour changer un devis
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -604,10 +582,8 @@ def footer_p3(extra_style=""):
             f'<div style="font-size:7pt;color:#888;">Page {PAGE3_NUM}&nbsp;/&nbsp;{PAGES_TOTAL} &nbsp;|&nbsp; R\u00e9f.&nbsp;{REF}</div>'
             f'</div>'
             f'<div style="font-size:7.5px;color:#888;text-align:center;font-style:italic;">'
-            f'{_esc(ENTREPRISE["raison_sociale"])} &middot; RC {_esc(ENTREPRISE["rc"])} '
-            f'&middot; ICE {_esc(ENTREPRISE["ice"])} &middot; '
-            f'Capital {_esc(ENTREPRISE["capital"])} &middot; '
-            f'Si\u00e8ge\u00a0: {_esc(ENTREPRISE["adresse"])}'
+            f'Taqinor Solutions SARLAU &middot; RC 691213 &middot; ICE 003799642000067 &middot; '
+            f'Capital 100&#8239;000 MAD &middot; Si\u00e8ge\u00a0: 5 Rue Ennoussour RDC, Casablanca'
             f'</div>'
             f'</div>')
 
@@ -1369,9 +1345,8 @@ def page3():
             # RIB bar
             f'<div style="background:{CG1};border-radius:5px;padding:4px 10px;margin-bottom:5px;">'
             f'<div style="font-size:7pt;color:{CG4};">Virement bancaire\u00a0: '
-            f'<strong style="color:{CG7};">{_esc(ENTREPRISE["raison_sociale"])}</strong> '
-            f'\u00b7 {_esc(ENTREPRISE["banque"])} \u00b7 '
-            f'RIB {_esc(ENTREPRISE["rib"])} \u00b7 BIC {_esc(ENTREPRISE["bic"])}</div>'
+            f'<strong style="color:{CG7};">TAQINOR SOLUTION</strong> \u00b7 Saham Bank \u00b7 '
+            f'RIB 022\u2009780\u20090002720029379418\u200974 \u00b7 BIC SGMBMAMCXXX</div>'
             f'</div>'
             f'</div>'
         )
@@ -1928,15 +1903,15 @@ def page_onepage(items):
   <!-- FOOTER: navy + legal identity, toujours en bas de page, jamais chevauché -->
   <div style="position:absolute;left:0;right:0;bottom:0;background:{CN};padding:6px 24px 5px;">
     <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px;">
-      <div style="font-size:9pt;font-weight:800;color:{CA};letter-spacing:1px;">{_esc(ENTREPRISE["nom"])}</div>
+      <div style="font-size:9pt;font-weight:800;color:{CA};letter-spacing:1px;">TAQINOR</div>
       <div style="font-size:7pt;color:#888;text-align:center;">
-        {_esc(ENTREPRISE["email"])} &nbsp;&#183;&nbsp; {_esc(ENTREPRISE["telephone"])} &nbsp;&#183;&nbsp; {_esc(ENTREPRISE["site_web"])}
+        contact@taqinor.com &nbsp;&#183;&nbsp; +212&#160;6&#160;61&#160;85&#160;04&#160;10 &nbsp;&#183;&nbsp; www.taqinor.ma
       </div>
       <div style="font-size:7pt;color:#888;">R&#233;f.&#160;{REF}</div>
     </div>
     <div style="font-size:7.5px;color:#888;text-align:center;font-style:italic;">
-      {_esc(ENTREPRISE["raison_sociale"])} &middot; RC {_esc(ENTREPRISE["rc"])} &middot; ICE {_esc(ENTREPRISE["ice"])} &middot;
-      Capital {_esc(ENTREPRISE["capital"])} &middot; Si&#232;ge&#160;: {_esc(ENTREPRISE["adresse"])}
+      Taqinor Solutions SARLAU &middot; RC 691213 &middot; ICE 003799642000067 &middot;
+      Capital 100&#8239;000 MAD &middot; Si&#232;ge&#160;: 5 Rue Ennoussour RDC, Casablanca
     </div>
   </div>
 
@@ -2026,7 +2001,6 @@ def _render_premium_pdf(data: dict, out_path) -> str:
     global PAY_A, PAY_M, PAY_S, ONEPAGE_NOTE_BATTERIE
     global DOC_TEXTS, ACCEPTE_PAR_NOM, DATE_ACCEPTATION
     global DEVISE  # FG52 — devise du document (ISO 4217)
-    global ENTREPRISE  # DC1 — identité société (repli sur littéraux historiques)
 
     # ERR37 — escape user-controlled client fields before they reach the PDF HTML.
     CLIENT_NAME  = _esc(data["client_name"])
@@ -2064,16 +2038,6 @@ def _render_premium_pdf(data: dict, out_path) -> str:
         f"TVA {_tva_lbl} % appliquée sur l'ensemble des équipements et travaux.")
     # FG52 — devise portée par le document (défaut MAD = comportement inchangé).
     DEVISE         = (data.get("devise") or "MAD").strip().upper()
-    # DC1 — identité société : fusion défaut historique + valeurs CompanyProfile.
-    # Toute clé absente retombe sur le littéral Taqinor → byte-identique tant que
-    # rien n'est renseigné. Les valeurs sont déjà résolues côté builder ; on
-    # garde un repli local pour les appels directs au générateur (tests/legacy).
-    _ent = data.get("entreprise") or {}
-    ENTREPRISE = dict(_ENTREPRISE_FALLBACK)
-    if isinstance(_ent, dict):
-        for k, v in _ent.items():
-            if v not in (None, ""):
-                ENTREPRISE[k] = v
 
     # Totaux canoniques (une seule source pour toutes les pages). À défaut
     # (anciens appels), reconstruits une fois ici avec la même chaîne.
