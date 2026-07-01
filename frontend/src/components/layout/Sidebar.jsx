@@ -10,6 +10,14 @@ import {
 } from 'lucide-react'
 import { logoutUser } from '../../features/auth/store/authSlice'
 
+// FG16 — ancres du guide d'accueil : map `to` → valeur `data-coach` posée sur
+// le lien correspondant, pour que le spotlight des coachmarks puisse le cibler.
+const COACH_ANCHORS = {
+  '/stock': 'produits',
+  '/parametres': 'parametres',
+  '/admin/users': 'equipe',
+}
+
 // ── P168 — Système d'icônes unifié (lucide-react) ─────────────────────────────
 // Toutes les icônes de la coquille viennent désormais d'une seule librairie, à
 // une épaisseur (1.75) et des tailles standardisées issues de l'échelle 3.5/4/5
@@ -240,6 +248,9 @@ export default function Sidebar({ collapsed, onToggle, onNavigate }) {
                   key={item.to}
                   to={item.to}
                   end
+                  // FG16 — ancres du guide d'accueil (coachmarks) sur quelques
+                  // liens clés : le spotlight cible ces attributs `data-coach`.
+                  data-coach={COACH_ANCHORS[item.to]}
                   title={collapsed ? item.label : undefined}
                   onClick={onNavigate}
                   // I135 — l'item actif porte aria-current="page" : NavLink le
