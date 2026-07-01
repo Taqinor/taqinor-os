@@ -126,11 +126,21 @@ export const isReseauInverter = (d) => {
 }
 export const isPanel = (d) => _norm(d).includes('panneau')
 
+// Défauts TVA (réforme : 10 % panneaux PV, 20 % le reste).
+export const TVA_PANNEAUX_DEFAUT = 10
+export const TVA_STANDARD_DEFAUT = 20
+
 // Taux TVA attendu d'après la désignation (réforme : 10 % panneaux PV, 20 % le
 // reste). Sert UNIQUEMENT à signaler une incohérence à l'écran — jamais à
 // recaler la valeur tapée (la frappe reste souveraine).
-export function expectedTvaForDesignation(designation) {
-  return isPanel(designation) ? 10 : 20
+// DC4 — un objet {tvaPanneaux, tvaStandard} (repères société, Paramètres) peut
+// surcharger les défauts ; sans lui, comportement historique inchangé.
+export function expectedTvaForDesignation(designation, tvaConfig) {
+  const panneaux = Number(tvaConfig?.tvaPanneaux) > 0
+    ? Number(tvaConfig.tvaPanneaux) : TVA_PANNEAUX_DEFAUT
+  const standard = Number(tvaConfig?.tvaStandard) > 0
+    ? Number(tvaConfig.tvaStandard) : TVA_STANDARD_DEFAUT
+  return isPanel(designation) ? panneaux : standard
 }
 
 // La désignation tapée correspond-elle encore au produit choisi du stock ?
@@ -203,24 +213,31 @@ export function classifyProduct(nom) {
   return null
 }
 
-// Prix TTC affiché depuis le prix de vente HT du stock (TVA 20 %)
-export function ttcFromHt(prixVenteHt, tauxTva = 20) {
-  const factor = 1 + (parseFloat(tauxTva) || 20) / 100
+// Prix TTC affiché depuis le prix de vente HT du stock.
+// DC6 — le taux 20 n'est qu'un DÉFAUT de repli ; le taux réel (10 % panneaux,
+// 20 % le reste, ou le taux standard édité de la société) est toujours passé
+// par l'appelant via tauxTva.
+export function ttcFromHt(prixVenteHt, tauxTva = TVA_STANDARD_DEFAUT) {
+  const factor = 1 + (parseFloat(tauxTva) || TVA_STANDARD_DEFAUT) / 100
   return Math.round((parseFloat(prixVenteHt) || 0) * factor)
 }
 
 // Taux TVA d'un produit (réforme 2024–2026 : 10 % panneaux PV, 20 % le reste).
-// Produit sans taux renseigné → 20.
-export function tauxTvaOf(produit) {
+// DC7 — `Produit.tva` est la source AUTORITAIRE par ligne ; on la prend telle
+// quelle quand elle est renseignée. DC6 — le repli n'est plus 20 en dur : il
+// suit le taux standard de la société (tvaStandard, Paramètres), défaut 20.
+export function tauxTvaOf(produit, tvaStandard) {
   const t = parseFloat(produit?.tva)
-  return Number.isFinite(t) && t > 0 ? t : 20
+  if (Number.isFinite(t) && t > 0) return t
+  const std = Number(tvaStandard) > 0 ? Number(tvaStandard) : TVA_STANDARD_DEFAUT
+  return std
 }
 
 // Conversion inverse au moment de l'enregistrement : le modèle stocke des
 // prix HT à 2 décimales. Pour tout TTC saisi à la dirham près, l'aller-retour
 // TTC → HT(2 déc.) → TTC réaffiché redonne exactement la valeur tapée.
-export function htFromTtc(ttc, tauxTva = 20) {
-  const factor = 1 + (parseFloat(tauxTva) || 20) / 100
+export function htFromTtc(ttc, tauxTva = TVA_STANDARD_DEFAUT) {
+  const factor = 1 + (parseFloat(tauxTva) || TVA_STANDARD_DEFAUT) / 100
   return ((parseFloat(ttc) || 0) / factor).toFixed(2)
 }
 

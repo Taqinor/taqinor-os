@@ -31,7 +31,8 @@ import {
   autoFillPompage, pompageSelection, HEURES_POMPAGE_DEFAUT,
   isBattery, isHybridInverter, isPanel, prixParKwc, discountForTarget,
   computeBuyCost, avecBatterieAvailability, KWH_PRICE, EFFICIENCY,
-  panneauxPourKwc,
+  panneauxPourKwc, expectedTvaForDesignation,
+  TVA_STANDARD_DEFAUT, TVA_PANNEAUX_DEFAUT,
 } from '../../features/ventes/solar'
 
 const MODE_OPTIONS = [
@@ -201,6 +202,9 @@ export default function DevisGenerator({
   // prixCibleDefaut pré-remplit le prix cible ; remiseMax = limite indicative.
   const [quoteLogic, setQuoteLogic] = useState({
     kwhPrice: KWH_PRICE, efficiency: EFFICIENCY, panneauxParTranche: 8,
+    // DC4/DC6 — repères TVA société (défauts réforme 20/10) : pilotent les
+    // repli de taux et l'avertissement de divergence, jamais un recalage forcé.
+    tvaStandard: TVA_STANDARD_DEFAUT, tvaPanneaux: TVA_PANNEAUX_DEFAUT,
   })
   const [remiseMax, setRemiseMax] = useState('')
   // Pompage (agricole)
@@ -522,10 +526,14 @@ export default function DevisGenerator({
       const kwh = parseFloat(data?.onee_tarif_kwh)
       const rend = parseFloat(data?.rendement_global)
       const perTr = parseInt(data?.panneaux_par_900mad, 10)
+      const tvaStd = parseFloat(data?.tva_standard)
+      const tvaPan = parseFloat(data?.tva_panneaux)
       setQuoteLogic({
         kwhPrice: (Number.isFinite(kwh) && kwh > 0) ? kwh : KWH_PRICE,
         efficiency: (Number.isFinite(rend) && rend > 0) ? rend : EFFICIENCY,
         panneauxParTranche: (Number.isFinite(perTr) && perTr > 0) ? perTr : 8,
+        tvaStandard: (Number.isFinite(tvaStd) && tvaStd > 0) ? tvaStd : TVA_STANDARD_DEFAUT,
+        tvaPanneaux: (Number.isFinite(tvaPan) && tvaPan > 0) ? tvaPan : TVA_PANNEAUX_DEFAUT,
       })
       const cible = parseFloat(data?.prix_cible_kwc_defaut)
       if (Number.isFinite(cible) && cible > 0) setPrixCible(prev => prev || String(cible))
@@ -1575,16 +1583,19 @@ export default function DevisGenerator({
                                  value={l.taux_tva ?? '20'}
                                  onChange={e => setLine(l._key, 'taux_tva', e.target.value)} />
                           {(() => {
-                            // Indice non bloquant : un panneau PV devrait porter
-                            // 10 % et une ligne non-panneau 20 % (réforme TVA).
-                            // On n'altère JAMAIS la valeur saisie.
+                            // DC7 — AVERTISSEMENT de divergence uniquement : le
+                            // taux attendu suit la désignation + les repères TVA
+                            // société (expectedTvaForDesignation), et `Produit.tva`
+                            // reste la source autoritaire par ligne. On n'altère
+                            // JAMAIS la valeur saisie (frappe souveraine).
                             const t = parseFloat(l.taux_tva)
-                            const panel = isPanel(l.designation)
-                            if (panel && t === 20) {
-                              return <div className="mt-0.5 text-xs text-warning">Panneau PV : 10 % attendu</div>
-                            }
-                            if (!panel && t === 10 && (l.designation || '').trim()) {
-                              return <div className="mt-0.5 text-xs text-warning">Non-panneau : 20 % attendu</div>
+                            if (!Number.isFinite(t) || !(l.designation || '').trim()) return null
+                            const expected = expectedTvaForDesignation(l.designation, {
+                              tvaPanneaux: quoteLogic.tvaPanneaux,
+                              tvaStandard: quoteLogic.tvaStandard,
+                            })
+                            if (t !== expected) {
+                              return <div className="mt-0.5 text-xs text-warning">{`${expected} % attendu`}</div>
                             }
                             return null
                           })()}

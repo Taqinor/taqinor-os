@@ -311,6 +311,7 @@ test('auto-fill petit système 5 panneaux : onduleur 5 kW Monophasé préféré'
 import {
   computeEtudeIndustrielle, computePompage, autoFillPompage,
   prixParKwc, discountForTarget, computeBuyCost, CV_TO_KW,
+  expectedTvaForDesignation,
 } from './solar.js'
 
 const POMPAGE_FIXTURE = [
@@ -531,4 +532,29 @@ test('marge : affichée seulement quand des prix d\'achat existent', () => {
   // un prix d'achat renseigné → coût TTC de cette ligne
   produits[0].prix_achat = '1000'
   assert.equal(computeBuyCost(lines, produits), Math.round(10 * 1000 * 1.2))
+})
+
+// ── DC4 — TVA panneaux société surcharge le défaut, sinon 10 %/20 % ───────────
+test('DC4 expectedTvaForDesignation : config société surcharge, défauts sinon', () => {
+  // Défauts réforme : panneau 10, autre 20
+  assert.equal(expectedTvaForDesignation('Panneau 710W'), 10)
+  assert.equal(expectedTvaForDesignation('Onduleur réseau'), 20)
+  // Config société : panneaux 7, standard 19
+  const cfg = { tvaPanneaux: 7, tvaStandard: 19 }
+  assert.equal(expectedTvaForDesignation('Panneau 710W', cfg), 7)
+  assert.equal(expectedTvaForDesignation('Onduleur', cfg), 19)
+  // Config invalide (0/NaN) → repli défauts
+  assert.equal(expectedTvaForDesignation('Panneau', { tvaPanneaux: 0 }), 10)
+})
+
+// ── DC6/DC7 — tauxTvaOf : produit.tva autoritaire, repli sur standard société ─
+test('DC6/DC7 tauxTvaOf : Produit.tva prioritaire, repli standard société', () => {
+  // DC7 — produit.tva renseigné = autoritaire, ignore le standard société
+  assert.equal(tauxTvaOf({ tva: '10' }, 19), 10)
+  assert.equal(tauxTvaOf({ tva: '20' }), 20)
+  // DC6 — sans taux produit, repli sur le standard société (défaut 20)
+  assert.equal(tauxTvaOf({}, 19), 19)
+  assert.equal(tauxTvaOf({}), 20)
+  // repli invalide (0) → 20
+  assert.equal(tauxTvaOf({}, 0), 20)
 })
