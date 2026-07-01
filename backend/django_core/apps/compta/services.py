@@ -20,6 +20,7 @@ Trois blocs :
 * ``creer_exercice`` / ``reporter_a_nouveaux`` (FG117) — ouverture d'exercice et
   report des soldes de bilan dans le nouvel exercice (à-nouveaux).
 """
+import hashlib
 from decimal import ROUND_HALF_UP, Decimal
 from math import asin, cos, radians, sin, sqrt
 
@@ -49,6 +50,7 @@ from .models import (
     EcheanceAO, ResultatAO, ComptePortailClient,
     PaiementFacturePortail,
     MappingCompte, CompteAuxiliaire,
+    PisteAuditComptable,
 )
 
 
@@ -4578,3 +4580,100 @@ def extourner_ecriture(ecriture, *, date_extourne=None, user=None,
         source_type='extourne', source_id=ecriture.id,
         created_by=user, statut=EcritureComptable.Statut.VALIDEE,
     )
+
+
+# ── COMPTA39 — Piste d'audit comptable inaltérable (hash-chaînée) ──────────
+# Chaque écriture validée est scellée dans un maillon append-only enchaîné au
+# précédent : hash = SHA256(hash_precedent + empreinte_contenu). Toute altération
+# d'une écriture déjà scellée casse la chaîne à la vérification. Purement additif :
+# aucun scellement n'a lieu tant que ``enregistrer_piste_audit`` n'est pas appelé.
+
+def _empreinte_ecriture(ecriture):
+    """Empreinte SHA-256 déterministe du contenu d'une écriture (+ ses lignes).
+
+    On sérialise les champs de tête (référence, date, journal, libellé, statut,
+    source) et chaque ligne (compte, débit, crédit, tiers) dans un ordre stable,
+    puis on hache. Toute modification ultérieure d'un de ces champs change
+    l'empreinte — donc casse la chaîne. Lecture seule.
+    """
+    parties = [
+        str(ecriture.company_id),
+        str(ecriture.reference or ''),
+        ecriture.date_ecriture.isoformat() if ecriture.date_ecriture else '',
+        str(ecriture.journal_id),
+        str(ecriture.libelle or ''),
+        str(ecriture.statut or ''),
+        str(ecriture.source_type or ''),
+        str(ecriture.source_id or ''),
+    ]
+    lignes = ecriture.lignes.order_by('id').values_list(
+        'compte__numero', 'debit', 'credit', 'tiers_type', 'tiers_id')
+    for numero, debit, credit, t_type, t_id in lignes:
+        parties.append(
+            f'{numero}|{debit}|{credit}|{t_type or ""}|{t_id or ""}')
+    charge = '\n'.join(parties).encode('utf-8')
+    return hashlib.sha256(charge).hexdigest()
+
+
+@transaction.atomic
+def enregistrer_piste_audit(ecriture):
+    """Scelle une écriture dans la piste d'audit hash-chaînée (idempotent).
+
+    Crée UN maillon enchaîné au dernier maillon de la société. Si l'écriture est
+    déjà scellée, renvoie son maillon existant sans rien récrire (append-only).
+    ``company`` déduite de l'écriture. Renvoie le maillon.
+    """
+    company = ecriture.company
+    if company is None:
+        return None
+    existant = PisteAuditComptable.objects.filter(
+        company=company, ecriture=ecriture).first()
+    if existant:
+        return existant
+    dernier = PisteAuditComptable.objects.filter(
+        company=company).order_by('-sequence').first()
+    hash_precedent = dernier.hash if dernier else ''
+    sequence = (dernier.sequence + 1) if dernier else 1
+    empreinte = _empreinte_ecriture(ecriture)
+    hash_maillon = hashlib.sha256(
+        (hash_precedent + empreinte).encode('utf-8')).hexdigest()
+    return PisteAuditComptable.objects.create(
+        company=company,
+        ecriture=ecriture,
+        sequence=sequence,
+        empreinte_contenu=empreinte,
+        hash_precedent=hash_precedent,
+        hash=hash_maillon,
+    )
+
+
+def verifier_integrite_piste(company):
+    """Vérifie l'intégrité de la piste d'audit hash-chaînée d'une société.
+
+    Recalcule chaque maillon dans l'ordre : l'empreinte doit correspondre au
+    contenu ACTUEL de l'écriture et le hash chaîné doit recoller au maillon
+    précédent. Renvoie ``{'valide': bool, 'nb_maillons': int, 'rupture': …}`` où
+    ``rupture`` est le rang du premier maillon incohérent (None si tout est
+    intègre). Lecture seule.
+    """
+    maillons = list(PisteAuditComptable.objects.filter(
+        company=company).select_related('ecriture').order_by('sequence'))
+    hash_precedent = ''
+    for maillon in maillons:
+        empreinte = _empreinte_ecriture(maillon.ecriture)
+        attendu = hashlib.sha256(
+            (hash_precedent + empreinte).encode('utf-8')).hexdigest()
+        if (empreinte != maillon.empreinte_contenu
+                or maillon.hash_precedent != hash_precedent
+                or maillon.hash != attendu):
+            return {
+                'valide': False,
+                'nb_maillons': len(maillons),
+                'rupture': maillon.sequence,
+            }
+        hash_precedent = maillon.hash
+    return {
+        'valide': True,
+        'nb_maillons': len(maillons),
+        'rupture': None,
+    }
