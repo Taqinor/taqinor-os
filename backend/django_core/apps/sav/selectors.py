@@ -57,3 +57,123 @@ def reconcile_serials_to_equipements(company, produit_id, serials):
 
     unmatched = [s for s in cleaned if s not in matched]
     return {'matched': matched, 'unmatched': unmatched}
+
+
+def warranty_registry(equipements_qs, *, expiring_soon_days=60, today=None):
+    """FG290 — Registre des garanties matériel & échéancier de fin PAR PARC.
+
+    Regroupe un queryset d'``Equipement`` (déjà scopé société + visibilité par
+    l'appelant) par parc/installation, et rend pour chaque unité ses deux dates
+    de fin de garantie (matériel + production, CALCULÉES sur le modèle — jamais
+    inventées ici) avec un statut d'alerte : ``expiree``, ``expire_bientot``
+    (dans les ``expiring_soon_days`` jours), ``sous_garantie`` ou
+    ``non_renseignee``.
+
+    Args:
+        equipements_qs: queryset ``Equipement`` déjà filtré/scopé par l'appelant.
+        expiring_soon_days: fenêtre d'alerte « expire bientôt » (jours).
+        today: date de référence (défaut : aujourd'hui, fuseau app).
+
+    Returns:
+        dict {
+            'today': 'YYYY-MM-DD',
+            'expiring_soon_days': int,
+            'parcs': [ {installation, client_nom, items:[…], alertes:{…}}, … ],
+            'totaux': {equipements, expirees, expire_bientot, sous_garantie,
+                       non_renseignee},
+        }
+        Les parcs sont triés par prochaine échéance de garantie (la plus proche
+        d'abord) pour que l'échéancier serve directement de liste d'action.
+    """
+    import datetime
+    from django.utils import timezone
+
+    if today is None:
+        today = timezone.localdate()
+    soon = today + datetime.timedelta(days=expiring_soon_days)
+
+    def _statut(date_fin):
+        if date_fin is None:
+            return 'non_renseignee'
+        if date_fin < today:
+            return 'expiree'
+        if date_fin <= soon:
+            return 'expire_bientot'
+        return 'sous_garantie'
+
+    qs = equipements_qs.select_related(
+        'produit', 'installation', 'installation__client')
+
+    parcs = {}
+    totaux = {'equipements': 0, 'expirees': 0, 'expire_bientot': 0,
+              'sous_garantie': 0, 'non_renseignee': 0}
+    _stat_key = {'expiree': 'expirees', 'expire_bientot': 'expire_bientot',
+                 'sous_garantie': 'sous_garantie',
+                 'non_renseignee': 'non_renseignee'}
+
+    for eq in qs:
+        inst = eq.installation
+        inst_id = inst.id if inst else None
+        if inst_id not in parcs:
+            client = getattr(inst, 'client', None) if inst else None
+            client_nom = ''
+            if client is not None:
+                client_nom = (
+                    f"{(client.prenom or '').strip()} "
+                    f"{(client.nom or '').strip()}").strip()
+            parcs[inst_id] = {
+                'installation': inst_id,
+                'installation_nom': str(inst) if inst else '',
+                'client_nom': client_nom,
+                'items': [],
+                'alertes': {'expirees': 0, 'expire_bientot': 0,
+                            'sous_garantie': 0, 'non_renseignee': 0},
+                '_prochaine': None,
+            }
+        st = _statut(eq.date_fin_garantie)
+        st_prod = _statut(eq.date_fin_garantie_production)
+        item = {
+            'equipement': eq.id,
+            'produit': getattr(eq.produit, 'nom', '') or '',
+            'marque': getattr(eq.produit, 'marque', '') or '',
+            'numero_serie': eq.numero_serie or '',
+            'date_pose': eq.date_pose.isoformat() if eq.date_pose else None,
+            'date_fin_garantie': (
+                eq.date_fin_garantie.isoformat()
+                if eq.date_fin_garantie else None),
+            'date_fin_garantie_production': (
+                eq.date_fin_garantie_production.isoformat()
+                if eq.date_fin_garantie_production else None),
+            'statut_garantie': st,
+            'statut_garantie_production': st_prod,
+            'statut': eq.statut,
+        }
+        parc = parcs[inst_id]
+        parc['items'].append(item)
+        parc['alertes'][_stat_key[st]] += 1
+        totaux['equipements'] += 1
+        totaux[_stat_key[st]] += 1
+        # Prochaine échéance du parc = la plus proche date de fin non nulle.
+        if eq.date_fin_garantie is not None:
+            cur = parc['_prochaine']
+            if cur is None or eq.date_fin_garantie < cur:
+                parc['_prochaine'] = eq.date_fin_garantie
+
+    # Tri des parcs : échéance la plus proche d'abord (None = tout en fin).
+    _MAX = datetime.date.max
+
+    def _sort_key(p):
+        return p['_prochaine'] or _MAX
+
+    parcs_list = sorted(parcs.values(), key=_sort_key)
+    for p in parcs_list:
+        p['prochaine_echeance'] = (
+            p['_prochaine'].isoformat() if p['_prochaine'] else None)
+        del p['_prochaine']
+
+    return {
+        'today': today.isoformat(),
+        'expiring_soon_days': expiring_soon_days,
+        'parcs': parcs_list,
+        'totaux': totaux,
+    }
