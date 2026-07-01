@@ -34,6 +34,7 @@ from .models import (
     DocumentClientPortail, JalonChantierPortail, DemandeTicketPortail,
     Partenaire, SoumissionLeadPartenaire, CommissionPartenaire,
     TerritoireCommercial, EnqueteNPS, AvisClient,
+    CompteFidelite, MouvementFidelite,
 )
 
 
@@ -1901,3 +1902,24 @@ class AvisClientSerializer(serializers.ModelSerializer):
         read_only_fields = [
             'statut', 'google_review_url', 'date_creation',
         ]
+
+
+class CompteFideliteSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = CompteFidelite
+        fields = [
+            'id', 'client_id', 'points', 'palier', 'date_creation',
+        ]
+        read_only_fields = ['points', 'palier', 'date_creation']
+
+
+class MouvementFideliteSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = MouvementFidelite
+        fields = [
+            'id', 'compte', 'points', 'motif', 'date_creation',
+        ]
+        read_only_fields = ['date_creation']
+
+    def validate_compte(self, value):
+        return _meme_societe(self, value, 'Compte de fidélité')

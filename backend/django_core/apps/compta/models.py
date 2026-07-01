@@ -5661,3 +5661,84 @@ class AvisClient(models.Model):
 
     def __str__(self):
         return f'Avis client #{self.client_id} ({self.statut})'
+
+
+# ── FG240 — Programme de fidélité / parrainage étendu ──────────────────────
+
+class CompteFidelite(models.Model):
+    """Compte de fidélité d'un client : solde de points + palier (FG240).
+
+    Étend le parrainage simple existant (``crm.Parrainage``) avec des POINTS
+    cumulables et des PALIERS (bronze/argent/or/platine) recalculés depuis le
+    solde. Client référencé par id (cross-app — jamais d'import crm). Un compte
+    par client et par société. Les mouvements (gains/dépenses) vivent dans
+    ``MouvementFidelite``.
+    """
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='comptes_fidelite',
+        verbose_name='Société',
+    )
+    client_id = models.PositiveIntegerField(verbose_name='Id du client')
+    points = models.IntegerField(default=0, verbose_name='Solde de points')
+    palier = models.CharField(
+        max_length=10,
+        choices=[
+            ('bronze', 'Bronze'),
+            ('argent', 'Argent'),
+            ('or', 'Or'),
+            ('platine', 'Platine'),
+        ],
+        default='bronze',
+        verbose_name='Palier')
+    date_creation = models.DateTimeField(
+        auto_now_add=True, verbose_name='Créé le')
+
+    class Meta:
+        verbose_name = 'Compte de fidélité'
+        verbose_name_plural = 'Comptes de fidélité'
+        ordering = ['-points']
+        constraints = [
+            models.UniqueConstraint(
+                fields=['company', 'client_id'],
+                name='uniq_compte_fidelite_client',
+            ),
+        ]
+
+    def __str__(self):
+        return f'Fidélité client #{self.client_id} — {self.points} pts'
+
+
+class MouvementFidelite(models.Model):
+    """Mouvement de points sur un compte de fidélité (FG240).
+
+    ``points`` positif = gain (parrainage réussi, achat…), négatif = dépense
+    (remise convertie). Le solde et le palier du compte sont recalculés par le
+    service à chaque mouvement. Scopé société.
+    """
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='mouvements_fidelite',
+        verbose_name='Société',
+    )
+    compte = models.ForeignKey(
+        CompteFidelite,
+        on_delete=models.CASCADE,
+        related_name='mouvements',
+        verbose_name='Compte de fidélité',
+    )
+    points = models.IntegerField(verbose_name='Points (+ gain / − dépense)')
+    motif = models.CharField(
+        max_length=200, blank=True, default='', verbose_name='Motif')
+    date_creation = models.DateTimeField(
+        auto_now_add=True, verbose_name='Créé le')
+
+    class Meta:
+        verbose_name = 'Mouvement de fidélité'
+        verbose_name_plural = 'Mouvements de fidélité'
+        ordering = ['-date_creation']
+
+    def __str__(self):
+        return f'{self.points:+d} pts — client #{self.compte.client_id}'

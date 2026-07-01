@@ -4119,3 +4119,38 @@ def pousser_avis_google(avis):
     avis.statut = AvisClient.Statut.PUBLIE_GOOGLE
     avis.save(update_fields=['google_review_url', 'statut'])
     return avis
+
+
+# ── FG240 — Programme de fidélité étendu (points + paliers) ────────────────
+
+def palier_pour_points(points):
+    """Palier de fidélité (FG240) déduit d'un solde de points.
+
+    Bronze <500, Argent 500–1999, Or 2000–4999, Platine ≥5000.
+    """
+    p = int(points or 0)
+    if p >= 5000:
+        return 'platine'
+    if p >= 2000:
+        return 'or'
+    if p >= 500:
+        return 'argent'
+    return 'bronze'
+
+
+def appliquer_mouvement_fidelite(compte, *, points, motif=''):
+    """Applique un mouvement de points (FG240) et recalcule solde + palier.
+
+    Crée un ``MouvementFidelite`` (idempotence à la charge de l'appelant), met à
+    jour le solde et le palier du compte de façon atomique. Le solde ne descend
+    jamais sous 0. Renvoie le mouvement créé.
+    """
+    from .models import MouvementFidelite
+    delta = int(points or 0)
+    with transaction.atomic():
+        mouvement = MouvementFidelite.objects.create(
+            company=compte.company, compte=compte, points=delta, motif=motif)
+        compte.points = max(0, compte.points + delta)
+        compte.palier = palier_pour_points(compte.points)
+        compte.save(update_fields=['points', 'palier'])
+    return mouvement

@@ -32,6 +32,7 @@ from apps.compta.models import (
     JalonChantierPortail, DemandeTicketPortail,
     Partenaire, SoumissionLeadPartenaire, CommissionPartenaire,
     TerritoireCommercial, EnqueteNPS, AvisClient,
+    CompteFidelite, MouvementFidelite,
 )
 
 User = get_user_model()
@@ -638,4 +639,74 @@ class AvisClientTests(TestCase):
         AvisClient.objects.create(company=autre, client_id=48005)
         api = auth(self.user)
         resp = api.get('/api/django/compta/avis-clients/')
+        self.assertEqual(resp.data['count'], 0)
+
+
+# ── FG240 — Programme de fidélité / parrainage étendu ──────────────────────
+
+class FideliteTests(TestCase):
+    def setUp(self):
+        self.co = make_company('fg240', 'FG240')
+        self.user = make_user(self.co, 'fg240-user')
+
+    def test_creation_compte_pose_company(self):
+        api = auth(self.user)
+        resp = api.post('/api/django/compta/comptes-fidelite/', {
+            'client_id': 49001,
+            'company': 21212, 'points': 9999,  # ignorés (read-only)
+        }, format='json')
+        self.assertEqual(resp.status_code, 201, resp.content)
+        c = CompteFidelite.objects.get(id=resp.data['id'])
+        self.assertEqual(c.company_id, self.co.id)
+        self.assertEqual(c.points, 0)
+        self.assertEqual(c.palier, 'bronze')
+
+    def test_crediter_recalcule_palier(self):
+        api = auth(self.user)
+        c = CompteFidelite.objects.create(company=self.co, client_id=49002)
+        resp = api.post(
+            f'/api/django/compta/comptes-fidelite/{c.id}/crediter/',
+            {'points': 2500, 'motif': 'Parrainage réussi'}, format='json')
+        self.assertEqual(resp.status_code, 200, resp.content)
+        c.refresh_from_db()
+        self.assertEqual(c.points, 2500)
+        self.assertEqual(c.palier, 'or')  # 2000–4999.
+
+    def test_mouvement_via_endpoint_recalcule_solde(self):
+        api = auth(self.user)
+        c = CompteFidelite.objects.create(
+            company=self.co, client_id=49003, points=600, palier='argent')
+        resp = api.post('/api/django/compta/mouvements-fidelite/', {
+            'compte': c.id, 'points': -100, 'motif': 'Remise convertie',
+        }, format='json')
+        self.assertEqual(resp.status_code, 201, resp.content)
+        c.refresh_from_db()
+        self.assertEqual(c.points, 500)
+        self.assertEqual(c.palier, 'argent')
+        # Un SEUL mouvement créé (pas de double insertion).
+        self.assertEqual(
+            MouvementFidelite.objects.filter(compte=c).count(), 1)
+
+    def test_solde_ne_descend_pas_sous_zero(self):
+        c = CompteFidelite.objects.create(
+            company=self.co, client_id=49004, points=50)
+        services.appliquer_mouvement_fidelite(c, points=-500, motif='x')
+        c.refresh_from_db()
+        self.assertEqual(c.points, 0)
+
+    def test_mouvement_compte_autre_societe_rejete(self):
+        autre = make_company('fg240-b', 'FG240B')
+        c_autre = CompteFidelite.objects.create(
+            company=autre, client_id=49005)
+        api = auth(self.user)
+        resp = api.post('/api/django/compta/mouvements-fidelite/', {
+            'compte': c_autre.id, 'points': 10,
+        }, format='json')
+        self.assertEqual(resp.status_code, 400)
+
+    def test_isolation_societe(self):
+        autre = make_company('fg240-c', 'FG240C')
+        CompteFidelite.objects.create(company=autre, client_id=49006)
+        api = auth(self.user)
+        resp = api.get('/api/django/compta/comptes-fidelite/')
         self.assertEqual(resp.data['count'], 0)

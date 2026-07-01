@@ -36,6 +36,7 @@ from .views import (
     PartenaireViewSet, SoumissionLeadPartenaireViewSet,
     CommissionPartenaireViewSet, TerritoireCommercialViewSet,
     EnqueteNPSViewSet, AvisClientViewSet,
+    CompteFideliteViewSet, MouvementFideliteViewSet,
 )
 
 router = DefaultRouter()
@@ -123,6 +124,8 @@ router.register(r'commissions-partenaire', CommissionPartenaireViewSet)
 router.register(r'territoires-commerciaux', TerritoireCommercialViewSet)
 router.register(r'enquetes-nps', EnqueteNPSViewSet)
 router.register(r'avis-clients', AvisClientViewSet)
+router.register(r'comptes-fidelite', CompteFideliteViewSet)
+router.register(r'mouvements-fidelite', MouvementFideliteViewSet)
 
 urlpatterns = [
     path('', include(router.urls)),

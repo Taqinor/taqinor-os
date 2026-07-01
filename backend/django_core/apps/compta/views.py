@@ -44,6 +44,7 @@ from .models import (
     DocumentClientPortail, JalonChantierPortail, DemandeTicketPortail,
     Partenaire, SoumissionLeadPartenaire, CommissionPartenaire,
     TerritoireCommercial, EnqueteNPS, AvisClient,
+    CompteFidelite, MouvementFidelite,
 )
 from .serializers import (
     AppelTelephoniqueSerializer, AvancementRevenuSerializer,
@@ -86,6 +87,7 @@ from .serializers import (
     PartenaireSerializer, SoumissionLeadPartenaireSerializer,
     CommissionPartenaireSerializer, TerritoireCommercialSerializer,
     EnqueteNPSSerializer, AvisClientSerializer,
+    CompteFideliteSerializer, MouvementFideliteSerializer,
 )
 
 
@@ -3744,3 +3746,45 @@ class AvisClientViewSet(_ComptaBaseViewSet):
         avis = self.get_object()
         services.pousser_avis_google(avis)
         return Response(self.get_serializer(avis).data)
+
+
+class CompteFideliteViewSet(_ComptaBaseViewSet):
+    """Comptes de fidélité clients (points + paliers, FG240). La société est
+    posée côté serveur ; points/palier sont recalculés côté serveur depuis les
+    mouvements. ``crediter`` ajoute des points (parrainage étendu, achat…)."""
+    queryset = CompteFidelite.objects.all()
+    serializer_class = CompteFideliteSerializer
+    filter_backends = [filters.OrderingFilter]
+    ordering_fields = ['points', 'date_creation']
+
+    @action(detail=True, methods=['post'])
+    def crediter(self, request, pk=None):
+        compte = self.get_object()
+        points = request.data.get('points')
+        if points is None:
+            return Response(
+                {'detail': 'points requis.'},
+                status=status.HTTP_400_BAD_REQUEST)
+        motif = request.data.get('motif', '')
+        services.appliquer_mouvement_fidelite(
+            compte, points=int(points), motif=motif)
+        compte.refresh_from_db()
+        return Response(self.get_serializer(compte).data)
+
+
+class MouvementFideliteViewSet(_ComptaBaseViewSet):
+    """Mouvements de points de fidélité (FG240). La création recalcule le solde
+    et le palier du compte côté serveur (jamais depuis le corps)."""
+    queryset = MouvementFidelite.objects.all()
+    serializer_class = MouvementFideliteSerializer
+    filter_backends = [filters.OrderingFilter]
+    ordering_fields = ['date_creation']
+
+    def perform_create(self, serializer):
+        # On ne persiste PAS via serializer.save() : le service crée le
+        # mouvement ET recalcule le compte de façon atomique.
+        data = serializer.validated_data
+        mouvement = services.appliquer_mouvement_fidelite(
+            data['compte'], points=data['points'],
+            motif=data.get('motif', ''))
+        serializer.instance = mouvement
