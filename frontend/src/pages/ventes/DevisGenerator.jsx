@@ -29,7 +29,7 @@ import {
   batteryKwhFromLines, optionTotalsTTC, autoFillLines, defaultProductLines,
   computeEtudeIndustrielle,
   autoFillPompage, pompageSelection, HEURES_POMPAGE_DEFAUT,
-  isBattery, isHybridInverter, isPanel, prixParKwc, discountForTarget,
+  isBattery, isHybridInverter, prixParKwc, discountForTarget,
   computeBuyCost, avecBatterieAvailability, KWH_PRICE, EFFICIENCY,
   panneauxPourKwc, expectedTvaForDesignation,
   TVA_STANDARD_DEFAUT, TVA_PANNEAUX_DEFAUT,

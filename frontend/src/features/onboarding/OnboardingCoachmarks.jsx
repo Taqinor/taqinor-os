@@ -67,6 +67,11 @@ export default function OnboardingCoachmarks() {
 
   const current = STEPS[step]
 
+  // Déclarés avant les effets qui les référencent (évite l'accès en TDZ).
+  const finish = () => { markCoachmarksSeen(); setOpen(false); setStep(0) }
+  const next = () => { if (step >= STEPS.length - 1) finish(); else setStep(s => s + 1) }
+  const prev = () => setStep(s => Math.max(0, s - 1))
+
   // Mesure de la cible de l'étape courante (position à l'écran). Recalcule au
   // changement d'étape, au redimensionnement et au défilement.
   const measure = useCallback(() => {
@@ -79,10 +84,12 @@ export default function OnboardingCoachmarks() {
   }, [open, current])
 
   useEffect(() => {
-    measure()
+    // Mesure initiale déférée (évite un setState synchrone dans l'effet).
+    const raf = requestAnimationFrame(measure)
     window.addEventListener('resize', measure)
     window.addEventListener('scroll', measure, true)
     return () => {
+      cancelAnimationFrame(raf)
       window.removeEventListener('resize', measure)
       window.removeEventListener('scroll', measure, true)
     }
@@ -99,10 +106,6 @@ export default function OnboardingCoachmarks() {
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
   }, [open, step]) // eslint-disable-line react-hooks/exhaustive-deps
-
-  const finish = () => { markCoachmarksSeen(); setOpen(false); setStep(0) }
-  const next = () => { if (step >= STEPS.length - 1) finish(); else setStep(s => s + 1) }
-  const prev = () => setStep(s => Math.max(0, s - 1))
 
   if (!open || !current) return null
 

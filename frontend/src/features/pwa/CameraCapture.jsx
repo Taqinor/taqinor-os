@@ -11,7 +11,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { Camera, CameraOff, RefreshCw, Check, X } from 'lucide-react'
 import { Button } from '../../ui'
 
-export function cameraCaptureSupported() {
+function cameraCaptureSupported() {
   return (
     typeof navigator !== 'undefined'
     && !!navigator.mediaDevices
@@ -113,10 +113,15 @@ export default function CameraCapture({
     onClose?.()
   }, [stopStream, onClose])
 
-  // Démarrage auto + libération de la caméra au démontage.
+  // Démarrage auto + libération de la caméra au démontage. Démarrage déféré
+  // pour éviter un setState synchrone dans l'effet.
   useEffect(() => {
-    if (supported) start()
-    return () => { stoppedRef.current = true; stopStream() }
+    const raf = supported ? requestAnimationFrame(() => start()) : null
+    return () => {
+      if (raf) cancelAnimationFrame(raf)
+      stoppedRef.current = true
+      stopStream()
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
