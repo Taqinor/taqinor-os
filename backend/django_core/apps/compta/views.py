@@ -44,7 +44,7 @@ from .models import (
     DocumentClientPortail, JalonChantierPortail, DemandeTicketPortail,
     Partenaire, SoumissionLeadPartenaire, CommissionPartenaire,
     TerritoireCommercial, EnqueteNPS, AvisClient,
-    CompteFidelite, MouvementFidelite,
+    CompteFidelite, MouvementFidelite, RegleUpsell,
 )
 from .serializers import (
     AppelTelephoniqueSerializer, AvancementRevenuSerializer,
@@ -88,6 +88,7 @@ from .serializers import (
     CommissionPartenaireSerializer, TerritoireCommercialSerializer,
     EnqueteNPSSerializer, AvisClientSerializer,
     CompteFideliteSerializer, MouvementFideliteSerializer,
+    RegleUpsellSerializer,
 )
 
 
@@ -3788,3 +3789,23 @@ class MouvementFideliteViewSet(_ComptaBaseViewSet):
             data['compte'], points=data['points'],
             motif=data.get('motif', ''))
         serializer.instance = mouvement
+
+
+class RegleUpsellViewSet(_ComptaBaseViewSet):
+    """Règles d'upsell / cross-sell (FG241). La société est posée côté serveur ;
+    ``suggestions`` évalue un contexte client (drapeaux) et renvoie les
+    suggestions actives déclenchées, triées par priorité."""
+    queryset = RegleUpsell.objects.all()
+    serializer_class = RegleUpsellSerializer
+    filter_backends = [filters.OrderingFilter]
+    ordering_fields = ['priorite', 'date_creation']
+
+    @action(detail=False, methods=['post'])
+    def suggestions(self, request):
+        contexte = request.data.get('contexte') or {}
+        if not isinstance(contexte, dict):
+            return Response(
+                {'detail': 'contexte doit être un objet de drapeaux.'},
+                status=status.HTTP_400_BAD_REQUEST)
+        regles = services.suggestions_upsell(request.user.company, contexte)
+        return Response(self.get_serializer(regles, many=True).data)

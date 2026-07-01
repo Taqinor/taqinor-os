@@ -32,7 +32,7 @@ from apps.compta.models import (
     JalonChantierPortail, DemandeTicketPortail,
     Partenaire, SoumissionLeadPartenaire, CommissionPartenaire,
     TerritoireCommercial, EnqueteNPS, AvisClient,
-    CompteFidelite, MouvementFidelite,
+    CompteFidelite, MouvementFidelite, RegleUpsell,
 )
 
 User = get_user_model()
@@ -709,4 +709,62 @@ class FideliteTests(TestCase):
         CompteFidelite.objects.create(company=autre, client_id=49006)
         api = auth(self.user)
         resp = api.get('/api/django/compta/comptes-fidelite/')
+        self.assertEqual(resp.data['count'], 0)
+
+
+# ── FG241 — Moteur d'upsell / cross-sell ───────────────────────────────────
+
+class RegleUpsellTests(TestCase):
+    def setUp(self):
+        self.co = make_company('fg241', 'FG241')
+        self.user = make_user(self.co, 'fg241-user')
+
+    def test_creation_pose_company_serveur(self):
+        api = auth(self.user)
+        resp = api.post('/api/django/compta/regles-upsell/', {
+            'declencheur': 'sans_batterie',
+            'produit_suggere': 'Batterie LiFePO4 5 kWh',
+            'message': 'Stockez votre surplus', 'priorite': 5,
+            'company': 13131,  # ignoré
+        }, format='json')
+        self.assertEqual(resp.status_code, 201, resp.content)
+        r = RegleUpsell.objects.get(id=resp.data['id'])
+        self.assertEqual(r.company_id, self.co.id)
+
+    def test_suggestions_matche_contexte(self):
+        RegleUpsell.objects.create(
+            company=self.co, declencheur='sans_batterie',
+            produit_suggere='Batterie', priorite=10)
+        RegleUpsell.objects.create(
+            company=self.co, declencheur='sans_contrat_om',
+            produit_suggere='Contrat O&M', priorite=5)
+        RegleUpsell.objects.create(
+            company=self.co, declencheur='site_unique',
+            produit_suggere='2e site', actif=False)
+        api = auth(self.user)
+        resp = api.post('/api/django/compta/regles-upsell/suggestions/', {
+            'contexte': {
+                'sans_batterie': True, 'sans_contrat_om': True,
+                'site_unique': True,  # règle inactive → exclue
+            },
+        }, format='json')
+        self.assertEqual(resp.status_code, 200, resp.content)
+        produits = [r['produit_suggere'] for r in resp.data]
+        # Triées par priorité décroissante ; règle inactive exclue.
+        self.assertEqual(produits, ['Batterie', 'Contrat O&M'])
+
+    def test_suggestions_contexte_vide(self):
+        RegleUpsell.objects.create(
+            company=self.co, declencheur='sans_batterie',
+            produit_suggere='Batterie')
+        regles = services.suggestions_upsell(self.co, {})
+        self.assertEqual(regles, [])
+
+    def test_isolation_societe(self):
+        autre = make_company('fg241-b', 'FG241B')
+        RegleUpsell.objects.create(
+            company=autre, declencheur='sans_batterie',
+            produit_suggere='X')
+        api = auth(self.user)
+        resp = api.get('/api/django/compta/regles-upsell/')
         self.assertEqual(resp.data['count'], 0)

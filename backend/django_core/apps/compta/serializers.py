@@ -34,7 +34,7 @@ from .models import (
     DocumentClientPortail, JalonChantierPortail, DemandeTicketPortail,
     Partenaire, SoumissionLeadPartenaire, CommissionPartenaire,
     TerritoireCommercial, EnqueteNPS, AvisClient,
-    CompteFidelite, MouvementFidelite,
+    CompteFidelite, MouvementFidelite, RegleUpsell,
 )
 
 
@@ -1923,3 +1923,13 @@ class MouvementFideliteSerializer(serializers.ModelSerializer):
 
     def validate_compte(self, value):
         return _meme_societe(self, value, 'Compte de fidélité')
+
+
+class RegleUpsellSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = RegleUpsell
+        fields = [
+            'id', 'declencheur', 'produit_suggere', 'message', 'priorite',
+            'actif', 'date_creation',
+        ]
+        read_only_fields = ['date_creation']

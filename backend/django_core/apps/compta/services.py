@@ -4154,3 +4154,26 @@ def appliquer_mouvement_fidelite(compte, *, points, motif=''):
         compte.palier = palier_pour_points(compte.points)
         compte.save(update_fields=['points', 'palier'])
     return mouvement
+
+
+# ── FG241 — Moteur d'upsell / cross-sell ───────────────────────────────────
+
+def suggestions_upsell(company, contexte):
+    """Suggestions d'upsell/cross-sell (FG241) pour un contexte client.
+
+    ``contexte`` est un dict de drapeaux booléens dont les CLÉS sont des valeurs
+    de ``RegleUpsell.Declencheur`` (ex. ``{'sans_batterie': True,
+    'site_unique': True}``). Renvoie la liste des règles ACTIVES (scopées
+    société) dont le déclencheur est vrai dans le contexte, triées par priorité
+    décroissante. Fonction pure (pas d'effet de bord, pas d'import cross-app).
+    """
+    from .models import RegleUpsell
+    contexte = contexte or {}
+    actives_vraies = [
+        cle for cle, val in contexte.items() if val]
+    if not actives_vraies:
+        return []
+    return list(
+        RegleUpsell.objects
+        .filter(company=company, actif=True, declencheur__in=actives_vraies)
+        .order_by('-priorite', 'id'))

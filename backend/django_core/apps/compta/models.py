@@ -5742,3 +5742,49 @@ class MouvementFidelite(models.Model):
 
     def __str__(self):
         return f'{self.points:+d} pts — client #{self.compte.client_id}'
+
+
+# ── FG241 — Moteur d'upsell / cross-sell ───────────────────────────────────
+
+class RegleUpsell(models.Model):
+    """Règle de suggestion contextuelle d'upsell / cross-sell (FG241).
+
+    Chaque règle porte un DÉCLENCHEUR (clé de contexte, ex. ``sans_batterie``,
+    ``site_unique``, ``sans_contrat_om``) et une SUGGESTION (libellé produit /
+    service + message commercial). Le service ``suggestions_upsell`` évalue un
+    contexte client (dict de drapeaux) et renvoie les suggestions actives dont
+    le déclencheur est vrai, triées par priorité. Scopée société.
+    """
+    class Declencheur(models.TextChoices):
+        SANS_BATTERIE = 'sans_batterie', 'Client sans batterie'
+        SITE_UNIQUE = 'site_unique', 'Un seul site équipé'
+        SANS_CONTRAT_OM = 'sans_contrat_om', 'Sans contrat O&M'
+        INSTALLATION_ANCIENNE = 'installation_ancienne', 'Installation ancienne'
+
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='regles_upsell',
+        verbose_name='Société',
+    )
+    declencheur = models.CharField(
+        max_length=24, choices=Declencheur.choices,
+        verbose_name='Déclencheur de contexte')
+    produit_suggere = models.CharField(
+        max_length=200, verbose_name='Produit / service suggéré')
+    message = models.CharField(
+        max_length=255, blank=True, default='',
+        verbose_name='Message commercial')
+    priorite = models.IntegerField(
+        default=0, verbose_name='Priorité (haute = affichée en premier)')
+    actif = models.BooleanField(default=True, verbose_name='Active')
+    date_creation = models.DateTimeField(
+        auto_now_add=True, verbose_name='Créée le')
+
+    class Meta:
+        verbose_name = "Règle d'upsell / cross-sell"
+        verbose_name_plural = "Règles d'upsell / cross-sell"
+        ordering = ['-priorite', 'id']
+
+    def __str__(self):
+        return f'{self.get_declencheur_display()} → {self.produit_suggere}'
