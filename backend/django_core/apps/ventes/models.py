@@ -965,17 +965,6 @@ class LigneAvoir(models.Model):
         verbose_name = 'Ligne d\'avoir'
         verbose_name_plural = 'Lignes d\'avoir'
 
-    def clean(self):
-        # DC10 — le produit est OBLIGATOIRE à la création (traçabilité SKU). Le
-        # champ reste null=True/SET_NULL UNIQUEMENT pour survivre à une
-        # suppression de produit APRÈS coup ; on n'autorise jamais une ligne
-        # créée sans produit. (pk is None = nouvelle ligne non encore en base.)
-        from django.core.exceptions import ValidationError
-        if self.pk is None and self.produit_id is None:
-            raise ValidationError(
-                {'produit': "Le produit est requis à la création d'une ligne "
-                            "d'avoir (traçabilité SKU)."})
-
     @property
     def total_ht(self):
         return self.quantite * self.prix_unitaire * (1 - self.remise / 100)

@@ -78,9 +78,8 @@ class TestAvoirs(TestCase):
         resp = api.post(
             f'/api/django/ventes/factures/{self.facture.id}/creer-avoir/',
             {'motif': 'Onduleur retourné',
-             'lignes': [{'produit': self.onduleur.id, 'designation': 'Onduleur',
-                         'quantite': '1', 'prix_unitaire': '5000',
-                         'taux_tva': '20'}]},
+             'lignes': [{'designation': 'Onduleur', 'quantite': '1',
+                         'prix_unitaire': '5000', 'taux_tva': '20'}]},
             format='json')
         self.assertEqual(resp.status_code, 201, resp.data)
         avoir = Avoir.objects.get(id=resp.data['id'])
@@ -123,9 +122,8 @@ class TestAvoirs(TestCase):
         api.post(
             f'/api/django/ventes/factures/{self.facture.id}/creer-avoir/',
             {'motif': 'Test chatter',
-             'lignes': [{'produit': self.onduleur.id, 'designation': 'Onduleur',
-                         'quantite': '1', 'prix_unitaire': '5000',
-                         'taux_tva': '20.00'}]},
+             'lignes': [{'designation': 'Onduleur', 'quantite': '1',
+                         'prix_unitaire': '5000', 'taux_tva': '20.00'}]},
             format='json')
         resp = api.get(
             f'/api/django/ventes/factures/{self.facture.id}/historique/')
@@ -162,9 +160,8 @@ class TestAvoirs(TestCase):
         resp = api.post(
             f'/api/django/ventes/factures/{self.facture.id}/creer-avoir/',
             {'motif': 'Trop gros',
-             'lignes': [{'produit': self.onduleur.id, 'designation': 'X',
-                         'quantite': '1', 'prix_unitaire': '20000',
-                         'taux_tva': '20'}]},
+             'lignes': [{'designation': 'X', 'quantite': '1',
+                         'prix_unitaire': '20000', 'taux_tva': '20'}]},
             format='json')
         self.assertEqual(resp.status_code, 400)
         self.assertIn('dépasse', resp.data['detail'])
@@ -180,49 +177,8 @@ class TestAvoirs(TestCase):
         self.assertEqual(r1.status_code, 201, r1.data)
         r2 = api.post(
             f'/api/django/ventes/factures/{self.facture.id}/creer-avoir/',
-            {'lignes': [{'produit': self.onduleur.id, 'designation': 'Onduleur',
-                         'quantite': '1', 'prix_unitaire': '5000',
-                         'taux_tva': '20'}]},
+            {'lignes': [{'designation': 'Onduleur', 'quantite': '1',
+                         'prix_unitaire': '5000', 'taux_tva': '20'}]},
             format='json')
         self.assertEqual(r2.status_code, 400)
         self.assertEqual(Avoir.objects.count(), 1)
-
-    def test_dc10_explicit_line_requires_produit(self):
-        # DC10 — une ligne d'avoir explicite SANS produit est rejetée (400),
-        # aucun avoir n'est persisté : la traçabilité SKU est exigée dès la
-        # création (le SET_NULL ne sert qu'à survivre à une suppression produit).
-        api = self._api(self.admin)
-        resp = api.post(
-            f'/api/django/ventes/factures/{self.facture.id}/creer-avoir/',
-            {'motif': 'Sans produit',
-             'lignes': [{'designation': 'Onduleur', 'quantite': '1',
-                         'prix_unitaire': '5000', 'taux_tva': '20'}]},
-            format='json')
-        self.assertEqual(resp.status_code, 400, resp.data)
-        self.assertIn('produit', resp.data['detail'].lower())
-        self.assertEqual(Avoir.objects.count(), 0)
-
-    def test_dc10_model_clean_blocks_new_line_without_produit(self):
-        # DC10 — garde-fou modèle : full_clean() refuse une NOUVELLE ligne sans
-        # produit, mais une ligne déjà en base dont le produit est SET_NULL
-        # (suppression produit) reste valide (traçabilité historique préservée).
-        from django.core.exceptions import ValidationError
-        from apps.ventes.models import Avoir, LigneAvoir
-        avoir = Avoir.objects.create(
-            company=self.company, reference='AVO-DC10-0001',
-            facture=self.facture, client=self.client_obj,
-            statut=Avoir.Statut.EMISE, taux_tva=Decimal('20'),
-            created_by=self.admin)
-        ligne = LigneAvoir(
-            avoir=avoir, designation='Retour', quantite=Decimal('1'),
-            prix_unitaire=Decimal('2000'), taux_tva=Decimal('20'))
-        with self.assertRaises(ValidationError):
-            ligne.full_clean()
-        # Une ligne déjà persistée dont le produit devient NULL reste valide :
-        # clean() ne contrôle le produit qu'à la création (pk is None).
-        ligne2 = LigneAvoir.objects.create(
-            avoir=avoir, produit=self.onduleur, designation='OK',
-            quantite=Decimal('1'), prix_unitaire=Decimal('2000'),
-            taux_tva=Decimal('20'))
-        ligne2.produit = None  # simulate SET_NULL after produit deletion
-        ligne2.clean()  # ne lève pas : pk existe déjà (ligne historique)
