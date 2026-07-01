@@ -33,6 +33,7 @@ from .models import (
     ComptePortailClient, AcceptationDevisPortail, PaiementFacturePortail,
     DocumentClientPortail, JalonChantierPortail, DemandeTicketPortail,
     Partenaire, SoumissionLeadPartenaire, CommissionPartenaire,
+    TerritoireCommercial,
 )
 
 
@@ -1862,3 +1863,13 @@ class CommissionPartenaireSerializer(serializers.ModelSerializer):
 
     def validate_partenaire(self, value):
         return _meme_societe(self, value, 'Partenaire')
+
+
+class TerritoireCommercialSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = TerritoireCommercial
+        fields = [
+            'id', 'nom', 'villes', 'owner_user_id', 'priorite', 'actif',
+            'date_creation',
+        ]
+        read_only_fields = ['date_creation']

@@ -4011,3 +4011,25 @@ def enregistrer_commission(commission):
     commission.montant = calculer_montant_commission(
         commission.base_ht, commission.taux)
     return commission
+
+
+# ── FG236 — Affectation automatique par territoire commercial ──────────────
+
+def affecter_territoire(company, ville):
+    """Renvoie le territoire commercial (scopé société) matchant ``ville``.
+
+    Parcourt les territoires ACTIFS par priorité décroissante et renvoie le
+    premier dont le zonage matche la ville, ou ``None``. Sert l'affectation auto
+    d'un lead (FG236) — le lead réel est rattaché par l'app crm ; ici on résout
+    seulement la zone/commercial cible (pas d'import crm).
+    """
+    from .models import TerritoireCommercial
+    if not ville:
+        return None
+    territoires = (TerritoireCommercial.objects
+                   .filter(company=company, actif=True)
+                   .order_by('-priorite', 'nom'))
+    for t in territoires:
+        if t.matche_ville(ville):
+            return t
+    return None

@@ -5491,3 +5491,52 @@ class CommissionPartenaire(models.Model):
 
     def __str__(self):
         return f'Commission {self.montant} — {self.partenaire.nom}'
+
+
+# ── FG236 — Gestion des territoires / zones commerciales ───────────────────
+
+class TerritoireCommercial(models.Model):
+    """Zone commerciale : découpage géographique + affectation auto (FG236).
+
+    Un territoire regroupe des villes/régions (liste de mots-clés en minuscules)
+    et un commercial responsable (par id — ``owner_user_id``, jamais un import
+    hors foundation). Le service ``affecter_territoire`` associe un lead à la
+    zone qui matche sa ville, en respectant la priorité (plus haute d'abord).
+    Scopé société.
+    """
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='territoires_commerciaux',
+        verbose_name='Société',
+    )
+    nom = models.CharField(max_length=120, verbose_name='Nom du territoire')
+    villes = models.JSONField(
+        default=list, blank=True,
+        verbose_name='Villes / régions (liste)')
+    owner_user_id = models.PositiveIntegerField(
+        null=True, blank=True, verbose_name='Commercial responsable (id)')
+    priorite = models.IntegerField(
+        default=0, verbose_name='Priorité (haute = prioritaire)')
+    actif = models.BooleanField(default=True, verbose_name='Actif')
+    date_creation = models.DateTimeField(
+        auto_now_add=True, verbose_name='Créé le')
+
+    class Meta:
+        verbose_name = 'Territoire commercial'
+        verbose_name_plural = 'Territoires commerciaux'
+        ordering = ['-priorite', 'nom']
+
+    def __str__(self):
+        return self.nom
+
+    def matche_ville(self, ville):
+        """True si ``ville`` correspond à l'une des villes/régions du zonage."""
+        if not ville:
+            return False
+        cible = str(ville).strip().lower()
+        for v in (self.villes or []):
+            mot = str(v).strip().lower()
+            if mot and (mot == cible or mot in cible or cible in mot):
+                return True
+        return False

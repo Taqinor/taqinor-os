@@ -31,6 +31,7 @@ from apps.compta.models import (
     AcceptationDevisPortail, PaiementFacturePortail, DocumentClientPortail,
     JalonChantierPortail, DemandeTicketPortail,
     Partenaire, SoumissionLeadPartenaire, CommissionPartenaire,
+    TerritoireCommercial,
 )
 
 User = get_user_model()
@@ -423,4 +424,64 @@ class CommissionPartenaireTests(TestCase):
             company=autre, partenaire=p2, base_ht=1, taux=1, montant=1)
         api = auth(self.user)
         resp = api.get('/api/django/compta/commissions-partenaire/')
+        self.assertEqual(resp.data['count'], 0)
+
+
+# ── FG236 — Gestion des territoires / zones commerciales ───────────────────
+
+class TerritoireCommercialTests(TestCase):
+    def setUp(self):
+        self.co = make_company('fg236', 'FG236')
+        self.user = make_user(self.co, 'fg236-user')
+
+    def test_creation_pose_company_serveur(self):
+        api = auth(self.user)
+        resp = api.post('/api/django/compta/territoires-commerciaux/', {
+            'nom': 'Grand Casablanca',
+            'villes': ['Casablanca', 'Mohammedia'],
+            'owner_user_id': 12, 'priorite': 5,
+            'company': 11111,  # ignoré
+        }, format='json')
+        self.assertEqual(resp.status_code, 201, resp.content)
+        t = TerritoireCommercial.objects.get(id=resp.data['id'])
+        self.assertEqual(t.company_id, self.co.id)
+
+    def test_affecter_matche_ville(self):
+        TerritoireCommercial.objects.create(
+            company=self.co, nom='Nord', villes=['Tanger', 'Tétouan'],
+            owner_user_id=7, priorite=1)
+        TerritoireCommercial.objects.create(
+            company=self.co, nom='Casa', villes=['Casablanca'],
+            owner_user_id=9, priorite=10)
+        api = auth(self.user)
+        resp = api.get(
+            '/api/django/compta/territoires-commerciaux/affecter/'
+            '?ville=Casablanca')
+        self.assertEqual(resp.status_code, 200, resp.content)
+        self.assertEqual(resp.data['owner_user_id'], 9)
+
+    def test_affecter_priorite_gagne(self):
+        TerritoireCommercial.objects.create(
+            company=self.co, nom='Large', villes=['maroc'], owner_user_id=1,
+            priorite=1)
+        TerritoireCommercial.objects.create(
+            company=self.co, nom='Precis', villes=['maroc'], owner_user_id=2,
+            priorite=99)
+        t = services.affecter_territoire(self.co, 'Maroc')
+        self.assertEqual(t.owner_user_id, 2)
+
+    def test_affecter_sans_match_renvoie_none(self):
+        api = auth(self.user)
+        resp = api.get(
+            '/api/django/compta/territoires-commerciaux/affecter/'
+            '?ville=Inconnue')
+        self.assertEqual(resp.status_code, 200)
+        self.assertIsNone(resp.data['territoire'])
+
+    def test_isolation_societe(self):
+        autre = make_company('fg236-b', 'FG236B')
+        TerritoireCommercial.objects.create(
+            company=autre, nom='Z', villes=['x'])
+        api = auth(self.user)
+        resp = api.get('/api/django/compta/territoires-commerciaux/')
         self.assertEqual(resp.data['count'], 0)

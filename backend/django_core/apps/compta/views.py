@@ -43,6 +43,7 @@ from .models import (
     ComptePortailClient, AcceptationDevisPortail, PaiementFacturePortail,
     DocumentClientPortail, JalonChantierPortail, DemandeTicketPortail,
     Partenaire, SoumissionLeadPartenaire, CommissionPartenaire,
+    TerritoireCommercial,
 )
 from .serializers import (
     AppelTelephoniqueSerializer, AvancementRevenuSerializer,
@@ -83,7 +84,7 @@ from .serializers import (
     DocumentClientPortailSerializer, JalonChantierPortailSerializer,
     DemandeTicketPortailSerializer,
     PartenaireSerializer, SoumissionLeadPartenaireSerializer,
-    CommissionPartenaireSerializer,
+    CommissionPartenaireSerializer, TerritoireCommercialSerializer,
 )
 
 
@@ -3642,3 +3643,26 @@ class CommissionPartenaireViewSet(_ComptaBaseViewSet):
             if r['statut'] != CommissionPartenaire.Statut.ANNULEE:
                 entry['total'] += montant
         return Response(list(releve.values()))
+
+
+class TerritoireCommercialViewSet(_ComptaBaseViewSet):
+    """Territoires / zones commerciales (FG236). La société est posée côté
+    serveur ; ``affecter`` résout le territoire (et son commercial) matchant une
+    ville donnée, pour l'affectation auto d'un lead."""
+    queryset = TerritoireCommercial.objects.all()
+    serializer_class = TerritoireCommercialSerializer
+    filter_backends = [filters.OrderingFilter]
+    ordering_fields = ['priorite', 'nom']
+
+    @action(detail=False, methods=['get'])
+    def affecter(self, request):
+        ville = request.query_params.get('ville', '')
+        territoire = services.affecter_territoire(
+            request.user.company, ville)
+        if territoire is None:
+            return Response({'territoire': None, 'owner_user_id': None})
+        return Response({
+            'territoire': territoire.id,
+            'nom': territoire.nom,
+            'owner_user_id': territoire.owner_user_id,
+        })
