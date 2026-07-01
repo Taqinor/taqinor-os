@@ -32,6 +32,15 @@ const parametresApi = {
   computeRoi: (data) => api.post('/parametres/tarification/roi/', data),
   getProductible: (params) =>
     api.get('/parametres/tarification/productible/', { params }),
+  // N94 — surcharges de traduction de l'interface (par langue/clé), company-scopé.
+  // `effective` renvoie { overrides: { locale: { key: value } } } — utilisé au
+  // login pour fusionner par-dessus les catalogues statiques N93.
+  getTranslationOverrides: () =>
+    api.get('/parametres/traductions/effective/'),
+  // Upsert/suppression en masse : items = [{ locale, key, value }] ;
+  // value vide ("" / null) supprime la surcharge (retour au catalogue statique).
+  saveTranslationOverrides: (items) =>
+    api.put('/parametres/traductions/bulk/', { items }),
 }
 
 export default parametresApi

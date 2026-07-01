@@ -8,10 +8,12 @@ from .serializers_company import CompanyProfileSerializer
 from .serializers_audit import SettingsAuditLogSerializer
 from .serializers_documents import DocumentTemplatesSerializer
 from .serializers_tariff import TariffSettingsSerializer
+from .serializers_translations import TranslationOverrideSerializer
 
 __all__ = [
     'CompanyProfileSerializer',
     'SettingsAuditLogSerializer',
     'DocumentTemplatesSerializer',
     'TariffSettingsSerializer',
+    'TranslationOverrideSerializer',
 ]

@@ -5,6 +5,8 @@ export {
   useI18n,
   useT,
   dirForLocale,
+  resolveValue,
+  CATALOGS,
   LOCALES,
   DEFAULT_LOCALE,
   STORAGE_KEY,

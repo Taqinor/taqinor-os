@@ -41,20 +41,40 @@ export function applyDocumentAttrs(locale) {
   root.dir = dirForLocale(locale)
 }
 
+// N94 — résolution d'une valeur en fusionnant les SURCHARGES par-dessus les
+// catalogues statiques N93. Chaîne de repli, dans l'ordre :
+//   surcharge(locale courante) → statique(locale courante) → statique(FR) → clé.
+// `overrides` a la forme `{ locale: { key: value } }` (ou est vide/undefined,
+// auquel cas le comportement est EXACTEMENT celui du catalogue statique).
+export function resolveValue(key, locale, overrides) {
+  const ov = overrides || {}
+  const ovLoc = ov[locale]
+  if (ovLoc && Object.prototype.hasOwnProperty.call(ovLoc, key)) {
+    const v = ovLoc[key]
+    if (v != null) return v
+  }
+  const active = CATALOGS[locale] || CATALOGS[DEFAULT_LOCALE]
+  let value = active[key]
+  if (value == null) value = CATALOGS[DEFAULT_LOCALE][key]
+  if (value == null) value = key
+  return value
+}
+
 export const I18nContext = createContext(null)
 
-// Hook complet : { t, locale, setLocale, dir }.
+// Hook complet : { t, locale, setLocale, dir, setOverrides }.
 export function useI18n() {
   const ctx = useContext(I18nContext)
   if (!ctx) {
     // Repli hors provider (ex. test isolé, ou composant rendu sans provider) :
-    // t() renvoie le FR, locale=fr, dir=ltr, setLocale no-op.
+    // t() renvoie le FR, locale=fr, dir=ltr, setLocale/setOverrides no-op.
     return {
       locale: DEFAULT_LOCALE,
       setLocale: () => {},
+      setOverrides: () => {},
       dir: 'ltr',
       t: (key, vars) => interpolate(
-        CATALOGS[DEFAULT_LOCALE][key] ?? key, vars),
+        resolveValue(key, DEFAULT_LOCALE, null), vars),
     }
   }
   return ctx
