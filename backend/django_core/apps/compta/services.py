@@ -20,6 +20,7 @@ Trois blocs :
 * ``creer_exercice`` / ``reporter_a_nouveaux`` (FG117) — ouverture d'exercice et
   report des soldes de bilan dans le nouvel exercice (à-nouveaux).
 """
+import hashlib
 from decimal import ROUND_HALF_UP, Decimal
 from math import asin, cos, radians, sin, sqrt
 
@@ -49,6 +50,7 @@ from .models import (
     EcheanceAO, ResultatAO, ComptePortailClient,
     PaiementFacturePortail,
     MappingCompte, CompteAuxiliaire,
+    PisteAuditComptable,
 )
 
 
@@ -411,6 +413,119 @@ def ecriture_pour_avoir(avoir, *, force=False, user=None):
         f'Avoir client {avoir.reference}', lignes,
         reference=avoir.reference, source_type='avoir', source_id=avoir.id,
         created_by=user, statut=EcritureComptable.Statut.VALIDEE,
+    )
+
+
+# ── COMPTA15 — Auto-écriture depuis une facture fournisseur (achat) ─────────
+# Symétrique de ``ecriture_pour_facture`` (vente), mais côté ACHAT : la facture
+# reçue d'un fournisseur débite une charge (61xx) + la TVA récupérable (3455x)
+# et crédite le compte collectif fournisseurs (4411). ``facture`` est une
+# instance ``stock.FactureFournisseur`` : on lit UNIQUEMENT ses attributs
+# publics (montant_ht/montant_tva/montant_ttc, reference, fournisseur_id,
+# date_facture) — aucun import du modèle d'une autre app. Idempotent, gardé par
+# le toggle ``COMPTA_AUTO_ECRITURES`` (OFF par défaut). Le compte de charge peut
+# être surchargé via le mapping DC22 (``type_clef='famille'``).
+
+@transaction.atomic
+def ecriture_pour_facture_fournisseur(facture, *, force=False, user=None,
+                                      famille_charge=None):
+    """Génère l'écriture d'achat d'une facture fournisseur (61xx/3455 → 4411).
+
+    Débit 61xx Achats/Charges (HT) + 3455 TVA récupérable (TVA), crédit 4411
+    Fournisseurs (TTC). Idempotent : ne recrée pas l'écriture d'une facture déjà
+    passée. Renvoie l'écriture (existante ou nouvelle), ou None si désactivé/non
+    applicable. ``famille_charge`` (optionnel) consulte le mapping DC22 pour
+    router vers un compte de charge précis (défaut : 6111 Achats).
+    """
+    if not force and not auto_ecritures_actif():
+        return None
+    company = facture.company
+    if company is None:
+        return None
+    existante = _ecriture_existante(company, 'facture_fournisseur', facture.id)
+    if existante:
+        return existante
+    comptes = _comptes_requis(company)
+    journal = _journal(company, Journal.Type.ACHAT)
+    ht = Decimal(getattr(facture, 'montant_ht', 0) or 0)
+    tva = Decimal(getattr(facture, 'montant_tva', 0) or 0)
+    ttc = Decimal(getattr(facture, 'montant_ttc', 0) or 0)
+    fournisseur_id = getattr(facture, 'fournisseur_id', None)
+    reference = getattr(facture, 'reference', '') or ''
+    # DC22 : famille de charge → compte 6x (défaut 6111 si non mappé).
+    compte_charge = compte_pour_clef(
+        company, MappingCompte.TypeClef.FAMILLE, famille_charge,
+        defaut=comptes['achats']) if famille_charge else comptes['achats']
+    lignes = [
+        {'compte': compte_charge, 'debit': ht, 'credit': Decimal('0'),
+         'libelle': f'Achat {reference}'},
+    ]
+    if tva:
+        lignes.append({
+            'compte': comptes['tva_recuperable'], 'debit': tva,
+            'credit': Decimal('0'),
+            'libelle': f'TVA récupérable {reference}'})
+    lignes.append({
+        'compte': comptes['fournisseurs'], 'debit': Decimal('0'), 'credit': ttc,
+        'libelle': f'Facture fournisseur {reference}',
+        'tiers_type': 'fournisseur', 'tiers_id': fournisseur_id})
+    return creer_ecriture(
+        company, journal, getattr(facture, 'date_facture', None),
+        f'Facture fournisseur {reference}', lignes,
+        reference=reference, source_type='facture_fournisseur',
+        source_id=facture.id, created_by=user,
+        statut=EcritureComptable.Statut.VALIDEE,
+    )
+
+
+# ── COMPTA16 — Auto-écriture depuis un paiement fournisseur ─────────────────
+# Symétrique de ``ecriture_pour_paiement`` (encaissement client) : le règlement
+# d'une facture fournisseur débite 4411 Fournisseurs (on solde la dette) et
+# crédite la trésorerie (banque/caisse selon le mode). ``paiement`` est une
+# instance ``stock.PaiementFournisseur`` — lecture des seuls attributs publics.
+
+@transaction.atomic
+def ecriture_pour_paiement_fournisseur(paiement, *, force=False, user=None):
+    """Génère l'écriture d'un paiement fournisseur (4411 → 514x/516x).
+
+    Débit 4411 Fournisseurs (on solde la dette), crédit trésorerie (banque, ou
+    caisse si mode ``especes``). Idempotent. Renvoie l'écriture, ou None si
+    désactivé/non applicable.
+    """
+    if not force and not auto_ecritures_actif():
+        return None
+    company = paiement.company
+    if company is None:
+        return None
+    existante = _ecriture_existante(
+        company, 'paiement_fournisseur', paiement.id)
+    if existante:
+        return existante
+    comptes = _comptes_requis(company)
+    mode = getattr(paiement, 'mode', '')
+    if mode == 'especes':
+        compte_treso = comptes['caisse']
+        journal = _journal(company, Journal.Type.CAISSE)
+    else:
+        compte_treso = comptes['banque']
+        journal = _journal(company, Journal.Type.BANQUE)
+    montant = Decimal(getattr(paiement, 'montant', 0) or 0)
+    facture = getattr(paiement, 'facture', None)
+    fournisseur_id = getattr(facture, 'fournisseur_id', None)
+    ref = getattr(facture, 'reference', '') or ''
+    lignes = [
+        {'compte': comptes['fournisseurs'], 'debit': montant,
+         'credit': Decimal('0'), 'libelle': f'Règlement {ref}',
+         'tiers_type': 'fournisseur', 'tiers_id': fournisseur_id},
+        {'compte': compte_treso, 'debit': Decimal('0'), 'credit': montant,
+         'libelle': f'Décaissement {ref}'},
+    ]
+    return creer_ecriture(
+        company, journal, getattr(paiement, 'date_paiement', None),
+        f'Paiement fournisseur {ref}', lignes,
+        reference=ref, source_type='paiement_fournisseur',
+        source_id=paiement.id, created_by=user,
+        statut=EcritureComptable.Statut.VALIDEE,
     )
 
 
@@ -4465,3 +4580,100 @@ def extourner_ecriture(ecriture, *, date_extourne=None, user=None,
         source_type='extourne', source_id=ecriture.id,
         created_by=user, statut=EcritureComptable.Statut.VALIDEE,
     )
+
+
+# ── COMPTA39 — Piste d'audit comptable inaltérable (hash-chaînée) ──────────
+# Chaque écriture validée est scellée dans un maillon append-only enchaîné au
+# précédent : hash = SHA256(hash_precedent + empreinte_contenu). Toute altération
+# d'une écriture déjà scellée casse la chaîne à la vérification. Purement additif :
+# aucun scellement n'a lieu tant que ``enregistrer_piste_audit`` n'est pas appelé.
+
+def _empreinte_ecriture(ecriture):
+    """Empreinte SHA-256 déterministe du contenu d'une écriture (+ ses lignes).
+
+    On sérialise les champs de tête (référence, date, journal, libellé, statut,
+    source) et chaque ligne (compte, débit, crédit, tiers) dans un ordre stable,
+    puis on hache. Toute modification ultérieure d'un de ces champs change
+    l'empreinte — donc casse la chaîne. Lecture seule.
+    """
+    parties = [
+        str(ecriture.company_id),
+        str(ecriture.reference or ''),
+        ecriture.date_ecriture.isoformat() if ecriture.date_ecriture else '',
+        str(ecriture.journal_id),
+        str(ecriture.libelle or ''),
+        str(ecriture.statut or ''),
+        str(ecriture.source_type or ''),
+        str(ecriture.source_id or ''),
+    ]
+    lignes = ecriture.lignes.order_by('id').values_list(
+        'compte__numero', 'debit', 'credit', 'tiers_type', 'tiers_id')
+    for numero, debit, credit, t_type, t_id in lignes:
+        parties.append(
+            f'{numero}|{debit}|{credit}|{t_type or ""}|{t_id or ""}')
+    charge = '\n'.join(parties).encode('utf-8')
+    return hashlib.sha256(charge).hexdigest()
+
+
+@transaction.atomic
+def enregistrer_piste_audit(ecriture):
+    """Scelle une écriture dans la piste d'audit hash-chaînée (idempotent).
+
+    Crée UN maillon enchaîné au dernier maillon de la société. Si l'écriture est
+    déjà scellée, renvoie son maillon existant sans rien récrire (append-only).
+    ``company`` déduite de l'écriture. Renvoie le maillon.
+    """
+    company = ecriture.company
+    if company is None:
+        return None
+    existant = PisteAuditComptable.objects.filter(
+        company=company, ecriture=ecriture).first()
+    if existant:
+        return existant
+    dernier = PisteAuditComptable.objects.filter(
+        company=company).order_by('-sequence').first()
+    hash_precedent = dernier.hash if dernier else ''
+    sequence = (dernier.sequence + 1) if dernier else 1
+    empreinte = _empreinte_ecriture(ecriture)
+    hash_maillon = hashlib.sha256(
+        (hash_precedent + empreinte).encode('utf-8')).hexdigest()
+    return PisteAuditComptable.objects.create(
+        company=company,
+        ecriture=ecriture,
+        sequence=sequence,
+        empreinte_contenu=empreinte,
+        hash_precedent=hash_precedent,
+        hash=hash_maillon,
+    )
+
+
+def verifier_integrite_piste(company):
+    """Vérifie l'intégrité de la piste d'audit hash-chaînée d'une société.
+
+    Recalcule chaque maillon dans l'ordre : l'empreinte doit correspondre au
+    contenu ACTUEL de l'écriture et le hash chaîné doit recoller au maillon
+    précédent. Renvoie ``{'valide': bool, 'nb_maillons': int, 'rupture': …}`` où
+    ``rupture`` est le rang du premier maillon incohérent (None si tout est
+    intègre). Lecture seule.
+    """
+    maillons = list(PisteAuditComptable.objects.filter(
+        company=company).select_related('ecriture').order_by('sequence'))
+    hash_precedent = ''
+    for maillon in maillons:
+        empreinte = _empreinte_ecriture(maillon.ecriture)
+        attendu = hashlib.sha256(
+            (hash_precedent + empreinte).encode('utf-8')).hexdigest()
+        if (empreinte != maillon.empreinte_contenu
+                or maillon.hash_precedent != hash_precedent
+                or maillon.hash != attendu):
+            return {
+                'valide': False,
+                'nb_maillons': len(maillons),
+                'rupture': maillon.sequence,
+            }
+        hash_precedent = maillon.hash
+    return {
+        'valide': True,
+        'nb_maillons': len(maillons),
+        'rupture': None,
+    }

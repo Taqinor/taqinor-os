@@ -5993,3 +5993,70 @@ class PieceJustificative(models.Model):
 
     def __str__(self):
         return self.libelle or f'Pièce #{self.pk} (écriture {self.ecriture_id})'
+
+
+# ── COMPTA39 — Piste d'audit comptable inaltérable (hash-chaînée) ──────────
+
+class PisteAuditComptable(models.Model):
+    """Maillon d'une piste d'audit INALTÉRABLE des écritures (hash-chaîné).
+
+    Chaque écriture validée produit UN maillon append-only : on fige un
+    empreinte du contenu de l'écriture (référence, date, libellé, journal,
+    montants, lignes) et on l'enchaîne au maillon précédent de la même société
+    en calculant ``hash = SHA256(hash_precedent + empreinte_contenu)``. Toute
+    altération a posteriori d'une écriture (ou d'un maillon) casse la chaîne :
+    le maillon suivant ne recolle plus. On ne stocke ICI que des empreintes et
+    des hashs — jamais de donnée client-facing. Purement additif : rien n'y est
+    écrit tant que ``services.enregistrer_piste_audit`` n'est pas appelé.
+
+    Le maillon N'EST JAMAIS modifié ni supprimé (append-only) : ``save`` refuse
+    toute mise à jour d'un maillon déjà persisté.
+    """
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='pistes_audit_compta',
+        verbose_name='Société',
+    )
+    # L'écriture couverte par ce maillon (une seule par écriture — idempotent).
+    ecriture = models.OneToOneField(
+        EcritureComptable,
+        on_delete=models.CASCADE,
+        related_name='piste_audit',
+        verbose_name='Écriture',
+    )
+    # Rang du maillon dans la chaîne de la société (1, 2, 3…).
+    sequence = models.PositiveIntegerField(verbose_name='Rang dans la chaîne')
+    # Empreinte du contenu de l'écriture au moment du scellement.
+    empreinte_contenu = models.CharField(
+        max_length=64, verbose_name='Empreinte du contenu')
+    # Hash du maillon précédent (vide pour le premier maillon = genesis).
+    hash_precedent = models.CharField(
+        max_length=64, blank=True, default='',
+        verbose_name='Hash précédent')
+    # Hash chaîné de ce maillon = SHA256(hash_precedent + empreinte_contenu).
+    hash = models.CharField(max_length=64, verbose_name='Hash du maillon')
+    date_creation = models.DateTimeField(
+        auto_now_add=True, verbose_name='Scellé le')
+
+    class Meta:
+        verbose_name = "Maillon de piste d'audit comptable"
+        verbose_name_plural = "Piste d'audit comptable"
+        ordering = ['company', 'sequence']
+        constraints = [
+            models.UniqueConstraint(
+                fields=['company', 'sequence'],
+                name='uniq_piste_seq_par_soc',
+            ),
+        ]
+
+    def __str__(self):
+        return f'Maillon #{self.sequence} — {self.hash[:12]}…'
+
+    def save(self, *args, **kwargs):
+        # Append-only : un maillon déjà persisté ne peut plus être modifié.
+        if self.pk is not None:
+            raise ValidationError(
+                "La piste d'audit est inaltérable : un maillon déjà scellé "
+                "ne peut pas être modifié.")
+        super().save(*args, **kwargs)

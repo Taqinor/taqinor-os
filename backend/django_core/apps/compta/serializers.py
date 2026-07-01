@@ -37,6 +37,7 @@ from .models import (
     CompteFidelite, MouvementFidelite, RegleUpsell,
     AbonnementMonitoring,
     MappingCompte, CompteAuxiliaire, PieceJustificative,
+    PisteAuditComptable,
 )
 
 
@@ -2002,3 +2003,17 @@ class PieceJustificativeSerializer(serializers.ModelSerializer):
 
     def validate_ecriture(self, value):
         return _meme_societe(self, value, 'Écriture')
+
+
+class PisteAuditComptableSerializer(serializers.ModelSerializer):
+    """Maillon de piste d'audit hash-chaînée (COMPTA39) — lecture seule."""
+    ecriture_reference = serializers.CharField(
+        source='ecriture.reference', read_only=True)
+
+    class Meta:
+        model = PisteAuditComptable
+        fields = [
+            'id', 'ecriture', 'ecriture_reference', 'sequence',
+            'empreinte_contenu', 'hash_precedent', 'hash', 'date_creation',
+        ]
+        read_only_fields = fields

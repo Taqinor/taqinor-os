@@ -40,6 +40,7 @@ from .views import (
     RegleUpsellViewSet, AbonnementMonitoringViewSet,
     MappingCompteViewSet, CompteAuxiliaireViewSet,
     PieceJustificativeViewSet,
+    PisteAuditComptableViewSet,
 )
 
 router = DefaultRouter()
@@ -135,6 +136,8 @@ router.register(r'abonnements-monitoring', AbonnementMonitoringViewSet)
 router.register(r'mappings-compte', MappingCompteViewSet)
 router.register(r'comptes-auxiliaires', CompteAuxiliaireViewSet)
 router.register(r'pieces-justificatives', PieceJustificativeViewSet)
+router.register(r'pistes-audit', PisteAuditComptableViewSet,
+                basename='pisteaudit')
 
 urlpatterns = [
     path('', include(router.urls)),

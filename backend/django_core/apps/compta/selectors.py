@@ -7,7 +7,7 @@ bilan (FG114) se déduisent tous des ``LigneEcriture`` du grand livre. Aucune
 from datetime import date, timedelta
 from decimal import Decimal, ROUND_HALF_UP
 
-from django.db.models import Sum
+from django.db.models import Q, Sum
 from django.utils import timezone
 
 from .models import (
@@ -363,6 +363,194 @@ def bilan(company, *, date_fin=None, validees_seulement=False):
         'total_passif': total_passif,
         'resultat': resultat,
         'equilibre': total_actif == (total_passif + resultat),
+    }
+
+
+# ── COMPTA29 — ESG (état des soldes de gestion) + ETIC ─────────────────────
+# Les états de synthèse CGNC ne se limitent pas au bilan + CPC : la liasse exige
+# aussi l'ESG (état des soldes de gestion — la cascade des soldes intermédiaires
+# marge → valeur ajoutée → EBE → résultat courant → résultat net) et l'ETIC
+# (état des informations complémentaires — le paquet de tableaux annexes). On les
+# DÉRIVE du grand livre lui-même : aucun recalcul métier ad hoc, aucun import
+# cross-app. L'ESG se lit sur les seuls comptes de gestion (classes 6 & 7),
+# regroupés par préfixe CGNC ; l'ETIC assemble les tableaux annexes déjà produits
+# par les sélecteurs existants (immobilisations/provisions/cautions/engagements),
+# bornés au même intervalle — d'où une cohérence 1:1 avec les états standalone.
+
+def _somme_prefixes(company, prefixes, *, sens, date_debut=None,
+                    date_fin=None, validees_seulement=False):
+    """Solde net d'un ensemble de comptes dont le numéro commence par un préfixe.
+
+    ``prefixes`` : itérable de préfixes de numéros (ex. ``('711', '712')``).
+    ``sens`` = ``'produit'`` (crédit − débit) ou ``'charge'`` (débit − crédit).
+    Lecture seule, scopée société, bornée à l'intervalle demandé. Renvoie un
+    ``Decimal`` (0 si aucun compte concerné).
+    """
+    qs = _lignes_qs(company, date_debut=date_debut, date_fin=date_fin,
+                    validees_seulement=validees_seulement)
+    filtre = Q()
+    for prefixe in prefixes:
+        filtre |= Q(compte__numero__startswith=prefixe)
+    agg = qs.filter(filtre).aggregate(debit=Sum('debit'), credit=Sum('credit'))
+    debit = agg['debit'] or Decimal('0')
+    credit = agg['credit'] or Decimal('0')
+    return (credit - debit) if sens == 'produit' else (debit - credit)
+
+
+def esg(company, *, date_debut=None, date_fin=None, validees_seulement=False):
+    """État des soldes de gestion (ESG / SIG) au format CGNC marocain.
+
+    Cascade des soldes intermédiaires de gestion, chacun déduit des soldes de
+    comptes de gestion (classes 6 & 7) regroupés par préfixe CGNC :
+
+      * marge brute sur ventes en l'état = ventes de marchandises (711) −
+        achats revendus de marchandises (611) ;
+      * production de l'exercice = ventes de biens & services produits (712) ;
+      * valeur ajoutée = marge brute + production − consommations (612/613/614) ;
+      * excédent brut d'exploitation (EBE) = valeur ajoutée − charges de
+        personnel (617) − impôts & taxes (616) ;
+      * résultat d'exploitation = EBE + autres produits d'expl. (718) − autres
+        charges d'expl. (618) − dotations d'exploitation (619) ;
+      * résultat financier = produits financiers (73) − charges financières (63) ;
+      * résultat courant = résultat d'exploitation + résultat financier ;
+      * résultat non courant = produits non courants (75) − charges non
+        courantes (65) ;
+      * résultat avant impôts = résultat courant + résultat non courant ;
+      * résultat net = résultat avant impôts − impôts sur les résultats (67).
+
+    Renvoie ``{'soldes': [{'code', 'libelle', 'montant'} …], 'resultat_net'}``.
+    Lecture seule ; aucun état n'est persisté.
+    """
+    def prod(*prefixes):
+        return _somme_prefixes(
+            company, prefixes, sens='produit', date_debut=date_debut,
+            date_fin=date_fin, validees_seulement=validees_seulement)
+
+    def charge(*prefixes):
+        return _somme_prefixes(
+            company, prefixes, sens='charge', date_debut=date_debut,
+            date_fin=date_fin, validees_seulement=validees_seulement)
+
+    ventes_marchandises = prod('711')
+    achats_revendus = charge('611')
+    marge_brute = ventes_marchandises - achats_revendus
+    production = prod('712')
+    consommations = charge('612', '613', '614')
+    valeur_ajoutee = marge_brute + production - consommations
+    charges_personnel = charge('617')
+    impots_taxes = charge('616')
+    ebe = valeur_ajoutee - charges_personnel - impots_taxes
+    autres_prod_expl = prod('718')
+    autres_charges_expl = charge('618')
+    dotations_expl = charge('619')
+    resultat_exploitation = (
+        ebe + autres_prod_expl - autres_charges_expl - dotations_expl)
+    resultat_financier = prod('73') - charge('63')
+    resultat_courant = resultat_exploitation + resultat_financier
+    resultat_non_courant = prod('75') - charge('65')
+    resultat_avant_impots = resultat_courant + resultat_non_courant
+    impots_resultats = charge('67')
+    resultat_net = resultat_avant_impots - impots_resultats
+    soldes = [
+        {'code': 'MARGE', 'libelle': 'Marge brute sur ventes en l’état',
+         'montant': marge_brute},
+        {'code': 'PROD', 'libelle': 'Production de l’exercice',
+         'montant': production},
+        {'code': 'VA', 'libelle': 'Valeur ajoutée', 'montant': valeur_ajoutee},
+        {'code': 'EBE', 'libelle': 'Excédent brut d’exploitation',
+         'montant': ebe},
+        {'code': 'REXPL', 'libelle': 'Résultat d’exploitation',
+         'montant': resultat_exploitation},
+        {'code': 'RFIN', 'libelle': 'Résultat financier',
+         'montant': resultat_financier},
+        {'code': 'RCOUR', 'libelle': 'Résultat courant',
+         'montant': resultat_courant},
+        {'code': 'RNC', 'libelle': 'Résultat non courant',
+         'montant': resultat_non_courant},
+        {'code': 'RAI', 'libelle': 'Résultat avant impôts',
+         'montant': resultat_avant_impots},
+        {'code': 'RN', 'libelle': 'Résultat net de l’exercice',
+         'montant': resultat_net},
+    ]
+    return {'soldes': soldes, 'resultat_net': resultat_net}
+
+
+# Sections normalisées de l'ETIC (ordre figé du paquet d'informations
+# complémentaires destiné au fiduciaire / à la DGI).
+ETIC_SECTIONS = (
+    'principes_methodes',
+    'immobilisations',
+    'provisions',
+    'engagements_hors_bilan',
+    'resultat',
+)
+
+
+def etic(company, exercice, *, validees_seulement=False):
+    """ETIC — état des informations complémentaires (paquet annexe CGNC).
+
+    Assemble — SANS rien recalculer — les tableaux annexes déjà produits par les
+    sélecteurs existants, tous bornés à l'exercice :
+
+      * ``immobilisations`` — soldes des comptes de classe 2 (immobilisations
+        brutes) via ``comptes_par_classe`` + leur solde ;
+      * ``provisions`` — provisions pour créances douteuses ouvertes ;
+      * ``engagements_hors_bilan`` — cautions bancaires & retenues de garantie
+        non encore libérées (engagements donnés) ;
+      * ``resultat`` — CPC de l'exercice (rappel de tête) ;
+      * ``principes_methodes`` — mention normalisée (méthode CGNC, coût
+        historique) ; texte fixe, aucune donnée société recopiée.
+
+    Lecture seule, scopée société ; aucune écriture n'est créée. Renvoie
+    ``{'exercice', 'date_debut', 'date_fin', 'sections', 'principes_methodes',
+    'immobilisations', 'provisions', 'engagements_hors_bilan', 'resultat'}``.
+    """
+    from .models import ProvisionCreance, CautionBancaire, RetenueGarantie
+    date_debut = exercice.date_debut
+    date_fin = exercice.date_fin
+    # Immobilisations brutes : soldes des comptes de classe 2 à la clôture.
+    immos = []
+    for compte in comptes_par_classe(company, 2):
+        solde = solde_compte(
+            company, compte, date_fin=date_fin,
+            validees_seulement=validees_seulement)
+        if solde:
+            immos.append({
+                'numero': compte.numero, 'intitule': compte.intitule,
+                'valeur_brute': solde})
+    provisions = [
+        {'tiers_type': p.tiers_type, 'tiers_id': p.tiers_id,
+         'base': p.base, 'dotation': p.dotation, 'taux': p.taux,
+         'statut': p.statut}
+        for p in ProvisionCreance.objects.filter(company=company)
+    ]
+    cautions = [
+        {'reference': c.reference, 'montant': c.montant, 'statut': c.statut}
+        for c in CautionBancaire.objects.filter(company=company)
+    ]
+    retenues = [
+        {'reference': r.reference, 'montant': r.montant, 'statut': r.statut}
+        for r in RetenueGarantie.objects.filter(company=company)
+    ]
+    etat_cpc = cpc(
+        company, date_debut=date_debut, date_fin=date_fin,
+        validees_seulement=validees_seulement)
+    return {
+        'exercice': exercice.libelle or str(exercice.pk),
+        'date_debut': date_debut.isoformat(),
+        'date_fin': date_fin.isoformat(),
+        'sections': list(ETIC_SECTIONS),
+        'principes_methodes': (
+            'États établis selon le CGNC (coût historique). Continuité '
+            'd’exploitation, permanence des méthodes, clarté et spécialisation '
+            'des exercices.'),
+        'immobilisations': immos,
+        'provisions': provisions,
+        'engagements_hors_bilan': {
+            'cautions_bancaires': cautions,
+            'retenues_garantie': retenues,
+        },
+        'resultat': etat_cpc,
     }
 
 

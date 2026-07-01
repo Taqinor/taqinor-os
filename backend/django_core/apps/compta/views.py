@@ -47,6 +47,7 @@ from .models import (
     CompteFidelite, MouvementFidelite, RegleUpsell,
     AbonnementMonitoring,
     MappingCompte, CompteAuxiliaire, PieceJustificative,
+    PisteAuditComptable,
 )
 from .serializers import (
     AppelTelephoniqueSerializer, AvancementRevenuSerializer,
@@ -93,6 +94,7 @@ from .serializers import (
     RegleUpsellSerializer, AbonnementMonitoringSerializer,
     MappingCompteSerializer, CompteAuxiliaireSerializer,
     PieceJustificativeSerializer,
+    PisteAuditComptableSerializer,
 )
 
 
@@ -250,6 +252,45 @@ class EtatsComptablesViewSet(viewsets.ViewSet):
         data = selectors.bilan(
             request.user.company, date_fin=periode['date_fin'],
             validees_seulement=periode['validees_seulement'])
+        return Response(data)
+
+    @action(detail=False, methods=['get'])
+    def esg(self, request):
+        """ESG — état des soldes de gestion (SIG) CGNC (COMPTA29).
+
+        Cascade marge → valeur ajoutée → EBE → résultat courant → résultat net,
+        déduite du grand livre (comptes de gestion classes 6 & 7). Paramètres :
+        ``date_debut``/``date_fin`` (bornes), ``validees`` (1 → validées).
+        Lecture seule, scopée société, Admin/Responsable.
+        """
+        data = selectors.esg(request.user.company, **self._periode(request))
+        return Response(data)
+
+    @action(detail=False, methods=['get'])
+    def etic(self, request):
+        """ETIC — état des informations complémentaires CGNC (COMPTA29).
+
+        Paquet des tableaux annexes (principes & méthodes, immobilisations,
+        provisions, engagements hors-bilan, rappel du résultat) pour un exercice,
+        assemblé sans recalcul depuis les sélecteurs existants. Paramètres :
+        ``exercice`` (id, requis), ``validees`` (1 → validées). Lecture seule,
+        scopée société, Admin/Responsable.
+        """
+        company = request.user.company
+        exercice_id = request.query_params.get('exercice')
+        if not exercice_id:
+            return Response(
+                {'detail': "Le paramètre 'exercice' est requis."},
+                status=status.HTTP_400_BAD_REQUEST)
+        exercice = ExerciceComptable.objects.filter(
+            company=company, pk=exercice_id).first()
+        if exercice is None:
+            return Response(
+                {'detail': 'Exercice introuvable pour cette société.'},
+                status=status.HTTP_404_NOT_FOUND)
+        data = selectors.etic(
+            company, exercice,
+            validees_seulement=request.query_params.get('validees') == '1')
         return Response(data)
 
     @action(detail=False, methods=['get'], url_path='position-tresorerie')
@@ -3987,3 +4028,43 @@ class PieceJustificativeViewSet(_ComptaBaseViewSet):
         serializer.save(
             company=self.request.user.company,
             ajoute_par=self.request.user)
+
+
+class PisteAuditComptableViewSet(TenantMixin, viewsets.ReadOnlyModelViewSet):
+    """Piste d'audit comptable inaltérable, hash-chaînée (COMPTA39).
+
+    LECTURE SEULE : les maillons se créent par scellement d'écritures via le
+    service (jamais par POST direct sur un maillon). Deux actions :
+      * ``verifier`` — recalcule toute la chaîne de la société et signale la
+        première rupture (altération d'écriture ou de maillon) éventuelle ;
+      * ``sceller`` — scelle une écriture (id dans le corps) dans la chaîne,
+        idempotent. Admin/Responsable, scopé société.
+    """
+    queryset = PisteAuditComptable.objects.select_related('ecriture').all()
+    serializer_class = PisteAuditComptableSerializer
+    permission_classes = [IsResponsableOrAdmin]
+    filter_backends = [filters.OrderingFilter]
+    ordering_fields = ['sequence', 'date_creation']
+
+    @action(detail=False, methods=['get'])
+    def verifier(self, request):
+        data = services.verifier_integrite_piste(request.user.company)
+        return Response(data)
+
+    @action(detail=False, methods=['post'])
+    def sceller(self, request):
+        ecriture_id = request.data.get('ecriture')
+        if not ecriture_id:
+            return Response(
+                {'detail': "Le champ 'ecriture' est requis."},
+                status=status.HTTP_400_BAD_REQUEST)
+        ecriture = EcritureComptable.objects.filter(
+            company=request.user.company, pk=ecriture_id).first()
+        if ecriture is None:
+            return Response(
+                {'detail': 'Écriture introuvable pour cette société.'},
+                status=status.HTTP_404_NOT_FOUND)
+        maillon = services.enregistrer_piste_audit(ecriture)
+        return Response(
+            PisteAuditComptableSerializer(maillon).data,
+            status=status.HTTP_201_CREATED)
