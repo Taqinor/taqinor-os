@@ -26,7 +26,7 @@ from authentication.models import Company
 
 from apps.compta import services
 from apps.compta.models import (
-    AcceptationDevisPortail, PaiementFacturePortail,
+    AcceptationDevisPortail, PaiementFacturePortail, DocumentClientPortail,
 )
 
 User = get_user_model()
@@ -150,3 +150,41 @@ class PaiementFacturePortailTests(TestCase):
         pf.refresh_from_db()
         self.assertEqual(pf.reference, 'A')
         self.assertEqual(pf.paye_le, premier)
+
+
+# ── FG231 — Dépôt de documents / factures ONEE par le client ───────────────
+
+class DocumentClientPortailTests(TestCase):
+    def setUp(self):
+        self.co = make_company('fg231', 'FG231')
+        self.user = make_user(self.co, 'fg231-user')
+
+    def test_creation_pose_company_serveur(self):
+        api = auth(self.user)
+        resp = api.post('/api/django/compta/documents-client-portail/', {
+            'client_id': 43001, 'type_document': 'facture_onee',
+            'libelle': 'Facture ONEE janvier',
+            'company': 77777,  # doit être ignoré
+        }, format='json')
+        self.assertEqual(resp.status_code, 201, resp.content)
+        doc = DocumentClientPortail.objects.get(id=resp.data['id'])
+        self.assertEqual(doc.company_id, self.co.id)
+        self.assertFalse(doc.traite)
+
+    def test_marquer_traite(self):
+        api = auth(self.user)
+        doc = DocumentClientPortail.objects.create(
+            company=self.co, client_id=43002)
+        resp = api.post(
+            f'/api/django/compta/documents-client-portail/{doc.id}'
+            '/marquer_traite/', {}, format='json')
+        self.assertEqual(resp.status_code, 200, resp.content)
+        doc.refresh_from_db()
+        self.assertTrue(doc.traite)
+
+    def test_isolation_societe(self):
+        autre = make_company('fg231-b', 'FG231B')
+        DocumentClientPortail.objects.create(company=autre, client_id=43003)
+        api = auth(self.user)
+        resp = api.get('/api/django/compta/documents-client-portail/')
+        self.assertEqual(resp.data['count'], 0)

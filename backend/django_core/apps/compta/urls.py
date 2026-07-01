@@ -31,7 +31,7 @@ from .views import (
     LigneBordereauViewSet, CautionSoumissionViewSet, DossierSoumissionViewSet,
     PieceSoumissionViewSet, EcheanceAOViewSet, ResultatAOViewSet,
     ComptePortailClientViewSet, AcceptationDevisPortailViewSet,
-    PaiementFacturePortailViewSet,
+    PaiementFacturePortailViewSet, DocumentClientPortailViewSet,
 )
 
 router = DefaultRouter()
@@ -110,6 +110,7 @@ router.register(r'comptes-portail', ComptePortailClientViewSet)
 # ── Portail client, partenaires & fidélité (FG229–FG244) ────────────────────
 router.register(r'acceptations-devis-portail', AcceptationDevisPortailViewSet)
 router.register(r'paiements-facture-portail', PaiementFacturePortailViewSet)
+router.register(r'documents-client-portail', DocumentClientPortailViewSet)
 
 urlpatterns = [
     path('', include(router.urls)),

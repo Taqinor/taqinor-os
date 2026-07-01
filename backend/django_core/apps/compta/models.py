@@ -5206,3 +5206,49 @@ class PaiementFacturePortail(models.Model):
 
     def __str__(self):
         return f'Paiement facture #{self.facture_id} ({self.statut})'
+
+
+# ── FG231 — Dépôt de documents / factures ONEE par le client ───────────────
+
+class DocumentClientPortail(models.Model):
+    """Document téléversé par le client depuis le portail (FG231).
+
+    Le client dépose ses factures ONEE (ou autre justificatif) pour affiner
+    l'étude solaire — l'app y lit la consommation. Scopé société ; lié au client
+    par id (cross-app, jamais d'import crm) et, optionnellement, au lead. Le
+    fichier va dans le stockage objet (MinIO/S3) ; aucun prix/marge ici.
+    """
+    class TypeDoc(models.TextChoices):
+        FACTURE_ONEE = 'facture_onee', 'Facture ONEE'
+        PLAN = 'plan', 'Plan / schéma'
+        AUTRE = 'autre', 'Autre'
+
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='documents_client_portail',
+        verbose_name='Société',
+    )
+    client_id = models.PositiveIntegerField(verbose_name='Id du client')
+    lead_id = models.PositiveIntegerField(
+        null=True, blank=True, verbose_name='Id du lead')
+    type_document = models.CharField(
+        max_length=14, choices=TypeDoc.choices, default=TypeDoc.FACTURE_ONEE,
+        verbose_name='Type de document')
+    libelle = models.CharField(
+        max_length=200, blank=True, default='', verbose_name='Libellé')
+    fichier = models.FileField(
+        upload_to='compta/portail_docs/', null=True, blank=True,
+        verbose_name='Fichier')
+    traite = models.BooleanField(
+        default=False, verbose_name='Traité (intégré à l\'étude)')
+    date_depot = models.DateTimeField(
+        auto_now_add=True, verbose_name='Déposé le')
+
+    class Meta:
+        verbose_name = 'Document client (portail)'
+        verbose_name_plural = 'Documents client (portail)'
+        ordering = ['-date_depot']
+
+    def __str__(self):
+        return f'{self.get_type_document_display()} — client #{self.client_id}'

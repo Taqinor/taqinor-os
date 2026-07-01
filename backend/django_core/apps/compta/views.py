@@ -41,6 +41,7 @@ from .models import (
     AppelOffre, BordereauPrix, LigneBordereau, CautionSoumission,
     DossierSoumission, PieceSoumission, EcheanceAO, ResultatAO,
     ComptePortailClient, AcceptationDevisPortail, PaiementFacturePortail,
+    DocumentClientPortail,
 )
 from .serializers import (
     AppelTelephoniqueSerializer, AvancementRevenuSerializer,
@@ -78,6 +79,7 @@ from .serializers import (
     DossierSoumissionSerializer, PieceSoumissionSerializer,
     EcheanceAOSerializer, ResultatAOSerializer, ComptePortailClientSerializer,
     AcceptationDevisPortailSerializer, PaiementFacturePortailSerializer,
+    DocumentClientPortailSerializer,
 )
 
 
@@ -3483,3 +3485,21 @@ class PaiementFacturePortailViewSet(_ComptaBaseViewSet):
         reference = request.data.get('reference') or None
         services.rapprocher_paiement_facture(paiement, reference=reference)
         return Response(self.get_serializer(paiement).data)
+
+
+class DocumentClientPortailViewSet(_ComptaBaseViewSet):
+    """Documents (factures ONEE…) téléversés par le client depuis le portail
+    (FG231). La société est posée côté serveur ; ``marquer_traite`` signale
+    qu'un document a été intégré à l'étude."""
+    queryset = DocumentClientPortail.objects.all()
+    serializer_class = DocumentClientPortailSerializer
+    filter_backends = [filters.OrderingFilter]
+    ordering_fields = ['date_depot']
+
+    @action(detail=True, methods=['post'])
+    def marquer_traite(self, request, pk=None):
+        doc = self.get_object()
+        if not doc.traite:
+            doc.traite = True
+            doc.save(update_fields=['traite'])
+        return Response(self.get_serializer(doc).data)

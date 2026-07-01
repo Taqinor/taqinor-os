@@ -31,6 +31,7 @@ from .models import (
     AppelOffre, BordereauPrix, LigneBordereau, CautionSoumission,
     DossierSoumission, PieceSoumission, EcheanceAO, ResultatAO,
     ComptePortailClient, AcceptationDevisPortail, PaiementFacturePortail,
+    DocumentClientPortail,
 )
 
 
@@ -1793,3 +1794,13 @@ class PaiementFacturePortailSerializer(serializers.ModelSerializer):
         read_only_fields = [
             'statut', 'reference', 'paye_le', 'date_creation',
         ]
+
+
+class DocumentClientPortailSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = DocumentClientPortail
+        fields = [
+            'id', 'client_id', 'lead_id', 'type_document', 'libelle',
+            'fichier', 'traite', 'date_depot',
+        ]
+        read_only_fields = ['traite', 'date_depot']
