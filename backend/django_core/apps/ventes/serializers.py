@@ -464,6 +464,10 @@ class LigneAvoirSerializer(serializers.ModelSerializer):
         model = LigneAvoir
         fields = ['id', 'produit', 'designation', 'quantite', 'prix_unitaire',
                   'remise', 'taux_tva', 'total_ht']
+        # DC10 — le produit est REQUIS à la création d'une ligne d'avoir (le FK
+        # reste nullable en base pour les lignes historiques ; l'API exige un
+        # produit sur toute NOUVELLE ligne).
+        extra_kwargs = {'produit': {'required': True, 'allow_null': False}}
 
 
 class AvoirSerializer(serializers.ModelSerializer):

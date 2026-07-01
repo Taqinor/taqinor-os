@@ -965,6 +965,20 @@ class LigneAvoir(models.Model):
         verbose_name = 'Ligne d\'avoir'
         verbose_name_plural = 'Lignes d\'avoir'
 
+    def clean(self):
+        # DC10 — lien produit RENFORCÉ : une NOUVELLE ligne d'avoir doit porter
+        # son produit (snapshot fort du lien). Le FK reste nullable au niveau
+        # base (SET_NULL) pour ne pas invalider les lignes historiques dont le
+        # produit a pu être supprimé ; la contrainte est appliquée au niveau
+        # APPLICATIF, uniquement à la création (self._state.adding).
+        super().clean()
+        from django.core.exceptions import ValidationError
+        if getattr(self, '_state', None) and self._state.adding \
+                and self.produit_id is None:
+            raise ValidationError(
+                {'produit': "Le produit est requis sur une nouvelle ligne "
+                            "d'avoir (note de crédit)."})
+
     @property
     def total_ht(self):
         return self.quantite * self.prix_unitaire * (1 - self.remise / 100)
