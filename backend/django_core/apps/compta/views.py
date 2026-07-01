@@ -41,7 +41,7 @@ from .models import (
     AppelOffre, BordereauPrix, LigneBordereau, CautionSoumission,
     DossierSoumission, PieceSoumission, EcheanceAO, ResultatAO,
     ComptePortailClient, AcceptationDevisPortail, PaiementFacturePortail,
-    DocumentClientPortail, JalonChantierPortail,
+    DocumentClientPortail, JalonChantierPortail, DemandeTicketPortail,
 )
 from .serializers import (
     AppelTelephoniqueSerializer, AvancementRevenuSerializer,
@@ -80,6 +80,7 @@ from .serializers import (
     EcheanceAOSerializer, ResultatAOSerializer, ComptePortailClientSerializer,
     AcceptationDevisPortailSerializer, PaiementFacturePortailSerializer,
     DocumentClientPortailSerializer, JalonChantierPortailSerializer,
+    DemandeTicketPortailSerializer,
 )
 
 
@@ -3524,3 +3525,25 @@ class JalonChantierPortailViewSet(_ComptaBaseViewSet):
                 jalon.date_jalon = timezone.localdate()
             jalon.save(update_fields=['atteint', 'date_jalon'])
         return Response(self.get_serializer(jalon).data)
+
+
+class DemandeTicketPortailViewSet(_ComptaBaseViewSet):
+    """Demandes de ticket SAV ouvertes par le client depuis le portail (FG233).
+    La société est posée côté serveur ; ``prendre_en_charge`` avance la demande
+    et référence le ticket SAV créé (par id — le vrai ticket vit dans l'app sav,
+    créé via son service, jamais importée ici)."""
+    queryset = DemandeTicketPortail.objects.all()
+    serializer_class = DemandeTicketPortailSerializer
+    filter_backends = [filters.OrderingFilter]
+    ordering_fields = ['date_creation']
+
+    @action(detail=True, methods=['post'])
+    def prendre_en_charge(self, request, pk=None):
+        demande = self.get_object()
+        ticket_id = request.data.get('ticket_id')
+        if demande.statut == DemandeTicketPortail.Statut.SOUMISE:
+            demande.statut = DemandeTicketPortail.Statut.PRISE_EN_CHARGE
+            if ticket_id:
+                demande.ticket_id = ticket_id
+            demande.save(update_fields=['statut', 'ticket_id'])
+        return Response(self.get_serializer(demande).data)

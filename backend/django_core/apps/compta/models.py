@@ -5287,3 +5287,50 @@ class JalonChantierPortail(models.Model):
 
     def __str__(self):
         return f'Chantier #{self.chantier_id} — {self.libelle}'
+
+
+# ── FG233 — Ouverture de ticket SAV depuis le portail ──────────────────────
+
+class DemandeTicketPortail(models.Model):
+    """Demande de ticket SAV/garantie ouverte par le client via le portail
+    (FG233).
+
+    Le client décrit un problème ; on enregistre la demande scopée société,
+    puis le SAV la prend en charge en créant le vrai ticket (app ``sav``, via
+    son service — jamais d'import de ses modèles ici). ``ticket_id`` référence
+    le ticket SAV créé (cross-app par id). Le client suit l'état de sa demande
+    en lecture depuis le portail.
+    """
+    class Statut(models.TextChoices):
+        SOUMISE = 'soumise', 'Soumise'
+        PRISE_EN_CHARGE = 'prise_en_charge', 'Prise en charge'
+        RESOLUE = 'resolue', 'Résolue'
+        REFUSEE = 'refusee', 'Refusée'
+
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='demandes_ticket_portail',
+        verbose_name='Société',
+    )
+    client_id = models.PositiveIntegerField(verbose_name='Id du client')
+    chantier_id = models.PositiveIntegerField(
+        null=True, blank=True, verbose_name='Id du chantier')
+    sujet = models.CharField(max_length=200, verbose_name='Sujet')
+    description = models.TextField(
+        blank=True, default='', verbose_name='Description')
+    statut = models.CharField(
+        max_length=16, choices=Statut.choices, default=Statut.SOUMISE,
+        verbose_name='Statut')
+    ticket_id = models.PositiveIntegerField(
+        null=True, blank=True, verbose_name='Id du ticket SAV créé')
+    date_creation = models.DateTimeField(
+        auto_now_add=True, verbose_name='Créée le')
+
+    class Meta:
+        verbose_name = 'Demande de ticket SAV (portail)'
+        verbose_name_plural = 'Demandes de ticket SAV (portail)'
+        ordering = ['-date_creation']
+
+    def __str__(self):
+        return f'Demande SAV #{self.client_id} — {self.sujet}'

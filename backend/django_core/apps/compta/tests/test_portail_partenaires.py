@@ -27,7 +27,7 @@ from authentication.models import Company
 from apps.compta import services
 from apps.compta.models import (
     AcceptationDevisPortail, PaiementFacturePortail, DocumentClientPortail,
-    JalonChantierPortail,
+    JalonChantierPortail, DemandeTicketPortail,
 )
 
 User = get_user_model()
@@ -239,4 +239,44 @@ class JalonChantierPortailTests(TestCase):
             company=autre, chantier_id=44004, libelle='X')
         api = auth(self.user)
         resp = api.get('/api/django/compta/jalons-chantier-portail/')
+        self.assertEqual(resp.data['count'], 0)
+
+
+# ── FG233 — Ouverture de ticket SAV depuis le portail ──────────────────────
+
+class DemandeTicketPortailTests(TestCase):
+    def setUp(self):
+        self.co = make_company('fg233', 'FG233')
+        self.user = make_user(self.co, 'fg233-user')
+
+    def test_creation_pose_company_serveur(self):
+        api = auth(self.user)
+        resp = api.post('/api/django/compta/demandes-ticket-portail/', {
+            'client_id': 45001, 'sujet': 'Onduleur en défaut',
+            'description': 'Voyant rouge depuis hier',
+            'company': 55555,  # doit être ignoré
+        }, format='json')
+        self.assertEqual(resp.status_code, 201, resp.content)
+        d = DemandeTicketPortail.objects.get(id=resp.data['id'])
+        self.assertEqual(d.company_id, self.co.id)
+        self.assertEqual(d.statut, DemandeTicketPortail.Statut.SOUMISE)
+
+    def test_prendre_en_charge_reference_ticket(self):
+        api = auth(self.user)
+        d = DemandeTicketPortail.objects.create(
+            company=self.co, client_id=45002, sujet='X')
+        resp = api.post(
+            f'/api/django/compta/demandes-ticket-portail/{d.id}'
+            '/prendre_en_charge/', {'ticket_id': 909}, format='json')
+        self.assertEqual(resp.status_code, 200, resp.content)
+        d.refresh_from_db()
+        self.assertEqual(d.statut, DemandeTicketPortail.Statut.PRISE_EN_CHARGE)
+        self.assertEqual(d.ticket_id, 909)
+
+    def test_isolation_societe(self):
+        autre = make_company('fg233-b', 'FG233B')
+        DemandeTicketPortail.objects.create(
+            company=autre, client_id=45003, sujet='Y')
+        api = auth(self.user)
+        resp = api.get('/api/django/compta/demandes-ticket-portail/')
         self.assertEqual(resp.data['count'], 0)
