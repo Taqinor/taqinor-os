@@ -100,3 +100,21 @@ def tva_standard(company):
         return Decimal(str(val)) if val is not None else Decimal('20')
     except Exception:
         return Decimal('20')
+
+
+def tva_panneaux(company):
+    """Taux de TVA société pour les lignes PANNEAUX (défaut 10 % — DC4).
+
+    DÉCISION DC4 : `CompanyProfile.tva_panneaux` (jusqu'ici écrit/validé mais lu
+    nulle part) devient le DÉFAUT société du taux de TVA des lignes panneaux.
+    `Produit.tva` reste la source AUTORITAIRE par ligne (cf. DC7) ; ce taux ne
+    s'applique qu'au repli, lorsqu'une ligne panneau n'a ni taux explicite ni
+    produit portant un taux. Repli sur 10 % (défaut historique) si le champ est
+    absent, donc le comportement reste identique tant que rien n'est édité.
+    """
+    prof = _profile(company)
+    val = getattr(prof, 'tva_panneaux', None) if prof else None
+    try:
+        return Decimal(str(val)) if val is not None else Decimal('10')
+    except Exception:
+        return Decimal('10')
