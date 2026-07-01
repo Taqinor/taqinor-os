@@ -15,6 +15,7 @@ User = get_user_model()
 
 class ImportBase(TestCase):
     def setUp(self):
+        from apps.roles.models import Role, DIRECTEUR_PERMISSIONS
         self.company = Company.objects.get_or_create(
             slug='imp-co', defaults={'nom': 'Imp Co'})[0]
         self.user = User.objects.create_user(
@@ -23,6 +24,19 @@ class ImportBase(TestCase):
         self.api = APIClient()
         self.api.credentials(
             HTTP_AUTHORIZATION=f'Bearer {AccessToken.for_user(self.user)}')
+        # QG4 — l'import de PRODUITS est réservé aux rôles Directeur +
+        # Commercial responsable : les tests produits passent par un Directeur,
+        # les autres cibles restent sur le responsable hérité (non-régression).
+        role_dir = Role.objects.get_or_create(
+            company=self.company, nom='Directeur',
+            defaults={'permissions': list(DIRECTEUR_PERMISSIONS),
+                      'est_systeme': True})[0]
+        self.directeur = User.objects.create_user(
+            username='imp_dir', password='x', role=role_dir,
+            company=self.company)
+        self.api_dir = APIClient()
+        self.api_dir.credentials(
+            HTTP_AUTHORIZATION=f'Bearer {AccessToken.for_user(self.directeur)}')
 
     def _csv(self, content, name='data.csv'):
         return SimpleUploadedFile(name, content.encode('utf-8'), content_type='text/csv')
@@ -61,8 +75,9 @@ class TestCommit(ImportBase):
         f = self._csv('Nom,SKU,Prix,Quantite\n'
                       'Panneau,SKU-9,"1 200,50",12\n'
                       'Doublon,SKU-1,500,3\n')
-        resp = self.api.post('/api/django/imports/commit/',
-                             {'file': f, 'target': 'products'}, format='multipart')
+        resp = self.api_dir.post(
+            '/api/django/imports/commit/',
+            {'file': f, 'target': 'products'}, format='multipart')
         self.assertEqual(resp.data['created'], 1)
         p = Produit.objects.get(sku='SKU-9')
         self.assertEqual(str(p.prix_vente), '1200.50')
@@ -80,8 +95,9 @@ class TestCommitHardening(ImportBase):
         # ERR52 — un stock d'ouverture > 0 passe par MouvementStock (audit).
         from apps.stock.models import MouvementStock
         f = self._csv('Nom,SKU,Quantite\nPanneau,SKU-AUD,5\n')
-        resp = self.api.post('/api/django/imports/commit/',
-                             {'file': f, 'target': 'products'}, format='multipart')
+        resp = self.api_dir.post(
+            '/api/django/imports/commit/',
+            {'file': f, 'target': 'products'}, format='multipart')
         self.assertEqual(resp.data['created'], 1)
         p = Produit.objects.get(sku='SKU-AUD')
         self.assertEqual(p.quantite_stock, 5)
@@ -97,8 +113,9 @@ class TestCommitHardening(ImportBase):
         # ERR52 — un stock négatif est ignoré (pas de produit, pas de mouvement).
         from apps.stock.models import MouvementStock
         f = self._csv('Nom,SKU,Quantite\nNeg,SKU-NEG,-3\n')
-        resp = self.api.post('/api/django/imports/commit/',
-                             {'file': f, 'target': 'products'}, format='multipart')
+        resp = self.api_dir.post(
+            '/api/django/imports/commit/',
+            {'file': f, 'target': 'products'}, format='multipart')
         self.assertEqual(resp.data['created'], 0)
         self.assertEqual(len(resp.data['skipped']), 1)
         self.assertFalse(Produit.objects.filter(sku='SKU-NEG').exists())

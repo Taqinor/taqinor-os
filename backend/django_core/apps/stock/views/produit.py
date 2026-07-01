@@ -32,6 +32,7 @@ from authentication.permissions import (  # noqa: F401
     IsAdminRole,
     IsResponsableOrAdmin,
     HasPermissionOrLegacy,
+    HasPermissionAndRole,
 )
 
 READ_ACTIONS = ['list', 'retrieve']
@@ -40,6 +41,13 @@ WRITE_ACTIONS = ['create', 'update', 'partial_update']
 # NOTE: ce module fait partie du découpage de l'ancien views.py monolithe
 # (un module par ressource). Comportement et symboles inchangés : le
 # package __init__ ré-exporte toutes les vues publiques.
+
+# QG4 — la CRÉATION de produits est restreinte partout (REST, import de
+# données, OCR — qui réutilise ce create) aux rôles Directeur et Commercial
+# responsable (décision Reda). Seule l'action `create` est durcie : lecture,
+# modification et suppression gardent leurs règles historiques.
+PRODUIT_CREATE_PERMISSION = HasPermissionAndRole(
+    'stock_creer', 'Directeur', 'Commercial responsable')
 
 
 class ProduitViewSet(TenantMixin, viewsets.ModelViewSet):
@@ -61,7 +69,8 @@ class ProduitViewSet(TenantMixin, viewsets.ModelViewSet):
         if self.action in READ_ACTIONS + ['export_xlsx']:
             return [IsAnyRole()]
         elif self.action == 'create':
-            return [HasPermissionOrLegacy('stock_creer')()]
+            # QG4 — création réservée à Directeur + Commercial responsable.
+            return [PRODUIT_CREATE_PERMISSION()]
         elif self.action in WRITE_ACTIONS + ['bulk']:
             return [HasPermissionOrLegacy('stock_modifier')()]
         elif self.action in ('destroy', 'force_delete'):

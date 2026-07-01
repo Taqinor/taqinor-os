@@ -18,11 +18,18 @@ User = get_user_model()
 
 class CFWiringBase(TestCase):
     def setUp(self):
+        from apps.roles.models import Role, DIRECTEUR_PERMISSIONS
         self.company = Company.objects.get_or_create(
             slug='cfw-co', defaults={'nom': 'CFW Co'})[0]
+        # QG4 — la création de produits est réservée aux rôles Directeur +
+        # Commercial responsable : le compte de test porte le rôle Directeur.
+        role_dir = Role.objects.get_or_create(
+            company=self.company, nom='Directeur',
+            defaults={'permissions': list(DIRECTEUR_PERMISSIONS),
+                      'est_systeme': True})[0]
         self.admin = User.objects.create_user(
             username='cfw_admin', password='x', role_legacy='admin',
-            company=self.company)
+            role=role_dir, company=self.company)
         self.api = APIClient()
         self.api.credentials(
             HTTP_AUTHORIZATION=f'Bearer {AccessToken.for_user(self.admin)}')

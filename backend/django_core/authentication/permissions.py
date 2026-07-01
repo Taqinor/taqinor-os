@@ -71,6 +71,37 @@ def HasPermissionOrLegacy(code):
     return _HasPermissionOrLegacy
 
 
+def HasPermissionAndRole(code, *roles_autorises):
+    """QG4 — permission ERP granulaire ET rôle nommé (liste blanche).
+
+    Ne passe que si l'utilisateur porte la permission ERP ``code`` ET un rôle
+    dont le nom figure dans ``roles_autorises``. Le superuser passe toujours.
+    Contrairement à ``HasPermissionOrLegacy``, les comptes hérités SANS rôle
+    fin sont REFUSÉS : c'est une garde de restriction (qui a le droit), pas
+    une garde de compatibilité.
+
+    Usage:
+        permission_classes = [HasPermissionAndRole(
+            'stock_creer', 'Directeur', 'Commercial responsable')]
+    """
+    class _HasPermissionAndRole(BasePermission):
+        message = ('Action réservée aux rôles : '
+                   + ', '.join(roles_autorises) + '.')
+
+        def has_permission(self, request, view):
+            user = request.user
+            if not (user and user.is_authenticated):
+                return False
+            if user.is_superuser:
+                return True
+            role = getattr(user, 'role', None)
+            if role is None or role.nom not in roles_autorises:
+                return False
+            return user.has_erp_permission(code)
+    _HasPermissionAndRole.__name__ = f'HasPermissionAndRole_{code}'
+    return _HasPermissionAndRole
+
+
 def HasPermission(code):
     """
     Permission factory. Returns a DRF permission class that checks
