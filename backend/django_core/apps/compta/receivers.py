@@ -23,5 +23,7 @@ from .services import (  # noqa: F401  (ré-export du point d'intégration)
     auto_ecritures_actif,
     ecriture_pour_avoir,
     ecriture_pour_facture,
+    ecriture_pour_facture_fournisseur,
     ecriture_pour_paiement,
+    ecriture_pour_paiement_fournisseur,
 )

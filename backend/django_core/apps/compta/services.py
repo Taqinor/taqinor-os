@@ -414,6 +414,119 @@ def ecriture_pour_avoir(avoir, *, force=False, user=None):
     )
 
 
+# ── COMPTA15 — Auto-écriture depuis une facture fournisseur (achat) ─────────
+# Symétrique de ``ecriture_pour_facture`` (vente), mais côté ACHAT : la facture
+# reçue d'un fournisseur débite une charge (61xx) + la TVA récupérable (3455x)
+# et crédite le compte collectif fournisseurs (4411). ``facture`` est une
+# instance ``stock.FactureFournisseur`` : on lit UNIQUEMENT ses attributs
+# publics (montant_ht/montant_tva/montant_ttc, reference, fournisseur_id,
+# date_facture) — aucun import du modèle d'une autre app. Idempotent, gardé par
+# le toggle ``COMPTA_AUTO_ECRITURES`` (OFF par défaut). Le compte de charge peut
+# être surchargé via le mapping DC22 (``type_clef='famille'``).
+
+@transaction.atomic
+def ecriture_pour_facture_fournisseur(facture, *, force=False, user=None,
+                                      famille_charge=None):
+    """Génère l'écriture d'achat d'une facture fournisseur (61xx/3455 → 4411).
+
+    Débit 61xx Achats/Charges (HT) + 3455 TVA récupérable (TVA), crédit 4411
+    Fournisseurs (TTC). Idempotent : ne recrée pas l'écriture d'une facture déjà
+    passée. Renvoie l'écriture (existante ou nouvelle), ou None si désactivé/non
+    applicable. ``famille_charge`` (optionnel) consulte le mapping DC22 pour
+    router vers un compte de charge précis (défaut : 6111 Achats).
+    """
+    if not force and not auto_ecritures_actif():
+        return None
+    company = facture.company
+    if company is None:
+        return None
+    existante = _ecriture_existante(company, 'facture_fournisseur', facture.id)
+    if existante:
+        return existante
+    comptes = _comptes_requis(company)
+    journal = _journal(company, Journal.Type.ACHAT)
+    ht = Decimal(getattr(facture, 'montant_ht', 0) or 0)
+    tva = Decimal(getattr(facture, 'montant_tva', 0) or 0)
+    ttc = Decimal(getattr(facture, 'montant_ttc', 0) or 0)
+    fournisseur_id = getattr(facture, 'fournisseur_id', None)
+    reference = getattr(facture, 'reference', '') or ''
+    # DC22 : famille de charge → compte 6x (défaut 6111 si non mappé).
+    compte_charge = compte_pour_clef(
+        company, MappingCompte.TypeClef.FAMILLE, famille_charge,
+        defaut=comptes['achats']) if famille_charge else comptes['achats']
+    lignes = [
+        {'compte': compte_charge, 'debit': ht, 'credit': Decimal('0'),
+         'libelle': f'Achat {reference}'},
+    ]
+    if tva:
+        lignes.append({
+            'compte': comptes['tva_recuperable'], 'debit': tva,
+            'credit': Decimal('0'),
+            'libelle': f'TVA récupérable {reference}'})
+    lignes.append({
+        'compte': comptes['fournisseurs'], 'debit': Decimal('0'), 'credit': ttc,
+        'libelle': f'Facture fournisseur {reference}',
+        'tiers_type': 'fournisseur', 'tiers_id': fournisseur_id})
+    return creer_ecriture(
+        company, journal, getattr(facture, 'date_facture', None),
+        f'Facture fournisseur {reference}', lignes,
+        reference=reference, source_type='facture_fournisseur',
+        source_id=facture.id, created_by=user,
+        statut=EcritureComptable.Statut.VALIDEE,
+    )
+
+
+# ── COMPTA16 — Auto-écriture depuis un paiement fournisseur ─────────────────
+# Symétrique de ``ecriture_pour_paiement`` (encaissement client) : le règlement
+# d'une facture fournisseur débite 4411 Fournisseurs (on solde la dette) et
+# crédite la trésorerie (banque/caisse selon le mode). ``paiement`` est une
+# instance ``stock.PaiementFournisseur`` — lecture des seuls attributs publics.
+
+@transaction.atomic
+def ecriture_pour_paiement_fournisseur(paiement, *, force=False, user=None):
+    """Génère l'écriture d'un paiement fournisseur (4411 → 514x/516x).
+
+    Débit 4411 Fournisseurs (on solde la dette), crédit trésorerie (banque, ou
+    caisse si mode ``especes``). Idempotent. Renvoie l'écriture, ou None si
+    désactivé/non applicable.
+    """
+    if not force and not auto_ecritures_actif():
+        return None
+    company = paiement.company
+    if company is None:
+        return None
+    existante = _ecriture_existante(
+        company, 'paiement_fournisseur', paiement.id)
+    if existante:
+        return existante
+    comptes = _comptes_requis(company)
+    mode = getattr(paiement, 'mode', '')
+    if mode == 'especes':
+        compte_treso = comptes['caisse']
+        journal = _journal(company, Journal.Type.CAISSE)
+    else:
+        compte_treso = comptes['banque']
+        journal = _journal(company, Journal.Type.BANQUE)
+    montant = Decimal(getattr(paiement, 'montant', 0) or 0)
+    facture = getattr(paiement, 'facture', None)
+    fournisseur_id = getattr(facture, 'fournisseur_id', None)
+    ref = getattr(facture, 'reference', '') or ''
+    lignes = [
+        {'compte': comptes['fournisseurs'], 'debit': montant,
+         'credit': Decimal('0'), 'libelle': f'Règlement {ref}',
+         'tiers_type': 'fournisseur', 'tiers_id': fournisseur_id},
+        {'compte': compte_treso, 'debit': Decimal('0'), 'credit': montant,
+         'libelle': f'Décaissement {ref}'},
+    ]
+    return creer_ecriture(
+        company, journal, getattr(paiement, 'date_paiement', None),
+        f'Paiement fournisseur {ref}', lignes,
+        reference=ref, source_type='paiement_fournisseur',
+        source_id=paiement.id, created_by=user,
+        statut=EcritureComptable.Statut.VALIDEE,
+    )
+
+
 # ── FG115 — Clôture & verrouillage de période comptable ────────────────────
 
 @transaction.atomic
