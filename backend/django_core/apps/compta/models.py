@@ -5371,6 +5371,25 @@ class Partenaire(models.Model):
         max_length=64, unique=True, db_index=True,
         verbose_name="Token d'accès")
     actif = models.BooleanField(default=True, verbose_name='Actif')
+    # FG237 — Annuaire & onboarding installateurs partenaires.
+    statut_onboarding = models.CharField(
+        max_length=12,
+        choices=[
+            ('prospect', 'Prospect'),
+            ('en_cours', "En cours d'agrément"),
+            ('agree', 'Agréé (activé)'),
+            ('suspendu', 'Suspendu'),
+        ],
+        default='prospect',
+        verbose_name="Statut d'onboarding")
+    numero_agrement = models.CharField(
+        max_length=60, blank=True, default='',
+        verbose_name="Numéro d'agrément")
+    zone = models.CharField(
+        max_length=120, blank=True, default='',
+        verbose_name='Zone géographique')
+    date_activation = models.DateField(
+        null=True, blank=True, verbose_name="Date d'activation")
     date_creation = models.DateTimeField(
         auto_now_add=True, verbose_name='Créé le')
 

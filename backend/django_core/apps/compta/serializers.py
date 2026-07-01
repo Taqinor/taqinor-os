@@ -1833,9 +1833,11 @@ class PartenaireSerializer(serializers.ModelSerializer):
         model = Partenaire
         fields = [
             'id', 'nom', 'type_partenaire', 'email', 'telephone',
-            'taux_commission', 'token_acces', 'actif', 'date_creation',
+            'taux_commission', 'token_acces', 'actif',
+            'statut_onboarding', 'numero_agrement', 'zone', 'date_activation',
+            'date_creation',
         ]
-        read_only_fields = ['token_acces', 'date_creation']
+        read_only_fields = ['token_acces', 'date_activation', 'date_creation']
 
 
 class SoumissionLeadPartenaireSerializer(serializers.ModelSerializer):

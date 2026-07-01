@@ -3567,6 +3567,20 @@ class PartenaireViewSet(_ComptaBaseViewSet):
             company=self.request.user.company,
             token_acces=secrets.token_urlsafe(32))
 
+    @action(detail=True, methods=['post'])
+    def activer(self, request, pk=None):
+        """Active (agrée) un partenaire installateur (FG237) — pose le statut
+        ``agree``, l'actif et la date d'activation."""
+        from django.utils import timezone
+        partenaire = self.get_object()
+        partenaire.statut_onboarding = 'agree'
+        partenaire.actif = True
+        if not partenaire.date_activation:
+            partenaire.date_activation = timezone.localdate()
+        partenaire.save(update_fields=[
+            'statut_onboarding', 'actif', 'date_activation'])
+        return Response(self.get_serializer(partenaire).data)
+
 
 class SoumissionLeadPartenaireViewSet(_ComptaBaseViewSet):
     """Leads soumis par un partenaire via le portail (FG234). La société est

@@ -485,3 +485,36 @@ class TerritoireCommercialTests(TestCase):
         api = auth(self.user)
         resp = api.get('/api/django/compta/territoires-commerciaux/')
         self.assertEqual(resp.data['count'], 0)
+
+
+# ── FG237 — Annuaire & onboarding des installateurs partenaires ────────────
+
+class OnboardingPartenaireTests(TestCase):
+    def setUp(self):
+        self.co = make_company('fg237', 'FG237')
+        self.user = make_user(self.co, 'fg237-user')
+
+    def test_creation_defaut_prospect(self):
+        api = auth(self.user)
+        resp = api.post('/api/django/compta/partenaires/', {
+            'nom': 'Installateur Fès', 'type_partenaire': 'installateur',
+            'numero_agrement': 'AGR-2026-01', 'zone': 'Fès-Meknès',
+        }, format='json')
+        self.assertEqual(resp.status_code, 201, resp.content)
+        p = Partenaire.objects.get(id=resp.data['id'])
+        self.assertEqual(p.statut_onboarding, 'prospect')
+        self.assertEqual(p.numero_agrement, 'AGR-2026-01')
+
+    def test_activer_pose_agree_et_date(self):
+        api = auth(self.user)
+        p = Partenaire.objects.create(
+            company=self.co, nom='I', type_partenaire='installateur',
+            token_acces='tok-fg237-a', statut_onboarding='en_cours')
+        resp = api.post(
+            f'/api/django/compta/partenaires/{p.id}/activer/', {},
+            format='json')
+        self.assertEqual(resp.status_code, 200, resp.content)
+        p.refresh_from_db()
+        self.assertEqual(p.statut_onboarding, 'agree')
+        self.assertTrue(p.actif)
+        self.assertIsNotNone(p.date_activation)
