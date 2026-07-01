@@ -22,6 +22,7 @@ import {
   TABS, DEFAULT_PAYMENT_TERMS, DEFAULT_PREFIXES, DEFAULT_NUMBERING,
   searchSettings,
 } from './peConstants'
+import OnboardingSection from './OnboardingSection'
 import SocieteSection from './SocieteSection'
 import LeadsSection from './LeadsSection'
 import ClientsSection from './ClientsSection'
@@ -771,6 +772,8 @@ export default function ParametresEntreprise() {
               se fait en JS dans handleSave. ── */}
         <form noValidate onSubmit={handleSave} className="flex flex-col gap-[1.1rem]">
 
+          {/* FG16 — onglet « Prise en main » (checklist + rejeu du guide). */}
+          {tab === 'onboarding' && <OnboardingSection />}
           {tab === 'societe'  && <SocieteSection {...ctx} />}
           {tab === 'leads'    && <LeadsSection {...ctx} />}
           {tab === 'clients'  && <ClientsSection {...ctx} />}

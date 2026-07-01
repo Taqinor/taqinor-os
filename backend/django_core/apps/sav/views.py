@@ -181,6 +181,27 @@ class EquipementViewSet(TenantMixin, viewsets.ModelViewSet):
         html = render_labels_html(items, symbology=symbology)
         return HR(html, content_type='text/html; charset=utf-8')
 
+    @action(detail=False, methods=['get'], url_path='registre-garanties',
+            permission_classes=[HasPermissionOrLegacy('equipement_voir')])
+    def registre_garanties(self, request):
+        """FG290 — Registre des garanties matériel & échéancier PAR PARC.
+
+        Renvoie le parc regroupé par installation, chaque unité avec ses dates
+        de fin de garantie (matériel + production, CALCULÉES) et un statut
+        d'alerte (expirée / expire bientôt / sous garantie / non renseignée),
+        trié par échéance la plus proche. Respecte le scoping société +
+        visibilité et TOUS les filtres de `get_queryset` (produit, marque,
+        installation, client, statut, garantie). Le seuil « expire bientôt »
+        est paramétrable via ?jours=N (défaut EXPIRING_SOON_DAYS)."""
+        from .selectors import warranty_registry
+        try:
+            jours = int(request.query_params.get('jours', EXPIRING_SOON_DAYS))
+        except (TypeError, ValueError):
+            jours = EXPIRING_SOON_DAYS
+        jours = max(0, jours)
+        data = warranty_registry(self.get_queryset(), expiring_soon_days=jours)
+        return Response(data)
+
 
 class TicketViewSet(TenantMixin, viewsets.ModelViewSet):
     """Tickets SAV + historique « chatter ». Cycle de vie propre (liste fermée

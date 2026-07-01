@@ -153,10 +153,19 @@ def relance_reminders():
         # Avance vers le niveau suivant : prochaine_relance = aujourd'hui +
         # (délai du niveau suivant − délai du niveau courant). Dernier niveau
         # atteint → on efface la date (séquence terminée).
+        # DC19 — la date de relance est reportée au prochain JOUR OUVRÉ de la
+        # société (week-end/férié → jour ouvré suivant) via le référentiel
+        # calendrier partagé : on ne relance jamais un client un jour non ouvré.
         next_idx = idx + 1
         if next_idx < len(levels):
             gap = max(levels[next_idx].delai_jours - niveau.delai_jours, 1)
-            facture.prochaine_relance = today + timedelta(days=gap)
+            cible = today + timedelta(days=gap)
+            try:
+                from apps.notifications.calendar_utils import prochain_jour_ouvre
+                cible = prochain_jour_ouvre(cible, facture.company)
+            except Exception:  # noqa: BLE001 — calendrier absent → date brute
+                pass
+            facture.prochaine_relance = cible
         else:
             facture.prochaine_relance = None
         facture.save(update_fields=['prochaine_relance'])

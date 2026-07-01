@@ -40,6 +40,16 @@ ALL_PERMISSIONS = [
     'roles_gerer',
     'reporting_voir',
     'reporting_export',
+    # ── Comptabilité — séparation des tâches (COMPTA40) ──
+    # Trois actions DISJOINTES du flux comptable : saisir une écriture, la
+    # valider (second regard) et clôturer une période/exercice. La règle
+    # « le saisisseur ne valide pas sa propre écriture » est posée en dur côté
+    # service (``compta.services.valider_ecriture``) ; ces codes gouvernent QUI
+    # a le droit d'accéder à chaque action. ``compta_cloturer`` est une action
+    # de gouvernance réservée par défaut au palier direction.
+    'compta_saisir',
+    'compta_valider',
+    'compta_cloturer',
     # ── Données sensibles & gouvernance (Feature D, 2026-06) ──
     # Voir les prix d'achat et la marge interne (générateur, stock). Accordée à
     # Directeur + Administrateur par défaut ; jamais sur un document client.
@@ -122,6 +132,11 @@ RESPONSABLE_PERMISSIONS = [
     'parametres_voir',
     'users_voir',
     'reporting_voir',
+    # COMPTA40 — le Responsable peut saisir ET valider des écritures (mais la
+    # séparation des tâches empêche toujours de valider sa PROPRE saisie) ; la
+    # clôture reste au palier direction/admin.
+    'compta_saisir',
+    'compta_valider',
     # FG20 — la Commerciale/Responsable voit les coordonnées client (besoin
     # opérationnel) ; comportement historique préservé.
     'client_pii_voir',

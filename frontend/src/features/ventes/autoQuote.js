@@ -10,7 +10,7 @@ import {
   estimerPanneaux, estimerMois, htFromTtc, ttcFromHt, optionTotalsTTC,
   autoFillLines, computeEtudeIndustrielle,
   autoFillPompage, pompageSelection, HEURES_POMPAGE_DEFAUT,
-  KWH_PRICE, DAY_USAGE_DEFAULTS,
+  KWH_PRICE, EFFICIENCY, DAY_USAGE_DEFAULTS,
 } from './solar'
 
 // ERR107 — Cohérence d'arrondi écran : une ligne est ENREGISTRÉE en HT 2 déc.
@@ -66,6 +66,7 @@ export async function createAutoQuote({ lead, produits, discountStr, dispatch,
                                         quoteLogic, pumpHours, onEtude }) {
   // Logique de devis éditable (Paramètres → Avancé) ; sans valeur = défauts.
   const kwhPrice = (Number(quoteLogic?.kwhPrice) > 0) ? Number(quoteLogic.kwhPrice) : KWH_PRICE
+  const efficiency = (Number(quoteLogic?.efficiency) > 0) ? Number(quoteLogic.efficiency) : EFFICIENCY
   const perTranche = (Number(quoteLogic?.panneauxParTranche) > 0) ? Number(quoteLogic.panneauxParTranche) : 8
   // Heures de pompage effectives : réglage entreprise (agricole_pump_hours) si
   // fourni, sinon le défaut marché historique — comme le générateur manuel.
@@ -113,6 +114,7 @@ export async function createAutoQuote({ lead, produits, discountStr, dispatch,
             kwp: kwpAuto, consoMensuelleKwh: conso,
             dayUsagePct: DAY_USAGE_DEFAULTS['Industrielle'],
             totalTtc: optionTotalsTTC(roundTripRowsTtc(rows), discountStr || '0').totalSans,
+            kwhPrice, efficiency,
           })
         : null
       // Surface les chiffres clés (taux d'autoconsommation, économies, payback)

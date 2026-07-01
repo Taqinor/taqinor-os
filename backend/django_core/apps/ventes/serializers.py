@@ -6,6 +6,23 @@ from .models import (
 )
 
 
+def _fallback_taux_tva(company, designation):
+    """DC4 — taux de TVA de repli d'une ligne sans taux ni produit taxé.
+
+    Une ligne PANNEAU retombe sur le défaut société panneaux
+    (CompanyProfile.tva_panneaux, 10 %) ; toute autre ligne sur le taux standard
+    (20 %). `Produit.tva` reste prioritaire côté appelant (DC7) : ce repli ne
+    s'applique QUE lorsqu'il n'existe ni taux explicite ni produit portant un
+    taux, donc le comportement reste identique tant que les produits portent
+    leur taux (cas nominal après seed_catalogue).
+    """
+    from apps.ventes.utils.company_settings import tva_standard, tva_panneaux
+    d = (designation or '').lower()
+    if 'panneau' in d:
+        return tva_panneaux(company)
+    return tva_standard(company)
+
+
 class LigneDevisSerializer(serializers.ModelSerializer):
     total_ht = serializers.DecimalField(max_digits=10, decimal_places=2, read_only=True)
 
@@ -24,9 +41,9 @@ class LigneDevisSerializer(serializers.ModelSerializer):
             if produit_tva is not None:
                 validated_data['taux_tva'] = produit_tva
             else:
-                from apps.ventes.utils.company_settings import tva_standard
                 company = getattr(validated_data.get('devis'), 'company', None)
-                validated_data['taux_tva'] = tva_standard(company)
+                validated_data['taux_tva'] = _fallback_taux_tva(
+                    company, validated_data.get('designation'))
         return super().create(validated_data)
 
 
@@ -353,9 +370,9 @@ class LigneFactureSerializer(serializers.ModelSerializer):
             if produit_tva is not None:
                 validated_data['taux_tva'] = produit_tva
             else:
-                from apps.ventes.utils.company_settings import tva_standard
                 company = getattr(validated_data.get('facture'), 'company', None)
-                validated_data['taux_tva'] = tva_standard(company)
+                validated_data['taux_tva'] = _fallback_taux_tva(
+                    company, validated_data.get('designation'))
         return super().create(validated_data)
 
 
@@ -447,6 +464,10 @@ class LigneAvoirSerializer(serializers.ModelSerializer):
         model = LigneAvoir
         fields = ['id', 'produit', 'designation', 'quantite', 'prix_unitaire',
                   'remise', 'taux_tva', 'total_ht']
+        # DC10 — le produit est REQUIS à la création d'une ligne d'avoir (le FK
+        # reste nullable en base pour les lignes historiques ; l'API exige un
+        # produit sur toute NOUVELLE ligne).
+        extra_kwargs = {'produit': {'required': True, 'allow_null': False}}
 
 
 class AvoirSerializer(serializers.ModelSerializer):

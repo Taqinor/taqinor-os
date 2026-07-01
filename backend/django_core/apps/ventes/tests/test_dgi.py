@@ -160,6 +160,38 @@ class TestBuildUblXml(DgiTestBase):
         xml = build_ubl_xml(facture)
         self.assertIn('ICE-SELLER-001', xml)
 
+    def test_dc25_currency_from_facture_devise(self):
+        # La devise du document prime : facture en EUR → UBL en EUR.
+        facture = self._facture()
+        facture.devise = 'EUR'
+        facture.save(update_fields=['devise'])
+        xml = build_ubl_xml(facture, self.profile)
+        self.assertIn('>EUR<', xml)          # DocumentCurrencyCode
+        self.assertIn('currencyID="EUR"', xml)
+        self.assertNotIn('>MAD<', xml)
+
+    def test_dc25_currency_falls_back_to_company_profile(self):
+        # Facture SANS devise (chaîne vide) → repli sur la devise par défaut de
+        # la société (CompanyProfile.devise_defaut), plus jamais « MAD » en dur.
+        self.profile.devise_defaut = 'USD'
+        self.profile.save(update_fields=['devise_defaut'])
+        facture = self._facture()
+        facture.devise = ''
+        facture.save(update_fields=['devise'])
+        xml = build_ubl_xml(facture, self.profile)
+        self.assertIn('>USD<', xml)
+        self.assertIn('currencyID="USD"', xml)
+
+    def test_dc25_ultimate_fallback_is_mad(self):
+        # Ni devise document ni devise société → repli ultime « MAD ».
+        self.profile.devise_defaut = ''
+        self.profile.save(update_fields=['devise_defaut'])
+        facture = self._facture()
+        facture.devise = ''
+        facture.save(update_fields=['devise'])
+        xml = build_ubl_xml(facture, self.profile)
+        self.assertIn('>MAD<', xml)
+
 
 class TestValidateConformity(DgiTestBase):
     def test_complete_b2b_facture_is_conform(self):

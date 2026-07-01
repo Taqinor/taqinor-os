@@ -103,6 +103,22 @@ class _ComptaBaseViewSet(TenantMixin, viewsets.ModelViewSet):
     permission_classes = [IsResponsableOrAdmin]
 
 
+def _peut(user, code):
+    """COMPTA40 — L'utilisateur porte-t-il la permission comptable ``code`` ?
+
+    Repli historique (comme ``HasPermissionOrLegacy``) : un compte SANS rôle fin
+    garde l'accès Responsable/Admin d'avant — aucune régression pour les comptes
+    hérités. Un compte AVEC rôle fin est jugé sur ses permissions granulaires.
+    """
+    if not (user and user.is_authenticated):
+        return False
+    if user.is_superuser:
+        return True
+    if getattr(user, 'role_id', None):
+        return user.has_erp_permission(code)
+    return user.is_responsable
+
+
 class PlanComptableViewSet(_ComptaBaseViewSet):
     """Plan(s) comptable(s) de la société (FG107). Action ``seed`` pour amorcer
     le plan CGNC + les journaux standards (idempotent)."""
@@ -186,6 +202,29 @@ class EcritureComptableViewSet(_ComptaBaseViewSet):
         return Response(
             EcritureComptableSerializer(extourne).data,
             status=status.HTTP_201_CREATED)
+
+    @action(detail=True, methods=['post'])
+    def valider(self, request, pk=None):
+        """COMPTA40 — Valide l'écriture (second regard, séparation des tâches).
+
+        Le saisisseur (``created_by``) ne peut JAMAIS valider sa propre
+        écriture : la garde est posée côté service. Requiert la permission
+        ``compta_valider`` (repli historique : Responsable/Admin pour les
+        comptes sans rôle fin). En cas de violation de la séparation ou d'une
+        écriture déjà validée, renvoie 400 avec un message explicite.
+        """
+        if not _peut(request.user, 'compta_valider'):
+            return Response(
+                {'detail': "Vous n'êtes pas habilité à valider une écriture."},
+                status=status.HTTP_403_FORBIDDEN)
+        ecriture = self.get_object()
+        try:
+            services.valider_ecriture(ecriture, user=request.user)
+        except DjangoValidationError as exc:
+            return Response(
+                {'detail': exc.messages[0] if exc.messages else str(exc)},
+                status=status.HTTP_400_BAD_REQUEST)
+        return Response(EcritureComptableSerializer(ecriture).data)
 
 
 class CompteTresorerieViewSet(_ComptaBaseViewSet):
@@ -736,6 +775,66 @@ class EtatsComptablesViewSet(viewsets.ViewSet):
             f'_{exercice.date_fin}.csv"')
         return resp
 
+    @action(detail=False, methods=['get'], url_path='export-fiduciaire')
+    def export_fiduciaire(self, request):
+        """Export fiduciaire Sage/CEGID des écritures d'un exercice (COMPTA37).
+
+        Restitue, pour un exercice, l'ensemble ORDONNÉ des écritures reprojetées
+        dans le jeu de colonnes d'échange fiduciaire (code journal, date, compte
+        général/auxiliaire, référence de pièce, libellé, sens D/C, montant) —
+        le pivot que les logiciels de tenue Sage et CEGID savent réimporter.
+        100 % OFFLINE : un fichier téléchargeable, jamais d'appel externe.
+        Paramètres : ``exercice`` (id, requis), ``validees`` (1 → écritures
+        validées seulement) et ``export=csv`` (point-virgule) pour le fichier ;
+        sans ``export``, renvoie le JSON (colonnes + lignes + synthèse liasse).
+        On utilise ``export=`` et JAMAIS le ``format=`` de DRF (qui répond 404).
+        Lecture seule, scopée société, Admin/Responsable.
+        """
+        company = request.user.company
+        exercice_id = request.query_params.get('exercice')
+        if not exercice_id:
+            return Response(
+                {'detail': "Le paramètre 'exercice' est requis."},
+                status=status.HTTP_400_BAD_REQUEST)
+        exercice = ExerciceComptable.objects.filter(
+            company=company, pk=exercice_id).first()
+        if exercice is None:
+            return Response(
+                {'detail': 'Exercice introuvable pour cette société.'},
+                status=status.HTTP_404_NOT_FOUND)
+        data = selectors.export_fiduciaire(
+            company, exercice,
+            validees_seulement=request.query_params.get('validees') == '1')
+        if request.query_params.get('export') == 'csv':
+            return self._export_fiduciaire_file(exercice, data)
+        return Response(data)
+
+    @staticmethod
+    def _export_fiduciaire_file(exercice, data):
+        """Sérialise l'export fiduciaire (COMPTA37) en CSV Sage/CEGID.
+
+        Journal d'import délimité point-virgule : l'entête de colonnes, une ligne
+        par mouvement, puis une synthèse de liasse (produits/charges/résultat).
+        """
+        buffer = io.StringIO()
+        writer = csv.writer(buffer, delimiter=';', lineterminator='\r\n')
+        writer.writerow(data['columns'])
+        for ligne in data['lignes']:
+            writer.writerow([ligne[col] for col in data['columns']])
+        writer.writerow([])
+        writer.writerow(['SYNTHESE LIASSE'])
+        synthese = data['synthese']
+        writer.writerow(['Total produits', synthese['total_produits']])
+        writer.writerow(['Total charges', synthese['total_charges']])
+        writer.writerow(['Resultat', synthese['resultat']])
+        resp = HttpResponse(
+            buffer.getvalue(), content_type='text/csv; charset=utf-8')
+        resp['Content-Disposition'] = (
+            'attachment; filename='
+            f'"fiduciaire_sage_cegid_exercice_{exercice.pk}'
+            f'_{exercice.date_debut}_{exercice.date_fin}.csv"')
+        return resp
+
 
 # ── FG115 — Périodes comptables verrouillables ─────────────────────────────
 
@@ -752,6 +851,11 @@ class PeriodeComptableViewSet(_ComptaBaseViewSet):
 
     @action(detail=True, methods=['post'])
     def cloturer(self, request, pk=None):
+        # COMPTA40 — la clôture est une action de gouvernance dédiée.
+        if not _peut(request.user, 'compta_cloturer'):
+            return Response(
+                {'detail': "Vous n'êtes pas habilité à clôturer une période."},
+                status=status.HTTP_403_FORBIDDEN)
         periode = self.get_object()
         services.cloturer_periode(periode, user=request.user)
         return Response(self.get_serializer(periode).data)
@@ -784,6 +888,11 @@ class ExerciceComptableViewSet(_ComptaBaseViewSet):
 
     @action(detail=True, methods=['post'])
     def cloturer(self, request, pk=None):
+        # COMPTA40 — la clôture est une action de gouvernance dédiée.
+        if not _peut(request.user, 'compta_cloturer'):
+            return Response(
+                {'detail': "Vous n'êtes pas habilité à clôturer un exercice."},
+                status=status.HTTP_403_FORBIDDEN)
         exercice = self.get_object()
         services.cloturer_exercice(exercice, user=request.user)
         return Response(self.get_serializer(exercice).data)

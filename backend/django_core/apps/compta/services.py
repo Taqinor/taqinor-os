@@ -243,6 +243,40 @@ def creer_ecriture(company, journal, date_ecriture, libelle, lignes, *,
     return ecriture
 
 
+# ── COMPTA40 — Séparation des tâches (saisie vs validation vs clôture) ──────
+
+def valider_ecriture(ecriture, *, user):
+    """Valide une écriture au titre du « second regard » (COMPTA40).
+
+    Séparation des tâches : la personne qui a SAISI l'écriture
+    (``created_by``) ne peut JAMAIS être celle qui la VALIDE. Un autre
+    utilisateur habilité doit poser le second contrôle. Lève
+    ``ValidationError`` si :
+
+    * l'écriture est déjà validée (idempotence stricte : on refuse) ;
+    * le valideur est aussi le saisisseur (violation de la séparation) ;
+    * aucun valideur n'est fourni.
+
+    En cas de succès, passe l'écriture à ``VALIDEE`` et horodate le contrôle
+    (``valide_par`` / ``date_validation``). N'altère pas les lignes ; l'équilibre
+    reste garanti par ``clean()`` au moment de la saisie.
+    """
+    if user is None:
+        raise ValidationError(
+            "Un valideur est requis pour valider une écriture.")
+    if ecriture.statut == EcritureComptable.Statut.VALIDEE:
+        raise ValidationError("Cette écriture est déjà validée.")
+    if ecriture.created_by_id is not None and ecriture.created_by_id == user.id:
+        raise ValidationError(
+            "Séparation des tâches : la personne qui a saisi l'écriture ne "
+            "peut pas la valider elle-même. Un second contrôleur est requis.")
+    ecriture.statut = EcritureComptable.Statut.VALIDEE
+    ecriture.valide_par = user
+    ecriture.date_validation = timezone.now()
+    ecriture.save(update_fields=['statut', 'valide_par', 'date_validation'])
+    return ecriture
+
+
 # ── FG109 / COMPTA12-14 — Auto-génération depuis les documents ─────────────
 
 def auto_ecritures_actif():

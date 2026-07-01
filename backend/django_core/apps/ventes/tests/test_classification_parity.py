@@ -49,3 +49,76 @@ class TestClassificationParity(SimpleTestCase):
                 keyword, src,
                 f"solar.js a perdu le mot-clé de classification « {keyword} » "
                 "— il doit rester aligné avec quote_engine/builder.py.")
+
+    # ── DC8 — PARITÉ à trois sources sur un jeu de fixtures partagé ────────────
+    # Chaque désignation canonique doit être classée IDENTIQUEMENT par :
+    #   1. les prédicats du builder (répartition options PDF),
+    #   2. seed_catalogue.classify_categorie (catégorie catalogue),
+    #   3. solar.js classifyProduct (auto-fill écran) — vérifié en lisant la
+    #      fonction source et ses mots-clés (pas d'exécution JS).
+    # Classe canonique -> (prédicat builder, catégorie seed, type solar.js)
+    _FIXTURES = [
+        ('Panneau Canadien Solar 710W', 'panneau'),
+        ('Panneaux Jinko 550W', 'panneau'),
+        ('Onduleur hybride Deye 5kW Monophasé', 'onduleur_hybride'),
+        ('Onduleur réseau Huawei 10kW Triphasé', 'onduleur_reseau'),
+        ('Onduleur injection SUN2000 5kW', 'onduleur_reseau'),
+        ('Batterie Deyness 5 kWh', 'batterie'),
+    ]
+
+    def test_dc8_builder_seed_parity_on_shared_fixtures(self):
+        from apps.stock.management.commands import seed_catalogue as seed
+        _seed_cat = {
+            'panneau': 'Panneaux photovoltaïques',
+            'onduleur_hybride': 'Onduleurs hybrides',
+            'onduleur_reseau': 'Onduleurs réseau',
+            'batterie': 'Batteries',
+        }
+        for nom, klass in self._FIXTURES:
+            # 1. builder predicates — exactement une classe cœur solaire.
+            is_panel = builder._is_panel(nom, '')
+            is_hyb = builder._is_hybrid_inverter(nom)
+            is_res = builder._is_reseau_inverter(nom)
+            is_bat = builder._is_battery(nom)
+            builder_klass = None
+            if is_panel:
+                builder_klass = 'panneau'
+            elif is_hyb:
+                builder_klass = 'onduleur_hybride'
+            elif is_res:
+                builder_klass = 'onduleur_reseau'
+            elif is_bat:
+                builder_klass = 'batterie'
+            self.assertEqual(
+                builder_klass, klass,
+                f"builder classe « {nom} » comme {builder_klass}, attendu {klass}")
+            # Un onduleur réseau/hybride n'est jamais une batterie et vice-versa.
+            self.assertLessEqual(
+                sum([is_panel, is_hyb, is_res, is_bat]), 1,
+                f"« {nom} » tombe dans plusieurs classes cœur solaire")
+            # 2. seed_catalogue.classify_categorie s'accorde.
+            self.assertEqual(
+                seed.classify_categorie(nom), _seed_cat[klass],
+                f"seed_catalogue classe « {nom} » différemment du builder")
+            # Panneau : is_panneau (taux 10 %) cohérent avec la classe panneau.
+            self.assertEqual(seed.is_panneau(nom), klass == 'panneau')
+
+    def test_dc8_solarjs_classify_logic_matches(self):
+        # solar.js classifyProduct doit utiliser les MÊMES règles (mêmes
+        # mots-clés, même ordre hybride-avant-réseau) que builder/seed.
+        with open(SOLAR_JS, encoding='utf-8') as fh:
+            src = fh.read()
+        low = src.lower()
+        # hybride testé AVANT réseau (sinon un hybride serait classé réseau).
+        idx_hyb = low.find("'onduleur_hybride'")
+        idx_res = low.find("'onduleur_reseau'")
+        self.assertGreater(idx_hyb, -1)
+        self.assertGreater(idx_res, -1)
+        self.assertLess(idx_hyb, idx_res,
+                        "solar.js doit classer l'hybride AVANT le réseau")
+        # réseau reconnu par « reseau » OU « injection » (comme le builder).
+        self.assertIn('injection', low)
+        self.assertIn('reseau', low)
+        # panneau/batterie présents.
+        self.assertIn("'panneau'", low)
+        self.assertIn("'batterie'", low)

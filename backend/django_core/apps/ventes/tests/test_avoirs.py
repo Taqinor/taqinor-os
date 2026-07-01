@@ -78,8 +78,9 @@ class TestAvoirs(TestCase):
         resp = api.post(
             f'/api/django/ventes/factures/{self.facture.id}/creer-avoir/',
             {'motif': 'Onduleur retourné',
-             'lignes': [{'designation': 'Onduleur', 'quantite': '1',
-                         'prix_unitaire': '5000', 'taux_tva': '20'}]},
+             'lignes': [{'produit': self.onduleur.id, 'designation': 'Onduleur',
+                         'quantite': '1', 'prix_unitaire': '5000',
+                         'taux_tva': '20'}]},
             format='json')
         self.assertEqual(resp.status_code, 201, resp.data)
         avoir = Avoir.objects.get(id=resp.data['id'])
@@ -122,8 +123,9 @@ class TestAvoirs(TestCase):
         api.post(
             f'/api/django/ventes/factures/{self.facture.id}/creer-avoir/',
             {'motif': 'Test chatter',
-             'lignes': [{'designation': 'Onduleur', 'quantite': '1',
-                         'prix_unitaire': '5000', 'taux_tva': '20.00'}]},
+             'lignes': [{'produit': self.onduleur.id, 'designation': 'Onduleur',
+                         'quantite': '1', 'prix_unitaire': '5000',
+                         'taux_tva': '20.00'}]},
             format='json')
         resp = api.get(
             f'/api/django/ventes/factures/{self.facture.id}/historique/')
@@ -160,8 +162,9 @@ class TestAvoirs(TestCase):
         resp = api.post(
             f'/api/django/ventes/factures/{self.facture.id}/creer-avoir/',
             {'motif': 'Trop gros',
-             'lignes': [{'designation': 'X', 'quantite': '1',
-                         'prix_unitaire': '20000', 'taux_tva': '20'}]},
+             'lignes': [{'produit': self.onduleur.id, 'designation': 'X',
+                         'quantite': '1', 'prix_unitaire': '20000',
+                         'taux_tva': '20'}]},
             format='json')
         self.assertEqual(resp.status_code, 400)
         self.assertIn('dépasse', resp.data['detail'])
@@ -177,8 +180,9 @@ class TestAvoirs(TestCase):
         self.assertEqual(r1.status_code, 201, r1.data)
         r2 = api.post(
             f'/api/django/ventes/factures/{self.facture.id}/creer-avoir/',
-            {'lignes': [{'designation': 'Onduleur', 'quantite': '1',
-                         'prix_unitaire': '5000', 'taux_tva': '20'}]},
+            {'lignes': [{'produit': self.onduleur.id, 'designation': 'Onduleur',
+                         'quantite': '1', 'prix_unitaire': '5000',
+                         'taux_tva': '20'}]},
             format='json')
         self.assertEqual(r2.status_code, 400)
         self.assertEqual(Avoir.objects.count(), 1)

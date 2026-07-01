@@ -225,6 +225,19 @@ class EcritureComptable(models.Model):
     )
     date_creation = models.DateTimeField(
         auto_now_add=True, verbose_name='Créée le')
+    # ── COMPTA40 — Séparation des tâches (saisie vs validation) ────────────
+    # Qui a VALIDÉ l'écriture (le « second regard »). Ne peut jamais être la
+    # même personne que ``created_by`` : le contrôle est posé dans
+    # ``services.valider_ecriture``. NULL tant que l'écriture est en brouillon.
+    valide_par = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='ecritures_validees',
+        verbose_name='Validée par',
+    )
+    date_validation = models.DateTimeField(
+        null=True, blank=True, verbose_name='Validée le')
 
     class Meta:
         verbose_name = 'Écriture comptable'
