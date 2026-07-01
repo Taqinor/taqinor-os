@@ -1011,3 +1011,122 @@ export function buildViewerModel(layout: RoofLayout | null): ViewerModel | null 
   if (zones.length === 0) return null;
   return { zones, radiusM: Math.max(radiusM, 6), totalPanels };
 }
+
+// ════════════════════════════════════════════════════════════════════════════
+// WJ26 — « Tout est expliqué » : légende + annotations + visite guidée autour
+// de la 3D. Discipline inchangée : CHAQUE chiffre vient du layout serveur ou du
+// payload quote ; quand une valeur manque, on renvoie null et la page affiche
+// « estimation indisponible » — jamais une valeur fabriquée.
+// ════════════════════════════════════════════════════════════════════════════
+
+/** Libellé FR d'orientation (8 directions) depuis un azimut de face 0–360. */
+export function orientationLabelFr(azimuthDeg: number): string {
+  const az = ((azimuthDeg % 360) + 360) % 360;
+  const labels = ['Nord', 'Nord-Est', 'Est', 'Sud-Est', 'Sud', 'Sud-Ouest', 'Ouest', 'Nord-Ouest'];
+  return labels[Math.round(az / 45) % 8];
+}
+
+/** Annotation client-lisible d'une zone (pan) du layout. */
+export interface ZoneAnnotation {
+  label: string;
+  /** Nombre de panneaux dimensionné pour ce pan (null si non dimensionné). */
+  panels: number | null;
+  /** Orientation lisible (« Sud », « Sud-Est »…). */
+  orientation: string;
+  /** Pente (°) du pan — null pour un toit plat (châssis standard). */
+  tiltDeg: number | null;
+  roofTypeLabel: string;
+  /** kWc du pan = panneaux × Wc/panneau (payload) ; null si l'un manque. */
+  kwc: number | null;
+}
+
+/**
+ * WJ26 — Annotations par pan, à afficher en légende autour de la 3D. Le nombre
+ * de panneaux vient du layout SERVEUR (`neededPanels`), la puissance par
+ * panneau du payload quote (`watt_par_panneau`) — le kWc n'est calculé que si
+ * les deux sont présents (produit de deux valeurs serveur, pas une invention).
+ */
+export function zoneAnnotations(
+  layout: RoofLayout,
+  wattParPanneau?: number | null,
+): ZoneAnnotation[] {
+  const watt = isFiniteNum(wattParPanneau) && wattParPanneau > 0 ? wattParPanneau : null;
+  return layout.zones.map((z) => {
+    const panels = z.neededPanels > 0 ? z.neededPanels : null;
+    return {
+      label: z.label,
+      panels,
+      orientation: orientationLabelFr(z.facingAzimuthDeg),
+      tiltDeg: z.roofType === 'pitched' && z.pitchDeg > 0 ? Math.round(z.pitchDeg) : null,
+      roofTypeLabel: z.roofType === 'pitched' ? 'Toit en pente' : 'Toit plat',
+      kwc: panels !== null && watt !== null ? Math.round(((panels * watt) / 1000) * 100) / 100 : null,
+    };
+  });
+}
+
+/** Texte de repli honnête quand un chiffre ne peut pas être calculé. */
+export const FIGURE_UNAVAILABLE = 'estimation indisponible';
+
+/** Une étape de la visite guidée (FR + gloss arabe court). */
+export interface WalkStep {
+  id: string;
+  title: string;
+  titleAr: string;
+  /** Phrase FR en langage simple — chiffres serveur ou repli libellé. */
+  body: string;
+}
+
+/**
+ * WJ26 — Visite guidée en 4 étapes : « voici votre toit → voici vos panneaux →
+ * voici ce qu'ils produisent → voici votre économie ». Chaque chiffre est lu du
+ * payload backend (nb_panneaux / puissance_kwc / prod_kwh / eco_*_ann) ; toute
+ * valeur absente devient « estimation indisponible » — jamais un nombre
+ * fabriqué. Pure (testable sans DOM).
+ */
+export function walkthroughSteps(p: ProposalResponse): WalkStep[] {
+  const q = p.quote;
+  const nb = isFiniteNum(q?.nb_panneaux) && q!.nb_panneaux! > 0 ? q!.nb_panneaux! : null;
+  const kwc = isFiniteNum(q?.puissance_kwc) && q!.puissance_kwc! > 0 ? q!.puissance_kwc! : null;
+  const prod = isFiniteNum(q?.prod_kwh) && q!.prod_kwh! > 0 ? q!.prod_kwh! : null;
+  const head = savingsHeadline(p, recommendedOption(p));
+
+  const panneauxBody =
+    nb !== null
+      ? `${formatNumber(nb)} panneaux${kwc !== null ? `, soit ${formatNumber(kwc, 2)} kWc` : ''}, positionnés selon l’étude de votre toiture.`
+      : `Vos panneaux sont positionnés selon l’étude de votre toiture (nombre : ${FIGURE_UNAVAILABLE}).`;
+  const prodBody =
+    prod !== null
+      ? `Environ ${formatNumber(prod)} kWh produits par an — de l’électricité que vous n’achetez plus au réseau.`
+      : `Production annuelle : ${FIGURE_UNAVAILABLE}.`;
+  const ecoBody =
+    head.annual !== null
+      ? `Environ ${formatMAD(head.annual)} d’économies par an${head.monthly !== null ? ` (≈ ${formatMAD(head.monthly)}/mois)` : ''}, en autoconsommation (loi 82-21).`
+      : `Économie annuelle : ${FIGURE_UNAVAILABLE}.`;
+
+  return [
+    {
+      id: 'toit',
+      title: 'Voici votre toit',
+      titleAr: 'هذا سطح منزلكم',
+      body: 'Le contour et les pans que vous voyez sont ceux de VOTRE toiture, telle que tracée lors de l’étude. Faites glisser pour tourner autour.',
+    },
+    {
+      id: 'panneaux',
+      title: 'Voici vos panneaux',
+      titleAr: 'هذه ألواحكم الشمسية',
+      body: panneauxBody,
+    },
+    {
+      id: 'production',
+      title: 'Voici ce qu’ils produisent',
+      titleAr: 'هذا ما تنتجه',
+      body: prodBody,
+    },
+    {
+      id: 'economie',
+      title: 'Voici votre économie',
+      titleAr: 'هذا ما توفرونه',
+      body: ecoBody,
+    },
+  ];
+}
