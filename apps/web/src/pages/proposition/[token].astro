@@ -39,6 +39,8 @@ import {
   environmentalImpact,
   financingComparison,
   whatsappLink,
+  parseRoofLayout,
+  buildViewerModel,
 } from '../../lib/proposition';
 import { renderYearCurve } from '../../lib/proposalCurve';
 import { renderProposalChart, resolveSeries } from '../../lib/proposalChart';
@@ -170,6 +172,16 @@ const callbackHref = ok ? `tel:${TAQINOR_TEL}` : '';
 // ── P3 — Lien public du devis PDF premium (même token, nouvel onglet) ────────
 const pdfUrl = ok ? proposalPdfEndpoint(API_BASE, token) : '';
 
+// ── WJ25 — visionneuse 3D en lecture seule (layout backend OPTIONNEL QJ26) ───
+// Le backend n'expose pas encore `roof_layout` (PLAN2 QJ26) : le parse renvoie
+// alors null et la page garde EXACTEMENT le héros statique d'aujourd'hui. Quand
+// le champ arrivera, le modèle 3D (JSON pur) est calculé ICI côté serveur — le
+// client ne charge que le rendu Three.js, en différé (jamais au premier paint).
+const roofLayout = ok ? parseRoofLayout(data?.roof_layout) : null;
+const viewerModel = roofLayout ? buildViewerModel(roofLayout) : null;
+const show3d = !!viewerModel && viewerModel.totalPanels >= 0;
+const viewerConfig = show3d ? JSON.stringify({ model: viewerModel }) : null;
+
 const pageTitle = ok ? `Proposition ${reference} — ${clientName} | Taqinor` : 'Proposition | Taqinor';
 
 // Données passées au script de signature (sérialisées en JSON dans un data-attr).
@@ -257,6 +269,52 @@ const signConfig = ok
               Cette proposition a été acceptée
               {data?.accepte_par_nom ? <> par <strong class="text-lune">{data.accepte_par_nom}</strong></> : null}.
               Merci de votre confiance — votre conseiller Taqinor revient vers vous.
+            </p>
+          </div>
+        </section>
+      )}
+
+      <!-- ── WJ25 · VOTRE TOIT EN 3D (lecture seule — layout backend optionnel) -->
+      {/* Rendu UNIQUEMENT quand le backend fournit un roof_layout exploitable
+          (QJ26). Sans layout : rien ici — le héros statique reste inchangé.
+          Boîte à ratio RÉSERVÉ (zéro CLS) : poster (photo d'étude ou fond) puis
+          canvas 3D par-dessus quand la visionneuse démarre. Three.js n'est
+          JAMAIS dans le bundle initial (import() au scroll/tap — WJ27). */}
+      {show3d && (
+        <section id="roof3d" class="mx-auto max-w-4xl px-5 pt-12 sm:px-8 sm:pt-16" data-viewer-config={viewerConfig}>
+          <p class="tech-label rule-brass text-brass-300">Votre toit en 3D</p>
+          <div class="cine-card mt-5 overflow-hidden rounded-2xl p-0">
+            <div id="roof3d-stage" class="roof3d-stage">
+              {roofImg ? (
+                <img
+                  src={roofImg}
+                  alt={`Étude de toiture — ${clientName}`}
+                  width="1600"
+                  height="1000"
+                  class="absolute inset-0 h-full w-full object-cover"
+                  loading="lazy"
+                  decoding="async"
+                />
+              ) : (
+                <div class="absolute inset-0 bg-azur-950" aria-hidden="true"></div>
+              )}
+              <div class="roof3d-scrim absolute inset-0" aria-hidden="true"></div>
+              <div id="roof3d-overlay" class="absolute inset-0 flex flex-col items-center justify-center gap-3 px-6 text-center">
+                <button
+                  id="roof3d-start"
+                  type="button"
+                  class="btn-pill inline-flex items-center justify-center gap-2"
+                  style="background: var(--color-brass-400); color: var(--color-nuit); border-color: var(--color-brass-400)"
+                >
+                  Explorer votre toit en 3D
+                </button>
+                <p id="roof3d-note" class="max-w-sm text-sm text-lune-soft">
+                  Tournez, zoomez : ce sont votre toit et vos panneaux, tels qu’étudiés.
+                </p>
+              </div>
+            </div>
+            <p id="roof3d-hint" class="px-5 py-3 text-xs text-lune-faint" hidden>
+              Faites glisser pour tourner · pincez ou molette pour zoomer · deux doigts pour déplacer.
             </p>
           </div>
         </section>
@@ -1003,6 +1061,97 @@ const signConfig = ok
   }
 </script>
 
+<script>
+  // ── WJ25/WJ27 — boot DIFFÉRÉ de la visionneuse 3D (jamais au premier paint).
+  // Three.js est chargé par import() dynamique : au scroll (IntersectionObserver)
+  // en conditions normales, UNIQUEMENT au tap en reduced-motion / Save-Data.
+  // Échec WebGL / import → le poster (photo d'étude) reste, avec une note claire.
+  import type { ViewerModel } from '../../lib/proposition';
+
+  const section3d = document.getElementById('roof3d');
+  const stage = document.getElementById('roof3d-stage');
+  const overlay = document.getElementById('roof3d-overlay');
+  const startBtn = document.getElementById('roof3d-start') as HTMLButtonElement | null;
+  const noteEl = document.getElementById('roof3d-note');
+  const hintEl = document.getElementById('roof3d-hint');
+
+  if (section3d && stage && section3d.dataset.viewerConfig) {
+    let model: ViewerModel | null = null;
+    try {
+      model = (JSON.parse(section3d.dataset.viewerConfig) as { model: ViewerModel }).model;
+    } catch {
+      model = null;
+    }
+
+    const reduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    const nav = navigator as Navigator & { deviceMemory?: number; connection?: { saveData?: boolean } };
+    const lowEnd = (nav.deviceMemory != null && nav.deviceMemory <= 4) || (navigator.hardwareConcurrency || 8) <= 4;
+    const saveData = nav.connection?.saveData === true;
+
+    let booted = false;
+    let handle: { dispose: () => void } | null = null;
+
+    function showFallback(msg: string): void {
+      if (startBtn) startBtn.hidden = true;
+      if (noteEl) noteEl.textContent = msg;
+    }
+
+    async function boot(): Promise<void> {
+      if (booted || !model || !stage) return;
+      booted = true;
+      if (startBtn) startBtn.disabled = true;
+      try {
+        const mod = await import('../../scripts/roofPro11/viewerOnly');
+        if (!mod.webglAvailable()) {
+          showFallback('Vue 3D indisponible sur cet appareil — voici la photo de votre étude.');
+          return;
+        }
+        handle = mod.createRoofViewer(stage, model, {
+          reducedMotion: reduced,
+          lowEnd,
+          onReady: () => {
+            if (overlay) overlay.hidden = true;
+            if (hintEl) hintEl.hidden = false;
+          },
+          onFail: () => {
+            if (overlay) overlay.hidden = false;
+            showFallback('Vue 3D interrompue — voici la photo de votre étude.');
+          },
+        });
+        if (!handle) {
+          showFallback('Vue 3D indisponible sur cet appareil — voici la photo de votre étude.');
+        }
+      } catch {
+        // Réseau lent / import échoué : le poster reste, message honnête.
+        showFallback('Vue 3D momentanément indisponible — voici la photo de votre étude.');
+      }
+    }
+
+    startBtn?.addEventListener('click', () => void boot());
+
+    // Conditions normales : pré-charge au scroll (proche du viewport). En
+    // reduced-motion ou Save-Data : rien ne bouge/charge sans geste explicite.
+    if (!reduced && !saveData && 'IntersectionObserver' in window) {
+      const io = new IntersectionObserver(
+        (entries) => {
+          if (entries.some((e) => e.isIntersecting)) {
+            io.disconnect();
+            void boot();
+          }
+        },
+        { rootMargin: '200px' },
+      );
+      io.observe(section3d);
+    }
+
+    // Libère le GPU au départ de la page (aucune fuite de contexte WebGL).
+    window.addEventListener('pagehide', () => {
+      handle?.dispose();
+      handle = null;
+    });
+  }
+</script>
+
 <style>
   /* P2 — réserve le ratio du graphe (viewBox 360×150 = 2.4:1) AVANT le rendu du
      SVG inline pour garantir zéro CLS. Le SVG enfant occupe 100 % de la largeur,
@@ -1034,6 +1183,27 @@ const signConfig = ok
   .sign-pad {
     height: 160px;
     cursor: crosshair;
+  }
+
+  /* WJ25/WJ27 — scène 3D : ratio RÉSERVÉ avant tout chargement (zéro CLS).
+     Le poster occupe la boîte ; le canvas (créé par la visionneuse) la recouvre.
+     touch-action: none sur le canvas = orbite/pinch sans scroller la page. */
+  .roof3d-stage {
+    position: relative;
+    width: 100%;
+    aspect-ratio: 16 / 10;
+    background: var(--color-azur-950, #0a1a33);
+  }
+  .roof3d-stage :global(canvas) {
+    touch-action: none;
+    cursor: grab;
+  }
+  .roof3d-stage :global(canvas:active) {
+    cursor: grabbing;
+  }
+  /* Scrim léger pour la lisibilité du bouton/note posés sur la photo. */
+  .roof3d-scrim {
+    background: linear-gradient(to top, rgb(7 11 29 / 0.55), rgb(7 11 29 / 0.15));
   }
 
   /* WJ16 — animation : tracé des courbes + lever de soleil, GATÉE derrière

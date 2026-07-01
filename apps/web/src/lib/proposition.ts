@@ -117,6 +117,15 @@ export interface ProposalResponse {
    * Le champ peut aussi voyager dans `quote.date_validite`.
    */
   date_validite?: string | null;
+  /**
+   * WJ25 — layout de toiture OPTIONNEL (backend PLAN2 QJ26, pas encore exposé
+   * aujourd'hui : le champ est absent → la page garde le héros statique). Quand
+   * il arrive, sa forme est celle de `serializeLayout` du builder
+   * (roofPro11/prefill.ts) : { version, pin, outline, billKwh, zones[],
+   * activeAreaId }. On le lit défensivement via `parseRoofLayout` — jamais
+   * directement.
+   */
+  roof_layout?: unknown;
 }
 
 export type OptionKey = 'sans_batterie' | 'avec_batterie';
@@ -700,4 +709,305 @@ export function buildAcceptBodyRich(
     body.signed_at_client = meta.signed_at_client;
   }
   return body;
+}
+
+// ════════════════════════════════════════════════════════════════════════════
+// WJ25 — VISIONNEUSE 3D EN LECTURE SEULE du toit du client sur la proposition.
+//
+// Toute la logique PURE vit ici (parse défensif du `roof_layout` backend,
+// conversion lng/lat → ENU mètres, calepinage ILLUSTRATIF des panneaux) — la
+// visionneuse Three.js (roofPro11/viewerOnly.ts) ne fait QUE dessiner ce
+// modèle. Aucun chiffre affiché au client ne dérive de ce module : c'est de la
+// géométrie de rendu (le nombre de panneaux vient du layout serveur, les kWc /
+// production / économies viennent du payload quote).
+// ════════════════════════════════════════════════════════════════════════════
+
+/** Un obstacle du layout (zone d'exclusion, rectangle axe-aligné N/E). */
+export interface RoofLayoutObstacle {
+  centerLng: number;
+  centerLat: number;
+  lengthM: number;
+  widthM: number;
+}
+
+/** Une zone (pan de toit) du layout backend, déjà validée. */
+export interface RoofLayoutZone {
+  id: string;
+  label: string;
+  /** Contour [[lng,lat],…] (≥ 3 sommets valides — garanti par le parse). */
+  vertices: Array<[number, number]>;
+  obstacles: RoofLayoutObstacle[];
+  roofType: 'flat' | 'pitched';
+  /** Pente (°) — 0 pour un toit plat ; bornée [0, 60]. */
+  pitchDeg: number;
+  /** Azimut de FACE des panneaux (0–360, 180 = plein sud). */
+  facingAzimuthDeg: number;
+  /** Nombre de panneaux dimensionné par l'étude (0 = « tout ce qui tient »). */
+  neededPanels: number;
+}
+
+/** Layout de toiture validé (miroir défensif de `serializeLayout` du builder). */
+export interface RoofLayout {
+  version: number;
+  zones: RoofLayoutZone[];
+}
+
+function isFiniteNum(v: unknown): v is number {
+  return typeof v === 'number' && Number.isFinite(v);
+}
+
+/**
+ * WJ25 — Parse DÉFENSIF du champ backend `roof_layout` (PLAN2 QJ26, optionnel).
+ * Renvoie `null` pour tout ce qui n'est pas un layout exploitable (absent,
+ * malformé, aucune zone d'au moins 3 sommets valides) — la page garde alors le
+ * héros statique, comportement d'aujourd'hui. Ne jette jamais.
+ */
+export function parseRoofLayout(raw: unknown): RoofLayout | null {
+  if (!raw || typeof raw !== 'object') return null;
+  const obj = raw as Record<string, unknown>;
+  const zonesRaw = obj.zones;
+  if (!Array.isArray(zonesRaw)) return null;
+  const zones: RoofLayoutZone[] = [];
+  for (const z of zonesRaw) {
+    if (!z || typeof z !== 'object') continue;
+    const zo = z as Record<string, unknown>;
+    const vertsRaw = Array.isArray(zo.vertices) ? zo.vertices : [];
+    const vertices: Array<[number, number]> = [];
+    for (const v of vertsRaw) {
+      if (!Array.isArray(v) || v.length < 2) continue;
+      const lng = v[0];
+      const lat = v[1];
+      if (!isFiniteNum(lng) || !isFiniteNum(lat)) continue;
+      if (lng < -180 || lng > 180 || lat < -90 || lat > 90) continue;
+      vertices.push([lng, lat]);
+    }
+    if (vertices.length < 3) continue;
+    const obstacles: RoofLayoutObstacle[] = [];
+    const obsRaw = Array.isArray(zo.obstacles) ? zo.obstacles : [];
+    for (const o of obsRaw) {
+      if (!o || typeof o !== 'object') continue;
+      const oo = o as Record<string, unknown>;
+      if (
+        isFiniteNum(oo.centerLng) && isFiniteNum(oo.centerLat) &&
+        isFiniteNum(oo.lengthM) && oo.lengthM > 0 &&
+        isFiniteNum(oo.widthM) && oo.widthM > 0
+      ) {
+        obstacles.push({
+          centerLng: oo.centerLng,
+          centerLat: oo.centerLat,
+          lengthM: oo.lengthM,
+          widthM: oo.widthM,
+        });
+      }
+    }
+    const roofType: 'flat' | 'pitched' = zo.roofType === 'pitched' ? 'pitched' : 'flat';
+    const pitchRaw = isFiniteNum(zo.pitchDeg) ? zo.pitchDeg : 0;
+    const pitchDeg = roofType === 'pitched' ? Math.min(60, Math.max(0, pitchRaw)) : 0;
+    const azRaw = isFiniteNum(zo.facingAzimuthDeg) ? zo.facingAzimuthDeg : 180;
+    const facingAzimuthDeg = ((azRaw % 360) + 360) % 360;
+    const needed = isFiniteNum(zo.neededPanels) && zo.neededPanels > 0
+      ? Math.floor(zo.neededPanels)
+      : 0;
+    zones.push({
+      id: typeof zo.id === 'string' ? zo.id : `zone-${zones.length + 1}`,
+      label: typeof zo.label === 'string' && zo.label.trim() ? zo.label.trim() : `Pan ${zones.length + 1}`,
+      vertices,
+      obstacles,
+      roofType,
+      pitchDeg,
+      facingAzimuthDeg,
+      neededPanels: needed,
+    });
+  }
+  if (zones.length === 0) return null;
+  return { version: isFiniteNum(obj.version) ? obj.version : 1, zones };
+}
+
+// ── Constantes de géométrie (dupliquées de roofPro2/roofPro11 — la visionneuse
+//    reste autonome ; PURE représentation, aucun chiffre client n'en dérive) ──
+/** Grand côté du panneau (m) — même valeur que lib/roofPro2 PANEL2_LONG_M. */
+export const VIEWER_PANEL_LONG_M = 2.384;
+/** Petit côté du panneau (m) — même valeur que lib/roofPro2 PANEL2_SHORT_M. */
+export const VIEWER_PANEL_SHORT_M = 1.303;
+/** Retrait de rive (m) — même valeur que lib/roofPro2 PERIMETER_SETBACK_M. */
+export const VIEWER_SETBACK_M = 0.5;
+/** Inclinaison VISUELLE des châssis sur toit plat (°) — représentation 3D
+ *  uniquement (aucune valeur affichée n'en dérive). */
+export const VIEWER_FLAT_TILT_DEG = 15;
+/** Plafond dur d'instances panneau (garde-fou perf bas de gamme). */
+export const VIEWER_MAX_PANELS = 600;
+
+const VIEWER_DEG2RAD = Math.PI / 180;
+const VIEWER_DEG2M = 111_320; // mètres par degré de latitude (WGS84 approx.)
+
+/** Point-dans-polygone (ray casting) en coordonnées planes. */
+export function viewerPointInRing(pt: [number, number], ring: Array<[number, number]>): boolean {
+  let inside = false;
+  const [px, py] = pt;
+  for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) {
+    const [xi, yi] = ring[i];
+    const [xj, yj] = ring[j];
+    const intersects = yi > py !== yj > py && px < ((xj - xi) * (py - yi)) / (yj - yi) + xi;
+    if (intersects) inside = !inside;
+  }
+  return inside;
+}
+
+/** Un panneau posé (centre ENU mètres, dans la frame du modèle). */
+export interface ViewerPanel {
+  x: number;
+  y: number;
+}
+
+/** Une zone prête à dessiner (tout en mètres ENU, origine = centroïde global). */
+export interface ViewerZone {
+  ringENU: Array<[number, number]>;
+  obstaclesENU: Array<{ x: number; y: number; widthM: number; lengthM: number }>;
+  roofType: 'flat' | 'pitched';
+  /** Inclinaison des PANNEAUX (° — pente du pan si pitched, châssis visuel sinon). */
+  tiltDeg: number;
+  azimuthDeg: number;
+  panels: ViewerPanel[];
+  /** Empreinte du panneau : le long de la rangée / dans la pente (m). */
+  panelAlongM: number;
+  panelDepthM: number;
+}
+
+/** Modèle complet consommé par roofPro11/viewerOnly.ts. JSON pur. */
+export interface ViewerModel {
+  zones: ViewerZone[];
+  /** Rayon englobant (m) — cadre la caméra sans calcul côté client. */
+  radiusM: number;
+  totalPanels: number;
+}
+
+/**
+ * WJ25 — Calepinage ILLUSTRATIF d'une zone : grille orientée par l'azimut de
+ * face, cellules entièrement DANS le contour (retrait de rive) et HORS des
+ * obstacles, plafonnée à `neededPanels` (quand > 0). Même esprit que le builder
+ * (les N premières cellules), sans en dupliquer l'optimiseur. Pur.
+ */
+export function packZonePanels(
+  ringENU: Array<[number, number]>,
+  azimuthDeg: number,
+  tiltDeg: number,
+  roofType: 'flat' | 'pitched',
+  neededPanels: number,
+  obstaclesENU: Array<{ x: number; y: number; widthM: number; lengthM: number }> = [],
+): { panels: ViewerPanel[]; alongM: number; depthM: number } {
+  // Portrait sur pan incliné (pose affleurante courante), paysage sur toit plat.
+  const alongM = roofType === 'pitched' ? VIEWER_PANEL_SHORT_M : VIEWER_PANEL_LONG_M;
+  const slopeM = roofType === 'pitched' ? VIEWER_PANEL_LONG_M : VIEWER_PANEL_SHORT_M;
+  const tilt = tiltDeg * VIEWER_DEG2RAD;
+  const depthM = slopeM * Math.cos(tilt); // empreinte au sol dans le sens de la pente
+  // Pas de rangée : affleurant → quasi bord à bord ; châssis plat → espace anti-ombrage.
+  const rowPitch = roofType === 'pitched' ? depthM + 0.05 : depthM + 1.2;
+  const colPitch = alongM + 0.05;
+
+  const az = azimuthDeg * VIEWER_DEG2RAD;
+  const f: [number, number] = [Math.sin(az), Math.cos(az)]; // direction de face (aval)
+  const u: [number, number] = [-f[1], f[0]]; // direction de rangée
+
+  let aMin = Infinity, aMax = -Infinity, bMin = Infinity, bMax = -Infinity;
+  for (const [x, y] of ringENU) {
+    const a = x * u[0] + y * u[1];
+    const b = x * f[0] + y * f[1];
+    if (a < aMin) aMin = a;
+    if (a > aMax) aMax = a;
+    if (b < bMin) bMin = b;
+    if (b > bMax) bMax = b;
+  }
+  if (!Number.isFinite(aMin) || aMax - aMin < alongM || bMax - bMin < depthM) {
+    return { panels: [], alongM, depthM };
+  }
+
+  const inObstacle = (x: number, y: number): boolean => {
+    for (const o of obstaclesENU) {
+      if (Math.abs(x - o.x) <= o.widthM / 2 + 0.1 && Math.abs(y - o.y) <= o.lengthM / 2 + 0.1) return true;
+    }
+    return false;
+  };
+
+  const cap = neededPanels > 0 ? Math.min(neededPanels, VIEWER_MAX_PANELS) : VIEWER_MAX_PANELS;
+  const panels: ViewerPanel[] = [];
+  const halfA = alongM / 2;
+  const halfD = depthM / 2;
+  // Parcours des rangées de l'AVAL vers l'AMONT (le sud d'abord pour une face sud),
+  // même esprit que « les N premières cellules » du builder.
+  for (let b = bMax - VIEWER_SETBACK_M - halfD; b >= bMin + VIEWER_SETBACK_M + halfD; b -= rowPitch) {
+    for (let a = aMin + VIEWER_SETBACK_M + halfA; a <= aMax - VIEWER_SETBACK_M - halfA; a += colPitch) {
+      const cx = a * u[0] + b * f[0];
+      const cy = a * u[1] + b * f[1];
+      // Centre + 4 coins dans le polygone, et centre/coins hors obstacles.
+      const corners: Array<[number, number]> = [
+        [cx + halfA * u[0] + halfD * f[0], cy + halfA * u[1] + halfD * f[1]],
+        [cx - halfA * u[0] + halfD * f[0], cy - halfA * u[1] + halfD * f[1]],
+        [cx + halfA * u[0] - halfD * f[0], cy + halfA * u[1] - halfD * f[1]],
+        [cx - halfA * u[0] - halfD * f[0], cy - halfA * u[1] - halfD * f[1]],
+      ];
+      if (!viewerPointInRing([cx, cy], ringENU)) continue;
+      if (!corners.every((c) => viewerPointInRing(c, ringENU))) continue;
+      if (inObstacle(cx, cy) || corners.some(([x, y]) => inObstacle(x, y))) continue;
+      panels.push({ x: cx, y: cy });
+      if (panels.length >= cap) return { panels, alongM, depthM };
+    }
+  }
+  return { panels, alongM, depthM };
+}
+
+/**
+ * WJ25 — Construit le modèle 3D complet à partir d'un layout validé : centroïde
+ * global comme origine ENU, une ViewerZone par zone (contour + obstacles +
+ * calepinage), rayon englobant pour cadrer la caméra. Renvoie `null` quand rien
+ * n'est dessinable. Pur, JSON-sûr (calculé côté serveur, sérialisé au client).
+ */
+export function buildViewerModel(layout: RoofLayout | null): ViewerModel | null {
+  if (!layout || layout.zones.length === 0) return null;
+  // Centroïde global (tous sommets confondus) = origine de la scène.
+  let lng0 = 0, lat0 = 0, n = 0;
+  for (const z of layout.zones) {
+    for (const [lng, lat] of z.vertices) {
+      lng0 += lng;
+      lat0 += lat;
+      n++;
+    }
+  }
+  if (n === 0) return null;
+  lng0 /= n;
+  lat0 /= n;
+  const cosLat = Math.cos(lat0 * VIEWER_DEG2RAD);
+  const toENU = ([lng, lat]: [number, number]): [number, number] => [
+    (lng - lng0) * VIEWER_DEG2M * cosLat,
+    (lat - lat0) * VIEWER_DEG2M,
+  ];
+
+  const zones: ViewerZone[] = [];
+  let radiusM = 0;
+  let totalPanels = 0;
+  let budget = VIEWER_MAX_PANELS;
+  for (const z of layout.zones) {
+    const ringENU = z.vertices.map(toENU);
+    for (const [x, y] of ringENU) radiusM = Math.max(radiusM, Math.hypot(x, y));
+    const obstaclesENU = z.obstacles.map((o) => {
+      const [x, y] = toENU([o.centerLng, o.centerLat]);
+      return { x, y, widthM: o.widthM, lengthM: o.lengthM };
+    });
+    const tiltDeg = z.roofType === 'pitched' ? z.pitchDeg : VIEWER_FLAT_TILT_DEG;
+    const packed = packZonePanels(ringENU, z.facingAzimuthDeg, tiltDeg, z.roofType, z.neededPanels, obstaclesENU);
+    const panels = packed.panels.slice(0, Math.max(0, budget));
+    budget -= panels.length;
+    totalPanels += panels.length;
+    zones.push({
+      ringENU,
+      obstaclesENU,
+      roofType: z.roofType,
+      tiltDeg,
+      azimuthDeg: z.facingAzimuthDeg,
+      panels,
+      panelAlongM: packed.alongM,
+      panelDepthM: packed.depthM,
+    });
+  }
+  if (zones.length === 0) return null;
+  return { zones, radiusM: Math.max(radiusM, 6), totalPanels };
 }
