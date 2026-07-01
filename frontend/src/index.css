@@ -2012,8 +2012,19 @@ textarea.form-control {
   .sidebar-toggle { display: none; }
   .layout-content {
     padding: 0.9rem;
-    /* Rien sous l'indicateur d'accueil ni les coins arrondis (PWA iOS). */
-    padding-bottom: max(0.9rem, env(safe-area-inset-bottom));
+    /* MB1 — Dégagement des barres de la coquille (le chevauchement mobile).
+       HAUT : l'en-tête est un frère EN FLUX de .layout-content dans la colonne
+       flex .layout-main (52 px + env(safe-area-inset-top) réservés par son
+       min-height) et le scrolleur commence SOUS lui — vérifié au pixel sur un
+       viewport 375×812 (contenu ⊂ [bas de l'en-tête, haut de la tabbar]).
+       Ne PAS ajouter ici un padding-top de 52 px « pour dégager l'en-tête » :
+       il ne recouvre pas le contenu, et ce padding créerait un trou mort de
+       ~66 px en haut de chaque page mobile (régression mesurée).
+       BAS : on réserve en plus les 52 px de la tabbar + l'indicateur d'accueil
+       pour que la dernière ligne puisse toujours défiler AU-DESSUS des éléments
+       ancrés au viewport (FAB copilote, invites PWA, barre d'actions groupées,
+       toasts) et rester lisible même quand un moteur dégrade 100dvh en 100vh. */
+    padding-bottom: calc(52px + max(0.9rem, env(safe-area-inset-bottom)));
     padding-left: max(0.9rem, env(safe-area-inset-left));
     padding-right: max(0.9rem, env(safe-area-inset-right));
   }

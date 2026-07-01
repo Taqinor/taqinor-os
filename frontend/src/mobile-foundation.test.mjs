@@ -1,0 +1,93 @@
+// Fondation CSS mobile (Groupe MB) — garde statique sur index.css, dans le même
+// esprit que design/theme.test.mjs (tokens.css) et ui/overlay-stacking.test.mjs.
+//
+// MB1 — Coquille : le contenu ne passe JAMAIS derrière l'en-tête ni la nav
+// basse sur téléphone. Architecture vérifiée au pixel (viewport 375×812) :
+// l'en-tête et la .bottom-tabbar sont des frères EN FLUX de .layout-content
+// dans la colonne flex .layout-main — l'en-tête réserve lui-même
+// 52 px + env(safe-area-inset-top), et le scrolleur interne (.layout-content)
+// est borné entre les deux barres. Ces tests verrouillent :
+//   • la chaîne de hauteur bornée U2 (sans elle la garantie tombe) ;
+//   • la réserve d'encoche de l'en-tête (52 px + safe-area) ;
+//   • le dégagement bas MB1 (52 px de tabbar + indicateur d'accueil) pour que
+//     la dernière ligne défile au-dessus des éléments ancrés au viewport ;
+//   • l'ABSENCE de padding-top « dégage-en-tête » sur .layout-content : les
+//     barres étant en flux, il créerait un trou mort ~66 px (régression mesurée).
+import test from 'node:test'
+import assert from 'node:assert/strict'
+import { readFileSync } from 'node:fs'
+import { fileURLToPath } from 'node:url'
+
+// Commentaires retirés AVANT analyse : les commentaires U2/MB1 citent des
+// règles (`.layout-content { overflow-y:auto }`) qui piégeraient les regex.
+const css = readFileSync(
+  fileURLToPath(new URL('./index.css', import.meta.url)), 'utf8',
+).replace(/\/\*[\s\S]*?\*\//g, '')
+
+/** Bloc média mobile de la coquille (le premier `@media (max-width: 768px)`). */
+function mobileShellBlock() {
+  const start = css.indexOf('@media (max-width: 768px)')
+  assert.ok(start >= 0, 'le bloc média mobile de la coquille doit exister')
+  // Fin du bloc = accolade fermante appariée.
+  let depth = 0
+  for (let i = css.indexOf('{', start); i < css.length; i++) {
+    if (css[i] === '{') depth++
+    else if (css[i] === '}') {
+      depth--
+      if (depth === 0) return css.slice(start, i + 1)
+    }
+  }
+  assert.fail('bloc média mobile non refermé')
+}
+
+/** Corps de la PREMIÈRE règle `sel { … }` dans `scope`. */
+function ruleBody(scope, sel) {
+  const m = scope.match(new RegExp(`(?:^|[\\s},])${sel.replace(/\./g, '\\.')}\\s*\\{([^}]*)\\}`))
+  return m ? m[1] : null
+}
+
+/* ── MB1 — dégagement des barres de la coquille ─────────────────────────── */
+
+test('MB1: la chaîne de hauteur bornée U2 reste verrouillée (garantie anti-chevauchement)', () => {
+  // Sans cette chaîne, .layout-content n'est plus le scrolleur interne et la
+  // garantie « le contenu reste entre les barres » tombe.
+  assert.match(css, /html,\s*body\s*\{[^}]*overflow-x:\s*clip/, 'html/body doivent garder overflow-x: clip (U2)')
+  assert.match(ruleBody(css, '.layout-main') ?? '', /overflow:\s*hidden/, '.layout-main doit garder overflow: hidden (U2)')
+  const content = ruleBody(css, '.layout-content') ?? ''
+  assert.match(content, /min-height:\s*0/, '.layout-content doit garder min-height: 0 (U2)')
+  assert.match(content, /overflow-y:\s*auto/, '.layout-content doit rester le scrolleur interne (U2)')
+})
+
+test('MB1: l\'en-tête réserve sa propre place (52px + encoche) — en flux, pas en recouvrement', () => {
+  const header = ruleBody(css, '.header') ?? ''
+  assert.match(header, /min-height:\s*52px/, '.header doit réserver 52px (base)')
+  assert.match(header, /padding-top:\s*env\(safe-area-inset-top\)/, '.header doit dégager l\'encoche (U3)')
+  const mobile = mobileShellBlock()
+  assert.match(
+    mobile,
+    /\.header\s*\{[^}]*min-height:\s*calc\(52px \+ env\(safe-area-inset-top\)\)/,
+    'sur mobile .header doit réserver 52px + safe-area-inset-top (U3)',
+  )
+})
+
+test('MB1: .layout-content dégage la nav basse (52px + indicateur d\'accueil) sur mobile', () => {
+  const mobile = mobileShellBlock()
+  const content = ruleBody(mobile, '.layout-content') ?? ''
+  assert.match(
+    content,
+    /padding-bottom:\s*calc\(52px \+ max\(0\.9rem,\s*env\(safe-area-inset-bottom\)\)\)/,
+    '.layout-content (mobile) doit réserver la hauteur de la tabbar + safe-area en bas',
+  )
+  assert.match(content, /padding-left:\s*max\(0\.9rem,\s*env\(safe-area-inset-left\)\)/)
+  assert.match(content, /padding-right:\s*max\(0\.9rem,\s*env\(safe-area-inset-right\)\)/)
+})
+
+test('MB1: pas de padding-top « dégage-en-tête » sur .layout-content (les barres sont en flux)', () => {
+  const mobile = mobileShellBlock()
+  const content = ruleBody(mobile, '.layout-content') ?? ''
+  assert.doesNotMatch(
+    content,
+    /padding-top:\s*calc\([^)]*52px/,
+    'un padding-top de 52px doublerait la réserve de l\'en-tête (trou mort ~66px mesuré à 375×812)',
+  )
+})
