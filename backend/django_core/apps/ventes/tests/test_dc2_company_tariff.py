@@ -20,11 +20,14 @@ class TestDC2CompanyTariff(TestCase):
         self.user = make_user(self.company)
         self.client_obj = make_client(self.company)
 
-    def _devis(self):
+    def _devis(self, reference='DEV-DC2-0001'):
+        # Référence distincte par appel : un même test peut construire deux
+        # devis pour la MÊME société (contrainte unique company+reference, et
+        # SKU produit dérivé de la référence).
         return make_devis(self.company, self.user, self.client_obj, [
             ('Panneau mono 450W', '10', '1500'),
             ('Onduleur hybride', '1', '12000'),
-        ])
+        ], reference=reference)
 
     def _set_profile(self, **fields):
         from apps.parametres.models import CompanyProfile
@@ -55,9 +58,9 @@ class TestDC2CompanyTariff(TestCase):
     def test_company_productible_changes_built_quote_roi(self):
         from apps.ventes.quote_engine.builder import build_quote_data
         self._set_profile(productible_kwh_kwc=Decimal('1240.0'))
-        data_low = build_quote_data(self._devis())
+        data_low = build_quote_data(self._devis(reference='DEV-DC2-LOW'))
         self._set_profile(productible_kwh_kwc=Decimal('1600.0'))
-        data_high = build_quote_data(self._devis())
+        data_high = build_quote_data(self._devis(reference='DEV-DC2-HIGH'))
         # Un productible plus élevé produit plus de kWh et donc plus d'économies.
         self.assertGreater(data_high['prod_kwh'], data_low['prod_kwh'])
         self.assertGreater(data_high['eco_s_ann'], data_low['eco_s_ann'])
