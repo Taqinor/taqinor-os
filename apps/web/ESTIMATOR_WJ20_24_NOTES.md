@@ -130,3 +130,32 @@ read-only reference, NEVER imported). All new functions in `estimatorBrainV2.ts`
   `ANRE_INJECTION_RATE_MAD_PER_KWH = 0` — no invented number. When the founder confirms the
   ANRE BT tariff, flip the flag + set the rate and the line valorises the surplus. Tested:
   stays off/zero unless confirmed AND rate > 0.
+
+---
+
+## WJ24 — Deeper battery model + export fidelity
+
+**Deeper battery model** (pure, opt-in, in `estimatorBrainV2.ts` — no existing path calls
+it → recommend()/savings byte-identical). Constants documented:
+- `LFP_DOD = 0.9` — LFP tolerate high depth of discharge, 10 % reserve for longevity.
+- `LFP_ROUND_TRIP_EFFICIENCY = 0.9` — cells ~95–98 %, inverter/BMS takes the rest.
+- `LFP_ANNUAL_CAPACITY_FADE = 0.02` — modern LFP median (~70 % @ 10 yr warranties → ~3 %/yr;
+  2 %/yr observed median). Conservative for cashflow.
+- `LFP_PACK_SIZES_KWH = [5,10,15,20]` — real market pack sizes; `chooseLfpPackKwh` picks the
+  smallest ≥ the storage need (need scaled up from usable → nominal via DoD).
+- `LFP_INDICATIVE_COST_MAD_PER_KWH = 4500` — INDICATIVE, flagged « à confirmer », never a
+  quote; drives an indicative cashflow only.
+- `batteryUsableKwh(nominal, year)` = nominal × DoD × round-trip × (1−fade)^(year−1) →
+  usable < nominal, strictly decreasing per year (tested).
+- `batteryCashflow(nominal, marginalRate, 25yr)` — each year values the (degrading) usable
+  energy at the avoided marginal rate × cycles/yr; cumulative net monotone; payback year or
+  null. Tested bounds: usable ≤ nominal, monotone cumulative, zero rate → never amortised.
+
+**Export fidelity — `serializeLayout` widened ADDITIVELY.** Added an optional
+`SerializedZone.geometry` (`SerializedZoneGeometry`): per-plane `azimuthDeg`, `tiltDeg`,
+`family`, `flush`, posed `kwc`/`count`, ENU `origin`, and the ENU centre (+face) of EVERY
+posed panel — so the ERP quote/PDF can reflect the real multi-plane design. **No existing
+field is removed or renamed** (the backend consumes them). It is derived, so
+`deserializeLayout` ignores it (round-trip identity preserved) and it only appears when a
+render plan exists. Verified: all prior fields still emitted, geometry present with a render
+plan / absent without one, JSON stays pure, W113 round-trip green.

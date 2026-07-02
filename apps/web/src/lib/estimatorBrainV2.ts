@@ -437,6 +437,102 @@ export function productionConfidenceBand(annualKwh: number, derate = climateDera
   return { low, point, high };
 }
 
+// ═══════════ WJ24 — MODÈLE DE BATTERIE APPROFONDI (LFP) + CASHFLOW 25 ANS (opt-in) ═══════════
+// Modèle PUR d'un pack LFP réaliste : profondeur de décharge (DoD), rendement aller-retour
+// (round-trip), dégradation de capacité, et TAILLES DE PACK RÉELLES. Le coût est INDICATIF,
+// explicitement « à confirmer » (pas un devis). Aucun chemin existant ne l'appelle
+// (opt-in) → recommend()/annualSavingsMad byte-identiques. Constantes + sources :
+// ESTIMATOR_WJ20_24_NOTES.md.
+
+/** Profondeur de décharge utile d'un pack LFP : 90 % (les LFP tolèrent une DoD élevée ;
+ *  on garde 10 % de réserve pour la longévité). Fiche LFP résidentiel standard. */
+export const LFP_DOD = 0.9;
+/** Rendement ALLER-RETOUR (charge→décharge, onduleur inclus) d'un système LFP : 90 %
+ *  (cellules ~95–98 %, l'onduleur/BMS enlève le reste). Prudent. */
+export const LFP_ROUND_TRIP_EFFICIENCY = 0.9;
+/** Dégradation de capacité annuelle d'un LFP : ~2 %/an (garanties usuelles ~70 % à 10 ans
+ *  → ~3 %/an ; 2 %/an médiane observée LFP moderne). Conservateur pour le cashflow. */
+export const LFP_ANNUAL_CAPACITY_FADE = 0.02;
+/** Tailles de pack LFP RÉELLES du marché (kWh nominal). L'appelant choisit la plus proche
+ *  du besoin de stockage. */
+export const LFP_PACK_SIZES_KWH = [5, 10, 15, 20] as const;
+/** Coût INDICATIF (MAD/kWh nominal) d'un pack LFP posé — « à confirmer » (fourchette
+ *  marché 2026, jamais un devis). Sert au cashflow indicatif, flaggé. */
+export const LFP_INDICATIVE_COST_MAD_PER_KWH = 4500;
+
+/** Choisit la plus petite taille de pack ≥ besoin (ou la plus grande si le besoin dépasse
+ *  le catalogue). Besoin ≤ 0 → 0 (pas de batterie). PUR. */
+export function chooseLfpPackKwh(neededUsableKwh: number, sizes: readonly number[] = LFP_PACK_SIZES_KWH): number {
+  if (!(neededUsableKwh > 0)) return 0;
+  // Le besoin est en énergie UTILE ; on remonte au nominal via la DoD pour dimensionner.
+  const neededNominal = neededUsableKwh / LFP_DOD;
+  for (const s of sizes) if (s >= neededNominal) return s;
+  return sizes.length ? sizes[sizes.length - 1] : 0;
+}
+
+/** Énergie UTILE (kWh) réellement restituée par un pack à l'année `year` (1-based) :
+ *  nominal × DoD × rendement aller-retour × (1 − fade)^(year−1). PUR. */
+export function batteryUsableKwh(
+  nominalKwh: number,
+  year = 1,
+  dod = LFP_DOD,
+  roundTrip = LFP_ROUND_TRIP_EFFICIENCY,
+  fade = LFP_ANNUAL_CAPACITY_FADE,
+): number {
+  if (!(nominalKwh > 0)) return 0;
+  const y = Math.max(1, Math.floor(year));
+  const retained = Math.pow(Math.max(0, 1 - fade), y - 1);
+  return Math.max(0, nominalKwh * Math.max(0, Math.min(1, dod)) * Math.max(0, Math.min(1, roundTrip)) * retained);
+}
+
+/** Une année du cashflow indicatif batterie. */
+export interface BatteryCashflowYear {
+  year: number;
+  usableKwh: number;
+  /** Économie annuelle indicative (MAD) de l'énergie décalée soir/nuit (autoconsommée). */
+  savingsMad: number;
+  /** Cumul net (MAD) : Σ économies − coût initial (négatif tant que non amorti). */
+  cumulativeNetMad: number;
+}
+export interface BatteryCashflow {
+  nominalKwh: number;
+  /** Coût initial INDICATIF (MAD) — « à confirmer », jamais un devis. */
+  indicativeCostMad: number;
+  years: BatteryCashflowYear[];
+  /** Année d'amortissement (cumul net ≥ 0), ou null si non amorti sur l'horizon. */
+  paybackYear: number | null;
+}
+
+/**
+ * Cashflow INDICATIF sur `horizonYears` (défaut 25) d'un pack batterie : chaque année,
+ * l'énergie utile (dégradée) est valorisée au tarif marginal évité (`marginalRateMadPerKwh`,
+ * MAD/kWh — issu de selfConsumptionFirstSavings côté appelant), cyclée `cyclesPerYear`
+ * (défaut 300 cycles utiles/an ≈ usage quotidien réaliste). Le coût est indicatif (flaggé
+ * « à confirmer »). PUR — aucun chiffre inventé au-delà des constantes documentées. */
+export function batteryCashflow(
+  nominalKwh: number,
+  marginalRateMadPerKwh: number,
+  horizonYears = LIFETIME_YEARS,
+  cyclesPerYear = 300,
+  costPerKwh = LFP_INDICATIVE_COST_MAD_PER_KWH,
+): BatteryCashflow {
+  const nominal = Math.max(0, nominalKwh);
+  const rate = Math.max(0, marginalRateMadPerKwh);
+  const cycles = Math.max(0, cyclesPerYear);
+  const indicativeCostMad = nominal * Math.max(0, costPerKwh);
+  const years: BatteryCashflowYear[] = [];
+  let cumulative = -indicativeCostMad;
+  let paybackYear: number | null = null;
+  for (let y = 1; y <= Math.max(1, Math.floor(horizonYears)); y++) {
+    const usable = batteryUsableKwh(nominal, y);
+    const savings = usable * cycles * rate;
+    cumulative += savings;
+    if (paybackYear == null && cumulative >= 0) paybackYear = y;
+    years.push({ year: y, usableKwh: usable, savingsMad: savings, cumulativeNetMad: cumulative });
+  }
+  return { nominalKwh: nominal, indicativeCostMad, years, paybackYear };
+}
+
 // — Dimensionnement de la recommandation —
 const COVERAGE_MARGIN = 1.1; // couvrir la cible + 10 %
 

@@ -172,6 +172,28 @@ export function createPrefill(ctx: Ctx): Prefill {
 // jamais persistés. serializeLayout → deserializeLayout est une IDENTITÉ pour ces
 // champs (garde de test).
 
+/** WJ24 — géométrie PLEINE par pan (plane) d'une zone, pour que le devis/PDF ERP reflète
+ *  le VRAI design multi-plan. Champ ADDITIF (optionnel) : n'existe que si la zone a un plan
+ *  de rendu (renderPlan) ; jamais retiré ni renommé (le backend lit les champs existants). */
+export interface SerializedZoneGeometry {
+  /** Azimut de FACE du pan (°, 0=N, 90=E, 180=S, 270=O). */
+  azimuthDeg: number;
+  /** Inclinaison du pan (°). */
+  tiltDeg: number;
+  /** Famille de config (south / eastwest). */
+  family: 'south' | 'eastwest';
+  /** Pose affleurante (toit en pente) ? */
+  flush: boolean;
+  /** Puissance crête totale POSÉE (kWc) du plan. */
+  kwc: number;
+  /** Nombre de panneaux POSÉS. */
+  count: number;
+  /** Origine ENU (lng/lat) du repère des centres de panneaux. */
+  origin: LngLat;
+  /** Centres ENU (m) + face de CHAQUE panneau posé (repère `origin`). */
+  panels: Array<{ cx: number; cy: number; face?: 'E' | 'W' }>;
+}
+
 /** Une zone sérialisée (sous-ensemble plat et JSON-sûr d'AreaRecord). */
 export interface SerializedZone {
   id: string;
@@ -186,6 +208,10 @@ export interface SerializedZone {
   facingManual: boolean;
   neededPanels: number;
   neededAuto: boolean;
+  /** WJ24 — géométrie pleine par pan (optionnel, additif). Présent seulement si un plan
+   *  de rendu existe pour la zone. Le round-trip deserializeLayout l'ignore (dérivé,
+   *  recalculé au boot) — il sert uniquement à l'export ERP (devis/PDF multi-plan). */
+  geometry?: SerializedZoneGeometry;
 }
 
 /** Layout complet sérialisé : version + zones + repère léger (pin/outline). */
@@ -227,7 +253,7 @@ export function serializeLayout(ctx: Ctx, billKwh: number | null = null): Serial
     const isActive = a.id === ctx.activeAreaId;
     const vertices = isActive ? ctx.vertices : a.vertices;
     const obstacles = isActive ? ctx.obstacles : a.obstacles;
-    return {
+    const zone: SerializedZone = {
       id: a.id,
       label: a.label,
       vertices: vertices.map(([lng, lat]) => [lng, lat] as LngLat),
@@ -245,6 +271,38 @@ export function serializeLayout(ctx: Ctx, billKwh: number | null = null): Serial
       neededPanels: isActive ? ctx.neededPanels : a.neededPanels,
       neededAuto: isActive ? ctx.neededAuto : a.neededAuto,
     };
+    // WJ24 — géométrie pleine par pan (additif) : depuis le plan de rendu figé de la zone
+    // (a.renderPlan) ou, pour la zone active, le plan gagnant vivant (ctx.layoutPlan). Les
+    // panneaux POSÉS = les `count` premiers du pavage (l'occupation personnalisée reste un
+    // sur-ensemble de la lattice ; on exporte le design du gagnant). Absent si pas de plan.
+    const rp = a.renderPlan;
+    const g = rp
+      ? { pack: rp.pack, grid: rp.grid, tiltDeg: rp.tiltDeg, family: rp.family, flush: rp.flush, count: rp.count }
+      : isActive && ctx.layoutPlan
+        ? {
+            pack: ctx.layoutPlan.pack,
+            grid: ctx.layoutPlan.grid,
+            tiltDeg: ctx.layoutPlan.tiltDeg,
+            family: ctx.layoutPlan.family,
+            flush: ctx.layoutPlan.flush,
+            count: ctx.layoutOptimalCount,
+          }
+        : null;
+    if (g && g.grid.panels.length) {
+      const posed = Math.max(0, Math.min(g.grid.panels.length, Math.round(g.count)));
+      const panels = g.grid.panels.slice(0, posed).map((p) => ({ cx: p.cx, cy: p.cy, ...(p.face ? { face: p.face } : {}) }));
+      zone.geometry = {
+        azimuthDeg: g.pack.azimuthDeg,
+        tiltDeg: g.tiltDeg,
+        family: g.family,
+        flush: g.flush,
+        kwc: g.grid.panels.length > 0 ? (g.grid.kwc * posed) / g.grid.panels.length : 0,
+        count: posed,
+        origin: [g.pack.origin[0], g.pack.origin[1]] as LngLat,
+        panels,
+      };
+    }
+    return zone;
   });
   const activeVerts = ctx.vertices.length >= 1 ? ctx.vertices : ctx.areas.find((a) => a.id === ctx.activeAreaId)?.vertices ?? [];
   const outline: Array<[number, number]> =
