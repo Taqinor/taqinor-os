@@ -83,6 +83,7 @@ class DevisViewSet(viewsets.ModelViewSet):
             'layout', 'roof_image', 'from_layout', 'auto', 'share_link',
             'envoyer_email', 'dupliquer_variante', 'variantes',
             'save_preset', 'apply_preset', 'contacter_superieur',
+            'whatsapp',
         ]:
             return [IsResponsableOrAdmin()]
         elif self.action == 'destroy':
@@ -855,6 +856,70 @@ class DevisViewSet(viewsets.ModelViewSet):
         devis = self.get_object()
         return Response(
             DevisActivitySerializer(devis.activites.all(), many=True).data)
+
+    @action(detail=True, methods=['post'], url_path='whatsapp',
+            permission_classes=[IsResponsableOrAdmin])
+    def whatsapp(self, request, pk=None):
+        """QG8 — « Envoyer » un devis = le flux WhatsApp des leads.
+
+        Miroir de ``crm.LeadViewSet.whatsapp_devis`` au niveau du devis :
+          * construit un lien wa.me PRÊT à envoyer (n'envoie rien — le commercial
+            appuie lui-même sur Envoyer) ;
+          * le {lien} est un lien public tokenisé (30 j) vers le PDF CLIENT du
+            devis — jamais de prix d'achat ni de marge (règle #4 : le moteur ne
+            fait que rendre) ;
+          * marque le devis « envoyé » via ``mark_devis_sent`` (U4 — le SEUL
+            chemin de transition brouillon→envoyé) et fait avancer le funnel
+            (→ QUOTE_SENT) via l'événement domaine ``devis_sent`` ;
+          * idempotent, ne dégrade JAMAIS un devis accepté/refusé/expiré.
+
+        Le destinataire vient du client, sinon du lead (WhatsApp puis
+        téléphone). Body optionnel : ``langue`` (défaut : langue du lead, sinon
+        « fr »). La société est déjà bornée par ``get_queryset``.
+        """
+        from ..utils.phone import normalize_ma_phone
+        from ..utils.whatsapp import (
+            build_single_devis_whatsapp, build_wa_url, devis_recipient_phone,
+        )
+        from ..services import mark_devis_sent
+
+        devis = self.get_object()
+        phone = devis_recipient_phone(devis)
+        if not normalize_ma_phone(phone):
+            return Response(
+                {'detail': 'Aucun numéro de téléphone.'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        langue = request.data.get('langue')
+        if langue is None:
+            lead = getattr(devis, 'lead', None)
+            langue = (getattr(lead, 'langue_preferee', None) or 'fr'
+                      if lead is not None else 'fr')
+        message, link = build_single_devis_whatsapp(request, devis, langue)
+
+        # U4 — partager le devis le marque « envoyé » (idempotent, jamais de
+        # régression accepté/refusé/expiré). Le funnel avance via devis_sent.
+        mark_devis_sent(devis=devis, user=request.user)
+
+        # M4/L856 — trace l'action (audit + chatter du devis). Acteur et société
+        # posés côté serveur, jamais lus du corps de la requête.
+        try:
+            from apps.audit.recorder import record
+            from apps.audit.models import AuditLog
+            record(AuditLog.Action.WHATSAPP, instance=devis,
+                   detail=f'Lien WhatsApp devis {devis.reference} préparé')
+        except Exception:  # noqa: BLE001 — l'audit ne doit jamais casser l'action
+            pass
+        from .. import activity
+        activity.log_devis_note(
+            devis, request.user,
+            f'Lien WhatsApp du devis {devis.reference} préparé.')
+
+        return Response({
+            'wa_url': build_wa_url(phone, message),
+            'phone': phone, 'message': message, 'url': link['url'],
+            'devis_statut': devis.statut,
+        })
 
     @action(detail=True, methods=['post'], url_path='contacter-superieur',
             permission_classes=[IsResponsableOrAdmin])
