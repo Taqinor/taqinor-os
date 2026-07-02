@@ -23,7 +23,7 @@ from django.test import TestCase
 from apps.crm.models import Client
 from apps.installations.models import Installation, StageModele
 from apps.installations.services import (
-    DEFAULT_STAGES, LEGACY_STATUT_TO_STAGE, etape_courante, seed_stages,
+    DEFAULT_LIFECYCLE_GATES, LEGACY_STATUT_TO_STAGE, etape_courante, seed_stages,
     stage_pour_statut, stages_actifs, stages_configures,
     sync_etape_from_statut,
 )
@@ -57,9 +57,9 @@ class SeedStagesTests(TestCase):
         seed_stages(self.company)
         stages = list(StageModele.objects.filter(
             company=self.company).order_by('ordre'))
-        self.assertEqual(len(stages), len(DEFAULT_STAGES))
+        self.assertEqual(len(stages), len(DEFAULT_LIFECYCLE_GATES))
         self.assertEqual(
-            [s.cle for s in stages], [d[0] for d in DEFAULT_STAGES])
+            [s.cle for s in stages], [d[0] for d in DEFAULT_LIFECYCLE_GATES])
         # Toutes protégées (système), toutes actives.
         self.assertTrue(all(s.protege for s in stages))
         self.assertTrue(all(s.actif for s in stages))
@@ -98,7 +98,7 @@ class SeedStagesTests(TestCase):
         again = seed_stages(self.company)
         self.assertEqual(again, [])  # rien de recréé
         self.assertEqual(StageModele.objects.filter(
-            company=self.company).count(), len(DEFAULT_STAGES))
+            company=self.company).count(), len(DEFAULT_LIFECYCLE_GATES))
         stage.refresh_from_db()
         # L'édition du Directeur est intacte.
         self.assertEqual(stage.libelle, 'Bureau d’études')
@@ -107,11 +107,11 @@ class SeedStagesTests(TestCase):
 
     def test_stages_actifs_amorce_puis_filtre_les_inactives(self):
         stages = stages_actifs(self.company)
-        self.assertEqual(len(stages), len(DEFAULT_STAGES))
+        self.assertEqual(len(stages), len(DEFAULT_LIFECYCLE_GATES))
         StageModele.objects.filter(
             company=self.company, cle='conception').update(actif=False)
         stages = stages_actifs(self.company)
-        self.assertEqual(len(stages), len(DEFAULT_STAGES) - 1)
+        self.assertEqual(len(stages), len(DEFAULT_LIFECYCLE_GATES) - 1)
         self.assertNotIn('conception', [s.cle for s in stages])
 
     def test_stages_configures_interrupteur(self):

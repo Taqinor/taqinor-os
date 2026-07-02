@@ -629,7 +629,7 @@ _S = Installation.Statut
 # (cle, libelle, statut_legacy, bloquant, exigences) — cycle de vie PV
 # international. Toutes « système » (protégées contre la suppression, mais
 # désactivables/réordonnables).
-DEFAULT_STAGES = [
+DEFAULT_LIFECYCLE_GATES = [
     ('etude_site', 'Visite technique (étude de site)', _S.SIGNE, False, {}),
     ('conception', 'Conception & ingénierie', _S.SIGNE, False, {}),
     ('autorisations', 'Autorisations & dossier 82-21', _S.SIGNE, True,
@@ -673,7 +673,7 @@ def seed_stages(company):
         return []
     created = []
     for i, (cle, libelle, statut_legacy, bloquant, exiges) in enumerate(
-            DEFAULT_STAGES):
+            DEFAULT_LIFECYCLE_GATES):
         stage, was_created = StageModele.objects.get_or_create(
             company=company, cle=cle,
             defaults={
