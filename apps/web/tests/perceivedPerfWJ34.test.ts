@@ -64,10 +64,10 @@ describe('WJ34 — [token].astro : poster blur-up, PDF affordance, safe-area', (
     expect(cssBlock).toContain('prefers-reduced-motion: no-preference');
   });
 
-  it('le lien PDF affiche « Génération du PDF… » au clic puis revient à l’état par défaut', () => {
+  it('le lien PDF affiche « Génération du PDF… » au clic puis revient à l’état par défaut (WJ17 : FR/AR-aware)', () => {
     expect(PROPOSITION).toContain('id="pdf-download"');
-    expect(PROPOSITION).toContain("PDF_LABEL_LOADING = 'Génération du PDF…'");
-    expect(PROPOSITION).toContain("PDF_LABEL_DEFAULT = 'Télécharger le devis (PDF)'");
+    expect(PROPOSITION).toContain("PDF_LABEL_LOADING = { fr: 'Génération du PDF…', ar: 'جارٍ إنشاء PDF…' }");
+    expect(PROPOSITION).toContain("PDF_LABEL_DEFAULT = { fr: 'Télécharger le devis (PDF)', ar: 'تحميل العرض (PDF)' }");
     expect(PROPOSITION).toContain("pdfLink.addEventListener('click'");
     expect(PROPOSITION).toContain("document.addEventListener('visibilitychange'");
   });
