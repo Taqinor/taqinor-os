@@ -254,6 +254,20 @@ class LigneDevis(models.Model):
         max_digits=5, decimal_places=2, null=True, blank=True,
         help_text='Taux TVA de la ligne (%). Vide = taux global du devis.')
 
+    # ── QJ29 — Multi-propriétés (villas différentes) — additif, tout optionnel ─
+    # Partitionne les lignes en groupes par-villa dans UN SEUL document (pas de
+    # scission du devis). ``groupe_index`` : 0 = équipement commun, 1..N = villa
+    # N ; NULL = ligne historique (chemin mono-système inchangé au bit près).
+    # ``groupe_label`` : libellé lisible de la villa (« Villa A »…), vide sinon.
+    groupe_index = models.PositiveSmallIntegerField(
+        null=True, blank=True,
+        help_text='Groupe multi-villa : 0 = commun, 1..N = villa N. '
+                  'Vide = document mono-système (comportement historique).')
+    groupe_label = models.CharField(
+        max_length=80, blank=True, default='',
+        help_text='Libellé de la villa/du groupe (ex. « Villa A »). '
+                  'Vide = pas de groupe.')
+
     class Meta:
         verbose_name = 'Ligne de Devis'
         verbose_name_plural = 'Lignes de Devis'

@@ -251,6 +251,60 @@ def _monthly_consumption(devis) -> list:
     return out
 
 
+def _safe_roof_layout(devis) -> dict | None:
+    """QJ26 — layout de toiture ASSAINI pour l'exposition publique (client).
+
+    Ne renvoie QUE la GÉOMÉTRIE : par pan (nombre de panneaux, orientation,
+    azimut, inclinaison, kWc, type de toit) + la géométrie des zones (sommets,
+    obstacles, type, pente, azimut) + les totaux géométriques (kWc, nb panneaux,
+    production annuelle kWh). JAMAIS de prix, prix_achat, marge, économies, ni
+    aucun champ interne (`_pans_geometry` est lue mais recopiée champ par champ).
+
+    Retourne None quand le devis ne porte pas de layout (le PNG poster reste le
+    repli via `roof_image_url`). Company-scoped par construction : on ne lit que
+    le layout du devis résolu par le jeton (borné à une seule société).
+    """
+    layout = getattr(devis, "roof_layout", None)
+    if not isinstance(layout, dict) or not layout:
+        return None
+
+    # Whitelist STRICTE des clés géométriques par pan (jamais de prix/marge).
+    _PAN_KEYS = ("label", "orientation", "azimut_deg", "inclinaison_deg",
+                 "nb_panneaux", "kwc", "roof_type")
+    pans = []
+    for p in (layout.get("_pans_geometry") or []):
+        if not isinstance(p, dict):
+            continue
+        pans.append({k: p.get(k) for k in _PAN_KEYS if k in p})
+
+    # Géométrie des zones (contours + obstacles + orientation), sans aucun prix.
+    _ZONE_KEYS = ("id", "label", "vertices", "obstacles", "roofType",
+                  "pitchDeg", "facingAzimuthDeg", "neededPanels")
+    zones = []
+    for z in (layout.get("zones") or []):
+        if not isinstance(z, dict):
+            continue
+        zones.append({k: z.get(k) for k in _ZONE_KEYS if k in z})
+
+    # Totaux GÉOMÉTRIQUES uniquement (kWc, panneaux, production) — pas savings.
+    _res = layout.get("result") or {}
+    result = {}
+    for k in ("panels", "kwc", "annualKwh"):
+        if isinstance(_res, dict) and _res.get(k) is not None:
+            result[k] = _res.get(k)
+
+    safe = {}
+    if pans:
+        safe["pans"] = pans
+    if zones:
+        safe["zones"] = zones
+    if result:
+        safe["result"] = result
+    if layout.get("scenario"):
+        safe["scenario"] = layout.get("scenario")
+    return safe or None
+
+
 def _variant_summaries(devis) -> list:
     """QJ15 — côte-à-côte : résumé minimal de chaque variante du devis.
 
@@ -350,6 +404,10 @@ def proposal_data(request, token):
             'statut': devis.statut,
             'quote': data,
             'roof_image_url': roof_url,
+            # QJ26 — layout de toiture ASSAINI (géométrie + par-pan uniquement,
+            # jamais de prix/marge/champ interne). None quand absent → le PNG
+            # poster (roof_image_url) reste le repli.
+            'roof_layout': _safe_roof_layout(devis),
             'option_totals': {
                 'sans_batterie': data.get('totaux_sans'),
                 'avec_batterie': data.get('totaux_avec'),
@@ -371,6 +429,27 @@ def proposal_data(request, token):
             # absent (key not sent) when total is unknown — frontend must check.
             # NOTE: also nested inside data['quote']['financing'] for the PDF engine.
             'financing': data.get('financing'),
+            # QF3 — bloc « Comment nous calculons vos économies » (méthode +
+            # exemple chiffré). Présent quand le builder l'a produit ; jamais de
+            # prix d'achat/marge (RULE #4). Aussi imbriqué dans data['quote'].
+            'savings_method': data.get('savings_method'),
+            # QK4 — bloc « Nos hypothèses » (tarif, source barème, autoconso-first
+            # loi 82-21, productible). Jamais de prix d'achat/marge (RULE #4).
+            'hypotheses': data.get('hypotheses'),
+            # QF2 — modèle d'économie + les deux factures annuelles (réel /
+            # étude / estimation). None hors modèle « factures » — jamais inventé.
+            'savings_model': data.get('savings_model'),
+            'facture_sans_solaire': data.get('facture_sans_solaire'),
+            'facture_avec_solaire_s': data.get('facture_avec_solaire_s'),
+            'facture_avec_solaire_a': data.get('facture_avec_solaire_a'),
+            # QJ29/QJ30 — multi-propriétés (rendu web) : ×N villas identiques
+            # (multiplicateur + totaux mis à l'échelle) et/ou sections par-villa
+            # (sous-totaux + total général). Absents quand le devis n'est pas
+            # multi-villa → le rendu web reste la mise en page à plat d'aujourd'hui.
+            'nombre_proprietes': data.get('nombre_proprietes'),
+            'display_total_multi': data.get('display_total_multi'),
+            'totaux_multi': data.get('totaux_multi'),
+            'multi_villa': data.get('multi_villa'),
             # QJ15 — variantes côte-à-côte (même version_parent, toutes actives).
             # [] quand le devis est isolé — le client voit seulement sa proposition.
             'variants': _variant_summaries(devis),
