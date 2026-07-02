@@ -61,6 +61,20 @@ def get_fournisseur_by_id(company, fournisseur_id):
         id=fournisseur_id, company=company).first()
 
 
+def search_fournisseurs(company, q, *, limit=12):
+    """QC1 — Recherche floue de fournisseurs (nom) scopée société. Point d'accès
+    cross-app : l'autocomplete entreprise de CRM lit le référentiel fournisseur
+    à travers ce sélecteur, sans importer apps.stock.models. LECTURE SEULE ;
+    renvoie une liste de Fournisseur (au plus ``limit``)."""
+    from .models import Fournisseur
+    q = (q or '').strip()
+    if not q or company is None:
+        return []
+    return list(
+        Fournisseur.objects.filter(company=company, nom__icontains=q)
+        .order_by('nom')[:limit])
+
+
 # ── DC34 — Référentiel sous-traitant UNIFIÉ (Fournisseur type=service) ────────
 # Il n'existe plus de référentiel sous-traitant parallèle : un sous-traitant est
 # un Fournisseur(type='service') porteur d'un SousTraitantProfile. Les autres

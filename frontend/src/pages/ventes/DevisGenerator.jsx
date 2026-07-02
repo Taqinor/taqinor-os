@@ -18,6 +18,8 @@ import ventesApi from '../../api/ventesApi'
 import parametresApi from '../../api/parametresApi'
 import ProduitPicker from '../../components/ProduitPicker'
 import ClientQuickCreateModal from './ClientQuickCreateModal'
+import { Combobox } from '../../ui/Combobox'
+import { searchCompanies } from '../../features/crm/companyLookup'
 import {
   Button, IconButton, Card, CardContent,
   Input, Textarea, Label, Segmented,
@@ -1022,6 +1024,23 @@ export default function DevisGenerator({
 
   const selectedClient = clients.find(c => String(c.id) === String(clientId))
 
+  // QC1 — recherche client sur les données propres (endpoint /search/). On ne
+  // retient QUE les correspondances de source « client » : le devis a besoin
+  // d'un id client réel (un fournisseur/lead n'est pas sélectionnable ici). Le
+  // client choisi est ajouté à la liste locale s'il n'y figure pas déjà.
+  const onSearchClient = async (query) => {
+    const hits = await searchCompanies(query, { searcher: crmApi.searchClients })
+    const clientHits = hits.filter(h => h.source === 'client')
+    setClients((cs) => {
+      const known = new Set(cs.map(c => String(c.id)))
+      const news = clientHits
+        .filter(h => !known.has(String(h.id)))
+        .map(h => ({ id: h.id, nom: h.nom, adresse: h.adresse, telephone: h.telephone }))
+      return news.length ? [...cs, ...news] : cs
+    })
+    return clientHits.map(h => ({ value: String(h.id), label: h.nom }))
+  }
+
   // ── KPI multi-marchés : étude industrielle, pompage, prix/kWc, marge ──
   const kpiTotal = avecRec && showAvec ? totals.totalAvec : totals.totalSans
   const kpiTotalBrut = avecRec && showAvec ? totals.totalAvecBrut : totals.totalSansBrut
@@ -1244,18 +1263,23 @@ export default function DevisGenerator({
                   <Label htmlFor="gen-client">…ou choisir un client directement (sans lead)</Label>
                   <div className="flex gap-2">
                     <div className="flex-1">
-                      <Select value={clientId ? String(clientId) : undefined} onValueChange={setClientId}>
-                        <SelectTrigger id="gen-client">
-                          <SelectValue placeholder="— Sélectionner un client —" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {clients.map(c => (
-                            <SelectItem key={c.id} value={String(c.id)}>
-                              {c.nom}{c.prenom ? ` ${c.prenom}` : ''}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
+                      {/* QC1 — sélecteur client en Combobox recherché sur les
+                          données propres (endpoint /search/, filtré aux clients
+                          — un devis a besoin d'un id client réel). Les options
+                          déjà chargées servent de repli/affichage immédiat. */}
+                      <Combobox
+                        id="gen-client"
+                        options={clients.map(c => ({
+                          value: String(c.id),
+                          label: `${c.nom}${c.prenom ? ` ${c.prenom}` : ''}`,
+                        }))}
+                        value={clientId ? String(clientId) : null}
+                        onSearch={onSearchClient}
+                        onChange={(v) => setClientId(v ? String(v) : '')}
+                        placeholder="— Sélectionner un client —"
+                        searchPlaceholder="Nom ou ICE…"
+                        emptyText="Aucun client dans vos données"
+                      />
                     </div>
                     {/* QG3 — création rapide, sans quitter le devis */}
                     <Button type="button" variant="outline" onClick={() => setClientQuickCreateOpen(true)}>

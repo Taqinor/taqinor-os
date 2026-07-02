@@ -3,6 +3,9 @@ import api from './axios'
 const crmApi = {
   getClients: (params) => api.get('/crm/clients/', { params }),
   getClient: (id) => api.get(`/crm/clients/${id}/`),
+  // QC1 — autocomplete entreprise sur les données PROPRES de la société
+  // (clients + fournisseurs + leads, recherche floue nom/ICE, scopée société).
+  searchClients: (q) => api.get('/crm/clients/search/', { params: { q } }),
   createClient: (data) => api.post('/crm/clients/', data),
   updateClient: (id, data) => api.put(`/crm/clients/${id}/`, data),
   patchClient: (id, data) => api.patch(`/crm/clients/${id}/`, data),

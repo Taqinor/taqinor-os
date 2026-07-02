@@ -8,12 +8,14 @@ import { render, screen, fireEvent, waitFor } from '@testing-library/react'
 import ClientQuickCreateModal from './ClientQuickCreateModal'
 
 vi.mock('../../api/crmApi', () => ({
-  default: { createClient: vi.fn() },
+  default: { createClient: vi.fn(), searchClients: vi.fn() },
 }))
 import crmApi from '../../api/crmApi'
 
 beforeEach(() => {
   vi.clearAllMocks()
+  // jsdom : le Combobox de l'autocomplete QC1 utilise scrollIntoView.
+  if (!Element.prototype.scrollIntoView) Element.prototype.scrollIntoView = () => {}
 })
 
 describe('ClientQuickCreateModal (QG3)', () => {
@@ -51,5 +53,29 @@ describe('ClientQuickCreateModal (QG3)', () => {
     fireEvent.change(document.getElementById('cqc-nom'), { target: { value: 'Bennani' } })
     fireEvent.click(screen.getByRole('button', { name: /Créer et sélectionner/ }))
     expect(await screen.findByRole('alert')).toHaveTextContent('Un client avec cet email existe déjà.')
+  })
+})
+
+describe('QC1 — autocomplete entreprise dans la modale QG3', () => {
+  it('cherche, propose et remplit téléphone/email + avertit d\'un doublon client', async () => {
+    crmApi.searchClients.mockResolvedValue({
+      data: { results: [{
+        source: 'client', id: 12, nom: 'Zellige SARL', ice: '001234567000089',
+        telephone: '+212522000000', email: 'contact@zellige.ma',
+      }] },
+    })
+    render(<ClientQuickCreateModal open onClose={() => {}} onCreated={() => {}} />)
+    // Ouvre le combobox et tape une requête.
+    fireEvent.click(screen.getByRole('combobox'))
+    fireEvent.change(screen.getByRole('searchbox'), { target: { value: 'zellige' } })
+    // L'option apparaît → on la choisit.
+    const opt = await screen.findByText('Zellige SARL')
+    fireEvent.click(opt)
+    // Les champs vides sont remplis depuis le match.
+    await waitFor(() => expect(document.getElementById('cqc-nom').value).toBe('Zellige SARL'))
+    expect(document.getElementById('cqc-tel').value).toBe('+212522000000')
+    expect(document.getElementById('cqc-email').value).toBe('contact@zellige.ma')
+    // Avertissement de doublon (source client).
+    expect(screen.getByTestId('cqc-dup-warning')).toHaveTextContent(/existe déjà/)
   })
 })

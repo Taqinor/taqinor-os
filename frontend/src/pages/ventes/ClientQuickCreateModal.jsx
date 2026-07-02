@@ -4,12 +4,16 @@ import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter,
   Button, Input, Label,
 } from '../../ui'
+import { Combobox } from '../../ui/Combobox'
+import { searchCompanies, hitsToOptions } from '../../features/crm/companyLookup'
 
 /* QG3 — « + Nouveau client » quick-create depuis le générateur de devis
    (chemin sans lead). Minimal : nom + téléphone/email — appelle
    crmApi.createClient (company forcée côté serveur, apps/crm/views.py
    perform_create) puis rappelle onCreated(client) pour que l'appelant
-   sélectionne automatiquement le nouveau client. */
+   sélectionne automatiquement le nouveau client.
+   QC1 — autocomplete entreprise (données propres) : taper un nom suggère les
+   clients/fournisseurs/leads existants et remplit téléphone/email au choix. */
 export default function ClientQuickCreateModal({ open, onClose, onCreated }) {
   const [nom, setNom] = useState('')
   const [prenom, setPrenom] = useState('')
@@ -17,11 +21,27 @@ export default function ClientQuickCreateModal({ open, onClose, onCreated }) {
   const [email, setEmail] = useState('')
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState(null)
+  const [dupWarning, setDupWarning] = useState(null)
 
   const reset = () => {
-    setNom(''); setPrenom(''); setTelephone(''); setEmail(''); setError(null)
+    setNom(''); setPrenom(''); setTelephone(''); setEmail(''); setError(null); setDupWarning(null)
   }
   const handleClose = () => { reset(); onClose?.() }
+
+  const onSearchCompany = (query) =>
+    searchCompanies(query, { searcher: crmApi.searchClients }).then(hitsToOptions)
+
+  // Remplit seulement les champs vides (jamais d'écrasement) ; avertit d'un
+  // doublon quand on choisit un CLIENT existant.
+  const fillFromHit = (hit) => {
+    if (!hit) return
+    setNom((v) => hit.nom || v)
+    setTelephone((v) => (v.trim() ? v : (hit.telephone || v)))
+    setEmail((v) => (v.trim() ? v : (hit.email || v)))
+    setDupWarning(hit.source === 'client'
+      ? `« ${hit.nom} » existe déjà comme client — vérifiez avant de recréer.`
+      : null)
+  }
 
   const handleSubmit = async (e) => {
     e.preventDefault()
@@ -62,6 +82,23 @@ export default function ClientQuickCreateModal({ open, onClose, onCreated }) {
           </DialogDescription>
         </DialogHeader>
         <form onSubmit={handleSubmit} noValidate className="grid gap-4">
+          {/* QC1 — autocomplete entreprise (données propres). */}
+          <div className="grid gap-1.5">
+            <Label htmlFor="cqc-company-search">Rechercher une entreprise existante — optionnel</Label>
+            <Combobox
+              id="cqc-company-search"
+              value={null}
+              onSearch={onSearchCompany}
+              onChange={(_v, opt) => fillFromHit(opt?.hit)}
+              placeholder="Taper un nom d'entreprise…"
+              searchPlaceholder="Nom ou ICE…"
+              emptyText="Aucune correspondance dans vos données"
+              clearable={false}
+            />
+            {dupWarning && (
+              <p className="text-xs text-warning" data-testid="cqc-dup-warning">{dupWarning}</p>
+            )}
+          </div>
           <div className="grid grid-cols-2 gap-4">
             <div className="grid gap-1.5">
               <Label htmlFor="cqc-nom" required>Nom</Label>

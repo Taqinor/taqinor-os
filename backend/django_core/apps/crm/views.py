@@ -83,7 +83,10 @@ class ClientViewSet(TenantMixin, viewsets.ModelViewSet):
         )
 
     def get_permissions(self):
-        if self.action in READ_ACTIONS + ['export_xlsx', 'documents']:
+        # QC1 — `search` est une LECTURE scopée société (autocomplete des
+        # données propres) : ouverte à tout rôle authentifié, comme `list`.
+        # Ce get_permissions prime sur le permission_classes de l'action.
+        if self.action in READ_ACTIONS + ['export_xlsx', 'documents', 'search']:
             return [IsAnyRole()]
         elif self.action in WRITE_ACTIONS:
             return [IsResponsableOrAdmin()]
@@ -104,6 +107,22 @@ class ClientViewSet(TenantMixin, viewsets.ModelViewSet):
         from apps.audit.models import AuditLog
         record(AuditLog.Action.EXPORT, detail='Export clients (.xlsx)')
         return export_clients_xlsx(qs.order_by('nom'))
+
+    @action(detail=False, methods=['get'], url_path='search',
+            permission_classes=[IsAnyRole])
+    def search(self, request):
+        """QC1 — Autocomplete entreprise sur les DONNÉES PROPRES de la société
+        (clients + fournisseurs + leads), recherche floue sur nom/ICE, scopée
+        société côté serveur. Passe par le provider seam ``search_companies``
+        (QC2 pourra brancher un registre licencié derrière un flag). LECTURE
+        SEULE — ne crée jamais rien.
+
+        Paramètre : ``q`` (texte). Renvoie ``{results: [{source, id, nom, ice,
+        if_fiscal, rc, adresse, telephone, email}, …]}`` (≤ 12)."""
+        from .company_search import search_companies
+        q = (request.query_params.get('q') or '').strip()
+        results = search_companies(request.user.company, q) if q else []
+        return Response({'results': results})
 
     @action(detail=True, methods=['get'], url_path='documents',
             permission_classes=[IsAnyRole])
