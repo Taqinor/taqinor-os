@@ -17,6 +17,7 @@ import stockApi from '../../api/stockApi'
 import ventesApi from '../../api/ventesApi'
 import parametresApi from '../../api/parametresApi'
 import ProduitPicker from '../../components/ProduitPicker'
+import ClientQuickCreateModal from './ClientQuickCreateModal'
 import {
   Button, IconButton, Card, CardContent,
   Input, Textarea, Label, Segmented,
@@ -190,6 +191,8 @@ export default function DevisGenerator({
       ? String(searchParams.get('client'))
       : '',
   )
+  // QG3 — création rapide de client sans quitter le devis (chemin sans lead).
+  const [clientQuickCreateOpen, setClientQuickCreateOpen] = useState(false)
   const [dateValidite, setDateValidite] = useState('')
   const [instType, setInstType] = useState('Résidentielle')
   const [scenario, setScenario] = useState('Les deux (Sans + Avec)')
@@ -1060,18 +1063,26 @@ export default function DevisGenerator({
               <div className="mt-3 grid gap-4 sm:grid-cols-2">
                 <div className="grid gap-1.5">
                   <Label htmlFor="gen-client">…ou choisir un client directement (sans lead)</Label>
-                  <Select value={clientId ? String(clientId) : undefined} onValueChange={setClientId}>
-                    <SelectTrigger id="gen-client">
-                      <SelectValue placeholder="— Sélectionner un client —" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {clients.map(c => (
-                        <SelectItem key={c.id} value={String(c.id)}>
-                          {c.nom}{c.prenom ? ` ${c.prenom}` : ''}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
+                  <div className="flex gap-2">
+                    <div className="flex-1">
+                      <Select value={clientId ? String(clientId) : undefined} onValueChange={setClientId}>
+                        <SelectTrigger id="gen-client">
+                          <SelectValue placeholder="— Sélectionner un client —" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {clients.map(c => (
+                            <SelectItem key={c.id} value={String(c.id)}>
+                              {c.nom}{c.prenom ? ` ${c.prenom}` : ''}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    {/* QG3 — création rapide, sans quitter le devis */}
+                    <Button type="button" variant="outline" onClick={() => setClientQuickCreateOpen(true)}>
+                      <Plus /> Nouveau client
+                    </Button>
+                  </div>
                 </div>
                 <div className="grid gap-1.5">
                   <Label htmlFor="gen-adresse">Adresse</Label>
@@ -1826,6 +1837,15 @@ export default function DevisGenerator({
           </CardContent>
         </Card>
       </form>
+      <ClientQuickCreateModal
+        open={clientQuickCreateOpen}
+        onClose={() => setClientQuickCreateOpen(false)}
+        onCreated={(c) => {
+          setClients(cs => [...cs, c])
+          setClientId(String(c.id))
+          setClientQuickCreateOpen(false)
+        }}
+      />
     </div>
   )
 }
