@@ -60,6 +60,32 @@ def _esc_items(items):
         out.append(e)
     return out
 
+
+def _guard_huawei_accessories(items):
+    """QF9 — défense en profondeur : ne jamais rendre Smart Meter / Clé Wifi
+    (dongle) quand l'onduleur des lignes n'est pas Huawei. Le builder filtre
+    déjà ces lignes en amont ; ce garde-fou empêche qu'une ligne obsolète glissée
+    dans ``data`` réapparaisse dans le PDF. Huawei détecté sur la désignation +
+    la marque de l'onduleur des lignes fournies."""
+    rows = items or []
+    inverters = [it for it in rows
+                 if "onduleur" in (it.get("designation", "") or "").lower()]
+    if not inverters:
+        return list(rows)
+    is_huawei = all(
+        "huawei" in (f"{it.get('designation', '')} "
+                     f"{it.get('marque', '')}").lower()
+        for it in inverters)
+    if is_huawei:
+        return list(rows)
+    out = []
+    for it in rows:
+        d = (it.get("designation", "") or "").lower()
+        if "smart meter" in d or "wifi" in d or "dongle" in d:
+            continue
+        out.append(it)
+    return out
+
 # ── Inline SVG icons for Page 1 (WeasyPrint renders inline SVG perfectly) ────
 SVG_CHECK   = '<svg width="13" height="13" viewBox="0 0 13 13" style="vertical-align:middle;margin-right:4px;"><path d="M2 6.5l3.5 3.5 5.5-6" stroke="#2e7d32" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>'
 SVG_BOLT    = '<svg width="13" height="13" viewBox="0 0 13 13" style="vertical-align:middle;margin-right:4px;"><path d="M8 1L4 7.5H7L5 12L10 6H7Z" fill="#d4a84b"/></svg>'
@@ -2223,8 +2249,9 @@ def _render_premium_pdf(data: dict, out_path) -> str:
     PAGE3_NUM = PAGES_TOTAL
     # ERR37 — escape user text in line items at the ingestion boundary so every
     # downstream renderer (full + one-page) emits safe HTML.
-    SANS_ITEMS   = _esc_items(data["sans_items"])
-    AVEC_ITEMS   = _esc_items(data["avec_items"])
+    # QF9 — garde-fou marque (défense en profondeur, après le filtrage builder).
+    SANS_ITEMS   = _guard_huawei_accessories(_esc_items(data["sans_items"]))
+    AVEC_ITEMS   = _guard_huawei_accessories(_esc_items(data["avec_items"]))
     ECO_S_M      = data["eco_s_monthly"]
     ECO_A_M      = data["eco_a_monthly"]
     FACTURES_M   = list(data["factures_mensuelles"])
@@ -2235,7 +2262,8 @@ def _render_premium_pdf(data: dict, out_path) -> str:
     out_path = Path(out_path)
     mode = data.get("pdf_mode", "full")
     if mode == "onepage":
-        html = build_html_onepage(_esc_items(data.get("all_items", [])))
+        html = build_html_onepage(
+            _guard_huawei_accessories(_esc_items(data.get("all_items", []))))
     else:
         html = build_html()
 

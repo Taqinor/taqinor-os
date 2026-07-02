@@ -84,6 +84,45 @@ def _is_panel(designation: str, produit_nom: str = "") -> bool:
     return "panneau" in blob or "panneaux" in blob
 
 
+def _is_inverter(designation: str) -> bool:
+    return "onduleur" in (designation or "").lower()
+
+
+def _is_smart_meter(designation: str) -> bool:
+    return "smart meter" in (designation or "").lower()
+
+
+def _is_wifi_dongle(designation: str) -> bool:
+    d = (designation or "").lower()
+    return "wifi" in d or "dongle" in d
+
+
+def _quote_is_huawei(items) -> bool:
+    """QF9 — True quand l'onduleur du devis est Huawei.
+
+    Smart Meter + Clé Wifi (dongle) sont des accessoires Huawei propres à
+    l'onduleur Huawei : ils ne doivent JAMAIS figurer sur un devis dont
+    l'onduleur est d'une autre marque (ex. Deye). On lit la marque de l'onduleur
+    (réseau ou hybride) via sa désignation, sa marque et le nom du produit lié.
+    Sans onduleur identifiable → False (on n'affiche pas ces accessoires par
+    défaut). Comportement conservateur : le moindre onduleur non-Huawei suffit à
+    retirer les accessoires du document.
+    """
+    inverters = [it for it in items if _is_inverter(it.get("designation", ""))]
+    if not inverters:
+        return False
+    huawei_seen = False
+    for it in inverters:
+        blob = (f"{it.get('designation', '')} {it.get('marque', '')} "
+                f"{it.get('_produit_nom', '')}").lower()
+        if "huawei" in blob:
+            huawei_seen = True
+        else:
+            # Un onduleur non-Huawei dans le devis → pas d'accessoires Huawei.
+            return False
+    return huawei_seen
+
+
 def _line_to_item(ligne, taux_tva: Decimal) -> dict:
     """Convert an OS LigneDevis (HT prices) into a premium item dict.
 
@@ -359,6 +398,23 @@ def build_quote_data(devis, pdf_options=None) -> dict:
         it for it in items
         if not _is_reseau_inverter(_blob(it))
     ]
+
+    # ── QF9 — Smart Meter + Clé Wifi (dongle) uniquement si onduleur Huawei ───
+    # Ces accessoires sont propres à l'onduleur Huawei ; sur une option dont
+    # l'onduleur n'est PAS Huawei (ex. onduleur hybride Deye), ils ne doivent
+    # jamais apparaître, même si une ligne obsolète a été copiée à la main. On
+    # évalue Huawei PAR option (l'onduleur réseau de « sans » peut être Huawei
+    # alors que l'onduleur hybride de « avec » est Deye) et on retire les lignes
+    # Smart Meter / Wifi de l'option non-Huawei.
+    def _drop_huawei_accessories(rows):
+        if _quote_is_huawei(rows):
+            return rows
+        return [it for it in rows
+                if not _is_smart_meter(it.get("designation", ""))
+                and not _is_wifi_dongle(it.get("designation", ""))]
+
+    sans_items = _drop_huawei_accessories(sans_items)
+    avec_items = _drop_huawei_accessories(avec_items)
 
     def _has_qty(rows, pred):
         return any(pred(_blob(r)) and r["quantite"] > 0 for r in rows)

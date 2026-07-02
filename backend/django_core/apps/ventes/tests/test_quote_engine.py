@@ -1188,9 +1188,17 @@ class TestGeneratorQuoteFlow(TestCase):
         self.assertIn('Onduleur hybride Deye 10kW Triphasé', avec)
         self.assertIn('Batterie Deyness 10 kWh', avec)
         self.assertNotIn('Batterie Deyness 10 kWh', sans)
-        # Option totals match the simulator for the same inputs (±1 MAD rounding)
+        # QF9 — Smart Meter + Wifi Dongle (accessoires Huawei) restent sur
+        # l'option réseau Huawei (sans) mais sont retirés de l'option hybride
+        # Deye (avec).
+        self.assertIn('Smart Meter', sans)
+        self.assertIn('Wifi Dongle', sans)
+        self.assertNotIn('Smart Meter', avec)
+        self.assertNotIn('Wifi Dongle', avec)
+        # Option totals match the simulator for the same inputs (±1 MAD rounding).
+        # total_avec = ancien 103 040 − Smart Meter (1 800) − Wifi (1 200) Huawei.
         self.assertAlmostEqual(data['total_sans'], 65040, delta=1)
-        self.assertAlmostEqual(data['total_avec'], 103040, delta=1)
+        self.assertAlmostEqual(data['total_avec'], 100040, delta=1)
 
         cap = {}
         orig = G._render_pdf_weasyprint
