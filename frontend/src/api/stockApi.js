@@ -11,6 +11,9 @@ const stockApi = {
   getProduitsArchived: () => api.get('/stock/produits/', { params: { show_archived: 'true' } }),
   unarchiveProduit: (id) => api.patch(`/stock/produits/${id}/unarchive/`),
   forceDeleteProduit: (id) => api.delete(`/stock/produits/${id}/force-delete/`),
+  // QP2 — clone serveur (nouveau nom, SKU frais, prix d'achat copié côté
+  // serveur) ; réservé Directeur + Commercial responsable (QG4).
+  dupliquerProduit: (id, nom) => api.post(`/stock/produits/${id}/dupliquer/`, { nom }),
 
   // Catégories
   getCategories: (params) => api.get('/stock/categories/', { params }),

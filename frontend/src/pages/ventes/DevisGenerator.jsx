@@ -22,7 +22,9 @@ import {
   Button, IconButton, Card, CardContent,
   Input, Textarea, Label, Segmented,
   Select, SelectTrigger, SelectValue, SelectContent, SelectItem,
+  Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter,
 } from '../../ui'
+import { useCanCreateProduit } from '../../hooks/useHasPermission'
 import {
   MONTHS_FR, CHART_MONTHS, DEFAULT_MONTHLY_BILLS, DAY_USAGE_DEFAULTS,
   formatMoney, estimerMois, estimerPanneaux, computeROI, ttcFromHt, htFromTtc,
@@ -54,6 +56,10 @@ const withKeys = (rows) => rows.map(r => ({
   quantite: String(r.quantite),
   prix_unit_ttc: String(r.prix_unit_ttc),
   taux_tva: String(r.taux_tva ?? 20),
+  // QJ31 — groupe multi-villa (mode B) : null = ligne mono-système (défaut,
+  // comportement historique inchangé). 0 = équipement commun, 1..N = villa N.
+  groupeIndex: r.groupeIndex ?? null,
+  groupeLabel: r.groupeLabel ?? '',
 }))
 
 // Nouvelle ligne vide — quantité 0 comme addProductLine() du simulateur
@@ -64,6 +70,8 @@ const emptyLine = () => ({
   quantite: '0',
   prix_unit_ttc: '0',
   taux_tva: '20',
+  groupeIndex: null,
+  groupeLabel: '',
 })
 
 const fmtNum = (v) => (v !== null && v !== undefined) ? v.toLocaleString('fr-MA') : 'N/A'
@@ -116,6 +124,17 @@ export default function DevisGenerator({
 } = {}) {
   const dispatch = useDispatch()
   const navigate = useNavigate()
+
+  // QP2 — renommer la désignation d'une ligne est réservé à Directeur +
+  // Commercial responsable (même gate que la création produit, QG4/QG5) ;
+  // pour tout autre rôle la désignation est en lecture seule (verrouillée au
+  // nom du produit lié). Le backend reste la seule garde qui compte.
+  const canRenameLine = useCanCreateProduit()
+  // Dialogue « renommer ici seulement » vs « créer un nouveau produit ».
+  // { key, ancienNom, nouveauNom, produitId } quand ouvert, sinon null.
+  const [renameDialog, setRenameDialog] = useState(null)
+  const [renameBusy, setRenameBusy] = useState(false)
+  const [renameError, setRenameError] = useState(null)
 
   const [clients, setClients] = useState([])
   const [leads, setLeads] = useState([])
@@ -670,6 +689,58 @@ export default function DevisGenerator({
           }
         : l
     ))
+  }
+
+  // QP2 — au blur d'une désignation modifiée (par un rôle autorisé) qui diffère
+  // du nom du produit lié, propose les deux options : « renommer ici seulement »
+  // (on garde le texte divergent, rien d'autre) ou « créer un nouveau produit
+  // dans le stock » (clone serveur via /dupliquer/, puis on relie la ligne au
+  // clone). Non bloquant : ne s'ouvre que sur une vraie divergence.
+  const onDesignationBlur = (key) => {
+    if (!canRenameLine) return
+    const l = lines.find(x => x._key === key)
+    if (!l || !l.produit) return
+    const prod = produits.find(p => String(p.id) === String(l.produit))
+    if (!prod) return
+    const nouveauNom = (l.designation || '').trim()
+    if (!nouveauNom || nouveauNom === (prod.nom || '').trim()) return
+    setRenameError(null)
+    setRenameDialog({ key, ancienNom: prod.nom, nouveauNom, produitId: l.produit })
+  }
+
+  // Option (a) — « Renommer sur ce devis seulement » : on garde la désignation
+  // divergente telle quelle, aucun produit créé. Juste fermer le dialogue.
+  const renameHereOnly = () => setRenameDialog(null)
+
+  // Option (b) — « Créer un nouveau produit dans le stock » : clone SERVEUR du
+  // produit de base sous le nouveau nom (prix d'achat copié côté serveur,
+  // jamais transmis par le client — QP2/QG4), puis relie la ligne au clone.
+  const renameAsNewProduct = async () => {
+    if (!renameDialog) return
+    setRenameBusy(true)
+    setRenameError(null)
+    try {
+      const res = await stockApi.dupliquerProduit(renameDialog.produitId, renameDialog.nouveauNom)
+      const clone = res.data
+      setProduits(ps => [...ps, clone])
+      setLines(ls => ls.map(l =>
+        l._key === renameDialog.key
+          ? {
+              ...l,
+              produit: String(clone.id),
+              designation: clone.nom,
+              prix_unit_ttc: String(ttcFromHt(clone.prix_vente, tauxTvaOf(clone))),
+              taux_tva: String(tauxTvaOf(clone)),
+            }
+          : l))
+      setRenameDialog(null)
+    } catch (err) {
+      const detail = err?.response?.data?.detail
+      setRenameError(typeof detail === 'string'
+        ? detail : 'La création du nouveau produit a échoué.')
+    } finally {
+      setRenameBusy(false)
+    }
   }
 
   const addLine = () => setLines(ls => [...ls, emptyLine()])
@@ -1693,8 +1764,20 @@ export default function DevisGenerator({
                     return (
                       <tr key={l._key}>
                         <td data-label="Désignation">
+                          {/* QP2 — désignation en LECTURE SEULE sauf pour
+                              Directeur + Commercial responsable. Un rôle non
+                              autorisé ne peut pas renommer une ligne (verrouillée
+                              au nom du produit) ; un rôle autorisé qui diverge du
+                              nom du produit reçoit au blur le choix « renommer
+                              ici » vs « créer un nouveau produit ». */}
                           <input className="form-control form-control-sm" value={l.designation}
+                                 readOnly={!canRenameLine}
+                                 disabled={!canRenameLine}
+                                 title={!canRenameLine
+                                   ? 'Renommer une ligne est réservé au Directeur et au Commercial responsable'
+                                   : undefined}
                                  onChange={e => setLine(l._key, 'designation', e.target.value)}
+                                 onBlur={() => onDesignationBlur(l._key)}
                                  placeholder="Désignation" />
                           {designationDivergente && (
                             <div className="mt-0.5 text-xs text-warning"
@@ -1954,6 +2037,37 @@ export default function DevisGenerator({
           setClientQuickCreateOpen(false)
         }}
       />
+
+      {/* QP2 — dialogue de renommage : deux choix explicites lorsqu'une ligne
+          est renommée à l'écart du nom du produit lié (rôle autorisé). */}
+      <Dialog open={!!renameDialog} onOpenChange={(o) => { if (!o) setRenameDialog(null) }}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Désignation modifiée</DialogTitle>
+            <DialogDescription>
+              Vous avez renommé cette ligne
+              {renameDialog ? ` « ${renameDialog.nouveauNom} »` : ''} — elle diffère du
+              produit du stock{renameDialog ? ` « ${renameDialog.ancienNom} »` : ''}.
+              Que souhaitez-vous faire ?
+            </DialogDescription>
+          </DialogHeader>
+          {renameError && (
+            <div role="alert" className="rounded-lg border border-destructive/30 bg-destructive/10 p-3 text-sm text-destructive">
+              {renameError}
+            </div>
+          )}
+          <DialogFooter className="flex-col gap-2 sm:flex-col sm:items-stretch">
+            <Button type="button" variant="outline" onClick={renameHereOnly} disabled={renameBusy}>
+              Renommer sur ce devis seulement
+            </Button>
+            <Button type="button" onClick={renameAsNewProduct} loading={renameBusy}>
+              {renameBusy
+                ? 'Création…'
+                : `Créer un nouveau produit « ${renameDialog?.nouveauNom ?? ''} » dans le stock`}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }

@@ -68,8 +68,11 @@ class ProduitViewSet(TenantMixin, viewsets.ModelViewSet):
         # pour les comptes hérités sans rôle fin.
         if self.action in READ_ACTIONS + ['export_xlsx']:
             return [IsAnyRole()]
-        elif self.action == 'create':
+        elif self.action in ('create', 'dupliquer'):
             # QG4 — création réservée à Directeur + Commercial responsable.
+            # QP2 — le clone (`dupliquer`) EST une création : même garde. Ce
+            # `get_permissions` prime sur le `permission_classes` de l'action,
+            # donc la garde DOIT être posée ici (sinon repli IsAdminRole).
             return [PRODUIT_CREATE_PERMISSION()]
         elif self.action in WRITE_ACTIONS + ['bulk']:
             return [HasPermissionOrLegacy('stock_modifier')()]
@@ -438,6 +441,55 @@ class ProduitViewSet(TenantMixin, viewsets.ModelViewSet):
         return Response(
             {'detail': 'Type de code inconnu.'},
             status=status.HTTP_400_BAD_REQUEST)
+
+    @action(detail=True, methods=['post'], url_path='dupliquer')
+    def dupliquer(self, request, *args, **kwargs):
+        """QP2 — Clone ce produit sous un nouveau nom (rename → « créer un
+        nouveau produit dans le stock »).
+
+        Copie SERVEUR de tous les champs commerciaux/techniques (dont
+        ``prix_achat`` — jamais transmis/accepté depuis le corps de la
+        requête), ``company`` forcée à celle de l'utilisateur, SKU réinitialisé
+        (le SKU d'origine n'est jamais dupliqué — évite un doublon
+        (company, sku)). Réservé Directeur + Commercial responsable, comme
+        toute création de produit (QG4).
+
+        Corps : {"nom": "<nouveau nom>"} (requis).
+        """
+        source = self.get_object()
+        nom = (request.data.get('nom') or '').strip()
+        if not nom:
+            return Response(
+                {'detail': 'Le nom du nouveau produit est requis.'},
+                status=status.HTTP_400_BAD_REQUEST)
+
+        clone = Produit(
+            company=request.user.company,
+            nom=nom,
+            description=source.description,
+            sku=None,  # jamais dupliqué : évite un doublon (company, sku)
+            prix_achat=source.prix_achat,
+            prix_vente=source.prix_vente,
+            quantite_stock=0,  # un clone démarre sans stock physique propre
+            seuil_alerte=source.seuil_alerte,
+            categorie=source.categorie,
+            fournisseur=source.fournisseur,
+            tva=source.tva,
+            marque=source.marque,
+            garantie=source.garantie,
+            garantie_mois=source.garantie_mois,
+            garantie_production_mois=source.garantie_production_mois,
+            pompe_cv=source.pompe_cv,
+            hmt_m=source.hmt_m,
+            debit_m3j=source.debit_m3j,
+            pompe_kw=source.pompe_kw,
+            tension_v=source.tension_v,
+            courbe_pompe=source.courbe_pompe,
+        )
+        clone.full_clean(exclude=['sku'])
+        clone.save()
+        serializer = self.get_serializer(clone)
+        return Response(serializer.data, status=status.HTTP_201_CREATED)
 
     @action(detail=True, methods=['patch'], url_path='unarchive')
     def unarchive(self, request, *args, **kwargs):
