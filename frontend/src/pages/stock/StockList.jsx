@@ -4,7 +4,7 @@ import { useNavigate } from 'react-router-dom'
 import {
   Plus, Upload, Download, Truck, Calculator, Wallet, AlertTriangle,
   Archive, PackageOpen, Pencil, Trash2, RotateCcw, Package, QrCode, ScanLine,
-  History,
+  History, LineChart,
 } from 'lucide-react'
 import {
   fetchProduits,
@@ -17,6 +17,7 @@ import {
 } from '../../features/stock/store/stockSlice'
 import ProduitForm from './ProduitForm'
 import { CatalogueTable } from './CatalogueTable'
+import PilotageStock from './PilotageStock'
 import BulkProductBar from './BulkProductBar'
 import ExcelImport from '../../components/ExcelImport'
 import stockApi from '../../api/stockApi'
@@ -583,6 +584,8 @@ export default function StockList() {
   const [invMsg, setInvMsg] = useState(null)
   const [showTransfert, setShowTransfert] = useState(false)
   const [showValorisation, setShowValorisation] = useState(false)
+  // WR3 — panneau « Pilotage stock » (analytics + auto-BCF), replié par défaut.
+  const [showPilotage, setShowPilotage] = useState(false)
   // N20 — étiquettes QR/code-barres + champ de scan (résolution serveur).
   const [labelsBusy, setLabelsBusy]   = useState(false)
   const [scanOpen, setScanOpen]       = useState(false)
@@ -862,6 +865,11 @@ export default function StockList() {
           )}
           {/* Actions secondaires : inline sur écran large, repliées en menu « … » sur mobile. */}
           <div className="hidden flex-wrap items-center gap-2 sm:flex">
+            <Button variant={showPilotage ? 'secondary' : 'outline'} size="sm"
+                    onClick={() => setShowPilotage(v => !v)}
+                    title="Pilotage stock : réapprovisionnement, prévisions, rotation, péremptions">
+              <LineChart /> Pilotage
+            </Button>
             {role === 'admin' && (
               <Button variant={showArchived ? 'secondary' : 'outline'} size="sm"
                       onClick={() => setShowArchived(v => !v)}>
@@ -909,6 +917,9 @@ export default function StockList() {
                 </Button>
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end">
+                <DropdownMenuItem onSelect={() => setShowPilotage(v => !v)}>
+                  <LineChart /> Pilotage
+                </DropdownMenuItem>
                 {role === 'admin' && (
                   <DropdownMenuItem onSelect={() => setShowArchived(v => !v)}>
                     <Archive /> {showArchived ? 'Masquer archivés' : 'Archivés'}
@@ -1006,6 +1017,10 @@ export default function StockList() {
         <div className="rounded-lg border border-success/30 bg-success/10 px-3 py-2 text-sm text-success">
           {invMsg}
         </div>
+      )}
+
+      {showPilotage && (
+        <PilotageStock onBcfGenere={() => dispatch(fetchProduits())} />
       )}
 
       {showTransfert && (

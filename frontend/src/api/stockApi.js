@@ -135,6 +135,22 @@ const stockApi = {
     api.get('/stock/factures-fournisseur/comptes-a-payer/', { params }),
   ajouterPaiementFournisseur: (factureId, data) =>
     api.post(`/stock/factures-fournisseur/${factureId}/paiements/`, data),
+
+  // WR3 — Pilotage stock (analytics INTERNES ; les valeurs au prix d'achat
+  // ne sortent jamais vers un document client).
+  produitsAReapprovisionner: () =>
+    api.get('/stock/produits/a-reapprovisionner/'),
+  genererBcfReappro: (fournisseurId) =>
+    api.post('/stock/produits/generer-bcf-reappro/',
+      fournisseurId ? { fournisseur_id: fournisseurId } : {}),
+  previsionsReappro: (nbMois) =>
+    api.get('/stock/produits/previsions-reappro/',
+      { params: nbMois ? { nb_mois: nbMois } : {} }),
+  rotationStock: (jours) =>
+    api.get('/stock/produits/rotation/', { params: jours ? { jours } : {} }),
+  expirantBientot: (jours) =>
+    api.get('/stock/produits/expirant-bientot/',
+      { params: jours ? { jours } : {} }),
 }
 
 export default stockApi
