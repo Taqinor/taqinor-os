@@ -1,6 +1,7 @@
 from rest_framework import serializers
 
 from .models import (
+    Equipe,
     Installation, Intervention, InstallationActivity, InterventionActivity,
     TypeIntervention, ChecklistTemplate, ChecklistEtapeModele,
     ChantierChecklistItem, ShotListSlot, InterventionPreparation,
@@ -956,6 +957,43 @@ class BudgetProjetSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError(
                 'Le seuil d\'alerte doit être compris entre 0 et 100 %.')
         return value
+
+
+class EquipeSerializer(serializers.ModelSerializer):
+    """DC40 — équipe terrain CANONIQUE. La société et `created_by` sont posés
+    côté serveur (jamais lus du corps) ; les `membres` (M2M → utilisateurs) et
+    le `chef` doivent appartenir à la société de l'utilisateur (validé côté
+    viewset). Expose les noms des membres en lecture pour l'affichage."""
+    membres_noms = serializers.SerializerMethodField()
+    chef_nom = serializers.SerializerMethodField()
+    nb_membres = serializers.SerializerMethodField()
+
+    class Meta:
+        model = Equipe
+        fields = [
+            'id', 'nom', 'membres', 'membres_noms', 'nb_membres',
+            'chef', 'chef_nom', 'actif', 'description',
+            'created_by', 'date_creation', 'date_modification',
+        ]
+        read_only_fields = [
+            'company', 'created_by', 'date_creation', 'date_modification']
+
+    @staticmethod
+    def _nom(user):
+        if user is None:
+            return None
+        getter = getattr(user, 'get_full_name', None)
+        nom = (getter() or '').strip() if callable(getter) else ''
+        return nom or getattr(user, 'username', None)
+
+    def get_membres_noms(self, obj):
+        return [self._nom(u) for u in obj.membres.all()]
+
+    def get_chef_nom(self, obj):
+        return self._nom(getattr(obj, 'chef', None))
+
+    def get_nb_membres(self, obj):
+        return obj.membres.count()
 
 
 class IndisponibiliteRessourceSerializer(serializers.ModelSerializer):

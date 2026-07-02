@@ -243,6 +243,40 @@ def creer_ecriture(company, journal, date_ecriture, libelle, lignes, *,
     return ecriture
 
 
+# ── COMPTA40 — Séparation des tâches (saisie vs validation vs clôture) ──────
+
+def valider_ecriture(ecriture, *, user):
+    """Valide une écriture au titre du « second regard » (COMPTA40).
+
+    Séparation des tâches : la personne qui a SAISI l'écriture
+    (``created_by``) ne peut JAMAIS être celle qui la VALIDE. Un autre
+    utilisateur habilité doit poser le second contrôle. Lève
+    ``ValidationError`` si :
+
+    * l'écriture est déjà validée (idempotence stricte : on refuse) ;
+    * le valideur est aussi le saisisseur (violation de la séparation) ;
+    * aucun valideur n'est fourni.
+
+    En cas de succès, passe l'écriture à ``VALIDEE`` et horodate le contrôle
+    (``valide_par`` / ``date_validation``). N'altère pas les lignes ; l'équilibre
+    reste garanti par ``clean()`` au moment de la saisie.
+    """
+    if user is None:
+        raise ValidationError(
+            "Un valideur est requis pour valider une écriture.")
+    if ecriture.statut == EcritureComptable.Statut.VALIDEE:
+        raise ValidationError("Cette écriture est déjà validée.")
+    if ecriture.created_by_id is not None and ecriture.created_by_id == user.id:
+        raise ValidationError(
+            "Séparation des tâches : la personne qui a saisi l'écriture ne "
+            "peut pas la valider elle-même. Un second contrôleur est requis.")
+    ecriture.statut = EcritureComptable.Statut.VALIDEE
+    ecriture.valide_par = user
+    ecriture.date_validation = timezone.now()
+    ecriture.save(update_fields=['statut', 'valide_par', 'date_validation'])
+    return ecriture
+
+
 # ── FG109 / COMPTA12-14 — Auto-génération depuis les documents ─────────────
 
 def auto_ecritures_actif():
@@ -4012,14 +4046,14 @@ def taux_reussite_ao(company):
 
 # ── FG228 — Provisionnement (gated) d'un compte portail client ─────────────
 
-def provisionner_compte_portail(company, *, client_id, email):
+def provisionner_compte_portail(company, *, client_id):
     """Crée/active un compte portail client tokenisé (FG228).
 
-    Token long/imprévisible (secrets). Idempotent par (company, client_id) :
-    réactive et renvoie le compte existant plutôt que d'en dupliquer un. L'email
-    réutilise celui du client (DC32 — pas de 2ᵉ copie d'identité) ; le compte
-    NE duplique aucune donnée métier (devis/factures/chantiers lus à la volée
-    via les selectors des apps cibles).
+    Token long/imprévisible (secrets). Idempotent par (company, client) :
+    réactive et renvoie le compte existant plutôt que d'en dupliquer un. Le
+    compte se lie au client PAR FK (``crm.Client``) et réutilise son email
+    (DC32 — pas de 2ᵉ copie d'identité) ; il NE duplique aucune donnée métier
+    (devis/factures/chantiers lus à la volée via les selectors des apps cibles).
     """
     import secrets
     compte = ComptePortailClient.objects.filter(
@@ -4032,7 +4066,6 @@ def provisionner_compte_portail(company, *, client_id, email):
     return ComptePortailClient.objects.create(
         company=company,
         client_id=client_id,
-        email=email or '',
         token_acces=secrets.token_urlsafe(32),
     )
 
@@ -4676,4 +4709,264 @@ def verifier_integrite_piste(company):
         'valide': True,
         'nb_maillons': len(maillons),
         'rupture': None,
+    }
+
+
+# ── COMPTA6 — Dossier CGNC prêt à valider (fiduciaire) ─────────────────────
+#
+# Cette section NE crée ni ne modifie aucune donnée : elle STRUCTURE le plan
+# comptable existant + son barème CGNC de référence, puis produit un DOSSIER DE
+# CONTRÔLE qu'un fiduciaire / expert-comptable humain relit avant la validation
+# LÉGALE finale (qui, elle, reste un acte humain — cf. docs/compta-cgnc-dossier).
+# Tout est scopé société et purement en lecture ; aucune donnée d'achat/marge
+# n'y figure (le module ne stocke pas de prix d'achat).
+
+# Libellés officiels des 8 classes du CGNC marocain (source : IntegerChoices du
+# modèle ``CompteComptable.Classe`` — jamais réécrits en dur ailleurs).
+CGNC_CLASSES = {
+    1: 'Financement permanent',
+    2: 'Actif immobilisé',
+    3: 'Actif circulant (hors trésorerie)',
+    4: 'Passif circulant (hors trésorerie)',
+    5: 'Trésorerie',
+    6: 'Charges',
+    7: 'Produits',
+    8: 'Résultats',
+}
+
+
+def _sens_attendu_pour_classe(classe):
+    """Sens « naturel » attendu d'un compte d'après sa classe CGNC.
+
+    Sert au contrôle de cohérence du champ ``sens`` : un compte de classe 6 est
+    une charge, de classe 7 un produit, etc. Les classes de bilan (1..5) ont un
+    sens actif/passif de référence ; on ne bloque pas (certains comptes de
+    régularisation dérogent), on SIGNALE.
+    """
+    return {
+        1: 'passif', 2: 'actif', 3: 'actif', 4: 'passif',
+        5: 'actif', 6: 'charge', 7: 'produit',
+    }.get(classe)
+
+
+def plan_cgnc_reference():
+    """Barème CGNC de référence semé par le module (lecture seule, structuré).
+
+    Renvoie la liste des comptes usuels du CGNC marocain que le module connaît,
+    groupés par classe : ``{classe: {'libelle', 'comptes': [{numero, intitule,
+    est_tiers, lettrable, sens}, …]}}``. C'est le référentiel auquel le plan
+    RÉEL d'une société est comparé (complétude du mapping).
+    """
+    ref = {}
+    for numero, intitule, est_tiers, lettrable, sens in _COMPTES_CGNC:
+        classe = _classe_de(numero)
+        bucket = ref.setdefault(
+            classe, {'libelle': CGNC_CLASSES.get(classe, ''), 'comptes': []})
+        bucket['comptes'].append({
+            'numero': numero,
+            'intitule': intitule,
+            'est_tiers': est_tiers,
+            'lettrable': lettrable,
+            'sens': sens,
+        })
+    for bucket in ref.values():
+        bucket['comptes'].sort(key=lambda c: c['numero'])
+    return ref
+
+
+def _plan_comptable_structure(company):
+    """Plan comptable RÉEL d'une société, groupé par classe (lecture seule).
+
+    ``{classe: {'libelle', 'comptes': [{numero, intitule, sens, est_tiers,
+    lettrable, actif}, …]}}`` pour les classes 1..8, uniquement celles qui
+    portent au moins un compte.
+    """
+    structure = {}
+    comptes = CompteComptable.objects.filter(
+        company=company).order_by('numero')
+    for compte in comptes:
+        bucket = structure.setdefault(
+            compte.classe,
+            {'libelle': CGNC_CLASSES.get(compte.classe, ''), 'comptes': []})
+        bucket['comptes'].append({
+            'numero': compte.numero,
+            'intitule': compte.intitule,
+            'sens': compte.sens,
+            'est_tiers': compte.est_tiers,
+            'lettrable': compte.lettrable,
+            'actif': compte.actif,
+        })
+    return structure
+
+
+def controles_coherence_cgnc(company):
+    """Contrôles de cohérence du plan comptable d'une société (COMPTA6).
+
+    Purement en lecture, scopé société. Renvoie la liste des anomalies, chacune
+    ``{'code', 'severite', 'message', 'comptes'?}`` où ``severite`` ∈
+    {'bloquant', 'avertissement', 'info'} :
+
+    * ``classe_incoherente`` — le 1er chiffre du numéro ≠ champ ``classe``.
+    * ``classe_hors_cgnc`` — classe hors 1..8.
+    * ``sens_incoherent`` — sens ≠ sens naturel attendu de la classe.
+    * ``numero_non_numerique`` — numéro qui ne commence pas par un chiffre.
+    * ``compte_reference_absent`` — un compte MOUVEMENTÉ (présent dans une ligne
+      d'écriture) qui n'existe plus au plan (référence orpheline).
+    * ``compte_ref_manquant`` — un compte usuel du barème CGNC absent du plan
+      (complétude du mapping vs le standard marocain).
+
+    Les seules anomalies ``bloquant`` sont les incohérences structurelles
+    (classe/numéro) ; le reste est un avertissement ou une info que le
+    fiduciaire arbitre.
+    """
+    anomalies = []
+    comptes = list(CompteComptable.objects.filter(
+        company=company).order_by('numero'))
+    numeros_existants = {c.numero for c in comptes}
+
+    for compte in comptes:
+        prem = compte.numero[:1]
+        if not prem.isdigit():
+            anomalies.append({
+                'code': 'numero_non_numerique',
+                'severite': 'bloquant',
+                'message': (
+                    f"Compte {compte.numero} « {compte.intitule} » : le numéro "
+                    "ne commence pas par un chiffre de classe CGNC."),
+                'comptes': [compte.numero],
+            })
+            continue
+        classe_num = int(prem)
+        if classe_num not in CGNC_CLASSES:
+            anomalies.append({
+                'code': 'classe_hors_cgnc',
+                'severite': 'bloquant',
+                'message': (
+                    f"Compte {compte.numero} : classe {classe_num} hors du "
+                    "cadre CGNC (1 à 8)."),
+                'comptes': [compte.numero],
+            })
+            continue
+        if compte.classe != classe_num:
+            anomalies.append({
+                'code': 'classe_incoherente',
+                'severite': 'bloquant',
+                'message': (
+                    f"Compte {compte.numero} : classe déclarée "
+                    f"{compte.classe} ≠ classe du numéro ({classe_num})."),
+                'comptes': [compte.numero],
+            })
+        attendu = _sens_attendu_pour_classe(classe_num)
+        if compte.sens and attendu and compte.sens != attendu:
+            anomalies.append({
+                'code': 'sens_incoherent',
+                'severite': 'avertissement',
+                'message': (
+                    f"Compte {compte.numero} : sens « {compte.sens} » ≠ sens "
+                    f"naturel attendu « {attendu} » de la classe {classe_num}."),
+                'comptes': [compte.numero],
+            })
+
+    # Références orphelines : un compte mouvementé mais absent du plan. Comme le
+    # FK LigneEcriture→CompteComptable est protégé, ce cas ne survient qu'avec
+    # des comptes désactivés (actif=False) encore porteurs d'écritures.
+    numeros_mouvementes = set(
+        LigneEcriture.objects.filter(company=company)
+        .values_list('compte__numero', flat=True).distinct())
+    numeros_inactifs = {c.numero for c in comptes if not c.actif}
+    for numero in sorted(numeros_mouvementes & numeros_inactifs):
+        anomalies.append({
+            'code': 'compte_reference_absent',
+            'severite': 'avertissement',
+            'message': (
+                f"Compte {numero} désactivé mais encore mouvementé : à "
+                "réactiver ou à solder avant clôture."),
+            'comptes': [numero],
+        })
+
+    # Complétude du mapping : comptes usuels du barème CGNC absents du plan.
+    manquants = [
+        entry[0] for entry in _COMPTES_CGNC
+        if entry[0] not in numeros_existants
+    ]
+    if manquants:
+        anomalies.append({
+            'code': 'compte_ref_manquant',
+            'severite': 'info',
+            'message': (
+                f"{len(manquants)} compte(s) usuel(s) du barème CGNC absent(s) "
+                "du plan (semer via seed_plan_comptable si nécessaire)."),
+            'comptes': sorted(manquants),
+        })
+
+    return anomalies
+
+
+def construire_dossier_cgnc(company):
+    """Construit le DOSSIER DE CONTRÔLE CGNC d'une société (COMPTA6).
+
+    Assemble, en lecture seule et scopé société :
+
+    * ``plan_comptable`` — le plan RÉEL groupé par classe (1..8) ;
+    * ``reference_cgnc`` — le barème CGNC de référence groupé par classe ;
+    * ``controles`` — la liste des anomalies (cf. ``controles_coherence_cgnc``) ;
+    * ``synthese`` — compteurs (nb comptes, comptes par classe, nb anomalies par
+      sévérité, complétude vs le barème) ;
+    * ``a_valider_fiduciaire`` — la liste EXPLICITE de ce qui reste à la charge
+      du fiduciaire humain (la validation légale elle-même).
+
+    NE modifie rien ; idempotent ; deux appels successifs donnent le même
+    résultat pour un plan inchangé. Aucun prix d'achat / marge (le module n'en
+    stocke pas).
+    """
+    plan = _plan_comptable_structure(company)
+    reference = plan_cgnc_reference()
+    anomalies = controles_coherence_cgnc(company)
+
+    nb_comptes = sum(len(b['comptes']) for b in plan.values())
+    comptes_par_classe_ = {
+        classe: len(bucket['comptes'])
+        for classe, bucket in sorted(plan.items())
+    }
+    par_severite = {'bloquant': 0, 'avertissement': 0, 'info': 0}
+    for anomalie in anomalies:
+        par_severite[anomalie['severite']] = (
+            par_severite.get(anomalie['severite'], 0) + 1)
+
+    numeros_existants = {
+        c['numero'] for bucket in plan.values() for c in bucket['comptes']}
+    ref_total = len(_COMPTES_CGNC)
+    ref_presents = sum(
+        1 for entry in _COMPTES_CGNC if entry[0] in numeros_existants)
+
+    synthese = {
+        'company': company.nom,
+        'company_slug': company.slug,
+        'genere_le': timezone.now().isoformat(),
+        'nb_comptes': nb_comptes,
+        'comptes_par_classe': comptes_par_classe_,
+        'anomalies_par_severite': par_severite,
+        'nb_anomalies': len(anomalies),
+        'reference_cgnc_couverte': ref_presents,
+        'reference_cgnc_totale': ref_total,
+        'pret_a_transmettre': par_severite['bloquant'] == 0,
+    }
+
+    a_valider_fiduciaire = [
+        "Validation LÉGALE finale du plan et du format CGNC : acte réservé à un "
+        "fiduciaire / expert-comptable inscrit à l'Ordre (non automatisable).",
+        "Confirmer l'adéquation du plan aux spécificités de l'activité "
+        "(comptes sectoriels solaire/BTP, sous-comptes analytiques éventuels).",
+        "Arbitrer les avertissements de sens/cohérence signalés ci-dessus.",
+        "Valider le rattachement des comptes de tiers et le lettrage.",
+        "Attester la conformité des états de synthèse (CPC, Bilan, ESG, ETIC) "
+        "au moment de la liasse fiscale.",
+    ]
+
+    return {
+        'synthese': synthese,
+        'plan_comptable': plan,
+        'reference_cgnc': reference,
+        'controles': anomalies,
+        'a_valider_fiduciaire': a_valider_fiduciaire,
     }

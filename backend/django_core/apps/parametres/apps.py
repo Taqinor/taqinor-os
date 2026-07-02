@@ -24,3 +24,6 @@ class ParametresConfig(AppConfig):
         # FG25 — politiques d'approbation configurables, fichier dédié
         # enregistré ici sans toucher models.py.
         import apps.parametres.models_approvals  # noqa: F401
+        # N94 — surcharges de traduction de l'interface (par société/langue/clé),
+        # fichier dédié enregistré ici sans toucher models.py.
+        import apps.parametres.models_translations  # noqa: F401

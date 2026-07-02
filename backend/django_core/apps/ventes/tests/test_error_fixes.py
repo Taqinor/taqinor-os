@@ -331,12 +331,21 @@ class TestAvoirLineValidation(TestCase):
         self.assertEqual(Avoir.objects.count(), 0)
 
     def test_valid_line_still_works(self):
+        # DC10 — une ligne d'avoir valide porte désormais un produit.
         r = self._avoir([
-            {'designation': 'Remboursement', 'quantite': '1',
-             'prix_unitaire': '100', 'taux_tva': '20'}])
+            {'produit': self.produit.id, 'designation': 'Remboursement',
+             'quantite': '1', 'prix_unitaire': '100', 'taux_tva': '20'}])
         self.assertEqual(r.status_code, 201, getattr(r, 'data', r))
         self.assertEqual(Avoir.objects.count(), 1)
         self.assertEqual(Avoir.objects.first().lignes.count(), 1)
+
+    def test_dc10_line_without_produit_rejected(self):
+        # DC10 — une nouvelle ligne d'avoir SANS produit est refusée (400).
+        r = self._avoir([
+            {'designation': 'Sans produit', 'quantite': '1',
+             'prix_unitaire': '100', 'taux_tva': '20'}])
+        self.assertEqual(r.status_code, 400, getattr(r, 'data', r))
+        self.assertEqual(Avoir.objects.count(), 0)
 
 
 class TestRelanceMultiLevel(TestCase):

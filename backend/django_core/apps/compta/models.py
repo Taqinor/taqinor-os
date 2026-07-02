@@ -225,6 +225,19 @@ class EcritureComptable(models.Model):
     )
     date_creation = models.DateTimeField(
         auto_now_add=True, verbose_name='Créée le')
+    # ── COMPTA40 — Séparation des tâches (saisie vs validation) ────────────
+    # Qui a VALIDÉ l'écriture (le « second regard »). Ne peut jamais être la
+    # même personne que ``created_by`` : le contrôle est posé dans
+    # ``services.valider_ecriture``. NULL tant que l'écriture est en brouillon.
+    valide_par = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='ecritures_validees',
+        verbose_name='Validée par',
+    )
+    date_validation = models.DateTimeField(
+        null=True, blank=True, verbose_name='Validée le')
 
     class Meta:
         verbose_name = 'Écriture comptable'
@@ -5075,9 +5088,9 @@ class ComptePortailClient(models.Model):
     """Compte d'accès au portail self-service client (FG228).
 
     Le client consulte ses devis, factures, chantiers et tickets. Le compte se
-    lie à un client par id (résolu via le service crm — jamais ses modèles) et
-    réutilise l'email du client (pas de 2ᵉ copie d'identité, DC32). L'accès est
-    tokenisé ; aucune donnée métier n'est dupliquée ici.
+    lie à ``crm.Client`` PAR FK (string-FK, aucun import cross-app) et réutilise
+    l'email du client (pas de 2ᵉ copie d'identité, DC32). L'accès est tokenisé ;
+    aucune donnée métier n'est dupliquée ici.
     """
     company = models.ForeignKey(
         'authentication.Company',
@@ -5085,8 +5098,12 @@ class ComptePortailClient(models.Model):
         related_name='comptes_portail',
         verbose_name='Société',
     )
-    client_id = models.PositiveIntegerField(verbose_name='Id du client')
-    email = models.EmailField(verbose_name='Email du client')
+    client = models.ForeignKey(
+        'crm.Client',
+        on_delete=models.CASCADE,
+        related_name='comptes_portail',
+        verbose_name='Client',
+    )
     token_acces = models.CharField(
         max_length=64, unique=True, db_index=True,
         verbose_name="Token d'accès")
@@ -5102,13 +5119,18 @@ class ComptePortailClient(models.Model):
         ordering = ['-date_creation']
         constraints = [
             models.UniqueConstraint(
-                fields=['company', 'client_id'],
+                fields=['company', 'client'],
                 name='uniq_compte_portail_client',
             ),
         ]
 
+    @property
+    def email(self):
+        """DC32 — l'email vient du client (source unique), jamais stocké ici."""
+        return getattr(self.client, 'email', None)
+
     def __str__(self):
-        return f'Portail {self.email}'
+        return f'Portail {self.email or self.client_id}'
 
 
 # ── FG229 — Acceptation / e-signature de devis dans le portail ─────────────

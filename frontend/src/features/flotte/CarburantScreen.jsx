@@ -1,0 +1,153 @@
+import { useMemo } from 'react'
+import { Tabs, TabsList, TabsTrigger, TabsContent, Badge } from '../../ui'
+import { ListShell } from '../../ui/module'
+import flotteApi from '../../api/flotteApi'
+import { formatDate, formatDateTime, formatNumber } from '../../lib/format'
+import { SinistreStatutPill, InfractionStatutPill } from './statusPills'
+import { SINISTRE_TYPES, INFRACTION_TYPES, TELEMATIQUE_SOURCES } from './flotte'
+import useFlotteResource from './useFlotteResource'
+
+/* ============================================================================
+   UX20 — Carburant & télématique (`/flotte/carburant`).
+   ----------------------------------------------------------------------------
+   Onglets : pleins de carburant, cartes carburant (anomalies), sinistres,
+   infractions (PV en attente), relevés / trajets télématiques, trajets
+   chantier. Coûts = coûts d'exploitation internes (jamais prix client / achat).
+   ========================================================================== */
+
+function PleinsTab() {
+  const { data, loading, error } = useFlotteResource(flotteApi.pleins.list, {})
+  const columns = useMemo(() => [
+    { id: 'vehicule', header: 'Véhicule', width: 160, accessor: (r) => r.vehicule_label, cell: (v) => v || '—' },
+    { id: 'date_plein', header: 'Date', width: 120, accessor: (r) => r.date_plein, cell: (v) => (v ? formatDate(v) : '—') },
+    { id: 'kilometrage', header: 'Km', align: 'right', numeric: true, width: 110, searchable: false, accessor: (r) => r.kilometrage, cell: (v) => (v != null ? formatNumber(v) : '—') },
+    { id: 'quantite', header: 'Quantité', align: 'right', numeric: true, width: 120, searchable: false, accessor: (r) => r.quantite, cell: (v, r) => (v != null ? `${formatNumber(v, { decimals: 2 })} ${r.unite === 'kwh' ? 'kWh' : 'L'}` : '—') },
+    { id: 'prix_total', header: 'Coût', align: 'right', numeric: true, width: 120, searchable: false, accessor: (r) => Number(r.prix_total ?? 0), cell: (v) => (v ? `${formatNumber(v, { decimals: 2 })} MAD` : '—') },
+    { id: 'station', header: 'Station', width: 150, accessor: (r) => r.station, cell: (v) => v || '—' },
+  ], [])
+  return (
+    <ListShell title="Pleins de carburant" columns={columns} rows={data} loading={loading} error={error}
+      exportName="pleins" searchable searchPlaceholder="Rechercher station…"
+      emptyTitle="Aucun plein" emptyDescription="Aucun plein enregistré." />
+  )
+}
+
+function CartesTab() {
+  const { data, loading, error } = useFlotteResource(flotteApi.cartes.list, {})
+  const columns = useMemo(() => [
+    { id: 'numero', header: 'N° carte', width: 160, accessor: (r) => r.numero, cell: (v) => (v ? <span className="font-mono text-xs">{v}</span> : '—') },
+    { id: 'vehicule', header: 'Véhicule', width: 160, accessor: (r) => r.vehicule_label, cell: (v) => v || '—' },
+    { id: 'plafond', header: 'Plafond', align: 'right', numeric: true, width: 130, searchable: false, accessor: (r) => Number(r.plafond ?? 0), cell: (v) => (v ? `${formatNumber(v, { decimals: 0 })} MAD` : '—') },
+    {
+      id: 'actif',
+      header: 'Statut',
+      width: 100,
+      searchable: false,
+      accessor: (r) => (r.actif ? 'Active' : 'Inactive'),
+      cell: (_v, r) => (r.actif ? <Badge tone="success">Active</Badge> : <Badge tone="neutral">Inactive</Badge>),
+    },
+  ], [])
+  return (
+    <ListShell title="Cartes carburant" columns={columns} rows={data} loading={loading} error={error}
+      exportName="cartes-carburant" emptyTitle="Aucune carte" emptyDescription="Aucune carte carburant enregistrée." />
+  )
+}
+
+function SinistresTab() {
+  const { data, loading, error } = useFlotteResource(flotteApi.sinistres.list, {})
+  const columns = useMemo(() => [
+    { id: 'actif', header: 'Actif', width: 160, accessor: (r) => r.actif_label, cell: (v) => v || '—' },
+    { id: 'date_sinistre', header: 'Date', width: 120, accessor: (r) => r.date_sinistre, cell: (v) => (v ? formatDate(v) : '—') },
+    { id: 'type', header: 'Type', width: 160, accessor: (r) => r.type_sinistre_display || SINISTRE_TYPES[r.type_sinistre] || r.type_sinistre, cell: (v) => v || '—' },
+    { id: 'lieu', header: 'Lieu', width: 160, accessor: (r) => r.lieu, cell: (v) => v || '—' },
+    { id: 'montant_estime', header: 'Montant estimé', align: 'right', numeric: true, width: 150, searchable: false, accessor: (r) => Number(r.montant_estime ?? 0), cell: (v) => (v ? `${formatNumber(v, { decimals: 0 })} MAD` : '—') },
+    { id: 'statut', header: 'Statut', width: 120, accessor: (r) => r.statut, cell: (v) => <SinistreStatutPill status={v} /> },
+  ], [])
+  return (
+    <ListShell title="Sinistres" columns={columns} rows={data} loading={loading} error={error}
+      exportName="sinistres" emptyTitle="Aucun sinistre" emptyDescription="Aucun sinistre déclaré." />
+  )
+}
+
+function InfractionsTab() {
+  const { data, loading, error } = useFlotteResource(flotteApi.infractions.list, {})
+  const columns = useMemo(() => [
+    { id: 'actif', header: 'Actif', width: 160, accessor: (r) => r.actif_label, cell: (v) => v || '—' },
+    { id: 'conducteur', header: 'Conducteur', width: 150, accessor: (r) => r.conducteur_nom, cell: (v) => v || '—' },
+    { id: 'date_infraction', header: 'Date', width: 120, accessor: (r) => r.date_infraction, cell: (v) => (v ? formatDate(v) : '—') },
+    { id: 'type', header: 'Type', width: 150, accessor: (r) => r.type_infraction_display || INFRACTION_TYPES[r.type_infraction] || r.type_infraction, cell: (v) => v || '—' },
+    { id: 'reference_pv', header: 'Réf. PV', width: 130, accessor: (r) => r.reference_pv, cell: (v) => v || '—' },
+    { id: 'montant_amende', header: 'Amende', align: 'right', numeric: true, width: 120, searchable: false, accessor: (r) => Number(r.montant_amende ?? 0), cell: (v) => (v ? `${formatNumber(v, { decimals: 0 })} MAD` : '—') },
+    { id: 'statut', header: 'Statut', width: 120, accessor: (r) => r.statut, cell: (v) => <InfractionStatutPill status={v} /> },
+  ], [])
+  return (
+    <ListShell title="Infractions (PV)" subtitle="PV en attente de règlement ou contestés."
+      columns={columns} rows={data} loading={loading} error={error}
+      exportName="infractions" emptyTitle="Aucune infraction" emptyDescription="Aucune infraction enregistrée." />
+  )
+}
+
+function TelematiqueTab() {
+  const { data: releves, loading: lr, error: er } = useFlotteResource(flotteApi.relevesTelematiques.list, {})
+  const { data: trajets, loading: lt, error: et } = useFlotteResource(flotteApi.trajetsTelematiques.list, {})
+
+  const relevesCols = useMemo(() => [
+    { id: 'actif', header: 'Actif', width: 160, accessor: (r) => r.actif_label, cell: (v) => v || '—' },
+    { id: 'horodatage', header: 'Horodatage', width: 170, accessor: (r) => r.horodatage, cell: (v) => (v ? formatDateTime(v) : '—') },
+    { id: 'odometre', header: 'Odomètre', align: 'right', numeric: true, width: 120, searchable: false, accessor: (r) => r.odometre, cell: (v) => (v != null ? `${formatNumber(v)} km` : '—') },
+    { id: 'source', header: 'Source', width: 150, accessor: (r) => r.source_display || TELEMATIQUE_SOURCES[r.source] || r.source, cell: (v) => v || '—' },
+  ], [])
+  const trajetsCols = useMemo(() => [
+    { id: 'actif', header: 'Actif', width: 160, accessor: (r) => r.actif_label, cell: (v) => v || '—' },
+    { id: 'debut', header: 'Début', width: 170, accessor: (r) => r.debut, cell: (v) => (v ? formatDateTime(v) : '—') },
+    { id: 'fin', header: 'Fin', width: 170, accessor: (r) => r.fin, cell: (v) => (v ? formatDateTime(v) : '—') },
+    { id: 'distance_km', header: 'Distance', align: 'right', numeric: true, width: 120, searchable: false, accessor: (r) => r.distance_km, cell: (v) => (v != null ? `${formatNumber(v, { decimals: 1 })} km` : '—') },
+    { id: 'vitesse', header: 'Vit. moy.', align: 'right', numeric: true, width: 120, searchable: false, accessor: (r) => r.vitesse_moyenne_kmh, cell: (v) => (v != null ? `${formatNumber(v)} km/h` : '—') },
+  ], [])
+  return (
+    <div className="flex flex-col gap-6">
+      <ListShell title="Relevés télématiques" columns={relevesCols} rows={releves} loading={lr} error={er}
+        exportName="releves-telematiques" emptyTitle="Aucun relevé" emptyDescription="Aucun relevé télématique." />
+      <ListShell title="Trajets télématiques" columns={trajetsCols} rows={trajets} loading={lt} error={et}
+        exportName="trajets-telematiques" emptyTitle="Aucun trajet" emptyDescription="Aucun trajet reconstruit." />
+    </div>
+  )
+}
+
+function TrajetsChantierTab() {
+  const { data, loading, error } = useFlotteResource(flotteApi.trajetsChantier.list, {})
+  const columns = useMemo(() => [
+    { id: 'actif', header: 'Actif', width: 160, accessor: (r) => r.actif_label, cell: (v) => v || '—' },
+    { id: 'date_trajet', header: 'Date', width: 120, accessor: (r) => r.date_trajet, cell: (v) => (v ? formatDate(v) : '—') },
+    { id: 'motif', header: 'Motif', width: 220, accessor: (r) => r.motif, cell: (v) => v || '—' },
+    { id: 'distance_km', header: 'Distance', align: 'right', numeric: true, width: 120, searchable: false, accessor: (r) => r.distance_km, cell: (v) => (v != null ? `${formatNumber(v, { decimals: 1 })} km` : '—') },
+  ], [])
+  return (
+    <ListShell title="Trajets chantier" columns={columns} rows={data} loading={loading} error={error}
+      exportName="trajets-chantier" emptyTitle="Aucun trajet" emptyDescription="Aucun trajet chantier enregistré." />
+  )
+}
+
+export default function CarburantScreen() {
+  return (
+    <div className="page flex flex-col gap-4">
+      <h2 className="font-display text-xl font-semibold tracking-tight">Carburant, sinistres & télématique</h2>
+      <Tabs defaultValue="pleins">
+        <TabsList className="flex-wrap">
+          <TabsTrigger value="pleins">Carburant</TabsTrigger>
+          <TabsTrigger value="cartes">Cartes</TabsTrigger>
+          <TabsTrigger value="sinistres">Sinistres</TabsTrigger>
+          <TabsTrigger value="infractions">Infractions</TabsTrigger>
+          <TabsTrigger value="telematique">Télématique</TabsTrigger>
+          <TabsTrigger value="chantier">Trajets chantier</TabsTrigger>
+        </TabsList>
+        <TabsContent value="pleins"><PleinsTab /></TabsContent>
+        <TabsContent value="cartes"><CartesTab /></TabsContent>
+        <TabsContent value="sinistres"><SinistresTab /></TabsContent>
+        <TabsContent value="infractions"><InfractionsTab /></TabsContent>
+        <TabsContent value="telematique"><TelematiqueTab /></TabsContent>
+        <TabsContent value="chantier"><TrajetsChantierTab /></TabsContent>
+      </Tabs>
+    </div>
+  )
+}

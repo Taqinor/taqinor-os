@@ -1121,6 +1121,40 @@ def facturer_reception(company, user, reception):
     return created['ff']
 
 
+# ── DC38 — Landed cost (FG316) replié dans le coût moyen pondéré ─────────────
+# Le coût débarqué d'un dossier d'import (fret/douane/TVA import/transit) est
+# écrit dans le champ EXISTANT `LigneBonCommandeFournisseur.frais_annexes` —
+# celui que `average_cost_with_source` (FG67) intègre déjà — plutôt que dans un
+# champ de coût d'achat PARALLÈLE. `installations` (qui possède le dossier
+# d'import et string-FK stock) appelle ce setter ; stock n'importe jamais
+# installations (sens de dépendance préservé).
+
+def definir_frais_annexes_ligne_bcf(company, bon_commande_id, produit_id,
+                                    frais_annexes):
+    """DC38 — pose les frais annexes (coût débarqué) sur la/les ligne(s) de BCF
+    d'un produit donné, dans la société. Setter STOCK pur (aucun import
+    installations). Si plusieurs lignes portent le même produit sur ce BCF, le
+    montant est réparti à parts égales pour que la somme sur les lignes reste
+    exacte dans le coût moyen. Renvoie le nombre de lignes mises à jour."""
+    from decimal import Decimal
+    from .models import LigneBonCommandeFournisseur
+
+    if not bon_commande_id or not produit_id:
+        return 0
+    lignes = list(LigneBonCommandeFournisseur.objects.filter(
+        bon_commande_id=bon_commande_id,
+        bon_commande__company=company,
+        produit_id=produit_id))
+    if not lignes:
+        return 0
+    total = Decimal(str(frais_annexes or 0))
+    part = (total / Decimal(len(lignes))).quantize(Decimal('0.01'))
+    for ligne in lignes:
+        ligne.frais_annexes = part
+        ligne.save(update_fields=['frais_annexes'])
+    return len(lignes)
+
+
 # ── FG57 — Rotation / dead-stock ─────────────────────────────────────────────
 
 def rotation_report(company, jours=180):

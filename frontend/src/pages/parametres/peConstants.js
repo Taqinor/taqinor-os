@@ -25,6 +25,7 @@ export const MODE_LABELS = { residentiel: 'Résidentiel', agricole: 'Agricole', 
 // ── Onglets de la page Paramètres (D1) ─────────────────────────────────────────
 // Chaque réglage existant reste présent, simplement regroupé par domaine.
 export const TABS = [
+  { key: 'onboarding', label: 'Prise en main' },
   { key: 'societe',    label: 'Société & identité' },
   { key: 'leads',      label: 'Leads' },
   { key: 'clients',    label: 'Clients' },
@@ -50,6 +51,7 @@ export const TABS = [
 // correspond à un mot-clé propose de sauter à l'onglet concerné. Liste
 // volontairement large mais simple à maintenir (un onglet par entrée).
 export const SETTINGS_SEARCH_INDEX = [
+  { tab: 'onboarding', terms: ['prise en main', 'onboarding', 'guide', 'démarrage', 'checklist de configuration', 'coachmarks', 'visite guidée'] },
   { tab: 'societe', terms: ['nom', 'entreprise', 'adresse', 'email', 'téléphone', 'logo', 'signature', 'couleur', 'ice', 'if', 'identifiant fiscal', 'rc', 'registre de commerce', 'patente', 'cnss', 'rib', 'iban', 'banque', 'siret', 'tva intracommunautaire', 'instructions de paiement', 'conditions générales'] },
   { tab: 'leads', terms: ['responsable par défaut', 'installateur par défaut', 'parrainage', 'récompense', 'étiquettes', 'tags', 'motifs de perte', 'canaux', 'sources', 'couleur étiquette'] },
   { tab: 'clients', terms: ['clients', 'champs personnalisés client'] },

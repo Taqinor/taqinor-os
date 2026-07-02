@@ -152,6 +152,13 @@ def _fec_montant(valeur):
     return f'{(valeur or Decimal("0")):.2f}'.replace('.', ',')
 
 
+def _fec_to_decimal(valeur):
+    """Relit un montant FEC (« 1234,56 ») en ``Decimal`` (COMPTA37)."""
+    if not valeur:
+        return Decimal('0')
+    return Decimal(str(valeur).replace(',', '.'))
+
+
 def export_fec(company, exercice, *, validees_seulement=False):
     """Lignes du FEC d'un exercice, ordonnées et prêtes pour l'export DGI (FG141).
 
@@ -2336,4 +2343,88 @@ def cpc_consolide(company, *, date_debut=None, date_fin=None):
         'total_produits': total_produits,
         'total_charges': total_charges,
         'resultat': total_produits - total_charges,
+    }
+
+
+# ── COMPTA37 — Export fiduciaire (Sage / CEGID) ────────────────────────────
+#
+# Export d'échange comptable OFFLINE destiné au cabinet fiduciaire : une ligne
+# par ``LigneEcriture`` de l'exercice, dans un jeu de colonnes reconnu par les
+# logiciels de tenue (Sage / CEGID). Aucun appel externe, aucune API payante :
+# on produit un fichier téléchargeable à partir des seuls modèles comptables via
+# les données déjà servies par ``export_fec`` (grand livre borné à l'exercice).
+#
+# Le format PNM Sage (« journal d'import ») est un enregistrement à colonnes
+# fixes : code journal, date, compte général, compte auxiliaire, référence
+# pièce, libellé, sens (D/C), montant. On expose ce même jeu de colonnes en
+# délimité (point-virgule) — le pivot que Sage comme CEGID savent réimporter —
+# et on l'accompagne d'une synthèse « liasse » (produits/charges/résultat) pour
+# le dossier fiduciaire.
+FIDUCIAIRE_COLUMNS = [
+    'CodeJournal', 'DateEcriture', 'CompteGeneral', 'CompteAuxiliaire',
+    'RefPiece', 'Libelle', 'Sens', 'Montant', 'Lettrage',
+]
+
+
+def _fiduciaire_montant(valeur):
+    """Montant fiduciaire : décimale à virgule, deux décimales (jamais vide)."""
+    return f'{(valeur or Decimal("0")):.2f}'.replace('.', ',')
+
+
+def export_fiduciaire(company, exercice, *, validees_seulement=False):
+    """Export fiduciaire Sage/CEGID des écritures d'un exercice (COMPTA37).
+
+    Réutilise ``export_fec`` (mêmes lignes, même bornage à l'exercice, même
+    ordre auditable, même scoping société) et les reprojette dans le jeu de
+    colonnes d'échange fiduciaire ``FIDUCIAIRE_COLUMNS`` : une ligne par
+    mouvement, avec un ``Sens`` explicite ``D``/``C`` et un ``Montant`` unique
+    (le débit si sens D, sinon le crédit) — la forme qu'attendent les journaux
+    d'import Sage/CEGID. Y est jointe une ``synthese`` (produits/charges/
+    résultat de l'exercice, repris du CPC) pour le dossier de liasse.
+
+    Lecture seule, scopée société ; aucune écriture n'est créée ni modifiée.
+    Aucune donnée d'achat/marge n'y figure. Renvoie ``{'format', 'exercice',
+    'date_debut', 'date_fin', 'columns', 'lignes', 'total_debit',
+    'total_credit', 'equilibre', 'nb_lignes', 'synthese'}``.
+    """
+    fec = export_fec(
+        company, exercice, validees_seulement=validees_seulement)
+    lignes = []
+    for src in fec['lignes']:
+        # Sage/CEGID veulent un montant unique + un sens. Le FEC porte débit ET
+        # crédit formatés ; on retrouve le montant significatif via le brut.
+        debit = _fec_to_decimal(src['Debit'])
+        credit = _fec_to_decimal(src['Credit'])
+        sens = 'D' if debit >= credit else 'C'
+        montant = debit if sens == 'D' else credit
+        lignes.append({
+            'CodeJournal': src['JournalCode'],
+            'DateEcriture': src['EcritureDate'],
+            'CompteGeneral': src['CompteNum'],
+            'CompteAuxiliaire': src['CompAuxNum'],
+            'RefPiece': src['PieceRef'],
+            'Libelle': src['EcritureLib'],
+            'Sens': sens,
+            'Montant': _fiduciaire_montant(montant),
+            'Lettrage': src['EcritureLet'],
+        })
+    etat_cpc = cpc(
+        company, date_debut=exercice.date_debut, date_fin=exercice.date_fin,
+        validees_seulement=validees_seulement)
+    return {
+        'format': 'sage-cegid',
+        'exercice': fec['exercice'],
+        'date_debut': fec['date_debut'],
+        'date_fin': fec['date_fin'],
+        'columns': list(FIDUCIAIRE_COLUMNS),
+        'lignes': lignes,
+        'total_debit': fec['total_debit'],
+        'total_credit': fec['total_credit'],
+        'equilibre': fec['equilibre'],
+        'nb_lignes': len(lignes),
+        'synthese': {
+            'total_produits': etat_cpc['total_produits'],
+            'total_charges': etat_cpc['total_charges'],
+            'resultat': etat_cpc['resultat'],
+        },
     }

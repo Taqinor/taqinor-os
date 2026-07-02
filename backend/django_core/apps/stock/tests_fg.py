@@ -706,3 +706,75 @@ class TestFG65Previsions(TestCase):
         data = r.json()
         ids = [d['produit_id'] for d in data]
         self.assertNotIn(self.produit.id, ids)
+
+
+# ── DC16 — Montants FF liés à un BCF dérivés de la réception (FG56), pas ──────
+#          saisis à la main (avant le rapprochement 3 voies FG131). ───────────
+
+class TestDC16FactureLieeAuBonCommande(TestCase):
+    def setUp(self):
+        self.company = make_company('dc16-co')
+        self.admin = make_admin(self.company, 'admin_dc16')
+        self.client = auth_client(self.admin)
+        self.fournisseur = make_fournisseur(self.company)
+        self.produit = make_produit(self.company, quantite=0, seuil=0)
+        self.bcf = BonCommandeFournisseur.objects.create(
+            company=self.company, reference='BCF-DC16-001',
+            fournisseur=self.fournisseur,
+            statut=BonCommandeFournisseur.Statut.ENVOYE,
+            created_by=self.admin)
+
+    def test_manual_facture_with_bon_commande_rejected(self):
+        """Une FF saisie à la main AVEC un bon de commande est refusée : elle
+        doit passer par « facturer une réception » (FG56)."""
+        r = self.client.post(
+            '/api/django/stock/factures-fournisseur/',
+            {'fournisseur': self.fournisseur.id, 'bon_commande': self.bcf.id,
+             'date_facture': '2026-06-01', 'montant_ht': '999.00',
+             'montant_tva': '0.00', 'montant_ttc': '999.00'},
+            format='json')
+        self.assertEqual(r.status_code, 400, r.json())
+        self.assertIn('bon_commande', r.json())
+
+    def test_manual_facture_without_bon_commande_still_allowed(self):
+        """Une FF ad-hoc (sans bon de commande) reste créable à la main."""
+        r = self.client.post(
+            '/api/django/stock/factures-fournisseur/',
+            {'fournisseur': self.fournisseur.id, 'date_facture': '2026-06-01',
+             'montant_ht': '500.00', 'montant_tva': '100.00',
+             'montant_ttc': '600.00'},
+            format='json')
+        self.assertEqual(r.status_code, 201, r.json())
+        self.assertIsNone(r.json().get('bon_commande'))
+
+    def test_editing_amounts_on_bcf_linked_facture_rejected(self):
+        """Les montants d'une FF liée à un BCF (issue de FG56) ne sont pas
+        modifiables à la main."""
+        ligne = LigneBonCommandeFournisseur.objects.create(
+            bon_commande=self.bcf, produit=self.produit,
+            quantite=10, prix_achat_unitaire=Decimal('100'),
+            quantite_recue=10)
+        reception = ReceptionFournisseur.objects.create(
+            company=self.company, reference='REC-DC16-001',
+            bon_commande=self.bcf,
+            statut=ReceptionFournisseur.Statut.CONFIRME,
+            created_by=self.admin)
+        LigneReceptionFournisseur.objects.create(
+            reception=reception, ligne_commande=ligne,
+            produit=self.produit, quantite=10)
+        fr = self.client.post(
+            f'/api/django/stock/receptions-fournisseur/{reception.id}/facturer/',
+            {}, format='json')
+        self.assertEqual(fr.status_code, 201, fr.json())
+        fid = fr.json()['id']
+        # Tentative d'écraser le HT dérivé de la réception → refus.
+        r = self.client.patch(
+            f'/api/django/stock/factures-fournisseur/{fid}/',
+            {'montant_ht': '1.00'}, format='json')
+        self.assertEqual(r.status_code, 400, r.json())
+        self.assertIn('montant_ht', r.json())
+        # Un champ non-montant reste éditable (ex. la note).
+        r = self.client.patch(
+            f'/api/django/stock/factures-fournisseur/{fid}/',
+            {'note': 'vérifiée'}, format='json')
+        self.assertEqual(r.status_code, 200, r.json())

@@ -1,0 +1,24 @@
+{
+  "name": "taqinor-mobile",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Wrapper Capacitor natif iOS/Android pour l'ERP TAQINOR (empaquette la PWA de ../frontend). Isolé du frontend : ses dépendances ne touchent JAMAIS frontend/package-lock.json.",
+  "scripts": {
+    "build": "node ./scripts/copy-web.mjs",
+    "sync": "cap sync",
+    "copy": "cap copy",
+    "add:ios": "cap add ios",
+    "add:android": "cap add android",
+    "open:ios": "cap open ios",
+    "open:android": "cap open android",
+    "doctor": "cap doctor"
+  },
+  "devDependencies": {
+    "@capacitor/cli": "^8.4.1"
+  },
+  "dependencies": {
+    "@capacitor/core": "^8.4.1",
+    "@capacitor/ios": "^8.4.1",
+    "@capacitor/android": "^8.4.1"
+  }
+}

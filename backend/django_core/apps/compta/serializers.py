@@ -122,10 +122,12 @@ class EcritureComptableSerializer(serializers.ModelSerializer):
             'id', 'journal', 'journal_code', 'reference', 'date_ecriture',
             'libelle', 'statut', 'source_type', 'source_id', 'lignes',
             'total_debit', 'total_credit', 'date_creation',
+            # COMPTA40 — traçabilité du second regard (lecture seule).
+            'valide_par', 'date_validation',
         ]
         read_only_fields = [
             'date_creation', 'source_type', 'source_id', 'total_debit',
-            'total_credit',
+            'total_credit', 'valide_par', 'date_validation',
         ]
 
     def get_total_debit(self, obj):
@@ -1767,10 +1769,13 @@ class ResultatAOSerializer(serializers.ModelSerializer):
 # ── FG228 — Comptes portail client ─────────────────────────────────────────
 
 class ComptePortailClientSerializer(serializers.ModelSerializer):
+    # DC32 — l'email est lu depuis le client (source unique), jamais stocké.
+    email = serializers.EmailField(source='client.email', read_only=True)
+
     class Meta:
         model = ComptePortailClient
         fields = [
-            'id', 'client_id', 'email', 'token_acces', 'actif',
+            'id', 'client', 'email', 'token_acces', 'actif',
             'derniere_connexion', 'date_creation',
         ]
         read_only_fields = [

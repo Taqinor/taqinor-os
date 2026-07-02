@@ -4871,3 +4871,15 @@ textarea.form-control {
   background: color-mix(in srgb, var(--destructive, #dc2626) 10%, transparent);
   color: var(--destructive, #dc2626);
 }
+
+/* ── N93 — support RTL (langue arabe) ─────────────────────────────────────────
+   La bascule RTL est portée par `dir="rtl"` sur <html> (posé par I18nProvider).
+   La quasi-totalité de la coquille utilise flexbox, qui se réordonne seule sous
+   RTL — on n'ajoute donc QUE les correctifs minimaux là où un décalage codé en
+   dur (marge/position directionnelle) casserait visuellement en arabe. On
+   privilégie les propriétés logiques. Tout ajout futur reste petit et ciblé. */
+[dir="rtl"] body { text-align: right; }
+
+/* Le petit code de langue à côté du globe : léger espacement logique. */
+.header-lang-btn { display: inline-flex; align-items: center; gap: 0.25rem; }
+.header-lang-code { font-size: 0.7rem; font-weight: 600; line-height: 1; }

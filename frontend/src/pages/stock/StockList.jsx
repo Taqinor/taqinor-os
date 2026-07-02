@@ -27,6 +27,7 @@ import {
 } from '../../features/stock/catalogue'
 import { validateTransfert, totalVentile, quantiteEmplacement, produitDansEmplacement } from '../../features/stock/emplacements'
 import { normalizeCode, isValidCode, resolveTarget } from '../../features/stock/labels'
+import BarcodeScanner from '../../features/pwa/BarcodeScanner'
 import { toastError, toastSuccess } from '../../lib/toast'
 import {
   Button, IconButton, Badge, Checkbox, Input, Spinner, Skeleton,
@@ -587,6 +588,7 @@ export default function StockList() {
   const [scanOpen, setScanOpen]       = useState(false)
   const [scanCode, setScanCode]       = useState('')
   const [scanBusy, setScanBusy]       = useState(false)
+  const [camOpen, setCamOpen]         = useState(false) // FG384 — scan caméra
 
   useEffect(() => {
     dispatch(fetchProduits()); dispatch(fetchCategories())
@@ -642,8 +644,8 @@ export default function StockList() {
   }
   // N20 — Résout un code scanné/saisi (PRODUIT:<id> / SYSTEME:<id>) et navigue
   // vers la fiche correspondante (lecture seule côté serveur).
-  const runScan = async () => {
-    const code = normalizeCode(scanCode)
+  const runScan = async (rawCode) => {
+    const code = normalizeCode(typeof rawCode === 'string' ? rawCode : scanCode)
     if (!isValidCode(code)) {
       toastError('Code illisible. Attendu : PRODUIT:<id> ou SYSTEME:<id>.')
       return
@@ -668,6 +670,15 @@ export default function StockList() {
         : 'Résolution indisponible.'
       toastError(msg)
     } finally { setScanBusy(false) }
+  }
+  // FG384 — un code détecté par la caméra remplit le champ, ferme la caméra et
+  // lance la résolution existante (lecture seule côté serveur).
+  const onCameraDetected = (value) => {
+    const code = normalizeCode(value)
+    setScanCode(code)
+    setCamOpen(false)
+    if (isValidCode(code)) runScan(code)
+    else toastError('Code lu, mais illisible. Attendu : PRODUIT:<id> ou SYSTEME:<id>.')
   }
   useEffect(() => {
     if (!bulkMsg) return undefined
@@ -952,13 +963,26 @@ export default function StockList() {
             onChange={(e) => setScanCode(e.target.value)}
             onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); runScan() } }}
           />
-          <Button size="sm" loading={scanBusy} disabled={!scanCode.trim()} onClick={runScan}>
+          <Button size="sm" loading={scanBusy} disabled={!scanCode.trim()} onClick={() => runScan()}>
             Ouvrir la fiche
           </Button>
+          <Button size="sm" variant="outline"
+                  onClick={() => setCamOpen(v => !v)}
+                  title="Scanner un code avec la caméra">
+            <ScanLine /> {camOpen ? 'Fermer la caméra' : 'Caméra'}
+          </Button>
           <Button size="sm" variant="ghost"
-                  onClick={() => { setScanOpen(false); setScanCode('') }}>
+                  onClick={() => { setScanOpen(false); setScanCode(''); setCamOpen(false) }}>
             Fermer
           </Button>
+          {camOpen && (
+            <div className="mt-2 w-full max-w-sm">
+              <BarcodeScanner
+                onDetected={onCameraDetected}
+                onClose={() => setCamOpen(false)}
+              />
+            </div>
+          )}
         </div>
       )}
 

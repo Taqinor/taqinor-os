@@ -5,7 +5,11 @@
 // `PAGE_TITLES` est ordonné du plus spécifique au plus général : on prend la
 // PREMIÈRE clé dont `pathname` commence par elle (les sous-routes d'abord).
 
-export const PAGE_TITLES = [
+// UX1 — Titres/libellés des modules « coquille », fournis par chaque
+// `features/<module>/module.config.jsx` (aucun couplage ici).
+import { moduleTitles, moduleSectionLabels } from '../../router/moduleRoutes'
+
+const BASE_PAGE_TITLES = [
   ['/dashboard', 'Tableau de bord'],
 
   // Stock
@@ -65,6 +69,59 @@ export const PAGE_TITLES = [
   ['/parametres', 'Paramètres'],
 ]
 
+// Les titres des modules (préfixes distincts, ex. `/comptabilite`) sont ajoutés
+// APRÈS les titres de base : `titleFor` prend la première correspondance, et les
+// modules ordonnent déjà leurs propres titres du plus spécifique au plus général.
+export const PAGE_TITLES = [...BASE_PAGE_TITLES, ...moduleTitles]
+
+// N93 — clé i18n par chemin de base : quand un traducteur est fourni à
+// `titleFor`, on préfère la valeur traduite ; sinon on retombe sur le libellé FR
+// défini ci-dessus (comportement inchangé pour locale=fr et pour les modules,
+// qui n'ont pas encore de clés dédiées).
+const TITLE_KEYS = {
+  '/dashboard': 'title.dashboard',
+  '/stock/bons-commande-fournisseur': 'title.stock.bons_commande_fournisseur',
+  '/stock/receptions-fournisseur': 'title.stock.receptions_fournisseur',
+  '/stock/factures-fournisseur': 'title.stock.factures_fournisseur',
+  '/stock/retours-fournisseur': 'title.stock.retours_fournisseur',
+  '/stock/fournisseurs': 'title.stock.fournisseurs',
+  '/stock/categories': 'title.stock.categories',
+  '/stock/ocr-import': 'title.stock.ocr_import',
+  '/stock/mouvements': 'title.stock.mouvements',
+  '/stock': 'title.stock',
+  '/crm/leads': 'title.crm.leads',
+  '/crm/parrainage': 'title.crm.parrainage',
+  '/crm': 'title.crm',
+  '/activites': 'title.activites',
+  '/calendrier': 'title.calendrier',
+  '/ventes/devis/nouveau': 'title.ventes.devis_nouveau',
+  '/ventes/devis': 'title.ventes.devis',
+  '/ventes/bons-commande': 'title.ventes.bons_commande',
+  '/ventes/factures': 'title.ventes.factures',
+  '/ventes/avoirs': 'title.ventes.avoirs',
+  '/ventes/paiements': 'title.ventes.paiements',
+  '/ventes/relances': 'title.ventes.relances',
+  '/chantiers': 'title.chantiers',
+  '/ma-journee': 'title.ma_journee',
+  '/interventions': 'title.interventions',
+  '/parc': 'title.parc',
+  '/production': 'title.production',
+  '/sav/contrats': 'title.sav.contrats',
+  '/sav': 'title.sav',
+  '/equipements': 'title.equipements',
+  '/ia/ocr': 'title.ia.ocr',
+  '/ia/agent': 'title.ia.agent',
+  '/reporting/balance-agee': 'title.reporting.balance_agee',
+  '/reporting/archive/client': 'title.reporting.archive_client',
+  '/reporting/archive/chantier': 'title.reporting.archive_chantier',
+  '/reporting': 'title.reporting',
+  '/rapports': 'title.rapports',
+  '/admin/users': 'title.admin.users',
+  '/admin/roles': 'title.admin.roles',
+  '/parametres/notifications': 'title.parametres.notifications',
+  '/parametres': 'title.parametres',
+}
+
 // Libellé de la section parente (premier segment) pour le fil d'Ariane.
 export const SECTION_LABELS = {
   stock: 'Stock',
@@ -83,12 +140,28 @@ export const SECTION_LABELS = {
   activites: 'CRM',
   calendrier: 'CRM',
   dashboard: 'Tableau de bord',
+  // UX1 — libellés de section des modules « coquille » (fusionnés, jamais en
+  // conflit : chaque module a un premier segment distinct).
+  ...moduleSectionLabels,
 }
 
 // Titre de page : première entrée dont le pathname commence par la clé.
-export function titleFor(pathname) {
+// N93 — `t` optionnel : si fourni ET qu'une clé i18n existe pour ce chemin, on
+// renvoie la traduction ; sinon on garde le libellé FR (repli). Appelé sans `t`,
+// le comportement est identique à avant (FR partout).
+export function titleFor(pathname, t) {
   const hit = PAGE_TITLES.find(([path]) => pathname.startsWith(path))
-  return hit ? hit[1] : 'ERP Agentique'
+  if (!hit) return t ? t('title.fallback') : 'ERP Agentique'
+  if (t) {
+    const key = TITLE_KEYS[hit[0]]
+    // t() retombe déjà sur la clé si manquante ; on garde le libellé FR comme
+    // repli plus lisible quand il n'y a pas de clé i18n (modules « coquille »).
+    if (key) {
+      const translated = t(key)
+      if (translated && translated !== key) return translated
+    }
+  }
+  return hit[1]
 }
 
 // Fil d'Ariane dérivé du chemin : [{ label, to }] du plus général au courant.

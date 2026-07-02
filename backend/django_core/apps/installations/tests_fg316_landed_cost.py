@@ -170,3 +170,66 @@ class TestScopeRole(TestCase):
         r = self.api.get(f'{BASE}/frais-import/')
         results = r.data['results'] if 'results' in r.data else r.data
         self.assertEqual(len(results), 1)
+
+
+# ── DC38 — Le coût débarqué (FG316) se replie dans le coût moyen pondéré ──────
+#          stock via `frais_annexes` (FG67), pas de champ de coût parallèle. ──
+
+class TestDC38LandedCostVersCoutStock(TestCase):
+    def setUp(self):
+        from apps.stock.models import (
+            Produit, Fournisseur, BonCommandeFournisseur,
+            LigneBonCommandeFournisseur,
+        )
+        self.company = make_company()
+        self.user = make_user(self.company)
+        self.api = auth(self.user)
+        self.produit = Produit.objects.create(
+            company=self.company, nom='Panneau 550W',
+            prix_vente=0, prix_achat=0, quantite_stock=0, seuil_alerte=0)
+        self.fournisseur = Fournisseur.objects.get_or_create(
+            company=self.company, nom='Import Co')[0]
+        self.bcf = BonCommandeFournisseur.objects.create(
+            company=self.company, reference=f'BCF-DC38-{next(_seq)}',
+            fournisseur=self.fournisseur,
+            statut=BonCommandeFournisseur.Statut.ENVOYE,
+            created_by=self.user)
+        self.ligne_bcf = LigneBonCommandeFournisseur.objects.create(
+            bon_commande=self.bcf, produit=self.produit,
+            quantite=10, prix_achat_unitaire=100, quantite_recue=10)
+        self.dossier = DossierImport.objects.create(
+            company=self.company, reference=f'IMP-DC38-{next(_seq)}',
+            designation='Conteneur panneaux', bon_commande=self.bcf)
+        LandedCostLigne.objects.create(
+            company=self.company, dossier=self.dossier, produit=self.produit,
+            designation='Panneau 550W', quantite=10, valeur_fob=10000)
+        FraisImport.objects.create(
+            company=self.company, dossier=self.dossier, categorie='fret',
+            montant=2000)
+
+    def test_appliquer_reporte_frais_annexes_et_cout_moyen(self):
+        from decimal import Decimal
+        from apps.stock.services import average_cost_with_source
+        r = self.api.post(
+            f'{BASE}/dossiers-import/{self.dossier.id}/appliquer-cout-stock/')
+        self.assertEqual(r.status_code, 200, r.data)
+        self.assertEqual(r.data['lignes_maj'], 1)
+        self.ligne_bcf.refresh_from_db()
+        # Seule ligne → 100 % des 2000 de frais.
+        self.assertEqual(self.ligne_bcf.frais_annexes, Decimal('2000.00'))
+        # Coût moyen = prix_achat_unitaire + frais/quantité = 100 + 200 = 300.
+        cout, source = average_cost_with_source(self.produit)
+        self.assertEqual(source, 'achats')
+        self.assertEqual(cout, Decimal('300.00'))
+
+    def test_appliquer_sans_bon_commande_rejete(self):
+        dossier = make_dossier(self.company)  # pas de bon_commande
+        r = self.api.post(
+            f'{BASE}/dossiers-import/{dossier.id}/appliquer-cout-stock/')
+        self.assertEqual(r.status_code, 400, r.data)
+
+    def test_appliquer_reserve_aux_roles(self):
+        normal = make_user(self.company, role='normal')
+        r = auth(normal).post(
+            f'{BASE}/dossiers-import/{self.dossier.id}/appliquer-cout-stock/')
+        self.assertEqual(r.status_code, 403, r.data)

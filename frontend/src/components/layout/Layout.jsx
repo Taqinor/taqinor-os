@@ -7,6 +7,7 @@ import Sidebar from './Sidebar'
 import Header from './Header'
 import BottomTabBar from './BottomTabBar'
 import CopilotPanel from '../../features/ia/CopilotPanel'
+import OnboardingCoachmarks from '../../features/onboarding/OnboardingCoachmarks'
 import { OfflineBanner } from '../../ui/OfflineState'
 
 // I34 — État réduit de la sidebar persisté en localStorage. Défaut = false
@@ -81,6 +82,10 @@ export default function Layout({ children }) {
       {/* FG350 — Copilote in-app : tiroir conversationnel global (agent FastAPI),
           monté une fois pour toute l'app, piloté par la slice `ia`. */}
       <CopilotPanel />
+      {/* FG16 — Guide d'accueil (coachmarks) : monté une fois, ne s'affiche
+          qu'à la première visite (drapeau localStorage) et rejouable depuis
+          les Paramètres. Rend null le reste du temps. */}
+      <OnboardingCoachmarks />
     </div>
   )
 }
