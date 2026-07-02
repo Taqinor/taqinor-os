@@ -168,6 +168,20 @@ def build(ctx) -> str:
         conditions.append(
             (hyp.get("titre") or "Nos hypothèses",
              " &middot; ".join(hyp_items)))
+    # QK3 — financement (indicatif) : mensualité + programme, ajouté comme ligne
+    # de conditions (aucune hauteur de bloc en plus → la page reste à 3 pages).
+    # Le bloc vient du builder (QJ12) ; jamais de prix d'achat/marge.
+    fin = d.get("financing") or {}
+    fin_credit = fin.get("credit") or {}
+    if fin.get("indicatif") and fin_credit.get("mensualite"):
+        _mens = int(round(fin_credit["mensualite"]))
+        _duree_ans = round((fin_credit.get("duree_mois") or 0) / 12)
+        _prog = fin_credit.get("programme_nom") or "crédit vert"
+        _fin_v = (
+            f"À partir de ≈ {_mens:,}".replace(",", " ")
+            + f" MAD/mois sur {_duree_ans} ans ({_prog}) — indicatif, à "
+            "confirmer avec votre banque.")
+        conditions.append(("Financement possible", _fin_v))
     cond_html = "".join(
         f'<div class="p3-cond-row"><span class="p3-cond-k">{k}</span>'
         f'<span class="p3-cond-v">{v}</span></div>'

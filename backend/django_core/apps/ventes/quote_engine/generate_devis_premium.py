@@ -540,6 +540,42 @@ def _hypotheses_html():
         f'<ul style="list-style:none;padding:0;margin:0;">{lis}</ul></div>')
 
 
+# QK3 — bloc financement (indicatif, QJ12), posé depuis data["financing"].
+# Vide → aucun bloc rendu (byte-identique).
+FINANCING = None
+
+
+def _financing_html():
+    """QK3 — bloc « Financement possible » (mensualité indicative + programme).
+    Rendu UNIQUEMENT quand data["financing"] est fourni (QJ12). Indicatif ; le
+    texte vient du builder, jamais de prix d'achat/marge."""
+    f = FINANCING
+    if not isinstance(f, dict) or not f.get("indicatif"):
+        return ""
+    credit = f.get("credit") or {}
+    mens = credit.get("mensualite")
+    if not mens:
+        return ""
+    mens_txt = f"{int(round(mens)):,}".replace(",", " ")
+    duree_ans = round((credit.get("duree_mois") or 0) / 12)
+    prog = _esc(credit.get("programme_nom") or "crédit vert")
+    comp = f.get("onee_comparison") or {}
+    comp_txt = ""
+    if comp.get("show") and comp.get("message"):
+        comp_txt = (f'<div style="margin-top:3px;font-size:7.3pt;color:{CGR};'
+                    f'font-weight:700;">{_esc(comp["message"])}</div>')
+    return (
+        f'<div style="background:{CG1};border-radius:8px;padding:7px 12px;'
+        f'border:1px solid {CG2};border-left:4px solid {CGR};margin-bottom:5px;">'
+        f'<div style="font-size:9pt;font-weight:700;color:{CN};'
+        f'text-transform:uppercase;letter-spacing:.8px;margin-bottom:3px;">'
+        f'Financement possible</div>'
+        f'<div style="font-size:7.5pt;color:{CG7};line-height:1.4;">'
+        f'À partir de ≈ <b>{mens_txt} MAD/mois</b> sur {duree_ans} ans '
+        f'({prog}) — indicatif, à confirmer avec votre banque.</div>'
+        f'{comp_txt}</div>')
+
+
 def _doc_text(key):
     """Fragment de texte éditable `key`, repli sur le littéral historique."""
     val = DOC_TEXTS.get(key)
@@ -1648,6 +1684,9 @@ def page3():
   <!-- QK4 — NOS HYPOTHÈSES (transparence des hypothèses d'économies) -->
   <div style="padding:0 24px;">{_hypotheses_html()}</div>
 
+  <!-- QK3 — FINANCEMENT (indicatif) -->
+  <div style="padding:0 24px;">{_financing_html()}</div>
+
   <!-- CONDITIONS GENERALES -->
   <div style="padding:0 24px 4px;margin-bottom:5px;">
     <div style="background:{CG1};border-radius:8px;padding:7px 12px;border:1px solid {CG2};border-left:4px solid {CN};">
@@ -2203,6 +2242,8 @@ def _render_premium_pdf(data: dict, out_path) -> str:
     SAVINGS_METHOD = data.get("savings_method")
     global HYPOTHESES  # QK4 — bloc « Nos hypothèses »
     HYPOTHESES = data.get("hypotheses")
+    global FINANCING  # QK3 — bloc financement (QJ12)
+    FINANCING = data.get("financing")
 
     # ERR37 — escape user-controlled client fields before they reach the PDF HTML.
     CLIENT_NAME  = _esc(data["client_name"])

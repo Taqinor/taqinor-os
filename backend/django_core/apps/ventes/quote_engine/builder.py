@@ -212,8 +212,11 @@ def clean_pdf_options(raw) -> dict:
 #
 # Tatwir Croissance Verte (CIH/BMCE/Attijariwafa — PME):
 #   Taux: ~4–5 % an (HT), durée max 7 ans.
-# ISTIDAMA (Crédit Agricole du Maroc — agricole):
-#   Taux: ~3–4 % an (HTT), durée max 10 ans, FDA subsidy compatible.
+# CAM « Saquii Solaire » (Crédit Agricole du Maroc — pompage agricole):
+#   QK3 correction — le pompage solaire est financé par l'offre CAM dédiée
+#   « Saquii Solaire » (~5–6 % an, 10 ans, 1 an de différé), cumulable avec la
+#   subvention FDA 30 %. Le pompage n'est PAS éligible à ISTIDAMA — d'où la
+#   correction ci-dessous (ISTIDAMA retiré du bloc agricole).
 #
 # Residential / uncategorised fall back to a generic green-mortgage proxy
 # (MCMA-style): ~6 % an, 10 ans.
@@ -231,10 +234,10 @@ _FINANCING_PROGRAMS = {
         "programme_label": "Tatwir",
     },
     "agricole": {
-        "nom": "ISTIDAMA (Crédit Agricole du Maroc)",
-        "taux_annuel": 0.035,         # milieu fourchette 3–4 %
-        "duree_mois": 120,            # 10 ans
-        "programme_label": "ISTIDAMA",
+        "nom": "CAM « Saquii Solaire » (Crédit Agricole du Maroc)",
+        "taux_annuel": 0.055,         # milieu fourchette 5–6 %
+        "duree_mois": 120,            # 10 ans (1 an de différé)
+        "programme_label": "Saquii Solaire",
     },
 }
 _DEFAULT_FINANCING_KEY = "residentiel"
@@ -286,7 +289,7 @@ def compute_financing_block(
                 eco_mensuelle_sans: float,
                 eco_mensuelle_avec: float,
             },
-            guidance_text: str | None,  # Tatwir / ISTIDAMA text or None
+            guidance_text: str | None,  # Tatwir / Saquii Solaire text or None
         }
     """
     if not display_total or display_total <= 0:
@@ -327,10 +330,14 @@ def compute_financing_block(
             "réservé aux projets d'efficacité énergétique. Demandez à votre banque."
         )
     elif key == "agricole":
+        # QK3 — le pompage solaire relève de l'offre CAM « Saquii Solaire »
+        # (≈ 5–6 % an, 10 ans, 1 an de différé), cumulable avec la subvention
+        # FDA 30 %. Le pompage n'est PAS éligible à ISTIDAMA.
         guidance = (
-            "Le programme ISTIDAMA du Crédit Agricole du Maroc propose un financement "
-            "dédié au pompage solaire, cumulable avec la subvention FDA 30 %. "
-            "Contactez votre agence CAM pour les conditions exactes."
+            "L'offre « Saquii Solaire » du Crédit Agricole du Maroc finance le "
+            "pompage solaire (≈ 5–6 % an, 10 ans, 1 an de différé), cumulable "
+            "avec la subvention FDA 30 %. Contactez votre agence CAM pour les "
+            "conditions exactes."
         )
 
     return {
