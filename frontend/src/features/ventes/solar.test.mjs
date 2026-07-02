@@ -10,7 +10,7 @@ import {
   computeROI, ttcFromHt, htFromTtc, optionTotalsTTC, autoFillLines, GHI,
   groupProduitsByCategory,
   KWH_PRICE, FALLBACK_KWH_PRICE, kwhFromBill, twoBillsSavings, monthlyBillFromKwh,
-  ONEE_TRANCHES,
+  ONEE_TRANCHES, AUTOCONSO_SANS, AUTOCONSO_AVEC,
 } from './solar.js'
 
 // Reflet du catalogue seedé (prix HT = TTC simulateur / 1.2, 2 décimales)
@@ -620,4 +620,36 @@ test('twoBillsSavings : dégrade en null sans donnée réelle (jamais un chiffre
   assert.equal(twoBillsSavings(6000, 0, 0.6, 'onee'), null) // pas de conso
   assert.equal(twoBillsSavings(6000, 7200, 0, 'onee'), null) // pas de ratio
   assert.equal(twoBillsSavings(6000, 7200, 0.6, 'inconnu'), null) // pas de barème
+})
+
+// ── QF5 — computeROI bascule sur le modèle « deux factures » (parité écran/PDF) ─
+test('QF5 — computeROI : sans consommation réelle, comportement HISTORIQUE inchangé (estimation)', () => {
+  const roi = computeROI({
+    kwp: 5, factures: Array(12).fill(500), dayUsagePct: 60,
+    totalSans: 80000, totalAvec: 100000, batteryKwh: 0,
+  })
+  assert.equal(roi.savings_model, 'estimation')
+  assert.equal(roi.facture_sans, null)
+})
+
+test('QF5 — computeROI : avec consommation réelle + distributeur, bascule sur « deux factures »', () => {
+  const kwp = 5
+  const EFF = 0.8
+  const prodAnnuelle = GHI.reduce((s, g) => s + g * kwp * EFF, 0)
+  const consoAnnuelleKwh = 7200
+  const roi = computeROI({
+    kwp, factures: Array(12).fill(500), dayUsagePct: 60,
+    totalSans: 80000, totalAvec: 100000, batteryKwh: 0,
+    consoAnnuelleKwh, utility: 'onee',
+  })
+  assert.equal(roi.savings_model, 'factures')
+  // Doit correspondre EXACTEMENT à twoBillsSavings appelé avec la même
+  // production annuelle réellement calculée par computeROI (parité interne).
+  const refSans = twoBillsSavings(prodAnnuelle, consoAnnuelleKwh, AUTOCONSO_SANS, 'onee')
+  const refAvec = twoBillsSavings(prodAnnuelle, consoAnnuelleKwh, AUTOCONSO_AVEC, 'onee')
+  assert.equal(roi.eco_annuelle_sans, refSans.economie)
+  assert.equal(roi.eco_annuelle_avec, refAvec.economie)
+  assert.equal(roi.facture_sans, refSans.factureSans)
+  assert.equal(roi.facture_avec_sans, refSans.factureAvec)
+  assert.equal(roi.facture_avec_avec, refAvec.factureAvec)
 })

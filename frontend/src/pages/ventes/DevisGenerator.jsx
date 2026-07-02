@@ -314,6 +314,21 @@ export default function DevisGenerator({
   const dKwp = useDeferredValue(kwp)
   const dDayUsage = useDeferredValue(dayUsage)
 
+  // QF4/QF5 — consommation annuelle RÉELLE dérivée de la facture/kWh du
+  // client (barème par tranche du distributeur choisi). Alimente à la fois
+  // etude_params (à l'enregistrement) et l'aperçu écran (roi ci-dessous) —
+  // UNE seule dérivation, jamais deux chiffres qui pourraient diverger.
+  const consoAnnuelleReelle = (() => {
+    if (realBillMode === 'kwh') {
+      const kwh = parseFloat(realBillKwh) || 0
+      return kwh > 0 ? Math.round(kwh * 12) : null
+    }
+    const mad = parseFloat(realBillMad) || 0
+    if (mad <= 0) return null
+    const { kwhMensuel } = kwhFromBill(mad, distributeur)
+    return kwhMensuel > 0 ? Math.round(kwhMensuel * 12) : null
+  })()
+
   const roi = useMemo(() => {
     if (dKwp <= 0 || !dMonthly.some(v => v > 0)) return null
     return computeROI({
@@ -325,8 +340,12 @@ export default function DevisGenerator({
       batteryKwh: batteryKwhFromLines(dLines),
       kwhPrice: quoteLogic.kwhPrice,
       efficiency: quoteLogic.efficiency,
+      // QF5 — bascule sur le modèle « deux factures » par tranche (parité
+      // PDF) dès qu'une consommation réelle + un distributeur sont connus.
+      consoAnnuelleKwh: consoAnnuelleReelle,
+      utility: distributeur,
     })
-  }, [dKwp, dMonthly, dDayUsage, dTotals, dLines, quoteLogic])
+  }, [dKwp, dMonthly, dDayUsage, dTotals, dLines, quoteLogic, consoAnnuelleReelle, distributeur])
 
   const chartData = useMemo(() => {
     if (!roi) return []
@@ -892,21 +911,6 @@ export default function DevisGenerator({
         kwhPrice: quoteLogic.kwhPrice, efficiency: quoteLogic.efficiency,
       })
     : null
-
-  // QF4 — consommation annuelle RÉELLE dérivée de la facture/kWh du client
-  // (barème par tranche du distributeur choisi), stockée dans etude_params à
-  // l'enregistrement pour que le calcul « deux factures » backend (QF2)
-  // utilise les vrais chiffres du client plutôt qu'un tarif moyen supposé.
-  const consoAnnuelleReelle = (() => {
-    if (realBillMode === 'kwh') {
-      const kwh = parseFloat(realBillKwh) || 0
-      return kwh > 0 ? Math.round(kwh * 12) : null
-    }
-    const mad = parseFloat(realBillMad) || 0
-    if (mad <= 0) return null
-    const { kwhMensuel } = kwhFromBill(mad, distributeur)
-    return kwhMensuel > 0 ? Math.round(kwhMensuel * 12) : null
-  })()
 
   // Disponibilité de l'option « avec batterie » (règle : jamais sans onduleur)
   const avecDispo = avecBatterieAvailability(lines, produits, kwp)
@@ -1581,6 +1585,25 @@ export default function DevisGenerator({
               </p>
             ) : (
               <>
+                {/* QF5 — quand une facture/consommation réelle est capturée
+                    (QF4), l'écran affiche le MÊME calcul « deux factures » par
+                    tranche que le PDF (facture sans vs avec solaire) au lieu
+                    d'une estimation moyenne. */}
+                {roi.savings_model === 'factures' ? (
+                  <div className="mb-3 rounded-lg border border-success/30 bg-success/10 p-3 text-sm text-success">
+                    Facture réelle {distributeur.toUpperCase()} ≈ <strong>{fmtNum(roi.facture_sans)} MAD/an</strong>
+                    {' '}sans solaire → avec solaire ≈{' '}
+                    <strong>
+                      {fmtNum(sansRec || !showAvec ? roi.facture_avec_sans : roi.facture_avec_avec)} MAD/an
+                    </strong>
+                    {' '}— économie calculée par tranche (barème {distributeur.toUpperCase()}), pas une estimation.
+                  </div>
+                ) : (
+                  <div className="mb-3 rounded-lg border border-info/30 bg-info/10 p-3 text-sm text-info">
+                    Estimation (production × autoconsommation × tarif moyen) — renseignez la
+                    facture réelle du client ci-dessus pour un calcul par tranche exact.
+                  </div>
+                )}
                 <div className="gen-metrics-grid">
                   <MetricCard label="Production annuelle"
                               value={fmtNum(Math.round(roi.production_annuelle_kwh))}

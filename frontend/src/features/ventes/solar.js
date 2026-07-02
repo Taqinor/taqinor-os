@@ -63,8 +63,23 @@ export function estimerPanneaux(factureHiver, perTranche = 8) {
   return Math.floor(factureHiver / 900) * (Number.isFinite(n) && n > 0 ? n : 8)
 }
 
+// Taux d'autoconsommation par option — miroir pricing.py AUTOCONSO_SANS/AVEC.
+// Utilisés UNIQUEMENT par le modèle « deux factures » (QF5) ; l'estimation
+// historique ci-dessous continue d'utiliser dayUsagePct (comportement inchangé).
+export const AUTOCONSO_SANS = 0.60
+export const AUTOCONSO_AVEC = 0.85
+
 // ── Simulation ROI (port exact de /api/roi/calculate du simulateur) ──────────
-export function computeROI({ kwp, factures, dayUsagePct, totalSans, totalAvec, batteryKwh, kwhPrice, efficiency }) {
+// QF5 — quand une consommation annuelle RÉELLE + un distributeur connu sont
+// fournis (`consoAnnuelleKwh`/`utility`, capturés par QF4), l'économie bascule
+// sur le modèle « deux factures » par tranche (miroir EXACT du backend QF2) :
+// l'écran affiche alors la MÊME économie que le PDF pour les mêmes entrées.
+// Sans ces données, comportement HISTORIQUE inchangé (estimation production ×
+// autoconsommation diurne × tarif) — jamais de régression pour un devis existant.
+export function computeROI({
+  kwp, factures, dayUsagePct, totalSans, totalAvec, batteryKwh, kwhPrice, efficiency,
+  consoAnnuelleKwh, utility,
+}) {
   // Tarif ONEE et rendement éditables (Paramètres → Avancé) ; sans valeur, on
   // garde EXACTEMENT les constantes historiques (parité simulateur garantie).
   const PRICE = (Number.isFinite(Number(kwhPrice)) && Number(kwhPrice) > 0) ? Number(kwhPrice) : KWH_PRICE
@@ -98,8 +113,26 @@ export function computeROI({ kwp, factures, dayUsagePct, totalSans, totalAvec, b
     })
   }
 
-  const ecoAnnuelleSans = ecoSansMonthly.reduce((s, v) => s + v, 0)
-  const ecoAnnuelleAvec = ecoAvecMonthly.reduce((s, v) => s + v, 0)
+  let ecoAnnuelleSans = ecoSansMonthly.reduce((s, v) => s + v, 0)
+  let ecoAnnuelleAvec = ecoAvecMonthly.reduce((s, v) => s + v, 0)
+
+  // QF2/QF5 — modèle « deux factures » (réel, par tranche) quand consommation
+  // ET barème sont disponibles. Remplace l'estimation ci-dessus par l'économie
+  // réelle facture_sans − facture_avec (jamais les deux mélangés).
+  let savingsModel = 'estimation'
+  let factureSans = null, factureAvecSans = null, factureAvecAvec = null
+  if (productionAnnuelle > 0 && consoAnnuelleKwh > 0 && utility) {
+    const tbSans = twoBillsSavings(productionAnnuelle, consoAnnuelleKwh, AUTOCONSO_SANS, utility)
+    const tbAvec = twoBillsSavings(productionAnnuelle, consoAnnuelleKwh, AUTOCONSO_AVEC, utility)
+    if (tbSans && tbAvec) {
+      savingsModel = 'factures'
+      ecoAnnuelleSans = tbSans.economie
+      ecoAnnuelleAvec = tbAvec.economie
+      factureSans = tbSans.factureSans
+      factureAvecSans = tbSans.factureAvec
+      factureAvecAvec = tbAvec.factureAvec
+    }
+  }
 
   const paybackSans = (ecoAnnuelleSans > 0 && totalSans > 0)
     ? Math.round(totalSans / ecoAnnuelleSans * 10) / 10 : null
@@ -115,6 +148,12 @@ export function computeROI({ kwp, factures, dayUsagePct, totalSans, totalAvec, b
     eco_avec_monthly: ecoAvecMonthly,
     payback_sans: paybackSans,
     payback_avec: paybackAvec,
+    // QF5 — transparence : le PDF (builder.py) porte les mêmes clés
+    // (savings_model/facture_sans/facture_avec_s/facture_avec_a).
+    savings_model: savingsModel,
+    facture_sans: factureSans,
+    facture_avec_sans: factureAvecSans,
+    facture_avec_avec: factureAvecAvec,
   }
 }
 
