@@ -113,3 +113,118 @@ def tva_buckets(lignes, *, fallback_taux, frozen=None):
          'montant': q(buckets[rate] * rate / Decimal('100'))}
         for rate in sorted(buckets)
     ]
+
+
+# ── QJ29 — Multi-propriétés : totaux par villa + total général ───────────────
+# Un seul document, jamais scindé. Deux modes, tous deux additifs :
+#   (A) ×N villas identiques : multiplicateur ``etude_params['nombre_proprietes']``
+#       (défaut 1) appliqué aux totaux HT/TVA/TTC et à la production/économies.
+#   (B) villas différentes : les lignes portent ``groupe_index`` (0 = commun,
+#       1..N = villa N) → sous-totaux par villa + total général.
+# Quand rien n'est utilisé (pas de groupe, N=1), le chemin mono-système reste
+# STRICTEMENT inchangé (aucune de ces fonctions n'est appelée sur ce chemin).
+
+
+def _canonical_totaux(lignes, *, remise_globale_pct, fallback_taux):
+    """QJ29 — chaîne HT → remise → TVA (par taux) → TTC pour un lot de lignes.
+
+    ``lignes`` : itérable de LigneDevis (expose ``total_ht`` et
+    ``taux_tva_effectif``). Renvoie un dict {ht_brut, remise, ht_net, tva,
+    tva_par_taux, ttc}. La remise globale s'applique proportionnellement à chaque
+    panier de taux (comme le builder), réconcilié au centime.
+    """
+    from decimal import Decimal as D, ROUND_HALF_UP as RH
+    lignes = list(lignes)
+    disc = D(str(remise_globale_pct or 0))
+
+    def q(x):
+        return x.quantize(D('0.01'), rounding=RH)
+
+    ht_brut = sum((D(str(li.total_ht)) for li in lignes), D('0'))
+    remise = q(ht_brut * disc / D('100')) if disc > 0 else D('0')
+    ht_net = q(ht_brut - remise)
+
+    buckets = {}
+    for li in lignes:
+        rate = D(str(li.taux_tva_effectif
+                     if li.taux_tva_effectif is not None else fallback_taux))
+        buckets[rate] = buckets.get(rate, D('0')) + D(str(li.total_ht))
+
+    if len(buckets) <= 1:
+        rate = next(iter(buckets), D(str(fallback_taux)))
+        tva_amt = q(ht_net * rate / D('100'))
+        tva_par_taux = [{'taux': rate, 'montant': tva_amt, 'ht_net': ht_net}]
+    else:
+        rates = sorted(buckets)
+        nets = {r: q(buckets[r] * (D('1') - disc / D('100'))) for r in rates}
+        residu = q(ht_net - sum(nets.values(), D('0')))
+        nets[rates[-1]] = q(nets[rates[-1]] + residu)
+        tva_par_taux = [
+            {'taux': r, 'montant': q(nets[r] * r / D('100')), 'ht_net': nets[r]}
+            for r in rates
+        ]
+        tva_amt = q(sum((b['montant'] for b in tva_par_taux), D('0')))
+
+    ttc = q(ht_net + tva_amt)
+    return {
+        'ht_brut': q(ht_brut), 'remise': remise, 'ht_net': ht_net,
+        'tva': tva_amt, 'tva_par_taux': tva_par_taux, 'ttc': ttc,
+    }
+
+
+def multi_villa_totaux(devis):
+    """QJ29 — totaux par villa + total général d'un devis multi-propriétés.
+
+    Renvoie None quand le devis n'est PAS multi-villa (aucune ligne groupée) :
+    le chemin mono-système reste inchangé. Sinon :
+        {
+          'groupes': [{'index', 'label', 'totaux': {...}}, ...],  # trié par index
+          'grand_total': {...},   # chaîne canonique sur TOUTES les lignes
+        }
+    ``index`` 0 = équipement commun. Company scoping : on lit uniquement les
+    lignes du devis fourni (déjà borné à sa société par l'appelant).
+    """
+    lignes = list(devis.lignes.all())
+    grouped = [li for li in lignes if getattr(li, 'groupe_index', None) is not None]
+    if not grouped:
+        return None
+
+    fallback = devis.taux_tva
+    remise = devis.remise_globale
+    by_index = {}
+    labels = {}
+    for li in lignes:
+        idx = getattr(li, 'groupe_index', None)
+        if idx is None:
+            continue
+        by_index.setdefault(idx, []).append(li)
+        lbl = (getattr(li, 'groupe_label', '') or '').strip()
+        if lbl and idx not in labels:
+            labels[idx] = lbl
+
+    groupes = []
+    for idx in sorted(by_index):
+        default_label = 'Équipement commun' if idx == 0 else f'Villa {idx}'
+        groupes.append({
+            'index': idx,
+            'label': labels.get(idx, default_label),
+            'totaux': _canonical_totaux(
+                by_index[idx], remise_globale_pct=remise,
+                fallback_taux=fallback),
+        })
+
+    grand_total = _canonical_totaux(
+        [li for li in lignes if getattr(li, 'groupe_index', None) is not None],
+        remise_globale_pct=remise, fallback_taux=fallback)
+    return {'groupes': groupes, 'grand_total': grand_total}
+
+
+def nombre_proprietes(devis) -> int:
+    """QJ29 (A) — multiplicateur ×N villas identiques stocké dans
+    ``etude_params['nombre_proprietes']`` (défaut 1, jamais < 1). N=1 = chemin
+    mono-système inchangé."""
+    try:
+        n = int((devis.etude_params or {}).get('nombre_proprietes', 1) or 1)
+    except (TypeError, ValueError):
+        n = 1
+    return max(1, n)

@@ -1081,6 +1081,68 @@ def build_quote_data(devis, pdf_options=None) -> dict:
     )
     if financing is not None:
         data["financing"] = financing
+
+    # ── QJ29 — Multi-propriétés (additif, tout optionnel) ────────────────────
+    # (A) ×N villas identiques : multiplicateur whole-quote (défaut 1) qui met à
+    #     l'échelle HT/TVA/TTC + production/économies. N=1 → aucune clé ajoutée
+    #     (chemin mono-système inchangé au bit près).
+    # (B) villas différentes : sous-totaux par villa + total général calculés
+    #     depuis les groupes de lignes (LigneDevis.groupe_index) via le sélecteur.
+    # Les clés ci-dessous ne sont posées QUE lorsqu'elles s'appliquent, donc un
+    # devis mono-système garde une sortie strictement identique.
+    try:
+        from apps.ventes.selectors import multi_villa_totaux, nombre_proprietes
+        _n = nombre_proprietes(devis)
+        if _n > 1:
+            def _scale_tot(t):
+                if not isinstance(t, dict):
+                    return t
+                out = dict(t)
+                for k in ("ht_brut", "remise", "ht_net", "tva", "ttc",
+                          "ttc_exact", "ttc_avant"):
+                    if isinstance(out.get(k), (int, float)):
+                        out[k] = round(out[k] * _n, 2) if k not in (
+                            "ttc", "ttc_avant") else round(out[k] * _n)
+                if isinstance(out.get("tva_par_taux"), list):
+                    out["tva_par_taux"] = [
+                        {**b, "montant": round(b.get("montant", 0) * _n, 2),
+                         "ht_net": round(b.get("ht_net", 0) * _n, 2)}
+                        for b in out["tva_par_taux"]]
+                return out
+            data["nombre_proprietes"] = _n
+            data["display_total_unitaire"] = display_total
+            data["display_total_multi"] = round(display_total * _n)
+            data["totaux_multi"] = {
+                "sans": _scale_tot(totaux_sans),
+                "avec": _scale_tot(totaux_avec),
+                "all": _scale_tot(totaux_all),
+            }
+            data["prod_kwh_multi"] = int(round(roi["prod_kwh"] * _n))
+            data["eco_s_ann_multi"] = int(round(roi["eco_s_ann"] * _n))
+            data["eco_a_ann_multi"] = int(round(roi["eco_a_ann"] * _n))
+        _mv = multi_villa_totaux(devis)
+        if _mv is not None:
+            # Rendu-friendly : totaux Decimal → float pour la sérialisation JSON.
+            def _f(t):
+                out = {k: (float(v) if hasattr(v, "quantize") else v)
+                       for k, v in t.items() if k != "tva_par_taux"}
+                out["tva_par_taux"] = [
+                    {"taux": float(b["taux"]),
+                     "montant": float(b["montant"]),
+                     "ht_net": float(b["ht_net"])}
+                    for b in t.get("tva_par_taux", [])]
+                return out
+            data["multi_villa"] = {
+                "groupes": [
+                    {"index": g["index"], "label": g["label"],
+                     "totaux": _f(g["totaux"])}
+                    for g in _mv["groupes"]],
+                "grand_total": _f(_mv["grand_total"]),
+            }
+    except Exception:  # noqa: BLE001 — un PDF/une liste ne casse jamais ici
+        logger.exception("QJ29 multi-propriétés: ignoré (devis %s)",
+                         getattr(devis, "reference", "?"))
+
     return data
 
 
