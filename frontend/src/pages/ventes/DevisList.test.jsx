@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { render, screen, within, act, fireEvent } from '@testing-library/react'
+import { render, screen, within, act, fireEvent, waitFor } from '@testing-library/react'
 import { Provider } from 'react-redux'
 import { MemoryRouter } from 'react-router-dom'
 import { configureStore } from '@reduxjs/toolkit'
@@ -16,7 +16,20 @@ vi.mock('../../features/ventes/store/ventesSlice', async (importOriginal) => {
   }
 })
 
+// WR1 — espionne l'appel réseau du refus dédié (jamais un PATCH statut direct).
+vi.mock('../../api/ventesApi', async (importOriginal) => {
+  const actual = await importOriginal()
+  return {
+    ...actual,
+    default: {
+      ...actual.default,
+      refuserDevis: vi.fn(() => Promise.resolve({ data: { statut: 'refuse' } })),
+    },
+  }
+})
+
 import DevisList from './DevisList'
+import ventesApi from '../../api/ventesApi'
 
 // Réducteurs minimaux : seules les tranches lues par l'écran (ventes + auth).
 function makeStore({ devis = [], loading = false, error = null, role = 'admin' } = {}) {
@@ -144,6 +157,27 @@ describe('DevisList — U7 : révisions remplacées masquées par défaut', () =
     expect(within(row).getByText('Remplacé')).toBeVisible()
     // Le lien « remplacé par DEV-V2 » est présent dans la ligne remplacée.
     expect(within(row).getByText('DEV-V2')).toBeVisible()
+  })
+})
+
+describe('DevisList — WR1 : refus passe par l\'action dédiée refuser()', () => {
+  it('appelle ventesApi.refuserDevis (jamais un PATCH statut direct)', async () => {
+    vi.spyOn(window, 'confirm').mockReturnValue(true)
+    vi.spyOn(window, 'prompt').mockReturnValue('Trop cher')
+    renderList({
+      loading: false,
+      devis: [{
+        id: 42, reference: 'DEV-REFUS', client_nom: 'ACME', statut: 'envoye',
+        date_creation: '2026-07-01', total_ttc: 5000, nb_options: 1, version: 1,
+      }],
+    })
+    const row = screen.getByText('DEV-REFUS').closest('tr')
+    fireEvent.click(within(row).getByRole('button', { name: /Refuser/ }))
+    await waitFor(() => {
+      expect(ventesApi.refuserDevis).toHaveBeenCalledWith(42, { motif: 'Trop cher' })
+    })
+    window.confirm.mockRestore()
+    window.prompt.mockRestore()
   })
 })
 

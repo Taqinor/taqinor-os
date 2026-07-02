@@ -312,12 +312,15 @@ export default function DevisList() {
     }
   }
 
-  // T3 — Refuser un devis envoyé : PATCH statut:'refuse' après confirmation.
+  // WR1 — Refuser un devis envoyé : passe par l'action dédiée `refuser`
+  // (motif/date/chatter + événement devis_refused qui clôt le lead), plus
+  // JAMAIS un PATCH statut direct qui contournait ce chemin (funnel intact).
   const handleRefuser = async (d) => {
     if (!window.confirm(`Marquer le devis « ${d.reference} » comme refusé ?`)) return
+    const motif = window.prompt('Motif du refus (optionnel) :', '') ?? ''
     setStatutActionId(d.id)
     try {
-      await ventesApi.patchDevis(d.id, { statut: 'refuse' })
+      await ventesApi.refuserDevis(d.id, motif.trim() ? { motif: motif.trim() } : {})
       dispatch(fetchDevis())
       toast.success(`Devis ${d.reference} marqué « Refusé ».`)
     } catch (err) {
