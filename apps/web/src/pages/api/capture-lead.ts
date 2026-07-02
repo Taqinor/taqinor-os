@@ -33,62 +33,6 @@ function json(data: unknown, status = 200, headers: Record<string, string> = {})
   });
 }
 
-/** {lat,lng} fini, ou null. Garde-fou : on n'attache qu'un repère numériquement valide. */
-function cleanRoofPoint(v: unknown): { lat: number; lng: number } | null {
-  if (!v || typeof v !== 'object') return null;
-  const o = v as { lat?: unknown; lng?: unknown };
-  const lat = Number(o.lat);
-  const lng = Number(o.lng);
-  if (!Number.isFinite(lat) || !Number.isFinite(lng)) return null;
-  return { lat, lng };
-}
-
-/** [[lat,lng],…] (≥ 3 paires finies), borné à 200 sommets, ou []. */
-function cleanRoofOutline(v: unknown): Array<[number, number]> {
-  if (!Array.isArray(v)) return [];
-  const out: Array<[number, number]> = [];
-  for (const p of v.slice(0, 200)) {
-    if (!Array.isArray(p) || p.length < 2) continue;
-    const lat = Number(p[0]);
-    const lng = Number(p[1]);
-    if (Number.isFinite(lat) && Number.isFinite(lng)) out.push([lat, lng]);
-  }
-  return out.length >= 3 ? out : [];
-}
-
-/** Nombre fini > 0, sinon null (factures : jamais un nombre absurde / négatif). */
-function cleanMoney(v: unknown): number | null {
-  const n = Number(v);
-  return Number.isFinite(n) && n > 0 ? n : null;
-}
-
-/** Nombre fini, sinon null (coordonnées GPS du repère). */
-function cleanCoord(v: unknown): number | null {
-  const n = Number(v);
-  return Number.isFinite(n) ? n : null;
-}
-
-/** Mode de raccordement reconnu (sinon null — on ne devine pas). */
-function cleanRaccordement(v: unknown): 'monophase' | 'triphase' | 'inconnu' | null {
-  return v === 'monophase' || v === 'triphase' || v === 'inconnu' ? v : null;
-}
-
-/** Adresse (chaîne nettoyée bornée), ou null. */
-function cleanAdresse(v: unknown): string | null {
-  if (typeof v !== 'string') return null;
-  const s = v.trim().slice(0, 200);
-  return s.length > 0 ? s : null;
-}
-
-/** E-mail (WJ3) — validation légère et bornée. On ne devine pas : sans « @ » ou
- *  vide, on renvoie null (le champ est facultatif côté client). */
-function cleanEmail(v: unknown): string | null {
-  if (typeof v !== 'string') return null;
-  const s = v.trim().slice(0, 254);
-  // garde-fou minimal (pas une RFC complète) : un « @ » entouré de caractères.
-  return /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(s) ? s : null;
-}
-
 export const POST: APIRoute = async ({ request }) => {
   // Même garde-fou anti-spam que /api/preview-lead (bucket distinct par endpoint).
   const rl = rateLimit(`capture-lead:${clientIpFromRequest(request)}`);
@@ -114,44 +58,18 @@ export const POST: APIRoute = async ({ request }) => {
   const page = request.headers.get('referer');
   const baseRecord = buildLeadRecord(lead, band, new Date(), page);
 
-  // Champs supplémentaires acceptés par le récepteur Django : repère, contour,
-  // consommation, PROFIL ÉNERGÉTIQUE (W1/W3) + adresse/GPS lus depuis la carte.
-  // Ajoutés UNIQUEMENT s'ils sont valides — sinon l'enregistrement transmis reste
-  // identique à celui de /api/preview-lead. `factureEte`/`eteDifferente` sont liés :
-  // une seule pièce d'info (été ≠ hiver) avec sa valeur d'été.
-  const b = (body ?? {}) as Record<string, unknown>;
-  const roofPoint = cleanRoofPoint(b.roofPoint);
-  const roofOutline = cleanRoofOutline(b.roofOutline);
-  const billKwh = Number(b.billKwh);
-  // W1/W3 — profil énergétique
-  const factureHiver = cleanMoney(b.factureHiver);
-  const eteDifferente = b.eteDifferente === true;
-  // été non différent ⇒ factureEte forcé à null (jamais une valeur résiduelle).
-  const factureEte = eteDifferente ? cleanMoney(b.factureEte) : null;
-  const raccordement = cleanRaccordement(b.raccordement);
-  const adresse = cleanAdresse(b.adresse);
-  // WJ3 — e-mail facultatif joint au record (l'opt-in WhatsApp passe déjà par
-  // validateLead → record.whatsappOptIn). Le contrat reste additif : le récepteur
-  // ignore sans danger un champ inconnu.
-  const email = cleanEmail(b.email);
-  // W3 — GPS issu du repère (priorité au repère validé ; sinon les champs gps* bruts).
-  const gpsLat = roofPoint ? roofPoint.lat : cleanCoord(b.gpsLat);
-  const gpsLng = roofPoint ? roofPoint.lng : cleanCoord(b.gpsLng);
+  // WJ30 — les champs supplémentaires (repère, contour, consommation, profil
+  // énergétique W1/W3, adresse/GPS, e-mail, mode, langue…) sont désormais validés
+  // et JOINTS par validateLead (lib/lead.ts, validateOptionalFields) : baseRecord
+  // les porte déjà, uniquement quand ils sont valides. La SEULE responsabilité
+  // restante ici est le contrat W3 explicite : `factureEte` (number|null) et
+  // `eteDifferente` sont TOUJOURS émis pour signaler « été identique » quand
+  // eteDifferente est faux — le récepteur peut s'y fier.
+  const eteDifferente = lead.eteDifferente === true;
   const record = {
     ...baseRecord,
-    ...(roofPoint ? { roofPoint } : {}),
-    ...(roofOutline.length >= 3 ? { roofOutline } : {}),
-    ...(Number.isFinite(billKwh) && billKwh > 0 ? { billKwh } : {}),
-    ...(factureHiver != null ? { factureHiver } : {}),
-    // `factureEte` est explicitement émis (number|null) pour signaler « été identique »
-    // quand eteDifferente est faux — le récepteur peut s'y fier.
-    factureEte,
+    factureEte: eteDifferente ? lead.factureEte ?? null : null,
     eteDifferente,
-    ...(raccordement ? { raccordement } : {}),
-    ...(adresse ? { adresse } : {}),
-    ...(email ? { email } : {}),
-    ...(gpsLat != null ? { gpsLat } : {}),
-    ...(gpsLng != null ? { gpsLng } : {}),
   };
 
   const background = (async () => {
