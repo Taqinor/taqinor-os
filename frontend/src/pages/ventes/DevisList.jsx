@@ -24,6 +24,7 @@ import {
   RadioGroup, RadioGroupItem, Checkbox, Label, Input, Segmented, toast,
 } from '../../ui'
 import { formatMAD } from '../../lib/format'
+import { filenameFromResponse } from '../../utils/downloadBlob'
 import { proposalParams, pdfBlob } from '../../features/ventes/previewPdf'
 import { useSavedViews } from '../../hooks/useSavedViews'
 import { useDelayedLoading } from '../../hooks/useDelayedLoading'
@@ -485,7 +486,8 @@ export default function DevisList() {
     setPdfDownloading(prev => ({ ...prev, [d.id]: true }))
     try {
       const res = await ventesApi.telechargerPdfDevis(d.id)
-      openPdfBlob(res.data, `${d.reference}.pdf`)
+      // QD2 — nom cohérent posé par le serveur (repli sur la référence).
+      openPdfBlob(res.data, filenameFromResponse(res, `${d.reference}.pdf`))
     } catch {
       toast.error('Fichier introuvable. Régénérez le PDF.')
     } finally {

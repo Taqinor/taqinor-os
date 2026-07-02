@@ -16,6 +16,7 @@ import {
   proposalParams, pdfBlob, previewView, classifyFetchError, PREVIEW_VIEW,
 } from '../../../features/ventes/previewPdf'
 import DevisGenerator from '../../ventes/DevisGenerator'
+import { filenameFromResponse } from '../../../utils/downloadBlob'
 import { Button, Input, Spinner, Segmented, Checkbox, EmptyState } from '../../../ui'
 
 // Le rendu PDF.js (canvas) est chargé à la demande (gros module) : il ne pèse
@@ -189,7 +190,8 @@ export default function LeadDevisPanel({ lead, mode, onClose, onDevisChanged, ex
     try {
       const res = await ventesApi.getProposalPdf(
         devisId, proposalParams(pdfMode, includeEtude))
-      downloadBlob(res.data, `${devisRef || 'Devis'}.pdf`)
+      // QD2 — nom cohérent posé par le serveur (repli sur la référence).
+      downloadBlob(res.data, filenameFromResponse(res, `${devisRef || 'Devis'}.pdf`))
     } catch {
       setErrorMsg('Téléchargement du PDF indisponible. Réessayez.')
     } finally {

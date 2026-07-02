@@ -151,18 +151,28 @@ def public_document(request, token):
     is_first = _stamp_view(link)
 
     try:
+        from .utils.filenames import document_filename
         if link.devis_id:
             # ERR74 — public share link is a safe GET: render + stream without
             # persisting fichier_pdf on every access (persist=False).
             key = generate_premium_devis_pdf(
                 link.devis_id, clean_pdf_options({}), persist=False)
             pdf_bytes = download_pdf(key)
-            filename = f'Devis_{link.devis.reference}.pdf'
+            # QD2 — nom cohérent (société _ type _ client _ référence).
+            devis = link.devis
+            filename = document_filename(
+                'Devis', devis.reference,
+                client=devis.client if devis.client_id else None,
+                company=devis.company)
         elif link.facture_id:
             facture = link.facture
             key = facture.fichier_pdf or generate_facture_pdf(facture.id)
             pdf_bytes = download_pdf(key)
-            filename = f'Facture_{facture.reference}.pdf'
+            # QD2 — nom cohérent (société _ type _ client _ référence).
+            filename = document_filename(
+                'Facture', facture.reference,
+                client=facture.client if facture.client_id else None,
+                company=facture.company)
         else:
             return _not_found()
     except Exception:

@@ -211,6 +211,14 @@ class BonCommandeFournisseurViewSet(TenantMixin, viewsets.ModelViewSet):
         bc = self.get_object()
         pdf_bytes = generate_bcf_pdf(bc)
         response = HttpResponse(pdf_bytes, content_type='application/pdf')
+        # QD2 — nom cohérent (société _ type _ fournisseur _ référence). Le
+        # segment « fournisseur » réutilise le paramètre client du helper
+        # (Fournisseur porte .nom) — jamais de prix d'achat dans le nom.
+        from apps.ventes.utils.filenames import document_filename
+        filename = document_filename(
+            'Bon-de-commande', bc.reference,
+            client=bc.fournisseur if bc.fournisseur_id else None,
+            company=bc.company)
         response['Content-Disposition'] = (
-            f'inline; filename="{bc.reference}.pdf"')
+            f'inline; filename="{filename}"')
         return response

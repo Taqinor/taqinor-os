@@ -3,7 +3,7 @@ import { useLocation, useNavigate } from 'react-router-dom'
 import { Plus, FileText, Undo2, Package, Trash2 } from 'lucide-react'
 import stockApi from '../../api/stockApi'
 import BcfProduitPicker from './BcfProduitPicker'
-import { downloadBlob } from '../../utils/downloadBlob'
+import { downloadBlob, filenameFromResponse } from '../../utils/downloadBlob'
 import {
   Button, IconButton, StatusPill, DataTable,
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter,
@@ -294,7 +294,8 @@ function BcfDetail({ bcf, fournisseurs, produits, onClose, onSaved }) {
   const telechargerPdf = async () => {
     try {
       const r = await stockApi.bcfPdf(bcf.id)
-      downloadBlob(r.data, `${bcf.reference ?? 'BCF'}.pdf`)
+      // QD2 — nom cohérent posé par le serveur (repli sur la référence).
+      downloadBlob(r.data, filenameFromResponse(r, `${bcf.reference ?? 'BCF'}.pdf`))
     } catch { setError('PDF indisponible.') }
   }
 

@@ -1193,8 +1193,14 @@ class DevisViewSet(viewsets.ModelViewSet):
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR,
             )
         response = HttpResponse(pdf_bytes, content_type='application/pdf')
+        # QD2 — nom cohérent (société _ type _ client _ référence).
+        from ..utils.filenames import document_filename
+        filename = document_filename(
+            'Proposition', devis.reference,
+            client=devis.client if devis.client_id else None,
+            company=devis.company)
         response['Content-Disposition'] = (
-            f'inline; filename="Proposition_{devis.reference}.pdf"'
+            f'inline; filename="{filename}"'
         )
         return response
 
@@ -1297,7 +1303,12 @@ class DevisViewSet(viewsets.ModelViewSet):
                 status=status.HTTP_404_NOT_FOUND,
             )
         response = HttpResponse(pdf_bytes, content_type='application/pdf')
-        filename = f'{devis.reference}.pdf'
+        # QD2 — nom cohérent (société _ type _ client _ référence).
+        from ..utils.filenames import document_filename
+        filename = document_filename(
+            'Devis', devis.reference,
+            client=devis.client if devis.client_id else None,
+            company=devis.company)
         response['Content-Disposition'] = (
             f'inline; filename="{filename}"'
         )
