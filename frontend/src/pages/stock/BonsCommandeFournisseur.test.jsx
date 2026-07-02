@@ -1,7 +1,10 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, screen, fireEvent, waitFor } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom'
+import { Provider } from 'react-redux'
+import { configureStore } from '@reduxjs/toolkit'
 import { ThemeProvider } from '../../design/ThemeProvider.jsx'
+import authReducer from '../../features/auth/store/authSlice'
 
 /* ============================================================================
    QS1 — bouton « PDF (interne) » du bon de commande fournisseur.
@@ -9,22 +12,47 @@ import { ThemeProvider } from '../../design/ThemeProvider.jsx'
    « PDF indisponible. » et rien ne s'ouvrait. Après : le PDF s'ouvre dans un
    nouvel onglet (repli téléchargement si popup bloquée) et la VRAIE erreur
    serveur est affichée (lue depuis le Blob d'erreur DRF).
+
+   QS2 — « + Nouveau produit » dans le BCF (réservé Directeur/Commercial
+   responsable), QS4 — boutons Envoyer WhatsApp / email (grisés sans contact).
+   Le BcfDetail consulte désormais le hook de rôle → Provider Redux requis.
    ========================================================================== */
 
 vi.mock('../../api/stockApi', () => ({
-  default: { bcfPdf: vi.fn() },
+  default: {
+    bcfPdf: vi.fn(),
+    createProduit: vi.fn(),
+    whatsappBcf: vi.fn(),
+    envoyerEmailBcf: vi.fn(),
+  },
 }))
 
 import stockApi from '../../api/stockApi'
 import { BcfDetail } from './BonsCommandeFournisseur.jsx'
 import { messageErreurBlob } from '../../utils/pdfBlob'
 
-function wrapper({ children }) {
-  return (
-    <MemoryRouter>
-      <ThemeProvider>{children}</ThemeProvider>
-    </MemoryRouter>
-  )
+function makeStore({ role_nom = 'Magasinier', permissions = [] } = {}) {
+  return configureStore({
+    reducer: { auth: authReducer },
+    preloadedState: {
+      auth: {
+        user: { id: 1 }, role: 'normal', role_nom, permissions,
+        isAuthenticated: true, loading: false,
+      },
+    },
+  })
+}
+
+function makeWrapper(authState) {
+  return function wrapper({ children }) {
+    return (
+      <Provider store={makeStore(authState)}>
+        <MemoryRouter>
+          <ThemeProvider>{children}</ThemeProvider>
+        </MemoryRouter>
+      </Provider>
+    )
+  }
 }
 
 const bcf = {
@@ -35,11 +63,11 @@ const bcf = {
   lignes: [],
 }
 
-function renderDetail() {
+function renderDetail(props = {}, authState) {
   return render(
     <BcfDetail bcf={bcf} fournisseurs={[]} produits={[]}
-               onClose={() => {}} onSaved={() => {}} />,
-    { wrapper },
+               onClose={() => {}} onSaved={() => {}} {...props} />,
+    { wrapper: makeWrapper(authState) },
   )
 }
 
@@ -56,6 +84,7 @@ beforeEach(() => {
       addEventListener: vi.fn(), removeEventListener: vi.fn(), dispatchEvent: vi.fn(),
     }))
   }
+  if (!Element.prototype.scrollIntoView) Element.prototype.scrollIntoView = () => {}
 })
 
 describe('QS1 — PDF (interne) : ouverture', () => {
@@ -146,5 +175,36 @@ describe('QS1 — messageErreurBlob (unitaire)', () => {
   it('accepte aussi une donnée déjà décodée (objet)', async () => {
     const err = { response: { status: 500, data: { detail: 'Erreur interne.' } } }
     expect(await messageErreurBlob(err)).toBe('Erreur interne.')
+  })
+})
+
+// ── QS2 — « + Nouveau produit » dans le BCF (réservé Directeur/Commercial resp.) ─
+const newBcf = { fournisseur: '', lignes: [{ produit: '', quantite: 1, prix_achat_unitaire: '' }] }
+
+describe('QS2 — création produit inline dans le BCF', () => {
+  it('rôle non autorisé (Magasinier) : bouton « Nouveau produit » absent', () => {
+    renderDetail({ bcf: newBcf, produits: [] }, { role_nom: 'Magasinier', permissions: [] })
+    expect(screen.queryByLabelText('Nouveau produit')).toBeNull()
+  })
+
+  it('rôle autorisé (Directeur) : bouton présent, crée + dépose sur la ligne avec prix d\'achat', async () => {
+    stockApi.createProduit.mockResolvedValue({
+      data: { id: 55, nom: 'Module test', prix_vente: 5000, prix_achat: 3200, is_archived: false },
+    })
+    renderDetail({ bcf: newBcf, produits: [] }, { role_nom: 'Directeur', permissions: ['stock_creer'] })
+    fireEvent.click(screen.getByLabelText('Nouveau produit'))
+    fireEvent.change(screen.getByLabelText(/Nom du produit/), { target: { value: 'Module test' } })
+    fireEvent.click(screen.getByRole('button', { name: /Créer et sélectionner/ }))
+    await waitFor(() => expect(stockApi.createProduit).toHaveBeenCalled())
+    // La ligne pointe désormais sur le nouveau produit (nom affiché dans le picker).
+    await waitFor(() => expect(screen.getByText('Module test')).toBeInTheDocument())
+    // Prix d'achat U. (interne) pré-rempli depuis prix_achat renvoyé par le serveur.
+    await waitFor(() => expect(screen.getByDisplayValue('3200')).toBeInTheDocument())
+  })
+
+  it('rôle autorisé (Commercial responsable) : bouton présent', () => {
+    renderDetail({ bcf: newBcf, produits: [] },
+      { role_nom: 'Commercial responsable', permissions: ['stock_creer'] })
+    expect(screen.getByLabelText('Nouveau produit')).toBeInTheDocument()
   })
 })

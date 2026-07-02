@@ -3,6 +3,8 @@ import { useLocation, useNavigate } from 'react-router-dom'
 import { Plus, FileText, Undo2, Package, Trash2 } from 'lucide-react'
 import stockApi from '../../api/stockApi'
 import BcfProduitPicker from './BcfProduitPicker'
+import ProduitQuickCreateModal from '../../components/ProduitQuickCreateModal'
+import { useCanCreateProduit } from '../../hooks/useHasPermission'
 import { filenameFromResponse } from '../../utils/downloadBlob'
 import { ouvrirPdfBlob, estBlobPdf, messageErreurBlob } from '../../utils/pdfBlob'
 import {
@@ -161,6 +163,9 @@ export function BcfDetail({ bcf, fournisseurs, produits, onClose, onSaved }) {
   const isNew = !bcf?.id
   const statut = bcf?.statut ?? 'brouillon'
   const editableLignes = isNew || statut === 'brouillon'
+  // QS2 — « + Nouveau produit » : réservé à Directeur + Commercial responsable
+  // (hook QG5 ; backend QG4 est la garde qui compte). Réutilise la modale QG6.
+  const canCreateProduit = useCanCreateProduit()
 
   const [fournisseur, setFournisseur] = useState(bcf?.fournisseur ?? '')
   const [dateCommande, setDateCommande] = useState(bcf?.date_commande ?? '')
@@ -173,6 +178,12 @@ export function BcfDetail({ bcf, fournisseurs, produits, onClose, onSaved }) {
   const [error, setError] = useState(null)
   const [showRetour, setShowRetour] = useState(false)
   const [info, setInfo] = useState(null)
+  // QS2 — produits créés à la volée (fusionnés au catalogue prop, en lecture
+  // seule) + la ligne sur laquelle déposer le produit fraîchement créé.
+  const [extraProduits, setExtraProduits] = useState([])
+  const [quickCreateIdx, setQuickCreateIdx] = useState(null)
+  const allProduits = useMemo(
+    () => [...(produits ?? []), ...extraProduits], [produits, extraProduits])
 
   const total = useMemo(() => totalAchat(lignes), [lignes])
   const reception = useMemo(() => avancementReception(bcf?.lignes ?? lignes), [bcf, lignes])
@@ -198,12 +209,34 @@ export function BcfDetail({ bcf, fournisseurs, produits, onClose, onSaved }) {
       const next = { ...l, produit: produitId }
       const sansPrix = l.prix_achat_unitaire === '' || l.prix_achat_unitaire == null
       if (sansPrix) {
-        const prod = (produits ?? []).find((p) => String(p.id) === String(produitId))
+        const prod = allProduits.find((p) => String(p.id) === String(produitId))
         const cat = prod ? Number(prod.prix_achat) : 0
         if (cat > 0) next.prix_achat_unitaire = String(cat)
       }
       return next
     }))
+  }
+
+  // QS2 — produit créé à la volée : l'ajoute au catalogue local, le dépose sur
+  // la ligne d'origine et pré-remplit son prix d'achat (interne) depuis
+  // `prix_achat` — jamais transmis par le client, renvoyé par le serveur
+  // seulement aux rôles autorisés à le voir. On dérive le prix d'achat DIRECTEMENT
+  // de l'objet produit renvoyé (pas via allProduits, dont le state n'est pas
+  // encore à jour dans ce même tick).
+  const onProduitCreatedForLine = (produit) => {
+    setExtraProduits((ps) => [...ps, produit])
+    const idx = quickCreateIdx
+    if (idx != null) {
+      setLignes((ls) => ls.map((l, i) => {
+        if (i !== idx) return l
+        const next = { ...l, produit: String(produit.id) }
+        const sansPrix = l.prix_achat_unitaire === '' || l.prix_achat_unitaire == null
+        const cat = Number(produit.prix_achat) || 0
+        if (sansPrix && cat > 0) next.prix_achat_unitaire = String(cat)
+        return next
+      }))
+    }
+    setQuickCreateIdx(null)
   }
 
   const buildPayload = () => ({
@@ -410,8 +443,19 @@ export function BcfDetail({ bcf, fournisseurs, produits, onClose, onSaved }) {
                     <tr key={l.id ?? `new-${idx}`} className="border-t border-border">
                       <td className="px-3 py-2">
                         {editableLignes ? (
-                          <BcfProduitPicker produits={produits} value={l.produit}
-                                            onChange={(v) => pickProduit(idx, v)} />
+                          <div className="flex items-center gap-1">
+                            <div className="flex-1">
+                              <BcfProduitPicker produits={allProduits} value={l.produit}
+                                                onChange={(v) => pickProduit(idx, v)} />
+                            </div>
+                            {canCreateProduit && (
+                              <IconButton type="button" label="Nouveau produit" size="sm"
+                                          className="size-8 text-primary hover:bg-accent"
+                                          onClick={() => setQuickCreateIdx(idx)}>
+                                <Plus />
+                              </IconButton>
+                            )}
+                          </div>
                         ) : (
                           <span>{l.produit_nom ?? '—'}{l.produit_sku ? ` (${l.produit_sku})` : ''}</span>
                         )}
@@ -524,6 +568,15 @@ export function BcfDetail({ bcf, fournisseurs, produits, onClose, onSaved }) {
       {showRetour && (
         <RetourModal bcf={bcf} onClose={() => setShowRetour(false)}
                      onDone={(msg) => { onSaved?.(); if (msg) setInfo(msg) }} />
+      )}
+      {/* QS2 — création rapide de produit (réutilise la modale QG6) puis dépôt
+          sur la ligne du BCF avec pré-remplissage du prix d'achat interne. */}
+      {canCreateProduit && (
+        <ProduitQuickCreateModal
+          open={quickCreateIdx != null}
+          onClose={() => setQuickCreateIdx(null)}
+          onCreated={onProduitCreatedForLine}
+        />
       )}
     </Dialog>
   )
