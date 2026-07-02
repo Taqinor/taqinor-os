@@ -290,6 +290,54 @@ class CommissioningIVReading(models.Model):
         return f'I-V {self.string_label} (recette {self.record_id})'
 
 
+class HandoverPack(models.Model):
+    """CH4 — PACK DE REMISE client assemblé au franchissement du gate « Remise
+    au client » (handover).
+
+    Le pack RÉFÉRENCE (il ne stocke pas de binaire) les pièces du dossier remis
+    au client + au vendeur : dossier as-built / schémas, fiches techniques
+    (datasheets) des équipements, garanties (issues du parc SAV — FG70), le
+    certificat de recette IEC 62446-1 (CH3), la référence du dossier
+    réglementaire loi 82-21, et l'accès monitoring / application. La liste des
+    pièces est un JSON `[{type, libelle, reference, present}]`, calculé côté
+    serveur à partir de l'état réel du chantier — il DÉGRADE proprement quand
+    une pièce manque (elle apparaît `present=False` plutôt que d'empêcher la
+    génération).
+
+    Un chantier ↔ un pack (unicité). Additif — company posée côté serveur ;
+    aucun prix d'achat, aucun statut de devis touché (règle #4)."""
+    company = models.ForeignKey(
+        'authentication.Company', on_delete=models.CASCADE,
+        null=True, blank=True, related_name='handover_packs')
+    installation = models.OneToOneField(
+        Installation, on_delete=models.CASCADE,
+        related_name='handover_pack')
+    titre = models.CharField(max_length=160, blank=True, null=True)
+    # Pièces assemblées : [{type, libelle, reference, present}].
+    pieces = models.JSONField(default=list, blank=True)
+    # Accès monitoring / application (URL ou identifiant de portail) remis au
+    # client. Optionnel : dégrade proprement quand il n'est pas encore fourni.
+    monitoring_acces = models.CharField(max_length=255, blank=True, null=True)
+    # True dès que toutes les pièces OBLIGATOIRES sont présentes (calculé au
+    # ré-assemblage) — c'est ce que le gate « Remise au client » exige.
+    complet = models.BooleanField(default=False)
+    date_generation = models.DateTimeField(null=True, blank=True)
+    notes = models.TextField(blank=True, null=True)
+    created_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL,
+        null=True, blank=True, related_name='handover_packs_crees')
+    date_creation = models.DateTimeField(auto_now_add=True)
+    date_modification = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = 'Pack de remise client'
+        verbose_name_plural = 'Packs de remise client'
+        ordering = ['-date_creation']
+
+    def __str__(self):
+        return f'Pack de remise — chantier {self.installation_id}'
+
+
 class StockReservation(models.Model):
     """N14 — réservation de stock d'un chantier sur un SKU (produit catalogue).
 

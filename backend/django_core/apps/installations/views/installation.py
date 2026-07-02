@@ -129,6 +129,16 @@ def _apply_reception_handover(inst, canon_old, canon_new, user):
             f"{crees} équipement(s) ajouté(s) au parc"
             + (f", {existants} déjà couvert(s)" if existants else "")
             + detail + ".")
+    # CH4 — au passage à « Réceptionné » (gate de remise), assemble le pack de
+    # remise client (idempotent, dégrade proprement). Le pack RÉFÉRENCE l'état
+    # réel du chantier ; sa génération n'échoue jamais.
+    from ..services import generer_handover_pack
+    pack = generer_handover_pack(inst, user)
+    activity.log_note(
+        inst, user,
+        "Pack de remise "
+        + ("assemblé (complet)." if pack.complet
+           else "assemblé (pièces manquantes — voir le détail)."))
     return resume
 
 
@@ -237,6 +247,8 @@ class InstallationViewSet(TenantMixin, viewsets.ModelViewSet):
             'etapes',
             # CH3 — fiche de recette IEC 62446-1 (lecture ; POST auto-gardé).
             'recette',
+            # CH4 — pack de remise client (lecture ; POST auto-gardé).
+            'pack_remise',
         ]:
             return [IsAnyRole()]
         elif self.action in WRITE_ACTIONS + [
@@ -920,6 +932,41 @@ class InstallationViewSet(TenantMixin, viewsets.ModelViewSet):
         if record is None:
             return Response({'installation': inst.id, 'record': None})
         return Response(CommissioningRecordSerializer(record).data)
+
+    # ── CH4 — pack de remise client (handover) ──────────────────────────────
+    @action(detail=True, methods=['get', 'post'], url_path='pack-remise',
+            permission_classes=[IsAnyRole])
+    def pack_remise(self, request, pk=None):
+        """CH4 — pack de remise client du chantier. GET assemble à blanc l'état
+        des pièces (dégrade proprement, sans persister) ; POST (Responsable/
+        Admin) assemble ET persiste le pack (idempotent). Le pack RÉFÉRENCE les
+        pièces réelles : as-built/schémas, datasheets, garanties (parc FG70),
+        certificat de recette IEC 62446-1 (CH3), dossier 82-21, accès
+        monitoring — une pièce manquante apparaît `present=False`."""
+        from ..services import (
+            assemble_handover_pieces, generer_handover_pack,
+        )
+        from ..serializers_commissioning import HandoverPackSerializer
+        inst = self.get_object()
+        if request.method == 'POST':
+            if not request.user.is_responsable:
+                return Response(status=status.HTTP_403_FORBIDDEN)
+            pack = generer_handover_pack(inst, request.user)
+            return Response(
+                HandoverPackSerializer(pack).data,
+                status=status.HTTP_201_CREATED)
+        # GET — aperçu à blanc (ou le pack persisté s'il existe).
+        pack = getattr(inst, 'handover_pack', None)
+        if pack is not None:
+            return Response(HandoverPackSerializer(pack).data)
+        resume = assemble_handover_pieces(inst)
+        return Response({
+            'installation': inst.id,
+            'reference': inst.reference,
+            'pieces': resume['pieces'],
+            'complet': resume['complet'],
+            'persiste': False,
+        })
 
     @action(detail=True, methods=['post'], url_path='avancer-etape',
             permission_classes=[IsResponsableOrAdmin])

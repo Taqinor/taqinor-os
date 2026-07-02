@@ -1,7 +1,7 @@
-"""CH3 — Sérialiseurs de la fiche de recette IEC 62446-1 côté installations."""
+"""CH3/CH4 — Sérialiseurs recette IEC 62446-1 + pack de remise (installations)."""
 from rest_framework import serializers
 
-from .models import CommissioningRecord, CommissioningIVReading
+from .models import CommissioningRecord, CommissioningIVReading, HandoverPack
 
 
 class CommissioningIVReadingSerializer(serializers.ModelSerializer):
@@ -36,3 +36,14 @@ class CommissioningRecordSerializer(serializers.ModelSerializer):
             'resultat', 'resultat_display', 'passe', 'observations',
             'ventes_recette_id', 'iv_readings',
         ]
+
+
+class HandoverPackSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = HandoverPack
+        fields = [
+            'id', 'installation', 'titre', 'pieces', 'monitoring_acces',
+            'complet', 'date_generation', 'notes',
+        ]
+        # Les pièces et « complet » sont assemblés côté serveur.
+        read_only_fields = ['pieces', 'complet', 'date_generation']

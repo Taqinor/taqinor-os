@@ -951,9 +951,16 @@ def _gate_check_dossier(installation):
 
 
 def _gate_check_pack(installation):
-    """Pièces obligatoires du pack de remise client (CH4)."""
-    # CH2 — le pack de remise arrive en CH4 ; d'ici là l'exigence ne bloque
-    # pas (les autres exigences de l'étape de remise s'appliquent déjà).
+    """CH4 — le pack de remise client doit assembler ses pièces OBLIGATOIRES.
+
+    Assemble (à blanc, sans persister) l'état du pack et rejette tant qu'une
+    pièce obligatoire manque. Dégrade proprement : les pièces facultatives
+    absentes ne bloquent pas."""
+    resume = assemble_handover_pieces(installation)
+    manquantes = [p['libelle'] for p in resume['pieces']
+                  if p.get('obligatoire') and not p.get('present')]
+    if manquantes:
+        return ("Pack de remise incomplet : " + ", ".join(manquantes) + ".")
     return None
 
 
@@ -1179,3 +1186,121 @@ def compute_iv_ecart(reading):
     # Un écart NÉGATIF au-delà de la tolérance = sous-performance/défaut.
     reading.defaut_detecte = ecart <= Decimal(-IV_TOLERANCE_PMAX_PCT)
     return reading
+
+
+# ── CH4 — Pack de remise client (handover) ───────────────────────────────────
+# Le pack assemble les pièces du dossier remis au client + au vendeur en
+# RÉFÉRENÇANT l'état réel du chantier (jamais de binaire stocké). Chaque pièce
+# porte {type, libelle, reference, present, obligatoire}. Il DÉGRADE proprement
+# quand une pièce manque (present=False plutôt qu'un plantage). Les pièces
+# OBLIGATOIRES (as-built, certificat de recette, garanties, dossier 82-21 quand
+# requis) sont ce que le gate « Remise au client » exige (CH2).
+
+def assemble_handover_pieces(installation):
+    """Assemble (SANS persister) la liste des pièces du pack de remise d'un
+    chantier depuis son état réel. Renvoie {pieces: [...], complet: bool} —
+    `complet` est True quand toutes les pièces OBLIGATOIRES sont présentes."""
+    pieces = []
+
+    # ── As-built / schémas (DocumentProjet — même app) ──
+    docs = list(installation.inst_documents.all())
+    schema = next((d for d in docs
+                   if d.type_doc == 'schema_unifilaire'), None)
+    pieces.append({
+        'type': 'as_built',
+        'libelle': 'Dossier as-built / schéma unifilaire',
+        'reference': schema.titre if schema is not None else (
+            docs[0].titre if docs else None),
+        'present': bool(docs),
+        'obligatoire': True,
+    })
+
+    # ── Fiches techniques (datasheets) des équipements du parc (FG70) ──
+    equipements = [eq for eq in installation.equipements.all()
+                   if getattr(eq, 'statut', None) != 'remplace']
+    datasheets = [eq for eq in equipements
+                  if getattr(getattr(eq, 'produit', None), 'description', None)]
+    pieces.append({
+        'type': 'datasheets',
+        'libelle': 'Fiches techniques des équipements',
+        'reference': f'{len(datasheets)} fiche(s)' if datasheets else None,
+        'present': bool(datasheets),
+        'obligatoire': False,
+    })
+
+    # ── Garanties (issues du parc SAV — FG70) ──
+    garanties = [eq for eq in equipements
+                 if getattr(eq, 'date_fin_garantie', None) is not None]
+    pieces.append({
+        'type': 'garanties',
+        'libelle': 'Garanties matériel & production',
+        'reference': f'{len(garanties)} équipement(s) couvert(s)'
+        if garanties else None,
+        'present': bool(garanties),
+        'obligatoire': True,
+    })
+
+    # ── Certificat de recette IEC 62446-1 (CH3) ──
+    record = getattr(installation, 'commissioning_record', None)
+    recette_ok = record is not None and record.passe
+    pieces.append({
+        'type': 'commissioning',
+        'libelle': 'Certificat de recette IEC 62446-1',
+        'reference': (record.get_resultat_display()
+                      if record is not None else None),
+        'present': recette_ok,
+        'obligatoire': True,
+    })
+
+    # ── Dossier réglementaire loi 82-21 (obligatoire seulement si requis) ──
+    dossier_requis = (installation.regime_8221
+                      != Installation.Regime8221.NON_CONCERNE)
+    dossier_present = bool(installation.dossier_reference) or (
+        installation.dossier_statut in (
+            Installation.DossierStatut.APPROUVE,
+            Installation.DossierStatut.COMPTEUR_POSE))
+    pieces.append({
+        'type': 'dossier_8221',
+        'libelle': 'Dossier réglementaire loi 82-21',
+        'reference': installation.dossier_reference or (
+            installation.get_dossier_statut_display()
+            if dossier_requis else 'Non concerné'),
+        'present': (not dossier_requis) or dossier_present,
+        'obligatoire': dossier_requis,
+    })
+
+    # ── Accès monitoring / application ──
+    pack = getattr(installation, 'handover_pack', None)
+    monitoring = getattr(pack, 'monitoring_acces', None) if pack else None
+    pieces.append({
+        'type': 'monitoring',
+        'libelle': 'Accès monitoring / application',
+        'reference': monitoring,
+        'present': bool(monitoring),
+        'obligatoire': False,
+    })
+
+    complet = all(p['present'] for p in pieces if p['obligatoire'])
+    return {'pieces': pieces, 'complet': complet}
+
+
+def generer_handover_pack(installation, user=None):
+    """CH4 — assemble ET PERSISTE le pack de remise du chantier (idempotent :
+    un chantier ↔ un pack ; le ré-assemblage rafraîchit les pièces). Renvoie le
+    HandoverPack. Dégrade proprement : un pack incomplet est produit quand même
+    (complet=False), il ne plante jamais."""
+    from django.utils import timezone
+    from .models import HandoverPack
+    resume = assemble_handover_pieces(installation)
+    pack, _ = HandoverPack.objects.get_or_create(
+        installation=installation,
+        defaults={'company': installation.company, 'created_by': user})
+    pack.company = installation.company
+    pack.pieces = resume['pieces']
+    pack.complet = resume['complet']
+    pack.date_generation = timezone.now()
+    if not pack.titre:
+        pack.titre = f'Pack de remise — {installation.reference}'
+    pack.save(update_fields=[
+        'company', 'pieces', 'complet', 'date_generation', 'titre'])
+    return pack
