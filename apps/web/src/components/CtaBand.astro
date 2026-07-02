@@ -6,7 +6,7 @@
  */
 import ZelligeDivider from './ZelligeDivider.astro';
 import { getLocaleFromPath, useTranslations } from '../i18n/utils';
-import { localizeNavHref } from '../i18n/pages';
+import { quoteJourneyHref } from '../i18n/pages';
 
 interface Props {
   title?: string;
@@ -16,14 +16,15 @@ interface Props {
   seam?: boolean;
 }
 // Locale déduite de l'URL ; défauts traduits (repli FR → rendu FR inchangé).
-// Le lien par défaut /contact#simulateur est localisé vers la page contact de
-// la locale courante (qui existe : /contact a ses routes /en/ et /ar/).
+// WJ36 — le lien par défaut est le parcours devis /devis/mon-toit via
+// quoteJourneyHref (point de bascule unique de WJ38 pour EN/AR), et le
+// libellé par défaut est LE CTA principal du site (cta.primary, verbatim).
 const locale = getLocaleFromPath(Astro.url.pathname);
 const t = useTranslations(locale);
-const defaultHref = localizeNavHref('/contact', locale) + '#simulateur';
+const defaultHref = quoteJourneyHref(locale);
 const {
   title = t('cta.title'),
-  buttonLabel = t('cta.button'),
+  buttonLabel = t('cta.primary'),
   href = defaultHref,
   seam = true,
 } = Astro.props;

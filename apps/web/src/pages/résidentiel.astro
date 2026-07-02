@@ -102,8 +102,8 @@ const brackets = BILL_RANGES.filter((r) => r.qualifies && r.id !== 'gt10000').ma
         </p>
         <div class="cine-in cine-in-3 mt-10 flex flex-wrap items-center gap-3">
           {/* UN seul CTA brass (discipline laiton) — l'or est ici autorisé */}
-          <a href="#simulateur" class="glow-hero bg-brass-400 px-8 py-4 text-lg font-bold text-azur-950 transition-all hover:bg-brass-300">
-            Estimer mon installation →
+          <a href="/devis/mon-toit" class="glow-hero bg-brass-400 px-8 py-4 text-lg font-bold text-azur-950 transition-all hover:bg-brass-300">
+            Obtenir mon étude gratuite →
           </a>
           {/* Ghost WhatsApp — contour blanc, aucun laiton */}
           <a href={waDirect} rel="noopener" class="inline-flex items-center gap-2 border border-white/40 px-6 py-3.5 text-base font-semibold text-white backdrop-blur-sm transition-colors hover:border-white hover:bg-white/10">
@@ -241,7 +241,7 @@ const brackets = BILL_RANGES.filter((r) => r.qualifies && r.id !== 'gt10000').ma
     <!-- ACTE FINAL — la salle blanche -->
     <DiagnosticForm heading="Votre diagnostic en 60 secondes" />
 
-    <CtaBand href="#simulateur" seam={false} />
+    <CtaBand href="/devis/mon-toit" seam={false} />
 
     <StickyCta />
   </div>
