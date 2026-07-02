@@ -118,6 +118,114 @@ export function computeROI({ kwp, factures, dayUsagePct, totalSans, totalAvec, b
   }
 }
 
+// ── QF4/QF5 — Modèle « deux factures » par tranche (MIROIR JS) ───────────────
+// Port fidèle de backend apps/ventes/quote_engine/pricing.py : mêmes tables de
+// tranches, mêmes formules. Permet à l'écran d'afficher EXACTEMENT le même
+// calcul que le PDF (facture sans vs avec solaire, économie réelle) au lieu
+// d'une approximation production × autoconsommation × prix moyen.
+//
+// QF5 — divergence de tarif corrigée : `KWH_PRICE` (1.75) reste le défaut
+// historique de `computeROI` (aligné sur CompanyProfile.onee_tarif_kwh, le
+// repli RÉEL en pratique) ; `FALLBACK_KWH_PRICE` (1.20) mirror l'ultime repli
+// `_FALLBACK_KWH_PRICE` de pricing.py, utilisé UNIQUEMENT quand ni tranche ni
+// tarif société ne sont disponibles (repli en cascade, comme le backend).
+export const FALLBACK_KWH_PRICE = 1.20 // MAD/kWh — miroir pricing.py._FALLBACK_KWH_PRICE
+
+// Tables de tranches (miroir pricing.py — mêmes valeurs, mêmes plafonds).
+// Format : [plafond_kWh_mensuel | null, prix_MAD_kWh_TTC].
+export const ONEE_TRANCHES = [
+  [100, 0.9010],
+  [150, 1.0258],
+  [200, 1.2515],
+  [null, 1.4017],
+]
+export const LYDEC_TRANCHES = [
+  [100, 0.9500],
+  [200, 1.1500],
+  [null, 1.4500],
+]
+export const REDAL_TRANCHES = [
+  [100, 0.9300],
+  [200, 1.1200],
+  [null, 1.4200],
+]
+export const UTILITY_TABLES = {
+  onee: ONEE_TRANCHES, lydec: LYDEC_TRANCHES, redal: REDAL_TRANCHES,
+}
+export const APPROX_UTILITIES = new Set(['lydec', 'redal'])
+
+function resolveTranches(utility, tranchesOverride) {
+  if (tranchesOverride && tranchesOverride.length) return { table: tranchesOverride, approx: false }
+  const key = (utility || '').toLowerCase()
+  if (key && UTILITY_TABLES[key]) return { table: UTILITY_TABLES[key], approx: APPROX_UTILITIES.has(key) }
+  return { table: null, approx: false }
+}
+
+// Facture mensuelle TTC (MAD) d'une consommation, valorisée PAR TRANCHE
+// (barème progressif) — miroir _monthly_bill_from_kwh.
+export function monthlyBillFromKwh(kwhMensuel, tranches) {
+  if (!(kwhMensuel > 0)) return 0
+  let remaining = kwhMensuel
+  let prevCeiling = 0
+  let totalCost = 0
+  for (const [ceiling, price] of tranches) {
+    if (ceiling == null) { totalCost += remaining * price; remaining = 0; break }
+    const width = ceiling - prevCeiling
+    const consumed = Math.min(remaining, width)
+    totalCost += consumed * price
+    remaining -= consumed
+    prevCeiling = ceiling
+    if (remaining <= 0) break
+  }
+  if (remaining > 0) totalCost += remaining * tranches[tranches.length - 1][1]
+  return totalCost
+}
+
+// QF1 — inverse du barème progressif : facture mensuelle (MAD TTC) → kWh/mois.
+// Miroir kwh_from_bill. Retourne { kwhMensuel, approximatif, estimation }.
+export function kwhFromBill(billMad, utility, tranchesOverride) {
+  const bill = parseFloat(billMad) || 0
+  if (bill <= 0) return { kwhMensuel: 0, approximatif: false, estimation: true }
+  const { table, approx } = resolveTranches(utility, tranchesOverride)
+  if (!table) {
+    return { kwhMensuel: Math.round((bill / FALLBACK_KWH_PRICE) * 10) / 10, approximatif: true, estimation: true }
+  }
+  let prevCeiling = 0
+  let costSoFar = 0
+  let kwh = null
+  for (const [ceiling, price] of table) {
+    if (ceiling == null) { kwh = prevCeiling + (bill - costSoFar) / price; break }
+    const trancheCost = (ceiling - prevCeiling) * price
+    if (costSoFar + trancheCost >= bill) { kwh = prevCeiling + (bill - costSoFar) / price; break }
+    costSoFar += trancheCost
+    prevCeiling = ceiling
+  }
+  if (kwh == null) kwh = prevCeiling + (bill - costSoFar) / table[table.length - 1][1]
+  return { kwhMensuel: Math.round(kwh * 10) / 10, approximatif: approx, estimation: false }
+}
+
+// QF2 — modèle « deux factures » : économie = facture_sans − facture_avec,
+// valorisée par tranche (self-consumption-first, loi 82-21). Miroir
+// two_bills_savings. Retourne null quand une vraie donnée manque (l'appelant
+// dégrade alors vers l'estimation, jamais un chiffre inventé).
+export function twoBillsSavings(productionKwh, consoAnnuelleKwh, autoconsoRatio, utility, tranchesOverride) {
+  const { table } = resolveTranches(utility, tranchesOverride)
+  if (!table) return null
+  const conso = parseFloat(consoAnnuelleKwh) || 0
+  const prod = parseFloat(productionKwh) || 0
+  const ratio = parseFloat(autoconsoRatio) || 0
+  if (conso <= 0 || prod <= 0 || ratio <= 0) return null
+  const factureSans = Math.round(monthlyBillFromKwh(conso / 12, table) * 12)
+  const autoconsoKwh = Math.min(prod * ratio, conso)
+  const residuel = Math.max(0, conso - autoconsoKwh)
+  const factureAvec = Math.round(monthlyBillFromKwh(residuel / 12, table) * 12)
+  return {
+    factureSans, factureAvec,
+    economie: Math.max(0, factureSans - factureAvec),
+    autoconsoKwh: Math.round(autoconsoKwh),
+  }
+}
+
 // ── Classification des lignes/produits (mêmes mots-clés que le moteur PDF) ───
 const _norm = (s) =>
   (s || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '')

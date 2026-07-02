@@ -9,6 +9,8 @@ import {
   DEFAULT_MONTHLY_BILLS, estimerMois, estimerPanneaux, formatMoney,
   computeROI, ttcFromHt, htFromTtc, optionTotalsTTC, autoFillLines, GHI,
   groupProduitsByCategory,
+  KWH_PRICE, FALLBACK_KWH_PRICE, kwhFromBill, twoBillsSavings, monthlyBillFromKwh,
+  ONEE_TRANCHES,
 } from './solar.js'
 
 // Reflet du catalogue seedé (prix HT = TTC simulateur / 1.2, 2 décimales)
@@ -557,4 +559,65 @@ test('DC6/DC7 tauxTvaOf : Produit.tva prioritaire, repli standard société', ()
   assert.equal(tauxTvaOf({}), 20)
   // repli invalide (0) → 20
   assert.equal(tauxTvaOf({}, 0), 20)
+})
+
+// ── QF4/QF5 — miroir JS du modèle « deux factures » par tranche ─────────────
+// Valeurs de référence calculées directement avec le module Python réel
+// (apps/ventes/quote_engine/pricing.py) pour garantir la parité écran == PDF.
+test('QF5 — tarif de repli unifié : KWH_PRICE (CompanyProfile) vs FALLBACK_KWH_PRICE (ultime repli backend)', () => {
+  assert.equal(KWH_PRICE, 1.75) // CompanyProfile.onee_tarif_kwh défaut (parametres/selectors.py)
+  assert.equal(FALLBACK_KWH_PRICE, 1.20) // pricing.py _FALLBACK_KWH_PRICE (miroir exact)
+})
+
+test('QF4 — monthlyBillFromKwh : barème ONEE par tranche (300 kWh/mois)', () => {
+  // Référence : pricing.py _monthly_bill_from_kwh(300, ONEE_TRANCHES) = 344.135
+  assert.ok(Math.abs(monthlyBillFromKwh(300, ONEE_TRANCHES) - 344.135) < 1e-9)
+})
+
+test('QF4 — kwhFromBill : inverse du barème ONEE (850 MAD → 660.9 kWh/mois)', () => {
+  const r = kwhFromBill(850, 'onee')
+  assert.equal(r.kwhMensuel, 660.9)
+  assert.equal(r.approximatif, false)
+  assert.equal(r.estimation, false)
+})
+
+test('QF4 — kwhFromBill : distributeur privé (Lydec) marqué approximatif', () => {
+  const r = kwhFromBill(500, 'lydec')
+  assert.equal(r.kwhMensuel, 400.0)
+  assert.equal(r.approximatif, true)
+})
+
+test('QF4 — kwhFromBill : sans distributeur connu → repli FALLBACK_KWH_PRICE, étiqueté estimation', () => {
+  const r = kwhFromBill(120, 'inconnu')
+  assert.equal(r.kwhMensuel, Math.round((120 / FALLBACK_KWH_PRICE) * 10) / 10)
+  assert.equal(r.estimation, true)
+})
+
+test('QF4 — kwhFromBill : facture vide → 0 kWh, estimation', () => {
+  const r = kwhFromBill(0, 'onee')
+  assert.equal(r.kwhMensuel, 0)
+  assert.equal(r.estimation, true)
+})
+
+test('QF2/QF5 — twoBillsSavings : économie réelle par tranche (ratio 0.60, sans batterie)', () => {
+  // Référence : pricing.py two_bills_savings(6000, 7200, 0.6, utility='onee')
+  const r = twoBillsSavings(6000, 7200, 0.6, 'onee')
+  assert.deepEqual(r, {
+    factureSans: 9176, factureAvec: 4130, economie: 5046, autoconsoKwh: 3600,
+  })
+})
+
+test('QF2/QF5 — twoBillsSavings : économie réelle par tranche (ratio 0.85, avec batterie)', () => {
+  // Référence : pricing.py two_bills_savings(6000, 7200, 0.85, utility='onee')
+  const r = twoBillsSavings(6000, 7200, 0.85, 'onee')
+  assert.deepEqual(r, {
+    factureSans: 9176, factureAvec: 2072, economie: 7104, autoconsoKwh: 5100,
+  })
+})
+
+test('twoBillsSavings : dégrade en null sans donnée réelle (jamais un chiffre inventé)', () => {
+  assert.equal(twoBillsSavings(0, 7200, 0.6, 'onee'), null) // pas de production
+  assert.equal(twoBillsSavings(6000, 0, 0.6, 'onee'), null) // pas de conso
+  assert.equal(twoBillsSavings(6000, 7200, 0, 'onee'), null) // pas de ratio
+  assert.equal(twoBillsSavings(6000, 7200, 0.6, 'inconnu'), null) // pas de barème
 })

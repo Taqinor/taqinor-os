@@ -35,6 +35,7 @@ import {
   panneauxPourKwc, expectedTvaForDesignation,
   TVA_STANDARD_DEFAUT, TVA_PANNEAUX_DEFAUT,
   classifyProduct,
+  kwhFromBill,
 } from '../../features/ventes/solar'
 
 const MODE_OPTIONS = [
@@ -203,6 +204,15 @@ export default function DevisGenerator({
   const [fHiver, setFHiver] = useState('')
   const [fEte, setFEte] = useState('')
   const [monthly, setMonthly] = useState(DEFAULT_MONTHLY_BILLS)
+  // QF4 — distributeur réel + facture/consommation réelle du client, pour que
+  // le calcul « deux factures » par tranche (backend QF2) utilise ses vrais
+  // chiffres au lieu des défauts. Stockés dans etude_params à l'enregistrement
+  // (distributeur, conso_annuelle) — jamais utilisés pour écraser les factures
+  // mensuelles affichées ci-dessus (qui restent l'estimation hiver/été).
+  const [distributeur, setDistributeur] = useState('onee')
+  const [realBillMode, setRealBillMode] = useState('mad') // 'mad' | 'kwh'
+  const [realBillMad, setRealBillMad] = useState('')
+  const [realBillKwh, setRealBillKwh] = useState('')
 
   // ── Paramètres techniques ──
   const [nbPanneaux, setNbPanneaux] = useState('')
@@ -505,6 +515,14 @@ export default function DevisGenerator({
       if (e.debit_souhaite_m3h) setPompeDebit(String(e.debit_souhaite_m3h))
       if (e.heures_pompage) setPompeHeures(String(e.heures_pompage))
       if (e.conso_annuelle) setConsoMensuelle(String(Math.round(e.conso_annuelle / 12)))
+      // QF4 — round-trip du distributeur + de la consommation annuelle réelle
+      // (ré-affichée en kWh/mois : le mode « MAD » ne peut pas se reconstruire
+      // sans le tarif exact du moment, donc on revient toujours en kWh).
+      if (e.distributeur) setDistributeur(String(e.distributeur))
+      if (e.conso_annuelle) {
+        setRealBillMode('kwh')
+        setRealBillKwh(String(Math.round(e.conso_annuelle / 12)))
+      }
       // Round-trip des données d'exploitation guidées (toutes optionnelles).
       if (e.region) setFarmRegion(String(e.region))
       if (e.crop) setFarmCrop(String(e.crop))
@@ -769,10 +787,23 @@ export default function DevisGenerator({
         recommended_choice: recommendedChoice,
         recommended_option: recommended,
       }
+      // QF4 — distributeur + consommation annuelle RÉELLE (dérivée de la
+      // facture/kWh du client) : nourrit le calcul « deux factures » par
+      // tranche backend (QF2) avec de vrais chiffres, pour TOUS les modes
+      // (pas seulement industriel). N'écrase JAMAIS un conso_annuelle déjà
+      // posé par l'étude industrielle — celle-ci reste la source canonique
+      // quand elle existe (conso saisie/dérivée des factures mensuelles).
+      const realBillParams = consoAnnuelleReelle > 0
+        ? { distributeur, conso_annuelle: consoAnnuelleReelle }
+        : (distributeur !== 'onee' ? { distributeur } : {})
       if (etudeParams) {
-        etudeParams = { ...etudeParams, ...choiceParams }
+        etudeParams = {
+          ...etudeParams,
+          ...(etudeParams.conso_annuelle ? { distributeur } : realBillParams),
+          ...choiceParams,
+        }
       } else if (modeInstallation !== 'industriel') {
-        etudeParams = choiceParams
+        etudeParams = { ...realBillParams, ...choiceParams }
       }
       const payload = {
         statut: 'brouillon',
@@ -861,6 +892,21 @@ export default function DevisGenerator({
         kwhPrice: quoteLogic.kwhPrice, efficiency: quoteLogic.efficiency,
       })
     : null
+
+  // QF4 — consommation annuelle RÉELLE dérivée de la facture/kWh du client
+  // (barème par tranche du distributeur choisi), stockée dans etude_params à
+  // l'enregistrement pour que le calcul « deux factures » backend (QF2)
+  // utilise les vrais chiffres du client plutôt qu'un tarif moyen supposé.
+  const consoAnnuelleReelle = (() => {
+    if (realBillMode === 'kwh') {
+      const kwh = parseFloat(realBillKwh) || 0
+      return kwh > 0 ? Math.round(kwh * 12) : null
+    }
+    const mad = parseFloat(realBillMad) || 0
+    if (mad <= 0) return null
+    const { kwhMensuel } = kwhFromBill(mad, distributeur)
+    return kwhMensuel > 0 ? Math.round(kwhMensuel * 12) : null
+  })()
 
   // Disponibilité de l'option « avec batterie » (règle : jamais sans onduleur)
   const avecDispo = avecBatterieAvailability(lines, produits, kwp)
@@ -1130,6 +1176,61 @@ export default function DevisGenerator({
                 </div>
               ))}
             </div>
+
+            {/* QF4 — distributeur réel + facture/consommation réelle : nourrit
+                le calcul « deux factures » par tranche (backend QF2) avec les
+                vrais chiffres du client au lieu des défauts. */}
+            <div className="mt-4 rounded-lg border border-info/30 bg-info/5 p-3 sm:p-4">
+              <div className="flex flex-wrap items-center gap-2">
+                <Zap className="size-4 text-info" aria-hidden="true" />
+                <span className="font-display text-sm font-semibold tracking-tight">
+                  Facture réelle du client (recommandé)
+                </span>
+                <span className="text-xs text-muted-foreground">
+                  affine les économies avec le barème par tranche du distributeur
+                </span>
+              </div>
+              <div className="mt-3 grid gap-4 sm:grid-cols-3">
+                <div className="grid gap-1.5">
+                  <Label htmlFor="gen-distributeur">Distributeur</Label>
+                  <Select value={distributeur} onValueChange={setDistributeur}>
+                    <SelectTrigger id="gen-distributeur"><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="onee">ONEE</SelectItem>
+                      <SelectItem value="lydec">Lydec (Casablanca)</SelectItem>
+                      <SelectItem value="redal">Redal (Rabat-Salé-Kénitra)</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="grid gap-1.5">
+                  <Label htmlFor="gen-realbill">
+                    {realBillMode === 'mad' ? 'Facture réelle (MAD/mois)' : 'Consommation réelle (kWh/mois)'}
+                  </Label>
+                  <div className="flex gap-2">
+                    <Input id="gen-realbill" type="number" min="0" step="any" className="flex-1"
+                           placeholder={realBillMode === 'mad' ? 'ex: 850' : 'ex: 650'}
+                           value={realBillMode === 'mad' ? realBillMad : realBillKwh}
+                           onChange={e => (realBillMode === 'mad'
+                             ? setRealBillMad(e.target.value)
+                             : setRealBillKwh(e.target.value))} />
+                    <Select value={realBillMode} onValueChange={setRealBillMode}>
+                      <SelectTrigger className="w-24"><SelectValue /></SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="mad">MAD</SelectItem>
+                        <SelectItem value="kwh">kWh</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                </div>
+                <div className="grid gap-1.5">
+                  <Label>Consommation annuelle dérivée</Label>
+                  <div className="gen-kwp">
+                    {consoAnnuelleReelle != null ? `${fmtNum(consoAnnuelleReelle)} kWh/an` : '—'}
+                  </div>
+                </div>
+              </div>
+            </div>
+
             {modeInstallation === 'industriel' && (
               <div className="mt-3.5 grid gap-4 sm:grid-cols-2">
                 <div className="grid gap-1.5">
