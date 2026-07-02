@@ -190,6 +190,47 @@ def public_document(request, token):
     return _noindex(response)
 
 
+# ── QS3 — PDF public tokenisé d'un Bon de Commande FOURNISSEUR ────────────────
+# Jeton ShareLink (long, imprévisible, expirant) borné à UN BCF d'UNE société.
+# Le PDF montre légitimement les PRIX D'ACHAT au FOURNISSEUR (le jeton l'y
+# autorise) ; il n'est JAMAIS servi à un client final et n'est jamais surfacé
+# dans l'UI client. X-Robots-Tag: noindex + throttle par IP+jeton, comme les
+# autres liens publics.
+
+@api_view(['GET'])
+@permission_classes([AllowAny])
+@throttle_classes([PublicLinkRateThrottle])
+def public_bcf_document(request, token):
+    """QS3 — Flux PDF du Bon de Commande FOURNISSEUR derrière un jeton ShareLink.
+
+    Rendu à la volée (aucune persistance) via le sélecteur cross-app
+    ``stock.selectors.render_bcf_pdf_by_id`` — ventes n'importe pas les
+    modèles/utils de stock directement. Jeton invalide/expiré/non-BCF → 404
+    amical sans fuite."""
+    link = (
+        ShareLink.objects
+        .select_related('company')
+        .filter(token=token)
+        .first()
+    )
+    if (link is None or not link.is_valid
+            or not link.bon_commande_fournisseur_id):
+        return _not_found()
+    try:
+        from apps.stock.selectors import render_bcf_pdf_by_id
+        pdf_bytes, filename = render_bcf_pdf_by_id(
+            link.bon_commande_fournisseur_id)
+        if pdf_bytes is None:
+            return _not_found()
+    except Exception:  # noqa: BLE001 — jamais de fuite, 404 amical
+        return _noindex(Response(
+            {'detail': 'Document indisponible pour le moment.'},
+            status=status.HTTP_404_NOT_FOUND))
+    response = HttpResponse(pdf_bytes, content_type='application/pdf')
+    response['Content-Disposition'] = f'inline; filename="{filename}"'
+    return _noindex(response)
+
+
 # ── Q6/Q7 — Proposition WEB tokenisée (données JSON + e-signature) ────────────
 # Même jeton ShareLink que le PDF public (long, imprévisible, expirant) ;
 # borné à un devis donc company-scoped par construction (le jeton ne référence

@@ -108,6 +108,34 @@ def get_bon_commande_fournisseur(company, bc_id):
         id=bc_id, company=company).first()
 
 
+def get_bcf_by_id(bc_id):
+    """QS3 — BCF par id, NON scopé (l'appelant a déjà authentifié via un jeton
+    ShareLink borné à ce BCF). Renvoie l'objet ou None. Lecture seule."""
+    from .models import BonCommandeFournisseur
+    return BonCommandeFournisseur.objects.filter(id=bc_id).first()
+
+
+def render_bcf_pdf_by_id(bc_id):
+    """QS3 — Rend à la volée le PDF FOURNISSEUR d'un BCF (bytes) + son nom de
+    fichier cohérent. Renvoie ``(pdf_bytes, filename)`` ou ``(None, None)``.
+
+    Point d'entrée cross-app : ``ventes`` (endpoint public tokenisé) appelle CE
+    sélecteur au lieu d'importer les modèles/utils de ``stock`` directement. Le
+    PDF montre légitimement les PRIX D'ACHAT au FOURNISSEUR (le jeton l'y
+    autorise) — il n'est jamais servi à un client final."""
+    bcf = get_bcf_by_id(bc_id)
+    if bcf is None:
+        return None, None
+    from .utils.pdf_fournisseur import generate_bcf_pdf
+    pdf_bytes = generate_bcf_pdf(bcf)
+    from apps.ventes.utils.filenames import document_filename
+    filename = document_filename(
+        'Bon-de-commande', bcf.reference,
+        client=bcf.fournisseur if bcf.fournisseur_id else None,
+        company=bcf.company)
+    return pdf_bytes, filename
+
+
 def montant_commande_bcf(bon_commande):
     """Montant HT COMMANDÉ d'un bon de commande fournisseur (Σ lignes :
     quantité × prix d'achat unitaire). INTERNE. Renvoie un Decimal."""

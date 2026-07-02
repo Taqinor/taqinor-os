@@ -1185,6 +1185,70 @@ def accept_devis(*, devis, user, nom='', date_acceptation=None, option='',
     return devis
 
 
+def share_link_for_bcf(bcf):
+    """QS3 — Point d'entrée cross-app : crée (ou réutilise) le lien tokenisé
+    vers le PDF d'un Bon de Commande FOURNISSEUR (stock).
+
+    L'app ``stock`` appelle CE service plutôt que d'importer ``ventes.models``
+    (règle de modularité). La société vient du BCF (jamais du corps). Renvoie
+    l'objet ShareLink (porte ``token`` + ``expires_at``)."""
+    from apps.ventes.models import ShareLink
+    return ShareLink.for_bon_commande_fournisseur(bcf)
+
+
+def bcf_share_url(bcf, request=None):
+    """QS3 — URL publique absolue vers le PDF tokenisé d'un BCF fournisseur.
+
+    Réutilise la construction d'URL publique existante. Renvoie ``(url, token)``.
+    Le lien reste imprévisible + expirant ; il est destiné au FOURNISSEUR et
+    n'est jamais surfacé dans l'UI client."""
+    from django.conf import settings
+    link = share_link_for_bcf(bcf)
+    base = getattr(settings, 'PUBLIC_BASE_URL', '') or ''
+    path = f'/api/django/public/bcf/{link.token}/'
+    if base:
+        url = base.rstrip('/') + path
+    elif request is not None:
+        url = request.build_absolute_uri(path)
+    else:
+        url = path
+    return url, link.token
+
+
+def log_supplier_email(
+        *, company, to_email, sujet, corps, attachment=None,
+        attachment_name=None, reference='', user=None):
+    """QS3 — Envoie un email FOURNISSEUR (PDF joint) et le consigne dans EmailLog.
+
+    Point d'entrée cross-app pour ``stock`` (qui n'importe pas ``ventes.models``
+    ni ``ventes.email_service``). Le fil EmailLog n'a pas de FK fournisseur : on
+    consigne company + destinataire + référence (client/devis/facture restent
+    nuls). NO-OP réseau sans clé configurée (backend console) — l'entrée est tout
+    de même écrite. Renvoie ``(ok, log)``."""
+    from apps.ventes.models import EmailLog
+    from apps.ventes.email_service import _send, _from_email
+    dest = (to_email or '').strip()
+    log = EmailLog(
+        company=company,
+        direction=EmailLog.Direction.SORTANT,
+        to_email=dest[:254], from_email=_from_email(),
+        sujet=(sujet or '')[:300], corps=corps or '',
+        reference=(reference or '')[:80],
+        piece_jointe=(attachment_name or '')[:255],
+        created_by=user if getattr(user, 'is_authenticated', False) else None,
+    )
+    if not dest:
+        log.statut = EmailLog.Statut.ECHEC
+        log.erreur = 'Aucune adresse email destinataire.'
+        log.save()
+        return False, log
+    ok, err = _send(dest, sujet, corps, attachment, attachment_name)
+    log.statut = EmailLog.Statut.ENVOYE if ok else EmailLog.Statut.ECHEC
+    log.erreur = err
+    log.save()
+    return ok, log
+
+
 def mark_devis_sent(*, devis, user=None):
     """U4 — flip a Devis to « envoyé » through the ONE status-change path.
 

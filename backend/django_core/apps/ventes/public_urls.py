@@ -1,12 +1,14 @@
 from django.urls import path
 from .public_views import (
-    public_document, pay_page, pay_webhook,
+    public_document, public_bcf_document, pay_page, pay_webhook,
     proposal_data, proposal_pdf, proposal_accept,
     proposal_contact_request, proposal_request_otp,
 )
 
 urlpatterns = [
     path('document/<str:token>/', public_document, name='public-document'),
+    # QS3 — PDF tokenisé du bon de commande FOURNISSEUR (destiné au fournisseur).
+    path('bcf/<str:token>/', public_bcf_document, name='public-bcf-document'),
     # Q6/Q7 — proposition tokenisée (données + PDF + e-signature).
     path('proposal/<str:token>/data/', proposal_data, name='public-proposal-data'),
     path('proposal/<str:token>/pdf/', proposal_pdf, name='public-proposal-pdf'),
