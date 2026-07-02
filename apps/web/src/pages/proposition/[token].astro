@@ -237,6 +237,17 @@ const signConfig = ok
     </section>
   ) : (
     <div class="proposition pb-28" data-sign-config={signConfig}>
+      <!-- WJ17 — bascule de langue FR/عربي, flottante (ne perturbe aucun rythme
+           existant, zéro CLS). Même mécanisme dual-node que WJ33 (mon-toit.astro) :
+           voir le <script> de fin de page. Le contenu reste TOUJOURS lisible FR
+           sans JS (pas de gate v2-js ici, page déjà rendue serveur). -->
+      <div class="prop-lang-switch fixed right-3 top-3 z-50 flex gap-1 rounded-sm border border-white/15 bg-nuit/80 p-0.5 backdrop-blur" role="group" aria-label="Langue / اللغة">
+        <button type="button" id="prop-lang-fr" aria-pressed="true"
+          class="px-2.5 py-1 text-xs font-semibold text-azur-950 bg-brass-400 transition-colors">FR</button>
+        <button type="button" id="prop-lang-ar" aria-pressed="false"
+          class="px-2.5 py-1 text-xs font-semibold text-lune-soft transition-colors hover:text-white">عربي</button>
+      </div>
+
       <!-- ── HÉRO (WJ28 — cinéma du chantier : ancré bas, entrée cine-in ; WJ35 —
            rythme rehaussé, cohérent avec l'accueil élevé v3, zéro CLS : min-h). -->
       <section class="relative min-h-[72vh] overflow-hidden sm:min-h-[78vh]">
@@ -269,38 +280,45 @@ const signConfig = ok
         <!-- Scrim pour garantir le contraste AA du texte par-dessus la photo. -->
         <div class="hero-scrim absolute inset-0" aria-hidden="true"></div>
         <div class="relative mx-auto flex min-h-[72vh] w-full max-w-4xl flex-col justify-end px-5 pb-12 pt-24 sm:min-h-[78vh] sm:px-8 sm:pb-16 sm:pt-32">
-          <p class="tech-label rule-brass cine-in text-brass-300">{roofImg ? 'Votre installation · ' : 'Proposition · '}{instLabel}</p>
-          <h1 class="display cine-in cine-in-1 mt-4 text-4xl text-blanc sm:text-5xl">
+          <p class="tech-label rule-brass cine-in text-brass-300" data-i18n
+            data-fr={`${roofImg ? 'Votre installation · ' : 'Proposition · '}${instLabel}`}
+            data-ar={`${roofImg ? 'تركيبكم · ' : 'العرض · '}${instLabel}`}>
+            {roofImg ? 'Votre installation · ' : 'Proposition · '}{instLabel}
+          </p>
+          <h1 class="display cine-in cine-in-1 mt-4 text-4xl text-blanc sm:text-5xl" data-i18n
+            data-fr={`Bonjour ${clientName},`} data-ar={`مرحباً ${clientName}،`}>
             Bonjour {clientName},
           </h1>
-          <p class="v2-body cine-in cine-in-2 mt-4 max-w-xl text-lune">
+          <p class="v2-body cine-in cine-in-2 mt-4 max-w-xl text-lune" data-i18n
+            data-fr="Voici votre proposition solaire personnalisée. Tout est détaillé ci-dessous — vous pouvez la signer en ligne en bas de page."
+            data-ar="إليكم عرضكم الشمسي الشخصي. كل التفاصيل أدناه — يمكنكم التوقيع إلكترونياً أسفل الصفحة.">
             Voici votre proposition solaire personnalisée. Tout est détaillé ci-dessous —
             vous pouvez la signer en ligne en bas de page.
           </p>
           <dl class="cine-in cine-in-3 mt-7 flex flex-wrap gap-x-8 gap-y-3 text-sm">
             {reference && (
               <div>
-                <dt class="text-lune-faint">Référence</dt>
-                <dd class="fig text-lg text-lune">{reference}</dd>
+                <dt class="text-lune-faint" data-i18n data-fr="Référence" data-ar="المرجع">Référence</dt>
+                <dd class="fig text-lg text-lune" dir="ltr">{reference}</dd>
               </div>
             )}
             {proposalDate && (
               <div>
-                <dt class="text-lune-faint">Date</dt>
-                <dd class="fig text-lg text-lune">{proposalDate}</dd>
+                <dt class="text-lune-faint" data-i18n data-fr="Date" data-ar="التاريخ">Date</dt>
+                <dd class="fig text-lg text-lune" dir="ltr">{proposalDate}</dd>
               </div>
             )}
             {/* WJ15 — Fenêtre de validité honnête : date backend réelle, sinon mention libellée. Jamais un compte-à-rebours. */}
             {validity.fromBackend && validity.label && !validity.expired && (
               <div>
-                <dt class="text-lune-faint">Devis valable jusqu’au</dt>
-                <dd class="fig text-lg text-brass-300">{validity.label}</dd>
+                <dt class="text-lune-faint" data-i18n data-fr="Devis valable jusqu’au" data-ar="العرض صالح حتى">Devis valable jusqu’au</dt>
+                <dd class="fig text-lg text-brass-300" dir="ltr">{validity.label}</dd>
               </div>
             )}
             {validity.fromBackend && validity.expired && (
               <div>
-                <dt class="text-lune-faint">Validité</dt>
-                <dd class="text-base text-lune-soft">Offre échue — demandez une réactualisation</dd>
+                <dt class="text-lune-faint" data-i18n data-fr="Validité" data-ar="الصلاحية">Validité</dt>
+                <dd class="text-base text-lune-soft" data-i18n data-fr="Offre échue — demandez une réactualisation" data-ar="العرض منتهي — اطلبوا تحديثاً">Offre échue — demandez une réactualisation</dd>
               </div>
             )}
           </dl>
@@ -481,7 +499,7 @@ const signConfig = ok
       <!-- ── SYSTÈME : puissance / panneaux ───────────────────────────────── -->
       {(puissance || nbPanneaux) && (
         <section class="mx-auto max-w-4xl px-5 pt-12 sm:px-8">
-          <p class="tech-label rule-brass text-brass-300">Votre système</p>
+          <p class="tech-label rule-brass text-brass-300" data-i18n data-fr="Votre système" data-ar="نظامكم">Votre système</p>
           <div class="mt-5 grid gap-4 sm:grid-cols-3">
             {puissance ? (
               <div class="cine-card rounded-xl p-5">
@@ -509,7 +527,9 @@ const signConfig = ok
       <!-- ── P2 · PRODUCTION ESTIMÉE vs CONSOMMATION (langage pro-11) ──────── -->
       {showChart && (
         <section class="mx-auto max-w-4xl px-5 pt-14 sm:px-8">
-          <p class="tech-label rule-brass text-brass-300">
+          <p class="tech-label rule-brass text-brass-300" data-i18n
+            data-fr={chartHasConso ? 'Production estimée vs votre consommation' : 'Production estimée'}
+            data-ar={chartHasConso ? 'الإنتاج المقدّر مقابل استهلاككم' : 'الإنتاج المقدّر'}>
             {chartHasConso ? 'Production estimée vs votre consommation' : 'Production estimée'}
           </p>
           <div class="cine-card mt-5 rounded-2xl p-5 sm:p-6">
@@ -543,7 +563,7 @@ const signConfig = ok
           Animation gatée prefers-reduced-motion (voir <style>). */}
       {dailyCurve.svg && (
         <section class="mx-auto max-w-4xl px-5 pt-14 sm:px-8">
-          <p class="tech-label rule-brass text-brass-300">Votre journée solaire</p>
+          <p class="tech-label rule-brass text-brass-300" data-i18n data-fr="Votre journée solaire" data-ar="يومكم الشمسي">Votre journée solaire</p>
           <div class="cine-card mt-5 rounded-2xl p-5 sm:p-6">
             <div class="daily-curve-wrap" set:html={dailyCurve.svg}></div>
             <div class="mt-4 flex flex-wrap items-center gap-x-6 gap-y-2 text-sm">
@@ -571,7 +591,9 @@ const signConfig = ok
 
       <!-- ── OPTIONS ──────────────────────────────────────────────────────── -->
       <section id="options" class="mx-auto max-w-4xl px-5 pt-14 sm:px-8">
-        <p class="tech-label rule-brass text-brass-300">
+        <p class="tech-label rule-brass text-brass-300" data-i18n
+          data-fr={twoOptions ? 'Vos deux options' : 'Votre proposition'}
+          data-ar={twoOptions ? 'خياراكم' : 'عرضكم'}>
           {twoOptions ? 'Vos deux options' : 'Votre proposition'}
         </p>
         <div class={`mt-5 grid gap-4 ${twoOptions ? 'sm:grid-cols-2' : ''}`}>
@@ -664,7 +686,7 @@ const signConfig = ok
            sur le calcul générique WJ10 sinon — jamais les deux à la fois. -->
       {financingBlock ? (
         <section class="mx-auto max-w-4xl px-5 pt-14 sm:px-8">
-          <p class="tech-label rule-brass text-brass-300">Comment financer</p>
+          <p class="tech-label rule-brass text-brass-300" data-i18n data-fr="Comment financer" data-ar="كيفية التمويل">Comment financer</p>
           <div class="mt-5 grid gap-4 sm:grid-cols-2">
             <div class="cine-card rounded-2xl p-6">
               <p class="tech-label text-lune-faint">{financingBlock.cash.label}</p>
@@ -694,7 +716,7 @@ const signConfig = ok
         </section>
       ) : financing && (
         <section class="mx-auto max-w-4xl px-5 pt-14 sm:px-8">
-          <p class="tech-label rule-brass text-brass-300">Comment financer</p>
+          <p class="tech-label rule-brass text-brass-300" data-i18n data-fr="Comment financer" data-ar="كيفية التمويل">Comment financer</p>
           <div class="mt-5 grid gap-4 sm:grid-cols-2">
             <div class="cine-card rounded-2xl p-6">
               <p class="tech-label text-lune-faint">Au comptant</p>
@@ -726,7 +748,7 @@ const signConfig = ok
            devis est isolé (variants=[]) — jamais un chiffre calculé ici. -->
       {variants.length > 0 && (
         <section class="mx-auto max-w-4xl px-5 pt-14 sm:px-8">
-          <p class="tech-label rule-brass text-brass-300">Autres tailles proposées</p>
+          <p class="tech-label rule-brass text-brass-300" data-i18n data-fr="Autres tailles proposées" data-ar="أحجام أخرى مقترحة">Autres tailles proposées</p>
           <div class="mt-5 flex gap-4 overflow-x-auto pb-2">
             {variants.map((v) => (
               <div class="cine-card min-w-[220px] shrink-0 rounded-xl p-5">
@@ -746,7 +768,7 @@ const signConfig = ok
       <!-- ── WJ14 · IMPACT ENVIRONNEMENTAL (CO₂ ≈ arbres) — clôture émotion ── -->
       {enviro && (
         <section class="mx-auto max-w-4xl px-5 pt-14 sm:px-8">
-          <p class="tech-label rule-brass text-brass-300">Votre impact, concrètement</p>
+          <p class="tech-label rule-brass text-brass-300" data-i18n data-fr="Votre impact, concrètement" data-ar="أثركم، بالأرقام">Votre impact, concrètement</p>
           <div class="cine-card mt-5 rounded-2xl p-6 sm:p-8">
             <div class="grid gap-6 sm:grid-cols-2 sm:items-center">
               <div>
@@ -830,8 +852,8 @@ const signConfig = ok
 
           <!-- Formulaire de signature -->
           <form id="sign-form" novalidate>
-            <p class="tech-label rule-brass text-brass-300">Signer en ligne</p>
-            <h2 class="display mt-3 text-2xl text-lune">Bon pour accord</h2>
+            <p class="tech-label rule-brass text-brass-300" data-i18n data-fr="Signer en ligne" data-ar="التوقيع إلكترونياً">Signer en ligne</p>
+            <h2 class="display mt-3 text-2xl text-lune" data-i18n data-fr="Bon pour accord" data-ar="موافقة نهائية">Bon pour accord</h2>
             <p class="v2-body mt-2">
               Validez votre proposition en quelques secondes. Vous recevrez ensuite la confirmation
               de votre conseiller.
@@ -968,19 +990,19 @@ const signConfig = ok
           d'installations et la note Google sont désormais des composants premium
           RÉUTILISABLES (InstallCounter / StarRating), avec la même intégrité. */}
       <section class="mx-auto max-w-4xl px-5 pt-16 sm:px-8">
-        <p class="tech-label rule-brass text-brass-300">Pourquoi nous faire confiance</p>
+        <p class="tech-label rule-brass text-brass-300" data-i18n data-fr="Pourquoi nous faire confiance" data-ar="لماذا تثقون بنا">Pourquoi nous faire confiance</p>
         <div class="mt-5 grid gap-4 sm:grid-cols-3">
           <div class="cine-card rounded-xl p-5">
-            <p class="fig text-2xl text-lune">20–25 ans</p>
-            <p class="mt-1 text-sm text-lune-soft">Garanties constructeur : 25 ans de performance sur les panneaux, 10 ans sur l’onduleur.</p>
+            <p class="fig text-2xl text-lune" dir="ltr">20–25 ans</p>
+            <p class="mt-1 text-sm text-lune-soft" data-i18n data-fr="Garanties constructeur : 25 ans de performance sur les panneaux, 10 ans sur l’onduleur." data-ar="ضمانات الصانع: 25 سنة أداء للألواح، 10 سنوات للعاكس.">Garanties constructeur : 25 ans de performance sur les panneaux, 10 ans sur l’onduleur.</p>
           </div>
           <div class="cine-card rounded-xl p-5">
-            <p class="fig text-xl text-lune">IEC 61215 / 61730</p>
-            <p class="mt-1 text-sm text-lune-soft">Modules certifiés aux normes internationales. Conformité étude IRESEN / AMEE.</p>
+            <p class="fig text-xl text-lune" dir="ltr">IEC 61215 / 61730</p>
+            <p class="mt-1 text-sm text-lune-soft" data-i18n data-fr="Modules certifiés aux normes internationales. Conformité étude IRESEN / AMEE." data-ar="ألواح معتمدة وفق المعايير الدولية. مطابقة لدراسة IRESEN / AMEE.">Modules certifiés aux normes internationales. Conformité étude IRESEN / AMEE.</p>
           </div>
           <div class="cine-card rounded-xl p-5">
-            <p class="fig text-xl text-lune">Loi 82-21</p>
-            <p class="mt-1 text-sm text-lune-soft">Installation conforme au cadre marocain d’autoconsommation en basse tension.</p>
+            <p class="fig text-xl text-lune" data-i18n data-fr="Loi 82-21" data-ar="القانون 82-21">Loi 82-21</p>
+            <p class="mt-1 text-sm text-lune-soft" data-i18n data-fr="Installation conforme au cadre marocain d’autoconsommation en basse tension." data-ar="تركيب مطابق للإطار المغربي للاستهلاك الذاتي في التوتر المنخفض.">Installation conforme au cadre marocain d’autoconsommation en basse tension.</p>
           </div>
         </div>
 
@@ -999,7 +1021,7 @@ const signConfig = ok
 
         <!-- WJ35 — avis clients réels (carrousel, vide-mais-premium — même intégrité que <Testimonials/>). -->
         <div class="mt-4 cine-card rounded-xl p-5 sm:p-6">
-          <p class="tech-label text-lune-faint">Avis clients</p>
+          <p class="tech-label text-lune-faint" data-i18n data-fr="Avis clients" data-ar="آراء العملاء">Avis clients</p>
           <div class="mt-3">
             <TestimonialCarousel />
           </div>
@@ -1007,32 +1029,35 @@ const signConfig = ok
 
         <!-- Photos d'installations réelles — scaffold, à remplir par Reda. -->
         <div class="mt-4 cine-card rounded-xl p-5">
-          <p class="tech-label text-lune-faint">Nos chantiers</p>
+          <p class="tech-label text-lune-faint" data-i18n data-fr="Nos chantiers" data-ar="ورشاتنا">Nos chantiers</p>
           <!-- pending real content from Reda : photos d'installations réelles -->
-          <p class="mt-2 text-sm text-lune-soft">
+          <p class="mt-2 text-sm text-lune-soft" data-i18n
+            data-fr="Installations documentées, dossiers techniques à l’appui. (Photos à venir.)"
+            data-ar="تركيبات موثقة، بملفات تقنية داعمة. (الصور قريباً.)">
             Installations documentées, dossiers techniques à l’appui.
             <span class="text-lune-faint"> (Photos à venir.)</span>
           </p>
         </div>
 
-        <!-- Mot du fondateur (FR + AR) — scaffold, contenu réel à confirmer. -->
+        <!-- WJ17 — mot du fondateur : bascule TOGGLE (au lieu des deux citations
+             FR+AR toujours visibles côte à côte — le symptôme « bolt-on » que
+             WJ17 corrige) ; scaffold, contenu réel à confirmer. -->
         <div class="mt-4 cine-card rounded-xl p-6">
-          <p class="tech-label text-lune-faint">Le mot du fondateur</p>
+          <p class="tech-label text-lune-faint" data-i18n data-fr="Le mot du fondateur" data-ar="كلمة المؤسس">Le mot du fondateur</p>
           <!-- pending real content from Reda : texte définitif du mot de bienvenue -->
-          <blockquote class="mt-3 v2-body text-lune">
+          <blockquote class="mt-3 v2-body text-lune" data-i18n
+            data-fr="« Chez Taqinor, nous traitons chaque toit comme le nôtre : une étude honnête, du matériel certifié, et un accompagnement après l’installation. Merci de votre confiance. »"
+            data-ar="« في تاقينور، نتعامل مع كل سطح كأنه سطحنا: دراسة صادقة، معدات معتمدة، ومرافقة بعد التركيب. شكراً على ثقتكم. »">
             « Chez Taqinor, nous traitons chaque toit comme le nôtre : une étude honnête,
             du matériel certifié, et un accompagnement après l’installation. Merci de votre confiance. »
           </blockquote>
-          <blockquote dir="rtl" lang="ar" class="mt-3 text-right text-lune" style="line-height: 1.8">
-            « في تاقينور، نتعامل مع كل سطح كأنه سطحنا: دراسة صادقة، معدات معتمدة، ومرافقة بعد التركيب. شكراً على ثقتكم. »
-          </blockquote>
-          <p class="mt-2 text-sm text-lune-faint">Reda Kasri — fondateur, Taqinor</p>
+          <p class="mt-2 text-sm text-lune-faint">Reda Kasri — <span data-i18n data-fr="fondateur, Taqinor" data-ar="مؤسس تاقينور">fondateur, Taqinor</span></p>
         </div>
       </section>
 
       <!-- ── WJ32 · « ET APRÈS ? » — timeline des prochaines étapes ─────────── -->
       <section class="mx-auto max-w-4xl px-5 pt-16 sm:px-8">
-        <p class="tech-label rule-brass text-brass-300">Et après ?</p>
+        <p class="tech-label rule-brass text-brass-300" data-i18n data-fr="Et après ?" data-ar="ماذا بعد؟">Et après ?</p>
         <ol class="mt-5 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
           {steps.map((s, i) => (
             <li class="cine-card rounded-xl p-5">
@@ -1049,7 +1074,7 @@ const signConfig = ok
 
       <!-- ── WJ32 · ACCOMPAGNEMENT POST-INSTALLATION ─────────────────────────  -->
       <section class="mx-auto max-w-4xl px-5 pt-16 sm:px-8">
-        <p class="tech-label rule-brass text-brass-300">Après l’installation</p>
+        <p class="tech-label rule-brass text-brass-300" data-i18n data-fr="Après l’installation" data-ar="بعد التركيب">Après l’installation</p>
         <div class="cine-card mt-5 rounded-2xl p-6 sm:p-7">
           <ul class="space-y-3 text-sm text-lune-soft">
             {monitoring.map((m) => (
@@ -1086,7 +1111,7 @@ const signConfig = ok
       <!-- ── WJ32 · FAQ OBJECTIONS (4–5 questions fréquentes) ────────────────
            <details> par item : accordéon accessible sans JS, zéro CLS. -->
       <section class="mx-auto max-w-4xl px-5 pt-16 sm:px-8">
-        <p class="tech-label rule-brass text-brass-300">Vos questions, nos réponses</p>
+        <p class="tech-label rule-brass text-brass-300" data-i18n data-fr="Vos questions, nos réponses" data-ar="أسئلتكم، وأجوبتنا">Vos questions, nos réponses</p>
         <div class="mt-5 space-y-3">
           {faq.map((item) => (
             <details class="cine-card rounded-xl p-5">
@@ -1112,18 +1137,21 @@ const signConfig = ok
         <div class="mx-auto flex max-w-4xl items-center justify-between gap-4">
           <div class="min-w-0">
             <p class="truncate text-sm text-lune-soft">
-              {twoOptions ? 'À partir de ' : ''}
-              <span class="lum fig text-lg">{formatMAD(optionTtc(data!, reco ?? 'sans_batterie'))}</span>
-              <span class="text-lune-faint"> TTC</span>
+              <span data-i18n data-fr={twoOptions ? 'À partir de ' : ''} data-ar={twoOptions ? 'ابتداءً من ' : ''}>{twoOptions ? 'À partir de ' : ''}</span>
+              <span class="lum fig text-lg" dir="ltr">{formatMAD(optionTtc(data!, reco ?? 'sans_batterie'))}</span>
+              <span class="text-lune-faint" data-i18n data-fr=" TTC" data-ar=" شامل الضريبة"> TTC</span>
             </p>
             {validity.fromBackend && validity.label && !validity.expired && (
-              <p class="truncate text-xs text-lune-faint">Valable jusqu’au {validity.label}</p>
+              <p class="truncate text-xs text-lune-faint">
+                <span data-i18n data-fr="Valable jusqu’au" data-ar="صالح حتى">Valable jusqu’au</span> <span dir="ltr">{validity.label}</span>
+              </p>
             )}
           </div>
           <a
             href="#signer"
             class="btn-pill shrink-0 whitespace-nowrap"
             style="background: var(--color-brass-400); color: var(--color-nuit); border-color: var(--color-brass-400)"
+            data-i18n data-fr="Signer en ligne" data-ar="التوقيع إلكترونياً"
           >
             Signer en ligne
           </a>
