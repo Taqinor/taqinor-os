@@ -60,19 +60,19 @@ const STATIC_TRANSLATED: readonly string[] = [
   '/guides/faut-il-des-batteries',
   '/guides/loi-82-21-expliquee',
   '/guides/onduleur-hybride-ou-reseau',
+  // WJ38 — parcours devis « Mon toit » localisé (routes EN/AR livrées) : les CTA
+  // devis/étude basculent d'eux-mêmes vers /en/... et /ar/... via quoteJourneyHref.
+  '/devis/mon-toit',
 ];
 
 /**
  * WJ36 — chemin RACINE du parcours devis « Mon toit » : la cible canonique de
  * TOUS les CTA devis/étude du site (en-tête, héros, CtaBand, CTA collant,
- * CTA en page). La route n'existe aujourd'hui qu'en FR ; comme le chemin
- * n'est pas déclaré dans STATIC_TRANSLATED, `quoteJourneyHref('en'|'ar')`
- * retombe sur la racine FR (jamais de lien mort).
- *
- * WJ38 (localisation EN/AR du parcours) — UNE seule chose à faire ici :
- * construire src/pages/en/devis/mon-toit.astro + src/pages/ar/devis/mon-toit.astro
- * puis ajouter QUOTE_JOURNEY_PATH à STATIC_TRANSLATED ci-dessus. Tous les CTA
- * du site basculeront d'eux-mêmes vers /en/... et /ar/....
+ * CTA en page). WJ38 (localisation EN/AR) est LIVRÉ : les routes
+ * src/pages/{en,ar}/devis/mon-toit.astro existent et `/devis/mon-toit` est
+ * déclaré dans STATIC_TRANSLATED ci-dessus, donc `quoteJourneyHref('en'|'ar')`
+ * renvoie `/en/...` / `/ar/...` et tous les CTA basculent d'eux-mêmes selon la
+ * locale (repli FR seulement si une locale venait à manquer — jamais de lien mort).
  */
 export const QUOTE_JOURNEY_PATH = '/devis/mon-toit';
 
