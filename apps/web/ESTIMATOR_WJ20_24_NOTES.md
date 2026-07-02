@@ -102,3 +102,31 @@ the « Fourchette réaliste » toggle is on (`ctx.climateBandOn`, default false)
 savings as a range; the low-bound savings go through `annualSavingsMad(band.low, target)`,
 so the low savings are **capped by the avoidable energy cost** — verified by test that even
 a 3× over-sized production's low-bound savings never exceed `billMAD(target)` annualised.
+
+---
+
+## WJ23 — Tariff fidelity + 82-21 savings honesty
+
+Mirrors the ERP tariff engine's approach (`backend/.../parametres/tariff.py`, PLAN2 QJ13 —
+read-only reference, NEVER imported). All new functions in `estimatorBrainV2.ts`, additive.
+
+- **Per-utility editable tranche tables** (`TARIFF_BY_UTILITY`: `ONEE` / `Lydec` / `Redal`).
+  Lydec/Redal are for now equalled to the ONEE grid (`REGIE_TARIFF`) — the SAFE posture
+  (slightly under-states ex-délégataire savings, never over-states) until a real recent
+  bill per utility is provided. `makeEditableTariff(...)` lets a user paste their real grid
+  (guarantees the last selective tranche stays open at `Infinity`). `tariffForUtility()`
+  falls back to ONEE for an unknown utility.
+- **Self-consumption-first savings** (`selfConsumptionFirstSavings`). Solar self-consumed
+  energy offsets the TOP (most expensive) tranches first: `billMAD(cons) − billMAD(cons −
+  offset)`. Because `billMAD` is monotone non-decreasing, the difference captures the
+  marginal (highest) rate first. The offset is clamped to consumption, so the saving never
+  exceeds the avoidable cost `billMAD(cons)`. NOTE: the Moroccan tariff is SELECTIVE above
+  the threshold (whole month at its tranche's rate), so the *average marginal rate* is not
+  strictly monotone as you offset more (you can drop into a cheaper tranche) — but the
+  *total* saving is monotone and never negative (tested).
+- **Optional surplus-injection line** (`surplusInjectionLine`), loi 82-21. Ships DISABLED
+  and valued at ZERO with the label « Injection du surplus (loi 82-21) — en attente du
+  tarif ANRE : non comptée. » `ANRE_TARIFF_CONFIRMED = false` and
+  `ANRE_INJECTION_RATE_MAD_PER_KWH = 0` — no invented number. When the founder confirms the
+  ANRE BT tariff, flip the flag + set the rate and the line valorises the surplus. Tested:
+  stays off/zero unless confirmed AND rate > 0.

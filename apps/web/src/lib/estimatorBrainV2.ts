@@ -144,6 +144,127 @@ export function tariffForCity(city?: string): TariffGrid {
   return REGIE_TARIFF;
 }
 
+// ═══════════ WJ23 — FIDÉLITÉ TARIFAIRE PAR RÉGIE (ONEE / Lydec / Redal) + honnêteté 82-21 ═══════════
+// Miroir de l'approche du moteur ERP (backend parametres/tariff.py, QJ13 — JAMAIS importé) :
+// des barèmes de tranches ÉDITABLES par régie, une économie « autoconsommation d'abord »
+// qui compense les tranches LES PLUS CHÈRES en premier, et une ligne d'injection de surplus
+// qui reste À ZÉRO tant que le tarif BT de l'ANRE (loi 82-21) n'est pas confirmé par le
+// fondateur. Aucun chiffre inventé : Lydec/Redal sont pour l'instant égalées au barème ONEE
+// (posture sûre — voir TARIFF_BY_CITY), et l'utilisateur peut fournir une vraie grille.
+
+/** Régie identifiée. ONEE = barème national ; Lydec (Casablanca) / Redal (Rabat) =
+ *  délégataires. Défaut ONEE (le plus conservateur). */
+export type Utility = 'ONEE' | 'Lydec' | 'Redal';
+
+/** Barèmes ÉDITABLES par régie. Lydec/Redal SONT pour l'instant égalées au barème ONEE
+ *  (= REGIE_TARIFF) — SOUS-estime légèrement les économies des ex-délégataires (jamais
+ *  l'inverse). Les vraies grilles délégataires attendent une facture récente ; ce record
+ *  est la surface éditable (remplacer une entrée = fournir la grille exacte). */
+export const TARIFF_BY_UTILITY: Record<Utility, TariffGrid> = {
+  ONEE: REGIE_TARIFF,
+  Lydec: REGIE_TARIFF,
+  Redal: REGIE_TARIFF,
+};
+
+/** Grille d'une régie (défaut ONEE si inconnue). */
+export function tariffForUtility(utility?: Utility | string): TariffGrid {
+  if (utility && Object.prototype.hasOwnProperty.call(TARIFF_BY_UTILITY, utility)) {
+    return TARIFF_BY_UTILITY[utility as Utility];
+  }
+  return REGIE_TARIFF;
+}
+
+/**
+ * Fabrique une grille tarifaire ÉDITABLE à partir de tranches saisies par l'utilisateur.
+ * `progressive`/`selective` sont des paires (borne kWh, tarif) ; on garantit la dernière
+ * tranche sélective ouverte (Infinity). Sert à laisser un utilisateur coller sa VRAIE
+ * grille (facture) sans toucher les barèmes par défaut. PUR.
+ */
+export function makeEditableTariff(
+  progressive: TariffTranche[],
+  selective: TariffTranche[],
+  selectiveThresholdKwh = 150,
+  boundaryToleranceKwh = 10,
+): TariffGrid {
+  const sel = selective.slice();
+  if (sel.length && sel[sel.length - 1].upToKwh !== Infinity) {
+    sel[sel.length - 1] = { ...sel[sel.length - 1], upToKwh: Infinity };
+  }
+  return { progressive: progressive.slice(), selective: sel, selectiveThresholdKwh, boundaryToleranceKwh };
+}
+
+/**
+ * Économie « AUTOCONSOMMATION D'ABORD » : l'énergie solaire autoconsommée efface les kWh
+ * du HAUT de la facture (tranches les plus chères) en premier. On le prouve en retirant
+ * l'autoconsommation du sommet de la conso : billMAD(conso) − billMAD(conso − auto) — la
+ * différence capte forcément le tarif marginal (le plus cher) d'abord, car billMAD est
+ * monotone croissante par tranche. Renvoie l'économie mensuelle (MAD) + le tarif marginal
+ * effacé (MAD/kWh) pour l'affichage. L'économie ne dépasse JAMAIS billMAD(conso) (coût
+ * évitable). PUR.
+ */
+export interface SelfConsumptionSaving {
+  /** Économie mensuelle (MAD) = réduction de facture par l'autoconsommation. */
+  monthlyMad: number;
+  /** Tarif marginal (MAD/kWh) réellement effacé (haut de grille). */
+  marginalRate: number;
+  /** kWh autoconsommés effectivement pris en compte (borné à la conso). */
+  offsetKwh: number;
+}
+export function selfConsumptionFirstSavings(
+  monthlyConsumptionKwh: number,
+  monthlySelfConsumedKwh: number,
+  grid: TariffGrid = REGIE_TARIFF,
+): SelfConsumptionSaving {
+  const cons = Math.max(0, monthlyConsumptionKwh);
+  const offset = Math.max(0, Math.min(cons, monthlySelfConsumedKwh));
+  const billBefore = billMAD(cons, grid);
+  const billAfter = billMAD(cons - offset, grid);
+  const monthlyMad = Math.max(0, billBefore - billAfter);
+  const marginalRate = offset > 0 ? monthlyMad / offset : 0;
+  return { monthlyMad, marginalRate, offsetKwh: offset };
+}
+
+/** Statut du tarif d'injection de surplus BT (loi 82-21). OFF par défaut : le tarif de
+ *  l'ANRE n'est pas publié → aucune valeur inventée. Le fondateur bascule `ANRE_TARIFF_CONFIRMED`
+ *  et renseigne le prix quand l'ANRE publie. */
+export const ANRE_TARIFF_CONFIRMED = false;
+/** Prix d'injection BT (MAD/kWh) — 0 tant que non confirmé par l'ANRE. */
+export const ANRE_INJECTION_RATE_MAD_PER_KWH = 0;
+
+/**
+ * Ligne « surplus injecté au réseau » (loi 82-21). Tant que l'ANRE n'a pas publié le tarif
+ * BT (`ANRE_TARIFF_CONFIRMED = false`), elle reste DÉSACTIVÉE et VALORISÉE À ZÉRO, avec un
+ * libellé clair « en attente du tarif ANRE » — aucun chiffre inventé. Quand le fondateur
+ * confirme, elle valorise le surplus au tarif renseigné. PUR.
+ */
+export interface SurplusInjectionLine {
+  enabled: boolean;
+  surplusKwh: number;
+  valueMad: number;
+  label: string;
+}
+export function surplusInjectionLine(
+  annualSurplusKwh: number,
+  confirmed = ANRE_TARIFF_CONFIRMED,
+  rateMadPerKwh = ANRE_INJECTION_RATE_MAD_PER_KWH,
+): SurplusInjectionLine {
+  const surplus = Math.max(0, annualSurplusKwh);
+  if (!confirmed || !(rateMadPerKwh > 0)) {
+    return {
+      enabled: false,
+      surplusKwh: surplus,
+      valueMad: 0,
+      label: 'Injection du surplus (loi 82-21) — en attente du tarif ANRE : non comptée.',
+    };
+  }
+  return {
+    enabled: true,
+    surplusKwh: surplus,
+    valueMad: surplus * rateMadPerKwh,
+    label: `Injection du surplus (loi 82-21) au tarif ANRE ${rateMadPerKwh.toLocaleString('fr-FR')} MAD/kWh.`,
+  };
+}
+
 /** Part autoconsommée réellement alignée dans le temps (borne basse de la fourchette). */
 const SELF_CONSUMPTION_TIMING_LOW = 0.75;
 
