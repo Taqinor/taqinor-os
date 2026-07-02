@@ -411,7 +411,40 @@ def build_quote_data(devis, pdf_options=None) -> dict:
     if not sans_ok and not avec_ok:
         # Format une page (liste simple) : pas d'options — valeurs neutres.
         sans_ok = True
-    if sans_ok and avec_ok:
+
+    # ── QF6 — respecter le choix avec/sans-batterie STOCKÉ par le vendeur ─────
+    # L'écran générateur persiste le scénario choisi dans etude_params
+    # ('scenario' = « Sans batterie » / « Avec batterie » / « Les deux (Sans +
+    # Avec) ») et l'option recommandée ('recommended_option'). On LIT ce choix
+    # d'abord ; l'inférence depuis les lignes n'est qu'un REPLI quand rien n'est
+    # stocké. Un choix stocké ne peut jamais être satisfait au-delà de ce que
+    # l'équipement permet : « Avec » sans onduleur hybride+batterie ne peut pas
+    # rendre l'option avec — dans ce cas on retombe sur ce qui est disponible.
+    _stored_choice = (devis.etude_params or {}).get('scenario')
+    _valid_choices = {
+        'Sans batterie', 'Avec batterie', 'Les deux (Sans + Avec)'}
+    if _stored_choice in _valid_choices and (sans_ok or avec_ok):
+        if _stored_choice == 'Les deux (Sans + Avec)' and sans_ok and avec_ok:
+            scenario = 'Les deux (Sans + Avec)'
+        elif _stored_choice == 'Sans batterie' and sans_ok:
+            scenario = 'Sans batterie'
+        elif _stored_choice == 'Avec batterie' and avec_ok:
+            scenario = 'Avec batterie'
+        elif sans_ok and avec_ok:
+            scenario = 'Les deux (Sans + Avec)'
+        elif avec_ok:
+            scenario = 'Avec batterie'
+        else:
+            scenario = 'Sans batterie'
+        # Option recommandée stockée si valide, sinon dérivée du scénario.
+        _stored_reco = (devis.etude_params or {}).get('recommended_option')
+        if _stored_reco in ('Sans batterie', 'Avec batterie'):
+            recommended = _stored_reco
+        elif scenario == 'Sans batterie':
+            recommended = 'Sans batterie'
+        else:
+            recommended = 'Avec batterie'
+    elif sans_ok and avec_ok:
         scenario = "Les deux (Sans + Avec)"
         recommended = "Avec batterie"
     elif sans_ok:
@@ -420,6 +453,18 @@ def build_quote_data(devis, pdf_options=None) -> dict:
     else:
         scenario = "Avec batterie"
         recommended = "Avec batterie"
+
+    # QF6 — le scénario STOCKÉ « Sans/Avec » restreint le document à une seule
+    # option même si les deux existent dans les lignes. On aligne donc les
+    # drapeaux d'option et le mélange une-page sur ce scénario (SANS = réseau
+    # seul, sans batterie ni onduleur hybride ; AVEC = hybride + batterie, sans
+    # onduleur réseau). Comportement « les deux » et repli inchangés.
+    if scenario == 'Sans batterie':
+        avec_ok = False
+        deux_options = False
+    elif scenario == 'Avec batterie':
+        sans_ok = False
+        deux_options = False
 
     # ── Canonical totals: ONE computation from the stored HT lines ───────────
     # Every page must display these exact values — never re-derive.
@@ -478,8 +523,17 @@ def build_quote_data(devis, pdf_options=None) -> dict:
 
     totaux_sans = _canonical_totaux(sans_items)
     totaux_avec = _canonical_totaux(avec_items)
-    # Une page : option 1 seule quand deux vraies options, sinon tout le devis
-    totaux_all = _canonical_totaux(sans_items if deux_options else items)
+    # Une page : option 1 seule quand deux vraies options ; l'option choisie
+    # quand le scénario stocké restreint à une seule (QF6) ; sinon tout le devis.
+    if deux_options:
+        _all_rows = sans_items
+    elif scenario == 'Avec batterie' and avec_ok:
+        _all_rows = avec_items
+    elif scenario == 'Sans batterie' and has_reseau:
+        _all_rows = sans_items
+    else:
+        _all_rows = items
+    totaux_all = _canonical_totaux(_all_rows)
 
     # ── Total d'AFFICHAGE canonique (liste des devis) ────────────────────────
     # Deux options → total de l'option 1 (remise incluse), jamais la somme
@@ -675,7 +729,18 @@ def build_quote_data(devis, pdf_options=None) -> dict:
     # hybride+batterie) rend l'OPTION 1 (sans batterie) seule, avec une
     # mention discrète vers la proposition complète. Devis mono-option ou sans
     # options (pompage, liste libre) : toutes les lignes, comme avant.
-    onepage_source = sans_items if deux_options else items
+    # QF6 — le scénario choisi pilote aussi la liste une-page : « Sans » → les
+    # lignes de l'option sans batterie, « Avec » → celles de l'option avec
+    # batterie, « Les deux » → option 1 seule (jamais deux onduleurs), sinon
+    # tout le devis (liste libre/pompage).
+    if deux_options:
+        onepage_source = sans_items
+    elif scenario == 'Avec batterie' and avec_ok:
+        onepage_source = avec_items
+    elif scenario == 'Sans batterie' and has_reseau:
+        onepage_source = sans_items
+    else:
+        onepage_source = items
     onepage_note_batterie = deux_options
     all_items = [
         {
