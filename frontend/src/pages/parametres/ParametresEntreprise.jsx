@@ -33,6 +33,7 @@ import StockSection from './StockSection'
 import StatutsSection from './StatutsSection'
 import MonitoringSection from './MonitoringSection'
 import ChecklistSection from './ChecklistSection'
+import EtapesChantierSection from './EtapesChantierSection'
 import KitsSection from './KitsSection'
 import ShotListSection from './ShotListSection'
 import AutomatisationsSection from './AutomatisationsSection'
@@ -793,6 +794,7 @@ export default function ParametresEntreprise() {
           {tab === 'monitoring' && <MonitoringSection />}
           {/* N74 — éditeur de modèles de checklist par type d'installation. */}
           {tab === 'checklists' && <ChecklistSection />}
+          {tab === 'etapes_chantier' && <EtapesChantierSection />}
           {/* F2 — éditeur de kits d'outillage (liste ordonnée d'outils). */}
           {tab === 'kits'       && <KitsSection />}
           {/* F7/F8 — éditeur de la shot list (créneaux photo avant/pendant/après). */}

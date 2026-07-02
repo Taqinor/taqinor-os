@@ -35,6 +35,13 @@ const installationsApi = {
     : api.post('/installations/checklist-templates/', data),
   deleteChecklistTemplate: (id) => api.delete(`/installations/checklist-templates/${id}/`),
 
+  // CH1/CH5 — étapes/gates configurables du cycle de vie chantier (Directeur).
+  getStagesChantier: () => api.get('/installations/etapes-chantier/'),
+  saveStageChantier: (id, data) => id
+    ? api.patch(`/installations/etapes-chantier/${id}/`, data)
+    : api.post('/installations/etapes-chantier/', data),
+  deleteStageChantier: (id) => api.delete(`/installations/etapes-chantier/${id}/`),
+
   // Rapport de production énergétique ESTIMÉE (PDF client-facing).
   // `params` : nb_mois, date_debut, date_fin, production_annuelle_kwh,
   // rendement, tarif, co2. Réponse en blob PDF.
