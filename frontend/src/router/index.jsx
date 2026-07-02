@@ -77,6 +77,9 @@ const BalanceAgeePage = lazy(() => import('../pages/reporting/BalanceAgeePage'))
 const ArchiveClientPage = lazy(() => import('../pages/reporting/ArchiveClientPage'))
 const ArchiveChantierPage = lazy(() => import('../pages/reporting/ArchiveChantierPage'))
 const CommercialDashboard = lazy(() => import('../pages/reporting/CommercialDashboard'))
+const CohortsPage = lazy(() => import('../pages/reporting/CohortsPage'))
+const DashboardConfigPage = lazy(() => import('../pages/reporting/DashboardConfigPage'))
+const AgentActions = lazy(() => import('../pages/ia/AgentActions'))
 // Vitrine interne du système UI (refonte, P68) — référence vivante des primitifs.
 const UIShowcase = lazy(() => import('../pages/ui/UIShowcase'))
 const ChatPage = lazy(() => import('../pages/messaging/ChatPage'))
@@ -223,6 +226,7 @@ const router = createBrowserRouter([
 
   // IA
   { path: '/ia/agent', loader: authLoader, element: <WithLayout><AgentChat /></WithLayout> },
+  { path: '/ia/actions', loader: authLoader, element: <WithLayout><AgentActions /></WithLayout> },
   { path: '/ia/ocr', loader: authLoader, element: <WithLayout><OcrUpload /></WithLayout> },
 
   // Reporting
@@ -230,6 +234,8 @@ const router = createBrowserRouter([
   { path: '/rapports', loader: authLoader, element: <WithLayout><Rapports /></WithLayout> },
   { path: '/reporting/balance-agee', loader: authLoader, element: <WithLayout><BalanceAgeePage /></WithLayout> },
   { path: '/reporting/commercial', loader: roleLoader(['responsable', 'admin']), element: <WithLayout><CommercialDashboard /></WithLayout> },
+  { path: '/reporting/cohortes', loader: roleLoader(['responsable', 'admin']), element: <WithLayout><CohortsPage /></WithLayout> },
+  { path: '/reporting/dashboards', loader: roleLoader(['responsable', 'admin']), element: <WithLayout><DashboardConfigPage /></WithLayout> },
   { path: '/reporting/archive/client/:id', loader: authLoader, element: <WithLayout><ArchiveClientPage /></WithLayout> },
   { path: '/reporting/archive/chantier/:id', loader: authLoader, element: <WithLayout><ArchiveChantierPage /></WithLayout> },
 
