@@ -413,6 +413,7 @@ export default function ClientList() {
           client={detailClient}
           onClose={() => setDetailClient(null)}
           onNewDevis={(c) => navigate(`/ventes/devis/nouveau?client=${c.id}`)}
+          onChanged={() => dispatch(fetchClients())}
         />
       )}
     </div>

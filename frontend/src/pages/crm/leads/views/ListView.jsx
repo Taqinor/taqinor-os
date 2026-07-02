@@ -17,6 +17,7 @@ import {
 } from '../../../../features/crm/stages'
 import AssigneePicker from '../../../../components/AssigneePicker'
 import InlineEdit from '../../../../components/InlineEdit'
+import LeadInsightsDialog from '../LeadInsightsDialog'
 import { allVisibleSelected } from '../../../../features/crm/bulk'
 import {
   Button, Checkbox, IconButton, StatusPill,
@@ -134,6 +135,8 @@ export default function ListView({
   // Par défaut : plus récents d'abord (date_creation desc), aucune colonne active.
   const [sort, setSort] = useState({ key: null, dir: 'asc' })
   const [busyId, setBusyId] = useState(null)
+  // WR9 — fiche « Parcours » (timeline multi-touch + correspondance client).
+  const [insightsLead, setInsightsLead] = useState(null)
   const today = todayISO()
 
   const onArchive = async (lead) => {
@@ -387,6 +390,11 @@ export default function ListView({
                         onClick: () => onOpenLead(lead),
                       },
                       {
+                        id: 'parcours', label: 'Parcours',
+                        title: 'Points de contact & correspondance client',
+                        onClick: () => setInsightsLead(lead),
+                      },
+                      {
                         id: 'devis', label: '⚡ Devis auto',
                         disabled: !lead.devis_auto?.pret,
                         title: lead.devis_auto?.pret
@@ -479,6 +487,12 @@ export default function ListView({
           )}
         </tbody>
       </table>
+      {insightsLead && (
+        <LeadInsightsDialog
+          lead={insightsLead}
+          onClose={() => setInsightsLead(null)}
+        />
+      )}
     </div>
   )
 }

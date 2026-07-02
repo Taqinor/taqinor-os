@@ -13,6 +13,8 @@ import { downloadBlob } from '../../utils/downloadBlob'
 import importApi, { downloadXlsx } from '../../api/importApi'
 import installationsApi from '../../api/installationsApi'
 import AttachmentsPanel from '../../components/AttachmentsPanel'
+import TicketSuiviClientPanel from './TicketSuiviClientPanel'
+import TicketChecklistPanel from './TicketChecklistPanel'
 import { INTERVENTION_TYPES } from '../../features/installations/statuses'
 import {
   EMPTY_TICKET_FILTERS,
@@ -608,6 +610,19 @@ function TicketDetail({ ticket, onClose, onSaved }) {
         <section className="flex flex-col gap-3">
           <AttachmentsPanel model="sav.ticket" id={id} />
         </section>
+
+        {/* ── WR11/FG81+FG86 — SLA première réponse + lien de suivi client ── */}
+        <CollapsibleSection icon={Clock} title="Suivi client & SLA">
+          <TicketSuiviClientPanel
+            ticket={current}
+            onUpdated={(t) => { setCurrent(t); loadHistorique(); onSaved?.() }}
+          />
+        </CollapsibleSection>
+
+        {/* ── WR11/FG82 — checklist de visite de maintenance ── */}
+        <CollapsibleSection icon={ShieldCheck} title="Checklist de maintenance">
+          <TicketChecklistPanel ticketId={id} />
+        </CollapsibleSection>
 
         {/* ── Interventions (L313 — repliable) ── */}
         <CollapsibleSection icon={Wrench} title="Interventions">
