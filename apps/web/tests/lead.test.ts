@@ -204,6 +204,100 @@ describe('WJ30 — validateLead élargi : les champs capturés passent, le garba
   });
 });
 
+// ——— WJ31 — validateLead élargi encore : questions best-in-world facultatives ———
+describe('WJ31 — validateLead élargi : distributeur, ombrage, âge toit, puces, qualificateurs', () => {
+  const widened31 = {
+    ...validBody,
+    distributeur: 'lydec',
+    roofAgeYears: 12,
+    ombrage: 'partiel',
+    futureLoads: ['clim', 've'],
+    batteryInterest: true,
+    occupantType: 'proprietaire',
+    projectTiming: '3mois',
+    financingIntent: 'financement',
+    hasMeterPhoto: true,
+  };
+
+  it('transmet distributeur, ombrage, âge du toit, charges futures, batterie, qualificateurs et financement', () => {
+    const r = validateLead(widened31);
+    expect(r.ok).toBe(true);
+    if (!r.ok) return;
+    expect(r.lead.distributeur).toBe('lydec');
+    expect(r.lead.roofAgeYears).toBe(12);
+    expect(r.lead.ombrage).toBe('partiel');
+    expect(r.lead.futureLoads).toEqual(['clim', 've']);
+    expect(r.lead.batteryInterest).toBe(true);
+    expect(r.lead.occupantType).toBe('proprietaire');
+    expect(r.lead.projectTiming).toBe('3mois');
+    expect(r.lead.financingIntent).toBe('financement');
+    expect(r.lead.hasMeterPhoto).toBe(true);
+  });
+
+  it('un lead SANS ces champs garde exactement la forme d\'hier (aucune clé ajoutée)', () => {
+    const r = validateLead(validBody);
+    expect(r.ok).toBe(true);
+    if (!r.ok) return;
+    for (const k of ['distributeur', 'roofAgeYears', 'ombrage', 'futureLoads',
+      'batteryInterest', 'occupantType', 'projectTiming', 'financingIntent', 'hasMeterPhoto']) {
+      expect(r.lead).not.toHaveProperty(k);
+    }
+  });
+
+  it('un champ facultatif MALFORMÉ est écarté SANS faire échouer le lead', () => {
+    const r = validateLead({
+      ...validBody,
+      distributeur: 'iam', // pas un distributeur électrique connu
+      roofAgeYears: -5,
+      ombrage: 'beaucoup',
+      futureLoads: ['jacuzzi', 42, 'clim'], // seul 'clim' est valide
+      occupantType: 'invite',
+      projectTiming: 'un jour',
+      financingIntent: 'crypto',
+    });
+    expect(r.ok).toBe(true); // JAMAIS bloquant
+    if (!r.ok) return;
+    expect(r.lead).not.toHaveProperty('distributeur');
+    expect(r.lead).not.toHaveProperty('roofAgeYears');
+    expect(r.lead).not.toHaveProperty('ombrage');
+    expect(r.lead.futureLoads).toEqual(['clim']); // le garbage est filtré, le valide garde
+    expect(r.lead).not.toHaveProperty('occupantType');
+    expect(r.lead).not.toHaveProperty('projectTiming');
+    expect(r.lead).not.toHaveProperty('financingIntent');
+  });
+
+  it('roofAgeYears hors bornes (> 100 ans) est écarté', () => {
+    const r = validateLead({ ...validBody, roofAgeYears: 500 });
+    expect(r.ok).toBe(true);
+    if (!r.ok) return;
+    expect(r.lead).not.toHaveProperty('roofAgeYears');
+  });
+
+  it('futureLoads déduplique et ignore un tableau vide', () => {
+    const r = validateLead({ ...validBody, futureLoads: ['clim', 'clim', 'pompe'] });
+    expect(r.ok).toBe(true);
+    if (!r.ok) return;
+    expect(r.lead.futureLoads).toEqual(['clim', 'pompe']);
+
+    const r2 = validateLead({ ...validBody, futureLoads: [] });
+    expect(r2.ok).toBe(true);
+    if (!r2.ok) return;
+    expect(r2.lead).not.toHaveProperty('futureLoads');
+  });
+
+  it('le record transmis au webhook porte les champs WJ31 (buildLeadRecord les conserve)', () => {
+    const v = validateLead(widened31);
+    if (!v.ok) throw new Error('fixture invalide');
+    const record = buildLeadRecord(v.lead, { kwcMin: 5, kwcMax: 9, kwcLabel: '5 à 9 kWc', paybackLabel: '4 à 6 ans', source: 'local' }, new Date());
+    expect(record.distributeur).toBe('lydec');
+    expect(record.ombrage).toBe('partiel');
+    expect(record.futureLoads).toEqual(['clim', 've']);
+    expect(record.occupantType).toBe('proprietaire');
+    // le contrat existant tient toujours
+    expect(record.qualified).toBe(true);
+  });
+});
+
 describe('buildLeadRecord', () => {
   it('horodate le consentement et persiste fbclid + UTM', () => {
     const now = new Date('2026-06-11T10:00:00Z');

@@ -236,6 +236,108 @@ const TOWNS = ['Casablanca', 'Rabat', 'Marrakech', 'Tanger', 'Agadir', 'Kénitra
           </label>
         </div>
 
+        <!-- ===== WJ31 — questions best-in-world, TOUTES facultatives, repliées par défaut ===== -->
+        <details id="mt-more" class="cine-card mt-4 p-5 sm:p-6">
+          <summary class="cursor-pointer select-none text-sm font-semibold text-brass-300" data-i18n
+            data-fr="Affiner mon estimation (facultatif, 1 minute)" data-ar="تحسين تقديري (اختياري، دقيقة واحدة)">
+            Affiner mon estimation (facultatif, 1 minute)
+          </summary>
+
+          <div class="mt-4 grid gap-4 sm:grid-cols-2">
+            <label class="block text-sm text-lune-soft">
+              <span data-i18n data-fr="Distributeur d'électricité" data-ar="موزع الكهرباء">Distributeur d'électricité</span>
+              <select id="mt-distributeur" name="distributeur" class={`${inputClass} mt-1`}>
+                <option value="">Choisir…</option>
+                <option value="onee" data-i18n data-fr="ONEE" data-ar="المكتب الوطني">ONEE</option>
+                <option value="lydec" data-i18n data-fr="Lydec" data-ar="ليديك">Lydec</option>
+                <option value="redal" data-i18n data-fr="Redal" data-ar="ريضال">Redal</option>
+                <option value="inconnu" data-i18n data-fr="Je ne sais pas" data-ar="لا أعرف">Je ne sais pas</option>
+              </select>
+            </label>
+            <label class="block text-sm text-lune-soft">
+              <span data-i18n data-fr="Consommation (kWh/mois, si connue)" data-ar="الاستهلاك (كيلوواط ساعة/شهر، إن عُرف)">Consommation (kWh/mois, si connue)</span>
+              <input id="mt-bill-kwh" name="billKwh" type="number" step="any" inputmode="decimal"
+                placeholder="Ex. 850" class={`${inputClass} mt-1`} />
+            </label>
+          </div>
+
+          <!-- Photo compteur/facture — capturée EN LOCAL, jamais uploadée (pas d'endpoint aujourd'hui). -->
+          <div class="mt-4">
+            <label class="block text-sm text-lune-soft" for="mt-meter-photo" data-i18n
+              data-fr="Photo du compteur ou de la facture" data-ar="صورة العداد أو الفاتورة">
+              Photo du compteur ou de la facture
+            </label>
+            <input id="mt-meter-photo" type="file" accept="image/*" capture="environment"
+              class="mt-1 block w-full text-sm text-lune-soft file:mr-3 file:border-0 file:bg-white/10 file:px-3 file:py-2 file:text-sm file:font-semibold file:text-white" />
+            <p id="mt-meter-photo-note" class="mt-1 text-xs text-lune-faint" data-i18n
+              data-fr="Ou envoyez-la nous directement sur WhatsApp après l'envoi du formulaire — c'est souvent plus rapide."
+              data-ar="أو أرسلها لنا مباشرة على واتساب بعد إرسال النموذج — غالباً أسرع.">
+              Ou envoyez-la nous directement sur WhatsApp après l'envoi du formulaire — c'est
+              souvent plus rapide.
+            </p>
+          </div>
+
+          <fieldset class="mt-4">
+            <legend class="text-sm text-lune-soft" data-i18n data-fr="Ombrage sur le toit" data-ar="التظليل على السطح">Ombrage sur le toit</legend>
+            <div class="mt-2 grid grid-cols-3 gap-2">
+              <button type="button" class="mt-ombrage cine-card border p-2.5 text-center text-sm text-white transition-colors" data-value="aucun" aria-pressed="false" data-i18n data-fr="Aucun" data-ar="لا يوجد">Aucun</button>
+              <button type="button" class="mt-ombrage cine-card border p-2.5 text-center text-sm text-white transition-colors" data-value="partiel" aria-pressed="false" data-i18n data-fr="Partiel" data-ar="جزئي">Partiel</button>
+              <button type="button" class="mt-ombrage cine-card border p-2.5 text-center text-sm text-white transition-colors" data-value="important" aria-pressed="false" data-i18n data-fr="Important" data-ar="كبير">Important</button>
+            </div>
+          </fieldset>
+
+          <label class="mt-4 block text-sm text-lune-soft">
+            <span data-i18n data-fr="Âge approximatif du toit (années)" data-ar="عمر السطح التقريبي (سنوات)">Âge approximatif du toit (années)</span>
+            <input id="mt-roof-age" name="roofAgeYears" type="number" step="1" min="0" inputmode="numeric"
+              placeholder="Ex. 10" class={`${inputClass} mt-1`} />
+          </label>
+
+          <fieldset class="mt-4">
+            <legend class="text-sm text-lune-soft" data-i18n data-fr="Charges futures envisagées" data-ar="أحمال مستقبلية متوقعة">Charges futures envisagées</legend>
+            <div class="mt-2 flex flex-wrap gap-2">
+              <button type="button" class="mt-future-load cine-card border px-3 py-2 text-sm text-white transition-colors" data-value="clim" aria-pressed="false" data-i18n data-fr="Climatisation" data-ar="تكييف">Climatisation</button>
+              <button type="button" class="mt-future-load cine-card border px-3 py-2 text-sm text-white transition-colors" data-value="ve" aria-pressed="false" data-i18n data-fr="Voiture électrique" data-ar="سيارة كهربائية">Voiture électrique</button>
+              <button type="button" class="mt-future-load cine-card border px-3 py-2 text-sm text-white transition-colors" data-value="pompe" aria-pressed="false" data-i18n data-fr="Pompage" data-ar="ضخ">Pompage</button>
+            </div>
+          </fieldset>
+
+          <label class="mt-4 flex items-start gap-3 text-sm text-lune-soft">
+            <input id="mt-battery-interest" name="batteryInterest" type="checkbox" class="mt-1 h-5 w-5 flex-none accent-brass-400" />
+            <span data-i18n data-fr="Intéressé(e) par une batterie de stockage" data-ar="مهتم بتخزين البطارية">Intéressé(e) par une batterie de stockage</span>
+          </label>
+
+          <div class="mt-4 grid gap-4 sm:grid-cols-2">
+            <label class="block text-sm text-lune-soft">
+              <span data-i18n data-fr="Vous êtes…" data-ar="أنتم…">Vous êtes…</span>
+              <select id="mt-occupant-type" name="occupantType" class={`${inputClass} mt-1`}>
+                <option value="">Choisir…</option>
+                <option value="proprietaire" data-i18n data-fr="Propriétaire" data-ar="مالك">Propriétaire</option>
+                <option value="locataire" data-i18n data-fr="Locataire" data-ar="مستأجر">Locataire</option>
+                <option value="decideur" data-i18n data-fr="Décideur (entreprise)" data-ar="صاحب القرار (شركة)">Décideur (entreprise)</option>
+              </select>
+            </label>
+            <label class="block text-sm text-lune-soft">
+              <span data-i18n data-fr="Votre projet, c'est pour…" data-ar="مشروعكم من أجل…">Votre projet, c'est pour…</span>
+              <select id="mt-project-timing" name="projectTiming" class={`${inputClass} mt-1`}>
+                <option value="">Choisir…</option>
+                <option value="maintenant" data-i18n data-fr="Maintenant" data-ar="الآن">Maintenant</option>
+                <option value="3mois" data-i18n data-fr="Dans ~3 mois" data-ar="خلال ~3 أشهر">Dans ~3 mois</option>
+                <option value="renseignement" data-i18n data-fr="Juste un renseignement" data-ar="مجرد استعلام">Juste un renseignement</option>
+              </select>
+            </label>
+          </div>
+
+          <label class="mt-4 block text-sm text-lune-soft">
+            <span data-i18n data-fr="Mode de financement envisagé" data-ar="طريقة التمويل المتوقعة">Mode de financement envisagé</span>
+            <select id="mt-financing-intent" name="financingIntent" class={`${inputClass} mt-1`}>
+              <option value="">Choisir…</option>
+              <option value="comptant" data-i18n data-fr="Comptant" data-ar="نقداً">Comptant</option>
+              <option value="financement" data-i18n data-fr="Financement / crédit" data-ar="تمويل / قرض">Financement / crédit</option>
+              <option value="indecis" data-i18n data-fr="Pas encore décidé" data-ar="لم أقرر بعد">Pas encore décidé</option>
+            </select>
+          </label>
+        </details>
+
         <div class="mt-5 flex items-center justify-between gap-3">
           <button type="button" id="mt-back-1"
             class="inline-flex items-center gap-1 px-2 py-3 text-base font-semibold text-lune-soft transition-colors hover:text-white">
@@ -458,17 +560,48 @@ const TOWNS = ['Casablanca', 'Rabat', 'Marrakech', 'Tanger', 'Agadir', 'Kénitra
   let cityTouched = false;
   cityEl?.addEventListener('input', () => { cityTouched = true; });
 
-  // ——— WJ6 : bascule de langue FR/AR (data-i18n) ———
+  // ——— WJ6/WJ33 : bascule de langue FR/AR (data-i18n) ———
   // WJ30 — la langue active est transmise au webhook (langue_preferee).
+  //
+  // WJ33 — FIX : `el.textContent = v` APLATISSAIT toute balise imbriquée à
+  // l'intérieur d'un élément `data-i18n` (ex. un futur <strong>/<a> perdu au
+  // premier passage AR→FR→AR). On bascule désormais par PAIRE DE NŒUDS
+  // show/hide : au premier appel, chaque élément `data-i18n` est ENVELOPPÉ de
+  // deux <span> — un FR (markup ORIGINAL, capturé une fois via innerHTML avant
+  // toute mutation) et un AR (texte simple depuis data-ar, car les libellés AR
+  // du DOM sont aujourd'hui du texte brut) — puis on masque/affiche la bonne
+  // paire. Aucune balise n'est plus jamais perdue, quel que soit le nombre
+  // d'allers-retours FR↔AR.
   let currentLang: 'fr' | 'ar' = 'fr';
+  const i18nPairs: Array<{ fr: HTMLElement; ar: HTMLElement }> = [];
+  function prepareI18n() {
+    document.querySelectorAll<HTMLElement>('[data-i18n]').forEach((el) => {
+      const arText = el.dataset.ar;
+      if (typeof arText !== 'string') return;
+      const frSpan = document.createElement('span');
+      // Le markup FR ORIGINAL (pouvant contenir des balises imbriquées) est
+      // préservé tel quel — capturé UNE SEULE fois, avant toute mutation.
+      frSpan.innerHTML = el.innerHTML;
+      const arSpan = document.createElement('span');
+      arSpan.textContent = arText;
+      arSpan.hidden = true;
+      el.textContent = '';
+      el.append(frSpan, arSpan);
+      i18nPairs.push({ fr: frSpan, ar: arSpan });
+    });
+  }
   function applyLang(lang: 'fr' | 'ar') {
     const isAr = lang === 'ar';
     currentLang = lang;
-    document.querySelectorAll<HTMLElement>('[data-i18n]').forEach((el) => {
-      const v = isAr ? el.dataset.ar : el.dataset.fr;
-      if (typeof v === 'string') el.textContent = v;
+    i18nPairs.forEach(({ fr, ar }) => {
+      fr.hidden = isAr;
+      ar.hidden = !isAr;
     });
-    // RTL local au bloc capture (n'altère pas la mise en page globale).
+    // WJ33 — RTL/langue au niveau DOCUMENT (pas seulement un bloc local) :
+    // un lecteur d'écran ou le rendu natif du navigateur doivent voir la vraie
+    // langue de la page, pas seulement une classe locale.
+    document.documentElement.lang = isAr ? 'ar' : 'fr';
+    document.documentElement.dir = isAr ? 'rtl' : 'ltr';
     const root = document.querySelector('section') as HTMLElement | null;
     if (root) {
       root.dir = isAr ? 'rtl' : 'ltr';
@@ -485,6 +618,7 @@ const TOWNS = ['Casablanca', 'Rabat', 'Marrakech', 'Tanger', 'Agadir', 'Kénitra
         : 'px-3 py-1.5 text-sm font-semibold text-lune-soft transition-colors hover:text-white';
     }
   }
+  prepareI18n();
   $('mt-lang-fr')?.addEventListener('click', () => applyLang('fr'));
   $('mt-lang-ar')?.addEventListener('click', () => applyLang('ar'));
 
@@ -503,6 +637,43 @@ const TOWNS = ['Casablanca', 'Rabat', 'Marrakech', 'Tanger', 'Agadir', 'Kénitra
   });
   // état initial : marquer le mode résidentiel sélectionné visuellement.
   document.querySelector<HTMLButtonElement>('.mt-mode')?.classList.add('border-brass-400');
+
+  // ——— WJ31 : puce à bascule unique (ombrage) — un seul choix actif à la fois ———
+  let ombrage = '';
+  document.querySelectorAll<HTMLButtonElement>('.mt-ombrage').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      const same = ombrage === btn.dataset.value;
+      ombrage = same ? '' : (btn.dataset.value || '');
+      document.querySelectorAll<HTMLButtonElement>('.mt-ombrage').forEach((b) => {
+        const on = !same && b === btn;
+        b.setAttribute('aria-pressed', String(on));
+        b.classList.toggle('border-brass-400', on);
+        b.classList.toggle('border-white/15', !on);
+      });
+    });
+  });
+
+  // ——— WJ31 : puces multi-sélection (charges futures) ———
+  const futureLoads = new Set<string>();
+  document.querySelectorAll<HTMLButtonElement>('.mt-future-load').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      const v = btn.dataset.value || '';
+      const on = !futureLoads.has(v);
+      if (on) futureLoads.add(v); else futureLoads.delete(v);
+      btn.setAttribute('aria-pressed', String(on));
+      btn.classList.toggle('border-brass-400', on);
+      btn.classList.toggle('border-white/15', !on);
+    });
+  });
+
+  // ——— WJ31 : photo compteur/facture — capturée EN LOCAL, JAMAIS uploadée ———
+  // Pas d'endpoint d'upload aujourd'hui (cf. PLAN2 QK6 OCR) : on garde un simple
+  // signal booléen (hasMeterPhoto) et on encourage l'envoi direct sur WhatsApp.
+  let hasMeterPhoto = false;
+  const meterPhotoInput = $('mt-meter-photo') as HTMLInputElement | null;
+  meterPhotoInput?.addEventListener('change', () => {
+    hasMeterPhoto = !!(meterPhotoInput.files && meterPhotoInput.files.length > 0);
+  });
 
   // ——— WJ6 : assistant multi-étapes + barre de progression ———
   let step = 0;
@@ -669,6 +840,18 @@ const TOWNS = ['Casablanca', 'Rabat', 'Marrakech', 'Tanger', 'Agadir', 'Kénitra
       // WJ30 — le type de projet et la langue active partent aussi au webhook.
       mode,
       langue_preferee: currentLang,
+      // WJ31 — questions de capture élargies, TOUTES facultatives (déjà validées
+      // une à une côté serveur : un champ vide/malformé est simplement écarté).
+      distributeur: val('mt-distributeur') || undefined,
+      billKwh: num('mt-bill-kwh'),
+      ombrage: ombrage || undefined,
+      roofAgeYears: num('mt-roof-age'),
+      futureLoads: futureLoads.size > 0 ? Array.from(futureLoads) : undefined,
+      batteryInterest: ($('mt-battery-interest') as HTMLInputElement | null)?.checked === true,
+      occupantType: val('mt-occupant-type') || undefined,
+      projectTiming: val('mt-project-timing') || undefined,
+      financingIntent: val('mt-financing-intent') || undefined,
+      hasMeterPhoto,
     };
     // WJ4 — repère FACULTATIF : on le joint s'il existe, on ne BLOQUE jamais sans lui.
     if (capturePin) {
@@ -776,16 +959,46 @@ const TOWNS = ['Casablanca', 'Rabat', 'Marrakech', 'Tanger', 'Agadir', 'Kénitra
     }
   });
 
-  // ——— WJ7 : récupération d'abandon (exit-intent desktop + retour/onglet caché mobile) ———
-  const exitModal = $('mt-exit');
+  // ——— WJ7/WJ33 : récupération d'abandon (exit-intent desktop + retour/onglet caché mobile) ———
+  const exitModal = $('mt-exit') as HTMLElement | null;
+  const exitPhoneInput = $('mt-exit-phone') as HTMLInputElement | null;
+  const exitWaLink = $('mt-exit-wa') as HTMLAnchorElement | null;
   let exitShown = false;
-  function maybeShowExit() {
+  let exitTriggerEl: HTMLElement | null = null; // WJ33 — pour restaurer le focus à la fermeture
+
+  /** WJ33 — construit (ou reconstruit) le lien WhatsApp d'abandon depuis l'état actuel. */
+  function buildExitWaHref(): string {
+    const phone = exitPhoneInput?.value.trim() || '';
+    const text = captureWhatsappText({
+      fullName: '',
+      city: (val('mt-city') || addressEl?.value || '').trim(),
+      kwcLabel: lastKwcLabel || undefined,
+      savingsLabel: lastSavingsLabel || undefined,
+    }) + (phone.length >= 6 ? ` Mon numéro : ${phone}.` : '');
+    return whatsappLink(WHATSAPP_LEADS, text);
+  }
+
+  function maybeShowExit(triggerEl: HTMLElement | null = null) {
     if (exitShown || submitted) return;
     // ne déranger que si l'utilisateur a au moins commencé (mode/facture ou step > 0)
     const started2 = step > 0 || resolveMonthlyBill() != null || (capturePin != null);
     if (!started2) return;
     exitShown = true;
-    if (exitModal) exitModal.hidden = false;
+    exitTriggerEl = triggerEl ?? (document.activeElement as HTMLElement | null);
+    if (exitWaLink) exitWaLink.href = buildExitWaHref();
+    if (exitModal) {
+      exitModal.hidden = false;
+      // WJ33 — focus initial DANS la modale (premier champ interactif).
+      exitPhoneInput?.focus();
+    }
+  }
+  function closeExit() {
+    if (!exitModal || exitModal.hidden) return;
+    exitModal.hidden = true;
+    // WJ33 — restauration du focus vers l'élément qui a déclenché l'ouverture
+    // (ou, à défaut, un point d'ancrage stable de la page).
+    (exitTriggerEl && document.contains(exitTriggerEl) ? exitTriggerEl : $('mt-lang-fr'))?.focus();
+    exitTriggerEl = null;
   }
   // desktop : la souris quitte par le haut
   document.addEventListener('mouseout', (e) => {
@@ -795,23 +1008,46 @@ const TOWNS = ['Casablanca', 'Rabat', 'Marrakech', 'Tanger', 'Agadir', 'Kénitra
   document.addEventListener('visibilitychange', () => {
     if (document.visibilityState === 'hidden') maybeShowExit();
   });
-  $('mt-exit-close')?.addEventListener('click', () => { if (exitModal) exitModal.hidden = true; });
-  exitModal?.addEventListener('click', (e) => { if (e.target === exitModal) exitModal.hidden = true; });
-  // le CTA WhatsApp d'abandon : prérempli avec l'estimation si déjà calculée + le numéro saisi
-  $('mt-exit-wa')?.addEventListener('click', () => {
-    const phone = ($('mt-exit-phone') as HTMLInputElement | null)?.value.trim() || '';
+  $('mt-exit-close')?.addEventListener('click', () => closeExit());
+  exitModal?.addEventListener('click', (e) => { if (e.target === exitModal) closeExit(); });
+
+  // WJ33 — clavier : Esc ferme + focus trap (Tab/Shift+Tab restent DANS la modale).
+  exitModal?.addEventListener('keydown', (e) => {
+    const ke = e as KeyboardEvent;
+    if (ke.key === 'Escape') { closeExit(); return; }
+    if (ke.key !== 'Tab' || !exitModal) return;
+    const focusable = Array.from(
+      exitModal.querySelectorAll<HTMLElement>('a[href], button:not([disabled]), input:not([disabled]), [tabindex]:not([tabindex="-1"])'),
+    ).filter((el) => el.offsetParent !== null || el === document.activeElement);
+    if (focusable.length === 0) return;
+    const first = focusable[0];
+    const last = focusable[focusable.length - 1];
+    const active = document.activeElement as HTMLElement | null;
+    if (ke.shiftKey && active === first) {
+      ke.preventDefault();
+      last.focus();
+    } else if (!ke.shiftKey && active === last) {
+      ke.preventDefault();
+      first.focus();
+    }
+  });
+
+  // WJ33 — le CTA WhatsApp d'abandon : le lien `href` est reconstruit à CHAQUE
+  // saisie (pas seulement au clic), pour rester correct si l'utilisateur
+  // ouvre WhatsApp via un clic droit / « copier le lien » avant de finir de taper.
+  exitPhoneInput?.addEventListener('input', () => {
+    const err = $('mt-exit-err');
+    if (err) err.hidden = true;
+    if (exitWaLink) exitWaLink.href = buildExitWaHref();
+  });
+  exitWaLink?.addEventListener('click', (e) => {
+    const phone = exitPhoneInput?.value.trim() || '';
     const err = $('mt-exit-err');
     if (phone.length < 6) {
+      e.preventDefault();
       if (err) { err.textContent = 'Indiquez un numéro pour qu\'on vous réponde.'; err.hidden = false; }
       return;
     }
     if (err) err.hidden = true;
-    const text = captureWhatsappText({
-      fullName: '',
-      city: (val('mt-city') || addressEl?.value || '').trim(),
-      kwcLabel: lastKwcLabel || undefined,
-      savingsLabel: lastSavingsLabel || undefined,
-    }) + ` Mon numéro : ${phone}.`;
-    (($('mt-exit-wa') as HTMLAnchorElement).href) = whatsappLink(WHATSAPP_LEADS, text);
   });
 </script>
