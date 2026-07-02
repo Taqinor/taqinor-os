@@ -4,6 +4,7 @@ import { cn } from '../lib/cn'
 import {
   groupCatalogue, searchCatalogue, keySpec, prixTtc, sansPrix,
 } from '../features/stock/catalogue'
+import { classifyProduct } from '../features/ventes/solar'
 
 /* G23 — Picker produit groupé CATÉGORIE → MARQUE → ARTICLE, search-first.
    Conçu pour la saisie ligne à ligne : ouvrir → taper → Entrée (le premier
@@ -12,8 +13,13 @@ import {
 
    Reconstruit sur le Popover (G28) + jetons sémantiques (les anciennes classes
    pp-* d'index.css ne sont plus utilisées). Props/API préservés 1:1 :
-   { produits, value, onChange, invalid }. */
-export default function ProduitPicker({ produits, value, onChange, invalid }) {
+   { produits, value, onChange, invalid }.
+
+   QP1 — `typeFilter` (optionnel) restreint la liste au type de produit attendu
+   par le slot de la ligne (ex. 'onduleur_hybride'), via classifyProduct (même
+   classification que le moteur PDF, builder.py). Une ligne sans type inférable
+   passe `typeFilter` à null/undefined et garde la liste complète. */
+export default function ProduitPicker({ produits, value, onChange, invalid, typeFilter }) {
   const [open, setOpen] = useState(false)
   const [query, setQuery] = useState('')
   const [cursor, setCursor] = useState(0)
@@ -26,7 +32,10 @@ export default function ProduitPicker({ produits, value, onChange, invalid }) {
 
   // Lignes à plat (en-têtes + articles) dans l'ordre délibéré de la taxonomie
   const { rows, selectables } = useMemo(() => {
-    const actifs = produits.filter((p) => !p.is_archived)
+    let actifs = produits.filter((p) => !p.is_archived)
+    if (typeFilter) {
+      actifs = actifs.filter((p) => classifyProduct(p.nom) === typeFilter)
+    }
     const matches = searchCatalogue(actifs, query)
     const rows = []
     const selectables = []
@@ -43,7 +52,7 @@ export default function ProduitPicker({ produits, value, onChange, invalid }) {
       }
     }
     return { rows, selectables }
-  }, [produits, query])
+  }, [produits, query, typeFilter])
 
   useEffect(() => {
     if (open) requestAnimationFrame(() => inputRef.current?.focus())

@@ -33,6 +33,7 @@ import {
   computeBuyCost, avecBatterieAvailability, KWH_PRICE, EFFICIENCY,
   panneauxPourKwc, expectedTvaForDesignation,
   TVA_STANDARD_DEFAUT, TVA_PANNEAUX_DEFAUT,
+  classifyProduct,
 } from '../../features/ventes/solar'
 
 const MODE_OPTIONS = [
@@ -1588,6 +1589,7 @@ export default function DevisGenerator({
                             produits={produits}
                             value={l.produit}
                             onChange={id => onProduitChange(l._key, id)}
+                            typeFilter={classifyProduct(l.designation) || undefined}
                           />
                         </td>
                         <td data-label="Qté">
