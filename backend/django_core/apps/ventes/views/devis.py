@@ -75,7 +75,9 @@ class DevisViewSet(viewsets.ModelViewSet):
         return DevisSerializer
 
     def get_permissions(self):
-        if self.action in READ_ACTIONS + ['historique']:
+        if self.action in READ_ACTIONS + ['historique', 'variante_config']:
+            # variante_config : la LECTURE est ouverte à tous ; l'ÉCRITURE (PUT)
+            # est re-vérifiée dans l'action (Directeur / Commercial responsable).
             return [IsAnyRole()]
         elif self.action in WRITE_ACTIONS + [
             'generer_pdf', 'telecharger_pdf', 'convertir_en_bc', 'proposal',
@@ -575,31 +577,61 @@ class DevisViewSet(viewsets.ModelViewSet):
           - numéros de référence séquentiels via ``create_numbered``.
 
         Corps optionnel :
-          ``scales`` : liste de flottants, ex. [0.8, 1.0, 1.25]
-                       (défaut : [0.8, 1.0, 1.25], max 3 éléments).
+          ``scales`` : liste de flottants explicites, ex. [0.8, 1.0, 1.25]
+                       (override par requête, max 3 éléments) ;
+          ``variante_pct`` : pourcentage p → échelles symétriques
+                       [1−p, 1.0, 1+p] (override par requête).
 
-        Retourne la liste des devis créés.
+        QG9 — Sans override, le pourcentage vient de
+        ``CompanyProfile.variante_pct`` (défaut 20 → échelles 0.8 / 1.0 / 1.2),
+        scopé société. Retourne la liste des devis créés.
         """
         source = self.get_object()
         company = source.company
         root = source.version_parent or source
 
-        raw_scales = request.data.get('scales', [0.8, 1.0, 1.25])
-        try:
-            scales = [float(s) for s in raw_scales][:3]
-        except (TypeError, ValueError):
-            scales = [0.8, 1.0, 1.25]
+        # QG9 — échelles depuis un pourcentage : override requête ``scales``
+        # (rétro-compat) > override requête ``variante_pct`` > config société
+        # ``CompanyProfile.variante_pct`` (défaut 20). Symétrique : [1−p, 1, 1+p].
+        def _scales_from_pct(pct):
+            try:
+                p = float(pct) / 100.0
+            except (TypeError, ValueError):
+                return None
+            if not (0 < p < 1):
+                return None
+            return [round(1 - p, 4), 1.0, round(1 + p, 4)]
+
+        scales = None
+        raw_scales = request.data.get('scales')
+        if raw_scales:
+            try:
+                scales = [float(s) for s in raw_scales][:3]
+            except (TypeError, ValueError):
+                scales = None
+        if scales is None:
+            pct = request.data.get('variante_pct')
+            if pct is None:
+                from apps.parametres.models import CompanyProfile
+                pct = getattr(CompanyProfile.get(company=company),
+                              'variante_pct', 20)
+            scales = _scales_from_pct(pct) or [0.8, 1.0, 1.25]
         if not scales:
             scales = [0.8, 1.0, 1.25]
 
-        # Labels FR pour les variantes (affichés dans la liste et la proposition)
-        _labels = {0.8: '−20 %', 1.0: 'Standard', 1.25: '+25 %'}
+        # Labels FR dérivés de l'échelle : « −X % » / « Standard » / « +X % ».
+        def _label_for(scale):
+            if abs(scale - 1.0) < 1e-9:
+                return 'Standard'
+            pct = round((scale - 1.0) * 100)
+            sign = '+' if pct > 0 else '−'
+            return f'{sign}{abs(pct)} %'
 
         created = []
         from decimal import Decimal, ROUND_HALF_UP
 
         for scale in scales:
-            variant_note = _labels.get(scale) or f'×{scale:.2f}'
+            variant_note = _label_for(scale)
             holder = {}
 
             def _save(ref, _scale=scale, _note=variant_note):
@@ -646,6 +678,56 @@ class DevisViewSet(viewsets.ModelViewSet):
              for v in created],
             status=status.HTTP_201_CREATED,
         )
+
+    @action(detail=False, methods=['get', 'put'], url_path='variante-config')
+    def variante_config(self, request):
+        """QG9 — Lit (GET) ou règle (PUT) le pourcentage des variantes de devis.
+
+        Le pourcentage vit sur ``CompanyProfile.variante_pct`` (défaut 20),
+        scopé à la société de l'utilisateur (jamais lu du corps). La LECTURE est
+        ouverte à tous les rôles ; l'ÉCRITURE est réservée au Directeur et au
+        Commercial responsable (403 sinon). Corps PUT : ``variante_pct`` (0–100,
+        exclusif). Le générateur applique alors les échelles [1−p, 1, 1+p]
+        (override par requête toujours possible sur ``dupliquer-variante``)."""
+        company = request.user.company
+        if company is None:
+            return Response(
+                {'detail': 'Utilisateur sans société.'},
+                status=status.HTTP_400_BAD_REQUEST)
+        from apps.parametres.models import CompanyProfile
+        profile = CompanyProfile.get(company=company)
+
+        if request.method == 'GET':
+            return Response({'variante_pct': str(profile.variante_pct)})
+
+        # PUT — réservé Directeur / Commercial responsable.
+        user = request.user
+        role_nom = getattr(getattr(user, 'role', None), 'nom', '')
+        autorise = (
+            getattr(user, 'is_superuser', False)
+            or getattr(user, 'is_admin_role', False)
+            or role_nom in ('Directeur', 'Commercial responsable')
+        )
+        if not autorise:
+            return Response(
+                {'detail': ('Seuls le Directeur et le Commercial responsable '
+                            'peuvent modifier ce pourcentage.')},
+                status=status.HTTP_403_FORBIDDEN)
+        from decimal import Decimal, InvalidOperation
+        raw = request.data.get('variante_pct')
+        try:
+            pct = Decimal(str(raw))
+        except (InvalidOperation, TypeError, ValueError):
+            return Response(
+                {'detail': 'variante_pct invalide.'},
+                status=status.HTTP_400_BAD_REQUEST)
+        if not (Decimal('0') < pct < Decimal('100')):
+            return Response(
+                {'detail': 'Le pourcentage doit être strictement entre 0 et 100.'},
+                status=status.HTTP_400_BAD_REQUEST)
+        profile.variante_pct = pct
+        profile.save(update_fields=['variante_pct'])
+        return Response({'variante_pct': str(profile.variante_pct)})
 
     @action(detail=True, methods=['get'], url_path='variantes',
             permission_classes=[IsResponsableOrAdmin])

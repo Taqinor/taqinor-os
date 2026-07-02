@@ -50,6 +50,7 @@ _PROFILE_AUDIT_FIELDS = {
     'commission_valeur': 'Commission — valeur',
     'referral_enabled': 'Parrainage activé',
     'referral_reward': 'Parrainage — récompense par défaut',
+    'variante_pct': 'Pourcentage des variantes de devis',
     # Module d'exécution terrain (F9–F20) — interfaces swappables + seuil F12.
     'ocr_serie_provider': 'Fournisseur OCR n° de série (F9)',
     'transcription_provider': 'Fournisseur de transcription (F14)',
