@@ -775,3 +775,62 @@ summary:focus-visible {
     animation-direction: reverse;
   }
 }
+
+/* ─── WJ17 — RTL-native reading rhythm + mirroring for the JS-toggled
+   FR/عربي pages (capture « Mon toit », proposition [token]). Arabic script
+   needs a taller line-height to read comfortably (denser diacritics/ligatures
+   than Latin) — applied as a real CSS rule here (not only inline via JS) so
+   any element added later inherits it automatically, including content
+   rendered by [dir="rtl"] without JS (progressive enhancement / no-JS). ─── */
+[dir="rtl"] {
+  line-height: 1.7;
+}
+/* Tighter contexts (labels/eyebrows/figures) stay readable without ballooning
+   card heights — a slightly lower multiplier than body prose. */
+[dir="rtl"] .tech-label,
+[dir="rtl"] .fig {
+  line-height: 1.5;
+}
+
+/* — Numbers, references, dates and currency stay LTR even inside RTL flow
+   (Western digits read left-to-right regardless of surrounding script) —
+   belt-and-braces for any [dir="ltr"] marker that ends up inside a
+   right-aligned RTL container: keep it visually anchored to the correct
+   edge instead of being mirrored with the rest of the line. */
+[dir="rtl"] [dir="ltr"] {
+  unicode-bidi: isolate;
+}
+
+/* — Flex rows that carry a leading icon/swatch + trailing label (legends,
+   step lists, CTA rows) : mirror so the icon stays on the visual "start"
+   side in RTL instead of freezing to the left. */
+[dir="rtl"] :where(.mt-step),
+[dir="rtl"] :where(.walk-step p.flex),
+[dir="rtl"] :where(.mt-mode) {
+  text-align: start;
+}
+
+/* — Chevron / arrow glyphs used as inline "next" affordances (← / →
+   typed as literal characters in markup, e.g. mon-toit "Continuer →" and
+   "← Retour") : flip horizontally in RTL so they still point toward the
+   logical next/previous direction instead of the physical one. */
+[dir="rtl"] .btn-pill svg[aria-hidden="true"],
+[dir="rtl"] button svg[aria-hidden="true"] {
+  transform: scaleX(-1);
+}
+
+/* — Sticky CTA / bottom bars: keep price block and action button mirrored
+   (price on the visual end, button on the visual start) via flex-direction
+   reverse rather than reordering markup (keeps DOM/reading order intact for
+   assistive tech). */
+[dir="rtl"] #sticky-cta > div {
+  flex-direction: row-reverse;
+}
+
+/* — prop-lang-switch / mt language toggle: fixed-position chip stays at the
+   inline-END (right in LTR, left in RTL) so it never collides with content
+   that itself mirrors under RTL. */
+[dir="rtl"] .prop-lang-switch {
+  right: auto;
+  left: 0.75rem;
+}

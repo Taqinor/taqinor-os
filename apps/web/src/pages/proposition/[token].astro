@@ -329,8 +329,10 @@ const signConfig = ok
       {accepted && (
         <section class="mx-auto max-w-4xl px-5 pt-8 sm:px-8">
           <div class="cine-card rounded-xl border-brass-400/40 p-5 sm:p-6" style="border-color: rgb(232 181 74 / 0.4)">
-            <p class="fig text-xl text-brass-300">Devis accepté ✓</p>
-            <p class="v2-body mt-1">
+            <p class="fig text-xl text-brass-300" data-i18n data-fr="Devis accepté ✓" data-ar="تمت الموافقة على العرض ✓">Devis accepté ✓</p>
+            <p class="v2-body mt-1" data-i18n
+              data-fr={`Cette proposition a été acceptée${data?.accepte_par_nom ? ` par ${data.accepte_par_nom}` : ''}. Merci de votre confiance — votre conseiller Taqinor revient vers vous.`}
+              data-ar={`تمت الموافقة على هذا العرض${data?.accepte_par_nom ? ` من طرف ${data.accepte_par_nom}` : ''}. شكراً على ثقتكم — سيتواصل معكم مستشار تاقينور قريباً.`}>
               Cette proposition a été acceptée
               {data?.accepte_par_nom ? <> par <strong class="text-lune">{data.accepte_par_nom}</strong></> : null}.
               Merci de votre confiance — votre conseiller Taqinor revient vers vous.
@@ -349,8 +351,8 @@ const signConfig = ok
         <>
         <div class="seam-soft" aria-hidden="true"></div>
         <section id="roof3d" class="mx-auto max-w-5xl px-5 pt-14 sm:px-8 sm:pt-20" data-viewer-config={viewerConfig}>
-          <p class="tech-label rule-brass cine-in text-brass-300">Le centre de votre proposition</p>
-          <h2 class="display cine-in cine-in-1 mt-3 text-2xl text-lune sm:text-3xl">Votre toit en 3D</h2>
+          <p class="tech-label rule-brass cine-in text-brass-300" data-i18n data-fr="Le centre de votre proposition" data-ar="جوهر عرضكم">Le centre de votre proposition</p>
+          <h2 class="display cine-in cine-in-1 mt-3 text-2xl text-lune sm:text-3xl" data-i18n data-fr="Votre toit en 3D" data-ar="سطحكم بتقنية ثلاثية الأبعاد">Votre toit en 3D</h2>
           <div class="cine-card cine-in cine-in-2 mt-5 overflow-hidden rounded-2xl p-0 shadow-premium">
             <div id="roof3d-stage" class="roof3d-stage">
               {roofImg ? (
@@ -373,15 +375,20 @@ const signConfig = ok
                   type="button"
                   class="btn-pill inline-flex items-center justify-center gap-2"
                   style="background: var(--color-brass-400); color: var(--color-nuit); border-color: var(--color-brass-400)"
+                  data-i18n data-fr="Explorer votre toit en 3D" data-ar="استكشفوا سطحكم بتقنية ثلاثية الأبعاد"
                 >
                   Explorer votre toit en 3D
                 </button>
-                <p id="roof3d-note" class="max-w-sm text-sm text-lune-soft">
+                <p id="roof3d-note" class="max-w-sm text-sm text-lune-soft" data-i18n
+                  data-fr="Tournez, zoomez : ce sont votre toit et vos panneaux, tels qu’étudiés."
+                  data-ar="دوّروا، قرّبوا: هذا سطحكم وألواحكم، كما تمت دراستهما.">
                   Tournez, zoomez : ce sont votre toit et vos panneaux, tels qu’étudiés.
                 </p>
               </div>
             </div>
-            <p id="roof3d-hint" class="px-5 py-3 text-xs text-lune-faint" hidden>
+            <p id="roof3d-hint" class="px-5 py-3 text-xs text-lune-faint" hidden data-i18n
+              data-fr="Faites glisser pour tourner · pincez ou molette pour zoomer · deux doigts pour déplacer."
+              data-ar="اسحبوا للتدوير · قرّبوا بإصبعين أو بعجلة الفأرة · إصبعان للتحريك.">
               Faites glisser pour tourner · pincez ou molette pour zoomer · deux doigts pour déplacer.
             </p>
           </div>
@@ -390,15 +397,15 @@ const signConfig = ok
           <div class="mt-4 flex flex-wrap items-center gap-x-6 gap-y-2 text-sm" aria-label="Légende de la vue 3D">
             <span class="inline-flex items-center gap-2 text-lune-soft">
               <span class="inline-block h-3 w-3 rounded-sm" style="background: #14263f; outline: 1px solid rgb(255 255 255 / 0.25)" aria-hidden="true"></span>
-              Vos panneaux solaires
+              <span data-i18n data-fr="Vos panneaux solaires" data-ar="ألواحكم الشمسية">Vos panneaux solaires</span>
             </span>
             <span class="inline-flex items-center gap-2 text-lune-soft">
               <span class="inline-block h-3 w-3 rounded-sm" style="background: #b9bfca" aria-hidden="true"></span>
-              Votre toiture
+              <span data-i18n data-fr="Votre toiture" data-ar="سطحكم">Votre toiture</span>
             </span>
             <span class="inline-flex items-center gap-2 text-lune-soft">
               <span class="inline-block h-3 w-3 rounded-sm" style="background: #9aa3b4" aria-hidden="true"></span>
-              Obstacles (cheminée, cage d’escalier…)
+              <span data-i18n data-fr="Obstacles (cheminée, cage d’escalier…)" data-ar="عوائق (مدخنة، بيت الدرج…)">Obstacles (cheminée, cage d’escalier…)</span>
             </span>
           </div>
           {annotations.length > 0 && (
@@ -406,7 +413,9 @@ const signConfig = ok
               {annotations.map((a) => (
                 <div class="cine-card rounded-xl p-4 text-sm">
                   <p class="tech-label text-lune-faint">{a.label} · {a.roofTypeLabel}</p>
-                  <p class="mt-2 text-lune-soft">
+                  <p class="mt-2 text-lune-soft" data-i18n
+                    data-fr={`Orientation ${a.orientation}${a.tiltDeg !== null ? ` · pente ${a.tiltDeg}°` : ''}${a.panels !== null ? ` · ${formatNumber(a.panels)} panneaux` : ''}${a.kwc !== null ? ` · ${formatNumber(a.kwc, 2)} kWc` : ''}`}
+                    data-ar={`الاتجاه ${a.orientation}${a.tiltDeg !== null ? ` · الميل ${a.tiltDeg}°` : ''}${a.panels !== null ? ` · ${formatNumber(a.panels)} لوح` : ''}${a.kwc !== null ? ` · ${formatNumber(a.kwc, 2)} kWc` : ''}`}>
                     Orientation <strong class="text-lune">{a.orientation}</strong>
                     {a.tiltDeg !== null ? <> · pente <strong class="text-lune">{a.tiltDeg}°</strong></> : null}
                     {a.panels !== null ? <> · <strong class="text-lune">{formatNumber(a.panels)} panneaux</strong></> : null}
@@ -421,8 +430,8 @@ const signConfig = ok
           {walkSteps.length > 0 && (
             <div id="roof3d-walk" class="mt-6" role="group" aria-label="Explication guidée de votre installation">
               <div class="flex items-baseline justify-between gap-3">
-                <p class="tech-label text-lune-faint">Tout est expliqué, étape par étape</p>
-                <a href="#options" class="text-xs text-lune-faint underline-offset-2 hover:underline">Passer l’explication</a>
+                <p class="tech-label text-lune-faint" data-i18n data-fr="Tout est expliqué, étape par étape" data-ar="كل شيء موضّح، خطوة بخطوة">Tout est expliqué, étape par étape</p>
+                <a href="#options" class="text-xs text-lune-faint underline-offset-2 hover:underline" data-i18n data-fr="Passer l’explication" data-ar="تخطي الشرح">Passer l’explication</a>
               </div>
               <ol class="mt-3 space-y-3">
                 {walkSteps.map((s, i) => (
@@ -431,20 +440,17 @@ const signConfig = ok
                     data-walk-step={s.id}
                     aria-current={i === 0 ? 'step' : undefined}
                   >
-                    <p class="flex items-baseline justify-between gap-3">
-                      <span class="text-sm font-bold text-lune">
-                        <span class="fig text-brass-300">{i + 1}.</span> {s.title}
-                      </span>
-                      <span dir="rtl" lang="ar" class="shrink-0 text-xs text-lune-faint">{s.titleAr}</span>
+                    <p class="text-sm font-bold text-lune" data-i18n data-fr={`${i + 1}. ${s.title}`} data-ar={`${i + 1}. ${s.titleAr}`}>
+                      <span class="fig text-brass-300">{i + 1}.</span> {s.title}
                     </p>
                     <p class="v2-body mt-1.5 text-sm text-lune-soft">{s.body}</p>
                   </li>
                 ))}
               </ol>
               <div class="mt-3 flex items-center gap-3">
-                <button id="roof3d-walk-prev" type="button" class="btn-pill px-4 py-1.5 text-sm" disabled>Précédent</button>
-                <button id="roof3d-walk-next" type="button" class="btn-pill px-4 py-1.5 text-sm">Suivant</button>
-                <span id="roof3d-walk-count" class="text-xs text-lune-faint" aria-live="polite">Étape 1 sur {walkSteps.length}</span>
+                <button id="roof3d-walk-prev" type="button" class="btn-pill px-4 py-1.5 text-sm" disabled data-i18n data-fr="Précédent" data-ar="السابق">Précédent</button>
+                <button id="roof3d-walk-next" type="button" class="btn-pill px-4 py-1.5 text-sm" data-i18n data-fr="Suivant" data-ar="التالي">Suivant</button>
+                <span id="roof3d-walk-count" class="text-xs text-lune-faint" aria-live="polite" data-i18n data-fr={`Étape 1 sur ${walkSteps.length}`} data-ar={`الخطوة 1 من ${walkSteps.length}`}>Étape 1 sur {walkSteps.length}</span>
               </div>
             </div>
           )}
@@ -459,11 +465,15 @@ const signConfig = ok
           {/* Accroche « coût de ne rien faire » : le cumul phare. */}
           {headline.cumulative ? (
             <div class="cine-card cine-in rounded-2xl p-6 shadow-premium sm:p-8" style="border-color: rgb(232 181 74 / 0.35)">
-              <p class="tech-label text-lune-faint">
+              <p class="tech-label text-lune-faint" data-i18n
+                data-fr={`Sans le solaire, votre facture continue de courir. Avec, vous économisez sur ${headline.years} ans`}
+                data-ar={`بدون الطاقة الشمسية، تستمر فاتورتكم في الارتفاع. معها، توفرون على مدى ${headline.years} سنة`}>
                 Sans le solaire, votre facture continue de courir. Avec, vous économisez sur {headline.years} ans
               </p>
-              <p class="fig lum mt-3 text-4xl sm:text-5xl">{formatMAD(headline.cumulative)}</p>
-              <p class="v2-body mt-2 text-sm text-lune-soft">
+              <p class="fig lum mt-3 text-4xl sm:text-5xl" dir="ltr">{formatMAD(headline.cumulative)}</p>
+              <p class="v2-body mt-2 text-sm text-lune-soft" data-i18n
+                data-fr={`Économies cumulées estimées sur ${headline.years} ans${headline.monthly ? ` — soit ≈ ${formatMAD(headline.monthly)}/mois qui restent dans votre poche` : ''}.${!headline.cumulativeFromBackend ? ' Estimation à tarif constant (loi 82-21, autoconsommation).' : ''}`}
+                data-ar={`توفير تراكمي مقدّر على مدى ${headline.years} سنة${headline.monthly ? ` — أي ما يعادل ≈ ${formatMAD(headline.monthly)}/شهر تبقى في جيبكم` : ''}.${!headline.cumulativeFromBackend ? ' تقدير بتعريفة ثابتة (القانون 82-21، الاستهلاك الذاتي).' : ''}`}>
                 Économies cumulées estimées sur {headline.years} ans
                 {headline.monthly ? <> — soit <span class="text-brass-300">≈ {formatMAD(headline.monthly)}/mois</span> qui restent dans votre poche</> : null}.
                 {!headline.cumulativeFromBackend ? <span class="text-lune-faint"> Estimation à tarif constant (loi 82-21, autoconsommation).</span> : null}
@@ -474,22 +484,22 @@ const signConfig = ok
           <div class="mt-4 grid gap-4 sm:grid-cols-3">
             {headline.annual ? (
               <div class="cine-card rounded-xl p-5">
-                <p class="tech-label text-lune-faint">Économies estimées / an</p>
-                <p class="fig fig-md lum mt-2">{formatMAD(headline.annual)}</p>
-                {headline.monthly ? <p class="mt-1 text-sm text-lune-faint">≈ {formatMAD(headline.monthly)}/mois</p> : null}
+                <p class="tech-label text-lune-faint" data-i18n data-fr="Économies estimées / an" data-ar="التوفير المقدّر / سنة">Économies estimées / an</p>
+                <p class="fig fig-md lum mt-2" dir="ltr">{formatMAD(headline.annual)}</p>
+                {headline.monthly ? <p class="mt-1 text-sm text-lune-faint" dir="ltr">≈ {formatMAD(headline.monthly)}/mois</p> : null}
               </div>
             ) : null}
             {paybackHero ? (
               <div class="cine-card rounded-xl p-5">
-                <p class="tech-label text-lune-faint">Rentabilisé en</p>
-                <p class="fig fig-md mt-2 text-lune">{paybackHero}</p>
-                <p class="mt-1 text-sm text-lune-faint">puis l’énergie est gratuite</p>
+                <p class="tech-label text-lune-faint" data-i18n data-fr="Rentabilisé en" data-ar="يُسترد خلال">Rentabilisé en</p>
+                <p class="fig fig-md mt-2 text-lune" dir="ltr">{paybackHero}</p>
+                <p class="mt-1 text-sm text-lune-faint" data-i18n data-fr="puis l’énergie est gratuite" data-ar="ثم تصبح الطاقة مجانية">puis l’énergie est gratuite</p>
               </div>
             ) : null}
             {prodKwh ? (
               <div class="cine-card rounded-xl p-5">
-                <p class="tech-label text-lune-faint">Production estimée / an</p>
-                <p class="fig fig-md mt-2 text-lune">{formatNumber(prodKwh)} <span class="text-lg text-lune-soft">kWh</span></p>
+                <p class="tech-label text-lune-faint" data-i18n data-fr="Production estimée / an" data-ar="الإنتاج المقدّر / سنة">Production estimée / an</p>
+                <p class="fig fig-md mt-2 text-lune" dir="ltr">{formatNumber(prodKwh)} <span class="text-lg text-lune-soft">kWh</span></p>
               </div>
             ) : null}
           </div>
@@ -503,21 +513,21 @@ const signConfig = ok
           <div class="mt-5 grid gap-4 sm:grid-cols-3">
             {puissance ? (
               <div class="cine-card rounded-xl p-5">
-                <p class="tech-label text-lune-faint">Puissance</p>
-                <p class="fig mt-2 text-2xl text-lune">{formatNumber(puissance, 2)} <span class="text-base text-lune-soft">kWc</span></p>
+                <p class="tech-label text-lune-faint" data-i18n data-fr="Puissance" data-ar="القدرة">Puissance</p>
+                <p class="fig mt-2 text-2xl text-lune" dir="ltr">{formatNumber(puissance, 2)} <span class="text-base text-lune-soft">kWc</span></p>
               </div>
             ) : null}
             {nbPanneaux ? (
               <div class="cine-card rounded-xl p-5">
-                <p class="tech-label text-lune-faint">Panneaux</p>
-                <p class="fig mt-2 text-2xl text-lune">
+                <p class="tech-label text-lune-faint" data-i18n data-fr="Panneaux" data-ar="الألواح">Panneaux</p>
+                <p class="fig mt-2 text-2xl text-lune" dir="ltr">
                   {formatNumber(nbPanneaux)}
                   {wattPanneau ? <span class="text-base text-lune-soft"> × {formatNumber(wattPanneau)} W</span> : null}
                 </p>
               </div>
             ) : null}
             <div class="cine-card rounded-xl p-5">
-              <p class="tech-label text-lune-faint">Type</p>
+              <p class="tech-label text-lune-faint" data-i18n data-fr="Type" data-ar="النوع">Type</p>
               <p class="fig mt-2 text-2xl text-lune">{instLabel}</p>
             </div>
           </div>
@@ -537,18 +547,20 @@ const signConfig = ok
             <div class="mt-4 flex flex-wrap items-center gap-x-6 gap-y-2 text-sm">
               <span class="inline-flex items-center gap-2 text-lune-soft">
                 <span class="inline-block h-3 w-3 rounded-sm" style="background: var(--color-brass-400)" aria-hidden="true"></span>
-                Production solaire estimée
+                <span data-i18n data-fr="Production solaire estimée" data-ar="الإنتاج الشمسي المقدّر">Production solaire estimée</span>
               </span>
               {chartHasConso && (
                 <span class="inline-flex items-center gap-2 text-lune-soft">
                   <span class="inline-block h-3 w-3 rounded-sm" style="background: var(--color-azur-300, #7fb4e8)" aria-hidden="true"></span>
-                  Votre consommation
+                  <span data-i18n data-fr="Votre consommation" data-ar="استهلاككم">Votre consommation</span>
                 </span>
               )}
-              <span class="text-lune-faint">kWh par mois</span>
+              <span class="text-lune-faint" data-i18n data-fr="kWh par mois" data-ar="كيلوواط ساعة شهرياً">kWh par mois</span>
             </div>
             {(prodKwh || ecoHero) && (
-              <p class="v2-body mt-4 text-sm text-lune-soft">
+              <p class="v2-body mt-4 text-sm text-lune-soft" data-i18n
+                data-fr={`${prodKwh ? `Sur l’année, votre installation produit environ ${formatNumber(prodKwh)} kWh.` : ''}${chartHasConso ? ' Plus la production (laiton) couvre votre consommation (azur), plus vous économisez.' : ''}`}
+                data-ar={`${prodKwh ? `على مدار السنة، ينتج تركيبكم حوالي ${formatNumber(prodKwh)} kWh.` : ''}${chartHasConso ? ' كلما غطى الإنتاج (الذهبي) استهلاككم (الأزرق)، كلما وفّرتم أكثر.' : ''}`}>
                 {prodKwh ? <>Sur l’année, votre installation produit environ <strong class="text-lune">{formatNumber(prodKwh)} kWh</strong>.</> : null}
                 {chartHasConso ? ' Plus la production (laiton) couvre votre consommation (azur), plus vous économisez.' : ''}
               </p>
@@ -569,17 +581,19 @@ const signConfig = ok
             <div class="mt-4 flex flex-wrap items-center gap-x-6 gap-y-2 text-sm">
               <span class="inline-flex items-center gap-2 text-lune-soft">
                 <span class="inline-block h-3 w-3 rounded-sm" style="background: var(--color-brass-400)" aria-hidden="true"></span>
-                Production solaire
+                <span data-i18n data-fr="Production solaire" data-ar="الإنتاج الشمسي">Production solaire</span>
               </span>
               <span class="inline-flex items-center gap-2 text-lune-soft">
                 <span class="inline-block h-3 w-3 rounded-sm" style="background: var(--color-azur-300, #7fb4e8)" aria-hidden="true"></span>
-                Votre consommation
+                <span data-i18n data-fr="Votre consommation" data-ar="استهلاككم">Votre consommation</span>
               </span>
               {!dailyCurve.hasRealScale && (
-                <span class="text-lune-faint">profil — année type (forme indicative)</span>
+                <span class="text-lune-faint" data-i18n data-fr="profil — année type (forme indicative)" data-ar="نمط — سنة نموذجية (شكل إرشادي)">profil — année type (forme indicative)</span>
               )}
             </div>
-            <p class="v2-body mt-4 text-sm text-lune-soft">
+            <p class="v2-body mt-4 text-sm text-lune-soft" data-i18n
+              data-fr={`Le soleil produit en pleine journée : chaque kWh consommé à ce moment-là ne vient plus du réseau. ${dailyCurve.hasRealScale ? 'Les repères sont calés sur votre production estimée.' : 'Cette courbe illustre une journée type — votre profil exact est précisé avec votre conseiller.'}`}
+              data-ar={`تنتج الشمس في وضح النهار: كل كيلوواط ساعة يُستهلك في تلك اللحظة لم يعد يأتي من الشبكة. ${dailyCurve.hasRealScale ? 'المعالم مضبوطة على إنتاجكم المقدّر.' : 'يوضّح هذا المنحنى يوماً نموذجياً — يُحدَّد ملفكم الدقيق مع مستشاركم.'}`}>
               Le soleil produit en pleine journée : chaque kWh consommé à ce moment-là
               ne vient plus du réseau. {dailyCurve.hasRealScale
                 ? 'Les repères sont calés sur votre production estimée.'
@@ -608,15 +622,17 @@ const signConfig = ok
                 style={isReco ? 'border-color: rgb(232 181 74 / 0.45)' : undefined}
               >
                 {isReco && (
-                  <span class="absolute -top-3 left-6 rounded-full bg-brass-400 px-3 py-1 text-xs font-bold text-nuit">
+                  <span class="absolute -top-3 left-6 rounded-full bg-brass-400 px-3 py-1 text-xs font-bold text-nuit" data-i18n data-fr="Recommandé" data-ar="موصى به">
                     Recommandé
                   </span>
                 )}
                 <h3 class="display text-xl text-lune">{optionLabel(opt)}</h3>
-                <p class="fig fig-md lum mt-3">{formatMAD(optionTtc(data!, opt))}</p>
-                <p class="text-sm text-lune-faint">TTC, clé en main</p>
+                <p class="fig fig-md lum mt-3" dir="ltr">{formatMAD(optionTtc(data!, opt))}</p>
+                <p class="text-sm text-lune-faint" data-i18n data-fr="TTC, clé en main" data-ar="شامل الضريبة، تسليم مفتاح في اليد">TTC, clé en main</p>
                 {eco ? (
-                  <p class="mt-2 text-sm text-lune-soft">
+                  <p class="mt-2 text-sm text-lune-soft" data-i18n
+                    data-fr={`Économies estimées : ${formatMAD(eco)}/an`}
+                    data-ar={`التوفير المقدّر: ${formatMAD(eco)}/سنة`}>
                     Économies estimées : <span class="text-brass-300">{formatMAD(eco)}/an</span>
                   </p>
                 ) : null}
@@ -624,7 +640,7 @@ const signConfig = ok
                 <!-- Équipement (WJ32 : marque + garantie + description quand disponibles — jamais de lien fiche technique fabriqué, le backend n'expose pas encore cette URL publiquement) -->
                 {items.length > 0 && (
                   <div class="mt-5 border-t border-white/10 pt-4">
-                    <p class="tech-label text-lune-faint">Équipement</p>
+                    <p class="tech-label text-lune-faint" data-i18n data-fr="Équipement" data-ar="المعدات">Équipement</p>
                     <ul class="mt-3 space-y-3 text-sm text-lune-soft">
                       {items.map((it) => (
                         <li>
@@ -633,13 +649,14 @@ const signConfig = ok
                               <span class="text-lune">{it.designation}</span>
                               {it.marque ? <span class="text-lune-faint"> · {it.marque}</span> : null}
                             </span>
-                            <span class="fig shrink-0 text-lune-faint">×{formatNumber(it.quantite)}</span>
+                            <span class="fig shrink-0 text-lune-faint" dir="ltr">×{formatNumber(it.quantite)}</span>
                           </div>
                           {it.description ? (
                             <p class="mt-0.5 text-xs text-lune-faint">{it.description}</p>
                           ) : null}
                           {it.garantie ? (
-                            <p class="mt-0.5 text-xs text-brass-300">Garantie : {it.garantie}</p>
+                            <p class="mt-0.5 text-xs text-brass-300" data-i18n
+                              data-fr={`Garantie : ${it.garantie}`} data-ar={`الضمان: ${it.garantie}`}>Garantie : {it.garantie}</p>
                           ) : null}
                         </li>
                       ))}
@@ -651,26 +668,26 @@ const signConfig = ok
                 {totaux && (
                   <dl class="mt-5 space-y-1.5 border-t border-white/10 pt-4 text-sm">
                     <div class="flex justify-between">
-                      <dt class="text-lune-faint">Sous-total HT</dt>
-                      <dd class="fig text-lune-soft">{formatMAD(totaux.ht_brut)}</dd>
+                      <dt class="text-lune-faint" data-i18n data-fr="Sous-total HT" data-ar="المجموع الفرعي (بدون ضريبة)">Sous-total HT</dt>
+                      <dd class="fig text-lune-soft" dir="ltr">{formatMAD(totaux.ht_brut)}</dd>
                     </div>
                     {totaux.remise > 0 && (
                       <div class="flex justify-between">
-                        <dt class="text-lune-faint">Remise</dt>
-                        <dd class="fig text-brass-300">−{formatMAD(totaux.remise)}</dd>
+                        <dt class="text-lune-faint" data-i18n data-fr="Remise" data-ar="التخفيض">Remise</dt>
+                        <dd class="fig text-brass-300" dir="ltr">−{formatMAD(totaux.remise)}</dd>
                       </div>
                     )}
                     <div class="flex justify-between">
-                      <dt class="text-lune-faint">Total HT</dt>
-                      <dd class="fig text-lune-soft">{formatMAD(totaux.ht_net)}</dd>
+                      <dt class="text-lune-faint" data-i18n data-fr="Total HT" data-ar="المجموع (بدون ضريبة)">Total HT</dt>
+                      <dd class="fig text-lune-soft" dir="ltr">{formatMAD(totaux.ht_net)}</dd>
                     </div>
                     <div class="flex justify-between">
-                      <dt class="text-lune-faint">TVA</dt>
-                      <dd class="fig text-lune-soft">{formatMAD(totaux.tva)}</dd>
+                      <dt class="text-lune-faint" data-i18n data-fr="TVA" data-ar="الضريبة على القيمة المضافة">TVA</dt>
+                      <dd class="fig text-lune-soft" dir="ltr">{formatMAD(totaux.tva)}</dd>
                     </div>
                     <div class="flex justify-between border-t border-white/10 pt-2">
-                      <dt class="text-lune">Total TTC</dt>
-                      <dd class="fig text-lg text-lune">{formatMAD(totaux.ttc)}</dd>
+                      <dt class="text-lune" data-i18n data-fr="Total TTC" data-ar="المجموع شامل الضريبة">Total TTC</dt>
+                      <dd class="fig text-lg text-lune" dir="ltr">{formatMAD(totaux.ttc)}</dd>
                     </div>
                   </dl>
                 )}
@@ -690,15 +707,17 @@ const signConfig = ok
           <div class="mt-5 grid gap-4 sm:grid-cols-2">
             <div class="cine-card rounded-2xl p-6">
               <p class="tech-label text-lune-faint">{financingBlock.cash.label}</p>
-              <p class="fig fig-md lum mt-2">{formatMAD(financingBlock.cash.montant_ttc)}</p>
-              <p class="mt-2 text-sm text-lune-soft">Prix clé en main, TTC. L’investissement le plus rentable sur la durée.</p>
+              <p class="fig fig-md lum mt-2" dir="ltr">{formatMAD(financingBlock.cash.montant_ttc)}</p>
+              <p class="mt-2 text-sm text-lune-soft" data-i18n data-fr="Prix clé en main, TTC. L’investissement le plus rentable sur la durée." data-ar="ثمن تسليم مفتاح في اليد، شامل الضريبة. الاستثمار الأكثر مردودية على المدى الطويل.">Prix clé en main, TTC. L’investissement le plus rentable sur la durée.</p>
             </div>
             <div class="cine-card rounded-2xl p-6">
-              <p class="tech-label text-lune-faint">{financingBlock.credit.programme_label || 'À crédit'}</p>
-              <p class="fig fig-md mt-2 text-lune">
+              <p class="tech-label text-lune-faint" data-i18n data-fr={financingBlock.credit.programme_label || 'À crédit'} data-ar={financingBlock.credit.programme_label || 'بالتقسيط'}>{financingBlock.credit.programme_label || 'À crédit'}</p>
+              <p class="fig fig-md mt-2 text-lune" dir="ltr">
                 ≈ {formatMAD(financingBlock.credit.mensualite)}<span class="text-lg text-lune-soft">/mois</span>
               </p>
-              <p class="mt-2 text-sm text-lune-soft">
+              <p class="mt-2 text-sm text-lune-soft" data-i18n
+                data-fr={`Sur ${Math.round(financingBlock.credit.duree_mois / 12)} ans, taux indicatif ${formatNumber(financingBlock.credit.taux_annuel_pct, 2)} %/an à confirmer avec votre banque.${financingBlock.onee_comparison.show && financingBlock.onee_comparison.message ? ` ${financingBlock.onee_comparison.message}` : ''}`}
+                data-ar={`على مدى ${Math.round(financingBlock.credit.duree_mois / 12)} سنة، معدل إرشادي ${formatNumber(financingBlock.credit.taux_annuel_pct, 2)} %/سنة يُؤكَّد مع بنككم.${financingBlock.onee_comparison.show && financingBlock.onee_comparison.message ? ` ${financingBlock.onee_comparison.message}` : ''}`}>
                 Sur {Math.round(financingBlock.credit.duree_mois / 12)} ans, taux indicatif {formatNumber(financingBlock.credit.taux_annuel_pct, 2)} %/an
                 <span class="text-brass-300"> à confirmer</span> avec votre banque.
                 {financingBlock.onee_comparison.show && financingBlock.onee_comparison.message
@@ -710,7 +729,9 @@ const signConfig = ok
           {financingBlock.guidance_text && (
             <p class="mt-3 text-sm text-lune-soft">{financingBlock.guidance_text}</p>
           )}
-          <p class="mt-3 text-xs text-lune-faint">
+          <p class="mt-3 text-xs text-lune-faint" data-i18n
+            data-fr="Mensualités calculées à titre indicatif (taux et durée non contractuels). Le montant exact dépend de l’offre bancaire retenue."
+            data-ar="الأقساط الشهرية محسوبة على سبيل الإرشاد (المعدل والمدة غير تعاقديين). المبلغ الدقيق يتوقف على العرض البنكي المعتمد.">
             Mensualités calculées à titre indicatif (taux et durée non contractuels). Le montant exact dépend de l’offre bancaire retenue.
           </p>
         </section>
@@ -719,16 +740,18 @@ const signConfig = ok
           <p class="tech-label rule-brass text-brass-300" data-i18n data-fr="Comment financer" data-ar="كيفية التمويل">Comment financer</p>
           <div class="mt-5 grid gap-4 sm:grid-cols-2">
             <div class="cine-card rounded-2xl p-6">
-              <p class="tech-label text-lune-faint">Au comptant</p>
-              <p class="fig fig-md lum mt-2">{formatMAD(financing.cash)}</p>
-              <p class="mt-2 text-sm text-lune-soft">Prix clé en main, TTC. L’investissement le plus rentable sur la durée.</p>
+              <p class="tech-label text-lune-faint" data-i18n data-fr="Au comptant" data-ar="نقداً">Au comptant</p>
+              <p class="fig fig-md lum mt-2" dir="ltr">{formatMAD(financing.cash)}</p>
+              <p class="mt-2 text-sm text-lune-soft" data-i18n data-fr="Prix clé en main, TTC. L’investissement le plus rentable sur la durée." data-ar="ثمن تسليم مفتاح في اليد، شامل الضريبة. الاستثمار الأكثر مردودية على المدى الطويل.">Prix clé en main, TTC. L’investissement le plus rentable sur la durée.</p>
             </div>
             <div class="cine-card rounded-2xl p-6">
-              <p class="tech-label text-lune-faint">À crédit (éco-prêt)</p>
-              <p class="fig fig-md mt-2 text-lune">
+              <p class="tech-label text-lune-faint" data-i18n data-fr="À crédit (éco-prêt)" data-ar="بالتقسيط (قرض إيكولوجي)">À crédit (éco-prêt)</p>
+              <p class="fig fig-md mt-2 text-lune" dir="ltr">
                 ≈ {formatMAD(financing.monthlyLow)}<span class="text-lg text-lune-soft"> – {formatMAD(financing.monthlyHigh)}/mois</span>
               </p>
-              <p class="mt-2 text-sm text-lune-soft">
+              <p class="mt-2 text-sm text-lune-soft" data-i18n
+                data-fr={`Sur ${Math.round(financing.months / 12)} ans, fourchette indicative à confirmer avec votre banque.${financing.beatsBill && financing.currentBillMonthly ? ` Souvent moins que votre facture actuelle (≈ ${formatMAD(financing.currentBillMonthly)}/mois).` : ''}`}
+                data-ar={`على مدى ${Math.round(financing.months / 12)} سنة، شريحة إرشادية تُؤكَّد مع بنككم.${financing.beatsBill && financing.currentBillMonthly ? ` غالباً أقل من فاتورتكم الحالية (≈ ${formatMAD(financing.currentBillMonthly)}/شهر).` : ''}`}>
                 Sur {Math.round(financing.months / 12)} ans, fourchette indicative
                 <span class="text-brass-300"> à confirmer</span> avec votre banque.
                 {financing.beatsBill && financing.currentBillMonthly
@@ -737,7 +760,9 @@ const signConfig = ok
               </p>
             </div>
           </div>
-          <p class="mt-3 text-xs text-lune-faint">
+          <p class="mt-3 text-xs text-lune-faint" data-i18n
+            data-fr="Mensualités calculées à titre indicatif (taux et durée non contractuels). Le montant exact dépend de l’offre bancaire retenue."
+            data-ar="الأقساط الشهرية محسوبة على سبيل الإرشاد (المعدل والمدة غير تعاقديين). المبلغ الدقيق يتوقف على العرض البنكي المعتمد.">
             Mensualités calculées à titre indicatif (taux et durée non contractuels). Le montant exact dépend de l’offre bancaire retenue.
           </p>
         </section>
@@ -752,14 +777,16 @@ const signConfig = ok
           <div class="mt-5 flex gap-4 overflow-x-auto pb-2">
             {variants.map((v) => (
               <div class="cine-card min-w-[220px] shrink-0 rounded-xl p-5">
-                <p class="tech-label text-lune-faint">Réf. {v.reference}{v.version > 1 ? ` · v${v.version}` : ''}</p>
-                <p class="fig fig-md lum mt-2">{formatMAD(v.total_ttc)}</p>
-                <p class="mt-1 text-xs text-lune-faint">TTC, clé en main</p>
+                <p class="tech-label text-lune-faint" dir="ltr">Réf. {v.reference}{v.version > 1 ? ` · v${v.version}` : ''}</p>
+                <p class="fig fig-md lum mt-2" dir="ltr">{formatMAD(v.total_ttc)}</p>
+                <p class="mt-1 text-xs text-lune-faint" data-i18n data-fr="TTC, clé en main" data-ar="شامل الضريبة، تسليم مفتاح في اليد">TTC, clé en main</p>
                 {v.note && <p class="mt-2 text-sm text-lune-soft">{v.note}</p>}
               </div>
             ))}
           </div>
-          <p class="mt-3 text-xs text-lune-faint">
+          <p class="mt-3 text-xs text-lune-faint" data-i18n
+            data-fr="Demandez à votre conseiller Taqinor de basculer sur l’une de ces tailles si elle vous convient mieux."
+            data-ar="اطلبوا من مستشاركم في تاقينور التحويل إلى أحد هذه الأحجام إن كان يناسبكم أكثر.">
             Demandez à votre conseiller Taqinor de basculer sur l’une de ces tailles si elle vous convient mieux.
           </p>
         </section>
@@ -772,14 +799,18 @@ const signConfig = ok
           <div class="cine-card mt-5 rounded-2xl p-6 sm:p-8">
             <div class="grid gap-6 sm:grid-cols-2 sm:items-center">
               <div>
-                <p class="fig lum text-4xl sm:text-5xl">{formatNumber(enviro.co2TonnesPerYear, 1)} <span class="text-2xl text-lune-soft">t CO₂ / an</span></p>
-                <p class="v2-body mt-2 text-sm text-lune-soft">
+                <p class="fig lum text-4xl sm:text-5xl" dir="ltr">{formatNumber(enviro.co2TonnesPerYear, 1)} <span class="text-2xl text-lune-soft">t CO₂ / an</span></p>
+                <p class="v2-body mt-2 text-sm text-lune-soft" data-i18n
+                  data-fr={`évités chaque année — l’équivalent de ${formatNumber(enviro.trees)} arbres qui absorberaient ce CO₂.`}
+                  data-ar={`تُتجنَّب كل سنة — أي ما يعادل ${formatNumber(enviro.trees)} شجرة قادرة على امتصاص هذا الكربون.`}>
                   évités chaque année — l’équivalent de
                   <strong class="text-brass-300"> {formatNumber(enviro.trees)} arbres</strong> qui absorberaient ce CO₂.
                 </p>
               </div>
               <div class="text-sm text-lune-faint">
-                <p>Calcul transparent : production estimée × {formatNumber(enviro.kgPerKwh, 2)} kg CO₂/kWh (facteur d’émission du réseau marocain), ramené à raison de {formatNumber(enviro.kgPerTreeYear)} kg CO₂ absorbés par arbre et par an.</p>
+                <p data-i18n
+                  data-fr={`Calcul transparent : production estimée × ${formatNumber(enviro.kgPerKwh, 2)} kg CO₂/kWh (facteur d’émission du réseau marocain), ramené à raison de ${formatNumber(enviro.kgPerTreeYear)} kg CO₂ absorbés par arbre et par an.`}
+                  data-ar={`حساب شفاف: الإنتاج المقدّر × ${formatNumber(enviro.kgPerKwh, 2)} كلغ CO₂/kWh (معامل انبعاث الشبكة المغربية)، مقارنة بمعدل ${formatNumber(enviro.kgPerTreeYear)} كلغ CO₂ تمتصه الشجرة الواحدة سنوياً.`}>Calcul transparent : production estimée × {formatNumber(enviro.kgPerKwh, 2)} kg CO₂/kWh (facteur d’émission du réseau marocain), ramené à raison de {formatNumber(enviro.kgPerTreeYear)} kg CO₂ absorbés par arbre et par an.</p>
               </div>
             </div>
           </div>
@@ -799,7 +830,9 @@ const signConfig = ok
           ci-dessous). `data-contact-channel` pilote le canal envoyé. */}
       <section class="mx-auto max-w-4xl px-5 pt-14 sm:px-8" data-contact-token={token}>
         <div class="cine-card rounded-2xl p-6 sm:p-7">
-          <p class="v2-body text-lune">
+          <p class="v2-body text-lune" data-i18n
+            data-fr="Une question avant de signer ? Parlons-en — sans engagement, et sans appel commercial non sollicité."
+            data-ar="سؤال قبل التوقيع؟ لنتحدث — بدون التزام، وبدون مكالمات تجارية غير مرغوبة.">
             Une question avant de signer ? Parlons-en — sans engagement, et sans appel commercial non sollicité.
           </p>
           <div class="mt-4 flex flex-col gap-3 sm:flex-row sm:flex-wrap">
@@ -814,21 +847,21 @@ const signConfig = ok
               <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
                 <path d="M12.04 2C6.58 2 2.13 6.45 2.13 11.91c0 1.75.46 3.45 1.32 4.95L2 22l5.25-1.38a9.9 9.9 0 0 0 4.79 1.22h.01c5.46 0 9.91-4.45 9.91-9.91 0-2.65-1.03-5.14-2.9-7.01A9.82 9.82 0 0 0 12.04 2Zm0 18.1h-.01a8.2 8.2 0 0 1-4.18-1.15l-.3-.18-3.11.82.83-3.04-.2-.31a8.2 8.2 0 0 1-1.26-4.37c0-4.54 3.7-8.23 8.24-8.23 2.2 0 4.27.86 5.83 2.42a8.18 8.18 0 0 1 2.41 5.82c0 4.54-3.7 8.23-8.23 8.23Zm4.52-6.16c-.25-.12-1.47-.72-1.69-.81-.23-.08-.39-.12-.56.13-.16.25-.64.81-.78.97-.14.17-.29.19-.54.06-.25-.12-1.05-.39-1.99-1.23-.74-.66-1.23-1.47-1.38-1.72-.14-.25-.01-.38.11-.51.11-.11.25-.29.37-.43.13-.14.17-.25.25-.41.08-.17.04-.31-.02-.43-.06-.12-.56-1.35-.77-1.85-.2-.48-.41-.42-.56-.43l-.48-.01c-.17 0-.43.06-.66.31-.23.25-.86.85-.86 2.07 0 1.22.89 2.4 1.01 2.57.12.17 1.75 2.67 4.23 3.74.59.26 1.05.41 1.41.52.59.19 1.13.16 1.56.1.48-.07 1.47-.6 1.68-1.18.21-.58.21-1.07.14-1.18-.06-.1-.22-.16-.47-.28Z"/>
               </svg>
-              Discuter sur WhatsApp
+              <span data-i18n data-fr="Discuter sur WhatsApp" data-ar="الدردشة على واتساب">Discuter sur WhatsApp</span>
             </a>
             {callbackHref ? (
               <a href={callbackHref} data-contact-channel="rappel" class="btn-pill inline-flex items-center justify-center gap-2">
                 <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
                   <path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72c.13.96.36 1.9.7 2.81a2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45c.91.34 1.85.57 2.81.7A2 2 0 0 1 22 16.92Z"/>
                 </svg>
-                Demander un rappel
+                <span data-i18n data-fr="Demander un rappel" data-ar="طلب معاودة الاتصال">Demander un rappel</span>
               </a>
             ) : null}
             <a href={waLink} target="_blank" rel="noopener noreferrer" data-contact-channel="question" class="btn-pill inline-flex items-center justify-center gap-2">
               <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
                 <path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5Z"/>
               </svg>
-              Poser une question
+              <span data-i18n data-fr="Poser une question" data-ar="طرح سؤال">Poser une question</span>
             </a>
           </div>
           <p id="contact-confirm" class="mt-3 text-sm text-brass-300" role="status" aria-live="polite" hidden></p>
@@ -840,13 +873,15 @@ const signConfig = ok
         <div class="cine-card rounded-2xl p-6 sm:p-8">
           <!-- État confirmé (caché par défaut, affiché après signature ou si déjà accepté) -->
           <div id="sign-success" class="result-fade" hidden>
-            <p class="fig text-2xl text-brass-300">Devis accepté ✓</p>
-            <p class="v2-body mt-2">
+            <p class="fig text-2xl text-brass-300" data-i18n data-fr="Devis accepté ✓" data-ar="تمت الموافقة على العرض ✓">Devis accepté ✓</p>
+            <p class="v2-body mt-2" data-i18n
+              data-fr="Merci — votre acceptation est bien enregistrée. Votre conseiller Taqinor revient vers vous très vite."
+              data-ar="شكراً — تم تسجيل موافقتكم بنجاح. سيتواصل معكم مستشار تاقينور قريباً جداً.">
               Merci <span id="sign-success-name" class="text-lune"></span> — votre acceptation est bien enregistrée.
               Votre conseiller Taqinor revient vers vous très vite.
             </p>
             <p id="sign-success-stamp" class="mt-3 text-sm text-lune-faint">
-              Réf. {reference}<span id="sign-success-time"></span>.
+              Réf. <span dir="ltr">{reference}</span><span id="sign-success-time"></span>.
             </p>
           </div>
 
@@ -854,14 +889,16 @@ const signConfig = ok
           <form id="sign-form" novalidate>
             <p class="tech-label rule-brass text-brass-300" data-i18n data-fr="Signer en ligne" data-ar="التوقيع إلكترونياً">Signer en ligne</p>
             <h2 class="display mt-3 text-2xl text-lune" data-i18n data-fr="Bon pour accord" data-ar="موافقة نهائية">Bon pour accord</h2>
-            <p class="v2-body mt-2">
+            <p class="v2-body mt-2" data-i18n
+              data-fr="Validez votre proposition en quelques secondes. Vous recevrez ensuite la confirmation de votre conseiller."
+              data-ar="أكّدوا عرضكم في ثوانٍ معدودة. ستصلكم بعدها رسالة تأكيد من مستشاركم.">
               Validez votre proposition en quelques secondes. Vous recevrez ensuite la confirmation
               de votre conseiller.
             </p>
 
             {twoOptions && (
               <fieldset class="mt-6">
-                <legend class="tech-label text-lune-faint">Votre choix</legend>
+                <legend class="tech-label text-lune-faint" data-i18n data-fr="Votre choix" data-ar="اختياركم">Votre choix</legend>
                 <div class="mt-3 grid gap-3 sm:grid-cols-2">
                   {options.map((opt) => (
                     <label class="flex cursor-pointer items-center gap-3 rounded-xl border border-white/12 p-4 text-sm has-[:checked]:border-brass-400">
@@ -874,7 +911,7 @@ const signConfig = ok
                       />
                       <span class="text-lune">
                         {optionLabel(opt)}
-                        <span class="block text-lune-faint">{formatMAD(optionTtc(data!, opt))} TTC</span>
+                        <span class="block text-lune-faint" dir="ltr">{formatMAD(optionTtc(data!, opt))} TTC</span>
                       </span>
                     </label>
                   ))}
@@ -883,7 +920,7 @@ const signConfig = ok
             )}
 
             <div class="mt-6">
-              <label for="sign-nom" class="tech-label text-lune-faint">Votre nom complet</label>
+              <label for="sign-nom" class="tech-label text-lune-faint" data-i18n data-fr="Votre nom complet" data-ar="اسمكم الكامل">Votre nom complet</label>
               <input
                 id="sign-nom"
                 name="nom"
@@ -898,11 +935,12 @@ const signConfig = ok
             <!-- WJ11 · SIGNATURE MANUSCRITE (canvas natif, tactile + souris) ── -->
             <div class="mt-6">
               <div class="flex items-baseline justify-between gap-3">
-                <label for="sign-pad" class="tech-label text-lune-faint">Votre signature</label>
+                <label for="sign-pad" class="tech-label text-lune-faint" data-i18n data-fr="Votre signature" data-ar="توقيعكم">Votre signature</label>
                 <button
                   id="sign-clear"
                   type="button"
                   class="text-xs text-lune-faint underline-offset-2 hover:underline"
+                  data-i18n data-fr="Effacer" data-ar="مسح"
                 >Effacer</button>
               </div>
               <div class="sign-pad-wrap mt-2 rounded-xl border border-white/15 bg-nuit-800">
@@ -915,12 +953,16 @@ const signConfig = ok
                   aria-label="Zone de signature manuscrite — dessinez votre signature au doigt ou à la souris"
                 ></canvas>
               </div>
-              <p class="mt-1.5 text-xs text-lune-faint">Dessinez votre signature ci-dessus (facultatif mais recommandé). Votre nom et votre accord ci-dessous valent signature électronique (loi 53-05).</p>
+              <p class="mt-1.5 text-xs text-lune-faint" data-i18n
+                data-fr="Dessinez votre signature ci-dessus (facultatif mais recommandé). Votre nom et votre accord ci-dessous valent signature électronique (loi 53-05)."
+                data-ar="ارسموا توقيعكم أعلاه (اختياري لكن مستحسن). اسمكم وموافقتكم أدناه بمثابة توقيع إلكتروني (القانون 53-05).">Dessinez votre signature ci-dessus (facultatif mais recommandé). Votre nom et votre accord ci-dessous valent signature électronique (loi 53-05).</p>
             </div>
 
             <label class="mt-5 flex cursor-pointer items-start gap-3 text-sm">
               <input id="sign-accord" name="accord" type="checkbox" required class="mt-1 h-4 w-4 accent-[var(--color-brass-400)]" />
-              <span class="text-lune-soft">
+              <span class="text-lune-soft" data-i18n
+                data-fr="Je certifie « Bon pour accord » et j’accepte cette proposition aux conditions indiquées ci-dessus."
+                data-ar="أشهد بـ«الموافقة النهائية» وأقبل هذا العرض وفق الشروط المذكورة أعلاه.">
                 Je certifie « <strong class="text-lune">Bon pour accord</strong> » et j’accepte cette proposition
                 aux conditions indiquées ci-dessus.
               </span>
@@ -928,7 +970,9 @@ const signConfig = ok
 
             <label class="mt-3 flex cursor-pointer items-start gap-3 text-sm">
               <input id="sign-consent" name="consent" type="checkbox" required class="mt-1 h-4 w-4 accent-[var(--color-brass-400)]" />
-              <span class="text-lune-soft">
+              <span class="text-lune-soft" data-i18n
+                data-fr="J’accepte de signer électroniquement cette proposition. Mon nom, la date et l’heure de signature sont enregistrés avec mon accord."
+                data-ar="أوافق على التوقيع إلكترونياً على هذا العرض. يتم تسجيل اسمي وتاريخ ووقت التوقيع مع موافقتي.">
                 J’accepte de <strong class="text-lune">signer électroniquement</strong> cette proposition.
                 Mon nom, la date et l’heure de signature sont enregistrés avec mon accord.
               </span>
@@ -936,7 +980,7 @@ const signConfig = ok
 
             <!-- Récapitulatif horodaté (réf + date/heure côté client) -->
             <p id="sign-stamp" class="mt-4 text-xs text-lune-faint">
-              Réf. {reference} · l’horodatage de votre signature s’affichera ici.
+              <span data-i18n data-fr="Réf." data-ar="المرجع">Réf.</span> <span dir="ltr">{reference}</span> · <span data-i18n data-fr="l’horodatage de votre signature s’affichera ici." data-ar="سيظهر توقيت توقيعكم هنا.">l’horodatage de votre signature s’affichera ici.</span>
             </p>
 
             <p id="sign-error" class="mt-4 text-sm text-alert-300" role="alert" hidden></p>
@@ -947,7 +991,7 @@ const signConfig = ok
               class="btn-pill glow-hero mt-6 w-full justify-center bg-brass-400 px-6 py-3 text-base font-bold text-nuit sm:w-auto"
               style="background: var(--color-brass-400); color: var(--color-nuit); border-color: var(--color-brass-400)"
             >
-              <span id="sign-submit-label">Signer en ligne</span>
+              <span id="sign-submit-label" data-i18n data-fr="Signer en ligne" data-ar="التوقيع إلكترونياً">Signer en ligne</span>
               <span id="sign-spinner" class="spinner" hidden aria-hidden="true"></span>
             </button>
           </form>
@@ -973,11 +1017,13 @@ const signConfig = ok
               <line x1="12" y1="15" x2="12" y2="3" />
             </svg>
             <span id="pdf-download-spinner" class="spinner" hidden aria-hidden="true"></span>
-            <span id="pdf-download-label">Télécharger le devis (PDF)</span>
+            <span id="pdf-download-label" data-i18n data-fr="Télécharger le devis (PDF)" data-ar="تحميل العرض (PDF)">Télécharger le devis (PDF)</span>
           </a>
         </div>
 
-        <p class="mt-6 text-center text-xs text-lune-faint">
+        <p class="mt-6 text-center text-xs text-lune-faint" data-i18n
+          data-fr={`Proposition Taqinor · réf. ${reference}. Document non contractuel sans signature du devis officiel.`}
+          data-ar={`عرض تاقينور · المرجع ${reference}. وثيقة غير تعاقدية بدون توقيع العرض الرسمي.`}>
           Proposition Taqinor · réf. {reference}. Document non contractuel sans signature du devis officiel.
         </p>
       </section>
@@ -1062,11 +1108,8 @@ const signConfig = ok
           {steps.map((s, i) => (
             <li class="cine-card rounded-xl p-5">
               <p class="fig text-brass-300">{i + 1}.</p>
-              <p class="mt-1 flex items-baseline justify-between gap-2 text-sm font-bold text-lune">
-                <span>{s.title}</span>
-                <span dir="rtl" lang="ar" class="shrink-0 text-xs font-normal text-lune-faint">{s.titleAr}</span>
-              </p>
-              <p class="mt-2 text-sm text-lune-soft">{s.body}</p>
+              <p class="mt-1 text-sm font-bold text-lune" data-i18n data-fr={s.title} data-ar={s.titleAr}>{s.title}</p>
+              <p class="mt-2 text-sm text-lune-soft" data-i18n data-fr={s.body} data-ar={s.bodyAr}>{s.body}</p>
             </li>
           ))}
         </ol>
@@ -1078,10 +1121,7 @@ const signConfig = ok
         <div class="cine-card mt-5 rounded-2xl p-6 sm:p-7">
           <ul class="space-y-3 text-sm text-lune-soft">
             {monitoring.map((m) => (
-              <li class="flex items-baseline justify-between gap-3">
-                <span>{m.label}</span>
-                <span dir="rtl" lang="ar" class="shrink-0 text-xs text-lune-faint">{m.labelAr}</span>
-              </li>
+              <li data-i18n data-fr={m.label} data-ar={m.labelAr}>{m.label}</li>
             ))}
           </ul>
         </div>
@@ -1092,14 +1132,11 @@ const signConfig = ok
       {assumptions.length > 0 && (
         <section class="mx-auto max-w-4xl px-5 pt-16 sm:px-8">
           <details class="cine-card rounded-2xl p-6 sm:p-7">
-            <summary class="tech-label cursor-pointer text-brass-300">Nos hypothèses</summary>
+            <summary class="tech-label cursor-pointer text-brass-300" data-i18n data-fr="Nos hypothèses" data-ar="فرضياتنا">Nos hypothèses</summary>
             <dl class="mt-4 space-y-3 text-sm">
               {assumptions.map((a) => (
                 <div>
-                  <dt class="flex items-baseline justify-between gap-3 text-lune-faint">
-                    <span>{a.label}</span>
-                    <span dir="rtl" lang="ar" class="shrink-0 text-xs">{a.labelAr}</span>
-                  </dt>
+                  <dt class="text-lune-faint" data-i18n data-fr={a.label} data-ar={a.labelAr}>{a.label}</dt>
                   <dd class="mt-0.5 text-lune-soft">{a.value}</dd>
                 </div>
               ))}
@@ -1115,12 +1152,8 @@ const signConfig = ok
         <div class="mt-5 space-y-3">
           {faq.map((item) => (
             <details class="cine-card rounded-xl p-5">
-              <summary class="flex cursor-pointer items-baseline justify-between gap-3 text-sm font-bold text-lune">
-                <span>{item.question}</span>
-                <span dir="rtl" lang="ar" class="shrink-0 text-xs font-normal text-lune-faint">{item.questionAr}</span>
-              </summary>
-              <p class="mt-3 text-sm text-lune-soft">{item.answer}</p>
-              <p dir="rtl" lang="ar" class="mt-1.5 text-right text-xs text-lune-faint" style="line-height: 1.8">{item.answerAr}</p>
+              <summary class="cursor-pointer text-sm font-bold text-lune" data-i18n data-fr={item.question} data-ar={item.questionAr}>{item.question}</summary>
+              <p class="mt-3 text-sm text-lune-soft" data-i18n data-fr={item.answer} data-ar={item.answerAr}>{item.answer}</p>
             </details>
           ))}
         </div>
@@ -1178,6 +1211,75 @@ const signConfig = ok
     reference: string;
   }
 
+  // ── WJ17 · bascule de langue FR/عربي — MÊME mécanisme dual-node que WJ33
+  // (mon-toit.astro) : `el.textContent = v` APLATIRAIT toute balise imbriquée
+  // (ex. <strong> dans un data-i18n) à chaque aller-retour. On enveloppe donc
+  // chaque élément `[data-i18n]` d'une PAIRE de nœuds show/hide au premier
+  // passage (FR = markup ORIGINAL capturé une fois via innerHTML, AR = texte
+  // simple depuis data-ar), puis on masque/affiche la bonne paire — aucune
+  // balise n'est jamais perdue, quel que soit le nombre de bascules.
+  type PropLang = 'fr' | 'ar';
+  let currentLang: PropLang = 'fr';
+  const i18nPairs: Array<{ fr: HTMLElement; ar: HTMLElement }> = [];
+  /** Registre des labels à retraduire à chaque bascule (busy-state, non couverts par data-i18n). */
+  const propI18nBusyLabels: Array<(lang: PropLang) => void> = [];
+  function prepareI18n(): void {
+    document.querySelectorAll<HTMLElement>('[data-i18n]').forEach((el) => {
+      const arText = el.dataset.ar;
+      if (typeof arText !== 'string') return;
+      const frSpan = document.createElement('span');
+      frSpan.innerHTML = el.innerHTML;
+      const arSpan = document.createElement('span');
+      arSpan.textContent = arText;
+      arSpan.hidden = true;
+      el.textContent = '';
+      el.append(frSpan, arSpan);
+      i18nPairs.push({ fr: frSpan, ar: arSpan });
+    });
+  }
+  function applyLang(lang: PropLang): void {
+    const isAr = lang === 'ar';
+    currentLang = lang;
+    i18nPairs.forEach(({ fr, ar }) => {
+      fr.hidden = isAr;
+      ar.hidden = !isAr;
+    });
+    // RTL/langue au niveau DOCUMENT (pas seulement un bloc local) : un lecteur
+    // d'écran ou le rendu natif du navigateur doivent voir la vraie langue.
+    document.documentElement.lang = isAr ? 'ar' : 'fr';
+    document.documentElement.dir = isAr ? 'rtl' : 'ltr';
+    const propRoot = document.querySelector<HTMLElement>('.proposition');
+    if (propRoot) {
+      propRoot.dir = isAr ? 'rtl' : 'ltr';
+      propRoot.style.lineHeight = isAr ? '1.75' : '';
+    }
+    const frBtn = document.getElementById('prop-lang-fr');
+    const arBtn = document.getElementById('prop-lang-ar');
+    frBtn?.setAttribute('aria-pressed', String(!isAr));
+    arBtn?.setAttribute('aria-pressed', String(isAr));
+    for (const [btn, on] of [[frBtn, !isAr], [arBtn, isAr]] as const) {
+      if (!btn) continue;
+      btn.className = on
+        ? 'px-2.5 py-1 text-xs font-semibold text-azur-950 bg-brass-400 transition-colors'
+        : 'px-2.5 py-1 text-xs font-semibold text-lune-soft transition-colors hover:text-white';
+    }
+    // Labels pilotés par un état transitoire (ex. « Signature… », « Génération
+    // du PDF… ») ne passent pas par prepareI18n (ils sont réécrits en JS APRÈS
+    // le premier rendu) : on les retraduit ici, à chaque bascule ET après
+    // chaque changement d'état, via un petit registre partagé.
+    propI18nBusyLabels.forEach((fn) => fn(currentLang));
+  }
+  prepareI18n();
+  document.getElementById('prop-lang-fr')?.addEventListener('click', () => applyLang('fr'));
+  document.getElementById('prop-lang-ar')?.addEventListener('click', () => applyLang('ar'));
+  // Exposé aux AUTRES <script> de cette page (PDF affordance) — chaque bloc
+  // <script> d'une île Astro est un module séparé, donc pas de portée
+  // partagée native ; `window` est le pont volontairement minimal ici.
+  (window as unknown as { __propApplyLang?: (l: PropLang) => void }).__propApplyLang = applyLang;
+  (window as unknown as { __propCurrentLang?: () => PropLang }).__propCurrentLang = () => currentLang;
+  (window as unknown as { __propRegisterBusyLabel?: (fn: (l: PropLang) => void) => void }).__propRegisterBusyLabel =
+    (fn: (l: PropLang) => void) => propI18nBusyLabels.push(fn);
+
   const root = document.querySelector<HTMLElement>('.proposition');
   const raw = root?.dataset.signConfig;
   if (root && raw) {
@@ -1192,6 +1294,17 @@ const signConfig = ok
     const submitBtn = document.getElementById('sign-submit') as HTMLButtonElement | null;
     const submitLabel = document.getElementById('sign-submit-label');
     const spinner = document.getElementById('sign-spinner');
+    // ── WJ17 — état « Signature… » n'est pas couvert par prepareI18n (il écrase
+    // le libellé APRÈS le premier rendu) : on le pilote via un petit état
+    // + le registre partagé, pour rester correct FR/AR à chaque bascule.
+    let submitBusy = false;
+    const SUBMIT_LABEL = { fr: 'Signer en ligne', ar: 'التوقيع إلكترونياً' } as const;
+    const SUBMIT_LABEL_BUSY = { fr: 'Signature…', ar: 'جارٍ التوقيع…' } as const;
+    function renderSubmitLabel(lang: 'fr' | 'ar'): void {
+      if (!submitLabel) return;
+      submitLabel.textContent = submitBusy ? SUBMIT_LABEL_BUSY[lang] : SUBMIT_LABEL[lang];
+    }
+    propI18nBusyLabels.push(renderSubmitLabel);
     const sticky = document.getElementById('sticky-cta');
 
     // ── WJ11 · Pad de signature manuscrite (canvas natif, tactile + souris) ──
@@ -1337,7 +1450,8 @@ const signConfig = ok
       submitting = true;
       if (submitBtn) submitBtn.disabled = true;
       if (spinner) spinner.hidden = false;
-      if (submitLabel) submitLabel.textContent = 'Signature…';
+      submitBusy = true;
+      renderSubmitLabel(currentLang);
 
       try {
         // Corps RÉTRO-COMPATIBLE : base (token/nom/option) + champs optionnels
@@ -1378,7 +1492,8 @@ const signConfig = ok
         submitting = false;
         if (submitBtn) submitBtn.disabled = false;
         if (spinner) spinner.hidden = true;
-        if (submitLabel) submitLabel.textContent = 'Signer en ligne';
+        submitBusy = false;
+        renderSubmitLabel(currentLang);
       }
     });
   }
@@ -1577,16 +1692,32 @@ const signConfig = ok
   const pdfIcon = document.getElementById('pdf-download-icon');
   const pdfSpinner = document.getElementById('pdf-download-spinner');
   const pdfLabel = document.getElementById('pdf-download-label');
-  const PDF_LABEL_DEFAULT = 'Télécharger le devis (PDF)';
-  const PDF_LABEL_LOADING = 'Génération du PDF…';
+  const PDF_LABEL_DEFAULT = { fr: 'Télécharger le devis (PDF)', ar: 'تحميل العرض (PDF)' } as const;
+  const PDF_LABEL_LOADING = { fr: 'Génération du PDF…', ar: 'جارٍ إنشاء PDF…' } as const;
+  // WJ17 — le libellé bascule FR/AR APRÈS le premier rendu (état « génération »),
+  // donc hors du mécanisme dual-node data-i18n : on lit la langue courante via
+  // le pont __propCurrentLang exposé par le script de bascule (module séparé),
+  // et on se réinscrit pour être retraduit à chaque clic FR/عربي.
+  type PropLang = 'fr' | 'ar';
+  const propWin = window as unknown as {
+    __propCurrentLang?: () => PropLang;
+    __propRegisterBusyLabel?: (fn: (l: PropLang) => void) => void;
+  };
+  const getLang = (): PropLang => propWin.__propCurrentLang?.() ?? 'fr';
 
   if (pdfLink && pdfLabel) {
+    let pdfLoading = false;
     let pdfResetTimer: number | undefined;
+    const renderPdfLabel = (lang: PropLang): void => {
+      pdfLabel.textContent = pdfLoading ? PDF_LABEL_LOADING[lang] : PDF_LABEL_DEFAULT[lang];
+    };
     const setPdfLoading = (loading: boolean): void => {
+      pdfLoading = loading;
       if (pdfIcon) pdfIcon.toggleAttribute('hidden', loading);
       if (pdfSpinner) pdfSpinner.hidden = !loading;
-      pdfLabel.textContent = loading ? PDF_LABEL_LOADING : PDF_LABEL_DEFAULT;
+      renderPdfLabel(getLang());
     };
+    propWin.__propRegisterBusyLabel?.(renderPdfLabel);
     pdfLink.addEventListener('click', () => {
       setPdfLoading(true);
       window.clearTimeout(pdfResetTimer);
