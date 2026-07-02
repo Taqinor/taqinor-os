@@ -639,10 +639,10 @@ const TOWNS = ['Casablanca', 'Rabat', 'Marrakech', 'Tangier', 'Agadir', 'Kénitr
 </style>
 
 <script>
-  import { estimateFromBill, formatMadRange } from '../../lib/billEstimate';
-  import { captureWhatsappText, whatsappLink } from '../../lib/whatsapp';
-  import { WHATSAPP_LEADS } from '../../lib/nap';
-  import { validateLead } from '../../lib/lead';
+  import { estimateFromBill, formatMadRange } from '../../../lib/billEstimate';
+  import { captureWhatsappText, whatsappLink } from '../../../lib/whatsapp';
+  import { WHATSAPP_LEADS } from '../../../lib/nap';
+  import { validateLead } from '../../../lib/lead';
 
   const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
   const $ = (id: string) => document.getElementById(id);
@@ -803,7 +803,7 @@ const TOWNS = ['Casablanca', 'Rabat', 'Marrakech', 'Tangier', 'Agadir', 'Kénitr
     if (started) return;
     started = true;
     try {
-      const mod = await import('../../scripts/roof-tool-pro11.ts');
+      const mod = await import('../../../scripts/roof-tool-pro11.ts');
       mod.initRoofToolPro8({
         maptilerKey: key,
         mapboxToken: mapboxToken || undefined,
@@ -963,8 +963,8 @@ const TOWNS = ['Casablanca', 'Rabat', 'Marrakech', 'Tangier', 'Agadir', 'Kénitr
     panels3dStarted = true;
     try {
       const [{ capturePreviewLayout, buildViewerModel }, { createRoofViewer }] = await Promise.all([
-        import('../../lib/proposition'),
-        import('../../scripts/roofPro11/viewerOnly'),
+        import('../../../lib/proposition'),
+        import('../../../scripts/roofPro11/viewerOnly'),
       ]);
       const layout = capturePreviewLayout(captureOutline, lastKwc);
       const model = layout ? buildViewerModel(layout) : null;
