@@ -82,8 +82,8 @@ beforeEach(() => {
       addEventListener: vi.fn(), removeEventListener: vi.fn(), dispatchEvent: vi.fn(),
     }))
   }
-  if (!global.ResizeObserver) {
-    global.ResizeObserver = class { observe() {} unobserve() {} disconnect() {} }
+  if (!globalThis.ResizeObserver) {
+    globalThis.ResizeObserver = class { observe() {} unobserve() {} disconnect() {} }
   }
 })
 
