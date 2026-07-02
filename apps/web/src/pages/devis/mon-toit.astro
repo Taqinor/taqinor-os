@@ -149,7 +149,7 @@ const TOWNS = ['Casablanca', 'Rabat', 'Marrakech', 'Tanger', 'Agadir', 'Kénitra
             </button>
           </form>
 
-          <div id="rp9-map" class="mt-0 h-[44vh] min-h-[280px] w-full bg-nuit-700"
+          <div id="rp9-map" class="mt-skeleton-shimmer mt-0 h-[44vh] min-h-[280px] w-full bg-nuit-700"
             role="application" aria-label="Carte satellite pour repérer votre toit"></div>
 
           <div class="flex flex-wrap items-center gap-3 border-t border-white/10 p-4">
@@ -562,8 +562,12 @@ const TOWNS = ['Casablanca', 'Rabat', 'Marrakech', 'Tanger', 'Agadir', 'Kénitra
     </div>
   </section>
 
-  <!-- ============ WJ7 — RÉCUPÉRATION D'ABANDON (exit-intent / sortie mobile) ============ -->
-  <div id="mt-exit" hidden class="fixed inset-0 z-50 flex items-end justify-center bg-black/60 p-4 sm:items-center" role="dialog" aria-modal="true" aria-labelledby="mt-exit-title">
+  <!-- ============ WJ7 — RÉCUPÉRATION D'ABANDON (exit-intent / sortie mobile) ============
+       WJ34 — safe-area-inset-bottom : ancrée en bas sur mobile (items-end), la
+       modale ne doit jamais se coller sous la barre de geste / l'encoche. ==== -->
+  <div id="mt-exit" hidden class="fixed inset-0 z-50 flex items-end justify-center bg-black/60 p-4 sm:items-center"
+    style="padding-bottom: max(1rem, env(safe-area-inset-bottom));"
+    role="dialog" aria-modal="true" aria-labelledby="mt-exit-title">
     <div class="cine-card w-full max-w-md border border-brass-400/40 p-5">
       <div class="flex items-start justify-between gap-3">
         <p id="mt-exit-title" class="display text-lg text-white" data-i18n data-fr="Recevez votre estimation sur WhatsApp" data-ar="استلم تقديرك على واتساب">Recevez votre estimation sur WhatsApp</p>
@@ -599,6 +603,39 @@ const TOWNS = ['Casablanca', 'Rabat', 'Marrakech', 'Tanger', 'Agadir', 'Kénitra
     .mt-panels3d-stage {
       height: 380px;
     }
+  }
+
+  /* ===== WJ34 — squelettes de performance perçue (zéro CLS : la zone occupe
+     déjà sa hauteur finale — bg-nuit-700/min-h existants — on n'ajoute qu'un
+     effet de « chargement » par-dessus, retiré au premier rendu réel). ===== */
+  .mt-skeleton-shimmer {
+    background-image: linear-gradient(
+      100deg,
+      transparent 30%,
+      rgb(255 255 255 / 0.06) 50%,
+      transparent 70%
+    );
+    background-size: 200% 100%;
+  }
+  @media (prefers-reduced-motion: no-preference) {
+    .mt-skeleton-shimmer {
+      animation: mt-shimmer 1.6s ease-in-out infinite;
+    }
+  }
+  @keyframes mt-shimmer {
+    from { background-position: 200% 0; }
+    to { background-position: -200% 0; }
+  }
+
+  /* Squelettes des 3 chiffres d'estimation — mêmes proportions que le texte
+     final (text-3xl), donc AUCUN CLS quand les vrais chiffres les remplacent. */
+  .mt-est-skeleton {
+    display: inline-block;
+    height: 2.25rem;
+    width: 4.5rem;
+    border-radius: 0.25rem;
+    background: rgb(255 255 255 / 0.08);
+    vertical-align: middle;
   }
 </style>
 
@@ -759,6 +796,10 @@ const TOWNS = ['Casablanca', 'Rabat', 'Marrakech', 'Tanger', 'Agadir', 'Kénitra
 
   // ——— boot carte (captureOnly). Repli sans clé carte AUTORISE la suite (WJ4) ———
   let started = false;
+  const mapEl = $('rp9-map');
+  // WJ34 — retire le squelette de chargement dès que la carte annonce son
+  // premier rendu (onReady) ou dès qu'on bascule sur le repli sans carte.
+  function clearMapSkeleton() { mapEl?.classList.remove('mt-skeleton-shimmer'); }
   async function boot(key: string, mapboxToken: string) {
     if (started) return;
     started = true;
@@ -769,6 +810,7 @@ const TOWNS = ['Casablanca', 'Rabat', 'Marrakech', 'Tanger', 'Agadir', 'Kénitra
         mapboxToken: mapboxToken || undefined,
         reducedMotion,
         captureOnly: true,
+        onReady: clearMapSkeleton,
         onCaptureChange: (s) => {
           capturePin = s.pin;
           captureOutline = s.outline;
@@ -788,7 +830,7 @@ const TOWNS = ['Casablanca', 'Rabat', 'Marrakech', 'Tanger', 'Agadir', 'Kénitra
     }
   }
   // WJ4 — repli carte : on montre le champ d'adresse en clair ET on garde la suite ouverte.
-  function showFallback() { if (fallback) fallback.hidden = false; }
+  function showFallback() { if (fallback) fallback.hidden = false; clearMapSkeleton(); }
 
   (async () => {
     try {
@@ -872,7 +914,29 @@ const TOWNS = ['Casablanca', 'Rabat', 'Marrakech', 'Tanger', 'Agadir', 'Kénitra
     lastKwc = est.kwc;
     updatePanels3dVisibility();
   }
-  $('mt-estimate')?.addEventListener('click', () => { computeEstimate(); goStep(2); });
+  // WJ34 — squelette bref pendant le calcul (performance perçue) : les 3
+  // chiffres passent en squelette shimmer AVANT le calcul, puis
+  // requestAnimationFrame laisse peindre ce squelette une fois avant de
+  // révéler les vrais chiffres — sensation de « calcul », zéro CLS (mêmes
+  // dimensions text-3xl), et prêt à absorber un futur calcul plus lourd
+  // (PVGIS réseau) sans changement d'UX.
+  function showEstimateSkeleton() {
+    const card = $('mt-estimate-body');
+    const unavail = $('mt-estimate-unavailable');
+    if (unavail) unavail.hidden = true;
+    if (card) card.hidden = false;
+    for (const id of ['mt-est-kwc', 'mt-est-savings']) {
+      const el = $(id);
+      if (el) el.innerHTML = '<span class="mt-est-skeleton mt-skeleton-shimmer"></span>';
+    }
+    const payEl = $('mt-est-payback');
+    if (payEl) payEl.innerHTML = '<span class="mt-est-skeleton mt-skeleton-shimmer"></span>';
+  }
+  $('mt-estimate')?.addEventListener('click', () => {
+    showEstimateSkeleton();
+    goStep(2);
+    requestAnimationFrame(() => computeEstimate());
+  });
   // recalcule à la volée si l'utilisateur revient corriger sa facture
   $('mt-facture-hiver')?.addEventListener('input', computeEstimate);
   $('mt-bill')?.addEventListener('change', computeEstimate);

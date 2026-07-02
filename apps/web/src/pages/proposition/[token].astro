@@ -241,15 +241,28 @@ const signConfig = ok
            rythme rehaussé, cohérent avec l'accueil élevé v3, zéro CLS : min-h). -->
       <section class="relative min-h-[72vh] overflow-hidden sm:min-h-[78vh]">
         {roofImg ? (
-          <img
-            src={roofImg}
-            alt={`Étude de toiture — ${clientName}`}
-            width="1600"
-            height="900"
-            class="absolute inset-0 h-full w-full object-cover"
-            loading="eager"
-            decoding="async"
-          />
+          <>
+            <!-- WJ34 — poster blur-up : la photo backend (URL dynamique, pas de
+                 pipeline LQIP base64 disponible pour ces images) est servie par-
+                 dessus un dégradé « heure dorée » qui tient le cadrage. On ne
+                 masque JAMAIS l'image elle-même (LCP protégé) : seule son
+                 opacité anime 0→1 au chargement, gated reduced-motion — un
+                 navigateur avec l'image déjà en cache (retour visiteur) la
+                 voit s'afficher instantanément (classe déjà posée par l'attribut
+                 onload s'il a déjà `complete`). Zéro CLS : le dégradé occupe
+                 EXACTEMENT le même cadre (absolute inset-0). -->
+            <div class="hero-lqip absolute inset-0" aria-hidden="true"></div>
+            <img
+              src={roofImg}
+              alt={`Étude de toiture — ${clientName}`}
+              width="1600"
+              height="900"
+              class="hero-photo absolute inset-0 h-full w-full object-cover"
+              loading="eager"
+              decoding="async"
+              onload="this.classList.add('is-loaded')"
+            />
+          </>
         ) : (
           <div class="absolute inset-0 bg-azur-950" aria-hidden="true"></div>
         )}
@@ -918,20 +931,27 @@ const signConfig = ok
           </form>
         </div>
 
-        <!-- ── P3 · TÉLÉCHARGER LE DEVIS PDF (même token, nouvel onglet) ───── -->
+        <!-- ── P3/WJ34 · TÉLÉCHARGER LE DEVIS PDF (même token, nouvel onglet) ───
+             Affordance « génération du PDF… » : le rendu backend (WeasyPrint)
+             prend quelques secondes, l'utilisateur doit voir qu'il se passe
+             quelque chose. Le lien continue de s'ouvrir normalement (nouvel
+             onglet) — l'affordance retombe seule après quelques secondes ou
+             dès que l'utilisateur revient sur cet onglet. -->
         <div class="mt-6 text-center">
           <a
+            id="pdf-download"
             href={pdfUrl}
             target="_blank"
             rel="noopener noreferrer"
             class="btn-pill inline-flex items-center justify-center gap-2"
           >
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <svg id="pdf-download-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
               <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
               <polyline points="7 10 12 15 17 10" />
               <line x1="12" y1="15" x2="12" y2="3" />
             </svg>
-            Télécharger le devis (PDF)
+            <span id="pdf-download-spinner" class="spinner" hidden aria-hidden="true"></span>
+            <span id="pdf-download-label">Télécharger le devis (PDF)</span>
           </a>
         </div>
 
@@ -1081,10 +1101,13 @@ const signConfig = ok
         </div>
       </section>
 
-      <!-- ── CTA COLLANT « Signer en ligne » ──────────────────────────────── -->
+      <!-- ── CTA COLLANT « Signer en ligne » (WJ34 — safe-area-inset-bottom pour
+           les iPhone à encoche / barre de geste : le CTA ne se cache jamais
+           derrière la zone système) ──────────────────────────────────────── -->
       <div
         id="sticky-cta"
-        class="fixed inset-x-0 bottom-0 z-40 border-t border-white/10 bg-nuit-800/95 px-4 py-3 backdrop-blur supports-[backdrop-filter]:bg-nuit-800/80"
+        class="fixed inset-x-0 bottom-0 z-40 border-t border-white/10 bg-nuit-800/95 px-4 pt-3 backdrop-blur supports-[backdrop-filter]:bg-nuit-800/80"
+        style="padding-bottom: max(0.75rem, env(safe-area-inset-bottom));"
       >
         <div class="mx-auto flex max-w-4xl items-center justify-between gap-4">
           <div class="min-w-0">
@@ -1511,6 +1534,42 @@ const signConfig = ok
   }
 </script>
 
+<script>
+  // ── WJ34 — affordance « génération du PDF… » sur le lien de téléchargement.
+  // Le rendu backend (WeasyPrint) prend quelques secondes : sans signal, le
+  // visiteur peut croire que le clic n'a rien fait. Le lien continue de
+  // s'ouvrir normalement (target=_blank, jamais bloqué par preventDefault) ;
+  // on affiche juste un état visuel temporaire, remis à zéro dès que
+  // l'utilisateur revient sur cet onglet (le PDF est alors soit ouvert dans
+  // un nouvel onglet, soit l'échec est visible là-bas) ou après un délai de
+  // sécurité (le rendu le plus lent observé reste sous quelques secondes).
+  const pdfLink = document.getElementById('pdf-download') as HTMLAnchorElement | null;
+  const pdfIcon = document.getElementById('pdf-download-icon');
+  const pdfSpinner = document.getElementById('pdf-download-spinner');
+  const pdfLabel = document.getElementById('pdf-download-label');
+  const PDF_LABEL_DEFAULT = 'Télécharger le devis (PDF)';
+  const PDF_LABEL_LOADING = 'Génération du PDF…';
+
+  if (pdfLink && pdfLabel) {
+    let resetTimer: number | undefined;
+    function setLoading(loading: boolean): void {
+      if (pdfIcon) pdfIcon.toggleAttribute('hidden', loading);
+      if (pdfSpinner) pdfSpinner.hidden = !loading;
+      pdfLabel.textContent = loading ? PDF_LABEL_LOADING : PDF_LABEL_DEFAULT;
+    }
+    pdfLink.addEventListener('click', () => {
+      setLoading(true);
+      window.clearTimeout(resetTimer);
+      resetTimer = window.setTimeout(() => setLoading(false), 6000);
+    });
+    // Dès que l'utilisateur revient sur CET onglet (après avoir consulté le
+    // PDF dans le nouvel onglet), on considère la génération terminée.
+    document.addEventListener('visibilitychange', () => {
+      if (document.visibilityState === 'visible') setLoading(false);
+    });
+  }
+</script>
+
 <style>
   /* P2 — réserve le ratio du graphe (viewBox 360×150 = 2.4:1) AVANT le rendu du
      SVG inline pour garantir zéro CLS. Le SVG enfant occupe 100 % de la largeur,
@@ -1607,5 +1666,27 @@ const signConfig = ok
   @keyframes sun-rise {
     from { opacity: 0; transform: translateY(10px) scale(0.6); }
     to { opacity: 0.9; transform: translateY(0) scale(1); }
+  }
+
+  /* WJ34 — poster blur-up du héros : dégradé « heure dorée » tenant le cadre
+     jusqu'à ce que la vraie photo (URL backend dynamique) ait fini de charger.
+     L'image LCP reste TOUJOURS dans le DOM/peinte dès que possible (jamais
+     display:none) — seule son opacité anime, gated reduced-motion ; sans JS
+     ou en reduced-motion l'image est directement opaque (aucune dépendance à
+     l'événement onload pour être visible). */
+  .hero-lqip {
+    background: linear-gradient(160deg, #1a2e4d 0%, #0a1730 60%, #070b1d 100%);
+  }
+  .hero-photo {
+    opacity: 1;
+  }
+  @media (prefers-reduced-motion: no-preference) {
+    .hero-photo {
+      opacity: 0;
+      transition: opacity 0.5s ease-out;
+    }
+    .hero-photo.is-loaded {
+      opacity: 1;
+    }
   }
 </style>
