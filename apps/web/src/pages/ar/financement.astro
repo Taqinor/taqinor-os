@@ -18,7 +18,7 @@ import { localizeNavHref } from '../../i18n/pages';
 
 const locale = getLocaleFromPath(Astro.url.pathname);
 const L = (href: string) => localizeNavHref(href, locale);
-const contactSim = L('/contact') + '#simulateur';
+const devisHref = L('/devis/mon-toit');
 
 const chiffres = [
   { v: '3–7 ans', label: 'العائد على الاستثمار النموذجي' },
@@ -144,7 +144,7 @@ const moyens = [
             يخرج من ثلاث معطيات لا تخصّ سواك: فاتورتك، ملمح استهلاكك، سطحك. نُمرّرها في الحساب، والنتيجة
             لك، لا معدّل مطوية.
           </p>
-          <a href={contactSim} class="mt-8 inline-block bg-brass-400 px-7 py-3.5 text-base font-bold text-azur-950 transition-colors hover:bg-brass-300">احسب مردوديتي — دراسة بـ 0 درهم</a>
+          <a href={devisHref} class="mt-8 inline-block bg-brass-400 px-7 py-3.5 text-base font-bold text-azur-950 transition-colors hover:bg-brass-300">احسب مردوديتي — دراسة بـ 0 درهم</a>
         </div>
         <dl class="grid grid-cols-2 gap-x-6 gap-y-10 border-s-2 border-brass-400/60 ps-6 sm:ps-10" data-stagger>
           <div class="v2-rise" style="--v2-i:0">
@@ -173,11 +173,11 @@ const moyens = [
         <a href={L('/résidentiel')} class="border border-white/40 px-5 py-3 text-sm font-bold text-white transition-colors hover:border-white hover:bg-white/10">المردودية السكنية <span class="inline-block rtl:-scale-x-100">→</span></a>
         <a href={L('/professionnel')} class="border border-white/40 px-5 py-3 text-sm font-bold text-white transition-colors hover:border-white hover:bg-white/10">المردودية المهنية <span class="inline-block rtl:-scale-x-100">→</span></a>
         <a href={L('/garanties')} class="border border-white/40 px-5 py-3 text-sm font-bold text-white transition-colors hover:border-white hover:bg-white/10">ضماناتنا (25 سنة) <span class="inline-block rtl:-scale-x-100">→</span></a>
-        <a href={contactSim} class="border border-white/40 px-5 py-3 text-sm font-bold text-white transition-colors hover:border-white hover:bg-white/10">ابدأ تشخيصي <span class="inline-block rtl:-scale-x-100">→</span></a>
+        <a href={devisHref} class="border border-white/40 px-5 py-3 text-sm font-bold text-white transition-colors hover:border-white hover:bg-white/10">ابدأ تشخيصي <span class="inline-block rtl:-scale-x-100">→</span></a>
       </div>
     </section>
 
-    <CtaBand title="كم يدرّ عليك سطحك؟ التشخيص المجاني يحسبه." href={contactSim} />
+    <CtaBand title="كم يدرّ عليك سطحك؟ التشخيص المجاني يحسبه." href={devisHref} />
 
     <StickyCta />
   </div>

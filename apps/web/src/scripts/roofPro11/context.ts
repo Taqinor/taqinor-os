@@ -22,6 +22,7 @@ import { type PitchedRecommendation } from '../../lib/estimatorBrainV3';
 import { type MatrixSortKey, type MatrixV6Result } from '../../lib/estimatorBrainV6';
 import { type Appliance, type HourlyCurve } from '../../lib/applianceConsumption';
 import { type LayoutState } from '../../lib/layoutVariability';
+import { type ShadeObstruction } from '../../lib/shadingEngine';
 import {
   type InitOptions,
   type RoofType,
@@ -206,6 +207,14 @@ export interface Ctx {
   sunHour: number;
   /** W87 — jour de l'année (1–365) pour la saison du soleil (solstice d'hiver = 355). */
   sunDay: number;
+
+  // — WJ19 « Ombres voisines » (shadow-tracing → dérate honnête de la production) —
+  /** Obstructions déduites d'ombres tracées — ref STABLE (tableau muté en place). */
+  readonly shadeObstructions: ShadeObstruction[];
+  /** Matrice 12×24 des facteurs d'ombrage horaires, ou null = aucun ombrage tracé. */
+  shadeFactors: number[][] | null;
+  /** Facteur d'ombrage ANNUEL (0–1], 1 = aucun dérate — appliqué aux chiffres annuels. */
+  shadeAnnualFactor: number;
 
   // — W69 « Personnaliser la disposition » (lecture pour la fenêtre de production) —
   /** Le mode disposition personnalisée est-il actif ? */

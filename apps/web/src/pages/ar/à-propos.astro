@@ -17,7 +17,7 @@ import { localizeNavHref } from '../../i18n/pages';
 
 const locale = getLocaleFromPath(Astro.url.pathname);
 const L = (href: string) => localizeNavHref(href, locale);
-const contactSim = L('/contact') + '#simulateur';
+const devisHref = L('/devis/mon-toit');
 
 const etapes = [
   {
@@ -172,7 +172,7 @@ const etapes = [
       </div>
     </section>
 
-    <CtaBand title="ضع المؤسّس على سطحك: الدراسة مجانية." href={contactSim} />
+    <CtaBand title="ضع المؤسّس على سطحك: الدراسة مجانية." href={devisHref} />
 
     <StickyCta />
   </div>

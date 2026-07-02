@@ -23,7 +23,7 @@ import { localizeNavHref } from '../../i18n/pages';
 
 const locale = getLocaleFromPath(Astro.url.pathname);
 const L = (href: string) => localizeNavHref(href, locale);
-const contactSim = L('/contact') + '#simulateur';
+const devisHref = L('/devis/mon-toit');
 
 const wa = whatsappLink(WHATSAPP_LEADS, 'Hello, I am a Moroccan living abroad and I would like to study a solar installation for my villa in Morocco.');
 
@@ -75,7 +75,7 @@ const etapes = [
         </p>
         <div class="cine-in cine-in-3 mt-10 flex flex-wrap items-center gap-3">
           {/* ONE brass CTA (brass discipline) — gold is authorised here */}
-          <a href={contactSim} class="glow bg-brass-400 px-8 py-4 text-lg font-bold text-azur-950 transition-colors hover:bg-brass-300">
+          <a href={devisHref} class="glow bg-brass-400 px-8 py-4 text-lg font-bold text-azur-950 transition-colors hover:bg-brass-300">
             Start my remote study →
           </a>
           {/* Ghost WhatsApp — white outline, no brass */}
@@ -187,7 +187,7 @@ const etapes = [
       </div>
     </section>
 
-    <CtaBand title="Launch the study from abroad — it costs you nothing." href={contactSim} />
+    <CtaBand title="Launch the study from abroad — it costs you nothing." href={devisHref} />
 
     <StickyCta />
   </div>

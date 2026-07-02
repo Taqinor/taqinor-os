@@ -189,6 +189,80 @@ describe('WJ4/WJ5 — capture-lead : contrat webhook + seuil 1 000 MAD intacts',
     expect(rec).not.toHaveProperty('email');
   });
 
+  it('WJ30 — le webhook reçoit facture exacte, GPS, contour, mode, raccordement, e-mail ET langue', async () => {
+    let forwarded: Record<string, unknown> | null = null;
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (url: string, init?: { body?: string }) => {
+        if (String(url).includes('crm.example/hook') && init?.body) forwarded = JSON.parse(init.body);
+        return { ok: true, json: async () => ({}) } as unknown as Response;
+      }),
+    );
+    const { status, json } = await call({
+      ...qualified,
+      email: 'reda@example.com',
+      factureHiver: 1450.5,
+      eteDifferente: true,
+      factureEte: 2600,
+      billKwh: 9000,
+      raccordement: 'triphase',
+      mode: 'agricole',
+      langue_preferee: 'ar',
+      roofPoint: { lat: 31.63, lng: -8.0 },
+      roofOutline: [
+        [31.63, -8.0],
+        [31.631, -8.0],
+        [31.631, -7.999],
+      ],
+    });
+    expect(status).toBe(200);
+    expect(json.ok).toBe(true);
+    const rec = forwarded as unknown as Record<string, unknown>;
+    expect(rec).not.toBeNull();
+    // WJ30 — plus AUCUN champ capturé n'est jeté en route.
+    expect(rec.email).toBe('reda@example.com');
+    expect(rec.factureHiver).toBe(1450.5);
+    expect(rec.eteDifferente).toBe(true);
+    expect(rec.factureEte).toBe(2600);
+    expect(rec.billKwh).toBe(9000);
+    expect(rec.raccordement).toBe('triphase');
+    expect(rec.mode).toBe('agricole');
+    expect(rec.langue_preferee).toBe('ar');
+    expect(rec.roofPoint).toEqual({ lat: 31.63, lng: -8.0 });
+    expect(rec.gpsLat).toBe(31.63);
+    expect(rec.gpsLng).toBe(-8.0);
+    expect((rec.roofOutline as unknown[]).length).toBe(3);
+    // …et le contrat existant tient (consentement horodaté + seuil).
+    expect(rec.consent).toBe(true);
+    expect(typeof rec.consentTimestamp).toBe('string');
+    expect(rec.qualified).toBe(true);
+  });
+
+  it('WJ30 — un champ facultatif MALFORMÉ est écarté sans jamais faire échouer le lead', async () => {
+    let forwarded: Record<string, unknown> | null = null;
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (url: string, init?: { body?: string }) => {
+        if (String(url).includes('crm.example/hook') && init?.body) forwarded = JSON.parse(init.body);
+        return { ok: true, json: async () => ({}) } as unknown as Response;
+      }),
+    );
+    const { status, json } = await call({
+      ...qualified,
+      mode: 'martien',
+      langue_preferee: 'en',
+      roofPoint: { lat: 48.85, lng: 2.35 }, // hors Maroc → garbage
+      billKwh: -3,
+    });
+    expect(status).toBe(200);
+    expect(json.ok).toBe(true); // le lead passe, comme hier
+    const rec = forwarded as unknown as Record<string, unknown>;
+    expect(rec).not.toHaveProperty('mode');
+    expect(rec).not.toHaveProperty('langue_preferee');
+    expect(rec).not.toHaveProperty('roofPoint');
+    expect(rec).not.toHaveProperty('billKwh');
+  });
+
   it('WJ5 — un lead SOUS le seuil renvoie qualified=false et ne touche pas le CRM', async () => {
     const fetchMock = vi.fn(async () => ({ ok: true, json: async () => ({}) }) as unknown as Response);
     vi.stubGlobal('fetch', fetchMock);
