@@ -20,6 +20,10 @@
 import Layout from '../../layouts/Layout.astro';
 import { BILL_RANGES } from '../../lib/billRange';
 import { ROOF_TYPES } from '../../lib/lead';
+import StarRating from '../../components/StarRating.astro';
+import CertLogoRow from '../../components/CertLogoRow.astro';
+import InstallCounter from '../../components/InstallCounter.astro';
+import ZelligeSignature from '../../components/ZelligeSignature.astro';
 
 const inputClass =
   'w-full border border-white/15 bg-white/5 px-3 py-3 text-base text-white placeholder:text-lune-faint outline-none transition-colors focus:border-brass-400 focus:ring-2 focus:ring-brass-400/30 aria-[invalid=true]:border-alert-300 aria-[invalid=true]:ring-2 aria-[invalid=true]:ring-alert-300/30';
@@ -501,12 +505,13 @@ const TOWNS = ['Casablanca', 'Rabat', 'Marrakech', 'Tanger', 'Agadir', 'Kénitra
         </form>
       </div>
 
-      <!-- ============ WJ8 — CONFIANCE AU POINT DE CAPTURE ============ -->
+      <!-- ============ WJ8/WJ35 — CONFIANCE AU POINT DE CAPTURE ============ -->
       <aside class="mt-8 border-t border-white/10 pt-6">
-        <!-- pending real content from Reda : nombre de clients + photos d'installations réelles.
+        <!-- pending real content from Reda : photos d'installations réelles.
              On NE FABRIQUE PAS de chiffre ni d'avis : on affiche des faits vérifiables (loi
              82-21, garanties constructeur standard, zone de service réelle) + un emplacement
-             scaffoldé pour les photos. -->
+             scaffoldé pour les photos. Le compteur d'installations (4ᵉ tuile) est désormais
+             RÉEL — dérivé de src/lib/realisations.ts (WJ35, InstallCounter). -->
         <div class="grid grid-cols-2 gap-3 sm:grid-cols-4">
           <div class="cine-card p-3 text-center">
             <p class="text-sm font-bold text-white" data-i18n data-fr="Conforme loi 82-21" data-ar="مطابق للقانون 82-21">Conforme loi 82-21</p>
@@ -521,7 +526,6 @@ const TOWNS = ['Casablanca', 'Rabat', 'Marrakech', 'Tanger', 'Agadir', 'Kénitra
             <p class="text-xs text-lune-faint">IEC 61215 / 61730</p>
           </div>
           <div class="cine-card p-3 text-center">
-            <!-- pending real content from Reda : compteur de clients/installations réel. -->
             <p class="text-sm font-bold text-white" data-i18n data-fr="Partout au Maroc" data-ar="في كل المغرب">Partout au Maroc</p>
             <p class="text-xs text-lune-faint" data-i18n data-fr="Étude locale" data-ar="دراسة محلية">Étude locale</p>
           </div>
@@ -538,7 +542,23 @@ const TOWNS = ['Casablanca', 'Rabat', 'Marrakech', 'Tanger', 'Agadir', 'Kénitra
              (chemin /images/installs/*.webp) + légende ville. Tant qu'absentes, on n'affiche
              aucun visuel fabriqué — ce bloc reste masqué. -->
         <div id="mt-install-photos" hidden class="mt-4 grid grid-cols-3 gap-2" aria-label="Installations réalisées"></div>
+
+        <!-- WJ35 — preuve sociale premium : compteur réel + note Google (scaffold tant
+             qu'absente) + certifications. Grade v3 discret (section-tight rythme). -->
+        <div class="mt-6 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+          <InstallCounter />
+          <StarRating compact />
+        </div>
+        <div class="mt-5">
+          <CertLogoRow />
+        </div>
       </aside>
+
+      <!-- WJ35 — signature zellige de clôture (empreinte v3, cohérente avec l'accueil élevé) -->
+      <ZelligeSignature
+        line="Chaque chiffre de cette page est mesuré, pas promis."
+        sub="Votre estimation d'abord. L'étude ensuite."
+      />
     </div>
   </section>
 

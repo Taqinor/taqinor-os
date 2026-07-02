@@ -1,0 +1,137 @@
+---
+/**
+ * WJ35 — TestimonialCarousel : avis clients RÉELS uniquement (src/lib/testimonials.ts).
+ * « Vide-mais-premium » comme <Testimonials/> (INTÉGRITÉ non négociable) : tant
+ * que TESTIMONIALS est vide, ce composant ne rend RIEN — pas de squelette de
+ * cartes vides, pas de faux avis. Différence avec <Testimonials/> (grille figée,
+ * page d'accueil) : ici un carrousel compact adapté au flux long des pages
+ * parcours (mon-toit / proposition), navigable clavier + swipe tactile, un seul
+ * témoignage visible à la fois pour ne pas alourdir des pages déjà denses.
+ *
+ * Accessibilité : région `aria-live="polite"`, boutons Précédent/Suivant
+ * étiquetés, pastilles de position avec `aria-current`. Reduced-motion : le
+ * changement de carte est un simple swap d'opacité (pas de translation/scroll
+ * physique), gated comme le reste du site.
+ */
+import { TESTIMONIALS, hasTestimonials } from '../lib/testimonials';
+
+const id = `tc-${Math.random().toString(36).slice(2, 8)}`;
+---
+
+{hasTestimonials() && (
+  <div class="testimonial-carousel" id={id} data-testimonial-carousel role="region" aria-label="Avis clients" aria-live="polite">
+    <div class="testimonial-carousel__track">
+      {TESTIMONIALS.map((t, i) => (
+        <figure class="testimonial-carousel__card" data-tc-card hidden={i !== 0} aria-hidden={i !== 0 ? 'true' : 'false'}>
+          <blockquote class="testimonial-carousel__quote">&ldquo;{t.quote}&rdquo;</blockquote>
+          <figcaption class="testimonial-carousel__caption">
+            <span class="block font-bold text-white">{t.name}</span>
+            <span class="tech-label text-brass-300">{t.city} · {t.system}</span>
+          </figcaption>
+        </figure>
+      ))}
+    </div>
+    {TESTIMONIALS.length > 1 && (
+      <div class="testimonial-carousel__nav">
+        <button type="button" data-tc-prev class="testimonial-carousel__btn" aria-label="Avis précédent">‹</button>
+        <div class="testimonial-carousel__dots" role="tablist" aria-label="Position">
+          {TESTIMONIALS.map((_, i) => (
+            <span class="testimonial-carousel__dot" data-tc-dot aria-current={i === 0 ? 'true' : 'false'}></span>
+          ))}
+        </div>
+        <button type="button" data-tc-next class="testimonial-carousel__btn" aria-label="Avis suivant">›</button>
+      </div>
+    )}
+  </div>
+)}
+
+<style>
+  .testimonial-carousel {
+    /* Hauteur réservée approximative — évite le CLS entre témoignages de
+       longueurs différentes (le contenu réel peut dépasser légèrement, c'est
+       la sécurité, pas la valeur exacte, qui compte ici). */
+    min-height: 9rem;
+  }
+  .testimonial-carousel__card {
+    padding: 0;
+  }
+  .testimonial-carousel__quote {
+    color: var(--color-lune-soft, #adb5cd);
+    font-size: 1rem;
+    line-height: 1.6;
+  }
+  .testimonial-carousel__caption {
+    margin-top: 1rem;
+  }
+  .testimonial-carousel__nav {
+    margin-top: 1.25rem;
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+  }
+  .testimonial-carousel__btn {
+    flex: none;
+    width: 2rem;
+    height: 2rem;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border: 1px solid rgb(255 255 255 / 0.15);
+    border-radius: 9999px;
+    color: var(--color-lune-soft, #adb5cd);
+    font-size: 1.1rem;
+    background: transparent;
+    cursor: pointer;
+    transition: border-color 0.15s ease, color 0.15s ease;
+  }
+  .testimonial-carousel__btn:hover {
+    border-color: var(--color-brass-400, #e8b54a);
+    color: var(--color-brass-300, #f3cc66);
+  }
+  .testimonial-carousel__dots {
+    display: flex;
+    gap: 0.4rem;
+  }
+  .testimonial-carousel__dot {
+    width: 0.4rem;
+    height: 0.4rem;
+    border-radius: 9999px;
+    background: rgb(255 255 255 / 0.2);
+  }
+  .testimonial-carousel__dot[aria-current='true'] {
+    background: var(--color-brass-400, #e8b54a);
+  }
+  @media (prefers-reduced-motion: no-preference) {
+    .testimonial-carousel__card {
+      transition: opacity 0.3s ease;
+    }
+  }
+</style>
+
+<script>
+  // Câblage minimal, une instance par carrousel présent sur la page (peut y en
+  // avoir plusieurs si mon-toit ET proposition sont rendues dans un même test).
+  document.querySelectorAll<HTMLElement>('[data-testimonial-carousel]').forEach((root) => {
+    const cards = Array.from(root.querySelectorAll<HTMLElement>('[data-tc-card]'));
+    const dots = Array.from(root.querySelectorAll<HTMLElement>('[data-tc-dot]'));
+    if (cards.length <= 1) return; // pas de nav pour un seul avis
+    let idx = 0;
+    function show(n: number) {
+      idx = ((n % cards.length) + cards.length) % cards.length;
+      cards.forEach((c, i) => {
+        c.hidden = i !== idx;
+        c.setAttribute('aria-hidden', i === idx ? 'false' : 'true');
+      });
+      dots.forEach((d, i) => d.setAttribute('aria-current', i === idx ? 'true' : 'false'));
+    }
+    root.querySelector('[data-tc-prev]')?.addEventListener('click', () => show(idx - 1));
+    root.querySelector('[data-tc-next]')?.addEventListener('click', () => show(idx + 1));
+    // swipe tactile minimal
+    let touchStartX = 0;
+    root.addEventListener('touchstart', (e) => { touchStartX = e.touches[0]?.clientX ?? 0; }, { passive: true });
+    root.addEventListener('touchend', (e) => {
+      const dx = (e.changedTouches[0]?.clientX ?? 0) - touchStartX;
+      if (Math.abs(dx) > 40) show(idx + (dx < 0 ? 1 : -1));
+    }, { passive: true });
+  });
+</script>

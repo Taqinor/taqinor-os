@@ -18,6 +18,14 @@ export const prerender = false;
 
 import Layout from '../../layouts/Layout.astro';
 import ZelligeSignature from '../../components/ZelligeSignature.astro';
+import StarRating from '../../components/StarRating.astro';
+import TestimonialCarousel from '../../components/TestimonialCarousel.astro';
+import InstallCounter from '../../components/InstallCounter.astro';
+import CertLogoRow from '../../components/CertLogoRow.astro';
+// WJ35 — grade « heure dorée » v3 (.v3-grade / .photo-grade), importé ici car
+// cette page ne monte pas <V2Enhance/> (qui l'importe pour les pages v2). La
+// feuille est dédupliquée par Vite si une autre page l'importe déjà ailleurs.
+import '../../styles/v3-photo-motion.css';
 import {
   type ProposalResponse,
   type OptionKey,
@@ -229,8 +237,9 @@ const signConfig = ok
     </section>
   ) : (
     <div class="proposition pb-28" data-sign-config={signConfig}>
-      <!-- ── HÉRO (WJ28 — cinéma du chantier : ancré bas, entrée cine-in) ───── -->
-      <section class="relative min-h-[62vh] overflow-hidden sm:min-h-[68vh]">
+      <!-- ── HÉRO (WJ28 — cinéma du chantier : ancré bas, entrée cine-in ; WJ35 —
+           rythme rehaussé, cohérent avec l'accueil élevé v3, zéro CLS : min-h). -->
+      <section class="relative min-h-[72vh] overflow-hidden sm:min-h-[78vh]">
         {roofImg ? (
           <img
             src={roofImg}
@@ -246,7 +255,7 @@ const signConfig = ok
         )}
         <!-- Scrim pour garantir le contraste AA du texte par-dessus la photo. -->
         <div class="hero-scrim absolute inset-0" aria-hidden="true"></div>
-        <div class="relative mx-auto flex min-h-[62vh] w-full max-w-4xl flex-col justify-end px-5 pb-12 pt-24 sm:min-h-[68vh] sm:px-8 sm:pb-16 sm:pt-32">
+        <div class="relative mx-auto flex min-h-[72vh] w-full max-w-4xl flex-col justify-end px-5 pb-12 pt-24 sm:min-h-[78vh] sm:px-8 sm:pb-16 sm:pt-32">
           <p class="tech-label rule-brass cine-in text-brass-300">{roofImg ? 'Votre installation · ' : 'Proposition · '}{instLabel}</p>
           <h1 class="display cine-in cine-in-1 mt-4 text-4xl text-blanc sm:text-5xl">
             Bonjour {clientName},
@@ -319,7 +328,7 @@ const signConfig = ok
                   alt={`Étude de toiture — ${clientName}`}
                   width="1600"
                   height="1000"
-                  class="absolute inset-0 h-full w-full object-cover"
+                  class="v3-grade absolute inset-0 h-full w-full object-cover"
                   loading="lazy"
                   decoding="async"
                 />
@@ -931,10 +940,13 @@ const signConfig = ok
         </p>
       </section>
 
-      <!-- ── WJ13 · BLOC CRÉDIBILITÉ (garanties · certifications · réassurance) -->
+      <!-- ── WJ13/WJ35 · BLOC CRÉDIBILITÉ (garanties · certifications · réassurance) -->
       {/* Aucune donnée chiffrée fabriquée : nombre de clients / avis / photos
           réelles marqués `pending real content` tant que Reda ne les fournit pas.
-          Les garanties et normes ci-dessous sont des FAITS techniques vérifiables. */}
+          Les garanties et normes ci-dessous sont des FAITS techniques vérifiables.
+          WJ35 — CertLogoRow reprend ces mêmes faits en bandeau ; le compteur
+          d'installations et la note Google sont désormais des composants premium
+          RÉUTILISABLES (InstallCounter / StarRating), avec la même intégrité. */}
       <section class="mx-auto max-w-4xl px-5 pt-16 sm:px-8">
         <p class="tech-label rule-brass text-brass-300">Pourquoi nous faire confiance</p>
         <div class="mt-5 grid gap-4 sm:grid-cols-3">
@@ -952,13 +964,34 @@ const signConfig = ok
           </div>
         </div>
 
+        <!-- WJ35 — compteur d'installations réel + note Google (scaffold tant qu'absente). -->
+        <div class="mt-4 cine-card rounded-xl p-5 sm:p-6">
+          <div class="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+            <InstallCounter />
+            <StarRating />
+          </div>
+        </div>
+
+        <!-- WJ35 — bandeau certifications/garanties (texte, sobre — aucun logo fabriqué). -->
+        <div class="mt-4">
+          <CertLogoRow />
+        </div>
+
+        <!-- WJ35 — avis clients réels (carrousel, vide-mais-premium — même intégrité que <Testimonials/>). -->
+        <div class="mt-4 cine-card rounded-xl p-5 sm:p-6">
+          <p class="tech-label text-lune-faint">Avis clients</p>
+          <div class="mt-3">
+            <TestimonialCarousel />
+          </div>
+        </div>
+
         <!-- Photos d'installations réelles — scaffold, à remplir par Reda. -->
         <div class="mt-4 cine-card rounded-xl p-5">
           <p class="tech-label text-lune-faint">Nos chantiers</p>
-          <!-- pending real content from Reda : photos d'installations réelles + nombre de clients + villes -->
+          <!-- pending real content from Reda : photos d'installations réelles -->
           <p class="mt-2 text-sm text-lune-soft">
-            Des dizaines d’installations livrées partout au Maroc.
-            <span class="text-lune-faint"> (Photos et références clients à venir.)</span>
+            Installations documentées, dossiers techniques à l’appui.
+            <span class="text-lune-faint"> (Photos à venir.)</span>
           </p>
         </div>
 
