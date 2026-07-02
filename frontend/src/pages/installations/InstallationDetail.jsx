@@ -4,7 +4,7 @@ import { useNavigate } from 'react-router-dom'
 import {
   Link2, FileText, Package, Hammer, ClipboardList, Camera, Wrench, Zap,
   History, Send, ScrollText, Download, ExternalLink, WifiOff, TriangleAlert,
-  RotateCw,
+  RotateCw, Milestone,
 } from 'lucide-react'
 import { updateInstallation } from '../../features/installations/store/installationsSlice'
 import { fetchProduits } from '../../features/stock/store/stockSlice'
@@ -29,6 +29,7 @@ import {
 import ProduitPicker from '../../components/ProduitPicker'
 import ChantierChecklist from './ChantierChecklist'
 import ChantierTimeline from './ChantierTimeline'
+import ChantierGateTimeline from './ChantierGateTimeline'
 import ChantierPhotos from './ChantierPhotos'
 // FG386 — même bandeau d'état de synchro terrain que la page Interventions
 // (N91/F21) : la checklist chantier file déjà ses cochages hors-ligne via
@@ -797,6 +798,16 @@ export default function InstallationDetail({ installation, onClose, onSaved }) {
           {/* ── Timeline du chantier (N6) ── */}
           <Section icon={History} title="Timeline">
             <ChantierTimeline installation={current} />
+          </Section>
+
+          {/* ── CH6 — parcours d'étapes/gates guidé (remplace le simple statut) :
+              chaque étape du cycle de vie configurable (CH1), l'état de son
+              gate (CH2, raisons de blocage en français), la prochaine action
+              explicite, et la recette de mise en service (CH3) + le pack de
+              remise client (CH4) mis en avant. Dégrade proprement (message
+              informatif) si la société n'a configuré aucune étape. ── */}
+          <Section icon={Milestone} title="Parcours du chantier">
+            <ChantierGateTimeline installationId={id} onAdvanced={refreshInstallation} />
           </Section>
 
           {/* ── Documents après-vente (PDF régénérés à la demande) ── */}

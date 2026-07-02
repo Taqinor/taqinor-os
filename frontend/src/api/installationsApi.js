@@ -42,6 +42,23 @@ const installationsApi = {
     : api.post('/installations/etapes-chantier/', data),
   deleteStageChantier: (id) => api.delete(`/installations/etapes-chantier/${id}/`),
 
+  // CH2 — parcours d'étapes du chantier + état de gate par étape (timeline).
+  getEtapesChantier: (id) => api.get(`/installations/chantiers/${id}/etapes/`),
+  // CH2 — avance à l'étape `cle` donnée, ou à la suivante si omise. Rejet 400
+  // avec `{detail, raisons[]}` si un gate bloquant n'est pas satisfait.
+  avancerEtape: (id, cle) =>
+    api.post(`/installations/chantiers/${id}/avancer-etape/`,
+      cle ? { etape: cle } : {}),
+
+  // CH3 — fiche de recette IEC 62446-1 (mise en service structurée).
+  getRecette: (id) => api.get(`/installations/chantiers/${id}/recette/`),
+  ouvrirRecette: (id) => api.post(`/installations/chantiers/${id}/recette/`, {}),
+
+  // CH4 — pack de remise client (handover). GET aperçoit à blanc si absent.
+  getPackRemise: (id) => api.get(`/installations/chantiers/${id}/pack-remise/`),
+  genererPackRemise: (id) =>
+    api.post(`/installations/chantiers/${id}/pack-remise/`, {}),
+
   // Rapport de production énergétique ESTIMÉE (PDF client-facing).
   // `params` : nb_mois, date_debut, date_fin, production_annuelle_kwh,
   // rendement, tarif, co2. Réponse en blob PDF.
