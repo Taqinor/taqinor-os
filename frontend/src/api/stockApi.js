@@ -151,6 +151,27 @@ const stockApi = {
   expirantBientot: (jours) =>
     api.get('/stock/produits/expirant-bientot/',
       { params: jours ? { jours } : {} }),
+
+  // WR4 — Achats & fournisseurs (INTERNES ; prix d'achat jamais client-facing).
+  // FG58 — comparaison des prix multi-fournisseurs d'un produit (admin).
+  comparerFournisseurs: (produitId) =>
+    api.get(`/stock/produits/${produitId}/comparer-fournisseurs/`),
+  // FG59 — scorecard performance d'un fournisseur (admin).
+  performanceFournisseur: (fournisseurId) =>
+    api.get(`/stock/fournisseurs/${fournisseurId}/performance/`),
+  // FG55 — PDF d'une facture fournisseur (blob, interne).
+  factureFournisseurPdf: (id) =>
+    api.get(`/stock/factures-fournisseur/${id}/pdf/`, { responseType: 'blob' }),
+  // FG56 — facturer une réception confirmée → crée une facture fournisseur.
+  facturerReception: (id) =>
+    api.post(`/stock/receptions-fournisseur/${id}/facturer/`),
+  // FG60 — export Excel de la liste (filtrée) des mouvements de stock (blob).
+  exportMouvementsXlsx: (params) =>
+    api.post('/stock/mouvements/export-xlsx/', null,
+      { params, responseType: 'blob' }),
+  // FG62 — suggestions de réapprovisionnement par emplacement (admin).
+  suggestionsReapproEmplacement: () =>
+    api.get('/stock/emplacements/suggestions-reappro/'),
 }
 
 export default stockApi

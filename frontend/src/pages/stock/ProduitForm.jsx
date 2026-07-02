@@ -41,17 +41,30 @@ function frSubmitError(err) {
 // N17 — listes de prix multi-fournisseurs par SKU. Le prix d'achat est INTERNE
 // (jamais sur un document client). Le moins cher est proposé en rédigeant un
 // bon de commande. Section éditable seulement en mode édition d'un produit.
-function PrixFournisseursSection({ produitId, fournisseurs }) {
+function PrixFournisseursSection({ produitId, fournisseurs, isAdmin = false }) {
   const [rows, setRows] = useState([])
   const [fId, setFId] = useState('')
   const [prix, setPrix] = useState('')
   const [error, setError] = useState(null)
   const [editId, setEditId] = useState(null)   // ligne en édition
   const [editPrix, setEditPrix] = useState('')
+  // WR4 / FG58 — comparaison des fournisseurs (endpoint dédié, admin).
+  const [comparaison, setComparaison] = useState(null)
+  const [comparBusy, setComparBusy] = useState(false)
 
   const load = () => stockApi.getProduitPrixFournisseurs(produitId)
     .then((r) => setRows(r.data ?? [])).catch(() => {})
   useEffect(() => { load() }, [produitId])  // eslint-disable-line react-hooks/exhaustive-deps
+
+  const comparer = () => {
+    setComparBusy(true); setError(null)
+    stockApi.comparerFournisseurs(produitId)
+      .then((r) => setComparaison(r.data ?? []))
+      .catch((e) => setError(e?.response?.status === 403
+        ? 'Comparaison réservée à l\'administrateur.'
+        : 'Comparaison indisponible.'))
+      .finally(() => setComparBusy(false))
+  }
 
   const sorted = [...rows].sort((a, b) => Number(a.prix_achat) - Number(b.prix_achat))
   const used = new Set(rows.map((r) => String(r.fournisseur)))
@@ -180,7 +193,47 @@ function PrixFournisseursSection({ produitId, fournisseurs }) {
         <Input type="number" min="0" step="any" inputMode="decimal" className="w-40"
                placeholder="Prix d'achat HT" value={prix} onChange={(e) => setPrix(e.target.value)} />
         <Button type="button" variant="outline" onClick={add}>Ajouter</Button>
+        {isAdmin && (
+          <Button type="button" variant="ghost" loading={comparBusy} onClick={comparer}>
+            Comparer (interne)
+          </Button>
+        )}
       </div>
+
+      {comparaison && (
+        comparaison.length === 0 ? (
+          <p className="text-xs text-muted-foreground">Aucun prix fournisseur à comparer.</p>
+        ) : (
+          <div className="overflow-x-auto rounded-lg border border-border">
+            <table className="w-full min-w-[24rem] text-sm">
+              <thead className="bg-muted/60 text-xs uppercase tracking-wide text-muted-foreground">
+                <tr>
+                  <th className="px-3 py-2 text-left font-semibold">Rang</th>
+                  <th className="px-3 py-2 text-left font-semibold">Fournisseur</th>
+                  <th className="px-3 py-2 text-left font-semibold">Prix d&apos;achat HT</th>
+                  <th className="px-3 py-2 text-left font-semibold">Dernier achat</th>
+                </tr>
+              </thead>
+              <tbody>
+                {comparaison.map((c, i) => (
+                  <tr key={c.fournisseur_id} className="border-t border-border">
+                    <td className="px-3 py-2 tabular-nums">
+                      {i === 0 ? <Star className="size-3.5 fill-warning text-warning" aria-label="Le moins cher" /> : i + 1}
+                    </td>
+                    <td className="px-3 py-2">{c.fournisseur_nom}</td>
+                    <td className="px-3 py-2 tabular-nums">{Number(c.prix_achat).toFixed(2)} DH</td>
+                    <td className="px-3 py-2 text-muted-foreground">
+                      {c.date_dernier_achat
+                        ? new Date(c.date_dernier_achat).toLocaleDateString('fr-FR')
+                        : '—'}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )
+      )}
       {error && (
         <div role="alert" className="rounded-lg border border-destructive/30 bg-destructive/10 p-2 text-sm text-destructive">
           {error}
@@ -193,6 +246,7 @@ function PrixFournisseursSection({ produitId, fournisseurs }) {
 export default function ProduitForm({ produit = null, onClose, onSaved }) {
   const dispatch = useDispatch()
   const { categories, fournisseurs, produits } = useSelector(s => s.stock)
+  const isAdmin = useSelector(s => s.auth.role) === 'admin'
   const isEdit = !!produit
 
   const [saving, setSaving] = useState(false)
@@ -538,7 +592,7 @@ export default function ProduitForm({ produit = null, onClose, onSaved }) {
           </FormSection>
 
           {isEdit && (
-            <PrixFournisseursSection produitId={produit.id} fournisseurs={fournisseurs} />
+            <PrixFournisseursSection produitId={produit.id} fournisseurs={fournisseurs} isAdmin={isAdmin} />
           )}
 
           {errors.submit && (

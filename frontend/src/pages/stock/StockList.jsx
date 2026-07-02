@@ -273,6 +273,8 @@ function TransfertModal({ produits, isAdmin, onClose, onDone }) {
   const [newEmp, setNewEmp] = useState('')
   const [error, setError] = useState(null)
   const [saving, setSaving] = useState(false)
+  // WR4 / FG62 — suggestions de réappro par emplacement (admin).
+  const [suggestions, setSuggestions] = useState([])
   const rows = (produits ?? []).filter((p) => !p.is_archived)
 
   // setState arrive dans les callbacks .then (jamais synchrone dans l'effet).
@@ -281,7 +283,13 @@ function TransfertModal({ produits, isAdmin, onClose, onDone }) {
   const loadTransferts = () => stockApi.getTransferts({ ordering: '-date' })
     .then((r) => setTransferts((r.data?.results ?? r.data ?? []).slice(0, 8)))
     .catch(() => {})
-  useEffect(() => { loadEmplacements(); loadTransferts() }, [])
+  const loadSuggestions = () => {
+    if (!isAdmin) return
+    stockApi.suggestionsReapproEmplacement()
+      .then((r) => setSuggestions(r.data ?? [])).catch(() => {})
+  }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  useEffect(() => { loadEmplacements(); loadTransferts(); loadSuggestions() }, [])
 
   const loadBreakdown = (pid) => {
     if (!pid) { setBreakdown([]); return Promise.resolve() }
@@ -425,6 +433,29 @@ function TransfertModal({ produits, isAdmin, onClose, onDone }) {
             {saving ? 'Transfert…' : 'Transférer'}
           </Button>
         </div>
+
+        {isAdmin && suggestions.length > 0 && (
+          <div className="flex flex-col gap-1.5">
+            <h4 className="text-sm font-semibold">Réapprovisionnement par emplacement</h4>
+            <p className="text-xs text-muted-foreground">
+              Emplacements sous leur seuil minimal — transfert suggéré depuis le dépôt principal.
+            </p>
+            <div className="max-h-48 overflow-auto">
+              <MiniTable head={['Produit', 'Emplacement', 'Qté', 'Seuil min', 'À transférer', 'Depuis']}>
+                {suggestions.map((s, i) => (
+                  <tr key={`${s.produit_id}-${s.emplacement_id}-${i}`} className="border-t border-border">
+                    <td className="px-3 py-2">{s.produit_nom}</td>
+                    <td className="px-3 py-2">{s.emplacement_nom}</td>
+                    <td className="px-3 py-2 tabular-nums">{s.quantite_actuelle}</td>
+                    <td className="px-3 py-2 tabular-nums">{s.seuil_min}</td>
+                    <td className="px-3 py-2 font-semibold tabular-nums">{s.qte_suggere_transfert}</td>
+                    <td className="px-3 py-2">{s.source_nom ?? <span className="text-muted-foreground">—</span>}</td>
+                  </tr>
+                ))}
+              </MiniTable>
+            </div>
+          </div>
+        )}
 
         {transferts.length > 0 && (
           <div className="flex flex-col gap-1.5">
