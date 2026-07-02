@@ -111,6 +111,8 @@ export const ui = {
     // WJ36 — LE libellé du CTA principal, répété verbatim sur toutes les
     // surfaces laiton (en-tête / héros / mi-page / CTA collant).
     'cta.primary': 'Obtenir mon étude gratuite',
+    // WJ37 — bandeau de réassurance sous le CTA principal (verbatim founder).
+    'cta.reassurance': 'Gratuit · Sans engagement · Réponse sous 24–48 h · Sur WhatsApp',
     'breadcrumb.label': "Fil d'Ariane",
     'breadcrumb.home': 'Accueil',
     'faq.heading': 'Questions fréquentes',
@@ -206,6 +208,8 @@ export const ui = {
     'cta.stickyDiag': 'Free assessment',
     // WJ36 — THE primary CTA label, repeated verbatim on every brass surface.
     'cta.primary': 'Get my free study',
+    // WJ37 — reassurance strip under the primary CTA (verbatim founder).
+    'cta.reassurance': 'Free · No obligation · Reply within 24–48 h · On WhatsApp',
     'breadcrumb.label': 'Breadcrumb',
     'breadcrumb.home': 'Home',
     'faq.heading': 'Frequently asked questions',
@@ -301,6 +305,8 @@ export const ui = {
     'cta.stickyDiag': 'تشخيص مجاني',
     // WJ36 — libellé du CTA principal (verbatim sur toutes les surfaces laiton).
     'cta.primary': 'احصل على دراستي المجانية',
+    // WJ37 — bandeau de réassurance sous le CTA principal (verbatim founder).
+    'cta.reassurance': 'مجاناً · دون أي التزام · رد خلال 24–48 ساعة · عبر واتساب',
     'breadcrumb.label': 'مسار التصفّح',
     'breadcrumb.home': 'الرئيسية',
     'faq.heading': 'الأسئلة المتكررة',

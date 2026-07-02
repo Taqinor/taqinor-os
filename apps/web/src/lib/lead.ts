@@ -29,6 +29,25 @@ export type RaccordementId = (typeof RACCORDEMENTS)[number];
 export const LEAD_LANGS = ['fr', 'ar'] as const;
 export type LeadLangId = (typeof LEAD_LANGS)[number];
 
+// ——— WJ31 : vocabulaires des questions de capture élargies (facultatives) ———
+export const DISTRIBUTEURS = ['onee', 'lydec', 'redal', 'inconnu'] as const;
+export type DistributeurId = (typeof DISTRIBUTEURS)[number];
+
+export const OMBRAGES = ['aucun', 'partiel', 'important'] as const;
+export type OmbrageId = (typeof OMBRAGES)[number];
+
+export const FUTURE_LOADS = ['clim', 've', 'pompe'] as const;
+export type FutureLoadId = (typeof FUTURE_LOADS)[number];
+
+export const OCCUPANT_TYPES = ['proprietaire', 'locataire', 'decideur'] as const;
+export type OccupantTypeId = (typeof OCCUPANT_TYPES)[number];
+
+export const PROJECT_TIMINGS = ['maintenant', '3mois', 'renseignement'] as const;
+export type ProjectTimingId = (typeof PROJECT_TIMINGS)[number];
+
+export const FINANCING_INTENTS = ['comptant', 'financement', 'indecis'] as const;
+export type FinancingIntentId = (typeof FINANCING_INTENTS)[number];
+
 /**
  * Bornes GPS ≈ Maroc (Tanger ~35,9 N → Lagouira ~20,8 N ; Atlantique ~-17,2 O →
  * frontière est ~-1,0). Garde-fou anti-garbage : un repère hors bornes est
@@ -79,6 +98,21 @@ export interface ValidatedLead {
   gpsLat?: number;
   gpsLng?: number;
   roofOutline?: Array<[number, number]>;
+  // — WJ31 : questions de capture « best-in-world », toutes FACULTATIVES, même
+  //   discipline que WJ30 (validées une à une, écartées si malformées, jamais
+  //   bloquantes — la soumission reste possible en sautant tout ceci).
+  distributeur?: DistributeurId;
+  roofAgeYears?: number;
+  ombrage?: OmbrageId;
+  futureLoads?: FutureLoadId[];
+  batteryInterest?: boolean;
+  occupantType?: OccupantTypeId;
+  projectTiming?: ProjectTimingId;
+  financingIntent?: FinancingIntentId;
+  /** Le client a pris une photo compteur/facture EN LOCAL (jamais uploadée : pas
+   *  d'endpoint d'upload aujourd'hui — cf. PLAN2 QK6 OCR). Signal booléen SEUL :
+   *  aucune donnée binaire ne quitte le navigateur. */
+  hasMeterPhoto?: boolean;
 }
 
 export type ValidationResult =
@@ -122,6 +156,25 @@ function cleanRoofPoint(v: unknown): { lat: number; lng: number } | null {
   const lng = Number(o.lng);
   if (!isMoroccoLat(lat) || !isMoroccoLng(lng)) return null;
   return { lat, lng };
+}
+
+/** Entier fini borné [0, max] (âge de toit en années), sinon null. */
+function cleanBoundedInt(v: unknown, max: number): number | null {
+  if (v == null || v === '') return null;
+  const n = Number(v);
+  return Number.isFinite(n) && n >= 0 && n <= max ? Math.round(n) : null;
+}
+
+/** Liste de puces d'une liste fermée : garde uniquement les valeurs connues,
+ *  déduplique, borne à la taille du vocabulaire. Jamais bloquant : les entrées
+ *  inconnues sont juste écartées silencieusement. Tableau vide ⇒ absent. */
+function cleanEnumList<T extends string>(v: unknown, allowed: readonly T[]): T[] {
+  if (!Array.isArray(v)) return [];
+  const set = new Set<T>();
+  for (const item of v) {
+    if (typeof item === 'string' && (allowed as readonly string[]).includes(item)) set.add(item as T);
+  }
+  return Array.from(set).slice(0, allowed.length);
 }
 
 /** [[lat,lng],…] (≥ 3 paires finies dans les bornes ≈ Maroc), borné à 200 sommets, ou []. */
@@ -188,6 +241,32 @@ function validateOptionalFields(b: Record<string, unknown>): Partial<ValidatedLe
 
   const roofOutline = cleanRoofOutline(b.roofOutline);
   if (roofOutline.length >= 3) opt.roofOutline = roofOutline;
+
+  // ——— WJ31 : questions de capture élargies (facultatives) ———
+  const distributeur = cleanEnum(b.distributeur, DISTRIBUTEURS);
+  if (distributeur) opt.distributeur = distributeur;
+
+  const roofAgeYears = cleanBoundedInt(b.roofAgeYears, 100);
+  if (roofAgeYears != null) opt.roofAgeYears = roofAgeYears;
+
+  const ombrage = cleanEnum(b.ombrage, OMBRAGES);
+  if (ombrage) opt.ombrage = ombrage;
+
+  const futureLoads = cleanEnumList(b.futureLoads, FUTURE_LOADS);
+  if (futureLoads.length > 0) opt.futureLoads = futureLoads;
+
+  if (typeof b.batteryInterest === 'boolean') opt.batteryInterest = b.batteryInterest;
+
+  const occupantType = cleanEnum(b.occupantType, OCCUPANT_TYPES);
+  if (occupantType) opt.occupantType = occupantType;
+
+  const projectTiming = cleanEnum(b.projectTiming, PROJECT_TIMINGS);
+  if (projectTiming) opt.projectTiming = projectTiming;
+
+  const financingIntent = cleanEnum(b.financingIntent, FINANCING_INTENTS);
+  if (financingIntent) opt.financingIntent = financingIntent;
+
+  if (typeof b.hasMeterPhoto === 'boolean') opt.hasMeterPhoto = b.hasMeterPhoto;
 
   return opt;
 }

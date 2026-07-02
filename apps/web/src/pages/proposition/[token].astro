@@ -17,6 +17,7 @@
 export const prerender = false;
 
 import Layout from '../../layouts/Layout.astro';
+import ZelligeSignature from '../../components/ZelligeSignature.astro';
 import {
   type ProposalResponse,
   type OptionKey,
@@ -43,6 +44,12 @@ import {
   buildViewerModel,
   zoneAnnotations,
   walkthroughSteps,
+  backendFinancing,
+  proposalVariants,
+  nextSteps,
+  proposalAssumptions,
+  monitoringPoints,
+  objectionFaq,
 } from '../../lib/proposition';
 import { renderYearCurve } from '../../lib/proposalCurve';
 import { renderProposalChart, resolveSeries } from '../../lib/proposalChart';
@@ -190,6 +197,16 @@ const viewerConfig = show3d ? JSON.stringify({ model: viewerModel }) : null;
 const annotations = show3d && roofLayout ? zoneAnnotations(roofLayout, q?.watt_par_panneau ?? null) : [];
 const walkSteps = show3d && data ? walkthroughSteps(data) : [];
 
+// ── WJ32 — Complétude du contenu : financement backend réel, variantes,
+// « Et après ? », « Nos hypothèses », accompagnement, FAQ objections. Chaque
+// bloc dégrade proprement (masqué) quand sa donnée backend manque.
+const financingBlock = ok ? backendFinancing(data!) : null;
+const variants = ok ? proposalVariants(data!) : [];
+const steps = nextSteps();
+const assumptions = ok ? proposalAssumptions(data!) : [];
+const monitoring = monitoringPoints();
+const faq = objectionFaq();
+
 const pageTitle = ok ? `Proposition ${reference} — ${clientName} | Taqinor` : 'Proposition | Taqinor';
 
 // Données passées au script de signature (sérialisées en JSON dans un data-attr).
@@ -212,8 +229,8 @@ const signConfig = ok
     </section>
   ) : (
     <div class="proposition pb-28" data-sign-config={signConfig}>
-      <!-- ── HÉRO ────────────────────────────────────────────────────────── -->
-      <section class="relative overflow-hidden">
+      <!-- ── HÉRO (WJ28 — cinéma du chantier : ancré bas, entrée cine-in) ───── -->
+      <section class="relative min-h-[62vh] overflow-hidden sm:min-h-[68vh]">
         {roofImg ? (
           <img
             src={roofImg}
@@ -229,16 +246,16 @@ const signConfig = ok
         )}
         <!-- Scrim pour garantir le contraste AA du texte par-dessus la photo. -->
         <div class="hero-scrim absolute inset-0" aria-hidden="true"></div>
-        <div class="relative mx-auto max-w-4xl px-5 pb-12 pt-24 sm:px-8 sm:pb-16 sm:pt-32">
-          <p class="tech-label text-brass-300">{roofImg ? 'Votre installation · ' : 'Proposition · '}{instLabel}</p>
-          <h1 class="display mt-3 text-4xl text-blanc sm:text-5xl">
+        <div class="relative mx-auto flex min-h-[62vh] w-full max-w-4xl flex-col justify-end px-5 pb-12 pt-24 sm:min-h-[68vh] sm:px-8 sm:pb-16 sm:pt-32">
+          <p class="tech-label rule-brass cine-in text-brass-300">{roofImg ? 'Votre installation · ' : 'Proposition · '}{instLabel}</p>
+          <h1 class="display cine-in cine-in-1 mt-4 text-4xl text-blanc sm:text-5xl">
             Bonjour {clientName},
           </h1>
-          <p class="v2-body mt-4 max-w-xl text-lune">
+          <p class="v2-body cine-in cine-in-2 mt-4 max-w-xl text-lune">
             Voici votre proposition solaire personnalisée. Tout est détaillé ci-dessous —
             vous pouvez la signer en ligne en bas de page.
           </p>
-          <dl class="mt-7 flex flex-wrap gap-x-8 gap-y-3 text-sm">
+          <dl class="cine-in cine-in-3 mt-7 flex flex-wrap gap-x-8 gap-y-3 text-sm">
             {reference && (
               <div>
                 <dt class="text-lune-faint">Référence</dt>
@@ -289,9 +306,12 @@ const signConfig = ok
           canvas 3D par-dessus quand la visionneuse démarre. Three.js n'est
           JAMAIS dans le bundle initial (import() au scroll/tap — WJ27). */}
       {show3d && (
-        <section id="roof3d" class="mx-auto max-w-4xl px-5 pt-12 sm:px-8 sm:pt-16" data-viewer-config={viewerConfig}>
-          <p class="tech-label rule-brass text-brass-300">Votre toit en 3D</p>
-          <div class="cine-card mt-5 overflow-hidden rounded-2xl p-0">
+        <>
+        <div class="seam-soft" aria-hidden="true"></div>
+        <section id="roof3d" class="mx-auto max-w-5xl px-5 pt-14 sm:px-8 sm:pt-20" data-viewer-config={viewerConfig}>
+          <p class="tech-label rule-brass cine-in text-brass-300">Le centre de votre proposition</p>
+          <h2 class="display cine-in cine-in-1 mt-3 text-2xl text-lune sm:text-3xl">Votre toit en 3D</h2>
+          <div class="cine-card cine-in cine-in-2 mt-5 overflow-hidden rounded-2xl p-0 shadow-premium">
             <div id="roof3d-stage" class="roof3d-stage">
               {roofImg ? (
                 <img
@@ -389,6 +409,8 @@ const signConfig = ok
             </div>
           )}
         </section>
+        <div class="seam-soft" aria-hidden="true"></div>
+        </>
       )}
 
       <!-- ── WJ9 · ARGENT DANS LE TEMPS (cumul 25 ans + payback + /mois) ───── -->
@@ -396,7 +418,7 @@ const signConfig = ok
         <section class="mx-auto max-w-4xl px-5 pt-12 sm:px-8 sm:pt-16">
           {/* Accroche « coût de ne rien faire » : le cumul phare. */}
           {headline.cumulative ? (
-            <div class="cine-card rounded-2xl p-6 sm:p-8" style="border-color: rgb(232 181 74 / 0.35)">
+            <div class="cine-card cine-in rounded-2xl p-6 shadow-premium sm:p-8" style="border-color: rgb(232 181 74 / 0.35)">
               <p class="tech-label text-lune-faint">
                 Sans le solaire, votre facture continue de courir. Avec, vous économisez sur {headline.years} ans
               </p>
@@ -555,18 +577,26 @@ const signConfig = ok
                   </p>
                 ) : null}
 
-                <!-- Équipement -->
+                <!-- Équipement (WJ32 : marque + garantie + description quand disponibles — jamais de lien fiche technique fabriqué, le backend n'expose pas encore cette URL publiquement) -->
                 {items.length > 0 && (
                   <div class="mt-5 border-t border-white/10 pt-4">
                     <p class="tech-label text-lune-faint">Équipement</p>
-                    <ul class="mt-3 space-y-2 text-sm text-lune-soft">
+                    <ul class="mt-3 space-y-3 text-sm text-lune-soft">
                       {items.map((it) => (
-                        <li class="flex items-baseline justify-between gap-3">
-                          <span>
-                            <span class="text-lune">{it.designation}</span>
-                            {it.marque ? <span class="text-lune-faint"> · {it.marque}</span> : null}
-                          </span>
-                          <span class="fig shrink-0 text-lune-faint">×{formatNumber(it.quantite)}</span>
+                        <li>
+                          <div class="flex items-baseline justify-between gap-3">
+                            <span>
+                              <span class="text-lune">{it.designation}</span>
+                              {it.marque ? <span class="text-lune-faint"> · {it.marque}</span> : null}
+                            </span>
+                            <span class="fig shrink-0 text-lune-faint">×{formatNumber(it.quantite)}</span>
+                          </div>
+                          {it.description ? (
+                            <p class="mt-0.5 text-xs text-lune-faint">{it.description}</p>
+                          ) : null}
+                          {it.garantie ? (
+                            <p class="mt-0.5 text-xs text-brass-300">Garantie : {it.garantie}</p>
+                          ) : null}
                         </li>
                       ))}
                     </ul>
@@ -606,8 +636,41 @@ const signConfig = ok
         </div>
       </section>
 
-      <!-- ── WJ10 · COMPARATIF DE FINANCEMENT (cash vs éco-prêt indicatif) ─── -->
-      {financing && (
+      <!-- ── WJ10/WJ32 · COMPARATIF DE FINANCEMENT ───────────────────────────
+           Priorité au bloc BACKEND réel (QJ12, programme Tatwir/ISTIDAMA +
+           comparaison ONEE déjà rédigée serveur) quand il est présent ; repli
+           sur le calcul générique WJ10 sinon — jamais les deux à la fois. -->
+      {financingBlock ? (
+        <section class="mx-auto max-w-4xl px-5 pt-14 sm:px-8">
+          <p class="tech-label rule-brass text-brass-300">Comment financer</p>
+          <div class="mt-5 grid gap-4 sm:grid-cols-2">
+            <div class="cine-card rounded-2xl p-6">
+              <p class="tech-label text-lune-faint">{financingBlock.cash.label}</p>
+              <p class="fig fig-md lum mt-2">{formatMAD(financingBlock.cash.montant_ttc)}</p>
+              <p class="mt-2 text-sm text-lune-soft">Prix clé en main, TTC. L’investissement le plus rentable sur la durée.</p>
+            </div>
+            <div class="cine-card rounded-2xl p-6">
+              <p class="tech-label text-lune-faint">{financingBlock.credit.programme_label || 'À crédit'}</p>
+              <p class="fig fig-md mt-2 text-lune">
+                ≈ {formatMAD(financingBlock.credit.mensualite)}<span class="text-lg text-lune-soft">/mois</span>
+              </p>
+              <p class="mt-2 text-sm text-lune-soft">
+                Sur {Math.round(financingBlock.credit.duree_mois / 12)} ans, taux indicatif {formatNumber(financingBlock.credit.taux_annuel_pct, 2)} %/an
+                <span class="text-brass-300"> à confirmer</span> avec votre banque.
+                {financingBlock.onee_comparison.show && financingBlock.onee_comparison.message
+                  ? <> {financingBlock.onee_comparison.message}</>
+                  : null}
+              </p>
+            </div>
+          </div>
+          {financingBlock.guidance_text && (
+            <p class="mt-3 text-sm text-lune-soft">{financingBlock.guidance_text}</p>
+          )}
+          <p class="mt-3 text-xs text-lune-faint">
+            Mensualités calculées à titre indicatif (taux et durée non contractuels). Le montant exact dépend de l’offre bancaire retenue.
+          </p>
+        </section>
+      ) : financing && (
         <section class="mx-auto max-w-4xl px-5 pt-14 sm:px-8">
           <p class="tech-label rule-brass text-brass-300">Comment financer</p>
           <div class="mt-5 grid gap-4 sm:grid-cols-2">
@@ -636,6 +699,28 @@ const signConfig = ok
         </section>
       )}
 
+      <!-- ── WJ32 · VARIANTES CÔTE-À-CÔTE (« autres tailles ») ───────────────
+           Résumés minimaux des devis frères/sœurs actifs (QJ15). Masqué si le
+           devis est isolé (variants=[]) — jamais un chiffre calculé ici. -->
+      {variants.length > 0 && (
+        <section class="mx-auto max-w-4xl px-5 pt-14 sm:px-8">
+          <p class="tech-label rule-brass text-brass-300">Autres tailles proposées</p>
+          <div class="mt-5 flex gap-4 overflow-x-auto pb-2">
+            {variants.map((v) => (
+              <div class="cine-card min-w-[220px] shrink-0 rounded-xl p-5">
+                <p class="tech-label text-lune-faint">Réf. {v.reference}{v.version > 1 ? ` · v${v.version}` : ''}</p>
+                <p class="fig fig-md lum mt-2">{formatMAD(v.total_ttc)}</p>
+                <p class="mt-1 text-xs text-lune-faint">TTC, clé en main</p>
+                {v.note && <p class="mt-2 text-sm text-lune-soft">{v.note}</p>}
+              </div>
+            ))}
+          </div>
+          <p class="mt-3 text-xs text-lune-faint">
+            Demandez à votre conseiller Taqinor de basculer sur l’une de ces tailles si elle vous convient mieux.
+          </p>
+        </section>
+      )}
+
       <!-- ── WJ14 · IMPACT ENVIRONNEMENTAL (CO₂ ≈ arbres) — clôture émotion ── -->
       {enviro && (
         <section class="mx-auto max-w-4xl px-5 pt-14 sm:px-8">
@@ -657,8 +742,18 @@ const signConfig = ok
         </section>
       )}
 
-      <!-- ── WJ12 · CONTACT AU MOINDRE DOUTE (avant la signature) ──────────── -->
-      <section class="mx-auto max-w-4xl px-5 pt-14 sm:px-8">
+      <!-- ── WJ28 · SIGNATURE ZELLIGE (pivot narratif avant l'appel au contact) -->
+      <ZelligeSignature
+        line="Chaque chiffre de cette proposition est mesuré, pas promis."
+        sub="L'étude d'abord. Le chantier ensuite."
+      />
+
+      <!-- ── WJ12/WJ29 · CONTACT AU MOINDRE DOUTE (avant la signature) ─────── -->
+      {/* WJ29 — les trois boutons gardent leur lien instantané (wa.me / tel:)
+          intact, ET notifient l'équipe en interne via le proxy same-origin
+          /api/proposition-contact (dégrade toujours proprement — voir script
+          ci-dessous). `data-contact-channel` pilote le canal envoyé. */}
+      <section class="mx-auto max-w-4xl px-5 pt-14 sm:px-8" data-contact-token={token}>
         <div class="cine-card rounded-2xl p-6 sm:p-7">
           <p class="v2-body text-lune">
             Une question avant de signer ? Parlons-en — sans engagement, et sans appel commercial non sollicité.
@@ -668,6 +763,7 @@ const signConfig = ok
               href={waLink}
               target="_blank"
               rel="noopener noreferrer"
+              data-contact-channel="whatsapp"
               class="btn-pill inline-flex items-center justify-center gap-2"
               style="background: #25d366; color: #062b14; border-color: #25d366"
             >
@@ -677,20 +773,21 @@ const signConfig = ok
               Discuter sur WhatsApp
             </a>
             {callbackHref ? (
-              <a href={callbackHref} class="btn-pill inline-flex items-center justify-center gap-2">
+              <a href={callbackHref} data-contact-channel="rappel" class="btn-pill inline-flex items-center justify-center gap-2">
                 <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
                   <path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72c.13.96.36 1.9.7 2.81a2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45c.91.34 1.85.57 2.81.7A2 2 0 0 1 22 16.92Z"/>
                 </svg>
                 Demander un rappel
               </a>
             ) : null}
-            <a href={waLink} target="_blank" rel="noopener noreferrer" class="btn-pill inline-flex items-center justify-center gap-2">
+            <a href={waLink} target="_blank" rel="noopener noreferrer" data-contact-channel="question" class="btn-pill inline-flex items-center justify-center gap-2">
               <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
                 <path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5Z"/>
               </svg>
               Poser une question
             </a>
           </div>
+          <p id="contact-confirm" class="mt-3 text-sm text-brass-300" role="status" aria-live="polite" hidden></p>
         </div>
       </section>
 
@@ -877,6 +974,77 @@ const signConfig = ok
             « في تاقينور، نتعامل مع كل سطح كأنه سطحنا: دراسة صادقة، معدات معتمدة، ومرافقة بعد التركيب. شكراً على ثقتكم. »
           </blockquote>
           <p class="mt-2 text-sm text-lune-faint">Reda Kasri — fondateur, Taqinor</p>
+        </div>
+      </section>
+
+      <!-- ── WJ32 · « ET APRÈS ? » — timeline des prochaines étapes ─────────── -->
+      <section class="mx-auto max-w-4xl px-5 pt-16 sm:px-8">
+        <p class="tech-label rule-brass text-brass-300">Et après ?</p>
+        <ol class="mt-5 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+          {steps.map((s, i) => (
+            <li class="cine-card rounded-xl p-5">
+              <p class="fig text-brass-300">{i + 1}.</p>
+              <p class="mt-1 flex items-baseline justify-between gap-2 text-sm font-bold text-lune">
+                <span>{s.title}</span>
+                <span dir="rtl" lang="ar" class="shrink-0 text-xs font-normal text-lune-faint">{s.titleAr}</span>
+              </p>
+              <p class="mt-2 text-sm text-lune-soft">{s.body}</p>
+            </li>
+          ))}
+        </ol>
+      </section>
+
+      <!-- ── WJ32 · ACCOMPAGNEMENT POST-INSTALLATION ─────────────────────────  -->
+      <section class="mx-auto max-w-4xl px-5 pt-16 sm:px-8">
+        <p class="tech-label rule-brass text-brass-300">Après l’installation</p>
+        <div class="cine-card mt-5 rounded-2xl p-6 sm:p-7">
+          <ul class="space-y-3 text-sm text-lune-soft">
+            {monitoring.map((m) => (
+              <li class="flex items-baseline justify-between gap-3">
+                <span>{m.label}</span>
+                <span dir="rtl" lang="ar" class="shrink-0 text-xs text-lune-faint">{m.labelAr}</span>
+              </li>
+            ))}
+          </ul>
+        </div>
+      </section>
+
+      <!-- ── WJ32 · « NOS HYPOTHÈSES » — disclosure sourcée ──────────────────
+           <details> natif : accessible sans JS, zéro CLS (rien ne bouge autour). -->
+      {assumptions.length > 0 && (
+        <section class="mx-auto max-w-4xl px-5 pt-16 sm:px-8">
+          <details class="cine-card rounded-2xl p-6 sm:p-7">
+            <summary class="tech-label cursor-pointer text-brass-300">Nos hypothèses</summary>
+            <dl class="mt-4 space-y-3 text-sm">
+              {assumptions.map((a) => (
+                <div>
+                  <dt class="flex items-baseline justify-between gap-3 text-lune-faint">
+                    <span>{a.label}</span>
+                    <span dir="rtl" lang="ar" class="shrink-0 text-xs">{a.labelAr}</span>
+                  </dt>
+                  <dd class="mt-0.5 text-lune-soft">{a.value}</dd>
+                </div>
+              ))}
+            </dl>
+          </details>
+        </section>
+      )}
+
+      <!-- ── WJ32 · FAQ OBJECTIONS (4–5 questions fréquentes) ────────────────
+           <details> par item : accordéon accessible sans JS, zéro CLS. -->
+      <section class="mx-auto max-w-4xl px-5 pt-16 sm:px-8">
+        <p class="tech-label rule-brass text-brass-300">Vos questions, nos réponses</p>
+        <div class="mt-5 space-y-3">
+          {faq.map((item) => (
+            <details class="cine-card rounded-xl p-5">
+              <summary class="flex cursor-pointer items-baseline justify-between gap-3 text-sm font-bold text-lune">
+                <span>{item.question}</span>
+                <span dir="rtl" lang="ar" class="shrink-0 text-xs font-normal text-lune-faint">{item.questionAr}</span>
+              </summary>
+              <p class="mt-3 text-sm text-lune-soft">{item.answer}</p>
+              <p dir="rtl" lang="ar" class="mt-1.5 text-right text-xs text-lune-faint" style="line-height: 1.8">{item.answerAr}</p>
+            </details>
+          ))}
         </div>
       </section>
 
@@ -1156,8 +1324,6 @@ const signConfig = ok
 
     const reduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
     const nav = navigator as Navigator & { deviceMemory?: number; connection?: { saveData?: boolean } };
-    const lowEnd = (nav.deviceMemory != null && nav.deviceMemory <= 4) || (navigator.hardwareConcurrency || 8) <= 4;
-    const saveData = nav.connection?.saveData === true;
 
     let booted = false;
     let handle: { dispose: () => void } | null = null;
@@ -1172,14 +1338,23 @@ const signConfig = ok
       booted = true;
       if (startBtn) startBtn.disabled = true;
       try {
+        // WJ27 — la décision device/réseau (bas de gamme, WebGL, repli) vit dans
+        // viewerOnly.viewerBootStrategy (pure, testée) : même logique ici et en
+        // test, une seule source de vérité.
         const mod = await import('../../scripts/roofPro11/viewerOnly');
-        if (!mod.webglAvailable()) {
-          showFallback('Vue 3D indisponible sur cet appareil — voici la photo de votre étude.');
+        const strategy = mod.viewerBootStrategy({
+          deviceMemory: nav.deviceMemory,
+          hardwareConcurrency: navigator.hardwareConcurrency,
+          reducedMotion: reduced,
+          webglAvailable: mod.webglAvailable(),
+        });
+        if (!strategy.canBoot) {
+          showFallback(strategy.fallbackMessage ?? 'Vue 3D indisponible sur cet appareil — voici la photo de votre étude.');
           return;
         }
         handle = mod.createRoofViewer(stage, model, {
           reducedMotion: reduced,
-          lowEnd,
+          lowEnd: strategy.lowEnd,
           onReady: () => {
             if (overlay) overlay.hidden = true;
             if (hintEl) hintEl.hidden = false;
@@ -1201,8 +1376,12 @@ const signConfig = ok
     startBtn?.addEventListener('click', () => void boot());
 
     // Conditions normales : pré-charge au scroll (proche du viewport). En
-    // reduced-motion ou Save-Data : rien ne bouge/charge sans geste explicite.
-    if (!reduced && !saveData && 'IntersectionObserver' in window) {
+    // reduced-motion ou Save-Data : rien ne bouge/charge sans geste explicite
+    // (même règle que viewerBootStrategy.autoPreload, évaluée ici sans import
+    // dynamique pour ne déclencher AUCUN chargement avant un vrai scroll).
+    const saveData = nav.connection?.saveData === true;
+    const autoPreload = !reduced && !saveData;
+    if (autoPreload && 'IntersectionObserver' in window) {
       const io = new IntersectionObserver(
         (entries) => {
           if (entries.some((e) => e.isIntersecting)) {
@@ -1246,6 +1425,56 @@ const signConfig = ok
     prev?.addEventListener('click', () => setStep(idx - 1));
     next?.addEventListener('click', () => setStep(idx + 1));
     setStep(0);
+  }
+</script>
+
+<script>
+  // ── WJ29 — « Être contacté » / « Demander un rappel » : notifie l'équipe EN
+  // PLUS du lien instantané (wa.me / tel:), sans jamais le bloquer. On laisse
+  // le navigateur suivre le lien normalement (tel:/wa.me s'ouvrent tout de
+  // suite) et on poste en parallèle vers le proxy same-origin — un échec ne
+  // gêne jamais le client, il garde de toute façon son canal instantané.
+  import { buildContactBody, type ContactChannel } from '../../lib/proposition';
+
+  const contactSection = document.querySelector<HTMLElement>('[data-contact-token]');
+  const confirmEl = document.getElementById('contact-confirm');
+  const token = contactSection?.dataset.contactToken ?? '';
+
+  if (contactSection && token) {
+    let confirmTimer: number | undefined;
+    function showConfirm(msg: string): void {
+      if (!confirmEl) return;
+      confirmEl.textContent = msg;
+      confirmEl.hidden = false;
+      window.clearTimeout(confirmTimer);
+      confirmTimer = window.setTimeout(() => {
+        confirmEl.hidden = true;
+      }, 8000);
+    }
+
+    async function notifyTeam(channel: ContactChannel): Promise<void> {
+      try {
+        const body = buildContactBody({ channel });
+        const res = await fetch('/api/proposition-contact', {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({ token, ...body }),
+        });
+        const data = (await res.json()) as { detail?: string };
+        if (data.detail) showConfirm(data.detail);
+      } catch {
+        // Best-effort : le lien instantané (wa.me / tel:) a déjà fait son travail,
+        // on ne montre rien d'alarmant si la notification interne échoue.
+      }
+    }
+
+    contactSection.querySelectorAll<HTMLAnchorElement>('[data-contact-channel]').forEach((el) => {
+      el.addEventListener('click', () => {
+        const channel = (el.dataset.contactChannel as ContactChannel) || 'rappel';
+        void notifyTeam(channel);
+        if (channel === 'rappel') showConfirm('Merci — nous vous rappelons très vite.');
+      });
+    });
   }
 </script>
 

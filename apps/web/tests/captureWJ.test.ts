@@ -263,6 +263,56 @@ describe('WJ4/WJ5 — capture-lead : contrat webhook + seuil 1 000 MAD intacts',
     expect(rec).not.toHaveProperty('billKwh');
   });
 
+  it('WJ31 — le webhook reçoit distributeur, kWh, ombrage, âge toit, charges futures, qualificateurs et financement', async () => {
+    let forwarded: Record<string, unknown> | null = null;
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (url: string, init?: { body?: string }) => {
+        if (String(url).includes('crm.example/hook') && init?.body) forwarded = JSON.parse(init.body);
+        return { ok: true, json: async () => ({}) } as unknown as Response;
+      }),
+    );
+    const { status, json } = await call({
+      ...qualified,
+      distributeur: 'onee',
+      billKwh: 700,
+      ombrage: 'aucun',
+      roofAgeYears: 8,
+      futureLoads: ['ve', 'pompe'],
+      batteryInterest: true,
+      occupantType: 'decideur',
+      projectTiming: 'maintenant',
+      financingIntent: 'comptant',
+      hasMeterPhoto: true,
+    });
+    expect(status).toBe(200);
+    expect(json.ok).toBe(true);
+    const rec = forwarded as unknown as Record<string, unknown>;
+    expect(rec).not.toBeNull();
+    expect(rec.distributeur).toBe('onee');
+    expect(rec.billKwh).toBe(700);
+    expect(rec.ombrage).toBe('aucun');
+    expect(rec.roofAgeYears).toBe(8);
+    expect(rec.futureLoads).toEqual(['ve', 'pompe']);
+    expect(rec.batteryInterest).toBe(true);
+    expect(rec.occupantType).toBe('decideur');
+    expect(rec.projectTiming).toBe('maintenant');
+    expect(rec.financingIntent).toBe('comptant');
+    expect(rec.hasMeterPhoto).toBe(true);
+    // …le contrat existant tient (consentement + seuil).
+    expect(rec.consent).toBe(true);
+    expect(rec.qualified).toBe(true);
+  });
+
+  it('WJ31 — skipper toutes les questions optionnelles ne bloque toujours pas le lead', async () => {
+    const fetchMock = vi.fn(async () => ({ ok: true, json: async () => ({}) }) as unknown as Response);
+    vi.stubGlobal('fetch', fetchMock);
+    const { status, json } = await call({ ...qualified });
+    expect(status).toBe(200);
+    expect(json.ok).toBe(true);
+    expect(json.qualified).toBe(true);
+  });
+
   it('WJ5 — un lead SOUS le seuil renvoie qualified=false et ne touche pas le CRM', async () => {
     const fetchMock = vi.fn(async () => ({ ok: true, json: async () => ({}) }) as unknown as Response);
     vi.stubGlobal('fetch', fetchMock);

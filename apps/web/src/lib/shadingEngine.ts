@@ -226,3 +226,74 @@ export function annualShadeFactor(prod: PerKwcProduction, factors: number[][] | 
   const f = after / before;
   return Number.isFinite(f) ? Math.max(0, Math.min(1, f)) : 1;
 }
+
+// ═══════════ WJ21 — CARTE D'ACCÈS SOLAIRE (heatmap d'irradiance, astronomie pure) ═══════════
+// L'accès solaire relatif d'un point du toit = la part de l'irradiation ANNUELLE qui
+// l'atteint réellement, une fois les obstructions tracées retirées du soleil DIRECT
+// (le diffus reste). C'est EXACTEMENT le même modèle que le dérate de production (rule
+// « aucun chiffre inventé »), évalué PAR POINT au lieu du centroïde : on réutilise
+// hourlyShadeFactors + les VRAIS profils PVGIS pour pondérer chaque heure par l'énergie
+// qu'elle porte. Un point 100 % dégagé = 1,0 ; un point souvent masqué tombe vers la
+// part diffuse. Les couleurs de la heatmap sont donc mappées à des VALEURS RÉELLES
+// d'accès solaire, pas des teintes arbitraires. PUR (astronomie + profils, sans DOM/3D).
+
+/** Un point du champ à évaluer (ENU, mètres — repère de la scène). */
+export interface SolarAccessPoint {
+  x: number;
+  y: number;
+}
+
+/**
+ * Accès solaire ANNUEL relatif (0–1] d'un point, pondéré par la vraie énergie horaire
+ * PVGIS : on calcule la matrice d'ombrage 12×24 vue de CE point (hourlyShadeFactors) et
+ * on la pondère par le jour-type PVGIS de chaque mois × jours du mois — l'intégrale
+ * dératée ÷ intégrale intacte. Aucune obstruction / aucun profil exploitable → 1
+ * (dégagé, aucun dérate inventé). PUR.
+ */
+export function pointSolarAccess(
+  latitudeDeg: number,
+  obstructions: readonly ShadeObstructionENU[],
+  prod: PerKwcProduction,
+  px: number,
+  py: number,
+  diffuseFraction = DIFFUSE_FRACTION_WHEN_SHADED,
+): number {
+  const before = prod.monthlyKwh.reduce((a, b) => a + b, 0);
+  if (!(before > 0)) return 1;
+  if (!obstructions.length) return 1;
+  const factors = hourlyShadeFactors(latitudeDeg, obstructions, px, py, diffuseFraction);
+  const after = applyShadeFactors(prod, factors).monthlyKwh.reduce((a, b) => a + b, 0);
+  const f = after / before;
+  return Number.isFinite(f) ? Math.max(0, Math.min(1, f)) : 1;
+}
+
+/**
+ * Accès solaire de CHAQUE point d'une liste (même modèle que pointSolarAccess). Renvoie
+ * un tableau aligné sur `points`. Sans obstruction → tout à 1 (heatmap uniformément
+ * « plein soleil »). PUR.
+ */
+export function cellsSolarAccess(
+  latitudeDeg: number,
+  obstructions: readonly ShadeObstructionENU[],
+  prod: PerKwcProduction,
+  points: readonly SolarAccessPoint[],
+  diffuseFraction = DIFFUSE_FRACTION_WHEN_SHADED,
+): number[] {
+  return points.map((p) => pointSolarAccess(latitudeDeg, obstructions, prod, p.x, p.y, diffuseFraction));
+}
+
+/**
+ * Couleur RVB (0–1 par canal) d'une valeur d'accès solaire (0–1) : dégradé continu
+ * ROUGE (faible accès) → AMBRE → VERT (plein soleil). Le mapping est monotone et lié à
+ * la VRAIE valeur d'accès (pas une teinte arbitraire) : access=1 → vert franc,
+ * access≈diffus → rouge. Utilisé pour teinter les instances de panneaux (instanceColor,
+ * multiplié par la couleur du matériau). PUR.
+ */
+export function solarAccessColorRGB(access: number): { r: number; g: number; b: number } {
+  const a = Number.isFinite(access) ? Math.max(0, Math.min(1, access)) : 1;
+  // Rouge (1,0,0) → jaune (1,1,0) sur [0;0,5], puis jaune → vert (0,1,0) sur [0,5;1].
+  if (a < 0.5) {
+    return { r: 1, g: a * 2, b: 0 };
+  }
+  return { r: (1 - a) * 2, g: 1, b: 0 };
+}

@@ -34,6 +34,8 @@ import {
   BIFACIAL_GAIN_TILTED,
   ANNUAL_DEGRADATION,
   LIFETIME_YEARS,
+  climateDerateFactor,
+  productionConfidenceBand,
   type PackResult,
   type PanelGrid,
   type ConfigFamily,
@@ -481,6 +483,29 @@ export function createOptimizer(ctx: Ctx, deps: OptimizerDeps): Optimizer {
           `Économies toujours plafonnées à votre facture.`;
       } else {
         band.textContent = '';
+      }
+    }
+    // WJ22 — couche de pertes climatiques HONNÊTES (opt-in) : rend la production/les
+    // économies en FOURCHETTE (été côtier chaud/poussiéreux = borne basse ↔ chiffre nu =
+    // borne haute), au lieu d'un chiffre unique sur-estimé de ~15–20 % l'été. Les
+    // économies de la borne basse passent par annualSavingsMad → plafonnées à la facture
+    // (jamais au-dessus du coût évitable). Défaut OFF → élément vide, chiffre inchangé.
+    const climate = $('rp9-reco-climate');
+    if (climate) {
+      if (ctx.climateBandOn && d.annualKwh > 0) {
+        const derate = climateDerateFactor();
+        const pband = productionConfidenceBand(d.annualKwh, derate);
+        const target = d.target ?? ctx.prodTarget;
+        // Économies de la borne BASSE (production dératée) — plafonnées à la facture.
+        const savLowBand = target > 0 ? annualSavingsMad(pband.low, target) : { low: d.savingsLow * derate, high: d.savingsHigh * derate };
+        const lossPct = Math.round((1 - derate) * 100);
+        climate.textContent =
+          `Fourchette honnête (pertes réelles chaleur + poussière + brume, jusqu'à −${lossPct} % l'été côtier) : ` +
+          `production ~${fmt(Math.round(pband.low))} – ${fmt(Math.round(pband.high))} kWh/an ` +
+          `(milieu ~${fmt(Math.round(pband.point))}) · économies ~${fmtMad(savLowBand.high)} – ${fmtMad(d.savingsHigh)}/an. ` +
+          `Économies toujours plafonnées à votre facture.`;
+      } else {
+        climate.textContent = '';
       }
     }
     $('rp9-results')?.classList.add('rp9-results--ready');

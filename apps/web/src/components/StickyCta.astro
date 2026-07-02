@@ -33,7 +33,13 @@ const wa = whatsappLink(WHATSAPP_LEADS, 'Bonjour, je souhaite une étude pour un
   class="fixed inset-x-0 bottom-0 z-40 hidden border-t border-white/15 bg-nuit/95 px-3 py-2.5 shadow-[0_-8px_30px_-12px_rgb(0_0_0/0.8)] backdrop-blur transition-transform duration-300 ease-out will-change-transform motion-reduce:transition-none sm:inset-x-auto sm:bottom-6 sm:right-6 sm:rounded-full sm:border sm:border-white/15 sm:px-1.5 sm:py-1.5 sm:shadow-[0_14px_40px_-12px_rgb(0_0_0/0.85)]"
   style="padding-bottom: max(0.625rem, env(safe-area-inset-bottom));"
 >
-  <div class="mx-auto flex max-w-md items-center gap-2.5 sm:max-w-none sm:gap-1.5">
+  <div class="mx-auto max-w-md sm:max-w-none">
+    {/* WJ37 — reassurance strip: mobile-only (the thumb-zone full-width bar),
+        hidden on the compact desktop pill where there's no room without
+        widening it. One line, centered, brass-adjacent ink — not a second
+        CTA, so it never competes with WhatsApp / the primary button. */}
+    <p class="mb-1.5 text-center text-[11px] leading-tight text-lune-faint sm:hidden">{t('cta.reassurance')}</p>
+    <div class="flex items-center gap-2.5 sm:gap-1.5">
     {/* W165 — WhatsApp: brass/night palette replacing the green, + .glow resting halo */}
     <a
       href={wa}
@@ -49,6 +55,7 @@ const wa = whatsappLink(WHATSAPP_LEADS, 'Bonjour, je souhaite une étude pour un
       href={diagHref}
       class="glow flex flex-1 items-center justify-center bg-brass-400 px-4 py-2.5 text-sm font-bold text-azur-950 transition-colors hover:bg-brass-300 sm:flex-none sm:rounded-full sm:px-3.5 sm:py-2 sm:text-[13px]"
     >{t('cta.primary')}</a>
+    </div>
   </div>
 </div>
 

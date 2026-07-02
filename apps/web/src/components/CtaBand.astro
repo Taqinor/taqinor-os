@@ -41,5 +41,10 @@ const {
       href={href}
       class="glow mt-8 inline-block bg-brass-400 px-7 py-3.5 text-base font-bold text-azur-950 transition-colors hover:bg-brass-300"
     >{buttonLabel}</a>
+    {/* WJ37 — reassurance strip under the primary CTA: builds trust without
+        adding a second competing action. Once per band, FR/EN/AR. This
+        section is the light (blanc-azur) surface, so use the ink-scale
+        token (encre-faint, ≈5.5:1 AA on blanc), not the night-scale lune. */}
+    <p class="mt-3 text-sm text-encre-faint">{t('cta.reassurance')}</p>
   </div>
 </section>
