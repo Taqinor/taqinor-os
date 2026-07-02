@@ -1,9 +1,10 @@
 import { Fragment, useEffect, useMemo, useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, useSearchParams } from 'react-router-dom'
 import { useDispatch, useSelector } from 'react-redux'
 import {
   Download, Plus, FileText, FileDown, Check, ArrowRight, HardHat, FileStack,
-  Copy, Send, X, Eye, Search, AlertTriangle, UserCog,
+  Copy, Send, X, Eye, Search, AlertTriangle, UserCog, Box, ExternalLink,
+  Link2,
 } from 'lucide-react'
 import {
   fetchDevis,
@@ -28,6 +29,9 @@ import { filenameFromResponse } from '../../utils/downloadBlob'
 import { proposalParams, pdfBlob } from '../../features/ventes/previewPdf'
 import { useSavedViews } from '../../hooks/useSavedViews'
 import { useDelayedLoading } from '../../hooks/useDelayedLoading'
+import { useHasPermission } from '../../hooks/useHasPermission'
+import { ResponsiveDialog } from '../../ui/ResponsiveDialog'
+import RoofViewer from './RoofViewer'
 
 // J141 — Squelette de la liste : reprend les 8 colonnes du vrai tableau pour que
 // la mise en page ne saute pas à l'arrivée des données. Affiché dans la même
@@ -123,9 +127,14 @@ function openPdfBlob(blob, filename) {
 export default function DevisList() {
   const dispatch = useDispatch()
   const navigate = useNavigate()
+  const [searchParams, setSearchParams] = useSearchParams()
   const { devis, loading, error } = useSelector(s => s.ventes)
   const role = useSelector(s => s.auth.role)
   const canDelete = role === 'admin'  // règle existante : destroy = admin
+  // QG10 — seul le Directeur / Commercial responsable peut MODIFIER le
+  // pourcentage des variantes (le backend variante-config renvoie 403 sinon).
+  // Les autres rôles voient la valeur par défaut en lecture seule.
+  const canEditVariantePct = useHasPermission(null, ['Directeur', 'Commercial responsable'])
   // J141 — chargement différé anti-scintillement : spinner discret puis squelette.
   const { showSpinner, showSkeleton } = useDelayedLoading(loading)
 
@@ -138,7 +147,27 @@ export default function DevisList() {
   const [statutActionId, setStatutActionId] = useState(null) // envoi/refus en cours
   const [previewingId, setPreviewingId] = useState(null) // aperçu PDF en cours
   // Panneau « historique des versions » : id du devis dont la chaîne est ouverte.
-  const [versionsOpenId, setVersionsOpenId] = useState(null)
+  // QG10 — deep-link ?variantes=<id> ouvre directement la comparaison au montage.
+  const [versionsOpenId, setVersionsOpenId] = useState(() => {
+    const v = searchParams.get('variantes')
+    return v ? Number(v) : null
+  })
+
+  // ── QG10 — Modale « Variantes » : confirmer / éditer le pourcentage avant
+  //    de créer les 3 variantes (−p / standard / +p) puis router vers la
+  //    comparaison côte-à-côte (panneau versions de la liste). ──
+  const [varianteTarget, setVarianteTarget] = useState(null) // devis source
+  const [variantePct, setVariantePct] = useState('20')       // % éditable
+  const [varianteBusy, setVarianteBusy] = useState(false)
+  const [varianteLoadingCfg, setVarianteLoadingCfg] = useState(false)
+
+  // ── QG11/QG12 — Panneau « Voir le design 3D » : id du devis dont le plan de
+  //    toiture (roof_layout) est ouvert en lecture seule dans le détail.
+  //    Deep-link ?design3d=<id> l'ouvre directement au montage. ──
+  const [roofOpenId, setRoofOpenId] = useState(() => {
+    const r = searchParams.get('design3d')
+    return r ? Number(r) : null
+  })
 
   // ── Filtre statut + recherche (référence / client) ──
   const [statutFilter, setStatutFilter] = useState('tous')
@@ -246,7 +275,86 @@ export default function DevisList() {
     setAcceptBusy(false)
   }
 
+  // QG10 — ouvre la modale Variantes : pré-remplit le pourcentage depuis la
+  // config société (CompanyProfile.variante_pct via GET variante-config), avec
+  // repli à 20 % si la lecture échoue. La saisie n'est autorisée que pour le
+  // Directeur / Commercial responsable (sinon champ en lecture seule).
+  const openVarianteModal = async (d) => {
+    setVarianteTarget(d)
+    setVariantePct('20')
+    setVarianteBusy(false)
+    setVarianteLoadingCfg(true)
+    try {
+      const res = await ventesApi.getVarianteConfig()
+      const pct = res?.data?.variante_pct
+      if (pct != null) {
+        // Le backend renvoie une chaîne décimale (« 20.00 ») — on l'arrondit.
+        const n = Math.round(parseFloat(pct))
+        if (Number.isFinite(n)) setVariantePct(String(n))
+      }
+    } catch { /* repli : 20 % par défaut déjà posé */ } finally {
+      setVarianteLoadingCfg(false)
+    }
+  }
+  const closeVarianteModal = () => { setVarianteTarget(null); setVarianteBusy(false) }
+
+  // QG10 — crée les 3 variantes avec le pourcentage confirmé, puis navigue vers
+  // la comparaison côte-à-côte : la liste avec le panneau « versions » du devis
+  // source déplié (les variantes partagent son version_parent → elles y
+  // apparaissent groupées). On passe le % en override de requête ; le backend
+  // reste seul juge des rôles (403 si écriture non autorisée — ici on n'écrit
+  // pas la config, on override juste la génération, ouverte aux responsables).
+  const submitVariante = async () => {
+    const d = varianteTarget
+    if (!d) return
+    setVarianteBusy(true)
+    try {
+      const pct = parseFloat(variantePct)
+      const payload = (Number.isFinite(pct) && pct > 0 && pct < 100)
+        ? { variante_pct: pct } : {}
+      await ventesApi.dupliquerVariante(d.id, payload)
+      dispatch(fetchDevis())
+      toast.success(`Variantes créées pour ${d.reference}.`)
+      closeVarianteModal()
+      // Route vers la comparaison : panneau versions du devis source ouvert.
+      setVersionsOpenId(d.id)
+      setSearchParams({ variantes: String(d.id) }, { replace: true })
+    } catch (err) {
+      toast.error(frenchError(err, 'Création variantes impossible.'))
+    } finally {
+      setVarianteBusy(false)
+    }
+  }
+
   useEffect(() => { dispatch(fetchDevis()) }, [dispatch])
+
+  // WR2 — « Copier le lien proposition » : (re)mint le lien public tokenisé du
+  // devis (DevisViewSet.share_link) et le copie au presse-papier, sans passer
+  // par l'envoi email/WhatsApp. Surface une fonctionnalité serveur jusqu'ici
+  // invisible côté ERP. Aucun statut ne bouge (le backend ne fait que produire
+  // le lien).
+  const [shareBusyId, setShareBusyId] = useState(null)
+  const handleCopierLienProposition = async (d) => {
+    setShareBusyId(d.id)
+    try {
+      const res = await ventesApi.shareLinkDevis(d.id)
+      // Le backend renvoie {token, path} (path = /proposition/<token>) — on
+      // reconstruit l'URL publique complète (site public, cf. VITE_PUBLIC_SITE_URL).
+      const path = res?.data?.path || (res?.data?.token ? `/proposition/${res.data.token}` : null)
+      if (path) {
+        const base = (import.meta.env.VITE_PUBLIC_SITE_URL || 'https://taqinor.ma').replace(/\/+$/, '')
+        const url = `${base}${path.startsWith('/') ? path : `/${path}`}`
+        try { await navigator.clipboard?.writeText(url) } catch { /* presse-papier indispo */ }
+        toast.success('Lien de la proposition copié.')
+      } else {
+        toast.error('Lien de proposition indisponible.')
+      }
+    } catch (err) {
+      toast.error(frenchError(err, 'Génération du lien impossible.'))
+    } finally {
+      setShareBusyId(null)
+    }
+  }
 
   // Création ET édition passent par la page générateur solaire (l'ancien
   // modal DevisForm est conservé mais n'est plus le chemin d'édition).
@@ -775,20 +883,23 @@ export default function DevisList() {
         </div>
       )}
 
-      {/* ── Modale de génération PDF : formats du simulateur ── */}
-      <Dialog
+      {/* ── Modale de génération PDF : formats du simulateur (MB4 —
+          ResponsiveDialog → tiroir bas plein écran sur mobile) ── */}
+      <ResponsiveDialog
         open={!!pdfTarget || batchPdf}
         onOpenChange={(o) => { if (!o) { setPdfTarget(null); setBatchPdf(false) } }}
+        title={batchPdf
+          ? `Générer le PDF — ${selectedIds.length} devis (format partagé)`
+          : `Générer le PDF — ${pdfTarget?.reference}`}
+        footer={(
+          <>
+            <Button variant="ghost" onClick={() => { setPdfTarget(null); setBatchPdf(false) }}>Annuler</Button>
+            <Button onClick={() => (batchPdf ? handleGenererPdfLot() : handleGenererPdf(pdfTarget))}>
+              <FileText /> Générer
+            </Button>
+          </>
+        )}
       >
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>
-              {batchPdf
-                ? `Générer le PDF — ${selectedIds.length} devis (format partagé)`
-                : `Générer le PDF — ${pdfTarget?.reference}`}
-            </DialogTitle>
-          </DialogHeader>
-
           <div className="flex flex-col gap-4">
             <div className="grid gap-2">
               <Label>Format</Label>
@@ -862,22 +973,23 @@ export default function DevisList() {
               </div>
             )}
           </div>
+      </ResponsiveDialog>
 
-          <DialogFooter>
-            <Button variant="ghost" onClick={() => { setPdfTarget(null); setBatchPdf(false) }}>Annuler</Button>
-            <Button onClick={() => (batchPdf ? handleGenererPdfLot() : handleGenererPdf(pdfTarget))}>
-              <FileText /> Générer
+      {/* ── T9 — Modale d'acceptation inline (nom / date / option) — MB4
+          ResponsiveDialog (tiroir bas plein écran sur mobile) ── */}
+      <ResponsiveDialog
+        open={!!acceptTarget}
+        onOpenChange={(o) => { if (!o) setAcceptTarget(null) }}
+        title={`Accepter le devis — ${acceptTarget?.reference ?? ''}`}
+        footer={(
+          <>
+            <Button variant="ghost" onClick={() => setAcceptTarget(null)}>Annuler</Button>
+            <Button onClick={submitAccept} loading={acceptBusy}>
+              <Check /> Confirmer l'acceptation
             </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
-      {/* ── T9 — Modale d'acceptation inline (nom / date / option) ── */}
-      <Dialog open={!!acceptTarget} onOpenChange={(o) => { if (!o) setAcceptTarget(null) }}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Accepter le devis — {acceptTarget?.reference}</DialogTitle>
-          </DialogHeader>
+          </>
+        )}
+      >
           <div className="flex flex-col gap-4">
             <div className="grid gap-1.5">
               <Label htmlFor="accept-nom">Nom de la personne qui accepte</Label>
@@ -906,21 +1018,26 @@ export default function DevisList() {
               </div>
             )}
           </div>
-          <DialogFooter>
-            <Button variant="ghost" onClick={() => setAcceptTarget(null)}>Annuler</Button>
-            <Button onClick={submitAccept} loading={acceptBusy}>
-              <Check /> Confirmer l'acceptation
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+      </ResponsiveDialog>
 
-      {/* QJ14 — Modale « Envoyer par email » : PDF premium + lien de proposition */}
-      <Dialog open={!!emailTarget} onOpenChange={(o) => { if (!o) closeEmailModal() }}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Envoyer par email — {emailTarget?.reference}</DialogTitle>
-          </DialogHeader>
+      {/* QJ14 — Modale « Envoyer par email » : PDF premium + lien de proposition
+          (MB4 — ResponsiveDialog → tiroir bas plein écran sur mobile) */}
+      <ResponsiveDialog
+        open={!!emailTarget}
+        onOpenChange={(o) => { if (!o) closeEmailModal() }}
+        title={`Envoyer par email — ${emailTarget?.reference ?? ''}`}
+        footer={(
+          <>
+            <Button variant="outline" onClick={closeEmailModal} disabled={emailBusy}>
+              Annuler
+            </Button>
+            <Button onClick={submitEmail} loading={emailBusy}>
+              <Send className="size-4 mr-1" aria-hidden="true" />
+              Envoyer
+            </Button>
+          </>
+        )}
+      >
           <div className="flex flex-col gap-4">
             <div className="grid gap-1.5">
               <Label htmlFor="email-address">Adresse email du destinataire</Label>
@@ -937,17 +1054,7 @@ export default function DevisList() {
               </p>
             </div>
           </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={closeEmailModal} disabled={emailBusy}>
-              Annuler
-            </Button>
-            <Button onClick={submitEmail} loading={emailBusy}>
-              <Send className="size-4 mr-1" aria-hidden="true" />
-              Envoyer
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+      </ResponsiveDialog>
 
       {/* QG8 — Aperçu du message WhatsApp avant ouverture (le devis est déjà
           marqué « envoyé » côté serveur ; on ouvre wa.me au clic). */}
@@ -980,6 +1087,60 @@ export default function DevisList() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* QG10 — Modale « Variantes » : confirmer / éditer le pourcentage puis
+          créer les 3 variantes et router vers la comparaison. Le champ % n'est
+          éditable que pour le Directeur / Commercial responsable. */}
+      <ResponsiveDialog
+        open={!!varianteTarget}
+        onOpenChange={(o) => { if (!o) closeVarianteModal() }}
+        title={`Créer des variantes — ${varianteTarget?.reference ?? ''}`}
+        description="Trois variantes de taille sont générées : réduite (−p %), standard, et augmentée (+p %), pour une comparaison côte-à-côte."
+        footer={(
+          <>
+            <Button variant="ghost" onClick={closeVarianteModal} disabled={varianteBusy}>
+              Annuler
+            </Button>
+            <Button onClick={submitVariante} loading={varianteBusy} disabled={varianteLoadingCfg}>
+              <Copy className="size-4 mr-1" aria-hidden="true" />
+              Créer les variantes
+            </Button>
+          </>
+        )}
+      >
+        <div className="flex flex-col gap-3">
+          <div className="grid gap-1.5">
+            <Label htmlFor="variante-pct">Pourcentage de variation (%)</Label>
+            <Input
+              id="variante-pct"
+              type="number"
+              min="1"
+              max="99"
+              step="any"
+              value={variantePct}
+              onChange={e => setVariantePct(e.target.value)}
+              readOnly={!canEditVariantePct}
+              aria-readonly={!canEditVariantePct}
+              disabled={varianteLoadingCfg}
+            />
+            <p className="text-xs text-muted-foreground">
+              {canEditVariantePct
+                ? 'Par défaut, la valeur de la société. Modifiez-la pour cette génération uniquement.'
+                : 'Valeur par défaut de la société (modification réservée au Directeur et au Commercial responsable).'}
+            </p>
+            {/* Aperçu des 3 échelles dérivées du pourcentage. */}
+            {(() => {
+              const p = parseFloat(variantePct)
+              if (!Number.isFinite(p) || !(p > 0 && p < 100)) return null
+              return (
+                <p className="text-xs text-muted-foreground">
+                  Échelles : <strong>−{p} %</strong> · <strong>Standard</strong> · <strong>+{p} %</strong>
+                </p>
+              )
+            })()}
+          </div>
+        </div>
+      </ResponsiveDialog>
 
       {devis.length === 0 ? (
         <EmptyState
@@ -1239,23 +1400,19 @@ export default function DevisList() {
                               Réviser
                             </Button>
                           )}
-                          {/* QJ15 — Dupliquer en variantes de taille (−20 % / standard / +25 %) */}
+                          {/* QG10/QJ15 — « Variante » : ouvre une modale pour
+                              confirmer/éditer le pourcentage (défaut = config
+                              société), créer les 3 variantes puis router vers la
+                              comparaison côte-à-côte. */}
                           {d.statut === 'brouillon' && (
                             <Button
                               size="sm"
                               variant="outline"
-                              title="Créer 3 variantes de taille (−20 %, standard, +25 %) pour comparaison côte-à-côte"
-                              onClick={() => {
-                                ventesApi.dupliquerVariante(d.id)
-                                  .then(() => {
-                                    dispatch(fetchDevis())
-                                    toast.success(`Variantes créées pour ${d.reference}.`)
-                                  })
-                                  .catch(err => toast.error(frenchError(err, 'Création variantes impossible.')))
-                              }}
+                              title="Créer 3 variantes de taille (−p %, standard, +p %) pour comparaison côte-à-côte"
+                              onClick={() => openVarianteModal(d)}
                             >
                               <Copy className="size-3.5 mr-1" aria-hidden="true" />
-                              Variantes
+                              Variante
                             </Button>
                           )}
                           {role === 'admin' && d.statut === 'brouillon'
@@ -1333,6 +1490,49 @@ export default function DevisList() {
                             >
                               <Send className="size-3.5 mr-1" aria-hidden="true" />
                               Email
+                            </Button>
+                          )}
+                          {/* WR2 — Copier le lien de proposition (share_link) :
+                              surface la fonctionnalité serveur invisible, sans
+                              passer par un envoi email/WhatsApp. */}
+                          {(d.statut === 'brouillon' || d.statut === 'envoye') && (
+                            <Button
+                              size="sm"
+                              variant="ghost"
+                              loading={shareBusyId === d.id}
+                              onClick={() => handleCopierLienProposition(d)}
+                              title="Copier le lien de la proposition (à coller où vous voulez)"
+                            >
+                              <Link2 className="size-3.5 mr-1" aria-hidden="true" />
+                              Copier le lien
+                            </Button>
+                          )}
+                          {/* QG11 — « Voir le design 3D » : ouvre le plan de
+                              toiture (roof_layout) en lecture seule dans le
+                              détail. N'apparaît que si un plan existe. */}
+                          {d.roof_layout && (
+                            <Button
+                              size="sm"
+                              variant="ghost"
+                              onClick={() => setRoofOpenId(
+                                roofOpenId === d.id ? null : d.id)}
+                              title="Voir le design 3D de la toiture (lecture seule)"
+                            >
+                              <Box className="size-3.5 mr-1" aria-hidden="true" />
+                              Design 3D
+                            </Button>
+                          )}
+                          {/* QG12 — « Ouvrir dans une fenêtre » : le plan plein
+                              écran sur sa propre route /ventes/devis/:id/3d. */}
+                          {d.roof_layout && (
+                            <Button
+                              size="sm"
+                              variant="ghost"
+                              onClick={() => window.open(`/ventes/devis/${d.id}/3d`, '_blank', 'noopener')}
+                              title="Ouvrir le design 3D dans une nouvelle fenêtre"
+                              aria-label={`Ouvrir le design 3D de ${d.reference} dans une fenêtre`}
+                            >
+                              <ExternalLink className="size-3.5" aria-hidden="true" />
                             </Button>
                           )}
                           <Button
@@ -1476,6 +1676,33 @@ export default function DevisList() {
                                 ))}
                               </ul>
                             )}
+                          </div>
+                        </td>
+                      </tr>
+                    )}
+                    {/* QG11 — Panneau « Voir le design 3D » : rendu LECTURE
+                        SEULE du plan de toiture stocké (roof_layout). */}
+                    {roofOpenId === d.id && (
+                      <tr>
+                        <td colSpan={8} className="bg-muted/30">
+                          <div className="px-3 py-3">
+                            <div className="mb-2 flex items-center justify-between gap-2">
+                              <p className="text-xs font-medium text-muted-foreground">
+                                Design 3D de la toiture — {d.reference}
+                              </p>
+                              <Button
+                                size="sm"
+                                variant="ghost"
+                                onClick={() => window.open(`/ventes/devis/${d.id}/3d`, '_blank', 'noopener')}
+                                title="Ouvrir dans une nouvelle fenêtre"
+                              >
+                                <ExternalLink className="size-3.5 mr-1" aria-hidden="true" />
+                                Ouvrir dans une fenêtre
+                              </Button>
+                            </div>
+                            <div className="max-w-2xl">
+                              <RoofViewer layout={d.roof_layout} />
+                            </div>
                           </div>
                         </td>
                       </tr>
