@@ -1068,6 +1068,37 @@ export function createScene3d(ctx: Ctx, deps: Scene3dDeps): Scene3d {
       }
     }
 
+    // WJ19 — obstructions DÉDUITES des ombres tracées (arbres/immeubles voisins) :
+    // volume gris translucide à sa VRAIE hauteur estimée, posé AU SOL (l'ombre a été
+    // tracée au sol), qui PROJETTE une vraie ombre Three.js sur le bâtiment et les
+    // panneaux — la preuve visuelle du dérate horaire. Liste vide → rendu inchangé.
+    if (ctx.shadeObstructions.length) {
+      const cosLat = Math.cos(pack.origin[1] * DEG2RAD);
+      for (const o of ctx.shadeObstructions) {
+        const ox = (o.base[0] - pack.origin[0]) * DEG2M * cosLat;
+        const oy = (o.base[1] - pack.origin[1]) * DEG2M;
+        const h = Math.max(0.5, o.heightM);
+        const side = Math.max(0.6, o.halfWidthM * 2);
+        const geo = new THREE.BoxGeometry(side, side, h);
+        const mat = new THREE.MeshStandardMaterial({
+          color: 0x6b7280,
+          metalness: 0,
+          roughness: 0.9,
+          transparent: true,
+          opacity: 0.35,
+        });
+        const mesh = new THREE.Mesh(geo, mat);
+        mesh.position.set(ox, oy, h / 2); // posé au sol (z = 0), pas sur le toit
+        mesh.castShadow = true; // la vraie ombre portée Three.js
+        const edges = new THREE.LineSegments(
+          new THREE.EdgesGeometry(geo),
+          new THREE.LineBasicMaterial({ color: 0x8f9bb8, transparent: true, opacity: 0.8 }),
+        );
+        mesh.add(edges);
+        sceneRoot.add(mesh);
+      }
+    }
+
     // W-MULTI : mémorise le plan de re-rendu de la zone ACTIVE pour que les AUTRES
     // zones puissent être re-dessinées (subduées) à leur vraie position relative.
     const aRec = ctx.activeArea();

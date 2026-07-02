@@ -62,6 +62,20 @@ const STATIC_TRANSLATED: readonly string[] = [
   '/guides/onduleur-hybride-ou-reseau',
 ];
 
+/**
+ * WJ36 — chemin RACINE du parcours devis « Mon toit » : la cible canonique de
+ * TOUS les CTA devis/étude du site (en-tête, héros, CtaBand, CTA collant,
+ * CTA en page). La route n'existe aujourd'hui qu'en FR ; comme le chemin
+ * n'est pas déclaré dans STATIC_TRANSLATED, `quoteJourneyHref('en'|'ar')`
+ * retombe sur la racine FR (jamais de lien mort).
+ *
+ * WJ38 (localisation EN/AR du parcours) — UNE seule chose à faire ici :
+ * construire src/pages/en/devis/mon-toit.astro + src/pages/ar/devis/mon-toit.astro
+ * puis ajouter QUOTE_JOURNEY_PATH à STATIC_TRANSLATED ci-dessus. Tous les CTA
+ * du site basculeront d'eux-mêmes vers /en/... et /ar/....
+ */
+export const QUOTE_JOURNEY_PATH = '/devis/mon-toit';
+
 const TRANSLATED: Record<string, readonly Locale[]> = Object.fromEntries([
   ...STATIC_TRANSLATED.map((p) => [p, ALL_LOCALES] as const),
   ...CITIES.map((c) => [`/installation-solaire-${c.slug}`, ALL_LOCALES] as const),
@@ -105,4 +119,13 @@ export function localizeNavHref(rootPath: string, locale: Locale): string {
   if (locale === DEFAULT_LOCALE || !isLocale(locale)) return clean;
   if (!hasLocale(clean, locale)) return clean; // repli FR — jamais de lien mort
   return `/${locale}${clean === '/' ? '' : clean}`;
+}
+
+/**
+ * WJ36 — href du parcours devis pour la locale courante. TOUS les CTA
+ * devis/étude passent par ici (ou par `L(QUOTE_JOURNEY_PATH)`) : c'est le
+ * point de bascule unique de WJ38 (voir QUOTE_JOURNEY_PATH ci-dessus).
+ */
+export function quoteJourneyHref(locale: Locale): string {
+  return localizeNavHref(QUOTE_JOURNEY_PATH, locale);
 }

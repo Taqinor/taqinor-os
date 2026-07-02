@@ -39,6 +39,10 @@ import {
   environmentalImpact,
   financingComparison,
   whatsappLink,
+  parseRoofLayout,
+  buildViewerModel,
+  zoneAnnotations,
+  walkthroughSteps,
 } from '../../lib/proposition';
 import { renderYearCurve } from '../../lib/proposalCurve';
 import { renderProposalChart, resolveSeries } from '../../lib/proposalChart';
@@ -170,6 +174,22 @@ const callbackHref = ok ? `tel:${TAQINOR_TEL}` : '';
 // ── P3 — Lien public du devis PDF premium (même token, nouvel onglet) ────────
 const pdfUrl = ok ? proposalPdfEndpoint(API_BASE, token) : '';
 
+// ── WJ25 — visionneuse 3D en lecture seule (layout backend OPTIONNEL QJ26) ───
+// Le backend n'expose pas encore `roof_layout` (PLAN2 QJ26) : le parse renvoie
+// alors null et la page garde EXACTEMENT le héros statique d'aujourd'hui. Quand
+// le champ arrivera, le modèle 3D (JSON pur) est calculé ICI côté serveur — le
+// client ne charge que le rendu Three.js, en différé (jamais au premier paint).
+const roofLayout = ok ? parseRoofLayout(data?.roof_layout) : null;
+const viewerModel = roofLayout ? buildViewerModel(roofLayout) : null;
+const show3d = !!viewerModel && viewerModel.totalPanels >= 0;
+const viewerConfig = show3d ? JSON.stringify({ model: viewerModel }) : null;
+
+// ── WJ26 — « Tout est expliqué » : légende par pan + visite guidée en 4 étapes.
+// Chaque chiffre vient du layout serveur ou du payload quote (les fonctions
+// renvoient null / « estimation indisponible » quand la donnée manque).
+const annotations = show3d && roofLayout ? zoneAnnotations(roofLayout, q?.watt_par_panneau ?? null) : [];
+const walkSteps = show3d && data ? walkthroughSteps(data) : [];
+
 const pageTitle = ok ? `Proposition ${reference} — ${clientName} | Taqinor` : 'Proposition | Taqinor';
 
 // Données passées au script de signature (sérialisées en JSON dans un data-attr).
@@ -259,6 +279,115 @@ const signConfig = ok
               Merci de votre confiance — votre conseiller Taqinor revient vers vous.
             </p>
           </div>
+        </section>
+      )}
+
+      <!-- ── WJ25 · VOTRE TOIT EN 3D (lecture seule — layout backend optionnel) -->
+      {/* Rendu UNIQUEMENT quand le backend fournit un roof_layout exploitable
+          (QJ26). Sans layout : rien ici — le héros statique reste inchangé.
+          Boîte à ratio RÉSERVÉ (zéro CLS) : poster (photo d'étude ou fond) puis
+          canvas 3D par-dessus quand la visionneuse démarre. Three.js n'est
+          JAMAIS dans le bundle initial (import() au scroll/tap — WJ27). */}
+      {show3d && (
+        <section id="roof3d" class="mx-auto max-w-4xl px-5 pt-12 sm:px-8 sm:pt-16" data-viewer-config={viewerConfig}>
+          <p class="tech-label rule-brass text-brass-300">Votre toit en 3D</p>
+          <div class="cine-card mt-5 overflow-hidden rounded-2xl p-0">
+            <div id="roof3d-stage" class="roof3d-stage">
+              {roofImg ? (
+                <img
+                  src={roofImg}
+                  alt={`Étude de toiture — ${clientName}`}
+                  width="1600"
+                  height="1000"
+                  class="absolute inset-0 h-full w-full object-cover"
+                  loading="lazy"
+                  decoding="async"
+                />
+              ) : (
+                <div class="absolute inset-0 bg-azur-950" aria-hidden="true"></div>
+              )}
+              <div class="roof3d-scrim absolute inset-0" aria-hidden="true"></div>
+              <div id="roof3d-overlay" class="absolute inset-0 flex flex-col items-center justify-center gap-3 px-6 text-center">
+                <button
+                  id="roof3d-start"
+                  type="button"
+                  class="btn-pill inline-flex items-center justify-center gap-2"
+                  style="background: var(--color-brass-400); color: var(--color-nuit); border-color: var(--color-brass-400)"
+                >
+                  Explorer votre toit en 3D
+                </button>
+                <p id="roof3d-note" class="max-w-sm text-sm text-lune-soft">
+                  Tournez, zoomez : ce sont votre toit et vos panneaux, tels qu’étudiés.
+                </p>
+              </div>
+            </div>
+            <p id="roof3d-hint" class="px-5 py-3 text-xs text-lune-faint" hidden>
+              Faites glisser pour tourner · pincez ou molette pour zoomer · deux doigts pour déplacer.
+            </p>
+          </div>
+
+          <!-- ── WJ26 · Légende : ce que vous voyez, pan par pan ─────────────── -->
+          <div class="mt-4 flex flex-wrap items-center gap-x-6 gap-y-2 text-sm" aria-label="Légende de la vue 3D">
+            <span class="inline-flex items-center gap-2 text-lune-soft">
+              <span class="inline-block h-3 w-3 rounded-sm" style="background: #14263f; outline: 1px solid rgb(255 255 255 / 0.25)" aria-hidden="true"></span>
+              Vos panneaux solaires
+            </span>
+            <span class="inline-flex items-center gap-2 text-lune-soft">
+              <span class="inline-block h-3 w-3 rounded-sm" style="background: #b9bfca" aria-hidden="true"></span>
+              Votre toiture
+            </span>
+            <span class="inline-flex items-center gap-2 text-lune-soft">
+              <span class="inline-block h-3 w-3 rounded-sm" style="background: #9aa3b4" aria-hidden="true"></span>
+              Obstacles (cheminée, cage d’escalier…)
+            </span>
+          </div>
+          {annotations.length > 0 && (
+            <div class={`mt-4 grid gap-3 ${annotations.length > 1 ? 'sm:grid-cols-2' : ''}`}>
+              {annotations.map((a) => (
+                <div class="cine-card rounded-xl p-4 text-sm">
+                  <p class="tech-label text-lune-faint">{a.label} · {a.roofTypeLabel}</p>
+                  <p class="mt-2 text-lune-soft">
+                    Orientation <strong class="text-lune">{a.orientation}</strong>
+                    {a.tiltDeg !== null ? <> · pente <strong class="text-lune">{a.tiltDeg}°</strong></> : null}
+                    {a.panels !== null ? <> · <strong class="text-lune">{formatNumber(a.panels)} panneaux</strong></> : null}
+                    {a.kwc !== null ? <> · <strong class="text-brass-300">{formatNumber(a.kwc, 2)} kWc</strong></> : null}
+                  </p>
+                </div>
+              ))}
+            </div>
+          )}
+
+          <!-- ── WJ26 · Visite guidée (4 étapes, skippable, sans mouvement) ──── -->
+          {walkSteps.length > 0 && (
+            <div id="roof3d-walk" class="mt-6" role="group" aria-label="Explication guidée de votre installation">
+              <div class="flex items-baseline justify-between gap-3">
+                <p class="tech-label text-lune-faint">Tout est expliqué, étape par étape</p>
+                <a href="#options" class="text-xs text-lune-faint underline-offset-2 hover:underline">Passer l’explication</a>
+              </div>
+              <ol class="mt-3 space-y-3">
+                {walkSteps.map((s, i) => (
+                  <li
+                    class="walk-step cine-card rounded-xl p-4"
+                    data-walk-step={s.id}
+                    aria-current={i === 0 ? 'step' : undefined}
+                  >
+                    <p class="flex items-baseline justify-between gap-3">
+                      <span class="text-sm font-bold text-lune">
+                        <span class="fig text-brass-300">{i + 1}.</span> {s.title}
+                      </span>
+                      <span dir="rtl" lang="ar" class="shrink-0 text-xs text-lune-faint">{s.titleAr}</span>
+                    </p>
+                    <p class="v2-body mt-1.5 text-sm text-lune-soft">{s.body}</p>
+                  </li>
+                ))}
+              </ol>
+              <div class="mt-3 flex items-center gap-3">
+                <button id="roof3d-walk-prev" type="button" class="btn-pill px-4 py-1.5 text-sm" disabled>Précédent</button>
+                <button id="roof3d-walk-next" type="button" class="btn-pill px-4 py-1.5 text-sm">Suivant</button>
+                <span id="roof3d-walk-count" class="text-xs text-lune-faint" aria-live="polite">Étape 1 sur {walkSteps.length}</span>
+              </div>
+            </div>
+          )}
         </section>
       )}
 
@@ -1003,6 +1132,123 @@ const signConfig = ok
   }
 </script>
 
+<script>
+  // ── WJ25/WJ27 — boot DIFFÉRÉ de la visionneuse 3D (jamais au premier paint).
+  // Three.js est chargé par import() dynamique : au scroll (IntersectionObserver)
+  // en conditions normales, UNIQUEMENT au tap en reduced-motion / Save-Data.
+  // Échec WebGL / import → le poster (photo d'étude) reste, avec une note claire.
+  import type { ViewerModel } from '../../lib/proposition';
+
+  const section3d = document.getElementById('roof3d');
+  const stage = document.getElementById('roof3d-stage');
+  const overlay = document.getElementById('roof3d-overlay');
+  const startBtn = document.getElementById('roof3d-start') as HTMLButtonElement | null;
+  const noteEl = document.getElementById('roof3d-note');
+  const hintEl = document.getElementById('roof3d-hint');
+
+  if (section3d && stage && section3d.dataset.viewerConfig) {
+    let model: ViewerModel | null = null;
+    try {
+      model = (JSON.parse(section3d.dataset.viewerConfig) as { model: ViewerModel }).model;
+    } catch {
+      model = null;
+    }
+
+    const reduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    const nav = navigator as Navigator & { deviceMemory?: number; connection?: { saveData?: boolean } };
+    const lowEnd = (nav.deviceMemory != null && nav.deviceMemory <= 4) || (navigator.hardwareConcurrency || 8) <= 4;
+    const saveData = nav.connection?.saveData === true;
+
+    let booted = false;
+    let handle: { dispose: () => void } | null = null;
+
+    function showFallback(msg: string): void {
+      if (startBtn) startBtn.hidden = true;
+      if (noteEl) noteEl.textContent = msg;
+    }
+
+    async function boot(): Promise<void> {
+      if (booted || !model || !stage) return;
+      booted = true;
+      if (startBtn) startBtn.disabled = true;
+      try {
+        const mod = await import('../../scripts/roofPro11/viewerOnly');
+        if (!mod.webglAvailable()) {
+          showFallback('Vue 3D indisponible sur cet appareil — voici la photo de votre étude.');
+          return;
+        }
+        handle = mod.createRoofViewer(stage, model, {
+          reducedMotion: reduced,
+          lowEnd,
+          onReady: () => {
+            if (overlay) overlay.hidden = true;
+            if (hintEl) hintEl.hidden = false;
+          },
+          onFail: () => {
+            if (overlay) overlay.hidden = false;
+            showFallback('Vue 3D interrompue — voici la photo de votre étude.');
+          },
+        });
+        if (!handle) {
+          showFallback('Vue 3D indisponible sur cet appareil — voici la photo de votre étude.');
+        }
+      } catch {
+        // Réseau lent / import échoué : le poster reste, message honnête.
+        showFallback('Vue 3D momentanément indisponible — voici la photo de votre étude.');
+      }
+    }
+
+    startBtn?.addEventListener('click', () => void boot());
+
+    // Conditions normales : pré-charge au scroll (proche du viewport). En
+    // reduced-motion ou Save-Data : rien ne bouge/charge sans geste explicite.
+    if (!reduced && !saveData && 'IntersectionObserver' in window) {
+      const io = new IntersectionObserver(
+        (entries) => {
+          if (entries.some((e) => e.isIntersecting)) {
+            io.disconnect();
+            void boot();
+          }
+        },
+        { rootMargin: '200px' },
+      );
+      io.observe(section3d);
+    }
+
+    // Libère le GPU au départ de la page (aucune fuite de contexte WebGL).
+    window.addEventListener('pagehide', () => {
+      handle?.dispose();
+      handle = null;
+    });
+  }
+
+  // ── WJ26 — visite guidée : surlignage d'étape (progressive enhancement).
+  // Les 4 étapes sont TOUJOURS toutes visibles (zéro mouvement, zéro CLS,
+  // lisible sans JS) ; Précédent/Suivant ne déplacent que le surlignage +
+  // l'annonce aria-live. Rien n'anime la caméra 3D (reduced-motion-safe).
+  const walk = document.getElementById('roof3d-walk');
+  if (walk) {
+    const steps = Array.from(walk.querySelectorAll<HTMLElement>('.walk-step'));
+    const prev = document.getElementById('roof3d-walk-prev') as HTMLButtonElement | null;
+    const next = document.getElementById('roof3d-walk-next') as HTMLButtonElement | null;
+    const count = document.getElementById('roof3d-walk-count');
+    let idx = 0;
+    function setStep(i: number): void {
+      idx = Math.max(0, Math.min(steps.length - 1, i));
+      steps.forEach((s, j) => {
+        if (j === idx) s.setAttribute('aria-current', 'step');
+        else s.removeAttribute('aria-current');
+      });
+      if (prev) prev.disabled = idx === 0;
+      if (next) next.disabled = idx === steps.length - 1;
+      if (count) count.textContent = `Étape ${idx + 1} sur ${steps.length}`;
+    }
+    prev?.addEventListener('click', () => setStep(idx - 1));
+    next?.addEventListener('click', () => setStep(idx + 1));
+    setStep(0);
+  }
+</script>
+
 <style>
   /* P2 — réserve le ratio du graphe (viewBox 360×150 = 2.4:1) AVANT le rendu du
      SVG inline pour garantir zéro CLS. Le SVG enfant occupe 100 % de la largeur,
@@ -1034,6 +1280,33 @@ const signConfig = ok
   .sign-pad {
     height: 160px;
     cursor: crosshair;
+  }
+
+  /* WJ25/WJ27 — scène 3D : ratio RÉSERVÉ avant tout chargement (zéro CLS).
+     Le poster occupe la boîte ; le canvas (créé par la visionneuse) la recouvre.
+     touch-action: none sur le canvas = orbite/pinch sans scroller la page. */
+  .roof3d-stage {
+    position: relative;
+    width: 100%;
+    aspect-ratio: 16 / 10;
+    background: var(--color-azur-950, #0a1a33);
+  }
+  .roof3d-stage :global(canvas) {
+    touch-action: none;
+    cursor: grab;
+  }
+  .roof3d-stage :global(canvas:active) {
+    cursor: grabbing;
+  }
+  /* Scrim léger pour la lisibilité du bouton/note posés sur la photo. */
+  .roof3d-scrim {
+    background: linear-gradient(to top, rgb(7 11 29 / 0.55), rgb(7 11 29 / 0.15));
+  }
+
+  /* WJ26 — étape active de la visite guidée : simple surlignage laiton (aucun
+     mouvement, aucune hauteur qui change → zéro CLS, reduced-motion-safe). */
+  .walk-step[aria-current='step'] {
+    border-color: rgb(232 181 74 / 0.45);
   }
 
   /* WJ16 — animation : tracé des courbes + lever de soleil, GATÉE derrière
