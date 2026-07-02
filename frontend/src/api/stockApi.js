@@ -135,6 +135,73 @@ const stockApi = {
     api.get('/stock/factures-fournisseur/comptes-a-payer/', { params }),
   ajouterPaiementFournisseur: (factureId, data) =>
     api.post(`/stock/factures-fournisseur/${factureId}/paiements/`, data),
+
+  // WR3 — Pilotage stock (analytics INTERNES ; les valeurs au prix d'achat
+  // ne sortent jamais vers un document client).
+  produitsAReapprovisionner: () =>
+    api.get('/stock/produits/a-reapprovisionner/'),
+  genererBcfReappro: (fournisseurId) =>
+    api.post('/stock/produits/generer-bcf-reappro/',
+      fournisseurId ? { fournisseur_id: fournisseurId } : {}),
+  previsionsReappro: (nbMois) =>
+    api.get('/stock/produits/previsions-reappro/',
+      { params: nbMois ? { nb_mois: nbMois } : {} }),
+  rotationStock: (jours) =>
+    api.get('/stock/produits/rotation/', { params: jours ? { jours } : {} }),
+  expirantBientot: (jours) =>
+    api.get('/stock/produits/expirant-bientot/',
+      { params: jours ? { jours } : {} }),
+
+  // WR4 — Achats & fournisseurs (INTERNES ; prix d'achat jamais client-facing).
+  // FG58 — comparaison des prix multi-fournisseurs d'un produit (admin).
+  comparerFournisseurs: (produitId) =>
+    api.get(`/stock/produits/${produitId}/comparer-fournisseurs/`),
+  // FG59 — scorecard performance d'un fournisseur (admin).
+  performanceFournisseur: (fournisseurId) =>
+    api.get(`/stock/fournisseurs/${fournisseurId}/performance/`),
+  // FG55 — PDF d'une facture fournisseur (blob, interne).
+  factureFournisseurPdf: (id) =>
+    api.get(`/stock/factures-fournisseur/${id}/pdf/`, { responseType: 'blob' }),
+  // FG56 — facturer une réception confirmée → crée une facture fournisseur.
+  facturerReception: (id) =>
+    api.post(`/stock/receptions-fournisseur/${id}/facturer/`),
+  // FG60 — export Excel de la liste (filtrée) des mouvements de stock (blob).
+  exportMouvementsXlsx: (params) =>
+    api.post('/stock/mouvements/export-xlsx/', null,
+      { params, responseType: 'blob' }),
+  // FG62 — suggestions de réapprovisionnement par emplacement (admin).
+  suggestionsReapproEmplacement: () =>
+    api.get('/stock/emplacements/suggestions-reappro/'),
+
+  // WR5 — Opérations stock (admin/INTERNE).
+  // FG63 — sessions d'inventaire physique (brouillon → valider / annuler).
+  getInventaireSessions: (params) =>
+    api.get('/stock/inventaire-sessions/', { params }),
+  getInventaireSession: (id) =>
+    api.get(`/stock/inventaire-sessions/${id}/`),
+  createInventaireSession: (data) =>
+    api.post('/stock/inventaire-sessions/', data),
+  validerInventaireSession: (id) =>
+    api.post(`/stock/inventaire-sessions/${id}/valider/`),
+  annulerInventaireSession: (id) =>
+    api.post(`/stock/inventaire-sessions/${id}/annuler/`),
+
+  // FG66 / DC36 — kits (nomenclatures) : liste + explosion en lignes composant.
+  getKits: (params) => api.get('/stock/kits/', { params }),
+  exploserKit: (id, quantite) =>
+    api.get(`/stock/kits/${id}/exploser/`,
+      { params: quantite ? { quantite } : {} }),
+
+  // DC35 / FG254 — fiches techniques (datasheets) rattachées aux produits.
+  getFichesTechniques: (produitId) =>
+    api.get('/stock/fiches-techniques/',
+      { params: produitId ? { produit: produitId } : {} }),
+  createFicheTechnique: (data) =>
+    api.post('/stock/fiches-techniques/', data),
+  updateFicheTechnique: (id, data) =>
+    api.patch(`/stock/fiches-techniques/${id}/`, data),
+  deleteFicheTechnique: (id) =>
+    api.delete(`/stock/fiches-techniques/${id}/`),
 }
 
 export default stockApi

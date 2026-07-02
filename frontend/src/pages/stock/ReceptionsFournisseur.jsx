@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import { PackageCheck, Plus } from 'lucide-react'
+import { PackageCheck, Plus, ReceiptText } from 'lucide-react'
 import stockApi from '../../api/stockApi'
 import {
   Button, StatusPill, DataTable,
@@ -218,11 +218,14 @@ function NouvelleReception({ bonsRecevables, onClose, onSaved }) {
 }
 
 // ── Modal : consultation d'une réception + confirmation d'un brouillon ───────
-function ReceptionDetail({ reception, onClose, onSaved }) {
+// Export nommé : testé directement (WR4 — « facturer cette réception »).
+export function ReceptionDetail({ reception, onClose, onSaved }) {
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState(null)
+  const [factureInfo, setFactureInfo] = useState(null)
   const lignes = reception?.lignes ?? []
   const isBrouillon = reception?.statut === 'brouillon'
+  const isConfirme = reception?.statut === 'confirme'
 
   const confirmer = async () => {
     setBusy(true); setError(null)
@@ -244,6 +247,23 @@ function ReceptionDetail({ reception, onClose, onSaved }) {
       onClose()
     } catch (err) {
       setError(frError(err, "L'annulation a échoué."))
+    } finally { setBusy(false) }
+  }
+
+  // WR4 / FG56 — « facturer cette réception » : crée une facture fournisseur
+  // à partir de la réception confirmée (montants dérivés des lignes du BCF).
+  const facturer = async () => {
+    setBusy(true); setError(null); setFactureInfo(null)
+    try {
+      const r = await stockApi.facturerReception(reception.id)
+      const ff = r.data ?? {}
+      setFactureInfo(`Facture fournisseur ${ff.reference ?? ''} créée (${
+        Number(ff.montant_ttc ?? 0).toLocaleString('fr-FR', {
+          minimumFractionDigits: 2, maximumFractionDigits: 2,
+        })} MAD TTC).`)
+      onSaved?.()
+    } catch (err) {
+      setError(frError(err, 'La facturation de la réception a échoué.'))
     } finally { setBusy(false) }
   }
 
@@ -297,11 +317,22 @@ function ReceptionDetail({ reception, onClose, onSaved }) {
             {error}
           </div>
         )}
+        {factureInfo && (
+          <div role="status" className="rounded-lg border border-success/30 bg-success/10 p-3 text-sm text-success">
+            {factureInfo}
+          </div>
+        )}
 
         <DialogFooter className="flex-wrap">
           {isBrouillon && (
             <Button type="button" variant="destructive" loading={busy} onClick={annuler}>
               Annuler la réception
+            </Button>
+          )}
+          {isConfirme && (
+            <Button type="button" variant="outline" loading={busy} onClick={facturer}
+                    title="Créer une facture fournisseur à partir de cette réception (interne)">
+              <ReceiptText /> Facturer cette réception
             </Button>
           )}
           <Button type="button" variant="ghost" onClick={onClose}>Fermer</Button>
