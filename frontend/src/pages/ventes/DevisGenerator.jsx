@@ -1590,6 +1590,7 @@ export default function DevisGenerator({
                             value={l.produit}
                             onChange={id => onProduitChange(l._key, id)}
                             typeFilter={classifyProduct(l.designation) || undefined}
+                            onProduitCreated={(p) => setProduits(ps => [...ps, p])}
                           />
                         </td>
                         <td data-label="Qté">
