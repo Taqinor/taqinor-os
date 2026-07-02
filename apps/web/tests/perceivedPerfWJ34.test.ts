@@ -87,4 +87,14 @@ describe('WJ34 — [token].astro : poster blur-up, PDF affordance, safe-area', (
     const stickyBlock = PROPOSITION.slice(PROPOSITION.indexOf('id="sticky-cta"'), PROPOSITION.indexOf('id="sticky-cta"') + 400);
     expect(stickyBlock).toContain('env(safe-area-inset-bottom)');
   });
+
+  it('l’affordance PDF vit DANS le script WJ29 (pas un 5ᵉ <script> isolé) — un 4ᵉ <script> sans import ES sur cette route perdait son chunk client (manifeste SSR le référençait, le fichier n’était jamais écrit) ; regroupé pour rester bâti', () => {
+    const scriptTagCount = (PROPOSITION.match(/^<script>$/gm) ?? []).length;
+    expect(scriptTagCount).toBe(3);
+    const wj29Start = PROPOSITION.indexOf('WJ29 — «');
+    const wj29End = PROPOSITION.indexOf('</script>', wj29Start);
+    const wj29Block = PROPOSITION.slice(wj29Start, wj29End);
+    expect(wj29Block).toContain('WJ34 — affordance');
+    expect(wj29Block).toContain('pdf-download');
+  });
 });

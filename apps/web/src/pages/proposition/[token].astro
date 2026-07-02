@@ -1532,9 +1532,7 @@ const signConfig = ok
       });
     });
   }
-</script>
 
-<script>
   // ── WJ34 — affordance « génération du PDF… » sur le lien de téléchargement.
   // Le rendu backend (WeasyPrint) prend quelques secondes : sans signal, le
   // visiteur peut croire que le clic n'a rien fait. Le lien continue de
@@ -1543,6 +1541,10 @@ const signConfig = ok
   // l'utilisateur revient sur cet onglet (le PDF est alors soit ouvert dans
   // un nouvel onglet, soit l'échec est visible là-bas) ou après un délai de
   // sécurité (le rendu le plus lent observé reste sous quelques secondes).
+  // Regroupé dans CE script (au lieu d'un 5ᵉ <script> séparé) : un bundling
+  // observé sur cette route perdait le chunk d'un <script> isolé sans import
+  // ES — le manifeste SSR le référençait mais le fichier n'était jamais écrit
+  // côté client. Même page, même effet, zéro risque de chunk manquant.
   const pdfLink = document.getElementById('pdf-download') as HTMLAnchorElement | null;
   const pdfIcon = document.getElementById('pdf-download-icon');
   const pdfSpinner = document.getElementById('pdf-download-spinner');
@@ -1551,21 +1553,21 @@ const signConfig = ok
   const PDF_LABEL_LOADING = 'Génération du PDF…';
 
   if (pdfLink && pdfLabel) {
-    let resetTimer: number | undefined;
-    function setLoading(loading: boolean): void {
+    let pdfResetTimer: number | undefined;
+    const setPdfLoading = (loading: boolean): void => {
       if (pdfIcon) pdfIcon.toggleAttribute('hidden', loading);
       if (pdfSpinner) pdfSpinner.hidden = !loading;
       pdfLabel.textContent = loading ? PDF_LABEL_LOADING : PDF_LABEL_DEFAULT;
-    }
+    };
     pdfLink.addEventListener('click', () => {
-      setLoading(true);
-      window.clearTimeout(resetTimer);
-      resetTimer = window.setTimeout(() => setLoading(false), 6000);
+      setPdfLoading(true);
+      window.clearTimeout(pdfResetTimer);
+      pdfResetTimer = window.setTimeout(() => setPdfLoading(false), 6000);
     });
     // Dès que l'utilisateur revient sur CET onglet (après avoir consulté le
     // PDF dans le nouvel onglet), on considère la génération terminée.
     document.addEventListener('visibilitychange', () => {
-      if (document.visibilityState === 'visible') setLoading(false);
+      if (document.visibilityState === 'visible') setPdfLoading(false);
     });
   }
 </script>
