@@ -208,3 +208,51 @@ describe('QS2 — création produit inline dans le BCF', () => {
     expect(screen.getByLabelText('Nouveau produit')).toBeInTheDocument()
   })
 })
+
+// ── QS4 — Envoyer WhatsApp / email (grisés sans contact, reflètent ENVOYE) ──
+const fournisseursAvecContact = [
+  { id: 1, nom: 'Fourni Plus', telephone: '+212600000001', email: 'contact@fourni.ma' },
+]
+const fournisseursSansContact = [{ id: 1, nom: 'Fourni Muet', telephone: '', email: '' }]
+
+describe('QS4 — envois fournisseur WhatsApp / email', () => {
+  it('fournisseur avec téléphone + email : les deux boutons sont actifs', () => {
+    renderDetail({ fournisseurs: fournisseursAvecContact })
+    expect(screen.getByRole('button', { name: /Envoyer par WhatsApp/ })).toBeEnabled()
+    expect(screen.getByRole('button', { name: /Envoyer par email/ })).toBeEnabled()
+  })
+
+  it('fournisseur sans contact : les deux boutons sont grisés avec un tooltip', () => {
+    renderDetail({ fournisseurs: fournisseursSansContact })
+    const wa = screen.getByRole('button', { name: /Envoyer par WhatsApp/ })
+    const mail = screen.getByRole('button', { name: /Envoyer par email/ })
+    expect(wa).toBeDisabled()
+    expect(mail).toBeDisabled()
+    expect(wa).toHaveAttribute('title', expect.stringMatching(/pas de numéro/))
+    expect(mail).toHaveAttribute('title', expect.stringMatching(/pas d['’]adresse email/))
+  })
+
+  it('WhatsApp : appelle QS3, ouvre le lien wa.me et reflète l\'état ENVOYE', async () => {
+    stockApi.whatsappBcf.mockResolvedValue({
+      data: { wa_url: 'https://wa.me/212600000001?text=x', statut: 'envoye' },
+    })
+    const onSaved = vi.fn()
+    renderDetail({ fournisseurs: fournisseursAvecContact, onSaved })
+    fireEvent.click(screen.getByRole('button', { name: /Envoyer par WhatsApp/ }))
+    await waitFor(() => expect(stockApi.whatsappBcf).toHaveBeenCalledWith(42))
+    expect(window.open).toHaveBeenCalledWith('https://wa.me/212600000001?text=x', '_blank', 'noopener')
+    await waitFor(() => expect(onSaved).toHaveBeenCalled())
+  })
+
+  it('email : appelle QS3 et affiche la confirmation', async () => {
+    stockApi.envoyerEmailBcf.mockResolvedValue({
+      data: { detail: 'Email envoyé à contact@fourni.ma.', statut: 'envoye' },
+    })
+    const onSaved = vi.fn()
+    renderDetail({ fournisseurs: fournisseursAvecContact, onSaved })
+    fireEvent.click(screen.getByRole('button', { name: /Envoyer par email/ }))
+    await waitFor(() => expect(stockApi.envoyerEmailBcf).toHaveBeenCalledWith(42))
+    expect(await screen.findByText(/Email envoyé à contact@fourni\.ma/)).toBeInTheDocument()
+    await waitFor(() => expect(onSaved).toHaveBeenCalled())
+  })
+})

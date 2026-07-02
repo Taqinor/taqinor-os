@@ -292,6 +292,46 @@ export function BcfDetail({ bcf, fournisseurs, produits, onClose, onSaved }) {
     } finally { setBusy(false) }
   }
 
+  // QS4 — coordonnées du fournisseur sélectionné (pour griser honnêtement les
+  // boutons WhatsApp/email quand le contact manque). On lit la fiche
+  // fournisseur du prop `fournisseurs` (FournisseurSerializer expose tel/email).
+  const fournisseurObj = useMemo(
+    () => (fournisseurs ?? []).find((f) => String(f.id) === String(fournisseur)) ?? null,
+    [fournisseurs, fournisseur])
+  const fournisseurTel = (fournisseurObj?.telephone ?? '').trim()
+  const fournisseurEmail = (fournisseurObj?.email ?? '').trim()
+
+  // QS4 — Envoyer par WhatsApp (QS3) : prépare un lien wa.me prêt à envoyer et
+  // marque le BCF « envoyé ». On ouvre WhatsApp dans un nouvel onglet ; le
+  // commercial appuie lui-même sur Envoyer (aucun envoi automatique).
+  const envoyerWhatsapp = async () => {
+    if (isNew || !bcf?.id) { setError('Enregistrez d\'abord le bon de commande.'); return }
+    setBusy(true); setError(null)
+    try {
+      const r = await stockApi.whatsappBcf(bcf.id)
+      const waUrl = r.data?.wa_url
+      if (waUrl) window.open(waUrl, '_blank', 'noopener')
+      setInfo('WhatsApp ouvert — appuyez sur Envoyer dans WhatsApp. Le BCF est marqué « envoyé ».')
+      onSaved?.()
+    } catch (err) {
+      setError(frBcfError(err, "La préparation du message WhatsApp a échoué."))
+    } finally { setBusy(false) }
+  }
+
+  // QS4 — Envoyer par email (QS3) : envoie le PDF au fournisseur + marque
+  // « envoyé ». Confirmation affichée au retour.
+  const envoyerEmail = async () => {
+    if (isNew || !bcf?.id) { setError('Enregistrez d\'abord le bon de commande.'); return }
+    setBusy(true); setError(null)
+    try {
+      const r = await stockApi.envoyerEmailBcf(bcf.id)
+      setInfo(r.data?.detail || 'Email envoyé au fournisseur. Le BCF est marqué « envoyé ».')
+      onSaved?.()
+    } catch (err) {
+      setError(frBcfError(err, "L'envoi de l'email au fournisseur a échoué."))
+    } finally { setBusy(false) }
+  }
+
   // Tout recevoir : pré-remplit chaque saisie de réception au reste dû.
   const toutRecevoir = () => {
     const next = {}
@@ -542,12 +582,35 @@ export function BcfDetail({ bcf, fournisseurs, produits, onClose, onSaved }) {
             </Button>
           )}
           <Button type="button" variant="ghost" onClick={onClose}>Fermer</Button>
+          {/* QS4 — envois directs au fournisseur (BCF déjà enregistré, non
+              annulé). Grisés + tooltip explicite quand le contact manque. */}
+          {!isNew && statut !== 'annule' && (
+            <>
+              <Button type="button" variant="outline" loading={busy}
+                      disabled={busy || !fournisseurTel}
+                      title={fournisseurTel
+                        ? 'Préparer un message WhatsApp au fournisseur'
+                        : 'Ce fournisseur n\'a pas de numéro de téléphone'}
+                      onClick={envoyerWhatsapp}>
+                Envoyer par WhatsApp
+              </Button>
+              <Button type="button" variant="outline" loading={busy}
+                      disabled={busy || !fournisseurEmail}
+                      title={fournisseurEmail
+                        ? 'Envoyer le PDF par email au fournisseur'
+                        : 'Ce fournisseur n\'a pas d\'adresse email'}
+                      onClick={envoyerEmail}>
+                Envoyer par email
+              </Button>
+            </>
+          )}
           {editableLignes && (
             <>
               <Button type="button" variant="outline" loading={busy} onClick={save}>
                 {busy ? '…' : 'Enregistrer'}
               </Button>
-              <Button type="button" loading={busy} onClick={envoyer}>
+              <Button type="button" loading={busy} onClick={envoyer}
+                      title="Marque le BCF « envoyé » (sans email/WhatsApp)">
                 {busy ? '…' : 'Envoyer au fournisseur'}
               </Button>
             </>

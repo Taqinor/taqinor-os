@@ -78,6 +78,13 @@ const stockApi = {
     api.delete(`/stock/bons-commande-fournisseur/${id}/`),
   envoyerBcf: (id) =>
     api.post(`/stock/bons-commande-fournisseur/${id}/envoyer/`),
+  // QS4/QS3 — envois fournisseur : WhatsApp (lien wa.me prêt à envoyer +
+  // marque le BCF « envoyé ») et email (PDF joint + EmailLog). Le lien/PDF
+  // montrent les prix d'achat au FOURNISSEUR (légitime), jamais côté client.
+  whatsappBcf: (id) =>
+    api.post(`/stock/bons-commande-fournisseur/${id}/whatsapp/`),
+  envoyerEmailBcf: (id, payload) =>
+    api.post(`/stock/bons-commande-fournisseur/${id}/envoyer-email/`, payload ?? {}),
   recevoirBcf: (id, receptions) =>
     api.post(`/stock/bons-commande-fournisseur/${id}/recevoir/`, { receptions }),
   annulerBcf: (id) =>
