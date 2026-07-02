@@ -17,7 +17,9 @@ from rest_framework.response import Response
 from authentication.mixins import TenantMixin
 from authentication.permissions import IsAnyRole, IsResponsableOrAdmin
 
-from ..models import AttestationSousTraitant, SousTraitant
+from apps.stock import selectors as stock_selectors
+
+from ..models import AttestationSousTraitant
 from ..serializers import AttestationSousTraitantSerializer
 from .. import selectors
 
@@ -55,6 +57,11 @@ class AttestationSousTraitantViewSet(TenantMixin, viewsets.ModelViewSet):
                 company, 'id', None):
             raise ValidationError(
                 {'sous_traitant': 'Sous-traitant inconnu pour cette société.'})
+        # DC34 — le sous-traitant est un stock.Fournisseur de type « service ».
+        if st is not None and getattr(st, 'type', None) != 'service':
+            raise ValidationError(
+                {'sous_traitant': 'Ce fournisseur n\'est pas un sous-traitant '
+                                  '(type service).'})
 
     def perform_create(self, serializer):
         self._check_tenant(serializer)
@@ -75,9 +82,9 @@ class AttestationSousTraitantViewSet(TenantMixin, viewsets.ModelViewSet):
             return Response(
                 {'detail': 'Paramètre `sous_traitant` requis.'},
                 status=status.HTTP_400_BAD_REQUEST)
-        st = SousTraitant.objects.filter(
-            id=st_id, company=request.user.company
-        ).prefetch_related('attestations').first()
+        # DC34 — le sous-traitant est un stock.Fournisseur(type='service') lu via
+        # le sélecteur stock (jamais d'import de apps.stock.models).
+        st = stock_selectors.get_sous_traitant(request.user.company, st_id)
         if st is None:
             return Response(
                 {'detail': 'Sous-traitant inconnu pour cette société.'},
@@ -96,6 +103,6 @@ class AttestationSousTraitantViewSet(TenantMixin, viewsets.ModelViewSet):
         return Response({
             'sous_traitant': st.id,
             'affectable': selectors.sous_traitant_affectable(st, a_la_date),
-            'actif': st.actif,
+            'actif': stock_selectors.sous_traitant_est_actif(st),
             'pieces_expirees': manquantes,
         })

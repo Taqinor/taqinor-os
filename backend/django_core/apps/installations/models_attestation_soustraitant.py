@@ -38,9 +38,12 @@ class AttestationSousTraitant(models.Model):
         'authentication.Company', on_delete=models.CASCADE,
         null=True, blank=True,
         related_name='installations_attestations_sous_traitant')
+    # DC34 — le sous-traitant est un stock.Fournisseur(type='service') ; FK
+    # CHAÎNE (jamais d'import de apps.stock.models). CASCADE : une pièce n'a pas
+    # de sens sans son sous-traitant.
     sous_traitant = models.ForeignKey(
-        'installations.SousTraitant', on_delete=models.CASCADE,
-        related_name='attestations')
+        'stock.Fournisseur', on_delete=models.CASCADE,
+        related_name='installations_attestations')
     # max_length=20 couvre le plus long code de Type ('rc_decennale' = 12).
     type_piece = models.CharField(
         max_length=20, choices=Type.choices, default=Type.AUTRE)

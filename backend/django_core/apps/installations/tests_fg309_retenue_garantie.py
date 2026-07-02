@@ -22,8 +22,9 @@ from rest_framework.test import APIClient
 from rest_framework_simplejwt.tokens import AccessToken
 
 from apps.installations.models import (
-    RetenueGarantieSousTraitant, OrdreSousTraitance, SousTraitant,
+    RetenueGarantieSousTraitant, OrdreSousTraitance,
 )
+from apps.stock.services import create_sous_traitant
 
 User = get_user_model()
 _seq = itertools.count(1)
@@ -51,8 +52,9 @@ def make_user(company, role='responsable', username=None):
 
 
 def make_sous_traitant(company):
-    return SousTraitant.objects.create(
-        company=company, raison_sociale='Genie SARL', metier='genie_civil')
+    # DC34 — un sous-traitant est un stock.Fournisseur(type='service').
+    return create_sous_traitant(
+        company=company, nom='Genie SARL', metier='genie_civil')
 
 
 def make_ordre(company, montant='100000', realise=None):

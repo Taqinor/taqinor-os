@@ -1,16 +1,17 @@
 """
-FG304 — Référentiel des sous-traitants chantier.
+FG304 / DC34 — Annuaire des sous-traitants chantier (référentiel UNIFIÉ).
 
-``SousTraitant`` est l'annuaire des prestataires de MAIN-D'ŒUVRE sous-traitée
-(terrassement / génie civil / électricité / levage / transport / autre), DISTINCT
-des fournisseurs de matériel. Il porte le contact, l'adresse et les identifiants
-administratifs marocains (ICE, RIB).
+Depuis DC34 un sous-traitant N'EST PLUS un modèle parallèle : c'est un
+``stock.Fournisseur`` de type « service » porteur d'un ``SousTraitantProfile``
+(métier / actif / note). L'endpoint ``sous-traitants/`` reste identique (contrat
+d'API FG304 préservé) mais orchestre le couple Fournisseur/profil via les
+services stock.
 
 Couvre :
   * création via l'API avec société + ``created_by`` posés CÔTÉ SERVEUR ;
   * l'injection de ``company`` dans le corps est ignorée (forcée serveur) ;
-  * le stockage de l'ICE et du RIB ;
-  * le filtre par ``metier`` et par ``actif`` ;
+  * le stockage de l'ICE et du RIB (sur le Fournisseur) ;
+  * le filtre par ``metier`` et par ``actif`` (lus sur le profil) ;
   * la recherche plein-texte (``?search=``) sur raison sociale et ICE ;
   * le scope société (la société B ne voit pas l'annuaire de A) ;
   * la barrière de rôle (écriture responsable/admin uniquement, lecture libre).
@@ -25,7 +26,8 @@ from django.test import TestCase
 from rest_framework.test import APIClient
 from rest_framework_simplejwt.tokens import AccessToken
 
-from apps.installations.models import SousTraitant
+from apps.stock.models import Fournisseur, SousTraitantProfile
+from apps.stock.services import create_sous_traitant
 
 User = get_user_model()
 _seq = itertools.count(1)
@@ -64,7 +66,8 @@ class TestSousTraitantCreation(TestCase):
         self.api = auth(self.user)
 
     def test_create_sous_traitant(self):
-        """FG304 — créer un sous-traitant : société + créateur posés serveur."""
+        """FG304/DC34 — créer un sous-traitant : Fournisseur(type=service) +
+        profil, société + créateur posés serveur."""
         r = self.api.post(f'{BASE}/sous-traitants/', {
             'raison_sociale': 'Terrasol SARL',
             'metier': 'terrassement',
@@ -76,16 +79,20 @@ class TestSousTraitantCreation(TestCase):
             'adresse': '12 rue des Chantiers, Casablanca',
         })
         self.assertEqual(r.status_code, 201, r.data)
-        st = SousTraitant.objects.get(id=r.data['id'])
-        # Société + créateur posés côté serveur, jamais du corps.
-        self.assertEqual(st.company_id, self.company.id)
-        self.assertEqual(st.created_by_id, self.user.id)
-        self.assertEqual(st.metier, 'terrassement')
-        self.assertTrue(st.actif)
+        f = Fournisseur.objects.get(id=r.data['id'])
+        # Société posée côté serveur, jamais du corps ; type service.
+        self.assertEqual(f.company_id, self.company.id)
+        self.assertEqual(f.type, 'service')
+        self.assertEqual(f.nom, 'Terrasol SARL')
+        profil = SousTraitantProfile.objects.get(fournisseur=f)
+        self.assertEqual(profil.company_id, self.company.id)
+        self.assertEqual(profil.metier, 'terrassement')
+        self.assertEqual(profil.created_by_id, self.user.id)
+        self.assertTrue(profil.actif)
 
     def test_ice_rib_stored(self):
         """FG304 — l'ICE et le RIB sont stockés tels quels (chaînes, zéros de
-        tête préservés)."""
+        tête préservés) sur le Fournisseur."""
         ice = '002233445000067'
         rib = '230810000099887766554433'
         r = self.api.post(f'{BASE}/sous-traitants/', {
@@ -94,9 +101,9 @@ class TestSousTraitantCreation(TestCase):
             'ice': ice, 'rib': rib,
         })
         self.assertEqual(r.status_code, 201, r.data)
-        st = SousTraitant.objects.get(id=r.data['id'])
-        self.assertEqual(st.ice, ice)
-        self.assertEqual(st.rib, rib)
+        f = Fournisseur.objects.get(id=r.data['id'])
+        self.assertEqual(f.ice, ice)
+        self.assertEqual(f.rib, rib)
 
     def test_company_forced_server_side(self):
         """FG304 — la société du corps de requête est ignorée (forcée serveur)."""
@@ -107,8 +114,8 @@ class TestSousTraitantCreation(TestCase):
             'metier': 'levage',
         })
         self.assertEqual(r.status_code, 201, r.data)
-        st = SousTraitant.objects.get(id=r.data['id'])
-        self.assertEqual(st.company_id, self.company.id)
+        f = Fournisseur.objects.get(id=r.data['id'])
+        self.assertEqual(f.company_id, self.company.id)
 
     def test_blank_raison_sociale_rejected(self):
         """FG304 — la raison sociale est obligatoire."""
@@ -126,14 +133,14 @@ class TestSousTraitantFiltersSearch(TestCase):
         self.company = make_company()
         self.user = make_user(self.company)
         self.api = auth(self.user)
-        self.terrass = SousTraitant.objects.create(
-            company=self.company, raison_sociale='Terrasol SARL',
+        self.terrass = create_sous_traitant(
+            company=self.company, nom='Terrasol SARL',
             metier='terrassement', ice='001234567000089', actif=True)
-        self.elec = SousTraitant.objects.create(
-            company=self.company, raison_sociale='Élec Atlas',
+        self.elec = create_sous_traitant(
+            company=self.company, nom='Élec Atlas',
             metier='electricite', ice='009988776000054', actif=True)
-        self.vieux = SousTraitant.objects.create(
-            company=self.company, raison_sociale='Vieux Transport',
+        self.vieux = create_sous_traitant(
+            company=self.company, nom='Vieux Transport',
             metier='transport', ice='005555555000011', actif=False)
 
     def test_filter_by_metier(self):
@@ -158,7 +165,7 @@ class TestSousTraitantFiltersSearch(TestCase):
         self.assertEqual(ids, [self.vieux.id])
 
     def test_search_by_raison_sociale(self):
-        """FG304 — recherche plein-texte sur la raison sociale."""
+        """FG304 — recherche plein-texte sur la raison sociale (nom)."""
         r = self.api.get(f'{BASE}/sous-traitants/?search=Atlas')
         self.assertEqual(r.status_code, 200, r.data)
         ids = [row['id'] for row in r.data['results']]
@@ -182,9 +189,8 @@ class TestSousTraitantTenant(TestCase):
 
     def test_list_company_isolation(self):
         """FG304 — la société B ne voit pas l'annuaire de A."""
-        SousTraitant.objects.create(
-            company=self.company, raison_sociale='Terrasol SARL',
-            metier='terrassement')
+        create_sous_traitant(
+            company=self.company, nom='Terrasol SARL', metier='terrassement')
         company_b = make_company()
         user_b = make_user(company_b)
         r = auth(user_b).get(f'{BASE}/sous-traitants/')
@@ -193,9 +199,8 @@ class TestSousTraitantTenant(TestCase):
 
     def test_retrieve_cross_company_404(self):
         """FG304 — récupérer un sous-traitant d'une autre société → 404."""
-        st = SousTraitant.objects.create(
-            company=self.company, raison_sociale='Terrasol SARL',
-            metier='terrassement')
+        st = create_sous_traitant(
+            company=self.company, nom='Terrasol SARL', metier='terrassement')
         company_b = make_company()
         user_b = make_user(company_b)
         r = auth(user_b).get(f'{BASE}/sous-traitants/{st.id}/')
