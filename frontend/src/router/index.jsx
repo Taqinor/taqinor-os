@@ -46,6 +46,7 @@ const InstallationsPage = lazy(() => import('../pages/installations/Installation
 const InterventionsPage = lazy(() => import('../pages/interventions/InterventionsPage'))
 const MaJourneePage = lazy(() => import('../pages/interventions/MaJourneePage'))
 const ParcInstallePage = lazy(() => import('../pages/installations/ParcInstallePage'))
+const PlanificationPage = lazy(() => import('../pages/installations/PlanificationPage'))
 const OutillagePage = lazy(() => import('../pages/outillage/OutillagePage'))
 const ProductionPage = lazy(() => import('../pages/monitoring/ProductionPage'))
 const EquipementsPage = lazy(() => import('../pages/sav/EquipementsPage'))
@@ -194,6 +195,7 @@ const router = createBrowserRouter([
   // Chantiers / Installations
   { path: '/chantiers', loader: authLoader, element: <WithLayout><InstallationsPage /></WithLayout> },
   { path: '/interventions', loader: authLoader, element: <WithLayout><InterventionsPage /></WithLayout> },
+  { path: '/planification', loader: authLoader, element: <WithLayout><PlanificationPage /></WithLayout> },
   { path: '/ma-journee', loader: authLoader, element: <WithLayout><MaJourneePage /></WithLayout> },
   { path: '/parc', loader: authLoader, element: <WithLayout><ParcInstallePage /></WithLayout> },
   { path: '/production', loader: authLoader, element: <WithLayout><ProductionPage /></WithLayout> },
