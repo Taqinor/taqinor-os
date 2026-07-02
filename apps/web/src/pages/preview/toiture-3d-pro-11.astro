@@ -423,6 +423,16 @@ const chipClass =
                   les rangées se dégagent l'une l'autre — c'est la preuve de l'espacement
                   anti-ombrage.
                 </p>
+                <!-- WJ21 — carte d'accès solaire (heatmap d'irradiance) : teinte chaque
+                     panneau par sa part réelle d'irradiation annuelle reçue (astronomie
+                     pure, pondérée par l'irradiation du lieu). Bascule manuelle. -->
+                <div class="flex flex-wrap items-center gap-2 border-t border-white/10 pt-3">
+                  <span class="tech-label mr-1 text-lune-faint">Accès solaire</span>
+                  <button type="button" id="rp9-heatmap-toggle" class={chipClass} aria-pressed="false">
+                    Carte d'accès solaire
+                  </button>
+                </div>
+                <p id="rp9-heatmap-note" class="min-h-[1.25rem] text-xs leading-relaxed text-lune-faint" aria-live="polite"></p>
               </div>
 
               <div class="flex flex-wrap items-center gap-2">

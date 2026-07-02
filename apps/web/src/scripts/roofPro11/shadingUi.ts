@@ -25,6 +25,8 @@ import {
   obstructionHeightFromShadow,
   shadeObstructionsENU,
   shadowVector,
+  pointSolarAccess,
+  solarAccessColorRGB,
   type ShadeObstruction,
 } from '../../lib/shadingEngine';
 import { fallbackPerKwc } from '../../lib/productionEngine';
@@ -38,6 +40,9 @@ export interface ShadingUiDeps {
   setStatus: (msg: string) => void;
   /** Re-rend la zone active (3D + carte de résultat + fenêtre de production). */
   recalcDisplays: () => void;
+  /** WJ21 — applique la teinte d'accès solaire aux panneaux 3D (scene3d), ou l'efface
+   *  (colorFor null). Injecté en wrapper paresseux (scene3d est construit après). */
+  applyHeatmap: (colorFor: ((cellIndex: number) => { r: number; g: number; b: number }) | null) => void;
 }
 
 export interface ShadingUi {
@@ -45,6 +50,9 @@ export interface ShadingUi {
   handleMapClick: (lngLat: LngLat) => boolean;
   /** Recalcule hauteurs (hypothèse de prise de vue) + facteurs + affichages. */
   recomputeShading: () => void;
+  /** WJ21 — ré-applique la heatmap d'accès solaire si elle est active (après un re-rendu
+   *  qui a recréé les instances de panneaux). No-op si la heatmap est OFF. */
+  refreshHeatmap: () => void;
   /** Efface toutes les ombres tracées (« Effacer » / nouveau tracé). */
   reset: () => void;
 }
@@ -52,7 +60,7 @@ export interface ShadingUi {
 const SHADE_SRC = 'rp9-shade-lines';
 
 export function createShadingUi(ctx: Ctx, deps: ShadingUiDeps): ShadingUi {
-  const { map, setStatus, recalcDisplays } = deps;
+  const { map, setStatus, recalcDisplays, applyHeatmap } = deps;
 
   const addBtn = $<HTMLButtonElement>('rp9-shade-add');
   const clearBtn = $<HTMLButtonElement>('rp9-shade-clear');
@@ -60,6 +68,10 @@ export function createShadingUi(ctx: Ctx, deps: ShadingUiDeps): ShadingUi {
   const hourValueEl = $('rp9-shade-hour-value');
   const listEl = $('rp9-shade-list');
   const noteEl = $('rp9-shade-note');
+  // WJ21 — carte d'accès solaire (heatmap d'irradiance).
+  const heatmapBtn = $<HTMLButtonElement>('rp9-heatmap-toggle');
+  const heatmapNoteEl = $('rp9-heatmap-note');
+  let heatmapOn = false;
 
   // — Hypothèse du moment de prise de vue (jour de l'année + heure solaire) —
   let imageryDay: number = IMAGERY_SUN_DEFAULT.dayOfYear;
@@ -119,6 +131,47 @@ export function createShadingUi(ctx: Ctx, deps: ShadingUiDeps): ShadingUi {
     renderList();
     drawShadeLines();
     recalcDisplays();
+    // WJ21 — le re-rendu (recalcDisplays) a recréé les instances de panneaux : ré-applique
+    // la teinte d'accès solaire si la heatmap est active.
+    refreshHeatmap();
+  }
+
+  // WJ21 — CARTE D'ACCÈS SOLAIRE : teinte chaque panneau par sa part RÉELLE d'irradiation
+  // annuelle reçue (obstructions tracées retirées du soleil direct, diffus conservé),
+  // pondérée par les vrais profils PVGIS. Astronomie pure, aucune API, aucun chiffre
+  // inventé (même modèle que le dérate de production, évalué par panneau).
+  function buildHeatmapColorFn(): ((cellIndex: number) => { r: number; g: number; b: number }) | null {
+    const plan = ctx.layoutPlan;
+    if (!plan || !plan.grid.panels.length || ctx.vertices.length < 3) return null;
+    const roofH = FLOORS * FLOOR_HEIGHT_M;
+    const enu = shadeObstructionsENU(ctx.shadeObstructions, ctx.centroid, roofH);
+    const prod = ctx.prodPerKwc ?? fallbackPerKwc();
+    const panels = plan.grid.panels;
+    // Accès solaire pré-calculé par cellule (0–1). Sans obstruction → tout à 1 (plein
+    // soleil uniforme) : la heatmap est alors verte partout, ce qui est honnête.
+    const access: number[] = panels.map((p) =>
+      enu.length ? pointSolarAccess(ctx.centroidLat, enu, prod, p.cx, p.cy) : 1,
+    );
+    return (cellIndex: number) => {
+      const a = cellIndex >= 0 && cellIndex < access.length ? access[cellIndex] : 1;
+      return solarAccessColorRGB(a);
+    };
+  }
+
+  function refreshHeatmap() {
+    if (!heatmapOn) return;
+    applyHeatmap(buildHeatmapColorFn());
+  }
+
+  function setHeatmap(on: boolean) {
+    heatmapOn = on;
+    if (heatmapBtn) heatmapBtn.setAttribute('aria-pressed', String(on));
+    if (heatmapNoteEl) {
+      heatmapNoteEl.textContent = on
+        ? 'Carte d’accès solaire : vert = plein soleil toute l’année, rouge = souvent à l’ombre (calcul astronomique, pondéré par l’irradiation réelle du lieu). Tracez des ombres voisines pour la voir varier.'
+        : '';
+    }
+    applyHeatmap(on ? buildHeatmapColorFn() : null);
   }
 
   /** Ligne pointillée base→bout de chaque ombre tracée, sur la carte 2D. */
@@ -266,6 +319,8 @@ export function createShadingUi(ctx: Ctx, deps: ShadingUiDeps): ShadingUi {
       recomputeShading();
     }
   });
+  // WJ21 — bascule de la carte d'accès solaire (heatmap d'irradiance).
+  heatmapBtn?.addEventListener('click', () => setHeatmap(!heatmapOn));
 
-  return { handleMapClick, recomputeShading, reset };
+  return { handleMapClick, recomputeShading, refreshHeatmap, reset };
 }

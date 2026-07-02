@@ -31,3 +31,38 @@ WJ23), and invites the user to remove panels with « − » to match the need.
 No new production number is invented: moving/adding panels in the same plane keeps
 per-panel yield identical (same tilt/azimuth/GPS); only the count changes, recomputed via
 the existing PVGIS-by-count path.
+
+---
+
+## WJ21 — Sun-path animation + irradiance heatmap
+
+**Sun-path (already present, reused).** The 3D scene already positions a REAL sun by
+`ctx.sunHour` (6–18 h) and `ctx.sunDay` (season), driven by the W87 « Heure du soleil »
+scrubber + winter/summer toggle. This is a MANUAL scrubber (no auto-play), so it is
+`prefers-reduced-motion`-safe by construction — the user drags time/season and shadows
+move; nothing animates on its own. WJ21 keeps that and adds the heatmap.
+
+**Irradiance heatmap (« Carte d'accès solaire »).** Colours each roof panel by its REAL
+relative annual solar access — not arbitrary colours. Method (pure astronomy + PVGIS,
+no API):
+
+- **Solar access of a point** = the fraction of ANNUAL irradiation that actually reaches
+  it once traced shading obstructions block the *direct* sun (the diffuse ~25 % stays).
+  This is exactly the WJ19 production-derate model, evaluated **per panel** instead of at
+  the centroid: `pointSolarAccess` computes the 12×24 hourly shade matrix seen from that
+  point (`hourlyShadeFactors`, real astronomy `sunDirection`) and weights each hour by the
+  energy it carries using the real PVGIS typical-day profiles (`applyShadeFactors`), then
+  divides derated ÷ intact annual kWh.
+  - Bounds proven by tests: `diffuseFraction ≤ access ≤ 1`; a fully clear point = 1.0; a
+    point far from an obstruction receives ≥ what a near point receives (monotone).
+  - No obstruction, or no usable production → access 1 everywhere (uniform "full sun",
+    honest — nothing is invented).
+- **Colour mapping** (`solarAccessColorRGB`) is a continuous RED (low access) → AMBER →
+  GREEN (full sun) gradient, monotone and tied to the true access value: access=1 → green,
+  access≈diffuse → red. Applied to panel instances via the existing `instanceColor` buffer
+  (W88 mechanism) — `MeshStandardMaterial` multiplies its colour by `instanceColor`.
+- After any re-render that recreates the panel instances (sun scrubber, season toggle,
+  obstruction change), `refreshHeatmap()` re-applies the tint so the heatmap survives.
+
+Because the heatmap and the annual production derate share the same model, the colours a
+seller shows on the roof are consistent with the savings numbers on the card.

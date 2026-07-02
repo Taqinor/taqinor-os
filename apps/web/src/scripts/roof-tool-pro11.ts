@@ -1123,6 +1123,9 @@ export function initRoofToolPro8(opts: InitOptions): void {
     map,
     setStatus,
     recalcDisplays: () => renderActive(),
+    // WJ21 — wrapper paresseux : scene3d est construit plus bas ; cette closure n'est
+    // appelée qu'après le boot (jamais pendant la TDZ du const scene3d).
+    applyHeatmap: (colorFor) => scene3d.setSolarAccessHeatmap(colorFor),
   });
 
   // — Tracé du contour + recherche d'adresse (géocodage W75). Le module câble lui-même
@@ -2332,6 +2335,7 @@ export function initRoofToolPro8(opts: InitOptions): void {
       ctx.sunHour = h;
       if (sunHourValueEl) sunHourValueEl.textContent = `${h} h`;
       renderActive();
+      shadingUi.refreshHeatmap(); // WJ21 — le re-rendu a recréé les panneaux : garde la heatmap
     });
   }
   // W87 — saison : hiver (solstice = pire cas d'ombrage, défaut) ou été (jour 172).
@@ -2342,6 +2346,7 @@ export function initRoofToolPro8(opts: InitOptions): void {
         o.setAttribute('aria-pressed', String(o === b)),
       );
       renderActive();
+      shadingUi.refreshHeatmap(); // WJ21 — garde la heatmap après le re-rendu saisonnier
     });
   });
   // W46 — bouton « Recommandé » de l'inclinaison = AFFORDANCE PAR AXE : il LIBÈRE LE
