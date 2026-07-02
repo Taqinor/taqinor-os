@@ -905,15 +905,25 @@ def _gate_check_series(installation):
 
 
 def _gate_check_tests(installation):
-    """Essais de mise en service enregistrés.
+    """CH3 — une fiche de recette IEC 62446-1 PASSÉE (conforme / conforme avec
+    réserves) est requise pour franchir le gate « Mise en service ».
 
-    CH2 — repli provisoire sur les champs historiques `mes_*` / la date de
-    mise en service (CH3 exigera la fiche d'essais structurée IEC 62446-1)."""
+    Repli historique : si aucune fiche structurée n'a encore été ouverte mais
+    que les champs libres `mes_*` / la date de mise en service portent déjà des
+    valeurs (chantiers d'avant CH3), on considère l'essai enregistré — aucun
+    chantier existant n'est bloqué rétroactivement."""
+    record = getattr(installation, 'commissioning_record', None)
+    if record is not None:
+        if record.passe:
+            return None
+        return ("Fiche de recette IEC 62446-1 non conforme "
+                f"({record.get_resultat_display()}).")
+    # Aucune fiche structurée : repli sur la saisie historique.
     if (installation.date_mise_en_service
             or installation.mes_production_test is not None
             or installation.mes_tension is not None):
         return None
-    return "Essais de mise en service non enregistrés."
+    return "Fiche de recette IEC 62446-1 non enregistrée."
 
 
 def _gate_check_materiel(installation):
@@ -1132,3 +1142,40 @@ def appliquer_landed_cost_au_stock(dossier):
         'lignes_maj': lignes_maj,
         'lignes': detail,
     }
+
+
+# ── CH3 — Fiche de recette IEC 62446-1 (mise en service structurée) ──────────
+# La fiche remplace la saisie libre (mes_*) par un jeu d'essais discret. La
+# création est idempotente (un chantier ↔ une fiche). Un relevé I-V calcule
+# son écart de puissance mesuré vs attendu et lève un drapeau de défaut.
+
+# Tolérance d'écart de puissance (%) au-delà de laquelle un string est signalé
+# défectueux (dégradation/point chaud), valeur usuelle de terrain.
+IV_TOLERANCE_PMAX_PCT = 5
+
+
+def ensure_commissioning_record(installation, user=None):
+    """Retourne la fiche de recette du chantier, en la créant si besoin
+    (idempotent). La société est celle du chantier, jamais lue du corps."""
+    from .models import CommissioningRecord
+    record, _ = CommissioningRecord.objects.get_or_create(
+        installation=installation,
+        defaults={'company': installation.company, 'created_by': user})
+    return record
+
+
+def compute_iv_ecart(reading):
+    """Calcule l'écart relatif de Pmax (mesuré vs attendu) d'un relevé I-V et
+    positionne `defaut_detecte`. No-op silencieux si une valeur manque."""
+    from decimal import Decimal
+    mesure = reading.pmax_mesure_w
+    attendu = reading.pmax_attendu_w
+    if mesure is None or attendu in (None, 0):
+        reading.ecart_pmax_pct = None
+        reading.defaut_detecte = False
+        return reading
+    ecart = (Decimal(mesure) - Decimal(attendu)) / Decimal(attendu) * 100
+    reading.ecart_pmax_pct = ecart.quantize(Decimal('0.01'))
+    # Un écart NÉGATIF au-delà de la tolérance = sous-performance/défaut.
+    reading.defaut_detecte = ecart <= Decimal(-IV_TOLERANCE_PMAX_PCT)
+    return reading

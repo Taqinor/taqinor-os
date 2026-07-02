@@ -235,6 +235,8 @@ class InstallationViewSet(TenantMixin, viewsets.ModelViewSet):
             'readiness',
             # CH2 — parcours d'étapes + état des gates (lecture).
             'etapes',
+            # CH3 — fiche de recette IEC 62446-1 (lecture ; POST auto-gardé).
+            'recette',
         ]:
             return [IsAnyRole()]
         elif self.action in WRITE_ACTIONS + [
@@ -895,6 +897,29 @@ class InstallationViewSet(TenantMixin, viewsets.ModelViewSet):
             'etape_courante': courante.cle if courante else None,
             'etapes': etapes,
         })
+
+    # ── CH3 — fiche de recette IEC 62446-1 (mise en service structurée) ─────
+    @action(detail=True, methods=['get', 'post'], url_path='recette',
+            permission_classes=[IsAnyRole])
+    def recette(self, request, pk=None):
+        """CH3 — fiche de recette IEC 62446-1 du chantier. GET lit la fiche
+        (None si aucune) ; POST l'ouvre (idempotent, réservé Responsable/Admin).
+        Une fiche PASSÉE (conforme / conforme avec réserves) débloque le gate
+        « Mise en service »."""
+        from ..services import ensure_commissioning_record
+        from ..serializers_commissioning import CommissioningRecordSerializer
+        inst = self.get_object()
+        if request.method == 'POST':
+            if not request.user.is_responsable:
+                return Response(status=status.HTTP_403_FORBIDDEN)
+            record = ensure_commissioning_record(inst, request.user)
+            return Response(
+                CommissioningRecordSerializer(record).data,
+                status=status.HTTP_201_CREATED)
+        record = getattr(inst, 'commissioning_record', None)
+        if record is None:
+            return Response({'installation': inst.id, 'record': None})
+        return Response(CommissioningRecordSerializer(record).data)
 
     @action(detail=True, methods=['post'], url_path='avancer-etape',
             permission_classes=[IsResponsableOrAdmin])

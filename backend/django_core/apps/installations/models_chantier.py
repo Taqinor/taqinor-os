@@ -157,6 +157,139 @@ class StageModele(models.Model):
         return f'{self.ordre} · {self.libelle}'
 
 
+class CommissioningRecord(models.Model):
+    """CH3 — fiche de RECETTE structurée d'un chantier selon IEC 62446-1
+    (essais de mise en service des systèmes PV raccordés au réseau).
+
+    Première classe côté ``installations`` : remplace la saisie libre historique
+    (``Installation.mes_pv_notes`` / ``mes_production_test`` / ``mes_tension``,
+    CONSERVÉS lisibles — aucune donnée détruite) par un jeu d'essais discret :
+
+      * documentation (dossier as-built / schéma / datasheets présents) ;
+      * inspection visuelle (structure, câblage, mise à la terre) ;
+      * essais électriques : continuité de terre, polarité, Voc/Isc par string
+        (relevés I-V — cf. ``CommissioningIVReading``, miroir de FG275), mesure
+        de résistance d'isolement ;
+      * vérification de performance (production d'essai vs attendu) ;
+      * sécurité (dispositifs de coupure, signalisation).
+
+    Une fiche PASSÉE (``resultat`` = conforme / conforme avec réserves) est
+    REQUISE pour franchir le gate « Mise en service » (CH2). Un chantier ↔ une
+    fiche (unicité). Additif — company posée côté serveur ; aucun statut de
+    devis touché (règle #4)."""
+
+    class Resultat(models.TextChoices):
+        EN_COURS = 'en_cours', 'En cours'
+        CONFORME = 'conforme', 'Conforme'
+        RESERVES = 'reserves', 'Conforme avec réserves'
+        NON_CONFORME = 'non_conforme', 'Non conforme'
+
+    company = models.ForeignKey(
+        'authentication.Company', on_delete=models.CASCADE,
+        null=True, blank=True, related_name='commissioning_records')
+    installation = models.OneToOneField(
+        Installation, on_delete=models.CASCADE,
+        related_name='commissioning_record')
+    date_essai = models.DateField(null=True, blank=True)
+    technicien = models.CharField(max_length=120, blank=True, null=True)
+    # ── Documentation (IEC 62446-1 §4) ──
+    doc_dossier_ok = models.BooleanField(null=True, blank=True)
+    doc_schema_ok = models.BooleanField(null=True, blank=True)
+    doc_datasheets_ok = models.BooleanField(null=True, blank=True)
+    # ── Inspection visuelle (§5) ──
+    visuel_structure_ok = models.BooleanField(null=True, blank=True)
+    visuel_cablage_ok = models.BooleanField(null=True, blank=True)
+    visuel_terre_ok = models.BooleanField(null=True, blank=True)
+    # ── Essais électriques (§6) ──
+    continuite_terre_ok = models.BooleanField(null=True, blank=True)
+    continuite_terre_ohm = models.DecimalField(
+        max_digits=8, decimal_places=3, null=True, blank=True)
+    polarite_ok = models.BooleanField(null=True, blank=True)
+    # Résistance d'isolement (MΩ) ; seuil usuel ≥ 1 MΩ.
+    isolement_mohm = models.DecimalField(
+        max_digits=8, decimal_places=2, null=True, blank=True)
+    isolement_ok = models.BooleanField(null=True, blank=True)
+    # ── Vérification de performance (§7) ──
+    production_test_kw = models.DecimalField(
+        max_digits=10, decimal_places=2, null=True, blank=True)
+    production_attendue_kw = models.DecimalField(
+        max_digits=10, decimal_places=2, null=True, blank=True)
+    performance_ok = models.BooleanField(null=True, blank=True)
+    # ── Sécurité ──
+    securite_coupure_ok = models.BooleanField(null=True, blank=True)
+    securite_signalisation_ok = models.BooleanField(null=True, blank=True)
+    resultat = models.CharField(
+        max_length=14, choices=Resultat.choices, default=Resultat.EN_COURS)
+    observations = models.TextField(blank=True, null=True)
+    # FG275 — lien LÂCHE (par id, jamais un import du modèle ventes) vers une
+    # fiche de recette ventes existante dont on réutilise les courbes I-V déjà
+    # saisies ; les relevés propres à cette fiche vivent dans
+    # ``CommissioningIVReading``.
+    ventes_recette_id = models.PositiveIntegerField(null=True, blank=True)
+    created_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL,
+        null=True, blank=True, related_name='commissioning_records_crees')
+    date_creation = models.DateTimeField(auto_now_add=True)
+    date_modification = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = 'Fiche de recette (IEC 62446-1)'
+        verbose_name_plural = 'Fiches de recette (IEC 62446-1)'
+        ordering = ['-date_creation']
+
+    def __str__(self):
+        return f'Recette {self.resultat} — chantier {self.installation_id}'
+
+    @property
+    def passe(self):
+        """La fiche est PASSÉE (débloque le gate) si conforme ou conforme
+        avec réserves."""
+        return self.resultat in (self.Resultat.CONFORME, self.Resultat.RESERVES)
+
+
+class CommissioningIVReading(models.Model):
+    """CH3/FG275 — relevé I-V par string d'une fiche de recette : Voc/Isc/Pmax
+    mesurés confrontés aux valeurs attendues (datasheet × modules en série).
+
+    Miroir, côté ``installations``, de la capture I-V ventes (FG275) : la fiche
+    de recette peut aussi référencer une fiche ventes existante
+    (``CommissioningRecord.ventes_recette_id``) pour réutiliser des courbes déjà
+    saisies. Additif — company posée côté serveur."""
+    company = models.ForeignKey(
+        'authentication.Company', on_delete=models.CASCADE,
+        null=True, blank=True, related_name='commissioning_iv_readings')
+    record = models.ForeignKey(
+        CommissioningRecord, on_delete=models.CASCADE,
+        related_name='iv_readings')
+    string_label = models.CharField(max_length=60)
+    n_modules_serie = models.PositiveSmallIntegerField(null=True, blank=True)
+    voc_mesure_v = models.DecimalField(
+        max_digits=8, decimal_places=2, null=True, blank=True)
+    isc_mesure_a = models.DecimalField(
+        max_digits=8, decimal_places=2, null=True, blank=True)
+    pmax_mesure_w = models.DecimalField(
+        max_digits=10, decimal_places=2, null=True, blank=True)
+    voc_attendu_v = models.DecimalField(
+        max_digits=8, decimal_places=2, null=True, blank=True)
+    isc_attendu_a = models.DecimalField(
+        max_digits=8, decimal_places=2, null=True, blank=True)
+    pmax_attendu_w = models.DecimalField(
+        max_digits=10, decimal_places=2, null=True, blank=True)
+    ecart_pmax_pct = models.DecimalField(
+        max_digits=6, decimal_places=2, null=True, blank=True)
+    defaut_detecte = models.BooleanField(default=False)
+    observations = models.TextField(blank=True, null=True)
+    date_creation = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        verbose_name = 'Relevé I-V (recette chantier)'
+        verbose_name_plural = 'Relevés I-V (recette chantier)'
+        ordering = ['record', 'string_label']
+
+    def __str__(self):
+        return f'I-V {self.string_label} (recette {self.record_id})'
+
+
 class StockReservation(models.Model):
     """N14 — réservation de stock d'un chantier sur un SKU (produit catalogue).
 
