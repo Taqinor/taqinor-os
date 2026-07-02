@@ -37,7 +37,7 @@ import {
   panneauxPourKwc, expectedTvaForDesignation,
   TVA_STANDARD_DEFAUT, TVA_PANNEAUX_DEFAUT,
   classifyProduct,
-  kwhFromBill, buildEtudeParamsChoice,
+  kwhFromBill, buildEtudeParamsChoice, multiPropertyPreviewTTC,
 } from '../../features/ventes/solar'
 
 const MODE_OPTIONS = [
@@ -249,6 +249,18 @@ export default function DevisGenerator({
   const [discountPct, setDiscountPct] = useState('0')
   const linesInitialized = useRef(false)
 
+  // ── QJ31 — Multi-propriétés (un seul devis, jamais scindé) ──
+  // 'none' = mono-système (défaut, comportement historique inchangé) ;
+  // 'multiplier' = ×N villas identiques (etude_params.nombre_proprietes) ;
+  // 'villas' = groupes de lignes par villa (groupe_index/groupe_label, QJ29).
+  const [multiMode, setMultiMode] = useState('none')
+  const [nombreProprietes, setNombreProprietes] = useState('2')
+  // Groupes villas (mode B) : [{ index, label }]. index 0 = équipement commun.
+  const [villaGroups, setVillaGroups] = useState([
+    { index: 0, label: 'Équipement commun' },
+    { index: 1, label: 'Villa 1' },
+  ])
+
   // ── Multi-marchés ──
   const [modeInstallation, setModeInstallation] = useState('residentiel')
   const [consoMensuelle, setConsoMensuelle] = useState('')
@@ -322,6 +334,16 @@ export default function DevisGenerator({
   const totals = useMemo(
     () => optionTotalsTTC(lines, discountPct),
     [lines, discountPct],
+  )
+
+  // QJ31 — aperçu multi-propriétés (miroir écran du backend QJ29). Null quand
+  // aucun mode multi n'est actif (aperçu mono-système inchangé).
+  const multiPreview = useMemo(
+    () => multiPropertyPreviewTTC(lines, {
+      nombreProprietes: multiMode === 'multiplier' ? nombreProprietes : null,
+      discountPct,
+    }),
+    [lines, multiMode, nombreProprietes, discountPct],
   )
 
   // Simulation/graphique en VALEURS DIFFÉRÉES : la frappe et les bascules
@@ -746,6 +768,48 @@ export default function DevisGenerator({
   const addLine = () => setLines(ls => [...ls, emptyLine()])
   const removeLine = (key) => setLines(ls => ls.filter(l => l._key !== key))
 
+  // ── QJ31 — Multi-propriétés ──────────────────────────────────────────────
+  // Bascule de mode. En passant en « villas », chaque ligne sans groupe est
+  // rattachée à l'équipement commun (index 0) par défaut ; en repassant en
+  // « none »/« multiplier », on efface les groupes (mono-système / ×N).
+  const onMultiModeChange = (m) => {
+    setMultiMode(m)
+    if (m === 'villas') {
+      setLines(ls => ls.map(l =>
+        l.groupeIndex == null ? { ...l, groupeIndex: 0, groupeLabel: 'Équipement commun' } : l))
+    } else {
+      setLines(ls => ls.map(l => ({ ...l, groupeIndex: null, groupeLabel: '' })))
+    }
+  }
+
+  // Assigne une ligne à un groupe villa (met à jour l'index + le libellé).
+  const setLineGroupe = (key, idx) => {
+    const grp = villaGroups.find(g => g.index === idx)
+    setLines(ls => ls.map(l =>
+      l._key === key ? { ...l, groupeIndex: idx, groupeLabel: grp?.label ?? '' } : l))
+  }
+
+  const addVillaGroup = () => {
+    setVillaGroups(gs => {
+      const nextIndex = gs.reduce((m, g) => Math.max(m, g.index), 0) + 1
+      return [...gs, { index: nextIndex, label: `Villa ${nextIndex}` }]
+    })
+  }
+
+  const renameVillaGroup = (idx, label) => {
+    setVillaGroups(gs => gs.map(g => (g.index === idx ? { ...g, label } : g)))
+    // Répercute le nouveau libellé sur les lignes déjà rattachées à ce groupe.
+    setLines(ls => ls.map(l => (l.groupeIndex === idx ? { ...l, groupeLabel: label } : l)))
+  }
+
+  const removeVillaGroup = (idx) => {
+    if (idx === 0) return // l'équipement commun n'est pas supprimable
+    setVillaGroups(gs => gs.filter(g => g.index !== idx))
+    // Les lignes du groupe supprimé retombent sur l'équipement commun.
+    setLines(ls => ls.map(l =>
+      l.groupeIndex === idx ? { ...l, groupeIndex: 0, groupeLabel: 'Équipement commun' } : l))
+  }
+
   const handleAutoFill = () => {
     // Mode agricole : équipement pompage (pompe + variateur + champ PV)
     if (modeInstallation === 'agricole') {
@@ -879,6 +943,12 @@ export default function DevisGenerator({
         scenario, recommendedChoice, recommendedOption: recommended,
         distributeur, consoAnnuelleReelle,
       })
+      // QJ31 (mode A) — ×N villas identiques : multiplicateur stocké dans
+      // etude_params (lu par le backend QJ29). N=1/absent = mono-système.
+      if (multiMode === 'multiplier') {
+        const n = parseInt(nombreProprietes, 10)
+        if (Number.isFinite(n) && n > 1) etudeParams = { ...etudeParams, nombre_proprietes: n }
+      }
       const payload = {
         statut: 'brouillon',
         date_validite: dateValidite || null,
@@ -917,6 +987,10 @@ export default function DevisGenerator({
           prix_unitaire: htFromTtc(l.prix_unit_ttc, l.taux_tva ?? 20),
           remise: '0',
           taux_tva: String(l.taux_tva ?? 20),
+          // QJ31 (mode B) — groupe villa par ligne (QJ29). Envoyé UNIQUEMENT en
+          // mode « villas » ; sinon null/'' → chemin mono-système inchangé.
+          groupe_index: multiMode === 'villas' ? l.groupeIndex : null,
+          groupe_label: multiMode === 'villas' ? (l.groupeLabel || '') : '',
         })).unwrap()
       ))
 
@@ -1734,6 +1808,83 @@ export default function DevisGenerator({
             </Button>
           </GenCardHeader>
           <CardContent className="px-0 pt-0">
+            {/* ── QJ31 — Multi-propriétés (un seul devis) ── */}
+            <div className="mx-4 mt-4 rounded-lg border border-border bg-muted/30 p-3 sm:mx-5 sm:p-4">
+              <div className="flex flex-wrap items-center gap-3">
+                <span className="font-display text-sm font-semibold tracking-tight">
+                  Plusieurs propriétés ?
+                </span>
+                <Segmented
+                  options={[
+                    { value: 'none', label: 'Une seule' },
+                    { value: 'multiplier', label: '× N identiques' },
+                    { value: 'villas', label: '+ Villas différentes' },
+                  ]}
+                  value={multiMode}
+                  onChange={onMultiModeChange}
+                />
+              </div>
+
+              {multiMode === 'multiplier' && (
+                <div className="mt-3 flex flex-wrap items-end gap-3">
+                  <div className="grid gap-1.5">
+                    <Label htmlFor="gen-nbprop">Nombre de propriétés identiques</Label>
+                    <Input id="gen-nbprop" type="number" min="1" step="any" className="w-40"
+                           value={nombreProprietes}
+                           onChange={e => setNombreProprietes(e.target.value)} />
+                  </div>
+                  {multiPreview?.mode === 'multiplicateur' && (
+                    <div className="text-sm text-muted-foreground">
+                      {multiPreview.nombreProprietes} × {formatMoney(multiPreview.totalUnitaireSans)}
+                      {' = '}
+                      <strong className="text-foreground">{formatMoney(multiPreview.totalMultiSans)}</strong>
+                      {' '}(total pour {multiPreview.nombreProprietes} propriétés)
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {multiMode === 'villas' && (
+                <div className="mt-3 flex flex-col gap-2">
+                  <div className="flex flex-wrap items-center gap-2">
+                    {villaGroups.map(g => (
+                      <div key={g.index} className="flex items-center gap-1 rounded-md border border-border bg-card px-2 py-1">
+                        <Input
+                          className="h-7 w-32 border-0 bg-transparent px-1 text-sm shadow-none focus-visible:ring-0"
+                          value={g.label}
+                          onChange={e => renameVillaGroup(g.index, e.target.value)}
+                          aria-label={`Nom du groupe ${g.index}`} />
+                        {g.index !== 0 && (
+                          <IconButton type="button" label="Supprimer la villa" size="sm"
+                                      className="size-6 text-destructive hover:bg-destructive/10"
+                                      onClick={() => removeVillaGroup(g.index)}>
+                            <Trash2 />
+                          </IconButton>
+                        )}
+                      </div>
+                    ))}
+                    <Button type="button" size="sm" variant="outline" onClick={addVillaGroup}>
+                      <Plus /> Ajouter une villa
+                    </Button>
+                  </div>
+                  {multiPreview?.mode === 'villas' && (
+                    <div className="rounded-md border border-info/30 bg-info/5 p-2 text-sm">
+                      {multiPreview.groupes.map(g => (
+                        <div key={g.index} className="flex justify-between gap-4">
+                          <span>{g.label}</span>
+                          <span className="tabular-nums">{formatMoney(g.totalTtc)}</span>
+                        </div>
+                      ))}
+                      <div className="mt-1 flex justify-between gap-4 border-t border-info/30 pt-1 font-semibold">
+                        <span>Total général</span>
+                        <span className="tabular-nums">{formatMoney(multiPreview.grandTotalTtc)}</span>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+
             {errors.lines && <div className="px-4 py-2 text-xs text-destructive">{errors.lines}</div>}
             <div className="lines-table-wrap">
               <table className="lines-table">
@@ -1741,6 +1892,7 @@ export default function DevisGenerator({
                   <tr>
                     <th style={{ minWidth: 160 }}>Désignation</th>
                     <th style={{ minWidth: 170 }}>Produit (stock)</th>
+                    {multiMode === 'villas' && <th style={{ minWidth: 130 }}>Villa</th>}
                     <th className="col-num">Qté</th>
                     <th className="col-num">Prix Unit. TTC</th>
                     <th className="col-num" style={{ width: 64 }} title="Taux TVA de la ligne (réforme : 10 % panneaux PV, 20 % le reste)">TVA %</th>
@@ -1795,6 +1947,20 @@ export default function DevisGenerator({
                             onProduitCreated={(p) => setProduits(ps => [...ps, p])}
                           />
                         </td>
+                        {multiMode === 'villas' && (
+                          <td data-label="Villa">
+                            <Select
+                              value={l.groupeIndex != null ? String(l.groupeIndex) : '0'}
+                              onValueChange={(v) => setLineGroupe(l._key, parseInt(v, 10))}>
+                              <SelectTrigger className="h-[var(--control-h-sm)]"><SelectValue /></SelectTrigger>
+                              <SelectContent>
+                                {villaGroups.map(g => (
+                                  <SelectItem key={g.index} value={String(g.index)}>{g.label}</SelectItem>
+                                ))}
+                              </SelectContent>
+                            </Select>
+                          </td>
+                        )}
                         <td data-label="Qté">
                           <input type="number" min="0" step="any"
                                  className="form-control form-control-sm ta-right" value={l.quantite}

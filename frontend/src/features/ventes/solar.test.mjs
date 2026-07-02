@@ -11,6 +11,7 @@ import {
   groupProduitsByCategory,
   KWH_PRICE, FALLBACK_KWH_PRICE, kwhFromBill, twoBillsSavings, monthlyBillFromKwh,
   ONEE_TRANCHES, AUTOCONSO_SANS, AUTOCONSO_AVEC, buildEtudeParamsChoice,
+  multiPropertyPreviewTTC,
 } from './solar.js'
 
 // Reflet du catalogue seedé (prix HT = TTC simulateur / 1.2, 2 décimales)
@@ -760,4 +761,66 @@ test('QF7 — conso_annuelle réelle (QF4) fusionnée avec distributeur, sans é
   })
   assert.equal(r.conso_annuelle, 9000) // préservé (source canonique = étude)
   assert.equal(r.distributeur, 'redal') // le distributeur choisi s'applique quand même
+})
+
+// ── QJ31 — Multi-propriétés : aperçu écran (TTC) mode ×N et mode villas ──────
+const L = (designation, qty, ttc, extra = {}) => ({
+  designation, quantite: String(qty), prix_unit_ttc: String(ttc), ...extra,
+})
+
+test('QJ31 — sans mode multi (pas de N, pas de groupe) : preview = null (mono-système inchangé)', () => {
+  const lines = [L('Panneaux', 10, 1400), L('Onduleur réseau', 1, 20000)]
+  assert.equal(multiPropertyPreviewTTC(lines, {}), null)
+  assert.equal(multiPropertyPreviewTTC(lines, { nombreProprietes: '1' }), null)
+})
+
+test('QJ31 mode A — ×N multiplie le total TTC (unitaire × N)', () => {
+  const lines = [L('Panneaux', 10, 1400), L('Onduleur réseau', 1, 20000)] // 34000 TTC
+  const r = multiPropertyPreviewTTC(lines, { nombreProprietes: '3', discountPct: '0' })
+  assert.equal(r.mode, 'multiplicateur')
+  assert.equal(r.nombreProprietes, 3)
+  assert.equal(r.totalUnitaireSans, 34000)
+  assert.equal(r.totalMultiSans, 102000) // 34000 × 3
+})
+
+test('QJ31 mode A — ×N applique aussi la remise (unitaire remisé × N)', () => {
+  const lines = [L('Panneaux', 10, 1400), L('Onduleur réseau', 1, 20000)] // 34000 brut
+  const r = multiPropertyPreviewTTC(lines, { nombreProprietes: '2', discountPct: '10' })
+  // unitaire remisé = round(34000 × 0.9) = 30600 ; ×2 = 61200
+  assert.equal(r.totalUnitaireSans, 30600)
+  assert.equal(r.totalMultiSans, 61200)
+})
+
+test('QJ31 mode B — groupes villas : sous-total par villa + total général', () => {
+  const lines = [
+    L('Installation commune', 1, 6000, { groupeIndex: 0, groupeLabel: 'Équipement commun' }),
+    L('Onduleur réseau', 1, 20000, { groupeIndex: 1, groupeLabel: 'Villa A' }),
+    L('Panneaux', 10, 1400, { groupeIndex: 1, groupeLabel: 'Villa A' }), // 14000
+    L('Onduleur réseau', 1, 11000, { groupeIndex: 2, groupeLabel: 'Villa B' }),
+    L('Panneaux', 8, 1400, { groupeIndex: 2, groupeLabel: 'Villa B' }), // 11200
+  ]
+  const r = multiPropertyPreviewTTC(lines, {})
+  assert.equal(r.mode, 'villas')
+  assert.deepEqual(r.groupes.map(g => g.label), ['Équipement commun', 'Villa A', 'Villa B'])
+  assert.equal(r.groupes[0].totalTtc, 6000)
+  assert.equal(r.groupes[1].totalTtc, 34000) // 20000 + 14000
+  assert.equal(r.groupes[2].totalTtc, 22200) // 11000 + 11200
+  assert.equal(r.grandTotalTtc, 62200) // somme des trois groupes
+})
+
+test('QJ31 mode B — libellé par défaut quand groupeLabel vide (Villa N / Équipement commun)', () => {
+  const lines = [
+    L('X', 1, 1000, { groupeIndex: 0, groupeLabel: '' }),
+    L('Y', 1, 2000, { groupeIndex: 1, groupeLabel: '' }),
+  ]
+  const r = multiPropertyPreviewTTC(lines, {})
+  assert.equal(r.groupes[0].label, 'Équipement commun')
+  assert.equal(r.groupes[1].label, 'Villa 1')
+})
+
+test('QJ31 — le multiplicateur (>1) prime sur les groupes si les deux sont présents', () => {
+  // À l'écran les deux modes sont exclusifs ; par sécurité, N>1 gagne.
+  const lines = [L('X', 1, 1000, { groupeIndex: 1, groupeLabel: 'Villa 1' })]
+  const r = multiPropertyPreviewTTC(lines, { nombreProprietes: '4' })
+  assert.equal(r.mode, 'multiplicateur')
 })

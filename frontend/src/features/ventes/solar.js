@@ -419,6 +419,53 @@ export function optionTotalsTTC(lines, discountPct) {
   return { totalSansBrut, totalAvecBrut, totalSans, totalAvec }
 }
 
+// ── QJ31 — Multi-propriétés : aperçu écran (TTC) miroir du backend QJ29 ──────
+// Deux modes, tous deux additifs et mutuellement exclusifs à l'écran (un seul
+// devis, jamais scindé) :
+//   (A) ×N villas identiques : `nombreProprietes` multiplie le total TTC.
+//   (B) villas différentes : les lignes portent `groupeIndex`/`groupeLabel`
+//       (0 = commun) → sous-total par villa + total général, comme
+//       `multi_villa_totaux` (selectors.py) mais en TTC (écran) plutôt qu'en
+//       HT→TVA→TTC (backend, qui reste la source AUTORITAIRE au moment du PDF).
+// Retourne null quand aucun des deux modes n'est utilisé (aperçu inchangé).
+export function multiPropertyPreviewTTC(lines, { nombreProprietes, discountPct } = {}) {
+  const n = parseInt(nombreProprietes, 10)
+  if (Number.isFinite(n) && n > 1) {
+    const { totalSans, totalAvec, totalSansBrut, totalAvecBrut } = optionTotalsTTC(lines, discountPct)
+    return {
+      mode: 'multiplicateur',
+      nombreProprietes: n,
+      totalUnitaireSans: totalSans, totalUnitaireAvec: totalAvec,
+      totalMultiSans: Math.round(totalSans * n), totalMultiAvec: Math.round(totalAvec * n),
+      totalUnitaireSansBrut: totalSansBrut, totalUnitaireAvecBrut: totalAvecBrut,
+    }
+  }
+
+  const grouped = lines.filter(l => l.groupeIndex != null)
+  if (!grouped.length) return null
+
+  const ttc = (l) => (parseFloat(l.quantite) || 0) * (parseFloat(l.prix_unit_ttc) || 0)
+  const byIndex = new Map()
+  for (const l of grouped) {
+    const idx = l.groupeIndex
+    if (!byIndex.has(idx)) byIndex.set(idx, { lignes: [], label: '' })
+    const bucket = byIndex.get(idx)
+    bucket.lignes.push(l)
+    if (!bucket.label && (l.groupeLabel || '').trim()) bucket.label = l.groupeLabel.trim()
+  }
+  const groupes = [...byIndex.keys()].sort((a, b) => a - b).map(idx => {
+    const bucket = byIndex.get(idx)
+    const totalTtc = bucket.lignes.reduce((s, l) => s + ttc(l), 0)
+    return {
+      index: idx,
+      label: bucket.label || (idx === 0 ? 'Équipement commun' : `Villa ${idx}`),
+      totalTtc: Math.round(totalTtc),
+    }
+  })
+  const grandTotalTtc = Math.round(groupes.reduce((s, g) => s + g.totalTtc, 0))
+  return { mode: 'villas', groupes, grandTotalTtc }
+}
+
 // ── Catégories du catalogue simulateur (clés de brand_catalog.json) ──────────
 // Le sélecteur de produits est groupé exactement selon ces catégories.
 export const PRODUCT_CATEGORIES = [
