@@ -19,6 +19,30 @@ export type RoofTypeId = (typeof ROOF_TYPES)[number]['id'];
 export const UTM_KEYS = ['utm_source', 'utm_medium', 'utm_campaign', 'utm_content', 'utm_term'] as const;
 export type UtmKey = (typeof UTM_KEYS)[number];
 
+// ——— WJ30 : vocabulaires des champs FACULTATIFS élargis (pass-through webhook) ———
+export const LEAD_MODES = ['residentiel', 'professionnel', 'agricole'] as const;
+export type LeadModeId = (typeof LEAD_MODES)[number];
+
+export const RACCORDEMENTS = ['monophase', 'triphase', 'inconnu'] as const;
+export type RaccordementId = (typeof RACCORDEMENTS)[number];
+
+export const LEAD_LANGS = ['fr', 'ar'] as const;
+export type LeadLangId = (typeof LEAD_LANGS)[number];
+
+/**
+ * Bornes GPS ≈ Maroc (Tanger ~35,9 N → Lagouira ~20,8 N ; Atlantique ~-17,2 O →
+ * frontière est ~-1,0). Garde-fou anti-garbage : un repère hors bornes est
+ * ÉCARTÉ silencieusement — le lead passe sans lui, jamais bloqué.
+ */
+export const MOROCCO_GPS_BOUNDS = { latMin: 20, latMax: 37, lngMin: -18, lngMax: 0 } as const;
+
+export function isMoroccoLat(lat: number): boolean {
+  return Number.isFinite(lat) && lat >= MOROCCO_GPS_BOUNDS.latMin && lat <= MOROCCO_GPS_BOUNDS.latMax;
+}
+export function isMoroccoLng(lng: number): boolean {
+  return Number.isFinite(lng) && lng >= MOROCCO_GPS_BOUNDS.lngMin && lng <= MOROCCO_GPS_BOUNDS.lngMax;
+}
+
 export interface LeadEnv {
   SIMULATOR_API_URL?: string;
   LEAD_WEBHOOK_URL?: string;
@@ -38,6 +62,23 @@ export interface ValidatedLead {
   consent: true;
   fbclid: string | null;
   utm: Partial<Record<UtmKey, string>>;
+  // — WJ30 : champs FACULTATIFS élargis. Présents UNIQUEMENT si la valeur reçue
+  //   est valide : un champ facultatif malformé est ÉCARTÉ (jamais bloquant), et
+  //   un champ absent reste absent — le contrat de fil existant est inchangé
+  //   octet pour octet pour les soumissions d'aujourd'hui.
+  email?: string;
+  factureHiver?: number;
+  factureEte?: number | null;
+  eteDifferente?: boolean;
+  billKwh?: number;
+  raccordement?: RaccordementId;
+  adresse?: string;
+  mode?: LeadModeId;
+  langue_preferee?: LeadLangId;
+  roofPoint?: { lat: number; lng: number };
+  gpsLat?: number;
+  gpsLng?: number;
+  roofOutline?: Array<[number, number]>;
 }
 
 export type ValidationResult =
@@ -46,6 +87,109 @@ export type ValidationResult =
 
 function cleanStr(v: unknown, max = 200): string {
   return typeof v === 'string' ? v.trim().slice(0, max) : '';
+}
+
+// ——— WJ30 : nettoyeurs des champs FACULTATIFS (rejettent le garbage, ne bloquent jamais) ———
+
+/** Plafonds de bon sens anti-garbage (jamais affichés — validation serveur only). */
+const MAX_BILL_MAD = 1_000_000;
+const MAX_KWH = 10_000_000;
+
+/** E-mail facultatif — garde-fou minimal (pas une RFC complète), borné à 254. */
+function cleanOptionalEmail(v: unknown): string | null {
+  if (typeof v !== 'string') return null;
+  const s = v.trim().slice(0, 254);
+  return /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(s) ? s : null;
+}
+
+/** Nombre fini > 0 borné, sinon null (factures/kWh : jamais négatif ni absurde). */
+function cleanPositiveNumber(v: unknown, max: number): number | null {
+  if (v == null || v === '') return null;
+  const n = Number(v);
+  return Number.isFinite(n) && n > 0 && n <= max ? n : null;
+}
+
+/** Valeur d'une liste fermée, sinon null (on ne devine pas). */
+function cleanEnum<T extends string>(v: unknown, allowed: readonly T[]): T | null {
+  return typeof v === 'string' && (allowed as readonly string[]).includes(v) ? (v as T) : null;
+}
+
+/** {lat,lng} fini DANS les bornes ≈ Maroc, ou null. */
+function cleanRoofPoint(v: unknown): { lat: number; lng: number } | null {
+  if (!v || typeof v !== 'object') return null;
+  const o = v as { lat?: unknown; lng?: unknown };
+  const lat = Number(o.lat);
+  const lng = Number(o.lng);
+  if (!isMoroccoLat(lat) || !isMoroccoLng(lng)) return null;
+  return { lat, lng };
+}
+
+/** [[lat,lng],…] (≥ 3 paires finies dans les bornes ≈ Maroc), borné à 200 sommets, ou []. */
+function cleanRoofOutline(v: unknown): Array<[number, number]> {
+  if (!Array.isArray(v)) return [];
+  const out: Array<[number, number]> = [];
+  for (const p of v.slice(0, 200)) {
+    if (!Array.isArray(p) || p.length < 2) continue;
+    const lat = Number(p[0]);
+    const lng = Number(p[1]);
+    if (isMoroccoLat(lat) && isMoroccoLng(lng)) out.push([lat, lng]);
+  }
+  return out.length >= 3 ? out : [];
+}
+
+/**
+ * WJ30 — champs FACULTATIFS élargis : chacun est validé individuellement et
+ * ÉCARTÉ s'il est malformé. Ne produit JAMAIS d'erreur : un lead qui passait
+ * hier passe toujours, avec ou sans ces champs.
+ */
+function validateOptionalFields(b: Record<string, unknown>): Partial<ValidatedLead> {
+  const opt: Partial<ValidatedLead> = {};
+
+  const email = cleanOptionalEmail(b.email);
+  if (email) opt.email = email;
+
+  const factureHiver = cleanPositiveNumber(b.factureHiver, MAX_BILL_MAD);
+  if (factureHiver != null) opt.factureHiver = factureHiver;
+
+  // Été ≠ hiver : une seule pièce d'info (le toggle) avec sa valeur d'été.
+  // Été non différent ⇒ factureEte forcé à null (jamais une valeur résiduelle).
+  if (typeof b.eteDifferente === 'boolean') {
+    opt.eteDifferente = b.eteDifferente;
+    opt.factureEte = b.eteDifferente ? cleanPositiveNumber(b.factureEte, MAX_BILL_MAD) : null;
+  }
+
+  const billKwh = cleanPositiveNumber(b.billKwh, MAX_KWH);
+  if (billKwh != null) opt.billKwh = billKwh;
+
+  const raccordement = cleanEnum(b.raccordement, RACCORDEMENTS);
+  if (raccordement) opt.raccordement = raccordement;
+
+  const adresse = cleanStr(b.adresse, 200);
+  if (adresse) opt.adresse = adresse;
+
+  const mode = cleanEnum(b.mode, LEAD_MODES);
+  if (mode) opt.mode = mode;
+
+  const langue = cleanEnum(b.langue_preferee ?? b.langue, LEAD_LANGS);
+  if (langue) opt.langue_preferee = langue;
+
+  const roofPoint = cleanRoofPoint(b.roofPoint);
+  if (roofPoint) {
+    opt.roofPoint = roofPoint;
+    // Le repère validé PRIME sur les champs gps* bruts.
+    opt.gpsLat = roofPoint.lat;
+    opt.gpsLng = roofPoint.lng;
+  } else {
+    const gpsLat = Number(b.gpsLat);
+    const gpsLng = Number(b.gpsLng);
+    if (b.gpsLat != null && isMoroccoLat(gpsLat)) opt.gpsLat = gpsLat;
+    if (b.gpsLng != null && isMoroccoLng(gpsLng)) opt.gpsLng = gpsLng;
+  }
+
+  const roofOutline = cleanRoofOutline(b.roofOutline);
+  if (roofOutline.length >= 3) opt.roofOutline = roofOutline;
+
+  return opt;
 }
 
 export function validateLead(body: unknown): ValidationResult {
@@ -90,6 +234,10 @@ export function validateLead(body: unknown): ValidationResult {
       consent: true,
       fbclid,
       utm,
+      // WJ30 — le webhook reçoit désormais TOUT ce que la capture a collecté
+      // (facture exacte, GPS, contour, mode, raccordement, e-mail, langue…) :
+      // champs facultatifs, validés un à un, écartés si malformés, jamais bloquants.
+      ...validateOptionalFields(b),
     },
   };
 }

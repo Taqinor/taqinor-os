@@ -15,7 +15,7 @@ import { localizeNavHref } from '../../i18n/pages';
 
 const locale = getLocaleFromPath(Astro.url.pathname);
 const L = (href: string) => localizeNavHref(href, locale);
-const contactSim = L('/contact') + '#simulateur';
+const devisHref = L('/devis/mon-toit');
 
 const solutions = [
   {
@@ -113,11 +113,11 @@ const jsonLd = {
           لا داعي لأن تقرّر وحدك. صِف وضعك واستهلاكك، والتشخيص المجاني يقوم بالفرز: الحل الذي يناسب
           حالتك، ونظام القانون 82-21 الذي تندرج تحته. بدون أي التزام.
         </p>
-        <a href={contactSim} class="mt-8 inline-block bg-brass-400 px-7 py-3.5 text-base font-bold text-azur-950 transition-colors hover:bg-brass-300">ابدأ تشخيصي المجاني</a>
+        <a href={devisHref} class="mt-8 inline-block bg-brass-400 px-7 py-3.5 text-base font-bold text-azur-950 transition-colors hover:bg-brass-300">ابدأ تشخيصي المجاني</a>
       </div>
     </section>
 
-    <CtaBand title="الحل الصحيح يخرج من التشخيص، لا من الكاطالوݣ — وهو مجاني." href={contactSim} />
+    <CtaBand title="الحل الصحيح يخرج من التشخيص، لا من الكاطالوݣ — وهو مجاني." href={devisHref} />
 
     <StickyCta />
   </div>
