@@ -63,6 +63,12 @@ export default function ParametresEntreprise() {
   const dispatch = useDispatch()
   const { profile, loading, saving, uploading, error, saveSuccess } = useSelector(s => s.parametres)
   const { categories, fournisseurs } = useSelector(s => s.stock)
+  // WR12 — rôle courant : les réglages sensibles (commission, DGI) ne sont
+  // éditables que par un directeur/admin. Le backend gate déjà l'écriture
+  // (IsAdminOrResponsableTier) ; ce contrôle UI empêche un rôle non autorisé
+  // de voir/modifier les champs sensibles.
+  const role = useSelector(s => s.auth.role)
+  const canManageSensitive = role === 'admin'
 
   // Onglet actif (D1). Société & identité par défaut.
   const [tab, setTab] = useState('societe')
@@ -102,6 +108,9 @@ export default function ParametresEntreprise() {
     commission_valeur: '',
     referral_enabled: false,
     referral_reward: '',
+    // WR12 — flags jusqu'ici backend-only désormais éditables en Paramètres.
+    lead_sla_hours: 24,       // FG28
+    dgi_export_actif: false,  // N105 (interrupteur maître DGI, sensible/admin)
   })
   const [saved, setSaved] = useState(false)
   const [assignables, setAssignables] = useState([])
@@ -530,6 +539,9 @@ export default function ParametresEntreprise() {
       commission_valeur: profile.commission_valeur ?? '',
       referral_enabled: profile.referral_enabled ?? false,
       referral_reward: profile.referral_reward ?? '',
+      // WR12 — FG28 (SLA) + N105 (DGI) exposés en Paramètres.
+      lead_sla_hours: profile.lead_sla_hours ?? 24,
+      dgi_export_actif: profile.dgi_export_actif ?? false,
       // FG22 — politique de sécurité (défauts inertes).
       password_min_length: profile.password_min_length ?? 8,
       password_require_complexity: profile.password_require_complexity ?? false,
@@ -644,6 +656,23 @@ export default function ParametresEntreprise() {
       commission_valeur: form.commission_valeur === '' ? null : Number(form.commission_valeur),
       referral_enabled: !!form.referral_enabled,
       referral_reward: form.referral_reward === '' ? null : Number(form.referral_reward),
+      // WR12/FG28 — SLA premier contact (heures) : entier ≥ 0, 0 = désactivé.
+      lead_sla_hours: Math.max(0, Math.trunc(Number(form.lead_sla_hours) || 0)),
+    }
+    // WR12 — réglages SENSIBLES : ne les transmettre que si l'utilisateur est
+    // autorisé (admin). Un rôle non autorisé ne les voit pas et ne peut donc
+    // pas les modifier ; on les retire du payload par sécurité (défense en
+    // profondeur — le backend reste l'autorité).
+    if (canManageSensitive) {
+      payload.commission_mode = ['off', 'pct_devis', 'par_kwc']
+        .includes(form.commission_mode) ? form.commission_mode : 'off'
+      payload.commission_valeur = form.commission_valeur === ''
+        ? null : Number(form.commission_valeur)
+      payload.dgi_export_actif = !!form.dgi_export_actif
+    } else {
+      delete payload.commission_mode
+      delete payload.commission_valeur
+      delete payload.dgi_export_actif
     }
     dispatch(saveProfile(payload))
   }
@@ -679,6 +708,7 @@ export default function ParametresEntreprise() {
   // tout, aucune prop ne peut être oubliée silencieusement.
   const ctx = {
     profile, form, set, setForm, accent, uploading, dispatch,
+    canManageSensitive,
     categories, fournisseurs,
     assignables,
     niveaux, setNiveau, saveNiveaux, niveauxSaved, niveauxError, addNiveau, delNiveau, seedNiveaux,

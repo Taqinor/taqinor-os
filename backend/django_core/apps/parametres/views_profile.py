@@ -50,6 +50,9 @@ _PROFILE_AUDIT_FIELDS = {
     'commission_valeur': 'Commission — valeur',
     'referral_enabled': 'Parrainage activé',
     'referral_reward': 'Parrainage — récompense par défaut',
+    # WR12 — flags exposés en Paramètres (FG28 SLA + N105 export DGI).
+    'lead_sla_hours': 'SLA premier contact (heures)',
+    'dgi_export_actif': 'Export DGI activé',
     # Module d'exécution terrain (F9–F20) — interfaces swappables + seuil F12.
     'ocr_serie_provider': 'Fournisseur OCR n° de série (F9)',
     'transcription_provider': 'Fournisseur de transcription (F14)',
