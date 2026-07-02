@@ -459,8 +459,11 @@ const TOWNS = ['Casablanca', 'Rabat', 'Marrakech', 'Tanger', 'Agadir', 'Kénitra
   cityEl?.addEventListener('input', () => { cityTouched = true; });
 
   // ——— WJ6 : bascule de langue FR/AR (data-i18n) ———
+  // WJ30 — la langue active est transmise au webhook (langue_preferee).
+  let currentLang: 'fr' | 'ar' = 'fr';
   function applyLang(lang: 'fr' | 'ar') {
     const isAr = lang === 'ar';
+    currentLang = lang;
     document.querySelectorAll<HTMLElement>('[data-i18n]').forEach((el) => {
       const v = isAr ? el.dataset.ar : el.dataset.fr;
       if (typeof v === 'string') el.textContent = v;
@@ -663,6 +666,9 @@ const TOWNS = ['Casablanca', 'Rabat', 'Marrakech', 'Tanger', 'Agadir', 'Kénitra
       eteDifferente,
       raccordement: val('mt-raccordement'),
       adresse,
+      // WJ30 — le type de projet et la langue active partent aussi au webhook.
+      mode,
+      langue_preferee: currentLang,
     };
     // WJ4 — repère FACULTATIF : on le joint s'il existe, on ne BLOQUE jamais sans lui.
     if (capturePin) {

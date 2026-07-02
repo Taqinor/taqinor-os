@@ -1,7 +1,9 @@
 ---
 /**
- * CTA collant à l'apparition au scroll : WhatsApp + étude gratuite.
- * Barre pleine largeur sur mobile, pilule compacte en bas à droite sur desktop.
+ * CTA collant à l'apparition au scroll : WhatsApp (secondaire) + le CTA
+ * principal « Obtenir mon étude gratuite » → parcours devis /devis/mon-toit
+ * (WJ36). Barre pleine largeur sur mobile (zone du pouce,
+ * safe-area-inset-bottom), pilule compacte en bas à droite sur desktop.
  * Masqué tant que le héros est à l'écran et quand le formulaire
  * (#simulateur) est visible — pour ne jamais doubler le CTA principal.
  * W59 — pilule desktop plus compacte + marge de sécurité au bord, et
@@ -14,13 +16,15 @@
 import { WHATSAPP_LEADS } from '../lib/nap';
 import { whatsappLink } from '../lib/whatsapp';
 import { getLocaleFromPath, useTranslations } from '../i18n/utils';
-import { localizeNavHref } from '../i18n/pages';
+import { quoteJourneyHref } from '../i18n/pages';
 
 // Le texte WhatsApp pré-rempli reste FR (il atteint l'équipe FR). Seuls le
-// libellé visible et le lien Diagnostic sont localisés (FR = inchangé).
+// libellé visible et le lien du CTA principal sont localisés (FR = inchangé).
+// WJ36 — le CTA principal pointe le parcours devis (/devis/mon-toit) via
+// quoteJourneyHref (point de bascule unique de WJ38).
 const locale = getLocaleFromPath(Astro.url.pathname);
 const t = useTranslations(locale);
-const diagHref = localizeNavHref('/contact', locale) + '#simulateur';
+const diagHref = quoteJourneyHref(locale);
 const wa = whatsappLink(WHATSAPP_LEADS, 'Bonjour, je souhaite une étude pour une installation solaire.');
 ---
 
@@ -44,7 +48,7 @@ const wa = whatsappLink(WHATSAPP_LEADS, 'Bonjour, je souhaite une étude pour un
       id="sticky-diag"
       href={diagHref}
       class="glow flex flex-1 items-center justify-center bg-brass-400 px-4 py-2.5 text-sm font-bold text-azur-950 transition-colors hover:bg-brass-300 sm:flex-none sm:rounded-full sm:px-3.5 sm:py-2 sm:text-[13px]"
-    >{t('cta.stickyDiag')}</a>
+    >{t('cta.primary')}</a>
   </div>
 </div>
 
@@ -52,10 +56,9 @@ const wa = whatsappLink(WHATSAPP_LEADS, 'Bonjour, je souhaite une étude pour un
   const bar = document.getElementById('sticky-cta');
   const form = document.getElementById('simulateur');
 
-  // Si le diagnostic est sur CETTE page : on y défile, on ne quitte jamais la page
-  if (form) {
-    (document.getElementById('sticky-diag') as HTMLAnchorElement).href = '#simulateur';
-  }
+  // WJ36 — le CTA principal mène TOUJOURS au parcours devis /devis/mon-toit
+  // (plus de bascule vers l'ancre #simulateur). Le formulaire embarqué reste
+  // observé ci-dessous uniquement pour masquer la barre quand il est visible.
 
   let pastHero = false;
   let formVisible = false;

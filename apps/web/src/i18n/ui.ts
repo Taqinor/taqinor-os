@@ -108,6 +108,9 @@ export const ui = {
     'cta.title': 'Une étude technique gratuite, sans engagement.',
     'cta.button': 'Recevez votre étude sur WhatsApp',
     'cta.stickyDiag': 'Diagnostic gratuit',
+    // WJ36 — LE libellé du CTA principal, répété verbatim sur toutes les
+    // surfaces laiton (en-tête / héros / mi-page / CTA collant).
+    'cta.primary': 'Obtenir mon étude gratuite',
     'breadcrumb.label': "Fil d'Ariane",
     'breadcrumb.home': 'Accueil',
     'faq.heading': 'Questions fréquentes',
@@ -201,6 +204,8 @@ export const ui = {
     'cta.title': 'A free technical study, no commitment.',
     'cta.button': 'Get your study on WhatsApp',
     'cta.stickyDiag': 'Free assessment',
+    // WJ36 — THE primary CTA label, repeated verbatim on every brass surface.
+    'cta.primary': 'Get my free study',
     'breadcrumb.label': 'Breadcrumb',
     'breadcrumb.home': 'Home',
     'faq.heading': 'Frequently asked questions',
@@ -294,6 +299,8 @@ export const ui = {
     'cta.title': 'دراسة تقنية مجانية، بدون أي التزام.',
     'cta.button': 'استلم دراستك على واتساب',
     'cta.stickyDiag': 'تشخيص مجاني',
+    // WJ36 — libellé du CTA principal (verbatim sur toutes les surfaces laiton).
+    'cta.primary': 'احصل على دراستي المجانية',
     'breadcrumb.label': 'مسار التصفّح',
     'breadcrumb.home': 'الرئيسية',
     'faq.heading': 'الأسئلة المتكررة',

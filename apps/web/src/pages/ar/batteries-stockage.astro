@@ -28,7 +28,7 @@ import { localizeNavHref } from '../../i18n/pages';
 
 const locale = getLocaleFromPath(Astro.url.pathname);
 const L = (href: string) => localizeNavHref(href, locale);
-const contactSim = L('/contact') + '#simulateur';
+const devisHref = L('/devis/mon-toit');
 
 const specs = [
   { item: 'كيمياء ليثيوم-حديد-فوسفات (LFP)', detail: 'Dyness DL5.0C / DL5.0C PRO' },
@@ -237,7 +237,7 @@ const jsonLd = {
       </div>
     </section>
 
-    <CtaBand title="تخزين أم لا؟ منحنى استهلاكك سيقول — تشخيص مجاني." href={contactSim} />
+    <CtaBand title="تخزين أم لا؟ منحنى استهلاكك سيقول — تشخيص مجاني." href={devisHref} />
 
     <StickyCta />
   </div>
