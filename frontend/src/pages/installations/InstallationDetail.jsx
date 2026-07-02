@@ -30,6 +30,10 @@ import ProduitPicker from '../../components/ProduitPicker'
 import ChantierChecklist from './ChantierChecklist'
 import ChantierTimeline from './ChantierTimeline'
 import ChantierPhotos from './ChantierPhotos'
+// FG386 — même bandeau d'état de synchro terrain que la page Interventions
+// (N91/F21) : la checklist chantier file déjà ses cochages hors-ligne via
+// `withOfflineFallback`, il ne restait qu'à rendre l'état visible ici aussi.
+import OfflineSyncIndicator from '../../features/installations/offline/OfflineSyncIndicator'
 import { garantieLabel, garantieColor } from '../../features/sav/equipement'
 import {
   TICKET_TYPES,
@@ -1026,6 +1030,9 @@ export default function InstallationDetail({ installation, onClose, onSaved }) {
 
           {/* ── Checklist d'exécution (N4/N9) ── */}
           <Section icon={ClipboardList} title="Checklist d'exécution">
+            {/* FG386/N91/F21 — état de la synchro terrain hors-ligne (silencieux
+                si en ligne et file vide). */}
+            <OfflineSyncIndicator />
             <ChantierChecklist installationId={id} produits={produits}
                                series={equipements.map((eq) => eq.numero_serie).filter(Boolean)}
                                onChanged={() => { refreshInstallation(); loadEquipements() }} />
