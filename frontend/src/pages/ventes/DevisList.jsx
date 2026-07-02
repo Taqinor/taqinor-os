@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import { useDispatch, useSelector } from 'react-redux'
 import {
   Download, Plus, FileText, FileDown, Check, ArrowRight, HardHat, FileStack,
-  Copy, Send, X, Eye, Search, AlertTriangle,
+  Copy, Send, X, Eye, Search, AlertTriangle, UserCog,
 } from 'lucide-react'
 import {
   fetchDevis,
@@ -284,6 +284,22 @@ export default function DevisList() {
       toast.error(frenchError(err, 'Envoi impossible.'))
     } finally {
       setStatutActionId(null)
+    }
+  }
+
+  // QJ28 — « Contacter mon supérieur » : notifie le supérieur du vendeur
+  // (in-app + canaux configurés) avec un lien vers ce devis. Manuel, jamais
+  // automatique — un clic = une notification.
+  const [superieurBusyId, setSuperieurBusyId] = useState(null)
+  const handleContacterSuperieur = async (d) => {
+    setSuperieurBusyId(d.id)
+    try {
+      await ventesApi.contacterSuperieur(d.id)
+      toast.success('Votre supérieur a été notifié.')
+    } catch (err) {
+      toast.error(frenchError(err, 'Notification du supérieur impossible.'))
+    } finally {
+      setSuperieurBusyId(null)
     }
   }
 
@@ -1227,6 +1243,18 @@ export default function DevisList() {
                               title="Marquer ce devis comme envoyé"
                             >
                               <Send /> Envoyer
+                            </Button>
+                          )}
+                          {/* QJ28 — Contacter mon supérieur (notification, jamais automatique) */}
+                          {(d.statut === 'brouillon' || d.statut === 'envoye') && (
+                            <Button
+                              size="sm"
+                              variant="ghost"
+                              loading={superieurBusyId === d.id}
+                              onClick={() => handleContacterSuperieur(d)}
+                              title="Contacter mon supérieur — lui envoyer une notification avec le lien de ce devis"
+                            >
+                              <UserCog />
                             </Button>
                           )}
                           {/* QJ14 — Envoyer par email : PDF premium + lien de proposition */}

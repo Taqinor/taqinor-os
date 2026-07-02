@@ -82,7 +82,7 @@ class DevisViewSet(viewsets.ModelViewSet):
             'generer_facture', 'reviser', 'accepter', 'refuser', 'noter',
             'layout', 'roof_image', 'from_layout', 'auto', 'share_link',
             'envoyer_email', 'dupliquer_variante', 'variantes',
-            'save_preset', 'apply_preset',
+            'save_preset', 'apply_preset', 'contacter_superieur',
         ]:
             return [IsResponsableOrAdmin()]
         elif self.action == 'destroy':
@@ -855,6 +855,65 @@ class DevisViewSet(viewsets.ModelViewSet):
         devis = self.get_object()
         return Response(
             DevisActivitySerializer(devis.activites.all(), many=True).data)
+
+    @action(detail=True, methods=['post'], url_path='contacter-superieur',
+            permission_classes=[IsResponsableOrAdmin])
+    def contacter_superieur(self, request, pk=None):
+        """QJ28 — « Contacter mon supérieur » : notifie le SUPÉRIEUR du vendeur
+        sur ce devis (action MANUELLE — un bouton, jamais automatique).
+
+        Destinataires : le ``supervisor`` du créateur du devis (repli : le
+        vendeur courant), sinon les managers de repli de la société
+        (« Commercial responsable » / « Directeur ») — jamais le vendeur
+        lui-même. La notification passe par ``notify()`` (event
+        ``devis_superior_contact_requested``) et porte un lien vers le devis.
+        Aucun statut n'est touché (règle #4). La société vient TOUJOURS du
+        devis (déjà borné à la société du user par ``get_queryset``).
+
+        Body optionnel : ``message`` (max 500 caractères).
+        """
+        devis = self.get_object()
+        handler = devis.created_by or request.user
+        from apps.crm.services import user_and_superior_recipients
+        recipients = [
+            u for u in user_and_superior_recipients(handler, devis.company)
+            if u.pk not in {handler.pk, request.user.pk}
+        ]
+        if not recipients:
+            return Response(
+                {'detail': (
+                    'Aucun supérieur à notifier : définissez un superviseur '
+                    'dans Paramètres → Équipe, ou un rôle « Commercial '
+                    'responsable » / « Directeur ».')},
+                status=status.HTTP_400_BAD_REQUEST)
+
+        message = (str(request.data.get('message') or '')).strip()[:500]
+        client_nom = str(devis.client) if devis.client_id else ''
+        body_parts = [
+            f'{request.user.username} demande votre avis sur le devis '
+            f'{devis.reference}'
+            + (f' (client : {client_nom})' if client_nom else '') + '.']
+        if message:
+            body_parts.append(f'Message : « {message} »')
+
+        from apps.notifications.services import notify_many
+        notify_many(
+            recipients,
+            'devis_superior_contact_requested',
+            f'Avis demandé — devis {devis.reference}',
+            body='\n'.join(body_parts),
+            link=f'/ventes/devis?devis={devis.pk}',
+            company=devis.company,
+        )
+        from .. import activity
+        activity.log_devis_note(
+            devis, request.user,
+            'Supérieur notifié pour avis sur ce devis.'
+            + (f' Message : « {message} »' if message else ''))
+        return Response({
+            'detail': 'Votre supérieur a été notifié.',
+            'recipients': [u.username for u in recipients],
+        })
 
     @action(detail=True, methods=['post'], url_path='noter',
             permission_classes=[IsResponsableOrAdmin])
