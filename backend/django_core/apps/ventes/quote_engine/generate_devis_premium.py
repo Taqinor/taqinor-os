@@ -452,6 +452,34 @@ DOC_TEXTS = dict(DEFAULT_DOC_TEXTS)
 # N26 — métadonnées d'acceptation (posées côté serveur, jamais du corps client).
 ACCEPTE_PAR_NOM = ""
 DATE_ACCEPTATION = ""
+# QF3 — bloc « Comment nous calculons vos économies » (méthode + exemple), posé
+# depuis data["savings_method"]. Vide → aucun bloc rendu (byte-identique).
+SAVINGS_METHOD = None
+
+
+def _savings_method_html():
+    """QF3 — bloc « Comment nous calculons vos économies » (méthode + exemple
+    chiffré compact). Rendu UNIQUEMENT quand data["savings_method"] est fourni.
+    Aucune donnée fabriquée : le texte vient du builder (une seule source)."""
+    sm = SAVINGS_METHOD
+    if not isinstance(sm, dict) or not sm.get("ligne_methode"):
+        return ""
+    methode = _esc(sm.get("ligne_methode", ""))
+    exemple = sm.get("exemple")
+    approx = " (approximatif)" if sm.get("approximatif") else ""
+    ex_html = ""
+    if exemple:
+        ex_html = (
+            f'<div style="margin-top:4px;font-size:8pt;color:{CN};font-weight:700;">'
+            f'{_esc(exemple)}{approx}</div>')
+    return (
+        f'<div style="background:{CG1};border-radius:8px;padding:7px 12px;'
+        f'border:1px solid {CG2};border-left:4px solid {CA};margin-bottom:5px;">'
+        f'<div style="font-size:9pt;font-weight:700;color:{CN};'
+        f'text-transform:uppercase;letter-spacing:.8px;margin-bottom:3px;">'
+        f'Comment nous calculons vos &#233;conomies</div>'
+        f'<div style="font-size:7.5pt;color:{CG7};line-height:1.4;">{methode}</div>'
+        f'{ex_html}</div>')
 
 
 def _doc_text(key):
@@ -1556,6 +1584,9 @@ def page3():
     </div>
   </div>
 
+  <!-- QF3 — COMMENT NOUS CALCULONS VOS ÉCONOMIES (méthode + exemple) -->
+  <div style="padding:0 24px;">{_savings_method_html()}</div>
+
   <!-- CONDITIONS GENERALES -->
   <div style="padding:0 24px 4px;margin-bottom:5px;">
     <div style="background:{CG1};border-radius:8px;padding:7px 12px;border:1px solid {CG2};border-left:4px solid {CN};">
@@ -2107,6 +2138,8 @@ def _render_premium_pdf(data: dict, out_path) -> str:
     global PAY_A, PAY_M, PAY_S, ONEPAGE_NOTE_BATTERIE
     global DOC_TEXTS, ACCEPTE_PAR_NOM, DATE_ACCEPTATION
     global DEVISE  # FG52 — devise du document (ISO 4217)
+    global SAVINGS_METHOD  # QF3 — bloc « Comment nous calculons vos économies »
+    SAVINGS_METHOD = data.get("savings_method")
 
     # ERR37 — escape user-controlled client fields before they reach the PDF HTML.
     CLIENT_NAME  = _esc(data["client_name"])

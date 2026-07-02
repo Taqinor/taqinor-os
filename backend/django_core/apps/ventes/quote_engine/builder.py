@@ -610,6 +610,60 @@ def build_quote_data(devis, pdf_options=None) -> dict:
         etude["economie_reelle_opt1"] = roi["eco_s_ann"]
         etude["economie_reelle_opt2"] = roi["eco_a_ann"]
 
+    # ── QF3 — bloc « Comment nous calculons vos économies » ──────────────────
+    # Méthode + exemple chiffré compact, calculés UNE fois ici : le PDF premium
+    # et la proposition web (/proposal) rendent EXACTEMENT le même bloc.
+    def _fr_int(n):
+        return f"{int(round(n)):,}".replace(",", " ")
+
+    _sm_eco_ref = roi["eco_a_ann"] if scenario == "Avec batterie" else roi["eco_s_ann"]
+    if savings_model == "factures":
+        _sm_avec = (roi["facture_avec_a"] if scenario == "Avec batterie"
+                    else roi["facture_avec_s"])
+        savings_method = {
+            "model": "factures",
+            "facture_actuelle": roi["facture_sans"],
+            "facture_avec_solaire": _sm_avec,
+            "economie": roi["facture_sans"] - _sm_avec,
+            "approximatif": bool(roi.get("factures_approximatif")),
+            "ligne_methode": (
+                "Chaque kWh est valorisé au prix de SA tranche (barème "
+                "progressif du distributeur) : facture actuelle moins facture "
+                "résiduelle après autoconsommation — jamais un prix moyen "
+                "inventé."),
+            "exemple": (
+                f"Facture actuelle ≈ {_fr_int(roi['facture_sans'])} DH/an → "
+                f"avec solaire ≈ {_fr_int(_sm_avec)} DH/an → économie ≈ "
+                f"{_fr_int(roi['facture_sans'] - _sm_avec)} DH/an"),
+        }
+    elif savings_model == "etude":
+        savings_method = {
+            "model": "etude",
+            "facture_actuelle": None,
+            "facture_avec_solaire": None,
+            "economie": _sm_eco_ref,
+            "approximatif": False,
+            "ligne_methode": (
+                "Économies issues de l'étude de consommation enregistrée avec "
+                "ce devis (production et économies calculées sur votre profil "
+                "réel)."),
+            "exemple": None,
+        }
+    else:
+        savings_method = {
+            "model": "estimation",
+            "facture_actuelle": None,
+            "facture_avec_solaire": None,
+            "economie": _sm_eco_ref,
+            "approximatif": True,
+            "ligne_methode": (
+                "Estimation : production annuelle × part autoconsommée × tarif "
+                "kWh — loi 82-21 : seuls les kWh autoconsommés sont valorisés, "
+                "le surplus injecté n'est pas rémunéré. Fournissez une facture "
+                "réelle pour un calcul par tranche exact."),
+            "exemple": None,
+        }
+
     # ONEE monthly bill proxy (bars sit above the savings curves): full-price bill
     # ≈ Option-2 monthly savings / 0.85 autoconsumption.
     factures_mensuelles = [round(v / 0.85) for v in roi["eco_a_monthly"]]
@@ -754,6 +808,9 @@ def build_quote_data(devis, pdf_options=None) -> dict:
         "factures_approximatif": (
             bool(roi.get("factures_approximatif"))
             if savings_model == "factures" else False),
+        # QF3 — bloc « Comment nous calculons vos économies » (méthode + exemple
+        # chiffré compact). Même dict rendu par le PDF premium et /proposal.
+        "savings_method": savings_method,
         "factures_mensuelles": factures_mensuelles,
         "sans_items": sans_items,
         "avec_items": avec_items,

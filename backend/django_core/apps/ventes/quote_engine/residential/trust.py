@@ -146,6 +146,18 @@ def build(ctx) -> str:
         ("TVA", tva_note or "Selon barème en vigueur"),
         ("Délai d'installation", "7 à 14 jours ouvrés"),
     ]
+    # QF3 — « Comment nous calculons vos économies » : méthode + exemple chiffré
+    # compact, ajoutés comme une ligne de conditions (aucune hauteur de bloc en
+    # plus, la page reste à 3 pages). Le texte vient du builder (une source).
+    sm = d.get("savings_method") or {}
+    sm_line = (sm.get("ligne_methode") or "").strip()
+    sm_ex = (sm.get("exemple") or "").strip()
+    sm_approx = " (approximatif)" if sm.get("approximatif") else ""
+    if sm_line:
+        _v = sm_line
+        if sm_ex:
+            _v += f' <b>{sm_ex}{sm_approx}</b>'
+        conditions.append(("Comment nous calculons vos économies", _v))
     cond_html = "".join(
         f'<div class="p3-cond-row"><span class="p3-cond-k">{k}</span>'
         f'<span class="p3-cond-v">{v}</span></div>'

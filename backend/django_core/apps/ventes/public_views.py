@@ -371,6 +371,16 @@ def proposal_data(request, token):
             # absent (key not sent) when total is unknown — frontend must check.
             # NOTE: also nested inside data['quote']['financing'] for the PDF engine.
             'financing': data.get('financing'),
+            # QF3 — bloc « Comment nous calculons vos économies » (méthode +
+            # exemple chiffré). Présent quand le builder l'a produit ; jamais de
+            # prix d'achat/marge (RULE #4). Aussi imbriqué dans data['quote'].
+            'savings_method': data.get('savings_method'),
+            # QF2 — modèle d'économie + les deux factures annuelles (réel /
+            # étude / estimation). None hors modèle « factures » — jamais inventé.
+            'savings_model': data.get('savings_model'),
+            'facture_sans_solaire': data.get('facture_sans_solaire'),
+            'facture_avec_solaire_s': data.get('facture_avec_solaire_s'),
+            'facture_avec_solaire_a': data.get('facture_avec_solaire_a'),
             # QJ15 — variantes côte-à-côte (même version_parent, toutes actives).
             # [] quand le devis est isolé — le client voit seulement sa proposition.
             'variants': _variant_summaries(devis),
