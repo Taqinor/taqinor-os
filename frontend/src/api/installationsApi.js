@@ -48,6 +48,23 @@ const installationsApi = {
     api.post(`/installations/chantiers/${id}/commander-besoin/`,
       fournisseurId ? { fournisseur: fournisseurId } : {}),
 
+  // FG74 — Gantt multi-chantier (lecture seule, jalons par chantier actif).
+  getGanttChantiers: () => api.get('/installations/chantiers/gantt/'),
+
+  // N43 — régime loi 82-21 suggéré pour une puissance (kWc) donnée.
+  getRegimeSuggestion: (kwc) =>
+    api.get('/installations/chantiers/regime-suggestion/', { params: { kwc } }),
+
+  // FG79 — matérialise la chaîne d'interventions standard du chantier (idempotent).
+  creerInterventionsStandard: (id) =>
+    api.post(`/installations/chantiers/${id}/creer-interventions-standard/`, {}),
+
+  // FG71 — synthèse coût / marge du chantier. STRICTEMENT INTERNE (admin) : ne
+  // jamais afficher hors écran admin, jamais sur un document client.
+  getChantierCout: (id, tarifJour) =>
+    api.get(`/installations/chantiers/${id}/cout/`,
+      { params: tarifJour ? { tarif_jour: tarifJour } : undefined }),
+
   // Interventions (sorties chantier) — F3/F4
   getInterventions: (params) => api.get('/installations/interventions/', { params }),
   createIntervention: (data) => api.post('/installations/interventions/', data),
@@ -194,6 +211,33 @@ const installationsApi = {
 
   // ── F23 — Code/QR de l'intervention ──
   getCode: (id) => api.get(`/installations/interventions/${id}/code/`),
+
+  // ── FG68 — Calendrier dispatch techniciens (groupé par technicien) ──
+  getCalendrierInterventions: (dateFrom, dateTo) =>
+    api.get('/installations/interventions/calendrier/',
+      { params: { date_from: dateFrom, date_to: dateTo } }),
+
+  // ── FG73 — « Ma tournée » : interventions du jour du technicien, ordonnées
+  // géographiquement (plus proche voisin) avec lien Itinéraire Google Maps. ──
+  getMaTournee: (date) =>
+    api.get('/installations/interventions/ma-tournee/',
+      { params: date ? { date } : undefined }),
+
+  // ── FG299 — Plan de charge des équipes (capacité vs affecté) ──
+  getPlanDeCharge: (params) =>
+    api.get('/installations/interventions/plan-de-charge/', { params }),
+
+  // ── FG300 — Conflits d'affectation (double-booking technicien/camionnette) ──
+  getConflitsAffectation: (params) =>
+    api.get('/installations/interventions/conflits-affectation/', { params }),
+
+  // ── FG301 — Nivellement de charge (proposition de rééquilibrage, lecture seule) ──
+  getNivellementCharge: (params) =>
+    api.get('/installations/interventions/nivellement-charge/', { params }),
+
+  // ── FG303 — Planning des camionnettes (capacité véhicule) ──
+  getPlanningCamionnettes: (params) =>
+    api.get('/installations/interventions/planning-camionnettes/', { params }),
 
   // ── N91/F21 — Synchro idempotente de la capture terrain hors-ligne ──
   // `ops` : [{ client_op_id, op_type, payload }]. Sûr à rejouer en entier
