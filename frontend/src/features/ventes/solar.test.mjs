@@ -10,7 +10,7 @@ import {
   computeROI, ttcFromHt, htFromTtc, optionTotalsTTC, autoFillLines, GHI,
   groupProduitsByCategory,
   KWH_PRICE, FALLBACK_KWH_PRICE, kwhFromBill, twoBillsSavings, monthlyBillFromKwh,
-  ONEE_TRANCHES, AUTOCONSO_SANS, AUTOCONSO_AVEC,
+  ONEE_TRANCHES, AUTOCONSO_SANS, AUTOCONSO_AVEC, buildEtudeParamsChoice,
 } from './solar.js'
 
 // Reflet du catalogue seedé (prix HT = TTC simulateur / 1.2, 2 décimales)
@@ -652,4 +652,59 @@ test('QF5 — computeROI : avec consommation réelle + distributeur, bascule sur
   assert.equal(roi.facture_sans, refSans.factureSans)
   assert.equal(roi.facture_avec_sans, refSans.factureAvec)
   assert.equal(roi.facture_avec_avec, refAvec.factureAvec)
+})
+
+// ── QF7 — buildEtudeParamsChoice : scenario/recommended_option persistés ────
+// pour TOUS les modes, même sans étude de base (industriel dégénéré/résidentiel).
+test('QF7 — sans étude de base (résidentiel, ou industriel kwp=0) : le résultat porte quand même le choix', () => {
+  const r = buildEtudeParamsChoice(null, {
+    scenario: 'Les deux (Sans + Avec)', recommendedChoice: 'Auto',
+    recommendedOption: 'Sans batterie', distributeur: 'onee', consoAnnuelleReelle: null,
+  })
+  assert.equal(r.scenario, 'Les deux (Sans + Avec)')
+  assert.equal(r.recommended_choice, 'Auto')
+  assert.equal(r.recommended_option, 'Sans batterie')
+  // distributeur === 'onee' (défaut) sans conso réelle → pas de bruit ajouté
+  assert.equal(r.distributeur, undefined)
+})
+
+test('QF7 — avec étude industrielle existante : le choix est fusionné, l\'étude préservée', () => {
+  const etude = { kwc: 12.5, production_annuelle: 15000, taux_autoconso: 78 }
+  const r = buildEtudeParamsChoice(etude, {
+    scenario: 'Sans batterie', recommendedChoice: 'Auto',
+    recommendedOption: 'Sans batterie', distributeur: 'onee', consoAnnuelleReelle: null,
+  })
+  assert.equal(r.kwc, 12.5)
+  assert.equal(r.production_annuelle, 15000)
+  assert.equal(r.scenario, 'Sans batterie')
+  assert.equal(r.recommended_option, 'Sans batterie')
+})
+
+test('QF7 — agricole (étude pompage) : le choix est fusionné sans écraser les champs pompage', () => {
+  const etudePompage = { pompe_cv: 5.5, hmt_m: 60, region: 'souss-massa' }
+  const r = buildEtudeParamsChoice(etudePompage, {
+    scenario: 'Les deux (Sans + Avec)', recommendedChoice: 'Auto',
+    recommendedOption: 'Sans batterie', distributeur: 'onee', consoAnnuelleReelle: null,
+  })
+  assert.equal(r.pompe_cv, 5.5)
+  assert.equal(r.region, 'souss-massa')
+  assert.equal(r.recommended_option, 'Sans batterie')
+})
+
+test('QF7 — distributeur non-ONEE persisté même sans conso réelle (choix explicite du vendeur)', () => {
+  const r = buildEtudeParamsChoice(null, {
+    scenario: 'Sans batterie', recommendedChoice: 'Auto', recommendedOption: 'Sans batterie',
+    distributeur: 'lydec', consoAnnuelleReelle: null,
+  })
+  assert.equal(r.distributeur, 'lydec')
+})
+
+test('QF7 — conso_annuelle réelle (QF4) fusionnée avec distributeur, sans écraser un conso_annuelle d\'étude existant', () => {
+  const etude = { conso_annuelle: 9000, kwc: 8 } // conso dérivée de l'étude industrielle
+  const r = buildEtudeParamsChoice(etude, {
+    scenario: 'Sans batterie', recommendedChoice: 'Auto', recommendedOption: 'Sans batterie',
+    distributeur: 'redal', consoAnnuelleReelle: 7200, // saisie réelle QF4, ne doit PAS écraser 9000
+  })
+  assert.equal(r.conso_annuelle, 9000) // préservé (source canonique = étude)
+  assert.equal(r.distributeur, 'redal') // le distributeur choisi s'applique quand même
 })

@@ -667,6 +667,28 @@ export function computeEtudeIndustrielle({ kwp, consoMensuelleKwh, dayUsagePct, 
   }
 }
 
+// ── QF7 — fusion des paramètres d'étude + choix scénario/option, TOUS modes ──
+// Fonction pure isolée pour rendre testable la garantie : `scenario` /
+// `recommended_option` sont TOUJOURS persistés dans etude_params, quel que
+// soit le mode (résidentiel/industriel/agricole) et même quand aucune étude
+// dégénérée ne peut être construite (ex. industriel kwp=0 avec des lignes
+// manuelles). `baseEtudeParams` peut être null/undefined — le résultat est
+// TOUJOURS un objet non-null qui porte au moins le choix scénario/option.
+export function buildEtudeParamsChoice(baseEtudeParams, {
+  scenario, recommendedChoice, recommendedOption, distributeur, consoAnnuelleReelle,
+}) {
+  const realBillParams = consoAnnuelleReelle > 0
+    ? { distributeur, conso_annuelle: consoAnnuelleReelle }
+    : (distributeur && distributeur !== 'onee' ? { distributeur } : {})
+  return {
+    ...(baseEtudeParams || {}),
+    ...(baseEtudeParams?.conso_annuelle ? { distributeur } : realBillParams),
+    scenario,
+    recommended_choice: recommendedChoice,
+    recommended_option: recommendedOption,
+  }
+}
+
 // ── Pompage solaire (mode Agricole) ───────────────────────────────────────────
 export const CV_TO_KW = 0.7355
 // Heures de pompage effectives par défaut (champ 1.4× surdimensionné →

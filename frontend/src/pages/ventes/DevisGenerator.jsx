@@ -35,7 +35,7 @@ import {
   panneauxPourKwc, expectedTvaForDesignation,
   TVA_STANDARD_DEFAUT, TVA_PANNEAUX_DEFAUT,
   classifyProduct,
-  kwhFromBill,
+  kwhFromBill, buildEtudeParamsChoice,
 } from '../../features/ventes/solar'
 
 const MODE_OPTIONS = [
@@ -795,35 +795,19 @@ export default function DevisGenerator({
           hmt_drawdown: parseFloat(farmHmtDrawdown) || null,
         }
       }
-      // Persiste le scénario + l'option recommandée affichés à l'écran pour que
-      // le PDF mette en avant EXACTEMENT la même option (option recommandée
-      // résolue : « Auto » → l'option du scénario).
-      // Garde-fou (T14) : en mode industriel SANS étude (conso = 0), on ne crée
-      // PAS d'étude dégénérée — etude_params reste null (la consommation manque,
-      // ce que errors.conso bloque déjà en amont). Ailleurs, on annote.
-      const choiceParams = {
-        scenario,
-        recommended_choice: recommendedChoice,
-        recommended_option: recommended,
-      }
-      // QF4 — distributeur + consommation annuelle RÉELLE (dérivée de la
-      // facture/kWh du client) : nourrit le calcul « deux factures » par
-      // tranche backend (QF2) avec de vrais chiffres, pour TOUS les modes
-      // (pas seulement industriel). N'écrase JAMAIS un conso_annuelle déjà
-      // posé par l'étude industrielle — celle-ci reste la source canonique
-      // quand elle existe (conso saisie/dérivée des factures mensuelles).
-      const realBillParams = consoAnnuelleReelle > 0
-        ? { distributeur, conso_annuelle: consoAnnuelleReelle }
-        : (distributeur !== 'onee' ? { distributeur } : {})
-      if (etudeParams) {
-        etudeParams = {
-          ...etudeParams,
-          ...(etudeParams.conso_annuelle ? { distributeur } : realBillParams),
-          ...choiceParams,
-        }
-      } else if (modeInstallation !== 'industriel') {
-        etudeParams = { ...realBillParams, ...choiceParams }
-      }
+      // QF7 — persiste le scénario + l'option recommandée affichés à l'écran
+      // pour TOUS les modes (résidentiel/industriel/agricole), pas seulement
+      // quand une étude existe déjà : sans cette garantie un devis industriel
+      // sans étude dégénérée (kwp=0, ex. lignes ajoutées à la main) perdait
+      // silencieusement le choix sans/avec fait à l'écran. Le PDF (QF6) doit
+      // pouvoir mettre en avant EXACTEMENT la même option (« Auto » résolu →
+      // l'option du scénario) quel que soit le mode. QF4 — le distributeur +
+      // la consommation annuelle RÉELLE (facture/kWh du client) sont fusionnés
+      // dans le même appel (jamais deux logiques de fusion divergentes).
+      etudeParams = buildEtudeParamsChoice(etudeParams, {
+        scenario, recommendedChoice, recommendedOption: recommended,
+        distributeur, consoAnnuelleReelle,
+      })
       const payload = {
         statut: 'brouillon',
         date_validite: dateValidite || null,
