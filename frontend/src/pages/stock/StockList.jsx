@@ -30,6 +30,7 @@ import { validateTransfert, totalVentile, quantiteEmplacement, produitDansEmplac
 import { normalizeCode, isValidCode, resolveTarget } from '../../features/stock/labels'
 import BarcodeScanner from '../../features/pwa/BarcodeScanner'
 import { toastError, toastSuccess } from '../../lib/toast'
+import { useCanCreateProduit } from '../../hooks/useHasPermission'
 import {
   Button, IconButton, Badge, Checkbox, Input, Spinner, Skeleton,
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter,
@@ -574,6 +575,10 @@ export default function StockList() {
     ? permissions.includes('stock_modifier')
     : (role === 'responsable' || role === 'admin')
   const canDelete = role === 'admin'
+  // QG5 — la CRÉATION de produit est restreinte à Directeur + Commercial
+  // responsable (UX miroir de la garde backend QG4) ; canWrite reste pour la
+  // modification/l'import, séparés de la création.
+  const canCreateProduit = useCanCreateProduit()
 
   const [search, setSearch]           = useState('')
   const [showForm, setShowForm]       = useState(false)
@@ -986,7 +991,7 @@ export default function StockList() {
             </DropdownMenu>
           </div>
 
-          {canWrite && (
+          {canCreateProduit && (
             <Button onClick={openNew}>
               <Plus /> Nouveau produit
             </Button>
@@ -1227,7 +1232,7 @@ export default function StockList() {
                 icon={PackageOpen}
                 title="Aucun produit"
                 description="Créez votre premier produit pour démarrer le catalogue."
-                action={canWrite
+                action={canCreateProduit
                   ? <Button size="sm" onClick={openNew}><Plus /> Nouveau produit</Button>
                   : undefined}
               />
