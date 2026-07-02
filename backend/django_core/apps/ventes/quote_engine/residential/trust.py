@@ -158,6 +158,16 @@ def build(ctx) -> str:
         if sm_ex:
             _v += f' <b>{sm_ex}{sm_approx}</b>'
         conditions.append(("Comment nous calculons vos économies", _v))
+    # QK4 — « Nos hypothèses » : les hypothèses derrière les économies (tarif,
+    # source du barème, autoconsommation-first loi 82-21, base de production),
+    # ajoutées comme une ligne de conditions (aucune hauteur de bloc en plus,
+    # la page reste à 3 pages). Le texte vient du builder (une source).
+    hyp = d.get("hypotheses") or {}
+    hyp_items = [str(i).strip() for i in (hyp.get("items") or []) if str(i).strip()]
+    if hyp_items:
+        conditions.append(
+            (hyp.get("titre") or "Nos hypothèses",
+             " &middot; ".join(hyp_items)))
     cond_html = "".join(
         f'<div class="p3-cond-row"><span class="p3-cond-k">{k}</span>'
         f'<span class="p3-cond-v">{v}</span></div>'

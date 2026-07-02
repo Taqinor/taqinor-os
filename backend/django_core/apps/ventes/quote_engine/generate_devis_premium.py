@@ -508,6 +508,38 @@ def _savings_method_html():
         f'{ex_html}</div>')
 
 
+# QK4 — bloc « Nos hypothèses » (transparence des hypothèses d'économies), posé
+# depuis data["hypotheses"]. Vide → aucun bloc rendu (byte-identique).
+HYPOTHESES = None
+
+
+def _hypotheses_html():
+    """QK4 — bloc « Nos hypothèses » : liste des hypothèses derrière les
+    économies (tarif, source barème, autoconsommation-first loi 82-21, base de
+    production). Rendu UNIQUEMENT quand data["hypotheses"] est fourni. Le texte
+    vient du builder (une seule source) ; aucun chiffre inventé ici."""
+    h = HYPOTHESES
+    if not isinstance(h, dict):
+        return ""
+    items = [i for i in (h.get("items") or []) if i]
+    if not items:
+        return ""
+    titre = _esc(h.get("titre") or "Nos hypothèses")
+    lis = "".join(
+        f'<li style="font-size:7.3pt;color:{CG7};padding-left:11px;'
+        f'position:relative;line-height:1.35;margin-bottom:1px;">'
+        f'<span style="position:absolute;left:0;color:{CA};">&#183;</span>'
+        f'{_esc(i)}</li>'
+        for i in items)
+    return (
+        f'<div style="background:{CG1};border-radius:8px;padding:7px 12px;'
+        f'border:1px solid {CG2};border-left:4px solid {CG4};margin-bottom:5px;">'
+        f'<div style="font-size:9pt;font-weight:700;color:{CN};'
+        f'text-transform:uppercase;letter-spacing:.8px;margin-bottom:3px;">'
+        f'{titre}</div>'
+        f'<ul style="list-style:none;padding:0;margin:0;">{lis}</ul></div>')
+
+
 def _doc_text(key):
     """Fragment de texte éditable `key`, repli sur le littéral historique."""
     val = DOC_TEXTS.get(key)
@@ -1613,6 +1645,9 @@ def page3():
   <!-- QF3 — COMMENT NOUS CALCULONS VOS ÉCONOMIES (méthode + exemple) -->
   <div style="padding:0 24px;">{_savings_method_html()}</div>
 
+  <!-- QK4 — NOS HYPOTHÈSES (transparence des hypothèses d'économies) -->
+  <div style="padding:0 24px;">{_hypotheses_html()}</div>
+
   <!-- CONDITIONS GENERALES -->
   <div style="padding:0 24px 4px;margin-bottom:5px;">
     <div style="background:{CG1};border-radius:8px;padding:7px 12px;border:1px solid {CG2};border-left:4px solid {CN};">
@@ -2166,6 +2201,8 @@ def _render_premium_pdf(data: dict, out_path) -> str:
     global DEVISE  # FG52 — devise du document (ISO 4217)
     global SAVINGS_METHOD  # QF3 — bloc « Comment nous calculons vos économies »
     SAVINGS_METHOD = data.get("savings_method")
+    global HYPOTHESES  # QK4 — bloc « Nos hypothèses »
+    HYPOTHESES = data.get("hypotheses")
 
     # ERR37 — escape user-controlled client fields before they reach the PDF HTML.
     CLIENT_NAME  = _esc(data["client_name"])

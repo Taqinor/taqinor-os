@@ -774,6 +774,55 @@ def build_quote_data(devis, pdf_options=None) -> dict:
             "exemple": None,
         }
 
+    # ── QK4 — « Nos hypothèses » : transparence des hypothèses d'économies ────
+    # Surface côté client les hypothèses derrière les économies : tarif MAD/kWh
+    # utilisé, source du barème (ONEE/Lydec/Redal — approximatif pour les
+    # distributeurs privés), autoconsommation d'abord (loi 82-21, injection OFF —
+    # rachat BT résidentiel différé par l'ANRE), base de production/dégradation.
+    # Toutes les valeurs viennent de roi/etude (une source) ; dégrade proprement.
+    _util_labels = {"onee": "ONEE", "lydec": "Lydec", "redal": "Redal"}
+    _util_key = (str(_utility).lower() if _utility else "")
+    _util_name = _util_labels.get(_util_key, "")
+    _util_approx = _util_key in ("lydec", "redal")
+    _tarif_val = roi.get("tarif_kwh")
+    _tarif_txt = (f"{_tarif_val:.2f}".replace(".", ",")
+                  if isinstance(_tarif_val, (int, float)) else None)
+    _prod_factor = roi.get("productible")
+    hypotheses = []
+    if savings_model == "factures" and _util_name:
+        hypotheses.append(
+            f"Tarif électricité : barème {_util_name} par tranche"
+            + (" (approximatif — distributeur privé)" if _util_approx
+               else " (barème public)"))
+    elif _tarif_txt:
+        _src = _util_name or "moyenne de référence"
+        hypotheses.append(
+            f"Tarif électricité retenu : {_tarif_txt} MAD/kWh"
+            + (f" ({_src})" if _util_name else " (estimation)"))
+    hypotheses.append(
+        "Économies valorisées sur l'autoconsommation uniquement (loi 82-21) — "
+        "le surplus injecté n'est pas rémunéré (rachat BT résidentiel différé "
+        "par l'ANRE).")
+    if _prod_factor:
+        hypotheses.append(
+            f"Production estimée : ≈ {int(round(_prod_factor))} kWh par kWc et "
+            "par an (irradiation moyenne au Maroc), performance panneaux "
+            "garantie sur 25 ans.")
+    hypotheses.append(
+        "Estimations non contractuelles ; toute hausse future du tarif "
+        "électrique améliore votre rentabilité.")
+    hypotheses_block = {
+        "titre": "Nos hypothèses",
+        "items": hypotheses,
+        "tarif_kwh": _tarif_val,
+        "tarif_kwh_txt": _tarif_txt,
+        "tranche_source": _util_name or None,
+        "tranche_approximatif": bool(_util_approx),
+        "autoconso_first": True,
+        "productible_kwh_kwc": (int(round(_prod_factor)) if _prod_factor
+                                else None),
+    }
+
     # ONEE monthly bill proxy (bars sit above the savings curves): full-price bill
     # ≈ Option-2 monthly savings / 0.85 autoconsumption.
     factures_mensuelles = [round(v / 0.85) for v in roi["eco_a_monthly"]]
@@ -932,6 +981,9 @@ def build_quote_data(devis, pdf_options=None) -> dict:
         # QF3 — bloc « Comment nous calculons vos économies » (méthode + exemple
         # chiffré compact). Même dict rendu par le PDF premium et /proposal.
         "savings_method": savings_method,
+        # QK4 — bloc « Nos hypothèses » (tarif, source barème, autoconso-first,
+        # productible). Même dict rendu par le PDF premium et /proposal.
+        "hypotheses": hypotheses_block,
         "factures_mensuelles": factures_mensuelles,
         "sans_items": sans_items,
         "avec_items": avec_items,

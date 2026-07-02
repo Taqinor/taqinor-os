@@ -375,6 +375,9 @@ def proposal_data(request, token):
             # exemple chiffré). Présent quand le builder l'a produit ; jamais de
             # prix d'achat/marge (RULE #4). Aussi imbriqué dans data['quote'].
             'savings_method': data.get('savings_method'),
+            # QK4 — bloc « Nos hypothèses » (tarif, source barème, autoconso-first
+            # loi 82-21, productible). Jamais de prix d'achat/marge (RULE #4).
+            'hypotheses': data.get('hypotheses'),
             # QF2 — modèle d'économie + les deux factures annuelles (réel /
             # étude / estimation). None hors modèle « factures » — jamais inventé.
             'savings_model': data.get('savings_model'),
