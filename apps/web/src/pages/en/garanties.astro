@@ -15,7 +15,7 @@ import { localizeNavHref } from '../../i18n/pages';
 
 const locale = getLocaleFromPath(Astro.url.pathname);
 const L = (href: string) => localizeNavHref(href, locale);
-const contactSim = L('/contact') + '#simulateur';
+const devisHref = L('/devis/mon-toit');
 
 const warranties = [
   { item: 'Photovoltaic panels (product)', years: '12 ans' },
@@ -110,7 +110,7 @@ const engagements = [
       </div>
     </section>
 
-    <CtaBand title="A 25-year warranty is earned through a serious study. Ours is free." href={contactSim} />
+    <CtaBand title="A 25-year warranty is earned through a serious study. Ours is free." href={devisHref} />
 
     <StickyCta />
   </div>
