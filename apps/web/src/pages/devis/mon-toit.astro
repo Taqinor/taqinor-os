@@ -20,6 +20,10 @@
 import Layout from '../../layouts/Layout.astro';
 import { BILL_RANGES } from '../../lib/billRange';
 import { ROOF_TYPES } from '../../lib/lead';
+import StarRating from '../../components/StarRating.astro';
+import CertLogoRow from '../../components/CertLogoRow.astro';
+import InstallCounter from '../../components/InstallCounter.astro';
+import ZelligeSignature from '../../components/ZelligeSignature.astro';
 
 const inputClass =
   'w-full border border-white/15 bg-white/5 px-3 py-3 text-base text-white placeholder:text-lune-faint outline-none transition-colors focus:border-brass-400 focus:ring-2 focus:ring-brass-400/30 aria-[invalid=true]:border-alert-300 aria-[invalid=true]:ring-2 aria-[invalid=true]:ring-alert-300/30';
@@ -145,7 +149,7 @@ const TOWNS = ['Casablanca', 'Rabat', 'Marrakech', 'Tanger', 'Agadir', 'Kénitra
             </button>
           </form>
 
-          <div id="rp9-map" class="mt-0 h-[44vh] min-h-[280px] w-full bg-nuit-700"
+          <div id="rp9-map" class="mt-skeleton-shimmer mt-0 h-[44vh] min-h-[280px] w-full bg-nuit-700"
             role="application" aria-label="Carte satellite pour repérer votre toit"></div>
 
           <div class="flex flex-wrap items-center gap-3 border-t border-white/10 p-4">
@@ -382,6 +386,33 @@ const TOWNS = ['Casablanca', 'Rabat', 'Marrakech', 'Tanger', 'Agadir', 'Kénitra
             Estimation indisponible : indiquez votre facture mensuelle pour la calculer. Nous
             l'affinons ensemble sur WhatsApp.
           </p>
+
+          <!-- ===== WJ2 — « voir les panneaux sur votre toit » (facultatif, lazy) =====
+               Affiché UNIQUEMENT quand un contour (≥3 sommets) a été tracé à l'étape 1
+               ET qu'une estimation kWc est disponible. Bouton = geste explicite ; le
+               moteur 3D (Three.js + viewerOnly) n'est importé qu'au tap. Boîte à hauteur
+               RÉSERVÉE (zéro CLS) : le bouton occupe déjà la même zone que le canvas. -->
+          <div id="mt-panels3d" hidden class="mt-5 border-t border-white/10 pt-5">
+            <div id="mt-panels3d-stage" class="mt-panels3d-stage cine-card relative overflow-hidden rounded-lg">
+              <div id="mt-panels3d-overlay" class="absolute inset-0 flex flex-col items-center justify-center gap-2 px-4 text-center">
+                <button type="button" id="mt-panels3d-start"
+                  class="btn-pill inline-flex items-center justify-center gap-2"
+                  style="background: var(--color-brass-400); color: var(--color-nuit); border-color: var(--color-brass-400)">
+                  <span data-i18n data-fr="Voir les panneaux sur votre toit" data-ar="مشاهدة الألواح على سطحك">Voir les panneaux sur votre toit</span>
+                </button>
+                <p class="max-w-xs text-xs text-lune-faint" data-i18n
+                  data-fr="Aperçu illustratif — l'implantation exacte est confirmée après visite technique."
+                  data-ar="معاينة توضيحية — يُؤكَّد التوضع الدقيق بعد زيارة تقنية.">
+                  Aperçu illustratif — l'implantation exacte est confirmée après visite technique.
+                </p>
+              </div>
+            </div>
+            <p id="mt-panels3d-hint" hidden class="mt-2 text-xs text-lune-faint" data-i18n
+              data-fr="Faites glisser pour tourner · pincez ou molette pour zoomer."
+              data-ar="اسحب للتدوير · قرّب بإصبعين أو بعجلة الفأرة.">
+              Faites glisser pour tourner · pincez ou molette pour zoomer.
+            </p>
+          </div>
         </div>
 
         <!-- Formulaire de contact (la porte vient APRÈS l'estimation). -->
@@ -474,12 +505,13 @@ const TOWNS = ['Casablanca', 'Rabat', 'Marrakech', 'Tanger', 'Agadir', 'Kénitra
         </form>
       </div>
 
-      <!-- ============ WJ8 — CONFIANCE AU POINT DE CAPTURE ============ -->
+      <!-- ============ WJ8/WJ35 — CONFIANCE AU POINT DE CAPTURE ============ -->
       <aside class="mt-8 border-t border-white/10 pt-6">
-        <!-- pending real content from Reda : nombre de clients + photos d'installations réelles.
+        <!-- pending real content from Reda : photos d'installations réelles.
              On NE FABRIQUE PAS de chiffre ni d'avis : on affiche des faits vérifiables (loi
              82-21, garanties constructeur standard, zone de service réelle) + un emplacement
-             scaffoldé pour les photos. -->
+             scaffoldé pour les photos. Le compteur d'installations (4ᵉ tuile) est désormais
+             RÉEL — dérivé de src/lib/realisations.ts (WJ35, InstallCounter). -->
         <div class="grid grid-cols-2 gap-3 sm:grid-cols-4">
           <div class="cine-card p-3 text-center">
             <p class="text-sm font-bold text-white" data-i18n data-fr="Conforme loi 82-21" data-ar="مطابق للقانون 82-21">Conforme loi 82-21</p>
@@ -494,7 +526,6 @@ const TOWNS = ['Casablanca', 'Rabat', 'Marrakech', 'Tanger', 'Agadir', 'Kénitra
             <p class="text-xs text-lune-faint">IEC 61215 / 61730</p>
           </div>
           <div class="cine-card p-3 text-center">
-            <!-- pending real content from Reda : compteur de clients/installations réel. -->
             <p class="text-sm font-bold text-white" data-i18n data-fr="Partout au Maroc" data-ar="في كل المغرب">Partout au Maroc</p>
             <p class="text-xs text-lune-faint" data-i18n data-fr="Étude locale" data-ar="دراسة محلية">Étude locale</p>
           </div>
@@ -511,12 +542,32 @@ const TOWNS = ['Casablanca', 'Rabat', 'Marrakech', 'Tanger', 'Agadir', 'Kénitra
              (chemin /images/installs/*.webp) + légende ville. Tant qu'absentes, on n'affiche
              aucun visuel fabriqué — ce bloc reste masqué. -->
         <div id="mt-install-photos" hidden class="mt-4 grid grid-cols-3 gap-2" aria-label="Installations réalisées"></div>
+
+        <!-- WJ35 — preuve sociale premium : compteur réel + note Google (scaffold tant
+             qu'absente) + certifications. Grade v3 discret (section-tight rythme). -->
+        <div class="mt-6 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+          <InstallCounter />
+          <StarRating compact />
+        </div>
+        <div class="mt-5">
+          <CertLogoRow />
+        </div>
       </aside>
+
+      <!-- WJ35 — signature zellige de clôture (empreinte v3, cohérente avec l'accueil élevé) -->
+      <ZelligeSignature
+        line="Chaque chiffre de cette page est mesuré, pas promis."
+        sub="Votre estimation d'abord. L'étude ensuite."
+      />
     </div>
   </section>
 
-  <!-- ============ WJ7 — RÉCUPÉRATION D'ABANDON (exit-intent / sortie mobile) ============ -->
-  <div id="mt-exit" hidden class="fixed inset-0 z-50 flex items-end justify-center bg-black/60 p-4 sm:items-center" role="dialog" aria-modal="true" aria-labelledby="mt-exit-title">
+  <!-- ============ WJ7 — RÉCUPÉRATION D'ABANDON (exit-intent / sortie mobile) ============
+       WJ34 — safe-area-inset-bottom : ancrée en bas sur mobile (items-end), la
+       modale ne doit jamais se coller sous la barre de geste / l'encoche. ==== -->
+  <div id="mt-exit" hidden class="fixed inset-0 z-50 flex items-end justify-center bg-black/60 p-4 sm:items-center"
+    style="padding-bottom: max(1rem, env(safe-area-inset-bottom));"
+    role="dialog" aria-modal="true" aria-labelledby="mt-exit-title">
     <div class="cine-card w-full max-w-md border border-brass-400/40 p-5">
       <div class="flex items-start justify-between gap-3">
         <p id="mt-exit-title" class="display text-lg text-white" data-i18n data-fr="Recevez votre estimation sur WhatsApp" data-ar="استلم تقديرك على واتساب">Recevez votre estimation sur WhatsApp</p>
@@ -540,6 +591,53 @@ const TOWNS = ['Casablanca', 'Rabat', 'Marrakech', 'Tanger', 'Agadir', 'Kénitra
     </div>
   </div>
 </Layout>
+
+<style>
+  /* WJ2 — boîte à hauteur RÉSERVÉE (zéro CLS) : le bouton « voir les panneaux »
+     et le canvas 3D qui le remplace ensuite occupent EXACTEMENT la même zone. */
+  .mt-panels3d-stage {
+    height: 320px;
+    background: linear-gradient(160deg, rgb(20 38 63 / 0.9), rgb(7 11 29 / 0.95));
+  }
+  @media (min-width: 640px) {
+    .mt-panels3d-stage {
+      height: 380px;
+    }
+  }
+
+  /* ===== WJ34 — squelettes de performance perçue (zéro CLS : la zone occupe
+     déjà sa hauteur finale — bg-nuit-700/min-h existants — on n'ajoute qu'un
+     effet de « chargement » par-dessus, retiré au premier rendu réel). ===== */
+  .mt-skeleton-shimmer {
+    background-image: linear-gradient(
+      100deg,
+      transparent 30%,
+      rgb(255 255 255 / 0.06) 50%,
+      transparent 70%
+    );
+    background-size: 200% 100%;
+  }
+  @media (prefers-reduced-motion: no-preference) {
+    .mt-skeleton-shimmer {
+      animation: mt-shimmer 1.6s ease-in-out infinite;
+    }
+  }
+  @keyframes mt-shimmer {
+    from { background-position: 200% 0; }
+    to { background-position: -200% 0; }
+  }
+
+  /* Squelettes des 3 chiffres d'estimation — mêmes proportions que le texte
+     final (text-3xl), donc AUCUN CLS quand les vrais chiffres les remplacent. */
+  .mt-est-skeleton {
+    display: inline-block;
+    height: 2.25rem;
+    width: 4.5rem;
+    border-radius: 0.25rem;
+    background: rgb(255 255 255 / 0.08);
+    vertical-align: middle;
+  }
+</style>
 
 <script>
   import { estimateFromBill, formatMadRange } from '../../lib/billEstimate';
@@ -698,6 +796,10 @@ const TOWNS = ['Casablanca', 'Rabat', 'Marrakech', 'Tanger', 'Agadir', 'Kénitra
 
   // ——— boot carte (captureOnly). Repli sans clé carte AUTORISE la suite (WJ4) ———
   let started = false;
+  const mapEl = $('rp9-map');
+  // WJ34 — retire le squelette de chargement dès que la carte annonce son
+  // premier rendu (onReady) ou dès qu'on bascule sur le repli sans carte.
+  function clearMapSkeleton() { mapEl?.classList.remove('mt-skeleton-shimmer'); }
   async function boot(key: string, mapboxToken: string) {
     if (started) return;
     started = true;
@@ -708,6 +810,7 @@ const TOWNS = ['Casablanca', 'Rabat', 'Marrakech', 'Tanger', 'Agadir', 'Kénitra
         mapboxToken: mapboxToken || undefined,
         reducedMotion,
         captureOnly: true,
+        onReady: clearMapSkeleton,
         onCaptureChange: (s) => {
           capturePin = s.pin;
           captureOutline = s.outline;
@@ -715,6 +818,10 @@ const TOWNS = ['Casablanca', 'Rabat', 'Marrakech', 'Tanger', 'Agadir', 'Kénitra
             const fromMap = (s.address && s.address.trim()) || addressEl?.value.trim() || '';
             if (fromMap) cityEl.value = fromMap;
           }
+          // WJ2 — le contour peut arriver/changer APRÈS le calcul d'estimation :
+          // on ré-évalue l'éligibilité du bouton « voir les panneaux » à chaque
+          // changement de tracé (fonction déclarée plus bas, hissée par `function`).
+          updatePanels3dVisibility();
         },
       });
     } catch {
@@ -723,7 +830,7 @@ const TOWNS = ['Casablanca', 'Rabat', 'Marrakech', 'Tanger', 'Agadir', 'Kénitra
     }
   }
   // WJ4 — repli carte : on montre le champ d'adresse en clair ET on garde la suite ouverte.
-  function showFallback() { if (fallback) fallback.hidden = false; }
+  function showFallback() { if (fallback) fallback.hidden = false; clearMapSkeleton(); }
 
   (async () => {
     try {
@@ -773,6 +880,7 @@ const TOWNS = ['Casablanca', 'Rabat', 'Marrakech', 'Tanger', 'Agadir', 'Kénitra
   // ——— WJ1 : calculer + afficher l'estimation instantanée ———
   let lastKwcLabel = '';
   let lastSavingsLabel = '';
+  let lastKwc: number | null = null;
   function computeEstimate() {
     const bill = resolveMonthlyBill();
     const lat = capturePin?.lat;
@@ -787,6 +895,8 @@ const TOWNS = ['Casablanca', 'Rabat', 'Marrakech', 'Tanger', 'Agadir', 'Kénitra
       if (unavail) unavail.hidden = false;
       lastKwcLabel = '';
       lastSavingsLabel = '';
+      lastKwc = null;
+      updatePanels3dVisibility();
       return;
     }
     if (card) card.hidden = false;
@@ -801,11 +911,90 @@ const TOWNS = ['Casablanca', 'Rabat', 'Marrakech', 'Tanger', 'Agadir', 'Kénitra
     if (payEl) payEl.textContent = est.paybackLabel;
     lastKwcLabel = `${est.kwc} kWc`;
     lastSavingsLabel = `${monthly}/mois`;
+    lastKwc = est.kwc;
+    updatePanels3dVisibility();
   }
-  $('mt-estimate')?.addEventListener('click', () => { computeEstimate(); goStep(2); });
+  // WJ34 — squelette bref pendant le calcul (performance perçue) : les 3
+  // chiffres passent en squelette shimmer AVANT le calcul, puis
+  // requestAnimationFrame laisse peindre ce squelette une fois avant de
+  // révéler les vrais chiffres — sensation de « calcul », zéro CLS (mêmes
+  // dimensions text-3xl), et prêt à absorber un futur calcul plus lourd
+  // (PVGIS réseau) sans changement d'UX.
+  function showEstimateSkeleton() {
+    const card = $('mt-estimate-body');
+    const unavail = $('mt-estimate-unavailable');
+    if (unavail) unavail.hidden = true;
+    if (card) card.hidden = false;
+    for (const id of ['mt-est-kwc', 'mt-est-savings']) {
+      const el = $(id);
+      if (el) el.innerHTML = '<span class="mt-est-skeleton mt-skeleton-shimmer"></span>';
+    }
+    const payEl = $('mt-est-payback');
+    if (payEl) payEl.innerHTML = '<span class="mt-est-skeleton mt-skeleton-shimmer"></span>';
+  }
+  $('mt-estimate')?.addEventListener('click', () => {
+    showEstimateSkeleton();
+    goStep(2);
+    requestAnimationFrame(() => computeEstimate());
+  });
   // recalcule à la volée si l'utilisateur revient corriger sa facture
   $('mt-facture-hiver')?.addEventListener('input', computeEstimate);
   $('mt-bill')?.addEventListener('change', computeEstimate);
+
+  // ——— WJ2 : « voir les panneaux sur votre toit » — facultatif, lazy, dégrade
+  // proprement (pas de WebGL / pas de contour tracé → le bloc reste masqué). ———
+  const panels3dBlock = $('mt-panels3d') as HTMLElement | null;
+  const panels3dStage = $('mt-panels3d-stage') as HTMLElement | null;
+  const panels3dOverlay = $('mt-panels3d-overlay') as HTMLElement | null;
+  const panels3dStart = $('mt-panels3d-start') as HTMLButtonElement | null;
+  const panels3dHint = $('mt-panels3d-hint') as HTMLElement | null;
+  let panels3dStarted = false;
+
+  /** Le bouton n'apparaît QUE si un contour (≥3 sommets) a été tracé ET qu'un
+   *  kWc est disponible — sinon rien de significatif à montrer (pas de faux
+   *  aperçu sur un simple repère). */
+  function updatePanels3dVisibility() {
+    if (!panels3dBlock) return;
+    const eligible = captureOutline.length >= 3 && lastKwc != null;
+    panels3dBlock.hidden = !eligible;
+  }
+
+  async function startPanels3d() {
+    if (panels3dStarted || !panels3dStage || lastKwc == null) return;
+    panels3dStarted = true;
+    try {
+      const [{ capturePreviewLayout, buildViewerModel }, { createRoofViewer }] = await Promise.all([
+        import('../../lib/proposition'),
+        import('../../scripts/roofPro11/viewerOnly'),
+      ]);
+      const layout = capturePreviewLayout(captureOutline, lastKwc);
+      const model = layout ? buildViewerModel(layout) : null;
+      if (!model) throw new Error('modèle indisponible');
+      const nav = navigator as Navigator & { deviceMemory?: number; connection?: { saveData?: boolean } };
+      const lowEnd = (nav.deviceMemory != null && nav.deviceMemory <= 4) || (navigator.hardwareConcurrency || 8) <= 4;
+      const handle = createRoofViewer(panels3dStage, model, {
+        reducedMotion,
+        lowEnd,
+        onReady: () => {
+          if (panels3dOverlay) panels3dOverlay.hidden = true;
+          if (panels3dHint) panels3dHint.hidden = false;
+        },
+        onFail: () => { panels3dStarted = false; },
+      });
+      if (!handle) throw new Error('WebGL indisponible');
+    } catch {
+      // Repli gracieux : le bouton reste, avec un message sobre — jamais de blocage.
+      panels3dStarted = false;
+      if (panels3dOverlay) {
+        const btn = panels3dStart;
+        if (btn) {
+          btn.disabled = true;
+          btn.textContent = currentLang === 'ar' ? 'المعاينة ثلاثية الأبعاد غير متوفرة' : 'Aperçu 3D indisponible sur cet appareil';
+        }
+      }
+    }
+  }
+  panels3dStart?.addEventListener('click', () => { void startPanels3d(); });
 
   // ——— WJ4 : validation INLINE alignée sur validateLead (avant le round-trip) ———
   function setFieldError(inputId: string, errId: string, message: string | null) {

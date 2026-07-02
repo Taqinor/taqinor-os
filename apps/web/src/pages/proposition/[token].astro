@@ -18,6 +18,14 @@ export const prerender = false;
 
 import Layout from '../../layouts/Layout.astro';
 import ZelligeSignature from '../../components/ZelligeSignature.astro';
+import StarRating from '../../components/StarRating.astro';
+import TestimonialCarousel from '../../components/TestimonialCarousel.astro';
+import InstallCounter from '../../components/InstallCounter.astro';
+import CertLogoRow from '../../components/CertLogoRow.astro';
+// WJ35 — grade « heure dorée » v3 (.v3-grade / .photo-grade), importé ici car
+// cette page ne monte pas <V2Enhance/> (qui l'importe pour les pages v2). La
+// feuille est dédupliquée par Vite si une autre page l'importe déjà ailleurs.
+import '../../styles/v3-photo-motion.css';
 import {
   type ProposalResponse,
   type OptionKey,
@@ -229,56 +237,88 @@ const signConfig = ok
     </section>
   ) : (
     <div class="proposition pb-28" data-sign-config={signConfig}>
-      <!-- ── HÉRO (WJ28 — cinéma du chantier : ancré bas, entrée cine-in) ───── -->
-      <section class="relative min-h-[62vh] overflow-hidden sm:min-h-[68vh]">
+      <!-- WJ17 — bascule de langue FR/عربي, flottante (ne perturbe aucun rythme
+           existant, zéro CLS). Même mécanisme dual-node que WJ33 (mon-toit.astro) :
+           voir le <script> de fin de page. Le contenu reste TOUJOURS lisible FR
+           sans JS (pas de gate v2-js ici, page déjà rendue serveur). -->
+      <div class="prop-lang-switch fixed right-3 top-3 z-50 flex gap-1 rounded-sm border border-white/15 bg-nuit/80 p-0.5 backdrop-blur" role="group" aria-label="Langue / اللغة">
+        <button type="button" id="prop-lang-fr" aria-pressed="true"
+          class="px-2.5 py-1 text-xs font-semibold text-azur-950 bg-brass-400 transition-colors">FR</button>
+        <button type="button" id="prop-lang-ar" aria-pressed="false"
+          class="px-2.5 py-1 text-xs font-semibold text-lune-soft transition-colors hover:text-white">عربي</button>
+      </div>
+
+      <!-- ── HÉRO (WJ28 — cinéma du chantier : ancré bas, entrée cine-in ; WJ35 —
+           rythme rehaussé, cohérent avec l'accueil élevé v3, zéro CLS : min-h). -->
+      <section class="relative min-h-[72vh] overflow-hidden sm:min-h-[78vh]">
         {roofImg ? (
-          <img
-            src={roofImg}
-            alt={`Étude de toiture — ${clientName}`}
-            width="1600"
-            height="900"
-            class="absolute inset-0 h-full w-full object-cover"
-            loading="eager"
-            decoding="async"
-          />
+          <>
+            <!-- WJ34 — poster blur-up : la photo backend (URL dynamique, pas de
+                 pipeline LQIP base64 disponible pour ces images) est servie par-
+                 dessus un dégradé « heure dorée » qui tient le cadrage. On ne
+                 masque JAMAIS l'image elle-même (LCP protégé) : seule son
+                 opacité anime 0→1 au chargement, gated reduced-motion — un
+                 navigateur avec l'image déjà en cache (retour visiteur) la
+                 voit s'afficher instantanément (classe déjà posée par l'attribut
+                 onload s'il a déjà `complete`). Zéro CLS : le dégradé occupe
+                 EXACTEMENT le même cadre (absolute inset-0). -->
+            <div class="hero-lqip absolute inset-0" aria-hidden="true"></div>
+            <img
+              src={roofImg}
+              alt={`Étude de toiture — ${clientName}`}
+              width="1600"
+              height="900"
+              class="hero-photo absolute inset-0 h-full w-full object-cover"
+              loading="eager"
+              decoding="async"
+              onload="this.classList.add('is-loaded')"
+            />
+          </>
         ) : (
           <div class="absolute inset-0 bg-azur-950" aria-hidden="true"></div>
         )}
         <!-- Scrim pour garantir le contraste AA du texte par-dessus la photo. -->
         <div class="hero-scrim absolute inset-0" aria-hidden="true"></div>
-        <div class="relative mx-auto flex min-h-[62vh] w-full max-w-4xl flex-col justify-end px-5 pb-12 pt-24 sm:min-h-[68vh] sm:px-8 sm:pb-16 sm:pt-32">
-          <p class="tech-label rule-brass cine-in text-brass-300">{roofImg ? 'Votre installation · ' : 'Proposition · '}{instLabel}</p>
-          <h1 class="display cine-in cine-in-1 mt-4 text-4xl text-blanc sm:text-5xl">
+        <div class="relative mx-auto flex min-h-[72vh] w-full max-w-4xl flex-col justify-end px-5 pb-12 pt-24 sm:min-h-[78vh] sm:px-8 sm:pb-16 sm:pt-32">
+          <p class="tech-label rule-brass cine-in text-brass-300" data-i18n
+            data-fr={`${roofImg ? 'Votre installation · ' : 'Proposition · '}${instLabel}`}
+            data-ar={`${roofImg ? 'تركيبكم · ' : 'العرض · '}${instLabel}`}>
+            {roofImg ? 'Votre installation · ' : 'Proposition · '}{instLabel}
+          </p>
+          <h1 class="display cine-in cine-in-1 mt-4 text-4xl text-blanc sm:text-5xl" data-i18n
+            data-fr={`Bonjour ${clientName},`} data-ar={`مرحباً ${clientName}،`}>
             Bonjour {clientName},
           </h1>
-          <p class="v2-body cine-in cine-in-2 mt-4 max-w-xl text-lune">
+          <p class="v2-body cine-in cine-in-2 mt-4 max-w-xl text-lune" data-i18n
+            data-fr="Voici votre proposition solaire personnalisée. Tout est détaillé ci-dessous — vous pouvez la signer en ligne en bas de page."
+            data-ar="إليكم عرضكم الشمسي الشخصي. كل التفاصيل أدناه — يمكنكم التوقيع إلكترونياً أسفل الصفحة.">
             Voici votre proposition solaire personnalisée. Tout est détaillé ci-dessous —
             vous pouvez la signer en ligne en bas de page.
           </p>
           <dl class="cine-in cine-in-3 mt-7 flex flex-wrap gap-x-8 gap-y-3 text-sm">
             {reference && (
               <div>
-                <dt class="text-lune-faint">Référence</dt>
-                <dd class="fig text-lg text-lune">{reference}</dd>
+                <dt class="text-lune-faint" data-i18n data-fr="Référence" data-ar="المرجع">Référence</dt>
+                <dd class="fig text-lg text-lune" dir="ltr">{reference}</dd>
               </div>
             )}
             {proposalDate && (
               <div>
-                <dt class="text-lune-faint">Date</dt>
-                <dd class="fig text-lg text-lune">{proposalDate}</dd>
+                <dt class="text-lune-faint" data-i18n data-fr="Date" data-ar="التاريخ">Date</dt>
+                <dd class="fig text-lg text-lune" dir="ltr">{proposalDate}</dd>
               </div>
             )}
             {/* WJ15 — Fenêtre de validité honnête : date backend réelle, sinon mention libellée. Jamais un compte-à-rebours. */}
             {validity.fromBackend && validity.label && !validity.expired && (
               <div>
-                <dt class="text-lune-faint">Devis valable jusqu’au</dt>
-                <dd class="fig text-lg text-brass-300">{validity.label}</dd>
+                <dt class="text-lune-faint" data-i18n data-fr="Devis valable jusqu’au" data-ar="العرض صالح حتى">Devis valable jusqu’au</dt>
+                <dd class="fig text-lg text-brass-300" dir="ltr">{validity.label}</dd>
               </div>
             )}
             {validity.fromBackend && validity.expired && (
               <div>
-                <dt class="text-lune-faint">Validité</dt>
-                <dd class="text-base text-lune-soft">Offre échue — demandez une réactualisation</dd>
+                <dt class="text-lune-faint" data-i18n data-fr="Validité" data-ar="الصلاحية">Validité</dt>
+                <dd class="text-base text-lune-soft" data-i18n data-fr="Offre échue — demandez une réactualisation" data-ar="العرض منتهي — اطلبوا تحديثاً">Offre échue — demandez une réactualisation</dd>
               </div>
             )}
           </dl>
@@ -319,7 +359,7 @@ const signConfig = ok
                   alt={`Étude de toiture — ${clientName}`}
                   width="1600"
                   height="1000"
-                  class="absolute inset-0 h-full w-full object-cover"
+                  class="v3-grade absolute inset-0 h-full w-full object-cover"
                   loading="lazy"
                   decoding="async"
                 />
@@ -459,7 +499,7 @@ const signConfig = ok
       <!-- ── SYSTÈME : puissance / panneaux ───────────────────────────────── -->
       {(puissance || nbPanneaux) && (
         <section class="mx-auto max-w-4xl px-5 pt-12 sm:px-8">
-          <p class="tech-label rule-brass text-brass-300">Votre système</p>
+          <p class="tech-label rule-brass text-brass-300" data-i18n data-fr="Votre système" data-ar="نظامكم">Votre système</p>
           <div class="mt-5 grid gap-4 sm:grid-cols-3">
             {puissance ? (
               <div class="cine-card rounded-xl p-5">
@@ -487,7 +527,9 @@ const signConfig = ok
       <!-- ── P2 · PRODUCTION ESTIMÉE vs CONSOMMATION (langage pro-11) ──────── -->
       {showChart && (
         <section class="mx-auto max-w-4xl px-5 pt-14 sm:px-8">
-          <p class="tech-label rule-brass text-brass-300">
+          <p class="tech-label rule-brass text-brass-300" data-i18n
+            data-fr={chartHasConso ? 'Production estimée vs votre consommation' : 'Production estimée'}
+            data-ar={chartHasConso ? 'الإنتاج المقدّر مقابل استهلاككم' : 'الإنتاج المقدّر'}>
             {chartHasConso ? 'Production estimée vs votre consommation' : 'Production estimée'}
           </p>
           <div class="cine-card mt-5 rounded-2xl p-5 sm:p-6">
@@ -521,7 +563,7 @@ const signConfig = ok
           Animation gatée prefers-reduced-motion (voir <style>). */}
       {dailyCurve.svg && (
         <section class="mx-auto max-w-4xl px-5 pt-14 sm:px-8">
-          <p class="tech-label rule-brass text-brass-300">Votre journée solaire</p>
+          <p class="tech-label rule-brass text-brass-300" data-i18n data-fr="Votre journée solaire" data-ar="يومكم الشمسي">Votre journée solaire</p>
           <div class="cine-card mt-5 rounded-2xl p-5 sm:p-6">
             <div class="daily-curve-wrap" set:html={dailyCurve.svg}></div>
             <div class="mt-4 flex flex-wrap items-center gap-x-6 gap-y-2 text-sm">
@@ -549,7 +591,9 @@ const signConfig = ok
 
       <!-- ── OPTIONS ──────────────────────────────────────────────────────── -->
       <section id="options" class="mx-auto max-w-4xl px-5 pt-14 sm:px-8">
-        <p class="tech-label rule-brass text-brass-300">
+        <p class="tech-label rule-brass text-brass-300" data-i18n
+          data-fr={twoOptions ? 'Vos deux options' : 'Votre proposition'}
+          data-ar={twoOptions ? 'خياراكم' : 'عرضكم'}>
           {twoOptions ? 'Vos deux options' : 'Votre proposition'}
         </p>
         <div class={`mt-5 grid gap-4 ${twoOptions ? 'sm:grid-cols-2' : ''}`}>
@@ -642,7 +686,7 @@ const signConfig = ok
            sur le calcul générique WJ10 sinon — jamais les deux à la fois. -->
       {financingBlock ? (
         <section class="mx-auto max-w-4xl px-5 pt-14 sm:px-8">
-          <p class="tech-label rule-brass text-brass-300">Comment financer</p>
+          <p class="tech-label rule-brass text-brass-300" data-i18n data-fr="Comment financer" data-ar="كيفية التمويل">Comment financer</p>
           <div class="mt-5 grid gap-4 sm:grid-cols-2">
             <div class="cine-card rounded-2xl p-6">
               <p class="tech-label text-lune-faint">{financingBlock.cash.label}</p>
@@ -672,7 +716,7 @@ const signConfig = ok
         </section>
       ) : financing && (
         <section class="mx-auto max-w-4xl px-5 pt-14 sm:px-8">
-          <p class="tech-label rule-brass text-brass-300">Comment financer</p>
+          <p class="tech-label rule-brass text-brass-300" data-i18n data-fr="Comment financer" data-ar="كيفية التمويل">Comment financer</p>
           <div class="mt-5 grid gap-4 sm:grid-cols-2">
             <div class="cine-card rounded-2xl p-6">
               <p class="tech-label text-lune-faint">Au comptant</p>
@@ -704,7 +748,7 @@ const signConfig = ok
            devis est isolé (variants=[]) — jamais un chiffre calculé ici. -->
       {variants.length > 0 && (
         <section class="mx-auto max-w-4xl px-5 pt-14 sm:px-8">
-          <p class="tech-label rule-brass text-brass-300">Autres tailles proposées</p>
+          <p class="tech-label rule-brass text-brass-300" data-i18n data-fr="Autres tailles proposées" data-ar="أحجام أخرى مقترحة">Autres tailles proposées</p>
           <div class="mt-5 flex gap-4 overflow-x-auto pb-2">
             {variants.map((v) => (
               <div class="cine-card min-w-[220px] shrink-0 rounded-xl p-5">
@@ -724,7 +768,7 @@ const signConfig = ok
       <!-- ── WJ14 · IMPACT ENVIRONNEMENTAL (CO₂ ≈ arbres) — clôture émotion ── -->
       {enviro && (
         <section class="mx-auto max-w-4xl px-5 pt-14 sm:px-8">
-          <p class="tech-label rule-brass text-brass-300">Votre impact, concrètement</p>
+          <p class="tech-label rule-brass text-brass-300" data-i18n data-fr="Votre impact, concrètement" data-ar="أثركم، بالأرقام">Votre impact, concrètement</p>
           <div class="cine-card mt-5 rounded-2xl p-6 sm:p-8">
             <div class="grid gap-6 sm:grid-cols-2 sm:items-center">
               <div>
@@ -808,8 +852,8 @@ const signConfig = ok
 
           <!-- Formulaire de signature -->
           <form id="sign-form" novalidate>
-            <p class="tech-label rule-brass text-brass-300">Signer en ligne</p>
-            <h2 class="display mt-3 text-2xl text-lune">Bon pour accord</h2>
+            <p class="tech-label rule-brass text-brass-300" data-i18n data-fr="Signer en ligne" data-ar="التوقيع إلكترونياً">Signer en ligne</p>
+            <h2 class="display mt-3 text-2xl text-lune" data-i18n data-fr="Bon pour accord" data-ar="موافقة نهائية">Bon pour accord</h2>
             <p class="v2-body mt-2">
               Validez votre proposition en quelques secondes. Vous recevrez ensuite la confirmation
               de votre conseiller.
@@ -909,20 +953,27 @@ const signConfig = ok
           </form>
         </div>
 
-        <!-- ── P3 · TÉLÉCHARGER LE DEVIS PDF (même token, nouvel onglet) ───── -->
+        <!-- ── P3/WJ34 · TÉLÉCHARGER LE DEVIS PDF (même token, nouvel onglet) ───
+             Affordance « génération du PDF… » : le rendu backend (WeasyPrint)
+             prend quelques secondes, l'utilisateur doit voir qu'il se passe
+             quelque chose. Le lien continue de s'ouvrir normalement (nouvel
+             onglet) — l'affordance retombe seule après quelques secondes ou
+             dès que l'utilisateur revient sur cet onglet. -->
         <div class="mt-6 text-center">
           <a
+            id="pdf-download"
             href={pdfUrl}
             target="_blank"
             rel="noopener noreferrer"
             class="btn-pill inline-flex items-center justify-center gap-2"
           >
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <svg id="pdf-download-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
               <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
               <polyline points="7 10 12 15 17 10" />
               <line x1="12" y1="15" x2="12" y2="3" />
             </svg>
-            Télécharger le devis (PDF)
+            <span id="pdf-download-spinner" class="spinner" hidden aria-hidden="true"></span>
+            <span id="pdf-download-label">Télécharger le devis (PDF)</span>
           </a>
         </div>
 
@@ -931,55 +982,82 @@ const signConfig = ok
         </p>
       </section>
 
-      <!-- ── WJ13 · BLOC CRÉDIBILITÉ (garanties · certifications · réassurance) -->
+      <!-- ── WJ13/WJ35 · BLOC CRÉDIBILITÉ (garanties · certifications · réassurance) -->
       {/* Aucune donnée chiffrée fabriquée : nombre de clients / avis / photos
           réelles marqués `pending real content` tant que Reda ne les fournit pas.
-          Les garanties et normes ci-dessous sont des FAITS techniques vérifiables. */}
+          Les garanties et normes ci-dessous sont des FAITS techniques vérifiables.
+          WJ35 — CertLogoRow reprend ces mêmes faits en bandeau ; le compteur
+          d'installations et la note Google sont désormais des composants premium
+          RÉUTILISABLES (InstallCounter / StarRating), avec la même intégrité. */}
       <section class="mx-auto max-w-4xl px-5 pt-16 sm:px-8">
-        <p class="tech-label rule-brass text-brass-300">Pourquoi nous faire confiance</p>
+        <p class="tech-label rule-brass text-brass-300" data-i18n data-fr="Pourquoi nous faire confiance" data-ar="لماذا تثقون بنا">Pourquoi nous faire confiance</p>
         <div class="mt-5 grid gap-4 sm:grid-cols-3">
           <div class="cine-card rounded-xl p-5">
-            <p class="fig text-2xl text-lune">20–25 ans</p>
-            <p class="mt-1 text-sm text-lune-soft">Garanties constructeur : 25 ans de performance sur les panneaux, 10 ans sur l’onduleur.</p>
+            <p class="fig text-2xl text-lune" dir="ltr">20–25 ans</p>
+            <p class="mt-1 text-sm text-lune-soft" data-i18n data-fr="Garanties constructeur : 25 ans de performance sur les panneaux, 10 ans sur l’onduleur." data-ar="ضمانات الصانع: 25 سنة أداء للألواح، 10 سنوات للعاكس.">Garanties constructeur : 25 ans de performance sur les panneaux, 10 ans sur l’onduleur.</p>
           </div>
           <div class="cine-card rounded-xl p-5">
-            <p class="fig text-xl text-lune">IEC 61215 / 61730</p>
-            <p class="mt-1 text-sm text-lune-soft">Modules certifiés aux normes internationales. Conformité étude IRESEN / AMEE.</p>
+            <p class="fig text-xl text-lune" dir="ltr">IEC 61215 / 61730</p>
+            <p class="mt-1 text-sm text-lune-soft" data-i18n data-fr="Modules certifiés aux normes internationales. Conformité étude IRESEN / AMEE." data-ar="ألواح معتمدة وفق المعايير الدولية. مطابقة لدراسة IRESEN / AMEE.">Modules certifiés aux normes internationales. Conformité étude IRESEN / AMEE.</p>
           </div>
           <div class="cine-card rounded-xl p-5">
-            <p class="fig text-xl text-lune">Loi 82-21</p>
-            <p class="mt-1 text-sm text-lune-soft">Installation conforme au cadre marocain d’autoconsommation en basse tension.</p>
+            <p class="fig text-xl text-lune" data-i18n data-fr="Loi 82-21" data-ar="القانون 82-21">Loi 82-21</p>
+            <p class="mt-1 text-sm text-lune-soft" data-i18n data-fr="Installation conforme au cadre marocain d’autoconsommation en basse tension." data-ar="تركيب مطابق للإطار المغربي للاستهلاك الذاتي في التوتر المنخفض.">Installation conforme au cadre marocain d’autoconsommation en basse tension.</p>
+          </div>
+        </div>
+
+        <!-- WJ35 — compteur d'installations réel + note Google (scaffold tant qu'absente). -->
+        <div class="mt-4 cine-card rounded-xl p-5 sm:p-6">
+          <div class="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+            <InstallCounter />
+            <StarRating />
+          </div>
+        </div>
+
+        <!-- WJ35 — bandeau certifications/garanties (texte, sobre — aucun logo fabriqué). -->
+        <div class="mt-4">
+          <CertLogoRow />
+        </div>
+
+        <!-- WJ35 — avis clients réels (carrousel, vide-mais-premium — même intégrité que <Testimonials/>). -->
+        <div class="mt-4 cine-card rounded-xl p-5 sm:p-6">
+          <p class="tech-label text-lune-faint" data-i18n data-fr="Avis clients" data-ar="آراء العملاء">Avis clients</p>
+          <div class="mt-3">
+            <TestimonialCarousel />
           </div>
         </div>
 
         <!-- Photos d'installations réelles — scaffold, à remplir par Reda. -->
         <div class="mt-4 cine-card rounded-xl p-5">
-          <p class="tech-label text-lune-faint">Nos chantiers</p>
-          <!-- pending real content from Reda : photos d'installations réelles + nombre de clients + villes -->
-          <p class="mt-2 text-sm text-lune-soft">
-            Des dizaines d’installations livrées partout au Maroc.
-            <span class="text-lune-faint"> (Photos et références clients à venir.)</span>
+          <p class="tech-label text-lune-faint" data-i18n data-fr="Nos chantiers" data-ar="ورشاتنا">Nos chantiers</p>
+          <!-- pending real content from Reda : photos d'installations réelles -->
+          <p class="mt-2 text-sm text-lune-soft" data-i18n
+            data-fr="Installations documentées, dossiers techniques à l’appui. (Photos à venir.)"
+            data-ar="تركيبات موثقة، بملفات تقنية داعمة. (الصور قريباً.)">
+            Installations documentées, dossiers techniques à l’appui.
+            <span class="text-lune-faint"> (Photos à venir.)</span>
           </p>
         </div>
 
-        <!-- Mot du fondateur (FR + AR) — scaffold, contenu réel à confirmer. -->
+        <!-- WJ17 — mot du fondateur : bascule TOGGLE (au lieu des deux citations
+             FR+AR toujours visibles côte à côte — le symptôme « bolt-on » que
+             WJ17 corrige) ; scaffold, contenu réel à confirmer. -->
         <div class="mt-4 cine-card rounded-xl p-6">
-          <p class="tech-label text-lune-faint">Le mot du fondateur</p>
+          <p class="tech-label text-lune-faint" data-i18n data-fr="Le mot du fondateur" data-ar="كلمة المؤسس">Le mot du fondateur</p>
           <!-- pending real content from Reda : texte définitif du mot de bienvenue -->
-          <blockquote class="mt-3 v2-body text-lune">
+          <blockquote class="mt-3 v2-body text-lune" data-i18n
+            data-fr="« Chez Taqinor, nous traitons chaque toit comme le nôtre : une étude honnête, du matériel certifié, et un accompagnement après l’installation. Merci de votre confiance. »"
+            data-ar="« في تاقينور، نتعامل مع كل سطح كأنه سطحنا: دراسة صادقة، معدات معتمدة، ومرافقة بعد التركيب. شكراً على ثقتكم. »">
             « Chez Taqinor, nous traitons chaque toit comme le nôtre : une étude honnête,
             du matériel certifié, et un accompagnement après l’installation. Merci de votre confiance. »
           </blockquote>
-          <blockquote dir="rtl" lang="ar" class="mt-3 text-right text-lune" style="line-height: 1.8">
-            « في تاقينور، نتعامل مع كل سطح كأنه سطحنا: دراسة صادقة، معدات معتمدة، ومرافقة بعد التركيب. شكراً على ثقتكم. »
-          </blockquote>
-          <p class="mt-2 text-sm text-lune-faint">Reda Kasri — fondateur, Taqinor</p>
+          <p class="mt-2 text-sm text-lune-faint">Reda Kasri — <span data-i18n data-fr="fondateur, Taqinor" data-ar="مؤسس تاقينور">fondateur, Taqinor</span></p>
         </div>
       </section>
 
       <!-- ── WJ32 · « ET APRÈS ? » — timeline des prochaines étapes ─────────── -->
       <section class="mx-auto max-w-4xl px-5 pt-16 sm:px-8">
-        <p class="tech-label rule-brass text-brass-300">Et après ?</p>
+        <p class="tech-label rule-brass text-brass-300" data-i18n data-fr="Et après ?" data-ar="ماذا بعد؟">Et après ?</p>
         <ol class="mt-5 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
           {steps.map((s, i) => (
             <li class="cine-card rounded-xl p-5">
@@ -996,7 +1074,7 @@ const signConfig = ok
 
       <!-- ── WJ32 · ACCOMPAGNEMENT POST-INSTALLATION ─────────────────────────  -->
       <section class="mx-auto max-w-4xl px-5 pt-16 sm:px-8">
-        <p class="tech-label rule-brass text-brass-300">Après l’installation</p>
+        <p class="tech-label rule-brass text-brass-300" data-i18n data-fr="Après l’installation" data-ar="بعد التركيب">Après l’installation</p>
         <div class="cine-card mt-5 rounded-2xl p-6 sm:p-7">
           <ul class="space-y-3 text-sm text-lune-soft">
             {monitoring.map((m) => (
@@ -1033,7 +1111,7 @@ const signConfig = ok
       <!-- ── WJ32 · FAQ OBJECTIONS (4–5 questions fréquentes) ────────────────
            <details> par item : accordéon accessible sans JS, zéro CLS. -->
       <section class="mx-auto max-w-4xl px-5 pt-16 sm:px-8">
-        <p class="tech-label rule-brass text-brass-300">Vos questions, nos réponses</p>
+        <p class="tech-label rule-brass text-brass-300" data-i18n data-fr="Vos questions, nos réponses" data-ar="أسئلتكم، وأجوبتنا">Vos questions, nos réponses</p>
         <div class="mt-5 space-y-3">
           {faq.map((item) => (
             <details class="cine-card rounded-xl p-5">
@@ -1048,26 +1126,32 @@ const signConfig = ok
         </div>
       </section>
 
-      <!-- ── CTA COLLANT « Signer en ligne » ──────────────────────────────── -->
+      <!-- ── CTA COLLANT « Signer en ligne » (WJ34 — safe-area-inset-bottom pour
+           les iPhone à encoche / barre de geste : le CTA ne se cache jamais
+           derrière la zone système) ──────────────────────────────────────── -->
       <div
         id="sticky-cta"
-        class="fixed inset-x-0 bottom-0 z-40 border-t border-white/10 bg-nuit-800/95 px-4 py-3 backdrop-blur supports-[backdrop-filter]:bg-nuit-800/80"
+        class="fixed inset-x-0 bottom-0 z-40 border-t border-white/10 bg-nuit-800/95 px-4 pt-3 backdrop-blur supports-[backdrop-filter]:bg-nuit-800/80"
+        style="padding-bottom: max(0.75rem, env(safe-area-inset-bottom));"
       >
         <div class="mx-auto flex max-w-4xl items-center justify-between gap-4">
           <div class="min-w-0">
             <p class="truncate text-sm text-lune-soft">
-              {twoOptions ? 'À partir de ' : ''}
-              <span class="lum fig text-lg">{formatMAD(optionTtc(data!, reco ?? 'sans_batterie'))}</span>
-              <span class="text-lune-faint"> TTC</span>
+              <span data-i18n data-fr={twoOptions ? 'À partir de ' : ''} data-ar={twoOptions ? 'ابتداءً من ' : ''}>{twoOptions ? 'À partir de ' : ''}</span>
+              <span class="lum fig text-lg" dir="ltr">{formatMAD(optionTtc(data!, reco ?? 'sans_batterie'))}</span>
+              <span class="text-lune-faint" data-i18n data-fr=" TTC" data-ar=" شامل الضريبة"> TTC</span>
             </p>
             {validity.fromBackend && validity.label && !validity.expired && (
-              <p class="truncate text-xs text-lune-faint">Valable jusqu’au {validity.label}</p>
+              <p class="truncate text-xs text-lune-faint">
+                <span data-i18n data-fr="Valable jusqu’au" data-ar="صالح حتى">Valable jusqu’au</span> <span dir="ltr">{validity.label}</span>
+              </p>
             )}
           </div>
           <a
             href="#signer"
             class="btn-pill shrink-0 whitespace-nowrap"
             style="background: var(--color-brass-400); color: var(--color-nuit); border-color: var(--color-brass-400)"
+            data-i18n data-fr="Signer en ligne" data-ar="التوقيع إلكترونياً"
           >
             Signer en ligne
           </a>
@@ -1476,6 +1560,44 @@ const signConfig = ok
       });
     });
   }
+
+  // ── WJ34 — affordance « génération du PDF… » sur le lien de téléchargement.
+  // Le rendu backend (WeasyPrint) prend quelques secondes : sans signal, le
+  // visiteur peut croire que le clic n'a rien fait. Le lien continue de
+  // s'ouvrir normalement (target=_blank, jamais bloqué par preventDefault) ;
+  // on affiche juste un état visuel temporaire, remis à zéro dès que
+  // l'utilisateur revient sur cet onglet (le PDF est alors soit ouvert dans
+  // un nouvel onglet, soit l'échec est visible là-bas) ou après un délai de
+  // sécurité (le rendu le plus lent observé reste sous quelques secondes).
+  // Regroupé dans CE script (au lieu d'un 5ᵉ <script> séparé) : un bundling
+  // observé sur cette route perdait le chunk d'un <script> isolé sans import
+  // ES — le manifeste SSR le référençait mais le fichier n'était jamais écrit
+  // côté client. Même page, même effet, zéro risque de chunk manquant.
+  const pdfLink = document.getElementById('pdf-download') as HTMLAnchorElement | null;
+  const pdfIcon = document.getElementById('pdf-download-icon');
+  const pdfSpinner = document.getElementById('pdf-download-spinner');
+  const pdfLabel = document.getElementById('pdf-download-label');
+  const PDF_LABEL_DEFAULT = 'Télécharger le devis (PDF)';
+  const PDF_LABEL_LOADING = 'Génération du PDF…';
+
+  if (pdfLink && pdfLabel) {
+    let pdfResetTimer: number | undefined;
+    const setPdfLoading = (loading: boolean): void => {
+      if (pdfIcon) pdfIcon.toggleAttribute('hidden', loading);
+      if (pdfSpinner) pdfSpinner.hidden = !loading;
+      pdfLabel.textContent = loading ? PDF_LABEL_LOADING : PDF_LABEL_DEFAULT;
+    };
+    pdfLink.addEventListener('click', () => {
+      setPdfLoading(true);
+      window.clearTimeout(pdfResetTimer);
+      pdfResetTimer = window.setTimeout(() => setPdfLoading(false), 6000);
+    });
+    // Dès que l'utilisateur revient sur CET onglet (après avoir consulté le
+    // PDF dans le nouvel onglet), on considère la génération terminée.
+    document.addEventListener('visibilitychange', () => {
+      if (document.visibilityState === 'visible') setPdfLoading(false);
+    });
+  }
 </script>
 
 <style>
@@ -1574,5 +1696,27 @@ const signConfig = ok
   @keyframes sun-rise {
     from { opacity: 0; transform: translateY(10px) scale(0.6); }
     to { opacity: 0.9; transform: translateY(0) scale(1); }
+  }
+
+  /* WJ34 — poster blur-up du héros : dégradé « heure dorée » tenant le cadre
+     jusqu'à ce que la vraie photo (URL backend dynamique) ait fini de charger.
+     L'image LCP reste TOUJOURS dans le DOM/peinte dès que possible (jamais
+     display:none) — seule son opacité anime, gated reduced-motion ; sans JS
+     ou en reduced-motion l'image est directement opaque (aucune dépendance à
+     l'événement onload pour être visible). */
+  .hero-lqip {
+    background: linear-gradient(160deg, #1a2e4d 0%, #0a1730 60%, #070b1d 100%);
+  }
+  .hero-photo {
+    opacity: 1;
+  }
+  @media (prefers-reduced-motion: no-preference) {
+    .hero-photo {
+      opacity: 0;
+      transition: opacity 0.5s ease-out;
+    }
+    .hero-photo.is-loaded {
+      opacity: 1;
+    }
   }
 </style>
