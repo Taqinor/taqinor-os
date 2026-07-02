@@ -200,6 +200,16 @@ export function createOptimizer(ctx: Ctx, deps: OptimizerDeps): Optimizer {
     }
   }
 
+  // WJ19 — dérate d'ombrage tracé appliqué aux chiffres ANNUELS affichés (1 = aucun
+  // ombrage → identique à avant). Les économies sont recalculées depuis le kWh dératé,
+  // donc elles restent plafonnées à la facture. Le libellé de source l'affiche.
+  const shadeFactor = (): number =>
+    ctx.shadeAnnualFactor > 0 && ctx.shadeAnnualFactor < 1 ? ctx.shadeAnnualFactor : 1;
+  const shadeLabel = (): string => {
+    const f = shadeFactor();
+    return f < 1 ? ` · ombrage tracé −${Math.round((1 - f) * 100)} %` : '';
+  };
+
   /** Rendu UNIFIÉ : pose min(besoin, ce qui tient), recalcule kWc/kWh/économies
    *  depuis ce nombre POSÉ (jamais la capacité max de la config). */
   function renderConfig(o: RenderConfigOpts) {
@@ -210,7 +220,8 @@ export function createOptimizer(ctx: Ctx, deps: OptimizerDeps): Optimizer {
     const aspect = aspectForLeg(o.family, o.azimuthDeg);
     const tableAnnual = productionKwh(ctx.centroidLat, o.family, o.tiltDeg, kwc, aspect);
     // Affinage PVGIS : rendement par kWc × kWc POSÉ (suit le plafond/contrainte).
-    const annualKwh = o.isReco && ctx.pvgisPerKwc != null ? ctx.pvgisPerKwc * kwc : tableAnnual;
+    // WJ19 — puis dérate d'ombrage tracé (1 = aucun → inchangé).
+    const annualKwh = (o.isReco && ctx.pvgisPerKwc != null ? ctx.pvgisPerKwc * kwc : tableAnnual) * shadeFactor();
     const target = ctx.rec ? ctx.rec.targetAnnualKwh : billToAnnualKwh(monthlyBill());
     const savings = annualSavingsMad(annualKwh, target); // plafonné à la conso
     renderScene(o.pack, o.grid, o.tiltDeg, o.family, placed);
