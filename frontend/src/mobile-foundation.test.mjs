@@ -40,9 +40,11 @@ function mobileShellBlock() {
   assert.fail('bloc média mobile non refermé')
 }
 
-/** Corps de la PREMIÈRE règle `sel { … }` dans `scope`. */
+/** Corps de la PREMIÈRE règle `sel { … }` dans `scope`, sélecteur SEUL (le
+ *  sélecteur doit débuter la déclaration : début de ligne ou après `}`/`;`, sans
+ *  descendant qui précède — sinon `.gs-wrap` attraperait `.header-right .gs-wrap`). */
 function ruleBody(scope, sel) {
-  const m = scope.match(new RegExp(`(?:^|[\\s},])${sel.replace(/\./g, '\\.')}\\s*\\{([^}]*)\\}`))
+  const m = scope.match(new RegExp(`(?:^|[}\\n;])\\s*${sel.replace(/\./g, '\\.')}\\s*\\{([^}]*)\\}`, 'm'))
   return m ? m[1] : null
 }
 
@@ -118,4 +120,64 @@ test('MB2: les largeurs fixes héritées ont leur garde mobile', () => {
   assert.match(ruleBody(mobile, '.lead-bill-input') ?? '', /width:\s*auto/, '.lead-bill-input ne doit plus être figé à 110px sur mobile')
   assert.match(ruleBody(mobile, '.devis-totals') ?? '', /min-width:\s*0/, '.devis-totals (min-width 260px) doit pouvoir rétrécir sur mobile')
   assert.match(ruleBody(mobile, '.nb-panel') ?? '', /min\(320px,\s*calc\(100vw - 16px\)\)/, '.nb-panel (320px fixe) doit être borné au viewport sur mobile')
+})
+
+/* ── MB3 — adoption du barème --z-* (fin des collisions d'empilement) ────── */
+
+test('MB3: plus AUCUN z-index en dur dans index.css (hormis l\'exception locale documentée)', () => {
+  // On repart du fichier BRUT (les commentaires citent parfois « z-index:1 »).
+  const raw = readFileSync(
+    fileURLToPath(new URL('./index.css', import.meta.url)), 'utf8',
+  ).replace(/\/\*[\s\S]*?\*\//g, '')
+  const offenders = []
+  const re = /z-index:\s*([^;]+);/g
+  let m
+  while ((m = re.exec(raw))) {
+    const val = m[1].trim()
+    if (val.startsWith('var(--z-')) continue
+    // Seule exception tolérée : la sticky `.pp-cat` (z-index:1), locale au
+    // contexte d'empilement propre de .pp-pop (ne participe pas au barème global).
+    if (val === '1') continue
+    offenders.push(val)
+  }
+  assert.deepEqual(offenders, [], `z-index en dur restants (à tokeniser) : ${offenders.join(', ')}`)
+})
+
+test('MB3: le picker produit .pp-pop est un popover (au-dessus des modales)', () => {
+  assert.match(ruleBody(css, '.pp-pop') ?? '', /z-index:\s*var\(--z-popover/, '.pp-pop doit utiliser --z-popover (jamais 300 en dur, sinon sous les modales)')
+  assert.doesNotMatch(css, /\.pp-pop\s*\{[^}]*z-index:\s*300/, 'l\'ancien z-index:300 ne doit plus exister')
+})
+
+test('MB3: la recherche/cloche de l\'en-tête s\'ancrent au palier --z-sticky', () => {
+  assert.match(ruleBody(css, '.gs-wrap') ?? '', /z-index:\s*var\(--z-sticky/, '.gs-wrap doit s\'ancrer à --z-sticky')
+  assert.match(ruleBody(css, '.nb-wrap') ?? '', /z-index:\s*var\(--z-sticky/, '.nb-wrap doit s\'ancrer à --z-sticky')
+  // Leurs panneaux déroulants restent des dropdowns DANS ce contexte. (Ces
+  // sélecteurs ont aussi une variante mobile SANS z-index : on cherche la
+  // déclaration z-index parmi toutes les occurrences du sélecteur.)
+  const zOf = (sel) => {
+    const re = new RegExp(`(?:^|[}\\n;])\\s*${sel.replace(/\./g, '\\.')}\\s*\\{([^}]*)\\}`, 'gm')
+    let m; const bodies = []
+    while ((m = re.exec(css))) bodies.push(m[1])
+    return bodies.find(b => /z-index:/.test(b)) ?? ''
+  }
+  assert.match(zOf('.gs-panel'), /z-index:\s*var\(--z-dropdown/, '.gs-panel = --z-dropdown')
+  assert.match(zOf('.nb-panel'), /z-index:\s*var\(--z-dropdown/, '.nb-panel = --z-dropdown')
+})
+
+test('MB3: la nav basse et les modales ne se collisionnent plus (tabbar < overlay < modal)', () => {
+  const mobile = mobileShellBlock()
+  const tab = ruleBody(mobile, '.bottom-tabbar') ?? ''
+  assert.match(tab, /z-index:\s*var\(--z-sticky/, '.bottom-tabbar doit passer à --z-sticky (n\'était plus == --z-modal)')
+  assert.doesNotMatch(tab, /z-index:\s*1300/, 'la nav basse ne doit plus être à 1300 (collision modale)')
+})
+
+test('MB3: le tiroir de navigation reste au-dessus (panneau --z-popover > voile --z-modal > nav basse)', () => {
+  const mobile = mobileShellBlock()
+  assert.match(ruleBody(mobile, '.sidebar') ?? '', /z-index:\s*var\(--z-popover/, 'le panneau du tiroir = --z-popover')
+  assert.match(ruleBody(mobile, '.drawer-overlay') ?? '', /z-index:\s*var\(--z-modal/, 'le voile du tiroir = --z-modal')
+})
+
+test('MB3: les overlays legacy conservent des replis alignés sur la vraie valeur du token', () => {
+  // --z-modal vaut 1300 (tokens.css) ; aucun repli var(--z-modal, 1200) ne doit subsister.
+  assert.doesNotMatch(css, /var\(--z-modal,\s*1200\)/, 'repli --z-modal désaligné (1200 au lieu de 1300)')
 })
