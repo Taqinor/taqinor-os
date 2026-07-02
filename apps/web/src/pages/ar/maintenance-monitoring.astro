@@ -23,7 +23,7 @@ import { localizeNavHref } from '../../i18n/pages';
 
 const locale = getLocaleFromPath(Astro.url.pathname);
 const L = (href: string) => localizeNavHref(href, locale);
-const contactSim = L('/contact') + '#simulateur';
+const devisHref = L('/devis/mon-toit');
 
 const suivi = [
   {
@@ -139,12 +139,12 @@ const jsonLd = {
         <div class="v2-rise mt-10 flex flex-wrap gap-3">
           <a href={L('/garanties')} class="border border-white/40 px-5 py-3 text-sm font-bold text-white transition-colors hover:border-white hover:bg-white/10">ضماناتنا <span class="inline-block rtl:-scale-x-100">→</span></a>
           <a href={L('/équipement')} class="border border-white/40 px-5 py-3 text-sm font-bold text-white transition-colors hover:border-white hover:bg-white/10">المعدات المركَّبة <span class="inline-block rtl:-scale-x-100">→</span></a>
-          <a href={contactSim} class="border border-white/40 px-5 py-3 text-sm font-bold text-white transition-colors hover:border-white hover:bg-white/10">تشخيصي المجاني <span class="inline-block rtl:-scale-x-100">→</span></a>
+          <a href={devisHref} class="border border-white/40 px-5 py-3 text-sm font-bold text-white transition-colors hover:border-white hover:bg-white/10">تشخيصي المجاني <span class="inline-block rtl:-scale-x-100">→</span></a>
         </div>
       </div>
     </section>
 
-    <CtaBand title="سطح يراقب نفسه يُحضَّر منذ الدراسة." href={contactSim} />
+    <CtaBand title="سطح يراقب نفسه يُحضَّر منذ الدراسة." href={devisHref} />
 
     <StickyCta />
   </div>

@@ -101,8 +101,8 @@ const brackets = BILL_RANGES.filter((r) => r.qualifies && r.id !== 'gt10000').ma
         </p>
         <div class="cine-in cine-in-3 mt-10 flex flex-wrap items-center gap-3">
           {/* CTA نحاسي وحيد */}
-          <a href="#simulateur" class="glow-hero bg-brass-400 px-8 py-4 text-lg font-bold text-azur-950 transition-all hover:bg-brass-300">
-            تقدير تركيبتي ←
+          <a href={L('/devis/mon-toit')} class="glow-hero bg-brass-400 px-8 py-4 text-lg font-bold text-azur-950 transition-all hover:bg-brass-300">
+            احصل على دراستي المجانية ←
           </a>
           {/* Ghost WhatsApp */}
           <a href={waDirect} rel="noopener" class="inline-flex items-center gap-2 border border-white/40 px-6 py-3.5 text-base font-semibold text-white backdrop-blur-sm transition-colors hover:border-white hover:bg-white/10">
@@ -237,7 +237,7 @@ const brackets = BILL_RANGES.filter((r) => r.qualifies && r.id !== 'gt10000').ma
     <!-- الفصل الأخير — الغرفة البيضاء -->
     <DiagnosticForm heading="تشخيصك في 60 ثانية" />
 
-    <CtaBand href="#simulateur" seam={false} />
+    <CtaBand href="/devis/mon-toit" seam={false} />
 
     <StickyCta />
   </div>

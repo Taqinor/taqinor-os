@@ -18,7 +18,7 @@ import { localizeNavHref } from '../../i18n/pages';
 
 const locale = getLocaleFromPath(Astro.url.pathname);
 const L = (href: string) => localizeNavHref(href, locale);
-const contactSim = L('/contact') + '#simulateur';
+const devisHref = L('/devis/mon-toit');
 
 const chiffres = [
   { v: '3–7 ans', label: 'Typical return on investment' },
@@ -147,7 +147,7 @@ const moyens = [
             you: your bill, your consumption profile, your roof. We run them through the calculation,
             and the result is yours, not a brochure average.
           </p>
-          <a href={contactSim} class="mt-8 inline-block bg-brass-400 px-7 py-3.5 text-base font-bold text-azur-950 transition-colors hover:bg-brass-300">Compute my return — study at 0 MAD</a>
+          <a href={devisHref} class="mt-8 inline-block bg-brass-400 px-7 py-3.5 text-base font-bold text-azur-950 transition-colors hover:bg-brass-300">Compute my return — study at 0 MAD</a>
         </div>
         <dl class="grid grid-cols-2 gap-x-6 gap-y-10 border-s-2 border-brass-400/60 ps-6 sm:ps-10" data-stagger>
           <div class="v2-rise" style="--v2-i:0">
@@ -176,11 +176,11 @@ const moyens = [
         <a href={L('/résidentiel')} class="border border-white/40 px-5 py-3 text-sm font-bold text-white transition-colors hover:border-white hover:bg-white/10">Residential returns →</a>
         <a href={L('/professionnel')} class="border border-white/40 px-5 py-3 text-sm font-bold text-white transition-colors hover:border-white hover:bg-white/10">Business returns →</a>
         <a href={L('/garanties')} class="border border-white/40 px-5 py-3 text-sm font-bold text-white transition-colors hover:border-white hover:bg-white/10">Our warranties (25 years) →</a>
-        <a href={contactSim} class="border border-white/40 px-5 py-3 text-sm font-bold text-white transition-colors hover:border-white hover:bg-white/10">Start my assessment →</a>
+        <a href={devisHref} class="border border-white/40 px-5 py-3 text-sm font-bold text-white transition-colors hover:border-white hover:bg-white/10">Start my assessment →</a>
       </div>
     </section>
 
-    <CtaBand title="How much does your roof earn you? The free assessment figures it out." href={contactSim} />
+    <CtaBand title="How much does your roof earn you? The free assessment figures it out." href={devisHref} />
 
     <StickyCta />
   </div>
