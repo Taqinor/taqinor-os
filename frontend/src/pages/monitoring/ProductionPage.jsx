@@ -13,6 +13,7 @@ import {
   Select, SelectTrigger, SelectValue, SelectContent, SelectItem,
   Card, CardContent, DataTable, Switch, Label,
 } from '../../ui'
+import MonitoringNav from './MonitoringNav'
 
 const todayISO = () => new Date().toISOString().slice(0, 10)
 
@@ -180,6 +181,7 @@ export default function ProductionPage() {
           Supervision de la production des systèmes installés (relevés manuels ou automatiques).
         </div>
       </div>
+      <MonitoringNav />
 
       <div className="mb-3 flex flex-wrap items-end gap-2">
         <div className="min-w-[14rem] flex-1">

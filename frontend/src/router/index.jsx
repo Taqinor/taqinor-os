@@ -48,6 +48,9 @@ const MaJourneePage = lazy(() => import('../pages/interventions/MaJourneePage'))
 const ParcInstallePage = lazy(() => import('../pages/installations/ParcInstallePage'))
 const OutillagePage = lazy(() => import('../pages/outillage/OutillagePage'))
 const ProductionPage = lazy(() => import('../pages/monitoring/ProductionPage'))
+const FleetPage = lazy(() => import('../pages/monitoring/FleetPage'))
+const OmAnalyticsPage = lazy(() => import('../pages/monitoring/OmAnalyticsPage'))
+const WarrantiesPage = lazy(() => import('../pages/monitoring/WarrantiesPage'))
 const EquipementsPage = lazy(() => import('../pages/sav/EquipementsPage'))
 const TicketsPage = lazy(() => import('../pages/sav/TicketsPage'))
 const AgentChat = lazy(() => import('../pages/ia/AgentChat'))
@@ -197,6 +200,9 @@ const router = createBrowserRouter([
   { path: '/ma-journee', loader: authLoader, element: <WithLayout><MaJourneePage /></WithLayout> },
   { path: '/parc', loader: authLoader, element: <WithLayout><ParcInstallePage /></WithLayout> },
   { path: '/production', loader: authLoader, element: <WithLayout><ProductionPage /></WithLayout> },
+  { path: '/production/parc', loader: authLoader, element: <WithLayout><FleetPage /></WithLayout> },
+  { path: '/production/analytique', loader: authLoader, element: <WithLayout><OmAnalyticsPage /></WithLayout> },
+  { path: '/production/garanties', loader: authLoader, element: <WithLayout><WarrantiesPage /></WithLayout> },
   { path: '/outillage', loader: authLoader, element: <WithLayout><OutillagePage /></WithLayout> },
 
   // GED — gestion documentaire (navigateur arborescent)
