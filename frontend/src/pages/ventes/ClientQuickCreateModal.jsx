@@ -99,7 +99,9 @@ export default function ClientQuickCreateModal({ open, onClose, onCreated }) {
               <p className="text-xs text-warning" data-testid="cqc-dup-warning">{dupWarning}</p>
             )}
           </div>
-          <div className="grid grid-cols-2 gap-4">
+          {/* MB5 — sur mobile (<640px), le prénom passe sous le nom au lieu de
+              se comprimer en deux colonnes de ~150px dans la feuille tactile. */}
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
             <div className="grid gap-1.5">
               <Label htmlFor="cqc-nom" required>Nom</Label>
               <Input id="cqc-nom" value={nom} autoFocus

@@ -1839,6 +1839,7 @@ export default function DevisGenerator({
                   Plusieurs propriétés ?
                 </span>
                 <Segmented
+                  className="flex-wrap"
                   options={[
                     { value: 'none', label: 'Une seule' },
                     { value: 'multiplier', label: '× N identiques' },

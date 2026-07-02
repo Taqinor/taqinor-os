@@ -56,6 +56,18 @@ describe('ClientQuickCreateModal (QG3)', () => {
   })
 })
 
+describe('MB5 — Nom/Prénom : une colonne sous 640px, deux au-delà', () => {
+  it('n\'utilise jamais une grille grid-cols-2 figée (déborde sur téléphone)', () => {
+    render(<ClientQuickCreateModal open onClose={() => {}} onCreated={() => {}} />)
+    // Le champ Nom vit dans une grille interne ("grid gap-1.5") elle-même
+    // enfant de la rangée Nom/Prénom — on cible cette rangée (le parent).
+    const wrap = document.getElementById('cqc-nom').closest('.grid').parentElement
+    expect(wrap.className).toMatch(/\bgrid-cols-1\b/)
+    expect(wrap.className).toMatch(/\bsm:grid-cols-2\b/)
+    expect(wrap.className).not.toMatch(/"grid grid-cols-2\b/)
+  })
+})
+
 describe('QC1 — autocomplete entreprise dans la modale QG3', () => {
   it('cherche, propose et remplit téléphone/email + avertit d\'un doublon client', async () => {
     crmApi.searchClients.mockResolvedValue({

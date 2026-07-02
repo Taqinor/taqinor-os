@@ -986,7 +986,9 @@ export default function TicketsPage() {
               {rows.length} ticket{rows.length > 1 ? 's' : ''}
             </p>
           </div>
-          <div className="flex items-center gap-2">
+          {/* MB5 — segmenté + bouton export : passe sur deux lignes sous 375px
+              au lieu de déborder horizontalement. */}
+          <div className="flex flex-wrap items-center gap-2">
             {/* L295 — bascule Table / Kanban. */}
             <Segmented
               size="sm"
