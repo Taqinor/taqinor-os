@@ -931,6 +931,26 @@ def build_quote_data(devis, pdf_options=None) -> dict:
     except Exception:  # noqa: BLE001 — un PDF ne doit jamais casser là-dessus
         entreprise = {}
 
+    # ── QG7 — contact du CRÉATEUR du devis (nom + téléphone) ─────────────────
+    # Le bloc contact du PDF affichait uniquement la société (donc toujours le
+    # fondateur). On expose le créateur (Devis.created_by : first_name/last_name/
+    # phone_number) pour que le client sache qui le suit. Repli sur le contact
+    # société quand l'utilisateur n'a pas de téléphone. Données seulement.
+    seller = {"nom": "", "telephone": ""}
+    try:
+        _creator = getattr(devis, "created_by", None)
+        if _creator is not None:
+            _fn = (getattr(_creator, "first_name", "") or "").strip()
+            _ln = (getattr(_creator, "last_name", "") or "").strip()
+            _full = (f"{_fn} {_ln}").strip()
+            _tel = (getattr(_creator, "phone_number", "") or "").strip()
+            if _full:
+                seller["nom"] = _full
+            # Repli sur le téléphone société quand l'utilisateur n'en a pas.
+            seller["telephone"] = _tel or (entreprise.get("telephone") or "")
+    except Exception:  # noqa: BLE001 — un PDF ne doit jamais casser là-dessus
+        seller = {"nom": "", "telephone": ""}
+
     tva_label = int(tva_pct) if tva_pct == int(tva_pct) else tva_pct
     # Texte TVA UNIQUE, partagé par toutes les notes/conditions des PDF.
     # Réforme (taux par ligne) : le texte décrit la règle 10/20 ; devis
@@ -1028,6 +1048,9 @@ def build_quote_data(devis, pdf_options=None) -> dict:
         # DC1 — identité société (multi-tenant). Champs vides → le moteur premium
         # applique ses littéraux historiques (aucune fuite d'un autre tenant).
         "entreprise": entreprise,
+        # QG7 — contact du créateur du devis (nom + tél ; repli société).
+        # Vide → le moteur retombe sur le contact société (byte-identique).
+        "seller": seller,
         # N26 — tampon d'acceptation : nom + date posés à l'acceptation du devis
         # (le moteur ne l'affiche QUE si les deux sont présents). Date au format
         # FR jj/mm/aaaa, vide sinon → devis byte-identique à aujourd'hui.

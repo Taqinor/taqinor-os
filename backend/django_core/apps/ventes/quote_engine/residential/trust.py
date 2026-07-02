@@ -187,6 +187,14 @@ def build(ctx) -> str:
             + f" MAD/mois sur {_duree_ans} ans ({_prog}) — indicatif, à "
             "confirmer avec votre banque.")
         conditions.append(("Financement possible", _fin_v))
+    # QG7 — contact du conseiller (créateur du devis) : nom + tél, ajouté comme
+    # ligne de conditions (données seulement). Repli société géré côté builder.
+    seller = d.get("seller") or {}
+    _s_nom = (seller.get("nom") or "").strip()
+    if _s_nom:
+        _s_tel = (seller.get("telephone") or "").strip()
+        _s_v = _s_nom + (f" &middot; {_s_tel}" if _s_tel else "")
+        conditions.append(("Votre conseiller", _s_v))
     cond_html = "".join(
         f'<div class="p3-cond-row"><span class="p3-cond-k">{k}</span>'
         f'<span class="p3-cond-v">{v}</span></div>'

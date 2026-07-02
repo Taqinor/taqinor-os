@@ -430,6 +430,29 @@ def _apply_entreprise(ent):
     if re.fullmatch(r"#[0-9A-Fa-f]{6}", couleur):
         CA = couleur
 
+
+def _apply_seller(seller):
+    """QG7 — ajoute le contact du CRÉATEUR du devis à la ligne de coordonnées.
+
+    ``seller`` = {"nom", "telephone"} posé par le builder depuis
+    ``Devis.created_by`` (repli téléphone société si l'utilisateur n'en a pas).
+    On AJOUTE « · Votre conseiller : Nom — tél » à ``ENT_CONTACT_LINE`` déjà
+    posée par ``_apply_entreprise`` (donc appelé APRÈS). Données seulement : pas
+    de nouvelle structure de gabarit. Seller vide → aucune modification
+    (byte-identique au devis d'aujourd'hui)."""
+    global ENT_CONTACT_LINE
+    if not isinstance(seller, dict):
+        return
+    nom = (seller.get("nom") or "").strip()
+    tel = (seller.get("telephone") or "").strip()
+    if not nom:
+        return
+    bits = f"Votre conseiller&#160;: {_esc(nom)}"
+    if tel:
+        bits += f" &#8212; {_esc(tel)}"
+    ENT_CONTACT_LINE = f"{ENT_CONTACT_LINE} &nbsp;&#183;&nbsp; {bits}"
+
+
 # ═══════════════════════════════════════════════════════════════════════════════
 # DOC_TEXTS — portions de TEXTE éditables du devis (D2/N60/N67/N26/N59)
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -2285,6 +2308,9 @@ def _render_premium_pdf(data: dict, out_path) -> str:
     # applique le profil de la société du devis. Champs vides → littéraux
     # Taqinor historiques (byte-identique) ; sinon SON identité s'affiche.
     _apply_entreprise(data.get("entreprise"))
+    # QG7 — ajoute le contact du créateur du devis (nom + tél) à la ligne de
+    # coordonnées, APRÈS _apply_entreprise. Seller vide → byte-identique.
+    _apply_seller(data.get("seller"))
 
     # Totaux canoniques (une seule source pour toutes les pages). À défaut
     # (anciens appels), reconstruits une fois ici avec la même chaîne.
