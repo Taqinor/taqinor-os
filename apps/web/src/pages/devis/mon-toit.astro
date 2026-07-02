@@ -382,6 +382,33 @@ const TOWNS = ['Casablanca', 'Rabat', 'Marrakech', 'Tanger', 'Agadir', 'Kénitra
             Estimation indisponible : indiquez votre facture mensuelle pour la calculer. Nous
             l'affinons ensemble sur WhatsApp.
           </p>
+
+          <!-- ===== WJ2 — « voir les panneaux sur votre toit » (facultatif, lazy) =====
+               Affiché UNIQUEMENT quand un contour (≥3 sommets) a été tracé à l'étape 1
+               ET qu'une estimation kWc est disponible. Bouton = geste explicite ; le
+               moteur 3D (Three.js + viewerOnly) n'est importé qu'au tap. Boîte à hauteur
+               RÉSERVÉE (zéro CLS) : le bouton occupe déjà la même zone que le canvas. -->
+          <div id="mt-panels3d" hidden class="mt-5 border-t border-white/10 pt-5">
+            <div id="mt-panels3d-stage" class="mt-panels3d-stage cine-card relative overflow-hidden rounded-lg">
+              <div id="mt-panels3d-overlay" class="absolute inset-0 flex flex-col items-center justify-center gap-2 px-4 text-center">
+                <button type="button" id="mt-panels3d-start"
+                  class="btn-pill inline-flex items-center justify-center gap-2"
+                  style="background: var(--color-brass-400); color: var(--color-nuit); border-color: var(--color-brass-400)">
+                  <span data-i18n data-fr="Voir les panneaux sur votre toit" data-ar="مشاهدة الألواح على سطحك">Voir les panneaux sur votre toit</span>
+                </button>
+                <p class="max-w-xs text-xs text-lune-faint" data-i18n
+                  data-fr="Aperçu illustratif — l'implantation exacte est confirmée après visite technique."
+                  data-ar="معاينة توضيحية — يُؤكَّد التوضع الدقيق بعد زيارة تقنية.">
+                  Aperçu illustratif — l'implantation exacte est confirmée après visite technique.
+                </p>
+              </div>
+            </div>
+            <p id="mt-panels3d-hint" hidden class="mt-2 text-xs text-lune-faint" data-i18n
+              data-fr="Faites glisser pour tourner · pincez ou molette pour zoomer."
+              data-ar="اسحب للتدوير · قرّب بإصبعين أو بعجلة الفأرة.">
+              Faites glisser pour tourner · pincez ou molette pour zoomer.
+            </p>
+          </div>
         </div>
 
         <!-- Formulaire de contact (la porte vient APRÈS l'estimation). -->
@@ -540,6 +567,20 @@ const TOWNS = ['Casablanca', 'Rabat', 'Marrakech', 'Tanger', 'Agadir', 'Kénitra
     </div>
   </div>
 </Layout>
+
+<style>
+  /* WJ2 — boîte à hauteur RÉSERVÉE (zéro CLS) : le bouton « voir les panneaux »
+     et le canvas 3D qui le remplace ensuite occupent EXACTEMENT la même zone. */
+  .mt-panels3d-stage {
+    height: 320px;
+    background: linear-gradient(160deg, rgb(20 38 63 / 0.9), rgb(7 11 29 / 0.95));
+  }
+  @media (min-width: 640px) {
+    .mt-panels3d-stage {
+      height: 380px;
+    }
+  }
+</style>
 
 <script>
   import { estimateFromBill, formatMadRange } from '../../lib/billEstimate';
@@ -715,6 +756,10 @@ const TOWNS = ['Casablanca', 'Rabat', 'Marrakech', 'Tanger', 'Agadir', 'Kénitra
             const fromMap = (s.address && s.address.trim()) || addressEl?.value.trim() || '';
             if (fromMap) cityEl.value = fromMap;
           }
+          // WJ2 — le contour peut arriver/changer APRÈS le calcul d'estimation :
+          // on ré-évalue l'éligibilité du bouton « voir les panneaux » à chaque
+          // changement de tracé (fonction déclarée plus bas, hissée par `function`).
+          updatePanels3dVisibility();
         },
       });
     } catch {
@@ -773,6 +818,7 @@ const TOWNS = ['Casablanca', 'Rabat', 'Marrakech', 'Tanger', 'Agadir', 'Kénitra
   // ——— WJ1 : calculer + afficher l'estimation instantanée ———
   let lastKwcLabel = '';
   let lastSavingsLabel = '';
+  let lastKwc: number | null = null;
   function computeEstimate() {
     const bill = resolveMonthlyBill();
     const lat = capturePin?.lat;
@@ -787,6 +833,8 @@ const TOWNS = ['Casablanca', 'Rabat', 'Marrakech', 'Tanger', 'Agadir', 'Kénitra
       if (unavail) unavail.hidden = false;
       lastKwcLabel = '';
       lastSavingsLabel = '';
+      lastKwc = null;
+      updatePanels3dVisibility();
       return;
     }
     if (card) card.hidden = false;
@@ -801,11 +849,68 @@ const TOWNS = ['Casablanca', 'Rabat', 'Marrakech', 'Tanger', 'Agadir', 'Kénitra
     if (payEl) payEl.textContent = est.paybackLabel;
     lastKwcLabel = `${est.kwc} kWc`;
     lastSavingsLabel = `${monthly}/mois`;
+    lastKwc = est.kwc;
+    updatePanels3dVisibility();
   }
   $('mt-estimate')?.addEventListener('click', () => { computeEstimate(); goStep(2); });
   // recalcule à la volée si l'utilisateur revient corriger sa facture
   $('mt-facture-hiver')?.addEventListener('input', computeEstimate);
   $('mt-bill')?.addEventListener('change', computeEstimate);
+
+  // ——— WJ2 : « voir les panneaux sur votre toit » — facultatif, lazy, dégrade
+  // proprement (pas de WebGL / pas de contour tracé → le bloc reste masqué). ———
+  const panels3dBlock = $('mt-panels3d') as HTMLElement | null;
+  const panels3dStage = $('mt-panels3d-stage') as HTMLElement | null;
+  const panels3dOverlay = $('mt-panels3d-overlay') as HTMLElement | null;
+  const panels3dStart = $('mt-panels3d-start') as HTMLButtonElement | null;
+  const panels3dHint = $('mt-panels3d-hint') as HTMLElement | null;
+  let panels3dStarted = false;
+
+  /** Le bouton n'apparaît QUE si un contour (≥3 sommets) a été tracé ET qu'un
+   *  kWc est disponible — sinon rien de significatif à montrer (pas de faux
+   *  aperçu sur un simple repère). */
+  function updatePanels3dVisibility() {
+    if (!panels3dBlock) return;
+    const eligible = captureOutline.length >= 3 && lastKwc != null;
+    panels3dBlock.hidden = !eligible;
+  }
+
+  async function startPanels3d() {
+    if (panels3dStarted || !panels3dStage || lastKwc == null) return;
+    panels3dStarted = true;
+    try {
+      const [{ capturePreviewLayout, buildViewerModel }, { createRoofViewer }] = await Promise.all([
+        import('../../lib/proposition'),
+        import('../../scripts/roofPro11/viewerOnly'),
+      ]);
+      const layout = capturePreviewLayout(captureOutline, lastKwc);
+      const model = layout ? buildViewerModel(layout) : null;
+      if (!model) throw new Error('modèle indisponible');
+      const nav = navigator as Navigator & { deviceMemory?: number; connection?: { saveData?: boolean } };
+      const lowEnd = (nav.deviceMemory != null && nav.deviceMemory <= 4) || (navigator.hardwareConcurrency || 8) <= 4;
+      const handle = createRoofViewer(panels3dStage, model, {
+        reducedMotion,
+        lowEnd,
+        onReady: () => {
+          if (panels3dOverlay) panels3dOverlay.hidden = true;
+          if (panels3dHint) panels3dHint.hidden = false;
+        },
+        onFail: () => { panels3dStarted = false; },
+      });
+      if (!handle) throw new Error('WebGL indisponible');
+    } catch {
+      // Repli gracieux : le bouton reste, avec un message sobre — jamais de blocage.
+      panels3dStarted = false;
+      if (panels3dOverlay) {
+        const btn = panels3dStart;
+        if (btn) {
+          btn.disabled = true;
+          btn.textContent = currentLang === 'ar' ? 'المعاينة ثلاثية الأبعاد غير متوفرة' : 'Aperçu 3D indisponible sur cet appareil';
+        }
+      }
+    }
+  }
+  panels3dStart?.addEventListener('click', () => { void startPanels3d(); });
 
   // ——— WJ4 : validation INLINE alignée sur validateLead (avant le round-trip) ———
   function setFieldError(inputId: string, errId: string, message: string | null) {

@@ -1140,6 +1140,59 @@ export function buildViewerModel(layout: RoofLayout | null): ViewerModel | null 
 }
 
 // ════════════════════════════════════════════════════════════════════════════
+// WJ2 — « Voir les panneaux sur votre toit » à la CAPTURE (mon-toit.astro).
+// Construit un RoofLayout ILLUSTRATIF à un seul pan à partir du contour posé
+// par le visiteur (captureBoot.ts onCaptureChange) + le kWc de l'estimation
+// instantanée WJ1 (billEstimate). AUCUNE donnée backend ici (page publique,
+// avant tout devis) : le nombre de panneaux dérive du MÊME calcul
+// PANEL2_WATT que le reste du site (estimatorBrain), jamais un chiffre
+// inventé. Toit supposé plat orienté plein sud (176°) — représentation
+// illustrative « votre toit, vos panneaux », pas une étude technique.
+// ════════════════════════════════════════════════════════════════════════════
+
+/** Watt-crête d'un panneau — même constante que le reste du site (roofPro2). */
+export const CAPTURE_PANEL_WATT = 720;
+
+/**
+ * WJ2 — Construit un RoofLayout à un seul pan (plat, plein sud illustratif)
+ * depuis un contour de toit `[[lat,lng],…]` (≥ 3 sommets, tel que renvoyé par
+ * `onCaptureChange`) et un kWc cible (estimation WJ1). Renvoie `null` si le
+ * contour n'a pas assez de sommets ou si le kWc n'est pas un nombre positif —
+ * la page dégrade alors proprement (pas de bouton « voir les panneaux »).
+ */
+export function capturePreviewLayout(
+  outlineLatLng: Array<[number, number]>,
+  kwc: number | null,
+): RoofLayout | null {
+  if (!Array.isArray(outlineLatLng) || outlineLatLng.length < 3) return null;
+  if (!Number.isFinite(kwc) || (kwc as number) <= 0) return null;
+  const vertices: Array<[number, number]> = [];
+  for (const pt of outlineLatLng) {
+    if (!Array.isArray(pt) || pt.length < 2) continue;
+    const [lat, lng] = pt;
+    if (!isFiniteNum(lat) || !isFiniteNum(lng)) continue;
+    vertices.push([lng, lat]); // RoofLayoutZone attend [lng,lat]
+  }
+  if (vertices.length < 3) return null;
+  const neededPanels = Math.max(1, Math.ceil(((kwc as number) * 1000) / CAPTURE_PANEL_WATT));
+  return {
+    version: 1,
+    zones: [
+      {
+        id: 'capture-preview',
+        label: 'Votre toit',
+        vertices,
+        obstacles: [],
+        roofType: 'flat',
+        pitchDeg: 0,
+        facingAzimuthDeg: 176, // plein sud illustratif — aucune boussole réelle à cette étape
+        neededPanels,
+      },
+    ],
+  };
+}
+
+// ════════════════════════════════════════════════════════════════════════════
 // WJ26 — « Tout est expliqué » : légende + annotations + visite guidée autour
 // de la 3D. Discipline inchangée : CHAQUE chiffre vient du layout serveur ou du
 // payload quote ; quand une valeur manque, on renvoie null et la page affiche
