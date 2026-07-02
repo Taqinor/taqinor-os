@@ -6,17 +6,25 @@ import { configureStore } from '@reduxjs/toolkit'
 
 // J141 — la liste des devis ne doit toucher aucun réseau pendant le test : on
 // neutralise le thunk de chargement (le composant le dispatche au montage).
+// QG1 — genererPdfDevis renvoie une action « thunk-like » : dispatch(...) doit
+// rester chaînable en .unwrap() (comme le vrai createAsyncThunk) pour que
+// genererUnPdf() poursuive jusqu'au polling dans le test dédié plus bas.
 vi.mock('../../features/ventes/store/ventesSlice', async (importOriginal) => {
   const actual = await importOriginal()
   return {
     ...actual,
     fetchDevis: () => ({ type: 'ventes/fetchDevis/noop' }),
-    genererPdfDevis: () => ({ type: 'ventes/genererPdfDevis/noop' }),
+    genererPdfDevis: () => {
+      const action = { type: 'ventes/genererPdfDevis/noop' }
+      action.unwrap = () => Promise.resolve()
+      return action
+    },
     convertirDevisEnBC: () => ({ type: 'ventes/convertirDevisEnBC/noop' }),
   }
 })
 
 // WR1 — espionne l'appel réseau du refus dédié (jamais un PATCH statut direct).
+// QG1 — espionne getDevisById (polling) + telechargerPdfDevis (ouverture auto).
 vi.mock('../../api/ventesApi', async (importOriginal) => {
   const actual = await importOriginal()
   return {
@@ -24,6 +32,11 @@ vi.mock('../../api/ventesApi', async (importOriginal) => {
     default: {
       ...actual.default,
       refuserDevis: vi.fn(() => Promise.resolve({ data: { statut: 'refuse' } })),
+      getDevisById: vi.fn(() => Promise.resolve({ data: { fichier_pdf: '/media/devis/DEV-PDF-AUTO.pdf' } })),
+      telechargerPdfDevis: vi.fn(() => Promise.resolve({
+        data: new Blob(['%PDF-1.4'], { type: 'application/pdf' }),
+        headers: {},
+      })),
     },
   }
 })
@@ -179,6 +192,41 @@ describe('DevisList — WR1 : refus passe par l\'action dédiée refuser()', () 
     window.confirm.mockRestore()
     window.prompt.mockRestore()
   })
+})
+
+describe('DevisList — QG1 : ouverture automatique du PDF après « Générer »', () => {
+  it('ouvre le PDF tout seul dès que le polling détecte fichier_pdf (pas de second clic)', async () => {
+    // jsdom n'implémente pas createObjectURL/revokeObjectURL par défaut.
+    const createObjectURL = vi.fn(() => 'blob:mock-url')
+    const revokeObjectURL = vi.fn()
+    URL.createObjectURL = createObjectURL
+    URL.revokeObjectURL = revokeObjectURL
+    const clickSpy = vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => {})
+
+    renderList({
+      loading: false,
+      devis: [{
+        id: 99, reference: 'DEV-PDF-AUTO', client_nom: 'ACME', statut: 'brouillon',
+        date_creation: '2026-07-01', total_ttc: 3000, nb_options: 1, version: 1,
+      }],
+    })
+
+    const row = screen.getByText('DEV-PDF-AUTO').closest('tr')
+    fireEvent.click(within(row).getByTitle('Générer le PDF (choix du format)'))
+
+    // La modale de format s'ouvre — on lance la génération.
+    const dialog = await screen.findByRole('dialog')
+    fireEvent.click(within(dialog).getByRole('button', { name: /Générer/ }))
+
+    // Le polling (setTimeout réel 2s) voit fichier_pdf prêt et télécharge
+    // automatiquement le PDF sans action supplémentaire de l'utilisateur.
+    await waitFor(() => {
+      expect(ventesApi.telechargerPdfDevis).toHaveBeenCalledWith(99)
+    }, { timeout: 8000 })
+    await waitFor(() => { expect(clickSpy).toHaveBeenCalled() })
+
+    clickSpy.mockRestore()
+  }, 15000)
 })
 
 describe('DevisList — U8 : état du bon de commande + incohérence', () => {

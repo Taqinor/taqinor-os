@@ -436,20 +436,39 @@ export default function DevisList() {
       && !!(d?.etude_params && Object.keys(d.etude_params).length > 0),
   })
 
-  // Lance la génération d'un PDF + polling silencieux jusqu'à fichier prêt.
-  // Renvoie une promesse résolue quand la génération est acceptée (pas attendue
-  // jusqu'au fichier final), pour permettre l'enchaînement par lot.
-  const genererUnPdf = async (d) => {
+  // QG1 — Lance la génération d'un PDF + polling silencieux jusqu'à fichier
+  // prêt. Le PDF s'ouvre/télécharge AUTOMATIQUEMENT dès qu'il est prêt (plus
+  // besoin d'un second clic sur le bouton vert, qui reste disponible pour
+  // re-télécharger). Renvoie une promesse résolue quand la génération est
+  // acceptée (pas attendue jusqu'au fichier final), pour permettre
+  // l'enchaînement par lot.
+  const genererUnPdf = async (d, { autoOpen = true } = {}) => {
     setPdfGenerating(prev => ({ ...prev, [d.id]: true }))
     try {
       await dispatch(genererPdfDevis({ id: d.id, options: buildPdfOptions(d) })).unwrap()
       let attempts = 0
       const poll = async () => {
-        if (attempts++ > 15) return
+        if (attempts++ > 15) {
+          if (autoOpen) {
+            toast.error(`${d.reference} : le PDF met plus de temps que prévu — réessayez le téléchargement dans un instant.`)
+          }
+          return
+        }
         try {
           const res = await ventesApi.getDevisById(d.id)
-          if (res.data.fichier_pdf) dispatch(fetchDevis())
-          else setTimeout(poll, 2000)
+          if (res.data.fichier_pdf) {
+            dispatch(fetchDevis())
+            if (autoOpen) {
+              try {
+                const pdfRes = await ventesApi.telechargerPdfDevis(d.id)
+                openPdfBlob(pdfRes.data, filenameFromResponse(pdfRes, `${d.reference}.pdf`))
+              } catch {
+                toast.error(`${d.reference} : PDF généré mais l'ouverture automatique a échoué — utilisez le bouton de téléchargement.`)
+              }
+            }
+          } else {
+            setTimeout(poll, 2000)
+          }
         } catch { /* ignore poll errors */ }
       }
       setTimeout(poll, 2000)
@@ -474,12 +493,14 @@ export default function DevisList() {
   }
 
   // T7 — Génération PDF par lot : même format pour tous les devis sélectionnés.
+  // QG1 — pas d'ouverture automatique par lot (N devis => N ouvertures serait
+  // intrusif) : chacun reste téléchargeable via son bouton vert une fois prêt.
   const handleGenererPdfLot = async () => {
     const cibles = devis.filter(d => selectedIds.includes(d.id))
     setBatchPdf(false)
     let ok = 0
     for (const d of cibles) {
-      if (await genererUnPdf(d)) ok += 1
+      if (await genererUnPdf(d, { autoOpen: false })) ok += 1
     }
     if (ok > 0) toast.success(`Génération lancée pour ${ok} devis.`)
     setSelectedIds([])
