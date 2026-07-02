@@ -295,6 +295,30 @@ native work-stealing). Fall back to manually-dispatched worktree subagents with 
 SAME refill-on-completion rule. NEVER a single serial one-task-at-a-time agent, and
 NEVER a merge per wave/task.
 
+**Model selection (per task/role) — auto-pick; do NOT run everything on the session
+model (founder rule, Reda).** In a plan run the ORCHESTRATOR (the main loop) keeps the
+session model -- for a plan run that is Opus, and it is NEVER downgraded: that is where
+the costly judgment lives (lane planning, adversarial review, real-vs-environmental
+failure triage, revert/keep calls, migration-chain orchestration, the ONE combined
+test, CODEMAP/fingerprint/DONE-LOG bookkeeping, and the merge+deploy gate). But each
+BUILD subagent is dispatched on the CHEAPEST model that fits its lane, via the `Agent`
+tool's `model:` param (or `Workflow` `agent()` `opts.model`) -- this holds EVEN WHEN the
+session was started on Opus (downgrade the builders, keep orchestration on Opus):
+  - **haiku** -- mechanical / low-risk lanes: DC "single-source-of-truth" wiring,
+    verify-and-skip / already-present-heavy lanes, small additive CRUD, no cross-app
+    writes, trivial-or-no migration.
+  - **sonnet** (DEFAULT for building) -- standard feature lanes: new
+    models+migrations+viewsets+tests, cross-app reads via `selectors.py`, multi-tenant
+    discipline, moderate logic. This is the bulk of lanes.
+  - **opus** -- high-risk lanes ONLY: the quote engine (RULE #4), `core` foundation
+    under import-linter contracts, auth/permissions/security, destructive migrations,
+    brand-new cross-app ARCH/event flows. ALSO escalate: any lane a cheaper agent
+    returns `[BLOCKED]`/uncertain gets re-run one tier up.
+  The orchestrator still adversarially reviews + locally tests EVERY lane regardless of
+  which model built it, so a cheaper builder never lowers the merge bar. (If a run is
+  ever started on Sonnet/Haiku the driver can't be upgraded -- orchestration judgment is
+  then bounded by that model; per-task build-model choice still applies.)
+
 **Always merge to `main` (founder standing instruction, Reda).** Every run -- local,
 remote/cloud, or phone -- must land the single `dev` -> `main` self-merge; never
 stop at a feature branch and never wait to be asked. The only gate is the Safety
