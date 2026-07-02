@@ -442,6 +442,14 @@ def proposal_data(request, token):
             'facture_sans_solaire': data.get('facture_sans_solaire'),
             'facture_avec_solaire_s': data.get('facture_avec_solaire_s'),
             'facture_avec_solaire_a': data.get('facture_avec_solaire_a'),
+            # QJ29/QJ30 — multi-propriétés (rendu web) : ×N villas identiques
+            # (multiplicateur + totaux mis à l'échelle) et/ou sections par-villa
+            # (sous-totaux + total général). Absents quand le devis n'est pas
+            # multi-villa → le rendu web reste la mise en page à plat d'aujourd'hui.
+            'nombre_proprietes': data.get('nombre_proprietes'),
+            'display_total_multi': data.get('display_total_multi'),
+            'totaux_multi': data.get('totaux_multi'),
+            'multi_villa': data.get('multi_villa'),
             # QJ15 — variantes côte-à-côte (même version_parent, toutes actives).
             # [] quand le devis est isolé — le client voit seulement sa proposition.
             'variants': _variant_summaries(devis),

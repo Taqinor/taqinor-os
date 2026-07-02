@@ -567,6 +567,71 @@ def _hypotheses_html():
 # Vide → aucun bloc rendu (byte-identique).
 FINANCING = None
 
+# QJ30 — multi-propriétés (rendu). NB_PROPRIETES = ×N villas identiques (défaut
+# 1 → aucun rendu). MULTI_VILLA = sections par-villa (sous-totaux + total
+# général). Vides → mise en page à plat d'aujourd'hui (byte-identique).
+NB_PROPRIETES = 1
+DISPLAY_TOTAL_MULTI = None
+MULTI_VILLA = None
+
+
+def _multi_proprietes_line_html():
+    """QJ30 (A) — ligne « × N propriétés identiques » + total mis à l'échelle.
+    Rendu UNIQUEMENT quand NB_PROPRIETES > 1. Aucun chiffre inventé : le total
+    multi vient du builder (total unitaire × N)."""
+    if not NB_PROPRIETES or NB_PROPRIETES <= 1:
+        return ""
+    total_txt = ""
+    if DISPLAY_TOTAL_MULTI:
+        total_txt = (f' &#8212; total pour {NB_PROPRIETES} propriétés&#160;: '
+                     f'<b>{fmt(DISPLAY_TOTAL_MULTI)}</b>')
+    return (
+        f'<div style="background:{CAL};border:1px solid {CA};border-radius:8px;'
+        f'padding:6px 12px;margin-bottom:5px;font-size:8.5pt;color:{CN};">'
+        f'&#215;&#160;{NB_PROPRIETES} propriétés identiques'
+        f'{total_txt}</div>')
+
+
+def _multi_villa_html():
+    """QJ30 (B) — sections par-villa (sous-totaux) + total général, dans UN
+    document. Rendu UNIQUEMENT quand MULTI_VILLA est fourni. Les montants
+    viennent du builder/selector (une source) ; jamais de prix d'achat/marge."""
+    mv = MULTI_VILLA
+    if not isinstance(mv, dict) or not mv.get("groupes"):
+        return ""
+    rows = ""
+    for g in mv["groupes"]:
+        t = g.get("totaux") or {}
+        rows += (
+            f'<tr><td style="padding:3px 8px;color:{CG7};">{_esc(g.get("label", ""))}</td>'
+            f'<td style="padding:3px 8px;text-align:right;color:{CG7};">'
+            f'{_fmt2(t.get("ht_net", 0))}</td>'
+            f'<td style="padding:3px 8px;text-align:right;font-weight:700;'
+            f'color:{CN};white-space:nowrap;">{fmt(t.get("ttc", 0))}</td></tr>')
+    gt = mv.get("grand_total") or {}
+    rows += (
+        f'<tr style="background:{CN};"><td style="padding:4px 8px;color:{CA};'
+        f'font-weight:800;">Total général</td>'
+        f'<td style="padding:4px 8px;text-align:right;color:{CA};font-weight:800;">'
+        f'{_fmt2(gt.get("ht_net", 0))}</td>'
+        f'<td style="padding:4px 8px;text-align:right;color:{CA};font-weight:800;'
+        f'white-space:nowrap;">{fmt(gt.get("ttc", 0))}</td></tr>')
+    return (
+        f'<div style="border:1px solid {CG2};border-radius:8px;overflow:hidden;'
+        f'margin-bottom:5px;">'
+        f'<div style="background:{CG1};padding:5px 12px;font-size:9pt;'
+        f'font-weight:700;color:{CN};text-transform:uppercase;'
+        f'letter-spacing:.8px;">Détail par propriété</div>'
+        f'<table style="width:100%;border-collapse:collapse;font-size:8pt;">'
+        f'<thead><tr>'
+        f'<th style="padding:3px 8px;text-align:left;color:{CG4};font-size:6.5pt;'
+        f'text-transform:uppercase;">Propriété</th>'
+        f'<th style="padding:3px 8px;text-align:right;color:{CG4};font-size:6.5pt;'
+        f'text-transform:uppercase;">Total HT</th>'
+        f'<th style="padding:3px 8px;text-align:right;color:{CG4};font-size:6.5pt;'
+        f'text-transform:uppercase;">Total TTC</th>'
+        f'</tr></thead><tbody>{rows}</tbody></table></div>')
+
 
 def _financing_html():
     """QK3 — bloc « Financement possible » (mensualité indicative + programme).
@@ -1710,6 +1775,9 @@ def page3():
   <!-- QK3 — FINANCEMENT (indicatif) -->
   <div style="padding:0 24px;">{_financing_html()}</div>
 
+  <!-- QJ30 — MULTI-PROPRIÉTÉS (×N identiques / sections par-villa) -->
+  <div style="padding:0 24px;">{_multi_proprietes_line_html()}{_multi_villa_html()}</div>
+
   <!-- CONDITIONS GENERALES -->
   <div style="padding:0 24px 4px;margin-bottom:5px;">
     <div style="background:{CG1};border-radius:8px;padding:7px 12px;border:1px solid {CG2};border-left:4px solid {CN};">
@@ -2147,6 +2215,9 @@ def page_onepage(items):
     {totals_html}
   </div>
 
+  <!-- QJ30 — ×N propriétés identiques (ligne compacte ; une page préservée) -->
+  <div style="padding:6px 24px 0;">{_multi_proprietes_line_html()}</div>
+
   <!-- CONDITIONS : sous le total -->
   <div style="padding:8px 24px;">
     {'<div style="font-size:7.5pt;color:' + CG4 + ';font-style:italic;margin-bottom:3px;">Ce document chiffre l&#8217;option sans batterie. Une option avec batterie est disponible &#8212; voir la proposition compl&#232;te.</div>' if ONEPAGE_NOTE_BATTERIE else ''}
@@ -2267,6 +2338,13 @@ def _render_premium_pdf(data: dict, out_path) -> str:
     HYPOTHESES = data.get("hypotheses")
     global FINANCING  # QK3 — bloc financement (QJ12)
     FINANCING = data.get("financing")
+    global NB_PROPRIETES, DISPLAY_TOTAL_MULTI, MULTI_VILLA  # QJ30 multi-propriétés
+    try:
+        NB_PROPRIETES = int(data.get("nombre_proprietes") or 1)
+    except (TypeError, ValueError):
+        NB_PROPRIETES = 1
+    DISPLAY_TOTAL_MULTI = data.get("display_total_multi")
+    MULTI_VILLA = data.get("multi_villa")
 
     # ERR37 — escape user-controlled client fields before they reach the PDF HTML.
     CLIENT_NAME  = _esc(data["client_name"])
