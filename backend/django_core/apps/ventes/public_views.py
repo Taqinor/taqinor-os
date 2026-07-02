@@ -151,18 +151,28 @@ def public_document(request, token):
     is_first = _stamp_view(link)
 
     try:
+        from .utils.filenames import document_filename
         if link.devis_id:
             # ERR74 — public share link is a safe GET: render + stream without
             # persisting fichier_pdf on every access (persist=False).
             key = generate_premium_devis_pdf(
                 link.devis_id, clean_pdf_options({}), persist=False)
             pdf_bytes = download_pdf(key)
-            filename = f'Devis_{link.devis.reference}.pdf'
+            # QD2 — nom cohérent (société _ type _ client _ référence).
+            devis = link.devis
+            filename = document_filename(
+                'Devis', devis.reference,
+                client=devis.client if devis.client_id else None,
+                company=devis.company)
         elif link.facture_id:
             facture = link.facture
             key = facture.fichier_pdf or generate_facture_pdf(facture.id)
             pdf_bytes = download_pdf(key)
-            filename = f'Facture_{facture.reference}.pdf'
+            # QD2 — nom cohérent (société _ type _ client _ référence).
+            filename = document_filename(
+                'Facture', facture.reference,
+                client=facture.client if facture.client_id else None,
+                company=facture.company)
         else:
             return _not_found()
     except Exception:
@@ -175,6 +185,47 @@ def public_document(request, token):
     if is_first:
         _notify_first_open(link)
 
+    response = HttpResponse(pdf_bytes, content_type='application/pdf')
+    response['Content-Disposition'] = f'inline; filename="{filename}"'
+    return _noindex(response)
+
+
+# ── QS3 — PDF public tokenisé d'un Bon de Commande FOURNISSEUR ────────────────
+# Jeton ShareLink (long, imprévisible, expirant) borné à UN BCF d'UNE société.
+# Le PDF montre légitimement les PRIX D'ACHAT au FOURNISSEUR (le jeton l'y
+# autorise) ; il n'est JAMAIS servi à un client final et n'est jamais surfacé
+# dans l'UI client. X-Robots-Tag: noindex + throttle par IP+jeton, comme les
+# autres liens publics.
+
+@api_view(['GET'])
+@permission_classes([AllowAny])
+@throttle_classes([PublicLinkRateThrottle])
+def public_bcf_document(request, token):
+    """QS3 — Flux PDF du Bon de Commande FOURNISSEUR derrière un jeton ShareLink.
+
+    Rendu à la volée (aucune persistance) via le sélecteur cross-app
+    ``stock.selectors.render_bcf_pdf_by_id`` — ventes n'importe pas les
+    modèles/utils de stock directement. Jeton invalide/expiré/non-BCF → 404
+    amical sans fuite."""
+    link = (
+        ShareLink.objects
+        .select_related('company')
+        .filter(token=token)
+        .first()
+    )
+    if (link is None or not link.is_valid
+            or not link.bon_commande_fournisseur_id):
+        return _not_found()
+    try:
+        from apps.stock.selectors import render_bcf_pdf_by_id
+        pdf_bytes, filename = render_bcf_pdf_by_id(
+            link.bon_commande_fournisseur_id)
+        if pdf_bytes is None:
+            return _not_found()
+    except Exception:  # noqa: BLE001 — jamais de fuite, 404 amical
+        return _noindex(Response(
+            {'detail': 'Document indisponible pour le moment.'},
+            status=status.HTTP_404_NOT_FOUND))
     response = HttpResponse(pdf_bytes, content_type='application/pdf')
     response['Content-Disposition'] = f'inline; filename="{filename}"'
     return _noindex(response)
@@ -496,6 +547,87 @@ def proposal_pdf(request, token):
     response = HttpResponse(pdf_bytes, content_type='application/pdf')
     response['Content-Disposition'] = f'inline; filename="{filename}"'
     return _noindex(response)
+
+
+@api_view(['POST'])
+@permission_classes([AllowAny])
+@throttle_classes([PublicLinkRateThrottle])
+def proposal_contact_request(request, token):
+    """QJ27 — Le client demande à être contacté (« Être rappelé » côté client).
+
+    Endpoint PUBLIC tokenisé (même jeton ShareLink que la proposition — long,
+    imprévisible, expirant). Consigne la demande dans le chatter du lead lié
+    (via les services crm — jamais d'import de ``crm.models``) et notifie le
+    RESPONSABLE du lead ET son SUPÉRIEUR (repli : managers « Commercial
+    responsable » / « Directeur » de la société) via ``notify()``. Sans lead,
+    le créateur du devis + son supérieur sont notifiés et la demande est
+    consignée dans le chatter du devis.
+
+    Idempotent / rate-sane : en plus du throttle par IP+jeton, une même
+    demande n'est transmise qu'une fois par heure et par lien (verrou cache) —
+    un double clic répond « déjà transmise » sans re-notifier.
+    """
+    link = _resolve_proposal_link(token)
+    if link is None:
+        return _not_found()
+
+    canal = (str(request.data.get('canal') or '')).strip()[:20]
+    message = (str(request.data.get('message') or '')).strip()[:500]
+
+    # Verrou idempotence (1 h par lien) — cache.add est atomique : False si la
+    # demande a déjà été transmise récemment.
+    already = False
+    try:
+        from django.core.cache import cache
+        already = not cache.add(f'qj27-contact:{link.pk}', True, 3600)
+    except Exception:  # noqa: BLE001 — un cache indisponible ne bloque rien
+        already = False
+    if already:
+        return _noindex(Response({
+            'detail': ('Votre demande a déjà été transmise. '
+                       'Nous vous recontactons très vite.'),
+            'already_sent': True,
+        }))
+
+    devis = link.devis
+    try:
+        lead = getattr(devis, 'lead', None)
+        if lead is not None:
+            from apps.crm.services import notify_client_contact_request
+            notify_client_contact_request(
+                devis.reference, lead, canal=canal, message=message)
+        else:
+            # Pas de lead : chatter devis + notification créateur + supérieur.
+            from apps.crm.services import user_and_superior_recipients
+            from apps.notifications.services import notify_many
+            from . import activity
+            note = f'Le client demande à être contacté ({devis.reference})'
+            if message:
+                note += f' : « {message} »'
+            activity.log_devis_note(devis, None, note)
+            recipients = user_and_superior_recipients(
+                getattr(devis, 'created_by', None), devis.company)
+            if recipients:
+                client_nom = str(devis.client) if devis.client_id else 'Le client'
+                body = (f'{client_nom} demande à être contacté au sujet du '
+                        f'devis {devis.reference}.')
+                if message:
+                    body += f'\nMessage : « {message} »'
+                notify_many(
+                    recipients, 'client_contact_request',
+                    f'Le client demande à être contacté — {devis.reference}',
+                    body=body,
+                    link='/ventes/devis',
+                    company=devis.company,
+                )
+    except Exception:  # noqa: BLE001 — jamais d'erreur interne exposée
+        pass
+
+    return _noindex(Response({
+        'detail': ('Votre demande a bien été transmise. '
+                   'Nous vous recontactons très vite.'),
+        'already_sent': False,
+    }))
 
 
 @api_view(['POST'])

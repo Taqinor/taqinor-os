@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import { useDispatch, useSelector } from 'react-redux'
 import {
   Download, Plus, FileText, FileDown, Check, ArrowRight, HardHat, FileStack,
-  Copy, Send, X, Eye, Search, AlertTriangle,
+  Copy, Send, X, Eye, Search, AlertTriangle, UserCog,
 } from 'lucide-react'
 import {
   fetchDevis,
@@ -24,6 +24,7 @@ import {
   RadioGroup, RadioGroupItem, Checkbox, Label, Input, Segmented, toast,
 } from '../../ui'
 import { formatMAD } from '../../lib/format'
+import { filenameFromResponse } from '../../utils/downloadBlob'
 import { proposalParams, pdfBlob } from '../../features/ventes/previewPdf'
 import { useSavedViews } from '../../hooks/useSavedViews'
 import { useDelayedLoading } from '../../hooks/useDelayedLoading'
@@ -271,19 +272,43 @@ export default function DevisList() {
     }
   }
 
-  // T2 — Envoyer un brouillon : PATCH statut:'envoye'. Réutilise le chemin
-  // d'update existant, donc la garde de remise (T17) s'applique côté serveur et
-  // remonte son message en toast.
+  // QG8 — « Envoyer » = flux WhatsApp des leads (aperçu du message + lien
+  // tokenisé), et le devis est marqué « envoyé » côté serveur (idempotent, sans
+  // régression). On ouvre une modale d'aperçu, puis WhatsApp au clic.
+  const [waTarget, setWaTarget] = useState(null)   // devis ciblé
+  const [waData, setWaData] = useState(null)        // { wa_url, message, url }
   const handleEnvoyer = async (d) => {
     setStatutActionId(d.id)
     try {
-      await ventesApi.patchDevis(d.id, { statut: 'envoye' })
+      const res = await ventesApi.whatsappDevis(d.id)
+      setWaTarget(d)
+      setWaData(res.data)
       dispatch(fetchDevis())
-      toast.success(`Devis ${d.reference} marqué « Envoyé ».`)
     } catch (err) {
-      toast.error(frenchError(err, 'Envoi impossible.'))
+      toast.error(frenchError(err, 'Préparation WhatsApp impossible.'))
     } finally {
       setStatutActionId(null)
+    }
+  }
+  const closeWaModal = () => { setWaTarget(null); setWaData(null) }
+  const openWhatsApp = () => {
+    if (waData?.wa_url) window.open(waData.wa_url, '_blank', 'noopener')
+    closeWaModal()
+  }
+
+  // QJ28 — « Contacter mon supérieur » : notifie le supérieur du vendeur
+  // (in-app + canaux configurés) avec un lien vers ce devis. Manuel, jamais
+  // automatique — un clic = une notification.
+  const [superieurBusyId, setSuperieurBusyId] = useState(null)
+  const handleContacterSuperieur = async (d) => {
+    setSuperieurBusyId(d.id)
+    try {
+      await ventesApi.contacterSuperieur(d.id)
+      toast.success('Votre supérieur a été notifié.')
+    } catch (err) {
+      toast.error(frenchError(err, 'Notification du supérieur impossible.'))
+    } finally {
+      setSuperieurBusyId(null)
     }
   }
 
@@ -461,7 +486,8 @@ export default function DevisList() {
     setPdfDownloading(prev => ({ ...prev, [d.id]: true }))
     try {
       const res = await ventesApi.telechargerPdfDevis(d.id)
-      openPdfBlob(res.data, `${d.reference}.pdf`)
+      // QD2 — nom cohérent posé par le serveur (repli sur la référence).
+      openPdfBlob(res.data, filenameFromResponse(res, `${d.reference}.pdf`))
     } catch {
       toast.error('Fichier introuvable. Régénérez le PDF.')
     } finally {
@@ -899,6 +925,38 @@ export default function DevisList() {
         </DialogContent>
       </Dialog>
 
+      {/* QG8 — Aperçu du message WhatsApp avant ouverture (le devis est déjà
+          marqué « envoyé » côté serveur ; on ouvre wa.me au clic). */}
+      <Dialog open={!!waTarget} onOpenChange={(o) => { if (!o) closeWaModal() }}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Envoyer par WhatsApp — {waTarget?.reference}</DialogTitle>
+          </DialogHeader>
+          <div className="flex flex-col gap-3">
+            <p className="text-sm text-muted-foreground">
+              Le devis est marqué « Envoyé ». Vérifiez le message ci-dessous
+              puis ouvrez WhatsApp — vous appuierez vous-même sur Envoyer.
+            </p>
+            <div className="rounded-lg border border-border bg-muted/40 p-3 text-sm whitespace-pre-wrap">
+              {waData?.message || '…'}
+            </div>
+            {!waData?.wa_url && (
+              <p className="text-sm text-destructive">
+                Aucun numéro de téléphone : le message ne peut pas être ouvert
+                dans WhatsApp.
+              </p>
+            )}
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={closeWaModal}>Fermer</Button>
+            <Button onClick={openWhatsApp} disabled={!waData?.wa_url}>
+              <Send className="size-4 mr-1" aria-hidden="true" />
+              Ouvrir WhatsApp
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
       {devis.length === 0 ? (
         <EmptyState
           icon={FileStack}
@@ -1224,9 +1282,21 @@ export default function DevisList() {
                               variant="outline"
                               loading={statutActionId === d.id}
                               onClick={() => handleEnvoyer(d)}
-                              title="Marquer ce devis comme envoyé"
+                              title="Envoyer par WhatsApp (message + lien de proposition) — marque le devis « Envoyé »"
                             >
                               <Send /> Envoyer
+                            </Button>
+                          )}
+                          {/* QJ28 — Contacter mon supérieur (notification, jamais automatique) */}
+                          {(d.statut === 'brouillon' || d.statut === 'envoye') && (
+                            <Button
+                              size="sm"
+                              variant="ghost"
+                              loading={superieurBusyId === d.id}
+                              onClick={() => handleContacterSuperieur(d)}
+                              title="Contacter mon supérieur — lui envoyer une notification avec le lien de ce devis"
+                            >
+                              <UserCog />
                             </Button>
                           )}
                           {/* QJ14 — Envoyer par email : PDF premium + lien de proposition */}

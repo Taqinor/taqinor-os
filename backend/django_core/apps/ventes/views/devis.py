@@ -75,14 +75,17 @@ class DevisViewSet(viewsets.ModelViewSet):
         return DevisSerializer
 
     def get_permissions(self):
-        if self.action in READ_ACTIONS + ['historique']:
+        if self.action in READ_ACTIONS + ['historique', 'variante_config']:
+            # variante_config : la LECTURE est ouverte à tous ; l'ÉCRITURE (PUT)
+            # est re-vérifiée dans l'action (Directeur / Commercial responsable).
             return [IsAnyRole()]
         elif self.action in WRITE_ACTIONS + [
             'generer_pdf', 'telecharger_pdf', 'convertir_en_bc', 'proposal',
             'generer_facture', 'reviser', 'accepter', 'refuser', 'noter',
             'layout', 'roof_image', 'from_layout', 'auto', 'share_link',
             'envoyer_email', 'dupliquer_variante', 'variantes',
-            'save_preset', 'apply_preset',
+            'save_preset', 'apply_preset', 'contacter_superieur',
+            'whatsapp',
         ]:
             return [IsResponsableOrAdmin()]
         elif self.action == 'destroy':
@@ -574,31 +577,61 @@ class DevisViewSet(viewsets.ModelViewSet):
           - numéros de référence séquentiels via ``create_numbered``.
 
         Corps optionnel :
-          ``scales`` : liste de flottants, ex. [0.8, 1.0, 1.25]
-                       (défaut : [0.8, 1.0, 1.25], max 3 éléments).
+          ``scales`` : liste de flottants explicites, ex. [0.8, 1.0, 1.25]
+                       (override par requête, max 3 éléments) ;
+          ``variante_pct`` : pourcentage p → échelles symétriques
+                       [1−p, 1.0, 1+p] (override par requête).
 
-        Retourne la liste des devis créés.
+        QG9 — Sans override, le pourcentage vient de
+        ``CompanyProfile.variante_pct`` (défaut 20 → échelles 0.8 / 1.0 / 1.2),
+        scopé société. Retourne la liste des devis créés.
         """
         source = self.get_object()
         company = source.company
         root = source.version_parent or source
 
-        raw_scales = request.data.get('scales', [0.8, 1.0, 1.25])
-        try:
-            scales = [float(s) for s in raw_scales][:3]
-        except (TypeError, ValueError):
-            scales = [0.8, 1.0, 1.25]
+        # QG9 — échelles depuis un pourcentage : override requête ``scales``
+        # (rétro-compat) > override requête ``variante_pct`` > config société
+        # ``CompanyProfile.variante_pct`` (défaut 20). Symétrique : [1−p, 1, 1+p].
+        def _scales_from_pct(pct):
+            try:
+                p = float(pct) / 100.0
+            except (TypeError, ValueError):
+                return None
+            if not (0 < p < 1):
+                return None
+            return [round(1 - p, 4), 1.0, round(1 + p, 4)]
+
+        scales = None
+        raw_scales = request.data.get('scales')
+        if raw_scales:
+            try:
+                scales = [float(s) for s in raw_scales][:3]
+            except (TypeError, ValueError):
+                scales = None
+        if scales is None:
+            pct = request.data.get('variante_pct')
+            if pct is None:
+                from apps.parametres.models import CompanyProfile
+                pct = getattr(CompanyProfile.get(company=company),
+                              'variante_pct', 20)
+            scales = _scales_from_pct(pct) or [0.8, 1.0, 1.25]
         if not scales:
             scales = [0.8, 1.0, 1.25]
 
-        # Labels FR pour les variantes (affichés dans la liste et la proposition)
-        _labels = {0.8: '−20 %', 1.0: 'Standard', 1.25: '+25 %'}
+        # Labels FR dérivés de l'échelle : « −X % » / « Standard » / « +X % ».
+        def _label_for(scale):
+            if abs(scale - 1.0) < 1e-9:
+                return 'Standard'
+            pct = round((scale - 1.0) * 100)
+            sign = '+' if pct > 0 else '−'
+            return f'{sign}{abs(pct)} %'
 
         created = []
         from decimal import Decimal, ROUND_HALF_UP
 
         for scale in scales:
-            variant_note = _labels.get(scale) or f'×{scale:.2f}'
+            variant_note = _label_for(scale)
             holder = {}
 
             def _save(ref, _scale=scale, _note=variant_note):
@@ -645,6 +678,56 @@ class DevisViewSet(viewsets.ModelViewSet):
              for v in created],
             status=status.HTTP_201_CREATED,
         )
+
+    @action(detail=False, methods=['get', 'put'], url_path='variante-config')
+    def variante_config(self, request):
+        """QG9 — Lit (GET) ou règle (PUT) le pourcentage des variantes de devis.
+
+        Le pourcentage vit sur ``CompanyProfile.variante_pct`` (défaut 20),
+        scopé à la société de l'utilisateur (jamais lu du corps). La LECTURE est
+        ouverte à tous les rôles ; l'ÉCRITURE est réservée au Directeur et au
+        Commercial responsable (403 sinon). Corps PUT : ``variante_pct`` (0–100,
+        exclusif). Le générateur applique alors les échelles [1−p, 1, 1+p]
+        (override par requête toujours possible sur ``dupliquer-variante``)."""
+        company = request.user.company
+        if company is None:
+            return Response(
+                {'detail': 'Utilisateur sans société.'},
+                status=status.HTTP_400_BAD_REQUEST)
+        from apps.parametres.models import CompanyProfile
+        profile = CompanyProfile.get(company=company)
+
+        if request.method == 'GET':
+            return Response({'variante_pct': str(profile.variante_pct)})
+
+        # PUT — réservé Directeur / Commercial responsable.
+        user = request.user
+        role_nom = getattr(getattr(user, 'role', None), 'nom', '')
+        autorise = (
+            getattr(user, 'is_superuser', False)
+            or getattr(user, 'is_admin_role', False)
+            or role_nom in ('Directeur', 'Commercial responsable')
+        )
+        if not autorise:
+            return Response(
+                {'detail': ('Seuls le Directeur et le Commercial responsable '
+                            'peuvent modifier ce pourcentage.')},
+                status=status.HTTP_403_FORBIDDEN)
+        from decimal import Decimal, InvalidOperation
+        raw = request.data.get('variante_pct')
+        try:
+            pct = Decimal(str(raw))
+        except (InvalidOperation, TypeError, ValueError):
+            return Response(
+                {'detail': 'variante_pct invalide.'},
+                status=status.HTTP_400_BAD_REQUEST)
+        if not (Decimal('0') < pct < Decimal('100')):
+            return Response(
+                {'detail': 'Le pourcentage doit être strictement entre 0 et 100.'},
+                status=status.HTTP_400_BAD_REQUEST)
+        profile.variante_pct = pct
+        profile.save(update_fields=['variante_pct'])
+        return Response({'variante_pct': str(profile.variante_pct)})
 
     @action(detail=True, methods=['get'], url_path='variantes',
             permission_classes=[IsResponsableOrAdmin])
@@ -856,6 +939,129 @@ class DevisViewSet(viewsets.ModelViewSet):
         return Response(
             DevisActivitySerializer(devis.activites.all(), many=True).data)
 
+    @action(detail=True, methods=['post'], url_path='whatsapp',
+            permission_classes=[IsResponsableOrAdmin])
+    def whatsapp(self, request, pk=None):
+        """QG8 — « Envoyer » un devis = le flux WhatsApp des leads.
+
+        Miroir de ``crm.LeadViewSet.whatsapp_devis`` au niveau du devis :
+          * construit un lien wa.me PRÊT à envoyer (n'envoie rien — le commercial
+            appuie lui-même sur Envoyer) ;
+          * le {lien} est un lien public tokenisé (30 j) vers le PDF CLIENT du
+            devis — jamais de prix d'achat ni de marge (règle #4 : le moteur ne
+            fait que rendre) ;
+          * marque le devis « envoyé » via ``mark_devis_sent`` (U4 — le SEUL
+            chemin de transition brouillon→envoyé) et fait avancer le funnel
+            (→ QUOTE_SENT) via l'événement domaine ``devis_sent`` ;
+          * idempotent, ne dégrade JAMAIS un devis accepté/refusé/expiré.
+
+        Le destinataire vient du client, sinon du lead (WhatsApp puis
+        téléphone). Body optionnel : ``langue`` (défaut : langue du lead, sinon
+        « fr »). La société est déjà bornée par ``get_queryset``.
+        """
+        from ..utils.phone import normalize_ma_phone
+        from ..utils.whatsapp import (
+            build_single_devis_whatsapp, build_wa_url, devis_recipient_phone,
+        )
+        from ..services import mark_devis_sent
+
+        devis = self.get_object()
+        phone = devis_recipient_phone(devis)
+        if not normalize_ma_phone(phone):
+            return Response(
+                {'detail': 'Aucun numéro de téléphone.'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        langue = request.data.get('langue')
+        if langue is None:
+            lead = getattr(devis, 'lead', None)
+            langue = (getattr(lead, 'langue_preferee', None) or 'fr'
+                      if lead is not None else 'fr')
+        message, link = build_single_devis_whatsapp(request, devis, langue)
+
+        # U4 — partager le devis le marque « envoyé » (idempotent, jamais de
+        # régression accepté/refusé/expiré). Le funnel avance via devis_sent.
+        mark_devis_sent(devis=devis, user=request.user)
+
+        # M4/L856 — trace l'action (audit + chatter du devis). Acteur et société
+        # posés côté serveur, jamais lus du corps de la requête.
+        try:
+            from apps.audit.recorder import record
+            from apps.audit.models import AuditLog
+            record(AuditLog.Action.WHATSAPP, instance=devis,
+                   detail=f'Lien WhatsApp devis {devis.reference} préparé')
+        except Exception:  # noqa: BLE001 — l'audit ne doit jamais casser l'action
+            pass
+        from .. import activity
+        activity.log_devis_note(
+            devis, request.user,
+            f'Lien WhatsApp du devis {devis.reference} préparé.')
+
+        return Response({
+            'wa_url': build_wa_url(phone, message),
+            'phone': phone, 'message': message, 'url': link['url'],
+            'devis_statut': devis.statut,
+        })
+
+    @action(detail=True, methods=['post'], url_path='contacter-superieur',
+            permission_classes=[IsResponsableOrAdmin])
+    def contacter_superieur(self, request, pk=None):
+        """QJ28 — « Contacter mon supérieur » : notifie le SUPÉRIEUR du vendeur
+        sur ce devis (action MANUELLE — un bouton, jamais automatique).
+
+        Destinataires : le ``supervisor`` du créateur du devis (repli : le
+        vendeur courant), sinon les managers de repli de la société
+        (« Commercial responsable » / « Directeur ») — jamais le vendeur
+        lui-même. La notification passe par ``notify()`` (event
+        ``devis_superior_contact_requested``) et porte un lien vers le devis.
+        Aucun statut n'est touché (règle #4). La société vient TOUJOURS du
+        devis (déjà borné à la société du user par ``get_queryset``).
+
+        Body optionnel : ``message`` (max 500 caractères).
+        """
+        devis = self.get_object()
+        handler = devis.created_by or request.user
+        from apps.crm.services import user_and_superior_recipients
+        recipients = [
+            u for u in user_and_superior_recipients(handler, devis.company)
+            if u.pk not in {handler.pk, request.user.pk}
+        ]
+        if not recipients:
+            return Response(
+                {'detail': (
+                    'Aucun supérieur à notifier : définissez un superviseur '
+                    'dans Paramètres → Équipe, ou un rôle « Commercial '
+                    'responsable » / « Directeur ».')},
+                status=status.HTTP_400_BAD_REQUEST)
+
+        message = (str(request.data.get('message') or '')).strip()[:500]
+        client_nom = str(devis.client) if devis.client_id else ''
+        body_parts = [
+            f'{request.user.username} demande votre avis sur le devis '
+            f'{devis.reference}'
+            + (f' (client : {client_nom})' if client_nom else '') + '.']
+        if message:
+            body_parts.append(f'Message : « {message} »')
+
+        from apps.notifications.services import notify_many
+        notify_many(
+            recipients,
+            'devis_superior_contact_requested',
+            f'Avis demandé — devis {devis.reference}',
+            body='\n'.join(body_parts),
+            link=f'/ventes/devis?devis={devis.pk}',
+            company=devis.company,
+        )
+        from .. import activity
+        activity.log_devis_note(
+            devis, request.user,
+            'Supérieur notifié pour avis sur ce devis.'
+            + (f' Message : « {message} »' if message else ''))
+        return Response({
+            'detail': 'Votre supérieur a été notifié.',
+            'recipients': [u.username for u in recipients],
+        })
+
     @action(detail=True, methods=['post'], url_path='noter',
             permission_classes=[IsResponsableOrAdmin])
     def noter(self, request, pk=None):
@@ -987,8 +1193,14 @@ class DevisViewSet(viewsets.ModelViewSet):
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR,
             )
         response = HttpResponse(pdf_bytes, content_type='application/pdf')
+        # QD2 — nom cohérent (société _ type _ client _ référence).
+        from ..utils.filenames import document_filename
+        filename = document_filename(
+            'Proposition', devis.reference,
+            client=devis.client if devis.client_id else None,
+            company=devis.company)
         response['Content-Disposition'] = (
-            f'inline; filename="Proposition_{devis.reference}.pdf"'
+            f'inline; filename="{filename}"'
         )
         return response
 
@@ -1091,7 +1303,12 @@ class DevisViewSet(viewsets.ModelViewSet):
                 status=status.HTTP_404_NOT_FOUND,
             )
         response = HttpResponse(pdf_bytes, content_type='application/pdf')
-        filename = f'{devis.reference}.pdf'
+        # QD2 — nom cohérent (société _ type _ client _ référence).
+        from ..utils.filenames import document_filename
+        filename = document_filename(
+            'Devis', devis.reference,
+            client=devis.client if devis.client_id else None,
+            company=devis.company)
         response['Content-Disposition'] = (
             f'inline; filename="{filename}"'
         )

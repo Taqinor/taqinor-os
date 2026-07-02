@@ -155,6 +155,30 @@ export default function DevisGenerator({
   const [editDevis, setEditDevis] = useState(null)
   const editLoaded = useRef(false)
 
+  // QJ28 — « Contacter mon supérieur » pendant la génération : notifie le
+  // supérieur du vendeur avec un lien vers le devis. Manuel (un bouton), et
+  // seulement sur un devis déjà enregistré (édition).
+  const [superieurBusy, setSuperieurBusy] = useState(false)
+  const [superieurMsg, setSuperieurMsg] = useState(null)
+  const contacterSuperieur = async () => {
+    if (!editDevis?.id) return
+    setSuperieurBusy(true)
+    setSuperieurMsg(null)
+    try {
+      await ventesApi.contacterSuperieur(editDevis.id)
+      setSuperieurMsg({ ok: true, text: 'Votre supérieur a été notifié.' })
+    } catch (err) {
+      const detail = err?.response?.data?.detail
+      setSuperieurMsg({
+        ok: false,
+        text: typeof detail === 'string'
+          ? detail : 'Notification du supérieur impossible.',
+      })
+    } finally {
+      setSuperieurBusy(false)
+    }
+  }
+
   // ── Document ──
   const [leadId, setLeadId] = useState('')
   // Pré-sélection d'un client passé en query (?client=<id>) depuis « Nouveau
@@ -1766,7 +1790,22 @@ export default function DevisGenerator({
                 que leur prix n'est pas saisi dans Stock.
               </div>
             )}
+            {superieurMsg && (
+              <div className={`mt-3 rounded-lg border p-3 text-sm ${superieurMsg.ok
+                ? 'border-success/30 bg-success/10 text-success'
+                : 'border-destructive/30 bg-destructive/10 text-destructive'}`}>
+                {superieurMsg.text}
+              </div>
+            )}
             <div className="gen-actions-sticky mt-3 flex flex-wrap items-center justify-end gap-3">
+              {/* QJ28 — notification manuelle au supérieur (devis déjà enregistré) */}
+              {editDevis && (
+                <Button type="button" variant="outline" loading={superieurBusy}
+                        onClick={contacterSuperieur}
+                        title="Envoyer une notification à mon supérieur avec le lien de ce devis">
+                  Contacter mon supérieur
+                </Button>
+              )}
               {!embedded && (
                 <Button type="button" variant="outline" onClick={handleReset}>
                   <RotateCcw /> Réinitialiser
