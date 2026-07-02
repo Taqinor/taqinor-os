@@ -82,15 +82,12 @@ from .models_program import (
 from .models_indispo import (
     IndisponibiliteRessource,
 )
-from .models_soustraitant import (
-    SousTraitant,
-)
+# DC34 — l'ancien référentiel parallèle (installations.SousTraitant, FG304) et
+# l'AP dédiée (installations.FactureSousTraitant/PaiementSousTraitant, FG306) sont
+# supprimés : un sous-traitant est un stock.Fournisseur(type='service') et son AP
+# passe par la chaîne standard stock.FactureFournisseur/PaiementFournisseur.
 from .models_ordre_soustraitance import (
     OrdreSousTraitance,
-)
-from .models_facture_soustraitant import (
-    FactureSousTraitant,
-    PaiementSousTraitant,
 )
 from .models_attestation_soustraitant import (
     AttestationSousTraitant,
@@ -225,10 +222,7 @@ __all__ = [
     'BudgetProjet',
     'BudgetEngagement',
     'IndisponibiliteRessource',
-    'SousTraitant',
     'OrdreSousTraitance',
-    'FactureSousTraitant',
-    'PaiementSousTraitant',
     'AttestationSousTraitant',
     'EvaluationSousTraitant',
     'RetenueGarantieSousTraitant',

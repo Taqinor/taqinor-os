@@ -31,11 +31,19 @@ READ_ACTIONS = ['list', 'retrieve']
 def _check_tenant(serializer, company, field):
     """Tenant safety : l'objet lié (sous_traitant/chantier) doit appartenir à la
     société du user. L'objet est déjà résolu par DRF (PrimaryKeyRelatedField),
-    donc on lit `company_id` sans surprise cross-société."""
+    donc on lit `company_id` sans surprise cross-société.
+
+    DC34 — pour ``sous_traitant`` (désormais un ``stock.Fournisseur``), on exige
+    en plus le type « service » : un fournisseur matériel n'est pas un
+    sous-traitant."""
     cid = getattr(company, 'id', None)
     obj = serializer.validated_data.get(field)
     if obj is not None and getattr(obj, 'company_id', None) != cid:
         raise ValidationError({field: 'Objet inconnu pour cette société.'})
+    if (field == 'sous_traitant' and obj is not None
+            and getattr(obj, 'type', None) != 'service'):
+        raise ValidationError(
+            {field: 'Ce fournisseur n\'est pas un sous-traitant (type service).'})
 
 
 class OrdreSousTraitanceViewSet(TenantMixin, viewsets.ModelViewSet):

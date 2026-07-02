@@ -53,6 +53,16 @@ class Categorie(models.Model):
 
 
 class Fournisseur(models.Model):
+    # DC34 — un SEUL référentiel tiers-fournisseur couvre le matériel ET la
+    # prestation (sous-traitance). Le `type` ventile la nature du fournisseur ;
+    # les données propres au sous-traitant (métier, archivage) vivent sur le
+    # satellite OneToOne `SousTraitantProfile`. Il n'existe plus de référentiel
+    # sous-traitant parallèle (l'ancien installations.SousTraitant est fondu ici).
+    class Type(models.TextChoices):
+        MATERIEL = 'materiel', 'Matériel'
+        SERVICE = 'service', 'Service / sous-traitance'
+        MIXTE = 'mixte', 'Mixte (matériel + service)'
+
     company = models.ForeignKey(
         'authentication.Company',
         on_delete=models.CASCADE,
@@ -61,6 +71,12 @@ class Fournisseur(models.Model):
         related_name='fournisseurs',
     )
     nom = models.CharField(max_length=255)
+    # DC34 — nature du fournisseur. Par défaut « matériel » (compat ascendante :
+    # tout fournisseur existant reste matériel). Un sous-traitant est « service ».
+    type = models.CharField(
+        max_length=10, choices=Type.choices, default=Type.MATERIEL,
+        help_text="Nature du fournisseur : matériel, service (sous-traitance) "
+                  "ou mixte.")
     contact_personne = models.CharField(
         max_length=255, blank=True, null=True)
     email = models.EmailField(blank=True, null=True)
@@ -93,6 +109,63 @@ class Fournisseur(models.Model):
 
     def __str__(self):
         return self.nom
+
+
+class SousTraitantProfile(models.Model):
+    """DC34 — satellite OneToOne portant les champs PROPRES au sous-traitant sur
+    un ``Fournisseur`` de type « service ».
+
+    Le tiers lui-même (raison sociale, contact, ICE/IF/RC/RIB, adresse) vit sur
+    le ``Fournisseur`` (source unique d'identité, DC15) : on ne re-stocke rien
+    ici. Ce satellite n'ajoute que ce qui est SPÉCIFIQUE à la sous-traitance :
+    le corps de métier et le drapeau d'archivage. Il remplace l'ancien modèle
+    parallèle ``installations.SousTraitant`` (fondu dans Fournisseur par DC34).
+
+    Multi-tenant : ``company`` posée côté serveur ; elle DOIT rester égale à la
+    société du fournisseur porteur (garanti côté service). Couche INDÉPENDANTE
+    des statuts de l'OS — un sous-traitant n'a qu'un drapeau ``actif``."""
+
+    class Metier(models.TextChoices):
+        TERRASSEMENT = 'terrassement', 'Terrassement'
+        GENIE_CIVIL = 'genie_civil', 'Génie civil'
+        ELECTRICITE = 'electricite', 'Électricité'
+        LEVAGE = 'levage', 'Levage'
+        TRANSPORT = 'transport', 'Transport'
+        AUTRE = 'autre', 'Autre'
+
+    company = models.ForeignKey(
+        'authentication.Company', on_delete=models.CASCADE,
+        null=True, blank=True,
+        related_name='sous_traitant_profils')
+    fournisseur = models.OneToOneField(
+        Fournisseur, on_delete=models.CASCADE,
+        related_name='profil_sous_traitant')
+    # max_length=20 couvre le plus long code de Metier ('terrassement' = 12).
+    metier = models.CharField(
+        max_length=20, choices=Metier.choices, default=Metier.AUTRE)
+    actif = models.BooleanField(default=True)
+    note = models.TextField(blank=True, null=True)
+    created_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='sous_traitant_profils_crees')
+    date_creation = models.DateTimeField(auto_now_add=True)
+    date_modification = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = 'Profil sous-traitant'
+        verbose_name_plural = 'Profils sous-traitant'
+        ordering = ['fournisseur__nom']
+        indexes = [
+            # Noms d'index ≤ 30 caractères (contrainte Django/Postgres).
+            models.Index(fields=['company', 'metier'],
+                         name='idx_stp_co_metier'),
+            models.Index(fields=['company', 'actif'],
+                         name='idx_stp_co_actif'),
+        ]
+
+    def __str__(self):
+        return f'{self.fournisseur.nom} · {self.get_metier_display()}'
 
 
 class Marque(models.Model):

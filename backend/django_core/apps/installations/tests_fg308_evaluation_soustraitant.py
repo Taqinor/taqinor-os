@@ -20,7 +20,8 @@ from django.test import TestCase
 from rest_framework.test import APIClient
 from rest_framework_simplejwt.tokens import AccessToken
 
-from apps.installations.models import EvaluationSousTraitant, SousTraitant
+from apps.installations.models import EvaluationSousTraitant
+from apps.stock.services import create_sous_traitant
 
 User = get_user_model()
 _seq = itertools.count(1)
@@ -48,8 +49,9 @@ def make_user(company, role='responsable', username=None):
 
 
 def make_sous_traitant(company, raison='BTP Sud'):
-    return SousTraitant.objects.create(
-        company=company, raison_sociale=raison, metier='genie_civil')
+    # DC34 — un sous-traitant est un stock.Fournisseur(type='service').
+    return create_sous_traitant(
+        company=company, nom=raison, metier='genie_civil')
 
 
 class TestEvaluationCreation(TestCase):
