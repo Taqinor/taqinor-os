@@ -21,6 +21,17 @@ export interface ProposalItem {
   prix_unit_ttc: number;
   remise: number;
   marque: string;
+  /**
+   * WJ32 — texte de description du produit (fiche commerciale). Backend
+   * `_line_to_item` l'expose déjà (`description`) ; optionnel — un produit
+   * historique sans fiche renvoie une chaîne vide, jamais inventée.
+   */
+  description?: string;
+  /**
+   * WJ32 — texte de garantie constructeur/performance du produit. Backend
+   * `_line_to_item` l'expose déjà (`garantie`) ; vide quand non renseigné.
+   */
+  garantie?: string;
   taux_tva: number;
 }
 
@@ -126,6 +137,50 @@ export interface ProposalResponse {
    * directement.
    */
   roof_layout?: unknown;
+  /**
+   * WJ32 — bloc de financement backend (QJ12, `compute_financing_block`),
+   * DIFFÉRENT du calcul générique `financingComparison` ci-dessus : porte un
+   * programme réel (Tatwir Croissance Verte / ISTIDAMA…) et une comparaison
+   * ONEE déjà rédigée côté serveur. Absent quand `display_total` est
+   * indisponible — le bloc financement se masque alors (jamais un calcul de
+   * repli qui divergerait du backend).
+   */
+  financing?: ProposalFinancingBlock | null;
+  /**
+   * WJ32 — résumés « autres tailles » des variantes actives du même devis
+   * (QJ15, `_variant_summaries`). Tableau vide quand le devis est isolé
+   * (aucun frère/sœur actif) — la strip « autres tailles » se masque alors.
+   */
+  variants?: ProposalVariantSummary[];
+}
+
+/** WJ32 — bloc `financing` backend (QJ12), structure de `compute_financing_block`. */
+export interface ProposalFinancingBlock {
+  indicatif: true;
+  cash: { montant_ttc: number; label: string };
+  credit: {
+    mensualite: number;
+    duree_mois: number;
+    taux_annuel_pct: number;
+    programme_nom: string;
+    programme_label: string | null;
+  };
+  onee_comparison: {
+    show: boolean;
+    message: string;
+    eco_mensuelle_sans: number;
+    eco_mensuelle_avec: number;
+  };
+  guidance_text: string | null;
+}
+
+/** WJ32 — un résumé de variante (QJ15 `_variant_summaries`), pour la strip « autres tailles ». */
+export interface ProposalVariantSummary {
+  id: number;
+  reference: string;
+  version: number;
+  note: string;
+  total_ttc: number;
 }
 
 export type OptionKey = 'sans_batterie' | 'avec_batterie';
@@ -1199,6 +1254,208 @@ export function walkthroughSteps(p: ProposalResponse): WalkStep[] {
       title: 'Voici votre économie',
       titleAr: 'هذا ما توفرونه',
       body: ecoBody,
+    },
+  ];
+}
+
+// ════════════════════════════════════════════════════════════════════════════
+// WJ32 — Complétude du contenu de la proposition : financement backend réel,
+// fiche produit enrichie (marque/garantie/fiche technique), « Et après ? »,
+// « Nos hypothèses », accompagnement post-installation, FAQ objections,
+// variantes côte-à-côte. Même discipline « zéro chiffre inventé » : chaque
+// fonction ne lit QUE des champs backend présents, et dégrade proprement
+// (tableau vide / null) quand une donnée manque — jamais un repli fabriqué.
+// ════════════════════════════════════════════════════════════════════════════
+
+/**
+ * WJ32 — Lecture défensive du bloc `financing` BACKEND (QJ12). Différent de
+ * `financingComparison` (calcul générique ci-dessus, gardé pour compat) : ce
+ * bloc porte le VRAI programme (Tatwir/ISTIDAMA) choisi par le backend selon
+ * `inst_type`. Renvoie `null` quand absent/malformé — la page masque alors
+ * le bloc financement (jamais de mélange entre les deux sources).
+ */
+export function backendFinancing(p: Pick<ProposalResponse, 'financing'>): ProposalFinancingBlock | null {
+  const f = p.financing;
+  if (!f || typeof f !== 'object') return null;
+  if (!f.cash || !f.credit || typeof f.cash.montant_ttc !== 'number') return null;
+  return f;
+}
+
+/** WJ32 — Variantes actives « autres tailles » (tableau vide si le devis est isolé). */
+export function proposalVariants(p: Pick<ProposalResponse, 'variants'>): ProposalVariantSummary[] {
+  return Array.isArray(p.variants) ? p.variants : [];
+}
+
+// ── WJ32 · « Et après ? » — timeline des prochaines étapes ───────────────────
+
+export interface NextStep {
+  id: string;
+  title: string;
+  titleAr: string;
+  body: string;
+  bodyAr: string;
+}
+
+/**
+ * WJ32 — Les 4 étapes après signature. Les DÉLAIS (48–72 h visite, 7–14 j
+ * installation) sont des repères opérationnels standard TAQINOR — libellés
+ * comme des fourchettes indicatives, jamais un engagement contractuel daté.
+ * Toujours affichée (pas de dépendance à un champ backend) : c'est un
+ * processus, pas un chiffre client — rien à masquer.
+ */
+export function nextSteps(): NextStep[] {
+  return [
+    {
+      id: 'signature',
+      title: 'Signature',
+      titleAr: 'التوقيع',
+      body: 'Vous signez en ligne ci-dessous. Votre conseiller Taqinor confirme la réception dans la journée.',
+      bodyAr: 'توقعون إلكترونياً أدناه، ويؤكد مستشاركم الاستلام خلال اليوم نفسه.',
+    },
+    {
+      id: 'visite',
+      title: 'Visite technique',
+      titleAr: 'الزيارة التقنية',
+      body: 'Un technicien confirme les mesures sur site sous 48–72 h (délai indicatif).',
+      bodyAr: 'يتحقق فني من القياسات في الموقع خلال 48 إلى 72 ساعة (أجل تقريبي).',
+    },
+    {
+      id: 'installation',
+      title: 'Installation',
+      titleAr: 'التركيب',
+      body: 'Pose de votre installation par notre équipe, généralement sous 7–14 jours (délai indicatif) selon la disponibilité matériel.',
+      bodyAr: 'تركيب منظومتكم بواسطة فريقنا، عادة خلال 7 إلى 14 يوماً (أجل تقريبي) حسب توفر المعدات.',
+    },
+    {
+      id: 'mise-en-service',
+      title: 'Mise en service',
+      titleAr: 'التشغيل',
+      body: 'Vérification finale, mise en service et remise des documents (garanties, attestations).',
+      bodyAr: 'فحص نهائي، تشغيل المنظومة وتسليم الوثائق (الضمانات والشهادات).',
+    },
+  ];
+}
+
+// ── WJ32 · « Nos hypothèses » — disclosure sourcée, jamais de valeur inventée ─
+
+export interface AssumptionItem {
+  label: string;
+  labelAr: string;
+  value: string;
+}
+
+/**
+ * WJ32 — Hypothèses RÉELLES qui sous-tendent les chiffres de la page, sourcées
+ * UNIQUEMENT depuis des champs backend/constantes déjà affichées ailleurs sur
+ * la page (jamais une nouvelle valeur inventée ici) :
+ *  - tarif : loi 82-21 autoconsommation, dérive 0 % (BILL_INFLATION_RATE) ;
+ *  - horizon : SAVINGS_HORIZON_YEARS (25 ans, garantie panneau) ;
+ *  - type d'installation : `quote.inst_type` (résidentiel/industriel/agricole) ;
+ *  - financement : programme backend s'il est présent (Tatwir/ISTIDAMA…).
+ * Toujours au moins 2 lignes (tarif + horizon sont des constantes du module,
+ * jamais absentes) — le bloc n'est donc jamais vide.
+ */
+export function proposalAssumptions(p: ProposalResponse): AssumptionItem[] {
+  const items: AssumptionItem[] = [
+    {
+      label: 'Cadre tarifaire',
+      labelAr: 'الإطار التعريفي',
+      value: 'Autoconsommation basse tension (loi 82-21), tarif ONEE supposé constant (0 % de dérive) — toute hausse réelle ne ferait qu\'augmenter l\'économie.',
+    },
+    {
+      label: 'Horizon d\'analyse',
+      labelAr: 'أفق التحليل',
+      value: `${SAVINGS_HORIZON_YEARS} ans — durée de garantie de performance standard d'un panneau photovoltaïque.`,
+    },
+  ];
+  const instType = p.quote?.inst_type;
+  if (instType) {
+    const label =
+      instType === 'agricole'
+        ? 'Pompage solaire (dimensionné HMT + débit souhaité)'
+        : instType === 'industriel' || instType === 'commercial'
+          ? 'Autoconsommation industrielle/commerciale (étude taux de couverture)'
+          : 'Résidentiel (simulateur)';
+    items.push({ label: 'Type d\'installation', labelAr: 'نوع التركيب', value: label });
+  }
+  const fin = backendFinancing(p);
+  if (fin?.credit?.programme_label) {
+    items.push({
+      label: 'Programme de financement indicatif',
+      labelAr: 'برنامج التمويل الإرشادي',
+      value: `${fin.credit.programme_label} — taux ${formatNumber(fin.credit.taux_annuel_pct, 2)} %/an, ${Math.round(fin.credit.duree_mois / 12)} ans (à confirmer avec votre banque).`,
+    });
+  }
+  return items;
+}
+
+// ── WJ32 · Accompagnement post-installation ───────────────────────────────────
+
+export interface MonitoringPoint {
+  label: string;
+  labelAr: string;
+}
+
+/**
+ * WJ32 — Points d'accompagnement post-installation : FAITS opérationnels
+ * (garanties déjà affichées ailleurs sur la page, SAV Taqinor) — pas de
+ * chiffre nouveau, aucune dépendance backend (toujours affiché).
+ */
+export function monitoringPoints(): MonitoringPoint[] {
+  return [
+    { label: 'Suivi de production disponible via l\'application de votre onduleur', labelAr: 'تتبع الإنتاج متاح عبر تطبيق العاكس' },
+    { label: 'SAV Taqinor joignable sur WhatsApp pour toute question après installation', labelAr: 'خدمة ما بعد البيع لتاقينور متاحة عبر واتساب لأي سؤال بعد التركيب' },
+    { label: 'Garanties constructeur actives dès la mise en service (voir « Pourquoi nous faire confiance »)', labelAr: 'ضمانات الصانع سارية فور التشغيل' },
+  ];
+}
+
+// ── WJ32 · FAQ objections (contenu éditorial fixe, pas de dépendance backend) ─
+
+export interface FaqItem {
+  id: string;
+  question: string;
+  questionAr: string;
+  answer: string;
+  answerAr: string;
+}
+
+/** WJ32 — 5 objections fréquentes avant signature, réponses factuelles courtes. */
+export function objectionFaq(): FaqItem[] {
+  return [
+    {
+      id: 'panne-reseau',
+      question: 'Que se passe-t-il en cas de coupure du réseau électrique ?',
+      questionAr: 'ماذا يحدث في حال انقطاع التيار الكهربائي؟',
+      answer: 'Une installation sans batterie s\'arrête par sécurité (norme anti-îlotage) ; une installation avec batterie peut continuer à alimenter les circuits prioritaires.',
+      answerAr: 'التركيب بدون بطارية يتوقف لأسباب أمنية؛ أما مع البطارية فيمكن أن يستمر تزويد الدارات ذات الأولوية.',
+    },
+    {
+      id: 'entretien',
+      question: 'Quel entretien est nécessaire ?',
+      questionAr: 'ما هي الصيانة المطلوبة؟',
+      answer: 'Un nettoyage occasionnel des panneaux (poussière) et une vérification visuelle annuelle suffisent dans la majorité des cas.',
+      answerAr: 'تنظيف الألواح بين الحين والآخر وفحص بصري سنوي يكفيان في أغلب الحالات.',
+    },
+    {
+      id: 'demenagement',
+      question: 'Puis-je emporter mon installation si je déménage ?',
+      questionAr: 'هل يمكنني نقل التركيب إذا انتقلت للسكن في مكان آخر؟',
+      answer: 'L\'installation est fixée au bâtiment ; elle valorise généralement le bien lors d\'une revente plutôt que d\'être démontée.',
+      answerAr: 'التركيب مثبت بالمبنى؛ وعادة ما يرفع من قيمة العقار عند البيع بدل تفكيكه.',
+    },
+    {
+      id: 'toit-abime',
+      question: 'Est-ce que l\'installation abîme la toiture ?',
+      questionAr: 'هل يضر التركيب بالسطح؟',
+      answer: 'La fixation est étudiée pour respecter l\'étanchéité de votre toiture ; l\'étude technique en amont vérifie la structure porteuse.',
+      answerAr: 'يُدرس التثبيت لاحترام عزل السطح؛ وتتحقق الدراسة التقنية المسبقة من متانة البنية الحاملة.',
+    },
+    {
+      id: 'garanties',
+      question: 'Que couvrent exactement les garanties ?',
+      questionAr: 'ماذا تغطي الضمانات بالضبط؟',
+      answer: 'Les garanties constructeur (panneaux/onduleur) couvrent le matériel selon les durées indiquées dans « Pourquoi nous faire confiance » ci-dessous ; la main d\'œuvre Taqinor est couverte séparément selon votre contrat.',
+      answerAr: 'تغطي ضمانات الصانع (الألواح والعاكس) المعدات حسب المدد المذكورة أدناه؛ أما اليد العاملة لتاقينور فمشمولة بضمان منفصل حسب عقدكم.',
     },
   ];
 }

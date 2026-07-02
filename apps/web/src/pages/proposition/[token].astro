@@ -43,6 +43,12 @@ import {
   buildViewerModel,
   zoneAnnotations,
   walkthroughSteps,
+  backendFinancing,
+  proposalVariants,
+  nextSteps,
+  proposalAssumptions,
+  monitoringPoints,
+  objectionFaq,
 } from '../../lib/proposition';
 import { renderYearCurve } from '../../lib/proposalCurve';
 import { renderProposalChart, resolveSeries } from '../../lib/proposalChart';
@@ -189,6 +195,16 @@ const viewerConfig = show3d ? JSON.stringify({ model: viewerModel }) : null;
 // renvoient null / « estimation indisponible » quand la donnée manque).
 const annotations = show3d && roofLayout ? zoneAnnotations(roofLayout, q?.watt_par_panneau ?? null) : [];
 const walkSteps = show3d && data ? walkthroughSteps(data) : [];
+
+// ── WJ32 — Complétude du contenu : financement backend réel, variantes,
+// « Et après ? », « Nos hypothèses », accompagnement, FAQ objections. Chaque
+// bloc dégrade proprement (masqué) quand sa donnée backend manque.
+const financingBlock = ok ? backendFinancing(data!) : null;
+const variants = ok ? proposalVariants(data!) : [];
+const steps = nextSteps();
+const assumptions = ok ? proposalAssumptions(data!) : [];
+const monitoring = monitoringPoints();
+const faq = objectionFaq();
 
 const pageTitle = ok ? `Proposition ${reference} — ${clientName} | Taqinor` : 'Proposition | Taqinor';
 
@@ -555,18 +571,26 @@ const signConfig = ok
                   </p>
                 ) : null}
 
-                <!-- Équipement -->
+                <!-- Équipement (WJ32 : marque + garantie + description quand disponibles — jamais de lien fiche technique fabriqué, le backend n'expose pas encore cette URL publiquement) -->
                 {items.length > 0 && (
                   <div class="mt-5 border-t border-white/10 pt-4">
                     <p class="tech-label text-lune-faint">Équipement</p>
-                    <ul class="mt-3 space-y-2 text-sm text-lune-soft">
+                    <ul class="mt-3 space-y-3 text-sm text-lune-soft">
                       {items.map((it) => (
-                        <li class="flex items-baseline justify-between gap-3">
-                          <span>
-                            <span class="text-lune">{it.designation}</span>
-                            {it.marque ? <span class="text-lune-faint"> · {it.marque}</span> : null}
-                          </span>
-                          <span class="fig shrink-0 text-lune-faint">×{formatNumber(it.quantite)}</span>
+                        <li>
+                          <div class="flex items-baseline justify-between gap-3">
+                            <span>
+                              <span class="text-lune">{it.designation}</span>
+                              {it.marque ? <span class="text-lune-faint"> · {it.marque}</span> : null}
+                            </span>
+                            <span class="fig shrink-0 text-lune-faint">×{formatNumber(it.quantite)}</span>
+                          </div>
+                          {it.description ? (
+                            <p class="mt-0.5 text-xs text-lune-faint">{it.description}</p>
+                          ) : null}
+                          {it.garantie ? (
+                            <p class="mt-0.5 text-xs text-brass-300">Garantie : {it.garantie}</p>
+                          ) : null}
                         </li>
                       ))}
                     </ul>
@@ -606,8 +630,41 @@ const signConfig = ok
         </div>
       </section>
 
-      <!-- ── WJ10 · COMPARATIF DE FINANCEMENT (cash vs éco-prêt indicatif) ─── -->
-      {financing && (
+      <!-- ── WJ10/WJ32 · COMPARATIF DE FINANCEMENT ───────────────────────────
+           Priorité au bloc BACKEND réel (QJ12, programme Tatwir/ISTIDAMA +
+           comparaison ONEE déjà rédigée serveur) quand il est présent ; repli
+           sur le calcul générique WJ10 sinon — jamais les deux à la fois. -->
+      {financingBlock ? (
+        <section class="mx-auto max-w-4xl px-5 pt-14 sm:px-8">
+          <p class="tech-label rule-brass text-brass-300">Comment financer</p>
+          <div class="mt-5 grid gap-4 sm:grid-cols-2">
+            <div class="cine-card rounded-2xl p-6">
+              <p class="tech-label text-lune-faint">{financingBlock.cash.label}</p>
+              <p class="fig fig-md lum mt-2">{formatMAD(financingBlock.cash.montant_ttc)}</p>
+              <p class="mt-2 text-sm text-lune-soft">Prix clé en main, TTC. L’investissement le plus rentable sur la durée.</p>
+            </div>
+            <div class="cine-card rounded-2xl p-6">
+              <p class="tech-label text-lune-faint">{financingBlock.credit.programme_label || 'À crédit'}</p>
+              <p class="fig fig-md mt-2 text-lune">
+                ≈ {formatMAD(financingBlock.credit.mensualite)}<span class="text-lg text-lune-soft">/mois</span>
+              </p>
+              <p class="mt-2 text-sm text-lune-soft">
+                Sur {Math.round(financingBlock.credit.duree_mois / 12)} ans, taux indicatif {formatNumber(financingBlock.credit.taux_annuel_pct, 2)} %/an
+                <span class="text-brass-300"> à confirmer</span> avec votre banque.
+                {financingBlock.onee_comparison.show && financingBlock.onee_comparison.message
+                  ? <> {financingBlock.onee_comparison.message}</>
+                  : null}
+              </p>
+            </div>
+          </div>
+          {financingBlock.guidance_text && (
+            <p class="mt-3 text-sm text-lune-soft">{financingBlock.guidance_text}</p>
+          )}
+          <p class="mt-3 text-xs text-lune-faint">
+            Mensualités calculées à titre indicatif (taux et durée non contractuels). Le montant exact dépend de l’offre bancaire retenue.
+          </p>
+        </section>
+      ) : financing && (
         <section class="mx-auto max-w-4xl px-5 pt-14 sm:px-8">
           <p class="tech-label rule-brass text-brass-300">Comment financer</p>
           <div class="mt-5 grid gap-4 sm:grid-cols-2">
@@ -632,6 +689,28 @@ const signConfig = ok
           </div>
           <p class="mt-3 text-xs text-lune-faint">
             Mensualités calculées à titre indicatif (taux et durée non contractuels). Le montant exact dépend de l’offre bancaire retenue.
+          </p>
+        </section>
+      )}
+
+      <!-- ── WJ32 · VARIANTES CÔTE-À-CÔTE (« autres tailles ») ───────────────
+           Résumés minimaux des devis frères/sœurs actifs (QJ15). Masqué si le
+           devis est isolé (variants=[]) — jamais un chiffre calculé ici. -->
+      {variants.length > 0 && (
+        <section class="mx-auto max-w-4xl px-5 pt-14 sm:px-8">
+          <p class="tech-label rule-brass text-brass-300">Autres tailles proposées</p>
+          <div class="mt-5 flex gap-4 overflow-x-auto pb-2">
+            {variants.map((v) => (
+              <div class="cine-card min-w-[220px] shrink-0 rounded-xl p-5">
+                <p class="tech-label text-lune-faint">Réf. {v.reference}{v.version > 1 ? ` · v${v.version}` : ''}</p>
+                <p class="fig fig-md lum mt-2">{formatMAD(v.total_ttc)}</p>
+                <p class="mt-1 text-xs text-lune-faint">TTC, clé en main</p>
+                {v.note && <p class="mt-2 text-sm text-lune-soft">{v.note}</p>}
+              </div>
+            ))}
+          </div>
+          <p class="mt-3 text-xs text-lune-faint">
+            Demandez à votre conseiller Taqinor de basculer sur l’une de ces tailles si elle vous convient mieux.
           </p>
         </section>
       )}
@@ -883,6 +962,77 @@ const signConfig = ok
             « في تاقينور، نتعامل مع كل سطح كأنه سطحنا: دراسة صادقة، معدات معتمدة، ومرافقة بعد التركيب. شكراً على ثقتكم. »
           </blockquote>
           <p class="mt-2 text-sm text-lune-faint">Reda Kasri — fondateur, Taqinor</p>
+        </div>
+      </section>
+
+      <!-- ── WJ32 · « ET APRÈS ? » — timeline des prochaines étapes ─────────── -->
+      <section class="mx-auto max-w-4xl px-5 pt-16 sm:px-8">
+        <p class="tech-label rule-brass text-brass-300">Et après ?</p>
+        <ol class="mt-5 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+          {steps.map((s, i) => (
+            <li class="cine-card rounded-xl p-5">
+              <p class="fig text-brass-300">{i + 1}.</p>
+              <p class="mt-1 flex items-baseline justify-between gap-2 text-sm font-bold text-lune">
+                <span>{s.title}</span>
+                <span dir="rtl" lang="ar" class="shrink-0 text-xs font-normal text-lune-faint">{s.titleAr}</span>
+              </p>
+              <p class="mt-2 text-sm text-lune-soft">{s.body}</p>
+            </li>
+          ))}
+        </ol>
+      </section>
+
+      <!-- ── WJ32 · ACCOMPAGNEMENT POST-INSTALLATION ─────────────────────────  -->
+      <section class="mx-auto max-w-4xl px-5 pt-16 sm:px-8">
+        <p class="tech-label rule-brass text-brass-300">Après l’installation</p>
+        <div class="cine-card mt-5 rounded-2xl p-6 sm:p-7">
+          <ul class="space-y-3 text-sm text-lune-soft">
+            {monitoring.map((m) => (
+              <li class="flex items-baseline justify-between gap-3">
+                <span>{m.label}</span>
+                <span dir="rtl" lang="ar" class="shrink-0 text-xs text-lune-faint">{m.labelAr}</span>
+              </li>
+            ))}
+          </ul>
+        </div>
+      </section>
+
+      <!-- ── WJ32 · « NOS HYPOTHÈSES » — disclosure sourcée ──────────────────
+           <details> natif : accessible sans JS, zéro CLS (rien ne bouge autour). -->
+      {assumptions.length > 0 && (
+        <section class="mx-auto max-w-4xl px-5 pt-16 sm:px-8">
+          <details class="cine-card rounded-2xl p-6 sm:p-7">
+            <summary class="tech-label cursor-pointer text-brass-300">Nos hypothèses</summary>
+            <dl class="mt-4 space-y-3 text-sm">
+              {assumptions.map((a) => (
+                <div>
+                  <dt class="flex items-baseline justify-between gap-3 text-lune-faint">
+                    <span>{a.label}</span>
+                    <span dir="rtl" lang="ar" class="shrink-0 text-xs">{a.labelAr}</span>
+                  </dt>
+                  <dd class="mt-0.5 text-lune-soft">{a.value}</dd>
+                </div>
+              ))}
+            </dl>
+          </details>
+        </section>
+      )}
+
+      <!-- ── WJ32 · FAQ OBJECTIONS (4–5 questions fréquentes) ────────────────
+           <details> par item : accordéon accessible sans JS, zéro CLS. -->
+      <section class="mx-auto max-w-4xl px-5 pt-16 sm:px-8">
+        <p class="tech-label rule-brass text-brass-300">Vos questions, nos réponses</p>
+        <div class="mt-5 space-y-3">
+          {faq.map((item) => (
+            <details class="cine-card rounded-xl p-5">
+              <summary class="flex cursor-pointer items-baseline justify-between gap-3 text-sm font-bold text-lune">
+                <span>{item.question}</span>
+                <span dir="rtl" lang="ar" class="shrink-0 text-xs font-normal text-lune-faint">{item.questionAr}</span>
+              </summary>
+              <p class="mt-3 text-sm text-lune-soft">{item.answer}</p>
+              <p dir="rtl" lang="ar" class="mt-1.5 text-right text-xs text-lune-faint" style="line-height: 1.8">{item.answerAr}</p>
+            </details>
+          ))}
         </div>
       </section>
 
