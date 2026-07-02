@@ -858,6 +858,208 @@ def compute_chantier_readiness(installation):
     }
 
 
+# ── CH2 — Gates BLOQUANTS : application des exigences d'étape ────────────────
+# Le contrôle consultatif FG77 devient APPLIQUÉ : une étape marquée `bloquant`
+# ne peut pas être franchie tant que ses éléments requis (`exige_*`) ne sont
+# pas réunis ET que les points d'arrêt QHSE du chantier ne sont pas levés
+# (lus via `apps.qhse.selectors` — référence lâche par chantier_id, jamais
+# d'import de modèle). Les étapes non bloquantes restent PUREMENT
+# consultatives. INTERRUPTEUR : une société sans étape configurée
+# (`stages_configures` False) garde EXACTEMENT le comportement historique.
+
+def _gate_check_checklist(installation):
+    """Toutes les étapes de checklist du chantier sont faites."""
+    items = ensure_checklist_items(installation)
+    manquants = [it.libelle for it in items if not it.fait]
+    if manquants:
+        return ("Checklist incomplète : "
+                + ", ".join(manquants[:5])
+                + (" …" if len(manquants) > 5 else "") + ".")
+    return None
+
+
+def _gate_check_photos(installation):
+    """Les étapes de checklist à PHOTO OBLIGATOIRE (FG76) sont faites."""
+    items = ensure_checklist_items(installation)
+    manquants = [it.libelle for it in items
+                 if it.photo_obligatoire and not it.fait]
+    if manquants:
+        return ("Photos requises manquantes : " + ", ".join(manquants) + ".")
+    return None
+
+
+def _gate_check_series(installation):
+    """Au moins un n° de série / équipement relevé quand la checklist du
+    chantier comporte une étape de capture de série (N9)."""
+    items = ensure_checklist_items(installation)
+    if not any(it.capture_serie for it in items):
+        return None  # aucun relevé de série attendu sur ce chantier.
+    if installation.equipements.exists():
+        return None
+    from .models import ComponentSerial
+    if ComponentSerial.objects.filter(
+            intervention__installation=installation).exists():
+        return None
+    return ("Aucun n° de série relevé (panneaux/onduleur) alors que la "
+            "checklist du chantier en attend.")
+
+
+def _gate_check_tests(installation):
+    """Essais de mise en service enregistrés.
+
+    CH2 — repli provisoire sur les champs historiques `mes_*` / la date de
+    mise en service (CH3 exigera la fiche d'essais structurée IEC 62446-1)."""
+    if (installation.date_mise_en_service
+            or installation.mes_production_test is not None
+            or installation.mes_tension is not None):
+        return None
+    return "Essais de mise en service non enregistrés."
+
+
+def _gate_check_materiel(installation):
+    """Aucune pénurie sur le besoin matériel du chantier (FG77, appliqué)."""
+    from apps.stock.services import compute_besoin_materiel
+    besoins = compute_besoin_materiel(installation)
+    manques = [b['designation'] for b in besoins if b.get('manque', 0) > 0]
+    if manques:
+        return ("Matériel en pénurie : "
+                + ", ".join(manques[:5])
+                + (" …" if len(manques) > 5 else "") + ".")
+    return None
+
+
+def _gate_check_dossier(installation):
+    """Dossier réglementaire loi 82-21 approuvé quand il est requis."""
+    if installation.regime_8221 == Installation.Regime8221.NON_CONCERNE:
+        return None
+    if installation.dossier_statut in (
+            Installation.DossierStatut.APPROUVE,
+            Installation.DossierStatut.COMPTEUR_POSE):
+        return None
+    return ("Dossier loi 82-21 requis non approuvé "
+            f"({installation.get_dossier_statut_display()}).")
+
+
+def _gate_check_pack(installation):
+    """Pièces obligatoires du pack de remise client (CH4)."""
+    # CH2 — le pack de remise arrive en CH4 ; d'ici là l'exigence ne bloque
+    # pas (les autres exigences de l'étape de remise s'appliquent déjà).
+    return None
+
+
+_GATE_CHECKS = [
+    ('exige_checklist', _gate_check_checklist),
+    ('exige_photos', _gate_check_photos),
+    ('exige_series', _gate_check_series),
+    ('exige_tests', _gate_check_tests),
+    ('exige_materiel', _gate_check_materiel),
+    ('exige_dossier', _gate_check_dossier),
+    ('exige_pack', _gate_check_pack),
+]
+
+
+def _gate_check_qhse(installation):
+    """Points d'arrêt QHSE du chantier levés (lecture via les selectors QHSE —
+    référence lâche par chantier_id, aucun import de modèle cross-app)."""
+    from apps.qhse.selectors import hold_points_bloquants_pour_chantier
+    points = hold_points_bloquants_pour_chantier(
+        installation.company, installation.id)
+    if points:
+        libelles = [p['intitule'] for p in points]
+        return ("Point(s) d'arrêt QHSE non levé(s) : "
+                + ", ".join(libelles[:5])
+                + (" …" if len(libelles) > 5 else "") + ".")
+    return None
+
+
+def stage_gate_status(installation, stage):
+    """État du gate d'une étape pour un chantier : exigences réunies ou non.
+
+    Renvoie {cle, libelle, ordre, bloquant, satisfait, raisons[]} — les
+    `raisons` sont des phrases FRANÇAISES prêtes à afficher. Les points
+    d'arrêt QHSE ne sont vérifiés que pour une étape BLOQUANTE (une étape
+    consultative n'interroge pas la porte QHSE)."""
+    raisons = []
+    for flag, check in _GATE_CHECKS:
+        if not getattr(stage, flag, False):
+            continue
+        raison = check(installation)
+        if raison:
+            raisons.append(raison)
+    if stage.bloquant:
+        raison = _gate_check_qhse(installation)
+        if raison:
+            raisons.append(raison)
+    return {
+        'cle': stage.cle,
+        'libelle': stage.libelle,
+        'ordre': stage.ordre,
+        'bloquant': stage.bloquant,
+        'satisfait': not raisons,
+        'raisons': raisons,
+    }
+
+
+def _gates_non_satisfaits(installation, stages, i, j):
+    """Raisons des gates BLOQUANTS non satisfaits parmi stages[i:j] (les
+    étapes que l'on franchit en avançant). Les étapes non bloquantes ne
+    bloquent jamais (consultatives)."""
+    raisons = []
+    for stage in stages[i:j]:
+        if not stage.bloquant:
+            continue
+        status = stage_gate_status(installation, stage)
+        if not status['satisfait']:
+            raisons.extend(
+                f"Étape « {stage.libelle} » : {r}"
+                for r in status['raisons'])
+    return raisons
+
+
+def verifier_transition_statut(installation, nouveau_statut):
+    """CH2 — raisons FRANÇAISES qui bloquent le passage du chantier (dans son
+    état actuel) à `nouveau_statut`. Liste vide = transition autorisée.
+
+    Ne s'applique que si la société a configuré ses étapes ; un recul de
+    statut n'est jamais bloqué ; un statut non mappé n'est jamais bloqué."""
+    company = installation.company
+    if not stages_configures(company):
+        return []
+    canon_old = Installation.canonical_statut(installation.statut)
+    canon_new = Installation.canonical_statut(nouveau_statut)
+    if canon_old == canon_new:
+        return []
+    stages = stages_actifs(company)
+    index = {s.id: k for k, s in enumerate(stages)}
+    depuis = etape_courante(installation)
+    cible = stage_pour_statut(company, nouveau_statut)
+    if depuis is None or cible is None:
+        return []
+    i = index.get(depuis.id)
+    j = index.get(cible.id)
+    if i is None or j is None or j <= i:
+        return []
+    return _gates_non_satisfaits(installation, stages, i, j)
+
+
+def verifier_avancement_etape(installation, cible):
+    """CH2 — raisons qui bloquent l'avancement du chantier jusqu'à l'étape
+    `cible` (StageModele). Liste vide = avancement autorisé. Un déplacement
+    vers l'arrière n'est jamais bloqué."""
+    stages = stages_actifs(installation.company)
+    index = {s.id: k for k, s in enumerate(stages)}
+    j = index.get(cible.id)
+    if j is None:
+        return []
+    depuis = etape_courante(installation)
+    i = index.get(depuis.id) if depuis is not None else 0
+    if i is None:
+        i = 0
+    if j <= i:
+        return []
+    return _gates_non_satisfaits(installation, stages, i, j)
+
+
 def generer_picklist_pour_chantier(installation, company, created_by=None,
                                    reference=None):
     """FG321 - genere un bon de prelevement depuis les reservations actives non

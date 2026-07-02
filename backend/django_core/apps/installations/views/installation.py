@@ -233,11 +233,15 @@ class InstallationViewSet(TenantMixin, viewsets.ModelViewSet):
             'remise_garantie',
             # FG77 — contrôle de préparation avant pose (lecture).
             'readiness',
+            # CH2 — parcours d'étapes + état des gates (lecture).
+            'etapes',
         ]:
             return [IsAnyRole()]
         elif self.action in WRITE_ACTIONS + [
             'creer_depuis_devis', 'noter', 'mise_en_service',
             'annuler', 'reactiver', 'commander_besoin', 'cocher_checklist',
+            # CH2 — avancement d'étape (gates appliqués côté service).
+            'avancer_etape',
             # FG75 — ajout / suppression de relevés.
             'ajouter_releve', 'supprimer_releve',
             # FG79 — scaffold interventions standard.
@@ -265,6 +269,18 @@ class InstallationViewSet(TenantMixin, viewsets.ModelViewSet):
 
     def perform_update(self, serializer):
         old = Installation.objects.get(pk=serializer.instance.pk)
+        # CH2 — GATES BLOQUANTS : un changement de statut qui franchit une
+        # étape bloquante aux exigences non réunies (checklist/photos/séries/
+        # essais/matériel/dossier 82-21 + points d'arrêt QHSE) est REJETÉ avec
+        # les raisons en français. Interrupteur : une société sans étapes
+        # configurées garde exactement le comportement historique.
+        nouveau_statut = serializer.validated_data.get('statut')
+        if nouveau_statut and nouveau_statut != old.statut:
+            from rest_framework.exceptions import ValidationError
+            from ..services import verifier_transition_statut
+            raisons = verifier_transition_statut(old, nouveau_statut)
+            if raisons:
+                raise ValidationError({'statut': raisons})
         super().perform_update(serializer)
         inst = serializer.instance
         _stamp_statut_dates(inst, old.statut)
@@ -286,6 +302,11 @@ class InstallationViewSet(TenantMixin, viewsets.ModelViewSet):
         # « Installé », libère à la clôture). Idempotent côté service.
         _apply_stock_statut_effects(
             inst, canon_old, canon_new, self.request.user)
+        # CH2 — aligne le pointeur d'étape sur le statut hérité (no-op tant
+        # que la société n'a pas configuré ses étapes).
+        if canon_new != canon_old:
+            from ..services import sync_etape_from_statut
+            sync_etape_from_statut(inst)
 
     @action(detail=False, methods=['post'], url_path='creer-depuis-devis',
             permission_classes=[IsResponsableOrAdmin])
@@ -362,6 +383,16 @@ class InstallationViewSet(TenantMixin, viewsets.ModelViewSet):
         """
         inst = self.get_object()
         old = Installation.objects.get(pk=inst.pk)
+        # CH2 — « Mise en service » se rabat sur « Réceptionné » : le passage
+        # est soumis aux mêmes gates bloquants que n'importe quel changement
+        # de statut (no-op tant que la société n'a pas configuré ses étapes).
+        from ..services import verifier_transition_statut
+        raisons = verifier_transition_statut(
+            old, Installation.Statut.MISE_EN_SERVICE)
+        if raisons:
+            return Response(
+                {'detail': 'Étape bloquée par un gate.', 'raisons': raisons},
+                status=status.HTTP_400_BAD_REQUEST)
         data = request.data
         if data.get('date_mise_en_service'):
             inst.date_mise_en_service = data['date_mise_en_service']
@@ -385,6 +416,9 @@ class InstallationViewSet(TenantMixin, viewsets.ModelViewSet):
         # garantie balaie le BoM gelé vers le parc SAV (idempotente côté service).
         _apply_reception_handover(inst, canon_old, canon_new, request.user)
         _apply_stock_statut_effects(inst, canon_old, canon_new, request.user)
+        # CH2 — aligne le pointeur d'étape sur le nouveau statut.
+        from ..services import sync_etape_from_statut
+        sync_etape_from_statut(inst)
         activity.log_changes(old, inst, request.user)
         # Note de chatter explicite incluant les valeurs mesurées (production /
         # tension) quand elles sont renseignées — pas seulement la date.
@@ -834,6 +868,92 @@ class InstallationViewSet(TenantMixin, viewsets.ModelViewSet):
         inst = self.get_object()
         tarif = request.query_params.get('tarif_jour')
         return Response(compute_chantier_cout(inst, tarif_jour=tarif))
+
+    # ── CH2 — parcours d'étapes configurables + gates appliqués ─────────────
+    @action(detail=True, methods=['get'], url_path='etapes',
+            permission_classes=[IsAnyRole])
+    def etapes(self, request, pk=None):
+        """CH2 — parcours d'étapes du chantier (cycle de vie configurable CH1)
+        avec, pour CHAQUE étape, l'état de son gate (exigences réunies ou non +
+        raisons en français). Amorce le cycle international de la société à la
+        première consultation. Les étapes non bloquantes sont consultatives ;
+        les bloquantes sont appliquées à l'avancement."""
+        from ..services import etape_courante, stage_gate_status, stages_actifs
+        inst = self.get_object()
+        stages = stages_actifs(inst.company)
+        courante = etape_courante(inst)
+        etapes = []
+        for s in stages:
+            st = stage_gate_status(inst, s)
+            st['id'] = s.id
+            st['statut_legacy'] = s.statut_legacy
+            st['courante'] = courante is not None and s.id == courante.id
+            etapes.append(st)
+        return Response({
+            'installation': inst.id,
+            'reference': inst.reference,
+            'etape_courante': courante.cle if courante else None,
+            'etapes': etapes,
+        })
+
+    @action(detail=True, methods=['post'], url_path='avancer-etape',
+            permission_classes=[IsResponsableOrAdmin])
+    def avancer_etape(self, request, pk=None):
+        """CH2 — avance le chantier à l'étape demandée (corps {"etape": cle})
+        ou à la suivante. Une étape BLOQUANTE ne se franchit pas tant que ses
+        exigences (checklist/photos/séries/essais/matériel/dossier 82-21) et
+        les points d'arrêt QHSE ne sont pas levés — rejet 400 avec les raisons
+        en français. Les étapes non bloquantes s'avancent librement. Le statut
+        hérité est synchronisé, donc les effets de bord existants (stock à
+        « Installé », garantie/parc à « Réceptionné ») tirent inchangés."""
+        from ..services import (
+            etape_courante, stages_actifs, verifier_avancement_etape,
+        )
+        inst = self.get_object()
+        stages = stages_actifs(inst.company)
+        if not stages:
+            return Response({'detail': 'Aucune étape configurée.'},
+                            status=status.HTTP_400_BAD_REQUEST)
+        cle = request.data.get('etape')
+        if cle:
+            cible = next((s for s in stages if s.cle == cle), None)
+            if cible is None:
+                return Response({'detail': 'Étape inconnue.'},
+                                status=status.HTTP_400_BAD_REQUEST)
+        else:
+            courante = etape_courante(inst)
+            idx = next((k for k, s in enumerate(stages)
+                        if courante is not None and s.id == courante.id), -1)
+            if idx + 1 >= len(stages):
+                return Response({'detail': 'Dernière étape déjà atteinte.'},
+                                status=status.HTTP_400_BAD_REQUEST)
+            cible = stages[idx + 1]
+        raisons = verifier_avancement_etape(inst, cible)
+        if raisons:
+            return Response(
+                {'detail': 'Étape bloquée par un gate.', 'raisons': raisons},
+                status=status.HTTP_400_BAD_REQUEST)
+        old = Installation.objects.get(pk=inst.pk)
+        canon_old = Installation.canonical_statut(old.statut)
+        inst.etape = cible
+        fields = ['etape']
+        if (cible.statut_legacy
+                and Installation.canonical_statut(cible.statut_legacy)
+                != canon_old):
+            inst.statut = cible.statut_legacy
+            fields.append('statut')
+        inst.save(update_fields=fields)
+        canon_new = Installation.canonical_statut(inst.statut)
+        # Mêmes aides que perform_update : jalon horodaté + effets de bord
+        # préservés sur les gates mappés (garantie/parc FG70, stock N14).
+        _stamp_statut_dates(inst, old.statut)
+        _apply_reception_handover(inst, canon_old, canon_new, request.user)
+        _apply_stock_statut_effects(inst, canon_old, canon_new, request.user)
+        activity.log_changes(old, inst, request.user)
+        activity.log_note(
+            inst, request.user, f"Étape avancée : « {cible.libelle} ».")
+        return Response(
+            InstallationSerializer(inst, context={'request': request}).data)
 
     # ── FG77 — contrôle de préparation avant pose (advisory) ────────────────
     @action(detail=True, methods=['get'], url_path='readiness',
