@@ -13,8 +13,9 @@ class CommissioningIVReadingSerializer(serializers.ModelSerializer):
             'voc_attendu_v', 'isc_attendu_a', 'pmax_attendu_w',
             'ecart_pmax_pct', 'defaut_detecte', 'observations',
         ]
-        # L'écart et le drapeau de défaut sont calculés côté serveur.
-        read_only_fields = ['ecart_pmax_pct', 'defaut_detecte']
+        # `record` est posé côté serveur depuis l'URL (jamais du corps) ; l'écart
+        # et le drapeau de défaut sont calculés côté serveur.
+        read_only_fields = ['record', 'ecart_pmax_pct', 'defaut_detecte']
 
 
 class CommissioningRecordSerializer(serializers.ModelSerializer):

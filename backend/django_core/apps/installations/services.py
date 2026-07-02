@@ -1018,11 +1018,14 @@ def stage_gate_status(installation, stage):
 
 
 def _gates_non_satisfaits(installation, stages, i, j):
-    """Raisons des gates BLOQUANTS non satisfaits parmi stages[i:j] (les
-    étapes que l'on franchit en avançant). Les étapes non bloquantes ne
-    bloquent jamais (consultatives)."""
+    """Raisons des gates BLOQUANTS non satisfaits parmi stages[i:j+1] — les
+    étapes franchies en avançant, DESTINATION COMPRISE : arriver à l'étape
+    `j` exige que sa propre porte soit satisfaite (une mise en service n'est
+    « atteinte » qu'une fois ses essais IEC 62446-1 passés, une remise client
+    qu'une fois son pack assemblé). Les étapes non bloquantes ne bloquent
+    jamais (consultatives)."""
     raisons = []
-    for stage in stages[i:j]:
+    for stage in stages[i:j + 1]:
         if not stage.bloquant:
             continue
         status = stage_gate_status(installation, stage)

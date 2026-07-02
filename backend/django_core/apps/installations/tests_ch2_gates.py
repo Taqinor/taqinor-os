@@ -170,7 +170,7 @@ class GateQhseHoldPointTests(TestCase):
         # « Mise en service » est bloquante → la porte QHSE est interrogée.
         raisons = verifier_transition_statut(
             inst, Installation.Statut.INSTALLE)
-        self.assertTrue(any("point d'arrêt qhse" in r.lower()
+        self.assertTrue(any("arrêt qhse" in r.lower()
                             for r in raisons), raisons)
 
     def test_hold_point_leve_debloque(self):
