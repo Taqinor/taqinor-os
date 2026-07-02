@@ -983,15 +983,9 @@ class DevisViewSet(viewsets.ModelViewSet):
         # régression accepté/refusé/expiré). Le funnel avance via devis_sent.
         mark_devis_sent(devis=devis, user=request.user)
 
-        # M4/L856 — trace l'action (audit + chatter du devis). Acteur et société
-        # posés côté serveur, jamais lus du corps de la requête.
-        try:
-            from apps.audit.recorder import record
-            from apps.audit.models import AuditLog
-            record(AuditLog.Action.WHATSAPP, instance=devis,
-                   detail=f'Lien WhatsApp devis {devis.reference} préparé')
-        except Exception:  # noqa: BLE001 — l'audit ne doit jamais casser l'action
-            pass
+        # Trace l'action au chatter du devis (même app — autorisé). L'audit
+        # transverse passe par le bus core.events (contrat d'import M4 : ventes
+        # n'importe jamais apps.audit directement), jamais par un appel direct.
         from .. import activity
         activity.log_devis_note(
             devis, request.user,
