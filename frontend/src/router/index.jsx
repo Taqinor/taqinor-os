@@ -51,6 +51,10 @@ const ProductionPage = lazy(() => import('../pages/monitoring/ProductionPage'))
 const FleetPage = lazy(() => import('../pages/monitoring/FleetPage'))
 const OmAnalyticsPage = lazy(() => import('../pages/monitoring/OmAnalyticsPage'))
 const WarrantiesPage = lazy(() => import('../pages/monitoring/WarrantiesPage'))
+const Co2Page = lazy(() => import('../pages/monitoring/Co2Page'))
+const CleaningsPage = lazy(() => import('../pages/monitoring/CleaningsPage'))
+const OmReportPage = lazy(() => import('../pages/monitoring/OmReportPage'))
+const ClientPortalPage = lazy(() => import('../pages/monitoring/ClientPortalPage'))
 const EquipementsPage = lazy(() => import('../pages/sav/EquipementsPage'))
 const TicketsPage = lazy(() => import('../pages/sav/TicketsPage'))
 const AgentChat = lazy(() => import('../pages/ia/AgentChat'))
@@ -203,6 +207,10 @@ const router = createBrowserRouter([
   { path: '/production/parc', loader: authLoader, element: <WithLayout><FleetPage /></WithLayout> },
   { path: '/production/analytique', loader: authLoader, element: <WithLayout><OmAnalyticsPage /></WithLayout> },
   { path: '/production/garanties', loader: authLoader, element: <WithLayout><WarrantiesPage /></WithLayout> },
+  { path: '/production/co2', loader: authLoader, element: <WithLayout><Co2Page /></WithLayout> },
+  { path: '/production/nettoyages', loader: authLoader, element: <WithLayout><CleaningsPage /></WithLayout> },
+  { path: '/production/rapports', loader: authLoader, element: <WithLayout><OmReportPage /></WithLayout> },
+  { path: '/production/portail-client', loader: authLoader, element: <WithLayout><ClientPortalPage /></WithLayout> },
   { path: '/outillage', loader: authLoader, element: <WithLayout><OutillagePage /></WithLayout> },
 
   // GED — gestion documentaire (navigateur arborescent)

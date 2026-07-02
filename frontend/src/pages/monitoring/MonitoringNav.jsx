@@ -10,6 +10,10 @@ const MONITORING_LINKS = [
   { to: '/production/parc', label: 'Vue parc' },
   { to: '/production/analytique', label: 'Analytique O&M' },
   { to: '/production/garanties', label: 'Garanties' },
+  { to: '/production/co2', label: 'CO₂' },
+  { to: '/production/nettoyages', label: 'Nettoyages' },
+  { to: '/production/rapports', label: 'Rapports O&M' },
+  { to: '/production/portail-client', label: 'Portail client' },
 ]
 
 export default function MonitoringNav() {

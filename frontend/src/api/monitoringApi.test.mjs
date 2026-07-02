@@ -47,3 +47,48 @@ test('getWarrantyStatus → GET /monitoring/warranties/<id>/status/', () => {
 test('getWarrantyCurve → GET /monitoring/warranties/<id>/curve/', () => {
   assert.match(src, /getWarrantyCurve:[\s\S]*?api\.get\(`\/monitoring\/warranties\/\$\{id\}\/curve\/`/)
 })
+
+// ── WR7 — portail client / CO₂ / nettoyages / rapports ──────────────────────
+
+test('getClientPortal → GET /monitoring/configs/client-portal/?client=', () => {
+  assert.match(src, /getClientPortal:[\s\S]*?api\.get\('\/monitoring\/configs\/client-portal\/'/)
+  assert.match(src, /getClientPortal:[\s\S]*?client: clientId/)
+})
+
+test('getCo2 → GET /monitoring/configs/<id>/co2/', () => {
+  assert.match(src, /getCo2:[\s\S]*?api\.get\(`\/monitoring\/configs\/\$\{configId\}\/co2\/`/)
+})
+
+test('getCo2Fleet → GET /monitoring/configs/co2-fleet/', () => {
+  assert.match(src, /getCo2Fleet:[\s\S]*?api\.get\('\/monitoring\/configs\/co2-fleet\/'/)
+})
+
+test('getCleanings → GET /monitoring/cleanings/', () => {
+  assert.match(src, /getCleanings:[\s\S]*?api\.get\('\/monitoring\/cleanings\/'/)
+})
+
+test('addCleaning → POST /monitoring/cleanings/', () => {
+  assert.match(src, /addCleaning:[\s\S]*?api\.post\('\/monitoring\/cleanings\/'/)
+})
+
+test('deleteCleaning → DELETE /monitoring/cleanings/<id>/', () => {
+  assert.match(src, /deleteCleaning:[\s\S]*?api\.delete\(`\/monitoring\/cleanings\/\$\{id\}\/`/)
+})
+
+test('getSoiling → GET /monitoring/configs/<id>/soiling/', () => {
+  assert.match(src, /getSoiling:[\s\S]*?api\.get\(`\/monitoring\/configs\/\$\{configId\}\/soiling\/`/)
+})
+
+test('getOmReport → GET /monitoring/configs/<id>/om-report/', () => {
+  assert.match(src, /getOmReport:[\s\S]*?api\.get\(`\/monitoring\/configs\/\$\{configId\}\/om-report\/`/)
+})
+
+test('getOmReportPdf → GET /om-report/ avec format=pdf + blob', () => {
+  assert.match(src, /getOmReportPdf:[\s\S]*?api\.get\(`\/monitoring\/configs\/\$\{configId\}\/om-report\/`/)
+  assert.match(src, /getOmReportPdf:[\s\S]*?format: 'pdf'/)
+  assert.match(src, /getOmReportPdf:[\s\S]*?responseType: 'blob'/)
+})
+
+test('emailOmReport → POST /monitoring/configs/<id>/email-om-report/', () => {
+  assert.match(src, /emailOmReport:[\s\S]*?api\.post\(`\/monitoring\/configs\/\$\{configId\}\/email-om-report\/`/)
+})
