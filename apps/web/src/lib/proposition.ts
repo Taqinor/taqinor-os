@@ -312,6 +312,78 @@ export function proposalPdfEndpoint(apiBase: string, token: string): string {
   return `${base}/api/django/ventes/proposal/${encodeURIComponent(token)}/pdf/`;
 }
 
+// ── WJ29 · « Être contacté » / « Demander un rappel » — notification équipe ──
+//
+// Aujourd'hui, rappel/WhatsApp sont des liens wa.me / tel: purs côté client :
+// rien ne notifie le commercial en interne. Le backend n'expose PAS encore de
+// route de contact (PLAN2 QJ27, pas construite) — cette fonction construit
+// l'URL du chemin ATTENDU, symétrique de acceptEndpoint ; le proxy
+// /api/proposition-contact dégrade proprement (message FR clair) sur 404/5xx/
+// panne réseau, en gardant le lien wa.me instantané disponible en parallèle.
+
+/** Construit l'URL backend de la demande de contact (même convention que /accept/). */
+export function contactEndpoint(apiBase: string, token: string): string {
+  const base = (apiBase || 'https://api.taqinor.ma').replace(/\/+$/, '');
+  return `${base}/api/django/ventes/proposal/${encodeURIComponent(token)}/contact/`;
+}
+
+/** Canal choisi par le client pour la demande de contact. */
+export type ContactChannel = 'rappel' | 'whatsapp' | 'question';
+
+export interface ContactRequestState {
+  channel: ContactChannel;
+  /** Message libre optionnel (ex. depuis « Poser une question »). */
+  message?: string;
+}
+
+export interface ContactRequestBody {
+  channel: ContactChannel;
+  message: string;
+}
+
+/**
+ * WJ29 — Met en forme le corps envoyé au proxy /api/proposition-contact. Le
+ * canal est normalisé (repli 'rappel' si invalide) ; le message est tronqué à
+ * une longueur raisonnable pour ne jamais inonder l'upstream.
+ */
+export function buildContactBody(state: ContactRequestState): ContactRequestBody {
+  const channel: ContactChannel =
+    state.channel === 'whatsapp' || state.channel === 'question' ? state.channel : 'rappel';
+  const message = (state.message ?? '').trim().slice(0, 2000);
+  return { channel, message };
+}
+
+export interface ContactResult {
+  /** Vrai quand la notification a probablement atteint l'équipe (best-effort). */
+  ok: boolean;
+  /** Message FR à confirmer au client, TOUJOURS rassurant même en dégradé. */
+  detail: string;
+  /**
+   * Vrai quand le backend n'a pas (encore) de route de contact ou est
+   * injoignable : le client garde alors le lien wa.me instantané en avant,
+   * jamais un message d'échec brut.
+   */
+  degraded: boolean;
+}
+
+/**
+ * WJ29 — Normalise le résultat du proxy de contact EN DÉGRADANT TOUJOURS
+ * PROPREMENT : le backend ne porte pas encore cette route (404) ou peut être
+ * injoignable (5xx / erreur réseau) — dans les deux cas, le client voit un
+ * message honnête qui le renvoie vers WhatsApp, jamais une erreur technique.
+ * Un succès (2xx) confirme l'envoi au client.
+ */
+export function normalizeContactResponse(status: number, networkError: boolean = false): ContactResult {
+  if (!networkError && status >= 200 && status < 300) {
+    return { ok: true, detail: 'Merci — nous vous rappelons très vite.', degraded: false };
+  }
+  return {
+    ok: false,
+    degraded: true,
+    detail: 'Service momentanément indisponible — contactez-nous sur WhatsApp, nous répondons vite.',
+  };
+}
+
 /**
  * Lecture défensive d'un tableau mensuel (production/consommation) : renvoie
  * exactement 12 valeurs finies ≥ 0 si l'entrée est un tableau de 12 éléments avec
