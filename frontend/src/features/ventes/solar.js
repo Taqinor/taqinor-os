@@ -589,9 +589,17 @@ export function autoFillLines(produits, { kwp, panelW, structureType }) {
   const prixTableau = blocks * 1500
   const prixInstallation = (blocks + 1) * 2400
 
-  // Smart Meter + Wifi Dongle : qté 1 dès qu'un onduleur réseau est retenu
-  const smQty = reseau ? 1 : 0
-  const wifiQty = reseau ? 1 : 0
+  // QF8 — Smart Meter + Clé Wifi : UNIQUEMENT quand l'onduleur retenu (réseau
+  // OU hybride) est de marque Huawei (miroir du garde `info_hw` de l'ancien
+  // simulateur Python). Un onduleur Deye — ou toute autre marque — ne les
+  // ajoute jamais : qté 0. Vérifie `marque` (catalogue seedé) ET le nom (les
+  // fixtures/anciens produits sans champ `marque` structuré) pour ne rien
+  // manquer.
+  const isHuawei = (p) => !!p && (
+    _norm(p.marque).includes('huawei') || _norm(p.nom).includes('huawei'))
+  const huaweiRetenu = isHuawei(reseau?.p) || isHuawei(hybride?.p)
+  const smQty = huaweiRetenu ? 1 : 0
+  const wifiQty = huaweiRetenu ? 1 : 0
 
   const first = (type) => (byType[type] ?? [])[0] ?? null
   const row = (p, designation, quantite, ttcOverride = null) =>

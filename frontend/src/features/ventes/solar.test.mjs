@@ -309,6 +309,59 @@ test('auto-fill petit système 5 panneaux : onduleur 5 kW Monophasé préféré'
   assert.equal(by('Deyness 10').quantite, 0)
 })
 
+// ── QF8 — Smart Meter + Clé Wifi UNIQUEMENT sur onduleur Huawei ─────────────
+test('QF8 — catalogue 100% Deye (réseau + hybride) : Smart Meter et Wifi Dongle qté 0', () => {
+  const DEYE_ONLY = [
+    P('Onduleur réseau Deye 10kW Triphasé', 18000),
+    P('Onduleur hybride Deye 10kW Triphasé', 28000),
+    P('Panneau Jinko 710W', 1400),
+    P('Batterie Deyness 10 kWh', 30000),
+    P('Structures acier', 500),
+    P('Socles', 80),
+    P('Smart Meter', 1800),
+    P('Wifi Dongle', 1200),
+    P('Accessoires', 2000),
+    P('Tableau De Protection AC/DC', 2000),
+    P('Installation', 4800),
+    P('Transport', 1000),
+  ]
+  const kwp = 14 * 710 / 1000
+  const rows = autoFillLines(DEYE_ONLY, { kwp, panelW: 710, structureType: 'acier' })
+  const by = (frag) => rows.find(r => r.designation.includes(frag))
+  assert.equal(by('Smart Meter').quantite, 0)
+  assert.equal(by('Wifi').quantite, 0)
+})
+
+test('QF8 — réseau Huawei mais hybride Deye : Smart Meter/Wifi attachés (réseau Huawei suffit)', () => {
+  const MIXED = [
+    P('Onduleur réseau Huawei 10kW Triphasé', 20000),
+    P('Onduleur hybride Deye 10kW Triphasé', 28000),
+    P('Panneau Jinko 710W', 1400),
+    P('Smart Meter', 1800),
+    P('Wifi Dongle', 1200),
+  ]
+  const kwp = 14 * 710 / 1000
+  const rows = autoFillLines(MIXED, { kwp, panelW: 710, structureType: 'acier' })
+  const by = (frag) => rows.find(r => r.designation.includes(frag))
+  assert.equal(by('Smart Meter').quantite, 1)
+  assert.equal(by('Wifi').quantite, 1)
+})
+
+test('QF8 — réseau Deye mais hybride Huawei : Smart Meter/Wifi attachés (hybride Huawei suffit)', () => {
+  const MIXED = [
+    P('Onduleur réseau Deye 10kW Triphasé', 18000),
+    P('Onduleur hybride Huawei 10kW Triphasé', 30000),
+    P('Panneau Jinko 710W', 1400),
+    P('Smart Meter', 1800),
+    P('Wifi Dongle', 1200),
+  ]
+  const kwp = 14 * 710 / 1000
+  const rows = autoFillLines(MIXED, { kwp, panelW: 710, structureType: 'acier' })
+  const by = (frag) => rows.find(r => r.designation.includes(frag))
+  assert.equal(by('Smart Meter').quantite, 1)
+  assert.equal(by('Wifi').quantite, 1)
+})
+
 // ══ Multi-marchés ═════════════════════════════════════════════════════════════
 import {
   computeEtudeIndustrielle, computePompage, autoFillPompage,
