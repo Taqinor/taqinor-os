@@ -94,7 +94,9 @@ def build(ctx) -> str:
         tva_note = tva_note[3:].lstrip(" :·-").strip()
 
     l_real = links.get("realisations", site_url + "/realisations")
-    l_avis = links.get("avis", site_url + "/avis")
+    # QK5 — /avis n'existe pas sur taqinor.ma : repli sur /realisations (page
+    # réelle des réalisations clients), jamais un lien 404 sur un PDF client.
+    l_avis = links.get("avis", site_url + "/realisations")
     l_gar = links.get("garanties", site_url + "/garanties")
     l_sign = links.get("signer", site_url + "/signer")
 
@@ -125,9 +127,12 @@ def build(ctx) -> str:
     )
 
     # ── Trust strip — LINK out, don't dump ──────────────────────────────────
+    # QK5 — le libellé « avis clients » renvoie désormais vers /realisations
+    # (page réelle des réalisations clients) : on ne fabrique jamais d'avis, on
+    # renvoie vers des projets vérifiables. Libellé aligné sur la destination.
     trust_items = [
         ("Nos réalisations", l_real),
-        ("Avis clients vérifiés", l_avis),
+        ("Avis & réalisations clients", l_avis),
         ("Garanties &amp; certifications", l_gar),
     ]
     trust_html = "".join(
