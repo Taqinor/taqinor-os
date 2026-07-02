@@ -33,6 +33,7 @@ export const TABS = [
   { key: 'documents',  label: 'Modèles de documents' },
   { key: 'tarification', label: 'Tarification & ROI' },
   { key: 'stock',      label: 'Stock' },
+  { key: 'donnees',    label: 'Données' },
   { key: 'statuts',    label: 'Statuts' },
   { key: 'monitoring', label: 'Supervision' },
   { key: 'checklists', label: 'Checklists' },

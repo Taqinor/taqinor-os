@@ -172,6 +172,36 @@ const stockApi = {
   // FG62 — suggestions de réapprovisionnement par emplacement (admin).
   suggestionsReapproEmplacement: () =>
     api.get('/stock/emplacements/suggestions-reappro/'),
+
+  // WR5 — Opérations stock (admin/INTERNE).
+  // FG63 — sessions d'inventaire physique (brouillon → valider / annuler).
+  getInventaireSessions: (params) =>
+    api.get('/stock/inventaire-sessions/', { params }),
+  getInventaireSession: (id) =>
+    api.get(`/stock/inventaire-sessions/${id}/`),
+  createInventaireSession: (data) =>
+    api.post('/stock/inventaire-sessions/', data),
+  validerInventaireSession: (id) =>
+    api.post(`/stock/inventaire-sessions/${id}/valider/`),
+  annulerInventaireSession: (id) =>
+    api.post(`/stock/inventaire-sessions/${id}/annuler/`),
+
+  // FG66 / DC36 — kits (nomenclatures) : liste + explosion en lignes composant.
+  getKits: (params) => api.get('/stock/kits/', { params }),
+  exploserKit: (id, quantite) =>
+    api.get(`/stock/kits/${id}/exploser/`,
+      { params: quantite ? { quantite } : {} }),
+
+  // DC35 / FG254 — fiches techniques (datasheets) rattachées aux produits.
+  getFichesTechniques: (produitId) =>
+    api.get('/stock/fiches-techniques/',
+      { params: produitId ? { produit: produitId } : {} }),
+  createFicheTechnique: (data) =>
+    api.post('/stock/fiches-techniques/', data),
+  updateFicheTechnique: (id, data) =>
+    api.patch(`/stock/fiches-techniques/${id}/`, data),
+  deleteFicheTechnique: (id) =>
+    api.delete(`/stock/fiches-techniques/${id}/`),
 }
 
 export default stockApi

@@ -30,6 +30,7 @@ import DevisSection from './DevisSection'
 import DocumentsSection from './DocumentsSection'
 import TarificationSection from './TarificationSection'
 import StockSection from './StockSection'
+import DonneesSection from './DonneesSection'
 import StatutsSection from './StatutsSection'
 import MonitoringSection from './MonitoringSection'
 import ChecklistSection from './ChecklistSection'
@@ -787,6 +788,8 @@ export default function ParametresEntreprise() {
           {/* N64/N65 — section autonome (barème ONEE + ROI/productible). */}
           {tab === 'tarification' && <TarificationSection />}
           {tab === 'stock'    && <StockSection {...ctx} />}
+          {/* WR5 — opérations stock avancées + export/sauvegarde (admin). */}
+          {tab === 'donnees'  && <DonneesSection />}
           {/* N58 — section autonome (charge & enregistre sa propre config). */}
           {tab === 'statuts'    && <StatutsSection />}
           {/* N52 — section autonome (seuil de sous-performance + auto-ticket SAV). */}
