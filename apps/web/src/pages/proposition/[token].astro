@@ -1156,8 +1156,6 @@ const signConfig = ok
 
     const reduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
     const nav = navigator as Navigator & { deviceMemory?: number; connection?: { saveData?: boolean } };
-    const lowEnd = (nav.deviceMemory != null && nav.deviceMemory <= 4) || (navigator.hardwareConcurrency || 8) <= 4;
-    const saveData = nav.connection?.saveData === true;
 
     let booted = false;
     let handle: { dispose: () => void } | null = null;
@@ -1172,14 +1170,23 @@ const signConfig = ok
       booted = true;
       if (startBtn) startBtn.disabled = true;
       try {
+        // WJ27 — la décision device/réseau (bas de gamme, WebGL, repli) vit dans
+        // viewerOnly.viewerBootStrategy (pure, testée) : même logique ici et en
+        // test, une seule source de vérité.
         const mod = await import('../../scripts/roofPro11/viewerOnly');
-        if (!mod.webglAvailable()) {
-          showFallback('Vue 3D indisponible sur cet appareil — voici la photo de votre étude.');
+        const strategy = mod.viewerBootStrategy({
+          deviceMemory: nav.deviceMemory,
+          hardwareConcurrency: navigator.hardwareConcurrency,
+          reducedMotion: reduced,
+          webglAvailable: mod.webglAvailable(),
+        });
+        if (!strategy.canBoot) {
+          showFallback(strategy.fallbackMessage ?? 'Vue 3D indisponible sur cet appareil — voici la photo de votre étude.');
           return;
         }
         handle = mod.createRoofViewer(stage, model, {
           reducedMotion: reduced,
-          lowEnd,
+          lowEnd: strategy.lowEnd,
           onReady: () => {
             if (overlay) overlay.hidden = true;
             if (hintEl) hintEl.hidden = false;
@@ -1201,8 +1208,12 @@ const signConfig = ok
     startBtn?.addEventListener('click', () => void boot());
 
     // Conditions normales : pré-charge au scroll (proche du viewport). En
-    // reduced-motion ou Save-Data : rien ne bouge/charge sans geste explicite.
-    if (!reduced && !saveData && 'IntersectionObserver' in window) {
+    // reduced-motion ou Save-Data : rien ne bouge/charge sans geste explicite
+    // (même règle que viewerBootStrategy.autoPreload, évaluée ici sans import
+    // dynamique pour ne déclencher AUCUN chargement avant un vrai scroll).
+    const saveData = nav.connection?.saveData === true;
+    const autoPreload = !reduced && !saveData;
+    if (autoPreload && 'IntersectionObserver' in window) {
       const io = new IntersectionObserver(
         (entries) => {
           if (entries.some((e) => e.isIntersecting)) {

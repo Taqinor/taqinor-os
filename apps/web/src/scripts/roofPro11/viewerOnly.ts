@@ -60,6 +60,85 @@ export function webglAvailable(): boolean {
   }
 }
 
+// ── WJ27 — décisions de démarrage PURES (device/réseau) ─────────────────────
+// Extraites du script inline de [token].astro pour être testables sans DOM :
+// même logique, une seule source de vérité, zéro divergence entre les deux.
+
+/** Signaux navigateur bruts consommés par `detectLowEnd` / `viewerBootStrategy`. */
+export interface ViewerDeviceSignals {
+  /** navigator.deviceMemory (Go), absent sur beaucoup de navigateurs. */
+  deviceMemory?: number;
+  /** navigator.hardwareConcurrency (cœurs logiques). */
+  hardwareConcurrency?: number;
+  /** navigator.connection.saveData (Data Saver activé). */
+  saveData?: boolean;
+  /** prefers-reduced-motion: reduce. */
+  reducedMotion?: boolean;
+  /** WebGL (1 ou 2) disponible sur cet appareil. */
+  webglAvailable?: boolean;
+}
+
+/**
+ * WJ27 — Appareil « bas de gamme » : ≤ 4 Go de RAM déclarés OU ≤ 4 cœurs
+ * logiques. `hardwareConcurrency` absent est traité comme 8 (repli neutre,
+ * ne déclenche pas le mode bas de gamme sur un navigateur qui ne l'expose pas).
+ */
+export function detectLowEnd(signals: ViewerDeviceSignals): boolean {
+  const mem = signals.deviceMemory;
+  const cores = signals.hardwareConcurrency ?? 8;
+  return (mem != null && mem <= 4) || cores <= 4;
+}
+
+/** Décision finale de démarrage/repli de la visionneuse 3D (WJ27). */
+export interface ViewerBootStrategy {
+  /** Faux → la visionneuse ne se lance JAMAIS (repli poster PNG immédiat). */
+  canBoot: boolean;
+  /** Message FR de repli à afficher quand `canBoot` est faux. */
+  fallbackMessage: string | null;
+  /** Vrai → préchargement automatique au scroll (IntersectionObserver). */
+  autoPreload: boolean;
+  /** Vrai → amortissement/inertie de la caméra activé (désactivé en reduced-motion). */
+  damping: boolean;
+  /** Vrai → DPR/anti-aliasing réduits (appareil bas de gamme). */
+  lowEnd: boolean;
+}
+
+/**
+ * WJ27 — Traduit les signaux navigateur en stratégie de démarrage, SANS DOM :
+ *  - WebGL absent → jamais de boot, repli PNG immédiat (poster déjà affiché) ;
+ *  - reduced-motion → orbite manuelle uniquement (aucun amortissement/auto-lancement
+ *    au scroll) : le visiteur doit taper « Explorer » explicitement ;
+ *  - Save-Data actif → jamais de préchargement au scroll (même logique que
+ *    reduced-motion : geste explicite requis), pour ne pas gaspiller de data ;
+ *  - sinon → préchargement au scroll, amortissement actif.
+ * Pure et déterministe — c'est la même logique que le script inline de
+ * [token].astro, extraite ici pour rester testable et pour n'avoir qu'une seule
+ * source de vérité.
+ */
+export function viewerBootStrategy(signals: ViewerDeviceSignals): ViewerBootStrategy {
+  const lowEnd = detectLowEnd(signals);
+  const reduced = signals.reducedMotion === true;
+  const saveData = signals.saveData === true;
+  if (signals.webglAvailable === false) {
+    return {
+      canBoot: false,
+      fallbackMessage: 'Vue 3D indisponible sur cet appareil — voici la photo de votre étude.',
+      autoPreload: false,
+      damping: false,
+      lowEnd,
+    };
+  }
+  return {
+    canBoot: true,
+    fallbackMessage: null,
+    // Reduced-motion ET Save-Data exigent un geste explicite (bouton « Explorer »)
+    // avant tout chargement — jamais de préchargement silencieux dans ces deux cas.
+    autoPreload: !reduced && !saveData,
+    damping: !reduced,
+    lowEnd,
+  };
+}
+
 /** Hauteur du plan incliné au point (x,y) d'un pan (0 à l'égout, monte vers l'amont). */
 function pitchedRiseAt(
   x: number,
