@@ -216,6 +216,11 @@ export interface Ctx {
   /** Facteur d'ombrage ANNUEL (0–1], 1 = aucun dérate — appliqué aux chiffres annuels. */
   shadeAnnualFactor: number;
 
+  // — WJ22 « Pertes climatiques honnêtes » (fourchette de confiance, opt-in) —
+  /** La couche de pertes climatiques (dérate thermique/salissure/brume → fourchette)
+   *  est-elle activée ? Défaut false → chiffre unique inchangé (comportement historique). */
+  climateBandOn: boolean;
+
   // — W69 « Personnaliser la disposition » (lecture pour la fenêtre de production) —
   /** Le mode disposition personnalisée est-il actif ? */
   layoutMode: boolean;

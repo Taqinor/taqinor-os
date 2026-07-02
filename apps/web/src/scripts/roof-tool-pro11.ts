@@ -362,6 +362,7 @@ export function initRoofToolPro8(opts: InitOptions): void {
   const shadeObstructions: import('../lib/shadingEngine').ShadeObstruction[] = [];
   let shadeFactors: number[][] | null = null;
   let shadeAnnualFactor = 1;
+  let climateBandOn = false; // WJ22 — fourchette de pertes climatiques (opt-in, défaut OFF)
   let useRecommended = true;
   let sel: { family: ConfigFamily; tilt: TiltMode; orient: OrientMode; azimuth: AzimuthMode; margin: MarginMode } = {
     family: 'south',
@@ -788,6 +789,12 @@ export function initRoofToolPro8(opts: InitOptions): void {
     },
     set shadeAnnualFactor(v) {
       shadeAnnualFactor = v;
+    },
+    get climateBandOn() {
+      return climateBandOn;
+    },
+    set climateBandOn(v) {
+      climateBandOn = v;
     },
     get consMode() {
       return consMode;
@@ -2348,6 +2355,15 @@ export function initRoofToolPro8(opts: InitOptions): void {
       renderActive();
       shadingUi.refreshHeatmap(); // WJ21 — garde la heatmap après le re-rendu saisonnier
     });
+  });
+  // WJ22 — bascule « Fourchette réaliste » : active/désactive la couche de pertes
+  // climatiques honnêtes (fourchette de confiance) puis re-rend la carte de résultat.
+  // Défaut OFF → chiffre unique inchangé.
+  const climateToggleEl = $<HTMLButtonElement>('rp9-climate-toggle');
+  climateToggleEl?.addEventListener('click', () => {
+    ctx.climateBandOn = !ctx.climateBandOn;
+    climateToggleEl.setAttribute('aria-pressed', String(ctx.climateBandOn));
+    renderActive();
   });
   // W46 — bouton « Recommandé » de l'inclinaison = AFFORDANCE PAR AXE : il LIBÈRE LE
   // SEUL axe inclinaison (retour AUTO) en TENANT tous les autres verrous accumulés, puis

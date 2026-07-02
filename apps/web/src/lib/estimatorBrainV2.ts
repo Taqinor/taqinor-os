@@ -247,6 +247,75 @@ export function clipDcAcKwh(rawAnnualKwh: number, dcAcRatio: number): number {
   return rawAnnualKwh * (1 - loss);
 }
 
+// ═══════════ WJ22 — COUCHE DE PERTES CLIMATIQUES HONNÊTES (opt-in, défaut OFF) ═══════════
+// PVGIS PVcalc renvoie déjà une production nette de pertes système « génériques » (14 %
+// par défaut). Mais sur la côte marocaine en ÉTÉ, la production réelle est SUR-estimée de
+// ~15–20 % parce que trois pertes dépassent le défaut PVGIS : la dérate THERMIQUE (module
+// chaud → tension basse), la SALISSURE (poussière/sable, faibles pluies estivales) et la
+// part DIFFUSE/brume (voile côtier). Cette couche applique des dérates DOCUMENTÉS en plus,
+// et rend le résultat en FOURCHETTE (borne basse ↔ point), jamais un chiffre unique.
+//
+// TOUT est opt-in : ces fonctions ne sont appelées par AUCUN chemin existant (recommend/
+// productionKwh restent byte-identiques). Constantes + sources : ESTIMATOR_WJ20_24_NOTES.md.
+
+/** Coefficient de température PUISSANCE du module c-Si (%/°C, NÉGATIF). Fiche du panneau
+ *  réel (Canadian Solar TOPBiHiKu7, roofPro2) ≈ −0,29 %/°C ; on prend −0,34 %/°C, la
+ *  valeur conservatrice STANDARD du c-Si (médiane fiches Tier-1) → on ne SOUS-estime
+ *  jamais la perte thermique. */
+export const TEMP_COEFF_PMAX_PER_C = -0.0034;
+/** Écart typique entre la température de CELLULE (au pic d'ensoleillement estival côtier)
+ *  et les 25 °C STC : ~30 °C (cellule ~55 °C sous 800–1000 W/m², vent modéré — cohérent
+ *  avec un NOCT ~45 °C et le modèle NOCT usuel). Borne prudente pour l'été côtier marocain. */
+export const SUMMER_CELL_DELTA_T_C = 30;
+/** Perte de SALISSURE annuelle supplémentaire (fraction) au-delà du défaut PVGIS : la
+ *  poussière/le sable + les faibles pluies estivales salissent les modules. ~3 % est
+ *  l'ordre de grandeur documenté (études soiling MENA : 2–5 %/an sans nettoyage
+ *  fréquent) — prudent, borne basse. */
+export const EXTRA_SOILING_LOSS = 0.03;
+/** Perte DIFFUSE/brume côtière supplémentaire (fraction) : le voile marin réduit
+ *  l'irradiance directe utile. ~1,5 %, borne basse documentée (voiles côtiers légers). */
+export const HAZE_LOSS = 0.015;
+
+/**
+ * Facteur de dérate climatique estival (0–1] appliqué EN PLUS des pertes PVGIS : combine
+ * la dérate thermique (coeff × ΔT plafonné à 0), la salissure et la brume. Multiplicatif
+ * (les pertes se composent). Renvoie ≤ 1 (jamais un gain). Été le plus pénalisant ; on
+ * l'utilise comme borne BASSE honnête de la fourchette. PUR.
+ */
+export function climateDerateFactor(
+  tempCoeffPerC = TEMP_COEFF_PMAX_PER_C,
+  deltaT = SUMMER_CELL_DELTA_T_C,
+  soiling = EXTRA_SOILING_LOSS,
+  haze = HAZE_LOSS,
+): number {
+  const thermal = Math.min(1, Math.max(0, 1 + tempCoeffPerC * Math.max(0, deltaT)));
+  const soil = Math.min(1, Math.max(0, 1 - Math.max(0, soiling)));
+  const hz = Math.min(1, Math.max(0, 1 - Math.max(0, haze)));
+  return thermal * soil * hz;
+}
+
+/**
+ * Fourchette de production annuelle HONNÊTE (kWh) autour d'un chiffre PVGIS/estimé :
+ *  - `high` = le chiffre nu (PVGIS, hiver/moyenne — le meilleur cas déjà net des pertes
+ *    génériques PVGIS) ;
+ *  - `low`  = ce même chiffre × climateDerateFactor (été côtier, pertes réelles en plus) ;
+ *  - `point` = moyenne géométrique des deux (le milieu honnête présenté par défaut).
+ * `low ≤ point ≤ high` par construction. Chiffre ≤ 0 → fourchette nulle. PUR.
+ */
+export interface ProductionBand {
+  low: number;
+  point: number;
+  high: number;
+}
+export function productionConfidenceBand(annualKwh: number, derate = climateDerateFactor()): ProductionBand {
+  if (!Number.isFinite(annualKwh) || annualKwh <= 0) return { low: 0, point: 0, high: 0 };
+  const d = Number.isFinite(derate) ? Math.max(0, Math.min(1, derate)) : 1;
+  const high = annualKwh;
+  const low = annualKwh * d;
+  const point = Math.sqrt(high * low); // moyenne géométrique : entre low et high
+  return { low, point, high };
+}
+
 // — Dimensionnement de la recommandation —
 const COVERAGE_MARGIN = 1.1; // couvrir la cible + 10 %
 

@@ -606,6 +606,15 @@ const chipClass =
                  panneaux ; économies plafonnées à la facture à chaque horizon). Hauteur
                  réservée (min-h) pour zéro CLS ; aria-live polite pour l'annoncer. -->
             <p id="rp9-reco-band" class="mt-2 min-h-[2.5rem] text-xs leading-relaxed text-lune-faint/80" aria-live="polite"></p>
+            <!-- WJ22 — couche de pertes climatiques honnêtes (fourchette de confiance) :
+                 bascule opt-in. Corrige la sur-estimation estivale côtière (~15–20 %) et
+                 rend la production/les économies en fourchette, pas un chiffre unique. -->
+            <div class="mt-3 flex flex-wrap items-center gap-2">
+              <button type="button" id="rp9-climate-toggle" class={chipClass} aria-pressed="false">
+                Fourchette réaliste (été côtier)
+              </button>
+            </div>
+            <p id="rp9-reco-climate" class="mt-2 min-h-[2.5rem] text-xs leading-relaxed text-lune-faint/80" aria-live="polite"></p>
             <p id="rp9-maxline" class="mt-3 text-xs leading-relaxed text-lune-faint"></p>
 
             <!-- W86 — libellé HONNÊTE : ce bouton ne fait AUCUNE action WhatsApp ;
