@@ -84,3 +84,57 @@ describe('WJ36 — le parcours devis est LA cible canonique', () => {
     expect(contact.length).toBeGreaterThan(0);
   });
 });
+
+describe('WJ37 — bandeau de réassurance + sticky mobile safe-area', () => {
+  it('cta.reassurance existe verbatim dans les trois locales', () => {
+    expect((ui.fr as Record<string, string>)['cta.reassurance']).toBe(
+      'Gratuit · Sans engagement · Réponse sous 24–48 h · Sur WhatsApp',
+    );
+    expect((ui.en as Record<string, string>)['cta.reassurance']).toBe(
+      'Free · No obligation · Reply within 24–48 h · On WhatsApp',
+    );
+    expect((ui.ar as Record<string, string>)['cta.reassurance']).toBe(
+      'مجاناً · دون أي التزام · رد خلال 24–48 ساعة · عبر واتساب',
+    );
+  });
+
+  it('CtaBand affiche le bandeau de réassurance sous le CTA principal, une seule fois', () => {
+    const band = read('../src/components/CtaBand.astro');
+    expect(band).toContain("t('cta.reassurance')");
+    // Une seule occurrence du rendu : pas de doublon bruyant dans la bande.
+    const occurrences = band.match(/t\('cta\.reassurance'\)/g) ?? [];
+    expect(occurrences.length).toBe(1);
+  });
+
+  it('StickyCta affiche le bandeau de réassurance (mobile uniquement, pas sur la pilule desktop)', () => {
+    const sticky = read('../src/components/StickyCta.astro');
+    expect(sticky).toContain("t('cta.reassurance')");
+    const occurrences = sticky.match(/t\('cta\.reassurance'\)/g) ?? [];
+    expect(occurrences.length).toBe(1);
+    // La ligne de réassurance est masquée sur la pilule desktop compacte (sm:hidden).
+    const line = sticky.split('\n').find((l) => l.includes("t('cta.reassurance')"));
+    expect(line).toBeDefined();
+    expect(line as string).toContain('sm:hidden');
+  });
+
+  it('la barre collante mobile respecte la zone de sécurité (env(safe-area-inset-bottom))', () => {
+    const sticky = read('../src/components/StickyCta.astro');
+    expect(sticky).toContain('env(safe-area-inset-bottom)');
+  });
+
+  it('le CTA laiton garde le traitement .glow premium (aucune régression visuelle)', () => {
+    const header = read('../src/components/Header.astro');
+    const sticky = read('../src/components/StickyCta.astro');
+    const band = read('../src/components/CtaBand.astro');
+    expect(header).toContain('glow');
+    expect(sticky).toContain('glow');
+    expect(band).toContain('glow');
+  });
+
+  it('le conteneur du CTA laiton flexe (pas de largeur figée) pour absorber l’AR plus long', () => {
+    const header = read('../src/components/Header.astro');
+    // Le bouton CTA principal reste inline-block / sans largeur fixe (whitespace-nowrap
+    // seul empêche le retour à la ligne du libellé, la largeur suit le contenu).
+    expect(header).not.toMatch(/QUOTE_JOURNEY_PATH[\s\S]{0,200}\bw-\d/);
+  });
+});
