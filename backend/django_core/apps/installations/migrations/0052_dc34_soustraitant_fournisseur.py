@@ -186,7 +186,7 @@ def _reverse(apps, schema_editor):
 class Migration(migrations.Migration):
 
     dependencies = [
-        ('installations', '0048_dc40_equipe_canonique'),
+        ('installations', '0051_ch4_handover_pack'),
         ('stock', '0028_dc34_fournisseur_type_soustraitantprofile'),
         migrations.swappable_dependency(settings.AUTH_USER_MODEL),
     ]
