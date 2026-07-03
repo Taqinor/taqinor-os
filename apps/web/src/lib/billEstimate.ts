@@ -1,8 +1,8 @@
 /**
  * WJ1 — ESTIMATION INSTANTANÉE À PARTIR DE LA FACTURE SEULE (avant la porte de
  * contact). Module PUR, sans DOM ni carte : il RÉUTILISE le cerveau honnête
- * `estimatorBrain.ts` (barème RÉGIE ONEE, table PVGIS committée) pour transformer
- * une facture mensuelle (MAD) en :
+ * `estimatorBrainV2.ts` (barème RÉGIE ONEE, table PVGIS committée) pour
+ * transformer une facture mensuelle (MAD) en :
  *   - une puissance recommandée (kWc) dimensionnée au besoin annuel ;
  *   - une production annuelle (kWh) au sud optimal de la latitude ;
  *   - une FOURCHETTE d'économies annuelles (MAD) — autoconsommation d'abord,
@@ -18,6 +18,19 @@
  * L'amortissement réutilise le `paybackLabel` déjà committé des bandes de tranche
  * (billRange.ts) — une constante existante, pas un nombre inventé : on ne dispose
  * d'aucun prix €/kWc fiable côté site, donc on ne calcule PAS un payback chiffré.
+ *
+ * WJ69 — UN SEUL MOTEUR D'ESTIMATION. Ce module pointait auparavant vers
+ * `estimatorBrain.ts` (V1) ; il pointe désormais vers `estimatorBrainV2.ts`.
+ * Les 5 fonctions importées ci-dessous sont PROUVÉES identiques (mêmes
+ * signatures ET mêmes corps — vérifié fonction par fonction, voir
+ * BRAIN_V2_NOTES.md et tests/estimatorBrainV2.test.ts « parité V2 == V1 »)
+ * SAUF `optimalSouthTiltDeg`, qui gagne un second paramètre `aspect`
+ * OPTIONNEL (défaut 0 = plein sud, le comportement V1 exact) — cet appel ici
+ * ne passe qu'un seul argument (la latitude), donc le comportement reste
+ * BYTE-IDENTIQUE pour cette page. La sortie de `estimateFromBill` est donc
+ * INCHANGÉE ; V2 apporte en plus (non appelé ici) le balayage d'inclinaison
+ * capé au besoin, les tarifs par régie (WJ23) et la bande de confiance
+ * climatique (WJ22) — cf. WJ70/WJ71 pour leur surface publique.
  */
 import {
   PANEL2_WATT,
@@ -26,7 +39,7 @@ import {
   optimalSouthTiltDeg,
   specificYield,
   tariffForCity,
-} from './estimatorBrain';
+} from './estimatorBrainV2';
 import { LOCAL_PAYBACK_BY_KWC, type PaybackHint } from './billRange';
 
 /** Latitude par défaut quand le client n'a pas (encore) posé de repère : Casablanca

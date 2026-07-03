@@ -16,7 +16,13 @@
  * surchargeables par le client (sa plaque signalétique prime). Rien n'est asserté comme
  * un fait.
  */
-import { annualSavingsMad, type TariffGrid, REGIE_TARIFF } from './estimatorBrainV2';
+import {
+  annualSavingsMad,
+  LFP_INDICATIVE_COST_MAD_PER_KWH_HIGH,
+  LFP_INDICATIVE_COST_MAD_PER_KWH_LOW,
+  type TariffGrid,
+  REGIE_TARIFF,
+} from './estimatorBrainV2';
 
 /** Nombre d'heures dans une journée (taille de toutes les courbes horaires). */
 export const HOURS_PER_DAY = 24;
@@ -32,12 +38,23 @@ export const BATTERY_KWH_PER_DAY = 6;
  *  est donc ≈ 6 kWh. Réglable ici (estimation à confirmer, APPLIANCES_NOTES.md). */
 export const BATTERY_KWH_USABLE = BATTERY_KWH_PER_DAY;
 
-/** Coût INDICATIF d'une batterie ramené au kWh utile (MAD/kWh) — ESTIMATION À
- *  CONFIRMER (APPLIANCES_NOTES.md). Sert UNIQUEMENT à afficher une fourchette de
- *  retour sur investissement « indicatif », jamais un chiffre asserté. Fourchette
- *  basse→haute du marché marocain (lithium LFP, pose comprise). */
-export const BATTERY_COST_PER_KWH_MAD_LOW = 3500;
-export const BATTERY_COST_PER_KWH_MAD_HIGH = 6000;
+/**
+ * Coût INDICATIF d'une batterie ramené au kWh utile (MAD/kWh) — ESTIMATION À
+ * CONFIRMER (APPLIANCES_NOTES.md). Sert UNIQUEMENT à afficher une fourchette de
+ * retour sur investissement « indicatif », jamais un chiffre asserté. Fourchette
+ * basse→haute du marché marocain (lithium LFP, pose comprise).
+ *
+ * WJ69 — SOURCE UNIQUE : ces deux bornes sont désormais des ALIAS des mêmes
+ * constantes définies dans `estimatorBrainV2.ts`
+ * (`LFP_INDICATIVE_COST_MAD_PER_KWH_LOW`/`_HIGH`), plutôt qu'un second choix
+ * indépendant du même marché — avant WJ69, ce fichier portait sa propre
+ * fourchette (3 500–6 000) pendant qu'estimatorBrainV2.ts portait un point
+ * séparé (4 500, jamais appelé). Une seule saisie désormais ; ce module garde
+ * ses propres noms (déjà utilisés partout ci-dessous et dans mon-toit.astro)
+ * pour ne rien casser côté appelants.
+ */
+export const BATTERY_COST_PER_KWH_MAD_LOW = LFP_INDICATIVE_COST_MAD_PER_KWH_LOW;
+export const BATTERY_COST_PER_KWH_MAD_HIGH = LFP_INDICATIVE_COST_MAD_PER_KWH_HIGH;
 
 /** Nombre de jours par mois (année non bissextile) — pour l'intégration annuelle des
  *  12 jours-types de production. Indexé 0 = janvier … 11 = décembre. Σ = 365. */
