@@ -19,6 +19,7 @@ from .models import (
     ActionProjet,
     AffectationRessource,
     BaselinePlanning,
+    ChronoEnCours,
     ClotureProjet,
     CommentaireProjet,
     CompteRenduReunion,
@@ -54,6 +55,7 @@ from .serializers import (
     ActionProjetSerializer,
     AffectationRessourceSerializer,
     BaselinePlanningSerializer,
+    ChronoEnCoursSerializer,
     ClotureProjetSerializer,
     CommentaireProjetSerializer,
     CompteRenduReunionSerializer,
@@ -938,6 +940,59 @@ class TacheViewSet(_GestionProjetBaseViewSet):
             return Response(
                 {'detail': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
         return Response(TacheSerializer(modifies, many=True).data)
+
+    @action(detail=True, methods=['post'], url_path='demarrer-chrono')
+    def demarrer_chrono(self, request, pk=None):
+        """Démarre un chrono sur cette tâche pour l'utilisateur courant (XPRJ5).
+
+        Un seul chrono actif par utilisateur : démarrer ici arrête
+        implicitement un chrono déjà en cours sur une autre tâche. La société
+        est garantie par ``get_object`` : une tâche d'une autre société → 404.
+        """
+        tache = self.get_object()
+        chrono = services.demarrer_chrono(tache, request.user)
+        return Response(
+            ChronoEnCoursSerializer(chrono).data,
+            status=status.HTTP_201_CREATED)
+
+    @action(detail=True, methods=['post'], url_path='arreter-chrono')
+    def arreter_chrono(self, request, pk=None):
+        """Arrête le chrono actif de l'utilisateur et crée la timesheet (XPRJ5).
+
+        La durée est arrondie au quart d'heure supérieur (``pas_minutes``,
+        paramétrable via le corps de requête — défaut 15). Refuse (400) si
+        l'utilisateur n'a aucun chrono actif ou aucun profil ressource lié.
+        """
+        pas_minutes = request.data.get('pas_minutes', 15)
+        try:
+            pas_minutes = int(pas_minutes)
+        except (TypeError, ValueError):
+            pas_minutes = 15
+        try:
+            timesheet = services.arreter_chrono(
+                request.user, pas_minutes=pas_minutes)
+        except services.ChronoError as exc:
+            return Response(
+                {'detail': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+        return Response(TimesheetSerializer(timesheet).data)
+
+
+class ChronoActifViewSet(viewsets.ViewSet):
+    """Chrono actif GLOBAL de l'utilisateur courant (XPRJ5) — lecture seule.
+
+    Indicateur transverse (hors ``Tache``) : ``GET /chrono-actif/`` renvoie le
+    chrono en cours de l'utilisateur (n'importe quelle tâche), ou 204 si aucun.
+    Toujours scopé à l'utilisateur COURANT (jamais un autre — pas de paramètre
+    d'utilisateur en entrée).
+    """
+    permission_classes = [IsResponsableOrAdmin]
+
+    def list(self, request):
+        chrono = ChronoEnCours.objects.select_related(
+            'tache', 'tache__projet').filter(user=request.user).first()
+        if chrono is None:
+            return Response(status=status.HTTP_204_NO_CONTENT)
+        return Response(ChronoEnCoursSerializer(chrono).data)
 
 
 class DependanceTacheViewSet(_GestionProjetBaseViewSet):

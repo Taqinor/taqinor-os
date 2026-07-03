@@ -767,6 +767,93 @@ def valider_situation(situation, *, user):
     return situation
 
 
+# ── Chrono start/stop sur tâche (XPRJ5) ──────────────────────────────────────
+class ChronoError(Exception):
+    """Erreur métier sur le chrono start/stop d'une tâche."""
+
+
+def _arrondir_duree_heures(minutes, pas_minutes=15):
+    """Arrondit une durée (en minutes) au ``pas_minutes`` SUPÉRIEUR, en heures.
+
+    Ex. ``pas_minutes=15`` (quart d'heure) : 1 minute → 15 min (0.25 h) ;
+    16 minutes → 30 min (0.50 h) ; 0 minute → 0 h. Renvoie un ``Decimal``.
+    """
+    import math
+    if minutes <= 0:
+        return Decimal('0')
+    pas = max(1, int(pas_minutes))
+    paliers = math.ceil(minutes / pas)
+    minutes_arrondies = paliers * pas
+    return (Decimal(minutes_arrondies) / Decimal('60')).quantize(Decimal('0.01'))
+
+
+@transaction.atomic
+def demarrer_chrono(tache, user):
+    """Démarre un chrono sur ``tache`` pour ``user`` (XPRJ5).
+
+    Un seul chrono actif par utilisateur : démarrer un NOUVEAU chrono arrête
+    (silencieusement, sans créer de timesheet) l'ancien s'il existe — le
+    START/STOP explicite reste la seule voie qui crée une timesheet. ``company``
+    est TOUJOURS celle de la ``tache``. Renvoie le ``ChronoEnCours`` créé.
+    """
+    from django.utils import timezone
+
+    from .models import ChronoEnCours
+
+    ChronoEnCours.objects.filter(user=user).delete()
+    return ChronoEnCours.objects.create(
+        company=tache.company,
+        user=user,
+        tache=tache,
+        demarre_a=timezone.now(),
+    )
+
+
+@transaction.atomic
+def arreter_chrono(user, *, pas_minutes=15):
+    """Arrête le chrono actif de ``user`` et crée la ``Timesheet`` brouillon.
+
+    Lève ``ChronoError`` si aucun chrono actif. La durée est
+    ``maintenant − demarre_a``, arrondie au quart d'heure SUPÉRIEUR
+    (``pas_minutes``, paramétrable — défaut 15 min). La ressource est celle
+    liée à l'utilisateur (``RessourceProfil.user``) — lève ``ChronoError`` si
+    l'utilisateur n'a AUCUN profil ressource (message explicite). Supprime le
+    ``ChronoEnCours`` après création. Renvoie la ``Timesheet`` créée.
+    """
+    from django.utils import timezone
+
+    from .models import ChronoEnCours, RessourceProfil, Timesheet
+
+    chrono = ChronoEnCours.objects.filter(user=user).first()
+    if chrono is None:
+        raise ChronoError("Aucun chrono actif pour cet utilisateur.")
+
+    ressource = RessourceProfil.objects.filter(
+        company=chrono.company, user=user).first()
+    if ressource is None:
+        raise ChronoError(
+            "Aucun profil ressource lié à cet utilisateur — impossible de "
+            "créer la feuille de temps.")
+
+    maintenant = timezone.now()
+    minutes_ecoulees = max(
+        0, (maintenant - chrono.demarre_a).total_seconds() / 60)
+    heures = _arrondir_duree_heures(minutes_ecoulees, pas_minutes)
+
+    timesheet = Timesheet.objects.create(
+        company=chrono.company,
+        projet=chrono.tache.projet,
+        tache=chrono.tache,
+        ressource=ressource,
+        date=maintenant.date(),
+        heures=heures,
+        cout=cout_timesheet(ressource, heures),
+        saisi_par=user,
+    )
+    chrono.delete()
+    return timesheet
+
+
 # ── Baseline de planning (PROJ13) ────────────────────────────────────────────
 
 @transaction.atomic

@@ -2254,3 +2254,47 @@ class LigneSituation(models.Model):
 
     def __str__(self):
         return f'{self.situation_id} — {self.libelle}'
+
+
+class ChronoEnCours(models.Model):
+    """Chrono ACTIF (start/stop) d'un utilisateur sur une ``Tache`` (XPRJ5).
+
+    Modèle LÉGER : un seul enregistrement PAR UTILISATEUR peut exister à la
+    fois (``OneToOneField`` sur ``user`` — démarrer un nouveau chrono ARRÊTE
+    implicitement l'ancien, voir ``services.demarrer_chrono``). ``demarre_a``
+    est posé côté serveur (jamais lu du corps de requête). À l'arrêt
+    (``services.arreter_chrono``), l'enregistrement est SUPPRIMÉ après avoir
+    créé la ``Timesheet`` brouillon correspondante.
+
+    Tout est multi-société : ``company`` est posée côté serveur, jamais lue du
+    corps de requête. Modèle entièrement additif.
+    """
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='gestion_projet_chronos',
+        verbose_name='Société',
+    )
+    user = models.OneToOneField(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name='gestion_projet_chrono_actif',
+        verbose_name='Utilisateur',
+    )
+    tache = models.ForeignKey(
+        Tache,
+        on_delete=models.CASCADE,
+        related_name='chronos',
+        verbose_name='Tâche',
+    )
+    demarre_a = models.DateTimeField(verbose_name='Démarré à')
+    date_creation = models.DateTimeField(
+        auto_now_add=True, verbose_name='Créé le')
+
+    class Meta:
+        verbose_name = 'Chrono en cours'
+        verbose_name_plural = 'Chronos en cours'
+        ordering = ['-demarre_a']
+
+    def __str__(self):
+        return f'{self.user_id} — tâche {self.tache_id} ({self.demarre_a})'

@@ -6,6 +6,7 @@ from .views import (
     ActionProjetViewSet,
     AffectationRessourceViewSet,
     BaselinePlanningViewSet,
+    ChronoActifViewSet,
     ClotureProjetViewSet,
     CommentaireProjetViewSet,
     CompteRenduReunionViewSet,
@@ -68,6 +69,7 @@ router.register(r'lots-sous-traitance', LotSousTraitanceViewSet)
 router.register(r'clotures', ClotureProjetViewSet)
 router.register(r'situations', SituationTravauxViewSet)
 router.register(r'lignes-situation', LigneSituationViewSet)
+router.register(r'chrono-actif', ChronoActifViewSet, basename='chrono-actif')
 
 urlpatterns = [
     # Portail PUBLIC (non authentifié) — placé AVANT le routeur pour éviter

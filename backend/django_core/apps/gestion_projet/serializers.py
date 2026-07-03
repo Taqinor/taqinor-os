@@ -10,6 +10,7 @@ from .models import (
     ActionProjet,
     AffectationRessource,
     BaselinePlanning,
+    ChronoEnCours,
     ClotureProjet,
     CommentaireProjet,
     CompteRenduReunion,
@@ -197,6 +198,29 @@ class TacheSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError(
                 {'phase': 'La phase doit appartenir au même projet.'})
         return attrs
+
+
+class ChronoEnCoursSerializer(serializers.ModelSerializer):
+    """Chrono ACTIF (start/stop) d'un utilisateur sur une tâche (XPRJ5).
+
+    Lecture seule (le chrono se pilote UNIQUEMENT via les actions
+    ``demarrer-chrono``/``arreter-chrono`` de ``TacheViewSet``, jamais par
+    création/édition directe).
+    """
+    tache_libelle = serializers.CharField(
+        source='tache.libelle', read_only=True)
+    projet_id = serializers.IntegerField(
+        source='tache.projet_id', read_only=True)
+    projet_code = serializers.CharField(
+        source='tache.projet.code', read_only=True)
+
+    class Meta:
+        model = ChronoEnCours
+        fields = [
+            'id', 'tache', 'tache_libelle', 'projet_id', 'projet_code',
+            'demarre_a', 'date_creation',
+        ]
+        read_only_fields = fields
 
 
 class ProjetLienSerializer(serializers.ModelSerializer):
