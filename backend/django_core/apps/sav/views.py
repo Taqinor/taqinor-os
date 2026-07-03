@@ -707,9 +707,11 @@ class TicketViewSet(TenantMixin, viewsets.ModelViewSet):
         consommées (PieceConsommee), items de checklist (TicketChecklistItem)
         et pièces jointes (records.Attachment via ContentType). Le doublon
         est marqué ``annule`` avec motif « Doublon de {reference} » et des
-        notes croisées sont ajoutées aux DEUX chatters (avant le déplacement,
-        pour que la note du doublon ne parte pas avec ses propres activités
-        déplacées)."""
+        notes croisées sont ajoutées aux DEUX chatters : celle du principal
+        avant le déplacement, celle du doublon APRÈS (sinon elle repartirait
+        elle-même vers le principal avec le reste de ses activités
+        déplacées, et le chatter du doublon perdrait toute trace de la
+        fusion)."""
         principal = self.get_object()
         doublon_id = request.data.get('doublon_id')
         if not doublon_id:
@@ -733,14 +735,11 @@ class TicketViewSet(TenantMixin, viewsets.ModelViewSet):
         from .models import TicketChecklistItem
 
         with transaction.atomic():
-            # Notes croisées AVANT le déplacement des activités (sinon la note
-            # du doublon partirait elle-même vers le principal).
+            # Note sur le principal AVANT le déplacement (elle doit rester
+            # dans le chatter du principal, ce qui est trivialement le cas).
             activity.log_note(
                 principal, request.user,
                 f'Fusion : ticket {doublon.reference} fusionné dans celui-ci')
-            activity.log_note(
-                doublon, request.user,
-                f'Ce ticket a été fusionné dans {principal.reference}')
 
             doublon.activites.update(ticket=principal, company=principal.company)
             doublon.pieces.update(ticket=principal, company=principal.company)
@@ -750,6 +749,13 @@ class TicketViewSet(TenantMixin, viewsets.ModelViewSet):
             Attachment.objects.filter(
                 content_type=ct, object_id=doublon.pk,
             ).update(object_id=principal.pk, company=principal.company)
+
+            # Note sur le doublon APRÈS le déplacement de ses activités
+            # (sinon elle partirait elle-même vers le principal et le
+            # chatter du doublon perdrait toute trace de la fusion).
+            activity.log_note(
+                doublon, request.user,
+                f'Ce ticket a été fusionné dans {principal.reference}')
 
             doublon.annule = True
             doublon.motif_annulation = f'Doublon de {principal.reference}'
