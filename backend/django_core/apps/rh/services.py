@@ -756,3 +756,80 @@ def refuser_demande_rh(demande, *, traitant, motif_refus=''):
         'statut', 'motif_refus', 'traite_par', 'traite_le',
         'date_modification'])
     return demande
+
+
+# ── XRH10 — kiosque de pointage partagé (PIN/QR, tablette dépôt) ───────────
+
+def emettre_device_kiosque(company, label=''):
+    """Émet un nouveau ``DeviceKiosque`` : renvoie (instance, token_en_clair).
+
+    Le token en clair n'est JAMAIS stocké — seul son HASH (``token_hash``)
+    l'est. Il n'est renvoyé qu'une fois, à l'émission.
+    """
+    from .models import DeviceKiosque, generate_device_token, hash_device_token
+
+    raw = generate_device_token()
+    device = DeviceKiosque.objects.create(
+        company=company, label=label, token_hash=hash_device_token(raw))
+    return device, raw
+
+
+def resoudre_device_kiosque(raw_token):
+    """Résout un token de device kiosque en clair → ``DeviceKiosque`` actif.
+
+    Renvoie ``None`` si le token est inconnu, révoqué (``actif=False``), ou
+    vide. Comparaison par empreinte HMAC-SHA256 (déterministe, O(1)).
+    """
+    from .models import DeviceKiosque, hash_device_token
+
+    if not raw_token:
+        return None
+    token_hash = hash_device_token(raw_token)
+    return DeviceKiosque.objects.filter(
+        token_hash=token_hash, actif=True).select_related('company').first()
+
+
+class KiosqueError(Exception):
+    """Erreur métier du pointage kiosque (PIN inconnu…)."""
+
+
+def pointer_via_kiosque(device, pin):
+    """Pointe arrivée/départ pour l'employé du PIN (XRH10).
+
+    Bascule automatiquement : si le dernier pointage OUVERT (arrivée sans
+    départ) du jour existe, ferme-le (départ) ; sinon ouvre une arrivée.
+    Renvoie ``(dossier, pointage, sens)`` avec ``sens`` ∈ {arrivee, depart}.
+    Lève ``KiosqueError`` si le PIN est inconnu dans la société du device
+    (l'appelant doit répondre 404 neutre — jamais préciser la raison).
+    """
+    from .models import DossierEmploye, Pointage
+
+    pin = (pin or '').strip()
+    if not pin:
+        raise KiosqueError('PIN manquant.')
+    dossier = DossierEmploye.objects.filter(
+        company=device.company, code_pointage=pin).first()
+    if dossier is None:
+        raise KiosqueError('PIN inconnu.')
+
+    now = timezone.now()
+    ouvert = (
+        Pointage.objects
+        .filter(company=device.company, employe=dossier,
+                heure_arrivee__date=now.date(), heure_depart__isnull=True)
+        .order_by('-heure_arrivee')
+        .first())
+    if ouvert is not None:
+        ouvert.heure_depart = now
+        ouvert.type_pointage = Pointage.TypePointage.COMPLET
+        ouvert.save(update_fields=['heure_depart', 'type_pointage'])
+        device.derniere_utilisation = now
+        device.save(update_fields=['derniere_utilisation'])
+        return dossier, ouvert, 'depart'
+
+    pointage = Pointage.objects.create(
+        company=device.company, employe=dossier,
+        type_pointage=Pointage.TypePointage.ARRIVEE, heure_arrivee=now)
+    device.derniere_utilisation = now
+    device.save(update_fields=['derniere_utilisation'])
+    return dossier, pointage, 'arrivee'

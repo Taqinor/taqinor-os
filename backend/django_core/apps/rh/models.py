@@ -11,6 +11,9 @@ Tout est multi-société : chaque modèle porte un FK ``company`` posé côté s
 (jamais lu du corps de requête). Le ``cout_horaire`` est une donnée INTERNE qui
 n'apparaît jamais dans une sortie client. Ce module est entièrement additif.
 """
+import hashlib
+import hmac
+import secrets
 from decimal import Decimal
 
 from django.conf import settings
@@ -318,12 +321,26 @@ class DossierEmploye(models.Model):
         auto_now_add=True, verbose_name='Créé le')
     # XPLT14 — champs personnalisés (apps.customfields, module='employe').
     custom_data = models.JSONField(null=True, blank=True)
+    # XRH10 — PIN court du kiosque de pointage partagé (tablette dépôt).
+    # Unique par société ; JAMAIS exposé en liste (lecture-seule server-side,
+    # exclu des serializers de listing — seul le endpoint kiosque le compare).
+    code_pointage = models.CharField(
+        max_length=12, blank=True, default='', verbose_name='Code pointage (PIN)')
 
     class Meta:
         verbose_name = 'Dossier employé'
         verbose_name_plural = 'Dossiers employés'
         unique_together = [('company', 'matricule')]
         ordering = ['nom', 'prenom']
+        constraints = [
+            # XRH10 — PIN unique par société, mais SEULEMENT quand renseigné
+            # (plusieurs dossiers peuvent avoir code_pointage='').
+            models.UniqueConstraint(
+                fields=['company', 'code_pointage'],
+                condition=models.Q(~models.Q(code_pointage='')),
+                name='rh_dossier_code_pointage_uniq',
+            ),
+        ]
 
     def __str__(self):
         return f'{self.matricule} — {self.nom} {self.prenom}'
@@ -4306,3 +4323,67 @@ class DemandeRH(models.Model):
 
     def __str__(self):
         return f'{self.get_type_display()} — {self.employe} ({self.statut})'
+
+
+# XRH10 — kiosque de pointage partagé (PIN/QR, tablette dépôt). Réutilise le
+# schéma « hash déterministe HMAC-SHA256 » de ``publicapi.ApiKey`` : le secret
+# en clair n'est montré qu'à la création/régénération, seul le hash est
+# stocké/comparé (résolution O(1) par empreinte, table exploitable hors-ligne
+# uniquement avec la SECRET_KEY serveur).
+
+KIOSQUE_TOKEN_PREFIX = 'kio_'
+
+
+def hash_device_token(raw_token):
+    """Empreinte déterministe (HMAC-SHA256) d'un token de device kiosque."""
+    return hmac.new(
+        settings.SECRET_KEY.encode('utf-8'),
+        raw_token.encode('utf-8'),
+        hashlib.sha256,
+    ).hexdigest()
+
+
+def generate_device_token():
+    """Génère un nouveau token de device en clair (préfixe + secret)."""
+    return KIOSQUE_TOKEN_PREFIX + secrets.token_urlsafe(32)
+
+
+class DeviceKiosque(models.Model):
+    """Token de device kiosque de pointage (XRH10) — une tablette dépôt.
+
+    Authentifie l'endpoint kiosque ``pointages/kiosque/`` SANS session
+    utilisateur : la tablette partagée présente ce token (jamais un compte
+    ERP). Seul le HASH (``token_hash``) est stocké — le secret en clair n'est
+    renvoyé qu'à la création/régénération (``services.emettre_device_kiosque``).
+    Révocable (``actif=False``) à tout moment depuis Paramètres.
+
+    Multi-société : ``company`` posée côté serveur.
+    """
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='rh_devices_kiosque',
+        verbose_name='Société',
+    )
+    label = models.CharField(
+        max_length=120, blank=True, default='', verbose_name='Libellé')
+    token_hash = models.CharField(
+        max_length=64, unique=True, db_index=True, verbose_name='Empreinte')
+    actif = models.BooleanField(default=True, verbose_name='Actif')
+    date_creation = models.DateTimeField(
+        auto_now_add=True, verbose_name='Créé le')
+    derniere_utilisation = models.DateTimeField(
+        null=True, blank=True, verbose_name='Dernière utilisation')
+
+    class Meta:
+        verbose_name = 'Device kiosque'
+        verbose_name_plural = 'Devices kiosque'
+        ordering = ['-date_creation']
+        indexes = [
+            models.Index(
+                fields=['company', 'actif'],
+                name='rh_kiosque_comp_actif_idx'),
+        ]
+
+    def __str__(self):
+        return self.label or f'Kiosque #{self.pk}'

@@ -24,6 +24,7 @@ from .models import (
     DemandeConge,
     DemandeRH,
     Departement,
+    DeviceKiosque,
     DocumentEmploye,
     DossierActivity,
     DossierEmploye,
@@ -2045,6 +2046,19 @@ class DemandeRHSerializer(serializers.ModelSerializer):
         if not obj.employe_id:
             return ''
         return f'{obj.employe.nom} {obj.employe.prenom}'
+
+
+class DeviceKiosqueSerializer(serializers.ModelSerializer):
+    """Device kiosque de pointage (XRH10) — administration.
+
+    Le token en clair n'est JAMAIS exposé ici (seul ``token_hash`` en base) ;
+    il n'apparaît que dans la réponse ponctuelle de l'action d'émission.
+    """
+    class Meta:
+        model = DeviceKiosque
+        fields = ['id', 'label', 'actif', 'date_creation',
+                  'derniere_utilisation']
+        read_only_fields = ['date_creation', 'derniere_utilisation']
 
 
 class MesInfosSerializer(serializers.ModelSerializer):

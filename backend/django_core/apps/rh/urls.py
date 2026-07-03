@@ -19,6 +19,7 @@ from .views import (
     DemandeCongeViewSet,
     DemandeRHViewSet,
     DepartementViewSet,
+    DeviceKiosqueViewSet,
     DocumentEmployeViewSet,
     DossierEmployeViewSet,
     DotationEpiViewSet,
@@ -34,6 +35,7 @@ from .views import (
     HeuresSuppViewSet,
     HoraireTravailViewSet,
     IncidentPresenceViewSet,
+    KiosquePointageViewSet,
     ModeleIntegrationViewSet,
     NoteDeFraisViewSet,
     OrdreMissionViewSet,
@@ -71,6 +73,9 @@ router.register(r'types-absence', TypeAbsenceViewSet)
 router.register(r'soldes-conge', SoldeCongeViewSet)
 router.register(r'demandes-conge', DemandeCongeViewSet)
 router.register(r'pointages', PointageViewSet)
+router.register(r'devices-kiosque', DeviceKiosqueViewSet)
+router.register(
+    r'pointages/kiosque', KiosquePointageViewSet, basename='rh-kiosque')
 router.register(r'feuilles-temps', FeuilleTempsViewSet)
 router.register(r'heures-supp', HeuresSuppViewSet)
 router.register(r'roster', AffectationRosterViewSet)

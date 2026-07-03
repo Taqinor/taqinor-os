@@ -12,7 +12,9 @@ from django.utils import timezone
 from rest_framework import filters, status, viewsets
 from rest_framework.decorators import action
 from rest_framework.parsers import JSONParser, MultiPartParser
+from rest_framework.permissions import AllowAny
 from rest_framework.response import Response
+from rest_framework.throttling import AnonRateThrottle
 
 from apps.records.models import Attachment
 from apps.records.storage import delete_attachment, store_attachment
@@ -42,6 +44,7 @@ from .models import (
     DemandeConge,
     DemandeRH,
     Departement,
+    DeviceKiosque,
     DocumentEmploye,
     DossierEmploye,
     DotationEpi,
@@ -93,6 +96,7 @@ from .serializers import (
     DemandeCongeSerializer,
     DemandeRHSerializer,
     DepartementSerializer,
+    DeviceKiosqueSerializer,
     DocumentEmployeSerializer,
     DossierActivitySerializer,
     DossierEmployeSerializer,
@@ -196,6 +200,28 @@ class DossierEmployeViewSet(_RhBaseViewSet):
         act = activity.log_note(employe, request.user, message)
         return Response(DossierActivitySerializer(act).data,
                         status=status.HTTP_201_CREATED)
+
+    @action(detail=True, methods=['post'], url_path='definir-code-pointage')
+    def definir_code_pointage(self, request, pk=None):
+        """XRH10 — définit/régénère le PIN du kiosque (jamais exposé en liste).
+
+        Corps : ``code`` (chaîne courte). Unicité par société assurée par la
+        contrainte DB (``rh_dossier_code_pointage_uniq``) — un doublon renvoie
+        400. Vide = retire le PIN.
+        """
+        from django.db import IntegrityError
+
+        employe = self.get_object()
+        code = (request.data.get('code') or '').strip()[:12]
+        employe.code_pointage = code
+        try:
+            employe.save(update_fields=['code_pointage'])
+        except IntegrityError:
+            return Response(
+                {'code': 'Ce PIN est déjà utilisé par un autre employé.'},
+                status=status.HTTP_400_BAD_REQUEST)
+        return Response(
+            {'detail': 'PIN mis à jour.'}, status=status.HTTP_200_OK)
 
     @action(detail=False, methods=['get'], url_path='cdd-a-echeance')
     def cdd_a_echeance(self, request):
@@ -966,6 +992,84 @@ class PointageViewSet(_RhBaseViewSet):
             pointage.note = note
         pointage.save()
         return Response(self.get_serializer(pointage).data)
+
+
+class DeviceKiosqueViewSet(_RhBaseViewSet):
+    """Devices kiosque de pointage (XRH10) — administration (Paramètres RH).
+
+    Société scopée + Administrateur/Responsable. ``company`` posée CÔTÉ
+    SERVEUR. Le token en clair n'est renvoyé QU'À l'émission
+    (``POST .../emettre/``) — jamais stocké ni relisible ensuite.
+
+    Actions :
+    * ``POST .../emettre/`` — génère un nouveau device + son token en clair
+      (``token`` dans la réponse, une seule fois). Corps : ``label``.
+    * ``POST .../{id}/revoquer/`` — ``actif=False`` (idempotent).
+    """
+    queryset = DeviceKiosque.objects.all()
+    serializer_class = DeviceKiosqueSerializer
+    filter_backends = [filters.OrderingFilter]
+    ordering_fields = ['date_creation']
+
+    @action(detail=False, methods=['post'], url_path='emettre')
+    def emettre(self, request):
+        device, raw_token = services.emettre_device_kiosque(
+            request.user.company, label=request.data.get('label', ''))
+        data = self.get_serializer(device).data
+        data['token'] = raw_token
+        return Response(data, status=status.HTTP_201_CREATED)
+
+    @action(detail=True, methods=['post'], url_path='revoquer')
+    def revoquer(self, request, pk=None):
+        device = self.get_object()
+        if device.actif:
+            device.actif = False
+            device.save(update_fields=['actif'])
+        return Response(self.get_serializer(device).data)
+
+
+class _KiosqueThrottle(AnonRateThrottle):
+    """Throttle du guichet kiosque — protège contre le brute-force du PIN."""
+    scope = 'rh_kiosque'
+
+    def get_rate(self):
+        return '30/min'
+
+
+class KiosquePointageViewSet(viewsets.ViewSet):
+    """Guichet kiosque de pointage (XRH10) — PIN + token de device, sans session.
+
+    AUCUNE session utilisateur : authentifié par un token de device (header
+    ``X-Kiosque-Token``, émis/révocable dans Paramètres via
+    ``DeviceKiosqueViewSet``). Throttlé (30/min) contre le brute-force du PIN.
+    Un PIN inconnu renvoie 404 neutre (jamais 400 — ne confirme ni n'infirme
+    l'existence d'un PIN proche). Un token révoqué/inconnu renvoie 401.
+    """
+    permission_classes = [AllowAny]
+    throttle_classes = [_KiosqueThrottle]
+
+    def create(self, request):
+        """``POST pointages/kiosque/`` — pointe l'employé du PIN (XRH10)."""
+        raw_token = request.META.get('HTTP_X_KIOSQUE_TOKEN', '')
+        device = services.resoudre_device_kiosque(raw_token)
+        if device is None:
+            return Response(
+                {'detail': 'Token de device invalide ou révoqué.'},
+                status=status.HTTP_401_UNAUTHORIZED)
+        pin = request.data.get('pin', '')
+        try:
+            dossier, pointage, sens = services.pointer_via_kiosque(
+                device, pin)
+        except services.KiosqueError:
+            return Response(
+                {'detail': 'PIN inconnu.'}, status=status.HTTP_404_NOT_FOUND)
+        return Response({
+            'nom': f'{dossier.prenom} {dossier.nom}'.strip(),
+            'sens': sens,
+            'heure': (
+                pointage.heure_depart if sens == 'depart'
+                else pointage.heure_arrivee),
+        }, status=status.HTTP_201_CREATED)
 
 
 class AffectationRosterViewSet(_RhBaseViewSet):
