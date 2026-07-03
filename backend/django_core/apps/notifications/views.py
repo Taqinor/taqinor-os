@@ -18,14 +18,18 @@ from authentication.permissions import IsAdminRole, IsAnyRole
 
 from .models import (
     EventType, Holiday, Notification, NotificationPreference,
-    NotificationRoutingRule, PushSubscription, WorkingHoursConfig,
+    NotificationRoutingRule, PushSubscription, WhatsAppTemplate,
+    WorkingHoursConfig,
 )
 from .serializers import (
     HolidaySerializer, NotificationPreferenceSerializer,
     NotificationRoutingRuleSerializer, NotificationSerializer,
-    WorkingHoursConfigSerializer,
+    WhatsAppTemplateSerializer, WorkingHoursConfigSerializer,
 )
-from .services import merged_preferences, resolve_vapid_keys
+from .services import (
+    merged_preferences, resolve_vapid_keys, set_template_approval_status,
+    submit_template_for_approval,
+)
 
 
 class NotificationViewSet(TenantMixin, viewsets.ReadOnlyModelViewSet):
@@ -225,6 +229,61 @@ class HolidayViewSet(TenantMixin, viewsets.ModelViewSet):
 
     def perform_create(self, serializer):
         serializer.save(company=self.request.user.company)
+
+
+class WhatsAppTemplateViewSet(TenantMixin, viewsets.ModelViewSet):
+    """XMKT25 — Registre des gabarits BSP + cycle d'approbation Meta.
+
+    Lecture : tout rôle (pour la sélection dans une campagne). Écriture
+    (créer/soumettre/décider) : admin seulement. company posée côté serveur.
+    Une campagne ne peut choisir qu'un gabarit `statut_approbation=approuve`
+    (appliqué côté service `approved_templates_for`, pas ici — ce viewset gère
+    le registre lui-même)."""
+    queryset = WhatsAppTemplate.objects.all()
+    serializer_class = WhatsAppTemplateSerializer
+    READ_ACTIONS = ['list', 'retrieve']
+
+    def get_permissions(self):
+        if self.action in self.READ_ACTIONS:
+            return [IsAnyRole()]
+        return [IsAdminRole()]
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        statut = self.request.query_params.get('statut_approbation')
+        if statut:
+            qs = qs.filter(statut_approbation=statut)
+        groupe = self.request.query_params.get('groupe')
+        if groupe:
+            qs = qs.filter(groupe=groupe)
+        return qs
+
+    def perform_create(self, serializer):
+        serializer.save(company=self.request.user.company)
+
+    @action(detail=True, methods=['post'], url_path='submit')
+    def submit(self, request, pk=None):
+        """Soumet le gabarit à l'approbation Meta (gated, no-op sans jeton)."""
+        tpl = self.get_object()
+        submit_template_for_approval(tpl, user=request.user)
+        tpl.refresh_from_db()
+        return Response(self.get_serializer(tpl).data)
+
+    @action(detail=True, methods=['post'], url_path='decision')
+    def decision(self, request, pk=None):
+        """Saisie manuelle du statut d'approbation (retour Meta Business Manager).
+
+        Corps : { statut_approbation: 'approuve'|'rejete', motif_rejet? }."""
+        tpl = self.get_object()
+        statut = request.data.get('statut_approbation')
+        if statut not in WhatsAppTemplate.StatutApprobation.values:
+            return Response(
+                {'detail': "Statut d'approbation invalide."},
+                status=status.HTTP_400_BAD_REQUEST)
+        set_template_approval_status(
+            tpl, statut, motif_rejet=request.data.get('motif_rejet', ''))
+        tpl.refresh_from_db()
+        return Response(self.get_serializer(tpl).data)
 
 
 # ─────────────────────────────────────────────────────────────────────────────

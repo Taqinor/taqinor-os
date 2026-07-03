@@ -415,3 +415,84 @@ CHANNELS = [
 
 def mark_read_at():
     return timezone.now()
+
+
+# =============================================================================
+# XMKT25 — Cycle d'approbation Meta des gabarits WhatsApp BSP.
+# =============================================================================
+
+def approved_templates_for(company, *, event_key=None):
+    """Gabarits WhatsApp SÉLECTIONNABLES pour une campagne (XMKT25).
+
+    Seuls les gabarits `statut_approbation == APPROUVE` ET actifs sont
+    proposables. `event_key` (optionnel) filtre par `groupe` — permet à un
+    appelant de restreindre aux variantes fr/ar d'un même gabarit logique.
+    Renvoie un QuerySet (peut être vide)."""
+    from .models import WhatsAppTemplate
+    qs = WhatsAppTemplate.objects.filter(
+        company=company, active=True,
+        statut_approbation=WhatsAppTemplate.StatutApprobation.APPROUVE,
+    )
+    if event_key:
+        qs = qs.filter(groupe=event_key)
+    return qs.order_by('name', 'language')
+
+
+def submit_template_for_approval(template, *, user=None):
+    """Soumet un gabarit à l'approbation Meta (XMKT25), GATED sur credentials BSP.
+
+    Sans `WHATSAPP_BSP_ENABLED=1` + credentials complets (même gate que
+    `whatsapp_bsp.get_whatsapp_provider`), c'est un NO-OP FONCTIONNEL : le
+    gabarit passe simplement en statut `soumis` pour que le statut soit saisi
+    manuellement par la suite (l'ERP ne peut pas encore parler à l'API Meta).
+    Idempotent : un gabarit déjà `approuve`/`rejete` n'est pas re-soumis (il
+    faut d'abord le repasser en brouillon). Jamais d'exception remontée."""
+    from .models import WhatsAppTemplate
+    if template is None:
+        return template
+    if template.statut_approbation in (
+            WhatsAppTemplate.StatutApprobation.APPROUVE,
+            WhatsAppTemplate.StatutApprobation.REJETE):
+        return template
+    try:
+        import os
+        bsp_ready = os.getenv('WHATSAPP_BSP_ENABLED', '0') == '1' and all([
+            os.getenv('WHATSAPP_BSP_BASE_URL', '').strip(),
+            os.getenv('WHATSAPP_BSP_TOKEN', '').strip(),
+            os.getenv('WHATSAPP_BSP_PHONE_NUMBER_ID', '').strip(),
+        ])
+        if bsp_ready:
+            # SEAM : l'appel réel à l'API Meta de soumission de gabarit n'est
+            # PAS implémenté (nécessite le compte Meta Business Manager du
+            # fondateur). On marque quand même `soumis` pour que le statut
+            # réel (approuvé/rejeté) soit saisi manuellement en retour de
+            # Meta — comportement identique au chemin non-gated.
+            logger.info(
+                'submit_template_for_approval: BSP prêt mais soumission API '
+                'Meta non implémentée (gabarit %s) — statut posé à "soumis" '
+                'pour saisie manuelle du retour.', template.pk)
+        template.statut_approbation = WhatsAppTemplate.StatutApprobation.SOUMIS
+        template.save(update_fields=['statut_approbation', 'updated_at'])
+    except Exception as exc:  # pragma: no cover - défensif
+        logger.warning('submit_template_for_approval échoué (tpl %s) : %s',
+                       getattr(template, 'pk', None), exc)
+    return template
+
+
+def set_template_approval_status(template, statut, *, motif_rejet=''):
+    """Saisie MANUELLE du statut d'approbation (retour Meta lu par un humain).
+
+    C'est le chemin normal tant que la soumission API n'est pas branchée :
+    l'admin consulte le Meta Business Manager et reporte le statut ici.
+    `statut` doit appartenir à `WhatsAppTemplate.StatutApprobation`."""
+    from .models import WhatsAppTemplate
+    if template is None:
+        return template
+    if statut not in WhatsAppTemplate.StatutApprobation.values:
+        logger.warning('set_template_approval_status: statut inconnu %r', statut)
+        return template
+    template.statut_approbation = statut
+    template.motif_rejet = (
+        motif_rejet or '') if statut == WhatsAppTemplate.StatutApprobation.REJETE else ''
+    template.save(update_fields=['statut_approbation', 'motif_rejet', 'updated_at'])
+    return template

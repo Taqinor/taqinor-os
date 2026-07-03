@@ -2,7 +2,7 @@ from rest_framework import serializers
 
 from .models import (
     EventType, Holiday, Notification, NotificationPreference,
-    NotificationRoutingRule, WorkingHoursConfig,
+    NotificationRoutingRule, WhatsAppTemplate, WorkingHoursConfig,
 )
 
 
@@ -81,3 +81,25 @@ class HolidaySerializer(serializers.ModelSerializer):
         # company posée côté serveur — jamais acceptée du corps.
         fields = ['id', 'date', 'nom', 'recurrent_annuel', 'created_at']
         read_only_fields = ['id', 'created_at']
+
+
+class WhatsAppTemplateSerializer(serializers.ModelSerializer):
+    """XMKT25 — Registre des gabarits BSP + cycle d'approbation Meta."""
+    statut_approbation_label = serializers.CharField(
+        source='get_statut_approbation_display', read_only=True)
+    categorie_label = serializers.CharField(
+        source='get_categorie_display', read_only=True)
+
+    class Meta:
+        model = WhatsAppTemplate
+        # company posée côté serveur — jamais acceptée du corps.
+        fields = [
+            'id', 'name', 'body_fr', 'language', 'active',
+            'statut_approbation', 'statut_approbation_label', 'motif_rejet',
+            'categorie', 'categorie_label', 'groupe',
+            'created_at', 'updated_at',
+        ]
+        read_only_fields = [
+            'id', 'statut_approbation', 'statut_approbation_label',
+            'motif_rejet', 'categorie_label', 'created_at', 'updated_at',
+        ]

@@ -3,7 +3,7 @@ from rest_framework.routers import DefaultRouter
 
 from .views import (
     HolidayViewSet, NotificationPreferenceViewSet, NotificationRoutingRuleViewSet,
-    NotificationViewSet, WorkingHoursConfigViewSet,
+    NotificationViewSet, WhatsAppTemplateViewSet, WorkingHoursConfigViewSet,
     calendar_check, push_subscribe, push_unsubscribe, vapid_public_key,
 )
 from .views_whatsapp_bsp import WhatsAppBspWebhookView
@@ -19,6 +19,9 @@ router.register(
     r'working-hours', WorkingHoursConfigViewSet, basename='notification-working-hours')
 router.register(
     r'holidays', HolidayViewSet, basename='notification-holiday')
+# XMKT25 — Registre des gabarits WhatsApp BSP + cycle d'approbation Meta.
+router.register(
+    r'whatsapp-templates', WhatsAppTemplateViewSet, basename='notification-whatsapp-template')
 
 urlpatterns = [
     path('', include(router.urls)),

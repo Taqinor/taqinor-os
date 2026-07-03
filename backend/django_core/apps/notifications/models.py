@@ -423,6 +423,33 @@ class WhatsAppTemplate(models.Model):
     # Code langue IETF (ex. 'fr', 'ar', 'fr_MA') — défaut FR.
     language = models.CharField(max_length=10, default='fr', verbose_name='Langue')
     active = models.BooleanField(default=True, verbose_name='Actif')
+
+    # ── XMKT25 — Cycle d'approbation Meta ───────────────────────────────────
+    class StatutApprobation(models.TextChoices):
+        BROUILLON = 'brouillon', 'Brouillon'
+        SOUMIS = 'soumis', 'Soumis'
+        APPROUVE = 'approuve', 'Approuvé'
+        REJETE = 'rejete', 'Rejeté'
+
+    class Categorie(models.TextChoices):
+        MARKETING = 'marketing', 'Marketing'
+        UTILITY = 'utility', 'Utilitaire'
+
+    statut_approbation = models.CharField(
+        max_length=12, choices=StatutApprobation.choices,
+        default=StatutApprobation.BROUILLON,
+        verbose_name="Statut d'approbation Meta")
+    # Motif de rejet éventuel (renseigné manuellement ou via la réponse Meta).
+    motif_rejet = models.CharField(
+        max_length=255, blank=True, default='', verbose_name='Motif de rejet')
+    categorie = models.CharField(
+        max_length=12, choices=Categorie.choices, default=Categorie.UTILITY,
+        verbose_name='Catégorie Meta')
+    # Regroupe les variantes de langue d'un même gabarit logique (ex. fr/ar du
+    # même nom) sans dépendre du nom Meta seul. Vide = pas de groupe explicite
+    # (comportement actuel préservé).
+    groupe = models.CharField(
+        max_length=100, blank=True, default='', verbose_name='Groupe de variantes')
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
@@ -438,10 +465,17 @@ class WhatsAppTemplate(models.Model):
         ]
         indexes = [
             models.Index(fields=['company', 'active'], name='nwa_tpl_company_active_idx'),
+            models.Index(
+                fields=['company', 'statut_approbation'],
+                name='nwa_tpl_company_statut_idx'),
         ]
 
     def __str__(self):
         return f'{self.company_id}:{self.name}:{self.language}'
+
+    @property
+    def is_approuve(self):
+        return self.statut_approbation == self.StatutApprobation.APPROUVE
 
 
 class WhatsAppMessageLog(models.Model):
