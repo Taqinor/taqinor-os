@@ -117,6 +117,15 @@ class NonConformite(models.Model):
         related_name='qhse_ncr_retours',
         verbose_name='Fournisseur (retour)',
     )
+    # XQHS4 — code de défaut normalisé (remplace/complète `origine` texte
+    # libre pour permettre le Pareto). Nullable/additif.
+    code_defaut = models.ForeignKey(
+        'CodeDefaut',
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='non_conformites',
+        verbose_name='Code de défaut',
+    )
     date_creation = models.DateTimeField(
         auto_now_add=True, verbose_name='Créé le')
 
@@ -492,6 +501,15 @@ class ReleveControle(models.Model):
         null=True, blank=True,
         related_name='qhse_releves_effectues',
         verbose_name='Relevé par',
+    )
+    # XQHS4 — code de défaut normalisé posé sur un relevé en ÉCHEC
+    # (``conforme=False``). Nullable/additif.
+    code_defaut = models.ForeignKey(
+        'CodeDefaut',
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='releves_controle',
+        verbose_name='Code de défaut',
     )
     date_creation = models.DateTimeField(
         auto_now_add=True, verbose_name='Créé le')
@@ -1918,6 +1936,14 @@ class Incident(models.Model):
         null=True, blank=True,
         related_name='qhse_incidents_declares',
         verbose_name='Déclaré par',
+    )
+    # XQHS4 — code de défaut normalisé posé sur un incident. Nullable/additif.
+    code_defaut = models.ForeignKey(
+        'CodeDefaut',
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='incidents',
+        verbose_name='Code de défaut',
     )
     date_creation = models.DateTimeField(
         auto_now_add=True, verbose_name='Créé le')
@@ -3349,3 +3375,61 @@ class ControleReception(models.Model):
     def ouvert(self):
         """Contrôle non encore statué (advisory pour ``stock``)."""
         return self.verdict == self.Verdict.EN_ATTENTE
+
+
+# ── XQHS4 — Catalogue de codes de défauts + Pareto qualité ──────────────────
+
+class CodeDefaut(models.Model):
+    """Code de défaut normalisé (référentiel company-scoped, XQHS4).
+
+    Remplace le texte libre ``NonConformite.origine`` pour permettre
+    l'agrégation des causes (Pareto). Chaque code porte un ``code`` court, un
+    ``libelle`` et une ``famille`` (regroupement de haut niveau : produit / pose
+    DC / pose AC / structure / document / fournisseur…). Seedable via
+    ``manage.py seed_codes_defaut_solaire`` (idempotent).
+
+    Multi-société via ``company`` posée côté serveur. Entièrement additif.
+    """
+    class Famille(models.TextChoices):
+        PRODUIT = 'produit', 'Produit'
+        POSE_DC = 'pose_dc', 'Pose DC'
+        POSE_AC = 'pose_ac', 'Pose AC'
+        STRUCTURE = 'structure', 'Structure'
+        DOCUMENT = 'document', 'Document'
+        FOURNISSEUR = 'fournisseur', 'Fournisseur'
+        AUTRE = 'autre', 'Autre'
+
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='qhse_codes_defaut',
+        verbose_name='Société',
+    )
+    code = models.CharField(max_length=30, verbose_name='Code')
+    libelle = models.CharField(max_length=255, verbose_name='Libellé')
+    famille = models.CharField(
+        max_length=15, choices=Famille.choices,
+        default=Famille.AUTRE, verbose_name='Famille')
+    actif = models.BooleanField(default=True, verbose_name='Actif')
+    date_creation = models.DateTimeField(
+        auto_now_add=True, verbose_name='Créé le')
+
+    class Meta:
+        verbose_name = 'Code de défaut'
+        verbose_name_plural = 'Codes de défaut'
+        ordering = ['famille', 'code']
+        constraints = [
+            models.UniqueConstraint(
+                fields=['company', 'code'],
+                name='qhse_codedefaut_co_code_uniq',
+            )
+        ]
+        indexes = [
+            models.Index(
+                fields=['company', 'famille'],
+                name='qhse_codedefaut_co_famille',
+            ),
+        ]
+
+    def __str__(self):
+        return f'{self.code} — {self.libelle}'

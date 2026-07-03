@@ -18,6 +18,7 @@ from apps.ventes.utils.references import create_with_reference
 from .models import (
     ActionCorrectivePreventive, AnalyseIncident, Audit,
     BilanCarbone, BordereauSuiviDechet, CauseIncident,
+    CodeDefaut,
     ConformiteEnvironnementale, ConsignationLoto, ContactUrgence,
     ControleReception,
     CritereAudit, Dechet, DeclarationCnss, Derogation, EtapeDeclarationAt,
@@ -37,6 +38,7 @@ from .serializers import (
     ActionCorrectivePreventiveSerializer, AnalyseIncidentSerializer,
     AuditSerializer, BilanCarboneSerializer, BordereauSuiviDechetSerializer,
     CauseIncidentSerializer,
+    CodeDefautSerializer,
     ConformiteEnvironnementaleSerializer,
     ConsignationLotoSerializer, ContactUrgenceSerializer,
     ControleReceptionSerializer,
@@ -69,9 +71,11 @@ from .selectors import (
     export_esg,
     hold_points_status,
     heures_travaillees_chantiers,
-    iso9001_readiness, permis_travail_expirant, photos_controle_par_phase,
+    iso9001_readiness, pareto_defauts, permis_travail_expirant,
+    photos_controle_par_phase,
     procedure_qualite_courante, procedure_qualite_versions,
     procedures_qualite_courantes, satisfaction_moyenne, statistiques_tf_tg,
+    taux_conformite_premier_passage,
 )
 from .services import (
     activer_procedure, calculer_score_audit, calculer_score_notation,
@@ -2087,3 +2091,51 @@ class ControleReceptionViewSet(_QhseBaseViewSet):
             return Response(
                 {'detail': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
         return Response(self.get_serializer(controle).data)
+
+
+# ── XQHS4 — Catalogue de codes de défauts + Pareto qualité ──────────────────
+
+class CodeDefautViewSet(_QhseBaseViewSet):
+    """Référentiel des codes de défaut (XQHS4). CRUD scopé société.
+
+    Filtres optionnels ``?famille=`` / ``?actif=``.
+    """
+    queryset = CodeDefaut.objects.all()
+    serializer_class = CodeDefautSerializer
+    filter_backends = [filters.SearchFilter, filters.OrderingFilter]
+    search_fields = ['code', 'libelle']
+    ordering_fields = ['id', 'famille', 'code']
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        famille = self.request.query_params.get('famille')
+        if famille not in (None, ''):
+            qs = qs.filter(famille=famille)
+        actif = self.request.query_params.get('actif')
+        if actif not in (None, ''):
+            qs = qs.filter(actif=actif.lower() in ('1', 'true'))
+        return qs
+
+
+class ParetoDefautsViewSet(viewsets.ViewSet):
+    """Pareto qualité en lecture seule (XQHS4).
+
+    ``GET …/pareto-defauts/?periode=YYYY-MM&chantier=<id>&famille=<f>``
+    agrège les codes de défaut posés sur NCR / relevés en échec / incidents en
+    un Pareto (comptes + % cumulé) et expose le taux de conformité
+    premier-passage des relevés (mêmes filtres période/chantier). Agrégation
+    PURE — aucune mutation. Scopé société. Palier Responsable/Admin.
+    """
+    permission_classes = [IsResponsableOrAdmin]
+
+    def list(self, request):
+        periode = request.query_params.get('periode') or None
+        chantier = request.query_params.get('chantier') or None
+        famille = request.query_params.get('famille') or None
+        return Response({
+            'pareto': pareto_defauts(
+                request.user.company, periode=periode,
+                chantier_id=chantier, famille=famille),
+            'premier_passage': taux_conformite_premier_passage(
+                request.user.company, chantier_id=chantier),
+        })

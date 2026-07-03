@@ -8,6 +8,7 @@ from rest_framework import serializers
 
 from .models import (
     ActionCorrectivePreventive, AnalyseIncident, Audit, CauseIncident,
+    CodeDefaut,
     ConsignationLoto, ContactUrgence, ControleReception,
     BilanCarbone, BordereauSuiviDechet, ConformiteEnvironnementale,
     CritereAudit, Dechet, DeclarationCnss, Derogation, EtapeDeclarationAt,
@@ -34,6 +35,21 @@ def _meme_societe(serializer, value, label):
     return value
 
 
+class CodeDefautSerializer(serializers.ModelSerializer):
+    """Code de défaut normalisé (référentiel, XQHS4). ``company`` posée côté
+    serveur."""
+    famille_display = serializers.CharField(
+        source='get_famille_display', read_only=True)
+
+    class Meta:
+        model = CodeDefaut
+        fields = [
+            'id', 'code', 'libelle', 'famille', 'famille_display', 'actif',
+            'date_creation',
+        ]
+        read_only_fields = ['date_creation']
+
+
 class NonConformiteSerializer(serializers.ModelSerializer):
     gravite_display = serializers.CharField(
         source='get_gravite_display', read_only=True)
@@ -52,6 +68,8 @@ class NonConformiteSerializer(serializers.ModelSerializer):
             # fournisseur.
             'disposition', 'disposition_display', 'disposition_par',
             'disposition_le', 'cout_disposition', 'fournisseur',
+            # XQHS4 — code de défaut normalisé (Pareto).
+            'code_defaut',
             'date_creation',
         ]
         read_only_fields = [
@@ -61,6 +79,9 @@ class NonConformiteSerializer(serializers.ModelSerializer):
 
     def validate_fournisseur(self, value):
         return _meme_societe(self, value, 'Fournisseur')
+
+    def validate_code_defaut(self, value):
+        return _meme_societe(self, value, 'Code de défaut')
 
 
 class ActionCorrectivePreventiveSerializer(serializers.ModelSerializer):
@@ -196,7 +217,7 @@ class ReleveControleSerializer(serializers.ModelSerializer):
         fields = [
             'id', 'plan_chantier', 'point', 'point_intitule', 'point_phase',
             'point_hold_point', 'point_valeur_min', 'point_valeur_max',
-            'valeur', 'conforme', 'photo_key',
+            'valeur', 'conforme', 'photo_key', 'code_defaut',
             'date_releve', 'releve_par', 'date_creation',
         ]
         read_only_fields = ['date_creation']
@@ -206,6 +227,9 @@ class ReleveControleSerializer(serializers.ModelSerializer):
 
     def validate_point(self, value):
         return _meme_societe(self, value, 'Point de contrôle')
+
+    def validate_code_defaut(self, value):
+        return _meme_societe(self, value, 'Code de défaut')
 
 
 class ReleveCourbeIVSerializer(serializers.ModelSerializer):
@@ -695,9 +719,12 @@ class IncidentSerializer(serializers.ModelSerializer):
             'type_incident_display', 'gravite', 'gravite_display', 'statut',
             'statut_display', 'chantier_id', 'date_incident', 'description',
             'action_immediate', 'declare_par', 'declare_par_nom',
-            'date_creation',
+            'code_defaut', 'date_creation',
         ]
         read_only_fields = ['reference', 'declare_par', 'date_creation']
+
+    def validate_code_defaut(self, value):
+        return _meme_societe(self, value, 'Code de défaut')
 
 
 class CauseIncidentSerializer(serializers.ModelSerializer):

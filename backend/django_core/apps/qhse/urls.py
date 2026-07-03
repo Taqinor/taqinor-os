@@ -7,6 +7,7 @@ from .views import (
     CalendrierQhseViewSet,
     CauseIncidentViewSet, ConformiteEnvironnementaleViewSet,
     ConsignationLotoViewSet,
+    CodeDefautViewSet,
     ContactUrgenceViewSet, ControleReceptionViewSet, DechetViewSet,
     CritereAuditViewSet, DeclarationCnssViewSet, DerogationViewSet,
     EtapeDeclarationAtViewSet,
@@ -15,7 +16,8 @@ from .views import (
     InductionSecuriteViewSet, InspectionSecuriteViewSet,
     Iso9001ReadinessViewSet,
     ItemNotationViewSet, LigneEvaluationRisqueViewSet,
-    NonConformiteViewSet, NotationFinChantierViewSet, PermisTravailViewSet,
+    NonConformiteViewSet, NotationFinChantierViewSet,
+    ParetoDefautsViewSet, PermisTravailViewSet,
     PlanControleReceptionViewSet, PlanInspectionChantierViewSet,
     PlanInspectionModeleViewSet,
     PlanUrgenceViewSet,
@@ -77,6 +79,9 @@ router.register(
 router.register(
     r'points-controle-reception', PointControleReceptionViewSet)
 router.register(r'controles-reception', ControleReceptionViewSet)
+router.register(r'codes-defaut', CodeDefautViewSet)
+router.register(
+    r'pareto-defauts', ParetoDefautsViewSet, basename='pareto-defauts')
 
 urlpatterns = [
     path('', include(router.urls)),
