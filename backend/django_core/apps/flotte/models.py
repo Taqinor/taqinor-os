@@ -1192,6 +1192,11 @@ class OrdreReparation(models.Model):
 
     class Statut(models.TextChoices):
         OUVERT = 'ouvert', 'Ouvert'
+        # XFLT19 — Approbation des devis de réparation externe : chaîne
+        # enrichie DEVIS_RECU → APPROUVE → EN_COURS, la chaîne existante
+        # ouvert/en_cours/clôturé reste intacte (jamais de doublon).
+        DEVIS_RECU = 'devis_recu', 'Devis reçu'
+        APPROUVE = 'approuve', 'Approuvé'
         EN_COURS = 'en_cours', 'En cours'
         CLOTURE = 'cloture', 'Clôturé'
 
@@ -1254,6 +1259,28 @@ class OrdreReparation(models.Model):
     # bloquant, jamais recalculé après coup).
     sous_garantie = models.BooleanField(
         default=False, verbose_name='Sous garantie (possiblement)')
+    # XFLT19 — Approbation des devis de réparation externe : montant du
+    # devis fournisseur + fichier scanné, contrôlés à l'entrée en
+    # ``en_cours`` (seuil société, voir ``ParametreApprobationOR``) et
+    # écart facture (``cout_total``) vs devis signalé à la clôture.
+    montant_devis = models.DecimalField(
+        max_digits=12, decimal_places=2, null=True, blank=True,
+        verbose_name='Montant du devis (MAD)')
+    devis_fichier = models.FileField(
+        upload_to='flotte/ordres_reparation/devis/%Y/%m/',
+        blank=True, null=True, verbose_name='Devis (scan)')
+    approuve_par = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='flotte_ordres_reparation_approuves',
+        verbose_name='Approuvé par',
+    )
+    date_approbation = models.DateTimeField(
+        null=True, blank=True, verbose_name="Date d'approbation")
+    ecart_facture_devis_pct = models.DecimalField(
+        max_digits=6, decimal_places=2, null=True, blank=True,
+        verbose_name='Écart facture / devis (%)')
     date_creation = models.DateTimeField(
         auto_now_add=True, verbose_name='Créé le')
 
@@ -3914,3 +3941,56 @@ class BudgetFlotte(models.Model):
     def __str__(self):
         return (f'Budget {self.get_categorie_display()} {self.annee} — '
                 f'{self.montant_budgete} MAD')
+
+
+# ── XFLT19 — Approbation des devis de réparation externe ───────────────────────
+
+class ParametreApprobationOR(models.Model):
+    """Seuil société d'approbation des devis de réparation (XFLT19).
+
+    Un seul enregistrement par société (comme ``ParametreAmortissementCGI``) :
+    un ``OrdreReparation`` dont ``montant_devis`` dépasse ``seuil_approbation``
+    exige l'action ``approuver/`` (rôle gestionnaire — réutilise la mécanique
+    rôles existante de ``DemandeVehicule``) avant de pouvoir passer en
+    ``en_cours``.
+
+    Multi-tenant : ``company`` est posée côté serveur (jamais lue du corps de
+    requête).
+    """
+
+    SEUIL_APPROBATION_DEFAUT = 5000
+    ECART_ALERTE_PCT_DEFAUT = 10
+
+    company = models.OneToOneField(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='flotte_parametre_approbation_or',
+        verbose_name='Société',
+    )
+    seuil_approbation = models.DecimalField(
+        max_digits=12, decimal_places=2, default=SEUIL_APPROBATION_DEFAUT,
+        verbose_name='Seuil d’approbation (MAD)')
+    ecart_alerte_pct = models.DecimalField(
+        max_digits=5, decimal_places=2, default=ECART_ALERTE_PCT_DEFAUT,
+        verbose_name='Écart facture/devis alerte (%)')
+    date_creation = models.DateTimeField(
+        auto_now_add=True, verbose_name='Créé le')
+
+    class Meta:
+        verbose_name = "Paramètre d'approbation OR"
+        verbose_name_plural = "Paramètres d'approbation OR"
+
+    def __str__(self):
+        return f'Seuil approbation OR {self.company} : {self.seuil_approbation} MAD'
+
+    @classmethod
+    def pour(cls, company):
+        """XFLT19 — Paramètre de la société, ou les valeurs par défaut si
+        non paramétré. Lecture seule."""
+        param = cls.objects.filter(company=company).first()
+        if param is not None:
+            return param
+        return cls(
+            company=company,
+            seuil_approbation=cls.SEUIL_APPROBATION_DEFAUT,
+            ecart_alerte_pct=cls.ECART_ALERTE_PCT_DEFAUT)

@@ -905,11 +905,17 @@ class OrdreReparationSerializer(serializers.ModelSerializer):
             'id', 'actif_flotte', 'actif_label', 'garage', 'garage_nom',
             'echeance', 'description', 'date_ouverture', 'date_cloture',
             'statut', 'statut_display', 'cout_main_oeuvre', 'cout_pieces',
-            'cout_total', 'sous_garantie', 'notes', 'date_creation',
+            'cout_total', 'sous_garantie', 'montant_devis', 'devis_fichier',
+            'approuve_par', 'date_approbation', 'ecart_facture_devis_pct',
+            'notes', 'date_creation',
         ]
-        # cout_total est dérivé côté modèle, jamais saisi. sous_garantie est
-        # posé automatiquement à la création (XFLT14), jamais du body.
-        read_only_fields = ['cout_total', 'sous_garantie', 'date_creation']
+        # cout_total est dérivé côté modèle, jamais saisi. sous_garantie et
+        # ecart_facture_devis_pct sont posés automatiquement (XFLT14/XFLT19).
+        # approuve_par/date_approbation passent UNIQUEMENT par l'action
+        # ``approuver/`` — jamais un PATCH direct.
+        read_only_fields = [
+            'cout_total', 'sous_garantie', 'approuve_par', 'date_approbation',
+            'ecart_facture_devis_pct', 'date_creation']
 
     def get_actif_label(self, obj):
         return obj.actif_flotte.label if obj.actif_flotte_id else None
@@ -962,6 +968,25 @@ class OrdreReparationSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError(
                 {'date_cloture':
                  "La date de clôture ne peut pas précéder l'ouverture."})
+
+        # XFLT19 — Un devis au-dessus du seuil d'approbation société ne peut
+        # pas passer en « en_cours » sans être passé par l'action
+        # ``approuver/`` au préalable (statut approuve).
+        nouveau_statut = attrs.get('statut')
+        if nouveau_statut is not None and self.instance is not None:
+            from .services import transition_statut_or_autorisee
+
+            # Simule l'instance avec le montant_devis à jour (peut être
+            # modifié dans la même requête) pour le contrôle de seuil.
+            montant_devis = attrs.get(
+                'montant_devis', self.instance.montant_devis)
+            statut_courant = self.instance.statut
+            self.instance.montant_devis = montant_devis
+            ok, message = transition_statut_or_autorisee(
+                self.instance, nouveau_statut)
+            self.instance.statut = statut_courant
+            if not ok:
+                raise serializers.ValidationError({'statut': message})
 
         return attrs
 

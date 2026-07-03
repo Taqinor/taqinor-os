@@ -1160,7 +1160,11 @@ class OrdreReparationViewSet(_FlotteBaseViewSet):
         """FLOTTE17 — Clôture l'OR (et l'échéance liée par défaut).
 
         Écriture (responsable/admin). ``?cloturer_echeance=false`` laisse
-        l'échéance d'entretien liée intacte. Renvoie l'OR clôturé sérialisé.
+        l'échéance d'entretien liée intacte. XFLT19 — si ``montant_devis``
+        est renseigné, calcule et journalise l'écart facture/devis (%) ; un
+        écart > seuil société (défaut 10 %) est signalé (warning non
+        bloquant, ``ecart_alerte`` dans la réponse). Renvoie l'OR clôturé
+        sérialisé.
         """
         ordre = self.get_object()
 
@@ -1169,11 +1173,28 @@ class OrdreReparationViewSet(_FlotteBaseViewSet):
             param is not None
             and param.lower() in ('0', 'false', 'faux', 'non'))
 
-        from .services import cloturer_ordre_reparation
+        from .services import cloturer_ordre_reparation, ecart_facture_devis_alerte
         cloturer_ordre_reparation(
             ordre, cloturer_echeance=cloturer_echeance)
-        serializer = self.get_serializer(ordre)
-        return Response(serializer.data)
+        data = self.get_serializer(ordre).data
+        data['ecart_alerte'] = ecart_facture_devis_alerte(ordre)
+        return Response(data)
+
+    @action(detail=True, methods=['post'])
+    def approuver(self, request, pk=None):
+        """XFLT19 — Approuve le devis de réparation (écriture responsable/
+        admin — mécanique rôles réutilisée de ``DemandeVehicule``).
+
+        Exige le statut ``devis_recu`` (400 sinon). Pose ``approuve_par``/
+        ``date_approbation`` côté serveur.
+        """
+        ordre = self.get_object()
+        from .services import approuver_ordre_reparation
+        try:
+            ordre = approuver_ordre_reparation(ordre, request.user)
+        except ValueError as exc:
+            return Response({'detail': str(exc)}, status=400)
+        return Response(self.get_serializer(ordre).data)
 
 
 class PneumatiqueViewSet(_FlotteBaseViewSet):

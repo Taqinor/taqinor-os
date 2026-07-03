@@ -358,6 +358,13 @@ def cloturer_ordre_reparation(ordre, date_cloture=None,
     est rattachée à l'OR, cette échéance est marquée ``fait`` (sauf si elle l'est
     déjà) — l'entretien curatif solde l'échéance préventive d'origine.
 
+    XFLT19 — À la clôture, si ``montant_devis`` est renseigné, calcule
+    l'écart facture (``cout_total``) vs devis en % (``ecart_facture_devis_pct``,
+    signé — positif si la facture dépasse le devis) et le journalise (posé
+    en base, jamais juste loggé — consultable après coup). Un écart absolu
+    > ``ParametreApprobationOR.ecart_alerte_pct`` (défaut 10 %) est un
+    warning NON bloquant (la clôture réussit toujours).
+
     Idempotent : ré-appeler sur un OR déjà clôturé ne change rien (la date de
     clôture existante est conservée). Multi-tenant : aucune société n'est lue du
     corps de requête ; l'OR porte déjà sa société côté serveur.
@@ -373,6 +380,13 @@ def cloturer_ordre_reparation(ordre, date_cloture=None,
     ordre.statut = ordre.Statut.CLOTURE
     if ordre.date_cloture is None or not deja_cloture:
         ordre.date_cloture = date_cloture
+
+    if ordre.montant_devis and float(ordre.montant_devis) > 0:
+        ecart = (
+            (float(ordre.cout_total or 0) - float(ordre.montant_devis))
+            / float(ordre.montant_devis) * 100)
+        ordre.ecart_facture_devis_pct = round(ecart, 2)
+
     ordre.save()
 
     echeance_close = None
@@ -384,6 +398,71 @@ def cloturer_ordre_reparation(ordre, date_cloture=None,
             echeance_close = echeance
 
     return ordre, echeance_close
+
+
+def ecart_facture_devis_alerte(ordre):
+    """XFLT19 — ``True`` si l'écart facture/devis de l'OR dépasse le seuil
+    d'alerte de la société (défaut 10 %, ``ParametreApprobationOR``).
+    Lecture seule ; ``None``/``False`` si ``ecart_facture_devis_pct`` n'est
+    pas calculé (pas de devis saisi, ou OR pas encore clôturé)."""
+    from .models import ParametreApprobationOR
+
+    if ordre.ecart_facture_devis_pct is None:
+        return False
+    seuil = float(ParametreApprobationOR.pour(ordre.company).ecart_alerte_pct)
+    return abs(float(ordre.ecart_facture_devis_pct)) > seuil
+
+
+def approuver_ordre_reparation(ordre, user):
+    """XFLT19 — Approuve le devis de réparation (statut → ``approuve``).
+
+    Pose ``approuve_par``/``date_approbation`` côté serveur. Lève
+    ``ValueError`` si l'OR n'est pas au statut ``devis_recu``."""
+    from django.utils import timezone
+
+    from .models import OrdreReparation
+
+    if ordre.statut != OrdreReparation.Statut.DEVIS_RECU:
+        raise ValueError(
+            "Seul un OR au statut « devis reçu » peut être approuvé.")
+
+    ordre.statut = OrdreReparation.Statut.APPROUVE
+    ordre.approuve_par = user
+    ordre.date_approbation = timezone.now()
+    ordre.save(update_fields=[
+        'statut', 'approuve_par', 'date_approbation'])
+    return ordre
+
+
+def transition_statut_or_autorisee(ordre, nouveau_statut):
+    """XFLT19 — ``(ok: bool, message: str)`` — vérifie que le passage en
+    ``en_cours`` respecte le seuil d'approbation société.
+
+    Un OR dont ``montant_devis`` dépasse
+    ``ParametreApprobationOR.seuil_approbation`` ne peut passer en
+    ``en_cours`` que depuis le statut ``approuve`` (l'action ``approuver/``
+    doit avoir été appelée par un rôle gestionnaire au préalable). Sous le
+    seuil, ou sans devis saisi, la transition est toujours libre (aucune
+    régression sur la chaîne existante ouvert→en_cours→clôturé). Lecture
+    seule.
+    """
+    from .models import OrdreReparation, ParametreApprobationOR
+
+    if nouveau_statut != OrdreReparation.Statut.EN_COURS:
+        return True, ''
+    if not ordre.montant_devis:
+        return True, ''
+
+    seuil = float(ParametreApprobationOR.pour(ordre.company).seuil_approbation)
+    if float(ordre.montant_devis) <= seuil:
+        return True, ''
+    if ordre.statut == OrdreReparation.Statut.APPROUVE:
+        return True, ''
+
+    return False, (
+        f"Ce devis ({float(ordre.montant_devis):.2f} MAD) dépasse le seuil "
+        f"d'approbation ({seuil:.2f} MAD) : il doit être approuvé par un "
+        "gestionnaire avant de passer en cours.")
 
 
 # ── FLOTTE27 — Point d'intégration télématique (KEY-GATED no-op) ──────────────
