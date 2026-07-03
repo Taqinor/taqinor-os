@@ -131,6 +131,19 @@ class Fournisseur(models.Model):
         max_length=10, blank=True, default='',
         help_text="Incoterm par défaut (EXW, FOB, CIF…). Vide = non défini.")
 
+    # ── XPUR6 — conditions de paiement fournisseur ──────────────────────────
+    # Délai en jours (0 = comptant, comportement historique : date_echeance
+    # reste saisie à la main). fin_de_mois arrondit l'échéance à la fin du
+    # mois calendaire suivant l'ajout du délai (« 60 j fin de mois »).
+    delai_paiement_jours = models.PositiveIntegerField(default=0)
+    fin_de_mois = models.BooleanField(default=False)
+    # Escompte paiement anticipé (type 2/10 net 30) : escompte_pct % si réglé
+    # dans les escompte_jours suivant la date de facture. 0 = pas d'escompte
+    # (comportement historique).
+    escompte_pct = models.DecimalField(
+        max_digits=5, decimal_places=2, default=0)
+    escompte_jours = models.PositiveIntegerField(default=0)
+
     class Meta:
         verbose_name = "Fournisseur"
         verbose_name_plural = "Fournisseurs"
@@ -1078,6 +1091,34 @@ class LigneFactureFournisseur(models.Model):
     def total_ht(self):
         return (self.quantite or Decimal('0')) * (
             self.prix_unitaire_ht or Decimal('0'))
+
+
+class EcheanceFactureFournisseur(models.Model):
+    """XPUR6 — tranche d'échéancier d'une facture fournisseur (ex. 30 %
+    avance / 70 % livraison). Additif — une facture sans échéancier explicite
+    garde une échéance UNIQUE (``FactureFournisseur.date_echeance``,
+    comportement historique) ; le payment run (FG133) et la balance âgée
+    (FG132) lisent les tranches quand elles existent."""
+    company = models.ForeignKey(
+        'authentication.Company', on_delete=models.CASCADE,
+        null=True, blank=True, related_name='echeances_facture_fournisseur')
+    facture = models.ForeignKey(
+        FactureFournisseur, on_delete=models.CASCADE,
+        related_name='echeances')
+    pourcentage = models.DecimalField(
+        max_digits=5, decimal_places=2, null=True, blank=True,
+        help_text='Pourcentage du TTC de cette tranche (ex. 30.00).')
+    montant = models.DecimalField(max_digits=14, decimal_places=2, default=0)
+    date_echeance = models.DateField()
+    date_creation = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        verbose_name = 'Échéance de facture fournisseur'
+        verbose_name_plural = 'Échéances de facture fournisseur'
+        ordering = ['date_echeance', 'id']
+
+    def __str__(self):
+        return f'{self.facture_id} — {self.montant} @ {self.date_echeance}'
 
 
 class PaiementFournisseur(models.Model):

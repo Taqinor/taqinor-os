@@ -11,6 +11,7 @@ from .models import (
     FicheTechnique,
     DocumentConformiteFournisseur, AchatsParametres,
     CategorieFournisseur, ContactFournisseur,
+    EcheanceFactureFournisseur,
 )
 
 
@@ -663,9 +664,18 @@ class PaiementFournisseurSerializer(serializers.ModelSerializer):
         return value
 
 
+class EcheanceFactureFournisseurSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = EcheanceFactureFournisseur
+        fields = ['id', 'facture', 'pourcentage', 'montant', 'date_echeance',
+                  'date_creation']
+        read_only_fields = ['date_creation']
+
+
 class FactureFournisseurSerializer(serializers.ModelSerializer):
     lignes = LigneFactureFournisseurSerializer(many=True, required=False)
     paiements = PaiementFournisseurSerializer(many=True, read_only=True)
+    echeances = EcheanceFactureFournisseurSerializer(many=True, read_only=True)
     fournisseur_nom = serializers.CharField(
         source='fournisseur.nom', read_only=True)
     bon_commande_reference = serializers.CharField(
@@ -688,7 +698,7 @@ class FactureFournisseurSerializer(serializers.ModelSerializer):
             'devise', 'taux_change', 'montant_ttc_devise',
             'type_achat', 'statut', 'statut_display', 'note', 'created_by',
             'created_by_username', 'date_creation', 'date_mise_a_jour',
-            'lignes', 'paiements', 'total_paye', 'solde_du',
+            'lignes', 'paiements', 'echeances', 'total_paye', 'solde_du',
         ]
         # company + reference + statut + created_by sont posés côté serveur.
         # Le statut découle des paiements (recompute_facture_fournisseur_statut).
@@ -740,6 +750,17 @@ class FactureFournisseurSerializer(serializers.ModelSerializer):
             validated_data.get('devise'), validated_data.get('taux_change'))
         if mad is not None:
             validated_data['montant_ttc'] = mad
+        # XPUR6 — auto-dérive date_echeance depuis les conditions de paiement
+        # du fournisseur QUAND elle n'est pas explicitement fournie (reste
+        # modifiable ensuite). No-op si le fournisseur n'a pas de délai
+        # configuré (comportement historique).
+        if not validated_data.get('date_echeance'):
+            from .services import derive_date_echeance
+            fournisseur = validated_data.get('fournisseur')
+            date_facture = validated_data.get('date_facture')
+            derived = derive_date_echeance(fournisseur, date_facture)
+            if derived:
+                validated_data['date_echeance'] = derived
         facture = FactureFournisseur.objects.create(**validated_data)
         for ligne in lignes_data:
             LigneFactureFournisseur.objects.create(facture=facture, **ligne)

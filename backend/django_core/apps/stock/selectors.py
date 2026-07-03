@@ -307,3 +307,26 @@ def three_way_amounts(company, bc_id):
         'montant_recu': montant_recu_bcf(bon),
         'montant_facture': montant_facture_bcf(bon),
     }
+
+
+def echeances_facture_fournisseur(company, facture_id):
+    """XPUR6 — tranches d'échéancier d'une facture fournisseur (utilisées
+    par la balance âgée FG132 et le payment run FG133 pour proposer un
+    paiement PAR ÉCHÉANCE plutôt que par facture entière). Renvoie une liste
+    de dicts triés par date ; vide si la facture n'a pas d'échéancier
+    explicite (repli sur ``FactureFournisseur.date_echeance`` — comportement
+    historique inchangé) ou n'appartient pas à la société."""
+    from .models import FactureFournisseur
+    facture = FactureFournisseur.objects.filter(
+        company=company, pk=facture_id).first()
+    if facture is None:
+        return []
+    return [
+        {
+            'id': e.id,
+            'pourcentage': e.pourcentage,
+            'montant': e.montant,
+            'date_echeance': e.date_echeance,
+        }
+        for e in facture.echeances.all()
+    ]

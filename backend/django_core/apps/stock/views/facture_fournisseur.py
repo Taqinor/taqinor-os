@@ -26,6 +26,7 @@ from ..serializers import (  # noqa: F401
     ReceptionFournisseurSerializer,
     FactureFournisseurSerializer,
     PaiementFournisseurSerializer,
+    EcheanceFactureFournisseurSerializer,
 )
 from authentication.permissions import (  # noqa: F401
     IsAnyRole,
@@ -66,7 +67,7 @@ class FactureFournisseurViewSet(TenantMixin, viewsets.ModelViewSet):
     def get_permissions(self):
         if self.action in READ_ACTIONS + ['comptes_a_payer']:
             return [IsAnyRole()]
-        elif self.action in WRITE_ACTIONS + ['paiements']:
+        elif self.action in WRITE_ACTIONS + ['paiements', 'echeancier']:
             return [IsResponsableOrAdmin()]
         elif self.action == 'destroy':
             return [IsAdminRole()]
@@ -139,3 +140,32 @@ class FactureFournisseurViewSet(TenantMixin, viewsets.ModelViewSet):
             recompute_facture_fournisseur_statut(facture)
         return Response(self.get_serializer(facture).data,
                         status=status.HTTP_201_CREATED)
+
+    @action(detail=True, methods=['get', 'post'], url_path='echeancier')
+    def echeancier(self, request, pk=None):
+        """XPUR6 — GET : liste les tranches d'échéancier de la facture.
+        POST : crée l'échéancier multi-tranches (corps : ``{"tranches": [
+        {"pourcentage": 30, "date_echeance": "2026-08-01"}, ...]}``). Chaque
+        tranche sans ``montant`` explicite est dérivée du TTC × pourcentage."""
+        facture = self.get_object()
+        if request.method.lower() == 'get':
+            qs = facture.echeances.all()
+            return Response(
+                EcheanceFactureFournisseurSerializer(qs, many=True).data)
+        tranches = request.data.get('tranches') or []
+        if not isinstance(tranches, list) or not tranches:
+            return Response(
+                {'detail': 'Au moins une tranche est requise.'},
+                status=status.HTTP_400_BAD_REQUEST)
+        for t in tranches:
+            if not t.get('date_echeance'):
+                return Response(
+                    {'detail': 'Chaque tranche doit porter une date '
+                               "d'échéance."},
+                    status=status.HTTP_400_BAD_REQUEST)
+        from ..services import creer_echeancier_facture_fournisseur
+        created = creer_echeancier_facture_fournisseur(
+            request.user.company, facture, tranches)
+        return Response(
+            EcheanceFactureFournisseurSerializer(created, many=True).data,
+            status=status.HTTP_201_CREATED)

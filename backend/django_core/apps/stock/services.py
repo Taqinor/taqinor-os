@@ -1941,3 +1941,58 @@ def find_duplicate_ice(company, ice, *, exclude_id=None):
     if exclude_id is not None:
         qs = qs.exclude(pk=exclude_id)
     return qs.first()
+
+
+# ── XPUR6 — conditions de paiement fournisseur & échéancier multi-tranches ──
+
+def derive_date_echeance(fournisseur, date_facture):
+    """XPUR6 — dérive la date d'échéance depuis les conditions de paiement du
+    fournisseur (délai_paiement_jours + fin_de_mois). Renvoie None quand le
+    fournisseur n'a AUCUN délai configuré (délai=0) — comportement
+    historique : la date d'échéance reste saisie à la main."""
+    if not date_facture or not fournisseur or not fournisseur.delai_paiement_jours:
+        return None
+    from datetime import timedelta
+    import calendar
+    echeance = date_facture + timedelta(days=fournisseur.delai_paiement_jours)
+    if fournisseur.fin_de_mois:
+        dernier_jour = calendar.monthrange(echeance.year, echeance.month)[1]
+        echeance = echeance.replace(day=dernier_jour)
+    return echeance
+
+
+def escompte_applicable(fournisseur, date_facture, date_paiement):
+    """XPUR6 — vrai si un paiement à ``date_paiement`` d'une facture datée
+    ``date_facture`` tombe dans la fenêtre d'escompte du fournisseur
+    (paiement anticipé type 2/10 net 30). Faux si le fournisseur n'a pas
+    d'escompte configuré (comportement historique)."""
+    if not fournisseur or not fournisseur.escompte_pct or not fournisseur.escompte_jours:
+        return False
+    if not date_facture or not date_paiement:
+        return False
+    from datetime import timedelta
+    return date_paiement <= date_facture + timedelta(
+        days=fournisseur.escompte_jours)
+
+
+def creer_echeancier_facture_fournisseur(company, facture, tranches):
+    """XPUR6 — crée l'échéancier multi-tranches d'une facture fournisseur.
+
+    ``tranches`` : liste de dicts ``{pourcentage?, montant?, date_echeance}``.
+    Si ``montant`` est absent et ``pourcentage`` fourni, le montant est
+    dérivé du TTC de la facture. Renvoie la liste des ``EcheanceFactureFournisseur``
+    créées. N'écrase jamais un échéancier existant (les tranches précédentes
+    doivent être supprimées explicitement avant un nouvel appel)."""
+    from .models import EcheanceFactureFournisseur
+    created = []
+    for t in tranches:
+        montant = t.get('montant')
+        if montant is None and t.get('pourcentage') is not None:
+            montant = (facture.montant_ttc or Decimal('0')) * Decimal(
+                str(t['pourcentage'])) / Decimal('100')
+        created.append(EcheanceFactureFournisseur.objects.create(
+            company=company, facture=facture,
+            pourcentage=t.get('pourcentage'),
+            montant=montant or Decimal('0'),
+            date_echeance=t['date_echeance']))
+    return created

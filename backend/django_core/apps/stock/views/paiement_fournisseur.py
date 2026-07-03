@@ -90,7 +90,14 @@ class PaiementFournisseurViewSet(TenantMixin, viewsets.ModelViewSet):
             except ValueError as exc:
                 return Response(
                     {'detail': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
-        return super().create(request, *args, **kwargs)
+        self._escompte_flag = None
+        response = super().create(request, *args, **kwargs)
+        # XPUR6 — informatif (jamais déduit automatiquement) : ce paiement
+        # tombe-t-il dans la fenêtre d'escompte du fournisseur ?
+        if response.status_code == status.HTTP_201_CREATED and (
+                self._escompte_flag is not None):
+            response.data['escompte_disponible_pct'] = self._escompte_flag
+        return response
 
     def perform_create(self, serializer):
         from ..services import (
@@ -108,6 +115,17 @@ class PaiementFournisseurViewSet(TenantMixin, viewsets.ModelViewSet):
                 taux_ras=taux, montant_ras_tva=montant_ras)
             paiement.facture.refresh_from_db()
             recompute_facture_fournisseur_statut(paiement.facture)
+            try:
+                # XPUR6 — informe (sans jamais déduire automatiquement) si ce
+                # paiement tombe dans la fenêtre d'escompte du fournisseur.
+                from ..services import escompte_applicable
+                fournisseur = facture.fournisseur
+                if escompte_applicable(
+                        fournisseur, facture.date_facture,
+                        paiement.date_paiement):
+                    self._escompte_flag = str(fournisseur.escompte_pct)
+            except Exception:  # noqa: BLE001 — informatif, jamais bloquant
+                pass
 
     def perform_destroy(self, instance):
         from ..services import recompute_facture_fournisseur_statut
