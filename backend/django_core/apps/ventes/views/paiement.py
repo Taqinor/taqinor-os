@@ -212,3 +212,33 @@ class PaiementViewSet(viewsets.ReadOnlyModelViewSet):
         retenue.save(update_fields=[
             'attestation_recue', 'attestation_date', 'attestation_fichier'])
         return Response(RetenueSubieSerializer(retenue).data)
+
+    @action(detail=True, methods=['get'], url_path='recu-pdf',
+            permission_classes=[IsAnyRole])
+    def recu_pdf(self, request, pk=None):
+        """XFAC9 — quittance (reçu de paiement) PDF pour CE paiement."""
+        paiement = self.get_object()
+        from ..utils.pdf import generate_recu_pdf
+        try:
+            pdf_bytes = generate_recu_pdf(paiement)
+        except Exception as exc:
+            return Response({'detail': f'PDF indisponible : {exc}'},
+                            status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+        resp = HttpResponse(pdf_bytes, content_type='application/pdf')
+        resp['Content-Disposition'] = (
+            f'inline; filename="Quittance_{paiement.id}.pdf"')
+        return resp
+
+    @action(detail=True, methods=['post'], url_path='envoyer-recu',
+            permission_classes=[IsResponsableOrAdmin])
+    def envoyer_recu(self, request, pk=None):
+        """XFAC9 — envoi optionnel de la quittance au client par email."""
+        from ..email_service import send_recu_email
+        paiement = self.get_object()
+        log = send_recu_email(
+            paiement, user=request.user,
+            to_email=request.data.get('to_email'))
+        return Response({
+            'statut': log.statut, 'to_email': log.to_email,
+            'erreur': log.erreur,
+        }, status=status.HTTP_201_CREATED)

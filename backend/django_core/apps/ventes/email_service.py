@@ -280,3 +280,55 @@ def send_pre_echeance_email(facture, *, user=None):
     log.erreur = err
     log.save()
     return log
+
+
+def send_recu_email(paiement, *, user=None, to_email=None):
+    """XFAC9 — envoi OPTIONNEL de la quittance PDF au client, à
+    l'enregistrement du paiement. NO-OP réseau sans clé d'envoi configurée
+    (backend console) — même patron que ``send_document_email``. Consigne
+    ``EmailLog``. Renvoie l'EmailLog créé, ou None si aucun destinataire."""
+    from .utils.pdf import generate_recu_pdf
+
+    client = paiement.facture.client if paiement.facture_id else paiement.client
+    dest = (to_email or (getattr(client, 'email', '') or '')).strip()
+    reference = (paiement.facture.reference if paiement.facture_id
+                 else f'avance-{paiement.id}')
+    nom_client = ''
+    if client is not None:
+        nom_client = f"{client.nom} {getattr(client, 'prenom', '') or ''}".strip()
+    salut = f'Bonjour {nom_client},' if nom_client else 'Bonjour,'
+    sujet = f'Quittance de paiement — {reference}'
+    corps = (
+        f"{salut}\n\nVeuillez trouver ci-joint votre quittance pour le "
+        f"règlement de {paiement.montant} MAD.\n\n"
+        f"Cordialement,\nL'équipe TAQINOR"
+    )
+
+    log = EmailLog(
+        company=getattr(paiement, 'company', None),
+        direction=EmailLog.Direction.SORTANT,
+        client=client, facture=paiement.facture,
+        to_email=dest, from_email=_from_email(),
+        sujet=sujet[:300], corps=corps, reference=reference[:80],
+        created_by=user if getattr(user, 'is_authenticated', False) else None,
+    )
+
+    if not dest:
+        log.statut = EmailLog.Statut.ECHEC
+        log.erreur = 'Aucune adresse email destinataire.'
+        log.save()
+        return log
+
+    try:
+        pdf_bytes = generate_recu_pdf(paiement)
+    except Exception as exc:  # pragma: no cover — rendu best-effort
+        logger.warning('Quittance PDF indisponible pour envoi : %s', exc)
+        pdf_bytes = None
+
+    ok, err = _send(
+        dest, sujet, corps, pdf_bytes,
+        f'Quittance_{reference}.pdf' if pdf_bytes else None)
+    log.statut = EmailLog.Statut.ENVOYE if ok else EmailLog.Statut.ECHEC
+    log.erreur = err
+    log.save()
+    return log

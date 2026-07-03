@@ -318,3 +318,41 @@ def generate_lettre_relance_pdf(facture, niveau, message):
     context['message'] = message
     html = _render_html('lettre_relance.html', context)
     return _html_to_pdf(html)
+
+
+def generate_recu_pdf(paiement):
+    """XFAC9 — quittance (reçu de paiement) PDF. Layout maison (PAS le moteur
+    devis) : identité société, montant en chiffres ET en lettres, mode,
+    référence(s) facture(s) réglée(s) avec le détail d'affectation (XFAC1 si
+    présent), solde restant. Rendu à la volée, non stocké (jamais de prix
+    d'achat)."""
+    from decimal import Decimal
+    from apps.ventes.utils.nombre_lettres import montant_en_lettres
+
+    company = paiement.company
+    client = paiement.facture.client if paiement.facture_id else paiement.client
+    client_nom = ''
+    if client is not None:
+        client_nom = f"{client.nom} {client.prenom or ''}".strip()
+
+    affectations = list(paiement.affectations.select_related('facture').all()) \
+        if paiement.facture_id is None else []
+    facture_reference = paiement.facture.reference if paiement.facture_id else None
+    if affectations:
+        solde_restant = sum(
+            (a.facture.montant_du for a in affectations), Decimal('0'))
+    elif paiement.facture_id:
+        solde_restant = paiement.facture.montant_du
+    else:
+        solde_restant = paiement.montant_disponible
+
+    context = _company_context(company=company)
+    context['paiement'] = paiement
+    context['client_nom'] = client_nom
+    context['facture_reference'] = facture_reference
+    context['affectations'] = affectations
+    context['solde_restant'] = solde_restant
+    context['montant_lettres'] = montant_en_lettres(paiement.montant)
+
+    html = _render_html('recu.html', context)
+    return _html_to_pdf(html)
