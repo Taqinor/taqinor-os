@@ -41,6 +41,7 @@ from .models import (
     Certification,
     Competence,
     CompetenceEmploye,
+    CompetenceRequise,
     CorrectionPointage,
     DemandeConge,
     DemandeRH,
@@ -96,6 +97,7 @@ from .serializers import (
     CertificationSerializer,
     EmbaucherSerializer,
     CompetenceEmployeSerializer,
+    CompetenceRequiseSerializer,
     CompetenceSerializer,
     CorrectionPointageSerializer,
     DemandeCongeSerializer,
@@ -230,6 +232,36 @@ class DossierEmployeViewSet(_RhBaseViewSet):
                 status=status.HTTP_400_BAD_REQUEST)
         return Response(
             {'detail': 'PIN mis à jour.'}, status=status.HTTP_200_OK)
+
+    @action(detail=True, methods=['get'], url_path='ecart-competences')
+    def ecart_competences(self, request, pk=None):
+        """XRH15 — écart requis-vs-actuel de l'employé, au poste de référence."""
+        employe = self.get_object()
+        return Response(selectors.ecarts_competences(employe))
+
+    @action(detail=True, methods=['post'],
+            url_path='ecart-competences-creer-besoin-formation')
+    def creer_besoin_formation_depuis_ecart(self, request, pk=None):
+        """XRH15 — crée un ``BesoinFormation`` (FG188) en un clic depuis un
+        écart de compétence détecté (``theme`` = libellé de la compétence).
+        Corps : ``competence`` (id)."""
+        employe = self.get_object()
+        competence = Competence.objects.filter(
+            company=request.user.company,
+            pk=request.data.get('competence')).first()
+        if competence is None:
+            return Response(
+                {'detail': 'Compétence introuvable.'},
+                status=status.HTTP_404_NOT_FOUND)
+        besoin = BesoinFormation.objects.create(
+            company=request.user.company,
+            employe=employe,
+            theme=competence.libelle,
+            priorite=BesoinFormation.Priorite.MOYENNE,
+        )
+        return Response(
+            {'id': besoin.id, 'theme': besoin.theme},
+            status=status.HTTP_201_CREATED)
 
     @action(detail=False, methods=['get'], url_path='cdd-a-echeance')
     def cdd_a_echeance(self, request):
@@ -541,6 +573,14 @@ class PosteViewSet(_RhBaseViewSet):
         if departement:
             qs = qs.filter(departement_id=departement)
         return qs
+
+    @action(detail=True, methods=['get'], url_path='candidats-internes')
+    def candidats_internes(self, request, pk=None):
+        """XRH15 — classe les employés par couverture du profil requis de
+        ce poste (décroissante)."""
+        poste = self.get_object()
+        return Response(
+            selectors.candidats_internes(request.user.company, poste.id))
 
 
 class HoraireTravailViewSet(_RhBaseViewSet):
@@ -1622,6 +1662,29 @@ class CompetenceEmployeViewSet(_RhBaseViewSet):
         serializer.save(
             evalue_par=self.request.user,
             evalue_le=timezone.now())
+
+
+class CompetenceRequiseViewSet(_RhBaseViewSet):
+    """Profil de compétences requises par poste (XRH15) — analyse d'écart.
+
+    Société scopée + Administrateur/Responsable. ``company`` posée CÔTÉ
+    SERVEUR ; ``poste`` et ``competence`` doivent appartenir à la société.
+    Unicité (poste, compétence).
+
+    Filtres : ``?poste=<id>``.
+    """
+    queryset = CompetenceRequise.objects.select_related(
+        'poste', 'competence').all()
+    serializer_class = CompetenceRequiseSerializer
+    filter_backends = [filters.OrderingFilter]
+    ordering_fields = ['poste', 'competence']
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        poste = self.request.query_params.get('poste')
+        if poste:
+            qs = qs.filter(poste_id=poste)
+        return qs
 
     @action(detail=False, methods=['get'])
     def matrice(self, request):

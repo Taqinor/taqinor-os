@@ -15,6 +15,7 @@ from .views import (
     CockpitRhViewSet,
     CertificationViewSet,
     CompetenceEmployeViewSet,
+    CompetenceRequiseViewSet,
     CompetenceViewSet,
     DemandeCongeViewSet,
     DemandeRHViewSet,
@@ -89,6 +90,7 @@ router.register(r'presences-chantier', PresenceChantierViewSet)
 router.register(r'incidents-presence', IncidentPresenceViewSet)
 router.register(r'competences', CompetenceViewSet)
 router.register(r'competences-employe', CompetenceEmployeViewSet)
+router.register(r'competences-requises', CompetenceRequiseViewSet)
 router.register(r'habilitations', HabilitationViewSet)
 router.register(r'certifications', CertificationViewSet)
 router.register(r'visites-medicales', VisiteMedicaleViewSet)

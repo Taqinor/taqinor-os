@@ -1652,3 +1652,78 @@ def jours_fermeture_exclus(company, employe, date_debut, date_fin):
             exclues.add(jour)
             jour += timedelta(days=1)
     return exclues
+
+
+def ecarts_competences(employe):
+    """XRH15 — écart requis-vs-actuel pour un employé, au poste de référence.
+
+    Compare le profil requis de ``employe.poste_ref``
+    (``CompetenceRequise``) au niveau réel de l'employé
+    (``CompetenceEmploye``, 0 si jamais évalué). Renvoie une liste de dicts
+    ``{competence_id, competence_libelle, niveau_requis, niveau_actuel,
+    ecart}`` pour chaque compétence MANQUANTE ou INSUFFISANTE (niveau_actuel
+    < niveau_requis) — les compétences déjà couvertes sont omises. Liste vide
+    si l'employé n'a pas de ``poste_ref``. Lecture seule.
+    """
+    from .models import CompetenceEmploye, CompetenceRequise
+
+    if not employe.poste_ref_id:
+        return []
+
+    requises = (
+        CompetenceRequise.objects
+        .filter(company=employe.company, poste=employe.poste_ref)
+        .select_related('competence'))
+    niveaux_actuels = dict(
+        CompetenceEmploye.objects
+        .filter(company=employe.company, employe=employe)
+        .values_list('competence_id', 'niveau'))
+
+    ecarts = []
+    for requise in requises:
+        actuel = niveaux_actuels.get(requise.competence_id, 0)
+        if actuel < requise.niveau_requis:
+            ecarts.append({
+                'competence_id': requise.competence_id,
+                'competence_libelle': requise.competence.libelle,
+                'niveau_requis': requise.niveau_requis,
+                'niveau_actuel': actuel,
+                'ecart': requise.niveau_requis - actuel,
+            })
+    return ecarts
+
+
+def candidats_internes(company, poste_id):
+    """XRH15 — classe les employés d'un poste par COUVERTURE de son profil
+    requis (décroissante). Couverture = proportion (0..1) des compétences
+    requises satisfaites (``niveau_actuel >= niveau_requis``). Un poste sans
+    profil requis renvoie une liste vide. Lecture seule, société scopée.
+    """
+    from .models import CompetenceEmploye, CompetenceRequise, DossierEmploye
+
+    requises = list(
+        CompetenceRequise.objects.filter(company=company, poste_id=poste_id))
+    if not requises:
+        return []
+
+    employes = DossierEmploye.objects.filter(
+        company=company, statut=DossierEmploye.Statut.ACTIF)
+    resultats = []
+    for employe in employes:
+        competence_ids = [r.competence_id for r in requises]
+        niveaux_actuels = dict(
+            CompetenceEmploye.objects
+            .filter(company=company, employe=employe,
+                    competence_id__in=competence_ids)
+            .values_list('competence_id', 'niveau'))
+        satisfaites = sum(
+            1 for r in requises
+            if niveaux_actuels.get(r.competence_id, 0) >= r.niveau_requis)
+        couverture = satisfaites / len(requises)
+        resultats.append({
+            'employe_id': employe.id,
+            'employe_nom': f'{employe.nom} {employe.prenom}',
+            'couverture_pct': round(couverture * 100, 1),
+        })
+    resultats.sort(key=lambda r: r['couverture_pct'], reverse=True)
+    return resultats

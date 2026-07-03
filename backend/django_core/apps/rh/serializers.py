@@ -21,6 +21,7 @@ from .models import (
     Certification,
     Competence,
     CompetenceEmploye,
+    CompetenceRequise,
     CorrectionPointage,
     DemandeConge,
     DemandeRH,
@@ -2072,6 +2073,23 @@ class CorrectionPointageSerializer(serializers.ModelSerializer):
 
     def get_auteur_nom(self, obj):
         return getattr(obj.auteur, 'username', '') if obj.auteur_id else ''
+
+
+class CompetenceRequiseSerializer(serializers.ModelSerializer):
+    """Profil de compétence requise par poste (XRH15). ``company`` posée côté
+    serveur ; unicité (poste, compétence)."""
+    competence_libelle = serializers.CharField(
+        source='competence.libelle', read_only=True)
+    niveau_requis_display = serializers.CharField(
+        source='get_niveau_requis_display', read_only=True)
+
+    class Meta:
+        model = CompetenceRequise
+        fields = [
+            'id', 'poste', 'competence', 'competence_libelle',
+            'niveau_requis', 'niveau_requis_display', 'date_creation',
+        ]
+        read_only_fields = ['date_creation']
 
 
 class PeriodeFermetureSerializer(serializers.ModelSerializer):

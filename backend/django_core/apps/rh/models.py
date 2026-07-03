@@ -4570,3 +4570,50 @@ class PeriodeFermeture(models.Model):
 
     def __str__(self):
         return f'{self.libelle} ({self.date_debut}→{self.date_fin})'
+
+
+class CompetenceRequise(models.Model):
+    """Profil de compétences requises par poste (XRH15) — pour l'analyse
+    d'écart. Un ``niveau_requis`` (0–4, même échelle que
+    ``CompetenceEmploye.Niveau``) par (poste, compétence), unique.
+
+    Multi-société : ``company`` posée côté serveur ; ``poste`` et
+    ``competence`` doivent appartenir à la même société.
+    """
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='rh_competences_requises',
+        verbose_name='Société',
+    )
+    poste = models.ForeignKey(
+        Poste,
+        on_delete=models.CASCADE,
+        related_name='competences_requises',
+        verbose_name='Poste',
+    )
+    competence = models.ForeignKey(
+        Competence,
+        on_delete=models.CASCADE,
+        related_name='requise_pour_postes',
+        verbose_name='Compétence',
+    )
+    niveau_requis = models.PositiveSmallIntegerField(
+        choices=CompetenceEmploye.Niveau.choices,
+        default=CompetenceEmploye.Niveau.INTERMEDIAIRE,
+        verbose_name='Niveau requis')
+    date_creation = models.DateTimeField(
+        auto_now_add=True, verbose_name='Créé le')
+
+    class Meta:
+        verbose_name = 'Compétence requise'
+        verbose_name_plural = 'Compétences requises'
+        constraints = [
+            models.UniqueConstraint(
+                fields=['poste', 'competence'],
+                name='rh_competence_requise_uniq'),
+        ]
+        ordering = ['poste', 'competence']
+
+    def __str__(self):
+        return f'{self.poste} — {self.competence} (≥{self.niveau_requis})'
