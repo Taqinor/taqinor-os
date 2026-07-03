@@ -382,16 +382,38 @@ class PaiementSerializer(serializers.ModelSerializer):
     # de la facture, nom du client et auteur de l'encaissement (« par qui »).
     facture_reference = serializers.CharField(
         source='facture.reference', read_only=True, default=None)
-    client_nom = serializers.CharField(
-        source='facture.client.nom', read_only=True, default=None)
+    client_nom = serializers.SerializerMethodField()
     created_by_username = serializers.CharField(
         source='created_by.username', read_only=True, default=None)
+    # XFAC1 — avance non affectée : solde encore disponible pour ventilation.
+    montant_disponible = serializers.DecimalField(
+        max_digits=12, decimal_places=2, read_only=True)
+    statut_affectation_display = serializers.CharField(
+        source='get_statut_affectation_display', read_only=True)
+
+    def get_client_nom(self, obj):
+        c = obj.facture.client if obj.facture_id else obj.client
+        if c is None:
+            return None
+        return f"{c.nom} {c.prenom or ''}".strip()
 
     class Meta:
         model = Paiement
         fields = '__all__'
         # company/created_by forcés côté serveur — jamais depuis le corps.
         read_only_fields = ['company', 'created_by', 'date_creation', 'facture']
+
+
+class AffectationPaiementSerializer(serializers.ModelSerializer):
+    facture_reference = serializers.CharField(
+        source='facture.reference', read_only=True)
+
+    class Meta:
+        from .models import AffectationPaiement
+        model = AffectationPaiement
+        fields = ['id', 'paiement', 'facture', 'facture_reference',
+                  'montant', 'date_affectation', 'created_by']
+        read_only_fields = ['company', 'created_by', 'date_affectation']
 
 
 class FactureSerializer(serializers.ModelSerializer):

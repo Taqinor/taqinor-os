@@ -678,9 +678,18 @@ class Facture(models.Model):
 
     @property
     def montant_paye(self):
-        """Somme des paiements enregistrés sur cette facture."""
+        """Somme des paiements enregistrés sur cette facture.
+
+        XFAC1 — inclut aussi les ventilations d'avances (``AffectationPaiement``)
+        reçues par cette facture : une avance non affectée (``facture`` vide)
+        n'entre dans ``montant_paye`` d'aucune facture tant qu'elle n'est pas
+        ventilée. Comportement historique inchangé pour un paiement classique
+        (posé directement sur ``facture``, jamais ventilé)."""
         from decimal import Decimal
-        return sum((p.montant for p in self.paiements.all()), Decimal('0'))
+        direct = sum((p.montant for p in self.paiements.all()), Decimal('0'))
+        via_affectation = sum(
+            (a.montant for a in self.affectations_paiement.all()), Decimal('0'))
+        return direct + via_affectation
 
     @property
     def avoirs_total(self):
@@ -833,11 +842,20 @@ class LigneFacture(models.Model):
 
 
 class Paiement(models.Model):
-    """Paiement encaissé sur une facture (enregistrement MANUEL).
+    """Paiement encaissé sur une facture (enregistrement MANUEL) — ou une AVANCE
+    client non affectée (XFAC1) tant qu'aucune facture ne la reçoit.
 
     Une facture peut recevoir plusieurs paiements (acompte partiel, solde…).
     Le reste à payer d'une facture et le solde d'un devis se déduisent de ces
     lignes — source unique du « payé ».
+
+    XFAC1 — ``facture`` devient nullable : un règlement reçu SANS facture
+    (avance, acompte à la commande, trop-perçu) se rattache directement au
+    ``client`` et reste ``statut=non_affecte`` jusqu'à ventilation (voir
+    ``AffectationPaiement``) sur une ou plusieurs factures ouvertes. Un
+    paiement classique (facture posée à la création) reste ``affecte`` —
+    comportement historique strictement inchangé pour tout paiement déjà
+    rattaché à une facture.
     """
     class Mode(models.TextChoices):
         ESPECES = 'especes', 'Espèces'
@@ -846,6 +864,11 @@ class Paiement(models.Model):
         CARTE = 'carte', 'Carte bancaire'
         PRELEVEMENT = 'prelevement', 'Prélèvement'
         AUTRE = 'autre', 'Autre'
+
+    class StatutAffectation(models.TextChoices):
+        AFFECTE = 'affecte', 'Affecté'
+        PARTIELLEMENT_AFFECTE = 'partiellement_affecte', 'Partiellement affecté'
+        NON_AFFECTE = 'non_affecte', 'Non affecté'
 
     company = models.ForeignKey(
         'authentication.Company',
@@ -858,6 +881,22 @@ class Paiement(models.Model):
         Facture,
         on_delete=models.CASCADE,
         related_name='paiements',
+        null=True,
+        blank=True,
+    )
+    # XFAC1 — client titulaire d'une AVANCE non (encore) affectée à une
+    # facture. Requis quand ``facture`` est vide ; sinon dérivable de la
+    # facture (mais toujours dispo pour retrouver les avances d'un client).
+    client = models.ForeignKey(
+        'crm.Client',
+        on_delete=models.PROTECT,
+        related_name='avances',
+        null=True,
+        blank=True,
+    )
+    statut_affectation = models.CharField(
+        max_length=25, choices=StatutAffectation.choices,
+        default=StatutAffectation.AFFECTE,
     )
     montant = models.DecimalField(max_digits=12, decimal_places=2)
     date_paiement = models.DateField()
@@ -880,7 +919,60 @@ class Paiement(models.Model):
         ordering = ['-date_paiement', '-date_creation']
 
     def __str__(self):
-        return f'{self.montant} MAD — {self.facture.reference}'
+        cible = self.facture.reference if self.facture_id else (
+            f'avance client #{self.client_id}')
+        return f'{self.montant} MAD — {cible}'
+
+    @property
+    def montant_affecte(self):
+        """XFAC1 — somme déjà ventilée sur des factures (via AffectationPaiement).
+
+        Pour un paiement classique (facture posée directement, jamais ventilé),
+        renvoie son montant plein — comportement historique inchangé."""
+        from decimal import Decimal
+        total = sum(
+            (a.montant for a in self.affectations.all()), Decimal('0'))
+        if total:
+            return total
+        return self.montant if self.facture_id else Decimal('0')
+
+    @property
+    def montant_disponible(self):
+        """Solde de l'avance encore disponible pour ventilation."""
+        from decimal import Decimal
+        if self.facture_id and not self.affectations.exists():
+            return Decimal('0')
+        reste = self.montant - self.montant_affecte
+        return reste if reste > 0 else Decimal('0')
+
+
+class AffectationPaiement(models.Model):
+    """XFAC1 — ventilation d'un paiement (avance/trop-perçu) sur UNE facture.
+
+    Un même ``Paiement`` non affecté peut porter plusieurs lignes
+    d'affectation (réparti sur N factures ouvertes du même client). La somme
+    des affectations d'un paiement ne peut jamais dépasser son montant (garde
+    posée côté service — jamais de sur-affectation)."""
+    company = models.ForeignKey(
+        'authentication.Company', on_delete=models.CASCADE,
+        null=True, blank=True, related_name='affectations_paiement')
+    paiement = models.ForeignKey(
+        Paiement, on_delete=models.CASCADE, related_name='affectations')
+    facture = models.ForeignKey(
+        Facture, on_delete=models.CASCADE, related_name='affectations_paiement')
+    montant = models.DecimalField(max_digits=12, decimal_places=2)
+    date_affectation = models.DateTimeField(auto_now_add=True)
+    created_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True,
+        related_name='affectations_effectuees')
+
+    class Meta:
+        verbose_name = 'Affectation de paiement'
+        verbose_name_plural = 'Affectations de paiement'
+        ordering = ['-date_affectation']
+
+    def __str__(self):
+        return f'{self.montant} MAD — {self.paiement_id} → {self.facture.reference}'
 
 
 class Avoir(models.Model):

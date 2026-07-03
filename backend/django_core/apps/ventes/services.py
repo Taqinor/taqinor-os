@@ -2074,3 +2074,116 @@ def _advance_lead_on_expiry(lead, today):
         return False, moved_cold
 
     return False, False
+
+
+# ── XFAC1 — Avances client (paiement sans facture) + affectation multi- ────
+# ────────────────────────── factures ───────────────────────────────────────
+
+def enregistrer_avance(*, company, client, montant, date_paiement, mode,
+                       reference='', note='', created_by=None):
+    """Enregistre un règlement reçu SANS facture (avance, acompte à la
+    commande, trop-perçu). Le paiement reste ``statut_affectation=non_affecte``
+    tant qu'il n'a pas été ventilé sur une ou plusieurs factures ouvertes du
+    même client (voir ``ventiler_avance``)."""
+    from decimal import Decimal
+    from rest_framework.exceptions import ValidationError
+    from .models import Paiement
+
+    if montant is None or Decimal(montant) <= 0:
+        raise ValidationError({'montant': 'Le montant doit être positif.'})
+    if client is None:
+        raise ValidationError({'client': 'Client requis pour une avance.'})
+    return Paiement.objects.create(
+        company=company, client=client, facture=None,
+        statut_affectation=Paiement.StatutAffectation.NON_AFFECTE,
+        montant=montant, date_paiement=date_paiement, mode=mode,
+        reference=reference, note=note, created_by=created_by,
+    )
+
+
+def ventiler_avance(*, paiement, facture, montant, user=None):
+    """Ventile UN paiement non affecté (avance) sur UNE facture ouverte du
+    même client, pour ``montant``. Peut être appelée plusieurs fois pour
+    répartir un même paiement sur plusieurs factures.
+
+    Garde-fous (jamais de sur-affectation) :
+      - la facture cible doit appartenir à la même société ET au même client
+        que le paiement ;
+      - le montant ventilé ne peut jamais dépasser le solde disponible du
+        paiement (``montant_disponible``) ;
+      - le montant ventilé ne peut jamais dépasser le reste à payer de la
+        facture cible (``montant_du``).
+
+    Met à jour ``statut_affectation`` du paiement (affecte / partiellement
+    affecte) et le statut de la facture si elle devient intégralement réglée
+    (réutilise le même seuil que ``enregistrer_paiement``)."""
+    from decimal import Decimal
+    from django.db import transaction
+    from rest_framework.exceptions import ValidationError
+    from .models import AffectationPaiement, Facture, Paiement
+
+    montant = Decimal(montant)
+    if montant <= 0:
+        raise ValidationError(
+            {'montant': "Le montant ventilé doit être positif."})
+
+    with transaction.atomic():
+        locked_paiement = Paiement.objects.select_for_update().get(
+            pk=paiement.pk)
+        if locked_paiement.facture_id is not None:
+            raise ValidationError(
+                {'paiement': "Ce paiement est déjà rattaché à une facture."})
+        locked_facture = Facture.objects.select_for_update().get(
+            pk=facture.pk)
+        if locked_facture.company_id != locked_paiement.company_id:
+            raise ValidationError(
+                {'facture': "Facture d'une autre société."})
+        if locked_facture.client_id != locked_paiement.client_id:
+            raise ValidationError(
+                {'facture': "La facture doit appartenir au même client "
+                            "que l'avance."})
+        if locked_facture.statut == Facture.Statut.ANNULEE:
+            raise ValidationError(
+                {'facture': "Impossible de ventiler sur une facture annulée."})
+
+        disponible = locked_paiement.montant_disponible
+        if montant - disponible > Decimal('0.01'):
+            raise ValidationError({
+                'montant': (
+                    f"Le montant ventilé dépasse le solde disponible de "
+                    f"l'avance ({disponible:.2f} MAD)."),
+            })
+        reste_facture = locked_facture.montant_du
+        if montant - reste_facture > Decimal('0.01'):
+            raise ValidationError({
+                'montant': (
+                    f"Le montant ventilé dépasse le reste à payer de la "
+                    f"facture ({reste_facture:.2f} MAD)."),
+            })
+
+        affectation = AffectationPaiement.objects.create(
+            company=locked_paiement.company, paiement=locked_paiement,
+            facture=locked_facture, montant=montant, created_by=user,
+        )
+
+        locked_paiement.refresh_from_db()
+        if locked_paiement.montant_disponible <= 0:
+            locked_paiement.statut_affectation = (
+                Paiement.StatutAffectation.AFFECTE)
+        else:
+            locked_paiement.statut_affectation = (
+                Paiement.StatutAffectation.PARTIELLEMENT_AFFECTE)
+        locked_paiement.save(update_fields=['statut_affectation'])
+
+        locked_facture.refresh_from_db()
+        if locked_facture.montant_du <= 0 and \
+                locked_facture.statut != Facture.Statut.ANNULEE:
+            locked_facture.statut = Facture.Statut.PAYEE
+            locked_facture.save(update_fields=['statut'])
+            reset_relance_escalation(locked_facture)
+
+        from . import activity
+        activity.log_facture_avance_affectee(
+            locked_facture, user, locked_paiement, montant)
+
+    return affectation

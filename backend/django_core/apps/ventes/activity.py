@@ -158,3 +158,17 @@ def log_facture_acompte_rembourse(facture, user, montant):
         body=(f"Acompte de {montant} MAD marqué remboursable à l'annulation "
               f"(écriture négative de contre-passation)."),
     )
+
+
+def log_facture_avance_affectee(facture, user, paiement, montant):
+    """XFAC1 — chatter de la facture : ventilation d'une avance client reçue."""
+    from .models import FactureActivity
+    qui = getattr(user, 'username', '?')
+    return FactureActivity.objects.create(
+        company=facture.company, facture=facture, user=user,
+        kind=FactureActivity.Kind.MODIFICATION,
+        field='avance', field_label='Avance affectée',
+        new_value=str(montant),
+        body=(f"Avance de {montant} MAD affectée par {qui} "
+              f"(paiement #{paiement.id})."),
+    )
