@@ -2840,6 +2840,22 @@ class ConformiteEnvironnementale(models.Model):
         ENREGISTREMENT_DECHETS = 'enregistrement_dechets', \
             'Enregistrement déchets (loi 28-00)'
         REJETS = 'rejets', 'Conformité rejets (eau / air)'
+        # XQHS8 — généralisation du registre à toutes les thématiques ISO
+        # 45001/9001 (sécurité, travail, urbanisme, technique).
+        COMMISSION_LOCALE = 'commission_locale', 'Commission locale (sécurité)'
+        VERIFICATION_ELECTRIQUE = (
+            'verification_electrique', 'Vérification électrique périodique')
+        REGLEMENT_INTERIEUR = 'reglement_interieur', 'Règlement intérieur'
+        CSH = 'csh', 'CSH (comité sécurité et hygiène)'
+        URBANISME = 'urbanisme', 'Urbanisme / autorisation chantier'
+        ASSURANCE = 'assurance', 'Assurance obligatoire'
+        AUTRE = 'autre', 'Autre'
+
+    class Thematique(models.TextChoices):
+        ENVIRONNEMENT = 'environnement', 'Environnement'
+        SECURITE = 'securite', 'Sécurité'
+        TRAVAIL = 'travail', 'Travail'
+        TECHNIQUE = 'technique', 'Technique'
         AUTRE = 'autre', 'Autre'
 
     class Statut(models.TextChoices):
@@ -2858,6 +2874,17 @@ class ConformiteEnvironnementale(models.Model):
     type_conformite = models.CharField(
         max_length=25, choices=TypeConformite.choices,
         default=TypeConformite.AUTORISATION, verbose_name='Type')
+    # XQHS8 — thématique du registre généralisé (environnement reste le
+    # défaut pour ne rien changer aux lignes existantes QHSE38).
+    thematique = models.CharField(
+        max_length=15, choices=Thematique.choices,
+        default=Thematique.ENVIRONNEMENT, verbose_name='Thématique')
+    # XQHS8 — dernière évaluation périodique de conformité (ISO 45001/9001).
+    date_derniere_evaluation = models.DateField(
+        null=True, blank=True, verbose_name='Date de la dernière évaluation')
+    resultat_derniere_evaluation = models.CharField(
+        max_length=255, blank=True, default='',
+        verbose_name='Résultat de la dernière évaluation')
     statut = models.CharField(
         max_length=15, choices=Statut.choices,
         default=Statut.CONFORME, verbose_name='Statut')

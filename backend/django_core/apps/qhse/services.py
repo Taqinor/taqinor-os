@@ -1403,3 +1403,22 @@ def rendre_analyse_ncr_pdf(analyse):
 
     html_str = _analyse_ncr_html(analyse)
     return weasyprint.HTML(string=html_str).write_pdf()
+
+
+# ── XQHS8 — Registre des exigences légales toutes thématiques ──────────────
+
+def enregistrer_evaluation_conformite(conformite, resultat, *, date=None):
+    """Enregistre l'évaluation périodique d'une exigence légale (XQHS8, ISO
+    45001/9001 6.1.3 conformité obligations légales).
+
+    Met à jour ``date_derniere_evaluation``/``resultat_derniere_evaluation``
+    sans toucher au ``statut`` déclaré (le statut reste piloté par
+    ``statut_calcule`` — l'évaluation est une trace périodique distincte).
+    """
+    from django.utils import timezone
+
+    conformite.date_derniere_evaluation = date or timezone.localdate()
+    conformite.resultat_derniere_evaluation = resultat
+    conformite.save(update_fields=[
+        'date_derniere_evaluation', 'resultat_derniere_evaluation'])
+    return conformite
