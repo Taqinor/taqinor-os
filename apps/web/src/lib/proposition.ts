@@ -1041,6 +1041,47 @@ export function whatsappShareLink(pageUrl: string, reference: string): string {
   return `https://wa.me/?text=${encodeURIComponent(msg)}`;
 }
 
+// ── W343 · « Partager avec un proche » — composeur de parrainage post-signature ─
+//
+// DISTINCT de whatsappShareLink (WJ56) : WJ56 partage LA MÊME PROPOSITION avec
+// un co-décideur du MÊME foyer (avant signature, pour décider ensemble). W343
+// partage le programme de PARRAINAGE (/parrainage, W338) avec un PROCHE
+// DIFFÉRENT, une fois le devis SIGNÉ (le moment de satisfaction maximale) —
+// un lien vers un NOUVEAU projet solaire pour ce proche, pas vers ce devis-ci.
+//
+// ZÉRO CHANGEMENT BACKEND (même discipline que /parrainage, W338) : le
+// `<code>` du lien tagué est simplement la RÉFÉRENCE du devis déjà signé —
+// aucun code de parrainage n'existe côté backend aujourd'hui, donc on réutilise
+// un identifiant déjà réel plutôt que d'en inventer un nouveau. L'ERP peut
+// filtrer ses leads entrants sur `utm_source=parrainage` et retrouver le
+// parrain via `utm_campaign` (= la référence de SON devis), exactement comme
+// documenté sur /parrainage.astro.
+
+/**
+ * W343 — Construit l'URL de /parrainage TAGUÉE avec la référence du client qui
+ * vient de signer, dans le MÊME format que documenté sur /parrainage.astro
+ * (`utm_source=parrainage&utm_campaign=<code>`). `siteOrigin` est l'origine
+ * RÉELLE servie (ex. `Astro.url.origin`), jamais reconstruite en dur.
+ */
+export function referralTaggedLink(siteOrigin: string, reference: string): string {
+  const origin = (siteOrigin || 'https://taqinor.ma').replace(/\/+$/, '');
+  const code = (reference || '').trim();
+  const qs = code ? `?utm_source=parrainage&utm_campaign=${encodeURIComponent(code)}` : '?utm_source=parrainage';
+  return `${origin}/parrainage${qs}`;
+}
+
+/**
+ * W343 — Compositeur WhatsApp « Partager avec un proche » : `wa.me/` SANS
+ * numéro (même mécanique que whatsappShareLink) ouvre le compositeur générique
+ * — le client choisit lui-même à qui l'envoyer. Le message pointe vers le lien
+ * de parrainage TAGUÉ (referralTaggedLink), jamais vers la proposition elle-même.
+ */
+export function whatsappReferralLink(siteOrigin: string, reference: string): string {
+  const url = referralTaggedLink(siteOrigin, reference);
+  const msg = `J'ai fait installer mes panneaux solaires avec Taqinor — si ça vous intéresse, voici le lien : ${url}`;
+  return `https://wa.me/?text=${encodeURIComponent(msg)}`;
+}
+
 /**
  * WJ85 — Intention du point de contact « au moindre doute » (avant signature).
  * `discuss` (« Discuter sur WhatsApp ») et `question` (« Poser une question »)

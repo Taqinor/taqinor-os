@@ -62,6 +62,7 @@ import {
   whatsappLink,
   whatsappLinkForIntent,
   whatsappShareLink,
+  whatsappReferralLink,
   parseRoofLayout,
   buildViewerModel,
   zoneAnnotations,
@@ -75,6 +76,7 @@ import {
 } from '../../lib/proposition';
 import { renderYearCurve } from '../../lib/proposalCurve';
 import { renderProposalChart, resolveSeries } from '../../lib/proposalChart';
+import { clientIpFromRequest, rateLimit } from '../../lib/rateLimit';
 
 const API_BASE = (import.meta.env.PUBLIC_API_BASE as string | undefined) ?? 'https://api.taqinor.ma';
 const { token } = Astro.params as { token: string };
@@ -94,7 +96,17 @@ let errorDetail: string | null = null;
 let httpStatus = 200;
 let isTimeout = false;
 
-if (!token || !token.trim()) {
+// ── W316 — Rate-limit le SSR de cette page : un token de proposition est un
+// identifiant devinable (chaîne opaque mais finie) ; sans garde-fou, un
+// script pouvait bombarder /proposition/<token-aléatoire> pour sonder des
+// tokens valides. Bucket DISTINCT et GÉNÉREUX (une famille entière peut relire
+// la même proposition plusieurs fois depuis le même foyer/NAT) : on écrête le
+// balayage automatisé, jamais une relecture humaine légitime.
+const rl = rateLimit(`proposition-view:${clientIpFromRequest(Astro.request)}`, { limit: 60, windowMs: 60_000 });
+if (!rl.allowed) {
+  httpStatus = 429;
+  errorDetail = 'Trop de tentatives depuis cette connexion — réessayez dans un instant.';
+} else if (!token || !token.trim()) {
   httpStatus = 404;
   errorDetail = 'Ce lien de proposition est introuvable ou a expiré.';
 } else {
@@ -267,6 +279,12 @@ const waLinkVoice = ok ? whatsappLinkForIntent(reference, 'voice') : '';
 const shareUrl = ok ? Astro.url.href : '';
 const waLinkShare = ok ? whatsappShareLink(shareUrl, reference) : '';
 
+// ── W343 — « Partager avec un proche » (parrainage, état signé/merci) : lien
+// TAGUÉ vers /parrainage (utm_campaign = référence du devis SIGNÉ), DISTINCT
+// du partage WJ56 ci-dessus (qui partage CE devis avec un co-décideur du même
+// foyer, pas le programme de parrainage avec un proche différent).
+const waLinkReferral = ok ? whatsappReferralLink(Astro.url.origin, reference) : '';
+
 // ── P3 — Lien public du devis PDF premium (même token, nouvel onglet) ────────
 const pdfUrl = ok ? proposalPdfEndpoint(API_BASE, token) : '';
 
@@ -351,12 +369,14 @@ const signConfig = ok
          plateforme) affiche un message honnête. Pour un TIMEOUT (backend
          lent) spécifiquement, un bouton « Réessayer » (recharge la MÊME URL,
          lien pur — fonctionne sans JS) et un repli WhatsApp direct sont
-         proposés, plutôt que le seul lien « Retour à l'accueil ». -->
+         proposés, plutôt que le seul lien « Retour à l'accueil ». W316 — un
+         429 (rate-limit) est tout aussi RETRYABLE (relire dans un instant) :
+         même bouton « Réessayer », jamais un cul-de-sac. -->
     <section class="mx-auto flex min-h-[60vh] max-w-2xl flex-col items-center justify-center px-5 py-24 text-center">
       <div class="rule-brass mx-auto text-brass-300" aria-hidden="true"></div>
       <h1 class="display mt-6 text-3xl text-lune sm:text-4xl">Proposition indisponible</h1>
       <p class="v2-body mt-4 max-w-md">{errorDetail}</p>
-      {isTimeout ? (
+      {(isTimeout || httpStatus === 429) ? (
         <>
           <div class="mt-8 flex flex-col gap-3 sm:flex-row">
             <a href={Astro.url.href} class="btn-pill" style="background: var(--color-brass-400); color: var(--color-nuit); border-color: var(--color-brass-400)">
@@ -1483,6 +1503,41 @@ const signConfig = ok
                   </li>
                 ))}
               </ol>
+            </div>
+
+            <!-- ── W343 · « Partager avec un proche » (parrainage) ────────────
+                 DISTINCT du partage WJ56 plus haut sur la page (qui partage CE
+                 devis avec un co-décideur du MÊME foyer, avant signature) : ici
+                 le client vient de SIGNER — le moment de satisfaction maximale
+                 — et partage le programme de parrainage (/parrainage, W338)
+                 avec un PROCHE différent. Lien tagué (utm_campaign = référence
+                 de son devis) : zéro changement backend, même convention que
+                 /parrainage.astro. -->
+            <div class="mt-5 border-t border-white/10 pt-5">
+              <p class="tech-label rule-brass text-brass-300" data-i18n
+                data-fr="Partager avec un proche" data-en="Share with someone close to you" data-ar="شاركوا مع أحد المقربين">
+                Partager avec un proche
+              </p>
+              <p class="v2-body mt-2 text-sm text-lune-soft" data-i18n
+                data-fr="Un proche envisage aussi le solaire ? Partagez votre lien de parrainage — Taqinor vous en dit merci quand son projet se concrétise."
+                data-en="Know someone else considering solar? Share your referral link — Taqinor says thank you once their project goes through."
+                data-ar="هل يفكر أحد المقربين أيضاً في الطاقة الشمسية؟ شاركوا رابط الإحالة الخاص بكم — تشكركم تاقينور عندما يتحقق مشروعه.">
+                Un proche envisage aussi le solaire ? Partagez votre lien de parrainage — Taqinor vous en dit merci quand son projet se concrétise.
+              </p>
+              <a
+                id="referral-share-whatsapp"
+                href={waLinkReferral}
+                target="_blank"
+                rel="noopener noreferrer"
+                class="btn-pill mt-3 inline-flex items-center justify-center gap-2"
+              >
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+                  <path d="M12.04 2C6.58 2 2.13 6.45 2.13 11.91c0 1.75.46 3.45 1.32 4.95L2 22l5.25-1.38a9.9 9.9 0 0 0 4.79 1.22h.01c5.46 0 9.91-4.45 9.91-9.91 0-2.65-1.03-5.14-2.9-7.01A9.82 9.82 0 0 0 12.04 2Zm0 18.1h-.01a8.2 8.2 0 0 1-4.18-1.15l-.3-.18-3.11.82.83-3.04-.2-.31a8.2 8.2 0 0 1-1.26-4.37c0-4.54 3.7-8.23 8.24-8.23 2.2 0 4.27.86 5.83 2.42a8.18 8.18 0 0 1 2.41 5.82c0 4.54-3.7 8.23-8.23 8.23Zm4.52-6.16c-.25-.12-1.47-.72-1.69-.81-.23-.08-.39-.12-.56.13-.16.25-.64.81-.78.97-.14.17-.29.19-.54.06-.25-.12-1.05-.39-1.99-1.23-.74-.66-1.23-1.47-1.38-1.72-.14-.25-.01-.38.11-.51.11-.11.25-.29.37-.43.13-.14.17-.25.25-.41.08-.17.04-.31-.02-.43-.06-.12-.56-1.35-.77-1.85-.2-.48-.41-.42-.56-.43l-.48-.01c-.17 0-.43.06-.66.31-.23.25-.86.85-.86 2.07 0 1.22.89 2.4 1.01 2.57.12.17 1.75 2.67 4.23 3.74.59.26 1.05.41 1.41.52.59.19 1.13.16 1.56.1.48-.07 1.47-.6 1.68-1.18.21-.58.21-1.07.14-1.18-.06-.1-.22-.16-.47-.28Z"/>
+                </svg>
+                <span data-i18n data-fr="Partager avec un proche" data-en="Share with someone close to you" data-ar="شاركوا مع أحد المقربين">
+                  Partager avec un proche
+                </span>
+              </a>
             </div>
           </div>
 
