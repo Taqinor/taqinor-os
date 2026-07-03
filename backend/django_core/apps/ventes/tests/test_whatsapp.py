@@ -314,7 +314,9 @@ class TestMessagesSettingsApi(TestCase):
         cles = {row['cle'] for row in resp.data}
         self.assertEqual(cles, {
             'devis_unique', 'devis_multi_entete', 'devis_multi_ligne',
-            'facture', 'relance'})
+            'facture', 'relance',
+            # XSAV4 — notifications client aux transitions du ticket SAV.
+            'ticket_recu', 'ticket_planifie', 'ticket_resolu'})
         unique = next(r for r in resp.data if r['cle'] == 'devis_unique')
         self.assertIn('{reference}', unique['corps_fr'])
         self.assertIn('placeholders', unique)
