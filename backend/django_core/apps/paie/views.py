@@ -5,6 +5,9 @@ réservé au palier Administrateur/Responsable (``IsResponsableOrAdmin``).
 Les viewsets filtrent par ``request.user.company`` (TenantMixin) et posent la
 société côté serveur.
 """
+import csv
+import io
+
 from django.core.exceptions import ValidationError as DjangoValidationError
 from django.http import HttpResponse
 
@@ -62,12 +65,14 @@ from .services import (
     ensure_rubriques_standard,
     etat_ir_9421,
     etat_ir_9421_annuel,
+    etat_des_charges,
     fichier_damancom_cnss,
     fichier_virement_paie,
     generer_bulletin,
     generer_bulletin_stc,
     generer_ordre_virement,
     generer_run_gratification,
+    rapprochement_paie_gl,
     importer_elements_rh,
     journal_de_paie,
     livre_de_paie,
@@ -412,6 +417,44 @@ class PeriodePaieViewSet(_PaieBaseViewSet):
         """État IR 9421 (retenues à la source) de la période (PAIE32)."""
         periode = self.get_object()
         return Response(etat_ir_9421(periode), status=status.HTTP_200_OK)
+
+    @action(detail=True, methods=['get'], url_path='etat-charges')
+    def etat_charges(self, request, pk=None):
+        """État consolidé des charges sociales par organisme (XPAI5).
+
+        ``?export=csv`` renvoie le fichier CSV au lieu du JSON.
+        """
+        periode = self.get_object()
+        data = etat_des_charges(periode)
+        if request.query_params.get('export') == 'csv':
+            return self._export_etat_charges_csv(data)
+        return Response(data, status=status.HTTP_200_OK)
+
+    @staticmethod
+    def _export_etat_charges_csv(data):
+        buffer = io.StringIO()
+        writer = csv.writer(buffer, delimiter=';')
+        writer.writerow([f"État des charges sociales {data['mois']:02d}/{data['annee']}"])
+        writer.writerow([])
+        writer.writerow(['Organisme', 'Part salariale', 'Part patronale', 'Total'])
+        for org in data['organismes']:
+            writer.writerow([
+                org['libelle'], org['salarial'], org['patronal'], org['total']])
+        writer.writerow([])
+        writer.writerow(['Total général', '', '', data['total_general']])
+        resp = HttpResponse(
+            buffer.getvalue(), content_type='text/csv; charset=utf-8')
+        resp['Content-Disposition'] = (
+            f"attachment; filename=\"etat_charges_{data['annee']}_"
+            f"{data['mois']:02d}.csv\"")
+        return resp
+
+    @action(detail=True, methods=['get'], url_path='rapprochement-gl')
+    def rapprochement_gl(self, request, pk=None):
+        """Rapproche le livre de paie au GL posté par le journal de paie (XPAI5)."""
+        periode = self.get_object()
+        return Response(
+            rapprochement_paie_gl(periode), status=status.HTTP_200_OK)
 
     @action(detail=True, methods=['get'], url_path='livre-de-paie')
     def livre_de_paie(self, request, pk=None):

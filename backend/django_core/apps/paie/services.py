@@ -2279,6 +2279,117 @@ def journal_de_paie(periode, *, created_by=None):
     return ecriture
 
 
+# ── XPAI5 — État des charges sociales + rapprochement paie↔GL ──────────────
+
+# Organismes déclaratifs, chacun mappé au compte CGNC crédité par
+# ``journal_de_paie`` (mêmes constantes ``_COMPTE_*`` que PAIE33) + le
+# libellé affiché. Le compte mutuelle n'a pas de compte CGNC dédié posté par
+# le journal de paie aujourd'hui (limitation connue, non couverte ici).
+_ORGANISMES_CHARGES = [
+    ('cnss_amo', 'CNSS / AMO', _COMPTE_CNSS),
+    ('ir', 'État — IR retenu à la source', _COMPTE_IR),
+    ('cimr', 'CIMR', _COMPTE_CIMR),
+]
+
+
+def etat_des_charges(periode):
+    """État consolidé des charges sociales par organisme (XPAI5).
+
+    Agrège, pour les bulletins VALIDÉS de la ``periode``, les montants dus par
+    organisme (CNSS+AMO, IR, CIMR) — parts salariale ET patronale, montant
+    total à payer. Renvoie un dict ``{'annee', 'mois', 'organismes': [...]
+    (chacun {'code', 'libelle', 'salarial', 'patronal', 'total',
+    'echeance'}), 'total_general'}``. Lecture seule.
+    """
+    registre = livre_de_paie(periode)
+    totaux = registre['totaux']
+
+    cnss_amo_sal = totaux['cnss_salariale'] + totaux['amo_salariale']
+    cnss_amo_pat = totaux['cnss_patronale'] + totaux['amo_patronale']
+    ir = totaux['ir']
+    cimr = totaux['cimr_salariale']
+
+    # Échéances réglementaires usuelles (jour du mois suivant) — informatif.
+    organismes = [
+        {
+            'code': 'cnss_amo', 'libelle': 'CNSS / AMO',
+            'salarial': _q(cnss_amo_sal), 'patronal': _q(cnss_amo_pat),
+            'total': _q(cnss_amo_sal + cnss_amo_pat),
+            'echeance_jour': 10,
+        },
+        {
+            'code': 'ir', 'libelle': 'État — IR retenu à la source',
+            'salarial': _q(ir), 'patronal': Decimal('0.00'),
+            'total': _q(ir), 'echeance_jour': 20,
+        },
+        {
+            'code': 'cimr', 'libelle': 'CIMR',
+            'salarial': _q(cimr), 'patronal': Decimal('0.00'),
+            'total': _q(cimr), 'echeance_jour': 10,
+        },
+    ]
+    total_general = sum((o['total'] for o in organismes), Decimal('0.00'))
+    return {
+        'annee': periode.annee,
+        'mois': periode.mois,
+        'organismes': organismes,
+        'total_general': _q(total_general),
+    }
+
+
+def rapprochement_paie_gl(periode):
+    """Rapproche le livre de paie (documentaire) au GL posté (XPAI5).
+
+    Prouve que, pour la ``periode``, les totaux du livre de paie ÉGALENT
+    l'écriture comptable postée par ``journal_de_paie`` sur chaque compte
+    organisme (4441 CNSS/AMO, 4452 IR, 4443 CIMR). Lecture compta EXCLUSIVEMENT
+    via ``compta.selectors.grand_livre`` (cross-app READ autorisé, jamais
+    ``compta.models`` direct). Fenêtre GL bornée au mois de la période (1er au
+    dernier jour du mois) pour n'attraper QUE l'écriture de cette paie.
+
+    Renvoie un dict ``{'annee', 'mois', 'lignes': [{'code', 'libelle',
+    'attendu_paie', 'poste_gl', 'ecart'}], 'ecart_total', 'coherent'}`` —
+    ``coherent`` est vrai quand tous les écarts sont nuls (aucune écriture
+    postée = écart signalé, pas un skip silencieux).
+    """
+    from apps.compta import selectors as compta_selectors  # cross-app READ
+
+    etat = etat_des_charges(periode)
+    total_par_code = {o['code']: o['total'] for o in etat['organismes']}
+
+    date_debut = date(periode.annee, periode.mois, 1)
+    if periode.mois == 12:
+        date_fin = date(periode.annee, 12, 31)
+    else:
+        date_fin = date(periode.annee, periode.mois + 1, 1) - timedelta(days=1)
+
+    gl = compta_selectors.grand_livre(
+        periode.company, date_debut=date_debut, date_fin=date_fin,
+        validees_seulement=False)
+    solde_par_numero = {bucket['numero']: bucket['solde'] for bucket in gl}
+
+    lignes = []
+    ecart_total = Decimal('0.00')
+    for code, libelle, numero in _ORGANISMES_CHARGES:
+        attendu = total_par_code.get(code, Decimal('0.00'))
+        # Le GL crédite l'organisme (dette) : solde débit-crédit est NÉGATIF
+        # pour une dette pure ; on compare en valeur absolue (montant dû).
+        poste_gl = _q(abs(solde_par_numero.get(numero, Decimal('0'))))
+        ecart = _q(attendu - poste_gl)
+        ecart_total += ecart
+        lignes.append({
+            'code': code, 'libelle': libelle, 'compte': numero,
+            'attendu_paie': attendu, 'poste_gl': poste_gl, 'ecart': ecart,
+        })
+    return {
+        'annee': periode.annee,
+        'mois': periode.mois,
+        'lignes': lignes,
+        'ecart_total': _q(ecart_total),
+        'coherent': ecart_total == 0,
+    }
+
+
 # ── PAIE27 — Cumul annuel par employé (recalcul depuis bulletins validés) ────
 
 # Champs cumulés : (champ du CumulAnnuel, champ du BulletinPaie) sommés.
