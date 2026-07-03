@@ -1178,3 +1178,48 @@ def envoyer_email_transition(candidature, *, date_entretien=None):
         message=f'Email automatique envoyé ({gabarit.get_etape_display()}) : '
                 f'{objet}')
     return True
+
+
+# ── XRH20 — promesse d'embauche / lettre d'offre PDF + e-sign interne ──────
+
+class PromesseSignatureError(Exception):
+    """Erreur métier lors de la signature d'une promesse d'embauche."""
+
+
+@transaction.atomic
+def signer_promesse_embauche(promesse, *, signataire_nom, ip_adresse='',
+                             user_agent=''):
+    """XRH20 — signe une ``PromesseEmbauche`` par NOM TAPÉ (loi 53-05).
+
+    Lève ``PromesseSignatureError`` si le jeton a expiré ou si la promesse
+    est DÉJÀ signée (immuable — jamais de re-signature). Fige la signature
+    (nom, IP, user-agent, horodatage serveur), passe ``statut=signee`` et
+    journalise l'acceptation dans le chatter de la candidature (XRH18).
+    """
+    from .models import CandidatureActivity
+
+    if promesse.statut == promesse.Statut.SIGNEE:
+        raise PromesseSignatureError('Cette promesse est déjà signée.')
+    if not promesse.is_valid:
+        raise PromesseSignatureError('Ce lien de signature a expiré.')
+
+    nom = (signataire_nom or '').strip()
+    if not nom:
+        raise PromesseSignatureError('Le nom du signataire est requis.')
+
+    promesse.signataire_nom = nom
+    promesse.date_signature = timezone.now()
+    promesse.ip_adresse = (ip_adresse or '')[:45]
+    promesse.user_agent = user_agent or ''
+    promesse.statut = promesse.Statut.SIGNEE
+    promesse.save(update_fields=[
+        'signataire_nom', 'date_signature', 'ip_adresse', 'user_agent',
+        'statut'])
+
+    CandidatureActivity.objects.create(
+        company=promesse.company, candidature=promesse.candidature,
+        type=CandidatureActivity.Kind.NOTE,
+        message=(
+            f'Offre acceptée — signée électroniquement par {nom} '
+            f'le {promesse.date_signature:%d/%m/%Y %H:%M}.'))
+    return promesse

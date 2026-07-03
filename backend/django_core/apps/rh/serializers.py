@@ -35,6 +35,7 @@ from .models import (
     GrilleSalariale,
     NoteEntretien,
     PeriodeFermeture,
+    PromesseEmbauche,
     ReglageRH,
     DossierActivity,
     DossierEmploye,
@@ -2080,6 +2081,29 @@ class CorrectionPointageSerializer(serializers.ModelSerializer):
 
     def get_auteur_nom(self, obj):
         return getattr(obj.auteur, 'username', '') if obj.auteur_id else ''
+
+
+class PromesseEmbaucheSerializer(serializers.ModelSerializer):
+    """Promesse d'embauche (XRH20). ``company`` posée côté serveur ;
+    ``salaire_propose`` gaté ``salaires_voir`` côté vue (le champ existe ici
+    pour l'écran interne RH — le lien public candidat utilise sa propre vue
+    dédiée)."""
+    candidature_nom = serializers.CharField(
+        source='candidature.nom', read_only=True)
+    statut_display = serializers.CharField(
+        source='get_statut_display', read_only=True)
+
+    class Meta:
+        model = PromesseEmbauche
+        fields = [
+            'id', 'candidature', 'candidature_nom', 'poste_propose',
+            'type_contrat', 'date_debut_proposee', 'salaire_propose',
+            'statut', 'statut_display', 'token', 'expires_at',
+            'signataire_nom', 'date_signature', 'date_creation',
+        ]
+        read_only_fields = [
+            'statut', 'token', 'signataire_nom', 'date_signature',
+            'date_creation']
 
 
 class GabaritEmailRecrutementSerializer(serializers.ModelSerializer):

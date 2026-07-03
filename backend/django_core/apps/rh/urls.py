@@ -1,6 +1,7 @@
 from django.urls import include, path
 from rest_framework.routers import DefaultRouter
 
+from . import public_views
 from .views import (
     AccidentTravailViewSet,
     AffectationRosterViewSet,
@@ -53,6 +54,7 @@ from .views import (
     PresenceChantierViewSet,
     PresquAccidentViewSet,
     PrimeAttribueeViewSet,
+    PromesseEmbaucheViewSet,
     ReglageRHViewSet,
     RemunerationViewSet,
     SanctionViewSet,
@@ -113,6 +115,7 @@ router.register(r'ouvertures-poste', OuverturePosteViewSet)
 router.register(r'candidatures', CandidatureViewSet)
 router.register(r'entretiens-recrutement', EntretienRecrutementViewSet)
 router.register(r'gabarits-email-recrutement', GabaritEmailRecrutementViewSet)
+router.register(r'promesses-embauche', PromesseEmbaucheViewSet)
 router.register(r'campagnes-evaluation', CampagneEvaluationViewSet)
 router.register(r'evaluations-employe', EvaluationEmployeViewSet)
 router.register(r'sanctions', SanctionViewSet)
@@ -132,4 +135,14 @@ router.register(r'cockpit', CockpitRhViewSet, basename='rh-cockpit')
 
 urlpatterns = [
     path('', include(router.urls)),
+    # XRH20 — liens publics tokenisés de la promesse d'embauche (sans session).
+    path('promesses-embauche/public/<str:token>/',
+         public_views.public_promesse_detail,
+         name='rh-promesse-publique-detail'),
+    path('promesses-embauche/public/<str:token>/pdf/',
+         public_views.public_promesse_pdf,
+         name='rh-promesse-publique-pdf'),
+    path('promesses-embauche/public/<str:token>/signer/',
+         public_views.public_promesse_signer,
+         name='rh-promesse-publique-signer'),
 ]

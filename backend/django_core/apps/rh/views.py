@@ -54,6 +54,7 @@ from .models import (
     GrilleSalariale,
     NoteEntretien,
     PeriodeFermeture,
+    PromesseEmbauche,
     ReglageRH,
     DocumentEmploye,
     DossierEmploye,
@@ -116,6 +117,7 @@ from .serializers import (
     GrilleSalarialeSerializer,
     NoteEntretienSerializer,
     PeriodeFermetureSerializer,
+    PromesseEmbaucheSerializer,
     ReglageRHSerializer,
     DocumentEmployeSerializer,
     DossierActivitySerializer,
@@ -2964,6 +2966,34 @@ class EntretienRecrutementViewSet(_RhBaseViewSet):
             })
         return Response(
             NoteEntretienSerializer(note).data, status=status.HTTP_201_CREATED)
+
+
+class PromesseEmbaucheViewSet(_RhBaseViewSet):
+    """Promesses d'embauche / lettres d'offre (XRH20) — administration RH.
+
+    Société scopée + Administrateur/Responsable. ``company`` posée CÔTÉ
+    SERVEUR ; ``candidature`` doit appartenir à la société.
+
+    Action :
+    * ``GET .../{id}/pdf/`` — PDF interne (accès RH, sans jeton).
+    """
+    queryset = PromesseEmbauche.objects.select_related('candidature').all()
+    serializer_class = PromesseEmbaucheSerializer
+    filter_backends = [filters.OrderingFilter]
+    ordering_fields = ['date_creation', 'statut']
+
+    @action(detail=True, methods=['get'], url_path='pdf')
+    def pdf(self, request, pk=None):
+        from django.http import HttpResponse
+
+        from .pdf import render_promesse_embauche_pdf
+
+        promesse = self.get_object()
+        pdf_bytes = render_promesse_embauche_pdf(promesse)
+        resp = HttpResponse(pdf_bytes, content_type='application/pdf')
+        resp['Content-Disposition'] = (
+            'inline; filename="promesse_embauche.pdf"')
+        return resp
 
 
 class GabaritEmailRecrutementViewSet(_RhBaseViewSet):

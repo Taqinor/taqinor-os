@@ -4903,3 +4903,98 @@ class GabaritEmailRecrutement(models.Model):
 
     def __str__(self):
         return f'{self.get_etape_display()} — {self.objet}'
+
+
+def _default_promesse_token():
+    return secrets.token_urlsafe(32)
+
+
+def _default_promesse_expiry():
+    from datetime import timedelta
+
+    from django.utils import timezone as dj_timezone
+    return dj_timezone.now() + timedelta(days=30)
+
+
+class PromesseEmbauche(models.Model):
+    """Promesse d'embauche / lettre d'offre PDF + e-sign interne (XRH20).
+
+    L'étape « offre » du pipeline (FG189) n'émettait rien. Génère une
+    promesse d'embauche WeasyPrint depuis la ``Candidature`` (poste, type de
+    contrat, date de début proposée, ``salaire_propose`` — nullable, gaté
+    ``salaires_voir`` — jamais dans le PDF sauf pour le candidat via son lien
+    tokenisé). Le candidat SIGNE via un lien tokenisé (pattern liens publics
+    WhatsApp FG79 — jeton long, imprévisible, expirant 30 j) : acceptation
+    e-sign loi 53-05 par NOM TAPÉ (pattern CONTRAT16, AUCUN prestataire
+    externe) avec évidence serveur ``ip_adresse``/``user_agent``/
+    ``date_signature``. Signature figée, horodatée, immuable (pas de route
+    update/delete sur la signature).
+
+    Multi-société : ``company`` posée côté serveur ; ``candidature`` doit
+    appartenir à la société.
+    """
+    class Statut(models.TextChoices):
+        ENVOYEE = 'envoyee', 'Envoyée'
+        SIGNEE = 'signee', 'Signée'
+        EXPIREE = 'expiree', 'Expirée'
+
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='rh_promesses_embauche',
+        verbose_name='Société',
+    )
+    candidature = models.OneToOneField(
+        Candidature,
+        on_delete=models.CASCADE,
+        related_name='promesse_embauche',
+        verbose_name='Candidature',
+    )
+    poste_propose = models.CharField(
+        max_length=200, blank=True, default='', verbose_name='Poste proposé')
+    type_contrat = models.CharField(
+        max_length=10, choices=DossierEmploye.TypeContrat.choices,
+        default=DossierEmploye.TypeContrat.CDI, verbose_name='Type de contrat')
+    date_debut_proposee = models.DateField(
+        null=True, blank=True, verbose_name='Date de début proposée')
+    # Donnée SENSIBLE (salaire) — gatée salaires_voir à l'écriture/lecture
+    # interne ; visible pour le candidat via son lien tokenisé (c'est SON
+    # offre). Nullable.
+    salaire_propose = models.DecimalField(
+        max_digits=14, decimal_places=2, null=True, blank=True,
+        verbose_name='Salaire proposé (MAD)')
+    statut = models.CharField(
+        max_length=10, choices=Statut.choices,
+        default=Statut.ENVOYEE, verbose_name='Statut')
+    token = models.CharField(
+        max_length=64, unique=True, default=_default_promesse_token,
+        editable=False, verbose_name='Jeton')
+    expires_at = models.DateTimeField(
+        default=_default_promesse_expiry, verbose_name='Expire le')
+    # Signature e-sign (loi 53-05) — figée dès posée, jamais éditable.
+    signataire_nom = models.CharField(
+        max_length=255, blank=True, default='', verbose_name='Nom du signataire')
+    date_signature = models.DateTimeField(
+        null=True, blank=True, verbose_name='Signé le')
+    ip_adresse = models.CharField(
+        max_length=45, blank=True, default='', verbose_name='Adresse IP')
+    user_agent = models.TextField(
+        blank=True, default='', verbose_name='User agent')
+    date_creation = models.DateTimeField(
+        auto_now_add=True, verbose_name='Créé le')
+
+    class Meta:
+        verbose_name = "Promesse d'embauche"
+        verbose_name_plural = "Promesses d'embauche"
+        ordering = ['-date_creation']
+        indexes = [
+            models.Index(fields=['token'], name='rh_promesse_token_idx'),
+        ]
+
+    @property
+    def is_valid(self):
+        from django.utils import timezone as dj_timezone
+        return self.expires_at > dj_timezone.now()
+
+    def __str__(self):
+        return f'Promesse — {self.candidature} ({self.statut})'
