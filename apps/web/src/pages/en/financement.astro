@@ -6,6 +6,12 @@
  * preserved: Taqinor is NOT a lender, no residential subsidy, no residential VAT
  * exemption, no bank/partner/rate named. Internal links via localizeNavHref.
  * FR untouched.
+ *
+ * W258 — Named, verified Moroccan mechanisms by segment (WG11): each program
+ * cited below was confirmed via a primary source at build time. What could
+ * not be verified — a residential green loan packaged by a named bank — is
+ * explicitly absent: no bank is named for residential, per the "zero
+ * invented partnership" rule.
  */
 import Layout from '../../layouts/Layout.astro';
 import V2Enhance from '../../components/V2Enhance.astro';
@@ -42,6 +48,52 @@ const moyens = [
     k: '03',
     title: 'Green financing (businesses)',
     body: 'For businesses, green financing lines for renewable energy exist in Morocco. The agreement and the terms are up to your bank and your file; we sell no loan or banking product, and guarantee none.',
+  },
+];
+
+// W258 — named, verified mechanisms by segment. Each entry cites its source;
+// nothing is published without one. Residential deliberately stays WITHOUT a
+// named bank (not verifiable at build time).
+const mecanismes = [
+  {
+    segment: 'Agriculture',
+    items: [
+      {
+        nom: 'CAM "Saquii Solaire"',
+        body: 'A named offer from Crédit Agricole du Maroc dedicated to financing agricultural solar pumping. The exact rate and terms depend on your file — ask directly at your CAM branch.',
+        source: 'creditagricole.ma',
+      },
+      {
+        nom: 'FDA — solar pumping subsidy ≈ 30 %',
+        body: 'The Agricultural Development Fund subsidises roughly 30 % of the acquisition and installation cost of an agricultural solar pumping kit (panels, pump unit, structure, accessories), paid after invoicing — filed at your regional DPA or ORMVA. Cumulative with the existing drip-irrigation subsidy.',
+        source: 'FDA guide (agrimaroc.ma / casainvest.ma)',
+      },
+    ],
+  },
+  {
+    segment: 'Businesses',
+    items: [
+      {
+        nom: 'Import VAT exemption — CGI art. 123-22°',
+        body: 'Investment goods recorded as a fixed asset, imported by a VAT-registered company within 36 months of starting activity, are exempt — subject to the guarantees required by the tax authorities. Full detail below.',
+        source: 'Code Général des Impôts, art. 123-22°',
+      },
+      {
+        nom: 'Leasing — Maghrebail "Energy Lease"',
+        body: 'A named leasing product explicitly covering photovoltaic installations, with a built-in investment subsidy for renewable-energy projects. Terms and caps are set by Maghrebail — we guarantee no banking terms.',
+        source: 'maghrebail.ma',
+      },
+    ],
+  },
+  {
+    segment: 'Residential',
+    items: [
+      {
+        nom: 'Green bank loans',
+        body: 'Some Moroccan banks offer, case by case, so-called "green" credit lines that can cover a residential solar project. We have not been able to verify, as of today, that any named institution packages a dedicated residential-solar offer — so we name no bank here: ask your own bank directly.',
+        source: 'not verified — no bank named until confirmed',
+      },
+    ],
   },
 ];
 ---
@@ -131,6 +183,36 @@ const moyens = [
             <li><strong class="text-encre">No residential VAT exemption</strong>: VAT applies to a complete turnkey installation. We won't promise you otherwise.</li>
             <li>For businesses, <strong class="text-encre">green financing lines</strong> for renewable energy projects exist in Morocco, but it is your bank that decides — we name no institution and guarantee no terms.</li>
           </ul>
+        </div>
+      </div>
+    </section>
+
+    <!-- W258 — Named, verified mechanisms by segment (WG11) -->
+    <div class="v2-seam" aria-hidden="true"></div>
+    <section class="px-4 py-20 sm:py-24">
+      <div class="mx-auto max-w-6xl">
+        <p class="tech-label v2-kicker rule-brass text-lune">What really exists, named</p>
+        <h2 class="display v2-section-title mt-5 text-white">Verified Moroccan mechanisms, by profile</h2>
+        <p class="v2-lead mt-4 max-w-2xl text-lune-soft">
+          Every name cited below was verified against a primary source at the time this page was
+          published — never a partnership we don't actually have. What we couldn't verify does not
+          appear here.
+        </p>
+        <div class="mt-10 grid gap-8 md:grid-cols-3" data-stagger>
+          {mecanismes.map((seg, i) => (
+            <div class="v2-rise border-t-2 border-brass-400/60 pt-5" style={`--v2-i:${i}`}>
+              <h3 class="display text-xl text-white">{seg.segment}</h3>
+              <div class="mt-4 space-y-5">
+                {seg.items.map((it) => (
+                  <div>
+                    <p class="font-display text-base font-bold text-white">{it.nom}</p>
+                    <p class="mt-1.5 text-sm leading-relaxed text-lune-soft">{it.body}</p>
+                    <p class="tech-label mt-1.5 text-lune-faint">Source: {it.source}</p>
+                  </div>
+                ))}
+              </div>
+            </div>
+          ))}
         </div>
       </div>
     </section>
