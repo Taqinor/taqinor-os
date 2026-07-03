@@ -164,6 +164,7 @@ from .models_kitting import (
     Kit,
     KitComposant,
     OrdreAssemblage,
+    ReservationAssemblage,
 )
 from .models_livraison import (
     Livraison,
@@ -257,6 +258,7 @@ __all__ = [
     'Kit',
     'KitComposant',
     'OrdreAssemblage',
+    'ReservationAssemblage',
     'Livraison',
     'LivraisonLigne',
     'PreuveLivraison',

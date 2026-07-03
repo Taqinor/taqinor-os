@@ -23,6 +23,10 @@ from ..models import Kit, KitComposant, OrdreAssemblage
 from ..serializers import (
     KitSerializer, KitComposantSerializer, OrdreAssemblageSerializer,
 )
+from ..services import (
+    seed_reservations_assemblage, disponibilite_par_ligne,
+    alerter_penurie_assemblage,
+)
 
 READ_ACTIONS = ['list', 'retrieve']
 
@@ -156,17 +160,29 @@ class OrdreAssemblageViewSet(TenantMixin, viewsets.ModelViewSet):
                 reference=reference)
 
         create_with_reference(OrdreAssemblage, 'ASM', company, _save)
+        # XMFG2 — sème les réservations composant depuis la BOM du kit dès la
+        # création de l'ordre.
+        seed_reservations_assemblage(serializer.instance)
 
     def perform_update(self, serializer):
         self._check_tenant(serializer)
         serializer.save(company=self.request.user.company)
 
+    @action(detail=True, methods=['get'])
+    def disponibilite(self, request, pk=None):
+        """XMFG2 — disponibilité par ligne de composant (disponible / partiel
+        / manquant, réservation-aware)."""
+        ordre = self.get_object()
+        return Response(disponibilite_par_ligne(ordre))
+
     @action(detail=True, methods=['post'])
     def demarrer(self, request, pk=None):
-        """FG328 — passe l'ordre en cours."""
+        """FG328/XMFG2 — passe l'ordre en cours. Avertit (non bloquant) si des
+        composants manquent."""
         ordre = self.get_object()
         ordre.statut = OrdreAssemblage.Statut.EN_COURS
         ordre.save(update_fields=['statut', 'date_modification'])
+        alerter_penurie_assemblage(ordre)
         return Response(self.get_serializer(ordre).data)
 
     @action(detail=True, methods=['post'])
@@ -226,5 +242,9 @@ class OrdreAssemblageViewSet(TenantMixin, viewsets.ModelViewSet):
                     emplacement_destination=ordre.emplacement_destination)
                 ordre.stock_mouvemente = True
                 update_fields.append('stock_mouvemente')
+                # XMFG2 — les réservations composant sont désormais consommées
+                # (le stock a été décrémenté par le backflush ci-dessus).
+                ordre.reservations.filter(
+                    active=True, consomme=False).update(consomme=True)
             ordre.save(update_fields=update_fields)
         return Response(self.get_serializer(ordre).data)

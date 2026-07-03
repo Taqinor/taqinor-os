@@ -67,22 +67,39 @@ def intervention_scoped(company, pk):
 
 
 def reserved_quantity_for_produit(produit):
-    """Quantité d'un produit ENGAGÉE par des réservations de chantier actives et
-    non encore consommées (0 si aucune). Lecture seule."""
+    """Quantité d'un produit ENGAGÉE par des réservations actives et non
+    encore consommées — chantier (N14) + ordre d'assemblage (XMFG2). Lecture
+    seule."""
     agg = (_active_reservations()
            .filter(produit=produit)
            .aggregate(total=Sum('quantite')))
-    return agg['total'] or 0
+    agg_asm = (_active_reservations_assemblage()
+               .filter(produit=produit)
+               .aggregate(total=Sum('quantite')))
+    return (agg['total'] or 0) + (agg_asm['total'] or 0)
 
 
 def reserved_quantities_for_company(company):
-    """Map {produit_id: quantité réservée active} pour toute la société — un seul
-    agrégat (évite un N+1 sur la liste produits). Lecture seule."""
+    """Map {produit_id: quantité réservée active} pour toute la société —
+    chantier (N14) + ordre d'assemblage (XMFG2), un seul agrégat par source
+    (évite un N+1 sur la liste produits). Lecture seule."""
     rows = (_active_reservations()
             .filter(company=company)
             .values('produit_id')
             .annotate(total=Sum('quantite')))
-    return {r['produit_id']: (r['total'] or 0) for r in rows}
+    out = {r['produit_id']: (r['total'] or 0) for r in rows}
+    rows_asm = (_active_reservations_assemblage()
+                .filter(company=company)
+                .values('produit_id')
+                .annotate(total=Sum('quantite')))
+    for r in rows_asm:
+        out[r['produit_id']] = out.get(r['produit_id'], 0) + (r['total'] or 0)
+    return out
+
+
+def _active_reservations_assemblage():
+    from .models import ReservationAssemblage
+    return ReservationAssemblage.objects.filter(active=True, consomme=False)
 
 
 def own_reservation_map(installation):

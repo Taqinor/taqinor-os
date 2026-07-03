@@ -1307,3 +1307,129 @@ def generer_handover_pack(installation, user=None):
     pack.save(update_fields=[
         'company', 'pieces', 'complet', 'date_generation', 'titre'])
     return pack
+
+
+# ── XMFG2 — Réservation & disponibilité des composants d'un ordre ────────────
+# Même patron que StockReservation (N14, chantiers) : ENGAGE le stock sans le
+# décrémenter. Seed depuis la BOM du kit à la création/confirmation de l'ordre
+# (ou les lignes d'ordre XMFG6, repli BOM si absentes). Consommation marquée
+# par XMFG1 (verrou d'idempotence côté backflush) ; libération à l'annulation.
+
+def _ordre_besoin_composants(ordre):
+    """{produit_id: quantite} pour CET ordre : lignes XMFG6 si présentes
+    (repli BOM du kit sinon), multipliées par `ordre.quantite`."""
+    lignes = list(getattr(ordre, 'lignes', None).all()) if hasattr(
+        ordre, 'lignes') else []
+    besoins = {}
+    if lignes:
+        for ligne in lignes:
+            if ligne.produit_id is None:
+                continue
+            besoins[ligne.produit_id] = besoins.get(
+                ligne.produit_id, 0) + (ligne.quantite or 0)
+        return besoins
+    for c in ordre.kit.composants.all():
+        if c.produit_id is None:
+            continue
+        besoins[c.produit_id] = besoins.get(
+            c.produit_id, 0) + (c.quantite or 0) * ordre.quantite
+    return besoins
+
+
+def seed_reservations_assemblage(ordre):
+    """XMFG2 — réserve les composants du kit pour cet ordre. Idempotent : une
+    réservation par (ordre, produit), réalignée à la quantité courante tant
+    qu'elle n'est pas consommée. Renvoie la liste des réservations actives."""
+    from .models import ReservationAssemblage
+    company = ordre.company
+    besoins = _ordre_besoin_composants(ordre)
+    for produit_id, qte in besoins.items():
+        resa, created = ReservationAssemblage.objects.get_or_create(
+            ordre=ordre, produit_id=produit_id,
+            defaults={'company': company, 'quantite': qte})
+        if not created and not resa.consomme:
+            changed = []
+            if resa.quantite != qte:
+                resa.quantite = qte
+                changed.append('quantite')
+            if not resa.active:
+                resa.active = True
+                changed.append('active')
+            if changed:
+                resa.save(update_fields=changed)
+    return list(ordre.reservations.filter(active=True))
+
+
+def release_reservations_assemblage(ordre):
+    """XMFG2 — libère les réservations NON consommées de l'ordre (annulation).
+    Une réservation déjà consommée n'est jamais touchée. Renvoie le nombre de
+    réservations libérées."""
+    from .models import ReservationAssemblage
+    return (ReservationAssemblage.objects
+            .filter(ordre=ordre, active=True, consomme=False)
+            .update(active=False))
+
+
+def disponibilite_par_ligne(ordre):
+    """XMFG2 — disponibilité par composant pour l'écran ordre : liste de dicts
+    {produit_id, designation, requis, disponible, statut}, `statut` ∈
+    {'disponible','partiel','manquant'}. `disponible` = stock total − réservé
+    (engagé non consommé, TOUTES réservations confondues, y compris celles de
+    CET ordre puisqu'elles sont déjà comptées dans le besoin affiché)."""
+    from apps.stock.services import reserved_quantity, available_quantity
+    besoins = _ordre_besoin_composants(ordre)
+    out = []
+    produits = {p.id: p for p in
+                _produits_for_ids(ordre.company, list(besoins))}
+    for produit_id, requis in besoins.items():
+        produit = produits.get(produit_id)
+        if produit is None:
+            continue
+        disponible = available_quantity(produit, reserved_quantity(produit))
+        if disponible >= requis:
+            statut = 'disponible'
+        elif disponible > 0:
+            statut = 'partiel'
+        else:
+            statut = 'manquant'
+        out.append({
+            'produit_id': produit_id,
+            'designation': produit.nom,
+            'requis': requis,
+            'disponible': disponible,
+            'statut': statut,
+        })
+    out.sort(key=lambda x: x['designation'])
+    return out
+
+
+def _produits_for_ids(company, ids):
+    from apps.stock.models import Produit
+    if not ids:
+        return Produit.objects.none()
+    return Produit.objects.filter(company=company, id__in=ids)
+
+
+def alerter_penurie_assemblage(ordre):
+    """XMFG2 — alerte non bloquante (`apps.notifications`, import
+    function-local) pour un ordre PLANIFIÉ dont un composant passe sous le
+    besoin. Best-effort : ne lève jamais."""
+    try:
+        from apps.notifications.services import notify_many, resolve_recipients
+        from apps.notifications.models import EventType
+    except Exception:  # pragma: no cover - défensif
+        return
+    manquants = [d for d in disponibilite_par_ligne(ordre)
+                 if d['statut'] != 'disponible']
+    if not manquants:
+        return
+    try:
+        recipients = resolve_recipients(ordre.company, EventType.STOCK_LOW)
+        titre = f'Composants manquants — ordre {ordre.reference}'
+        corps = ', '.join(
+            f"{m['designation']} (besoin {m['requis']}, dispo {m['disponible']})"
+            for m in manquants)
+        notify_many(recipients, EventType.STOCK_LOW, titre, body=corps,
+                    company=ordre.company)
+    except Exception:  # pragma: no cover - défensif
+        pass

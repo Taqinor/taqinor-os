@@ -140,3 +140,40 @@ class OrdreAssemblage(models.Model):
 
     def __str__(self):
         return f'{self.reference} ({self.statut})'
+
+
+class ReservationAssemblage(models.Model):
+    """XMFG2 — réservation de composant engagée par un ordre d'assemblage,
+    même patron que ``StockReservation`` (N14, chantiers) : ENGAGE le stock
+    sans le décrémenter. Semée à la création/confirmation de l'ordre depuis la
+    BOM du kit (ou les lignes d'ordre — XMFG6, avec repli BOM). Libérée
+    (``active=False``) à l'annulation ; marquée ``consomme`` par XMFG1 au
+    backflush (verrou d'idempotence, jamais deux fois décomptée)."""
+
+    company = models.ForeignKey(
+        'authentication.Company', on_delete=models.CASCADE,
+        null=True, blank=True,
+        related_name='installations_reservations_assemblage')
+    ordre = models.ForeignKey(
+        OrdreAssemblage, on_delete=models.CASCADE, related_name='reservations')
+    produit = models.ForeignKey(
+        'stock.Produit', on_delete=models.CASCADE,
+        related_name='installations_reservations_assemblage')
+    quantite = models.PositiveIntegerField(default=0)
+    active = models.BooleanField(default=True)
+    consomme = models.BooleanField(default=False)
+    date_creation = models.DateTimeField(auto_now_add=True)
+    date_modification = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = 'Réservation d\'assemblage'
+        verbose_name_plural = 'Réservations d\'assemblage'
+        ordering = ['ordre_id', 'id']
+        unique_together = [('ordre', 'produit')]
+        indexes = [
+            models.Index(fields=['produit', 'active', 'consomme'],
+                         name='idx_resa_asm_prod_act_cons'),
+        ]
+
+    def __str__(self):
+        return f'{self.ordre_id} · {self.produit_id} × {self.quantite}'
