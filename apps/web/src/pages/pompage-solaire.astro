@@ -31,6 +31,14 @@ import Article33Ribbon from '../components/Article33Ribbon.astro';
 import Breadcrumb from '../components/Breadcrumb.astro';
 import CtaBand from '../components/CtaBand.astro';
 import StickyCta from '../components/StickyCta.astro';
+import Faq from '../components/Faq.astro';
+import ServiceWarrantyTable from '../components/ServiceWarrantyTable.astro';
+import { serviceFaqItems } from '../lib/serviceFaq';
+
+// W263 — FAQ partagée + garanties par composant, FR. Le pompage solaire ne
+// pose NI onduleur NI batterie (repo fact) — includeOnduleur/includeBatterie
+// à false pour ne jamais afficher une garantie sur un composant absent.
+const faqItems = serviceFaqItems('pompage-solaire', 'fr');
 
 const etapes = [
   {
@@ -361,6 +369,15 @@ const jsonLd = {
           <a href="/équipement" class="border border-white/40 px-5 py-3 text-sm font-bold text-white transition-colors hover:border-white hover:bg-white/10">Voir l’équipement →</a>
         </div>
       </div>
+    </section>
+
+    <!-- W263 — FAQ partagée (entretien/prix/inclus-exclus/délais/garanties)
+         + garantie par composant, AVANT le CTA final. schema={false} :
+         /faq reste l'unique page émettant le FAQPage JSON-LD (W19).
+         Pompage solaire : ni onduleur ni batterie posés (repo fact). -->
+    <Faq schema={false} heading="Questions fréquentes — pompage solaire" items={faqItems} />
+    <section class="section-tight bg-blanc-azur px-4 text-encre">
+      <ServiceWarrantyTable includeOnduleur={false} includeBatterie={false} />
     </section>
 
     <CtaBand title="Un projet de pompage solaire ? Commencez par l’étude gratuite." href="/devis/mon-toit" />

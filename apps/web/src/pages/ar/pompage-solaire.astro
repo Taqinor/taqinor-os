@@ -23,12 +23,19 @@ import Article33Ribbon from '../../components/Article33Ribbon.astro';
 import Breadcrumb from '../../components/Breadcrumb.astro';
 import CtaBand from '../../components/CtaBand.astro';
 import StickyCta from '../../components/StickyCta.astro';
+import Faq from '../../components/Faq.astro';
+import ServiceWarrantyTable from '../../components/ServiceWarrantyTable.astro';
 import { getLocaleFromPath } from '../../i18n/utils';
 import { localizeNavHref } from '../../i18n/pages';
+import { serviceFaqItems } from '../../lib/serviceFaq';
 
 const locale = getLocaleFromPath(Astro.url.pathname);
 const L = (href: string) => localizeNavHref(href, locale);
 const devisHref = L('/devis/mon-toit');
+
+// W263 — بنك أسئلة شائعة مشترك + ضمان حسب المكوّن، بالعربية. الضخ الشمسي
+// لا يشمل عاكساً ولا بطارية (حقيقة المستودع) — includeOnduleur/includeBatterie بـ false.
+const faqItems = serviceFaqItems('pompage-solaire', 'ar');
 
 const etapes = [
   {
@@ -337,6 +344,15 @@ const jsonLd = {
           <a href={L('/équipement')} class="border border-white/40 px-5 py-3 text-sm font-bold text-white transition-colors hover:border-white hover:bg-white/10">انظر المعدات <span class="inline-block rtl:-scale-x-100">→</span></a>
         </div>
       </div>
+    </section>
+
+    <!-- W263 — بنك أسئلة شائعة مشترك (صيانة/ثمن/مُدرَج-مُستثنى/آجال/ضمانات)
+         + ضمان حسب المكوّن، قبل الاستدعاء النهائي. schema={false}:
+         /faq تبقى الصفحة الوحيدة التي تُصدر FAQPage JSON-LD (W19).
+         الضخ الشمسي: لا عاكس ولا بطارية مُركَّبان (حقيقة المستودع). -->
+    <Faq schema={false} heading="أسئلة شائعة — الضخ الشمسي" items={faqItems} />
+    <section class="section-tight bg-blanc-azur px-4 text-encre">
+      <ServiceWarrantyTable includeOnduleur={false} includeBatterie={false} />
     </section>
 
     <CtaBand title="مشروع ضخ شمسي؟ ابدأ بالدراسة المجانية." href={devisHref} />
