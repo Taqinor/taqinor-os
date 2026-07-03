@@ -3,6 +3,12 @@
  * AR — Our warranties (W67, RTL). Faithful Arabic translation of /garanties ;
  * EVERY figure (12/25/10/20/2 years, 84.8 %) kept EXACT in Latin digits. No
  * invented SLA. Internal links use localizeNavHref (FR fallback). FR untouched.
+ *
+ * W331 — three honest additions: (1) a "what isn't covered" clause (WG16 still
+ * in progress: GENERIC exclusions, marked "to confirm"); (2) a concrete
+ * scenario if performance falls under the guaranteed floor; (3) a claim step
+ * list with the response window resolved by the founder (WG9: "within 1 h,
+ * 7 days a week").
  */
 import Layout from '../../layouts/Layout.astro';
 import V2Enhance from '../../components/V2Enhance.astro';
@@ -10,12 +16,16 @@ import Article33Ribbon from '../../components/Article33Ribbon.astro';
 import Breadcrumb from '../../components/Breadcrumb.astro';
 import CtaBand from '../../components/CtaBand.astro';
 import StickyCta from '../../components/StickyCta.astro';
+import ZelligeDivider from '../../components/ZelligeDivider.astro';
 import { getLocaleFromPath } from '../../i18n/utils';
 import { localizeNavHref } from '../../i18n/pages';
+import { WHATSAPP_LEADS } from '../../lib/nap';
+import { whatsappLink } from '../../lib/whatsapp';
 
 const locale = getLocaleFromPath(Astro.url.pathname);
 const L = (href: string) => localizeNavHref(href, locale);
 const devisHref = L('/devis/mon-toit');
+const waClaim = whatsappLink(WHATSAPP_LEADS, 'مرحباً، أرغب في تفعيل ضمان تاكينور الخاص بي.');
 
 const warranties = [
   { item: 'الألواح الكهروضوئية (المنتج)', years: '12 سنة' },
@@ -38,6 +48,42 @@ const engagements = [
   {
     title: 'الملف يبقى بين يديك',
     body: 'عند التسليم، تغادر بكل شيء: مخططات أحادية الخط، حساب الكوابل، لائحة الحمايات، مسطرة التشغيل وولوج مراقبة Deye Cloud. ما يكفي لاستدعاء أي تقني، يوم تشاء.',
+  },
+];
+
+// W331 — استثناءات عامة (على مستوى القطاع) لضمان كهروضوئي قياسي، وليست
+// اللائحة التعاقدية النهائية لتاكينور. بوابة WG16 لا تزال مفتوحة: على رضا
+// تأكيدها أو تعديلها قبل أن تصبح المرجع التعاقدي.
+const exclusions = [
+  'ضرر عرضي أو صدمة خارجية (سقوط جسم، برَد استثنائي، تخريب)',
+  'تعديل أو إزالة أو تدخّل من طرف ثالث غير معتمد من تاكينور',
+  'إهمال صيانة واضح (اتساخ لم يُعالَج، نباتات لم تُزَل)',
+  'حدث قوة قاهرة (صاعقة مباشرة، حريق، كارثة طبيعية) — يخص تأمين سكنك، لا ضمان معداتنا',
+  'تآكل عادي يتجاوز عتبات الأداء المضمونة (انظر الجدول أعلاه)',
+];
+
+// W331 — لائحة خطوات ملموسة لتفعيل الضمان. نافذة الاستجابة حُسمت من طرف
+// المؤسس (WG9، 2026-07-03): «خلال ساعة واحدة، 7 أيام على 7».
+const claimSteps = [
+  {
+    n: '01',
+    title: 'تواصلوا معنا عبر واتساب',
+    body: 'نفس القناة المستعملة لدراستكم — صفوا ما تلاحظونه (انخفاض إنتاج، تنبيه، ضرر ظاهر).',
+  },
+  {
+    n: '02',
+    title: 'أعطونا مرجع ورشكم',
+    body: 'مرجع تركيبتكم (ظاهر في الملف التقني المُسلَّم عند التسليم) يتيح إيجاد معداتكم فوراً، وتاريخ تركيبها وضمانها.',
+  },
+  {
+    n: '03',
+    title: 'أرفقوا صورة إن كان العطب ظاهراً',
+    body: 'لوح أو عاكس أو تثبيت به مشكل مادي ظاهر — الصورة تُسرّع التشخيص حتى قبل تنقّلنا.',
+  },
+  {
+    n: '04',
+    title: 'نجيب خلال ساعة واحدة، 7 أيام على 7',
+    body: 'التزامنا بالاستجابة — ليس أجل حل، بل إشعار استلام بشري يُطلق معالجة ملفكم.',
   },
 ];
 ---
@@ -85,6 +131,38 @@ const engagements = [
           لا قيمة له إلا إذا أمكن تفعيله دون إرجاع لوح إلى الطرف الآخر من العالم — وهذه تُفعَّل محلياً.
           <a href={L('/équipement')} class="border-b border-azur-600 pb-0.5 font-semibold text-azur-600 transition-colors hover:text-azur-700">انظر المعدات المركَّبة <span class="inline-block rtl:-scale-x-100">→</span></a>
         </p>
+
+        <!-- W331 — «ما لا يُغطّى»: ذكر الاستثناءات يجعل الضمان أكثر مصداقية، لا
+             أقل. عام على مستوى القطاع، WG16-pending. -->
+        <div class="mx-auto mt-14 max-w-xl">
+          <p class="tech-label text-azur-600">قيل أيضاً بوضوح</p>
+          <h3 class="display mt-2 text-lg">ما لا يُغطّى</h3>
+          <p class="mt-3 text-sm leading-relaxed text-encre-soft">
+            الضمان الصادق يذكر أيضاً حدوده. إليكم، على سبيل الاستدلال، الاستثناءات القياسية لضمان
+            معدات كهروضوئية في القطاع:
+          </p>
+          <ul class="mt-4 space-y-2 border-t border-azur-900/15 pt-4 text-sm leading-relaxed text-encre-soft">
+            {exclusions.map((ex) => (
+              <li class="flex gap-2"><span class="text-azur-600" aria-hidden="true">–</span><span>{ex}</span></li>
+            ))}
+          </ul>
+          <p class="mt-4 text-xs italic text-encre-faint">
+            رهن التأكيد: اللائحة الدقيقة قيد المصادقة من طرف تاكينور — النسخة التعاقدية التي تُسلَّم
+            لكم عند التوقيع هي المرجع.
+          </p>
+        </div>
+
+        <!-- W331 — سيناريو ملموس إن انخفض الأداء دون العتبة المضمونة -->
+        <div class="mx-auto mt-14 max-w-xl border-t-2 border-azur-900 bg-blanc p-6">
+          <p class="tech-label text-azur-600">سيناريو ملموس</p>
+          <h3 class="display mt-2 text-lg">إن انخفض الأداء دون 84.8 %</h3>
+          <p class="mt-3 text-sm leading-relaxed text-encre-soft">
+            تُقاس ألواحكم باستمرار على Deye Cloud. إن أثبت فحص، خلال فترة 25 سنة، أن القدرة المُعادة
+            انخفضت دون العتبة المضمونة البالغة 84.8 % من القدرة الأولية — خارج الاستثناءات أعلاه — يُطبَّق
+            ضمان الصانع: تعويض أو تبديل اللوح المعني، وفق شروط الصانع. لهذا بالضبط تعمل المراقبة باستمرار
+            — لرصد هذا النوع من الانحراف مبكراً، حتى قبل أن تلاحظوه في فاتورتكم.
+          </p>
+        </div>
       </div>
     </section>
 
@@ -106,6 +184,31 @@ const engagements = [
           <a href={L('/professionnel')} class="border border-white/40 px-5 py-3 text-sm font-bold text-white transition-colors hover:border-white hover:bg-white/10">الطاقة الشمسية المهنية <span class="inline-block rtl:-scale-x-100">→</span></a>
           <a href={L('/realisations')} class="border border-white/40 px-5 py-3 text-sm font-bold text-white transition-colors hover:border-white hover:bg-white/10">إنجازاتنا <span class="inline-block rtl:-scale-x-100">→</span></a>
         </div>
+      </div>
+    </section>
+
+    <!-- W331 — كيف تُفعّلون ضمانكم، لائحة خطوات ملموسة -->
+    <ZelligeDivider tone="white" />
+    <section class="section px-4">
+      <div class="mx-auto max-w-4xl">
+        <p class="tech-label v2-kicker rule-brass text-lune">اليوم الذي تحتاجونه فيه</p>
+        <h2 class="display v2-section-title mt-5 text-white">كيف تُفعّلون ضمانكم</h2>
+        <p class="v2-lead mt-4 max-w-2xl text-lune-soft">
+          الضمان المكتوب لا يفيد شيئاً إن تحوّل تفعيله إلى مسار معقّد. إليكم بالضبط ما ينبغي فعله.
+        </p>
+        <ol class="mt-10 grid gap-6 sm:grid-cols-2 lg:grid-cols-4" data-stagger>
+          {claimSteps.map((s, i) => (
+            <li class="v2-rise border-s-2 border-brass-400/60 ps-6" style={`--v2-i:${i}`}>
+              <p class="fig lum text-2xl">{s.n}</p>
+              <h3 class="display mt-2 text-lg text-white">{s.title}</h3>
+              <p class="mt-3 text-sm leading-relaxed text-lune-soft">{s.body}</p>
+            </li>
+          ))}
+        </ol>
+        <a href={waClaim} rel="noopener" class="mt-10 inline-flex items-center gap-2 bg-brass-400 px-7 py-3.5 text-base font-bold text-azur-950 transition-colors hover:bg-brass-300">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 2a10 10 0 0 0-8.6 15.1L2 22l5-1.3A10 10 0 1 0 12 2Zm5.4 14.1c-.2.6-1.3 1.2-1.8 1.2-.5.1-1 .2-3.3-.7-2.8-1.1-4.6-4-4.7-4.2-.1-.2-1.1-1.5-1.1-2.9s.7-2 1-2.3c.2-.3.5-.3.7-.3h.5c.2 0 .4 0 .6.4l.9 2.1c.1.2.1.4 0 .6l-.4.6-.5.5c-.2.2-.3.4-.1.7.2.3.9 1.4 1.9 2.3 1.3 1.1 2.3 1.5 2.6 1.6.3.1.5.1.7-.1l1-1.2c.2-.3.4-.2.7-.1l2 1c.3.1.5.2.6.4 0 .1 0 .7-.3 1.4Z"/></svg>
+          فعّلوا ضماني عبر واتساب
+        </a>
       </div>
     </section>
 

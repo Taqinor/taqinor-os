@@ -3,6 +3,13 @@
  * EN — Our warranties (W67). Faithful translation of /garanties ; EVERY figure
  * (12/25/10/20/2 years, 84.8 %) kept EXACT. No invented SLA. Internal links use
  * localizeNavHref (FR fallback when not yet translated). FR untouched.
+ *
+ * W331 — three honest additions: (1) a "what isn't covered" clause (WG16 still
+ * in progress: GENERIC standard-PV-warranty exclusions, marked "to confirm" —
+ * not Taqinor's final list until Reda validates it); (2) a concrete scenario
+ * if performance falls under the guaranteed floor (≥ 84.8 % already
+ * published); (3) a claim step list, with the response window resolved by the
+ * founder (WG9: "within 1 h, 7 days a week").
  */
 import Layout from '../../layouts/Layout.astro';
 import V2Enhance from '../../components/V2Enhance.astro';
@@ -10,12 +17,16 @@ import Article33Ribbon from '../../components/Article33Ribbon.astro';
 import Breadcrumb from '../../components/Breadcrumb.astro';
 import CtaBand from '../../components/CtaBand.astro';
 import StickyCta from '../../components/StickyCta.astro';
+import ZelligeDivider from '../../components/ZelligeDivider.astro';
 import { getLocaleFromPath } from '../../i18n/utils';
 import { localizeNavHref } from '../../i18n/pages';
+import { WHATSAPP_LEADS } from '../../lib/nap';
+import { whatsappLink } from '../../lib/whatsapp';
 
 const locale = getLocaleFromPath(Astro.url.pathname);
 const L = (href: string) => localizeNavHref(href, locale);
 const devisHref = L('/devis/mon-toit');
+const waClaim = whatsappLink(WHATSAPP_LEADS, 'Hello, I would like to make a claim on my Taqinor warranty.');
 
 const warranties = [
   { item: 'Photovoltaic panels (product)', years: '12 years' },
@@ -38,6 +49,42 @@ const engagements = [
   {
     title: 'The file stays in your hands',
     body: 'At handover you leave with everything: single-line diagrams, cable sizing, the list of protections, the commissioning procedure and access to Deye Cloud monitoring. Enough to call in any technician, the day you want to.',
+  },
+];
+
+// W331 — GENERIC exclusions for a standard PV warranty (industry-wide), not
+// Taqinor's final contractual list. WG16 gate still open: Reda must confirm
+// or adjust it before it becomes the contractual reference.
+const exclusions = [
+  'Accidental damage or external impact (falling object, exceptional hail, vandalism)',
+  'Modification, removal or intervention by a third party not authorised by Taqinor',
+  'Clear lack of maintenance (untreated soiling, vegetation not cleared)',
+  'Force majeure event (direct lightning strike, fire, natural disaster) — a matter for your home insurance, not our hardware warranty',
+  'Normal wear beyond the guaranteed performance thresholds (see the table above)',
+];
+
+// W331 — concrete claim step list. Response window resolved by the founder
+// (WG9, 2026-07-03): "within 1 h, 7 days a week".
+const claimSteps = [
+  {
+    n: '01',
+    title: 'Contact us on WhatsApp',
+    body: 'The same channel as for your assessment — describe what you\'re seeing (a drop in production, an alert, visible damage).',
+  },
+  {
+    n: '02',
+    title: 'Give us your install reference',
+    body: 'Your installation\'s reference (visible on the technical file handed over at completion) lets us find your equipment, its install date and its warranty immediately.',
+  },
+  {
+    n: '03',
+    title: 'Attach a photo if the fault is visible',
+    body: 'A panel, inverter or mount with a visible hardware issue — a photo speeds up the diagnosis before we even come out.',
+  },
+  {
+    n: '04',
+    title: 'We respond within 1 h, 7 days a week',
+    body: 'Our response commitment — not a resolution time, but a human acknowledgement that starts your case moving.',
   },
 ];
 ---
@@ -86,6 +133,40 @@ const engagements = [
           distributors in Morocco. A warranty is only worth something if you can enforce it without
           shipping a panel to the other side of the world — these activate locally. <a href={L('/équipement')} class="border-b border-azur-600 pb-0.5 font-semibold text-azur-600 transition-colors hover:text-azur-700">See the equipment installed →</a>
         </p>
+
+        <!-- W331 — "what isn't covered": stating exclusions makes a warranty
+             MORE credible, not less. Industry-generic, WG16-pending. -->
+        <div class="mx-auto mt-14 max-w-xl">
+          <p class="tech-label text-azur-600">Said just as plainly</p>
+          <h3 class="display mt-2 text-lg">What isn't covered</h3>
+          <p class="mt-3 text-sm leading-relaxed text-encre-soft">
+            An honest warranty also states its limits. Here, for reference, are the standard
+            exclusions of a photovoltaic hardware warranty in the industry:
+          </p>
+          <ul class="mt-4 space-y-2 border-t border-azur-900/15 pt-4 text-sm leading-relaxed text-encre-soft">
+            {exclusions.map((ex) => (
+              <li class="flex gap-2"><span class="text-azur-600" aria-hidden="true">–</span><span>{ex}</span></li>
+            ))}
+          </ul>
+          <p class="mt-4 text-xs italic text-encre-faint">
+            To confirm: exact list currently being validated by Taqinor — the contractual version
+            handed to you at signature is authoritative.
+          </p>
+        </div>
+
+        <!-- W331 — concrete scenario if performance falls under the guaranteed floor -->
+        <div class="mx-auto mt-14 max-w-xl border-t-2 border-azur-900 bg-blanc p-6">
+          <p class="tech-label text-azur-600">A concrete scenario</p>
+          <h3 class="display mt-2 text-lg">If performance falls under 84.8 %</h3>
+          <p class="mt-3 text-sm leading-relaxed text-encre-soft">
+            Your panels are measured continuously on Deye Cloud. If a check finds, within the 25-year
+            period, that delivered power has dropped below the guaranteed floor of 84.8 % of initial
+            power — outside the exclusions above — the manufacturer warranty applies: replacement or
+            compensation for the panel concerned, per the manufacturer's terms. This is exactly why
+            monitoring runs continuously — to catch this kind of drift early, before you'd even see it
+            on your bill.
+          </p>
+        </div>
       </div>
     </section>
 
@@ -107,6 +188,32 @@ const engagements = [
           <a href={L('/professionnel')} class="border border-white/40 px-5 py-3 text-sm font-bold text-white transition-colors hover:border-white hover:bg-white/10">Business solar →</a>
           <a href={L('/realisations')} class="border border-white/40 px-5 py-3 text-sm font-bold text-white transition-colors hover:border-white hover:bg-white/10">Our projects →</a>
         </div>
+      </div>
+    </section>
+
+    <!-- W331 — how to make a claim, concrete step list -->
+    <ZelligeDivider tone="white" />
+    <section class="section px-4">
+      <div class="mx-auto max-w-4xl">
+        <p class="tech-label v2-kicker rule-brass text-lune">The day you need it</p>
+        <h2 class="display v2-section-title mt-5 text-white">How to make a warranty claim</h2>
+        <p class="v2-lead mt-4 max-w-2xl text-lune-soft">
+          A written warranty is worthless if activating it turns into an ordeal. Here is exactly what
+          to do.
+        </p>
+        <ol class="mt-10 grid gap-6 sm:grid-cols-2 lg:grid-cols-4" data-stagger>
+          {claimSteps.map((s, i) => (
+            <li class="v2-rise border-l-2 border-brass-400/60 pl-6" style={`--v2-i:${i}`}>
+              <p class="fig lum text-2xl">{s.n}</p>
+              <h3 class="display mt-2 text-lg text-white">{s.title}</h3>
+              <p class="mt-3 text-sm leading-relaxed text-lune-soft">{s.body}</p>
+            </li>
+          ))}
+        </ol>
+        <a href={waClaim} rel="noopener" class="mt-10 inline-flex items-center gap-2 bg-brass-400 px-7 py-3.5 text-base font-bold text-azur-950 transition-colors hover:bg-brass-300">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 2a10 10 0 0 0-8.6 15.1L2 22l5-1.3A10 10 0 1 0 12 2Zm5.4 14.1c-.2.6-1.3 1.2-1.8 1.2-.5.1-1 .2-3.3-.7-2.8-1.1-4.6-4-4.7-4.2-.1-.2-1.1-1.5-1.1-2.9s.7-2 1-2.3c.2-.3.5-.3.7-.3h.5c.2 0 .4 0 .6.4l.9 2.1c.1.2.1.4 0 .6l-.4.6-.5.5c-.2.2-.3.4-.1.7.2.3.9 1.4 1.9 2.3 1.3 1.1 2.3 1.5 2.6 1.6.3.1.5.1.7-.1l1-1.2c.2-.3.4-.2.7-.1l2 1c.3.1.5.2.6.4 0 .1 0 .7-.3 1.4Z"/></svg>
+          Make a warranty claim on WhatsApp
+        </a>
       </div>
     </section>
 

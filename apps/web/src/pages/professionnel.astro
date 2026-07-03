@@ -30,34 +30,114 @@ import StickyCta from '../components/StickyCta.astro';
 import ZelligeDivider from '../components/ZelligeDivider.astro';
 import GarantiesTeaser from '../components/GarantiesTeaser.astro';
 import Testimonials from '../components/Testimonials.astro';
+import CertLogoRow from '../components/CertLogoRow.astro';
 import { localEstimateBand } from '../lib/billRange';
 import { formatMAD } from '../lib/format';
 import { WHATSAPP_LEADS } from '../lib/nap';
 import { whatsappLink } from '../lib/whatsapp';
 
 const waDirect = whatsappLink(WHATSAPP_LEADS, 'Bonjour, je souhaite une étude pour une installation solaire.');
+// W337 — invitation « visiter un chantier », même mécanique que pourquoi-taqinor.astro
+const waVisite = whatsappLink(WHATSAPP_LEADS, 'Bonjour, je souhaite visiter une installation professionnelle réelle.');
 
+// W337 — RC Pro / assurance : scaffold no-op-safe (WG8). Aucune donnée réelle
+// n'existe encore côté fondateur → reste `null` et la section ne rend RIEN
+// tant que la valeur n'est pas fournie. Ne jamais inventer un numéro de police.
+const RC_PRO_ASSURANCE: string | null = null;
+
+// W260 — sous-cartes d'auto-identification par type de bâtiment (au lieu d'un
+// seul bloc générique) : un acheteur C&I se reconnaît d'abord dans son type de
+// site, avant de penser en kWc. Une preuve concrète par carte.
+// W335 — chaque carte segment porte désormais DEUX lignes : une ligne
+// financière (l'argument CFO) et une ligne technique/opérationnelle (l'argument
+// terrain) — aucun chiffre nouveau, seulement la même preuve déjà publiée
+// scindée en deux angles de lecture.
 const segments = [
-  { n: '01', title: 'Industriels', body: "Chaque kWh entre dans le prix de revient d'une pièce produite. Une toiture de hangar, large et plane, se rembourse en 3 à 5 ans et produit pile aux heures où les machines tournent — la production tombe quand la demande est là." },
-  { n: '02', title: 'Hôtels', body: "Climatisation l'après-midi, blanchisserie le matin, pompes de piscine en continu : la courbe d'un hôtel épouse celle du soleil, heure pour heure. Le solaire vient plafonner un poste qui grimpe chaque saison." },
-  { n: '03', title: 'Cliniques', body: "Un bloc ne tolère pas la coupure. Onduleurs hybrides plus batteries tiennent les équipements critiques pendant les creux du réseau, et en journée la facture baisse sur le reste du bâtiment." },
+  {
+    n: '01', title: 'Entrepôt / usine',
+    body: "Chaque kWh entre dans le prix de revient d'une pièce produite. Une toiture large et plane se rembourse en 3 à 5 ans et produit pile aux heures où les machines tournent — la production tombe quand la demande est là.",
+    proof: 'Preuve : El Jadida, 17,04 kWc, 21 406 kWh/an',
+    financier: 'Charge d’exploitation qui devient un actif amorti en 3 à 5 ans',
+    technique: 'Toiture large et plane · pose sans arrêt de production',
+  },
+  {
+    n: '02', title: 'Hangar agro-industriel',
+    body: "Séchage, froid, transformation : un hangar agricole consomme en plein jour, exactement quand le soleil donne. La toiture, déjà là, ne coûte rien de plus à exploiter — elle porte les panneaux sans grignoter un mètre carré au sol.",
+    proof: 'Preuve : structure acier galvanisé garantie 20 ans, posée sur toiture existante',
+    financier: 'Zéro foncier supplémentaire immobilisé — la toiture existante finance la structure',
+    technique: 'Structure acier galvanisé 20 ans · aucune surface au sol perdue',
+  },
+  {
+    n: '03', title: 'Commerce / hôtellerie',
+    body: "Climatisation l'après-midi, blanchisserie le matin, pompes de piscine en continu : la courbe d'un commerce ou d'un hôtel épouse celle du soleil, heure pour heure. Le solaire vient plafonner un poste qui grimpe chaque saison.",
+    proof: 'Preuve : amortissement 3 à 5 ans, même logique de charge que l’industrie',
+    financier: 'Plafonne un poste de charges qui grimpe chaque saison touristique',
+    technique: 'Courbe de consommation calée sur l’ensoleillement, heure pour heure',
+  },
+  {
+    n: '04', title: 'Collectivités',
+    body: "Un bâtiment public ou une clinique ne tolère pas la coupure. Onduleurs hybrides plus batteries tiennent les équipements critiques pendant les creux du réseau, et en journée la facture baisse sur le reste du bâtiment.",
+    proof: 'Preuve : onduleurs hybrides Deye/Huawei, garantie 10 ans',
+    financier: 'Baisse la facture du bâtiment tout en sécurisant la continuité de service',
+    technique: 'Onduleurs hybrides + batteries · continuité sur les équipements critiques',
+  },
 ];
 
 const PRIX_PAR_KWC = { bas: 8500, haut: 11000 };
 const arrondi10k = (v: number) => Math.round(v / 10000) * 10000;
+// W335 — « économie cumulée sur 20 ans » : dérivée des CONSTANTES déjà
+// publiées (investissement par kWc + fourchette d'amortissement), aucun
+// chiffre nouveau. Logique : une fois le payback atteint, l'installation
+// continue de produire jusqu'à la garantie de 25 ans de performance ; on
+// projette sur un horizon de 20 ans (le même horizon que la structure et
+// l'amortissement comptable cités plus bas) le multiple investissement ×
+// (20 ans / durée de payback) — un ordre de grandeur, jamais un chiffre
+// d'étude.
+const HORIZON_ANS = 20;
+const economieCumulee = (investMin: number, investMax: number, paybackMinAns: number, paybackMaxAns: number) => {
+  const bas = arrondi10k((investMin * HORIZON_ANS) / paybackMaxAns);
+  const haut = arrondi10k((investMax * HORIZON_ANS) / paybackMinAns);
+  return `${formatMAD(bas)} – ${formatMAD(haut)}`;
+};
+
 const proBrackets = (['5000-10000', 'gt10000'] as const).map((id) => {
   const band = localEstimateBand(id);
+  const investMin = arrondi10k(band.kwcMin * PRIX_PAR_KWC.bas);
+  const investMax = arrondi10k(band.kwcMax * PRIX_PAR_KWC.haut);
   return {
     bill: id === '5000-10000' ? '5 000 – 10 000 MAD / mois' : 'Plus de 10 000 MAD / mois',
     kwc: band.kwcLabel,
     invest:
       id === 'gt10000'
-        ? `à partir de ${formatMAD(arrondi10k(band.kwcMin * PRIX_PAR_KWC.bas))} — étude dédiée`
-        : `${formatMAD(arrondi10k(band.kwcMin * PRIX_PAR_KWC.bas))} – ${formatMAD(arrondi10k(band.kwcMax * PRIX_PAR_KWC.haut))}`,
+        ? `à partir de ${formatMAD(investMin)} — étude dédiée`
+        : `${formatMAD(investMin)} – ${formatMAD(investMax)}`,
     payback: band.paybackLabel,
+    // « 3 à 5 ans » / « 3 à 7 ans » → bornes numériques pour la projection 20 ans.
+    economie20ans: economieCumulee(investMin, investMax, 3, 5),
     exemple: id === '5000-10000' ? 'Exemple réel : réf. 468 — 17,04 kWc, El Jadida, avril 2026' : null,
   };
 });
+
+// W335 — comparateur structurel Achat (CAPEX) / Leasing (OPEX) : qui possède,
+// qui amortit, impact trésorerie jour 1. AUCUN taux ni banque nommés — les
+// cases nommées (CAM, Maghrebail…) sont sur /financement (W258/WG11).
+const capexOpex = [
+  {
+    critere: 'Qui possède l’installation',
+    achat: 'Votre entreprise, dès la mise en service',
+    leasing: 'Le bailleur pendant la durée du contrat ; option de levée en fin de contrat selon le montage',
+  },
+  {
+    critere: 'Qui inscrit l’amortissement',
+    achat: 'Votre entreprise, à l’actif de son bilan (voir la fiscalité ci-dessous)',
+    leasing: 'Le bailleur ; vous inscrivez le loyer en charge d’exploitation',
+  },
+  {
+    critere: 'Impact trésorerie jour 1',
+    achat: 'Sortie de trésorerie immédiate (ou à l’encaissement du crédit si financé)',
+    leasing: 'Aucune sortie de trésorerie initiale — un loyer périodique remplace la facture évitée',
+  },
+];
 ---
 
 <Layout
@@ -92,7 +172,7 @@ const proBrackets = (['5000-10000', 'gt10000'] as const).map((id) => {
 
       {/* Contenu ancré BAS — eyebrow rétrogradé en lune (discipline laiton) */}
       <div class="mx-auto w-full max-w-6xl px-4 pb-24 pt-32 sm:pb-32">
-        <p class="tech-label v2-kicker rule-brass cine-in text-lune">Industriels · hôtels · cliniques</p>
+        <p class="tech-label v2-kicker rule-brass cine-in text-lune">Entrepôt · agro-industriel · commerce · collectivité</p>
         <h1 class="display v2-page-title cine-in cine-in-1 mt-5 max-w-[20ch]">Votre poste électricité, vous pouvez le piloter au lieu de le subir</h1>
         <p class="v2-lead cine-in cine-in-2 mt-6 max-w-xl text-white/85">
           Sur un site professionnel, le solaire n'est pas une vitrine : c'est un équipement de
@@ -101,9 +181,11 @@ const proBrackets = (['5000-10000', 'gt10000'] as const).map((id) => {
           de charge — pas d'un gabarit.
         </p>
         <div class="cine-in cine-in-3 mt-10 flex flex-wrap items-center gap-3">
-          {/* UN seul CTA brass (discipline laiton) — l'or est ici autorisé */}
+          {/* UN seul CTA brass (discipline laiton) — l'or est ici autorisé.
+              W337 — reformulé en offre d'audit : même parcours, même webhook
+              DiagnosticForm, seul le libellé change. */}
           <a href="/devis/mon-toit" class="glow-hero bg-brass-400 px-8 py-4 text-lg font-bold text-azur-950 transition-all hover:bg-brass-300">
-            Obtenir mon étude gratuite →
+            Audit énergétique gratuit de mon site →
           </a>
           {/* Ghost WhatsApp — contour blanc, aucun laiton */}
           <a href={waDirect} rel="noopener" class="inline-flex items-center gap-2 border border-white/40 px-6 py-3.5 text-base font-semibold text-white backdrop-blur-sm transition-colors hover:border-white hover:bg-white/10">
@@ -129,15 +211,29 @@ const proBrackets = (['5000-10000', 'gt10000'] as const).map((id) => {
       </div>
     </section>
 
-    {/* Trois segments */}
+    {/* W260 — Quatre cartes d'auto-identification par type de site */}
     <div class="seam-soft" aria-hidden="true"></div>
     <section class="section mx-auto max-w-6xl px-4">
-      <div class="grid gap-6 md:grid-cols-3" data-stagger>
+      <p class="tech-label v2-kicker rule-brass text-lune">Vous vous reconnaissez où ?</p>
+      <h2 class="display v2-section-title mt-5 text-white">Quatre types de site, une même logique de charge</h2>
+      <div class="mt-8 grid gap-6 sm:grid-cols-2 lg:grid-cols-4" data-stagger>
         {segments.map((s, i) => (
           <div class="v2-rise border-l-2 border-brass-400/60 pl-6" style={`--v2-i:${i}`}>
             <p class="fig lum text-2xl">{s.n}</p>
-            <h2 class="display mt-2 text-2xl text-white">{s.title}</h2>
+            <h2 class="display mt-2 text-xl text-white">{s.title}</h2>
             <p class="mt-3 text-sm leading-relaxed text-lune-soft">{s.body}</p>
+            {/* W335 — deux lignes de lecture : financière (CFO) puis technique/opérationnelle */}
+            <dl class="mt-4 space-y-2 border-t border-white/10 pt-3">
+              <div>
+                <dt class="tech-label text-brass-300">Ligne financière</dt>
+                <dd class="mt-0.5 text-xs leading-relaxed text-lune-soft">{s.financier}</dd>
+              </div>
+              <div>
+                <dt class="tech-label text-lune">Ligne technique</dt>
+                <dd class="mt-0.5 text-xs leading-relaxed text-lune-soft">{s.technique}</dd>
+              </div>
+            </dl>
+            <p class="tech-label mt-3 text-lune-faint">{s.proof}</p>
           </div>
         ))}
       </div>
@@ -166,9 +262,56 @@ const proBrackets = (['5000-10000', 'gt10000'] as const).map((id) => {
                 <span class="fig text-lg text-lune sm:text-xl">{b.invest}</span>
                 <span class="fig text-xl text-brass-300 sm:text-2xl" data-tally>{b.payback}</span>
               </div>
-              {b.exemple && <p class="tech-label mt-2.5 text-lune-faint">{b.exemple}</p>}
+              {/* W335 — économie cumulée sur 20 ans, dérivée des colonnes ci-dessus (aucun chiffre nouveau) */}
+              <p class="tech-label mt-2.5 text-lune-faint">
+                Économie cumulée sur 20 ans (estimée) : <span class="text-brass-300">{b.economie20ans}</span>
+              </p>
+              {b.exemple && <p class="tech-label mt-1 text-lune-faint">{b.exemple}</p>}
             </div>
           ))}
+        </div>
+
+        {/* W335 — comparateur structurel Achat (CAPEX) / Leasing (OPEX) — pas de taux ni de banque nommés ici */}
+        <div class="mt-14">
+          <p class="tech-label v2-kicker rule-brass text-lune">Deux montages possibles</p>
+          <h3 class="display mt-3 text-xl text-white">Achat (CAPEX) ou leasing (OPEX) : ce qui change structurellement</h3>
+          <p class="v2-lead mt-3 max-w-2xl text-sm text-lune-soft">
+            Les cases nommées (banques, taux, contrats) sont sur la page <a href="/financement" class="border-b border-white/40 pb-0.5 font-semibold text-white transition-colors hover:border-white">Financement &amp; rentabilité</a> une
+            fois vérifiées. Ici, seulement la mécanique — qui possède, qui amortit, quel effet sur votre trésorerie du jour 1.
+          </p>
+          <div class="mt-6 overflow-x-auto">
+            <table class="w-full min-w-[560px] border-collapse text-sm">
+              <thead>
+                <tr class="border-b-2 border-brass-400/60 text-left">
+                  <th class="py-3 pr-4 font-display font-bold text-white">Critère</th>
+                  <th class="py-3 pr-4 font-display font-bold text-white">Achat (CAPEX)</th>
+                  <th class="py-3 font-display font-bold text-white">Leasing (OPEX)</th>
+                </tr>
+              </thead>
+              <tbody data-stagger>
+                {capexOpex.map((c, i) => (
+                  <tr class="v2-rise border-b border-white/10" style={`--v2-i:${i}`}>
+                    <td class="py-3 pr-4 font-semibold text-lune">{c.critere}</td>
+                    <td class="py-3 pr-4 text-lune-soft">{c.achat}</td>
+                    <td class="py-3 text-lune-soft">{c.leasing}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        {/* W337 — confiance achats/procurement, près du tableau de prix.
+            CertLogoRow est déjà no-op-safe (WJ35) : n'affiche que des faits
+            techniques déjà publiés. La ligne RC Pro / assurance reste un
+            scaffold WG8 — elle ne rend RIEN tant que Reda n'a pas fourni le
+            numéro de police réel. */}
+        <div class="mt-14 border-t border-white/10 pt-10">
+          <p class="tech-label v2-kicker rule-brass text-lune">Ce que vérifie votre service achats</p>
+          <CertLogoRow />
+          {RC_PRO_ASSURANCE && (
+            <p class="tech-label mt-4 text-lune-faint">Assurance responsabilité civile professionnelle : {RC_PRO_ASSURANCE}</p>
+          )}
         </div>
       </div>
     </section>
@@ -231,6 +374,48 @@ const proBrackets = (['5000-10000', 'gt10000'] as const).map((id) => {
             </a>
           </div>
         </div>
+
+        {/* W336 — les deux leviers fiscaux CFO : art. 123-22° TVA + amortissement.
+            Articles de loi cités, jamais un partenariat. WG16 (skim juridique)
+            encore en cours : note « sous réserve de vérification » visible. */}
+        <div class="v2-rise mt-16 border-t border-white/10 pt-12">
+          <p class="tech-label v2-kicker rule-brass text-lune">Les deux leviers fiscaux que personne ne cite</p>
+          <h2 class="display v2-section-title mt-5 text-white">TVA à l'import et amortissement : ce que dit le CGI</h2>
+          <p class="v2-lead mt-5 text-lune-soft">
+            Deux articles de loi, réels et vérifiables, jouent en faveur d'une installation solaire
+            professionnelle inscrite à l'actif de votre entreprise. Ce ne sont pas des avantages
+            négociés par Taqinor — ce sont des dispositions du Code Général des Impôts, ouvertes à
+            toute entreprise qui remplit les conditions.
+          </p>
+          <div class="mt-8 grid gap-6 sm:grid-cols-2">
+            <div class="border-l-2 border-brass-400/60 pl-6">
+              <p class="fig lum text-lg">CGI · art. 123-22°</p>
+              <h3 class="display mt-2 text-lg text-white">Exonération de TVA à l'import</h3>
+              <p class="mt-3 text-sm leading-relaxed text-lune-soft">
+                Un bien d'investissement inscrit à l'actif immobilisé, importé par une entreprise
+                assujettie à la TVA dans les 36 mois suivant le début de son activité, en est exonéré
+                — sous réserve de constituer les garanties exigées par l'administration fiscale.
+              </p>
+            </div>
+            <div class="border-l-2 border-brass-400/60 pl-6">
+              <p class="fig lum text-lg">Amortissement</p>
+              <h3 class="display mt-2 text-lg text-white">20 ans, linéaire, 5 % par an</h3>
+              <p class="mt-3 text-sm leading-relaxed text-lune-soft">
+                Une installation solaire s'amortit comptablement comme un équipement de production
+                classique : linéairement sur 20 ans, soit 5 % de sa valeur chaque année déduits du
+                résultat imposable — le même horizon que la garantie de structure de nos
+                installations.
+              </p>
+            </div>
+          </div>
+          <p class="mt-8 max-w-2xl border-l-4 border-brass-400/60 pl-4 text-sm leading-relaxed text-lune-soft">
+            <strong class="text-lune">Sous réserve de vérification (skim juridique en cours) :</strong> la
+            loi de finances la plus récente prolonge, pour certaines entreprises liées par une
+            convention avec l'État, la fenêtre d'exonération de TVA à l'import au-delà des 36 mois
+            standards — un point qui ne s'applique pas à toutes les sociétés de la même façon.
+            Confirmez votre situation exacte avec votre expert-comptable avant toute décision.
+          </p>
+        </div>
       </div>
     </section>
 
@@ -243,6 +428,8 @@ const proBrackets = (['5000-10000', 'gt10000'] as const).map((id) => {
         <a href="/pompage-solaire" class="border border-white/40 px-5 py-3 text-sm font-bold text-white transition-colors hover:border-white hover:bg-white/10">Pompage solaire →</a>
         <a href="/financement" class="border border-white/40 px-5 py-3 text-sm font-bold text-white transition-colors hover:border-white hover:bg-white/10">Financement &amp; rentabilité →</a>
         <a href="/pourquoi-taqinor" class="border border-white/40 px-5 py-3 text-sm font-bold text-white transition-colors hover:border-white hover:bg-white/10">Pourquoi Taqinor →</a>
+        {/* W337 — invitation « visiter un chantier », même mécanique que pourquoi-taqinor.astro */}
+        <a href={waVisite} rel="noopener" class="border border-brass-400/60 px-5 py-3 text-sm font-bold text-brass-300 transition-colors hover:border-brass-400 hover:bg-white/10">Visiter un chantier réel →</a>
       </div>
     </section>
 

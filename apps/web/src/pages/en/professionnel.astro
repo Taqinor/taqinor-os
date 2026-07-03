@@ -29,6 +29,7 @@ import StickyCta from '../../components/StickyCta.astro';
 import ZelligeDivider from '../../components/ZelligeDivider.astro';
 import GarantiesTeaser from '../../components/GarantiesTeaser.astro';
 import Testimonials from '../../components/Testimonials.astro';
+import CertLogoRow from '../../components/CertLogoRow.astro';
 import { localEstimateBand } from '../../lib/billRange';
 import { formatMAD } from '../../lib/format';
 import { getLocaleFromPath } from '../../i18n/utils';
@@ -40,28 +41,105 @@ const locale = getLocaleFromPath(Astro.url.pathname);
 const L = (href: string) => localizeNavHref(href, locale);
 
 const waDirect = whatsappLink(WHATSAPP_LEADS, 'Hello, I would like a study for a solar installation.');
+// W337 — "visit a real site" invitation, same mechanic as pourquoi-taqinor.astro
+const waVisite = whatsappLink(WHATSAPP_LEADS, 'Hello, I would like to visit a real business installation.');
 
+// W337 — RC Pro / liability insurance: no-op-safe scaffold (WG8). No real data
+// exists yet from the founder → stays `null` and the section renders NOTHING
+// until the value is supplied. Never invent a policy number.
+const RC_PRO_ASSURANCE: string | null = null;
+
+// W260 — self-identification sub-cards by building type (instead of one
+// generic block): a C&I buyer recognises their site type before thinking in
+// kWc. One concrete proof point per card.
+// W335 — each segment card now carries TWO lines: a financial line (the CFO
+// argument) and a technical/operational line (the on-site argument) — no new
+// figure, just the same already-published proof split into two reading angles.
 const segments = [
-  { n: '01', title: 'Industry', body: "Every kWh enters the cost price of a manufactured part. A warehouse roof, wide and flat, pays for itself in 3 to 5 years and produces exactly when the machines are running — production lands when demand is there." },
-  { n: '02', title: 'Hotels', body: "Air conditioning in the afternoon, laundry in the morning, pool pumps running non-stop: a hotel's curve hugs the sun's, hour for hour. Solar comes to cap a cost item that climbs every season." },
-  { n: '03', title: 'Clinics', body: "An operating theatre tolerates no outage. Hybrid inverters plus batteries hold the critical equipment through grid dips, and by day the bill drops on the rest of the building." },
+  {
+    n: '01', title: 'Warehouse / plant',
+    body: "Every kWh enters the cost price of a manufactured part. A wide, flat roof pays for itself in 3 to 5 years and produces exactly when the machines are running — production lands when demand is there.",
+    proof: 'Proof: El Jadida, 17,04 kWc, 21 406 kWh/year',
+    financial: 'An operating cost that becomes an asset paid off in 3 to 5 years',
+    technical: 'Wide, flat roof · install with no production stoppage',
+  },
+  {
+    n: '02', title: 'Agro-industrial shed',
+    body: "Drying, cold storage, processing: an agricultural shed consumes in broad daylight, exactly when the sun gives. The roof, already there, costs nothing extra to use — it carries the panels without eating a square metre of ground.",
+    proof: 'Proof: galvanised steel structure, 20-year warranty, mounted on the existing roof',
+    financial: 'Zero extra land tied up — the existing roof funds the structure',
+    technical: 'Galvanised steel structure, 20-year warranty · no ground surface lost',
+  },
+  {
+    n: '03', title: 'Retail / hospitality',
+    body: "Air conditioning in the afternoon, laundry in the morning, pool pumps running non-stop: a shop or hotel's curve hugs the sun's, hour for hour. Solar comes to cap a cost item that climbs every season.",
+    proof: 'Proof: 3-to-5-year payback, the same load logic as industry',
+    financial: 'Caps a cost line that climbs every tourist season',
+    technical: 'Consumption curve tracks sunshine, hour for hour',
+  },
+  {
+    n: '04', title: 'Public sites',
+    body: "A public building or clinic tolerates no outage. Hybrid inverters plus batteries hold the critical equipment through grid dips, and by day the bill drops on the rest of the building.",
+    proof: 'Proof: Deye/Huawei hybrid inverters, 10-year warranty',
+    financial: 'Lowers the building bill while securing continuity of service',
+    technical: 'Hybrid inverters + batteries · continuity on critical equipment',
+  },
 ];
 
 const PRIX_PAR_KWC = { bas: 8500, haut: 11000 };
 const arrondi10k = (v: number) => Math.round(v / 10000) * 10000;
+// W335 — "cumulative saving over 20 years": derived from already-published
+// CONSTANTS (investment per kWc + payback range), no new figure. Logic:
+// once payback is reached, the installation keeps producing up to the
+// 25-year performance guarantee; we project over a 20-year horizon (the same
+// horizon as the structure and the accounting depreciation cited below) the
+// multiple investment × (20 years / payback duration) — an order of
+// magnitude, never a study figure.
+const HORIZON_YEARS = 20;
+const cumulativeSaving = (investMin: number, investMax: number, paybackMinYrs: number, paybackMaxYrs: number) => {
+  const low = arrondi10k((investMin * HORIZON_YEARS) / paybackMaxYrs);
+  const high = arrondi10k((investMax * HORIZON_YEARS) / paybackMinYrs);
+  return `${formatMAD(low)} – ${formatMAD(high)}`;
+};
+
 const proBrackets = (['5000-10000', 'gt10000'] as const).map((id) => {
   const band = localEstimateBand(id);
+  const investMin = arrondi10k(band.kwcMin * PRIX_PAR_KWC.bas);
+  const investMax = arrondi10k(band.kwcMax * PRIX_PAR_KWC.haut);
   return {
     bill: id === '5000-10000' ? '5 000 – 10 000 MAD / month' : 'Over 10 000 MAD / month',
     kwc: band.kwcLabel,
     invest:
       id === 'gt10000'
-        ? `from ${formatMAD(arrondi10k(band.kwcMin * PRIX_PAR_KWC.bas))} — dedicated study`
-        : `${formatMAD(arrondi10k(band.kwcMin * PRIX_PAR_KWC.bas))} – ${formatMAD(arrondi10k(band.kwcMax * PRIX_PAR_KWC.haut))}`,
+        ? `from ${formatMAD(investMin)} — dedicated study`
+        : `${formatMAD(investMin)} – ${formatMAD(investMax)}`,
     payback: band.paybackLabel,
+    // "3 to 5 years" / "3 to 7 years" → numeric bounds for the 20-year projection.
+    saving20yrs: cumulativeSaving(investMin, investMax, 3, 5),
     exemple: id === '5000-10000' ? 'Real example: ref. 468 — 17,04 kWc, El Jadida, April 2026' : null,
   };
 });
+
+// W335 — structural Purchase (CAPEX) / Leasing (OPEX) comparator: who owns,
+// who books depreciation, day-one cash impact. NO named rate or bank — the
+// named boxes (CAM, Maghrebail…) live on /financement (W258/WG11).
+const capexOpex = [
+  {
+    criterion: 'Who owns the installation',
+    purchase: 'Your company, from commissioning',
+    leasing: 'The lessor for the contract term; end-of-contract buyout option depending on the structure',
+  },
+  {
+    criterion: 'Who books the depreciation',
+    purchase: 'Your company, as a fixed asset on its balance sheet (see the tax section below)',
+    leasing: 'The lessor; you book the rent as an operating expense',
+  },
+  {
+    criterion: 'Day-one cash impact',
+    purchase: 'Immediate cash outflow (or on loan drawdown if financed)',
+    leasing: 'No upfront cash outflow — a periodic rent replaces the avoided bill',
+  },
+];
 ---
 
 <Layout
@@ -96,7 +174,7 @@ const proBrackets = (['5000-10000', 'gt10000'] as const).map((id) => {
 
       {/* Content anchored LOW — eyebrow demoted to lune (brass discipline) */}
       <div class="mx-auto w-full max-w-6xl px-4 pb-24 pt-32 sm:pb-32">
-        <p class="tech-label v2-kicker rule-brass cine-in text-lune">Industry · hotels · clinics</p>
+        <p class="tech-label v2-kicker rule-brass cine-in text-lune">Warehouse · agro-industrial · retail · public sites</p>
         <h1 class="display v2-page-title cine-in cine-in-1 mt-5 max-w-[20ch]">Your electricity cost line — you can steer it instead of enduring it</h1>
         <p class="v2-lead cine-in cine-in-2 mt-6 max-w-xl text-white/85">
           On a business site, solar isn't a showpiece: it's a production asset, paid back in 3 to
@@ -105,9 +183,11 @@ const proBrackets = (['5000-10000', 'gt10000'] as const).map((id) => {
           curves — not from a template.
         </p>
         <div class="cine-in cine-in-3 mt-10 flex flex-wrap items-center gap-3">
-          {/* ONE brass CTA (brass discipline) — gold is authorised here */}
+          {/* ONE brass CTA (brass discipline) — gold is authorised here.
+              W337 — reframed as an audit offer: same journey, same
+              DiagnosticForm webhook, only the label changes. */}
           <a href={L('/devis/mon-toit')} class="glow-hero bg-brass-400 px-8 py-4 text-lg font-bold text-azur-950 transition-all hover:bg-brass-300">
-            Get my free study →
+            Free energy audit of my site →
           </a>
           {/* Ghost WhatsApp — white border, no brass */}
           <a href={waDirect} rel="noopener" class="inline-flex items-center gap-2 border border-white/40 px-6 py-3.5 text-base font-semibold text-white backdrop-blur-sm transition-colors hover:border-white hover:bg-white/10">
@@ -133,15 +213,29 @@ const proBrackets = (['5000-10000', 'gt10000'] as const).map((id) => {
       </div>
     </section>
 
-    {/* Three segments */}
+    {/* W260 — Four self-identification cards by site type */}
     <div class="seam-soft" aria-hidden="true"></div>
     <section class="section mx-auto max-w-6xl px-4">
-      <div class="grid gap-6 md:grid-cols-3" data-stagger>
+      <p class="tech-label v2-kicker rule-brass text-lune">Where do you see yourself?</p>
+      <h2 class="display v2-section-title mt-5 text-white">Four site types, one load logic</h2>
+      <div class="mt-8 grid gap-6 sm:grid-cols-2 lg:grid-cols-4" data-stagger>
         {segments.map((s, i) => (
           <div class="v2-rise border-l-2 border-brass-400/60 pl-6" style={`--v2-i:${i}`}>
             <p class="fig lum text-2xl">{s.n}</p>
-            <h2 class="display mt-2 text-2xl text-white">{s.title}</h2>
+            <h2 class="display mt-2 text-xl text-white">{s.title}</h2>
             <p class="mt-3 text-sm leading-relaxed text-lune-soft">{s.body}</p>
+            {/* W335 — two reading lines: financial (CFO) then technical/operational */}
+            <dl class="mt-4 space-y-2 border-t border-white/10 pt-3">
+              <div>
+                <dt class="tech-label text-brass-300">Financial line</dt>
+                <dd class="mt-0.5 text-xs leading-relaxed text-lune-soft">{s.financial}</dd>
+              </div>
+              <div>
+                <dt class="tech-label text-lune">Technical line</dt>
+                <dd class="mt-0.5 text-xs leading-relaxed text-lune-soft">{s.technical}</dd>
+              </div>
+            </dl>
+            <p class="tech-label mt-3 text-lune-faint">{s.proof}</p>
           </div>
         ))}
       </div>
@@ -170,9 +264,56 @@ const proBrackets = (['5000-10000', 'gt10000'] as const).map((id) => {
                 <span class="fig text-lg text-lune sm:text-xl">{b.invest}</span>
                 <span class="fig text-xl text-brass-300 sm:text-2xl" data-tally>{b.payback}</span>
               </div>
-              {b.exemple && <p class="tech-label mt-2.5 text-lune-faint">{b.exemple}</p>}
+              {/* W335 — cumulative saving over 20 years, derived from the columns above (no new figure) */}
+              <p class="tech-label mt-2.5 text-lune-faint">
+                Cumulative saving over 20 years (estimated): <span class="text-brass-300">{b.saving20yrs}</span>
+              </p>
+              {b.exemple && <p class="tech-label mt-1 text-lune-faint">{b.exemple}</p>}
             </div>
           ))}
+        </div>
+
+        {/* W335 — structural Purchase (CAPEX) / Leasing (OPEX) comparator — no named rate or bank here */}
+        <div class="mt-14">
+          <p class="tech-label v2-kicker rule-brass text-lune">Two possible structures</p>
+          <h3 class="display mt-3 text-xl text-white">Purchase (CAPEX) or leasing (OPEX): what changes structurally</h3>
+          <p class="v2-lead mt-3 max-w-2xl text-sm text-lune-soft">
+            The named boxes (banks, rates, contracts) live on the <a href={L('/financement')} class="border-b border-white/40 pb-0.5 font-semibold text-white transition-colors hover:border-white">Financing &amp; returns</a> page
+            once verified. Here, just the mechanics — who owns, who books depreciation, what it does to your day-one cash.
+          </p>
+          <div class="mt-6 overflow-x-auto">
+            <table class="w-full min-w-[560px] border-collapse text-sm">
+              <thead>
+                <tr class="border-b-2 border-brass-400/60 text-left">
+                  <th class="py-3 pr-4 font-display font-bold text-white">Criterion</th>
+                  <th class="py-3 pr-4 font-display font-bold text-white">Purchase (CAPEX)</th>
+                  <th class="py-3 font-display font-bold text-white">Leasing (OPEX)</th>
+                </tr>
+              </thead>
+              <tbody data-stagger>
+                {capexOpex.map((c, i) => (
+                  <tr class="v2-rise border-b border-white/10" style={`--v2-i:${i}`}>
+                    <td class="py-3 pr-4 font-semibold text-lune">{c.criterion}</td>
+                    <td class="py-3 pr-4 text-lune-soft">{c.purchase}</td>
+                    <td class="py-3 text-lune-soft">{c.leasing}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        {/* W337 — procurement trust, near the pricing table. CertLogoRow is
+            already no-op-safe (WJ35): it only shows already-published
+            technical facts. The RC Pro / insurance line stays a WG8 scaffold
+            — it renders NOTHING until the founder supplies the real policy
+            number. */}
+        <div class="mt-14 border-t border-white/10 pt-10">
+          <p class="tech-label v2-kicker rule-brass text-lune">What your procurement team checks</p>
+          <CertLogoRow />
+          {RC_PRO_ASSURANCE && (
+            <p class="tech-label mt-4 text-lune-faint">Professional liability insurance: {RC_PRO_ASSURANCE}</p>
+          )}
         </div>
       </div>
     </section>
@@ -235,6 +376,47 @@ const proBrackets = (['5000-10000', 'gt10000'] as const).map((id) => {
             </a>
           </div>
         </div>
+
+        {/* W336 — the two CFO tax levers: CGI art. 123-22° VAT + depreciation.
+            Cited law articles, never a partnership claim. WG16 (legal skim)
+            still in progress: "subject to verification" note visible. */}
+        <div class="v2-rise mt-16 border-t border-white/10 pt-12">
+          <p class="tech-label v2-kicker rule-brass text-lune">The two tax levers nobody cites</p>
+          <h2 class="display v2-section-title mt-5 text-white">Import VAT and depreciation: what the CGI says</h2>
+          <p class="v2-lead mt-5 text-lune-soft">
+            Two real, checkable law articles work in favour of a business solar installation
+            recorded as a fixed asset on your company's books. These are not terms Taqinor
+            negotiated — they are provisions of the Code Général des Impôts, open to any company
+            that meets the conditions.
+          </p>
+          <div class="mt-8 grid gap-6 sm:grid-cols-2">
+            <div class="border-l-2 border-brass-400/60 pl-6">
+              <p class="fig lum text-lg">CGI · art. 123-22°</p>
+              <h3 class="display mt-2 text-lg text-white">Import VAT exemption</h3>
+              <p class="mt-3 text-sm leading-relaxed text-lune-soft">
+                An investment good recorded as a fixed asset, imported by a VAT-registered company
+                within 36 months of starting its activity, is exempt from VAT — subject to
+                constituting the guarantees required by the tax authorities.
+              </p>
+            </div>
+            <div class="border-l-2 border-brass-400/60 pl-6">
+              <p class="fig lum text-lg">Depreciation</p>
+              <h3 class="display mt-2 text-lg text-white">20 years, straight-line, 5 % a year</h3>
+              <p class="mt-3 text-sm leading-relaxed text-lune-soft">
+                A solar installation is depreciated for accounting purposes like a standard production
+                asset: straight-line over 20 years, i.e. 5 % of its value deducted from taxable income
+                each year — the same horizon as our installations' structural warranty.
+              </p>
+            </div>
+          </div>
+          <p class="mt-8 max-w-2xl border-l-4 border-brass-400/60 pl-4 text-sm leading-relaxed text-lune-soft">
+            <strong class="text-lune">Subject to verification (legal skim in progress):</strong> the
+            most recent finance law extends, for certain companies bound by a state convention, the
+            import VAT exemption window beyond the standard 36 months — a point that does not apply
+            the same way to every company. Confirm your exact situation with your accountant before
+            any decision.
+          </p>
+        </div>
       </div>
     </section>
 
@@ -247,6 +429,8 @@ const proBrackets = (['5000-10000', 'gt10000'] as const).map((id) => {
         <a href={L('/pompage-solaire')} class="border border-white/40 px-5 py-3 text-sm font-bold text-white transition-colors hover:border-white hover:bg-white/10">Solar pumping →</a>
         <a href={L('/financement')} class="border border-white/40 px-5 py-3 text-sm font-bold text-white transition-colors hover:border-white hover:bg-white/10">Financing &amp; returns →</a>
         <a href={L('/pourquoi-taqinor')} class="border border-white/40 px-5 py-3 text-sm font-bold text-white transition-colors hover:border-white hover:bg-white/10">Why Taqinor →</a>
+        {/* W337 — "visit a real site" invitation, same mechanic as pourquoi-taqinor.astro */}
+        <a href={waVisite} rel="noopener" class="border border-brass-400/60 px-5 py-3 text-sm font-bold text-brass-300 transition-colors hover:border-brass-400 hover:bg-white/10">Visit a real installation →</a>
       </div>
     </section>
 

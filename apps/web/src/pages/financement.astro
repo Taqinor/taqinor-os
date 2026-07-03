@@ -6,6 +6,16 @@
  * Contraintes dures : Taqinor n'est PAS prêteur, aucune subvention résidentielle,
  * pas d'exonération de TVA résidentielle, aucune banque/partenaire/taux nommé.
  * Page publique et indexée. Schéma limité au fil d'Ariane.
+ *
+ * W258 — Mécanismes marocains NOMMÉS et vérifiés, par segment (WG11) :
+ * chaque programme cité ci-dessous a été confirmé via une source primaire
+ * (site de l'organisme émetteur ou texte réglementaire) au moment du build.
+ * Ce qui n'a pas pu être vérifié — un prêt vert résidentiel packagé par une
+ * banque nommée — est explicitement absent : aucune banque n'est citée pour
+ * le résidentiel, conformément à la règle « zéro partenariat inventé ».
+ * Sources : creditagricole.ma (Saquii Solaire), agrimaroc.ma/casainvest.ma
+ * (guide FDA 2024), maghrebail.ma (Energy Lease), fiscamaroc.com (art. 123-22°
+ * CGI). Taux/montants non publiés par l'émetteur restent hors de cette page.
  */
 import Layout from '../layouts/Layout.astro';
 import V2Enhance from '../components/V2Enhance.astro';
@@ -36,6 +46,54 @@ const moyens = [
     k: '03',
     title: 'Financement vert (entreprises)',
     body: 'Côté entreprises, des lignes de financement vert pour les énergies renouvelables existent au Maroc. L’accord et les conditions relèvent de votre banque et de votre dossier ; nous ne vendons ni crédit ni produit bancaire, et n’en garantissons aucun.',
+  },
+];
+
+// W258 — mécanismes NOMMÉS et vérifiés par segment. Chaque entrée cite sa
+// source ; rien n'est publié sans elle. Le résidentiel reste volontairement
+// SANS banque nommée (non vérifiable au moment du build) — l'appellation
+// générique déjà publiée plus bas (« prêts verts bancaires » sans nom) reste
+// la seule affirmation de ce type sur la page.
+const mecanismes = [
+  {
+    segment: 'Agricole',
+    items: [
+      {
+        nom: 'CAM « Saquii Solaire »',
+        body: 'Offre nommée du Crédit Agricole du Maroc dédiée au financement du pompage solaire agricole. Le taux et les conditions précises dépendent de votre dossier — à demander directement à votre agence CAM.',
+        source: 'creditagricole.ma',
+      },
+      {
+        nom: 'FDA — subvention pompage solaire ≈ 30 %',
+        body: 'Le Fonds de Développement Agricole subventionne environ 30 % du coût d’acquisition et d’installation d’un kit de pompage solaire agricole (panneaux, groupe motopompe, structure, accessoires), versée après facture — dossier à déposer à la DPA ou à l’ORMVA de votre région. Cumulable avec la subvention goutte-à-goutte existante.',
+        source: 'Guide FDA (agrimaroc.ma / casainvest.ma)',
+      },
+    ],
+  },
+  {
+    segment: 'Entreprises',
+    items: [
+      {
+        nom: 'Exonération de TVA à l’import — art. 123-22° du CGI',
+        body: 'Les biens d’investissement inscrits à l’actif immobilisé, importés par une entreprise assujettie à la TVA dans les 36 mois suivant le début d’activité, en sont exonérés — sous réserve de la constitution des garanties exigées par l’administration fiscale. Détail complet plus bas.',
+        source: 'Code Général des Impôts, art. 123-22°',
+      },
+      {
+        nom: 'Leasing type Maghrebail « Energy Lease »',
+        body: 'Produit de crédit-bail nommé, couvrant explicitement les installations photovoltaïques, avec subvention d’investissement intégrée pour les projets d’énergie renouvelable. Conditions et plafonds définis par Maghrebail — nous ne garantissons aucune condition bancaire.',
+        source: 'maghrebail.ma',
+      },
+    ],
+  },
+  {
+    segment: 'Résidentiel',
+    items: [
+      {
+        nom: 'Prêts verts bancaires',
+        body: 'Certaines banques marocaines proposent, au cas par cas, des lignes de crédit dites « vertes » pouvant couvrir un projet solaire résidentiel. Nous n’avons pas pu vérifier à ce jour qu’un établissement nommé package une offre dédiée au solaire résidentiel — nous ne citons donc aucune banque ici : renseignez-vous directement auprès de la vôtre.',
+        source: 'non vérifié — aucune banque nommée tant que non confirmé',
+      },
+    ],
   },
 ];
 ---
@@ -97,6 +155,47 @@ const moyens = [
       </div>
     </section>
 
+    <!-- W331 — Exemple chiffré entièrement déroulé (facture → kWc → investissement
+         → économie → payback), repris VERBATIM de l'exemple déjà publié sur
+         /résidentiel (villa à 2 000 MAD/mois) : aucun chiffre nouveau, juste le
+         même calcul rendu visible étape par étape. -->
+    <div class="v2-seam" aria-hidden="true"></div>
+    <section class="px-4 pb-20 sm:pb-24">
+      <div class="mx-auto max-w-4xl">
+        <p class="tech-label v2-kicker rule-brass text-lune">Un calcul, du début à la fin</p>
+        <h2 class="display v2-section-title mt-5 text-white">L’exemple d’une villa à 2 000 MAD de facture, déroulé étape par étape</h2>
+        <p class="v2-lead mt-4 max-w-2xl text-lune-soft">
+          Même exemple que sur notre page Résidentiel — pas un chiffre de plus, juste chaque étape du
+          calcul rendue visible.
+        </p>
+        <ol class="mt-10 border-t-2 border-brass-400/60" data-stagger>
+          <li class="v2-rise flex items-baseline justify-between gap-4 border-b border-white/10 py-5" style="--v2-i:0">
+            <span class="text-sm text-lune-soft"><span class="tech-label text-brass-300">1 · Facture</span><br />Votre relevé ONEE mensuel</span>
+            <span class="fig lum text-xl sm:text-2xl" data-tally>2 000 MAD</span>
+          </li>
+          <li class="v2-rise flex items-baseline justify-between gap-4 border-b border-white/10 py-5" style="--v2-i:1">
+            <span class="text-sm text-lune-soft"><span class="tech-label text-brass-300">2 · Puissance</span><br />La taille que cette facture appelle</span>
+            <span class="fig lum text-xl sm:text-2xl" data-tally>6 kWc</span>
+          </li>
+          <li class="v2-rise flex items-baseline justify-between gap-4 border-b border-white/10 py-5" style="--v2-i:2">
+            <span class="text-sm text-lune-soft"><span class="tech-label text-brass-300">3 · Investissement</span><br />Ordre de grandeur, jamais un devis</span>
+            <span class="fig lum text-xl sm:text-2xl">60 000 – 75 000 MAD</span>
+          </li>
+          <li class="v2-rise flex items-baseline justify-between gap-4 border-b border-white/10 py-5" style="--v2-i:3">
+            <span class="text-sm text-lune-soft"><span class="tech-label text-brass-300">4 · Économie</span><br />Effacé chaque année au barème régie ONEE</span>
+            <span class="fig lum text-xl sm:text-2xl">12 000 – 16 000 MAD/an</span>
+          </li>
+          <li class="v2-rise flex items-baseline justify-between gap-4 py-5" style="--v2-i:4">
+            <span class="text-sm text-lune-soft"><span class="tech-label text-brass-300">5 · Retour</span><br />Puis 19 à 21 ans de courant quasi gratuit</span>
+            <span class="fig text-xl text-brass-300 sm:text-2xl" data-tally>4 à 6 ans</span>
+          </li>
+        </ol>
+        <p class="mt-6 max-w-2xl text-xs leading-relaxed text-lune-soft">
+          Le vôtre partira de votre propre facture, pas de celle-ci — <a href="/devis/mon-toit" class="border-b border-white/40 pb-0.5 font-semibold text-white transition-colors hover:border-white">lancez votre diagnostic gratuit</a>.
+        </p>
+      </div>
+    </section>
+
     <!-- Comment financer — section claire, honnêteté totale -->
     <div class="v2-seam" aria-hidden="true"></div>
     <section class="bg-blanc-azur px-4 pb-20 pt-10 text-encre sm:pb-24">
@@ -128,6 +227,80 @@ const moyens = [
             <li>Pour les entreprises, des <strong class="text-encre">lignes de financement vert</strong> pour les projets d’énergies renouvelables existent au Maroc, mais c’est votre banque qui décide — nous ne nommons aucun établissement et ne garantissons aucune condition.</li>
           </ul>
         </div>
+      </div>
+    </section>
+
+    <!-- W258 — Mécanismes NOMMÉS et vérifiés, par segment (WG11) -->
+    <div class="v2-seam" aria-hidden="true"></div>
+    <section class="px-4 py-20 sm:py-24">
+      <div class="mx-auto max-w-6xl">
+        <p class="tech-label v2-kicker rule-brass text-lune">Ce qui existe vraiment, nommé</p>
+        <h2 class="display v2-section-title mt-5 text-white">Les dispositifs marocains vérifiés, par profil</h2>
+        <p class="v2-lead mt-4 max-w-2xl text-lune-soft">
+          Chaque nom cité ci-dessous a été vérifié auprès d’une source primaire au moment de la
+          publication de cette page — jamais un partenariat que nous n’aurions pas nous-mêmes. Ce que
+          nous n’avons pas pu vérifier n’apparaît pas ici.
+        </p>
+        <div class="mt-10 grid gap-8 md:grid-cols-3" data-stagger>
+          {mecanismes.map((seg, i) => (
+            <div class="v2-rise border-t-2 border-brass-400/60 pt-5" style={`--v2-i:${i}`}>
+              <h3 class="display text-xl text-white">{seg.segment}</h3>
+              <div class="mt-4 space-y-5">
+                {seg.items.map((it) => (
+                  <div>
+                    <p class="font-display text-base font-bold text-white">{it.nom}</p>
+                    <p class="mt-1.5 text-sm leading-relaxed text-lune-soft">{it.body}</p>
+                    <p class="tech-label mt-1.5 text-lune-faint">Source : {it.source}</p>
+                  </div>
+                ))}
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+    </section>
+
+    <!-- W336 — Les deux leviers fiscaux CFO : art. 123-22° TVA + amortissement.
+         WG16 (skim juridique) encore en cours : note « sous réserve de
+         vérification » visible. Cité pour les entreprises (le résidentiel
+         reste sans exonération TVA — mise au point déjà publiée ci-dessus). -->
+    <div class="v2-seam" aria-hidden="true"></div>
+    <section class="bg-blanc-azur px-4 pb-20 pt-16 text-encre sm:pb-24">
+      <div class="mx-auto max-w-4xl">
+        <p class="tech-label v2-kicker rule-brass text-azur-600">Pour les entreprises · les deux leviers que personne ne cite</p>
+        <h2 class="display v2-section-title mt-5">TVA à l’import et amortissement : ce que dit le CGI</h2>
+        <p class="v2-lead mt-4 max-w-2xl text-encre-soft">
+          Deux articles de loi, réels et vérifiables, jouent en faveur d’une installation solaire
+          professionnelle inscrite à l’actif de votre entreprise — ce ne sont pas des avantages
+          négociés par Taqinor, mais des dispositions ouvertes du Code Général des Impôts.
+        </p>
+        <div class="mt-8 grid gap-6 sm:grid-cols-2">
+          <div class="border-t-2 border-azur-900 bg-blanc p-6">
+            <p class="fig text-lg text-azur-600">CGI · art. 123-22°</p>
+            <h3 class="display mt-2 text-lg">Exonération de TVA à l’import</h3>
+            <p class="mt-3 text-sm leading-relaxed text-encre-soft">
+              Un bien d’investissement inscrit à l’actif immobilisé, importé par une entreprise
+              assujettie à la TVA dans les 36 mois suivant le début de son activité, en est exonéré —
+              sous réserve de constituer les garanties exigées par l’administration fiscale.
+            </p>
+          </div>
+          <div class="border-t-2 border-azur-900 bg-blanc p-6">
+            <p class="fig text-lg text-azur-600">Amortissement</p>
+            <h3 class="display mt-2 text-lg">20 ans, linéaire, 5 % par an</h3>
+            <p class="mt-3 text-sm leading-relaxed text-encre-soft">
+              Une installation solaire s’amortit comptablement comme un équipement de production
+              classique : linéairement sur 20 ans, soit 5 % de sa valeur chaque année déduits du
+              résultat imposable.
+            </p>
+          </div>
+        </div>
+        <p class="mx-auto mt-8 max-w-2xl border-l-4 border-azur-600 pl-4 text-sm leading-relaxed text-encre-soft">
+          <strong class="text-encre">Sous réserve de vérification (skim juridique en cours) :</strong> la
+          loi de finances la plus récente prolonge, pour certaines entreprises liées par une
+          convention avec l’État, la fenêtre d’exonération de TVA à l’import au-delà des 36 mois
+          standards — un point qui ne s’applique pas à toutes les sociétés de la même façon. Confirmez
+          votre situation exacte avec votre expert-comptable avant toute décision.
+        </p>
       </div>
     </section>
 
