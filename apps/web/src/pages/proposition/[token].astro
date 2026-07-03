@@ -413,6 +413,24 @@ const signConfig = ok
         </span>
       </p>
 
+      <!-- WJ45 — bandeau hors-ligne (navigator.onLine + online/offline) : une
+           coupure réseau au moment de signer ne doit jamais ressembler à un
+           échec muet. Le formulaire de signature reste rempli (aucune
+           soumission n'a eu lieu) : on prévient explicitement ET on rassure
+           que rien n'est perdu, plutôt que le message générique de panne. -->
+      <div id="prop-offline-banner" hidden role="status" aria-live="polite"
+        class="mx-auto mt-4 flex max-w-4xl items-start gap-2 border border-brass-400/40 bg-brass-400/10 p-3 text-sm text-white sm:px-8">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" class="mt-0.5 flex-none text-brass-300">
+          <line x1="1" y1="1" x2="23" y2="23"/><path d="M16.72 11.06A10.94 10.94 0 0 1 19 12.55"/><path d="M5 12.55a10.94 10.94 0 0 1 5.17-2.39"/><path d="M10.71 5.05A16 16 0 0 1 22.58 9"/><path d="M1.42 9a15.91 15.91 0 0 1 4.7-2.88"/><path d="M8.53 16.11a6 6 0 0 1 6.95 0"/><line x1="12" y1="20" x2="12.01" y2="20"/>
+        </svg>
+        <span data-i18n
+          data-fr="Pas de connexion — vos réponses sont conservées, on réessaie dès le retour du réseau."
+          data-en="No connection — your answers are kept, we'll retry as soon as the network is back."
+          data-ar="لا يوجد اتصال — إجاباتكم محفوظة، سنعيد المحاولة فور عودة الشبكة.">
+          Pas de connexion — vos réponses sont conservées, on réessaie dès le retour du réseau.
+        </span>
+      </div>
+
       <!-- WJ17/WJ43 — bascule de langue FR/EN/عربي, flottante (ne perturbe aucun
            rythme existant, zéro CLS). Même mécanisme tri-node (dual-node élargi)
            que WJ33 (mon-toit.astro) : voir le <script> de fin de page. Le contenu
@@ -2110,6 +2128,21 @@ const signConfig = ok
   (window as unknown as { __propRegisterBusyLabel?: (fn: (l: PropLang) => void) => void }).__propRegisterBusyLabel =
     (fn: (l: PropLang) => void) => propI18nBusyLabels.push(fn);
 
+  // ——— WJ45 : bandeau hors-ligne (navigator.onLine + online/offline) ———
+  // Une coupure réseau au moment de signer ne doit jamais ressembler à un
+  // échec muet : le bandeau apparaît/disparaît en direct, indépendamment de
+  // toute soumission. Exposé sur `window` pour que le formulaire de
+  // signature (autre <script>/module plus bas) puisse re-vérifier l'état
+  // au moment précis d'un échec fetch.
+  const propOfflineBanner = document.getElementById('prop-offline-banner');
+  function syncPropOfflineBanner(): void {
+    if (propOfflineBanner) propOfflineBanner.hidden = navigator.onLine;
+  }
+  syncPropOfflineBanner();
+  window.addEventListener('online', syncPropOfflineBanner);
+  window.addEventListener('offline', syncPropOfflineBanner);
+  (window as unknown as { __propSyncOfflineBanner?: () => void }).__propSyncOfflineBanner = syncPropOfflineBanner;
+
   const root = document.querySelector<HTMLElement>('.proposition');
   const raw = root?.dataset.signConfig;
   if (root && raw) {
@@ -2414,12 +2447,26 @@ const signConfig = ok
         }
         showError(data.detail || 'Une erreur est survenue. Veuillez réessayer.');
       } catch (err) {
-        const timedOut = err instanceof Error && err.name === 'AbortError';
-        showError(
-          timedOut
-            ? 'La connexion est lente — réessayez, ou contactez-nous sur WhatsApp ci-dessus.'
-            : 'Service momentanément indisponible. Veuillez réessayer.',
-        );
+        // WJ45 — si le navigateur se sait hors-ligne au moment de l'échec, on
+        // l'affirme explicitement (bandeau + message dédié, dans la langue
+        // courante) plutôt que la formule générique de panne/lenteur : rien
+        // n'a été soumis, le formulaire reste rempli tel quel.
+        syncPropOfflineBanner();
+        if (!navigator.onLine) {
+          const OFFLINE_SIGN_MSG: Record<PropLang, string> = {
+            fr: 'Pas de connexion — vos réponses sont conservées, on réessaie dès le retour du réseau.',
+            en: "No connection — your answers are kept, we'll retry as soon as the network is back.",
+            ar: 'لا يوجد اتصال — إجاباتكم محفوظة، سنعيد المحاولة فور عودة الشبكة.',
+          };
+          showError(OFFLINE_SIGN_MSG[currentLang]);
+        } else {
+          const timedOut = err instanceof Error && err.name === 'AbortError';
+          showError(
+            timedOut
+              ? 'La connexion est lente — réessayez, ou contactez-nous sur WhatsApp ci-dessus.'
+              : 'Service momentanément indisponible. Veuillez réessayer.',
+          );
+        }
       } finally {
         window.clearTimeout(submitTimer);
         submitting = false;
