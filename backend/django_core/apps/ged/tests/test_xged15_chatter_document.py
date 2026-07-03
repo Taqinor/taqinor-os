@@ -64,7 +64,7 @@ class MentionTests(XGed15Base):
         })
         self.assertEqual(resp.status_code, 201, resp.data)
         self.assertTrue(
-            Notification.objects.filter(user=self.mentioned).exists())
+            Notification.objects.filter(recipient=self.mentioned).exists())
 
 
 class JournalAutomatiqueTests(XGed15Base):
@@ -115,7 +115,7 @@ class PlanificationTests(XGed15Base):
         planif.refresh_from_db()
         self.assertTrue(planif.notifiee)
         self.assertTrue(
-            Notification.objects.filter(user=self.admin_a).exists())
+            Notification.objects.filter(recipient=self.admin_a).exists())
 
     def test_notifier_ignores_non_echues(self):
         from datetime import date

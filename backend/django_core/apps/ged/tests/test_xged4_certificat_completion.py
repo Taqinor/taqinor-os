@@ -107,6 +107,12 @@ class ClassementAutomatiqueTests(XGed4Base):
         self.assertEqual(result['certificat'].folder.nom, 'Signés')
 
     def test_classement_idempotent_by_source(self):
+        # `signer_demande_publique` déclenche déjà `marquer_signe`, qui classe
+        # AUTOMATIQUEMENT la demande (XGED4) : au moment où ce test appelle
+        # `classer_signature_completee` lui-même, le classement a donc déjà eu
+        # lieu une fois — les deux appels explicites ci-dessous sont donc tous
+        # les deux des RE-classements idempotents (created=False), et c'est
+        # précisément ce que ce test vérifie : aucun doublon, même ID renvoyé.
         with mock.patch('apps.records.storage.fetch_attachment',
                         return_value=(b'%PDF data', None)):
             services.signer_demande_publique(
@@ -114,7 +120,7 @@ class ClassementAutomatiqueTests(XGed4Base):
             r1 = services.classer_signature_completee(self.demande)
             r2 = services.classer_signature_completee(self.demande)
         self.assertEqual(r1['document_signe'].id, r2['document_signe'].id)
-        self.assertTrue(r1['created'])
+        self.assertFalse(r1['created'])
         self.assertFalse(r2['created'])
 
     def test_marquer_signe_triggers_classement_automatically(self):

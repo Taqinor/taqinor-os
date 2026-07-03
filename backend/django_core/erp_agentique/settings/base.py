@@ -211,6 +211,8 @@ REST_FRAMEWORK = {
         'register': '3/hour',  # 3 inscriptions/h par IP sur /register/
         # N89 — débit de l'API publique, par CLÉ d'API (pas par IP).
         'publicapi': '120/minute',
+        # XGED7 — dépôt public par jeton (GED), par IP + jeton.
+        'ged_public_depot': '30/minute',
     },
 }
 

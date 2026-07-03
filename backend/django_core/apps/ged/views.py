@@ -1160,7 +1160,14 @@ class DocumentViewSet(TenantMixin, viewsets.ModelViewSet):
         existant. Tous les documents sources ET la cible sont bornés à la
         société courante. Sans PyMuPDF : 400 explicite. Écriture :
         responsable/admin."""
-        ids = request.data.get('documents') or []
+        # request.data peut être un QueryDict (multipart/form) où `.get()` ne
+        # renvoie que la DERNIÈRE valeur d'une clé répétée : `.getlist()`
+        # restitue la liste complète. Un corps JSON (dict simple) n'a pas
+        # `.getlist()`, d'où le fallback sur `.get()`.
+        if hasattr(request.data, 'getlist'):
+            ids = request.data.getlist('documents') or []
+        else:
+            ids = request.data.get('documents') or []
         if not ids or len(ids) < 2:
             return Response(
                 {'documents': 'Au moins deux documents sont requis.'},

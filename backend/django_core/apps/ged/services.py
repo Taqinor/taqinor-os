@@ -3057,6 +3057,14 @@ def signer_demande_publique_avec_champs(demande, *, consentement,
         c for c in champs
         if c.requis and c.type_champ not in (
             CHAMP_TYPE_SIGNATURE, CHAMP_TYPE_INITIALES)]
+    if isinstance(valeurs_champs, str):
+        # Clients multipart/form (pas JSON) envoient un dict sérialisé en
+        # chaîne : on le décode plutôt que de planter sur `.keys()`.
+        import json as _json
+        try:
+            valeurs_champs = _json.loads(valeurs_champs) if valeurs_champs else {}
+        except (TypeError, ValueError):
+            valeurs_champs = {}
     valeurs_champs = valeurs_champs or {}
     fournis = {int(k) for k in valeurs_champs.keys()
                if str(k).lstrip('-').isdigit()}
@@ -3362,7 +3370,7 @@ def sceller_pdf(pdf_bytes, *, company=None):
         from io import BytesIO
 
         from pyhanko.pdf_utils.incremental_writer import IncrementalPdfFileWriter
-        from pyhanko.sign import PdfSignatureMetadata, signers as pyhanko_signers
+        from pyhanko.sign import PdfSignatureMetadata, sign_pdf
 
         timestamper = None
         tsa_url = tsa_url_configuree()
@@ -3371,7 +3379,7 @@ def sceller_pdf(pdf_bytes, *, company=None):
             timestamper = HTTPTimeStamper(tsa_url)
 
         writer = IncrementalPdfFileWriter(BytesIO(pdf_bytes))
-        out = pyhanko_signers.sign_pdf(
+        out = sign_pdf(
             writer,
             PdfSignatureMetadata(field_name='TaqinorSeal'),
             signer=signataire,
@@ -4097,7 +4105,11 @@ def _fetch_version_bytes(version):
 # ── XGED11 — Séparation automatique des lots scannés + code-barres/QR ────
 
 # Ratio de pixels quasi-blancs au-delà duquel une page est considérée séparatrice.
-_PAGE_BLANCHE_RATIO = 0.995
+# NB : un ratio trop bas (ex. 0.995) fait passer pour "blanche" une page de
+# contenu clairsemé (quelques traits sur fond blanc peuvent dépasser 99.8 %
+# de pixels clairs) — 0.999 laisse passer un contenu réel tout en détectant
+# les vraies pages séparatrices (quasi 100 % blanches).
+_PAGE_BLANCHE_RATIO = 0.999
 
 
 def _page_est_blanche(image, *, seuil=_PAGE_BLANCHE_RATIO):
