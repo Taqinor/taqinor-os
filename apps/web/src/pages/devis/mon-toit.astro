@@ -164,6 +164,46 @@ const TOWNS = ['Casablanca', 'Rabat', 'Marrakech', 'Tanger', 'Agadir', 'Kénitra
           </div>
         </fieldset>
 
+        <!-- WJ68 — mode PROFESSIONNEL : signaux C&I FACULTATIFS, additifs au
+             webhook (raisonSociale/facilityType/siteCount — lib/lead.ts). Masqué
+             tant que le mode « Professionnel » n'est pas sélectionné (le visiteur
+             résidentiel/agricole ne voit jamais ces champs). Aucun de ces champs
+             n'est requis — l'assistant reste franchissable sans eux. -->
+        <div id="mt-pro-fields" hidden class="cine-card mt-4 space-y-4 p-5 sm:p-6">
+          <p class="text-sm font-semibold text-brass-300" data-i18n
+            data-fr="Votre entreprise (facultatif)" data-ar="شركتكم (اختياري)">
+            Votre entreprise (facultatif)
+          </p>
+          <label class="block text-sm text-lune-soft">
+            <span data-i18n data-fr="Raison sociale" data-ar="التسمية الاجتماعية">Raison sociale</span>
+            <input id="mt-raison-sociale" name="raisonSociale" type="text" autocomplete="organization"
+              placeholder="Ex. Riad Solaire SARL" class={`${inputClass} mt-1`} />
+          </label>
+          <div class="grid gap-4 sm:grid-cols-2">
+            <label class="block text-sm text-lune-soft">
+              <span data-i18n data-fr="Type de site" data-ar="نوع الموقع">Type de site</span>
+              <select id="mt-facility-type" name="facilityType" class={`${inputClass} mt-1`}>
+                <option value="">Choisir…</option>
+                <option value="bureau" data-i18n data-fr="Bureau" data-ar="مكتب">Bureau</option>
+                <option value="entrepot" data-i18n data-fr="Entrepôt" data-ar="مستودع">Entrepôt</option>
+                <option value="usine" data-i18n data-fr="Usine" data-ar="مصنع">Usine</option>
+                <option value="commerce" data-i18n data-fr="Commerce / hôtellerie" data-ar="تجارة / فندقة">Commerce / hôtellerie</option>
+                <option value="agricole" data-i18n data-fr="Agricole" data-ar="فلاحي">Agricole</option>
+                <option value="autre" data-i18n data-fr="Autre" data-ar="أخرى">Autre</option>
+              </select>
+            </label>
+            <label class="block text-sm text-lune-soft">
+              <span data-i18n data-fr="Combien de sites ?" data-ar="كم عدد المواقع؟">Combien de sites&nbsp;?</span>
+              <select id="mt-site-count" name="siteCount" class={`${inputClass} mt-1`}>
+                <option value="">Choisir…</option>
+                <option value="1">1</option>
+                <option value="2-5">2–5</option>
+                <option value="6+">6+</option>
+              </select>
+            </label>
+          </div>
+        </div>
+
         <p class="mt-5 text-lune-soft" data-i18n
           data-fr="Cherchez votre adresse et posez un repère sur votre toit. C'est facultatif — vous pouvez aussi continuer avec votre adresse seule."
           data-ar="ابحث عن عنوانك وضع علامة على سطحك. هذا اختياري — يمكنك أيضاً المتابعة بعنوانك فقط.">
@@ -377,6 +417,17 @@ const TOWNS = ['Casablanca', 'Rabat', 'Marrakech', 'Tanger', 'Agadir', 'Kénitra
                 <option value="redal" data-i18n data-fr="Redal" data-ar="ريضال">Redal</option>
                 <option value="inconnu" data-i18n data-fr="Je ne sais pas" data-ar="لا أعرف">Je ne sais pas</option>
               </select>
+              <!-- WJ70 — honnêteté : ce choix ne change AUCUN chiffre affiché
+                   aujourd'hui (Lydec/Redal sont encore égalées au barème ONEE
+                   conservateur, cf. billEstimate.ts distributeurHonestyNote) —
+                   on le dit plutôt que de laisser croire à une personnalisation
+                   qui n'existe pas encore. -->
+              <p class="mt-1 text-xs text-lune-faint" data-i18n
+                data-fr="Estimation basée sur le barème ONEE (conservateur) pour tous les distributeurs, en attendant les grilles réelles par distributeur."
+                data-ar="التقدير يعتمد على تعريفة المكتب الوطني (ONEE) المتحفظة لجميع الموزعين، إلى حين توفر شبكات أسعار حقيقية لكل موزع.">
+                Estimation basée sur le barème ONEE (conservateur) pour tous les distributeurs,
+                en attendant les grilles réelles par distributeur.
+              </p>
             </label>
             <label class="block text-sm text-lune-soft">
               <span data-i18n data-fr="Consommation (kWh/mois, si connue)" data-ar="الاستهلاك (كيلوواط ساعة/شهر، إن عُرف)">Consommation (kWh/mois, si connue)</span>
@@ -549,6 +600,17 @@ const TOWNS = ['Casablanca', 'Rabat', 'Marrakech', 'Tanger', 'Agadir', 'Kénitra
             data-ar="شريحة أولية محسوبة من فاتورتك (الاستهلاك الذاتي، القانون 82-21). يُحدَّد التقدير الدقيق بعد زيارة تقنية — بدون التزام.">
             Fourchette préliminaire calculée à partir de votre facture (autoconsommation, loi
             82-21). Le chiffrage exact est établi après visite technique — sans engagement.
+          </p>
+          <!-- WJ71 — bande de confiance CLIMATIQUE, surfacée par défaut (jamais
+               un chiffre en moins inventé : un été côtier chaud/poussiéreux réduit
+               réellement la production de ~15–20 % — cf. billEstimate.ts,
+               productionConfidenceBand). Masqué tant qu'aucune estimation n'est
+               disponible (mêmes gardes que le reste de la carte). -->
+          <p id="mt-climate-band" hidden class="mt-1.5 text-xs text-lune-faint" data-i18n
+            data-fr="Été côtier chaud/poussiéreux : la production peut descendre jusqu'à ≈"
+            data-ar="صيف ساحلي حار/مغبر: قد يهبط الإنتاج إلى حدود ≈">
+            Été côtier chaud/poussiéreux&nbsp;: la production peut descendre jusqu'à ≈
+            {' '}<strong id="mt-climate-band-value" class="text-white">—</strong>.
           </p>
           <!-- WJ48 — ligne de positionnement concurrentiel : « estimation
                immédiate » n'est pas une simple demande de rappel (masolaire.ma
@@ -1088,6 +1150,8 @@ const TOWNS = ['Casablanca', 'Rabat', 'Marrakech', 'Tanger', 'Agadir', 'Kénitra
     'mt-bill', 'mt-roof', 'mt-raccordement', 'mt-distributeur', 'mt-bill-kwh', 'mt-roof-age',
     'mt-occupant-type', 'mt-project-timing', 'mt-financing-intent', 'mt-fallback-address',
     'rp9-address',
+    // WJ68 — mode professionnel (facultatif, additif).
+    'mt-raison-sociale', 'mt-facility-type', 'mt-site-count',
   ];
   const PERSISTED_CHECK_FIELDS = ['mt-ete-differente', 'mt-contact-whatsapp', 'mt-contact-phone', 'mt-consent', 'mt-battery-interest'];
   let restoring = false; // WJ61 — évite de ré-enregistrer PENDANT la réhydratation elle-même.
@@ -1143,6 +1207,14 @@ const TOWNS = ['Casablanca', 'Rabat', 'Marrakech', 'Tanger', 'Agadir', 'Kénitra
 
   // ——— WJ6 : sélecteur de mode ———
   let mode = savedWizard?.mode || 'residentiel';
+  // WJ68 — champs PROFESSIONNEL (raison sociale/type de site/nb de sites) :
+  // visibles UNIQUEMENT quand mode === 'professionnel'. Jamais requis — juste
+  // masqués pour les autres modes (le visiteur résidentiel/agricole ne les
+  // voit jamais).
+  function syncProFieldsVisibility() {
+    const proFields = $('mt-pro-fields');
+    if (proFields) proFields.hidden = mode !== 'professionnel';
+  }
   document.querySelectorAll<HTMLButtonElement>('.mt-mode').forEach((btn) => {
     btn.addEventListener('click', () => {
       mode = btn.dataset.mode || 'residentiel';
@@ -1152,6 +1224,7 @@ const TOWNS = ['Casablanca', 'Rabat', 'Marrakech', 'Tanger', 'Agadir', 'Kénitra
         b.classList.toggle('border-brass-400', on);
         b.classList.toggle('border-white/15', !on);
       });
+      syncProFieldsVisibility();
       markDataEntered();
       saveWizardState();
     });
@@ -1163,6 +1236,7 @@ const TOWNS = ['Casablanca', 'Rabat', 'Marrakech', 'Tanger', 'Agadir', 'Kénitra
     b.classList.toggle('border-brass-400', on);
     b.classList.toggle('border-white/15', !on);
   });
+  syncProFieldsVisibility();
 
   // ——— WJ48 : cartes image « type de toit » — synchronisent le <select>
   // sr-only (mt-roof) qui reste la source de vérité pour val('mt-roof'), la
@@ -1547,6 +1621,7 @@ const TOWNS = ['Casablanca', 'Rabat', 'Marrakech', 'Tanger', 'Agadir', 'Kénitra
     const unavail = $('mt-estimate-unavailable');
     const toolarge = $('mt-estimate-toolarge');
     const cowEl = $('mt-cost-of-waiting');
+    const climateBandEl = $('mt-climate-band');
     const saveBtn = $('mt-save-estimate');
     // WJ65 — montant exact au-delà du plafond : message honnête dédié (jamais un
     // chiffre confiant sur une saisie probablement erronée) + erreur inline sur
@@ -1563,6 +1638,7 @@ const TOWNS = ['Casablanca', 'Rabat', 'Marrakech', 'Tanger', 'Agadir', 'Kénitra
       lastKwc = null;
       lastEstFull = null;
       if (cowEl) cowEl.hidden = true;
+      if (climateBandEl) climateBandEl.hidden = true;
       if (saveBtn) saveBtn.hidden = true;
       updatePanels3dVisibility();
       announceEstimate(currentLang === 'ar' ? 'التقدير غير متاح — تحقّقوا من المبلغ المُدخل.' : 'Estimation indisponible — vérifiez le montant saisi.');
@@ -1582,6 +1658,7 @@ const TOWNS = ['Casablanca', 'Rabat', 'Marrakech', 'Tanger', 'Agadir', 'Kénitra
       lastKwc = null;
       lastEstFull = null;
       if (cowEl) cowEl.hidden = true;
+      if (climateBandEl) climateBandEl.hidden = true;
       if (saveBtn) saveBtn.hidden = true;
       updatePanels3dVisibility();
       announceEstimate(currentLang === 'ar'
@@ -1602,6 +1679,17 @@ const TOWNS = ['Casablanca', 'Rabat', 'Marrakech', 'Tanger', 'Agadir', 'Kénitra
     lastKwcLabel = `${est.kwc} kWc`;
     lastSavingsLabel = `${monthly}/mois`;
     lastKwc = est.kwc;
+    // WJ71 — bande de confiance climatique, affichée SEULEMENT quand elle dit
+    // vraiment quelque chose (un été côtier réduit la fourchette de savings
+    // basse — sinon on n'affiche pas une ligne qui répéterait le même chiffre).
+    if (climateBandEl) {
+      const climateBandValueEl = $('mt-climate-band-value');
+      const showBand = est.savingsLowBand < est.savingsHigh;
+      climateBandEl.hidden = !showBand;
+      if (showBand && climateBandValueEl) {
+        climateBandValueEl.textContent = formatMadRange(est.savingsLowBand, est.savingsLowBand);
+      }
+    }
     lastEstFull = {
       kwc: est.kwc,
       monthlyLabel: monthly,
@@ -1906,6 +1994,13 @@ const TOWNS = ['Casablanca', 'Rabat', 'Marrakech', 'Tanger', 'Agadir', 'Kénitra
       // W353 — préférence de créneau de visite technique (facultative, STATIQUE).
       visitWindowPart: visitWindowPart || undefined,
       visitWindowWeek: visitWindowWeek || undefined,
+      // WJ68 — mode professionnel : facultatif, additif, jamais bloquant. Les
+      // champs restent envoyés même si le mode a changé depuis (validateLead
+      // les accepte indépendamment du mode — un visiteur qui bascule
+      // résidentiel→professionnel→résidentiel ne perd rien de saisi).
+      raisonSociale: val('mt-raison-sociale') || undefined,
+      facilityType: val('mt-facility-type') || undefined,
+      siteCount: val('mt-site-count') || undefined,
     };
     // WJ4 — repère FACULTATIF : on le joint s'il existe, on ne BLOQUE jamais sans lui.
     if (capturePin) {

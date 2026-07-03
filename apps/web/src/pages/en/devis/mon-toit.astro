@@ -157,6 +157,41 @@ const noscriptTelHref = `tel:${NAP.phone}`;
           </div>
         </fieldset>
 
+        <!-- WJ68 — PROFESSIONNEL mode: optional C&I signals, additive to the
+             webhook (raisonSociale/facilityType/siteCount — lib/lead.ts). Hidden
+             until "Professionnel" is selected; never required. -->
+        <div id="mt-pro-fields" hidden class="cine-card mt-4 space-y-4 p-5 sm:p-6">
+          <p class="text-sm font-semibold text-brass-300">Your company (optional)</p>
+          <label class="block text-sm text-lune-soft">
+            <span>Company name</span>
+            <input id="mt-raison-sociale" name="raisonSociale" type="text" autocomplete="organization"
+              placeholder="e.g. Riad Solaire SARL" class={`${inputClass} mt-1`} />
+          </label>
+          <div class="grid gap-4 sm:grid-cols-2">
+            <label class="block text-sm text-lune-soft">
+              <span>Facility type</span>
+              <select id="mt-facility-type" name="facilityType" class={`${inputClass} mt-1`}>
+                <option value="">Choose…</option>
+                <option value="bureau">Office</option>
+                <option value="entrepot">Warehouse</option>
+                <option value="usine">Factory</option>
+                <option value="commerce">Retail / hospitality</option>
+                <option value="agricole">Agricultural</option>
+                <option value="autre">Other</option>
+              </select>
+            </label>
+            <label class="block text-sm text-lune-soft">
+              <span>How many sites?</span>
+              <select id="mt-site-count" name="siteCount" class={`${inputClass} mt-1`}>
+                <option value="">Choose…</option>
+                <option value="1">1</option>
+                <option value="2-5">2–5</option>
+                <option value="6+">6+</option>
+              </select>
+            </label>
+          </div>
+        </div>
+
         <p class="mt-5 text-lune-soft">
           Search for your address and drop a pin on your roof. This is optional —
           you can also continue with your address alone.
@@ -354,6 +389,13 @@ const noscriptTelHref = `tel:${NAP.phone}`;
                 <option value="redal">Redal</option>
                 <option value="inconnu">I don't know</option>
               </select>
+              <!-- WJ70 — honesty: this choice does not change any figure shown
+                   today (Lydec/Redal are still equated to the conservative
+                   ONEE grid, see billEstimate.ts distributeurHonestyNote). -->
+              <p class="mt-1 text-xs text-lune-faint">
+                Estimate based on the ONEE grid (conservative) for all distributors, until
+                real per-distributor grids are available.
+              </p>
             </label>
             <label class="block text-sm text-lune-soft">
               <span>Consumption (kWh/month, if known)</span>
@@ -513,6 +555,14 @@ const noscriptTelHref = `tel:${NAP.phone}`;
           <p id="mt-estimate-note" class="mt-4 text-xs text-lune-faint">
             Preliminary range calculated from your bill (self-consumption, law 82-21). The
             exact figure is established after a technical site visit — with no obligation.
+          </p>
+          <!-- WJ71 — climate confidence band, surfaced by default (never an
+               invented lower figure: a hot/dusty coastal summer really does
+               reduce production by ~15-20% -- see billEstimate.ts,
+               productionConfidenceBand). Hidden until an estimate is showing. -->
+          <p id="mt-climate-band" hidden class="mt-1.5 text-xs text-lune-faint">
+            Hot/dusty coastal summer: production can drop to as low as ≈
+            {' '}<strong id="mt-climate-band-value" class="text-white">—</strong>.
           </p>
           <!-- WJ48 — competitive positioning line: "instant estimate" is not a
                plain callback request (masolaire.ma's own "devis" is
@@ -999,6 +1049,8 @@ const noscriptTelHref = `tel:${NAP.phone}`;
     'mt-bill', 'mt-roof', 'mt-raccordement', 'mt-distributeur', 'mt-bill-kwh', 'mt-roof-age',
     'mt-occupant-type', 'mt-project-timing', 'mt-financing-intent', 'mt-fallback-address',
     'rp9-address',
+    // WJ68 — professionnel mode (optional, additive).
+    'mt-raison-sociale', 'mt-facility-type', 'mt-site-count',
   ];
   const PERSISTED_CHECK_FIELDS = ['mt-ete-differente', 'mt-contact-whatsapp', 'mt-contact-phone', 'mt-consent', 'mt-battery-interest'];
   let restoring = false; // WJ61 — avoids re-saving WHILE rehydrating.
@@ -1054,6 +1106,11 @@ const noscriptTelHref = `tel:${NAP.phone}`;
 
   // ——— WJ6 : sélecteur de mode ———
   let mode = savedWizard?.mode || 'residentiel';
+  // WJ68 — professionnel-only optional fields, hidden otherwise.
+  function syncProFieldsVisibility() {
+    const proFields = $('mt-pro-fields');
+    if (proFields) proFields.hidden = mode !== 'professionnel';
+  }
   document.querySelectorAll<HTMLButtonElement>('.mt-mode').forEach((btn) => {
     btn.addEventListener('click', () => {
       mode = btn.dataset.mode || 'residentiel';
@@ -1063,6 +1120,7 @@ const noscriptTelHref = `tel:${NAP.phone}`;
         b.classList.toggle('border-brass-400', on);
         b.classList.toggle('border-white/15', !on);
       });
+      syncProFieldsVisibility();
       markDataEntered();
       saveWizardState();
     });
@@ -1074,6 +1132,7 @@ const noscriptTelHref = `tel:${NAP.phone}`;
     b.classList.toggle('border-brass-400', on);
     b.classList.toggle('border-white/15', !on);
   });
+  syncProFieldsVisibility();
 
   // ——— WJ48 : image cards "roof type" — sync the sr-only <select> (mt-roof)
   // which stays the source of truth for val('mt-roof'), validation
@@ -1425,6 +1484,7 @@ const noscriptTelHref = `tel:${NAP.phone}`;
     const unavail = $('mt-estimate-unavailable');
     const toolarge = $('mt-estimate-toolarge');
     const cowEl = $('mt-cost-of-waiting');
+    const climateBandEl = $('mt-climate-band');
     const saveBtn = $('mt-save-estimate');
     // WJ65 — exact amount beyond the cap: dedicated honest message (never a
     // confidently computed figure on a likely-mistaken entry) + inline error
@@ -1441,6 +1501,7 @@ const noscriptTelHref = `tel:${NAP.phone}`;
       lastKwc = null;
       lastEstFull = null;
       if (cowEl) cowEl.hidden = true;
+      if (climateBandEl) climateBandEl.hidden = true;
       if (saveBtn) saveBtn.hidden = true;
       updatePanels3dVisibility();
       announceEstimate('Estimate unavailable — please check the amount entered.');
@@ -1460,6 +1521,7 @@ const noscriptTelHref = `tel:${NAP.phone}`;
       lastKwc = null;
       lastEstFull = null;
       if (cowEl) cowEl.hidden = true;
+      if (climateBandEl) climateBandEl.hidden = true;
       if (saveBtn) saveBtn.hidden = true;
       updatePanels3dVisibility();
       announceEstimate('Estimate unavailable: enter your monthly bill to calculate it.');
@@ -1478,6 +1540,16 @@ const noscriptTelHref = `tel:${NAP.phone}`;
     lastKwcLabel = `${est.kwc} kWc`;
     lastSavingsLabel = `${monthly}/mois`;
     lastKwc = est.kwc;
+    // WJ71 — climate confidence band, shown only when it says something real
+    // (a hot coastal summer lowers the low bound below the already-shown high).
+    if (climateBandEl) {
+      const climateBandValueEl = $('mt-climate-band-value');
+      const showBand = est.savingsLowBand < est.savingsHigh;
+      climateBandEl.hidden = !showBand;
+      if (showBand && climateBandValueEl) {
+        climateBandValueEl.textContent = formatMadRange(est.savingsLowBand, est.savingsLowBand);
+      }
+    }
     lastEstFull = {
       kwc: est.kwc,
       monthlyLabel: monthly,
@@ -1754,6 +1826,10 @@ const noscriptTelHref = `tel:${NAP.phone}`;
       // W353 — technical visit slot preference (optional, STATIC).
       visitWindowPart: visitWindowPart || undefined,
       visitWindowWeek: visitWindowWeek || undefined,
+      // WJ68 — professionnel mode: optional, additive, never blocking.
+      raisonSociale: val('mt-raison-sociale') || undefined,
+      facilityType: val('mt-facility-type') || undefined,
+      siteCount: val('mt-site-count') || undefined,
     };
     // WJ4 — repère FACULTATIF : on le joint s'il existe, on ne BLOQUE jamais sans lui.
     if (capturePin) {

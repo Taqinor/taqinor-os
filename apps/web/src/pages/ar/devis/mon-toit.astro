@@ -172,6 +172,42 @@ const noscriptTelHref = `tel:${NAP.phone}`;
           </div>
         </fieldset>
 
+        <!-- WJ68 — mode PROFESSIONNEL : signaux C&I FACULTATIFS, additifs. -->
+        <div id="mt-pro-fields" hidden class="cine-card mt-4 space-y-4 p-5 sm:p-6">
+          <p class="text-sm font-semibold text-brass-300" data-i18n
+            data-fr="Votre entreprise (facultatif)" data-ar="شركتكم (اختياري)">
+            Votre entreprise (facultatif)
+          </p>
+          <label class="block text-sm text-lune-soft">
+            <span data-i18n data-fr="Raison sociale" data-ar="التسمية الاجتماعية">Raison sociale</span>
+            <input id="mt-raison-sociale" name="raisonSociale" type="text" autocomplete="organization"
+              placeholder="مثال: Riad Solaire SARL" class={`${inputClass} mt-1`} />
+          </label>
+          <div class="grid gap-4 sm:grid-cols-2">
+            <label class="block text-sm text-lune-soft">
+              <span data-i18n data-fr="Type de site" data-ar="نوع الموقع">Type de site</span>
+              <select id="mt-facility-type" name="facilityType" class={`${inputClass} mt-1`}>
+                <option value="">اختر…</option>
+                <option value="bureau">مكتب</option>
+                <option value="entrepot">مستودع</option>
+                <option value="usine">مصنع</option>
+                <option value="commerce">تجارة / فندقة</option>
+                <option value="agricole">فلاحي</option>
+                <option value="autre">أخرى</option>
+              </select>
+            </label>
+            <label class="block text-sm text-lune-soft">
+              <span data-i18n data-fr="Combien de sites ?" data-ar="كم عدد المواقع؟">Combien de sites&nbsp;?</span>
+              <select id="mt-site-count" name="siteCount" class={`${inputClass} mt-1`}>
+                <option value="">اختر…</option>
+                <option value="1">1</option>
+                <option value="2-5">2–5</option>
+                <option value="6+">+6</option>
+              </select>
+            </label>
+          </div>
+        </div>
+
         <p class="mt-5 text-lune-soft" data-i18n
           data-fr="Cherchez votre adresse et posez un repère sur votre toit. C'est facultatif — vous pouvez aussi continuer avec votre adresse seule."
           data-ar="ابحث عن عنوانك وضع علامة على سطحك. هذا اختياري — يمكنك أيضاً المتابعة بعنوانك فقط.">
@@ -384,6 +420,14 @@ const noscriptTelHref = `tel:${NAP.phone}`;
                 <option value="redal">ريضال (Redal)</option>
                 <option value="inconnu">لا أعرف</option>
               </select>
+              <!-- WJ70 — هذا الاختيار لا يغيّر أي رقم معروض اليوم (ليديك/ريضال
+                   لا تزالان مساويتين لتعريفة المكتب الوطني المتحفظة). -->
+              <p class="mt-1 text-xs text-lune-faint" data-i18n
+                data-fr="Estimation basée sur le barème ONEE (conservateur) pour tous les distributeurs, en attendant les grilles réelles par distributeur."
+                data-ar="التقدير يعتمد على تعريفة المكتب الوطني (ONEE) المتحفظة لجميع الموزعين، إلى حين توفر شبكات أسعار حقيقية لكل موزع.">
+                التقدير يعتمد على تعريفة المكتب الوطني (ONEE) المتحفظة لجميع الموزعين، إلى حين
+                توفر شبكات أسعار حقيقية لكل موزع.
+              </p>
             </label>
             <label class="block text-sm text-lune-soft">
               <span data-i18n data-fr="Consommation (kWh/mois, si connue)" data-ar="الاستهلاك (كيلوواط ساعة/شهر، إن عُرف)">Consommation (kWh/mois, si connue)</span>
@@ -553,6 +597,13 @@ const noscriptTelHref = `tel:${NAP.phone}`;
             data-ar="شريحة أولية محسوبة من فاتورتك (الاستهلاك الذاتي، القانون 82-21). يُحدَّد التقدير الدقيق بعد زيارة تقنية — بدون التزام.">
             Fourchette préliminaire calculée à partir de votre facture (autoconsommation, loi
             82-21). Le chiffrage exact est établi après visite technique — sans engagement.
+          </p>
+          <!-- WJ71 — bande de confiance CLIMATIQUE, surfacée par défaut. -->
+          <p id="mt-climate-band" hidden class="mt-1.5 text-xs text-lune-faint" data-i18n
+            data-fr="Été côtier chaud/poussiéreux : la production peut descendre jusqu'à ≈"
+            data-ar="صيف ساحلي حار/مغبر: قد يهبط الإنتاج إلى حدود ≈">
+            Été côtier chaud/poussiéreux&nbsp;: la production peut descendre jusqu'à ≈
+            {' '}<strong id="mt-climate-band-value" class="text-white">—</strong>.
           </p>
           <!-- WJ48 — ligne de positionnement concurrentiel : « estimation
                immédiate » n'est pas une simple demande de rappel (masolaire.ma
@@ -1111,6 +1162,8 @@ const noscriptTelHref = `tel:${NAP.phone}`;
     'mt-bill', 'mt-roof', 'mt-raccordement', 'mt-distributeur', 'mt-bill-kwh', 'mt-roof-age',
     'mt-occupant-type', 'mt-project-timing', 'mt-financing-intent', 'mt-fallback-address',
     'rp9-address',
+    // WJ68 — mode professionnel (facultatif, additif).
+    'mt-raison-sociale', 'mt-facility-type', 'mt-site-count',
   ];
   const PERSISTED_CHECK_FIELDS = ['mt-ete-differente', 'mt-contact-whatsapp', 'mt-contact-phone', 'mt-consent', 'mt-battery-interest'];
   let restoring = false; // WJ61 — évite de ré-enregistrer PENDANT la réhydratation elle-même.
@@ -1166,6 +1219,11 @@ const noscriptTelHref = `tel:${NAP.phone}`;
 
   // ——— WJ6 : sélecteur de mode ———
   let mode = savedWizard?.mode || 'residentiel';
+  // WJ68 — champs PROFESSIONNEL, visibles uniquement pour ce mode.
+  function syncProFieldsVisibility() {
+    const proFields = $('mt-pro-fields');
+    if (proFields) proFields.hidden = mode !== 'professionnel';
+  }
   document.querySelectorAll<HTMLButtonElement>('.mt-mode').forEach((btn) => {
     btn.addEventListener('click', () => {
       mode = btn.dataset.mode || 'residentiel';
@@ -1175,6 +1233,7 @@ const noscriptTelHref = `tel:${NAP.phone}`;
         b.classList.toggle('border-brass-400', on);
         b.classList.toggle('border-white/15', !on);
       });
+      syncProFieldsVisibility();
       markDataEntered();
       saveWizardState();
     });
@@ -1186,6 +1245,7 @@ const noscriptTelHref = `tel:${NAP.phone}`;
     b.classList.toggle('border-brass-400', on);
     b.classList.toggle('border-white/15', !on);
   });
+  syncProFieldsVisibility();
 
   // ——— WJ48 : cartes image « type de toit » — synchronisent le <select>
   // sr-only (mt-roof) qui reste la source de vérité pour val('mt-roof'), la
@@ -1539,6 +1599,7 @@ const noscriptTelHref = `tel:${NAP.phone}`;
     const unavail = $('mt-estimate-unavailable');
     const toolarge = $('mt-estimate-toolarge');
     const cowEl = $('mt-cost-of-waiting');
+    const climateBandEl = $('mt-climate-band');
     const saveBtn = $('mt-save-estimate');
     // WJ65 — montant exact au-delà du plafond : message honnête dédié (jamais un
     // chiffre confiant sur une saisie probablement erronée) + erreur inline sur
@@ -1555,6 +1616,7 @@ const noscriptTelHref = `tel:${NAP.phone}`;
       lastKwc = null;
       lastEstFull = null;
       if (cowEl) cowEl.hidden = true;
+      if (climateBandEl) climateBandEl.hidden = true;
       if (saveBtn) saveBtn.hidden = true;
       updatePanels3dVisibility();
       announceEstimate(currentLang === 'ar' ? 'التقدير غير متاح — تحقّقوا من المبلغ المُدخل.' : 'Estimation indisponible — vérifiez le montant saisi.');
@@ -1574,6 +1636,7 @@ const noscriptTelHref = `tel:${NAP.phone}`;
       lastKwc = null;
       lastEstFull = null;
       if (cowEl) cowEl.hidden = true;
+      if (climateBandEl) climateBandEl.hidden = true;
       if (saveBtn) saveBtn.hidden = true;
       updatePanels3dVisibility();
       announceEstimate(currentLang === 'ar'
@@ -1594,6 +1657,16 @@ const noscriptTelHref = `tel:${NAP.phone}`;
     lastKwcLabel = `${est.kwc} kWc`;
     lastSavingsLabel = `${monthly}/mois`;
     lastKwc = est.kwc;
+    // WJ71 — bande de confiance climatique, affichée seulement quand elle dit
+    // vraiment quelque chose de plus que le chiffre déjà affiché.
+    if (climateBandEl) {
+      const climateBandValueEl = $('mt-climate-band-value');
+      const showBand = est.savingsLowBand < est.savingsHigh;
+      climateBandEl.hidden = !showBand;
+      if (showBand && climateBandValueEl) {
+        climateBandValueEl.textContent = formatMadRange(est.savingsLowBand, est.savingsLowBand);
+      }
+    }
     lastEstFull = {
       kwc: est.kwc,
       monthlyLabel: monthly,
@@ -1886,6 +1959,10 @@ const noscriptTelHref = `tel:${NAP.phone}`;
       // W353 — préférence de créneau de visite technique (facultative, STATIQUE).
       visitWindowPart: visitWindowPart || undefined,
       visitWindowWeek: visitWindowWeek || undefined,
+      // WJ68 — mode professionnel : facultatif, additif, jamais bloquant.
+      raisonSociale: val('mt-raison-sociale') || undefined,
+      facilityType: val('mt-facility-type') || undefined,
+      siteCount: val('mt-site-count') || undefined,
     };
     // WJ4 — repère FACULTATIF : on le joint s'il existe, on ne BLOQUE jamais sans lui.
     if (capturePin) {
