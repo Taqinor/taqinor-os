@@ -91,6 +91,21 @@ const journey = [
   { n: '6', title: 'Monitoring Deye Cloud', body: 'Production relevée en continu, accès client inclus : vous lisez vos kWh à la source.' },
 ];
 
+// W252 — « Comment ça marche » : bande 4 étapes sous le héros, le device
+// standard 3-4 icônes qu'on retrouve chez tous les acteurs sérieux du secteur.
+// Ce sont les 4 MÊMES stades que la frise « Le parcours » plus bas (§ Comment
+// ça se passe) — juste condensés en 4 (au lieu de 6) pour répondre tout de
+// suite, sous le héros, à « que se passe-t-il après le formulaire ? ». Aucun
+// délai/SLA inventé ; les 4 stades sont ceux réellement livrés par le parcours
+// construit (diagnostic → étude signée → devis + signature en ligne → pose &
+// SAV, cf. /devis/mon-toit).
+const howItWorks = [
+  { n: '1', title: 'Estimation instantanée', body: 'Votre facture donne une fourchette kWc en 60 secondes, sans engagement.' },
+  { n: '2', title: 'Étude personnalisée signée', body: 'Visite technique, dimensionnement sur votre toiture réelle, validé et signé avant tout devis.' },
+  { n: '3', title: 'Devis + signature en ligne', body: 'Le chiffrage détaillé se signe électroniquement, où que vous soyez.' },
+  { n: '4', title: 'Installation & SAV', body: 'Pose par notre équipe, mise en service, puis monitoring Deye Cloud et SAV proactif.' },
+];
+
 // W58 — Iconographie sobre des cartes « Nos solutions » : un trait SVG par
 // carte, currentColor (teinte brass), dans le langage de marque. Indexée par
 // href pour rester stable même si l'ordre des cartes change.
@@ -185,6 +200,26 @@ const trust = [
             WhatsApp direct
           </a>
         </div>
+      </div>
+    </section>
+
+    {/* ── COMMENT ÇA MARCHE — bande 4 étapes sous le héros (W252). Répond tout
+        de suite à « que se passe-t-il après le formulaire ? » : les 4 mêmes
+        stades que la frise détaillée plus bas, condensés. ── */}
+    <div class="seam-soft" aria-hidden="true"></div>
+    <section class="px-4 py-14 sm:py-18">
+      <div class="mx-auto max-w-6xl">
+        <h2 class="tech-label v2-kicker rule-brass text-lune text-center sm:text-left">Comment ça marche</h2>
+        <ol class="mt-8 grid gap-x-6 gap-y-10 sm:grid-cols-2 lg:grid-cols-4" data-stagger>
+          {howItWorks.map((s, i) => (
+            <li class="v2-rise relative border-t-2 border-white/10 pt-5" style={`--v2-i:${i}`}>
+              <span class="absolute -top-px left-0 h-0.5 w-10 bg-brass-400" aria-hidden="true"></span>
+              <span class="fig lum text-2xl">{s.n}</span>
+              <h3 class="display mt-2 text-lg text-white">{s.title}</h3>
+              <p class="mt-2 text-sm leading-relaxed text-lune-soft">{s.body}</p>
+            </li>
+          ))}
+        </ol>
       </div>
     </section>
 

@@ -89,6 +89,20 @@ const journey = [
   { n: '6', title: 'مراقبة Deye Cloud', body: 'إنتاج مُقاس باستمرار، مع ولوج للزبون — القياس يحلّ محلّ الوعد.' },
 ];
 
+// W252 — «كيف يجري الأمر»: شريط من 4 مراحل تحت البطل، الصيغة شبه العالمية
+// بـ 3-4 أيقونات المعتمدة لدى كل الفاعلين الجادّين في القطاع. هذه هي نفس
+// المراحل الأربع لشريط «المسار» المفصّل أسفله — مُكثَّفة فقط إلى 4 (بدل 6)
+// للإجابة فوراً، تحت البطل، عن «ماذا يحدث بعد الاستمارة؟». بلا أي أجل/SLA
+// مخترَع؛ المراحل الأربع هي فعلاً ما يُسلّمه المسار المبني (تشخيص ← دراسة
+// موقَّعة ← عرض ثمن + توقيع إلكتروني ← تركيب وخدمة ما بعد البيع، انظر
+// /devis/mon-toit).
+const howItWorks = [
+  { n: '1', title: 'تقدير فوري', body: 'فاتورتكم تمنح مجالاً بالـ kWc في 60 ثانية، بلا أي التزام.' },
+  { n: '2', title: 'دراسة شخصية موقَّعة', body: 'زيارة تقنية، تحجيم على سطحكم الحقيقي، مُصادَق عليه وموقَّع قبل أي عرض ثمن.' },
+  { n: '3', title: 'عرض ثمن + توقيع إلكتروني', body: 'التسعير المفصَّل يُوقَّع إلكترونياً، أينما كنتم.' },
+  { n: '4', title: 'التركيب وخدمة ما بعد البيع', body: 'تركيب من طرف فريقنا، تشغيل، ثم مراقبة Deye Cloud وخدمة ما بعد بيع استباقية.' },
+];
+
 // أيقونات سوبر لبطاقات «حلولنا»: خطّ SVG واحد لكل بطاقة، currentColor (درجة
 // النحاس)، ضمن لغة العلامة. مُفهرسة بـ href ليبقى ثابتًا حتى لو تغيّر ترتيب البطاقات.
 const solutionIcons: Record<string, string> = {
@@ -178,6 +192,26 @@ const trust = [
             WhatsApp مباشر
           </a>
         </div>
+      </div>
+    </section>
+
+    {/* ── كيف يجري الأمر — شريط من 4 مراحل تحت البطل (W252). يُجيب فوراً عن
+        «ماذا يحدث بعد الاستمارة؟»: نفس المراحل الأربع لشريط المسار المفصّل
+        أسفله، مُكثَّفة. ── */}
+    <div class="seam-soft" aria-hidden="true"></div>
+    <section class="px-4 py-14 sm:py-18">
+      <div class="mx-auto max-w-6xl">
+        <h2 class="tech-label v2-kicker rule-brass text-lune text-center sm:text-start">كيف يجري الأمر</h2>
+        <ol class="mt-8 grid gap-x-6 gap-y-10 sm:grid-cols-2 lg:grid-cols-4" data-stagger>
+          {howItWorks.map((s, i) => (
+            <li class="v2-rise relative border-t-2 border-white/10 pt-5" style={`--v2-i:${i}`}>
+              <span class="absolute -top-px start-0 h-0.5 w-10 bg-brass-400" aria-hidden="true"></span>
+              <span class="fig lum text-2xl">{s.n}</span>
+              <h3 class="display mt-2 text-lg text-white">{s.title}</h3>
+              <p class="mt-2 text-sm leading-relaxed text-lune-soft">{s.body}</p>
+            </li>
+          ))}
+        </ol>
       </div>
     </section>
 

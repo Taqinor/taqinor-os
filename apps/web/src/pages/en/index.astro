@@ -89,6 +89,20 @@ const journey = [
   { n: '6', title: 'Deye Cloud monitoring', body: 'Production read continuously, client access included: you read your kWh at the source.' },
 ];
 
+// W252 — "How it works": 4-step band under the hero, the near-universal
+// 3-4-icon device used by every serious player in the sector. These are the
+// SAME 4 stages as the fuller "The journey" timeline further down — just
+// condensed to 4 (instead of 6) to answer, right under the hero, "what
+// happens after the form?". No invented delay/SLA; the 4 stages are the ones
+// actually delivered by the built journey (diagnostic → signed study → quote
+// + e-signature → install & after-sales, see /devis/mon-toit).
+const howItWorks = [
+  { n: '1', title: 'Instant estimate', body: 'Your bill gives a kWc range in 60 seconds, with no commitment.' },
+  { n: '2', title: 'Personalised, signed study', body: 'Technical visit, sizing on your actual roof, validated and signed before any quote.' },
+  { n: '3', title: 'Quote + e-signature', body: 'The detailed quote is signed electronically, wherever you are.' },
+  { n: '4', title: 'Installation & after-sales', body: 'Installed by our team, commissioned, then Deye Cloud monitoring and proactive after-sales.' },
+];
+
 // Sober iconography for the "Our solutions" cards: one SVG line per card,
 // currentColor (brass tint), in the brand language. Keyed by href so it stays
 // stable even if the card order changes.
@@ -180,6 +194,26 @@ const trust = [
             WhatsApp direct
           </a>
         </div>
+      </div>
+    </section>
+
+    {/* ── HOW IT WORKS — 4-step band under the hero (W252). Answers "what
+        happens after the form?" right away: the same 4 stages as the fuller
+        timeline further down, condensed. ── */}
+    <div class="seam-soft" aria-hidden="true"></div>
+    <section class="px-4 py-14 sm:py-18">
+      <div class="mx-auto max-w-6xl">
+        <h2 class="tech-label v2-kicker rule-brass text-lune text-center sm:text-left">How it works</h2>
+        <ol class="mt-8 grid gap-x-6 gap-y-10 sm:grid-cols-2 lg:grid-cols-4" data-stagger>
+          {howItWorks.map((s, i) => (
+            <li class="v2-rise relative border-t-2 border-white/10 pt-5" style={`--v2-i:${i}`}>
+              <span class="absolute -top-px left-0 h-0.5 w-10 bg-brass-400" aria-hidden="true"></span>
+              <span class="fig lum text-2xl">{s.n}</span>
+              <h3 class="display mt-2 text-lg text-white">{s.title}</h3>
+              <p class="mt-2 text-sm leading-relaxed text-lune-soft">{s.body}</p>
+            </li>
+          ))}
+        </ol>
       </div>
     </section>
 
