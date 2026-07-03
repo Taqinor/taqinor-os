@@ -3,12 +3,19 @@ import api from './axios'
 const crmApi = {
   getClients: (params) => api.get('/crm/clients/', { params }),
   getClient: (id) => api.get(`/crm/clients/${id}/`),
+  // QC1 — autocomplete entreprise sur les données PROPRES de la société
+  // (clients + fournisseurs + leads, recherche floue nom/ICE, scopée société).
+  searchClients: (q) => api.get('/crm/clients/search/', { params: { q } }),
   createClient: (data) => api.post('/crm/clients/', data),
   updateClient: (id, data) => api.put(`/crm/clients/${id}/`, data),
   patchClient: (id, data) => api.patch(`/crm/clients/${id}/`, data),
   deleteClient: (id) => api.delete(`/crm/clients/${id}/`),
   exportClientsXlsx: (ids) =>
     api.post('/crm/clients/export-xlsx/', { ids }, { responseType: 'blob' }),
+  // FG26 — RGPD : bundle d'accès du sujet (lecture, responsable/admin) et
+  // anonymisation irréversible des PII (admin uniquement, côté serveur).
+  clientDataExport: (id) => api.get(`/crm/clients/${id}/data-export/`),
+  anonymizeClient: (id) => api.post(`/crm/clients/${id}/anonymize/`),
 
   // Leads / opportunities
   getLeads: (params) => api.get('/crm/leads/', { params }),
@@ -76,6 +83,19 @@ const crmApi = {
     : api.post('/crm/parrainages/', data),
   deleteParrainage: (id) => api.delete(`/crm/parrainages/${id}/`),
   parrainageStats: () => api.get('/crm/parrainages/stats/'),
+
+  // FG204 — journal multi-touch du lead (timeline + résumé d'attribution).
+  getLeadPointsContact: (id) => api.get(`/crm/leads/${id}/points-contact/`),
+  // FG38 — correspondance lead ↔ client existant (retour client / doublon).
+  getLeadClientMatch: (id) => api.get(`/crm/leads/${id}/client-match/`),
+  // FG34 — ROI agrégé par canal / campagne UTM (surface consultative).
+  getRoiSources: (params) => api.get('/crm/leads/roi-sources/', { params }),
+  // FG28 — leads NEW non contactés au-delà du SLA société.
+  getSlaBreach: () => api.get('/crm/leads/sla-breach/'),
+  // FG39 — objectifs commerciaux : atteinte (réalisé vs cible).
+  getObjectifsAttainment: (params) =>
+    api.get('/crm/objectifs/attainment/', { params }),
+  getObjectifAttainment: (id) => api.get(`/crm/objectifs/${id}/attainment/`),
 
   // QJ20 — Rendez-vous (visites commerciales/techniques).
   getAppointments: (leadId) => api.get('/crm/appointments/', { params: { lead: leadId } }),

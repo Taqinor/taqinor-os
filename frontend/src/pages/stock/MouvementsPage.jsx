@@ -1,8 +1,9 @@
 import { useEffect, useState, useMemo } from 'react'
 import { useDispatch, useSelector } from 'react-redux'
 import { useSearchParams } from 'react-router-dom'
-import { Plus, ArrowDownUp, X } from 'lucide-react'
+import { Plus, ArrowDownUp, X, Download } from 'lucide-react'
 import stockApi from '../../api/stockApi'
+import { downloadBlob } from '../../utils/downloadBlob'
 import {
   fetchMouvements,
   fetchProduits,
@@ -89,6 +90,23 @@ export default function MouvementsPage() {
     const next = new URLSearchParams(searchParams)
     next.delete('produit')
     setSearchParams(next, { replace: true })
+  }
+
+  // WR4 / FG60 — export Excel de la liste (filtrée) des mouvements. On envoie
+  // les mêmes filtres que la vue (type + produit) que le backend applique.
+  const [exportBusy, setExportBusy] = useState(false)
+  const [exportError, setExportError] = useState(null)
+  const exportXlsx = async () => {
+    setExportBusy(true); setExportError(null)
+    try {
+      const params = {}
+      if (activeTab !== 'tous') params.type_mouvement = activeTab
+      if (produitParam) params.produit = produitParam
+      const res = await stockApi.exportMouvementsXlsx(params)
+      downloadBlob(res.data, 'mouvements-stock.xlsx')
+    } catch {
+      setExportError('Export indisponible. Réessayez.')
+    } finally { setExportBusy(false) }
   }
 
   const filtered = useMemo(() => {
@@ -217,12 +235,26 @@ export default function MouvementsPage() {
             <Badge tone="primary">{mouvements.length}</Badge>
           )}
         </div>
-        {canPostMouvement && (
-          <Button onClick={() => setShowForm(true)}>
-            <Plus /> Saisir mouvement
-          </Button>
-        )}
+        <div className="flex flex-wrap items-center gap-2">
+          {!isTransferts && (
+            <Button variant="outline" size="sm" loading={exportBusy} onClick={exportXlsx}
+                    title="Exporter la liste (filtrée) des mouvements en Excel">
+              <Download /> Exporter Excel
+            </Button>
+          )}
+          {canPostMouvement && (
+            <Button onClick={() => setShowForm(true)}>
+              <Plus /> Saisir mouvement
+            </Button>
+          )}
+        </div>
       </header>
+
+      {exportError && (
+        <div role="alert" className="rounded-lg border border-destructive/30 bg-destructive/10 p-3 text-sm text-destructive">
+          {exportError}
+        </div>
+      )}
 
       <Segmented
         size="sm"

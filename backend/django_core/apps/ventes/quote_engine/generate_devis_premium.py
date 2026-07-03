@@ -60,6 +60,32 @@ def _esc_items(items):
         out.append(e)
     return out
 
+
+def _guard_huawei_accessories(items):
+    """QF9 — défense en profondeur : ne jamais rendre Smart Meter / Clé Wifi
+    (dongle) quand l'onduleur des lignes n'est pas Huawei. Le builder filtre
+    déjà ces lignes en amont ; ce garde-fou empêche qu'une ligne obsolète glissée
+    dans ``data`` réapparaisse dans le PDF. Huawei détecté sur la désignation +
+    la marque de l'onduleur des lignes fournies."""
+    rows = items or []
+    inverters = [it for it in rows
+                 if "onduleur" in (it.get("designation", "") or "").lower()]
+    if not inverters:
+        return list(rows)
+    is_huawei = all(
+        "huawei" in (f"{it.get('designation', '')} "
+                     f"{it.get('marque', '')}").lower()
+        for it in inverters)
+    if is_huawei:
+        return list(rows)
+    out = []
+    for it in rows:
+        d = (it.get("designation", "") or "").lower()
+        if "smart meter" in d or "wifi" in d or "dongle" in d:
+            continue
+        out.append(it)
+    return out
+
 # ── Inline SVG icons for Page 1 (WeasyPrint renders inline SVG perfectly) ────
 SVG_CHECK   = '<svg width="13" height="13" viewBox="0 0 13 13" style="vertical-align:middle;margin-right:4px;"><path d="M2 6.5l3.5 3.5 5.5-6" stroke="#2e7d32" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>'
 SVG_BOLT    = '<svg width="13" height="13" viewBox="0 0 13 13" style="vertical-align:middle;margin-right:4px;"><path d="M8 1L4 7.5H7L5 12L10 6H7Z" fill="#d4a84b"/></svg>'
@@ -404,6 +430,29 @@ def _apply_entreprise(ent):
     if re.fullmatch(r"#[0-9A-Fa-f]{6}", couleur):
         CA = couleur
 
+
+def _apply_seller(seller):
+    """QG7 — ajoute le contact du CRÉATEUR du devis à la ligne de coordonnées.
+
+    ``seller`` = {"nom", "telephone"} posé par le builder depuis
+    ``Devis.created_by`` (repli téléphone société si l'utilisateur n'en a pas).
+    On AJOUTE « · Votre conseiller : Nom — tél » à ``ENT_CONTACT_LINE`` déjà
+    posée par ``_apply_entreprise`` (donc appelé APRÈS). Données seulement : pas
+    de nouvelle structure de gabarit. Seller vide → aucune modification
+    (byte-identique au devis d'aujourd'hui)."""
+    global ENT_CONTACT_LINE
+    if not isinstance(seller, dict):
+        return
+    nom = (seller.get("nom") or "").strip()
+    tel = (seller.get("telephone") or "").strip()
+    if not nom:
+        return
+    bits = f"Votre conseiller&#160;: {_esc(nom)}"
+    if tel:
+        bits += f" &#8212; {_esc(tel)}"
+    ENT_CONTACT_LINE = f"{ENT_CONTACT_LINE} &nbsp;&#183;&nbsp; {bits}"
+
+
 # ═══════════════════════════════════════════════════════════════════════════════
 # DOC_TEXTS — portions de TEXTE éditables du devis (D2/N60/N67/N26/N59)
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -452,6 +501,167 @@ DOC_TEXTS = dict(DEFAULT_DOC_TEXTS)
 # N26 — métadonnées d'acceptation (posées côté serveur, jamais du corps client).
 ACCEPTE_PAR_NOM = ""
 DATE_ACCEPTATION = ""
+# QF3 — bloc « Comment nous calculons vos économies » (méthode + exemple), posé
+# depuis data["savings_method"]. Vide → aucun bloc rendu (byte-identique).
+SAVINGS_METHOD = None
+
+
+def _savings_method_html():
+    """QF3 — bloc « Comment nous calculons vos économies » (méthode + exemple
+    chiffré compact). Rendu UNIQUEMENT quand data["savings_method"] est fourni.
+    Aucune donnée fabriquée : le texte vient du builder (une seule source)."""
+    sm = SAVINGS_METHOD
+    if not isinstance(sm, dict) or not sm.get("ligne_methode"):
+        return ""
+    methode = _esc(sm.get("ligne_methode", ""))
+    exemple = sm.get("exemple")
+    approx = " (approximatif)" if sm.get("approximatif") else ""
+    ex_html = ""
+    if exemple:
+        ex_html = (
+            f'<div style="margin-top:4px;font-size:8pt;color:{CN};font-weight:700;">'
+            f'{_esc(exemple)}{approx}</div>')
+    return (
+        f'<div style="background:{CG1};border-radius:8px;padding:7px 12px;'
+        f'border:1px solid {CG2};border-left:4px solid {CA};margin-bottom:5px;">'
+        f'<div style="font-size:9pt;font-weight:700;color:{CN};'
+        f'text-transform:uppercase;letter-spacing:.8px;margin-bottom:3px;">'
+        f'Comment nous calculons vos &#233;conomies</div>'
+        f'<div style="font-size:7.5pt;color:{CG7};line-height:1.4;">{methode}</div>'
+        f'{ex_html}</div>')
+
+
+# QK4 — bloc « Nos hypothèses » (transparence des hypothèses d'économies), posé
+# depuis data["hypotheses"]. Vide → aucun bloc rendu (byte-identique).
+HYPOTHESES = None
+
+
+def _hypotheses_html():
+    """QK4 — bloc « Nos hypothèses » : liste des hypothèses derrière les
+    économies (tarif, source barème, autoconsommation-first loi 82-21, base de
+    production). Rendu UNIQUEMENT quand data["hypotheses"] est fourni. Le texte
+    vient du builder (une seule source) ; aucun chiffre inventé ici."""
+    h = HYPOTHESES
+    if not isinstance(h, dict):
+        return ""
+    items = [i for i in (h.get("items") or []) if i]
+    if not items:
+        return ""
+    titre = _esc(h.get("titre") or "Nos hypothèses")
+    lis = "".join(
+        f'<li style="font-size:7.3pt;color:{CG7};padding-left:11px;'
+        f'position:relative;line-height:1.35;margin-bottom:1px;">'
+        f'<span style="position:absolute;left:0;color:{CA};">&#183;</span>'
+        f'{_esc(i)}</li>'
+        for i in items)
+    return (
+        f'<div style="background:{CG1};border-radius:8px;padding:7px 12px;'
+        f'border:1px solid {CG2};border-left:4px solid {CG4};margin-bottom:5px;">'
+        f'<div style="font-size:9pt;font-weight:700;color:{CN};'
+        f'text-transform:uppercase;letter-spacing:.8px;margin-bottom:3px;">'
+        f'{titre}</div>'
+        f'<ul style="list-style:none;padding:0;margin:0;">{lis}</ul></div>')
+
+
+# QK3 — bloc financement (indicatif, QJ12), posé depuis data["financing"].
+# Vide → aucun bloc rendu (byte-identique).
+FINANCING = None
+
+# QJ30 — multi-propriétés (rendu). NB_PROPRIETES = ×N villas identiques (défaut
+# 1 → aucun rendu). MULTI_VILLA = sections par-villa (sous-totaux + total
+# général). Vides → mise en page à plat d'aujourd'hui (byte-identique).
+NB_PROPRIETES = 1
+DISPLAY_TOTAL_MULTI = None
+MULTI_VILLA = None
+
+
+def _multi_proprietes_line_html():
+    """QJ30 (A) — ligne « × N propriétés identiques » + total mis à l'échelle.
+    Rendu UNIQUEMENT quand NB_PROPRIETES > 1. Aucun chiffre inventé : le total
+    multi vient du builder (total unitaire × N)."""
+    if not NB_PROPRIETES or NB_PROPRIETES <= 1:
+        return ""
+    total_txt = ""
+    if DISPLAY_TOTAL_MULTI:
+        total_txt = (f' &#8212; total pour {NB_PROPRIETES} propriétés&#160;: '
+                     f'<b>{fmt(DISPLAY_TOTAL_MULTI)}</b>')
+    return (
+        f'<div style="background:{CAL};border:1px solid {CA};border-radius:8px;'
+        f'padding:6px 12px;margin-bottom:5px;font-size:8.5pt;color:{CN};">'
+        f'&#215;&#160;{NB_PROPRIETES} propriétés identiques'
+        f'{total_txt}</div>')
+
+
+def _multi_villa_html():
+    """QJ30 (B) — sections par-villa (sous-totaux) + total général, dans UN
+    document. Rendu UNIQUEMENT quand MULTI_VILLA est fourni. Les montants
+    viennent du builder/selector (une source) ; jamais de prix d'achat/marge."""
+    mv = MULTI_VILLA
+    if not isinstance(mv, dict) or not mv.get("groupes"):
+        return ""
+    rows = ""
+    for g in mv["groupes"]:
+        t = g.get("totaux") or {}
+        rows += (
+            f'<tr><td style="padding:3px 8px;color:{CG7};">{_esc(g.get("label", ""))}</td>'
+            f'<td style="padding:3px 8px;text-align:right;color:{CG7};">'
+            f'{_fmt2(t.get("ht_net", 0))}</td>'
+            f'<td style="padding:3px 8px;text-align:right;font-weight:700;'
+            f'color:{CN};white-space:nowrap;">{fmt(t.get("ttc", 0))}</td></tr>')
+    gt = mv.get("grand_total") or {}
+    rows += (
+        f'<tr style="background:{CN};"><td style="padding:4px 8px;color:{CA};'
+        f'font-weight:800;">Total général</td>'
+        f'<td style="padding:4px 8px;text-align:right;color:{CA};font-weight:800;">'
+        f'{_fmt2(gt.get("ht_net", 0))}</td>'
+        f'<td style="padding:4px 8px;text-align:right;color:{CA};font-weight:800;'
+        f'white-space:nowrap;">{fmt(gt.get("ttc", 0))}</td></tr>')
+    return (
+        f'<div style="border:1px solid {CG2};border-radius:8px;overflow:hidden;'
+        f'margin-bottom:5px;">'
+        f'<div style="background:{CG1};padding:5px 12px;font-size:9pt;'
+        f'font-weight:700;color:{CN};text-transform:uppercase;'
+        f'letter-spacing:.8px;">Détail par propriété</div>'
+        f'<table style="width:100%;border-collapse:collapse;font-size:8pt;">'
+        f'<thead><tr>'
+        f'<th style="padding:3px 8px;text-align:left;color:{CG4};font-size:6.5pt;'
+        f'text-transform:uppercase;">Propriété</th>'
+        f'<th style="padding:3px 8px;text-align:right;color:{CG4};font-size:6.5pt;'
+        f'text-transform:uppercase;">Total HT</th>'
+        f'<th style="padding:3px 8px;text-align:right;color:{CG4};font-size:6.5pt;'
+        f'text-transform:uppercase;">Total TTC</th>'
+        f'</tr></thead><tbody>{rows}</tbody></table></div>')
+
+
+def _financing_html():
+    """QK3 — bloc « Financement possible » (mensualité indicative + programme).
+    Rendu UNIQUEMENT quand data["financing"] est fourni (QJ12). Indicatif ; le
+    texte vient du builder, jamais de prix d'achat/marge."""
+    f = FINANCING
+    if not isinstance(f, dict) or not f.get("indicatif"):
+        return ""
+    credit = f.get("credit") or {}
+    mens = credit.get("mensualite")
+    if not mens:
+        return ""
+    mens_txt = f"{int(round(mens)):,}".replace(",", " ")
+    duree_ans = round((credit.get("duree_mois") or 0) / 12)
+    prog = _esc(credit.get("programme_nom") or "crédit vert")
+    comp = f.get("onee_comparison") or {}
+    comp_txt = ""
+    if comp.get("show") and comp.get("message"):
+        comp_txt = (f'<div style="margin-top:3px;font-size:7.3pt;color:{CGR};'
+                    f'font-weight:700;">{_esc(comp["message"])}</div>')
+    return (
+        f'<div style="background:{CG1};border-radius:8px;padding:7px 12px;'
+        f'border:1px solid {CG2};border-left:4px solid {CGR};margin-bottom:5px;">'
+        f'<div style="font-size:9pt;font-weight:700;color:{CN};'
+        f'text-transform:uppercase;letter-spacing:.8px;margin-bottom:3px;">'
+        f'Financement possible</div>'
+        f'<div style="font-size:7.5pt;color:{CG7};line-height:1.4;">'
+        f'À partir de ≈ <b>{mens_txt} MAD/mois</b> sur {duree_ans} ans '
+        f'({prog}) — indicatif, à confirmer avec votre banque.</div>'
+        f'{comp_txt}</div>')
 
 
 def _doc_text(key):
@@ -1556,6 +1766,18 @@ def page3():
     </div>
   </div>
 
+  <!-- QF3 — COMMENT NOUS CALCULONS VOS ÉCONOMIES (méthode + exemple) -->
+  <div style="padding:0 24px;">{_savings_method_html()}</div>
+
+  <!-- QK4 — NOS HYPOTHÈSES (transparence des hypothèses d'économies) -->
+  <div style="padding:0 24px;">{_hypotheses_html()}</div>
+
+  <!-- QK3 — FINANCEMENT (indicatif) -->
+  <div style="padding:0 24px;">{_financing_html()}</div>
+
+  <!-- QJ30 — MULTI-PROPRIÉTÉS (×N identiques / sections par-villa) -->
+  <div style="padding:0 24px;">{_multi_proprietes_line_html()}{_multi_villa_html()}</div>
+
   <!-- CONDITIONS GENERALES -->
   <div style="padding:0 24px 4px;margin-bottom:5px;">
     <div style="background:{CG1};border-radius:8px;padding:7px 12px;border:1px solid {CG2};border-left:4px solid {CN};">
@@ -1993,6 +2215,9 @@ def page_onepage(items):
     {totals_html}
   </div>
 
+  <!-- QJ30 — ×N propriétés identiques (ligne compacte ; une page préservée) -->
+  <div style="padding:6px 24px 0;">{_multi_proprietes_line_html()}</div>
+
   <!-- CONDITIONS : sous le total -->
   <div style="padding:8px 24px;">
     {'<div style="font-size:7.5pt;color:' + CG4 + ';font-style:italic;margin-bottom:3px;">Ce document chiffre l&#8217;option sans batterie. Une option avec batterie est disponible &#8212; voir la proposition compl&#232;te.</div>' if ONEPAGE_NOTE_BATTERIE else ''}
@@ -2107,6 +2332,19 @@ def _render_premium_pdf(data: dict, out_path) -> str:
     global PAY_A, PAY_M, PAY_S, ONEPAGE_NOTE_BATTERIE
     global DOC_TEXTS, ACCEPTE_PAR_NOM, DATE_ACCEPTATION
     global DEVISE  # FG52 — devise du document (ISO 4217)
+    global SAVINGS_METHOD  # QF3 — bloc « Comment nous calculons vos économies »
+    SAVINGS_METHOD = data.get("savings_method")
+    global HYPOTHESES  # QK4 — bloc « Nos hypothèses »
+    HYPOTHESES = data.get("hypotheses")
+    global FINANCING  # QK3 — bloc financement (QJ12)
+    FINANCING = data.get("financing")
+    global NB_PROPRIETES, DISPLAY_TOTAL_MULTI, MULTI_VILLA  # QJ30 multi-propriétés
+    try:
+        NB_PROPRIETES = int(data.get("nombre_proprietes") or 1)
+    except (TypeError, ValueError):
+        NB_PROPRIETES = 1
+    DISPLAY_TOTAL_MULTI = data.get("display_total_multi")
+    MULTI_VILLA = data.get("multi_villa")
 
     # ERR37 — escape user-controlled client fields before they reach the PDF HTML.
     CLIENT_NAME  = _esc(data["client_name"])
@@ -2148,6 +2386,9 @@ def _render_premium_pdf(data: dict, out_path) -> str:
     # applique le profil de la société du devis. Champs vides → littéraux
     # Taqinor historiques (byte-identique) ; sinon SON identité s'affiche.
     _apply_entreprise(data.get("entreprise"))
+    # QG7 — ajoute le contact du créateur du devis (nom + tél) à la ligne de
+    # coordonnées, APRÈS _apply_entreprise. Seller vide → byte-identique.
+    _apply_seller(data.get("seller"))
 
     # Totaux canoniques (une seule source pour toutes les pages). À défaut
     # (anciens appels), reconstruits une fois ici avec la même chaîne.
@@ -2190,8 +2431,9 @@ def _render_premium_pdf(data: dict, out_path) -> str:
     PAGE3_NUM = PAGES_TOTAL
     # ERR37 — escape user text in line items at the ingestion boundary so every
     # downstream renderer (full + one-page) emits safe HTML.
-    SANS_ITEMS   = _esc_items(data["sans_items"])
-    AVEC_ITEMS   = _esc_items(data["avec_items"])
+    # QF9 — garde-fou marque (défense en profondeur, après le filtrage builder).
+    SANS_ITEMS   = _guard_huawei_accessories(_esc_items(data["sans_items"]))
+    AVEC_ITEMS   = _guard_huawei_accessories(_esc_items(data["avec_items"]))
     ECO_S_M      = data["eco_s_monthly"]
     ECO_A_M      = data["eco_a_monthly"]
     FACTURES_M   = list(data["factures_mensuelles"])
@@ -2202,7 +2444,8 @@ def _render_premium_pdf(data: dict, out_path) -> str:
     out_path = Path(out_path)
     mode = data.get("pdf_mode", "full")
     if mode == "onepage":
-        html = build_html_onepage(_esc_items(data.get("all_items", [])))
+        html = build_html_onepage(
+            _guard_huawei_accessories(_esc_items(data.get("all_items", []))))
     else:
         html = build_html()
 

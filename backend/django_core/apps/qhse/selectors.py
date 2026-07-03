@@ -113,6 +113,34 @@ def phase_peut_avancer(plan_chantier, phase):
     return phase not in set(status['phases_bloquees'])
 
 
+def hold_points_bloquants_pour_chantier(company, chantier_id):
+    """CH2 — points d'arrêt NON LEVÉS de tous les plans d'inspection ouverts
+    d'un chantier, scopés société.
+
+    Sélecteur mince consommé par le gating des étapes de chantier
+    (``installations`` — référence lâche par ``chantier_id``, jamais d'import
+    de modèle cross-app) : agrège ``hold_points_status`` sur chaque
+    ``PlanInspectionChantier`` EN COURS du chantier et renvoie la liste plate
+    des points d'arrêt bloquants (chacun enrichi de ``plan_chantier_id`` et du
+    nom du modèle d'ITP). Liste vide = aucun point d'arrêt ne bloque. Un plan
+    CLÔTURÉ ne bloque plus. Lecture seule, aucune mutation.
+    """
+    bloquants = []
+    plans = PlanInspectionChantier.objects.filter(
+        company=company, chantier_id=chantier_id,
+        statut=PlanInspectionChantier.Statut.EN_COURS,
+    ).select_related('modele')
+    for plan in plans:
+        status = hold_points_status(plan)
+        for point in status['points_bloquants']:
+            bloquants.append({
+                **point,
+                'plan_chantier_id': plan.id,
+                'plan_nom': plan.modele.nom,
+            })
+    return bloquants
+
+
 # ── QHSE7 — Relevés courbe I-V par string (lecture seule) ──────────────────
 
 def courbes_iv_for_chantier(company, chantier_id):

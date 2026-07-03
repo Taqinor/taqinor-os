@@ -241,6 +241,17 @@ class CompanyProfile(models.Model):
         default=0,
         help_text="Expiration du mot de passe en jours (0 = jamais).")
 
+    # ── QG9 — pourcentage des variantes de devis (dupliquer-variante) ──
+    # Pourcentage symétrique appliqué autour du devis d'origine pour produire
+    # les variantes de taille : échelles [1−p, 1.0, 1+p]. Défaut 20 %
+    # (échelles historiques ≈ 0.8 / 1.0 / 1.2). Éditable par Directeur /
+    # Commercial responsable ; un override par requête reste possible. Additif :
+    # une société existante utilise 20 tant que rien n'est changé.
+    variante_pct = models.DecimalField(
+        max_digits=5, decimal_places=2, default=Decimal('20'),
+        help_text='Pourcentage des variantes de devis (échelles 1−p / 1 / 1+p). '
+                  'Défaut 20 %.')
+
     # ── FG26 — fenêtre de rétention du journal d'audit (RGPD) ──
     # Au-delà de N jours, les lignes du Journal d'activité peuvent être purgées
     # (commande/endpoint admin). 0 = conservation illimitée (défaut) → rien

@@ -331,9 +331,12 @@ export function Component() {
               Visites préventives — {visibleRows.length} contrat{visibleRows.length > 1 ? 's' : ''}
             </p>
           </div>
-          <div className="flex items-center gap-2">
+          {/* MB5 — segmenté (3 options) + bouton : sur mobile ils passent sur
+              deux lignes plutôt que déborder horizontalement. */}
+          <div className="flex flex-wrap items-center gap-2">
             <Segmented
               size="sm"
+              className="flex-wrap"
               value={vue}
               onChange={setVue}
               options={[

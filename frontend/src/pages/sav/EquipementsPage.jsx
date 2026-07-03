@@ -3,13 +3,14 @@ import { useNavigate } from 'react-router-dom'
 import { useDispatch, useSelector } from 'react-redux'
 import {
   Download, PackageSearch, AlarmClock, AlertTriangle, RotateCcw, Save,
-  Wrench, Pencil,
+  Wrench, Pencil, ShieldCheck,
 } from 'lucide-react'
 import { fetchEquipements } from '../../features/sav/store/equipementsSlice'
 import savApi from '../../api/savApi'
 import installationsApi from '../../api/installationsApi'
 import stockApi from '../../api/stockApi'
 import importApi, { downloadXlsx } from '../../api/importApi'
+import RegistreGarantiesDialog from './RegistreGarantiesDialog'
 import {
   EMPTY_EQUIP_FILTERS,
   EQUIP_STATUTS,
@@ -337,6 +338,8 @@ export default function EquipementsPage() {
   const { items, loading, error } = useSelector((s) => s.equipements)
   const [filters, setFilters] = useState(EMPTY_EQUIP_FILTERS)
   const [selected, setSelected] = useState(null)
+  // WR11/FG290 — registre des garanties par parc (échéancier).
+  const [showRegistre, setShowRegistre] = useState(false)
 
   const reload = () => dispatch(fetchEquipements())
   useEffect(() => { reload() }, []) // eslint-disable-line react-hooks/exhaustive-deps
@@ -439,11 +442,17 @@ export default function EquipementsPage() {
               )}
             </p>
           </div>
-          <Button variant="outline" size="sm"
-                  onClick={() => importApi.exportList('equipements', rows.map((r) => r.id))
-                    .then((r) => downloadXlsx(r.data, 'equipements.xlsx')).catch(() => {})}>
-            <Download /> Exporter Excel
-          </Button>
+          <div className="flex items-center gap-2">
+            {/* WR11/FG290 — échéancier des garanties par parc. */}
+            <Button variant="outline" size="sm" onClick={() => setShowRegistre(true)}>
+              <ShieldCheck /> Registre des garanties
+            </Button>
+            <Button variant="outline" size="sm"
+                    onClick={() => importApi.exportList('equipements', rows.map((r) => r.id))
+                      .then((r) => downloadXlsx(r.data, 'equipements.xlsx')).catch(() => {})}>
+              <Download /> Exporter Excel
+            </Button>
+          </div>
         </header>
 
         {/* ── Filtres ── */}
@@ -551,6 +560,10 @@ export default function EquipementsPage() {
         {selected && (
           <EquipementDetail equipement={selected} onClose={() => setSelected(null)}
                             onSaved={reload} />
+        )}
+
+        {showRegistre && (
+          <RegistreGarantiesDialog onClose={() => setShowRegistre(false)} />
         )}
       </div>
     </TooltipProvider>

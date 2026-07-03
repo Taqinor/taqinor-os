@@ -60,15 +60,139 @@ class BonCommandeFournisseurViewSet(TenantMixin, viewsets.ModelViewSet):
     ordering = ['-date_creation']
 
     def get_permissions(self):
-        if self.action in READ_ACTIONS:
+        # QS1 — le PDF (interne) est une LECTURE : il rend exactement les
+        # données que `retrieve` expose déjà à tout rôle authentifié. Le
+        # laisser en IsResponsableOrAdmin faisait échouer (403) le bouton
+        # « PDF (interne) » pour les rôles normaux qui voient pourtant le BCF.
+        if self.action in READ_ACTIONS + ['generer_pdf']:
             return [IsAnyRole()]
+        elif self.action in ('whatsapp', 'envoyer_email'):
+            # QS3 — envois fournisseur : permission fine stock_modifier (repli
+            # légacy responsable/admin pour les comptes sans rôle fin).
+            return [HasPermissionOrLegacy('stock_modifier')()]
         elif self.action in WRITE_ACTIONS + [
-            'envoyer', 'recevoir', 'annuler', 'generer_pdf',
+            'envoyer', 'recevoir', 'annuler',
         ]:
             return [IsResponsableOrAdmin()]
         elif self.action == 'destroy':
             return [IsAdminRole()]
         return [IsAdminRole()]
+
+    def _mark_bcf_envoye(self, bc):
+        """QS3 — Marque un BCF « envoyé » de façon idempotente et SANS régression.
+
+        Seul un BROUILLON avance vers ENVOYE ; un BCF déjà ENVOYE reste tel quel
+        (idempotent) ; RECU et ANNULE ne sont JAMAIS régressés. Renvoie True si
+        une transition a eu lieu."""
+        if bc.statut == BonCommandeFournisseur.Statut.BROUILLON:
+            bc.statut = BonCommandeFournisseur.Statut.ENVOYE
+            bc.save(update_fields=['statut'])
+            return True
+        return False
+
+    @action(detail=True, methods=['post'], url_path='whatsapp')
+    def whatsapp(self, request, pk=None):
+        """QS3 — Lien wa.me PRÊT à envoyer vers le FOURNISSEUR + lien tokenisé
+        vers le PDF du BCF.
+
+        N'envoie RIEN : ouvre WhatsApp avec le message pré-rempli (l'acheteur
+        appuie lui-même sur Envoyer). Le {lien} est un lien public tokenisé
+        (30 j) vers le PDF du BCF — destiné au FOURNISSEUR (il voit légitimement
+        les prix d'achat), imprévisible + expirant, jamais surfacé côté client.
+
+        Marque le BCF « envoyé » (idempotent, ne régresse jamais RECU/ANNULE).
+        Le numéro vient de ``fournisseur.telephone``. 400 si aucun numéro."""
+        from apps.ventes.utils.phone import normalize_ma_phone
+        from apps.ventes.utils.whatsapp import build_wa_url
+        from apps.ventes.services import bcf_share_url
+
+        bc = self.get_object()
+        phone = bc.fournisseur.telephone if bc.fournisseur_id else ''
+        if not normalize_ma_phone(phone):
+            return Response(
+                {'detail': 'Aucun numéro de téléphone fournisseur.'},
+                status=status.HTTP_400_BAD_REQUEST)
+        url, _token = bcf_share_url(bc, request)
+        fournisseur_nom = bc.fournisseur.nom if bc.fournisseur_id else ''
+        message = (
+            f'Bonjour {fournisseur_nom},\n\n'
+            f'Voici notre bon de commande {bc.reference}. '
+            f'Vous pouvez le consulter ici : {url}\n\n'
+            f'Merci de nous confirmer la disponibilité.')
+        self._mark_bcf_envoye(bc)
+        try:
+            from apps.audit.recorder import record
+            from apps.audit.models import AuditLog
+            record(AuditLog.Action.WHATSAPP, instance=bc,
+                   detail=f'Lien WhatsApp BCF {bc.reference} préparé')
+        except Exception:  # noqa: BLE001 — l'audit ne casse jamais l'action
+            pass
+        return Response({
+            'wa_url': build_wa_url(phone, message),
+            'phone': phone, 'message': message, 'url': url,
+            'statut': bc.statut,
+        })
+
+    @action(detail=True, methods=['post'], url_path='envoyer-email')
+    def envoyer_email(self, request, pk=None):
+        """QS3 — Envoie le BCF (PDF joint) au FOURNISSEUR par email + EmailLog.
+
+        Le PDF est rendu à la volée (montre les prix d'achat — légitime pour le
+        fournisseur). L'envoi + la trace EmailLog passent par le service ventes
+        ``log_supplier_email`` (stock n'importe pas ventes.models). NO-OP réseau
+        sans clé (backend console), l'entrée EmailLog est tout de même écrite.
+        Marque le BCF « envoyé » (idempotent, ne régresse jamais RECU/ANNULE).
+
+        Body optionnel : ``to_email`` (défaut : email du fournisseur),
+        ``sujet``, ``corps``."""
+        from apps.ventes.services import log_supplier_email
+        from ..utils.pdf_fournisseur import generate_bcf_pdf
+
+        bc = self.get_object()
+        to_email = ((request.data.get('to_email') or '').strip()
+                    or (bc.fournisseur.email if bc.fournisseur_id else '')
+                    or '')
+        if not to_email:
+            return Response(
+                {'detail': 'Aucune adresse email fournisseur.'},
+                status=status.HTTP_400_BAD_REQUEST)
+
+        # PDF du BCF (rendu à la volée) — indisponible n'empêche pas l'email.
+        attachment = attachment_name = None
+        try:
+            attachment = generate_bcf_pdf(bc)
+            attachment_name = f'{bc.reference}.pdf'
+        except Exception:  # noqa: BLE001
+            pass
+
+        fournisseur_nom = bc.fournisseur.nom if bc.fournisseur_id else ''
+        sujet = ((request.data.get('sujet') or '').strip()
+                 or f'Bon de commande {bc.reference}')
+        corps = ((request.data.get('corps') or '').strip() or (
+            f'Bonjour {fournisseur_nom},\n\n'
+            f'Veuillez trouver ci-joint notre bon de commande '
+            f'{bc.reference}.\n\n'
+            f'Merci de nous confirmer la disponibilité.\n\n'
+            f'Cordialement,'))
+
+        ok, log = log_supplier_email(
+            company=bc.company, to_email=to_email, sujet=sujet, corps=corps,
+            attachment=attachment, attachment_name=attachment_name,
+            reference=bc.reference, user=request.user)
+        self._mark_bcf_envoye(bc)
+        try:
+            from apps.audit.recorder import record
+            from apps.audit.models import AuditLog
+            record(AuditLog.Action.EMAIL, instance=bc,
+                   detail=f'Email BCF {bc.reference} envoyé à {to_email}')
+        except Exception:  # noqa: BLE001
+            pass
+        return Response({
+            'detail': (f'Email envoyé à {to_email}.' if ok
+                       else "Échec de l'envoi de l'email."),
+            'log_id': log.id, 'email_statut': log.statut,
+            'statut': bc.statut,
+        })
 
     def perform_create(self, serializer):
         company = self.request.user.company
@@ -207,10 +331,18 @@ class BonCommandeFournisseurViewSet(TenantMixin, viewsets.ModelViewSet):
     def generer_pdf(self, request, pk=None):
         """PDF fournisseur (INTERNE — montre les prix d'achat). Jamais un
         document client."""
-        from .utils.pdf_fournisseur import generate_bcf_pdf
+        from ..utils.pdf_fournisseur import generate_bcf_pdf
         bc = self.get_object()
         pdf_bytes = generate_bcf_pdf(bc)
         response = HttpResponse(pdf_bytes, content_type='application/pdf')
+        # QD2 — nom cohérent (société _ type _ fournisseur _ référence). Le
+        # segment « fournisseur » réutilise le paramètre client du helper
+        # (Fournisseur porte .nom) — jamais de prix d'achat dans le nom.
+        from apps.ventes.utils.filenames import document_filename
+        filename = document_filename(
+            'Bon-de-commande', bc.reference,
+            client=bc.fournisseur if bc.fournisseur_id else None,
+            company=bc.company)
         response['Content-Disposition'] = (
-            f'inline; filename="{bc.reference}.pdf"')
+            f'inline; filename="{filename}"')
         return response

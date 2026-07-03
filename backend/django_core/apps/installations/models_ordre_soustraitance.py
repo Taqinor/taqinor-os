@@ -51,10 +51,12 @@ class OrdreSousTraitance(models.Model):
         null=True, blank=True,
         related_name='installations_ordres_sous_traitance')
     reference = models.CharField(max_length=50)
-    # Prestataire de main-d'œuvre (annuaire FG304). PROTECT : on ne supprime pas
-    # un sous-traitant qui porte des ordres.
+    # DC34 — le sous-traitant est un stock.Fournisseur de type « service »
+    # (référentiel UNIFIÉ, plus de table parallèle). FK CHAÎNE : on ne référence
+    # jamais apps.stock.models par import (contrat de découplage M1). PROTECT :
+    # on ne supprime pas un sous-traitant qui porte des ordres.
     sous_traitant = models.ForeignKey(
-        'installations.SousTraitant', on_delete=models.PROTECT,
+        'stock.Fournisseur', on_delete=models.PROTECT,
         related_name='installations_ordres_sous_traitance')
     # Chantier concerné (même app). Optionnel : un ordre cadre peut précéder
     # l'affectation à un chantier précis. SET_NULL : la suppression d'un chantier

@@ -1240,7 +1240,9 @@ def sous_traitant_attestations_manquantes(sous_traitant, a_la_date=None):
     blocage explicite côté appelant. Renvoie une liste de dicts
     {type_piece, date_expiration}."""
     manquantes = []
-    for att in sous_traitant.attestations.all():
+    # DC34 — `sous_traitant` est un stock.Fournisseur(type='service') ; ses
+    # attestations sont accessibles via le related_name `installations_*`.
+    for att in sous_traitant.installations_attestations.all():
         if att.obligatoire and not att.est_valide(a_la_date):
             manquantes.append({
                 'type_piece': att.type_piece,
@@ -1253,8 +1255,13 @@ def sous_traitant_affectable(sous_traitant, a_la_date=None):
     """FG307 — vrai si le sous-traitant peut être affecté à une date : actif ET
     aucune pièce obligatoire expirée. Lecture seule, point d'entrée cross-app
     (le planning/l'affectation lisent ce sélecteur plutôt que la table
-    d'attestations directement)."""
-    if not getattr(sous_traitant, 'actif', True):
+    d'attestations directement).
+
+    DC34 — le drapeau ``actif`` vit désormais sur le profil sous-traitant
+    (``stock.SousTraitantProfile``) porté par le Fournisseur ; on le lit à
+    travers le sélecteur stock (jamais d'import de apps.stock.models)."""
+    from apps.stock.selectors import sous_traitant_est_actif
+    if not sous_traitant_est_actif(sous_traitant):
         return False
     return not sous_traitant_attestations_manquantes(sous_traitant, a_la_date)
 
@@ -1265,12 +1272,14 @@ def sous_traitant_scorecard(sous_traitant):
     Lecture seule, point d'entrée cross-app. Renvoie un dict (None si aucune
     évaluation)."""
     from django.db.models import Avg
-    agg = sous_traitant.evaluations.aggregate(
+    # DC34 — `sous_traitant` est un stock.Fournisseur(type='service') ; ses
+    # évaluations sont accessibles via le related_name `installations_*`.
+    agg = sous_traitant.installations_evaluations.aggregate(
         qualite=Avg('note_qualite'),
         delai=Avg('note_delai'),
         securite=Avg('note_securite'),
     )
-    nb = sous_traitant.evaluations.count()
+    nb = sous_traitant.installations_evaluations.count()
     if nb == 0:
         return {
             'nb_evaluations': 0,

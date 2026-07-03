@@ -1,172 +1,242 @@
-"""Vues FG306 — factures & règlements des sous-traitants chantier (AP dédiée).
+"""Vues DC34 — AP sous-traitant PAR LA CHAÎNE STANDARD (plus de modèle parallèle).
 
-``FactureSousTraitantViewSet`` : CRUD des factures entrantes émises par un
-sous-traitant (FG304), rattachables à un ordre de travaux (FG305) et/ou un
-chantier, plus les actions de cycle de vie (``a_payer`` / ``annuler``).
-``PaiementSousTraitantViewSet`` : CRUD des règlements imputés sur une facture ;
-le statut de la facture se reflète automatiquement (à payer → partielle → payée)
-au fil des paiements.
+Les factures & règlements des sous-traitants ne vivent plus dans un modèle
+dédié : ils passent par la chaîne comptes-à-payer standard de l'app stock
+(``FactureFournisseur`` / ``PaiementFournisseur``), filtrée aux fournisseurs de
+type « service ». Ces deux vues restent les endpoints ``factures-sous-traitant/``
+et ``paiements-sous-traitant/`` (contrat d'API FG306 préservé) mais orchestrent
+les objets stock à travers ses SÉLECTEURS et SERVICES — jamais par import de
+``apps.stock.models`` (contrat de découplage M1).
 
-Lecture responsable/admin, écriture responsable/admin — ces montants sont
-INTERNES (compte à payer) et ne doivent jamais fuir vers un rôle client-facing
-ni un document client. Multi-tenant via ``TenantMixin`` : le queryset est filtré
-sur la société de l'utilisateur ; la société et ``created_by`` sont posés côté
-serveur (jamais lus du corps). Les FK liées sont validées tenant (même société).
+Lecture & écriture responsable/admin — montants INTERNES (jamais client-facing).
+Multi-tenant : société + ``created_by`` posés côté serveur ; le sous-traitant
+ciblé est validé tenant ET de type « service ».
 """
-from decimal import Decimal, InvalidOperation
-
-from django.utils import timezone
-from rest_framework import viewsets, status
+from rest_framework import serializers, status, viewsets
 from rest_framework.decorators import action
 from rest_framework.exceptions import ValidationError
 from rest_framework.response import Response
 
-from authentication.mixins import TenantMixin
 from authentication.permissions import IsResponsableOrAdmin
 
-from ..models import FactureSousTraitant, PaiementSousTraitant
-from ..serializers import (
-    FactureSousTraitantSerializer, PaiementSousTraitantSerializer,
-)
+from apps.stock import selectors as stock_selectors
+from apps.stock import services as stock_services
 
 
-def _check_tenant(serializer, company, field):
-    """Tenant safety : l'objet lié doit appartenir à la société du user."""
-    cid = getattr(company, 'id', None)
-    obj = serializer.validated_data.get(field)
-    if obj is not None and getattr(obj, 'company_id', None) != cid:
-        raise ValidationError({field: 'Objet inconnu pour cette société.'})
+class _FactureSousTraitantSerializer(serializers.Serializer):
+    """DC34 — vue à plat d'une facture sous-traitant AU-DESSUS d'une
+    ``stock.FactureFournisseur``. Le champ ``sous_traitant`` mappe le
+    ``fournisseur`` (type=service) ; les montants et le solde sont INTERNES."""
+    id = serializers.IntegerField(read_only=True)
+    sous_traitant = serializers.IntegerField()
+    sous_traitant_nom = serializers.SerializerMethodField()
+    numero = serializers.CharField(
+        required=False, allow_blank=True, allow_null=True)
+    reference = serializers.CharField(read_only=True)
+    montant_ht = serializers.DecimalField(
+        max_digits=14, decimal_places=2, required=False, default=0)
+    montant_tva = serializers.DecimalField(
+        max_digits=14, decimal_places=2, required=False, default=0)
+    montant_ttc = serializers.DecimalField(
+        max_digits=14, decimal_places=2, required=False, default=0)
+    date_facture = serializers.DateField(required=False, allow_null=True)
+    date_echeance = serializers.DateField(required=False, allow_null=True)
+    statut = serializers.CharField(read_only=True)
+    statut_display = serializers.SerializerMethodField()
+    total_paye = serializers.DecimalField(
+        max_digits=14, decimal_places=2, read_only=True)
+    reste_a_payer = serializers.DecimalField(
+        max_digits=14, decimal_places=2, read_only=True)
+    note = serializers.CharField(
+        required=False, allow_blank=True, allow_null=True)
+    date_creation = serializers.DateTimeField(read_only=True)
+
+    def get_sous_traitant_nom(self, obj):
+        return obj.fournisseur.nom if obj.fournisseur_id else None
+
+    def get_statut_display(self, obj):
+        return obj.get_statut_display()
+
+    def to_representation(self, obj):
+        return {
+            'id': obj.id,
+            'sous_traitant': obj.fournisseur_id,
+            'sous_traitant_nom': self.get_sous_traitant_nom(obj),
+            'numero': obj.ref_fournisseur,
+            'reference': obj.reference,
+            'montant_ht': obj.montant_ht,
+            'montant_tva': obj.montant_tva,
+            'montant_ttc': obj.montant_ttc,
+            'date_facture': obj.date_facture,
+            'date_echeance': obj.date_echeance,
+            'statut': obj.statut,
+            'statut_display': obj.get_statut_display(),
+            'total_paye': obj.total_paye,
+            'reste_a_payer': obj.solde_du,
+            'note': obj.note,
+            'date_creation': obj.date_creation,
+        }
+
+    def validate_montant_ttc(self, value):
+        if value is not None and value < 0:
+            raise serializers.ValidationError(
+                'Le montant TTC ne peut pas être négatif.')
+        return value
 
 
-def _refresh_statut(facture):
-    """Reflète l'état de paiement sur le statut de la facture (jamais sur une
-    facture brouillon ou annulée). À payer → partielle → payée."""
-    if facture.statut in (FactureSousTraitant.Statut.BROUILLON,
-                          FactureSousTraitant.Statut.ANNULEE):
-        return
-    paye = facture.total_paye
-    ttc = facture.montant_ttc or Decimal('0')
-    if paye <= 0:
-        nouveau = FactureSousTraitant.Statut.A_PAYER
-    elif paye < ttc:
-        nouveau = FactureSousTraitant.Statut.PARTIELLE
-    else:
-        nouveau = FactureSousTraitant.Statut.PAYEE
-    if nouveau != facture.statut:
-        facture.statut = nouveau
-        facture.save(update_fields=['statut', 'date_modification'])
+class _PaiementSousTraitantSerializer(serializers.Serializer):
+    """DC34 — vue à plat d'un règlement sous-traitant AU-DESSUS d'un
+    ``stock.PaiementFournisseur``."""
+    id = serializers.IntegerField(read_only=True)
+    facture = serializers.IntegerField()
+    montant = serializers.DecimalField(max_digits=14, decimal_places=2)
+    date_paiement = serializers.DateField(required=False, allow_null=True)
+    mode = serializers.CharField(required=False, default='virement')
+    note = serializers.CharField(
+        required=False, allow_blank=True, allow_null=True)
+    date_creation = serializers.DateTimeField(read_only=True)
+
+    def to_representation(self, obj):
+        return {
+            'id': obj.id,
+            'facture': obj.facture_id,
+            'montant': obj.montant,
+            'date_paiement': obj.date_paiement,
+            'mode': obj.mode,
+            'note': obj.note,
+            'date_creation': obj.date_creation,
+        }
+
+    def validate_montant(self, value):
+        if value is None or value <= 0:
+            raise serializers.ValidationError(
+                'Le montant du paiement doit être strictement positif.')
+        return value
 
 
-class FactureSousTraitantViewSet(TenantMixin, viewsets.ModelViewSet):
-    """FG306 — factures entrantes sous-traitant (compte à payer). Lecture &
-    écriture responsable/admin (montants INTERNES). Société + `created_by` posés
-    serveur ; `sous_traitant`/`ordre`/`chantier` validés tenant. Filtrable par
-    `sous_traitant`, `statut`, `ordre`, `chantier`. Cycle de vie via les actions
-    `a_payer`/`annuler`."""
-    queryset = FactureSousTraitant.objects.select_related(
-        'sous_traitant', 'ordre', 'chantier', 'created_by'
-    ).prefetch_related('paiements').all()
-    serializer_class = FactureSousTraitantSerializer
+class FactureSousTraitantViewSet(viewsets.ViewSet):
+    """DC34 — factures entrantes sous-traitant via la chaîne AP standard
+    (stock.FactureFournisseur, fournisseur type=service). Lecture & écriture
+    responsable/admin. Société + `created_by` posés serveur ; `sous_traitant`
+    validé tenant + type service. Filtrable par `sous_traitant`, `statut`.
+    Action `annuler` = suppression d'une facture non réglée."""
     permission_classes = [IsResponsableOrAdmin]
+    serializer_class = _FactureSousTraitantSerializer
 
-    def get_queryset(self):
-        qs = super().get_queryset()
-        params = self.request.query_params
-        for key, col in (('sous_traitant', 'sous_traitant_id'),
-                         ('statut', 'statut'),
-                         ('ordre', 'ordre_id'),
-                         ('chantier', 'chantier_id')):
-            val = params.get(key)
-            if val:
-                qs = qs.filter(**{col: val})
-        return qs
+    def _company(self):
+        return self.request.user.company
 
-    def perform_create(self, serializer):
-        company = self.request.user.company
-        _check_tenant(serializer, company, 'sous_traitant')
-        _check_tenant(serializer, company, 'ordre')
-        _check_tenant(serializer, company, 'chantier')
-        serializer.save(company=company, created_by=self.request.user)
+    def _resolve_sous_traitant(self, st_id):
+        st = stock_selectors.get_sous_traitant(self._company(), st_id)
+        if st is None:
+            raise ValidationError(
+                {'sous_traitant': 'Sous-traitant inconnu pour cette société.'})
+        return st
 
-    def perform_update(self, serializer):
-        company = self.request.user.company
-        _check_tenant(serializer, company, 'sous_traitant')
-        _check_tenant(serializer, company, 'ordre')
-        _check_tenant(serializer, company, 'chantier')
-        serializer.save(company=company)
+    def list(self, request):
+        params = request.query_params
+        qs = list(stock_selectors.factures_sous_traitant_qs(
+            self._company(),
+            fournisseur_id=params.get('sous_traitant') or None,
+            statut=params.get('statut') or None))
+        data = _FactureSousTraitantSerializer(qs, many=True).data
+        return Response({'count': len(data), 'next': None, 'previous': None,
+                         'results': data})
 
-    @action(detail=True, methods=['post'])
-    def a_payer(self, request, pk=None):
-        """FG306 — passe la facture en « à payer » (brouillon → à payer), puis
-        reflète l'état réel des paiements."""
-        facture = self.get_object()
-        if facture.statut == FactureSousTraitant.Statut.ANNULEE:
-            return Response(
-                {'detail': "Une facture annulée ne peut pas passer à payer."},
-                status=status.HTTP_400_BAD_REQUEST)
-        facture.statut = FactureSousTraitant.Statut.A_PAYER
-        if facture.date_facture is None:
-            facture.date_facture = timezone.now().date()
-        facture.save(update_fields=['statut', 'date_facture',
-                                    'date_modification'])
-        _refresh_statut(facture)
-        return Response(self.get_serializer(facture).data)
+    def retrieve(self, request, pk=None):
+        facture = stock_selectors.facture_fournisseur_scoped(
+            self._company(), pk)
+        if facture is None or facture.fournisseur.type != 'service':
+            return Response({'detail': 'Facture introuvable.'},
+                            status=status.HTTP_404_NOT_FOUND)
+        return Response(_FactureSousTraitantSerializer(facture).data)
+
+    def create(self, request):
+        serializer = _FactureSousTraitantSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        vd = serializer.validated_data
+        st = self._resolve_sous_traitant(vd['sous_traitant'])
+        facture = stock_services.create_facture_sous_traitant(
+            company=self._company(), user=request.user, fournisseur=st,
+            ref_fournisseur=vd.get('numero'),
+            date_facture=vd.get('date_facture'),
+            date_echeance=vd.get('date_echeance'),
+            montant_ht=vd.get('montant_ht') or 0,
+            montant_tva=vd.get('montant_tva') or 0,
+            montant_ttc=vd.get('montant_ttc') or 0,
+            note=vd.get('note'))
+        return Response(_FactureSousTraitantSerializer(facture).data,
+                        status=status.HTTP_201_CREATED)
 
     @action(detail=True, methods=['post'])
     def annuler(self, request, pk=None):
-        """FG306 — annule la facture (refusée si elle porte déjà un paiement)."""
-        facture = self.get_object()
+        """DC34 — annule (supprime) une facture sous-traitant NON réglée. Une
+        facture déjà réglée ne peut pas être annulée."""
+        facture = stock_selectors.facture_fournisseur_scoped(
+            self._company(), pk)
+        if facture is None or facture.fournisseur.type != 'service':
+            return Response({'detail': 'Facture introuvable.'},
+                            status=status.HTTP_404_NOT_FOUND)
         if facture.total_paye > 0:
             return Response(
                 {'detail': "Une facture déjà réglée ne peut pas être annulée."},
                 status=status.HTTP_400_BAD_REQUEST)
-        facture.statut = FactureSousTraitant.Statut.ANNULEE
-        facture.save(update_fields=['statut', 'date_modification'])
-        return Response(self.get_serializer(facture).data)
+        facture.delete()
+        return Response(status=status.HTTP_204_NO_CONTENT)
 
 
-class PaiementSousTraitantViewSet(TenantMixin, viewsets.ModelViewSet):
-    """FG306 — règlements imputés sur une facture sous-traitant. Lecture &
-    écriture responsable/admin (montants INTERNES). Société + `created_by` posés
-    serveur ; la facture ciblée est validée tenant. Le statut de la facture est
-    rafraîchi à chaque création/suppression de paiement. Filtrable par
-    `facture`."""
-    queryset = PaiementSousTraitant.objects.select_related(
-        'facture', 'created_by').all()
-    serializer_class = PaiementSousTraitantSerializer
+class PaiementSousTraitantViewSet(viewsets.ViewSet):
+    """DC34 — règlements sous-traitant via la chaîne AP standard
+    (stock.PaiementFournisseur). Lecture & écriture responsable/admin. Société +
+    `created_by` posés serveur ; la facture ciblée est validée tenant + service.
+    Le statut de la facture est rafraîchi à chaque création/suppression.
+    Filtrable par `facture`."""
     permission_classes = [IsResponsableOrAdmin]
+    serializer_class = _PaiementSousTraitantSerializer
 
-    def get_queryset(self):
-        qs = super().get_queryset()
-        facture = self.request.query_params.get('facture')
-        if facture:
-            qs = qs.filter(facture_id=facture)
-        return qs
+    def _company(self):
+        return self.request.user.company
 
-    def perform_create(self, serializer):
-        company = self.request.user.company
-        _check_tenant(serializer, company, 'facture')
-        facture = serializer.validated_data.get('facture')
-        # On ne paie pas une facture annulée.
-        if facture is not None and (
-                facture.statut == FactureSousTraitant.Statut.ANNULEE):
+    def list(self, request):
+        qs = list(stock_selectors.paiements_sous_traitant_qs(
+            self._company(),
+            facture_id=request.query_params.get('facture') or None))
+        data = _PaiementSousTraitantSerializer(qs, many=True).data
+        return Response({'count': len(data), 'next': None, 'previous': None,
+                         'results': data})
+
+    def retrieve(self, request, pk=None):
+        paiement = stock_selectors.paiement_fournisseur_scoped(
+            self._company(), pk)
+        if paiement is None or paiement.facture.fournisseur.type != 'service':
+            return Response({'detail': 'Règlement introuvable.'},
+                            status=status.HTTP_404_NOT_FOUND)
+        return Response(_PaiementSousTraitantSerializer(paiement).data)
+
+    def create(self, request):
+        serializer = _PaiementSousTraitantSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        vd = serializer.validated_data
+        facture = stock_selectors.facture_fournisseur_scoped(
+            self._company(), vd['facture'])
+        if facture is None or facture.fournisseur.type != 'service':
             raise ValidationError(
-                {'facture': "Impossible de régler une facture annulée."})
-        # On n'imputera jamais plus que le reste à payer.
-        if facture is not None:
-            montant = serializer.validated_data.get('montant') or Decimal('0')
-            try:
-                montant = Decimal(str(montant))
-            except (InvalidOperation, ValueError):
-                montant = Decimal('0')
-            if montant > facture.reste_a_payer:
-                raise ValidationError(
-                    {'montant': "Le paiement dépasse le reste à payer."})
-        paiement = serializer.save(
-            company=company, created_by=self.request.user)
-        _refresh_statut(paiement.facture)
+                {'facture': 'Facture inconnue pour cette société.'})
+        try:
+            paiement = stock_services.add_paiement_sous_traitant(
+                company=self._company(), user=request.user, facture=facture,
+                montant=vd['montant'], date_paiement=vd.get('date_paiement'),
+                mode=vd.get('mode', 'virement'), note=vd.get('note'))
+        except ValueError as exc:
+            raise ValidationError({'montant': str(exc)})
+        return Response(_PaiementSousTraitantSerializer(paiement).data,
+                        status=status.HTTP_201_CREATED)
 
-    def perform_destroy(self, instance):
-        facture = instance.facture
-        instance.delete()
-        _refresh_statut(facture)
+    def destroy(self, request, pk=None):
+        paiement = stock_selectors.paiement_fournisseur_scoped(
+            self._company(), pk)
+        if paiement is None or paiement.facture.fournisseur.type != 'service':
+            return Response({'detail': 'Règlement introuvable.'},
+                            status=status.HTTP_404_NOT_FOUND)
+        stock_services.delete_paiement_sous_traitant(paiement)
+        return Response(status=status.HTTP_204_NO_CONTENT)

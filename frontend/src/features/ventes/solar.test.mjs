@@ -9,6 +9,9 @@ import {
   DEFAULT_MONTHLY_BILLS, estimerMois, estimerPanneaux, formatMoney,
   computeROI, ttcFromHt, htFromTtc, optionTotalsTTC, autoFillLines, GHI,
   groupProduitsByCategory,
+  KWH_PRICE, FALLBACK_KWH_PRICE, kwhFromBill, twoBillsSavings, monthlyBillFromKwh,
+  ONEE_TRANCHES, AUTOCONSO_SANS, AUTOCONSO_AVEC, buildEtudeParamsChoice,
+  multiPropertyPreviewTTC,
 } from './solar.js'
 
 // Reflet du catalogue seedé (prix HT = TTC simulateur / 1.2, 2 décimales)
@@ -307,6 +310,59 @@ test('auto-fill petit système 5 panneaux : onduleur 5 kW Monophasé préféré'
   assert.equal(by('Deyness 10').quantite, 0)
 })
 
+// ── QF8 — Smart Meter + Clé Wifi UNIQUEMENT sur onduleur Huawei ─────────────
+test('QF8 — catalogue 100% Deye (réseau + hybride) : Smart Meter et Wifi Dongle qté 0', () => {
+  const DEYE_ONLY = [
+    P('Onduleur réseau Deye 10kW Triphasé', 18000),
+    P('Onduleur hybride Deye 10kW Triphasé', 28000),
+    P('Panneau Jinko 710W', 1400),
+    P('Batterie Deyness 10 kWh', 30000),
+    P('Structures acier', 500),
+    P('Socles', 80),
+    P('Smart Meter', 1800),
+    P('Wifi Dongle', 1200),
+    P('Accessoires', 2000),
+    P('Tableau De Protection AC/DC', 2000),
+    P('Installation', 4800),
+    P('Transport', 1000),
+  ]
+  const kwp = 14 * 710 / 1000
+  const rows = autoFillLines(DEYE_ONLY, { kwp, panelW: 710, structureType: 'acier' })
+  const by = (frag) => rows.find(r => r.designation.includes(frag))
+  assert.equal(by('Smart Meter').quantite, 0)
+  assert.equal(by('Wifi').quantite, 0)
+})
+
+test('QF8 — réseau Huawei mais hybride Deye : Smart Meter/Wifi attachés (réseau Huawei suffit)', () => {
+  const MIXED = [
+    P('Onduleur réseau Huawei 10kW Triphasé', 20000),
+    P('Onduleur hybride Deye 10kW Triphasé', 28000),
+    P('Panneau Jinko 710W', 1400),
+    P('Smart Meter', 1800),
+    P('Wifi Dongle', 1200),
+  ]
+  const kwp = 14 * 710 / 1000
+  const rows = autoFillLines(MIXED, { kwp, panelW: 710, structureType: 'acier' })
+  const by = (frag) => rows.find(r => r.designation.includes(frag))
+  assert.equal(by('Smart Meter').quantite, 1)
+  assert.equal(by('Wifi').quantite, 1)
+})
+
+test('QF8 — réseau Deye mais hybride Huawei : Smart Meter/Wifi attachés (hybride Huawei suffit)', () => {
+  const MIXED = [
+    P('Onduleur réseau Deye 10kW Triphasé', 18000),
+    P('Onduleur hybride Huawei 10kW Triphasé', 30000),
+    P('Panneau Jinko 710W', 1400),
+    P('Smart Meter', 1800),
+    P('Wifi Dongle', 1200),
+  ]
+  const kwp = 14 * 710 / 1000
+  const rows = autoFillLines(MIXED, { kwp, panelW: 710, structureType: 'acier' })
+  const by = (frag) => rows.find(r => r.designation.includes(frag))
+  assert.equal(by('Smart Meter').quantite, 1)
+  assert.equal(by('Wifi').quantite, 1)
+})
+
 // ══ Multi-marchés ═════════════════════════════════════════════════════════════
 import {
   computeEtudeIndustrielle, computePompage, autoFillPompage,
@@ -557,4 +613,214 @@ test('DC6/DC7 tauxTvaOf : Produit.tva prioritaire, repli standard société', ()
   assert.equal(tauxTvaOf({}), 20)
   // repli invalide (0) → 20
   assert.equal(tauxTvaOf({}, 0), 20)
+})
+
+// ── QF4/QF5 — miroir JS du modèle « deux factures » par tranche ─────────────
+// Valeurs de référence calculées directement avec le module Python réel
+// (apps/ventes/quote_engine/pricing.py) pour garantir la parité écran == PDF.
+test('QF5 — tarif de repli unifié : KWH_PRICE (CompanyProfile) vs FALLBACK_KWH_PRICE (ultime repli backend)', () => {
+  assert.equal(KWH_PRICE, 1.75) // CompanyProfile.onee_tarif_kwh défaut (parametres/selectors.py)
+  assert.equal(FALLBACK_KWH_PRICE, 1.20) // pricing.py _FALLBACK_KWH_PRICE (miroir exact)
+})
+
+test('QF4 — monthlyBillFromKwh : barème ONEE par tranche (300 kWh/mois)', () => {
+  // Référence : pricing.py _monthly_bill_from_kwh(300, ONEE_TRANCHES) = 344.135
+  assert.ok(Math.abs(monthlyBillFromKwh(300, ONEE_TRANCHES) - 344.135) < 1e-9)
+})
+
+test('QF4 — kwhFromBill : inverse du barème ONEE (850 MAD → 660.9 kWh/mois)', () => {
+  const r = kwhFromBill(850, 'onee')
+  assert.equal(r.kwhMensuel, 660.9)
+  assert.equal(r.approximatif, false)
+  assert.equal(r.estimation, false)
+})
+
+test('QF4 — kwhFromBill : distributeur privé (Lydec) marqué approximatif', () => {
+  const r = kwhFromBill(500, 'lydec')
+  assert.equal(r.kwhMensuel, 400.0)
+  assert.equal(r.approximatif, true)
+})
+
+test('QF4 — kwhFromBill : sans distributeur connu → repli FALLBACK_KWH_PRICE, étiqueté estimation', () => {
+  const r = kwhFromBill(120, 'inconnu')
+  assert.equal(r.kwhMensuel, Math.round((120 / FALLBACK_KWH_PRICE) * 10) / 10)
+  assert.equal(r.estimation, true)
+})
+
+test('QF4 — kwhFromBill : facture vide → 0 kWh, estimation', () => {
+  const r = kwhFromBill(0, 'onee')
+  assert.equal(r.kwhMensuel, 0)
+  assert.equal(r.estimation, true)
+})
+
+test('QF2/QF5 — twoBillsSavings : économie réelle par tranche (ratio 0.60, sans batterie)', () => {
+  // Référence : pricing.py two_bills_savings(6000, 7200, 0.6, utility='onee')
+  const r = twoBillsSavings(6000, 7200, 0.6, 'onee')
+  assert.deepEqual(r, {
+    factureSans: 9176, factureAvec: 4130, economie: 5046, autoconsoKwh: 3600,
+  })
+})
+
+test('QF2/QF5 — twoBillsSavings : économie réelle par tranche (ratio 0.85, avec batterie)', () => {
+  // Référence : pricing.py two_bills_savings(6000, 7200, 0.85, utility='onee')
+  const r = twoBillsSavings(6000, 7200, 0.85, 'onee')
+  assert.deepEqual(r, {
+    factureSans: 9176, factureAvec: 2072, economie: 7104, autoconsoKwh: 5100,
+  })
+})
+
+test('twoBillsSavings : dégrade en null sans donnée réelle (jamais un chiffre inventé)', () => {
+  assert.equal(twoBillsSavings(0, 7200, 0.6, 'onee'), null) // pas de production
+  assert.equal(twoBillsSavings(6000, 0, 0.6, 'onee'), null) // pas de conso
+  assert.equal(twoBillsSavings(6000, 7200, 0, 'onee'), null) // pas de ratio
+  assert.equal(twoBillsSavings(6000, 7200, 0.6, 'inconnu'), null) // pas de barème
+})
+
+// ── QF5 — computeROI bascule sur le modèle « deux factures » (parité écran/PDF) ─
+test('QF5 — computeROI : sans consommation réelle, comportement HISTORIQUE inchangé (estimation)', () => {
+  const roi = computeROI({
+    kwp: 5, factures: Array(12).fill(500), dayUsagePct: 60,
+    totalSans: 80000, totalAvec: 100000, batteryKwh: 0,
+  })
+  assert.equal(roi.savings_model, 'estimation')
+  assert.equal(roi.facture_sans, null)
+})
+
+test('QF5 — computeROI : avec consommation réelle + distributeur, bascule sur « deux factures »', () => {
+  const kwp = 5
+  const EFF = 0.8
+  const prodAnnuelle = GHI.reduce((s, g) => s + g * kwp * EFF, 0)
+  const consoAnnuelleKwh = 7200
+  const roi = computeROI({
+    kwp, factures: Array(12).fill(500), dayUsagePct: 60,
+    totalSans: 80000, totalAvec: 100000, batteryKwh: 0,
+    consoAnnuelleKwh, utility: 'onee',
+  })
+  assert.equal(roi.savings_model, 'factures')
+  // Doit correspondre EXACTEMENT à twoBillsSavings appelé avec la même
+  // production annuelle réellement calculée par computeROI (parité interne).
+  const refSans = twoBillsSavings(prodAnnuelle, consoAnnuelleKwh, AUTOCONSO_SANS, 'onee')
+  const refAvec = twoBillsSavings(prodAnnuelle, consoAnnuelleKwh, AUTOCONSO_AVEC, 'onee')
+  assert.equal(roi.eco_annuelle_sans, refSans.economie)
+  assert.equal(roi.eco_annuelle_avec, refAvec.economie)
+  assert.equal(roi.facture_sans, refSans.factureSans)
+  assert.equal(roi.facture_avec_sans, refSans.factureAvec)
+  assert.equal(roi.facture_avec_avec, refAvec.factureAvec)
+})
+
+// ── QF7 — buildEtudeParamsChoice : scenario/recommended_option persistés ────
+// pour TOUS les modes, même sans étude de base (industriel dégénéré/résidentiel).
+test('QF7 — sans étude de base (résidentiel, ou industriel kwp=0) : le résultat porte quand même le choix', () => {
+  const r = buildEtudeParamsChoice(null, {
+    scenario: 'Les deux (Sans + Avec)', recommendedChoice: 'Auto',
+    recommendedOption: 'Sans batterie', distributeur: 'onee', consoAnnuelleReelle: null,
+  })
+  assert.equal(r.scenario, 'Les deux (Sans + Avec)')
+  assert.equal(r.recommended_choice, 'Auto')
+  assert.equal(r.recommended_option, 'Sans batterie')
+  // distributeur === 'onee' (défaut) sans conso réelle → pas de bruit ajouté
+  assert.equal(r.distributeur, undefined)
+})
+
+test('QF7 — avec étude industrielle existante : le choix est fusionné, l\'étude préservée', () => {
+  const etude = { kwc: 12.5, production_annuelle: 15000, taux_autoconso: 78 }
+  const r = buildEtudeParamsChoice(etude, {
+    scenario: 'Sans batterie', recommendedChoice: 'Auto',
+    recommendedOption: 'Sans batterie', distributeur: 'onee', consoAnnuelleReelle: null,
+  })
+  assert.equal(r.kwc, 12.5)
+  assert.equal(r.production_annuelle, 15000)
+  assert.equal(r.scenario, 'Sans batterie')
+  assert.equal(r.recommended_option, 'Sans batterie')
+})
+
+test('QF7 — agricole (étude pompage) : le choix est fusionné sans écraser les champs pompage', () => {
+  const etudePompage = { pompe_cv: 5.5, hmt_m: 60, region: 'souss-massa' }
+  const r = buildEtudeParamsChoice(etudePompage, {
+    scenario: 'Les deux (Sans + Avec)', recommendedChoice: 'Auto',
+    recommendedOption: 'Sans batterie', distributeur: 'onee', consoAnnuelleReelle: null,
+  })
+  assert.equal(r.pompe_cv, 5.5)
+  assert.equal(r.region, 'souss-massa')
+  assert.equal(r.recommended_option, 'Sans batterie')
+})
+
+test('QF7 — distributeur non-ONEE persisté même sans conso réelle (choix explicite du vendeur)', () => {
+  const r = buildEtudeParamsChoice(null, {
+    scenario: 'Sans batterie', recommendedChoice: 'Auto', recommendedOption: 'Sans batterie',
+    distributeur: 'lydec', consoAnnuelleReelle: null,
+  })
+  assert.equal(r.distributeur, 'lydec')
+})
+
+test('QF7 — conso_annuelle réelle (QF4) fusionnée avec distributeur, sans écraser un conso_annuelle d\'étude existant', () => {
+  const etude = { conso_annuelle: 9000, kwc: 8 } // conso dérivée de l'étude industrielle
+  const r = buildEtudeParamsChoice(etude, {
+    scenario: 'Sans batterie', recommendedChoice: 'Auto', recommendedOption: 'Sans batterie',
+    distributeur: 'redal', consoAnnuelleReelle: 7200, // saisie réelle QF4, ne doit PAS écraser 9000
+  })
+  assert.equal(r.conso_annuelle, 9000) // préservé (source canonique = étude)
+  assert.equal(r.distributeur, 'redal') // le distributeur choisi s'applique quand même
+})
+
+// ── QJ31 — Multi-propriétés : aperçu écran (TTC) mode ×N et mode villas ──────
+const L = (designation, qty, ttc, extra = {}) => ({
+  designation, quantite: String(qty), prix_unit_ttc: String(ttc), ...extra,
+})
+
+test('QJ31 — sans mode multi (pas de N, pas de groupe) : preview = null (mono-système inchangé)', () => {
+  const lines = [L('Panneaux', 10, 1400), L('Onduleur réseau', 1, 20000)]
+  assert.equal(multiPropertyPreviewTTC(lines, {}), null)
+  assert.equal(multiPropertyPreviewTTC(lines, { nombreProprietes: '1' }), null)
+})
+
+test('QJ31 mode A — ×N multiplie le total TTC (unitaire × N)', () => {
+  const lines = [L('Panneaux', 10, 1400), L('Onduleur réseau', 1, 20000)] // 34000 TTC
+  const r = multiPropertyPreviewTTC(lines, { nombreProprietes: '3', discountPct: '0' })
+  assert.equal(r.mode, 'multiplicateur')
+  assert.equal(r.nombreProprietes, 3)
+  assert.equal(r.totalUnitaireSans, 34000)
+  assert.equal(r.totalMultiSans, 102000) // 34000 × 3
+})
+
+test('QJ31 mode A — ×N applique aussi la remise (unitaire remisé × N)', () => {
+  const lines = [L('Panneaux', 10, 1400), L('Onduleur réseau', 1, 20000)] // 34000 brut
+  const r = multiPropertyPreviewTTC(lines, { nombreProprietes: '2', discountPct: '10' })
+  // unitaire remisé = round(34000 × 0.9) = 30600 ; ×2 = 61200
+  assert.equal(r.totalUnitaireSans, 30600)
+  assert.equal(r.totalMultiSans, 61200)
+})
+
+test('QJ31 mode B — groupes villas : sous-total par villa + total général', () => {
+  const lines = [
+    L('Installation commune', 1, 6000, { groupeIndex: 0, groupeLabel: 'Équipement commun' }),
+    L('Onduleur réseau', 1, 20000, { groupeIndex: 1, groupeLabel: 'Villa A' }),
+    L('Panneaux', 10, 1400, { groupeIndex: 1, groupeLabel: 'Villa A' }), // 14000
+    L('Onduleur réseau', 1, 11000, { groupeIndex: 2, groupeLabel: 'Villa B' }),
+    L('Panneaux', 8, 1400, { groupeIndex: 2, groupeLabel: 'Villa B' }), // 11200
+  ]
+  const r = multiPropertyPreviewTTC(lines, {})
+  assert.equal(r.mode, 'villas')
+  assert.deepEqual(r.groupes.map(g => g.label), ['Équipement commun', 'Villa A', 'Villa B'])
+  assert.equal(r.groupes[0].totalTtc, 6000)
+  assert.equal(r.groupes[1].totalTtc, 34000) // 20000 + 14000
+  assert.equal(r.groupes[2].totalTtc, 22200) // 11000 + 11200
+  assert.equal(r.grandTotalTtc, 62200) // somme des trois groupes
+})
+
+test('QJ31 mode B — libellé par défaut quand groupeLabel vide (Villa N / Équipement commun)', () => {
+  const lines = [
+    L('X', 1, 1000, { groupeIndex: 0, groupeLabel: '' }),
+    L('Y', 1, 2000, { groupeIndex: 1, groupeLabel: '' }),
+  ]
+  const r = multiPropertyPreviewTTC(lines, {})
+  assert.equal(r.groupes[0].label, 'Équipement commun')
+  assert.equal(r.groupes[1].label, 'Villa 1')
+})
+
+test('QJ31 — le multiplicateur (>1) prime sur les groupes si les deux sont présents', () => {
+  // À l'écran les deux modes sont exclusifs ; par sécurité, N>1 gagne.
+  const lines = [L('X', 1, 1000, { groupeIndex: 1, groupeLabel: 'Villa 1' })]
+  const r = multiPropertyPreviewTTC(lines, { nombreProprietes: '4' })
+  assert.equal(r.mode, 'multiplicateur')
 })

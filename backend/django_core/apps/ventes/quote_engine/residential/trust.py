@@ -94,7 +94,9 @@ def build(ctx) -> str:
         tva_note = tva_note[3:].lstrip(" :·-").strip()
 
     l_real = links.get("realisations", site_url + "/realisations")
-    l_avis = links.get("avis", site_url + "/avis")
+    # QK5 — /avis n'existe pas sur taqinor.ma : repli sur /realisations (page
+    # réelle des réalisations clients), jamais un lien 404 sur un PDF client.
+    l_avis = links.get("avis", site_url + "/realisations")
     l_gar = links.get("garanties", site_url + "/garanties")
     l_sign = links.get("signer", site_url + "/signer")
 
@@ -125,9 +127,12 @@ def build(ctx) -> str:
     )
 
     # ── Trust strip — LINK out, don't dump ──────────────────────────────────
+    # QK5 — le libellé « avis clients » renvoie désormais vers /realisations
+    # (page réelle des réalisations clients) : on ne fabrique jamais d'avis, on
+    # renvoie vers des projets vérifiables. Libellé aligné sur la destination.
     trust_items = [
         ("Nos réalisations", l_real),
-        ("Avis clients vérifiés", l_avis),
+        ("Avis & réalisations clients", l_avis),
         ("Garanties &amp; certifications", l_gar),
     ]
     trust_html = "".join(
@@ -146,6 +151,50 @@ def build(ctx) -> str:
         ("TVA", tva_note or "Selon barème en vigueur"),
         ("Délai d'installation", "7 à 14 jours ouvrés"),
     ]
+    # QF3 — « Comment nous calculons vos économies » : méthode + exemple chiffré
+    # compact, ajoutés comme une ligne de conditions (aucune hauteur de bloc en
+    # plus, la page reste à 3 pages). Le texte vient du builder (une source).
+    sm = d.get("savings_method") or {}
+    sm_line = (sm.get("ligne_methode") or "").strip()
+    sm_ex = (sm.get("exemple") or "").strip()
+    sm_approx = " (approximatif)" if sm.get("approximatif") else ""
+    if sm_line:
+        _v = sm_line
+        if sm_ex:
+            _v += f' <b>{sm_ex}{sm_approx}</b>'
+        conditions.append(("Comment nous calculons vos économies", _v))
+    # QK4 — « Nos hypothèses » : les hypothèses derrière les économies (tarif,
+    # source du barème, autoconsommation-first loi 82-21, base de production),
+    # ajoutées comme une ligne de conditions (aucune hauteur de bloc en plus,
+    # la page reste à 3 pages). Le texte vient du builder (une source).
+    hyp = d.get("hypotheses") or {}
+    hyp_items = [str(i).strip() for i in (hyp.get("items") or []) if str(i).strip()]
+    if hyp_items:
+        conditions.append(
+            (hyp.get("titre") or "Nos hypothèses",
+             " &middot; ".join(hyp_items)))
+    # QK3 — financement (indicatif) : mensualité + programme, ajouté comme ligne
+    # de conditions (aucune hauteur de bloc en plus → la page reste à 3 pages).
+    # Le bloc vient du builder (QJ12) ; jamais de prix d'achat/marge.
+    fin = d.get("financing") or {}
+    fin_credit = fin.get("credit") or {}
+    if fin.get("indicatif") and fin_credit.get("mensualite"):
+        _mens = int(round(fin_credit["mensualite"]))
+        _duree_ans = round((fin_credit.get("duree_mois") or 0) / 12)
+        _prog = fin_credit.get("programme_nom") or "crédit vert"
+        _fin_v = (
+            f"À partir de ≈ {_mens:,}".replace(",", " ")
+            + f" MAD/mois sur {_duree_ans} ans ({_prog}) — indicatif, à "
+            "confirmer avec votre banque.")
+        conditions.append(("Financement possible", _fin_v))
+    # QG7 — contact du conseiller (créateur du devis) : nom + tél, ajouté comme
+    # ligne de conditions (données seulement). Repli société géré côté builder.
+    seller = d.get("seller") or {}
+    _s_nom = (seller.get("nom") or "").strip()
+    if _s_nom:
+        _s_tel = (seller.get("telephone") or "").strip()
+        _s_v = _s_nom + (f" &middot; {_s_tel}" if _s_tel else "")
+        conditions.append(("Votre conseiller", _s_v))
     cond_html = "".join(
         f'<div class="p3-cond-row"><span class="p3-cond-k">{k}</span>'
         f'<span class="p3-cond-v">{v}</span></div>'

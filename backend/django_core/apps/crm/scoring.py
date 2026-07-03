@@ -20,8 +20,16 @@ Pondérations (total max = 100) :
     GPS présent (gps_lat)        3 pts   (localisation tracée = visite facilitée)
     Orientation favorable        2 pts   (Sud/Sud-Est/Sud-Ouest)
     Ombrage nul                  2 pts   (aucun = bon rendement)
+  Signaux de maturité d'achat (QK2 — bonus, capés par le min(100)) :
+    ownership                    6 pts max (propriétaire = décideur)
+    project_timeline             8 pts max (immédiat > plus tard)
+    financing_intent             6 pts max (comptant > indécis)
+    roof_age                     2 pts max (toiture récente = pose simple)
+    distributeur renseigné       2 pts     (donnée tarifaire qualifiée)
 
-Modifier les pondérations ici sans toucher le sérialiseur ni la vue.
+Le total brut peut dépasser 100 avec les bonus QK2 ; le score final reste
+borné à 100 (min). Modifier les pondérations ici sans toucher le sérialiseur
+ni la vue.
 """
 from __future__ import annotations
 
@@ -163,6 +171,67 @@ def _solar_signals_score(lead) -> int:
     return pts
 
 
+# ── Signaux de maturité d'achat (QK2) ────────────────────────────────────────
+# Pondérations des nouveaux signaux de qualification captés par le site
+# (webhook QK1). Tous facultatifs : un lead sans ces champs garde exactement
+# son score d'avant — les bonus ne font que révéler la maturité réelle.
+
+_OWNERSHIP_SCORES: dict[str, int] = {
+    'proprietaire': 6,   # décideur direct → très fort
+    'autre': 1,          # copropriété/société… → faible mais non nul
+    'locataire': 0,      # ne décide pas des travaux
+}
+
+_TIMELINE_SCORES: dict[str, int] = {
+    'immediat': 8,       # prêt à signer
+    '3_mois': 6,
+    '6_mois': 3,
+    'plus_tard': 1,      # simple curiosité
+}
+
+_FINANCING_SCORES: dict[str, int] = {
+    'cash': 6,           # budget disponible
+    'credit': 4,         # financement envisagé = projet réfléchi
+    'indecis': 1,
+}
+
+_W_DISTRIBUTEUR = 2      # distributeur connu = donnée tarifaire qualifiée
+
+
+def _roof_age_score(roof_age) -> int:
+    """Toiture récente = pose simple (2 pts) ; vieillissante = 1 pt ; sinon 0."""
+    if roof_age is None:
+        return 0
+    try:
+        age = int(roof_age)
+    except (TypeError, ValueError):
+        return 0
+    if age < 0:
+        return 0
+    if age <= 10:
+        return 2
+    if age <= 25:
+        return 1
+    return 0
+
+
+def _readiness_score(lead) -> int:
+    """QK2 — maturité d'achat déclarée (bonus cumulables, max 24 pts).
+
+    ``getattr`` défensif : la fonction reste utilisable sur des objets
+    partiels (tests, leads historiques d'avant la migration 0034)."""
+    pts = 0
+    pts += _OWNERSHIP_SCORES.get(getattr(lead, 'ownership', None) or '', 0)
+    pts += _TIMELINE_SCORES.get(
+        getattr(lead, 'project_timeline', None) or '', 0)
+    pts += _FINANCING_SCORES.get(
+        getattr(lead, 'financing_intent', None) or '', 0)
+    pts += _roof_age_score(getattr(lead, 'roof_age', None))
+    if getattr(lead, 'distributeur', None):
+        pts += _W_DISTRIBUTEUR
+    return pts
+
+
 # ── Entrée publique ───────────────────────────────────────────────────────────
 
 def compute_score(lead) -> int:
@@ -178,6 +247,7 @@ def compute_score(lead) -> int:
     score += _TYPE_SCORES.get(lead.type_installation or '', 0)
     score += _recency_score(lead)
     score += _solar_signals_score(lead)
+    score += _readiness_score(lead)
     return min(score, 100)
 
 

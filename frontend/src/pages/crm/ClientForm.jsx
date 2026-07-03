@@ -5,10 +5,15 @@ import {
   Form, FormSection, FormField, FormErrorSummary,
   Input, Textarea, Segmented, Button, useDirtyGuard,
 } from '../../ui'
+import { Combobox } from '../../ui/Combobox'
 import { ResponsiveDialog } from '../../ui/ResponsiveDialog'
 import { toast } from '../../ui/confirm'
 import { canonicalPhoneMA } from '../../lib/format'
 import AttachmentsPanel from '../../components/AttachmentsPanel'
+import crmApi from '../../api/crmApi'
+import {
+  searchCompanies, hitsToOptions, verifierIceUrl, verifierOmpicUrl,
+} from '../../features/crm/companyLookup'
 import { useT } from '../../i18n'
 
 // Avertissements NON bloquants sur les identifiants marocains. Renvoie une
@@ -115,6 +120,38 @@ export default function ClientForm({ client = null, onClose }) {
     return next
   })
 
+  // QC1 — autocomplete entreprise (données propres). Avertissement de doublon
+  // non bloquant quand on choisit un CLIENT existant (au lieu de recréer).
+  const [dupWarning, setDupWarning] = useState(null)
+
+  const onSearchCompany = (query) =>
+    searchCompanies(query, { searcher: crmApi.searchClients }).then(hitsToOptions)
+
+  // Remplissage depuis un match choisi : ne remplit que les champs vides pour
+  // ne jamais écraser une saisie de l'utilisateur ; bascule en entreprise si
+  // le match porte un ICE.
+  const fillFromHit = (hit) => {
+    if (!hit) return
+    setFields((f) => {
+      const fillIf = (cur, val) => (String(cur ?? '').trim() ? cur : (val || cur))
+      const next = {
+        ...f,
+        nom: hit.nom || f.nom,
+        ice: fillIf(f.ice, hit.ice),
+        if_fiscal: fillIf(f.if_fiscal, hit.if_fiscal),
+        rc: fillIf(f.rc, hit.rc),
+        adresse: fillIf(f.adresse, hit.adresse),
+        telephone: fillIf(f.telephone, hit.telephone),
+        email: fillIf(f.email, hit.email),
+      }
+      if ((hit.ice || '').trim()) next.type_client = 'entreprise'
+      return next
+    })
+    setDupWarning(hit.source === 'client'
+      ? `« ${hit.nom} » existe déjà comme client. Vérifiez avant de créer un doublon.`
+      : null)
+  }
+
   const validate = () => {
     const e = {}
     if (!fields.nom.trim()) e.nom = 'Le nom est requis'
@@ -190,6 +227,31 @@ export default function ClientForm({ client = null, onClose }) {
           <FormErrorSummary errors={errorList} />
 
             <FormSection title="Coordonnées">
+              {/* QC1 — autocomplete entreprise (données propres). À la création
+                  uniquement : taper un nom suggère les clients/fournisseurs/
+                  leads existants ; choisir remplit ICE/IF/RC/adresse/téléphone
+                  et avertit d'un doublon plutôt que de recréer. */}
+              {!isEdit && (
+                <FormField label="Rechercher une entreprise existante — optionnel"
+                           htmlFor="cf-company-search" fullWidth>
+                  <Combobox
+                    id="cf-company-search"
+                    value={null}
+                    onSearch={onSearchCompany}
+                    onChange={(_v, opt) => fillFromHit(opt?.hit)}
+                    placeholder="Taper un nom d'entreprise…"
+                    searchPlaceholder="Nom ou ICE…"
+                    emptyText="Aucune correspondance dans vos données"
+                    clearable={false}
+                  />
+                  {dupWarning && (
+                    <p className="mt-1 text-xs text-warning" data-testid="cf-dup-warning">
+                      {dupWarning}
+                    </p>
+                  )}
+                </FormField>
+              )}
+
               <FormField label="Nom" required htmlFor="cf-nom" error={errors.nom}>
                 <Input
                   id="cf-nom"
@@ -199,6 +261,18 @@ export default function ClientForm({ client = null, onClose }) {
                   placeholder="Dupont"
                   autoFocus
                 />
+                {/* QC1 — « Vérifier » : deep-link registres officiels (nouvel
+                    onglet), copier-coller manuel ponctuel, zéro scraping. */}
+                {isEntreprise && fields.nom.trim() && (
+                  <p className="mt-1 text-xs text-muted-foreground">
+                    Vérifier :{' '}
+                    <a href={verifierIceUrl(fields.nom)} target="_blank" rel="noreferrer"
+                       className="underline hover:text-foreground">registre ICE</a>
+                    {' · '}
+                    <a href={verifierOmpicUrl(fields.nom)} target="_blank" rel="noreferrer"
+                       className="underline hover:text-foreground">OMPIC</a>
+                  </p>
+                )}
               </FormField>
 
               <FormField label="Prénom" htmlFor="cf-prenom">

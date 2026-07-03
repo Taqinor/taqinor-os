@@ -108,7 +108,8 @@ ELEVATED_PERMISSIONS = frozenset({
 
 RESPONSABLE_PERMISSIONS = [
     'stock_voir',
-    'stock_creer',
+    # QG4 — `stock_creer` retiré : la création de produits est réservée aux
+    # rôles Directeur + Commercial responsable (décision Reda).
     'stock_modifier',
     'stock_mouvement',
     'crm_voir',
@@ -172,18 +173,24 @@ DIRECTEUR_PERMISSIONS = [
 ]
 
 # Administrateur (= « Admin ») : comme le Directeur, MAIS sans le Journal
-# d'activité par défaut (réservé Directeur, octroyable dans Paramètres).
+# d'activité par défaut (réservé Directeur, octroyable dans Paramètres) et,
+# depuis QG4, sans la création de produits (`stock_creer`) — réservée aux
+# rôles Directeur + Commercial responsable (décision Reda).
 ADMIN_PERMISSIONS = [
-    p for p in DIRECTEUR_PERMISSIONS if p != 'journal_activite_voir'
+    p for p in DIRECTEUR_PERMISSIONS
+    if p not in ('journal_activite_voir', 'stock_creer')
 ]
 
 # Commercial responsable : CRM/Ventes/SAV complets, peut réassigner leads/
 # devis/tickets dans l'équipe ; voit son sous-arbre ; pas de prix d'achat.
+# QG4 — porte `stock_creer` : la création de produits est réservée aux rôles
+# Directeur + Commercial responsable (décision Reda).
 COMMERCIAL_RESP_PERMISSIONS = [
     'crm_voir', 'crm_creer', 'crm_modifier', 'crm_supprimer', 'crm_export',
     'crm_reassign',
     'ventes_voir', 'ventes_creer', 'ventes_modifier', 'ventes_supprimer',
     'ventes_valider', 'ventes_pdf', 'ventes_export', 'ventes_reassign',
+    'stock_voir', 'stock_creer',  # QG4 — création de produits autorisée.
     'equipement_voir', 'sav_voir', 'sav_gerer', 'sav_export', 'sav_reassign',
     'parametres_voir', 'users_voir', 'reporting_voir', 'reporting_export',
     'client_pii_voir',  # FG20 — coordonnées client (besoin commercial).
@@ -209,7 +216,9 @@ TECHNICIEN_RESP_PERMISSIONS = [
     'intervention_gerer', 'technicien_assign',
     'equipement_voir', 'equipement_gerer', 'sav_voir', 'sav_gerer',
     'sav_export', 'sav_reassign',
-    'stock_voir', 'stock_creer', 'stock_modifier', 'stock_mouvement',
+    # QG4 — `stock_creer` retiré : la création de produits est réservée aux
+    # rôles Directeur + Commercial responsable (décision Reda).
+    'stock_voir', 'stock_modifier', 'stock_mouvement',
     'stock_export',
     'parametres_voir', 'users_voir', 'reporting_voir', 'reporting_export',
     'client_pii_voir',  # FG20 — coordonnées client (intervention terrain).

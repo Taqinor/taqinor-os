@@ -187,6 +187,36 @@ class Lead(models.Model):
         FR = 'fr', 'Français'
         DARIJA = 'darija', 'Darija'
 
+    # ── QK1 — Qualification captée par le site (tous additifs, optionnels) ──
+    # Distributeur d'électricité du prospect (détermine la tranche tarifaire).
+    class Distributeur(models.TextChoices):
+        ONEE = 'onee', 'ONEE'
+        LYDEC = 'lydec', 'Lydec'
+        REDAL = 'redal', 'Redal'
+        AUTRE = 'autre', 'Autre'
+
+    # Statut d'occupation du bâtiment (un locataire ne décide pas des travaux).
+    class Ownership(models.TextChoices):
+        PROPRIETAIRE = 'proprietaire', 'Propriétaire'
+        LOCATAIRE = 'locataire', 'Locataire'
+        AUTRE = 'autre', 'Autre'
+
+    # Horizon du projet déclaré par le prospect.
+    class ProjectTimeline(models.TextChoices):
+        IMMEDIAT = 'immediat', 'Dès que possible'
+        MOINS_3_MOIS = '3_mois', 'Moins de 3 mois'
+        MOINS_6_MOIS = '6_mois', '3 à 6 mois'
+        PLUS_TARD = 'plus_tard', 'Plus tard / je me renseigne'
+
+    # Intention de financement déclarée.
+    class FinancingIntent(models.TextChoices):
+        CASH = 'cash', 'Comptant'
+        CREDIT = 'credit', 'Crédit / financement'
+        INDECIS = 'indecis', 'Pas encore décidé'
+
+    # Charges futures prévues (clés autorisées de `futures_charges`).
+    FUTURES_CHARGES_KEYS = ('clim', 've', 'pompe')
+
     company = models.ForeignKey(
         'authentication.Company',
         on_delete=models.CASCADE,
@@ -350,6 +380,32 @@ class Lead(models.Model):
     utm_campaign = models.CharField(max_length=300, blank=True, null=True)
     utm_content = models.CharField(max_length=300, blank=True, null=True)
     utm_term = models.CharField(max_length=300, blank=True, null=True)
+
+    # ── QK1 — Qualification captée par le site (additifs, nullable) ──
+    # Le site collecte ces signaux au moment de la capture ; ils ne doivent
+    # jamais être re-demandés au prospect par le commercial.
+    distributeur = models.CharField(
+        max_length=12, choices=Distributeur.choices, blank=True, null=True,
+        verbose_name="Distributeur d'électricité")
+    # Âge de la toiture en années (numérique simple ; NULL = inconnu).
+    roof_age = models.PositiveSmallIntegerField(
+        null=True, blank=True,
+        verbose_name='Âge de la toiture (ans)')
+    ownership = models.CharField(
+        max_length=12, choices=Ownership.choices, blank=True, null=True,
+        verbose_name="Statut d'occupation")
+    project_timeline = models.CharField(
+        max_length=12, choices=ProjectTimeline.choices, blank=True, null=True,
+        verbose_name='Horizon du projet')
+    financing_intent = models.CharField(
+        max_length=12, choices=FinancingIntent.choices, blank=True, null=True,
+        verbose_name='Financement envisagé')
+    # Charges futures prévues — liste de clés parmi FUTURES_CHARGES_KEYS
+    # (clim / véhicule électrique / pompe). NULL = non renseigné.
+    futures_charges = models.JSONField(
+        null=True, blank=True,
+        verbose_name='Charges futures prévues',
+        help_text="Liste parmi 'clim', 've', 'pompe'.")
 
     note = models.TextField(blank=True, null=True)
 
