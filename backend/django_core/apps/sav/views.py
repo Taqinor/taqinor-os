@@ -271,7 +271,7 @@ class TicketViewSet(TenantMixin, viewsets.ModelViewSet):
             return [HasPermissionOrLegacy('sav_voir')()]
         elif self.action in WRITE_ACTIONS + [
                 'noter', 'annuler', 'reactiver', 'creer_devis',
-                'attente_client', 'reprendre']:
+                'attente_client', 'reprendre', 'fusionner']:
             return [HasPermissionOrLegacy('sav_gerer')()]
         elif self.action == 'destroy':
             return [IsAdminRole()]
@@ -681,6 +681,68 @@ class TicketViewSet(TenantMixin, viewsets.ModelViewSet):
             activity.log_note(ticket, request.user, "Reprise après attente client")
         return Response(
             TicketSerializer(ticket, context={'request': request}).data)
+
+    @action(detail=True, methods=['post'], url_path='fusionner',
+            permission_classes=[HasPermissionOrLegacy('sav_gerer')])
+    def fusionner(self, request, pk=None):
+        """XSAV12 — Fusionne un ticket doublon dans ce ticket (principal).
+
+        Body : ``{'doublon_id': N}`` — même société obligatoire (cross-tenant
+        → 404 comme le reste de l'API, via ``get_object``/filtre société).
+        Déplace vers le PRINCIPAL : activités (TicketActivity), pièces
+        consommées (PieceConsommee), items de checklist (TicketChecklistItem)
+        et pièces jointes (records.Attachment via ContentType). Le doublon
+        est marqué ``annule`` avec motif « Doublon de {reference} » et des
+        notes croisées sont ajoutées aux DEUX chatters (avant le déplacement,
+        pour que la note du doublon ne parte pas avec ses propres activités
+        déplacées)."""
+        principal = self.get_object()
+        doublon_id = request.data.get('doublon_id')
+        if not doublon_id:
+            return Response({'detail': 'doublon_id requis.'}, status=400)
+        try:
+            doublon_id = int(doublon_id)
+        except (TypeError, ValueError):
+            return Response({'detail': 'doublon_id invalide.'}, status=400)
+        if doublon_id == principal.pk:
+            return Response(
+                {'detail': "Un ticket ne peut pas être fusionné avec lui-même."},
+                status=status.HTTP_400_BAD_REQUEST)
+
+        doublon = Ticket.objects.filter(
+            pk=doublon_id, company=principal.company).first()
+        if doublon is None:
+            return Response({'detail': 'Ticket doublon introuvable.'}, status=404)
+
+        from django.contrib.contenttypes.models import ContentType
+        from apps.records.models import Attachment
+        from .models import TicketChecklistItem
+
+        with transaction.atomic():
+            # Notes croisées AVANT le déplacement des activités (sinon la note
+            # du doublon partirait elle-même vers le principal).
+            activity.log_note(
+                principal, request.user,
+                f'Fusion : ticket {doublon.reference} fusionné dans celui-ci')
+            activity.log_note(
+                doublon, request.user,
+                f'Ce ticket a été fusionné dans {principal.reference}')
+
+            doublon.activites.update(ticket=principal, company=principal.company)
+            doublon.pieces.update(ticket=principal, company=principal.company)
+            TicketChecklistItem.objects.filter(ticket=doublon).update(
+                ticket=principal, company=principal.company)
+            ct = ContentType.objects.get_for_model(Ticket)
+            Attachment.objects.filter(
+                content_type=ct, object_id=doublon.pk,
+            ).update(object_id=principal.pk, company=principal.company)
+
+            doublon.annule = True
+            doublon.motif_annulation = f'Doublon de {principal.reference}'
+            doublon.save(update_fields=['annule', 'motif_annulation'])
+
+        return Response(
+            TicketSerializer(principal, context={'request': request}).data)
 
     @action(detail=True, methods=['post'], url_path='creer-devis',
             permission_classes=[HasPermissionOrLegacy('sav_gerer')])
