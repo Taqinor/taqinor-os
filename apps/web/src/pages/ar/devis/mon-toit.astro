@@ -562,6 +562,38 @@ const noscriptTelHref = `tel:${NAP.phone}`;
             data-ar="تقدير فوري — وليس مجرد طلب اتصال خلال 24 ساعة.">
             Estimation immédiate — pas une simple demande de rappel sous 24 h.
           </p>
+
+          <!-- W360 — le coût honnête de l'attente : DÉRIVÉ de la même fourchette
+               d'économies déjà calculée (savingsMonthlyLow), jamais un chiffre
+               inventé ni un compte à rebours. Masqué tant qu'aucune estimation
+               réelle n'est affichée (mêmes gardes que le reste de la carte). -->
+          <p id="mt-cost-of-waiting" hidden class="mt-2 text-xs text-lune-soft">
+            <span data-i18n
+              data-fr="Chaque mois d'attente ≈"
+              data-ar="كل شهر انتظار ≈">Chaque mois d'attente ≈</span>
+            {' '}<strong id="mt-cost-of-waiting-value" class="text-white">—</strong>
+            {' '}<span data-i18n
+              data-fr="non économisés."
+              data-ar="غير موفَّرة.">non économisés.</span>
+          </p>
+
+          <!-- W356 — takeaway : « Enregistrer mon estimation » génère un
+               one-pager LÉGER, 100 % côté client (canvas → PNG), jamais un
+               appel serveur. Contenu : kWc + fourchette + caveat + lien wa.me —
+               rien de plus que ce qui est déjà affiché à l'écran. -->
+          <button type="button" id="mt-save-estimate"
+            class="mt-3 inline-flex items-center gap-2 border border-white/25 px-4 py-2.5 text-sm font-semibold text-white transition-colors hover:border-brass-400 hover:text-brass-300">
+            <svg aria-hidden="true" width="14" height="14" viewBox="0 0 24 24" fill="none">
+              <path d="M12 3v12m0 0 4-4m-4 4-4-4M4 17v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" />
+            </svg>
+            <span data-i18n data-fr="Enregistrer mon estimation" data-ar="حفظ تقديري">Enregistrer mon estimation</span>
+          </button>
+          <p id="mt-save-estimate-note" hidden class="mt-1.5 text-xs text-lune-faint" data-i18n
+            data-fr="Image enregistrée — retrouvez-la dans vos téléchargements."
+            data-ar="تم حفظ الصورة — ستجدونها في التنزيلات.">
+            Image enregistrée — retrouvez-la dans vos téléchargements.
+          </p>
+
           <!-- WJ1 — quand l'estimation est indisponible (facture absente/non chiffrable) -->
           <p id="mt-estimate-unavailable" hidden class="mt-4 text-sm text-alert-300" data-i18n
             data-fr="Estimation indisponible : indiquez votre facture mensuelle pour la calculer. Nous l'affinons ensemble sur WhatsApp."
@@ -656,6 +688,33 @@ const noscriptTelHref = `tel:${NAP.phone}`;
                   class="h-4 w-4 flex-none accent-brass-400" />
                 <span data-i18n data-fr="Un conseiller peut m'appeler" data-ar="يمكن لمستشار الاتصال بي">Un conseiller peut m'appeler</span>
               </label>
+            </div>
+          </fieldset>
+
+          <!-- W353 — « Réserver un créneau de visite technique » v1 : préférence
+               STATIQUE et FACULTATIVE (moment + semaine), forwardée telle quelle au
+               webhook — jamais une réservation confirmée, aucune dépendance
+               calendrier, aucun paiement/dépôt (la question du dépôt en ligne reste
+               une décision fondateur WG13, non construite ici). Un humain confirme
+               le créneau réel après contact. -->
+          <fieldset class="mt-1">
+            <legend class="text-sm text-lune-soft" data-i18n
+              data-fr="Créneau de visite technique préféré (facultatif)"
+              data-ar="الوقت المفضل للزيارة التقنية (اختياري)">
+              Créneau de visite technique préféré (facultatif)
+            </legend>
+            <p class="mt-1 text-xs text-lune-faint" data-i18n
+              data-fr="Une préférence, pas une réservation — nous confirmons le créneau exact avec vous."
+              data-ar="تفضيل وليس حجزاً — سنؤكد الموعد الدقيق معكم.">
+              Une préférence, pas une réservation — nous confirmons le créneau exact avec vous.
+            </p>
+            <div class="mt-2 grid grid-cols-2 gap-2">
+              <button type="button" class="mt-visit-part cine-card border p-2.5 text-center text-sm text-white transition-colors" data-value="matin" aria-pressed="false" data-i18n data-fr="Matin" data-ar="صباحاً">Matin</button>
+              <button type="button" class="mt-visit-part cine-card border p-2.5 text-center text-sm text-white transition-colors" data-value="apres_midi" aria-pressed="false" data-i18n data-fr="Après-midi" data-ar="بعد الظهر">Après-midi</button>
+            </div>
+            <div class="mt-2 grid grid-cols-2 gap-2">
+              <button type="button" class="mt-visit-week cine-card border p-2.5 text-center text-sm text-white transition-colors" data-value="cette_semaine" aria-pressed="false" data-i18n data-fr="Cette semaine" data-ar="هذا الأسبوع">Cette semaine</button>
+              <button type="button" class="mt-visit-week cine-card border p-2.5 text-center text-sm text-white transition-colors" data-value="semaine_prochaine" aria-pressed="false" data-i18n data-fr="La semaine prochaine" data-ar="الأسبوع المقبل">La semaine prochaine</button>
             </div>
           </fieldset>
 
@@ -881,7 +940,7 @@ const noscriptTelHref = `tel:${NAP.phone}`;
 </style>
 
 <script>
-  import { estimateFromBill, formatMadRange } from '../../../lib/billEstimate';
+  import { estimateFromBill, formatMad, formatMadRange } from '../../../lib/billEstimate';
   import { captureWhatsappText, whatsappLink } from '../../../lib/whatsapp';
   import { WHATSAPP_LEADS } from '../../../lib/nap';
   import { buildClientRef, validateLead } from '../../../lib/lead';
@@ -913,6 +972,47 @@ const noscriptTelHref = `tel:${NAP.phone}`;
   const cityEl = $('mt-city') as HTMLInputElement | null;
   const addressEl = $('rp9-address') as HTMLInputElement | null;
   const fallbackAddrEl = $('mt-fallback-address') as HTMLInputElement | null;
+
+  // ——— WJ59 : beacon de funnel étape par étape (privacy-light, aucune PII) ———
+  // Jeton anonyme PAR ONGLET (sessionStorage, jamais un identifiant
+  // d'appareil/utilisateur) : sert uniquement à dédupliquer/corréler les
+  // événements « atteint »/« abandonné » d'UNE MÊME visite, jamais à
+  // identifier un visiteur. Voir src/lib/funnelBeacon.ts pour le contrat
+  // complet (allowlist stricte de 4 champs, jamais nom/téléphone/e-mail/
+  // adresse/GPS/contour).
+  const FUNNEL_TOKEN_KEY = 'mt-funnel-token-v1';
+  function getFunnelToken(): string {
+    try {
+      let t = sessionStorage.getItem(FUNNEL_TOKEN_KEY);
+      if (!t) {
+        t = Math.random().toString(36).slice(2) + Date.now().toString(36);
+        sessionStorage.setItem(FUNNEL_TOKEN_KEY, t);
+      }
+      return t;
+    } catch {
+      return Math.random().toString(36).slice(2);
+    }
+  }
+  const funnelToken = getFunnelToken();
+  const funnelStepReached = new Set<string>();
+  function sendFunnelBeacon(step: 'toit' | 'facture' | 'estimation' | 'contact', action: 'reached' | 'abandoned') {
+    if (action === 'reached') {
+      const key = `${step}:${action}`;
+      if (funnelStepReached.has(key)) return;
+      funnelStepReached.add(key);
+    }
+    try {
+      const payload = JSON.stringify({ step, action, sessionToken: funnelToken, path: location.pathname });
+      if (navigator.sendBeacon) {
+        const blob = new Blob([payload], { type: 'application/json' });
+        navigator.sendBeacon('/api/funnel-beacon', blob);
+      } else {
+        void fetch('/api/funnel-beacon', { method: 'POST', headers: { 'content-type': 'application/json' }, body: payload, keepalive: true }).catch(() => {});
+      }
+    } catch {
+      // Mesure best-effort seulement — ne doit jamais perturber le parcours.
+    }
+  }
 
   // ——— état capture (repère / contour) tenu par onCaptureChange ———
   let capturePin: { lat: number; lng: number } | null = null;
@@ -998,6 +1098,8 @@ const noscriptTelHref = `tel:${NAP.phone}`;
     step?: number;
     mode?: string;
     ombrage?: string;
+    visitWindowPart?: string;
+    visitWindowWeek?: string;
     futureLoads?: string[];
     capturePin?: { lat: number; lng: number } | null;
     captureOutline?: Array<[number, number]>;
@@ -1027,6 +1129,7 @@ const noscriptTelHref = `tel:${NAP.phone}`;
       }
       const snapshot: WizardSnapshot = {
         step, mode, ombrage,
+        visitWindowPart, visitWindowWeek,
         futureLoads: Array.from(futureLoads),
         capturePin, captureOutline,
         fields, checks,
@@ -1135,6 +1238,40 @@ const noscriptTelHref = `tel:${NAP.phone}`;
       b.classList.toggle('border-white/15', !on);
     });
   }
+
+  // ——— W353 : créneau de visite technique — deux puces à bascule unique
+  // INDÉPENDANTES (moment + semaine), même patron que .mt-ombrage ci-dessus.
+  // Préférence STATIQUE et FACULTATIVE : aucun calendrier, aucune réservation
+  // confirmée — un humain valide le créneau réel après contact. ———
+  let visitWindowPart = savedWizard?.visitWindowPart || '';
+  let visitWindowWeek = savedWizard?.visitWindowWeek || '';
+  function wireVisitToggle(selector: string, getCurrent: () => string, setCurrent: (v: string) => void) {
+    document.querySelectorAll<HTMLButtonElement>(selector).forEach((btn) => {
+      btn.addEventListener('click', () => {
+        const same = getCurrent() === btn.dataset.value;
+        setCurrent(same ? '' : (btn.dataset.value || ''));
+        document.querySelectorAll<HTMLButtonElement>(selector).forEach((b) => {
+          const on = !same && b === btn;
+          b.setAttribute('aria-pressed', String(on));
+          b.classList.toggle('border-brass-400', on);
+          b.classList.toggle('border-white/15', !on);
+        });
+        markDataEntered();
+        saveWizardState();
+      });
+    });
+    const current = getCurrent();
+    if (current) {
+      document.querySelectorAll<HTMLButtonElement>(selector).forEach((b) => {
+        const on = b.dataset.value === current;
+        b.setAttribute('aria-pressed', String(on));
+        b.classList.toggle('border-brass-400', on);
+        b.classList.toggle('border-white/15', !on);
+      });
+    }
+  }
+  wireVisitToggle('.mt-visit-part', () => visitWindowPart, (v) => { visitWindowPart = v; });
+  wireVisitToggle('.mt-visit-week', () => visitWindowWeek, (v) => { visitWindowWeek = v; });
 
   // ——— WJ31 : puces multi-sélection (charges futures) ———
   const futureLoads = new Set<string>(savedWizard?.futureLoads ?? []);
@@ -1269,6 +1406,9 @@ const noscriptTelHref = `tel:${NAP.phone}`;
     // W324 — l'étape carte est ACTIVE : c'est ICI (jamais au simple chargement
     // de page) qu'on engage le fetch de config + l'import lazy de maplibre-gl.
     if (step === 0) ensureMapBooted();
+    // WJ59 — « étape atteinte », dédupliquée par sendFunnelBeacon (une seule
+    // fois par étape et par visite, y compris après un aller-retour Retour/Continuer).
+    sendFunnelBeacon(step === 0 ? 'toit' : step === 1 ? 'facture' : 'estimation', 'reached');
     // WJ61 — au tout premier rendu (chargement/réhydratation), ne pas imposer de
     // défilement : le visiteur vient d'arriver/de revenir, la page n'a pas
     // encore bougé sous lui. Le défilement reste pour chaque étape SUIVANTE.
@@ -1380,6 +1520,10 @@ const noscriptTelHref = `tel:${NAP.phone}`;
   let lastKwcLabel = '';
   let lastSavingsLabel = '';
   let lastKwc: number | null = null;
+  // W356/W360 — instantané complet de la dernière estimation RÉELLE affichée
+  // (jamais fabriqué : identique aux chiffres déjà à l'écran) — sert au
+  // one-pager d'emport (W356) et à la ligne « coût de l'attente » (W360).
+  let lastEstFull: { kwc: number; monthlyLabel: string; paybackLabel: string; savingsMonthlyLow: number } | null = null;
   // WJ88 — annonce UNIQUE du résultat (jamais pendant la phase squelette) :
   // remplace l'ancien aria-live posé sur tout #mt-estimate-card, qui
   // déclenchait un double-fire lecteur d'écran (squelette PUIS résultat).
@@ -1394,6 +1538,8 @@ const noscriptTelHref = `tel:${NAP.phone}`;
     const note = $('mt-estimate-note');
     const unavail = $('mt-estimate-unavailable');
     const toolarge = $('mt-estimate-toolarge');
+    const cowEl = $('mt-cost-of-waiting');
+    const saveBtn = $('mt-save-estimate');
     // WJ65 — montant exact au-delà du plafond : message honnête dédié (jamais un
     // chiffre confiant sur une saisie probablement erronée) + erreur inline sur
     // le champ concerné, sans jamais BLOQUER l'étape (le visiteur peut corriger
@@ -1407,6 +1553,9 @@ const noscriptTelHref = `tel:${NAP.phone}`;
       lastKwcLabel = '';
       lastSavingsLabel = '';
       lastKwc = null;
+      lastEstFull = null;
+      if (cowEl) cowEl.hidden = true;
+      if (saveBtn) saveBtn.hidden = true;
       updatePanels3dVisibility();
       announceEstimate(currentLang === 'ar' ? 'التقدير غير متاح — تحقّقوا من المبلغ المُدخل.' : 'Estimation indisponible — vérifiez le montant saisi.');
       return;
@@ -1423,6 +1572,9 @@ const noscriptTelHref = `tel:${NAP.phone}`;
       lastKwcLabel = '';
       lastSavingsLabel = '';
       lastKwc = null;
+      lastEstFull = null;
+      if (cowEl) cowEl.hidden = true;
+      if (saveBtn) saveBtn.hidden = true;
       updatePanels3dVisibility();
       announceEstimate(currentLang === 'ar'
         ? 'التقدير غير متاح: أدخل فاتورتك الشهرية لحسابه.'
@@ -1442,7 +1594,24 @@ const noscriptTelHref = `tel:${NAP.phone}`;
     lastKwcLabel = `${est.kwc} kWc`;
     lastSavingsLabel = `${monthly}/mois`;
     lastKwc = est.kwc;
+    lastEstFull = {
+      kwc: est.kwc,
+      monthlyLabel: monthly,
+      paybackLabel: est.paybackLabel,
+      savingsMonthlyLow: est.savingsMonthlyLow,
+    };
+    // W360 — coût de l'attente DÉRIVÉ de la même borne basse déjà affichée
+    // (jamais un chiffre séparé/inventé, jamais un compte à rebours).
+    if (cowEl) {
+      const costEl = $('mt-cost-of-waiting-value');
+      if (costEl) costEl.textContent = `${formatMad(est.savingsMonthlyLow)} MAD`;
+      cowEl.hidden = est.savingsMonthlyLow <= 0;
+    }
+    if (saveBtn) saveBtn.hidden = false;
     updatePanels3dVisibility();
+    // WJ59 — l'estimation réelle est le moment où le formulaire de contact
+    // devient l'action pertinente : « étape contact atteinte ».
+    sendFunnelBeacon('contact', 'reached');
     // WJ88 — annonce UNIQUE et propre du résultat final (jamais pendant le squelette).
     announceEstimate(currentLang === 'ar'
       ? `تقديرك: ${est.kwc} كيلوواط، توفير مقدّر ${monthly}/شهر، استرداد التكلفة ${est.paybackLabel}.`
@@ -1551,6 +1720,103 @@ const noscriptTelHref = `tel:${NAP.phone}`;
   }
   panels3dStart?.addEventListener('click', () => { void startPanels3d(); });
 
+  // ——— W356 : takeaway « Enregistrer mon estimation » — one-pager LÉGER généré
+  // 100 % côté client (canvas → PNG), AUCUN appel serveur, AUCUNE dépendance
+  // nouvelle. Contenu strictement identique à ce qui est déjà affiché : kWc,
+  // fourchette d'économies, caveat, lien wa.me — rien d'inventé ici. ———
+  function drawWrappedText(ctx: CanvasRenderingContext2D, text: string, x: number, y: number, maxWidth: number, lineHeight: number): number {
+    const words = text.split(' ');
+    let line = '';
+    let cy = y;
+    for (const word of words) {
+      const test = line ? `${line} ${word}` : word;
+      if (ctx.measureText(test).width > maxWidth && line) {
+        ctx.fillText(line, x, cy);
+        line = word;
+        cy += lineHeight;
+      } else {
+        line = test;
+      }
+    }
+    if (line) { ctx.fillText(line, x, cy); cy += lineHeight; }
+    return cy;
+  }
+  function buildEstimatePng(): string | null {
+    if (!lastEstFull) return null;
+    const W = 640;
+    const H = 380;
+    const canvas = document.createElement('canvas');
+    canvas.width = W;
+    canvas.height = H;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return null;
+    // fond (nuit) — mêmes teintes que le reste de la page.
+    ctx.fillStyle = '#0a0e1f';
+    ctx.fillRect(0, 0, W, H);
+    ctx.fillStyle = '#caa15a'; // brass-400 approx
+    ctx.font = '600 14px system-ui, sans-serif';
+    ctx.fillText(currentLang === 'ar' ? 'تقدير تاكينور الشمسي' : 'Taqinor — estimation solaire', 32, 44);
+    ctx.fillStyle = '#ffffff';
+    ctx.font = '700 40px system-ui, sans-serif';
+    ctx.fillText(`${lastEstFull.kwc} kWc`, 32, 104);
+    ctx.font = '600 22px system-ui, sans-serif';
+    ctx.fillStyle = '#4ade80'; // ok-400 approx
+    ctx.fillText(
+      currentLang === 'ar' ? `توفير مقدّر: ${lastEstFull.monthlyLabel}/شهر` : `Économies estimées : ${lastEstFull.monthlyLabel}/mois`,
+      32, 144,
+    );
+    ctx.fillStyle = '#e5e7eb';
+    ctx.font = '500 18px system-ui, sans-serif';
+    ctx.fillText(
+      currentLang === 'ar' ? `استرداد التكلفة: ${lastEstFull.paybackLabel}` : `Amortissement : ${lastEstFull.paybackLabel}`,
+      32, 178,
+    );
+    ctx.fillStyle = '#9ca3af';
+    ctx.font = 'italic 400 14px system-ui, sans-serif';
+    let cy = drawWrappedText(
+      ctx,
+      currentLang === 'ar'
+        ? 'تقدير أولي، يُحسَّن بعد زيارة تقنية. غير تعاقدي.'
+        : 'Estimation préliminaire, affinée après visite technique. Non contractuel.',
+      32, 216, W - 64, 20,
+    );
+    cy += 12;
+    ctx.strokeStyle = 'rgba(255,255,255,0.15)';
+    ctx.beginPath();
+    ctx.moveTo(32, cy);
+    ctx.lineTo(W - 32, cy);
+    ctx.stroke();
+    ctx.fillStyle = '#ffffff';
+    ctx.font = '600 15px system-ui, sans-serif';
+    ctx.fillText(
+      currentLang === 'ar' ? 'واتساب: wa.me/212661850410' : 'WhatsApp : wa.me/212661850410',
+      32, cy + 34,
+    );
+    ctx.fillStyle = '#6b7280';
+    ctx.font = '400 12px system-ui, sans-serif';
+    ctx.fillText('taqinor.ma', 32, H - 20);
+    return canvas.toDataURL('image/png');
+  }
+  $('mt-save-estimate')?.addEventListener('click', () => {
+    const dataUrl = buildEstimatePng();
+    const note = $('mt-save-estimate-note');
+    if (!dataUrl) return;
+    try {
+      const a = document.createElement('a');
+      a.href = dataUrl;
+      a.download = 'taqinor-estimation-solaire.png';
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      if (note) note.hidden = false;
+    } catch {
+      // Repli honnête : l'image reste visible à l'écran même si le
+      // téléchargement échoue (ex. navigateur qui bloque les data: URLs) —
+      // jamais un blocage silencieux de l'action.
+      if (note) note.hidden = true;
+    }
+  });
+
   // ——— WJ4 : validation INLINE alignée sur validateLead (avant le round-trip) ———
   function setFieldError(inputId: string, errId: string, message: string | null) {
     const input = $(inputId) as HTMLInputElement | null;
@@ -1617,6 +1883,9 @@ const noscriptTelHref = `tel:${NAP.phone}`;
       // WJ52 — référence courte pour l'artefact post-soumission (échoée telle
       // quelle, jamais une clé d'unicité serveur — cf. lib/lead.ts).
       clientRef: getOrCreateClientRef(),
+      // W353 — préférence de créneau de visite technique (facultative, STATIQUE).
+      visitWindowPart: visitWindowPart || undefined,
+      visitWindowWeek: visitWindowWeek || undefined,
     };
     // WJ4 — repère FACULTATIF : on le joint s'il existe, on ne BLOQUE jamais sans lui.
     if (capturePin) {
@@ -1810,11 +2079,20 @@ const noscriptTelHref = `tel:${NAP.phone}`;
     return whatsappLink(WHATSAPP_LEADS, text);
   }
 
+  // WJ59 — « étape abandonnée » : dédupliquée séparément de l'offre WhatsApp
+  // (celle-ci ne s'affiche qu'une fois par visite via `exitShown`, mais le
+  // signal de mesure reste utile même si l'offre a déjà été vue une fois).
+  let funnelAbandonSent = false;
   function maybeShowExit(triggerEl: HTMLElement | null = null) {
     if (exitShown || submitted) return;
     // ne déranger que si l'utilisateur a au moins commencé (mode/facture ou step > 0)
     const started2 = step > 0 || resolveMonthlyBill() != null || (capturePin != null);
     if (!started2) return;
+    if (!funnelAbandonSent) {
+      funnelAbandonSent = true;
+      const currentStep = step === 0 ? 'toit' : step === 1 ? 'facture' : (lastKwc != null ? 'contact' : 'estimation');
+      sendFunnelBeacon(currentStep, 'abandoned');
+    }
     exitShown = true;
     exitTriggerEl = triggerEl ?? (document.activeElement as HTMLElement | null);
     if (exitWaLink) exitWaLink.href = buildExitWaHref();
