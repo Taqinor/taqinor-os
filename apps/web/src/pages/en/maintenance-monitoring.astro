@@ -11,6 +11,16 @@
  *  - .section-lg hero + .section / .seam-soft spacing tokens;
  *  - .v2-rise wrapper on closing block; "To go further" eyebrow: text-lune;
  *  - No photo content → no .v3-grade, no ZelligeSignature.
+ *
+ * W255 — Proactive after-sales becomes a headline in its own right (co-lead
+ * with monitoring), and 3 NAMED entretien tiers (Essentiel/Confort/Premium)
+ * are scaffolded: inclusions from the site (no invented figure), response
+ * SLA + prices marked "pending founder validation" (WG10 — not yet supplied).
+ * Each tier has a prefilled WhatsApp CTA.
+ *
+ * W257 — Monitoring presented by outcomes (3 honest phone mockups — no fake
+ * Deye Cloud dashboard, just the 3 promises already published above staged
+ * visually) + the WhatsApp-alert-on-anomaly reminder.
  */
 import Layout from '../../layouts/Layout.astro';
 import V2Enhance from '../../components/V2Enhance.astro';
@@ -20,10 +30,70 @@ import CtaBand from '../../components/CtaBand.astro';
 import StickyCta from '../../components/StickyCta.astro';
 import { getLocaleFromPath } from '../../i18n/utils';
 import { localizeNavHref } from '../../i18n/pages';
+import { WHATSAPP_LEADS } from '../../lib/nap';
+import { whatsappLink } from '../../lib/whatsapp';
 
 const locale = getLocaleFromPath(Astro.url.pathname);
 const L = (href: string) => localizeNavHref(href, locale);
 const devisHref = L('/devis/mon-toit');
+
+// W255 — 3 NAMED entretien tiers, no-op-safe scaffold: inclusions drawn from
+// what's already published (monitoring/after-sales/technical file); response
+// SLA and prices stay explicit placeholders until Reda validates the real
+// commitments (WG10, gate open).
+const entretienTiers = [
+  {
+    name: 'Essentiel',
+    body: 'Deye Cloud monitoring included and fleet-wide supervision: this is the base already delivered with every installation.',
+    inclusions: ['Personal Deye Cloud access', 'Automatic fault alert', 'Complete technical file'],
+    sla: 'pending founder validation',
+    prix: 'pending founder validation',
+  },
+  {
+    name: 'Confort',
+    body: 'The Essentiel base, plus a scheduled maintenance visit to keep the installation at its best output.',
+    inclusions: ['Everything in Essentiel', 'Scheduled maintenance visit', 'Panel cleaning'],
+    sla: 'pending founder validation',
+    prix: 'pending founder validation',
+  },
+  {
+    name: 'Premium',
+    body: 'The most complete level: reinforced maintenance and priority intervention on alert.',
+    inclusions: ['Everything in Confort', 'Reinforced maintenance visits', 'Priority intervention on alert'],
+    sla: 'pending founder validation',
+    prix: 'pending founder validation',
+  },
+];
+
+const waTier = (tierName: string) =>
+  whatsappLink(WHATSAPP_LEADS, `Bonjour, je souhaite en savoir plus sur le contrat d’entretien ${tierName}.`);
+
+// W257 — 3 illustrative phone mockups (no real Deye Cloud screenshot, no
+// invented figure): live production, the alert, savings-to-date tracking.
+// Generic labels only, never a figure we wouldn't stand behind.
+const phoneVues = [
+  {
+    appLabel: 'Deye Cloud',
+    headline: '3.2 kW',
+    accent: 'text-brass-300',
+    sub: 'Live production',
+    caption: 'Your production, readable in real time — the same data that backs our written warranties.',
+  },
+  {
+    appLabel: 'Deye Cloud',
+    headline: 'Alert',
+    accent: 'text-white',
+    sub: 'Inverter · fault code',
+    caption: 'An anomaly triggers a WhatsApp alert on our side before you have even noticed it.',
+  },
+  {
+    appLabel: 'Deye Cloud',
+    headline: 'History',
+    accent: 'text-brass-300',
+    sub: 'Savings to date',
+    caption: 'The daily and monthly production total, to track what the installation has actually delivered.',
+  },
+];
 
 const suivi = [
   {
@@ -53,8 +123,8 @@ const jsonLd = {
 ---
 
 <Layout
-  title="Solar maintenance & monitoring: Deye Cloud supervision included | Taqinor"
-  description="Every Taqinor installation reports to Deye Cloud — real-time production, history, automatic alerts — with client access on the mobile app. An alert reaches us before you: proactive after-sales, and a complete technical file delivered with the project."
+  title="Solar maintenance, after-sales & monitoring: Deye Cloud supervision included | Taqinor"
+  description="Every Taqinor installation reports to Deye Cloud — real-time production, history, automatic alerts — with client access on the mobile app. Proactive after-sales acts on alert, before the complaint, and extends into named maintenance contracts. Complete technical file delivered with the project."
   ogSlug="equipement"
 >
   <div class="v2">
@@ -65,16 +135,17 @@ const jsonLd = {
 
     <Breadcrumb items={[{ label: 'Home', href: L('/') }, { label: 'Maintenance & monitoring' }]} />
 
-    {/* ── DARK HERO — eyebrow demoted to lune (brass discipline) ── */}
+    {/* ── DARK HERO — W255: after-sales co-leads with monitoring (brass discipline) ── */}
     <section class="px-4 pb-12 pt-16 text-white sm:pt-20">
       <div class="mx-auto max-w-3xl">
         <p class="tech-label v2-kicker rule-brass cine-in text-lune">After the install</p>
-        <h1 class="display v2-page-title cine-in cine-in-1 mt-5">Maintenance &amp; monitoring</h1>
+        <h1 class="display v2-page-title cine-in cine-in-1 mt-5">Monitoring &amp; proactive after-sales</h1>
         <p class="v2-lead cine-in cine-in-2 mt-6 max-w-xl text-white/85">
           The day the installation is commissioned, it starts to talk. On Deye Cloud, every Taqinor
           roof reports its production continuously — yours readable on your phone, ours monitored
-          across the whole fleet. An anomaly triggers an alert; we start from there, before the
-          complaint.
+          across the whole fleet. An anomaly triggers an alert; our after-sales team starts from
+          there, before the complaint — a dedicated module in our ERP tracks every intervention
+          through to its close.
         </p>
       </div>
     </section>
@@ -100,6 +171,85 @@ const jsonLd = {
           sheet.
           <a href={L('/équipement')} class="border-b border-lune/40 pb-0.5 font-semibold text-lune transition-colors hover:border-lune hover:text-white">See the Deye Cloud monitoring →</a>
         </p>
+      </div>
+    </section>
+
+    {/* ── W257 — WHAT YOU SEE ON YOUR PHONE (outcomes, not specs) ──
+        3 honest CSS phone mockups: no fabricated Deye Cloud screenshot, just
+        the 3 promises already published above staged on a phone frame. */}
+    <div class="seam-soft" aria-hidden="true"></div>
+    <section class="section px-4">
+      <div class="mx-auto max-w-6xl">
+        <p class="tech-label v2-kicker rule-brass text-lune">On your phone</p>
+        <h2 class="display v2-section-title mt-5 text-white">What you see, not what we promise</h2>
+        <p class="v2-lead mt-5 max-w-2xl text-lune-soft">
+          Three questions come up before anyone asks about protocol or measurement frequency: can I
+          see my production on my phone, will I be warned if something goes wrong, and where do my
+          savings stand. Here are the three answers.
+        </p>
+        <div class="mt-12 grid gap-6 md:grid-cols-3" data-stagger>
+          {phoneVues.map((v, i) => (
+            <div class="v2-rise flex flex-col items-center p-4" style={`--v2-i:${i}`}>
+              <div class="phone-frame">
+                <div class="phone-notch" aria-hidden="true"></div>
+                <div class="phone-screen">
+                  <p class="phone-app-label">{v.appLabel}</p>
+                  <p class={`phone-headline ${v.accent}`}>{v.headline}</p>
+                  <p class="phone-sub">{v.sub}</p>
+                </div>
+              </div>
+              <p class="mt-5 text-center text-sm leading-relaxed text-lune-soft">{v.caption}</p>
+            </div>
+          ))}
+        </div>
+        <p class="v2-rise mx-auto mt-10 max-w-xl text-center text-sm leading-relaxed text-lune-faint">
+          These views illustrate how the Deye Cloud app works — not an official screenshot. What
+          yours shows depends on your actual installation.
+        </p>
+      </div>
+    </section>
+
+    {/* ── W255 — AFTER-SALES: NAMED MAINTENANCE CONTRACTS (scaffold, SLA/price gated WG10) ── */}
+    <div class="v2-seam" aria-hidden="true"></div>
+    <section class="bg-blanc-azur px-4 py-16 text-encre sm:py-20">
+      <div class="mx-auto max-w-6xl">
+        <p class="tech-label v2-kicker rule-brass eyebrow-light">Proactive after-sales, in tiers</p>
+        <h2 class="display v2-section-title mt-5">Our maintenance contracts</h2>
+        <p class="v2-lead mt-5 max-w-2xl text-encre-soft">
+          The Essentiel base is already included with every installation; Confort and Premium add
+          scheduled maintenance and priority intervention. The committed response times and the
+          price of each tier are pending founder validation — nothing is published until it is a
+          real, keepable commitment.
+        </p>
+        <div class="mt-12 grid gap-6 md:grid-cols-3" data-stagger>
+          {entretienTiers.map((t, i) => (
+            <div class="v2-rise flex flex-col border-t-2 border-azur-900 bg-blanc p-7" style={`--v2-i:${i}`}>
+              <h3 class="display text-xl text-azur-700">{t.name}</h3>
+              <p class="mt-3 flex-1 text-sm leading-relaxed text-encre-soft">{t.body}</p>
+              <ul class="mt-4 space-y-2 text-sm text-encre-soft">
+                {t.inclusions.map((inc) => (
+                  <li class="flex items-start gap-2">
+                    <span class="mt-1 text-azur-600" aria-hidden="true">✓</span>
+                    <span>{inc}</span>
+                  </li>
+                ))}
+              </ul>
+              <dl class="mt-5 space-y-1 border-t border-azur-900/10 pt-4 text-xs">
+                <div class="flex justify-between gap-2">
+                  <dt class="text-encre-faint">Response time</dt>
+                  <dd class="text-right italic text-encre-faint">{t.sla}</dd>
+                </div>
+                <div class="flex justify-between gap-2">
+                  <dt class="text-encre-faint">Price</dt>
+                  <dd class="text-right italic text-encre-faint">{t.prix}</dd>
+                </div>
+              </dl>
+              <a href={waTier(t.name)} rel="noopener" class="mt-6 inline-block border-2 border-azur-600 px-5 py-2.5 text-center text-sm font-bold text-azur-600 transition-colors hover:bg-azur-600 hover:text-white">
+                Learn more — {t.name}
+              </a>
+            </div>
+          ))}
+        </div>
       </div>
     </section>
 
@@ -151,3 +301,55 @@ const jsonLd = {
     <StickyCta />
   </div>
 </Layout>
+
+<style>
+  /* W257 — pure CSS phone frame, no image: guaranteed anti-CLS, fixed
+     dimensions, zero network dependency. Brass discipline: the only gold
+     accent lives on .text-brass-300, never on the frame. */
+  .phone-frame {
+    width: 160px;
+    height: 320px;
+    border-radius: 28px;
+    border: 3px solid rgba(255, 255, 255, 0.25);
+    background: #0c1330;
+    padding: 10px;
+    position: relative;
+    box-shadow: 0 20px 45px -20px rgb(6 10 30 / 0.6);
+  }
+  .phone-notch {
+    position: absolute;
+    top: 10px;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 48px;
+    height: 6px;
+    border-radius: 999px;
+    background: rgba(255, 255, 255, 0.2);
+  }
+  .phone-screen {
+    height: 100%;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 0.35rem;
+    padding-top: 1rem;
+    text-align: center;
+  }
+  .phone-app-label {
+    font-size: 0.6rem;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: rgba(255, 255, 255, 0.45);
+  }
+  .phone-headline {
+    font-family: var(--font-display, inherit);
+    font-weight: 700;
+    font-size: 1.5rem;
+    line-height: 1.1;
+  }
+  .phone-sub {
+    font-size: 0.7rem;
+    color: rgba(255, 255, 255, 0.6);
+  }
+</style>
