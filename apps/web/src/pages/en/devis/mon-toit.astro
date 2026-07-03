@@ -125,6 +125,11 @@ const noscriptTelHref = `tel:${NAP.phone}`;
 
       <!-- ============ STEP 0/1 — YOUR ROOF (mode + map/pin) ============ -->
       <div id="mt-panel-0" class="mt-step-panel">
+        <!-- WJ88 — real h2 landmark per step (screen-reader navigation): visually
+             hidden (sr-only), the visible progress bar stays the same — but the
+             page now has a real heading outline instead of a single <h1> across
+             1,200 lines. -->
+        <h2 class="sr-only">{STEPS[0]}</h2>
         <!-- WJ6 — mode selector -->
         <fieldset class="mt-6">
           <legend class="text-sm text-lune-soft">Your project type</legend>
@@ -181,8 +186,14 @@ const noscriptTelHref = `tel:${NAP.phone}`;
             </button>
           </form>
 
+          <!-- WJ88 — role="application" removed: this ARIA role puts the whole
+               subtree into "application" mode for a screen reader (native
+               arrow/tab navigation is disabled), making the map keyboard-inert
+               even though it exposes no keyboard interaction of its own here
+               (the pin/outline is mouse/touch-driven; the address search above
+               stays a real, accessible form). aria-label alone is enough to name it. -->
           <div id="rp9-map" class="mt-skeleton-shimmer mt-0 h-[44vh] min-h-[280px] w-full bg-nuit-700"
-            role="application" aria-label="Satellite map to locate your roof"></div>
+            aria-label="Satellite map to locate your roof"></div>
 
           <div class="flex flex-wrap items-center gap-3 border-t border-white/10 p-4">
             <button type="button" id="rp9-finish" disabled
@@ -221,6 +232,8 @@ const noscriptTelHref = `tel:${NAP.phone}`;
 
       <!-- ============ STEP 2 — YOUR BILL (+ energy profile) ============ -->
       <div id="mt-panel-1" class="mt-step-panel" hidden>
+        <!-- WJ88 — real h2 landmark (see step 0 note). -->
+        <h2 class="sr-only">{STEPS[1]}</h2>
         <p class="mt-6 text-lune-soft">
           Enter your bill to calculate your estimate. The exact amount gives the most
           accurate figure.
@@ -230,8 +243,8 @@ const noscriptTelHref = `tel:${NAP.phone}`;
           <label class="block text-sm text-lune-soft">
             <span>Exact monthly bill (MAD)</span>
             <input id="mt-facture-hiver" name="factureHiver" type="number" step="any" inputmode="decimal"
-              placeholder="e.g. 1,200" class={`${inputClass} mt-1`} />
-            <span id="mt-facture-hiver-err" hidden class="mt-1 block text-xs text-alert-300"></span>
+              aria-describedby="mt-facture-hiver-err" placeholder="e.g. 1,200" class={`${inputClass} mt-1`} />
+            <span id="mt-facture-hiver-err" hidden role="alert" class="mt-1 block text-xs text-alert-300"></span>
             <!-- WJ67 — "why we ask" micro-transparency: copy-only, collapsed by
                  default (native <details>, no JS required). -->
             <details class="mt-1.5">
@@ -246,21 +259,21 @@ const noscriptTelHref = `tel:${NAP.phone}`;
 
           <label class="block text-sm text-lune-soft">
             <span>…or choose a range</span>
-            <select id="mt-bill" name="billRange" class={`${inputClass} mt-1`}>
+            <select id="mt-bill" name="billRange" aria-describedby="mt-bill-err" class={`${inputClass} mt-1`}>
               <option value="">Choose…</option>
               {billRanges.map((b) => <option value={b.id}>{b.label}</option>)}
             </select>
-            <span id="mt-bill-err" hidden class="mt-1 block text-xs text-alert-300"></span>
+            <span id="mt-bill-err" hidden role="alert" class="mt-1 block text-xs text-alert-300"></span>
           </label>
 
           <div class="grid gap-4 sm:grid-cols-2">
             <label class="block text-sm text-lune-soft">
               <span>Roof type</span>
-              <select id="mt-roof" name="roofType" class={`${inputClass} mt-1`}>
+              <select id="mt-roof" name="roofType" aria-describedby="mt-roof-err" class={`${inputClass} mt-1`}>
                 <option value="">Choose…</option>
                 {roofTypes.map((r) => <option value={r.id}>{r.label}</option>)}
               </select>
-              <span id="mt-roof-err" hidden class="mt-1 block text-xs text-alert-300"></span>
+              <span id="mt-roof-err" hidden role="alert" class="mt-1 block text-xs text-alert-300"></span>
             </label>
             <label class="block text-sm text-lune-soft">
               <span>Connection</span>
@@ -403,9 +416,18 @@ const noscriptTelHref = `tel:${NAP.phone}`;
 
       <!-- ============ STEP 3 — YOUR ESTIMATE (WJ1) + CONTACT (WJ3) ============ -->
       <div id="mt-panel-2" class="mt-step-panel" hidden>
-        <!-- WJ1 — instant estimate BEFORE the contact gate -->
-        <div id="mt-estimate-card" class="cine-card mt-6 border border-brass-400/30 p-5 sm:p-6" aria-live="polite">
+        <!-- WJ88 — real h2 landmark (see step 0 note); distinct from the
+             visible title below (kept as a <p> to preserve the .tech-label style). -->
+        <h2 class="sr-only">{STEPS[2]}</h2>
+        <!-- WJ1 — instant estimate BEFORE the contact gate.
+             WJ88 — aria-live removed from THIS container: it wrapped both the
+             shimmer skeleton (an intermediate, meaningless mutation) AND the
+             real numbers, so a screen reader announced TWICE (skeleton then
+             result). A single dedicated region below (#mt-estimate-announce)
+             now announces the result ONCE, never during the skeleton phase. -->
+        <div id="mt-estimate-card" class="cine-card mt-6 border border-brass-400/30 p-5 sm:p-6">
           <p class="tech-label text-brass-300">Your instant estimate</p>
+          <p id="mt-estimate-announce" class="sr-only" aria-live="polite"></p>
           <div id="mt-estimate-body" class="mt-4 grid grid-cols-1 gap-4 sm:grid-cols-3">
             <div>
               <p class="text-3xl font-bold text-white"><span id="mt-est-kwc">—</span> <span class="text-base font-normal text-lune-soft">kWc</span></p>
@@ -466,22 +488,23 @@ const noscriptTelHref = `tel:${NAP.phone}`;
           <div class="grid gap-4 sm:grid-cols-2">
             <label class="block text-sm text-lune-soft">
               <span>Full name</span>
-              <input id="mt-name" name="fullName" type="text" autocomplete="name" required aria-required="true" class={`${inputClass} mt-1`} />
-              <span id="mt-name-err" hidden class="mt-1 block text-xs text-alert-300"></span>
+              <input id="mt-name" name="fullName" type="text" autocomplete="name" required aria-required="true"
+                aria-describedby="mt-name-err" class={`${inputClass} mt-1`} />
+              <span id="mt-name-err" hidden role="alert" class="mt-1 block text-xs text-alert-300"></span>
             </label>
             <label class="block text-sm text-lune-soft">
               <span>Phone / WhatsApp</span>
               <input id="mt-phone" name="phone" type="tel" inputmode="tel" autocomplete="tel" required aria-required="true"
-                placeholder="06 XX XX XX XX" class={`${inputClass} mt-1`} />
-              <span id="mt-phone-err" hidden class="mt-1 block text-xs text-alert-300"></span>
+                aria-describedby="mt-phone-err" placeholder="06 XX XX XX XX" class={`${inputClass} mt-1`} />
+              <span id="mt-phone-err" hidden role="alert" class="mt-1 block text-xs text-alert-300"></span>
             </label>
           </div>
 
           <label class="block text-sm text-lune-soft">
             <span>Address / city</span>
             <input id="mt-city" name="city" type="text" autocomplete="address-level2" required aria-required="true"
-              placeholder="Read from the map — editable if needed" class={`${inputClass} mt-1`} />
-            <span id="mt-city-err" hidden class="mt-1 block text-xs text-alert-300"></span>
+              aria-describedby="mt-city-err" placeholder="Read from the map — editable if needed" class={`${inputClass} mt-1`} />
+            <span id="mt-city-err" hidden role="alert" class="mt-1 block text-xs text-alert-300"></span>
           </label>
 
           <!-- WJ3 — e-mail (optional) + WhatsApp opt-in -->
@@ -513,12 +536,13 @@ const noscriptTelHref = `tel:${NAP.phone}`;
           </fieldset>
 
           <label class="flex items-start gap-3 text-sm text-lune-soft">
-            <input id="mt-consent" name="consent" type="checkbox" required aria-required="true" class="mt-1 h-5 w-5 flex-none accent-brass-400" />
+            <input id="mt-consent" name="consent" type="checkbox" required aria-required="true"
+              aria-describedby="mt-consent-err" class="mt-1 h-5 w-5 flex-none accent-brass-400" />
             <span>
               I agree to be contacted back by Taqinor about my solar project.
             </span>
           </label>
-          <span id="mt-consent-err" hidden class="block text-xs text-alert-300"></span>
+          <span id="mt-consent-err" hidden role="alert" class="block text-xs text-alert-300"></span>
 
           <p id="mt-error" hidden class="text-sm text-alert-300" aria-live="polite"></p>
 
@@ -641,7 +665,9 @@ const noscriptTelHref = `tel:${NAP.phone}`;
     <div class="cine-card w-full max-w-md border border-brass-400/40 p-5">
       <div class="flex items-start justify-between gap-3">
         <p id="mt-exit-title" class="display text-lg text-white">Receive your estimate on WhatsApp</p>
-        <button type="button" id="mt-exit-close" aria-label="Close" class="flex-none text-lune-faint hover:text-white">✕</button>
+        <!-- WJ88 — minimum ≥24×24 px touch target (WCAG 2.5.8). -->
+        <button type="button" id="mt-exit-close" aria-label="Close"
+          class="flex-none min-h-6 min-w-6 inline-flex items-center justify-center text-lune-faint hover:text-white">✕</button>
       </div>
       <p class="mt-2 text-sm text-lune-soft">
         Just leave your number — we'll send you your estimate and answer your questions.
@@ -1129,6 +1155,14 @@ const noscriptTelHref = `tel:${NAP.phone}`;
   let lastKwcLabel = '';
   let lastSavingsLabel = '';
   let lastKwc: number | null = null;
+  // WJ88 — single, clean announcement of the result (never during the
+  // skeleton phase): replaces the old aria-live set on the whole
+  // #mt-estimate-card, which caused a screen-reader double-fire (skeleton
+  // THEN result).
+  function announceEstimate(message: string) {
+    const el = $('mt-estimate-announce');
+    if (el) el.textContent = message;
+  }
   function computeEstimate() {
     const exact = num('mt-facture-hiver');
     const bill = resolveMonthlyBill();
@@ -1150,6 +1184,7 @@ const noscriptTelHref = `tel:${NAP.phone}`;
       lastSavingsLabel = '';
       lastKwc = null;
       updatePanels3dVisibility();
+      announceEstimate('Estimate unavailable — please check the amount entered.');
       return;
     }
     setFieldError('mt-facture-hiver', 'mt-facture-hiver-err', null);
@@ -1165,6 +1200,7 @@ const noscriptTelHref = `tel:${NAP.phone}`;
       lastSavingsLabel = '';
       lastKwc = null;
       updatePanels3dVisibility();
+      announceEstimate('Estimate unavailable: enter your monthly bill to calculate it.');
       return;
     }
     if (card) card.hidden = false;
@@ -1181,6 +1217,8 @@ const noscriptTelHref = `tel:${NAP.phone}`;
     lastSavingsLabel = `${monthly}/mois`;
     lastKwc = est.kwc;
     updatePanels3dVisibility();
+    // WJ88 — single, clean final announcement (never during the skeleton phase).
+    announceEstimate(`Your estimate: ${est.kwc} kWc, estimated savings ${monthly}/month, payback ${est.paybackLabel}.`);
   }
   // WJ34 — squelette bref pendant le calcul (performance perçue) : les 3
   // chiffres passent en squelette shimmer AVANT le calcul, puis

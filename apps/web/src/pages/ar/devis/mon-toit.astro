@@ -141,6 +141,11 @@ const noscriptTelHref = `tel:${NAP.phone}`;
 
       <!-- ============ ÉTAPE 0/1 — VOTRE TOIT (mode + carte/repère) ============ -->
       <div id="mt-panel-0" class="mt-step-panel">
+        <!-- WJ88 — landmark h2 réel par étape (repère de navigation pour lecteur
+             d'écran) : visuellement masqué (sr-only), la barre de progression
+             visible reste la même — mais la page a désormais un vrai plan de
+             titres au lieu d'un unique <h1> sur 1 200 lignes. -->
+        <h2 class="sr-only" data-i18n data-fr={STEPS[0].fr} data-ar={STEPS[0].ar}>{STEPS[0].fr}</h2>
         <!-- WJ6 — sélecteur de mode -->
         <fieldset class="mt-6">
           <legend class="text-sm text-lune-soft" data-i18n data-fr="Votre type de projet" data-ar="نوع مشروعك">Votre type de projet</legend>
@@ -201,8 +206,15 @@ const noscriptTelHref = `tel:${NAP.phone}`;
             </button>
           </form>
 
+          <!-- WJ88 — role="application" retiré : ce rôle ARIA place tout le
+               sous-arbre en mode « application » pour un lecteur d'écran (les
+               flèches/tab natifs sont désactivés), ce qui rend la carte
+               clavier-inerte alors qu'elle n'expose ici aucune interaction
+               clavier propre (le pin/tracé est à la souris/au tactile ; la
+               recherche d'adresse au-dessus reste un vrai formulaire
+               accessible). aria-label seul suffit à la nommer. -->
           <div id="rp9-map" class="mt-skeleton-shimmer mt-0 h-[44vh] min-h-[280px] w-full bg-nuit-700"
-            role="application" aria-label="خريطة الأقمار الصناعية لتحديد سطحكم"></div>
+            aria-label="خريطة الأقمار الصناعية لتحديد سطحكم"></div>
 
           <div class="flex flex-wrap items-center gap-3 border-t border-white/10 p-4">
             <button type="button" id="rp9-finish" disabled
@@ -242,6 +254,8 @@ const noscriptTelHref = `tel:${NAP.phone}`;
 
       <!-- ============ ÉTAPE 2 — VOTRE FACTURE (+ profil énergétique) ============ -->
       <div id="mt-panel-1" class="mt-step-panel" hidden>
+        <!-- WJ88 — landmark h2 réel (voir note étape 0). -->
+        <h2 class="sr-only" data-i18n data-fr={STEPS[1].fr} data-ar={STEPS[1].ar}>{STEPS[1].fr}</h2>
         <p class="mt-6 text-lune-soft" data-i18n
           data-fr="Indiquez votre facture pour calculer votre estimation. Le montant exact donne le chiffre le plus juste."
           data-ar="أدخل فاتورتك لحساب تقديرك. المبلغ الدقيق يعطي الرقم الأصح.">
@@ -253,8 +267,8 @@ const noscriptTelHref = `tel:${NAP.phone}`;
           <label class="block text-sm text-lune-soft">
             <span data-i18n data-fr="Facture mensuelle exacte (MAD)" data-ar="الفاتورة الشهرية الدقيقة (درهم)">Facture mensuelle exacte (MAD)</span>
             <input id="mt-facture-hiver" name="factureHiver" type="number" step="any" inputmode="decimal"
-              placeholder="مثال: 1 200" dir="ltr" class={`${inputClass} mt-1`} />
-            <span id="mt-facture-hiver-err" hidden class="mt-1 block text-xs text-alert-300"></span>
+              aria-describedby="mt-facture-hiver-err" placeholder="مثال: 1 200" dir="ltr" class={`${inputClass} mt-1`} />
+            <span id="mt-facture-hiver-err" hidden role="alert" class="mt-1 block text-xs text-alert-300"></span>
             <!-- WJ67 — micro-transparence « pourquoi on vous demande ça » : copie
                  seule, repliée par défaut (native <details>, aucun JS requis). -->
             <details class="mt-1.5">
@@ -272,21 +286,21 @@ const noscriptTelHref = `tel:${NAP.phone}`;
 
           <label class="block text-sm text-lune-soft">
             <span data-i18n data-fr="…ou choisissez une tranche" data-ar="…أو اختر شريحة">…ou choisissez une tranche</span>
-            <select id="mt-bill" name="billRange" class={`${inputClass} mt-1`}>
+            <select id="mt-bill" name="billRange" aria-describedby="mt-bill-err" class={`${inputClass} mt-1`}>
               <option value="">اختر…</option>
               {billRanges.map((b) => <option value={b.id}>{b.label}</option>)}
             </select>
-            <span id="mt-bill-err" hidden class="mt-1 block text-xs text-alert-300"></span>
+            <span id="mt-bill-err" hidden role="alert" class="mt-1 block text-xs text-alert-300"></span>
           </label>
 
           <div class="grid gap-4 sm:grid-cols-2">
             <label class="block text-sm text-lune-soft">
               <span data-i18n data-fr="Type de toit" data-ar="نوع السطح">Type de toit</span>
-              <select id="mt-roof" name="roofType" class={`${inputClass} mt-1`}>
+              <select id="mt-roof" name="roofType" aria-describedby="mt-roof-err" class={`${inputClass} mt-1`}>
                 <option value="">اختر…</option>
                 {roofTypes.map((r) => <option value={r.id}>{r.label}</option>)}
               </select>
-              <span id="mt-roof-err" hidden class="mt-1 block text-xs text-alert-300"></span>
+              <span id="mt-roof-err" hidden role="alert" class="mt-1 block text-xs text-alert-300"></span>
             </label>
             <label class="block text-sm text-lune-soft">
               <span data-i18n data-fr="Raccordement" data-ar="نوع الربط">Raccordement</span>
@@ -433,9 +447,20 @@ const noscriptTelHref = `tel:${NAP.phone}`;
 
       <!-- ============ ÉTAPE 3 — VOTRE ESTIMATION (WJ1) + CONTACT (WJ3) ============ -->
       <div id="mt-panel-2" class="mt-step-panel" hidden>
-        <!-- WJ1 — l'estimation instantanée AVANT la porte de contact -->
-        <div id="mt-estimate-card" class="cine-card mt-6 border border-brass-400/30 p-5 sm:p-6" aria-live="polite">
+        <!-- WJ88 — landmark h2 réel (voir note étape 0) : masqué visuellement,
+             DISTINCT du titre visible ci-dessous (celui-ci reste un <p> pour ne
+             pas changer le style .tech-label existant). -->
+        <h2 class="sr-only" data-i18n data-fr={STEPS[2].fr} data-ar={STEPS[2].ar}>{STEPS[2].fr}</h2>
+        <!-- WJ1 — l'estimation instantanée AVANT la porte de contact.
+             WJ88 — aria-live retiré de CE conteneur : il enveloppait aussi le
+             squelette shimmer (mutation intermédiaire, sans texte utile) ET les
+             vrais chiffres, donc un lecteur d'écran annonçait DEUX fois (le
+             squelette puis le résultat). Une seule région dédiée plus bas
+             (#mt-estimate-announce) annonce désormais le résultat UNE SEULE
+             FOIS, jamais pendant la phase squelette. -->
+        <div id="mt-estimate-card" class="cine-card mt-6 border border-brass-400/30 p-5 sm:p-6">
           <p class="tech-label text-brass-300" data-i18n data-fr="Votre estimation instantanée" data-ar="تقديرك الفوري">Votre estimation instantanée</p>
+          <p id="mt-estimate-announce" class="sr-only" aria-live="polite"></p>
           <div id="mt-estimate-body" class="mt-4 grid grid-cols-1 gap-4 sm:grid-cols-3">
             <div>
               <p class="text-3xl font-bold text-white"><span id="mt-est-kwc">—</span> <span class="text-base font-normal text-lune-soft">kWc</span></p>
@@ -506,22 +531,23 @@ const noscriptTelHref = `tel:${NAP.phone}`;
           <div class="grid gap-4 sm:grid-cols-2">
             <label class="block text-sm text-lune-soft">
               <span data-i18n data-fr="Nom complet" data-ar="الاسم الكامل">Nom complet</span>
-              <input id="mt-name" name="fullName" type="text" autocomplete="name" required aria-required="true" class={`${inputClass} mt-1`} />
-              <span id="mt-name-err" hidden class="mt-1 block text-xs text-alert-300"></span>
+              <input id="mt-name" name="fullName" type="text" autocomplete="name" required aria-required="true"
+                aria-describedby="mt-name-err" class={`${inputClass} mt-1`} />
+              <span id="mt-name-err" hidden role="alert" class="mt-1 block text-xs text-alert-300"></span>
             </label>
             <label class="block text-sm text-lune-soft">
               <span data-i18n data-fr="Téléphone / WhatsApp" data-ar="الهاتف / واتساب">Téléphone / WhatsApp</span>
               <input id="mt-phone" name="phone" type="tel" inputmode="tel" autocomplete="tel" required aria-required="true"
-                placeholder="06 XX XX XX XX" dir="ltr" class={`${inputClass} mt-1`} />
-              <span id="mt-phone-err" hidden class="mt-1 block text-xs text-alert-300"></span>
+                aria-describedby="mt-phone-err" placeholder="06 XX XX XX XX" dir="ltr" class={`${inputClass} mt-1`} />
+              <span id="mt-phone-err" hidden role="alert" class="mt-1 block text-xs text-alert-300"></span>
             </label>
           </div>
 
           <label class="block text-sm text-lune-soft">
             <span data-i18n data-fr="Adresse / ville" data-ar="العنوان / المدينة">Adresse / ville</span>
             <input id="mt-city" name="city" type="text" autocomplete="address-level2" required aria-required="true"
-              placeholder="تُقرأ من الخريطة — قابلة للتعديل عند الحاجة" class={`${inputClass} mt-1`} />
-            <span id="mt-city-err" hidden class="mt-1 block text-xs text-alert-300"></span>
+              aria-describedby="mt-city-err" placeholder="تُقرأ من الخريطة — قابلة للتعديل عند الحاجة" class={`${inputClass} mt-1`} />
+            <span id="mt-city-err" hidden role="alert" class="mt-1 block text-xs text-alert-300"></span>
           </label>
 
           <!-- WJ3 — e-mail (facultatif) + opt-in WhatsApp -->
@@ -553,12 +579,13 @@ const noscriptTelHref = `tel:${NAP.phone}`;
           </fieldset>
 
           <label class="flex items-start gap-3 text-sm text-lune-soft">
-            <input id="mt-consent" name="consent" type="checkbox" required aria-required="true" class="mt-1 h-5 w-5 flex-none accent-brass-400" />
+            <input id="mt-consent" name="consent" type="checkbox" required aria-required="true"
+              aria-describedby="mt-consent-err" class="mt-1 h-5 w-5 flex-none accent-brass-400" />
             <span data-i18n data-fr="J'accepte d'être recontacté(e) par Taqinor au sujet de mon projet solaire." data-ar="أوافق على أن تتواصل معي تاكينور بخصوص مشروعي الشمسي.">
               J'accepte d'être recontacté(e) par Taqinor au sujet de mon projet solaire.
             </span>
           </label>
-          <span id="mt-consent-err" hidden class="block text-xs text-alert-300"></span>
+          <span id="mt-consent-err" hidden role="alert" class="block text-xs text-alert-300"></span>
 
           <p id="mt-error" hidden class="text-sm text-alert-300" aria-live="polite"></p>
 
@@ -689,7 +716,9 @@ const noscriptTelHref = `tel:${NAP.phone}`;
     <div class="cine-card w-full max-w-md border border-brass-400/40 p-5">
       <div class="flex items-start justify-between gap-3">
         <p id="mt-exit-title" class="display text-lg text-white" data-i18n data-fr="Recevez votre estimation sur WhatsApp" data-ar="استلم تقديرك على واتساب">Recevez votre estimation sur WhatsApp</p>
-        <button type="button" id="mt-exit-close" aria-label="إغلاق" class="flex-none text-lune-faint hover:text-white">✕</button>
+        <!-- WJ88 — cible tactile ≥24×24 px (WCAG 2.5.8). -->
+        <button type="button" id="mt-exit-close" aria-label="إغلاق"
+          class="flex-none min-h-6 min-w-6 inline-flex items-center justify-center text-lune-faint hover:text-white">✕</button>
       </div>
       <p class="mt-2 text-sm text-lune-soft" data-i18n
         data-fr="Laissez juste votre numéro — on vous envoie votre estimation et on répond à vos questions. Gratuit, sans engagement."
@@ -1216,6 +1245,13 @@ const noscriptTelHref = `tel:${NAP.phone}`;
   let lastKwcLabel = '';
   let lastSavingsLabel = '';
   let lastKwc: number | null = null;
+  // WJ88 — annonce UNIQUE du résultat (jamais pendant la phase squelette) :
+  // remplace l'ancien aria-live posé sur tout #mt-estimate-card, qui
+  // déclenchait un double-fire lecteur d'écran (squelette PUIS résultat).
+  function announceEstimate(message: string) {
+    const el = $('mt-estimate-announce');
+    if (el) el.textContent = message;
+  }
   function computeEstimate() {
     const exact = num('mt-facture-hiver');
     const bill = resolveMonthlyBill();
@@ -1237,6 +1273,7 @@ const noscriptTelHref = `tel:${NAP.phone}`;
       lastSavingsLabel = '';
       lastKwc = null;
       updatePanels3dVisibility();
+      announceEstimate(currentLang === 'ar' ? 'التقدير غير متاح — تحقّقوا من المبلغ المُدخل.' : 'Estimation indisponible — vérifiez le montant saisi.');
       return;
     }
     setFieldError('mt-facture-hiver', 'mt-facture-hiver-err', null);
@@ -1252,6 +1289,9 @@ const noscriptTelHref = `tel:${NAP.phone}`;
       lastSavingsLabel = '';
       lastKwc = null;
       updatePanels3dVisibility();
+      announceEstimate(currentLang === 'ar'
+        ? 'التقدير غير متاح: أدخل فاتورتك الشهرية لحسابه.'
+        : 'Estimation indisponible : indiquez votre facture mensuelle pour la calculer.');
       return;
     }
     if (card) card.hidden = false;
@@ -1268,6 +1308,10 @@ const noscriptTelHref = `tel:${NAP.phone}`;
     lastSavingsLabel = `${monthly}/mois`;
     lastKwc = est.kwc;
     updatePanels3dVisibility();
+    // WJ88 — annonce UNIQUE et propre du résultat final (jamais pendant le squelette).
+    announceEstimate(currentLang === 'ar'
+      ? `تقديرك: ${est.kwc} كيلوواط، توفير مقدّر ${monthly}/شهر، استرداد التكلفة ${est.paybackLabel}.`
+      : `Votre estimation : ${est.kwc} kWc, économies estimées ${monthly}/mois, amortissement ${est.paybackLabel}.`);
   }
   // WJ34 — squelette bref pendant le calcul (performance perçue) : les 3
   // chiffres passent en squelette shimmer AVANT le calcul, puis
