@@ -648,12 +648,16 @@ class TimesheetSerializer(serializers.ModelSerializer):
         source='saisi_par.username', read_only=True, default='')
     approuve_par_nom = serializers.CharField(
         source='approuve_par.username', read_only=True, default='')
+    type_activite_display = serializers.CharField(
+        source='get_type_activite_display', read_only=True)
 
     class Meta:
         model = Timesheet
         fields = [
             'id', 'projet', 'projet_code', 'tache', 'phase', 'ressource',
             'ressource_nom', 'date', 'heures', 'cout', 'commentaire',
+            'facturable', 'type_activite', 'type_activite_display',
+            'taux_facturation',
             'statut', 'statut_display', 'saisi_par', 'saisi_par_nom',
             'approuve_par', 'approuve_par_nom', 'date_approbation',
             'motif_rejet', 'date_creation',

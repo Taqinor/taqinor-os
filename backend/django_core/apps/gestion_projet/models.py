@@ -1216,6 +1216,15 @@ class Timesheet(models.Model):
         APPROUVEE = 'approuvee', 'Approuvée'
         REJETEE = 'rejetee', 'Rejetée'
 
+    class TypeActivite(models.TextChoices):
+        ETUDE = 'etude', 'Étude'
+        POSE = 'pose', 'Pose'
+        RACCORDEMENT = 'raccordement', 'Raccordement'
+        MES = 'mes', 'Mise en service'
+        DEPLACEMENT = 'deplacement', 'Déplacement'
+        SAV = 'sav', 'SAV'
+        ADMIN = 'admin', 'Administratif'
+
     company = models.ForeignKey(
         'authentication.Company',
         on_delete=models.CASCADE,
@@ -1261,6 +1270,19 @@ class Timesheet(models.Model):
         verbose_name='Coût interne (figé)')
     commentaire = models.TextField(
         blank=True, default='', verbose_name='Commentaire')
+    # ── Classification facturable + activité (XPRJ2) ─────────────────────────
+    # Défaut True : la majorité des temps projet sont facturables en régie ;
+    # peut être ajusté par saisie (ex. temps admin interne → False).
+    facturable = models.BooleanField(
+        default=True, verbose_name='Facturable')
+    type_activite = models.CharField(
+        max_length=15, choices=TypeActivite.choices,
+        default=TypeActivite.POSE, verbose_name="Type d'activité")
+    # Taux de facturation MAD/h CLIENT (distinct du cout_horaire INTERNE de la
+    # ressource) — nullable : absent tant qu'aucun taux n'est saisi.
+    taux_facturation = models.DecimalField(
+        max_digits=10, decimal_places=2, null=True, blank=True,
+        verbose_name='Taux de facturation (MAD/h)')
     # ── Cycle de vie (XPRJ1) ──────────────────────────────────────────────────
     statut = models.CharField(
         max_length=10, choices=Statut.choices,

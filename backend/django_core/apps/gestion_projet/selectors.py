@@ -1659,25 +1659,41 @@ def synthese_temps_projet(projet):
     par TÂCHE. Données 100 % INTERNES de pilotage — jamais exposées au client.
     Le coût agrégé sert de source ALTERNATIVE de main-d'œuvre réelle (à côté des
     affectations). Une seule passe en mémoire ; ne MODIFIE rien.
+
+    XPRJ2 — ventile en plus les heures FACTURABLES vs NON-facturables (total +
+    par ressource) et par ``type_activite``. ``cout``/``cout_horaire`` INTERNES
+    restent absents de toute sortie — seules les heures sont ventilées ici
+    (``taux_facturation`` client, distinct du coût interne, n'est PAS agrégé en
+    montant par ce sélecteur : voir ``services`` pour la facturation en régie).
     """
     timesheets = list(timesheets_for_projet(projet))
     total_heures = Decimal('0')
     total_cout = Decimal('0')
+    heures_facturables = Decimal('0')
+    heures_non_facturables = Decimal('0')
     par_ressource = {}
     par_tache = {}
+    par_activite = {}
     for ts in timesheets:
         heures = ts.heures or Decimal('0')
         cout = ts.cout or Decimal('0')
         total_heures += heures
         total_cout += cout
+        if ts.facturable:
+            heures_facturables += heures
+        else:
+            heures_non_facturables += heures
         r = par_ressource.setdefault(ts.ressource_id, {
             'ressource_id': ts.ressource_id,
             'ressource_nom': ts.ressource.nom if ts.ressource_id else '',
             'heures': Decimal('0'),
             'cout': Decimal('0'),
+            'heures_facturables': Decimal('0'),
         })
         r['heures'] += heures
         r['cout'] += cout
+        if ts.facturable:
+            r['heures_facturables'] += heures
         if ts.tache_id is not None:
             t = par_tache.setdefault(ts.tache_id, {
                 'tache_id': ts.tache_id,
@@ -1687,14 +1703,27 @@ def synthese_temps_projet(projet):
             })
             t['heures'] += heures
             t['cout'] += cout
+        a = par_activite.setdefault(ts.type_activite, {
+            'type_activite': ts.type_activite,
+            'type_activite_display': ts.get_type_activite_display(),
+            'heures': Decimal('0'),
+            'heures_facturables': Decimal('0'),
+        })
+        a['heures'] += heures
+        if ts.facturable:
+            a['heures_facturables'] += heures
     return {
         'total_heures': total_heures,
         'total_cout': total_cout,
+        'heures_facturables': heures_facturables,
+        'heures_non_facturables': heures_non_facturables,
         'nb_saisies': len(timesheets),
         'par_ressource': sorted(
             par_ressource.values(), key=lambda x: x['ressource_id']),
         'par_tache': sorted(
             par_tache.values(), key=lambda x: x['tache_id']),
+        'par_activite': sorted(
+            par_activite.values(), key=lambda x: x['type_activite']),
     }
 
 
