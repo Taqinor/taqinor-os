@@ -74,7 +74,7 @@ Le **payback résidentiel standard** est de **5 à 7 ans** — chiffre cohérent
 - **Votre taux d'autoconsommation** : avec la [loi 82-21](/blog/loi-82-21-autoproduction-2026), le surplus injecté sur le réseau est racheté à seulement 0,18–0,21 DH/kWh pour le moyen/haut tension — bien en dessous du tarif de vente (le tarif du régime déclaration BT, celui des maisons < 11 kW, n'est pas encore publié, mais rien n'indique qu'il change cette logique). La valeur réelle du solaire est dans la consommation immédiate, pas dans l'export.
 - **La batterie** : ajouter un stockage prolonge le payback de **1 à 3 ans** mais augmente le taux d'autoconsommation du soir.
 
-**Sur 25 ans**, après remboursement de l'installation, chaque kWh produit est quasi-gratuit (les panneaux modernes perdent ~0,5 %/an de performance et atteignent encore ~80–85 % de leur capacité initiale à 25 ans).
+**Sur 25 ans**, après remboursement de l'installation, chaque kWh produit est quasi-gratuit. Les panneaux modernes perdent environ 0,5 %/an de performance et le standard du marché les garantit à ~80–85 % de leur capacité initiale à 25 ans — notre garantie va au-delà du standard : ≥ 84,8 % à 25 ans sur les panneaux que nous installons.
 
 ---
 

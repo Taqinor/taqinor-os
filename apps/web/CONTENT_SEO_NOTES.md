@@ -368,8 +368,11 @@ BT).** Don't oversize batteries for loads that could simply run at midday.
   Volatile (fuel, tariffs, prices) = date-stamped 2026-06-21 + a refresh-cadence note per block above.
 - **Strongest, publish-now data:** per-city optimal tilt + national PVOUT band, sizing rules, EV
   kWh/100 km and panels-per-EV, the cost-per-100 km *ordering*, LFP-vs-lead-vs-NMC ranking, the 82-21
-  regimes + 20 % cap + net-billing fact + the locked penalty bands, panel degradation (~0,5 %/yr,
-  ~80–85 % at 25 yr — Taqinor's own warranty goes further, ≥ 84,8 % at 25 yr, see §5).
+  regimes + 20 % cap + net-billing fact + the locked penalty bands, panel degradation (industry
+  standard ~0,5 %/yr → ~80–85 % at 25 yr; **Taqinor's own product warranty goes further: ≥ 84,8 % at
+  25 yr** — see `GarantiesTeaser.astro` / the guarantees page; frame content as "our warranty exceeds
+  the standard (80–85 %): ≥ 84,8 %", never state the generic 80–85 % alone as if it were a downgrade
+  of our figure — W301 fix, 2026-07-03).
 - **W300 correction (2026-07-03):** the 0,18–0,21 DH/kWh buyback/rachat figure is ANRE Décision 04/26's
   **MT/HT** rate. It was being stated across the guides/blog as if it applied to the **BT (<11 kW
   residential déclaration)** case too — that case's surplus tariff is **not yet published**. Every
