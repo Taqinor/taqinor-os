@@ -91,6 +91,16 @@ const STATIC_TRANSLATED: readonly string[] = [
 ];
 
 /**
+ * W348 — lead magnet WhatsApp-first « 10 questions avant de signer » :
+ * FR + AR seulement (pas de mirroir EN livré par cette tâche). Déclaré à part
+ * de STATIC_TRANSLATED (qui force ALL_LOCALES) pour ne jamais annoncer un
+ * hreflang EN vers une route qui n'existe pas.
+ */
+const PARTIAL_TRANSLATED: Record<string, readonly Locale[]> = {
+  '/ressources/10-questions-avant-de-signer': ['fr', 'ar'],
+};
+
+/**
  * WJ36 — chemin RACINE du parcours devis « Mon toit » : la cible canonique de
  * TOUS les CTA devis/étude du site (en-tête, héros, CtaBand, CTA collant,
  * CTA en page). WJ38 (localisation EN/AR) est LIVRÉ : les routes
@@ -105,6 +115,7 @@ const TRANSLATED: Record<string, readonly Locale[]> = Object.fromEntries([
   ...STATIC_TRANSLATED.map((p) => [p, ALL_LOCALES] as const),
   ...CITIES.map((c) => [`/installation-solaire-${c.slug}`, ALL_LOCALES] as const),
   ...REALISATIONS.map((r) => [`/realisations/${r.slug}`, ALL_LOCALES] as const),
+  ...Object.entries(PARTIAL_TRANSLATED),
 ]);
 
 /** Tous les chemins racine déclarés traduits (pour les gardes de tests). */
