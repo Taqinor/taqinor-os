@@ -2042,3 +2042,182 @@ def marquer_piece_fournie(piece, *, ged_document_id=None, date_expiration=None,
         new_value=piece.statut,
         message=f'Pièce « {piece.libelle} » fournie.', auteur=auteur)
     return piece
+
+
+# ---------------------------------------------------------------------------
+# XCTR5 — Journal des cycles de facturation récurrente + file d'exceptions
+# ---------------------------------------------------------------------------
+
+
+class RejeuError(Exception):
+    """Levée quand une entrée du journal de facturation ne peut pas être rejouée.
+
+    Ex. : l'entrée n'est pas en ``echec`` (déjà générée/sautée), ou la période
+    est déjà facturée avec succès par une AUTRE entrée (garde anti double-
+    facturation — jamais deux factures pour la même période contrat).
+    """
+
+
+def _cycle_deja_genere(company, source_type, source_id, periode):
+    """``True`` si un cycle ``genere`` existe déjà pour ce triplet — XCTR5.
+
+    Garde anti double-facturation : sert de filet de sécurité applicatif
+    derrière la garde native ``LigneEcheance.facture_id`` (CONTRAT31) — jamais
+    deux factures pour la même période d'un même contrat.
+    """
+    from .models import CycleFacturationLog
+
+    return CycleFacturationLog.objects.filter(
+        company=company, source_type=source_type, source_id=source_id,
+        periode=periode, statut=CycleFacturationLog.Statut.GENERE,
+    ).exists()
+
+
+@transaction.atomic
+def enregistrer_cycle(company, *, source_type, source_id, periode,
+                      statut, motif='', facture_id=None):
+    """Écrit UNE ligne du journal de facturation récurrente — XCTR5.
+
+    Appelée par les services de facturation récurrente (``facturer_ligne_echeance``
+    ici, ``sav.services`` pour ``ContratMaintenance``) APRÈS chaque tentative
+    (succès, échec ou saut). ``company`` est TOUJOURS posée côté serveur par
+    l'appelant (jamais lue du corps de requête).
+
+    GARDE ANTI DOUBLE-FACTURATION : si ``statut='genere'`` et qu'un cycle
+    ``genere`` existe déjà pour ``(source_type, source_id, periode)``,
+    ``RejeuError`` est levée sans rien écrire — jamais deux factures pour la
+    même période contrat.
+
+    Renvoie le ``CycleFacturationLog`` créé.
+    """
+    from .models import CycleFacturationLog
+
+    if statut == CycleFacturationLog.Statut.GENERE and _cycle_deja_genere(
+            company, source_type, source_id, periode):
+        raise RejeuError(
+            "Cette période a déjà été facturée avec succès — refus de "
+            "double-facturation.")
+
+    return CycleFacturationLog.objects.create(
+        company=company,
+        source_type=source_type,
+        source_id=source_id,
+        periode=periode,
+        statut=statut,
+        motif=motif or '',
+        facture_id=facture_id,
+    )
+
+
+def facturer_ligne_echeance_journalisee(ligne, *, user=None,
+                                        taux_tva=Decimal('20'),
+                                        periode=None):
+    """Facture une échéance (CONTRAT31) ET journalise le résultat — XCTR5.
+
+    Enveloppe ``facturer_ligne_echeance`` : sur succès, écrit un
+    ``CycleFacturationLog`` ``genere`` (facture liée) ; sur ``FacturationError``,
+    écrit un ``echec`` avec le motif et RE-LÈVE l'exception (le comportement de
+    l'appelant est inchangé — seul le journal est un effet de bord additif).
+
+    ``periode`` par défaut = ``date_echeance`` ISO de la ligne (une échéance
+    datée EST sa propre période). Renvoie la ``Facture`` créée (comme
+    ``facturer_ligne_echeance``).
+    """
+    from .models import CycleFacturationLog
+
+    contrat = ligne.echeancier.contrat
+    company = ligne.echeancier.company
+    if periode is None:
+        periode = ligne.date_echeance.isoformat()
+
+    try:
+        facture = facturer_ligne_echeance(ligne, user=user, taux_tva=taux_tva)
+    except FacturationError as exc:
+        enregistrer_cycle(
+            company, source_type=CycleFacturationLog.SourceType.CONTRAT,
+            source_id=contrat.id, periode=periode,
+            statut=CycleFacturationLog.Statut.ECHEC, motif=str(exc))
+        raise
+
+    enregistrer_cycle(
+        company, source_type=CycleFacturationLog.SourceType.CONTRAT,
+        source_id=contrat.id, periode=periode,
+        statut=CycleFacturationLog.Statut.GENERE, facture_id=facture.id)
+    return facture
+
+
+@transaction.atomic
+def rejouer_cycle(log, *, user=None, taux_tva=Decimal('20')):
+    """Rejoue UN échec du journal de facturation — XCTR5.
+
+    Ne re-tente qu'une entrée ``echec`` (``RejeuError`` sinon). Pour une source
+    ``contrat`` (échéancier CONTRAT31), retrouve la ``LigneEcheance`` NON encore
+    facturée de la période et relance ``facturer_ligne_echeance_journalisee`` :
+    - succès → la ligne obtient sa facture, une NOUVELLE entrée ``genere`` est
+      journalisée, et CETTE entrée ``echec`` est marquée rejouée (incrémente
+      ``nb_tentatives``, ne change pas son ``statut`` — l'historique reste
+      fidèle) ;
+    - la garde anti double-facturation (``enregistrer_cycle``) empêche tout
+      second succès pour la même période — un échec ne se rejoue donc EXACTEMENT
+      qu'une fois avec succès.
+
+    Lève ``RejeuError`` si l'entrée n'est pas ``echec``, ou si aucune échéance
+    facturable n'est retrouvable pour la période (source disparue/déjà réglée
+    autrement).
+    """
+    from .models import CycleFacturationLog, LigneEcheance
+
+    if log.statut != CycleFacturationLog.Statut.ECHEC:
+        raise RejeuError("Seule une entrée en échec peut être rejouée.")
+
+    if log.source_type != CycleFacturationLog.SourceType.CONTRAT:
+        raise RejeuError(
+            "Le rejeu automatique n'est disponible que pour les échéanciers "
+            "de contrats (sav.ContratMaintenance se rejoue via son propre "
+            "service `facturer`).")
+
+    ligne = (
+        LigneEcheance.objects
+        .filter(
+            company=log.company,
+            echeancier__contrat_id=log.source_id,
+            date_echeance=log.periode if _est_iso_date(log.periode) else None,
+            facture_id__isnull=True,
+        )
+        .exclude(statut=LigneEcheance.Statut.ANNULEE)
+        .order_by('id')
+        .first()
+    )
+    if ligne is None:
+        raise RejeuError(
+            "Aucune échéance non facturée n'a été retrouvée pour cette "
+            "période — rien à rejouer.")
+
+    facture = facturer_ligne_echeance_journalisee(
+        ligne, user=user, taux_tva=taux_tva, periode=log.periode)
+
+    log.nb_tentatives = (log.nb_tentatives or 1) + 1
+    log.save(update_fields=['nb_tentatives'])
+
+    return facture
+
+
+def _est_iso_date(valeur):
+    """``True`` si ``valeur`` ressemble à une date ISO (``AAAA-MM-JJ``)."""
+    import re
+
+    return bool(re.match(r'^\d{4}-\d{2}-\d{2}$', valeur or ''))
+
+
+def exceptions_facturation(company):
+    """Cycles ``echec`` en file d'exceptions (QuerySet scopé société) — XCTR5.
+
+    Lecture seule : alimente la carte « Exceptions de facturation » du tableau
+    de bord contrats. Ordonné par date de création décroissante (les plus
+    récentes d'abord).
+    """
+    from .models import CycleFacturationLog
+
+    return CycleFacturationLog.objects.filter(
+        company=company, statut=CycleFacturationLog.Statut.ECHEC,
+    ).order_by('-date_creation', '-id')

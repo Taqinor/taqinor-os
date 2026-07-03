@@ -575,7 +575,21 @@ def tableau_de_bord_contrats(company, within_days=30, today=None):
         'valeur_active': valeur_active,
         'valeur_totale': valeur_totale,
         'mrr': mrr_contrats(company),
+        'exceptions_facturation': exceptions_facturation_count(company),
     }
+
+
+def exceptions_facturation_count(company):
+    """Nombre de cycles de facturation en échec — carte du tableau de bord (XCTR5).
+
+    Lecture seule, scopée société. Alimente la carte « Exceptions de
+    facturation » sans dupliquer la liste (voir ``services.exceptions_facturation``
+    pour le détail des entrées).
+    """
+    from .models import CycleFacturationLog
+
+    return CycleFacturationLog.objects.filter(
+        company=company, statut=CycleFacturationLog.Statut.ECHEC).count()
 
 
 # ---------------------------------------------------------------------------

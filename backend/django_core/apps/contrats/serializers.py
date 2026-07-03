@@ -15,6 +15,7 @@ from .models import (
     Contrat,
     ContratActivity,
     ContratLien,
+    CycleFacturationLog,
     EcheancierContrat,
     EngagementSLA,
     EtapeApprobation,
@@ -1135,3 +1136,26 @@ class MarquerPieceFournieSerializer(serializers.Serializer):
     ged_document_id = serializers.IntegerField(
         required=False, allow_null=True, min_value=1)
     date_expiration = serializers.DateField(required=False, allow_null=True)
+
+
+class CycleFacturationLogSerializer(serializers.ModelSerializer):
+    """Entrée du journal de facturation récurrente — XCTR5.
+
+    TOUS les champs sont en LECTURE SEULE côté API : les entrées sont créées
+    exclusivement côté serveur par les services de facturation récurrente
+    (``services.enregistrer_cycle``). ``company`` n'est jamais lue du corps de
+    requête.
+    """
+    source_type_display = serializers.CharField(
+        source='get_source_type_display', read_only=True)
+    statut_display = serializers.CharField(
+        source='get_statut_display', read_only=True)
+
+    class Meta:
+        model = CycleFacturationLog
+        fields = [
+            'id', 'source_type', 'source_type_display', 'source_id',
+            'periode', 'statut', 'statut_display', 'motif', 'facture_id',
+            'nb_tentatives', 'date_creation',
+        ]
+        read_only_fields = fields

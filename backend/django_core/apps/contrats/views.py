@@ -39,6 +39,7 @@ from .models import (
     ClauseContrat,
     Contrat,
     ContratLien,
+    CycleFacturationLog,
     EcheancierContrat,
     EngagementSLA,
     IndexationPrix,
@@ -66,6 +67,7 @@ from .serializers import (
     ContratLienSerializer,
     ContratSerializer,
     CreerAvenantSerializer,
+    CycleFacturationLogSerializer,
     CreerVersionSerializer,
     DeciderEtapeSerializer,
     EcheancierContratSerializer,
@@ -1531,10 +1533,13 @@ class LigneEcheanceViewSet(TenantMixin, viewsets.ReadOnlyModelViewSet):
         sur l'échéancier, si l'échéance est déjà facturée/annulée, si le montant
         est nul, ou si le client est introuvable. Le ``Contrat.statut`` n'est
         JAMAIS modifié. L'utilisateur et la société sont posés CÔTÉ SERVEUR.
+
+        Chaque tentative (succès/échec) est journalisée dans le journal de
+        facturation récurrente (XCTR5 — ``services.enregistrer_cycle``).
         """
         ligne = self.get_object()
         try:
-            facture = services.facturer_ligne_echeance(
+            facture = services.facturer_ligne_echeance_journalisee(
                 ligne, user=request.user)
         except services.FacturationError as exc:
             return Response(
@@ -1699,3 +1704,70 @@ class PieceConformiteViewSet(_ContratsBaseViewSet):
         return Response(
             PieceConformiteSerializer(
                 piece, context={'request': request}).data)
+
+
+class CycleFacturationLogViewSet(TenantMixin, viewsets.ReadOnlyModelViewSet):
+    """Journal des cycles de facturation récurrente + file d'exceptions — XCTR5.
+
+    LECTURE SEULE : les entrées sont écrites exclusivement côté serveur par les
+    services de facturation récurrente (``services.enregistrer_cycle``). Action
+    ``rejouer`` : re-tente UN échec (garde anti double-facturation — jamais
+    deux factures pour la même période contrat). Scopé société (``TenantMixin``).
+
+    Filtres : ``?statut=<valeur>``, ``?source_type=<valeur>``.
+    """
+    permission_classes = [IsResponsableOrAdmin]
+    queryset = CycleFacturationLog.objects.all()
+    serializer_class = CycleFacturationLogSerializer
+    filter_backends = [filters.OrderingFilter]
+    ordering_fields = ['date_creation', 'id']
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        statut = self.request.query_params.get('statut')
+        if statut:
+            qs = qs.filter(statut=statut)
+        source_type = self.request.query_params.get('source_type')
+        if source_type:
+            qs = qs.filter(source_type=source_type)
+        return qs
+
+    @action(detail=False, methods=['get'])
+    def exceptions(self, request):
+        """Liste des cycles en échec (file d'exceptions) — XCTR5.
+
+        Raccourci en lecture seule de ``?statut=echec`` pour la carte du
+        tableau de bord contrats.
+        """
+        entries = services.exceptions_facturation(request.user.company)
+        page = self.paginate_queryset(entries)
+        serializer = CycleFacturationLogSerializer(
+            page if page is not None else entries, many=True,
+            context={'request': request})
+        if page is not None:
+            return self.get_paginated_response(serializer.data)
+        return Response(serializer.data)
+
+    @action(detail=True, methods=['post'])
+    def rejouer(self, request, pk=None):
+        """Rejoue UN échec de facturation (XCTR5).
+
+        Refuse (400) une entrée non-échec ou si aucune échéance facturable
+        n'est retrouvable. Succès → 201 avec la nouvelle facture. L'utilisateur
+        et la société sont posés CÔTÉ SERVEUR.
+        """
+        log = self.get_object()
+        try:
+            facture = services.rejouer_cycle(log, user=request.user)
+        except services.RejeuError as exc:
+            return Response(
+                {'detail': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+        return Response(
+            {
+                'facture_id': facture.id,
+                'facture_reference': facture.reference,
+                'log': CycleFacturationLogSerializer(
+                    log, context={'request': request}).data,
+            },
+            status=status.HTTP_201_CREATED,
+        )
