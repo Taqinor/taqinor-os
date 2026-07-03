@@ -12,6 +12,25 @@ import CtaBand from '../../components/CtaBand.astro';
 import StickyCta from '../../components/StickyCta.astro';
 import { NAP } from '../../lib/nap';
 import RelatedLinks from '../../components/RelatedLinks.astro';
+import { estimateReadingTime } from '../../lib/readingTime';
+
+// W303 — date de vérification + auteur + temps de lecture.
+const verifiedDate = new Date('2026-07-03');
+const dateFmt = new Intl.DateTimeFormat('fr-FR', { day: 'numeric', month: 'long', year: 'numeric' });
+const guideBodyText = `
+  L'onduleur est la pièce qui convertit le courant continu des panneaux en courant utilisable chez
+  vous : sans lui, rien ne fonctionne. Le débat entre hybride et réseau peut sembler technique, mais il
+  se ramène à une seule question : stockez-vous l'énergie, oui ou non ? L'hybride est l'onduleur qui
+  sait gérer une batterie. Les Deye pilotent en même temps les panneaux et le stockage. Leur intérêt
+  est double : déplacer l'énergie du jour vers le soir, et garder le courant pendant une coupure.
+  L'onduleur réseau fait une seule chose, mais très bien : envoyer la production solaire vers vos
+  appareils et le réseau, sans stockage à amortir. Les Huawei SUN2000 sont taillés pour cette
+  autoconsommation directe. Le revers est connu — pas de secours pendant une coupure. Le surplus
+  injecté sur le réseau a, de toute façon, peu de valeur face au tarif de détail. Le choix de
+  l'onduleur n'est donc pas le premier, c'est le dernier : il découle de la décision sur le stockage,
+  qui découle elle-même de votre profil de consommation et de la stabilité de votre réseau.
+`;
+const readingMinutes = estimateReadingTime(guideBodyText);
 
 const url = new URL(Astro.url.pathname, Astro.site).href;
 const jsonLd = {
@@ -41,6 +60,14 @@ const jsonLd = {
     <article class="mx-auto max-w-[68ch] px-4 pb-24 pt-12 sm:pb-28">
       <p class="tech-label v2-kicker rule-brass text-lune">Guide · Équipement</p>
       <h1 class="display v2-page-title mt-5 text-white">Onduleur hybride ou onduleur réseau ?</h1>
+
+      <!-- W303 — date de vérification + auteur + temps de lecture -->
+      <p class="guide-byline mt-3 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-lune-faint">
+        <span>Vérifié le {dateFmt.format(verifiedDate)} · par Reda Kasri</span>
+        <span aria-hidden="true">·</span>
+        <span>{readingMinutes} min de lecture</span>
+      </p>
+
       <p class="v2-lead mt-6 text-lune-soft">
         L’onduleur est la pièce qui convertit le courant continu des panneaux en courant
         utilisable chez vous : sans lui, rien ne fonctionne. Le débat entre

@@ -16,6 +16,24 @@ import CtaBand from '../../components/CtaBand.astro';
 import StickyCta from '../../components/StickyCta.astro';
 import { NAP } from '../../lib/nap';
 import RelatedLinks from '../../components/RelatedLinks.astro';
+import { estimateReadingTime } from '../../lib/readingTime';
+
+// W303 — date de vérification + auteur + temps de lecture.
+const verifiedDate = new Date('2026-07-03');
+const dateFmt = new Intl.DateTimeFormat('fr-FR', { day: 'numeric', month: 'long', year: 'numeric' });
+const guideBodyText = `
+  Depuis le 9 juin 2026, la loi 82-21 sur l'autoproduction d'énergie électrique et son décret 2-25-100
+  s'appliquent. La règle est plus simple qu'elle n'en a l'air : deux nombres — votre puissance et votre
+  niveau de raccordement — suffisent à vous ranger dans l'un des trois régimes. En dessous de 11 kW en
+  basse tension, une déclaration préalable suffit. Au-dessus du seuil de déclaration et jusqu'à 5 MW,
+  il faut décrocher un accord de raccordement auprès du gestionnaire de réseau. À partir de 5 MW, une
+  autorisation en bonne et due forme doit être obtenue avant le premier coup de pioche. La loi n'oublie
+  pas les installations posées avant elle. Son Article 33 ouvre, depuis le 9 juin 2026, une fenêtre de
+  18 mois pour les mettre en règle. Régularisée dans ce délai, une installation existante rejoint le
+  cadre légal comme une neuve. Passé la fenêtre, elle reste en situation irrégulière au regard de la
+  loi 82-21, avec les sanctions que cela suppose.
+`;
+const readingMinutes = estimateReadingTime(guideBodyText);
 
 const url = new URL(Astro.url.pathname, Astro.site).href;
 const jsonLd = {
@@ -63,6 +81,14 @@ const regimes = [
     <article class="mx-auto max-w-[68ch] px-4 pb-24 pt-12 sm:pb-28">
       <p class="tech-label v2-kicker rule-brass text-lune">Guide · Loi 82-21</p>
       <h1 class="display v2-page-title mt-5 text-white">Loi 82-21 expliquée simplement</h1>
+
+      <!-- W303 — date de vérification + auteur + temps de lecture -->
+      <p class="guide-byline mt-3 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-lune-faint">
+        <span>Vérifié le {dateFmt.format(verifiedDate)} · par Reda Kasri</span>
+        <span aria-hidden="true">·</span>
+        <span>{readingMinutes} min de lecture</span>
+      </p>
+
       <p class="v2-lead mt-6 text-lune-soft">
         Depuis le 9 juin 2026, la loi 82-21 sur l’autoproduction d’énergie électrique et son décret
         2-25-100 s’appliquent. La règle est plus simple qu’elle n’en a l’air : deux nombres — votre

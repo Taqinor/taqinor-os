@@ -12,6 +12,13 @@ import Article33Ribbon from '../../components/Article33Ribbon.astro';
 import Breadcrumb from '../../components/Breadcrumb.astro';
 import CtaBand from '../../components/CtaBand.astro';
 import StickyCta from '../../components/StickyCta.astro';
+import { estimateReadingTime } from '../../lib/readingTime';
+
+// W303 — date de vérification commune aux guides rédactionnels de ce pass (badge de
+// fraîcheur sur les cartes) + estimation de temps de lecture à partir du résumé affiché
+// (repère indicatif pour la carte ; le temps de lecture précis vit sur la page du guide).
+const verifiedDate = new Date('2026-07-03');
+const dateFmt = new Intl.DateTimeFormat('fr-FR', { day: 'numeric', month: 'long', year: 'numeric' });
 
 const groups = [
   {
@@ -21,41 +28,49 @@ const groups = [
         href: '/guides/combien-de-panneaux-pour-ma-maison',
         title: 'Combien de panneaux et quelle puissance (kWc) ?',
         summary: 'La méthode pour passer de votre facture au nombre de panneaux : kWh annuels, kWc, surface de toit. De quoi comprendre le dimensionnement avant l’étude.',
+        verified: true,
       },
       {
         href: '/guides/on-grid-off-grid-ou-hybride',
         title: 'On-grid, off-grid ou hybride ?',
         summary: 'Quel type de système pour quel besoin — et pourquoi un système raccordé au réseau se coupe pendant une panne (anti-îlotage), sauf à passer en hybride avec batterie.',
+        verified: true,
       },
       {
         href: '/guides/orientation-inclinaison-ombrage',
         title: 'Orientation, inclinaison et ombrage',
         summary: 'Plein sud, est-ouest, angle d’inclinaison et impact disproportionné de l’ombre sur un toit marocain : comment tirer le maximum de production.',
+        verified: true,
       },
       {
         href: '/guides/entretien-et-duree-de-vie-des-panneaux',
         title: 'Entretien et durée de vie des panneaux',
         summary: 'Poussière et sable au Maroc, nettoyage, chaleur, dégradation : combien de temps durent vraiment des panneaux et comment préserver leur production.',
+        verified: true,
       },
       {
         href: '/guides/monocristallin-ou-polycristallin',
         title: 'Monocristallin ou polycristallin ? String ou micro-onduleurs ?',
         summary: 'Le choix du matériel sans jargon : type de panneau et type d’onduleur, et ce que chacun change concrètement sur une toiture.',
+        verified: true,
       },
       {
         href: '/guides/loi-82-21-expliquee',
         title: 'Loi 82-21 expliquée simplement',
         summary: 'Déclaration, accord de raccordement ou autorisation : les trois régimes de l’autoproduction démêlés, avec le seuil de 11 kW qui range presque toutes les villas du bon côté.',
+        verified: true,
       },
       {
         href: '/guides/onduleur-hybride-ou-reseau',
         title: 'Onduleur hybride ou onduleur réseau ?',
         summary: 'Deye hybride ou Huawei SUN2000 réseau : tout le choix se résume à une question — stockez-vous l’énergie, oui ou non ?',
+        verified: true,
       },
       {
         href: '/guides/mon-toit-peut-il-supporter-des-panneaux',
         title: 'Mon toit peut-il supporter des panneaux ?',
         summary: 'Le poids réel d’un panneau solaire au m², toiture par toiture (dalle béton, tuile, tôle ondulée, toit plat), et quand une vérification structurelle s’impose.',
+        verified: true,
       },
     ],
   },
@@ -66,21 +81,25 @@ const groups = [
         href: '/guides/faut-il-des-batteries',
         title: 'Faut-il des batteries ?',
         summary: 'Souvent non. Tout dépend de l’heure à laquelle vous consommez : on vous montre quand le stockage paie, et quand il ne fait qu’alourdir la facture.',
+        verified: true,
       },
       {
         href: '/guides/batterie-lithium-ou-gel',
         title: 'Lithium LiFePO4 (LFP) vs GEL/plomb (et NMC)',
         summary: 'Pourquoi le LFP s’impose au Maroc : durée de vie, profondeur de décharge, rendement, tenue à la chaleur et sécurité face au NMC.',
+        verified: true,
       },
       {
         href: '/guides/quelle-taille-de-batterie',
         title: 'Quelle taille de batterie (kWh) ? Stocker ou revendre ?',
         summary: 'Les paliers de dimensionnement, le kWh utile vs nominal, et pourquoi au Maroc stocker pour le soir rapporte bien plus qu’exporter son surplus.',
+        verified: true,
       },
       {
         href: '/guides/electricite-pendant-les-coupures',
         title: 'Garder l’électricité pendant les coupures',
         summary: 'Secours ≠ off-grid : sorties EPS, onduleur hybride et batterie, et pourquoi un système réseau standard s’éteint pendant une panne.',
+        verified: true,
       },
     ],
   },
@@ -91,6 +110,7 @@ const groups = [
         href: '/recharge-voiture-electrique-solaire',
         title: 'Recharger sa voiture électrique au solaire',
         summary: 'Combien de panneaux pour vos kilomètres, 7/11/22 kW et mono vs triphasé, recharge sur le surplus solaire : le guide complet de la recharge VE au Maroc.',
+        verified: false,
       },
     ],
   },
@@ -140,6 +160,14 @@ const jsonLd = {
                 <a href={g.href} class="v2-rise cine-card guide-card flex flex-col p-7" style={`--v2-i:${i}`}>
                   <p class="tech-label text-lune">{group.theme === 'Voiture électrique' ? 'Pilier' : 'Guide'}</p>
                   <h3 class="display mt-2 text-xl text-white">{g.title}</h3>
+                  {/* W303 — badge de fraîcheur + temps de lecture indicatif (estimé sur le résumé affiché) */}
+                  {g.verified && (
+                    <p class="guide-freshness mt-2 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-lune-faint">
+                      <span>Vérifié le {dateFmt.format(verifiedDate)}</span>
+                      <span aria-hidden="true">·</span>
+                      <span>{estimateReadingTime(g.summary)} min</span>
+                    </p>
+                  )}
                   <p class="mt-3 flex-1 text-sm leading-relaxed text-lune-soft">{g.summary}</p>
                   <span class="mt-5 inline-block border-b-2 border-azur-200/60 pb-0.5 text-sm font-bold text-white">Lire le guide →</span>
                 </a>

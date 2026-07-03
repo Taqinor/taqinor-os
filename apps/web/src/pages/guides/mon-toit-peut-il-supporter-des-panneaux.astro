@@ -18,6 +18,25 @@ import CtaBand from '../../components/CtaBand.astro';
 import StickyCta from '../../components/StickyCta.astro';
 import { NAP } from '../../lib/nap';
 import RelatedLinks from '../../components/RelatedLinks.astro';
+import { estimateReadingTime } from '../../lib/readingTime';
+
+// W303 — date de vérification + auteur + temps de lecture.
+const verifiedDate = new Date('2026-07-03');
+const dateFmt = new Intl.DateTimeFormat('fr-FR', { day: 'numeric', month: 'long', year: 'numeric' });
+const guideBodyText = `
+  C'est l'objection qui revient juste après le prix : et si mon toit ne tient pas le poids ? Un panneau
+  photovoltaïque haute puissance actuel pèse d'après sa fiche technique constructeur environ 35 kg pour
+  une surface d'environ 1,7 à 1,9 m², soit un ordre de grandeur d'environ 18 à 21 kg/m² pour le module
+  seul. Structure comprise, une installation en surimposition reste en général de l'ordre de 20 à 25
+  kg/m² répartis sur l'ensemble de la surface couverte. La très grande majorité des toitures
+  résidentielles marocaines sont des dalles béton pleines, conçues pour porter bien plus qu'un poids de
+  circulation piétonne. Les tuiles ne portent pas elles-mêmes le poids des panneaux : la fixation se
+  fait sur la charpente. La tôle ondulée seule ne supporte pas le poids d'un panneau : un avis
+  structurel est la règle plutôt que l'exception. Certains signaux appellent un avis d'un professionnel
+  avant toute pose : fissures visibles, affaissement de la charpente, toiture ancienne, surcharge
+  existante non prévue à l'origine.
+`;
+const readingMinutes = estimateReadingTime(guideBodyText);
 
 const url = new URL(Astro.url.pathname, Astro.site).href;
 const jsonLd = {
@@ -66,6 +85,14 @@ const toitures = [
     <article class="mx-auto max-w-[68ch] px-4 pb-24 pt-12 sm:pb-28">
       <p class="tech-label v2-kicker rule-brass text-lune">Guide · Structure</p>
       <h1 class="display v2-page-title mt-5 text-white">Mon toit peut-il supporter des panneaux ?</h1>
+
+      <!-- W303 — date de vérification + auteur + temps de lecture -->
+      <p class="guide-byline mt-3 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-lune-faint">
+        <span>Vérifié le {dateFmt.format(verifiedDate)} · par Reda Kasri</span>
+        <span aria-hidden="true">·</span>
+        <span>{readingMinutes} min de lecture</span>
+      </p>
+
       <p class="v2-lead mt-6 text-lune-soft">
         C’est l’objection qui revient juste après le prix : « et si mon toit ne tient pas le poids ? ».
         La bonne nouvelle, c’est qu’un panneau solaire est nettement plus léger qu’on ne l’imagine — le
