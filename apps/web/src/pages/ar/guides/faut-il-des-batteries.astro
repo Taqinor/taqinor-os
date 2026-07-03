@@ -15,6 +15,10 @@ import StickyCta from '../../../components/StickyCta.astro';
 import { NAP } from '../../../lib/nap';
 import { getLocaleFromPath } from '../../../i18n/utils';
 import { localizeNavHref } from '../../../i18n/pages';
+// W310 — يعيد كتلتَي KeyFigure و Callout الموجودتين في النسخة الفرنسية
+// (إحصائية 6000 دورة + نصيحة «الانعكاس الصحيح») واللتين سقطتا صامتتين من هذه المرآة.
+import Callout from '../../../components/Callout.astro';
+import KeyFigure from '../../../components/KeyFigure.astro';
 
 const locale = getLocaleFromPath(Astro.url.pathname);
 const L = (href: string) => localizeNavHref(href, locale);
@@ -97,6 +101,15 @@ const jsonLd = {
         سعتها — عمرٌ يكفي لاسترجاع كلفة تخزين <em>مضبوط</em> الحجم، لا لتربيح مجموعة مُبالَغ في
         حجمها «احتياطاً».
       </p>
+
+      <KeyFigure value="6 000" unit="دورة" label="عمر بطارية LFP">
+        مضمونة 10 سنوات عند 70 % من السعة — يكفي لاسترجاع كلفة تخزين مضبوط الحجم.
+      </KeyFigure>
+
+      <Callout type="tip" title="الانعكاس الصحيح">
+        قبل إضافة بطارية، اسأل نفسك: في أي ساعة تستهلك أكثر؟ إن كان ذلك نهاراً،
+        فالاستهلاك الذاتي المباشر يسترجع كلفته أسرع — دون أي تخزين.
+      </Callout>
 
       <h2 class="display v2-section-title mt-12 text-white">ما يقوله منحنى استهلاكك</h2>
       <p class="v2-lead mt-5 text-lune-soft">
