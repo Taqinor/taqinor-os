@@ -1,8 +1,8 @@
 ---
 /**
  * EN — Residential solar (W67). Faithful translation of /résidentiel ; EVERY
- * figure kept EXACT in Latin digits (11,36 kWc, 14 271 kWh/an, 60–90 %, 3–7 ans,
- * 25 ans, < 11 kW, 1 000 / 2 000 / 10 000 MAD, ref. 400/236/468/NC-10/25,
+ * figure kept EXACT in Latin digits (11,36 kWc, 14 271 kWh/an, 60–90 %, 3–7 years,
+ * 25 years, < 11 kW, 1 000 / 2 000 / 10 000 MAD, ref. 400/236/468/NC-10/25,
  * Canadian Solar 710 Wc, Deye, Dyness LFP, Deye Cloud, ONEE, law 82-21). The
  * price-bracket data + solar math (BILL_RANGES / localEstimateBand / formatMAD)
  * are reused UNCHANGED — only visible labels are translated. Internal links via
@@ -186,11 +186,11 @@ const brackets = BILL_RANGES.filter((r) => r.qualifies && r.id !== 'gt10000').ma
           </p>
           <dl class="mt-10 grid grid-cols-3 gap-4 border-l-2 border-brass-400/60 pl-6" data-stagger>
             <div class="v2-rise" style="--v2-i:0">
-              <dd class="fig lum whitespace-nowrap text-2xl sm:text-4xl" data-tally>25 ans</dd>
+              <dd class="fig lum whitespace-nowrap text-2xl sm:text-4xl" data-tally>25 years</dd>
               <dt class="tech-label mt-1.5 text-lune-faint">Panel warranty</dt>
             </div>
             <div class="v2-rise" style="--v2-i:1">
-              <dd class="fig lum whitespace-nowrap text-2xl sm:text-4xl" data-tally>3–7 ans</dd>
+              <dd class="fig lum whitespace-nowrap text-2xl sm:text-4xl" data-tally>3–7 years</dd>
               <dt class="tech-label mt-1.5 text-lune-faint">Typical payback</dt>
             </div>
             <div class="v2-rise" style="--v2-i:2">
@@ -244,7 +244,12 @@ const brackets = BILL_RANGES.filter((r) => r.qualifies && r.id !== 'gt10000').ma
     <!-- FINAL ACT — the clean room -->
     <DiagnosticForm heading="Your assessment in 60 seconds" />
 
-    <CtaBand href="/devis/mon-toit" seam={false} />
+    <CtaBand
+      title="A question before you commit? Talk to a human."
+      buttonLabel="WhatsApp direct with an advisor"
+      href={waDirect}
+      seam={false}
+    />
 
     <StickyCta />
   </div>

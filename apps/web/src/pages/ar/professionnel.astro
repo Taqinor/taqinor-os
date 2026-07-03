@@ -1,7 +1,7 @@
 ---
 /**
  * AR — Business & industrial solar (W67, RTL). Faithful Arabic translation of
- * /professionnel ; EVERY figure kept EXACT in Latin digits (3–5 ans, +20 ans,
+ * /professionnel ; EVERY figure kept EXACT in Latin digits (3–5 years, +20 years,
  * 5 MW, 17,04 kWc, 21 406 kWh/an, 3,72 kWc, ref. 468, Canadian Solar 710 Wc,
  * Deye 15 kW, law 82-21). Price-bracket data + solar math (localEstimateBand /
  * formatMAD) reused UNCHANGED — only visible labels translated. Internal links
@@ -112,11 +112,11 @@ const proBrackets = (['5000-10000', 'gt10000'] as const).map((id) => {
         {/* أرقام الغطاء — .lum يحمل الذهب (انضباط النحاس) */}
         <dl class="cine-in cine-in-4 mt-10 grid max-w-2xl grid-cols-3 gap-3 border-t border-white/20 pt-6 sm:gap-6">
           <div>
-            <dd class="fig lum text-base sm:text-4xl" data-tally>3–5 ans</dd>
+            <dd class="fig lum text-base sm:text-4xl" data-tally>3–5 سنوات</dd>
             <dt class="tech-label mt-2 text-lune">التسديد</dt>
           </div>
           <div>
-            <dd class="fig lum text-base sm:text-4xl" data-tally>+20 ans</dd>
+            <dd class="fig lum text-base sm:text-4xl" data-tally>+20 سنة</dd>
             <dt class="tech-label mt-2 text-lune">من الإنتاج</dt>
           </div>
           <div>
@@ -252,7 +252,12 @@ const proBrackets = (['5000-10000', 'gt10000'] as const).map((id) => {
     <!-- الفصل الأخير — الغرفة البيضاء -->
     <DiagnosticForm heading="تشخيص لموقعك المهني" />
 
-    <CtaBand title="منحنيات حمولتك تستحق دراسة جادّة." href="/devis/mon-toit" seam={false} />
+    <CtaBand
+      title="سؤال حول موقعك قبل أن تلتزم؟ تحدّث مع إنسان."
+      buttonLabel="واتساب مباشر مع مستشار"
+      href={waDirect}
+      seam={false}
+    />
 
     <StickyCta />
   </div>
