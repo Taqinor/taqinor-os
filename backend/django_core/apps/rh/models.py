@@ -256,6 +256,87 @@ class DossierEmploye(models.Model):
         return f'{self.matricule} — {self.nom} {self.prenom}'
 
 
+class DossierActivity(models.Model):
+    """Chatter / journal d'un dossier employé (audit du parcours) — XRH6.
+
+    Historique « chatter » à la Odoo d'un ``DossierEmploye``, modèle maison
+    aligné sur ``contrats.ContratActivity`` / ``crm.LeadActivity``. Deux
+    familles d'entrées :
+
+      - automatiques (``type=log``) : audit des champs suivis (poste_ref,
+        departement, statut, type_contrat, dates de contrat, manager si
+        ajouté un jour) — champ touché (``field``) et son ancien → nouveau
+        état (``old_value`` → ``new_value``), écrites CÔTÉ SERVEUR au niveau
+        de l'API, jamais par le navigateur ;
+      - manuelles (``type=note``) : notes libres via
+        ``employes/{id}/noter``.
+
+    La piste d'audit exigée pour l'inspection du travail : ``Remuneration``
+    seule était historisée jusqu'ici (une nouvelle ligne par changement) — ce
+    modèle couvre le RESTE du dossier (poste, statut, contrat…).
+
+    Multi-tenant : ``company`` est posée côté serveur. ``employe`` est une
+    référence interne à l'app ``rh`` (foundation du domaine), FK dur autorisé ;
+    ``auteur`` pointe vers ``AUTH_USER_MODEL`` (app foundation), FK autorisé et
+    nullable (un changement automatisé sans utilisateur reste journalisable).
+
+    RUNTIME-SAFETY (leçon FG136) : les instantanés ``old_value``/``new_value``
+    peuvent être longs — ils sont en ``TextField`` pour ne JAMAIS dépasser une
+    longueur maximale et lever en base.
+    """
+
+    class Kind(models.TextChoices):
+        LOG = 'log', 'Transition'
+        NOTE = 'note', 'Note'
+
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='rh_dossier_activites',
+        verbose_name='Société',
+    )
+    employe = models.ForeignKey(
+        'DossierEmploye',
+        on_delete=models.CASCADE,
+        related_name='activites',
+        verbose_name='Employé',
+    )
+    type = models.CharField(
+        max_length=10, choices=Kind.choices, verbose_name='Type')
+    # Champ concerné par une transition automatique (ex. ``poste_ref``,
+    # ``departement``, ``statut``, ``type_contrat``). Vide pour une note.
+    field = models.CharField(
+        max_length=100, blank=True, default='', verbose_name='Champ')
+    old_value = models.TextField(
+        blank=True, default='', verbose_name='Ancienne valeur')
+    new_value = models.TextField(
+        blank=True, default='', verbose_name='Nouvelle valeur')
+    message = models.TextField(
+        blank=True, default='', verbose_name='Message')
+    auteur = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='rh_dossier_activites',
+        verbose_name='Auteur',
+    )
+    date_creation = models.DateTimeField(
+        auto_now_add=True, verbose_name='Créé le')
+
+    class Meta:
+        verbose_name = 'Activité dossier employé'
+        verbose_name_plural = 'Activités dossier employé'
+        ordering = ['-date_creation', '-id']
+        indexes = [
+            models.Index(
+                fields=['employe', '-date_creation'],
+                name='rh_dossier_act_emp_date_idx'),
+        ]
+
+    def __str__(self):
+        return f'{self.employe_id} {self.type}'.strip()
+
+
 class Remuneration(models.Model):
     """Rémunération de base d'un employé (FG157) — donnée paie SENSIBLE.
 

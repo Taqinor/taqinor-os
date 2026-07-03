@@ -24,6 +24,7 @@ from .models import (
     DemandeConge,
     Departement,
     DocumentEmploye,
+    DossierActivity,
     DossierEmploye,
     DotationEpi,
     ElementIntegration,
@@ -118,6 +119,21 @@ class DossierEmployeSerializer(serializers.ModelSerializer):
 
     def validate_poste_ref(self, value):
         return _meme_societe(self, value, 'Poste')
+
+
+class DossierActivitySerializer(serializers.ModelSerializer):
+    """Entrée de chatter d'un dossier employé (XRH6) — lecture seule (écrite
+    uniquement côté serveur par la vue)."""
+    auteur_username = serializers.CharField(
+        source='auteur.username', read_only=True, default='')
+
+    class Meta:
+        model = DossierActivity
+        fields = [
+            'id', 'employe', 'type', 'field', 'old_value', 'new_value',
+            'message', 'auteur', 'auteur_username', 'date_creation',
+        ]
+        read_only_fields = fields
 
 
 class RemunerationSerializer(serializers.ModelSerializer):

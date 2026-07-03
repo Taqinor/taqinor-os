@@ -23,7 +23,7 @@ from authentication.permissions import (
     IsResponsableOrAdmin,
 )
 
-from . import selectors, services
+from . import activity, selectors, services
 from .models import (
     AccidentTravail,
     AffectationRoster,
@@ -91,6 +91,7 @@ from .serializers import (
     DemandeCongeSerializer,
     DepartementSerializer,
     DocumentEmployeSerializer,
+    DossierActivitySerializer,
     DossierEmployeSerializer,
     DotationEpiSerializer,
     ElementIntegrationEmployeSerializer,
@@ -162,6 +163,35 @@ class DossierEmployeViewSet(_RhBaseViewSet):
     filter_backends = [filters.SearchFilter, filters.OrderingFilter]
     search_fields = ['matricule', 'nom', 'prenom', 'cin', 'email']
     ordering_fields = ['nom', 'prenom', 'matricule', 'date_embauche']
+
+    def perform_update(self, serializer):
+        # XRH6 — journalise automatiquement les champs suivis (chatter) en
+        # comparant l'instance AVANT à celle APRÈS sauvegarde.
+        import copy
+        old = copy.copy(serializer.instance)
+        new_dossier = serializer.save()
+        activity.log_changes(old, new_dossier, self.request.user)
+
+    @action(detail=True, methods=['get'], url_path='historique')
+    def historique(self, request, pk=None):
+        """Timeline chatter du dossier (auto + notes), récent d'abord (XRH6)."""
+        employe = self.get_object()
+        return Response(
+            DossierActivitySerializer(
+                employe.activites.all(), many=True).data)
+
+    @action(detail=True, methods=['post'])
+    def noter(self, request, pk=None):
+        """Note manuelle sur le chatter du dossier — auteur pris de la
+        requête (XRH6)."""
+        employe = self.get_object()
+        message = (request.data.get('message') or '').strip()
+        if not message:
+            return Response({'message': 'Note vide.'},
+                            status=status.HTTP_400_BAD_REQUEST)
+        act = activity.log_note(employe, request.user, message)
+        return Response(DossierActivitySerializer(act).data,
+                        status=status.HTTP_201_CREATED)
 
     @action(detail=False, methods=['get'], url_path='cdd-a-echeance')
     def cdd_a_echeance(self, request):
