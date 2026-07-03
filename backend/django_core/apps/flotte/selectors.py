@@ -27,6 +27,7 @@ from .models import (
     Infraction,
     OrdreReparation,
     ParametreAmortissementCGI,
+    ParametreRemplacementFlotte,
     PieceFlotte,
     PlanEntretien,
     Pneumatique,
@@ -2448,3 +2449,130 @@ def date_mise_circulation_vehicule(vehicule):
     if carte is None:
         return None
     return carte.date_mise_circulation
+
+
+# ── XFLT15 — Analyse de remplacement (fin de vie économique) ───────────────────
+
+def _cout_reparations_12_mois(company, actif_flotte_id, today):
+    """XFLT15 — Somme des ``OrdreReparation.cout_total`` des 12 derniers mois
+    glissants pour un actif. Lecture seule."""
+    depuis = today - datetime.timedelta(days=365)
+    return float(
+        OrdreReparation.objects
+        .filter(company=company, actif_flotte_id=actif_flotte_id,
+                date_ouverture__gte=depuis, date_ouverture__lte=today)
+        .aggregate(s=models.Sum('cout_total'))['s'] or 0)
+
+
+def analyse_remplacement(company, today=None):
+    """XFLT15 — Analyse de remplacement (fin de vie économique), lecture seule.
+
+    Pour chaque véhicule ACTIF de la société (exclut vendu/réformé — XFLT16),
+    évalue 3 règles paramétrables (``ParametreRemplacementFlotte.pour``,
+    style « 50/30/20 ») :
+
+    1. ``age`` — âge (années, depuis la mise en circulation XFLT10, ou
+       ``date_acquisition`` à défaut) > ``age_max_ans`` ;
+    2. ``kilometrage`` — ``Vehicule.kilometrage`` > ``km_max`` ;
+    3. ``cout_reparation`` — coût réparations des 12 derniers mois glissants
+       (``OrdreReparation``) / valeur vénale (``Vehicule.valeur``) >
+       ``ratio_cout_reparation_max``.
+
+    Un véhicule dépassant AU MOINS 2 règles est flaggé ``a_remplacer=True``
+    avec la liste des règles déclenchées. Le budget estimé de remplacement =
+    ``ModeleVehicule.valeur_catalogue`` du véhicule (via ``modele_ref``, XFLT12)
+    si connu, sinon ``None``. Retourne ::
+
+        {
+          'seuils': {'age_max_ans', 'km_max', 'ratio_cout_reparation_max'},
+          'vehicules': [
+            {'vehicule_id', 'immatriculation', 'age_ans', 'kilometrage',
+             'cout_reparation_12_mois', 'valeur_venale', 'ratio_cout_reparation',
+             'regles_declenchees': [...], 'nb_regles': int,
+             'a_remplacer': bool, 'budget_remplacement_estime'}, …
+          ],
+          'a_remplacer': [ … sous-liste flaggée, triée par nb_regles desc ],
+          'budget_annuel_estime': <float>,
+        }
+
+    Aucune écriture. ``today`` injectable.
+    """
+    if today is None:
+        today = datetime.date.today()
+
+    parametre = ParametreRemplacementFlotte.pour(company)
+    age_max_ans = parametre.age_max_ans
+    km_max = parametre.km_max
+    ratio_max = float(parametre.ratio_cout_reparation_max)
+
+    vehicules = (
+        Vehicule.objects.filter(company=company)
+        .exclude(statut__in=[Vehicule.Statut.VENDU, Vehicule.Statut.REFORME])
+        .select_related('actif_flotte', 'modele_ref')
+    )
+
+    lignes = []
+    for vehicule in vehicules:
+        regles = []
+
+        mise_en_circulation = date_mise_circulation_vehicule(vehicule) \
+            or vehicule.date_acquisition
+        age_ans = None
+        if mise_en_circulation is not None:
+            age_ans = round((today - mise_en_circulation).days / 365.25, 1)
+            if age_ans > age_max_ans:
+                regles.append('age')
+
+        kilometrage = vehicule.kilometrage or 0
+        if kilometrage > km_max:
+            regles.append('kilometrage')
+
+        actif_flotte_id = getattr(
+            getattr(vehicule, 'actif_flotte', None), 'id', None)
+        cout_reparation_12m = 0.0
+        ratio_cout_reparation = None
+        valeur_venale = float(vehicule.valeur or 0)
+        if actif_flotte_id is not None:
+            cout_reparation_12m = _cout_reparations_12_mois(
+                company, actif_flotte_id, today)
+            if valeur_venale > 0:
+                ratio_cout_reparation = round(
+                    cout_reparation_12m / valeur_venale, 3)
+                if ratio_cout_reparation > ratio_max:
+                    regles.append('cout_reparation')
+
+        budget_estime = None
+        if vehicule.modele_ref_id is not None \
+                and vehicule.modele_ref.valeur_catalogue is not None:
+            budget_estime = float(vehicule.modele_ref.valeur_catalogue)
+
+        lignes.append({
+            'vehicule_id': vehicule.id,
+            'immatriculation': vehicule.immatriculation,
+            'age_ans': age_ans,
+            'kilometrage': kilometrage,
+            'cout_reparation_12_mois': round(cout_reparation_12m, 2),
+            'valeur_venale': valeur_venale,
+            'ratio_cout_reparation': ratio_cout_reparation,
+            'regles_declenchees': regles,
+            'nb_regles': len(regles),
+            'a_remplacer': len(regles) >= 2,
+            'budget_remplacement_estime': budget_estime,
+        })
+
+    a_remplacer = sorted(
+        (ligne for ligne in lignes if ligne['a_remplacer']),
+        key=lambda ligne: -ligne['nb_regles'])
+    budget_annuel_estime = sum(
+        ligne['budget_remplacement_estime'] or 0 for ligne in a_remplacer)
+
+    return {
+        'seuils': {
+            'age_max_ans': age_max_ans,
+            'km_max': km_max,
+            'ratio_cout_reparation_max': ratio_max,
+        },
+        'vehicules': lignes,
+        'a_remplacer': a_remplacer,
+        'budget_annuel_estime': round(budget_annuel_estime, 2),
+    }

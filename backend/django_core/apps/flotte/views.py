@@ -2208,3 +2208,20 @@ def rapport_couts(request):
             sheet_title='Analyse coûts')
 
     return Response(rapport)
+
+
+# ── XFLT15 — Analyse de remplacement (fin de vie économique) ───────────────────
+
+@api_view(['GET'])
+@permission_classes([IsAnyRole])
+def rapport_remplacement(request):
+    """XFLT15 — Analyse de remplacement (fin de vie économique), lecture seule.
+
+    ``GET /flotte/rapports/remplacement/`` : pour chaque véhicule actif,
+    évalue 3 règles paramétrables par société (âge, kilométrage, ratio
+    coût-réparations-12-mois / valeur vénale — style 50/30/20) via
+    ``selectors.analyse_remplacement``. Un véhicule dépassant ≥ 2 règles est
+    flaggé « à remplacer » avec le plan annuel (liste triée + budget estimé).
+    """
+    from .selectors import analyse_remplacement
+    return Response(analyse_remplacement(request.user.company))

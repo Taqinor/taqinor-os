@@ -3684,3 +3684,57 @@ class GarantieFlotte(models.Model):
 
     def __str__(self):
         return f'Garantie {self.composant} — {self.actif_flotte}'
+
+
+# ── XFLT15 — Analyse de remplacement (fin de vie économique) ───────────────────
+
+class ParametreRemplacementFlotte(models.Model):
+    """Seuils société pour l'analyse de remplacement (XFLT15).
+
+    Un seul enregistrement par société (comme
+    ``ParametreAmortissementCGI``) — style « 50/30/20 » : un véhicule
+    dépassant AU MOINS 2 des 3 règles (âge, kilométrage, ratio coût-
+    réparations-12-mois / valeur vénale) est flaggé « à remplacer ».
+
+    Multi-tenant : ``company`` est posée côté serveur (jamais lue du corps de
+    requête).
+    """
+
+    AGE_MAX_ANS_DEFAUT = 8
+    KM_MAX_DEFAUT = 200000
+    RATIO_COUT_REPARATION_DEFAUT = 0.30  # 30 % de la valeur vénale / an.
+
+    company = models.OneToOneField(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='flotte_parametre_remplacement',
+        verbose_name='Société',
+    )
+    age_max_ans = models.PositiveSmallIntegerField(
+        default=AGE_MAX_ANS_DEFAUT, verbose_name='Âge maximal (ans)')
+    km_max = models.PositiveIntegerField(
+        default=KM_MAX_DEFAUT, verbose_name='Kilométrage maximal')
+    ratio_cout_reparation_max = models.DecimalField(
+        max_digits=4, decimal_places=2, default=RATIO_COUT_REPARATION_DEFAUT,
+        verbose_name='Ratio coût-réparations/valeur vénale max')
+    date_creation = models.DateTimeField(
+        auto_now_add=True, verbose_name='Créé le')
+
+    class Meta:
+        verbose_name = 'Paramètre de remplacement flotte'
+        verbose_name_plural = 'Paramètres de remplacement flotte'
+
+    def __str__(self):
+        return f'Seuils remplacement {self.company}'
+
+    @classmethod
+    def pour(cls, company):
+        """XFLT15 — Paramètre de la société, ou les valeurs par défaut si
+        non paramétré. Lecture seule."""
+        param = cls.objects.filter(company=company).first()
+        if param is not None:
+            return param
+        return cls(
+            company=company, age_max_ans=cls.AGE_MAX_ANS_DEFAUT,
+            km_max=cls.KM_MAX_DEFAUT,
+            ratio_cout_reparation_max=cls.RATIO_COUT_REPARATION_DEFAUT)

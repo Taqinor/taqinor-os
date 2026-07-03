@@ -37,6 +37,7 @@ from .views import (
     VehiculeViewSet,
     VisiteTechniqueViewSet,
     rapport_couts,
+    rapport_remplacement,
 )
 
 router = DefaultRouter()
@@ -77,5 +78,7 @@ router.register(r'inspections', InspectionVehiculeViewSet)
 
 urlpatterns = [
     path('rapports/couts/', rapport_couts, name='flotte-rapport-couts'),
+    path('rapports/remplacement/', rapport_remplacement,
+         name='flotte-rapport-remplacement'),
     path('', include(router.urls)),
 ]
