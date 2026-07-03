@@ -53,6 +53,9 @@ class EventType(models.TextChoices):
     # XKB6 — relance de lecture obligatoire non confirmée.
     ANNONCE_READ_REMINDER = (
         'annonce_read_reminder', 'Relance lecture obligatoire')
+    # YEVNT8 — demandes d'approbation (automation N73 + compta FG213).
+    APPROVAL_REQUESTED = 'approval_requested', "Approbation demandée"
+    APPROVAL_DECIDED = 'approval_decided', "Approbation décidée"
 
 
 class Channel(models.TextChoices):
