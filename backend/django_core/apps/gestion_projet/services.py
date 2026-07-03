@@ -1249,3 +1249,76 @@ def creer_projet_depuis_devis(devis_data, *, company, user=None):
         )
 
     return {'projet': projet, 'lien': lien, 'budget': budget}
+
+
+# ── Alertes automatiques de retard planning (XPRJ22) ─────────────────────────
+def alertes_retards_projets(company, *, seuil_jours=None):
+    """Notifie le ``responsable`` des projets ACTIFS en retard/à risque (XPRJ22).
+
+    Balaie ``selectors.retards_projet`` (PROJ14) sur chaque projet ACTIF
+    (exclut TERMINE/ANNULE) de la société et notifie son ``responsable`` via
+    ``apps.notifications.services.notify`` (import fonction-local — frontière
+    cross-app ; événement dédié ``EventType.PROJET_RETARD``, XPRJ22).
+
+    IDEMPOTENT : UNE notification par (projet, élément, jour) — un marqueur
+    unique dans ``Notification.link`` empêche tout spam en re-run le même
+    jour. Un projet SANS responsable est ignoré silencieusement (pas de
+    destinataire). Best-effort par élément : un échec n'interrompt pas les
+    suivants. Renvoie ``{nb_projets_scannes, nb_alertes_envoyees,
+    nb_deja_notifiees}``.
+    """
+    from django.utils import timezone
+
+    from . import selectors
+
+    from apps.notifications.models import EventType, Notification
+    from apps.notifications.services import notify
+
+    today = timezone.localdate()
+    projets = Projet.objects.filter(company=company).exclude(
+        statut__in=[Projet.Statut.TERMINE, Projet.Statut.ANNULE]
+    ).select_related('responsable')
+
+    nb_envoyees = 0
+    nb_deja = 0
+    for projet in projets:
+        if projet.responsable_id is None:
+            continue
+        data = selectors.retards_projet(projet, seuil_jours=seuil_jours)
+        elements = (
+            [('tache', t) for t in data['taches_en_retard']]
+            + [('tache', t) for t in data['taches_a_risque']]
+            + [('jalon', j) for j in data['jalons_en_retard']]
+            + [('jalon', j) for j in data['jalons_a_risque']]
+        )
+        for type_elem, item in elements:
+            marqueur = (
+                f'gestion_projet:alerte_retard:{projet.id}:'
+                f'{type_elem}:{item["id"]}:{today}')
+            deja_notifiee = Notification.objects.filter(
+                company=company, recipient_id=projet.responsable_id,
+                event_type=EventType.PROJET_RETARD, link=marqueur,
+                created_at__date=today,
+            ).exists()
+            if deja_notifiee:
+                nb_deja += 1
+                continue
+            try:
+                notify(
+                    projet.responsable, EventType.PROJET_RETARD,
+                    title=f'Retard planning — {projet.code}',
+                    body=(
+                        f'{type_elem.capitalize()} « {item["libelle"]} » '
+                        f'({item["retard_jours"]} j).'),
+                    link=marqueur,
+                    company=company,
+                )
+                nb_envoyees += 1
+            except Exception:  # pragma: no cover - défensif, best-effort
+                continue
+
+    return {
+        'nb_projets_scannes': projets.count(),
+        'nb_alertes_envoyees': nb_envoyees,
+        'nb_deja_notifiees': nb_deja,
+    }
