@@ -24,6 +24,7 @@ from .models import (
     Indisponibilite,
     Jalon,
     LigneBudgetProjet,
+    PointAvancement,
     Projet,
     ProjetLien,
     RessourceProfil,
@@ -2238,6 +2239,11 @@ def tableau_portefeuille(company, statut=None, seuil_jours=None):
         total_retards += nb_retards
         total_risques += nb_risques
 
+        # Dernière santé RAG du projet (XPRJ15) — None si aucun point saisi.
+        dernier_point = PointAvancement.objects.filter(
+            company=company, projet=projet).order_by(
+                '-date_point', '-id').first()
+
         lignes.append({
             'projet_id': projet.id,
             'code': projet.code,
@@ -2248,6 +2254,8 @@ def tableau_portefeuille(company, statut=None, seuil_jours=None):
             'nb_risques': nb_risques,
             'marge_reelle': pnl['marge_reelle'],
             'charge_totale': charge,
+            'derniere_sante': (
+                dernier_point.sante if dernier_point else None),
         })
 
     return {

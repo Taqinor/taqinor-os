@@ -2452,3 +2452,72 @@ class ItemChecklistTache(models.Model):
 
     def __str__(self):
         return f'{self.tache_id} — {self.libelle}'
+
+
+class PointAvancement(models.Model):
+    """Point d'avancement PÉRIODIQUE d'un projet — statut RAG (XPRJ15).
+
+    Historisé (une ligne par point, jamais mise à jour) : ``sante`` capture un
+    statut RAG (Rouge/Orange/Vert) PROPRE à ce module (jamais une clé de
+    ``STAGES.py``, règle #2), ``avancement_pct`` est FIGÉ au moment du point
+    (photo, distincte du roll-up temps réel PROJ9). Le DERNIER point d'un
+    projet alimente la colonne « santé » du portefeuille (``portefeuille``,
+    PROJ36) et du dashboard.
+
+    Tout est multi-société : ``company`` est posée côté serveur, jamais lue du
+    corps de requête ; ``auteur`` est posé côté serveur. Modèle entièrement
+    additif.
+    """
+    class Sante(models.TextChoices):
+        VERT = 'vert', 'Vert'
+        ORANGE = 'orange', 'Orange'
+        ROUGE = 'rouge', 'Rouge'
+
+    company = models.ForeignKey(
+        'authentication.Company',
+        on_delete=models.CASCADE,
+        related_name='gp_points_avancement',
+        verbose_name='Société',
+    )
+    projet = models.ForeignKey(
+        Projet,
+        on_delete=models.CASCADE,
+        related_name='points_avancement',
+        verbose_name='Projet',
+    )
+    auteur = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='+',
+        verbose_name='Auteur',
+    )
+    sante = models.CharField(
+        max_length=10, choices=Sante.choices, verbose_name='Santé')
+    # Avancement FIGÉ au moment du point (photo) — distinct du roll-up temps
+    # réel (PROJ9).
+    avancement_pct = models.PositiveSmallIntegerField(
+        default=0, validators=[MaxValueValidator(100)],
+        verbose_name='Avancement (%)')
+    realisations = models.TextField(
+        blank=True, default='', verbose_name='Réalisations')
+    risques = models.TextField(
+        blank=True, default='', verbose_name='Risques')
+    prochaines_etapes = models.TextField(
+        blank=True, default='', verbose_name='Prochaines étapes')
+    date_point = models.DateField(verbose_name='Date du point')
+    date_creation = models.DateTimeField(
+        auto_now_add=True, verbose_name='Créé le')
+
+    class Meta:
+        verbose_name = "Point d'avancement"
+        verbose_name_plural = "Points d'avancement"
+        ordering = ['-date_point', '-id']
+        indexes = [
+            models.Index(
+                fields=['projet', '-date_point'],
+                name='gp_point_av_projet_date_idx'),
+        ]
+
+    def __str__(self):
+        return f'{self.projet_id} — {self.date_point} ({self.sante})'

@@ -22,6 +22,7 @@ from .views import (
     ItemChecklistTacheViewSet,
     JalonViewSet,
     JourFerieViewSet,
+    PointAvancementViewSet,
     LigneBudgetProjetViewSet,
     ModeleProjetViewSet,
     ModeleTacheViewSet,
@@ -47,6 +48,7 @@ router.register(r'phases', PhaseProjetViewSet)
 router.register(r'taches', TacheViewSet)
 router.register(r'recurrences-tache', RecurrenceTacheViewSet)
 router.register(r'items-checklist', ItemChecklistTacheViewSet)
+router.register(r'points-avancement', PointAvancementViewSet)
 router.register(r'dependances', DependanceTacheViewSet)
 router.register(r'jalons', JalonViewSet)
 router.register(r'calendriers', CalendrierProjetViewSet)

@@ -32,6 +32,7 @@ from .models import (
     ItemChecklistTache,
     Jalon,
     JourFerie,
+    PointAvancement,
     LigneBudgetProjet,
     ModeleProjet,
     ModeleTache,
@@ -74,6 +75,7 @@ from .serializers import (
     IndisponibiliteSerializer,
     ItemChecklistTacheSerializer,
     JalonSerializer,
+    PointAvancementSerializer,
     JourFerieSerializer,
     LigneBudgetProjetSerializer,
     ModeleProjetSerializer,
@@ -723,6 +725,7 @@ class ProjetViewSet(_GestionProjetBaseViewSet):
                     'nb_risques': p['nb_risques'],
                     'marge_reelle': str(p['marge_reelle']),
                     'charge_totale': str(p['charge_totale']),
+                    'derniere_sante': p['derniere_sante'],
                 }
                 for p in data['projets']
             ],
@@ -2344,3 +2347,30 @@ class ItemChecklistTacheViewSet(_GestionProjetBaseViewSet):
             item.fait_le = None
         item.save(update_fields=['fait', 'fait_par', 'fait_le'])
         return Response(ItemChecklistTacheSerializer(item).data)
+
+
+class PointAvancementViewSet(_GestionProjetBaseViewSet):
+    """Points d'avancement périodiques — statut RAG (XPRJ15).
+
+    ``company`` et ``auteur`` posés côté serveur (TenantMixin) ; le ``projet``
+    reçu est validé même-société. Filtre ``?projet=<id>`` (historique par
+    projet, tri par défaut du plus récent au plus ancien). Le DERNIER point
+    d'un projet alimente ``portefeuille`` (PROJ36) — voir
+    ``selectors.tableau_portefeuille``.
+    """
+    queryset = PointAvancement.objects.select_related(
+        'projet', 'auteur').all()
+    serializer_class = PointAvancementSerializer
+    filter_backends = [filters.OrderingFilter]
+    ordering_fields = ['date_point', 'id']
+
+    def perform_create(self, serializer):
+        serializer.save(
+            company=self.request.user.company, auteur=self.request.user)
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        projet = self.request.query_params.get('projet')
+        if projet:
+            qs = qs.filter(projet_id=projet)
+        return qs

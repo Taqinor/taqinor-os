@@ -33,6 +33,7 @@ from .models import (
     ProjetActivity,
     ProjetChantier,
     ItemChecklistTache,
+    PointAvancement,
     ProjetLien,
     RecurrenceTache,
     RessourceProfil,
@@ -1209,3 +1210,30 @@ class ItemChecklistTacheSerializer(serializers.ModelSerializer):
 
     def validate_tache(self, value):
         return _meme_societe(self, value, 'Tâche')
+
+
+class PointAvancementSerializer(serializers.ModelSerializer):
+    """Point d'avancement périodique — statut RAG (XPRJ15).
+
+    ``company`` et ``auteur`` posés côté serveur (lecture seule). Le
+    ``projet`` reçu est validé même-société. Historisé : pas de mise à jour,
+    seulement création + lecture (le viewset autorise le DELETE pour corriger
+    une saisie erronée, jamais le PATCH du contenu métier).
+    """
+    projet_code = serializers.CharField(source='projet.code', read_only=True)
+    auteur_nom = serializers.CharField(
+        source='auteur.username', read_only=True, default='')
+    sante_display = serializers.CharField(
+        source='get_sante_display', read_only=True)
+
+    class Meta:
+        model = PointAvancement
+        fields = [
+            'id', 'projet', 'projet_code', 'auteur', 'auteur_nom', 'sante',
+            'sante_display', 'avancement_pct', 'realisations', 'risques',
+            'prochaines_etapes', 'date_point', 'date_creation',
+        ]
+        read_only_fields = ['auteur', 'date_creation']
+
+    def validate_projet(self, value):
+        return _meme_societe(self, value, 'Projet')
