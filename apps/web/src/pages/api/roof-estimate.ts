@@ -13,11 +13,12 @@ export const prerender = false;
 import type { APIRoute } from 'astro';
 import { fetchPvgisAnnualKwh } from '../../lib/roofEstimate';
 import { annualSavingsBandMad, fallbackAnnualKwh, orientationToAspect } from '../../lib/roof';
+import { clientIpFromRequest, rateLimit } from '../../lib/rateLimit';
 
-function json(data: unknown, status = 200): Response {
+function json(data: unknown, status = 200, headers: Record<string, string> = {}): Response {
   return new Response(JSON.stringify(data), {
     status,
-    headers: { 'content-type': 'application/json', 'cache-control': 'no-store' },
+    headers: { 'content-type': 'application/json', 'cache-control': 'no-store', ...headers },
   });
 }
 
@@ -26,6 +27,16 @@ function num(v: unknown): number {
 }
 
 export const POST: APIRoute = async ({ request }) => {
+  // W316 — rate-limit GÉNÉREUX et DÉDIÉ (même esprit que roof-yield/roof-production) :
+  // appelé à chaque ajustement live du formulaire, plusieurs appels/minute sont
+  // un usage normal.
+  const rl = rateLimit(`roof-estimate:${clientIpFromRequest(request)}`, { limit: 60, windowMs: 60_000 });
+  if (!rl.allowed) {
+    return json({ ok: false, error: 'Trop de tentatives, réessayez dans un instant.' }, 429, {
+      'retry-after': String(rl.retryAfterSec),
+    });
+  }
+
   let body: Record<string, unknown>;
   try {
     body = (await request.json()) as Record<string, unknown>;

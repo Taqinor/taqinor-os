@@ -22,6 +22,8 @@
  * quel au backend. AUCUN nouvel endpoint : c'est le même contrat additif que
  * les canaux existants, le backend qui l'ignore continue de fonctionner
  * exactement comme avant.
+ *
+ * W316 — bucket de rate-limit DÉDIÉ (distinct d'accept/track/roof-*).
  */
 export const prerender = false;
 
@@ -33,11 +35,12 @@ import {
   normalizeContactResponse,
   type ContactChannel,
 } from '../../lib/proposition';
+import { clientIpFromRequest, rateLimit } from '../../lib/rateLimit';
 
-function json(data: unknown, status = 200): Response {
+function json(data: unknown, status = 200, headers: Record<string, string> = {}): Response {
   return new Response(JSON.stringify(data), {
     status,
-    headers: { 'content-type': 'application/json', 'cache-control': 'no-store' },
+    headers: { 'content-type': 'application/json', 'cache-control': 'no-store', ...headers },
   });
 }
 
@@ -49,6 +52,13 @@ function resolveApiBase(): string {
 }
 
 export const POST: APIRoute = async ({ request }) => {
+  const rl = rateLimit(`proposition-contact:${clientIpFromRequest(request)}`, { limit: 10, windowMs: 60_000 });
+  if (!rl.allowed) {
+    return json({ ok: false, degraded: true, detail: 'Trop de tentatives, réessayez dans un instant.' }, 429, {
+      'retry-after': String(rl.retryAfterSec),
+    });
+  }
+
   let body: Record<string, unknown>;
   try {
     body = (await request.json()) as Record<string, unknown>;

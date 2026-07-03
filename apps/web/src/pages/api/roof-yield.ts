@@ -10,16 +10,21 @@
  *
  * Ne touche AUCUNE donnée de lead. Route additive : /api/roof-estimate (15°,
  * formulaire live) reste strictement inchangée.
+ *
+ * W316 — rate-limit GÉNÉREUX et DÉDIÉ : cet endpoint est appelé à chaque
+ * ajustement d'inclinaison/azimut pendant que le visiteur manipule l'outil
+ * interactif (plusieurs appels par minute sont un usage NORMAL, pas un abus).
  */
 export const prerender = false;
 
 import type { APIRoute } from 'astro';
 import { fetchPvgisAnnualKwhAtTilt } from '../../lib/roofEstimate';
+import { clientIpFromRequest, rateLimit } from '../../lib/rateLimit';
 
-function json(data: unknown, status = 200): Response {
+function json(data: unknown, status = 200, headers: Record<string, string> = {}): Response {
   return new Response(JSON.stringify(data), {
     status,
-    headers: { 'content-type': 'application/json', 'cache-control': 'no-store' },
+    headers: { 'content-type': 'application/json', 'cache-control': 'no-store', ...headers },
   });
 }
 
@@ -34,6 +39,13 @@ interface Leg {
 }
 
 export const POST: APIRoute = async ({ request }) => {
+  const rl = rateLimit(`roof-yield:${clientIpFromRequest(request)}`, { limit: 60, windowMs: 60_000 });
+  if (!rl.allowed) {
+    return json({ ok: false, error: 'Trop de tentatives, réessayez dans un instant.' }, 429, {
+      'retry-after': String(rl.retryAfterSec),
+    });
+  }
+
   let body: Record<string, unknown>;
   try {
     body = (await request.json()) as Record<string, unknown>;
