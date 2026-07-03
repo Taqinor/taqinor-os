@@ -1389,3 +1389,206 @@ def notifier_transition_phase(
 def _date_du_jour():
     from datetime import date as _date
     return _date.today()
+
+
+# ── Export/import du plan de tâches (XPRJ24) ─────────────────────────────────
+EXPORT_TACHES_ENTETES = [
+    'code_wbs', 'libelle', 'parent_wbs', 'date_debut_prevue',
+    'date_fin_prevue', 'charge_estimee', 'statut', 'assigne',
+    'dependances_fs',
+]
+
+
+def exporter_taches(projet):
+    """Lignes du plan de tâches (WBS) prêtes pour un export xlsx (XPRJ24).
+
+    Une ligne par ``Tache`` : ``code_wbs``, libellé, ``parent_wbs`` (code WBS
+    du parent, vide si racine), dates, charge, statut, assigné (nom de la
+    ressource), et ``dependances_fs`` (codes WBS des PRÉDÉCESSEURS FS de
+    cette tâche, séparés par ``;`` — seul le type FS est exporté/réimporté,
+    le cas courant du module). Round-trip STABLE : réimporter ce jeu de
+    lignes reconstruit le même arbre (même hiérarchie + mêmes dépendances).
+    Tout est scopé société via le projet. Lecture seule.
+    """
+    from .models import DependanceTache
+
+    taches = list(
+        Tache.objects.filter(projet=projet, company=projet.company)
+        .select_related('parent', 'assigne').order_by('ordre', 'id'))
+    par_id = {t.id: t for t in taches}
+
+    deps_par_successeur = {}
+    for dep in DependanceTache.objects.filter(
+            successeur__in=taches, type_dependance='fs'):
+        deps_par_successeur.setdefault(dep.successeur_id, []).append(
+            dep.predecesseur_id)
+
+    lignes = []
+    for t in taches:
+        parent_wbs = par_id[t.parent_id].code_wbs if t.parent_id else ''
+        deps_codes = [
+            par_id[pid].code_wbs for pid in deps_par_successeur.get(t.id, [])
+            if pid in par_id
+        ]
+        lignes.append({
+            'code_wbs': t.code_wbs,
+            'libelle': t.libelle,
+            'parent_wbs': parent_wbs,
+            'date_debut_prevue': (
+                t.date_debut_prevue.isoformat()
+                if t.date_debut_prevue else ''),
+            'date_fin_prevue': (
+                t.date_fin_prevue.isoformat() if t.date_fin_prevue else ''),
+            'charge_estimee': (
+                str(t.charge_estimee) if t.charge_estimee is not None
+                else ''),
+            'statut': t.statut,
+            'assigne': t.assigne.nom if t.assigne_id else '',
+            'dependances_fs': ';'.join(deps_codes),
+        })
+    return lignes
+
+
+class ImportTachesError(Exception):
+    """Erreur métier lors de l'import du plan de tâches."""
+
+
+def _parse_date_iso(value):
+    if not value:
+        return None
+    from datetime import date as _date
+    try:
+        return _date.fromisoformat(str(value).strip())
+    except ValueError:
+        return None
+
+
+def _parse_decimal(value):
+    if value in (None, ''):
+        return None
+    try:
+        return Decimal(str(value).strip())
+    except Exception:
+        return None
+
+
+@transaction.atomic
+def importer_taches(projet, lignes, *, confirm=False):
+    """Importe un plan de tâches (WBS) depuis des lignes (CSV/xlsx) (XPRJ24).
+
+    Chaque ligne suit ``EXPORT_TACHES_ENTETES`` (``code_wbs`` obligatoire et
+    UNIQUE dans le fichier — clé d'identité du round-trip). DEUX PASSES :
+    1) crée/rattache toutes les tâches par ``code_wbs`` (hiérarchie
+       ``parent_wbs`` résolue APRÈS que toutes les tâches existent, pour
+       accepter un ordre de lignes arbitraire) ;
+    2) recrée les dépendances FS depuis ``dependances_fs``.
+
+    ``confirm=False`` (DÉFAUT) : DRY-RUN — valide toutes les lignes, renvoie
+    le rapport d'ERREURS, N'ÉCRIT RIEN. ``confirm=True`` : écrit dans une
+    TRANSACTION ATOMIQUE (tout ou rien) — une erreur de validation est
+    rapportée SANS écrire une seule ligne, même en confirm.
+
+    Renvoie ``{'erreurs': [...], 'nb_lignes': N, 'nb_creees': N, 'nb_deps': N}``.
+    """
+    from .models import DependanceTache
+
+    erreurs = []
+    codes_vus = set()
+    for i, ligne in enumerate(lignes, start=1):
+        code = (ligne.get('code_wbs') or '').strip()
+        libelle = (ligne.get('libelle') or '').strip()
+        if not code:
+            erreurs.append(f'Ligne {i} : code_wbs obligatoire.')
+            continue
+        if code in codes_vus:
+            erreurs.append(f'Ligne {i} : code_wbs « {code} » en double.')
+            continue
+        codes_vus.add(code)
+        if not libelle:
+            erreurs.append(f'Ligne {i} ({code}) : libelle obligatoire.')
+        statut = (ligne.get('statut') or Tache.Statut.A_FAIRE).strip()
+        if statut not in Tache.Statut.values:
+            erreurs.append(
+                f'Ligne {i} ({code}) : statut « {statut} » inconnu.')
+        parent_wbs = (ligne.get('parent_wbs') or '').strip()
+        if parent_wbs and parent_wbs not in {
+                (r.get('code_wbs') or '').strip() for r in lignes}:
+            erreurs.append(
+                f'Ligne {i} ({code}) : parent_wbs « {parent_wbs} » introuvable '
+                'dans le fichier.')
+        for dep_code in _split_deps(ligne.get('dependances_fs')):
+            if dep_code not in {
+                    (r.get('code_wbs') or '').strip() for r in lignes}:
+                erreurs.append(
+                    f'Ligne {i} ({code}) : dépendance « {dep_code} » '
+                    'introuvable dans le fichier.')
+
+    if erreurs:
+        return {
+            'erreurs': erreurs, 'nb_lignes': len(lignes),
+            'nb_creees': 0, 'nb_deps': 0,
+        }
+
+    if not confirm:
+        return {
+            'erreurs': [], 'nb_lignes': len(lignes),
+            'nb_creees': 0, 'nb_deps': 0,
+        }
+
+    # Résolution des ressources par nom (best-effort : nom introuvable →
+    # assigné laissé vide, jamais bloquant).
+    from .models import RessourceProfil
+    ressources_par_nom = {
+        r.nom: r for r in RessourceProfil.objects.filter(
+            company=projet.company)
+    }
+
+    # Passe 1 : crée/rattache toutes les tâches (sans parent pour l'instant).
+    taches_par_code = {}
+    for ligne in lignes:
+        code = ligne['code_wbs'].strip()
+        taches_par_code[code] = Tache.objects.create(
+            company=projet.company,
+            projet=projet,
+            code_wbs=code,
+            libelle=ligne['libelle'].strip(),
+            date_debut_prevue=_parse_date_iso(ligne.get('date_debut_prevue')),
+            date_fin_prevue=_parse_date_iso(ligne.get('date_fin_prevue')),
+            charge_estimee=_parse_decimal(ligne.get('charge_estimee')),
+            statut=(ligne.get('statut') or Tache.Statut.A_FAIRE).strip(),
+            assigne=ressources_par_nom.get(
+                (ligne.get('assigne') or '').strip()),
+        )
+
+    # Passe 1bis : rattache la hiérarchie parent (toutes les tâches existent).
+    for ligne in lignes:
+        parent_wbs = (ligne.get('parent_wbs') or '').strip()
+        if parent_wbs:
+            tache = taches_par_code[ligne['code_wbs'].strip()]
+            tache.parent = taches_par_code[parent_wbs]
+            tache.save(update_fields=['parent'])
+
+    # Passe 2 : recrée les dépendances FS.
+    nb_deps = 0
+    for ligne in lignes:
+        successeur = taches_par_code[ligne['code_wbs'].strip()]
+        for dep_code in _split_deps(ligne.get('dependances_fs')):
+            predecesseur = taches_par_code[dep_code]
+            DependanceTache.objects.create(
+                company=projet.company,
+                predecesseur=predecesseur,
+                successeur=successeur,
+                type_dependance='fs',
+            )
+            nb_deps += 1
+
+    return {
+        'erreurs': [], 'nb_lignes': len(lignes),
+        'nb_creees': len(taches_par_code), 'nb_deps': nb_deps,
+    }
+
+
+def _split_deps(raw):
+    if not raw:
+        return []
+    return [c.strip() for c in str(raw).split(';') if c.strip()]

@@ -313,9 +313,50 @@ class ProjetViewSet(_GestionProjetBaseViewSet):
 
         La société est garantie par ``get_object`` (queryset scopé société) :
         chaque dict porte ses ``sous_taches`` (profondeur arbitraire).
+        ``?export=xlsx`` télécharge le plan de tâches à PLAT (XPRJ24 : code
+        WBS, libellé, parent, dates, charge, statut, assigné, dépendances) au
+        lieu de l'arbre JSON (le pattern DRF ``?format=`` réservé est évité).
         """
         projet = self.get_object()
+        if request.query_params.get('export') == 'xlsx':
+            from apps.records.xlsx import build_xlsx_response
+
+            lignes = services.exporter_taches(projet)
+            rows = [
+                [ligne[champ] for champ in services.EXPORT_TACHES_ENTETES]
+                for ligne in lignes
+            ]
+            return build_xlsx_response(
+                f'plan_taches_{projet.code}.xlsx',
+                services.EXPORT_TACHES_ENTETES, rows,
+                sheet_title='Plan de tâches')
         return Response(selectors.arbre_taches(projet))
+
+    @action(detail=True, methods=['post'], url_path='importer-taches')
+    def importer_taches(self, request, pk=None):
+        """Importe un plan de tâches (WBS) CSV/xlsx (XPRJ24).
+
+        Corps : ``lignes`` (liste de dicts suivant
+        ``services.EXPORT_TACHES_ENTETES`` — le frontend parse le
+        CSV/xlsx et poste le tableau). DRY-RUN par DÉFAUT (``?confirm=1``
+        pour écrire, transaction atomique) : les lignes invalides sont
+        rapportées SANS RIEN écrire. La société est garantie par
+        ``get_object`` : un projet d'une autre société → 404.
+        """
+        projet = self.get_object()
+        lignes = request.data.get('lignes')
+        if not isinstance(lignes, list) or not lignes:
+            return Response(
+                {'lignes': 'Une liste de lignes non vide est obligatoire.'},
+                status=status.HTTP_400_BAD_REQUEST)
+        confirm = request.query_params.get('confirm') in ('1', 'true', 'True')
+        try:
+            resultat = services.importer_taches(
+                projet, lignes, confirm=confirm)
+        except services.ImportTachesError as exc:
+            return Response(
+                {'detail': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+        return Response(resultat)
 
     @action(detail=True, methods=['post'], url_path='baseline')
     def baseline(self, request, pk=None):
