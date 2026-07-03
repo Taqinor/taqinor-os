@@ -99,6 +99,105 @@ def approuver_timesheet(timesheet, approbateur):
     return timesheet
 
 
+# ── Facturation en régie (T&M) depuis les temps approuvés (XPRJ3) ───────────
+class FacturationRegieError(Exception):
+    """Erreur métier au déclenchement de la facturation en régie."""
+
+
+@transaction.atomic
+def facturer_temps_projet(projet, *, debut, fin, user):
+    """Facture en régie (T&M) les temps APPROUVÉS + facturables d'une période.
+
+    Sélectionne les ``Timesheet`` du projet dont ``statut == approuvee``,
+    ``facturable == True``, ``facture_id`` est NUL (pas déjà facturées) et
+    ``date`` dans ``[debut, fin]`` (bornes inclusives) ; groupe par
+    (tâche, type d'activité) pour le libellé ; calcule le montant HT total en
+    ``heures × taux_facturation`` (une ligne sans ``taux_facturation`` compte
+    pour 0 — jamais un coût INTERNE qui n'a pas vocation à être facturé au
+    client). Lève ``FacturationRegieError`` si aucune ligne facturable.
+
+    Le CLIENT est résolu depuis ``projet.client_id`` via un sélecteur
+    ``crm.selectors`` (frontière cross-app, import fonction-local — jamais
+    ``crm.models``) ; sans client résolvable, lève ``FacturationRegieError``.
+    L'écriture de la ``Facture`` BROUILLON passe EXCLUSIVEMENT par
+    ``apps.ventes.services.creer_facture_regie`` (jamais ``ventes.models``),
+    numérotée via ``apps/ventes/utils/references.py`` (jamais ``count()+1``).
+
+    Après création, CHAQUE timesheet incluse est marquée ``facture_id`` (dans
+    la même transaction) — un RE-RUN sur la même période ne re-sélectionne donc
+    RIEN (idempotent, 0 ligne re-facturée). Renvoie un dict
+    ``{facture, montant_ht, nb_lignes, groupes}``.
+    """
+    from .models import Timesheet
+
+    qs = Timesheet.objects.filter(
+        company=projet.company, projet=projet,
+        statut=Timesheet.Statut.APPROUVEE, facturable=True,
+        facture_id__isnull=True, date__gte=debut, date__lte=fin,
+    ).select_related('tache')
+
+    lignes = list(qs)
+    if not lignes:
+        raise FacturationRegieError(
+            "Aucune feuille de temps approuvée et facturable, non encore "
+            "facturée, sur cette période.")
+
+    from apps.crm import selectors as crm_selectors
+    client = None
+    if projet.client_id:
+        client = crm_selectors.get_company_client(
+            projet.company, projet.client_id)
+    if client is None:
+        raise FacturationRegieError(
+            "Impossible de résoudre le client du projet (client_id absent ou "
+            "introuvable) — facturation en régie impossible.")
+
+    groupes = {}
+    montant_ht = Decimal('0.00')
+    for ts in lignes:
+        cle = (ts.tache_id, ts.type_activite)
+        heures = ts.heures or Decimal('0')
+        taux = ts.taux_facturation or Decimal('0')
+        montant_ligne = (heures * taux).quantize(Decimal('0.01'))
+        montant_ht += montant_ligne
+        g = groupes.setdefault(cle, {
+            'tache_id': ts.tache_id,
+            'tache_libelle': ts.tache.libelle if ts.tache_id else '',
+            'type_activite': ts.type_activite,
+            'heures': Decimal('0'),
+            'montant': Decimal('0.00'),
+        })
+        g['heures'] += heures
+        g['montant'] += montant_ligne
+
+    groupes_tries = sorted(
+        groupes.values(),
+        key=lambda g: (g['tache_id'] or 0, g['type_activite']))
+    libelle_lignes = '; '.join(
+        f"{g['tache_libelle'] or 'sans tâche'} "
+        f"({g['type_activite']}, {g['heures']} h)"
+        for g in groupes_tries
+    )
+    libelle = (
+        f'Régie (T&M) — projet {projet.code} [{debut:%d/%m/%Y}–{fin:%d/%m/%Y}] : '
+        f'{libelle_lignes}')[:255]
+
+    from apps.ventes import services as ventes_services
+    facture = ventes_services.creer_facture_regie(
+        company=projet.company, client=client, user=user,
+        libelle=libelle, montant_ht=montant_ht)
+
+    Timesheet.objects.filter(
+        id__in=[ts.id for ts in lignes]).update(facture_id=facture.id)
+
+    return {
+        'facture': facture,
+        'montant_ht': montant_ht,
+        'nb_lignes': len(lignes),
+        'groupes': groupes_tries,
+    }
+
+
 def rejeter_timesheet(timesheet, approbateur, motif=''):
     """soumise → rejetee (``approuve_par``/``date_approbation`` posés serveur)."""
     from django.utils import timezone

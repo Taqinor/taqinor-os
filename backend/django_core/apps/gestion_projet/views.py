@@ -481,6 +481,8 @@ class ProjetViewSet(_GestionProjetBaseViewSet):
         return Response({
             'total_heures': str(data['total_heures']),
             'total_cout': str(data['total_cout']),
+            'heures_facturables': str(data['heures_facturables']),
+            'heures_non_facturables': str(data['heures_non_facturables']),
             'nb_saisies': data['nb_saisies'],
             'par_ressource': [
                 {
@@ -488,6 +490,7 @@ class ProjetViewSet(_GestionProjetBaseViewSet):
                     'ressource_nom': r['ressource_nom'],
                     'heures': str(r['heures']),
                     'cout': str(r['cout']),
+                    'heures_facturables': str(r['heures_facturables']),
                 }
                 for r in data['par_ressource']
             ],
@@ -500,7 +503,65 @@ class ProjetViewSet(_GestionProjetBaseViewSet):
                 }
                 for t in data['par_tache']
             ],
+            'par_activite': [
+                {
+                    'type_activite': a['type_activite'],
+                    'type_activite_display': a['type_activite_display'],
+                    'heures': str(a['heures']),
+                    'heures_facturables': str(a['heures_facturables']),
+                }
+                for a in data['par_activite']
+            ],
         })
+
+    @action(detail=True, methods=['post'], url_path='facturer-temps')
+    def facturer_temps(self, request, pk=None):
+        """XPRJ3 — Facture en régie (T&M) les temps approuvés d'une période.
+
+        Corps : ``debut`` et ``fin`` (``YYYY-MM-DD``, obligatoires, bornes
+        inclusives). Ne sélectionne que les timesheets APPROUVÉES + facturables
+        + non encore facturées (``facture_id`` nul) — un re-run sur la même
+        période est IDEMPOTENT (0 ligne re-facturée). La société est garantie
+        par ``get_object`` (queryset scopé société) : un projet d'une autre
+        société → 404. Délègue à ``services.facturer_temps_projet`` (écritures
+        atomiques, création de la ``Facture`` via ``ventes.services``).
+        """
+        projet = self.get_object()
+        debut = _parse_date_param(request.data.get('debut'))
+        fin = _parse_date_param(request.data.get('fin'))
+        if debut is None or fin is None:
+            return Response(
+                {'detail': 'Les dates « debut » et « fin » (YYYY-MM-DD) sont '
+                           'obligatoires.'},
+                status=status.HTTP_400_BAD_REQUEST)
+        if fin < debut:
+            return Response(
+                {'detail': 'La date de fin ne peut pas précéder la date de '
+                           'début.'},
+                status=status.HTTP_400_BAD_REQUEST)
+        try:
+            resultat = services.facturer_temps_projet(
+                projet, debut=debut, fin=fin, user=request.user)
+        except services.FacturationRegieError as exc:
+            return Response(
+                {'detail': str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+        facture = resultat['facture']
+        return Response({
+            'facture_id': facture.id,
+            'facture_reference': facture.reference,
+            'montant_ht': str(resultat['montant_ht']),
+            'nb_lignes': resultat['nb_lignes'],
+            'groupes': [
+                {
+                    'tache_id': g['tache_id'],
+                    'tache_libelle': g['tache_libelle'],
+                    'type_activite': g['type_activite'],
+                    'heures': str(g['heures']),
+                    'montant': str(g['montant']),
+                }
+                for g in resultat['groupes']
+            ],
+        }, status=status.HTTP_201_CREATED)
 
     @action(detail=True, methods=['get'], url_path='consommation-matiere')
     def consommation_matiere(self, request, pk=None):

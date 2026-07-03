@@ -1283,6 +1283,12 @@ class Timesheet(models.Model):
     taux_facturation = models.DecimalField(
         max_digits=10, decimal_places=2, null=True, blank=True,
         verbose_name='Taux de facturation (MAD/h)')
+    # Référence LÂCHE vers la ventes.Facture de régie qui a facturé cette
+    # ligne (XPRJ3) — posée côté serveur par ``services.facturer_temps_projet``
+    # UNIQUEMENT ; jamais lue du corps de requête. Empêche le double-facturation
+    # (une ligne déjà facturée est exclue de la sélection du prochain run).
+    facture_id = models.PositiveIntegerField(
+        null=True, blank=True, verbose_name='ID de la facture de régie')
     # ── Cycle de vie (XPRJ1) ──────────────────────────────────────────────────
     statut = models.CharField(
         max_length=10, choices=Statut.choices,
