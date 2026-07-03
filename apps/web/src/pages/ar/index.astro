@@ -34,6 +34,7 @@ import { WHATSAPP_LEADS } from '../../lib/nap';
 import { whatsappLink } from '../../lib/whatsapp';
 import { getLocaleFromPath } from '../../i18n/utils';
 import { localizeNavHref } from '../../i18n/pages';
+import { REGIE_TARIFF } from '../../lib/estimatorBrainV2';
 
 const locale = getLocaleFromPath(Astro.url.pathname);
 const L = (href: string) => localizeNavHref(href, locale);
@@ -46,6 +47,23 @@ const heroFigure = '21 406';
 const heroTitleSuffix = ' kWh في السنة، منتَجة على سطح في الجديدة.';
 const heroSub =
   'تركيب رقم 468 — 17,04 kWc، مُحجَّم ومُركَّب ومُقاس من طرف Taqinor. تركيبكم يبدأ بتشخيص في 60 ثانية.';
+
+// W267 — السطر المالي تحت البطل. بلا أي رقم مخترَع: الاستهلاك الحقيقي لأسرة
+// المرجع 468 غير منشور في أي مكان بالموقع، لذا لا يمكن استدعاء
+// `annualSavingsMad(production, consumption)` بدون اختراع هذا المتغيّر الثاني.
+// الاشتقاق الوحيد الصادق من المعطى المنشور الوحيد (21 406 kWh مُنتَجة) هو
+// تثمين هذا الإنتاج بالتعريفة الحدّية الحقيقية لبارِم RÉGIE
+// (REGIE_TARIFF.selective، الشطرتان الأعلى — منسجم مع «أكبر تركيبة سكنية لنا
+// في 2026»، أي أسرة في أعلى الفئات بلا أي التباس): وهذا بالضبط نفس مجال
+// «≈ 1,38–1,60 MAD/kWh» المنشور والموثَّق سلفاً في billRange.ts /
+// recharge-voiture-electrique-solaire.astro. مجال (لا رقم واحد أبداً): لأن
+// الاستهلاك الذاتي الحقيقي للأسرة غير معروف، فرقم واحد سيخترع دقّة لا نملكها.
+const heroProductionKwh = 21406;
+const heroTariffLowRate = REGIE_TARIFF.selective[REGIE_TARIFF.selective.length - 2].rate; // 1,3817 MAD/kWh
+const heroTariffHighRate = REGIE_TARIFF.selective[REGIE_TARIFF.selective.length - 1].rate; // 1,5958 MAD/kWh
+const heroMoneyLow = Math.round((heroProductionKwh * heroTariffLowRate) / 100) * 100;
+const heroMoneyHigh = Math.round((heroProductionKwh * heroTariffHighRate) / 100) * 100;
+const heroMoneyLine = `≈ ${heroMoneyLow.toLocaleString('fr-FR')} إلى ${heroMoneyHigh.toLocaleString('fr-FR')} MAD تُمحى من الفاتورة كل سنة`;
 
 // PLACEHOLDER(MERYEM): FAQ مؤقتة.
 const faq = [
@@ -191,7 +209,11 @@ const investment = [
         <h1 class="display v2-hero-title cine-in cine-in-1 mt-6 max-w-[15ch]">
           <span data-hero-tally class="font-variant-numeric tabular-nums" dir="ltr">{heroFigure}</span>{heroTitleSuffix}
         </h1>
-        <p class="v2-lead cine-in cine-in-2 mt-6 max-w-xl text-white/85">{heroSub}</p>
+        {/* W267 — المال في الصدارة، والـ kWh يبقى الإثبات خلفه. مجال صادق (لا
+            رقم واحد أبداً) مُشتقّ من التعريفة الحدّية الحقيقية لـ RÉGIE — انظر
+            تعليق الحساب أعلاه. */}
+        <p class="cine-in cine-in-2 mt-4 max-w-xl text-lg font-bold text-brass-300 sm:text-xl">{heroMoneyLine}</p>
+        <p class="v2-lead cine-in cine-in-2 mt-4 max-w-xl text-white/85">{heroSub}</p>
         <div class="cine-in cine-in-3 mt-10 flex flex-wrap items-center gap-3">
           {/* CTA نحاسي وحيد (انضباط النحاس) — الذهب مأذون هنا */}
           <a href={L('/devis/mon-toit')} class="glow-hero bg-brass-400 px-8 py-4 text-lg font-bold text-azur-950 transition-all hover:bg-brass-300">

@@ -28,6 +28,7 @@ import ZelligeSignature from '../components/ZelligeSignature.astro';
 import FounderPortrait from '../components/FounderPortrait.astro';
 import { WHATSAPP_LEADS } from '../lib/nap';
 import { whatsappLink } from '../lib/whatsapp';
+import { REGIE_TARIFF } from '../lib/estimatorBrainV2';
 
 const waDirect = whatsappLink(WHATSAPP_LEADS, 'Bonjour, je souhaite une étude pour une installation solaire.');
 
@@ -37,6 +38,26 @@ const heroFigure = "21 406";
 const heroTitleSuffix = " kWh par an, produits sur un toit d’El Jadida.";
 const heroSub =
   'Installation réf. 468 — 17,04 kWc, dimensionnée, posée et mesurée par Taqinor. La vôtre commence par un diagnostic de 60 secondes.';
+
+// W267 — Sous-ligne monétaire du héros. AUCUN chiffre inventé : la
+// consommation réelle du foyer réf. 468 n'est publiée nulle part sur le site,
+// donc on ne peut PAS appeler `annualSavingsMad(production, consommation)`
+// sans inventer cette seconde variable. La seule dérivation honnête à partir
+// de la SEULE donnée publiée (21 406 kWh produits) est de valoriser cette
+// production au tarif MARGINAL réel du barème RÉGIE (REGIE_TARIFF.selective,
+// les deux tranches hautes — cohérent avec « notre plus grande résidentielle
+// de 2026 », donc un foyer situé sans ambiguïté dans le haut de barème) :
+// c'est exactement la même fourchette « ≈ 1,38–1,60 MAD/kWh » déjà publiée et
+// documentée dans billRange.ts / recharge-voiture-electrique-solaire.astro.
+// Fourchette (jamais un chiffre unique) : reflète le fait que l'autoconsommation
+// réelle du foyer n'est pas connue — poser une seule valeur ponctuelle
+// inventerait une précision qu'on n'a pas.
+const heroProductionKwh = 21406;
+const heroTariffLowRate = REGIE_TARIFF.selective[REGIE_TARIFF.selective.length - 2].rate; // 1,3817 MAD/kWh
+const heroTariffHighRate = REGIE_TARIFF.selective[REGIE_TARIFF.selective.length - 1].rate; // 1,5958 MAD/kWh
+const heroMoneyLow = Math.round((heroProductionKwh * heroTariffLowRate) / 100) * 100;
+const heroMoneyHigh = Math.round((heroProductionKwh * heroTariffHighRate) / 100) * 100;
+const heroMoneyLine = `≈ ${heroMoneyLow.toLocaleString('fr-FR')} à ${heroMoneyHigh.toLocaleString('fr-FR')} MAD effacés de la facture chaque année`;
 
 // W54 — L'ancien tableau de données (variable `cases`) a été retiré : les
 // mêmes installations vivaient en double (cartes photo + cartes données). La
@@ -199,7 +220,11 @@ const investment = [
         <h1 class="display v2-hero-title cine-in cine-in-1 mt-6 max-w-[15ch]">
           <span data-hero-tally class="font-variant-numeric tabular-nums">{heroFigure}</span>{heroTitleSuffix}
         </h1>
-        <p class="v2-lead cine-in cine-in-2 mt-6 max-w-xl text-white/85">{heroSub}</p>
+        {/* W267 — l'argent en tête, le kWh reste la crédibilité derrière.
+            Fourchette honnête (jamais un chiffre ponctuel) dérivée du tarif
+            marginal réel du barème RÉGIE — voir le commentaire de calcul plus haut. */}
+        <p class="cine-in cine-in-2 mt-4 max-w-xl text-lg font-bold text-brass-300 sm:text-xl">{heroMoneyLine}</p>
+        <p class="v2-lead cine-in cine-in-2 mt-4 max-w-xl text-white/85">{heroSub}</p>
         <div class="cine-in cine-in-3 mt-10 flex flex-wrap items-center gap-3">
           {/* UN seul CTA brass (discipline laiton) — l'or est ici autorisé.
               WJ36 — le héros pointe le parcours devis, libellé principal verbatim. */}
