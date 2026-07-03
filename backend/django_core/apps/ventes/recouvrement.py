@@ -12,8 +12,8 @@ from rest_framework.response import Response
 from apps.crm.selectors import client_base_qs
 from authentication.permissions import IsAdminRole, IsAnyRole
 
-from .models import Facture, FollowupLevel
-from .serializers import FollowupLevelSerializer
+from .models import Facture, FollowupLevel, PromessePaiement
+from .serializers import FollowupLevelSerializer, PromessePaiementSerializer
 
 
 def _s(x):
@@ -33,17 +33,23 @@ def _levels(company):
     return list(FollowupLevel.objects.filter(company=company).order_by('delai_jours'))
 
 
-def _current_level(jours_retard, levels):
-    """Niveau de relance courant : le plus haut seuil atteint, ou None."""
+def _current_level(jours_retard, levels, montant_du=None):
+    """Niveau de relance courant : le plus haut seuil atteint, ou None.
+
+    XFAC6 — quand ``montant_du`` est fourni, le dict porte aussi la pénalité
+    de retard calculée pour ce niveau (indicative, taux 0 → 0.00)."""
     current = None
     for lvl in levels:
         if jours_retard >= lvl.delai_jours:
             current = lvl
     if current is None:
         return None
-    return {'ordre': current.ordre, 'nom': current.nom,
-            'delai_jours': current.delai_jours,
-            'message': current.message or ''}
+    out = {'ordre': current.ordre, 'nom': current.nom,
+           'delai_jours': current.delai_jours,
+           'message': current.message or ''}
+    if montant_du is not None:
+        out['penalite'] = str(current.calcul_penalite(montant_du, jours_retard))
+    return out
 
 
 def _next_level(jours_retard, levels):
@@ -129,6 +135,10 @@ def relances_list(request):
     rows = []
     for f in _facture_due_rows(request.user):
         jr = f.jours_retard
+        # XFAC5 — promesse de paiement active/rompue (priorité haute).
+        promesse = f.promesses_paiement.filter(
+            statut__in=[PromessePaiement.Statut.EN_COURS,
+                        PromessePaiement.Statut.ROMPUE]).order_by('-id').first()
         rows.append({
             'id': f.id, 'reference': f.reference,
             'client_id': f.client_id,
@@ -139,13 +149,20 @@ def relances_list(request):
             'date_echeance': f.date_echeance.isoformat() if f.date_echeance else None,
             'montant_du': _s(f.montant_du),
             'jours_retard': jr,
-            'niveau': _current_level(jr, levels),
+            'niveau': _current_level(jr, levels, montant_du=f.montant_du),
             'niveau_suivant': _next_level(jr, levels),
             'prochaine_relance': (f.prochaine_relance.isoformat()
                                   if f.prochaine_relance else None),
             'nb_relances': f.relances.count(),
+            'promesse': ({
+                'id': promesse.id, 'statut': promesse.statut,
+                'montant_promis': _s(promesse.montant_promis),
+                'date_promise': promesse.date_promise.isoformat(),
+            } if promesse else None),
         })
-    rows.sort(key=lambda r: r['jours_retard'], reverse=True)
+    rows.sort(key=lambda r: (
+        r['promesse'] is not None and r['promesse']['statut'] == 'rompue',
+        r['jours_retard']), reverse=True)
     return Response(rows)
 
 
@@ -296,7 +313,8 @@ def lettre_relance_pdf(request, facture_id):
         return Response({'detail': 'Facture introuvable.'},
                         status=status.HTTP_404_NOT_FOUND)
     levels = _levels(facture.company)
-    niveau = _current_level(facture.jours_retard, levels)
+    niveau = _current_level(
+        facture.jours_retard, levels, montant_du=facture.montant_du)
     message = ''
     if niveau:
         lvl = next((x for x in levels if x.ordre == niveau['ordre']), None)
@@ -311,3 +329,43 @@ def lettre_relance_pdf(request, facture_id):
     resp['Content-Disposition'] = (
         f'inline; filename="Relance_{facture.reference}.pdf"')
     return resp
+
+
+# ── XFAC5 — Promesse de paiement (promise-to-pay) ──────────────────────────
+
+class PromessePaiementViewSet(viewsets.ModelViewSet):
+    """Promesses de paiement client — suspendent la relance auto jusqu'à
+    ``date_promise``. Écriture réservée aux rôles responsable/admin."""
+    serializer_class = PromessePaiementSerializer
+    http_method_names = ['get', 'post', 'head', 'options']
+
+    def get_queryset(self):
+        return _scope(
+            PromessePaiement.objects.select_related('facture').all(),
+            self.request.user,
+        )
+
+    def get_permissions(self):
+        if self.action in ('list', 'retrieve'):
+            return [IsAnyRole()]
+        return [IsAnyRole()]
+
+    def perform_create(self, serializer):
+        from rest_framework.exceptions import ValidationError
+        company = (self.request.user.company
+                   if self.request.user.company_id else None)
+        facture = serializer.validated_data.get('facture')
+        if facture is not None and company is not None and \
+                facture.company_id != company.id:
+            raise ValidationError({'facture': 'Facture inconnue.'})
+        promesse = serializer.save(
+            company=company, created_by=self.request.user,
+            statut=PromessePaiement.Statut.EN_COURS,
+        )
+        # Une promesse active SUSPEND les relances automatiques jusqu'à sa
+        # date : on pousse ``prochaine_relance`` après la promesse (repris par
+        # le scheduler à expiration) et on pose l'exclusion EXPIRANTE (XFAC5),
+        # jamais l'exclusion éternelle (comportement historique inchangé).
+        facture = promesse.facture
+        facture.exclu_relances_jusquau = promesse.date_promise
+        facture.save(update_fields=['exclu_relances_jusquau'])

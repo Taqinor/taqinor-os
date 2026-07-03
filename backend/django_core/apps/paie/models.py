@@ -623,7 +623,9 @@ class PeriodePaie(models.Model):
 
     Le cycle est strictement progressif (``services.changer_statut`` interdit un
     retour en arrière). Multi-société : ``company`` posée côté serveur. Le couple
-    ``(company, annee, mois)`` est unique.
+    ``(company, annee, mois)`` est unique — PAR ``type_run`` (XPAI4) : un run
+    ``mensuel`` et un run ``hors_cycle`` (13e mois, rappel) peuvent coexister
+    sur le même mois, chacun avec son propre cycle de bulletins.
     """
     STATUT_BROUILLON = 'brouillon'
     STATUT_CALCULEE = 'calculee'
@@ -640,6 +642,16 @@ class PeriodePaie(models.Model):
         STATUT_BROUILLON, STATUT_CALCULEE, STATUT_VALIDEE, STATUT_CLOTUREE,
     ]
 
+    # XPAI4 — Nature du run : ``mensuel`` (cycle normal, comportement
+    # historique — défaut) ou ``hors_cycle`` (13e mois/gratification, prime
+    # de bilan, rappel indépendant du cycle mensuel).
+    TYPE_RUN_MENSUEL = 'mensuel'
+    TYPE_RUN_HORS_CYCLE = 'hors_cycle'
+    TYPE_RUN_CHOICES = [
+        (TYPE_RUN_MENSUEL, 'Mensuel'),
+        (TYPE_RUN_HORS_CYCLE, 'Hors-cycle'),
+    ]
+
     company = models.ForeignKey(
         'authentication.Company',
         on_delete=models.CASCADE,
@@ -653,6 +665,9 @@ class PeriodePaie(models.Model):
     statut = models.CharField(
         max_length=12, choices=STATUT_CHOICES, default=STATUT_BROUILLON,
         verbose_name='Statut')
+    type_run = models.CharField(
+        max_length=12, choices=TYPE_RUN_CHOICES, default=TYPE_RUN_MENSUEL,
+        verbose_name='Nature du run')
     date_paiement = models.DateField(
         null=True, blank=True, verbose_name='Date de paiement')
     date_cloture = models.DateTimeField(
@@ -664,7 +679,7 @@ class PeriodePaie(models.Model):
         verbose_name = 'Période de paie'
         verbose_name_plural = 'Périodes de paie'
         ordering = ['-annee', '-mois']
-        unique_together = [('company', 'annee', 'mois')]
+        unique_together = [('company', 'annee', 'mois', 'type_run')]
 
     def __str__(self):
         return f'Paie {self.mois:02d}/{self.annee} ({self.statut})'

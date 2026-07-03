@@ -158,3 +158,46 @@ def log_facture_acompte_rembourse(facture, user, montant):
         body=(f"Acompte de {montant} MAD marqué remboursable à l'annulation "
               f"(écriture négative de contre-passation)."),
     )
+
+
+def log_facture_avance_affectee(facture, user, paiement, montant):
+    """XFAC1 — chatter de la facture : ventilation d'une avance client reçue."""
+    from .models import FactureActivity
+    qui = getattr(user, 'username', '?')
+    return FactureActivity.objects.create(
+        company=facture.company, facture=facture, user=user,
+        kind=FactureActivity.Kind.MODIFICATION,
+        field='avance', field_label='Avance affectée',
+        new_value=str(montant),
+        body=(f"Avance de {montant} MAD affectée par {qui} "
+              f"(paiement #{paiement.id})."),
+    )
+
+
+def log_facture_penalite_facturee(facture, user, facture_penalite, montant):
+    """XFAC6 — chatter de la facture d'origine : pénalités de retard
+    facturées séparément (nouvelle facture de frais dédiée)."""
+    from .models import FactureActivity
+    qui = getattr(user, 'username', '?')
+    return FactureActivity.objects.create(
+        company=facture.company, facture=facture, user=user,
+        kind=FactureActivity.Kind.MODIFICATION,
+        field='penalite', field_label='Pénalité facturée',
+        new_value=facture_penalite.reference,
+        body=(f"Pénalités de retard ({montant} MAD) facturées séparément "
+              f"par {qui} — {facture_penalite.reference}."),
+    )
+
+
+def log_facture_retenue_subie(facture, user, retenue):
+    """XFAC4 — chatter de la facture : retenue à la source subie constatée."""
+    from .models import FactureActivity
+    qui = getattr(user, 'username', '?')
+    return FactureActivity.objects.create(
+        company=facture.company, facture=facture, user=user,
+        kind=FactureActivity.Kind.MODIFICATION,
+        field='retenue', field_label='Retenue à la source',
+        new_value=str(retenue.montant),
+        body=(f"Retenue à la source ({retenue.get_type_retenue_display()}) "
+              f"de {retenue.montant} MAD constatée par {qui}."),
+    )

@@ -281,6 +281,26 @@ class CompanyProfile(models.Model):
         default=0,
         help_text='Délai (heures) au-delà duquel un lead SLA-dépassé est '
                   'désassigné (rendu au pool). 0 = jamais désassigné (défaut).')
+    # ── XFAC7 — rappel de courtoisie PRÉ-échéance (J-N avant échéance) ──
+    # N jours AVANT date_echeance d'une facture émise, envoie un rappel amical
+    # (prouvé pour réduire les retards — Chargebee/Odoo). Défaut 5, 0 = désactivé
+    # → comportement historique inchangé tant que la société n'y touche pas.
+    rappel_pre_echeance_jours = models.PositiveIntegerField(
+        default=5,
+        help_text="Jours avant échéance pour le rappel de courtoisie "
+                  "(0 = désactivé).")
+
+    # ── XFAC12 — escompte pour règlement anticipé (ex. 2/10 net 30) ──
+    # Défauts PROPOSÉS à la création d'une facture (surchargeables par
+    # facture) ; NULL = pas de proposition automatique (comportement actuel
+    # inchangé — la société doit les activer explicitement).
+    escompte_pct_defaut = models.DecimalField(
+        max_digits=5, decimal_places=2, null=True, blank=True,
+        help_text="Taux d'escompte (%) proposé par défaut sur les "
+                  "nouvelles factures.")
+    escompte_jours_defaut = models.PositiveIntegerField(
+        null=True, blank=True,
+        help_text="Délai (jours) proposé par défaut pour l'escompte.")
 
     class Meta:
         verbose_name = 'Profil entreprise'

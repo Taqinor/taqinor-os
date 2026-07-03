@@ -270,6 +270,8 @@ RUBRIQUES_STANDARD = [
      True, True, True, True, '6411', 34, None, False),
     ('CIMR', 'Cotisation CIMR (part salariale)', Rubrique.TYPE_COTISATION,
      False, False, False, False, '4443', 55, None, False),
+    ('GRATIFICATION', '13e mois / gratification', Rubrique.TYPE_GAIN,
+     True, True, True, True, '6411', 36, None, False),
 ]
 
 
@@ -2743,3 +2745,139 @@ def appliquer_regularisation_ir(bulletin):
             bulletin.net_a_payer = _q(Decimal(bulletin.net_a_payer or 0) - delta)
             bulletin.save(update_fields=['ir', 'net_a_payer'])
     return delta
+
+
+# ── XPAI4 — 13e mois & gratifications + runs hors-cycle ────────────────────
+
+def prorata_presence(date_embauche, date_sortie, annee):
+    """Fraction de l'année ``annee`` couverte par la présence (XPAI4).
+
+    Renvoie un ``Decimal`` entre 0 et 1 : ``mois_presents / 12``, où
+    ``mois_presents`` est le nombre de mois civils de l'année pendant lesquels
+    l'employé était présent (embauché avant/pendant, sorti après/pendant).
+    Un employé présent toute l'année renvoie 1. ``date_embauche``/
+    ``date_sortie`` peuvent être ``None`` (présence non bornée de ce côté).
+    """
+    debut_annee = date(annee, 1, 1)
+    fin_annee = date(annee, 12, 31)
+    debut = max(date_embauche, debut_annee) if date_embauche else debut_annee
+    fin = min(date_sortie, fin_annee) if date_sortie else fin_annee
+    if debut > fin:
+        return Decimal('0')
+    mois_presents = (fin.year - debut.year) * 12 + (fin.month - debut.month) + 1
+    mois_presents = max(0, min(12, mois_presents))
+    return (Decimal(mois_presents) / Decimal('12')).quantize(Decimal('0.0001'))
+
+
+def calculer_gratification(profil, annee, *, base_montant=None):
+    """Calcule la gratification (13e mois) prorata temporis d'un profil (XPAI4).
+
+    ``base_montant`` (défaut ``profil.salaire_base``) est le montant PLEIN de
+    la gratification pour une présence toute l'année ; il est multiplié par le
+    ``prorata_presence`` (dates lues via ``rh.selectors``, cross-app). Renvoie
+    un ``Decimal`` >= 0 au centime.
+    """
+    from apps.rh import selectors as rh_selectors  # import paresseux cross-app
+
+    if base_montant is None:
+        base_montant = profil.salaire_base
+    date_embauche = rh_selectors.date_embauche_employe(
+        profil.company, profil.employe_id)
+    date_sortie, _motif = rh_selectors.sortie_employe(
+        profil.company, profil.employe_id)
+    prorata = prorata_presence(date_embauche, date_sortie, annee)
+    return _q(Decimal(base_montant or 0) * prorata)
+
+
+def lancer_run_13e_mois(company, annee, *, libelle='', mois=12,
+                        base_montant=None):
+    """Lance un run « 13e mois » hors-cycle pour tous les profils actifs (XPAI4).
+
+    Crée (ou réutilise si déjà présente) une ``PeriodePaie`` de nature
+    ``TYPE_RUN_HORS_CYCLE`` pour ``(company, annee, mois)``, puis génère un
+    bulletin de type ``NORMAL`` pour chaque ``ProfilPaie`` actif de la société,
+    dont le brut est intégralement la gratification proratée
+    (``calculer_gratification``) — AUCUN salaire de base mensuel n'est
+    dupliqué (ce run est INDÉPENDANT du cycle mensuel). Les cotisations/IR
+    sont calculées normalement sur ce brut (la rubrique ``GRATIFICATION`` est
+    imposable/soumise CNSS-AMO-CIMR par défaut, cf. ``RUBRIQUES_STANDARD``).
+
+    Renvoie ``(periode, bulletins)`` — la période créée/réutilisée et la liste
+    des bulletins (brouillon) générés, un par profil actif.
+    """
+    from .models import BulletinPaie, LigneBulletin, ProfilPaie as _ProfilPaie
+
+    periode, _ = PeriodePaie.objects.get_or_create(
+        company=company, annee=annee, mois=mois,
+        type_run=PeriodePaie.TYPE_RUN_HORS_CYCLE,
+        defaults={'libelle': libelle or f'13e mois {annee}'},
+    )
+    if periode.statut == PeriodePaie.STATUT_CLOTUREE:
+        raise BulletinPaie.BulletinVerrouille(
+            'Run hors-cycle déjà clôturé.')
+
+    profils = _ProfilPaie.objects.filter(company=company, actif=True)
+    bulletins = []
+    with transaction.atomic():
+        for profil in profils:
+            gratification = calculer_gratification(
+                profil, annee, base_montant=base_montant)
+            if gratification <= 0:
+                continue
+            parametre = parametre_en_vigueur(company, date(annee, mois, 1))
+            bareme = bareme_en_vigueur(company, date(annee, mois, 1))
+            cnss = cnss_salariale(parametre, gratification, profil.affilie_cnss)
+            cnss_pat = cnss_patronale(
+                parametre, gratification, profil.affilie_cnss)
+            amo = amo_salariale(parametre, gratification, profil.affilie_amo)
+            amo_pat = amo_patronale(
+                parametre, gratification, profil.affilie_amo)
+            cimr = cimr_salariale(
+                gratification, profil.affilie_cimr, profil.taux_cimr_salarial)
+            net_imposable = gratification - cnss - amo - cimr
+            if net_imposable < 0:
+                net_imposable = Decimal('0')
+            net_imposable = _q(net_imposable)
+            ir = Decimal('0')
+            if bareme and parametre:
+                ir = compute_ir(net_imposable, bareme, parametre, 0)
+            ir = _q(ir)
+            net_a_payer = _q(gratification - cnss - amo - cimr - ir)
+            charges_patronales = _q(cnss_pat + amo_pat)
+
+            bulletin = (
+                BulletinPaie.objects
+                .filter(periode=periode, profil=profil)
+                .first()
+            )
+            if bulletin is not None and bulletin.est_valide:
+                continue
+            if bulletin is None:
+                bulletin = BulletinPaie(
+                    company=company, periode=periode, profil=profil)
+            bulletin.type_bulletin = BulletinPaie.TYPE_NORMAL
+            bulletin.motif = 'Run 13e mois / gratification'
+            bulletin.brut = _q(gratification)
+            bulletin.brut_imposable = _q(gratification)
+            bulletin.cnss_salariale = cnss
+            bulletin.cnss_patronale = cnss_pat
+            bulletin.amo_salariale = amo
+            bulletin.amo_patronale = amo_pat
+            bulletin.cimr_salariale = cimr
+            bulletin.frais_professionnels = Decimal('0.00')
+            bulletin.net_imposable = net_imposable
+            bulletin.ir = ir
+            bulletin.retenues = Decimal('0.00')
+            bulletin.net_a_payer = net_a_payer
+            bulletin.charges_patronales = charges_patronales
+            bulletin.statut = BulletinPaie.STATUT_BROUILLON
+            bulletin.save()
+
+            bulletin.lignes.all().delete()
+            LigneBulletin.objects.create(
+                company=company, bulletin=bulletin, code='GRATIFICATION',
+                libelle='13e mois / gratification (prorata présence)',
+                type=Rubrique.TYPE_GAIN, montant=_q(gratification), ordre=1,
+            )
+            bulletins.append(bulletin)
+    return periode, bulletins

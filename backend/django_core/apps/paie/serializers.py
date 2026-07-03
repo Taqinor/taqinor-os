@@ -236,17 +236,21 @@ class PeriodePaieSerializer(serializers.ModelSerializer):
 
     Le ``statut`` est en LECTURE SEULE depuis le sérialiseur : il n'avance que
     par l'action dédiée ``changer-statut`` (cycle progressif côté service).
+    XPAI4 — ``type_run`` (mensuel/hors_cycle) est éditable À LA CRÉATION
+    uniquement (un run hors-cycle « 13e mois » coexiste avec le run mensuel
+    du même mois) ; en écriture directe il reste modifiable (rare) mais ne
+    change jamais implicitement.
     """
     class Meta:
         model = PeriodePaie
         fields = [
-            'id', 'annee', 'mois', 'libelle', 'statut', 'date_paiement',
-            'date_cloture', 'date_creation',
+            'id', 'annee', 'mois', 'libelle', 'statut', 'type_run',
+            'date_paiement', 'date_cloture', 'date_creation',
         ]
         read_only_fields = ['statut', 'date_cloture', 'date_creation']
 
     def validate(self, attrs):
-        """Unicité ``(company, annee, mois)`` — ``company`` posée côté serveur.
+        """Unicité ``(company, annee, mois, type_run)`` — ``company`` serveur.
 
         ``company`` n'étant pas un champ du sérialiseur, DRF ne pose pas de
         ``UniqueTogetherValidator`` ; on vérifie ici pour renvoyer un 400 propre
@@ -255,14 +259,19 @@ class PeriodePaieSerializer(serializers.ModelSerializer):
         request = self.context.get('request')
         annee = attrs.get('annee', getattr(self.instance, 'annee', None))
         mois = attrs.get('mois', getattr(self.instance, 'mois', None))
+        type_run = attrs.get(
+            'type_run', getattr(
+                self.instance, 'type_run', PeriodePaie.TYPE_RUN_MENSUEL))
         if request is not None and annee is not None and mois is not None:
             qs = PeriodePaie.objects.filter(
-                company=request.user.company_id, annee=annee, mois=mois)
+                company=request.user.company_id, annee=annee, mois=mois,
+                type_run=type_run)
             if self.instance is not None:
                 qs = qs.exclude(pk=self.instance.pk)
             if qs.exists():
                 raise serializers.ValidationError(
-                    'Une période existe déjà pour cette année et ce mois.')
+                    'Une période existe déjà pour cette année, ce mois et '
+                    'cette nature de run.')
         return attrs
 
 

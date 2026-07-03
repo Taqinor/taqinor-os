@@ -382,16 +382,56 @@ class PaiementSerializer(serializers.ModelSerializer):
     # de la facture, nom du client et auteur de l'encaissement (« par qui »).
     facture_reference = serializers.CharField(
         source='facture.reference', read_only=True, default=None)
-    client_nom = serializers.CharField(
-        source='facture.client.nom', read_only=True, default=None)
+    client_nom = serializers.SerializerMethodField()
     created_by_username = serializers.CharField(
         source='created_by.username', read_only=True, default=None)
+    # XFAC1 — avance non affectée : solde encore disponible pour ventilation.
+    montant_disponible = serializers.DecimalField(
+        max_digits=12, decimal_places=2, read_only=True)
+    statut_affectation_display = serializers.CharField(
+        source='get_statut_affectation_display', read_only=True)
+
+    def get_client_nom(self, obj):
+        c = obj.facture.client if obj.facture_id else obj.client
+        if c is None:
+            return None
+        return f"{c.nom} {c.prenom or ''}".strip()
 
     class Meta:
         model = Paiement
         fields = '__all__'
         # company/created_by forcés côté serveur — jamais depuis le corps.
-        read_only_fields = ['company', 'created_by', 'date_creation', 'facture']
+        # escompte_montant (XFAC12) est calculé côté serveur (fenêtre + net
+        # réglé), jamais accepté du corps de requête.
+        read_only_fields = ['company', 'created_by', 'date_creation', 'facture',
+                            'escompte_montant']
+
+
+class AffectationPaiementSerializer(serializers.ModelSerializer):
+    facture_reference = serializers.CharField(
+        source='facture.reference', read_only=True)
+
+    class Meta:
+        from .models import AffectationPaiement
+        model = AffectationPaiement
+        fields = ['id', 'paiement', 'facture', 'facture_reference',
+                  'montant', 'date_affectation', 'created_by']
+        read_only_fields = ['company', 'created_by', 'date_affectation']
+
+
+class RetenueSubieSerializer(serializers.ModelSerializer):
+    """XFAC4 — RAS subie (TVA/IS) constatée sur une facture client."""
+    type_retenue_display = serializers.CharField(
+        source='get_type_retenue_display', read_only=True)
+    facture_reference = serializers.CharField(
+        source='facture.reference', read_only=True)
+
+    class Meta:
+        from .models import RetenueSubie
+        model = RetenueSubie
+        fields = '__all__'
+        read_only_fields = ['company', 'created_by', 'date_creation', 'facture',
+                            'paiement']
 
 
 class FactureSerializer(serializers.ModelSerializer):
@@ -503,11 +543,28 @@ class AvoirSerializer(serializers.ModelSerializer):
         return f"{c.nom} {c.prenom or ''}".strip() if c else None
 
 
+class PromessePaiementSerializer(serializers.ModelSerializer):
+    """XFAC5 — engagement de paiement client (« je paie le 15 »)."""
+    facture_reference = serializers.CharField(
+        source='facture.reference', read_only=True)
+    statut_display = serializers.CharField(
+        source='get_statut_display', read_only=True)
+    created_by_username = serializers.CharField(
+        source='created_by.username', read_only=True, default=None)
+
+    class Meta:
+        from .models import PromessePaiement
+        model = PromessePaiement
+        fields = '__all__'
+        read_only_fields = ['company', 'created_by', 'date_creation', 'statut']
+
+
 class FollowupLevelSerializer(serializers.ModelSerializer):
     class Meta:
         from .models import FollowupLevel
         model = FollowupLevel
-        fields = ['id', 'ordre', 'nom', 'delai_jours', 'message']
+        fields = ['id', 'ordre', 'nom', 'delai_jours', 'message',
+                  'taux_interet_annuel', 'frais_fixes', 'canal']
 
 
 class RelanceLogSerializer(serializers.ModelSerializer):
@@ -517,8 +574,8 @@ class RelanceLogSerializer(serializers.ModelSerializer):
     class Meta:
         from .models import RelanceLog
         model = RelanceLog
-        fields = ['id', 'facture', 'niveau', 'niveau_nom', 'note', 'date',
-                  'created_by_nom']
+        fields = ['id', 'facture', 'niveau', 'niveau_nom', 'note', 'canal',
+                  'courrier_pdf_key', 'date', 'created_by_nom']
         read_only_fields = fields
 
 

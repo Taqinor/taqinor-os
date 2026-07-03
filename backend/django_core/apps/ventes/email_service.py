@@ -223,3 +223,112 @@ def send_relance_email(facture, *, niveau_nom='', message='', user=None,
     log.erreur = err
     log.save()
     return log
+
+
+def send_pre_echeance_email(facture, *, user=None):
+    """XFAC7 — envoie le rappel de courtoisie PRÉ-échéance (J-N avant
+    ``date_echeance``, jamais après) et le consigne. Utilise le modèle
+    ``EmailTemplate`` (clé ``pre_echeance``), NO-OP réseau sans clé d'envoi
+    configurée (backend console) — même patron que ``send_relance_email``.
+    Inclut le lien de paiement FG53 quand disponible. Renvoie l'EmailLog créé.
+    """
+    from apps.parametres.models_email import EmailTemplate
+
+    client = getattr(facture, 'client', None)
+    dest = (getattr(client, 'email', '') or '').strip()
+    reference = getattr(facture, 'reference', '') or ''
+    nom_client = ''
+    civilite = ''
+    if client is not None:
+        nom_client = f"{client.nom} {getattr(client, 'prenom', '') or ''}".strip()
+
+    lien = ''
+    try:
+        from .services import create_payment_link
+        from .payments.providers import get_provider
+        link = create_payment_link(facture=facture)
+        session = get_provider(link.provider).create_session(link)
+        lien = session.get('pay_url') or ''
+    except Exception:  # pragma: no cover — lien de paiement best-effort
+        lien = ''
+
+    rendered = EmailTemplate.render(
+        getattr(facture, 'company', None), 'pre_echeance',
+        civilite=civilite, nom=nom_client, reference=reference, lien=lien)
+    sujet = rendered['sujet'] or f'Rappel amical — échéance {reference}'
+    corps = rendered['corps'] or (
+        f"Bonjour {nom_client},\n\nVotre facture {reference} arrive "
+        f"prochainement à échéance.\n\nCordialement,\nL'équipe TAQINOR")
+
+    log = EmailLog(
+        company=getattr(facture, 'company', None),
+        direction=EmailLog.Direction.SORTANT,
+        client=client, facture=facture,
+        to_email=dest, from_email=_from_email(),
+        sujet=sujet[:300], corps=corps, reference=reference[:80],
+        created_by=user if getattr(user, 'is_authenticated', False) else None,
+    )
+
+    if not dest:
+        log.statut = EmailLog.Statut.ECHEC
+        log.erreur = 'Aucune adresse email destinataire.'
+        log.save()
+        return log
+
+    ok, err = _send(dest, sujet, corps)
+    log.statut = EmailLog.Statut.ENVOYE if ok else EmailLog.Statut.ECHEC
+    log.erreur = err
+    log.save()
+    return log
+
+
+def send_recu_email(paiement, *, user=None, to_email=None):
+    """XFAC9 — envoi OPTIONNEL de la quittance PDF au client, à
+    l'enregistrement du paiement. NO-OP réseau sans clé d'envoi configurée
+    (backend console) — même patron que ``send_document_email``. Consigne
+    ``EmailLog``. Renvoie l'EmailLog créé, ou None si aucun destinataire."""
+    from .utils.pdf import generate_recu_pdf
+
+    client = paiement.facture.client if paiement.facture_id else paiement.client
+    dest = (to_email or (getattr(client, 'email', '') or '')).strip()
+    reference = (paiement.facture.reference if paiement.facture_id
+                 else f'avance-{paiement.id}')
+    nom_client = ''
+    if client is not None:
+        nom_client = f"{client.nom} {getattr(client, 'prenom', '') or ''}".strip()
+    salut = f'Bonjour {nom_client},' if nom_client else 'Bonjour,'
+    sujet = f'Quittance de paiement — {reference}'
+    corps = (
+        f"{salut}\n\nVeuillez trouver ci-joint votre quittance pour le "
+        f"règlement de {paiement.montant} MAD.\n\n"
+        f"Cordialement,\nL'équipe TAQINOR"
+    )
+
+    log = EmailLog(
+        company=getattr(paiement, 'company', None),
+        direction=EmailLog.Direction.SORTANT,
+        client=client, facture=paiement.facture,
+        to_email=dest, from_email=_from_email(),
+        sujet=sujet[:300], corps=corps, reference=reference[:80],
+        created_by=user if getattr(user, 'is_authenticated', False) else None,
+    )
+
+    if not dest:
+        log.statut = EmailLog.Statut.ECHEC
+        log.erreur = 'Aucune adresse email destinataire.'
+        log.save()
+        return log
+
+    try:
+        pdf_bytes = generate_recu_pdf(paiement)
+    except Exception as exc:  # pragma: no cover — rendu best-effort
+        logger.warning('Quittance PDF indisponible pour envoi : %s', exc)
+        pdf_bytes = None
+
+    ok, err = _send(
+        dest, sujet, corps, pdf_bytes,
+        f'Quittance_{reference}.pdf' if pdf_bytes else None)
+    log.statut = EmailLog.Statut.ENVOYE if ok else EmailLog.Statut.ECHEC
+    log.erreur = err
+    log.save()
+    return log
