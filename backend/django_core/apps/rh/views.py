@@ -194,6 +194,19 @@ class DossierEmployeViewSet(_RhBaseViewSet):
     search_fields = ['matricule', 'nom', 'prenom', 'cin', 'email']
     ordering_fields = ['nom', 'prenom', 'matricule', 'date_embauche']
 
+    def get_permissions(self):
+        # XRH16 — ``compa-ratio`` est une consultation SENSIBLE (paie) gatée
+        # EXPLICITEMENT par ``salaires_voir`` : un porteur de cette seule
+        # permission (rôle lecture-seule paie, sans droit d'écriture ailleurs)
+        # doit pouvoir la consulter même s'il ne satisfait pas
+        # ``IsResponsableOrAdmin`` (gate d'écriture de la base RH). On
+        # remplace donc entièrement le gate de classe pour cette action, au
+        # lieu de l'empiler dessus (sinon un lecteur salaires_voir-only reste
+        # bloqué en 403 avant même d'atteindre le corps de l'action).
+        if self.action == 'compa_ratio':
+            return [HasPermission('salaires_voir')()]
+        return super().get_permissions()
+
     def perform_update(self, serializer):
         # XRH6 — journalise automatiquement les champs suivis (chatter) en
         # comparant l'instance AVANT à celle APRÈS sauvegarde.
@@ -249,12 +262,10 @@ class DossierEmployeViewSet(_RhBaseViewSet):
     def compa_ratio(self, request, pk=None):
         """XRH16 — compa-ratio de l'employé (salaire vs bande de son poste).
 
-        Donnée SENSIBLE (paie) : gatée EXPLICITEMENT ``salaires_voir`` en plus
-        du palier de base — un porteur sans cette permission reçoit 403.
+        Donnée SENSIBLE (paie) : gatée EXPLICITEMENT ``salaires_voir`` (voir
+        ``get_permissions``) — un porteur sans cette permission reçoit 403
+        avant même d'atteindre ce corps de méthode.
         """
-        if not HasPermission('salaires_voir')().has_permission(
-                request, self):
-            return Response(status=status.HTTP_403_FORBIDDEN)
         employe = self.get_object()
         resultat = selectors.compa_ratio(employe)
         if resultat is None:

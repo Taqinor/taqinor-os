@@ -100,9 +100,12 @@ class InstancierIntegrationServiceTests(TestCase):
         make_elements(modele, ['A', 'B'])
         services.instancier_integration(self.emp)
         services.instancier_integration(self.emp)
+        # XRH5 : + 1 item bloquant (déclaration d'entrée CNSS/AMO), toujours
+        # ajouté par le premier appel — le second appel doit rester
+        # idempotent et ne rien dupliquer.
         self.assertEqual(
             ElementIntegrationEmploye.objects.filter(employe=self.emp).count(),
-            2)
+            3)
 
     def test_embaucher_instancie_checklist_automatiquement(self):
         from apps.rh.models import Candidature, OuverturePoste

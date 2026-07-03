@@ -83,12 +83,18 @@ router.register(r'types-absence', TypeAbsenceViewSet)
 router.register(r'soldes-conge', SoldeCongeViewSet)
 router.register(r'demandes-conge', DemandeCongeViewSet)
 router.register(r'periodes-fermeture', PeriodeFermetureViewSet)
+# NOTE : le kiosque (``pointages/kiosque``) DOIT être enregistré AVANT
+# ``pointages`` — DefaultRouter résout dans l'ordre d'enregistrement, et le
+# pattern détail de ``pointages`` (``pointages/<pk>/``) matcherait sinon
+# ``pointages/kiosque/`` en traitant "kiosque" comme un pk, ce qui route vers
+# PointageViewSet (authentifié) au lieu du guichet kiosque (AllowAny) → 401
+# au lieu du comportement attendu.
+router.register(
+    r'pointages/kiosque', KiosquePointageViewSet, basename='rh-kiosque')
 router.register(r'pointages', PointageViewSet)
 router.register(r'devices-kiosque', DeviceKiosqueViewSet)
 router.register(r'devices-employe-map', EmployeDeviceMapViewSet)
 router.register(r'reglages', ReglageRHViewSet, basename='rh-reglages')
-router.register(
-    r'pointages/kiosque', KiosquePointageViewSet, basename='rh-kiosque')
 router.register(r'feuilles-temps', FeuilleTempsViewSet)
 router.register(r'heures-supp', HeuresSuppViewSet)
 router.register(r'roster', AffectationRosterViewSet)
