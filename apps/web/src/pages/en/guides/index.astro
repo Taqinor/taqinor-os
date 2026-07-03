@@ -18,9 +18,44 @@ const L = (href: string) => localizeNavHref(href, locale);
 
 const guides = [
   {
+    href: '/guides/combien-de-panneaux-pour-ma-maison',
+    title: 'How many panels and what power (kWc)?',
+    summary: 'The method to go from your bill to the number of panels: annual kWh, kWc, roof surface. Enough to understand sizing before the study.',
+  },
+  {
+    href: '/guides/on-grid-off-grid-ou-hybride',
+    title: 'On-grid, off-grid or hybrid?',
+    summary: 'Which system type for which need — and why a grid-connected system cuts out during an outage (anti-islanding), unless you go hybrid with a battery.',
+  },
+  {
+    href: '/guides/orientation-inclinaison-ombrage',
+    title: 'Orientation, tilt and shading',
+    summary: 'Due south, east-west, tilt angle, and the disproportionate impact of shade on a Moroccan roof: how to get the most out of production.',
+  },
+  {
+    href: '/guides/entretien-et-duree-de-vie-des-panneaux',
+    title: 'Maintenance and lifespan of panels',
+    summary: 'Dust and sand in Morocco, cleaning, heat, degradation: how long panels really last and how to preserve their production.',
+  },
+  {
+    href: '/guides/monocristallin-ou-polycristallin',
+    title: 'Monocrystalline or polycrystalline? String or micro-inverters?',
+    summary: 'Choosing your equipment with no jargon: panel type and inverter type, and what each one changes in practice on a roof.',
+  },
+  {
     href: '/guides/loi-82-21-expliquee',
     title: 'Law 82-21 explained simply',
     summary: 'Declaration, connection agreement or authorisation: the three self-production regimes untangled, with the 11 kW threshold that puts almost every villa on the right side.',
+  },
+  {
+    href: '/guides/onduleur-hybride-ou-reseau',
+    title: 'Hybrid inverter or grid-tied inverter?',
+    summary: 'Deye hybrid or Huawei SUN2000 grid-tied: the whole choice comes down to one question — do you store the energy, yes or no?',
+  },
+  {
+    href: '/guides/mon-toit-peut-il-supporter-des-panneaux',
+    title: 'Can my roof support panels?',
+    summary: 'The real weight of a solar panel per m², roof by roof (concrete slab, tile, corrugated sheet, flat roof), and when a structural check is needed.',
   },
   {
     href: '/guides/faut-il-des-batteries',
@@ -28,9 +63,25 @@ const guides = [
     summary: 'Often no. It all depends on when you consume: we show you when storage pays, and when it only weighs the bill down.',
   },
   {
-    href: '/guides/onduleur-hybride-ou-reseau',
-    title: 'Hybrid inverter or grid-tied inverter?',
-    summary: 'Deye hybrid or Huawei SUN2000 grid-tied: the whole choice comes down to one question — do you store the energy, yes or no?',
+    href: '/guides/batterie-lithium-ou-gel',
+    title: 'Lithium LiFePO4 (LFP) vs GEL/lead-acid (and NMC)',
+    summary: 'Why LFP wins out in Morocco: lifespan, depth of discharge, efficiency, heat tolerance and safety versus NMC.',
+  },
+  {
+    href: '/guides/quelle-taille-de-batterie',
+    title: 'What battery size (kWh)? Store or sell back?',
+    summary: 'Sizing tiers, usable vs. nominal kWh, and why storing for the evening pays off far more than exporting your surplus in Morocco.',
+  },
+  {
+    href: '/guides/electricite-pendant-les-coupures',
+    title: 'Keeping the power on during outages',
+    summary: 'Backup ≠ off-grid: EPS outputs, hybrid inverter and battery, and why a standard grid system shuts off during an outage.',
+  },
+  {
+    // W293 — evergreen pricing pillar, distinct from the sizing-method guide above.
+    href: '/prix-panneaux-solaires-maroc',
+    title: 'Solar panel prices in Morocco',
+    summary: 'Indicative brackets by power (kWc), roof and battery surcharges, VAT — reviewed every year, never a firm price promised.',
   },
 ];
 
